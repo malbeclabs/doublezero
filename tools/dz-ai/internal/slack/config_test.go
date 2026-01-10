@@ -52,7 +52,10 @@ func TestAI_Slack_LoadFromEnv(t *testing.T) {
 				os.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
 				os.Setenv("SLACK_APP_TOKEN", "xapp-test")
 				os.Setenv("ANTHROPIC_API_KEY", "sk-test")
-				os.Setenv("LAKE_QUERIER_URI", "postgres://user:pass@localhost:5432/dbname")
+				os.Setenv("CLICKHOUSE_ADDR", "localhost:9000")
+				os.Setenv("CLICKHOUSE_DATABASE", "default")
+				os.Setenv("CLICKHOUSE_USERNAME", "default")
+				os.Setenv("CLICKHOUSE_PASSWORD", "")
 			},
 			modeFlag: "socket",
 			checkConfig: func(t *testing.T, cfg *Config) {
@@ -60,7 +63,10 @@ func TestAI_Slack_LoadFromEnv(t *testing.T) {
 				require.Equal(t, "xoxb-test", cfg.BotToken)
 				require.Equal(t, "xapp-test", cfg.AppToken)
 				require.Equal(t, "sk-test", cfg.AnthropicAPIKey)
-				require.Equal(t, "postgres://user:pass@localhost:5432/dbname", cfg.LakeQuerierURI)
+				require.Equal(t, "localhost:9000", cfg.ClickhouseAddr)
+				require.Equal(t, "default", cfg.ClickhouseDatabase)
+				require.Equal(t, "default", cfg.ClickhouseUsername)
+				require.Equal(t, "", cfg.ClickhousePassword)
 			},
 		},
 		{
@@ -69,7 +75,10 @@ func TestAI_Slack_LoadFromEnv(t *testing.T) {
 				os.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
 				os.Setenv("SLACK_SIGNING_SECRET", "secret")
 				os.Setenv("ANTHROPIC_API_KEY", "sk-test")
-				os.Setenv("LAKE_QUERIER_URI", "postgres://user:pass@localhost:5432/dbname")
+				os.Setenv("CLICKHOUSE_ADDR", "localhost:9000")
+				os.Setenv("CLICKHOUSE_DATABASE", "default")
+				os.Setenv("CLICKHOUSE_USERNAME", "default")
+				os.Setenv("CLICKHOUSE_PASSWORD", "")
 			},
 			modeFlag: "http",
 			checkConfig: func(t *testing.T, cfg *Config) {
@@ -83,7 +92,10 @@ func TestAI_Slack_LoadFromEnv(t *testing.T) {
 				os.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
 				os.Setenv("SLACK_APP_TOKEN", "xapp-test")
 				os.Setenv("ANTHROPIC_API_KEY", "sk-test")
-				os.Setenv("LAKE_QUERIER_URI", "postgres://user:pass@localhost:5432/dbname")
+				os.Setenv("CLICKHOUSE_ADDR", "localhost:9000")
+				os.Setenv("CLICKHOUSE_DATABASE", "default")
+				os.Setenv("CLICKHOUSE_USERNAME", "default")
+				os.Setenv("CLICKHOUSE_PASSWORD", "")
 			},
 			modeFlag: "",
 			checkConfig: func(t *testing.T, cfg *Config) {
@@ -107,7 +119,10 @@ func TestAI_Slack_LoadFromEnv(t *testing.T) {
 			name: "missing bot token",
 			setupEnv: func() {
 				os.Setenv("ANTHROPIC_API_KEY", "sk-test")
-				os.Setenv("LAKE_QUERIER_URI", "postgres://user:pass@localhost:5432/dbname")
+				os.Setenv("CLICKHOUSE_ADDR", "localhost:9000")
+				os.Setenv("CLICKHOUSE_DATABASE", "default")
+				os.Setenv("CLICKHOUSE_USERNAME", "default")
+				os.Setenv("CLICKHOUSE_PASSWORD", "")
 			},
 			modeFlag:    "socket",
 			wantErr:     true,
@@ -118,7 +133,10 @@ func TestAI_Slack_LoadFromEnv(t *testing.T) {
 			setupEnv: func() {
 				os.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
 				os.Setenv("ANTHROPIC_API_KEY", "sk-test")
-				os.Setenv("LAKE_QUERIER_URI", "postgres://user:pass@localhost:5432/dbname")
+				os.Setenv("CLICKHOUSE_ADDR", "localhost:9000")
+				os.Setenv("CLICKHOUSE_DATABASE", "default")
+				os.Setenv("CLICKHOUSE_USERNAME", "default")
+				os.Setenv("CLICKHOUSE_PASSWORD", "")
 			},
 			modeFlag:    "socket",
 			wantErr:     true,
@@ -140,23 +158,26 @@ func TestAI_Slack_LoadFromEnv(t *testing.T) {
 			setupEnv: func() {
 				os.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
 				os.Setenv("SLACK_APP_TOKEN", "xapp-test")
-				os.Setenv("LAKE_QUERIER_URI", "postgres://user:pass@localhost:5432/dbname")
+				os.Setenv("CLICKHOUSE_ADDR", "localhost:9000")
+				os.Setenv("CLICKHOUSE_DATABASE", "default")
+				os.Setenv("CLICKHOUSE_USERNAME", "default")
+				os.Setenv("CLICKHOUSE_PASSWORD", "")
 			},
 			modeFlag:    "socket",
 			wantErr:     true,
 			errContains: "ANTHROPIC_API_KEY is required",
 		},
 		{
-			name: "missing lake querier URI",
+			name: "missing ClickHouse address",
 			setupEnv: func() {
 				os.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
 				os.Setenv("SLACK_APP_TOKEN", "xapp-test")
 				os.Setenv("ANTHROPIC_API_KEY", "sk-test")
-				os.Unsetenv("LAKE_QUERIER_URI") // Ensure it's unset
+				os.Unsetenv("CLICKHOUSE_ADDR") // Ensure it's unset
 			},
 			modeFlag:    "socket",
 			wantErr:     true,
-			errContains: "lake querier URI is required",
+			errContains: "CLICKHOUSE_ADDR is required (use --clickhouse-addr flag or CLICKHOUSE_ADDR env var)",
 		},
 		{
 			name: "invalid mode",
@@ -164,7 +185,10 @@ func TestAI_Slack_LoadFromEnv(t *testing.T) {
 				os.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
 				os.Setenv("SLACK_APP_TOKEN", "xapp-test")
 				os.Setenv("ANTHROPIC_API_KEY", "sk-test")
-				os.Setenv("LAKE_QUERIER_URI", "postgres://user:pass@localhost:5432/dbname")
+				os.Setenv("CLICKHOUSE_ADDR", "localhost:9000")
+				os.Setenv("CLICKHOUSE_DATABASE", "default")
+				os.Setenv("CLICKHOUSE_USERNAME", "default")
+				os.Setenv("CLICKHOUSE_PASSWORD", "")
 			},
 			modeFlag:    "invalid",
 			wantErr:     true,
@@ -176,7 +200,10 @@ func TestAI_Slack_LoadFromEnv(t *testing.T) {
 				os.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
 				os.Setenv("SLACK_APP_TOKEN", "xapp-test")
 				os.Setenv("ANTHROPIC_API_KEY", "sk-test")
-				os.Setenv("LAKE_QUERIER_URI", "postgres://user:pass@localhost:5432/dbname")
+				os.Setenv("CLICKHOUSE_ADDR", "localhost:9000")
+				os.Setenv("CLICKHOUSE_DATABASE", "default")
+				os.Setenv("CLICKHOUSE_USERNAME", "default")
+				os.Setenv("CLICKHOUSE_PASSWORD", "")
 			},
 			modeFlag:        "socket",
 			httpAddrFlag:    "0.0.0.0:3000",

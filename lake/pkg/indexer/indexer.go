@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/malbeclabs/doublezero/lake/pkg/duck"
+	"github.com/malbeclabs/doublezero/lake/pkg/clickhouse"
 	dzsvc "github.com/malbeclabs/doublezero/lake/pkg/indexer/dz/serviceability"
 	dztelemlatency "github.com/malbeclabs/doublezero/lake/pkg/indexer/dz/telemetry/latency"
 	dztelemusage "github.com/malbeclabs/doublezero/lake/pkg/indexer/dz/telemetry/usage"
@@ -35,10 +35,19 @@ func New(ctx context.Context, cfg Config) (*Indexer, error) {
 		return nil, err
 	}
 
+	// Run ClickHouse migrations to ensure tables exist
+	conn, err := cfg.ClickHouse.Conn(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get ClickHouse connection for migrations: %w", err)
+	}
+	if err := clickhouse.RunMigrations(ctx, cfg.Logger, conn); err != nil {
+		return nil, fmt.Errorf("failed to run ClickHouse migrations: %w", err)
+	}
+
 	// Initialize GeoIP store
 	geoIPStore, err := mcpgeoip.NewStore(mcpgeoip.StoreConfig{
-		Logger: cfg.Logger,
-		DB:     cfg.DB,
+		Logger:     cfg.Logger,
+		ClickHouse: cfg.ClickHouse,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GeoIP store: %w", err)
@@ -50,7 +59,7 @@ func New(ctx context.Context, cfg Config) (*Indexer, error) {
 		Clock:             cfg.Clock,
 		ServiceabilityRPC: cfg.ServiceabilityRPC,
 		RefreshInterval:   cfg.RefreshInterval,
-		DB:                cfg.DB,
+		ClickHouse:        cfg.ClickHouse,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create serviceability view: %w", err)
@@ -65,7 +74,7 @@ func New(ctx context.Context, cfg Config) (*Indexer, error) {
 		MaxConcurrency:         cfg.MaxConcurrency,
 		InternetLatencyAgentPK: cfg.InternetLatencyAgentPK,
 		InternetDataProviders:  cfg.InternetDataProviders,
-		DB:                     cfg.DB,
+		ClickHouse:             cfg.ClickHouse,
 		Serviceability:         svcView,
 		RefreshInterval:        cfg.RefreshInterval,
 	})
@@ -78,7 +87,7 @@ func New(ctx context.Context, cfg Config) (*Indexer, error) {
 		Logger:          cfg.Logger,
 		Clock:           cfg.Clock,
 		RPC:             cfg.SolanaRPC,
-		DB:              cfg.DB,
+		ClickHouse:      cfg.ClickHouse,
 		RefreshInterval: cfg.RefreshInterval,
 	})
 	if err != nil {
@@ -87,14 +96,13 @@ func New(ctx context.Context, cfg Config) (*Indexer, error) {
 
 	// Initialize geoip view
 	geoipView, err := mcpgeoip.NewView(mcpgeoip.ViewConfig{
-		Logger:            cfg.Logger,
-		Clock:             cfg.Clock,
-		DB:                 cfg.DB,
-		GeoIPStore:         geoIPStore,
-		GeoIPResolver:      cfg.GeoIPResolver,
+		Logger:              cfg.Logger,
+		Clock:               cfg.Clock,
+		GeoIPStore:          geoIPStore,
+		GeoIPResolver:       cfg.GeoIPResolver,
 		ServiceabilityStore: svcView.Store(),
-		SolanaStore:        solanaView.Store(),
-		RefreshInterval:    cfg.RefreshInterval,
+		SolanaStore:         solanaView.Store(),
+		RefreshInterval:     cfg.RefreshInterval,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create geoip view: %w", err)
@@ -106,7 +114,7 @@ func New(ctx context.Context, cfg Config) (*Indexer, error) {
 		telemetryUsageView, err = dztelemusage.NewView(dztelemusage.ViewConfig{
 			Logger:          cfg.Logger,
 			Clock:           cfg.Clock,
-			DB:              cfg.DB,
+			ClickHouse:      cfg.ClickHouse,
 			RefreshInterval: cfg.DeviceUsageRefreshInterval,
 			InfluxDB:        cfg.DeviceUsageInfluxClient,
 			Bucket:          cfg.DeviceUsageInfluxBucket,
@@ -128,10 +136,7 @@ func New(ctx context.Context, cfg Config) (*Indexer, error) {
 		geoip:        geoipView,
 	}
 
-	// Create all SCD2 tables before validation (schema migration)
-	if err := i.createAllSCD2Tables(ctx); err != nil {
-		return nil, fmt.Errorf("failed to create SCD2 tables: %w", err)
-	}
+	// SCD2 tables are created via ClickHouse migrations
 
 	return i, nil
 }
@@ -141,7 +146,7 @@ func (i *Indexer) Ready() bool {
 	telemLatencyReady := i.telemLatency.Ready()
 	solReady := i.sol.Ready()
 	geoipReady := i.geoip.Ready()
-	// NOTE: Don't wait for telemUsage to be ready, it takes too long to refresh from scratch.
+	// Don't wait for telemUsage to be ready, it takes too long to refresh from scratch.
 	return svcReady && telemLatencyReady && solReady && geoipReady
 }
 
@@ -155,12 +160,6 @@ func (i *Indexer) Start(ctx context.Context) {
 		i.telemUsage.Start(ctx)
 	}
 
-	// Start maintenance tasks if enabled and DB is DuckLake (not plain DuckDB)
-	if _, ok := i.cfg.DB.(*duck.Lake); ok {
-		if i.cfg.MaintenanceIntervalShort > 0 || i.cfg.MaintenanceIntervalLong > 0 {
-			i.startMaintenanceTasks(ctx)
-		}
-	}
 }
 
 func (i *Indexer) Close() error {

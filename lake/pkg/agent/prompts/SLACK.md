@@ -6,7 +6,7 @@ Follow these Slack-specific formatting rules:
 
 ### Tables
 
-- **Do NOT use tables. Never use tables in your responses.**
+- **MANDATORY: Do NOT use tables. Never use tables in your responses.**
 - Slack does not render markdown tables well. Use unordered markdown lists instead.
 - Present tabular data as structured lists with clear labels.
 

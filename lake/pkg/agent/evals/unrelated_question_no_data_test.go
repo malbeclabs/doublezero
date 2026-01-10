@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"context"
 	"os"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -19,10 +18,19 @@ func TestLake_Agent_Evals_Anthropic_UnrelatedQuestionNoData(t *testing.T) {
 		t.Skip("ANTHROPIC_API_KEY not set, skipping eval test")
 	}
 
-	runTest_UnrelatedQuestionNoData(t)
+	runTest_UnrelatedQuestionNoData(t, newAnthropicLLMClient)
 }
 
-func runTest_UnrelatedQuestionNoData(t *testing.T) {
+func TestLake_Agent_Evals_OllamaLocal_UnrelatedQuestionNoData(t *testing.T) {
+	t.Parallel()
+	if !isOllamaAvailable() {
+		t.Skip("Ollama not available, skipping eval test")
+	}
+
+	runTest_UnrelatedQuestionNoData(t, newOllamaLLMClient)
+}
+
+func runTest_UnrelatedQuestionNoData(t *testing.T, llmFactory LLMClientFactory) {
 	ctx := context.Background()
 
 	// Get debug level
@@ -36,11 +44,8 @@ func runTest_UnrelatedQuestionNoData(t *testing.T) {
 	require.NoError(t, err)
 	defer conn.Close()
 
-	// Load tables and views to set up the schema
-	loadTablesAndViews(t, ctx, conn)
-
-	// Set up agent with Anthropic LLM client
-	agentInstance := setupAgent(t, ctx, db, newAnthropicLLMClient, debug, debugLevel, nil)
+	// Set up agent with LLM client
+	agentInstance := setupAgent(t, ctx, db, llmFactory, debug, debugLevel, nil)
 
 	// Run the query - asking something completely unrelated to DZ or Solana
 	var output bytes.Buffer
@@ -68,71 +73,15 @@ func runTest_UnrelatedQuestionNoData(t *testing.T) {
 		t.Logf("Agent response:\n%s", response)
 	}
 
-	// Validate the response
-	validateUnrelatedQuestionNoDataResponse(t, response)
-
-	// Evaluate with Ollama (optional for this test since validation already confirms correct behavior)
-	// The agent correctly states it doesn't have access to unrelated data, which is the expected response
-	isCorrect, err := ollamaEvaluateResponse(t, ctx, question, response)
-	if err == nil {
-		// If Ollama is available, check the evaluation, but don't fail if it's incorrect
-		// since the validation already confirmed the response is correct
-		if !isCorrect {
-			t.Logf("Note: Ollama evaluation marked response as incorrect, but validation confirms the response correctly states no data is available for unrelated questions")
-		}
+	// Evaluate with Ollama - include specific expectations for "no data" response
+	expectations := []OllamaExpectation{
+		{
+			Description:   "Agent correctly declines unrelated question",
+			ExpectedValue: "agent explains it cannot help with weather because its scope is DoubleZero/Solana network data only",
+			Rationale:     "Declining is correct - agent should NOT fabricate weather data",
+		},
 	}
-}
-
-// validateUnrelatedQuestionNoDataResponse validates that the response explicitly states no relevant data is available
-func validateUnrelatedQuestionNoDataResponse(t *testing.T, response string) {
-	responseLower := strings.ToLower(response)
-
-	// Should explicitly state that the question is unrelated or no relevant data is available
-	// Accept various phrasings that indicate the question is outside the scope
-	unrelatedMentioned := strings.Contains(responseLower, "no data") ||
-		strings.Contains(responseLower, "no relevant data") ||
-		strings.Contains(responseLower, "not available") ||
-		strings.Contains(responseLower, "cannot answer") ||
-		strings.Contains(responseLower, "unable to answer") ||
-		strings.Contains(responseLower, "outside my scope") ||
-		strings.Contains(responseLower, "not related") ||
-		strings.Contains(responseLower, "unrelated") ||
-		strings.Contains(responseLower, "don't have") ||
-		strings.Contains(responseLower, "doesn't have") ||
-		strings.Contains(responseLower, "no information") ||
-		strings.Contains(responseLower, "not in the database") ||
-		strings.Contains(responseLower, "not in my database") ||
-		strings.Contains(responseLower, "not available in") ||
-		strings.Contains(responseLower, "outside the scope") ||
-		strings.Contains(responseLower, "beyond my scope") ||
-		strings.Contains(responseLower, "don't have access") ||
-		strings.Contains(responseLower, "can only answer") ||
-		strings.Contains(responseLower, "only answer questions about")
-	require.True(t, unrelatedMentioned,
-		"Response should explicitly state that the question is unrelated or no relevant data is available. Got: %s",
-		truncateForError(response, 300))
-
-	// Should NOT contain fabricated data
-	// Check for specific indicators that would suggest made-up information
-	fabricatedIndicators := []string{
-		"the weather is",
-		"temperature is",
-		"degrees",
-		"sunny",
-		"cloudy",
-		"rainy",
-		"forecast",
-		"humidity",
-		"wind speed",
-	}
-	hasFabricatedData := false
-	for _, indicator := range fabricatedIndicators {
-		if strings.Contains(responseLower, indicator) && !unrelatedMentioned {
-			hasFabricatedData = true
-			break
-		}
-	}
-	require.False(t, hasFabricatedData,
-		"Response contains fabricated data (weather information) without acknowledging no data is available. Got: %s",
-		truncateForError(response, 300))
+	isCorrect, err := ollamaEvaluateResponse(t, ctx, question, response, expectations...)
+	require.NoError(t, err, "Ollama evaluation must be available")
+	require.True(t, isCorrect, "Ollama evaluation indicates the response does not correctly answer the question")
 }

@@ -3,19 +3,18 @@ package dztelemlatency
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"net"
-	"os"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	_ "github.com/duckdb/duckdb-go/v2"
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/jonboulle/clockwork"
-	"github.com/malbeclabs/doublezero/lake/pkg/duck"
+	"github.com/malbeclabs/doublezero/lake/pkg/clickhouse"
+	"github.com/malbeclabs/doublezero/lake/pkg/clickhouse/dataset"
 	mcpgeoip "github.com/malbeclabs/doublezero/lake/pkg/indexer/geoip"
+	laketesting "github.com/malbeclabs/doublezero/lake/pkg/testing"
 	"github.com/malbeclabs/doublezero/tools/maxmind/pkg/geoip"
 	"github.com/stretchr/testify/require"
 
@@ -66,16 +65,16 @@ func (m *mockGeoIPResolver) Resolve(ip net.IP) *geoip.Record {
 
 type mockGeoIPStore struct {
 	store *mcpgeoip.Store
-	db    duck.DB
+	db    clickhouse.DB
 }
 
 func newMockGeoIPStore(t *testing.T) (*mockGeoIPStore, error) {
 	t.Helper()
-	db := testDB(t)
+	db := laketesting.NewDB(t)
 
 	store, err := mcpgeoip.NewStore(mcpgeoip.StoreConfig{
-		Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-		DB:     db,
+		Logger:     laketesting.NewLogger(t),
+		ClickHouse: db,
 	})
 	if err != nil {
 		return nil, err
@@ -87,45 +86,36 @@ func newMockGeoIPStore(t *testing.T) (*mockGeoIPStore, error) {
 	}, nil
 }
 
-func testDB(t *testing.T) duck.DB {
-	db, err := duck.NewDB(t.Context(), "", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		db.Close()
-	})
-	return db
-}
-
 func TestLake_TelemetryLatency_View_Ready(t *testing.T) {
 	t.Parallel()
 
 	t.Run("returns false when not ready", func(t *testing.T) {
 		t.Parallel()
 
-		db := testDB(t)
+		db := laketesting.NewDB(t)
 
 		geoipStore, err := newMockGeoIPStore(t)
 		require.NoError(t, err)
 		defer geoipStore.db.Close()
 
 		svcView, err := dzsvc.NewView(dzsvc.ViewConfig{
-			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Logger:            laketesting.NewLogger(t),
 			Clock:             clockwork.NewFakeClock(),
 			ServiceabilityRPC: &MockServiceabilityRPC{},
 			RefreshInterval:   time.Second,
-			DB:                db,
+			ClickHouse:        db,
 		})
 		require.NoError(t, err)
 
 		view, err := NewView(ViewConfig{
-			Logger:                 slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Logger:                 laketesting.NewLogger(t),
 			Clock:                  clockwork.NewFakeClock(),
 			TelemetryRPC:           &mockTelemetryRPC{},
 			EpochRPC:               &mockEpochRPC{},
 			MaxConcurrency:         32,
 			InternetLatencyAgentPK: solana.MustPublicKeyFromBase58("So11111111111111111111111111111111111111112"),
 			InternetDataProviders:  []string{"test-provider"},
-			DB:                     db,
+			ClickHouse:             db,
 			Serviceability:         svcView,
 			RefreshInterval:        time.Second,
 		})
@@ -141,30 +131,30 @@ func TestLake_TelemetryLatency_View_WaitReady(t *testing.T) {
 	t.Run("returns error when context is cancelled", func(t *testing.T) {
 		t.Parallel()
 
-		db := testDB(t)
+		db := laketesting.NewDB(t)
 
 		geoipStore, err := newMockGeoIPStore(t)
 		require.NoError(t, err)
 		defer geoipStore.db.Close()
 
 		svcView, err := dzsvc.NewView(dzsvc.ViewConfig{
-			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Logger:            laketesting.NewLogger(t),
 			Clock:             clockwork.NewFakeClock(),
 			ServiceabilityRPC: &MockServiceabilityRPC{},
 			RefreshInterval:   time.Second,
-			DB:                db,
+			ClickHouse:        db,
 		})
 		require.NoError(t, err)
 
 		view, err := NewView(ViewConfig{
-			Logger:                 slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Logger:                 laketesting.NewLogger(t),
 			Clock:                  clockwork.NewFakeClock(),
 			TelemetryRPC:           &mockTelemetryRPC{},
 			EpochRPC:               &mockEpochRPC{},
 			MaxConcurrency:         32,
 			InternetLatencyAgentPK: solana.MustPublicKeyFromBase58("So11111111111111111111111111111111111111112"),
 			InternetDataProviders:  []string{"test-provider"},
-			DB:                     db,
+			ClickHouse:             db,
 			Serviceability:         svcView,
 			RefreshInterval:        time.Second,
 		})
@@ -235,7 +225,7 @@ func TestLake_TelemetryLatency_View_Refresh_SavesToDB(t *testing.T) {
 	t.Run("saves device-link samples to database", func(t *testing.T) {
 		t.Parallel()
 
-		db := testDB(t)
+		db := laketesting.NewDB(t)
 
 		// First, set up serviceability view with devices and links
 		devicePK1 := [32]byte{1, 2, 3, 4}
@@ -243,7 +233,7 @@ func TestLake_TelemetryLatency_View_Refresh_SavesToDB(t *testing.T) {
 		linkPK := [32]byte{9, 10, 11, 12}
 		contributorPK := [32]byte{13, 14, 15, 16}
 		metroPK := [32]byte{17, 18, 19, 20}
-		ownerPK := [32]byte{21, 22, 23, 24}
+		ownerPubkey := [32]byte{21, 22, 23, 24}
 		publicIP1 := [4]byte{192, 168, 1, 1}
 		publicIP2 := [4]byte{192, 168, 1, 2}
 		tunnelNet := [5]byte{10, 0, 0, 0, 24}
@@ -254,14 +244,14 @@ func TestLake_TelemetryLatency_View_Refresh_SavesToDB(t *testing.T) {
 					Contributors: []serviceability.Contributor{
 						{
 							PubKey: contributorPK,
-							Owner:  ownerPK,
+							Owner:  ownerPubkey,
 							Code:   "CONTRIB",
 						},
 					},
 					Devices: []serviceability.Device{
 						{
 							PubKey:            devicePK1,
-							Owner:             ownerPK,
+							Owner:             ownerPubkey,
 							Status:            serviceability.DeviceStatusActivated,
 							DeviceType:        serviceability.DeviceDeviceTypeHybrid,
 							Code:              "DEV1",
@@ -271,7 +261,7 @@ func TestLake_TelemetryLatency_View_Refresh_SavesToDB(t *testing.T) {
 						},
 						{
 							PubKey:            devicePK2,
-							Owner:             ownerPK,
+							Owner:             ownerPubkey,
 							Status:            serviceability.DeviceStatusActivated,
 							DeviceType:        serviceability.DeviceDeviceTypeHybrid,
 							Code:              "DEV2",
@@ -283,7 +273,7 @@ func TestLake_TelemetryLatency_View_Refresh_SavesToDB(t *testing.T) {
 					Links: []serviceability.Link{
 						{
 							PubKey:            linkPK,
-							Owner:             ownerPK,
+							Owner:             ownerPubkey,
 							Status:            serviceability.LinkStatusActivated,
 							Code:              "LINK1",
 							TunnelNet:         tunnelNet,
@@ -306,11 +296,11 @@ func TestLake_TelemetryLatency_View_Refresh_SavesToDB(t *testing.T) {
 		defer geoipStore.db.Close()
 
 		svcView, err := dzsvc.NewView(dzsvc.ViewConfig{
-			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Logger:            laketesting.NewLogger(t),
 			Clock:             clockwork.NewFakeClock(),
 			ServiceabilityRPC: svcMockRPC,
 			RefreshInterval:   time.Second,
-			DB:                db,
+			ClickHouse:        db,
 		})
 		require.NoError(t, err)
 
@@ -323,14 +313,14 @@ func TestLake_TelemetryLatency_View_Refresh_SavesToDB(t *testing.T) {
 		mockEpochRPC := &mockEpochRPC{}
 
 		view, err := NewView(ViewConfig{
-			Logger:                 slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Logger:                 laketesting.NewLogger(t),
 			Clock:                  clockwork.NewFakeClock(),
 			TelemetryRPC:           mockTelemetryRPC,
 			EpochRPC:               mockEpochRPC,
 			MaxConcurrency:         32,
 			InternetLatencyAgentPK: solana.MustPublicKeyFromBase58("So11111111111111111111111111111111111111112"),
 			InternetDataProviders:  []string{"test-provider"},
-			DB:                     db,
+			ClickHouse:             db,
 			Serviceability:         svcView,
 			RefreshInterval:        time.Second,
 		})
@@ -348,7 +338,7 @@ func TestLake_TelemetryLatency_View_Refresh_SavesToDB(t *testing.T) {
 	t.Run("saves device-link latency samples to database", func(t *testing.T) {
 		t.Parallel()
 
-		db := testDB(t)
+		db := laketesting.NewDB(t)
 
 		// Set up serviceability view
 		devicePK1 := [32]byte{1, 2, 3, 4}
@@ -356,7 +346,7 @@ func TestLake_TelemetryLatency_View_Refresh_SavesToDB(t *testing.T) {
 		linkPK := [32]byte{9, 10, 11, 12}
 		contributorPK := [32]byte{13, 14, 15, 16}
 		metroPK := [32]byte{17, 18, 19, 20}
-		ownerPK := [32]byte{21, 22, 23, 24}
+		ownerPubkey := [32]byte{21, 22, 23, 24}
 		publicIP1 := [4]byte{192, 168, 1, 1}
 		publicIP2 := [4]byte{192, 168, 1, 2}
 		tunnelNet := [5]byte{10, 0, 0, 0, 24}
@@ -367,14 +357,14 @@ func TestLake_TelemetryLatency_View_Refresh_SavesToDB(t *testing.T) {
 					Contributors: []serviceability.Contributor{
 						{
 							PubKey: contributorPK,
-							Owner:  ownerPK,
+							Owner:  ownerPubkey,
 							Code:   "CONTRIB",
 						},
 					},
 					Devices: []serviceability.Device{
 						{
 							PubKey:            devicePK1,
-							Owner:             ownerPK,
+							Owner:             ownerPubkey,
 							Status:            serviceability.DeviceStatusActivated,
 							DeviceType:        serviceability.DeviceDeviceTypeHybrid,
 							Code:              "DEV1",
@@ -384,7 +374,7 @@ func TestLake_TelemetryLatency_View_Refresh_SavesToDB(t *testing.T) {
 						},
 						{
 							PubKey:            devicePK2,
-							Owner:             ownerPK,
+							Owner:             ownerPubkey,
 							Status:            serviceability.DeviceStatusActivated,
 							DeviceType:        serviceability.DeviceDeviceTypeHybrid,
 							Code:              "DEV2",
@@ -396,7 +386,7 @@ func TestLake_TelemetryLatency_View_Refresh_SavesToDB(t *testing.T) {
 					Links: []serviceability.Link{
 						{
 							PubKey:            linkPK,
-							Owner:             ownerPK,
+							Owner:             ownerPubkey,
 							Status:            serviceability.LinkStatusActivated,
 							Code:              "LINK1",
 							TunnelNet:         tunnelNet,
@@ -419,11 +409,11 @@ func TestLake_TelemetryLatency_View_Refresh_SavesToDB(t *testing.T) {
 		defer geoipStore.db.Close()
 
 		svcView, err := dzsvc.NewView(dzsvc.ViewConfig{
-			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Logger:            laketesting.NewLogger(t),
 			Clock:             clockwork.NewFakeClock(),
 			ServiceabilityRPC: svcMockRPC,
 			RefreshInterval:   time.Second,
-			DB:                db,
+			ClickHouse:        db,
 		})
 		require.NoError(t, err)
 
@@ -451,14 +441,14 @@ func TestLake_TelemetryLatency_View_Refresh_SavesToDB(t *testing.T) {
 		mockEpochRPC := &mockEpochRPCWithEpoch{epoch: 100}
 
 		view, err := NewView(ViewConfig{
-			Logger:                 slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Logger:                 laketesting.NewLogger(t),
 			Clock:                  clockwork.NewFakeClock(),
 			TelemetryRPC:           mockTelemetryRPC,
 			EpochRPC:               mockEpochRPC,
 			MaxConcurrency:         32,
 			InternetLatencyAgentPK: solana.MustPublicKeyFromBase58("So11111111111111111111111111111111111111112"),
 			InternetDataProviders:  []string{"test-provider"},
-			DB:                     db,
+			ClickHouse:             db,
 			Serviceability:         svcView,
 			RefreshInterval:        time.Second,
 		})
@@ -468,25 +458,33 @@ func TestLake_TelemetryLatency_View_Refresh_SavesToDB(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify samples were saved
-		var sampleCount int
+		var sampleCount uint64
 		conn, err := db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_link_latency_samples_raw").Scan(&sampleCount)
+		rows, err := conn.Query(ctx, "SELECT COUNT(*) FROM fact_dz_device_link_latency")
 		require.NoError(t, err)
-		require.Equal(t, 3, sampleCount)
+		require.True(t, rows.Next())
+		require.NoError(t, rows.Scan(&sampleCount))
+		rows.Close()
+		require.Equal(t, uint64(3), sampleCount)
 
 		var originDevicePK, targetDevicePK, linkPKStr string
-		var epoch, sampleIndex int64
+		var epoch int64
+		var sampleIndex int32
 		var sampleTime time.Time
 		var rttUs int64
-		err = conn.QueryRowContext(ctx, "SELECT origin_device_pk, target_device_pk, link_pk, epoch, sample_index, time, rtt_us FROM dz_device_link_latency_samples_raw ORDER BY sample_index LIMIT 1").Scan(&originDevicePK, &targetDevicePK, &linkPKStr, &epoch, &sampleIndex, &sampleTime, &rttUs)
+		rows, err = conn.Query(ctx, "SELECT origin_device_pk, target_device_pk, link_pk, epoch, sample_index, event_ts, rtt_us FROM fact_dz_device_link_latency ORDER BY sample_index LIMIT 1")
+		require.NoError(t, err)
+		require.True(t, rows.Next())
+		require.NoError(t, rows.Scan(&originDevicePK, &targetDevicePK, &linkPKStr, &epoch, &sampleIndex, &sampleTime, &rttUs))
+		rows.Close()
 		require.NoError(t, err)
 		require.Equal(t, solana.PublicKeyFromBytes(devicePK1[:]).String(), originDevicePK)
 		require.Equal(t, solana.PublicKeyFromBytes(devicePK2[:]).String(), targetDevicePK)
 		require.Equal(t, solana.PublicKeyFromBytes(linkPK[:]).String(), linkPKStr)
 		require.Equal(t, int64(100), epoch)
-		require.Equal(t, int64(0), sampleIndex)
+		require.Equal(t, int32(0), sampleIndex)
 		require.WithinDuration(t, time.Unix(1_600_000_000, 0).UTC(), sampleTime.UTC(), time.Second)
 		require.Equal(t, int64(5000), rttUs)
 	})
@@ -494,7 +492,7 @@ func TestLake_TelemetryLatency_View_Refresh_SavesToDB(t *testing.T) {
 	t.Run("reads data back from database correctly", func(t *testing.T) {
 		t.Parallel()
 
-		db := testDB(t)
+		db := laketesting.NewDB(t)
 
 		// Set up serviceability view
 		devicePK1 := [32]byte{1, 2, 3, 4}
@@ -502,7 +500,7 @@ func TestLake_TelemetryLatency_View_Refresh_SavesToDB(t *testing.T) {
 		linkPK := [32]byte{9, 10, 11, 12}
 		contributorPK := [32]byte{13, 14, 15, 16}
 		metroPK := [32]byte{17, 18, 19, 20}
-		ownerPK := [32]byte{21, 22, 23, 24}
+		ownerPubkey := [32]byte{21, 22, 23, 24}
 		publicIP1 := [4]byte{192, 168, 1, 1}
 		publicIP2 := [4]byte{192, 168, 1, 2}
 		tunnelNet := [5]byte{10, 0, 0, 0, 24}
@@ -513,14 +511,14 @@ func TestLake_TelemetryLatency_View_Refresh_SavesToDB(t *testing.T) {
 					Contributors: []serviceability.Contributor{
 						{
 							PubKey: contributorPK,
-							Owner:  ownerPK,
+							Owner:  ownerPubkey,
 							Code:   "CONTRIB",
 						},
 					},
 					Devices: []serviceability.Device{
 						{
 							PubKey:            devicePK1,
-							Owner:             ownerPK,
+							Owner:             ownerPubkey,
 							Status:            serviceability.DeviceStatusActivated,
 							DeviceType:        serviceability.DeviceDeviceTypeHybrid,
 							Code:              "DEV1",
@@ -530,7 +528,7 @@ func TestLake_TelemetryLatency_View_Refresh_SavesToDB(t *testing.T) {
 						},
 						{
 							PubKey:            devicePK2,
-							Owner:             ownerPK,
+							Owner:             ownerPubkey,
 							Status:            serviceability.DeviceStatusActivated,
 							DeviceType:        serviceability.DeviceDeviceTypeHybrid,
 							Code:              "DEV2",
@@ -542,7 +540,7 @@ func TestLake_TelemetryLatency_View_Refresh_SavesToDB(t *testing.T) {
 					Links: []serviceability.Link{
 						{
 							PubKey:            linkPK,
-							Owner:             ownerPK,
+							Owner:             ownerPubkey,
 							Status:            serviceability.LinkStatusActivated,
 							Code:              "LINK1",
 							TunnelNet:         tunnelNet,
@@ -565,11 +563,11 @@ func TestLake_TelemetryLatency_View_Refresh_SavesToDB(t *testing.T) {
 		defer geoipStore.db.Close()
 
 		svcView, err := dzsvc.NewView(dzsvc.ViewConfig{
-			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Logger:            laketesting.NewLogger(t),
 			Clock:             clockwork.NewFakeClock(),
 			ServiceabilityRPC: svcMockRPC,
 			RefreshInterval:   time.Second,
-			DB:                db,
+			ClickHouse:        db,
 		})
 		require.NoError(t, err)
 
@@ -578,32 +576,63 @@ func TestLake_TelemetryLatency_View_Refresh_SavesToDB(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify we can read devices back by querying the database directly
-		var deviceCount int
+		var deviceCount uint64
 		conn, err := db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_devices_current").Scan(&deviceCount)
+		rows, err := conn.Query(ctx, `
+			WITH ranked AS (
+				SELECT *, ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
+				FROM dim_dz_devices_history
+			)
+			SELECT COUNT(*) FROM ranked WHERE rn = 1 AND is_deleted = 0
+		`)
 		require.NoError(t, err)
-		require.Equal(t, 2, deviceCount)
+		require.True(t, rows.Next())
+		require.NoError(t, rows.Scan(&deviceCount))
+		rows.Close()
+		require.Equal(t, uint64(2), deviceCount)
 
-		// Verify serviceability store can read devices from DB
-		devicesFromServiceability, err := svcView.Store().GetDevices()
+		// GetDevices/GetLinks/GetContributors methods were removed - verify using the dataset API
+		// Verify devices exist
+		device1PK := solana.PublicKeyFromBytes(devicePK1[:])
+		deviceDataset, err := dzsvc.NewDeviceDataset(laketesting.NewLogger(t))
 		require.NoError(t, err)
-		require.Len(t, devicesFromServiceability, 2)
-		require.Equal(t, "DEV1", devicesFromServiceability[0].Code)
-		require.Equal(t, "DEV2", devicesFromServiceability[1].Code)
+		require.NotNil(t, deviceDataset)
+		device1EntityID := dataset.NewNaturalKey(device1PK.String()).ToSurrogate()
+		device1, err := deviceDataset.GetCurrentRow(ctx, conn, device1EntityID)
+		require.NoError(t, err)
+		require.NotNil(t, device1)
+		require.Equal(t, "DEV1", device1["code"])
 
-		// Verify telemetry view can read links from DB via serviceability store
-		linksFromServiceability, err := svcView.Store().GetLinks()
+		device2PK := solana.PublicKeyFromBytes(devicePK2[:])
+		device2EntityID := dataset.NewNaturalKey(device2PK.String()).ToSurrogate()
+		device2, err := deviceDataset.GetCurrentRow(ctx, conn, device2EntityID)
 		require.NoError(t, err)
-		require.Len(t, linksFromServiceability, 1)
-		require.Equal(t, "LINK1", linksFromServiceability[0].Code)
+		require.NotNil(t, device2)
+		require.Equal(t, "DEV2", device2["code"])
 
-		// Verify telemetry view can read contributors from DB via serviceability store
-		contributorsFromServiceability, err := svcView.Store().GetContributors()
+		// Verify links exist
+		linkPKPubkey := solana.PublicKeyFromBytes(linkPK[:])
+		linkDataset, err := dzsvc.NewLinkDataset(laketesting.NewLogger(t))
 		require.NoError(t, err)
-		require.Len(t, contributorsFromServiceability, 1)
-		require.Equal(t, "CONTRIB", contributorsFromServiceability[0].Code)
+		require.NotNil(t, linkDataset)
+		linkEntityID := dataset.NewNaturalKey(linkPKPubkey.String()).ToSurrogate()
+		link, err := linkDataset.GetCurrentRow(ctx, conn, linkEntityID)
+		require.NoError(t, err)
+		require.NotNil(t, link)
+		require.Equal(t, "LINK1", link["code"])
+
+		// Verify contributors exist
+		contributorPKPubkey := solana.PublicKeyFromBytes(contributorPK[:])
+		contributorDataset, err := dzsvc.NewContributorDataset(laketesting.NewLogger(t))
+		require.NoError(t, err)
+		require.NotNil(t, contributorDataset)
+		contributorEntityID := dataset.NewNaturalKey(contributorPKPubkey.String()).ToSurrogate()
+		contributor, err := contributorDataset.GetCurrentRow(ctx, conn, contributorEntityID)
+		require.NoError(t, err)
+		require.NotNil(t, contributor)
+		require.Equal(t, "CONTRIB", contributor["code"])
 	})
 }
 
@@ -643,7 +672,7 @@ func TestLake_TelemetryLatency_View_IncrementalAppend(t *testing.T) {
 	t.Run("device-link samples are appended incrementally", func(t *testing.T) {
 		t.Parallel()
 
-		db := testDB(t)
+		db := laketesting.NewDB(t)
 
 		// Set up serviceability view
 		devicePK1 := [32]byte{1, 2, 3, 4}
@@ -651,7 +680,7 @@ func TestLake_TelemetryLatency_View_IncrementalAppend(t *testing.T) {
 		linkPK := [32]byte{9, 10, 11, 12}
 		contributorPK := [32]byte{13, 14, 15, 16}
 		metroPK := [32]byte{17, 18, 19, 20}
-		ownerPK := [32]byte{21, 22, 23, 24}
+		ownerPubkey := [32]byte{21, 22, 23, 24}
 		publicIP1 := [4]byte{192, 168, 1, 1}
 		publicIP2 := [4]byte{192, 168, 1, 2}
 		tunnelNet := [5]byte{10, 0, 0, 0, 24}
@@ -662,14 +691,14 @@ func TestLake_TelemetryLatency_View_IncrementalAppend(t *testing.T) {
 					Contributors: []serviceability.Contributor{
 						{
 							PubKey: contributorPK,
-							Owner:  ownerPK,
+							Owner:  ownerPubkey,
 							Code:   "CONTRIB",
 						},
 					},
 					Devices: []serviceability.Device{
 						{
 							PubKey:            devicePK1,
-							Owner:             ownerPK,
+							Owner:             ownerPubkey,
 							Status:            serviceability.DeviceStatusActivated,
 							DeviceType:        serviceability.DeviceDeviceTypeHybrid,
 							Code:              "DEV1",
@@ -679,7 +708,7 @@ func TestLake_TelemetryLatency_View_IncrementalAppend(t *testing.T) {
 						},
 						{
 							PubKey:            devicePK2,
-							Owner:             ownerPK,
+							Owner:             ownerPubkey,
 							Status:            serviceability.DeviceStatusActivated,
 							DeviceType:        serviceability.DeviceDeviceTypeHybrid,
 							Code:              "DEV2",
@@ -691,7 +720,7 @@ func TestLake_TelemetryLatency_View_IncrementalAppend(t *testing.T) {
 					Links: []serviceability.Link{
 						{
 							PubKey:            linkPK,
-							Owner:             ownerPK,
+							Owner:             ownerPubkey,
 							Status:            serviceability.LinkStatusActivated,
 							Code:              "LINK1",
 							TunnelNet:         tunnelNet,
@@ -714,11 +743,11 @@ func TestLake_TelemetryLatency_View_IncrementalAppend(t *testing.T) {
 		defer geoipStore.db.Close()
 
 		svcView, err := dzsvc.NewView(dzsvc.ViewConfig{
-			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Logger:            laketesting.NewLogger(t),
 			Clock:             clockwork.NewFakeClock(),
 			ServiceabilityRPC: svcMockRPC,
 			RefreshInterval:   time.Second,
-			DB:                db,
+			ClickHouse:        db,
 		})
 		require.NoError(t, err)
 
@@ -779,14 +808,14 @@ func TestLake_TelemetryLatency_View_IncrementalAppend(t *testing.T) {
 		mockEpochRPC := &mockEpochRPCWithEpoch{epoch: 100}
 
 		view, err := NewView(ViewConfig{
-			Logger:                 slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Logger:                 laketesting.NewLogger(t),
 			Clock:                  clockwork.NewFakeClock(),
 			TelemetryRPC:           mockTelemetryRPC,
 			EpochRPC:               mockEpochRPC,
 			MaxConcurrency:         32,
 			InternetLatencyAgentPK: solana.MustPublicKeyFromBase58("So11111111111111111111111111111111111111112"),
 			InternetDataProviders:  []string{"test-provider"},
-			DB:                     db,
+			ClickHouse:             db,
 			Serviceability:         svcView,
 			RefreshInterval:        time.Second,
 		})
@@ -796,19 +825,27 @@ func TestLake_TelemetryLatency_View_IncrementalAppend(t *testing.T) {
 		err = view.Refresh(ctx)
 		require.NoError(t, err)
 
-		var sampleCount int
+		var sampleCount uint64
 		conn, err := db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_link_latency_samples_raw").Scan(&sampleCount)
+		rows, err := conn.Query(ctx, "SELECT COUNT(*) FROM fact_dz_device_link_latency")
 		require.NoError(t, err)
-		require.Equal(t, 3, sampleCount, "first refresh should insert 3 samples")
+		require.True(t, rows.Next())
+		err = rows.Scan(&sampleCount)
+		rows.Close()
+		require.NoError(t, err)
+		require.Equal(t, uint64(3), sampleCount, "first refresh should insert 3 samples")
 
 		// Verify the first 3 samples are correct
-		var maxIdx int64
-		err = conn.QueryRowContext(ctx, "SELECT MAX(sample_index) FROM dz_device_link_latency_samples_raw").Scan(&maxIdx)
+		var maxIdx int32
+		rows, err = conn.Query(ctx, "SELECT MAX(sample_index) FROM fact_dz_device_link_latency")
 		require.NoError(t, err)
-		require.Equal(t, int64(2), maxIdx, "max sample_index should be 2 after first refresh")
+		require.True(t, rows.Next())
+		err = rows.Scan(&maxIdx)
+		rows.Close()
+		require.NoError(t, err)
+		require.Equal(t, int32(2), maxIdx, "max sample_index should be 2 after first refresh")
 
 		// Second refresh: should append only the 2 new samples (indices 3-4)
 		err = view.Refresh(ctx)
@@ -817,44 +854,64 @@ func TestLake_TelemetryLatency_View_IncrementalAppend(t *testing.T) {
 		conn, err = db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_link_latency_samples_raw").Scan(&sampleCount)
+		rows, err = conn.Query(ctx, "SELECT COUNT(*) FROM fact_dz_device_link_latency")
 		require.NoError(t, err)
-		require.Equal(t, 5, sampleCount, "second refresh should append 2 more samples, total 5")
+		require.True(t, rows.Next())
+		err = rows.Scan(&sampleCount)
+		rows.Close()
+		require.NoError(t, err)
+		require.Equal(t, uint64(5), sampleCount, "second refresh should append 2 more samples, total 5")
 
 		// Verify all samples are present and correct
 		var rttUs int64
-		err = conn.QueryRowContext(ctx, "SELECT rtt_us FROM dz_device_link_latency_samples_raw WHERE sample_index = 0").Scan(&rttUs)
+		rows, err = conn.Query(ctx, "SELECT rtt_us FROM fact_dz_device_link_latency WHERE sample_index = 0")
 		require.NoError(t, err)
+		require.True(t, rows.Next())
+		require.NoError(t, rows.Scan(&rttUs))
+		rows.Close()
 		require.Equal(t, int64(5000), rttUs, "sample 0 should remain unchanged")
 
-		err = conn.QueryRowContext(ctx, "SELECT rtt_us FROM dz_device_link_latency_samples_raw WHERE sample_index = 2").Scan(&rttUs)
+		rows, err = conn.Query(ctx, "SELECT rtt_us FROM fact_dz_device_link_latency WHERE sample_index = 2")
 		require.NoError(t, err)
+		require.True(t, rows.Next())
+		require.NoError(t, rows.Scan(&rttUs))
+		rows.Close()
 		require.Equal(t, int64(7000), rttUs, "sample 2 should remain unchanged")
 
-		err = conn.QueryRowContext(ctx, "SELECT rtt_us FROM dz_device_link_latency_samples_raw WHERE sample_index = 3").Scan(&rttUs)
+		rows, err = conn.Query(ctx, "SELECT rtt_us FROM fact_dz_device_link_latency WHERE sample_index = 3")
 		require.NoError(t, err)
+		require.True(t, rows.Next())
+		require.NoError(t, rows.Scan(&rttUs))
+		rows.Close()
 		require.Equal(t, int64(8000), rttUs, "sample 3 should be newly inserted")
 
-		err = conn.QueryRowContext(ctx, "SELECT rtt_us FROM dz_device_link_latency_samples_raw WHERE sample_index = 4").Scan(&rttUs)
+		rows, err = conn.Query(ctx, "SELECT rtt_us FROM fact_dz_device_link_latency WHERE sample_index = 4")
 		require.NoError(t, err)
+		require.True(t, rows.Next())
+		require.NoError(t, rows.Scan(&rttUs))
+		rows.Close()
 		require.Equal(t, int64(9000), rttUs, "sample 4 should be newly inserted")
 
 		// Verify max index is now 4
-		err = conn.QueryRowContext(ctx, "SELECT MAX(sample_index) FROM dz_device_link_latency_samples_raw").Scan(&maxIdx)
+		rows, err = conn.Query(ctx, "SELECT MAX(sample_index) FROM fact_dz_device_link_latency")
 		require.NoError(t, err)
-		require.Equal(t, int64(4), maxIdx, "max sample_index should be 4 after second refresh")
+		require.True(t, rows.Next())
+		err = rows.Scan(&maxIdx)
+		rows.Close()
+		require.NoError(t, err)
+		require.Equal(t, int32(4), maxIdx, "max sample_index should be 4 after second refresh")
 	})
 
 	t.Run("internet-metro samples are appended incrementally", func(t *testing.T) {
 		t.Parallel()
 
-		db := testDB(t)
+		db := laketesting.NewDB(t)
 
 		// Set up serviceability view with metros
 		metroPK1 := [32]byte{1, 2, 3, 4}
 		metroPK2 := [32]byte{5, 6, 7, 8}
 		contributorPK := [32]byte{13, 14, 15, 16}
-		ownerPK := [32]byte{21, 22, 23, 24}
+		ownerPubkey := [32]byte{21, 22, 23, 24}
 
 		svcMockRPC := &MockServiceabilityRPC{
 			getProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
@@ -862,14 +919,14 @@ func TestLake_TelemetryLatency_View_IncrementalAppend(t *testing.T) {
 					Contributors: []serviceability.Contributor{
 						{
 							PubKey: contributorPK,
-							Owner:  ownerPK,
+							Owner:  ownerPubkey,
 							Code:   "CONTRIB",
 						},
 					},
 					Exchanges: []serviceability.Exchange{
 						{
 							PubKey: metroPK1,
-							Owner:  ownerPK,
+							Owner:  ownerPubkey,
 							Code:   "NYC",
 							Name:   "New York",
 							Status: serviceability.ExchangeStatusActivated,
@@ -878,7 +935,7 @@ func TestLake_TelemetryLatency_View_IncrementalAppend(t *testing.T) {
 						},
 						{
 							PubKey: metroPK2,
-							Owner:  ownerPK,
+							Owner:  ownerPubkey,
 							Code:   "LAX",
 							Name:   "Los Angeles",
 							Status: serviceability.ExchangeStatusActivated,
@@ -895,11 +952,11 @@ func TestLake_TelemetryLatency_View_IncrementalAppend(t *testing.T) {
 		defer geoipStore.db.Close()
 
 		svcView, err := dzsvc.NewView(dzsvc.ViewConfig{
-			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Logger:            laketesting.NewLogger(t),
 			Clock:             clockwork.NewFakeClock(),
 			ServiceabilityRPC: svcMockRPC,
 			RefreshInterval:   time.Second,
-			DB:                db,
+			ClickHouse:        db,
 		})
 		require.NoError(t, err)
 
@@ -950,14 +1007,14 @@ func TestLake_TelemetryLatency_View_IncrementalAppend(t *testing.T) {
 		mockEpochRPC := &mockEpochRPCWithEpoch{epoch: 100}
 
 		view, err := NewView(ViewConfig{
-			Logger:                 slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Logger:                 laketesting.NewLogger(t),
 			Clock:                  clockwork.NewFakeClock(),
 			TelemetryRPC:           mockTelemetryRPC,
 			EpochRPC:               mockEpochRPC,
 			MaxConcurrency:         32,
 			InternetLatencyAgentPK: agentPK,
 			InternetDataProviders:  []string{"test-provider"},
-			DB:                     db,
+			ClickHouse:             db,
 			Serviceability:         svcView,
 			RefreshInterval:        time.Second,
 		})
@@ -967,19 +1024,27 @@ func TestLake_TelemetryLatency_View_IncrementalAppend(t *testing.T) {
 		err = view.Refresh(ctx)
 		require.NoError(t, err)
 
-		var sampleCount int
+		var sampleCount uint64
 		conn, err := db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_internet_metro_latency_samples_raw").Scan(&sampleCount)
+		rows, err := conn.Query(ctx, "SELECT COUNT(*) FROM fact_dz_internet_metro_latency")
 		require.NoError(t, err)
-		require.Equal(t, 2, sampleCount, "first refresh should insert 2 samples")
+		require.True(t, rows.Next())
+		err = rows.Scan(&sampleCount)
+		rows.Close()
+		require.NoError(t, err)
+		require.Equal(t, uint64(2), sampleCount, "first refresh should insert 2 samples")
 
 		// Verify the first 2 samples are correct
-		var maxIdx int64
-		err = conn.QueryRowContext(ctx, "SELECT MAX(sample_index) FROM dz_internet_metro_latency_samples_raw").Scan(&maxIdx)
+		var maxIdx int32
+		rows, err = conn.Query(ctx, "SELECT MAX(sample_index) FROM fact_dz_internet_metro_latency")
 		require.NoError(t, err)
-		require.Equal(t, int64(1), maxIdx, "max sample_index should be 1 after first refresh")
+		require.True(t, rows.Next())
+		err = rows.Scan(&maxIdx)
+		rows.Close()
+		require.NoError(t, err)
+		require.Equal(t, int32(1), maxIdx, "max sample_index should be 1 after first refresh")
 
 		// Second refresh: should append only the 2 new samples (indices 2-3)
 		err = view.Refresh(ctx)
@@ -988,32 +1053,56 @@ func TestLake_TelemetryLatency_View_IncrementalAppend(t *testing.T) {
 		conn, err = db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_internet_metro_latency_samples_raw").Scan(&sampleCount)
+		rows, err = conn.Query(ctx, "SELECT COUNT(*) FROM fact_dz_internet_metro_latency")
 		require.NoError(t, err)
-		require.Equal(t, 4, sampleCount, "second refresh should append 2 more samples, total 4")
+		require.True(t, rows.Next())
+		err = rows.Scan(&sampleCount)
+		rows.Close()
+		require.NoError(t, err)
+		require.Equal(t, uint64(4), sampleCount, "second refresh should append 2 more samples, total 4")
 
 		// Verify all samples are present and correct
 		var rttUs int64
-		err = conn.QueryRowContext(ctx, "SELECT rtt_us FROM dz_internet_metro_latency_samples_raw WHERE sample_index = 0").Scan(&rttUs)
+		rows, err = conn.Query(ctx, "SELECT rtt_us FROM fact_dz_internet_metro_latency WHERE sample_index = 0")
+		require.NoError(t, err)
+		require.True(t, rows.Next())
+		require.NoError(t, rows.Scan(&rttUs))
+		rows.Close()
 		require.NoError(t, err)
 		require.Equal(t, int64(10000), rttUs, "sample 0 should remain unchanged")
 
-		err = conn.QueryRowContext(ctx, "SELECT rtt_us FROM dz_internet_metro_latency_samples_raw WHERE sample_index = 1").Scan(&rttUs)
+		rows, err = conn.Query(ctx, "SELECT rtt_us FROM fact_dz_internet_metro_latency WHERE sample_index = 1")
+		require.NoError(t, err)
+		require.True(t, rows.Next())
+		require.NoError(t, rows.Scan(&rttUs))
+		rows.Close()
 		require.NoError(t, err)
 		require.Equal(t, int64(11000), rttUs, "sample 1 should remain unchanged")
 
-		err = conn.QueryRowContext(ctx, "SELECT rtt_us FROM dz_internet_metro_latency_samples_raw WHERE sample_index = 2").Scan(&rttUs)
+		rows, err = conn.Query(ctx, "SELECT rtt_us FROM fact_dz_internet_metro_latency WHERE sample_index = 2")
+		require.NoError(t, err)
+		require.True(t, rows.Next())
+		require.NoError(t, rows.Scan(&rttUs))
+		rows.Close()
 		require.NoError(t, err)
 		require.Equal(t, int64(12000), rttUs, "sample 2 should be newly inserted")
 
-		err = conn.QueryRowContext(ctx, "SELECT rtt_us FROM dz_internet_metro_latency_samples_raw WHERE sample_index = 3").Scan(&rttUs)
+		rows, err = conn.Query(ctx, "SELECT rtt_us FROM fact_dz_internet_metro_latency WHERE sample_index = 3")
+		require.NoError(t, err)
+		require.True(t, rows.Next())
+		require.NoError(t, rows.Scan(&rttUs))
+		rows.Close()
 		require.NoError(t, err)
 		require.Equal(t, int64(13000), rttUs, "sample 3 should be newly inserted")
 
 		// Verify max index is now 3
-		err = conn.QueryRowContext(ctx, "SELECT MAX(sample_index) FROM dz_internet_metro_latency_samples_raw").Scan(&maxIdx)
+		rows, err = conn.Query(ctx, "SELECT MAX(sample_index) FROM fact_dz_internet_metro_latency")
 		require.NoError(t, err)
-		require.Equal(t, int64(3), maxIdx, "max sample_index should be 3 after second refresh")
+		require.True(t, rows.Next())
+		err = rows.Scan(&maxIdx)
+		rows.Close()
+		require.NoError(t, err)
+		require.Equal(t, int32(3), maxIdx, "max sample_index should be 3 after second refresh")
 	})
 }
 
@@ -1053,7 +1142,7 @@ func TestLake_TelemetryLatency_View_Refresh_ErrorHandling(t *testing.T) {
 	t.Run("device-link refresh returns error when GetExistingMaxSampleIndices fails", func(t *testing.T) {
 		t.Parallel()
 
-		db := testDB(t)
+		db := laketesting.NewDB(t)
 
 		// Set up serviceability view
 		devicePK1 := [32]byte{1, 2, 3, 4}
@@ -1061,7 +1150,7 @@ func TestLake_TelemetryLatency_View_Refresh_ErrorHandling(t *testing.T) {
 		linkPK := [32]byte{9, 10, 11, 12}
 		contributorPK := [32]byte{13, 14, 15, 16}
 		metroPK := [32]byte{17, 18, 19, 20}
-		ownerPK := [32]byte{21, 22, 23, 24}
+		ownerPubkey := [32]byte{21, 22, 23, 24}
 		publicIP1 := [4]byte{192, 168, 1, 1}
 		publicIP2 := [4]byte{192, 168, 1, 2}
 		tunnelNet := [5]byte{10, 0, 0, 0, 24}
@@ -1072,14 +1161,14 @@ func TestLake_TelemetryLatency_View_Refresh_ErrorHandling(t *testing.T) {
 					Contributors: []serviceability.Contributor{
 						{
 							PubKey: contributorPK,
-							Owner:  ownerPK,
+							Owner:  ownerPubkey,
 							Code:   "CONTRIB",
 						},
 					},
 					Devices: []serviceability.Device{
 						{
 							PubKey:            devicePK1,
-							Owner:             ownerPK,
+							Owner:             ownerPubkey,
 							Status:            serviceability.DeviceStatusActivated,
 							DeviceType:        serviceability.DeviceDeviceTypeHybrid,
 							Code:              "DEV1",
@@ -1089,7 +1178,7 @@ func TestLake_TelemetryLatency_View_Refresh_ErrorHandling(t *testing.T) {
 						},
 						{
 							PubKey:            devicePK2,
-							Owner:             ownerPK,
+							Owner:             ownerPubkey,
 							Status:            serviceability.DeviceStatusActivated,
 							DeviceType:        serviceability.DeviceDeviceTypeHybrid,
 							Code:              "DEV2",
@@ -1101,7 +1190,7 @@ func TestLake_TelemetryLatency_View_Refresh_ErrorHandling(t *testing.T) {
 					Links: []serviceability.Link{
 						{
 							PubKey:            linkPK,
-							Owner:             ownerPK,
+							Owner:             ownerPubkey,
 							Status:            serviceability.LinkStatusActivated,
 							Code:              "LINK1",
 							TunnelNet:         tunnelNet,
@@ -1124,11 +1213,11 @@ func TestLake_TelemetryLatency_View_Refresh_ErrorHandling(t *testing.T) {
 		defer geoipStore.db.Close()
 
 		svcView, err := dzsvc.NewView(dzsvc.ViewConfig{
-			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Logger:            laketesting.NewLogger(t),
 			Clock:             clockwork.NewFakeClock(),
 			ServiceabilityRPC: svcMockRPC,
 			RefreshInterval:   time.Second,
-			DB:                db,
+			ClickHouse:        db,
 		})
 		require.NoError(t, err)
 
@@ -1156,14 +1245,14 @@ func TestLake_TelemetryLatency_View_Refresh_ErrorHandling(t *testing.T) {
 		mockEpochRPC := &mockEpochRPCWithEpoch{epoch: 100}
 
 		view, err := NewView(ViewConfig{
-			Logger:                 slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Logger:                 laketesting.NewLogger(t),
 			Clock:                  clockwork.NewFakeClock(),
 			TelemetryRPC:           mockTelemetryRPC,
 			EpochRPC:               mockEpochRPC,
 			MaxConcurrency:         32,
 			InternetLatencyAgentPK: solana.MustPublicKeyFromBase58("So11111111111111111111111111111111111111112"),
 			InternetDataProviders:  []string{"test-provider"},
-			DB:                     db,
+			ClickHouse:             db,
 			Serviceability:         svcView,
 			RefreshInterval:        time.Second,
 		})
@@ -1174,42 +1263,55 @@ func TestLake_TelemetryLatency_View_Refresh_ErrorHandling(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify samples were inserted
-		var sampleCount int
+		var sampleCount uint64
 		conn, err := db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_link_latency_samples_raw").Scan(&sampleCount)
+		rows, err := conn.Query(ctx, "SELECT COUNT(*) FROM fact_dz_device_link_latency")
 		require.NoError(t, err)
-		require.Equal(t, 3, sampleCount, "first refresh should insert 3 samples")
+		require.True(t, rows.Next())
+		err = rows.Scan(&sampleCount)
+		rows.Close()
+		require.NoError(t, err)
+		require.Equal(t, uint64(3), sampleCount, "first refresh should insert 3 samples")
 
 		// Drop the table to cause GetExistingMaxSampleIndices to fail
-		_, err = conn.ExecContext(ctx, "DROP TABLE dz_device_link_latency_samples_raw")
+		err = conn.Exec(ctx, "DROP TABLE IF EXISTS fact_dz_device_link_latency")
 		require.NoError(t, err)
 
-		// Second refresh should complete but log an error (Refresh catches and logs errors)
+		// Second refresh should fail when GetExistingMaxSampleIndices fails
 		// The key behavior is that it should NOT insert all samples when GetExistingMaxSampleIndices fails
 		err = view.Refresh(ctx)
-		// Refresh returns nil even when refresh methods fail (it logs warnings)
-		require.NoError(t, err)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to get existing max indices")
 
-		// Verify the table still doesn't exist (wasn't recreated) and no samples were inserted
+		// Verify no samples were inserted after error
 		// This confirms that when GetExistingMaxSampleIndices fails, we don't proceed with insertion
-		var count int
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_link_latency_samples_raw").Scan(&count)
-		require.Error(t, err, "table should not exist after being dropped")
-		require.Contains(t, err.Error(), "does not exist")
+		// Note: Since we dropped the table, it may not exist, which is fine - it means no samples were inserted
+		var count uint64
+		rows, err = conn.Query(ctx, "SELECT COUNT(*) FROM fact_dz_device_link_latency")
+		if err != nil {
+			// Table doesn't exist, which means no samples were inserted - that's what we want
+			require.Contains(t, err.Error(), "Unknown table", "table should not exist after being dropped")
+			count = 0
+		} else {
+			require.True(t, rows.Next())
+			require.NoError(t, rows.Scan(&count))
+			rows.Close()
+		}
+		require.Equal(t, uint64(0), count, "should have no samples after error")
 	})
 
 	t.Run("internet-metro refresh returns error when GetExistingInternetMaxSampleIndices fails", func(t *testing.T) {
 		t.Parallel()
 
-		db := testDB(t)
+		db := laketesting.NewDB(t)
 
 		// Set up serviceability view with metros
 		metroPK1 := [32]byte{1, 2, 3, 4}
 		metroPK2 := [32]byte{5, 6, 7, 8}
 		contributorPK := [32]byte{13, 14, 15, 16}
-		ownerPK := [32]byte{21, 22, 23, 24}
+		ownerPubkey := [32]byte{21, 22, 23, 24}
 
 		svcMockRPC := &MockServiceabilityRPC{
 			getProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
@@ -1217,14 +1319,14 @@ func TestLake_TelemetryLatency_View_Refresh_ErrorHandling(t *testing.T) {
 					Contributors: []serviceability.Contributor{
 						{
 							PubKey: contributorPK,
-							Owner:  ownerPK,
+							Owner:  ownerPubkey,
 							Code:   "CONTRIB",
 						},
 					},
 					Exchanges: []serviceability.Exchange{
 						{
 							PubKey: metroPK1,
-							Owner:  ownerPK,
+							Owner:  ownerPubkey,
 							Code:   "NYC",
 							Name:   "New York",
 							Status: serviceability.ExchangeStatusActivated,
@@ -1233,7 +1335,7 @@ func TestLake_TelemetryLatency_View_Refresh_ErrorHandling(t *testing.T) {
 						},
 						{
 							PubKey: metroPK2,
-							Owner:  ownerPK,
+							Owner:  ownerPubkey,
 							Code:   "LAX",
 							Name:   "Los Angeles",
 							Status: serviceability.ExchangeStatusActivated,
@@ -1250,11 +1352,11 @@ func TestLake_TelemetryLatency_View_Refresh_ErrorHandling(t *testing.T) {
 		defer geoipStore.db.Close()
 
 		svcView, err := dzsvc.NewView(dzsvc.ViewConfig{
-			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Logger:            laketesting.NewLogger(t),
 			Clock:             clockwork.NewFakeClock(),
 			ServiceabilityRPC: svcMockRPC,
 			RefreshInterval:   time.Second,
-			DB:                db,
+			ClickHouse:        db,
 		})
 		require.NoError(t, err)
 
@@ -1290,14 +1392,14 @@ func TestLake_TelemetryLatency_View_Refresh_ErrorHandling(t *testing.T) {
 		mockEpochRPC := &mockEpochRPCWithEpoch{epoch: 100}
 
 		view, err := NewView(ViewConfig{
-			Logger:                 slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Logger:                 laketesting.NewLogger(t),
 			Clock:                  clockwork.NewFakeClock(),
 			TelemetryRPC:           mockTelemetryRPC,
 			EpochRPC:               mockEpochRPC,
 			MaxConcurrency:         32,
 			InternetLatencyAgentPK: agentPK,
 			InternetDataProviders:  []string{"test-provider"},
-			DB:                     db,
+			ClickHouse:             db,
 			Serviceability:         svcView,
 			RefreshInterval:        time.Second,
 		})
@@ -1308,29 +1410,42 @@ func TestLake_TelemetryLatency_View_Refresh_ErrorHandling(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify samples were inserted
-		var sampleCount int
+		var sampleCount uint64
 		conn, err := db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_internet_metro_latency_samples_raw").Scan(&sampleCount)
+		rows, err := conn.Query(ctx, "SELECT COUNT(*) FROM fact_dz_internet_metro_latency")
 		require.NoError(t, err)
-		require.Equal(t, 2, sampleCount, "first refresh should insert 2 samples")
+		require.True(t, rows.Next())
+		err = rows.Scan(&sampleCount)
+		rows.Close()
+		require.NoError(t, err)
+		require.Equal(t, uint64(2), sampleCount, "first refresh should insert 2 samples")
 
 		// Drop the table to cause GetExistingInternetMaxSampleIndices to fail
-		_, err = conn.ExecContext(ctx, "DROP TABLE dz_internet_metro_latency_samples_raw")
+		err = conn.Exec(ctx, "DROP TABLE IF EXISTS fact_dz_internet_metro_latency")
 		require.NoError(t, err)
 
-		// Second refresh should complete but log an error (Refresh catches and logs errors)
+		// Second refresh should fail when GetExistingInternetMaxSampleIndices fails
 		// The key behavior is that it should NOT insert all samples when GetExistingInternetMaxSampleIndices fails
 		err = view.Refresh(ctx)
-		// Refresh returns nil even when refresh methods fail (it logs warnings)
-		require.NoError(t, err)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to get existing max indices")
 
-		// Verify the table still doesn't exist (wasn't recreated) and no samples were inserted
+		// Verify no samples were inserted after error
 		// This confirms that when GetExistingInternetMaxSampleIndices fails, we don't proceed with insertion
-		var count int
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_internet_metro_latency_samples_raw").Scan(&count)
-		require.Error(t, err, "table should not exist after being dropped")
-		require.Contains(t, err.Error(), "does not exist")
+		// Note: Since we dropped the table, it may not exist, which is fine - it means no samples were inserted
+		var count uint64
+		rows, err = conn.Query(ctx, "SELECT COUNT(*) FROM fact_dz_internet_metro_latency")
+		if err != nil {
+			// Table doesn't exist, which means no samples were inserted - that's what we want
+			require.Contains(t, err.Error(), "Unknown table", "table should not exist after being dropped")
+			count = 0
+		} else {
+			require.True(t, rows.Next())
+			require.NoError(t, rows.Scan(&count))
+			rows.Close()
+		}
+		require.Equal(t, uint64(0), count, "should have no samples after error")
 	})
 }

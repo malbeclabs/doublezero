@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/jonboulle/clockwork"
-	"github.com/malbeclabs/doublezero/lake/pkg/duck"
 	dzsvc "github.com/malbeclabs/doublezero/lake/pkg/indexer/dz/serviceability"
 	"github.com/malbeclabs/doublezero/lake/pkg/indexer/metrics"
 	"github.com/malbeclabs/doublezero/lake/pkg/indexer/sol"
@@ -20,7 +19,6 @@ import (
 type ViewConfig struct {
 	Logger              *slog.Logger
 	Clock               clockwork.Clock
-	DB                  duck.DB
 	GeoIPStore          *Store
 	GeoIPResolver       geoip.Resolver
 	ServiceabilityStore *dzsvc.Store
@@ -31,9 +29,6 @@ type ViewConfig struct {
 func (cfg *ViewConfig) Validate() error {
 	if cfg.Logger == nil {
 		return errors.New("logger is required")
-	}
-	if cfg.DB == nil {
-		return errors.New("database is required")
 	}
 	if cfg.GeoIPStore == nil {
 		return errors.New("geoip store is required")
@@ -151,7 +146,7 @@ func (v *View) Refresh(ctx context.Context) error {
 	ipSet := make(map[string]net.IP)
 
 	// Get IPs from serviceability users
-	users, err := v.cfg.ServiceabilityStore.GetUsers(ctx)
+	users, err := dzsvc.QueryCurrentUsers(ctx, v.log, v.cfg.ServiceabilityStore.GetClickHouse())
 	if err != nil {
 		metrics.ViewRefreshTotal.WithLabelValues("geoip", "error").Inc()
 		return fmt.Errorf("failed to get users: %w", err)

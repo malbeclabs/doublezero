@@ -2,32 +2,30 @@ package sol
 
 import (
 	"context"
-	"database/sql"
-	"encoding/csv"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
-	"github.com/malbeclabs/doublezero/lake/pkg/duck"
+	"github.com/malbeclabs/doublezero/lake/pkg/clickhouse"
+	"github.com/malbeclabs/doublezero/lake/pkg/clickhouse/dataset"
 )
 
 type StoreConfig struct {
-	Logger *slog.Logger
-	DB     duck.DB
+	Logger     *slog.Logger
+	ClickHouse clickhouse.DB
 }
 
 func (cfg *StoreConfig) Validate() error {
 	if cfg.Logger == nil {
 		return errors.New("logger is required")
 	}
-	if cfg.DB == nil {
-		return errors.New("db is required")
+	if cfg.ClickHouse == nil {
+		return errors.New("clickhouse connection is required")
 	}
 	return nil
 }
@@ -35,7 +33,6 @@ func (cfg *StoreConfig) Validate() error {
 type Store struct {
 	log *slog.Logger
 	cfg StoreConfig
-	db  duck.DB
 }
 
 func NewStore(cfg StoreConfig) (*Store, error) {
@@ -45,7 +42,6 @@ func NewStore(cfg StoreConfig) (*Store, error) {
 	return &Store{
 		log: cfg.Logger,
 		cfg: cfg,
-		db:  cfg.DB,
 	}, nil
 }
 
@@ -54,109 +50,62 @@ type LeaderScheduleEntry struct {
 	Slots      []uint64
 }
 
-// SCD2ConfigLeaderSchedule returns the base SCD2 config for leader schedule table
-func SCD2ConfigLeaderSchedule() duck.SCDTableConfig {
-	return duck.SCDTableConfig{
-		TableBaseName:       "solana_leader_schedule",
-		PrimaryKeyColumns:   []string{"node_pubkey:VARCHAR"},
-		PayloadColumns:      []string{"epoch:BIGINT", "slots:VARCHAR", "slot_count:BIGINT"},
-		MissingMeansDeleted: true,
-		TrackIngestRuns:     false,
-	}
-}
-
 func (s *Store) ReplaceLeaderSchedule(ctx context.Context, entries []LeaderScheduleEntry, fetchedAt time.Time, currentEpoch uint64) error {
 	s.log.Debug("solana/store: replacing leader schedule", "count", len(entries))
-	conn, err := s.db.Conn(ctx)
+
+	d, err := NewLeaderScheduleDataset(s.log)
 	if err != nil {
-		return fmt.Errorf("failed to get connection: %w", err)
+		return fmt.Errorf("failed to create dimension dataset: %w", err)
 	}
-	defer conn.Close()
 
-	cfg := SCD2ConfigLeaderSchedule()
-	cfg.SnapshotTS = fetchedAt
-	cfg.RunID = fmt.Sprintf("leader_schedule_%d_%d", currentEpoch, fetchedAt.Unix())
+	// Write to ClickHouse
+	conn, err := s.cfg.ClickHouse.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get ClickHouse connection: %w", err)
+	}
 
-	return duck.SCDTableViaCSV(ctx, s.log, conn, cfg, len(entries), func(w *csv.Writer, i int) error {
-		entry := entries[i]
-		slotsStr := formatUint64Array(entry.Slots)
-		return w.Write([]string{
-			entry.NodePubkey.String(),
-			fmt.Sprintf("%d", currentEpoch),
-			slotsStr,
-			fmt.Sprintf("%d", len(entry.Slots)),
-		})
-	})
-}
-
-// SCD2ConfigVoteAccounts returns the base SCD2 config for vote accounts table
-func SCD2ConfigVoteAccounts() duck.SCDTableConfig {
-	return duck.SCDTableConfig{
-		TableBaseName:       "solana_vote_accounts",
-		PrimaryKeyColumns:   []string{"vote_pubkey:VARCHAR"},
-		PayloadColumns:      []string{"epoch:BIGINT", "node_pubkey:VARCHAR", "activated_stake_lamports:BIGINT", "epoch_vote_account:VARCHAR", "commission_percentage:BIGINT"},
+	// Write to ClickHouse using new dataset API
+	err = d.WriteBatch(ctx, conn, len(entries), func(i int) ([]any, error) {
+		return leaderScheduleSchema.ToRow(entries[i], currentEpoch), nil
+	}, &dataset.DimensionType2DatasetWriteConfig{
 		MissingMeansDeleted: true,
-		TrackIngestRuns:     false,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to write leader schedule to ClickHouse: %w", err)
 	}
+
+	return nil
 }
 
 func (s *Store) ReplaceVoteAccounts(ctx context.Context, accounts []solanarpc.VoteAccountsResult, fetchedAt time.Time, currentEpoch uint64) error {
 	s.log.Debug("solana/store: replacing vote accounts", "count", len(accounts))
-	conn, err := s.db.Conn(ctx)
+
+	d, err := NewVoteAccountDataset(s.log)
 	if err != nil {
-		return fmt.Errorf("failed to get connection: %w", err)
+		return fmt.Errorf("failed to create dimension dataset: %w", err)
 	}
-	defer conn.Close()
 
-	cfg := SCD2ConfigVoteAccounts()
-	cfg.SnapshotTS = fetchedAt
-	cfg.RunID = fmt.Sprintf("vote_accounts_%d_%d", currentEpoch, fetchedAt.Unix())
+	// Write to ClickHouse
+	conn, err := s.cfg.ClickHouse.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get ClickHouse connection: %w", err)
+	}
 
-	return duck.SCDTableViaCSV(ctx, s.log, conn, cfg, len(accounts), func(w *csv.Writer, i int) error {
-		account := accounts[i]
-		epochVoteAccountStr := "false"
-		if account.EpochVoteAccount {
-			epochVoteAccountStr = "true"
-		}
-		return w.Write([]string{
-			account.VotePubkey.String(),
-			fmt.Sprintf("%d", currentEpoch),
-			account.NodePubkey.String(),
-			fmt.Sprintf("%d", account.ActivatedStake),
-			epochVoteAccountStr,
-			fmt.Sprintf("%d", account.Commission),
-		})
-	})
-}
-
-// SCD2ConfigGossipNodes returns the base SCD2 config for gossip nodes table
-func SCD2ConfigGossipNodes() duck.SCDTableConfig {
-	return duck.SCDTableConfig{
-		TableBaseName:       "solana_gossip_nodes",
-		PrimaryKeyColumns:   []string{"pubkey:VARCHAR"},
-		PayloadColumns:      []string{"epoch:BIGINT", "gossip_ip:VARCHAR", "gossip_port:INTEGER", "tpuquic_ip:VARCHAR", "tpuquic_port:INTEGER", "version:VARCHAR"},
+	// Write to ClickHouse using new dataset API
+	err = d.WriteBatch(ctx, conn, len(accounts), func(i int) ([]any, error) {
+		return voteAccountSchema.ToRow(accounts[i], currentEpoch), nil
+	}, &dataset.DimensionType2DatasetWriteConfig{
 		MissingMeansDeleted: true,
-		TrackIngestRuns:     false,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to write vote accounts to ClickHouse: %w", err)
 	}
+
+	return nil
 }
 
 func (s *Store) ReplaceGossipNodes(ctx context.Context, nodes []*solanarpc.GetClusterNodesResult, fetchedAt time.Time, currentEpoch uint64) error {
 	s.log.Debug("solana/store: replacing gossip nodes", "count", len(nodes))
-
-	// Check current table count for diagnostics
-	conn, err := s.db.Conn(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get connection: %w", err)
-	}
-	defer conn.Close()
-
-	var currentCount int
-	if err := conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM solana_gossip_nodes_current").Scan(&currentCount); err == nil {
-		s.log.Info("solana/store: gossip nodes snapshot comparison",
-			"rpc_node_count", len(nodes),
-			"current_table_count", currentCount,
-			"expected_deletes_if_all_missing", currentCount-len(nodes))
-	}
 
 	// Filter out nodes with invalid/zero pubkeys to prevent NULL/empty primary keys
 	validNodes := make([]*solanarpc.GetClusterNodesResult, 0, len(nodes))
@@ -180,59 +129,49 @@ func (s *Store) ReplaceGossipNodes(ctx context.Context, nodes []*solanarpc.GetCl
 			"filtered_count", len(nodes)-len(validNodes))
 	}
 
-	cfg := SCD2ConfigGossipNodes()
-	cfg.SnapshotTS = fetchedAt
-	cfg.RunID = fmt.Sprintf("gossip_nodes_%d_%d", currentEpoch, fetchedAt.Unix())
+	d, err := NewGossipNodeDataset(s.log)
+	if err != nil {
+		return fmt.Errorf("failed to create dimension dataset: %w", err)
+	}
 
-	return duck.SCDTableViaCSV(ctx, s.log, conn, cfg, len(validNodes), func(w *csv.Writer, i int) error {
-		node := validNodes[i]
+	// Write to ClickHouse
+	conn, err := s.cfg.ClickHouse.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get ClickHouse connection: %w", err)
+	}
 
-		var gossipIP, tpuQUICIP string
-		var gossipPort, tpuQUICPort uint16
-		if node.Gossip != nil {
-			host, portStr, err := net.SplitHostPort(*node.Gossip)
-			if err == nil {
-				gossipIP = host
-				gossipPortUint, err := strconv.ParseUint(portStr, 10, 16)
-				if err == nil {
-					gossipPort = uint16(gossipPortUint)
-				}
-			}
-		}
-		if node.TPUQUIC != nil {
-			host, portStr, err := net.SplitHostPort(*node.TPUQUIC)
-			if err == nil {
-				tpuQUICIP = host
-				tpuQUICPortUint, err := strconv.ParseUint(portStr, 10, 16)
-				if err == nil {
-					tpuQUICPort = uint16(tpuQUICPortUint)
-				}
-			}
-		}
-		var version string
-		if node.Version != nil {
-			version = *node.Version
-		}
-		return w.Write([]string{
-			node.Pubkey.String(),
-			fmt.Sprintf("%d", currentEpoch),
-			gossipIP,
-			fmt.Sprintf("%d", gossipPort),
-			tpuQUICIP,
-			fmt.Sprintf("%d", tpuQUICPort),
-			version,
-		})
+	// Write to ClickHouse using new dataset API
+	err = d.WriteBatch(ctx, conn, len(validNodes), func(i int) ([]any, error) {
+		return gossipNodeSchema.ToRow(validNodes[i], currentEpoch), nil
+	}, &dataset.DimensionType2DatasetWriteConfig{
+		MissingMeansDeleted: true,
 	})
+	if err != nil {
+		return fmt.Errorf("failed to write gossip nodes to ClickHouse: %w", err)
+	}
+
+	return nil
 }
 
 func (s *Store) GetGossipIPs(ctx context.Context) ([]net.IP, error) {
-	conn, err := s.db.Conn(ctx)
+	// Query ClickHouse history table to get current gossip_ip values
+	// Uses deterministic "latest row per entity" definition
+	query := `
+		WITH ranked AS (
+			SELECT
+				*,
+				ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
+			FROM dim_solana_gossip_nodes_history
+		)
+		SELECT DISTINCT gossip_ip
+		FROM ranked
+		WHERE rn = 1 AND is_deleted = 0 AND gossip_ip != '' AND gossip_ip IS NOT NULL
+	`
+	conn, err := s.cfg.ClickHouse.Conn(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get connection: %w", err)
+		return nil, fmt.Errorf("failed to get ClickHouse connection: %w", err)
 	}
-	defer conn.Close()
-	query := `SELECT DISTINCT gossip_ip FROM solana_gossip_nodes_current WHERE gossip_ip IS NOT NULL AND gossip_ip != ''`
-	rows, err := conn.QueryContext(ctx, query)
+	rows, err := conn.Query(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query gossip IPs: %w", err)
 	}
@@ -250,59 +189,14 @@ func (s *Store) GetGossipIPs(ctx context.Context) ([]net.IP, error) {
 		}
 	}
 
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating gossip IPs: %w", err)
-	}
-
 	return ips, nil
-}
-
-func formatUint64Array(arr []uint64) string {
-	if len(arr) == 0 {
-		return "[]"
-	}
-	var b strings.Builder
-	b.WriteString("[")
-	for i, v := range arr {
-		if i > 0 {
-			b.WriteString(",")
-		}
-		b.WriteString(strconv.FormatUint(v, 10))
-	}
-	b.WriteString("]")
-	return b.String()
-}
-
-// FactTableConfigVoteAccountActivity returns the fact table config for vote account activity
-func FactTableConfigVoteAccountActivity() duck.FactTableConfig {
-	return duck.FactTableConfig{
-		TableName:       "solana_vote_account_activity_raw",
-		PartitionByTime: true,
-		TimeColumn:      "time",
-		Columns: []string{
-			"time:TIMESTAMP",
-			"vote_account_pubkey:VARCHAR",
-			"node_identity_pubkey:VARCHAR",
-			"root_slot:BIGINT",
-			"last_vote_slot:BIGINT",
-			"cluster_slot:BIGINT",
-			"is_delinquent:BOOLEAN",
-			"epoch_credits_json:VARCHAR",
-			"credits_epoch:INTEGER",
-			"credits_epoch_credits:BIGINT",
-			"credits_delta:BIGINT",
-			"activated_stake_lamports:BIGINT",
-			"activated_stake_sol:DOUBLE",
-			"commission:INTEGER",
-			"collector_run_id:VARCHAR",
-		},
-	}
 }
 
 type VoteAccountActivityEntry struct {
 	Time                   time.Time
 	VoteAccountPubkey      string
 	NodeIdentityPubkey     string
+	Epoch                  uint32
 	RootSlot               uint64
 	LastVoteSlot           uint64
 	ClusterSlot            uint64
@@ -328,12 +222,6 @@ func (s *Store) GetPreviousCreditsStatesBatch(ctx context.Context, voteAccountPu
 		return make(map[string]*previousCreditsState), nil
 	}
 
-	conn, err := s.db.Conn(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get connection: %w", err)
-	}
-	defer conn.Close()
-
 	// Build query with IN clause for all vote account pubkeys
 	placeholders := make([]string, len(voteAccountPubkeys))
 	args := make([]any, len(voteAccountPubkeys))
@@ -343,21 +231,24 @@ func (s *Store) GetPreviousCreditsStatesBatch(ctx context.Context, voteAccountPu
 	}
 
 	// Use ROW_NUMBER to get the latest row per vote_account_pubkey
-	// This is more efficient than a subquery per account
 	query := fmt.Sprintf(`SELECT vote_account_pubkey, credits_epoch, credits_epoch_credits
 		FROM (
 			SELECT
 				vote_account_pubkey,
 				credits_epoch,
 				credits_epoch_credits,
-				ROW_NUMBER() OVER (PARTITION BY vote_account_pubkey ORDER BY time DESC) AS rn
-			FROM solana_vote_account_activity_raw
+				ROW_NUMBER() OVER (PARTITION BY vote_account_pubkey ORDER BY event_ts DESC) AS rn
+			FROM fact_solana_vote_account_activity
 			WHERE vote_account_pubkey IN (%s)
 		) ranked
 		WHERE rn = 1`,
 		strings.Join(placeholders, ","))
 
-	rows, err := conn.QueryContext(ctx, query, args...)
+	conn, err := s.cfg.ClickHouse.Conn(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get ClickHouse connection: %w", err)
+	}
+	rows, err := conn.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query previous credits states: %w", err)
 	}
@@ -366,23 +257,19 @@ func (s *Store) GetPreviousCreditsStatesBatch(ctx context.Context, voteAccountPu
 	result := make(map[string]*previousCreditsState)
 	for rows.Next() {
 		var pubkey string
-		var epoch sql.NullInt64
-		var epochCredits sql.NullInt64
+		var epoch *int32        // credits_epoch is INTEGER (Int32), not Int64
+		var epochCredits *int64 // credits_epoch_credits is BIGINT (Int64), scan as int64 then convert to uint64
 
 		if err := rows.Scan(&pubkey, &epoch, &epochCredits); err != nil {
 			return nil, fmt.Errorf("failed to scan previous credits state: %w", err)
 		}
 
-		if epoch.Valid && epochCredits.Valid {
+		if epoch != nil && epochCredits != nil {
 			result[pubkey] = &previousCreditsState{
-				Epoch:        int(epoch.Int64),
-				EpochCredits: uint64(epochCredits.Int64),
+				Epoch:        int(*epoch),
+				EpochCredits: uint64(*epochCredits),
 			}
 		}
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating previous credits states: %w", err)
 	}
 
 	return result, nil
@@ -419,18 +306,6 @@ func (s *Store) InsertVoteAccountActivity(ctx context.Context, entries []VoteAcc
 
 	s.log.Debug("solana/store: inserting vote account activity", "count", len(entries))
 
-	// Ensure table exists before querying it
-	conn, err := s.db.Conn(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get connection: %w", err)
-	}
-	defer conn.Close()
-
-	cfg := FactTableConfigVoteAccountActivity()
-	if err := duck.CreateFactTable(ctx, s.log, conn, cfg); err != nil {
-		return fmt.Errorf("failed to create fact table: %w", err)
-	}
-
 	// Get previous state for all vote accounts in a single batch query
 	voteAccountPubkeys := make([]string, 0, len(entries))
 	pubkeySet := make(map[string]bool)
@@ -453,93 +328,23 @@ func (s *Store) InsertVoteAccountActivity(ctx context.Context, entries []VoteAcc
 		entry.CreditsDelta = calculateCreditsDelta(entry.CreditsEpoch, entry.CreditsEpochCredits, prev)
 	}
 
-	return duck.InsertFactsViaCSV(ctx, s.log, conn, cfg, len(entries), func(w *csv.Writer, i int) error {
-		entry := entries[i]
-		record := make([]string, 15)
-
-		// time (required)
-		record[0] = entry.Time.UTC().Format(time.RFC3339Nano)
-
-		// vote_account_pubkey (required)
-		record[1] = entry.VoteAccountPubkey
-
-		// node_identity_pubkey (required)
-		record[2] = entry.NodeIdentityPubkey
-
-		// root_slot (required)
-		record[3] = fmt.Sprintf("%d", entry.RootSlot)
-
-		// last_vote_slot (required)
-		record[4] = fmt.Sprintf("%d", entry.LastVoteSlot)
-
-		// cluster_slot (required)
-		record[5] = fmt.Sprintf("%d", entry.ClusterSlot)
-
-		// is_delinquent (required)
-		if entry.IsDelinquent {
-			record[6] = "true"
-		} else {
-			record[6] = "false"
-		}
-
-		// epoch_credits_json (required)
-		record[7] = entry.EpochCreditsJSON
-
-		// credits_epoch (required)
-		record[8] = fmt.Sprintf("%d", entry.CreditsEpoch)
-
-		// credits_epoch_credits (required)
-		record[9] = fmt.Sprintf("%d", entry.CreditsEpochCredits)
-
-		// credits_delta (nullable)
-		if entry.CreditsDelta != nil {
-			record[10] = fmt.Sprintf("%d", *entry.CreditsDelta)
-		} else {
-			record[10] = ""
-		}
-
-		// activated_stake_lamports (optional)
-		if entry.ActivatedStakeLamports != nil {
-			record[11] = fmt.Sprintf("%d", *entry.ActivatedStakeLamports)
-		} else {
-			record[11] = ""
-		}
-
-		// activated_stake_sol (optional)
-		if entry.ActivatedStakeSol != nil {
-			record[12] = fmt.Sprintf("%f", *entry.ActivatedStakeSol)
-		} else {
-			record[12] = ""
-		}
-
-		// commission (optional)
-		if entry.Commission != nil {
-			record[13] = fmt.Sprintf("%d", *entry.Commission)
-		} else {
-			record[13] = ""
-		}
-
-		// collector_run_id (optional)
-		record[14] = entry.CollectorRunID
-
-		return w.Write(record)
-	})
-}
-
-// FactTableConfigBlockProduction returns the fact table config for block production
-func FactTableConfigBlockProduction() duck.FactTableConfig {
-	return duck.FactTableConfig{
-		TableName:       "solana_block_production_raw",
-		PartitionByTime: true,
-		TimeColumn:      "time",
-		Columns: []string{
-			"epoch:INTEGER",
-			"time:TIMESTAMP",
-			"leader_identity_pubkey:VARCHAR",
-			"leader_slots_assigned_cum:BIGINT",
-			"blocks_produced_cum:BIGINT",
-		},
+	// Write to ClickHouse
+	ingestedAt := time.Now().UTC()
+	conn, err := s.cfg.ClickHouse.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get ClickHouse connection: %w", err)
 	}
+	ds, err := NewVoteAccountActivityDataset(s.log)
+	if err != nil {
+		return fmt.Errorf("failed to create fact dataset: %w", err)
+	}
+	if err := ds.WriteBatch(ctx, conn, len(entries), func(i int) ([]any, error) {
+		return voteAccountActivitySchema.ToRow(entries[i], ingestedAt), nil
+	}); err != nil {
+		return fmt.Errorf("failed to write vote account activity to ClickHouse: %w", err)
+	}
+
+	return nil
 }
 
 type BlockProductionEntry struct {
@@ -557,25 +362,29 @@ func (s *Store) InsertBlockProduction(ctx context.Context, entries []BlockProduc
 
 	s.log.Debug("solana/store: inserting block production", "count", len(entries))
 
-	conn, err := s.db.Conn(ctx)
+	// Write to ClickHouse
+	ingestedAt := time.Now().UTC()
+	conn, err := s.cfg.ClickHouse.Conn(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get connection: %w", err)
+		return fmt.Errorf("failed to get ClickHouse connection: %w", err)
 	}
-	defer conn.Close()
-
-	cfg := FactTableConfigBlockProduction()
-	if err := duck.CreateFactTable(ctx, s.log, conn, cfg); err != nil {
-		return fmt.Errorf("failed to create fact table: %w", err)
+	ds, err := NewBlockProductionDataset(s.log)
+	if err != nil {
+		return fmt.Errorf("failed to create fact dataset: %w", err)
 	}
-
-	return duck.InsertFactsViaCSV(ctx, s.log, conn, cfg, len(entries), func(w *csv.Writer, i int) error {
+	if err := ds.WriteBatch(ctx, conn, len(entries), func(i int) ([]any, error) {
 		entry := entries[i]
-		return w.Write([]string{
-			fmt.Sprintf("%d", entry.Epoch),
-			entry.Time.UTC().Format(time.RFC3339Nano),
+		return []any{
+			int32(entry.Epoch), // epoch (Int32 in migration)
+			entry.Time.UTC(),   // event_ts
+			ingestedAt,         // ingested_at
 			entry.LeaderIdentityPubkey,
-			fmt.Sprintf("%d", entry.LeaderSlotsAssignedCum),
-			fmt.Sprintf("%d", entry.BlocksProducedCum),
-		})
-	})
+			int64(entry.LeaderSlotsAssignedCum), // Int64 in migration
+			int64(entry.BlocksProducedCum),      // Int64 in migration
+		}, nil
+	}); err != nil {
+		return fmt.Errorf("failed to write block production to ClickHouse: %w", err)
+	}
+
+	return nil
 }

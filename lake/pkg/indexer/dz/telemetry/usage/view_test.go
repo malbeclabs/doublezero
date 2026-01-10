@@ -1,14 +1,14 @@
 package dztelemusage
 
 import (
+	dzsvc "github.com/malbeclabs/doublezero/lake/pkg/indexer/dz/serviceability"
 	"context"
-	"log/slog"
-	"os"
 	"testing"
 	"time"
 
+	laketesting "github.com/malbeclabs/doublezero/lake/pkg/testing"
+
 	"github.com/jonboulle/clockwork"
-	"github.com/malbeclabs/doublezero/lake/pkg/duck"
 	"github.com/stretchr/testify/require"
 )
 
@@ -31,24 +31,16 @@ func (m *mockInfluxDBClient) Close() error {
 	return nil
 }
 
-func testDB(t *testing.T) duck.DB {
-	db, err := duck.NewDB(t.Context(), "", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		db.Close()
-	})
-	return db
-}
 
 func TestLake_TelemetryUsage_View_ViewConfig_Validate(t *testing.T) {
 	t.Parallel()
 
 	t.Run("returns error when logger is missing", func(t *testing.T) {
 		t.Parallel()
-		db := testDB(t)
+		mockDB := laketesting.NewDB(t)
 
 		cfg := ViewConfig{
-			DB:              db,
+			ClickHouse:      mockDB,
 			InfluxDB:        &mockInfluxDBClient{},
 			Bucket:          "test-bucket",
 			RefreshInterval: time.Second,
@@ -61,24 +53,24 @@ func TestLake_TelemetryUsage_View_ViewConfig_Validate(t *testing.T) {
 	t.Run("returns error when db is missing", func(t *testing.T) {
 		t.Parallel()
 		cfg := ViewConfig{
-			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Logger:          laketesting.NewLogger(t),
 			InfluxDB:        &mockInfluxDBClient{},
 			Bucket:          "test-bucket",
 			RefreshInterval: time.Second,
-			DB:              nil,
+			ClickHouse:      nil,
 		}
 		err := cfg.Validate()
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "database is required")
+		require.Contains(t, err.Error(), "clickhouse connection is required")
 	})
 
 	t.Run("returns error when influxdb client is missing", func(t *testing.T) {
 		t.Parallel()
-		db := testDB(t)
+		mockDB := laketesting.NewDB(t)
 
 		cfg := ViewConfig{
-			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:              db,
+			Logger:          laketesting.NewLogger(t),
+			ClickHouse:      mockDB,
 			Bucket:          "test-bucket",
 			RefreshInterval: time.Second,
 		}
@@ -89,11 +81,11 @@ func TestLake_TelemetryUsage_View_ViewConfig_Validate(t *testing.T) {
 
 	t.Run("returns error when bucket is empty", func(t *testing.T) {
 		t.Parallel()
-		db := testDB(t)
+		mockDB := laketesting.NewDB(t)
 
 		cfg := ViewConfig{
-			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:              db,
+			Logger:          laketesting.NewLogger(t),
+			ClickHouse:      mockDB,
 			InfluxDB:        &mockInfluxDBClient{},
 			RefreshInterval: time.Second,
 		}
@@ -104,11 +96,11 @@ func TestLake_TelemetryUsage_View_ViewConfig_Validate(t *testing.T) {
 
 	t.Run("returns error when refresh interval is zero", func(t *testing.T) {
 		t.Parallel()
-		db := testDB(t)
+		mockDB := laketesting.NewDB(t)
 
 		cfg := ViewConfig{
-			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:              db,
+			Logger:          laketesting.NewLogger(t),
+			ClickHouse:      mockDB,
 			InfluxDB:        &mockInfluxDBClient{},
 			Bucket:          "test-bucket",
 			RefreshInterval: 0,
@@ -120,11 +112,11 @@ func TestLake_TelemetryUsage_View_ViewConfig_Validate(t *testing.T) {
 
 	t.Run("sets default query window when zero", func(t *testing.T) {
 		t.Parallel()
-		db := testDB(t)
+		mockDB := laketesting.NewDB(t)
 
 		cfg := ViewConfig{
-			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:              db,
+			Logger:          laketesting.NewLogger(t),
+			ClickHouse:      mockDB,
 			InfluxDB:        &mockInfluxDBClient{},
 			Bucket:          "test-bucket",
 			RefreshInterval: time.Second,
@@ -137,11 +129,11 @@ func TestLake_TelemetryUsage_View_ViewConfig_Validate(t *testing.T) {
 
 	t.Run("sets default clock when nil", func(t *testing.T) {
 		t.Parallel()
-		db := testDB(t)
+		mockDB := laketesting.NewDB(t)
 
 		cfg := ViewConfig{
-			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:              db,
+			Logger:          laketesting.NewLogger(t),
+			ClickHouse:      mockDB,
 			InfluxDB:        &mockInfluxDBClient{},
 			Bucket:          "test-bucket",
 			RefreshInterval: time.Second,
@@ -154,11 +146,11 @@ func TestLake_TelemetryUsage_View_ViewConfig_Validate(t *testing.T) {
 
 	t.Run("validates successfully with all required fields", func(t *testing.T) {
 		t.Parallel()
-		db := testDB(t)
+		mockDB := laketesting.NewDB(t)
 
 		cfg := ViewConfig{
-			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:              db,
+			Logger:          laketesting.NewLogger(t),
+			ClickHouse:      mockDB,
 			InfluxDB:        &mockInfluxDBClient{},
 			Bucket:          "test-bucket",
 			RefreshInterval: time.Second,
@@ -181,11 +173,11 @@ func TestLake_TelemetryUsage_View_NewView(t *testing.T) {
 
 	t.Run("creates view successfully", func(t *testing.T) {
 		t.Parallel()
-		db := testDB(t)
+		mockDB := laketesting.NewDB(t)
 
 		view, err := NewView(ViewConfig{
-			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:              db,
+			Logger:          laketesting.NewLogger(t),
+			ClickHouse:      mockDB,
 			InfluxDB:        &mockInfluxDBClient{},
 			Bucket:          "test-bucket",
 			RefreshInterval: time.Second,
@@ -261,36 +253,37 @@ func TestLake_TelemetryUsage_View_buildLinkLookup(t *testing.T) {
 
 	t.Run("builds link lookup map successfully", func(t *testing.T) {
 		t.Parallel()
-		db := testDB(t)
+		mockDB := laketesting.NewDB(t)
 
-		conn, err := db.Conn(t.Context())
-		require.NoError(t, err)
-		defer conn.Close()
-
-		// Create links table
-		_, err = conn.ExecContext(t.Context(), `
-			CREATE TABLE dz_links_current (
-				pk VARCHAR,
-				side_a_pk VARCHAR,
-				side_a_iface_name VARCHAR,
-				side_z_pk VARCHAR,
-				side_z_iface_name VARCHAR
-			)
-		`)
+		// Insert test link data using serviceability store
+		svcStore, err := dzsvc.NewStore(dzsvc.StoreConfig{
+			Logger:     laketesting.NewLogger(t),
+			ClickHouse: mockDB,
+		})
 		require.NoError(t, err)
 
-		// Insert test links
-		_, err = conn.ExecContext(t.Context(), `
-			INSERT INTO dz_links_current (pk, side_a_pk, side_a_iface_name, side_z_pk, side_z_iface_name)
-			VALUES
-				('link1', 'device1', 'eth0', 'device2', 'eth1'),
-				('link2', 'device3', 'eth0', 'device4', 'eth0')
-		`)
+		links := []dzsvc.Link{
+			{
+				PK:              "link1",
+				SideAPK:         "device1",
+				SideAIfaceName:  "eth0",
+				SideZPK:         "device2",
+				SideZIfaceName:  "eth1",
+			},
+			{
+				PK:              "link2",
+				SideAPK:         "device3",
+				SideAIfaceName:  "eth0",
+				SideZPK:         "device4",
+				SideZIfaceName:  "eth0",
+			},
+		}
+		err = svcStore.ReplaceLinks(context.Background(), links)
 		require.NoError(t, err)
 
 		view, err := NewView(ViewConfig{
-			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:              db,
+			Logger:          laketesting.NewLogger(t),
+			ClickHouse:      mockDB,
 			InfluxDB:        &mockInfluxDBClient{},
 			Bucket:          "test-bucket",
 			RefreshInterval: time.Second,
@@ -298,7 +291,7 @@ func TestLake_TelemetryUsage_View_buildLinkLookup(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		lookup, err := view.buildLinkLookup()
+		lookup, err := view.buildLinkLookup(context.Background())
 		require.NoError(t, err)
 		require.NotNil(t, lookup)
 
@@ -327,26 +320,13 @@ func TestLake_TelemetryUsage_View_buildLinkLookup(t *testing.T) {
 
 	t.Run("handles empty links table", func(t *testing.T) {
 		t.Parallel()
-		db := testDB(t)
+		mockDB := laketesting.NewDB(t)
 
-		// Create empty links table
-		conn, err := db.Conn(t.Context())
-		require.NoError(t, err)
-		defer conn.Close()
-		_, err = conn.ExecContext(t.Context(), `
-			CREATE TABLE dz_links_current (
-				pk VARCHAR,
-				side_a_pk VARCHAR,
-				side_a_iface_name VARCHAR,
-				side_z_pk VARCHAR,
-				side_z_iface_name VARCHAR
-			)
-		`)
-		require.NoError(t, err)
-
+		// Tables are created via migrations, no need to create them here
+		// This test verifies that buildLinkLookup works with empty tables
 		view, err := NewView(ViewConfig{
-			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:              db,
+			Logger:          laketesting.NewLogger(t),
+			ClickHouse:      mockDB,
 			InfluxDB:        &mockInfluxDBClient{},
 			Bucket:          "test-bucket",
 			RefreshInterval: time.Second,
@@ -354,7 +334,7 @@ func TestLake_TelemetryUsage_View_buildLinkLookup(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		lookup, err := view.buildLinkLookup()
+		lookup, err := view.buildLinkLookup(context.Background())
 		require.NoError(t, err)
 		require.NotNil(t, lookup)
 		require.Equal(t, 0, len(lookup))
@@ -366,11 +346,11 @@ func TestLake_TelemetryUsage_View_Ready(t *testing.T) {
 
 	t.Run("returns false when not ready", func(t *testing.T) {
 		t.Parallel()
-		db := testDB(t)
+		mockDB := laketesting.NewDB(t)
 
 		view, err := NewView(ViewConfig{
-			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:              db,
+			Logger:          laketesting.NewLogger(t),
+			ClickHouse:      mockDB,
 			InfluxDB:        &mockInfluxDBClient{},
 			Bucket:          "test-bucket",
 			RefreshInterval: time.Second,
@@ -383,22 +363,10 @@ func TestLake_TelemetryUsage_View_Ready(t *testing.T) {
 
 	t.Run("returns true after successful refresh", func(t *testing.T) {
 		t.Parallel()
-		db := testDB(t)
+		mockDB := laketesting.NewDB(t)
 
-		// Create links table for buildLinkLookup
-		conn, err := db.Conn(t.Context())
-		require.NoError(t, err)
-		defer conn.Close()
-		_, err = conn.ExecContext(t.Context(), `
-			CREATE TABLE dz_links_current (
-				pk VARCHAR,
-				side_a_pk VARCHAR,
-				side_a_iface_name VARCHAR,
-				side_z_pk VARCHAR,
-				side_z_iface_name VARCHAR
-			)
-		`)
-		require.NoError(t, err)
+		// With mock, we can't create tables - they're created via migrations
+		// The buildLinkLookup will query the mock, which should return empty results
 
 		clock := clockwork.NewFakeClock()
 
@@ -410,9 +378,9 @@ func TestLake_TelemetryUsage_View_Ready(t *testing.T) {
 		}
 
 		view, err := NewView(ViewConfig{
-			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Logger:          laketesting.NewLogger(t),
 			Clock:           clock,
-			DB:              db,
+			ClickHouse:      mockDB,
 			InfluxDB:        mockInflux,
 			Bucket:          "test-bucket",
 			RefreshInterval: time.Second,
@@ -434,22 +402,9 @@ func TestLake_TelemetryUsage_View_WaitReady(t *testing.T) {
 
 	t.Run("returns immediately when already ready", func(t *testing.T) {
 		t.Parallel()
-		db := testDB(t)
+		mockDB := laketesting.NewDB(t)
 
-		// Create links table
-		conn, err := db.Conn(t.Context())
-		require.NoError(t, err)
-		defer conn.Close()
-		_, err = conn.ExecContext(t.Context(), `
-			CREATE TABLE dz_links_current (
-				pk VARCHAR,
-				side_a_pk VARCHAR,
-				side_a_iface_name VARCHAR,
-				side_z_pk VARCHAR,
-				side_z_iface_name VARCHAR
-			)
-		`)
-		require.NoError(t, err)
+		// With mock, we can't create tables - they're created via migrations
 
 		clock := clockwork.NewFakeClock()
 		mockInflux := &mockInfluxDBClient{
@@ -459,9 +414,9 @@ func TestLake_TelemetryUsage_View_WaitReady(t *testing.T) {
 		}
 
 		view, err := NewView(ViewConfig{
-			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Logger:          laketesting.NewLogger(t),
 			Clock:           clock,
-			DB:              db,
+			ClickHouse:      mockDB,
 			InfluxDB:        mockInflux,
 			Bucket:          "test-bucket",
 			RefreshInterval: time.Second,
@@ -479,26 +434,13 @@ func TestLake_TelemetryUsage_View_WaitReady(t *testing.T) {
 
 	t.Run("handles context cancellation", func(t *testing.T) {
 		t.Parallel()
-		db := testDB(t)
+		mockDB := laketesting.NewDB(t)
 
-		// Create links table
-		conn, err := db.Conn(t.Context())
-		require.NoError(t, err)
-		defer conn.Close()
-		_, err = conn.ExecContext(t.Context(), `
-			CREATE TABLE dz_links_current (
-				pk VARCHAR,
-				side_a_pk VARCHAR,
-				side_a_iface_name VARCHAR,
-				side_z_pk VARCHAR,
-				side_z_iface_name VARCHAR
-			)
-		`)
-		require.NoError(t, err)
+		// With mock, we can't create tables - they're created via migrations
 
 		view, err := NewView(ViewConfig{
-			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:              db,
+			Logger:          laketesting.NewLogger(t),
+			ClickHouse:      mockDB,
 			InfluxDB:        &mockInfluxDBClient{},
 			Bucket:          "test-bucket",
 			RefreshInterval: time.Second,
@@ -520,11 +462,11 @@ func TestLake_TelemetryUsage_View_Store(t *testing.T) {
 
 	t.Run("returns the underlying store", func(t *testing.T) {
 		t.Parallel()
-		db := testDB(t)
+		mockDB := laketesting.NewDB(t)
 
 		view, err := NewView(ViewConfig{
-			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:              db,
+			Logger:          laketesting.NewLogger(t),
+			ClickHouse:      mockDB,
 			InfluxDB:        &mockInfluxDBClient{},
 			Bucket:          "test-bucket",
 			RefreshInterval: time.Second,
@@ -542,11 +484,11 @@ func TestLake_TelemetryUsage_View_convertRowsToUsage(t *testing.T) {
 
 	t.Run("converts rows with tunnel ID extraction", func(t *testing.T) {
 		t.Parallel()
-		db := testDB(t)
+		mockDB := laketesting.NewDB(t)
 
 		view, err := NewView(ViewConfig{
-			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:              db,
+			Logger:          laketesting.NewLogger(t),
+			ClickHouse:      mockDB,
 			InfluxDB:        &mockInfluxDBClient{},
 			Bucket:          "test-bucket",
 			RefreshInterval: time.Second,
@@ -599,11 +541,11 @@ func TestLake_TelemetryUsage_View_convertRowsToUsage(t *testing.T) {
 
 	t.Run("handles first row as baseline for non-sparse counters", func(t *testing.T) {
 		t.Parallel()
-		db := testDB(t)
+		mockDB := laketesting.NewDB(t)
 
 		view, err := NewView(ViewConfig{
-			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:              db,
+			Logger:          laketesting.NewLogger(t),
+			ClickHouse:      mockDB,
 			InfluxDB:        &mockInfluxDBClient{},
 			Bucket:          "test-bucket",
 			RefreshInterval: time.Second,
@@ -645,11 +587,11 @@ func TestLake_TelemetryUsage_View_convertRowsToUsage(t *testing.T) {
 
 	t.Run("computes delta duration", func(t *testing.T) {
 		t.Parallel()
-		db := testDB(t)
+		mockDB := laketesting.NewDB(t)
 
 		view, err := NewView(ViewConfig{
-			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:              db,
+			Logger:          laketesting.NewLogger(t),
+			ClickHouse:      mockDB,
 			InfluxDB:        &mockInfluxDBClient{},
 			Bucket:          "test-bucket",
 			RefreshInterval: time.Second,

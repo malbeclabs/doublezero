@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -18,13 +19,17 @@ import (
 
 	anthropic "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
+	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 	"github.com/malbeclabs/doublezero/lake/pkg/agent"
 	"github.com/malbeclabs/doublezero/lake/pkg/agent/prompts"
 	"github.com/malbeclabs/doublezero/lake/pkg/agent/react"
 	"github.com/malbeclabs/doublezero/lake/pkg/agent/tools"
-	"github.com/malbeclabs/doublezero/lake/pkg/duck"
-	"github.com/malbeclabs/doublezero/lake/pkg/querier"
+	"github.com/malbeclabs/doublezero/lake/pkg/clickhouse"
+	"github.com/malbeclabs/doublezero/lake/pkg/clickhouse/dataset"
+	clickhousetesting "github.com/malbeclabs/doublezero/lake/pkg/clickhouse/testing"
+	serviceability "github.com/malbeclabs/doublezero/lake/pkg/indexer/dz/serviceability"
+	"github.com/malbeclabs/doublezero/lake/pkg/indexer/sol"
 	"github.com/stretchr/testify/require"
 )
 
@@ -48,22 +53,25 @@ func testLogger(t *testing.T) *slog.Logger {
 	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 }
 
-func testDB(t *testing.T) duck.DB {
-	db, err := duck.NewDB(context.Background(), "", testLogger(t))
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		db.Close()
-	})
-	return db
+// testTime returns a test timestamp truncated to milliseconds
+func testTime() time.Time {
+	return time.Now().UTC().Truncate(time.Millisecond)
 }
 
-func testQuerier(t *testing.T, db duck.DB) *querier.Querier {
-	q, err := querier.New(querier.Config{
-		Logger: testLogger(t),
-		DB:     db,
-	})
+// testOpID returns a new UUID for testing
+func testOpID() uuid.UUID {
+	return uuid.New()
+}
+
+func testDB(t *testing.T) clickhouse.DB {
+	db := clickhousetesting.NewDefaultDB(t)
+	// Run migrations
+	conn := db.Conn()
+	defer conn.Close()
+	log := testLogger(t)
+	err := clickhouse.RunMigrations(context.Background(), log, conn)
 	require.NoError(t, err)
-	return q
+	return db.DB
 }
 
 // loadMigration loads a migration file from the filesystem
@@ -97,7 +105,7 @@ func min(a, b int) int {
 }
 
 // executeSQLStatements executes SQL statements split by semicolons
-func executeSQLStatements(t *testing.T, ctx context.Context, conn duck.Connection, sql string) {
+func executeSQLStatements(t *testing.T, ctx context.Context, conn clickhouse.Connection, sql string) {
 	// Split by semicolon, but be careful with semicolons inside strings/comments
 	statements := strings.Split(sql, ";")
 	for i, stmt := range statements {
@@ -105,7 +113,7 @@ func executeSQLStatements(t *testing.T, ctx context.Context, conn duck.Connectio
 		if stmt == "" || strings.HasPrefix(stmt, "--") {
 			continue
 		}
-		_, err := conn.ExecContext(ctx, stmt)
+		err := conn.Exec(ctx, stmt)
 		if err != nil {
 			// Log more context about which statement failed
 			stmtPreview := stmt
@@ -119,7 +127,7 @@ func executeSQLStatements(t *testing.T, ctx context.Context, conn duck.Connectio
 }
 
 // loadTablesAndViews loads and executes the table and view creation migrations
-func loadTablesAndViews(t *testing.T, ctx context.Context, conn duck.Connection) {
+func loadTablesAndViews(t *testing.T, ctx context.Context, conn clickhouse.Connection) {
 	// Load and execute table creation migration
 	tablesSQL, err := loadMigration("00000001-create-tables.sql")
 	require.NoError(t, err, "Failed to load tables migration")
@@ -131,10 +139,20 @@ func loadTablesAndViews(t *testing.T, ctx context.Context, conn duck.Connection)
 	executeSQLStatements(t, ctx, conn, viewsSQL)
 }
 
+// OllamaExpectation represents a specific expectation for the ollama validator to check
+type OllamaExpectation struct {
+	// Description describes what should be present (e.g., "the number of newly connected validators")
+	Description string
+	// ExpectedValue is the expected value (e.g., "3")
+	ExpectedValue string
+	// Rationale explains why this value is expected (optional, helps the validator understand the context)
+	Rationale string
+}
+
 // ollamaEvaluateResponse uses a local Ollama instance to evaluate if the response correctly answers the question.
 // Returns true if the response is evaluated as correct, false otherwise.
 // If Ollama is not available, returns an error indicating the service is unavailable.
-func ollamaEvaluateResponse(t *testing.T, ctx context.Context, question, response string) (bool, error) {
+func ollamaEvaluateResponse(t *testing.T, ctx context.Context, question, response string, expectations ...OllamaExpectation) (bool, error) {
 	ollamaURL := os.Getenv("OLLAMA_URL")
 	if ollamaURL == "" {
 		// Detect if running in a devcontainer and use DIND_LOCALHOST hostname
@@ -145,26 +163,46 @@ func ollamaEvaluateResponse(t *testing.T, ctx context.Context, question, respons
 		}
 	}
 
-	model := os.Getenv("OLLAMA_MODEL")
+	model := os.Getenv("OLLAMA_EVAL_MODEL")
 	if model == "" {
-		// model = "llama3.1:8b"
-		model = "qwen2.5:7b-instruct"
+		// Use llama3.1:8b for evaluation - fast and good comprehension
+		// Evaluation is simpler than agent work (no tool calling, just YES/NO judgment)
+		model = "llama3.1:8b"
+	}
+
+	// Build expectations section if provided
+	var expectationsSection string
+	if len(expectations) > 0 {
+		var expectationLines []string
+		for i, exp := range expectations {
+			line := fmt.Sprintf("%d. %s: %s", i+1, exp.Description, exp.ExpectedValue)
+			if exp.Rationale != "" {
+				line += fmt.Sprintf(" (%s)", exp.Rationale)
+			}
+			expectationLines = append(expectationLines, line)
+		}
+		expectationsSection = fmt.Sprintf(`
+CRITICAL - Expectations to verify:
+%s
+
+If the response does not meet these expectations, respond with "NO".
+`, strings.Join(expectationLines, "\n"))
 	}
 
 	// Create evaluation prompt
-	evalPrompt := fmt.Sprintf(`You are evaluating whether an AI agent's response correctly answers a user's question.
+	evalPrompt := fmt.Sprintf(`You are evaluating whether an AI agent's response correctly handles a user's question.
 
 Question: %s
 
 Agent's Response:
 %s
-
-Does the agent's response correctly answer the question? Consider:
-- Does it directly address what was asked?
+%s
+Does the agent's response correctly handle the question? Consider:
+- Does it appropriately address what was asked (including correctly declining if the question is outside its scope)?
 - Is the information relevant and accurate?
-- Is it complete enough to be useful?
+- Is the response appropriate and useful?
 
-Respond with only "YES" or "NO" followed by a brief explanation.`, question, response)
+Respond with only "YES" or "NO" followed by a brief explanation.`, question, response, expectationsSection)
 
 	// Prepare request
 	reqBody := map[string]interface{}{
@@ -283,7 +321,7 @@ Respond with only "YES" or "NO" followed by a brief explanation.`, question, res
 type LLMClientFactory func(t *testing.T, systemPrompt string) react.LLMClient
 
 // setupAgent creates an agent instance with the given LLM client factory
-func setupAgent(t *testing.T, ctx context.Context, db duck.DB, llmFactory LLMClientFactory, debug bool, debugLevel int, cfg *react.Config) *agent.Agent {
+func setupAgent(t *testing.T, ctx context.Context, db clickhouse.DB, llmFactory LLMClientFactory, debug bool, debugLevel int, cfg *react.Config) *agent.Agent {
 	if cfg == nil {
 		cfg = &react.Config{}
 	}
@@ -295,9 +333,6 @@ func setupAgent(t *testing.T, ctx context.Context, db duck.DB, llmFactory LLMCli
 	} else {
 		logger = testLogger(t)
 	}
-
-	// Set up querier with the same database
-	q := testQuerier(t, db)
 
 	// Load prompts
 	prompts, err := prompts.Load()
@@ -320,7 +355,7 @@ func setupAgent(t *testing.T, ctx context.Context, db duck.DB, llmFactory LLMCli
 	}
 
 	// Create tool client
-	baseToolClient := tools.NewQuerierToolClient(&querierAdapter{querier: q})
+	baseToolClient := tools.NewClickhouseQueryTool(db)
 
 	// Wrap tool client with debug logging if DEBUG is set
 	var toolClient react.ToolClient = baseToolClient
@@ -337,12 +372,14 @@ func setupAgent(t *testing.T, ctx context.Context, db duck.DB, llmFactory LLMCli
 	cfg.LLM = llmClient
 	cfg.ToolClient = toolClient
 	cfg.FinalizationPrompt = prompts.Finalization
+	cfg.SummaryPrompt = prompts.Summary
 	reactAgent, err := react.NewAgent(cfg)
 	require.NoError(t, err)
 
 	// Create agent
 	return agent.NewAgent(&agent.AgentConfig{
 		ReactAgent: reactAgent,
+		LLMClient:  llmClient,
 	})
 }
 
@@ -373,13 +410,51 @@ func newAnthropicLLMClient(t *testing.T, systemPrompt string) react.LLMClient {
 	)
 }
 
-// querierAdapter adapts querier.Querier to tools.Querier interface
-type querierAdapter struct {
-	querier *querier.Querier
+// newOllamaLLMClient creates an Ollama LLM client for testing
+func newOllamaLLMClient(t *testing.T, systemPrompt string) react.LLMClient {
+	ollamaURL := os.Getenv("OLLAMA_URL")
+	if ollamaURL == "" {
+		// Detect if running in a devcontainer and use DIND_LOCALHOST hostname
+		if dindHost := os.Getenv("DIND_LOCALHOST"); dindHost != "" {
+			ollamaURL = fmt.Sprintf("http://%s:11434", dindHost)
+		} else {
+			ollamaURL = "http://localhost:11434"
+		}
+	}
+
+	model := os.Getenv("OLLAMA_AGENT_MODEL")
+	if model == "" {
+		// Use mistral-nemo - specifically optimized for tool calling in Ollama
+		// Other models (llama3.1, qwen2.5) have known issues with tool calling
+		model = "mistral-nemo"
+	}
+
+	return react.NewOllamaAgent(
+		ollamaURL,
+		model,
+		4000,
+		systemPrompt,
+	)
 }
 
-func (q *querierAdapter) Query(ctx context.Context, sql string) (querier.QueryResponse, error) {
-	return q.querier.Query(ctx, sql)
+// isOllamaAvailable checks if the local Ollama server is available
+func isOllamaAvailable() bool {
+	ollamaURL := os.Getenv("OLLAMA_URL")
+	if ollamaURL == "" {
+		if dindHost := os.Getenv("DIND_LOCALHOST"); dindHost != "" {
+			ollamaURL = fmt.Sprintf("http://%s:11434", dindHost)
+		} else {
+			ollamaURL = "http://localhost:11434"
+		}
+	}
+
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Get(ollamaURL + "/api/tags")
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
 }
 
 // debugToolClient wraps a ToolClient to log all tool calls and results when DEBUG is enabled
@@ -562,10 +637,145 @@ func (d *debugLLMClient) ConvertToolResults(toolUses []react.ToolUse, results []
 	return d.LLMClient.ConvertToolResults(toolUses, results)
 }
 
-// truncateForError truncates a string for use in error messages
-func truncateForError(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen] + "..."
+// Helper functions for pointer creation
+func int64Ptr(i int64) *int64 {
+	return &i
+}
+
+func strPtr(s string) *string {
+	return &s
+}
+
+func float64Ptr(f float64) *float64 {
+	return &f
+}
+
+// Seed functions for dimension tables
+func seedMetros(t *testing.T, ctx context.Context, conn clickhouse.Connection, metros []serviceability.Metro, snapshotTS, ingestedAt time.Time) {
+	log := testLogger(t)
+	metroDS, err := serviceability.NewMetroDataset(log)
+	require.NoError(t, err)
+	// Create schema instance to access ToRow
+	var metroSchema serviceability.MetroSchema
+	err = metroDS.WriteBatch(ctx, conn, len(metros), func(i int) ([]any, error) {
+		return metroSchema.ToRow(metros[i]), nil
+	}, &dataset.DimensionType2DatasetWriteConfig{
+		SnapshotTS: snapshotTS,
+		OpID:       testOpID(),
+	})
+	require.NoError(t, err)
+}
+
+func seedDevices(t *testing.T, ctx context.Context, conn clickhouse.Connection, devices []serviceability.Device, snapshotTS, ingestedAt time.Time) {
+	log := testLogger(t)
+	deviceDS, err := serviceability.NewDeviceDataset(log)
+	require.NoError(t, err)
+	// Create schema instance to access ToRow
+	var deviceSchema serviceability.DeviceSchema
+	err = deviceDS.WriteBatch(ctx, conn, len(devices), func(i int) ([]any, error) {
+		return deviceSchema.ToRow(devices[i]), nil
+	}, &dataset.DimensionType2DatasetWriteConfig{
+		SnapshotTS: snapshotTS,
+		OpID:       testOpID(),
+	})
+	require.NoError(t, err)
+}
+
+func seedUsers(t *testing.T, ctx context.Context, conn clickhouse.Connection, users []serviceability.User, snapshotTS, ingestedAt time.Time, opID uuid.UUID) {
+	log := testLogger(t)
+	userDS, err := serviceability.NewUserDataset(log)
+	require.NoError(t, err)
+	// Create schema instance to access ToRow
+	var userSchema serviceability.UserSchema
+	err = userDS.WriteBatch(ctx, conn, len(users), func(i int) ([]any, error) {
+		return userSchema.ToRow(users[i]), nil
+	}, &dataset.DimensionType2DatasetWriteConfig{
+		SnapshotTS: snapshotTS,
+		OpID:       opID,
+	})
+	require.NoError(t, err)
+}
+
+// Test helper types for Solana entities (used by test files)
+type testGossipNode struct {
+	Pubkey      string
+	GossipIP    net.IP
+	GossipPort  int32
+	TPUQUICIP   net.IP
+	TPUQUICPort int32
+	Version     string
+	Epoch       uint64
+}
+
+type testVoteAccount struct {
+	VotePubkey       string
+	NodePubkey       string
+	EpochVoteAccount bool
+	Epoch            uint64
+	ActivatedStake   int64
+	Commission       int64
+}
+
+func seedGossipNodes(t *testing.T, ctx context.Context, conn clickhouse.Connection, nodes []*testGossipNode, snapshotTS, ingestedAt time.Time, opID uuid.UUID) {
+	log := testLogger(t)
+	gossipDS, err := sol.NewGossipNodeDataset(log)
+	require.NoError(t, err)
+	err = gossipDS.WriteBatch(ctx, conn, len(nodes), func(i int) ([]any, error) {
+		node := nodes[i]
+		// PK: pubkey, Payload: epoch, gossip_ip, gossip_port, tpuquic_ip, tpuquic_port, version
+		return []any{
+			node.Pubkey,
+			int64(node.Epoch),
+			node.GossipIP.String(),
+			node.GossipPort,
+			node.TPUQUICIP.String(),
+			node.TPUQUICPort,
+			node.Version,
+		}, nil
+	}, &dataset.DimensionType2DatasetWriteConfig{
+		SnapshotTS: snapshotTS,
+		OpID:       opID,
+	})
+	require.NoError(t, err)
+}
+
+func seedVoteAccounts(t *testing.T, ctx context.Context, conn clickhouse.Connection, accounts []testVoteAccount, snapshotTS, ingestedAt time.Time, opID uuid.UUID) {
+	log := testLogger(t)
+	voteDS, err := sol.NewVoteAccountDataset(log)
+	require.NoError(t, err)
+	err = voteDS.WriteBatch(ctx, conn, len(accounts), func(i int) ([]any, error) {
+		account := accounts[i]
+		epochVoteAccountStr := "false"
+		if account.EpochVoteAccount {
+			epochVoteAccountStr = "true"
+		}
+		// PK: vote_pubkey, Payload: epoch, node_pubkey, activated_stake_lamports, epoch_vote_account, commission_percentage
+		return []any{
+			account.VotePubkey,
+			int64(account.Epoch),
+			account.NodePubkey,
+			account.ActivatedStake,
+			epochVoteAccountStr,
+			account.Commission,
+		}, nil
+	}, &dataset.DimensionType2DatasetWriteConfig{
+		SnapshotTS: snapshotTS,
+		OpID:       opID,
+	})
+	require.NoError(t, err)
+}
+
+func seedLinks(t *testing.T, ctx context.Context, conn clickhouse.Connection, links []serviceability.Link, snapshotTS time.Time, opID uuid.UUID) {
+	log := testLogger(t)
+	linkDS, err := serviceability.NewLinkDataset(log)
+	require.NoError(t, err)
+	// Create schema instance to access ToRow
+	var linkSchema serviceability.LinkSchema
+	err = linkDS.WriteBatch(ctx, conn, len(links), func(i int) ([]any, error) {
+		return linkSchema.ToRow(links[i]), nil
+	}, &dataset.DimensionType2DatasetWriteConfig{
+		SnapshotTS: snapshotTS,
+		OpID:       opID,
+	})
+	require.NoError(t, err)
 }

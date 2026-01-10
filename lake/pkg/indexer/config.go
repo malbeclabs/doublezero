@@ -8,7 +8,7 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/jonboulle/clockwork"
-	"github.com/malbeclabs/doublezero/lake/pkg/duck"
+	"github.com/malbeclabs/doublezero/lake/pkg/clickhouse"
 	dzsvc "github.com/malbeclabs/doublezero/lake/pkg/indexer/dz/serviceability"
 	dztelemlatency "github.com/malbeclabs/doublezero/lake/pkg/indexer/dz/telemetry/latency"
 	dztelemusage "github.com/malbeclabs/doublezero/lake/pkg/indexer/dz/telemetry/usage"
@@ -17,9 +17,9 @@ import (
 )
 
 type Config struct {
-	Logger *slog.Logger
-	Clock  clockwork.Clock
-	DB     duck.DB
+	Logger     *slog.Logger
+	Clock      clockwork.Clock
+	ClickHouse clickhouse.DB
 
 	RefreshInterval time.Duration
 	MaxConcurrency  int
@@ -45,20 +45,14 @@ type Config struct {
 
 	// Solana configuration.
 	SolanaRPC sol.SolanaRPC
-
-	// Maintenance configuration.
-	// If set to 0, the maintenance task is disabled.
-	MaintenanceIntervalShort time.Duration // Interval for short maintenance tasks: flush_inlined_data, merge_adjacent_files (default: 30 minutes)
-	MaintenanceIntervalLong  time.Duration // Interval for long maintenance tasks: rewrite_data_files, merge_adjacent_files, expire_snapshots, cleanup_old_files, delete_orphaned_files (default: 3 hours)
-	ExpireSnapshotsOlderThan time.Duration // Age threshold for expiring snapshots (default: 1 day)
 }
 
 func (c *Config) Validate() error {
 	if c.Logger == nil {
 		return errors.New("logger is required")
 	}
-	if c.DB == nil {
-		return errors.New("db is required")
+	if c.ClickHouse == nil {
+		return errors.New("clickhouse connection is required")
 	}
 	if c.RefreshInterval <= 0 {
 		return errors.New("refresh interval must be greater than 0")

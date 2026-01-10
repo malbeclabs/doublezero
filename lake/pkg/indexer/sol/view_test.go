@@ -3,16 +3,14 @@ package sol
 import (
 	"context"
 	"fmt"
-	"log/slog"
-	"os"
 	"testing"
 	"time"
 
-	_ "github.com/duckdb/duckdb-go/v2"
+	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/jonboulle/clockwork"
-	"github.com/malbeclabs/doublezero/lake/pkg/duck"
+	laketesting "github.com/malbeclabs/doublezero/lake/pkg/testing"
 	"github.com/stretchr/testify/require"
 )
 
@@ -76,28 +74,20 @@ func (m *mockSolanaRPC) GetBlockProduction(ctx context.Context) (*solanarpc.GetB
 	}, nil
 }
 
-func testDB(t *testing.T) duck.DB {
-	db, err := duck.NewDB(t.Context(), "", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		db.Close()
-	})
-	return db
-}
 func TestLake_Solana_View_Ready(t *testing.T) {
 	t.Parallel()
 
 	t.Run("returns false when not ready", func(t *testing.T) {
 		t.Parallel()
 
-		db := testDB(t)
+		db := laketesting.NewDB(t)
 
 		view, err := NewView(ViewConfig{
-			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Logger:          laketesting.NewLogger(t),
 			Clock:           clockwork.NewFakeClock(),
 			RPC:             &mockSolanaRPC{},
 			RefreshInterval: time.Second,
-			DB:              db,
+			ClickHouse:      db,
 		})
 		require.NoError(t, err)
 
@@ -107,14 +97,14 @@ func TestLake_Solana_View_Ready(t *testing.T) {
 	t.Run("returns true after successful refresh", func(t *testing.T) {
 		t.Parallel()
 
-		db := testDB(t)
+		db := laketesting.NewDB(t)
 
 		view, err := NewView(ViewConfig{
-			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Logger:          laketesting.NewLogger(t),
 			Clock:           clockwork.NewFakeClock(),
 			RPC:             &mockSolanaRPC{},
 			RefreshInterval: time.Second,
-			DB:              db,
+			ClickHouse:      db,
 		})
 		require.NoError(t, err)
 
@@ -132,14 +122,14 @@ func TestLake_Solana_View_WaitReady(t *testing.T) {
 	t.Run("returns immediately when already ready", func(t *testing.T) {
 		t.Parallel()
 
-		db := testDB(t)
+		db := laketesting.NewDB(t)
 
 		view, err := NewView(ViewConfig{
-			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Logger:          laketesting.NewLogger(t),
 			Clock:           clockwork.NewFakeClock(),
 			RPC:             &mockSolanaRPC{},
 			RefreshInterval: time.Second,
-			DB:              db,
+			ClickHouse:      db,
 		})
 		require.NoError(t, err)
 
@@ -154,14 +144,14 @@ func TestLake_Solana_View_WaitReady(t *testing.T) {
 	t.Run("returns error when context is cancelled", func(t *testing.T) {
 		t.Parallel()
 
-		db := testDB(t)
+		db := laketesting.NewDB(t)
 
 		view, err := NewView(ViewConfig{
-			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Logger:          laketesting.NewLogger(t),
 			Clock:           clockwork.NewFakeClock(),
 			RPC:             &mockSolanaRPC{},
 			RefreshInterval: time.Second,
-			DB:              db,
+			ClickHouse:      db,
 		})
 		require.NoError(t, err)
 
@@ -180,7 +170,7 @@ func TestLake_Solana_View_Refresh(t *testing.T) {
 	t.Run("stores all data on refresh", func(t *testing.T) {
 		t.Parallel()
 
-		db := testDB(t)
+		db := laketesting.NewDB(t)
 
 		pk1 := solana.MustPublicKeyFromBase58("11111111111111111111111111111112")
 		pk2 := solana.MustPublicKeyFromBase58("SysvarRent111111111111111111111111111111111")
@@ -205,11 +195,11 @@ func TestLake_Solana_View_Refresh(t *testing.T) {
 		}
 
 		view, err := NewView(ViewConfig{
-			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Logger:          laketesting.NewLogger(t),
 			Clock:           clockwork.NewFakeClock(),
 			RPC:             rpc,
 			RefreshInterval: time.Second,
-			DB:              db,
+			ClickHouse:      db,
 		})
 		require.NoError(t, err)
 
@@ -256,50 +246,84 @@ func TestLake_Solana_View_Refresh(t *testing.T) {
 		err = view.Refresh(ctx)
 		require.NoError(t, err)
 
-		// Verify leader schedule was stored
-		var leaderScheduleCount int
+		// Verify data was inserted by querying the database
 		conn, err := db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM solana_leader_schedule_current").Scan(&leaderScheduleCount)
-		require.NoError(t, err)
-		require.Equal(t, 2, leaderScheduleCount, "should have 2 leader schedule entries")
 
 		// Verify vote accounts were stored
-		var voteAccountsCount int
-		conn, err = db.Conn(ctx)
+		rows, err := conn.Query(ctx, `
+			WITH ranked AS (
+				SELECT
+					*,
+					ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
+				FROM dim_solana_vote_accounts_history
+			)
+			SELECT count() FROM ranked WHERE rn = 1 AND is_deleted = 0
+		`)
 		require.NoError(t, err)
-		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM solana_vote_accounts_current").Scan(&voteAccountsCount)
-		require.NoError(t, err)
-		require.Equal(t, 2, voteAccountsCount, "should have 2 vote accounts")
+		require.True(t, rows.Next())
+		var voteAccountsCount uint64
+		require.NoError(t, rows.Scan(&voteAccountsCount))
+		rows.Close()
+		require.Equal(t, uint64(2), voteAccountsCount, "should have 2 vote accounts")
 
 		// Verify gossip nodes were stored
-		var gossipNodesCount int
-		conn, err = db.Conn(ctx)
+		rows, err = conn.Query(ctx, `
+			WITH ranked AS (
+				SELECT
+					*,
+					ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
+				FROM dim_solana_gossip_nodes_history
+			)
+			SELECT count() FROM ranked WHERE rn = 1 AND is_deleted = 0
+		`)
 		require.NoError(t, err)
-		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM solana_gossip_nodes_current").Scan(&gossipNodesCount)
-		require.NoError(t, err)
-		require.Equal(t, 3, gossipNodesCount, "should have 3 gossip nodes")
+		require.True(t, rows.Next())
+		var gossipNodesCount uint64
+		require.NoError(t, rows.Scan(&gossipNodesCount))
+		rows.Close()
+		require.Equal(t, uint64(3), gossipNodesCount, "should have 3 gossip nodes")
 
 		// Note: GeoIP records are now handled by the geoip view, not the solana view
 
 		// Verify specific data in leader schedule
-		var slotCount int
+		var slotCount int64
 		conn, err = db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT slot_count FROM solana_leader_schedule_current WHERE node_pubkey = ?", leaderPK1.String()).Scan(&slotCount)
+		rows, err = conn.Query(ctx, `
+			WITH ranked AS (
+				SELECT
+					*,
+					ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
+				FROM dim_solana_leader_schedule_history
+			)
+			SELECT slot_count FROM ranked WHERE rn = 1 AND is_deleted = 0 AND node_pubkey = ?
+		`, leaderPK1.String())
 		require.NoError(t, err)
-		require.Equal(t, 3, slotCount, "leaderPK1 should have 3 slots")
+		require.True(t, rows.Next())
+		err = rows.Scan(&slotCount)
+		require.NoError(t, err)
+		require.Equal(t, int64(3), slotCount, "leaderPK1 should have 3 slots")
 
 		// Verify specific data in vote accounts
 		var activatedStake int64
 		conn, err = db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT activated_stake_lamports FROM solana_vote_accounts_current WHERE vote_pubkey = ?", votePK1.String()).Scan(&activatedStake)
+		rows, err = conn.Query(ctx, `
+			WITH ranked AS (
+				SELECT
+					*,
+					ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
+				FROM dim_solana_vote_accounts_history
+			)
+			SELECT activated_stake_lamports FROM ranked WHERE rn = 1 AND is_deleted = 0 AND vote_pubkey = ?
+		`, votePK1.String())
+		require.NoError(t, err)
+		require.True(t, rows.Next())
+		err = rows.Scan(&activatedStake)
 		require.NoError(t, err)
 		require.Equal(t, int64(1000000), activatedStake, "votePK1 should have correct stake")
 
@@ -308,7 +332,18 @@ func TestLake_Solana_View_Refresh(t *testing.T) {
 		conn, err = db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT gossip_ip FROM solana_gossip_nodes_current WHERE pubkey = ?", pk1.String()).Scan(&gossipIP)
+		rows, err = conn.Query(ctx, `
+			WITH ranked AS (
+				SELECT
+					*,
+					ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
+				FROM dim_solana_gossip_nodes_history
+			)
+			SELECT gossip_ip FROM ranked WHERE rn = 1 AND is_deleted = 0 AND pubkey = ?
+		`, pk1.String())
+		require.NoError(t, err)
+		require.True(t, rows.Next())
+		err = rows.Scan(&gossipIP)
 		require.NoError(t, err)
 		require.Equal(t, "1.1.1.1", gossipIP, "pk1 should have correct gossip IP")
 	})
@@ -317,7 +352,7 @@ func TestLake_Solana_View_Refresh(t *testing.T) {
 
 		t.Parallel()
 
-		db := testDB(t)
+		db := laketesting.NewDB(t)
 
 		pk1 := solana.MustPublicKeyFromBase58("11111111111111111111111111111112")
 		pk2 := solana.MustPublicKeyFromBase58("SysvarRent111111111111111111111111111111111")
@@ -337,11 +372,11 @@ func TestLake_Solana_View_Refresh(t *testing.T) {
 		}
 
 		view, err := NewView(ViewConfig{
-			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Logger:          laketesting.NewLogger(t),
 			Clock:           clockwork.NewFakeClock(),
 			RPC:             rpc,
 			RefreshInterval: time.Second,
-			DB:              db,
+			ClickHouse:      db,
 		})
 		require.NoError(t, err)
 
@@ -350,13 +385,24 @@ func TestLake_Solana_View_Refresh(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify gossip nodes are still stored
-		var gossipNodesCount int
+		var gossipNodesCount uint64
 		conn, err := db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM solana_gossip_nodes_current").Scan(&gossipNodesCount)
+		rows, err := conn.Query(ctx, `
+			WITH ranked AS (
+				SELECT
+					*,
+					ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
+				FROM dim_solana_gossip_nodes_history
+			)
+			SELECT count() FROM ranked WHERE rn = 1 AND is_deleted = 0
+		`)
 		require.NoError(t, err)
-		require.Equal(t, 2, gossipNodesCount, "should have 2 gossip nodes")
+		require.True(t, rows.Next())
+		require.NoError(t, rows.Scan(&gossipNodesCount))
+		rows.Close()
+		require.Equal(t, uint64(2), gossipNodesCount, "should have 2 gossip nodes")
 		// Note: GeoIP records are now handled by the geoip view, not the solana view
 	})
 }
@@ -371,7 +417,7 @@ func TestLake_Solana_View_RefreshBlockProduction(t *testing.T) {
 	t.Run("stores block production data", func(t *testing.T) {
 		t.Parallel()
 
-		db := testDB(t)
+		db := laketesting.NewDB(t)
 
 		leaderPK1 := solana.MustPublicKeyFromBase58("11111111111111111111111111111112")
 		leaderPK2 := solana.MustPublicKeyFromBase58("SysvarRent111111111111111111111111111111111")
@@ -395,11 +441,11 @@ func TestLake_Solana_View_RefreshBlockProduction(t *testing.T) {
 		}
 
 		view, err := NewView(ViewConfig{
-			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Logger:          laketesting.NewLogger(t),
 			Clock:           clockwork.NewFakeClock(),
 			RPC:             rpc,
 			RefreshInterval: time.Second,
-			DB:              db,
+			ClickHouse:      db,
 		})
 		require.NoError(t, err)
 
@@ -408,21 +454,28 @@ func TestLake_Solana_View_RefreshBlockProduction(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify block production was stored
-		var count int
+		var count uint64
 		conn, err := db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM solana_block_production_raw").Scan(&count)
+		rows, err := conn.Query(ctx, "SELECT COUNT(*) FROM fact_solana_block_production")
 		require.NoError(t, err)
-		require.Equal(t, 2, count, "should have 2 block production entries")
+		require.True(t, rows.Next())
+		require.NoError(t, rows.Scan(&count))
+		rows.Close()
+		require.Equal(t, uint64(2), count, "should have 2 block production entries")
 
 		// Verify specific data
-		var epoch int
+		var epoch int32
 		var leaderIdentityPubkey string
 		var leaderSlotsAssigned, blocksProduced int64
-		err = conn.QueryRowContext(ctx, "SELECT epoch, leader_identity_pubkey, leader_slots_assigned_cum, blocks_produced_cum FROM solana_block_production_raw WHERE leader_identity_pubkey = ?", leaderPK1.String()).Scan(&epoch, &leaderIdentityPubkey, &leaderSlotsAssigned, &blocksProduced)
+		rows, err = conn.Query(ctx, "SELECT epoch, leader_identity_pubkey, leader_slots_assigned_cum, blocks_produced_cum FROM fact_solana_block_production WHERE leader_identity_pubkey = ?", leaderPK1.String())
 		require.NoError(t, err)
-		require.Equal(t, 100, epoch)
+		require.True(t, rows.Next())
+		require.NoError(t, rows.Scan(&epoch, &leaderIdentityPubkey, &leaderSlotsAssigned, &blocksProduced))
+		rows.Close()
+		require.NoError(t, err)
+		require.Equal(t, int32(100), epoch)
 		require.Equal(t, leaderPK1.String(), leaderIdentityPubkey)
 		require.Equal(t, int64(100), leaderSlotsAssigned)
 		require.Equal(t, int64(95), blocksProduced)
@@ -431,7 +484,7 @@ func TestLake_Solana_View_RefreshBlockProduction(t *testing.T) {
 	t.Run("handles empty block production response", func(t *testing.T) {
 		t.Parallel()
 
-		db := testDB(t)
+		db := laketesting.NewDB(t)
 
 		rpc := &mockSolanaRPC{
 			getEpochInfoFunc: func(ctx context.Context, commitment solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
@@ -449,11 +502,11 @@ func TestLake_Solana_View_RefreshBlockProduction(t *testing.T) {
 		}
 
 		view, err := NewView(ViewConfig{
-			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Logger:          laketesting.NewLogger(t),
 			Clock:           clockwork.NewFakeClock(),
 			RPC:             rpc,
 			RefreshInterval: time.Second,
-			DB:              db,
+			ClickHouse:      db,
 		})
 		require.NoError(t, err)
 
@@ -468,17 +521,27 @@ func TestLake_Solana_View_RefreshBlockProduction(t *testing.T) {
 
 		// Check if table exists before querying
 		var tableExists bool
-		err = conn.QueryRowContext(ctx, `
+		var rows driver.Rows
+		rows, err = conn.Query(ctx, `
 			SELECT EXISTS (
-				SELECT 1 FROM information_schema.tables
-				WHERE table_name = 'solana_block_production_raw'
+				SELECT 1 FROM system.tables
+				WHERE database = currentDatabase()
+				AND name = 'fact_solana_block_production'
 			)
-		`).Scan(&tableExists)
+		`)
+		require.NoError(t, err)
+		require.True(t, rows.Next())
+		require.NoError(t, rows.Scan(&tableExists))
+		rows.Close()
 		if err == nil && tableExists {
-			var count int
-			err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM solana_block_production_raw").Scan(&count)
+			var count uint64
+			rows, err = conn.Query(ctx, "SELECT COUNT(*) FROM fact_solana_block_production")
 			require.NoError(t, err)
-			require.Equal(t, 0, count, "should have no block production entries")
+			require.True(t, rows.Next())
+			err = rows.Scan(&count)
+			rows.Close()
+			require.NoError(t, err)
+			require.Equal(t, uint64(0), count, "should have no block production entries")
 		}
 		// If table doesn't exist, that's also fine - no data means no table creation
 	})
@@ -486,7 +549,7 @@ func TestLake_Solana_View_RefreshBlockProduction(t *testing.T) {
 	t.Run("handles invalid production data", func(t *testing.T) {
 		t.Parallel()
 
-		db := testDB(t)
+		db := laketesting.NewDB(t)
 
 		rpc := &mockSolanaRPC{
 			getEpochInfoFunc: func(ctx context.Context, commitment solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
@@ -506,11 +569,11 @@ func TestLake_Solana_View_RefreshBlockProduction(t *testing.T) {
 		}
 
 		view, err := NewView(ViewConfig{
-			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Logger:          laketesting.NewLogger(t),
 			Clock:           clockwork.NewFakeClock(),
 			RPC:             rpc,
 			RefreshInterval: time.Second,
-			DB:              db,
+			ClickHouse:      db,
 		})
 		require.NoError(t, err)
 
@@ -525,17 +588,27 @@ func TestLake_Solana_View_RefreshBlockProduction(t *testing.T) {
 
 		// Check if table exists before querying
 		var tableExists bool
-		err = conn.QueryRowContext(ctx, `
+		var rows driver.Rows
+		rows, err = conn.Query(ctx, `
 			SELECT EXISTS (
-				SELECT 1 FROM information_schema.tables
-				WHERE table_name = 'solana_block_production_raw'
+				SELECT 1 FROM system.tables
+				WHERE database = currentDatabase()
+				AND name = 'fact_solana_block_production'
 			)
-		`).Scan(&tableExists)
+		`)
+		require.NoError(t, err)
+		require.True(t, rows.Next())
+		require.NoError(t, rows.Scan(&tableExists))
+		rows.Close()
 		if err == nil && tableExists {
-			var count int
-			err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM solana_block_production_raw").Scan(&count)
+			var count uint64
+			rows, err = conn.Query(ctx, "SELECT COUNT(*) FROM fact_solana_block_production")
 			require.NoError(t, err)
-			require.Equal(t, 0, count, "should have no block production entries")
+			require.True(t, rows.Next())
+			err = rows.Scan(&count)
+			rows.Close()
+			require.NoError(t, err)
+			require.Equal(t, uint64(0), count, "should have no block production entries")
 		}
 		// If table doesn't exist, that's also fine - no data means no table creation
 	})
@@ -543,7 +616,7 @@ func TestLake_Solana_View_RefreshBlockProduction(t *testing.T) {
 	t.Run("handles RPC errors", func(t *testing.T) {
 		t.Parallel()
 
-		db := testDB(t)
+		db := laketesting.NewDB(t)
 
 		rpc := &mockSolanaRPC{
 			getEpochInfoFunc: func(ctx context.Context, commitment solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
@@ -552,11 +625,11 @@ func TestLake_Solana_View_RefreshBlockProduction(t *testing.T) {
 		}
 
 		view, err := NewView(ViewConfig{
-			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Logger:          laketesting.NewLogger(t),
 			Clock:           clockwork.NewFakeClock(),
 			RPC:             rpc,
 			RefreshInterval: time.Second,
-			DB:              db,
+			ClickHouse:      db,
 		})
 		require.NoError(t, err)
 

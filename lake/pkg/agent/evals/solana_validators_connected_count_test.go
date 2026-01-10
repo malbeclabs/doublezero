@@ -5,11 +5,15 @@ package evals_test
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"net"
 	"os"
-	"strings"
 	"testing"
+	"time"
 
-	"github.com/malbeclabs/doublezero/lake/pkg/duck"
+	"github.com/malbeclabs/doublezero/lake/pkg/clickhouse"
+	"github.com/malbeclabs/doublezero/lake/pkg/clickhouse/dataset"
+	serviceability "github.com/malbeclabs/doublezero/lake/pkg/indexer/dz/serviceability"
 	"github.com/stretchr/testify/require"
 )
 
@@ -20,10 +24,19 @@ func TestLake_Agent_Evals_Anthropic_SolanaValidatorsConnectedCount(t *testing.T)
 		t.Skip("ANTHROPIC_API_KEY not set, skipping eval test")
 	}
 
-	runTest_SolanaValidatorsConnectedCount(t)
+	runTest_SolanaValidatorsConnectedCount(t, newAnthropicLLMClient)
 }
 
-func runTest_SolanaValidatorsConnectedCount(t *testing.T) {
+func TestLake_Agent_Evals_OllamaLocal_SolanaValidatorsConnectedCount(t *testing.T) {
+	t.Parallel()
+	if !isOllamaAvailable() {
+		t.Skip("Ollama not available, skipping eval test")
+	}
+
+	runTest_SolanaValidatorsConnectedCount(t, newOllamaLLMClient)
+}
+
+func runTest_SolanaValidatorsConnectedCount(t *testing.T, llmFactory LLMClientFactory) {
 	ctx := context.Background()
 
 	// Get debug level
@@ -40,8 +53,17 @@ func runTest_SolanaValidatorsConnectedCount(t *testing.T) {
 	// Seed Solana validators connected count data
 	seedSolanaValidatorsConnectedCountData(t, ctx, conn)
 
-	// Set up agent with Anthropic LLM client
-	agentInstance := setupAgent(t, ctx, db, newAnthropicLLMClient, debug, debugLevel, nil)
+	// Validate database query results before testing agent
+	validateSolanaValidatorsConnectedCountQuery(t, ctx, conn)
+
+	// Skip agent execution in short mode
+	if testing.Short() {
+		t.Log("Skipping agent execution in short mode")
+		return
+	}
+
+	// Set up agent with LLM client
+	agentInstance := setupAgent(t, ctx, db, llmFactory, debug, debugLevel, nil)
 
 	// Run the query
 	var output bytes.Buffer
@@ -69,78 +91,22 @@ func runTest_SolanaValidatorsConnectedCount(t *testing.T) {
 		t.Logf("Agent response:\n%s", response)
 	}
 
-	// Validate the response
-	validateSolanaValidatorsConnectedCountResponse(t, response)
-
-	// Evaluate with Ollama
-	isCorrect, err := ollamaEvaluateResponse(t, ctx, question, response)
+	// Evaluate with Ollama - include specific numeric expectations
+	expectations := []OllamaExpectation{
+		{
+			Description:   "Count of validators newly connected in the last day",
+			ExpectedValue: "3 validators",
+			Rationale:     "The response should state that 3 validators connected",
+		},
+		{
+			Description:   "List of newly connected validators",
+			ExpectedValue: "vote1, vote2, and/or vote5 should be listed with their vote_pubkey identifiers",
+			Rationale:     "When count is small, specific validators should be listed per ROLE.md guidelines",
+		},
+	}
+	isCorrect, err := ollamaEvaluateResponse(t, ctx, question, response, expectations...)
 	require.NoError(t, err, "Ollama evaluation must be available")
 	require.True(t, isCorrect, "Ollama evaluation indicates the response does not correctly answer the question")
-}
-
-// validateSolanaValidatorsConnectedCountResponse validates that the response correctly handles the ambiguous question
-func validateSolanaValidatorsConnectedCountResponse(t *testing.T, response string) {
-	responseLower := strings.ToLower(response)
-
-	// Should mention connection or connected
-	connectMentioned := strings.Contains(responseLower, "connect") ||
-		strings.Contains(responseLower, "connected") ||
-		strings.Contains(responseLower, "on dz")
-	require.True(t, connectMentioned,
-		"Response should mention connection or connected. Got: %s",
-		truncateForError(response, 200))
-
-	// Should mention time period (last day, 24 hours, etc.)
-	timeMentioned := strings.Contains(responseLower, "24 hours") ||
-		strings.Contains(responseLower, "last day") ||
-		strings.Contains(responseLower, "past day") ||
-		strings.Contains(responseLower, "yesterday") ||
-		strings.Contains(responseLower, "recent")
-	require.True(t, timeMentioned,
-		"Response should mention time period (24 hours, last day, etc.). Got: %s",
-		truncateForError(response, 200))
-
-	// CRITICAL: The response should clarify what it's counting OR use the most sensible interpretation
-	// Expected: The agent should either:
-	// 1. Clarify the question and provide both counts (currently connected vs newly connected)
-	// 2. Use the most sensible interpretation: "newly connected" (weren't connected 24 hours ago)
-	// 3. If using first_connection_events, should detect bulk ingestion artifacts
-
-	// Should contain a numeric count
-	hasNumbers := false
-	for _, char := range response {
-		if char >= '0' && char <= '9' {
-			hasNumbers = true
-			break
-		}
-	}
-	require.True(t, hasNumbers,
-		"Response should contain numeric data (count of validators). Got: %s",
-		truncateForError(response, 200))
-
-	// CRITICAL: The count should be reasonable - if the agent reports a very high number (like 372)
-	// and mentions bulk ingestion or identical timestamps, that's actually good (shows awareness)
-	// But ideally, the agent should use the historical comparison method to get the correct count
-
-	// The expected answer: 3 validators newly connected (vote1, vote2, and vote5)
-	// vote3 and vote4 were already connected before the 24-hour window (should NOT be counted)
-	// vote5 connected 12 hours ago (same timestamp as vote1) - since it's currently connected and wasn't connected 24 hours ago, it IS newly connected and should be counted
-
-	// Should mention vote_pubkey for at least some validators if listing them
-	// OR should provide a count that makes sense
-	voteMentioned := strings.Contains(responseLower, "vote1") ||
-		strings.Contains(responseLower, "vote2") ||
-		strings.Contains(responseLower, "vote3") ||
-		strings.Contains(responseLower, "vote4") ||
-		strings.Contains(responseLower, "vote5") ||
-		strings.Contains(responseLower, "validator")
-	// This is optional - the agent might just provide a count without listing validators
-	// But if it does list validators, it should include vote_pubkey
-
-	// Log the response for debugging
-	t.Logf("Response mentions: connect=%v, time=%v, numbers=%v, vote=%v. Full response: %s",
-		connectMentioned, timeMentioned, hasNumbers, voteMentioned,
-		truncateForError(response, 500))
 }
 
 // seedSolanaValidatorsConnectedCountData seeds data for testing "how many validators connected in the last day"
@@ -151,28 +117,20 @@ func validateSolanaValidatorsConnectedCountResponse(t *testing.T, response strin
 // - vote5: Connected 12 hours ago (same timestamp as vote1) - since it's currently connected and wasn't connected 24 hours ago, it IS newly connected
 // Expected answer for "newly connected": 3 validators (vote1, vote2, and vote5)
 // Expected answer for "currently connected": 5 validators (all are currently connected)
-func seedSolanaValidatorsConnectedCountData(t *testing.T, ctx context.Context, conn duck.Connection) {
-	loadTablesAndViews(t, ctx, conn)
+func seedSolanaValidatorsConnectedCountData(t *testing.T, ctx context.Context, conn clickhouse.Connection) {
+	now := testTime()
 
 	// Seed metros
-	_, err := conn.ExecContext(ctx, `
-		INSERT INTO dz_metros_current (pk, code, name, as_of_ts, row_hash) VALUES
-		('metro1', 'nyc', 'New York', CURRENT_TIMESTAMP, 'metrohash1')
-	`)
-	require.NoError(t, err)
+	metros := []serviceability.Metro{
+		{PK: "metro1", Code: "nyc", Name: "New York"},
+	}
+	seedMetros(t, ctx, conn, metros, now, now)
 
 	// Seed devices
-	_, err = conn.ExecContext(ctx, `
-		INSERT INTO dz_devices_current (pk, code, status, metro_pk, device_type, as_of_ts, row_hash) VALUES
-		('device1', 'nyc-dzd1', 'activated', 'metro1', 'DZD', CURRENT_TIMESTAMP, 'devicehash1')
-	`)
-	require.NoError(t, err)
-
-	now := "CURRENT_TIMESTAMP"
-	// T0 = 30 days ago (vote3 and vote4 connected)
-	// T1 = 24 hours ago (the cutoff for "last day")
-	// T1+12h = 12 hours ago (vote1 and vote5 connect - bulk ingestion scenario)
-	// T1+18h = 6 hours ago (vote2 connects)
+	devices := []serviceability.Device{
+		{PK: "device1", Code: "nyc-dzd1", Status: "activated", MetroPK: "metro1", DeviceType: "DZD"},
+	}
+	seedDevices(t, ctx, conn, devices, now, now)
 
 	// Seed DZ users history
 	// user1: Connected 12 hours ago (for vote1 - newly connected)
@@ -180,93 +138,58 @@ func seedSolanaValidatorsConnectedCountData(t *testing.T, ctx context.Context, c
 	// user3: Connected 30 days ago (for vote3 - already connected, should NOT be counted)
 	// user4: Connected 30 days ago (for vote4 - already connected, should NOT be counted)
 	// user5: Connected 12 hours ago (for vote5 - bulk ingestion, same timestamp as vote1)
-	_, err = conn.ExecContext(ctx, `
-		INSERT INTO dz_users_history (pk, owner_pk, status, kind, client_ip, dz_ip, device_pk, tunnel_id, valid_from, valid_to, op, row_hash) VALUES
-		-- user1: Connected 12 hours ago (vote1 - newly connected)
-		('user1', 'owner1', 'activated', 'IBRL', '1.1.1.1', '10.0.0.1', 'device1', 501, `+now+` - INTERVAL '12 hours', NULL, 'I', 'userhash1'),
-		-- user2: Connected 6 hours ago (vote2 - newly connected)
-		('user2', 'owner2', 'activated', 'IBRL', '2.2.2.2', '10.0.0.2', 'device1', 502, `+now+` - INTERVAL '6 hours', NULL, 'I', 'userhash2'),
-		-- user3: Connected 30 days ago (vote3 - already connected, should NOT be counted)
-		('user3', 'owner3', 'activated', 'IBRL', '3.3.3.3', '10.0.0.3', 'device1', 503, `+now+` - INTERVAL '30 days', NULL, 'I', 'userhash3'),
-		-- user4: Connected 30 days ago (vote4 - already connected, should NOT be counted)
-		('user4', 'owner4', 'activated', 'IBRL', '4.4.4.4', '10.0.0.4', 'device1', 504, `+now+` - INTERVAL '30 days', NULL, 'I', 'userhash4'),
-		-- user5: Connected 12 hours ago (vote5 - bulk ingestion, same timestamp as vote1)
-		('user5', 'owner5', 'activated', 'IBRL', '5.5.5.5', '10.0.0.5', 'device1', 505, `+now+` - INTERVAL '12 hours', NULL, 'I', 'userhash5')
-	`)
-	require.NoError(t, err)
+	users30DaysAgo := []serviceability.User{
+		{PK: "user3", OwnerPubkey: "owner3", Status: "activated", Kind: "IBRL", ClientIP: net.ParseIP("3.3.3.3"), DZIP: net.ParseIP("10.0.0.3"), DevicePK: "device1", TunnelID: 503},
+		{PK: "user4", OwnerPubkey: "owner4", Status: "activated", Kind: "IBRL", ClientIP: net.ParseIP("4.4.4.4"), DZIP: net.ParseIP("10.0.0.4"), DevicePK: "device1", TunnelID: 504},
+	}
+	seedUsers(t, ctx, conn, users30DaysAgo, now.Add(-30*24*time.Hour), now, testOpID()) // user3, user4: 30 days ago
 
-	// Seed DZ users current (all are currently connected)
-	_, err = conn.ExecContext(ctx, `
-		INSERT INTO dz_users_current (pk, owner_pk, status, kind, client_ip, dz_ip, device_pk, tunnel_id, as_of_ts, row_hash) VALUES
-		('user1', 'owner1', 'activated', 'IBRL', '1.1.1.1', '10.0.0.1', 'device1', 501, CURRENT_TIMESTAMP, 'userhash1'),
-		('user2', 'owner2', 'activated', 'IBRL', '2.2.2.2', '10.0.0.2', 'device1', 502, CURRENT_TIMESTAMP, 'userhash2'),
-		('user3', 'owner3', 'activated', 'IBRL', '3.3.3.3', '10.0.0.3', 'device1', 503, CURRENT_TIMESTAMP, 'userhash3'),
-		('user4', 'owner4', 'activated', 'IBRL', '4.4.4.4', '10.0.0.4', 'device1', 504, CURRENT_TIMESTAMP, 'userhash4'),
-		('user5', 'owner5', 'activated', 'IBRL', '5.5.5.5', '10.0.0.5', 'device1', 505, CURRENT_TIMESTAMP, 'userhash5')
-	`)
-	require.NoError(t, err)
+	users12HoursAgo := []serviceability.User{
+		{PK: "user1", OwnerPubkey: "owner1", Status: "activated", Kind: "IBRL", ClientIP: net.ParseIP("1.1.1.1"), DZIP: net.ParseIP("10.0.0.1"), DevicePK: "device1", TunnelID: 501},
+		{PK: "user5", OwnerPubkey: "owner5", Status: "activated", Kind: "IBRL", ClientIP: net.ParseIP("5.5.5.5"), DZIP: net.ParseIP("10.0.0.5"), DevicePK: "device1", TunnelID: 505},
+	}
+	seedUsers(t, ctx, conn, users12HoursAgo, now.Add(-12*time.Hour), now, testOpID()) // user1, user5: 12 hours ago
+
+	users6HoursAgo := []serviceability.User{
+		{PK: "user2", OwnerPubkey: "owner2", Status: "activated", Kind: "IBRL", ClientIP: net.ParseIP("2.2.2.2"), DZIP: net.ParseIP("10.0.0.2"), DevicePK: "device1", TunnelID: 502},
+	}
+	seedUsers(t, ctx, conn, users6HoursAgo, now.Add(-6*time.Hour), now, testOpID()) // user2: 6 hours ago
 
 	// Seed Solana gossip nodes history
-	_, err = conn.ExecContext(ctx, `
-		INSERT INTO solana_gossip_nodes_history (
-			pubkey, gossip_ip, tpuquic_ip, version, epoch, gossip_port, tpuquic_port, valid_from, valid_to, op, row_hash
-		) VALUES
-		-- node1 (vote1): Connected 12 hours ago
-		('node1', '10.0.0.1', '10.0.0.1', '1.18.0', 100, 8001, 8002, `+now+` - INTERVAL '12 hours', NULL, 'I', 'nodehash1'),
-		-- node2 (vote2): Connected 6 hours ago
-		('node2', '10.0.0.2', '10.0.0.2', '1.18.0', 100, 8001, 8002, `+now+` - INTERVAL '6 hours', NULL, 'I', 'nodehash2'),
-		-- node3 (vote3): Connected 30 days ago
-		('node3', '10.0.0.3', '10.0.0.3', '1.18.0', 100, 8001, 8002, `+now+` - INTERVAL '30 days', NULL, 'I', 'nodehash3'),
-		-- node4 (vote4): Connected 30 days ago
-		('node4', '10.0.0.4', '10.0.0.4', '1.18.0', 100, 8001, 8002, `+now+` - INTERVAL '30 days', NULL, 'I', 'nodehash4'),
-		-- node5 (vote5): Connected 12 hours ago (bulk ingestion, same timestamp as node1)
-		('node5', '10.0.0.5', '10.0.0.5', '1.18.0', 100, 8001, 8002, `+now+` - INTERVAL '12 hours', NULL, 'I', 'nodehash5')
-	`)
-	require.NoError(t, err)
+	gossipNodes30DaysAgo := []*testGossipNode{
+		{Pubkey: "node3", GossipIP: net.ParseIP("10.0.0.3"), GossipPort: 8001, TPUQUICIP: net.ParseIP("10.0.0.3"), TPUQUICPort: 8002, Version: "1.18.0", Epoch: 100},
+		{Pubkey: "node4", GossipIP: net.ParseIP("10.0.0.4"), GossipPort: 8001, TPUQUICIP: net.ParseIP("10.0.0.4"), TPUQUICPort: 8002, Version: "1.18.0", Epoch: 100},
+	}
+	seedGossipNodes(t, ctx, conn, gossipNodes30DaysAgo, now.Add(-30*24*time.Hour), now, testOpID()) // node3, node4: 30 days ago
 
-	// Seed Solana gossip nodes current
-	_, err = conn.ExecContext(ctx, `
-		INSERT INTO solana_gossip_nodes_current (
-			pubkey, gossip_ip, tpuquic_ip, version, epoch, gossip_port, tpuquic_port, as_of_ts, row_hash
-		) VALUES
-		('node1', '10.0.0.1', '10.0.0.1', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP, 'nodehash1'),
-		('node2', '10.0.0.2', '10.0.0.2', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP, 'nodehash2'),
-		('node3', '10.0.0.3', '10.0.0.3', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP, 'nodehash3'),
-		('node4', '10.0.0.4', '10.0.0.4', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP, 'nodehash4'),
-		('node5', '10.0.0.5', '10.0.0.5', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP, 'nodehash5')
-	`)
-	require.NoError(t, err)
+	gossipNodes12HoursAgo := []*testGossipNode{
+		{Pubkey: "node1", GossipIP: net.ParseIP("10.0.0.1"), GossipPort: 8001, TPUQUICIP: net.ParseIP("10.0.0.1"), TPUQUICPort: 8002, Version: "1.18.0", Epoch: 100},
+		{Pubkey: "node5", GossipIP: net.ParseIP("10.0.0.5"), GossipPort: 8001, TPUQUICIP: net.ParseIP("10.0.0.5"), TPUQUICPort: 8002, Version: "1.18.0", Epoch: 100},
+	}
+	seedGossipNodes(t, ctx, conn, gossipNodes12HoursAgo, now.Add(-12*time.Hour), now, testOpID()) // node1, node5: 12 hours ago
+
+	gossipNodes6HoursAgo := []*testGossipNode{
+		{Pubkey: "node2", GossipIP: net.ParseIP("10.0.0.2"), GossipPort: 8001, TPUQUICIP: net.ParseIP("10.0.0.2"), TPUQUICPort: 8002, Version: "1.18.0", Epoch: 100},
+	}
+	seedGossipNodes(t, ctx, conn, gossipNodes6HoursAgo, now.Add(-6*time.Hour), now, testOpID()) // node2: 6 hours ago
 
 	// Seed Solana vote accounts history
-	_, err = conn.ExecContext(ctx, `
-		INSERT INTO solana_vote_accounts_history (
-			vote_pubkey, node_pubkey, epoch_vote_account, epoch, activated_stake_lamports, commission_percentage, valid_from, valid_to, op, row_hash
-		) VALUES
-		-- vote1: Connected 12 hours ago, stake 1M SOL
-		('vote1', 'node1', 'true', 100, 1000000000000, 5, `+now+` - INTERVAL '12 hours', NULL, 'I', 'votehash1'),
-		-- vote2: Connected 6 hours ago, stake 1M SOL
-		('vote2', 'node2', 'true', 100, 1000000000000, 5, `+now+` - INTERVAL '6 hours', NULL, 'I', 'votehash2'),
-		-- vote3: Connected 30 days ago, stake 1M SOL
-		('vote3', 'node3', 'true', 100, 1000000000000, 5, `+now+` - INTERVAL '30 days', NULL, 'I', 'votehash3'),
-		-- vote4: Connected 30 days ago, stake 1M SOL
-		('vote4', 'node4', 'true', 100, 1000000000000, 5, `+now+` - INTERVAL '30 days', NULL, 'I', 'votehash4'),
-		-- vote5: Connected 12 hours ago (bulk ingestion), stake 1M SOL
-		('vote5', 'node5', 'true', 100, 1000000000000, 5, `+now+` - INTERVAL '12 hours', NULL, 'I', 'votehash5')
-	`)
-	require.NoError(t, err)
+	voteAccounts30DaysAgo := []testVoteAccount{
+		{VotePubkey: "vote3", NodePubkey: "node3", EpochVoteAccount: true, Epoch: 100, ActivatedStake: 1000000000000, Commission: 5},
+		{VotePubkey: "vote4", NodePubkey: "node4", EpochVoteAccount: true, Epoch: 100, ActivatedStake: 1000000000000, Commission: 5},
+	}
+	seedVoteAccounts(t, ctx, conn, voteAccounts30DaysAgo, now.Add(-30*24*time.Hour), now, testOpID()) // vote3, vote4: 30 days ago
 
-	// Seed Solana vote accounts current
-	_, err = conn.ExecContext(ctx, `
-		INSERT INTO solana_vote_accounts_current (
-			vote_pubkey, node_pubkey, epoch_vote_account, epoch, activated_stake_lamports, commission_percentage, as_of_ts, row_hash
-		) VALUES
-		('vote1', 'node1', 'true', 100, 1000000000000, 5, CURRENT_TIMESTAMP, 'votehash1'),
-		('vote2', 'node2', 'true', 100, 1000000000000, 5, CURRENT_TIMESTAMP, 'votehash2'),
-		('vote3', 'node3', 'true', 100, 1000000000000, 5, CURRENT_TIMESTAMP, 'votehash3'),
-		('vote4', 'node4', 'true', 100, 1000000000000, 5, CURRENT_TIMESTAMP, 'votehash4'),
-		('vote5', 'node5', 'true', 100, 1000000000000, 5, CURRENT_TIMESTAMP, 'votehash5')
-	`)
-	require.NoError(t, err)
+	voteAccounts12HoursAgo := []testVoteAccount{
+		{VotePubkey: "vote1", NodePubkey: "node1", EpochVoteAccount: true, Epoch: 100, ActivatedStake: 1000000000000, Commission: 5},
+		{VotePubkey: "vote5", NodePubkey: "node5", EpochVoteAccount: true, Epoch: 100, ActivatedStake: 1000000000000, Commission: 5},
+	}
+	seedVoteAccounts(t, ctx, conn, voteAccounts12HoursAgo, now.Add(-12*time.Hour), now, testOpID()) // vote1, vote5: 12 hours ago
+
+	voteAccounts6HoursAgo := []testVoteAccount{
+		{VotePubkey: "vote2", NodePubkey: "node2", EpochVoteAccount: true, Epoch: 100, ActivatedStake: 1000000000000, Commission: 5},
+	}
+	seedVoteAccounts(t, ctx, conn, voteAccounts6HoursAgo, now.Add(-6*time.Hour), now, testOpID()) // vote2: 6 hours ago
 
 	// The solana_validator_dz_connection_events view will be automatically populated from solana_validator_dz_overlaps_windowed
 	// The view should show:
@@ -275,4 +198,166 @@ func seedSolanaValidatorsConnectedCountData(t *testing.T, ctx context.Context, c
 	// - vote3: dz_connected event 30 days ago (already connected, should NOT be counted)
 	// - vote4: dz_connected event 30 days ago (already connected, should NOT be counted)
 	// - vote5: dz_connected event 12 hours ago (bulk ingestion, same timestamp as vote1)
+}
+
+// validateSolanaValidatorsConnectedCountQuery runs the ideal query to answer the question
+// and validates that the database returns the expected results (3 newly connected validators)
+func validateSolanaValidatorsConnectedCountQuery(t *testing.T, ctx context.Context, conn clickhouse.Connection) {
+	now := testTime()
+	query24HoursAgo := now.Add(-24 * time.Hour)
+
+	// Use the historical comparison method as described in CATALOG.md
+	// This finds validators currently connected but NOT connected 24 hours ago
+	// History tables use snapshot_ts (SCD Type 2), so we need to find the latest snapshot at/before 24h ago
+	// Use NOT IN pattern which the agent can execute
+
+	// Execute the actual query that the agent would use
+	// This query finds validators that are currently connected but were NOT connected 24 hours ago
+	// Strategy: Get all current validators, then exclude those that existed 24h ago using NOT IN
+	// This pattern works reliably in ClickHouse and is something the agent can execute
+	mainQuery := `
+-- Count validators that are currently connected but were not connected 24 hours ago
+SELECT COUNT(DISTINCT cv.vote_pubkey) AS newly_connected_count
+FROM (
+  -- Get all validators currently connected to DoubleZero
+  -- A validator is "connected" if:
+  --   1. User is activated and has a DZ IP
+  --   2. Gossip node exists and matches the user's DZ IP
+  --   3. Vote account exists for that gossip node and has activated stake
+  SELECT DISTINCT va.vote_pubkey
+  FROM dz_users_current u
+  -- Join to gossip nodes: user's DZ IP must match gossip node's gossip IP
+  JOIN solana_gossip_nodes_current gn ON u.dz_ip = gn.gossip_ip AND gn.gossip_ip IS NOT NULL
+  -- Join to vote accounts: gossip node's pubkey must match vote account's node_pubkey
+  JOIN solana_vote_accounts_current va ON gn.pubkey = va.node_pubkey
+  WHERE u.status = 'activated'
+    AND va.activated_stake_lamports > 0  -- Only validators with stake
+) cv
+WHERE cv.vote_pubkey NOT IN (
+  -- Get all validators that WERE connected 24 hours ago
+  -- This uses the history tables (SCD Type 2) to reconstruct the state at a point in time
+  SELECT DISTINCT va2.vote_pubkey
+  FROM (
+    -- Get the latest user record at/before the target time (24h ago)
+    -- SCD Type 2: Use ROW_NUMBER to get the most recent snapshot for each entity
+    -- Order by snapshot_ts DESC, then ingested_at DESC, then op_id DESC to handle multiple records
+    SELECT *,
+      ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
+    FROM dim_dz_users_history
+    WHERE snapshot_ts <= ?  -- Only records at or before 24h ago
+      AND is_deleted = 0     -- Exclude soft-deleted records
+  ) u2
+  JOIN (
+    -- Get the latest gossip node record at/before the target time
+    SELECT *,
+      ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
+    FROM dim_solana_gossip_nodes_history
+    WHERE snapshot_ts <= ?  -- Only records at or before 24h ago
+      AND is_deleted = 0     -- Exclude soft-deleted records
+  ) gn2 ON u2.dz_ip = gn2.gossip_ip
+       AND gn2.gossip_ip IS NOT NULL
+       AND gn2.rn = 1  -- Only join to the latest snapshot for each gossip node
+  JOIN (
+    -- Get the latest vote account record at/before the target time
+    SELECT *,
+      ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
+    FROM dim_solana_vote_accounts_history
+    WHERE snapshot_ts <= ?  -- Only records at or before 24h ago
+      AND is_deleted = 0     -- Exclude soft-deleted records
+  ) va2 ON gn2.pubkey = va2.node_pubkey
+       AND va2.rn = 1  -- Only join to the latest snapshot for each vote account
+  WHERE u2.rn = 1                    -- Only use the latest user snapshot
+    AND u2.status = 'activated'      -- User must be activated
+    AND u2.dz_ip IS NOT NULL         -- User must have a DZ IP
+    AND va2.epoch_vote_account = 'true'  -- Vote account must be an epoch vote account (stored as string)
+    AND va2.activated_stake_lamports > 0  -- Vote account must have activated stake
+)
+`
+
+	result, err := dataset.Query(ctx, conn, mainQuery, []any{
+		query24HoursAgo, // users snapshot_ts
+		query24HoursAgo, // gossip_nodes snapshot_ts
+		query24HoursAgo, // vote_accounts snapshot_ts
+	})
+	require.NoError(t, err, "Failed to execute database validation query")
+	require.Equal(t, 1, result.Count, "Query should return exactly one row")
+
+	newlyConnectedCount, ok := result.Rows[0]["newly_connected_count"].(uint64)
+	if !ok {
+		// Try int64 or other numeric types
+		switch v := result.Rows[0]["newly_connected_count"].(type) {
+		case int64:
+			newlyConnectedCount = uint64(v)
+		case int:
+			newlyConnectedCount = uint64(v)
+		case uint32:
+			newlyConnectedCount = uint64(v)
+		case int32:
+			newlyConnectedCount = uint64(v)
+		default:
+			t.Fatalf("Unexpected type for newly_connected_count: %T, value: %v", v, v)
+		}
+	}
+
+	// Expected: 3 validators newly connected (vote1, vote2, and vote5)
+	// vote3 and vote4 were already connected 30 days ago, so they should NOT be counted
+	require.Equal(t, uint64(3), newlyConnectedCount,
+		fmt.Sprintf("Expected 3 newly connected validators (vote1, vote2, vote5), but got %d. vote3 and vote4 should NOT be counted as they were already connected 30 days ago.", newlyConnectedCount))
+
+	// Also verify which validators are newly connected
+	validatorQuery := `
+SELECT DISTINCT cv.vote_pubkey
+FROM (
+  SELECT DISTINCT va.vote_pubkey
+  FROM dz_users_current u
+  JOIN solana_gossip_nodes_current gn ON u.dz_ip = gn.gossip_ip AND gn.gossip_ip IS NOT NULL
+  JOIN solana_vote_accounts_current va ON gn.pubkey = va.node_pubkey
+  WHERE u.status = 'activated' AND va.activated_stake_lamports > 0
+) cv
+WHERE cv.vote_pubkey NOT IN (
+  SELECT DISTINCT va2.vote_pubkey
+  FROM (
+    SELECT *,
+      ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
+    FROM dim_dz_users_history
+    WHERE snapshot_ts <= ? AND is_deleted = 0
+  ) u2
+  JOIN (
+    SELECT *,
+      ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
+    FROM dim_solana_gossip_nodes_history
+    WHERE snapshot_ts <= ? AND is_deleted = 0
+  ) gn2 ON u2.dz_ip = gn2.gossip_ip AND gn2.gossip_ip IS NOT NULL AND gn2.rn = 1
+  JOIN (
+    SELECT *,
+      ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
+    FROM dim_solana_vote_accounts_history
+    WHERE snapshot_ts <= ? AND is_deleted = 0
+  ) va2 ON gn2.pubkey = va2.node_pubkey AND va2.rn = 1
+  WHERE u2.rn = 1 AND u2.status = 'activated' AND u2.dz_ip IS NOT NULL
+    AND va2.epoch_vote_account = 'true' AND va2.activated_stake_lamports > 0
+)
+ORDER BY cv.vote_pubkey
+`
+
+	validatorResult, err := dataset.Query(ctx, conn, validatorQuery, []any{
+		query24HoursAgo, // users snapshot_ts
+		query24HoursAgo, // gossip_nodes snapshot_ts
+		query24HoursAgo, // vote_accounts snapshot_ts
+	})
+	require.NoError(t, err, "Failed to execute validator list query")
+	require.Equal(t, 3, validatorResult.Count, "Should have exactly 3 newly connected validators")
+
+	votePubkeys := make([]string, 0, 3)
+	for _, row := range validatorResult.Rows {
+		votePubkey, ok := row["vote_pubkey"].(string)
+		require.True(t, ok, "vote_pubkey should be a string")
+		votePubkeys = append(votePubkeys, votePubkey)
+	}
+
+	expectedVotes := []string{"vote1", "vote2", "vote5"}
+	require.ElementsMatch(t, expectedVotes, votePubkeys,
+		fmt.Sprintf("Expected newly connected validators to be %v, but got %v", expectedVotes, votePubkeys))
+
+	t.Logf("Database validation passed: Found %d newly connected validators: %v", newlyConnectedCount, votePubkeys)
 }

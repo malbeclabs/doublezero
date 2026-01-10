@@ -2,18 +2,16 @@ package dztelemlatency
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
 	"time"
 
-	_ "github.com/duckdb/duckdb-go/v2"
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/jonboulle/clockwork"
-	"github.com/malbeclabs/doublezero/lake/pkg/duck"
+	"github.com/malbeclabs/doublezero/lake/pkg/clickhouse"
 	dzsvc "github.com/malbeclabs/doublezero/lake/pkg/indexer/dz/serviceability"
 	"github.com/malbeclabs/doublezero/lake/pkg/indexer/metrics"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
@@ -36,7 +34,7 @@ type ViewConfig struct {
 	MaxConcurrency             int
 	InternetLatencyAgentPK     solana.PublicKey
 	InternetDataProviders      []string
-	DB                         duck.DB
+	ClickHouse                 clickhouse.DB
 	Serviceability             *dzsvc.View
 	RefreshInterval            time.Duration
 	ServiceabilityReadyTimeout time.Duration
@@ -52,8 +50,8 @@ func (cfg *ViewConfig) Validate() error {
 	if cfg.EpochRPC == nil {
 		return errors.New("epoch rpc is required")
 	}
-	if cfg.DB == nil {
-		return errors.New("database is required")
+	if cfg.ClickHouse == nil {
+		return errors.New("clickhouse connection is required")
 	}
 	if cfg.Serviceability == nil {
 		return errors.New("serviceability view is required")
@@ -95,8 +93,8 @@ func NewView(cfg ViewConfig) (*View, error) {
 	}
 
 	store, err := NewStore(StoreConfig{
-		Logger: cfg.Logger,
-		DB:     cfg.DB,
+		Logger:     cfg.Logger,
+		ClickHouse: cfg.ClickHouse,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create store: %w", err)
@@ -107,10 +105,6 @@ func NewView(cfg ViewConfig) (*View, error) {
 		cfg:     cfg,
 		store:   store,
 		readyCh: make(chan struct{}),
-	}
-
-	if err := v.store.CreateTablesIfNotExists(); err != nil {
-		return nil, fmt.Errorf("failed to create tables: %w", err)
 	}
 
 	return v, nil
@@ -160,7 +154,6 @@ func (v *View) Refresh(ctx context.Context) error {
 		}
 	}()
 
-	// Wait for serviceability view to be ready (has completed at least one refresh)
 	if !v.cfg.Serviceability.Ready() {
 		waitCtx, cancel := context.WithTimeout(ctx, v.cfg.ServiceabilityReadyTimeout)
 		defer cancel()
@@ -171,42 +164,35 @@ func (v *View) Refresh(ctx context.Context) error {
 		}
 	}
 
-	// Get devices and links from View
-	svcStore := v.cfg.Serviceability.Store()
-	devices, err := svcStore.GetDevices()
+	devices, err := dzsvc.QueryCurrentDevices(ctx, v.log, v.cfg.ClickHouse)
 	if err != nil {
 		metrics.ViewRefreshTotal.WithLabelValues("telemetry", "error").Inc()
-		return fmt.Errorf("failed to get devices: %w", err)
-	}
-	links, err := svcStore.GetLinks()
-	if err != nil {
-		metrics.ViewRefreshTotal.WithLabelValues("telemetry", "error").Inc()
-		return fmt.Errorf("failed to get links: %w", err)
+		return fmt.Errorf("failed to query devices: %w", err)
 	}
 
-	// Refresh device-link telemetry samples
+	links, err := dzsvc.QueryCurrentLinks(ctx, v.log, v.cfg.ClickHouse)
+	if err != nil {
+		metrics.ViewRefreshTotal.WithLabelValues("telemetry", "error").Inc()
+		return fmt.Errorf("failed to query links: %w", err)
+	}
+
+	// Refresh device-link latency samples
 	if err := v.refreshDeviceLinkTelemetrySamples(ctx, devices, links); err != nil {
-		if !errors.Is(err, context.Canceled) && !errors.Is(err, sql.ErrConnDone) {
-			v.log.Warn("telemetry/latency: failed to refresh device-link telemetry samples", "error", err)
-		}
-		// Don't fail the entire refresh if telemetry fails
+		metrics.ViewRefreshTotal.WithLabelValues("telemetry", "error").Inc()
+		return fmt.Errorf("failed to refresh device-link latency samples: %w", err)
 	}
 
 	// Refresh internet-metro latency samples if configured
 	if !v.cfg.InternetLatencyAgentPK.IsZero() && len(v.cfg.InternetDataProviders) > 0 {
-		metros, err := svcStore.GetMetros()
+		metros, err := dzsvc.QueryCurrentMetros(ctx, v.log, v.cfg.ClickHouse)
 		if err != nil {
-			if errors.Is(err, context.Canceled) {
-				return err
-			}
-			v.log.Warn("telemetry/latency: failed to get metros for internet-metro samples", "error", err)
-		} else {
-			if err := v.refreshInternetMetroLatencySamples(ctx, metros); err != nil {
-				if !errors.Is(err, context.Canceled) && !errors.Is(err, sql.ErrConnDone) {
-					v.log.Warn("telemetry/latency: failed to refresh internet-metro telemetry samples", "error", err)
-				}
-				// Don't fail the entire refresh if telemetry fails
-			}
+			metrics.ViewRefreshTotal.WithLabelValues("telemetry", "error").Inc()
+			return fmt.Errorf("failed to query metros: %w", err)
+		}
+
+		if err := v.refreshInternetMetroLatencySamples(ctx, metros); err != nil {
+			metrics.ViewRefreshTotal.WithLabelValues("telemetry", "error").Inc()
+			return fmt.Errorf("failed to refresh internet-metro latency samples: %w", err)
 		}
 	}
 

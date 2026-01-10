@@ -5,11 +5,15 @@ package evals_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
-	"strings"
 	"testing"
+	"time"
 
-	"github.com/malbeclabs/doublezero/lake/pkg/duck"
+	"github.com/malbeclabs/doublezero/lake/pkg/clickhouse"
+	"github.com/malbeclabs/doublezero/lake/pkg/clickhouse/dataset"
+	serviceability "github.com/malbeclabs/doublezero/lake/pkg/indexer/dz/serviceability"
+	dztelemusage "github.com/malbeclabs/doublezero/lake/pkg/indexer/dz/telemetry/usage"
 	"github.com/stretchr/testify/require"
 )
 
@@ -20,10 +24,19 @@ func TestLake_Agent_Evals_Anthropic_MulticastSubscriberBandwidth(t *testing.T) {
 		t.Skip("ANTHROPIC_API_KEY not set, skipping eval test")
 	}
 
-	runTest_MulticastSubscriberBandwidth(t)
+	runTest_MulticastSubscriberBandwidth(t, newAnthropicLLMClient)
 }
 
-func runTest_MulticastSubscriberBandwidth(t *testing.T) {
+func TestLake_Agent_Evals_OllamaLocal_MulticastSubscriberBandwidth(t *testing.T) {
+	t.Parallel()
+	if !isOllamaAvailable() {
+		t.Skip("Ollama not available, skipping eval test")
+	}
+
+	runTest_MulticastSubscriberBandwidth(t, newOllamaLLMClient)
+}
+
+func runTest_MulticastSubscriberBandwidth(t *testing.T, llmFactory LLMClientFactory) {
 	ctx := context.Background()
 
 	// Get debug level
@@ -40,8 +53,17 @@ func runTest_MulticastSubscriberBandwidth(t *testing.T) {
 	// Seed multicast subscriber bandwidth data
 	seedMulticastSubscriberBandwidthData(t, ctx, conn)
 
-	// Set up agent with Anthropic LLM client
-	agentInstance := setupAgent(t, ctx, db, newAnthropicLLMClient, debug, debugLevel, nil)
+	// Validate database query results before testing agent
+	validateMulticastSubscriberBandwidthQuery(t, ctx, conn)
+
+	// Skip agent execution in short mode
+	if testing.Short() {
+		t.Log("Skipping agent execution in short mode")
+		return
+	}
+
+	// Set up agent with LLM client
+	agentInstance := setupAgent(t, ctx, db, llmFactory, debug, debugLevel, nil)
 
 	// Run the query
 	var output bytes.Buffer
@@ -72,124 +94,83 @@ func runTest_MulticastSubscriberBandwidth(t *testing.T) {
 	// The response should be non-empty and contain subscriber identification
 	require.Greater(t, len(response), 50, "Response should be substantial")
 
-	// Validate that the response contains specific data points from the seeded test data
-	validateMulticastSubscriberBandwidthResponse(t, response)
-
-	// Evaluate with Ollama
-	isCorrect, err := ollamaEvaluateResponse(t, ctx, question, response)
+	// Evaluate with Ollama - include specific expectations
+	expectations := []OllamaExpectation{
+		{
+			Description:   "Highest bandwidth subscriber",
+			ExpectedValue: "owner3 (owner_pubkey)",
+			Rationale:     "owner3 with client_ip 3.3.3.3 consumed the most multicast bandwidth (15 GB in test period)",
+		},
+		{
+			Description:   "Client IP or other identifier for top subscriber",
+			ExpectedValue: "3.3.3.3 or 10.0.0.3 (dz_ip) or tunnel_id 503",
+			Rationale:     "These are the stable identifiers for the subscriber",
+		},
+	}
+	isCorrect, err := ollamaEvaluateResponse(t, ctx, question, response, expectations...)
 	require.NoError(t, err, "Ollama evaluation must be available")
 	require.True(t, isCorrect, "Ollama evaluation indicates the response does not correctly answer the question")
 }
 
-// validateMulticastSubscriberBandwidthResponse validates the response for TestLake_Agent_Evals_Anthropic_MulticastSubscriberBandwidth
-func validateMulticastSubscriberBandwidthResponse(t *testing.T, response string) {
-	responseLower := strings.ToLower(response)
-
-	// Should mention subscriber or user
-	subscriberMentioned := strings.Contains(responseLower, "subscriber") ||
-		strings.Contains(responseLower, "user") ||
-		strings.Contains(responseLower, "client")
-	require.True(t, subscriberMentioned,
-		"Response should mention subscriber, user, or client. Got: %s",
-		truncateForError(response, 200))
-
-	// Should mention bandwidth or consumption
-	bandwidthMentioned := strings.Contains(responseLower, "bandwidth") ||
-		strings.Contains(responseLower, "consum") ||
-		strings.Contains(responseLower, "traffic") ||
-		strings.Contains(responseLower, "throughput") ||
-		strings.Contains(responseLower, "bps") ||
-		strings.Contains(responseLower, "mbps") ||
-		strings.Contains(responseLower, "gbps")
-	require.True(t, bandwidthMentioned,
-		"Response should mention bandwidth, consumption, traffic, or throughput. Got: %s",
-		truncateForError(response, 200))
-
-	// Should mention multicast
-	multicastMentioned := strings.Contains(responseLower, "multicast")
-	require.True(t, multicastMentioned,
-		"Response should mention multicast. Got: %s",
-		truncateForError(response, 200))
-
-	// Should identify the specific subscriber with highest bandwidth
-	// Expected: owner3 with client_ip='3.3.3.3' consumes the most bandwidth (15,000,000,000 bytes = 15 GB in the test period)
-	// CRITICAL: Must include owner_pk and client_ip - these are the stable user identifiers
-	// Note: User pk (pubkey) is NOT stable - it changes after disconnects/reconnects. Only (owner_pk, client_ip) is stable.
-	owner3Mentioned := strings.Contains(responseLower, "owner3")
-	// Accept explicit client IP (3.3.3.3) or dz_ip (10.0.0.3) or tunnel_id (503) - all are stable identifiers
-	clientIPMentioned := strings.Contains(response, "3.3.3.3") ||
-		strings.Contains(response, "10.0.0.3") ||
-		(strings.Contains(responseLower, "owner3") && strings.Contains(response, "503"))
-	// At least owner_pk must be mentioned
-	require.True(t, owner3Mentioned,
-		"Response should mention owner_pk 'owner3' (part of the stable user identifier). Got: %s",
-		truncateForError(response, 200))
-	// Client IP or dz_ip should be mentioned (both are stable identifiers when combined with owner_pk)
-	require.True(t, clientIPMentioned,
-		"Response should mention client IP '3.3.3.3' or dz_ip '10.0.0.3' or identify subscriber via tunnel_id along with owner_pk. Got: %s",
-		truncateForError(response, 200))
-
-	// Should contain numeric data (bandwidth amounts, bytes, etc.)
-	hasNumbers := false
-	for _, char := range response {
-		if char >= '0' && char <= '9' {
-			hasNumbers = true
-			break
-		}
-	}
-	require.True(t, hasNumbers,
-		"Response should contain numeric data (bandwidth amounts, bytes, etc.). Got: %s",
-		truncateForError(response, 200))
-
-	// Should mention the bandwidth amount for the top subscriber
-	// user3 consumes 15,000,000,000 bytes (15 GB) in the test period
-	// Accept various formats: "15", "15000", "15gb", "15 gb", "15,000", etc.
-	hasBandwidthAmount := strings.Contains(response, "15") ||
-		strings.Contains(responseLower, "fifteen") ||
-		strings.Contains(responseLower, "15000")
-	require.True(t, hasBandwidthAmount,
-		"Response should mention the bandwidth amount for the top subscriber (15 GB or similar). Got: %s",
-		truncateForError(response, 200))
-
-	// Log the response for debugging
-	t.Logf("Response mentions: subscriber=%v, bandwidth=%v, multicast=%v, owner3=%v, client_ip=%v, numbers=%v, bandwidth_amount=%v. Full response: %s",
-		subscriberMentioned, bandwidthMentioned, multicastMentioned, owner3Mentioned, clientIPMentioned, hasNumbers, hasBandwidthAmount,
-		truncateForError(response, 500))
-}
-
 // seedMulticastSubscriberBandwidthData seeds multicast subscriber bandwidth data for TestLake_Agent_Evals_Anthropic_MulticastSubscriberBandwidth
 // Sets up multiple subscribers with different bandwidth consumption, where user3 consumes the most
-func seedMulticastSubscriberBandwidthData(t *testing.T, ctx context.Context, conn duck.Connection) {
-	// Load and execute table and view creation migrations
-	loadTablesAndViews(t, ctx, conn)
+func seedMulticastSubscriberBandwidthData(t *testing.T, ctx context.Context, conn clickhouse.Connection) {
+	log := testLogger(t)
+	now := testTime()
+
+	// Seed metros (need metro1 and metro2 for devices)
+	metroDS, err := serviceability.NewMetroDataset(log)
+	require.NoError(t, err)
+	err = metroDS.WriteBatch(ctx, conn, 2, func(i int) ([]any, error) {
+		metros := []struct{ pk, code, name string }{
+			{"metro1", "nyc", "New York"},
+			{"metro2", "lon", "London"},
+		}
+		m := metros[i]
+		return []any{m.pk, m.code, m.name, -74.0060, 40.7128}, nil
+	}, &dataset.DimensionType2DatasetWriteConfig{
+		SnapshotTS: now,
+		OpID:       testOpID(),
+	})
+	require.NoError(t, err)
 
 	// Seed devices
-	_, err := conn.ExecContext(ctx, `
-		INSERT INTO dz_devices_current (pk, code, status, metro_pk, device_type, as_of_ts, row_hash) VALUES
-		('device1', 'nyc-dzd1', 'activated', 'metro1', 'DZD', CURRENT_TIMESTAMP, 'hash1'),
-		('device2', 'lon-dzd1', 'activated', 'metro2', 'DZD', CURRENT_TIMESTAMP, 'hash2')
-	`)
+	deviceDS, err := serviceability.NewDeviceDataset(log)
+	require.NoError(t, err)
+	err = deviceDS.WriteBatch(ctx, conn, 2, func(i int) ([]any, error) {
+		devices := []struct{ pk, code, metroPK string }{
+			{"device1", "nyc-dzd1", "metro1"},
+			{"device2", "lon-dzd1", "metro2"},
+		}
+		d := devices[i]
+		return []any{d.pk, "activated", "DZD", d.code, "", "", d.metroPK, 100}, nil
+	}, &dataset.DimensionType2DatasetWriteConfig{
+		SnapshotTS: now,
+		OpID:       testOpID(),
+	})
 	require.NoError(t, err)
 
 	// Seed DZ users (subscribers)
 	// user1: Low bandwidth (5 GB)
 	// user2: Medium bandwidth (10 GB)
 	// user3: High bandwidth (15 GB) - this is the answer
-	_, err = conn.ExecContext(ctx, `
-		INSERT INTO dz_users_current (pk, owner_pk, status, kind, client_ip, dz_ip, device_pk, tunnel_id, as_of_ts, row_hash) VALUES
-		('user1', 'owner1', 'activated', 'IBRL', '1.1.1.1', '10.0.0.1', 'device1', 501, CURRENT_TIMESTAMP, 'userhash1'),
-		('user2', 'owner2', 'activated', 'IBRL', '2.2.2.2', '10.0.0.2', 'device1', 502, CURRENT_TIMESTAMP, 'userhash2'),
-		('user3', 'owner3', 'activated', 'IBRL', '3.3.3.3', '10.0.0.3', 'device1', 503, CURRENT_TIMESTAMP, 'userhash3')
-	`)
+	userDS, err := serviceability.NewUserDataset(log)
 	require.NoError(t, err)
-
-	// Seed history table
-	_, err = conn.ExecContext(ctx, `
-		INSERT INTO dz_users_history (pk, owner_pk, status, kind, client_ip, dz_ip, device_pk, tunnel_id, valid_from, valid_to, op, row_hash) VALUES
-		('user1', 'owner1', 'activated', 'IBRL', '1.1.1.1', '10.0.0.1', 'device1', 501, CURRENT_TIMESTAMP - INTERVAL '30 days', NULL, 'I', 'userhash1'),
-		('user2', 'owner2', 'activated', 'IBRL', '2.2.2.2', '10.0.0.2', 'device1', 502, CURRENT_TIMESTAMP - INTERVAL '30 days', NULL, 'I', 'userhash2'),
-		('user3', 'owner3', 'activated', 'IBRL', '3.3.3.3', '10.0.0.3', 'device1', 503, CURRENT_TIMESTAMP - INTERVAL '30 days', NULL, 'I', 'userhash3')
-	`)
+	err = userDS.WriteBatch(ctx, conn, 3, func(i int) ([]any, error) {
+		users := []struct {
+			pk, ownerPubkey, clientIP, dzIP string
+			tunnelID                        int32
+		}{
+			{"user1", "owner1", "1.1.1.1", "10.0.0.1", 501},
+			{"user2", "owner2", "2.2.2.2", "10.0.0.2", 502},
+			{"user3", "owner3", "3.3.3.3", "10.0.0.3", 503},
+		}
+		u := users[i]
+		return []any{u.pk, u.ownerPubkey, "activated", "IBRL", u.clientIP, u.dzIP, "device1", u.tunnelID}, nil
+	}, &dataset.DimensionType2DatasetWriteConfig{
+		SnapshotTS: now.Add(-30 * 24 * time.Hour),
+		OpID:       testOpID(),
+	})
 	require.NoError(t, err)
 
 	// Seed interface usage with multicast traffic on tunnel interfaces
@@ -199,24 +180,154 @@ func seedMulticastSubscriberBandwidthData(t *testing.T, ctx context.Context, con
 	// user1 (tunnel 501): 5,000,000,000 bytes (5 GB) - low bandwidth
 	// user2 (tunnel 502): 10,000,000,000 bytes (10 GB) - medium bandwidth
 	// user3 (tunnel 503): 15,000,000,000 bytes (15 GB) - high bandwidth (most)
-	now := "CURRENT_TIMESTAMP"
-	_, err = conn.ExecContext(ctx, `
-		INSERT INTO dz_device_iface_usage_raw (
-			time, device_pk, host, intf, user_tunnel_id, link_pk, link_side,
-			in_octets_delta, out_octets_delta, in_multicast_pkts_delta, out_multicast_pkts_delta,
-			in_pkts_delta, out_pkts_delta, delta_duration
-		) VALUES
-		-- user1 (tunnel 501): 5 GB total (low bandwidth)
-		-- Note: in_multicast_pkts_delta and out_multicast_pkts_delta are NULL on tunnel interfaces (not reliable)
-		-- Must use out_pkts_delta and out_octets_delta for multicast traffic
-		(`+now+` - INTERVAL '1 hour', 'device1', 'nyc-dzd1', 'tunnel501', 501, NULL, NULL, 2500000000, 2500000000, NULL, NULL, 5000000, 5000000, 3600.0),
-		(`+now+` - INTERVAL '2 hours', 'device1', 'nyc-dzd1', 'tunnel501', 501, NULL, NULL, 2500000000, 2500000000, NULL, NULL, 5000000, 5000000, 3600.0),
-		-- user2 (tunnel 502): 10 GB total (medium bandwidth)
-		(`+now+` - INTERVAL '1 hour', 'device1', 'nyc-dzd1', 'tunnel502', 502, NULL, NULL, 5000000000, 5000000000, NULL, NULL, 10000000, 10000000, 3600.0),
-		(`+now+` - INTERVAL '2 hours', 'device1', 'nyc-dzd1', 'tunnel502', 502, NULL, NULL, 5000000000, 5000000000, NULL, NULL, 10000000, 10000000, 3600.0),
-		-- user3 (tunnel 503): 15 GB total (high bandwidth - most)
-		(`+now+` - INTERVAL '1 hour', 'device1', 'nyc-dzd1', 'tunnel503', 503, NULL, NULL, 7500000000, 7500000000, NULL, NULL, 15000000, 15000000, 3600.0),
-		(`+now+` - INTERVAL '2 hours', 'device1', 'nyc-dzd1', 'tunnel503', 503, NULL, NULL, 7500000000, 7500000000, NULL, NULL, 15000000, 15000000, 3600.0)
-	`)
+	ifaceUsageDS, err := dztelemusage.NewDeviceIfaceUsageDataset(log)
 	require.NoError(t, err)
+	ingestedAt := now
+	err = ifaceUsageDS.WriteBatch(ctx, conn, 6, func(i int) ([]any, error) {
+		// Order: event_ts, ingested_at, then all columns from schema
+		devicePK := "device1"
+		host := "nyc-dzd1"
+		var tunnelID int64
+		var inOctetsDelta, outOctetsDelta, inPktsDelta, outPktsDelta int64
+		var eventTS time.Time
+
+		if i < 2 {
+			// user1 (tunnel 501): 5 GB total (2 records × 2.5GB each = 5GB)
+			tunnelID = 501
+			inOctetsDelta = 1250000000  // 1.25GB per record
+			outOctetsDelta = 1250000000 // 1.25GB per record
+			inPktsDelta = 2500000
+			outPktsDelta = 2500000
+			eventTS = now.Add(-time.Duration(i+1) * time.Hour)
+		} else if i < 4 {
+			// user2 (tunnel 502): 10 GB total (2 records × 5GB each = 10GB)
+			tunnelID = 502
+			inOctetsDelta = 2500000000  // 2.5GB per record
+			outOctetsDelta = 2500000000 // 2.5GB per record
+			inPktsDelta = 5000000
+			outPktsDelta = 5000000
+			eventTS = now.Add(-time.Duration(i-1) * time.Hour)
+		} else {
+			// user3 (tunnel 503): 15 GB total (2 records × 7.5GB each = 15GB)
+			tunnelID = 503
+			inOctetsDelta = 3750000000  // 3.75GB per record
+			outOctetsDelta = 3750000000 // 3.75GB per record
+			inPktsDelta = 7500000
+			outPktsDelta = 7500000
+			eventTS = now.Add(-time.Duration(i-3) * time.Hour)
+		}
+
+		intf := fmt.Sprintf("tunnel%d", tunnelID)
+		deltaDuration := 3600.0
+
+		// Return in order: event_ts, ingested_at, then all columns from schema
+		return []any{
+			eventTS,        // event_ts
+			ingestedAt,     // ingested_at
+			devicePK,       // device_pk
+			host,           // host
+			intf,           // intf
+			tunnelID,       // user_tunnel_id
+			nil,            // link_pk
+			nil,            // link_side
+			nil,            // model_name
+			nil,            // serial_number
+			nil,            // carrier_transitions
+			nil,            // in_broadcast_pkts
+			nil,            // in_discards
+			nil,            // in_errors
+			nil,            // in_fcs_errors
+			nil,            // in_multicast_pkts
+			nil,            // in_octets
+			nil,            // in_pkts
+			nil,            // in_unicast_pkts
+			nil,            // out_broadcast_pkts
+			nil,            // out_discards
+			nil,            // out_errors
+			nil,            // out_multicast_pkts
+			nil,            // out_octets
+			nil,            // out_pkts
+			nil,            // out_unicast_pkts
+			nil,            // carrier_transitions_delta
+			nil,            // in_broadcast_pkts_delta
+			nil,            // in_discards_delta
+			nil,            // in_errors_delta
+			nil,            // in_fcs_errors_delta
+			nil,            // in_multicast_pkts_delta
+			inOctetsDelta,  // in_octets_delta
+			inPktsDelta,    // in_pkts_delta
+			nil,            // in_unicast_pkts_delta
+			nil,            // out_broadcast_pkts_delta
+			nil,            // out_discards_delta
+			nil,            // out_errors_delta
+			nil,            // out_multicast_pkts_delta
+			outOctetsDelta, // out_octets_delta
+			outPktsDelta,   // out_pkts_delta
+			nil,            // out_unicast_pkts_delta
+			deltaDuration,  // delta_duration
+		}, nil
+	})
+	require.NoError(t, err)
+}
+
+// validateMulticastSubscriberBandwidthQuery runs the ideal query to answer the question
+// and validates that the database returns the expected results (owner3 with highest bandwidth)
+func validateMulticastSubscriberBandwidthQuery(t *testing.T, ctx context.Context, conn clickhouse.Connection) {
+	// Query for multicast subscriber with highest bandwidth
+	// On tunnel interfaces, use in_pkts_delta and out_pkts_delta (not in_multicast_pkts_delta)
+	query := `
+SELECT
+  u.owner_pubkey,
+  u.client_ip,
+  u.dz_ip,
+  u.tunnel_id,
+  SUM(COALESCE(iface.in_octets_delta, 0) + COALESCE(iface.out_octets_delta, 0)) AS total_bytes
+FROM dz_users_current u
+JOIN fact_dz_device_iface_usage iface ON u.device_pk = iface.device_pk
+  AND iface.user_tunnel_id = u.tunnel_id
+  AND iface.intf LIKE 'tunnel%'
+WHERE u.status = 'activated'
+  AND iface.event_ts >= now() - INTERVAL 24 HOUR
+GROUP BY u.owner_pubkey, u.client_ip, u.dz_ip, u.tunnel_id
+ORDER BY total_bytes DESC
+LIMIT 1
+`
+
+	result, err := dataset.Query(ctx, conn, query, nil)
+	require.NoError(t, err, "Failed to execute multicast subscriber bandwidth query")
+	require.Equal(t, 1, result.Count, "Query should return exactly one row")
+
+	ownerPubkey, ok := result.Rows[0]["owner_pubkey"].(string)
+	require.True(t, ok, "owner_pubkey should be a string")
+	require.Equal(t, "owner3", ownerPubkey,
+		"Expected owner3 to have the highest bandwidth, but got %s", ownerPubkey)
+
+	clientIP, ok := result.Rows[0]["client_ip"].(string)
+	require.True(t, ok, "client_ip should be a string")
+	require.Equal(t, "3.3.3.3", clientIP,
+		"Expected client_ip 3.3.3.3 for owner3, but got %s", clientIP)
+
+	totalBytes, ok := result.Rows[0]["total_bytes"].(uint64)
+	if !ok {
+		switch v := result.Rows[0]["total_bytes"].(type) {
+		case int64:
+			totalBytes = uint64(v)
+		case int:
+			totalBytes = uint64(v)
+		case uint32:
+			totalBytes = uint64(v)
+		case int32:
+			totalBytes = uint64(v)
+		default:
+			t.Fatalf("Unexpected type for total_bytes: %T, value: %v", v, v)
+		}
+	}
+
+	// Expected: 15,000,000,000 bytes (15 GB) for owner3
+	expectedBytes := uint64(15000000000)
+	require.Equal(t, expectedBytes, totalBytes,
+		"Expected owner3 to have %d bytes (15 GB), but got %d", expectedBytes, totalBytes)
+
+	t.Logf("Database validation passed: owner3 (client_ip=%s) has highest bandwidth: %d bytes (%.2f GB)",
+		clientIP, totalBytes, float64(totalBytes)/1e9)
 }

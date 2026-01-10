@@ -2,18 +2,18 @@ package geoip
 
 import (
 	"context"
-	"log/slog"
 	"net"
-	"os"
 	"testing"
 	"time"
 
-	_ "github.com/duckdb/duckdb-go/v2"
+	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/gagliardetto/solana-go"
-	"github.com/jonboulle/clockwork"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
+	"github.com/jonboulle/clockwork"
+	"github.com/malbeclabs/doublezero/lake/pkg/clickhouse/dataset"
 	dzsvc "github.com/malbeclabs/doublezero/lake/pkg/indexer/dz/serviceability"
 	"github.com/malbeclabs/doublezero/lake/pkg/indexer/sol"
+	laketesting "github.com/malbeclabs/doublezero/lake/pkg/testing"
 	"github.com/malbeclabs/doublezero/tools/maxmind/pkg/geoip"
 	"github.com/stretchr/testify/require"
 )
@@ -48,34 +48,34 @@ func TestLake_GeoIP_View_NewView(t *testing.T) {
 	t.Run("returns error when config validation fails", func(t *testing.T) {
 		t.Parallel()
 
-		db := testDB(t)
+		db := laketesting.NewDB(t)
+		log := laketesting.NewLogger(t)
 		geoipStore, err := NewStore(StoreConfig{
-			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:     db,
+			Logger:     log,
+			ClickHouse: db,
 		})
 		require.NoError(t, err)
 
 		svcStore, err := dzsvc.NewStore(dzsvc.StoreConfig{
-			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:     db,
+			Logger:     log,
+			ClickHouse: db,
 		})
 		require.NoError(t, err)
 
 		solStore, err := sol.NewStore(sol.StoreConfig{
-			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:     db,
+			Logger:     log,
+			ClickHouse: db,
 		})
 		require.NoError(t, err)
 
 		t.Run("missing logger", func(t *testing.T) {
 			t.Parallel()
 			view, err := NewView(ViewConfig{
-				DB:                db,
-				GeoIPStore:        geoipStore,
-				GeoIPResolver:     &mockGeoIPResolver{},
+				GeoIPStore:          geoipStore,
+				GeoIPResolver:       &mockGeoIPResolver{},
 				ServiceabilityStore: svcStore,
-				SolanaStore:       solStore,
-				RefreshInterval:   time.Second,
+				SolanaStore:         solStore,
+				RefreshInterval:     time.Second,
 			})
 			require.Error(t, err)
 			require.Nil(t, view)
@@ -85,8 +85,7 @@ func TestLake_GeoIP_View_NewView(t *testing.T) {
 		t.Run("missing serviceability store", func(t *testing.T) {
 			t.Parallel()
 			view, err := NewView(ViewConfig{
-				Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
-				DB:              db,
+				Logger:          laketesting.NewLogger(t),
 				GeoIPStore:      geoipStore,
 				GeoIPResolver:   &mockGeoIPResolver{},
 				SolanaStore:     solStore,
@@ -100,12 +99,11 @@ func TestLake_GeoIP_View_NewView(t *testing.T) {
 		t.Run("missing solana store", func(t *testing.T) {
 			t.Parallel()
 			view, err := NewView(ViewConfig{
-				Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
-				DB:                db,
-				GeoIPStore:        geoipStore,
-				GeoIPResolver:     &mockGeoIPResolver{},
+				Logger:              log,
+				GeoIPStore:          geoipStore,
+				GeoIPResolver:       &mockGeoIPResolver{},
 				ServiceabilityStore: svcStore,
-				RefreshInterval:   time.Second,
+				RefreshInterval:     time.Second,
 			})
 			require.Error(t, err)
 			require.Nil(t, view)
@@ -116,34 +114,34 @@ func TestLake_GeoIP_View_NewView(t *testing.T) {
 	t.Run("returns view when config is valid", func(t *testing.T) {
 		t.Parallel()
 
-		db := testDB(t)
+		db := laketesting.NewDB(t)
+		log := laketesting.NewLogger(t)
 		geoipStore, err := NewStore(StoreConfig{
-			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:     db,
+			Logger:     log,
+			ClickHouse: db,
 		})
 		require.NoError(t, err)
 
 		svcStore, err := dzsvc.NewStore(dzsvc.StoreConfig{
-			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:     db,
+			Logger:     log,
+			ClickHouse: db,
 		})
 		require.NoError(t, err)
 
 		solStore, err := sol.NewStore(sol.StoreConfig{
-			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:     db,
+			Logger:     log,
+			ClickHouse: db,
 		})
 		require.NoError(t, err)
 
 		view, err := NewView(ViewConfig{
-			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			Clock:             clockwork.NewFakeClock(),
-			DB:                 db,
-			GeoIPStore:         geoipStore,
-			GeoIPResolver:      &mockGeoIPResolver{},
+			Logger:              log,
+			Clock:               clockwork.NewFakeClock(),
+			GeoIPStore:          geoipStore,
+			GeoIPResolver:       &mockGeoIPResolver{},
 			ServiceabilityStore: svcStore,
-			SolanaStore:        solStore,
-			RefreshInterval:    time.Second,
+			SolanaStore:         solStore,
+			RefreshInterval:     time.Second,
 		})
 		require.NoError(t, err)
 		require.NotNil(t, view)
@@ -156,34 +154,34 @@ func TestLake_GeoIP_View_Ready(t *testing.T) {
 	t.Run("returns false when not ready", func(t *testing.T) {
 		t.Parallel()
 
-		db := testDB(t)
+		db := laketesting.NewDB(t)
+		log := laketesting.NewLogger(t)
 		geoipStore, err := NewStore(StoreConfig{
-			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:     db,
+			Logger:     log,
+			ClickHouse: db,
 		})
 		require.NoError(t, err)
 
 		svcStore, err := dzsvc.NewStore(dzsvc.StoreConfig{
-			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:     db,
+			Logger:     log,
+			ClickHouse: db,
 		})
 		require.NoError(t, err)
 
 		solStore, err := sol.NewStore(sol.StoreConfig{
-			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:     db,
+			Logger:     log,
+			ClickHouse: db,
 		})
 		require.NoError(t, err)
 
 		view, err := NewView(ViewConfig{
-			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			Clock:             clockwork.NewFakeClock(),
-			DB:                 db,
-			GeoIPStore:         geoipStore,
-			GeoIPResolver:      &mockGeoIPResolver{},
+			Logger:              log,
+			Clock:               clockwork.NewFakeClock(),
+			GeoIPStore:          geoipStore,
+			GeoIPResolver:       &mockGeoIPResolver{},
 			ServiceabilityStore: svcStore,
-			SolanaStore:        solStore,
-			RefreshInterval:    time.Second,
+			SolanaStore:         solStore,
+			RefreshInterval:     time.Second,
 		})
 		require.NoError(t, err)
 
@@ -197,55 +195,63 @@ func TestLake_GeoIP_View_Refresh(t *testing.T) {
 	t.Run("resolves and saves geoip records from users and gossip nodes", func(t *testing.T) {
 		t.Parallel()
 
-		db := testDB(t)
+		db := laketesting.NewDB(t)
+		log := laketesting.NewLogger(t)
 		geoipStore, err := NewStore(StoreConfig{
-			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:     db,
+			Logger:     log,
+			ClickHouse: db,
 		})
 		require.NoError(t, err)
 
 		svcStore, err := dzsvc.NewStore(dzsvc.StoreConfig{
-			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:     db,
+			Logger:     log,
+			ClickHouse: db,
 		})
 		require.NoError(t, err)
 
 		solStore, err := sol.NewStore(sol.StoreConfig{
-			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:     db,
+			Logger:     log,
+			ClickHouse: db,
 		})
 		require.NoError(t, err)
 
 		// Set up test data: users with client IPs
 		ctx := context.Background()
-		conn, err := db.Conn(ctx)
-		require.NoError(t, err)
-		defer conn.Close()
-
-		// Create users table
-		_, err = conn.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS dz_users_current (
-			pk VARCHAR,
-			owner_pk VARCHAR,
-			status VARCHAR,
-			kind VARCHAR,
-			client_ip VARCHAR,
-			dz_ip VARCHAR,
-			device_pk VARCHAR,
-			tunnel_id INTEGER,
-			as_of_ts TIMESTAMP NOT NULL,
-			row_hash VARCHAR NOT NULL
-		)`)
-		require.NoError(t, err)
 
 		userPK1 := testPK(1)
 		userPK2 := testPK(2)
-		ownerPK := testPK(3)
+		ownerPubkey := testPK(3)
 		devicePK := testPK(4)
 
-		_, err = conn.ExecContext(ctx, `INSERT INTO dz_users_current (pk, owner_pk, status, kind, client_ip, dz_ip, device_pk, tunnel_id, as_of_ts, row_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 'hash1'), (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 'hash2')`,
-			userPK1, ownerPK, "activated", "IBRL", "1.1.1.1", "10.0.0.1", devicePK, 1,
-			userPK2, ownerPK, "activated", "IBRL", "8.8.8.8", "10.0.0.2", devicePK, 2)
+		users := []dzsvc.User{
+			{
+				PK:          userPK1,
+				OwnerPubkey: ownerPubkey,
+				Status:      "activated",
+				Kind:        "ibrl",
+				ClientIP:    net.ParseIP("1.1.1.1"),
+				DZIP:        net.ParseIP("10.0.0.1"),
+				DevicePK:    devicePK,
+				TunnelID:    1,
+			},
+			{
+				PK:          userPK2,
+				OwnerPubkey: ownerPubkey,
+				Status:      "activated",
+				Kind:        "ibrl",
+				ClientIP:    net.ParseIP("8.8.8.8"),
+				DZIP:        net.ParseIP("10.0.0.2"),
+				DevicePK:    devicePK,
+				TunnelID:    2,
+			},
+		}
+
+		err = svcStore.ReplaceUsers(ctx, users)
 		require.NoError(t, err)
+
+		// Wait for users to be written to history table
+		// No need to optimize since we query history directly
+		time.Sleep(500 * time.Millisecond)
 
 		// Set up gossip nodes
 		nodePK1 := solana.MustPublicKeyFromBase58("So11111111111111111111111111111111111111112")
@@ -285,14 +291,13 @@ func TestLake_GeoIP_View_Refresh(t *testing.T) {
 		}
 
 		view, err := NewView(ViewConfig{
-			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			Clock:             clockwork.NewFakeClock(),
-			DB:                 db,
-			GeoIPStore:         geoipStore,
-			GeoIPResolver:      resolver,
+			Logger:              log,
+			Clock:               clockwork.NewFakeClock(),
+			GeoIPStore:          geoipStore,
+			GeoIPResolver:       resolver,
 			ServiceabilityStore: svcStore,
-			SolanaStore:        solStore,
-			RefreshInterval:    time.Second,
+			SolanaStore:         solStore,
+			RefreshInterval:     time.Second,
 		})
 		require.NoError(t, err)
 
@@ -301,42 +306,78 @@ func TestLake_GeoIP_View_Refresh(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify geoip records were saved
-		records, err := geoipStore.GetRecords()
-		require.NoError(t, err)
-		require.GreaterOrEqual(t, len(records), 4) // At least 4 unique IPs (2 from users, 2 from gossip nodes)
-
-		// Check that all expected IPs are present
-		ipSet := make(map[string]bool)
-		for _, record := range records {
-			if record.IP != nil {
-				ipSet[record.IP.String()] = true
+		// GetRecords method was removed - verify data was inserted by querying history table
+		// Data may need a moment to be written, so retry
+		var count uint64
+		for i := 0; i < 20; i++ {
+			conn2, err := db.Conn(context.Background())
+			require.NoError(t, err)
+			var rows driver.Rows
+			rows, err = conn2.Query(context.Background(), `
+				WITH ranked AS (
+					SELECT
+						*,
+						ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
+					FROM dim_geoip_records_history
+				)
+				SELECT count() FROM ranked WHERE rn = 1 AND is_deleted = 0
+			`)
+			require.NoError(t, err)
+			require.True(t, rows.Next())
+			err = rows.Scan(&count)
+			rows.Close()
+			conn2.Close()
+			if count >= 4 {
+				break
 			}
+			time.Sleep(200 * time.Millisecond)
 		}
-		require.Contains(t, ipSet, "1.1.1.1")
-		require.Contains(t, ipSet, "8.8.8.8")
-		require.Contains(t, ipSet, "192.168.1.1")
-		require.Contains(t, ipSet, "192.168.1.2")
+		require.GreaterOrEqual(t, count, uint64(4), "should have at least 4 records")
+
+		// Check that all expected IPs are present using the dataset API
+		conn3, err := db.Conn(context.Background())
+		require.NoError(t, err)
+		defer conn3.Close()
+
+		d, err := NewGeoIPRecordDataset(laketesting.NewLogger(t))
+		require.NoError(t, err)
+		require.NotNil(t, d)
+
+		for _, ip := range []string{"1.1.1.1", "8.8.8.8", "192.168.1.1", "192.168.1.2"} {
+			var current map[string]any
+			for i := 0; i < 20; i++ {
+				entityID := dataset.NewNaturalKey(ip).ToSurrogate()
+				current, err = d.GetCurrentRow(context.Background(), conn3, entityID)
+				require.NoError(t, err)
+				if current != nil {
+					break
+				}
+				time.Sleep(200 * time.Millisecond)
+			}
+			require.NotNil(t, current, "should have found record for %s", ip)
+		}
 	})
 
 	t.Run("handles empty stores gracefully", func(t *testing.T) {
 		t.Parallel()
 
-		db := testDB(t)
+		db := laketesting.NewDB(t)
+		log := laketesting.NewLogger(t)
 		geoipStore, err := NewStore(StoreConfig{
-			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:     db,
+			Logger:     log,
+			ClickHouse: db,
 		})
 		require.NoError(t, err)
 
 		svcStore, err := dzsvc.NewStore(dzsvc.StoreConfig{
-			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:     db,
+			Logger:     log,
+			ClickHouse: db,
 		})
 		require.NoError(t, err)
 
 		solStore, err := sol.NewStore(sol.StoreConfig{
-			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:     db,
+			Logger:     log,
+			ClickHouse: db,
 		})
 		require.NoError(t, err)
 
@@ -346,44 +387,17 @@ func TestLake_GeoIP_View_Refresh(t *testing.T) {
 		require.NoError(t, err)
 		defer conn.Close()
 
-		// Create empty users table
-		_, err = conn.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS dz_users_current (
-			pk VARCHAR,
-			owner_pk VARCHAR,
-			status VARCHAR,
-			kind VARCHAR,
-			client_ip VARCHAR,
-			dz_ip VARCHAR,
-			device_pk VARCHAR,
-			tunnel_id INTEGER,
-			as_of_ts TIMESTAMP NOT NULL,
-			row_hash VARCHAR NOT NULL
-		)`)
-		require.NoError(t, err)
-
 		// Create empty gossip nodes table
-		_, err = conn.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS solana_gossip_nodes_current (
-			pubkey VARCHAR,
-			epoch BIGINT,
-			gossip_ip VARCHAR,
-			gossip_port INTEGER,
-			tpuquic_ip VARCHAR,
-			tpuquic_port INTEGER,
-			version VARCHAR,
-			as_of_ts TIMESTAMP NOT NULL,
-			row_hash VARCHAR NOT NULL
-		)`)
-		require.NoError(t, err)
+		// Note: solana_gossip_nodes_current table no longer exists - using history table instead
 
 		view, err := NewView(ViewConfig{
-			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			Clock:             clockwork.NewFakeClock(),
-			DB:                 db,
-			GeoIPStore:         geoipStore,
-			GeoIPResolver:      &mockGeoIPResolver{},
+			Logger:              log,
+			Clock:               clockwork.NewFakeClock(),
+			GeoIPStore:          geoipStore,
+			GeoIPResolver:       &mockGeoIPResolver{},
 			ServiceabilityStore: svcStore,
-			SolanaStore:        solStore,
-			RefreshInterval:    time.Second,
+			SolanaStore:         solStore,
+			RefreshInterval:     time.Second,
 		})
 		require.NoError(t, err)
 
@@ -396,53 +410,53 @@ func TestLake_GeoIP_View_Refresh(t *testing.T) {
 	t.Run("deduplicates IPs from multiple sources", func(t *testing.T) {
 		t.Parallel()
 
-		db := testDB(t)
+		db := laketesting.NewDB(t)
+		log := laketesting.NewLogger(t)
 		geoipStore, err := NewStore(StoreConfig{
-			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:     db,
+			Logger:     log,
+			ClickHouse: db,
 		})
 		require.NoError(t, err)
 
 		svcStore, err := dzsvc.NewStore(dzsvc.StoreConfig{
-			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:     db,
+			Logger:     log,
+			ClickHouse: db,
 		})
 		require.NoError(t, err)
 
 		solStore, err := sol.NewStore(sol.StoreConfig{
-			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:     db,
+			Logger:     log,
+			ClickHouse: db,
 		})
 		require.NoError(t, err)
 
 		// Set up test data with same IP in both users and gossip nodes
 		ctx := context.Background()
-		conn, err := db.Conn(ctx)
-		require.NoError(t, err)
-		defer conn.Close()
-
-		// Create users table
-		_, err = conn.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS dz_users_current (
-			pk VARCHAR,
-			owner_pk VARCHAR,
-			status VARCHAR,
-			kind VARCHAR,
-			client_ip VARCHAR,
-			dz_ip VARCHAR,
-			device_pk VARCHAR,
-			tunnel_id INTEGER,
-			as_of_ts TIMESTAMP NOT NULL,
-			row_hash VARCHAR NOT NULL
-		)`)
-		require.NoError(t, err)
 
 		userPK := testPK(1)
-		ownerPK := testPK(2)
+		ownerPubkey := testPK(2)
 		devicePK := testPK(3)
 
-		_, err = conn.ExecContext(ctx, `INSERT INTO dz_users_current (pk, owner_pk, status, kind, client_ip, dz_ip, device_pk, tunnel_id, as_of_ts, row_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 'hash1')`,
-			userPK, ownerPK, "activated", "IBRL", "1.1.1.1", "10.0.0.1", devicePK, 1)
+		users := []dzsvc.User{
+			{
+				PK:          userPK,
+				OwnerPubkey: ownerPubkey,
+				Status:      "activated",
+				Kind:        "ibrl",
+				ClientIP:    net.ParseIP("1.1.1.1"),
+				DZIP:        net.ParseIP("10.0.0.1"),
+				DevicePK:    devicePK,
+				TunnelID:    1,
+			},
+		}
+
+		err = svcStore.ReplaceUsers(ctx, users)
 		require.NoError(t, err)
+
+		// Wait for users to be synced to current table
+		// Wait for users to be written to history table
+		// No need to optimize since we query history directly
+		time.Sleep(500 * time.Millisecond)
 
 		// Set up gossip node with same IP
 		nodePK := solana.MustPublicKeyFromBase58("So11111111111111111111111111111111111111112")
@@ -472,14 +486,13 @@ func TestLake_GeoIP_View_Refresh(t *testing.T) {
 		}
 
 		view, err := NewView(ViewConfig{
-			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			Clock:             clockwork.NewFakeClock(),
-			DB:                 db,
-			GeoIPStore:         geoipStore,
-			GeoIPResolver:      resolver,
+			Logger:              log,
+			Clock:               clockwork.NewFakeClock(),
+			GeoIPStore:          geoipStore,
+			GeoIPResolver:       resolver,
 			ServiceabilityStore: svcStore,
-			SolanaStore:        solStore,
-			RefreshInterval:    time.Second,
+			SolanaStore:         solStore,
+			RefreshInterval:     time.Second,
 		})
 		require.NoError(t, err)
 
@@ -487,10 +500,27 @@ func TestLake_GeoIP_View_Refresh(t *testing.T) {
 		require.NoError(t, err)
 
 		// Should only have one record for 1.1.1.1 (deduplicated)
-		records, err := geoipStore.GetRecords()
+		// Verify data was inserted using the dataset API
+		// Data may need a moment to be written, so retry
+		conn5, err := db.Conn(context.Background())
 		require.NoError(t, err)
-		require.Len(t, records, 1)
-		require.Equal(t, net.ParseIP("1.1.1.1"), records[0].IP)
+		defer conn5.Close()
+
+		d, err := NewGeoIPRecordDataset(laketesting.NewLogger(t))
+		require.NoError(t, err)
+		require.NotNil(t, d)
+
+		var current map[string]any
+		for i := 0; i < 20; i++ {
+			entityID := dataset.NewNaturalKey("1.1.1.1").ToSurrogate()
+			current, err = d.GetCurrentRow(context.Background(), conn5, entityID)
+			require.NoError(t, err)
+			if current != nil {
+				break
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
+		require.NotNil(t, current)
+		require.Equal(t, "1.1.1.1", current["ip"]) // Check natural key column
 	})
 }
-

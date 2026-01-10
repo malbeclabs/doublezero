@@ -9,10 +9,9 @@ import (
 	"sync"
 	"time"
 
-	_ "github.com/duckdb/duckdb-go/v2"
 	"github.com/gagliardetto/solana-go"
 	"github.com/jonboulle/clockwork"
-	"github.com/malbeclabs/doublezero/lake/pkg/duck"
+	"github.com/malbeclabs/doublezero/lake/pkg/clickhouse"
 	"github.com/malbeclabs/doublezero/lake/pkg/indexer/metrics"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
@@ -74,14 +73,14 @@ type Link struct {
 }
 
 type User struct {
-	PK       string
-	OwnerPK  string
-	Status   string
-	Kind     string
-	ClientIP net.IP
-	DZIP     net.IP
-	DevicePK string
-	TunnelID uint16
+	PK          string
+	OwnerPubkey string
+	Status      string
+	Kind        string
+	ClientIP    net.IP
+	DZIP        net.IP
+	DevicePK    string
+	TunnelID    uint16
 }
 
 type ServiceabilityRPC interface {
@@ -93,7 +92,7 @@ type ViewConfig struct {
 	Clock             clockwork.Clock
 	ServiceabilityRPC ServiceabilityRPC
 	RefreshInterval   time.Duration
-	DB                duck.DB
+	ClickHouse        clickhouse.DB
 }
 
 func (cfg *ViewConfig) Validate() error {
@@ -103,8 +102,8 @@ func (cfg *ViewConfig) Validate() error {
 	if cfg.ServiceabilityRPC == nil {
 		return errors.New("serviceability rpc is required")
 	}
-	if cfg.DB == nil {
-		return errors.New("database is required")
+	if cfg.ClickHouse == nil {
+		return errors.New("clickhouse connection is required")
 	}
 	if cfg.RefreshInterval <= 0 {
 		return errors.New("refresh interval must be greater than 0")
@@ -133,8 +132,8 @@ func NewView(cfg ViewConfig) (*View, error) {
 	}
 
 	store, err := NewStore(StoreConfig{
-		Logger: cfg.Logger,
-		DB:     cfg.DB,
+		Logger:     cfg.Logger,
+		ClickHouse: cfg.ClickHouse,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create store: %w", err)
@@ -147,7 +146,7 @@ func NewView(cfg ViewConfig) (*View, error) {
 		readyCh: make(chan struct{}),
 	}
 
-	// Tables are created automatically by SCDTableViaCSV on first refresh
+	// Tables are created automatically by SCDTableBatch on first refresh
 	return v, nil
 }
 
@@ -308,14 +307,14 @@ func convertUsers(onchain []serviceability.User) []User {
 	result := make([]User, len(onchain))
 	for i, user := range onchain {
 		result[i] = User{
-			PK:       solana.PublicKeyFromBytes(user.PubKey[:]).String(),
-			OwnerPK:  solana.PublicKeyFromBytes(user.Owner[:]).String(),
-			Status:   user.Status.String(),
-			Kind:     user.UserType.String(),
-			ClientIP: net.IP(user.ClientIp[:]),
-			DZIP:     net.IP(user.DzIp[:]),
-			DevicePK: solana.PublicKeyFromBytes(user.DevicePubKey[:]).String(),
-			TunnelID: user.TunnelId,
+			PK:          solana.PublicKeyFromBytes(user.PubKey[:]).String(),
+			OwnerPubkey: solana.PublicKeyFromBytes(user.Owner[:]).String(),
+			Status:      user.Status.String(),
+			Kind:        user.UserType.String(),
+			ClientIP:    net.IP(user.ClientIp[:]),
+			DZIP:        net.IP(user.DzIp[:]),
+			DevicePK:    solana.PublicKeyFromBytes(user.DevicePubKey[:]).String(),
+			TunnelID:    user.TunnelId,
 		}
 	}
 	return result

@@ -81,6 +81,11 @@ func (a *AnthropicAgent) ConvertToolResults(toolUses []ToolUse, results []ToolRe
 	return []Message{AnthropicMessage{Msg: msg}}, nil
 }
 
+// CreateUserMessage creates a user message in Anthropic format.
+func (a *AnthropicAgent) CreateUserMessage(content string) Message {
+	return AnthropicMessage{Msg: anthropic.NewUserMessage(anthropic.NewTextBlock(content))}
+}
+
 // AnthropicMessage wraps Anthropic's MessageParam to implement react.Message.
 type AnthropicMessage struct {
 	Msg anthropic.MessageParam

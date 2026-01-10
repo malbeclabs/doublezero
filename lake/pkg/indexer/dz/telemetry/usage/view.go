@@ -13,7 +13,7 @@ import (
 
 	"github.com/InfluxCommunity/influxdb3-go/v2/influxdb3"
 	"github.com/jonboulle/clockwork"
-	"github.com/malbeclabs/doublezero/lake/pkg/duck"
+	"github.com/malbeclabs/doublezero/lake/pkg/clickhouse"
 	"github.com/malbeclabs/doublezero/lake/pkg/indexer/metrics"
 )
 
@@ -91,7 +91,7 @@ type ViewConfig struct {
 	Clock           clockwork.Clock
 	InfluxDB        InfluxDBClient
 	Bucket          string
-	DB              duck.DB
+	ClickHouse      clickhouse.DB
 	RefreshInterval time.Duration
 	QueryWindow     time.Duration // How far back to query from InfluxDB
 }
@@ -100,8 +100,8 @@ func (cfg *ViewConfig) Validate() error {
 	if cfg.Logger == nil {
 		return errors.New("logger is required")
 	}
-	if cfg.DB == nil {
-		return errors.New("database is required")
+	if cfg.ClickHouse == nil {
+		return errors.New("clickhouse connection is required")
 	}
 	if cfg.InfluxDB == nil {
 		return errors.New("influxdb client is required")
@@ -136,8 +136,8 @@ func NewView(cfg ViewConfig) (*View, error) {
 	}
 
 	store, err := NewStore(StoreConfig{
-		Logger: cfg.Logger,
-		DB:     cfg.DB,
+		Logger:     cfg.Logger,
+		ClickHouse: cfg.ClickHouse,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create store: %w", err)
@@ -148,10 +148,6 @@ func NewView(cfg ViewConfig) (*View, error) {
 		cfg:     cfg,
 		store:   store,
 		readyCh: make(chan struct{}),
-	}
-
-	if err := v.store.CreateTablesIfNotExists(); err != nil {
-		return nil, fmt.Errorf("failed to create tables: %w", err)
 	}
 
 	return v, nil
@@ -201,7 +197,6 @@ func (v *View) Refresh(ctx context.Context) error {
 		}
 	}()
 
-	// Get the latest timestamp from DuckDB to determine incremental query start
 	maxTime, err := v.store.GetMaxTimestamp(ctx)
 	if err != nil {
 		metrics.ViewRefreshTotal.WithLabelValues("telemetry-usage", "error").Inc()
@@ -213,17 +208,13 @@ func (v *View) Refresh(ctx context.Context) error {
 		v.log.Debug("telemetry/usage: no existing data, performing initial refresh")
 	}
 
-	// Determine query start time
 	now := v.cfg.Clock.Now()
 	queryWindowStart := now.Add(-v.cfg.QueryWindow)
 	var queryStart time.Time
 
 	if maxTime != nil {
-		// Check if maxTime is within the query window
 		if maxTime.After(queryWindowStart) {
-			// DuckDB has data within the query window, do incremental refresh
 			// Include a small overlap (5 minutes) to catch late-arriving data with past timestamps
-			// Insert will append all rows (fact table is append-only)
 			overlap := 5 * time.Minute
 			queryStart = maxTime.Add(-overlap)
 			newDataWindow := now.Sub(*maxTime)
@@ -236,8 +227,6 @@ func (v *View) Refresh(ctx context.Context) error {
 				"totalQueryWindow", totalQueryWindow,
 				"overlap", overlap)
 		} else {
-			// DuckDB has data but it's older than the query window
-			// Start from the query window to avoid querying too much old data
 			queryStart = queryWindowStart
 			age := now.Sub(*maxTime)
 			v.log.Debug("telemetry/usage: data exists but too old, starting from query window",
@@ -247,36 +236,32 @@ func (v *View) Refresh(ctx context.Context) error {
 				"dataAge", age)
 		}
 	} else {
-		// No data in DuckDB, query the full window
 		queryStart = queryWindowStart
 		v.log.Debug("telemetry/usage: initial full refresh", "from", queryStart, "to", now)
 	}
 
-	// Query for baseline counter values before the window
-	// Always try DuckDB first; only query InfluxDB if DuckDB returns 0 baselines
+	// Always try ClickHouse first; only query InfluxDB if ClickHouse returns 0 baselines
 	var baselines *CounterBaselines
-	v.log.Debug("telemetry/usage: querying baselines from duckdb")
-	duckStart := time.Now()
-	duckBaselines, err := v.queryBaselineCountersFromDuckDB(queryStart)
-	duckDuration := time.Since(duckStart)
+	v.log.Debug("telemetry/usage: querying baselines from clickhouse")
+	chStart := time.Now()
+	chBaselines, err := v.queryBaselineCountersFromClickHouse(ctx, queryStart)
+	chDuration := time.Since(chStart)
 	if err != nil {
-		v.log.Warn("telemetry/usage: failed to query baseline counters from duckdb", "error", err, "duration", duckDuration.String())
-		return fmt.Errorf("failed to query baseline counters from duckdb: %w", err)
+		v.log.Warn("telemetry/usage: failed to query baseline counters from clickhouse", "error", err, "duration", chDuration.String())
+		return fmt.Errorf("failed to query baseline counters from clickhouse: %w", err)
 	} else {
-		totalKeys := v.countUniqueBaselineKeys(duckBaselines)
+		totalKeys := v.countUniqueBaselineKeys(chBaselines)
 		if totalKeys > 0 {
-			// DuckDB has baseline data, use it
-			v.log.Info("telemetry/usage: queried baselines from duckdb", "unique_keys", totalKeys, "duration", duckDuration.String())
-			baselines = duckBaselines
+			// ClickHouse has baseline data, use it
+			v.log.Info("telemetry/usage: queried baselines from clickhouse", "unique_keys", totalKeys, "duration", chDuration.String())
+			baselines = chBaselines
 		} else {
-			// DuckDB query succeeded but returned 0 baselines, will query InfluxDB
-			v.log.Debug("telemetry/usage: no baseline data in duckdb (0 rows), will query influxdb", "duration", duckDuration.String())
+			v.log.Debug("telemetry/usage: no baseline data in clickhouse (0 rows), will query influxdb", "duration", chDuration.String())
 		}
 	}
 
-	// Query InfluxDB only if DuckDB returned 0 baselines
 	if baselines == nil {
-		v.log.Debug("telemetry/usage: querying baselines from influxdb (duckdb returned 0 baselines)")
+		v.log.Debug("telemetry/usage: querying baselines from influxdb (clickhouse returned 0 baselines)")
 		baselineCtx, baselineCancel := context.WithTimeout(ctx, 120*time.Second)
 		defer baselineCancel()
 
@@ -305,7 +290,6 @@ func (v *View) Refresh(ctx context.Context) error {
 		}
 	}
 
-	// Ensure baselines is initialized even if all queries failed
 	if baselines == nil {
 		baselines = &CounterBaselines{
 			InDiscards:  make(map[string]*int64),
@@ -333,7 +317,6 @@ func (v *View) Refresh(ctx context.Context) error {
 
 	if len(usage) == 0 {
 		v.log.Warn("telemetry/usage: no data returned from influxdb query", "from", queryStart, "to", now)
-		// Still signal readiness even if no data (table might be empty but view is operational)
 		v.readyOnce.Do(func() {
 			close(v.readyCh)
 			v.log.Info("telemetry/usage: view is now ready (no data)")
@@ -342,16 +325,14 @@ func (v *View) Refresh(ctx context.Context) error {
 		return nil
 	}
 
-	// Insert data into DuckDB (append-only fact table)
 	insertStart := time.Now()
 	if err := v.store.InsertInterfaceUsage(ctx, usage); err != nil {
 		metrics.ViewRefreshTotal.WithLabelValues("telemetry-usage", "error").Inc()
-		return fmt.Errorf("failed to insert interface usage data to duckdb: %w", err)
+		return fmt.Errorf("failed to insert interface usage data to clickhouse: %w", err)
 	}
 	insertDuration := time.Since(insertStart)
-	v.log.Info("telemetry/usage: inserted data to duckdb", "rows", len(usage), "duration", insertDuration.String())
+	v.log.Info("telemetry/usage: inserted data to clickhouse", "rows", len(usage), "duration", insertDuration.String())
 
-	// Signal readiness once (close channel) - safe to call multiple times
 	v.readyOnce.Do(func() {
 		close(v.readyCh)
 		v.log.Info("telemetry/usage: view is now ready")
@@ -379,7 +360,6 @@ type CounterBaselines struct {
 }
 
 func (v *View) queryInfluxDB(ctx context.Context, startTime, endTime time.Time, baselines *CounterBaselines) ([]InterfaceUsage, error) {
-	// Query main data to get device/interface keys we need baselines for.
 	// InfluxDB uses dzd_pubkey as a tag, which we extract and map to device_pk.
 	v.log.Debug("telemetry/usage: executing main influxdb query", "from", startTime.UTC(), "to", endTime.UTC())
 	queryStart := time.Now()
@@ -445,7 +425,7 @@ func (v *View) queryInfluxDB(ctx context.Context, startTime, endTime time.Time, 
 	v.log.Debug("telemetry/usage: sorted rows", "rows", len(rows), "duration", sortDuration.String())
 
 	// Build link lookup map from dz_links_current table
-	linkLookup, err := v.buildLinkLookup()
+	linkLookup, err := v.buildLinkLookup(ctx)
 	if err != nil {
 		v.log.Warn("telemetry/usage: failed to build link lookup map, proceeding without link information", "error", err)
 		linkLookup = make(map[string]LinkInfo)
@@ -466,44 +446,62 @@ func (v *View) queryInfluxDB(ctx context.Context, startTime, endTime time.Time, 
 	return usage, nil
 }
 
-// buildLinkLookup builds a map from "device_pk:intf" to LinkInfo by querying the dz_links_current table
-func (v *View) buildLinkLookup() (map[string]LinkInfo, error) {
+// buildLinkLookup builds a map from "device_pk:intf" to LinkInfo by querying the dz_links_history table
+func (v *View) buildLinkLookup(ctx context.Context) (map[string]LinkInfo, error) {
 	lookup := make(map[string]LinkInfo)
 
-	ctx := context.Background()
-	conn, err := v.cfg.DB.Conn(ctx)
+	conn, err := v.cfg.ClickHouse.Conn(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get connection: %w", err)
+		return nil, fmt.Errorf("failed to get ClickHouse connection: %w", err)
 	}
-	defer conn.Close()
-	query := `SELECT pk, side_a_pk, side_a_iface_name, side_z_pk, side_z_iface_name FROM dz_links_current`
-	rows, err := conn.QueryContext(ctx, query)
+
+	// Query current links from history table using ROW_NUMBER for latest row per entity
+	query := `
+		WITH ranked AS (
+			SELECT
+				*,
+				ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
+			FROM dim_dz_links_history
+		)
+		SELECT
+			pk,
+			side_a_pk,
+			side_a_iface_name,
+			side_z_pk,
+			side_z_iface_name
+		FROM ranked
+		WHERE rn = 1 AND is_deleted = 0`
+	rows, err := conn.Query(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query links: %w", err)
 	}
 	defer rows.Close()
 
 	for rows.Next() {
-		var linkPK, sideAPK, sideAIface, sideZPK, sideZIface string
+		var linkPK, sideAPK, sideAIface, sideZPK, sideZIface *string
 		if err := rows.Scan(&linkPK, &sideAPK, &sideAIface, &sideZPK, &sideZIface); err != nil {
 			return nil, fmt.Errorf("failed to scan link row: %w", err)
 		}
 
 		// Add side A mapping
-		if sideAPK != "" && sideAIface != "" {
-			key := fmt.Sprintf("%s:%s", sideAPK, sideAIface)
-			lookup[key] = LinkInfo{LinkPK: linkPK, LinkSide: "A"}
+		if sideAPK != nil && sideAIface != nil && *sideAPK != "" && *sideAIface != "" {
+			key := fmt.Sprintf("%s:%s", *sideAPK, *sideAIface)
+			linkPKVal := ""
+			if linkPK != nil {
+				linkPKVal = *linkPK
+			}
+			lookup[key] = LinkInfo{LinkPK: linkPKVal, LinkSide: "A"}
 		}
 
 		// Add side Z mapping
-		if sideZPK != "" && sideZIface != "" {
-			key := fmt.Sprintf("%s:%s", sideZPK, sideZIface)
-			lookup[key] = LinkInfo{LinkPK: linkPK, LinkSide: "Z"}
+		if sideZPK != nil && sideZIface != nil && *sideZPK != "" && *sideZIface != "" {
+			key := fmt.Sprintf("%s:%s", *sideZPK, *sideZIface)
+			linkPKVal := ""
+			if linkPK != nil {
+				linkPKVal = *linkPK
+			}
+			lookup[key] = LinkInfo{LinkPK: linkPKVal, LinkSide: "Z"}
 		}
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating links: %w", err)
 	}
 
 	return lookup, nil
@@ -598,7 +596,6 @@ func (v *View) convertRowsToUsage(rows []map[string]any, baselines *CounterBasel
 			key = ""
 		}
 
-		// Look up link information for this device/interface
 		if key != "" {
 			if linkInfo, ok := linkLookup[key]; ok {
 				u.LinkPK = &linkInfo.LinkPK
@@ -606,7 +603,6 @@ func (v *View) convertRowsToUsage(rows []map[string]any, baselines *CounterBasel
 			}
 		}
 
-		// Initialize last known values map for this key if needed
 		if key != "" && lastKnownValues[key] == nil {
 			lastKnownValues[key] = make(map[string]*int64)
 			// Pre-populate sparse counter baselines for forward-filling
@@ -629,7 +625,6 @@ func (v *View) convertRowsToUsage(rows []map[string]any, baselines *CounterBasel
 			}
 		}
 
-		// Check if this is the first row for this device/interface
 		isFirstRow := key != "" && !firstRowSeen[key]
 
 		// For all counter fields: use value if present, otherwise forward-fill with last known
@@ -740,12 +735,11 @@ func (v *View) convertRowsToUsage(rows []map[string]any, baselines *CounterBasel
 	return usage, nil
 }
 
-// queryBaselineCountersFromDuckDB queries DuckDB for the last non-null counter values before the window start
-// for each device/interface combination. Returns error if DuckDB doesn't have data or query fails.
-func (v *View) queryBaselineCountersFromDuckDB(windowStart time.Time) (*CounterBaselines, error) {
+// queryBaselineCountersFromClickHouse queries ClickHouse for the last non-null counter values before the window start
+// for each device/interface combination. Returns error if ClickHouse doesn't have data or query fails.
+func (v *View) queryBaselineCountersFromClickHouse(ctx context.Context, windowStart time.Time) (*CounterBaselines, error) {
 	// Query recent data before the window start to find the last non-null values
 	// Limit to 90 days lookback to enable partition pruning - baselines don't need to go back years
-	// Use DISTINCT ON for more efficient query execution
 	lookbackStart := windowStart.Add(-90 * 24 * time.Hour)
 
 	baselines := &CounterBaselines{
@@ -769,67 +763,37 @@ func (v *View) queryBaselineCountersFromDuckDB(windowStart time.Time) (*CounterB
 		{"out_errors", baselines.OutErrors},
 	}
 
+	conn, err := v.cfg.ClickHouse.Conn(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get ClickHouse connection: %w", err)
+	}
+
 	for _, cf := range counterFields {
-		// Use DISTINCT ON for more efficient query - gets the latest row per device/interface
-		// This is more efficient than ROW_NUMBER() window function
+		// Use argMax to get the latest row per device/interface
 		sqlQuery := fmt.Sprintf(`
-			SELECT DISTINCT ON (device_pk, intf)
+			SELECT
 				device_pk,
 				intf,
-				%s as value
-			FROM dz_device_iface_usage_raw
-			WHERE time >= '%s' AND time < '%s' AND %s IS NOT NULL
-			ORDER BY device_pk, intf, time DESC
-		`, cf.field, lookbackStart.Format(time.RFC3339Nano), windowStart.Format(time.RFC3339Nano), cf.field)
+				argMax(%s, (event_ts)) as value
+			FROM fact_dz_device_iface_usage
+			WHERE event_ts >= ? AND event_ts < ? AND %s IS NOT NULL
+			GROUP BY device_pk, intf
+		`, cf.field, cf.field)
 
 		ctx := context.Background()
-		conn, err := v.cfg.DB.Conn(ctx)
+		rows, err := conn.Query(ctx, sqlQuery, lookbackStart, windowStart)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get connection: %w", err)
-		}
-		defer conn.Close()
-		rows, err := conn.QueryContext(ctx, sqlQuery)
-		if err != nil {
-			v.log.Warn("telemetry/usage: failed to query baseline for counter from duckdb", "counter", cf.field, "error", err)
+			v.log.Warn("telemetry/usage: failed to query baseline for counter from clickhouse", "counter", cf.field, "error", err)
 			continue
 		}
-
-		columns, err := rows.Columns()
-		if err != nil {
-			v.log.Warn("telemetry/usage: failed to get columns for baseline query", "counter", cf.field, "error", err)
-			rows.Close()
-			continue
-		}
-
-		// Build a map of column indices
-		colMap := make(map[string]int)
-		for i, col := range columns {
-			colMap[col] = i
-		}
+		defer rows.Close()
 
 		for rows.Next() {
-			values := make([]any, len(columns))
-			valuePtrs := make([]any, len(columns))
-			for i := range values {
-				valuePtrs[i] = &values[i]
-			}
-
-			if err := rows.Scan(valuePtrs...); err != nil {
+			var devicePK, intf *string
+			var val *int64
+			if err := rows.Scan(&devicePK, &intf, &val); err != nil {
 				v.log.Warn("telemetry/usage: failed to scan baseline row", "counter", cf.field, "error", err)
 				continue
-			}
-
-			// Extract device/interface key
-			var devicePK, intf *string
-			if idx, ok := colMap["device_pk"]; ok && values[idx] != nil {
-				if s, ok := values[idx].(string); ok {
-					devicePK = &s
-				}
-			}
-			if idx, ok := colMap["intf"]; ok && values[idx] != nil {
-				if s, ok := values[idx].(string); ok {
-					intf = &s
-				}
 			}
 
 			if devicePK == nil || intf == nil {
@@ -837,30 +801,10 @@ func (v *View) queryBaselineCountersFromDuckDB(windowStart time.Time) (*CounterB
 			}
 
 			key := fmt.Sprintf("%s:%s", *devicePK, *intf)
-
-			// Extract counter value
-			if idx, ok := colMap["value"]; ok && values[idx] != nil {
-				var val *int64
-				switch v := values[idx].(type) {
-				case int64:
-					val = &v
-				case int:
-					i := int64(v)
-					val = &i
-				case float64:
-					i := int64(v)
-					val = &i
-				}
-				if val != nil {
-					cf.baseline[key] = val
-				}
+			if val != nil {
+				cf.baseline[key] = val
 			}
 		}
-
-		if err := rows.Err(); err != nil {
-			v.log.Warn("telemetry/usage: error iterating baseline rows", "counter", cf.field, "error", err)
-		}
-		rows.Close()
 	}
 
 	return baselines, nil
@@ -903,7 +847,6 @@ func (v *View) queryBaselineCounters(ctx context.Context, windowStart time.Time)
 			defer wg.Done()
 			counterStart := time.Now()
 
-			// All counters in this array are sparse (errors/discards)
 			// For sparse counters, just use 10-year window directly (they're sparse, so it's fast)
 			lookbackStart := windowStart.Add(-10 * 365 * 24 * time.Hour)
 			sqlQuery := fmt.Sprintf(`

@@ -6,8 +6,6 @@ import (
 )
 
 var (
-	// TODO(snormore): Configure this behind a registry with prefix depending on if indexer is embedded or not.
-
 	BuildInfo = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "doublezero_data_indexer_build_info",

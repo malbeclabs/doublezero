@@ -9,13 +9,15 @@ import (
 type Prompts struct {
 	Slack        string
 	Catalog      string
+	Examples     string
 	Finalization string
 	Role         string
+	Summary      string
 }
 
-// BuildSystemPrompt builds the system prompt by combining role and catalog.
+// BuildSystemPrompt builds the system prompt by combining role, catalog, and examples.
 func (p *Prompts) BuildSystemPrompt() string {
-	return p.Role + "\n\n## Catalog Reference\n\n" + p.Catalog
+	return p.Role + "\n\n" + p.Catalog + "\n\n" + p.Examples
 }
 
 // BuildSlackSystemPrompt builds the system prompt for Slack by combining role, catalog, and Slack-specific guidelines.
@@ -34,11 +36,17 @@ func Load() (*Prompts, error) {
 	if p.Catalog, err = loadPrompt("CATALOG.md"); err != nil {
 		return nil, fmt.Errorf("failed to load CATALOG: %w", err)
 	}
+	if p.Examples, err = loadPrompt("EXAMPLES.md"); err != nil {
+		return nil, fmt.Errorf("failed to load EXAMPLES: %w", err)
+	}
 	if p.Finalization, err = loadPrompt("FINALIZATION.md"); err != nil {
 		return nil, fmt.Errorf("failed to load FINALIZATION: %w", err)
 	}
 	if p.Role, err = loadPrompt("ROLE.md"); err != nil {
 		return nil, fmt.Errorf("failed to load ROLE: %w", err)
+	}
+	if p.Summary, err = loadPrompt("SUMMARY.md"); err != nil {
+		return nil, fmt.Errorf("failed to load SUMMARY: %w", err)
 	}
 
 	return p, nil

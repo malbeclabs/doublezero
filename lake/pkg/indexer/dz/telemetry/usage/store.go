@@ -2,27 +2,25 @@ package dztelemusage
 
 import (
 	"context"
-	"database/sql"
-	"encoding/csv"
 	"errors"
 	"fmt"
 	"log/slog"
 	"time"
 
-	"github.com/malbeclabs/doublezero/lake/pkg/duck"
+	"github.com/malbeclabs/doublezero/lake/pkg/clickhouse"
 )
 
 type StoreConfig struct {
-	Logger *slog.Logger
-	DB     duck.DB
+	Logger     *slog.Logger
+	ClickHouse clickhouse.DB
 }
 
 func (cfg *StoreConfig) Validate() error {
 	if cfg.Logger == nil {
 		return errors.New("logger is required")
 	}
-	if cfg.DB == nil {
-		return errors.New("db is required")
+	if cfg.ClickHouse == nil {
+		return errors.New("clickhouse connection is required")
 	}
 	return nil
 }
@@ -30,7 +28,6 @@ func (cfg *StoreConfig) Validate() error {
 type Store struct {
 	log *slog.Logger
 	cfg StoreConfig
-	db  duck.DB
 }
 
 func NewStore(cfg StoreConfig) (*Store, error) {
@@ -40,77 +37,7 @@ func NewStore(cfg StoreConfig) (*Store, error) {
 	return &Store{
 		log: cfg.Logger,
 		cfg: cfg,
-		db:  cfg.DB,
 	}, nil
-}
-
-// FactTableConfigDeviceIfaceUsage returns the fact table config for device interface usage
-func FactTableConfigDeviceIfaceUsage() duck.FactTableConfig {
-	return duck.FactTableConfig{
-		TableName:       "dz_device_iface_usage_raw",
-		PartitionByTime: true,
-		TimeColumn:      "time",
-		Columns: []string{
-			"time:TIMESTAMP",
-			"device_pk:VARCHAR",
-			"host:VARCHAR",
-			"intf:VARCHAR",
-			"user_tunnel_id:BIGINT",
-			"link_pk:VARCHAR",
-			"link_side:VARCHAR",
-			"model_name:VARCHAR",
-			"serial_number:VARCHAR",
-			"carrier_transitions:BIGINT",
-			"in_broadcast_pkts:BIGINT",
-			"in_discards:BIGINT",
-			"in_errors:BIGINT",
-			"in_fcs_errors:BIGINT",
-			"in_multicast_pkts:BIGINT",
-			"in_octets:BIGINT",
-			"in_pkts:BIGINT",
-			"in_unicast_pkts:BIGINT",
-			"out_broadcast_pkts:BIGINT",
-			"out_discards:BIGINT",
-			"out_errors:BIGINT",
-			"out_multicast_pkts:BIGINT",
-			"out_octets:BIGINT",
-			"out_pkts:BIGINT",
-			"out_unicast_pkts:BIGINT",
-			"carrier_transitions_delta:BIGINT",
-			"in_broadcast_pkts_delta:BIGINT",
-			"in_discards_delta:BIGINT",
-			"in_errors_delta:BIGINT",
-			"in_fcs_errors_delta:BIGINT",
-			"in_multicast_pkts_delta:BIGINT",
-			"in_octets_delta:BIGINT",
-			"in_pkts_delta:BIGINT",
-			"in_unicast_pkts_delta:BIGINT",
-			"out_broadcast_pkts_delta:BIGINT",
-			"out_discards_delta:BIGINT",
-			"out_errors_delta:BIGINT",
-			"out_multicast_pkts_delta:BIGINT",
-			"out_octets_delta:BIGINT",
-			"out_pkts_delta:BIGINT",
-			"out_unicast_pkts_delta:BIGINT",
-			"delta_duration:DOUBLE",
-		},
-	}
-}
-
-func (s *Store) CreateTablesIfNotExists() error {
-	ctx := context.Background()
-	conn, err := s.db.Conn(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get connection: %w", err)
-	}
-	defer conn.Close()
-
-	cfg := FactTableConfigDeviceIfaceUsage()
-	if err := duck.CreateFactTable(ctx, s.log, conn, cfg); err != nil {
-		return fmt.Errorf("failed to create device interface usage table: %w", err)
-	}
-
-	return nil
 }
 
 // InterfaceUsage represents a single interface usage measurement
@@ -170,89 +97,54 @@ func (s *Store) GetMaxTimestamp(ctx context.Context) (*time.Time, error) {
 	default:
 	}
 
-	conn, err := s.db.Conn(ctx)
+	var maxTime *time.Time
+	conn, err := s.cfg.ClickHouse.Conn(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get connection: %w", err)
+		return nil, fmt.Errorf("failed to get ClickHouse connection: %w", err)
 	}
-	defer conn.Close()
-	var maxTime sql.NullTime
-	err = conn.QueryRowContext(ctx, "SELECT MAX(time) FROM dz_device_iface_usage_raw").Scan(&maxTime)
+
+	rows, err := conn.Query(ctx, "SELECT max(event_ts) FROM fact_dz_device_iface_usage")
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
 		return nil, fmt.Errorf("failed to query max timestamp: %w", err)
 	}
-	if !maxTime.Valid {
-		return nil, nil // Table is empty
+	defer rows.Close()
+
+	if rows.Next() {
+		var scannedTime time.Time
+		if err := rows.Scan(&scannedTime); err != nil {
+			return nil, fmt.Errorf("failed to scan max timestamp: %w", err)
+		}
+		// ClickHouse max() returns zero time (1970-01-01 00:00:00 UTC) for empty tables, not NULL
+		// Check if it's the Unix epoch zero time to determine if table is empty
+		zeroTime := time.Unix(0, 0).UTC()
+		if scannedTime.After(zeroTime) {
+			maxTime = &scannedTime
+		}
 	}
-	return &maxTime.Time, nil
+
+	return maxTime, nil
 }
 
 func (s *Store) InsertInterfaceUsage(ctx context.Context, usage []InterfaceUsage) error {
-	conn, err := s.db.Conn(ctx)
+	ds, err := NewDeviceIfaceUsageDataset(s.log)
 	if err != nil {
-		return fmt.Errorf("failed to get connection: %w", err)
+		return fmt.Errorf("failed to create dataset: %w", err)
 	}
-	defer conn.Close()
 
-	cfg := FactTableConfigDeviceIfaceUsage()
-	return duck.InsertFactsViaCSV(ctx, s.log, conn, cfg, len(usage), func(w *csv.Writer, i int) error {
-		u := usage[i]
-		record := make([]string, 42)
+	conn, err := s.cfg.ClickHouse.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get ClickHouse connection: %w", err)
+	}
 
-		// Time (required)
-		record[0] = u.Time.Format(time.RFC3339Nano)
+	// Write to ClickHouse
+	ingestedAt := time.Now().UTC()
+	if err := ds.WriteBatch(ctx, conn, len(usage), func(i int) ([]any, error) {
+		return deviceIfaceUsageSchema.ToRow(usage[i], ingestedAt), nil
+	}); err != nil {
+		return fmt.Errorf("failed to write interface usage to ClickHouse: %w", err)
+	}
 
-		// String fields (nullable)
-		record[1] = formatNullableString(u.DevicePK)
-		record[2] = formatNullableString(u.Host)
-		record[3] = formatNullableString(u.Intf)
-		record[4] = formatNullableInt64(u.UserTunnelID)
-		record[5] = formatNullableString(u.LinkPK)
-		record[6] = formatNullableString(u.LinkSide)
-		record[7] = formatNullableString(u.ModelName)
-		record[8] = formatNullableString(u.SerialNumber)
-
-		// Numeric fields (nullable) - raw values
-		record[9] = formatNullableInt64(u.CarrierTransitions)
-		record[10] = formatNullableInt64(u.InBroadcastPkts)
-		record[11] = formatNullableInt64(u.InDiscards)
-		record[12] = formatNullableInt64(u.InErrors)
-		record[13] = formatNullableInt64(u.InFCSErrors)
-		record[14] = formatNullableInt64(u.InMulticastPkts)
-		record[15] = formatNullableInt64(u.InOctets)
-		record[16] = formatNullableInt64(u.InPkts)
-		record[17] = formatNullableInt64(u.InUnicastPkts)
-		record[18] = formatNullableInt64(u.OutBroadcastPkts)
-		record[19] = formatNullableInt64(u.OutDiscards)
-		record[20] = formatNullableInt64(u.OutErrors)
-		record[21] = formatNullableInt64(u.OutMulticastPkts)
-		record[22] = formatNullableInt64(u.OutOctets)
-		record[23] = formatNullableInt64(u.OutPkts)
-		record[24] = formatNullableInt64(u.OutUnicastPkts)
-
-		// Delta fields (nullable)
-		record[25] = formatNullableInt64(u.CarrierTransitionsDelta)
-		record[26] = formatNullableInt64(u.InBroadcastPktsDelta)
-		record[27] = formatNullableInt64(u.InDiscardsDelta)
-		record[28] = formatNullableInt64(u.InErrorsDelta)
-		record[29] = formatNullableInt64(u.InFCSErrorsDelta)
-		record[30] = formatNullableInt64(u.InMulticastPktsDelta)
-		record[31] = formatNullableInt64(u.InOctetsDelta)
-		record[32] = formatNullableInt64(u.InPktsDelta)
-		record[33] = formatNullableInt64(u.InUnicastPktsDelta)
-		record[34] = formatNullableInt64(u.OutBroadcastPktsDelta)
-		record[35] = formatNullableInt64(u.OutDiscardsDelta)
-		record[36] = formatNullableInt64(u.OutErrorsDelta)
-		record[37] = formatNullableInt64(u.OutMulticastPktsDelta)
-		record[38] = formatNullableInt64(u.OutOctetsDelta)
-		record[39] = formatNullableInt64(u.OutPktsDelta)
-		record[40] = formatNullableInt64(u.OutUnicastPktsDelta)
-		record[41] = formatNullableFloat64(u.DeltaDuration)
-
-		return w.Write(record)
-	})
+	return nil
 }
 
 func formatNullableFloat64(f *float64) string {

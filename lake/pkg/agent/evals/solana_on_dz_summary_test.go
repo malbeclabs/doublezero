@@ -5,12 +5,15 @@ package evals_test
 import (
 	"bytes"
 	"context"
+	"net"
 	"os"
-	"strings"
 	"testing"
+	"time"
 
 	"github.com/joho/godotenv"
-	"github.com/malbeclabs/doublezero/lake/pkg/duck"
+	"github.com/malbeclabs/doublezero/lake/pkg/clickhouse"
+	"github.com/malbeclabs/doublezero/lake/pkg/clickhouse/dataset"
+	serviceability "github.com/malbeclabs/doublezero/lake/pkg/indexer/dz/serviceability"
 	"github.com/stretchr/testify/require"
 )
 
@@ -31,10 +34,19 @@ func TestLake_Agent_Evals_Anthropic_SolanaValidatorsGossipNodesOnDZSummary(t *te
 		t.Skip("ANTHROPIC_API_KEY not set, skipping eval test")
 	}
 
-	runTest_SolanaValidatorsGossipNodesOnDZSummary(t)
+	runTest_SolanaValidatorsGossipNodesOnDZSummary(t, newAnthropicLLMClient)
 }
 
-func runTest_SolanaValidatorsGossipNodesOnDZSummary(t *testing.T) {
+func TestLake_Agent_Evals_OllamaLocal_SolanaValidatorsGossipNodesOnDZSummary(t *testing.T) {
+	t.Parallel()
+	if !isOllamaAvailable() {
+		t.Skip("Ollama not available, skipping eval test")
+	}
+
+	runTest_SolanaValidatorsGossipNodesOnDZSummary(t, newOllamaLLMClient)
+}
+
+func runTest_SolanaValidatorsGossipNodesOnDZSummary(t *testing.T, llmFactory LLMClientFactory) {
 	ctx := context.Background()
 
 	// Get debug level
@@ -51,8 +63,17 @@ func runTest_SolanaValidatorsGossipNodesOnDZSummary(t *testing.T) {
 	// Seed Solana data
 	seedSolanaValidatorsGossipNodesOnDZSummaryData(t, ctx, conn)
 
-	// Set up agent with Anthropic LLM client
-	agentInstance := setupAgent(t, ctx, db, newAnthropicLLMClient, debug, debugLevel, nil)
+	// Validate database query results before testing agent
+	validateSolanaValidatorsGossipNodesOnDZSummaryQuery(t, ctx, conn)
+
+	// Skip agent execution in short mode
+	if testing.Short() {
+		t.Log("Skipping agent execution in short mode")
+		return
+	}
+
+	// Set up agent with LLM client
+	agentInstance := setupAgent(t, ctx, db, llmFactory, debug, debugLevel, nil)
 
 	// Run the query
 	var output bytes.Buffer
@@ -83,209 +104,239 @@ func runTest_SolanaValidatorsGossipNodesOnDZSummary(t *testing.T) {
 	// The response should be non-empty and contain some indication of counts
 	require.Greater(t, len(response), 50, "Response should be substantial")
 
-	// Validate that the response contains specific data points from the seeded test data
-	validateSolanaValidatorsGossipNodesOnDZSummaryResponse(t, response)
-
-	// Evaluate with Ollama
-	isCorrect, err := ollamaEvaluateResponse(t, ctx, question, response)
+	// Evaluate with Ollama - include specific expectations
+	expectations := []OllamaExpectation{
+		{
+			Description:   "Number of validators currently on DZ",
+			ExpectedValue: "3",
+			Rationale:     "There are 3 validators with activated stake connected to DZ",
+		},
+		{
+			Description:   "Number of gossip nodes currently on DZ",
+			ExpectedValue: "5",
+			Rationale:     "There are 5 gossip nodes connected to DZ (more nodes than validators due to non-voting nodes)",
+		},
+	}
+	isCorrect, err := ollamaEvaluateResponse(t, ctx, question, response, expectations...)
 	require.NoError(t, err, "Ollama evaluation must be available")
 	require.True(t, isCorrect, "Ollama evaluation indicates the response does not correctly answer the question")
 }
 
-// validateSolanaValidatorsGossipNodesOnDZSummaryResponse validates the response for TestLake_Agent_Evals_SolanaValidatorsGossipNodesOnDZSummary
-func validateSolanaValidatorsGossipNodesOnDZSummaryResponse(t *testing.T, response string) {
-	responseLower := strings.ToLower(response)
-
-	// Should mention validators
-	validatorMentioned := strings.Contains(responseLower, "validator") || strings.Contains(responseLower, "validators")
-	require.True(t, validatorMentioned,
-		"Response should mention validators. Got: %s",
-		truncateForError(response, 200))
-
-	// Should mention gossip nodes
-	gossipMentioned := strings.Contains(responseLower, "gossip") || strings.Contains(responseLower, "node") || strings.Contains(responseLower, "nodes")
-	require.True(t, gossipMentioned,
-		"Response should mention gossip nodes. Got: %s",
-		truncateForError(response, 200))
-
-	// Should contain numeric counts
-	hasNumbers := false
-	for _, char := range response {
-		if char >= '0' && char <= '9' {
-			hasNumbers = true
-			break
-		}
-	}
-	require.True(t, hasNumbers,
-		"Response should contain numeric counts. Got: %s",
-		truncateForError(response, 200))
-
-	// Should mention "dz" or "doublezero" or "double zero"
-	dzMentioned := strings.Contains(responseLower, "dz") ||
-		strings.Contains(responseLower, "doublezero") ||
-		strings.Contains(responseLower, "double zero")
-	require.True(t, dzMentioned,
-		"Response should mention DZ/DoubleZero. Got: %s",
-		truncateForError(response, 200))
-
-	// Verify the correct counts: 3 validators and 5 gossip nodes currently on DZ
-	// The response should contain both numbers 3 and 5, and mention validators and gossip nodes
-	hasThree := strings.Contains(response, "3") || strings.Contains(responseLower, "three")
-	hasFive := strings.Contains(response, "5") || strings.Contains(responseLower, "five")
-
-	// Check that both numbers are present
-	require.True(t, hasThree && hasFive,
-		"Response should contain both counts: 3 validators and 5 gossip nodes. Got: %s",
-		truncateForError(response, 200))
-
-	// Log the response for debugging if validation passes basic checks
-	t.Logf("Response contains counts: 3=%v, 5=%v. Full response: %s", hasThree, hasFive, truncateForError(response, 500))
-}
-
 // seedSolanaValidatorsGossipNodesOnDZSummaryData seeds Solana validators and gossip nodes data for TestLake_Agent_Evals_SolanaValidatorsGossipNodesOnDZSummary
-func seedSolanaValidatorsGossipNodesOnDZSummaryData(t *testing.T, ctx context.Context, conn duck.Connection) {
-	// Load and execute table and view creation migrations
-	loadTablesAndViews(t, ctx, conn)
+func seedSolanaValidatorsGossipNodesOnDZSummaryData(t *testing.T, ctx context.Context, conn clickhouse.Connection) {
+	now := testTime()
+
+	// Seed metros
+	metros := []serviceability.Metro{
+		{PK: "metro1", Code: "nyc", Name: "New York"},
+		{PK: "metro2", Code: "lon", Name: "London"},
+		{PK: "metro3", Code: "chi", Name: "Chicago"},
+		{PK: "metro4", Code: "sf", Name: "San Francisco"},
+		{PK: "metro5", Code: "tok", Name: "Tokyo"},
+	}
+	seedMetros(t, ctx, conn, metros, now, now)
 
 	// Seed devices
-	_, err := conn.ExecContext(ctx, `
-		INSERT INTO dz_devices_current (pk, code, status, metro_pk, device_type, as_of_ts, row_hash) VALUES
-		('device1', 'nyc-dzd1', 'activated', 'metro1', 'DZD', CURRENT_TIMESTAMP, 'hash1'),
-		('device2', 'lon-dzd1', 'activated', 'metro2', 'DZD', CURRENT_TIMESTAMP, 'hash2'),
-		('device3', 'chi-dzd1', 'activated', 'metro3', 'DZD', CURRENT_TIMESTAMP, 'hash3'),
-		('device4', 'sf-dzd1', 'activated', 'metro4', 'DZD', CURRENT_TIMESTAMP, 'hash4'),
-		('device5', 'tok-dzd1', 'activated', 'metro5', 'DZD', CURRENT_TIMESTAMP, 'hash5')
-	`)
-	require.NoError(t, err)
+	devices := []serviceability.Device{
+		{PK: "device1", Code: "nyc-dzd1", Status: "activated", MetroPK: "metro1", DeviceType: "DZD"},
+		{PK: "device2", Code: "lon-dzd1", Status: "activated", MetroPK: "metro2", DeviceType: "DZD"},
+		{PK: "device3", Code: "chi-dzd1", Status: "activated", MetroPK: "metro3", DeviceType: "DZD"},
+		{PK: "device4", Code: "sf-dzd1", Status: "activated", MetroPK: "metro4", DeviceType: "DZD"},
+		{PK: "device5", Code: "tok-dzd1", Status: "activated", MetroPK: "metro5", DeviceType: "DZD"},
+	}
+	seedDevices(t, ctx, conn, devices, now, now)
 
 	// Seed DZ users with dz_ip addresses that will match gossip nodes
 	// Currently on DZ: 5 users (3 validators + 2 gossip-only nodes)
 	// Historical: 2 users that were on DZ in the past but disconnected
-	// Being "on dz" means they exist in the users dataset
-	_, err = conn.ExecContext(ctx, `
-		INSERT INTO dz_users_current (pk, owner_pk, status, kind, client_ip, dz_ip, device_pk, as_of_ts, row_hash) VALUES
-		('user1', 'owner1', 'activated', 'IBRL', '1.1.1.1', '10.0.0.1', 'device1', CURRENT_TIMESTAMP, 'userhash1'),
-		('user2', 'owner2', 'activated', 'IBRL', '2.2.2.2', '10.0.0.2', 'device2', CURRENT_TIMESTAMP, 'userhash2'),
-		('user3', 'owner3', 'activated', 'IBRL', '3.3.3.3', '10.0.0.3', 'device3', CURRENT_TIMESTAMP, 'userhash3'),
-		('user4', 'owner4', 'activated', 'IBRL', '4.4.4.4', '10.0.0.4', 'device4', CURRENT_TIMESTAMP, 'userhash4'),
-		('user5', 'owner5', 'activated', 'IBRL', '5.5.5.5', '10.0.0.5', 'device5', CURRENT_TIMESTAMP, 'userhash5')
-	`)
-	require.NoError(t, err)
+	currentUsers := []serviceability.User{
+		{PK: "user1", OwnerPubkey: "owner1", Status: "activated", Kind: "IBRL", ClientIP: net.ParseIP("1.1.1.1"), DZIP: net.ParseIP("10.0.0.1"), DevicePK: "device1", TunnelID: 501},
+		{PK: "user2", OwnerPubkey: "owner2", Status: "activated", Kind: "IBRL", ClientIP: net.ParseIP("2.2.2.2"), DZIP: net.ParseIP("10.0.0.2"), DevicePK: "device2", TunnelID: 502},
+		{PK: "user3", OwnerPubkey: "owner3", Status: "activated", Kind: "IBRL", ClientIP: net.ParseIP("3.3.3.3"), DZIP: net.ParseIP("10.0.0.3"), DevicePK: "device3", TunnelID: 503},
+		{PK: "user4", OwnerPubkey: "owner4", Status: "activated", Kind: "IBRL", ClientIP: net.ParseIP("4.4.4.4"), DZIP: net.ParseIP("10.0.0.4"), DevicePK: "device4", TunnelID: 504},
+		{PK: "user5", OwnerPubkey: "owner5", Status: "activated", Kind: "IBRL", ClientIP: net.ParseIP("5.5.5.5"), DZIP: net.ParseIP("10.0.0.5"), DevicePK: "device5", TunnelID: 505},
+	}
+	seedUsers(t, ctx, conn, []serviceability.User{currentUsers[0]}, now.Add(-7*24*time.Hour), now, testOpID())  // user1: 7 days ago
+	seedUsers(t, ctx, conn, []serviceability.User{currentUsers[1]}, now.Add(-30*24*time.Hour), now, testOpID()) // user2: 30 days ago
+	seedUsers(t, ctx, conn, []serviceability.User{currentUsers[2]}, now.Add(-60*24*time.Hour), now, testOpID()) // user3: 60 days ago
+	seedUsers(t, ctx, conn, []serviceability.User{currentUsers[3]}, now.Add(-45*24*time.Hour), now, testOpID()) // user4: 45 days ago
+	seedUsers(t, ctx, conn, []serviceability.User{currentUsers[4]}, now.Add(-20*24*time.Hour), now, testOpID()) // user5: 20 days ago
 
-	// Seed history table with current users and historical users
-	// user1-5: Currently active
-	// user6-7: Were on DZ in the past but disconnected (valid_to is set)
-	// user1: Was created recently (valid_from is recent)
-	_, err = conn.ExecContext(ctx, `
-		INSERT INTO dz_users_history (pk, owner_pk, status, kind, client_ip, dz_ip, device_pk, valid_from, valid_to, op, row_hash) VALUES
-		-- Currently active users
-		('user1', 'owner1', 'activated', 'IBRL', '1.1.1.1', '10.0.0.1', 'device1', CURRENT_TIMESTAMP - INTERVAL '7 days', NULL, 'I', 'userhash1'),
-		('user2', 'owner2', 'activated', 'IBRL', '2.2.2.2', '10.0.0.2', 'device2', CURRENT_TIMESTAMP - INTERVAL '30 days', NULL, 'I', 'userhash2'),
-		('user3', 'owner3', 'activated', 'IBRL', '3.3.3.3', '10.0.0.3', 'device3', CURRENT_TIMESTAMP - INTERVAL '60 days', NULL, 'I', 'userhash3'),
-		('user4', 'owner4', 'activated', 'IBRL', '4.4.4.4', '10.0.0.4', 'device4', CURRENT_TIMESTAMP - INTERVAL '45 days', NULL, 'I', 'userhash4'),
-		('user5', 'owner5', 'activated', 'IBRL', '5.5.5.5', '10.0.0.5', 'device5', CURRENT_TIMESTAMP - INTERVAL '20 days', NULL, 'I', 'userhash5'),
-		-- Historical users that were on DZ but disconnected
-		('user6', 'owner6', 'activated', 'IBRL', '6.6.6.6', '10.0.0.6', 'device1', CURRENT_TIMESTAMP - INTERVAL '90 days', CURRENT_TIMESTAMP - INTERVAL '10 days', 'D', 'userhash6'),
-		('user7', 'owner7', 'activated', 'IBRL', '7.7.7.7', '10.0.0.7', 'device2', CURRENT_TIMESTAMP - INTERVAL '120 days', CURRENT_TIMESTAMP - INTERVAL '15 days', 'D', 'userhash7')
-	`)
+	// Historical users - seed them first, then delete them using MissingMeansDeleted
+	historicalUsers := []serviceability.User{
+		{PK: "user6", OwnerPubkey: "owner6", Status: "activated", Kind: "IBRL", ClientIP: net.ParseIP("6.6.6.6"), DZIP: net.ParseIP("10.0.0.6"), DevicePK: "device1", TunnelID: 506},
+		{PK: "user7", OwnerPubkey: "owner7", Status: "activated", Kind: "IBRL", ClientIP: net.ParseIP("7.7.7.7"), DZIP: net.ParseIP("10.0.0.7"), DevicePK: "device2", TunnelID: 507},
+	}
+	seedUsers(t, ctx, conn, []serviceability.User{historicalUsers[0]}, now.Add(-90*24*time.Hour), now, testOpID())  // user6: connected 90 days ago
+	seedUsers(t, ctx, conn, []serviceability.User{historicalUsers[1]}, now.Add(-120*24*time.Hour), now, testOpID()) // user7: connected 120 days ago
+
+	// Delete historical users using MissingMeansDeleted
+	log := testLogger(t)
+	userDS, err := serviceability.NewUserDataset(log)
 	require.NoError(t, err)
+	deleteUser := func(pkToDelete string, deletedTS time.Time) {
+		currentRows, err := userDS.GetCurrentRows(ctx, conn, nil)
+		require.NoError(t, err)
+		var remainingUsers []map[string]any
+		for _, row := range currentRows {
+			if row["pk"] != pkToDelete {
+				remainingUsers = append(remainingUsers, row)
+			}
+		}
+		if len(remainingUsers) > 0 {
+			err = userDS.WriteBatch(ctx, conn, len(remainingUsers), func(i int) ([]any, error) {
+				row := remainingUsers[i]
+				// PK: pk, Payload: owner_pubkey, status, kind, client_ip, dz_ip, device_pk, tunnel_id
+				return []any{
+					row["pk"],
+					row["owner_pubkey"],
+					row["status"],
+					row["kind"],
+					row["client_ip"],
+					row["dz_ip"],
+					row["device_pk"],
+					row["tunnel_id"],
+				}, nil
+			}, &dataset.DimensionType2DatasetWriteConfig{
+				SnapshotTS:          deletedTS,
+				OpID:                testOpID(),
+				MissingMeansDeleted: true,
+			})
+			require.NoError(t, err)
+		}
+	}
+	deleteUser("user6", now.Add(-10*24*time.Hour)) // user6 disconnected 10 days ago
+	deleteUser("user7", now.Add(-15*24*time.Hour)) // user7 disconnected 15 days ago
 
 	// Seed Solana gossip nodes
 	// Currently on DZ: nodes 1-5 (matching current users)
 	// Historical on DZ: nodes 6-7 (matching historical users)
 	// Not on DZ: nodes 8-15 (various IPs, not matching any DZ users)
-	_, err = conn.ExecContext(ctx, `
-		INSERT INTO solana_gossip_nodes_current (
-			pubkey, gossip_ip, tpuquic_ip, version, epoch, gossip_port, tpuquic_port, as_of_ts, row_hash
-		) VALUES
-		-- Currently on DZ
-		('node1', '10.0.0.1', '10.0.0.1', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP, 'nodehash1'),
-		('node2', '10.0.0.2', '10.0.0.2', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP, 'nodehash2'),
-		('node3', '10.0.0.3', '10.0.0.3', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP, 'nodehash3'),
-		('node4', '10.0.0.4', '10.0.0.4', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP, 'nodehash4'),
-		('node5', '10.0.0.5', '10.0.0.5', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP, 'nodehash5'),
-		-- Historical on DZ (still exist but not currently connected)
-		('node6', '10.0.0.6', '10.0.0.6', '1.17.0', 100, 8001, 8002, CURRENT_TIMESTAMP, 'nodehash6'),
-		('node7', '10.0.0.7', '10.0.0.7', '1.17.0', 100, 8001, 8002, CURRENT_TIMESTAMP, 'nodehash7'),
-		-- Not on DZ - validators
-		('node8', '192.168.1.1', '192.168.1.1', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP, 'nodehash8'),
-		('node9', '192.168.1.2', '192.168.1.2', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP, 'nodehash9'),
-		('node10', '192.168.1.3', '192.168.1.3', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP, 'nodehash10'),
-		('node11', '192.168.1.4', '192.168.1.4', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP, 'nodehash11'),
-		-- Not on DZ - gossip-only nodes
-		('node12', '192.168.1.5', '192.168.1.5', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP, 'nodehash12'),
-		('node13', '192.168.1.6', '192.168.1.6', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP, 'nodehash13'),
-		('node14', '192.168.1.7', '192.168.1.7', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP, 'nodehash14'),
-		('node15', '192.168.1.8', '192.168.1.8', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP, 'nodehash15')
-	`)
-	require.NoError(t, err)
+	gossipNodesOnDZ := []*testGossipNode{
+		{Pubkey: "node1", GossipIP: net.ParseIP("10.0.0.1"), GossipPort: 8001, TPUQUICIP: net.ParseIP("10.0.0.1"), TPUQUICPort: 8002, Version: "1.18.0", Epoch: 100},
+		{Pubkey: "node2", GossipIP: net.ParseIP("10.0.0.2"), GossipPort: 8001, TPUQUICIP: net.ParseIP("10.0.0.2"), TPUQUICPort: 8002, Version: "1.18.0", Epoch: 100},
+		{Pubkey: "node3", GossipIP: net.ParseIP("10.0.0.3"), GossipPort: 8001, TPUQUICIP: net.ParseIP("10.0.0.3"), TPUQUICPort: 8002, Version: "1.18.0", Epoch: 100},
+		{Pubkey: "node4", GossipIP: net.ParseIP("10.0.0.4"), GossipPort: 8001, TPUQUICIP: net.ParseIP("10.0.0.4"), TPUQUICPort: 8002, Version: "1.18.0", Epoch: 100},
+		{Pubkey: "node5", GossipIP: net.ParseIP("10.0.0.5"), GossipPort: 8001, TPUQUICIP: net.ParseIP("10.0.0.5"), TPUQUICPort: 8002, Version: "1.18.0", Epoch: 100},
+	}
+	seedGossipNodes(t, ctx, conn, []*testGossipNode{gossipNodesOnDZ[0]}, now.Add(-7*24*time.Hour), now, testOpID())  // node1: 7 days ago
+	seedGossipNodes(t, ctx, conn, []*testGossipNode{gossipNodesOnDZ[1]}, now.Add(-30*24*time.Hour), now, testOpID()) // node2: 30 days ago
+	seedGossipNodes(t, ctx, conn, []*testGossipNode{gossipNodesOnDZ[2]}, now.Add(-60*24*time.Hour), now, testOpID()) // node3: 60 days ago
+	seedGossipNodes(t, ctx, conn, []*testGossipNode{gossipNodesOnDZ[3]}, now.Add(-45*24*time.Hour), now, testOpID()) // node4: 45 days ago
+	seedGossipNodes(t, ctx, conn, []*testGossipNode{gossipNodesOnDZ[4]}, now.Add(-20*24*time.Hour), now, testOpID()) // node5: 20 days ago
 
-	// Seed history table with temporal data
-	_, err = conn.ExecContext(ctx, `
-		INSERT INTO solana_gossip_nodes_history (
-			pubkey, gossip_ip, tpuquic_ip, version, epoch, gossip_port, tpuquic_port, valid_from, valid_to, op, row_hash
-		) VALUES
-		-- Currently on DZ (active)
-		('node1', '10.0.0.1', '10.0.0.1', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP - INTERVAL '7 days', NULL, 'I', 'nodehash1'),
-		('node2', '10.0.0.2', '10.0.0.2', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP - INTERVAL '30 days', NULL, 'I', 'nodehash2'),
-		('node3', '10.0.0.3', '10.0.0.3', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP - INTERVAL '60 days', NULL, 'I', 'nodehash3'),
-		('node4', '10.0.0.4', '10.0.0.4', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP - INTERVAL '45 days', NULL, 'I', 'nodehash4'),
-		('node5', '10.0.0.5', '10.0.0.5', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP - INTERVAL '20 days', NULL, 'I', 'nodehash5'),
-		-- Historical on DZ (were connected but disconnected)
-		('node6', '10.0.0.6', '10.0.0.6', '1.17.0', 100, 8001, 8002, CURRENT_TIMESTAMP - INTERVAL '90 days', NULL, 'I', 'nodehash6'),
-		('node7', '10.0.0.7', '10.0.0.7', '1.17.0', 100, 8001, 8002, CURRENT_TIMESTAMP - INTERVAL '120 days', NULL, 'I', 'nodehash7'),
-		-- Not on DZ - validators (long-standing)
-		('node8', '192.168.1.1', '192.168.1.1', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP - INTERVAL '180 days', NULL, 'I', 'nodehash8'),
-		('node9', '192.168.1.2', '192.168.1.2', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP - INTERVAL '150 days', NULL, 'I', 'nodehash9'),
-		('node10', '192.168.1.3', '192.168.1.3', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP - INTERVAL '200 days', NULL, 'I', 'nodehash10'),
-		('node11', '192.168.1.4', '192.168.1.4', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP - INTERVAL '100 days', NULL, 'I', 'nodehash11'),
-		-- Not on DZ - gossip-only nodes
-		('node12', '192.168.1.5', '192.168.1.5', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP - INTERVAL '90 days', NULL, 'I', 'nodehash12'),
-		('node13', '192.168.1.6', '192.168.1.6', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP - INTERVAL '75 days', NULL, 'I', 'nodehash13'),
-		('node14', '192.168.1.7', '192.168.1.7', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP - INTERVAL '60 days', NULL, 'I', 'nodehash14'),
-		('node15', '192.168.1.8', '192.168.1.8', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP - INTERVAL '45 days', NULL, 'I', 'nodehash15')
-	`)
-	require.NoError(t, err)
+	// Historical gossip nodes - these still exist in the gossip network but their users were disconnected
+	// They won't be counted as "on DZ" because there's no matching user in dz_users_current
+	gossipNodesHistorical := []*testGossipNode{
+		{Pubkey: "node6", GossipIP: net.ParseIP("10.0.0.6"), GossipPort: 8001, TPUQUICIP: net.ParseIP("10.0.0.6"), TPUQUICPort: 8002, Version: "1.17.0", Epoch: 100},
+		{Pubkey: "node7", GossipIP: net.ParseIP("10.0.0.7"), GossipPort: 8001, TPUQUICIP: net.ParseIP("10.0.0.7"), TPUQUICPort: 8002, Version: "1.17.0", Epoch: 100},
+	}
+	seedGossipNodes(t, ctx, conn, []*testGossipNode{gossipNodesHistorical[0]}, now.Add(-90*24*time.Hour), now, testOpID())  // node6: 90 days ago
+	seedGossipNodes(t, ctx, conn, []*testGossipNode{gossipNodesHistorical[1]}, now.Add(-120*24*time.Hour), now, testOpID()) // node7: 120 days ago
+
+	gossipNodesOffDZ := []*testGossipNode{
+		{Pubkey: "node8", GossipIP: net.ParseIP("192.168.1.1"), GossipPort: 8001, TPUQUICIP: net.ParseIP("192.168.1.1"), TPUQUICPort: 8002, Version: "1.18.0", Epoch: 100},
+		{Pubkey: "node9", GossipIP: net.ParseIP("192.168.1.2"), GossipPort: 8001, TPUQUICIP: net.ParseIP("192.168.1.2"), TPUQUICPort: 8002, Version: "1.18.0", Epoch: 100},
+		{Pubkey: "node10", GossipIP: net.ParseIP("192.168.1.3"), GossipPort: 8001, TPUQUICIP: net.ParseIP("192.168.1.3"), TPUQUICPort: 8002, Version: "1.18.0", Epoch: 100},
+		{Pubkey: "node11", GossipIP: net.ParseIP("192.168.1.4"), GossipPort: 8001, TPUQUICIP: net.ParseIP("192.168.1.4"), TPUQUICPort: 8002, Version: "1.18.0", Epoch: 100},
+		{Pubkey: "node12", GossipIP: net.ParseIP("192.168.1.5"), GossipPort: 8001, TPUQUICIP: net.ParseIP("192.168.1.5"), TPUQUICPort: 8002, Version: "1.18.0", Epoch: 100},
+		{Pubkey: "node13", GossipIP: net.ParseIP("192.168.1.6"), GossipPort: 8001, TPUQUICIP: net.ParseIP("192.168.1.6"), TPUQUICPort: 8002, Version: "1.18.0", Epoch: 100},
+		{Pubkey: "node14", GossipIP: net.ParseIP("192.168.1.7"), GossipPort: 8001, TPUQUICIP: net.ParseIP("192.168.1.7"), TPUQUICPort: 8002, Version: "1.18.0", Epoch: 100},
+		{Pubkey: "node15", GossipIP: net.ParseIP("192.168.1.8"), GossipPort: 8001, TPUQUICIP: net.ParseIP("192.168.1.8"), TPUQUICPort: 8002, Version: "1.18.0", Epoch: 100},
+	}
+	seedGossipNodes(t, ctx, conn, []*testGossipNode{gossipNodesOffDZ[0]}, now.Add(-180*24*time.Hour), now, testOpID()) // node8: 180 days ago
+	seedGossipNodes(t, ctx, conn, []*testGossipNode{gossipNodesOffDZ[1]}, now.Add(-150*24*time.Hour), now, testOpID()) // node9: 150 days ago
+	seedGossipNodes(t, ctx, conn, []*testGossipNode{gossipNodesOffDZ[2]}, now.Add(-200*24*time.Hour), now, testOpID()) // node10: 200 days ago
+	seedGossipNodes(t, ctx, conn, []*testGossipNode{gossipNodesOffDZ[3]}, now.Add(-100*24*time.Hour), now, testOpID()) // node11: 100 days ago
+	seedGossipNodes(t, ctx, conn, []*testGossipNode{gossipNodesOffDZ[4]}, now.Add(-90*24*time.Hour), now, testOpID())  // node12: 90 days ago
+	seedGossipNodes(t, ctx, conn, []*testGossipNode{gossipNodesOffDZ[5]}, now.Add(-75*24*time.Hour), now, testOpID())  // node13: 75 days ago
+	seedGossipNodes(t, ctx, conn, []*testGossipNode{gossipNodesOffDZ[6]}, now.Add(-60*24*time.Hour), now, testOpID())  // node14: 60 days ago
+	seedGossipNodes(t, ctx, conn, []*testGossipNode{gossipNodesOffDZ[7]}, now.Add(-45*24*time.Hour), now, testOpID())  // node15: 45 days ago
 
 	// Seed Solana vote accounts
 	// Currently on DZ: vote1-3 (nodes 1-3)
 	// Historical on DZ: vote6 (node6)
 	// Not on DZ: vote8-11 (nodes 8-11)
 	// Nodes 4, 5, 7, 12-15 are gossip-only (no vote accounts)
-	_, err = conn.ExecContext(ctx, `
-		INSERT INTO solana_vote_accounts_current (
-			vote_pubkey, node_pubkey, epoch_vote_account, epoch, activated_stake_lamports, commission_percentage, as_of_ts, row_hash
-		) VALUES
-		-- Currently on DZ validators
-		('vote1', 'node1', 'true', 100, 1000000000000, 5, CURRENT_TIMESTAMP, 'votehash1'),
-		('vote2', 'node2', 'true', 100, 2000000000000, 5, CURRENT_TIMESTAMP, 'votehash2'),
-		('vote3', 'node3', 'true', 100, 1500000000000, 5, CURRENT_TIMESTAMP, 'votehash3'),
-		-- Historical on DZ validator (was connected but disconnected)
-		('vote6', 'node6', 'true', 100, 1800000000000, 5, CURRENT_TIMESTAMP, 'votehash6'),
-		-- Not on DZ validators
-		('vote8', 'node8', 'true', 100, 3000000000000, 5, CURRENT_TIMESTAMP, 'votehash8'),
-		('vote9', 'node9', 'true', 100, 2500000000000, 5, CURRENT_TIMESTAMP, 'votehash9'),
-		('vote10', 'node10', 'true', 100, 4000000000000, 5, CURRENT_TIMESTAMP, 'votehash10'),
-		('vote11', 'node11', 'true', 100, 2200000000000, 5, CURRENT_TIMESTAMP, 'votehash11')
-	`)
-	require.NoError(t, err)
+	voteAccountsOnDZ := []testVoteAccount{
+		{VotePubkey: "vote1", NodePubkey: "node1", EpochVoteAccount: true, Epoch: 100, ActivatedStake: 1000000000000, Commission: 5},
+		{VotePubkey: "vote2", NodePubkey: "node2", EpochVoteAccount: true, Epoch: 100, ActivatedStake: 2000000000000, Commission: 5},
+		{VotePubkey: "vote3", NodePubkey: "node3", EpochVoteAccount: true, Epoch: 100, ActivatedStake: 1500000000000, Commission: 5},
+	}
+	seedVoteAccounts(t, ctx, conn, []testVoteAccount{voteAccountsOnDZ[0]}, now.Add(-7*24*time.Hour), now, testOpID())  // vote1: 7 days ago
+	seedVoteAccounts(t, ctx, conn, []testVoteAccount{voteAccountsOnDZ[1]}, now.Add(-30*24*time.Hour), now, testOpID()) // vote2: 30 days ago
+	seedVoteAccounts(t, ctx, conn, []testVoteAccount{voteAccountsOnDZ[2]}, now.Add(-60*24*time.Hour), now, testOpID()) // vote3: 60 days ago
 
-	// Seed history table with temporal data
-	_, err = conn.ExecContext(ctx, `
-		INSERT INTO solana_vote_accounts_history (
-			vote_pubkey, node_pubkey, epoch_vote_account, epoch, activated_stake_lamports, commission_percentage, valid_from, valid_to, op, row_hash
-		) VALUES
-		-- Currently on DZ validators
-		('vote1', 'node1', 'true', 100, 1000000000000, 5, CURRENT_TIMESTAMP - INTERVAL '7 days', NULL, 'I', 'votehash1'),
-		('vote2', 'node2', 'true', 100, 2000000000000, 5, CURRENT_TIMESTAMP - INTERVAL '30 days', NULL, 'I', 'votehash2'),
-		('vote3', 'node3', 'true', 100, 1500000000000, 5, CURRENT_TIMESTAMP - INTERVAL '60 days', NULL, 'I', 'votehash3'),
-		-- Historical on DZ validator
-		('vote6', 'node6', 'true', 100, 1800000000000, 5, CURRENT_TIMESTAMP - INTERVAL '90 days', NULL, 'I', 'votehash6'),
-		-- Not on DZ validators
-		('vote8', 'node8', 'true', 100, 3000000000000, 5, CURRENT_TIMESTAMP - INTERVAL '180 days', NULL, 'I', 'votehash8'),
-		('vote9', 'node9', 'true', 100, 2500000000000, 5, CURRENT_TIMESTAMP - INTERVAL '150 days', NULL, 'I', 'votehash9'),
-		('vote10', 'node10', 'true', 100, 4000000000000, 5, CURRENT_TIMESTAMP - INTERVAL '200 days', NULL, 'I', 'votehash10'),
-		('vote11', 'node11', 'true', 100, 2200000000000, 5, CURRENT_TIMESTAMP - INTERVAL '100 days', NULL, 'I', 'votehash11')
-	`)
-	require.NoError(t, err)
+	// Historical vote account - still in the vote accounts table but won't be counted as "on DZ"
+	// because its node's user was disconnected (not in dz_users_current)
+	voteAccountHistorical := testVoteAccount{VotePubkey: "vote6", NodePubkey: "node6", EpochVoteAccount: true, Epoch: 100, ActivatedStake: 1800000000000, Commission: 5}
+	seedVoteAccounts(t, ctx, conn, []testVoteAccount{voteAccountHistorical}, now.Add(-90*24*time.Hour), now, testOpID()) // vote6: 90 days ago
+
+	voteAccountsOffDZ := []testVoteAccount{
+		{VotePubkey: "vote8", NodePubkey: "node8", EpochVoteAccount: true, Epoch: 100, ActivatedStake: 3000000000000, Commission: 5},
+		{VotePubkey: "vote9", NodePubkey: "node9", EpochVoteAccount: true, Epoch: 100, ActivatedStake: 2500000000000, Commission: 5},
+		{VotePubkey: "vote10", NodePubkey: "node10", EpochVoteAccount: true, Epoch: 100, ActivatedStake: 4000000000000, Commission: 5},
+		{VotePubkey: "vote11", NodePubkey: "node11", EpochVoteAccount: true, Epoch: 100, ActivatedStake: 2200000000000, Commission: 5},
+	}
+	seedVoteAccounts(t, ctx, conn, []testVoteAccount{voteAccountsOffDZ[0]}, now.Add(-180*24*time.Hour), now, testOpID()) // vote8: 180 days ago
+	seedVoteAccounts(t, ctx, conn, []testVoteAccount{voteAccountsOffDZ[1]}, now.Add(-150*24*time.Hour), now, testOpID()) // vote9: 150 days ago
+	seedVoteAccounts(t, ctx, conn, []testVoteAccount{voteAccountsOffDZ[2]}, now.Add(-200*24*time.Hour), now, testOpID()) // vote10: 200 days ago
+	seedVoteAccounts(t, ctx, conn, []testVoteAccount{voteAccountsOffDZ[3]}, now.Add(-100*24*time.Hour), now, testOpID()) // vote11: 100 days ago
+}
+
+// validateSolanaValidatorsGossipNodesOnDZSummaryQuery runs a single query representative of what
+// the agent would execute to answer "how many validators and gossip nodes on DZ"
+func validateSolanaValidatorsGossipNodesOnDZSummaryQuery(t *testing.T, ctx context.Context, conn clickhouse.Connection) {
+	query := `
+-- Count validators and gossip nodes currently on DoubleZero
+-- A node is "on DZ" if its gossip_ip matches an activated user's dz_ip
+-- A validator is a gossip node that also has a vote account with activated stake
+SELECT
+  -- Count validators: gossip nodes with vote accounts
+  -- IMPORTANT: ClickHouse returns empty string (not NULL) for unmatched String columns in LEFT JOINs
+  -- Must use countIf with != '' filter, NOT COUNT with IS NOT NULL
+  countIf(DISTINCT va.vote_pubkey, va.vote_pubkey != '') AS validator_count,
+  -- Count all gossip nodes on DZ (including non-validators)
+  COUNT(DISTINCT gn.pubkey) AS gossip_node_count
+-- Start with activated DZ users
+FROM dz_users_current u
+-- Join gossip nodes where the gossip IP matches the user's DZ IP
+JOIN solana_gossip_nodes_current gn ON u.dz_ip = gn.gossip_ip
+-- LEFT JOIN vote accounts to identify which gossip nodes are validators
+-- A gossip node is a validator if it has a vote account with activated stake
+-- Note: Unmatched rows will have va.vote_pubkey = '' (empty string), not NULL
+LEFT JOIN solana_vote_accounts_current va ON gn.pubkey = va.node_pubkey AND va.activated_stake_lamports > 0
+WHERE u.status = 'activated' AND gn.gossip_ip IS NOT NULL
+`
+
+	result, err := dataset.Query(ctx, conn, query, nil)
+	require.NoError(t, err, "Failed to execute query")
+	require.Equal(t, 1, result.Count, "Query should return exactly one row")
+
+	row := result.Rows[0]
+	validatorCount := toUint64(t, row["validator_count"])
+	gossipCount := toUint64(t, row["gossip_node_count"])
+
+	require.Equal(t, uint64(3), validatorCount, "Expected 3 validators on DZ (vote1, vote2, vote3)")
+	require.Equal(t, uint64(5), gossipCount, "Expected 5 gossip nodes on DZ (node1-node5)")
+
+	t.Logf("Database validation passed: Found %d validators and %d gossip nodes on DZ", validatorCount, gossipCount)
+}
+
+func toUint64(t *testing.T, v any) uint64 {
+	switch val := v.(type) {
+	case uint64:
+		return val
+	case int64:
+		return uint64(val)
+	case int:
+		return uint64(val)
+	case uint32:
+		return uint64(val)
+	case int32:
+		return uint64(val)
+	default:
+		t.Fatalf("Unexpected type: %T, value: %v", v, v)
+		return 0
+	}
 }

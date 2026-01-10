@@ -14,17 +14,14 @@ import (
 	"syscall"
 	"time"
 
-	"database/sql"
-
 	anthropic "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
-	_ "github.com/lib/pq" // PostgreSQL driver
 	"github.com/malbeclabs/doublezero/lake/pkg/agent"
 	"github.com/malbeclabs/doublezero/lake/pkg/agent/prompts"
 	"github.com/malbeclabs/doublezero/lake/pkg/agent/react"
 	"github.com/malbeclabs/doublezero/lake/pkg/agent/tools"
+	"github.com/malbeclabs/doublezero/lake/pkg/clickhouse"
 	"github.com/malbeclabs/doublezero/lake/pkg/logger"
-	"github.com/malbeclabs/doublezero/lake/pkg/querier"
 	slackbot "github.com/malbeclabs/doublezero/tools/dz-ai/internal/slack"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/slack-go/slack"
@@ -72,7 +69,6 @@ func main() {
 // For channels, the bot only responds when mentioned (@bot) or when replying in a thread where the root message mentioned the bot.
 func run() error {
 	verboseFlag := flag.Bool("verbose", false, "Enable verbose (debug) logging")
-	lakeQuerierURIFlag := flag.String("lake-querier-uri", "", "Lake querier URI (PostgreSQL connection string to querier service)")
 	enablePprofFlag := flag.Bool("enable-pprof", false, "Enable pprof server")
 	metricsAddrFlag := flag.String("metrics-addr", defaultMetricsAddr, "Address to listen on for prometheus metrics")
 	modeFlag := flag.String("mode", "", "Mode: 'socket' (dev) or 'http' (prod). Defaults to 'socket' if SLACK_APP_TOKEN is set, otherwise 'http'")
@@ -81,23 +77,35 @@ func run() error {
 	brainModeMaxRoundsFlag := flag.Int("brain-mode-max-rounds", 32, "Maximum number of rounds for the AI agent in brain mode (e.g. when the user asks for a detailed analysis)")
 	maxContextTokensFlag := flag.Int("max-context-tokens", 20000, "Maximum number of tokens for the AI agent context before compacting the conversation history")
 	shutdownTimeoutFlag := flag.Duration("shutdown-timeout", 60*time.Second, "Maximum time to wait for in-flight operations to complete during graceful shutdown")
+
+	// ClickHouse configuration flags (used as fallback if env vars not set)
+	clickhouseAddrFlag := flag.String("clickhouse-addr", "", "ClickHouse server address (e.g., localhost:9000, or set CLICKHOUSE_ADDR env var)")
+	clickhouseDatabaseFlag := flag.String("clickhouse-database", "default", "ClickHouse database name (or set CLICKHOUSE_DATABASE env var)")
+	clickhouseUsernameFlag := flag.String("clickhouse-username", "default", "ClickHouse username (or set CLICKHOUSE_USERNAME env var)")
+	clickhousePasswordFlag := flag.String("clickhouse-password", "", "ClickHouse password (or set CLICKHOUSE_PASSWORD env var)")
+
 	flag.Parse()
 
 	log := logger.New(*verboseFlag)
-
-	// Handle lake querier URI flag override
-	lakeQuerierURI := *lakeQuerierURIFlag
-	if lakeQuerierURI == "" {
-		lakeQuerierURI = os.Getenv("LAKE_QUERIER_URI")
-	}
-	if lakeQuerierURI != "" {
-		os.Setenv("LAKE_QUERIER_URI", lakeQuerierURI)
-	}
 
 	// Load configuration
 	cfg, err := slackbot.LoadFromEnv(*modeFlag, *httpAddrFlag, *metricsAddrFlag, *verboseFlag, *enablePprofFlag)
 	if err != nil {
 		return err
+	}
+
+	// Override config with flags if flags are provided (flags take precedence)
+	if *clickhouseAddrFlag != "" {
+		cfg.ClickhouseAddr = *clickhouseAddrFlag
+	}
+	if *clickhouseDatabaseFlag != "" && *clickhouseDatabaseFlag != "default" {
+		cfg.ClickhouseDatabase = *clickhouseDatabaseFlag
+	}
+	if *clickhouseUsernameFlag != "" && *clickhouseUsernameFlag != "default" {
+		cfg.ClickhouseUsername = *clickhouseUsernameFlag
+	}
+	if *clickhousePasswordFlag != "" {
+		cfg.ClickhousePassword = *clickhousePasswordFlag
 	}
 
 	// Start pprof server if enabled
@@ -143,15 +151,21 @@ func run() error {
 	}
 	systemPrompt := prompts.BuildSlackSystemPrompt()
 
-	// Set up tool client using QuerierToolClient
-	// Create querier from lake querier URI (PostgreSQL connection string to querier service)
-	pgQuerier, err := newPostgresQuerier(ctx, cfg.LakeQuerierURI, log)
+	// Create ClickHouse client using config values
+	clickhouseClient, err := clickhouse.NewClient(ctx, log, cfg.ClickhouseAddr, cfg.ClickhouseDatabase, cfg.ClickhouseUsername, cfg.ClickhousePassword)
 	if err != nil {
-		return fmt.Errorf("failed to create querier: %w", err)
+		return fmt.Errorf("failed to create clickhouse client: %w", err)
 	}
-	defer pgQuerier.Close()
+	defer clickhouseClient.Close()
 
-	toolClient := tools.NewQuerierToolClient(pgQuerier)
+	// Create ClickHouse query tool with logger for verbose mode
+	var toolClient react.ToolClient
+	if cfg.Verbose {
+		toolClient = tools.NewClickhouseQueryToolWithLogger(clickhouseClient, log)
+	} else {
+		toolClient = tools.NewClickhouseQueryTool(clickhouseClient)
+	}
+	log.Info("ClickHouse query tool initialized", "addr", cfg.ClickhouseAddr, "database", cfg.ClickhouseDatabase)
 
 	// Create normal agent (Haiku model, normal maxRounds)
 	normalModel := anthropic.ModelClaudeHaiku4_5
@@ -163,12 +177,14 @@ func run() error {
 		MaxRounds:          *maxRoundsFlag,
 		MaxContextTokens:   *maxContextTokensFlag,
 		FinalizationPrompt: prompts.Finalization,
+		SummaryPrompt:      prompts.Summary,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create normal react agent: %w", err)
 	}
 	normalAgent := agent.NewAgent(&agent.AgentConfig{
 		ReactAgent: normalReactAgent,
+		LLMClient:  normalLLMClient,
 	})
 
 	// Create brain mode agent (Sonnet model, brainModeMaxRounds)
@@ -181,12 +197,14 @@ func run() error {
 		MaxRounds:          *brainModeMaxRoundsFlag,
 		MaxContextTokens:   *maxContextTokensFlag,
 		FinalizationPrompt: prompts.Finalization,
+		SummaryPrompt:      prompts.Summary,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create brain react agent: %w", err)
 	}
 	brainAgent := agent.NewAgent(&agent.AgentConfig{
 		ReactAgent: brainReactAgent,
+		LLMClient:  brainLLMClient,
 	})
 
 	// Initialize Slack client
@@ -321,105 +339,4 @@ func runHTTPMode(
 	}
 
 	return ctx.Err()
-}
-
-// postgresQuerier implements tools.Querier by connecting to a querier service via PostgreSQL wire protocol.
-type postgresQuerier struct {
-	db  *sql.DB
-	log *slog.Logger
-}
-
-// newPostgresQuerier creates a new PostgreSQL querier that connects to the querier service.
-func newPostgresQuerier(ctx context.Context, connStr string, log *slog.Logger) (*postgresQuerier, error) {
-	db, err := sql.Open("postgres", connStr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open database connection: %w", err)
-	}
-
-	// Test the connection
-	if err := db.PingContext(ctx); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to ping database: %w", err)
-	}
-
-	return &postgresQuerier{
-		db:  db,
-		log: log,
-	}, nil
-}
-
-func (p *postgresQuerier) Close() error {
-	return p.db.Close()
-}
-
-func (p *postgresQuerier) Query(ctx context.Context, sqlQuery string) (querier.QueryResponse, error) {
-	rows, err := p.db.QueryContext(ctx, sqlQuery)
-	if err != nil {
-		return querier.QueryResponse{}, fmt.Errorf("failed to execute query: %w", err)
-	}
-	defer rows.Close()
-
-	columns, err := rows.Columns()
-	if err != nil {
-		return querier.QueryResponse{}, fmt.Errorf("failed to get columns: %w", err)
-	}
-
-	// Get column types
-	columnTypes, err := rows.ColumnTypes()
-	if err != nil {
-		return querier.QueryResponse{}, fmt.Errorf("failed to get column types: %w", err)
-	}
-
-	// Build column type information
-	colTypeInfo := make([]querier.ColumnType, len(columns))
-	for i, colType := range columnTypes {
-		colTypeInfo[i] = querier.ColumnType{
-			Name:             colType.Name(),
-			DatabaseTypeName: colType.DatabaseTypeName(),
-			ScanType:         "",
-		}
-		if colType.ScanType() != nil {
-			colTypeInfo[i].ScanType = colType.ScanType().String()
-		}
-	}
-
-	var resultRows []querier.QueryRow
-	for rows.Next() {
-		values := make([]any, len(columns))
-		valuePtrs := make([]any, len(columns))
-		for i := range values {
-			valuePtrs[i] = &values[i]
-		}
-
-		if err := rows.Scan(valuePtrs...); err != nil {
-			return querier.QueryResponse{}, fmt.Errorf("failed to scan row: %w", err)
-		}
-
-		row := make(querier.QueryRow)
-		for i, col := range columns {
-			val := values[i]
-			if val == nil {
-				row[col] = nil
-			} else {
-				switch v := val.(type) {
-				case []byte:
-					row[col] = string(v)
-				default:
-					row[col] = val
-				}
-			}
-		}
-		resultRows = append(resultRows, row)
-	}
-
-	if err := rows.Err(); err != nil {
-		return querier.QueryResponse{}, fmt.Errorf("error iterating rows: %w", err)
-	}
-
-	return querier.QueryResponse{
-		Columns:     columns,
-		ColumnTypes: colTypeInfo,
-		Rows:        resultRows,
-		Count:       len(resultRows),
-	}, nil
 }

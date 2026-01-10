@@ -25,8 +25,11 @@ type Config struct {
 	// Anthropic configuration
 	AnthropicAPIKey string
 
-	// Lake querier configuration
-	LakeQuerierURI string
+	// ClickHouse configuration
+	ClickhouseAddr     string
+	ClickhouseDatabase string
+	ClickhouseUsername string
+	ClickhousePassword string
 
 	// Server configuration
 	HTTPAddr    string
@@ -86,11 +89,20 @@ func LoadFromEnv(modeFlag, httpAddrFlag, metricsAddrFlag string, verbose, enable
 		return nil, fmt.Errorf("ANTHROPIC_API_KEY is required")
 	}
 
-	// Load lake querier URI
-	cfg.LakeQuerierURI = os.Getenv("LAKE_QUERIER_URI")
-	if cfg.LakeQuerierURI == "" {
-		return nil, fmt.Errorf("lake querier URI is required (use --lake-querier-uri flag or LAKE_QUERIER_URI env var)")
+	// Load ClickHouse configuration
+	cfg.ClickhouseAddr = os.Getenv("CLICKHOUSE_ADDR")
+	if cfg.ClickhouseAddr == "" {
+		return nil, fmt.Errorf("CLICKHOUSE_ADDR is required (use --clickhouse-addr flag or CLICKHOUSE_ADDR env var)")
 	}
+	cfg.ClickhouseDatabase = os.Getenv("CLICKHOUSE_DATABASE")
+	if cfg.ClickhouseDatabase == "" {
+		return nil, fmt.Errorf("CLICKHOUSE_DATABASE is required (use --clickhouse-database flag or CLICKHOUSE_DATABASE env var)")
+	}
+	cfg.ClickhouseUsername = os.Getenv("CLICKHOUSE_USERNAME")
+	if cfg.ClickhouseUsername == "" {
+		return nil, fmt.Errorf("CLICKHOUSE_USERNAME is required (use --clickhouse-username flag or CLICKHOUSE_USERNAME env var)")
+	}
+	cfg.ClickhousePassword = os.Getenv("CLICKHOUSE_PASSWORD")
 
 	return cfg, nil
 }

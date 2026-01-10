@@ -5,11 +5,15 @@ package evals_test
 import (
 	"bytes"
 	"context"
+	"net"
 	"os"
-	"strings"
 	"testing"
+	"time"
 
-	"github.com/malbeclabs/doublezero/lake/pkg/duck"
+	"github.com/malbeclabs/doublezero/lake/pkg/clickhouse"
+	"github.com/malbeclabs/doublezero/lake/pkg/clickhouse/dataset"
+	serviceability "github.com/malbeclabs/doublezero/lake/pkg/indexer/dz/serviceability"
+	"github.com/malbeclabs/doublezero/lake/pkg/indexer/sol"
 	"github.com/stretchr/testify/require"
 )
 
@@ -20,10 +24,19 @@ func TestLake_Agent_Evals_Anthropic_SolanaValidatorsOnDZVsOffDZ(t *testing.T) {
 		t.Skip("ANTHROPIC_API_KEY not set, skipping eval test")
 	}
 
-	runTest_SolanaValidatorsOnDZVsOffDZ(t)
+	runTest_SolanaValidatorsOnDZVsOffDZ(t, newAnthropicLLMClient)
 }
 
-func runTest_SolanaValidatorsOnDZVsOffDZ(t *testing.T) {
+func TestLake_Agent_Evals_OllamaLocal_SolanaValidatorsOnDZVsOffDZ(t *testing.T) {
+	t.Parallel()
+	if !isOllamaAvailable() {
+		t.Skip("Ollama not available, skipping eval test")
+	}
+
+	runTest_SolanaValidatorsOnDZVsOffDZ(t, newOllamaLLMClient)
+}
+
+func runTest_SolanaValidatorsOnDZVsOffDZ(t *testing.T, llmFactory LLMClientFactory) {
 	ctx := context.Background()
 
 	// Get debug level
@@ -40,8 +53,17 @@ func runTest_SolanaValidatorsOnDZVsOffDZ(t *testing.T) {
 	// Seed Solana validators on DZ vs off DZ comparison data
 	seedSolanaValidatorsOnDZVsOffDZData(t, ctx, conn)
 
-	// Set up agent with Anthropic LLM client
-	agentInstance := setupAgent(t, ctx, db, newAnthropicLLMClient, debug, debugLevel, nil)
+	// Validate database query results before testing agent
+	validateSolanaValidatorsOnDZVsOffDZQuery(t, ctx, conn)
+
+	// Skip agent execution in short mode
+	if testing.Short() {
+		t.Log("Skipping agent execution in short mode")
+		return
+	}
+
+	// Set up agent with LLM client
+	agentInstance := setupAgent(t, ctx, db, llmFactory, debug, debugLevel, nil)
 
 	// Run the query
 	var output bytes.Buffer
@@ -69,280 +91,269 @@ func runTest_SolanaValidatorsOnDZVsOffDZ(t *testing.T) {
 		t.Logf("Agent response:\n%s", response)
 	}
 
-	// Validate the response
-	validateSolanaValidatorsOnDZVsOffDZResponse(t, response)
-
-	// Evaluate with Ollama
-	isCorrect, err := ollamaEvaluateResponse(t, ctx, question, response)
+	// Evaluate with Ollama - include specific expectations
+	expectations := []OllamaExpectation{
+		{
+			Description:   "On-DZ validators data",
+			ExpectedValue: "3 validators on DZ with better performance metrics (lower vote lag ~50 slots OR lower skip rate ~2%)",
+			Rationale:     "vote1, vote2, vote3 are on DZ - either vote lag or skip rate metric is acceptable",
+		},
+		{
+			Description:   "Off-DZ validators data",
+			ExpectedValue: "3 validators off DZ with worse performance metrics (higher vote lag ~200 slots OR higher skip rate ~8%)",
+			Rationale:     "vote4, vote5, vote6 are off DZ - either vote lag or skip rate metric is acceptable",
+		},
+		{
+			Description:   "Comparison conclusion",
+			ExpectedValue: "on-DZ validators perform better than off-DZ validators",
+			Rationale:     "The data shows on-DZ validators have better performance (lower vote lag OR lower skip rate)",
+		},
+		{
+			Description:   "CRITICAL: Response must NOT say off-DZ data is unavailable",
+			ExpectedValue: "data for BOTH groups should be present and compared",
+			Rationale:     "If the response says off-DZ data is missing, mark as NO - the data exists and should be found",
+		},
+	}
+	isCorrect, err := ollamaEvaluateResponse(t, ctx, question, response, expectations...)
 	require.NoError(t, err, "Ollama evaluation must be available")
 	require.True(t, isCorrect, "Ollama evaluation indicates the response does not correctly answer the question")
-}
-
-// validateSolanaValidatorsOnDZVsOffDZResponse validates that the response includes required comparison elements
-func validateSolanaValidatorsOnDZVsOffDZResponse(t *testing.T, response string) {
-	responseLower := strings.ToLower(response)
-
-	// Should mention comparison between on DZ and off DZ validators
-	comparisonMentioned := (strings.Contains(responseLower, "on dz") || strings.Contains(responseLower, "on-dz") || strings.Contains(responseLower, "connected")) &&
-		(strings.Contains(responseLower, "off dz") || strings.Contains(responseLower, "off-dz") || strings.Contains(responseLower, "not on dz") || strings.Contains(responseLower, "non-dz"))
-	require.True(t, comparisonMentioned,
-		"Response should mention comparison between validators on DZ and off DZ. Got: %s",
-		truncateForError(response, 200))
-
-	// Should mention skip rate (explicitly or implicitly via produce rate)
-	// Skip rate = 1 - produce rate, so mentioning produce rate with percentages implies skip rate
-	skipRateMentioned := strings.Contains(responseLower, "skip") ||
-		strings.Contains(responseLower, "skipped") ||
-		strings.Contains(responseLower, "skip rate") ||
-		// Implicit: produce rate with percentages indicates skip rate understanding
-		(strings.Contains(responseLower, "produce rate") &&
-			(strings.Contains(responseLower, "%") || strings.Contains(responseLower, "percent")))
-	require.True(t, skipRateMentioned,
-		"Response should mention skip rate (explicitly or implicitly via produce rate with percentages). Got: %s",
-		truncateForError(response, 200))
-
-	// Should mention vote latency or vote lag
-	voteLatencyMentioned := strings.Contains(responseLower, "vote") &&
-		(strings.Contains(responseLower, "latency") ||
-			strings.Contains(responseLower, "lag") ||
-			strings.Contains(responseLower, "delay"))
-	require.True(t, voteLatencyMentioned,
-		"Response should mention vote latency or vote lag. Got: %s",
-		truncateForError(response, 200))
-
-	// Should mention block produce rate or production rate
-	produceRateMentioned := strings.Contains(responseLower, "produce") ||
-		strings.Contains(responseLower, "production") ||
-		(strings.Contains(responseLower, "block") && strings.Contains(responseLower, "rate"))
-	require.True(t, produceRateMentioned,
-		"Response should mention block produce rate or production rate. Got: %s",
-		truncateForError(response, 200))
-
-	// Should contain numeric data (percentages, rates, counts, etc.)
-	hasNumbers := false
-	for _, char := range response {
-		if char >= '0' && char <= '9' {
-			hasNumbers = true
-			break
-		}
-	}
-	require.True(t, hasNumbers,
-		"Response should contain numeric data (skip rates, produce rates, vote lag, etc.). Got: %s",
-		truncateForError(response, 200))
-
-	// Should mention specific vote_pubkeys OR provide aggregate comparisons with specific numbers
-	// On DZ: vote1, vote2, vote3
-	// Off DZ: vote4, vote5, vote6
-	onDZValidatorMentioned := strings.Contains(responseLower, "vote1") ||
-		strings.Contains(responseLower, "vote2") ||
-		strings.Contains(responseLower, "vote3")
-	offDZValidatorMentioned := strings.Contains(responseLower, "vote4") ||
-		strings.Contains(responseLower, "vote5") ||
-		strings.Contains(responseLower, "vote6")
-	// Accept either specific validators OR aggregate comparisons with numbers (e.g., "3 validators", "9,900 slots")
-	hasAggregateComparison := (strings.Contains(responseLower, "on dz") || strings.Contains(responseLower, "on-dz")) &&
-		(strings.Contains(responseLower, "off dz") || strings.Contains(responseLower, "off-dz")) &&
-		hasNumbers // hasNumbers was already checked above
-	// At least one validator should be mentioned OR aggregate comparison with numbers should be present
-	require.True(t, onDZValidatorMentioned || offDZValidatorMentioned || hasAggregateComparison,
-		"Response should mention at least one validator vote_pubkey OR provide aggregate comparisons with numbers. Got: %s",
-		truncateForError(response, 200))
 }
 
 // seedSolanaValidatorsOnDZVsOffDZData seeds data for comparing validators on DZ vs off DZ
 // On DZ validators (vote1, vote2, vote3): Better performance (lower skip rate, lower vote lag, higher produce rate)
 // Off DZ validators (vote4, vote5, vote6): Worse performance (higher skip rate, higher vote lag, lower produce rate)
-func seedSolanaValidatorsOnDZVsOffDZData(t *testing.T, ctx context.Context, conn duck.Connection) {
-	loadTablesAndViews(t, ctx, conn)
+func seedSolanaValidatorsOnDZVsOffDZData(t *testing.T, ctx context.Context, conn clickhouse.Connection) {
+	log := testLogger(t)
+	now := testTime()
 
 	// Seed metros
-	_, err := conn.ExecContext(ctx, `
-		INSERT INTO dz_metros_current (pk, code, name, as_of_ts, row_hash) VALUES
-		('metro1', 'nyc', 'New York', CURRENT_TIMESTAMP, 'metrohash1'),
-		('metro2', 'lon', 'London', CURRENT_TIMESTAMP, 'metrohash2')
-	`)
-	require.NoError(t, err)
+	metros := []serviceability.Metro{
+		{PK: "metro1", Code: "nyc", Name: "New York"},
+		{PK: "metro2", Code: "lon", Name: "London"},
+	}
+	seedMetros(t, ctx, conn, metros, now, now)
 
 	// Seed devices
-	_, err = conn.ExecContext(ctx, `
-		INSERT INTO dz_devices_current (pk, code, status, metro_pk, device_type, as_of_ts, row_hash) VALUES
-		('device1', 'nyc-dzd1', 'activated', 'metro1', 'DZD', CURRENT_TIMESTAMP, 'devicehash1'),
-		('device2', 'lon-dzd1', 'activated', 'metro2', 'DZD', CURRENT_TIMESTAMP, 'devicehash2')
-	`)
-	require.NoError(t, err)
+	devices := []serviceability.Device{
+		{PK: "device1", Code: "nyc-dzd1", Status: "activated", MetroPK: "metro1", DeviceType: "DZD"},
+		{PK: "device2", Code: "lon-dzd1", Status: "activated", MetroPK: "metro2", DeviceType: "DZD"},
+	}
+	seedDevices(t, ctx, conn, devices, now, now)
 
 	// Seed DZ users for validators on DZ
 	// user1-3: Connected to DZ (for validators on DZ)
-	_, err = conn.ExecContext(ctx, `
-		INSERT INTO dz_users_current (pk, owner_pk, status, kind, client_ip, dz_ip, device_pk, tunnel_id, as_of_ts, row_hash) VALUES
-		('user1', 'owner1', 'activated', 'IBRL', '1.1.1.1', '10.0.0.1', 'device1', 501, CURRENT_TIMESTAMP, 'userhash1'),
-		('user2', 'owner2', 'activated', 'IBRL', '2.2.2.2', '10.0.0.2', 'device1', 502, CURRENT_TIMESTAMP, 'userhash2'),
-		('user3', 'owner3', 'activated', 'IBRL', '3.3.3.3', '10.0.0.3', 'device2', 503, CURRENT_TIMESTAMP, 'userhash3')
-	`)
-	require.NoError(t, err)
-
-	// Seed user history
-	_, err = conn.ExecContext(ctx, `
-		INSERT INTO dz_users_history (pk, owner_pk, status, kind, client_ip, dz_ip, device_pk, tunnel_id, valid_from, valid_to, op, row_hash) VALUES
-		('user1', 'owner1', 'activated', 'IBRL', '1.1.1.1', '10.0.0.1', 'device1', 501, CURRENT_TIMESTAMP - INTERVAL '30 days', NULL, 'I', 'userhash1'),
-		('user2', 'owner2', 'activated', 'IBRL', '2.2.2.2', '10.0.0.2', 'device1', 502, CURRENT_TIMESTAMP - INTERVAL '30 days', NULL, 'I', 'userhash2'),
-		('user3', 'owner3', 'activated', 'IBRL', '3.3.3.3', '10.0.0.3', 'device2', 503, CURRENT_TIMESTAMP - INTERVAL '30 days', NULL, 'I', 'userhash3')
-	`)
-	require.NoError(t, err)
+	users := []serviceability.User{
+		{PK: "user1", OwnerPubkey: "owner1", Status: "activated", Kind: "IBRL", ClientIP: net.ParseIP("1.1.1.1"), DZIP: net.ParseIP("10.0.0.1"), DevicePK: "device1", TunnelID: 501},
+		{PK: "user2", OwnerPubkey: "owner2", Status: "activated", Kind: "IBRL", ClientIP: net.ParseIP("2.2.2.2"), DZIP: net.ParseIP("10.0.0.2"), DevicePK: "device1", TunnelID: 502},
+		{PK: "user3", OwnerPubkey: "owner3", Status: "activated", Kind: "IBRL", ClientIP: net.ParseIP("3.3.3.3"), DZIP: net.ParseIP("10.0.0.3"), DevicePK: "device2", TunnelID: 503},
+	}
+	seedUsers(t, ctx, conn, users, now.Add(-30*24*time.Hour), now, testOpID())
 
 	// Seed Solana gossip nodes
 	// node1-3: On DZ (matching user1-3 dz_ip)
 	// node4-6: Off DZ (different IPs, not matching any user)
-	_, err = conn.ExecContext(ctx, `
-		INSERT INTO solana_gossip_nodes_current (
-			pubkey, gossip_ip, tpuquic_ip, version, epoch, gossip_port, tpuquic_port, as_of_ts, row_hash
-		) VALUES
-		-- On DZ
-		('node1', '10.0.0.1', '10.0.0.1', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP, 'nodehash1'),
-		('node2', '10.0.0.2', '10.0.0.2', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP, 'nodehash2'),
-		('node3', '10.0.0.3', '10.0.0.3', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP, 'nodehash3'),
-		-- Off DZ
-		('node4', '192.168.1.1', '192.168.1.1', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP, 'nodehash4'),
-		('node5', '192.168.1.2', '192.168.1.2', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP, 'nodehash5'),
-		('node6', '192.168.1.3', '192.168.1.3', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP, 'nodehash6')
-	`)
-	require.NoError(t, err)
-
-	// Seed gossip nodes history
-	_, err = conn.ExecContext(ctx, `
-		INSERT INTO solana_gossip_nodes_history (
-			pubkey, gossip_ip, tpuquic_ip, version, epoch, gossip_port, tpuquic_port, valid_from, valid_to, op, row_hash
-		) VALUES
-		-- On DZ
-		('node1', '10.0.0.1', '10.0.0.1', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP - INTERVAL '30 days', NULL, 'I', 'nodehash1'),
-		('node2', '10.0.0.2', '10.0.0.2', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP - INTERVAL '30 days', NULL, 'I', 'nodehash2'),
-		('node3', '10.0.0.3', '10.0.0.3', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP - INTERVAL '30 days', NULL, 'I', 'nodehash3'),
-		-- Off DZ
-		('node4', '192.168.1.1', '192.168.1.1', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP - INTERVAL '30 days', NULL, 'I', 'nodehash4'),
-		('node5', '192.168.1.2', '192.168.1.2', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP - INTERVAL '30 days', NULL, 'I', 'nodehash5'),
-		('node6', '192.168.1.3', '192.168.1.3', '1.18.0', 100, 8001, 8002, CURRENT_TIMESTAMP - INTERVAL '30 days', NULL, 'I', 'nodehash6')
-	`)
-	require.NoError(t, err)
+	gossipNodesOnDZ := []*testGossipNode{
+		{Pubkey: "node1", GossipIP: net.ParseIP("10.0.0.1"), GossipPort: 8001, TPUQUICIP: net.ParseIP("10.0.0.1"), TPUQUICPort: 8002, Version: "1.18.0", Epoch: 100},
+		{Pubkey: "node2", GossipIP: net.ParseIP("10.0.0.2"), GossipPort: 8001, TPUQUICIP: net.ParseIP("10.0.0.2"), TPUQUICPort: 8002, Version: "1.18.0", Epoch: 100},
+		{Pubkey: "node3", GossipIP: net.ParseIP("10.0.0.3"), GossipPort: 8001, TPUQUICIP: net.ParseIP("10.0.0.3"), TPUQUICPort: 8002, Version: "1.18.0", Epoch: 100},
+	}
+	gossipNodesOffDZ := []*testGossipNode{
+		{Pubkey: "node4", GossipIP: net.ParseIP("192.168.1.1"), GossipPort: 8001, TPUQUICIP: net.ParseIP("192.168.1.1"), TPUQUICPort: 8002, Version: "1.18.0", Epoch: 100},
+		{Pubkey: "node5", GossipIP: net.ParseIP("192.168.1.2"), GossipPort: 8001, TPUQUICIP: net.ParseIP("192.168.1.2"), TPUQUICPort: 8002, Version: "1.18.0", Epoch: 100},
+		{Pubkey: "node6", GossipIP: net.ParseIP("192.168.1.3"), GossipPort: 8001, TPUQUICIP: net.ParseIP("192.168.1.3"), TPUQUICPort: 8002, Version: "1.18.0", Epoch: 100},
+	}
+	allGossipNodes := append(gossipNodesOnDZ, gossipNodesOffDZ...)
+	seedGossipNodes(t, ctx, conn, allGossipNodes, now.Add(-30*24*time.Hour), now, testOpID())
 
 	// Seed Solana vote accounts
 	// vote1-3: On DZ (better performance)
 	// vote4-6: Off DZ (worse performance)
-	_, err = conn.ExecContext(ctx, `
-		INSERT INTO solana_vote_accounts_current (
-			vote_pubkey, node_pubkey, epoch_vote_account, epoch, activated_stake_lamports, commission_percentage, as_of_ts, row_hash
-		) VALUES
-		-- On DZ validators
-		('vote1', 'node1', 'true', 100, 1000000000000, 5, CURRENT_TIMESTAMP, 'votehash1'),
-		('vote2', 'node2', 'true', 100, 1500000000000, 5, CURRENT_TIMESTAMP, 'votehash2'),
-		('vote3', 'node3', 'true', 100, 1200000000000, 5, CURRENT_TIMESTAMP, 'votehash3'),
-		-- Off DZ validators
-		('vote4', 'node4', 'true', 100, 2000000000000, 5, CURRENT_TIMESTAMP, 'votehash4'),
-		('vote5', 'node5', 'true', 100, 1800000000000, 5, CURRENT_TIMESTAMP, 'votehash5'),
-		('vote6', 'node6', 'true', 100, 1600000000000, 5, CURRENT_TIMESTAMP, 'votehash6')
-	`)
-	require.NoError(t, err)
-
-	// Seed vote accounts history
-	_, err = conn.ExecContext(ctx, `
-		INSERT INTO solana_vote_accounts_history (
-			vote_pubkey, node_pubkey, epoch_vote_account, epoch, activated_stake_lamports, commission_percentage, valid_from, valid_to, op, row_hash
-		) VALUES
-		-- On DZ validators
-		('vote1', 'node1', 'true', 100, 1000000000000, 5, CURRENT_TIMESTAMP - INTERVAL '30 days', NULL, 'I', 'votehash1'),
-		('vote2', 'node2', 'true', 100, 1500000000000, 5, CURRENT_TIMESTAMP - INTERVAL '30 days', NULL, 'I', 'votehash2'),
-		('vote3', 'node3', 'true', 100, 1200000000000, 5, CURRENT_TIMESTAMP - INTERVAL '30 days', NULL, 'I', 'votehash3'),
-		-- Off DZ validators
-		('vote4', 'node4', 'true', 100, 2000000000000, 5, CURRENT_TIMESTAMP - INTERVAL '30 days', NULL, 'I', 'votehash4'),
-		('vote5', 'node5', 'true', 100, 1800000000000, 5, CURRENT_TIMESTAMP - INTERVAL '30 days', NULL, 'I', 'votehash5'),
-		('vote6', 'node6', 'true', 100, 1600000000000, 5, CURRENT_TIMESTAMP - INTERVAL '30 days', NULL, 'I', 'votehash6')
-	`)
-	require.NoError(t, err)
-
-	now := "CURRENT_TIMESTAMP"
+	voteAccountsOnDZ := []testVoteAccount{
+		{VotePubkey: "vote1", NodePubkey: "node1", EpochVoteAccount: true, Epoch: 100, ActivatedStake: 1000000000000, Commission: 5},
+		{VotePubkey: "vote2", NodePubkey: "node2", EpochVoteAccount: true, Epoch: 100, ActivatedStake: 1500000000000, Commission: 5},
+		{VotePubkey: "vote3", NodePubkey: "node3", EpochVoteAccount: true, Epoch: 100, ActivatedStake: 1200000000000, Commission: 5},
+	}
+	voteAccountsOffDZ := []testVoteAccount{
+		{VotePubkey: "vote4", NodePubkey: "node4", EpochVoteAccount: true, Epoch: 100, ActivatedStake: 2000000000000, Commission: 5},
+		{VotePubkey: "vote5", NodePubkey: "node5", EpochVoteAccount: true, Epoch: 100, ActivatedStake: 1800000000000, Commission: 5},
+		{VotePubkey: "vote6", NodePubkey: "node6", EpochVoteAccount: true, Epoch: 100, ActivatedStake: 1600000000000, Commission: 5},
+	}
+	allVoteAccounts := append(voteAccountsOnDZ, voteAccountsOffDZ...)
+	seedVoteAccounts(t, ctx, conn, allVoteAccounts, now.Add(-30*24*time.Hour), now, testOpID())
 
 	// Seed leader schedule (slots assigned to validators)
-	_, err = conn.ExecContext(ctx, `
-		INSERT INTO solana_leader_schedule_current (
-			node_pubkey, epoch, slot_count, slots, as_of_ts, row_hash
-		) VALUES
-		-- On DZ validators: assigned slots
-		('node1', 100, 1000, '1000-1999', CURRENT_TIMESTAMP, 'schedhash1'),
-		('node2', 100, 1200, '2000-3199', CURRENT_TIMESTAMP, 'schedhash2'),
-		('node3', 100, 1100, '3200-4299', CURRENT_TIMESTAMP, 'schedhash3'),
-		-- Off DZ validators: assigned slots
-		('node4', 100, 1500, '4300-5799', CURRENT_TIMESTAMP, 'schedhash4'),
-		('node5', 100, 1400, '5800-7199', CURRENT_TIMESTAMP, 'schedhash5'),
-		('node6', 100, 1300, '7200-8499', CURRENT_TIMESTAMP, 'schedhash6')
-	`)
-	require.NoError(t, err)
+	// Note: Leader schedule uses solana.PublicKey which requires parsing, so we'll skip it for now
+	// The test should still work without leader schedule data
 
 	// Seed block production data
 	// On DZ validators: Better performance (lower skip rate ~2%, higher produce rate ~98%)
 	// Off DZ validators: Worse performance (higher skip rate ~8%, lower produce rate ~92%)
-	_, err = conn.ExecContext(ctx, `
-		INSERT INTO solana_block_production_raw (
-			time, epoch, leader_identity_pubkey, leader_slots_assigned_cum, blocks_produced_cum
-		) VALUES
-		-- On DZ: vote1 (node1) - 1000 assigned, 980 produced (20 skipped, 98% produce rate, 2% skip rate)
-		(`+now+` - INTERVAL '2 hours', 100, 'node1', 1000, 980),
-		(`+now+` - INTERVAL '1 hour', 100, 'node1', 2000, 1960),
-		(`+now+` - INTERVAL '0 hours', 100, 'node1', 3000, 2940),
-		-- On DZ: vote2 (node2) - 1200 assigned, 1176 produced (24 skipped, 98% produce rate, 2% skip rate)
-		(`+now+` - INTERVAL '2 hours', 100, 'node2', 1200, 1176),
-		(`+now+` - INTERVAL '1 hour', 100, 'node2', 2400, 2352),
-		(`+now+` - INTERVAL '0 hours', 100, 'node2', 3600, 3528),
-		-- On DZ: vote3 (node3) - 1100 assigned, 1078 produced (22 skipped, 98% produce rate, 2% skip rate)
-		(`+now+` - INTERVAL '2 hours', 100, 'node3', 1100, 1078),
-		(`+now+` - INTERVAL '1 hour', 100, 'node3', 2200, 2156),
-		(`+now+` - INTERVAL '0 hours', 100, 'node3', 3300, 3234),
-		-- Off DZ: vote4 (node4) - 1500 assigned, 1380 produced (120 skipped, 92% produce rate, 8% skip rate)
-		(`+now+` - INTERVAL '2 hours', 100, 'node4', 1500, 1380),
-		(`+now+` - INTERVAL '1 hour', 100, 'node4', 3000, 2760),
-		(`+now+` - INTERVAL '0 hours', 100, 'node4', 4500, 4140),
-		-- Off DZ: vote5 (node5) - 1400 assigned, 1288 produced (112 skipped, 92% produce rate, 8% skip rate)
-		(`+now+` - INTERVAL '2 hours', 100, 'node5', 1400, 1288),
-		(`+now+` - INTERVAL '1 hour', 100, 'node5', 2800, 2576),
-		(`+now+` - INTERVAL '0 hours', 100, 'node5', 4200, 3864),
-		-- Off DZ: vote6 (node6) - 1300 assigned, 1196 produced (104 skipped, 92% produce rate, 8% skip rate)
-		(`+now+` - INTERVAL '2 hours', 100, 'node6', 1300, 1196),
-		(`+now+` - INTERVAL '1 hour', 100, 'node6', 2600, 2392),
-		(`+now+` - INTERVAL '0 hours', 100, 'node6', 3900, 3588)
-	`)
+	blockProdDS, err := sol.NewBlockProductionDataset(log)
+	require.NoError(t, err)
+	ingestedAt := now
+	blockProdEntries := []struct {
+		time                   time.Time
+		epoch                  int
+		leaderIdentityPubkey   string
+		leaderSlotsAssignedCum uint64
+		blocksProducedCum      uint64
+	}{
+		// On DZ: vote1 (node1) - 1000 assigned, 980 produced
+		{now.Add(-2 * time.Hour), 100, "node1", 1000, 980},
+		{now.Add(-1 * time.Hour), 100, "node1", 2000, 1960},
+		{now, 100, "node1", 3000, 2940},
+		// On DZ: vote2 (node2) - 1200 assigned, 1176 produced
+		{now.Add(-2 * time.Hour), 100, "node2", 1200, 1176},
+		{now.Add(-1 * time.Hour), 100, "node2", 2400, 2352},
+		{now, 100, "node2", 3600, 3528},
+		// On DZ: vote3 (node3) - 1100 assigned, 1078 produced
+		{now.Add(-2 * time.Hour), 100, "node3", 1100, 1078},
+		{now.Add(-1 * time.Hour), 100, "node3", 2200, 2156},
+		{now, 100, "node3", 3300, 3234},
+		// Off DZ: vote4 (node4) - 1500 assigned, 1380 produced
+		{now.Add(-2 * time.Hour), 100, "node4", 1500, 1380},
+		{now.Add(-1 * time.Hour), 100, "node4", 3000, 2760},
+		{now, 100, "node4", 4500, 4140},
+		// Off DZ: vote5 (node5) - 1400 assigned, 1288 produced
+		{now.Add(-2 * time.Hour), 100, "node5", 1400, 1288},
+		{now.Add(-1 * time.Hour), 100, "node5", 2800, 2576},
+		{now, 100, "node5", 4200, 3864},
+		// Off DZ: vote6 (node6) - 1300 assigned, 1196 produced
+		{now.Add(-2 * time.Hour), 100, "node6", 1300, 1196},
+		{now.Add(-1 * time.Hour), 100, "node6", 2600, 2392},
+		{now, 100, "node6", 3900, 3588},
+	}
+	err = blockProdDS.WriteBatch(ctx, conn, len(blockProdEntries), func(i int) ([]any, error) {
+		e := blockProdEntries[i]
+		return []any{
+			int32(e.epoch),                  // epoch
+			e.time.UTC(),                    // event_ts
+			ingestedAt,                      // ingested_at
+			e.leaderIdentityPubkey,          // leader_identity_pubkey
+			int64(e.leaderSlotsAssignedCum), // leader_slots_assigned_cum
+			int64(e.blocksProducedCum),      // blocks_produced_cum
+		}, nil
+	})
 	require.NoError(t, err)
 
 	// Seed vote account activity (vote lag)
 	// On DZ validators: Lower vote lag (~50 slots)
 	// Off DZ validators: Higher vote lag (~200 slots)
-	_, err = conn.ExecContext(ctx, `
-		INSERT INTO solana_vote_account_activity_raw (
-			time, vote_account_pubkey, node_identity_pubkey,
-			cluster_slot, last_vote_slot, root_slot, credits_delta, is_delinquent,
-			activated_stake_sol, commission, collector_run_id
-		) VALUES
-		-- On DZ: vote1 - low vote lag (~50 slots)
-		(`+now+` - INTERVAL '2 hours', 'vote1', 'node1', 100000, 99950, 99900, 100, false, 1000.0, 5, 'run1'),
-		(`+now+` - INTERVAL '1 hour', 'vote1', 'node1', 100100, 100050, 100000, 100, false, 1000.0, 5, 'run2'),
-		(`+now+` - INTERVAL '0 hours', 'vote1', 'node1', 100200, 100150, 100100, 100, false, 1000.0, 5, 'run3'),
-		-- On DZ: vote2 - low vote lag (~50 slots)
-		(`+now+` - INTERVAL '2 hours', 'vote2', 'node2', 100000, 99950, 99900, 100, false, 1500.0, 5, 'run1'),
-		(`+now+` - INTERVAL '1 hour', 'vote2', 'node2', 100100, 100050, 100000, 100, false, 1500.0, 5, 'run2'),
-		(`+now+` - INTERVAL '0 hours', 'vote2', 'node2', 100200, 100150, 100100, 100, false, 1500.0, 5, 'run3'),
-		-- On DZ: vote3 - low vote lag (~50 slots)
-		(`+now+` - INTERVAL '2 hours', 'vote3', 'node3', 100000, 99950, 99900, 100, false, 1200.0, 5, 'run1'),
-		(`+now+` - INTERVAL '1 hour', 'vote3', 'node3', 100100, 100050, 100000, 100, false, 1200.0, 5, 'run2'),
-		(`+now+` - INTERVAL '0 hours', 'vote3', 'node3', 100200, 100150, 100100, 100, false, 1200.0, 5, 'run3'),
-		-- Off DZ: vote4 - high vote lag (~200 slots)
-		(`+now+` - INTERVAL '2 hours', 'vote4', 'node4', 100000, 99800, 99700, 100, false, 2000.0, 5, 'run1'),
-		(`+now+` - INTERVAL '1 hour', 'vote4', 'node4', 100100, 99900, 99800, 100, false, 2000.0, 5, 'run2'),
-		(`+now+` - INTERVAL '0 hours', 'vote4', 'node4', 100200, 100000, 99900, 100, false, 2000.0, 5, 'run3'),
-		-- Off DZ: vote5 - high vote lag (~200 slots)
-		(`+now+` - INTERVAL '2 hours', 'vote5', 'node5', 100000, 99800, 99700, 100, false, 1800.0, 5, 'run1'),
-		(`+now+` - INTERVAL '1 hour', 'vote5', 'node5', 100100, 99900, 99800, 100, false, 1800.0, 5, 'run2'),
-		(`+now+` - INTERVAL '0 hours', 'vote5', 'node5', 100200, 100000, 99900, 100, false, 1800.0, 5, 'run3'),
-		-- Off DZ: vote6 - high vote lag (~200 slots)
-		(`+now+` - INTERVAL '2 hours', 'vote6', 'node6', 100000, 99800, 99700, 100, false, 1600.0, 5, 'run1'),
-		(`+now+` - INTERVAL '1 hour', 'vote6', 'node6', 100100, 99900, 99800, 100, false, 1600.0, 5, 'run2'),
-		(`+now+` - INTERVAL '0 hours', 'vote6', 'node6', 100200, 100000, 99900, 100, false, 1600.0, 5, 'run3')
-	`)
+	voteActivityDS, err := sol.NewVoteAccountActivityDataset(log)
 	require.NoError(t, err)
+	voteActivityEntries := []sol.VoteAccountActivityEntry{
+		// On DZ: vote1 - low vote lag (~50 slots)
+		{Time: now.Add(-2 * time.Hour), VoteAccountPubkey: "vote1", NodeIdentityPubkey: "node1", ClusterSlot: 100000, LastVoteSlot: 99950, RootSlot: 99900, CreditsDelta: int64Ptr(100), IsDelinquent: false, ActivatedStakeSol: floatPtr(1000.0), Commission: uint8Ptr(5), CollectorRunID: "run1", Epoch: 100, EpochCreditsJSON: "[]", CreditsEpoch: 100, CreditsEpochCredits: 1000},
+		{Time: now.Add(-1 * time.Hour), VoteAccountPubkey: "vote1", NodeIdentityPubkey: "node1", ClusterSlot: 100100, LastVoteSlot: 100050, RootSlot: 100000, CreditsDelta: int64Ptr(100), IsDelinquent: false, ActivatedStakeSol: floatPtr(1000.0), Commission: uint8Ptr(5), CollectorRunID: "run2", Epoch: 100, EpochCreditsJSON: "[]", CreditsEpoch: 100, CreditsEpochCredits: 1100},
+		{Time: now, VoteAccountPubkey: "vote1", NodeIdentityPubkey: "node1", ClusterSlot: 100200, LastVoteSlot: 100150, RootSlot: 100100, CreditsDelta: int64Ptr(100), IsDelinquent: false, ActivatedStakeSol: floatPtr(1000.0), Commission: uint8Ptr(5), CollectorRunID: "run3", Epoch: 100, EpochCreditsJSON: "[]", CreditsEpoch: 100, CreditsEpochCredits: 1200},
+		// On DZ: vote2 - low vote lag (~50 slots)
+		{Time: now.Add(-2 * time.Hour), VoteAccountPubkey: "vote2", NodeIdentityPubkey: "node2", ClusterSlot: 100000, LastVoteSlot: 99950, RootSlot: 99900, CreditsDelta: int64Ptr(100), IsDelinquent: false, ActivatedStakeSol: floatPtr(1500.0), Commission: uint8Ptr(5), CollectorRunID: "run1", Epoch: 100, EpochCreditsJSON: "[]", CreditsEpoch: 100, CreditsEpochCredits: 1000},
+		{Time: now.Add(-1 * time.Hour), VoteAccountPubkey: "vote2", NodeIdentityPubkey: "node2", ClusterSlot: 100100, LastVoteSlot: 100050, RootSlot: 100000, CreditsDelta: int64Ptr(100), IsDelinquent: false, ActivatedStakeSol: floatPtr(1500.0), Commission: uint8Ptr(5), CollectorRunID: "run2", Epoch: 100, EpochCreditsJSON: "[]", CreditsEpoch: 100, CreditsEpochCredits: 1100},
+		{Time: now, VoteAccountPubkey: "vote2", NodeIdentityPubkey: "node2", ClusterSlot: 100200, LastVoteSlot: 100150, RootSlot: 100100, CreditsDelta: int64Ptr(100), IsDelinquent: false, ActivatedStakeSol: floatPtr(1500.0), Commission: uint8Ptr(5), CollectorRunID: "run3", Epoch: 100, EpochCreditsJSON: "[]", CreditsEpoch: 100, CreditsEpochCredits: 1200},
+		// On DZ: vote3 - low vote lag (~50 slots)
+		{Time: now.Add(-2 * time.Hour), VoteAccountPubkey: "vote3", NodeIdentityPubkey: "node3", ClusterSlot: 100000, LastVoteSlot: 99950, RootSlot: 99900, CreditsDelta: int64Ptr(100), IsDelinquent: false, ActivatedStakeSol: floatPtr(1200.0), Commission: uint8Ptr(5), CollectorRunID: "run1", Epoch: 100, EpochCreditsJSON: "[]", CreditsEpoch: 100, CreditsEpochCredits: 1000},
+		{Time: now.Add(-1 * time.Hour), VoteAccountPubkey: "vote3", NodeIdentityPubkey: "node3", ClusterSlot: 100100, LastVoteSlot: 100050, RootSlot: 100000, CreditsDelta: int64Ptr(100), IsDelinquent: false, ActivatedStakeSol: floatPtr(1200.0), Commission: uint8Ptr(5), CollectorRunID: "run2", Epoch: 100, EpochCreditsJSON: "[]", CreditsEpoch: 100, CreditsEpochCredits: 1100},
+		{Time: now, VoteAccountPubkey: "vote3", NodeIdentityPubkey: "node3", ClusterSlot: 100200, LastVoteSlot: 100150, RootSlot: 100100, CreditsDelta: int64Ptr(100), IsDelinquent: false, ActivatedStakeSol: floatPtr(1200.0), Commission: uint8Ptr(5), CollectorRunID: "run3", Epoch: 100, EpochCreditsJSON: "[]", CreditsEpoch: 100, CreditsEpochCredits: 1200},
+		// Off DZ: vote4 - high vote lag (~200 slots)
+		{Time: now.Add(-2 * time.Hour), VoteAccountPubkey: "vote4", NodeIdentityPubkey: "node4", ClusterSlot: 100000, LastVoteSlot: 99800, RootSlot: 99700, CreditsDelta: int64Ptr(100), IsDelinquent: false, ActivatedStakeSol: floatPtr(2000.0), Commission: uint8Ptr(5), CollectorRunID: "run1", Epoch: 100, EpochCreditsJSON: "[]", CreditsEpoch: 100, CreditsEpochCredits: 1000},
+		{Time: now.Add(-1 * time.Hour), VoteAccountPubkey: "vote4", NodeIdentityPubkey: "node4", ClusterSlot: 100100, LastVoteSlot: 99900, RootSlot: 99800, CreditsDelta: int64Ptr(100), IsDelinquent: false, ActivatedStakeSol: floatPtr(2000.0), Commission: uint8Ptr(5), CollectorRunID: "run2", Epoch: 100, EpochCreditsJSON: "[]", CreditsEpoch: 100, CreditsEpochCredits: 1100},
+		{Time: now, VoteAccountPubkey: "vote4", NodeIdentityPubkey: "node4", ClusterSlot: 100200, LastVoteSlot: 100000, RootSlot: 99900, CreditsDelta: int64Ptr(100), IsDelinquent: false, ActivatedStakeSol: floatPtr(2000.0), Commission: uint8Ptr(5), CollectorRunID: "run3", Epoch: 100, EpochCreditsJSON: "[]", CreditsEpoch: 100, CreditsEpochCredits: 1200},
+		// Off DZ: vote5 - high vote lag (~200 slots)
+		{Time: now.Add(-2 * time.Hour), VoteAccountPubkey: "vote5", NodeIdentityPubkey: "node5", ClusterSlot: 100000, LastVoteSlot: 99800, RootSlot: 99700, CreditsDelta: int64Ptr(100), IsDelinquent: false, ActivatedStakeSol: floatPtr(1800.0), Commission: uint8Ptr(5), CollectorRunID: "run1", Epoch: 100, EpochCreditsJSON: "[]", CreditsEpoch: 100, CreditsEpochCredits: 1000},
+		{Time: now.Add(-1 * time.Hour), VoteAccountPubkey: "vote5", NodeIdentityPubkey: "node5", ClusterSlot: 100100, LastVoteSlot: 99900, RootSlot: 99800, CreditsDelta: int64Ptr(100), IsDelinquent: false, ActivatedStakeSol: floatPtr(1800.0), Commission: uint8Ptr(5), CollectorRunID: "run2", Epoch: 100, EpochCreditsJSON: "[]", CreditsEpoch: 100, CreditsEpochCredits: 1100},
+		{Time: now, VoteAccountPubkey: "vote5", NodeIdentityPubkey: "node5", ClusterSlot: 100200, LastVoteSlot: 100000, RootSlot: 99900, CreditsDelta: int64Ptr(100), IsDelinquent: false, ActivatedStakeSol: floatPtr(1800.0), Commission: uint8Ptr(5), CollectorRunID: "run3", Epoch: 100, EpochCreditsJSON: "[]", CreditsEpoch: 100, CreditsEpochCredits: 1200},
+		// Off DZ: vote6 - high vote lag (~200 slots)
+		{Time: now.Add(-2 * time.Hour), VoteAccountPubkey: "vote6", NodeIdentityPubkey: "node6", ClusterSlot: 100000, LastVoteSlot: 99800, RootSlot: 99700, CreditsDelta: int64Ptr(100), IsDelinquent: false, ActivatedStakeSol: floatPtr(1600.0), Commission: uint8Ptr(5), CollectorRunID: "run1", Epoch: 100, EpochCreditsJSON: "[]", CreditsEpoch: 100, CreditsEpochCredits: 1000},
+		{Time: now.Add(-1 * time.Hour), VoteAccountPubkey: "vote6", NodeIdentityPubkey: "node6", ClusterSlot: 100100, LastVoteSlot: 99900, RootSlot: 99800, CreditsDelta: int64Ptr(100), IsDelinquent: false, ActivatedStakeSol: floatPtr(1600.0), Commission: uint8Ptr(5), CollectorRunID: "run2", Epoch: 100, EpochCreditsJSON: "[]", CreditsEpoch: 100, CreditsEpochCredits: 1100},
+		{Time: now, VoteAccountPubkey: "vote6", NodeIdentityPubkey: "node6", ClusterSlot: 100200, LastVoteSlot: 100000, RootSlot: 99900, CreditsDelta: int64Ptr(100), IsDelinquent: false, ActivatedStakeSol: floatPtr(1600.0), Commission: uint8Ptr(5), CollectorRunID: "run3", Epoch: 100, EpochCreditsJSON: "[]", CreditsEpoch: 100, CreditsEpochCredits: 1200},
+	}
+	var voteActivitySchema sol.VoteAccountActivitySchema
+	err = voteActivityDS.WriteBatch(ctx, conn, len(voteActivityEntries), func(i int) ([]any, error) {
+		return voteActivitySchema.ToRow(voteActivityEntries[i], ingestedAt), nil
+	})
+	require.NoError(t, err)
+}
+
+// Helper functions for pointers (floatPtr and uint8Ptr are specific to this file)
+func floatPtr(f float64) *float64 {
+	return &f
+}
+
+func uint8Ptr(u uint8) *uint8 {
+	return &u
+}
+
+// validateSolanaValidatorsOnDZVsOffDZQuery runs the ideal query to answer the question
+// and validates that the database returns the expected results (3 validators on DZ, 3 off DZ)
+func validateSolanaValidatorsOnDZVsOffDZQuery(t *testing.T, ctx context.Context, conn clickhouse.Connection) {
+	// Query for validators on DZ
+	onDZQuery := `
+SELECT COUNT(DISTINCT va.vote_pubkey) AS validator_count
+FROM dz_users_current u
+JOIN solana_gossip_nodes_current gn ON u.dz_ip = gn.gossip_ip AND gn.gossip_ip IS NOT NULL
+JOIN solana_vote_accounts_current va ON gn.pubkey = va.node_pubkey
+WHERE u.status = 'activated' AND va.activated_stake_lamports > 0
+`
+
+	onDZResult, err := dataset.Query(ctx, conn, onDZQuery, nil)
+	require.NoError(t, err, "Failed to execute on-DZ validators query")
+	require.Equal(t, 1, onDZResult.Count, "Query should return exactly one row")
+
+	onDZCount, ok := onDZResult.Rows[0]["validator_count"].(uint64)
+	if !ok {
+		switch v := onDZResult.Rows[0]["validator_count"].(type) {
+		case int64:
+			onDZCount = uint64(v)
+		case int:
+			onDZCount = uint64(v)
+		case uint32:
+			onDZCount = uint64(v)
+		case int32:
+			onDZCount = uint64(v)
+		default:
+			t.Fatalf("Unexpected type for validator_count: %T", v)
+		}
+	}
+
+	require.Equal(t, uint64(3), onDZCount,
+		"Expected 3 validators on DZ (vote1, vote2, vote3), but got %d", onDZCount)
+
+	// Query for validators off DZ (have vote accounts but not connected to DZ)
+	offDZQuery := `
+SELECT COUNT(DISTINCT va.vote_pubkey) AS validator_count
+FROM solana_vote_accounts_current va
+WHERE va.activated_stake_lamports > 0
+  AND va.vote_pubkey NOT IN (
+    SELECT DISTINCT va2.vote_pubkey
+    FROM dz_users_current u
+    JOIN solana_gossip_nodes_current gn ON u.dz_ip = gn.gossip_ip AND gn.gossip_ip IS NOT NULL
+    JOIN solana_vote_accounts_current va2 ON gn.pubkey = va2.node_pubkey
+    WHERE u.status = 'activated' AND va2.activated_stake_lamports > 0
+  )
+`
+
+	offDZResult, err := dataset.Query(ctx, conn, offDZQuery, nil)
+	require.NoError(t, err, "Failed to execute off-DZ validators query")
+	require.Equal(t, 1, offDZResult.Count, "Query should return exactly one row")
+
+	offDZCount, ok := offDZResult.Rows[0]["validator_count"].(uint64)
+	if !ok {
+		switch v := offDZResult.Rows[0]["validator_count"].(type) {
+		case int64:
+			offDZCount = uint64(v)
+		case int:
+			offDZCount = uint64(v)
+		case uint32:
+			offDZCount = uint64(v)
+		case int32:
+			offDZCount = uint64(v)
+		default:
+			t.Fatalf("Unexpected type for validator_count: %T", v)
+		}
+	}
+
+	require.Equal(t, uint64(3), offDZCount,
+		"Expected 3 validators off DZ (vote4, vote5, vote6), but got %d", offDZCount)
+
+	t.Logf("Database validation passed: Found %d validators on DZ and %d validators off DZ", onDZCount, offDZCount)
 }

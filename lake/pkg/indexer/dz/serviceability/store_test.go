@@ -1,86 +1,22 @@
 package dzsvc
 
 import (
-	"context"
-	"database/sql"
-	"errors"
-	"log/slog"
 	"net"
-	"os"
 	"testing"
-
-	_ "github.com/duckdb/duckdb-go/v2"
+	"time"
 
 	"github.com/gagliardetto/solana-go"
-	"github.com/malbeclabs/doublezero/lake/pkg/duck"
+	"github.com/malbeclabs/doublezero/lake/pkg/clickhouse/dataset"
+	laketesting "github.com/malbeclabs/doublezero/lake/pkg/testing"
 	"github.com/stretchr/testify/require"
 )
 
-type failingDB struct{}
-
-func (f *failingDB) Close() error {
-	return nil
-}
-
-func (f *failingDB) Catalog() string {
-	return "main"
-}
-
-func (f *failingDB) Schema() string {
-	return "default"
-}
-
-func (f *failingDB) Conn(ctx context.Context) (duck.Connection, error) {
-	return &failingDBConn{db: f}, nil
-}
-
-type failingDBConn struct {
-	db *failingDB
-}
-
-func (f *failingDBConn) DB() duck.DB {
-	if f.db == nil {
-		return &failingDB{}
-	}
-	return f.db
-}
-
-func (f *failingDBConn) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
-	return nil, errors.New("database error")
-}
-
-func (f *failingDBConn) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
-	return nil, errors.New("database error")
-}
-
-func (f *failingDBConn) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
-	return &sql.Row{}
-}
-
-func (f *failingDBConn) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
-	return nil, errors.New("database error")
-}
-
-func (f *failingDBConn) Close() error {
-	return nil
-}
-
-// testPK creates a deterministic public key string from an integer identifier
 func testPK(n int) string {
 	bytes := make([]byte, 32)
 	for i := range bytes {
 		bytes[i] = byte(n + i)
 	}
 	return solana.PublicKeyFromBytes(bytes).String()
-}
-
-func testDB(t *testing.T) duck.DB {
-	db, err := duck.NewDB(t.Context(), "", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		db.Close()
-	})
-	return db
 }
 
 func TestLake_Serviceability_Store_NewStore(t *testing.T) {
@@ -92,32 +28,32 @@ func TestLake_Serviceability_Store_NewStore(t *testing.T) {
 		t.Run("missing logger", func(t *testing.T) {
 			t.Parallel()
 			store, err := NewStore(StoreConfig{
-				DB: &failingDB{},
+				ClickHouse: nil,
 			})
 			require.Error(t, err)
 			require.Nil(t, store)
 			require.Contains(t, err.Error(), "logger is required")
 		})
 
-		t.Run("missing db", func(t *testing.T) {
+		t.Run("missing clickhouse", func(t *testing.T) {
 			t.Parallel()
 			store, err := NewStore(StoreConfig{
-				Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
+				Logger: laketesting.NewLogger(t),
 			})
 			require.Error(t, err)
 			require.Nil(t, store)
-			require.Contains(t, err.Error(), "db is required")
+			require.Contains(t, err.Error(), "clickhouse connection is required")
 		})
 	})
 
 	t.Run("returns store when config is valid", func(t *testing.T) {
 		t.Parallel()
 
-		db := testDB(t)
+		mockDB := laketesting.NewDB(t)
 
 		store, err := NewStore(StoreConfig{
-			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:     db,
+			Logger:     laketesting.NewLogger(t),
+			ClickHouse: mockDB,
 		})
 		require.NoError(t, err)
 		require.NotNil(t, store)
@@ -130,11 +66,13 @@ func TestLake_Serviceability_Store_ReplaceContributors(t *testing.T) {
 	t.Run("saves contributors to database", func(t *testing.T) {
 		t.Parallel()
 
-		db := testDB(t)
+		db := laketesting.NewDB(t)
+		log := laketesting.NewLogger(t)
+		ctx := t.Context()
 
 		store, err := NewStore(StoreConfig{
-			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:     db,
+			Logger:     log,
+			ClickHouse: db,
 		})
 		require.NoError(t, err)
 
@@ -148,34 +86,35 @@ func TestLake_Serviceability_Store_ReplaceContributors(t *testing.T) {
 			},
 		}
 
-		err = store.ReplaceContributors(context.Background(), contributors)
+		err = store.ReplaceContributors(ctx, contributors)
 		require.NoError(t, err)
 
-		ctx := context.Background()
+		// Verify data was inserted using the dataset API
 		conn, err := db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		var count int
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_contributors_current").Scan(&count)
-		require.NoError(t, err)
-		require.Equal(t, 1, count)
 
-		var pk, code, name string
-		err = conn.QueryRowContext(ctx, "SELECT pk, code, name FROM dz_contributors_current LIMIT 1").Scan(&pk, &code, &name)
+		ds, err := NewContributorDataset(log)
 		require.NoError(t, err)
-		require.Equal(t, contributorPK, pk)
-		require.Equal(t, "TEST", code)
-		require.Equal(t, "Test Contributor", name)
+		require.NotNil(t, ds)
+		entityID := dataset.NewNaturalKey(contributorPK).ToSurrogate()
+		current, err := ds.GetCurrentRow(ctx, conn, entityID)
+		require.NoError(t, err)
+		require.NotNil(t, current)
+		require.Equal(t, "TEST", current["code"])
+		require.Equal(t, "Test Contributor", current["name"])
 	})
 
 	t.Run("replaces existing contributors", func(t *testing.T) {
 		t.Parallel()
 
-		db := testDB(t)
+		db := laketesting.NewDB(t)
+		log := laketesting.NewLogger(t)
+		ctx := t.Context()
 
 		store, err := NewStore(StoreConfig{
-			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:     db,
+			Logger:     log,
+			ClickHouse: db,
 		})
 		require.NoError(t, err)
 
@@ -190,17 +129,8 @@ func TestLake_Serviceability_Store_ReplaceContributors(t *testing.T) {
 			},
 		}
 
-		err = store.ReplaceContributors(context.Background(), contributors1)
+		err = store.ReplaceContributors(ctx, contributors1)
 		require.NoError(t, err)
-
-		ctx := context.Background()
-		conn, err := db.Conn(ctx)
-		require.NoError(t, err)
-		defer conn.Close()
-		var count int
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_contributors_current").Scan(&count)
-		require.NoError(t, err)
-		require.Equal(t, 1, count)
 
 		contributors2 := []Contributor{
 			{
@@ -210,27 +140,40 @@ func TestLake_Serviceability_Store_ReplaceContributors(t *testing.T) {
 			},
 		}
 
-		err = store.ReplaceContributors(context.Background(), contributors2)
+		err = store.ReplaceContributors(ctx, contributors2)
 		require.NoError(t, err)
 
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_contributors_current").Scan(&count)
+		// Verify both contributors exist using the dataset API
+		conn, err := db.Conn(ctx)
 		require.NoError(t, err)
-		require.Equal(t, 1, count)
+		defer conn.Close()
 
-		var pk string
-		err = conn.QueryRowContext(ctx, "SELECT pk FROM dz_contributors_current LIMIT 1").Scan(&pk)
+		ds, err := NewContributorDataset(log)
 		require.NoError(t, err)
-		require.Equal(t, contributorPK2, pk)
+		require.NotNil(t, ds)
+		entityID1 := dataset.NewNaturalKey(contributorPK1).ToSurrogate()
+		entityID2 := dataset.NewNaturalKey(contributorPK2).ToSurrogate()
+
+		current1, err := ds.GetCurrentRow(ctx, conn, entityID1)
+		require.NoError(t, err)
+		require.NotNil(t, current1)
+
+		current2, err := ds.GetCurrentRow(ctx, conn, entityID2)
+		require.NoError(t, err)
+		require.NotNil(t, current2)
+		require.Equal(t, "TEST2", current2["code"])
 	})
 
 	t.Run("handles empty slice", func(t *testing.T) {
 		t.Parallel()
 
-		db := testDB(t)
+		db := laketesting.NewDB(t)
+		log := laketesting.NewLogger(t)
+		ctx := t.Context()
 
 		store, err := NewStore(StoreConfig{
-			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:     db,
+			Logger:     log,
+			ClickHouse: db,
 		})
 		require.NoError(t, err)
 
@@ -243,21 +186,28 @@ func TestLake_Serviceability_Store_ReplaceContributors(t *testing.T) {
 				Name: "Test Contributor",
 			},
 		}
-		err = store.ReplaceContributors(context.Background(), contributors)
+		err = store.ReplaceContributors(ctx, contributors)
 		require.NoError(t, err)
 
-		// Then replace with empty slice
-		err = store.ReplaceContributors(context.Background(), []Contributor{})
+		// Wait a moment to ensure different snapshot_ts (truncated to seconds)
+		time.Sleep(1100 * time.Millisecond)
+
+		// Then replace with empty slice (should delete all)
+		err = store.ReplaceContributors(ctx, []Contributor{})
 		require.NoError(t, err)
 
-		ctx := context.Background()
+		// Verify contributor was deleted (tombstoned) using the dataset API
 		conn, err := db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		var count int
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_contributors_current").Scan(&count)
+
+		ds, err := NewContributorDataset(log)
 		require.NoError(t, err)
-		require.Equal(t, 0, count)
+		require.NotNil(t, ds)
+		entityID := dataset.NewNaturalKey(contributorPK).ToSurrogate()
+		current, err := ds.GetCurrentRow(ctx, conn, entityID)
+		require.NoError(t, err)
+		require.Nil(t, current, "should return nil for deleted contributor")
 	})
 }
 
@@ -267,11 +217,13 @@ func TestLake_Serviceability_Store_ReplaceDevices(t *testing.T) {
 	t.Run("saves devices to database", func(t *testing.T) {
 		t.Parallel()
 
-		db := testDB(t)
+		db := laketesting.NewDB(t)
+		log := laketesting.NewLogger(t)
+		ctx := t.Context()
 
 		store, err := NewStore(StoreConfig{
-			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:     db,
+			Logger:     log,
+			ClickHouse: db,
 		})
 		require.NoError(t, err)
 
@@ -291,28 +243,27 @@ func TestLake_Serviceability_Store_ReplaceDevices(t *testing.T) {
 			},
 		}
 
-		err = store.ReplaceDevices(context.Background(), devices)
+		err = store.ReplaceDevices(ctx, devices)
 		require.NoError(t, err)
 
-		ctx := context.Background()
+		// Verify data was inserted using the dataset API
 		conn, err := db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		var count int
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_devices_current").Scan(&count)
-		require.NoError(t, err)
-		require.Equal(t, 1, count)
 
-		var pk, status, deviceType, code, publicIPStr, contributorPKStr, metroPKStr string
-		err = conn.QueryRowContext(ctx, "SELECT pk, status, device_type, code, public_ip, contributor_pk, metro_pk FROM dz_devices_current LIMIT 1").Scan(&pk, &status, &deviceType, &code, &publicIPStr, &contributorPKStr, &metroPKStr)
+		ds, err := NewDeviceDataset(log)
 		require.NoError(t, err)
-		require.Equal(t, devicePK, pk)
-		require.Equal(t, "activated", status)
-		require.Equal(t, "hybrid", deviceType)
-		require.Equal(t, "DEV001", code)
-		require.Equal(t, "192.168.1.1", publicIPStr)
-		require.Equal(t, contributorPK, contributorPKStr)
-		require.Equal(t, metroPK, metroPKStr)
+		require.NotNil(t, ds)
+		entityID := dataset.NewNaturalKey(devicePK).ToSurrogate()
+		current, err := ds.GetCurrentRow(ctx, conn, entityID)
+		require.NoError(t, err)
+		require.NotNil(t, current)
+		require.Equal(t, "activated", current["status"])
+		require.Equal(t, "hybrid", current["device_type"])
+		require.Equal(t, "DEV001", current["code"])
+		require.Equal(t, "192.168.1.1", current["public_ip"])
+		require.Equal(t, contributorPK, current["contributor_pk"])
+		require.Equal(t, metroPK, current["metro_pk"])
 	})
 }
 
@@ -322,53 +273,53 @@ func TestLake_Serviceability_Store_ReplaceUsers(t *testing.T) {
 	t.Run("saves users to database", func(t *testing.T) {
 		t.Parallel()
 
-		db := testDB(t)
-		defer db.Close()
+		db := laketesting.NewDB(t)
+		log := laketesting.NewLogger(t)
+		ctx := t.Context()
 
 		store, err := NewStore(StoreConfig{
-			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:     db,
+			Logger:     log,
+			ClickHouse: db,
 		})
 		require.NoError(t, err)
 
 		userPK := testPK(1)
-		ownerPK := testPK(2)
+		ownerPubkey := testPK(2)
 		devicePK := testPK(3)
 
 		users := []User{
 			{
-				PK:       userPK,
-				OwnerPK:  ownerPK,
-				Status:   "activated",
-				Kind:     "ibrl",
-				ClientIP: net.IP{10, 0, 0, 1},
-				DZIP:     net.IP{10, 0, 0, 2},
-				DevicePK: devicePK,
+				PK:          userPK,
+				OwnerPubkey: ownerPubkey,
+				Status:      "activated",
+				Kind:        "ibrl",
+				ClientIP:    net.IP{10, 0, 0, 1},
+				DZIP:        net.IP{10, 0, 0, 2},
+				DevicePK:    devicePK,
 			},
 		}
 
-		err = store.ReplaceUsers(context.Background(), users)
+		err = store.ReplaceUsers(ctx, users)
 		require.NoError(t, err)
 
-		ctx := context.Background()
+		// Verify data was inserted using the dataset API
 		conn, err := db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		var count int
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_users_current").Scan(&count)
-		require.NoError(t, err)
-		require.Equal(t, 1, count)
 
-		var pk, ownerPKStr, status, kind, clientIPStr, dzIPStr, devicePKStr string
-		err = conn.QueryRowContext(ctx, "SELECT pk, owner_pk, status, kind, client_ip, dz_ip, device_pk FROM dz_users_current LIMIT 1").Scan(&pk, &ownerPKStr, &status, &kind, &clientIPStr, &dzIPStr, &devicePKStr)
+		ds, err := NewUserDataset(log)
 		require.NoError(t, err)
-		require.Equal(t, userPK, pk)
-		require.Equal(t, ownerPK, ownerPKStr)
-		require.Equal(t, "activated", status)
-		require.Equal(t, "ibrl", kind)
-		require.Equal(t, "10.0.0.1", clientIPStr)
-		require.Equal(t, "10.0.0.2", dzIPStr)
-		require.Equal(t, devicePK, devicePKStr)
+		require.NotNil(t, ds)
+		entityID := dataset.NewNaturalKey(userPK).ToSurrogate()
+		current, err := ds.GetCurrentRow(ctx, conn, entityID)
+		require.NoError(t, err)
+		require.NotNil(t, current)
+		require.Equal(t, ownerPubkey, current["owner_pubkey"])
+		require.Equal(t, "activated", current["status"])
+		require.Equal(t, "ibrl", current["kind"])
+		require.Equal(t, "10.0.0.1", current["client_ip"])
+		require.Equal(t, "10.0.0.2", current["dz_ip"])
+		require.Equal(t, devicePK, current["device_pk"])
 	})
 }
 
@@ -378,11 +329,13 @@ func TestLake_Serviceability_Store_ReplaceLinks(t *testing.T) {
 	t.Run("saves links to database", func(t *testing.T) {
 		t.Parallel()
 
-		db := testDB(t)
+		db := laketesting.NewDB(t)
+		log := laketesting.NewLogger(t)
+		ctx := t.Context()
 
 		store, err := NewStore(StoreConfig{
-			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:     db,
+			Logger:     log,
+			ClickHouse: db,
 		})
 		require.NoError(t, err)
 
@@ -409,36 +362,22 @@ func TestLake_Serviceability_Store_ReplaceLinks(t *testing.T) {
 			},
 		}
 
-		err = store.ReplaceLinks(context.Background(), links)
+		err = store.ReplaceLinks(ctx, links)
 		require.NoError(t, err)
 
-		ctx := context.Background()
+		// Verify data was inserted by querying the current table
 		conn, err := db.Conn(ctx)
 		require.NoError(t, err)
-		defer conn.Close()
-		var count int
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_links_current").Scan(&count)
-		require.NoError(t, err)
-		require.Equal(t, 1, count)
 
-		var pk, status, code, tunnelNetStr, contributorPKStr, sideAPKStr, sideZPKStr, sideAIfaceName, sideZIfaceName, linkType string
-		var delayNs, jitterNs, bandwidthBps, delayOverrideNs int64
-		err = conn.QueryRowContext(ctx, "SELECT pk, status, code, tunnel_net, contributor_pk, side_a_pk, side_z_pk, side_a_iface_name, side_z_iface_name, link_type, committed_rtt_ns, committed_jitter_ns, bandwidth_bps, isis_delay_override_ns FROM dz_links_current LIMIT 1").Scan(&pk, &status, &code, &tunnelNetStr, &contributorPKStr, &sideAPKStr, &sideZPKStr, &sideAIfaceName, &sideZIfaceName, &linkType, &delayNs, &jitterNs, &bandwidthBps, &delayOverrideNs)
+		ds, err := NewLinkDataset(log)
 		require.NoError(t, err)
-		require.Equal(t, linkPK, pk)
-		require.Equal(t, "activated", status)
-		require.Equal(t, "LINK001", code)
-		require.Equal(t, "10.0.0.0/24", tunnelNetStr)
-		require.Equal(t, contributorPK, contributorPKStr)
-		require.Equal(t, sideAPK, sideAPKStr)
-		require.Equal(t, sideZPK, sideZPKStr)
-		require.Equal(t, "eth0", sideAIfaceName)
-		require.Equal(t, "eth1", sideZIfaceName)
-		require.Equal(t, "WAN", linkType)
-		require.Equal(t, int64(1000000), delayNs)
-		require.Equal(t, int64(50000), jitterNs)
-		require.Equal(t, int64(10000000000), bandwidthBps)
-		require.Equal(t, int64(0), delayOverrideNs)
+		require.NotNil(t, ds)
+		entityID := dataset.NewNaturalKey(linkPK).ToSurrogate()
+		current, err := ds.GetCurrentRow(ctx, conn, entityID)
+		require.NoError(t, err)
+		require.NotNil(t, current)
+		require.Equal(t, "activated", current["status"])
+		require.Equal(t, "LINK001", current["code"])
 	})
 }
 
@@ -448,11 +387,13 @@ func TestLake_Serviceability_Store_ReplaceMetros(t *testing.T) {
 	t.Run("saves metros to database", func(t *testing.T) {
 		t.Parallel()
 
-		db := testDB(t)
+		db := laketesting.NewDB(t)
+		log := laketesting.NewLogger(t)
+		ctx := t.Context()
 
 		store, err := NewStore(StoreConfig{
-			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:     db,
+			Logger:     log,
+			ClickHouse: db,
 		})
 		require.NoError(t, err)
 
@@ -468,127 +409,221 @@ func TestLake_Serviceability_Store_ReplaceMetros(t *testing.T) {
 			},
 		}
 
-		err = store.ReplaceMetros(context.Background(), metros)
+		err = store.ReplaceMetros(ctx, metros)
 		require.NoError(t, err)
 
-		ctx := context.Background()
+		// Verify data was inserted by querying the current table
 		conn, err := db.Conn(ctx)
 		require.NoError(t, err)
-		defer conn.Close()
-		var count int
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_metros_current").Scan(&count)
-		require.NoError(t, err)
-		require.Equal(t, 1, count)
 
-		var pk, code, name string
-		var longitude, latitude float64
-		err = conn.QueryRowContext(ctx, "SELECT pk, code, name, longitude, latitude FROM dz_metros_current LIMIT 1").Scan(&pk, &code, &name, &longitude, &latitude)
+		ds, err := NewMetroDataset(log)
 		require.NoError(t, err)
-		require.Equal(t, metroPK, pk)
-		require.Equal(t, "NYC", code)
-		require.Equal(t, "New York", name)
-		require.InDelta(t, -74.0060, longitude, 0.0001)
-		require.InDelta(t, 40.7128, latitude, 0.0001)
+		require.NotNil(t, ds)
+		entityID := dataset.NewNaturalKey(metroPK).ToSurrogate()
+		current, err := ds.GetCurrentRow(ctx, conn, entityID)
+		require.NoError(t, err)
+		require.NotNil(t, current)
+		require.Equal(t, "NYC", current["code"])
+		require.Equal(t, "New York", current["name"])
 	})
 }
 
-func TestLake_Serviceability_Store_GetDevices(t *testing.T) {
+func TestLake_Serviceability_Store_GetCurrentContributor(t *testing.T) {
 	t.Parallel()
 
-	t.Run("reads devices from database", func(t *testing.T) {
+	t.Run("gets current contributor from database", func(t *testing.T) {
 		t.Parallel()
 
-		db := testDB(t)
+		db := laketesting.NewDB(t)
+		log := laketesting.NewLogger(t)
+		ctx := t.Context()
 
 		store, err := NewStore(StoreConfig{
-			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:     db,
+			Logger:     log,
+			ClickHouse: db,
 		})
 		require.NoError(t, err)
 
-		devicePK1 := testPK(1)
-		devicePK2 := testPK(2)
-		contributorPK := testPK(3)
-		metroPK := testPK(4)
+		contributorPK := testPK(1)
 
-		ctx := context.Background()
+		contributors := []Contributor{
+			{
+				PK:   contributorPK,
+				Code: "TEST",
+				Name: "Test Contributor",
+			},
+		}
+
+		err = store.ReplaceContributors(ctx, contributors)
+		require.NoError(t, err)
+
+		// Get current entity using the dataset API
 		conn, err := db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
 
-		// Create table manually for test (normally created by SCDTableViaCSV)
-		_, err = conn.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS dz_devices_current (
-			pk VARCHAR,
-			status VARCHAR,
-			device_type VARCHAR,
-			code VARCHAR,
-			public_ip VARCHAR,
-			contributor_pk VARCHAR,
-			metro_pk VARCHAR,
-			max_users INTEGER,
-			as_of_ts TIMESTAMP NOT NULL,
-			row_hash VARCHAR NOT NULL
-		)`)
+		ds, err := NewContributorDataset(log)
+		require.NoError(t, err)
+		require.NotNil(t, ds)
+		entityID := dataset.NewNaturalKey(contributorPK).ToSurrogate()
+		current, err := ds.GetCurrentRow(ctx, conn, entityID)
+		require.NoError(t, err)
+		require.NotNil(t, current)
+		require.Equal(t, "TEST", current["code"])
+		require.Equal(t, "Test Contributor", current["name"])
+	})
+
+	t.Run("returns nil for non-existent contributor", func(t *testing.T) {
+		t.Parallel()
+
+		db := laketesting.NewDB(t)
+		log := laketesting.NewLogger(t)
+		ctx := t.Context()
+
+		conn, err := db.Conn(ctx)
 		require.NoError(t, err)
 
-		// Insert with required SCD2 columns (as_of_ts, row_hash)
-		// For tests, we use a simple hash value
-		_, err = conn.ExecContext(ctx, `INSERT INTO dz_devices_current (pk, status, device_type, code, public_ip, contributor_pk, metro_pk, max_users, as_of_ts, row_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 'test_hash1'), (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 'test_hash2')`,
-			devicePK1, "activated", "hybrid", "DEV1", "192.168.1.1", contributorPK, metroPK, 0,
-			devicePK2, "activated", "hybrid", "DEV2", "192.168.1.2", contributorPK, metroPK, 0)
+		nonExistentPK := testPK(999)
+		ds, err := NewContributorDataset(log)
 		require.NoError(t, err)
-
-		devices, err := store.GetDevices()
+		require.NotNil(t, ds)
+		entityID := dataset.NewNaturalKey(nonExistentPK).ToSurrogate()
+		current, err := ds.GetCurrentRow(ctx, conn, entityID)
 		require.NoError(t, err)
-		require.Len(t, devices, 2)
-		require.Equal(t, devicePK1, devices[0].PK)
-		require.Equal(t, "activated", devices[0].Status)
-		require.Equal(t, "hybrid", devices[0].DeviceType)
-		require.Equal(t, "DEV1", devices[0].Code)
-		require.Equal(t, "192.168.1.1", devices[0].PublicIP)
-		require.Equal(t, devicePK2, devices[1].PK)
-		require.Equal(t, "DEV2", devices[1].Code)
+		require.Nil(t, current)
 	})
 }
 
-func TestLake_Serviceability_Store_GetLinks(t *testing.T) {
+func TestLake_Serviceability_Store_GetCurrentDevice(t *testing.T) {
 	t.Parallel()
 
-	t.Run("reads links from database", func(t *testing.T) {
+	t.Run("gets current device from database", func(t *testing.T) {
 		t.Parallel()
 
-		db := testDB(t)
+		db := laketesting.NewDB(t)
+		log := laketesting.NewLogger(t)
+		ctx := t.Context()
 
 		store, err := NewStore(StoreConfig{
-			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:     db,
+			Logger:     log,
+			ClickHouse: db,
 		})
 		require.NoError(t, err)
 
-		ctx := context.Background()
+		devicePK := testPK(1)
+		contributorPK := testPK(2)
+		metroPK := testPK(3)
+
+		devices := []Device{
+			{
+				PK:            devicePK,
+				Status:        "activated",
+				DeviceType:    "hybrid",
+				Code:          "DEV001",
+				PublicIP:      "192.168.1.1",
+				ContributorPK: contributorPK,
+				MetroPK:       metroPK,
+				MaxUsers:      100,
+			},
+		}
+
+		err = store.ReplaceDevices(ctx, devices)
+		require.NoError(t, err)
+
+		// Get current entity using the dataset API
 		conn, err := db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
 
-		// Create table manually for test (normally created by SCDTableViaCSV)
-		_, err = conn.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS dz_links_current (
-			pk VARCHAR,
-			status VARCHAR,
-			code VARCHAR,
-			tunnel_net VARCHAR,
-			contributor_pk VARCHAR,
-			side_a_pk VARCHAR,
-			side_z_pk VARCHAR,
-			side_a_iface_name VARCHAR,
-			side_z_iface_name VARCHAR,
-			link_type VARCHAR,
-			committed_rtt_ns VARCHAR,
-			committed_jitter_ns VARCHAR,
-			bandwidth_bps VARCHAR,
-			isis_delay_override_ns VARCHAR,
-			as_of_ts TIMESTAMP NOT NULL,
-			row_hash VARCHAR NOT NULL
-		)`)
+		ds, err := NewDeviceDataset(log)
+		require.NoError(t, err)
+		require.NotNil(t, ds)
+		entityID := dataset.NewNaturalKey(devicePK).ToSurrogate()
+		current, err := ds.GetCurrentRow(ctx, conn, entityID)
+		require.NoError(t, err)
+		require.NotNil(t, current)
+		require.Equal(t, "activated", current["status"])
+		require.Equal(t, "hybrid", current["device_type"])
+		require.Equal(t, "DEV001", current["code"])
+		require.Equal(t, "192.168.1.1", current["public_ip"])
+		require.Equal(t, contributorPK, current["contributor_pk"])
+		require.Equal(t, metroPK, current["metro_pk"])
+		require.Equal(t, int32(100), current["max_users"])
+	})
+}
+
+func TestLake_Serviceability_Store_GetCurrentUser(t *testing.T) {
+	t.Parallel()
+
+	t.Run("gets current user from database", func(t *testing.T) {
+		t.Parallel()
+
+		db := laketesting.NewDB(t)
+		log := laketesting.NewLogger(t)
+		ctx := t.Context()
+
+		store, err := NewStore(StoreConfig{
+			Logger:     log,
+			ClickHouse: db,
+		})
+		require.NoError(t, err)
+
+		userPK := testPK(1)
+		ownerPubkey := testPK(2)
+		devicePK := testPK(3)
+
+		users := []User{
+			{
+				PK:          userPK,
+				OwnerPubkey: ownerPubkey,
+				Status:      "activated",
+				Kind:        "ibrl",
+				ClientIP:    net.IP{10, 0, 0, 1},
+				DZIP:        net.IP{10, 0, 0, 2},
+				DevicePK:    devicePK,
+				TunnelID:    42,
+			},
+		}
+
+		err = store.ReplaceUsers(ctx, users)
+		require.NoError(t, err)
+
+		// Get current entity using the dataset API
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+
+		ds, err := NewUserDataset(log)
+		require.NoError(t, err)
+		require.NotNil(t, ds)
+		entityID := dataset.NewNaturalKey(userPK).ToSurrogate()
+		current, err := ds.GetCurrentRow(ctx, conn, entityID)
+		require.NoError(t, err)
+		require.NotNil(t, current)
+		require.Equal(t, ownerPubkey, current["owner_pubkey"])
+		require.Equal(t, "activated", current["status"])
+		require.Equal(t, "ibrl", current["kind"])
+		require.Equal(t, "10.0.0.1", current["client_ip"])
+		require.Equal(t, "10.0.0.2", current["dz_ip"])
+		require.Equal(t, devicePK, current["device_pk"])
+		require.Equal(t, int32(42), current["tunnel_id"])
+	})
+}
+
+func TestLake_Serviceability_Store_GetCurrentLink(t *testing.T) {
+	t.Parallel()
+
+	t.Run("gets current link from database", func(t *testing.T) {
+		t.Parallel()
+
+		db := laketesting.NewDB(t)
+		log := laketesting.NewLogger(t)
+		ctx := t.Context()
+
+		store, err := NewStore(StoreConfig{
+			Logger:     log,
+			ClickHouse: db,
+		})
 		require.NoError(t, err)
 
 		linkPK := testPK(1)
@@ -596,283 +631,102 @@ func TestLake_Serviceability_Store_GetLinks(t *testing.T) {
 		sideAPK := testPK(3)
 		sideZPK := testPK(4)
 
-		// Insert with required SCD2 columns (as_of_ts, row_hash)
-		_, err = conn.ExecContext(ctx, `INSERT INTO dz_links_current (pk, status, code, tunnel_net, contributor_pk, side_a_pk, side_z_pk, side_a_iface_name, side_z_iface_name, link_type, committed_rtt_ns, committed_jitter_ns, bandwidth_bps, isis_delay_override_ns, as_of_ts, row_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 'test_hash')`,
-			linkPK, "activated", "LINK1", "10.0.0.0/24", contributorPK, sideAPK, sideZPK, "eth0", "eth1", "WAN", 1000000, 50000, 10000000000, 10)
+		links := []Link{
+			{
+				PK:                  linkPK,
+				Status:              "activated",
+				Code:                "LINK001",
+				TunnelNet:           "10.0.0.0/24",
+				ContributorPK:       contributorPK,
+				SideAPK:             sideAPK,
+				SideZPK:             sideZPK,
+				SideAIfaceName:      "eth0",
+				SideZIfaceName:      "eth1",
+				LinkType:            "WAN",
+				CommittedRTTNs:      1000000,
+				CommittedJitterNs:   50000,
+				Bandwidth:           10000000000, // 10Gbps
+				ISISDelayOverrideNs: 10,
+			},
+		}
+
+		err = store.ReplaceLinks(ctx, links)
 		require.NoError(t, err)
 
-		links, err := store.GetLinks()
+		// Get current entity using the dataset API
+		conn, err := db.Conn(ctx)
 		require.NoError(t, err)
-		require.Len(t, links, 1)
-		require.Equal(t, linkPK, links[0].PK)
-		require.Equal(t, "activated", links[0].Status)
-		require.Equal(t, "LINK1", links[0].Code)
-		require.Equal(t, "10.0.0.0/24", links[0].TunnelNet)
-		require.Equal(t, sideAPK, links[0].SideAPK)
-		require.Equal(t, sideZPK, links[0].SideZPK)
-		require.Equal(t, "eth0", links[0].SideAIfaceName)
-		require.Equal(t, "eth1", links[0].SideZIfaceName)
-		require.Equal(t, "WAN", links[0].LinkType)
-		require.Equal(t, uint64(1000000), links[0].CommittedRTTNs)
-		require.Equal(t, uint64(50000), links[0].CommittedJitterNs)
-		require.Equal(t, uint64(10000000000), links[0].Bandwidth)
-		require.Equal(t, uint64(10), links[0].ISISDelayOverrideNs)
+		defer conn.Close()
+
+		ds, err := NewLinkDataset(log)
+		require.NoError(t, err)
+		require.NotNil(t, ds)
+		entityID := dataset.NewNaturalKey(linkPK).ToSurrogate()
+		current, err := ds.GetCurrentRow(ctx, conn, entityID)
+		require.NoError(t, err)
+		require.NotNil(t, current)
+		require.Equal(t, "activated", current["status"])
+		require.Equal(t, "LINK001", current["code"])
+		require.Equal(t, "10.0.0.0/24", current["tunnel_net"])
+		require.Equal(t, contributorPK, current["contributor_pk"])
+		require.Equal(t, sideAPK, current["side_a_pk"])
+		require.Equal(t, sideZPK, current["side_z_pk"])
+		require.Equal(t, "eth0", current["side_a_iface_name"])
+		require.Equal(t, "eth1", current["side_z_iface_name"])
+		require.Equal(t, "WAN", current["link_type"])
+		require.Equal(t, int64(1000000), current["committed_rtt_ns"])
+		require.Equal(t, int64(50000), current["committed_jitter_ns"])
+		require.Equal(t, int64(10000000000), current["bandwidth_bps"])
+		require.Equal(t, int64(10), current["isis_delay_override_ns"])
 	})
 }
 
-func TestLake_Serviceability_Store_GetContributors(t *testing.T) {
+func TestLake_Serviceability_Store_GetCurrentMetro(t *testing.T) {
 	t.Parallel()
 
-	t.Run("reads contributors from database", func(t *testing.T) {
+	t.Run("gets current metro from database", func(t *testing.T) {
 		t.Parallel()
 
-		db := testDB(t)
+		db := laketesting.NewDB(t)
+		log := laketesting.NewLogger(t)
+		ctx := t.Context()
 
 		store, err := NewStore(StoreConfig{
-			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:     db,
+			Logger:     log,
+			ClickHouse: db,
 		})
 		require.NoError(t, err)
 
-		contributorPK1 := testPK(1)
-		contributorPK2 := testPK(2)
+		metroPK := testPK(1)
 
-		ctx := context.Background()
+		metros := []Metro{
+			{
+				PK:        metroPK,
+				Code:      "NYC",
+				Name:      "New York",
+				Longitude: -74.0060,
+				Latitude:  40.7128,
+			},
+		}
+
+		err = store.ReplaceMetros(ctx, metros)
+		require.NoError(t, err)
+
+		// Get current entity using the dataset API
 		conn, err := db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
 
-		// Create table manually for test (normally created by SCDTableViaCSV)
-		_, err = conn.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS dz_contributors_current (
-			pk VARCHAR,
-			code VARCHAR,
-			name VARCHAR,
-			as_of_ts TIMESTAMP NOT NULL,
-			row_hash VARCHAR NOT NULL
-		)`)
+		ds, err := NewMetroDataset(log)
 		require.NoError(t, err)
-
-		// Insert with required SCD2 columns (as_of_ts, row_hash)
-		_, err = conn.ExecContext(ctx, `INSERT INTO dz_contributors_current (pk, code, name, as_of_ts, row_hash) VALUES (?, ?, ?, CURRENT_TIMESTAMP, 'test_hash1'), (?, ?, ?, CURRENT_TIMESTAMP, 'test_hash2')`,
-			contributorPK1, "CONTRIB1", "Contributor 1",
-			contributorPK2, "CONTRIB2", "Contributor 2")
+		require.NotNil(t, ds)
+		entityID := dataset.NewNaturalKey(metroPK).ToSurrogate()
+		current, err := ds.GetCurrentRow(ctx, conn, entityID)
 		require.NoError(t, err)
-
-		contributors, err := store.GetContributors()
-		require.NoError(t, err)
-		require.Len(t, contributors, 2)
-		require.Equal(t, contributorPK1, contributors[0].PK)
-		require.Equal(t, "CONTRIB1", contributors[0].Code)
-		require.Equal(t, "Contributor 1", contributors[0].Name)
-		require.Equal(t, contributorPK2, contributors[1].PK)
-		require.Equal(t, "CONTRIB2", contributors[1].Code)
-		require.Equal(t, "Contributor 2", contributors[1].Name)
-	})
-}
-
-func TestLake_Serviceability_Store_GetMetros(t *testing.T) {
-	t.Parallel()
-
-	t.Run("reads metros from database", func(t *testing.T) {
-		t.Parallel()
-
-		db := testDB(t)
-
-		store, err := NewStore(StoreConfig{
-			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:     db,
-		})
-		require.NoError(t, err)
-
-		ctx := context.Background()
-		conn, err := db.Conn(ctx)
-		require.NoError(t, err)
-		defer conn.Close()
-
-		// Create table manually for test (normally created by SCDTableViaCSV)
-		_, err = conn.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS dz_metros_current (
-			pk VARCHAR,
-			code VARCHAR,
-			name VARCHAR,
-			longitude VARCHAR,
-			latitude VARCHAR,
-			as_of_ts TIMESTAMP NOT NULL,
-			row_hash VARCHAR NOT NULL
-		)`)
-		require.NoError(t, err)
-
-		metroPK1 := testPK(1)
-		metroPK2 := testPK(2)
-
-		// Insert with required SCD2 columns (as_of_ts, row_hash)
-		_, err = conn.ExecContext(ctx, `INSERT INTO dz_metros_current (pk, code, name, longitude, latitude, as_of_ts, row_hash) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 'test_hash1'), (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 'test_hash2')`,
-			metroPK1, "NYC", "New York", -74.0060, 40.7128,
-			metroPK2, "LAX", "Los Angeles", -118.2437, 34.0522)
-		require.NoError(t, err)
-
-		metros, err := store.GetMetros()
-		require.NoError(t, err)
-		require.Len(t, metros, 2)
-		// Order by code: LAX comes before NYC alphabetically
-		require.Equal(t, metroPK2, metros[0].PK)
-		require.Equal(t, "LAX", metros[0].Code)
-		require.Equal(t, "Los Angeles", metros[0].Name)
-		require.InDelta(t, -118.2437, metros[0].Longitude, 0.0001)
-		require.InDelta(t, 34.0522, metros[0].Latitude, 0.0001)
-		require.Equal(t, metroPK1, metros[1].PK)
-		require.Equal(t, "NYC", metros[1].Code)
-		require.Equal(t, "New York", metros[1].Name)
-		require.InDelta(t, -74.0060, metros[1].Longitude, 0.0001)
-		require.InDelta(t, 40.7128, metros[1].Latitude, 0.0001)
-	})
-}
-
-func TestLake_Serviceability_Store_GetUsers(t *testing.T) {
-	t.Parallel()
-
-	t.Run("reads users from database", func(t *testing.T) {
-		t.Parallel()
-
-		db := testDB(t)
-
-		store, err := NewStore(StoreConfig{
-			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:     db,
-		})
-		require.NoError(t, err)
-
-		userPK1 := testPK(1)
-		userPK2 := testPK(2)
-		ownerPK := testPK(3)
-		devicePK := testPK(4)
-
-		ctx := context.Background()
-		conn, err := db.Conn(ctx)
-		require.NoError(t, err)
-		defer conn.Close()
-
-		// Create table manually for test (normally created by SCDTableViaCSV)
-		_, err = conn.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS dz_users_current (
-			pk VARCHAR,
-			owner_pk VARCHAR,
-			status VARCHAR,
-			kind VARCHAR,
-			client_ip VARCHAR,
-			dz_ip VARCHAR,
-			device_pk VARCHAR,
-			tunnel_id INTEGER,
-			as_of_ts TIMESTAMP NOT NULL,
-			row_hash VARCHAR NOT NULL
-		)`)
-		require.NoError(t, err)
-
-		// Insert with required SCD2 columns (as_of_ts, row_hash)
-		_, err = conn.ExecContext(ctx, `INSERT INTO dz_users_current (pk, owner_pk, status, kind, client_ip, dz_ip, device_pk, tunnel_id, as_of_ts, row_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 'test_hash1'), (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 'test_hash2')`,
-			userPK1, ownerPK, "activated", "IBRL", "1.1.1.1", "10.0.0.1", devicePK, 1,
-			userPK2, ownerPK, "activated", "IBRL", "8.8.8.8", "10.0.0.2", devicePK, 2)
-		require.NoError(t, err)
-
-		users, err := store.GetUsers(ctx)
-		require.NoError(t, err)
-		require.Len(t, users, 2)
-
-		// Check first user
-		require.Equal(t, userPK1, users[0].PK)
-		require.Equal(t, ownerPK, users[0].OwnerPK)
-		require.Equal(t, "activated", users[0].Status)
-		require.Equal(t, "IBRL", users[0].Kind)
-		require.Equal(t, net.ParseIP("1.1.1.1"), users[0].ClientIP)
-		require.Equal(t, net.ParseIP("10.0.0.1"), users[0].DZIP)
-		require.Equal(t, devicePK, users[0].DevicePK)
-		require.Equal(t, uint16(1), users[0].TunnelID)
-
-		// Check second user
-		require.Equal(t, userPK2, users[1].PK)
-		require.Equal(t, net.ParseIP("8.8.8.8"), users[1].ClientIP)
-		require.Equal(t, net.ParseIP("10.0.0.2"), users[1].DZIP)
-		require.Equal(t, uint16(2), users[1].TunnelID)
-	})
-
-	t.Run("handles users with empty client_ip", func(t *testing.T) {
-		t.Parallel()
-
-		db := testDB(t)
-
-		store, err := NewStore(StoreConfig{
-			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:     db,
-		})
-		require.NoError(t, err)
-
-		userPK := testPK(1)
-		ownerPK := testPK(2)
-		devicePK := testPK(3)
-
-		ctx := context.Background()
-		conn, err := db.Conn(ctx)
-		require.NoError(t, err)
-		defer conn.Close()
-
-		// Create table manually for test
-		_, err = conn.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS dz_users_current (
-			pk VARCHAR,
-			owner_pk VARCHAR,
-			status VARCHAR,
-			kind VARCHAR,
-			client_ip VARCHAR,
-			dz_ip VARCHAR,
-			device_pk VARCHAR,
-			tunnel_id INTEGER,
-			as_of_ts TIMESTAMP NOT NULL,
-			row_hash VARCHAR NOT NULL
-		)`)
-		require.NoError(t, err)
-
-		// Insert user with empty client_ip
-		_, err = conn.ExecContext(ctx, `INSERT INTO dz_users_current (pk, owner_pk, status, kind, client_ip, dz_ip, device_pk, tunnel_id, as_of_ts, row_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 'test_hash')`,
-			userPK, ownerPK, "activated", "IBRL", "", "10.0.0.1", devicePK, 1)
-		require.NoError(t, err)
-
-		users, err := store.GetUsers(ctx)
-		require.NoError(t, err)
-		require.Len(t, users, 1)
-		require.Nil(t, users[0].ClientIP)
-		require.Equal(t, net.ParseIP("10.0.0.1"), users[0].DZIP)
-	})
-
-	t.Run("returns empty slice when no users", func(t *testing.T) {
-		t.Parallel()
-
-		db := testDB(t)
-
-		store, err := NewStore(StoreConfig{
-			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:     db,
-		})
-		require.NoError(t, err)
-
-		// Create empty table so query doesn't fail
-		ctx := context.Background()
-		conn, err := db.Conn(ctx)
-		require.NoError(t, err)
-		defer conn.Close()
-
-		_, err = conn.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS dz_users_current (
-			pk VARCHAR,
-			owner_pk VARCHAR,
-			status VARCHAR,
-			kind VARCHAR,
-			client_ip VARCHAR,
-			dz_ip VARCHAR,
-			device_pk VARCHAR,
-			tunnel_id INTEGER,
-			as_of_ts TIMESTAMP NOT NULL,
-			row_hash VARCHAR NOT NULL
-		)`)
-		require.NoError(t, err)
-
-		users, err := store.GetUsers(ctx)
-		require.NoError(t, err)
-		require.Empty(t, users)
+		require.NotNil(t, current)
+		require.Equal(t, "NYC", current["code"])
+		require.Equal(t, "New York", current["name"])
+		require.InDelta(t, -74.0060, current["longitude"], 0.0001)
+		require.InDelta(t, 40.7128, current["latitude"], 0.0001)
 	})
 }

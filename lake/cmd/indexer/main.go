@@ -13,15 +13,13 @@ import (
 
 	_ "net/http/pprof"
 
-	_ "github.com/duckdb/duckdb-go/v2"
-
 	"github.com/jonboulle/clockwork"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	flag "github.com/spf13/pflag"
 
 	"github.com/malbeclabs/doublezero/config"
 	telemetryconfig "github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/config"
-	"github.com/malbeclabs/doublezero/lake/pkg/duck"
+	"github.com/malbeclabs/doublezero/lake/pkg/clickhouse"
 	"github.com/malbeclabs/doublezero/lake/pkg/indexer"
 	dztelemusage "github.com/malbeclabs/doublezero/lake/pkg/indexer/dz/telemetry/usage"
 	"github.com/malbeclabs/doublezero/lake/pkg/indexer/metrics"
@@ -52,9 +50,6 @@ const (
 	defaultGeoipASNDBPath               = "/usr/share/GeoIP/GeoLite2-ASN.mmdb"
 	defaultDeviceUsageInfluxQueryWindow = 1 * time.Hour
 	defaultDeviceUsageRefreshInterval   = 5 * time.Minute
-	defaultMaintenanceIntervalShort     = 30 * time.Minute
-	defaultMaintenanceIntervalLong      = 24 * time.Hour
-	defaultMaintenanceExpireOlderThan   = 24 * time.Hour
 
 	geoipCityDBPathEnvVar = "GEOIP_CITY_DB_PATH"
 	geoipASNDBPathEnvVar  = "GEOIP_ASN_DB_PATH"
@@ -73,18 +68,11 @@ func run() error {
 	metricsAddrFlag := flag.String("metrics-addr", defaultMetricsAddr, "Address to listen on for prometheus metrics")
 	listenAddrFlag := flag.String("listen-addr", defaultListenAddr, "HTTP server listen address")
 
-	// Database configuration
-	duckLakeCatalogNameFlag := flag.String("lake-catalog-name", "dzlake", "Name of the DuckLake catalog (or set DUCKLAKE_CATALOG_NAME env var)")
-	duckLakeCatalogURIFlag := flag.String("lake-catalog-uri", "file://.tmp/lake/catalog.sqlite", "URI to the DuckLake catalog (or set LAKE_CATALOG_URI env var)")
-	duckLakeStorageURIFlag := flag.String("ducklake-storage-uri", "file://.tmp/lake/data", "URI to the DuckLake storage directory (or set LAKE_STORAGE_URI env var)")
-	duckLakeMemoryLimitFlag := flag.String("lake-memory-limit", "", "Memory limit for DuckDB connections (e.g., '22GB', '16GB'). If not set, uses DuckDB default (or set LAKE_MEMORY_LIMIT env var)")
-	duckLakeTempDirectoryFlag := flag.String("lake-temp-dir", "", "Temp directory for DuckDB connections (e.g., '/tmp/duckdb_tmp'). If not set, uses DuckDB default (or set LAKE_TEMP_DIR env var)")
-	duckLakeMaxTempDirectorySizeFlag := flag.String("lake-max-temp-dir-size", "", "Max temp directory size for DuckDB connections (e.g., '200GB', '100GB'). If not set, uses DuckDB default (or set LAKE_MAX_TEMP_DIR_SIZE env var)")
-	duckLakeThreadsFlag := flag.String("lake-threads", "", "Number of threads for DuckDB connections (e.g., '1', '4', '8'). If not set, uses DuckDB default (or set LAKE_THREADS env var)")
-	duckLakeMaxOpenConnsFlag := flag.Int("lake-max-open-conns", 0, "Maximum number of open connections in the pool (default: 32, or set LAKE_MAX_OPEN_CONNS env var)")
-	duckLakeMaxIdleConnsFlag := flag.Int("lake-max-idle-conns", 0, "Maximum number of idle connections in the pool (default: 8, or set LAKE_MAX_IDLE_CONNS env var)")
-	duckLakeConnMaxLifetimeFlag := flag.String("lake-conn-max-lifetime", "", "Maximum amount of time a connection may be reused (e.g., '10m', '1h'). Default: 10m (or set LAKE_CONN_MAX_LIFETIME env var)")
-	duckLakeConnMaxIdleTimeFlag := flag.String("lake-conn-max-idle-time", "", "Maximum amount of time a connection may be idle (e.g., '2m', '30s'). Default: 2m (or set LAKE_CONN_MAX_IDLE_TIME env var)")
+	// ClickHouse configuration
+	clickhouseAddrFlag := flag.String("clickhouse-addr", "", "ClickHouse server address (e.g., localhost:9000, or set CLICKHOUSE_ADDR env var)")
+	clickhouseDatabaseFlag := flag.String("clickhouse-database", "default", "ClickHouse database name (or set CLICKHOUSE_DATABASE env var)")
+	clickhouseUsernameFlag := flag.String("clickhouse-username", "default", "ClickHouse username (or set CLICKHOUSE_USERNAME env var)")
+	clickhousePasswordFlag := flag.String("clickhouse-password", "", "ClickHouse password (or set CLICKHOUSE_PASSWORD env var)")
 
 	// GeoIP configuration
 	geoipCityDBPathFlag := flag.String("geoip-city-db-path", defaultGeoipCityDBPath, "Path to MaxMind GeoIP2 City database file (or set MCP_GEOIP_CITY_DB_PATH env var)")
@@ -98,52 +86,20 @@ func run() error {
 	deviceUsageQueryWindowFlag := flag.Duration("device-usage-query-window", defaultDeviceUsageInfluxQueryWindow, "Query window for device usage (default: 1 hour)")
 	deviceUsageRefreshIntervalFlag := flag.Duration("device-usage-refresh-interval", defaultDeviceUsageRefreshInterval, "Refresh interval for device usage (default: 5 minutes)")
 
-	// Maintenance configuration
-	maintenanceIntervalShortFlag := flag.Duration("maintenance-interval-short", defaultMaintenanceIntervalShort, "Interval for short maintenance tasks: flush_inlined_data, merge_adjacent_files (default: 30 minutes, set to 0 to disable)")
-	maintenanceIntervalLongFlag := flag.Duration("maintenance-interval-long", defaultMaintenanceIntervalLong, "Interval for long maintenance tasks: rewrite_data_files, merge_adjacent_files, expire_snapshots, cleanup_old_files, delete_orphaned_files (default: 3 hours, set to 0 to disable)")
-	maintenanceExpireOlderThanFlag := flag.Duration("maintenance-expire-older-than", defaultMaintenanceExpireOlderThan, "Age threshold for expiring snapshots (default: 7 days, set to 0 to disable)")
-
 	flag.Parse()
 
 	// Override flags with environment variables if set
-	if envCatalogURI := os.Getenv("LAKE_CATALOG_URI"); envCatalogURI != "" {
-		*duckLakeCatalogURIFlag = envCatalogURI
+	if envClickhouseAddr := os.Getenv("CLICKHOUSE_ADDR"); envClickhouseAddr != "" {
+		*clickhouseAddrFlag = envClickhouseAddr
 	}
-	if envStorageURI := os.Getenv("LAKE_STORAGE_URI"); envStorageURI != "" {
-		*duckLakeStorageURIFlag = envStorageURI
+	if envClickhouseDatabase := os.Getenv("CLICKHOUSE_DATABASE"); envClickhouseDatabase != "" {
+		*clickhouseDatabaseFlag = envClickhouseDatabase
 	}
-	if envCatalogName := os.Getenv("DUCKLAKE_CATALOG_NAME"); envCatalogName != "" {
-		*duckLakeCatalogNameFlag = envCatalogName
+	if envClickhouseUsername := os.Getenv("CLICKHOUSE_USERNAME"); envClickhouseUsername != "" {
+		*clickhouseUsernameFlag = envClickhouseUsername
 	}
-	if envMemoryLimit := os.Getenv("LAKE_MEMORY_LIMIT"); envMemoryLimit != "" {
-		*duckLakeMemoryLimitFlag = envMemoryLimit
-	}
-	if envTempDirectory := os.Getenv("LAKE_TEMP_DIR"); envTempDirectory != "" {
-		*duckLakeTempDirectoryFlag = envTempDirectory
-	}
-	if envMaxTempDirectorySize := os.Getenv("LAKE_MAX_TEMP_DIR_SIZE"); envMaxTempDirectorySize != "" {
-		*duckLakeMaxTempDirectorySizeFlag = envMaxTempDirectorySize
-	}
-	if envThreads := os.Getenv("LAKE_THREADS"); envThreads != "" {
-		*duckLakeThreadsFlag = envThreads
-	}
-	if envMaxOpenConns := os.Getenv("LAKE_MAX_OPEN_CONNS"); envMaxOpenConns != "" {
-		var val int
-		if _, err := fmt.Sscanf(envMaxOpenConns, "%d", &val); err == nil {
-			*duckLakeMaxOpenConnsFlag = val
-		}
-	}
-	if envMaxIdleConns := os.Getenv("LAKE_MAX_IDLE_CONNS"); envMaxIdleConns != "" {
-		var val int
-		if _, err := fmt.Sscanf(envMaxIdleConns, "%d", &val); err == nil {
-			*duckLakeMaxIdleConnsFlag = val
-		}
-	}
-	if envConnMaxLifetime := os.Getenv("LAKE_CONN_MAX_LIFETIME"); envConnMaxLifetime != "" {
-		*duckLakeConnMaxLifetimeFlag = envConnMaxLifetime
-	}
-	if envConnMaxIdleTime := os.Getenv("LAKE_CONN_MAX_IDLE_TIME"); envConnMaxIdleTime != "" {
-		*duckLakeConnMaxIdleTimeFlag = envConnMaxIdleTime
+	if envClickhousePassword := os.Getenv("CLICKHOUSE_PASSWORD"); envClickhousePassword != "" {
+		*clickhousePasswordFlag = envClickhousePassword
 	}
 
 	networkConfig, err := config.NetworkConfigForEnv(*dzEnvFlag)
@@ -210,65 +166,20 @@ func run() error {
 	solanaRPC := rpc.NewWithRetries(solanaNetworkConfig.RPCURL, nil)
 	defer solanaRPC.Close()
 
-	// Initialize DuckLake database
-	s3Config, err := duck.PrepareS3ConfigForStorageURI(ctx, log, *duckLakeStorageURIFlag)
+	// Initialize ClickHouse client (required)
+	if *clickhouseAddrFlag == "" {
+		return fmt.Errorf("clickhouse-addr is required")
+	}
+	clickhouseDB, err := clickhouse.NewClient(ctx, log, *clickhouseAddrFlag, *clickhouseDatabaseFlag, *clickhouseUsernameFlag, *clickhousePasswordFlag)
 	if err != nil {
-		return err
-	}
-	var lakeConfig *duck.LakeConfig
-	if *duckLakeMemoryLimitFlag != "" || *duckLakeTempDirectoryFlag != "" || *duckLakeMaxTempDirectorySizeFlag != "" || *duckLakeThreadsFlag != "" ||
-		*duckLakeMaxOpenConnsFlag > 0 || *duckLakeMaxIdleConnsFlag > 0 || *duckLakeConnMaxLifetimeFlag != "" || *duckLakeConnMaxIdleTimeFlag != "" {
-		lakeConfig = &duck.LakeConfig{}
-		if *duckLakeMemoryLimitFlag != "" {
-			lakeConfig.MemoryLimit = *duckLakeMemoryLimitFlag
-		}
-		if *duckLakeTempDirectoryFlag != "" {
-			lakeConfig.TempDirectory = *duckLakeTempDirectoryFlag
-		}
-		if *duckLakeMaxTempDirectorySizeFlag != "" {
-			lakeConfig.MaxTempDirectorySize = *duckLakeMaxTempDirectorySizeFlag
-		}
-		if *duckLakeThreadsFlag != "" {
-			lakeConfig.Threads = *duckLakeThreadsFlag
-		}
-		if *duckLakeMaxOpenConnsFlag > 0 {
-			val := *duckLakeMaxOpenConnsFlag
-			lakeConfig.MaxOpenConns = &val
-		}
-		if *duckLakeMaxIdleConnsFlag > 0 {
-			val := *duckLakeMaxIdleConnsFlag
-			lakeConfig.MaxIdleConns = &val
-		}
-		if *duckLakeConnMaxLifetimeFlag != "" {
-			if d, err := time.ParseDuration(*duckLakeConnMaxLifetimeFlag); err == nil {
-				lakeConfig.ConnMaxLifetime = &d
-			} else {
-				return fmt.Errorf("invalid duration for --lake-conn-max-lifetime: %w", err)
-			}
-		}
-		if *duckLakeConnMaxIdleTimeFlag != "" {
-			if d, err := time.ParseDuration(*duckLakeConnMaxIdleTimeFlag); err == nil {
-				lakeConfig.ConnMaxIdleTime = &d
-			} else {
-				return fmt.Errorf("invalid duration for --lake-conn-max-idle-time: %w", err)
-			}
-		}
-	}
-	log.Info("initializing ducklake database", "catalog", *duckLakeCatalogNameFlag, "catalogURI", duck.RedactedCatalogURI(*duckLakeCatalogURIFlag), "storageURI", duck.RedactedStorageURI(*duckLakeStorageURIFlag), "memoryLimit", *duckLakeMemoryLimitFlag, "tempDirectory", *duckLakeTempDirectoryFlag, "maxTempDirectorySize", *duckLakeMaxTempDirectorySizeFlag, "threads", *duckLakeThreadsFlag)
-	var db duck.DB
-	if lakeConfig != nil {
-		db, err = duck.NewLakeWithConfig(ctx, log, *duckLakeCatalogNameFlag, *duckLakeCatalogURIFlag, *duckLakeStorageURIFlag, false, lakeConfig, s3Config)
-	} else {
-		db, err = duck.NewLake(ctx, log, *duckLakeCatalogNameFlag, *duckLakeCatalogURIFlag, *duckLakeStorageURIFlag, false, s3Config)
-	}
-	if err != nil {
-		return fmt.Errorf("failed to create DuckLake database: %w", err)
+		return fmt.Errorf("failed to create ClickHouse client: %w", err)
 	}
 	defer func() {
-		if err := db.Close(); err != nil {
-			log.Error("failed to close DuckLake database", "error", err)
+		if err := clickhouseDB.Close(); err != nil {
+			log.Error("failed to close ClickHouse database", "error", err)
 		}
 	}()
+	log.Info("clickhouse client initialized", "addr", *clickhouseAddrFlag, "database", *clickhouseDatabaseFlag)
 
 	// Determine GeoIP database paths: flag takes precedence, then env var, then default
 	geoipCityDBPath := *geoipCityDBPathFlag
@@ -330,9 +241,9 @@ func run() error {
 		ReadHeaderTimeout: 30 * time.Second,
 		ShutdownTimeout:   10 * time.Second,
 		IndexerConfig: indexer.Config{
-			Logger: log,
-			Clock:  clockwork.NewRealClock(),
-			DB:     db,
+			Logger:     log,
+			Clock:      clockwork.NewRealClock(),
+			ClickHouse: clickhouseDB,
 
 			RefreshInterval: *refreshIntervalFlag,
 			MaxConcurrency:  *maxConcurrencyFlag,
@@ -357,11 +268,6 @@ func run() error {
 
 			// Solana configuration
 			SolanaRPC: solanaRPC,
-
-			// Maintenance configuration
-			MaintenanceIntervalShort: *maintenanceIntervalShortFlag,
-			MaintenanceIntervalLong:  *maintenanceIntervalLongFlag,
-			ExpireSnapshotsOlderThan: *maintenanceExpireOlderThanFlag,
 		},
 	})
 	if err != nil {

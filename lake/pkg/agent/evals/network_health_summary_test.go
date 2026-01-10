@@ -6,10 +6,14 @@ import (
 	"bytes"
 	"context"
 	"os"
-	"strings"
 	"testing"
+	"time"
 
-	"github.com/malbeclabs/doublezero/lake/pkg/duck"
+	"github.com/malbeclabs/doublezero/lake/pkg/clickhouse"
+	"github.com/malbeclabs/doublezero/lake/pkg/clickhouse/dataset"
+	serviceability "github.com/malbeclabs/doublezero/lake/pkg/indexer/dz/serviceability"
+	dztelemlatency "github.com/malbeclabs/doublezero/lake/pkg/indexer/dz/telemetry/latency"
+	dztelemusage "github.com/malbeclabs/doublezero/lake/pkg/indexer/dz/telemetry/usage"
 	"github.com/stretchr/testify/require"
 )
 
@@ -20,10 +24,19 @@ func TestLake_Agent_Evals_Anthropic_NetworkHealthSummary(t *testing.T) {
 		t.Skip("ANTHROPIC_API_KEY not set, skipping eval test")
 	}
 
-	runTest_NetworkHealthSummary(t)
+	runTest_NetworkHealthSummary(t, newAnthropicLLMClient)
 }
 
-func runTest_NetworkHealthSummary(t *testing.T) {
+func TestLake_Agent_Evals_OllamaLocal_NetworkHealthSummary(t *testing.T) {
+	t.Parallel()
+	if !isOllamaAvailable() {
+		t.Skip("Ollama not available, skipping eval test")
+	}
+
+	runTest_NetworkHealthSummary(t, newOllamaLLMClient)
+}
+
+func runTest_NetworkHealthSummary(t *testing.T, llmFactory LLMClientFactory) {
 	ctx := context.Background()
 
 	// Get debug level
@@ -40,8 +53,17 @@ func runTest_NetworkHealthSummary(t *testing.T) {
 	// Seed comprehensive network health data
 	seedNetworkHealthSummaryData(t, ctx, conn)
 
-	// Set up agent with Anthropic LLM client
-	agentInstance := setupAgent(t, ctx, db, newAnthropicLLMClient, debug, debugLevel, nil)
+	// Validate database query results before testing agent
+	validateNetworkHealthSummaryQuery(t, ctx, conn)
+
+	// Skip agent execution in short mode
+	if testing.Short() {
+		t.Log("Skipping agent execution in short mode")
+		return
+	}
+
+	// Set up agent with LLM client
+	agentInstance := setupAgent(t, ctx, db, llmFactory, debug, debugLevel, nil)
 
 	// Run the query
 	var output bytes.Buffer
@@ -69,230 +91,234 @@ func runTest_NetworkHealthSummary(t *testing.T) {
 		t.Logf("Agent response:\n%s", response)
 	}
 
-	// The response should be non-empty and contain some indication of network status
-	require.Greater(t, len(response), 100, "Response should be substantial")
-
-	// Validate that the response contains specific data points from the seeded test data
-	validateNetworkHealthSummaryResponse(t, response)
-
-	// Evaluate with Ollama
-	isCorrect, err := ollamaEvaluateResponse(t, ctx, question, response)
+	// Evaluate with Ollama - include specific expectations
+	expectations := []OllamaExpectation{
+		{
+			Description:   "Response mentions tok-fra-1 packet loss",
+			ExpectedValue: "tok-fra-1 appears with loss percentage (50%, 100%, or similar)",
+			Rationale:     "tok-fra-1 link has packet loss that should be reported",
+		},
+		{
+			Description:   "Response mentions device status issues",
+			ExpectedValue: "tok-dzd1 (suspended) and/or chi-dzd1 (pending) appear in response",
+			Rationale:     "These devices have non-activated status",
+		},
+		{
+			Description:   "Response mentions interface errors",
+			ExpectedValue: "interface errors, discards, or carrier transitions mentioned for lon-dzd1 or Ethernet1",
+			Rationale:     "lon-dzd1 has interface issues",
+		},
+	}
+	isCorrect, err := ollamaEvaluateResponse(t, ctx, question, response, expectations...)
 	require.NoError(t, err, "Ollama evaluation must be available")
 	require.True(t, isCorrect, "Ollama evaluation indicates the response does not correctly answer the question")
 }
 
-// validateNetworkHealthSummaryResponse validates the response for TestLake_Agent_Evals_NetworkHealthSummary
-func validateNetworkHealthSummaryResponse(t *testing.T, response string) {
-	responseLower := strings.ToLower(response)
-
-	// Device status expectations - should mention devices and their status
-	// We have 7 devices: 5 activated, 1 pending, 1 suspended
-	deviceMentioned := strings.Contains(responseLower, "device") || strings.Contains(responseLower, "devices")
-	deviceStatusMentioned := strings.Contains(responseLower, "activated") ||
-		strings.Contains(responseLower, "pending") ||
-		strings.Contains(responseLower, "suspended")
-	require.True(t, deviceMentioned && deviceStatusMentioned,
-		"Response should mention devices and their status (activated/pending/suspended). Got: %s",
-		truncateForError(response, 200))
-
-	// Link status expectations - should mention links
-	// We have 5 links: 4 activated, 1 pending
-	linkMentioned := strings.Contains(responseLower, "link") || strings.Contains(responseLower, "links") ||
-		strings.Contains(responseLower, "wan") || strings.Contains(responseLower, "connection")
-	require.True(t, linkMentioned,
-		"Response should mention links or connections. Got: %s",
-		truncateForError(response, 200))
-
-	// Packet loss expectations - should mention loss, especially on problematic links
-	// Link1 (nyc-lon) has some loss, Link4 (tok-fra) has high loss (3 of 4 samples lost)
-	packetLossMentioned := strings.Contains(responseLower, "packet loss") ||
-		strings.Contains(responseLower, "loss") ||
-		strings.Contains(responseLower, "dropped") ||
-		strings.Contains(responseLower, "packet")
-	require.True(t, packetLossMentioned,
-		"Response should mention packet loss. Got: %s",
-		truncateForError(response, 200))
-
-	// Interface errors/discards expectations - should mention errors or discards
-	// Multiple interfaces have errors and discards (device1, device2, device4)
-	errorsMentioned := strings.Contains(responseLower, "error") ||
-		strings.Contains(responseLower, "errors") ||
-		strings.Contains(responseLower, "discard") ||
-		strings.Contains(responseLower, "discards")
-	require.True(t, errorsMentioned,
-		"Response should mention interface errors or discards. Got: %s",
-		truncateForError(response, 200))
-
-	// Metrics/numbers expectations - response should contain numeric data (counts, percentages, etc.)
-	// Note: This test asks "how is the network doing?" which is a summary question, not a count question.
-	// We verify that numbers are present (for metrics/percentages) but don't require specific counts.
-	// If the agent mentions counts, they should be accurate (7 devices: 5 activated, 1 pending, 1 suspended;
-	// 5 links: 4 activated, 1 pending), but counts are not required for this summary-style question.
-	hasNumbers := false
-	for _, char := range response {
-		if char >= '0' && char <= '9' {
-			hasNumbers = true
-			break
-		}
-	}
-	require.True(t, hasNumbers,
-		"Response should contain numeric metrics, counts, or percentages. Got: %s",
-		truncateForError(response, 200))
-
-	// Specific issues that must be mentioned with entity codes and metrics (based on system prompt rules):
-	// 1. Pending device: chi-dzd1 (device3) - must mention device code with "pending"
-	// 2. Suspended device: tok-dzd1 (device5) - must mention device code with "suspended"
-	// 3. Pending link: sf-nyc-1 (link3) - must mention link code with "pending"
-	// 4. High loss link: tok-fra-1 (link4) - must mention link code with loss percentage (75% or 3 of 4)
-	// 5. Interface errors/discards: must mention specific devices/interfaces with error/discard/carrier transition counts
-
-	// Check for pending device: chi-dzd1 mentioned with "pending"
-	pendingDeviceMentioned := (strings.Contains(responseLower, "chi-dzd1") || strings.Contains(responseLower, "chi")) &&
-		strings.Contains(responseLower, "pending")
-
-	// Check for suspended device: tok-dzd1 mentioned with "suspended"
-	suspendedDeviceMentioned := (strings.Contains(responseLower, "tok-dzd1") || strings.Contains(responseLower, "tok")) &&
-		strings.Contains(responseLower, "suspended")
-
-	// At least one non-activated device should be mentioned
-	require.True(t, pendingDeviceMentioned || suspendedDeviceMentioned,
-		"Response should mention specific non-activated devices (chi-dzd1 pending or tok-dzd1 suspended). Got: %s",
-		truncateForError(response, 200))
-
-	// Check for pending link: sf-nyc-1 mentioned with "pending"
-	pendingLinkMentioned := (strings.Contains(responseLower, "sf-nyc") || strings.Contains(responseLower, "sf")) &&
-		strings.Contains(responseLower, "pending")
-	// Pending link is important but may be mentioned less prominently
-	if !pendingLinkMentioned {
-		t.Logf("Note: Response may not explicitly mention the pending link (sf-nyc-1)")
-	}
-
-	// Check for high loss link: tok-fra-1 mentioned with loss percentage
-	// Expected: tok-fra-1 with 75% loss or "3 of 4" samples lost
-	tokFraMentioned := strings.Contains(responseLower, "tok-fra") ||
-		(strings.Contains(responseLower, "tok") && strings.Contains(responseLower, "fra"))
-
-	if tokFraMentioned {
-		// If tok-fra is mentioned, should include loss percentage/metrics
-		hasLossMetrics := strings.Contains(response, "75") ||
-			(strings.Contains(response, "3") && strings.Contains(response, "4")) ||
-			strings.Contains(response, "%") && (strings.Contains(response, "5") || strings.Contains(response, "7"))
-		require.True(t, hasLossMetrics,
-			"Response mentions tok-fra but should include loss percentage/metrics (75%, 3 of 4 samples, etc.). Got: %s",
-			truncateForError(response, 200))
-	} else {
-		// High loss is critical - should be mentioned
-		require.True(t, false,
-			"Response should mention high loss link tok-fra-1 with metrics (75% loss, 3 of 4 samples lost). Got: %s",
-			truncateForError(response, 200))
-	}
-
-	// Check for interface errors/discards/carrier transitions with specific device/interface mentions
-	// Expected: specific devices mentioned with error/discard/carrier transition counts
-	// Device codes: nyc-dzd1 (device1), lon-dzd1 (device2), sf-dzd1 (device4)
-	deviceWithErrorsMentioned := (strings.Contains(responseLower, "nyc-dzd1") || strings.Contains(responseLower, "lon-dzd1") ||
-		strings.Contains(responseLower, "sf-dzd1") || strings.Contains(responseLower, "device1") ||
-		strings.Contains(responseLower, "device2") || strings.Contains(responseLower, "device4")) &&
-		errorsMentioned
-
-	if errorsMentioned {
-		// If errors are mentioned, should mention specific devices/interfaces with counts
-		require.True(t, deviceWithErrorsMentioned,
-			"Response mentions errors/discards but should mention specific devices/interfaces (nyc-dzd1, lon-dzd1, sf-dzd1) with counts. Got: %s",
-			truncateForError(response, 200))
-
-		// Should include specific error/discard/carrier transition counts
-		hasErrorCounts := strings.Contains(response, "5") || strings.Contains(response, "8") ||
-			strings.Contains(response, "10") || strings.Contains(response, "15") ||
-			strings.Contains(response, "2") || strings.Contains(response, "3") ||
-			strings.Contains(response, "4") || strings.Contains(response, "7") ||
-			strings.Contains(response, "12") || strings.Contains(response, "6") ||
-			strings.Contains(response, "1") // carrier transitions
-		require.True(t, hasErrorCounts,
-			"Response mentions errors/discards but should include specific counts (e.g., 5 errors, 8 errors, 1 carrier transition). Got: %s",
-			truncateForError(response, 200))
-	}
-}
-
 // seedNetworkHealthSummaryData seeds comprehensive network health data for TestLake_Agent_Evals_NetworkHealthSummary
-func seedNetworkHealthSummaryData(t *testing.T, ctx context.Context, conn duck.Connection) {
-	// Load and execute table and view creation migrations
-	loadTablesAndViews(t, ctx, conn)
+func seedNetworkHealthSummaryData(t *testing.T, ctx context.Context, conn clickhouse.Connection) {
+	log := testLogger(t)
+	now := testTime()
+
+	// Seed metros
+	metros := []serviceability.Metro{
+		{PK: "metro1", Code: "nyc", Name: "New York"},
+		{PK: "metro2", Code: "lon", Name: "London"},
+		{PK: "metro3", Code: "chi", Name: "Chicago"},
+		{PK: "metro4", Code: "sf", Name: "San Francisco"},
+		{PK: "metro5", Code: "tok", Name: "Tokyo"},
+		{PK: "metro6", Code: "fra", Name: "Frankfurt"},
+	}
+	seedMetros(t, ctx, conn, metros, now, now)
 
 	// Seed devices - mix of activated and non-activated
-	// Note: as_of_ts and row_hash are required NOT NULL columns
-	_, err := conn.ExecContext(ctx, `
-		INSERT INTO dz_devices_current (pk, code, status, metro_pk, device_type, as_of_ts, row_hash) VALUES
-		('device1', 'nyc-dzd1', 'activated', 'metro1', 'DZD', CURRENT_TIMESTAMP, 'hash1'),
-		('device2', 'lon-dzd1', 'activated', 'metro2', 'DZD', CURRENT_TIMESTAMP, 'hash2'),
-		('device3', 'chi-dzd1', 'pending', 'metro3', 'DZD', CURRENT_TIMESTAMP, 'hash3'),
-		('device4', 'sf-dzd1', 'activated', 'metro4', 'DZD', CURRENT_TIMESTAMP, 'hash4'),
-		('device5', 'tok-dzd1', 'suspended', 'metro5', 'DZD', CURRENT_TIMESTAMP, 'hash5'),
-		('device6', 'fra-dzd1', 'activated', 'metro6', 'DZD', CURRENT_TIMESTAMP, 'hash6'),
-		('device7', 'nyc-dzd2', 'activated', 'metro1', 'DZD', CURRENT_TIMESTAMP, 'hash7')
-	`)
-	require.NoError(t, err)
+	devices := []serviceability.Device{
+		{PK: "device1", Code: "nyc-dzd1", Status: "activated", MetroPK: "metro1", DeviceType: "DZD"},
+		{PK: "device2", Code: "lon-dzd1", Status: "activated", MetroPK: "metro2", DeviceType: "DZD"},
+		{PK: "device3", Code: "chi-dzd1", Status: "pending", MetroPK: "metro3", DeviceType: "DZD"},
+		{PK: "device4", Code: "sf-dzd1", Status: "activated", MetroPK: "metro4", DeviceType: "DZD"},
+		{PK: "device5", Code: "tok-dzd1", Status: "suspended", MetroPK: "metro5", DeviceType: "DZD"},
+		{PK: "device6", Code: "fra-dzd1", Status: "activated", MetroPK: "metro6", DeviceType: "DZD"},
+		{PK: "device7", Code: "nyc-dzd2", Status: "activated", MetroPK: "metro1", DeviceType: "DZD"},
+	}
+	seedDevices(t, ctx, conn, devices, now, now)
 
 	// Seed links - mix of activated and non-activated, WAN and DZX
-	// Note: as_of_ts and row_hash are required NOT NULL columns
-	_, err = conn.ExecContext(ctx, `
-		INSERT INTO dz_links_current (
-			pk, code, status, link_type, side_a_pk, side_z_pk,
-			side_a_iface_name, side_z_iface_name, bandwidth_bps, committed_rtt_ns, as_of_ts, row_hash
-		) VALUES
-		('link1', 'nyc-lon-1', 'activated', 'WAN', 'device1', 'device2', 'Ethernet1', 'Ethernet1', 10000000000, 10000000, CURRENT_TIMESTAMP, 'linkhash1'),
-		('link2', 'chi-nyc-1', 'activated', 'WAN', 'device3', 'device1', 'Ethernet1', 'Ethernet1', 10000000000, 15000000, CURRENT_TIMESTAMP, 'linkhash2'),
-		('link3', 'sf-nyc-1', 'pending', 'WAN', 'device4', 'device1', 'Ethernet1', 'Ethernet1', 10000000000, 12000000, CURRENT_TIMESTAMP, 'linkhash3'),
-		('link4', 'tok-fra-1', 'activated', 'WAN', 'device5', 'device6', 'Ethernet1', 'Ethernet1', 10000000000, 20000000, CURRENT_TIMESTAMP, 'linkhash4'),
-		('link5', 'nyc-local-1', 'activated', 'DZX', 'device1', 'device7', 'Ethernet2', 'Ethernet1', 10000000000, 5000000, CURRENT_TIMESTAMP, 'linkhash5')
-	`)
+	linkDS, err := serviceability.NewLinkDataset(log)
+	require.NoError(t, err)
+	links := []serviceability.Link{
+		{PK: "link1", Code: "nyc-lon-1", Status: "activated", LinkType: "WAN", SideAPK: "device1", SideZPK: "device2", SideAIfaceName: "Ethernet1", SideZIfaceName: "Ethernet1", Bandwidth: 10000000000, CommittedRTTNs: 10000000},
+		{PK: "link2", Code: "chi-nyc-1", Status: "activated", LinkType: "WAN", SideAPK: "device3", SideZPK: "device1", SideAIfaceName: "Ethernet1", SideZIfaceName: "Ethernet1", Bandwidth: 10000000000, CommittedRTTNs: 15000000},
+		{PK: "link3", Code: "sf-nyc-1", Status: "pending", LinkType: "WAN", SideAPK: "device4", SideZPK: "device1", SideAIfaceName: "Ethernet1", SideZIfaceName: "Ethernet1", Bandwidth: 10000000000, CommittedRTTNs: 12000000},
+		{PK: "link4", Code: "tok-fra-1", Status: "activated", LinkType: "WAN", SideAPK: "device5", SideZPK: "device6", SideAIfaceName: "Ethernet1", SideZIfaceName: "Ethernet1", Bandwidth: 10000000000, CommittedRTTNs: 20000000},
+		{PK: "link5", Code: "nyc-local-1", Status: "activated", LinkType: "DZX", SideAPK: "device1", SideZPK: "device7", SideAIfaceName: "Ethernet2", SideZIfaceName: "Ethernet1", Bandwidth: 10000000000, CommittedRTTNs: 5000000},
+	}
+	var linkSchema serviceability.LinkSchema
+	err = linkDS.WriteBatch(ctx, conn, len(links), func(i int) ([]any, error) {
+		return linkSchema.ToRow(links[i]), nil
+	}, &dataset.DimensionType2DatasetWriteConfig{
+		SnapshotTS: now,
+		OpID:       testOpID(),
+	})
 	require.NoError(t, err)
 
 	// Seed latency samples - include some with packet loss (rtt_us = 0)
-	// Use recent timestamps (past 24 hours)
-	now := "CURRENT_TIMESTAMP"
-	_, err = conn.ExecContext(ctx, `
-		INSERT INTO dz_device_link_latency_samples_raw (
-			time, epoch, sample_index, origin_device_pk, target_device_pk, link_pk, rtt_us, loss, ipdv_us
-		) VALUES
-		-- Link1 (nyc-lon): Mostly healthy, some loss
-		(`+now+` - INTERVAL '1 hour', 1, 1, 'device1', 'device2', 'link1', 50000, false, 2000),
-		(`+now+` - INTERVAL '1 hour', 1, 2, 'device1', 'device2', 'link1', 51000, false, 2100),
-		(`+now+` - INTERVAL '1 hour', 1, 3, 'device1', 'device2', 'link1', 0, true, 0),
-		(`+now+` - INTERVAL '2 hours', 1, 1, 'device2', 'device1', 'link1', 49000, false, 1900),
-		(`+now+` - INTERVAL '2 hours', 1, 2, 'device2', 'device1', 'link1', 0, true, 0),
-		-- Link2 (chi-nyc): Healthy
-		(`+now+` - INTERVAL '1 hour', 1, 1, 'device3', 'device1', 'link2', 75000, false, 3000),
-		(`+now+` - INTERVAL '1 hour', 1, 2, 'device1', 'device3', 'link2', 73000, false, 2800),
-		-- Link4 (tok-fra): High loss
-		(`+now+` - INTERVAL '1 hour', 1, 1, 'device5', 'device6', 'link4', 0, true, 0),
-		(`+now+` - INTERVAL '1 hour', 1, 2, 'device5', 'device6', 'link4', 0, true, 0),
-		(`+now+` - INTERVAL '2 hours', 1, 1, 'device6', 'device5', 'link4', 0, true, 0),
-		(`+now+` - INTERVAL '2 hours', 1, 2, 'device6', 'device5', 'link4', 180000, false, 5000)
-	`)
+	latencyDS, err := dztelemlatency.NewDeviceLinkLatencyDataset(log)
+	require.NoError(t, err)
+	ingestedAt := now
+	latencySamples := []struct {
+		time           time.Time
+		epoch          int64
+		sampleIndex    int32
+		originDevicePK string
+		targetDevicePK string
+		linkPK         string
+		rttUs          uint32
+		loss           bool
+		ipdvUs         *int64
+	}{
+		// Link1 (nyc-lon): Mostly healthy, some loss
+		{now.Add(-1 * time.Hour), 1, 1, "device1", "device2", "link1", 50000, false, int64Ptr(2000)},
+		{now.Add(-1 * time.Hour), 1, 2, "device1", "device2", "link1", 51000, false, int64Ptr(2100)},
+		{now.Add(-1 * time.Hour), 1, 3, "device1", "device2", "link1", 0, true, nil},
+		{now.Add(-2 * time.Hour), 1, 1, "device2", "device1", "link1", 49000, false, int64Ptr(1900)},
+		{now.Add(-2 * time.Hour), 1, 2, "device2", "device1", "link1", 0, true, nil},
+		// Link2 (chi-nyc): Healthy
+		{now.Add(-1 * time.Hour), 1, 1, "device3", "device1", "link2", 75000, false, int64Ptr(3000)},
+		{now.Add(-1 * time.Hour), 1, 2, "device1", "device3", "link2", 73000, false, int64Ptr(2800)},
+		// Link4 (tok-fra): High loss
+		{now.Add(-1 * time.Hour), 1, 1, "device5", "device6", "link4", 0, true, nil},
+		{now.Add(-1 * time.Hour), 1, 2, "device5", "device6", "link4", 0, true, nil},
+		{now.Add(-2 * time.Hour), 1, 1, "device6", "device5", "link4", 0, true, nil},
+		{now.Add(-2 * time.Hour), 1, 2, "device6", "device5", "link4", 180000, false, int64Ptr(5000)},
+	}
+	err = latencyDS.WriteBatch(ctx, conn, len(latencySamples), func(i int) ([]any, error) {
+		s := latencySamples[i]
+		return []any{
+			s.time.UTC(),     // event_ts
+			ingestedAt,       // ingested_at
+			s.epoch,          // epoch
+			s.sampleIndex,    // sample_index
+			s.originDevicePK, // origin_device_pk
+			s.targetDevicePK, // target_device_pk
+			s.linkPK,         // link_pk
+			int64(s.rttUs),   // rtt_us
+			s.loss,           // loss
+			s.ipdvUs,         // ipdv_us
+		}, nil
+	})
 	require.NoError(t, err)
 
 	// Seed interface usage - mix of link interfaces and non-link interfaces
 	// Include errors, discards, and carrier transitions
-	_, err = conn.ExecContext(ctx, `
-		INSERT INTO dz_device_iface_usage_raw (
-			time, device_pk, host, intf, link_pk, link_side,
-			in_errors_delta, in_discards_delta, out_errors_delta, out_discards_delta,
-			carrier_transitions_delta, in_octets_delta, out_octets_delta, delta_duration
-		) VALUES
-		-- Link interfaces with errors/discards (link_pk IS NOT NULL)
-		(`+now+` - INTERVAL '1 hour', 'device1', 'nyc-dzd1', 'Ethernet1', 'link1', 'A', 5, 2, 3, 1, 0, 1000000, 1000000, 60.0),
-		(`+now+` - INTERVAL '1 hour', 'device2', 'lon-dzd1', 'Ethernet1', 'link1', 'Z', 8, 3, 4, 2, 1, 1000000, 1000000, 60.0),
-		(`+now+` - INTERVAL '2 hours', 'device1', 'nyc-dzd1', 'Ethernet1', 'link1', 'A', 0, 0, 0, 0, 0, 1000000, 1000000, 60.0),
-		(`+now+` - INTERVAL '2 hours', 'device2', 'lon-dzd1', 'Ethernet1', 'link1', 'Z', 0, 0, 0, 0, 0, 1000000, 1000000, 60.0),
-		-- Link interface with high utilization (for link traffic view) - 90% of 10Gbps
-		(`+now+` - INTERVAL '1 hour', 'device1', 'nyc-dzd1', 'Ethernet1', 'link2', 'A', 0, 0, 0, 0, 0, 6750000000, 6750000000, 60.0),
-		(`+now+` - INTERVAL '1 hour', 'device3', 'chi-dzd1', 'Ethernet1', 'link2', 'Z', 0, 0, 0, 0, 0, 6750000000, 6750000000, 60.0),
-		-- Non-link interfaces with errors/discards (link_pk IS NULL)
-		(`+now+` - INTERVAL '1 hour', 'device1', 'nyc-dzd1', 'Ethernet3', NULL, NULL, 10, 5, 8, 4, 2, 500000, 500000, 60.0),
-		(`+now+` - INTERVAL '1 hour', 'device4', 'sf-dzd1', 'Ethernet2', NULL, NULL, 15, 7, 12, 6, 3, 500000, 500000, 60.0),
-		(`+now+` - INTERVAL '2 hours', 'device1', 'nyc-dzd1', 'Ethernet3', NULL, NULL, 0, 0, 0, 0, 0, 500000, 500000, 60.0),
-		(`+now+` - INTERVAL '2 hours', 'device4', 'sf-dzd1', 'Ethernet2', NULL, NULL, 0, 0, 0, 0, 0, 500000, 500000, 60.0)
-	`)
+	ifaceUsageDS, err := dztelemusage.NewDeviceIfaceUsageDataset(log)
 	require.NoError(t, err)
+	ifaceUsageEntries := []struct {
+		time                    time.Time
+		devicePK                string
+		host                    string
+		intf                    string
+		linkPK                  *string
+		linkSide                *string
+		inErrorsDelta           *int64
+		inDiscardsDelta         *int64
+		outErrorsDelta          *int64
+		outDiscardsDelta        *int64
+		carrierTransitionsDelta *int64
+		inOctetsDelta           *int64
+		outOctetsDelta          *int64
+		deltaDuration           *float64
+	}{
+		// Link interfaces with errors/discards (link_pk IS NOT NULL)
+		{now.Add(-1 * time.Hour), "device1", "nyc-dzd1", "Ethernet1", strPtr("link1"), strPtr("A"), int64Ptr(5), int64Ptr(2), int64Ptr(3), int64Ptr(1), nil, int64Ptr(1000000), int64Ptr(1000000), float64Ptr(60.0)},
+		{now.Add(-1 * time.Hour), "device2", "lon-dzd1", "Ethernet1", strPtr("link1"), strPtr("Z"), int64Ptr(8), int64Ptr(3), int64Ptr(4), int64Ptr(2), int64Ptr(1), int64Ptr(1000000), int64Ptr(1000000), float64Ptr(60.0)},
+		{now.Add(-2 * time.Hour), "device1", "nyc-dzd1", "Ethernet1", strPtr("link1"), strPtr("A"), nil, nil, nil, nil, nil, int64Ptr(1000000), int64Ptr(1000000), float64Ptr(60.0)},
+		{now.Add(-2 * time.Hour), "device2", "lon-dzd1", "Ethernet1", strPtr("link1"), strPtr("Z"), nil, nil, nil, nil, nil, int64Ptr(1000000), int64Ptr(1000000), float64Ptr(60.0)},
+		// Link interface with high utilization (for link traffic view) - 90% of 10Gbps
+		{now.Add(-1 * time.Hour), "device1", "nyc-dzd1", "Ethernet1", strPtr("link2"), strPtr("A"), nil, nil, nil, nil, nil, int64Ptr(6750000000), int64Ptr(6750000000), float64Ptr(60.0)},
+		{now.Add(-1 * time.Hour), "device3", "chi-dzd1", "Ethernet1", strPtr("link2"), strPtr("Z"), nil, nil, nil, nil, nil, int64Ptr(6750000000), int64Ptr(6750000000), float64Ptr(60.0)},
+		// Non-link interfaces with errors/discards (link_pk IS NULL)
+		{now.Add(-1 * time.Hour), "device1", "nyc-dzd1", "Ethernet3", nil, nil, int64Ptr(10), int64Ptr(5), int64Ptr(8), int64Ptr(4), int64Ptr(2), int64Ptr(500000), int64Ptr(500000), float64Ptr(60.0)},
+		{now.Add(-1 * time.Hour), "device4", "sf-dzd1", "Ethernet2", nil, nil, int64Ptr(15), int64Ptr(7), int64Ptr(12), int64Ptr(6), int64Ptr(3), int64Ptr(500000), int64Ptr(500000), float64Ptr(60.0)},
+		{now.Add(-2 * time.Hour), "device1", "nyc-dzd1", "Ethernet3", nil, nil, nil, nil, nil, nil, nil, int64Ptr(500000), int64Ptr(500000), float64Ptr(60.0)},
+		{now.Add(-2 * time.Hour), "device4", "sf-dzd1", "Ethernet2", nil, nil, nil, nil, nil, nil, nil, int64Ptr(500000), int64Ptr(500000), float64Ptr(60.0)},
+	}
+	err = ifaceUsageDS.WriteBatch(ctx, conn, len(ifaceUsageEntries), func(i int) ([]any, error) {
+		e := ifaceUsageEntries[i]
+		// Order: event_ts, ingested_at, then all columns from schema
+		return []any{
+			e.time.UTC(),              // event_ts
+			ingestedAt,                // ingested_at
+			e.devicePK,                // device_pk
+			e.host,                    // host
+			e.intf,                    // intf
+			nil,                       // user_tunnel_id
+			e.linkPK,                  // link_pk
+			e.linkSide,                // link_side
+			nil,                       // model_name
+			nil,                       // serial_number
+			nil,                       // carrier_transitions
+			nil,                       // in_broadcast_pkts
+			nil,                       // in_discards
+			nil,                       // in_errors
+			nil,                       // in_fcs_errors
+			nil,                       // in_multicast_pkts
+			nil,                       // in_octets
+			nil,                       // in_pkts
+			nil,                       // in_unicast_pkts
+			nil,                       // out_broadcast_pkts
+			nil,                       // out_discards
+			nil,                       // out_errors
+			nil,                       // out_multicast_pkts
+			nil,                       // out_octets
+			nil,                       // out_pkts
+			nil,                       // out_unicast_pkts
+			e.carrierTransitionsDelta, // carrier_transitions_delta
+			nil,                       // in_broadcast_pkts_delta
+			e.inDiscardsDelta,         // in_discards_delta
+			e.inErrorsDelta,           // in_errors_delta
+			nil,                       // in_fcs_errors_delta
+			nil,                       // in_multicast_pkts_delta
+			nil,                       // in_octets_delta
+			nil,                       // in_pkts_delta
+			nil,                       // in_unicast_pkts_delta
+			nil,                       // out_broadcast_pkts_delta
+			e.outDiscardsDelta,        // out_discards_delta
+			e.outErrorsDelta,          // out_errors_delta
+			nil,                       // out_multicast_pkts_delta
+			e.outOctetsDelta,          // out_octets_delta
+			nil,                       // out_pkts_delta
+			nil,                       // out_unicast_pkts_delta
+			&e.deltaDuration,          // delta_duration
+		}, nil
+	})
+	require.NoError(t, err)
+}
+
+// validateNetworkHealthSummaryQuery validates that key data exists in the database
+func validateNetworkHealthSummaryQuery(t *testing.T, ctx context.Context, conn clickhouse.Connection) {
+	// Verify devices exist with expected statuses
+	deviceQuery := `
+SELECT code, status
+FROM dz_devices_current
+WHERE code IN ('nyc-dzd1', 'lon-dzd1', 'chi-dzd1', 'sf-dzd1', 'tok-dzd1', 'fra-dzd1', 'ams-dzd1')
+ORDER BY code
+`
+
+	result, err := dataset.Query(ctx, conn, deviceQuery, nil)
+	require.NoError(t, err, "Failed to execute device query")
+	require.GreaterOrEqual(t, result.Count, 5, "Should have at least 5 devices")
+
+	// Verify links exist
+	linkQuery := `
+SELECT code, status
+FROM dz_links_current
+WHERE code IN ('nyc-lon-1', 'lon-sf-1', 'sf-nyc-1', 'tok-fra-1')
+ORDER BY code
+`
+
+	linkResult, err := dataset.Query(ctx, conn, linkQuery, nil)
+	require.NoError(t, err, "Failed to execute link query")
+	require.GreaterOrEqual(t, linkResult.Count, 3, "Should have at least 3 links")
+
+	t.Logf("Database validation passed: Found %d devices and %d links", result.Count, linkResult.Count)
 }

@@ -11,7 +11,7 @@ import (
 
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/jonboulle/clockwork"
-	"github.com/malbeclabs/doublezero/lake/pkg/duck"
+	"github.com/malbeclabs/doublezero/lake/pkg/clickhouse"
 	"github.com/malbeclabs/doublezero/lake/pkg/indexer/metrics"
 )
 
@@ -28,7 +28,7 @@ type ViewConfig struct {
 	Logger          *slog.Logger
 	Clock           clockwork.Clock
 	RPC             SolanaRPC
-	DB              duck.DB
+	ClickHouse      clickhouse.DB
 	RefreshInterval time.Duration
 }
 
@@ -39,8 +39,8 @@ func (cfg *ViewConfig) Validate() error {
 	if cfg.RPC == nil {
 		return errors.New("rpc is required")
 	}
-	if cfg.DB == nil {
-		return errors.New("database is required")
+	if cfg.ClickHouse == nil {
+		return errors.New("clickhouse connection is required")
 	}
 	if cfg.RefreshInterval <= 0 {
 		return errors.New("refresh interval must be greater than 0")
@@ -72,8 +72,8 @@ func NewView(
 	}
 
 	store, err := NewStore(StoreConfig{
-		Logger: cfg.Logger,
-		DB:     cfg.DB,
+		Logger:     cfg.Logger,
+		ClickHouse: cfg.ClickHouse,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create store: %w", err)
@@ -85,7 +85,7 @@ func NewView(
 		store:   store,
 		readyCh: make(chan struct{}),
 	}
-	// Tables are created automatically by SCDTableViaCSV on first refresh
+	// Tables are created automatically by the dataset API on first refresh
 	return v, nil
 }
 
@@ -185,7 +185,7 @@ func (v *View) Refresh(ctx context.Context) error {
 
 	v.log.Debug("solana: starting refresh")
 
-	fetchedAt := time.Now().UTC()
+	fetchedAt := time.Now().UTC().Truncate(time.Second)
 
 	epochInfo, err := v.cfg.RPC.GetEpochInfo(ctx, solanarpc.CommitmentFinalized)
 	if err != nil {
@@ -251,7 +251,6 @@ func (v *View) Refresh(ctx context.Context) error {
 }
 
 // RefreshVoteAccountActivity collects and inserts vote account activity data
-// This should be called every minute to sample vote account activity
 func (v *View) RefreshVoteAccountActivity(ctx context.Context) error {
 	refreshStart := time.Now()
 	v.log.Debug("solana: vote account activity refresh started", "start_time", refreshStart)
@@ -351,7 +350,6 @@ func (v *View) RefreshVoteAccountActivity(ctx context.Context) error {
 }
 
 // RefreshBlockProduction collects and inserts block production data
-// This should be called every hour to sample block production
 func (v *View) RefreshBlockProduction(ctx context.Context) error {
 	refreshStart := time.Now()
 	v.log.Debug("solana: block production refresh started", "start_time", refreshStart)

@@ -2,28 +2,25 @@ package dzsvc
 
 import (
 	"context"
-	"database/sql"
-	"encoding/csv"
 	"errors"
 	"fmt"
 	"log/slog"
-	"net"
-	"time"
 
-	"github.com/malbeclabs/doublezero/lake/pkg/duck"
+	"github.com/malbeclabs/doublezero/lake/pkg/clickhouse"
+	"github.com/malbeclabs/doublezero/lake/pkg/clickhouse/dataset"
 )
 
 type StoreConfig struct {
-	Logger *slog.Logger
-	DB     duck.DB
+	Logger     *slog.Logger
+	ClickHouse clickhouse.DB
 }
 
 func (cfg *StoreConfig) Validate() error {
 	if cfg.Logger == nil {
 		return errors.New("logger is required")
 	}
-	if cfg.DB == nil {
-		return errors.New("db is required")
+	if cfg.ClickHouse == nil {
+		return errors.New("clickhouse connection is required")
 	}
 	return nil
 }
@@ -31,7 +28,6 @@ func (cfg *StoreConfig) Validate() error {
 type Store struct {
 	log *slog.Logger
 	cfg StoreConfig
-	db  duck.DB
 }
 
 func NewStore(cfg StoreConfig) (*Store, error) {
@@ -41,321 +37,135 @@ func NewStore(cfg StoreConfig) (*Store, error) {
 	return &Store{
 		log: cfg.Logger,
 		cfg: cfg,
-		db:  cfg.DB,
 	}, nil
 }
 
-// SCD2ConfigContributors returns the base SCD2 config for contributors table
-func SCD2ConfigContributors() duck.SCDTableConfig {
-	return duck.SCDTableConfig{
-		TableBaseName:       "dz_contributors",
-		PrimaryKeyColumns:   []string{"pk:VARCHAR"},
-		PayloadColumns:      []string{"code:VARCHAR", "name:VARCHAR"},
-		MissingMeansDeleted: true,
-		TrackIngestRuns:     false,
-	}
+// GetClickHouse returns the ClickHouse DB connection
+func (s *Store) GetClickHouse() clickhouse.DB {
+	return s.cfg.ClickHouse
 }
 
 func (s *Store) ReplaceContributors(ctx context.Context, contributors []Contributor) error {
 	s.log.Debug("serviceability/store: replacing contributors", "count", len(contributors))
-	conn, err := s.db.Conn(ctx)
+
+	d, err := NewContributorDataset(s.log)
 	if err != nil {
-		return fmt.Errorf("failed to get connection: %w", err)
+		return fmt.Errorf("failed to create dataset: %w", err)
 	}
-	defer conn.Close()
 
-	fetchedAt := time.Now().UTC()
-	cfg := SCD2ConfigContributors()
-	cfg.SnapshotTS = fetchedAt
-	cfg.RunID = fmt.Sprintf("contributors_%d", fetchedAt.Unix())
+	conn, err := s.cfg.ClickHouse.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get ClickHouse connection: %w", err)
+	}
 
-	return duck.SCDTableViaCSV(ctx, s.log, conn, cfg, len(contributors), func(w *csv.Writer, i int) error {
-		c := contributors[i]
-		return w.Write([]string{c.PK, c.Code, c.Name})
-	})
-}
-
-// SCD2ConfigDevices returns the base SCD2 config for devices table
-func SCD2ConfigDevices() duck.SCDTableConfig {
-	return duck.SCDTableConfig{
-		TableBaseName:       "dz_devices",
-		PrimaryKeyColumns:   []string{"pk:VARCHAR"},
-		PayloadColumns:      []string{"status:VARCHAR", "device_type:VARCHAR", "code:VARCHAR", "public_ip:VARCHAR", "contributor_pk:VARCHAR", "metro_pk:VARCHAR", "max_users:INTEGER"},
+	// Write to ClickHouse using new dataset API
+	if err := d.WriteBatch(ctx, conn, len(contributors), func(i int) ([]any, error) {
+		return contributorSchema.ToRow(contributors[i]), nil
+	}, &dataset.DimensionType2DatasetWriteConfig{
 		MissingMeansDeleted: true,
-		TrackIngestRuns:     false,
+	}); err != nil {
+		return fmt.Errorf("failed to write contributors to ClickHouse: %w", err)
 	}
+
+	return nil
 }
 
 func (s *Store) ReplaceDevices(ctx context.Context, devices []Device) error {
 	s.log.Debug("serviceability/store: replacing devices", "count", len(devices))
-	conn, err := s.db.Conn(ctx)
+
+	d, err := NewDeviceDataset(s.log)
 	if err != nil {
-		return fmt.Errorf("failed to get connection: %w", err)
+		return fmt.Errorf("failed to create dataset: %w", err)
 	}
-	defer conn.Close()
 
-	fetchedAt := time.Now().UTC()
-	cfg := SCD2ConfigDevices()
-	cfg.SnapshotTS = fetchedAt
-	cfg.RunID = fmt.Sprintf("devices_%d", fetchedAt.Unix())
+	conn, err := s.cfg.ClickHouse.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get ClickHouse connection: %w", err)
+	}
 
-	return duck.SCDTableViaCSV(ctx, s.log, conn, cfg, len(devices), func(w *csv.Writer, i int) error {
-		d := devices[i]
-		return w.Write([]string{d.PK, d.Status, d.DeviceType, d.Code, d.PublicIP, d.ContributorPK, d.MetroPK, fmt.Sprintf("%d", d.MaxUsers)})
-	})
-}
-
-// SCD2ConfigUsers returns the base SCD2 config for users table
-func SCD2ConfigUsers() duck.SCDTableConfig {
-	return duck.SCDTableConfig{
-		TableBaseName:       "dz_users",
-		PrimaryKeyColumns:   []string{"pk:VARCHAR"},
-		PayloadColumns:      []string{"owner_pk:VARCHAR", "status:VARCHAR", "kind:VARCHAR", "client_ip:VARCHAR", "dz_ip:VARCHAR", "device_pk:VARCHAR", "tunnel_id:INTEGER"},
+	// Write to ClickHouse using new dataset API
+	if err := d.WriteBatch(ctx, conn, len(devices), func(i int) ([]any, error) {
+		return deviceSchema.ToRow(devices[i]), nil
+	}, &dataset.DimensionType2DatasetWriteConfig{
 		MissingMeansDeleted: true,
-		TrackIngestRuns:     false,
+	}); err != nil {
+		return fmt.Errorf("failed to write devices to ClickHouse: %w", err)
 	}
+
+	return nil
 }
 
 func (s *Store) ReplaceUsers(ctx context.Context, users []User) error {
 	s.log.Debug("serviceability/store: replacing users", "count", len(users))
-	conn, err := s.db.Conn(ctx)
+
+	d, err := NewUserDataset(s.log)
 	if err != nil {
-		return fmt.Errorf("failed to get connection: %w", err)
+		return fmt.Errorf("failed to create dimension dataset: %w", err)
 	}
-	defer conn.Close()
 
-	fetchedAt := time.Now().UTC()
-	cfg := SCD2ConfigUsers()
-	cfg.SnapshotTS = fetchedAt
-	cfg.RunID = fmt.Sprintf("users_%d", fetchedAt.Unix())
+	conn, err := s.cfg.ClickHouse.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get ClickHouse connection: %w", err)
+	}
 
-	return duck.SCDTableViaCSV(ctx, s.log, conn, cfg, len(users), func(w *csv.Writer, i int) error {
-		u := users[i]
-		return w.Write([]string{u.PK, u.OwnerPK, u.Status, u.Kind, u.ClientIP.String(), u.DZIP.String(), u.DevicePK, fmt.Sprintf("%d", u.TunnelID)})
-	})
-}
-
-// SCD2ConfigMetros returns the base SCD2 config for metros table
-func SCD2ConfigMetros() duck.SCDTableConfig {
-	return duck.SCDTableConfig{
-		TableBaseName:       "dz_metros",
-		PrimaryKeyColumns:   []string{"pk:VARCHAR"},
-		PayloadColumns:      []string{"code:VARCHAR", "name:VARCHAR", "longitude:DOUBLE", "latitude:DOUBLE"},
+	// Write to ClickHouse using new dataset API
+	if err := d.WriteBatch(ctx, conn, len(users), func(i int) ([]any, error) {
+		return userSchema.ToRow(users[i]), nil
+	}, &dataset.DimensionType2DatasetWriteConfig{
 		MissingMeansDeleted: true,
-		TrackIngestRuns:     false,
+	}); err != nil {
+		return fmt.Errorf("failed to write users to ClickHouse: %w", err)
 	}
+
+	return nil
 }
 
 func (s *Store) ReplaceMetros(ctx context.Context, metros []Metro) error {
 	s.log.Debug("serviceability/store: replacing metros", "count", len(metros))
-	conn, err := s.db.Conn(ctx)
+
+	d, err := NewMetroDataset(s.log)
 	if err != nil {
-		return fmt.Errorf("failed to get connection: %w", err)
+		return fmt.Errorf("failed to create dimension dataset: %w", err)
 	}
-	defer conn.Close()
 
-	fetchedAt := time.Now().UTC()
-	cfg := SCD2ConfigMetros()
-	cfg.SnapshotTS = fetchedAt
-	cfg.RunID = fmt.Sprintf("metros_%d", fetchedAt.Unix())
+	conn, err := s.cfg.ClickHouse.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get ClickHouse connection: %w", err)
+	}
 
-	return duck.SCDTableViaCSV(ctx, s.log, conn, cfg, len(metros), func(w *csv.Writer, i int) error {
-		m := metros[i]
-		return w.Write([]string{m.PK, m.Code, m.Name, fmt.Sprintf("%.6f", m.Longitude), fmt.Sprintf("%.6f", m.Latitude)})
-	})
-}
-
-// SCD2ConfigLinks returns the base SCD2 config for links table
-func SCD2ConfigLinks() duck.SCDTableConfig {
-	return duck.SCDTableConfig{
-		TableBaseName:       "dz_links",
-		PrimaryKeyColumns:   []string{"pk:VARCHAR"},
-		PayloadColumns:      []string{"status:VARCHAR", "code:VARCHAR", "tunnel_net:VARCHAR", "contributor_pk:VARCHAR", "side_a_pk:VARCHAR", "side_z_pk:VARCHAR", "side_a_iface_name:VARCHAR", "side_z_iface_name:VARCHAR", "link_type:VARCHAR", "committed_rtt_ns:BIGINT", "committed_jitter_ns:BIGINT", "bandwidth_bps:BIGINT", "isis_delay_override_ns:BIGINT"},
+	// Write to ClickHouse using new dataset API
+	if err := d.WriteBatch(ctx, conn, len(metros), func(i int) ([]any, error) {
+		return metroSchema.ToRow(metros[i]), nil
+	}, &dataset.DimensionType2DatasetWriteConfig{
 		MissingMeansDeleted: true,
-		TrackIngestRuns:     false,
+	}); err != nil {
+		return fmt.Errorf("failed to write metros to ClickHouse: %w", err)
 	}
+
+	return nil
 }
 
 func (s *Store) ReplaceLinks(ctx context.Context, links []Link) error {
 	s.log.Debug("serviceability/store: replacing links", "count", len(links))
-	conn, err := s.db.Conn(ctx)
+
+	d, err := NewLinkDataset(s.log)
 	if err != nil {
-		return fmt.Errorf("failed to get connection: %w", err)
+		return fmt.Errorf("failed to create dimension dataset: %w", err)
 	}
-	defer conn.Close()
 
-	fetchedAt := time.Now().UTC()
-	cfg := SCD2ConfigLinks()
-	cfg.SnapshotTS = fetchedAt
-	cfg.RunID = fmt.Sprintf("links_%d", fetchedAt.Unix())
-
-	return duck.SCDTableViaCSV(ctx, s.log, conn, cfg, len(links), func(w *csv.Writer, i int) error {
-		l := links[i]
-		return w.Write([]string{
-			l.PK, l.Status, l.Code, l.TunnelNet, l.ContributorPK, l.SideAPK, l.SideZPK,
-			l.SideAIfaceName, l.SideZIfaceName, l.LinkType,
-			fmt.Sprintf("%d", l.CommittedRTTNs), fmt.Sprintf("%d", l.CommittedJitterNs), fmt.Sprintf("%d", l.Bandwidth),
-			fmt.Sprintf("%d", l.ISISDelayOverrideNs),
-		})
-	})
-}
-
-func (s *Store) GetDevices() ([]Device, error) {
-	ctx := context.Background()
-	conn, err := s.db.Conn(ctx)
+	conn, err := s.cfg.ClickHouse.Conn(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get connection: %w", err)
-	}
-	defer conn.Close()
-	query := `SELECT pk, status, device_type, code, public_ip, contributor_pk, metro_pk, max_users FROM dz_devices_current ORDER BY code`
-	rows, err := conn.QueryContext(ctx, query)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query devices: %w", err)
-	}
-	defer rows.Close()
-
-	var devices []Device
-	for rows.Next() {
-		var d Device
-		if err := rows.Scan(&d.PK, &d.Status, &d.DeviceType, &d.Code, &d.PublicIP, &d.ContributorPK, &d.MetroPK, &d.MaxUsers); err != nil {
-			return nil, fmt.Errorf("failed to scan device: %w", err)
-		}
-		devices = append(devices, d)
+		return fmt.Errorf("failed to get ClickHouse connection: %w", err)
 	}
 
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating devices: %w", err)
+	// Write to ClickHouse using new dataset API
+	if err := d.WriteBatch(ctx, conn, len(links), func(i int) ([]any, error) {
+		return linkSchema.ToRow(links[i]), nil
+	}, &dataset.DimensionType2DatasetWriteConfig{
+		MissingMeansDeleted: true,
+	}); err != nil {
+		return fmt.Errorf("failed to write links to ClickHouse: %w", err)
 	}
 
-	return devices, nil
-}
-
-func (s *Store) GetLinks() ([]Link, error) {
-	ctx := context.Background()
-	conn, err := s.db.Conn(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get connection: %w", err)
-	}
-	defer conn.Close()
-	query := `SELECT pk, status, code, tunnel_net, contributor_pk, side_a_pk, side_z_pk, side_a_iface_name, side_z_iface_name, link_type, committed_rtt_ns, committed_jitter_ns, bandwidth_bps, isis_delay_override_ns FROM dz_links_current ORDER BY code`
-	rows, err := conn.QueryContext(ctx, query)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query links: %w", err)
-	}
-	defer rows.Close()
-
-	var links []Link
-	for rows.Next() {
-		var l Link
-		if err := rows.Scan(&l.PK, &l.Status, &l.Code, &l.TunnelNet, &l.ContributorPK, &l.SideAPK, &l.SideZPK, &l.SideAIfaceName, &l.SideZIfaceName, &l.LinkType, &l.CommittedRTTNs, &l.CommittedJitterNs, &l.Bandwidth, &l.ISISDelayOverrideNs); err != nil {
-			return nil, fmt.Errorf("failed to scan link: %w", err)
-		}
-		links = append(links, l)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating links: %w", err)
-	}
-
-	return links, nil
-}
-
-func (s *Store) GetContributors() ([]Contributor, error) {
-	ctx := context.Background()
-	conn, err := s.db.Conn(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get connection: %w", err)
-	}
-	defer conn.Close()
-	query := `SELECT pk, code, name FROM dz_contributors_current ORDER BY code`
-	rows, err := conn.QueryContext(ctx, query)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query contributors: %w", err)
-	}
-	defer rows.Close()
-
-	var contributors []Contributor
-	for rows.Next() {
-		var c Contributor
-		var name sql.NullString
-		if err := rows.Scan(&c.PK, &c.Code, &name); err != nil {
-			return nil, fmt.Errorf("failed to scan contributor: %w", err)
-		}
-		if name.Valid {
-			c.Name = name.String
-		}
-		contributors = append(contributors, c)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating contributors: %w", err)
-	}
-
-	return contributors, nil
-}
-
-func (s *Store) GetMetros() ([]Metro, error) {
-	ctx := context.Background()
-	conn, err := s.db.Conn(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get connection: %w", err)
-	}
-	defer conn.Close()
-	query := `SELECT pk, code, name, longitude, latitude FROM dz_metros_current ORDER BY code`
-	rows, err := conn.QueryContext(ctx, query)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query metros: %w", err)
-	}
-	defer rows.Close()
-
-	var metros []Metro
-	for rows.Next() {
-		var m Metro
-		if err := rows.Scan(&m.PK, &m.Code, &m.Name, &m.Longitude, &m.Latitude); err != nil {
-			return nil, fmt.Errorf("failed to scan metro: %w", err)
-		}
-		metros = append(metros, m)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating metros: %w", err)
-	}
-
-	return metros, nil
-}
-
-func (s *Store) GetUsers(ctx context.Context) ([]User, error) {
-	conn, err := s.db.Conn(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get connection: %w", err)
-	}
-	defer conn.Close()
-	query := `SELECT pk, owner_pk, status, kind, client_ip, dz_ip, device_pk, tunnel_id FROM dz_users_current`
-	rows, err := conn.QueryContext(ctx, query)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query users: %w", err)
-	}
-	defer rows.Close()
-
-	var users []User
-	for rows.Next() {
-		var u User
-		var clientIPStr, dzIPStr string
-		if err := rows.Scan(&u.PK, &u.OwnerPK, &u.Status, &u.Kind, &clientIPStr, &dzIPStr, &u.DevicePK, &u.TunnelID); err != nil {
-			return nil, fmt.Errorf("failed to scan user: %w", err)
-		}
-		if clientIPStr != "" {
-			u.ClientIP = net.ParseIP(clientIPStr)
-		}
-		if dzIPStr != "" {
-			u.DZIP = net.ParseIP(dzIPStr)
-		}
-		users = append(users, u)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating users: %w", err)
-	}
-
-	return users, nil
+	return nil
 }

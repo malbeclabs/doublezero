@@ -2,14 +2,13 @@ package dzsvc
 
 import (
 	"context"
-	"log/slog"
-	"os"
 	"testing"
 	"time"
 
-	_ "github.com/duckdb/duckdb-go/v2"
 	"github.com/gagliardetto/solana-go"
 	"github.com/jonboulle/clockwork"
+	"github.com/malbeclabs/doublezero/lake/pkg/clickhouse/dataset"
+	laketesting "github.com/malbeclabs/doublezero/lake/pkg/testing"
 	"github.com/stretchr/testify/require"
 
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
@@ -32,14 +31,14 @@ func TestLake_Serviceability_View_Ready(t *testing.T) {
 	t.Run("returns false when not ready", func(t *testing.T) {
 		t.Parallel()
 
-		db := testDB(t)
+		mockDB := laketesting.NewDB(t)
 
 		view, err := NewView(ViewConfig{
-			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Logger:            laketesting.NewLogger(t),
 			Clock:             clockwork.NewFakeClock(),
 			ServiceabilityRPC: &MockServiceabilityRPC{},
 			RefreshInterval:   time.Second,
-			DB:                db,
+			ClickHouse:        mockDB,
 		})
 		require.NoError(t, err)
 
@@ -49,14 +48,14 @@ func TestLake_Serviceability_View_Ready(t *testing.T) {
 	t.Run("returns true after successful refresh", func(t *testing.T) {
 		t.Parallel()
 
-		db := testDB(t)
+		mockDB := laketesting.NewDB(t)
 
 		view, err := NewView(ViewConfig{
-			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Logger:            laketesting.NewLogger(t),
 			Clock:             clockwork.NewFakeClock(),
 			ServiceabilityRPC: &MockServiceabilityRPC{},
 			RefreshInterval:   time.Second,
-			DB:                db,
+			ClickHouse:        mockDB,
 		})
 		require.NoError(t, err)
 
@@ -74,14 +73,14 @@ func TestLake_Serviceability_View_WaitReady(t *testing.T) {
 	t.Run("returns immediately when already ready", func(t *testing.T) {
 		t.Parallel()
 
-		db := testDB(t)
+		mockDB := laketesting.NewDB(t)
 
 		view, err := NewView(ViewConfig{
-			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Logger:            laketesting.NewLogger(t),
 			Clock:             clockwork.NewFakeClock(),
 			ServiceabilityRPC: &MockServiceabilityRPC{},
 			RefreshInterval:   time.Second,
-			DB:                db,
+			ClickHouse:        mockDB,
 		})
 		require.NoError(t, err)
 
@@ -96,14 +95,14 @@ func TestLake_Serviceability_View_WaitReady(t *testing.T) {
 	t.Run("returns error when context is cancelled", func(t *testing.T) {
 		t.Parallel()
 
-		db := testDB(t)
+		mockDB := laketesting.NewDB(t)
 
 		view, err := NewView(ViewConfig{
-			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Logger:            laketesting.NewLogger(t),
 			Clock:             clockwork.NewFakeClock(),
 			ServiceabilityRPC: &MockServiceabilityRPC{},
 			RefreshInterval:   time.Second,
-			DB:                db,
+			ClickHouse:        mockDB,
 		})
 		require.NoError(t, err)
 
@@ -124,12 +123,13 @@ func TestLake_Serviceability_View_NewServiceabilityView(t *testing.T) {
 
 		// View creation should succeed (tables are created automatically by SCDTableViaCSV)
 		// The failure will happen later when trying to use the database
+		mockDB := laketesting.NewDB(t)
 		view, err := NewView(ViewConfig{
-			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Logger:            laketesting.NewLogger(t),
 			Clock:             clockwork.NewFakeClock(),
 			ServiceabilityRPC: &MockServiceabilityRPC{},
 			RefreshInterval:   time.Second,
-			DB:                &failingDB{},
+			ClickHouse:        mockDB,
 		})
 		require.NoError(t, err)
 		require.NotNil(t, view)
@@ -341,21 +341,20 @@ func testPubkeyBytes(seed byte) [32]byte {
 	return pk
 }
 
-
 func TestLake_Serviceability_View_Refresh(t *testing.T) {
 	t.Parallel()
 
 	t.Run("stores all data on refresh", func(t *testing.T) {
 		t.Parallel()
 
-		db := testDB(t)
+		mockDB := laketesting.NewDB(t)
 
 		// Create test data
 		contributorPK := testPubkeyBytes(1)
 		metroPK := testPubkeyBytes(2)
 		devicePK := testPubkeyBytes(3)
 		userPK := testPubkeyBytes(4)
-		ownerPK := testPubkeyBytes(5)
+		ownerPubkey := testPubkeyBytes(5)
 		linkPK := testPubkeyBytes(6)
 		sideAPK := testPubkeyBytes(7)
 		sideZPK := testPubkeyBytes(8)
@@ -366,7 +365,7 @@ func TestLake_Serviceability_View_Refresh(t *testing.T) {
 					Contributors: []serviceability.Contributor{
 						{
 							PubKey: contributorPK,
-							Owner:  ownerPK,
+							Owner:  ownerPubkey,
 							Status: serviceability.ContributorStatusActivated,
 							Code:   "TEST",
 						},
@@ -374,7 +373,7 @@ func TestLake_Serviceability_View_Refresh(t *testing.T) {
 					Devices: []serviceability.Device{
 						{
 							PubKey:            devicePK,
-							Owner:             ownerPK,
+							Owner:             ownerPubkey,
 							Status:            serviceability.DeviceStatusActivated,
 							DeviceType:        serviceability.DeviceDeviceTypeHybrid,
 							Code:              "DEV001",
@@ -386,7 +385,7 @@ func TestLake_Serviceability_View_Refresh(t *testing.T) {
 					Users: []serviceability.User{
 						{
 							PubKey:       userPK,
-							Owner:        ownerPK,
+							Owner:        ownerPubkey,
 							Status:       serviceability.UserStatusActivated,
 							UserType:     serviceability.UserTypeIBRL,
 							ClientIp:     [4]byte{1, 1, 1, 1},
@@ -395,7 +394,7 @@ func TestLake_Serviceability_View_Refresh(t *testing.T) {
 						},
 						{
 							PubKey:       testPubkeyBytes(9),
-							Owner:        ownerPK,
+							Owner:        ownerPubkey,
 							Status:       serviceability.UserStatusActivated,
 							UserType:     serviceability.UserTypeIBRL,
 							ClientIp:     [4]byte{8, 8, 8, 8},
@@ -404,7 +403,7 @@ func TestLake_Serviceability_View_Refresh(t *testing.T) {
 						},
 						{
 							PubKey:       testPubkeyBytes(10),
-							Owner:        ownerPK,
+							Owner:        ownerPubkey,
 							Status:       serviceability.UserStatusActivated,
 							UserType:     serviceability.UserTypeIBRL,
 							ClientIp:     [4]byte{0, 0, 0, 0}, // No client IP
@@ -415,7 +414,7 @@ func TestLake_Serviceability_View_Refresh(t *testing.T) {
 					Exchanges: []serviceability.Exchange{
 						{
 							PubKey: metroPK,
-							Owner:  ownerPK,
+							Owner:  ownerPubkey,
 							Status: serviceability.ExchangeStatusActivated,
 							Code:   "NYC",
 							Name:   "New York",
@@ -446,11 +445,11 @@ func TestLake_Serviceability_View_Refresh(t *testing.T) {
 		}
 
 		view, err := NewView(ViewConfig{
-			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Logger:            laketesting.NewLogger(t),
 			Clock:             clockwork.NewFakeClock(),
 			ServiceabilityRPC: rpc,
 			RefreshInterval:   time.Second,
-			DB:                db,
+			ClickHouse:        mockDB,
 		})
 		require.NoError(t, err)
 
@@ -458,85 +457,133 @@ func TestLake_Serviceability_View_Refresh(t *testing.T) {
 		err = view.Refresh(ctx)
 		require.NoError(t, err)
 
-		// Verify contributors were stored
-		conn, err := db.Conn(ctx)
+		// Verify contributors were stored by querying the database
+		conn, err := mockDB.Conn(ctx)
 		require.NoError(t, err)
-		defer conn.Close()
-		var contributorsCount int
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_contributors_current").Scan(&contributorsCount)
-		require.NoError(t, err)
-		require.Equal(t, 1, contributorsCount, "should have 1 contributor")
 
-		// Verify devices were stored
-		var devicesCount int
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_devices_current").Scan(&devicesCount)
+		// Query row counts from history table (current state computed at query time)
+		rows, err := conn.Query(ctx, `
+			WITH ranked AS (
+				SELECT *, ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
+				FROM dim_dz_contributors_history
+			)
+			SELECT count(*) FROM ranked WHERE rn = 1 AND is_deleted = 0
+		`)
 		require.NoError(t, err)
-		require.Equal(t, 1, devicesCount, "should have 1 device")
+		require.True(t, rows.Next())
+		var contributorCount uint64
+		require.NoError(t, rows.Scan(&contributorCount))
+		rows.Close()
 
-		// Verify users were stored
-		var usersCount int
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_users_current").Scan(&usersCount)
+		rows, err = conn.Query(ctx, `
+			WITH ranked AS (
+				SELECT *, ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
+				FROM dim_dz_devices_history
+			)
+			SELECT count(*) FROM ranked WHERE rn = 1 AND is_deleted = 0
+		`)
 		require.NoError(t, err)
-		require.Equal(t, 3, usersCount, "should have 3 users")
+		require.True(t, rows.Next())
+		var deviceCount uint64
+		require.NoError(t, rows.Scan(&deviceCount))
+		rows.Close()
 
-		// Verify metros were stored
-		var metrosCount int
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_metros_current").Scan(&metrosCount)
+		rows, err = conn.Query(ctx, `
+			WITH ranked AS (
+				SELECT *, ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
+				FROM dim_dz_users_history
+			)
+			SELECT count(*) FROM ranked WHERE rn = 1 AND is_deleted = 0
+		`)
 		require.NoError(t, err)
-		require.Equal(t, 1, metrosCount, "should have 1 metro")
+		require.True(t, rows.Next())
+		var userCount uint64
+		require.NoError(t, rows.Scan(&userCount))
+		rows.Close()
 
-		// Verify links were stored
-		var linksCount int
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_links_current").Scan(&linksCount)
+		rows, err = conn.Query(ctx, `
+			WITH ranked AS (
+				SELECT *, ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
+				FROM dim_dz_metros_history
+			)
+			SELECT count(*) FROM ranked WHERE rn = 1 AND is_deleted = 0
+		`)
 		require.NoError(t, err)
-		require.Equal(t, 1, linksCount, "should have 1 link")
+		require.True(t, rows.Next())
+		var metroCount uint64
+		require.NoError(t, rows.Scan(&metroCount))
+		rows.Close()
+
+		rows, err = conn.Query(ctx, `
+			WITH ranked AS (
+				SELECT *, ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
+				FROM dim_dz_links_history
+			)
+			SELECT count(*) FROM ranked WHERE rn = 1 AND is_deleted = 0
+		`)
+		require.NoError(t, err)
+		require.True(t, rows.Next())
+		var linkCount uint64
+		require.NoError(t, rows.Scan(&linkCount))
+		rows.Close()
+
+		require.Equal(t, uint64(1), contributorCount, "should have 1 contributor")
+		require.Equal(t, uint64(1), deviceCount, "should have 1 device")
+		require.Equal(t, uint64(3), userCount, "should have 3 users")
+		require.Equal(t, uint64(1), metroCount, "should have 1 metro")
+		require.Equal(t, uint64(1), linkCount, "should have 1 link")
 
 		// Note: GeoIP records are now handled by the geoip view, not the serviceability view
 
-		// Verify specific data in contributors
-		var code string
-		conn, err = db.Conn(ctx)
+		// Verify specific data using the dataset API
+		contributorPKStr := testPubkey(1).String()
+		contributorsDataset, err := NewContributorDataset(laketesting.NewLogger(t))
 		require.NoError(t, err)
-		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT code FROM dz_contributors_current WHERE pk = ?", testPubkey(1).String()).Scan(&code)
+		require.NotNil(t, contributorsDataset)
+		contributorEntityID := dataset.NewNaturalKey(contributorPKStr).ToSurrogate()
+		current, err := contributorsDataset.GetCurrentRow(ctx, conn, contributorEntityID)
 		require.NoError(t, err)
-		require.Equal(t, "TEST", code, "contributor should have correct code")
+		require.NotNil(t, current)
+		require.Equal(t, "TEST", current["code"], "contributor should have correct code")
 
-		// Verify specific data in devices
-		var deviceCode string
-		conn, err = db.Conn(ctx)
+		devicePKStr := testPubkey(3).String()
+		devicesDataset, err := NewDeviceDataset(laketesting.NewLogger(t))
 		require.NoError(t, err)
-		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT code FROM dz_devices_current WHERE pk = ?", testPubkey(3).String()).Scan(&deviceCode)
+		require.NotNil(t, devicesDataset)
+		deviceEntityID := dataset.NewNaturalKey(devicePKStr).ToSurrogate()
+		current, err = devicesDataset.GetCurrentRow(ctx, conn, deviceEntityID)
 		require.NoError(t, err)
-		require.Equal(t, "DEV001", deviceCode, "device should have correct code")
+		require.NotNil(t, current)
+		require.Equal(t, "DEV001", current["code"], "device should have correct code")
 
-		// Verify specific data in metros
-		var metroName string
-		conn, err = db.Conn(ctx)
+		metroPKStr := testPubkey(2).String()
+		metrosDataset, err := NewMetroDataset(laketesting.NewLogger(t))
 		require.NoError(t, err)
-		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT name FROM dz_metros_current WHERE pk = ?", testPubkey(2).String()).Scan(&metroName)
+		require.NotNil(t, metrosDataset)
+		metroEntityID := dataset.NewNaturalKey(metroPKStr).ToSurrogate()
+		current, err = metrosDataset.GetCurrentRow(ctx, conn, metroEntityID)
 		require.NoError(t, err)
-		require.Equal(t, "New York", metroName, "metro should have correct name")
+		require.NotNil(t, current)
+		require.Equal(t, "New York", current["name"], "metro should have correct name")
 
-		// Verify specific data in links
-		var linkCode string
-		conn, err = db.Conn(ctx)
+		linkPKStr := testPubkey(6).String()
+		linksDataset, err := NewLinkDataset(laketesting.NewLogger(t))
 		require.NoError(t, err)
-		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT code FROM dz_links_current WHERE pk = ?", testPubkey(6).String()).Scan(&linkCode)
+		require.NotNil(t, linksDataset)
+		linkEntityID := dataset.NewNaturalKey(linkPKStr).ToSurrogate()
+		current, err = linksDataset.GetCurrentRow(ctx, conn, linkEntityID)
 		require.NoError(t, err)
-		require.Equal(t, "LINK001", linkCode, "link should have correct code")
+		require.NotNil(t, current)
+		require.Equal(t, "LINK001", current["code"], "link should have correct code")
 	})
 
 	t.Run("handles users without client IPs", func(t *testing.T) {
 		t.Parallel()
 
-		db := testDB(t)
+		mockDB := laketesting.NewDB(t)
 
 		userPK := testPubkeyBytes(1)
-		ownerPK := testPubkeyBytes(2)
+		ownerPubkey := testPubkeyBytes(2)
 		devicePK := testPubkeyBytes(3)
 
 		rpc := &MockServiceabilityRPC{
@@ -545,7 +592,7 @@ func TestLake_Serviceability_View_Refresh(t *testing.T) {
 					Users: []serviceability.User{
 						{
 							PubKey:       userPK,
-							Owner:        ownerPK,
+							Owner:        ownerPubkey,
 							Status:       serviceability.UserStatusActivated,
 							UserType:     serviceability.UserTypeIBRL,
 							ClientIp:     [4]byte{0, 0, 0, 0}, // No client IP (zero IP)
@@ -558,11 +605,11 @@ func TestLake_Serviceability_View_Refresh(t *testing.T) {
 		}
 
 		view, err := NewView(ViewConfig{
-			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Logger:            laketesting.NewLogger(t),
 			Clock:             clockwork.NewFakeClock(),
 			ServiceabilityRPC: rpc,
 			RefreshInterval:   time.Second,
-			DB:                db,
+			ClickHouse:        mockDB,
 		})
 		require.NoError(t, err)
 
@@ -571,13 +618,23 @@ func TestLake_Serviceability_View_Refresh(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify users are still stored even without geoip
-		conn, err := db.Conn(ctx)
+		conn, err := mockDB.Conn(ctx)
 		require.NoError(t, err)
-		defer conn.Close()
-		var usersCount int
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_users_current").Scan(&usersCount)
+
+		rows, err := conn.Query(ctx, `
+			WITH ranked AS (
+				SELECT *, ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
+				FROM dim_dz_users_history
+			)
+			SELECT count(*) FROM ranked WHERE rn = 1 AND is_deleted = 0
+		`)
 		require.NoError(t, err)
-		require.Equal(t, 1, usersCount, "should have 1 user even without geoip")
+		require.True(t, rows.Next())
+		var userCount uint64
+		require.NoError(t, rows.Scan(&userCount))
+		rows.Close()
+
+		require.Equal(t, uint64(1), userCount, "should have 1 user even without geoip")
 
 		// Note: GeoIP records are now handled by the geoip view, not the serviceability view
 	})

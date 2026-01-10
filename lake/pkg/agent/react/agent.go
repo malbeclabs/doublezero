@@ -9,8 +9,6 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
-
-	anthropic "github.com/anthropics/anthropic-sdk-go"
 )
 
 const (
@@ -26,6 +24,7 @@ type Config struct {
 	MaxRounds          int
 	MaxContextTokens   int
 	FinalizationPrompt string // Optional prompt to inject when max rounds is reached
+	SummaryPrompt      string // Prompt template for summarizing conversation history (use %s for conversation text)
 }
 
 func (cfg *Config) Validate() error {
@@ -78,11 +77,15 @@ func (a *Agent) Run(ctx context.Context, initialMessages []Message, output io.Wr
 	fullConversation := make([]Message, len(initialMessages))
 	copy(fullConversation, initialMessages)
 
-	// Get available tools
 	tools, err := a.cfg.ToolClient.ListTools(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list tools: %w", err)
 	}
+
+	// Track if the last tool result was an error (for retry logic)
+	var lastToolHadError bool
+	var retryCount int
+	const maxRetries = 2 // Allow up to 2 retries after errors
 
 	for round := 0; round < a.cfg.MaxRounds; round++ {
 		roundNum := round + 1
@@ -90,7 +93,6 @@ func (a *Agent) Run(ctx context.Context, initialMessages []Message, output io.Wr
 			a.log.Info("react: starting round", "round", roundNum, "max_rounds", a.cfg.MaxRounds)
 		}
 
-		// Calculate and log context size before calling LLM
 		contextChars, contextTokens := a.calculateContextSize(msgs, tools)
 		if a.log != nil {
 			a.log.Info("react: context size", "round", roundNum, "chars", contextChars, "tokens_est", contextTokens)
@@ -188,18 +190,16 @@ func (a *Agent) Run(ctx context.Context, initialMessages []Message, output io.Wr
 			}
 		}
 
-		// If this is the last round and we have a finalization prompt, inject it
 		isLastRound := round == a.cfg.MaxRounds-1
 		if isLastRound && a.cfg.FinalizationPrompt != "" {
 			if a.log != nil {
 				a.log.Info("react: injecting finalization prompt on last round", "round", roundNum)
 			}
-			finalizationMsg := anthropic.NewUserMessage(anthropic.NewTextBlock(a.cfg.FinalizationPrompt))
-			msgs = append(msgs, AnthropicMessage{Msg: finalizationMsg})
-			fullConversation = append(fullConversation, AnthropicMessage{Msg: finalizationMsg})
+			finalizationMsg := a.cfg.LLM.CreateUserMessage(a.cfg.FinalizationPrompt)
+			msgs = append(msgs, finalizationMsg)
+			fullConversation = append(fullConversation, finalizationMsg)
 		}
 
-		// Call LLM
 		response, err := a.cfg.LLM.Call(ctx, msgs, tools)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get response: %w", err)
@@ -213,9 +213,47 @@ func (a *Agent) Run(ctx context.Context, initialMessages []Message, output io.Wr
 		msgs = append(msgs, assistantMsg)
 		fullConversation = append(fullConversation, assistantMsg)
 
+		// Log assistant thinking/reasoning when verbose mode is enabled
+		if a.log != nil {
+			var thinkingText strings.Builder
+			for _, blk := range response.Content() {
+				text, ok := blk.AsText()
+				if ok && text != "" {
+					thinkingText.WriteString(text)
+				}
+			}
+			if thinkingText.Len() > 0 {
+				a.log.Info("bot thinking", "round", roundNum, "thinking", thinkingText.String())
+			}
+		}
+
 		// Extract tool uses
 		toolUses := a.extractToolUses(response.Content())
 		if len(toolUses) == 0 {
+			// If the previous tool had an error and we haven't exceeded retries,
+			// inject a retry prompt to encourage the model to try again
+			if lastToolHadError && retryCount < maxRetries && !isLastRound {
+				retryCount++
+				if a.log != nil {
+					a.log.Info("react: no tool calls after error, injecting retry prompt", "round", roundNum, "retry", retryCount)
+				}
+
+				// Add the assistant's response to the conversation
+				msgs = append(msgs, assistantMsg)
+				fullConversation = append(fullConversation, assistantMsg)
+
+				// Inject a retry prompt
+				retryPrompt := a.cfg.LLM.CreateUserMessage(
+					"The previous query returned an error. Please analyze the error message, fix the SQL query, and try again using the query tool. " +
+						"Do not ask for clarification - just fix the query based on the error and execute it.",
+				)
+				msgs = append(msgs, retryPrompt)
+				fullConversation = append(fullConversation, retryPrompt)
+
+				lastToolHadError = false // Reset so we don't keep retrying
+				continue                 // Go to next round
+			}
+
 			if a.log != nil {
 				a.log.Info("react: no tool calls, returning final response", "round", roundNum)
 			}
@@ -240,7 +278,6 @@ func (a *Agent) Run(ctx context.Context, initialMessages []Message, output io.Wr
 			}, nil
 		}
 
-		// If this is the last round, return the response even if there are tool calls
 		if isLastRound {
 			if a.log != nil {
 				a.log.Info("react: last round reached, returning response despite tool calls", "round", roundNum, "tool_calls", len(toolUses))
@@ -280,8 +317,17 @@ func (a *Agent) Run(ctx context.Context, initialMessages []Message, output io.Wr
 			return nil, fmt.Errorf("failed to execute tools: %w", err)
 		}
 
+		// Track if any tool had an error (for retry logic)
+		lastToolHadError = false
+		for _, tr := range toolResults {
+			if tr.IsError || strings.Contains(strings.ToLower(tr.Content), "error") {
+				lastToolHadError = true
+				break
+			}
+		}
+
 		if a.log != nil {
-			a.log.Debug("react: sending tool results back to model")
+			a.log.Debug("react: sending tool results back to model", "hadError", lastToolHadError)
 		}
 
 		// Convert tool results to messages and add to conversation
@@ -386,11 +432,8 @@ func (a *Agent) executeTools(ctx context.Context, toolUses []ToolUse) ([]ToolRes
 }
 
 // calculateContextSize estimates the context size in characters and tokens.
-// It extracts text content from messages and serializes tools to get accurate counts.
 // Token estimation uses ~4 characters per token (Anthropic's approximate ratio for English text).
 func (a *Agent) calculateContextSize(msgs []Message, tools []Tool) (chars int, tokens int) {
-	// Extract text content from messages by serializing to JSON
-	// This gives us the full message structure including metadata
 	for _, msg := range msgs {
 		param := msg.ToParam()
 		if jsonData, err := json.Marshal(param); err == nil {
@@ -405,9 +448,7 @@ func (a *Agent) calculateContextSize(msgs []Message, tools []Tool) (chars int, t
 		}
 	}
 
-	// Estimate tokens: Anthropic uses ~4 characters per token on average for English text
-	// This is a rough approximation; actual tokenization may vary
-	// For JSON/structured data, tokens might be slightly higher, but 4 is a reasonable average
+	// Estimate tokens: ~4 characters per token (rough approximation)
 	tokens = chars / 4
 
 	return chars, tokens
@@ -444,35 +485,22 @@ func (a *Agent) summarizeMessages(ctx context.Context, msgs []Message, keepRecen
 	// Extract messages to summarize (everything except first and last keepRecent)
 	messagesToSummarize := msgs[1 : len(msgs)-keepRecent]
 
-	// Build summary prompt
 	var conversationText strings.Builder
 	for i, msg := range messagesToSummarize {
 		text := a.extractMessageText(msg)
 		conversationText.WriteString(fmt.Sprintf("Message %d: %s\n", i+1, text))
 	}
 
-	summaryPrompt := fmt.Sprintf(`Please provide a concise summary of the following conversation history, including:
-- Key user queries and requests
-- Important tool calls that were made
-- Significant tool results and findings
-- Any important context or decisions made
+	summaryPrompt := fmt.Sprintf(a.cfg.SummaryPrompt, conversationText.String())
 
-Conversation history to summarize:
-%s
+	summaryMsg := a.cfg.LLM.CreateUserMessage(summaryPrompt)
+	summaryMessages := []Message{summaryMsg}
 
-Provide a clear, concise summary that preserves the essential information needed for the conversation to continue effectively.`, conversationText.String())
-
-	// Create a summary message using the LLM
-	summaryMsg := anthropic.NewUserMessage(anthropic.NewTextBlock(summaryPrompt))
-	summaryMessages := []Message{AnthropicMessage{Msg: summaryMsg}}
-
-	// Call LLM to generate summary (without tools, just for summarization)
 	response, err := a.cfg.LLM.Call(ctx, summaryMessages, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate summary: %w", err)
 	}
 
-	// Extract summary text
 	var summaryText strings.Builder
 	for _, blk := range response.Content() {
 		if text, ok := blk.AsText(); ok && text != "" {
@@ -480,15 +508,12 @@ Provide a clear, concise summary that preserves the essential information needed
 		}
 	}
 
-	// Create a user message with the summary
-	summaryUserMsg := anthropic.NewUserMessage(anthropic.NewTextBlock(fmt.Sprintf("[Previous conversation summary]: %s", summaryText.String())))
-	summaryMessage := AnthropicMessage{Msg: summaryUserMsg}
+	summaryMessage := a.cfg.LLM.CreateUserMessage(fmt.Sprintf("[Previous conversation summary]: %s", summaryText.String()))
 
-	// Reconstruct messages: first message + summary + recent messages
 	compacted := make([]Message, 0, 1+1+keepRecent)
-	compacted = append(compacted, msgs[0])                        // Keep first message
-	compacted = append(compacted, summaryMessage)                 // Add summary
-	compacted = append(compacted, msgs[len(msgs)-keepRecent:]...) // Keep recent messages
+	compacted = append(compacted, msgs[0])
+	compacted = append(compacted, summaryMessage)
+	compacted = append(compacted, msgs[len(msgs)-keepRecent:]...)
 
 	if a.log != nil {
 		a.log.Info("react: compacted conversation",

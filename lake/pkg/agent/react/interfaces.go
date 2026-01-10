@@ -64,6 +64,8 @@ type LLMClient interface {
 	ConvertToMessage(msg any) Message
 	// ConvertToolResults converts tool results to messages for the LLM.
 	ConvertToolResults(toolUses []ToolUse, results []ToolResult) ([]Message, error)
+	// CreateUserMessage creates a user message in the provider-specific format.
+	CreateUserMessage(content string) Message
 }
 
 // ToolResult represents the result of executing a tool.
@@ -73,3 +75,25 @@ type ToolResult struct {
 	IsError bool
 }
 
+// GenericMessage is a simple message implementation that can be converted to provider-specific formats.
+type GenericMessage struct {
+	Role    string
+	Content string
+}
+
+func (m GenericMessage) ToParam() any {
+	return map[string]any{
+		"role":    m.Role,
+		"content": m.Content,
+	}
+}
+
+// NewUserMessage creates a generic user message.
+func NewUserMessage(content string) Message {
+	return GenericMessage{Role: "user", Content: content}
+}
+
+// NewAssistantMessage creates a generic assistant message.
+func NewAssistantMessage(content string) Message {
+	return GenericMessage{Role: "assistant", Content: content}
+}

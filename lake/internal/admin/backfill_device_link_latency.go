@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 
@@ -56,6 +57,21 @@ func BackfillDeviceLinkLatency(
 
 	telemetryClient := telemetry.New(log, dzRPCClient, nil, networkConfig.TelemetryProgramID)
 
+	// Create store early to query data boundaries
+	store, err := dztelemlatency.NewStore(dztelemlatency.StoreConfig{
+		Logger:     log,
+		ClickHouse: chDB,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create store: %w", err)
+	}
+
+	// Query existing data boundaries
+	bounds, err := store.GetDeviceLinkLatencyBoundaries(ctx)
+	if err != nil {
+		fmt.Printf("Warning: failed to query data boundaries: %v\n", err)
+	}
+
 	// Get current epoch to determine range
 	epochInfo, err := dzRPCClient.GetEpochInfo(ctx, solanarpc.CommitmentFinalized)
 	if err != nil {
@@ -64,24 +80,66 @@ func BackfillDeviceLinkLatency(
 	currentEpoch := epochInfo.Epoch
 
 	// Determine epoch range
+	latestCompletedEpoch := int64(currentEpoch) - 1
+	if latestCompletedEpoch < 0 {
+		latestCompletedEpoch = 0
+	}
+
+	startEpoch := cfg.StartEpoch
 	endEpoch := cfg.EndEpoch
-	if endEpoch < 0 {
-		endEpoch = int64(currentEpoch) - 1
+
+	// Auto-calculate range if not specified
+	if startEpoch < 0 && endEpoch < 0 {
+		if bounds != nil && bounds.MaxEpoch != nil && bounds.MinEpoch != nil {
+			// We have existing data
+			if *bounds.MaxEpoch >= latestCompletedEpoch {
+				// Data is up-to-date, backfill older epochs (before what we have)
+				endEpoch = *bounds.MinEpoch - 1
+				startEpoch = endEpoch - defaultBackfillEpochCount + 1
+			} else {
+				// Data is not up-to-date, continue from where we left off
+				startEpoch = *bounds.MaxEpoch + 1
+				endEpoch = latestCompletedEpoch
+			}
+		} else {
+			// No existing data, use default lookback from current
+			endEpoch = latestCompletedEpoch
+			startEpoch = endEpoch - defaultBackfillEpochCount + 1
+		}
+	} else if endEpoch < 0 {
+		endEpoch = latestCompletedEpoch
+	} else if startEpoch < 0 {
+		startEpoch = endEpoch - defaultBackfillEpochCount + 1
+	}
+
+	if startEpoch < 0 {
+		startEpoch = 0
 	}
 	if endEpoch < 0 {
 		endEpoch = 0
 	}
 
-	startEpoch := cfg.StartEpoch
-	if startEpoch < 0 {
-		startEpoch = endEpoch - defaultBackfillEpochCount + 1
-	}
-	if startEpoch < 0 {
-		startEpoch = 0
-	}
-
+	// Check if there's nothing to backfill
 	if startEpoch > endEpoch {
-		return fmt.Errorf("start epoch (%d) must be <= end epoch (%d)", startEpoch, endEpoch)
+		fmt.Printf("Backfill Device Link Latency\n")
+		fmt.Printf("  Environment:     %s\n", dzEnv)
+		fmt.Printf("  Current epoch:   %d (in progress)\n", currentEpoch)
+		fmt.Printf("  Completed epochs: up to %d\n", latestCompletedEpoch)
+		fmt.Println()
+		fmt.Printf("Existing Data in ClickHouse:\n")
+		if bounds != nil && bounds.RowCount > 0 {
+			fmt.Printf("  Row count:       %d\n", bounds.RowCount)
+			if bounds.MinTime != nil {
+				fmt.Printf("  Time range:      %s - %s\n", bounds.MinTime.Format(time.RFC3339), bounds.MaxTime.Format(time.RFC3339))
+			}
+			if bounds.MinEpoch != nil {
+				fmt.Printf("  Epoch range:     %d - %d\n", *bounds.MinEpoch, *bounds.MaxEpoch)
+			}
+		}
+		fmt.Println()
+		fmt.Printf("No epochs available to backfill.\n")
+		fmt.Printf("To backfill specific epochs, use --start-epoch and --end-epoch flags.\n")
+		return nil
 	}
 
 	maxConcurrency := cfg.MaxConcurrency
@@ -90,11 +148,25 @@ func BackfillDeviceLinkLatency(
 	}
 
 	fmt.Printf("Backfill Device Link Latency\n")
-	fmt.Printf("  Environment:    %s\n", dzEnv)
-	fmt.Printf("  Current epoch:  %d\n", currentEpoch)
-	fmt.Printf("  Epoch range:    %d - %d (%d epochs)\n", startEpoch, endEpoch, endEpoch-startEpoch+1)
+	fmt.Printf("  Environment:     %s\n", dzEnv)
+	fmt.Printf("  Current epoch:   %d\n", currentEpoch)
+	fmt.Printf("  Epoch range:     %d - %d (%d epochs)\n", startEpoch, endEpoch, endEpoch-startEpoch+1)
 	fmt.Printf("  Max concurrency: %d\n", maxConcurrency)
-	fmt.Printf("  Dry run:        %v\n", cfg.DryRun)
+	fmt.Printf("  Dry run:         %v\n", cfg.DryRun)
+	fmt.Println()
+
+	fmt.Printf("Existing Data in ClickHouse:\n")
+	if bounds != nil && bounds.RowCount > 0 {
+		fmt.Printf("  Row count:       %d\n", bounds.RowCount)
+		if bounds.MinTime != nil {
+			fmt.Printf("  Time range:      %s - %s\n", bounds.MinTime.Format(time.RFC3339), bounds.MaxTime.Format(time.RFC3339))
+		}
+		if bounds.MinEpoch != nil {
+			fmt.Printf("  Epoch range:     %d - %d\n", *bounds.MinEpoch, *bounds.MaxEpoch)
+		}
+	} else {
+		fmt.Printf("  (no existing data)\n")
+	}
 	fmt.Println()
 
 	// Query current devices and links from ClickHouse
@@ -111,17 +183,8 @@ func BackfillDeviceLinkLatency(
 	fmt.Printf("Found %d links\n", len(links))
 
 	if cfg.DryRun {
-		fmt.Println("\n[DRY RUN] Would fetch and insert samples for the above configuration")
+		fmt.Println("[DRY RUN] Would fetch and insert samples for the above configuration")
 		return nil
-	}
-
-	// Create store for writing
-	store, err := dztelemlatency.NewStore(dztelemlatency.StoreConfig{
-		Logger:     log,
-		ClickHouse: chDB,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to create store: %w", err)
 	}
 
 	var totalSamples int64

@@ -29,9 +29,9 @@ func run() error {
 	clickhousePasswordFlag := flag.String("clickhouse-password", "", "ClickHouse password (or set CLICKHOUSE_PASSWORD env var)")
 
 	// InfluxDB configuration (for usage backfill)
-	influxDBHostFlag := flag.String("influxdb-host", "", "InfluxDB host URL (or set INFLUXDB_HOST env var)")
-	influxDBTokenFlag := flag.String("influxdb-token", "", "InfluxDB token (or set INFLUXDB_TOKEN env var)")
-	influxDBBucketFlag := flag.String("influxdb-bucket", "", "InfluxDB bucket name (or set INFLUXDB_BUCKET env var)")
+	influxURLFlag := flag.String("influx-url", "", "InfluxDB URL (or set INFLUX_URL env var)")
+	influxTokenFlag := flag.String("influx-token", "", "InfluxDB token (or set INFLUX_TOKEN env var)")
+	influxBucketFlag := flag.String("influx-bucket", "", "InfluxDB bucket (or set INFLUX_BUCKET env var)")
 
 	// Commands
 	resetDBFlag := flag.Bool("reset-db", false, "Drop all database tables (dim_*, stg_*, fact_*) and views")
@@ -55,6 +55,7 @@ func run() error {
 	startTimeFlag := flag.String("start-time", "", "Start time for usage backfill (RFC3339 format, e.g. 2024-01-01T00:00:00Z)")
 	endTimeFlag := flag.String("end-time", "", "End time for usage backfill (RFC3339 format, empty = now)")
 	chunkIntervalFlag := flag.Duration("chunk-interval", 1*time.Hour, "Chunk interval for usage backfill")
+	queryDelayFlag := flag.Duration("query-delay", 5*time.Second, "Delay between InfluxDB queries to avoid rate limits")
 
 	flag.Parse()
 
@@ -75,14 +76,14 @@ func run() error {
 	}
 
 	// Override InfluxDB flags with environment variables if set
-	if envInfluxDBHost := os.Getenv("INFLUXDB_HOST"); envInfluxDBHost != "" {
-		*influxDBHostFlag = envInfluxDBHost
+	if envInfluxURL := os.Getenv("INFLUX_URL"); envInfluxURL != "" {
+		*influxURLFlag = envInfluxURL
 	}
-	if envInfluxDBToken := os.Getenv("INFLUXDB_TOKEN"); envInfluxDBToken != "" {
-		*influxDBTokenFlag = envInfluxDBToken
+	if envInfluxToken := os.Getenv("INFLUX_TOKEN"); envInfluxToken != "" {
+		*influxTokenFlag = envInfluxToken
 	}
-	if envInfluxDBBucket := os.Getenv("INFLUXDB_BUCKET"); envInfluxDBBucket != "" {
-		*influxDBBucketFlag = envInfluxDBBucket
+	if envInfluxBucket := os.Getenv("INFLUX_BUCKET"); envInfluxBucket != "" {
+		*influxBucketFlag = envInfluxBucket
 	}
 
 	// Execute commands
@@ -145,14 +146,14 @@ func run() error {
 		if *clickhouseAddrFlag == "" {
 			return fmt.Errorf("--clickhouse-addr is required for --backfill-device-interface-counters")
 		}
-		if *influxDBHostFlag == "" {
-			return fmt.Errorf("--influxdb-host is required for --backfill-device-interface-counters")
+		if *influxURLFlag == "" {
+			return fmt.Errorf("--influx-url is required for --backfill-device-interface-counters")
 		}
-		if *influxDBTokenFlag == "" {
-			return fmt.Errorf("--influxdb-token is required for --backfill-device-interface-counters")
+		if *influxTokenFlag == "" {
+			return fmt.Errorf("--influx-token is required for --backfill-device-interface-counters")
 		}
-		if *influxDBBucketFlag == "" {
-			return fmt.Errorf("--influxdb-bucket is required for --backfill-device-interface-counters")
+		if *influxBucketFlag == "" {
+			return fmt.Errorf("--influx-bucket is required for --backfill-device-interface-counters")
 		}
 
 		var startTime, endTime time.Time
@@ -174,11 +175,12 @@ func run() error {
 		return admin.BackfillDeviceInterfaceCounters(
 			log,
 			*clickhouseAddrFlag, *clickhouseDatabaseFlag, *clickhouseUsernameFlag, *clickhousePasswordFlag,
-			*influxDBHostFlag, *influxDBTokenFlag, *influxDBBucketFlag,
+			*influxURLFlag, *influxTokenFlag, *influxBucketFlag,
 			admin.BackfillDeviceInterfaceCountersConfig{
 				StartTime:     startTime,
 				EndTime:       endTime,
 				ChunkInterval: *chunkIntervalFlag,
+				QueryDelay:    *queryDelayFlag,
 				DryRun:        *dryRunFlag,
 			},
 		)

@@ -435,3 +435,98 @@ func (s *Store) GetExistingInternetMaxSampleIndices() (map[string]int, error) {
 	}
 	return result, nil
 }
+
+// DataBoundaries contains min/max timestamps and epochs for a fact table
+type DataBoundaries struct {
+	MinTime  *time.Time
+	MaxTime  *time.Time
+	MinEpoch *int64
+	MaxEpoch *int64
+	RowCount uint64
+}
+
+// GetDeviceLinkLatencyBoundaries returns the data boundaries for the device link latency fact table
+func (s *Store) GetDeviceLinkLatencyBoundaries(ctx context.Context) (*DataBoundaries, error) {
+	conn, err := s.cfg.ClickHouse.Conn(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get ClickHouse connection: %w", err)
+	}
+
+	query := `SELECT
+		min(event_ts) as min_ts,
+		max(event_ts) as max_ts,
+		min(epoch) as min_epoch,
+		max(epoch) as max_epoch,
+		count() as row_count
+	FROM fact_dz_device_link_latency`
+
+	rows, err := conn.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query data boundaries: %w", err)
+	}
+	defer rows.Close()
+
+	bounds := &DataBoundaries{}
+	if rows.Next() {
+		var minTS, maxTS time.Time
+		var minEpoch, maxEpoch int64
+		var rowCount uint64
+		if err := rows.Scan(&minTS, &maxTS, &minEpoch, &maxEpoch, &rowCount); err != nil {
+			return nil, fmt.Errorf("failed to scan data boundaries: %w", err)
+		}
+		bounds.RowCount = rowCount
+		// ClickHouse returns zero time for empty tables
+		zeroTime := time.Unix(0, 0).UTC()
+		if minTS.After(zeroTime) {
+			bounds.MinTime = &minTS
+			bounds.MaxTime = &maxTS
+			bounds.MinEpoch = &minEpoch
+			bounds.MaxEpoch = &maxEpoch
+		}
+	}
+
+	return bounds, nil
+}
+
+// GetInternetMetroLatencyBoundaries returns the data boundaries for the internet metro latency fact table
+func (s *Store) GetInternetMetroLatencyBoundaries(ctx context.Context) (*DataBoundaries, error) {
+	conn, err := s.cfg.ClickHouse.Conn(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get ClickHouse connection: %w", err)
+	}
+
+	query := `SELECT
+		min(event_ts) as min_ts,
+		max(event_ts) as max_ts,
+		min(epoch) as min_epoch,
+		max(epoch) as max_epoch,
+		count() as row_count
+	FROM fact_dz_internet_metro_latency`
+
+	rows, err := conn.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query data boundaries: %w", err)
+	}
+	defer rows.Close()
+
+	bounds := &DataBoundaries{}
+	if rows.Next() {
+		var minTS, maxTS time.Time
+		var minEpoch, maxEpoch int64
+		var rowCount uint64
+		if err := rows.Scan(&minTS, &maxTS, &minEpoch, &maxEpoch, &rowCount); err != nil {
+			return nil, fmt.Errorf("failed to scan data boundaries: %w", err)
+		}
+		bounds.RowCount = rowCount
+		// ClickHouse returns zero time for empty tables
+		zeroTime := time.Unix(0, 0).UTC()
+		if minTS.After(zeroTime) {
+			bounds.MinTime = &minTS
+			bounds.MaxTime = &maxTS
+			bounds.MinEpoch = &minEpoch
+			bounds.MaxEpoch = &maxEpoch
+		}
+	}
+
+	return bounds, nil
+}

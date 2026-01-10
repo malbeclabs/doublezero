@@ -11,8 +11,9 @@ import (
 )
 
 const (
-	defaultUsageBackfillDays     = 7
-	defaultUsageBackfillInterval = 1 * time.Hour // Process in 1-hour chunks
+	defaultUsageBackfillDays     = 1
+	defaultUsageBackfillInterval = 1 * time.Hour   // Process in 1-hour chunks
+	defaultUsageQueryDelay       = 5 * time.Second // Delay between InfluxDB queries to avoid rate limits
 )
 
 // BackfillDeviceInterfaceCountersConfig holds the configuration for the backfill command
@@ -20,6 +21,7 @@ type BackfillDeviceInterfaceCountersConfig struct {
 	StartTime     time.Time // Zero means auto-calculate from EndTime
 	EndTime       time.Time // Zero means use now
 	ChunkInterval time.Duration
+	QueryDelay    time.Duration // Delay between InfluxDB queries
 	DryRun        bool
 }
 
@@ -46,19 +48,70 @@ func BackfillDeviceInterfaceCounters(
 	}
 	defer influxClient.Close()
 
-	// Determine time range
-	endTime := cfg.EndTime
-	if endTime.IsZero() {
-		endTime = time.Now().UTC()
+	// Query existing data boundaries from ClickHouse first
+	store, err := dztelemusage.NewStore(dztelemusage.StoreConfig{
+		Logger:     log,
+		ClickHouse: chDB,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create store: %w", err)
 	}
+
+	bounds, err := store.GetDataBoundaries(ctx)
+	if err != nil {
+		fmt.Printf("Warning: failed to query data boundaries: %v\n", err)
+	}
+
+	// Determine time range
+	now := time.Now().UTC()
+	defaultBackfillDuration := time.Duration(defaultUsageBackfillDays) * 24 * time.Hour
+	// Consider data "up-to-date" if it's within 1 hour of now
+	recentThreshold := now.Add(-1 * time.Hour)
 
 	startTime := cfg.StartTime
-	if startTime.IsZero() {
-		startTime = endTime.Add(-time.Duration(defaultUsageBackfillDays) * 24 * time.Hour)
+	endTime := cfg.EndTime
+
+	// Auto-calculate range if not specified
+	if startTime.IsZero() && endTime.IsZero() {
+		if bounds != nil && bounds.MaxTime != nil && bounds.MinTime != nil {
+			// We have existing data
+			if bounds.MaxTime.After(recentThreshold) {
+				// Data is up-to-date, backfill older data (before what we have)
+				endTime = *bounds.MinTime
+				startTime = endTime.Add(-defaultBackfillDuration)
+			} else {
+				// Data is not up-to-date, continue from where we left off
+				startTime = *bounds.MaxTime
+				endTime = now
+			}
+		} else {
+			// No existing data, use default lookback from now
+			endTime = now
+			startTime = endTime.Add(-defaultBackfillDuration)
+		}
+	} else if endTime.IsZero() {
+		endTime = now
+	} else if startTime.IsZero() {
+		startTime = endTime.Add(-defaultBackfillDuration)
 	}
 
-	if startTime.After(endTime) {
-		return fmt.Errorf("start time (%s) must be before end time (%s)", startTime, endTime)
+	// Check if there's nothing to backfill
+	if !startTime.Before(endTime) {
+		fmt.Printf("Backfill Device Interface Counters\n")
+		fmt.Printf("  InfluxDB host:   %s\n", influxDBHost)
+		fmt.Printf("  InfluxDB bucket: %s\n", influxDBBucket)
+		fmt.Println()
+		fmt.Printf("Existing Data in ClickHouse:\n")
+		if bounds != nil && bounds.RowCount > 0 {
+			fmt.Printf("  Row count:       %d\n", bounds.RowCount)
+			if bounds.MinTime != nil {
+				fmt.Printf("  Time range:      %s - %s\n", bounds.MinTime.Format(time.RFC3339), bounds.MaxTime.Format(time.RFC3339))
+			}
+		}
+		fmt.Println()
+		fmt.Printf("No time range available to backfill.\n")
+		fmt.Printf("To backfill specific time range, use --start-time and --end-time flags.\n")
+		return nil
 	}
 
 	chunkInterval := cfg.ChunkInterval
@@ -66,13 +119,30 @@ func BackfillDeviceInterfaceCounters(
 		chunkInterval = defaultUsageBackfillInterval
 	}
 
+	queryDelay := cfg.QueryDelay
+	if queryDelay <= 0 {
+		queryDelay = defaultUsageQueryDelay
+	}
+
 	fmt.Printf("Backfill Device Interface Counters\n")
 	fmt.Printf("  Time range:      %s - %s\n", startTime.Format(time.RFC3339), endTime.Format(time.RFC3339))
 	fmt.Printf("  Duration:        %s\n", endTime.Sub(startTime))
 	fmt.Printf("  Chunk interval:  %s\n", chunkInterval)
+	fmt.Printf("  Query delay:     %s\n", queryDelay)
 	fmt.Printf("  InfluxDB host:   %s\n", influxDBHost)
 	fmt.Printf("  InfluxDB bucket: %s\n", influxDBBucket)
 	fmt.Printf("  Dry run:         %v\n", cfg.DryRun)
+	fmt.Println()
+
+	fmt.Printf("Existing Data in ClickHouse:\n")
+	if bounds != nil && bounds.RowCount > 0 {
+		fmt.Printf("  Row count:       %d\n", bounds.RowCount)
+		if bounds.MinTime != nil {
+			fmt.Printf("  Time range:      %s - %s\n", bounds.MinTime.Format(time.RFC3339), bounds.MaxTime.Format(time.RFC3339))
+		}
+	} else {
+		fmt.Printf("  (no existing data)\n")
+	}
 	fmt.Println()
 
 	if cfg.DryRun {
@@ -97,7 +167,14 @@ func BackfillDeviceInterfaceCounters(
 
 	// Process in chunks for better progress visibility and memory management
 	chunkStart := startTime
+	isFirstChunk := true
 	for chunkStart.Before(endTime) {
+		// Throttle queries to avoid hitting InfluxDB rate limits (skip delay for first chunk)
+		if !isFirstChunk && queryDelay > 0 {
+			time.Sleep(queryDelay)
+		}
+		isFirstChunk = false
+
 		chunkEnd := chunkStart.Add(chunkInterval)
 		if chunkEnd.After(endTime) {
 			chunkEnd = endTime

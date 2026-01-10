@@ -167,3 +167,48 @@ func formatNullableInt64(i *int64) string {
 	}
 	return fmt.Sprintf("%d", *i)
 }
+
+// DataBoundaries contains min/max timestamps for a fact table
+type DataBoundaries struct {
+	MinTime  *time.Time
+	MaxTime  *time.Time
+	RowCount uint64
+}
+
+// GetDataBoundaries returns the data boundaries for the device interface counters fact table
+func (s *Store) GetDataBoundaries(ctx context.Context) (*DataBoundaries, error) {
+	conn, err := s.cfg.ClickHouse.Conn(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get ClickHouse connection: %w", err)
+	}
+
+	query := `SELECT
+		min(event_ts) as min_ts,
+		max(event_ts) as max_ts,
+		count() as row_count
+	FROM fact_dz_device_interface_counters`
+
+	rows, err := conn.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query data boundaries: %w", err)
+	}
+	defer rows.Close()
+
+	bounds := &DataBoundaries{}
+	if rows.Next() {
+		var minTS, maxTS time.Time
+		var rowCount uint64
+		if err := rows.Scan(&minTS, &maxTS, &rowCount); err != nil {
+			return nil, fmt.Errorf("failed to scan data boundaries: %w", err)
+		}
+		bounds.RowCount = rowCount
+		// ClickHouse returns zero time for empty tables
+		zeroTime := time.Unix(0, 0).UTC()
+		if minTS.After(zeroTime) {
+			bounds.MinTime = &minTS
+			bounds.MaxTime = &maxTS
+		}
+	}
+
+	return bounds, nil
+}

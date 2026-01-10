@@ -119,6 +119,9 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 	for batchNum := 0; batchNum < batchCount; batchNum++ {
 		batch := batchData[batchNum]
 
+		// DetermineClientsToConnect identifies clients that need to reconnect for this batch.
+		// Clients keep their connection if assigned to the same device as the previous batch
+		// and still have status "up". This avoids unnecessary reconnection overhead.
 		getStatus := func(hostname string) (string, error) {
 			for _, c := range clients {
 				if c.Host == hostname {
@@ -286,8 +289,8 @@ func connectClientsAndWaitForRoutes(
 		}
 	}
 
-	// Build list of all clients that are connected (both newly connected and previously connected)
-	var connectedClients []*qa.Client
+	// Build list of clients with status "up" (both newly connected and previously connected)
+	statuses := make(map[string]string)
 	for _, c := range allClients {
 		if _, ok := batch[c.Host]; !ok {
 			continue
@@ -297,22 +300,19 @@ func connectClientsAndWaitForRoutes(
 			log.Error("Failed to get user status", "client", c.Host, "error", err)
 			continue
 		}
+		statuses[c.Host] = status.SessionStatus
 		if status.SessionStatus != qa.UserStatusUp {
-			log.Warn("Client not connected", "client", c.Host, "status", status.SessionStatus)
-			continue
+			log.Warn("Client not up", "client", c.Host, "status", status.SessionStatus)
 		}
-		connectedClients = append(connectedClients, c)
 	}
+	connectedClients := qa.FilterStatusUpClients(allClients, batch, statuses)
 
 	// Wait for routes between all connected clients
 	for _, c := range connectedClients {
-		err := c.WaitForRoutes(ctx, qa.MapFilter(connectedClients, func(other *qa.Client) (net.IP, bool) {
-			if other.Host == c.Host || batch[other.Host].Device.ExchangeCode == batch[c.Host].Device.ExchangeCode {
-				return nil, false
-			}
-			return other.DoublezeroOrPublicIP(), true
-		}))
-		if err != nil {
+		targets := qa.ComputeRouteTargets(c, connectedClients, batch, func(client *qa.Client) net.IP {
+			return client.DoublezeroOrPublicIP()
+		})
+		if err := c.WaitForRoutes(ctx, targets); err != nil {
 			log.Error("Failed to wait for routes", "client", c.Host, "error", err)
 			t.Errorf("failed to wait for routes on client %s: %v", c.Host, err)
 		}

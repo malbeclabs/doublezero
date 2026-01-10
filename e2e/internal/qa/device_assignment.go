@@ -2,6 +2,7 @@ package qa
 
 import (
 	"math"
+	"net"
 )
 
 const LatencyThresholdMs = 25
@@ -25,7 +26,8 @@ type BatchData map[int]map[string]*BatchAssignment
 // Used to check if a client needs reconnection.
 type ClientStatusGetter func(hostname string) (sessionStatus string, err error)
 
-// DetermineClientsToConnect decides which clients need to connect for a given batch.
+// DetermineClientsToConnect decides which clients need to connect for a given batch. This saves a significant
+// amount of time when clients are assigned to the same device for consecutive batches.
 // A client needs to connect if:
 // 1. It's the first batch (batchNum == 0)
 // 2. The device changed from the previous batch
@@ -64,6 +66,41 @@ func DetermineClientsToConnect(
 	}
 
 	return clientsToConnect
+}
+
+// FilterStatusUpClients returns clients that are in the batch and have status "up".
+// statuses maps hostname to session status.
+func FilterStatusUpClients(clients []*Client, batch map[string]*BatchAssignment, statuses map[string]string) []*Client {
+	var connected []*Client
+	for _, c := range clients {
+		if _, inBatch := batch[c.Host]; !inBatch {
+			continue
+		}
+		if statuses[c.Host] != UserStatusUp {
+			continue
+		}
+		connected = append(connected, c)
+	}
+	return connected
+}
+
+// ComputeRouteTargets returns the IPs that a client should have routes to.
+// Excludes clients in the same exchange (no intra-exchange routing) and self.
+func ComputeRouteTargets(client *Client, connectedClients []*Client, batch map[string]*BatchAssignment, getIP func(*Client) net.IP) []net.IP {
+	clientExchange := batch[client.Host].Device.ExchangeCode
+	var targets []net.IP
+	for _, other := range connectedClients {
+		if other.Host == client.Host {
+			continue
+		}
+		if batch[other.Host].Device.ExchangeCode == clientExchange {
+			continue
+		}
+		if ip := getIP(other); ip != nil {
+			targets = append(targets, ip)
+		}
+	}
+	return targets
 }
 
 // AssignDevicesToClients considers latency between each client and device to assign devices to clients:

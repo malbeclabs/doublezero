@@ -91,7 +91,7 @@ pub fn process_close_access_pass(
                 "AccessPass has active connections (connection_count={}), cannot close",
                 accesspass.connection_count
             );
-            return Err(DoubleZeroError::AccessPassNotFound.into());
+            return Err(DoubleZeroError::AccessPassInUse.into());
         }
 
         msg!("AccountType is AccessPass and connection_count == 0, proceeding to close");

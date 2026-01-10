@@ -137,6 +137,8 @@ pub enum DoubleZeroError {
     InvalidArgument, // variant 65
     #[error("Invalid Foundation Allowlist: cannot be empty")]
     InvalidFoundationAllowlist, // variant 66
+    #[error("Access Pass is in use (non-zero connection_count)")]
+    AccessPassInUse, // variant 67
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -209,6 +211,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::SerializationFailure => ProgramError::Custom(64),
             DoubleZeroError::InvalidArgument => ProgramError::Custom(65),
             DoubleZeroError::InvalidFoundationAllowlist => ProgramError::Custom(66),
+            DoubleZeroError::AccessPassInUse => ProgramError::Custom(67),
         }
     }
 }
@@ -282,6 +285,7 @@ impl From<u32> for DoubleZeroError {
             64 => DoubleZeroError::SerializationFailure,
             65 => DoubleZeroError::InvalidArgument,
             66 => DoubleZeroError::InvalidFoundationAllowlist,
+            67 => DoubleZeroError::AccessPassInUse,
             _ => DoubleZeroError::Custom(e),
         }
     }
@@ -375,6 +379,7 @@ mod tests {
             SerializationFailure,
             InvalidArgument,
             InvalidFoundationAllowlist,
+            AccessPassInUse,
         ];
         for err in variants {
             let pe: ProgramError = err.clone().into();

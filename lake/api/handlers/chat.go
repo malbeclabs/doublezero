@@ -1,41 +1,66 @@
 package handlers
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
-	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline"
 )
 
+// ChatMessage represents a single message in conversation history.
 type ChatMessage struct {
-	Role    string `json:"role"` // "user" or "assistant"
+	Role    string `json:"role"`    // "user" or "assistant"
 	Content string `json:"content"`
 }
 
+// ChatRequest is the incoming request for a chat message.
 type ChatRequest struct {
 	Message string        `json:"message"`
 	History []ChatMessage `json:"history"`
 }
 
-type QueryResult struct {
-	SQL     string   `json:"sql"`
-	Columns []string `json:"columns"`
-	Rows    [][]any  `json:"rows"`
-	Error   string   `json:"error,omitempty"`
+// DataQuestionResponse represents a decomposed data question.
+type DataQuestionResponse struct {
+	Question  string `json:"question"`
+	Rationale string `json:"rationale"`
 }
 
+// GeneratedQueryResponse represents a generated SQL query.
+type GeneratedQueryResponse struct {
+	Question    string `json:"question"`
+	SQL         string `json:"sql"`
+	Explanation string `json:"explanation"`
+}
+
+// ExecutedQueryResponse represents an executed query with results.
+type ExecutedQueryResponse struct {
+	Question string   `json:"question"`
+	SQL      string   `json:"sql"`
+	Columns  []string `json:"columns"`
+	Rows     [][]any  `json:"rows"`
+	Count    int      `json:"count"`
+	Error    string   `json:"error,omitempty"`
+}
+
+// ChatResponse is the full pipeline result returned to the UI.
 type ChatResponse struct {
-	Response string        `json:"response"`
-	Queries  []QueryResult `json:"queries,omitempty"`
-	Error    string        `json:"error,omitempty"`
-}
+	// The final synthesized answer
+	Answer string `json:"answer"`
 
-const maxToolIterations = 10
+	// Pipeline steps (for transparency)
+	DataQuestions    []DataQuestionResponse    `json:"dataQuestions,omitempty"`
+	GeneratedQueries []GeneratedQueryResponse  `json:"generatedQueries,omitempty"`
+	ExecutedQueries  []ExecutedQueryResponse   `json:"executedQueries,omitempty"`
+
+	// Error if pipeline failed
+	Error string `json:"error,omitempty"`
+}
 
 func Chat(w http.ResponseWriter, r *http.Request) {
 	var req ChatRequest
@@ -49,14 +74,6 @@ func Chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fetch schema for context
-	schema, err := fetchSchema()
-	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(ChatResponse{Error: "Failed to fetch schema: " + err.Error()})
-		return
-	}
-
 	// Check if we should use Anthropic
 	if os.Getenv("ANTHROPIC_API_KEY") == "" {
 		w.Header().Set("Content-Type", "application/json")
@@ -64,262 +81,256 @@ func Chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Run the agentic chat loop with tool use
-	response, queries, err := runChatAgentWithTools(schema, req.Message, req.History)
+	// Load prompts
+	prompts, err := pipeline.LoadPrompts()
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(ChatResponse{Error: "Failed to load prompts: " + err.Error()})
+		return
+	}
+
+	// Create pipeline components
+	llm := pipeline.NewAnthropicLLMClient(anthropic.ModelClaude3_5Haiku20241022, 4096)
+	querier := pipeline.NewHTTPQuerier(clickhouseURL)
+	schemaFetcher := pipeline.NewHTTPSchemaFetcher(clickhouseURL)
+
+	// Create and run pipeline
+	p, err := pipeline.New(&pipeline.Config{
+		Logger:        slog.Default(),
+		LLM:           llm,
+		Querier:       querier,
+		SchemaFetcher: schemaFetcher,
+		Prompts:       prompts,
+		MaxTokens:     4096,
+	})
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(ChatResponse{Error: "Failed to create pipeline: " + err.Error()})
+		return
+	}
+
+	// Convert history to pipeline format
+	var history []pipeline.ConversationMessage
+	for _, msg := range req.History {
+		history = append(history, pipeline.ConversationMessage{
+			Role:    msg.Role,
+			Content: msg.Content,
+		})
+	}
+
+	result, err := p.RunWithHistory(r.Context(), req.Message, history)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(ChatResponse{Error: err.Error()})
 		return
 	}
 
+	// Convert pipeline result to response
+	response := convertPipelineResult(result)
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(ChatResponse{
-		Response: response,
-		Queries:  queries,
+	json.NewEncoder(w).Encode(response)
+}
+
+// convertPipelineResult converts the internal pipeline result to the API response format.
+func convertPipelineResult(result *pipeline.PipelineResult) ChatResponse {
+	resp := ChatResponse{
+		Answer: result.Answer,
+	}
+
+	// Convert data questions
+	for _, dq := range result.DataQuestions {
+		resp.DataQuestions = append(resp.DataQuestions, DataQuestionResponse{
+			Question:  dq.Question,
+			Rationale: dq.Rationale,
+		})
+	}
+
+	// Convert generated queries
+	for _, gq := range result.GeneratedQueries {
+		resp.GeneratedQueries = append(resp.GeneratedQueries, GeneratedQueryResponse{
+			Question:    gq.DataQuestion.Question,
+			SQL:         gq.SQL,
+			Explanation: gq.Explanation,
+		})
+	}
+
+	// Convert executed queries
+	for _, eq := range result.ExecutedQueries {
+		eqr := ExecutedQueryResponse{
+			Question: eq.GeneratedQuery.DataQuestion.Question,
+			SQL:      eq.Result.SQL,
+			Columns:  eq.Result.Columns,
+			Count:    eq.Result.Count,
+			Error:    eq.Result.Error,
+		}
+
+		// Convert rows from map to array format for easier UI consumption
+		for _, row := range eq.Result.Rows {
+			rowData := make([]any, 0, len(eq.Result.Columns))
+			for _, col := range eq.Result.Columns {
+				rowData = append(rowData, row[col])
+			}
+			eqr.Rows = append(eqr.Rows, rowData)
+		}
+
+		resp.ExecutedQueries = append(resp.ExecutedQueries, eqr)
+	}
+
+	return resp
+}
+
+// ChatStream handles streaming chat requests with SSE progress updates.
+func ChatStream(w http.ResponseWriter, r *http.Request) {
+	var req ChatRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if strings.TrimSpace(req.Message) == "" {
+		http.Error(w, "Message is required", http.StatusBadRequest)
+		return
+	}
+
+	// Set SSE headers
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	// Helper to send SSE events
+	sendEvent := func(eventType string, data any) {
+		jsonData, _ := json.Marshal(data)
+		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", eventType, string(jsonData))
+		flusher.Flush()
+	}
+
+	// Check if we should use Anthropic
+	if os.Getenv("ANTHROPIC_API_KEY") == "" {
+		sendEvent("error", map[string]string{"error": "Chat requires ANTHROPIC_API_KEY to be set"})
+		return
+	}
+
+	// Load prompts
+	prompts, err := pipeline.LoadPrompts()
+	if err != nil {
+		sendEvent("error", map[string]string{"error": "Failed to load prompts: " + err.Error()})
+		return
+	}
+
+	// Create pipeline components
+	llm := pipeline.NewAnthropicLLMClient(anthropic.ModelClaude3_5Haiku20241022, 4096)
+	querier := pipeline.NewHTTPQuerier(clickhouseURL)
+	schemaFetcher := pipeline.NewHTTPSchemaFetcher(clickhouseURL)
+
+	// Create pipeline
+	p, err := pipeline.New(&pipeline.Config{
+		Logger:        slog.Default(),
+		LLM:           llm,
+		Querier:       querier,
+		SchemaFetcher: schemaFetcher,
+		Prompts:       prompts,
+		MaxTokens:     4096,
 	})
-}
-
-func runChatAgentWithTools(schema, message string, history []ChatMessage) (string, []QueryResult, error) {
-	client := anthropic.NewClient()
-
-	systemPrompt := buildChatSystemPrompt(schema)
-
-	// Define the run_query tool
-	tools := []anthropic.ToolUnionParam{
-		{
-			OfTool: &anthropic.ToolParam{
-				Name:        "run_query",
-				Description: anthropic.String("Execute a SQL query against the ClickHouse database and return the results. Use this to fetch data needed to answer the user's question."),
-				InputSchema: anthropic.ToolInputSchemaParam{
-					Properties: map[string]any{
-						"sql": map[string]any{
-							"type":        "string",
-							"description": "The SQL query to execute. Must be valid ClickHouse SQL.",
-						},
-						"reason": map[string]any{
-							"type":        "string",
-							"description": "Brief explanation of why you're running this query.",
-						},
-					},
-					Required: []string{"sql"},
-					Type:     "object",
-				},
-			},
-		},
+	if err != nil {
+		sendEvent("error", map[string]string{"error": "Failed to create pipeline: " + err.Error()})
+		return
 	}
 
-	// Build initial messages from history
-	var messages []anthropic.MessageParam
-	for _, msg := range history {
-		if msg.Role == "user" {
-			messages = append(messages, anthropic.NewUserMessage(anthropic.NewTextBlock(msg.Content)))
-		} else {
-			messages = append(messages, anthropic.NewAssistantMessage(anthropic.NewTextBlock(msg.Content)))
-		}
+	// Convert history to pipeline format
+	var history []pipeline.ConversationMessage
+	for _, msg := range req.History {
+		history = append(history, pipeline.ConversationMessage{
+			Role:    msg.Role,
+			Content: msg.Content,
+		})
 	}
-	messages = append(messages, anthropic.NewUserMessage(anthropic.NewTextBlock(message)))
 
-	var allQueries []QueryResult
+	ctx := r.Context()
 
-	// Agentic loop - keep calling until no more tool use
-	for i := 0; i < maxToolIterations; i++ {
-		resp, err := client.Messages.New(context.Background(), anthropic.MessageNewParams{
-			Model:     anthropic.ModelClaude3_5Haiku20241022,
-			MaxTokens: 4096,
-			System: []anthropic.TextBlockParam{
-				{Type: "text", Text: systemPrompt},
-			},
-			Messages: messages,
-			Tools:    tools,
+	// Step 1: Decompose
+	sendEvent("status", map[string]string{"step": "decomposing", "message": "Breaking down your question..."})
+
+	dataQuestions, err := p.DecomposeWithHistory(ctx, req.Message, history)
+	if err != nil {
+		sendEvent("error", map[string]string{"error": err.Error()})
+		return
+	}
+
+	// Send decomposed questions
+	questions := make([]DataQuestionResponse, 0, len(dataQuestions))
+	for _, dq := range dataQuestions {
+		questions = append(questions, DataQuestionResponse{
+			Question:  dq.Question,
+			Rationale: dq.Rationale,
 		})
+	}
+	sendEvent("decomposed", map[string]any{
+		"count":     len(dataQuestions),
+		"questions": questions,
+	})
 
-		if err != nil {
-			return "", allQueries, fmt.Errorf("anthropic error: %w", err)
-		}
+	// Step 2 & 3: Generate and execute queries in parallel
+	sendEvent("status", map[string]string{"step": "executing", "message": fmt.Sprintf("Running %d queries...", len(dataQuestions))})
 
-		// Check if we're done (no tool use, just text response)
-		if resp.StopReason == "end_turn" {
-			// Extract final text response
-			var finalResponse string
-			for _, block := range resp.Content {
-				if block.Type == "text" {
-					finalResponse += block.Text
-				}
-			}
-			return finalResponse, allQueries, nil
-		}
+	executedQueries := make([]pipeline.ExecutedQuery, len(dataQuestions))
+	var wg sync.WaitGroup
+	var completedCount int
+	var mu sync.Mutex
 
-		// Process tool calls
-		var toolResults []anthropic.ContentBlockParamUnion
-		var assistantContent []anthropic.ContentBlockParamUnion
+	for i, dq := range dataQuestions {
+		wg.Add(1)
+		go func(idx int, question pipeline.DataQuestion) {
+			defer wg.Done()
+			executed := p.GenerateAndExecuteWithRetry(ctx, question)
+			executedQueries[idx] = executed
 
-		for _, block := range resp.Content {
-			if block.Type == "text" {
-				assistantContent = append(assistantContent, anthropic.NewTextBlock(block.Text))
-			} else if block.Type == "tool_use" {
-				assistantContent = append(assistantContent, anthropic.ContentBlockParamUnion{
-					OfToolUse: &anthropic.ToolUseBlockParam{
-						ID:    block.ID,
-						Name:  block.Name,
-						Input: block.Input,
-						Type:  "tool_use",
-					},
-				})
-
-				if block.Name == "run_query" {
-					// Parse the tool input
-					var input struct {
-						SQL    string `json:"sql"`
-						Reason string `json:"reason"`
-					}
-
-					inputBytes, _ := json.Marshal(block.Input)
-					json.Unmarshal(inputBytes, &input)
-
-					// Execute the query
-					result := executeQueryForChat(input.SQL)
-					result.SQL = input.SQL
-					allQueries = append(allQueries, result)
-
-					// Format result for tool response
-					var toolResponse string
-					if result.Error != "" {
-						toolResponse = fmt.Sprintf("Error: %s", result.Error)
-					} else {
-						toolResponse = formatQueryResult(result)
-					}
-
-					toolResults = append(toolResults, anthropic.NewToolResultBlock(block.ID, toolResponse, false))
-				}
-			}
-		}
-
-		// Add assistant message with tool use
-		messages = append(messages, anthropic.MessageParam{
-			Role:    "assistant",
-			Content: assistantContent,
-		})
-
-		// Add tool results as user message
-		if len(toolResults) > 0 {
-			messages = append(messages, anthropic.MessageParam{
-				Role:    "user",
-				Content: toolResults,
+			mu.Lock()
+			completedCount++
+			// Send progress update
+			sendEvent("query_progress", map[string]any{
+				"completed": completedCount,
+				"total":     len(dataQuestions),
+				"question":  question.Question,
+				"success":   executed.Result.Error == "",
+				"rows":      executed.Result.Count,
 			})
-		}
+			mu.Unlock()
+		}(i, dq)
+	}
+	wg.Wait()
 
-		// If no tool calls were made, we're done
-		if len(toolResults) == 0 {
-			var finalResponse string
-			for _, block := range resp.Content {
-				if block.Type == "text" {
-					finalResponse += block.Text
-				}
-			}
-			return finalResponse, allQueries, nil
-		}
+	// Build generated queries from executed
+	generatedQueries := make([]pipeline.GeneratedQuery, len(executedQueries))
+	for i, eq := range executedQueries {
+		generatedQueries[i] = eq.GeneratedQuery
 	}
 
-	return "I ran out of iterations while trying to answer your question. Here's what I found so far.", allQueries, nil
-}
+	// Step 4: Synthesize
+	sendEvent("status", map[string]string{"step": "synthesizing", "message": "Generating answer..."})
 
-func formatQueryResult(result QueryResult) string {
-	if len(result.Rows) == 0 {
-		return "Query returned no results."
-	}
-
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Results (%d rows):\n", len(result.Rows)))
-	sb.WriteString("Columns: " + strings.Join(result.Columns, " | ") + "\n")
-	sb.WriteString(strings.Repeat("-", 40) + "\n")
-
-	// Limit output to first 50 rows for context
-	maxRows := 50
-	if len(result.Rows) < maxRows {
-		maxRows = len(result.Rows)
-	}
-
-	for i := 0; i < maxRows; i++ {
-		row := result.Rows[i]
-		var values []string
-		for _, v := range row {
-			values = append(values, fmt.Sprintf("%v", v))
-		}
-		sb.WriteString(strings.Join(values, " | ") + "\n")
-	}
-
-	if len(result.Rows) > 50 {
-		sb.WriteString(fmt.Sprintf("... and %d more rows\n", len(result.Rows)-50))
-	}
-
-	return sb.String()
-}
-
-func executeQueryForChat(sql string) QueryResult {
-	sql = strings.TrimSuffix(strings.TrimSpace(sql), ";")
-	query := sql + " FORMAT JSON"
-
-	resp, err := http.Post(clickhouseURL+"/", "text/plain", strings.NewReader(query))
+	answer, err := p.Synthesize(ctx, req.Message, executedQueries)
 	if err != nil {
-		return QueryResult{Error: "Failed to connect to database: " + err.Error()}
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return QueryResult{Error: "Failed to read response: " + err.Error()}
+		sendEvent("error", map[string]string{"error": "Synthesize failed: " + err.Error()})
+		return
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		return QueryResult{Error: strings.TrimSpace(string(body))}
+	// Build final response
+	result := &pipeline.PipelineResult{
+		UserQuestion:     req.Message,
+		DataQuestions:    dataQuestions,
+		GeneratedQueries: generatedQueries,
+		ExecutedQueries:  executedQueries,
+		Answer:           answer,
 	}
 
-	var chResp struct {
-		Meta []struct {
-			Name string `json:"name"`
-		} `json:"meta"`
-		Data []map[string]any `json:"data"`
-	}
-
-	if err := json.Unmarshal(body, &chResp); err != nil {
-		return QueryResult{Error: "Failed to parse response: " + err.Error()}
-	}
-
-	columns := make([]string, 0, len(chResp.Meta))
-	for _, m := range chResp.Meta {
-		columns = append(columns, m.Name)
-	}
-
-	rows := make([][]any, 0, len(chResp.Data))
-	for _, row := range chResp.Data {
-		rowData := make([]any, 0, len(columns))
-		for _, col := range columns {
-			rowData = append(rowData, row[col])
-		}
-		rows = append(rows, rowData)
-	}
-
-	return QueryResult{Columns: columns, Rows: rows}
-}
-
-func buildChatSystemPrompt(schema string) string {
-	return `You are a data analyst assistant helping users explore and understand their ClickHouse database.
-
-Available tables and their columns:
-` + schema + `
-
-Your job is to answer the user's questions about their data. You have access to a tool called "run_query" that lets you execute SQL queries against the database.
-
-How to work:
-1. When the user asks a question, think about what data you need
-2. Use the run_query tool to fetch data - you can run multiple queries if needed
-3. Analyze the results and provide a clear, helpful answer
-4. Include relevant numbers, insights, and context in your response
-
-Guidelines:
-- Always use LIMIT clauses to avoid fetching too much data (start with LIMIT 100 or less)
-- If a query fails, try to fix it and run again
-- Format your final answer in markdown for readability
-- Be concise but thorough in your explanations
-- If you can't answer the question with the available data, explain why`
+	response := convertPipelineResult(result)
+	sendEvent("done", response)
 }

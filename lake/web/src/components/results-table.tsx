@@ -12,11 +12,13 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Download } from 'lucide-react'
+import { Download, MessageCircle } from 'lucide-react'
 import type { QueryResponse } from '@/lib/api'
 
 interface ResultsTableProps {
   results: QueryResponse | null
+  onAskAboutResults?: () => void
+  embedded?: boolean // When true, skip outer chrome (used inside ResultsView)
 }
 
 function escapeCSV(value: unknown): string {
@@ -45,7 +47,7 @@ function downloadCSV(columns: string[], rows: unknown[][]) {
   URL.revokeObjectURL(url)
 }
 
-export function ResultsTable({ results }: ResultsTableProps) {
+export function ResultsTable({ results, onAskAboutResults, embedded = false }: ResultsTableProps) {
   const columns: ColumnDef<unknown[]>[] = (results?.columns ?? []).map(
     (col, index) => ({
       id: col,
@@ -86,19 +88,71 @@ export function ResultsTable({ results }: ResultsTableProps) {
     )
   }
 
+  // Embedded mode: just render the table without outer chrome
+  if (embedded) {
+    return (
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <TableRow key={headerGroup.id} className="border-b bg-accent-orange-10 hover:bg-accent-orange-10">
+                {headerGroup.headers.map((header) => (
+                  <TableHead key={header.id} className="font-medium text-xs text-muted-foreground h-9 whitespace-nowrap">
+                    {flexRender(
+                      header.column.columnDef.header,
+                      header.getContext()
+                    )}
+                  </TableHead>
+                ))}
+              </TableRow>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {table.getRowModel().rows.map((row, i) => (
+              <TableRow
+                key={row.id}
+                className={`border-b last:border-b-0 hover:bg-muted ${
+                  i % 2 === 1 ? 'bg-muted/50' : 'bg-white'
+                }`}
+              >
+                {row.getVisibleCells().map((cell) => (
+                  <TableCell key={cell.id} className="font-mono text-sm py-2.5 whitespace-nowrap">
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    )
+  }
+
+  // Full mode: with header chrome
   return (
     <div className="border bg-white">
       <div className="flex items-center justify-between px-3 py-2 border-b bg-accent-orange-10">
         <span className="text-xs text-muted-foreground">
           {results.row_count.toLocaleString()} rows
         </span>
-        <button
-          onClick={() => downloadCSV(results.columns, results.rows)}
-          className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <Download className="h-3.5 w-3.5" />
-          Download CSV
-        </button>
+        <div className="flex items-center gap-3">
+          {onAskAboutResults && (
+            <button
+              onClick={onAskAboutResults}
+              className="inline-flex items-center gap-1.5 text-xs text-accent hover:text-accent-orange-100 transition-colors"
+            >
+              <MessageCircle className="h-3.5 w-3.5" />
+              Ask about results
+            </button>
+          )}
+          <button
+            onClick={() => downloadCSV(results.columns, results.rows)}
+            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <Download className="h-3.5 w-3.5" />
+            Download CSV
+          </button>
+        </div>
       </div>
       <div className="overflow-x-auto">
         <Table>

@@ -11,8 +11,10 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline"
 )
 
 type GenerateRequest struct {
@@ -36,6 +38,23 @@ type GenerateResponse struct {
 const ollamaURL = "http://localhost:11434"
 const ollamaModel = "mistral-nemo"
 const maxValidationAttempts = 3
+
+// Cached prompts for query generation
+var (
+	cachedPrompts     *pipeline.Prompts
+	cachedPromptsOnce sync.Once
+	cachedPromptsErr  error
+)
+
+func getGeneratePrompt() (string, error) {
+	cachedPromptsOnce.Do(func() {
+		cachedPrompts, cachedPromptsErr = pipeline.LoadPrompts()
+	})
+	if cachedPromptsErr != nil {
+		return "", cachedPromptsErr
+	}
+	return cachedPrompts.Generate, nil
+}
 
 func GenerateSQL(w http.ResponseWriter, r *http.Request) {
 	var req GenerateRequest
@@ -454,18 +473,29 @@ func generateWithOllama(schema, prompt string) (string, error) {
 }
 
 func buildSystemPrompt(schema string) string {
-	return `You are a SQL expert. Generate ClickHouse SQL queries based on the user's request.
+	// Load the unified GENERATE.md prompt
+	generatePrompt, err := getGeneratePrompt()
+	if err != nil {
+		// Fall back to basic prompt if loading fails
+		generatePrompt = "You are a SQL expert. Generate ClickHouse SQL queries based on the user's request."
+	}
 
-Available tables and their columns:
-` + schema + `
+	// Add query editor specific instructions
+	editorInstructions := `
+## Query Editor Context
 
-Rules:
+This is an interactive query editor. The user may provide:
+- A natural language request to generate a new query
+- A current query they want you to modify
+
+Additional rules for the query editor:
 - First, briefly explain your reasoning (1-3 sentences)
-- Then provide the SQL query in a code block like: ` + "```sql\n[query]\n```" + `
-- Use appropriate LIMIT clauses for large result sets
-- Use ClickHouse-specific syntax when needed
+- Then provide the SQL query in a code block
 - If a current query is provided, modify it based on the user's request (add filters, change columns, adjust limits, etc.) rather than starting from scratch
-- If the user's request is unrelated to the current query, you may generate a new query`
+- If the user's request is unrelated to the current query, you may generate a new query
+`
+
+	return generatePrompt + editorInstructions + "\n\n## Database Schema\n\n```\n" + schema + "```"
 }
 
 func fetchSchema() (string, error) {

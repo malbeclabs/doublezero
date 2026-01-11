@@ -198,6 +198,29 @@ In ClickHouse, unmatched String columns in LEFT JOIN return `''` (empty string),
 - ✅ `WHERE column = ''` - correct for unmatched rows
 - ✅ `countIf(DISTINCT column, column != '')` - exclude empty strings when counting
 
+**Examples**:
+
+```sql
+-- ❌ WRONG: This will NOT find gossip nodes without validators
+SELECT gn.pubkey
+FROM solana_gossip_nodes_current gn
+LEFT JOIN solana_vote_accounts_current va ON gn.pubkey = va.node_pubkey
+WHERE va.vote_pubkey IS NULL
+
+-- ✅ CORRECT: Check for empty string instead
+SELECT gn.pubkey
+FROM solana_gossip_nodes_current gn
+LEFT JOIN solana_vote_accounts_current va ON gn.pubkey = va.node_pubkey
+WHERE va.vote_pubkey = ''
+
+-- ✅ CORRECT: Count only matched rows (exclude empty strings)
+SELECT
+  COUNT(DISTINCT gn.pubkey) AS total_gossip_nodes,
+  countIf(DISTINCT va.vote_pubkey, va.vote_pubkey != '') AS validators_count
+FROM solana_gossip_nodes_current gn
+LEFT JOIN solana_vote_accounts_current va ON gn.pubkey = va.node_pubkey
+```
+
 ---
 
 ## Critical Constraints Summary

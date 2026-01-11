@@ -102,13 +102,15 @@ export function Sidebar({
   const isQuerySessions = location.pathname === '/query/sessions'
   const isChatSessions = location.pathname === '/chat/sessions'
 
-  // Sort sessions by updatedAt, most recent first, and filter out empty sessions
+  // Sort sessions by updatedAt, most recent first, filter out empty sessions, and limit to 10
   const sortedQuerySessions = [...querySessions]
     .filter(s => s.history.length > 0)
     .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+    .slice(0, 10)
   const sortedChatSessions = [...chatSessions]
     .filter(s => s.messages.length > 0)
     .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+    .slice(0, 10)
 
   if (isCollapsed) {
     return (

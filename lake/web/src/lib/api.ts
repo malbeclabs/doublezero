@@ -143,18 +143,41 @@ export async function generateSQLStream(
 export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
+  // Pipeline data (only present on assistant messages)
+  pipelineData?: ChatPipelineData
 }
 
-export interface ChatQueryResult {
+export interface DataQuestion {
+  question: string
+  rationale: string
+}
+
+export interface GeneratedQuery {
+  question: string
+  sql: string
+  explanation: string
+}
+
+export interface ExecutedQuery {
+  question: string
   sql: string
   columns: string[]
   rows: unknown[][]
+  count: number
   error?: string
 }
 
+export interface ChatPipelineData {
+  dataQuestions: DataQuestion[]
+  generatedQueries: GeneratedQuery[]
+  executedQueries: ExecutedQuery[]
+}
+
 export interface ChatResponse {
-  response: string
-  queries?: ChatQueryResult[]
+  answer: string
+  dataQuestions?: DataQuestion[]
+  generatedQueries?: GeneratedQuery[]
+  executedQueries?: ExecutedQuery[]
   error?: string
 }
 
@@ -174,6 +197,91 @@ export async function sendChatMessage(
     throw new Error(text || 'Failed to send message')
   }
   return res.json()
+}
+
+export interface ChatStreamCallbacks {
+  onStatus: (status: { step: string; message: string }) => void
+  onDecomposed: (data: { count: number; questions: DataQuestion[] }) => void
+  onQueryProgress: (data: { completed: number; total: number; question: string; success: boolean; rows: number }) => void
+  onDone: (response: ChatResponse) => void
+  onError: (error: string) => void
+}
+
+export async function sendChatMessageStream(
+  message: string,
+  history: ChatMessage[],
+  callbacks: ChatStreamCallbacks,
+  signal?: AbortSignal
+): Promise<void> {
+  const res = await fetch('/api/chat/stream', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message, history }),
+    signal,
+  })
+
+  if (!res.ok) {
+    const text = await res.text()
+    callbacks.onError(text || 'Failed to send message')
+    return
+  }
+
+  const reader = res.body?.getReader()
+  if (!reader) {
+    callbacks.onError('Streaming not supported')
+    return
+  }
+
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      let currentEvent = ''
+      for (const line of lines) {
+        if (line.startsWith('event: ')) {
+          currentEvent = line.slice(7)
+        } else if (line.startsWith('data: ') && currentEvent) {
+          const data = line.slice(6)
+          try {
+            const parsed = JSON.parse(data)
+            switch (currentEvent) {
+              case 'status':
+                callbacks.onStatus(parsed)
+                break
+              case 'decomposed':
+                callbacks.onDecomposed(parsed)
+                break
+              case 'query_progress':
+                callbacks.onQueryProgress(parsed)
+                break
+              case 'done':
+                callbacks.onDone(parsed)
+                break
+              case 'error':
+                callbacks.onError(parsed.error || 'Unknown error')
+                break
+            }
+          } catch {
+            // Ignore parse errors
+          }
+          currentEvent = ''
+        }
+      }
+    }
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      return
+    }
+    callbacks.onError(err instanceof Error ? err.message : 'Stream error')
+  }
 }
 
 export interface GenerateTitleResponse {
@@ -222,7 +330,7 @@ Respond with ONLY the title. No quotes, no explanation.`
   }
 
   // Clean up the response - remove quotes, trim, take first line
-  const title = data.response
+  const title = data.answer
     .replace(/^["']|["']$/g, '')
     .split('\n')[0]
     .trim()
@@ -268,11 +376,47 @@ Respond with ONLY the title. No quotes, no explanation.`
   }
 
   // Clean up the response - remove quotes, trim, take first line
-  const title = data.response
+  const title = data.answer
     .replace(/^["']|["']$/g, '')
     .split('\n')[0]
     .trim()
     .slice(0, 60)
 
   return { title }
+}
+
+// Visualization recommendation types
+export interface VisualizationRecommendRequest {
+  columns: string[]
+  sampleRows: unknown[][]
+  rowCount: number
+  query: string
+}
+
+export interface VisualizationRecommendResponse {
+  recommended: boolean
+  chartType?: 'bar' | 'line' | 'pie' | 'area' | 'scatter'
+  xAxis?: string
+  yAxis?: string[]
+  reasoning?: string
+  error?: string
+}
+
+export async function recommendVisualization(
+  request: VisualizationRecommendRequest,
+  signal?: AbortSignal
+): Promise<VisualizationRecommendResponse> {
+  const res = await fetch('/api/visualize/recommend', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+    signal,
+  })
+
+  if (!res.ok) {
+    const text = await res.text()
+    return { recommended: false, error: text || 'Failed to get recommendation' }
+  }
+
+  return res.json()
 }

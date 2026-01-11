@@ -4,13 +4,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Catalog } from '@/components/catalog'
 import { PromptInput } from '@/components/prompt-input'
 import { QueryEditor, type QueryEditorHandle } from '@/components/query-editor'
-import { ResultsTable } from '@/components/results-table'
+import { ResultsView } from '@/components/results-view'
 import { SessionHistory, type GenerationRecord } from '@/components/session-history'
 import { SessionsPage } from '@/components/sessions-page'
 import { ChatSessionsPage } from '@/components/chat-sessions-page'
-import { Chat } from '@/components/chat'
+import { Chat, type ChatProgress } from '@/components/chat'
 import { Sidebar } from '@/components/sidebar'
-import { generateSessionTitle, generateChatSessionTitle, type SessionQueryInfo } from '@/lib/api'
+import { generateSessionTitle, generateChatSessionTitle, sendChatMessageStream, recommendVisualization, type SessionQueryInfo } from '@/lib/api'
 import type { TableInfo, QueryResponse, HistoryMessage, ChatMessage } from '@/lib/api'
 import {
   type QuerySession,
@@ -40,12 +40,19 @@ interface AppContextType {
   autoRun: boolean
   setAutoRun: React.Dispatch<React.SetStateAction<boolean>>
   queryEditorRef: React.RefObject<QueryEditorHandle | null>
+  // Pending query to load (used when navigating from chat with SQL)
+  pendingQueryRef: React.MutableRefObject<string | null>
   // Chat state
   chatSessions: ChatSession[]
   setChatSessions: React.Dispatch<React.SetStateAction<ChatSession[]>>
   currentChatSessionId: string
   setCurrentChatSessionId: React.Dispatch<React.SetStateAction<string>>
   chatSessionsLoaded: boolean
+  // Chat mutation state (lifted to persist across navigation)
+  pendingChatSessionId: string | null
+  chatProgress: ChatProgress | null
+  sendChatMessage: (sessionId: string, message: string, history: ChatMessage[]) => void
+  abortChatMessage: () => void
 }
 
 const AppContext = createContext<AppContextType | null>(null)
@@ -68,6 +75,7 @@ function QuerySessionSync({ children }: { children: React.ReactNode }) {
     setResults,
     setQuery,
     queryEditorRef,
+    pendingQueryRef,
   } = useAppContext()
 
   useEffect(() => {
@@ -83,7 +91,17 @@ function QuerySessionSync({ children }: { children: React.ReactNode }) {
         if (loadedSessionRef.current !== sessionId) {
           loadedSessionRef.current = sessionId
           setResults(null)
-          if (session.history.length > 0) {
+
+          // Check if there's a pending query from navigation (e.g., from chat "Edit" button)
+          if (pendingQueryRef.current !== null) {
+            const pendingQuery = pendingQueryRef.current
+            setQuery(pendingQuery)
+            pendingQueryRef.current = null
+            // Auto-run the query
+            setTimeout(() => {
+              queryEditorRef.current?.run(pendingQuery)
+            }, 100)
+          } else if (session.history.length > 0) {
             const latestQuery = session.history[0].sql
             setQuery(latestQuery)
             setTimeout(() => {
@@ -102,7 +120,7 @@ function QuerySessionSync({ children }: { children: React.ReactNode }) {
         }
       }
     }
-  }, [sessionId, sessionsLoaded, sessions, setCurrentSessionId, setResults, setQuery, queryEditorRef, navigate])
+  }, [sessionId, sessionsLoaded, sessions, setCurrentSessionId, setResults, setQuery, queryEditorRef, pendingQueryRef, navigate])
 
   return <>{children}</>
 }
@@ -166,31 +184,23 @@ function QueryRedirect() {
 
 function ChatRedirect() {
   const navigate = useNavigate()
-  const { chatSessions, setChatSessions, chatSessionsLoaded } = useAppContext()
+  const { setChatSessions, chatSessionsLoaded } = useAppContext()
 
   useEffect(() => {
     if (!chatSessionsLoaded) return
 
-    // Find the most recent session
-    const mostRecent = [...chatSessions].sort(
-      (a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()
-    )[0]
-
-    // If most recent session is empty, use it; otherwise create a new one
-    if (mostRecent && mostRecent.messages.length === 0) {
-      navigate(`/chat/${mostRecent.id}`, { replace: true })
-    } else {
-      const newSession = createChatSession()
-      setChatSessions(prev => [...prev, newSession])
-      navigate(`/chat/${newSession.id}`, { replace: true })
-    }
-  }, [chatSessionsLoaded, chatSessions, setChatSessions, navigate])
+    // Always create a new chat session
+    const newSession = createChatSession()
+    setChatSessions(prev => [...prev, newSession])
+    navigate(`/chat/${newSession.id}`, { replace: true })
+  }, [chatSessionsLoaded, setChatSessions, navigate])
 
   return null
 }
 
 // Query Editor View
 function QueryEditorView() {
+  const navigate = useNavigate()
   const {
     sessions,
     setSessions,
@@ -202,7 +212,18 @@ function QueryEditorView() {
     autoRun,
     setAutoRun,
     queryEditorRef,
+    chatSessions,
+    setChatSessions,
+    sendChatMessage,
   } = useAppContext()
+
+  // Visualization recommendation state
+  const [isRecommending, setIsRecommending] = useState(false)
+  const [recommendedConfig, setRecommendedConfig] = useState<{
+    chartType: 'bar' | 'line' | 'pie' | 'area' | 'scatter'
+    xAxis: string
+    yAxis: string[]
+  } | null>(null)
 
   const currentSession = sessions.find(s => s.id === currentSessionId)
   const generationHistory = currentSession?.history ?? []
@@ -249,7 +270,48 @@ function QueryEditorView() {
   const handleClear = () => {
     setQuery('')
     setResults(null)
+    setRecommendedConfig(null)
   }
+
+  // Handle query results (no auto-visualization)
+  const handleResults = useCallback((data: QueryResponse) => {
+    setResults(data)
+    setRecommendedConfig(null)
+  }, [setResults])
+
+  // Manual visualization request
+  const handleRequestVisualization = useCallback(async () => {
+    if (!results) return
+
+    // Skip recommendation for large datasets or empty results
+    const shouldSkip = results.columns.length > 20 || results.row_count > 1000 || results.rows.length === 0
+    if (shouldSkip) {
+      return
+    }
+
+    // Request LLM recommendation
+    setIsRecommending(true)
+    try {
+      const rec = await recommendVisualization({
+        columns: results.columns,
+        sampleRows: results.rows.slice(0, 20),
+        rowCount: results.row_count,
+        query: query,
+      })
+
+      if (rec.recommended && rec.chartType && rec.xAxis && rec.yAxis) {
+        setRecommendedConfig({
+          chartType: rec.chartType,
+          xAxis: rec.xAxis,
+          yAxis: rec.yAxis,
+        })
+      }
+    } catch {
+      // Silently fail - recommendation is not critical
+    } finally {
+      setIsRecommending(false)
+    }
+  }, [results, query])
 
   const handleGenerated = (sql: string, shouldRun: boolean) => {
     setQuery(sql)
@@ -286,6 +348,38 @@ function QueryEditorView() {
     setQuery(sql)
   }
 
+  const handleAskAboutResults = useCallback(() => {
+    if (!query || !results) return
+
+    // Build a summary of the results for context
+    const resultSummary = results.rows.length > 0
+      ? `The query returned ${results.row_count} rows with columns: ${results.columns.join(', ')}.`
+      : 'The query returned no results.'
+
+    // Create the question
+    const question = `I ran this SQL query:\n\n\`\`\`sql\n${query}\n\`\`\`\n\n${resultSummary}\n\nCan you help me understand these results?`
+
+    // Find or create a chat session
+    const emptySession = chatSessions.find(s => s.messages.length === 0)
+
+    if (emptySession) {
+      // Use existing empty session, add user message, then send
+      setChatSessions(prev => prev.map(s =>
+        s.id === emptySession.id
+          ? { ...s, messages: [{ role: 'user' as const, content: question }], updatedAt: new Date() }
+          : s
+      ))
+      sendChatMessage(emptySession.id, question, [])
+      navigate(`/chat/${emptySession.id}`)
+    } else {
+      // Create a new session
+      const newSession = createChatSession()
+      setChatSessions(prev => [...prev, { ...newSession, messages: [{ role: 'user' as const, content: question }] }])
+      sendChatMessage(newSession.id, question, [])
+      navigate(`/chat/${newSession.id}`)
+    }
+  }, [query, results, chatSessions, setChatSessions, sendChatMessage, navigate])
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       <div className="flex-shrink-0 px-8 pt-6 pb-4">
@@ -309,11 +403,17 @@ function QueryEditorView() {
             ref={queryEditorRef}
             query={query}
             onQueryChange={setQuery}
-            onResults={setResults}
+            onResults={handleResults}
             onClear={handleClear}
             onManualRun={handleManualRun}
           />
-          <ResultsTable results={results} />
+          <ResultsView
+            results={results}
+            isRecommending={isRecommending}
+            recommendedConfig={recommendedConfig}
+            onAskAboutResults={handleAskAboutResults}
+            onRequestVisualization={handleRequestVisualization}
+          />
         </div>
       </div>
     </div>
@@ -322,45 +422,68 @@ function QueryEditorView() {
 
 // Chat View
 function ChatView() {
-  const { chatSessions, setChatSessions, currentChatSessionId } = useAppContext()
+  const navigate = useNavigate()
+  const {
+    sessions,
+    setSessions,
+    chatSessions,
+    setChatSessions,
+    currentChatSessionId,
+    pendingChatSessionId,
+    chatProgress,
+    sendChatMessage,
+    abortChatMessage,
+    pendingQueryRef,
+  } = useAppContext()
 
   const currentChatSession = chatSessions.find(s => s.id === currentChatSessionId)
   const chatMessages = currentChatSession?.messages ?? []
+  const isPending = pendingChatSessionId === currentChatSessionId
+  const currentProgress = isPending ? chatProgress : null
 
-  const handleChatMessagesChange = useCallback(async (messages: ChatMessage[]) => {
-    // Update messages
+  const handleSendMessage = useCallback((message: string) => {
+    // Add user message immediately
     setChatSessions(prev => prev.map(session => {
       if (session.id === currentChatSessionId) {
         return {
           ...session,
           updatedAt: new Date(),
-          messages,
+          messages: [...session.messages, { role: 'user' as const, content: message }],
         }
       }
       return session
     }))
 
-    // Auto-generate title after first assistant response if no name
-    const session = chatSessions.find(s => s.id === currentChatSessionId)
-    if (session && !session.name && session.messages.length === 0 && messages.length >= 2) {
-      // This is the first response - generate title
-      try {
-        const result = await generateChatSessionTitle(messages)
-        if (result.title) {
-          setChatSessions(prev => prev.map(s =>
-            s.id === currentChatSessionId ? { ...s, name: result.title, updatedAt: new Date() } : s
-          ))
-        }
-      } catch {
-        // Silently fail - title generation is not critical
-      }
+    // Send to API (this persists across navigation)
+    sendChatMessage(currentChatSessionId, message, chatMessages)
+  }, [currentChatSessionId, setChatSessions, sendChatMessage, chatMessages])
+
+  const handleOpenInQueryEditor = useCallback((sql: string) => {
+    // Store the SQL to be loaded when the query editor syncs
+    pendingQueryRef.current = sql
+
+    // Find or create a query session to use
+    const emptySession = sessions.find(s => s.history.length === 0)
+
+    if (emptySession) {
+      // Use existing empty session
+      navigate(`/query/${emptySession.id}`)
+    } else {
+      // Create a new session
+      const newSession = createSession()
+      setSessions(prev => [...prev, newSession])
+      navigate(`/query/${newSession.id}`)
     }
-  }, [currentChatSessionId, setChatSessions, chatSessions])
+  }, [sessions, setSessions, pendingQueryRef, navigate])
 
   return (
     <Chat
       messages={chatMessages}
-      onMessagesChange={handleChatMessagesChange}
+      isPending={isPending}
+      progress={currentProgress ?? undefined}
+      onSendMessage={handleSendMessage}
+      onAbort={abortChatMessage}
+      onOpenInQueryEditor={handleOpenInQueryEditor}
     />
   )
 }
@@ -482,6 +605,12 @@ function AppContent() {
   const [sessionsLoaded, setSessionsLoaded] = useState(false)
   const [chatSessionsLoaded, setChatSessionsLoaded] = useState(false)
   const queryEditorRef = useRef<QueryEditorHandle>(null)
+  const pendingQueryRef = useRef<string | null>(null)
+
+  // Chat mutation state (lifted to persist across navigation)
+  const [pendingChatSessionId, setPendingChatSessionId] = useState<string | null>(null)
+  const [chatProgress, setChatProgress] = useState<ChatProgress | null>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
 
   // Load query sessions from localStorage on mount
   useEffect(() => {
@@ -525,6 +654,145 @@ function AppContent() {
     }
   }, [chatSessions, chatSessionsLoaded])
 
+  // Chat message handler (lifted to persist across navigation)
+  const sendChatMessage = useCallback(async (sessionId: string, message: string, history: ChatMessage[]) => {
+    setPendingChatSessionId(sessionId)
+    setChatProgress({ status: 'Starting...' })
+    abortControllerRef.current = new AbortController()
+
+    try {
+      await sendChatMessageStream(
+        message,
+        history,
+        {
+          onStatus: (status) => {
+            setChatProgress({
+              status: status.message,
+              step: status.step,
+            })
+          },
+          onDecomposed: (data) => {
+            setChatProgress({
+              status: `Running ${data.count} queries...`,
+              step: 'executing',
+              questionsCount: data.count,
+              queriesCompleted: 0,
+              queriesTotal: data.count,
+            })
+          },
+          onQueryProgress: (data) => {
+            setChatProgress({
+              status: `Running queries...`,
+              step: 'executing',
+              queriesCompleted: data.completed,
+              queriesTotal: data.total,
+              lastQuery: data.question,
+            })
+          },
+          onDone: (data) => {
+            // Update the session with the response
+            setChatSessions(prev => {
+              const session = prev.find(s => s.id === sessionId)
+              if (!session) return prev
+
+              const assistantMessage: ChatMessage = data.error
+                ? { role: 'assistant', content: data.error }
+                : {
+                    role: 'assistant',
+                    content: data.answer,
+                    pipelineData: {
+                      dataQuestions: data.dataQuestions ?? [],
+                      generatedQueries: data.generatedQueries ?? [],
+                      executedQueries: data.executedQueries ?? [],
+                    }
+                  }
+
+              const newMessages: ChatMessage[] = [...session.messages, assistantMessage]
+
+              return prev.map(s =>
+                s.id === sessionId ? { ...s, messages: newMessages, updatedAt: new Date() } : s
+              )
+            })
+
+            // Auto-generate title for new sessions
+            if (!data.error) {
+              setChatSessions(prev => {
+                const session = prev.find(s => s.id === sessionId)
+                if (session && !session.name && session.messages.length <= 2) {
+                  // Generate title async (don't await)
+                  generateChatSessionTitle(session.messages).then(result => {
+                    if (result.title) {
+                      setChatSessions(p => p.map(s =>
+                        s.id === sessionId ? { ...s, name: result.title, updatedAt: new Date() } : s
+                      ))
+                    }
+                  }).catch(() => { /* ignore */ })
+                }
+                return prev
+              })
+            }
+
+            setPendingChatSessionId(null)
+            setChatProgress(null)
+            abortControllerRef.current = null
+          },
+          onError: (error) => {
+            // Update session with error
+            setChatSessions(prev => prev.map(s =>
+              s.id === sessionId
+                ? {
+                    ...s,
+                    messages: [...s.messages, {
+                      role: 'assistant',
+                      content: error
+                    }],
+                    updatedAt: new Date()
+                  }
+                : s
+            ))
+            setPendingChatSessionId(null)
+            setChatProgress(null)
+            abortControllerRef.current = null
+          },
+        },
+        abortControllerRef.current.signal
+      )
+    } catch (err) {
+      // Don't show error if aborted
+      if (err instanceof Error && err.name === 'AbortError') {
+        setPendingChatSessionId(null)
+        setChatProgress(null)
+        abortControllerRef.current = null
+        return
+      }
+      // Update session with error
+      setChatSessions(prev => prev.map(s =>
+        s.id === sessionId
+          ? {
+              ...s,
+              messages: [...s.messages, {
+                role: 'assistant',
+                content: err instanceof Error ? err.message : 'Something went wrong. Please try again.'
+              }],
+              updatedAt: new Date()
+            }
+          : s
+      ))
+      setPendingChatSessionId(null)
+      setChatProgress(null)
+      abortControllerRef.current = null
+    }
+  }, [])
+
+  const abortChatMessage = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+      setPendingChatSessionId(null)
+      setChatProgress(null)
+    }
+  }, [])
+
   const contextValue: AppContextType = {
     sessions,
     setSessions,
@@ -538,11 +806,16 @@ function AppContent() {
     autoRun,
     setAutoRun,
     queryEditorRef,
+    pendingQueryRef,
     chatSessions,
     setChatSessions,
     currentChatSessionId,
     setCurrentChatSessionId,
     chatSessionsLoaded,
+    pendingChatSessionId,
+    chatProgress,
+    sendChatMessage,
+    abortChatMessage,
   }
 
   // Sidebar handlers

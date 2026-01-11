@@ -31,6 +31,8 @@ func main() {
 	r.Post("/api/generate", handlers.GenerateSQL)
 	r.Post("/api/generate/stream", handlers.GenerateSQLStream)
 	r.Post("/api/chat", handlers.Chat)
+	r.Post("/api/chat/stream", handlers.ChatStream)
+	r.Post("/api/visualize/recommend", handlers.RecommendVisualization)
 
 	log.Println("API server starting on :8080")
 	if err := http.ListenAndServe(":8080", r); err != nil {

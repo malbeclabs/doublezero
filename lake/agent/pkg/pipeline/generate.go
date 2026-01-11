@@ -24,6 +24,7 @@ func (p *Pipeline) Generate(ctx context.Context, dataQuestion DataQuestion) (Gen
 
 	// Build system prompt with dynamic schema
 	systemPrompt := buildGeneratePrompt(p.cfg.Prompts.Generate, schema)
+
 	userPrompt := fmt.Sprintf("Data question: %s\n\nRationale: %s", dataQuestion.Question, dataQuestion.Rationale)
 
 	response, err := p.cfg.LLM.Complete(ctx, systemPrompt, userPrompt)

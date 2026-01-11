@@ -584,7 +584,15 @@ func NewClickhouseSchemaFetcher(db clickhouse.Client) *ClickhouseSchemaFetcher {
 	return &ClickhouseSchemaFetcher{db: db}
 }
 
-// FetchSchema retrieves database schema information
+// columnInfoTest holds column metadata for schema fetching
+type columnInfoTest struct {
+	table        string
+	name         string
+	colType      string
+	sampleValues []string
+}
+
+// FetchSchema retrieves database schema information with sample values for categorical columns
 func (f *ClickhouseSchemaFetcher) FetchSchema(ctx context.Context) (string, error) {
 	conn, err := f.db.Conn(ctx)
 	if err != nil {
@@ -603,6 +611,16 @@ func (f *ClickhouseSchemaFetcher) FetchSchema(ctx context.Context) (string, erro
 	columnsResult, err := dataset.Query(ctx, conn, columnsSQL, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch columns: %w", err)
+	}
+
+	// Build column info list
+	var columns []columnInfoTest
+	for _, row := range columnsResult.Rows {
+		columns = append(columns, columnInfoTest{
+			table:   row["table"].(string),
+			name:    row["name"].(string),
+			colType: row["type"].(string),
+		})
 	}
 
 	// Fetch views
@@ -626,30 +644,33 @@ func (f *ClickhouseSchemaFetcher) FetchSchema(ctx context.Context) (string, erro
 		viewDefs[name] = asSelect
 	}
 
+	// Enrich categorical columns with sample values
+	f.enrichWithSampleValues(ctx, columns)
+
 	// Format schema
 	var sb strings.Builder
 	currentTable := ""
 
-	for _, row := range columnsResult.Rows {
-		table, _ := row["table"].(string)
-		name, _ := row["name"].(string)
-		colType, _ := row["type"].(string)
-
-		if table != currentTable {
+	for _, col := range columns {
+		if col.table != currentTable {
 			if currentTable != "" {
 				if def, ok := viewDefs[currentTable]; ok {
 					sb.WriteString("  Definition: " + def + "\n")
 				}
 				sb.WriteString("\n")
 			}
-			currentTable = table
-			if _, isView := viewDefs[table]; isView {
-				sb.WriteString(table + " (VIEW):\n")
+			currentTable = col.table
+			if _, isView := viewDefs[col.table]; isView {
+				sb.WriteString(col.table + " (VIEW):\n")
 			} else {
-				sb.WriteString(table + ":\n")
+				sb.WriteString(col.table + ":\n")
 			}
 		}
-		sb.WriteString("  - " + name + " (" + colType + ")\n")
+		if len(col.sampleValues) > 0 {
+			sb.WriteString("  - " + col.name + " (" + col.colType + ") values: " + strings.Join(col.sampleValues, ", ") + "\n")
+		} else {
+			sb.WriteString("  - " + col.name + " (" + col.colType + ")\n")
+		}
 	}
 
 	// Handle last table's view definition
@@ -658,6 +679,99 @@ func (f *ClickhouseSchemaFetcher) FetchSchema(ctx context.Context) (string, erro
 	}
 
 	return sb.String(), nil
+}
+
+// isCategoricalTypeTest returns true if the column type should have sample values displayed.
+func isCategoricalTypeTest(colType string) bool {
+	t := strings.ToLower(colType)
+	if strings.Contains(t, "enum") {
+		return true
+	}
+	if strings.Contains(t, "lowcardinality") && strings.Contains(t, "string") {
+		return true
+	}
+	if t == "string" || t == "nullable(string)" {
+		return true
+	}
+	return false
+}
+
+// shouldSkipColumnTest returns true for columns that shouldn't have samples fetched.
+func shouldSkipColumnTest(colName string) bool {
+	name := strings.ToLower(colName)
+	skipSuffixes := []string{"_id", "_key", "_code", "_at", "_time", "_timestamp", "_date", "_hash", "_pubkey", "_address"}
+	for _, suffix := range skipSuffixes {
+		if strings.HasSuffix(name, suffix) {
+			return true
+		}
+	}
+	skipPrefixes := []string{"id_", "uuid_"}
+	for _, prefix := range skipPrefixes {
+		if strings.HasPrefix(name, prefix) {
+			return true
+		}
+	}
+	skipExact := []string{"id", "uuid", "name", "description", "comment", "message", "error", "reason"}
+	for _, exact := range skipExact {
+		if name == exact {
+			return true
+		}
+	}
+	return false
+}
+
+// enrichWithSampleValues fetches sample values for categorical columns.
+func (f *ClickhouseSchemaFetcher) enrichWithSampleValues(ctx context.Context, columns []columnInfoTest) {
+	// Group columns by table
+	tableColumns := make(map[string][]*columnInfoTest)
+	for i := range columns {
+		col := &columns[i]
+		if isCategoricalTypeTest(col.colType) && !shouldSkipColumnTest(col.name) {
+			tableColumns[col.table] = append(tableColumns[col.table], col)
+		}
+	}
+
+	// Fetch samples for each categorical column
+	for table, cols := range tableColumns {
+		for _, col := range cols {
+			samples, err := f.fetchColumnSamples(ctx, table, col.name)
+			if err == nil && len(samples) > 0 && len(samples) <= 15 {
+				col.sampleValues = samples
+			}
+		}
+	}
+}
+
+// fetchColumnSamples returns distinct values for a column.
+func (f *ClickhouseSchemaFetcher) fetchColumnSamples(ctx context.Context, table, column string) ([]string, error) {
+	conn, err := f.db.Conn(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	query := fmt.Sprintf(`
+		SELECT DISTINCT %s
+		FROM %s
+		WHERE %s IS NOT NULL AND %s != ''
+		LIMIT 20
+	`, column, table, column, column)
+
+	result, err := dataset.Query(ctx, conn, query, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	samples := make([]string, 0, len(result.Rows))
+	for _, row := range result.Rows {
+		if val, ok := row[column]; ok {
+			if s, ok := val.(string); ok && s != "" {
+				samples = append(samples, s)
+			}
+		}
+	}
+
+	return samples, nil
 }
 
 // isOllamaAvailable checks if the local Ollama server is available

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
 )
 
@@ -54,9 +53,6 @@ func (p *Pipeline) DecomposeWithHistory(ctx context.Context, userQuestion string
 	if err != nil {
 		return nil, fmt.Errorf("LLM completion failed: %w", err)
 	}
-
-	// Log the raw response for debugging
-	log.Printf("DEBUG decompose raw response (%d chars): %s", len(response), truncateForLog(response, 500))
 
 	// Parse the JSON response
 	dataQuestions, err := parseDecomposeResponse(response)
@@ -139,14 +135,6 @@ func extractJSON(response string) string {
 	}
 
 	return ""
-}
-
-// truncateForLog truncates a string for logging purposes.
-func truncateForLog(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen] + "..."
 }
 
 // extractJSONObject extracts a complete JSON object starting at the given position,

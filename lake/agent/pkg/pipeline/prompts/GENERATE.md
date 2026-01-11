@@ -54,8 +54,40 @@ These rules cannot be inferred from schema alone:
 
 ### Naming Conventions
 - Use `{table}_current` views for current state (e.g., `dz_devices_current`)
-- Use `dim_{table}_history` tables for historical versions (SCD Type 2)
+- Use `dim_{table}_history` tables for historical snapshots (see History Tables section below)
 - Always report devices/links by `code`, never pk or host
+
+### History Tables (CRITICAL)
+**ALWAYS check the schema for exact table and column names.** Do NOT guess column names.
+
+History tables follow the pattern `dim_{entity}_history` (e.g., `dim_dz_users_history`, `dim_dz_devices_history`).
+
+**History tables use SNAPSHOT pattern, NOT SCD Type 2 ranges:**
+- `snapshot_ts` - timestamp when the snapshot was taken
+- `is_deleted` - whether the record was deleted at this snapshot
+- NO `valid_from`/`valid_to` columns exist
+
+**To query historical state at a point in time:**
+```sql
+-- Find records as of 24 hours ago
+SELECT * FROM dim_dz_users_history
+WHERE snapshot_ts <= now() - INTERVAL 24 HOUR
+  AND is_deleted = false
+ORDER BY snapshot_ts DESC
+LIMIT 1 BY pk  -- Get latest snapshot per entity before the cutoff
+```
+
+**WRONG table names** (these do NOT exist):
+- `dz_users_history` - use `dim_dz_users_history`
+- `solana_vote_accounts_history` - does NOT exist
+- `solana_gossip_nodes_history` - does NOT exist
+
+**WRONG column names** (these do NOT exist in history tables):
+- `dbt_valid_from`, `dbt_valid_to`
+- `version_ts`, `version_ts_end`
+- `valid_from`, `valid_to`
+
+**ALWAYS look at the schema** to find the exact column names. If a table or column is not in the schema, it does NOT exist.
 
 ### DZ-Solana Relationship (IMPORTANT)
 Solana validators/nodes connect to DZ as **users**, not directly to devices.
@@ -105,5 +137,10 @@ SELECT ...
 5. **NEVER use IS NULL or IS NOT NULL** on String columns - use `= ''` or `!= ''` instead
 6. **Calculate percentages** for telemetry data, not raw counts
 7. **Check sample values** in the schema to use correct column values (e.g., 'activated' not 'active')
+8. **ONLY use table and column names that appear in the schema below** - do NOT invent or guess names
+
+## IMPORTANT: Read the Schema Carefully
+
+The database schema is provided below. **Use ONLY the exact table and column names shown in the schema.** If a table or column doesn't appear in the schema, it doesn't exist. Do not guess or assume column names based on conventions from other databases.
 
 Now generate the SQL query for the data question.

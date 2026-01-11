@@ -40,7 +40,8 @@ func (f *HTTPSchemaFetcher) FetchSchema(ctx context.Context) (string, error) {
 	f.enrichWithSampleValues(ctx, columns)
 
 	// Format schema as readable text
-	return formatSchema(columns, views), nil
+	schema := formatSchema(columns, views)
+	return schema, nil
 }
 
 type columnInfo struct {

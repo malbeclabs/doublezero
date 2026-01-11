@@ -12,10 +12,10 @@ import (
 	influxdb2api "github.com/influxdata/influxdb-client-go/v2/api"
 	"github.com/jonboulle/clockwork"
 	"github.com/malbeclabs/doublezero/telemetry/global-monitor/internal/dz"
-	"github.com/malbeclabs/doublezero/telemetry/global-monitor/internal/geoip"
 	"github.com/malbeclabs/doublezero/telemetry/global-monitor/internal/metrics"
 	"github.com/malbeclabs/doublezero/telemetry/global-monitor/internal/netlink"
 	"github.com/malbeclabs/doublezero/telemetry/global-monitor/internal/sol"
+	"github.com/malbeclabs/doublezero/tools/maxmind/pkg/geoip"
 )
 
 type InfluxTable string

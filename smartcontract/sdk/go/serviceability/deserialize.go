@@ -54,7 +54,6 @@ func DeserializeContributor(reader *ByteReader, contributor *Contributor) {
 	contributor.BumpSeed = reader.ReadU8()
 	contributor.Status = ContributorStatus(reader.ReadU8())
 	contributor.Code = reader.ReadString()
-	contributor.Name = reader.ReadString()
 	contributor.PubKey = reader.ReadPubkey()
 }
 

@@ -10,8 +10,10 @@ import (
 // Prompts contains all the pipeline prompts loaded from embedded files.
 type Prompts struct {
 	CatalogSummary string // High-level catalog overview for decomposition
+	Classify       string // Prompt for question classification (pre-step)
 	Decompose      string // Prompt for breaking down questions
 	Generate       string // Prompt for SQL generation
+	Respond        string // Prompt for conversational responses (no data query)
 	Synthesize     string // Prompt for answer synthesis
 }
 
@@ -23,11 +25,17 @@ func LoadPrompts() (*Prompts, error) {
 	if p.CatalogSummary, err = loadPrompt("CATALOG_SUMMARY.md"); err != nil {
 		return nil, fmt.Errorf("failed to load CATALOG_SUMMARY: %w", err)
 	}
+	if p.Classify, err = loadPrompt("CLASSIFY.md"); err != nil {
+		return nil, fmt.Errorf("failed to load CLASSIFY: %w", err)
+	}
 	if p.Decompose, err = loadPrompt("DECOMPOSE.md"); err != nil {
 		return nil, fmt.Errorf("failed to load DECOMPOSE: %w", err)
 	}
 	if p.Generate, err = loadPrompt("GENERATE.md"); err != nil {
 		return nil, fmt.Errorf("failed to load GENERATE: %w", err)
+	}
+	if p.Respond, err = loadPrompt("RESPOND.md"); err != nil {
+		return nil, fmt.Errorf("failed to load RESPOND: %w", err)
 	}
 	if p.Synthesize, err = loadPrompt("SYNTHESIZE.md"); err != nil {
 		return nil, fmt.Errorf("failed to load SYNTHESIZE: %w", err)

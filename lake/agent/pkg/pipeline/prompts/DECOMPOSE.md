@@ -19,6 +19,7 @@ Key terms used in DoubleZero (DZ) that map to database entities:
 **Solana Validators on DZ**:
 - Validators connect to DZ as **users** (not directly to devices)
 - Join path: `dz_users.dz_ip` → `solana_gossip_nodes.gossip_ip` → `solana_vote_accounts.node_pubkey`
+- "On DZ" or "connected" queries must join through `dz_users` (source of truth)
 
 **Network Entities**:
 - **Devices** = DZ network infrastructure (routers/switches)

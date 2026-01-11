@@ -79,16 +79,19 @@ type PipelineResult struct {
 	// Input
 	UserQuestion string
 
-	// Step 1: Decomposition
+	// Pre-step: Classification
+	Classification Classification // How the question was classified
+
+	// Step 1: Decomposition (only for data_analysis)
 	DataQuestions []DataQuestion
 
-	// Step 2: Generation
+	// Step 2: Generation (only for data_analysis)
 	GeneratedQueries []GeneratedQuery
 
-	// Step 3: Execution
+	// Step 3: Execution (only for data_analysis)
 	ExecutedQueries []ExecutedQuery
 
-	// Step 4: Synthesis
+	// Step 4: Synthesis / Response
 	Answer string
 }
 
@@ -257,6 +260,49 @@ func (p *Pipeline) Run(ctx context.Context, userQuestion string) (*PipelineResul
 func (p *Pipeline) RunWithHistory(ctx context.Context, userQuestion string, history []ConversationMessage) (*PipelineResult, error) {
 	result := &PipelineResult{
 		UserQuestion: userQuestion,
+	}
+
+	// Pre-step: Classify the question to determine routing
+	if p.log != nil {
+		p.log.Info("pipeline: classifying question")
+	}
+	classification, err := p.ClassifyWithHistory(ctx, userQuestion, history)
+	if err != nil {
+		return nil, fmt.Errorf("classification failed: %w", err)
+	}
+	result.Classification = classification.Classification
+	if p.log != nil {
+		p.log.Info("pipeline: question classified",
+			"classification", classification.Classification,
+			"reasoning", classification.Reasoning)
+	}
+
+	// Route based on classification
+	switch classification.Classification {
+	case ClassificationOutOfScope:
+		// Return the direct response from classification
+		if classification.DirectResponse != "" {
+			result.Answer = classification.DirectResponse
+		} else {
+			result.Answer = "I'm a DoubleZero network and Solana validator data assistant. I can help you with questions about DZ network devices, links, users, performance metrics, and connected Solana validators. What would you like to know?"
+		}
+		return result, nil
+
+	case ClassificationConversational:
+		// Handle conversational questions without querying data
+		if p.log != nil {
+			p.log.Info("pipeline: handling conversational question")
+		}
+		answer, err := p.RespondWithHistory(ctx, userQuestion, history)
+		if err != nil {
+			return nil, fmt.Errorf("conversational response failed: %w", err)
+		}
+		result.Answer = answer
+		return result, nil
+
+	case ClassificationDataAnalysis:
+		// Continue with the full data analysis pipeline
+		// (fall through to the rest of the function)
 	}
 
 	// Step 1: Decompose the question into data questions

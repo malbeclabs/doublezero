@@ -146,8 +146,26 @@ Solana validators/nodes connect to DZ as **users**, not directly to devices.
 - Users connect TO devices via `dz_users_current.device_pk = dz_devices_current.pk`
 
 **To find "Solana validators on DZ" or "connected validators":**
-1. Join `dz_users_current.dz_ip` to `solana_gossip_nodes_current.gossip_ip`
-2. Then join gossip to vote accounts: `solana_gossip_nodes_current.pubkey = solana_vote_accounts_current.node_pubkey`
+1. Must start from or join through `dz_users_current` with `status = 'activated'`
+2. Join `dz_users_current.dz_ip` to `solana_gossip_nodes_current.gossip_ip`
+3. Then join gossip to vote accounts: `solana_gossip_nodes_current.pubkey = solana_vote_accounts_current.node_pubkey`
+
+**WRONG patterns:**
+- `SELECT COUNT(*) FROM solana_vote_accounts_current` - counts ALL validators, not just those on DZ
+- `SELECT * FROM solana_gossip_nodes_current g JOIN solana_vote_accounts_current v ON g.pubkey = v.node_pubkey` - still counts ALL validators
+- Any query about "connected" or "on DZ" validators that doesn't include `dz_users_current` in the join
+
+**CORRECT pattern for counting validators currently on DZ:**
+```sql
+SELECT COUNT(DISTINCT va.vote_pubkey) AS validators_on_dz
+FROM dz_users_current u
+JOIN solana_gossip_nodes_current gn ON u.dz_ip = gn.gossip_ip
+JOIN solana_vote_accounts_current va ON gn.pubkey = va.node_pubkey
+WHERE u.status = 'activated'
+  AND va.activated_stake_lamports > 0
+```
+
+**Key insight**: `dz_users_current` is the source of truth for what is currently "on DZ". Without joining through it, you're counting the entire Solana network. For historical queries, use `dim_dz_users_history` instead.
 
 **WRONG**: Joining device IP to gossip IP (devices are infrastructure, not validators)
 **CORRECT**: Joining user dz_ip to gossip_ip (users ARE the validators)

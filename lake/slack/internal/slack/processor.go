@@ -2,6 +2,7 @@ package slack
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"regexp"
 	"strings"
@@ -107,6 +108,64 @@ func containsNonBotMention(text, botUserID string) bool {
 	return false
 }
 
+// formatThinkingMessage formats the thinking message based on progress
+func formatThinkingMessage(progress pipeline.Progress) string {
+	var sb strings.Builder
+
+	switch progress.Stage {
+	case pipeline.StageClassifying:
+		sb.WriteString(":hourglass: *Thinking...*\n")
+		sb.WriteString("_Analyzing your question..._")
+
+	case pipeline.StageDecomposing:
+		sb.WriteString(":hourglass: *Thinking...*\n")
+		sb.WriteString("_Breaking down into data questions..._")
+
+	case pipeline.StageDecomposed:
+		sb.WriteString(":hourglass: *Thinking...*\n")
+		sb.WriteString("_Identified data questions:_\n")
+		for i, q := range progress.DataQuestions {
+			sb.WriteString(fmt.Sprintf("  %d. %s\n", i+1, q.Question))
+		}
+
+	case pipeline.StageExecuting:
+		sb.WriteString(":hourglass: *Thinking...*\n")
+		sb.WriteString("_Identified data questions:_\n")
+		for i, q := range progress.DataQuestions {
+			sb.WriteString(fmt.Sprintf("  %d. %s\n", i+1, q.Question))
+		}
+		sb.WriteString(fmt.Sprintf("\n_Running queries... (%d/%d)_", progress.QueriesDone, progress.QueriesTotal))
+
+	case pipeline.StageSynthesizing:
+		sb.WriteString(":hourglass: *Thinking...*\n")
+		sb.WriteString("_Identified data questions:_\n")
+		for i, q := range progress.DataQuestions {
+			sb.WriteString(fmt.Sprintf("  %d. %s\n", i+1, q.Question))
+		}
+		sb.WriteString(fmt.Sprintf("\n:white_check_mark: _Queries complete (%d/%d)_\n", progress.QueriesDone, progress.QueriesTotal))
+		sb.WriteString("_Preparing answer..._")
+
+	case pipeline.StageComplete:
+		// For data_analysis, show summary
+		if progress.Classification == pipeline.ClassificationDataAnalysis && len(progress.DataQuestions) > 0 {
+			sb.WriteString(":brain: *Analysis complete*\n")
+			sb.WriteString("_Answered by querying:_\n")
+			for i, q := range progress.DataQuestions {
+				sb.WriteString(fmt.Sprintf("  %d. %s\n", i+1, q.Question))
+			}
+		}
+		// For conversational/out_of_scope, we don't show anything (just answer)
+
+	case pipeline.StageError:
+		sb.WriteString(":x: *Error*\n")
+		if progress.Error != nil {
+			sb.WriteString(fmt.Sprintf("_%s_", progress.Error.Error()))
+		}
+	}
+
+	return sb.String()
+}
+
 // ProcessMessage processes a single Slack message
 func (p *Processor) ProcessMessage(
 	ctx context.Context,
@@ -168,6 +227,10 @@ func (p *Processor) ProcessMessage(
 	// Always thread responses (both channels and DMs)
 	// Determine thread key: use thread timestamp if in thread, otherwise use message timestamp
 	threadKey := ev.TimeStamp
+	threadTS := ev.ThreadTimeStamp
+	if threadTS == "" {
+		threadTS = ev.TimeStamp
+	}
 	if ev.ThreadTimeStamp != "" {
 		threadKey = ev.ThreadTimeStamp
 	}
@@ -189,38 +252,62 @@ func (p *Processor) ProcessMessage(
 		history = []pipeline.ConversationMessage{}
 	}
 
-	// Add processing reaction to indicate thinking/typing
-	if err := p.slackClient.AddProcessingReaction(ctx, ev.Channel, ev.TimeStamp); err != nil {
-		// Error already logged in AddProcessingReaction
-		SlackAPIErrorsTotal.WithLabelValues("add_reaction").Inc()
+	// Post initial thinking message
+	thinkingTS, err := p.slackClient.PostMessage(ctx, ev.Channel, ":hourglass: *Thinking...*\n_Analyzing your question..._", nil, threadTS)
+	if err != nil {
+		p.log.Warn("failed to post thinking message", "error", err)
+		SlackAPIErrorsTotal.WithLabelValues("post_message").Inc()
+		// Continue anyway - we can still process without the thinking message
 	}
 
-	// Run the pipeline with conversation history
-	result, err := p.pipeline.RunWithHistory(ctx, txt, history)
+	// Track last progress stage to avoid redundant updates
+	var lastStage pipeline.ProgressStage
+	var lastQueriesDone int
+	var thinkingMu sync.Mutex
+
+	// Progress callback to update thinking message
+	onProgress := func(progress pipeline.Progress) {
+		thinkingMu.Lock()
+		defer thinkingMu.Unlock()
+
+		// Skip if same stage and same query count (avoid redundant updates)
+		if progress.Stage == lastStage && progress.QueriesDone == lastQueriesDone {
+			return
+		}
+		lastStage = progress.Stage
+		lastQueriesDone = progress.QueriesDone
+
+		// Don't update on complete - we'll handle that separately
+		if progress.Stage == pipeline.StageComplete {
+			return
+		}
+
+		// Update thinking message
+		if thinkingTS != "" {
+			thinkingText := formatThinkingMessage(progress)
+			if err := p.slackClient.UpdateMessage(ctx, ev.Channel, thinkingTS, thinkingText, nil); err != nil {
+				p.log.Debug("failed to update thinking message", "error", err)
+			}
+		}
+	}
+
+	// Run the pipeline with progress callbacks
+	result, err := p.pipeline.RunWithProgress(ctx, txt, history, onProgress)
 	if err != nil {
 		AgentErrorsTotal.WithLabelValues("pipeline", "pipeline").Inc()
 		p.log.Error("pipeline error", "error", err, "message_ts", ev.TimeStamp, "envelope_id", eventID)
 
 		p.MarkResponded(messageKey)
 
-		reply := SanitizeErrorMessage(err.Error())
-		reply = normalizeTwoWayArrow(reply)
-
-		threadTS := ev.ThreadTimeStamp
-		if threadTS == "" {
-			threadTS = ev.TimeStamp
-		}
-		_, postErr := p.slackClient.PostMessage(ctx, ev.Channel, reply, nil, threadTS)
-		if postErr != nil {
-			SlackAPIErrorsTotal.WithLabelValues("post_message").Inc()
-		} else {
-			MessagesPostedTotal.WithLabelValues("error", "pipeline").Inc()
+		// Update thinking message to show error
+		if thinkingTS != "" {
+			errorText := fmt.Sprintf(":x: *Error*\n_%s_", SanitizeErrorMessage(err.Error()))
+			if err := p.slackClient.UpdateMessage(ctx, ev.Channel, thinkingTS, errorText, nil); err != nil {
+				p.log.Debug("failed to update thinking message with error", "error", err)
+			}
 		}
 
-		time.Sleep(300 * time.Millisecond)
-		if err := p.slackClient.RemoveProcessingReaction(ctx, ev.Channel, ev.TimeStamp); err != nil {
-			SlackAPIErrorsTotal.WithLabelValues("remove_reaction").Inc()
-		}
+		MessagesPostedTotal.WithLabelValues("error", "pipeline").Inc()
 		return
 	}
 
@@ -235,23 +322,32 @@ func (p *Processor) ProcessMessage(
 		"classification", result.Classification,
 		"data_questions", len(result.DataQuestions))
 
-	blocks := ConvertMarkdownToBlocks(reply, p.log)
-
-	threadTS := ev.ThreadTimeStamp
-	if threadTS == "" {
-		threadTS = ev.TimeStamp
+	// For data analysis, update thinking message with summary
+	if result.Classification == pipeline.ClassificationDataAnalysis && len(result.DataQuestions) > 0 && thinkingTS != "" {
+		summaryText := formatThinkingMessage(pipeline.Progress{
+			Stage:          pipeline.StageComplete,
+			Classification: result.Classification,
+			DataQuestions:  result.DataQuestions,
+			QueriesTotal:   len(result.DataQuestions),
+			QueriesDone:    len(result.DataQuestions),
+		})
+		if err := p.slackClient.UpdateMessage(ctx, ev.Channel, thinkingTS, summaryText, nil); err != nil {
+			p.log.Debug("failed to update thinking message with summary", "error", err)
+		}
+	} else if thinkingTS != "" {
+		// For conversational/out_of_scope, delete the thinking message (or make it minimal)
+		// We'll just update it to be empty-ish so the answer stands alone
+		if err := p.slackClient.UpdateMessage(ctx, ev.Channel, thinkingTS, "_Responding..._", nil); err != nil {
+			p.log.Debug("failed to update thinking message", "error", err)
+		}
 	}
+
+	// Post the final answer
+	blocks := ConvertMarkdownToBlocks(reply, p.log)
 
 	p.MarkResponded(messageKey)
 
 	respTS, err := p.slackClient.PostMessage(ctx, ev.Channel, reply, blocks, threadTS)
-
-	if err == nil {
-		time.Sleep(300 * time.Millisecond)
-		if err := p.slackClient.RemoveProcessingReaction(ctx, ev.Channel, ev.TimeStamp); err != nil {
-			SlackAPIErrorsTotal.WithLabelValues("remove_reaction").Inc()
-		}
-	}
 
 	if err != nil {
 		SlackAPIErrorsTotal.WithLabelValues("post_message").Inc()

@@ -23,6 +23,37 @@ Follow these Slack-specific formatting rules:
 - Headers with emojis help break up long responses in Slack threads.
 - This improves readability in Slack's message interface.
 
+### Spacing (IMPORTANT)
+
+**MANDATORY: Use generous vertical spacing throughout your response.**
+
+- **Always add TWO blank lines before each section header** (not one, two).
+- Add a blank line after lists before continuing with prose.
+- Add a blank line after code blocks.
+- Add a blank line between paragraphs.
+- Never have a section header immediately follow content without blank lines.
+- Slack's narrow message width makes dense text hard to read - spacing is critical.
+
+Example of correct spacing:
+
+```
+:chart_with_upwards_trend: *Summary*
+
+Traffic is elevated on the NYC-LON path.
+
+
+:mag: *Details*
+
+- Source: NYC metro
+- Destination: LON metro
+- Current rate: 150 Gbps
+
+
+:bulb: *Recommendation*
+
+Consider load balancing across alternative paths.
+```
+
 ### Markdown Support
 
 - Slack supports basic markdown formatting (bold, italic, code blocks, lists).

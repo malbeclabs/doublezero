@@ -205,6 +205,34 @@ func (c *Client) IsBotMentioned(text string) bool {
 	return strings.Contains(text, mentionPattern1) || strings.Contains(text, mentionPattern2)
 }
 
+// UpdateMessage updates an existing message
+func (c *Client) UpdateMessage(ctx context.Context, channelID, timestamp string, text string, blocks []slack.Block) error {
+	var msgOpts []slack.MsgOption
+
+	// Use blocks if provided, otherwise use plain text
+	if blocks != nil {
+		msgOpts = append(msgOpts, slack.MsgOptionBlocks(blocks...))
+	} else {
+		msgOpts = append(msgOpts, slack.MsgOptionText(text, false))
+	}
+
+	var err error
+	retryCfg := retry.DefaultConfig()
+	err = retry.Do(ctx, retryCfg, func() error {
+		_, _, _, err = c.api.UpdateMessageContext(ctx, channelID, timestamp, msgOpts...)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+
+	if err != nil {
+		return fmt.Errorf("failed to update message after retries: %w", err)
+	}
+
+	return nil
+}
+
 // RemoveBotMention removes bot mention from text for cleaner processing
 func (c *Client) RemoveBotMention(text string) string {
 	if c.botUserID == "" {

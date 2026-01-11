@@ -315,7 +315,7 @@ func ChatStream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Step 4: Synthesize
-	sendEvent("status", map[string]string{"step": "synthesizing", "message": "Generating answer..."})
+	sendEvent("status", map[string]string{"step": "synthesizing", "message": "Preparing answer..."})
 
 	answer, err := p.Synthesize(ctx, req.Message, executedQueries)
 	if err != nil {

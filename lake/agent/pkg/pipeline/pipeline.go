@@ -75,6 +75,32 @@ type ConversationMessage struct {
 	Content string
 }
 
+// ProgressStage represents a stage in the pipeline execution.
+type ProgressStage string
+
+const (
+	StageClassifying  ProgressStage = "classifying"
+	StageDecomposing  ProgressStage = "decomposing"
+	StageDecomposed   ProgressStage = "decomposed"
+	StageExecuting    ProgressStage = "executing"
+	StageSynthesizing ProgressStage = "synthesizing"
+	StageComplete     ProgressStage = "complete"
+	StageError        ProgressStage = "error"
+)
+
+// Progress represents the current state of pipeline execution.
+type Progress struct {
+	Stage          ProgressStage
+	Classification Classification    // Set after classifying
+	DataQuestions  []DataQuestion    // Set after decomposing
+	QueriesTotal   int               // Total queries to execute
+	QueriesDone    int               // Queries completed so far
+	Error          error             // Set if an error occurred
+}
+
+// ProgressCallback is called at each stage of pipeline execution.
+type ProgressCallback func(Progress)
+
 // PipelineResult holds the complete result of running the pipeline.
 type PipelineResult struct {
 	// Input
@@ -255,6 +281,157 @@ func (p *Pipeline) handleZeroRowResult(ctx context.Context, dataQuestion DataQue
 // Run executes the full pipeline for a user question.
 func (p *Pipeline) Run(ctx context.Context, userQuestion string) (*PipelineResult, error) {
 	return p.RunWithHistory(ctx, userQuestion, nil)
+}
+
+// RunWithProgress executes the pipeline with progress callbacks.
+func (p *Pipeline) RunWithProgress(ctx context.Context, userQuestion string, history []ConversationMessage, onProgress ProgressCallback) (*PipelineResult, error) {
+	result := &PipelineResult{
+		UserQuestion: userQuestion,
+	}
+
+	// Helper to call progress callback if set
+	notify := func(progress Progress) {
+		if onProgress != nil {
+			onProgress(progress)
+		}
+	}
+
+	// Pre-step: Classify the question
+	notify(Progress{Stage: StageClassifying})
+
+	if p.log != nil {
+		p.log.Info("pipeline: classifying question")
+	}
+	classification, err := p.ClassifyWithHistory(ctx, userQuestion, history)
+	if err != nil {
+		notify(Progress{Stage: StageError, Error: err})
+		return nil, fmt.Errorf("classification failed: %w", err)
+	}
+	result.Classification = classification.Classification
+
+	// Handle non-data-analysis classifications
+	switch classification.Classification {
+	case ClassificationOutOfScope:
+		if classification.DirectResponse != "" {
+			result.Answer = classification.DirectResponse
+		} else {
+			result.Answer = "I'm a DoubleZero network and Solana validator data assistant. I can help you with questions about DZ network devices, links, users, performance metrics, and connected Solana validators. What would you like to know?"
+		}
+		notify(Progress{Stage: StageComplete, Classification: classification.Classification})
+		return result, nil
+
+	case ClassificationConversational:
+		if p.log != nil {
+			p.log.Info("pipeline: handling conversational question")
+		}
+		answer, err := p.RespondWithHistory(ctx, userQuestion, history)
+		if err != nil {
+			notify(Progress{Stage: StageError, Error: err})
+			return nil, fmt.Errorf("conversational response failed: %w", err)
+		}
+		result.Answer = answer
+		notify(Progress{Stage: StageComplete, Classification: classification.Classification})
+		return result, nil
+	}
+
+	// Step 1: Decompose
+	notify(Progress{Stage: StageDecomposing, Classification: classification.Classification})
+
+	if p.log != nil {
+		p.log.Info("pipeline: step 1 - decomposing question")
+	}
+	dataQuestions, err := p.DecomposeWithHistory(ctx, userQuestion, history)
+	if err != nil {
+		notify(Progress{Stage: StageError, Error: err})
+		return nil, err
+	}
+	result.DataQuestions = dataQuestions
+
+	notify(Progress{
+		Stage:          StageDecomposed,
+		Classification: classification.Classification,
+		DataQuestions:  dataQuestions,
+		QueriesTotal:   len(dataQuestions),
+	})
+
+	// Step 2 & 3: Generate and execute queries
+	notify(Progress{
+		Stage:          StageExecuting,
+		Classification: classification.Classification,
+		DataQuestions:  dataQuestions,
+		QueriesTotal:   len(dataQuestions),
+		QueriesDone:    0,
+	})
+
+	if p.log != nil {
+		p.log.Info("pipeline: step 2/3 - generating and executing queries", "count", len(dataQuestions))
+	}
+
+	executedQueries := make([]ExecutedQuery, len(dataQuestions))
+	var wg sync.WaitGroup
+	var queriesDone int
+	var queriesMu sync.Mutex
+
+	for i, dq := range dataQuestions {
+		wg.Add(1)
+		go func(idx int, question DataQuestion) {
+			defer wg.Done()
+			executed := p.GenerateAndExecuteWithRetry(ctx, question, idx+1)
+			executedQueries[idx] = executed
+
+			// Update progress
+			queriesMu.Lock()
+			queriesDone++
+			currentDone := queriesDone
+			queriesMu.Unlock()
+
+			notify(Progress{
+				Stage:          StageExecuting,
+				Classification: classification.Classification,
+				DataQuestions:  dataQuestions,
+				QueriesTotal:   len(dataQuestions),
+				QueriesDone:    currentDone,
+			})
+		}(i, dq)
+	}
+	wg.Wait()
+
+	// Extract generated queries
+	generatedQueries := make([]GeneratedQuery, len(executedQueries))
+	for i, eq := range executedQueries {
+		generatedQueries[i] = eq.GeneratedQuery
+	}
+	result.GeneratedQueries = generatedQueries
+	result.ExecutedQueries = executedQueries
+
+	// Step 4: Synthesize
+	notify(Progress{
+		Stage:          StageSynthesizing,
+		Classification: classification.Classification,
+		DataQuestions:  dataQuestions,
+		QueriesTotal:   len(dataQuestions),
+		QueriesDone:    len(dataQuestions),
+	})
+
+	if p.log != nil {
+		p.log.Info("pipeline: step 4 - synthesizing answer")
+	}
+	answer, err := p.Synthesize(ctx, userQuestion, executedQueries)
+	if err != nil {
+		notify(Progress{Stage: StageError, Error: err})
+		return nil, fmt.Errorf("synthesize failed: %w", err)
+	}
+	result.Answer = answer
+
+	notify(Progress{
+		Stage:          StageComplete,
+		Classification: classification.Classification,
+		DataQuestions:  dataQuestions,
+		QueriesTotal:   len(dataQuestions),
+		QueriesDone:    len(dataQuestions),
+	})
+
+	return result, nil
 }
 
 // RunWithHistory executes the full pipeline with conversation context.

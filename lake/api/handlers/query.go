@@ -2,12 +2,14 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/malbeclabs/doublezero/lake/api/config"
+	"github.com/malbeclabs/doublezero/lake/api/metrics"
 )
 
 type QueryRequest struct {
@@ -44,10 +46,12 @@ func ExecuteQuery(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp, err := http.Post(config.ClickHouseBaseURL(), "text/plain", strings.NewReader(query))
+	duration := time.Since(start)
 	if err != nil {
+		metrics.RecordClickHouseQuery(duration, err)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(QueryResponse{
-			Error: "Failed to connect to ClickHouse: " + err.Error(),
+			Error: internalError("Failed to connect to database", err),
 		})
 		return
 	}
@@ -55,23 +59,27 @@ func ExecuteQuery(w http.ResponseWriter, r *http.Request) {
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		metrics.RecordClickHouseQuery(duration, err)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(QueryResponse{
-			Error: "Failed to read response: " + err.Error(),
+			Error: internalError("Failed to read database response", err),
 		})
 		return
 	}
 
-	elapsed := time.Since(start).Milliseconds()
+	elapsed := duration.Milliseconds()
 
 	if resp.StatusCode != http.StatusOK {
+		metrics.RecordClickHouseQuery(duration, fmt.Errorf("status %d: %s", resp.StatusCode, string(body)))
 		w.Header().Set("Content-Type", "application/json")
+		// ClickHouse error messages are safe to show (no credentials)
 		json.NewEncoder(w).Encode(QueryResponse{
 			Error:     string(body),
 			ElapsedMs: elapsed,
 		})
 		return
 	}
+	metrics.RecordClickHouseQuery(duration, nil)
 
 	var chResp struct {
 		Meta []struct {
@@ -85,7 +93,7 @@ func ExecuteQuery(w http.ResponseWriter, r *http.Request) {
 	if err := json.Unmarshal(body, &chResp); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(QueryResponse{
-			Error: "Failed to parse response: " + err.Error(),
+			Error: internalError("Failed to parse database response", err),
 		})
 		return
 	}

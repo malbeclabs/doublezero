@@ -94,8 +94,14 @@ func main() {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(metrics.Middleware)
+
+	// CORS configuration - origins from env or allow all
+	corsOrigins := []string{"*"}
+	if origins := os.Getenv("CORS_ORIGINS"); origins != "" {
+		corsOrigins = strings.Split(origins, ",")
+	}
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:5173"},
+		AllowedOrigins:   corsOrigins,
 		AllowedMethods:   []string{"GET", "POST", "OPTIONS"},
 		AllowedHeaders:   []string{"Content-Type"},
 		AllowCredentials: false,

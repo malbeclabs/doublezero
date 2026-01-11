@@ -6,8 +6,10 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/malbeclabs/doublezero/lake/api/metrics"
 )
 
 // VisualizeRequest is the incoming request for visualization recommendation.
@@ -54,6 +56,7 @@ func RecommendVisualization(w http.ResponseWriter, r *http.Request) {
 
 	// Call Anthropic
 	client := anthropic.NewClient()
+	start := time.Now()
 	message, err := client.Messages.New(r.Context(), anthropic.MessageNewParams{
 		Model:     anthropic.ModelClaude3_5Haiku20241022,
 		MaxTokens: 1024,
@@ -61,11 +64,14 @@ func RecommendVisualization(w http.ResponseWriter, r *http.Request) {
 			anthropic.NewUserMessage(anthropic.NewTextBlock(prompt)),
 		},
 	})
+	duration := time.Since(start)
+	metrics.RecordAnthropicRequest("messages", duration, err)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(VisualizeResponse{Recommended: false, Error: "LLM error: " + err.Error()})
+		json.NewEncoder(w).Encode(VisualizeResponse{Recommended: false, Error: internalError("Failed to recommend visualization", err)})
 		return
 	}
+	metrics.RecordAnthropicTokens(message.Usage.InputTokens, message.Usage.OutputTokens)
 
 	// Extract response text
 	var responseText string

@@ -2,10 +2,13 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/malbeclabs/doublezero/lake/api/config"
+	"github.com/malbeclabs/doublezero/lake/api/metrics"
 )
 
 type TableInfo struct {
@@ -36,23 +39,29 @@ func GetCatalog(w http.ResponseWriter, r *http.Request) {
 		FORMAT JSON
 	`
 
+	start := time.Now()
 	resp, err := http.Get(config.ClickHouseQueryURL(query))
+	duration := time.Since(start)
 	if err != nil {
-		http.Error(w, "Failed to connect to ClickHouse: "+err.Error(), http.StatusInternalServerError)
+		metrics.RecordClickHouseQuery(duration, err)
+		http.Error(w, internalError("Failed to connect to database", err), http.StatusInternalServerError)
 		return
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		http.Error(w, "Failed to read response: "+err.Error(), http.StatusInternalServerError)
+		metrics.RecordClickHouseQuery(duration, err)
+		http.Error(w, internalError("Failed to read database response", err), http.StatusInternalServerError)
 		return
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		http.Error(w, "ClickHouse error: "+string(body), resp.StatusCode)
+		metrics.RecordClickHouseQuery(duration, fmt.Errorf("status %d: %s", resp.StatusCode, string(body)))
+		http.Error(w, "Database query failed", resp.StatusCode)
 		return
 	}
+	metrics.RecordClickHouseQuery(duration, nil)
 
 	var chResp struct {
 		Data []struct {
@@ -64,7 +73,7 @@ func GetCatalog(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.Unmarshal(body, &chResp); err != nil {
-		http.Error(w, "Failed to parse response: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, internalError("Failed to parse database response", err), http.StatusInternalServerError)
 		return
 	}
 

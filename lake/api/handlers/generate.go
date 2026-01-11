@@ -11,10 +11,12 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline"
 	"github.com/malbeclabs/doublezero/lake/api/config"
+	"github.com/malbeclabs/doublezero/lake/api/metrics"
 )
 
 type GenerateRequest struct {
@@ -72,7 +74,7 @@ func GenerateSQL(w http.ResponseWriter, r *http.Request) {
 	schema, err := fetchSchema()
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(GenerateResponse{Error: "Failed to fetch schema: " + err.Error()})
+		json.NewEncoder(w).Encode(GenerateResponse{Error: internalError("Failed to fetch schema", err)})
 		return
 	}
 
@@ -109,7 +111,7 @@ func GenerateSQL(w http.ResponseWriter, r *http.Request) {
 
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(GenerateResponse{Error: err.Error(), Provider: provider, Attempts: attempts})
+			json.NewEncoder(w).Encode(GenerateResponse{Error: internalError("Failed to generate SQL", err), Provider: provider, Attempts: attempts})
 			return
 		}
 
@@ -173,7 +175,7 @@ func GenerateSQLStream(w http.ResponseWriter, r *http.Request) {
 	// Fetch schema for context
 	schema, err := fetchSchema()
 	if err != nil {
-		sendEvent("error", "Failed to fetch schema: "+err.Error())
+		sendEvent("error", internalError("Failed to fetch schema", err))
 		return
 	}
 
@@ -222,7 +224,7 @@ func GenerateSQLStream(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if err != nil {
-			sendEvent("error", err.Error())
+			sendEvent("error", internalError("Failed to generate SQL", err))
 			return
 		}
 
@@ -261,6 +263,7 @@ func streamWithAnthropic(schema, prompt string, history []HistoryMessage, onToke
 	// Build messages from history
 	messages := buildAnthropicMessages(history, prompt)
 
+	start := time.Now()
 	stream := client.Messages.NewStreaming(context.Background(), anthropic.MessageNewParams{
 		Model:     anthropic.ModelClaude3_5Haiku20241022,
 		MaxTokens: 1024,
@@ -280,7 +283,11 @@ func streamWithAnthropic(schema, prompt string, history []HistoryMessage, onToke
 		}
 	}
 
-	return stream.Err()
+	duration := time.Since(start)
+	err := stream.Err()
+	metrics.RecordAnthropicRequest("messages/stream", duration, err)
+
+	return err
 }
 
 func streamWithOllama(schema, prompt string, onToken func(string)) error {
@@ -360,19 +367,24 @@ func validateQuery(sql string) string {
 	// Run EXPLAIN on the query to check validity
 	explainQuery := "EXPLAIN " + sql
 
+	start := time.Now()
 	resp, err := http.Post(config.ClickHouseBaseURL(), "text/plain", strings.NewReader(explainQuery))
+	duration := time.Since(start)
 	if err != nil {
-		return "Failed to connect to ClickHouse: " + err.Error()
+		metrics.RecordClickHouseQuery(duration, err)
+		return internalError("Failed to connect to database for validation", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "Failed to read response: " + err.Error()
+		metrics.RecordClickHouseQuery(duration, err)
+		return internalError("Failed to read validation response", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		// Extract error message
+		metrics.RecordClickHouseQuery(duration, fmt.Errorf("status %d: %s", resp.StatusCode, string(body)))
+		// ClickHouse error messages are safe to show and useful for LLM retry
 		errMsg := strings.TrimSpace(string(body))
 		// Truncate long errors
 		if len(errMsg) > 500 {
@@ -380,6 +392,7 @@ func validateQuery(sql string) string {
 		}
 		return errMsg
 	}
+	metrics.RecordClickHouseQuery(duration, nil)
 
 	return "" // Valid query
 }
@@ -392,6 +405,7 @@ func generateWithAnthropic(schema, prompt string, history []HistoryMessage) (str
 	// Build messages from history
 	messages := buildAnthropicMessages(history, prompt)
 
+	start := time.Now()
 	msg, err := client.Messages.New(context.Background(), anthropic.MessageNewParams{
 		Model:     anthropic.ModelClaude3_5Haiku20241022,
 		MaxTokens: 1024,
@@ -400,10 +414,15 @@ func generateWithAnthropic(schema, prompt string, history []HistoryMessage) (str
 		},
 		Messages: messages,
 	})
+	duration := time.Since(start)
+	metrics.RecordAnthropicRequest("messages", duration, err)
 
 	if err != nil {
 		return "", err
 	}
+
+	// Record token usage
+	metrics.RecordAnthropicTokens(msg.Usage.InputTokens, msg.Usage.OutputTokens)
 
 	for _, block := range msg.Content {
 		if block.Type == "text" {
@@ -512,16 +531,21 @@ func fetchSchema() (string, error) {
 		FORMAT JSON
 	`
 
+	start := time.Now()
 	resp, err := http.Get(config.ClickHouseQueryURL(columnsQuery))
+	duration := time.Since(start)
 	if err != nil {
+		metrics.RecordClickHouseQuery(duration, err)
 		return "", err
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		metrics.RecordClickHouseQuery(duration, err)
 		return "", err
 	}
+	metrics.RecordClickHouseQuery(duration, nil)
 
 	var columnsResp struct {
 		Data []struct {
@@ -547,16 +571,21 @@ func fetchSchema() (string, error) {
 		FORMAT JSON
 	`
 
+	start = time.Now()
 	viewsResp, err := http.Get(config.ClickHouseQueryURL(viewsQuery))
+	duration = time.Since(start)
 	if err != nil {
+		metrics.RecordClickHouseQuery(duration, err)
 		return "", err
 	}
 	defer viewsResp.Body.Close()
 
 	viewsBody, err := io.ReadAll(viewsResp.Body)
 	if err != nil {
+		metrics.RecordClickHouseQuery(duration, err)
 		return "", err
 	}
+	metrics.RecordClickHouseQuery(duration, nil)
 
 	var viewsData struct {
 		Data []struct {

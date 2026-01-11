@@ -87,7 +87,7 @@ func Chat(w http.ResponseWriter, r *http.Request) {
 	prompts, err := pipeline.LoadPrompts()
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(ChatResponse{Error: "Failed to load prompts: " + err.Error()})
+		json.NewEncoder(w).Encode(ChatResponse{Error: internalError("Failed to load prompts", err)})
 		return
 	}
 
@@ -107,7 +107,7 @@ func Chat(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(ChatResponse{Error: "Failed to create pipeline: " + err.Error()})
+		json.NewEncoder(w).Encode(ChatResponse{Error: internalError("Failed to initialize chat", err)})
 		return
 	}
 
@@ -124,7 +124,7 @@ func Chat(w http.ResponseWriter, r *http.Request) {
 	result, err := p.RunWithHistory(r.Context(), req.Message, history)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(ChatResponse{Error: err.Error()})
+		json.NewEncoder(w).Encode(ChatResponse{Error: internalError("Chat processing failed", err)})
 		return
 	}
 
@@ -224,7 +224,7 @@ func ChatStream(w http.ResponseWriter, r *http.Request) {
 	// Load prompts
 	prompts, err := pipeline.LoadPrompts()
 	if err != nil {
-		sendEvent("error", map[string]string{"error": "Failed to load prompts: " + err.Error()})
+		sendEvent("error", map[string]string{"error": internalError("Failed to load prompts", err)})
 		return
 	}
 
@@ -243,7 +243,7 @@ func ChatStream(w http.ResponseWriter, r *http.Request) {
 		MaxTokens:     4096,
 	})
 	if err != nil {
-		sendEvent("error", map[string]string{"error": "Failed to create pipeline: " + err.Error()})
+		sendEvent("error", map[string]string{"error": internalError("Failed to initialize chat", err)})
 		return
 	}
 
@@ -264,7 +264,7 @@ func ChatStream(w http.ResponseWriter, r *http.Request) {
 
 	dataQuestions, err := p.DecomposeWithHistory(ctx, req.Message, history)
 	if err != nil {
-		sendEvent("error", map[string]string{"error": err.Error()})
+		sendEvent("error", map[string]string{"error": internalError("Failed to process question", err)})
 		return
 	}
 
@@ -323,7 +323,7 @@ func ChatStream(w http.ResponseWriter, r *http.Request) {
 
 	answer, err := p.Synthesize(ctx, req.Message, executedQueries)
 	if err != nil {
-		sendEvent("error", map[string]string{"error": "Synthesize failed: " + err.Error()})
+		sendEvent("error", map[string]string{"error": internalError("Failed to generate answer", err)})
 		return
 	}
 
@@ -379,7 +379,7 @@ func Complete(w http.ResponseWriter, r *http.Request) {
 	response, err := llm.Complete(r.Context(), "You are a helpful assistant. Respond concisely.", req.Message)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(CompleteResponse{Error: err.Error()})
+		json.NewEncoder(w).Encode(CompleteResponse{Error: internalError("Completion failed", err)})
 		return
 	}
 

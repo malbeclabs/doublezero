@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -15,6 +17,32 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/malbeclabs/doublezero/lake/api/handlers"
 )
+
+// spaHandler serves static files and falls back to index.html for SPA routing
+func spaHandler(staticDir string) http.HandlerFunc {
+	fileServer := http.FileServer(http.Dir(staticDir))
+	return func(w http.ResponseWriter, r *http.Request) {
+		path := filepath.Join(staticDir, strings.TrimPrefix(r.URL.Path, "/"))
+
+		// Check if file exists
+		_, err := os.Stat(path)
+		if os.IsNotExist(err) || err != nil {
+			// Check if it's a directory (and serve index.html from it or fallback)
+			if fi, statErr := os.Stat(path); statErr == nil && fi.IsDir() {
+				indexPath := filepath.Join(path, "index.html")
+				if _, indexErr := os.Stat(indexPath); indexErr == nil {
+					http.ServeFile(w, r, indexPath)
+					return
+				}
+			}
+			// Fallback to root index.html for SPA routing
+			http.ServeFile(w, r, filepath.Join(staticDir, "index.html"))
+			return
+		}
+
+		fileServer.ServeHTTP(w, r)
+	}
+}
 
 func main() {
 	// Load .env file if it exists
@@ -39,6 +67,16 @@ func main() {
 	r.Post("/api/chat/stream", handlers.ChatStream)
 	r.Post("/api/complete", handlers.Complete)
 	r.Post("/api/visualize/recommend", handlers.RecommendVisualization)
+
+	// Serve static files from the web dist directory
+	webDir := os.Getenv("WEB_DIST_DIR")
+	if webDir == "" {
+		webDir = "/doublezero/web/dist"
+	}
+	if _, err := os.Stat(webDir); err == nil {
+		log.Printf("Serving static files from %s", webDir)
+		r.Get("/*", spaHandler(webDir))
+	}
 
 	server := &http.Server{
 		Addr:    ":8080",

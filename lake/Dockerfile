@@ -92,4 +92,7 @@ ENV PATH="/doublezero/bin:${PATH}"
 # Copy binaries from the builder stage.
 COPY --from=builder-go /doublezero/bin/. /doublezero/bin/.
 
+# Copy web assets from the bun builder stage.
+COPY --from=builder-bun /doublezero/lake/web/dist /doublezero/web/dist
+
 CMD ["/bin/bash"]

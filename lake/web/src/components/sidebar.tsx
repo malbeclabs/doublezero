@@ -356,7 +356,7 @@ export function Sidebar({
       {/* Development notice footer */}
       <div className="mt-auto px-3 py-3 border-t border-border/50">
         <p className="text-xs text-grey-40 leading-snug">
-          Early preview. Data is stored locally in your browser and may be cleared.
+          Early preview. Chat and query history is stored locally in your browser and may be cleared.
         </p>
       </div>
     </div>

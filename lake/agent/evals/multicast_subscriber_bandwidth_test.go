@@ -165,7 +165,7 @@ func seedMulticastSubscriberBandwidthData(t *testing.T, ctx context.Context, con
 			{"user3", "owner3", "3.3.3.3", "10.0.0.3", 503},
 		}
 		u := users[i]
-		return []any{u.pk, u.ownerPubkey, "activated", "IBRL", u.clientIP, u.dzIP, "device1", u.tunnelID}, nil
+		return []any{u.pk, u.ownerPubkey, "activated", "multicast", u.clientIP, u.dzIP, "device1", u.tunnelID}, nil
 	}, &dataset.DimensionType2DatasetWriteConfig{
 		SnapshotTS: now.Add(-30 * 24 * time.Hour),
 		OpID:       testOpID(),
@@ -286,6 +286,7 @@ JOIN fact_dz_device_interface_counters iface ON u.device_pk = iface.device_pk
   AND iface.user_tunnel_id = u.tunnel_id
   AND iface.intf LIKE 'tunnel%'
 WHERE u.status = 'activated'
+  AND u.kind = 'multicast'
   AND iface.event_ts >= now() - INTERVAL 24 HOUR
 GROUP BY u.owner_pubkey, u.client_ip, u.dz_ip, u.tunnel_id
 ORDER BY total_bytes DESC

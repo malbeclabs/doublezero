@@ -23,8 +23,18 @@ ClickHouse String columns are typically NOT nullable - they use empty string `''
 
 **LEFT JOIN behavior:**
 - Unmatched rows return `''` (empty string) for String columns, not NULL
-- Use `WHERE joined_table.column != ''` to filter unmatched rows
+- **Anti-join (find rows in A with NO match in B):** `WHERE b.key = ''`
+- **Keep only matched rows:** `WHERE b.key != ''`
 - Use `CASE WHEN joined_table.id = '' THEN ... END` for conditional logic
+
+Example anti-join pattern:
+```sql
+-- Find users that have NO matching device
+SELECT u.*
+FROM users u
+LEFT JOIN devices d ON u.device_pk = d.pk
+WHERE d.pk = ''  -- Empty string means no match (NOT "IS NULL"!)
+```
 
 ### Other ClickHouse specifics:
 - Quantiles: `quantile(0.95)(column)` not `PERCENTILE_CONT`
@@ -38,9 +48,18 @@ These rules cannot be inferred from schema alone:
 
 ### Status & State
 - **Device status values**: pending, activated, suspended, deleted, rejected, drained
-- **Active user**: `status = 'activated' AND dz_ip IS NOT NULL`
+- **User kind values** (in `kind` column):
+  - `ibrl` - unicast users (standard IP routing)
+  - `ibrl_with_allocated_ip` - unicast with pre-allocated IP
+  - `multicast` - multicast subscribers (receive multicast streams)
+  - `edge_filtering` - edge filtering users
+- **"Multicast subscriber"** = DZ user with `kind = 'multicast'`
+- **"Unicast user"** = DZ user with `kind = 'ibrl'` or `kind = 'ibrl_with_allocated_ip'`
+- **Active user**: `status = 'activated' AND dz_ip != ''`
 - **Exclude test user**: `owner_pubkey != 'DZfHfcCXTLwgZeCRKQ1FL1UuwAwFAZM93g86NMYpfYan'`
 - **Staked validator**: `epoch_vote_account = 'true' AND activated_stake_lamports > 0` (note: `epoch_vote_account` is String, not Boolean)
+- **Connected stake** (or "total connected stake"): `SUM(activated_stake_lamports)` for validators connected to DZ
+- **Stake share**: Percentage of total Solana stake on DZ = `connected_stake / total_network_stake * 100`
 - **Soft-drain signal**: `isis_delay_override_ns = 1000000000`
 - **Link types**: WAN (inter-metro), DZX (intra-metro)
 

@@ -289,7 +289,8 @@ func ChatStream(w http.ResponseWriter, r *http.Request) {
 		wg.Add(1)
 		go func(idx int, question pipeline.DataQuestion) {
 			defer wg.Done()
-			executed := p.GenerateAndExecuteWithRetry(ctx, question)
+			// Question numbers are 1-indexed for readability (Q1, Q2, ...)
+			executed := p.GenerateAndExecuteWithRetry(ctx, question, idx+1)
 			executedQueries[idx] = executed
 
 			mu.Lock()

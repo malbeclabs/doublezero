@@ -8,7 +8,8 @@ import (
 
 // Execute runs a SQL query and captures the results.
 // This is Step 3 of the pipeline.
-func (p *Pipeline) Execute(ctx context.Context, query GeneratedQuery) (ExecutedQuery, error) {
+// The questionNum is a 1-indexed question identifier for logging (e.g., Q1, Q2).
+func (p *Pipeline) Execute(ctx context.Context, query GeneratedQuery, questionNum int) (ExecutedQuery, error) {
 	result, err := p.cfg.Querier.Query(ctx, query.SQL)
 	if err != nil {
 		// Query execution infrastructure error (not a SQL error)
@@ -25,10 +26,12 @@ func (p *Pipeline) Execute(ctx context.Context, query GeneratedQuery) (ExecutedQ
 	if p.log != nil {
 		if result.Error != "" {
 			p.log.Info("pipeline: query returned error",
+				"q", questionNum,
 				"question", query.DataQuestion.Question,
 				"error", result.Error)
 		} else {
 			p.log.Info("pipeline: query executed",
+				"q", questionNum,
 				"question", query.DataQuestion.Question,
 				"rows", result.Count)
 		}

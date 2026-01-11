@@ -160,12 +160,18 @@ type ZeroRowAnalysis struct {
 
 // AnalyzeZeroResult asks the LLM whether zero rows is expected or suspicious.
 func (p *Pipeline) AnalyzeZeroResult(ctx context.Context, dataQuestion DataQuestion, sql string) (*ZeroRowAnalysis, error) {
-	systemPrompt := `You are analyzing a SQL query that returned zero rows. Determine if this is expected or suspicious.
+	systemPrompt := `You are analyzing a ClickHouse SQL query that returned zero rows. Determine if this is expected or suspicious.
 
 Consider:
 - The question being asked - does it expect data to exist?
 - The SQL query - are there filters that might be too restrictive or use wrong values?
 - Common mistakes: wrong column values (e.g., 'active' vs 'activated'), wrong date ranges, incorrect joins
+
+IMPORTANT ClickHouse behavior:
+- String columns are NON-NULLABLE by default (not Nullable(String))
+- In LEFT JOINs with no match, non-nullable String columns return '' (empty string), NOT NULL
+- For anti-join patterns (find rows in A not in B), check for empty string: WHERE b.column = ''
+- Only Nullable(String) columns return NULL on no match
 
 Respond with JSON:
 {

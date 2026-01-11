@@ -126,7 +126,8 @@ func New(cfg *Config) (*Pipeline, error) {
 }
 
 // GenerateAndExecuteWithRetry generates SQL and executes it, retrying on errors.
-func (p *Pipeline) GenerateAndExecuteWithRetry(ctx context.Context, dataQuestion DataQuestion) ExecutedQuery {
+// The questionNum is a 1-indexed question identifier for logging (e.g., Q1, Q2).
+func (p *Pipeline) GenerateAndExecuteWithRetry(ctx context.Context, dataQuestion DataQuestion, questionNum int) ExecutedQuery {
 	// First attempt: generate and execute
 	generated, err := p.Generate(ctx, dataQuestion)
 	if err != nil {
@@ -136,13 +137,13 @@ func (p *Pipeline) GenerateAndExecuteWithRetry(ctx context.Context, dataQuestion
 		}
 	}
 
-	executed, _ := p.Execute(ctx, generated)
+	executed, _ := p.Execute(ctx, generated, questionNum)
 
 	// If no error, check for zero rows
 	if executed.Result.Error == "" {
 		// Handle zero-row results
 		if executed.Result.Count == 0 {
-			executed = p.handleZeroRowResult(ctx, dataQuestion, executed)
+			executed = p.handleZeroRowResult(ctx, dataQuestion, executed, questionNum)
 		}
 		return executed
 	}
@@ -151,6 +152,7 @@ func (p *Pipeline) GenerateAndExecuteWithRetry(ctx context.Context, dataQuestion
 	for attempt := 1; attempt <= p.cfg.MaxRetries; attempt++ {
 		if p.log != nil {
 			p.log.Info("pipeline: retrying failed query",
+				"q", questionNum,
 				"question", dataQuestion.Question,
 				"attempt", attempt,
 				"error", executed.Result.Error)
@@ -164,18 +166,19 @@ func (p *Pipeline) GenerateAndExecuteWithRetry(ctx context.Context, dataQuestion
 		}
 
 		// Execute the regenerated query
-		executed, _ = p.Execute(ctx, regenerated)
+		executed, _ = p.Execute(ctx, regenerated, questionNum)
 
 		// If successful, check for zero rows
 		if executed.Result.Error == "" {
 			if p.log != nil {
 				p.log.Info("pipeline: retry succeeded",
+					"q", questionNum,
 					"question", dataQuestion.Question,
 					"attempt", attempt)
 			}
 			// Handle zero-row results after successful retry
 			if executed.Result.Count == 0 {
-				executed = p.handleZeroRowResult(ctx, dataQuestion, executed)
+				executed = p.handleZeroRowResult(ctx, dataQuestion, executed, questionNum)
 			}
 			return executed
 		}
@@ -184,6 +187,7 @@ func (p *Pipeline) GenerateAndExecuteWithRetry(ctx context.Context, dataQuestion
 	// All retries failed, return last result with error
 	if p.log != nil {
 		p.log.Info("pipeline: all retries failed",
+			"q", questionNum,
 			"question", dataQuestion.Question,
 			"error", executed.Result.Error)
 	}
@@ -191,18 +195,19 @@ func (p *Pipeline) GenerateAndExecuteWithRetry(ctx context.Context, dataQuestion
 }
 
 // handleZeroRowResult analyzes a zero-row result and potentially regenerates the query.
-func (p *Pipeline) handleZeroRowResult(ctx context.Context, dataQuestion DataQuestion, executed ExecutedQuery) ExecutedQuery {
+func (p *Pipeline) handleZeroRowResult(ctx context.Context, dataQuestion DataQuestion, executed ExecutedQuery, questionNum int) ExecutedQuery {
 	// Analyze if zero rows is suspicious
 	analysis, err := p.AnalyzeZeroResult(ctx, dataQuestion, executed.GeneratedQuery.SQL)
 	if err != nil {
 		if p.log != nil {
-			p.log.Info("pipeline: zero-row analysis failed", "error", err)
+			p.log.Info("pipeline: zero-row analysis failed", "q", questionNum, "error", err)
 		}
 		return executed
 	}
 
 	if p.log != nil {
 		p.log.Info("pipeline: zero-row analysis",
+			"q", questionNum,
 			"question", dataQuestion.Question,
 			"suspicious", analysis.IsSuspicious,
 			"reasoning", analysis.Reasoning)
@@ -216,6 +221,7 @@ func (p *Pipeline) handleZeroRowResult(ctx context.Context, dataQuestion DataQue
 	// Regenerate with zero-row context
 	if p.log != nil {
 		p.log.Info("pipeline: regenerating query due to suspicious zero rows",
+			"q", questionNum,
 			"question", dataQuestion.Question,
 			"suggestion", analysis.Suggestion)
 	}
@@ -223,17 +229,18 @@ func (p *Pipeline) handleZeroRowResult(ctx context.Context, dataQuestion DataQue
 	regenerated, err := p.RegenerateWithZeroRows(ctx, dataQuestion, executed.GeneratedQuery.SQL, analysis)
 	if err != nil {
 		if p.log != nil {
-			p.log.Info("pipeline: zero-row regeneration failed", "error", err)
+			p.log.Info("pipeline: zero-row regeneration failed", "q", questionNum, "error", err)
 		}
 		return executed
 	}
 
 	// Execute the regenerated query
-	newExecuted, _ := p.Execute(ctx, regenerated)
+	newExecuted, _ := p.Execute(ctx, regenerated, questionNum)
 
 	// Return the new result (even if still zero rows - we tried)
 	if p.log != nil {
 		p.log.Info("pipeline: regenerated query executed",
+			"q", questionNum,
 			"question", dataQuestion.Question,
 			"newRowCount", newExecuted.Result.Count)
 	}
@@ -276,7 +283,8 @@ func (p *Pipeline) RunWithHistory(ctx context.Context, userQuestion string, hist
 		wg.Add(1)
 		go func(idx int, question DataQuestion) {
 			defer wg.Done()
-			executed := p.GenerateAndExecuteWithRetry(ctx, question)
+			// Question numbers are 1-indexed for readability (Q1, Q2, ...)
+			executed := p.GenerateAndExecuteWithRetry(ctx, question, idx+1)
 			executedQueries[idx] = executed
 		}(i, dq)
 	}

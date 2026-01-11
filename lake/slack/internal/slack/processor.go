@@ -27,6 +27,16 @@ type Processor struct {
 	// Track messages we've already responded to (by message timestamp) to prevent duplicate error messages
 	respondedMessages   map[string]time.Time
 	respondedMessagesMu sync.RWMutex
+
+	// Per-thread locks to ensure messages in the same thread are processed sequentially
+	threadLocks    map[string]*threadLockEntry
+	threadLocksMu  sync.Mutex
+}
+
+// threadLockEntry holds a mutex and tracks when it was last used
+type threadLockEntry struct {
+	mu       sync.Mutex
+	lastUsed time.Time
 }
 
 // NewProcessor creates a new message processor
@@ -42,7 +52,25 @@ func NewProcessor(
 		convManager:       convManager,
 		log:               log,
 		respondedMessages: make(map[string]time.Time),
+		threadLocks:       make(map[string]*threadLockEntry),
 	}
+}
+
+// getThreadLock returns the mutex for a given thread, creating one if it doesn't exist
+func (p *Processor) getThreadLock(threadKey string) *sync.Mutex {
+	p.threadLocksMu.Lock()
+	defer p.threadLocksMu.Unlock()
+
+	if entry, exists := p.threadLocks[threadKey]; exists {
+		entry.lastUsed = time.Now()
+		return &entry.mu
+	}
+
+	entry := &threadLockEntry{
+		lastUsed: time.Now(),
+	}
+	p.threadLocks[threadKey] = entry
+	return &entry.mu
 }
 
 // StartCleanup starts a background goroutine to clean up old responded messages
@@ -63,6 +91,8 @@ func (p *Processor) StartCleanup(ctx context.Context) {
 
 func (p *Processor) cleanup() {
 	now := time.Now()
+
+	// Clean up old responded messages
 	p.respondedMessagesMu.Lock()
 	for msgKey, timestamp := range p.respondedMessages {
 		if now.Sub(timestamp) > respondedMessagesMaxAge {
@@ -70,6 +100,20 @@ func (p *Processor) cleanup() {
 		}
 	}
 	p.respondedMessagesMu.Unlock()
+
+	// Clean up old thread locks (those not used in the last hour)
+	// Only delete if the lock is not currently held (TryLock succeeds)
+	p.threadLocksMu.Lock()
+	for threadKey, entry := range p.threadLocks {
+		if now.Sub(entry.lastUsed) > respondedMessagesMaxAge {
+			// Try to acquire the lock - if we can't, it's in use so don't delete
+			if entry.mu.TryLock() {
+				entry.mu.Unlock()
+				delete(p.threadLocks, threadKey)
+			}
+		}
+	}
+	p.threadLocksMu.Unlock()
 }
 
 // HasResponded checks if we've already responded to a message
@@ -234,6 +278,15 @@ func (p *Processor) ProcessMessage(
 	if ev.ThreadTimeStamp != "" {
 		threadKey = ev.ThreadTimeStamp
 	}
+
+	// Acquire per-thread lock to ensure sequential processing within the same thread
+	// This prevents race conditions when multiple messages arrive in quick succession
+	threadLockKey := fmt.Sprintf("%s:%s", ev.Channel, threadKey)
+	threadLock := p.getThreadLock(threadLockKey)
+	threadLock.Lock()
+	defer threadLock.Unlock()
+
+	p.log.Debug("acquired thread lock", "thread_lock_key", threadLockKey)
 
 	// Fetch conversation history from Slack if not cached
 	fetcher := NewDefaultFetcher(p.log)

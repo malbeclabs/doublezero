@@ -298,24 +298,24 @@ export async function generateSessionTitle(
   queries: SessionQueryInfo[],
   signal?: AbortSignal
 ): Promise<GenerateTitleResponse> {
-  // Use the chat endpoint with a specific prompt to generate a title
+  // Use the complete endpoint with a specific prompt to generate a title
   const queryDescriptions = queries.slice(0, 3).map((q, i) =>
     `${i + 1}. Question: "${q.prompt}"
    SQL: ${q.sql.slice(0, 200)}${q.sql.length > 200 ? '...' : ''}`
   ).join('\n\n')
 
-  const message = `Generate a very brief title (2-4 words) for this data session based on these queries:
+  const message = `Generate a very brief title (2-4 words) in sentence case (only first word capitalized) for this data session based on these queries:
 
 ${queryDescriptions}
 
-Examples: "Sales by Region", "User Signups", "Revenue Trends", "Order Analysis".
+Examples: "Sales by region", "User signups", "Revenue trends", "Order analysis".
 
 Respond with ONLY the title. No quotes, no explanation.`
 
-  const res = await fetch('/api/chat', {
+  const res = await fetch('/api/complete', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, history: [] }),
+    body: JSON.stringify({ message }),
     signal,
   })
 
@@ -324,13 +324,13 @@ Respond with ONLY the title. No quotes, no explanation.`
     return { title: '', error: text || 'Failed to generate title' }
   }
 
-  const data: ChatResponse = await res.json()
+  const data: { response: string; error?: string } = await res.json()
   if (data.error) {
     return { title: '', error: data.error }
   }
 
   // Clean up the response - remove quotes, trim, take first line
-  const title = data.answer
+  const title = data.response
     .replace(/^["']|["']$/g, '')
     .split('\n')[0]
     .trim()
@@ -350,18 +350,18 @@ export async function generateChatSessionTitle(
     .map((m, i) => `${i + 1}. "${m.content.slice(0, 200)}${m.content.length > 200 ? '...' : ''}"`)
     .join('\n')
 
-  const message = `Generate a very brief title (2-4 words) for this chat conversation based on these user messages:
+  const message = `Generate a very brief title (2-4 words) in sentence case (only first word capitalized) for this chat conversation based on these user messages:
 
 ${userMessages}
 
-Examples: "Sales Analysis Help", "Database Questions", "Revenue Report", "User Data Query".
+Examples: "Sales analysis help", "Database questions", "Revenue report", "User data query".
 
 Respond with ONLY the title. No quotes, no explanation.`
 
-  const res = await fetch('/api/chat', {
+  const res = await fetch('/api/complete', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, history: [] }),
+    body: JSON.stringify({ message }),
     signal,
   })
 
@@ -370,13 +370,13 @@ Respond with ONLY the title. No quotes, no explanation.`
     return { title: '', error: text || 'Failed to generate title' }
   }
 
-  const data: ChatResponse = await res.json()
+  const data: { response: string; error?: string } = await res.json()
   if (data.error) {
     return { title: '', error: data.error }
   }
 
   // Clean up the response - remove quotes, trim, take first line
-  const title = data.answer
+  const title = data.response
     .replace(/^["']|["']$/g, '')
     .split('\n')[0]
     .trim()

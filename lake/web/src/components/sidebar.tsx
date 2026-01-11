@@ -241,7 +241,7 @@ export function Sidebar({
                       : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
                   )}
                 >
-                  New Query
+                  New query
                 </button>
               )
             })()}
@@ -307,7 +307,7 @@ export function Sidebar({
                       : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
                   )}
                 >
-                  New Chat
+                  New chat
                 </button>
               )
             })()}

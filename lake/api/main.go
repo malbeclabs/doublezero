@@ -32,6 +32,7 @@ func main() {
 	r.Post("/api/generate/stream", handlers.GenerateSQLStream)
 	r.Post("/api/chat", handlers.Chat)
 	r.Post("/api/chat/stream", handlers.ChatStream)
+	r.Post("/api/complete", handlers.Complete)
 	r.Post("/api/visualize/recommend", handlers.RecommendVisualization)
 
 	log.Println("API server starting on :8080")

@@ -334,3 +334,50 @@ func ChatStream(w http.ResponseWriter, r *http.Request) {
 	response := convertPipelineResult(result)
 	sendEvent("done", response)
 }
+
+// CompleteRequest is the request for a simple LLM completion.
+type CompleteRequest struct {
+	Message string `json:"message"`
+}
+
+// CompleteResponse is the response from a simple LLM completion.
+type CompleteResponse struct {
+	Response string `json:"response"`
+	Error    string `json:"error,omitempty"`
+}
+
+// Complete handles simple LLM completion requests without the full pipeline.
+// This is useful for tasks like generating titles.
+func Complete(w http.ResponseWriter, r *http.Request) {
+	var req CompleteRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if strings.TrimSpace(req.Message) == "" {
+		http.Error(w, "Message is required", http.StatusBadRequest)
+		return
+	}
+
+	// Check if we should use Anthropic
+	if os.Getenv("ANTHROPIC_API_KEY") == "" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(CompleteResponse{Error: "Completion requires ANTHROPIC_API_KEY to be set"})
+		return
+	}
+
+	// Create a simple LLM client
+	llm := pipeline.NewAnthropicLLMClient(anthropic.ModelClaude3_5Haiku20241022, 256)
+
+	// Simple completion with minimal system prompt
+	response, err := llm.Complete(r.Context(), "You are a helpful assistant. Respond concisely.", req.Message)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(CompleteResponse{Error: err.Error()})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(CompleteResponse{Response: strings.TrimSpace(response)})
+}

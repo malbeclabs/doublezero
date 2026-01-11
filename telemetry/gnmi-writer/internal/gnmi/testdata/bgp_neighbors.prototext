@@ -1,0 +1,43 @@
+update: {
+  timestamp: 1767996400924668639
+  prefix: {
+    target: "router1"
+  }
+  update: {
+    path: {
+      elem: {
+        name: "network-instances"
+      }
+      elem: {
+        name: "network-instance"
+        key: {
+          key: "name"
+          value: "default"
+        }
+      }
+      elem: {
+        name: "protocols"
+      }
+      elem: {
+        name: "protocol"
+        key: {
+          key: "identifier"
+          value: "BGP"
+        }
+        key: {
+          key: "name"
+          value: "bgp"
+        }
+      }
+      elem: {
+        name: "bgp"
+      }
+      elem: {
+        name: "neighbors"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-network-instance:neighbor\":[{\"neighbor-address\":\"10.0.0.1\",\"state\":{\"neighbor-address\":\"10.0.0.1\",\"peer-as\":65001,\"session-state\":\"ESTABLISHED\",\"enabled\":true}},{\"neighbor-address\":\"10.0.0.2\",\"state\":{\"neighbor-address\":\"10.0.0.2\",\"peer-as\":65002,\"session-state\":\"ACTIVE\",\"enabled\":true}}]}"
+    }
+  }
+}

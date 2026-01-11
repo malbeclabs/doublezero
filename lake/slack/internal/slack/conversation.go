@@ -9,8 +9,7 @@ import (
 	"sync"
 	"time"
 
-	anthropic "github.com/anthropics/anthropic-sdk-go"
-	"github.com/malbeclabs/doublezero/lake/agent/pkg/react"
+	"github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline"
 	"github.com/malbeclabs/doublezero/lake/utils/pkg/retry"
 	"github.com/slack-go/slack"
 )
@@ -27,7 +26,7 @@ type Manager struct {
 	// Conversation history cache
 	// Key: thread timestamp (or message timestamp if no thread)
 	// Value: conversation history
-	conversations   map[string][]react.Message
+	conversations   map[string][]pipeline.ConversationMessage
 	conversationsMu sync.RWMutex
 
 	// Track active threads where the bot was mentioned
@@ -41,7 +40,7 @@ type Manager struct {
 // NewManager creates a new conversation manager
 func NewManager(log *slog.Logger) *Manager {
 	return &Manager{
-		conversations: make(map[string][]react.Message),
+		conversations: make(map[string][]pipeline.ConversationMessage),
 		activeThreads: make(map[string]time.Time),
 		log:           log,
 	}
@@ -83,7 +82,7 @@ func (m *Manager) cleanup() {
 	m.conversationsMu.Lock()
 	if len(m.conversations) > maxConversations {
 		// Simple approach: clear all and let them rebuild (better would be LRU)
-		m.conversations = make(map[string][]react.Message)
+		m.conversations = make(map[string][]pipeline.ConversationMessage)
 	}
 	m.conversationsMu.Unlock()
 }
@@ -110,7 +109,7 @@ func (m *Manager) IsThreadActive(channelID, threadTS string) bool {
 
 // HistoryFetcher fetches conversation history from Slack
 type HistoryFetcher interface {
-	FetchThreadHistory(ctx context.Context, api *slack.Client, channelID, threadTS, botUserID string) ([]react.Message, error)
+	FetchThreadHistory(ctx context.Context, api *slack.Client, channelID, threadTS, botUserID string) ([]pipeline.ConversationMessage, error)
 }
 
 // GetConversationHistory gets conversation history for a thread, fetching from Slack if not cached
@@ -120,7 +119,7 @@ func (m *Manager) GetConversationHistory(
 	channelID, messageTS, threadTS string,
 	botUserID string,
 	fetcher HistoryFetcher,
-) ([]react.Message, error) {
+) ([]pipeline.ConversationMessage, error) {
 	// Determine thread key: use thread timestamp if in thread, otherwise use message timestamp
 	threadKey := messageTS
 	if threadTS != "" {
@@ -142,13 +141,13 @@ func (m *Manager) GetConversationHistory(
 		threadMsgs, err := fetcher.FetchThreadHistory(ctx, api, channelID, threadKey, botUserID)
 		if err != nil {
 			m.log.Warn("failed to fetch thread history", "thread", threadKey, "error", err)
-			msgs = []react.Message{}
+			msgs = []pipeline.ConversationMessage{}
 		} else {
 			msgs = threadMsgs
 		}
 	} else {
 		// Top-level message - start with empty history (new conversation)
-		msgs = []react.Message{}
+		msgs = []pipeline.ConversationMessage{}
 		m.log.Debug("starting new conversation for top-level message", "message_ts", messageTS)
 	}
 
@@ -161,7 +160,7 @@ func (m *Manager) GetConversationHistory(
 }
 
 // UpdateConversationHistory updates the conversation history cache
-func (m *Manager) UpdateConversationHistory(threadKey string, msgs []react.Message) {
+func (m *Manager) UpdateConversationHistory(threadKey string, msgs []pipeline.ConversationMessage) {
 	m.conversationsMu.Lock()
 	m.conversations[threadKey] = msgs
 	m.conversationsMu.Unlock()
@@ -186,14 +185,14 @@ func NewDefaultFetcher(log *slog.Logger) *DefaultFetcher {
 }
 
 // FetchThreadHistory fetches conversation history from Slack for a thread
-func (f *DefaultFetcher) FetchThreadHistory(ctx context.Context, api *slack.Client, channelID, threadTS, botUserID string) ([]react.Message, error) {
+func (f *DefaultFetcher) FetchThreadHistory(ctx context.Context, api *slack.Client, channelID, threadTS, botUserID string) ([]pipeline.ConversationMessage, error) {
 	params := &slack.GetConversationRepliesParameters{
 		ChannelID: channelID,
 		Timestamp: threadTS,
 		Limit:     100, // Max messages to fetch
 	}
 
-	var allMessages []react.Message
+	var allMessages []pipeline.ConversationMessage
 	var cursor string
 
 	for {
@@ -221,9 +220,7 @@ func (f *DefaultFetcher) FetchThreadHistory(ctx context.Context, api *slack.Clie
 
 		f.log.Debug("fetchThreadHistory: got messages", "count", len(msgs), "thread_ts", threadTS)
 
-		// Convert Slack messages to react messages
-		// GetConversationReplies includes the parent message (the one that started the thread) as the first message
-		// Include ALL messages in the thread (bot, user, or other) for full context
+		// Convert Slack messages to pipeline conversation messages
 		for _, msg := range msgs {
 			// Skip messages without text
 			if strings.TrimSpace(msg.Text) == "" {
@@ -237,17 +234,16 @@ func (f *DefaultFetcher) FetchThreadHistory(ctx context.Context, api *slack.Clie
 			plainText := stripMarkdown(msg.Text)
 
 			if isBotMessage {
-				// Bot message - include as assistant message for context
-				// This allows the bot to see its original message when user replies in thread
 				f.log.Debug("fetchThreadHistory: including bot message", "ts", msg.Timestamp, "bot_id", msg.BotID, "user", msg.User, "text_preview", TruncateString(plainText, 50))
-				allMessages = append(allMessages, react.AnthropicMessage{
-					Msg: anthropic.NewAssistantMessage(anthropic.NewTextBlock(plainText)),
+				allMessages = append(allMessages, pipeline.ConversationMessage{
+					Role:    "assistant",
+					Content: plainText,
 				})
 			} else {
-				// All other messages (user messages or any other messages) - include as user messages
 				f.log.Debug("fetchThreadHistory: including message", "ts", msg.Timestamp, "bot_id", msg.BotID, "user", msg.User, "text_preview", TruncateString(plainText, 50))
-				allMessages = append(allMessages, react.AnthropicMessage{
-					Msg: anthropic.NewUserMessage(anthropic.NewTextBlock(plainText)),
+				allMessages = append(allMessages, pipeline.ConversationMessage{
+					Role:    "user",
+					Content: plainText,
 				})
 			}
 		}

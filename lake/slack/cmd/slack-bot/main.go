@@ -14,12 +14,7 @@ import (
 	"syscall"
 	"time"
 
-	anthropic "github.com/anthropics/anthropic-sdk-go"
-	"github.com/anthropics/anthropic-sdk-go/option"
-	"github.com/malbeclabs/doublezero/lake/agent/pkg/agent"
-	"github.com/malbeclabs/doublezero/lake/agent/pkg/prompts"
-	"github.com/malbeclabs/doublezero/lake/agent/pkg/react"
-	"github.com/malbeclabs/doublezero/lake/agent/pkg/tools"
+	"github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline"
 	"github.com/malbeclabs/doublezero/lake/indexer/pkg/clickhouse"
 	slackbot "github.com/malbeclabs/doublezero/lake/slack/internal/slack"
 	"github.com/malbeclabs/doublezero/lake/utils/pkg/logger"
@@ -73,13 +68,11 @@ func run() error {
 	metricsAddrFlag := flag.String("metrics-addr", defaultMetricsAddr, "Address to listen on for prometheus metrics")
 	modeFlag := flag.String("mode", "", "Mode: 'socket' (dev) or 'http' (prod). Defaults to 'socket' if SLACK_APP_TOKEN is set, otherwise 'http'")
 	httpAddrFlag := flag.String("http-addr", defaultHTTPAddr, "Address to listen on for HTTP events (production mode)")
-	maxRoundsFlag := flag.Int("max-rounds", 16, "Maximum number of rounds for the AI agent in normal mode")
-	brainModeMaxRoundsFlag := flag.Int("brain-mode-max-rounds", 32, "Maximum number of rounds for the AI agent in brain mode (e.g. when the user asks for a detailed analysis)")
-	maxContextTokensFlag := flag.Int("max-context-tokens", 20000, "Maximum number of tokens for the AI agent context before compacting the conversation history")
 	shutdownTimeoutFlag := flag.Duration("shutdown-timeout", 60*time.Second, "Maximum time to wait for in-flight operations to complete during graceful shutdown")
 
 	// ClickHouse configuration flags (used as fallback if env vars not set)
 	clickhouseAddrFlag := flag.String("clickhouse-addr", "", "ClickHouse server address (e.g., localhost:9000, or set CLICKHOUSE_ADDR env var)")
+	clickhouseHTTPAddrFlag := flag.String("clickhouse-http-addr", "", "ClickHouse HTTP address for schema fetching (e.g., localhost:8123, or set CLICKHOUSE_HTTP_ADDR env var)")
 	clickhouseDatabaseFlag := flag.String("clickhouse-database", "default", "ClickHouse database name (or set CLICKHOUSE_DATABASE env var)")
 	clickhouseUsernameFlag := flag.String("clickhouse-username", "default", "ClickHouse username (or set CLICKHOUSE_USERNAME env var)")
 	clickhousePasswordFlag := flag.String("clickhouse-password", "", "ClickHouse password (or set CLICKHOUSE_PASSWORD env var)")
@@ -106,6 +99,16 @@ func run() error {
 	}
 	if *clickhousePasswordFlag != "" {
 		cfg.ClickhousePassword = *clickhousePasswordFlag
+	}
+
+	// Get ClickHouse HTTP address for schema fetching
+	clickhouseHTTPAddr := *clickhouseHTTPAddrFlag
+	if clickhouseHTTPAddr == "" {
+		clickhouseHTTPAddr = os.Getenv("CLICKHOUSE_HTTP_ADDR")
+	}
+	if clickhouseHTTPAddr == "" {
+		// Default to port 8123 on same host as native protocol
+		clickhouseHTTPAddr = "http://localhost:8123"
 	}
 
 	// Start pprof server if enabled
@@ -138,74 +141,49 @@ func run() error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	// Set up Anthropic client
-	anthropicClient := anthropic.NewClient(option.WithAPIKey(cfg.AnthropicAPIKey))
-	// Using Claude Sonnet 4.5 for better reasoning and proactive exploration
-	// Haiku is cheaper but less capable for complex analysis
-	// Alternative: anthropic.ModelClaudeHaiku4_5_20251001 // Cheaper but less capable
-
-	// Load prompts and build system prompt with Slack-specific guidelines
-	prompts, err := prompts.Load()
-	if err != nil {
-		return fmt.Errorf("failed to load prompts: %w", err)
-	}
-	systemPrompt := prompts.BuildSlackSystemPrompt()
-
 	// Create ClickHouse client using config values
 	clickhouseClient, err := clickhouse.NewClient(ctx, log, cfg.ClickhouseAddr, cfg.ClickhouseDatabase, cfg.ClickhouseUsername, cfg.ClickhousePassword)
 	if err != nil {
 		return fmt.Errorf("failed to create clickhouse client: %w", err)
 	}
 	defer clickhouseClient.Close()
+	log.Info("ClickHouse client initialized", "addr", cfg.ClickhouseAddr, "database", cfg.ClickhouseDatabase)
 
-	// Create ClickHouse query tool with logger for verbose mode
-	var toolClient react.ToolClient
-	if cfg.Verbose {
-		toolClient = tools.NewClickhouseQueryToolWithLogger(clickhouseClient, log)
-	} else {
-		toolClient = tools.NewClickhouseQueryTool(clickhouseClient)
+	// Load pipeline prompts
+	prompts, err := pipeline.LoadPrompts()
+	if err != nil {
+		return fmt.Errorf("failed to load pipeline prompts: %w", err)
 	}
-	log.Info("ClickHouse query tool initialized", "addr", cfg.ClickhouseAddr, "database", cfg.ClickhouseDatabase)
 
-	// Create normal agent (Haiku model, normal maxRounds)
-	normalModel := anthropic.ModelClaudeHaiku4_5
-	normalLLMClient := react.NewAnthropicAgent(anthropicClient, normalModel, int64(4000), systemPrompt)
-	normalReactAgent, err := react.NewAgent(&react.Config{
-		Logger:             log,
-		LLM:                normalLLMClient,
-		ToolClient:         toolClient,
-		MaxRounds:          *maxRoundsFlag,
-		MaxContextTokens:   *maxContextTokensFlag,
-		FinalizationPrompt: prompts.Finalization,
-		SummaryPrompt:      prompts.Summary,
+	// Create LLM client for the pipeline
+	// Using Claude Sonnet 4.5 for good balance of speed and capability
+	llmClient := pipeline.NewAnthropicLLMClient("claude-sonnet-4-20250514", 4096)
+
+	// Create querier for the pipeline
+	querier := slackbot.NewClickhouseQuerier(clickhouseClient)
+
+	// Create schema fetcher for the pipeline
+	schemaFetcher := pipeline.NewHTTPSchemaFetcherWithAuth(
+		clickhouseHTTPAddr,
+		cfg.ClickhouseDatabase,
+		cfg.ClickhouseUsername,
+		cfg.ClickhousePassword,
+	)
+
+	// Create the analysis pipeline with Slack formatting context
+	p, err := pipeline.New(&pipeline.Config{
+		Logger:        log,
+		LLM:           llmClient,
+		Querier:       querier,
+		SchemaFetcher: schemaFetcher,
+		Prompts:       prompts,
+		MaxTokens:     4096,
+		MaxRetries:    4,
+		FormatContext: prompts.Slack, // Apply Slack-specific formatting guidelines
 	})
 	if err != nil {
-		return fmt.Errorf("failed to create normal react agent: %w", err)
+		return fmt.Errorf("failed to create pipeline: %w", err)
 	}
-	normalAgent := agent.NewAgent(&agent.AgentConfig{
-		ReactAgent: normalReactAgent,
-		LLMClient:  normalLLMClient,
-	})
-
-	// Create brain mode agent (Sonnet model, brainModeMaxRounds)
-	brainModel := anthropic.ModelClaudeSonnet4_5
-	brainLLMClient := react.NewAnthropicAgent(anthropicClient, brainModel, int64(4000), systemPrompt)
-	brainReactAgent, err := react.NewAgent(&react.Config{
-		Logger:             log,
-		LLM:                brainLLMClient,
-		ToolClient:         toolClient,
-		MaxRounds:          *brainModeMaxRoundsFlag,
-		MaxContextTokens:   *maxContextTokensFlag,
-		FinalizationPrompt: prompts.Finalization,
-		SummaryPrompt:      prompts.Summary,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to create brain react agent: %w", err)
-	}
-	brainAgent := agent.NewAgent(&agent.AgentConfig{
-		ReactAgent: brainReactAgent,
-		LLMClient:  brainLLMClient,
-	})
 
 	// Initialize Slack client
 	slackClient := slackbot.NewClient(cfg.BotToken, cfg.AppToken, log)
@@ -222,8 +200,7 @@ func run() error {
 	// Set up message processor
 	msgProcessor := slackbot.NewProcessor(
 		slackClient,
-		normalAgent,
-		brainAgent,
+		p,
 		convManager,
 		log,
 	)

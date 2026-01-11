@@ -26,6 +26,9 @@ func (p *Pipeline) Synthesize(ctx context.Context, userQuestion string, executed
 	}
 
 	systemPrompt := p.cfg.Prompts.Synthesize
+	if p.cfg.FormatContext != "" {
+		systemPrompt = systemPrompt + "\n\n" + p.cfg.FormatContext
+	}
 	userPrompt := fmt.Sprintf(`User Question: %s
 
 Data gathered:

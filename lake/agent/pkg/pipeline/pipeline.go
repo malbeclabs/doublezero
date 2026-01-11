@@ -18,7 +18,8 @@ type Config struct {
 	SchemaFetcher SchemaFetcher
 	Prompts       *Prompts
 	MaxTokens     int64
-	MaxRetries    int // Max retries for failed queries (default 2)
+	MaxRetries    int    // Max retries for failed queries (default 2)
+	FormatContext string // Optional formatting context to append to synthesize/respond prompts (e.g., Slack formatting guidelines)
 }
 
 // LLMClient is the interface for interacting with an LLM.

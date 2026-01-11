@@ -15,6 +15,9 @@ func (p *Pipeline) Respond(ctx context.Context, userQuestion string) (string, er
 // RespondWithHistory generates a conversational response with conversation context.
 func (p *Pipeline) RespondWithHistory(ctx context.Context, userQuestion string, history []ConversationMessage) (string, error) {
 	systemPrompt := p.cfg.Prompts.Respond
+	if p.cfg.FormatContext != "" {
+		systemPrompt = systemPrompt + "\n\n" + p.cfg.FormatContext
+	}
 
 	// Build user prompt with conversation history
 	var userPrompt strings.Builder

@@ -14,6 +14,7 @@ type Prompts struct {
 	Decompose      string // Prompt for breaking down questions
 	Generate       string // Prompt for SQL generation
 	Respond        string // Prompt for conversational responses (no data query)
+	Slack          string // Slack-specific formatting guidelines (optional)
 	Synthesize     string // Prompt for answer synthesis
 }
 
@@ -36,6 +37,9 @@ func LoadPrompts() (*Prompts, error) {
 	}
 	if p.Respond, err = loadPrompt("RESPOND.md"); err != nil {
 		return nil, fmt.Errorf("failed to load RESPOND: %w", err)
+	}
+	if p.Slack, err = loadPrompt("SLACK.md"); err != nil {
+		return nil, fmt.Errorf("failed to load SLACK: %w", err)
 	}
 	if p.Synthesize, err = loadPrompt("SYNTHESIZE.md"); err != nil {
 		return nil, fmt.Errorf("failed to load SYNTHESIZE: %w", err)

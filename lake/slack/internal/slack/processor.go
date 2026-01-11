@@ -1,7 +1,6 @@
 package slack
 
 import (
-	"bytes"
 	"context"
 	"log/slog"
 	"regexp"
@@ -9,9 +8,7 @@ import (
 	"sync"
 	"time"
 
-	anthropic "github.com/anthropics/anthropic-sdk-go"
-	"github.com/malbeclabs/doublezero/lake/agent/pkg/agent"
-	"github.com/malbeclabs/doublezero/lake/agent/pkg/react"
+	"github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline"
 	"github.com/slack-go/slack/slackevents"
 )
 
@@ -22,8 +19,7 @@ const (
 // Processor processes Slack messages and generates responses
 type Processor struct {
 	slackClient *Client
-	agent       *agent.Agent
-	brainAgent  *agent.Agent
+	pipeline    *pipeline.Pipeline
 	convManager *Manager
 	log         *slog.Logger
 
@@ -35,15 +31,13 @@ type Processor struct {
 // NewProcessor creates a new message processor
 func NewProcessor(
 	slackClient *Client,
-	agent *agent.Agent,
-	brainAgent *agent.Agent,
+	pipeline *pipeline.Pipeline,
 	convManager *Manager,
 	log *slog.Logger,
 ) *Processor {
 	return &Processor{
 		slackClient:       slackClient,
-		agent:             agent,
-		brainAgent:        brainAgent,
+		pipeline:          pipeline,
 		convManager:       convManager,
 		log:               log,
 		respondedMessages: make(map[string]time.Time),
@@ -90,32 +84,6 @@ func (p *Processor) MarkResponded(messageKey string) {
 	p.respondedMessagesMu.Lock()
 	p.respondedMessages[messageKey] = time.Now()
 	p.respondedMessagesMu.Unlock()
-}
-
-// countRounds counts the number of rounds (assistant messages) in the conversation.
-// Each round adds one assistant message to the conversation.
-func countRounds(conversation []react.Message) int {
-	count := 0
-	for _, msg := range conversation {
-		// Check if this is an assistant message by type asserting to anthropic.MessageParam
-		if param := msg.ToParam(); param != nil {
-			if msgParam, ok := param.(anthropic.MessageParam); ok {
-				// MessageParamRole is a string type, so we can compare directly
-				if string(msgParam.Role) == "assistant" {
-					count++
-				}
-			}
-		}
-	}
-	return count
-}
-
-// effortModeLabel returns "normal" or "brain" as a string for the effort_mode label.
-func effortModeLabel(isBrainMode bool) string {
-	if isBrainMode {
-		return "brain"
-	}
-	return "normal"
 }
 
 // containsNonBotMention checks if the message text contains a user mention that is not the bot
@@ -193,15 +161,8 @@ func (p *Processor) ProcessMessage(
 		txt = p.slackClient.RemoveBotMention(txt)
 	}
 
-	// Check for brain mode (:brain: emoji)
-	isBrainMode := strings.Contains(ev.Text, ":brain:")
-	if isBrainMode {
-		p.log.Info("brain mode activated")
-	}
-
-	effortModeLabel := effortModeLabel(isBrainMode)
 	defer func() {
-		MessageProcessingDuration.WithLabelValues(effortModeLabel).Observe(time.Since(startTime).Seconds())
+		MessageProcessingDuration.WithLabelValues("pipeline").Observe(time.Since(startTime).Seconds())
 	}()
 
 	// Always thread responses (both channels and DMs)
@@ -213,7 +174,7 @@ func (p *Processor) ProcessMessage(
 
 	// Fetch conversation history from Slack if not cached
 	fetcher := NewDefaultFetcher(p.log)
-	msgs, err := p.convManager.GetConversationHistory(
+	history, err := p.convManager.GetConversationHistory(
 		ctx,
 		p.slackClient.API(),
 		ev.Channel,
@@ -225,19 +186,7 @@ func (p *Processor) ProcessMessage(
 	if err != nil {
 		p.log.Warn("failed to get conversation history", "error", err)
 		ConversationHistoryErrorsTotal.Inc()
-		msgs = []react.Message{}
-	}
-
-	// Add user's current message to history
-	userMsg := react.AnthropicMessage{
-		Msg: anthropic.NewUserMessage(anthropic.NewTextBlock(txt)),
-	}
-	msgs = append(msgs, userMsg)
-
-	// Select agent based on brain mode
-	selectedAgent := p.agent
-	if isBrainMode {
-		selectedAgent = p.brainAgent
+		history = []pipeline.ConversationMessage{}
 	}
 
 	// Add processing reaction to indicate thinking/typing
@@ -246,18 +195,11 @@ func (p *Processor) ProcessMessage(
 		SlackAPIErrorsTotal.WithLabelValues("add_reaction").Inc()
 	}
 
-	var output bytes.Buffer
-	// Use agent with conversation history
-	result, err := selectedAgent.RunWithMessages(ctx, msgs, &output)
+	// Run the pipeline with conversation history
+	result, err := p.pipeline.RunWithHistory(ctx, txt, history)
 	if err != nil {
-		errorType := "unknown"
-		if strings.Contains(err.Error(), "tool_use_id") || strings.Contains(err.Error(), "tool_result") {
-			errorType = "tool_use_pair"
-			p.log.Warn("detected tool_use/tool_result pair error, clearing conversation cache", "thread_key", threadKey, "error", err)
-			p.convManager.ClearConversation(threadKey)
-		}
-		AgentErrorsTotal.WithLabelValues(errorType, effortModeLabel).Inc()
-		p.log.Error("agent error", "error", err, "message_ts", ev.TimeStamp, "envelope_id", eventID)
+		AgentErrorsTotal.WithLabelValues("pipeline", "pipeline").Inc()
+		p.log.Error("pipeline error", "error", err, "message_ts", ev.TimeStamp, "envelope_id", eventID)
 
 		p.MarkResponded(messageKey)
 
@@ -272,7 +214,7 @@ func (p *Processor) ProcessMessage(
 		if postErr != nil {
 			SlackAPIErrorsTotal.WithLabelValues("post_message").Inc()
 		} else {
-			MessagesPostedTotal.WithLabelValues("error", effortModeLabel).Inc()
+			MessagesPostedTotal.WithLabelValues("error", "pipeline").Inc()
 		}
 
 		time.Sleep(300 * time.Millisecond)
@@ -282,13 +224,16 @@ func (p *Processor) ProcessMessage(
 		return
 	}
 
-	reply := strings.TrimSpace(result.FinalText)
+	reply := strings.TrimSpace(result.Answer)
 	if reply == "" {
 		reply = "I didn't get a response. Please try again."
 	}
 	reply = normalizeTwoWayArrow(reply)
 
-	p.log.Debug("agent response", "reply", reply)
+	p.log.Debug("pipeline response",
+		"reply", reply,
+		"classification", result.Classification,
+		"data_questions", len(result.DataQuestions))
 
 	blocks := ConvertMarkdownToBlocks(reply, p.log)
 
@@ -310,19 +255,19 @@ func (p *Processor) ProcessMessage(
 
 	if err != nil {
 		SlackAPIErrorsTotal.WithLabelValues("post_message").Inc()
-		MessagesPostedTotal.WithLabelValues("error", effortModeLabel).Inc()
+		MessagesPostedTotal.WithLabelValues("error", "pipeline").Inc()
 		errorReply := "Sorry, I encountered an error. Please try again."
 		errorReply = normalizeTwoWayArrow(errorReply)
 		_, _ = p.slackClient.PostMessage(ctx, ev.Channel, errorReply, nil, threadTS)
 	} else {
-		MessagesPostedTotal.WithLabelValues("success", effortModeLabel).Inc()
+		MessagesPostedTotal.WithLabelValues("success", "pipeline").Inc()
 		p.log.Info("reply posted successfully", "channel", ev.Channel, "thread_ts", threadKey, "reply_ts", respTS)
 
-		// Count rounds and record metric
-		rounds := countRounds(result.FullConversation)
-		AgentRounds.WithLabelValues(effortModeLabel).Observe(float64(rounds))
-
-		// Update conversation history cache with FULL conversation including tool calls/results
-		p.convManager.UpdateConversationHistory(threadKey, result.FullConversation)
+		// Update conversation history with the new exchange
+		newHistory := append(history,
+			pipeline.ConversationMessage{Role: "user", Content: txt},
+			pipeline.ConversationMessage{Role: "assistant", Content: result.Answer},
+		)
+		p.convManager.UpdateConversationHistory(threadKey, newHistory)
 	}
 }

@@ -28,7 +28,7 @@ Key terms used in DoubleZero (DZ) that map to database entities:
 - **Contributors** = Operators who own/manage devices and links
 
 **Contributors & Links**:
-- When asking about "contributors on links" or "contributors with link issues", this typically means the **device contributors** on either side of the link (side A and side Z), not the link's direct contributor
+- When asking about "contributors on links", "contributors having links", "contributors that own links", or "contributors with link issues", this typically means the **device contributors** on either side of the link (side A and side Z), not the link's direct contributor
 - Each link connects two devices; each device has its own contributor
 - Example: "Which contributors have links with packet loss?" → find device contributors for both sides of affected links
 

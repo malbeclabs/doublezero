@@ -184,7 +184,7 @@ The earliest `snapshot_ts` in history tables = **when ingestion began**, NOT whe
 - **Link telemetry**: `fact_dz_device_link_latency.link_pk = dz_links_current.pk`
 
 ### Contributors & Links (IMPORTANT)
-When asked about **contributors associated with links** (e.g., "which contributors have link issues"), default to the **device contributors** on either side of the link, not just the link's direct `contributor_pk`.
+When asked about **contributors associated with links**, **contributors having links**, or **contributors that own links** (e.g., "which contributors have link issues", "which contributors own links with packet loss"), default to the **device contributors** on either side of the link, not just the link's direct `contributor_pk`.
 
 **Why**: Links connect two devices. Each device has its own contributor (operator). Questions about "contributors on links" typically mean "who operates the devices involved in this link."
 

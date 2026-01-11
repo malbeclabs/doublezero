@@ -41,6 +41,12 @@ const queryClient = new QueryClient({
   },
 })
 
+// Per-session pending state for concurrent chat requests
+interface PendingChatState {
+  progress: ChatProgress
+  abortController: AbortController
+}
+
 // Context for app state
 interface AppContextType {
   // Query state
@@ -64,11 +70,10 @@ interface AppContextType {
   currentChatSessionId: string
   setCurrentChatSessionId: React.Dispatch<React.SetStateAction<string>>
   chatSessionsLoaded: boolean
-  // Chat mutation state (lifted to persist across navigation)
-  pendingChatSessionId: string | null
-  chatProgress: ChatProgress | null
+  // Chat mutation state (lifted to persist across navigation) - now per-session
+  pendingChats: Map<string, PendingChatState>
   sendChatMessage: (sessionId: string, message: string, history: ChatMessage[]) => void
-  abortChatMessage: () => void
+  abortChatMessage: (sessionId: string) => void
 }
 
 const AppContext = createContext<AppContextType | null>(null)
@@ -445,8 +450,7 @@ function ChatView() {
     chatSessions,
     setChatSessions,
     currentChatSessionId,
-    pendingChatSessionId,
-    chatProgress,
+    pendingChats,
     sendChatMessage,
     abortChatMessage,
     pendingQueryRef,
@@ -454,8 +458,9 @@ function ChatView() {
 
   const currentChatSession = chatSessions.find(s => s.id === currentChatSessionId)
   const chatMessages = currentChatSession?.messages ?? []
-  const isPending = pendingChatSessionId === currentChatSessionId
-  const currentProgress = isPending ? chatProgress : null
+  const pendingState = pendingChats.get(currentChatSessionId)
+  const isPending = !!pendingState
+  const currentProgress = pendingState?.progress ?? null
 
   const handleSendMessage = useCallback((message: string) => {
     // Add user message immediately
@@ -492,13 +497,17 @@ function ChatView() {
     }
   }, [sessions, setSessions, pendingQueryRef, navigate])
 
+  const handleAbort = useCallback(() => {
+    abortChatMessage(currentChatSessionId)
+  }, [abortChatMessage, currentChatSessionId])
+
   return (
     <Chat
       messages={chatMessages}
       isPending={isPending}
       progress={currentProgress ?? undefined}
       onSendMessage={handleSendMessage}
-      onAbort={abortChatMessage}
+      onAbort={handleAbort}
       onOpenInQueryEditor={handleOpenInQueryEditor}
     />
   )
@@ -624,10 +633,8 @@ function AppContent() {
   const queryEditorRef = useRef<QueryEditorHandle>(null)
   const pendingQueryRef = useRef<string | null>(null)
 
-  // Chat mutation state (lifted to persist across navigation)
-  const [pendingChatSessionId, setPendingChatSessionId] = useState<string | null>(null)
-  const [chatProgress, setChatProgress] = useState<ChatProgress | null>(null)
-  const abortControllerRef = useRef<AbortController | null>(null)
+  // Chat mutation state (lifted to persist across navigation) - now per-session
+  const [pendingChats, setPendingChats] = useState<Map<string, PendingChatState>>(new Map())
 
   // Load query sessions from localStorage on mount
   useEffect(() => {
@@ -671,11 +678,40 @@ function AppContent() {
     }
   }, [chatSessions, chatSessionsLoaded])
 
+  // Helper to update progress for a specific session
+  const updatePendingProgress = useCallback((sessionId: string, progress: ChatProgress) => {
+    setPendingChats(prev => {
+      const existing = prev.get(sessionId)
+      if (!existing) return prev
+      const next = new Map(prev)
+      next.set(sessionId, { ...existing, progress })
+      return next
+    })
+  }, [])
+
+  // Helper to remove a session from pending
+  const removePending = useCallback((sessionId: string) => {
+    setPendingChats(prev => {
+      if (!prev.has(sessionId)) return prev
+      const next = new Map(prev)
+      next.delete(sessionId)
+      return next
+    })
+  }, [])
+
   // Chat message handler (lifted to persist across navigation)
   const sendChatMessage = useCallback(async (sessionId: string, message: string, history: ChatMessage[]) => {
-    setPendingChatSessionId(sessionId)
-    setChatProgress({ status: 'Starting...' })
-    abortControllerRef.current = new AbortController()
+    const abortController = new AbortController()
+
+    // Add this session to pending with initial state
+    setPendingChats(prev => {
+      const next = new Map(prev)
+      next.set(sessionId, {
+        progress: { status: 'Starting...' },
+        abortController,
+      })
+      return next
+    })
 
     try {
       await sendChatMessageStream(
@@ -683,13 +719,13 @@ function AppContent() {
         history,
         {
           onStatus: (status) => {
-            setChatProgress({
+            updatePendingProgress(sessionId, {
               status: status.message,
               step: status.step,
             })
           },
           onDecomposed: (data) => {
-            setChatProgress({
+            updatePendingProgress(sessionId, {
               status: `Running ${data.count} queries...`,
               step: 'executing',
               questionsCount: data.count,
@@ -698,7 +734,7 @@ function AppContent() {
             })
           },
           onQueryProgress: (data) => {
-            setChatProgress({
+            updatePendingProgress(sessionId, {
               status: `Running queries...`,
               step: 'executing',
               queriesCompleted: data.completed,
@@ -750,9 +786,7 @@ function AppContent() {
               })
             }
 
-            setPendingChatSessionId(null)
-            setChatProgress(null)
-            abortControllerRef.current = null
+            removePending(sessionId)
           },
           onError: (error) => {
             // Update session with error
@@ -768,19 +802,15 @@ function AppContent() {
                 }
                 : s
             ))
-            setPendingChatSessionId(null)
-            setChatProgress(null)
-            abortControllerRef.current = null
+            removePending(sessionId)
           },
         },
-        abortControllerRef.current.signal
+        abortController.signal
       )
     } catch (err) {
       // Don't show error if aborted
       if (err instanceof Error && err.name === 'AbortError') {
-        setPendingChatSessionId(null)
-        setChatProgress(null)
-        abortControllerRef.current = null
+        removePending(sessionId)
         return
       }
       // Update session with error
@@ -796,20 +826,17 @@ function AppContent() {
           }
           : s
       ))
-      setPendingChatSessionId(null)
-      setChatProgress(null)
-      abortControllerRef.current = null
+      removePending(sessionId)
     }
-  }, [])
+  }, [updatePendingProgress, removePending])
 
-  const abortChatMessage = useCallback(() => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort()
-      abortControllerRef.current = null
-      setPendingChatSessionId(null)
-      setChatProgress(null)
+  const abortChatMessage = useCallback((sessionId: string) => {
+    const pending = pendingChats.get(sessionId)
+    if (pending) {
+      pending.abortController.abort()
+      removePending(sessionId)
     }
-  }, [])
+  }, [pendingChats, removePending])
 
   const contextValue: AppContextType = {
     sessions,
@@ -830,8 +857,7 @@ function AppContent() {
     currentChatSessionId,
     setCurrentChatSessionId,
     chatSessionsLoaded,
-    pendingChatSessionId,
-    chatProgress,
+    pendingChats,
     sendChatMessage,
     abortChatMessage,
   }

@@ -8,13 +8,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
 	"sync"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline"
+	"github.com/malbeclabs/doublezero/lake/api/config"
 )
 
 type GenerateRequest struct {
@@ -360,7 +360,7 @@ func validateQuery(sql string) string {
 	// Run EXPLAIN on the query to check validity
 	explainQuery := "EXPLAIN " + sql
 
-	resp, err := http.Post(clickhouseURL+"/", "text/plain", strings.NewReader(explainQuery))
+	resp, err := http.Post(config.ClickHouseBaseURL(), "text/plain", strings.NewReader(explainQuery))
 	if err != nil {
 		return "Failed to connect to ClickHouse: " + err.Error()
 	}
@@ -512,7 +512,7 @@ func fetchSchema() (string, error) {
 		FORMAT JSON
 	`
 
-	resp, err := http.Get(clickhouseURL + "/?query=" + url.QueryEscape(columnsQuery))
+	resp, err := http.Get(config.ClickHouseQueryURL(columnsQuery))
 	if err != nil {
 		return "", err
 	}
@@ -547,7 +547,7 @@ func fetchSchema() (string, error) {
 		FORMAT JSON
 	`
 
-	viewsResp, err := http.Get(clickhouseURL + "/?query=" + url.QueryEscape(viewsQuery))
+	viewsResp, err := http.Get(config.ClickHouseQueryURL(viewsQuery))
 	if err != nil {
 		return "", err
 	}

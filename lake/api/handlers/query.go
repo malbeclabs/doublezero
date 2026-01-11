@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/malbeclabs/doublezero/lake/api/config"
 )
 
 type QueryRequest struct {
@@ -41,7 +43,7 @@ func ExecuteQuery(w http.ResponseWriter, r *http.Request) {
 		query += " FORMAT JSON"
 	}
 
-	resp, err := http.Post(clickhouseURL+"/", "text/plain", strings.NewReader(query))
+	resp, err := http.Post(config.ClickHouseBaseURL(), "text/plain", strings.NewReader(query))
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(QueryResponse{

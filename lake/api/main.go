@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"flag"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -15,7 +17,21 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/joho/godotenv"
+	"github.com/malbeclabs/doublezero/lake/api/config"
 	"github.com/malbeclabs/doublezero/lake/api/handlers"
+	"github.com/malbeclabs/doublezero/lake/api/metrics"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+)
+
+var (
+	// Set by LDFLAGS
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
+
+const (
+	defaultMetricsAddr = "0.0.0.0:0"
 )
 
 // spaHandler serves static files and falls back to index.html for SPA routing
@@ -45,12 +61,39 @@ func spaHandler(staticDir string) http.HandlerFunc {
 }
 
 func main() {
+	metricsAddrFlag := flag.String("metrics-addr", defaultMetricsAddr, "Address to listen on for prometheus metrics")
+	flag.Parse()
+
 	// Load .env file if it exists
 	_ = godotenv.Load()
+
+	// Load configuration
+	if err := config.Load(); err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+	}
+
+	// Start metrics server
+	if *metricsAddrFlag != "" {
+		metrics.BuildInfo.WithLabelValues(version, commit, date).Set(1)
+		go func() {
+			listener, err := net.Listen("tcp", *metricsAddrFlag)
+			if err != nil {
+				log.Printf("Failed to start prometheus metrics server listener: %v", err)
+				return
+			}
+			log.Printf("Prometheus metrics server listening on %s", listener.Addr().String())
+			http.Handle("/metrics", promhttp.Handler())
+			if err := http.Serve(listener, nil); err != nil {
+				log.Printf("Failed to start prometheus metrics server: %v", err)
+			}
+		}()
+	}
+
 	r := chi.NewRouter()
 
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
+	r.Use(metrics.Middleware)
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"http://localhost:5173"},
 		AllowedMethods:   []string{"GET", "POST", "OPTIONS"},

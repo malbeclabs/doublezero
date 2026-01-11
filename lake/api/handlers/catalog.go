@@ -4,7 +4,8 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"net/url"
+
+	"github.com/malbeclabs/doublezero/lake/api/config"
 )
 
 type TableInfo struct {
@@ -17,8 +18,6 @@ type TableInfo struct {
 type CatalogResponse struct {
 	Tables []TableInfo `json:"tables"`
 }
-
-const clickhouseURL = "http://localhost:8123"
 
 func GetCatalog(w http.ResponseWriter, r *http.Request) {
 	query := `
@@ -37,7 +36,7 @@ func GetCatalog(w http.ResponseWriter, r *http.Request) {
 		FORMAT JSON
 	`
 
-	resp, err := http.Get(clickhouseURL + "/?query=" + url.QueryEscape(query))
+	resp, err := http.Get(config.ClickHouseQueryURL(query))
 	if err != nil {
 		http.Error(w, "Failed to connect to ClickHouse: "+err.Error(), http.StatusInternalServerError)
 		return

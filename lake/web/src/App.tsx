@@ -517,9 +517,10 @@ function QuerySessionsView() {
     const session = sessions.find(s => s.id === sessionId)
     if (!session) return
 
+    // Include both generated queries (with prompts) and manual queries (SQL only)
     const queries: SessionQueryInfo[] = session.history
-      .filter(h => h.type === 'generation' && h.prompt)
-      .map(h => ({ prompt: h.prompt!, sql: h.sql }))
+      .filter(h => h.sql) // Must have SQL
+      .map(h => ({ prompt: h.prompt || '', sql: h.sql }))
       .slice(0, 3)
 
     if (queries.length === 0) return
@@ -875,9 +876,10 @@ function AppContent() {
     const session = sessions.find(s => s.id === sessionId)
     if (!session) return
 
+    // Include both generated queries (with prompts) and manual queries (SQL only)
     const queries: SessionQueryInfo[] = session.history
-      .filter(h => h.type === 'generation' && h.prompt)
-      .map(h => ({ prompt: h.prompt!, sql: h.sql }))
+      .filter(h => h.sql) // Must have SQL
+      .map(h => ({ prompt: h.prompt || '', sql: h.sql }))
       .slice(0, 3)
 
     if (queries.length === 0) return

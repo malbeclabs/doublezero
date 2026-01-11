@@ -299,10 +299,14 @@ export async function generateSessionTitle(
   signal?: AbortSignal
 ): Promise<GenerateTitleResponse> {
   // Use the complete endpoint with a specific prompt to generate a title
-  const queryDescriptions = queries.slice(0, 3).map((q, i) =>
-    `${i + 1}. Question: "${q.prompt}"
+  const queryDescriptions = queries.slice(0, 3).map((q, i) => {
+    if (q.prompt) {
+      return `${i + 1}. Question: "${q.prompt}"
    SQL: ${q.sql.slice(0, 200)}${q.sql.length > 200 ? '...' : ''}`
-  ).join('\n\n')
+    } else {
+      return `${i + 1}. SQL: ${q.sql.slice(0, 300)}${q.sql.length > 300 ? '...' : ''}`
+    }
+  }).join('\n\n')
 
   const message = `Generate a very brief title (2-4 words) in sentence case (only first word capitalized) for this data session based on these queries:
 

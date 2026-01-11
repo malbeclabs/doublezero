@@ -9,8 +9,11 @@ import {
   MoreHorizontal,
   Pencil,
   RefreshCw,
+  Sun,
+  Moon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useTheme } from '@/hooks/use-theme'
 import {
   type QuerySession,
   type ChatSession,
@@ -55,6 +58,7 @@ export function Sidebar({
 }: SidebarProps) {
   const navigate = useNavigate()
   const location = useLocation()
+  const { resolvedTheme, setTheme } = useTheme()
   const [isCollapsed, setIsCollapsed] = useState(() => {
     // Check localStorage for saved preference
     const saved = localStorage.getItem('sidebar-collapsed')
@@ -97,6 +101,10 @@ export function Sidebar({
     localStorage.setItem('sidebar-user-collapsed', String(collapsed))
   }
 
+  const toggleTheme = () => {
+    setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')
+  }
+
   const isQueryRoute = location.pathname.startsWith('/query')
   const isChatRoute = location.pathname.startsWith('/chat')
   const isQuerySessions = location.pathname === '/query/sessions'
@@ -122,7 +130,7 @@ export function Sidebar({
             className="group relative"
             title="Expand sidebar"
           >
-            <img src="/doublezero-logo.png" alt="Data" className="h-6 group-hover:opacity-0 transition-opacity" />
+            <img src={resolvedTheme === 'dark' ? '/logoDarkSm.svg' : '/logoLightSm.svg'} alt="Data" className="h-6 group-hover:opacity-0 transition-opacity" />
             <PanelLeftOpen className="h-5 w-5 absolute inset-0 m-auto opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground" />
           </button>
         </div>
@@ -157,15 +165,24 @@ export function Sidebar({
         </button>
         </div>
 
-        {/* Collapse toggle at bottom */}
+        {/* Theme toggle and collapse toggle at bottom */}
         <div className="flex-1" />
-        <button
-          onClick={() => handleSetCollapsed(false)}
-          className="p-2 mb-3 text-muted-foreground hover:text-foreground transition-colors"
-          title="Expand sidebar"
-        >
-          <PanelLeftOpen className="h-4 w-4" />
-        </button>
+        <div className="flex flex-col items-center gap-1 mb-3">
+          <button
+            onClick={toggleTheme}
+            className="p-2 text-muted-foreground hover:text-foreground transition-colors"
+            title={resolvedTheme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            {resolvedTheme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          </button>
+          <button
+            onClick={() => handleSetCollapsed(false)}
+            className="p-2 text-muted-foreground hover:text-foreground transition-colors"
+            title="Expand sidebar"
+          >
+            <PanelLeftOpen className="h-4 w-4" />
+          </button>
+        </div>
       </div>
     )
   }
@@ -178,7 +195,7 @@ export function Sidebar({
           onClick={() => navigate('/')}
           className="flex items-center gap-2 hover:opacity-80 transition-opacity"
         >
-          <img src="/doublezero.svg" alt="DoubleZero" className="h-5" />
+          <img src={resolvedTheme === 'dark' ? '/logoDark.svg' : '/logoLight.svg'} alt="DoubleZero" className="h-5" />
           <span className="wordmark text-lg">Data</span>
         </button>
         <button
@@ -353,8 +370,15 @@ export function Sidebar({
       {/* Spacer when no section is active */}
       {!isQueryRoute && !isChatRoute && <div className="flex-1" />}
 
-      {/* Development notice footer */}
-      <div className="mt-auto px-3 py-3 border-t border-border/50">
+      {/* Theme toggle and development notice footer */}
+      <div className="mt-auto px-3 py-3 border-t border-border/50 space-y-3">
+        <button
+          onClick={toggleTheme}
+          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)] rounded transition-colors"
+        >
+          {resolvedTheme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          {resolvedTheme === 'dark' ? 'Light mode' : 'Dark mode'}
+        </button>
         <p className="text-xs text-grey-40 leading-snug">
           Early preview. Chat and query history is stored locally in your browser and may be cleared.
         </p>
@@ -421,7 +445,7 @@ function SessionItem({ title, isActive, onClick, onDelete, onRename, onGenerateT
           onKeyDown={handleKeyDown}
           onBlur={handleSaveRename}
           autoFocus
-          className="w-full text-sm bg-white border border-border px-2 py-1 focus:outline-none focus:border-foreground"
+          className="w-full text-sm bg-card border border-border px-2 py-1 focus:outline-none focus:border-foreground"
         />
       </div>
     )
@@ -464,13 +488,13 @@ function SessionItem({ title, isActive, onClick, onDelete, onRename, onGenerateT
               setShowMenu(false)
             }}
           />
-          <div className="absolute right-0 top-full mt-1 z-20 bg-white border border-border shadow-md py-1 min-w-[120px]">
+          <div className="absolute right-0 top-full mt-1 z-20 bg-card border border-border shadow-md py-1 min-w-[120px]">
             <button
               onClick={(e) => {
                 e.stopPropagation()
                 handleStartRename()
               }}
-              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-foreground hover:bg-gray-100 transition-colors"
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-foreground hover:bg-muted transition-colors"
             >
               <Pencil className="h-3 w-3" />
               Rename
@@ -481,7 +505,7 @@ function SessionItem({ title, isActive, onClick, onDelete, onRename, onGenerateT
                   e.stopPropagation()
                   handleGenerateTitle()
                 }}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-foreground hover:bg-gray-100 transition-colors"
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-foreground hover:bg-muted transition-colors"
               >
                 <RefreshCw className="h-3 w-3" />
                 Generate Title
@@ -493,7 +517,7 @@ function SessionItem({ title, isActive, onClick, onDelete, onRename, onGenerateT
                 setShowMenu(false)
                 onDelete()
               }}
-              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-destructive hover:bg-gray-100 transition-colors"
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-destructive hover:bg-muted transition-colors"
             >
               <Trash2 className="h-3 w-3" />
               Delete

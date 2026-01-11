@@ -102,7 +102,7 @@ export function ResultsView({
   }
 
   return (
-    <div className="rounded-lg border border-border bg-white overflow-hidden">
+    <div className="rounded-lg border border-border bg-card overflow-hidden">
       {/* Header with view toggle */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-secondary/30">
         <div className="flex items-center gap-3">
@@ -113,7 +113,7 @@ export function ResultsView({
               className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
                 viewMode === 'table'
                   ? 'bg-accent text-white'
-                  : 'bg-white hover:bg-accent-orange-20 text-foreground'
+                  : 'bg-card hover:bg-accent-orange-20 text-foreground'
               }`}
             >
               <Table className="w-4 h-4" />
@@ -126,7 +126,7 @@ export function ResultsView({
                 viewMode === 'chart'
                   ? 'bg-accent text-white'
                   : canVisualize
-                  ? 'bg-white hover:bg-accent-orange-20 text-foreground'
+                  ? 'bg-card hover:bg-accent-orange-20 text-foreground'
                   : 'bg-muted text-muted-foreground cursor-not-allowed'
               }`}
             >

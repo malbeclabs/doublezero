@@ -112,7 +112,7 @@ export function ResultsTable({ results, onAskAboutResults, embedded = false }: R
               <TableRow
                 key={row.id}
                 className={`border-b last:border-b-0 hover:bg-muted ${
-                  i % 2 === 1 ? 'bg-muted/50' : 'bg-white'
+                  i % 2 === 1 ? 'bg-muted/50' : 'bg-card'
                 }`}
               >
                 {row.getVisibleCells().map((cell) => (
@@ -130,7 +130,7 @@ export function ResultsTable({ results, onAskAboutResults, embedded = false }: R
 
   // Full mode: with header chrome
   return (
-    <div className="border bg-white">
+    <div className="border bg-card">
       <div className="flex items-center justify-between px-3 py-2 border-b bg-accent-orange-10">
         <span className="text-xs text-muted-foreground">
           {results.row_count.toLocaleString()} rows
@@ -175,7 +175,7 @@ export function ResultsTable({ results, onAskAboutResults, embedded = false }: R
             <TableRow
               key={row.id}
               className={`border-b last:border-b-0 hover:bg-muted ${
-                i % 2 === 1 ? 'bg-muted/50' : 'bg-white'
+                i % 2 === 1 ? 'bg-muted/50' : 'bg-card'
               }`}
             >
               {row.getVisibleCells().map((cell) => (

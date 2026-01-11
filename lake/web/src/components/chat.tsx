@@ -4,9 +4,10 @@ import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import type { ChatMessage, ChatPipelineData } from '@/lib/api'
 import { ArrowUp, Square, Loader2, Copy, Check, ChevronDown, ChevronRight, ExternalLink, MessageCircle } from 'lucide-react'
+import { useTheme } from '@/hooks/use-theme'
 
-// Custom minimal theme matching our design
-const codeTheme: { [key: string]: React.CSSProperties } = {
+// Light theme for syntax highlighting
+const lightCodeTheme: { [key: string]: React.CSSProperties } = {
   'code[class*="language-"]': {
     color: 'hsl(220, 25%, 20%)',
     background: 'transparent',
@@ -60,7 +61,62 @@ const codeTheme: { [key: string]: React.CSSProperties } = {
   italic: { fontStyle: 'italic' },
 }
 
-function CodeBlock({ language, children }: { language: string; children: string }) {
+// Dark theme for syntax highlighting
+const darkCodeTheme: { [key: string]: React.CSSProperties } = {
+  'code[class*="language-"]': {
+    color: 'hsl(220, 15%, 85%)',
+    background: 'transparent',
+    fontFamily: "'SF Mono', 'Menlo', 'Monaco', monospace",
+    fontSize: '0.875em',
+    textAlign: 'left',
+    whiteSpace: 'pre',
+    wordSpacing: 'normal',
+    wordBreak: 'normal',
+    wordWrap: 'normal',
+    lineHeight: '1.6',
+  },
+  'pre[class*="language-"]': {
+    color: 'hsl(220, 15%, 85%)',
+    background: 'transparent',
+    padding: '0',
+    margin: '0',
+    overflow: 'auto',
+    borderRadius: '0',
+  },
+  comment: { color: 'hsl(220, 10%, 50%)' },
+  prolog: { color: 'hsl(220, 10%, 50%)' },
+  doctype: { color: 'hsl(220, 10%, 50%)' },
+  cdata: { color: 'hsl(220, 10%, 50%)' },
+  punctuation: { color: 'hsl(220, 15%, 65%)' },
+  property: { color: 'hsl(200, 70%, 65%)' },
+  tag: { color: 'hsl(200, 70%, 65%)' },
+  boolean: { color: 'hsl(30, 70%, 65%)' },
+  number: { color: 'hsl(30, 70%, 65%)' },
+  constant: { color: 'hsl(30, 70%, 65%)' },
+  symbol: { color: 'hsl(30, 70%, 65%)' },
+  deleted: { color: 'hsl(0, 65%, 60%)' },
+  selector: { color: 'hsl(100, 50%, 60%)' },
+  'attr-name': { color: 'hsl(100, 50%, 60%)' },
+  string: { color: 'hsl(100, 50%, 60%)' },
+  char: { color: 'hsl(100, 50%, 60%)' },
+  builtin: { color: 'hsl(100, 50%, 60%)' },
+  inserted: { color: 'hsl(100, 50%, 60%)' },
+  operator: { color: 'hsl(220, 15%, 65%)' },
+  entity: { color: 'hsl(220, 15%, 65%)' },
+  url: { color: 'hsl(220, 15%, 65%)' },
+  atrule: { color: 'hsl(260, 60%, 70%)' },
+  'attr-value': { color: 'hsl(260, 60%, 70%)' },
+  keyword: { color: 'hsl(260, 60%, 70%)' },
+  function: { color: 'hsl(200, 70%, 65%)' },
+  'class-name': { color: 'hsl(200, 70%, 65%)' },
+  regex: { color: 'hsl(30, 70%, 65%)' },
+  important: { color: 'hsl(30, 70%, 65%)', fontWeight: 'bold' },
+  variable: { color: 'hsl(30, 70%, 65%)' },
+  bold: { fontWeight: 'bold' },
+  italic: { fontStyle: 'italic' },
+}
+
+function CodeBlock({ language, children, isDark }: { language: string; children: string; isDark: boolean }) {
   const [copied, setCopied] = useState(false)
 
   const handleCopy = async () => {
@@ -70,10 +126,10 @@ function CodeBlock({ language, children }: { language: string; children: string 
   }
 
   return (
-    <div className="relative group not-prose my-4 bg-[hsl(40,15%,96%)] px-5 py-4 overflow-auto">
+    <div className="relative group not-prose my-4 bg-muted px-5 py-4 overflow-auto">
       <button
         onClick={handleCopy}
-        className="absolute right-2 top-2 p-1.5 rounded border border-border bg-white/80 text-muted-foreground hover:text-foreground hover:bg-accent-orange-20 transition-colors z-10"
+        className="absolute right-2 top-2 p-1.5 rounded border border-border bg-card/80 text-muted-foreground hover:text-foreground hover:bg-accent-orange-20 transition-colors z-10"
         title="Copy code"
       >
         {copied ? (
@@ -83,7 +139,7 @@ function CodeBlock({ language, children }: { language: string; children: string 
         )}
       </button>
       <SyntaxHighlighter
-        style={codeTheme}
+        style={isDark ? darkCodeTheme : lightCodeTheme}
         language={language}
         PreTag="div"
         customStyle={{ background: 'transparent', padding: 0, margin: 0 }}
@@ -100,9 +156,10 @@ interface PipelineDetailsProps {
   onAskAboutQuery?: (question: string, sql: string, rowCount: number) => void
   highlightedQuery?: number | null
   onHighlightClear?: () => void
+  isDark: boolean
 }
 
-function PipelineDetails({ data, onOpenInQueryEditor, onAskAboutQuery, highlightedQuery, onHighlightClear }: PipelineDetailsProps) {
+function PipelineDetails({ data, onOpenInQueryEditor, onAskAboutQuery, highlightedQuery, onHighlightClear, isDark }: PipelineDetailsProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [expandedQueries, setExpandedQueries] = useState<Set<number>>(new Set())
   const queryRefs = useRef<Map<number, HTMLDivElement>>(new Map())
@@ -205,12 +262,12 @@ function PipelineDetails({ data, onOpenInQueryEditor, onAskAboutQuery, highlight
                   {expandedQueries.has(i) && (
                     <div className="mt-2 ml-5">
                       <div className="relative">
-                        <CodeBlock language="sql">{eq.sql}</CodeBlock>
+                        <CodeBlock language="sql" isDark={isDark}>{eq.sql}</CodeBlock>
                         <div className="absolute right-10 top-2 flex items-center gap-1 z-10">
                           {onAskAboutQuery && !eq.error && (
                             <button
                               onClick={() => onAskAboutQuery(eq.question, eq.sql, eq.count)}
-                              className="p-1.5 rounded border border-border bg-white/80 text-accent hover:bg-accent-orange-20 transition-colors flex items-center gap-1 text-xs"
+                              className="p-1.5 rounded border border-border bg-card/80 text-accent hover:bg-accent-orange-20 transition-colors flex items-center gap-1 text-xs"
                               title="Ask about this result"
                             >
                               <MessageCircle className="h-3 w-3" />
@@ -220,7 +277,7 @@ function PipelineDetails({ data, onOpenInQueryEditor, onAskAboutQuery, highlight
                           {onOpenInQueryEditor && (
                             <button
                               onClick={() => onOpenInQueryEditor(eq.sql)}
-                              className="p-1.5 rounded border border-border bg-white/80 text-muted-foreground hover:text-foreground hover:bg-accent-orange-20 transition-colors flex items-center gap-1 text-xs"
+                              className="p-1.5 rounded border border-border bg-card/80 text-muted-foreground hover:text-foreground hover:bg-accent-orange-20 transition-colors flex items-center gap-1 text-xs"
                               title="Open in Query Editor"
                             >
                               <ExternalLink className="h-3 w-3" />
@@ -340,6 +397,8 @@ export function Chat({ messages, isPending, progress, onSendMessage, onAbort, on
   const [input, setInput] = useState('')
   const [highlightedQueries, setHighlightedQueries] = useState<Map<number, number | null>>(new Map()) // messageIndex -> queryIndex
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const { resolvedTheme } = useTheme()
+  const isDark = resolvedTheme === 'dark'
 
   const handleAskAboutQuery = (question: string, _sql: string, rowCount: number) => {
     const prompt = `Tell me more about the "${question}" result (${rowCount} rows). What insights can you draw from this data?`
@@ -433,7 +492,7 @@ export function Chat({ messages, isPending, progress, onSendMessage, onAbort, on
                 <div key={msgIndex}>
                   {msg.role === 'user' ? (
                     <div className="flex justify-end">
-                      <div className="bg-gray-200 px-4 py-2.5 rounded-3xl max-w-[85%]">
+                      <div className="bg-secondary px-4 py-2.5 rounded-3xl max-w-[85%]">
                         <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
                       </div>
                     </div>
@@ -455,7 +514,7 @@ export function Chat({ messages, isPending, progress, onSendMessage, onAbort, on
                                   {children}
                                 </code>
                               ) : (
-                                <CodeBlock language={match ? match[1] : 'sql'}>
+                                <CodeBlock language={match ? match[1] : 'sql'} isDark={isDark}>
                                   {String(children).replace(/\n$/, '')}
                                 </CodeBlock>
                               )
@@ -511,6 +570,7 @@ export function Chat({ messages, isPending, progress, onSendMessage, onAbort, on
                           onAskAboutQuery={handleAskAboutQuery}
                           highlightedQuery={highlightedQueries.get(msgIndex) ?? null}
                           onHighlightClear={handleHighlightClear}
+                          isDark={isDark}
                         />
                       )}
                     </div>

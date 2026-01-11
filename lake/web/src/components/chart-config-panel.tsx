@@ -75,7 +75,7 @@ export function ChartConfigPanel({ columns, columnAnalysis, config, onConfigChan
       case 'categorical':
         return <span className="text-xs text-purple-500 font-mono">A</span>
       default:
-        return <span className="text-xs text-gray-400 font-mono">?</span>
+        return <span className="text-xs text-muted-foreground font-mono">?</span>
     }
   }
 
@@ -98,7 +98,7 @@ export function ChartConfigPanel({ columns, columnAnalysis, config, onConfigChan
                   isSelected
                     ? 'bg-accent text-white'
                     : isCompatible
-                    ? 'bg-white hover:bg-accent-orange-20 text-foreground'
+                    ? 'bg-card hover:bg-accent-orange-20 text-foreground'
                     : 'bg-muted text-muted-foreground cursor-not-allowed opacity-50'
                 }`}
               >
@@ -115,7 +115,7 @@ export function ChartConfigPanel({ columns, columnAnalysis, config, onConfigChan
         <select
           value={config.xAxis}
           onChange={(e) => handleXAxisChange(e.target.value)}
-          className="px-2 py-1 rounded border border-border bg-white text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+          className="px-2 py-1 rounded border border-border bg-card text-sm focus:outline-none focus:ring-1 focus:ring-accent"
         >
           {xAxisOptions.map(col => (
             <option key={col} value={col}>
@@ -135,7 +135,7 @@ export function ChartConfigPanel({ columns, columnAnalysis, config, onConfigChan
           <select
             value={config.yAxis[0] || ''}
             onChange={(e) => handleYAxisChange(e.target.value)}
-            className="px-2 py-1 rounded border border-border bg-white text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+            className="px-2 py-1 rounded border border-border bg-card text-sm focus:outline-none focus:ring-1 focus:ring-accent"
           >
             {yAxisOptions.filter(col => col !== config.xAxis).map(col => (
               <option key={col} value={col}>
@@ -154,7 +154,7 @@ export function ChartConfigPanel({ columns, columnAnalysis, config, onConfigChan
                   className={`px-2 py-0.5 rounded text-xs transition-colors flex items-center gap-1 ${
                     isSelected
                       ? 'bg-accent text-white'
-                      : 'bg-white border border-border hover:bg-accent-orange-20'
+                      : 'bg-card border border-border hover:bg-accent-orange-20'
                   }`}
                 >
                   {getColumnTypeIcon(col)}

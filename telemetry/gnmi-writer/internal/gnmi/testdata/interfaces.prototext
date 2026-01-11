@@ -1,0 +1,16 @@
+update: {
+  timestamp: 1767996400924668639
+  prefix: {
+    target: "switch1"
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-interfaces:interface\":[{\"name\":\"Ethernet1\",\"state\":{\"name\":\"Ethernet1\",\"type\":\"ethernetCsmacd\",\"admin-status\":\"UP\",\"oper-status\":\"UP\",\"mtu\":9000}},{\"name\":\"Ethernet2\",\"state\":{\"name\":\"Ethernet2\",\"type\":\"ethernetCsmacd\",\"admin-status\":\"UP\",\"oper-status\":\"DOWN\",\"mtu\":1500}}]}"
+    }
+  }
+}

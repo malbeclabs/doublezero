@@ -3,29 +3,17 @@
 package evals_test
 
 import (
-	"bytes"
 	"context"
 	"net"
 	"os"
 	"testing"
 	"time"
 
-	"github.com/joho/godotenv"
 	"github.com/malbeclabs/doublezero/lake/indexer/pkg/clickhouse"
 	"github.com/malbeclabs/doublezero/lake/indexer/pkg/clickhouse/dataset"
 	serviceability "github.com/malbeclabs/doublezero/lake/indexer/pkg/dz/serviceability"
 	"github.com/stretchr/testify/require"
 )
-
-func init() {
-	possiblePaths := []string{".env"}
-
-	for _, path := range possiblePaths {
-		if err := godotenv.Load(path); err == nil {
-			break
-		}
-	}
-}
 
 func TestLake_Agent_Evals_Anthropic_SolanaValidatorsGossipNodesOnDZSummary(t *testing.T) {
 	t.Parallel()
@@ -66,39 +54,39 @@ func runTest_SolanaValidatorsGossipNodesOnDZSummary(t *testing.T, llmFactory LLM
 	// Validate database query results before testing agent
 	validateSolanaValidatorsGossipNodesOnDZSummaryQuery(t, ctx, conn)
 
-	// Skip agent execution in short mode
+	// Skip pipeline execution in short mode
 	if testing.Short() {
-		t.Log("Skipping agent execution in short mode")
+		t.Log("Skipping pipeline execution in short mode")
 		return
 	}
 
-	// Set up agent with LLM client
-	agentInstance := setupAgent(t, ctx, db, llmFactory, debug, debugLevel, nil)
+	// Set up pipeline with LLM client
+	p := setupPipeline(t, ctx, db, llmFactory, debug, debugLevel)
 
 	// Run the query
-	var output bytes.Buffer
 	question := "how many solana validators and gossip nodes on dz"
 	if debug {
 		if debugLevel == 1 {
 			t.Logf("=== Query: '%s' ===\n", question)
 		} else {
-			t.Logf("=== Starting agent query: '%s' ===\n", question)
+			t.Logf("=== Starting pipeline query: '%s' ===\n", question)
 		}
 	}
-	result, err := agentInstance.Run(ctx, question, &output)
+	result, err := p.Run(ctx, question)
 	require.NoError(t, err)
-	require.NotEmpty(t, result.FinalText)
+	require.NotNil(t, result)
+	require.NotEmpty(t, result.Answer)
 
 	// Basic validation - the response should mention counts
-	response := result.FinalText
+	response := result.Answer
 	if debug {
 		if debugLevel == 1 {
 			t.Logf("=== Response ===\n%s\n", response)
 		} else {
-			t.Logf("\n=== Final Agent Response ===\n%s\n", response)
+			t.Logf("\n=== Final Pipeline Response ===\n%s\n", response)
 		}
 	} else {
-		t.Logf("Agent response:\n%s", response)
+		t.Logf("Pipeline response:\n%s", response)
 	}
 
 	// The response should be non-empty and contain some indication of counts

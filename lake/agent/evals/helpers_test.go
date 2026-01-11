@@ -3,6 +3,7 @@
 package evals_test
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -18,13 +19,9 @@ import (
 	"time"
 
 	anthropic "github.com/anthropics/anthropic-sdk-go"
-	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
-	"github.com/malbeclabs/doublezero/lake/agent/pkg/agent"
-	"github.com/malbeclabs/doublezero/lake/agent/pkg/prompts"
-	"github.com/malbeclabs/doublezero/lake/agent/pkg/react"
-	"github.com/malbeclabs/doublezero/lake/agent/pkg/tools"
+	"github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline"
 	"github.com/malbeclabs/doublezero/lake/indexer/pkg/clickhouse"
 	"github.com/malbeclabs/doublezero/lake/indexer/pkg/clickhouse/dataset"
 	serviceability "github.com/malbeclabs/doublezero/lake/indexer/pkg/dz/serviceability"
@@ -304,14 +301,10 @@ Respond with only "YES" or "NO" followed by a brief explanation.`, question, res
 }
 
 // LLMClientFactory creates an LLM client for testing
-type LLMClientFactory func(t *testing.T, systemPrompt string) react.LLMClient
+type LLMClientFactory func(t *testing.T) pipeline.LLMClient
 
-// setupAgent creates an agent instance with the given LLM client factory
-func setupAgent(t *testing.T, ctx context.Context, db clickhouse.Client, llmFactory LLMClientFactory, debug bool, debugLevel int, cfg *react.Config) *agent.Agent {
-	if cfg == nil {
-		cfg = &react.Config{}
-	}
-
+// setupPipeline creates a pipeline instance with the given LLM client factory
+func setupPipeline(t *testing.T, ctx context.Context, db clickhouse.Client, llmFactory LLMClientFactory, debug bool, debugLevel int) *pipeline.Pipeline {
 	// Create logger with appropriate level
 	var logger *slog.Logger
 	if debug {
@@ -321,52 +314,51 @@ func setupAgent(t *testing.T, ctx context.Context, db clickhouse.Client, llmFact
 	}
 
 	// Load prompts
-	prompts, err := prompts.Load()
+	prompts, err := pipeline.LoadPrompts()
 	require.NoError(t, err)
 
-	// Build system prompt
-	systemPrompt := prompts.BuildSystemPrompt()
-
 	// Create LLM client using factory
-	baseLLMClient := llmFactory(t, systemPrompt)
+	baseLLMClient := llmFactory(t)
 
 	// Wrap LLM client with debug logging if DEBUG is set
-	var llmClient react.LLMClient = baseLLMClient
+	var llmClient pipeline.LLMClient = baseLLMClient
 	if debug {
-		llmClient = &debugLLMClient{
+		llmClient = &debugPipelineLLMClient{
 			LLMClient:  baseLLMClient,
 			t:          t,
 			debugLevel: debugLevel,
 		}
 	}
 
-	// Create tool client
-	baseToolClient := tools.NewClickhouseQueryTool(db)
+	// Create querier using the clickhouse client
+	baseQuerier := NewClickhouseQuerier(db)
 
-	// Wrap tool client with debug logging if DEBUG is set
-	var toolClient react.ToolClient = baseToolClient
+	// Wrap querier with debug logging if DEBUG is set
+	var querier pipeline.Querier = baseQuerier
 	if debug {
-		toolClient = &debugToolClient{
-			ToolClient: baseToolClient,
+		querier = &debugQuerier{
+			Querier:    baseQuerier,
 			t:          t,
 			debugLevel: debugLevel,
 		}
 	}
 
-	// Create react agent
-	cfg.Logger = logger
-	cfg.LLM = llmClient
-	cfg.ToolClient = toolClient
-	cfg.FinalizationPrompt = prompts.Finalization
-	cfg.SummaryPrompt = prompts.Summary
-	reactAgent, err := react.NewAgent(cfg)
+	// Create schema fetcher using the clickhouse client
+	schemaFetcher := NewClickhouseSchemaFetcher(db)
+
+	// Create pipeline
+	p, err := pipeline.New(&pipeline.Config{
+		Logger:        logger,
+		LLM:           llmClient,
+		Querier:       querier,
+		SchemaFetcher: schemaFetcher,
+		Prompts:       prompts,
+		MaxTokens:     4096,
+		MaxRetries:    4,
+	})
 	require.NoError(t, err)
 
-	// Create agent
-	return agent.NewAgent(&agent.AgentConfig{
-		ReactAgent: reactAgent,
-		LLMClient:  llmClient,
-	})
+	return p
 }
 
 // getDebugLevel parses the DEBUG environment variable
@@ -382,22 +374,19 @@ func getDebugLevel() (int, bool) {
 	return debugLevel, debugLevel > 0
 }
 
-// newAnthropicLLMClient creates an Anthropic LLM client for testing
-func newAnthropicLLMClient(t *testing.T, systemPrompt string) react.LLMClient {
+// newAnthropicLLMClient creates an Anthropic LLM client for the pipeline
+func newAnthropicLLMClient(t *testing.T) pipeline.LLMClient {
 	apiKey := os.Getenv("ANTHROPIC_API_KEY")
 	require.NotEmpty(t, apiKey, "ANTHROPIC_API_KEY must be set for Anthropic tests")
 
-	anthropicClient := anthropic.NewClient(option.WithAPIKey(apiKey))
-	return react.NewAnthropicAgent(
-		anthropicClient,
+	return pipeline.NewAnthropicLLMClient(
 		anthropic.ModelClaudeHaiku4_5_20251001, // Use Haiku for faster/cheaper eval tests
-		4000,
-		systemPrompt,
+		4096,
 	)
 }
 
-// newOllamaLLMClient creates an Ollama LLM client for testing
-func newOllamaLLMClient(t *testing.T, systemPrompt string) react.LLMClient {
+// newOllamaLLMClient creates an Ollama LLM client for the pipeline
+func newOllamaLLMClient(t *testing.T) pipeline.LLMClient {
 	ollamaURL := os.Getenv("OLLAMA_URL")
 	if ollamaURL == "" {
 		// Detect if running in a devcontainer and use DIND_LOCALHOST hostname
@@ -410,17 +399,265 @@ func newOllamaLLMClient(t *testing.T, systemPrompt string) react.LLMClient {
 
 	model := os.Getenv("OLLAMA_AGENT_MODEL")
 	if model == "" {
-		// Use mistral-nemo - specifically optimized for tool calling in Ollama
-		// Other models (llama3.1, qwen2.5) have known issues with tool calling
-		model = "mistral-nemo"
+		// Use llama3.1:8b - good for text completion without tool calling
+		model = "llama3.1:8b"
 	}
 
-	return react.NewOllamaAgent(
-		ollamaURL,
-		model,
-		4000,
-		systemPrompt,
-	)
+	return NewOllamaLLMClient(ollamaURL, model, 4096)
+}
+
+// OllamaLLMClient implements pipeline.LLMClient for Ollama
+type OllamaLLMClient struct {
+	baseURL   string
+	model     string
+	maxTokens int64
+}
+
+// NewOllamaLLMClient creates a new Ollama LLM client for the pipeline
+func NewOllamaLLMClient(baseURL, model string, maxTokens int64) *OllamaLLMClient {
+	return &OllamaLLMClient{
+		baseURL:   baseURL,
+		model:     model,
+		maxTokens: maxTokens,
+	}
+}
+
+// Complete sends a prompt to Ollama and returns the response text
+func (c *OllamaLLMClient) Complete(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
+	reqBody := map[string]any{
+		"model":  c.model,
+		"stream": false,
+		"options": map[string]any{
+			"num_predict": c.maxTokens,
+		},
+		"messages": []map[string]string{
+			{"role": "system", "content": systemPrompt},
+			{"role": "user", "content": userPrompt},
+		},
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/api/chat", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("ollama returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	// Handle streaming response (newline-delimited JSON)
+	var fullContent strings.Builder
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 10*1024*1024)
+
+	for scanner.Scan() {
+		line := bytes.TrimSpace(scanner.Bytes())
+		if len(line) == 0 {
+			continue
+		}
+
+		var chunk struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+			Done  bool   `json:"done"`
+			Error string `json:"error,omitempty"`
+		}
+
+		if err := json.Unmarshal(line, &chunk); err != nil {
+			continue
+		}
+
+		if chunk.Error != "" {
+			return "", fmt.Errorf("ollama error: %s", chunk.Error)
+		}
+
+		fullContent.WriteString(chunk.Message.Content)
+
+		if chunk.Done {
+			break
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return "", fmt.Errorf("failed to read response: %w", err)
+	}
+
+	return fullContent.String(), nil
+}
+
+// ClickhouseQuerier implements pipeline.Querier using the clickhouse client
+type ClickhouseQuerier struct {
+	db clickhouse.Client
+}
+
+// NewClickhouseQuerier creates a new ClickhouseQuerier
+func NewClickhouseQuerier(db clickhouse.Client) *ClickhouseQuerier {
+	return &ClickhouseQuerier{db: db}
+}
+
+// Query executes a SQL query and returns the result
+func (q *ClickhouseQuerier) Query(ctx context.Context, sql string) (pipeline.QueryResult, error) {
+	sql = strings.TrimSuffix(strings.TrimSpace(sql), ";")
+
+	conn, err := q.db.Conn(ctx)
+	if err != nil {
+		return pipeline.QueryResult{SQL: sql, Error: fmt.Sprintf("connection error: %v", err)}, nil
+	}
+	defer conn.Close()
+
+	result, err := dataset.Query(ctx, conn, sql, nil)
+	if err != nil {
+		return pipeline.QueryResult{SQL: sql, Error: err.Error()}, nil
+	}
+
+	qr := pipeline.QueryResult{
+		SQL:     sql,
+		Columns: result.Columns,
+		Rows:    result.Rows,
+		Count:   result.Count,
+	}
+
+	// Generate formatted output
+	qr.Formatted = formatQueryResult(qr)
+
+	return qr, nil
+}
+
+// formatQueryResult creates a human-readable format of the query result
+func formatQueryResult(result pipeline.QueryResult) string {
+	if result.Error != "" {
+		return fmt.Sprintf("Error: %s", result.Error)
+	}
+
+	if len(result.Rows) == 0 {
+		return "Query returned no results."
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Results (%d rows):\n", len(result.Rows)))
+	sb.WriteString("Columns: " + strings.Join(result.Columns, " | ") + "\n")
+	sb.WriteString(strings.Repeat("-", 40) + "\n")
+
+	// Limit output to first 50 rows
+	maxRows := 50
+	if len(result.Rows) < maxRows {
+		maxRows = len(result.Rows)
+	}
+
+	for i := 0; i < maxRows; i++ {
+		row := result.Rows[i]
+		var values []string
+		for _, col := range result.Columns {
+			values = append(values, fmt.Sprintf("%v", row[col]))
+		}
+		sb.WriteString(strings.Join(values, " | ") + "\n")
+	}
+
+	if len(result.Rows) > 50 {
+		sb.WriteString(fmt.Sprintf("... and %d more rows\n", len(result.Rows)-50))
+	}
+
+	return sb.String()
+}
+
+// ClickhouseSchemaFetcher implements pipeline.SchemaFetcher using the clickhouse client
+type ClickhouseSchemaFetcher struct {
+	db clickhouse.Client
+}
+
+// NewClickhouseSchemaFetcher creates a new ClickhouseSchemaFetcher
+func NewClickhouseSchemaFetcher(db clickhouse.Client) *ClickhouseSchemaFetcher {
+	return &ClickhouseSchemaFetcher{db: db}
+}
+
+// FetchSchema retrieves database schema information
+func (f *ClickhouseSchemaFetcher) FetchSchema(ctx context.Context) (string, error) {
+	conn, err := f.db.Conn(ctx)
+	if err != nil {
+		return "", fmt.Errorf("connection error: %w", err)
+	}
+	defer conn.Close()
+
+	// Fetch columns
+	columnsSQL := `
+		SELECT table, name, type
+		FROM system.columns
+		WHERE database = 'default'
+		  AND table NOT LIKE 'stg_%'
+		ORDER BY table, position
+	`
+	columnsResult, err := dataset.Query(ctx, conn, columnsSQL, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch columns: %w", err)
+	}
+
+	// Fetch views
+	viewsSQL := `
+		SELECT name, as_select
+		FROM system.tables
+		WHERE database = 'default'
+		  AND engine = 'View'
+		  AND name NOT LIKE 'stg_%'
+	`
+	viewsResult, err := dataset.Query(ctx, conn, viewsSQL, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch views: %w", err)
+	}
+
+	// Build view definitions map
+	viewDefs := make(map[string]string)
+	for _, row := range viewsResult.Rows {
+		name, _ := row["name"].(string)
+		asSelect, _ := row["as_select"].(string)
+		viewDefs[name] = asSelect
+	}
+
+	// Format schema
+	var sb strings.Builder
+	currentTable := ""
+
+	for _, row := range columnsResult.Rows {
+		table, _ := row["table"].(string)
+		name, _ := row["name"].(string)
+		colType, _ := row["type"].(string)
+
+		if table != currentTable {
+			if currentTable != "" {
+				if def, ok := viewDefs[currentTable]; ok {
+					sb.WriteString("  Definition: " + def + "\n")
+				}
+				sb.WriteString("\n")
+			}
+			currentTable = table
+			if _, isView := viewDefs[table]; isView {
+				sb.WriteString(table + " (VIEW):\n")
+			} else {
+				sb.WriteString(table + ":\n")
+			}
+		}
+		sb.WriteString("  - " + name + " (" + colType + ")\n")
+	}
+
+	// Handle last table's view definition
+	if def, ok := viewDefs[currentTable]; ok {
+		sb.WriteString("  Definition: " + def + "\n")
+	}
+
+	return sb.String(), nil
 }
 
 // isOllamaAvailable checks if the local Ollama server is available
@@ -443,70 +680,56 @@ func isOllamaAvailable() bool {
 	return resp.StatusCode == http.StatusOK
 }
 
-// debugToolClient wraps a ToolClient to log all tool calls and results when DEBUG is enabled
-type debugToolClient struct {
-	react.ToolClient
+// debugQuerier wraps a Querier to log all queries and results when DEBUG is enabled
+type debugQuerier struct {
+	pipeline.Querier
 	t          *testing.T
 	debugLevel int
 }
 
-func (d *debugToolClient) CallToolText(ctx context.Context, name string, args map[string]any) (string, bool, error) {
-	// Log tool call
-	var argsJSON []byte
-	var argsStr string
+func (d *debugQuerier) Query(ctx context.Context, sql string) (pipeline.QueryResult, error) {
+	// Log query
+	sqlStr := sql
 	if d.debugLevel == 1 {
-		// Compact: non-pretty JSON, truncated
-		argsJSON, _ = json.Marshal(args)
-		argsStr = truncate(string(argsJSON), 150)
-	} else {
-		// Full: pretty JSON
-		argsJSON, _ = json.MarshalIndent(args, "  ", "  ")
-		argsStr = string(argsJSON)
+		sqlStr = truncate(sql, 150)
 	}
 
 	if d.debugLevel == 1 {
-		d.t.Logf("🔧 %s %s", name, argsStr)
+		d.t.Logf("🔧 query: %s", sqlStr)
 	} else {
-		d.t.Logf("\n🔧 [TOOL CALL] %s\n  Args:\n%s\n", name, argsStr)
+		d.t.Logf("\n🔧 [QUERY]\n%s\n", sql)
 	}
 
-	// Call the actual tool
-	result, isErr, err := d.ToolClient.CallToolText(ctx, name, args)
+	// Execute the query
+	result, err := d.Querier.Query(ctx, sql)
 
-	// Log tool result
+	// Log result
 	resultTruncLen := 100
 	if d.debugLevel == 2 {
 		resultTruncLen = 500
 	}
 
-	// Format result for logging
-	resultToLog := result
-	if d.debugLevel == 1 && !isErr && err == nil {
-		// In compact mode, try to compact JSON results
-		resultToLog = compactJSON(result)
-	}
-
 	if err != nil {
 		if d.debugLevel == 1 {
-			d.t.Logf("❌ %s: %v", name, err)
+			d.t.Logf("❌ query error: %v", err)
 		} else {
-			d.t.Logf("❌ [TOOL ERROR] %s: %v\n", name, err)
+			d.t.Logf("❌ [QUERY ERROR]: %v\n", err)
 		}
-	} else if isErr {
+	} else if result.Error != "" {
 		if d.debugLevel == 1 {
-			d.t.Logf("⚠️  %s: %s", name, truncate(resultToLog, resultTruncLen))
+			d.t.Logf("⚠️  query error: %s", truncate(result.Error, resultTruncLen))
 		} else {
-			d.t.Logf("⚠️  [TOOL RESULT] %s (error): %s\n", name, truncate(resultToLog, resultTruncLen))
+			d.t.Logf("⚠️  [QUERY RESULT] (error): %s\n", truncate(result.Error, resultTruncLen))
 		}
 	} else {
 		if d.debugLevel == 1 {
-			d.t.Logf("✅ %s: %s", name, truncate(resultToLog, resultTruncLen))
+			d.t.Logf("✅ query: %d rows", result.Count)
 		} else {
-			d.t.Logf("✅ [TOOL RESULT] %s: %s\n", name, truncate(resultToLog, resultTruncLen))
+			d.t.Logf("✅ [QUERY RESULT]: %d rows\n", result.Count)
 		}
 	}
 
-	return result, isErr, err
+	return result, err
 }
 
 func truncate(s string, maxLen int) string {
@@ -516,111 +739,47 @@ func truncate(s string, maxLen int) string {
 	return s[:maxLen] + "... (truncated)"
 }
 
-// compactJSON attempts to compact pretty-printed JSON by parsing and re-marshaling without indentation.
-// If parsing fails, returns the original string.
-func compactJSON(s string) string {
-	// Try to parse as JSON
-	var jsonData any
-	if err := json.Unmarshal([]byte(s), &jsonData); err != nil {
-		// Not valid JSON, return as-is
-		return s
-	}
-	// Re-marshal without indentation
-	compact, err := json.Marshal(jsonData)
-	if err != nil {
-		return s
-	}
-	return string(compact)
-}
-
-// debugLLMClient wraps an LLMClient to log all responses when DEBUG is enabled
-type debugLLMClient struct {
-	react.LLMClient
+// debugPipelineLLMClient wraps an LLMClient to log all responses when DEBUG is enabled
+type debugPipelineLLMClient struct {
+	pipeline.LLMClient
 	t          *testing.T
 	debugLevel int
 }
 
-func (d *debugLLMClient) Call(ctx context.Context, messages []react.Message, tools []react.Tool) (react.Response, error) {
+func (d *debugPipelineLLMClient) Complete(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
 	// Log that we're calling the LLM
 	if d.debugLevel == 1 {
-		d.t.Logf("🤖 LLM call (%d msgs)", len(messages))
+		d.t.Logf("🤖 LLM call (system: %d chars, user: %d chars)", len(systemPrompt), len(userPrompt))
 	} else {
-		d.t.Logf("\n🤖 [CALLING LLM] (message count: %d)\n", len(messages))
+		d.t.Logf("\n🤖 [CALLING LLM]\n  System: %s\n  User: %s\n",
+			truncate(systemPrompt, 200),
+			truncate(userPrompt, 500))
 	}
 
 	// Call the actual LLM
-	response, err := d.LLMClient.Call(ctx, messages, tools)
+	response, err := d.LLMClient.Complete(ctx, systemPrompt, userPrompt)
 	if err != nil {
 		if d.debugLevel == 1 {
 			d.t.Logf("❌ LLM error: %v", err)
 		} else {
 			d.t.Logf("❌ [LLM ERROR]: %v\n", err)
 		}
-		return nil, err
+		return "", err
 	}
 
 	// Log the response
-	content := response.Content()
-	var textParts []string
-	var toolCalls []string
-	for _, blk := range content {
-		if text, ok := blk.AsText(); ok && text != "" {
-			textParts = append(textParts, text)
-		}
-		if id, name, inputBytes, ok := blk.AsToolUse(); ok {
-			var input map[string]any
-			json.Unmarshal(inputBytes, &input)
-			var inputStr string
-			if d.debugLevel == 1 {
-				// Compact: non-pretty JSON, truncated
-				inputJSON, _ := json.Marshal(input)
-				inputStr = truncate(string(inputJSON), 100)
-			} else {
-				// Full: pretty JSON
-				inputJSON, _ := json.MarshalIndent(input, "    ", "  ")
-				inputStr = string(inputJSON)
-			}
-			if d.debugLevel == 1 {
-				toolCalls = append(toolCalls, fmt.Sprintf("  %s(%s)", name, inputStr))
-			} else {
-				toolCalls = append(toolCalls, fmt.Sprintf("  - %s (id: %s)\n    Args:\n%s", name, id, inputStr))
-			}
-		}
-	}
-
 	textTruncLen := 300
 	if d.debugLevel == 2 {
 		textTruncLen = 2000
 	}
 
-	if len(textParts) > 0 {
-		combinedText := ""
-		for _, text := range textParts {
-			combinedText += text
-		}
-		if d.debugLevel == 1 {
-			d.t.Logf("🤖 Response: %s", truncate(combinedText, textTruncLen))
-		} else {
-			d.t.Logf("\n🤖 [ASSISTANT RESPONSE]\n%s\n", truncate(combinedText, textTruncLen))
-		}
-	}
-	if len(toolCalls) > 0 {
-		if d.debugLevel == 1 {
-			d.t.Logf("🔧 Tools: %s", strings.Join(toolCalls, ", "))
-		} else {
-			d.t.Logf("🔧 [TOOL CALLS IN RESPONSE]\n%s\n", strings.Join(toolCalls, "\n"))
-		}
+	if d.debugLevel == 1 {
+		d.t.Logf("🤖 Response: %s", truncate(response, textTruncLen))
+	} else {
+		d.t.Logf("\n🤖 [LLM RESPONSE]\n%s\n", truncate(response, textTruncLen))
 	}
 
 	return response, nil
-}
-
-func (d *debugLLMClient) ConvertToMessage(msg any) react.Message {
-	return d.LLMClient.ConvertToMessage(msg)
-}
-
-func (d *debugLLMClient) ConvertToolResults(toolUses []react.ToolUse, results []react.ToolResult) ([]react.Message, error) {
-	return d.LLMClient.ConvertToolResults(toolUses, results)
 }
 
 // Helper functions for pointer creation

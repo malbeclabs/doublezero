@@ -3,7 +3,6 @@
 package evals_test
 
 import (
-	"bytes"
 	"context"
 	"os"
 	"testing"
@@ -56,39 +55,39 @@ func runTest_NetworkHealthSummary(t *testing.T, llmFactory LLMClientFactory) {
 	// Validate database query results before testing agent
 	validateNetworkHealthSummaryQuery(t, ctx, conn)
 
-	// Skip agent execution in short mode
+	// Skip pipeline execution in short mode
 	if testing.Short() {
-		t.Log("Skipping agent execution in short mode")
+		t.Log("Skipping pipeline execution in short mode")
 		return
 	}
 
-	// Set up agent with LLM client
-	agentInstance := setupAgent(t, ctx, db, llmFactory, debug, debugLevel, nil)
+	// Set up pipeline with LLM client
+	p := setupPipeline(t, ctx, db, llmFactory, debug, debugLevel)
 
 	// Run the query
-	var output bytes.Buffer
 	question := "how is the network doing?"
 	if debug {
 		if debugLevel == 1 {
 			t.Logf("=== Query: '%s' ===\n", question)
 		} else {
-			t.Logf("=== Starting agent query: '%s' ===\n", question)
+			t.Logf("=== Starting pipeline query: '%s' ===\n", question)
 		}
 	}
-	result, err := agentInstance.Run(ctx, question, &output)
+	result, err := p.Run(ctx, question)
 	require.NoError(t, err)
-	require.NotEmpty(t, result.FinalText)
+	require.NotNil(t, result)
+	require.NotEmpty(t, result.Answer)
 
 	// Basic validation - the response should mention network health aspects
-	response := result.FinalText
+	response := result.Answer
 	if debug {
 		if debugLevel == 1 {
 			t.Logf("=== Response ===\n%s\n", response)
 		} else {
-			t.Logf("\n=== Final Agent Response ===\n%s\n", response)
+			t.Logf("\n=== Final Pipeline Response ===\n%s\n", response)
 		}
 	} else {
-		t.Logf("Agent response:\n%s", response)
+		t.Logf("Pipeline response:\n%s", response)
 	}
 
 	// Evaluate with Ollama - include specific expectations

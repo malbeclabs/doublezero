@@ -19,37 +19,33 @@ Follow these Slack-specific formatting rules:
 
 ### Section Headers
 
+- **Use markdown header syntax (`###`) for section headers** - this renders as larger text with natural spacing in Slack.
+- Prefix each header with an emoji for visual organization.
+- Example: `### 📊 Summary` or `### 🔧 Details`
 - Always structure responses using section headers, even for short answers.
-- Headers with emojis help break up long responses in Slack threads.
 - This improves readability in Slack's message interface.
 
-### Spacing (IMPORTANT)
+### Spacing
 
-**MANDATORY: Use generous vertical spacing throughout your response.**
-
-- **Always add TWO blank lines before each section header** (not one, two).
+- Add a blank line before each section header.
 - Add a blank line after lists before continuing with prose.
 - Add a blank line after code blocks.
-- Add a blank line between paragraphs.
-- Never have a section header immediately follow content without blank lines.
-- Slack's narrow message width makes dense text hard to read - spacing is critical.
+- The markdown headers (`###`) will render with natural spacing in Slack.
 
-Example of correct spacing:
+Example of correct formatting:
 
 ```
-:chart_with_upwards_trend: *Summary*
+### 📊 Summary
 
 Traffic is elevated on the NYC-LON path.
 
-
-:mag: *Details*
+### 🔍 Details
 
 - Source: NYC metro
 - Destination: LON metro
 - Current rate: 150 Gbps
 
-
-:bulb: *Recommendation*
+### 💡 Recommendation
 
 Consider load balancing across alternative paths.
 ```

@@ -24,6 +24,12 @@ Key terms used in DoubleZero (DZ) that map to database entities:
 - **Devices** = DZ network infrastructure (routers/switches)
 - **Links** = Connections between devices (WAN = inter-metro, DZX = intra-metro)
 - **Metros** = Data center locations
+- **Contributors** = Operators who own/manage devices and links
+
+**Contributors & Links**:
+- When asking about "contributors on links" or "contributors with link issues", this typically means the **device contributors** on either side of the link (side A and side Z), not the link's direct contributor
+- Each link connects two devices; each device has its own contributor
+- Example: "Which contributors have links with packet loss?" → find device contributors for both sides of affected links
 
 **Status Values**:
 - Devices/Links/Users can have: `pending`, `activated`, `suspended`, `deleted`, `rejected`, `drained`
@@ -33,8 +39,14 @@ Key terms used in DoubleZero (DZ) that map to database entities:
 **Performance & Health Metrics**:
 - **Latency**: RTT (round-trip time) measured in microseconds (`rtt_us`)
 - **Packet loss**: `loss = true` or `rtt_us = 0` indicates packet loss
-- **Link utilization**: Interface counters track bandwidth usage
+- **Link/interface utilization**: Calculate separately for inbound vs outbound (never combine directions)
 - **DZ vs Internet comparison**: Compare DZ WAN link latency to public internet latency (not DZX links)
+
+**Utilization Concepts**:
+- **Link utilization**: Per-link, per-direction (in vs out) - valid
+- **Device interface utilization**: Per-interface, per-direction - valid
+- **Metro traffic volume**: Aggregate bytes in/out across a metro's devices - valid
+- **"Metro link utilization %"**: INVALID - links often connect two metros, don't belong to one
 
 **Solana Validators**:
 - **"Staked validator"** = validator with active stake (`activated_stake_lamports > 0`)
@@ -98,7 +110,7 @@ Respond with a JSON object containing an array of data questions:
 2. How many links are activated vs other statuses?
 3. What is the packet loss across all links in the last 24 hours?
 4. Which links have interfaces with errors or discards in the last 24 hours?
-5. Which WAN links have utilization above 80% in the last 24 hours?
+5. Which WAN links have inbound or outbound utilization above 80% in the last 24 hours? (calculated per-link, per-direction)
 
 **User Question**: "How many validators are on DZ?"
 

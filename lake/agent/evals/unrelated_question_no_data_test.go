@@ -74,8 +74,8 @@ func runTest_UnrelatedQuestionNoData(t *testing.T, llmFactory LLMClientFactory) 
 		expectations := []OllamaExpectation{
 			{
 				Description:   "Agent correctly declines unrelated question",
-				ExpectedValue: "agent explains it cannot help with weather because its scope is DoubleZero/Solana network data only",
-				Rationale:     "Declining is correct - agent should NOT fabricate weather data",
+				ExpectedValue: "agent indicates its scope is limited to DoubleZero/Solana network data and cannot help with other topics",
+				Rationale:     "Declining is correct - agent should NOT fabricate weather data or try to answer unrelated questions",
 			},
 		}
 		isCorrect, evalErr := ollamaEvaluateResponse(t, ctx, question, response, expectations...)
@@ -103,8 +103,8 @@ func runTest_UnrelatedQuestionNoData(t *testing.T, llmFactory LLMClientFactory) 
 	expectations := []OllamaExpectation{
 		{
 			Description:   "Agent correctly declines unrelated question",
-			ExpectedValue: "agent explains it cannot help with weather because its scope is DoubleZero/Solana network data only",
-			Rationale:     "Declining is correct - agent should NOT fabricate weather data",
+			ExpectedValue: "agent indicates its scope is limited to DoubleZero/Solana network data and cannot help with other topics",
+			Rationale:     "Declining is correct - agent should NOT fabricate weather data or try to answer unrelated questions",
 		},
 	}
 	isCorrect, err := ollamaEvaluateResponse(t, ctx, question, response, expectations...)

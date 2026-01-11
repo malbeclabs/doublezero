@@ -71,6 +71,35 @@ These rules cannot be inferred from schema alone:
 - **User tunnel interfaces**: Identified by `user_tunnel_id IS NOT NULL`
 - **Internet comparison**: Only compare DZ WAN links to internet latency (not DZX)
 
+### Bandwidth & Utilization (CRITICAL)
+**NEVER combine in and out traffic for utilization calculations.** Network interfaces are full-duplex - each direction has independent capacity.
+
+**Correct utilization calculation:**
+```sql
+-- Per-link, per-direction utilization
+SELECT
+    l.code AS link_code,
+    SUM(in_octets_delta) * 8 / (l.bandwidth_bps * SUM(delta_duration)) AS in_utilization,
+    SUM(out_octets_delta) * 8 / (l.bandwidth_bps * SUM(delta_duration)) AS out_utilization
+FROM fact_dz_device_interface_counters f
+JOIN dz_links_current l ON f.link_pk = l.pk
+WHERE event_ts > now() - INTERVAL 1 HOUR
+GROUP BY l.pk, l.code, l.bandwidth_bps
+```
+
+**WRONG patterns:**
+- `SUM(in_octets + out_octets) / bandwidth` - WRONG: combines directions
+- `SUM(bytes) / (bandwidth_bps * 3600)` - WRONG: hardcoded time instead of using `delta_duration`
+- `MAX(bandwidth_bps)` when aggregating across links - WRONG: each link has its own capacity
+- "Metro link utilization" - WRONG: links span metros, don't belong to one metro
+
+**CORRECT patterns:**
+- Calculate in_utilization and out_utilization SEPARATELY
+- Use `delta_duration` column to get actual measurement period, not hardcoded constants
+- Calculate utilization per-link or per-interface, not aggregated across links
+- "Device interface utilization" or "Link utilization" are valid concepts
+- "Metro" questions about bandwidth should focus on aggregate traffic volume, not utilization %
+
 ### Naming Conventions
 - Use `{table}_current` views for current state (e.g., `dz_devices_current`)
 - Use `dim_{table}_history` tables for historical snapshots (see History Tables section below)
@@ -129,6 +158,25 @@ Solana validators/nodes connect to DZ as **users**, not directly to devices.
 - **User to Device**: `dz_users_current.device_pk = dz_devices_current.pk`
 - **Device to Metro**: `dz_devices_current.metro_pk = dz_metros_current.pk`
 - **Link telemetry**: `fact_dz_device_link_latency.link_pk = dz_links_current.pk`
+
+### Contributors & Links (IMPORTANT)
+When asked about **contributors associated with links** (e.g., "which contributors have link issues"), default to the **device contributors** on either side of the link, not just the link's direct `contributor_pk`.
+
+**Why**: Links connect two devices. Each device has its own contributor (operator). Questions about "contributors on links" typically mean "who operates the devices involved in this link."
+
+**Correct pattern for link-to-contributor queries:**
+```sql
+-- Get contributors for both sides of links
+SELECT DISTINCT
+    l.code AS link_code,
+    side_a_device.contributor_pk AS side_a_contributor,
+    side_z_device.contributor_pk AS side_z_contributor
+FROM dz_links_current l
+JOIN dz_devices_current side_a_device ON l.side_a_pk = side_a_device.pk
+JOIN dz_devices_current side_z_device ON l.side_z_pk = side_z_device.pk
+```
+
+**Note**: Links also have their own `contributor_pk` column, but this is less commonly what users mean when asking about contributors "on" links.
 
 ## Response Format
 

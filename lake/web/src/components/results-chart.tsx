@@ -52,7 +52,6 @@ function formatDateTick(value: unknown, dataRange: { min: number; max: number })
   if (isNaN(date.getTime())) return String(value)
 
   const rangeMs = dataRange.max - dataRange.min
-  const oneHour = 3600000
   const oneDay = 86400000
   const oneMonth = 30 * oneDay
 
@@ -233,7 +232,7 @@ export function ResultsChart({ results, config }: ResultsChartProps) {
               cx="50%"
               cy="50%"
               outerRadius={120}
-              label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+              label={({ name, percent }) => `${name}: ${((percent ?? 0) * 100).toFixed(0)}%`}
               labelLine={{ stroke: 'hsl(220, 9%, 46%)' }}
             >
               {(data as { name: string; value: number }[]).map((_, index) => (

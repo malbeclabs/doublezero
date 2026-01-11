@@ -143,7 +143,6 @@ export async function generateSQLStream(
 ): Promise<void> {
   // Retry initial connection with backoff
   let res: Response
-  let lastError: unknown
 
   for (let attempt = 0; attempt <= RETRY_CONFIG.maxRetries; attempt++) {
     try {
@@ -156,10 +155,8 @@ export async function generateSQLStream(
       if (res.ok) break
       if (res.status >= 400 && res.status < 500) break // Don't retry client errors
 
-      lastError = new Error(`Server error: ${res.status}`)
       if (!isRetryableError(null, res.status) || attempt === RETRY_CONFIG.maxRetries) break
     } catch (err) {
-      lastError = err
       if (!isRetryableError(err) || attempt === RETRY_CONFIG.maxRetries) {
         callbacks.onError('Connection failed. Please check your network and try again.')
         return
@@ -324,7 +321,6 @@ export async function sendChatMessageStream(
 ): Promise<void> {
   // Retry initial connection with backoff
   let res: Response
-  let lastError: unknown
 
   for (let attempt = 0; attempt <= RETRY_CONFIG.maxRetries; attempt++) {
     // Check if aborted before attempting
@@ -341,11 +337,9 @@ export async function sendChatMessageStream(
       if (res.ok) break
       if (res.status >= 400 && res.status < 500) break // Don't retry client errors
 
-      lastError = new Error(`Server error: ${res.status}`)
       if (!isRetryableError(null, res.status) || attempt === RETRY_CONFIG.maxRetries) break
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return
-      lastError = err
       if (!isRetryableError(err) || attempt === RETRY_CONFIG.maxRetries) {
         callbacks.onError('Connection failed. Please check your network and try again.')
         return

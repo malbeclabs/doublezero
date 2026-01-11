@@ -130,7 +130,7 @@ export function Sidebar({
         <div className="flex flex-col items-center gap-1 pt-4">
         {/* Query nav item */}
         <button
-          onClick={() => currentQuerySessionId ? navigate(`/query/${currentQuerySessionId}`) : navigate('/query')}
+          onClick={onNewQuerySession}
           className={cn(
             'p-2 rounded transition-colors',
             isQueryRoute
@@ -144,7 +144,7 @@ export function Sidebar({
 
         {/* Chat nav item */}
         <button
-          onClick={() => currentChatSessionId ? navigate(`/chat/${currentChatSessionId}`) : navigate('/chat')}
+          onClick={onNewChatSession}
           className={cn(
             'p-2 rounded transition-colors',
             isChatRoute
@@ -193,7 +193,7 @@ export function Sidebar({
       {/* Main nav */}
       <div className="px-3 pt-4 space-y-1">
         <button
-          onClick={() => currentQuerySessionId ? navigate(`/query/${currentQuerySessionId}`) : navigate('/query')}
+          onClick={onNewQuerySession}
           className={cn(
             'w-full flex items-center gap-2 px-3 py-2 text-sm rounded transition-colors',
             isQueryRoute
@@ -205,7 +205,7 @@ export function Sidebar({
           Query
         </button>
         <button
-          onClick={() => currentChatSessionId ? navigate(`/chat/${currentChatSessionId}`) : navigate('/chat')}
+          onClick={onNewChatSession}
           className={cn(
             'w-full flex items-center gap-2 px-3 py-2 text-sm rounded transition-colors',
             isChatRoute

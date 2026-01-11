@@ -397,7 +397,23 @@ export function Chat({ messages, isPending, progress, onSendMessage, onAbort, on
             {messages.length === 0 && (
               <div className="text-muted-foreground py-24 text-center">
                 <p className="text-lg mb-2">What would you like to know?</p>
-                <p className="text-sm">Ask questions about your data. I can run queries to find answers.</p>
+                <p className="text-sm mb-8">Ask questions about your data. I can run queries to find answers.</p>
+                <div className="flex flex-wrap justify-center gap-2 max-w-xl mx-auto">
+                  {[
+                    "How is the network doing?",
+                    "How many Solana validators are on DZ?",
+                    "Compare DZ to the public internet",
+                    "Which links have the highest utilization?",
+                  ].map((question) => (
+                    <button
+                      key={question}
+                      onClick={() => onSendMessage(question)}
+                      className="px-3 py-1.5 text-sm border border-border rounded-full hover:bg-secondary hover:border-muted-foreground/30 transition-colors"
+                    >
+                      {question}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
             {messages.map((msg, msgIndex) => {

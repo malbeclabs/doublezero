@@ -10,9 +10,9 @@ import (
 	influxdb2api "github.com/influxdata/influxdb-client-go/v2/api"
 	"github.com/influxdata/influxdb-client-go/v2/api/write"
 	"github.com/malbeclabs/doublezero/telemetry/global-monitor/internal/dz"
-	"github.com/malbeclabs/doublezero/telemetry/global-monitor/internal/geoip"
 	"github.com/malbeclabs/doublezero/telemetry/global-monitor/internal/netlink"
 	"github.com/malbeclabs/doublezero/telemetry/global-monitor/internal/sol"
+	"github.com/malbeclabs/doublezero/tools/maxmind/pkg/geoip"
 )
 
 type DoubleZeroUserICMPPlanner struct {
@@ -223,7 +223,7 @@ func (p *DoubleZeroUserICMPPlanner) recordResult(source *Source, user *dz.User, 
 		tags["target_geoip_region"] = geoIP.Region
 		tags["target_geoip_city"] = geoIP.City
 		tags["target_geoip_city_id"] = strconv.Itoa(geoIP.CityID)
-		tags["target_geoip_metro"] = geoIP.Metro
+		tags["target_geoip_metro"] = geoIP.MetroName
 		tags["target_geoip_asn"] = strconv.Itoa(int(geoIP.ASN))
 		tags["target_geoip_asn_org"] = geoIP.ASNOrg
 		fields["target_geoip_latitude"] = geoIP.Latitude

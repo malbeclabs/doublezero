@@ -1,0 +1,497 @@
+import { useState, useEffect } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
+import {
+  PanelLeftClose,
+  PanelLeftOpen,
+  MessageSquare,
+  Database,
+  Trash2,
+  MoreHorizontal,
+  Pencil,
+  RefreshCw,
+} from 'lucide-react'
+import { cn } from '@/lib/utils'
+import {
+  type QuerySession,
+  type ChatSession,
+  getSessionPreview,
+  getChatSessionPreview,
+} from '@/lib/sessions'
+
+interface SidebarProps {
+  // Query sessions
+  querySessions: QuerySession[]
+  currentQuerySessionId: string
+  onNewQuerySession: () => void
+  onSelectQuerySession: (session: QuerySession) => void
+  onDeleteQuerySession: (sessionId: string) => void
+  onRenameQuerySession: (sessionId: string, name: string) => void
+  onGenerateTitleQuerySession?: (sessionId: string) => Promise<void>
+  // Chat sessions
+  chatSessions: ChatSession[]
+  currentChatSessionId: string
+  onNewChatSession: () => void
+  onSelectChatSession: (session: ChatSession) => void
+  onDeleteChatSession: (sessionId: string) => void
+  onRenameChatSession: (sessionId: string, name: string) => void
+  onGenerateTitleChatSession?: (sessionId: string) => Promise<void>
+}
+
+export function Sidebar({
+  querySessions,
+  currentQuerySessionId,
+  onNewQuerySession,
+  onSelectQuerySession,
+  onDeleteQuerySession,
+  onRenameQuerySession,
+  onGenerateTitleQuerySession,
+  chatSessions,
+  currentChatSessionId,
+  onNewChatSession,
+  onSelectChatSession,
+  onDeleteChatSession,
+  onRenameChatSession,
+  onGenerateTitleChatSession,
+}: SidebarProps) {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    // Check localStorage for saved preference
+    const saved = localStorage.getItem('sidebar-collapsed')
+    if (saved !== null) return saved === 'true'
+    // Default to collapsed on small screens
+    return typeof window !== 'undefined' && window.innerWidth < 1024
+  })
+  const [userCollapsed, setUserCollapsed] = useState<boolean | null>(() => {
+    const saved = localStorage.getItem('sidebar-user-collapsed')
+    return saved !== null ? saved === 'true' : null
+  })
+
+  // Auto-collapse/expand on resize based on user preference
+  useEffect(() => {
+    const checkWidth = () => {
+      const isSmall = window.innerWidth < 1024
+      if (isSmall) {
+        // Always collapse on small screens
+        setIsCollapsed(true)
+      } else {
+        // On large screens, expand unless user explicitly collapsed
+        if (userCollapsed !== true) {
+          setIsCollapsed(false)
+        }
+      }
+    }
+
+    window.addEventListener('resize', checkWidth)
+    return () => window.removeEventListener('resize', checkWidth)
+  }, [userCollapsed])
+
+  // Save collapsed state to localStorage
+  useEffect(() => {
+    localStorage.setItem('sidebar-collapsed', String(isCollapsed))
+  }, [isCollapsed])
+
+  const handleSetCollapsed = (collapsed: boolean) => {
+    setIsCollapsed(collapsed)
+    setUserCollapsed(collapsed)
+    localStorage.setItem('sidebar-user-collapsed', String(collapsed))
+  }
+
+  const isQueryRoute = location.pathname.startsWith('/query')
+  const isChatRoute = location.pathname.startsWith('/chat')
+  const isQuerySessions = location.pathname === '/query/sessions'
+  const isChatSessions = location.pathname === '/chat/sessions'
+
+  // Sort sessions by updatedAt, most recent first, and filter out empty sessions
+  const sortedQuerySessions = [...querySessions]
+    .filter(s => s.history.length > 0)
+    .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+  const sortedChatSessions = [...chatSessions]
+    .filter(s => s.messages.length > 0)
+    .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+
+  if (isCollapsed) {
+    return (
+      <div className="w-12 border-r bg-[var(--sidebar)] flex flex-col items-center">
+        {/* Logo icon - matches expanded header height */}
+        <div className="w-full h-12 flex items-center justify-center border-b border-border/50">
+          <button
+            onClick={() => handleSetCollapsed(false)}
+            className="group relative"
+            title="Expand sidebar"
+          >
+            <img src="/doublezero-logo.png" alt="Data" className="h-6 group-hover:opacity-0 transition-opacity" />
+            <PanelLeftOpen className="h-5 w-5 absolute inset-0 m-auto opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground" />
+          </button>
+        </div>
+
+        <div className="flex flex-col items-center gap-1 pt-4">
+        {/* Query nav item */}
+        <button
+          onClick={() => currentQuerySessionId ? navigate(`/query/${currentQuerySessionId}`) : navigate('/query')}
+          className={cn(
+            'p-2 rounded transition-colors',
+            isQueryRoute
+              ? 'bg-[oklch(25%_.04_250)] text-white hover:bg-[oklch(30%_.05_250)]'
+              : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+          )}
+          title="Query"
+        >
+          <Database className="h-4 w-4" />
+        </button>
+
+        {/* Chat nav item */}
+        <button
+          onClick={() => currentChatSessionId ? navigate(`/chat/${currentChatSessionId}`) : navigate('/chat')}
+          className={cn(
+            'p-2 rounded transition-colors',
+            isChatRoute
+              ? 'bg-[oklch(25%_.04_250)] text-white hover:bg-[oklch(30%_.05_250)]'
+              : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+          )}
+          title="Chat"
+        >
+          <MessageSquare className="h-4 w-4" />
+        </button>
+        </div>
+
+        {/* Collapse toggle at bottom */}
+        <div className="flex-1" />
+        <button
+          onClick={() => handleSetCollapsed(false)}
+          className="p-2 mb-3 text-muted-foreground hover:text-foreground transition-colors"
+          title="Expand sidebar"
+        >
+          <PanelLeftOpen className="h-4 w-4" />
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="w-56 border-r bg-[var(--sidebar)] flex flex-col">
+      {/* Header with logo and collapse */}
+      <div className="px-3 h-12 flex items-center justify-between border-b border-border/50">
+        <button
+          onClick={() => navigate('/')}
+          className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+        >
+          <img src="/doublezero.svg" alt="Data" className="h-5" />
+          <span className="text-sm font-medium translate-y-0.5">Data</span>
+        </button>
+        <button
+          onClick={() => handleSetCollapsed(true)}
+          className="p-1 text-muted-foreground hover:text-foreground transition-colors"
+          title="Collapse sidebar"
+        >
+          <PanelLeftClose className="h-4 w-4 translate-y-0.5" />
+        </button>
+      </div>
+
+      {/* Main nav */}
+      <div className="px-3 pt-4 space-y-1">
+        <button
+          onClick={() => currentQuerySessionId ? navigate(`/query/${currentQuerySessionId}`) : navigate('/query')}
+          className={cn(
+            'w-full flex items-center gap-2 px-3 py-2 text-sm rounded transition-colors',
+            isQueryRoute
+              ? 'bg-[oklch(25%_.04_250)] text-white hover:bg-[oklch(30%_.05_250)]'
+              : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+          )}
+        >
+          <Database className="h-4 w-4" />
+          Query
+        </button>
+        <button
+          onClick={() => currentChatSessionId ? navigate(`/chat/${currentChatSessionId}`) : navigate('/chat')}
+          className={cn(
+            'w-full flex items-center gap-2 px-3 py-2 text-sm rounded transition-colors',
+            isChatRoute
+              ? 'bg-[oklch(25%_.04_250)] text-white hover:bg-[oklch(30%_.05_250)]'
+              : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+          )}
+        >
+          <MessageSquare className="h-4 w-4" />
+          Chat
+        </button>
+      </div>
+
+      {/* Query sub-section */}
+      {isQueryRoute && (
+        <div className="flex-1 flex flex-col min-h-0 mt-6">
+          {/* Section title */}
+          <div className="px-3 mb-2">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Query</span>
+          </div>
+
+          {/* Sub-nav */}
+          <div className="px-3 space-y-1">
+            {(() => {
+              const isNewSession = !sortedQuerySessions.some(s => s.id === currentQuerySessionId)
+              const isNewSessionActive = isNewSession && !isQuerySessions
+              return (
+                <button
+                  onClick={onNewQuerySession}
+                  className={cn(
+                    'w-full text-left px-3 py-2 text-sm rounded transition-colors',
+                    isNewSessionActive
+                      ? 'bg-[var(--sidebar-active)] text-foreground font-medium'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+                  )}
+                >
+                  New Query
+                </button>
+              )
+            })()}
+            <button
+              onClick={() => navigate('/query/sessions')}
+              className={cn(
+                'w-full text-left px-3 py-2 text-sm rounded transition-colors',
+                isQuerySessions
+                  ? 'bg-[var(--sidebar-active)] text-foreground font-medium'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+              )}
+            >
+              History
+            </button>
+          </div>
+
+          {/* Sessions history */}
+          <div className="flex-1 overflow-y-auto mt-4">
+            <div className="px-3 mb-2">
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Recent</span>
+            </div>
+            <div className="px-2 space-y-1">
+              {sortedQuerySessions.map(session => (
+                <SessionItem
+                  key={session.id}
+                  title={session.name || getSessionPreview(session)}
+                  isActive={session.id === currentQuerySessionId && !isQuerySessions}
+                  onClick={() => onSelectQuerySession(session)}
+                  onDelete={() => {
+                    if (window.confirm('Delete this session? This cannot be undone.')) {
+                      onDeleteQuerySession(session.id)
+                    }
+                  }}
+                  onRename={(name) => onRenameQuerySession(session.id, name)}
+                  onGenerateTitle={onGenerateTitleQuerySession ? () => onGenerateTitleQuerySession(session.id) : undefined}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Chat sub-section */}
+      {isChatRoute && (
+        <div className="flex-1 flex flex-col min-h-0 mt-6">
+          {/* Section title */}
+          <div className="px-3 mb-2">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Chat</span>
+          </div>
+
+          {/* Sub-nav */}
+          <div className="px-3 space-y-1">
+            {(() => {
+              const isNewSession = !sortedChatSessions.some(s => s.id === currentChatSessionId)
+              const isNewSessionActive = isNewSession && !isChatSessions
+              return (
+                <button
+                  onClick={onNewChatSession}
+                  className={cn(
+                    'w-full text-left px-3 py-2 text-sm rounded transition-colors',
+                    isNewSessionActive
+                      ? 'bg-[var(--sidebar-active)] text-foreground font-medium'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+                  )}
+                >
+                  New Chat
+                </button>
+              )
+            })()}
+            <button
+              onClick={() => navigate('/chat/sessions')}
+              className={cn(
+                'w-full text-left px-3 py-2 text-sm rounded transition-colors',
+                isChatSessions
+                  ? 'bg-[var(--sidebar-active)] text-foreground font-medium'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+              )}
+            >
+              History
+            </button>
+          </div>
+
+          {/* Sessions history */}
+          <div className="flex-1 overflow-y-auto mt-4">
+            <div className="px-3 mb-2">
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Recent</span>
+            </div>
+            <div className="px-2 space-y-1">
+              {sortedChatSessions.map(session => (
+                <SessionItem
+                  key={session.id}
+                  title={session.name || getChatSessionPreview(session)}
+                  isActive={session.id === currentChatSessionId && !isChatSessions}
+                  onClick={() => onSelectChatSession(session)}
+                  onDelete={() => {
+                    if (window.confirm('Delete this chat? This cannot be undone.')) {
+                      onDeleteChatSession(session.id)
+                    }
+                  }}
+                  onRename={(name) => onRenameChatSession(session.id, name)}
+                  onGenerateTitle={onGenerateTitleChatSession ? () => onGenerateTitleChatSession(session.id) : undefined}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Spacer when no section is active */}
+      {!isQueryRoute && !isChatRoute && <div className="flex-1" />}
+    </div>
+  )
+}
+
+interface SessionItemProps {
+  title: string
+  isActive: boolean
+  onClick: () => void
+  onDelete: () => void
+  onRename: (name: string) => void
+  onGenerateTitle?: () => Promise<void>
+}
+
+function SessionItem({ title, isActive, onClick, onDelete, onRename, onGenerateTitle }: SessionItemProps) {
+  const [showMenu, setShowMenu] = useState(false)
+  const [isRenaming, setIsRenaming] = useState(false)
+  const [renameValue, setRenameValue] = useState('')
+  const [isGenerating, setIsGenerating] = useState(false)
+
+  const handleStartRename = () => {
+    setRenameValue(title)
+    setIsRenaming(true)
+    setShowMenu(false)
+  }
+
+  const handleSaveRename = () => {
+    const newName = renameValue.trim()
+    if (newName && newName !== title) {
+      onRename(newName)
+    }
+    setIsRenaming(false)
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSaveRename()
+    } else if (e.key === 'Escape') {
+      setIsRenaming(false)
+    }
+  }
+
+  const handleGenerateTitle = async () => {
+    if (!onGenerateTitle || isGenerating) return
+    setShowMenu(false)
+    setIsGenerating(true)
+    try {
+      await onGenerateTitle()
+    } finally {
+      setIsGenerating(false)
+    }
+  }
+
+  if (isRenaming) {
+    return (
+      <div className="px-3 py-1.5">
+        <input
+          type="text"
+          value={renameValue}
+          onChange={(e) => setRenameValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onBlur={handleSaveRename}
+          autoFocus
+          className="w-full text-sm bg-white border border-border px-2 py-1 focus:outline-none focus:border-foreground"
+        />
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className={cn(
+        'group relative flex items-center gap-1 px-3 py-2 cursor-pointer transition-colors rounded',
+        isActive
+          ? 'bg-[var(--sidebar-active)] text-foreground'
+          : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+      )}
+      onClick={onClick}
+    >
+      <div className={cn('flex-1 min-w-0 text-sm truncate', isActive && 'font-medium')}>
+        {isGenerating ? (
+          <span className="flex items-center gap-1">
+            <RefreshCw className="h-3 w-3 animate-spin" />
+            <span className="text-muted-foreground">Generating...</span>
+          </span>
+        ) : title}
+      </div>
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          setShowMenu(!showMenu)
+        }}
+        className="p-0.5 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-all"
+      >
+        <MoreHorizontal className="h-3 w-3" />
+      </button>
+
+      {showMenu && (
+        <>
+          <div
+            className="fixed inset-0 z-10"
+            onClick={(e) => {
+              e.stopPropagation()
+              setShowMenu(false)
+            }}
+          />
+          <div className="absolute right-0 top-full mt-1 z-20 bg-white border border-border shadow-md py-1 min-w-[120px]">
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                handleStartRename()
+              }}
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-foreground hover:bg-gray-100 transition-colors"
+            >
+              <Pencil className="h-3 w-3" />
+              Rename
+            </button>
+            {onGenerateTitle && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleGenerateTitle()
+                }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-foreground hover:bg-gray-100 transition-colors"
+              >
+                <RefreshCw className="h-3 w-3" />
+                Generate Title
+              </button>
+            )}
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                setShowMenu(false)
+                onDelete()
+              }}
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-destructive hover:bg-gray-100 transition-colors"
+            >
+              <Trash2 className="h-3 w-3" />
+              Delete
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}

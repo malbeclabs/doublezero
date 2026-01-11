@@ -17,6 +17,8 @@ controlplane/funder/cmd/funder/funder
 .vscode/*
 .vscode
 .zed
+.tmp
+.env
 
 dist/
 
@@ -25,3 +27,6 @@ dev/.deploy/
 
 # Ignore the directory used for checking out the monitor tool in CI
 /doublezero_monitor/
+
+# Cursor environment file
+.cursor/environment.json

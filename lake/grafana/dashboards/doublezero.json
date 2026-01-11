@@ -1,0 +1,3285 @@
+{
+    "annotations": {
+        "list": [
+            {
+                "builtIn": 1,
+                "datasource": {
+                    "type": "grafana",
+                    "uid": "doublezero-lake"
+                },
+                "enable": true,
+                "hide": true,
+                "iconColor": "rgba(0, 211, 255, 1)",
+                "name": "Annotations & Alerts",
+                "type": "dashboard"
+            }
+        ]
+    },
+    "editable": true,
+    "fiscalYearStartMonth": 0,
+    "graphTooltip": 0,
+    "id": 8,
+    "links": [],
+    "panels": [
+        {
+            "fieldConfig": {
+                "defaults": {},
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 2,
+                "w": 24,
+                "x": 0,
+                "y": 0
+            },
+            "id": 1,
+            "options": {
+                "code": {
+                    "language": "markdown",
+                    "showLineNumbers": false,
+                    "showMiniMap": false
+                },
+                "content": "[← Back to Overview](/d/doublezero-lake-overview) | [Clear All Filters](/d/doublezero?var-link_code=__ALL__&var-device_code=__ALL__&var-metro_code=__ALL__)",
+                "mode": "markdown"
+            },
+            "pluginVersion": "12.3.1",
+            "title": "",
+            "type": "text"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    },
+                    "unit": "short"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 4,
+                "w": 3,
+                "x": 0,
+                "y": 2
+            },
+            "id": 2,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "auto",
+                "wideLayout": true
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "SELECT COUNT(*) as value\nFROM dz_devices_current\nWHERE status = 'activated'",
+                    "refId": "A"
+                }
+            ],
+            "title": "Operational Devices",
+            "type": "stat"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    },
+                    "unit": "short"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 4,
+                "w": 3,
+                "x": 3,
+                "y": 2
+            },
+            "id": 3,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "auto",
+                "wideLayout": true
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "SELECT COUNT(*) as value\nFROM dz_links_current_health\nWHERE is_operational = true",
+                    "refId": "A"
+                }
+            ],
+            "title": "Operational Links",
+            "type": "stat"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 1
+                            },
+                            {
+                                "color": "red",
+                                "value": 3
+                            }
+                        ]
+                    },
+                    "unit": "short"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 4,
+                "w": 3,
+                "x": 6,
+                "y": 2
+            },
+            "id": 4,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "auto",
+                "wideLayout": true
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "SELECT COUNT(*) as value\nFROM dz_links_current_health\nWHERE is_soft_drained = true OR is_hard_drained = true",
+                    "refId": "A"
+                }
+            ],
+            "title": "Drained Links",
+            "type": "stat"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    },
+                    "unit": "short"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 4,
+                "w": 3,
+                "x": 9,
+                "y": 2
+            },
+            "id": 5,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "auto",
+                "wideLayout": true
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "SELECT COUNT(DISTINCT owner_pubkey || ':' || client_ip) as value\nFROM dz_users_history u\nWHERE u.op != 'D'\n  AND u.status = 'activated'\n  AND u.valid_from <= CURRENT_TIMESTAMP\n  AND (u.valid_to IS NULL OR u.valid_to > CURRENT_TIMESTAMP)\n  AND u.dz_ip IS NOT NULL\n  AND u.owner_pubkey NOT IN (SELECT owner_pubkey FROM dz_owners_internal)",
+                    "refId": "A"
+                }
+            ],
+            "title": "Connected Users",
+            "type": "stat"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 1
+                            },
+                            {
+                                "color": "red",
+                                "value": 5
+                            }
+                        ]
+                    },
+                    "unit": "short"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 4,
+                "w": 3,
+                "x": 12,
+                "y": 2
+            },
+            "id": 7,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "auto",
+                "wideLayout": true
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "SELECT COUNT(DISTINCT link_pk) as value\nFROM (\n  SELECT link_pk\n  FROM dz_link_health_core\n  WHERE time >= $__timeFrom()\n    AND time <= $__timeTo()\n  GROUP BY link_pk\n  HAVING 100.0 * AVG(CASE WHEN loss = true THEN 1 ELSE 0 END) >= 1.0\n) links_with_loss",
+                    "refId": "A"
+                }
+            ],
+            "title": "Links with Packet Loss (≥1%)",
+            "type": "stat"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    },
+                    "unit": "bps"
+                },
+                "overrides": [
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Utilization %"
+                        },
+                        "properties": [
+                            {
+                                "id": "unit",
+                                "value": "percent"
+                            },
+                            {
+                                "id": "thresholds",
+                                "value": {
+                                    "mode": "absolute",
+                                    "steps": [
+                                        {
+                                            "color": "green",
+                                            "value": 0
+                                        },
+                                        {
+                                            "color": "yellow",
+                                            "value": 70
+                                        },
+                                        {
+                                            "color": "red",
+                                            "value": 90
+                                        }
+                                    ]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            },
+            "gridPos": {
+                "h": 4,
+                "w": 6,
+                "x": 15,
+                "y": 2
+            },
+            "id": 35,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "auto",
+                "wideLayout": true
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "SELECT\n  CAST(COALESCE(SUM(l.bandwidth_bps), 0) AS DOUBLE) as \"Total Capacity (bps)\",\n  CASE\n    WHEN SUM(l.bandwidth_bps) > 0 THEN CAST((COALESCE(MAX(peak_throughput.peak_throughput), 0) / SUM(l.bandwidth_bps) * 100.0) AS DOUBLE)\n    ELSE 0.0\n  END as \"Utilization %\"\nFROM dz_links_current l\nJOIN dz_devices_current da ON l.side_a_pk = da.pk\nJOIN dz_devices_current dz ON l.side_z_pk = dz.pk\nLEFT JOIN dz_metros_current ma ON da.metro_pk = ma.pk\nLEFT JOIN dz_metros_current mz ON dz.metro_pk = mz.pk\nLEFT JOIN (\n  SELECT\n    u.link_pk,\n    MAX((u.in_octets_delta + u.out_octets_delta) * 8.0 / NULLIF(u.delta_duration, 0)) as peak_throughput\n  FROM dz_device_interface_counters_raw u\n  WHERE\n    u.time >= $__timeFrom()\n    AND u.time <= $__timeTo()\n    AND u.delta_duration > 0\n    AND u.in_octets_delta >= 0\n    AND u.out_octets_delta >= 0\n    AND u.link_pk IS NOT NULL\n  GROUP BY u.link_pk\n) peak_throughput ON peak_throughput.link_pk = l.pk\nWHERE\n  l.link_type = 'WAN'\n  AND ma.pk != mz.pk",
+                    "refId": "A"
+                }
+            ],
+            "title": "WAN Capacity & Utilization",
+            "type": "stat"
+        },
+        {
+            "fieldConfig": {
+                "defaults": {},
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 2,
+                "w": 24,
+                "x": 0,
+                "y": 6
+            },
+            "id": 38,
+            "options": {
+                "code": {
+                    "language": "markdown",
+                    "showLineNumbers": false,
+                    "showMiniMap": false
+                },
+                "content": "## Network Health Status",
+                "mode": "markdown"
+            },
+            "pluginVersion": "12.3.1",
+            "title": "",
+            "type": "text"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "custom": {
+                        "align": "auto",
+                        "cellOptions": {
+                            "type": "auto"
+                        },
+                        "footer": {
+                            "reducers": []
+                        },
+                        "inspect": false
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    }
+                },
+                "overrides": [
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Total Errors"
+                        },
+                        "properties": [
+                            {
+                                "id": "custom.cellOptions",
+                                "value": {
+                                    "type": "color-background"
+                                }
+                            },
+                            {
+                                "id": "thresholds",
+                                "value": {
+                                    "mode": "absolute",
+                                    "steps": [
+                                        {
+                                            "color": "green",
+                                            "value": 0
+                                        },
+                                        {
+                                            "color": "yellow",
+                                            "value": 1
+                                        },
+                                        {
+                                            "color": "red",
+                                            "value": 10
+                                        }
+                                    ]
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Total Discards"
+                        },
+                        "properties": [
+                            {
+                                "id": "custom.cellOptions",
+                                "value": {
+                                    "type": "color-background"
+                                }
+                            },
+                            {
+                                "id": "thresholds",
+                                "value": {
+                                    "mode": "absolute",
+                                    "steps": [
+                                        {
+                                            "color": "green",
+                                            "value": 0
+                                        },
+                                        {
+                                            "color": "yellow",
+                                            "value": 1
+                                        },
+                                        {
+                                            "color": "red",
+                                            "value": 10
+                                        }
+                                    ]
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Carrier Transitions"
+                        },
+                        "properties": [
+                            {
+                                "id": "custom.cellOptions",
+                                "value": {
+                                    "type": "color-background"
+                                }
+                            },
+                            {
+                                "id": "thresholds",
+                                "value": {
+                                    "mode": "absolute",
+                                    "steps": [
+                                        {
+                                            "color": "green",
+                                            "value": 0
+                                        },
+                                        {
+                                            "color": "yellow",
+                                            "value": 1
+                                        },
+                                        {
+                                            "color": "red",
+                                            "value": 5
+                                        }
+                                    ]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            },
+            "gridPos": {
+                "h": 5,
+                "w": 12,
+                "x": 0,
+                "y": 8
+            },
+            "id": 39,
+            "options": {
+                "cellHeight": "sm",
+                "enablePagination": true,
+                "footer": {
+                    "countRows": false,
+                    "fields": "",
+                    "reducer": [
+                        "sum"
+                    ],
+                    "show": false
+                },
+                "showHeader": true,
+                "sortBy": [
+                    {
+                        "desc": false,
+                        "displayName": "Device Code"
+                    }
+                ]
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "SELECT\n  d.code AS \"Device Code\",\n  d.status AS \"Status\"\nFROM dz_devices_current d\nWHERE d.status != 'activated'\n  AND ('${device_code:raw}' = '__ALL__' OR d.code IN (SELECT unnest(string_to_array('${device_code:raw}', ','))))\nORDER BY d.code\nLIMIT 500",
+                    "refId": "A"
+                }
+            ],
+            "title": "Devices Not Activated",
+            "type": "table"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "custom": {
+                        "align": "auto",
+                        "cellOptions": {
+                            "type": "auto"
+                        },
+                        "footer": {
+                            "reducers": []
+                        },
+                        "inspect": false
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    }
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 5,
+                "w": 12,
+                "x": 12,
+                "y": 8
+            },
+            "id": 40,
+            "options": {
+                "cellHeight": "sm",
+                "enablePagination": true,
+                "footer": {
+                    "countRows": false,
+                    "fields": "",
+                    "reducer": [
+                        "sum"
+                    ],
+                    "show": false
+                },
+                "showHeader": true,
+                "sortBy": [
+                    {
+                        "desc": false,
+                        "displayName": "Link Code"
+                    }
+                ]
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "SELECT\n  l.link_code AS \"Link Code\",\n  l.status AS \"Status\"\nFROM dz_links_current_health l\nWHERE l.is_operational = false\n  AND ('${link_code:raw}' = '__ALL__' OR l.link_code IN (SELECT unnest(string_to_array('${link_code:raw}', ','))))\nORDER BY l.link_code\nLIMIT 500",
+                    "refId": "A"
+                }
+            ],
+            "title": "Links Not Activated",
+            "type": "table"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "custom": {
+                        "align": "auto",
+                        "cellOptions": {
+                            "type": "auto"
+                        },
+                        "footer": {
+                            "reducers": []
+                        },
+                        "inspect": false
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    }
+                },
+                "overrides": [
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Total Errors"
+                        },
+                        "properties": [
+                            {
+                                "id": "custom.cellOptions",
+                                "value": {
+                                    "type": "color-background"
+                                }
+                            },
+                            {
+                                "id": "thresholds",
+                                "value": {
+                                    "mode": "absolute",
+                                    "steps": [
+                                        {
+                                            "color": "green",
+                                            "value": 0
+                                        },
+                                        {
+                                            "color": "yellow",
+                                            "value": 1
+                                        },
+                                        {
+                                            "color": "red",
+                                            "value": 10
+                                        }
+                                    ]
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Total Discards"
+                        },
+                        "properties": [
+                            {
+                                "id": "custom.cellOptions",
+                                "value": {
+                                    "type": "color-background"
+                                }
+                            },
+                            {
+                                "id": "thresholds",
+                                "value": {
+                                    "mode": "absolute",
+                                    "steps": [
+                                        {
+                                            "color": "green",
+                                            "value": 0
+                                        },
+                                        {
+                                            "color": "yellow",
+                                            "value": 1
+                                        },
+                                        {
+                                            "color": "red",
+                                            "value": 10
+                                        }
+                                    ]
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Carrier Transitions"
+                        },
+                        "properties": [
+                            {
+                                "id": "custom.cellOptions",
+                                "value": {
+                                    "type": "color-background"
+                                }
+                            },
+                            {
+                                "id": "thresholds",
+                                "value": {
+                                    "mode": "absolute",
+                                    "steps": [
+                                        {
+                                            "color": "green",
+                                            "value": 0
+                                        },
+                                        {
+                                            "color": "yellow",
+                                            "value": 1
+                                        },
+                                        {
+                                            "color": "red",
+                                            "value": 5
+                                        }
+                                    ]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 13
+            },
+            "id": 46,
+            "options": {
+                "cellHeight": "sm",
+                "enablePagination": true,
+                "footer": {
+                    "countRows": false,
+                    "fields": "",
+                    "reducer": [
+                        "sum"
+                    ],
+                    "show": false
+                },
+                "showHeader": true,
+                "sortBy": [
+                    {
+                        "desc": true,
+                        "displayName": "Total Errors"
+                    }
+                ]
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "WITH interface_health AS (\n  SELECT\n    h.device_pk,\n    h.intf,\n    SUM(h.in_errors + h.out_errors) AS total_errors,\n    SUM(h.in_discards + h.out_discards) AS total_discards,\n    SUM(h.carrier_transitions) AS carrier_transitions\n  FROM dz_device_iface_health h\n  WHERE h.time >= $__timeFrom()\n    AND h.time <= $__timeTo()\n    AND ('${device_code:raw}' = '__ALL__' OR h.device_pk IN (SELECT pk FROM dz_devices_current WHERE code IN (SELECT unnest(string_to_array('${device_code:raw}', ',')))))\n  GROUP BY h.device_pk, h.intf\n  HAVING SUM(h.in_errors + h.out_errors + h.in_discards + h.out_discards + h.carrier_transitions) > 0\n)\nSELECT\n  l.code AS \"Link Code\",\n  COALESCE(da.code, l.side_a_pk::text) || ':' || l.side_a_iface_name || ' ↔ ' || COALESCE(dz.code, l.side_z_pk::text) || ':' || l.side_z_iface_name AS \"Endpoints\",\n  CAST(COALESCE(ia.total_errors, 0) + COALESCE(iz.total_errors, 0) AS DOUBLE) AS \"Total Errors\",\n  CAST(COALESCE(ia.total_discards, 0) + COALESCE(iz.total_discards, 0) AS DOUBLE) AS \"Total Discards\",\n  CAST(COALESCE(ia.carrier_transitions, 0) + COALESCE(iz.carrier_transitions, 0) AS DOUBLE) AS \"Carrier Transitions\"\nFROM dz_links_current l\nLEFT JOIN dz_devices_current da ON da.pk = l.side_a_pk\nLEFT JOIN dz_devices_current dz ON dz.pk = l.side_z_pk\nLEFT JOIN interface_health ia ON ia.device_pk = l.side_a_pk AND ia.intf = l.side_a_iface_name\nLEFT JOIN interface_health iz ON iz.device_pk = l.side_z_pk AND iz.intf = l.side_z_iface_name\nWHERE ('${link_code:raw}' = '__ALL__' OR l.code IN (SELECT unnest(string_to_array('${link_code:raw}', ','))))\n  AND (COALESCE(ia.total_errors, 0) + COALESCE(iz.total_errors, 0) + COALESCE(ia.total_discards, 0) + COALESCE(iz.total_discards, 0) + COALESCE(ia.carrier_transitions, 0) + COALESCE(iz.carrier_transitions, 0) > 0)\nORDER BY \"Total Errors\" DESC, \"Total Discards\" DESC\nLIMIT 500",
+                    "refId": "A"
+                }
+            ],
+            "title": "Links with Errors/Discards/Transitions",
+            "type": "table"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "custom": {
+                        "align": "auto",
+                        "cellOptions": {
+                            "type": "auto"
+                        },
+                        "footer": {
+                            "reducers": []
+                        },
+                        "inspect": false
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    }
+                },
+                "overrides": [
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Total Errors"
+                        },
+                        "properties": [
+                            {
+                                "id": "custom.cellOptions",
+                                "value": {
+                                    "type": "color-background"
+                                }
+                            },
+                            {
+                                "id": "thresholds",
+                                "value": {
+                                    "mode": "absolute",
+                                    "steps": [
+                                        {
+                                            "color": "green",
+                                            "value": 0
+                                        },
+                                        {
+                                            "color": "yellow",
+                                            "value": 1
+                                        },
+                                        {
+                                            "color": "red",
+                                            "value": 10
+                                        }
+                                    ]
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Total Discards"
+                        },
+                        "properties": [
+                            {
+                                "id": "custom.cellOptions",
+                                "value": {
+                                    "type": "color-background"
+                                }
+                            },
+                            {
+                                "id": "thresholds",
+                                "value": {
+                                    "mode": "absolute",
+                                    "steps": [
+                                        {
+                                            "color": "green",
+                                            "value": 0
+                                        },
+                                        {
+                                            "color": "yellow",
+                                            "value": 1
+                                        },
+                                        {
+                                            "color": "red",
+                                            "value": 10
+                                        }
+                                    ]
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Carrier Transitions"
+                        },
+                        "properties": [
+                            {
+                                "id": "custom.cellOptions",
+                                "value": {
+                                    "type": "color-background"
+                                }
+                            },
+                            {
+                                "id": "thresholds",
+                                "value": {
+                                    "mode": "absolute",
+                                    "steps": [
+                                        {
+                                            "color": "green",
+                                            "value": 0
+                                        },
+                                        {
+                                            "color": "yellow",
+                                            "value": 1
+                                        },
+                                        {
+                                            "color": "red",
+                                            "value": 5
+                                        }
+                                    ]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 13
+            },
+            "id": 43,
+            "options": {
+                "cellHeight": "sm",
+                "enablePagination": true,
+                "footer": {
+                    "countRows": false,
+                    "fields": "",
+                    "reducer": [
+                        "sum"
+                    ],
+                    "show": false
+                },
+                "showHeader": true,
+                "sortBy": [
+                    {
+                        "desc": true,
+                        "displayName": "Total Errors"
+                    }
+                ]
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "SELECT\n  COALESCE(d.code, h.device_pk::text) AS \"Device Code\",\n  h.intf AS \"Interface\",\n  CAST(SUM(h.in_errors + h.out_errors) AS DOUBLE) AS \"Total Errors\",\n  CAST(SUM(h.in_discards + h.out_discards) AS DOUBLE) AS \"Total Discards\",\n  CAST(SUM(h.carrier_transitions) AS DOUBLE) AS \"Carrier Transitions\"\nFROM dz_device_iface_health h\nLEFT JOIN dz_devices_current d ON d.pk = h.device_pk\nWHERE h.time >= $__timeFrom()\n  AND h.time <= $__timeTo()\n  AND ('${device_code:raw}' = '__ALL__' OR h.device_pk IN (SELECT pk FROM dz_devices_current WHERE code IN (SELECT unnest(string_to_array('${device_code:raw}', ',')))))\n  AND NOT EXISTS (\n    SELECT 1 FROM dz_links_current l\n    WHERE (l.side_a_pk = h.device_pk AND l.side_a_iface_name = h.intf)\n       OR (l.side_z_pk = h.device_pk AND l.side_z_iface_name = h.intf)\n  )\nGROUP BY h.device_pk, h.intf, d.code\nHAVING SUM(h.in_errors + h.out_errors + h.in_discards + h.out_discards + h.carrier_transitions) > 0\nORDER BY \"Total Errors\" DESC, \"Total Discards\" DESC\nLIMIT 500",
+                    "refId": "A"
+                }
+            ],
+            "title": "Non-Link Interfaces with Errors/Discards/Transitions",
+            "type": "table"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "custom": {
+                        "align": "auto",
+                        "cellOptions": {
+                            "type": "auto"
+                        },
+                        "footer": {
+                            "reducers": []
+                        },
+                        "inspect": false
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    }
+                },
+                "overrides": [
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Packet Loss %"
+                        },
+                        "properties": [
+                            {
+                                "id": "custom.cellOptions",
+                                "value": {
+                                    "type": "color-background"
+                                }
+                            },
+                            {
+                                "id": "thresholds",
+                                "value": {
+                                    "mode": "absolute",
+                                    "steps": [
+                                        {
+                                            "color": "green",
+                                            "value": 0
+                                        },
+                                        {
+                                            "color": "yellow",
+                                            "value": 0.1
+                                        },
+                                        {
+                                            "color": "red",
+                                            "value": 1
+                                        }
+                                    ]
+                                }
+                            },
+                            {
+                                "id": "unit",
+                                "value": "percent"
+                            },
+                            {
+                                "id": "decimals",
+                                "value": 2
+                            }
+                        ]
+                    }
+                ]
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 21
+            },
+            "id": 41,
+            "options": {
+                "cellHeight": "sm",
+                "enablePagination": true,
+                "footer": {
+                    "countRows": false,
+                    "fields": "",
+                    "reducer": [
+                        "sum"
+                    ],
+                    "show": false
+                },
+                "showHeader": true,
+                "sortBy": [
+                    {
+                        "desc": true,
+                        "displayName": "Packet Loss %"
+                    }
+                ]
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "SELECT\n  lh.link_code AS \"Link Code\",\n  COALESCE(da.code, lh.side_a_device_pk::text) || ':' || lh.side_a_intf || ' ↔ ' || COALESCE(dz.code, lh.side_z_device_pk::text) || ':' || lh.side_z_intf AS \"Endpoints\",\n  CAST(100.0 * AVG(CASE WHEN lh.loss = true THEN 1 ELSE 0 END) AS DOUBLE) AS \"Packet Loss %\"\nFROM dz_link_health_core lh\nLEFT JOIN dz_devices_current da ON da.pk = lh.side_a_device_pk\nLEFT JOIN dz_devices_current dz ON dz.pk = lh.side_z_device_pk\nWHERE lh.time >= $__timeFrom()\n  AND lh.time <= $__timeTo()\n  AND ('${link_code:raw}' = '__ALL__' OR lh.link_code IN (SELECT unnest(string_to_array('${link_code:raw}', ','))))\nGROUP BY lh.link_code, lh.side_a_device_pk, lh.side_a_intf, lh.side_z_device_pk, lh.side_z_intf, da.code, dz.code\nHAVING AVG(CASE WHEN lh.loss = true THEN 1 ELSE 0 END) > 0\nORDER BY \"Packet Loss %\" DESC\nLIMIT 500",
+                    "refId": "A"
+                }
+            ],
+            "title": "Links with Packet Loss",
+            "type": "table"
+        },
+        {
+            "fieldConfig": {
+                "defaults": {},
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 2,
+                "w": 24,
+                "x": 0,
+                "y": 29
+            },
+            "id": 8,
+            "options": {
+                "code": {
+                    "language": "markdown",
+                    "showLineNumbers": false,
+                    "showMiniMap": false
+                },
+                "content": "## Link Health Metrics",
+                "mode": "markdown"
+            },
+            "pluginVersion": "12.3.1",
+            "title": "",
+            "type": "text"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "barWidthFactor": 0.6,
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                            "legend": false,
+                            "tooltip": false,
+                            "viz": false
+                        },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "never",
+                        "showValues": false,
+                        "spanNulls": false,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "line"
+                        }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 0
+                            },
+                            {
+                                "color": "red",
+                                "value": 2000
+                            }
+                        ]
+                    },
+                    "unit": "µs"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 31
+            },
+            "id": 9,
+            "options": {
+                "legend": {
+                    "calcs": [
+                        "mean",
+                        "max",
+                        "lastNotNull"
+                    ],
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "hideZeros": false,
+                    "mode": "single",
+                    "sort": "none"
+                }
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "SELECT\n  time_bucket(INTERVAL '${aggregation_interval}', lh.time) AS time,\n  lh.link_code as metric,\n  CAST(quantile_cont(CASE WHEN lh.rtt_us > 0 THEN lh.rtt_us ELSE NULL END, 0.95) - MAX(lh.committed_rtt_us) AS DOUBLE) as \"RTT Margin (µs)\"\nFROM dz_link_health_core lh\nWHERE lh.time >= $__timeFrom()\n  AND lh.time <= $__timeTo()\n  AND ('${link_code:raw}' = '__ALL__' OR lh.link_code IN (SELECT unnest(string_to_array('${link_code:raw}', ','))))\n  AND lh.rtt_us IS NOT NULL\n  AND lh.committed_rtt_us IS NOT NULL\nGROUP BY time_bucket(INTERVAL '${aggregation_interval}', lh.time), lh.link_code\nHAVING quantile_cont(CASE WHEN lh.rtt_us > 0 THEN lh.rtt_us ELSE NULL END, 0.95) IS NOT NULL\nORDER BY time ASC, \"RTT Margin (µs)\" DESC",
+                    "refId": "A"
+                }
+            ],
+            "title": "Link RTT Margin (P95 - Committed)",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "barWidthFactor": 0.6,
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                            "legend": false,
+                            "tooltip": false,
+                            "viz": false
+                        },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "never",
+                        "showValues": false,
+                        "spanNulls": false,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "off"
+                        }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    },
+                    "unit": "percent"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 31
+            },
+            "id": 10,
+            "options": {
+                "legend": {
+                    "calcs": [
+                        "mean",
+                        "max",
+                        "lastNotNull"
+                    ],
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "hideZeros": false,
+                    "mode": "multi",
+                    "sort": "none"
+                }
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "SELECT\n  time_bucket(INTERVAL '${aggregation_interval}', lh.time) AS time,\n  lh.link_code as metric,\n  CAST(100.0 * AVG(CASE WHEN lh.loss = true THEN 1 ELSE 0 END) AS DOUBLE) as \"Packet Loss %\"\nFROM dz_link_health_core lh\nWHERE lh.time >= $__timeFrom()\n  AND lh.time <= $__timeTo()\n  AND ('${link_code:raw}' = '__ALL__' OR lh.link_code IN (SELECT unnest(string_to_array('${link_code:raw}', ','))))\nGROUP BY time_bucket(INTERVAL '${aggregation_interval}', lh.time), lh.link_code\nORDER BY time ASC, \"Packet Loss %\" DESC",
+                    "refId": "A"
+                }
+            ],
+            "title": "Link Packet Loss",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "barWidthFactor": 0.6,
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                            "legend": false,
+                            "tooltip": false,
+                            "viz": false
+                        },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "never",
+                        "showValues": false,
+                        "spanNulls": false,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "off"
+                        }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    },
+                    "unit": "µs"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 39
+            },
+            "id": 11,
+            "options": {
+                "legend": {
+                    "calcs": [
+                        "mean",
+                        "max",
+                        "lastNotNull"
+                    ],
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "hideZeros": false,
+                    "mode": "multi",
+                    "sort": "none"
+                }
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "SELECT\n  time_bucket(INTERVAL '${aggregation_interval}', lh.time) AS time,\n  lh.link_code as metric,\n  CAST(quantile_cont(CASE WHEN lh.rtt_us > 0 THEN lh.rtt_us ELSE NULL END, 0.95) - MAX(lh.committed_rtt_us) AS DOUBLE) as \"P95 - Committed (µs)\"\nFROM dz_link_health_core lh\nWHERE lh.time >= $__timeFrom()\n  AND lh.time <= $__timeTo()\n  AND ('${link_code:raw}' = '__ALL__' OR lh.link_code IN (SELECT unnest(string_to_array('${link_code:raw}', ','))))\n  AND lh.is_significant_rtt_violation = true\nGROUP BY time_bucket(INTERVAL '${aggregation_interval}', lh.time), lh.link_code\nHAVING quantile_cont(CASE WHEN lh.rtt_us > 0 THEN lh.rtt_us ELSE NULL END, 0.95) IS NOT NULL\nORDER BY time ASC, \"P95 - Committed (µs)\" DESC",
+                    "refId": "A"
+                }
+            ],
+            "title": "Significant RTT Violations (P95 - Committed)",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "barWidthFactor": 0.6,
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                            "legend": false,
+                            "tooltip": false,
+                            "viz": false
+                        },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "never",
+                        "showValues": false,
+                        "spanNulls": false,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "line"
+                        }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 0
+                            },
+                            {
+                                "color": "red",
+                                "value": 2000
+                            }
+                        ]
+                    },
+                    "unit": "µs"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 39
+            },
+            "id": 27,
+            "options": {
+                "legend": {
+                    "calcs": [
+                        "mean",
+                        "max",
+                        "lastNotNull"
+                    ],
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "hideZeros": false,
+                    "mode": "single",
+                    "sort": "none"
+                }
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "SELECT\n  time_bucket(INTERVAL '${aggregation_interval}', lh.time) AS time,\n  lh.link_code as metric,\n  CAST(quantile_cont(CASE WHEN lh.jitter_ipdv_us > 0 THEN lh.jitter_ipdv_us ELSE NULL END, 0.95) - MAX(lh.committed_jitter_us) AS DOUBLE) as \"Jitter Margin (µs)\"\nFROM dz_link_health_core lh\nWHERE lh.time >= $__timeFrom()\n  AND lh.time <= $__timeTo()\n  AND ('${link_code:raw}' = '__ALL__' OR lh.link_code IN (SELECT unnest(string_to_array('${link_code:raw}', ','))))\n  AND lh.jitter_ipdv_us IS NOT NULL\n  AND lh.committed_jitter_us IS NOT NULL\nGROUP BY time_bucket(INTERVAL '${aggregation_interval}', lh.time), lh.link_code\nHAVING quantile_cont(CASE WHEN lh.jitter_ipdv_us > 0 THEN lh.jitter_ipdv_us ELSE NULL END, 0.95) IS NOT NULL\nORDER BY time ASC, \"Jitter Margin (µs)\" DESC",
+                    "refId": "A"
+                }
+            ],
+            "title": "Link Jitter Margin (P95 - Committed)",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "barWidthFactor": 0.6,
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                            "legend": false,
+                            "tooltip": false,
+                            "viz": false
+                        },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "never",
+                        "showValues": false,
+                        "spanNulls": false,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "off"
+                        }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    },
+                    "unit": "short"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 47
+            },
+            "id": 12,
+            "options": {
+                "legend": {
+                    "calcs": [
+                        "sum",
+                        "mean",
+                        "lastNotNull"
+                    ],
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "hideZeros": false,
+                    "mode": "multi",
+                    "sort": "none"
+                }
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "SELECT\n  time_bucket(INTERVAL '${aggregation_interval}', h.time) AS time,\n  COALESCE(d.code, h.device_pk::text) || ':' || h.intf as metric,\n  CAST(SUM(h.in_errors + h.out_errors) AS DOUBLE) as \"Total Errors\",\n  CAST(SUM(h.in_discards + h.out_discards) AS DOUBLE) as \"Total Discards\",\n  CAST(SUM(h.carrier_transitions) AS DOUBLE) as \"Carrier Transitions\"\nFROM dz_device_iface_health h\nLEFT JOIN dz_devices_current d ON d.pk = h.device_pk\nWHERE h.time >= $__timeFrom()\n  AND h.time <= $__timeTo()\n  AND ('${device_code:raw}' = '__ALL__' OR h.device_pk IN (SELECT pk FROM dz_devices_current WHERE code IN (SELECT unnest(string_to_array('${device_code:raw}', ',')))))\n  AND EXISTS (\n    SELECT 1 FROM dz_links_current l\n    WHERE (l.side_a_pk = h.device_pk AND l.side_a_iface_name = h.intf)\n       OR (l.side_z_pk = h.device_pk AND l.side_z_iface_name = h.intf)\n  )\nGROUP BY time_bucket(INTERVAL '${aggregation_interval}', h.time), h.device_pk, h.intf, d.code\nHAVING SUM(h.in_errors + h.out_errors + h.in_discards + h.out_discards + h.carrier_transitions) > 0\nORDER BY time ASC, (\"Total Errors\" + \"Total Discards\") DESC",
+                    "refId": "A"
+                }
+            ],
+            "title": "Interface Errors, Discards & Carrier Transitions (Links)",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "barWidthFactor": 0.6,
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                            "legend": false,
+                            "tooltip": false,
+                            "viz": false
+                        },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "never",
+                        "showValues": false,
+                        "spanNulls": false,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "off"
+                        }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    },
+                    "unit": "short"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 47
+            },
+            "id": 37,
+            "options": {
+                "legend": {
+                    "calcs": [
+                        "sum",
+                        "mean",
+                        "lastNotNull"
+                    ],
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "hideZeros": false,
+                    "mode": "multi",
+                    "sort": "none"
+                }
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "SELECT\n  time_bucket(INTERVAL '${aggregation_interval}', h.time) AS time,\n  COALESCE(d.code, h.device_pk::text) || ':' || h.intf as metric,\n  CAST(SUM(h.in_errors + h.out_errors) AS DOUBLE) as \"Total Errors\",\n  CAST(SUM(h.in_discards + h.out_discards) AS DOUBLE) as \"Total Discards\",\n  CAST(SUM(h.carrier_transitions) AS DOUBLE) as \"Carrier Transitions\"\nFROM dz_device_iface_health h\nLEFT JOIN dz_devices_current d ON d.pk = h.device_pk\nWHERE h.time >= $__timeFrom()\n  AND h.time <= $__timeTo()\n  AND ('${device_code:raw}' = '__ALL__' OR h.device_pk IN (SELECT pk FROM dz_devices_current WHERE code IN (SELECT unnest(string_to_array('${device_code:raw}', ',')))))\n  AND NOT EXISTS (\n    SELECT 1 FROM dz_links_current l\n    WHERE (l.side_a_pk = h.device_pk AND l.side_a_iface_name = h.intf)\n       OR (l.side_z_pk = h.device_pk AND l.side_z_iface_name = h.intf)\n  )\nGROUP BY time_bucket(INTERVAL '${aggregation_interval}', h.time), h.device_pk, h.intf, d.code\nHAVING SUM(h.in_errors + h.out_errors + h.in_discards + h.out_discards + h.carrier_transitions) > 0\nORDER BY time ASC, (\"Total Errors\" + \"Total Discards\") DESC",
+                    "refId": "A"
+                }
+            ],
+            "title": "Interface Errors, Discards & Carrier Transitions (Non-Links)",
+            "type": "timeseries"
+        },
+        {
+            "fieldConfig": {
+                "defaults": {},
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 2,
+                "w": 24,
+                "x": 0,
+                "y": 55
+            },
+            "id": 30,
+            "options": {
+                "code": {
+                    "language": "markdown",
+                    "showLineNumbers": false,
+                    "showMiniMap": false
+                },
+                "content": "## Traffic & Utilization",
+                "mode": "markdown"
+            },
+            "pluginVersion": "12.3.1",
+            "title": "",
+            "type": "text"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "barWidthFactor": 0.6,
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                            "legend": false,
+                            "tooltip": false,
+                            "viz": false
+                        },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "never",
+                        "showValues": false,
+                        "spanNulls": false,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "off"
+                        }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    },
+                    "unit": "bps"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 57
+            },
+            "id": 31,
+            "options": {
+                "legend": {
+                    "calcs": [
+                        "mean",
+                        "max",
+                        "lastNotNull"
+                    ],
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "hideZeros": false,
+                    "mode": "single",
+                    "sort": "none"
+                }
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "SELECT\n  time_bucket(INTERVAL '${aggregation_interval}', t.time) AS time,\n  t.link_code as metric,\n  CAST(AVG(t.throughput_bps) AS DOUBLE) as \"Throughput (bps)\"\nFROM dz_link_traffic t\nWHERE t.time >= $__timeFrom()\n  AND t.time <= $__timeTo()\n  AND ('${link_code:raw}' = '__ALL__' OR t.link_code IN (SELECT unnest(string_to_array('${link_code:raw}', ','))))\nGROUP BY time_bucket(INTERVAL '${aggregation_interval}', t.time), t.link_code\nHAVING AVG(t.throughput_bps) IS NOT NULL\nORDER BY time ASC, \"Throughput (bps)\" DESC",
+                    "refId": "A"
+                }
+            ],
+            "title": "Link Throughput",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "barWidthFactor": 0.6,
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                            "legend": false,
+                            "tooltip": false,
+                            "viz": false
+                        },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "never",
+                        "showValues": false,
+                        "spanNulls": false,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "off"
+                        }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 70
+                            },
+                            {
+                                "color": "red",
+                                "value": 90
+                            }
+                        ]
+                    },
+                    "unit": "percent"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 57
+            },
+            "id": 32,
+            "options": {
+                "legend": {
+                    "calcs": [
+                        "mean",
+                        "max",
+                        "lastNotNull"
+                    ],
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "hideZeros": false,
+                    "mode": "single",
+                    "sort": "none"
+                }
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "SELECT\n  time_bucket(INTERVAL '${aggregation_interval}', t.time) AS time,\n  t.link_code || ' (In)' as metric,\n  CAST(\n    CASE\n      WHEN t.bandwidth_bps IS NULL OR t.bandwidth_bps = 0 THEN NULL\n      WHEN AVG(t.in_throughput_bps) IS NULL THEN NULL\n      ELSE (AVG(t.in_throughput_bps) / t.bandwidth_bps * 100.0)\n    END\n  AS DOUBLE) as \"Utilization %\"\nFROM dz_link_traffic t\nWHERE t.time >= $__timeFrom()\n  AND t.time <= $__timeTo()\n  AND ('${link_code:raw}' = '__ALL__' OR t.link_code IN (SELECT unnest(string_to_array('${link_code:raw}', ','))))\n  AND t.bandwidth_bps IS NOT NULL\n  AND t.bandwidth_bps > 0\nGROUP BY time_bucket(INTERVAL '${aggregation_interval}', t.time), t.link_code, t.bandwidth_bps\nHAVING AVG(t.in_throughput_bps) IS NOT NULL\nUNION ALL\nSELECT\n  time_bucket(INTERVAL '${aggregation_interval}', t.time) AS time,\n  t.link_code || ' (Out)' as metric,\n  CAST(\n    CASE\n      WHEN t.bandwidth_bps IS NULL OR t.bandwidth_bps = 0 THEN NULL\n      WHEN AVG(t.out_throughput_bps) IS NULL THEN NULL\n      ELSE (AVG(t.out_throughput_bps) / t.bandwidth_bps * 100.0)\n    END\n  AS DOUBLE) as \"Utilization %\"\nFROM dz_link_traffic t\nWHERE t.time >= $__timeFrom()\n  AND t.time <= $__timeTo()\n  AND ('${link_code:raw}' = '__ALL__' OR t.link_code IN (SELECT unnest(string_to_array('${link_code:raw}', ','))))\n  AND t.bandwidth_bps IS NOT NULL\n  AND t.bandwidth_bps > 0\nGROUP BY time_bucket(INTERVAL '${aggregation_interval}', t.time), t.link_code, t.bandwidth_bps\nHAVING AVG(t.out_throughput_bps) IS NOT NULL\nORDER BY time ASC, \"Utilization %\" DESC",
+                    "refId": "A"
+                }
+            ],
+            "title": "Link Utilization %",
+            "type": "timeseries"
+        },
+        {
+            "fieldConfig": {
+                "defaults": {},
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 2,
+                "w": 24,
+                "x": 0,
+                "y": 65
+            },
+            "id": 18,
+            "options": {
+                "code": {
+                    "language": "markdown",
+                    "showLineNumbers": false,
+                    "showMiniMap": false
+                },
+                "content": "## Device & Link Status",
+                "mode": "markdown"
+            },
+            "pluginVersion": "12.3.1",
+            "title": "",
+            "type": "text"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "barWidthFactor": 0.6,
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                            "legend": false,
+                            "tooltip": false,
+                            "viz": false
+                        },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "never",
+                        "showValues": false,
+                        "spanNulls": false,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "off"
+                        }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    },
+                    "unit": "bps"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 67
+            },
+            "id": 33,
+            "options": {
+                "legend": {
+                    "calcs": [
+                        "mean",
+                        "max",
+                        "lastNotNull"
+                    ],
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "hideZeros": false,
+                    "mode": "single",
+                    "sort": "none"
+                }
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "SELECT\n  time_bucket(INTERVAL '${aggregation_interval}', t.time) AS time,\n  t.device_code || ' (In)' as metric,\n  CAST(AVG(t.in_throughput_bps) AS DOUBLE) as \"Throughput (bps)\"\nFROM dz_device_traffic t\nWHERE t.time >= $__timeFrom()\n  AND t.time <= $__timeTo()\n  AND ('${device_code:raw}' = '__ALL__' OR t.device_code IN (SELECT unnest(string_to_array('${device_code:raw}', ','))))\nGROUP BY time_bucket(INTERVAL '${aggregation_interval}', t.time), t.device_code\nHAVING AVG(t.in_throughput_bps) IS NOT NULL\nUNION ALL\nSELECT\n  time_bucket(INTERVAL '${aggregation_interval}', t.time) AS time,\n  t.device_code || ' (Out)' as metric,\n  CAST(AVG(t.out_throughput_bps) AS DOUBLE) as \"Throughput (bps)\"\nFROM dz_device_traffic t\nWHERE t.time >= $__timeFrom()\n  AND t.time <= $__timeTo()\n  AND ('${device_code:raw}' = '__ALL__' OR t.device_code IN (SELECT unnest(string_to_array('${device_code:raw}', ','))))\nGROUP BY time_bucket(INTERVAL '${aggregation_interval}', t.time), t.device_code\nHAVING AVG(t.out_throughput_bps) IS NOT NULL\nORDER BY time ASC, \"Throughput (bps)\" DESC",
+                    "refId": "A"
+                }
+            ],
+            "title": "Device Throughput",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "barWidthFactor": 0.6,
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                            "legend": false,
+                            "tooltip": false,
+                            "viz": false
+                        },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "never",
+                        "showValues": false,
+                        "spanNulls": false,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "off"
+                        }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    },
+                    "unit": "bps"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 67
+            },
+            "id": 34,
+            "options": {
+                "legend": {
+                    "calcs": [
+                        "mean",
+                        "max",
+                        "lastNotNull"
+                    ],
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "hideZeros": false,
+                    "mode": "single",
+                    "sort": "none"
+                }
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "WITH aggregated AS (\n  SELECT\n    time_bucket(INTERVAL '${aggregation_interval}', t.time) AS time,\n    t.device_code,\n    t.user_tunnel_id,\n    t.user_pk,\n    AVG(t.in_throughput_bps) AS avg_in_throughput_bps,\n    AVG(t.out_throughput_bps) AS avg_out_throughput_bps\n  FROM dz_user_device_traffic t\n  WHERE t.time >= $__timeFrom()\n    AND t.time <= $__timeTo()\n    AND ('${device_code:raw}' = '__ALL__' OR t.device_code IN (SELECT unnest(string_to_array('${device_code:raw}', ','))))\n  GROUP BY time_bucket(INTERVAL '${aggregation_interval}', t.time), t.device_code, t.user_tunnel_id, t.user_pk\n)\nSELECT\n  time,\n  device_code || ':' || CAST(user_tunnel_id AS VARCHAR) || COALESCE(' (' || SUBSTRING(user_pk, 1, 8) || '...)', '') || ' (In)' as metric,\n  CAST(avg_in_throughput_bps AS DOUBLE) as \"Throughput (bps)\"\nFROM aggregated\nWHERE avg_in_throughput_bps IS NOT NULL\nUNION ALL\nSELECT\n  time,\n  device_code || ':' || CAST(user_tunnel_id AS VARCHAR) || COALESCE(' (' || SUBSTRING(user_pk, 1, 8) || '...)', '') || ' (Out)' as metric,\n  CAST(avg_out_throughput_bps AS DOUBLE) as \"Throughput (bps)\"\nFROM aggregated\nWHERE avg_out_throughput_bps IS NOT NULL\nORDER BY time ASC, \"Throughput (bps)\" DESC",
+                    "refId": "A"
+                }
+            ],
+            "title": "User Tunnel Throughput",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "barWidthFactor": 0.6,
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                            "legend": false,
+                            "tooltip": false,
+                            "viz": false
+                        },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "never",
+                        "showValues": false,
+                        "spanNulls": false,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "off"
+                        }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    },
+                    "unit": "percent"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 75
+            },
+            "id": 15,
+            "options": {
+                "legend": {
+                    "calcs": [
+                        "mean",
+                        "min",
+                        "lastNotNull"
+                    ],
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "hideZeros": false,
+                    "mode": "single",
+                    "sort": "none"
+                }
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "WITH dz_hourly AS (\n  SELECT\n    date_trunc('hour', dz.time) AS time_hour,\n    mo.code || ' → ' || mt.code as metro_pair,\n    quantile_cont(CASE WHEN dz.dz_rtt_us > 0 THEN dz.dz_rtt_us ELSE NULL END, 0.95) AS dz_rtt_p95\n  FROM dz_metro_to_metro_latency dz\n  JOIN dz_metros_current mo ON mo.pk = dz.origin_metro_pk\n  JOIN dz_metros_current mt ON mt.pk = dz.target_metro_pk\n  WHERE dz.time >= $__timeFrom()\n    AND dz.time <= $__timeTo()\n    AND ('${metro_code:raw}' = '__ALL__' OR mo.code IN (SELECT unnest(string_to_array('${metro_code:raw}', ','))) OR mt.code IN (SELECT unnest(string_to_array('${metro_code:raw}', ','))))\n    AND dz.dz_rtt_us IS NOT NULL\n    AND dz.dz_rtt_us > 0\n  GROUP BY date_trunc('hour', dz.time), mo.code, mt.code\n  HAVING quantile_cont(CASE WHEN dz.dz_rtt_us > 0 THEN dz.dz_rtt_us ELSE NULL END, 0.95) IS NOT NULL\n),\ninternet_hourly AS (\n  SELECT\n    date_trunc('hour', inet.time) AS time_hour,\n    mo.code || ' → ' || mt.code as metro_pair,\n    quantile_cont(CASE WHEN inet.internet_rtt_us > 0 THEN inet.internet_rtt_us ELSE NULL END, 0.95) AS internet_rtt_p95\n  FROM dz_public_internet_metro_to_metro_latency inet\n  JOIN dz_metros_current mo ON mo.pk = inet.origin_metro_pk\n  JOIN dz_metros_current mt ON mt.pk = inet.target_metro_pk\n  WHERE inet.time >= $__timeFrom()\n    AND inet.time <= $__timeTo()\n    AND ('${metro_code:raw}' = '__ALL__' OR mo.code IN (SELECT unnest(string_to_array('${metro_code:raw}', ','))) OR mt.code IN (SELECT unnest(string_to_array('${metro_code:raw}', ','))))\n    AND inet.internet_rtt_us IS NOT NULL\n    AND inet.internet_rtt_us > 0\n  GROUP BY date_trunc('hour', inet.time), mo.code, mt.code\n  HAVING quantile_cont(CASE WHEN inet.internet_rtt_us > 0 THEN inet.internet_rtt_us ELSE NULL END, 0.95) IS NOT NULL\n)\nSELECT\n  time_bucket(INTERVAL '${aggregation_interval}', dz.time_hour) AS time,\n  dz.metro_pair as metric,\n  CAST(\n    CASE\n      WHEN internet.internet_rtt_p95 IS NULL OR internet.internet_rtt_p95 = 0 THEN NULL\n      WHEN dz.dz_rtt_p95 IS NULL THEN NULL\n      ELSE 100.0 * (1.0 - dz.dz_rtt_p95 / internet.internet_rtt_p95)\n    END\n  AS DOUBLE) as \"% Faster\"\nFROM dz_hourly dz\nJOIN internet_hourly internet ON dz.time_hour = internet.time_hour AND dz.metro_pair = internet.metro_pair\nORDER BY time ASC, metric",
+                    "refId": "A"
+                }
+            ],
+            "title": "DZ RTT Improvement vs Internet (% Faster, P95)",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "barWidthFactor": 0.6,
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                            "legend": false,
+                            "tooltip": false,
+                            "viz": false
+                        },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "never",
+                        "showValues": false,
+                        "spanNulls": false,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "off"
+                        }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    },
+                    "unit": "percent"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 75
+            },
+            "id": 29,
+            "options": {
+                "legend": {
+                    "calcs": [
+                        "mean",
+                        "min",
+                        "lastNotNull"
+                    ],
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "hideZeros": false,
+                    "mode": "single",
+                    "sort": "none"
+                }
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "WITH dz_hourly AS (\n  SELECT\n    date_trunc('hour', dz.time) AS time_hour,\n    mo.code || ' → ' || mt.code as metro_pair,\n    quantile_cont(CASE WHEN dz.dz_jitter_us > 0 AND dz.dz_jitter_us < 100000 THEN dz.dz_jitter_us ELSE NULL END, 0.95) AS dz_jitter_p95\n  FROM dz_metro_to_metro_latency dz\n  JOIN dz_metros_current mo ON mo.pk = dz.origin_metro_pk\n  JOIN dz_metros_current mt ON mt.pk = dz.target_metro_pk\n  WHERE dz.time >= $__timeFrom()\n    AND dz.time <= $__timeTo()\n    AND ('${metro_code:raw}' = '__ALL__' OR mo.code IN (SELECT unnest(string_to_array('${metro_code:raw}', ','))) OR mt.code IN (SELECT unnest(string_to_array('${metro_code:raw}', ','))))\n    AND dz.dz_jitter_us IS NOT NULL\n    AND dz.dz_jitter_us > 0\n    AND dz.dz_jitter_us < 100000\n  GROUP BY date_trunc('hour', dz.time), mo.code, mt.code\n  HAVING quantile_cont(CASE WHEN dz.dz_jitter_us > 0 AND dz.dz_jitter_us < 100000 THEN dz.dz_jitter_us ELSE NULL END, 0.95) IS NOT NULL\n),\ninternet_hourly AS (\n  SELECT\n    date_trunc('hour', inet.time) AS time_hour,\n    mo.code || ' → ' || mt.code as metro_pair,\n    quantile_cont(CASE WHEN inet.internet_jitter_us > 0 AND inet.internet_jitter_us < 100000 THEN inet.internet_jitter_us ELSE NULL END, 0.95) AS internet_jitter_p95\n  FROM dz_public_internet_metro_to_metro_latency inet\n  JOIN dz_metros_current mo ON mo.pk = inet.origin_metro_pk\n  JOIN dz_metros_current mt ON mt.pk = inet.target_metro_pk\n  WHERE inet.time >= $__timeFrom()\n    AND inet.time <= $__timeTo()\n    AND ('${metro_code:raw}' = '__ALL__' OR mo.code IN (SELECT unnest(string_to_array('${metro_code:raw}', ','))) OR mt.code IN (SELECT unnest(string_to_array('${metro_code:raw}', ','))))\n    AND inet.internet_jitter_us IS NOT NULL\n    AND inet.internet_jitter_us > 0\n    AND inet.internet_jitter_us < 100000\n  GROUP BY date_trunc('hour', inet.time), mo.code, mt.code\n  HAVING quantile_cont(CASE WHEN inet.internet_jitter_us > 0 AND inet.internet_jitter_us < 100000 THEN inet.internet_jitter_us ELSE NULL END, 0.95) IS NOT NULL\n)\nSELECT\n  time_bucket(INTERVAL '${aggregation_interval}', dz.time_hour) AS time,\n  dz.metro_pair as metric,\n  CAST(\n    CASE\n      WHEN internet.internet_jitter_p95 IS NULL OR internet.internet_jitter_p95 = 0 THEN NULL\n      WHEN dz.dz_jitter_p95 IS NULL THEN NULL\n      ELSE 100.0 * (1.0 - dz.dz_jitter_p95 / internet.internet_jitter_p95)\n    END\n  AS DOUBLE) as \"% Faster\"\nFROM dz_hourly dz\nJOIN internet_hourly internet ON dz.time_hour = internet.time_hour AND dz.metro_pair = internet.metro_pair\nORDER BY time ASC, metric",
+                    "refId": "A"
+                }
+            ],
+            "title": "DZ Jitter Improvement vs Internet (% Faster, P95)",
+            "type": "timeseries"
+        },
+        {
+            "fieldConfig": {
+                "defaults": {},
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 2,
+                "w": 24,
+                "x": 0,
+                "y": 83
+            },
+            "id": 36,
+            "options": {
+                "code": {
+                    "language": "markdown",
+                    "showLineNumbers": false,
+                    "showMiniMap": false
+                },
+                "content": "## User Metrics",
+                "mode": "markdown"
+            },
+            "pluginVersion": "12.3.1",
+            "title": "",
+            "type": "text"
+        },
+        {
+            "fieldConfig": {
+                "defaults": {},
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 2,
+                "w": 24,
+                "x": 0,
+                "y": 85
+            },
+            "id": 21,
+            "options": {
+                "code": {
+                    "language": "markdown",
+                    "showLineNumbers": false,
+                    "showMiniMap": false
+                },
+                "content": "## Network Timeline & Events",
+                "mode": "markdown"
+            },
+            "pluginVersion": "12.3.1",
+            "title": "",
+            "type": "text"
+        },
+        {
+            "fieldConfig": {
+                "defaults": {},
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 2,
+                "w": 24,
+                "x": 0,
+                "y": 87
+            },
+            "id": 13,
+            "options": {
+                "code": {
+                    "language": "markdown",
+                    "showLineNumbers": false,
+                    "showMiniMap": false
+                },
+                "content": "## DZ vs Public Internet (Metro-to-Metro)",
+                "mode": "markdown"
+            },
+            "pluginVersion": "12.3.1",
+            "title": "",
+            "type": "text"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "custom": {
+                        "align": "auto",
+                        "cellOptions": {
+                            "type": "auto"
+                        },
+                        "footer": {
+                            "reducers": []
+                        },
+                        "inspect": false
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    }
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 10,
+                "w": 24,
+                "x": 0,
+                "y": 89
+            },
+            "id": 17,
+            "options": {
+                "cellHeight": "sm",
+                "enablePagination": true,
+                "showHeader": true,
+                "sortBy": [
+                    {
+                        "desc": true,
+                        "displayName": "time"
+                    }
+                ]
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "SELECT\n  time,\n  entity_kind as \"Entity Kind\",\n  entity_code as \"Entity Code\",\n  event_type as \"Event Type\",\n  event_value as \"Event Value\",\n  extra as \"Extra\"\nFROM dz_network_timeline\nWHERE time >= $__timeFrom()\n  AND time <= $__timeTo()\nORDER BY time DESC\nLIMIT 500",
+                    "refId": "A"
+                }
+            ],
+            "title": "Network Events Timeline",
+            "type": "table"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "custom": {
+                        "align": "auto",
+                        "cellOptions": {
+                            "type": "auto"
+                        },
+                        "footer": {
+                            "reducers": []
+                        },
+                        "inspect": false
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    }
+                },
+                "overrides": [
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "RTT Improvement %"
+                        },
+                        "properties": [
+                            {
+                                "id": "custom.cellOptions",
+                                "value": {
+                                    "type": "color-background"
+                                }
+                            },
+                            {
+                                "id": "thresholds",
+                                "value": {
+                                    "mode": "absolute",
+                                    "steps": [
+                                        {
+                                            "color": "red",
+                                            "value": 0
+                                        },
+                                        {
+                                            "color": "yellow",
+                                            "value": 0
+                                        },
+                                        {
+                                            "color": "green",
+                                            "value": 10
+                                        }
+                                    ]
+                                }
+                            },
+                            {
+                                "id": "unit",
+                                "value": "percent"
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Jitter Improvement %"
+                        },
+                        "properties": [
+                            {
+                                "id": "custom.cellOptions",
+                                "value": {
+                                    "type": "color-background"
+                                }
+                            },
+                            {
+                                "id": "thresholds",
+                                "value": {
+                                    "mode": "absolute",
+                                    "steps": [
+                                        {
+                                            "color": "red",
+                                            "value": 0
+                                        },
+                                        {
+                                            "color": "yellow",
+                                            "value": 0
+                                        },
+                                        {
+                                            "color": "green",
+                                            "value": 10
+                                        }
+                                    ]
+                                }
+                            },
+                            {
+                                "id": "unit",
+                                "value": "percent"
+                            }
+                        ]
+                    }
+                ]
+            },
+            "gridPos": {
+                "h": 10,
+                "w": 24,
+                "x": 0,
+                "y": 99
+            },
+            "id": 28,
+            "options": {
+                "cellHeight": "sm",
+                "enablePagination": true,
+                "showHeader": true,
+                "sortBy": [
+                    {
+                        "desc": true,
+                        "displayName": "RTT Improvement %"
+                    }
+                ]
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "WITH metro_stats AS (\n  SELECT\n    v.origin_metro_code || ' → ' || v.target_metro_code AS metro_pair,\n    CAST(quantile_cont(CASE WHEN v.dz_rtt_us > 0 THEN v.dz_rtt_us ELSE NULL END, 0.95) AS DOUBLE) AS dz_rtt_p95_us,\n    CAST(quantile_cont(CASE WHEN v.internet_rtt_us > 0 THEN v.internet_rtt_us ELSE NULL END, 0.95) AS DOUBLE) AS internet_rtt_p95_us,\n    CAST(quantile_cont(CASE WHEN v.dz_jitter_us > 0 THEN v.dz_jitter_us ELSE NULL END, 0.95) AS DOUBLE) AS dz_jitter_p95_us,\n    CAST(quantile_cont(CASE WHEN v.internet_jitter_us > 0 THEN v.internet_jitter_us ELSE NULL END, 0.95) AS DOUBLE) AS internet_jitter_p95_us\n  FROM dz_vs_public_internet_metro_to_metro_named v\n  WHERE v.time >= $__timeFrom()\n    AND v.time <= $__timeTo()\n    AND ('${metro_code:raw}' = '__ALL__' OR v.origin_metro_code IN (SELECT unnest(string_to_array('${metro_code:raw}', ','))) OR v.target_metro_code IN (SELECT unnest(string_to_array('${metro_code:raw}', ','))))\n    AND v.dz_rtt_us IS NOT NULL\n    AND v.internet_rtt_us IS NOT NULL\n  GROUP BY v.origin_metro_code, v.target_metro_code\n  HAVING quantile_cont(CASE WHEN v.dz_rtt_us > 0 THEN v.dz_rtt_us ELSE NULL END, 0.95) IS NOT NULL\n    AND quantile_cont(CASE WHEN v.internet_rtt_us > 0 THEN v.internet_rtt_us ELSE NULL END, 0.95) IS NOT NULL\n)\nSELECT\n  metro_pair AS \"Metro Pair\",\n  CAST(dz_rtt_p95_us / 1000.0 AS DOUBLE) AS \"DZ RTT P95 (ms)\",\n  CAST(internet_rtt_p95_us / 1000.0 AS DOUBLE) AS \"Internet RTT P95 (ms)\",\n  CAST((internet_rtt_p95_us - dz_rtt_p95_us) / 1000.0 AS DOUBLE) AS \"RTT Improvement (ms)\",\n  CAST(\n    CASE\n      WHEN internet_rtt_p95_us IS NULL OR internet_rtt_p95_us = 0 THEN NULL\n      ELSE 100.0 * (1.0 - dz_rtt_p95_us / internet_rtt_p95_us)\n    END\n  AS DOUBLE) AS \"RTT Improvement %\",\n  CAST(dz_jitter_p95_us / 1000.0 AS DOUBLE) AS \"DZ Jitter P95 (ms)\",\n  CAST(internet_jitter_p95_us / 1000.0 AS DOUBLE) AS \"Internet Jitter P95 (ms)\",\n  CAST((internet_jitter_p95_us - dz_jitter_p95_us) / 1000.0 AS DOUBLE) AS \"Jitter Improvement (ms)\",\n  CAST(\n    CASE\n      WHEN internet_jitter_p95_us IS NULL OR internet_jitter_p95_us = 0 THEN NULL\n      ELSE 100.0 * (1.0 - dz_jitter_p95_us / internet_jitter_p95_us)\n    END\n  AS DOUBLE) AS \"Jitter Improvement %\"\nFROM metro_stats\nORDER BY \"RTT Improvement %\" DESC NULLS LAST",
+                    "refId": "A"
+                }
+            ],
+            "title": "DZ vs Internet Metro Comparison",
+            "type": "table"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "custom": {
+                        "align": "auto",
+                        "cellOptions": {
+                            "type": "auto"
+                        },
+                        "footer": {
+                            "reducers": []
+                        },
+                        "inspect": false
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    }
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 109
+            },
+            "id": 19,
+            "options": {
+                "cellHeight": "sm",
+                "enablePagination": true,
+                "showHeader": true,
+                "sortBy": [
+                    {
+                        "desc": false,
+                        "displayName": "device_code"
+                    }
+                ]
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "SELECT\n  d.code as \"Device Code\",\n  d.status as \"Status\",\n  (d.status = 'activated') as \"Operational\",\n  (d.status IN ('soft-drained','hard-drained')) as \"Drained\",\n  d.as_of_ts as \"As Of\"\nFROM dz_devices_current d\nWHERE ('${device_code:raw}' = '__ALL__' OR d.code IN (SELECT unnest(string_to_array('${device_code:raw}', ','))))\nORDER BY d.code",
+                    "refId": "A"
+                }
+            ],
+            "title": "Device Status",
+            "type": "table"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "custom": {
+                        "align": "auto",
+                        "cellOptions": {
+                            "type": "auto"
+                        },
+                        "footer": {
+                            "reducers": []
+                        },
+                        "inspect": false
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    }
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 109
+            },
+            "id": 20,
+            "options": {
+                "cellHeight": "sm",
+                "enablePagination": true,
+                "showHeader": true,
+                "sortBy": [
+                    {
+                        "desc": false,
+                        "displayName": "link_code"
+                    }
+                ]
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "SELECT\n  link_code as \"Link Code\",\n  status as \"Status\",\n  is_operational as \"Operational\",\n  is_soft_drained as \"Soft Drained\",\n  is_hard_drained as \"Hard Drained\",\n  CAST(committed_rtt_ns / 1000.0 AS DOUBLE) as \"Committed RTT (µs)\",\n  as_of_ts as \"As Of\"\nFROM dz_links_current_health\nWHERE ('${link_code:raw}' = '__ALL__' OR link_code IN (SELECT unnest(string_to_array('${link_code:raw}', ','))))\nORDER BY link_code",
+                    "refId": "A"
+                }
+            ],
+            "title": "Link Status",
+            "type": "table"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "barWidthFactor": 0.6,
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                            "legend": false,
+                            "tooltip": false,
+                            "viz": false
+                        },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "never",
+                        "showValues": false,
+                        "spanNulls": false,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "off"
+                        }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    },
+                    "unit": "short"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 24,
+                "x": 0,
+                "y": 117
+            },
+            "id": 22,
+            "options": {
+                "legend": {
+                    "calcs": [
+                        "sum",
+                        "mean",
+                        "lastNotNull"
+                    ],
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "hideZeros": false,
+                    "mode": "multi",
+                    "sort": "none"
+                }
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "WITH time_series AS (\n  SELECT time_bucket(INTERVAL '${aggregation_interval}', generate_series) as time\n  FROM generate_series(\n    CAST($__timeFrom() AS TIMESTAMP),\n    CAST($__timeTo() AS TIMESTAMP) + INTERVAL '${aggregation_interval}',\n    INTERVAL '${aggregation_interval}'\n  )\n),\nconnected_users AS (\n  SELECT DISTINCT\n    owner_pubkey,\n    client_ip,\n    valid_from,\n    COALESCE(valid_to, TIMESTAMP '9999-12-31 00:00:00') as valid_to\n  FROM dz_users_history\n  WHERE op != 'D'\n    AND status = 'activated'\n    AND dz_ip IS NOT NULL\n    AND owner_pubkey NOT IN (SELECT owner_pubkey FROM dz_owners_internal)\n    AND valid_from <= CAST($__timeTo() AS TIMESTAMP)\n    AND (valid_to IS NULL OR valid_to >= CAST($__timeFrom() AS TIMESTAMP))\n)\nSELECT\n  ts.time,\n  'Connected Users' as metric,\n  CAST(COUNT(DISTINCT cu.owner_pubkey || ':' || cu.client_ip) AS DOUBLE) as \"Connected Users\"\nFROM time_series ts\nLEFT JOIN connected_users cu\n  ON cu.valid_from <= ts.time\n  AND cu.valid_to > ts.time\nGROUP BY ts.time\nORDER BY ts.time ASC",
+                    "refId": "A"
+                }
+            ],
+            "title": "Connected Users Over Time",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "custom": {
+                        "align": "auto",
+                        "cellOptions": {
+                            "type": "auto"
+                        },
+                        "footer": {
+                            "reducers": []
+                        },
+                        "inspect": false
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    }
+                },
+                "overrides": [
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Avg Throughput (bps)"
+                        },
+                        "properties": [
+                            {
+                                "id": "unit",
+                                "value": "bps"
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Peak Throughput (bps)"
+                        },
+                        "properties": [
+                            {
+                                "id": "unit",
+                                "value": "bps"
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Age (days)"
+                        },
+                        "properties": [
+                            {
+                                "id": "unit",
+                                "value": "d"
+                            },
+                            {
+                                "id": "decimals",
+                                "value": 1
+                            }
+                        ]
+                    }
+                ]
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 24,
+                "x": 0,
+                "y": 125
+            },
+            "id": 23,
+            "options": {
+                "cellHeight": "sm",
+                "enablePagination": true,
+                "showHeader": true,
+                "sortBy": [
+                    {
+                        "desc": false,
+                        "displayName": "owner_pubkey"
+                    }
+                ]
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "WITH current_users AS (\n  SELECT\n    u.pk AS dz_user_pk,\n    u.owner_pubkey,\n    u.client_ip,\n    u.dz_ip,\n    d.code AS device_code,\n    u.tunnel_id,\n    u.valid_from AS connected_from\n  FROM dz_users_history u\n  LEFT JOIN dz_devices_current d ON u.device_pk = d.pk\n  WHERE u.op != 'D'\n    AND u.status = 'activated'\n    AND u.valid_from <= CURRENT_TIMESTAMP\n    AND (u.valid_to IS NULL OR u.valid_to > CURRENT_TIMESTAMP)\n    AND u.dz_ip IS NOT NULL\n    AND u.owner_pubkey NOT IN (SELECT owner_pubkey FROM dz_owners_internal)\n    AND d.code IS NOT NULL\n    AND u.tunnel_id IS NOT NULL\n),\ntraffic_stats AS (\n  SELECT\n    t.user_pk,\n    t.device_code,\n    t.user_tunnel_id,\n    AVG(t.throughput_bps) AS avg_throughput_bps,\n    MAX(t.throughput_bps) AS peak_throughput_bps\n  FROM dz_user_device_traffic t\n  WHERE t.time >= $__timeFrom()\n    AND t.time <= $__timeTo()\n    AND t.throughput_bps IS NOT NULL\n  GROUP BY t.user_pk, t.device_code, t.user_tunnel_id\n)\nSELECT\n  cu.owner_pubkey as \"Owner PK\",\n  cu.client_ip as \"Client IP\",\n  cu.dz_ip as \"DZ IP\",\n  cu.device_code as \"Device Code\",\n  cu.tunnel_id as \"Tunnel ID\",\n  cu.connected_from as \"Connected Since\",\n  CAST(ROUND(EXTRACT(EPOCH FROM (NOW() - cu.connected_from)) / 86400.0, 1) AS DOUBLE) as \"Age (days)\",\n  CAST(COALESCE(ts.avg_throughput_bps, 0) AS DOUBLE) as \"Avg Throughput (bps)\",\n  CAST(COALESCE(ts.peak_throughput_bps, 0) AS DOUBLE) as \"Peak Throughput (bps)\"\nFROM current_users cu\nLEFT JOIN traffic_stats ts\n  ON ts.user_pk = cu.dz_user_pk\n  AND ts.device_code = cu.device_code\n  AND ts.user_tunnel_id = CAST(cu.tunnel_id AS BIGINT)\nORDER BY cu.owner_pubkey, cu.client_ip\nLIMIT 500",
+                    "refId": "A"
+                }
+            ],
+            "title": "Connected Users (Current)",
+            "type": "table"
+        }
+    ],
+    "preload": false,
+    "refresh": "30m",
+    "schemaVersion": 42,
+    "tags": [
+        "doublezero",
+        "dz"
+    ],
+    "templating": {
+        "list": [
+            {
+                "allValue": "__ALL__",
+                "current": {
+                    "text": "All",
+                    "value": "$__all"
+                },
+                "datasource": {
+                    "type": "postgres",
+                    "uid": "doublezero-lake"
+                },
+                "includeAll": true,
+                "label": "Link Code",
+                "multi": true,
+                "name": "link_code",
+                "options": [],
+                "query": "SELECT DISTINCT code FROM dz_links_current ORDER BY code",
+                "refresh": 1,
+                "regex": "",
+                "sort": 1,
+                "type": "query"
+            },
+            {
+                "allValue": "__ALL__",
+                "current": {
+                    "text": "All",
+                    "value": "$__all"
+                },
+                "datasource": {
+                    "type": "postgres",
+                    "uid": "doublezero-lake"
+                },
+                "includeAll": true,
+                "label": "Device Code",
+                "multi": true,
+                "name": "device_code",
+                "options": [],
+                "query": "SELECT DISTINCT code FROM dz_devices_current ORDER BY code",
+                "refresh": 1,
+                "regex": "",
+                "sort": 1,
+                "type": "query"
+            },
+            {
+                "allValue": "__ALL__",
+                "current": {
+                    "text": "All",
+                    "value": "$__all"
+                },
+                "datasource": {
+                    "type": "postgres",
+                    "uid": "doublezero-lake"
+                },
+                "includeAll": true,
+                "label": "Metro Code",
+                "multi": true,
+                "name": "metro_code",
+                "options": [],
+                "query": "SELECT DISTINCT code FROM dz_metros_current ORDER BY code",
+                "refresh": 1,
+                "regex": "",
+                "sort": 1,
+                "type": "query"
+            },
+            {
+                "current": {
+                    "text": "5 minutes",
+                    "value": "5 minutes"
+                },
+                "label": "Aggregation Interval",
+                "name": "aggregation_interval",
+                "options": [
+                    {
+                        "selected": false,
+                        "text": "1 minute",
+                        "value": "1 minute"
+                    },
+                    {
+                        "selected": true,
+                        "text": "5 minutes",
+                        "value": "5 minutes"
+                    },
+                    {
+                        "selected": false,
+                        "text": "15 minutes",
+                        "value": "15 minutes"
+                    },
+                    {
+                        "selected": false,
+                        "text": "30 minutes",
+                        "value": "30 minutes"
+                    },
+                    {
+                        "selected": false,
+                        "text": "1 hour",
+                        "value": "1 hour"
+                    }
+                ],
+                "query": "1 minute,5 minutes,15 minutes,30 minutes,1 hour",
+                "type": "custom"
+            }
+        ]
+    },
+    "time": {
+        "from": "now-6h",
+        "to": "now"
+    },
+    "timepicker": {},
+    "timezone": "",
+    "title": "DoubleZero Network Dashboard",
+    "uid": "doublezero",
+    "version": 224
+}

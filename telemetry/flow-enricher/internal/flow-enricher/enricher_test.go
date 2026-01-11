@@ -244,7 +244,7 @@ func TestEnricherMetrics(t *testing.T) {
 func TestEnricherServiceabilityFetching(t *testing.T) {
 	mockFetcher := &MockServiceabilityFetcher{}
 	mockFetcher.SetProgramData(&serviceability.ProgramData{
-		Contributors: []serviceability.Contributor{{Name: "Initial Contributor"}},
+		Contributors: []serviceability.Contributor{{Code: "TST1"}},
 	})
 
 	reg := prometheus.NewRegistry()
@@ -274,17 +274,17 @@ func TestEnricherServiceabilityFetching(t *testing.T) {
 		enricher.programDataMutex.Lock()
 		defer enricher.programDataMutex.Unlock()
 		return len(enricher.programData.Contributors) > 0 &&
-			enricher.programData.Contributors[0].Name == "Initial Contributor"
+			enricher.programData.Contributors[0].Code == "TST1"
 	}, 1*time.Second, 10*time.Millisecond, "Enricher did not fetch initial serviceability data")
 
 	mockFetcher.SetProgramData(&serviceability.ProgramData{
-		Contributors: []serviceability.Contributor{{Name: "Updated Contributor"}},
+		Contributors: []serviceability.Contributor{{Code: "TST2"}},
 	})
 	require.Eventually(t, func() bool {
 		enricher.programDataMutex.Lock()
 		defer enricher.programDataMutex.Unlock()
 		return len(enricher.programData.Contributors) > 0 &&
-			enricher.programData.Contributors[0].Name == "Updated Contributor"
+			enricher.programData.Contributors[0].Code == "TST2"
 	}, 1*time.Second, 10*time.Millisecond, "Enricher did not update to the new serviceability data")
 
 	mockFetcher.SetError(errors.New("fetch failed"))

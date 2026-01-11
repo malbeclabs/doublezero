@@ -92,10 +92,10 @@ func run() error {
 	if envClickhouseAddr := os.Getenv("CLICKHOUSE_ADDR"); envClickhouseAddr != "" {
 		*clickhouseAddrFlag = envClickhouseAddr
 	}
-	if envClickhouseDatabase := os.Getenv("CLICKHOUSE_DATABASE"); envClickhouseDatabase != "" {
+	if envClickhouseDatabase := os.Getenv("CLICKHOUSE_DATABASE"); envClickhouseDatabase != "default" {
 		*clickhouseDatabaseFlag = envClickhouseDatabase
 	}
-	if envClickhouseUsername := os.Getenv("CLICKHOUSE_USERNAME"); envClickhouseUsername != "" {
+	if envClickhouseUsername := os.Getenv("CLICKHOUSE_USERNAME"); envClickhouseUsername != "default" {
 		*clickhouseUsernameFlag = envClickhouseUsername
 	}
 	if envClickhousePassword := os.Getenv("CLICKHOUSE_PASSWORD"); envClickhousePassword != "" {
@@ -170,6 +170,7 @@ func run() error {
 	if *clickhouseAddrFlag == "" {
 		return fmt.Errorf("clickhouse-addr is required")
 	}
+	log.Debug("clickhouse client initializing", "addr", *clickhouseAddrFlag, "database", *clickhouseDatabaseFlag, "username", *clickhouseUsernameFlag)
 	clickhouseDB, err := clickhouse.NewClient(ctx, log, *clickhouseAddrFlag, *clickhouseDatabaseFlag, *clickhouseUsernameFlag, *clickhousePasswordFlag)
 	if err != nil {
 		return fmt.Errorf("failed to create ClickHouse client: %w", err)

@@ -36,15 +36,15 @@ func runTest_UnrelatedQuestionNoData(t *testing.T, llmFactory LLMClientFactory) 
 	debugLevel, debug := getDebugLevel()
 
 	// Set up test database
-	db := testClient(t)
+	clientInfo := testClientInfo(t)
 
 	// Set up test data - just load schema, no actual data needed
-	conn, err := db.Conn(ctx)
+	conn, err := clientInfo.Client.Conn(ctx)
 	require.NoError(t, err)
 	defer conn.Close()
 
 	// Set up pipeline with LLM client
-	p := setupPipeline(t, ctx, db, llmFactory, debug, debugLevel)
+	p := setupPipeline(t, ctx, clientInfo, llmFactory, debug, debugLevel)
 
 	// Run the query - asking something completely unrelated to DZ or Solana
 	question := "what's the weather today?"

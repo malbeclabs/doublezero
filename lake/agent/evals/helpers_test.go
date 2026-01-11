@@ -26,6 +26,7 @@ import (
 	"github.com/malbeclabs/doublezero/lake/indexer/pkg/clickhouse/dataset"
 	serviceability "github.com/malbeclabs/doublezero/lake/indexer/pkg/dz/serviceability"
 	"github.com/malbeclabs/doublezero/lake/indexer/pkg/sol"
+	laketesting "github.com/malbeclabs/doublezero/lake/utils/pkg/testing"
 	"github.com/stretchr/testify/require"
 )
 
@@ -304,7 +305,7 @@ Respond with only "YES" or "NO" followed by a brief explanation.`, question, res
 type LLMClientFactory func(t *testing.T) pipeline.LLMClient
 
 // setupPipeline creates a pipeline instance with the given LLM client factory
-func setupPipeline(t *testing.T, ctx context.Context, db clickhouse.Client, llmFactory LLMClientFactory, debug bool, debugLevel int) *pipeline.Pipeline {
+func setupPipeline(t *testing.T, ctx context.Context, clientInfo *laketesting.ClientInfo, llmFactory LLMClientFactory, debug bool, debugLevel int) *pipeline.Pipeline {
 	// Create logger with appropriate level
 	var logger *slog.Logger
 	if debug {
@@ -331,7 +332,7 @@ func setupPipeline(t *testing.T, ctx context.Context, db clickhouse.Client, llmF
 	}
 
 	// Create querier using the clickhouse client
-	baseQuerier := NewClickhouseQuerier(db)
+	baseQuerier := NewClickhouseQuerier(clientInfo.Client)
 
 	// Wrap querier with debug logging if DEBUG is set
 	var querier pipeline.Querier = baseQuerier
@@ -343,8 +344,13 @@ func setupPipeline(t *testing.T, ctx context.Context, db clickhouse.Client, llmF
 		}
 	}
 
-	// Create schema fetcher using the clickhouse client
-	schemaFetcher := NewClickhouseSchemaFetcher(db)
+	// Create schema fetcher using HTTP with auth (same code path as API)
+	schemaFetcher := pipeline.NewHTTPSchemaFetcherWithAuth(
+		sharedDB.HTTPAddr(),
+		clientInfo.Database,
+		sharedDB.Username(),
+		sharedDB.Password(),
+	)
 
 	// Create pipeline
 	p, err := pipeline.New(&pipeline.Config{
@@ -572,206 +578,6 @@ func formatQueryResult(result pipeline.QueryResult) string {
 	}
 
 	return sb.String()
-}
-
-// ClickhouseSchemaFetcher implements pipeline.SchemaFetcher using the clickhouse client
-type ClickhouseSchemaFetcher struct {
-	db clickhouse.Client
-}
-
-// NewClickhouseSchemaFetcher creates a new ClickhouseSchemaFetcher
-func NewClickhouseSchemaFetcher(db clickhouse.Client) *ClickhouseSchemaFetcher {
-	return &ClickhouseSchemaFetcher{db: db}
-}
-
-// columnInfoTest holds column metadata for schema fetching
-type columnInfoTest struct {
-	table        string
-	name         string
-	colType      string
-	sampleValues []string
-}
-
-// FetchSchema retrieves database schema information with sample values for categorical columns
-func (f *ClickhouseSchemaFetcher) FetchSchema(ctx context.Context) (string, error) {
-	conn, err := f.db.Conn(ctx)
-	if err != nil {
-		return "", fmt.Errorf("connection error: %w", err)
-	}
-	defer conn.Close()
-
-	// Fetch columns
-	columnsSQL := `
-		SELECT table, name, type
-		FROM system.columns
-		WHERE database = 'default'
-		  AND table NOT LIKE 'stg_%'
-		ORDER BY table, position
-	`
-	columnsResult, err := dataset.Query(ctx, conn, columnsSQL, nil)
-	if err != nil {
-		return "", fmt.Errorf("failed to fetch columns: %w", err)
-	}
-
-	// Build column info list
-	var columns []columnInfoTest
-	for _, row := range columnsResult.Rows {
-		columns = append(columns, columnInfoTest{
-			table:   row["table"].(string),
-			name:    row["name"].(string),
-			colType: row["type"].(string),
-		})
-	}
-
-	// Fetch views
-	viewsSQL := `
-		SELECT name, as_select
-		FROM system.tables
-		WHERE database = 'default'
-		  AND engine = 'View'
-		  AND name NOT LIKE 'stg_%'
-	`
-	viewsResult, err := dataset.Query(ctx, conn, viewsSQL, nil)
-	if err != nil {
-		return "", fmt.Errorf("failed to fetch views: %w", err)
-	}
-
-	// Build view definitions map
-	viewDefs := make(map[string]string)
-	for _, row := range viewsResult.Rows {
-		name, _ := row["name"].(string)
-		asSelect, _ := row["as_select"].(string)
-		viewDefs[name] = asSelect
-	}
-
-	// Enrich categorical columns with sample values
-	f.enrichWithSampleValues(ctx, columns)
-
-	// Format schema
-	var sb strings.Builder
-	currentTable := ""
-
-	for _, col := range columns {
-		if col.table != currentTable {
-			if currentTable != "" {
-				if def, ok := viewDefs[currentTable]; ok {
-					sb.WriteString("  Definition: " + def + "\n")
-				}
-				sb.WriteString("\n")
-			}
-			currentTable = col.table
-			if _, isView := viewDefs[col.table]; isView {
-				sb.WriteString(col.table + " (VIEW):\n")
-			} else {
-				sb.WriteString(col.table + ":\n")
-			}
-		}
-		if len(col.sampleValues) > 0 {
-			sb.WriteString("  - " + col.name + " (" + col.colType + ") values: " + strings.Join(col.sampleValues, ", ") + "\n")
-		} else {
-			sb.WriteString("  - " + col.name + " (" + col.colType + ")\n")
-		}
-	}
-
-	// Handle last table's view definition
-	if def, ok := viewDefs[currentTable]; ok {
-		sb.WriteString("  Definition: " + def + "\n")
-	}
-
-	return sb.String(), nil
-}
-
-// isCategoricalTypeTest returns true if the column type should have sample values displayed.
-func isCategoricalTypeTest(colType string) bool {
-	t := strings.ToLower(colType)
-	if strings.Contains(t, "enum") {
-		return true
-	}
-	if strings.Contains(t, "lowcardinality") && strings.Contains(t, "string") {
-		return true
-	}
-	if t == "string" || t == "nullable(string)" {
-		return true
-	}
-	return false
-}
-
-// shouldSkipColumnTest returns true for columns that shouldn't have samples fetched.
-func shouldSkipColumnTest(colName string) bool {
-	name := strings.ToLower(colName)
-	skipSuffixes := []string{"_id", "_key", "_code", "_at", "_time", "_timestamp", "_date", "_hash", "_pubkey", "_address"}
-	for _, suffix := range skipSuffixes {
-		if strings.HasSuffix(name, suffix) {
-			return true
-		}
-	}
-	skipPrefixes := []string{"id_", "uuid_"}
-	for _, prefix := range skipPrefixes {
-		if strings.HasPrefix(name, prefix) {
-			return true
-		}
-	}
-	skipExact := []string{"id", "uuid", "name", "description", "comment", "message", "error", "reason"}
-	for _, exact := range skipExact {
-		if name == exact {
-			return true
-		}
-	}
-	return false
-}
-
-// enrichWithSampleValues fetches sample values for categorical columns.
-func (f *ClickhouseSchemaFetcher) enrichWithSampleValues(ctx context.Context, columns []columnInfoTest) {
-	// Group columns by table
-	tableColumns := make(map[string][]*columnInfoTest)
-	for i := range columns {
-		col := &columns[i]
-		if isCategoricalTypeTest(col.colType) && !shouldSkipColumnTest(col.name) {
-			tableColumns[col.table] = append(tableColumns[col.table], col)
-		}
-	}
-
-	// Fetch samples for each categorical column
-	for table, cols := range tableColumns {
-		for _, col := range cols {
-			samples, err := f.fetchColumnSamples(ctx, table, col.name)
-			if err == nil && len(samples) > 0 && len(samples) <= 15 {
-				col.sampleValues = samples
-			}
-		}
-	}
-}
-
-// fetchColumnSamples returns distinct values for a column.
-func (f *ClickhouseSchemaFetcher) fetchColumnSamples(ctx context.Context, table, column string) ([]string, error) {
-	conn, err := f.db.Conn(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer conn.Close()
-
-	query := fmt.Sprintf(`
-		SELECT DISTINCT %s
-		FROM %s
-		WHERE %s IS NOT NULL AND %s != ''
-		LIMIT 20
-	`, column, table, column, column)
-
-	result, err := dataset.Query(ctx, conn, query, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	samples := make([]string, 0, len(result.Rows))
-	for _, row := range result.Rows {
-		if val, ok := row[column]; ok {
-			if s, ok := val.(string); ok && s != "" {
-				samples = append(samples, s)
-			}
-		}
-	}
-
-	return samples, nil
 }
 
 // isOllamaAvailable checks if the local Ollama server is available

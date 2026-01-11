@@ -8,11 +8,23 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// ClientInfo holds a test client and its database name.
+type ClientInfo struct {
+	Client   clickhouse.Client
+	Database string
+}
+
 func NewClient(t *testing.T, db *clickhousetesting.DB) clickhouse.Client {
-	client, err := clickhousetesting.NewTestClient(t, db)
+	info := NewClientWithInfo(t, db)
+	return info.Client
+}
+
+// NewClientWithInfo creates a test client and returns info including the database name.
+func NewClientWithInfo(t *testing.T, db *clickhousetesting.DB) *ClientInfo {
+	info, err := clickhousetesting.NewTestClientWithInfo(t, db)
 	require.NoError(t, err)
 
-	conn, err := client.Conn(t.Context())
+	conn, err := info.Client.Conn(t.Context())
 	require.NoError(t, err)
 	defer conn.Close()
 
@@ -20,5 +32,8 @@ func NewClient(t *testing.T, db *clickhousetesting.DB) clickhouse.Client {
 	err = clickhouse.RunMigrations(t.Context(), log, conn)
 	require.NoError(t, err)
 
-	return client
+	return &ClientInfo{
+		Client:   info.Client,
+		Database: info.Database,
+	}
 }

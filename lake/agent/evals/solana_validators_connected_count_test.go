@@ -42,10 +42,10 @@ func runTest_SolanaValidatorsConnectedCount(t *testing.T, llmFactory LLMClientFa
 	debugLevel, debug := getDebugLevel()
 
 	// Set up test database
-	db := testClient(t)
+	clientInfo := testClientInfo(t)
 
 	// Set up test data
-	conn, err := db.Conn(ctx)
+	conn, err := clientInfo.Client.Conn(ctx)
 	require.NoError(t, err)
 	defer conn.Close()
 
@@ -62,7 +62,7 @@ func runTest_SolanaValidatorsConnectedCount(t *testing.T, llmFactory LLMClientFa
 	}
 
 	// Set up pipeline with LLM client
-	p := setupPipeline(t, ctx, db, llmFactory, debug, debugLevel)
+	p := setupPipeline(t, ctx, clientInfo, llmFactory, debug, debugLevel)
 
 	// Run the query
 	question := "How many Solana validators connected to dz in the last day"

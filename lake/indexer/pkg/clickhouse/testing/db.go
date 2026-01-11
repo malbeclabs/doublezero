@@ -27,7 +27,23 @@ type DB struct {
 	log       *slog.Logger
 	cfg       *DBConfig
 	addr      string
+	httpAddr  string // HTTP endpoint for schema fetching
 	container *tcch.ClickHouseContainer
+}
+
+// HTTPAddr returns the HTTP endpoint URL (http://host:port) for the ClickHouse container.
+func (db *DB) HTTPAddr() string {
+	return db.httpAddr
+}
+
+// Username returns the ClickHouse username.
+func (db *DB) Username() string {
+	return db.cfg.Username
+}
+
+// Password returns the ClickHouse password.
+func (db *DB) Password() string {
+	return db.cfg.Password
 }
 
 func (db *DB) Close() {
@@ -57,7 +73,27 @@ func (cfg *DBConfig) Validate() error {
 	return nil
 }
 
+// TestClientInfo holds a test client and its database name.
+type TestClientInfo struct {
+	Client   clickhouse.Client
+	Database string
+}
+
+// NewTestClientWithInfo creates a test client and returns info including the database name.
+func NewTestClientWithInfo(t *testing.T, db *DB) (*TestClientInfo, error) {
+	client, dbName, err := newTestClientInternal(t, db)
+	if err != nil {
+		return nil, err
+	}
+	return &TestClientInfo{Client: client, Database: dbName}, nil
+}
+
 func NewTestClient(t *testing.T, db *DB) (clickhouse.Client, error) {
+	client, _, err := newTestClientInternal(t, db)
+	return client, err
+}
+
+func newTestClientInternal(t *testing.T, db *DB) (clickhouse.Client, string, error) {
 	// Create admin client
 	// Retry admin client connection/ping up to 3 times for retryable errors
 	// ClickHouse may need a moment after container start to be ready for connections
@@ -70,7 +106,7 @@ func NewTestClient(t *testing.T, db *DB) (clickhouse.Client, error) {
 				time.Sleep(time.Duration(attempt) * 500 * time.Millisecond)
 				continue
 			}
-			return nil, fmt.Errorf("failed to create ClickHouse admin client: %w", err)
+			return nil, "", fmt.Errorf("failed to create ClickHouse admin client: %w", err)
 		}
 		break
 	}
@@ -98,7 +134,7 @@ func NewTestClient(t *testing.T, db *DB) (clickhouse.Client, error) {
 				time.Sleep(time.Duration(attempt) * 500 * time.Millisecond)
 				continue
 			}
-			return nil, fmt.Errorf("failed to create ClickHouse client: %w", err)
+			return nil, "", fmt.Errorf("failed to create ClickHouse client: %w", err)
 		}
 		break
 	}
@@ -111,7 +147,7 @@ func NewTestClient(t *testing.T, db *DB) (clickhouse.Client, error) {
 		testClient.Close()
 	})
 
-	return testClient, nil
+	return testClient, databaseName, nil
 }
 
 func NewTestConn(t *testing.T, db *DB) (clickhouse.Connection, error) {
@@ -172,10 +208,19 @@ func NewDB(ctx context.Context, log *slog.Logger, cfg *DBConfig) (*DB, error) {
 
 	addr := fmt.Sprintf("%s:%s", host, mappedPort.Port())
 
+	// Get HTTP port for schema fetching
+	httpPort := nat.Port("8123/tcp")
+	mappedHTTPPort, err := container.MappedPort(ctx, httpPort)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get ClickHouse container HTTP port: %w", err)
+	}
+	httpAddr := fmt.Sprintf("http://%s:%s", host, mappedHTTPPort.Port())
+
 	db := &DB{
 		log:       log,
 		cfg:       cfg,
 		addr:      addr,
+		httpAddr:  httpAddr,
 		container: container,
 	}
 

@@ -42,10 +42,10 @@ func runTest_SolanaValidatorsDisconnected(t *testing.T, llmFactory LLMClientFact
 	debugLevel, debug := getDebugLevel()
 
 	// Set up test database
-	db := testClient(t)
+	clientInfo := testClientInfo(t)
 
 	// Set up test data
-	conn, err := db.Conn(ctx)
+	conn, err := clientInfo.Client.Conn(ctx)
 	require.NoError(t, err)
 	defer conn.Close()
 
@@ -62,7 +62,7 @@ func runTest_SolanaValidatorsDisconnected(t *testing.T, llmFactory LLMClientFact
 	}
 
 	// Set up pipeline with LLM client
-	p := setupPipeline(t, ctx, db, llmFactory, debug, debugLevel)
+	p := setupPipeline(t, ctx, clientInfo, llmFactory, debug, debugLevel)
 
 	// Run the query
 	question := "which solana validators disconnected from dz in the past 24 hours"

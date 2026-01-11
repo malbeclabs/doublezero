@@ -33,3 +33,8 @@ func testClient(t *testing.T) clickhouse.Client {
 	client := laketesting.NewClient(t, sharedDB)
 	return client
 }
+
+// testClientInfo returns the test client along with database info for schema fetching.
+func testClientInfo(t *testing.T) *laketesting.ClientInfo {
+	return laketesting.NewClientWithInfo(t, sharedDB)
+}

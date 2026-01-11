@@ -13,12 +13,29 @@ import (
 // HTTPSchemaFetcher fetches schema from ClickHouse via HTTP.
 type HTTPSchemaFetcher struct {
 	ClickhouseURL string
+	Database      string // defaults to "default" if empty
+	Username      string // optional
+	Password      string // optional
 }
 
 // NewHTTPSchemaFetcher creates a new HTTPSchemaFetcher.
 func NewHTTPSchemaFetcher(clickhouseURL string) *HTTPSchemaFetcher {
 	return &HTTPSchemaFetcher{
 		ClickhouseURL: clickhouseURL,
+		Database:      "default",
+	}
+}
+
+// NewHTTPSchemaFetcherWithAuth creates a new HTTPSchemaFetcher with authentication.
+func NewHTTPSchemaFetcherWithAuth(clickhouseURL, database, username, password string) *HTTPSchemaFetcher {
+	if database == "" {
+		database = "default"
+	}
+	return &HTTPSchemaFetcher{
+		ClickhouseURL: clickhouseURL,
+		Database:      database,
+		Username:      username,
+		Password:      password,
 	}
 }
 
@@ -56,22 +73,16 @@ type viewInfo struct {
 	AsSelect string `json:"as_select"`
 }
 
-func (f *HTTPSchemaFetcher) fetchColumns(ctx context.Context) ([]columnInfo, error) {
-	query := `
-		SELECT
-			table,
-			name,
-			type
-		FROM system.columns
-		WHERE database = 'default'
-		  AND table NOT LIKE 'stg_%'
-		ORDER BY table, position
-		FORMAT JSON
-	`
-
+// doQuery executes a query against ClickHouse and returns the response body.
+func (f *HTTPSchemaFetcher) doQuery(ctx context.Context, query string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", f.ClickhouseURL+"/?query="+url.QueryEscape(query), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	// Add authentication if provided
+	if f.Username != "" {
+		req.SetBasicAuth(f.Username, f.Password)
 	}
 
 	resp, err := http.DefaultClient.Do(req)
@@ -87,6 +98,27 @@ func (f *HTTPSchemaFetcher) fetchColumns(ctx context.Context) ([]columnInfo, err
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("clickhouse error: %s", string(body))
+	}
+
+	return body, nil
+}
+
+func (f *HTTPSchemaFetcher) fetchColumns(ctx context.Context) ([]columnInfo, error) {
+	query := fmt.Sprintf(`
+		SELECT
+			table,
+			name,
+			type
+		FROM system.columns
+		WHERE database = '%s'
+		  AND table NOT LIKE 'stg_%%'
+		ORDER BY table, position
+		FORMAT JSON
+	`, f.Database)
+
+	body, err := f.doQuery(ctx, query)
+	if err != nil {
+		return nil, err
 	}
 
 	var result struct {
@@ -100,35 +132,20 @@ func (f *HTTPSchemaFetcher) fetchColumns(ctx context.Context) ([]columnInfo, err
 }
 
 func (f *HTTPSchemaFetcher) fetchViews(ctx context.Context) ([]viewInfo, error) {
-	query := `
+	query := fmt.Sprintf(`
 		SELECT
 			name,
 			as_select
 		FROM system.tables
-		WHERE database = 'default'
+		WHERE database = '%s'
 		  AND engine = 'View'
-		  AND name NOT LIKE 'stg_%'
+		  AND name NOT LIKE 'stg_%%'
 		FORMAT JSON
-	`
+	`, f.Database)
 
-	req, err := http.NewRequestWithContext(ctx, "GET", f.ClickhouseURL+"/?query="+url.QueryEscape(query), nil)
+	body, err := f.doQuery(ctx, query)
 	if err != nil {
 		return nil, err
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("clickhouse error: %s", string(body))
 	}
 
 	var result struct {
@@ -218,22 +235,7 @@ func (f *HTTPSchemaFetcher) fetchColumnSamples(ctx context.Context, table, colum
 		FORMAT JSON
 	`, column, table, column, column)
 
-	req, err := http.NewRequestWithContext(ctx, "GET", f.ClickhouseURL+"/?query="+url.QueryEscape(query), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("query failed")
-	}
-
-	body, err := io.ReadAll(resp.Body)
+	body, err := f.doQuery(ctx, query)
 	if err != nil {
 		return nil, err
 	}

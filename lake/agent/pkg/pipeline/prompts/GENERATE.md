@@ -167,6 +167,12 @@ WHERE u.status = 'activated'
 
 **Key insight**: `dz_users_current` is the source of truth for what is currently "on DZ". Without joining through it, you're counting the entire Solana network. For historical queries, use `dim_dz_users_history` instead.
 
+### Data Ingestion Start (CRITICAL)
+The earliest `snapshot_ts` in history tables = **when ingestion began**, NOT when entities were created.
+
+**WRONG**: "All users joined on 2024-01-15" (likely just when snapshots started)
+**CORRECT**: If first `snapshot_ts` equals the table's global minimum, the actual join date is unknown
+
 **WRONG**: Joining device IP to gossip IP (devices are infrastructure, not validators)
 **CORRECT**: Joining user dz_ip to gossip_ip (users ARE the validators)
 

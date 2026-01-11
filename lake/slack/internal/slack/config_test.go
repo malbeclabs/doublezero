@@ -52,7 +52,7 @@ func TestAI_Slack_LoadFromEnv(t *testing.T) {
 				os.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
 				os.Setenv("SLACK_APP_TOKEN", "xapp-test")
 				os.Setenv("ANTHROPIC_API_KEY", "sk-test")
-				os.Setenv("CLICKHOUSE_ADDR", "localhost:9000")
+				os.Setenv("CLICKHOUSE_ADDR_HTTP", "localhost:9000")
 				os.Setenv("CLICKHOUSE_DATABASE", "default")
 				os.Setenv("CLICKHOUSE_USERNAME", "default")
 				os.Setenv("CLICKHOUSE_PASSWORD", "")
@@ -75,7 +75,7 @@ func TestAI_Slack_LoadFromEnv(t *testing.T) {
 				os.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
 				os.Setenv("SLACK_SIGNING_SECRET", "secret")
 				os.Setenv("ANTHROPIC_API_KEY", "sk-test")
-				os.Setenv("CLICKHOUSE_ADDR", "localhost:9000")
+				os.Setenv("CLICKHOUSE_ADDR_HTTP", "localhost:9000")
 				os.Setenv("CLICKHOUSE_DATABASE", "default")
 				os.Setenv("CLICKHOUSE_USERNAME", "default")
 				os.Setenv("CLICKHOUSE_PASSWORD", "")
@@ -92,7 +92,7 @@ func TestAI_Slack_LoadFromEnv(t *testing.T) {
 				os.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
 				os.Setenv("SLACK_APP_TOKEN", "xapp-test")
 				os.Setenv("ANTHROPIC_API_KEY", "sk-test")
-				os.Setenv("CLICKHOUSE_ADDR", "localhost:9000")
+				os.Setenv("CLICKHOUSE_ADDR_HTTP", "localhost:9000")
 				os.Setenv("CLICKHOUSE_DATABASE", "default")
 				os.Setenv("CLICKHOUSE_USERNAME", "default")
 				os.Setenv("CLICKHOUSE_PASSWORD", "")
@@ -119,7 +119,7 @@ func TestAI_Slack_LoadFromEnv(t *testing.T) {
 			name: "missing bot token",
 			setupEnv: func() {
 				os.Setenv("ANTHROPIC_API_KEY", "sk-test")
-				os.Setenv("CLICKHOUSE_ADDR", "localhost:9000")
+				os.Setenv("CLICKHOUSE_ADDR_HTTP", "localhost:9000")
 				os.Setenv("CLICKHOUSE_DATABASE", "default")
 				os.Setenv("CLICKHOUSE_USERNAME", "default")
 				os.Setenv("CLICKHOUSE_PASSWORD", "")
@@ -133,7 +133,7 @@ func TestAI_Slack_LoadFromEnv(t *testing.T) {
 			setupEnv: func() {
 				os.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
 				os.Setenv("ANTHROPIC_API_KEY", "sk-test")
-				os.Setenv("CLICKHOUSE_ADDR", "localhost:9000")
+				os.Setenv("CLICKHOUSE_ADDR_HTTP", "localhost:9000")
 				os.Setenv("CLICKHOUSE_DATABASE", "default")
 				os.Setenv("CLICKHOUSE_USERNAME", "default")
 				os.Setenv("CLICKHOUSE_PASSWORD", "")
@@ -158,7 +158,7 @@ func TestAI_Slack_LoadFromEnv(t *testing.T) {
 			setupEnv: func() {
 				os.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
 				os.Setenv("SLACK_APP_TOKEN", "xapp-test")
-				os.Setenv("CLICKHOUSE_ADDR", "localhost:9000")
+				os.Setenv("CLICKHOUSE_ADDR_HTTP", "localhost:9000")
 				os.Setenv("CLICKHOUSE_DATABASE", "default")
 				os.Setenv("CLICKHOUSE_USERNAME", "default")
 				os.Setenv("CLICKHOUSE_PASSWORD", "")
@@ -173,11 +173,11 @@ func TestAI_Slack_LoadFromEnv(t *testing.T) {
 				os.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
 				os.Setenv("SLACK_APP_TOKEN", "xapp-test")
 				os.Setenv("ANTHROPIC_API_KEY", "sk-test")
-				os.Unsetenv("CLICKHOUSE_ADDR") // Ensure it's unset
+				os.Unsetenv("CLICKHOUSE_ADDR_HTTP") // Ensure it's unset
 			},
 			modeFlag:    "socket",
 			wantErr:     true,
-			errContains: "CLICKHOUSE_ADDR is required (use --clickhouse-addr flag or CLICKHOUSE_ADDR env var)",
+			errContains: "CLICKHOUSE_ADDR_HTTP is required (use --clickhouse-addr flag or CLICKHOUSE_ADDR_HTTP env var)",
 		},
 		{
 			name: "invalid mode",
@@ -185,7 +185,7 @@ func TestAI_Slack_LoadFromEnv(t *testing.T) {
 				os.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
 				os.Setenv("SLACK_APP_TOKEN", "xapp-test")
 				os.Setenv("ANTHROPIC_API_KEY", "sk-test")
-				os.Setenv("CLICKHOUSE_ADDR", "localhost:9000")
+				os.Setenv("CLICKHOUSE_ADDR_HTTP", "localhost:9000")
 				os.Setenv("CLICKHOUSE_DATABASE", "default")
 				os.Setenv("CLICKHOUSE_USERNAME", "default")
 				os.Setenv("CLICKHOUSE_PASSWORD", "")
@@ -200,7 +200,7 @@ func TestAI_Slack_LoadFromEnv(t *testing.T) {
 				os.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
 				os.Setenv("SLACK_APP_TOKEN", "xapp-test")
 				os.Setenv("ANTHROPIC_API_KEY", "sk-test")
-				os.Setenv("CLICKHOUSE_ADDR", "localhost:9000")
+				os.Setenv("CLICKHOUSE_ADDR_HTTP", "localhost:9000")
 				os.Setenv("CLICKHOUSE_DATABASE", "default")
 				os.Setenv("CLICKHOUSE_USERNAME", "default")
 				os.Setenv("CLICKHOUSE_PASSWORD", "")

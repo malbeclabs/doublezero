@@ -38,8 +38,15 @@ type GenerateResponse struct {
 }
 
 const ollamaURL = "http://localhost:11434"
-const ollamaModel = "mistral-nemo"
+const defaultOllamaModel = "llama3.1"
 const maxValidationAttempts = 3
+
+func getOllamaModel() string {
+	if model := os.Getenv("OLLAMA_MODEL"); model != "" {
+		return model
+	}
+	return defaultOllamaModel
+}
 
 // Cached prompts for query generation
 var (
@@ -294,7 +301,7 @@ func streamWithOllama(schema, prompt string, onToken func(string)) error {
 	systemPrompt := buildSystemPrompt(schema)
 
 	reqBody := map[string]any{
-		"model":  ollamaModel,
+		"model":  getOllamaModel(),
 		"prompt": prompt,
 		"system": systemPrompt,
 		"stream": true,
@@ -454,7 +461,7 @@ func generateWithOllama(schema, prompt string) (string, error) {
 	systemPrompt := buildSystemPrompt(schema)
 
 	reqBody := map[string]any{
-		"model":  ollamaModel,
+		"model":  getOllamaModel(),
 		"prompt": prompt,
 		"system": systemPrompt,
 		"stream": false,

@@ -90,9 +90,9 @@ func LoadFromEnv(modeFlag, httpAddrFlag, metricsAddrFlag string, verbose, enable
 	}
 
 	// Load ClickHouse configuration
-	cfg.ClickhouseAddr = os.Getenv("CLICKHOUSE_ADDR")
+	cfg.ClickhouseAddr = os.Getenv("CLICKHOUSE_ADDR_HTTP")
 	if cfg.ClickhouseAddr == "" {
-		return nil, fmt.Errorf("CLICKHOUSE_ADDR is required (use --clickhouse-addr flag or CLICKHOUSE_ADDR env var)")
+		return nil, fmt.Errorf("CLICKHOUSE_ADDR_HTTP is required (use --clickhouse-addr flag or CLICKHOUSE_ADDR_HTTP env var)")
 	}
 	cfg.ClickhouseDatabase = os.Getenv("CLICKHOUSE_DATABASE")
 	if cfg.ClickhouseDatabase == "" {

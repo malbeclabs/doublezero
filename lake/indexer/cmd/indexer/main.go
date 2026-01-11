@@ -69,7 +69,7 @@ func run() error {
 	listenAddrFlag := flag.String("listen-addr", defaultListenAddr, "HTTP server listen address")
 
 	// ClickHouse configuration
-	clickhouseAddrFlag := flag.String("clickhouse-addr", "", "ClickHouse server address (e.g., localhost:9000, or set CLICKHOUSE_ADDR env var)")
+	clickhouseAddrFlag := flag.String("clickhouse-addr", "", "ClickHouse server address (e.g., localhost:9000, or set CLICKHOUSE_ADDR_TCP env var)")
 	clickhouseDatabaseFlag := flag.String("clickhouse-database", "default", "ClickHouse database name (or set CLICKHOUSE_DATABASE env var)")
 	clickhouseUsernameFlag := flag.String("clickhouse-username", "default", "ClickHouse username (or set CLICKHOUSE_USERNAME env var)")
 	clickhousePasswordFlag := flag.String("clickhouse-password", "", "ClickHouse password (or set CLICKHOUSE_PASSWORD env var)")
@@ -89,7 +89,7 @@ func run() error {
 	flag.Parse()
 
 	// Override flags with environment variables if set
-	if envClickhouseAddr := os.Getenv("CLICKHOUSE_ADDR"); envClickhouseAddr != "" {
+	if envClickhouseAddr := os.Getenv("CLICKHOUSE_ADDR_TCP"); envClickhouseAddr != "" {
 		*clickhouseAddrFlag = envClickhouseAddr
 	}
 	if envClickhouseDatabase := os.Getenv("CLICKHOUSE_DATABASE"); envClickhouseDatabase != "default" {

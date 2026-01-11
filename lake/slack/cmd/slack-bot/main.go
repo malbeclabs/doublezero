@@ -71,7 +71,7 @@ func run() error {
 	shutdownTimeoutFlag := flag.Duration("shutdown-timeout", 60*time.Second, "Maximum time to wait for in-flight operations to complete during graceful shutdown")
 
 	// ClickHouse configuration flags (used as fallback if env vars not set)
-	clickhouseAddrFlag := flag.String("clickhouse-addr", "", "ClickHouse server address (e.g., localhost:9000, or set CLICKHOUSE_ADDR env var)")
+	clickhouseAddrFlag := flag.String("clickhouse-addr", "", "ClickHouse server address (e.g., localhost:9000, or set CLICKHOUSE_ADDR_HTTP env var)")
 	clickhouseHTTPAddrFlag := flag.String("clickhouse-http-addr", "", "ClickHouse HTTP address for schema fetching (e.g., localhost:8123, or set CLICKHOUSE_HTTP_ADDR env var)")
 	clickhouseDatabaseFlag := flag.String("clickhouse-database", "default", "ClickHouse database name (or set CLICKHOUSE_DATABASE env var)")
 	clickhouseUsernameFlag := flag.String("clickhouse-username", "default", "ClickHouse username (or set CLICKHOUSE_USERNAME env var)")

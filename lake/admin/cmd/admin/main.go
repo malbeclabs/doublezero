@@ -23,7 +23,7 @@ func run() error {
 	verboseFlag := flag.Bool("verbose", false, "enable verbose (debug) logging")
 
 	// ClickHouse configuration
-	clickhouseAddrFlag := flag.String("clickhouse-addr", "", "ClickHouse address (host:port) (or set CLICKHOUSE_ADDR env var)")
+	clickhouseAddrFlag := flag.String("clickhouse-addr", "", "ClickHouse address (host:port) (or set CLICKHOUSE_ADDR_TCP env var)")
 	clickhouseDatabaseFlag := flag.String("clickhouse-database", "default", "ClickHouse database name (or set CLICKHOUSE_DATABASE env var)")
 	clickhouseUsernameFlag := flag.String("clickhouse-username", "default", "ClickHouse username (or set CLICKHOUSE_USERNAME env var)")
 	clickhousePasswordFlag := flag.String("clickhouse-password", "", "ClickHouse password (or set CLICKHOUSE_PASSWORD env var)")
@@ -62,7 +62,7 @@ func run() error {
 	log := logger.New(*verboseFlag)
 
 	// Override ClickHouse flags with environment variables if set
-	if envClickhouseAddr := os.Getenv("CLICKHOUSE_ADDR"); envClickhouseAddr != "" {
+	if envClickhouseAddr := os.Getenv("CLICKHOUSE_ADDR_TCP"); envClickhouseAddr != "" {
 		*clickhouseAddrFlag = envClickhouseAddr
 	}
 	if envClickhouseDatabase := os.Getenv("CLICKHOUSE_DATABASE"); envClickhouseDatabase != "" {

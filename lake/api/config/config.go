@@ -13,7 +13,7 @@ var (
 
 // Load initializes configuration from environment variables
 func Load() error {
-	addr := os.Getenv("CLICKHOUSE_ADDR")
+	addr := os.Getenv("CLICKHOUSE_ADDR_HTTP")
 	if addr == "" {
 		addr = "localhost:8123"
 	}

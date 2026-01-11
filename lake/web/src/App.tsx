@@ -721,7 +721,8 @@ function AppContent() {
                     dataQuestions: data.dataQuestions ?? [],
                     generatedQueries: data.generatedQueries ?? [],
                     executedQueries: data.executedQueries ?? [],
-                  }
+                  },
+                  executedQueries: data.executedQueries?.map(q => q.sql) ?? [],
                 }
 
               const newMessages: ChatMessage[] = [...session.messages, assistantMessage]

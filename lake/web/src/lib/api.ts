@@ -252,6 +252,8 @@ export interface ChatMessage {
   content: string
   // Pipeline data (only present on assistant messages)
   pipelineData?: ChatPipelineData
+  // SQL queries for history transmission (extracted from pipelineData for backend)
+  executedQueries?: string[]
 }
 
 export interface DataQuestion {

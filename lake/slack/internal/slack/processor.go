@@ -358,10 +358,16 @@ func (p *Processor) ProcessMessage(
 		MessagesPostedTotal.WithLabelValues("success", "pipeline").Inc()
 		p.log.Info("reply posted successfully", "channel", ev.Channel, "thread_ts", threadKey, "reply_ts", respTS)
 
+		// Extract SQL queries from executed queries
+		var executedSQL []string
+		for _, eq := range result.ExecutedQueries {
+			executedSQL = append(executedSQL, eq.GeneratedQuery.SQL)
+		}
+
 		// Update conversation history with the new exchange
 		newHistory := append(history,
 			pipeline.ConversationMessage{Role: "user", Content: txt},
-			pipeline.ConversationMessage{Role: "assistant", Content: result.Answer},
+			pipeline.ConversationMessage{Role: "assistant", Content: result.Answer, ExecutedQueries: executedSQL},
 		)
 		p.convManager.UpdateConversationHistory(threadKey, newHistory)
 	}

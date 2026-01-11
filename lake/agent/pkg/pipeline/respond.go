@@ -34,6 +34,13 @@ func (p *Pipeline) RespondWithHistory(ctx context.Context, userQuestion string, 
 					content = content[:1000] + "..."
 				}
 				userPrompt.WriteString(fmt.Sprintf("Assistant: %s\n", content))
+				// Include executed queries if present
+				if len(msg.ExecutedQueries) > 0 {
+					userPrompt.WriteString("Executed SQL queries:\n")
+					for i, sql := range msg.ExecutedQueries {
+						userPrompt.WriteString(fmt.Sprintf("Q%d: %s\n", i+1, sql))
+					}
+				}
 			}
 		}
 		userPrompt.WriteString("\n")

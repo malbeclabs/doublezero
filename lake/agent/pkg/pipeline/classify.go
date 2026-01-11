@@ -48,6 +48,10 @@ func (p *Pipeline) ClassifyWithHistory(ctx context.Context, userQuestion string,
 					content = content[:500] + "..."
 				}
 				historyText.WriteString(fmt.Sprintf("Assistant: %s\n", content))
+				// Include executed queries if present (so classifier knows queries exist)
+				if len(msg.ExecutedQueries) > 0 {
+					historyText.WriteString(fmt.Sprintf("[%d SQL queries were executed]\n", len(msg.ExecutedQueries)))
+				}
 			}
 		}
 		historyText.WriteString("\n")

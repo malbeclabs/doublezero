@@ -81,4 +81,10 @@ For **out_of_scope** questions:
 **Question**: "Why is that validator's stake so low?"
 → **data_analysis** (even though it references "that", it's asking for data about a validator)
 
+**Question**: "What queries did you use?"
+→ **conversational** (asking about the SQL queries from previous response)
+
+**Question**: "Show me the raw SQL"
+→ **conversational** (requesting to see the queries that were executed)
+
 Now classify the following question.

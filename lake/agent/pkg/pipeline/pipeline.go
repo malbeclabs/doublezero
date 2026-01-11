@@ -71,8 +71,9 @@ type ExecutedQuery struct {
 
 // ConversationMessage represents a message in conversation history.
 type ConversationMessage struct {
-	Role    string // "user" or "assistant"
-	Content string
+	Role            string   // "user" or "assistant"
+	Content         string
+	ExecutedQueries []string // SQL queries executed in this turn (assistant only)
 }
 
 // ProgressStage represents a stage in the pipeline execution.

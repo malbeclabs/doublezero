@@ -15,8 +15,9 @@ import (
 
 // ChatMessage represents a single message in conversation history.
 type ChatMessage struct {
-	Role    string `json:"role"`    // "user" or "assistant"
-	Content string `json:"content"`
+	Role            string   `json:"role"`              // "user" or "assistant"
+	Content         string   `json:"content"`
+	ExecutedQueries []string `json:"executedQueries,omitempty"` // SQL from previous turns
 }
 
 // ChatRequest is the incoming request for a chat message.
@@ -113,8 +114,9 @@ func Chat(w http.ResponseWriter, r *http.Request) {
 	var history []pipeline.ConversationMessage
 	for _, msg := range req.History {
 		history = append(history, pipeline.ConversationMessage{
-			Role:    msg.Role,
-			Content: msg.Content,
+			Role:            msg.Role,
+			Content:         msg.Content,
+			ExecutedQueries: msg.ExecutedQueries,
 		})
 	}
 
@@ -248,8 +250,9 @@ func ChatStream(w http.ResponseWriter, r *http.Request) {
 	var history []pipeline.ConversationMessage
 	for _, msg := range req.History {
 		history = append(history, pipeline.ConversationMessage{
-			Role:    msg.Role,
-			Content: msg.Content,
+			Role:            msg.Role,
+			Content:         msg.Content,
+			ExecutedQueries: msg.ExecutedQueries,
 		})
 	}
 

@@ -110,8 +110,8 @@ func (a *Agent) Run(ctx context.Context, initialMessages []Message, output io.Wr
 					"threshold", a.cfg.MaxContextTokens)
 			}
 
-			// Start with keeping 10 recent messages, but reduce if we need more aggressive compaction
-			keepRecent := 10 - (iteration * 2)
+			// Start with keeping 6 recent messages, but reduce if we need more aggressive compaction
+			keepRecent := 6 - (iteration * 2)
 			if keepRecent < 2 {
 				keepRecent = 2 // Always keep at least the first message and 2 recent messages
 			}

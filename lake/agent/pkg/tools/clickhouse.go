@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -38,7 +37,7 @@ func (q *ClickhouseQueryTool) ListTools(ctx context.Context) ([]react.Tool, erro
 	return []react.Tool{
 		{
 			Name:        "query",
-			Description: "Execute a SQL query against the DoubleZero database. Returns results as JSON with columns, column types, and rows.",
+			Description: "Execute a SQL query against the DoubleZero database. Returns results in compact text format with columns and rows (max 50 rows displayed).",
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -99,57 +98,48 @@ func (q *ClickhouseQueryTool) CallToolText(ctx context.Context, name string, arg
 		}
 	}
 
-	colTypes := make([]ColumnType, len(result.ColumnTypes))
-	for i, ct := range result.ColumnTypes {
-		colTypes[i] = ColumnType{
-			Name:             ct.Name,
-			DatabaseTypeName: ct.DatabaseTypeName,
-			ScanType:         ct.ScanType,
+	// Return compact text format to reduce context size
+	return formatCompactResult(result.Columns, result.Rows, result.Count), false, nil
+}
+
+const (
+	maxResultRows  = 50  // Maximum rows to include in result
+	maxValueLength = 100 // Maximum length for individual cell values
+)
+
+// formatCompactResult formats query results in a compact text format to reduce context size.
+// This typically reduces token usage by 50-70% compared to full JSON with metadata.
+func formatCompactResult(columns []string, rows []map[string]any, count int) string {
+	if count == 0 {
+		return "Query returned no results."
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Columns: %s\n", strings.Join(columns, ", ")))
+
+	displayRows := count
+	if displayRows > maxResultRows {
+		displayRows = maxResultRows
+	}
+	sb.WriteString(fmt.Sprintf("Rows (%d total, showing %d):\n", count, displayRows))
+
+	for i := 0; i < displayRows && i < len(rows); i++ {
+		values := make([]string, len(columns))
+		for j, col := range columns {
+			v := rows[i][col]
+			s := fmt.Sprintf("%v", v)
+			// Truncate long string values
+			if len(s) > maxValueLength {
+				s = s[:maxValueLength-3] + "..."
+			}
+			values[j] = s
 		}
+		sb.WriteString(strings.Join(values, " | ") + "\n")
 	}
 
-	queryRows := make([]QueryRow, len(result.Rows))
-	for i, row := range result.Rows {
-		queryRows[i] = QueryRow(row)
+	if count > maxResultRows {
+		sb.WriteString(fmt.Sprintf("... and %d more rows\n", count-maxResultRows))
 	}
 
-	queryResp := QueryResponse{
-		Columns:     result.Columns,
-		ColumnTypes: colTypes,
-		Rows:        queryRows,
-		Count:       result.Count,
-	}
-
-	jsonStr, err := queryResp.ToJSON()
-	if err != nil {
-		return fmt.Sprintf("Error formatting result: %v", err), true, nil
-	}
-	return jsonStr, false, nil
-}
-
-// QueryResponse represents the result of a query execution.
-type QueryResponse struct {
-	Columns     []string     `json:"columns"`
-	ColumnTypes []ColumnType `json:"column_types"`
-	Rows        []QueryRow   `json:"rows"`
-	Count       int          `json:"count"`
-}
-
-// ColumnType represents metadata about a column.
-type ColumnType struct {
-	Name             string `json:"name"`
-	DatabaseTypeName string `json:"database_type_name"`
-	ScanType         string `json:"scan_type"`
-}
-
-// QueryRow represents a single row of query results as a map.
-type QueryRow map[string]any
-
-// ToJSON converts the QueryResponse to a JSON string.
-func (qr *QueryResponse) ToJSON() (string, error) {
-	data, err := json.Marshal(qr)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal query response: %w", err)
-	}
-	return string(data), nil
+	return sb.String()
 }

@@ -2,8 +2,8 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -105,29 +105,18 @@ func TestClickhouseQueryTool_CallToolText(t *testing.T) {
 		}
 		require.NotEmpty(t, result, "result should not be empty")
 
-		// Parse JSON response
-		var resp QueryResponse
-		err = json.Unmarshal([]byte(result), &resp)
-		require.NoError(t, err, "result should be valid JSON. Got: %s", result)
+		// Verify compact text format
+		require.Contains(t, result, "Columns:", "should have columns header")
+		require.Contains(t, result, "Rows (2 total", "should show row count")
 
-		require.Equal(t, 2, resp.Count, "should have 2 rows")
-		require.Equal(t, 2, len(resp.Rows), "should have 2 rows")
-		require.Equal(t, 5, len(resp.Columns), "should have 5 columns")
-		require.Equal(t, 5, len(resp.ColumnTypes), "should have 5 column types")
-
-		// Verify column names
+		// Verify column names in header
 		expectedColumns := []string{"id", "name", "value", "created_at", "description"}
 		for _, expectedCol := range expectedColumns {
-			require.Contains(t, resp.Columns, expectedCol, "should contain column %s", expectedCol)
+			require.Contains(t, result, expectedCol, "should contain column %s", expectedCol)
 		}
 
-		// Verify first row
-		if len(resp.Rows) > 0 {
-			row1 := resp.Rows[0]
-			require.Equal(t, float64(1), row1["id"], "id should be 1") // JSON numbers are float64
-			require.Equal(t, "item1", row1["name"], "name should be item1")
-			require.Equal(t, float64(10), row1["value"], "value should be 10")
-		}
+		// Verify first row data appears
+		require.Contains(t, result, "item1", "should contain item1")
 	})
 
 	t.Run("query_with_where_clause", func(t *testing.T) {
@@ -138,12 +127,8 @@ func TestClickhouseQueryTool_CallToolText(t *testing.T) {
 		require.NoError(t, err)
 		require.False(t, isErr, "should not be an error")
 
-		var resp QueryResponse
-		err = json.Unmarshal([]byte(result), &resp)
-		require.NoError(t, err)
-
 		// Should have rows with value > 0 (all of them)
-		require.GreaterOrEqual(t, resp.Count, 3, "should have at least 3 rows")
+		require.Contains(t, result, "Rows (4 total", "should have 4 rows")
 	})
 
 	t.Run("query_with_nullable_column", func(t *testing.T) {
@@ -153,26 +138,13 @@ func TestClickhouseQueryTool_CallToolText(t *testing.T) {
 
 		require.NoError(t, err)
 		if isErr {
-			// If it's an error, check if it's a JSON parse error (which means it's actually an error message)
 			t.Logf("Got error result: %s", result)
-			// Try to parse as JSON - if it fails, it's an error message
-			var resp QueryResponse
-			if jsonErr := json.Unmarshal([]byte(result), &resp); jsonErr != nil {
-				// It's an error message, which is expected for some cases
-				return
-			}
+			return
 		}
 		require.False(t, isErr, "should not be an error")
 
-		var resp QueryResponse
-		err = json.Unmarshal([]byte(result), &resp)
-		require.NoError(t, err)
-
-		require.Equal(t, 1, resp.Count, "should have 1 row")
-		if len(resp.Rows) > 0 {
-			description := resp.Rows[0]["description"]
-			require.Nil(t, description, "description should be nil for NULL value")
-		}
+		require.Contains(t, result, "Rows (1 total", "should have 1 row")
+		require.Contains(t, result, "item4", "should contain item4")
 	})
 
 	t.Run("empty_results", func(t *testing.T) {
@@ -181,23 +153,9 @@ func TestClickhouseQueryTool_CallToolText(t *testing.T) {
 		})
 
 		require.NoError(t, err)
-		if isErr {
-			// Check if result is valid JSON (error messages won't be)
-			var resp QueryResponse
-			if jsonErr := json.Unmarshal([]byte(result), &resp); jsonErr != nil {
-				t.Logf("Got error result: %s", result)
-				return
-			}
-		}
 		require.False(t, isErr, "should not be an error")
 
-		var resp QueryResponse
-		err = json.Unmarshal([]byte(result), &resp)
-		require.NoError(t, err)
-
-		require.Equal(t, 0, resp.Count, "should have 0 rows")
-		require.Equal(t, 0, len(resp.Rows), "should have no rows")
-		require.Equal(t, 5, len(resp.Columns), "should still have column metadata")
+		require.Contains(t, result, "no results", "should indicate no results")
 	})
 
 	t.Run("aggregation_query", func(t *testing.T) {
@@ -206,49 +164,23 @@ func TestClickhouseQueryTool_CallToolText(t *testing.T) {
 		})
 
 		require.NoError(t, err)
-		if isErr {
-			var resp QueryResponse
-			if jsonErr := json.Unmarshal([]byte(result), &resp); jsonErr != nil {
-				t.Logf("Got error result: %s", result)
-				return
-			}
-		}
 		require.False(t, isErr, "should not be an error")
 
-		var resp QueryResponse
-		err = json.Unmarshal([]byte(result), &resp)
-		require.NoError(t, err)
-
-		require.Equal(t, 1, resp.Count, "should have 1 row")
-		require.Equal(t, 2, len(resp.Columns), "should have 2 columns")
-		require.Contains(t, resp.Columns, "cnt")
-		require.Contains(t, resp.Columns, "total")
+		require.Contains(t, result, "Rows (1 total", "should have 1 row")
+		require.Contains(t, result, "cnt", "should have cnt column")
+		require.Contains(t, result, "total", "should have total column")
 	})
 
-	t.Run("column_metadata", func(t *testing.T) {
+	t.Run("column_header", func(t *testing.T) {
 		result, isErr, err := tool.CallToolText(ctx, "query", map[string]any{
 			"sql": fmt.Sprintf("SELECT id, name, value FROM %s LIMIT 1", tableName),
 		})
 
 		require.NoError(t, err)
-		if isErr {
-			var resp QueryResponse
-			if jsonErr := json.Unmarshal([]byte(result), &resp); jsonErr != nil {
-				t.Logf("Got error result: %s", result)
-				return
-			}
-		}
 		require.False(t, isErr, "should not be an error")
 
-		var resp QueryResponse
-		err = json.Unmarshal([]byte(result), &resp)
-		require.NoError(t, err)
-
-		// Verify column metadata
-		for i, colType := range resp.ColumnTypes {
-			require.Equal(t, resp.Columns[i], colType.Name, "column name should match")
-			require.NotEmpty(t, colType.DatabaseTypeName, "database type should not be empty")
-		}
+		// Verify columns are listed in header
+		require.Contains(t, result, "Columns: id, name, value", "should have correct column header")
 	})
 
 	t.Run("invalid_tool_name", func(t *testing.T) {
@@ -310,77 +242,65 @@ func TestClickhouseQueryTool_CallToolText(t *testing.T) {
 	})
 }
 
-func TestQueryResponse_ToJSON(t *testing.T) {
+func TestFormatCompactResult(t *testing.T) {
 	t.Parallel()
 
 	t.Run("valid_response", func(t *testing.T) {
-		resp := QueryResponse{
-			Columns: []string{"id", "name"},
-			ColumnTypes: []ColumnType{
-				{Name: "id", DatabaseTypeName: "UInt64", ScanType: "*uint64"},
-				{Name: "name", DatabaseTypeName: "String", ScanType: "*string"},
-			},
-			Rows: []QueryRow{
-				{"id": uint64(1), "name": "test"},
-				{"id": uint64(2), "name": "test2"},
-			},
-			Count: 2,
+		columns := []string{"id", "name"}
+		rows := []map[string]any{
+			{"id": uint64(1), "name": "test"},
+			{"id": uint64(2), "name": "test2"},
 		}
 
-		jsonStr, err := resp.ToJSON()
-		require.NoError(t, err)
-		require.NotEmpty(t, jsonStr)
-
-		// Verify it's valid JSON
-		var decoded QueryResponse
-		err = json.Unmarshal([]byte(jsonStr), &decoded)
-		require.NoError(t, err)
-		require.Equal(t, resp.Count, decoded.Count)
-		require.Equal(t, len(resp.Columns), len(decoded.Columns))
-		require.Equal(t, len(resp.Rows), len(decoded.Rows))
+		result := formatCompactResult(columns, rows, 2)
+		require.Contains(t, result, "Columns: id, name")
+		require.Contains(t, result, "Rows (2 total, showing 2)")
+		require.Contains(t, result, "1 | test")
+		require.Contains(t, result, "2 | test2")
 	})
 
 	t.Run("empty_response", func(t *testing.T) {
-		resp := QueryResponse{
-			Columns:     []string{"id"},
-			ColumnTypes: []ColumnType{{Name: "id", DatabaseTypeName: "UInt64", ScanType: "*uint64"}},
-			Rows:        []QueryRow{},
-			Count:       0,
-		}
+		columns := []string{"id"}
+		rows := []map[string]any{}
 
-		jsonStr, err := resp.ToJSON()
-		require.NoError(t, err)
-		require.NotEmpty(t, jsonStr)
-
-		var decoded QueryResponse
-		err = json.Unmarshal([]byte(jsonStr), &decoded)
-		require.NoError(t, err)
-		require.Equal(t, 0, decoded.Count)
-		require.Equal(t, 0, len(decoded.Rows))
+		result := formatCompactResult(columns, rows, 0)
+		require.Equal(t, "Query returned no results.", result)
 	})
 
 	t.Run("with_nullable_values", func(t *testing.T) {
-		resp := QueryResponse{
-			Columns: []string{"id", "description"},
-			ColumnTypes: []ColumnType{
-				{Name: "id", DatabaseTypeName: "UInt64", ScanType: "*uint64"},
-				{Name: "description", DatabaseTypeName: "Nullable(String)", ScanType: "**string"},
-			},
-			Rows: []QueryRow{
-				{"id": uint64(1), "description": "test"},
-				{"id": uint64(2), "description": nil},
-			},
-			Count: 2,
+		columns := []string{"id", "description"}
+		rows := []map[string]any{
+			{"id": uint64(1), "description": "test"},
+			{"id": uint64(2), "description": nil},
 		}
 
-		jsonStr, err := resp.ToJSON()
-		require.NoError(t, err)
+		result := formatCompactResult(columns, rows, 2)
+		require.Contains(t, result, "Columns: id, description")
+		require.Contains(t, result, "1 | test")
+		require.Contains(t, result, "2 | <nil>")
+	})
 
-		var decoded QueryResponse
-		err = json.Unmarshal([]byte(jsonStr), &decoded)
-		require.NoError(t, err)
-		require.Equal(t, 2, decoded.Count)
-		require.Equal(t, "test", decoded.Rows[0]["description"])
-		require.Nil(t, decoded.Rows[1]["description"])
+	t.Run("truncates_long_values", func(t *testing.T) {
+		columns := []string{"id", "data"}
+		longValue := strings.Repeat("x", 200)
+		rows := []map[string]any{
+			{"id": uint64(1), "data": longValue},
+		}
+
+		result := formatCompactResult(columns, rows, 1)
+		require.Contains(t, result, "...")
+		require.Less(t, len(result), len(longValue), "result should be shorter than the long value")
+	})
+
+	t.Run("limits_rows", func(t *testing.T) {
+		columns := []string{"id"}
+		rows := make([]map[string]any, 100)
+		for i := 0; i < 100; i++ {
+			rows[i] = map[string]any{"id": uint64(i)}
+		}
+
+		result := formatCompactResult(columns, rows, 100)
+		require.Contains(t, result, "Rows (100 total, showing 50)")
+		require.Contains(t, result, "... and 50 more rows")
 	})
 }

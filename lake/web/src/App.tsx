@@ -23,7 +23,23 @@ import {
   createChatSession,
 } from '@/lib/sessions'
 
-const queryClient = new QueryClient()
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // Retry 3 times with exponential backoff on network errors
+      retry: (failureCount, error) => {
+        // Don't retry on 4xx errors
+        if (error instanceof Error && error.message.includes('4')) return false
+        return failureCount < 3
+      },
+      retryDelay: (attemptIndex) => Math.min(500 * 2 ** attemptIndex, 5000),
+      // Keep data fresh for 30 seconds
+      staleTime: 30 * 1000,
+      // Refetch on window focus after being away
+      refetchOnWindowFocus: true,
+    },
+  },
+})
 
 // Context for app state
 interface AppContextType {
@@ -699,14 +715,14 @@ function AppContent() {
               const assistantMessage: ChatMessage = data.error
                 ? { role: 'assistant', content: data.error }
                 : {
-                    role: 'assistant',
-                    content: data.answer,
-                    pipelineData: {
-                      dataQuestions: data.dataQuestions ?? [],
-                      generatedQueries: data.generatedQueries ?? [],
-                      executedQueries: data.executedQueries ?? [],
-                    }
+                  role: 'assistant',
+                  content: data.answer,
+                  pipelineData: {
+                    dataQuestions: data.dataQuestions ?? [],
+                    generatedQueries: data.generatedQueries ?? [],
+                    executedQueries: data.executedQueries ?? [],
                   }
+                }
 
               const newMessages: ChatMessage[] = [...session.messages, assistantMessage]
 
@@ -742,13 +758,13 @@ function AppContent() {
             setChatSessions(prev => prev.map(s =>
               s.id === sessionId
                 ? {
-                    ...s,
-                    messages: [...s.messages, {
-                      role: 'assistant',
-                      content: error
-                    }],
-                    updatedAt: new Date()
-                  }
+                  ...s,
+                  messages: [...s.messages, {
+                    role: 'assistant',
+                    content: error
+                  }],
+                  updatedAt: new Date()
+                }
                 : s
             ))
             setPendingChatSessionId(null)
@@ -770,13 +786,13 @@ function AppContent() {
       setChatSessions(prev => prev.map(s =>
         s.id === sessionId
           ? {
-              ...s,
-              messages: [...s.messages, {
-                role: 'assistant',
-                content: err instanceof Error ? err.message : 'Something went wrong. Please try again.'
-              }],
-              updatedAt: new Date()
-            }
+            ...s,
+            messages: [...s.messages, {
+              role: 'assistant',
+              content: err instanceof Error ? err.message : 'Something went wrong. Please try again.'
+            }],
+            updatedAt: new Date()
+          }
           : s
       ))
       setPendingChatSessionId(null)

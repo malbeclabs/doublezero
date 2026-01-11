@@ -17,8 +17,75 @@ export interface QueryResponse {
   error?: string
 }
 
+// Retry configuration
+const RETRY_CONFIG = {
+  maxRetries: 3,
+  baseDelayMs: 500,
+  maxDelayMs: 5000,
+}
+
+// Check if an error is retryable (network errors, 502/503/504)
+function isRetryableError(error: unknown, status?: number): boolean {
+  // Network errors (fetch failed)
+  if (error instanceof TypeError && error.message.includes('fetch')) {
+    return true
+  }
+  // Server temporarily unavailable
+  if (status && [502, 503, 504].includes(status)) {
+    return true
+  }
+  return false
+}
+
+// Sleep helper
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
+// Retry wrapper for fetch calls
+async function fetchWithRetry(
+  url: string,
+  options?: RequestInit,
+  config = RETRY_CONFIG
+): Promise<Response> {
+  let lastError: unknown
+  let lastStatus: number | undefined
+
+  for (let attempt = 0; attempt <= config.maxRetries; attempt++) {
+    try {
+      const res = await fetch(url, options)
+
+      // Don't retry on successful responses or client errors (4xx)
+      if (res.ok || (res.status >= 400 && res.status < 500)) {
+        return res
+      }
+
+      // Server error - might be retryable
+      lastStatus = res.status
+      if (!isRetryableError(null, res.status) || attempt === config.maxRetries) {
+        return res
+      }
+    } catch (err) {
+      lastError = err
+      // If not retryable or last attempt, throw
+      if (!isRetryableError(err) || attempt === config.maxRetries) {
+        throw err
+      }
+    }
+
+    // Exponential backoff with jitter
+    const delay = Math.min(
+      config.baseDelayMs * Math.pow(2, attempt) + Math.random() * 100,
+      config.maxDelayMs
+    )
+    await sleep(delay)
+  }
+
+  // Should not reach here, but handle edge case
+  if (lastError) throw lastError
+  throw new Error(`Request failed with status ${lastStatus}`)
+}
+
 export async function fetchCatalog(): Promise<CatalogResponse> {
-  const res = await fetch('/api/catalog')
+  const res = await fetchWithRetry('/api/catalog')
   if (!res.ok) {
     throw new Error('Failed to fetch catalog')
   }
@@ -26,7 +93,7 @@ export async function fetchCatalog(): Promise<CatalogResponse> {
 }
 
 export async function executeQuery(query: string): Promise<QueryResponse> {
-  const res = await fetch('/api/query', {
+  const res = await fetchWithRetry('/api/query', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ query }),
@@ -49,7 +116,7 @@ export interface HistoryMessage {
 }
 
 export async function generateSQL(prompt: string, currentQuery?: string, history?: HistoryMessage[]): Promise<GenerateResponse> {
-  const res = await fetch('/api/generate', {
+  const res = await fetchWithRetry('/api/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ prompt, currentQuery, history }),
@@ -74,11 +141,42 @@ export async function generateSQLStream(
   history: HistoryMessage[] | undefined,
   callbacks: StreamCallbacks
 ): Promise<void> {
-  const res = await fetch('/api/generate/stream', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt, currentQuery, history }),
-  })
+  // Retry initial connection with backoff
+  let res: Response
+  let lastError: unknown
+
+  for (let attempt = 0; attempt <= RETRY_CONFIG.maxRetries; attempt++) {
+    try {
+      res = await fetch('/api/generate/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, currentQuery, history }),
+      })
+
+      if (res.ok) break
+      if (res.status >= 400 && res.status < 500) break // Don't retry client errors
+
+      lastError = new Error(`Server error: ${res.status}`)
+      if (!isRetryableError(null, res.status) || attempt === RETRY_CONFIG.maxRetries) break
+    } catch (err) {
+      lastError = err
+      if (!isRetryableError(err) || attempt === RETRY_CONFIG.maxRetries) {
+        callbacks.onError('Connection failed. Please check your network and try again.')
+        return
+      }
+    }
+
+    const delay = Math.min(
+      RETRY_CONFIG.baseDelayMs * Math.pow(2, attempt) + Math.random() * 100,
+      RETRY_CONFIG.maxDelayMs
+    )
+    await sleep(delay)
+  }
+
+  if (!res!) {
+    callbacks.onError('Connection failed. Please check your network and try again.')
+    return
+  }
 
   if (!res.ok) {
     const text = await res.text()
@@ -95,47 +193,56 @@ export async function generateSQLStream(
   const decoder = new TextDecoder()
   let buffer = ''
 
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
 
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split('\n')
-    buffer = lines.pop() || ''
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
 
-    for (const line of lines) {
-      if (line.startsWith('event: ')) {
-        const eventType = line.slice(7)
-        const dataLineIndex = lines.indexOf(line) + 1
-        if (dataLineIndex < lines.length) {
-          const dataLine = lines[dataLineIndex]
-          if (dataLine.startsWith('data: ')) {
-            const data = dataLine.slice(6)
-            switch (eventType) {
-              case 'token':
-                callbacks.onToken(data)
-                break
-              case 'status':
-                try {
-                  callbacks.onStatus(JSON.parse(data))
-                } catch {
-                  callbacks.onStatus({ status: data })
-                }
-                break
-              case 'done':
-                try {
-                  callbacks.onDone(JSON.parse(data))
-                } catch {
-                  callbacks.onError('Invalid response')
-                }
-                break
-              case 'error':
-                callbacks.onError(data)
-                break
+      for (const line of lines) {
+        if (line.startsWith('event: ')) {
+          const eventType = line.slice(7)
+          const dataLineIndex = lines.indexOf(line) + 1
+          if (dataLineIndex < lines.length) {
+            const dataLine = lines[dataLineIndex]
+            if (dataLine.startsWith('data: ')) {
+              const data = dataLine.slice(6)
+              switch (eventType) {
+                case 'token':
+                  callbacks.onToken(data)
+                  break
+                case 'status':
+                  try {
+                    callbacks.onStatus(JSON.parse(data))
+                  } catch {
+                    callbacks.onStatus({ status: data })
+                  }
+                  break
+                case 'done':
+                  try {
+                    callbacks.onDone(JSON.parse(data))
+                  } catch {
+                    callbacks.onError('Invalid response')
+                  }
+                  break
+                case 'error':
+                  callbacks.onError(data)
+                  break
+              }
             }
           }
         }
       }
+    }
+  } catch (err) {
+    // Connection was interrupted mid-stream
+    if (err instanceof TypeError || (err instanceof Error && err.message.includes('network'))) {
+      callbacks.onError('Connection lost. Please try again.')
+    } else {
+      callbacks.onError(err instanceof Error ? err.message : 'Stream error')
     }
   }
 }
@@ -186,7 +293,7 @@ export async function sendChatMessage(
   history: ChatMessage[],
   signal?: AbortSignal
 ): Promise<ChatResponse> {
-  const res = await fetch('/api/chat', {
+  const res = await fetchWithRetry('/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message, history }),
@@ -213,12 +320,47 @@ export async function sendChatMessageStream(
   callbacks: ChatStreamCallbacks,
   signal?: AbortSignal
 ): Promise<void> {
-  const res = await fetch('/api/chat/stream', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, history }),
-    signal,
-  })
+  // Retry initial connection with backoff
+  let res: Response
+  let lastError: unknown
+
+  for (let attempt = 0; attempt <= RETRY_CONFIG.maxRetries; attempt++) {
+    // Check if aborted before attempting
+    if (signal?.aborted) return
+
+    try {
+      res = await fetch('/api/chat/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, history }),
+        signal,
+      })
+
+      if (res.ok) break
+      if (res.status >= 400 && res.status < 500) break // Don't retry client errors
+
+      lastError = new Error(`Server error: ${res.status}`)
+      if (!isRetryableError(null, res.status) || attempt === RETRY_CONFIG.maxRetries) break
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return
+      lastError = err
+      if (!isRetryableError(err) || attempt === RETRY_CONFIG.maxRetries) {
+        callbacks.onError('Connection failed. Please check your network and try again.')
+        return
+      }
+    }
+
+    const delay = Math.min(
+      RETRY_CONFIG.baseDelayMs * Math.pow(2, attempt) + Math.random() * 100,
+      RETRY_CONFIG.maxDelayMs
+    )
+    await sleep(delay)
+  }
+
+  if (!res!) {
+    callbacks.onError('Connection failed. Please check your network and try again.')
+    return
+  }
 
   if (!res.ok) {
     const text = await res.text()
@@ -280,7 +422,12 @@ export async function sendChatMessageStream(
     if (err instanceof Error && err.name === 'AbortError') {
       return
     }
-    callbacks.onError(err instanceof Error ? err.message : 'Stream error')
+    // Connection was interrupted mid-stream
+    if (err instanceof TypeError || (err instanceof Error && err.message.includes('network'))) {
+      callbacks.onError('Connection lost. Please try again.')
+    } else {
+      callbacks.onError(err instanceof Error ? err.message : 'Stream error')
+    }
   }
 }
 
@@ -316,7 +463,7 @@ Examples: "Sales by region", "User signups", "Revenue trends", "Order analysis".
 
 Respond with ONLY the title. No quotes, no explanation.`
 
-  const res = await fetch('/api/complete', {
+  const res = await fetchWithRetry('/api/complete', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message }),
@@ -362,7 +509,7 @@ Examples: "Sales analysis help", "Database questions", "Revenue report", "User d
 
 Respond with ONLY the title. No quotes, no explanation.`
 
-  const res = await fetch('/api/complete', {
+  const res = await fetchWithRetry('/api/complete', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message }),
@@ -410,7 +557,7 @@ export async function recommendVisualization(
   request: VisualizationRecommendRequest,
   signal?: AbortSignal
 ): Promise<VisualizationRecommendResponse> {
-  const res = await fetch('/api/visualize/recommend', {
+  const res = await fetchWithRetry('/api/visualize/recommend', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request),

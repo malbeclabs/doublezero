@@ -2,8 +2,10 @@ package slack
 
 import (
 	"log/slog"
+	"strings"
 	"testing"
 
+	slackapi "github.com/slack-go/slack"
 	"github.com/stretchr/testify/require"
 )
 
@@ -106,5 +108,96 @@ func TestAI_Slack_SetExpandOnSectionBlocks(t *testing.T) {
 		t.Parallel()
 		got := SetExpandOnSectionBlocks(nil, slog.Default())
 		require.Nil(t, got)
+	})
+}
+
+func TestAI_Slack_ConvertMarkdownToBlocks_CodeBlocks(t *testing.T) {
+	t.Parallel()
+
+	t.Run("multi-line code block stays together", func(t *testing.T) {
+		t.Parallel()
+		input := "Here's a query:\n```sql\nSELECT *\nFROM users\nWHERE active = true;\n```\nThis is the result."
+
+		blocks := ConvertMarkdownToBlocks(input, slog.Default())
+
+		// Verify we got blocks
+		require.NotNil(t, blocks)
+		require.Greater(t, len(blocks), 0)
+
+		// Find the code block - it should contain the full SQL query
+		// Note: language specifier (sql) is stripped since Slack doesn't support it
+		foundCodeBlock := false
+		for _, block := range blocks {
+			if block.BlockType() == "section" {
+				sectionBlock := block.(*slackapi.SectionBlock)
+				if sectionBlock.Text != nil && strings.Contains(sectionBlock.Text.Text, "SELECT *") {
+					// Verify the entire code block is in one section
+					require.Contains(t, sectionBlock.Text.Text, "```")
+					require.Contains(t, sectionBlock.Text.Text, "SELECT *")
+					require.Contains(t, sectionBlock.Text.Text, "FROM users")
+					require.Contains(t, sectionBlock.Text.Text, "WHERE active = true")
+					// Language specifier should be stripped
+					require.NotContains(t, sectionBlock.Text.Text, "sql")
+					foundCodeBlock = true
+				}
+			}
+		}
+		require.True(t, foundCodeBlock, "should find a code block section")
+	})
+
+	t.Run("code block without language specifier", func(t *testing.T) {
+		t.Parallel()
+		input := "Example:\n```\nline 1\nline 2\nline 3\n```"
+
+		blocks := ConvertMarkdownToBlocks(input, slog.Default())
+
+		require.NotNil(t, blocks)
+		require.Greater(t, len(blocks), 0)
+
+		// Find the code block
+		foundCodeBlock := false
+		for _, block := range blocks {
+			if block.BlockType() == "section" {
+				sectionBlock := block.(*slackapi.SectionBlock)
+				if sectionBlock.Text != nil && strings.Contains(sectionBlock.Text.Text, "```") {
+					require.Contains(t, sectionBlock.Text.Text, "line 1")
+					require.Contains(t, sectionBlock.Text.Text, "line 2")
+					require.Contains(t, sectionBlock.Text.Text, "line 3")
+					foundCodeBlock = true
+				}
+			}
+		}
+		require.True(t, foundCodeBlock, "should find a code block section")
+	})
+
+	t.Run("multiple code blocks", func(t *testing.T) {
+		t.Parallel()
+		input := "First:\n```\ncode1\n```\nSecond:\n```\ncode2\n```"
+
+		blocks := ConvertMarkdownToBlocks(input, slog.Default())
+
+		require.NotNil(t, blocks)
+
+		// Count code blocks
+		codeBlockCount := 0
+		for _, block := range blocks {
+			if block.BlockType() == "section" {
+				sectionBlock := block.(*slackapi.SectionBlock)
+				if sectionBlock.Text != nil && strings.Contains(sectionBlock.Text.Text, "```") {
+					codeBlockCount++
+				}
+			}
+		}
+		require.Equal(t, 2, codeBlockCount, "should have 2 code blocks")
+	})
+
+	t.Run("text without code blocks", func(t *testing.T) {
+		t.Parallel()
+		input := "Just some plain text without any code blocks."
+
+		blocks := ConvertMarkdownToBlocks(input, slog.Default())
+
+		// Should still work normally
+		require.NotNil(t, blocks)
 	})
 }

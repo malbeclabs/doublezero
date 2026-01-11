@@ -2,6 +2,7 @@ package slack
 
 import (
 	"log/slog"
+	"regexp"
 	"strings"
 	"unicode"
 
@@ -195,8 +196,18 @@ func splitIntoParagraphs(text string) []string {
 	return paragraphs
 }
 
+// codeBlockPattern matches multi-line code blocks (```...```)
+// Handles both ```lang\ncode``` and ```\ncode``` formats
+var codeBlockPattern = regexp.MustCompile("(?s)```[a-zA-Z]*\n?(.*?)```")
+
 // ConvertMarkdownToBlocks converts markdown text to Slack blocks
 func ConvertMarkdownToBlocks(text string, log *slog.Logger) []slack.Block {
+	// Handle code blocks specially - the library tends to split them incorrectly
+	// Extract code blocks and process text segments separately
+	if strings.Contains(text, "```") {
+		return convertMarkdownWithCodeBlocks(text, log)
+	}
+
 	convertedBlocks, err := slackutil.ConvertMarkdownTextToBlocks(text)
 	if err != nil {
 		log.Debug("failed to convert markdown to blocks, using plain text", "error", err)
@@ -205,6 +216,72 @@ func ConvertMarkdownToBlocks(text string, log *slog.Logger) []slack.Block {
 
 	// Set expand=true on all section blocks to prevent "see more" truncation
 	return SetExpandOnSectionBlocks(convertedBlocks, log)
+}
+
+// convertMarkdownWithCodeBlocks handles text that contains code blocks
+// by processing code blocks separately to prevent them from being split
+func convertMarkdownWithCodeBlocks(text string, log *slog.Logger) []slack.Block {
+	var result []slack.Block
+
+	// Find all code block positions
+	matches := codeBlockPattern.FindAllStringSubmatchIndex(text, -1)
+	if matches == nil {
+		// No proper code blocks found (maybe unclosed), fall back to regular conversion
+		convertedBlocks, err := slackutil.ConvertMarkdownTextToBlocks(text)
+		if err != nil {
+			log.Debug("failed to convert markdown to blocks, using plain text", "error", err)
+			return nil
+		}
+		return SetExpandOnSectionBlocks(convertedBlocks, log)
+	}
+
+	lastEnd := 0
+	for _, match := range matches {
+		// match[0] and match[1] are the full match start/end
+		blockStart := match[0]
+		blockEnd := match[1]
+
+		// Process text before the code block
+		if blockStart > lastEnd {
+			beforeText := strings.TrimSpace(text[lastEnd:blockStart])
+			if beforeText != "" {
+				beforeBlocks, err := slackutil.ConvertMarkdownTextToBlocks(beforeText)
+				if err == nil {
+					result = append(result, SetExpandOnSectionBlocks(beforeBlocks, log)...)
+				}
+			}
+		}
+
+		// Extract just the code content (group 1) without the language specifier
+		// match[2] and match[3] are the capture group (the actual code content)
+		codeContent := text[match[2]:match[3]]
+
+		// Create a section block for the code block
+		// Use plain ``` markers - Slack mrkdwn doesn't support language specifiers
+		codeBlock := "```\n" + codeContent + "```"
+		codeTextBlock := slack.NewTextBlockObject(slack.MarkdownType, codeBlock, false, false)
+		codeSectionBlock := &slack.SectionBlock{
+			Type:   slack.MBTSection,
+			Text:   codeTextBlock,
+			Expand: true,
+		}
+		result = append(result, codeSectionBlock)
+
+		lastEnd = blockEnd
+	}
+
+	// Process any remaining text after the last code block
+	if lastEnd < len(text) {
+		afterText := strings.TrimSpace(text[lastEnd:])
+		if afterText != "" {
+			afterBlocks, err := slackutil.ConvertMarkdownTextToBlocks(afterText)
+			if err == nil {
+				result = append(result, SetExpandOnSectionBlocks(afterBlocks, log)...)
+			}
+		}
+	}
+
+	return result
 }
 
 // SanitizeErrorMessage converts raw error messages to user-friendly messages

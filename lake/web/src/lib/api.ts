@@ -507,7 +507,9 @@ export async function generateChatSessionTitle(
 
 ${userMessages}
 
-Examples: "Sales analysis help", "Database questions", "Revenue report", "User data query".
+Context: This is a data analytics chat for DoubleZero (abbreviated as "DZ"), a network of dedicated high-performance links delivering low-latency connectivity globally. "DZ" always means "DoubleZero".
+
+Examples: "Sales analysis help", "Database questions", "Revenue report", "User data query", "DZ vs internet".
 
 Respond with ONLY the title. No quotes, no explanation.`
 

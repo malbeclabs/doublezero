@@ -30,7 +30,11 @@ func (a *AnthropicAgent) Call(ctx context.Context, messages []Message, tools []T
 	// Convert messages to Anthropic format
 	anthropicMsgs := make([]anthropic.MessageParam, len(messages))
 	for i, msg := range messages {
-		anthropicMsgs[i] = msg.ToParam().(anthropic.MessageParam)
+		param, ok := msg.ToParam().(anthropic.MessageParam)
+		if !ok {
+			return nil, fmt.Errorf("expected anthropic.MessageParam, got %T", msg.ToParam())
+		}
+		anthropicMsgs[i] = param
 	}
 
 	// Convert tools to Anthropic format
@@ -67,7 +71,14 @@ func (a *AnthropicAgent) Call(ctx context.Context, messages []Message, tools []T
 
 // ConvertToMessage converts an Anthropic message to a react.Message.
 func (a *AnthropicAgent) ConvertToMessage(msg any) Message {
-	return AnthropicMessage{Msg: msg.(anthropic.MessageParam)}
+	switch m := msg.(type) {
+	case anthropic.MessageParam:
+		return AnthropicMessage{Msg: m}
+	case AnthropicMessage:
+		return m
+	default:
+		return AnthropicMessage{Msg: anthropic.MessageParam{}}
+	}
 }
 
 // ConvertToolResults converts tool results to Anthropic messages.

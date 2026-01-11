@@ -233,6 +233,25 @@ func (c *Client) UpdateMessage(ctx context.Context, channelID, timestamp string,
 	return nil
 }
 
+// DeleteMessage deletes an existing message
+func (c *Client) DeleteMessage(ctx context.Context, channelID, timestamp string) error {
+	var err error
+	retryCfg := retry.DefaultConfig()
+	err = retry.Do(ctx, retryCfg, func() error {
+		_, _, err = c.api.DeleteMessageContext(ctx, channelID, timestamp)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+
+	if err != nil {
+		return fmt.Errorf("failed to delete message after retries: %w", err)
+	}
+
+	return nil
+}
+
 // RemoveBotMention removes bot mention from text for cleaner processing
 func (c *Client) RemoveBotMention(text string) string {
 	if c.botUserID == "" {

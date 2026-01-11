@@ -335,10 +335,9 @@ func (p *Processor) ProcessMessage(
 			p.log.Debug("failed to update thinking message with summary", "error", err)
 		}
 	} else if thinkingTS != "" {
-		// For conversational/out_of_scope, delete the thinking message (or make it minimal)
-		// We'll just update it to be empty-ish so the answer stands alone
-		if err := p.slackClient.UpdateMessage(ctx, ev.Channel, thinkingTS, "_Responding..._", nil); err != nil {
-			p.log.Debug("failed to update thinking message", "error", err)
+		// For conversational/out_of_scope, delete the thinking message so only the answer shows
+		if err := p.slackClient.DeleteMessage(ctx, ev.Channel, thinkingTS); err != nil {
+			p.log.Debug("failed to delete thinking message", "error", err)
 		}
 	}
 

@@ -44,12 +44,14 @@
   --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'SF Mono', 'Menlo', 'Monaco', ui-monospace, monospace;
   --font-heading: 'Source Serif 4', Georgia, serif;
+  --font-wordmark: 'Playfair Display', Georgia, serif;
 }
 
 @theme {
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
   --font-serif: var(--font-heading);
+  --font-wordmark: var(--font-wordmark);
 
   /* Colors for Tailwind utilities */
   --color-background: var(--background);
@@ -118,6 +120,14 @@ h1, h2, h3, .headline {
   font-family: var(--font-heading);
   font-weight: 400;
   letter-spacing: -0.02em;
+}
+
+/* Wordmark typography - Playfair Display */
+.wordmark {
+  font-family: var(--font-wordmark);
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  line-height: 1.0;
 }
 
 /* CodeMirror - de-emphasized, content-focused */

@@ -178,8 +178,8 @@ export function Sidebar({
           onClick={() => navigate('/')}
           className="flex items-center gap-2 hover:opacity-80 transition-opacity"
         >
-          <img src="/doublezero.svg" alt="Data" className="h-5" />
-          <span className="text-sm font-medium translate-y-0.5">Data</span>
+          <img src="/doublezero.svg" alt="DoubleZero" className="h-5" />
+          <span className="wordmark text-lg">Data</span>
         </button>
         <button
           onClick={() => handleSetCollapsed(true)}

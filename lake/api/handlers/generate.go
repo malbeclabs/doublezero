@@ -85,11 +85,17 @@ func GenerateSQL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Determine provider
+	// Determine provider - require Anthropic API key unless OLLAMA_MODEL is explicitly set
 	useAnthropic := os.Getenv("ANTHROPIC_API_KEY") != ""
-	provider := "ollama"
-	if useAnthropic {
-		provider = "anthropic"
+	useOllama := os.Getenv("OLLAMA_MODEL") != ""
+	if !useAnthropic && !useOllama {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(GenerateResponse{Error: "ANTHROPIC_API_KEY environment variable is not set"})
+		return
+	}
+	provider := "anthropic"
+	if !useAnthropic && useOllama {
+		provider = "ollama"
 	}
 
 	var sql string
@@ -186,11 +192,16 @@ func GenerateSQLStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Determine provider
+	// Determine provider - require Anthropic API key unless OLLAMA_MODEL is explicitly set
 	useAnthropic := os.Getenv("ANTHROPIC_API_KEY") != ""
-	provider := "ollama"
-	if useAnthropic {
-		provider = "anthropic"
+	useOllama := os.Getenv("OLLAMA_MODEL") != ""
+	if !useAnthropic && !useOllama {
+		sendEvent("error", "ANTHROPIC_API_KEY environment variable is not set")
+		return
+	}
+	provider := "anthropic"
+	if !useAnthropic && useOllama {
+		provider = "ollama"
 	}
 
 	sendEvent("status", fmt.Sprintf(`{"provider":"%s","status":"generating"}`, provider))

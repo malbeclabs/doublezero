@@ -560,6 +560,56 @@ async fn test_device_interfaces() {
 
     println!("✅ Device interfaces activated");
     /*****************************************************************************************************************************************************/
+    println!(
+        "🟢 9a. Regression: ActivateDeviceInterface should fail for invalid interface statuses..."
+    );
+
+    // Attempt to activate an interface that is already Activated (Loopback0)
+    let res = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateDeviceInterface(DeviceInterfaceActivateArgs {
+            name: "loopback0".to_string(),
+            ip_net: "10.1.1.2/31".parse().unwrap(),
+            node_segment_idx: 11,
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+    assert!(res
+        .unwrap_err()
+        .to_string()
+        .contains("custom program error: 0x7")); // DoubleZeroError::InvalidStatus == 0x7
+
+    // Attempt to activate an interface that is Rejected (Loopback1)
+    let res = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateDeviceInterface(DeviceInterfaceActivateArgs {
+            name: "loopback1".to_string(),
+            ip_net: "10.1.1.4/31".parse().unwrap(),
+            node_segment_idx: 12,
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+    assert!(res
+        .unwrap_err()
+        .to_string()
+        .contains("custom program error: 0x7")); // DoubleZeroError::InvalidStatus == 0x7
+
+    println!("✅ Regression checks for ActivateDeviceInterface status validation passed");
+    /*****************************************************************************************************************************************************/
     println!("🟢 10. Deleting device interfaces...");
     execute_transaction(
         &mut banks_client,

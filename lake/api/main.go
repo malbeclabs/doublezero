@@ -59,6 +59,16 @@ func main() {
 		MaxAge:           300,
 	}))
 
+	// Health check endpoints
+	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok"))
+	})
+	r.Get("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok"))
+	})
+
 	r.Get("/api/catalog", handlers.GetCatalog)
 	r.Post("/api/query", handlers.ExecuteQuery)
 	r.Post("/api/generate", handlers.GenerateSQL)

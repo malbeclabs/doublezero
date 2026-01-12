@@ -137,6 +137,7 @@ func main() {
 	r.Post("/api/chat/stream", handlers.ChatStream)
 	r.Post("/api/complete", handlers.Complete)
 	r.Post("/api/visualize/recommend", handlers.RecommendVisualization)
+	r.Get("/api/version", handlers.GetVersion)
 
 	// Serve static files from the web dist directory
 	webDir := os.Getenv("WEB_DIST_DIR")

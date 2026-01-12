@@ -589,3 +589,18 @@ export async function recommendVisualization(
 
   return res.json()
 }
+
+// Version check
+export interface VersionResponse {
+  buildTimestamp: string
+}
+
+export async function fetchVersion(): Promise<VersionResponse | null> {
+  try {
+    const res = await fetch('/api/version')
+    if (!res.ok) return null
+    return res.json()
+  } catch {
+    return null
+  }
+}

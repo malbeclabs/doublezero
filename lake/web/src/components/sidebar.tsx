@@ -11,9 +11,11 @@ import {
   RefreshCw,
   Sun,
   Moon,
+  ArrowUpCircle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/hooks/use-theme'
+import { useVersionCheck } from '@/hooks/use-version-check'
 import {
   type QuerySession,
   type ChatSession,
@@ -59,6 +61,7 @@ export function Sidebar({
   const navigate = useNavigate()
   const location = useLocation()
   const { resolvedTheme, setTheme } = useTheme()
+  const { updateAvailable, reload } = useVersionCheck()
   const [isCollapsed, setIsCollapsed] = useState(() => {
     // Check localStorage for saved preference
     const saved = localStorage.getItem('sidebar-collapsed')
@@ -168,6 +171,15 @@ export function Sidebar({
         {/* Theme toggle and collapse toggle at bottom */}
         <div className="flex-1" />
         <div className="flex flex-col items-center gap-1 mb-3">
+          {updateAvailable && (
+            <button
+              onClick={reload}
+              className="p-2 text-blue-500 hover:text-blue-400 transition-colors animate-pulse"
+              title="Click to reload and get the latest version"
+            >
+              <ArrowUpCircle className="h-4 w-4" />
+            </button>
+          )}
           <button
             onClick={toggleTheme}
             className="p-2 text-muted-foreground hover:text-foreground transition-colors"
@@ -372,6 +384,16 @@ export function Sidebar({
 
       {/* Theme toggle and development notice footer */}
       <div className="mt-auto px-3 py-3 border-t border-border/50 space-y-3">
+        {updateAvailable && (
+          <button
+            onClick={reload}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-blue-500 hover:text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 rounded transition-colors"
+            title="Click to reload and get the latest version"
+          >
+            <ArrowUpCircle className="h-4 w-4" />
+            Update available
+          </button>
+        )}
         <button
           onClick={toggleTheme}
           className="w-full flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)] rounded transition-colors"

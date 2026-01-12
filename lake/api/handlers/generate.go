@@ -537,17 +537,17 @@ Additional rules for the query editor:
 
 func fetchSchema() (string, error) {
 	// Fetch columns
-	columnsQuery := `
+	columnsQuery := fmt.Sprintf(`
 		SELECT
 			table,
 			name,
 			type
 		FROM system.columns
-		WHERE database = 'default'
-		  AND table NOT LIKE 'stg_%'
+		WHERE database = '%s'
+		  AND table NOT LIKE 'stg_%%'
 		ORDER BY table, position
 		FORMAT JSON
-	`
+	`, config.ClickHouseDatabase)
 
 	start := time.Now()
 	resp, err := http.Get(config.ClickHouseQueryURL(columnsQuery))
@@ -578,16 +578,16 @@ func fetchSchema() (string, error) {
 	}
 
 	// Fetch view definitions
-	viewsQuery := `
+	viewsQuery := fmt.Sprintf(`
 		SELECT
 			name,
 			as_select
 		FROM system.tables
-		WHERE database = 'default'
+		WHERE database = '%s'
 		  AND engine = 'View'
-		  AND name NOT LIKE 'stg_%'
+		  AND name NOT LIKE 'stg_%%'
 		FORMAT JSON
-	`
+	`, config.ClickHouseDatabase)
 
 	start = time.Now()
 	viewsResp, err := http.Get(config.ClickHouseQueryURL(viewsQuery))

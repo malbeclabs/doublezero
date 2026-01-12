@@ -114,6 +114,19 @@ func main() {
 		w.Write([]byte("ok"))
 	})
 	r.Get("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		// Check database connectivity
+		resp, err := http.Get(config.ClickHouseQueryURL("SELECT 1 FORMAT JSON"))
+		if err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte("database connection failed: " + err.Error()))
+			return
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte("database not ready"))
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok"))
 	})

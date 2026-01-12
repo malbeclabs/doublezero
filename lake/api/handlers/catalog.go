@@ -23,21 +23,21 @@ type CatalogResponse struct {
 }
 
 func GetCatalog(w http.ResponseWriter, r *http.Request) {
-	query := `
+	query := fmt.Sprintf(`
 		SELECT
 			name,
 			database,
 			engine,
 			CASE
-				WHEN engine LIKE '%View%' THEN 'view'
+				WHEN engine LIKE '%%View%%' THEN 'view'
 				ELSE 'table'
 			END as type
 		FROM system.tables
-		WHERE database = 'default'
-		  AND name NOT LIKE 'stg_%'
+		WHERE database = '%s'
+		  AND name NOT LIKE 'stg_%%'
 		ORDER BY type, name
 		FORMAT JSON
-	`
+	`, config.ClickHouseDatabase)
 
 	start := time.Now()
 	resp, err := http.Get(config.ClickHouseQueryURL(query))

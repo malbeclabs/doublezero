@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log"
 	"net/url"
 	"os"
 )
@@ -9,6 +10,8 @@ import (
 var (
 	// ClickHouseURL is the URL for connecting to ClickHouse HTTP interface
 	ClickHouseURL string
+	// ClickHouseDatabase is the database name to query
+	ClickHouseDatabase string
 )
 
 // Load initializes configuration from environment variables
@@ -25,6 +28,8 @@ func Load() error {
 
 	username := os.Getenv("CLICKHOUSE_USERNAME")
 	password := os.Getenv("CLICKHOUSE_PASSWORD")
+
+	log.Printf("Loading ClickHouse configuration: addr: %s, database: %s, username: %s", addr, database, username)
 
 	// Build the ClickHouse URL
 	u := &url.URL{
@@ -45,17 +50,21 @@ func Load() error {
 	u.RawQuery = q.Encode()
 
 	ClickHouseURL = u.String()
+	ClickHouseDatabase = database
 
 	return nil
 }
 
-// ClickHouseBaseURL returns the base URL without query parameters (for POST requests)
+// ClickHouseBaseURL returns the base URL with database parameter (for POST requests)
 func ClickHouseBaseURL() string {
 	u, err := url.Parse(ClickHouseURL)
 	if err != nil {
 		return ClickHouseURL
 	}
-	u.RawQuery = ""
+	// Keep only the database parameter for POST requests
+	q := url.Values{}
+	q.Set("database", ClickHouseDatabase)
+	u.RawQuery = q.Encode()
 	return u.String()
 }
 

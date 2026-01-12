@@ -1,8 +1,7 @@
 use crate::{
     error::DoubleZeroError,
-    globalstate::globalstate_get,
-    helper::*,
-    state::{accounttype::AccountType, location::*},
+    serializer::try_acc_close,
+    state::{accounttype::AccountType, globalstate::GlobalState, location::*},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -59,7 +58,7 @@ pub fn process_delete_location(
     assert!(location_account.is_writable, "PDA Account is not writable");
 
     // Parse the global state account & check if the payer is in the allowlist
-    let globalstate = globalstate_get(globalstate_account)?;
+    let globalstate = GlobalState::try_from(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
@@ -77,7 +76,7 @@ pub fn process_delete_location(
         return Err(DoubleZeroError::ReferenceCountNotZero.into());
     }
 
-    account_close(location_account, payer_account)?;
+    try_acc_close(location_account, payer_account)?;
 
     #[cfg(test)]
     msg!("Deleted: {:?}", location_account);

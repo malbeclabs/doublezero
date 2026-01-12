@@ -6,9 +6,10 @@ pub use doublezero_serviceability::{
     addresses::*,
     pda::{
         get_contributor_pda, get_device_pda, get_exchange_pda, get_globalconfig_pda, get_link_pda,
-        get_location_pda, get_multicastgroup_pda, get_user_old_pda,
+        get_location_pda, get_multicastgroup_pda, get_resource_extension_pda, get_user_old_pda,
     },
     programversion::ProgramVersion,
+    resource::{IdOrIp, ResourceType},
     state::{
         accountdata::AccountData,
         accounttype::AccountType,
@@ -24,6 +25,7 @@ pub use doublezero_serviceability::{
         location::{Location, LocationStatus},
         multicastgroup::{MulticastGroup, MulticastGroupStatus},
         programconfig::ProgramConfig,
+        resource_extension::ResourceExtensionOwned,
         user::{User, UserCYOA, UserStatus, UserType},
     },
 };

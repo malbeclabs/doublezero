@@ -93,8 +93,8 @@ func Chat(w http.ResponseWriter, r *http.Request) {
 
 	// Create pipeline components
 	llm := pipeline.NewAnthropicLLMClient(anthropic.ModelClaude3_5Haiku20241022, 4096)
-	querier := pipeline.NewHTTPQuerier(config.ClickHouseURL)
-	schemaFetcher := pipeline.NewHTTPSchemaFetcher(config.ClickHouseURL)
+	querier := pipeline.NewHTTPQuerier(config.ClickHouseBaseURL())
+	schemaFetcher := pipeline.NewHTTPSchemaFetcherWithAuth(config.ClickHouseBaseURL(), config.ClickHouseDatabase, "", "")
 
 	// Create and run pipeline
 	p, err := pipeline.New(&pipeline.Config{
@@ -230,8 +230,8 @@ func ChatStream(w http.ResponseWriter, r *http.Request) {
 
 	// Create pipeline components
 	llm := pipeline.NewAnthropicLLMClient(anthropic.ModelClaude3_5Haiku20241022, 4096)
-	querier := pipeline.NewHTTPQuerier(config.ClickHouseURL)
-	schemaFetcher := pipeline.NewHTTPSchemaFetcher(config.ClickHouseURL)
+	querier := pipeline.NewHTTPQuerier(config.ClickHouseBaseURL())
+	schemaFetcher := pipeline.NewHTTPSchemaFetcherWithAuth(config.ClickHouseBaseURL(), config.ClickHouseDatabase, "", "")
 
 	// Create pipeline
 	p, err := pipeline.New(&pipeline.Config{

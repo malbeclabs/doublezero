@@ -26,7 +26,7 @@ func (q *HTTPQuerier) Query(ctx context.Context, sql string) (QueryResult, error
 	sql = strings.TrimSuffix(strings.TrimSpace(sql), ";")
 	query := sql + " FORMAT JSON"
 
-	req, err := http.NewRequestWithContext(ctx, "POST", q.clickhouseURL+"/", strings.NewReader(query))
+	req, err := http.NewRequestWithContext(ctx, "POST", q.clickhouseURL, strings.NewReader(query))
 	if err != nil {
 		return QueryResult{SQL: sql, Error: "Failed to create request: " + err.Error()}, nil
 	}

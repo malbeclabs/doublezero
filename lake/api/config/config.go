@@ -59,10 +59,7 @@ func Load() error {
 			Username: cfg.Username,
 			Password: cfg.Password,
 		},
-		Settings: clickhouse.Settings{
-			"max_execution_time": 60,
-		},
-		DialTimeout:     5 * time.Second,
+		DialTimeout: 5 * time.Second,
 		MaxOpenConns:    10,
 		MaxIdleConns:    5,
 		ConnMaxLifetime: time.Hour,

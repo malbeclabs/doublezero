@@ -1,13 +1,14 @@
-use core::fmt;
-
 use crate::{
     error::DoubleZeroError,
-    globalstate::globalstate_get,
-    helper::account_write,
-    state::exchange::{Exchange, ExchangeStatus},
+    serializer::try_acc_write,
+    state::{
+        exchange::{Exchange, ExchangeStatus},
+        globalstate::GlobalState,
+    },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
+use core::fmt;
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -59,9 +60,14 @@ pub fn process_resume_exchange(
     );
     // Check if the account is writable
     assert!(exchange_account.is_writable, "PDA Account is not writable");
+    assert_eq!(
+        *system_program.unsigned_key(),
+        solana_program::system_program::id(),
+        "Invalid System Program Account Owner"
+    );
 
     // Parse accounts
-    let globalstate = globalstate_get(globalstate_account)?;
+    let globalstate = GlobalState::try_from(globalstate_account)?;
     let mut exchange: Exchange = Exchange::try_from(exchange_account)?;
 
     // Authorization:
@@ -72,7 +78,7 @@ pub fn process_resume_exchange(
 
     exchange.status = ExchangeStatus::Activated;
 
-    account_write(exchange_account, &exchange, payer_account, system_program)?;
+    try_acc_write(&exchange, exchange_account, payer_account, accounts)?;
 
     #[cfg(test)]
     msg!("Resumed: {:?}", exchange);
@@ -83,24 +89,13 @@ pub fn process_resume_exchange(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::{accounttype::AccountType, globalstate::GlobalState};
+    use crate::state::globalstate::GlobalState;
 
     #[test]
     fn payer_not_in_foundation_allowlist_cannot_resume() {
         let payer = Pubkey::new_unique();
 
-        let globalstate = GlobalState {
-            account_type: AccountType::GlobalState,
-            bump_seed: 0,
-            account_index: 0,
-            foundation_allowlist: vec![],
-            device_allowlist: vec![],
-            user_allowlist: vec![],
-            activator_authority_pk: Pubkey::default(),
-            sentinel_authority_pk: Pubkey::default(),
-            contributor_airdrop_lamports: 0,
-            user_airdrop_lamports: 0,
-        };
+        let globalstate = GlobalState::default();
 
         let is_foundation = globalstate.foundation_allowlist.contains(&payer);
         assert!(!is_foundation);
@@ -110,18 +105,7 @@ mod tests {
     fn payer_in_foundation_allowlist_can_resume() {
         let payer = Pubkey::new_unique();
 
-        let mut globalstate = GlobalState {
-            account_type: AccountType::GlobalState,
-            bump_seed: 0,
-            account_index: 0,
-            foundation_allowlist: vec![],
-            device_allowlist: vec![],
-            user_allowlist: vec![],
-            activator_authority_pk: Pubkey::default(),
-            sentinel_authority_pk: Pubkey::default(),
-            contributor_airdrop_lamports: 0,
-            user_airdrop_lamports: 0,
-        };
+        let mut globalstate = GlobalState::default();
 
         // Not in allowlist: should fail auth condition
         let is_foundation = globalstate.foundation_allowlist.contains(&payer);

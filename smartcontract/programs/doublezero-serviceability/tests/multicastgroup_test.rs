@@ -48,7 +48,7 @@ async fn test_multicastgroup() {
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     assert_eq!(globalstate_account.account_index, 0);
 
-    let (multicastgroup_pubkey, bump_seed) =
+    let (multicastgroup_pubkey, _) =
         get_multicastgroup_pda(&program_id, globalstate_account.account_index + 1);
 
     execute_transaction(
@@ -56,8 +56,6 @@ async fn test_multicastgroup() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
-            index: globalstate_account.account_index + 1,
-            bump_seed,
             code: "la".to_string(),
             max_bandwidth: 1000,
             owner: Pubkey::new_unique(),
@@ -244,4 +242,95 @@ async fn test_multicastgroup() {
 
     println!("✅ MulticastGroup deleted successfully");
     println!("🟢  End test_multicastgroup");
+}
+
+#[tokio::test]
+async fn test_multicastgroup_create_with_wrong_index_fails() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+
+    println!("🟢  Start test_multicastgroup_create_with_wrong_index_fails");
+
+    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+
+    println!("1. Global Initialization...");
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::InitGlobalState(),
+        vec![
+            AccountMeta::new(program_config_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    println!("2. Testing MulticastGroup creation with wrong index...");
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    assert_eq!(globalstate_account.account_index, 0);
+
+    // Client passes wrong index (999 instead of 1)
+    let wrong_index = 999;
+    let correct_index = globalstate_account.account_index + 1;
+
+    // Derive PDA with the WRONG index (what a malicious/buggy client might do)
+    let (wrong_multicastgroup_pubkey, _) = get_multicastgroup_pda(&program_id, wrong_index);
+
+    // Try to create with wrong index - should fail
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
+            code: "test".to_string(),
+            max_bandwidth: 1000,
+            owner: Pubkey::new_unique(),
+        }),
+        vec![
+            AccountMeta::new(wrong_multicastgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    assert!(
+        result.is_err(),
+        "Transaction should have failed with wrong index"
+    );
+    println!("✅ Correctly rejected wrong index");
+
+    // Verify the correct index still works
+    println!("3. Testing MulticastGroup creation with correct index...");
+    let (correct_multicastgroup_pubkey, _) = get_multicastgroup_pda(&program_id, correct_index);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
+            code: "test".to_string(),
+            max_bandwidth: 1000,
+            owner: Pubkey::new_unique(),
+        }),
+        vec![
+            AccountMeta::new(correct_multicastgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let multicastgroup = get_account_data(&mut banks_client, correct_multicastgroup_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_multicastgroup()
+        .unwrap();
+    assert_eq!(multicastgroup.index, correct_index);
+    assert_eq!(multicastgroup.code, "test".to_string());
+    println!("✅ Correct index accepted and stored properly");
+
+    println!("🟢  End test_multicastgroup_create_with_wrong_index_fails");
 }

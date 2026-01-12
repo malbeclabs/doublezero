@@ -974,6 +974,7 @@ impl ServiceabilityProgramHelper {
                 interface_cyoa: InterfaceCYOA::None,
                 bandwidth: 0,
                 cir: 0,
+                ip_net: None,
                 mtu: 1500,
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,

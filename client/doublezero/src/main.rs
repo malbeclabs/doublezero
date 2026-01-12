@@ -262,6 +262,13 @@ async fn main() -> eyre::Result<()> {
             },
         },
 
+        Command::Resource(command) => match command.command {
+            cli::resource::ResourceCommands::Allocate(args) => args.execute(&client, &mut handle),
+            cli::resource::ResourceCommands::Create(args) => args.execute(&client, &mut handle),
+            cli::resource::ResourceCommands::Deallocate(args) => args.execute(&client, &mut handle),
+            cli::resource::ResourceCommands::Get(args) => args.execute(&client, &mut handle),
+        },
+
         Command::Export(args) => args.execute(&client, &mut handle),
         Command::Keygen(args) => args.execute(&client, &mut handle),
         Command::Log(args) => args.execute(&dzclient, &mut handle),

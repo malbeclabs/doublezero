@@ -1,9 +1,8 @@
 use crate::{
     error::{DoubleZeroError, Validate},
     helper::is_global,
-    seeds::SEED_DEVICE,
     state::{
-        accounttype::{AccountType, AccountTypeInfo},
+        accounttype::AccountType,
         interface::{CurrentInterfaceVersion, Interface},
     },
 };
@@ -68,8 +67,7 @@ pub enum DeviceStatus {
     Suspended = 2,
     Deleting = 3,
     Rejected = 4,
-    SoftDrained = 5,
-    HardDrained = 6,
+    Drained = 5,
 }
 
 impl From<u8> for DeviceStatus {
@@ -80,8 +78,7 @@ impl From<u8> for DeviceStatus {
             2 => DeviceStatus::Suspended,
             3 => DeviceStatus::Deleting,
             4 => DeviceStatus::Rejected,
-            5 => DeviceStatus::SoftDrained,
-            6 => DeviceStatus::HardDrained,
+            5 => DeviceStatus::Drained,
             _ => DeviceStatus::Pending,
         }
     }
@@ -95,8 +92,7 @@ impl fmt::Display for DeviceStatus {
             DeviceStatus::Suspended => write!(f, "suspended"),
             DeviceStatus::Deleting => write!(f, "deleting"),
             DeviceStatus::Rejected => write!(f, "rejected"),
-            DeviceStatus::SoftDrained => write!(f, "soft-drained"),
-            DeviceStatus::HardDrained => write!(f, "hard-drained"),
+            DeviceStatus::Drained => write!(f, "drained"),
         }
     }
 }
@@ -111,9 +107,106 @@ impl FromStr for DeviceStatus {
             "suspended" => Ok(DeviceStatus::Suspended),
             "deleting" => Ok(DeviceStatus::Deleting),
             "rejected" => Ok(DeviceStatus::Rejected),
-            "hard-drained" => Ok(DeviceStatus::HardDrained),
-            "soft-drained" => Ok(DeviceStatus::SoftDrained),
+            "drained" => Ok(DeviceStatus::Drained),
             _ => Err(format!("Invalid DeviceStatus: {s}")),
+        }
+    }
+}
+
+#[repr(u8)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Default)]
+#[borsh(use_discriminant = true)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum DeviceHealth {
+    Unknown = 0,
+    #[default]
+    Pending = 1,
+    ReadyForLinks = 2, // ready to connect links
+    ReadyForUsers = 3, // ready to connect users
+    Impaired = 4,
+}
+
+impl From<u8> for DeviceHealth {
+    fn from(value: u8) -> Self {
+        match value {
+            0 => DeviceHealth::Unknown,
+            1 => DeviceHealth::Pending,
+            2 => DeviceHealth::ReadyForLinks,
+            3 => DeviceHealth::ReadyForUsers,
+            4 => DeviceHealth::Impaired,
+            _ => DeviceHealth::Unknown,
+        }
+    }
+}
+
+impl FromStr for DeviceHealth {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "unknown" => Ok(DeviceHealth::Unknown),
+            "pending" => Ok(DeviceHealth::Pending),
+            "ready-for-links" => Ok(DeviceHealth::ReadyForLinks),
+            "ready-for-users" => Ok(DeviceHealth::ReadyForUsers),
+            "impaired" => Ok(DeviceHealth::Impaired),
+            _ => Err(format!("Invalid DeviceHealth: {s}")),
+        }
+    }
+}
+
+impl fmt::Display for DeviceHealth {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DeviceHealth::Unknown => write!(f, "unknown"),
+            DeviceHealth::Pending => write!(f, "pending"),
+            DeviceHealth::ReadyForLinks => write!(f, "ready-for-links"),
+            DeviceHealth::ReadyForUsers => write!(f, "ready-for-users"),
+            DeviceHealth::Impaired => write!(f, "impaired"),
+        }
+    }
+}
+
+#[repr(u8)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Default)]
+#[borsh(use_discriminant = true)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum DeviceDesiredStatus {
+    #[default]
+    Pending = 0,
+    Activated = 1,
+    Drained = 6,
+}
+
+impl From<u8> for DeviceDesiredStatus {
+    fn from(value: u8) -> Self {
+        match value {
+            0 => DeviceDesiredStatus::Pending,
+            1 => DeviceDesiredStatus::Activated,
+            6 => DeviceDesiredStatus::Drained,
+            _ => DeviceDesiredStatus::Pending,
+        }
+    }
+}
+
+impl FromStr for DeviceDesiredStatus {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "pending" => Ok(DeviceDesiredStatus::Pending),
+            "activated" => Ok(DeviceDesiredStatus::Activated),
+            "drained" => Ok(DeviceDesiredStatus::Drained),
+            _ => Err(format!("Invalid DeviceDesiredStatus: {s}")),
+        }
+    }
+}
+
+impl fmt::Display for DeviceDesiredStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DeviceDesiredStatus::Pending => write!(f, "pending"),
+            DeviceDesiredStatus::Activated => write!(f, "activated"),
+            DeviceDesiredStatus::Drained => write!(f, "drained"),
         }
     }
 }
@@ -174,6 +267,8 @@ pub struct Device {
     pub reference_count: u32,      // 4
     pub users_count: u16,          // 2
     pub max_users: u16,            // 2
+    pub device_health: DeviceHealth, // 1
+    pub desired_status: DeviceDesiredStatus, // 1
 }
 
 impl Default for Device {
@@ -197,6 +292,8 @@ impl Default for Device {
             reference_count: 0,
             users_count: 0,
             max_users: 0,
+            device_health: DeviceHealth::Pending,
+            desired_status: DeviceDesiredStatus::Pending,
         }
     }
 }
@@ -222,6 +319,11 @@ impl Device {
             && (self.device_type == DeviceType::Edge || self.device_type == DeviceType::Hybrid)
             && (self.max_users > 0 && self.users_count < self.max_users)
     }
+
+    pub fn check_status_transition(&self) {
+        // Implement any necessary status transition checks here
+        // this will be added in future iterations
+    }
 }
 
 impl fmt::Display for Device {
@@ -230,53 +332,11 @@ impl fmt::Display for Device {
             f,
             "account_type: {}, owner: {}, index: {}, contributor_pk: {}, location_pk: {}, exchange_pk: {}, device_type: {}, \
             public_ip: {}, dz_prefixes: {}, status: {}, code: {}, metrics_publisher_pk: {}, mgmt_vrf: {}, interfaces: {:?}, \
-            reference_count: {}, users_count: {}, max_users: {}",
+            reference_count: {}, users_count: {}, max_users: {}, device_health: {}, desired_status: {}",
             self.account_type, self.owner, self.index, self.contributor_pk, self.location_pk, self.exchange_pk, self.device_type,
             &self.public_ip, &self.dz_prefixes, self.status, self.code, self.metrics_publisher_pk, self.mgmt_vrf, self.interfaces,
-            self.reference_count, self.users_count, self.max_users
+            self.reference_count, self.users_count, self.max_users, self.device_health, self.desired_status
         )
-    }
-}
-
-impl AccountTypeInfo for Device {
-    fn seed(&self) -> &[u8] {
-        SEED_DEVICE
-    }
-    fn size(&self) -> usize {
-        1 + 32
-            + 16
-            + 1
-            + 32
-            + 32
-            + 1
-            + 4
-            + 1
-            + 4
-            + self.code.len()
-            + 4
-            + 5 * self.dz_prefixes.len()
-            + 32
-            + 32
-            + 4
-            + self.mgmt_vrf.len()
-            + 4
-            + self
-                .interfaces
-                .iter()
-                .map(|iface| iface.size())
-                .sum::<usize>()
-            + 4
-            + 2
-            + 2
-    }
-    fn bump_seed(&self) -> u8 {
-        self.bump_seed
-    }
-    fn index(&self) -> u128 {
-        self.index
-    }
-    fn owner(&self) -> Pubkey {
-        self.owner
     }
 }
 
@@ -303,6 +363,8 @@ impl TryFrom<&[u8]> for Device {
             reference_count: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             users_count: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             max_users: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            device_health: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            desired_status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::Device {
@@ -349,7 +411,7 @@ impl Validate for Device {
             return Err(DoubleZeroError::InvalidExchange);
         }
         // Public IP must be a global address
-        if !is_global(self.public_ip) {
+        if self.device_type != DeviceType::Transit && !is_global(self.public_ip) {
             msg!("Invalid public IP: {}", self.public_ip);
             return Err(DoubleZeroError::InvalidClientIp);
         }
@@ -494,6 +556,8 @@ mod tests {
             interfaces: vec![],
             users_count: 1,
             max_users: 2,
+            device_health: DeviceHealth::ReadyForUsers,
+            desired_status: DeviceDesiredStatus::Pending,
         };
         let err = val.validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidAccountType);
@@ -520,6 +584,8 @@ mod tests {
             interfaces: vec![],
             users_count: 1,
             max_users: 2,
+            device_health: DeviceHealth::ReadyForUsers,
+            desired_status: DeviceDesiredStatus::Pending,
         };
         let err = val.validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::CodeTooLong);
@@ -546,6 +612,8 @@ mod tests {
             interfaces: vec![],
             users_count: 1,
             max_users: 2,
+            device_health: DeviceHealth::ReadyForUsers,
+            desired_status: DeviceDesiredStatus::Pending,
         };
         let err = val.validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidLocation);
@@ -572,6 +640,8 @@ mod tests {
             interfaces: vec![],
             users_count: 1,
             max_users: 2,
+            device_health: DeviceHealth::ReadyForUsers,
+            desired_status: DeviceDesiredStatus::Pending,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -599,6 +669,8 @@ mod tests {
             interfaces: vec![],
             users_count: 1,
             max_users: 2,
+            device_health: DeviceHealth::ReadyForUsers,
+            desired_status: DeviceDesiredStatus::Pending,
         };
         let err = val.validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidClientIp);
@@ -625,6 +697,8 @@ mod tests {
             interfaces: vec![],
             users_count: 1,
             max_users: 2,
+            device_health: DeviceHealth::ReadyForUsers,
+            desired_status: DeviceDesiredStatus::Pending,
         };
         let err = val.validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidDzPrefix);
@@ -651,6 +725,8 @@ mod tests {
             interfaces: vec![],
             users_count: 0,
             max_users: 0,
+            device_health: DeviceHealth::ReadyForUsers,
+            desired_status: DeviceDesiredStatus::Pending,
         };
         // max_users == 0 means "locked", so validation should still succeed
         val.validate().unwrap();
@@ -677,6 +753,8 @@ mod tests {
             interfaces: vec![],
             users_count: 6,
             max_users: 5,
+            device_health: DeviceHealth::ReadyForUsers,
+            desired_status: DeviceDesiredStatus::Pending,
         };
 
         let err = val.validate();
@@ -704,6 +782,8 @@ mod tests {
             interfaces: vec![],
             users_count: 1,
             max_users: 2,
+            device_health: DeviceHealth::ReadyForUsers,
+            desired_status: DeviceDesiredStatus::Pending,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -748,6 +828,8 @@ mod tests {
             interfaces: vec![invalid_iface],
             users_count: 1,
             max_users: 2,
+            device_health: DeviceHealth::ReadyForUsers,
+            desired_status: DeviceDesiredStatus::Pending,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -810,6 +892,8 @@ mod tests {
             ],
             users_count: 111,
             max_users: 222,
+            device_health: DeviceHealth::ReadyForUsers,
+            desired_status: DeviceDesiredStatus::Pending,
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -818,7 +902,10 @@ mod tests {
         val.validate().unwrap();
         val2.validate().unwrap();
 
-        assert_eq!(val.size(), val2.size());
+        assert_eq!(
+            borsh::object_length(&val).unwrap(),
+            borsh::object_length(&val2).unwrap()
+        );
         assert_eq!(val.owner, val2.owner);
         assert_eq!(val.code, val2.code);
         assert_eq!(val.index, val2.index);
@@ -836,7 +923,11 @@ mod tests {
         assert_eq!(val.interfaces, val2.interfaces);
         assert_eq!(val.users_count, val2.users_count);
         assert_eq!(val.max_users, val2.max_users);
-        assert_eq!(data.len(), val.size(), "Invalid Size");
+        assert_eq!(
+            data.len(),
+            borsh::object_length(&val).unwrap(),
+            "Invalid Size"
+        );
     }
 
     fn size_of_pre_dzd_metadata_device(code_len: usize, dz_prefixes_len: usize) -> usize {
@@ -864,6 +955,8 @@ mod tests {
             interfaces: vec![],
             users_count: 0,
             max_users: 0,
+            device_health: DeviceHealth::Pending,
+            desired_status: DeviceDesiredStatus::Pending,
         };
 
         let oldsize = size_of_pre_dzd_metadata_device(val.code.len(), val.dz_prefixes.len());
@@ -872,7 +965,156 @@ mod tests {
         // trim data to oldsize
         let val2 = Device::try_from(&data[..oldsize]).unwrap();
 
-        assert_eq!(val.size(), val2.size());
+        assert_eq!(
+            borsh::object_length(&val).unwrap(),
+            borsh::object_length(&val2).unwrap()
+        );
         assert_eq!(val, val2);
+    }
+}
+
+#[cfg(test)]
+mod test_device_validate {
+    use super::*;
+
+    #[test]
+    fn test_device_validate_ok() {
+        let device = Device {
+            account_type: AccountType::Device,
+            owner: Pubkey::new_unique(),
+            index: 1,
+            bump_seed: 1,
+            location_pk: Pubkey::new_unique(),
+            exchange_pk: Pubkey::new_unique(),
+            device_type: DeviceType::default(),
+            public_ip: "200.100.50.25".parse().unwrap(),
+            status: DeviceStatus::Activated,
+            code: "test-device".to_string(),
+            dz_prefixes: NetworkV4List::from_str("8.8.8.0/24").unwrap(),
+            metrics_publisher_pk: Pubkey::new_unique(),
+            contributor_pk: Pubkey::new_unique(),
+            mgmt_vrf: "vrf1".to_string(),
+            interfaces: vec![],
+            reference_count: 0,
+            users_count: 0,
+            max_users: 10,
+            device_health: DeviceHealth::ReadyForUsers,
+            desired_status: DeviceDesiredStatus::Activated,
+        };
+        assert!(device.validate().is_ok());
+    }
+}
+
+#[cfg(test)]
+mod test_device_validate_errors {
+    use super::*;
+
+    fn base_device() -> Device {
+        Device {
+            account_type: AccountType::Device,
+            owner: Pubkey::new_unique(),
+            index: 1,
+            bump_seed: 1,
+            location_pk: Pubkey::new_unique(),
+            exchange_pk: Pubkey::new_unique(),
+            device_type: DeviceType::Hybrid,
+            public_ip: "200.100.50.25".parse().unwrap(),
+            status: DeviceStatus::Activated,
+            code: "test-device".to_string(),
+            dz_prefixes: NetworkV4List::from_str("8.8.8.0/24").unwrap(),
+            metrics_publisher_pk: Pubkey::new_unique(),
+            contributor_pk: Pubkey::new_unique(),
+            mgmt_vrf: "vrf1".to_string(),
+            interfaces: vec![],
+            reference_count: 0,
+            users_count: 0,
+            max_users: 10,
+            device_health: DeviceHealth::ReadyForUsers,
+            desired_status: DeviceDesiredStatus::Activated,
+        }
+    }
+
+    #[test]
+    fn test_invalid_account_type() {
+        let mut device = base_device();
+        device.account_type = AccountType::User;
+        let err = device.validate();
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidAccountType);
+    }
+
+    #[test]
+    fn test_code_too_long() {
+        let mut device = base_device();
+        device.code = "a".repeat(33);
+        let err = device.validate();
+        assert_eq!(err.unwrap_err(), DoubleZeroError::CodeTooLong);
+    }
+
+    #[test]
+    fn test_invalid_location() {
+        let mut device = base_device();
+        device.location_pk = Pubkey::default();
+        let err = device.validate();
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidLocation);
+    }
+
+    #[test]
+    fn test_invalid_exchange() {
+        let mut device = base_device();
+        device.exchange_pk = Pubkey::default();
+        let err = device.validate();
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidExchange);
+    }
+
+    #[test]
+    fn test_invalid_public_ip_edge() {
+        let mut device = base_device();
+        device.device_type = DeviceType::Edge;
+        device.public_ip = "192.168.0.1".parse().unwrap();
+        let err = device.validate();
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidClientIp);
+    }
+
+    #[test]
+    fn test_invalid_public_ip_hybrid() {
+        let mut device = base_device();
+        device.device_type = DeviceType::Hybrid;
+        device.public_ip = "192.168.0.1".parse().unwrap();
+        let err = device.validate();
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidClientIp);
+    }
+
+    #[test]
+    fn test_valid_public_ip_transit() {
+        let mut device = base_device();
+        device.device_type = DeviceType::Transit;
+        device.public_ip = "10.0.0.1".parse().unwrap();
+        let err = device.validate();
+        assert!(err.is_ok());
+    }
+
+    #[test]
+    fn test_no_dz_prefixes() {
+        let mut device = base_device();
+        device.dz_prefixes = NetworkV4List::default();
+        let err = device.validate();
+        assert_eq!(err.unwrap_err(), DoubleZeroError::NoDzPrefixes);
+    }
+
+    #[test]
+    fn test_invalid_dz_prefix() {
+        let mut device = base_device();
+        device.dz_prefixes = NetworkV4List::from_str("192.168.0.0/24").unwrap();
+        let err = device.validate();
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidDzPrefix);
+    }
+
+    #[test]
+    fn test_max_users_exceeded() {
+        let mut device = base_device();
+        device.users_count = 11;
+        device.max_users = 10;
+        let err = device.validate();
+        assert_eq!(err.unwrap_err(), DoubleZeroError::MaxUsersExceeded);
     }
 }

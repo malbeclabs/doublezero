@@ -1,11 +1,11 @@
 use crate::{
     error::DoubleZeroError,
-    globalstate::globalstate_get_next,
-    helper::account_write,
+    serializer::try_acc_write,
     state::{
         accounttype::AccountType,
         contributor::Contributor,
         device::*,
+        globalstate::GlobalState,
         interface::{
             CurrentInterfaceVersion, InterfaceCYOA, InterfaceDIA, InterfaceStatus, InterfaceType,
             LoopbackType, RoutingMode,
@@ -29,6 +29,7 @@ pub struct DeviceInterfaceCreateArgs {
     pub name: String,
     pub loopback_type: LoopbackType,
     pub vlan_id: u16,
+    pub ip_net: Option<NetworkV4>,
     pub user_tunnel_endpoint: bool,
     pub interface_cyoa: InterfaceCYOA,
     pub interface_dia: InterfaceDIA,
@@ -59,7 +60,7 @@ pub fn process_create_device_interface(
     let contributor_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
-    let system_program = next_account_info(accounts_iter)?;
+    let _system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
     msg!("process_create_device_interface({:?})", value);
@@ -80,7 +81,7 @@ pub fn process_create_device_interface(
 
     assert!(device_account.is_writable, "PDA Account is not writable");
 
-    let globalstate = globalstate_get_next(globalstate_account)?;
+    let globalstate = GlobalState::try_from(globalstate_account)?;
     assert_eq!(globalstate.account_type, AccountType::GlobalState);
 
     let contributor = Contributor::try_from(contributor_account)?;
@@ -115,14 +116,14 @@ pub fn process_create_device_interface(
             mtu: value.mtu,
             routing_mode: value.routing_mode,
             vlan_id: value.vlan_id,
-            ip_net: NetworkV4::default(),
+            ip_net: value.ip_net.unwrap_or_default(),
             node_segment_idx: 0,
             user_tunnel_endpoint: value.user_tunnel_endpoint,
         }
         .to_interface(),
     );
 
-    account_write(device_account, &device, payer_account, system_program)?;
+    try_acc_write(&device, device_account, payer_account, accounts)?;
 
     Ok(())
 }

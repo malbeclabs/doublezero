@@ -4,6 +4,7 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use serde::{Deserialize, Serialize};
 use std::{
     fmt::{Display, Formatter},
+    ops::{Index, IndexMut},
     str::FromStr,
 };
 
@@ -26,6 +27,20 @@ impl NetworkV4List {
     pub fn push(&mut self, value: NetworkV4) -> &mut Self {
         self.0.push(value);
         self
+    }
+}
+
+impl Index<usize> for NetworkV4List {
+    type Output = NetworkV4;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.0[index]
+    }
+}
+
+impl IndexMut<usize> for NetworkV4List {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.0[index]
     }
 }
 

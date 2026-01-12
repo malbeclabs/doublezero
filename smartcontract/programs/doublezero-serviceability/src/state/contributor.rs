@@ -1,7 +1,6 @@
 use crate::{
     error::{DoubleZeroError, Validate},
-    seeds::SEED_CONTRIBUTOR,
-    state::accounttype::{AccountType, AccountTypeInfo},
+    state::accounttype::AccountType,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
@@ -99,24 +98,6 @@ impl fmt::Display for Contributor {
             self.code,
             self.ops_manager_pk
         )
-    }
-}
-
-impl AccountTypeInfo for Contributor {
-    fn seed(&self) -> &[u8] {
-        SEED_CONTRIBUTOR
-    }
-    fn size(&self) -> usize {
-        1 + 32 + 16 + 1 + 1 + 4 + self.code.len() + 4 + 32
-    }
-    fn bump_seed(&self) -> u8 {
-        self.bump_seed
-    }
-    fn index(&self) -> u128 {
-        self.index
-    }
-    fn owner(&self) -> Pubkey {
-        self.owner
     }
 }
 
@@ -227,14 +208,21 @@ mod tests {
         val.validate().unwrap();
         val2.validate().unwrap();
 
-        assert_eq!(val.size(), val2.size());
+        assert_eq!(
+            borsh::object_length(&val).unwrap(),
+            borsh::object_length(&val2).unwrap()
+        );
         assert_eq!(val.owner, val2.owner);
         assert_eq!(val.code, val2.code);
         assert_eq!(val.index, val2.index);
         assert_eq!(val.bump_seed, val2.bump_seed);
         assert_eq!(val.status, val2.status);
         assert_eq!(val.account_type, val2.account_type);
-        assert_eq!(data.len(), val.size(), "Invalid Size");
+        assert_eq!(
+            data.len(),
+            borsh::object_length(&val).unwrap(),
+            "Invalid Size"
+        );
     }
 
     #[test]

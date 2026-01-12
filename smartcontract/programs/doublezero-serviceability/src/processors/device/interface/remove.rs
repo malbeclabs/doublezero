@@ -1,8 +1,7 @@
 use crate::{
     error::DoubleZeroError,
-    globalstate::globalstate_get,
-    helper::*,
-    state::{device::*, interface::InterfaceStatus},
+    serializer::try_acc_write,
+    state::{device::*, globalstate::GlobalState, interface::InterfaceStatus},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -36,7 +35,7 @@ pub fn process_remove_device_interface(
     let device_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
-    let system_program = next_account_info(accounts_iter)?;
+    let _system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
     msg!("process_remove_device_interface({:?})", value);
@@ -56,7 +55,7 @@ pub fn process_remove_device_interface(
 
     assert!(device_account.is_writable, "PDA Account is not writable");
 
-    let globalstate = globalstate_get(globalstate_account)?;
+    let globalstate = GlobalState::try_from(globalstate_account)?;
     if globalstate.activator_authority_pk != *payer_account.key {
         return Err(DoubleZeroError::NotAllowed.into());
     }
@@ -71,7 +70,7 @@ pub fn process_remove_device_interface(
     }
     device.interfaces.remove(idx);
 
-    account_write(device_account, &device, payer_account, system_program)?;
+    try_acc_write(&device, device_account, payer_account, accounts)?;
 
     #[cfg(test)]
     msg!("Remove: Device Interface removed");

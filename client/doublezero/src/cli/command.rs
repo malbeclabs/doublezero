@@ -4,7 +4,7 @@ use crate::{
         accesspass::AccessPassCliCommand, config::ConfigCliCommand,
         contributor::ContributorCliCommand, device::DeviceCliCommand, exchange::ExchangeCliCommand,
         globalconfig::GlobalConfigCliCommand, link::LinkCliCommand, location::LocationCliCommand,
-        user::UserCliCommand,
+        resource::ResourceCliCommand, user::UserCliCommand,
     },
     command::{
         connect::ProvisioningCliCommand, disconnect::DecommissioningCliCommand,
@@ -95,6 +95,9 @@ pub enum Command {
     /// Generate shell completions
     #[command()]
     Completion(CompletionCliCommand),
+    /// IP/ID Resource Management
+    #[command()]
+    Resource(ResourceCliCommand),
 }
 
 #[derive(Args, Debug, Clone)]

@@ -9,11 +9,27 @@ All notable changes to this project will be documented in this file.
 ### Changes
 
 - CLI
+  - ActivateMulticastGroup now supports on-chain IP allocation from ResourceExtension bitmap (RFC 11).
   - IP address lookup responses that do not contain a valid IPv4 address (such as upstream timeout messages) are now treated as retryable errors instead of being parsed as IPs.
+  - `doublezero resource` commands added for managing ResourceExtension accounts.
+  - Added health_oracle to the smart contract global configuration to manage and authorize health-related operations.
+  - Added --ip-net support to create to match the existing behavior in update.
+  - Use DZ IP for user lookup during status command instead of client IP
 - Onchain programs
+  - Add on-chain validation to reject CloseAccountDevice when device has active references (reference_count > 0)
   - Allow contributor owner to update ops manager key
   - Add new arguments on create interface cli command
   - RequestBanUser: only allow requests when user.status is Activated or Suspended; otherwise return InvalidStatus
+  - Add ResourceExtension to track IP/ID allocations. Foundation instructions added to create/allocate/deallocate.
+  - ResourceExtension optimization using first_free_index for searching bitmaps
+  - Added the **INSTRUCTION_GUIDELINES** document defining the standard for instruction creation.
+  - Enforce best practices for instruction implementation across onchain programs
+  - Add missing system program account owner checks in multiple instructions
+  - Refactor codebase for improved maintainability and future development
+  - Introduced health management for Devices and Links, adding explicit health states, authorized health updates, and related state, processor, and test enhancements.
+  - Introduce desired status to Link and Devices
+  - Updated validation to allow public IP prefixes for CYOA/DIA, removing the restriction imposed by type-based checks.
+  - Transit devices can now be provisioned without a public IP, aligning the requirements with their actual networking model and avoiding unnecessary configuration constraints.
 - Internet Latency Telemetry
   - Fixed a bug that prevented unresponsive ripeatlas probes from being replaced
   - Fixed a bug that caused ripeatlas samples to be dropped when they were delayed to the next collection cycle
@@ -34,6 +50,8 @@ All notable changes to this project will be documented in this file.
   - Route liveness sets set of routes configured as excluded to `AdminDown`.
   - Add histogram metric for BGP session establishment duration
   - For IBRL with allocated IP mode, resolve tunnel source IP from routing table via resolve-route API endpoint instead of using client IP to support clients behind NAT
+  - Configure MTU down to 1476 on client tunnel in case path MTU discovery is not working
+  - Increase route liveness max backoff duration
 - Global monitor
   - Initial implementation
 - Release
@@ -46,6 +64,7 @@ All notable changes to this project will be documented in this file.
   - Add annotation of flow records with serviceability data
   - Add pcap input and json ouput to flow enricher
   - Initial state-ingest service with client SDK
+  - Collect BGP socket state from devices
 - CI
   - Cancel existing e2e test runs on the push of new commits
 - RFCs
@@ -53,8 +72,14 @@ All notable changes to this project will be documented in this file.
   - RFC-11: Onchain Activation ([#2302](https://github.com/malbeclabs/doublezero/pull/2302))
 - Monitor
   - Add link status to device-telemetry metrics to enable Grafana alerts to filter out links that are not in activated status
+  - Add validation for 2Z oracle swapRate to ensure it is an unsigned integer, with warning logs and metrics for malformed values
 - E2E tests
   - Add GetLatency call to qaagent
+  - The QA alldevices test now considers device location and connects hosts to nearby devices
+  - QA agent and tests now support doublezero connect ibrl's --allocate-addr flag
+  - The QA alldevices test now publishes success/failure metrics to InfluxDB in support of rfc12
+- Onchain programs
+  - Fix CreateMulticastGroup to use incremented globalstate.account_index for PDA derivation instead of client-provided index, to ensure the contract is the authoritative source for account indices
 
 ## [v0.8.0](https://github.com/malbeclabs/doublezero/compare/client/v0.7.1...client/v0.8.0) – 2025-12-02
 

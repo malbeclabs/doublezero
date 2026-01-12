@@ -1,15 +1,13 @@
-use core::fmt;
-
 use crate::{
-    accounts::account_close,
     error::DoubleZeroError,
-    helper::account_create_with_seed,
     pda::get_user_pda,
     seeds::{SEED_PREFIX, SEED_USER},
+    serializer::{try_acc_close, try_acc_create},
     state::{accounttype::AccountType, user::User},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
+use core::fmt;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -84,9 +82,9 @@ pub fn process_migrate(
         actual_user.index = 0; // Reset index for new account
         actual_user.bump_seed = bump_seed;
         // Create new account with the same data
-        account_create_with_seed(
-            new_account,
+        try_acc_create(
             &actual_user,
+            new_account,
             payer_account,
             system_program,
             program_id,
@@ -102,7 +100,7 @@ pub fn process_migrate(
         msg!("{:?}", actual_user);
 
         // Close actual account
-        account_close(actual_account, payer_account)?;
+        try_acc_close(actual_account, payer_account)?;
     } else {
         return Err(DoubleZeroError::InvalidAccountType.into());
     }

@@ -188,14 +188,14 @@ export function Sidebar({
   }
 
   return (
-    <div className="w-56 border-r bg-[var(--sidebar)] flex flex-col">
+    <div className="w-64 border-r bg-[var(--sidebar)] flex flex-col">
       {/* Header with logo and collapse */}
       <div className="px-3 h-12 flex items-center justify-between border-b border-border/50">
         <button
           onClick={() => navigate('/')}
           className="flex items-center gap-2 hover:opacity-80 transition-opacity"
         >
-          <img src={resolvedTheme === 'dark' ? '/logoDark.svg' : '/logoLight.svg'} alt="DoubleZero" className="h-5" />
+          <img src={resolvedTheme === 'dark' ? '/logoDark.svg' : '/logoLight.svg'} alt="DoubleZero" className="h-6" />
           <span className="wordmark text-lg">Data</span>
         </button>
         <button

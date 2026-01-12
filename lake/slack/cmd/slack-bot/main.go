@@ -71,8 +71,7 @@ func run() error {
 	shutdownTimeoutFlag := flag.Duration("shutdown-timeout", 60*time.Second, "Maximum time to wait for in-flight operations to complete during graceful shutdown")
 
 	// ClickHouse configuration flags (used as fallback if env vars not set)
-	clickhouseAddrFlag := flag.String("clickhouse-addr", "", "ClickHouse server address (e.g., localhost:9000, or set CLICKHOUSE_ADDR_HTTP env var)")
-	clickhouseHTTPAddrFlag := flag.String("clickhouse-http-addr", "", "ClickHouse HTTP address for schema fetching (e.g., localhost:8123, or set CLICKHOUSE_HTTP_ADDR env var)")
+	clickhouseAddrFlag := flag.String("clickhouse-addr", "", "ClickHouse server address (e.g., localhost:9000, or set CLICKHOUSE_ADDR_TCP env var)")
 	clickhouseDatabaseFlag := flag.String("clickhouse-database", "default", "ClickHouse database name (or set CLICKHOUSE_DATABASE env var)")
 	clickhouseUsernameFlag := flag.String("clickhouse-username", "default", "ClickHouse username (or set CLICKHOUSE_USERNAME env var)")
 	clickhousePasswordFlag := flag.String("clickhouse-password", "", "ClickHouse password (or set CLICKHOUSE_PASSWORD env var)")
@@ -99,16 +98,6 @@ func run() error {
 	}
 	if *clickhousePasswordFlag != "" {
 		cfg.ClickhousePassword = *clickhousePasswordFlag
-	}
-
-	// Get ClickHouse HTTP address for schema fetching
-	clickhouseHTTPAddr := *clickhouseHTTPAddrFlag
-	if clickhouseHTTPAddr == "" {
-		clickhouseHTTPAddr = os.Getenv("CLICKHOUSE_HTTP_ADDR")
-	}
-	if clickhouseHTTPAddr == "" {
-		// Default to port 8123 on same host as native protocol
-		clickhouseHTTPAddr = "http://localhost:8123"
 	}
 
 	// Start pprof server if enabled
@@ -162,13 +151,8 @@ func run() error {
 	// Create querier for the pipeline
 	querier := slackbot.NewClickhouseQuerier(clickhouseClient)
 
-	// Create schema fetcher for the pipeline
-	schemaFetcher := pipeline.NewHTTPSchemaFetcherWithAuth(
-		clickhouseHTTPAddr,
-		cfg.ClickhouseDatabase,
-		cfg.ClickhouseUsername,
-		cfg.ClickhousePassword,
-	)
+	// Create schema fetcher for the pipeline (uses TCP, same as querier)
+	schemaFetcher := slackbot.NewClickhouseSchemaFetcher(clickhouseClient, cfg.ClickhouseDatabase)
 
 	// Create the analysis pipeline with Slack formatting context
 	p, err := pipeline.New(&pipeline.Config{

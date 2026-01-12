@@ -84,3 +84,104 @@ func formatQueryResult(result pipeline.QueryResult) string {
 
 	return sb.String()
 }
+
+// ClickhouseSchemaFetcher implements pipeline.SchemaFetcher using the clickhouse client (TCP)
+type ClickhouseSchemaFetcher struct {
+	db       clickhouse.Client
+	database string
+}
+
+// NewClickhouseSchemaFetcher creates a new ClickhouseSchemaFetcher
+func NewClickhouseSchemaFetcher(db clickhouse.Client, database string) *ClickhouseSchemaFetcher {
+	return &ClickhouseSchemaFetcher{db: db, database: database}
+}
+
+// FetchSchema retrieves table columns and view definitions from ClickHouse
+func (f *ClickhouseSchemaFetcher) FetchSchema(ctx context.Context) (string, error) {
+	conn, err := f.db.Conn(ctx)
+	if err != nil {
+		return "", fmt.Errorf("connection error: %w", err)
+	}
+	defer conn.Close()
+
+	// Fetch columns
+	rows, err := conn.Query(ctx, `
+		SELECT
+			table,
+			name,
+			type
+		FROM system.columns
+		WHERE database = $1
+		  AND table NOT LIKE 'stg_%'
+		ORDER BY table, position
+	`, f.database)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch columns: %w", err)
+	}
+	defer rows.Close()
+
+	type columnInfo struct {
+		Table string
+		Name  string
+		Type  string
+	}
+	var columns []columnInfo
+	for rows.Next() {
+		var c columnInfo
+		if err := rows.Scan(&c.Table, &c.Name, &c.Type); err != nil {
+			return "", err
+		}
+		columns = append(columns, c)
+	}
+
+	// Fetch view definitions
+	viewRows, err := conn.Query(ctx, `
+		SELECT
+			name,
+			as_select
+		FROM system.tables
+		WHERE database = $1
+		  AND engine = 'View'
+		  AND name NOT LIKE 'stg_%'
+	`, f.database)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch views: %w", err)
+	}
+	defer viewRows.Close()
+
+	// Build view definitions map
+	viewDefs := make(map[string]string)
+	for viewRows.Next() {
+		var name, asSelect string
+		if err := viewRows.Scan(&name, &asSelect); err != nil {
+			return "", err
+		}
+		viewDefs[name] = asSelect
+	}
+
+	// Format schema as readable text
+	var sb strings.Builder
+	currentTable := ""
+	for _, col := range columns {
+		if col.Table != currentTable {
+			if currentTable != "" {
+				if def, ok := viewDefs[currentTable]; ok {
+					sb.WriteString("  Definition: " + def + "\n")
+				}
+				sb.WriteString("\n")
+			}
+			currentTable = col.Table
+			if _, isView := viewDefs[col.Table]; isView {
+				sb.WriteString(col.Table + " (VIEW):\n")
+			} else {
+				sb.WriteString(col.Table + ":\n")
+			}
+		}
+		sb.WriteString("  - " + col.Name + " (" + col.Type + ")\n")
+	}
+	if def, ok := viewDefs[currentTable]; ok {
+		sb.WriteString("  Definition: " + def + "\n")
+	}
+
+	return sb.String(), nil
+}

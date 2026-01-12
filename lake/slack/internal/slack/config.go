@@ -89,10 +89,10 @@ func LoadFromEnv(modeFlag, httpAddrFlag, metricsAddrFlag string, verbose, enable
 		return nil, fmt.Errorf("ANTHROPIC_API_KEY is required")
 	}
 
-	// Load ClickHouse configuration
-	cfg.ClickhouseAddr = os.Getenv("CLICKHOUSE_ADDR_HTTP")
+	// Load ClickHouse configuration (native TCP protocol)
+	cfg.ClickhouseAddr = os.Getenv("CLICKHOUSE_ADDR_TCP")
 	if cfg.ClickhouseAddr == "" {
-		return nil, fmt.Errorf("CLICKHOUSE_ADDR_HTTP is required (use --clickhouse-addr flag or CLICKHOUSE_ADDR_HTTP env var)")
+		return nil, fmt.Errorf("CLICKHOUSE_ADDR_TCP is required (use --clickhouse-addr flag or CLICKHOUSE_ADDR_TCP env var)")
 	}
 	cfg.ClickhouseDatabase = os.Getenv("CLICKHOUSE_DATABASE")
 	if cfg.ClickhouseDatabase == "" {

@@ -1,0 +1,17 @@
+<clickhouse>
+  <remote_servers>
+    <lake>
+      <shard>
+        <replica>
+          <host>clickhouse</host>
+          <port>9000</port>
+        </replica>
+      </shard>
+    </lake>
+  </remote_servers>
+
+  <macros>
+    <shard>01</shard>
+    <replica>01</replica>
+  </macros>
+</clickhouse>

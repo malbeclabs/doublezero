@@ -32,13 +32,16 @@ func New(ctx context.Context, cfg Config) (*Indexer, error) {
 		return nil, err
 	}
 
-	// Run ClickHouse migrations to ensure tables exist
-	conn, err := cfg.ClickHouse.Conn(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get ClickHouse connection for migrations: %w", err)
-	}
-	if err := clickhouse.RunMigrations(ctx, cfg.Logger, conn); err != nil {
-		return nil, fmt.Errorf("failed to run ClickHouse migrations: %w", err)
+	if cfg.MigrationsEnable {
+		// Run ClickHouse migrations to ensure tables exist
+		conn, err := cfg.ClickHouse.Conn(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get ClickHouse connection for migrations: %w", err)
+		}
+		if err := clickhouse.RunMigrations(ctx, cfg.Logger, conn); err != nil {
+			return nil, fmt.Errorf("failed to run ClickHouse migrations: %w", err)
+		}
+		cfg.Logger.Info("ClickHouse migrations completed")
 	}
 
 	// Initialize GeoIP store

@@ -3,7 +3,9 @@
 -- by selecting the latest non-deleted row per entity from the history table
 
 -- dz_contributors_current
-CREATE VIEW IF NOT EXISTS dz_contributors_current AS
+CREATE VIEW IF NOT EXISTS dz_contributors_current
+ON CLUSTER lake
+AS
 WITH ranked AS (
     SELECT
         *,
@@ -23,7 +25,9 @@ FROM ranked
 WHERE rn = 1 AND is_deleted = 0;
 
 -- dz_devices_current
-CREATE VIEW IF NOT EXISTS dz_devices_current AS
+CREATE VIEW IF NOT EXISTS dz_devices_current
+ON CLUSTER lake
+AS
 WITH ranked AS (
     SELECT
         *,
@@ -48,7 +52,9 @@ FROM ranked
 WHERE rn = 1 AND is_deleted = 0;
 
 -- dz_users_current
-CREATE VIEW IF NOT EXISTS dz_users_current AS
+CREATE VIEW IF NOT EXISTS dz_users_current
+ON CLUSTER lake
+AS
 WITH ranked AS (
     SELECT
         *,
@@ -73,7 +79,9 @@ FROM ranked
 WHERE rn = 1 AND is_deleted = 0;
 
 -- dz_metros_current
-CREATE VIEW IF NOT EXISTS dz_metros_current AS
+CREATE VIEW IF NOT EXISTS dz_metros_current
+ON CLUSTER lake
+AS
 WITH ranked AS (
     SELECT
         *,
@@ -95,7 +103,9 @@ FROM ranked
 WHERE rn = 1 AND is_deleted = 0;
 
 -- dz_links_current
-CREATE VIEW IF NOT EXISTS dz_links_current AS
+CREATE VIEW IF NOT EXISTS dz_links_current
+ON CLUSTER lake
+AS
 WITH ranked AS (
     SELECT
         *,
@@ -126,7 +136,9 @@ FROM ranked
 WHERE rn = 1 AND is_deleted = 0;
 
 -- geoip_records_current
-CREATE VIEW IF NOT EXISTS geoip_records_current AS
+CREATE VIEW IF NOT EXISTS geoip_records_current
+ON CLUSTER lake
+AS
 WITH ranked AS (
     SELECT
         *,
@@ -160,7 +172,9 @@ FROM ranked
 WHERE rn = 1 AND is_deleted = 0;
 
 -- solana_leader_schedule_current
-CREATE VIEW IF NOT EXISTS solana_leader_schedule_current AS
+CREATE VIEW IF NOT EXISTS solana_leader_schedule_current
+ON CLUSTER lake
+AS
 WITH ranked AS (
     SELECT
         *,
@@ -181,7 +195,9 @@ FROM ranked
 WHERE rn = 1 AND is_deleted = 0;
 
 -- solana_vote_accounts_current
-CREATE VIEW IF NOT EXISTS solana_vote_accounts_current AS
+CREATE VIEW IF NOT EXISTS solana_vote_accounts_current
+ON CLUSTER lake
+AS
 WITH ranked AS (
     SELECT
         *,
@@ -204,7 +220,9 @@ FROM ranked
 WHERE rn = 1 AND is_deleted = 0;
 
 -- solana_gossip_nodes_current
-CREATE VIEW IF NOT EXISTS solana_gossip_nodes_current AS
+CREATE VIEW IF NOT EXISTS solana_gossip_nodes_current
+ON CLUSTER lake
+AS
 WITH ranked AS (
     SELECT
         *,

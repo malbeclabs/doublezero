@@ -17,9 +17,10 @@ import (
 )
 
 type Config struct {
-	Logger     *slog.Logger
-	Clock      clockwork.Clock
-	ClickHouse clickhouse.Client
+	Logger           *slog.Logger
+	Clock            clockwork.Clock
+	ClickHouse       clickhouse.Client
+	MigrationsEnable bool
 
 	RefreshInterval time.Duration
 	MaxConcurrency  int

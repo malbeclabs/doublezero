@@ -67,6 +67,7 @@ func run() error {
 	enablePprofFlag := flag.Bool("enable-pprof", false, "enable pprof server")
 	metricsAddrFlag := flag.String("metrics-addr", defaultMetricsAddr, "Address to listen on for prometheus metrics")
 	listenAddrFlag := flag.String("listen-addr", defaultListenAddr, "HTTP server listen address")
+	migrationsEnableFlag := flag.Bool("migrations-enable", false, "enable ClickHouse migrations on startup")
 
 	// ClickHouse configuration
 	clickhouseAddrFlag := flag.String("clickhouse-addr", "", "ClickHouse server address (e.g., localhost:9000, or set CLICKHOUSE_ADDR_TCP env var)")
@@ -242,9 +243,10 @@ func run() error {
 		ReadHeaderTimeout: 30 * time.Second,
 		ShutdownTimeout:   10 * time.Second,
 		IndexerConfig: indexer.Config{
-			Logger:     log,
-			Clock:      clockwork.NewRealClock(),
-			ClickHouse: clickhouseDB,
+			Logger:           log,
+			Clock:            clockwork.NewRealClock(),
+			ClickHouse:       clickhouseDB,
+			MigrationsEnable: *migrationsEnableFlag,
 
 			RefreshInterval: *refreshIntervalFlag,
 			MaxConcurrency:  *maxConcurrencyFlag,

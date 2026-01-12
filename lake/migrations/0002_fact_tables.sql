@@ -3,7 +3,9 @@
 -- These are append-only time-series tables
 
 -- Device interface counters
-CREATE TABLE IF NOT EXISTS fact_dz_device_interface_counters (
+CREATE TABLE IF NOT EXISTS fact_dz_device_interface_counters
+ON CLUSTER lake
+(
     event_ts DateTime64(3),
     ingested_at DateTime64(3),
     device_pk String,
@@ -47,12 +49,19 @@ CREATE TABLE IF NOT EXISTS fact_dz_device_interface_counters (
     out_pkts_delta Nullable(Int64),
     out_unicast_pkts_delta Nullable(Int64),
     delta_duration Nullable(Float64)
-) ENGINE = ReplacingMergeTree(ingested_at)
+)
+ENGINE = ReplicatedReplacingMergeTree(
+  '/clickhouse/tables/{shard}/lake/fact_dz_device_interface_counters',
+  '{replica}',
+  ingested_at
+)
 PARTITION BY toYYYYMM(event_ts)
 ORDER BY (event_ts, device_pk, intf);
 
 -- Device link latency samples
-CREATE TABLE IF NOT EXISTS fact_dz_device_link_latency (
+CREATE TABLE IF NOT EXISTS fact_dz_device_link_latency
+ON CLUSTER lake
+(
     event_ts DateTime64(3),
     ingested_at DateTime64(3),
     epoch Int64,
@@ -63,12 +72,19 @@ CREATE TABLE IF NOT EXISTS fact_dz_device_link_latency (
     rtt_us Int64,
     loss Bool,
     ipdv_us Nullable(Int64)
-) ENGINE = ReplacingMergeTree(ingested_at)
+)
+ENGINE = ReplicatedReplacingMergeTree(
+  '/clickhouse/tables/{shard}/lake/fact_dz_device_link_latency',
+  '{replica}',
+  ingested_at
+)
 PARTITION BY toYYYYMM(event_ts)
 ORDER BY (event_ts, origin_device_pk, target_device_pk, link_pk, epoch, sample_index);
 
 -- Internet metro latency samples
-CREATE TABLE IF NOT EXISTS fact_dz_internet_metro_latency (
+CREATE TABLE IF NOT EXISTS fact_dz_internet_metro_latency
+ON CLUSTER lake
+(
     event_ts DateTime64(3),
     ingested_at DateTime64(3),
     epoch Int64,
@@ -78,12 +94,19 @@ CREATE TABLE IF NOT EXISTS fact_dz_internet_metro_latency (
     data_provider String,
     rtt_us Int64,
     ipdv_us Nullable(Int64)
-) ENGINE = ReplacingMergeTree(ingested_at)
+)
+ENGINE = ReplicatedReplacingMergeTree(
+  '/clickhouse/tables/{shard}/lake/fact_dz_internet_metro_latency',
+  '{replica}',
+  ingested_at
+)
 PARTITION BY toYYYYMM(event_ts)
 ORDER BY (event_ts, origin_metro_pk, target_metro_pk, data_provider, epoch, sample_index);
 
 -- Solana vote account activity
-CREATE TABLE IF NOT EXISTS fact_solana_vote_account_activity (
+CREATE TABLE IF NOT EXISTS fact_solana_vote_account_activity
+ON CLUSTER lake
+(
     event_ts DateTime64(3),
     ingested_at DateTime64(3),
     vote_account_pubkey String,
@@ -101,18 +124,30 @@ CREATE TABLE IF NOT EXISTS fact_solana_vote_account_activity (
     activated_stake_sol Nullable(Float64),
     commission Nullable(Int32),
     collector_run_id String
-) ENGINE = ReplacingMergeTree(ingested_at)
+)
+ENGINE = ReplicatedReplacingMergeTree(
+  '/clickhouse/tables/{shard}/lake/fact_solana_vote_account_activity',
+  '{replica}',
+  ingested_at
+)
 PARTITION BY toYYYYMM(event_ts)
 ORDER BY (event_ts, vote_account_pubkey);
 
 -- Solana block production
-CREATE TABLE IF NOT EXISTS fact_solana_block_production (
+CREATE TABLE IF NOT EXISTS fact_solana_block_production
+ON CLUSTER lake
+(
     epoch Int32,
     event_ts DateTime64(3),
     ingested_at DateTime64(3),
     leader_identity_pubkey String,
     leader_slots_assigned_cum Int64,
     blocks_produced_cum Int64
-) ENGINE = ReplacingMergeTree(ingested_at)
+)
+ENGINE = ReplicatedReplacingMergeTree(
+  '/clickhouse/tables/{shard}/lake/fact_solana_block_production',
+  '{replica}',
+  ingested_at
+)
 PARTITION BY toYYYYMM(event_ts)
 ORDER BY (event_ts, epoch, leader_identity_pubkey);

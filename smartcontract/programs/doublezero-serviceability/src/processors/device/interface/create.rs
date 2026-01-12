@@ -29,6 +29,7 @@ pub struct DeviceInterfaceCreateArgs {
     pub name: String,
     pub loopback_type: LoopbackType,
     pub vlan_id: u16,
+    pub ip_net: Option<NetworkV4>,
     pub user_tunnel_endpoint: bool,
     pub interface_cyoa: InterfaceCYOA,
     pub interface_dia: InterfaceDIA,
@@ -115,7 +116,7 @@ pub fn process_create_device_interface(
             mtu: value.mtu,
             routing_mode: value.routing_mode,
             vlan_id: value.vlan_id,
-            ip_net: NetworkV4::default(),
+            ip_net: value.ip_net.unwrap_or_default(),
             node_segment_idx: 0,
             user_tunnel_endpoint: value.user_tunnel_endpoint,
         }

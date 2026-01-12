@@ -8,11 +8,10 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 use std::{fmt, io::Cursor};
 
-const RESOURCE_EXTENSION_HEADER_SIZE: usize = 76;
-const RESOURCE_EXTENSION_PADDING: usize = 4;
-const RESOURCE_EXTENSION_BITMAP_OFFSET: usize =
-    RESOURCE_EXTENSION_HEADER_SIZE + RESOURCE_EXTENSION_PADDING;
-
+const _RESOURCE_EXTENSION_HEADER_SIZE_ID_ALLOCATOR: usize = 83;
+const RESOURCE_EXTENSION_HEADER_SIZE_IP_ALLOCATOR: usize = 88;
+const RESOURCE_EXTENSION_HEADER_SIZE: usize = RESOURCE_EXTENSION_HEADER_SIZE_IP_ALLOCATOR;
+const RESOURCE_EXTENSION_BITMAP_OFFSET: usize = RESOURCE_EXTENSION_HEADER_SIZE.div_ceil(8) * 8; // Align to 8 bytes
 #[repr(u8)]
 #[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -34,7 +33,7 @@ pub struct ResourceExtensionOwned {
     pub owner: Pubkey,             // 32
     pub bump_seed: u8,             // 1
     pub associated_with: Pubkey,   // 32
-    pub allocator: Allocator,      // 9
+    pub allocator: Allocator,      // Variable
     pub storage: Vec<u8>,          // Variable
 }
 
@@ -213,11 +212,11 @@ impl<'a> ResourceExtensionBorrowed<'a> {
                     .map_err(|_| DoubleZeroError::AllocationFailed)?;
             }
             Allocator::Id(id_allocator) => {
-                let &IdOrIp::Id(id) = value else {
+                let IdOrIp::Id(id) = value else {
                     return Err(DoubleZeroError::InvalidArgument);
                 };
                 id_allocator
-                    .allocate_specific(self.storage, id)
+                    .allocate_specific(self.storage, *id)
                     .map_err(|_| DoubleZeroError::AllocationFailed)?;
             }
         }
@@ -233,16 +232,16 @@ impl<'a> ResourceExtensionBorrowed<'a> {
                 ip_allocator.deallocate(self.storage, ip)
             }
             Allocator::Id(id_allocator) => {
-                let &IdOrIp::Id(id) = value else {
+                let IdOrIp::Id(id) = value else {
                     return false;
                 };
-                id_allocator.deallocate(self.storage, id)
+                id_allocator.deallocate(self.storage, *id)
             }
         }
     }
 }
 
-impl<'a> fmt::Display for ResourceExtensionBorrowed<'a> {
+impl fmt::Display for ResourceExtensionBorrowed<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -259,6 +258,7 @@ impl<'a> fmt::Display for ResourceExtensionBorrowed<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use borsh::object_length;
 
     fn construct_resource_extension(buffer: &mut [u8]) -> (Pubkey, Pubkey) {
         let account_pk = Pubkey::new_unique();
@@ -281,6 +281,40 @@ mod tests {
         )
         .unwrap();
         (account_pk, owner_pk)
+    }
+
+    #[test]
+    fn test_resource_extension_header_size_id_allocator() {
+        let empty_vec: Vec<u8> = vec![];
+        let res_ext = ResourceExtensionOwned {
+            account_type: AccountType::ResourceExtension,
+            owner: Pubkey::default(),
+            bump_seed: 0,
+            associated_with: Pubkey::default(),
+            allocator: Allocator::Id(IdAllocator::new((0, 10)).unwrap()),
+            storage: empty_vec.clone(),
+        };
+        assert_eq!(
+            object_length(&res_ext).unwrap(),
+            _RESOURCE_EXTENSION_HEADER_SIZE_ID_ALLOCATOR + empty_vec.len()
+        );
+    }
+
+    #[test]
+    fn test_resource_extension_header_size_ip_allocator() {
+        let empty_vec: Vec<u8> = vec![];
+        let res_ext = ResourceExtensionOwned {
+            account_type: AccountType::ResourceExtension,
+            owner: Pubkey::default(),
+            bump_seed: 0,
+            associated_with: Pubkey::default(),
+            allocator: Allocator::Ip(IpAllocator::new("1.1.1.1/24".parse().unwrap(), 1).unwrap()),
+            storage: empty_vec.clone(),
+        };
+        assert_eq!(
+            object_length(&res_ext).unwrap(),
+            RESOURCE_EXTENSION_HEADER_SIZE_IP_ALLOCATOR + empty_vec.len()
+        );
     }
 
     #[test]
@@ -368,7 +402,7 @@ mod tests {
             storage: vec![],
         };
         let s = format!("{}", ext);
-        assert_eq!(s, "ResourceExtensionOwned { account_type: ResourceExtension, owner: 11111111111111111111111111111111, bump_seed: 1, associated_with: 11111111111111111111111111111111, allocator: Id(IdAllocator { range: (0, 10) }) }, allocated: []");
+        assert_eq!(s, "ResourceExtensionOwned { account_type: ResourceExtension, owner: 11111111111111111111111111111111, bump_seed: 1, associated_with: 11111111111111111111111111111111, allocator: Id(IdAllocator { range: (0, 10), first_free_index: 0 }) }, allocated: []");
     }
 
     #[test]
@@ -385,6 +419,6 @@ mod tests {
             storage: buffer.as_mut_slice(),
         };
         let s = format!("{}", ext);
-        assert_eq!(s, "ResourceExtensionBorrowed { account_type: ResourceExtension, owner: 11111111111111111111111111111111, bump_seed: 1, associated_with: 11111111111111111111111111111111, allocator: Id(IdAllocator { range: (0, 10) }) }");
+        assert_eq!(s, "ResourceExtensionBorrowed { account_type: ResourceExtension, owner: 11111111111111111111111111111111, bump_seed: 1, associated_with: 11111111111111111111111111111111, allocator: Id(IdAllocator { range: (0, 10), first_free_index: 0 }) }");
     }
 }

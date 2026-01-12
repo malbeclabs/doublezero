@@ -31,6 +31,7 @@ type SourceConfig struct {
 
 	DZNetworkEnv string
 	PublicIface  string
+	PublicIP     net.IP
 	DZIface      string
 	Metro        string
 
@@ -78,13 +79,16 @@ func NewSource(ctx context.Context, log *slog.Logger, cfg *SourceConfig) (*Sourc
 		publicIface = defaultInterface.Name
 		log.Info("using default interface as public internet interface", "interface", publicIface)
 	}
-	_, publicIPStr, err := netutil.ResolveInterface(publicIface)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve public interface: %w", err)
-	}
-	publicIP := net.ParseIP(publicIPStr)
+	publicIP := cfg.PublicIP
 	if publicIP == nil {
-		return nil, fmt.Errorf("failed to parse public IP: %s", publicIPStr)
+		_, publicIPStr, err := netutil.ResolveInterface(publicIface)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve public interface: %w", err)
+		}
+		publicIP = net.ParseIP(publicIPStr)
+		if publicIP == nil {
+			return nil, fmt.Errorf("failed to parse public IP: %s", publicIPStr)
+		}
 	}
 	dzIface := cfg.DZIface
 	var user *dz.User

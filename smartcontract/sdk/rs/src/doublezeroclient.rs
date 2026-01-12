@@ -38,6 +38,7 @@ pub trait DoubleZeroClient {
         instruction: DoubleZeroInstruction,
         accounts: Vec<AccountMeta>,
     ) -> eyre::Result<Signature>;
+
     fn get_transactions(&self, pubkey: Pubkey) -> eyre::Result<Vec<DZTransaction>>;
 }
 

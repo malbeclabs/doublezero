@@ -43,6 +43,7 @@ type ShowCommand struct {
 
 type StateToCollectResponse struct {
 	ShowCommands []ShowCommand `json:"show_commands"`
+	Custom       []string      `json:"custom"`
 }
 
 func CanonicalAuthMessage(prefix, method, path, timestamp string, body []byte) string {

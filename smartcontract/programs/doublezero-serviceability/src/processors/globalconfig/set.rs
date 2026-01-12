@@ -2,7 +2,7 @@ use crate::{
     error::DoubleZeroError,
     pda::*,
     seeds::{SEED_CONFIG, SEED_PREFIX},
-    serializer::try_acc_write,
+    serializer::{try_acc_create, try_acc_write},
     state::{
         accounttype::AccountType, exchange::BGP_COMMUNITY_MIN, globalconfig::GlobalConfig,
         globalstate::GlobalState,
@@ -10,7 +10,7 @@ use crate::{
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
-use doublezero_program_common::{create_account::try_create_account, types::NetworkV4};
+use doublezero_program_common::types::NetworkV4;
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -55,7 +55,7 @@ pub fn process_set_globalconfig(
     let pda_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
-    let _system_program = next_account_info(accounts_iter)?;
+    let system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
     msg!("process_set_global_config({:?})", value);
@@ -67,6 +67,11 @@ pub fn process_set_globalconfig(
     assert_eq!(
         globalstate_account.owner, program_id,
         "Invalid GlobalState Account Owner"
+    );
+    assert_eq!(
+        system_program.key,
+        &solana_program::system_program::id(),
+        "Invalid System Program"
     );
 
     let globalstate = GlobalState::try_from(globalstate_account)?;
@@ -100,22 +105,15 @@ pub fn process_set_globalconfig(
         next_bgp_community,
     };
 
-    let account_space = data.size();
-
-    if pda_account.try_borrow_data()?.is_empty() {
-        // Create the index account
-        try_create_account(
-            payer_account.key,      // Account paying for the new account
-            pda_account.key,        // Account to be created
-            pda_account.lamports(), // Current amount of lamports on the new account
-            account_space,          // Size in bytes to allocate for the data field
-            program_id,             // Set program owner to our program
-            accounts,
+    if pda_account.data_is_empty() {
+        try_acc_create(
+            &data,
+            pda_account,
+            payer_account,
+            system_program,
+            program_id,
             &[SEED_PREFIX, SEED_CONFIG, &[bump_seed]],
         )?;
-
-        let mut account_data = &mut pda_account.data.borrow_mut()[..];
-        data.serialize(&mut account_data).unwrap();
     } else {
         try_acc_write(&data, pda_account, payer_account, accounts)?;
     }

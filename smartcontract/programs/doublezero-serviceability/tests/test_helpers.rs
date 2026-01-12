@@ -231,6 +231,19 @@ pub fn create_transaction(
     accounts: &Vec<AccountMeta>,
     payer: &Keypair,
 ) -> Transaction {
+    create_transaction_with_extra_accounts(program_id, instruction, accounts, payer, &[])
+}
+
+/// Create a transaction with optional extra accounts appended after payer and system_program.
+/// This is useful for instructions that have optional accounts at the end (like ResourceExtension).
+#[allow(dead_code)]
+pub fn create_transaction_with_extra_accounts(
+    program_id: Pubkey,
+    instruction: &DoubleZeroInstruction,
+    accounts: &Vec<AccountMeta>,
+    payer: &Keypair,
+    extra_accounts: &[AccountMeta],
+) -> Transaction {
     Transaction::new_with_payer(
         &[Instruction::new_with_bytes(
             program_id,
@@ -241,6 +254,7 @@ pub fn create_transaction(
                     AccountMeta::new(payer.pubkey(), true),
                     AccountMeta::new(system_program::id(), false),
                 ],
+                extra_accounts.to_vec(),
             ]
             .concat(),
         )],

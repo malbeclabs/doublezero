@@ -3,6 +3,7 @@ export interface TableInfo {
   database: string
   engine: string
   type: 'table' | 'view'
+  columns?: string[]
 }
 
 export interface CatalogResponse {

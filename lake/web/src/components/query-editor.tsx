@@ -1,6 +1,6 @@
 import { useState, useImperativeHandle, forwardRef, useMemo, useRef } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { executeQuery, type QueryResponse } from '@/lib/api'
+import { executeQuery, type QueryResponse, type TableInfo } from '@/lib/api'
 import { Play, Loader2, ChevronDown, ChevronRight, Code } from 'lucide-react'
 import CodeMirror from '@uiw/react-codemirror'
 import { sql } from '@codemirror/lang-sql'
@@ -14,6 +14,7 @@ interface QueryEditorProps {
   onResults: (results: QueryResponse) => void
   onClear: () => void
   onManualRun?: (record: GenerationRecord) => void
+  schema?: TableInfo[]
 }
 
 export interface QueryEditorHandle {
@@ -21,7 +22,7 @@ export interface QueryEditorHandle {
 }
 
 export const QueryEditor = forwardRef<QueryEditorHandle, QueryEditorProps>(
-  ({ query, onQueryChange, onResults, onClear, onManualRun }, ref) => {
+  ({ query, onQueryChange, onResults, onClear, onManualRun, schema }, ref) => {
     const [error, setError] = useState<string | null>(null)
     const [isOpen, setIsOpen] = useState(true)
     const lastRecordedSqlRef = useRef<string>('')
@@ -72,9 +73,19 @@ export const QueryEditor = forwardRef<QueryEditorHandle, QueryEditorProps>(
       },
     }))
 
+    // Build schema config for SQL autocomplete
+    const sqlSchema = useMemo(() => {
+      if (!schema) return undefined
+      const schemaObj: Record<string, string[]> = {}
+      for (const table of schema) {
+        schemaObj[table.name] = table.columns ?? []
+      }
+      return schemaObj
+    }, [schema])
+
     // Create stable keymap extension that uses refs
     const extensions = useMemo(() => [
-      sql(),
+      sql({ schema: sqlSchema }),
       Prec.highest(keymap.of([
         {
           key: 'Mod-Enter',
@@ -85,7 +96,7 @@ export const QueryEditor = forwardRef<QueryEditorHandle, QueryEditorProps>(
           },
         },
       ])),
-    ], [])
+    ], [sqlSchema])
 
     return (
       <div className="border bg-grey-10">

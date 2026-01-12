@@ -11,10 +11,11 @@ import (
 )
 
 type TableInfo struct {
-	Name     string `json:"name"`
-	Database string `json:"database"`
-	Engine   string `json:"engine"`
-	Type     string `json:"type"`
+	Name     string   `json:"name"`
+	Database string   `json:"database"`
+	Engine   string   `json:"engine"`
+	Type     string   `json:"type"`
+	Columns  []string `json:"columns,omitempty"`
 }
 
 type CatalogResponse struct {
@@ -68,6 +69,43 @@ func GetCatalog(w http.ResponseWriter, r *http.Request) {
 	}
 
 	metrics.RecordClickHouseQuery(duration, nil)
+
+	// Fetch columns for each table
+	colStart := time.Now()
+	colRows, err := config.DB.Query(ctx, `
+		SELECT table, name
+		FROM system.columns
+		WHERE database = $1
+		ORDER BY table, position
+	`, config.Database())
+
+	colDuration := time.Since(colStart)
+	if err != nil {
+		metrics.RecordClickHouseQuery(colDuration, err)
+		// Non-fatal: return tables without columns
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(CatalogResponse{Tables: tables})
+		return
+	}
+	defer colRows.Close()
+
+	// Build table -> columns map
+	tableColumns := make(map[string][]string)
+	for colRows.Next() {
+		var tableName, colName string
+		if err := colRows.Scan(&tableName, &colName); err != nil {
+			continue
+		}
+		tableColumns[tableName] = append(tableColumns[tableName], colName)
+	}
+	metrics.RecordClickHouseQuery(colDuration, nil)
+
+	// Attach columns to tables
+	for i := range tables {
+		if cols, ok := tableColumns[tables[i].Name]; ok {
+			tables[i].Columns = cols
+		}
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(CatalogResponse{Tables: tables})

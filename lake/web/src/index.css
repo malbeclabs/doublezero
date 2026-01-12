@@ -197,6 +197,53 @@ h1, h2, h3, .headline {
   border-left-color: var(--foreground);
 }
 
+/* CodeMirror selection - needs higher contrast for readability */
+.cm-editor .cm-selectionBackground {
+  background-color: oklch(0.5 0.15 250 / 40%) !important;
+}
+
+.cm-editor.cm-focused .cm-selectionBackground {
+  background-color: oklch(0.5 0.15 250 / 50%) !important;
+}
+
+/* CodeMirror autocomplete dropdown */
+.cm-tooltip-autocomplete {
+  background: var(--popover) !important;
+  border: 1px solid var(--border) !important;
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.cm-tooltip-autocomplete ul {
+  background: transparent !important;
+}
+
+.cm-tooltip-autocomplete ul li {
+  color: var(--foreground) !important;
+  padding: 4px 8px !important;
+}
+
+.cm-tooltip-autocomplete ul li[aria-selected="true"],
+.cm-tooltip-autocomplete ul li:hover {
+  background: var(--muted) !important;
+  color: var(--foreground) !important;
+}
+
+.cm-completionLabel {
+  color: var(--foreground) !important;
+}
+
+.cm-completionMatchedText {
+  color: var(--accent) !important;
+  text-decoration: none !important;
+}
+
+.cm-completionDetail {
+  color: var(--muted-foreground) !important;
+  font-style: italic;
+  margin-left: 8px;
+}
+
 /* Subtle selection */
 ::selection {
   background-color: var(--accent-orange-20);

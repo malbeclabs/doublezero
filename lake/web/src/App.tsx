@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, createContext, useContext } from 'react'
 import { Routes, Route, Navigate, useNavigate, useParams } from 'react-router-dom'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
 import { Catalog } from '@/components/catalog'
 import { PromptInput } from '@/components/prompt-input'
 import { QueryEditor, type QueryEditorHandle } from '@/components/query-editor'
@@ -10,7 +10,7 @@ import { SessionsPage } from '@/components/sessions-page'
 import { ChatSessionsPage } from '@/components/chat-sessions-page'
 import { Chat, type ChatProgress } from '@/components/chat'
 import { Sidebar } from '@/components/sidebar'
-import { generateSessionTitle, generateChatSessionTitle, sendChatMessageStream, recommendVisualization, type SessionQueryInfo } from '@/lib/api'
+import { generateSessionTitle, generateChatSessionTitle, sendChatMessageStream, recommendVisualization, fetchCatalog, type SessionQueryInfo } from '@/lib/api'
 import type { TableInfo, QueryResponse, HistoryMessage, ChatMessage } from '@/lib/api'
 import {
   type QuerySession,
@@ -238,6 +238,12 @@ function QueryEditorView() {
     sendChatMessage,
   } = useAppContext()
 
+  // Fetch catalog for SQL autocomplete (shares cache with Catalog component)
+  const { data: catalogData } = useQuery({
+    queryKey: ['catalog'],
+    queryFn: fetchCatalog,
+  })
+
   // Visualization recommendation state
   const [isRecommending, setIsRecommending] = useState(false)
   const [recommendedConfig, setRecommendedConfig] = useState<{
@@ -427,6 +433,7 @@ function QueryEditorView() {
             onResults={handleResults}
             onClear={handleClear}
             onManualRun={handleManualRun}
+            schema={catalogData?.tables}
           />
           <ResultsView
             results={results}

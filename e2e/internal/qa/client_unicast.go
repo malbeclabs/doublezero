@@ -45,16 +45,22 @@ func (c *Client) ConnectUserUnicast_NoWait(ctx context.Context, deviceCode strin
 }
 
 func (c *Client) ConnectUserUnicast(ctx context.Context, deviceCode string, waitForStatus bool) error {
+	c.doubleZeroIP = nil // Clear stale IP before connecting
+
 	err := c.DisconnectUser(ctx, true, true)
 	if err != nil {
 		return fmt.Errorf("failed to ensure disconnected on host %s: %w", c.Host, err)
 	}
 
-	c.log.Info("Connecting unicast user", "host", c.Host, "device", deviceCode)
+	c.log.Info("Connecting unicast user", "host", c.Host, "device", deviceCode, "allocateAddr", c.AllocateAddr)
 	ctx, cancel := context.WithTimeout(ctx, connectUnicastTimeout)
 	defer cancel()
+	mode := pb.ConnectUnicastRequest_IBRL
+	if c.AllocateAddr {
+		mode = pb.ConnectUnicastRequest_ALLOCATE_ADDR
+	}
 	resp, err := c.grpcClient.ConnectUnicast(ctx, &pb.ConnectUnicastRequest{
-		Mode:       pb.ConnectUnicastRequest_IBRL,
+		Mode:       mode,
 		DeviceCode: deviceCode,
 	})
 	if err != nil {
@@ -80,18 +86,27 @@ type UnicastTestConnectivityResult struct {
 	PacketsReceived uint32
 }
 
-func (c *Client) TestUnicastConnectivity(t *testing.T, ctx context.Context, targetClient *Client) (*UnicastTestConnectivityResult, error) {
-	sourceIP := c.publicIP.To4().String()
-	targetIP := targetClient.publicIP.To4().String()
+func (c *Client) TestUnicastConnectivity(t *testing.T, ctx context.Context, targetClient *Client, srcDevice, dstDevice *Device) (*UnicastTestConnectivityResult, error) {
+	sourceIP := c.DoublezeroOrPublicIP().To4().String()
+	targetIP := targetClient.DoublezeroOrPublicIP().To4().String()
 
-	clientDevice, err := c.getConnectedDevice(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get connected device: %w", err)
+	// If devices not provided, try to get them from status
+	clientDevice := srcDevice
+	if clientDevice == nil {
+		var err error
+		clientDevice, err = c.getConnectedDevice(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get connected device: %w", err)
+		}
 	}
 
-	otherClientDevice, err := targetClient.getConnectedDevice(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get connected device: %w", err)
+	otherClientDevice := dstDevice
+	if otherClientDevice == nil {
+		var err error
+		otherClientDevice, err = targetClient.getConnectedDevice(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get connected device: %w", err)
+		}
 	}
 
 	var iface string
@@ -186,7 +201,15 @@ func (c *Client) TestUnicastConnectivity(t *testing.T, ctx context.Context, targ
 		c.log.Error("Routes disappeared while pinging, failed to ping after all retries", attrs...)
 	}
 
-	return nil, fmt.Errorf("failed to ping after %d retries: %w", unicastPingMaxRetries, lastErr)
+	// Return the last result even on failure so the caller can see what happened
+	var result *UnicastTestConnectivityResult
+	if lastResp != nil {
+		result = &UnicastTestConnectivityResult{
+			PacketsSent:     lastResp.PacketsSent,
+			PacketsReceived: lastResp.PacketsReceived,
+		}
+	}
+	return result, fmt.Errorf("failed to ping after %d retries: %w", unicastPingMaxRetries, lastErr)
 }
 
 func (c *Client) pingOnce(ctx context.Context, targetIP string, sourceIP string, iface string) (*pb.PingResult, error) {

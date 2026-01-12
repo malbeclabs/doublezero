@@ -1,7 +1,7 @@
 use crate::{
     error::{DoubleZeroError, Validate},
     helper::deserialize_vec_with_capacity,
-    state::accounttype::{AccountType, AccountTypeInfo},
+    state::accounttype::AccountType,
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -160,25 +160,6 @@ impl fmt::Display for AccessPass {
     }
 }
 
-impl AccountTypeInfo for AccessPass {
-    fn seed(&self) -> &[u8] {
-        crate::seeds::SEED_ACCESS_PASS
-    }
-    fn size(&self) -> usize {
-        // This operation is safe because we will never overflow usize.
-        borsh::object_length(self).unwrap()
-    }
-    fn bump_seed(&self) -> u8 {
-        self.bump_seed
-    }
-    fn index(&self) -> u128 {
-        0 // AccessPass does not have an index like other accounts
-    }
-    fn owner(&self) -> Pubkey {
-        self.owner
-    }
-}
-
 impl TryFrom<&[u8]> for AccessPass {
     type Error = ProgramError;
 
@@ -221,13 +202,6 @@ impl TryFrom<&AccountInfo<'_>> for AccessPass {
 }
 
 impl AccessPass {
-    pub fn try_serialize(&self, account: &AccountInfo) -> ProgramResult {
-        let mut data = &mut account.data.borrow_mut()[..];
-        self.serialize(&mut data)?;
-
-        Ok(())
-    }
-
     pub fn update_status(&mut self) -> ProgramResult {
         let clock = Clock::get()?;
         let mut current_epoch = clock.epoch;
@@ -318,7 +292,10 @@ mod tests {
         val.validate().unwrap();
         val2.validate().unwrap();
 
-        assert_eq!(val.size(), val2.size());
+        assert_eq!(
+            borsh::object_length(&val).unwrap(),
+            borsh::object_length(&val2).unwrap()
+        );
         assert_eq!(val.owner, val2.owner);
         assert_eq!(val.bump_seed, val2.bump_seed);
         assert_eq!(val.accesspass_type, val2.accesspass_type);
@@ -328,7 +305,11 @@ mod tests {
         assert_eq!(val.connection_count, val2.connection_count);
         assert_eq!(val.status, val2.status);
         assert_eq!(val.flags, val2.flags);
-        assert_eq!(data.len(), val.size(), "Invalid Size");
+        assert_eq!(
+            data.len(),
+            borsh::object_length(&val).unwrap(),
+            "Invalid Size"
+        );
     }
 
     #[test]
@@ -355,8 +336,8 @@ mod tests {
         val.validate().unwrap();
         val2.validate().unwrap();
 
-        assert_eq!(val.size(), len, "Invalid val.size()");
-        assert_eq!(len, val2.size(), "Invalid val2.size() {val2}");
+        assert_eq!(borsh::object_length(&val).unwrap(), len, "Invalid Size");
+        assert_eq!(len, borsh::object_length(&val2).unwrap(), "Invalid Size");
         assert_eq!(val.owner, val2.owner);
         assert_eq!(val.bump_seed, val2.bump_seed);
         assert_eq!(val.accesspass_type, val2.accesspass_type);
@@ -409,8 +390,8 @@ mod tests {
         val.validate().unwrap();
         val2.validate().unwrap();
 
-        assert_eq!(val.size(), len, "Invalid val.size()");
-        assert_eq!(len, val2.size(), "Invalid val2.size() {val2}");
+        assert_eq!(borsh::object_length(&val).unwrap(), len, "Invalid Size");
+        assert_eq!(len, borsh::object_length(&val2).unwrap(), "Invalid Size");
         assert_eq!(val.owner, val2.owner);
         assert_eq!(val.bump_seed, val2.bump_seed);
         assert_eq!(val.accesspass_type, val2.accesspass_type);

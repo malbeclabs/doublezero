@@ -1,10 +1,9 @@
 use crate::{
     error::{DoubleZeroError, Validate},
     helper::{deserialize_vec_with_capacity, is_global},
-    seeds::SEED_USER,
     state::{
         accesspass::{AccessPass, AccessPassStatus, AccessPassType},
-        accounttype::{AccountType, AccountTypeInfo},
+        accounttype::AccountType,
     },
 };
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -224,40 +223,6 @@ impl fmt::Display for User {
     }
 }
 
-impl AccountTypeInfo for User {
-    fn seed(&self) -> &[u8] {
-        SEED_USER
-    }
-    fn size(&self) -> usize {
-        1 + 32
-            + 16
-            + 1
-            + 1
-            + 32
-            + 32
-            + 1
-            + 4
-            + 4
-            + 2
-            + 5
-            + 1
-            + 4
-            + self.publishers.len() * 32
-            + 4
-            + self.subscribers.len() * 32
-            + 32
-    }
-    fn index(&self) -> u128 {
-        self.index
-    }
-    fn bump_seed(&self) -> u8 {
-        self.bump_seed
-    }
-    fn owner(&self) -> Pubkey {
-        self.owner
-    }
-}
-
 impl TryFrom<&[u8]> for User {
     type Error = ProgramError;
 
@@ -340,12 +305,6 @@ impl Validate for User {
 }
 
 impl User {
-    pub fn try_serialize(&self, account: &AccountInfo) -> ProgramResult {
-        let mut data = &mut account.data.borrow_mut()[..];
-        self.serialize(&mut data)?;
-
-        Ok(())
-    }
     pub fn get_multicast_groups(&self) -> Vec<Pubkey> {
         let mut groups: Vec<Pubkey> = vec![];
 
@@ -448,7 +407,10 @@ mod tests {
         val.validate().unwrap();
         val2.validate().unwrap();
 
-        assert_eq!(val.size(), val2.size());
+        assert_eq!(
+            borsh::object_length(&val).unwrap(),
+            borsh::object_length(&val2).unwrap()
+        );
         assert_eq!(val.owner, val2.owner);
         assert_eq!(val.device_pk, val2.device_pk);
         assert_eq!(val.dz_ip, val2.dz_ip);
@@ -457,7 +419,11 @@ mod tests {
         assert_eq!(val.subscribers, val2.subscribers);
         assert_eq!(val.publishers, val2.publishers);
         assert_eq!(val.validator_pubkey, val2.validator_pubkey);
-        assert_eq!(data.len(), val.size(), "Invalid Size");
+        assert_eq!(
+            data.len(),
+            borsh::object_length(&val).unwrap(),
+            "Invalid Size"
+        );
     }
 
     #[test]

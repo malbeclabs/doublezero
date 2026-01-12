@@ -24,6 +24,7 @@ const (
 	MetricErrorTypeGetSwapRate       = "get_swap_rate"
 	MetricErrorTypeParseSOLPriceUSD  = "parse_sol_price_usd"
 	MetricErrorTypeParseTwoZPriceUSD = "parse_twoz_price_usd"
+	MetricErrorTypeMalformedSwapRate = "malformed_swap_rate"
 )
 
 var (

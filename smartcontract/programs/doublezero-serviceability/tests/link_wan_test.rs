@@ -203,6 +203,7 @@ async fn test_wan_link() {
                 loopback_type: LoopbackType::None,
                 interface_cyoa: InterfaceCYOA::None,
                 bandwidth: 0,
+                ip_net: None,
                 cir: 0,
                 mtu: 1500,
                 routing_mode: RoutingMode::Static,
@@ -330,6 +331,7 @@ async fn test_wan_link() {
                 loopback_type: LoopbackType::None,
                 interface_cyoa: InterfaceCYOA::None,
                 bandwidth: 0,
+                ip_net: None,
                 cir: 0,
                 mtu: 1500,
                 routing_mode: RoutingMode::Static,
@@ -642,6 +644,7 @@ async fn test_wan_link() {
             jitter_ns: Some(100000),
             delay_override_ns: Some(0),
             status: None,
+            desired_status: None,
         }),
         vec![
             AccountMeta::new(tunnel_pubkey, false),

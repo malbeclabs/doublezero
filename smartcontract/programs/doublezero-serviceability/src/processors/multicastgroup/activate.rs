@@ -1,5 +1,11 @@
 use crate::{
-    error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::multicastgroup::*,
+    error::DoubleZeroError,
+    pda::get_resource_extension_pda,
+    resource::{IdOrIp, ResourceType},
+    serializer::try_acc_write,
+    state::{
+        globalstate::GlobalState, multicastgroup::*, resource_extension::ResourceExtensionBorrowed,
+    },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -32,8 +38,14 @@ pub fn process_activate_multicastgroup(
 
     let multicastgroup_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
+    // Optional: ResourceExtension account for on-chain IP allocation (before payer)
+    let resource_extension_account = if accounts.len() == 5 {
+        Some(next_account_info(accounts_iter)?)
+    } else {
+        None
+    };
     let payer_account = next_account_info(accounts_iter)?;
-    let system_program = next_account_info(accounts_iter)?;
+    let _system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
     msg!("process_activate_multicastgroup({:?})", value);
@@ -56,8 +68,12 @@ pub fn process_activate_multicastgroup(
         "PDA Account is not writable"
     );
 
-    let globalstate = globalstate_get(globalstate_account)?;
-    if globalstate.activator_authority_pk != *payer_account.key {
+    let globalstate = GlobalState::try_from(globalstate_account)?;
+
+    // Authorization: allow activator_authority_pk OR foundation_allowlist
+    let is_activator = globalstate.activator_authority_pk == *payer_account.key;
+    let is_foundation = globalstate.foundation_allowlist.contains(payer_account.key);
+    if !is_activator && !is_foundation {
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
@@ -67,14 +83,56 @@ pub fn process_activate_multicastgroup(
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
-    multicastgroup.multicast_ip = value.multicast_ip;
+    // Allocate multicast IP from ResourceExtension or use provided value
+    if let Some(resource_ext) = resource_extension_account {
+        // Validate ResourceExtension account
+        assert_eq!(
+            resource_ext.owner, program_id,
+            "Invalid ResourceExtension Account Owner"
+        );
+        assert!(
+            resource_ext.is_writable,
+            "ResourceExtension Account is not writable"
+        );
+        assert!(
+            !resource_ext.data.borrow().is_empty(),
+            "ResourceExtension Account is empty"
+        );
+
+        // Validate PDA matches expected MulticastGroupBlock PDA
+        let (expected_pda, _, _) =
+            get_resource_extension_pda(program_id, ResourceType::MulticastGroupBlock);
+        assert_eq!(
+            resource_ext.key, &expected_pda,
+            "Invalid ResourceExtension PDA for MulticastGroupBlock"
+        );
+
+        // Allocate from ResourceExtension bitmap
+        let mut buffer = resource_ext.data.borrow_mut();
+        let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
+
+        let allocated = resource.allocate()?;
+
+        match allocated {
+            IdOrIp::Ip(network) => {
+                multicastgroup.multicast_ip = network.ip();
+            }
+            IdOrIp::Id(_) => {
+                return Err(DoubleZeroError::InvalidArgument.into());
+            }
+        }
+    } else {
+        // Legacy behavior: use provided multicast_ip
+        multicastgroup.multicast_ip = value.multicast_ip;
+    }
+
     multicastgroup.status = MulticastGroupStatus::Activated;
 
-    account_write(
-        multicastgroup_account,
+    try_acc_write(
         &multicastgroup,
+        multicastgroup_account,
         payer_account,
-        system_program,
+        accounts,
     )?;
 
     msg!("Activated: {:?}", multicastgroup);

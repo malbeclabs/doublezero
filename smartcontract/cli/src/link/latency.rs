@@ -188,6 +188,8 @@ mod tests {
             side_a_iface_name: "eth0".to_string(),
             side_z_iface_name: "eth1".to_string(),
             delay_override_ns: 0,
+            link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
+            desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
         }
     }
 

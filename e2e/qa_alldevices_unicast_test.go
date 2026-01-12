@@ -271,12 +271,14 @@ func connectClientsAndWaitForRoutes(
 	batch map[string]*qa.BatchAssignment,
 ) []*qa.Client {
 	// Connect only clients whose device changed from previous batch
+	// Note: errors here must increment FailedTests so Success() returns false
 	for _, c := range clientsToConnect {
 		device := batch[c.Host].Device
 		err := c.ConnectUserUnicast_NoWait(ctx, device.Code)
 		if err != nil {
 			log.Error("Failed to start connection", "client", c.Host, "device", device.Code, "error", err)
 			t.Errorf("failed to connect client %s to device %s: %v", c.Host, device.Code, err)
+			batch[c.Host].FailedTests++
 		}
 	}
 
@@ -286,6 +288,7 @@ func connectClientsAndWaitForRoutes(
 		if err != nil {
 			log.Error("Client failed to reach status up", "client", c.Host, "error", err)
 			t.Errorf("failed to wait for status for client %s: %v", c.Host, err)
+			batch[c.Host].FailedTests++
 		}
 	}
 
@@ -315,6 +318,7 @@ func connectClientsAndWaitForRoutes(
 		if err := c.WaitForRoutes(ctx, targets); err != nil {
 			log.Error("Failed to wait for routes", "client", c.Host, "error", err)
 			t.Errorf("failed to wait for routes on client %s: %v", c.Host, err)
+			batch[c.Host].FailedTests++
 		}
 	}
 

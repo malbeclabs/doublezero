@@ -863,9 +863,14 @@ func TestTelemetry_StateIngest_Handler_StateToCollect_UsesDefaultShowCommandsAnd
 	require.Len(t, resp.ShowCommands, 2)
 	require.Len(t, resp.Custom, 1)
 
-	require.Equal(t, []types.ShowCommand{
-		{Kind: "snmp-mib-ifmib-ifindex", Command: "show snmp mib ifmib ifindex"},
-		{Kind: "isis-database-detail", Command: "show isis database detail"},
-	}, resp.ShowCommands)
+	// Convert to map for order-independent comparison (map iteration is non-deterministic)
+	respMap := make(map[string]string)
+	for _, sc := range resp.ShowCommands {
+		respMap[sc.Kind] = sc.Command
+	}
+	require.Equal(t, map[string]string{
+		"snmp-mib-ifmib-ifindex": "show snmp mib ifmib ifindex",
+		"isis-database-detail":   "show isis database detail",
+	}, respMap)
 	require.Equal(t, []string{"bgp-sockets"}, resp.Custom)
 }

@@ -20,11 +20,6 @@ lint:
 
 .PHONY: build
 build:
-	$(MAKE) lint -C doublezero
-	$(MAKE) lint -C doublezerod
-
-.PHONY: build
-build:
 	$(MAKE) build -C doublezero CARGO_FLAGS="$(CARGO_FLAGS)"
 	$(MAKE) build -C doublezerod
 

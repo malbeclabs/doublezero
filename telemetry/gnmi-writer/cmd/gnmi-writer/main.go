@@ -284,7 +284,7 @@ func loadConfig() (Config, error) {
 	flag.StringVar(&cfg.ClickhouseAddr, "clickhouse-addr", getenv("CLICKHOUSE_ADDR", "localhost:9440"), "clickhouse address (env: CLICKHOUSE_ADDR)")
 	flag.StringVar(&cfg.ClickhouseDB, "clickhouse-db", getenv("CLICKHOUSE_DB", "default"), "clickhouse database (env: CLICKHOUSE_DB)")
 	flag.StringVar(&cfg.ClickhouseUser, "clickhouse-user", getenv("CLICKHOUSE_USER", "default"), "clickhouse username (env: CLICKHOUSE_USER)")
-	flag.StringVar(&cfg.ClickhousePassword, "clickhouse-password", getenv("CLICKHOUSE_PASSWORD", ""), "clickhouse password (env: CLICKHOUSE_PASSWORD)")
+	flag.StringVar(&cfg.ClickhousePassword, "clickhouse-password", getenv("CLICKHOUSE_PASS", ""), "clickhouse password (env: CLICKHOUSE_PASS)")
 	flag.BoolVar(&cfg.ClickhouseTLSDisabled, "clickhouse-tls-disabled", getenv("CLICKHOUSE_TLS_DISABLED", "") == "true", "disable TLS for clickhouse (env: CLICKHOUSE_TLS_DISABLED)")
 
 	flag.Parse()

@@ -74,9 +74,9 @@
   --sidebar-active: oklch(0.18 0 0);
   --sidebar-foreground: var(--foreground);
 
-  /* Additional accent colors - neutral for dark mode */
-  --accent-orange-10: oklch(0.22 0 0);
-  --accent-orange-20: oklch(0.28 0 0);
+  /* Additional accent colors - subtle warmth for dark mode */
+  --accent-orange-10: oklch(0.25 0.02 50);
+  --accent-orange-20: oklch(0.38 0.04 50);
   --accent-orange-50: oklch(0.8502 0.0978 57.42);
   --accent-orange-100: oklch(0.65 0.18 31.82);
 

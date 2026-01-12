@@ -316,7 +316,7 @@ func (p *Pipeline) RunWithProgress(ctx context.Context, userQuestion string, his
 		if classification.DirectResponse != "" {
 			result.Answer = classification.DirectResponse
 		} else {
-			result.Answer = "I'm a DoubleZero network and Solana validator data assistant. I can help you with questions about DZ network devices, links, users, performance metrics, and connected Solana validators. What would you like to know?"
+			result.Answer = "I'm a DoubleZero data analyst. I can help you with questions about the DZ network, devices, links, users, connected Solana validators, and performance metrics. What would you like to know?"
 		}
 		notify(Progress{Stage: StageComplete, Classification: classification.Classification})
 		return result, nil
@@ -463,7 +463,7 @@ func (p *Pipeline) RunWithHistory(ctx context.Context, userQuestion string, hist
 		if classification.DirectResponse != "" {
 			result.Answer = classification.DirectResponse
 		} else {
-			result.Answer = "I'm a DoubleZero network and Solana validator data assistant. I can help you with questions about DZ network devices, links, users, performance metrics, and connected Solana validators. What would you like to know?"
+			result.Answer = "I'm a DoubleZero data analyst. I can help you with questions about the DZ network, devices, links, users, connected Solana validators, and performance metrics. What would you like to know?"
 		}
 		return result, nil
 

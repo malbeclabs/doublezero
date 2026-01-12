@@ -259,7 +259,39 @@ func ChatStream(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	// Step 1: Decompose
+	// Pre-step: Classify the question
+	sendEvent("status", map[string]string{"step": "classifying", "message": "Understanding your question..."})
+
+	classification, err := p.ClassifyWithHistory(ctx, req.Message, history)
+	if err != nil {
+		sendEvent("error", map[string]string{"error": internalError("Failed to classify question", err)})
+		return
+	}
+
+	// Handle non-data-analysis classifications
+	switch classification.Classification {
+	case pipeline.ClassificationOutOfScope:
+		answer := classification.DirectResponse
+		if answer == "" {
+			answer = "I'm a DoubleZero data analyst. I can help you with questions about the DZ network, devices, links, users, connected Solana validators, and performance metrics. What would you like to know?"
+		}
+		response := ChatResponse{Answer: answer}
+		sendEvent("done", response)
+		return
+
+	case pipeline.ClassificationConversational:
+		sendEvent("status", map[string]string{"step": "responding", "message": "Preparing response..."})
+		answer, err := p.RespondWithHistory(ctx, req.Message, history)
+		if err != nil {
+			sendEvent("error", map[string]string{"error": internalError("Failed to generate response", err)})
+			return
+		}
+		response := ChatResponse{Answer: answer}
+		sendEvent("done", response)
+		return
+	}
+
+	// Step 1: Decompose (only for data_analysis questions)
 	sendEvent("status", map[string]string{"step": "decomposing", "message": "Breaking down your question..."})
 
 	dataQuestions, err := p.DecomposeWithHistory(ctx, req.Message, history)

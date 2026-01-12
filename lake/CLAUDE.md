@@ -14,9 +14,11 @@ Lake is a data analytics platform for DoubleZero with a Go API backend and React
 
 ## Commands
 
+Run API server from lake as working directory:
+
 ```bash
-cd web && bun run build    # Build frontend (runs tsc first)
-cd api && go run main.go   # Run API server
+cd web && bun run build   # Build frontend (runs tsc first)
+go run ./api/main.go      # Run API server
 ```
 
 ### Agent Evals

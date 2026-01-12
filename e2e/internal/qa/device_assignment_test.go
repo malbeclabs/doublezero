@@ -363,7 +363,7 @@ func TestFilterStatusUpClients(t *testing.T) {
 	clients := []*Client{client1, client2, client3}
 
 	t.Run("filters to clients in batch with status up", func(t *testing.T) {
-		batch := map[string]*BatchAssignment{
+		batch := map[string]*BatchResult{
 			"client1": {Device: dev1},
 			"client2": {Device: dev2},
 			// client3 not in batch
@@ -381,7 +381,7 @@ func TestFilterStatusUpClients(t *testing.T) {
 	})
 
 	t.Run("excludes clients not in batch", func(t *testing.T) {
-		batch := map[string]*BatchAssignment{
+		batch := map[string]*BatchResult{
 			"client1": {Device: dev1},
 			// client2, client3 not in batch
 		}
@@ -402,7 +402,7 @@ func TestFilterStatusUpClients(t *testing.T) {
 	})
 
 	t.Run("excludes clients with status not up", func(t *testing.T) {
-		batch := map[string]*BatchAssignment{
+		batch := map[string]*BatchResult{
 			"client1": {Device: dev1},
 			"client2": {Device: dev2},
 		}
@@ -422,7 +422,7 @@ func TestFilterStatusUpClients(t *testing.T) {
 	})
 
 	t.Run("excludes clients with missing status", func(t *testing.T) {
-		batch := map[string]*BatchAssignment{
+		batch := map[string]*BatchResult{
 			"client1": {Device: dev1},
 			"client2": {Device: dev2},
 		}
@@ -463,7 +463,7 @@ func TestComputeRouteTargets(t *testing.T) {
 	}
 
 	t.Run("returns IPs of clients in different exchanges", func(t *testing.T) {
-		batch := map[string]*BatchAssignment{
+		batch := map[string]*BatchResult{
 			"client1": {Device: dev1}, // ex1
 			"client2": {Device: dev2}, // ex2
 		}
@@ -480,7 +480,7 @@ func TestComputeRouteTargets(t *testing.T) {
 	})
 
 	t.Run("excludes self", func(t *testing.T) {
-		batch := map[string]*BatchAssignment{
+		batch := map[string]*BatchResult{
 			"client1": {Device: dev1},
 			"client2": {Device: dev2},
 		}
@@ -496,7 +496,7 @@ func TestComputeRouteTargets(t *testing.T) {
 	})
 
 	t.Run("excludes clients in same exchange", func(t *testing.T) {
-		batch := map[string]*BatchAssignment{
+		batch := map[string]*BatchResult{
 			"client1": {Device: dev1}, // ex1
 			"client2": {Device: dev2}, // ex2
 			"client3": {Device: dev3}, // ex1 (same as client1)
@@ -514,7 +514,7 @@ func TestComputeRouteTargets(t *testing.T) {
 	})
 
 	t.Run("handles nil IP from getter", func(t *testing.T) {
-		batch := map[string]*BatchAssignment{
+		batch := map[string]*BatchResult{
 			"client1": {Device: dev1},
 			"client2": {Device: dev2},
 		}
@@ -529,7 +529,7 @@ func TestComputeRouteTargets(t *testing.T) {
 	})
 
 	t.Run("returns empty for single client", func(t *testing.T) {
-		batch := map[string]*BatchAssignment{
+		batch := map[string]*BatchResult{
 			"client1": {Device: dev1},
 		}
 		connectedClients := []*Client{client1}

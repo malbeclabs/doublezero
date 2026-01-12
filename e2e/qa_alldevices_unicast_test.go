@@ -268,7 +268,7 @@ func connectClientsAndWaitForRoutes(
 	log *slog.Logger,
 	clientsToConnect []*qa.Client,
 	allClients []*qa.Client,
-	batch map[string]*qa.BatchAssignment,
+	batch map[string]*qa.BatchResult,
 ) []*qa.Client {
 	// Connect only clients whose device changed from previous batch
 	// Note: errors here must increment FailedTests so Success() returns false
@@ -329,7 +329,7 @@ func runConnectivitySubtests(
 	t *testing.T,
 	outerLog *slog.Logger,
 	clients []*qa.Client,
-	batch map[string]*qa.BatchAssignment,
+	batch map[string]*qa.BatchResult,
 	resultsMu *sync.Mutex,
 ) {
 	for _, client := range clients {

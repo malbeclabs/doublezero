@@ -9,18 +9,18 @@ const LatencyThresholdMs = 25
 
 type ClientLatencies map[string]map[string]float64
 
-type BatchAssignment struct {
+type BatchResult struct {
 	Device          *Device
 	PacketsSent     uint32
 	PacketsReceived uint32
 	FailedTests     uint32
 }
 
-func (b *BatchAssignment) Success() bool {
+func (b *BatchResult) Success() bool {
 	return b.FailedTests == 0 && b.PacketsSent > 0 && b.PacketsReceived > 0
 }
 
-type BatchData map[int]map[string]*BatchAssignment
+type BatchData map[int]map[string]*BatchResult
 
 // ClientStatusGetter returns the session status for a client hostname.
 // Used to check if a client needs reconnection.
@@ -70,7 +70,7 @@ func DetermineClientsToConnect(
 
 // FilterStatusUpClients returns clients that are in the batch and have status "up".
 // statuses maps hostname to session status.
-func FilterStatusUpClients(clients []*Client, batch map[string]*BatchAssignment, statuses map[string]string) []*Client {
+func FilterStatusUpClients(clients []*Client, batch map[string]*BatchResult, statuses map[string]string) []*Client {
 	var connected []*Client
 	for _, c := range clients {
 		if _, inBatch := batch[c.Host]; !inBatch {
@@ -86,7 +86,7 @@ func FilterStatusUpClients(clients []*Client, batch map[string]*BatchAssignment,
 
 // ComputeRouteTargets returns the IPs that a client should have routes to.
 // Excludes clients in the same exchange (no intra-exchange routing) and self.
-func ComputeRouteTargets(client *Client, connectedClients []*Client, batch map[string]*BatchAssignment, getIP func(*Client) net.IP) []net.IP {
+func ComputeRouteTargets(client *Client, connectedClients []*Client, batch map[string]*BatchResult, getIP func(*Client) net.IP) []net.IP {
 	clientExchange := batch[client.Host].Device.ExchangeCode
 	var targets []net.IP
 	for _, other := range connectedClients {
@@ -202,9 +202,9 @@ func AssignDevicesToClients(devices []*Device, clients []*Client, clientLatencie
 	// Convert to BatchData
 	batchData := make(BatchData)
 	for batchNum := 0; batchNum < maxBatches; batchNum++ {
-		batchData[batchNum] = make(map[string]*BatchAssignment)
+		batchData[batchNum] = make(map[string]*BatchResult)
 		for clientHost, devices := range clientDevices {
-			batchData[batchNum][clientHost] = &BatchAssignment{Device: devices[batchNum]}
+			batchData[batchNum][clientHost] = &BatchResult{Device: devices[batchNum]}
 		}
 	}
 	return batchData

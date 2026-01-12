@@ -385,31 +385,22 @@ func validateQuery(sql string) string {
 	// Run EXPLAIN on the query to check validity
 	explainQuery := "EXPLAIN " + sql
 
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
 	start := time.Now()
-	resp, err := http.Post(config.ClickHouseBaseURL(), "text/plain", strings.NewReader(explainQuery))
+	rows, err := config.DB.Query(ctx, explainQuery)
 	duration := time.Since(start)
 	if err != nil {
 		metrics.RecordClickHouseQuery(duration, err)
-		return internalError("Failed to connect to database for validation", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		metrics.RecordClickHouseQuery(duration, err)
-		return internalError("Failed to read validation response", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		metrics.RecordClickHouseQuery(duration, fmt.Errorf("status %d: %s", resp.StatusCode, string(body)))
 		// ClickHouse error messages are safe to show and useful for LLM retry
-		errMsg := strings.TrimSpace(string(body))
-		// Truncate long errors
+		errMsg := err.Error()
 		if len(errMsg) > 500 {
 			errMsg = errMsg[:500] + "..."
 		}
 		return errMsg
 	}
+	rows.Close()
 	metrics.RecordClickHouseQuery(duration, nil)
 
 	return "" // Valid query
@@ -536,96 +527,76 @@ Additional rules for the query editor:
 }
 
 func fetchSchema() (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
 	// Fetch columns
-	columnsQuery := fmt.Sprintf(`
+	start := time.Now()
+	rows, err := config.DB.Query(ctx, `
 		SELECT
 			table,
 			name,
 			type
 		FROM system.columns
-		WHERE database = '%s'
-		  AND table NOT LIKE 'stg_%%'
+		WHERE database = $1
+		  AND table NOT LIKE 'stg_%'
 		ORDER BY table, position
-		FORMAT JSON
-	`, config.ClickHouseDatabase)
-
-	start := time.Now()
-	resp, err := http.Get(config.ClickHouseQueryURL(columnsQuery))
+	`, config.Database())
 	duration := time.Since(start)
 	if err != nil {
 		metrics.RecordClickHouseQuery(duration, err)
 		return "", err
 	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		metrics.RecordClickHouseQuery(duration, err)
-		return "", err
-	}
+	defer rows.Close()
 	metrics.RecordClickHouseQuery(duration, nil)
 
-	var columnsResp struct {
-		Data []struct {
-			Table string `json:"table"`
-			Name  string `json:"name"`
-			Type  string `json:"type"`
-		} `json:"data"`
+	type columnInfo struct {
+		Table string
+		Name  string
+		Type  string
 	}
-
-	if err := json.Unmarshal(body, &columnsResp); err != nil {
-		return "", err
+	var columns []columnInfo
+	for rows.Next() {
+		var c columnInfo
+		if err := rows.Scan(&c.Table, &c.Name, &c.Type); err != nil {
+			return "", err
+		}
+		columns = append(columns, c)
 	}
 
 	// Fetch view definitions
-	viewsQuery := fmt.Sprintf(`
+	start = time.Now()
+	viewRows, err := config.DB.Query(ctx, `
 		SELECT
 			name,
 			as_select
 		FROM system.tables
-		WHERE database = '%s'
+		WHERE database = $1
 		  AND engine = 'View'
-		  AND name NOT LIKE 'stg_%%'
-		FORMAT JSON
-	`, config.ClickHouseDatabase)
-
-	start = time.Now()
-	viewsResp, err := http.Get(config.ClickHouseQueryURL(viewsQuery))
+		  AND name NOT LIKE 'stg_%'
+	`, config.Database())
 	duration = time.Since(start)
 	if err != nil {
 		metrics.RecordClickHouseQuery(duration, err)
 		return "", err
 	}
-	defer viewsResp.Body.Close()
-
-	viewsBody, err := io.ReadAll(viewsResp.Body)
-	if err != nil {
-		metrics.RecordClickHouseQuery(duration, err)
-		return "", err
-	}
+	defer viewRows.Close()
 	metrics.RecordClickHouseQuery(duration, nil)
-
-	var viewsData struct {
-		Data []struct {
-			Name     string `json:"name"`
-			AsSelect string `json:"as_select"`
-		} `json:"data"`
-	}
-
-	if err := json.Unmarshal(viewsBody, &viewsData); err != nil {
-		return "", err
-	}
 
 	// Build view definitions map
 	viewDefs := make(map[string]string)
-	for _, v := range viewsData.Data {
-		viewDefs[v.Name] = v.AsSelect
+	for viewRows.Next() {
+		var name, asSelect string
+		if err := viewRows.Scan(&name, &asSelect); err != nil {
+			return "", err
+		}
+		viewDefs[name] = asSelect
 	}
 
 	// Format schema as readable text
 	var sb strings.Builder
 	currentTable := ""
-	for _, col := range columnsResp.Data {
+	for _, col := range columns {
 		if col.Table != currentTable {
 			if currentTable != "" {
 				// Add view definition if this was a view

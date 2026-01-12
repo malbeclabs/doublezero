@@ -1,81 +1,94 @@
 package config
 
 import (
+	"context"
 	"fmt"
 	"log"
-	"net/url"
 	"os"
+	"time"
+
+	"github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 )
 
-var (
-	// ClickHouseURL is the URL for connecting to ClickHouse HTTP interface
-	ClickHouseURL string
-	// ClickHouseDatabase is the database name to query
-	ClickHouseDatabase string
-)
+// DB is the global ClickHouse connection pool
+var DB driver.Conn
 
-// Load initializes configuration from environment variables
+// Config holds the ClickHouse configuration
+type CHConfig struct {
+	Addr     string
+	Database string
+	Username string
+	Password string
+}
+
+// cfg holds the parsed configuration
+var cfg CHConfig
+
+// Database returns the configured database name
+func Database() string {
+	return cfg.Database
+}
+
+// Load initializes configuration from environment variables and creates the connection pool
 func Load() error {
-	addr := os.Getenv("CLICKHOUSE_ADDR_HTTP")
-	if addr == "" {
-		addr = "localhost:8123"
+	cfg.Addr = os.Getenv("CLICKHOUSE_ADDR_TCP")
+	if cfg.Addr == "" {
+		cfg.Addr = "localhost:9000"
 	}
 
-	database := os.Getenv("CLICKHOUSE_DATABASE")
-	if database == "" {
-		database = "default"
+	cfg.Database = os.Getenv("CLICKHOUSE_DATABASE")
+	if cfg.Database == "" {
+		cfg.Database = "default"
 	}
 
-	username := os.Getenv("CLICKHOUSE_USERNAME")
-	password := os.Getenv("CLICKHOUSE_PASSWORD")
-
-	log.Printf("Loading ClickHouse configuration: addr: %s, database: %s, username: %s", addr, database, username)
-
-	// Build the ClickHouse URL
-	u := &url.URL{
-		Scheme: "http",
-		Host:   addr,
+	cfg.Username = os.Getenv("CLICKHOUSE_USERNAME")
+	if cfg.Username == "" {
+		cfg.Username = "default"
 	}
 
-	if username != "" {
-		if password != "" {
-			u.User = url.UserPassword(username, password)
-		} else {
-			u.User = url.User(username)
-		}
+	cfg.Password = os.Getenv("CLICKHOUSE_PASSWORD")
+
+	log.Printf("Connecting to ClickHouse: addr=%s, database=%s, username=%s", cfg.Addr, cfg.Database, cfg.Username)
+
+	// Create connection pool
+	conn, err := clickhouse.Open(&clickhouse.Options{
+		Addr: []string{cfg.Addr},
+		Auth: clickhouse.Auth{
+			Database: cfg.Database,
+			Username: cfg.Username,
+			Password: cfg.Password,
+		},
+		Settings: clickhouse.Settings{
+			"max_execution_time": 60,
+		},
+		DialTimeout:     5 * time.Second,
+		MaxOpenConns:    10,
+		MaxIdleConns:    5,
+		ConnMaxLifetime: time.Hour,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create clickhouse connection: %w", err)
 	}
 
-	q := u.Query()
-	q.Set("database", database)
-	u.RawQuery = q.Encode()
+	// Test the connection
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-	ClickHouseURL = u.String()
-	ClickHouseDatabase = database
+	if err := conn.Ping(ctx); err != nil {
+		return fmt.Errorf("failed to ping clickhouse: %w", err)
+	}
+
+	DB = conn
+	log.Printf("Connected to ClickHouse successfully")
 
 	return nil
 }
 
-// ClickHouseBaseURL returns the base URL with database parameter (for POST requests)
-func ClickHouseBaseURL() string {
-	u, err := url.Parse(ClickHouseURL)
-	if err != nil {
-		return ClickHouseURL
+// Close closes the ClickHouse connection pool
+func Close() error {
+	if DB != nil {
+		return DB.Close()
 	}
-	// Keep only the database parameter for POST requests
-	q := url.Values{}
-	q.Set("database", ClickHouseDatabase)
-	u.RawQuery = q.Encode()
-	return u.String()
-}
-
-// ClickHouseQueryURL returns a URL with the given query appended
-func ClickHouseQueryURL(query string) string {
-	u, err := url.Parse(ClickHouseURL)
-	if err != nil {
-		return fmt.Sprintf("%s&query=%s", ClickHouseURL, url.QueryEscape(query))
-	}
-	q := u.Query()
-	q.Set("query", query)
-	u.RawQuery = q.Encode()
-	return u.String()
+	return nil
 }

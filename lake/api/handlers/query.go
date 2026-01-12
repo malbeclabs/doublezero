@@ -1,10 +1,10 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
-	"fmt"
-	"io"
 	"net/http"
+	"reflect"
 	"strings"
 	"time"
 
@@ -40,83 +40,74 @@ func ExecuteQuery(w http.ResponseWriter, r *http.Request) {
 
 	query := strings.TrimSpace(req.Query)
 	query = strings.TrimSuffix(query, ";")
-	query = strings.TrimSpace(query)
-	if !strings.HasSuffix(strings.ToUpper(query), "FORMAT JSON") {
-		query += " FORMAT JSON"
-	}
 
-	resp, err := http.Post(config.ClickHouseBaseURL(), "text/plain", strings.NewReader(query))
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+
+	rows, err := config.DB.Query(ctx, query)
 	duration := time.Since(start)
 	if err != nil {
 		metrics.RecordClickHouseQuery(duration, err)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(QueryResponse{
-			Error: internalError("Failed to connect to database", err),
+			Error:     err.Error(),
+			ElapsedMs: duration.Milliseconds(),
 		})
 		return
 	}
-	defer resp.Body.Close()
+	defer rows.Close()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
+	// Get column info
+	columnTypes := rows.ColumnTypes()
+	columns := make([]string, len(columnTypes))
+	for i, ct := range columnTypes {
+		columns[i] = ct.Name()
+	}
+
+	// Collect all rows
+	var resultRows [][]any
+	for rows.Next() {
+		// Create properly typed values based on column types
+		values := make([]any, len(columnTypes))
+		for i, ct := range columnTypes {
+			values[i] = reflect.New(ct.ScanType()).Interface()
+		}
+
+		if err := rows.Scan(values...); err != nil {
+			metrics.RecordClickHouseQuery(duration, err)
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(QueryResponse{
+				Error:     err.Error(),
+				ElapsedMs: duration.Milliseconds(),
+			})
+			return
+		}
+
+		// Dereference pointers
+		row := make([]any, len(values))
+		for i, v := range values {
+			row[i] = reflect.ValueOf(v).Elem().Interface()
+		}
+		resultRows = append(resultRows, row)
+	}
+
+	if err := rows.Err(); err != nil {
 		metrics.RecordClickHouseQuery(duration, err)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(QueryResponse{
-			Error: internalError("Failed to read database response", err),
+			Error:     err.Error(),
+			ElapsedMs: duration.Milliseconds(),
 		})
 		return
 	}
 
-	elapsed := duration.Milliseconds()
-
-	if resp.StatusCode != http.StatusOK {
-		metrics.RecordClickHouseQuery(duration, fmt.Errorf("status %d: %s", resp.StatusCode, string(body)))
-		w.Header().Set("Content-Type", "application/json")
-		// ClickHouse error messages are safe to show (no credentials)
-		json.NewEncoder(w).Encode(QueryResponse{
-			Error:     string(body),
-			ElapsedMs: elapsed,
-		})
-		return
-	}
 	metrics.RecordClickHouseQuery(duration, nil)
-
-	var chResp struct {
-		Meta []struct {
-			Name string `json:"name"`
-			Type string `json:"type"`
-		} `json:"meta"`
-		Data []map[string]any `json:"data"`
-		Rows int              `json:"rows"`
-	}
-
-	if err := json.Unmarshal(body, &chResp); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(QueryResponse{
-			Error: internalError("Failed to parse database response", err),
-		})
-		return
-	}
-
-	columns := make([]string, 0, len(chResp.Meta))
-	for _, m := range chResp.Meta {
-		columns = append(columns, m.Name)
-	}
-
-	rows := make([][]any, 0, len(chResp.Data))
-	for _, row := range chResp.Data {
-		rowData := make([]any, 0, len(columns))
-		for _, col := range columns {
-			rowData = append(rowData, row[col])
-		}
-		rows = append(rows, rowData)
-	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(QueryResponse{
 		Columns:   columns,
-		Rows:      rows,
-		RowCount:  len(rows),
-		ElapsedMs: elapsed,
+		Rows:      resultRows,
+		RowCount:  len(resultRows),
+		ElapsedMs: duration.Milliseconds(),
 	})
 }

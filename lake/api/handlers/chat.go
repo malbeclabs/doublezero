@@ -11,7 +11,6 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline"
-	"github.com/malbeclabs/doublezero/lake/api/config"
 )
 
 // ChatMessage represents a single message in conversation history.
@@ -93,8 +92,8 @@ func Chat(w http.ResponseWriter, r *http.Request) {
 
 	// Create pipeline components
 	llm := pipeline.NewAnthropicLLMClient(anthropic.ModelClaude3_5Haiku20241022, 4096)
-	querier := pipeline.NewHTTPQuerier(config.ClickHouseBaseURL())
-	schemaFetcher := pipeline.NewHTTPSchemaFetcherWithAuth(config.ClickHouseBaseURL(), config.ClickHouseDatabase, "", "")
+	querier := NewDBQuerier()
+	schemaFetcher := NewDBSchemaFetcher()
 
 	// Create and run pipeline
 	p, err := pipeline.New(&pipeline.Config{
@@ -230,8 +229,8 @@ func ChatStream(w http.ResponseWriter, r *http.Request) {
 
 	// Create pipeline components
 	llm := pipeline.NewAnthropicLLMClient(anthropic.ModelClaude3_5Haiku20241022, 4096)
-	querier := pipeline.NewHTTPQuerier(config.ClickHouseBaseURL())
-	schemaFetcher := pipeline.NewHTTPSchemaFetcherWithAuth(config.ClickHouseBaseURL(), config.ClickHouseDatabase, "", "")
+	querier := NewDBQuerier()
+	schemaFetcher := NewDBSchemaFetcher()
 
 	// Create pipeline
 	p, err := pipeline.New(&pipeline.Config{

@@ -1,12 +1,12 @@
 use crate::{
     error::DoubleZeroError,
-    globalstate::globalstate_get,
-    state::{accesspass::AccessPass, accounttype::AccountTypeInfo, multicastgroup::MulticastGroup},
+    serializer::try_acc_write,
+    state::{accesspass::AccessPass, globalstate::GlobalState, multicastgroup::MulticastGroup},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
-use doublezero_program_common::resize_account::resize_account_if_needed;
+
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -74,7 +74,7 @@ pub fn process_remove_multicast_sub_allowlist(
 
     // Parse the global state account
     let mgroup = MulticastGroup::try_from(mgroup_account)?;
-    let globalstate = globalstate_get(globalstate_account)?;
+    let globalstate = GlobalState::try_from(globalstate_account)?;
 
     // Check whether mgroup is authorized
     let is_authorized = (mgroup.owner == *payer_account.key)
@@ -97,13 +97,7 @@ pub fn process_remove_multicast_sub_allowlist(
         .mgroup_sub_allowlist
         .retain(|x| x != mgroup_account.key);
 
-    resize_account_if_needed(
-        accesspass_account,
-        payer_account,
-        accounts,
-        accesspass.size(),
-    )?;
-    accesspass.try_serialize(accesspass_account)?;
+    try_acc_write(&accesspass, accesspass_account, payer_account, accounts)?;
 
     #[cfg(test)]
     msg!("Updated: {:?}", mgroup);

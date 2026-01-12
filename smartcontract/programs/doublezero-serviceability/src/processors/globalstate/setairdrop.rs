@@ -1,7 +1,6 @@
 use crate::{
-    error::DoubleZeroError,
-    globalstate::{globalstate_get, globalstate_write_with_realloc},
-    pda::get_globalstate_pda,
+    error::DoubleZeroError, pda::get_globalstate_pda, serializer::try_acc_write,
+    state::globalstate::GlobalState,
 };
 
 use borsh::BorshSerialize;
@@ -59,14 +58,14 @@ pub fn process_set_airdrop(
         "Invalid System Program Account Owner"
     );
 
-    let (expected_pda_account, bump_seed) = get_globalstate_pda(program_id);
+    let (expected_pda_account, _) = get_globalstate_pda(program_id);
     assert_eq!(
         globalstate_account.key, &expected_pda_account,
         "Invalid GlobalState Pubkey",
     );
 
     // Fetch the globalstate and ensure payer authorization to adjust airdrop
-    let mut globalstate = globalstate_get(globalstate_account)?;
+    let mut globalstate = GlobalState::try_from(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
@@ -79,13 +78,7 @@ pub fn process_set_airdrop(
         globalstate.user_airdrop_lamports = user_airdrop_lamports;
     }
 
-    globalstate_write_with_realloc(
-        globalstate_account,
-        &globalstate,
-        payer_account,
-        system_program,
-        bump_seed,
-    );
+    try_acc_write(&globalstate, globalstate_account, payer_account, accounts)?;
 
     #[cfg(test)]
     msg!("Updated: {:?}", globalstate);

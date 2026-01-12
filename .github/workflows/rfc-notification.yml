@@ -1,0 +1,123 @@
+name: RFC Slack Notification
+
+on:
+  pull_request:
+    types: [opened]
+    paths:
+      - 'rfcs/rfc[0-9]*-*.md'
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for new RFCs
+        id: check-rfcs
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -euo pipefail
+
+          # Find RFC files that exist in this PR but not in the base branch
+          new_rfcs=""
+          for rfc_file in $(git ls-files 'rfcs/rfc[0-9]*-*.md'); do
+            if ! git cat-file -e "origin/${BASE_REF}:${rfc_file}" 2>/dev/null; then
+              echo "New RFC found: $rfc_file"
+              new_rfcs="${new_rfcs}${rfc_file}"$'\n'
+            fi
+          done
+
+          # Remove trailing newline
+          new_rfcs=$(echo "$new_rfcs" | sed '/^$/d')
+
+          if [ -z "$new_rfcs" ]; then
+            echo "No new RFCs in this PR"
+            echo "has_new_rfcs=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "New RFCs to notify:"
+          echo "$new_rfcs"
+
+          echo "has_new_rfcs=true" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "new_rfcs<<EOF"
+            echo "$new_rfcs"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Send Slack notification
+        if: steps.check-rfcs.outputs.has_new_rfcs == 'true'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_BOTS_WEBHOOK }}
+          NEW_RFCS: ${{ steps.check-rfcs.outputs.new_rfcs }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          while IFS= read -r rfc_file; do
+            [ -z "$rfc_file" ] && continue
+
+            # Extract RFC number and title from filename
+            # Format: rfc/rfc{digit}-{string}.md
+            rfc_basename=$(basename "$rfc_file" .md)
+            rfc_number=$(echo "$rfc_basename" | sed -E 's/^rfc([0-9]+)-.*/\1/')
+            rfc_title=$(echo "$rfc_basename" | sed -E 's/^rfc[0-9]+-//' | tr '-' ' ')
+
+            # Build the file URL (link to file in the PR)
+            file_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/blob/${HEAD_SHA}/${rfc_file}"
+
+            # Build the Slack message payload
+            payload=$(cat <<PAYLOAD
+          {
+            "blocks": [
+              {
+                "type": "header",
+                "text": {
+                  "type": "plain_text",
+                  "text": "📄 New RFC Submitted",
+                  "emoji": true
+                }
+              },
+              {
+                "type": "section",
+                "fields": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "*RFC:*\n<${file_url}|RFC ${rfc_number}: ${rfc_title}>"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Author:*\n${PR_AUTHOR}"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Pull Request:*\n<${PR_URL}|${PR_TITLE}>"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*File:*\n${rfc_file}"
+                  }
+                ]
+              }
+            ]
+          }
+          PAYLOAD
+          )
+
+            # Send to Slack
+            curl -sS -X POST -H 'Content-type: application/json' \
+              --data "$payload" \
+              "$SLACK_WEBHOOK_URL"
+
+            echo "Notification sent for: $rfc_file"
+          done <<< "$NEW_RFCS"

@@ -3,6 +3,7 @@ package twozoracle
 import (
 	"context"
 	"log/slog"
+	"math"
 	"strconv"
 	"time"
 )
@@ -83,6 +84,13 @@ func (w *TwoZOracleWatcher) Tick(ctx context.Context) error {
 	}
 	MetricSwapRateResponse.WithLabelValues(strconv.Itoa(statusCode)).Inc()
 	w.log.Debug("swap rate", "swapRate", swapRate)
+
+	if !w.isValidSwapRate(swapRate.SwapRate) {
+		w.log.Warn("swapRate is malformed: expected unsigned integer, got", "swapRate", swapRate.SwapRate)
+		MetricErrors.WithLabelValues(MetricErrorTypeMalformedSwapRate, strconv.Itoa(statusCode)).Inc()
+		return nil
+	}
+
 	MetricSwapRate.Set(float64(swapRate.SwapRate))
 	solPriceUSD, err := strconv.ParseFloat(swapRate.SOLPriceUSD, 64)
 	if err != nil {
@@ -100,4 +108,10 @@ func (w *TwoZOracleWatcher) Tick(ctx context.Context) error {
 	MetricTwoZPriceUSD.Set(twoZPriceUSD)
 
 	return nil
+}
+
+// isValidSwapRate checks if the swap rate is a valid unsigned integer.
+// It returns true if the value is non-negative and a whole number (integer).
+func (w *TwoZOracleWatcher) isValidSwapRate(swapRate float64) bool {
+	return swapRate >= 0 && math.Trunc(swapRate) == swapRate
 }

@@ -2,6 +2,7 @@ use crate::{
     commands::{device::get::GetDeviceCommand, globalstate::get::GetGlobalStateCommand},
     DoubleZeroClient,
 };
+use doublezero_program_common::types::network_v4::NetworkV4;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
     processors::device::interface::create::DeviceInterfaceCreateArgs,
@@ -13,6 +14,7 @@ use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature}
 pub struct CreateDeviceInterfaceCommand {
     pub pubkey: Pubkey,
     pub name: String,
+    pub ip_net: Option<NetworkV4>,
     pub interface_cyoa: InterfaceCYOA,
     pub loopback_type: LoopbackType,
     pub interface_dia: InterfaceDIA,
@@ -44,6 +46,7 @@ impl CreateDeviceInterfaceCommand {
                     interface_dia: self.interface_dia,
                     bandwidth: self.bandwidth,
                     cir: self.cir,
+                    ip_net: self.ip_net,
                     mtu: self.mtu,
                     routing_mode: self.routing_mode,
                     vlan_id: self.vlan_id,
@@ -68,7 +71,7 @@ mod tests {
         state::{
             accountdata::AccountData,
             accounttype::AccountType,
-            device::{Device, DeviceStatus, DeviceType},
+            device::{Device, DeviceDesiredStatus, DeviceHealth, DeviceStatus, DeviceType},
         },
     };
     use mockall::predicate;
@@ -100,6 +103,8 @@ mod tests {
             interfaces: vec![],
             max_users: 255,
             users_count: 0,
+            device_health: DeviceHealth::ReadyForUsers,
+            desired_status: DeviceDesiredStatus::Activated,
         };
 
         let contributor_pk = device.contributor_pk;
@@ -120,6 +125,8 @@ mod tests {
                         interface_dia: InterfaceDIA::DIA,
                         bandwidth: 0,
                         cir: 0,
+                        ip_net: None,
+
                         mtu: 1500,
                         routing_mode: RoutingMode::Static,
                         vlan_id: 100,
@@ -140,6 +147,7 @@ mod tests {
             interface_cyoa: InterfaceCYOA::None,
             loopback_type: LoopbackType::None,
             interface_dia: InterfaceDIA::DIA,
+            ip_net: None,
             bandwidth: 0,
             cir: 0,
             mtu: 1500,

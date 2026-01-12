@@ -59,7 +59,7 @@ async fn test_multicast_publisher_allowlist() {
         .get_global_state()
         .unwrap();
 
-    let (multicastgroup_pubkey, bump_seed) =
+    let (multicastgroup_pubkey, _) =
         get_multicastgroup_pda(&program_id, globalstate.account_index + 1);
 
     execute_transaction(
@@ -67,8 +67,6 @@ async fn test_multicast_publisher_allowlist() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
-            index: globalstate.account_index + 1,
-            bump_seed,
             code: "test".to_string(),
             max_bandwidth: 1_000_000_000,
             owner: payer.pubkey(),

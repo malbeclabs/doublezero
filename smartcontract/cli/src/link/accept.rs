@@ -160,6 +160,9 @@ mod tests {
             mgmt_vrf: "default".to_string(),
             max_users: 255,
             users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+            desired_status:
+                doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
         };
 
         client
@@ -200,6 +203,9 @@ mod tests {
             mgmt_vrf: "default".to_string(),
             max_users: 255,
             users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+            desired_status:
+                doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
         };
 
         client
@@ -229,6 +235,8 @@ mod tests {
             owner: pda_pubkey,
             side_a_iface_name: "Ethernet1/1".to_string(),
             side_z_iface_name: "Ethernet1/2".to_string(),
+            link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
+            desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
         };
 
         client

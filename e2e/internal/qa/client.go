@@ -59,13 +59,15 @@ type Client struct {
 	grpcClient     pb.QAAgentServiceClient
 	grpcConn       *grpc.ClientConn
 	publicIP       net.IP
+	doubleZeroIP   net.IP
 	serviceability *serviceability.Client
 	devices        map[string]*Device
 
-	Host string
+	Host         string
+	AllocateAddr bool
 }
 
-func NewClient(ctx context.Context, log *slog.Logger, hostname string, port int, networkConfig *config.NetworkConfig, devices map[string]*Device) (*Client, error) {
+func NewClient(ctx context.Context, log *slog.Logger, hostname string, port int, networkConfig *config.NetworkConfig, devices map[string]*Device, allocateAddr bool) (*Client, error) {
 	target := net.JoinHostPort(hostname, strconv.Itoa(port))
 	grpcConn, err := newClientWithRetry(ctx, target, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
@@ -95,7 +97,8 @@ func NewClient(ctx context.Context, log *slog.Logger, hostname string, port int,
 		serviceability: serviceabilityClient,
 		devices:        devices,
 
-		Host: hostname,
+		Host:         hostname,
+		AllocateAddr: allocateAddr,
 	}, nil
 }
 
@@ -108,6 +111,13 @@ func (c *Client) SetLogger(log *slog.Logger) {
 }
 
 func (c *Client) PublicIP() net.IP {
+	return c.publicIP
+}
+
+func (c *Client) DoublezeroOrPublicIP() net.IP {
+	if c.doubleZeroIP != nil {
+		return c.doubleZeroIP
+	}
 	return c.publicIP
 }
 
@@ -200,7 +210,11 @@ func (c *Client) GetCurrentDevice(ctx context.Context) (*Device, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user status on host %s: %w", c.Host, err)
 	}
-	return c.devices[status.CurrentDevice], nil
+	device, ok := c.devices[status.CurrentDevice]
+	if !ok {
+		return nil, fmt.Errorf("device %q not found on host %s", status.CurrentDevice, c.Host)
+	}
+	return device, nil
 }
 
 func (c *Client) GetInstalledRoutes(ctx context.Context) ([]*pb.Route, error) {
@@ -211,13 +225,26 @@ func (c *Client) GetInstalledRoutes(ctx context.Context) ([]*pb.Route, error) {
 	return resp.InstalledRoutes, nil
 }
 
+func (c *Client) GetLatency(ctx context.Context) ([]*pb.Latency, error) {
+	resp, err := c.grpcClient.GetLatency(ctx, &emptypb.Empty{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get latency on host %s: %w", c.Host, err)
+	}
+	return resp.Latencies, nil
+}
+
 func (c *Client) WaitForStatusUp(ctx context.Context) error {
 	c.log.Debug("Waiting for status to be up", "host", c.Host)
-	err := c.waitForStatus(ctx, UserStatusUp, waitForStatusUpTimeout, waitInterval)
+	status, err := c.waitForStatus(ctx, UserStatusUp, waitForStatusUpTimeout, waitInterval)
 	if err != nil {
 		return fmt.Errorf("failed to wait for status to be up on host %s: %w", c.Host, err)
 	}
-	c.log.Debug("Confirmed status is up", "host", c.Host)
+
+	if status.DoubleZeroIp != "" {
+		c.doubleZeroIP = net.ParseIP(status.DoubleZeroIp)
+	}
+
+	c.log.Debug("Confirmed status is up", "host", c.Host, "doubleZeroIP", c.doubleZeroIP)
 	return nil
 }
 
@@ -238,7 +265,7 @@ func (c *Client) GetOwnerPubkey(ctx context.Context) (solana.PublicKey, error) {
 
 func (c *Client) WaitForStatusDisconnected(ctx context.Context) error {
 	c.log.Debug("Waiting for status to be disconnected", "host", c.Host)
-	err := c.waitForStatus(ctx, UserStatusDisconnected, waitForStatusDisconnectedTimeout, waitInterval)
+	_, err := c.waitForStatus(ctx, UserStatusDisconnected, waitForStatusDisconnectedTimeout, waitInterval)
 	if err != nil {
 		return fmt.Errorf("failed to wait for status to be disconnected on host %s: %w", c.Host, err)
 	}
@@ -280,11 +307,16 @@ func (c *Client) getConnectedDevice(ctx context.Context) (*Device, error) {
 	if status.SessionStatus != UserStatusUp {
 		return nil, fmt.Errorf("user status is not up on host %s: %s", c.Host, status.SessionStatus)
 	}
-	return c.devices[status.CurrentDevice], nil
+	device, ok := c.devices[status.CurrentDevice]
+	if !ok {
+		return nil, fmt.Errorf("device %q not found on host %s", status.CurrentDevice, c.Host)
+	}
+	return device, nil
 }
 
-func (c *Client) waitForStatus(ctx context.Context, wantStatus string, timeout time.Duration, interval time.Duration) error {
-	return poll.Until(ctx, func() (bool, error) {
+func (c *Client) waitForStatus(ctx context.Context, wantStatus string, timeout time.Duration, interval time.Duration) (*pb.Status, error) {
+	var finalStatus *pb.Status
+	err := poll.Until(ctx, func() (bool, error) {
 		resp, err := c.grpcClient.GetStatus(ctx, &emptypb.Empty{})
 		if err != nil {
 			return false, err
@@ -294,8 +326,12 @@ func (c *Client) waitForStatus(ctx context.Context, wantStatus string, timeout t
 				return false, nil
 			}
 		}
+		if len(resp.Status) > 0 {
+			finalStatus = resp.Status[0]
+		}
 		return true, nil
 	}, timeout, interval)
+	return finalStatus, err
 }
 
 func newClientWithRetry(ctx context.Context, target string, opts ...grpc.DialOption) (*grpc.ClientConn, error) {

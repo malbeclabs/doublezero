@@ -14,13 +14,14 @@ import (
 	"github.com/gagliardetto/solana-go"
 	"github.com/jonboulle/clockwork"
 	aristapb "github.com/malbeclabs/doublezero/controlplane/proto/arista/gen/pb-go/arista/EosSdkRpc"
+	"github.com/malbeclabs/doublezero/telemetry/state-ingest/pkg/types"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 )
 
 type MockStateIngestClient struct {
 	UploadSnapshotFunc    func(ctx context.Context, kind string, timestamp time.Time, data []byte) (string, error)
-	GetStateToCollectFunc func(ctx context.Context) ([]ShowCommand, error)
+	GetStateToCollectFunc func(ctx context.Context) (*types.StateToCollectResponse, error)
 }
 
 func (m *MockStateIngestClient) UploadSnapshot(ctx context.Context, kind string, timestamp time.Time, data []byte) (string, error) {
@@ -30,7 +31,7 @@ func (m *MockStateIngestClient) UploadSnapshot(ctx context.Context, kind string,
 	return m.UploadSnapshotFunc(ctx, kind, timestamp, data)
 }
 
-func (m *MockStateIngestClient) GetStateToCollect(ctx context.Context) ([]ShowCommand, error) {
+func (m *MockStateIngestClient) GetStateToCollect(ctx context.Context) (*types.StateToCollectResponse, error) {
 	if m.GetStateToCollectFunc == nil {
 		return nil, nil
 	}
@@ -281,11 +282,12 @@ func TestTelemetry_StateCollector_Tick_CollectsAllCommandsOnce(t *testing.T) {
 	cfg.Clock = fc
 	cfg.Concurrency = 2
 
-	showCommands := []ShowCommand{
+	showCommands := []types.ShowCommand{
 		{Kind: "a-b", Command: "show a b"},
 		{Kind: "c-d", Command: "show c d"},
 		{Kind: "e-f", Command: "show e f"},
 	}
+	custom := []string{"bgp-sockets"}
 
 	var runShowCalls atomic.Int64
 	var uploadCalls atomic.Int64
@@ -303,8 +305,11 @@ func TestTelemetry_StateCollector_Tick_CollectsAllCommandsOnce(t *testing.T) {
 	}
 
 	cfg.StateIngest = &MockStateIngestClient{
-		GetStateToCollectFunc: func(ctx context.Context) ([]ShowCommand, error) {
-			return showCommands, nil
+		GetStateToCollectFunc: func(ctx context.Context) (*types.StateToCollectResponse, error) {
+			return &types.StateToCollectResponse{
+				ShowCommands: showCommands,
+				Custom:       custom,
+			}, nil
 		},
 		UploadSnapshotFunc: func(ctx context.Context, kind string, ts time.Time, data []byte) (string, error) {
 			uploadCalls.Add(1)
@@ -317,6 +322,7 @@ func TestTelemetry_StateCollector_Tick_CollectsAllCommandsOnce(t *testing.T) {
 
 	require.NoError(t, col.tick(context.Background()))
 	require.Equal(t, int64(len(showCommands)), runShowCalls.Load())
+	// BGP collection fails in unit tests (namespace doesn't exist), so only show command uploads succeed
 	require.Equal(t, int64(len(showCommands)), uploadCalls.Load())
 }
 
@@ -329,10 +335,11 @@ func TestTelemetry_StateCollector_Run_InitialTickAndTickerTicks(t *testing.T) {
 	cfg.Interval = 10 * time.Second
 	cfg.Concurrency = 4
 
-	showCommands := []ShowCommand{
+	showCommands := []types.ShowCommand{
 		{Kind: "a", Command: "show a"},
 		{Kind: "b", Command: "show b"},
 	}
+	custom := []string{"bgp-sockets"}
 
 	var uploads atomic.Int64
 	initialDone := make(chan struct{})
@@ -354,14 +361,17 @@ func TestTelemetry_StateCollector_Run_InitialTickAndTickerTicks(t *testing.T) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	wantTicks := int64(3) // 1 immediate + 2 ticker
-	wantUploads := wantTicks * int64(len(showCommands))
+	wantTicks := int64(3)                               // 1 immediate + 2 ticker
+	wantUploads := wantTicks * int64(len(showCommands)) // BGP collection fails in unit tests (namespace doesn't exist)
 	initialUploads := int64(len(showCommands))
 	firstTickerUploads := initialUploads * 2 // initial + first ticker
 
 	cfg.StateIngest = &MockStateIngestClient{
-		GetStateToCollectFunc: func(ctx context.Context) ([]ShowCommand, error) {
-			return showCommands, nil
+		GetStateToCollectFunc: func(ctx context.Context) (*types.StateToCollectResponse, error) {
+			return &types.StateToCollectResponse{
+				ShowCommands: showCommands,
+				Custom:       custom,
+			}, nil
 		},
 		UploadSnapshotFunc: func(ctx context.Context, kind string, ts time.Time, data []byte) (string, error) {
 			n := uploads.Add(1)
@@ -433,7 +443,7 @@ func TestTelemetry_StateCollector_Tick_GetStateToCollectError_SkipsCollection(t 
 	var runShowCalls atomic.Int64
 
 	cfg.StateIngest = &MockStateIngestClient{
-		GetStateToCollectFunc: func(ctx context.Context) ([]ShowCommand, error) {
+		GetStateToCollectFunc: func(ctx context.Context) (*types.StateToCollectResponse, error) {
 			getStateCalls.Add(1)
 			return nil, errors.New("server error")
 		},
@@ -462,9 +472,9 @@ func TestTelemetry_StateCollector_Tick_EmptyCommands_SkipsCollection(t *testing.
 	var runShowCalls atomic.Int64
 
 	cfg.StateIngest = &MockStateIngestClient{
-		GetStateToCollectFunc: func(ctx context.Context) ([]ShowCommand, error) {
+		GetStateToCollectFunc: func(ctx context.Context) (*types.StateToCollectResponse, error) {
 			getStateCalls.Add(1)
-			return []ShowCommand{}, nil
+			return &types.StateToCollectResponse{}, nil
 		},
 	}
 
@@ -491,16 +501,20 @@ func TestTelemetry_StateCollector_Tick_CallsGetStateToCollectOnEachTick(t *testi
 	cfg.Clock = fc
 	cfg.Interval = 10 * time.Second
 
-	showCommands := []ShowCommand{
+	showCommands := []types.ShowCommand{
 		{Kind: "test", Command: "show test"},
 	}
+	custom := []string{"bgp-sockets"}
 
 	var getStateCalls atomic.Int64
 
 	cfg.StateIngest = &MockStateIngestClient{
-		GetStateToCollectFunc: func(ctx context.Context) ([]ShowCommand, error) {
+		GetStateToCollectFunc: func(ctx context.Context) (*types.StateToCollectResponse, error) {
 			getStateCalls.Add(1)
-			return showCommands, nil
+			return &types.StateToCollectResponse{
+				ShowCommands: showCommands,
+				Custom:       custom,
+			}, nil
 		},
 		UploadSnapshotFunc: func(ctx context.Context, kind string, ts time.Time, data []byte) (string, error) {
 			return "id", nil
@@ -537,12 +551,13 @@ func TestTelemetry_StateCollector_Tick_CallsGetStateToCollectOnEachTick(t *testi
 func newValidCollectorCfg(t *testing.T) *CollectorConfig {
 	t.Helper()
 	return &CollectorConfig{
-		Logger:      slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
-		Clock:       clockwork.NewFakeClock(),
-		EAPI:        &MockEapiMgrServiceClient{},
-		StateIngest: &MockStateIngestClient{},
-		Interval:    1 * time.Second,
-		DevicePK:    solana.NewWallet().PrivateKey.PublicKey(),
-		Concurrency: 2,
+		Logger:       slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
+		Clock:        clockwork.NewFakeClock(),
+		EAPI:         &MockEapiMgrServiceClient{},
+		StateIngest:  &MockStateIngestClient{},
+		Interval:     1 * time.Second,
+		DevicePK:     solana.NewWallet().PrivateKey.PublicKey(),
+		BGPNamespace: "test-namespace",
+		Concurrency:  2,
 	}
 }

@@ -1,8 +1,10 @@
 use crate::{
     error::DoubleZeroError,
-    globalstate::globalstate_get,
-    helper::*,
-    state::{accounttype::AccountType, contributor::Contributor, device::*, location::Location},
+    serializer::try_acc_write,
+    state::{
+        accounttype::AccountType, contributor::Contributor, device::*, globalstate::GlobalState,
+        location::Location,
+    },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -27,6 +29,7 @@ pub struct DeviceUpdateArgs {
     pub max_users: Option<u16>,
     pub users_count: Option<u16>,
     pub status: Option<DeviceStatus>,
+    pub desired_status: Option<DeviceDesiredStatus>,
 }
 
 impl fmt::Debug for DeviceUpdateArgs {
@@ -60,6 +63,9 @@ impl fmt::Debug for DeviceUpdateArgs {
         }
         if self.status.is_some() {
             write!(f, "status: {:?}, ", self.status)?;
+        }
+        if self.desired_status.is_some() {
+            write!(f, "desired_status: {:?}, ", self.desired_status)?;
         }
         Ok(())
     }
@@ -115,8 +121,13 @@ pub fn process_update_device(
     );
     // Check if the account is writable
     assert!(device_account.is_writable, "PDA Account is not writable");
+    assert_eq!(
+        *system_program.unsigned_key(),
+        solana_program::system_program::id(),
+        "Invalid System Program Account Owner"
+    );
 
-    let globalstate = globalstate_get(globalstate_account)?;
+    let globalstate = GlobalState::try_from(globalstate_account)?;
     assert_eq!(globalstate.account_type, AccountType::GlobalState);
 
     let contributor = Contributor::try_from(contributor_account)?;
@@ -184,18 +195,8 @@ pub fn process_update_device(
             // Set new location pk in device
             device.location_pk = *location_new_account.key;
 
-            account_write(
-                location_old_account,
-                &location_old,
-                payer_account,
-                system_program,
-            )?;
-            account_write(
-                location_new_account,
-                &location_new,
-                payer_account,
-                system_program,
-            )?;
+            try_acc_write(&location_old, location_old_account, payer_account, accounts)?;
+            try_acc_write(&location_new, location_new_account, payer_account, accounts)?;
         }
     }
 
@@ -204,15 +205,11 @@ pub fn process_update_device(
         if globalstate.foundation_allowlist.contains(payer_account.key) {
             device.status = status;
         } else {
-            // Contributors can only transition between Activated <-> Drained states & Drained <-> Drained states,
-            // but note: transitioning from HardDrained to Activated requires first moving to SoftDrained,
-            // to allow for maintenance draining of links and to verify establishment of connections.
+            // Contributors can only transition between Activated <-> Drained states,
+            // This enforces a maintenance step before reactivation.
             match (device.status, status) {
-                (DeviceStatus::Activated, DeviceStatus::HardDrained)
-                | (DeviceStatus::Activated, DeviceStatus::SoftDrained)
-                | (DeviceStatus::HardDrained, DeviceStatus::SoftDrained)
-                | (DeviceStatus::SoftDrained, DeviceStatus::HardDrained)
-                | (DeviceStatus::SoftDrained, DeviceStatus::Activated) => {
+                (DeviceStatus::Activated, DeviceStatus::Drained)
+                | (DeviceStatus::Drained, DeviceStatus::Activated) => {
                     device.status = status;
                 }
                 _ => return Err(DoubleZeroError::NotAllowed.into()),
@@ -220,7 +217,7 @@ pub fn process_update_device(
         }
     }
 
-    account_write(device_account, &device, payer_account, system_program)?;
+    try_acc_write(&device, device_account, payer_account, accounts)?;
 
     #[cfg(test)]
     msg!("Updated: {:?}", device);

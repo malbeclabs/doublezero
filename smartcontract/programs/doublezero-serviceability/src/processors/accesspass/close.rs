@@ -1,6 +1,7 @@
 use crate::{
-    error::DoubleZeroError, globalstate::globalstate_get, helper::account_close,
-    state::accounttype::AccountType,
+    error::DoubleZeroError,
+    serializer::try_acc_close,
+    state::{accounttype::AccountType, globalstate::GlobalState},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -63,9 +64,14 @@ pub fn process_close_access_pass(
         accesspass_account.is_writable,
         "PDA Account is not writable"
     );
+    assert_eq!(
+        *system_program.unsigned_key(),
+        solana_program::system_program::id(),
+        "Invalid System Program Account Owner"
+    );
 
     // Parse the global state account & check if the payer is in the allowlist
-    let globalstate = globalstate_get(globalstate_account)?;
+    let globalstate = GlobalState::try_from(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
@@ -81,7 +87,7 @@ pub fn process_close_access_pass(
         msg!("Failed to borrow account data, cannot close");
     }
 
-    account_close(accesspass_account, payer_account)?;
+    try_acc_close(accesspass_account, payer_account)?;
 
     msg!("Access pass closed");
 

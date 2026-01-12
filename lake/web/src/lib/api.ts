@@ -200,36 +200,35 @@ export async function generateSQLStream(
       const lines = buffer.split('\n')
       buffer = lines.pop() || ''
 
-      for (const line of lines) {
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i]
         if (line.startsWith('event: ')) {
           const eventType = line.slice(7)
-          const dataLineIndex = lines.indexOf(line) + 1
-          if (dataLineIndex < lines.length) {
-            const dataLine = lines[dataLineIndex]
-            if (dataLine.startsWith('data: ')) {
-              const data = dataLine.slice(6)
-              switch (eventType) {
-                case 'token':
-                  callbacks.onToken(data)
-                  break
-                case 'status':
-                  try {
-                    callbacks.onStatus(JSON.parse(data))
-                  } catch {
-                    callbacks.onStatus({ status: data })
-                  }
-                  break
-                case 'done':
-                  try {
-                    callbacks.onDone(JSON.parse(data))
-                  } catch {
-                    callbacks.onError('Invalid response')
-                  }
-                  break
-                case 'error':
-                  callbacks.onError(data)
-                  break
-              }
+          const nextLine = lines[i + 1]
+          if (nextLine?.startsWith('data: ')) {
+            const data = nextLine.slice(6)
+            i++ // Skip the data line we just processed
+            switch (eventType) {
+              case 'token':
+                callbacks.onToken(data)
+                break
+              case 'status':
+                try {
+                  callbacks.onStatus(JSON.parse(data))
+                } catch {
+                  callbacks.onStatus({ status: data })
+                }
+                break
+              case 'done':
+                try {
+                  callbacks.onDone(JSON.parse(data))
+                } catch {
+                  callbacks.onError('Invalid response')
+                }
+                break
+              case 'error':
+                callbacks.onError(data)
+                break
             }
           }
         }

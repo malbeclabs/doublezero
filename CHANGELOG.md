@@ -8,9 +8,16 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+## [v0.8.1](https://github.com/malbeclabs/doublezero/compare/client/v0.8.0...client/v0.8.1) – 2025-01-12
+
+### Breaking
+
+### Changes
+
 - Onchain programs
   - Serviceability: enforce that ActivateLink and CloseAccountLink instructions verify the provided side A/Z device accounts match the link's stored `side_a_pk` and `side_z_pk` before proceeding.
 - CLI
+  - Update contributor, device, exchange, link, location, and multicast group commands to ignore case when matching codes
   - ActivateMulticastGroup now supports on-chain IP allocation from ResourceExtension bitmap (RFC 11).
   - IP address lookup responses that do not contain a valid IPv4 address (such as upstream timeout messages) are now treated as retryable errors instead of being parsed as IPs.
   - `doublezero resource` commands added for managing ResourceExtension accounts.
@@ -18,6 +25,7 @@ All notable changes to this project will be documented in this file.
   - Added --ip-net support to create to match the existing behavior in update.
   - Use DZ IP for user lookup during status command instead of client IP
 - Onchain programs
+  - Fix CreateMulticastGroup to use incremented globalstate.account_index for PDA derivation instead of client-provided index, to ensure the contract is the authoritative source for account indices
   - Add on-chain validation to reject CloseAccountDevice when device has active references (reference_count > 0)
   - Allow contributor owner to update ops manager key
   - Add new arguments on create interface cli command
@@ -35,7 +43,6 @@ All notable changes to this project will be documented in this file.
 - Internet Latency Telemetry
   - Fixed a bug that prevented unresponsive ripeatlas probes from being replaced
   - Fixed a bug that caused ripeatlas samples to be dropped when they were delayed to the next collection cycle
-  - Update contributor, device, exchange, link, location, and multicast group commands to ignore case when matching codes
 - Device controller
   - Add histogram metric for GetConfig request duration
   - Add gRPC middleware for prometheus metrics
@@ -80,8 +87,6 @@ All notable changes to this project will be documented in this file.
   - The QA alldevices test now considers device location and connects hosts to nearby devices
   - QA agent and tests now support doublezero connect ibrl's --allocate-addr flag
   - The QA alldevices test now publishes success/failure metrics to InfluxDB in support of rfc12
-- Onchain programs
-  - Fix CreateMulticastGroup to use incremented globalstate.account_index for PDA derivation instead of client-provided index, to ensure the contract is the authoritative source for account indices
 
 ## [v0.8.0](https://github.com/malbeclabs/doublezero/compare/client/v0.7.1...client/v0.8.0) – 2025-12-02
 

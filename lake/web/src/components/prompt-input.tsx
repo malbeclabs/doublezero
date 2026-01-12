@@ -1,4 +1,6 @@
 import { useState, useRef } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { generateSQLStream, type HistoryMessage } from '@/lib/api'
 import { Sparkles, Loader2 } from 'lucide-react'
 import type { GenerationRecord } from './session-history'
@@ -156,9 +158,11 @@ export function PromptInput({ currentQuery, conversationHistory, onGenerated, on
           {thinking && (
             <div
               ref={thinkingRef}
-              className="font-mono text-xs text-muted-foreground max-h-24 overflow-y-auto whitespace-pre-wrap"
+              className="prose prose-sm prose-neutral dark:prose-invert max-w-none max-h-24 overflow-y-auto text-muted-foreground [&>*]:text-muted-foreground [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
             >
-              {thinking}
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {thinking}
+              </ReactMarkdown>
             </div>
           )}
         </div>

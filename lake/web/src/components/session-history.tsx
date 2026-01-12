@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { ChevronDown, ChevronRight, History, Sparkles, Pencil } from 'lucide-react'
 
 export interface GenerationRecord {
@@ -84,8 +86,10 @@ export function SessionHistory({ history, onRestoreQuery }: SessionHistoryProps)
                   {record.thinking && (
                     <div>
                       <div className="text-xs text-muted-foreground mb-1">Thinking</div>
-                      <div className="font-mono text-xs bg-muted border p-2 max-h-32 overflow-y-auto whitespace-pre-wrap">
-                        {record.thinking}
+                      <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none bg-muted border p-2 max-h-32 overflow-y-auto text-muted-foreground [&>*]:text-muted-foreground [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {record.thinking}
+                        </ReactMarkdown>
                       </div>
                     </div>
                   )}

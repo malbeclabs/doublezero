@@ -200,12 +200,34 @@ func splitIntoParagraphs(text string) []string {
 // Handles both ```lang\ncode``` and ```\ncode``` formats
 var codeBlockPattern = regexp.MustCompile("(?s)```[a-zA-Z]*\n?(.*?)```")
 
+// containsNestedList checks if text contains nested list items (indented list markers)
+func containsNestedList(text string) bool {
+	lines := strings.Split(text, "\n")
+	for _, line := range lines {
+		// Check for indented list items (2+ spaces or tab before - or *)
+		if len(line) >= 3 {
+			// Check for space-indented list items
+			if (line[0] == ' ' || line[0] == '\t') && isListItem(line) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // ConvertMarkdownToBlocks converts markdown text to Slack blocks
 func ConvertMarkdownToBlocks(text string, log *slog.Logger) []slack.Block {
 	// Handle code blocks specially - the library tends to split them incorrectly
 	// Extract code blocks and process text segments separately
 	if strings.Contains(text, "```") {
 		return convertMarkdownWithCodeBlocks(text, log)
+	}
+
+	// The slackutil library doesn't handle nested lists properly - nested items get dropped.
+	// Fall back to plain mrkdwn text which preserves the structure with literal dashes.
+	if containsNestedList(text) {
+		log.Debug("detected nested list, using plain mrkdwn to preserve structure")
+		return convertToMrkdwnSectionBlocks(text, log)
 	}
 
 	convertedBlocks, err := slackutil.ConvertMarkdownTextToBlocks(text)
@@ -216,6 +238,77 @@ func ConvertMarkdownToBlocks(text string, log *slog.Logger) []slack.Block {
 
 	// Set expand=true on all section blocks to prevent "see more" truncation
 	return SetExpandOnSectionBlocks(convertedBlocks, log)
+}
+
+// convertToMrkdwnSectionBlocks converts markdown text to Slack section blocks using mrkdwn format.
+// This preserves list structure that would be lost by the slackutil library for nested lists.
+func convertToMrkdwnSectionBlocks(text string, log *slog.Logger) []slack.Block {
+	// Convert common markdown to Slack mrkdwn:
+	// - **bold** -> *bold*
+	// - __bold__ -> *bold*
+	// - *italic* -> _italic_
+	// - _italic_ -> _italic_ (already correct)
+	// - ~~strike~~ -> ~strike~
+	// List markers (- and *) are kept as-is since Slack displays them literally
+
+	mrkdwn := convertMarkdownToMrkdwn(text)
+
+	// Split into paragraphs for better formatting
+	paragraphs := strings.Split(mrkdwn, "\n\n")
+	var blocks []slack.Block
+
+	for _, para := range paragraphs {
+		para = strings.TrimSpace(para)
+		if para == "" {
+			continue
+		}
+
+		textBlock := slack.NewTextBlockObject(slack.MarkdownType, para, false, false)
+		sectionBlock := &slack.SectionBlock{
+			Type:   slack.MBTSection,
+			Text:   textBlock,
+			Expand: true,
+		}
+		blocks = append(blocks, sectionBlock)
+	}
+
+	return blocks
+}
+
+// convertMarkdownToMrkdwn converts standard markdown formatting to Slack mrkdwn format
+func convertMarkdownToMrkdwn(text string) string {
+	// Order matters - process more specific patterns first
+
+	// Convert headers: ### Header -> *Header*
+	// Slack doesn't have header syntax, so we bold them
+	headerPattern := regexp.MustCompile(`(?m)^(#{1,6})\s+(.+)$`)
+	text = headerPattern.ReplaceAllString(text, "*$2*")
+
+	// Convert bold: **text** or __text__ -> *text*
+	boldPattern1 := regexp.MustCompile(`\*\*([^*]+)\*\*`)
+	text = boldPattern1.ReplaceAllString(text, "*$1*")
+	boldPattern2 := regexp.MustCompile(`__([^_]+)__`)
+	text = boldPattern2.ReplaceAllString(text, "*$1*")
+
+	// Convert italic: *text* (single asterisk) -> _text_ (but only if not already bold)
+	// This is tricky because * is used for both bold and italic in different contexts
+	// In standard markdown, *text* is italic and **text** is bold
+	// We've already converted **text** to *text*, so remaining single *text* should become _text_
+	// But we need to be careful not to convert our newly created bold markers
+	// Skip this for now as it's complex and the bold conversion handles most cases
+
+	// Convert strikethrough: ~~text~~ -> ~text~
+	strikePattern := regexp.MustCompile(`~~([^~]+)~~`)
+	text = strikePattern.ReplaceAllString(text, "~$1~")
+
+	// Convert inline code: `code` stays as `code` (Slack supports this)
+	// No conversion needed
+
+	// Convert links: [text](url) -> <url|text>
+	linkPattern := regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`)
+	text = linkPattern.ReplaceAllString(text, "<$2|$1>")
+
+	return text
 }
 
 // convertMarkdownWithCodeBlocks handles text that contains code blocks

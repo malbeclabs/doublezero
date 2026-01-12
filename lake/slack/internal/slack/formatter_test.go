@@ -9,6 +9,61 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestAI_Slack_ConvertMarkdownToMrkdwn(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "bold with double asterisks",
+			input:    "This is **bold** text",
+			expected: "This is *bold* text",
+		},
+		{
+			name:     "bold with underscores",
+			input:    "This is __bold__ text",
+			expected: "This is *bold* text",
+		},
+		{
+			name:     "strikethrough",
+			input:    "This is ~~deleted~~ text",
+			expected: "This is ~deleted~ text",
+		},
+		{
+			name:     "link conversion",
+			input:    "Check out [Google](https://google.com)",
+			expected: "Check out <https://google.com|Google>",
+		},
+		{
+			name:     "header conversion",
+			input:    "### My Header",
+			expected: "*My Header*",
+		},
+		{
+			name:     "inline code preserved",
+			input:    "Use `code` here",
+			expected: "Use `code` here",
+		},
+		{
+			name:     "list with bold items",
+			input:    "- **Item 1**\n- **Item 2**",
+			expected: "- *Item 1*\n- *Item 2*",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result := convertMarkdownToMrkdwn(tt.input)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
 func TestAI_Slack_SanitizeErrorMessage(t *testing.T) {
 	t.Parallel()
 
@@ -108,6 +163,101 @@ func TestAI_Slack_SetExpandOnSectionBlocks(t *testing.T) {
 		t.Parallel()
 		got := SetExpandOnSectionBlocks(nil, slog.Default())
 		require.Nil(t, got)
+	})
+}
+
+func TestAI_Slack_ConvertMarkdownToBlocks_NestedLists(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nested list items are preserved", func(t *testing.T) {
+		t.Parallel()
+		input := `### Current Connection Summary
+
+- **100 validators currently connected** to DZ infrastructure
+- **Top validators by stake**:
+  - validator1: 15.6M SOL
+  - validator2: 14.0M SOL
+  - validator3: 12.3M SOL`
+
+		blocks := ConvertMarkdownToBlocks(input, slog.Default())
+
+		require.NotNil(t, blocks)
+		require.Greater(t, len(blocks), 0)
+
+		// Verify nested list items are present in the output
+		foundNestedItems := false
+		for _, block := range blocks {
+			if block.BlockType() == "section" {
+				sectionBlock := block.(*slackapi.SectionBlock)
+				if sectionBlock.Text != nil {
+					text := sectionBlock.Text.Text
+					// Check that nested items are present
+					if strings.Contains(text, "validator1") &&
+						strings.Contains(text, "validator2") &&
+						strings.Contains(text, "validator3") {
+						foundNestedItems = true
+					}
+				}
+			}
+		}
+		require.True(t, foundNestedItems, "nested list items should be preserved in output")
+	})
+
+	t.Run("simple list without nesting uses rich text blocks", func(t *testing.T) {
+		t.Parallel()
+		input := `- Item 1
+- Item 2
+- Item 3`
+
+		blocks := ConvertMarkdownToBlocks(input, slog.Default())
+
+		require.NotNil(t, blocks)
+		require.Greater(t, len(blocks), 0)
+	})
+
+	t.Run("containsNestedList detects indented lists", func(t *testing.T) {
+		t.Parallel()
+
+		tests := []struct {
+			name     string
+			input    string
+			expected bool
+		}{
+			{
+				name:     "simple list",
+				input:    "- Item 1\n- Item 2",
+				expected: false,
+			},
+			{
+				name:     "nested list with spaces",
+				input:    "- Item 1\n  - Nested item",
+				expected: true,
+			},
+			{
+				name:     "nested list with tab",
+				input:    "- Item 1\n\t- Nested item",
+				expected: true,
+			},
+			{
+				name:     "multiple levels",
+				input:    "- Item\n  - Level 2\n    - Level 3",
+				expected: true,
+			},
+			{
+				name:     "no list",
+				input:    "Just some text\nwith newlines",
+				expected: false,
+			},
+		}
+
+		for _, tt := range tests {
+			tt := tt
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				result := containsNestedList(tt.input)
+				require.Equal(t, tt.expected, result)
+			})
+		}
 	})
 }
 

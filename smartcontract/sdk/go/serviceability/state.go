@@ -119,7 +119,7 @@ type DeviceStatus uint8
 const (
 	DeviceStatusPending DeviceStatus = iota
 	DeviceStatusActivated
-	DeviceStatusSuspended
+	DeviceStatusSuspendedDeprecated
 	DeviceStatusDeleted
 	DeviceStatusRejected
 )
@@ -400,7 +400,7 @@ type LinkStatus uint8
 const (
 	LinkStatusPending LinkStatus = iota
 	LinkStatusActivated
-	LinkStatusSuspended
+	LinkStatusSuspendedDeprecated
 	LinkStatusDeleted
 	LinkStatusRejected
 	LinkStatusRequested

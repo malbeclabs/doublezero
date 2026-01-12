@@ -67,8 +67,8 @@ func TestCompare(t *testing.T) {
 		},
 		{
 			name:             "multiple event types",
-			before:           []serviceability.Device{newTestDevice("1", serviceability.DeviceStatusActivated), newTestDevice("2", serviceability.DeviceStatusPending)}, // 2 is removed
-			after:            []serviceability.Device{newTestDevice("1", serviceability.DeviceStatusSuspended), newTestDevice("3", serviceability.DeviceStatusPending)}, // 1 is modified, 3 is added
+			before:           []serviceability.Device{newTestDevice("1", serviceability.DeviceStatusActivated), newTestDevice("2", serviceability.DeviceStatusPending)},           // 2 is removed
+			after:            []serviceability.Device{newTestDevice("1", serviceability.DeviceStatusSuspendedDeprecated), newTestDevice("3", serviceability.DeviceStatusPending)}, // 1 is modified, 3 is added
 			expectedAdded:    1,
 			expectedRemoved:  1,
 			expectedModified: 1,

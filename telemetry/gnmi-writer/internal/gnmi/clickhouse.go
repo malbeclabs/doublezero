@@ -3,6 +3,7 @@ package gnmi
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -13,6 +14,30 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/prometheus/client_golang/prometheus"
 )
+
+// ClickHouse error codes
+const (
+	chErrCodeUnknownTable = 60 // Table does not exist
+)
+
+// IsRetryableClickhouseError returns true if the error is transient and
+// the operation should be retried, false if it's a permanent error.
+func IsRetryableClickhouseError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var exception *clickhouse.Exception
+	if errors.As(err, &exception) {
+		switch exception.Code {
+		case chErrCodeUnknownTable:
+			return false
+		}
+	}
+
+	// Default: assume transient/retryable
+	return true
+}
 
 // structMetadata holds cached reflection data for a struct type.
 type structMetadata struct {

@@ -149,6 +149,17 @@ func (p *Processor) Run(ctx context.Context) error {
 			if err := p.writer.WriteRecords(ctx, records); err != nil {
 				p.logger.Error("error writing records", "error", err)
 				p.metrics.WriteErrors.Inc()
+
+				// For non-retryable errors (e.g., table doesn't exist), commit offsets
+				// to avoid infinite loop of reprocessing the same messages
+				if !IsRetryableClickhouseError(err) {
+					p.logger.Warn("non-retryable error, committing offsets to skip messages",
+						"error", err,
+						"records_dropped", len(records))
+					if commitErr := p.consumer.Commit(ctx); commitErr != nil {
+						p.logger.Error("error committing offsets", "error", commitErr)
+					}
+				}
 				continue
 			}
 

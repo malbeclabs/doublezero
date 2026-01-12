@@ -1,4 +1,4 @@
-# gNMI State Ingest Service
+# gNMI Writer
 
 Consumes gNMI telemetry from network devices, extracts structured state records, and writes them to ClickHouse for analysis.
 
@@ -252,7 +252,7 @@ func verifyLldpNeighbors(t *testing.T, h *testHarness) {
 
 ### Unit Tests
 
-Run unit tests for the gNMI package:
+Run unit tests for the gNMI Writer package:
 
 ```bash
 go test ./telemetry/gnmi-writer/internal/gnmi/...
@@ -312,10 +312,10 @@ The processor exposes Prometheus metrics:
 
 | Path | Purpose |
 |------|---------|
-| `pkg/gnmi/records.go` | Record type definitions with ClickHouse struct tags |
-| `pkg/gnmi/extractors.go` | Extractor functions and DefaultExtractors registry |
-| `pkg/gnmi/types.go` | Core types (PathMatcher, ExtractFunc, Record interface) |
-| `pkg/gnmi/processor.go` | Main processor orchestrating consume/extract/write |
-| `pkg/gnmi/processor_integration_test.go` | End-to-end tests with containers |
+| `internal/gnmi/records.go` | Record type definitions with ClickHouse struct tags |
+| `internal/gnmi/extractors.go` | Extractor functions and DefaultExtractors registry |
+| `internal/gnmi/types.go` | Core types (PathMatcher, ExtractFunc, Record interface) |
+| `internal/gnmi/processor.go` | Main processor orchestrating consume/extract/write |
+| `internal/gnmi/processor_integration_test.go` | End-to-end tests with containers |
 | `clickhouse/*.sql` | ClickHouse table schemas and views |
-| `pkg/gnmi/testdata/*.prototext` | Test gNMI notifications in prototext format |
+| `internal/gnmi/testdata/*.prototext` | Test gNMI notifications in prototext format |

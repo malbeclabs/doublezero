@@ -63,6 +63,15 @@ export function createSession(): QuerySession {
   }
 }
 
+export function createSessionWithId(id: string): QuerySession {
+  return {
+    id,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    history: [],
+  }
+}
+
 export function getSessionPreview(session: QuerySession): string {
   if (session.name) return session.name
   if (session.history.length === 0) return 'Empty session'
@@ -121,6 +130,15 @@ export function saveCurrentChatSessionId(id: string): void {
 export function createChatSession(): ChatSession {
   return {
     id: crypto.randomUUID(),
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    messages: [],
+  }
+}
+
+export function createChatSessionWithId(id: string): ChatSession {
+  return {
+    id,
     createdAt: new Date(),
     updatedAt: new Date(),
     messages: [],

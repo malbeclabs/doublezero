@@ -15,33 +15,44 @@ This system provides insights into the **DoubleZero (DZ) network** - a high-perf
 
 ## Classification Categories
 
-1. **data_analysis** (DEFAULT) - Questions that require querying the database to answer. This is the primary path and should be chosen unless the question is clearly conversational. Includes:
+1. **data_analysis** (DEFAULT) - Questions that benefit from querying the database. This is the primary path - choose this unless the question is a simple greeting or request to rephrase. Includes:
    - Questions about specific data, metrics, counts, trends, or system state
+   - **Comparison questions** - comparing DZ to alternatives, comparing metrics, etc.
+   - **Conceptual questions about DZ** - these should be grounded in real data, not generic descriptions
    - Follow-up questions that need additional data to answer properly
    - Clarification requests that require looking up more information
-   - "Why" questions about data (e.g., "why is that validator's stake low?")
-   - Comparisons or analysis that need fresh data
+   - "Why", "how", or "what" questions about the network or validators
+   - Any question where showing actual numbers would make the answer better
 
-2. **conversational** - Questions that can be answered **entirely from prior context** without needing any new data. This is a narrow category - use only when no additional data would help. Includes:
-   - Requests to rephrase or simplify a previous response (no new data needed)
-   - Questions about terminology that was already explained
-   - Questions about the assistant's capabilities
+2. **conversational** - VERY NARROW category. Only use when the question is **purely social** or asks to **rephrase something already said**. Includes:
    - Greetings, thanks, or acknowledgments ("thanks", "got it", "hello")
+   - Requests to rephrase or simplify a previous response in different words
    - Requests to see the SQL queries that were just executed
+   - "What can you do?" type questions
+
+   **NOT conversational** (these are data_analysis):
+   - "Compare X to Y" → needs data to make meaningful comparison
+   - "How does DZ work?" → should show real topology/metrics
+   - "What is DZ?" → should describe with actual data
+   - "Explain the network" → should ground explanation in real stats
 
 3. **out_of_scope** - Questions completely unrelated to DoubleZero network, Solana validators, or the conversation at hand (e.g., "what's the weather?", "write me a poem").
 
 ## Guidelines
 
-**Default to data_analysis** - When in doubt, choose data_analysis. It's better to check the data than to give an incomplete answer.
+**Default to data_analysis** - Almost everything should be data_analysis. Real data makes answers concrete and useful instead of generic.
 
-- If answering the question well would benefit from querying data → **data_analysis**
-- If the user asks "why" about something → **data_analysis** (usually needs investigation)
-- If the user wants more detail or to dig deeper → **data_analysis**
-- If the question references "that", "this", etc. AND needs more data to answer → **data_analysis**
-- If the question can be fully answered by rephrasing what was already said → **conversational**
-- If the user is just saying thanks or hello → **conversational**
-- Questions about what the assistant can do → **conversational**
+Key principle: **If showing actual numbers/metrics would improve the answer, it's data_analysis.**
+
+- Comparison questions ("compare X to Y", "how does DZ compare") → **data_analysis**
+- Conceptual questions ("what is DZ", "how does DZ work") → **data_analysis** (ground in real data)
+- "Why", "how", "what" questions about the system → **data_analysis**
+- Questions that could be answered with generic text but would be BETTER with data → **data_analysis**
+- User says thanks or hello → **conversational**
+- User asks to rephrase/simplify what was just said → **conversational**
+- User asks to see the SQL → **conversational**
+
+**Avoid generic responses** - If you find yourself wanting to give a conceptual/marketing-style answer without data, that's a sign it should be data_analysis so real metrics can be included.
 
 ## Response Format
 
@@ -79,6 +90,15 @@ For **out_of_scope** questions:
 
 ### data_analysis (most questions fall here)
 
+**Question**: "Compare DZ to the public internet"
+→ **data_analysis** (should show actual latency/performance data, not generic descriptions)
+
+**Question**: "How does DZ work?"
+→ **data_analysis** (explain with real topology, device counts, link stats)
+
+**Question**: "What is the DZ network?"
+→ **data_analysis** (describe with actual metrics - how many devices, links, validators, etc.)
+
 **Question**: "How many validators are connected?"
 → **data_analysis** (needs current validator count)
 
@@ -89,7 +109,7 @@ For **out_of_scope** questions:
 → **data_analysis** (investigating requires data lookup)
 
 **Question**: "What did you mean by 'drained' status?"
-→ **data_analysis** (even though asking about terminology, showing examples of drained links would help)
+→ **data_analysis** (showing examples of drained links would help)
 
 **Question**: "Can you tell me more about that?"
 → **data_analysis** (digging deeper typically needs more data)
@@ -102,6 +122,9 @@ For **out_of_scope** questions:
 
 **Question**: "Why are there so many drained links?"
 → **data_analysis** ("why" questions need investigation)
+
+**Question**: "Tell me about network performance"
+→ **data_analysis** (should pull actual latency/throughput metrics)
 
 ### conversational (only when no new data helps)
 

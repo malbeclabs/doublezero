@@ -377,9 +377,14 @@ export async function sendChatMessageStream(
   const processLines = (lines: string[]) => {
     for (const line of lines) {
       if (line.startsWith('event: ')) {
-        currentEvent = line.slice(7)
-      } else if (line.startsWith('data: ') && currentEvent) {
-        const data = line.slice(6)
+        currentEvent = line.slice(7).trim()
+      } else if (line.startsWith('data:') && currentEvent) {
+        // Handle both 'data: {...}' and 'data:{...}' formats
+        const data = line.startsWith('data: ') ? line.slice(6) : line.slice(5)
+        // Skip empty data lines
+        if (!data.trim()) {
+          continue
+        }
         try {
           const parsed = JSON.parse(data)
           switch (currentEvent) {

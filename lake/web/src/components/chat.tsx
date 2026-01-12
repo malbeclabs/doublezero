@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import type { ChatMessage, ChatPipelineData } from '@/lib/api'
-import { ArrowUp, Square, Loader2, Copy, Check, ChevronDown, ChevronRight, ExternalLink, MessageCircle } from 'lucide-react'
+import { ArrowUp, Square, Loader2, Copy, Check, ChevronDown, ChevronRight, ExternalLink, MessageCircle, Circle, XCircle, CheckCircle2 } from 'lucide-react'
 import { useTheme } from '@/hooks/use-theme'
 
 // Light theme for syntax highlighting
@@ -375,6 +375,41 @@ function CitationText({ text, onCitationClick }: { text: string; onCitationClick
   return <>{parts}</>
 }
 
+// Timeline step component for progress display
+function TimelineStep({ label, status }: { label: string; status: 'pending' | 'running' | 'completed' }) {
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex-shrink-0">
+        {status === 'completed' && (
+          <CheckCircle2 className="w-4 h-4 text-green-500" />
+        )}
+        {status === 'running' && (
+          <Loader2 className="w-4 h-4 text-accent animate-spin" />
+        )}
+        {status === 'pending' && (
+          <Circle className="w-4 h-4 text-muted-foreground/30" />
+        )}
+      </div>
+      <span className={`text-sm ${
+        status === 'completed' ? 'text-muted-foreground' :
+        status === 'running' ? 'text-foreground' :
+        'text-muted-foreground/50'
+      }`}>
+        {label}
+      </span>
+    </div>
+  )
+}
+
+export interface QueryProgressItem {
+  question: string
+  status: 'pending' | 'running' | 'completed' | 'error'
+  rows?: number
+}
+
+// All possible steps in the pipeline
+export type PipelineStep = 'classifying' | 'decomposing' | 'executing' | 'synthesizing'
+
 export interface ChatProgress {
   status?: string
   step?: string
@@ -382,6 +417,10 @@ export interface ChatProgress {
   queriesCompleted?: number
   queriesTotal?: number
   lastQuery?: string
+  // Full list of queries with their completion status
+  queries?: QueryProgressItem[]
+  // Track which steps have been completed
+  completedSteps?: PipelineStep[]
 }
 
 interface ChatProps {
@@ -578,34 +617,108 @@ export function Chat({ messages, isPending, progress, onSendMessage, onAbort, on
                 </div>
               )
             })}
-            {isPending && (
+            {isPending && progress && (
+              <div className="px-1">
+                {/* Step timeline */}
+                <div className="space-y-2">
+                  {/* Step 1: Classifying */}
+                  <TimelineStep
+                    label="Understanding your question"
+                    status={
+                      progress.completedSteps?.includes('classifying') ? 'completed' :
+                      progress.step === 'classifying' ? 'running' : 'pending'
+                    }
+                  />
+
+                  {/* Step 2: Decomposing - only show if we've moved past classifying */}
+                  {(progress.step !== 'classifying' || progress.completedSteps?.includes('classifying')) && (
+                    <TimelineStep
+                      label="Breaking down your question"
+                      status={
+                        progress.completedSteps?.includes('decomposing') ? 'completed' :
+                        progress.step === 'decomposing' ? 'running' : 'pending'
+                      }
+                    />
+                  )}
+
+                  {/* Step 3: Executing - only show if we have queries */}
+                  {progress.queries && progress.queries.length > 0 && (
+                    <div>
+                      <TimelineStep
+                        label={`Running ${progress.queriesTotal || 0} queries`}
+                        status={
+                          progress.completedSteps?.includes('executing') ? 'completed' :
+                          progress.step === 'executing' ? 'running' : 'pending'
+                        }
+                      />
+                      {/* Nested query progress - show during executing and synthesizing */}
+                      {(progress.step === 'executing' || progress.step === 'synthesizing') && (
+                        <div className="ml-6 mt-2 space-y-2">
+                          {/* Progress bar */}
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 h-1.5 bg-secondary rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-accent transition-all duration-300"
+                                style={{ width: `${((progress.queriesCompleted || 0) / (progress.queriesTotal || 1)) * 100}%` }}
+                              />
+                            </div>
+                            <span className="text-xs text-muted-foreground tabular-nums">
+                              {progress.queriesCompleted || 0}/{progress.queriesTotal || 0}
+                            </span>
+                          </div>
+                          {/* Query list */}
+                          <div className="space-y-1">
+                            {progress.queries.map((query, i) => (
+                              <div key={i} className="flex items-start gap-2">
+                                <div className="flex-shrink-0 mt-0.5">
+                                  {query.status === 'completed' && (
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
+                                  )}
+                                  {query.status === 'error' && (
+                                    <XCircle className="w-3.5 h-3.5 text-red-500" />
+                                  )}
+                                  {query.status === 'running' && (
+                                    <Loader2 className="w-3.5 h-3.5 text-accent animate-spin" />
+                                  )}
+                                  {query.status === 'pending' && (
+                                    <Circle className="w-3.5 h-3.5 text-muted-foreground/30" />
+                                  )}
+                                </div>
+                                <span className={`text-xs leading-tight ${
+                                  query.status === 'completed' ? 'text-muted-foreground' :
+                                  query.status === 'error' ? 'text-red-500' :
+                                  query.status === 'running' ? 'text-foreground' :
+                                  'text-muted-foreground/50'
+                                }`}>
+                                  {query.question}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Step 4: Synthesizing - only show if we've started it */}
+                  {(progress.step === 'synthesizing' || progress.completedSteps?.includes('synthesizing')) && (
+                    <TimelineStep
+                      label="Preparing answer"
+                      status={
+                        progress.completedSteps?.includes('synthesizing') ? 'completed' :
+                        progress.step === 'synthesizing' ? 'running' : 'pending'
+                      }
+                    />
+                  )}
+                </div>
+              </div>
+            )}
+            {isPending && !progress && (
               <div className="px-1">
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span className="text-sm">
-                    {progress?.status || 'Thinking...'}
-                  </span>
+                  <span className="text-sm">Thinking...</span>
                 </div>
-                {progress?.step === 'executing' && progress.queriesTotal && progress.queriesTotal > 0 && (
-                  <div className="mt-2 ml-6">
-                    <div className="flex items-center gap-2 mb-1">
-                      <div className="flex-1 h-1.5 bg-secondary rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-accent transition-all duration-300"
-                          style={{ width: `${((progress.queriesCompleted || 0) / progress.queriesTotal) * 100}%` }}
-                        />
-                      </div>
-                      <span className="text-xs text-muted-foreground">
-                        {progress.queriesCompleted || 0}/{progress.queriesTotal}
-                      </span>
-                    </div>
-                    {progress.lastQuery && (
-                      <div className="text-xs text-muted-foreground truncate">
-                        {progress.lastQuery}
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
             )}
             <div ref={messagesEndRef} />

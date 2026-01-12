@@ -8,7 +8,7 @@ import { ResultsView } from '@/components/results-view'
 import { SessionHistory, type GenerationRecord } from '@/components/session-history'
 import { SessionsPage } from '@/components/sessions-page'
 import { ChatSessionsPage } from '@/components/chat-sessions-page'
-import { Chat, type ChatProgress } from '@/components/chat'
+import { Chat, type ChatProgress, type QueryProgressItem, type PipelineStep } from '@/components/chat'
 import { Sidebar } from '@/components/sidebar'
 import { generateSessionTitle, generateChatSessionTitle, sendChatMessageStream, recommendVisualization, fetchCatalog, type SessionQueryInfo } from '@/lib/api'
 import type { TableInfo, QueryResponse, HistoryMessage, ChatMessage } from '@/lib/api'
@@ -18,9 +18,11 @@ import {
   loadSessions,
   saveSessions,
   createSession,
+  createSessionWithId,
   loadChatSessions,
   saveChatSessions,
   createChatSession,
+  createChatSessionWithId,
 } from '@/lib/sessions'
 
 const queryClient = new QueryClient({
@@ -87,10 +89,10 @@ function useAppContext() {
 // Stable component for syncing query session from URL
 function QuerySessionSync({ children }: { children: React.ReactNode }) {
   const { sessionId } = useParams()
-  const navigate = useNavigate()
   const loadedSessionRef = useRef<string | null>(null)
   const {
     sessions,
+    setSessions,
     sessionsLoaded,
     setCurrentSessionId,
     setResults,
@@ -100,48 +102,46 @@ function QuerySessionSync({ children }: { children: React.ReactNode }) {
   } = useAppContext()
 
   useEffect(() => {
-    if (!sessionsLoaded) return
+    if (!sessionsLoaded || !sessionId) return
 
-    if (sessionId) {
-      const session = sessions.find(s => s.id === sessionId)
-      if (session) {
-        // Always update currentSessionId
-        setCurrentSessionId(sessionId)
+    let session = sessions.find(s => s.id === sessionId)
 
-        // Only load session data if we haven't loaded this session yet
-        if (loadedSessionRef.current !== sessionId) {
-          loadedSessionRef.current = sessionId
-          setResults(null)
+    // If session doesn't exist (e.g., page refresh on a new empty session),
+    // create it with the URL's ID to preserve the URL
+    if (!session) {
+      const newSession = createSessionWithId(sessionId)
+      setSessions(prev => [...prev, newSession])
+      session = newSession
+    }
 
-          // Check if there's a pending query from navigation (e.g., from chat "Edit" button)
-          if (pendingQueryRef.current !== null) {
-            const pendingQuery = pendingQueryRef.current
-            setQuery(pendingQuery)
-            pendingQueryRef.current = null
-            // Auto-run the query
-            setTimeout(() => {
-              queryEditorRef.current?.run(pendingQuery)
-            }, 100)
-          } else if (session.history.length > 0) {
-            const latestQuery = session.history[0].sql
-            setQuery(latestQuery)
-            setTimeout(() => {
-              queryEditorRef.current?.run(latestQuery)
-            }, 100)
-          } else {
-            setQuery('')
-          }
-        }
+    // Always update currentSessionId
+    setCurrentSessionId(sessionId)
+
+    // Only load session data if we haven't loaded this session yet
+    if (loadedSessionRef.current !== sessionId) {
+      loadedSessionRef.current = sessionId
+      setResults(null)
+
+      // Check if there's a pending query from navigation (e.g., from chat "Edit" button)
+      if (pendingQueryRef.current !== null) {
+        const pendingQuery = pendingQueryRef.current
+        setQuery(pendingQuery)
+        pendingQueryRef.current = null
+        // Auto-run the query
+        setTimeout(() => {
+          queryEditorRef.current?.run(pendingQuery)
+        }, 100)
+      } else if (session.history.length > 0) {
+        const latestQuery = session.history[0].sql
+        setQuery(latestQuery)
+        setTimeout(() => {
+          queryEditorRef.current?.run(latestQuery)
+        }, 100)
       } else {
-        if (sessions.length > 0) {
-          const mostRecent = [...sessions].sort(
-            (a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()
-          )[0]
-          navigate(`/query/${mostRecent.id}`, { replace: true })
-        }
+        setQuery('')
       }
     }
-  }, [sessionId, sessionsLoaded, sessions, setCurrentSessionId, setResults, setQuery, queryEditorRef, pendingQueryRef, navigate])
+  }, [sessionId, sessionsLoaded, sessions, setSessions, setCurrentSessionId, setResults, setQuery, queryEditorRef, pendingQueryRef])
 
   return <>{children}</>
 }
@@ -149,30 +149,27 @@ function QuerySessionSync({ children }: { children: React.ReactNode }) {
 // Stable component for syncing chat session from URL
 function ChatSessionSync({ children }: { children: React.ReactNode }) {
   const { sessionId } = useParams()
-  const navigate = useNavigate()
   const {
     chatSessions,
+    setChatSessions,
     chatSessionsLoaded,
     setCurrentChatSessionId,
   } = useAppContext()
 
   useEffect(() => {
-    if (!chatSessionsLoaded) return
+    if (!chatSessionsLoaded || !sessionId) return
 
-    if (sessionId) {
-      const session = chatSessions.find(s => s.id === sessionId)
-      if (session) {
-        setCurrentChatSessionId(sessionId)
-      } else {
-        if (chatSessions.length > 0) {
-          const mostRecent = [...chatSessions].sort(
-            (a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()
-          )[0]
-          navigate(`/chat/${mostRecent.id}`, { replace: true })
-        }
-      }
+    const session = chatSessions.find(s => s.id === sessionId)
+
+    // If session doesn't exist (e.g., page refresh on a new empty session),
+    // create it with the URL's ID to preserve the URL
+    if (!session) {
+      const newSession = createChatSessionWithId(sessionId)
+      setChatSessions(prev => [...prev, newSession])
     }
-  }, [sessionId, chatSessionsLoaded, chatSessions, setCurrentChatSessionId, navigate])
+
+    setCurrentChatSessionId(sessionId)
+  }, [sessionId, chatSessionsLoaded, chatSessions, setChatSessions, setCurrentChatSessionId])
 
   return <>{children}</>
 }
@@ -686,12 +683,19 @@ function AppContent() {
   }, [chatSessions, chatSessionsLoaded])
 
   // Helper to update progress for a specific session
-  const updatePendingProgress = useCallback((sessionId: string, progress: ChatProgress) => {
+  // Accepts either a progress object or a function that receives the previous progress
+  const updatePendingProgress = useCallback((
+    sessionId: string,
+    progressOrFn: ChatProgress | ((prev: ChatProgress) => ChatProgress)
+  ) => {
     setPendingChats(prev => {
       const existing = prev.get(sessionId)
       if (!existing) return prev
       const next = new Map(prev)
-      next.set(sessionId, { ...existing, progress })
+      const newProgress = typeof progressOrFn === 'function'
+        ? progressOrFn(existing.progress)
+        : progressOrFn
+      next.set(sessionId, { ...existing, progress: newProgress })
       return next
     })
   }, [])
@@ -726,27 +730,64 @@ function AppContent() {
         history,
         {
           onStatus: (status) => {
-            updatePendingProgress(sessionId, {
-              status: status.message,
-              step: status.step,
+            updatePendingProgress(sessionId, (prev) => {
+              // Track completed steps - when we move to a new step, previous ones are done
+              const stepOrder: PipelineStep[] = ['classifying', 'decomposing', 'executing', 'synthesizing']
+              const currentStepIndex = stepOrder.indexOf(status.step as PipelineStep)
+              const completedSteps = currentStepIndex > 0
+                ? stepOrder.slice(0, currentStepIndex)
+                : []
+              return {
+                ...prev,
+                status: status.message,
+                step: status.step,
+                completedSteps,
+              }
             })
           },
           onDecomposed: (data) => {
-            updatePendingProgress(sessionId, {
+            // Initialize all queries as pending, first one as running
+            const queries: QueryProgressItem[] = data.questions.map((q, i) => ({
+              question: q.question,
+              status: i === 0 ? 'running' : 'pending',
+            }))
+            updatePendingProgress(sessionId, (prev) => ({
+              ...prev,
               status: `Running ${data.count} queries...`,
               step: 'executing',
               questionsCount: data.count,
               queriesCompleted: 0,
               queriesTotal: data.count,
-            })
+              queries,
+              completedSteps: ['classifying', 'decomposing'],
+            }))
           },
           onQueryProgress: (data) => {
-            updatePendingProgress(sessionId, {
-              status: `Running queries...`,
-              step: 'executing',
-              queriesCompleted: data.completed,
-              queriesTotal: data.total,
-              lastQuery: data.question,
+            updatePendingProgress(sessionId, (prev) => {
+              // Update queries list: mark completed query, set next to running
+              const queries = prev.queries?.map((q, i) => {
+                if (q.question === data.question) {
+                  return {
+                    ...q,
+                    status: data.success ? 'completed' : 'error',
+                    rows: data.rows,
+                  } as QueryProgressItem
+                }
+                // Set the next pending query to running
+                if (q.status === 'pending' && i === data.completed) {
+                  return { ...q, status: 'running' } as QueryProgressItem
+                }
+                return q
+              })
+              return {
+                ...prev,
+                status: `Running queries...`,
+                step: 'executing',
+                queriesCompleted: data.completed,
+                queriesTotal: data.total,
+                lastQuery: data.question,
+                queries,
+              }
             })
           },
           onDone: (data) => {

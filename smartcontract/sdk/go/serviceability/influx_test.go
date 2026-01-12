@@ -154,7 +154,7 @@ func TestToLineProtocol(t *testing.T) {
 				"env": "testnet",
 			},
 			expected: `links,code=link-01,contributor_pubkey=` + pubKey1B58 +
-				`,env=testnet,link_type=WAN,owner=` + pubKey1B58 +
+				`,env=testnet,link_desired_status=pending,link_type=WAN,owner=` + pubKey1B58 +
 				`,pubkey=` + pubKey1B58 +
 				`,side_a_iface_name=xe-0/0/0,side_a_pubkey=` + pubKey1B58 +
 				`,side_z_iface_name=xe-0/0/1,side_z_pubkey=` + pubKey1B58 +
@@ -185,7 +185,7 @@ func TestToLineProtocol(t *testing.T) {
 				"env": "testnet",
 			},
 			expected: `links,code=link-empty,contributor_pubkey=` + pubKey1B58 +
-				`,env=testnet,link_type=DZX,owner=` + pubKey1B58 +
+				`,env=testnet,link_desired_status=pending,link_type=DZX,owner=` + pubKey1B58 +
 				`,pubkey=` + pubKey1B58 +
 				`,side_a_pubkey=` + pubKey1B58 +
 				`,side_z_pubkey=` + pubKey1B58 +

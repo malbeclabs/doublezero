@@ -86,7 +86,10 @@ pub fn process_closeaccount_link(
     let mut side_z_dev = Device::try_from(side_z_account)?;
     let link: Link = Link::try_from(link_account)?;
 
-    if link.owner != *owner_account.key {
+    if link.owner != *owner_account.key
+        || link.side_a_pk != *side_a_account.key
+        || link.side_z_pk != *side_z_account.key
+    {
         return Err(ProgramError::InvalidAccountData);
     }
     if link.status != LinkStatus::Deleting {

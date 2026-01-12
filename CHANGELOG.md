@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Onchain programs
+  - Serviceability: enforce that ActivateLink and CloseAccountLink instructions verify the provided side A/Z device accounts match the link's stored `side_a_pk` and `side_z_pk` before proceeding.
 - CLI
   - ActivateMulticastGroup now supports on-chain IP allocation from ResourceExtension bitmap (RFC 11).
   - IP address lookup responses that do not contain a valid IPv4 address (such as upstream timeout messages) are now treated as retryable errors instead of being parsed as IPs.
@@ -228,6 +230,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Onchain programs
+  - Serviceability: enforce that ActivateLink and CloseAccountLink instructions verify the provided side A/Z device accounts match the link's stored `side_a_pk` and `side_z_pk` before proceeding.
 - CLI
   - Added a wait in the `disconnect` command to ensure the account is fully closed before returning, preventing failures during rapid disconnect/reconnect sequences.
   - Display multicast group memberships (publisher/subscriber) in AccessPass listings to improve visibility.

@@ -7,8 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- filter out epochs with no successful debt collection (([#246](https://github.com/doublezerofoundation/doublezero-offchain/pull/246))
-- remove unnecessary loops to calculate results, only display epochs that debt is collected (([#245](https://github.com/doublezerofoundation/doublezero-offchain/pull/245))
+- finalize zero debt ([#248](https://github.com/doublezerofoundation/doublezero-offchain/pull/248))
+- filter out epochs with no successful debt collection ([#246](https://github.com/doublezerofoundation/doublezero-offchain/pull/246))
+- remove unnecessary loops to calculate results, only display epochs that debt is collected ([#245](https://github.com/doublezerofoundation/doublezero-offchain/pull/245))
 - add finalize rewards and sweep tokens to initialize distribution workflow ([#243](https://github.com/doublezerofoundation/doublezero-offchain/pull/243))
 - parallelize debt collection and reduce collection_results being sent around, ignore overlapping dz epochs in report ([#228](https://github.com/doublezerofoundation/doublezero-offchain/pull/228))
 - fix local uncollectible debt tracking for write-off logic ([#240](https://github.com/doublezerofoundation/doublezero-offchain/pull/240))

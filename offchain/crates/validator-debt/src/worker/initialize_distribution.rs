@@ -14,10 +14,10 @@ use doublezero_solana_sdk::{
         instruction::{
             RevenueDistributionInstructionData,
             account::{
-                EnableSolanaValidatorDebtWriteOffAccounts, FinalizeDistributionRewardsAccounts,
-                InitializeDistributionAccounts, InitializeSolanaValidatorDepositAccounts,
-                PaySolanaValidatorDebtAccounts, SweepDistributionTokensAccounts,
-                WriteOffSolanaValidatorDebtAccounts,
+                EnableSolanaValidatorDebtWriteOffAccounts, FinalizeDistributionDebtAccounts,
+                FinalizeDistributionRewardsAccounts, InitializeDistributionAccounts,
+                InitializeSolanaValidatorDepositAccounts, PaySolanaValidatorDebtAccounts,
+                SweepDistributionTokensAccounts, WriteOffSolanaValidatorDebtAccounts,
             },
         },
         state::{self, Distribution, ProgramConfig, SolanaValidatorDeposit},
@@ -142,42 +142,64 @@ pub async fn try_initialize_distribution(
     let (_, bump) = state::find_2z_token_pda_address(&distribution_key);
     compute_unit_limit += Wallet::compute_units_for_bump_seed(bump);
 
-    let finalize_rewards_ix = try_build_instruction(
-        &ID,
-        FinalizeDistributionRewardsAccounts::new(&wallet.pubkey(), rewards_dz_epoch),
-        &RevenueDistributionInstructionData::FinalizeDistributionRewards,
-    )?;
+    let mut instructions = vec![initialize_distribution_ix];
 
-    let SolConversionState {
-        program_state: (_, sol_conversion_program_state),
-        configuration_registry: _,
-        journal: _,
-        fixed_fill_quantity,
-    } = SolConversionState::try_fetch(&wallet.connection).await?;
+    let has_zero_debt = has_zero_distribution_debt(&rewards_distribution);
 
-    let expected_fill_count =
-        rewards_distribution.checked_total_sol_debt().unwrap() / fixed_fill_quantity + 1;
+    if rewards_distribution.is_debt_calculation_finalized() || has_zero_debt {
+        // The debt calculation may not have been finalized yet if there was no
+        // debt calculated. Finalizing must be done before rewards can be
+        // distributed.
+        if has_zero_debt {
+            tracing::warn!(
+                "Finalizing debt calculation for epoch {rewards_dz_epoch} with zero debt"
+            );
+            let finalize_debt_ix = try_build_instruction(
+                &ID,
+                FinalizeDistributionDebtAccounts::new(&wallet_key, rewards_dz_epoch, &wallet_key),
+                &RevenueDistributionInstructionData::FinalizeDistributionDebt,
+            )?;
+            instructions.push(finalize_debt_ix);
+            compute_unit_limit += 5_000;
+        }
 
-    let sweep_distribution_tokens_ix = try_build_instruction(
-        &ID,
-        SweepDistributionTokensAccounts::new(
-            rewards_dz_epoch,
-            &config.sol_2z_swap_program_id,
-            &sol_conversion_program_state.fills_registry_key,
-        ),
-        &RevenueDistributionInstructionData::SweepDistributionTokens,
-    )?;
-    compute_unit_limit += 80 * expected_fill_count as u32;
+        let finalize_rewards_ix = try_build_instruction(
+            &ID,
+            FinalizeDistributionRewardsAccounts::new(&wallet_key, rewards_dz_epoch),
+            &RevenueDistributionInstructionData::FinalizeDistributionRewards,
+        )?;
+        instructions.push(finalize_rewards_ix);
 
-    let instructions = vec![
-        initialize_distribution_ix,
-        finalize_rewards_ix,
-        sweep_distribution_tokens_ix,
-        ComputeBudgetInstruction::set_compute_unit_limit(compute_unit_limit),
-        // We intentionally ignore the --with-compute-unit-price flag here to
-        // ensure that we land the distribution initialization.
-        ComputeBudgetInstruction::set_compute_unit_price(100_000),
-    ];
+        let SolConversionState {
+            program_state: (_, sol_conversion_program_state),
+            configuration_registry: _,
+            journal: _,
+            fixed_fill_quantity,
+        } = SolConversionState::try_fetch(&wallet.connection).await?;
+
+        let expected_fill_count =
+            rewards_distribution.checked_total_sol_debt().unwrap() / fixed_fill_quantity + 1;
+
+        let sweep_distribution_tokens_ix = try_build_instruction(
+            &ID,
+            SweepDistributionTokensAccounts::new(
+                rewards_dz_epoch,
+                &config.sol_2z_swap_program_id,
+                &sol_conversion_program_state.fills_registry_key,
+            ),
+            &RevenueDistributionInstructionData::SweepDistributionTokens,
+        )?;
+        instructions.push(sweep_distribution_tokens_ix);
+        compute_unit_limit += 80 * expected_fill_count as u32;
+    }
+
+    instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(
+        compute_unit_limit,
+    ));
+
+    // We intentionally ignore the --with-compute-unit-price flag here to
+    // ensure that we land the distribution initialization.
+    instructions.push(ComputeBudgetInstruction::set_compute_unit_price(100_000));
 
     let transaction = wallet.new_transaction(&instructions).await?;
     let tx_sig = wallet.send_or_simulate_transaction(&transaction).await?;
@@ -213,7 +235,7 @@ async fn try_write_off_distribution_debt(
         return Ok(());
     }
 
-    if rewards_distribution.solana_validator_debt_merkle_root == Default::default() {
+    if has_zero_distribution_debt(rewards_distribution) {
         tracing::info!("No debt found for epoch {rewards_dz_epoch}");
         return Ok(());
     }
@@ -427,4 +449,9 @@ async fn try_write_off_distribution_debt(
     }
 
     Ok(())
+}
+
+#[inline(always)]
+fn has_zero_distribution_debt(rewards_distribution: &Distribution) -> bool {
+    rewards_distribution.solana_validator_debt_merkle_root == Default::default()
 }

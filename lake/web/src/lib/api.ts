@@ -372,47 +372,62 @@ export async function sendChatMessageStream(
 
   const decoder = new TextDecoder()
   let buffer = ''
+  let currentEvent = ''  // Persist across chunks
+
+  const processLines = (lines: string[]) => {
+    for (const line of lines) {
+      if (line.startsWith('event: ')) {
+        currentEvent = line.slice(7)
+      } else if (line.startsWith('data: ') && currentEvent) {
+        const data = line.slice(6)
+        try {
+          const parsed = JSON.parse(data)
+          switch (currentEvent) {
+            case 'status':
+              callbacks.onStatus(parsed)
+              break
+            case 'decomposed':
+              callbacks.onDecomposed(parsed)
+              break
+            case 'query_progress':
+              callbacks.onQueryProgress(parsed)
+              break
+            case 'heartbeat':
+              // Ignore heartbeat events - they're just to keep the connection alive
+              break
+            case 'done':
+              console.log('[SSE] done event received', { answerLength: parsed.answer?.length })
+              callbacks.onDone(parsed)
+              console.log('[SSE] onDone callback completed')
+              break
+            case 'error':
+              callbacks.onError(parsed.error || 'Unknown error')
+              break
+          }
+        } catch (e) {
+          console.error('[SSE] Parse error for event', currentEvent, e, 'data:', data.slice(0, 200))
+        }
+        currentEvent = ''
+      }
+    }
+  }
 
   try {
     while (true) {
       const { done, value } = await reader.read()
-      if (done) break
+      if (done) {
+        // Process any remaining buffer when stream ends
+        if (buffer.trim()) {
+          const lines = buffer.split('\n')
+          processLines(lines)
+        }
+        break
+      }
 
       buffer += decoder.decode(value, { stream: true })
       const lines = buffer.split('\n')
       buffer = lines.pop() || ''
-
-      let currentEvent = ''
-      for (const line of lines) {
-        if (line.startsWith('event: ')) {
-          currentEvent = line.slice(7)
-        } else if (line.startsWith('data: ') && currentEvent) {
-          const data = line.slice(6)
-          try {
-            const parsed = JSON.parse(data)
-            switch (currentEvent) {
-              case 'status':
-                callbacks.onStatus(parsed)
-                break
-              case 'decomposed':
-                callbacks.onDecomposed(parsed)
-                break
-              case 'query_progress':
-                callbacks.onQueryProgress(parsed)
-                break
-              case 'done':
-                callbacks.onDone(parsed)
-                break
-              case 'error':
-                callbacks.onError(parsed.error || 'Unknown error')
-                break
-            }
-          } catch {
-            // Ignore parse errors
-          }
-          currentEvent = ''
-        }
-      }
+      processLines(lines)
     }
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {

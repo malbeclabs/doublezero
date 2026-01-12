@@ -3,6 +3,8 @@ package pipeline
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 )
@@ -25,6 +27,9 @@ func NewAnthropicLLMClient(model anthropic.Model, maxTokens int64) *AnthropicLLM
 
 // Complete sends a prompt to Claude and returns the response text.
 func (c *AnthropicLLMClient) Complete(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
+	start := time.Now()
+	slog.Info("Anthropic API call starting", "model", c.model, "maxTokens", c.maxTokens, "userPromptLen", len(userPrompt))
+
 	msg, err := c.client.Messages.New(ctx, anthropic.MessageNewParams{
 		Model:     c.model,
 		MaxTokens: c.maxTokens,
@@ -35,9 +40,13 @@ func (c *AnthropicLLMClient) Complete(ctx context.Context, systemPrompt, userPro
 			anthropic.NewUserMessage(anthropic.NewTextBlock(userPrompt)),
 		},
 	})
+
+	duration := time.Since(start)
 	if err != nil {
+		slog.Error("Anthropic API call failed", "duration", duration, "error", err)
 		return "", fmt.Errorf("anthropic API error: %w", err)
 	}
+	slog.Info("Anthropic API call completed", "duration", duration, "stopReason", msg.StopReason)
 
 	// Extract text from response
 	for _, block := range msg.Content {

@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline"
@@ -320,7 +321,27 @@ func ChatStream(w http.ResponseWriter, r *http.Request) {
 	// Step 4: Synthesize
 	sendEvent("status", map[string]string{"step": "synthesizing", "message": "Preparing answer..."})
 
+	// Send periodic heartbeats to keep connection alive through proxies (e.g., Cloudflare)
+	heartbeatDone := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(15 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				sendEvent("heartbeat", map[string]string{})
+			case <-heartbeatDone:
+				return
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	slog.Info("Starting synthesize", "message", req.Message, "queryCount", len(executedQueries))
 	answer, err := p.Synthesize(ctx, req.Message, executedQueries)
+	close(heartbeatDone)
+	slog.Info("Synthesize completed", "answerLen", len(answer), "error", err)
 	if err != nil {
 		sendEvent("error", map[string]string{"error": internalError("Failed to generate answer", err)})
 		return

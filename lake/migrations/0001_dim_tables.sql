@@ -1,5 +1,5 @@
 -- Dimension Tables for ClickHouse
--- SCD2 design: _history (ReplacingMergeTree) + staging tables
+-- SCD2 design: _history (ReplicatedMergeTree) + staging tables
 -- History is the single source of truth; current state computed at query time
 -- Canonical columns: entity_id, snapshot_ts, ingested_at, op_id, is_deleted, attrs_hash, ...attrs
 
@@ -17,7 +17,7 @@ ON CLUSTER lake
     pk String,
     code String,
     name String
-) ENGINE = ReplacingMergeTree
+) ENGINE = ReplicatedMergeTree
 PARTITION BY toYYYYMM(snapshot_ts)
 ORDER BY (entity_id, snapshot_ts, ingested_at, op_id);
 
@@ -35,7 +35,7 @@ ON CLUSTER lake
     pk String,
     code String,
     name String
-) ENGINE = ReplacingMergeTree
+) ENGINE = ReplicatedMergeTree
 PARTITION BY toDate(snapshot_ts)
 ORDER BY (op_id, entity_id)
 TTL ingested_at + INTERVAL 7 DAY;
@@ -58,7 +58,7 @@ ON CLUSTER lake
     contributor_pk String,
     metro_pk String,
     max_users Int32
-) ENGINE = ReplacingMergeTree
+) ENGINE = ReplicatedMergeTree
 PARTITION BY toYYYYMM(snapshot_ts)
 ORDER BY (entity_id, snapshot_ts, ingested_at, op_id);
 
@@ -79,7 +79,7 @@ ON CLUSTER lake
     contributor_pk String,
     metro_pk String,
     max_users Int32
-) ENGINE = ReplacingMergeTree
+) ENGINE = ReplicatedMergeTree
 PARTITION BY toDate(snapshot_ts)
 ORDER BY (op_id, entity_id)
 TTL ingested_at + INTERVAL 7 DAY;
@@ -102,7 +102,7 @@ ON CLUSTER lake
     dz_ip String,
     device_pk String,
     tunnel_id Int32
-) ENGINE = ReplacingMergeTree
+) ENGINE = ReplicatedMergeTree
 PARTITION BY toYYYYMM(snapshot_ts)
 ORDER BY (entity_id, snapshot_ts, ingested_at, op_id);
 
@@ -123,7 +123,7 @@ ON CLUSTER lake
     dz_ip String,
     device_pk String,
     tunnel_id Int32
-) ENGINE = ReplacingMergeTree
+) ENGINE = ReplicatedMergeTree
 PARTITION BY toDate(snapshot_ts)
 ORDER BY (op_id, entity_id)
 TTL ingested_at + INTERVAL 7 DAY;
@@ -143,7 +143,7 @@ ON CLUSTER lake
     name String,
     longitude Float64,
     latitude Float64
-) ENGINE = ReplacingMergeTree
+) ENGINE = ReplicatedMergeTree
 PARTITION BY toYYYYMM(snapshot_ts)
 ORDER BY (entity_id, snapshot_ts, ingested_at, op_id);
 
@@ -161,7 +161,7 @@ ON CLUSTER lake
     name String,
     longitude Float64,
     latitude Float64
-) ENGINE = ReplacingMergeTree
+) ENGINE = ReplicatedMergeTree
 PARTITION BY toDate(snapshot_ts)
 ORDER BY (op_id, entity_id)
 TTL ingested_at + INTERVAL 7 DAY;
@@ -190,7 +190,7 @@ ON CLUSTER lake
     committed_jitter_ns Int64,
     bandwidth_bps Int64,
     isis_delay_override_ns Int64
-) ENGINE = ReplacingMergeTree
+) ENGINE = ReplicatedMergeTree
 PARTITION BY toYYYYMM(snapshot_ts)
 ORDER BY (entity_id, snapshot_ts, ingested_at, op_id);
 
@@ -217,7 +217,7 @@ ON CLUSTER lake
     committed_jitter_ns Int64,
     bandwidth_bps Int64,
     isis_delay_override_ns Int64
-) ENGINE = ReplacingMergeTree
+) ENGINE = ReplicatedMergeTree
 PARTITION BY toDate(snapshot_ts)
 ORDER BY (op_id, entity_id)
 TTL ingested_at + INTERVAL 7 DAY;
@@ -249,7 +249,7 @@ ON CLUSTER lake
     is_anycast Bool,
     is_anonymous_proxy Bool,
     is_satellite_provider Bool
-) ENGINE = ReplacingMergeTree
+) ENGINE = ReplicatedMergeTree
 PARTITION BY toYYYYMM(snapshot_ts)
 ORDER BY (entity_id, snapshot_ts, ingested_at, op_id);
 
@@ -279,7 +279,7 @@ ON CLUSTER lake
     is_anycast Bool,
     is_anonymous_proxy Bool,
     is_satellite_provider Bool
-) ENGINE = ReplacingMergeTree
+) ENGINE = ReplicatedMergeTree
 PARTITION BY toDate(snapshot_ts)
 ORDER BY (op_id, entity_id)
 TTL ingested_at + INTERVAL 7 DAY;
@@ -298,7 +298,7 @@ ON CLUSTER lake
     epoch Int64,
     slots String,
     slot_count Int64
-) ENGINE = ReplacingMergeTree
+) ENGINE = ReplicatedMergeTree
 PARTITION BY toYYYYMM(snapshot_ts)
 ORDER BY (entity_id, snapshot_ts, ingested_at, op_id);
 
@@ -315,7 +315,7 @@ ON CLUSTER lake
     epoch Int64,
     slots String,
     slot_count Int64
-) ENGINE = ReplacingMergeTree
+) ENGINE = ReplicatedMergeTree
 PARTITION BY toDate(snapshot_ts)
 ORDER BY (op_id, entity_id)
 TTL ingested_at + INTERVAL 7 DAY;
@@ -336,7 +336,7 @@ ON CLUSTER lake
     activated_stake_lamports Int64,
     epoch_vote_account String,
     commission_percentage Int64
-) ENGINE = ReplacingMergeTree
+) ENGINE = ReplicatedMergeTree
 PARTITION BY toYYYYMM(snapshot_ts)
 ORDER BY (entity_id, snapshot_ts, ingested_at, op_id);
 
@@ -355,7 +355,7 @@ ON CLUSTER lake
     activated_stake_lamports Int64,
     epoch_vote_account String,
     commission_percentage Int64
-) ENGINE = ReplacingMergeTree
+) ENGINE = ReplicatedMergeTree
 PARTITION BY toDate(snapshot_ts)
 ORDER BY (op_id, entity_id)
 TTL ingested_at + INTERVAL 7 DAY;
@@ -377,7 +377,7 @@ ON CLUSTER lake
     tpuquic_ip String,
     tpuquic_port Int32,
     version String
-) ENGINE = ReplacingMergeTree
+) ENGINE = ReplicatedMergeTree
 PARTITION BY toYYYYMM(snapshot_ts)
 ORDER BY (entity_id, snapshot_ts, ingested_at, op_id);
 
@@ -397,7 +397,7 @@ ON CLUSTER lake
     tpuquic_ip String,
     tpuquic_port Int32,
     version String
-) ENGINE = ReplacingMergeTree
+) ENGINE = ReplicatedMergeTree
 PARTITION BY toDate(snapshot_ts)
 ORDER BY (op_id, entity_id)
 TTL ingested_at + INTERVAL 7 DAY;

@@ -3,14 +3,15 @@
 -- by selecting the latest non-deleted row per entity from the history table
 
 -- dz_contributors_current
-CREATE VIEW IF NOT EXISTS dz_contributors_current
+CREATE OR REPLACE VIEW lake.dz_contributors_current
 ON CLUSTER lake
 AS
 WITH ranked AS (
     SELECT
         *,
-        ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
-    FROM dim_dz_contributors_history
+        row_number() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
+    FROM lake.dim_dz_contributors_history
+    WHERE is_deleted = 0
 )
 SELECT
     entity_id,
@@ -22,17 +23,18 @@ SELECT
     code,
     name
 FROM ranked
-WHERE rn = 1 AND is_deleted = 0;
+WHERE rn = 1;
 
 -- dz_devices_current
-CREATE VIEW IF NOT EXISTS dz_devices_current
+CREATE OR REPLACE VIEW lake.dz_devices_current
 ON CLUSTER lake
 AS
 WITH ranked AS (
     SELECT
         *,
-        ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
-    FROM dim_dz_devices_history
+        row_number() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
+    FROM lake.dim_dz_devices_history
+    WHERE is_deleted = 0
 )
 SELECT
     entity_id,
@@ -49,17 +51,18 @@ SELECT
     metro_pk,
     max_users
 FROM ranked
-WHERE rn = 1 AND is_deleted = 0;
+WHERE rn = 1;
 
 -- dz_users_current
-CREATE VIEW IF NOT EXISTS dz_users_current
+CREATE OR REPLACE VIEW lake.dz_users_current
 ON CLUSTER lake
 AS
 WITH ranked AS (
     SELECT
         *,
-        ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
-    FROM dim_dz_users_history
+        row_number() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
+    FROM lake.dim_dz_users_history
+    WHERE is_deleted = 0
 )
 SELECT
     entity_id,
@@ -76,17 +79,18 @@ SELECT
     device_pk,
     tunnel_id
 FROM ranked
-WHERE rn = 1 AND is_deleted = 0;
+WHERE rn = 1;
 
 -- dz_metros_current
-CREATE VIEW IF NOT EXISTS dz_metros_current
+CREATE OR REPLACE VIEW lake.dz_metros_current
 ON CLUSTER lake
 AS
 WITH ranked AS (
     SELECT
         *,
-        ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
-    FROM dim_dz_metros_history
+        row_number() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
+    FROM lake.dim_dz_metros_history
+    WHERE is_deleted = 0
 )
 SELECT
     entity_id,
@@ -100,17 +104,18 @@ SELECT
     longitude,
     latitude
 FROM ranked
-WHERE rn = 1 AND is_deleted = 0;
+WHERE rn = 1;
 
 -- dz_links_current
-CREATE VIEW IF NOT EXISTS dz_links_current
+CREATE OR REPLACE VIEW lake.dz_links_current
 ON CLUSTER lake
 AS
 WITH ranked AS (
     SELECT
         *,
-        ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
-    FROM dim_dz_links_history
+        row_number() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
+    FROM lake.dim_dz_links_history
+    WHERE is_deleted = 0
 )
 SELECT
     entity_id,
@@ -133,17 +138,18 @@ SELECT
     bandwidth_bps,
     isis_delay_override_ns
 FROM ranked
-WHERE rn = 1 AND is_deleted = 0;
+WHERE rn = 1;
 
 -- geoip_records_current
-CREATE VIEW IF NOT EXISTS geoip_records_current
+CREATE OR REPLACE VIEW lake.geoip_records_current
 ON CLUSTER lake
 AS
 WITH ranked AS (
     SELECT
         *,
-        ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
-    FROM dim_geoip_records_history
+        row_number() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
+    FROM lake.dim_geoip_records_history
+    WHERE is_deleted = 0
 )
 SELECT
     entity_id,
@@ -169,17 +175,18 @@ SELECT
     is_anonymous_proxy,
     is_satellite_provider
 FROM ranked
-WHERE rn = 1 AND is_deleted = 0;
+WHERE rn = 1;
 
 -- solana_leader_schedule_current
-CREATE VIEW IF NOT EXISTS solana_leader_schedule_current
+CREATE OR REPLACE VIEW lake.solana_leader_schedule_current
 ON CLUSTER lake
 AS
 WITH ranked AS (
     SELECT
         *,
-        ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
-    FROM dim_solana_leader_schedule_history
+        row_number() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
+    FROM lake.dim_solana_leader_schedule_history
+    WHERE is_deleted = 0
 )
 SELECT
     entity_id,
@@ -192,17 +199,18 @@ SELECT
     slots,
     slot_count
 FROM ranked
-WHERE rn = 1 AND is_deleted = 0;
+WHERE rn = 1;
 
 -- solana_vote_accounts_current
-CREATE VIEW IF NOT EXISTS solana_vote_accounts_current
+CREATE OR REPLACE VIEW lake.solana_vote_accounts_current
 ON CLUSTER lake
 AS
 WITH ranked AS (
     SELECT
         *,
-        ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
-    FROM dim_solana_vote_accounts_history
+        row_number() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
+    FROM lake.dim_solana_vote_accounts_history
+    WHERE is_deleted = 0
 )
 SELECT
     entity_id,
@@ -217,17 +225,18 @@ SELECT
     epoch_vote_account,
     commission_percentage
 FROM ranked
-WHERE rn = 1 AND is_deleted = 0;
+WHERE rn = 1;
 
 -- solana_gossip_nodes_current
-CREATE VIEW IF NOT EXISTS solana_gossip_nodes_current
+CREATE OR REPLACE VIEW lake.solana_gossip_nodes_current
 ON CLUSTER lake
 AS
 WITH ranked AS (
     SELECT
         *,
-        ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
-    FROM dim_solana_gossip_nodes_history
+        row_number() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
+    FROM lake.dim_solana_gossip_nodes_history
+    WHERE is_deleted = 0
 )
 SELECT
     entity_id,
@@ -243,5 +252,4 @@ SELECT
     tpuquic_port,
     version
 FROM ranked
-WHERE rn = 1 AND is_deleted = 0;
-
+WHERE rn = 1;

@@ -64,6 +64,8 @@ func main() {
 	metricsAddrFlag := flag.String("metrics-addr", defaultMetricsAddr, "Address to listen on for prometheus metrics")
 	flag.Parse()
 
+	log.Printf("Starting lake-api version=%s commit=%s date=%s", version, commit, date)
+
 	// Load .env file if it exists
 	_ = godotenv.Load()
 

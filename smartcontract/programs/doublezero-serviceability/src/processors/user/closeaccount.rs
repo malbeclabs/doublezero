@@ -1,11 +1,17 @@
 use crate::{
     error::DoubleZeroError,
+    pda::get_resource_extension_pda,
+    resource::{IdOrIp, ResourceType},
     serializer::{try_acc_close, try_acc_write},
-    state::{device::Device, globalstate::GlobalState, user::*},
+    state::{
+        device::Device, globalstate::GlobalState, resource_extension::ResourceExtensionBorrowed,
+        user::*,
+    },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
+use doublezero_program_common::types::NetworkV4;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -13,6 +19,7 @@ use solana_program::{
     program_error::ProgramError,
     pubkey::Pubkey,
 };
+use std::net::Ipv4Addr;
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
 pub struct UserCloseAccountArgs {}
@@ -34,6 +41,22 @@ pub fn process_closeaccount_user(
     let owner_account = next_account_info(accounts_iter)?;
     let device_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
+
+    // Optional: ResourceExtension accounts for on-chain deallocation (before payer)
+    // Account layout WITH ResourceExtension (9 accounts):
+    //   [user, owner, device, globalstate, global_resource_ext, device_tunnel_ids_ext, device_dz_prefix_ext, payer, system]
+    // Account layout WITHOUT (legacy, 6 accounts):
+    //   [user, owner, device, globalstate, payer, system]
+    let resource_extension_accounts = if accounts.len() == 9 {
+        Some((
+            next_account_info(accounts_iter)?, // global_resource_ext (UserTunnelBlock)
+            next_account_info(accounts_iter)?, // device_tunnel_ids_ext (TunnelIds)
+            next_account_info(accounts_iter)?, // device_dz_prefix_ext (DzPrefixBlock)
+        ))
+    } else {
+        None
+    };
+
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
@@ -62,7 +85,11 @@ pub fn process_closeaccount_user(
     assert!(user_account.is_writable, "PDA Account is not writable");
 
     let globalstate = GlobalState::try_from(globalstate_account)?;
-    if globalstate.activator_authority_pk != *payer_account.key {
+
+    // Authorization: allow activator_authority_pk OR foundation_allowlist (matching ActivateUser)
+    let is_activator = globalstate.activator_authority_pk == *payer_account.key;
+    let is_foundation = globalstate.foundation_allowlist.contains(payer_account.key);
+    if !is_activator && !is_foundation {
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
@@ -83,6 +110,117 @@ pub fn process_closeaccount_user(
     if !user.publishers.is_empty() || !user.subscribers.is_empty() {
         msg!("{:?}", user);
         return Err(DoubleZeroError::ReferenceCountNotZero.into());
+    }
+
+    // Deallocate resources from ResourceExtension if accounts provided
+    // Only deallocate if resources were actually allocated (tunnel_net is link-local when activated)
+    let resources_were_allocated = user.tunnel_net.ip().is_link_local();
+
+    if let Some((global_resource_ext, device_tunnel_ids_ext, device_dz_prefix_ext)) =
+        resource_extension_accounts
+    {
+        if resources_were_allocated {
+            // Validate global_resource_ext (UserTunnelBlock)
+            assert_eq!(
+                global_resource_ext.owner, program_id,
+                "Invalid ResourceExtension Account Owner"
+            );
+            assert!(
+                global_resource_ext.is_writable,
+                "ResourceExtension Account is not writable"
+            );
+            assert!(
+                !global_resource_ext.data.borrow().is_empty(),
+                "ResourceExtension Account is empty"
+            );
+
+            let (expected_user_tunnel_pda, _, _) =
+                get_resource_extension_pda(program_id, ResourceType::UserTunnelBlock);
+            assert_eq!(
+                global_resource_ext.key, &expected_user_tunnel_pda,
+                "Invalid ResourceExtension PDA for UserTunnelBlock"
+            );
+
+            // Validate device_tunnel_ids_ext (TunnelIds)
+            assert_eq!(
+                device_tunnel_ids_ext.owner, program_id,
+                "Invalid ResourceExtension Account Owner for TunnelIds"
+            );
+            assert!(
+                device_tunnel_ids_ext.is_writable,
+                "ResourceExtension Account for TunnelIds is not writable"
+            );
+            assert!(
+                !device_tunnel_ids_ext.data.borrow().is_empty(),
+                "ResourceExtension Account for TunnelIds is empty"
+            );
+
+            let (expected_tunnel_ids_pda, _, _) =
+                get_resource_extension_pda(program_id, ResourceType::TunnelIds(user.device_pk, 0));
+            assert_eq!(
+                device_tunnel_ids_ext.key, &expected_tunnel_ids_pda,
+                "Invalid ResourceExtension PDA for TunnelIds"
+            );
+
+            // Validate device_dz_prefix_ext (DzPrefixBlock)
+            assert_eq!(
+                device_dz_prefix_ext.owner, program_id,
+                "Invalid ResourceExtension Account Owner for DzPrefixBlock"
+            );
+            assert!(
+                device_dz_prefix_ext.is_writable,
+                "ResourceExtension Account for DzPrefixBlock is not writable"
+            );
+            assert!(
+                !device_dz_prefix_ext.data.borrow().is_empty(),
+                "ResourceExtension Account for DzPrefixBlock is empty"
+            );
+
+            let (expected_dz_prefix_pda, _, _) = get_resource_extension_pda(
+                program_id,
+                ResourceType::DzPrefixBlock(user.device_pk, 0),
+            );
+            assert_eq!(
+                device_dz_prefix_ext.key, &expected_dz_prefix_pda,
+                "Invalid ResourceExtension PDA for DzPrefixBlock"
+            );
+
+            // Deallocate tunnel_net from global UserTunnelBlock
+            {
+                let mut buffer = global_resource_ext.data.borrow_mut();
+                let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
+                // Deallocate returns false if not allocated; we proceed regardless (idempotent)
+                let _deallocated = resource.deallocate(&IdOrIp::Ip(user.tunnel_net));
+                #[cfg(test)]
+                msg!(
+                    "Deallocated tunnel_net {}: {}",
+                    user.tunnel_net,
+                    _deallocated
+                );
+            }
+
+            // Deallocate tunnel_id from device TunnelIds
+            {
+                let mut buffer = device_tunnel_ids_ext.data.borrow_mut();
+                let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
+                let _deallocated = resource.deallocate(&IdOrIp::Id(user.tunnel_id));
+                #[cfg(test)]
+                msg!("Deallocated tunnel_id {}: {}", user.tunnel_id, _deallocated);
+            }
+
+            // Deallocate dz_ip from device DzPrefixBlock (only if allocated, not client_ip)
+            // dz_ip is allocated when != client_ip and is a valid global unicast address
+            if user.dz_ip != user.client_ip && user.dz_ip != Ipv4Addr::UNSPECIFIED {
+                let mut buffer = device_dz_prefix_ext.data.borrow_mut();
+                let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
+                // Convert dz_ip to NetworkV4 with /32 prefix for deallocation
+                if let Ok(dz_ip_net) = NetworkV4::new(user.dz_ip, 32) {
+                    let _deallocated = resource.deallocate(&IdOrIp::Ip(dz_ip_net));
+                    #[cfg(test)]
+                    msg!("Deallocated dz_ip {}: {}", dz_ip_net, _deallocated);
+                }
+            }
+        }
     }
 
     let mut device = Device::try_from(device_account)?;

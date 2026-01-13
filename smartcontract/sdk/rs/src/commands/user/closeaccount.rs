@@ -3,13 +3,17 @@ use crate::{
     DoubleZeroClient,
 };
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, processors::user::closeaccount::UserCloseAccountArgs,
+    instructions::DoubleZeroInstruction, pda::get_resource_extension_pda,
+    processors::user::closeaccount::UserCloseAccountArgs, resource::ResourceType,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct CloseAccountUserCommand {
     pub pubkey: Pubkey,
+    /// When true, SDK computes ResourceExtension PDAs and includes them for on-chain deallocation.
+    /// When false, uses legacy behavior without resource deallocation.
+    pub use_onchain_deallocation: bool,
 }
 
 impl CloseAccountUserCommand {
@@ -24,14 +28,191 @@ impl CloseAccountUserCommand {
         .execute(client)
         .map_err(|_err| eyre::eyre!("User not found"))?;
 
+        let mut accounts = vec![
+            AccountMeta::new(self.pubkey, false),
+            AccountMeta::new(user.owner, false),
+            AccountMeta::new(user.device_pk, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ];
+
+        if self.use_onchain_deallocation {
+            // Global UserTunnelBlock
+            let (global_resource_ext, _, _) =
+                get_resource_extension_pda(&client.get_program_id(), ResourceType::UserTunnelBlock);
+
+            // Device TunnelIds (scoped to user's device)
+            let (device_tunnel_ids_ext, _, _) = get_resource_extension_pda(
+                &client.get_program_id(),
+                ResourceType::TunnelIds(user.device_pk, 0),
+            );
+
+            // Device DzPrefixBlock (scoped to user's device)
+            let (device_dz_prefix_ext, _, _) = get_resource_extension_pda(
+                &client.get_program_id(),
+                ResourceType::DzPrefixBlock(user.device_pk, 0),
+            );
+
+            accounts.push(AccountMeta::new(global_resource_ext, false));
+            accounts.push(AccountMeta::new(device_tunnel_ids_ext, false));
+            accounts.push(AccountMeta::new(device_dz_prefix_ext, false));
+        }
+
         client.execute_transaction(
             DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {}),
-            vec![
-                AccountMeta::new(self.pubkey, false),
-                AccountMeta::new(user.owner, false),
-                AccountMeta::new(user.device_pk, false),
-                AccountMeta::new(globalstate_pubkey, false),
-            ],
+            accounts,
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        commands::user::closeaccount::CloseAccountUserCommand, tests::utils::create_test_client,
+        DoubleZeroClient,
+    };
+    use doublezero_serviceability::{
+        instructions::DoubleZeroInstruction,
+        pda::{get_globalstate_pda, get_resource_extension_pda},
+        processors::user::closeaccount::UserCloseAccountArgs,
+        resource::ResourceType,
+        state::{
+            accountdata::AccountData,
+            accounttype::AccountType,
+            user::{User, UserCYOA, UserStatus, UserType},
+        },
+    };
+    use mockall::predicate;
+    use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+    use std::net::Ipv4Addr;
+
+    #[test]
+    fn test_commands_user_closeaccount_without_resource_extension() {
+        let mut client = create_test_client();
+
+        let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
+        let user_pubkey = Pubkey::new_unique();
+        let device_pk = Pubkey::new_unique();
+        let owner = client.get_payer();
+
+        let user = User {
+            account_type: AccountType::User,
+            owner,
+            bump_seed: 0,
+            index: 1,
+            tenant_pk: Pubkey::default(),
+            user_type: UserType::IBRLWithAllocatedIP,
+            device_pk,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: Ipv4Addr::new(192, 168, 1, 10),
+            dz_ip: Ipv4Addr::new(10, 0, 0, 1),
+            tunnel_id: 100,
+            tunnel_net: "10.0.0.0/24".parse().unwrap(),
+            status: UserStatus::Deleting,
+            publishers: vec![],
+            subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
+        };
+
+        // Mock User fetch
+        client
+            .expect_get()
+            .with(predicate::eq(user_pubkey))
+            .returning(move |_| Ok(AccountData::User(user.clone())));
+
+        client
+            .expect_execute_transaction()
+            .with(
+                predicate::eq(DoubleZeroInstruction::CloseAccountUser(
+                    UserCloseAccountArgs {},
+                )),
+                predicate::eq(vec![
+                    AccountMeta::new(user_pubkey, false),
+                    AccountMeta::new(owner, false),
+                    AccountMeta::new(device_pk, false),
+                    AccountMeta::new(globalstate_pubkey, false),
+                ]),
+            )
+            .returning(|_, _| Ok(Signature::new_unique()));
+
+        let res = CloseAccountUserCommand {
+            pubkey: user_pubkey,
+            use_onchain_deallocation: false,
+        }
+        .execute(&client);
+
+        assert!(res.is_ok());
+    }
+
+    #[test]
+    fn test_commands_user_closeaccount_with_onchain_deallocation() {
+        let mut client = create_test_client();
+
+        let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
+        let user_pubkey = Pubkey::new_unique();
+        let device_pk = Pubkey::new_unique();
+        let owner = client.get_payer();
+
+        let user = User {
+            account_type: AccountType::User,
+            owner,
+            bump_seed: 0,
+            index: 1,
+            tenant_pk: Pubkey::default(),
+            user_type: UserType::IBRLWithAllocatedIP,
+            device_pk,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: Ipv4Addr::new(192, 168, 1, 10),
+            dz_ip: Ipv4Addr::new(10, 0, 0, 1),
+            tunnel_id: 100,
+            tunnel_net: "10.0.0.0/24".parse().unwrap(),
+            status: UserStatus::Deleting,
+            publishers: vec![],
+            subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
+        };
+
+        // Compute ResourceExtension PDAs
+        let (global_resource_ext, _, _) =
+            get_resource_extension_pda(&client.get_program_id(), ResourceType::UserTunnelBlock);
+        let (device_tunnel_ids_ext, _, _) = get_resource_extension_pda(
+            &client.get_program_id(),
+            ResourceType::TunnelIds(device_pk, 0),
+        );
+        let (device_dz_prefix_ext, _, _) = get_resource_extension_pda(
+            &client.get_program_id(),
+            ResourceType::DzPrefixBlock(device_pk, 0),
+        );
+
+        // Mock User fetch
+        client
+            .expect_get()
+            .with(predicate::eq(user_pubkey))
+            .returning(move |_| Ok(AccountData::User(user.clone())));
+
+        client
+            .expect_execute_transaction()
+            .with(
+                predicate::eq(DoubleZeroInstruction::CloseAccountUser(
+                    UserCloseAccountArgs {},
+                )),
+                predicate::eq(vec![
+                    AccountMeta::new(user_pubkey, false),
+                    AccountMeta::new(owner, false),
+                    AccountMeta::new(device_pk, false),
+                    AccountMeta::new(globalstate_pubkey, false),
+                    AccountMeta::new(global_resource_ext, false),
+                    AccountMeta::new(device_tunnel_ids_ext, false),
+                    AccountMeta::new(device_dz_prefix_ext, false),
+                ]),
+            )
+            .returning(|_, _| Ok(Signature::new_unique()));
+
+        let res = CloseAccountUserCommand {
+            pubkey: user_pubkey,
+            use_onchain_deallocation: true,
+        }
+        .execute(&client);
+
+        assert!(res.is_ok());
     }
 }

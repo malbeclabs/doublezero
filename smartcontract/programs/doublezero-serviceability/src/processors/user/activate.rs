@@ -1,10 +1,13 @@
 use crate::{
     error::DoubleZeroError,
+    pda::get_resource_extension_pda,
+    resource::{IdOrIp, ResourceType},
     serializer::try_acc_write,
     state::{
         accesspass::AccessPass,
         globalstate::GlobalState,
-        user::{User, UserStatus},
+        resource_extension::ResourceExtensionBorrowed,
+        user::{User, UserStatus, UserType},
     },
 };
 use borsh::BorshSerialize;
@@ -47,6 +50,22 @@ pub fn process_activate_user(
     let user_account = next_account_info(accounts_iter)?;
     let accesspass_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
+
+    // Optional: ResourceExtension accounts for on-chain allocation (before payer)
+    // Account layout WITH ResourceExtension (8 accounts):
+    //   [user, accesspass, globalstate, global_resource_ext, device_tunnel_ids_ext, device_dz_prefix_ext, payer, system]
+    // Account layout WITHOUT (legacy, 5 accounts):
+    //   [user, accesspass, globalstate, payer, system]
+    let resource_extension_accounts = if accounts.len() == 8 {
+        Some((
+            next_account_info(accounts_iter)?, // global_resource_ext (UserTunnelBlock)
+            next_account_info(accounts_iter)?, // device_tunnel_ids_ext (TunnelIds)
+            next_account_info(accounts_iter)?, // device_dz_prefix_ext (DzPrefixBlock)
+        ))
+    } else {
+        None
+    };
+
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
@@ -78,7 +97,11 @@ pub fn process_activate_user(
     assert!(user_account.is_writable, "PDA Account is not writable");
 
     let globalstate = GlobalState::try_from(globalstate_account)?;
-    if globalstate.activator_authority_pk != *payer_account.key {
+
+    // Authorization: allow activator_authority_pk OR foundation_allowlist
+    let is_activator = globalstate.activator_authority_pk == *payer_account.key;
+    let is_foundation = globalstate.foundation_allowlist.contains(payer_account.key);
+    if !is_activator && !is_foundation {
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
@@ -98,9 +121,137 @@ pub fn process_activate_user(
         return Err(DoubleZeroError::Unauthorized.into());
     }
 
-    user.tunnel_id = value.tunnel_id;
-    user.tunnel_net = value.tunnel_net;
-    user.dz_ip = value.dz_ip;
+    // Allocate resources from ResourceExtension or use provided values
+    if let Some((global_resource_ext, device_tunnel_ids_ext, device_dz_prefix_ext)) =
+        resource_extension_accounts
+    {
+        // Validate global_resource_ext (UserTunnelBlock)
+        assert_eq!(
+            global_resource_ext.owner, program_id,
+            "Invalid ResourceExtension Account Owner"
+        );
+        assert!(
+            global_resource_ext.is_writable,
+            "ResourceExtension Account is not writable"
+        );
+        assert!(
+            !global_resource_ext.data.borrow().is_empty(),
+            "ResourceExtension Account is empty"
+        );
+
+        let (expected_user_tunnel_pda, _, _) =
+            get_resource_extension_pda(program_id, ResourceType::UserTunnelBlock);
+        assert_eq!(
+            global_resource_ext.key, &expected_user_tunnel_pda,
+            "Invalid ResourceExtension PDA for UserTunnelBlock"
+        );
+
+        // Validate device_tunnel_ids_ext (TunnelIds)
+        assert_eq!(
+            device_tunnel_ids_ext.owner, program_id,
+            "Invalid ResourceExtension Account Owner for TunnelIds"
+        );
+        assert!(
+            device_tunnel_ids_ext.is_writable,
+            "ResourceExtension Account for TunnelIds is not writable"
+        );
+        assert!(
+            !device_tunnel_ids_ext.data.borrow().is_empty(),
+            "ResourceExtension Account for TunnelIds is empty"
+        );
+
+        let (expected_tunnel_ids_pda, _, _) =
+            get_resource_extension_pda(program_id, ResourceType::TunnelIds(user.device_pk, 0));
+        assert_eq!(
+            device_tunnel_ids_ext.key, &expected_tunnel_ids_pda,
+            "Invalid ResourceExtension PDA for TunnelIds"
+        );
+
+        // Validate device_dz_prefix_ext (DzPrefixBlock)
+        assert_eq!(
+            device_dz_prefix_ext.owner, program_id,
+            "Invalid ResourceExtension Account Owner for DzPrefixBlock"
+        );
+        assert!(
+            device_dz_prefix_ext.is_writable,
+            "ResourceExtension Account for DzPrefixBlock is not writable"
+        );
+        assert!(
+            !device_dz_prefix_ext.data.borrow().is_empty(),
+            "ResourceExtension Account for DzPrefixBlock is empty"
+        );
+
+        let (expected_dz_prefix_pda, _, _) =
+            get_resource_extension_pda(program_id, ResourceType::DzPrefixBlock(user.device_pk, 0));
+        assert_eq!(
+            device_dz_prefix_ext.key, &expected_dz_prefix_pda,
+            "Invalid ResourceExtension PDA for DzPrefixBlock"
+        );
+
+        // Allocate tunnel_net from global UserTunnelBlock
+        {
+            let mut buffer = global_resource_ext.data.borrow_mut();
+            let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
+            let allocated = resource.allocate()?;
+
+            match allocated {
+                IdOrIp::Ip(network) => {
+                    user.tunnel_net = network;
+                }
+                IdOrIp::Id(_) => {
+                    return Err(DoubleZeroError::InvalidArgument.into());
+                }
+            }
+        }
+
+        // Allocate tunnel_id from device TunnelIds
+        {
+            let mut buffer = device_tunnel_ids_ext.data.borrow_mut();
+            let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
+            let allocated = resource.allocate()?;
+
+            match allocated {
+                IdOrIp::Id(id) => {
+                    user.tunnel_id = id;
+                }
+                IdOrIp::Ip(_) => {
+                    return Err(DoubleZeroError::InvalidArgument.into());
+                }
+            }
+        }
+
+        // Conditionally allocate dz_ip based on user_type (matching activator behavior)
+        let need_dz_ip = match user.user_type {
+            UserType::IBRLWithAllocatedIP | UserType::EdgeFiltering => true,
+            UserType::IBRL => false,
+            UserType::Multicast => !user.publishers.is_empty(),
+        };
+
+        if need_dz_ip {
+            // Allocate from DzPrefixBlock ResourceExtension
+            let mut buffer = device_dz_prefix_ext.data.borrow_mut();
+            let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
+            let allocated = resource.allocate()?;
+
+            match allocated {
+                IdOrIp::Ip(network) => {
+                    user.dz_ip = network.ip();
+                }
+                IdOrIp::Id(_) => {
+                    return Err(DoubleZeroError::InvalidArgument.into());
+                }
+            }
+        } else {
+            // Use client_ip, no allocation needed
+            user.dz_ip = user.client_ip;
+        }
+    } else {
+        // Legacy behavior: use provided args
+        user.tunnel_id = value.tunnel_id;
+        user.tunnel_net = value.tunnel_net;
+        user.dz_ip = value.dz_ip;
+    }
+
     user.try_activate(&mut accesspass)?;
 
     try_acc_write(&user, user_account, payer_account, accounts)?;

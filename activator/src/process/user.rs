@@ -143,6 +143,7 @@ pub fn process_user_event(
                 tunnel_id,
                 tunnel_net: tunnel_net.into(),
                 dz_ip,
+                use_onchain_allocation: false,
             }
             .execute(client);
 
@@ -233,6 +234,7 @@ pub fn process_user_event(
                 tunnel_id: user.tunnel_id,
                 tunnel_net: user.tunnel_net,
                 dz_ip,
+                use_onchain_allocation: false,
             }
             .execute(client);
             match res {
@@ -274,7 +276,11 @@ pub fn process_user_event(
                 .unwrap();
 
                 if user.status == UserStatus::Deleting {
-                    let res = CloseAccountUserCommand { pubkey: *pubkey }.execute(client);
+                    let res = CloseAccountUserCommand {
+                        pubkey: *pubkey,
+                        use_onchain_deallocation: false,
+                    }
+                    .execute(client);
 
                     match res {
                         Ok(signature) => {

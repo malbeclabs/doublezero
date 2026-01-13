@@ -69,7 +69,7 @@ Given a user's question, identify what specific data questions need to be answer
 - Be specific - vague questions lead to vague queries
 - Include time context when relevant (e.g., "in the last 24 hours")
 - For counts, also consider listing the specific entities if count might be small
-- For health/status questions, consider multiple dimensions (devices, links, latency, errors)
+- **For network health/status questions**: Ask for specific entity lists (not just counts). Users need to know exactly which devices, links, and interfaces have issues, along with their specific status or problem details
 - Order questions logically - foundational facts first, then derived insights
 
 ## Response Format
@@ -107,11 +107,13 @@ Respond with a JSON object containing an array of data questions:
 **User Question**: "What is the network health?"
 
 **Good Decomposition**:
-1. How many devices are activated vs other statuses?
-2. How many links are activated vs other statuses?
-3. What is the packet loss across all links in the last 24 hours?
-4. Which links have interfaces with errors or discards in the last 24 hours?
-5. Which WAN links have inbound or outbound utilization above 80% in the last 24 hours? (calculated per-link, per-direction)
+1. List all devices with status other than activated, showing device code and current status
+2. List all links with status other than activated, showing link code and current status
+3. List all links with packet loss in the last 24 hours, with link code and loss percentage
+4. List all interfaces with errors, discards, or carrier transitions in the last 24 hours, with device code, interface name, associated link (if any), and counts for each issue type
+5. List all WAN links with utilization above 80% in the last 24 hours, with link code and utilization percentage per direction
+
+*Key insight*: Network health/status questions should return specific entity lists with details, not just counts. Users need to know exactly which devices and links have issues to investigate them. Omit sections where no issues exist (e.g., don't mention "0 devices with issues").
 
 **User Question**: "How many validators are on DZ?"
 

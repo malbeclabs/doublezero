@@ -5,6 +5,7 @@ package evals_test
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -56,39 +57,18 @@ func runTest_UnrelatedQuestionNoData(t *testing.T, llmFactory LLMClientFactory) 
 		}
 	}
 	result, err := p.Run(ctx, question)
-	// For unrelated questions, the pipeline might return an error from decomposition
-	// which is the expected behavior
-	if err != nil {
-		response := err.Error()
-		if debug {
-			if debugLevel == 1 {
-				t.Logf("=== Response (error) ===\n%s\n", response)
-			} else {
-				t.Logf("\n=== Final Pipeline Response (error) ===\n%s\n", response)
-			}
-		} else {
-			t.Logf("Pipeline response (error):\n%s", response)
-		}
 
-		// Evaluate with Ollama - the error message should indicate it can't help
-		expectations := []OllamaExpectation{
-			{
-				Description:   "Agent correctly declines unrelated question",
-				ExpectedValue: "agent either explicitly declines the weather question OR redirects by describing what topics it CAN help with (network data, validators, devices, etc.) without attempting to answer the weather question",
-				Rationale:     "Declining is correct - agent should NOT fabricate weather data or try to answer unrelated questions. Redirecting to relevant topics is an acceptable way to decline.",
-			},
-		}
-		isCorrect, evalErr := ollamaEvaluateResponse(t, ctx, question, response, expectations...)
-		require.NoError(t, evalErr, "Ollama evaluation must be available")
-		require.True(t, isCorrect, "Ollama evaluation indicates the response does not correctly answer the question")
-		return
+	var response string
+	if err != nil {
+		// For unrelated questions, the pipeline might return an error from decomposition
+		// which is the expected behavior
+		response = err.Error()
+	} else {
+		require.NotNil(t, result)
+		require.NotEmpty(t, result.Answer)
+		response = result.Answer
 	}
 
-	require.NotNil(t, result)
-	require.NotEmpty(t, result.Answer)
-
-	// Basic validation - the response should acknowledge no relevant data
-	response := result.Answer
 	if debug {
 		if debugLevel == 1 {
 			t.Logf("=== Response ===\n%s\n", response)
@@ -99,15 +79,23 @@ func runTest_UnrelatedQuestionNoData(t *testing.T, llmFactory LLMClientFactory) 
 		t.Logf("Pipeline response:\n%s", response)
 	}
 
-	// Evaluate with Ollama - include specific expectations for "no data" response
-	expectations := []OllamaExpectation{
-		{
-			Description:   "Agent correctly declines unrelated question",
-			ExpectedValue: "agent either explicitly declines the weather question OR redirects by describing what topics it CAN help with (network data, validators, devices, etc.) without attempting to answer the weather question",
-			Rationale:     "Declining is correct - agent should NOT fabricate weather data or try to answer unrelated questions. Redirecting to relevant topics is an acceptable way to decline.",
-		},
+	// Deterministic validation: agent should redirect to relevant topics, not answer weather
+	responseLower := strings.ToLower(response)
+
+	// Should mention relevant topics (DZ, network, validator, etc.)
+	hasRelevantTopic := strings.Contains(responseLower, "doublezero") ||
+		strings.Contains(responseLower, "dz") ||
+		strings.Contains(responseLower, "network") ||
+		strings.Contains(responseLower, "validator") ||
+		strings.Contains(responseLower, "solana") ||
+		strings.Contains(responseLower, "device") ||
+		strings.Contains(responseLower, "link")
+	require.True(t, hasRelevantTopic, "Response should mention relevant topics (DZ, network, validator, etc.) when declining unrelated question")
+
+	// Should NOT attempt to actually answer weather (no specific weather answers)
+	weatherAnswers := []string{"sunny", "cloudy", "rain", "snow", "degrees", "celsius", "fahrenheit", "°f", "°c", "forecast"}
+	for _, weather := range weatherAnswers {
+		require.False(t, strings.Contains(responseLower, weather),
+			"Response should NOT contain weather answer '%s' - agent should decline, not fabricate", weather)
 	}
-	isCorrect, err := ollamaEvaluateResponse(t, ctx, question, response, expectations...)
-	require.NoError(t, err, "Ollama evaluation must be available")
-	require.True(t, isCorrect, "Ollama evaluation indicates the response does not correctly answer the question")
 }

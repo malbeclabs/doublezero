@@ -1038,7 +1038,7 @@ function AppContent() {
             <Route path="/chat/sessions" element={<ChatSessionsView />} />
 
             {/* Default redirect */}
-            <Route path="*" element={<Navigate to="/query" replace />} />
+            <Route path="*" element={<Navigate to="/chat" replace />} />
           </Routes>
         </div>
       </div>

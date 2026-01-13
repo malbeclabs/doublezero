@@ -139,20 +139,6 @@ export function Sidebar({
         </div>
 
         <div className="flex flex-col items-center gap-1 pt-4">
-        {/* Query nav item */}
-        <button
-          onClick={onNewQuerySession}
-          className={cn(
-            'p-2 rounded transition-colors',
-            isQueryRoute
-              ? 'bg-[oklch(25%_.04_250)] text-white hover:bg-[oklch(30%_.05_250)]'
-              : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
-          )}
-          title="Query"
-        >
-          <Database className="h-4 w-4" />
-        </button>
-
         {/* Chat nav item */}
         <button
           onClick={onNewChatSession}
@@ -165,6 +151,20 @@ export function Sidebar({
           title="Chat"
         >
           <MessageSquare className="h-4 w-4" />
+        </button>
+
+        {/* Query nav item */}
+        <button
+          onClick={onNewQuerySession}
+          className={cn(
+            'p-2 rounded transition-colors',
+            isQueryRoute
+              ? 'bg-[oklch(25%_.04_250)] text-white hover:bg-[oklch(30%_.05_250)]'
+              : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+          )}
+          title="Query"
+        >
+          <Database className="h-4 w-4" />
         </button>
         </div>
 
@@ -222,18 +222,6 @@ export function Sidebar({
       {/* Main nav */}
       <div className="px-3 pt-4 space-y-1">
         <button
-          onClick={onNewQuerySession}
-          className={cn(
-            'w-full flex items-center gap-2 px-3 py-2 text-sm rounded transition-colors',
-            isQueryRoute
-              ? 'bg-[oklch(25%_.04_250)] text-white hover:bg-[oklch(30%_.05_250)]'
-              : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
-          )}
-        >
-          <Database className="h-4 w-4" />
-          Query
-        </button>
-        <button
           onClick={onNewChatSession}
           className={cn(
             'w-full flex items-center gap-2 px-3 py-2 text-sm rounded transition-colors',
@@ -244,6 +232,18 @@ export function Sidebar({
         >
           <MessageSquare className="h-4 w-4" />
           Chat
+        </button>
+        <button
+          onClick={onNewQuerySession}
+          className={cn(
+            'w-full flex items-center gap-2 px-3 py-2 text-sm rounded transition-colors',
+            isQueryRoute
+              ? 'bg-[oklch(25%_.04_250)] text-white hover:bg-[oklch(30%_.05_250)]'
+              : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+          )}
+        >
+          <Database className="h-4 w-4" />
+          Query
         </button>
       </div>
 

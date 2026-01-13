@@ -165,6 +165,7 @@ function CodeBlock({ language, children, isDark }: { language: string; children:
         )}
       </button>
       <SyntaxHighlighter
+        key={isDark ? 'dark' : 'light'}
         style={isDark ? darkCodeTheme : lightCodeTheme}
         language={language}
         PreTag="div"

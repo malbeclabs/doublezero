@@ -219,20 +219,6 @@ function PipelineDetails({ data, onOpenInQueryEditor, onAskAboutQuery, highlight
 
       {isExpanded && (
         <div className="border-t border-border">
-          {/* Data Questions */}
-          {data.dataQuestions && data.dataQuestions.length > 0 && (
-            <div className="px-3 py-2 border-b border-border">
-              <div className="text-xs font-medium text-muted-foreground mb-1">Data Questions</div>
-              <ul className="text-sm space-y-1">
-                {data.dataQuestions.map((dq, i) => (
-                  <li key={i} className="text-foreground">
-                    {i + 1}. {dq.question}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
           {/* Executed Queries */}
           {data.executedQueries && data.executedQueries.length > 0 && (
             <div className="divide-y divide-border">

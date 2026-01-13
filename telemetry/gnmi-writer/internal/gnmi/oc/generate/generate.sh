@@ -27,7 +27,7 @@ docker run --rm ygot-generator sh -c "generator \
   -package_name=oc \
   -generate_fakeroot \
   -fakeroot_name=Device \
-  -compress_paths=true \
+  -compress_paths=false \
   -shorten_enum_leaf_names \
   -typedef_enum_with_defmod \
   -trim_enum_openconfig_prefix \

@@ -44,12 +44,19 @@ func (r SystemStateRecord) TableName() string {
 
 // BgpNeighborRecord represents a BGP neighbor for storage in ClickHouse.
 type BgpNeighborRecord struct {
-	Timestamp       time.Time `json:"timestamp" ch:"timestamp"`
-	DeviceCode      string    `json:"device_code" ch:"device_code"`
-	NeighborAddress string    `json:"neighbor_address" ch:"neighbor_address"`
-	PeerAs          uint32    `json:"peer_as" ch:"peer_as"`
-	SessionState    string    `json:"session_state" ch:"session_state"`
-	Enabled         bool      `json:"enabled" ch:"enabled"`
+	Timestamp              time.Time `json:"timestamp" ch:"timestamp"`
+	DeviceCode             string    `json:"device_code" ch:"device_code"`
+	NetworkInstance        string    `json:"network_instance" ch:"network_instance"`
+	NeighborAddress        string    `json:"neighbor_address" ch:"neighbor_address"`
+	Description            string    `json:"description" ch:"description"`
+	PeerAs                 uint32    `json:"peer_as" ch:"peer_as"`
+	LocalAs                uint32    `json:"local_as" ch:"local_as"`
+	PeerType               string    `json:"peer_type" ch:"peer_type"`
+	SessionState           string    `json:"session_state" ch:"session_state"`
+	EstablishedTransitions uint64    `json:"established_transitions" ch:"established_transitions"`
+	LastEstablished        int64     `json:"last_established" ch:"last_established"`
+	MessagesReceivedUpdate uint64    `json:"messages_received_update" ch:"messages_received_update"`
+	MessagesSentUpdate     uint64    `json:"messages_sent_update" ch:"messages_sent_update"`
 }
 
 // TableName returns the ClickHouse table name for BGP neighbors.

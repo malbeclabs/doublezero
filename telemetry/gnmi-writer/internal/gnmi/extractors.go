@@ -19,14 +19,27 @@ var DefaultExtractors = []ExtractorDef{
 func extractIsisAdjacencies(device *oc.Device, meta Metadata) []Record {
 	var records []Record
 
-	for _, ni := range device.NetworkInstance {
-		for _, proto := range ni.Protocol {
-			if proto.Isis == nil {
+	if device.NetworkInstances == nil {
+		return nil
+	}
+
+	for _, ni := range device.NetworkInstances.NetworkInstance {
+		if ni.Protocols == nil {
+			continue
+		}
+		for _, proto := range ni.Protocols.Protocol {
+			if proto.Isis == nil || proto.Isis.Interfaces == nil {
 				continue
 			}
-			for ifID, iface := range proto.Isis.Interface {
-				for levelNum, level := range iface.Level {
-					for sysID, adj := range level.Adjacency {
+			for ifID, iface := range proto.Isis.Interfaces.Interface {
+				if iface.Levels == nil {
+					continue
+				}
+				for levelNum, level := range iface.Levels.Level {
+					if level.Adjacencies == nil {
+						continue
+					}
+					for sysID, adj := range level.Adjacencies.Adjacency {
 						record := IsisAdjacencyRecord{
 							Timestamp:   meta.Timestamp,
 							DeviceCode:  meta.DeviceCode,
@@ -35,29 +48,32 @@ func extractIsisAdjacencies(device *oc.Device, meta Metadata) []Record {
 							SystemID:    sysID,
 						}
 
-						if adj.AdjacencyState != 0 {
-							record.AdjacencyState = adj.AdjacencyState.String()
-						}
-						if adj.NeighborIpv4Address != nil {
-							record.NeighborIPv4 = *adj.NeighborIpv4Address
-						}
-						if adj.NeighborIpv6Address != nil && *adj.NeighborIpv6Address != "::" {
-							record.NeighborIPv6 = *adj.NeighborIpv6Address
-						}
-						if adj.NeighborCircuitType != 0 {
-							record.NeighborCircuitType = adj.NeighborCircuitType.String()
-						}
-						if len(adj.AreaAddress) > 0 {
-							record.AreaAddress = strings.Join(adj.AreaAddress, ",")
-						}
-						if adj.UpTimestamp != nil {
-							record.UpTimestamp = int64(*adj.UpTimestamp)
-						}
-						if adj.LocalExtendedCircuitId != nil {
-							record.LocalCircuitID = *adj.LocalExtendedCircuitId
-						}
-						if adj.NeighborExtendedCircuitId != nil {
-							record.NeighborCircuitID = *adj.NeighborExtendedCircuitId
+						// All adjacency fields are now in State
+						if adj.State != nil {
+							if adj.State.AdjacencyState != 0 {
+								record.AdjacencyState = adj.State.AdjacencyState.String()
+							}
+							if adj.State.NeighborIpv4Address != nil {
+								record.NeighborIPv4 = *adj.State.NeighborIpv4Address
+							}
+							if adj.State.NeighborIpv6Address != nil && *adj.State.NeighborIpv6Address != "::" {
+								record.NeighborIPv6 = *adj.State.NeighborIpv6Address
+							}
+							if adj.State.NeighborCircuitType != 0 {
+								record.NeighborCircuitType = adj.State.NeighborCircuitType.String()
+							}
+							if len(adj.State.AreaAddress) > 0 {
+								record.AreaAddress = strings.Join(adj.State.AreaAddress, ",")
+							}
+							if adj.State.UpTimestamp != nil {
+								record.UpTimestamp = int64(*adj.State.UpTimestamp)
+							}
+							if adj.State.LocalExtendedCircuitId != nil {
+								record.LocalCircuitID = *adj.State.LocalExtendedCircuitId
+							}
+							if adj.State.NeighborExtendedCircuitId != nil {
+								record.NeighborCircuitID = *adj.State.NeighborExtendedCircuitId
+							}
 						}
 
 						records = append(records, record)
@@ -81,37 +97,43 @@ func extractSystemState(device *oc.Device, meta Metadata) []Record {
 		DeviceCode: meta.DeviceCode,
 	}
 
-	if device.System.Hostname != nil {
-		record.Hostname = *device.System.Hostname
+	// Hostname is now in State container
+	if device.System.State != nil && device.System.State.Hostname != nil {
+		record.Hostname = *device.System.State.Hostname
 	}
 
-	if device.System.Memory != nil {
-		if device.System.Memory.Physical != nil {
-			record.MemTotal = *device.System.Memory.Physical
+	// Memory is now in Memory.State
+	if device.System.Memory != nil && device.System.Memory.State != nil {
+		if device.System.Memory.State.Physical != nil {
+			record.MemTotal = *device.System.Memory.State.Physical
 		}
-		if device.System.Memory.Used != nil {
-			record.MemUsed = *device.System.Memory.Used
+		if device.System.Memory.State.Used != nil {
+			record.MemUsed = *device.System.Memory.State.Used
 		}
-		if device.System.Memory.Free != nil {
-			record.MemFree = *device.System.Memory.Free
+		if device.System.Memory.State.Free != nil {
+			record.MemFree = *device.System.Memory.State.Free
 		}
 	}
 
-	if device.System.Cpu != nil {
+	// CPU is now in Cpus.Cpu[].State
+	if device.System.Cpus != nil {
 		var totalUser, totalSystem, totalIdle float64
 		var userCount, systemCount, idleCount int
-		for _, cpu := range device.System.Cpu {
-			if cpu.User != nil && cpu.User.Instant != nil {
+		for _, cpu := range device.System.Cpus.Cpu {
+			if cpu.State == nil {
+				continue
+			}
+			if cpu.State.User != nil && cpu.State.User.Instant != nil {
 				userCount++
-				totalUser += float64(*cpu.User.Instant)
+				totalUser += float64(*cpu.State.User.Instant)
 			}
-			if cpu.Kernel != nil && cpu.Kernel.Instant != nil {
+			if cpu.State.Kernel != nil && cpu.State.Kernel.Instant != nil {
 				systemCount++
-				totalSystem += float64(*cpu.Kernel.Instant)
+				totalSystem += float64(*cpu.State.Kernel.Instant)
 			}
-			if cpu.Idle != nil && cpu.Idle.Instant != nil {
+			if cpu.State.Idle != nil && cpu.State.Idle.Instant != nil {
 				idleCount++
-				totalIdle += float64(*cpu.Idle.Instant)
+				totalIdle += float64(*cpu.State.Idle.Instant)
 			}
 		}
 		if userCount > 0 {
@@ -137,26 +159,57 @@ func extractSystemState(device *oc.Device, meta Metadata) []Record {
 func extractBgpNeighbors(device *oc.Device, meta Metadata) []Record {
 	var records []Record
 
-	for _, ni := range device.NetworkInstance {
-		for _, proto := range ni.Protocol {
-			if proto.Bgp == nil {
+	if device.NetworkInstances == nil {
+		return nil
+	}
+
+	for niName, ni := range device.NetworkInstances.NetworkInstance {
+		if ni.Protocols == nil {
+			continue
+		}
+		for _, proto := range ni.Protocols.Protocol {
+			if proto.Bgp == nil || proto.Bgp.Neighbors == nil {
 				continue
 			}
-			for addr, neighbor := range proto.Bgp.Neighbor {
+			for addr, neighbor := range proto.Bgp.Neighbors.Neighbor {
 				record := BgpNeighborRecord{
 					Timestamp:       meta.Timestamp,
 					DeviceCode:      meta.DeviceCode,
+					NetworkInstance: niName,
 					NeighborAddress: addr,
 				}
 
-				if neighbor.PeerAs != nil {
-					record.PeerAs = *neighbor.PeerAs
-				}
-				if neighbor.SessionState != 0 {
-					record.SessionState = neighbor.SessionState.String()
-				}
-				if neighbor.Enabled != nil {
-					record.Enabled = *neighbor.Enabled
+				// All neighbor fields are now in State
+				if neighbor.State != nil {
+					if neighbor.State.Description != nil {
+						record.Description = *neighbor.State.Description
+					}
+					if neighbor.State.PeerAs != nil {
+						record.PeerAs = *neighbor.State.PeerAs
+					}
+					if neighbor.State.LocalAs != nil {
+						record.LocalAs = *neighbor.State.LocalAs
+					}
+					if neighbor.State.PeerType != 0 {
+						record.PeerType = neighbor.State.PeerType.String()
+					}
+					if neighbor.State.SessionState != 0 {
+						record.SessionState = neighbor.State.SessionState.String()
+					}
+					if neighbor.State.EstablishedTransitions != nil {
+						record.EstablishedTransitions = *neighbor.State.EstablishedTransitions
+					}
+					if neighbor.State.LastEstablished != nil {
+						record.LastEstablished = int64(*neighbor.State.LastEstablished)
+					}
+					if neighbor.State.Messages != nil {
+						if neighbor.State.Messages.Received != nil && neighbor.State.Messages.Received.UPDATE != nil {
+							record.MessagesReceivedUpdate = *neighbor.State.Messages.Received.UPDATE
+						}
+						if neighbor.State.Messages.Sent != nil && neighbor.State.Messages.Sent.UPDATE != nil {
+							record.MessagesSentUpdate = *neighbor.State.Messages.Sent.UPDATE
+						}
+					}
 				}
 
 				records = append(records, record)
@@ -171,9 +224,17 @@ func extractBgpNeighbors(device *oc.Device, meta Metadata) []Record {
 func extractInterfaceIfindex(device *oc.Device, meta Metadata) []Record {
 	var records []Record
 
-	for ifName, iface := range device.Interface {
-		for subifIdx, subif := range iface.Subinterface {
-			if subif.Ifindex == nil {
+	if device.Interfaces == nil {
+		return nil
+	}
+
+	for ifName, iface := range device.Interfaces.Interface {
+		if iface.Subinterfaces == nil {
+			continue
+		}
+		for subifIdx, subif := range iface.Subinterfaces.Subinterface {
+			// Ifindex is now in State
+			if subif.State == nil || subif.State.Ifindex == nil {
 				continue
 			}
 			record := InterfaceIfindexRecord{
@@ -181,7 +242,7 @@ func extractInterfaceIfindex(device *oc.Device, meta Metadata) []Record {
 				DeviceCode:    meta.DeviceCode,
 				InterfaceName: ifName,
 				SubifIndex:    subifIdx,
-				Ifindex:       *subif.Ifindex,
+				Ifindex:       *subif.State.Ifindex,
 			}
 			records = append(records, record)
 		}

@@ -93,11 +93,15 @@ var programconfigPayload = `
 `
 
 type mockSolanaClient struct {
-	payload string
-	pubkey  solana.PublicKey
+	payload     string
+	pubkey      solana.PublicKey
+	returnEmpty bool
 }
 
 func (m *mockSolanaClient) GetProgramAccounts(context.Context, solana.PublicKey) (rpc.GetProgramAccountsResult, error) {
+	if m.returnEmpty {
+		return []*rpc.KeyedAccount{}, nil
+	}
 	data, err := hex.DecodeString(strings.ReplaceAll(m.payload, "\n", ""))
 	if err != nil {
 		return nil, err
@@ -429,5 +433,23 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 			}
 		})
 
+	}
+}
+
+func TestSDK_Serviceability_GetProgramData_EmptyResult(t *testing.T) {
+	programID := solana.MustPublicKeyFromBase58("11111111111111111111111111111111")
+	client := &Client{
+		rpc:       &mockSolanaClient{returnEmpty: true},
+		programID: programID,
+	}
+
+	_, err := client.GetProgramData(t.Context())
+	if err == nil {
+		t.Fatal("expected error for empty GetProgramAccounts result, got nil")
+	}
+
+	expectedErrSubstring := "GetProgramAccounts returned empty result"
+	if !strings.Contains(err.Error(), expectedErrSubstring) {
+		t.Fatalf("expected error to contain %q, got: %v", expectedErrSubstring, err)
 	}
 }

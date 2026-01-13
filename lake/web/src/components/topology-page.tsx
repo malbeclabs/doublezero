@@ -1,6 +1,29 @@
+import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { fetchTopology } from '@/lib/api'
 import { TopologyMap } from '@/components/topology-map'
+import { useTheme } from '@/hooks/use-theme'
+import { Globe } from 'lucide-react'
+
+// Only show loading indicator after this delay to avoid flash on fast loads
+const LOADING_DELAY_MS = 300
+
+function TopologyLoading() {
+  const { resolvedTheme } = useTheme()
+  const isDark = resolvedTheme === 'dark'
+
+  return (
+    <div
+      className="fixed inset-0 z-0 h-screen w-screen flex items-center justify-center"
+      style={{ background: isDark ? '#1a1a2e' : '#f5f5f5' }}
+    >
+      <div className="flex flex-col items-center gap-3">
+        <Globe className="h-10 w-10 text-muted-foreground animate-pulse" />
+        <div className="text-sm text-muted-foreground">Loading network topology...</div>
+      </div>
+    </div>
+  )
+}
 
 export function TopologyPage() {
   const { data, isLoading, error } = useQuery({
@@ -9,12 +32,19 @@ export function TopologyPage() {
     refetchInterval: 60000, // Refresh every minute
   })
 
+  // Delay showing loading indicator to avoid flash on fast loads
+  const [showLoading, setShowLoading] = useState(false)
+  useEffect(() => {
+    if (isLoading) {
+      const timer = setTimeout(() => setShowLoading(true), LOADING_DELAY_MS)
+      return () => clearTimeout(timer)
+    }
+    setShowLoading(false)
+  }, [isLoading])
+
   if (isLoading) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="text-muted-foreground">Loading topology...</div>
-      </div>
-    )
+    // Only show loading indicator after delay to avoid flash
+    return showLoading ? <TopologyLoading /> : null
   }
 
   if (error) {

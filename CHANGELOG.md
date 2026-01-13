@@ -10,6 +10,8 @@ All notable changes to this project will be documented in this file.
 
 - Client
   - Always delegate RouteAdd regardless of noUninstall flag
+- Telemetry
+  - Include solana vote pubkey in global monitor metrics
 
 ## [v0.8.1](https://github.com/malbeclabs/doublezero/compare/client/v0.8.0...client/v0.8.1) – 2025-01-12
 

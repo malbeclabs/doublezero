@@ -18,6 +18,10 @@ import (
 type StoreConfig struct {
 	Logger     *slog.Logger
 	ClickHouse clickhouse.Client
+	// InsertQuorum specifies the number of replicas that must confirm staging inserts.
+	// Set to your replica count (e.g., 2) in production to prevent replication lag issues.
+	// Set to 0 for single-node test environments.
+	InsertQuorum int
 }
 
 func (cfg *StoreConfig) Validate() error {
@@ -69,6 +73,7 @@ func (s *Store) ReplaceLeaderSchedule(ctx context.Context, entries []LeaderSched
 		return leaderScheduleSchema.ToRow(entries[i], currentEpoch), nil
 	}, &dataset.DimensionType2DatasetWriteConfig{
 		MissingMeansDeleted: true,
+		InsertQuorum:        s.cfg.InsertQuorum,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to write leader schedule to ClickHouse: %w", err)
@@ -96,6 +101,7 @@ func (s *Store) ReplaceVoteAccounts(ctx context.Context, accounts []solanarpc.Vo
 		return voteAccountSchema.ToRow(accounts[i], currentEpoch), nil
 	}, &dataset.DimensionType2DatasetWriteConfig{
 		MissingMeansDeleted: true,
+		InsertQuorum:        s.cfg.InsertQuorum,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to write vote accounts to ClickHouse: %w", err)
@@ -145,6 +151,7 @@ func (s *Store) ReplaceGossipNodes(ctx context.Context, nodes []*solanarpc.GetCl
 		return gossipNodeSchema.ToRow(validNodes[i], currentEpoch), nil
 	}, &dataset.DimensionType2DatasetWriteConfig{
 		MissingMeansDeleted: true,
+		InsertQuorum:        s.cfg.InsertQuorum,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to write gossip nodes to ClickHouse: %w", err)

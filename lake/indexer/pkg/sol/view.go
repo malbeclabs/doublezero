@@ -30,6 +30,9 @@ type ViewConfig struct {
 	RPC             SolanaRPC
 	ClickHouse      clickhouse.Client
 	RefreshInterval time.Duration
+	// InsertQuorum specifies the number of replicas that must confirm staging inserts.
+	// Defaults to 0 (disabled). Production should explicitly set it to the replica count.
+	InsertQuorum int
 }
 
 func (cfg *ViewConfig) Validate() error {
@@ -72,8 +75,9 @@ func NewView(
 	}
 
 	store, err := NewStore(StoreConfig{
-		Logger:     cfg.Logger,
-		ClickHouse: cfg.ClickHouse,
+		Logger:       cfg.Logger,
+		ClickHouse:   cfg.ClickHouse,
+		InsertQuorum: cfg.InsertQuorum,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create store: %w", err)

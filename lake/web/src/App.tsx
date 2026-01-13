@@ -9,6 +9,7 @@ import { SessionHistory, type GenerationRecord } from '@/components/session-hist
 import { SessionsPage } from '@/components/sessions-page'
 import { ChatSessionsPage } from '@/components/chat-sessions-page'
 import { Chat, type ChatProgress, type QueryProgressItem, type PipelineStep } from '@/components/chat'
+import { Landing } from '@/components/landing'
 import { Sidebar } from '@/components/sidebar'
 import { generateSessionTitle, generateChatSessionTitle, sendChatMessageStream, recommendVisualization, fetchCatalog, type SessionQueryInfo } from '@/lib/api'
 import type { TableInfo, QueryResponse, HistoryMessage, ChatMessage } from '@/lib/api'
@@ -465,6 +466,34 @@ function ChatView() {
   const pendingState = pendingChats.get(currentChatSessionId)
   const isPending = !!pendingState
   const currentProgress = pendingState?.progress ?? null
+
+  // Check for initial question from landing page
+  const initialQuestionSent = useRef<string | null>(null)
+  useEffect(() => {
+    // Wait for session to be ready
+    if (!currentChatSession) return
+    // Don't send twice for the same session
+    if (initialQuestionSent.current === currentChatSessionId) return
+
+    const initialQuestion = sessionStorage.getItem('initialChatQuestion')
+    if (initialQuestion && chatMessages.length === 0 && !isPending) {
+      sessionStorage.removeItem('initialChatQuestion')
+      initialQuestionSent.current = currentChatSessionId
+      // Add user message immediately
+      setChatSessions(prev => prev.map(session => {
+        if (session.id === currentChatSessionId) {
+          return {
+            ...session,
+            updatedAt: new Date(),
+            messages: [...session.messages, { role: 'user' as const, content: initialQuestion }],
+          }
+        }
+        return session
+      }))
+      // Send to API
+      sendChatMessage(currentChatSessionId, initialQuestion, [])
+    }
+  }, [currentChatSession, currentChatSessionId, chatMessages.length, isPending, setChatSessions, sendChatMessage])
 
   const handleSendMessage = useCallback((message: string) => {
     // Add user message immediately
@@ -1020,6 +1049,9 @@ function AppContent() {
         {/* Main content */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <Routes>
+            {/* Landing page */}
+            <Route path="/" element={<Landing />} />
+
             {/* Query routes */}
             <Route path="/query" element={<QueryRedirect />} />
             <Route path="/query/:sessionId" element={
@@ -1039,7 +1071,7 @@ function AppContent() {
             <Route path="/chat/sessions" element={<ChatSessionsView />} />
 
             {/* Default redirect */}
-            <Route path="*" element={<Navigate to="/chat" replace />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>
       </div>

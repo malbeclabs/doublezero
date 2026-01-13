@@ -1,0 +1,85 @@
+import { useEffect, useRef, useState } from 'react'
+
+interface StatCardProps {
+  label: string
+  value: number | undefined
+  format: 'number' | 'stake' | 'bandwidth' | 'percent'
+}
+
+function useAnimatedNumber(target: number | undefined, duration = 500) {
+  const [current, setCurrent] = useState<number | undefined>(undefined)
+  const prevRef = useRef<number | undefined>(undefined)
+
+  useEffect(() => {
+    if (target === undefined) return
+
+    const start = prevRef.current ?? target
+    const startTime = performance.now()
+
+    const animate = (time: number) => {
+      const elapsed = time - startTime
+      const progress = Math.min(elapsed / duration, 1)
+      // Ease-out cubic
+      const eased = 1 - Math.pow(1 - progress, 3)
+      const value = start + (target - start) * eased
+      setCurrent(value)
+
+      if (progress < 1) {
+        requestAnimationFrame(animate)
+      } else {
+        prevRef.current = target
+      }
+    }
+
+    requestAnimationFrame(animate)
+  }, [target, duration])
+
+  return current
+}
+
+function formatValue(
+  value: number | undefined,
+  format: 'number' | 'stake' | 'bandwidth' | 'percent'
+): string {
+  if (value === undefined) return '—'
+
+  switch (format) {
+    case 'stake': {
+      // Convert to millions of SOL
+      const millions = value / 1_000_000
+      if (millions >= 1) {
+        return `${millions.toFixed(1)}M`
+      }
+      // Less than 1M, show in K
+      const thousands = value / 1_000
+      return `${thousands.toFixed(0)}K`
+    }
+    case 'bandwidth': {
+      // Convert bps to Gbps or Tbps
+      const gbps = value / 1_000_000_000
+      if (gbps >= 1000) {
+        return `${(gbps / 1000).toFixed(1)} Tbps`
+      }
+      return `${gbps.toFixed(0)} Gbps`
+    }
+    case 'percent':
+      return `${value.toFixed(1)}%`
+    case 'number':
+    default:
+      return value.toLocaleString('en-US', { maximumFractionDigits: 0 })
+  }
+}
+
+export function StatCard({ label, value, format }: StatCardProps) {
+  const animatedValue = useAnimatedNumber(value)
+  const displayValue = formatValue(animatedValue, format)
+
+  return (
+    <div className="text-center">
+      <div className="text-4xl font-medium tabular-nums tracking-tight mb-1">
+        {displayValue}
+      </div>
+      <div className="text-sm text-muted-foreground">{label}</div>
+    </div>
+  )
+}

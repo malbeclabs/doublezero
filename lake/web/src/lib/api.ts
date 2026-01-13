@@ -592,6 +592,30 @@ export async function recommendVisualization(
   return res.json()
 }
 
+// Stats for landing page
+export interface StatsResponse {
+  validators_on_dz: number
+  total_stake_sol: number
+  stake_share_pct: number
+  active_users: number
+  active_devices: number
+  active_links: number
+  contributors: number
+  metros: number
+  wan_bandwidth_bps: number
+  user_inbound_bps: number
+  fetched_at: string
+  error?: string
+}
+
+export async function fetchStats(): Promise<StatsResponse> {
+  const res = await fetchWithRetry('/api/stats')
+  if (!res.ok) {
+    throw new Error('Failed to fetch stats')
+  }
+  return res.json()
+}
+
 // Version check
 export interface VersionResponse {
   buildTimestamp: string

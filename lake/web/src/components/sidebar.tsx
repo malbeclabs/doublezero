@@ -62,17 +62,35 @@ export function Sidebar({
   const location = useLocation()
   const { resolvedTheme, setTheme } = useTheme()
   const { updateAvailable, reload } = useVersionCheck()
+  const isLandingPage = location.pathname === '/'
+
   const [isCollapsed, setIsCollapsed] = useState(() => {
     // Check localStorage for saved preference
     const saved = localStorage.getItem('sidebar-collapsed')
     if (saved !== null) return saved === 'true'
-    // Default to collapsed on small screens
-    return typeof window !== 'undefined' && window.innerWidth < 1024
+    // Default to collapsed on small screens or landing page
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) return true
+    // On landing page, default to collapsed
+    return window.location.pathname === '/'
   })
   const [userCollapsed, setUserCollapsed] = useState<boolean | null>(() => {
     const saved = localStorage.getItem('sidebar-user-collapsed')
     return saved !== null ? saved === 'true' : null
   })
+
+  // Auto-collapse/expand based on route and user preference
+  useEffect(() => {
+    // If user has explicit preference, respect it
+    if (userCollapsed !== null) return
+
+    const isSmall = typeof window !== 'undefined' && window.innerWidth < 1024
+    if (isSmall) {
+      setIsCollapsed(true)
+    } else {
+      // Landing page defaults to collapsed, other pages to expanded
+      setIsCollapsed(isLandingPage)
+    }
+  }, [isLandingPage, userCollapsed])
 
   // Auto-collapse/expand on resize based on user preference
   useEffect(() => {
@@ -81,17 +99,18 @@ export function Sidebar({
       if (isSmall) {
         // Always collapse on small screens
         setIsCollapsed(true)
+      } else if (userCollapsed === null) {
+        // No user preference - use route-based default
+        setIsCollapsed(isLandingPage)
       } else {
-        // On large screens, expand unless user explicitly collapsed
-        if (userCollapsed !== true) {
-          setIsCollapsed(false)
-        }
+        // Respect user preference
+        setIsCollapsed(userCollapsed)
       }
     }
 
     window.addEventListener('resize', checkWidth)
     return () => window.removeEventListener('resize', checkWidth)
-  }, [userCollapsed])
+  }, [userCollapsed, isLandingPage])
 
   // Save collapsed state to localStorage
   useEffect(() => {

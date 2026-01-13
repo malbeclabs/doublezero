@@ -107,10 +107,254 @@ func runTest_NetworkHealthSummary(t *testing.T, llmFactory LLMClientFactory) {
 			ExpectedValue: "interface errors, discards, or carrier transitions mentioned for lon-dzd1 or Ethernet1",
 			Rationale:     "lon-dzd1 has interface issues",
 		},
+		{
+			Description:   "Response does NOT contain spurious warnings for healthy metrics",
+			ExpectedValue: "no ⚠️ Data Note warnings about low confidence or needing verification for zero-result queries",
+			Rationale:     "Zero results for health checks (e.g., no high utilization) should be omitted, not flagged with warnings",
+		},
 	}
 	isCorrect, err := ollamaEvaluateResponse(t, ctx, question, response, expectations...)
 	require.NoError(t, err, "Ollama evaluation must be available")
 	require.True(t, isCorrect, "Ollama evaluation indicates the response does not correctly answer the question")
+}
+
+func TestLake_Agent_Evals_Anthropic_NetworkHealthAllHealthy(t *testing.T) {
+	t.Parallel()
+	apiKey := os.Getenv("ANTHROPIC_API_KEY")
+	if apiKey == "" {
+		t.Skip("ANTHROPIC_API_KEY not set, skipping eval test")
+	}
+
+	runTest_NetworkHealthAllHealthy(t, newAnthropicLLMClient)
+}
+
+func TestLake_Agent_Evals_OllamaLocal_NetworkHealthAllHealthy(t *testing.T) {
+	t.Parallel()
+	if !isOllamaAvailable() {
+		t.Skip("Ollama not available, skipping eval test")
+	}
+
+	runTest_NetworkHealthAllHealthy(t, newOllamaLLMClient)
+}
+
+// runTest_NetworkHealthAllHealthy tests that when the network is completely healthy,
+// the agent doesn't include spurious warnings or "no issues found" sections.
+// This validates the simplified confidence scoring (only errors = LOW confidence).
+func runTest_NetworkHealthAllHealthy(t *testing.T, llmFactory LLMClientFactory) {
+	ctx := context.Background()
+
+	// Get debug level
+	debugLevel, debug := getDebugLevel()
+
+	// Set up test database
+	clientInfo := testClientInfo(t)
+
+	// Set up test data
+	conn, err := clientInfo.Client.Conn(ctx)
+	require.NoError(t, err)
+	defer conn.Close()
+
+	// Seed a completely healthy network
+	seedHealthyNetworkData(t, ctx, conn)
+
+	// Skip pipeline execution in short mode
+	if testing.Short() {
+		t.Log("Skipping pipeline execution in short mode")
+		return
+	}
+
+	// Set up pipeline with LLM client
+	p := setupPipeline(t, ctx, clientInfo, llmFactory, debug, debugLevel)
+
+	// Run the query
+	question := "how is the network doing?"
+	if debug {
+		t.Logf("=== Query: '%s' ===\n", question)
+	}
+	result, err := p.Run(ctx, question)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotEmpty(t, result.Answer)
+
+	response := result.Answer
+	if debug {
+		t.Logf("=== Response ===\n%s\n", response)
+	} else {
+		t.Logf("Pipeline response:\n%s", response)
+	}
+
+	// Evaluate with Ollama - for a healthy network, we expect:
+	// 1. NO warning symbols (⚠️) for zero-result queries
+	// 2. NO "low confidence" or "needs verification" language
+	// 3. NO "no issues found" or "0 devices with issues" type sections
+	// 4. A positive summary that the network is healthy
+	expectations := []OllamaExpectation{
+		{
+			Description:   "Response indicates network is healthy",
+			ExpectedValue: "positive assessment - network is healthy, operational, or similar",
+			Rationale:     "All devices are activated, no packet loss, no errors",
+		},
+		{
+			Description:   "Response does NOT contain warning symbols for healthy data",
+			ExpectedValue: "no ⚠️ symbols or 'Data Note' warnings about confidence or verification",
+			Rationale:     "Zero results for health checks should be HIGH confidence, not flagged",
+		},
+		{
+			Description:   "Response does NOT list 'no issues found' sections",
+			ExpectedValue: "does NOT say things like 'no devices with issues', 'no links exceeded threshold', '0 errors found'",
+			Rationale:     "Healthy metrics should be omitted entirely, not explicitly mentioned as zero",
+		},
+	}
+	isCorrect, err := ollamaEvaluateResponse(t, ctx, question, response, expectations...)
+	require.NoError(t, err, "Ollama evaluation must be available")
+	require.True(t, isCorrect, "Ollama evaluation indicates the response contains spurious warnings or 'no issues' sections")
+}
+
+// seedHealthyNetworkData seeds a completely healthy network for the all-healthy test
+func seedHealthyNetworkData(t *testing.T, ctx context.Context, conn clickhouse.Connection) {
+	log := testLogger(t)
+	now := testTime()
+
+	// Seed metros
+	metros := []serviceability.Metro{
+		{PK: "metro1", Code: "nyc", Name: "New York"},
+		{PK: "metro2", Code: "lon", Name: "London"},
+		{PK: "metro3", Code: "chi", Name: "Chicago"},
+	}
+	seedMetros(t, ctx, conn, metros, now, now)
+
+	// Seed devices - ALL activated (healthy)
+	devices := []serviceability.Device{
+		{PK: "device1", Code: "nyc-dzd1", Status: "activated", MetroPK: "metro1", DeviceType: "DZD"},
+		{PK: "device2", Code: "lon-dzd1", Status: "activated", MetroPK: "metro2", DeviceType: "DZD"},
+		{PK: "device3", Code: "chi-dzd1", Status: "activated", MetroPK: "metro3", DeviceType: "DZD"},
+	}
+	seedDevices(t, ctx, conn, devices, now, now)
+
+	// Seed links - ALL activated (healthy)
+	linkDS, err := serviceability.NewLinkDataset(log)
+	require.NoError(t, err)
+	links := []serviceability.Link{
+		{PK: "link1", Code: "nyc-lon-1", Status: "activated", LinkType: "WAN", SideAPK: "device1", SideZPK: "device2", SideAIfaceName: "Ethernet1", SideZIfaceName: "Ethernet1", Bandwidth: 10000000000, CommittedRTTNs: 10000000},
+		{PK: "link2", Code: "chi-nyc-1", Status: "activated", LinkType: "WAN", SideAPK: "device3", SideZPK: "device1", SideAIfaceName: "Ethernet1", SideZIfaceName: "Ethernet1", Bandwidth: 10000000000, CommittedRTTNs: 15000000},
+	}
+	var linkSchema serviceability.LinkSchema
+	err = linkDS.WriteBatch(ctx, conn, len(links), func(i int) ([]any, error) {
+		return linkSchema.ToRow(links[i]), nil
+	}, &dataset.DimensionType2DatasetWriteConfig{
+		SnapshotTS: now,
+		OpID:       testOpID(),
+	})
+	require.NoError(t, err)
+
+	// Seed latency samples - ALL healthy (no packet loss)
+	latencyDS, err := dztelemlatency.NewDeviceLinkLatencyDataset(log)
+	require.NoError(t, err)
+	latencySamples := []struct {
+		time           time.Time
+		epoch          int64
+		sampleIndex    int32
+		originDevicePK string
+		targetDevicePK string
+		linkPK         string
+		rttUs          uint32
+		loss           bool
+		ipdvUs         *int64
+	}{
+		// Link1 (nyc-lon): Healthy
+		{now.Add(-1 * time.Hour), 1, 1, "device1", "device2", "link1", 50000, false, int64Ptr(2000)},
+		{now.Add(-1 * time.Hour), 1, 2, "device1", "device2", "link1", 51000, false, int64Ptr(2100)},
+		{now.Add(-2 * time.Hour), 1, 1, "device2", "device1", "link1", 49000, false, int64Ptr(1900)},
+		// Link2 (chi-nyc): Healthy
+		{now.Add(-1 * time.Hour), 1, 1, "device3", "device1", "link2", 75000, false, int64Ptr(3000)},
+		{now.Add(-1 * time.Hour), 1, 2, "device1", "device3", "link2", 73000, false, int64Ptr(2800)},
+	}
+	err = latencyDS.WriteBatch(ctx, conn, len(latencySamples), func(i int) ([]any, error) {
+		s := latencySamples[i]
+		return []any{
+			s.time.UTC(),
+			now,
+			s.epoch,
+			s.sampleIndex,
+			s.originDevicePK,
+			s.targetDevicePK,
+			s.linkPK,
+			int64(s.rttUs),
+			s.loss,
+			s.ipdvUs,
+		}, nil
+	})
+	require.NoError(t, err)
+
+	// Seed interface usage - NO errors, discards, or carrier transitions (healthy)
+	ifaceUsageDS, err := dztelemusage.NewDeviceInterfaceCountersDataset(log)
+	require.NoError(t, err)
+	ifaceUsageEntries := []struct {
+		time           time.Time
+		devicePK       string
+		host           string
+		intf           string
+		linkPK         *string
+		linkSide       *string
+		inOctetsDelta  *int64
+		outOctetsDelta *int64
+		deltaDuration  *float64
+	}{
+		// Normal traffic, no errors (30% utilization)
+		{now.Add(-1 * time.Hour), "device1", "nyc-dzd1", "Ethernet1", strPtr("link1"), strPtr("A"), int64Ptr(2250000000), int64Ptr(2250000000), float64Ptr(60.0)},
+		{now.Add(-1 * time.Hour), "device2", "lon-dzd1", "Ethernet1", strPtr("link1"), strPtr("Z"), int64Ptr(2250000000), int64Ptr(2250000000), float64Ptr(60.0)},
+		{now.Add(-1 * time.Hour), "device3", "chi-dzd1", "Ethernet1", strPtr("link2"), strPtr("A"), int64Ptr(2250000000), int64Ptr(2250000000), float64Ptr(60.0)},
+	}
+	err = ifaceUsageDS.WriteBatch(ctx, conn, len(ifaceUsageEntries), func(i int) ([]any, error) {
+		e := ifaceUsageEntries[i]
+		// Order: event_ts, ingested_at, then all columns from schema (must match exactly)
+		return []any{
+			e.time.UTC(),      // event_ts
+			now,               // ingested_at
+			e.devicePK,        // device_pk
+			e.host,            // host
+			e.intf,            // intf
+			nil,               // user_tunnel_id
+			e.linkPK,          // link_pk
+			e.linkSide,        // link_side
+			nil,               // model_name
+			nil,               // serial_number
+			nil,               // carrier_transitions
+			nil,               // in_broadcast_pkts
+			nil,               // in_discards
+			nil,               // in_errors
+			nil,               // in_fcs_errors
+			nil,               // in_multicast_pkts
+			nil,               // in_octets
+			nil,               // in_pkts
+			nil,               // in_unicast_pkts
+			nil,               // out_broadcast_pkts
+			nil,               // out_discards
+			nil,               // out_errors
+			nil,               // out_multicast_pkts
+			nil,               // out_octets
+			nil,               // out_pkts
+			nil,               // out_unicast_pkts
+			nil,               // carrier_transitions_delta
+			nil,               // in_broadcast_pkts_delta
+			nil,               // in_discards_delta
+			nil,               // in_errors_delta
+			nil,               // in_fcs_errors_delta
+			nil,               // in_multicast_pkts_delta
+			e.inOctetsDelta,   // in_octets_delta
+			nil,               // in_pkts_delta
+			nil,               // in_unicast_pkts_delta
+			nil,               // out_broadcast_pkts_delta
+			nil,               // out_discards_delta
+			nil,               // out_errors_delta
+			nil,               // out_multicast_pkts_delta
+			e.outOctetsDelta,  // out_octets_delta
+			nil,               // out_pkts_delta
+			nil,               // out_unicast_pkts_delta
+			&e.deltaDuration,  // delta_duration
+		}, nil
+	})
+	require.NoError(t, err)
 }
 
 // seedNetworkHealthSummaryData seeds comprehensive network health data for TestLake_Agent_Evals_NetworkHealthSummary

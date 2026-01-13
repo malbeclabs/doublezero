@@ -14,7 +14,7 @@ The processor uses registered extractors that pattern-match against gNMI paths. 
 
 **Supported Collections:**
 - ISIS adjacencies (neighbor relationships, state)
-- BGP neighbors (session state, peer AS)
+- BGP neighbors (session state, peer AS, local AS, peer type, description, established transitions, session timing, UPDATE message counts)
 - System state (CPU, memory, hostname)
 - Interface mappings (name to ifindex)
 
@@ -60,24 +60,30 @@ Add an extractor in `/workspaces/doublezero/telemetry/gnmi-writer/internal/gnmi/
 func extractLldpNeighbors(device *oc.Device, meta Metadata) []Record {
     var records []Record
 
-    for ifName, iface := range device.Interface {
-        if iface.Lldp == nil {
+    if device.Lldp == nil || device.Lldp.Interfaces == nil {
+        return nil
+    }
+
+    for ifName, iface := range device.Lldp.Interfaces.Interface {
+        if iface.Neighbors == nil {
             continue
         }
-        for chassisID, neighbor := range iface.Lldp.Neighbor {
+        for neighborID, neighbor := range iface.Neighbors.Neighbor {
             record := LldpNeighborRecord{
                 Timestamp:     meta.Timestamp,
                 DeviceCode:    meta.DeviceCode,
                 InterfaceName: ifName,
-                ChassisID:     chassisID,
+                ChassisID:     neighborID,
             }
 
-            // Extract fields safely (OpenConfig uses pointers)
-            if neighbor.PortId != nil {
-                record.PortID = *neighbor.PortId
-            }
-            if neighbor.SystemName != nil {
-                record.SystemName = *neighbor.SystemName
+            // All OpenConfig state fields are accessed through explicit State containers
+            if neighbor.State != nil {
+                if neighbor.State.PortId != nil {
+                    record.PortID = *neighbor.State.PortId
+                }
+                if neighbor.State.SystemName != nil {
+                    record.SystemName = *neighbor.State.SystemName
+                }
             }
 
             records = append(records, record)
@@ -90,9 +96,18 @@ func extractLldpNeighbors(device *oc.Device, meta Metadata) []Record {
 
 **Pattern:**
 - Iterate through the `oc.Device` structure to find your data
-- Handle nil pointers (OpenConfig uses pointer fields for optional data)
+- Access OpenConfig state data through explicit `.State` containers (due to uncompressed path generation)
+- Handle nil pointers at both the container level (e.g., `neighbor.State`) and field level (e.g., `neighbor.State.PortId`)
 - Populate `Timestamp` and `DeviceCode` from `meta` parameter
 - Return nil if no meaningful data is found
+
+**State Container Access:**
+OpenConfig uses uncompressed paths, meaning all operational state fields are accessed through explicit `.State` containers. For example:
+- BGP neighbor peer AS: `neighbor.State.PeerAs` (not `neighbor.PeerAs`)
+- Interface ifindex: `subif.State.Ifindex` (not `subif.Ifindex`)
+- System hostname: `device.System.State.Hostname` (not `device.System.Hostname`)
+
+Always check if the `.State` container exists before accessing its fields to avoid nil pointer panics.
 
 #### 3. Register the Extractor
 
@@ -291,6 +306,12 @@ Integration tests use table-driven design. Each test case:
 ### Why OpenConfig?
 
 OpenConfig provides vendor-neutral models for network state. Devices stream telemetry as gNMI Subscribe notifications containing OpenConfig JSON. The processor uses ygot (YANG Go tools) to unmarshal this JSON into type-safe Go structs, making extraction straightforward and resilient to schema evolution.
+
+### Uncompressed Path Structure
+
+The ygot code generation uses uncompressed paths (`-compress_paths=false`). This means the Go struct hierarchy matches gNMI paths exactly, including explicit `/state` containers. For example, a BGP neighbor's peer AS is accessed as `neighbor.State.PeerAs` rather than `neighbor.PeerAs`.
+
+While this produces larger generated code (177K vs 110K lines), it eliminates unmarshalling ambiguity. With compressed paths, ygot's SetNode silently failed when gNMI paths ended at `/state` containers, requiring custom workarounds. Uncompressed paths ensure the path structure in notifications matches the struct hierarchy precisely, making unmarshalling reliable and extraction code straightforward.
 
 ### Why ClickHouse Views?
 

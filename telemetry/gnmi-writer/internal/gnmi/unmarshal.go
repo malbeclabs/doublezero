@@ -41,27 +41,6 @@ func (p *Processor) unmarshalNotification(notification *gpb.Notification, update
 	return device, nil
 }
 
-// unmarshalNotificationV2 uses ygot's UnmarshalNotifications.
-// With uncompressed paths, this should work directly.
-func (p *Processor) unmarshalNotificationV2(notification *gpb.Notification) (*oc.Device, error) {
-	device := &oc.Device{}
-	schema := &ytypes.Schema{
-		Root:       device,
-		SchemaTree: p.schema.SchemaTree,
-	}
-
-	err := ytypes.UnmarshalNotifications(
-		schema,
-		[]*gpb.Notification{notification},
-		&ytypes.IgnoreExtraFields{},
-	)
-	if err != nil {
-		return nil, fmt.Errorf("UnmarshalNotifications failed: %w", err)
-	}
-
-	return device, nil
-}
-
 // mergePaths combines a prefix path and an update path into a single path.
 func mergePaths(prefix, path *gpb.Path) *gpb.Path {
 	if prefix == nil {

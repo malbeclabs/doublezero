@@ -71,6 +71,7 @@ Given a user's question, identify what specific data questions need to be answer
 - For counts, also consider listing the specific entities if count might be small
 - **For network health/status questions**: Ask for specific entity lists (not just counts). Users need to know exactly which devices, links, and interfaces have issues, along with their specific status or problem details
 - Order questions logically - foundational facts first, then derived insights
+- **For confirmation responses**: If the user says "yes", "please do", "go ahead", etc., and the previous assistant message offered to run a query or investigation, extract the data questions from what was offered. Look at the conversation history to understand what query was proposed.
 
 ## Response Format
 
@@ -140,5 +141,13 @@ Respond with a JSON object containing an array of data questions:
 4. What is the packet loss rate for public internet in the last 24 hours?
 
 *Key insight*: Comparison questions require gathering parallel data for both cohorts, then the synthesis step can compare them.
+
+**Previous conversation**: Assistant said "Would you like me to query the WAN link utilization with the corrected filter?"
+**User Question**: "Yes"
+
+**Good Decomposition**:
+1. What is the current utilization for all WAN links (link_type = 'WAN') over the last 24 hours?
+
+*Key insight*: When the user confirms with "yes", look at what query was offered in the conversation history and extract the data questions from that offer.
 
 Now analyze the user's question and provide the data questions needed to answer it.

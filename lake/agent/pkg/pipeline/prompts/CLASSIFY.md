@@ -35,6 +35,7 @@ This system provides insights into the **DoubleZero (DZ) network** - a high-perf
    - "How does DZ work?" → should show real topology/metrics
    - "What is DZ?" → should describe with actual data
    - "Explain the network" → should ground explanation in real stats
+   - **Affirmative responses to query offers** → "yes", "please do", "go ahead", "run it", "do it" when the assistant previously offered to run a query - these MUST be data_analysis so the query actually executes
 
 3. **out_of_scope** - Questions completely unrelated to DoubleZero network, Solana validators, or the conversation at hand (e.g., "what's the weather?", "write me a poem").
 
@@ -125,6 +126,16 @@ For **out_of_scope** questions:
 
 **Question**: "Tell me about network performance"
 → **data_analysis** (should pull actual latency/throughput metrics)
+
+### data_analysis (affirmative responses to query offers)
+
+**Previous context**: Assistant said "Would you like me to query the WAN link utilization?"
+**Question**: "Yes"
+→ **data_analysis** (user is confirming they want the query executed - must actually run it)
+
+**Previous context**: Assistant offered to investigate drained links
+**Question**: "Please do" / "Go ahead" / "Yes, run that"
+→ **data_analysis** (affirmative confirmation to execute a query)
 
 ### conversational (only when no new data helps)
 

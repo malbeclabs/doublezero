@@ -180,6 +180,81 @@ func runTest_CapabilitiesQuestion(t *testing.T, llmFactory LLMClientFactory) {
 	require.True(t, isCorrect, "Ollama evaluation indicates the response does not appropriately explain capabilities")
 }
 
+func TestLake_Agent_Evals_Anthropic_AffirmativeQueryConfirmation(t *testing.T) {
+	t.Parallel()
+	apiKey := os.Getenv("ANTHROPIC_API_KEY")
+	if apiKey == "" {
+		t.Skip("ANTHROPIC_API_KEY not set, skipping eval test")
+	}
+
+	runTest_AffirmativeQueryConfirmation(t, newAnthropicLLMClient)
+}
+
+func TestLake_Agent_Evals_OllamaLocal_AffirmativeQueryConfirmation(t *testing.T) {
+	t.Parallel()
+	if !isOllamaAvailable() {
+		t.Skip("Ollama not available, skipping eval test")
+	}
+
+	runTest_AffirmativeQueryConfirmation(t, newOllamaLLMClient)
+}
+
+// runTest_AffirmativeQueryConfirmation tests that when the assistant offers to run a query
+// and the user says "yes", it should be classified as data_analysis and actually execute the query.
+func runTest_AffirmativeQueryConfirmation(t *testing.T, llmFactory LLMClientFactory) {
+	ctx := context.Background()
+
+	// Get debug level
+	debugLevel, debug := getDebugLevel()
+
+	// Set up test database
+	clientInfo := testClientInfo(t)
+
+	// Set up test data - just load schema
+	conn, err := clientInfo.Client.Conn(ctx)
+	require.NoError(t, err)
+	defer conn.Close()
+
+	// Set up pipeline with LLM client
+	p := setupPipeline(t, ctx, clientInfo, llmFactory, debug, debugLevel)
+
+	// Build conversation history where assistant offered to run a query
+	history := []pipeline.ConversationMessage{
+		{Role: "user", Content: "What's the WAN link utilization?"},
+		{Role: "assistant", Content: "I noticed there may have been an issue with the query. Would you like me to query the WAN link utilization with the corrected filter (link_type = 'WAN')?"},
+	}
+
+	// User confirms with "yes" - this should trigger data_analysis, NOT conversational
+	question := "Yes"
+	if debug {
+		t.Logf("=== Query: '%s' (expecting data_analysis, not conversational) ===\n", question)
+	}
+	result, err := p.RunWithHistory(ctx, question, history)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotEmpty(t, result.Answer)
+
+	// KEY ASSERTION: "Yes" to a query offer should be data_analysis, NOT conversational
+	require.Equal(t, pipeline.ClassificationDataAnalysis, result.Classification,
+		"Affirmative response to query offer should be classified as data_analysis, not conversational")
+
+	// Verify data questions WERE generated (the query should actually run)
+	require.NotEmpty(t, result.DataQuestions,
+		"Affirmative response to query offer should generate data questions")
+
+	if debug {
+		t.Logf("=== Response (classification: %s) ===\n%s\n",
+			result.Classification, result.Answer)
+		t.Logf("=== Data questions generated: %d ===\n", len(result.DataQuestions))
+		for i, dq := range result.DataQuestions {
+			t.Logf("  Q%d: %s\n", i+1, dq.Question)
+		}
+	} else {
+		t.Logf("Response (classification: %s):\n%s",
+			result.Classification, result.Answer)
+	}
+}
+
 func TestLake_Agent_Evals_Anthropic_ThankYouResponse(t *testing.T) {
 	t.Parallel()
 	apiKey := os.Getenv("ANTHROPIC_API_KEY")

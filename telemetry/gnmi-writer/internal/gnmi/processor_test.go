@@ -679,6 +679,8 @@ func TestUnmarshalNotifications_UncompressedPaths(t *testing.T) {
 	}
 
 	// Find an update with full state data (peer-as, session-state, etc.)
+	// Skip updates with supported-capabilities because those also contain Arista
+	// vendor augments (neighbor-router-id, next-hop-self) which add noise to test output.
 	var fullStateUpdateIdx = -1
 	for i, update := range notification.GetUpdate() {
 		if jsonVal := update.GetVal().GetJsonIetfVal(); jsonVal != nil {

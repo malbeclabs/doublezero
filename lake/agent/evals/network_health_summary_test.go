@@ -186,23 +186,23 @@ func runTest_NetworkHealthAllHealthy(t *testing.T, llmFactory LLMClientFactory) 
 	// Evaluate with Ollama - for a healthy network, we expect:
 	// 1. NO warning symbols (⚠️) for zero-result queries
 	// 2. NO "low confidence" or "needs verification" language
-	// 3. NO "no issues found" or "0 devices with issues" type sections
+	// 3. NO explicit zero counts or "no issues" language
 	// 4. A positive summary that the network is healthy
 	expectations := []Expectation{
 		{
 			Description:   "Response indicates network is healthy",
-			ExpectedValue: "positive assessment - network is healthy, operational, or similar",
-			Rationale:     "All devices are activated, no packet loss, no errors",
+			ExpectedValue: "positive assessment - 'network is healthy', 'all systems operational', 'all devices activated', or similar positive phrasing",
+			Rationale:     "All devices are activated, so a positive status summary is expected",
 		},
 		{
 			Description:   "Response does NOT contain warning symbols for healthy data",
-			ExpectedValue: "no ⚠️ symbols or 'Data Note' warnings about confidence or verification",
-			Rationale:     "Zero results for health checks should be HIGH confidence, not flagged",
+			ExpectedValue: "no ⚠️ symbols for query errors when the network is healthy",
+			Rationale:     "Failed queries for problems (packet loss, errors) should not show warnings if network is healthy",
 		},
 		{
-			Description:   "Response does NOT list 'no issues found' sections",
-			ExpectedValue: "does NOT say things like 'no devices with issues', 'no links exceeded threshold', '0 errors found'",
-			Rationale:     "Healthy metrics should be omitted entirely, not explicitly mentioned as zero",
+			Description:   "Response does NOT explicitly mention zero counts or absence of problems",
+			ExpectedValue: "does NOT say 'no packet loss', 'zero errors', 'no issues found', '0 devices with issues', 'no discards detected', etc. - ACCEPTABLE: 'all devices activated', 'network is healthy', positive status summaries",
+			Rationale:     "For healthy networks, don't enumerate what's NOT wrong - just say it's healthy",
 		},
 	}
 	isCorrect, err := evaluateResponse(t, ctx, question, response, expectations...)

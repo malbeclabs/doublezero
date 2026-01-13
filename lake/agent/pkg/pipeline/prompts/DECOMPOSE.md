@@ -119,4 +119,25 @@ Respond with a JSON object containing an array of data questions:
 
 *Key insight*: When the user confirms with "yes", look at what query was offered in the conversation history and extract the data questions from that offer.
 
+**User Question**: "Compare validators on DZ vs off DZ"
+
+**Good Decomposition**:
+1. How many validators are currently on DZ vs off DZ?
+2. What is the total stake for validators on DZ vs off DZ?
+3. What is the average vote lag (cluster_slot - last_vote_slot) for validators on DZ vs off DZ?
+4. What is the average skip rate for validators on DZ vs off DZ? (from block production: skipped = assigned - produced)
+5. List the specific validators in each group with their vote_pubkey and performance metrics
+
+*Key insight*: Validator comparisons should include **performance metrics** (vote lag, skip rate) not just stake distribution. DZ's value proposition is better validator performance.
+
+**User Question**: "Show timeline for drained link nyc-lon-1" (or similar incident timeline request)
+
+**Good Decomposition**:
+1. What is the current status of link nyc-lon-1 and what are its status changes in the history (look at dim_dz_links_history)?
+2. What packet loss events occurred on this link and when (from fact_dz_device_link_latency)?
+3. What interface errors, discards, and carrier transitions occurred on this link's interfaces and when (from fact_dz_device_interface_counters)?
+4. What was the RTT trend during this period?
+
+*Key insight*: Incident timelines require **both status history AND telemetry data** (packet loss, errors, discards, carrier transitions). The user wants to understand the full progression of the incident, not just status changes.
+
 Now analyze the user's question and provide the data questions needed to answer it.

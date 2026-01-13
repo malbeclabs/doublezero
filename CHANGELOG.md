@@ -45,6 +45,7 @@ All notable changes to this project will be documented in this file.
   - Restrict DeleteDeviceInterface to interfaces in Activated or Unlinked status; attempting to delete interfaces in other statuses now fails with InvalidStatus.
   - Updated validation to allow public IP prefixes for CYOA/DIA, removing the restriction imposed by type-based checks.
   - Transit devices can now be provisioned without a public IP, aligning the requirements with their actual networking model and avoiding unnecessary configuration constraints.
+  - Enforce that ActivateDeviceInterface only activates interfaces in Pending or Unlinked status, returning InvalidStatus for all other interface states
 - Internet Latency Telemetry
   - Fixed a bug that prevented unresponsive ripeatlas probes from being replaced
   - Fixed a bug that caused ripeatlas samples to be dropped when they were delayed to the next collection cycle

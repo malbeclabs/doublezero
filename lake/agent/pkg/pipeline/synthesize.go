@@ -45,36 +45,11 @@ Please synthesize a clear, comprehensive answer to the user's question based on 
 }
 
 // assessQueryConfidence evaluates the reliability of a query result.
+// Only flags actual errors - zero results is not considered low confidence
+// since the LLM can determine from context whether zero results is expected.
 func assessQueryConfidence(eq ExecutedQuery) string {
-	// Error case
 	if eq.Result.Error != "" {
 		return "LOW - Query failed with error"
 	}
-
-	// Zero rows - potentially suspicious
-	if eq.Result.Count == 0 {
-		// Check if the question implies expectation of data
-		question := strings.ToLower(eq.GeneratedQuery.DataQuestion.Question)
-		// Questions starting with "how many" or "what is the count" might legitimately be zero
-		if strings.Contains(question, "how many") || strings.Contains(question, "count") {
-			return "MEDIUM - Zero results (may be expected for count queries)"
-		}
-		// Questions asking for specific entities probably expect results
-		if strings.Contains(question, "which") || strings.Contains(question, "list") || strings.Contains(question, "what are") {
-			return "LOW - Zero results (query may have incorrect filters)"
-		}
-		return "MEDIUM - Zero results"
-	}
-
-	// Very few rows might indicate overly restrictive filters
-	if eq.Result.Count == 1 {
-		return "HIGH - Single result returned"
-	}
-
-	if eq.Result.Count < 5 {
-		return "HIGH - Small result set"
-	}
-
-	// Normal case
-	return "HIGH - Query executed successfully"
+	return "HIGH"
 }

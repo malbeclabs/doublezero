@@ -167,6 +167,108 @@ WHERE u.status = 'activated'
 
 **Key insight**: `dz_users_current` is the source of truth for what is currently "on DZ". Without joining through it, you're counting the entire Solana network. For historical queries, use `dim_dz_users_history` instead.
 
+### Link Outage Detection
+To find links that were "down" or had outages, look for status transitions in `dim_dz_links_history`:
+
+**Find links that went down (status changed from activated):**
+```sql
+-- Find outage start times: when links changed FROM activated to something else
+SELECT
+    curr.code AS link_code,
+    curr.status AS outage_status,
+    curr.snapshot_ts AS outage_start,
+    prev.status AS previous_status
+FROM dim_dz_links_history curr
+LEFT JOIN dim_dz_links_history prev ON curr.pk = prev.pk
+    AND prev.snapshot_ts < curr.snapshot_ts
+    AND prev.snapshot_ts = (
+        SELECT MAX(snapshot_ts) FROM dim_dz_links_history
+        WHERE pk = curr.pk AND snapshot_ts < curr.snapshot_ts
+    )
+WHERE curr.snapshot_ts >= now() - INTERVAL 48 HOUR
+  AND curr.status != 'activated'
+  AND (prev.status = 'activated' OR prev.pk = '')  -- Was activated, or first record
+ORDER BY curr.snapshot_ts DESC
+```
+
+**Find outage end times (when links recovered):**
+```sql
+-- Find when links returned to activated
+SELECT
+    curr.code AS link_code,
+    curr.snapshot_ts AS recovery_time,
+    prev.status AS was_status
+FROM dim_dz_links_history curr
+LEFT JOIN dim_dz_links_history prev ON curr.pk = prev.pk
+    AND prev.snapshot_ts < curr.snapshot_ts
+    AND prev.snapshot_ts = (
+        SELECT MAX(snapshot_ts) FROM dim_dz_links_history
+        WHERE pk = curr.pk AND snapshot_ts < curr.snapshot_ts
+    )
+WHERE curr.snapshot_ts >= now() - INTERVAL 48 HOUR
+  AND curr.status = 'activated'
+  AND prev.status != 'activated'
+  AND prev.pk != ''
+ORDER BY curr.snapshot_ts DESC
+```
+
+**Filter by metro**: To find links "going into" a metro, join to devices and metros:
+```sql
+-- Links connected to a specific metro (on either side)
+SELECT l.code, l.pk
+FROM dz_links_current l
+JOIN dz_devices_current da ON l.side_a_pk = da.pk
+JOIN dz_devices_current dz ON l.side_z_pk = dz.pk
+JOIN dz_metros_current ma ON da.metro_pk = ma.pk
+JOIN dz_metros_current mz ON dz.metro_pk = mz.pk
+WHERE ma.code = 'sao' OR mz.code = 'sao'
+```
+
+### Validators by Region/Metro
+To find which DZ metros have the most connected validators, join through users → devices → metros:
+
+```sql
+-- Validators grouped by DZ metro
+SELECT
+    m.code AS metro_code,
+    m.name AS metro_name,
+    COUNT(DISTINCT va.vote_pubkey) AS validator_count,
+    SUM(va.activated_stake_lamports) / 1e9 AS total_stake_sol
+FROM dz_users_current u
+JOIN dz_devices_current d ON u.device_pk = d.pk
+JOIN dz_metros_current m ON d.metro_pk = m.pk
+JOIN solana_gossip_nodes_current gn ON u.dz_ip = gn.gossip_ip
+JOIN solana_vote_accounts_current va ON gn.pubkey = va.node_pubkey
+WHERE u.status = 'activated'
+  AND va.activated_stake_lamports > 0
+GROUP BY m.pk, m.code, m.name
+ORDER BY validator_count DESC
+```
+
+### Off-DZ Validators by GeoIP Region
+To find validators NOT on DZ in a specific region, use GeoIP lookup on gossip_ip and anti-join with dz_users:
+
+```sql
+-- Off-DZ validators in Tokyo region (top 10 by stake)
+SELECT
+    va.vote_pubkey,
+    va.activated_stake_lamports / 1e9 AS stake_sol,
+    gn.gossip_ip,
+    geo.city,
+    geo.country
+FROM solana_gossip_nodes_current gn
+JOIN solana_vote_accounts_current va ON gn.pubkey = va.node_pubkey
+LEFT JOIN geoip_records_current geo ON gn.gossip_ip = geo.ip
+LEFT JOIN dz_users_current u ON gn.gossip_ip = u.dz_ip AND u.status = 'activated'
+WHERE u.pk = ''  -- Anti-join: not on DZ (empty string means no match)
+  AND va.activated_stake_lamports > 0
+  AND geo.city = 'Tokyo'
+ORDER BY va.activated_stake_lamports DESC
+LIMIT 10
+```
+
+**Note**: GeoIP data may not be available for all IPs. The `geoip_records_current` table maps IP addresses to city/region/country/metro_name with lat/lon coordinates.
+
 ### Data Ingestion Start (CRITICAL)
 The earliest `snapshot_ts` in history tables = **when ingestion began**, NOT when entities were created.
 

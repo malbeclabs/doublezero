@@ -20,6 +20,8 @@ Key concepts for understanding user questions:
 
 **Status**: "Active" = `status='activated'`. "Drained" = maintenance/soft-failure state
 
+**Link Outages**: A link is "down" or has an "outage" when its status changes from `activated` to any other status (soft-drained, suspended, deleted, etc.). Outage start = when status changed away from activated. Outage end = when status returned to activated. Use `dim_dz_links_history` to detect these transitions.
+
 **Utilization**: Always per-direction (in vs out separately). "Metro link utilization %" is INVALID (links span metros)
 
 **Solana Terms**: "Connected stake" = sum of stake for validators on DZ. "Stake share" = connected stake / total network stake
@@ -139,5 +141,51 @@ Respond with a JSON object containing an array of data questions:
 4. What was the RTT trend during this period?
 
 *Key insight*: Incident timelines require **both status history AND telemetry data** (packet loss, errors, discards, carrier transitions). The user wants to understand the full progression of the incident, not just status changes.
+
+**User Question**: "What links have been down in the last 48 hours?"
+
+**Good Decomposition**:
+1. Which links had status changes away from 'activated' in the last 48 hours? Include link code, the status it changed to, and when.
+2. Which of those links have returned to 'activated' status, and when?
+3. For links currently not activated, what is their current status?
+
+*Key insight*: "Down" means the link status changed from activated to something else. Use `dim_dz_links_history` to find status transitions. Include both resolved outages (returned to activated) and ongoing ones.
+
+**User Question**: "Identify the timestamps (start/stop) of outages on links going into Sao Paulo in the last 30 days"
+
+**Good Decomposition**:
+1. Which links connect to Sao Paulo (SAO metro)? List link codes and the metros on each side.
+2. For those links, find all status transitions in the last 30 days from dim_dz_links_history. Show link code, previous status, new status, and timestamp of each change.
+3. Identify outage periods: when did each link go from activated to non-activated (start), and when did it return to activated (end)?
+
+*Key insight*: "Going into" a metro means links where that metro is on either side (side_a or side_z). Outage start/stop requires finding status transition pairs in the history table.
+
+**User Question**: "Which regions have the most validators connected to DZ?"
+
+**Good Decomposition**:
+1. For each DZ metro, how many validators are connected? Include metro code/name and validator count.
+2. What is the total stake per metro for connected validators?
+3. List the top metros by validator count with their stake totals.
+
+*Key insight*: Validators connect as DZ users. To get their metro/region, join: `dz_users_current` → `dz_devices_current` (via device_pk) → `dz_metros_current` (via metro_pk). Group by metro to get regional counts.
+
+**User Question**: "List the top 10 by stake validators in Tokyo who are not connected to DZ"
+
+**Good Decomposition**:
+1. Which validators are NOT currently on DZ but have IP addresses that geolocate to Tokyo area?
+2. For those off-DZ Tokyo validators, what are their vote_pubkeys and stake amounts?
+3. Return the top 10 by activated_stake_lamports.
+
+*Key insight*: Off-DZ validators have no device/metro association in DZ. To determine their region, use GeoIP lookup on `solana_gossip_nodes_current.gossip_ip` joined to `geoip_records`. Filter for city/region matching Tokyo. Anti-join with `dz_users_current` to exclude on-DZ validators.
+
+**User Question**: "Which DZ links provide at least 1ms improvement over public internet? What's the min/max improvement?"
+
+**Good Decomposition**:
+1. For each metro pair, what is the median RTT for DZ links (from fact_dz_device_link_latency)?
+2. For each metro pair, what is the median RTT for public internet (from fact_dz_internet_metro_latency)?
+3. Calculate the improvement (internet RTT - DZ RTT) for each metro pair, filter for >= 1ms (1000 µs) improvement.
+4. What is the min and max improvement across all qualifying links?
+
+*Key insight*: Improvement = internet_rtt - dz_rtt (positive means DZ is faster). Use median (quantile 0.5) for stable comparison. Compare at metro-pair level since internet latency is by metro, not link.
 
 Now analyze the user's question and provide the data questions needed to answer it.

@@ -89,77 +89,28 @@ For **out_of_scope** questions:
 
 ## Examples
 
-### data_analysis (most questions fall here)
+### data_analysis (most questions)
 
-**Question**: "Compare DZ to the public internet"
-→ **data_analysis** (should show actual latency/performance data, not generic descriptions)
+- "Compare DZ to public internet" → **data_analysis** (needs actual latency data)
+- "What is DZ?" / "How does DZ work?" → **data_analysis** (ground in real metrics)
+- "How many validators connected?" → **data_analysis** (needs count)
+- "Why is that validator's stake low?" → **data_analysis** (investigation needs data)
+- "Which links have issues?" → **data_analysis** (needs health query)
+- "Tell me more about that" → **data_analysis** (follow-up typically needs more data)
 
-**Question**: "How does DZ work?"
-→ **data_analysis** (explain with real topology, device counts, link stats)
+### data_analysis (affirmative confirmations)
 
-**Question**: "What is the DZ network?"
-→ **data_analysis** (describe with actual metrics - how many devices, links, validators, etc.)
+- **Context**: Assistant offered to run a query
+- **"Yes" / "Please do" / "Go ahead"** → **data_analysis** (must execute the offered query)
 
-**Question**: "How many validators are connected?"
-→ **data_analysis** (needs current validator count)
+### conversational (no new data needed)
 
-**Question**: "Show me the top 5 validators by stake"
-→ **data_analysis** (needs data query)
-
-**Question**: "Why is that validator's stake so low?"
-→ **data_analysis** (investigating requires data lookup)
-
-**Question**: "What did you mean by 'drained' status?"
-→ **data_analysis** (showing examples of drained links would help)
-
-**Question**: "Can you tell me more about that?"
-→ **data_analysis** (digging deeper typically needs more data)
-
-**Question**: "Which links are having issues?"
-→ **data_analysis** (needs to query link health)
-
-**Question**: "What's the latency between NYC and LAX?"
-→ **data_analysis** (needs metro latency data)
-
-**Question**: "Why are there so many drained links?"
-→ **data_analysis** ("why" questions need investigation)
-
-**Question**: "Tell me about network performance"
-→ **data_analysis** (should pull actual latency/throughput metrics)
-
-### data_analysis (affirmative responses to query offers)
-
-**Previous context**: Assistant said "Would you like me to query the WAN link utilization?"
-**Question**: "Yes"
-→ **data_analysis** (user is confirming they want the query executed - must actually run it)
-
-**Previous context**: Assistant offered to investigate drained links
-**Question**: "Please do" / "Go ahead" / "Yes, run that"
-→ **data_analysis** (affirmative confirmation to execute a query)
-
-### conversational (only when no new data helps)
-
-**Question**: "Thanks, that helps!"
-→ **conversational** (acknowledgment, no data needed)
-
-**Question**: "What can you help me with?"
-→ **conversational** (asking about capabilities)
-
-**Question**: "Can you say that in simpler terms?"
-→ **conversational** (rephrasing previous response, data already present)
-
-**Question**: "What queries did you use?"
-→ **conversational** (asking to see SQL from previous response)
-
-**Question**: "Show me the raw SQL"
-→ **conversational** (requesting to see queries that were executed)
+- "Thanks!" / "Got it" → **conversational** (acknowledgment)
+- "Say that in simpler terms" → **conversational** (rephrase existing response)
+- "Show me the SQL" → **conversational** (display executed queries)
 
 ### out_of_scope
 
-**Question**: "What's the weather today?"
-→ **out_of_scope** (unrelated to DZ/Solana)
-
-**Question**: "Write me a poem"
-→ **out_of_scope** (unrelated)
+- "What's the weather?" / "Write a poem" → **out_of_scope** (unrelated to DZ)
 
 Now classify the following question.

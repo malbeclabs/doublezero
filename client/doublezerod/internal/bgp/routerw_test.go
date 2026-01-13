@@ -35,15 +35,16 @@ func (m *MockRouteReaderWriter) RouteByProtocol(protocol int) ([]*routing.Route,
 	return m.RouteByProtocolFunc(protocol)
 }
 
-func TestClient_RouteReaderWriterWithNoUninstall_NoUninstallTrue_SuppressesAddDelete(t *testing.T) {
+func TestClient_RouteReaderWriterWithNoUninstall_NoUninstallTrue_SuppressesDeleteOnly(t *testing.T) {
 	t.Parallel()
 
 	var addCalled, deleteCalled bool
+	addErr := errors.New("add error")
 
 	underlying := &MockRouteReaderWriter{
 		RouteAddFunc: func(*routing.Route) error {
 			addCalled = true
-			return errors.New("should not be called")
+			return addErr
 		},
 		RouteDeleteFunc: func(*routing.Route) error {
 			deleteCalled = true
@@ -54,10 +55,13 @@ func TestClient_RouteReaderWriterWithNoUninstall_NoUninstallTrue_SuppressesAddDe
 	wrapped := newRouteReaderWriterWithNoUninstall(underlying, true)
 	route := &routing.Route{}
 
+	// RouteAdd should always delegate, even when noUninstall=true
 	err := wrapped.RouteAdd(route)
-	require.NoError(t, err, "RouteAdd should be suppressed and return nil when noUninstall=true")
-	require.False(t, addCalled, "underlying RouteAddFunc should not be called when noUninstall=true")
+	require.Error(t, err)
+	require.Equal(t, addErr, err)
+	require.True(t, addCalled, "underlying RouteAddFunc should be called even when noUninstall=true")
 
+	// RouteDelete should be suppressed when noUninstall=true
 	err = wrapped.RouteDelete(route)
 	require.NoError(t, err, "RouteDelete should be suppressed and return nil when noUninstall=true")
 	require.False(t, deleteCalled, "underlying RouteDeleteFunc should not be called when noUninstall=true")

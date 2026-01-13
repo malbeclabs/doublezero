@@ -6,6 +6,16 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+- None for this release
+
+### Changes
+
+## [v0.8.2](https://github.com/malbeclabs/doublezero/compare/client/v0.8.1...client/v0.8.2) – 2025-01-13
+
+### Breaking
+
+- None for this release
+
 ### Changes
 
 - Client

@@ -158,44 +158,45 @@ func formatThinkingMessage(progress pipeline.Progress) string {
 
 	switch progress.Stage {
 	case pipeline.StageClassifying:
-		sb.WriteString(":hourglass: *Thinking...*\n")
-		sb.WriteString("_Analyzing your question..._")
+		sb.WriteString(":hourglass_flowing_sand: *Understanding your question...*")
 
 	case pipeline.StageDecomposing:
-		sb.WriteString(":hourglass: *Thinking...*\n")
-		sb.WriteString("_Breaking down into data questions..._")
+		sb.WriteString("✓ Understood your question\n")
+		sb.WriteString(":hourglass_flowing_sand: *Breaking down into queries...*")
 
 	case pipeline.StageDecomposed:
-		sb.WriteString(":hourglass: *Thinking...*\n")
-		sb.WriteString("_Identified data questions:_\n")
+		sb.WriteString("✓ Understood your question\n")
+		sb.WriteString("✓ Identified data questions:\n")
 		for i, q := range progress.DataQuestions {
-			sb.WriteString(fmt.Sprintf("  %d. %s\n", i+1, q.Question))
+			sb.WriteString(fmt.Sprintf("    %d. %s\n", i+1, q.Question))
 		}
 
 	case pipeline.StageExecuting:
-		sb.WriteString(":hourglass: *Thinking...*\n")
-		sb.WriteString("_Identified data questions:_\n")
+		sb.WriteString("✓ Understood your question\n")
+		sb.WriteString(fmt.Sprintf(":hourglass_flowing_sand: *Running queries (%d/%d):*\n", progress.QueriesDone, progress.QueriesTotal))
 		for i, q := range progress.DataQuestions {
-			sb.WriteString(fmt.Sprintf("  %d. %s\n", i+1, q.Question))
+			if i < progress.QueriesDone {
+				sb.WriteString(fmt.Sprintf("    %d. %s ✓\n", i+1, q.Question))
+			} else {
+				sb.WriteString(fmt.Sprintf("    %d. %s\n", i+1, q.Question))
+			}
 		}
-		sb.WriteString(fmt.Sprintf("\n_Running queries... (%d/%d)_", progress.QueriesDone, progress.QueriesTotal))
 
 	case pipeline.StageSynthesizing:
-		sb.WriteString(":hourglass: *Thinking...*\n")
-		sb.WriteString("_Identified data questions:_\n")
+		sb.WriteString("✓ Understood your question\n")
+		sb.WriteString(fmt.Sprintf("✓ Queries complete (%d/%d):\n", progress.QueriesDone, progress.QueriesTotal))
 		for i, q := range progress.DataQuestions {
-			sb.WriteString(fmt.Sprintf("  %d. %s\n", i+1, q.Question))
+			sb.WriteString(fmt.Sprintf("    %d. %s ✓\n", i+1, q.Question))
 		}
-		sb.WriteString(fmt.Sprintf("\n:white_check_mark: _Queries complete (%d/%d)_\n", progress.QueriesDone, progress.QueriesTotal))
-		sb.WriteString("_Preparing answer..._")
+		sb.WriteString("\n:hourglass_flowing_sand: *Preparing answer...*")
 
 	case pipeline.StageComplete:
 		// For data_analysis, show summary
 		if progress.Classification == pipeline.ClassificationDataAnalysis && len(progress.DataQuestions) > 0 {
-			sb.WriteString(":brain: *Analysis complete*\n")
-			sb.WriteString("_Answered by querying:_\n")
+			sb.WriteString(":brain: *Analysis complete*\n\n")
+			sb.WriteString("Answered by querying:\n")
 			for i, q := range progress.DataQuestions {
-				sb.WriteString(fmt.Sprintf("  %d. %s\n", i+1, q.Question))
+				sb.WriteString(fmt.Sprintf("    %d. %s\n", i+1, q.Question))
 			}
 		}
 		// For conversational/out_of_scope, we don't show anything (just answer)
@@ -306,7 +307,8 @@ func (p *Processor) ProcessMessage(
 	}
 
 	// Post initial thinking message
-	thinkingTS, err := p.slackClient.PostMessage(ctx, ev.Channel, ":hourglass: *Thinking...*\n_Analyzing your question..._", nil, threadTS)
+	initialThinking := formatThinkingMessage(pipeline.Progress{Stage: pipeline.StageClassifying})
+	thinkingTS, err := p.slackClient.PostMessage(ctx, ev.Channel, initialThinking, nil, threadTS)
 	if err != nil {
 		p.log.Warn("failed to post thinking message", "error", err)
 		SlackAPIErrorsTotal.WithLabelValues("post_message").Inc()

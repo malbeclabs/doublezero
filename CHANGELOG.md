@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- CLI
+  - Remove log noise on resolve route
+
 ### Breaking
 
 - None for this release

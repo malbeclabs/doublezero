@@ -1,12 +1,11 @@
 -- Dimension Tables for ClickHouse
--- SCD2 design: _history (ReplicatedMergeTree) + staging tables
+-- SCD2 design: _history (MergeTree) + staging tables
 -- History is the single source of truth; current state computed at query time
 -- Canonical columns: entity_id, snapshot_ts, ingested_at, op_id, is_deleted, attrs_hash, ...attrs
 
 -- dz_contributors
 -- History table (immutable SCD2, single source of truth)
 CREATE TABLE IF NOT EXISTS dim_dz_contributors_history
-ON CLUSTER lake
 (
     entity_id String,
     snapshot_ts DateTime64(3),
@@ -17,14 +16,13 @@ ON CLUSTER lake
     pk String,
     code String,
     name String
-) ENGINE = ReplicatedMergeTree
+) ENGINE = MergeTree
 PARTITION BY toYYYYMM(snapshot_ts)
 ORDER BY (entity_id, snapshot_ts, ingested_at, op_id);
 
 -- Staging table (landing zone for snapshots)
 -- Enforces one row per entity per op_id via ORDER BY (op_id, entity_id)
 CREATE TABLE IF NOT EXISTS stg_dim_dz_contributors_snapshot
-ON CLUSTER lake
 (
     entity_id String,
     snapshot_ts DateTime64(3),
@@ -35,14 +33,13 @@ ON CLUSTER lake
     pk String,
     code String,
     name String
-) ENGINE = ReplicatedMergeTree
+) ENGINE = MergeTree
 PARTITION BY toDate(snapshot_ts)
 ORDER BY (op_id, entity_id)
 TTL ingested_at + INTERVAL 7 DAY;
 
 -- dz_devices
 CREATE TABLE IF NOT EXISTS dim_dz_devices_history
-ON CLUSTER lake
 (
     entity_id String,
     snapshot_ts DateTime64(3),
@@ -58,12 +55,11 @@ ON CLUSTER lake
     contributor_pk String,
     metro_pk String,
     max_users Int32
-) ENGINE = ReplicatedMergeTree
+) ENGINE = MergeTree
 PARTITION BY toYYYYMM(snapshot_ts)
 ORDER BY (entity_id, snapshot_ts, ingested_at, op_id);
 
 CREATE TABLE IF NOT EXISTS stg_dim_dz_devices_snapshot
-ON CLUSTER lake
 (
     entity_id String,
     snapshot_ts DateTime64(3),
@@ -79,14 +75,13 @@ ON CLUSTER lake
     contributor_pk String,
     metro_pk String,
     max_users Int32
-) ENGINE = ReplicatedMergeTree
+) ENGINE = MergeTree
 PARTITION BY toDate(snapshot_ts)
 ORDER BY (op_id, entity_id)
 TTL ingested_at + INTERVAL 7 DAY;
 
 -- dz_users
 CREATE TABLE IF NOT EXISTS dim_dz_users_history
-ON CLUSTER lake
 (
     entity_id String,
     snapshot_ts DateTime64(3),
@@ -102,12 +97,11 @@ ON CLUSTER lake
     dz_ip String,
     device_pk String,
     tunnel_id Int32
-) ENGINE = ReplicatedMergeTree
+) ENGINE = MergeTree
 PARTITION BY toYYYYMM(snapshot_ts)
 ORDER BY (entity_id, snapshot_ts, ingested_at, op_id);
 
 CREATE TABLE IF NOT EXISTS stg_dim_dz_users_snapshot
-ON CLUSTER lake
 (
     entity_id String,
     snapshot_ts DateTime64(3),
@@ -123,14 +117,13 @@ ON CLUSTER lake
     dz_ip String,
     device_pk String,
     tunnel_id Int32
-) ENGINE = ReplicatedMergeTree
+) ENGINE = MergeTree
 PARTITION BY toDate(snapshot_ts)
 ORDER BY (op_id, entity_id)
 TTL ingested_at + INTERVAL 7 DAY;
 
 -- dz_metros
 CREATE TABLE IF NOT EXISTS dim_dz_metros_history
-ON CLUSTER lake
 (
     entity_id String,
     snapshot_ts DateTime64(3),
@@ -143,12 +136,11 @@ ON CLUSTER lake
     name String,
     longitude Float64,
     latitude Float64
-) ENGINE = ReplicatedMergeTree
+) ENGINE = MergeTree
 PARTITION BY toYYYYMM(snapshot_ts)
 ORDER BY (entity_id, snapshot_ts, ingested_at, op_id);
 
 CREATE TABLE IF NOT EXISTS stg_dim_dz_metros_snapshot
-ON CLUSTER lake
 (
     entity_id String,
     snapshot_ts DateTime64(3),
@@ -161,14 +153,13 @@ ON CLUSTER lake
     name String,
     longitude Float64,
     latitude Float64
-) ENGINE = ReplicatedMergeTree
+) ENGINE = MergeTree
 PARTITION BY toDate(snapshot_ts)
 ORDER BY (op_id, entity_id)
 TTL ingested_at + INTERVAL 7 DAY;
 
 -- dz_links
 CREATE TABLE IF NOT EXISTS dim_dz_links_history
-ON CLUSTER lake
 (
     entity_id String,
     snapshot_ts DateTime64(3),
@@ -190,12 +181,11 @@ ON CLUSTER lake
     committed_jitter_ns Int64,
     bandwidth_bps Int64,
     isis_delay_override_ns Int64
-) ENGINE = ReplicatedMergeTree
+) ENGINE = MergeTree
 PARTITION BY toYYYYMM(snapshot_ts)
 ORDER BY (entity_id, snapshot_ts, ingested_at, op_id);
 
 CREATE TABLE IF NOT EXISTS stg_dim_dz_links_snapshot
-ON CLUSTER lake
 (
     entity_id String,
     snapshot_ts DateTime64(3),
@@ -217,14 +207,13 @@ ON CLUSTER lake
     committed_jitter_ns Int64,
     bandwidth_bps Int64,
     isis_delay_override_ns Int64
-) ENGINE = ReplicatedMergeTree
+) ENGINE = MergeTree
 PARTITION BY toDate(snapshot_ts)
 ORDER BY (op_id, entity_id)
 TTL ingested_at + INTERVAL 7 DAY;
 
 -- geoip_records
 CREATE TABLE IF NOT EXISTS dim_geoip_records_history
-ON CLUSTER lake
 (
     entity_id String,
     snapshot_ts DateTime64(3),
@@ -249,12 +238,11 @@ ON CLUSTER lake
     is_anycast Bool,
     is_anonymous_proxy Bool,
     is_satellite_provider Bool
-) ENGINE = ReplicatedMergeTree
+) ENGINE = MergeTree
 PARTITION BY toYYYYMM(snapshot_ts)
 ORDER BY (entity_id, snapshot_ts, ingested_at, op_id);
 
 CREATE TABLE IF NOT EXISTS stg_dim_geoip_records_snapshot
-ON CLUSTER lake
 (
     entity_id String,
     snapshot_ts DateTime64(3),
@@ -279,14 +267,13 @@ ON CLUSTER lake
     is_anycast Bool,
     is_anonymous_proxy Bool,
     is_satellite_provider Bool
-) ENGINE = ReplicatedMergeTree
+) ENGINE = MergeTree
 PARTITION BY toDate(snapshot_ts)
 ORDER BY (op_id, entity_id)
 TTL ingested_at + INTERVAL 7 DAY;
 
 -- solana_leader_schedule
 CREATE TABLE IF NOT EXISTS dim_solana_leader_schedule_history
-ON CLUSTER lake
 (
     entity_id String,
     snapshot_ts DateTime64(3),
@@ -298,12 +285,11 @@ ON CLUSTER lake
     epoch Int64,
     slots String,
     slot_count Int64
-) ENGINE = ReplicatedMergeTree
+) ENGINE = MergeTree
 PARTITION BY toYYYYMM(snapshot_ts)
 ORDER BY (entity_id, snapshot_ts, ingested_at, op_id);
 
 CREATE TABLE IF NOT EXISTS stg_dim_solana_leader_schedule_snapshot
-ON CLUSTER lake
 (
     entity_id String,
     snapshot_ts DateTime64(3),
@@ -315,14 +301,13 @@ ON CLUSTER lake
     epoch Int64,
     slots String,
     slot_count Int64
-) ENGINE = ReplicatedMergeTree
+) ENGINE = MergeTree
 PARTITION BY toDate(snapshot_ts)
 ORDER BY (op_id, entity_id)
 TTL ingested_at + INTERVAL 7 DAY;
 
 -- solana_vote_accounts
 CREATE TABLE IF NOT EXISTS dim_solana_vote_accounts_history
-ON CLUSTER lake
 (
     entity_id String,
     snapshot_ts DateTime64(3),
@@ -336,12 +321,11 @@ ON CLUSTER lake
     activated_stake_lamports Int64,
     epoch_vote_account String,
     commission_percentage Int64
-) ENGINE = ReplicatedMergeTree
+) ENGINE = MergeTree
 PARTITION BY toYYYYMM(snapshot_ts)
 ORDER BY (entity_id, snapshot_ts, ingested_at, op_id);
 
 CREATE TABLE IF NOT EXISTS stg_dim_solana_vote_accounts_snapshot
-ON CLUSTER lake
 (
     entity_id String,
     snapshot_ts DateTime64(3),
@@ -355,14 +339,13 @@ ON CLUSTER lake
     activated_stake_lamports Int64,
     epoch_vote_account String,
     commission_percentage Int64
-) ENGINE = ReplicatedMergeTree
+) ENGINE = MergeTree
 PARTITION BY toDate(snapshot_ts)
 ORDER BY (op_id, entity_id)
 TTL ingested_at + INTERVAL 7 DAY;
 
 -- solana_gossip_nodes
 CREATE TABLE IF NOT EXISTS dim_solana_gossip_nodes_history
-ON CLUSTER lake
 (
     entity_id String,
     snapshot_ts DateTime64(3),
@@ -377,12 +360,11 @@ ON CLUSTER lake
     tpuquic_ip String,
     tpuquic_port Int32,
     version String
-) ENGINE = ReplicatedMergeTree
+) ENGINE = MergeTree
 PARTITION BY toYYYYMM(snapshot_ts)
 ORDER BY (entity_id, snapshot_ts, ingested_at, op_id);
 
 CREATE TABLE IF NOT EXISTS stg_dim_solana_gossip_nodes_snapshot
-ON CLUSTER lake
 (
     entity_id String,
     snapshot_ts DateTime64(3),
@@ -397,7 +379,7 @@ ON CLUSTER lake
     tpuquic_ip String,
     tpuquic_port Int32,
     version String
-) ENGINE = ReplicatedMergeTree
+) ENGINE = MergeTree
 PARTITION BY toDate(snapshot_ts)
 ORDER BY (op_id, entity_id)
 TTL ingested_at + INTERVAL 7 DAY;

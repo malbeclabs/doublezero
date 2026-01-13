@@ -13,10 +13,6 @@ import (
 type StoreConfig struct {
 	Logger     *slog.Logger
 	ClickHouse clickhouse.Client
-	// InsertQuorum specifies the number of replicas that must confirm staging inserts.
-	// Set to your replica count (e.g., 2) in production to prevent replication lag issues.
-	// Set to 0 for single-node test environments.
-	InsertQuorum int
 }
 
 func (cfg *StoreConfig) Validate() error {
@@ -67,7 +63,6 @@ func (s *Store) ReplaceContributors(ctx context.Context, contributors []Contribu
 		return contributorSchema.ToRow(contributors[i]), nil
 	}, &dataset.DimensionType2DatasetWriteConfig{
 		MissingMeansDeleted: true,
-		InsertQuorum:        s.cfg.InsertQuorum,
 	}); err != nil {
 		return fmt.Errorf("failed to write contributors to ClickHouse: %w", err)
 	}
@@ -93,7 +88,6 @@ func (s *Store) ReplaceDevices(ctx context.Context, devices []Device) error {
 		return deviceSchema.ToRow(devices[i]), nil
 	}, &dataset.DimensionType2DatasetWriteConfig{
 		MissingMeansDeleted: true,
-		InsertQuorum:        s.cfg.InsertQuorum,
 	}); err != nil {
 		return fmt.Errorf("failed to write devices to ClickHouse: %w", err)
 	}
@@ -119,7 +113,6 @@ func (s *Store) ReplaceUsers(ctx context.Context, users []User) error {
 		return userSchema.ToRow(users[i]), nil
 	}, &dataset.DimensionType2DatasetWriteConfig{
 		MissingMeansDeleted: true,
-		InsertQuorum:        s.cfg.InsertQuorum,
 	}); err != nil {
 		return fmt.Errorf("failed to write users to ClickHouse: %w", err)
 	}
@@ -145,7 +138,6 @@ func (s *Store) ReplaceMetros(ctx context.Context, metros []Metro) error {
 		return metroSchema.ToRow(metros[i]), nil
 	}, &dataset.DimensionType2DatasetWriteConfig{
 		MissingMeansDeleted: true,
-		InsertQuorum:        s.cfg.InsertQuorum,
 	}); err != nil {
 		return fmt.Errorf("failed to write metros to ClickHouse: %w", err)
 	}
@@ -171,7 +163,6 @@ func (s *Store) ReplaceLinks(ctx context.Context, links []Link) error {
 		return linkSchema.ToRow(links[i]), nil
 	}, &dataset.DimensionType2DatasetWriteConfig{
 		MissingMeansDeleted: true,
-		InsertQuorum:        s.cfg.InsertQuorum,
 	}); err != nil {
 		return fmt.Errorf("failed to write links to ClickHouse: %w", err)
 	}

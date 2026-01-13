@@ -60,7 +60,6 @@ func New(ctx context.Context, cfg Config) (*Indexer, error) {
 		ServiceabilityRPC: cfg.ServiceabilityRPC,
 		RefreshInterval:   cfg.RefreshInterval,
 		ClickHouse:        cfg.ClickHouse,
-		InsertQuorum:      cfg.InsertQuorum,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create serviceability view: %w", err)
@@ -90,7 +89,6 @@ func New(ctx context.Context, cfg Config) (*Indexer, error) {
 		RPC:             cfg.SolanaRPC,
 		ClickHouse:      cfg.ClickHouse,
 		RefreshInterval: cfg.RefreshInterval,
-		InsertQuorum:    cfg.InsertQuorum,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create solana view: %w", err)

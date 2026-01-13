@@ -10,6 +10,8 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 )
 
+const DefaultDatabase = "default"
+
 // Client represents a ClickHouse database connection
 type Client interface {
 	Conn(ctx context.Context) (Connection, error)

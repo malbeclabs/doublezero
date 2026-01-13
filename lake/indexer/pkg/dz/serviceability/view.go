@@ -94,9 +94,6 @@ type ViewConfig struct {
 	ServiceabilityRPC ServiceabilityRPC
 	RefreshInterval   time.Duration
 	ClickHouse        clickhouse.Client
-	// InsertQuorum specifies the number of replicas that must confirm staging inserts.
-	// Defaults to 2 for production. Set to 0 for single-node test environments.
-	InsertQuorum int
 }
 
 func (cfg *ViewConfig) Validate() error {
@@ -116,8 +113,6 @@ func (cfg *ViewConfig) Validate() error {
 	if cfg.Clock == nil {
 		cfg.Clock = clockwork.NewRealClock()
 	}
-	// InsertQuorum defaults to 0 (disabled). Production should explicitly set it
-	// to the replica count (e.g., 2) to prevent replication lag issues.
 	return nil
 }
 
@@ -138,9 +133,8 @@ func NewView(cfg ViewConfig) (*View, error) {
 	}
 
 	store, err := NewStore(StoreConfig{
-		Logger:       cfg.Logger,
-		ClickHouse:   cfg.ClickHouse,
-		InsertQuorum: cfg.InsertQuorum,
+		Logger:     cfg.Logger,
+		ClickHouse: cfg.ClickHouse,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create store: %w", err)

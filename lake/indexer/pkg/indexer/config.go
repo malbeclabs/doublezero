@@ -25,11 +25,6 @@ type Config struct {
 	RefreshInterval time.Duration
 	MaxConcurrency  int
 
-	// InsertQuorum specifies the number of replicas that must confirm staging inserts.
-	// Set to your ClickHouse replica count (e.g., 2) to prevent replication lag issues
-	// when connecting through a load-balanced service. Set to 0 to disable.
-	InsertQuorum int
-
 	// GeoIP configuration.
 	GeoIPResolver geoip.Resolver
 

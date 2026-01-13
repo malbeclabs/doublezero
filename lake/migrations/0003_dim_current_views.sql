@@ -4,7 +4,6 @@
 
 -- dz_contributors_current
 CREATE OR REPLACE VIEW dz_contributors_current
-ON CLUSTER lake
 AS
 WITH ranked AS (
     SELECT
@@ -26,7 +25,6 @@ WHERE rn = 1 AND is_deleted = 0;
 
 -- dz_devices_current
 CREATE OR REPLACE VIEW dz_devices_current
-ON CLUSTER lake
 AS
 WITH ranked AS (
     SELECT
@@ -53,7 +51,6 @@ WHERE rn = 1 AND is_deleted = 0;
 
 -- dz_users_current
 CREATE OR REPLACE VIEW dz_users_current
-ON CLUSTER lake
 AS
 WITH ranked AS (
     SELECT
@@ -80,7 +77,6 @@ WHERE rn = 1 AND is_deleted = 0;
 
 -- dz_metros_current
 CREATE OR REPLACE VIEW dz_metros_current
-ON CLUSTER lake
 AS
 WITH ranked AS (
     SELECT
@@ -104,7 +100,6 @@ WHERE rn = 1 AND is_deleted = 0;
 
 -- dz_links_current
 CREATE OR REPLACE VIEW dz_links_current
-ON CLUSTER lake
 AS
 WITH ranked AS (
     SELECT
@@ -137,7 +132,6 @@ WHERE rn = 1 AND is_deleted = 0;
 
 -- geoip_records_current
 CREATE OR REPLACE VIEW geoip_records_current
-ON CLUSTER lake
 AS
 WITH ranked AS (
     SELECT
@@ -173,7 +167,6 @@ WHERE rn = 1 AND is_deleted = 0;
 
 -- solana_leader_schedule_current
 CREATE OR REPLACE VIEW solana_leader_schedule_current
-ON CLUSTER lake
 AS
 WITH ranked AS (
     SELECT
@@ -196,7 +189,6 @@ WHERE rn = 1 AND is_deleted = 0;
 
 -- solana_vote_accounts_current
 CREATE OR REPLACE VIEW solana_vote_accounts_current
-ON CLUSTER lake
 AS
 WITH ranked AS (
     SELECT
@@ -221,7 +213,6 @@ WHERE rn = 1 AND is_deleted = 0;
 
 -- solana_gossip_nodes_current
 CREATE OR REPLACE VIEW solana_gossip_nodes_current
-ON CLUSTER lake
 AS
 WITH ranked AS (
     SELECT

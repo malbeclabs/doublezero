@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	clickhouselib "github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/google/uuid"
 	"github.com/malbeclabs/doublezero/lake/indexer/pkg/clickhouse"
 )
@@ -17,10 +16,6 @@ type DimensionType2DatasetWriteConfig struct {
 	IngestedAt          time.Time
 	MissingMeansDeleted bool
 	CleanupStaging      *bool
-	// InsertQuorum specifies the number of replicas that must confirm the staging insert
-	// before it returns. Set to your replica count (e.g., 2) in production to prevent
-	// replication lag issues when using a load-balanced connection. Set to 0 to disable.
-	InsertQuorum int
 }
 
 func (c *DimensionType2DatasetWriteConfig) Validate() error {
@@ -82,7 +77,7 @@ func (d *DimensionType2Dataset) WriteBatch(
 
 	// Step 1: Load snapshot into staging table with attrs_hash computed
 	d.log.Debug("loading snapshot into staging", "dataset", d.schema.Name(), "count", count)
-	if err := d.loadSnapshotIntoStaging(ctx, conn, count, writeRowFn, cfg.SnapshotTS, cfg.IngestedAt, cfg.OpID, cfg.InsertQuorum); err != nil {
+	if err := d.loadSnapshotIntoStaging(ctx, conn, count, writeRowFn, cfg.SnapshotTS, cfg.IngestedAt, cfg.OpID); err != nil {
 		return fmt.Errorf("failed to load snapshot into staging: %w", err)
 	}
 
@@ -350,7 +345,6 @@ func (d *DimensionType2Dataset) loadSnapshotIntoStaging(
 	snapshotTS time.Time,
 	ingestedAt time.Time,
 	opID uuid.UUID,
-	insertQuorum int,
 ) error {
 	snapshotTS = snapshotTS.Truncate(time.Millisecond)
 	ingestedAt = ingestedAt.Truncate(time.Millisecond)
@@ -359,18 +353,8 @@ func (d *DimensionType2Dataset) loadSnapshotIntoStaging(
 	// We'll insert data first, then update attrs_hash using ClickHouse's cityHash64 function
 	// This ensures the hash is computed consistently with the delta query
 
-	// Optionally use insert_quorum to ensure staging data is replicated before returning.
-	// This prevents the delta query from hitting a different replica that hasn't
-	// received the staging data yet, which would cause mass deletes.
-	batchCtx := ctx
-	if insertQuorum > 0 {
-		batchCtx = clickhouselib.Context(ctx, clickhouselib.WithSettings(clickhouselib.Settings{
-			"insert_quorum": insertQuorum,
-		}))
-	}
-
 	insertSQL := fmt.Sprintf("INSERT INTO %s", d.StagingTableName())
-	batch, err := conn.PrepareBatch(batchCtx, insertSQL)
+	batch, err := conn.PrepareBatch(ctx, insertSQL)
 	if err != nil {
 		return fmt.Errorf("failed to prepare staging batch: %w", err)
 	}

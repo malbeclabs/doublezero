@@ -5,28 +5,20 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
-	"regexp"
 	"sort"
 	"strings"
 
 	"github.com/malbeclabs/doublezero/lake"
 )
 
-// MigrationOptions configures how migrations are executed
-type MigrationOptions struct {
-	// SingleNode transforms cluster-specific SQL for single-node ClickHouse.
-	// Removes ON CLUSTER clauses and converts Replicated*MergeTree to non-replicated variants.
-	SingleNode bool
+func CreateDatabase(ctx context.Context, log *slog.Logger, conn Connection, database string) error {
+	log.Info("creating ClickHouse database", "database", database)
+	return conn.Exec(ctx, fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", database))
 }
 
 // RunMigrations executes all SQL migration files from the embedded filesystem
 // Migrations are executed in filename order (0001_*.sql, 0002_*.sql, etc.)
 func RunMigrations(ctx context.Context, log *slog.Logger, conn Connection) error {
-	return RunMigrationsWithOptions(ctx, log, conn, MigrationOptions{})
-}
-
-// RunMigrationsWithOptions executes migrations with configurable options
-func RunMigrationsWithOptions(ctx context.Context, log *slog.Logger, conn Connection, opts MigrationOptions) error {
 	log.Info("running ClickHouse migrations")
 
 	// Read all migration files
@@ -72,11 +64,6 @@ func RunMigrationsWithOptions(ctx context.Context, log *slog.Logger, conn Connec
 			stmt = strings.TrimSpace(stmt)
 			if stmt == "" {
 				continue
-			}
-
-			// Transform for single-node mode if needed
-			if opts.SingleNode {
-				stmt = transformForSingleNode(stmt)
 			}
 
 			// Execute statement
@@ -128,36 +115,4 @@ func splitSQLStatements(content string) []string {
 	}
 
 	return statements
-}
-
-// Regex patterns for single-node transformations
-var (
-	// Matches "ON CLUSTER lake" or "ON CLUSTER <name>" with surrounding whitespace
-	onClusterRegex = regexp.MustCompile(`(?i)\s*ON\s+CLUSTER\s+\w+\s*`)
-
-	// Matches ReplicatedReplacingMergeTree with ZK path, replica, and version column
-	// e.g., ReplicatedReplacingMergeTree('/clickhouse/tables/{shard}/lake/...', '{replica}', ingested_at)
-	replicatedReplacingMergeTreeRegex = regexp.MustCompile(
-		`(?i)ENGINE\s*=\s*ReplicatedReplacingMergeTree\s*\(\s*'[^']+'\s*,\s*'[^']+'\s*,\s*(\w+)\s*\)`,
-	)
-
-	// Matches plain ReplicatedMergeTree (no arguments)
-	replicatedMergeTreeRegex = regexp.MustCompile(`(?i)ENGINE\s*=\s*ReplicatedMergeTree\b`)
-)
-
-// transformForSingleNode converts cluster-specific SQL to work with single-node ClickHouse.
-// - Removes ON CLUSTER clauses
-// - Converts ReplicatedMergeTree to MergeTree
-// - Converts ReplicatedReplacingMergeTree(...) to ReplacingMergeTree(version)
-func transformForSingleNode(stmt string) string {
-	// Remove ON CLUSTER clause
-	stmt = onClusterRegex.ReplaceAllString(stmt, "\n")
-
-	// Convert ReplicatedReplacingMergeTree to ReplacingMergeTree, preserving the version column
-	stmt = replicatedReplacingMergeTreeRegex.ReplaceAllString(stmt, "ENGINE = ReplacingMergeTree($1)")
-
-	// Convert ReplicatedMergeTree to MergeTree
-	stmt = replicatedMergeTreeRegex.ReplaceAllString(stmt, "ENGINE = MergeTree")
-
-	return stmt
 }

@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "leaflet/dist/leaflet.css";
 @plugin "@tailwindcss/typography";
 
 /* Light theme variables - matching parent site */
@@ -336,4 +337,14 @@ table {
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--grey-40);
+}
+
+/* Animated flowing dashes for topology links */
+@keyframes flowingDash {
+  from {
+    stroke-dashoffset: 24;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
 }

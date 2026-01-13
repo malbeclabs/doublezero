@@ -11,6 +11,7 @@ import { ChatSessionsPage } from '@/components/chat-sessions-page'
 import { Chat, type ChatProgress, type QueryProgressItem, type PipelineStep } from '@/components/chat'
 import { Landing } from '@/components/landing'
 import { Sidebar } from '@/components/sidebar'
+import { TopologyPage } from '@/components/topology-page'
 import { generateSessionTitle, generateChatSessionTitle, sendChatMessageStream, recommendVisualization, fetchCatalog, type SessionQueryInfo } from '@/lib/api'
 import type { TableInfo, QueryResponse, HistoryMessage, ChatMessage } from '@/lib/api'
 import {
@@ -1069,6 +1070,9 @@ function AppContent() {
               </ChatSessionSync>
             } />
             <Route path="/chat/sessions" element={<ChatSessionsView />} />
+
+            {/* Topology route */}
+            <Route path="/topology" element={<TopologyPage />} />
 
             {/* Default redirect */}
             <Route path="*" element={<Navigate to="/" replace />} />

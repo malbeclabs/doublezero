@@ -616,6 +616,56 @@ export async function fetchStats(): Promise<StatsResponse> {
   return res.json()
 }
 
+// Topology types
+export interface TopologyMetro {
+  pk: string
+  code: string
+  name: string
+  latitude: number
+  longitude: number
+}
+
+export interface TopologyDevice {
+  pk: string
+  code: string
+  status: string
+  device_type: string
+  metro_pk: string
+  user_count: number
+  validator_count: number
+  stake_sol: number
+  stake_share: number
+}
+
+export interface TopologyLink {
+  pk: string
+  code: string
+  status: string
+  link_type: string
+  bandwidth_bps: number
+  side_a_pk: string
+  side_z_pk: string
+  latency_us: number
+  jitter_us: number
+  in_bps: number
+  out_bps: number
+}
+
+export interface TopologyResponse {
+  metros: TopologyMetro[]
+  devices: TopologyDevice[]
+  links: TopologyLink[]
+  error?: string
+}
+
+export async function fetchTopology(): Promise<TopologyResponse> {
+  const res = await fetchWithRetry('/api/topology')
+  if (!res.ok) {
+    throw new Error('Failed to fetch topology')
+  }
+  return res.json()
+}
+
 // Version check
 export interface VersionResponse {
   buildTimestamp: string

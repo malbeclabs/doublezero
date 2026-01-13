@@ -5,6 +5,7 @@ import {
   PanelLeftOpen,
   MessageSquare,
   Database,
+  Globe,
   Trash2,
   MoreHorizontal,
   Pencil,
@@ -129,6 +130,7 @@ export function Sidebar({
 
   const isQueryRoute = location.pathname.startsWith('/query')
   const isChatRoute = location.pathname.startsWith('/chat')
+  const isTopologyRoute = location.pathname === '/topology'
   const isQuerySessions = location.pathname === '/query/sessions'
   const isChatSessions = location.pathname === '/chat/sessions'
 
@@ -144,7 +146,7 @@ export function Sidebar({
 
   if (isCollapsed) {
     return (
-      <div className="w-12 border-r bg-[var(--sidebar)] flex flex-col items-center">
+      <div className="w-12 border-r bg-[var(--sidebar)] flex flex-col items-center relative z-10">
         {/* Logo icon - matches expanded header height */}
         <div className="w-full h-12 flex items-center justify-center border-b border-border/50">
           <button
@@ -185,6 +187,20 @@ export function Sidebar({
         >
           <Database className="h-4 w-4" />
         </button>
+
+        {/* Topology nav item */}
+        <button
+          onClick={() => navigate('/topology')}
+          className={cn(
+            'p-2 rounded transition-colors',
+            isTopologyRoute
+              ? 'bg-[oklch(25%_.04_250)] text-white hover:bg-[oklch(30%_.05_250)]'
+              : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+          )}
+          title="Topology"
+        >
+          <Globe className="h-4 w-4" />
+        </button>
         </div>
 
         {/* Theme toggle and collapse toggle at bottom */}
@@ -219,7 +235,7 @@ export function Sidebar({
   }
 
   return (
-    <div className="w-64 border-r bg-[var(--sidebar)] flex flex-col">
+    <div className="w-64 border-r bg-[var(--sidebar)] flex flex-col relative z-10">
       {/* Header with logo and collapse */}
       <div className="px-3 h-12 flex items-center justify-between border-b border-border/50">
         <button
@@ -263,6 +279,18 @@ export function Sidebar({
         >
           <Database className="h-4 w-4" />
           Query
+        </button>
+        <button
+          onClick={() => navigate('/topology')}
+          className={cn(
+            'w-full flex items-center gap-2 px-3 py-2 text-sm rounded transition-colors',
+            isTopologyRoute
+              ? 'bg-[oklch(25%_.04_250)] text-white hover:bg-[oklch(30%_.05_250)]'
+              : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+          )}
+        >
+          <Globe className="h-4 w-4" />
+          Topology
         </button>
       </div>
 

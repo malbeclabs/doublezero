@@ -188,4 +188,32 @@ Respond with a JSON object containing an array of data questions:
 
 *Key insight*: Improvement = internet_rtt - dz_rtt (positive means DZ is faster). Use median (quantile 0.5) for stable comparison. Compare at metro-pair level since internet latency is by metro, not link.
 
+**User Question**: "Find DZ users whose client IP is in a different metro than the DZD they're connected to"
+
+**Good Decomposition**:
+1. For each active DZ user, what is their client_ip and which device/metro are they connected to?
+2. For each user's client_ip, what metro does GeoIP indicate they're in?
+3. Compare the GeoIP metro to the connected device's metro - which users have a mismatch?
+4. Optionally calculate distance between the two metros if coordinates are available.
+
+*Key insight*: Users have client_ip (their actual location) and device_pk (the DZD they connect to). GeoIP lookup on client_ip gives their true location. Compare to device's metro to find mismatches.
+
+**User Question**: "What are the paths between SIN and TYO?"
+
+**Good Decomposition**:
+1. What links exist where one side is in Singapore (SIN) and the other side is in Tokyo (TYO)?
+2. Are there any indirect paths (multi-hop) between SIN and TYO via intermediate metros?
+3. For direct links, what are their current statuses and performance metrics?
+
+*Key insight*: Paths are links. Direct paths have one device in each metro. Join links → devices → metros to find connections between specific metro pairs.
+
+**User Question**: "When was the last time there were errors on the Montreal DZD?"
+
+**Good Decomposition**:
+1. Which device(s) are in Montreal? Get the device PK(s).
+2. For those device(s), query fact_dz_device_interface_counters for any records with errors > 0, discards > 0, or carrier_transitions > 0.
+3. Return the most recent timestamp when any of these occurred.
+
+*Key insight*: Interface errors are in fact_dz_device_interface_counters. Filter by device_pk and look for non-zero error/discard counts. Use MAX(event_ts) to find the most recent occurrence.
+
 Now analyze the user's question and provide the data questions needed to answer it.

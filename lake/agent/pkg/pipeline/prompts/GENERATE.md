@@ -269,6 +269,80 @@ LIMIT 10
 
 **Note**: GeoIP data may not be available for all IPs. The `geoip_records_current` table maps IP addresses to city/region/country/metro_name with lat/lon coordinates.
 
+### User Geo-Mismatch Detection
+To find users whose client IP geolocates to a different location than their connected DZD:
+
+```sql
+-- Find users connected to a different metro than their client IP suggests
+SELECT
+    u.pk AS user_pk,
+    u.client_ip,
+    geo.city AS client_city,
+    geo.country AS client_country,
+    m.code AS connected_metro,
+    m.name AS connected_metro_name
+FROM dz_users_current u
+JOIN dz_devices_current d ON u.device_pk = d.pk
+JOIN dz_metros_current m ON d.metro_pk = m.pk
+LEFT JOIN geoip_records_current geo ON u.client_ip = geo.ip
+WHERE u.status = 'activated'
+  AND geo.city != ''
+  AND geo.city != m.name  -- Mismatch between GeoIP city and connected metro
+ORDER BY u.pk
+```
+
+### Network Paths Between Metros
+To find links/paths between two specific metros:
+
+```sql
+-- Find direct links between two metros (e.g., SIN and TYO)
+SELECT
+    l.code AS link_code,
+    l.status,
+    ma.code AS side_a_metro,
+    mz.code AS side_z_metro,
+    l.link_type
+FROM dz_links_current l
+JOIN dz_devices_current da ON l.side_a_pk = da.pk
+JOIN dz_devices_current dz ON l.side_z_pk = dz.pk
+JOIN dz_metros_current ma ON da.metro_pk = ma.pk
+JOIN dz_metros_current mz ON dz.metro_pk = mz.pk
+WHERE (ma.code = 'sin' AND mz.code = 'tyo')
+   OR (ma.code = 'tyo' AND mz.code = 'sin')
+```
+
+### Device Error History
+To find when errors last occurred on a specific device:
+
+```sql
+-- Last error occurrence on a device (e.g., Montreal)
+SELECT
+    d.code AS device_code,
+    MAX(f.event_ts) AS last_error_time,
+    'errors' AS error_type
+FROM fact_dz_device_interface_counters f
+JOIN dz_devices_current d ON f.device_pk = d.pk
+JOIN dz_metros_current m ON d.metro_pk = m.pk
+WHERE m.code = 'yul'  -- Montreal metro code
+  AND (f.in_errors_delta > 0 OR f.out_errors_delta > 0)
+GROUP BY d.code
+
+UNION ALL
+
+SELECT
+    d.code AS device_code,
+    MAX(f.event_ts) AS last_error_time,
+    'discards' AS error_type
+FROM fact_dz_device_interface_counters f
+JOIN dz_devices_current d ON f.device_pk = d.pk
+JOIN dz_metros_current m ON d.metro_pk = m.pk
+WHERE m.code = 'yul'
+  AND (f.in_discards_delta > 0 OR f.out_discards_delta > 0)
+GROUP BY d.code
+
+ORDER BY last_error_time DESC
+```
+
 ### Data Ingestion Start (CRITICAL)
 The earliest `snapshot_ts` in history tables = **when ingestion began**, NOT when entities were created.
 

@@ -1195,6 +1195,25 @@ impl ServiceabilityProgramHelper {
         .await
     }
 
+    pub async fn hard_drain_link(
+        &mut self,
+        contributor_pk: Pubkey,
+        pubkey: Pubkey,
+    ) -> Result<(), BanksClientError> {
+        self.execute_transaction(
+            DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+                desired_status: Some(LinkDesiredStatus::HardDrained),
+                ..Default::default()
+            }),
+            vec![
+                AccountMeta::new(pubkey, false),
+                AccountMeta::new(contributor_pk, false),
+                AccountMeta::new(self.global_state_pubkey, false),
+            ],
+        )
+        .await
+    }
+
     pub async fn create_and_activate_link(
         &mut self,
         link: LinkCreateArgs,

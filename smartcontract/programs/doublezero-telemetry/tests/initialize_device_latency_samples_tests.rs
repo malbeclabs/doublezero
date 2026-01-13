@@ -1008,7 +1008,7 @@ async fn test_initialize_device_latency_samples_fail_target_device_not_activated
 }
 
 #[tokio::test]
-async fn test_initialize_device_latency_samples_fail_link_not_activated() {
+async fn test_initialize_device_latency_samples_success_provisioning_link() {
     let mut ledger = LedgerHelper::new().await.unwrap();
     let payer = ledger
         .context
@@ -1101,10 +1101,10 @@ async fn test_initialize_device_latency_samples_fail_link_not_activated() {
         .await
         .unwrap();
 
-    // Create link but do not activate
+    // Create and activate link
     let link_pk = ledger
         .serviceability
-        .create_link(
+        .create_and_activate_link(
             LinkCreateArgs {
                 code: "LINK1".to_string(),
                 link_type: LinkLinkType::WAN,
@@ -1119,6 +1119,8 @@ async fn test_initialize_device_latency_samples_fail_link_not_activated() {
             contributor_pk,
             origin_device_pk,
             target_device_pk,
+            1,
+            "10.1.1.0/30".parse().unwrap(),
         )
         .await
         .unwrap();
@@ -1137,7 +1139,100 @@ async fn test_initialize_device_latency_samples_fail_link_not_activated() {
         )
         .await;
 
-    assert_telemetry_error(result, TelemetryError::LinkNotActivated);
+    // Provisioning links now allow telemetry for burn-in testing
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn test_initialize_device_latency_samples_success_soft_drained_link() {
+    let mut ledger = LedgerHelper::new().await.unwrap();
+    let payer = ledger
+        .context
+        .lock()
+        .unwrap()
+        .payer
+        .insecure_clone()
+        .pubkey();
+
+    let contributor_pk = ledger
+        .serviceability
+        .create_contributor("CONTRIB".to_string(), payer)
+        .await
+        .unwrap();
+
+    let (agent, origin_device_pk, target_device_pk, link_pk) = ledger
+        .seed_with_two_linked_devices(contributor_pk)
+        .await
+        .unwrap();
+
+    // Soft drain the link
+    ledger
+        .serviceability
+        .soft_drain_link(contributor_pk, link_pk)
+        .await
+        .unwrap();
+
+    ledger.wait_for_new_blockhash().await.unwrap();
+
+    let result = ledger
+        .telemetry
+        .initialize_device_latency_samples(
+            &agent,
+            origin_device_pk,
+            target_device_pk,
+            link_pk,
+            77,
+            5_000_000,
+        )
+        .await;
+
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn test_initialize_device_latency_samples_success_hard_drained_link() {
+    let mut ledger = LedgerHelper::new().await.unwrap();
+    let payer = ledger
+        .context
+        .lock()
+        .unwrap()
+        .payer
+        .insecure_clone()
+        .pubkey();
+
+    let contributor_pk = ledger
+        .serviceability
+        .create_contributor("CONTRIB".to_string(), payer)
+        .await
+        .unwrap();
+
+    let (agent, origin_device_pk, target_device_pk, link_pk) = ledger
+        .seed_with_two_linked_devices(contributor_pk)
+        .await
+        .unwrap();
+
+    // Hard drain the link
+    ledger
+        .serviceability
+        .hard_drain_link(contributor_pk, link_pk)
+        .await
+        .unwrap();
+
+    ledger.wait_for_new_blockhash().await.unwrap();
+
+    let result = ledger
+        .telemetry
+        .initialize_device_latency_samples(
+            &agent,
+            origin_device_pk,
+            target_device_pk,
+            link_pk,
+            88,
+            5_000_000,
+        )
+        .await;
+
+    assert!(result.is_ok());
 }
 
 #[tokio::test]

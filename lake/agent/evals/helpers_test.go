@@ -580,8 +580,19 @@ func formatQueryResult(result pipeline.QueryResult) string {
 	return sb.String()
 }
 
-// isOllamaAvailable checks if the local Ollama server is available
+// isOllamaAvailable checks if the local Ollama server is available for agent evals.
+// Currently disabled: local Ollama models generate unreliable SQL queries, causing
+// false failures. The Ollama client is still used for *evaluating* responses (via
+// ollamaEvaluateResponse), but not for running the agent pipeline itself.
+// Set OLLAMA_AGENT_EVALS=1 to force-enable these tests for local development.
 func isOllamaAvailable() bool {
+	// Ollama agent tests are disabled by default due to unreliable SQL generation.
+	// The local models aren't capable enough for the agent pipeline, though they
+	// work fine for evaluating responses.
+	if os.Getenv("OLLAMA_AGENT_EVALS") != "1" {
+		return false
+	}
+
 	ollamaURL := os.Getenv("OLLAMA_URL")
 	if ollamaURL == "" {
 		if dindHost := os.Getenv("DIND_LOCALHOST"); dindHost != "" {

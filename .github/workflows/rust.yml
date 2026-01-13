@@ -7,7 +7,7 @@ on:
 
 jobs:
   rust-build:
-    runs-on: ubuntu-24.04-16c-64gb
+    runs-on: doublezero-k8s-generic
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.90.0
@@ -18,7 +18,7 @@ jobs:
           echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
       - run: make rust-build
   rust-lint:
-    runs-on: ubuntu-24.04-16c-64gb
+    runs-on: doublezero-k8s-generic
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.90.0
@@ -27,7 +27,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: make rust-lint
   rust-test:
-    runs-on: ubuntu-24.04-16c-64gb
+    runs-on: doublezero-k8s-generic
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.90.0
@@ -38,7 +38,7 @@ jobs:
           echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
       - run: make rust-test
   rust-validator-test:
-    runs-on: ubuntu-24.04-16c-64gb
+    runs-on: doublezero-k8s-generic
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.90.0

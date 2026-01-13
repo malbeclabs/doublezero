@@ -77,12 +77,16 @@ function formatValue(
 
 export function StatCard({ label, value, format }: StatCardProps) {
   const animatedValue = useAnimatedNumber(value)
-  const displayValue = formatValue(animatedValue, format)
+  const isLoading = value === undefined
 
   return (
     <div className="text-center">
       <div className="text-4xl font-medium tabular-nums tracking-tight mb-1">
-        {displayValue}
+        {isLoading ? (
+          <span className="inline-block h-10 w-16 rounded bg-muted animate-pulse" />
+        ) : (
+          formatValue(animatedValue, format)
+        )}
       </div>
       <div className="text-sm text-muted-foreground">{label}</div>
     </div>

@@ -25,6 +25,7 @@ All notable changes to this project will be documented in this file.
   - Add influxdb, prometheus, and device-health-oracle containers
 - SDK
   - Commands for setting global config, activating devices, updating devices, and closing device accounts now manage resource accounts.
+  - Serviceability: return error when GetProgramAccounts returns empty result instead of silently returning empty data
 - Smartcontract
   - feat(smartcontract): RFC 11 activation for User entity
 - Device Health Oracle

@@ -376,7 +376,7 @@ export function TopologyMap({ metros, devices, links }: TopologyMapProps) {
       minZoom={2}
       className="h-full w-full"
       scrollWheelZoom={true}
-      style={{ background: isDark ? '#1a1a2e' : '#f5f5f5' }}
+      style={{ background: 'var(--background)' }}
     >
       <MapFitBounds metros={metros} />
       <MapControls metros={metros} />

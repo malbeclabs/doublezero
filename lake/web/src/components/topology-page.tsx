@@ -2,21 +2,14 @@ import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { fetchTopology } from '@/lib/api'
 import { TopologyMap } from '@/components/topology-map'
-import { useTheme } from '@/hooks/use-theme'
 import { Globe } from 'lucide-react'
 
 // Only show loading indicator after this delay to avoid flash on fast loads
 const LOADING_DELAY_MS = 300
 
 function TopologyLoading() {
-  const { resolvedTheme } = useTheme()
-  const isDark = resolvedTheme === 'dark'
-
   return (
-    <div
-      className="fixed inset-0 z-0 h-screen w-screen flex items-center justify-center"
-      style={{ background: isDark ? '#1a1a2e' : '#f5f5f5' }}
-    >
+    <div className="fixed inset-0 z-0 h-screen w-screen flex items-center justify-center bg-background">
       <div className="flex flex-col items-center gap-3">
         <Globe className="h-10 w-10 text-muted-foreground animate-pulse" />
         <div className="text-sm text-muted-foreground">Loading network topology...</div>

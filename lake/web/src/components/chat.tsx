@@ -436,16 +436,21 @@ export interface ChatProgress {
   completedSteps?: PipelineStep[]
 }
 
+interface ExternalLockInfo {
+  question?: string
+}
+
 interface ChatProps {
   messages: ChatMessage[]
   isPending: boolean
   progress?: ChatProgress
+  externalLock?: ExternalLockInfo | null
   onSendMessage: (message: string) => void
   onAbort: () => void
   onOpenInQueryEditor?: (sql: string) => void
 }
 
-export function Chat({ messages, isPending, progress, onSendMessage, onAbort, onOpenInQueryEditor }: ChatProps) {
+export function Chat({ messages, isPending, progress, externalLock, onSendMessage, onAbort, onOpenInQueryEditor }: ChatProps) {
   const [input, setInput] = useState('')
   const [highlightedQueries, setHighlightedQueries] = useState<Map<number, number | null>>(new Map()) // messageIndex -> queryIndex
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -461,7 +466,25 @@ export function Chat({ messages, isPending, progress, onSendMessage, onAbort, on
     inputRef.current?.focus()
   }
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const prevMessagesLengthRef = useRef(messages.length)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const isAtBottomRef = useRef(true)
+
+  // Track if user is at bottom of scroll container
+  const handleScroll = () => {
+    const container = scrollContainerRef.current
+    if (!container) return
+    // Consider "at bottom" if within 100px of the bottom
+    const threshold = 100
+    const atBottom = container.scrollHeight - container.scrollTop - container.clientHeight < threshold
+    isAtBottomRef.current = atBottom
+  }
+
+  // Helper to scroll to bottom if user is at bottom
+  const scrollToBottomIfNeeded = () => {
+    if (isAtBottomRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+  }
 
   // Focus input when starting a new chat (empty messages)
   useEffect(() => {
@@ -470,13 +493,42 @@ export function Chat({ messages, isPending, progress, onSendMessage, onAbort, on
     }
   }, [messages.length])
 
-  // Scroll to bottom when new messages arrive
+  // Scroll to bottom when new messages arrive (always scroll for new messages)
+  const prevMessagesLengthRef = useRef(messages.length)
   useEffect(() => {
     if (messages.length > prevMessagesLengthRef.current) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+      isAtBottomRef.current = true // Reset to bottom after new message
     }
     prevMessagesLengthRef.current = messages.length
   }, [messages.length])
+
+  // Scroll to bottom when a streaming message completes
+  const lastMessage = messages[messages.length - 1]
+  const lastMessageStatus = lastMessage?.status
+  const prevLastMessageStatusRef = useRef(lastMessageStatus)
+  useEffect(() => {
+    // If status changed from 'streaming' to 'complete', scroll to bottom
+    if (prevLastMessageStatusRef.current === 'streaming' && lastMessageStatus === 'complete') {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+      isAtBottomRef.current = true
+    }
+    prevLastMessageStatusRef.current = lastMessageStatus
+  }, [lastMessageStatus])
+
+  // Scroll to follow progress updates if user is at bottom
+  useEffect(() => {
+    if (isPending && progress) {
+      scrollToBottomIfNeeded()
+    }
+  }, [isPending, progress])
+
+  // Scroll when external lock appears if user is at bottom
+  useEffect(() => {
+    if (externalLock) {
+      scrollToBottomIfNeeded()
+    }
+  }, [externalLock])
 
   // Focus input when response arrives (isPending goes from true to false)
   const prevIsPendingRef = useRef(isPending)
@@ -487,8 +539,11 @@ export function Chat({ messages, isPending, progress, onSendMessage, onAbort, on
     prevIsPendingRef.current = isPending
   }, [isPending])
 
+  // Disable input when pending or when another browser is processing
+  const isDisabled = isPending || !!externalLock
+
   const handleSend = () => {
-    if (!input.trim() || isPending) return
+    if (!input.trim() || isDisabled) return
 
     const userMessage = input.trim()
     setInput('')
@@ -505,7 +560,7 @@ export function Chat({ messages, isPending, progress, onSendMessage, onAbort, on
   return (
     <div className="flex flex-col flex-1 min-h-0">
       {/* Centered chat pane */}
-      <div className="flex-1 overflow-auto">
+      <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-auto">
         <div className="max-w-3xl mx-auto min-h-full">
           <div className="px-4 py-8 space-y-6">
             {messages.length === 0 && (
@@ -746,6 +801,21 @@ export function Chat({ messages, isPending, progress, onSendMessage, onAbort, on
                 </div>
               </div>
             )}
+            {externalLock && !isPending && (
+              <div className="px-1">
+                <div className="flex items-center gap-2 text-muted-foreground bg-muted/50 rounded-lg p-3">
+                  <Loader2 className="w-4 h-4 animate-spin text-accent" />
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium">Processing in another window</span>
+                    {externalLock.question && (
+                      <span className="text-xs text-muted-foreground/70 mt-0.5">
+                        "{externalLock.question.slice(0, 60)}{externalLock.question.length > 60 ? '...' : ''}"
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
             <div ref={messagesEndRef} />
           </div>
         </div>
@@ -760,10 +830,11 @@ export function Chat({ messages, isPending, progress, onSendMessage, onAbort, on
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ask about your data..."
+              placeholder={externalLock ? "Waiting for other window to finish..." : "Ask about your data..."}
               autoFocus
+              disabled={isDisabled}
               rows={1}
-              className="w-full bg-transparent px-4 pt-3.5 pb-2.5 pr-12 text-sm placeholder:text-muted-foreground focus:outline-none resize-none min-h-[44px] max-h-[200px] overflow-y-auto"
+              className="w-full bg-transparent px-4 pt-3.5 pb-2.5 pr-12 text-sm placeholder:text-muted-foreground focus:outline-none resize-none min-h-[44px] max-h-[200px] overflow-y-auto disabled:cursor-not-allowed disabled:opacity-50"
               style={{ height: 'auto' }}
               onInput={(e) => {
                 const target = e.target as HTMLTextAreaElement
@@ -781,7 +852,7 @@ export function Chat({ messages, isPending, progress, onSendMessage, onAbort, on
             ) : (
               <button
                 onClick={handleSend}
-                disabled={!input.trim()}
+                disabled={!input.trim() || isDisabled}
                 className="absolute right-2 bottom-3 p-1.5 rounded-full bg-accent text-white hover:bg-accent-orange-100 disabled:bg-muted-foreground/30 disabled:cursor-not-allowed transition-colors"
               >
                 <ArrowUp className="h-4 w-4" />

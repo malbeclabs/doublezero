@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 )
 
@@ -44,9 +45,9 @@ func (p *Pipeline) DecomposeWithHistory(ctx context.Context, userQuestion string
 			}
 		}
 		historyText.WriteString("\n")
-		userPrompt = fmt.Sprintf("%sCurrent user question: %s", historyText.String(), userQuestion)
+		userPrompt = fmt.Sprintf("%sCurrent user question: %s\n\nRespond with JSON only.", historyText.String(), userQuestion)
 	} else {
-		userPrompt = fmt.Sprintf("User question: %s", userQuestion)
+		userPrompt = fmt.Sprintf("User question: %s\n\nRespond with JSON only.", userQuestion)
 	}
 
 	response, err := p.cfg.LLM.Complete(ctx, systemPrompt, userPrompt)
@@ -72,12 +73,18 @@ func parseDecomposeResponse(response string) ([]DataQuestion, error) {
 	// Try to find JSON in the response (it might be wrapped in markdown code blocks)
 	jsonStr := extractJSON(response)
 	if jsonStr == "" {
-		// LLM didn't return valid JSON - likely the question was unintelligible
+		// LLM didn't return valid JSON - log for debugging
+		slog.Warn("Decompose: failed to extract JSON from response",
+			"responseLen", len(response),
+			"responsePreview", truncateString(response, 500))
 		return nil, fmt.Errorf("I couldn't understand your question. Please try rephrasing it as a question about your data")
 	}
 
 	var parsed DecomposeResponse
 	if err := json.Unmarshal([]byte(jsonStr), &parsed); err != nil {
+		slog.Warn("Decompose: failed to parse JSON",
+			"error", err,
+			"jsonPreview", truncateString(jsonStr, 500))
 		return nil, fmt.Errorf("I couldn't understand your question. Please try rephrasing it as a question about your data")
 	}
 
@@ -183,4 +190,12 @@ func extractJSONObject(s string, start int) string {
 
 	// If we get here, braces weren't balanced - return what we have
 	return ""
+}
+
+// truncateString truncates a string to the given max length, adding "..." if truncated.
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }

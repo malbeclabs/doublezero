@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/http"
 	"os"
 	"strings"
@@ -176,7 +177,7 @@ func convertPipelineResult(result *pipeline.PipelineResult) ChatResponse {
 		for _, row := range eq.Result.Rows {
 			rowData := make([]any, 0, len(eq.Result.Columns))
 			for _, col := range eq.Result.Columns {
-				rowData = append(rowData, row[col])
+				rowData = append(rowData, sanitizeValue(row[col]))
 			}
 			eqr.Rows = append(eqr.Rows, rowData)
 		}
@@ -185,6 +186,21 @@ func convertPipelineResult(result *pipeline.PipelineResult) ChatResponse {
 	}
 
 	return resp
+}
+
+// sanitizeValue replaces non-JSON-serializable values (Inf, NaN) with nil.
+func sanitizeValue(v any) any {
+	switch val := v.(type) {
+	case float64:
+		if math.IsInf(val, 0) || math.IsNaN(val) {
+			return nil
+		}
+	case float32:
+		if math.IsInf(float64(val), 0) || math.IsNaN(float64(val)) {
+			return nil
+		}
+	}
+	return v
 }
 
 // ChatStream handles streaming chat requests with SSE progress updates.
@@ -214,7 +230,16 @@ func ChatStream(w http.ResponseWriter, r *http.Request) {
 
 	// Helper to send SSE events
 	sendEvent := func(eventType string, data any) {
-		jsonData, _ := json.Marshal(data)
+		jsonData, err := json.Marshal(data)
+		if err != nil {
+			slog.Error("Failed to marshal SSE event data", "eventType", eventType, "error", err)
+			// Send an error event instead
+			errorData, _ := json.Marshal(map[string]string{"error": "Failed to serialize response"})
+			fmt.Fprintf(w, "event: error\ndata: %s\n\n", string(errorData))
+			flusher.Flush()
+			return
+		}
+		slog.Debug("Sending SSE event", "eventType", eventType, "dataLen", len(jsonData))
 		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", eventType, string(jsonData))
 		flusher.Flush()
 	}
@@ -400,6 +425,14 @@ func ChatStream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := convertPipelineResult(result)
+	slog.Info("Sending done event",
+		"answerLen", len(response.Answer),
+		"dataQuestionsCount", len(response.DataQuestions),
+		"generatedQueriesCount", len(response.GeneratedQueries),
+		"executedQueriesCount", len(response.ExecutedQueries),
+		"followUpQuestionsCount", len(response.FollowUpQuestions),
+		"hasError", response.Error != "",
+	)
 	sendEvent("done", response)
 }
 

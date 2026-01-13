@@ -251,6 +251,8 @@ export interface ChatMessage {
   pipelineData?: ChatPipelineData
   // SQL queries for history transmission (extracted from pipelineData for backend)
   executedQueries?: string[]
+  // Status for streaming persistence (only present during/after streaming)
+  status?: 'streaming' | 'complete' | 'error'
 }
 
 export interface DataQuestion {
@@ -380,7 +382,13 @@ export async function sendChatMessageStream(
     for (const line of lines) {
       if (line.startsWith('event: ')) {
         currentEvent = line.slice(7).trim()
+        if (currentEvent === 'done') {
+          console.log('[SSE] Got done event line, waiting for data line')
+        }
       } else if (line.startsWith('data:') && currentEvent) {
+        if (currentEvent === 'done') {
+          console.log('[SSE] Got data line for done event, length:', line.length, 'preview:', line.slice(0, 100))
+        }
         // Handle both 'data: {...}' and 'data:{...}' formats
         const data = line.startsWith('data: ') ? line.slice(6) : line.slice(5)
         // Skip empty data lines
@@ -403,7 +411,12 @@ export async function sendChatMessageStream(
               // Ignore heartbeat events - they're just to keep the connection alive
               break
             case 'done':
-              console.log('[SSE] done event received', { answerLength: parsed.answer?.length })
+              console.log('[SSE] done event received', {
+                answerLength: parsed.answer?.length,
+                hasError: !!parsed.error,
+                keys: Object.keys(parsed),
+                rawParsed: JSON.stringify(parsed).slice(0, 500)
+              })
               callbacks.onDone(parsed)
               console.log('[SSE] onDone callback completed')
               break
@@ -425,8 +438,11 @@ export async function sendChatMessageStream(
       if (done) {
         // Process any remaining buffer when stream ends
         if (buffer.trim()) {
+          console.log('[SSE] Stream ended, processing remaining buffer:', buffer.slice(0, 200))
           const lines = buffer.split('\n')
           processLines(lines)
+        } else {
+          console.log('[SSE] Stream ended, buffer empty')
         }
         break
       }
@@ -436,6 +452,7 @@ export async function sendChatMessageStream(
       buffer = lines.pop() || ''
       processLines(lines)
     }
+    console.log('[SSE] Stream processing complete, currentEvent:', currentEvent)
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
       return
@@ -680,5 +697,228 @@ export async function fetchVersion(): Promise<VersionResponse | null> {
     return res.json()
   } catch {
     return null
+  }
+}
+
+// Session persistence types
+export interface SessionMetadata {
+  id: string
+  type: 'chat' | 'query'
+  name: string | null
+  content_length: number
+  created_at: string
+  updated_at: string
+}
+
+export interface ServerSession<T> {
+  id: string
+  type: 'chat' | 'query'
+  name: string | null
+  content: T
+  created_at: string
+  updated_at: string
+}
+
+export interface SessionListResponse {
+  sessions: SessionMetadata[]
+  total: number
+  has_more: boolean
+}
+
+// Session API functions
+export async function listSessions(
+  type: 'chat' | 'query',
+  limit = 50,
+  offset = 0
+): Promise<SessionListResponse> {
+  const res = await fetchWithRetry(
+    `/api/sessions?type=${type}&limit=${limit}&offset=${offset}`
+  )
+  if (!res.ok) {
+    throw new Error('Failed to list sessions')
+  }
+  return res.json()
+}
+
+export async function getSession<T>(id: string): Promise<ServerSession<T>> {
+  const res = await fetchWithRetry(`/api/sessions/${id}`)
+  if (!res.ok) {
+    if (res.status === 404) {
+      throw new Error('Session not found')
+    }
+    throw new Error('Failed to get session')
+  }
+  return res.json()
+}
+
+export async function createSession<T>(
+  id: string,
+  type: 'chat' | 'query',
+  content: T,
+  name?: string
+): Promise<ServerSession<T>> {
+  const res = await fetchWithRetry('/api/sessions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, type, name: name ?? null, content }),
+  })
+  if (!res.ok) {
+    if (res.status === 409) {
+      throw new Error('Session already exists')
+    }
+    throw new Error('Failed to create session')
+  }
+  return res.json()
+}
+
+export async function updateSession<T>(
+  id: string,
+  content: T,
+  name?: string
+): Promise<ServerSession<T>> {
+  const res = await fetchWithRetry(`/api/sessions/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content, name: name ?? null }),
+  })
+  if (!res.ok) {
+    if (res.status === 404) {
+      throw new Error('Session not found')
+    }
+    throw new Error('Failed to update session')
+  }
+  return res.json()
+}
+
+export async function deleteSession(id: string): Promise<void> {
+  const res = await fetchWithRetry(`/api/sessions/${id}`, {
+    method: 'DELETE',
+  })
+  if (!res.ok && res.status !== 404) {
+    throw new Error('Failed to delete session')
+  }
+}
+
+// Upsert helper - creates if not exists, updates otherwise
+export async function upsertSession<T>(
+  id: string,
+  type: 'chat' | 'query',
+  content: T,
+  name?: string
+): Promise<ServerSession<T>> {
+  try {
+    return await updateSession(id, content, name)
+  } catch (err) {
+    if (err instanceof Error && err.message === 'Session not found') {
+      return await createSession(id, type, content, name)
+    }
+    throw err
+  }
+}
+
+// Session lock types and functions
+export interface SessionLock {
+  session_id: string
+  lock_id: string
+  until: string // ISO date string
+  question?: string
+}
+
+// Get the current lock status for a session
+// Returns null if no active lock
+export async function getSessionLock(sessionId: string): Promise<SessionLock | null> {
+  const res = await fetch(`/api/sessions/${sessionId}/lock`)
+  if (res.status === 204) {
+    return null // No active lock
+  }
+  if (res.status === 404) {
+    return null // Session not found
+  }
+  if (!res.ok) {
+    throw new Error('Failed to get session lock')
+  }
+  return res.json()
+}
+
+// Acquire a lock on a session
+// Returns { acquired: true, lock } if successful
+// Returns { acquired: false, lock } if another browser holds the lock
+export async function acquireSessionLock(
+  sessionId: string,
+  lockId: string,
+  durationSeconds = 60,
+  question?: string
+): Promise<{ acquired: boolean; lock: SessionLock | null }> {
+  const res = await fetch(`/api/sessions/${sessionId}/lock`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      lock_id: lockId,
+      duration_seconds: durationSeconds,
+      question,
+    }),
+  })
+
+  if (res.status === 409) {
+    // Lock held by another client
+    const lock = await res.json() as SessionLock
+    return { acquired: false, lock }
+  }
+
+  if (!res.ok) {
+    throw new Error('Failed to acquire session lock')
+  }
+
+  const lock = await res.json() as SessionLock
+  return { acquired: true, lock }
+}
+
+// Release a lock on a session
+export async function releaseSessionLock(sessionId: string, lockId: string): Promise<void> {
+  const res = await fetch(`/api/sessions/${sessionId}/lock?lock_id=${encodeURIComponent(lockId)}`, {
+    method: 'DELETE',
+  })
+  // Ignore 404 - lock might have already expired or been released
+  if (!res.ok && res.status !== 404) {
+    throw new Error('Failed to release session lock')
+  }
+}
+
+// Watch for lock status changes via SSE
+export interface LockWatchCallbacks {
+  onLocked: (lock: SessionLock) => void
+  onUnlocked: () => void
+  onError?: (error: Error) => void
+}
+
+export function watchSessionLock(
+  sessionId: string,
+  lockId: string,
+  callbacks: LockWatchCallbacks
+): () => void {
+  const url = `/api/sessions/${sessionId}/lock/watch?lock_id=${encodeURIComponent(lockId)}`
+  const eventSource = new EventSource(url)
+
+  eventSource.addEventListener('locked', (event) => {
+    try {
+      const lock = JSON.parse(event.data) as SessionLock
+      callbacks.onLocked(lock)
+    } catch (err) {
+      callbacks.onError?.(err instanceof Error ? err : new Error('Failed to parse lock event'))
+    }
+  })
+
+  eventSource.addEventListener('unlocked', () => {
+    callbacks.onUnlocked()
+  })
+
+  eventSource.onerror = () => {
+    // EventSource will automatically reconnect, but we can notify the caller
+    callbacks.onError?.(new Error('Lock watch connection error'))
+  }
+
+  // Return cleanup function
+  return () => {
+    eventSource.close()
   }
 }

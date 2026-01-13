@@ -74,6 +74,12 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
+	// Load PostgreSQL
+	if err := config.LoadPostgres(); err != nil {
+		log.Fatalf("Failed to load PostgreSQL: %v", err)
+	}
+	defer config.ClosePostgres()
+
 	// Start metrics server
 	if *metricsAddrFlag != "" {
 		metrics.BuildInfo.WithLabelValues(version, commit, date).Set(1)
@@ -104,7 +110,7 @@ func main() {
 	}
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   corsOrigins,
-		AllowedMethods:   []string{"GET", "POST", "OPTIONS"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Content-Type"},
 		AllowCredentials: false,
 		MaxAge:           300,
@@ -140,6 +146,19 @@ func main() {
 	r.Post("/api/complete", handlers.Complete)
 	r.Post("/api/visualize/recommend", handlers.RecommendVisualization)
 	r.Get("/api/version", handlers.GetVersion)
+
+	// Session persistence routes
+	r.Get("/api/sessions", handlers.ListSessions)
+	r.Post("/api/sessions", handlers.CreateSession)
+	r.Get("/api/sessions/{id}", handlers.GetSession)
+	r.Put("/api/sessions/{id}", handlers.UpdateSession)
+	r.Delete("/api/sessions/{id}", handlers.DeleteSession)
+
+	// Session lock routes (for cross-browser coordination)
+	r.Get("/api/sessions/{id}/lock", handlers.GetSessionLock)
+	r.Post("/api/sessions/{id}/lock", handlers.AcquireSessionLock)
+	r.Delete("/api/sessions/{id}/lock", handlers.ReleaseSessionLock)
+	r.Get("/api/sessions/{id}/lock/watch", handlers.WatchSessionLock)
 
 	// Serve static files from the web dist directory
 	webDir := os.Getenv("WEB_DIST_DIR")

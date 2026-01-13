@@ -105,6 +105,15 @@ export function loadChatSessions(): ChatSession[] {
     const raw = localStorage.getItem(CHAT_SESSIONS_KEY)
     if (!raw) return []
     const sessions = JSON.parse(raw) as ChatSession[]
+
+    // Debug: check for streaming messages
+    for (const s of sessions) {
+      const hasStreaming = s.messages?.some((m: { status?: string }) => m.status === 'streaming')
+      if (hasStreaming) {
+        console.log('[Sessions] Loaded session with streaming from localStorage:', s.id, 'msgCount:', s.messages?.length)
+      }
+    }
+
     return sessions.map(s => ({
       ...s,
       createdAt: new Date(s.createdAt),
@@ -116,6 +125,13 @@ export function loadChatSessions(): ChatSession[] {
 }
 
 export function saveChatSessions(sessions: ChatSession[]): void {
+  // Debug: check for streaming messages being saved
+  for (const s of sessions) {
+    const hasStreaming = s.messages?.some((m: { status?: string }) => m.status === 'streaming')
+    if (hasStreaming) {
+      console.log('[Sessions] Saving session with streaming to localStorage:', s.id, 'msgCount:', s.messages?.length)
+    }
+  }
   localStorage.setItem(CHAT_SESSIONS_KEY, JSON.stringify(sessions))
 }
 
@@ -156,3 +172,18 @@ export function getChatSessionPreview(session: ChatSession): string {
   }
   return 'Chat session'
 }
+
+// Browser ID for server-side lock coordination
+// Persisted in localStorage so it survives page refreshes
+const BROWSER_ID_KEY = 'lake-browser-id'
+
+function getBrowserId(): string {
+  let id = localStorage.getItem(BROWSER_ID_KEY)
+  if (!id) {
+    id = crypto.randomUUID()
+    localStorage.setItem(BROWSER_ID_KEY, id)
+  }
+  return id
+}
+
+export const BROWSER_ID = getBrowserId()

@@ -12,7 +12,7 @@ import { Chat, type ChatProgress, type QueryProgressItem, type PipelineStep } fr
 import { Landing } from '@/components/landing'
 import { Sidebar } from '@/components/sidebar'
 import { TopologyPage } from '@/components/topology-page'
-import { generateSessionTitle, generateChatSessionTitle, sendChatMessageStream, recommendVisualization, fetchCatalog, type SessionQueryInfo } from '@/lib/api'
+import { generateSessionTitle, generateChatSessionTitle, sendChatMessageStream, recommendVisualization, fetchCatalog, acquireSessionLock, releaseSessionLock, getSessionLock, watchSessionLock, getSession, type SessionQueryInfo, type SessionLock } from '@/lib/api'
 import type { TableInfo, QueryResponse, HistoryMessage, ChatMessage } from '@/lib/api'
 import {
   type QuerySession,
@@ -25,7 +25,15 @@ import {
   saveChatSessions,
   createChatSession,
   createChatSessionWithId,
+  BROWSER_ID,
 } from '@/lib/sessions'
+import {
+  useQuerySessionSync,
+  useChatSessionSync,
+  useSessionDelete,
+  migrateLocalSessions,
+  findIncompleteMessage,
+} from '@/lib/sync'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -59,6 +67,7 @@ interface AppContextType {
   currentSessionId: string
   setCurrentSessionId: React.Dispatch<React.SetStateAction<string>>
   sessionsLoaded: boolean
+  queryServerSyncComplete: boolean
   query: string
   setQuery: React.Dispatch<React.SetStateAction<string>>
   results: QueryResponse | null
@@ -74,10 +83,14 @@ interface AppContextType {
   currentChatSessionId: string
   setCurrentChatSessionId: React.Dispatch<React.SetStateAction<string>>
   chatSessionsLoaded: boolean
+  chatServerSyncComplete: boolean
   // Chat mutation state (lifted to persist across navigation) - now per-session
   pendingChats: Map<string, PendingChatState>
-  sendChatMessage: (sessionId: string, message: string, history: ChatMessage[]) => void
+  sendChatMessage: (sessionId: string, message: string, history: ChatMessage[], skipLock?: boolean) => void
   abortChatMessage: (sessionId: string) => void
+  // External locks - locks held by other browsers
+  externalLocks: Map<string, SessionLock>
+  setExternalLocks: React.Dispatch<React.SetStateAction<Map<string, SessionLock>>>
 }
 
 const AppContext = createContext<AppContextType | null>(null)
@@ -96,6 +109,7 @@ function QuerySessionSync({ children }: { children: React.ReactNode }) {
     sessions,
     setSessions,
     sessionsLoaded,
+    queryServerSyncComplete,
     setCurrentSessionId,
     setResults,
     setQuery,
@@ -104,7 +118,8 @@ function QuerySessionSync({ children }: { children: React.ReactNode }) {
   } = useAppContext()
 
   useEffect(() => {
-    if (!sessionsLoaded || !sessionId) return
+    // Wait for both localStorage load AND server sync before deciding to create new session
+    if (!sessionsLoaded || !queryServerSyncComplete || !sessionId) return
 
     let session = sessions.find(s => s.id === sessionId)
 
@@ -143,7 +158,7 @@ function QuerySessionSync({ children }: { children: React.ReactNode }) {
         setQuery('')
       }
     }
-  }, [sessionId, sessionsLoaded, sessions, setSessions, setCurrentSessionId, setResults, setQuery, queryEditorRef, pendingQueryRef])
+  }, [sessionId, sessionsLoaded, queryServerSyncComplete, sessions, setSessions, setCurrentSessionId, setResults, setQuery, queryEditorRef, pendingQueryRef])
 
   return <>{children}</>
 }
@@ -155,11 +170,13 @@ function ChatSessionSync({ children }: { children: React.ReactNode }) {
     chatSessions,
     setChatSessions,
     chatSessionsLoaded,
+    chatServerSyncComplete,
     setCurrentChatSessionId,
   } = useAppContext()
 
   useEffect(() => {
-    if (!chatSessionsLoaded || !sessionId) return
+    // Wait for both localStorage load AND server sync before deciding to create new session
+    if (!chatSessionsLoaded || !chatServerSyncComplete || !sessionId) return
 
     const session = chatSessions.find(s => s.id === sessionId)
 
@@ -171,7 +188,7 @@ function ChatSessionSync({ children }: { children: React.ReactNode }) {
     }
 
     setCurrentChatSessionId(sessionId)
-  }, [sessionId, chatSessionsLoaded, chatSessions, setChatSessions, setCurrentChatSessionId])
+  }, [sessionId, chatSessionsLoaded, chatServerSyncComplete, chatSessions, setChatSessions, setCurrentChatSessionId])
 
   return <>{children}</>
 }
@@ -456,10 +473,13 @@ function ChatView() {
     chatSessions,
     setChatSessions,
     currentChatSessionId,
+    chatServerSyncComplete,
     pendingChats,
     sendChatMessage,
     abortChatMessage,
     pendingQueryRef,
+    externalLocks,
+    setExternalLocks,
   } = useAppContext()
 
   const currentChatSession = chatSessions.find(s => s.id === currentChatSessionId)
@@ -467,6 +487,63 @@ function ChatView() {
   const pendingState = pendingChats.get(currentChatSessionId)
   const isPending = !!pendingState
   const currentProgress = pendingState?.progress ?? null
+
+  // Auto-resume incomplete streaming messages on page load
+  // Wait for server sync to complete before checking - otherwise we might miss streaming messages
+  const resumeAttempted = useRef<string | null>(null)
+  useEffect(() => {
+    // Debug logging
+    console.log('[Chat] Auto-resume check:', {
+      chatServerSyncComplete,
+      hasSession: !!currentChatSession,
+      isPending,
+      resumeAttempted: resumeAttempted.current,
+      currentChatSessionId,
+      messageCount: chatMessages.length,
+      hasStreaming: chatMessages.some(m => m.status === 'streaming'),
+    })
+
+    // Must wait for server sync to have the latest data
+    if (!chatServerSyncComplete) return
+    if (!currentChatSession || isPending) return
+    if (resumeAttempted.current === currentChatSessionId) return
+
+    // Check for incomplete streaming message
+    const incomplete = findIncompleteMessage(chatMessages)
+    console.log('[Chat] findIncompleteMessage result:', incomplete)
+
+    if (incomplete) {
+      resumeAttempted.current = currentChatSessionId
+      console.log('[Chat] Resuming incomplete streaming message for session:', currentChatSessionId)
+
+      // First check if another browser has a lock on this session
+      getSessionLock(currentChatSessionId).then(existingLock => {
+        if (existingLock && existingLock.lock_id !== BROWSER_ID) {
+          // Another browser is processing - show external lock indicator
+          console.log('[Chat] Session locked by another browser, not resuming:', existingLock)
+          setExternalLocks(prev => {
+            const next = new Map(prev)
+            next.set(currentChatSessionId, existingLock)
+            return next
+          })
+          return
+        }
+
+        // Get history up to (but not including) the incomplete user message
+        const historyUpToIncomplete = chatMessages.slice(0, chatMessages.indexOf(incomplete.userMessage))
+
+        // Don't remove the streaming message - keep it so if user reloads again, we can resume again
+        // The completion handler will replace it with the complete message when done
+        console.log('[Chat] Auto-resume: calling sendChatMessage')
+        sendChatMessage(currentChatSessionId, incomplete.userMessage.content, historyUpToIncomplete)
+      }).catch((err) => {
+        // If lock check fails, try to resume anyway
+        console.log('[Chat] Auto-resume: lock check failed, calling sendChatMessage anyway', err)
+        const historyUpToIncomplete = chatMessages.slice(0, chatMessages.indexOf(incomplete.userMessage))
+        sendChatMessage(currentChatSessionId, incomplete.userMessage.content, historyUpToIncomplete)
+      })
+    }
+  }, [chatServerSyncComplete, currentChatSession, currentChatSessionId, chatMessages, isPending, sendChatMessage, setExternalLocks])
 
   // Check for initial question from landing page
   const initialQuestionSent = useRef<string | null>(null)
@@ -496,22 +573,52 @@ function ChatView() {
     }
   }, [currentChatSession, currentChatSessionId, chatMessages.length, isPending, setChatSessions, sendChatMessage])
 
-  const handleSendMessage = useCallback((message: string) => {
-    // Add user message immediately
-    setChatSessions(prev => prev.map(session => {
+  const handleSendMessage = useCallback(async (message: string) => {
+    console.log('[Chat] handleSendMessage called:', { message: message.slice(0, 50), currentChatSessionId })
+    console.trace('[Chat] handleSendMessage stack trace')
+    // Try to acquire lock FIRST before saving streaming message
+    // This prevents race conditions where another browser sees the streaming message
+    // but the lock hasn't been acquired yet
+    const lockResult = await acquireSessionLock(currentChatSessionId, BROWSER_ID, 300, message).catch(() => null)
+    if (lockResult && !lockResult.acquired) {
+      // Another browser has the lock - show indicator and don't proceed
+      console.log('[Lock] Cannot send - session locked by another browser:', lockResult.lock)
+      if (lockResult.lock) {
+        setExternalLocks(prev => {
+          const next = new Map(prev)
+          next.set(currentChatSessionId, lockResult.lock!)
+          return next
+        })
+      }
+      return
+    }
+
+    // Create updated session with streaming message
+    const updatedSessions = chatSessions.map(session => {
       if (session.id === currentChatSessionId) {
         return {
           ...session,
           updatedAt: new Date(),
-          messages: [...session.messages, { role: 'user' as const, content: message }],
+          messages: [
+            ...session.messages,
+            { role: 'user' as const, content: message },
+            { role: 'assistant' as const, content: '', status: 'streaming' as const },
+          ],
         }
       }
       return session
-    }))
+    })
 
-    // Send to API (this persists across navigation)
-    sendChatMessage(currentChatSessionId, message, chatMessages)
-  }, [currentChatSessionId, setChatSessions, sendChatMessage, chatMessages])
+    // Save to localStorage SYNCHRONOUSLY before React state update
+    // This ensures the streaming message is persisted even if user reloads immediately
+    saveChatSessions(updatedSessions.filter(s => s.messages.length > 0))
+
+    // Update React state
+    setChatSessions(updatedSessions)
+
+    // Send to API - lock is already acquired, so pass skipLock flag
+    sendChatMessage(currentChatSessionId, message, chatMessages, true)
+  }, [currentChatSessionId, chatSessions, setChatSessions, sendChatMessage, chatMessages, setExternalLocks])
 
   const handleOpenInQueryEditor = useCallback((sql: string) => {
     // Store the SQL to be loaded when the query editor syncs
@@ -535,11 +642,15 @@ function ChatView() {
     abortChatMessage(currentChatSessionId)
   }, [abortChatMessage, currentChatSessionId])
 
+  // Get external lock for this session (if any)
+  const currentExternalLock = externalLocks.get(currentChatSessionId)
+
   return (
     <Chat
       messages={chatMessages}
       isPending={isPending}
       progress={currentProgress ?? undefined}
+      externalLock={currentExternalLock ? { question: currentExternalLock.question } : null}
       onSendMessage={handleSendMessage}
       onAbort={handleAbort}
       onOpenInQueryEditor={handleOpenInQueryEditor}
@@ -670,6 +781,62 @@ function AppContent() {
   // Chat mutation state (lifted to persist across navigation) - now per-session
   const [pendingChats, setPendingChats] = useState<Map<string, PendingChatState>>(new Map())
 
+  // External locks - tracks locks held by other browsers on sessions
+  const [externalLocks, setExternalLocks] = useState<Map<string, SessionLock>>(new Map())
+
+  // Watch for lock status changes via SSE on the current chat session
+  useEffect(() => {
+    if (!currentChatSessionId) return
+    // Don't watch if we're the ones processing
+    if (pendingChats.has(currentChatSessionId)) return
+
+    const cleanup = watchSessionLock(
+      currentChatSessionId,
+      BROWSER_ID,
+      {
+        onLocked: (lock) => {
+          console.log('[Lock] SSE: Session locked by another browser:', lock)
+          setExternalLocks(prev => {
+            const next = new Map(prev)
+            next.set(currentChatSessionId, lock)
+            return next
+          })
+        },
+        onUnlocked: async () => {
+          console.log('[Lock] SSE: Session unlocked')
+          setExternalLocks(prev => {
+            const next = new Map(prev)
+            next.delete(currentChatSessionId)
+            return next
+          })
+
+          // Fetch the latest session data from server to see new messages
+          try {
+            const serverSession = await getSession<ChatMessage[]>(currentChatSessionId)
+            if (serverSession && serverSession.content) {
+              // Filter out any streaming messages - the other browser completed, so any
+              // streaming message in server data is stale (race condition with save)
+              const completedMessages = serverSession.content.filter(m => m.status !== 'streaming')
+              setChatSessions(prev => prev.map(s =>
+                s.id === currentChatSessionId
+                  ? { ...s, messages: completedMessages, name: serverSession.name || s.name, updatedAt: new Date(serverSession.updated_at) }
+                  : s
+              ))
+              console.log('[Lock] SSE: Updated session with', completedMessages.length, 'messages (filtered from', serverSession.content.length, ')')
+            }
+          } catch (err) {
+            console.log('[Lock] SSE: Failed to fetch updated session:', err)
+          }
+        },
+        onError: (err) => {
+          console.log('[Lock] SSE error:', err.message)
+        },
+      }
+    )
+
+    return cleanup
+  }, [currentChatSessionId, pendingChats])
+
   // Load query sessions from localStorage on mount
   useEffect(() => {
     const savedSessions = loadSessions()
@@ -696,21 +863,47 @@ function AppContent() {
     setChatSessionsLoaded(true)
   }, [])
 
-  // Save sessions to localStorage when they change (only non-empty sessions)
+  // Sync hooks for server persistence
+  const [syncQuerySession, queryServerSyncComplete] = useQuerySessionSync(
+    setSessions,
+    sessionsLoaded
+  )
+  const [chatSyncFns, chatServerSyncComplete] = useChatSessionSync(
+    setChatSessions,
+    chatSessionsLoaded
+  )
+  const deleteSessionFromServer = useSessionDelete()
+
+  // Run one-time migration of localStorage sessions to server
+  useEffect(() => {
+    if (sessionsLoaded && chatSessionsLoaded) {
+      migrateLocalSessions(sessions, chatSessions).catch(console.error)
+    }
+  }, [sessionsLoaded, chatSessionsLoaded]) // Only run once when both are loaded
+
+  // Save sessions to localStorage and sync to server when they change
   useEffect(() => {
     if (sessionsLoaded) {
       const nonEmptySessions = sessions.filter(s => s.history.length > 0)
       saveSessions(nonEmptySessions)
+      // Sync each non-empty session to server
+      nonEmptySessions.forEach(session => syncQuerySession(session))
     }
-  }, [sessions, sessionsLoaded])
+  }, [sessions, sessionsLoaded, syncQuerySession])
 
-  // Save chat sessions to localStorage when they change (only non-empty sessions)
+  // Save chat sessions to localStorage and sync to server when they change
   useEffect(() => {
     if (chatSessionsLoaded) {
       const nonEmptyChatSessions = chatSessions.filter(s => s.messages.length > 0)
       saveChatSessions(nonEmptyChatSessions)
+      // Sync each non-empty session to server immediately
+      // We use immediate sync to ensure the latest state is always persisted
+      // before the user can reload the page (streaming or complete)
+      nonEmptyChatSessions.forEach(session => {
+        chatSyncFns.syncImmediate(session)
+      })
     }
-  }, [chatSessions, chatSessionsLoaded])
+  }, [chatSessions, chatSessionsLoaded, chatSyncFns])
 
   // Helper to update progress for a specific session
   // Accepts either a progress object or a function that receives the previous progress
@@ -741,10 +934,35 @@ function AppContent() {
   }, [])
 
   // Chat message handler (lifted to persist across navigation)
-  const sendChatMessage = useCallback(async (sessionId: string, message: string, history: ChatMessage[]) => {
+  const sendChatMessage = useCallback(async (sessionId: string, message: string, history: ChatMessage[], skipLock = false) => {
+    console.log('[Chat] sendChatMessage called:', { sessionId, message: message.slice(0, 50), historyLen: history.length, skipLock })
+    console.trace('[Chat] sendChatMessage stack trace')
     const abortController = new AbortController()
 
+    // Try to acquire lock before starting (unless caller already acquired it)
+    if (!skipLock) {
+      console.log('[Chat] sendChatMessage: acquiring lock')
+      const lockResult = await acquireSessionLock(sessionId, BROWSER_ID, 300, message).catch((err) => {
+        console.log('[Chat] sendChatMessage: lock acquisition failed', err)
+        return null
+      })
+      console.log('[Chat] sendChatMessage: lock result', lockResult)
+      if (lockResult && !lockResult.acquired) {
+        // Another browser has the lock - store it and don't proceed
+        console.log('[Lock] Session locked by another browser:', sessionId, lockResult.lock)
+        if (lockResult.lock) {
+          setExternalLocks(prev => {
+            const next = new Map(prev)
+            next.set(sessionId, lockResult.lock!)
+            return next
+          })
+        }
+        return // Don't start the request
+      }
+    }
+
     // Add this session to pending with initial state
+    console.log('[Chat] sendChatMessage: adding to pendingChats, starting stream')
     setPendingChats(prev => {
       const next = new Map(prev)
       next.set(sessionId, {
@@ -755,6 +973,7 @@ function AppContent() {
     })
 
     try {
+      console.log('[Chat] sendChatMessage: calling sendChatMessageStream')
       await sendChatMessageStream(
         message,
         history,
@@ -821,13 +1040,18 @@ function AppContent() {
             })
           },
           onDone: (data) => {
-            // Update the session with the response
+            console.log('[Chat] onDone called', { sessionId, hasAnswer: !!data.answer, answerLen: data.answer?.length, error: data.error })
+            // Update the session - replace streaming message with complete message
             setChatSessions(prev => {
               const session = prev.find(s => s.id === sessionId)
-              if (!session) return prev
+              console.log('[Chat] onDone setChatSessions', { sessionId, foundSession: !!session, sessionCount: prev.length })
+              if (!session) {
+                console.log('[Chat] onDone: session not found!', { sessionId, sessionIds: prev.map(s => s.id) })
+                return prev
+              }
 
               const assistantMessage: ChatMessage = data.error
-                ? { role: 'assistant', content: data.error }
+                ? { role: 'assistant', content: data.error, status: 'error' }
                 : {
                   role: 'assistant',
                   content: data.answer,
@@ -838,9 +1062,12 @@ function AppContent() {
                     followUpQuestions: data.followUpQuestions,
                   },
                   executedQueries: data.executedQueries?.map(q => q.sql) ?? [],
+                  status: 'complete',
                 }
 
-              const newMessages: ChatMessage[] = [...session.messages, assistantMessage]
+              // Replace the last streaming message with the complete one
+              const newMessages = session.messages.filter(m => m.status !== 'streaming')
+              newMessages.push(assistantMessage)
 
               return prev.map(s =>
                 s.id === sessionId ? { ...s, messages: newMessages, updatedAt: new Date() } : s
@@ -866,46 +1093,58 @@ function AppContent() {
             }
 
             removePending(sessionId)
+            // Release lock
+            releaseSessionLock(sessionId, BROWSER_ID).catch(() => {})
           },
           onError: (error) => {
-            // Update session with error
-            setChatSessions(prev => prev.map(s =>
-              s.id === sessionId
-                ? {
-                  ...s,
-                  messages: [...s.messages, {
-                    role: 'assistant',
-                    content: error
-                  }],
-                  updatedAt: new Date()
-                }
-                : s
-            ))
+            // Update session - replace streaming message with error
+            setChatSessions(prev => prev.map(s => {
+              if (s.id !== sessionId) return s
+              const newMessages = s.messages.filter(m => m.status !== 'streaming')
+              newMessages.push({
+                role: 'assistant',
+                content: error,
+                status: 'error',
+              })
+              return { ...s, messages: newMessages, updatedAt: new Date() }
+            }))
             removePending(sessionId)
+            // Release lock
+            releaseSessionLock(sessionId, BROWSER_ID).catch(() => {})
           },
         },
         abortController.signal
       )
+      console.log('[Chat] sendChatMessage: sendChatMessageStream completed')
     } catch (err) {
+      console.log('[Chat] sendChatMessage: caught error', err)
       // Don't show error if aborted
       if (err instanceof Error && err.name === 'AbortError') {
+        // Remove streaming message on abort
+        setChatSessions(prev => prev.map(s => {
+          if (s.id !== sessionId) return s
+          const newMessages = s.messages.filter(m => m.status !== 'streaming')
+          return { ...s, messages: newMessages, updatedAt: new Date() }
+        }))
         removePending(sessionId)
+        // Release lock
+        releaseSessionLock(sessionId, BROWSER_ID).catch(() => {})
         return
       }
-      // Update session with error
-      setChatSessions(prev => prev.map(s =>
-        s.id === sessionId
-          ? {
-            ...s,
-            messages: [...s.messages, {
-              role: 'assistant',
-              content: err instanceof Error ? err.message : 'Something went wrong. Please try again.'
-            }],
-            updatedAt: new Date()
-          }
-          : s
-      ))
+      // Update session - replace streaming message with error
+      setChatSessions(prev => prev.map(s => {
+        if (s.id !== sessionId) return s
+        const newMessages = s.messages.filter(m => m.status !== 'streaming')
+        newMessages.push({
+          role: 'assistant',
+          content: err instanceof Error ? err.message : 'Something went wrong. Please try again.',
+          status: 'error',
+        })
+        return { ...s, messages: newMessages, updatedAt: new Date() }
+      }))
       removePending(sessionId)
+      // Release lock
+      releaseSessionLock(sessionId, BROWSER_ID).catch(() => {})
     }
   }, [updatePendingProgress, removePending])
 
@@ -923,6 +1162,7 @@ function AppContent() {
     currentSessionId,
     setCurrentSessionId,
     sessionsLoaded,
+    queryServerSyncComplete,
     query,
     setQuery,
     results,
@@ -936,9 +1176,12 @@ function AppContent() {
     currentChatSessionId,
     setCurrentChatSessionId,
     chatSessionsLoaded,
+    chatServerSyncComplete,
     pendingChats,
     sendChatMessage,
     abortChatMessage,
+    externalLocks,
+    setExternalLocks,
   }
 
   // Sidebar handlers
@@ -954,6 +1197,7 @@ function AppContent() {
 
   const handleDeleteQuerySession = (sessionId: string) => {
     setSessions(prev => prev.filter(s => s.id !== sessionId))
+    deleteSessionFromServer(sessionId) // Also delete from server
     if (sessionId === currentSessionId && sessions.length > 1) {
       const remaining = sessions.filter(s => s.id !== sessionId)
       if (remaining.length > 0) {
@@ -974,6 +1218,7 @@ function AppContent() {
 
   const handleDeleteChatSession = (sessionId: string) => {
     setChatSessions(prev => prev.filter(s => s.id !== sessionId))
+    deleteSessionFromServer(sessionId) // Also delete from server
     if (sessionId === currentChatSessionId && chatSessions.length > 1) {
       const remaining = chatSessions.filter(s => s.id !== sessionId)
       if (remaining.length > 0) {

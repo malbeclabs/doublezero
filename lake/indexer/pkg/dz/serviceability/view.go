@@ -27,12 +27,13 @@ var (
 		"jump_":    "Jump Crypto",
 		"dgt":      "Distributed Global",
 		"cherry":   "Cherry Servers",
-		"cdrw":     "CDRW",
+		"cdrw":     "Cumberland/DRW",
 		"glxy":     "Galaxy",
 		"latitude": "Latitude",
 		"rox":      "RockawayX",
 		"s3v":      "S3V",
 		"stakefac": "Staking Facilities",
+		"tsw":      "Terraswitch",
 	}
 )
 

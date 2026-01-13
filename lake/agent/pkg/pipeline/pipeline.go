@@ -18,7 +18,7 @@ type Config struct {
 	SchemaFetcher SchemaFetcher
 	Prompts       *Prompts
 	MaxTokens     int64
-	MaxRetries    int    // Max retries for failed queries (default 2)
+	MaxRetries    int    // Max retries for failed queries (default 5)
 	FormatContext string // Optional formatting context to append to synthesize/respond prompts (e.g., Slack formatting guidelines)
 }
 
@@ -150,7 +150,7 @@ func New(cfg *Config) (*Pipeline, error) {
 		cfg.MaxTokens = 4096
 	}
 	if cfg.MaxRetries == 0 {
-		cfg.MaxRetries = 4
+		cfg.MaxRetries = 5
 	}
 
 	return &Pipeline{

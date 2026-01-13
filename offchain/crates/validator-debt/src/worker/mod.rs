@@ -1,4 +1,5 @@
 mod initialize_distribution;
+mod pause_gate;
 
 //
 
@@ -7,7 +8,7 @@ use std::{collections::HashMap, str::FromStr, sync::Arc};
 use anyhow::{Result, bail, ensure};
 use doublezero_solana_client_tools::{
     payer::{TransactionOutcome, Wallet},
-    rpc::DoubleZeroLedgerConnection,
+    rpc::{DoubleZeroLedgerConnection, SolanaConnection},
 };
 use doublezero_solana_sdk::{
     revenue_distribution::{
@@ -24,6 +25,7 @@ use doublezero_solana_sdk::{
 use futures::{StreamExt, TryStreamExt, stream};
 pub use initialize_distribution::*;
 use leaky_bucket::RateLimiter;
+pub(super) use pause_gate::is_config_paused;
 use reqwest::Client;
 use serde::Serialize;
 use slack_notifier;
@@ -60,11 +62,24 @@ pub struct ValidatorSummary {
     pub total_debt: u64,
 }
 
+/// Helper to fetch ProgramConfig using an RpcClient.
+async fn fetch_config_from_rpc(rpc_client: &RpcClient) -> anyhow::Result<Box<ProgramConfig>> {
+    let connection =
+        SolanaConnection::new_with_commitment(rpc_client.url(), rpc_client.commitment());
+    let (_, config) = try_fetch_config(&connection).await?;
+    Ok(config)
+}
+
 pub async fn finalize_distribution(
     solana_debt_calculator: &impl ValidatorRewards,
     transaction: Transaction,
     dz_epoch: u64,
 ) -> Result<()> {
+    let config = fetch_config_from_rpc(solana_debt_calculator.solana_rpc_client()).await?;
+    if is_config_paused(&config) {
+        return Ok(());
+    }
+
     let transaction_to_submit = transaction
         .finalize_distribution(
             solana_debt_calculator.solana_rpc_client(),
@@ -132,6 +147,16 @@ pub async fn calculate_distribution(
     dz_epoch: u64,
     post_to_ledger_only: bool,
 ) -> Result<WriteSummary> {
+    let config = fetch_config_from_rpc(solana_debt_calculator.solana_rpc_client()).await?;
+    if is_config_paused(&config) {
+        // Return an empty summary when paused (skip work).
+        return Ok(WriteSummary {
+            dz_epoch,
+            dry_run: transaction.dry_run,
+            ..Default::default()
+        });
+    }
+
     let fetched_dz_epoch_info = solana_debt_calculator
         .ledger_rpc_client()
         .get_epoch_info()
@@ -392,6 +417,11 @@ pub async fn pay_all_solana_validator_debt(
     dz_ledger: DoubleZeroLedgerConnection,
 ) -> Result<()> {
     let (_, config) = try_fetch_config(&wallet.connection).await?;
+
+    if is_config_paused(&config) {
+        return Ok(());
+    }
+
     let dz_epoch_range = Vec::from_iter(
         GENESIS_DZ_EPOCH_MAINNET_BETA..(config.last_completed_epoch().unwrap().value()),
     );

@@ -44,6 +44,10 @@ pub async fn try_initialize_distribution(
         .try_fetch_zero_copy_data::<ProgramConfig>(&ProgramConfig::find_address().0)
         .await?;
 
+    if super::is_config_paused(&config) {
+        return Ok(());
+    }
+
     let record_accountant_key = match record_accountant_key {
         Some(accountant_key) => {
             // Disallow if the accountant key is not used with localnet.

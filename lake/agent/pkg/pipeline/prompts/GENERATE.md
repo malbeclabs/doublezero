@@ -346,8 +346,15 @@ ORDER BY last_error_time DESC
 ### Data Ingestion Start (CRITICAL)
 The earliest `snapshot_ts` in history tables = **when ingestion began**, NOT when entities were created.
 
+**For questions about growth, new connections, or "recently joined"**:
+- Entities present in the FIRST snapshot are NOT "newly joined" - they existed before ingestion started
+- Only count entities whose first appearance is AFTER the initial ingestion date
+- Use `MIN(snapshot_ts)` on the table to identify the ingestion start date, then exclude entities first seen on that date
+
 **WRONG**: "All users joined on 2024-01-15" (likely just when snapshots started)
+**WRONG**: Counting validators in first snapshot as "recently connected"
 **CORRECT**: If first `snapshot_ts` equals the table's global minimum, the actual join date is unknown
+**CORRECT**: For growth queries, filter to `first_seen > (SELECT MIN(snapshot_ts) FROM table)`
 
 **WRONG**: Joining device IP to gossip IP (devices are infrastructure, not validators)
 **CORRECT**: Joining user dz_ip to gossip_ip (users ARE the validators)

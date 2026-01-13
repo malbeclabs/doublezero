@@ -42,6 +42,7 @@ Given a user's question, identify what specific data questions need to be answer
 - For counts, also consider listing the specific entities if count might be small
 - **For "which" questions**: ALWAYS include a query that lists specific entities with identifying details (vote_pubkey, device code, link code, etc.) plus relevant attributes (stake, status, timestamps). Never answer "which" with just a count.
 - **For "recently" or time-based questions**: Include when events occurred (timestamps), not just what happened. Users want a timeline.
+- **For growth/joining/new entity questions**: Exclude entities from initial data ingestion. Entities present in the first snapshot existed before tracking began - they're not "newly joined". Only count entities that appeared AFTER ingestion started.
 - **For network health/status questions**: Ask for specific entity lists (not just counts). Users need to know exactly which devices, links, and interfaces have issues, along with their specific status or problem details
 - Order questions logically - foundational facts first, then derived insights
 - **For confirmation responses**: If the user says "yes", "please do", "go ahead", etc., and the previous assistant message offered to run a query or investigation, extract the data questions from what was offered. Look at the conversation history to understand what query was proposed.

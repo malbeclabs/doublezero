@@ -35,3 +35,7 @@ cd agent && go test -tags=evals ./evals/... -v      # Full evals (hits Anthropic
 - Tailwind CSS v4 for styling
 - API client functions in `web/src/lib/api.ts`
 - Go handlers in `api/handlers/`
+
+## Git Commits
+
+- Do NOT include "Co-Authored-By" lines in commit messages

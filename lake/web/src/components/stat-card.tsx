@@ -55,12 +55,17 @@ function formatValue(
       return `${thousands.toFixed(0)}K`
     }
     case 'bandwidth': {
-      // Convert bps to Gbps or Tbps
+      // Convert bps to Mbps, Gbps, or Tbps
       const gbps = value / 1_000_000_000
       if (gbps >= 1000) {
         return `${(gbps / 1000).toFixed(1)} Tbps`
       }
-      return `${gbps.toFixed(0)} Gbps`
+      if (gbps >= 1) {
+        return `${gbps.toFixed(0)} Gbps`
+      }
+      // Less than 1 Gbps, show in Mbps
+      const mbps = value / 1_000_000
+      return `${mbps.toFixed(0)} Mbps`
     }
     case 'percent':
       return `${value.toFixed(1)}%`

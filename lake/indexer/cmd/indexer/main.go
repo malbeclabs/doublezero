@@ -84,6 +84,7 @@ func run() error {
 	solanaEnvFlag := flag.String("solana-env", config.SolanaEnvMainnetBeta, "solana environment (devnet, testnet, mainnet-beta)")
 	refreshIntervalFlag := flag.Duration("cache-ttl", defaultRefreshInterval, "cache TTL duration")
 	maxConcurrencyFlag := flag.Int("max-concurrency", defaultMaxConcurrency, "maximum number of concurrent operations")
+	clickhouseInsertQuorumFlag := flag.Int("clickhouse-insert-quorum", 2, "number of ClickHouse replicas that must confirm staging inserts (or set CLICKHOUSE_INSERT_QUORUM env var, 0 to disable)")
 	deviceUsageQueryWindowFlag := flag.Duration("device-usage-query-window", defaultDeviceUsageInfluxQueryWindow, "Query window for device usage (default: 1 hour)")
 	deviceUsageRefreshIntervalFlag := flag.Duration("device-usage-refresh-interval", defaultDeviceUsageRefreshInterval, "Refresh interval for device usage (default: 5 minutes)")
 
@@ -101,6 +102,11 @@ func run() error {
 	}
 	if envClickhousePassword := os.Getenv("CLICKHOUSE_PASSWORD"); envClickhousePassword != "" {
 		*clickhousePasswordFlag = envClickhousePassword
+	}
+	if envInsertQuorum := os.Getenv("CLICKHOUSE_INSERT_QUORUM"); envInsertQuorum != "" {
+		if val, err := fmt.Sscanf(envInsertQuorum, "%d", clickhouseInsertQuorumFlag); err != nil || val != 1 {
+			return fmt.Errorf("invalid CLICKHOUSE_INSERT_QUORUM value: %s", envInsertQuorum)
+		}
 	}
 
 	networkConfig, err := config.NetworkConfigForEnv(*dzEnvFlag)
@@ -250,6 +256,7 @@ func run() error {
 
 			RefreshInterval: *refreshIntervalFlag,
 			MaxConcurrency:  *maxConcurrencyFlag,
+			InsertQuorum:    *clickhouseInsertQuorumFlag,
 
 			// GeoIP configuration
 			GeoIPResolver: geoIPResolver,

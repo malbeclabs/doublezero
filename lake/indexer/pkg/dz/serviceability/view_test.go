@@ -672,6 +672,6 @@ func TestLake_Serviceability_View_Refresh(t *testing.T) {
 		ctx := context.Background()
 		err = view.Refresh(ctx)
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "refusing to write empty snapshot")
+		require.Contains(t, err.Error(), "refusing to write snapshot")
 	})
 }

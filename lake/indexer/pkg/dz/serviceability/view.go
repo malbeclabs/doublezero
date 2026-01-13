@@ -93,6 +93,9 @@ type ViewConfig struct {
 	ServiceabilityRPC ServiceabilityRPC
 	RefreshInterval   time.Duration
 	ClickHouse        clickhouse.Client
+	// InsertQuorum specifies the number of replicas that must confirm staging inserts.
+	// Defaults to 2 for production. Set to 0 for single-node test environments.
+	InsertQuorum int
 }
 
 func (cfg *ViewConfig) Validate() error {
@@ -112,6 +115,8 @@ func (cfg *ViewConfig) Validate() error {
 	if cfg.Clock == nil {
 		cfg.Clock = clockwork.NewRealClock()
 	}
+	// InsertQuorum defaults to 0 (disabled). Production should explicitly set it
+	// to the replica count (e.g., 2) to prevent replication lag issues.
 	return nil
 }
 
@@ -132,8 +137,9 @@ func NewView(cfg ViewConfig) (*View, error) {
 	}
 
 	store, err := NewStore(StoreConfig{
-		Logger:     cfg.Logger,
-		ClickHouse: cfg.ClickHouse,
+		Logger:       cfg.Logger,
+		ClickHouse:   cfg.ClickHouse,
+		InsertQuorum: cfg.InsertQuorum,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create store: %w", err)
@@ -234,10 +240,19 @@ func (v *View) Refresh(ctx context.Context) error {
 		"links", len(pd.Links),
 		"metros", len(pd.Exchanges))
 
-	// Validate that we received data - empty responses would tombstone all existing entities
-	if len(pd.Contributors) == 0 && len(pd.Devices) == 0 && len(pd.Exchanges) == 0 {
+	// Validate that we received data for each entity type - empty responses would tombstone all existing entities.
+	// Check each independently since they're written separately with MissingMeansDeleted=true.
+	if len(pd.Contributors) == 0 {
 		metrics.ViewRefreshTotal.WithLabelValues("serviceability", "error").Inc()
-		return fmt.Errorf("refusing to write empty snapshot: RPC returned no contributors, devices, or metros (possible RPC issue)")
+		return fmt.Errorf("refusing to write snapshot: RPC returned no contributors (possible RPC issue)")
+	}
+	if len(pd.Devices) == 0 {
+		metrics.ViewRefreshTotal.WithLabelValues("serviceability", "error").Inc()
+		return fmt.Errorf("refusing to write snapshot: RPC returned no devices (possible RPC issue)")
+	}
+	if len(pd.Exchanges) == 0 {
+		metrics.ViewRefreshTotal.WithLabelValues("serviceability", "error").Inc()
+		return fmt.Errorf("refusing to write snapshot: RPC returned no metros (possible RPC issue)")
 	}
 
 	contributors := convertContributors(pd.Contributors)

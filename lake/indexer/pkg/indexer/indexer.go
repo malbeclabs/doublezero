@@ -60,6 +60,7 @@ func New(ctx context.Context, cfg Config) (*Indexer, error) {
 		ServiceabilityRPC: cfg.ServiceabilityRPC,
 		RefreshInterval:   cfg.RefreshInterval,
 		ClickHouse:        cfg.ClickHouse,
+		InsertQuorum:      cfg.InsertQuorum,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create serviceability view: %w", err)

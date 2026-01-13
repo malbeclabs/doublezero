@@ -47,7 +47,12 @@ func (m *MockServiceabilityRPC) GetProgramData(ctx context.Context) (*serviceabi
 	if m.getProgramDataFunc != nil {
 		return m.getProgramDataFunc(ctx)
 	}
-	return &serviceability.ProgramData{}, nil
+	// Return minimal valid data to pass validation
+	return &serviceability.ProgramData{
+		Contributors: []serviceability.Contributor{{PubKey: [32]byte{1}}},
+		Devices:      []serviceability.Device{{PubKey: [32]byte{2}}},
+		Exchanges:    []serviceability.Exchange{{PubKey: [32]byte{3}}},
+	}, nil
 }
 
 type mockGeoIPStore struct {
@@ -274,6 +279,9 @@ func TestLake_TelemetryLatency_View_Refresh_SavesToDB(t *testing.T) {
 							JitterNs:          50000,
 						},
 					},
+					Exchanges: []serviceability.Exchange{
+						{PubKey: metroPK, Code: "METRO1", Name: "Test Metro"},
+					},
 				}, nil
 			},
 		}
@@ -386,6 +394,9 @@ func TestLake_TelemetryLatency_View_Refresh_SavesToDB(t *testing.T) {
 							DelayNs:           1000000,
 							JitterNs:          50000,
 						},
+					},
+					Exchanges: []serviceability.Exchange{
+						{PubKey: metroPK, Code: "METRO1", Name: "Test Metro"},
 					},
 				}, nil
 			},
@@ -540,6 +551,9 @@ func TestLake_TelemetryLatency_View_Refresh_SavesToDB(t *testing.T) {
 							DelayNs:           1000000,
 							JitterNs:          50000,
 						},
+					},
+					Exchanges: []serviceability.Exchange{
+						{PubKey: metroPK, Code: "METRO1", Name: "Test Metro"},
 					},
 				}, nil
 			},
@@ -720,6 +734,9 @@ func TestLake_TelemetryLatency_View_IncrementalAppend(t *testing.T) {
 							DelayNs:           1000000,
 							JitterNs:          50000,
 						},
+					},
+					Exchanges: []serviceability.Exchange{
+						{PubKey: metroPK, Code: "METRO1", Name: "Test Metro"},
 					},
 				}, nil
 			},
@@ -909,6 +926,9 @@ func TestLake_TelemetryLatency_View_IncrementalAppend(t *testing.T) {
 							Owner:  ownerPubkey,
 							Code:   "CONTRIB",
 						},
+					},
+					Devices: []serviceability.Device{
+						{PubKey: [32]byte{99}, ContributorPubKey: contributorPK, ExchangePubKey: metroPK1},
 					},
 					Exchanges: []serviceability.Exchange{
 						{
@@ -1191,6 +1211,9 @@ func TestLake_TelemetryLatency_View_Refresh_ErrorHandling(t *testing.T) {
 							JitterNs:          50000,
 						},
 					},
+					Exchanges: []serviceability.Exchange{
+						{PubKey: metroPK, Code: "METRO1", Name: "Test Metro"},
+					},
 				}, nil
 			},
 		}
@@ -1309,6 +1332,9 @@ func TestLake_TelemetryLatency_View_Refresh_ErrorHandling(t *testing.T) {
 							Owner:  ownerPubkey,
 							Code:   "CONTRIB",
 						},
+					},
+					Devices: []serviceability.Device{
+						{PubKey: [32]byte{99}, ContributorPubKey: contributorPK, ExchangePubKey: metroPK1},
 					},
 					Exchanges: []serviceability.Exchange{
 						{

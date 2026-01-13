@@ -647,6 +647,8 @@ export interface TopologyLink {
   side_z_pk: string
   latency_us: number
   jitter_us: number
+  loss_percent: number
+  sample_count: number
   in_bps: number
   out_bps: number
 }

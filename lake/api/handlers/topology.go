@@ -42,6 +42,8 @@ type Link struct {
 	SideZPK      string  `json:"side_z_pk"`
 	LatencyUs    float64 `json:"latency_us"`
 	JitterUs     float64 `json:"jitter_us"`
+	LossPercent  float64 `json:"loss_percent"`
+	SampleCount  uint64  `json:"sample_count"`
 	InBps        float64 `json:"in_bps"`
 	OutBps       float64 `json:"out_bps"`
 }
@@ -140,20 +142,26 @@ func GetTopology(w http.ResponseWriter, r *http.Request) {
 		return rows.Err()
 	})
 
-	// Fetch activated links with measured latency, jitter, and traffic rates
+	// Fetch activated links with measured latency, jitter, loss, and traffic rates
 	g.Go(func() error {
 		query := `
 			SELECT
 				l.pk, l.code, l.status, l.link_type, l.bandwidth_bps, l.side_a_pk, l.side_z_pk,
 				COALESCE(lat.avg_rtt_us, 0) as latency_us,
 				COALESCE(lat.avg_ipdv_us, 0) as jitter_us,
+				COALESCE(lat.loss_percent, 0) as loss_percent,
+				COALESCE(lat.sample_count, 0) as sample_count,
 				COALESCE(traffic.in_bps, 0) as in_bps,
 				COALESCE(traffic.out_bps, 0) as out_bps
 			FROM dz_links_current l
 			LEFT JOIN (
-				SELECT link_pk, avg(rtt_us) as avg_rtt_us, avg(abs(ipdv_us)) as avg_ipdv_us
+				SELECT link_pk,
+					avg(rtt_us) as avg_rtt_us,
+					avg(abs(ipdv_us)) as avg_ipdv_us,
+					countIf(loss) * 100.0 / count(*) as loss_percent,
+					count(*) as sample_count
 				FROM fact_dz_device_link_latency
-				WHERE event_ts > now() - INTERVAL 5 MINUTE
+				WHERE event_ts > now() - INTERVAL 3 HOUR
 				GROUP BY link_pk
 			) lat ON l.pk = lat.link_pk
 			LEFT JOIN (
@@ -175,7 +183,7 @@ func GetTopology(w http.ResponseWriter, r *http.Request) {
 
 		for rows.Next() {
 			var l Link
-			if err := rows.Scan(&l.PK, &l.Code, &l.Status, &l.LinkType, &l.BandwidthBps, &l.SideAPK, &l.SideZPK, &l.LatencyUs, &l.JitterUs, &l.InBps, &l.OutBps); err != nil {
+			if err := rows.Scan(&l.PK, &l.Code, &l.Status, &l.LinkType, &l.BandwidthBps, &l.SideAPK, &l.SideZPK, &l.LatencyUs, &l.JitterUs, &l.LossPercent, &l.SampleCount, &l.InBps, &l.OutBps); err != nil {
 				return err
 			}
 			links = append(links, l)

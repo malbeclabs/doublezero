@@ -40,6 +40,36 @@ function calculateLinkWeight(bps: number): number {
   return weight
 }
 
+// Calculate link color based on loss percentage
+// 0% = blue, 1% = yellow, 5%+ = red, no data = gray
+function getLossColor(lossPercent: number | undefined, hasData: boolean, isDark: boolean): string {
+  if (!hasData) {
+    return isDark ? '#6b7280' : '#9ca3af' // gray for no data
+  }
+
+  const loss = lossPercent ?? 0
+
+  // Clamp loss between 0 and 5 for color interpolation
+  const t = Math.min(loss / 5, 1)
+
+  // Blue (0%) -> Yellow (1%) -> Red (5%+)
+  if (t <= 0.2) {
+    // Blue to yellow (0-1% loss)
+    const ratio = t / 0.2
+    const r = Math.round(59 + ratio * (234 - 59))
+    const g = Math.round(130 + ratio * (179 - 130))
+    const b = Math.round(246 + ratio * (8 - 246))
+    return `rgb(${r}, ${g}, ${b})`
+  } else {
+    // Yellow to red (1-5% loss)
+    const ratio = (t - 0.2) / 0.8
+    const r = Math.round(234 + ratio * (239 - 234))
+    const g = Math.round(179 - ratio * 179)
+    const b = Math.round(8 - ratio * 8)
+    return `rgb(${r}, ${g}, ${b})`
+  }
+}
+
 // Hovered link info type
 interface HoveredLinkInfo {
   code: string
@@ -47,6 +77,7 @@ interface HoveredLinkInfo {
   bandwidth: string
   latencyMs: string
   jitterMs: string
+  lossPercent: string
   inRate: string
   outRate: string
   deviceA: string
@@ -364,8 +395,6 @@ export function TopologyMap({ metros, devices, links }: TopologyMapProps) {
 
   // Colors
   const deviceColor = isDark ? '#f97316' : '#ea580c' // orange
-  const wanLinkColor = isDark ? '#3b82f6' : '#2563eb' // blue
-  const dzxLinkColor = isDark ? '#a855f7' : '#9333ea' // purple
   const metroColor = isDark ? '#4b5563' : '#9ca3af' // gray
 
   return (
@@ -424,7 +453,8 @@ export function TopologyMap({ metros, devices, links }: TopologyMapProps) {
       {/* Links */}
       {linkData.map(({ link, path, deviceA, deviceZ }) => {
         const isWan = link.link_type === 'WAN'
-        const color = isWan ? wanLinkColor : dzxLinkColor
+        const hasLatencyData = (link.sample_count ?? 0) > 0
+        const color = getLossColor(link.loss_percent, hasLatencyData, isDark)
         const weight = calculateLinkWeight(link.bandwidth_bps)
         const isThisHovered = hoveredLink?.code === link.code
 
@@ -444,8 +474,9 @@ export function TopologyMap({ metros, devices, links }: TopologyMapProps) {
                   code: link.code,
                   linkType: link.link_type,
                   bandwidth: formatBandwidth(link.bandwidth_bps),
-                  latencyMs: link.latency_us > 0 ? `${(link.latency_us / 1000).toFixed(2)}ms` : 'N/A',
-                  jitterMs: (link.jitter_us ?? 0) > 0 ? `${(link.jitter_us / 1000).toFixed(3)}ms` : (link.latency_us > 0 ? '0.000ms' : 'N/A'),
+                  latencyMs: hasLatencyData ? (link.latency_us > 0 ? `${(link.latency_us / 1000).toFixed(2)}ms` : '0.00ms') : 'N/A',
+                  jitterMs: hasLatencyData ? ((link.jitter_us ?? 0) > 0 ? `${(link.jitter_us / 1000).toFixed(3)}ms` : '0.000ms') : 'N/A',
+                  lossPercent: hasLatencyData ? `${(link.loss_percent ?? 0).toFixed(2)}%` : 'N/A',
                   inRate: formatTrafficRate(link.in_bps),
                   outRate: formatTrafficRate(link.out_bps),
                   deviceA: deviceA?.code || 'Unknown',
@@ -521,6 +552,10 @@ export function TopologyMap({ metros, devices, links }: TopologyMapProps) {
               <div className="flex justify-between gap-4">
                 <span className="text-muted-foreground">Jitter:</span>
                 <span>{hoveredLink.jitterMs}</span>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="text-muted-foreground">Loss:</span>
+                <span>{hoveredLink.lossPercent}</span>
               </div>
               <div className="flex justify-between gap-4">
                 <span className="text-muted-foreground">In:</span>

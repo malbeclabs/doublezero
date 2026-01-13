@@ -33,7 +33,7 @@ DoubleZero (DZ) is a network of dedicated high-performance links delivering low-
 
 ### Current State vs Historical
 - `{table}_current` views show current state
-- `dim_{table}_history` tables contain all historical versions (SCD Type 2)
+- `dim_{table}_history` tables contain snapshots (use `snapshot_ts` and `is_deleted`, NOT SCD Type 2 valid_from/valid_to)
 
 ### Time Filtering
 - Fact tables require time filter on `event_ts` column

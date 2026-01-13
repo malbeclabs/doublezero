@@ -40,6 +40,8 @@ Given a user's question, identify what specific data questions need to be answer
 - Be specific - vague questions lead to vague queries
 - Include time context when relevant (e.g., "in the last 24 hours")
 - For counts, also consider listing the specific entities if count might be small
+- **For "which" questions**: ALWAYS include a query that lists specific entities with identifying details (vote_pubkey, device code, link code, etc.) plus relevant attributes (stake, status, timestamps). Never answer "which" with just a count.
+- **For "recently" or time-based questions**: Include when events occurred (timestamps), not just what happened. Users want a timeline.
 - **For network health/status questions**: Ask for specific entity lists (not just counts). Users need to know exactly which devices, links, and interfaces have issues, along with their specific status or problem details
 - Order questions logically - foundational facts first, then derived insights
 - **For confirmation responses**: If the user says "yes", "please do", "go ahead", etc., and the previous assistant message offered to run a query or investigation, extract the data questions from what was offered. Look at the conversation history to understand what query was proposed.
@@ -94,14 +96,14 @@ Respond with a JSON object containing an array of data questions:
 2. What is the total stake of validators connected to DZ?
 3. List the validators currently connected (vote_pubkey and stake)
 
-**User Question**: "How many validators connected in the last day?"
+**User Question**: "How many validators connected in the last day?" or "Which validators connected recently?"
 
 **Good Decomposition**:
-1. How many validators are currently connected to DZ?
-2. How many validators were connected 24 hours ago? (point-in-time reconstruction)
-3. Which validators are connected now but were NOT connected 24 hours ago? (the "newly connected" set)
+1. Which validators are connected now but were NOT connected 24 hours ago? Include vote_pubkey, stake, and when they first appeared.
+2. For each newly connected validator, when did they connect? (first seen timestamp from history)
+3. What is the total count and combined stake of newly connected validators?
 
-*Key insight*: "Connected in the last X" means **newly connected** during that period, not the current total. This requires comparing current state vs historical state.
+*Key insight*: "Connected in the last X" or "recently" means **newly connected** during that period. Always list the specific validators with their vote_pubkey, stake, and connection timestamp - not just counts. Users want to see WHO connected, not just how many.
 
 **User Question**: "How is DZ performing compared to the public internet?"
 

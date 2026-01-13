@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from 'react'
+import { useRef, useEffect, useState, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
@@ -114,6 +114,32 @@ const darkCodeTheme: { [key: string]: React.CSSProperties } = {
   variable: { color: 'hsl(30, 70%, 65%)' },
   bold: { fontWeight: 'bold' },
   italic: { fontStyle: 'italic' },
+}
+
+// Example questions for empty chat state
+const EXAMPLE_QUESTIONS = [
+  "How is the network doing?",
+  "How many Solana validators are on DZ?",
+  "Compare DZ to the public internet",
+  "Which links have the highest utilization?",
+  "What is the total stake connected to DZ?",
+  "Which metros have the most validators?",
+  "Show me link latency by metro pair",
+  "Are there any links with packet loss?",
+  "What's the average RTT for DZ links?",
+  "Which validators connected recently?",
+  "Which validators have the highest stake?",
+  "Compare validator performance on vs off DZ",
+]
+
+// Randomly select n items from an array (Fisher-Yates shuffle, take first n)
+function selectRandom<T>(arr: T[], n: number): T[] {
+  const shuffled = [...arr]
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+  }
+  return shuffled.slice(0, n)
 }
 
 function CodeBlock({ language, children, isDark }: { language: string; children: string; isDark: boolean }) {
@@ -425,6 +451,9 @@ export function Chat({ messages, isPending, progress, onSendMessage, onAbort, on
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
 
+  // Randomly select example questions on mount (changes per session)
+  const exampleQuestions = useMemo(() => selectRandom(EXAMPLE_QUESTIONS, 4), [])
+
   const handleAskAboutQuery = (question: string, _sql: string, rowCount: number) => {
     const prompt = `Tell me more about the "${question}" result (${rowCount} rows). What insights can you draw from this data?`
     setInput(prompt)
@@ -483,12 +512,7 @@ export function Chat({ messages, isPending, progress, onSendMessage, onAbort, on
                 <p className="text-lg mb-2">What would you like to know?</p>
                 <p className="text-sm mb-8">Ask questions about your data. I can run queries to find answers.</p>
                 <div className="flex flex-wrap justify-center gap-2 max-w-xl mx-auto">
-                  {[
-                    "How is the network doing?",
-                    "How many Solana validators are on DZ?",
-                    "Compare DZ to the public internet",
-                    "Which links have the highest utilization?",
-                  ].map((question) => (
+                  {exampleQuestions.map((question) => (
                     <button
                       key={question}
                       onClick={() => onSendMessage(question)}

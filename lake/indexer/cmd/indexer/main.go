@@ -19,9 +19,9 @@ import (
 
 	"github.com/malbeclabs/doublezero/config"
 	telemetryconfig "github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/config"
-	indexer "github.com/malbeclabs/doublezero/lake/indexer/pkg"
 	"github.com/malbeclabs/doublezero/lake/indexer/pkg/clickhouse"
 	dztelemusage "github.com/malbeclabs/doublezero/lake/indexer/pkg/dz/telemetry/usage"
+	"github.com/malbeclabs/doublezero/lake/indexer/pkg/indexer"
 	"github.com/malbeclabs/doublezero/lake/indexer/pkg/metrics"
 	"github.com/malbeclabs/doublezero/lake/indexer/pkg/server"
 	"github.com/malbeclabs/doublezero/lake/utils/pkg/logger"

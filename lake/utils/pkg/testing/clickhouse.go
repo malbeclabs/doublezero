@@ -29,7 +29,9 @@ func NewClientWithInfo(t *testing.T, db *clickhousetesting.DB) *ClientInfo {
 	defer conn.Close()
 
 	log := NewLogger()
-	err = clickhouse.RunMigrations(t.Context(), log, conn)
+	err = clickhouse.RunMigrationsWithOptions(t.Context(), log, conn, clickhouse.MigrationOptions{
+		SingleNode: true,
+	})
 	require.NoError(t, err)
 
 	return &ClientInfo{

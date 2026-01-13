@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	indexer "github.com/malbeclabs/doublezero/lake/indexer/pkg"
+	"github.com/malbeclabs/doublezero/lake/indexer/pkg/indexer"
 )
 
 type Config struct {

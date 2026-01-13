@@ -234,6 +234,12 @@ func (v *View) Refresh(ctx context.Context) error {
 		"links", len(pd.Links),
 		"metros", len(pd.Exchanges))
 
+	// Validate that we received data - empty responses would tombstone all existing entities
+	if len(pd.Contributors) == 0 && len(pd.Devices) == 0 && len(pd.Exchanges) == 0 {
+		metrics.ViewRefreshTotal.WithLabelValues("serviceability", "error").Inc()
+		return fmt.Errorf("refusing to write empty snapshot: RPC returned no contributors, devices, or metros (possible RPC issue)")
+	}
+
 	contributors := convertContributors(pd.Contributors)
 	devices := convertDevices(pd.Devices)
 	users := convertUsers(pd.Users)

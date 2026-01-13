@@ -22,7 +22,12 @@ func (m *MockServiceabilityRPC) GetProgramData(ctx context.Context) (*serviceabi
 	if m.getProgramDataFunc != nil {
 		return m.getProgramDataFunc(ctx)
 	}
-	return &serviceability.ProgramData{}, nil
+	// Return minimal valid data to pass empty snapshot validation
+	return &serviceability.ProgramData{
+		Contributors: []serviceability.Contributor{{PubKey: [32]byte{1}, Code: "test"}},
+		Devices:      []serviceability.Device{{PubKey: [32]byte{2}, Code: "test-device", Status: serviceability.DeviceStatusActivated}},
+		Exchanges:    []serviceability.Exchange{{PubKey: [32]byte{3}, Code: "test-metro", Name: "Test Metro"}},
+	}, nil
 }
 
 func TestLake_Serviceability_View_Ready(t *testing.T) {
@@ -589,6 +594,10 @@ func TestLake_Serviceability_View_Refresh(t *testing.T) {
 		rpc := &MockServiceabilityRPC{
 			getProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
 				return &serviceability.ProgramData{
+					// Minimal data to pass empty snapshot validation
+					Contributors: []serviceability.Contributor{{PubKey: [32]byte{1}, Code: "test"}},
+					Devices:      []serviceability.Device{{PubKey: [32]byte{2}, Code: "test-device", Status: serviceability.DeviceStatusActivated}},
+					Exchanges:    []serviceability.Exchange{{PubKey: [32]byte{3}, Code: "test-metro", Name: "Test Metro"}},
 					Users: []serviceability.User{
 						{
 							PubKey:       userPK,
@@ -637,5 +646,32 @@ func TestLake_Serviceability_View_Refresh(t *testing.T) {
 		require.Equal(t, uint64(1), userCount, "should have 1 user even without geoip")
 
 		// Note: GeoIP records are now handled by the geoip view, not the serviceability view
+	})
+
+	t.Run("rejects empty snapshot to prevent mass deletion", func(t *testing.T) {
+		t.Parallel()
+
+		mockDB := testClient(t)
+
+		rpc := &MockServiceabilityRPC{
+			getProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+				// Return empty data - simulates RPC returning no accounts
+				return &serviceability.ProgramData{}, nil
+			},
+		}
+
+		view, err := NewView(ViewConfig{
+			Logger:            laketesting.NewLogger(),
+			Clock:             clockwork.NewFakeClock(),
+			ServiceabilityRPC: rpc,
+			RefreshInterval:   time.Second,
+			ClickHouse:        mockDB,
+		})
+		require.NoError(t, err)
+
+		ctx := context.Background()
+		err = view.Refresh(ctx)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "refusing to write empty snapshot")
 	})
 }

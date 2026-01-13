@@ -83,7 +83,7 @@ Respond with a JSON object containing an array of data questions:
 2. List all links with status other than activated, showing link code and current status
 3. List all links with packet loss in the last 24 hours, with link code and loss percentage
 4. List all interfaces with errors, discards, or carrier transitions in the last 24 hours, with device code, interface name, associated link (if any), and counts for each issue type
-5. List all WAN links with utilization above 80% in the last 24 hours, with link code and utilization percentage per direction
+5. List all links with utilization above 80% in the last 24 hours, with link code and utilization percentage per direction
 
 *Key insight*: Network health/status questions should return specific entity lists with details, not just counts. Users need to know exactly which devices and links have issues to investigate them. Omit sections where no issues exist (e.g., don't mention "0 devices with issues").
 

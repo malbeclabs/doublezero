@@ -100,7 +100,7 @@ All 12 devices and 15 links are activated [Q1, Q2].
 
 📊 **Performance Overview**
 
-WAN latency is stable [Q6]:
+Link latency is stable [Q6]:
 - **nyc ↔ lon**: 45 ms average, 52 ms P95
 - **tok ↔ sgp**: 68 ms average, 75 ms P95
 

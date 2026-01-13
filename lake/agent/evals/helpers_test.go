@@ -119,8 +119,8 @@ func loadTablesAndViews(t *testing.T, ctx context.Context, conn clickhouse.Conne
 	executeSQLStatements(t, ctx, conn, viewsSQL)
 }
 
-// OllamaExpectation represents a specific expectation for the ollama validator to check
-type OllamaExpectation struct {
+// Expectation represents a specific expectation for the evaluator to check
+type Expectation struct {
 	// Description describes what should be present (e.g., "the number of newly connected validators")
 	Description string
 	// ExpectedValue is the expected value (e.g., "3")
@@ -129,37 +129,9 @@ type OllamaExpectation struct {
 	Rationale string
 }
 
-// ollamaEvaluateResponse uses a local Ollama instance to evaluate if the response correctly answers the question.
+// evaluateResponse uses Anthropic Haiku to evaluate if the response correctly answers the question.
 // Returns true if the response is evaluated as correct, false otherwise.
-// If Ollama is not available, returns (true, nil) with a warning - tests should also include
-// deterministic checks where possible for reliable CI without Ollama.
-func ollamaEvaluateResponse(t *testing.T, ctx context.Context, question, response string, expectations ...OllamaExpectation) (bool, error) {
-	ollamaURL := os.Getenv("OLLAMA_URL")
-	if ollamaURL == "" {
-		// Detect if running in a devcontainer and use DIND_LOCALHOST hostname
-		if dindHost := os.Getenv("DIND_LOCALHOST"); dindHost != "" {
-			ollamaURL = fmt.Sprintf("http://%s:11434", dindHost)
-		} else {
-			ollamaURL = "http://localhost:11434"
-		}
-	}
-
-	// Check if Ollama is available before attempting evaluation
-	pingClient := &http.Client{Timeout: 2 * time.Second}
-	pingResp, pingErr := pingClient.Get(ollamaURL + "/api/tags")
-	if pingErr != nil || pingResp.StatusCode != http.StatusOK {
-		t.Logf("⚠️  Ollama not available at %s - skipping LLM evaluation. Add deterministic checks for reliable CI.", ollamaURL)
-		return true, nil
-	}
-	pingResp.Body.Close()
-
-	model := os.Getenv("OLLAMA_EVAL_MODEL")
-	if model == "" {
-		// Use llama3.1:8b for evaluation - fast and good comprehension
-		// Evaluation is simpler than agent work (no tool calling, just YES/NO judgment)
-		model = "llama3.1:8b"
-	}
-
+func evaluateResponse(t *testing.T, ctx context.Context, question, response string, expectations ...Expectation) (bool, error) {
 	// Build expectations section if provided
 	var expectationsSection string
 	if len(expectations) > 0 {
@@ -198,82 +170,23 @@ IMPORTANT: Including additional relevant context or details beyond the expectati
 
 Respond with only "YES" or "NO" followed by a brief explanation.`, question, response, expectationsSection)
 
-	// Prepare request
-	reqBody := map[string]any{
-		"model":  model,
-		"prompt": evalPrompt,
-		"stream": false,
-	}
+	// Use Anthropic Haiku for evaluation - fast and reliable
+	llmClient := pipeline.NewAnthropicLLMClient(
+		anthropic.ModelClaudeHaiku4_5_20251001,
+		1024, // Short response needed for YES/NO + explanation
+	)
 
-	jsonData, err := json.Marshal(reqBody)
-	require.NoError(t, err)
-
-	// Make request with timeout
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", ollamaURL+"/api/generate", bytes.NewBuffer(jsonData))
-	require.NoError(t, err)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := client.Do(req)
+	evalResponse, err := llmClient.Complete(ctx, "You are a test evaluator. Respond with YES or NO followed by a brief explanation.", evalPrompt)
 	if err != nil {
-		return false, fmt.Errorf("failed to connect to Ollama at %s: %w", ollamaURL, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return false, fmt.Errorf("Ollama returned status %d: %s", resp.StatusCode, string(body))
-	}
-
-	// Parse response - Ollama may return streaming or non-streaming
-	var ollamaResp struct {
-		Response string `json:"response"`
-		Done     bool   `json:"done"`
-	}
-
-	// Try to decode as single response first
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return false, fmt.Errorf("failed to read Ollama response: %w", err)
-	}
-
-	// Try parsing as single JSON object
-	if err := json.Unmarshal(bodyBytes, &ollamaResp); err == nil && ollamaResp.Done {
-		// Successfully parsed as single response
-	} else {
-		// Try parsing as streaming response (newline-delimited JSON)
-		var fullResponse strings.Builder
-		lines := strings.Split(string(bodyBytes), "\n")
-		for _, line := range lines {
-			line = strings.TrimSpace(line)
-			if line == "" {
-				continue
-			}
-			var streamChunk struct {
-				Response string `json:"response"`
-				Done     bool   `json:"done"`
-			}
-			if err := json.Unmarshal([]byte(line), &streamChunk); err != nil {
-				continue
-			}
-			fullResponse.WriteString(streamChunk.Response)
-			if streamChunk.Done {
-				ollamaResp.Done = true
-				break
-			}
-		}
-		ollamaResp.Response = fullResponse.String()
+		return false, fmt.Errorf("evaluation API call failed: %w", err)
 	}
 
 	// Parse evaluation result
-	evalText := strings.ToUpper(strings.TrimSpace(ollamaResp.Response))
-	originalResponse := strings.TrimSpace(ollamaResp.Response)
+	evalText := strings.ToUpper(strings.TrimSpace(evalResponse))
+	originalResponse := strings.TrimSpace(evalResponse)
 
 	// Helper function to extract and log explanation
-	extractAndLogExplanation := func(prefix string, verdict string) string {
+	extractAndLogExplanation := func(prefix string, verdict string) {
 		explanation := originalResponse
 		prefixUpper := strings.ToUpper(prefix)
 		if strings.HasPrefix(strings.ToUpper(explanation), prefixUpper) {
@@ -285,19 +198,15 @@ Respond with only "YES" or "NO" followed by a brief explanation.`, question, res
 			}
 		}
 		if explanation != "" {
-			t.Logf("Ollama evaluation explanation (%s): %s", verdict, explanation)
-		} else {
-			// If no explanation found, log the full response for debugging
-			t.Logf("Ollama evaluation said %s but no explanation found. Full response: %s", verdict, originalResponse)
+			t.Logf("Evaluation (%s): %s", verdict, explanation)
 		}
-		return explanation
 	}
 
 	if strings.HasPrefix(evalText, "YES") {
-		extractAndLogExplanation("YES", "YES")
+		extractAndLogExplanation("YES", "PASS")
 		return true, nil
 	} else if strings.HasPrefix(evalText, "NO") {
-		extractAndLogExplanation("NO", "NO")
+		extractAndLogExplanation("NO", "FAIL")
 		return false, nil
 	}
 
@@ -307,7 +216,7 @@ Respond with only "YES" or "NO" followed by a brief explanation.`, question, res
 	}
 
 	// Default to false if unclear
-	t.Logf("Ollama evaluation response was unclear: %s", ollamaResp.Response)
+	t.Logf("Evaluation response was unclear: %s", evalResponse)
 	return false, nil
 }
 
@@ -591,14 +500,10 @@ func formatQueryResult(result pipeline.QueryResult) string {
 }
 
 // isOllamaAvailable checks if the local Ollama server is available for agent evals.
-// Currently disabled: local Ollama models generate unreliable SQL queries, causing
-// false failures. The Ollama client is still used for *evaluating* responses (via
-// ollamaEvaluateResponse), but not for running the agent pipeline itself.
-// Set OLLAMA_AGENT_EVALS=1 to force-enable these tests for local development.
+// Currently disabled by default: local Ollama models generate unreliable SQL queries.
+// Set OLLAMA_AGENT_EVALS=1 to enable these tests for local development.
 func isOllamaAvailable() bool {
 	// Ollama agent tests are disabled by default due to unreliable SQL generation.
-	// The local models aren't capable enough for the agent pipeline, though they
-	// work fine for evaluating responses.
 	if os.Getenv("OLLAMA_AGENT_EVALS") != "1" {
 		return false
 	}

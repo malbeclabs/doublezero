@@ -91,7 +91,7 @@ func runTest_SolanaValidatorsConnectedStakeIncrease(t *testing.T, llmFactory LLM
 	}
 
 	// Evaluate with Ollama - include specific expectations
-	expectations := []OllamaExpectation{
+	expectations := []Expectation{
 		{
 			Description:   "Response lists vote1 and vote2",
 			ExpectedValue: "vote1 and vote2 appear in the response (these are the correct validators)",
@@ -103,9 +103,9 @@ func runTest_SolanaValidatorsConnectedStakeIncrease(t *testing.T, llmFactory LLM
 			Rationale:     "Excluding vote3 and vote4 is CORRECT behavior - they were connected before the time window",
 		},
 	}
-	isCorrect, err := ollamaEvaluateResponse(t, ctx, question, response, expectations...)
-	require.NoError(t, err, "Ollama evaluation must be available")
-	require.True(t, isCorrect, "Ollama evaluation indicates the response does not correctly answer the question")
+	isCorrect, err := evaluateResponse(t, ctx, question, response, expectations...)
+	require.NoError(t, err, "Evaluation must be available")
+	require.True(t, isCorrect, "Evaluation indicates the response does not correctly answer the question")
 }
 
 // seedSolanaValidatorsConnectedStakeIncreaseData seeds data for testing validators connected during a time window

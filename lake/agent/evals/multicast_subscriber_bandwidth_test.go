@@ -94,7 +94,7 @@ func runTest_MulticastSubscriberBandwidth(t *testing.T, llmFactory LLMClientFact
 	require.Greater(t, len(response), 50, "Response should be substantial")
 
 	// Evaluate with Ollama - include specific expectations
-	expectations := []OllamaExpectation{
+	expectations := []Expectation{
 		{
 			Description:   "Highest bandwidth subscriber",
 			ExpectedValue: "owner3 (owner_pubkey)",
@@ -106,9 +106,9 @@ func runTest_MulticastSubscriberBandwidth(t *testing.T, llmFactory LLMClientFact
 			Rationale:     "These are the stable identifiers for the subscriber",
 		},
 	}
-	isCorrect, err := ollamaEvaluateResponse(t, ctx, question, response, expectations...)
-	require.NoError(t, err, "Ollama evaluation must be available")
-	require.True(t, isCorrect, "Ollama evaluation indicates the response does not correctly answer the question")
+	isCorrect, err := evaluateResponse(t, ctx, question, response, expectations...)
+	require.NoError(t, err, "Evaluation must be available")
+	require.True(t, isCorrect, "Evaluation indicates the response does not correctly answer the question")
 }
 
 // seedMulticastSubscriberBandwidthData seeds multicast subscriber bandwidth data for TestLake_Agent_Evals_Anthropic_MulticastSubscriberBandwidth

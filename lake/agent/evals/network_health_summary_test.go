@@ -91,7 +91,7 @@ func runTest_NetworkHealthSummary(t *testing.T, llmFactory LLMClientFactory) {
 	}
 
 	// Evaluate with Ollama - include specific expectations
-	expectations := []OllamaExpectation{
+	expectations := []Expectation{
 		{
 			Description:   "Response mentions tok-fra-1 packet loss",
 			ExpectedValue: "tok-fra-1 appears with loss percentage (50%, 100%, or similar)",
@@ -113,9 +113,9 @@ func runTest_NetworkHealthSummary(t *testing.T, llmFactory LLMClientFactory) {
 			Rationale:     "Zero results for health checks (e.g., no high utilization) should be omitted, not flagged with warnings",
 		},
 	}
-	isCorrect, err := ollamaEvaluateResponse(t, ctx, question, response, expectations...)
-	require.NoError(t, err, "Ollama evaluation must be available")
-	require.True(t, isCorrect, "Ollama evaluation indicates the response does not correctly answer the question")
+	isCorrect, err := evaluateResponse(t, ctx, question, response, expectations...)
+	require.NoError(t, err, "Evaluation must be available")
+	require.True(t, isCorrect, "Evaluation indicates the response does not correctly answer the question")
 }
 
 func TestLake_Agent_Evals_Anthropic_NetworkHealthAllHealthy(t *testing.T) {
@@ -188,7 +188,7 @@ func runTest_NetworkHealthAllHealthy(t *testing.T, llmFactory LLMClientFactory) 
 	// 2. NO "low confidence" or "needs verification" language
 	// 3. NO "no issues found" or "0 devices with issues" type sections
 	// 4. A positive summary that the network is healthy
-	expectations := []OllamaExpectation{
+	expectations := []Expectation{
 		{
 			Description:   "Response indicates network is healthy",
 			ExpectedValue: "positive assessment - network is healthy, operational, or similar",
@@ -205,9 +205,9 @@ func runTest_NetworkHealthAllHealthy(t *testing.T, llmFactory LLMClientFactory) 
 			Rationale:     "Healthy metrics should be omitted entirely, not explicitly mentioned as zero",
 		},
 	}
-	isCorrect, err := ollamaEvaluateResponse(t, ctx, question, response, expectations...)
-	require.NoError(t, err, "Ollama evaluation must be available")
-	require.True(t, isCorrect, "Ollama evaluation indicates the response contains spurious warnings or 'no issues' sections")
+	isCorrect, err := evaluateResponse(t, ctx, question, response, expectations...)
+	require.NoError(t, err, "Evaluation must be available")
+	require.True(t, isCorrect, "Evaluation indicates the response contains spurious warnings or 'no issues' sections")
 }
 
 // seedHealthyNetworkData seeds a completely healthy network for the all-healthy test

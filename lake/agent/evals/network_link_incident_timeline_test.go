@@ -91,7 +91,7 @@ func runTest_NetworkLinkIncidentTimeline(t *testing.T, llmFactory LLMClientFacto
 	}
 
 	// Evaluate with Ollama - include specific expectations
-	expectations := []OllamaExpectation{
+	expectations := []Expectation{
 		{
 			Description:   "Link code mentioned",
 			ExpectedValue: "nyc-lon-1 or nyc-lon",
@@ -103,9 +103,9 @@ func runTest_NetworkLinkIncidentTimeline(t *testing.T, llmFactory LLMClientFacto
 			Rationale:     "The incident timeline should show the progression of events",
 		},
 	}
-	isCorrect, err := ollamaEvaluateResponse(t, ctx, question, response, expectations...)
-	require.NoError(t, err, "Ollama evaluation must be available")
-	require.True(t, isCorrect, "Ollama evaluation indicates the response does not correctly answer the question")
+	isCorrect, err := evaluateResponse(t, ctx, question, response, expectations...)
+	require.NoError(t, err, "Evaluation must be available")
+	require.True(t, isCorrect, "Evaluation indicates the response does not correctly answer the question")
 }
 
 // seedNetworkLinkIncidentTimelineData seeds data for a link incident timeline

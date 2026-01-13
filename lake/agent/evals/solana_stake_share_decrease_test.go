@@ -94,7 +94,7 @@ func runTest_SolanaStakeShareDecrease(t *testing.T, llmFactory LLMClientFactory)
 	require.Greater(t, len(response), 100, "Response should be substantial")
 
 	// Evaluate with Ollama - include specific expectations
-	expectations := []OllamaExpectation{
+	expectations := []Expectation{
 		{
 			Description:   "Validators that disconnected",
 			ExpectedValue: "vote4 and/or vote5",
@@ -111,9 +111,9 @@ func runTest_SolanaStakeShareDecrease(t *testing.T, llmFactory LLMClientFactory)
 			Rationale:     "vote5 had 4000 SOL of activated stake when it disconnected",
 		},
 	}
-	isCorrect, err := ollamaEvaluateResponse(t, ctx, question, response, expectations...)
-	require.NoError(t, err, "Ollama evaluation must be available")
-	require.True(t, isCorrect, "Ollama evaluation indicates the response does not correctly answer the question")
+	isCorrect, err := evaluateResponse(t, ctx, question, response, expectations...)
+	require.NoError(t, err, "Evaluation must be available")
+	require.True(t, isCorrect, "Evaluation indicates the response does not correctly answer the question")
 }
 
 // seedSolanaStakeShareDecreaseData seeds Solana data for TestLake_Agent_Evals_Anthropic_SolanaStakeShareDecrease

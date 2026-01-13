@@ -93,16 +93,16 @@ func runTest_ConversationalFollowup(t *testing.T, llmFactory LLMClientFactory) {
 	}
 
 	// Evaluate with Ollama - the response should be a helpful clarification
-	expectations := []OllamaExpectation{
+	expectations := []Expectation{
 		{
 			Description:   "Agent provides a helpful clarification or rephrasing",
 			ExpectedValue: "a response that attempts to explain or clarify the previous answer in different terms",
 			Rationale:     "The agent should recognize this as a request for clarification and respond conversationally",
 		},
 	}
-	isCorrect, evalErr := ollamaEvaluateResponse(t, ctx, followupQuestion, followupResult.Answer, expectations...)
-	require.NoError(t, evalErr, "Ollama evaluation must be available")
-	require.True(t, isCorrect, "Ollama evaluation indicates the response does not appropriately handle the conversational follow-up")
+	isCorrect, evalErr := evaluateResponse(t, ctx, followupQuestion, followupResult.Answer, expectations...)
+	require.NoError(t, evalErr, "Evaluation must be available")
+	require.True(t, isCorrect, "Evaluation indicates the response does not appropriately handle the conversational follow-up")
 }
 
 func TestLake_Agent_Evals_Anthropic_CapabilitiesQuestion(t *testing.T) {
@@ -168,16 +168,16 @@ func runTest_CapabilitiesQuestion(t *testing.T, llmFactory LLMClientFactory) {
 	}
 
 	// Evaluate with Ollama
-	expectations := []OllamaExpectation{
+	expectations := []Expectation{
 		{
 			Description:   "Agent explains its capabilities",
 			ExpectedValue: "mentions being able to help with DoubleZero network data, devices, links, validators, or similar topics",
 			Rationale:     "The agent should describe what kinds of data questions it can answer",
 		},
 	}
-	isCorrect, evalErr := ollamaEvaluateResponse(t, ctx, question, result.Answer, expectations...)
-	require.NoError(t, evalErr, "Ollama evaluation must be available")
-	require.True(t, isCorrect, "Ollama evaluation indicates the response does not appropriately explain capabilities")
+	isCorrect, evalErr := evaluateResponse(t, ctx, question, result.Answer, expectations...)
+	require.NoError(t, evalErr, "Evaluation must be available")
+	require.True(t, isCorrect, "Evaluation indicates the response does not appropriately explain capabilities")
 }
 
 func TestLake_Agent_Evals_Anthropic_AffirmativeQueryConfirmation(t *testing.T) {
@@ -324,14 +324,14 @@ func runTest_ThankYouResponse(t *testing.T, llmFactory LLMClientFactory) {
 	}
 
 	// Evaluate with Ollama - response should be friendly acknowledgment
-	expectations := []OllamaExpectation{
+	expectations := []Expectation{
 		{
 			Description:   "Agent responds appropriately to thanks",
 			ExpectedValue: "a friendly acknowledgment, offer to help with more questions, or similar polite response",
 			Rationale:     "The agent should recognize this as a simple acknowledgment and respond naturally",
 		},
 	}
-	isCorrect, evalErr := ollamaEvaluateResponse(t, ctx, question, result.Answer, expectations...)
-	require.NoError(t, evalErr, "Ollama evaluation must be available")
-	require.True(t, isCorrect, "Ollama evaluation indicates the response does not appropriately handle the thank you message")
+	isCorrect, evalErr := evaluateResponse(t, ctx, question, result.Answer, expectations...)
+	require.NoError(t, evalErr, "Evaluation must be available")
+	require.True(t, isCorrect, "Evaluation indicates the response does not appropriately handle the thank you message")
 }

@@ -109,7 +109,7 @@ func runTest_LinkUtilization(t *testing.T, llmFactory LLMClientFactory) {
 	// 1. Response should mention the high-utilization link (chi-nyc-1 at ~80%)
 	// 2. Response should report in/out separately OR mention the highest direction
 	// 3. Should NOT aggregate across links or combine directions incorrectly
-	expectations := []OllamaExpectation{
+	expectations := []Expectation{
 		{
 			Description:   "Response mentions chi-nyc-1 link with high utilization",
 			ExpectedValue: "chi-nyc-1 appears with utilization around 80% or as highest utilized link",
@@ -121,9 +121,9 @@ func runTest_LinkUtilization(t *testing.T, llmFactory LLMClientFactory) {
 			Rationale:     "Link utilization should be expressed as percentage of capacity",
 		},
 	}
-	isCorrect, err := ollamaEvaluateResponse(t, ctx, question, response, expectations...)
-	require.NoError(t, err, "Ollama evaluation failed")
-	require.True(t, isCorrect, "Ollama evaluation indicates the response does not correctly answer the question")
+	isCorrect, err := evaluateResponse(t, ctx, question, response, expectations...)
+	require.NoError(t, err, "Evaluation failed")
+	require.True(t, isCorrect, "Evaluation indicates the response does not correctly answer the question")
 }
 
 // seedLinkUtilizationData seeds test data for link utilization eval.

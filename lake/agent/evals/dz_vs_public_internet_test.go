@@ -90,7 +90,7 @@ func runTest_DZVsPublicInternet(t *testing.T, llmFactory LLMClientFactory) {
 	}
 
 	// Evaluate with Ollama - include specific expectations
-	expectations := []OllamaExpectation{
+	expectations := []Expectation{
 		{
 			Description:   "Side-by-side latency comparison with numbers",
 			ExpectedValue: "shows DZ latency vs public internet latency in format like 'X ms vs Y ms' for each metro pair",
@@ -112,9 +112,9 @@ func runTest_DZVsPublicInternet(t *testing.T, llmFactory LLMClientFactory) {
 			Rationale:     "Based on test data, DZ outperforms public internet on all routes",
 		},
 	}
-	isCorrect, err := ollamaEvaluateResponse(t, ctx, question, response, expectations...)
-	require.NoError(t, err, "Ollama evaluation must be available")
-	require.True(t, isCorrect, "Ollama evaluation indicates the response does not correctly answer the question")
+	isCorrect, err := evaluateResponse(t, ctx, question, response, expectations...)
+	require.NoError(t, err, "Evaluation must be available")
+	require.True(t, isCorrect, "Evaluation indicates the response does not correctly answer the question")
 }
 
 // seedDZVsPublicInternetData seeds data for DZ vs public internet comparison test

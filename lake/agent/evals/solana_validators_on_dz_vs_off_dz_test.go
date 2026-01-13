@@ -91,7 +91,7 @@ func runTest_SolanaValidatorsOnDZVsOffDZ(t *testing.T, llmFactory LLMClientFacto
 	}
 
 	// Evaluate with Ollama - include specific expectations
-	expectations := []OllamaExpectation{
+	expectations := []Expectation{
 		{
 			Description:   "On-DZ validators data",
 			ExpectedValue: "3 validators on DZ with better performance metrics (lower vote lag ~50 slots OR lower skip rate ~2%)",
@@ -113,9 +113,9 @@ func runTest_SolanaValidatorsOnDZVsOffDZ(t *testing.T, llmFactory LLMClientFacto
 			Rationale:     "If the response says off-DZ data is missing, mark as NO - the data exists and should be found",
 		},
 	}
-	isCorrect, err := ollamaEvaluateResponse(t, ctx, question, response, expectations...)
-	require.NoError(t, err, "Ollama evaluation must be available")
-	require.True(t, isCorrect, "Ollama evaluation indicates the response does not correctly answer the question")
+	isCorrect, err := evaluateResponse(t, ctx, question, response, expectations...)
+	require.NoError(t, err, "Evaluation must be available")
+	require.True(t, isCorrect, "Evaluation indicates the response does not correctly answer the question")
 }
 
 // seedSolanaValidatorsOnDZVsOffDZData seeds data for comparing validators on DZ vs off DZ

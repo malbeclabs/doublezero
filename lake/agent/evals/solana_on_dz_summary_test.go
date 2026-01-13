@@ -93,7 +93,7 @@ func runTest_SolanaValidatorsGossipNodesOnDZSummary(t *testing.T, llmFactory LLM
 	require.Greater(t, len(response), 50, "Response should be substantial")
 
 	// Evaluate with Ollama - include specific expectations
-	expectations := []OllamaExpectation{
+	expectations := []Expectation{
 		{
 			Description:   "Number of validators currently on DZ",
 			ExpectedValue: "3",
@@ -105,9 +105,9 @@ func runTest_SolanaValidatorsGossipNodesOnDZSummary(t *testing.T, llmFactory LLM
 			Rationale:     "There are 5 gossip nodes connected to DZ (more nodes than validators due to non-voting nodes)",
 		},
 	}
-	isCorrect, err := ollamaEvaluateResponse(t, ctx, question, response, expectations...)
-	require.NoError(t, err, "Ollama evaluation must be available")
-	require.True(t, isCorrect, "Ollama evaluation indicates the response does not correctly answer the question")
+	isCorrect, err := evaluateResponse(t, ctx, question, response, expectations...)
+	require.NoError(t, err, "Evaluation must be available")
+	require.True(t, isCorrect, "Evaluation indicates the response does not correctly answer the question")
 }
 
 // seedSolanaValidatorsGossipNodesOnDZSummaryData seeds Solana validators and gossip nodes data for TestLake_Agent_Evals_SolanaValidatorsGossipNodesOnDZSummary

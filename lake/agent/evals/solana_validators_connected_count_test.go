@@ -91,7 +91,7 @@ func runTest_SolanaValidatorsConnectedCount(t *testing.T, llmFactory LLMClientFa
 	}
 
 	// Evaluate with Ollama - include specific numeric expectations
-	expectations := []OllamaExpectation{
+	expectations := []Expectation{
 		{
 			Description:   "Count of validators newly connected in the last day",
 			ExpectedValue: "3 validators",
@@ -103,9 +103,9 @@ func runTest_SolanaValidatorsConnectedCount(t *testing.T, llmFactory LLMClientFa
 			Rationale:     "When count is small, specific validators should be listed per ROLE.md guidelines",
 		},
 	}
-	isCorrect, err := ollamaEvaluateResponse(t, ctx, question, response, expectations...)
-	require.NoError(t, err, "Ollama evaluation must be available")
-	require.True(t, isCorrect, "Ollama evaluation indicates the response does not correctly answer the question")
+	isCorrect, err := evaluateResponse(t, ctx, question, response, expectations...)
+	require.NoError(t, err, "Evaluation must be available")
+	require.True(t, isCorrect, "Evaluation indicates the response does not correctly answer the question")
 }
 
 // seedSolanaValidatorsConnectedCountData seeds data for testing "how many validators connected in the last day"

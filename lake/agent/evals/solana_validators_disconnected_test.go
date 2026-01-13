@@ -91,7 +91,7 @@ func runTest_SolanaValidatorsDisconnected(t *testing.T, llmFactory LLMClientFact
 	}
 
 	// Evaluate with Ollama - include specific expectations
-	expectations := []OllamaExpectation{
+	expectations := []Expectation{
 		{
 			Description:   "Response lists vote1, vote2, and vote3 as disconnected",
 			ExpectedValue: "vote1, vote2, vote3 all appear in the response",
@@ -103,9 +103,9 @@ func runTest_SolanaValidatorsDisconnected(t *testing.T, llmFactory LLMClientFact
 			Rationale:     "vote4 reconnected so is not disconnected; vote5 never disconnected",
 		},
 	}
-	isCorrect, err := ollamaEvaluateResponse(t, ctx, question, response, expectations...)
-	require.NoError(t, err, "Ollama evaluation must be available")
-	require.True(t, isCorrect, "Ollama evaluation indicates the response does not correctly answer the question")
+	isCorrect, err := evaluateResponse(t, ctx, question, response, expectations...)
+	require.NoError(t, err, "Evaluation must be available")
+	require.True(t, isCorrect, "Evaluation indicates the response does not correctly answer the question")
 }
 
 // seedSolanaValidatorsDisconnectedData seeds data for testing disconnected validators

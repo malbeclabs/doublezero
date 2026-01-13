@@ -805,6 +805,7 @@ function AppContent() {
                     dataQuestions: data.dataQuestions ?? [],
                     generatedQueries: data.generatedQueries ?? [],
                     executedQueries: data.executedQueries ?? [],
+                    followUpQuestions: data.followUpQuestions,
                   },
                   executedQueries: data.executedQueries?.map(q => q.sql) ?? [],
                 }

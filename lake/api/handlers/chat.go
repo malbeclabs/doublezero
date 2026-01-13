@@ -60,6 +60,9 @@ type ChatResponse struct {
 	GeneratedQueries []GeneratedQueryResponse  `json:"generatedQueries,omitempty"`
 	ExecutedQueries  []ExecutedQueryResponse   `json:"executedQueries,omitempty"`
 
+	// Suggested follow-up questions
+	FollowUpQuestions []string `json:"followUpQuestions,omitempty"`
+
 	// Error if pipeline failed
 	Error string `json:"error,omitempty"`
 }
@@ -138,7 +141,8 @@ func Chat(w http.ResponseWriter, r *http.Request) {
 // convertPipelineResult converts the internal pipeline result to the API response format.
 func convertPipelineResult(result *pipeline.PipelineResult) ChatResponse {
 	resp := ChatResponse{
-		Answer: result.Answer,
+		Answer:            result.Answer,
+		FollowUpQuestions: result.FollowUpQuestions,
 	}
 
 	// Convert data questions
@@ -379,13 +383,20 @@ func ChatStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Generate follow-up suggestions (non-blocking, errors are logged but not returned)
+	var followUpQuestions []string
+	if followUps, err := p.GenerateFollowUps(ctx, req.Message, answer); err == nil {
+		followUpQuestions = followUps
+	}
+
 	// Build final response
 	result := &pipeline.PipelineResult{
-		UserQuestion:     req.Message,
-		DataQuestions:    dataQuestions,
-		GeneratedQueries: generatedQueries,
-		ExecutedQueries:  executedQueries,
-		Answer:           answer,
+		UserQuestion:      req.Message,
+		DataQuestions:     dataQuestions,
+		GeneratedQueries:  generatedQueries,
+		ExecutedQueries:   executedQueries,
+		Answer:            answer,
+		FollowUpQuestions: followUpQuestions,
 	}
 
 	response := convertPipelineResult(result)

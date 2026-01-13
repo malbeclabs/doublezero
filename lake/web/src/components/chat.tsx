@@ -622,6 +622,20 @@ export function Chat({ messages, isPending, progress, onSendMessage, onAbort, on
                           isDark={isDark}
                         />
                       )}
+                      {/* Follow-up suggestions */}
+                      {msg.pipelineData?.followUpQuestions && msg.pipelineData.followUpQuestions.length > 0 && (
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {msg.pipelineData.followUpQuestions.map((question, i) => (
+                            <button
+                              key={i}
+                              onClick={() => onSendMessage(question)}
+                              className="px-3 py-1.5 text-sm border border-border rounded-full hover:bg-secondary hover:border-muted-foreground/30 transition-colors text-muted-foreground hover:text-foreground"
+                            >
+                              {question}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

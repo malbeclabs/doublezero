@@ -277,6 +277,7 @@ export interface ChatPipelineData {
   dataQuestions: DataQuestion[]
   generatedQueries: GeneratedQuery[]
   executedQueries: ExecutedQuery[]
+  followUpQuestions?: string[]
 }
 
 export interface ChatResponse {
@@ -284,6 +285,7 @@ export interface ChatResponse {
   dataQuestions?: DataQuestion[]
   generatedQueries?: GeneratedQuery[]
   executedQueries?: ExecutedQuery[]
+  followUpQuestions?: string[]
   error?: string
 }
 

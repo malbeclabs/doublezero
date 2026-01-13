@@ -121,6 +121,9 @@ type PipelineResult struct {
 
 	// Step 4: Synthesis / Response
 	Answer string
+
+	// Step 5: Follow-up suggestions (optional)
+	FollowUpQuestions []string
 }
 
 // Pipeline orchestrates the multi-step question-answering process.

@@ -12,6 +12,7 @@ type Prompts struct {
 	CatalogSummary string // High-level catalog overview for decomposition
 	Classify       string // Prompt for question classification (pre-step)
 	Decompose      string // Prompt for breaking down questions
+	FollowUp       string // Prompt for generating follow-up question suggestions
 	Generate       string // Prompt for SQL generation
 	Respond        string // Prompt for conversational responses (no data query)
 	Slack          string // Slack-specific formatting guidelines (optional)
@@ -31,6 +32,9 @@ func LoadPrompts() (*Prompts, error) {
 	}
 	if p.Decompose, err = loadPrompt("DECOMPOSE.md"); err != nil {
 		return nil, fmt.Errorf("failed to load DECOMPOSE: %w", err)
+	}
+	if p.FollowUp, err = loadPrompt("FOLLOWUP.md"); err != nil {
+		return nil, fmt.Errorf("failed to load FOLLOWUP: %w", err)
 	}
 	if p.Generate, err = loadPrompt("GENERATE.md"); err != nil {
 		return nil, fmt.Errorf("failed to load GENERATE: %w", err)

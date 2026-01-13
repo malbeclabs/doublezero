@@ -1,1 +1,1 @@
-INSERT INTO default.device_ifindex (*) Values ('aaa', 8001013, '204.16.241.241', 'Switch1/1/1', now()), ('aaa', 8001014, '204.16.241.241', 'Switch1/1/2', now());
+INSERT INTO default.device_ifindex (*) VALUES ('aaa', 8001013, '204.16.241.241', 'Switch1/1/1', now()), ('aaa', 8001014, '204.16.241.241', 'Switch1/1/2', now()), ('test-device', 8001063, '137.174.145.144', 'eth0', now()), ('test-device', 8001134, '137.174.145.144', 'eth1', now());

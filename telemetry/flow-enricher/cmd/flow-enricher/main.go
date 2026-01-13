@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -12,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	enricher "github.com/malbeclabs/doublezero/telemetry/flow-enricher/internal/flow-enricher"
@@ -54,30 +56,48 @@ func main() {
 
 	reg := prometheus.WrapRegistererWithPrefix("enricher_", prometheus.DefaultRegisterer)
 
-	// setup output writer (ClickHouse or stdout)
-	var chWriter enricher.Clicker
+	// setup output writer (ClickHouse or stdout) and optional ClickHouse reader for annotators
+	var chWriter enricher.FlowWriter
+	var chReader enricher.ClickhouseReader // Only set when using ClickHouse
 	if *stdoutOutput {
 		chWriter = enricher.NewStdoutWriter()
 	} else {
-		chOpts := []enricher.ClickhouseOption{}
-		if os.Getenv("CLICKHOUSE_TLS_DISABLED") == "true" {
-			chOpts = append(chOpts, enricher.WithTLSDisabled(true))
-		}
+		chAddr := os.Getenv("CLICKHOUSE_ADDR")
+		chDB := getEnvOrDefault("CLICKHOUSE_DB", "default")
+		chUser := os.Getenv("CLICKHOUSE_USER")
+		chPass := os.Getenv("CLICKHOUSE_PASS")
+		tlsDisabled := os.Getenv("CLICKHOUSE_TLS_DISABLED") == "true"
 
-		chOpts = append(chOpts, enricher.WithClickhouseAddr(os.Getenv("CLICKHOUSE_ADDR")),
-			enricher.WithClickhouseDB(getEnvOrDefault("CLICKHOUSE_DB", "default")),
+		chOpts := []enricher.ClickhouseOption{
+			enricher.WithClickhouseAddr(chAddr),
+			enricher.WithClickhouseDB(chDB),
 			enricher.WithClickhouseTable(getEnvOrDefault("CLICKHOUSE_TABLE", "flows")),
-			enricher.WithClickhouseUser(os.Getenv("CLICKHOUSE_USER")),
-			enricher.WithClickhousePassword(os.Getenv("CLICKHOUSE_PASS")),
+			enricher.WithClickhouseUser(chUser),
+			enricher.WithClickhousePassword(chPass),
+			enricher.WithTLSDisabled(tlsDisabled),
 			enricher.WithClickhouseLogger(logger),
 			enricher.WithClickhouseMetrics(enricher.NewClickhouseMetrics(reg)),
-		)
+		}
 		var err error
 		chWriter, err = enricher.NewClickhouseWriter(chOpts...)
 		if err != nil {
 			logger.Error("error creating clickhouse writer", "error", err)
 			os.Exit(1)
 		}
+
+		// Create a *sql.DB for annotators that need to query ClickHouse
+		connOpts := &clickhouse.Options{
+			Addr: []string{chAddr},
+			Auth: clickhouse.Auth{
+				Database: chDB,
+				Username: chUser,
+				Password: chPass,
+			},
+		}
+		if !tlsDisabled {
+			connOpts.TLS = &tls.Config{}
+		}
+		chReader = clickhouse.OpenDB(connOpts)
 	}
 
 	// setup input consumer (Kafka or pcap)
@@ -133,6 +153,11 @@ func main() {
 	)
 
 	e.AddAnnotator(enricher.NewServiceabilityAnnotator(e.ServiceabilityData))
+
+	// Add IfName annotator when using ClickHouse
+	if chReader != nil {
+		e.AddAnnotator(enricher.NewIfNameAnnotator(chReader, logger))
+	}
 
 	// start prometheus
 	go func() {

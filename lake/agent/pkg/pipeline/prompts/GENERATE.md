@@ -100,6 +100,33 @@ GROUP BY l.pk, l.code, l.bandwidth_bps
 - "Device interface utilization" or "Link utilization" are valid concepts
 - "Metro" questions about bandwidth should focus on aggregate traffic volume, not utilization %
 
+### Per-User Traffic (CRITICAL)
+To query bandwidth/traffic for **specific users**, you MUST join through `user_tunnel_id`, not just `device_pk`. Each user has a dedicated tunnel interface on their connected device.
+
+**WRONG pattern** (gets ALL device traffic, not per-user):
+```sql
+-- WRONG: This sums traffic for the entire device, not the specific user
+SELECT u.owner_pubkey, SUM(f.in_octets_delta) AS bytes
+FROM dz_users_current u
+JOIN dz_devices_current d ON u.device_pk = d.pk
+JOIN fact_dz_device_interface_counters f ON f.device_pk = d.pk
+GROUP BY u.owner_pubkey
+```
+
+**CORRECT pattern** (gets traffic for each user's tunnel):
+```sql
+-- CORRECT: Join on user_tunnel_id to get per-user traffic
+SELECT u.owner_pubkey, SUM(f.in_octets_delta) AS bytes
+FROM dz_users_current u
+JOIN fact_dz_device_interface_counters f
+  ON f.device_pk = u.device_pk
+  AND f.user_tunnel_id = u.tunnel_id
+WHERE f.intf LIKE 'tunnel%'
+GROUP BY u.owner_pubkey
+```
+
+**Key insight**: The `user_tunnel_id` column in `fact_dz_device_interface_counters` links interface counters to specific users via `dz_users_current.tunnel_id`. Without this join condition, you're aggregating all device traffic instead of per-user traffic.
+
 ### Naming Conventions
 - Use `{table}_current` views for current state (e.g., `dz_devices_current`)
 - Use `dim_{table}_history` tables for historical snapshots (see History Tables section below)

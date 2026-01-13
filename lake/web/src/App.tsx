@@ -997,7 +997,7 @@ function AppContent() {
 
   return (
     <AppContext.Provider value={contextValue}>
-      <div className="h-screen flex">
+      <div className="h-dvh flex">
         {/* Sidebar */}
         <Sidebar
           querySessions={sessions}

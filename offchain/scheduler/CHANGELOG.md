@@ -8,12 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - add check and filter for 0 total debt messages posted to slack ([#247](https://github.com/doublezerofoundation/doublezero-offchain/pull/247))
-- shutdown `:normal` after successful distribution initialized ([#245](https://github.com/doublezerofoundation/doublezero-offchain/pull/245))
 
 ## [v0.1.6] - 2026-01-12
 
 ## [v0.1.5] - 2026-01-08
 
+- shutdown `:normal` after successful distribution initialized ([#245](https://github.com/doublezerofoundation/doublezero-offchain/pull/245))
 - add compute unit price handling for wallet ([#243](https://github.com/doublezerofoundation/doublezero-offchain/pull/243))
 - update return value from pay_debt command, add pay_debt_for_all_epochs, use :normal exit for GenServer ([#228](https://github.com/doublezerofoundation/doublezero-offchain/pull/228))
 - remove unnecessary private functions in lib.rs ([#238](https://github.com/doublezerofoundation/doublezero-offchain/pull/238))

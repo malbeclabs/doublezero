@@ -19,12 +19,12 @@ export function Catalog({ onSelectTable }: CatalogProps) {
   const views = data?.tables.filter(t => t.type === 'view') ?? []
 
   return (
-    <div className="border bg-grey-10">
+    <div className="border border-border rounded-lg overflow-hidden bg-card">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full px-3 py-2 flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors bg-accent-orange-10"
+        className="w-full px-4 py-2.5 flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
       >
-        <Database className="h-3.5 w-3.5" />
+        <Database className="h-4 w-4" />
         <span>Schema</span>
         {!isLoading && (
           <span className="opacity-60">
@@ -35,23 +35,23 @@ export function Catalog({ onSelectTable }: CatalogProps) {
           <span className="opacity-60">— loading</span>
         )}
         {isOpen ? (
-          <ChevronDown className="h-3.5 w-3.5 ml-auto" />
+          <ChevronDown className="h-4 w-4 ml-auto" />
         ) : (
-          <ChevronRight className="h-3.5 w-3.5 ml-auto" />
+          <ChevronRight className="h-4 w-4 ml-auto" />
         )}
       </button>
 
       {isOpen && (
-        <div className="border-t px-3 py-3">
+        <div className="border-t border-border px-4 py-3">
           {error ? (
-            <div className="text-sm text-destructive">Failed to load catalog</div>
+            <div className="text-sm text-red-600 dark:text-red-400">Failed to load catalog</div>
           ) : (
             <div className="flex flex-wrap gap-2">
               {tables.map(table => (
                 <button
                   key={table.name}
                   onClick={() => onSelectTable(table)}
-                  className="text-xs px-2 py-1 border bg-grey-10 text-muted-foreground hover:text-foreground hover:border-foreground transition-colors"
+                  className="text-sm px-2.5 py-1 rounded border border-border bg-card text-muted-foreground hover:text-foreground hover:border-foreground transition-colors"
                 >
                   {table.name}
                 </button>
@@ -60,7 +60,7 @@ export function Catalog({ onSelectTable }: CatalogProps) {
                 <button
                   key={view.name}
                   onClick={() => onSelectTable(view)}
-                  className="text-xs px-2 py-1 border bg-grey-10 text-muted-foreground hover:text-foreground hover:border-foreground transition-colors italic"
+                  className="text-sm px-2.5 py-1 rounded border border-border bg-card text-muted-foreground hover:text-foreground hover:border-foreground transition-colors italic"
                 >
                   {view.name}
                 </button>

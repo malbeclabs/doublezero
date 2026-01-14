@@ -27,24 +27,24 @@ export function SessionHistory({ history, onRestoreQuery }: SessionHistoryProps)
   if (history.length === 0) return null
 
   return (
-    <div className="border bg-grey-10">
+    <div className="border border-border rounded-lg overflow-hidden bg-card">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full px-3 py-2 flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors bg-accent-orange-10"
+        className="w-full px-4 py-2.5 flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
       >
-        <History className="h-3.5 w-3.5" />
+        <History className="h-4 w-4" />
         <span>Session History ({history.length})</span>
         {isOpen ? (
-          <ChevronDown className="h-3.5 w-3.5 ml-auto" />
+          <ChevronDown className="h-4 w-4 ml-auto" />
         ) : (
-          <ChevronRight className="h-3.5 w-3.5 ml-auto" />
+          <ChevronRight className="h-4 w-4 ml-auto" />
         )}
       </button>
 
       {isOpen && (
-        <div className="border-t max-h-64 overflow-y-auto">
+        <div className="border-t border-border max-h-64 overflow-y-auto">
           {history.map((record) => (
-            <div key={record.id} className="border-b last:border-b-0">
+            <div key={record.id} className="border-b border-border last:border-b-0">
               <button
                 onClick={() => setExpandedId(expandedId === record.id ? null : record.id)}
                 className="w-full px-3 py-2 flex items-start gap-2 text-left hover:bg-muted transition-colors"

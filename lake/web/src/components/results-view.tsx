@@ -104,7 +104,7 @@ export function ResultsView({
   return (
     <div className="rounded-lg border border-border bg-card overflow-hidden">
       {/* Header with view toggle */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-secondary/30">
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
         <div className="flex items-center gap-3">
           {/* View Mode Toggle */}
           <div className="flex items-center rounded-md border border-border overflow-hidden">
@@ -112,8 +112,8 @@ export function ResultsView({
               onClick={() => setViewMode('table')}
               className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
                 viewMode === 'table'
-                  ? 'bg-accent text-white'
-                  : 'bg-card hover:bg-accent-orange-20 text-foreground'
+                  ? 'bg-foreground text-background'
+                  : 'bg-card hover:bg-muted text-foreground'
               }`}
             >
               <Table className="w-4 h-4" />
@@ -124,9 +124,9 @@ export function ResultsView({
               disabled={!canVisualize}
               className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
                 viewMode === 'chart'
-                  ? 'bg-accent text-white'
+                  ? 'bg-foreground text-background'
                   : canVisualize
-                  ? 'bg-card hover:bg-accent-orange-20 text-foreground'
+                  ? 'bg-card hover:bg-muted text-foreground'
                   : 'bg-muted text-muted-foreground cursor-not-allowed'
               }`}
             >
@@ -138,7 +138,7 @@ export function ResultsView({
           {/* Loading indicator for LLM recommendation */}
           {isRecommending && (
             <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-              <Loader2 className="w-3 h-3 animate-spin" />
+              <Loader2 className="w-4 h-4 animate-spin" />
               <span>Analyzing...</span>
             </div>
           )}
@@ -149,26 +149,26 @@ export function ResultsView({
           {onRequestVisualization && canVisualize && viewMode === 'table' && !isRecommending && (
             <button
               onClick={onRequestVisualization}
-              className="inline-flex items-center gap-1.5 text-xs text-accent hover:text-accent-orange-100 transition-colors"
+              className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
-              <Sparkles className="h-3.5 w-3.5" />
+              <Sparkles className="h-4 w-4" />
               Visualize
             </button>
           )}
           {onAskAboutResults && (
             <button
               onClick={onAskAboutResults}
-              className="inline-flex items-center gap-1.5 text-xs text-accent hover:text-accent-orange-100 transition-colors"
+              className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
-              <MessageCircle className="h-3.5 w-3.5" />
+              <MessageCircle className="h-4 w-4" />
               Ask about results
             </button>
           )}
           <button
             onClick={downloadCSV}
-            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
-            <Download className="h-3.5 w-3.5" />
+            <Download className="h-4 w-4" />
             Download CSV
           </button>
           <span className="text-sm text-muted-foreground">

@@ -99,23 +99,23 @@ export const QueryEditor = forwardRef<QueryEditorHandle, QueryEditorProps>(
     ], [sqlSchema])
 
     return (
-      <div className="border bg-grey-10">
+      <div className="border border-border rounded-lg overflow-hidden bg-card">
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="w-full px-3 py-2 flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors bg-accent-orange-10"
+          className="w-full px-4 py-2.5 flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
-          <Code className="h-3.5 w-3.5" />
+          <Code className="h-4 w-4" />
           <span>SQL Query</span>
           {isOpen ? (
-            <ChevronDown className="h-3.5 w-3.5 ml-auto" />
+            <ChevronDown className="h-4 w-4 ml-auto" />
           ) : (
-            <ChevronRight className="h-3.5 w-3.5 ml-auto" />
+            <ChevronRight className="h-4 w-4 ml-auto" />
           )}
         </button>
 
         {isOpen && (
-          <div className="border-t">
-            <div className="bg-grey-10">
+          <div className="border-t border-border">
+            <div className="bg-muted/30">
               <CodeMirror
                 value={query}
                 onChange={onQueryChange}
@@ -129,17 +129,17 @@ export const QueryEditor = forwardRef<QueryEditorHandle, QueryEditorProps>(
                 }}
               />
             </div>
-            <div className="flex items-center justify-between px-3 py-2 border-t bg-grey-10">
+            <div className="flex items-center justify-between px-4 py-2.5 border-t border-border">
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => runQuery(query)}
                   disabled={mutation.isPending || !query.trim()}
-                  className="inline-flex items-center px-3 py-1.5 text-sm border border-accent text-accent hover:bg-accent hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className="inline-flex items-center px-3 py-1.5 text-sm rounded border border-foreground text-foreground hover:bg-foreground hover:text-background disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
                   {mutation.isPending ? (
-                    <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                    <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
                   ) : (
-                    <Play className="h-3.5 w-3.5 mr-1.5" />
+                    <Play className="h-4 w-4 mr-1.5" />
                   )}
                   Run
                   <span className="ml-1.5 text-xs opacity-60">
@@ -150,20 +150,20 @@ export const QueryEditor = forwardRef<QueryEditorHandle, QueryEditorProps>(
                   <button
                     onClick={onClear}
                     disabled={mutation.isPending}
-                    className="px-3 py-1.5 text-sm border text-muted-foreground hover:text-foreground hover:border-foreground disabled:opacity-40 transition-colors"
+                    className="px-3 py-1.5 text-sm rounded border border-border text-muted-foreground hover:text-foreground hover:border-foreground disabled:opacity-40 transition-colors"
                   >
                     Clear
                   </button>
                 )}
               </div>
               {mutation.data && !error && (
-                <span className="text-xs text-muted-foreground">
+                <span className="text-sm text-muted-foreground">
                   {mutation.data.row_count.toLocaleString()} rows · {mutation.data.elapsed_ms}ms
                 </span>
               )}
             </div>
             {error && (
-              <div className="py-3 px-4 border-t border-destructive/30 bg-destructive/5 text-destructive text-sm font-mono whitespace-pre-wrap">
+              <div className="py-3 px-4 border-t border-red-500/30 bg-red-500/5 text-red-600 dark:text-red-400 text-sm font-mono whitespace-pre-wrap">
                 {error}
               </div>
             )}

@@ -96,9 +96,9 @@ export function ChartConfigPanel({ columns, columnAnalysis, config, onConfigChan
                 title={chartTypeLabels[type]}
                 className={`p-1.5 rounded transition-colors ${
                   isSelected
-                    ? 'bg-accent text-white'
+                    ? 'bg-foreground text-background'
                     : isCompatible
-                    ? 'bg-card hover:bg-accent-orange-20 text-foreground'
+                    ? 'bg-card hover:bg-muted text-foreground'
                     : 'bg-muted text-muted-foreground cursor-not-allowed opacity-50'
                 }`}
               >
@@ -153,8 +153,8 @@ export function ChartConfigPanel({ columns, columnAnalysis, config, onConfigChan
                   onClick={() => handleYAxisChange(col)}
                   className={`px-2 py-0.5 rounded text-xs transition-colors flex items-center gap-1 ${
                     isSelected
-                      ? 'bg-accent text-white'
-                      : 'bg-card border border-border hover:bg-accent-orange-20'
+                      ? 'bg-foreground text-background'
+                      : 'bg-card border border-border hover:bg-muted'
                   }`}
                 >
                   {getColumnTypeIcon(col)}

@@ -95,9 +95,9 @@ export function ResultsTable({ results, onAskAboutResults, embedded = false }: R
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id} className="border-b bg-accent-orange-10 hover:bg-accent-orange-10">
+              <TableRow key={headerGroup.id} className="border-b border-border hover:bg-transparent">
                 {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id} className="font-medium text-xs text-muted-foreground h-9 whitespace-nowrap">
+                  <TableHead key={header.id} className="px-4 py-2 font-medium text-sm whitespace-nowrap">
                     {flexRender(
                       header.column.columnDef.header,
                       header.getContext()
@@ -108,15 +108,13 @@ export function ResultsTable({ results, onAskAboutResults, embedded = false }: R
             ))}
           </TableHeader>
           <TableBody>
-            {table.getRowModel().rows.map((row, i) => (
+            {table.getRowModel().rows.map((row) => (
               <TableRow
                 key={row.id}
-                className={`border-b last:border-b-0 hover:bg-muted ${
-                  i % 2 === 1 ? 'bg-muted/50' : 'bg-card'
-                }`}
+                className="border-b border-border last:border-b-0 hover:bg-muted/50"
               >
                 {row.getVisibleCells().map((cell) => (
-                  <TableCell key={cell.id} className="font-mono text-sm py-2.5 whitespace-nowrap">
+                  <TableCell key={cell.id} className="px-4 py-2.5 font-mono text-sm whitespace-nowrap">
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </TableCell>
                 ))}
@@ -130,26 +128,26 @@ export function ResultsTable({ results, onAskAboutResults, embedded = false }: R
 
   // Full mode: with header chrome
   return (
-    <div className="border bg-card">
-      <div className="flex items-center justify-between px-3 py-2 border-b bg-accent-orange-10">
-        <span className="text-xs text-muted-foreground">
+    <div className="border border-border bg-card rounded-lg overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
+        <span className="text-sm text-muted-foreground">
           {results.row_count.toLocaleString()} rows
         </span>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-4">
           {onAskAboutResults && (
             <button
               onClick={onAskAboutResults}
-              className="inline-flex items-center gap-1.5 text-xs text-accent hover:text-accent-orange-100 transition-colors"
+              className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
-              <MessageCircle className="h-3.5 w-3.5" />
+              <MessageCircle className="h-4 w-4" />
               Ask about results
             </button>
           )}
           <button
             onClick={() => downloadCSV(results.columns, results.rows)}
-            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
-            <Download className="h-3.5 w-3.5" />
+            <Download className="h-4 w-4" />
             Download CSV
           </button>
         </div>
@@ -158,9 +156,9 @@ export function ResultsTable({ results, onAskAboutResults, embedded = false }: R
         <Table>
         <TableHeader>
           {table.getHeaderGroups().map((headerGroup) => (
-            <TableRow key={headerGroup.id} className="border-b bg-accent-orange-10 hover:bg-accent-orange-10">
+            <TableRow key={headerGroup.id} className="border-b border-border hover:bg-transparent">
               {headerGroup.headers.map((header) => (
-                <TableHead key={header.id} className="font-medium text-xs text-muted-foreground h-9 whitespace-nowrap">
+                <TableHead key={header.id} className="px-4 py-2 font-medium text-sm whitespace-nowrap">
                   {flexRender(
                     header.column.columnDef.header,
                     header.getContext()
@@ -171,15 +169,13 @@ export function ResultsTable({ results, onAskAboutResults, embedded = false }: R
           ))}
         </TableHeader>
         <TableBody>
-          {table.getRowModel().rows.map((row, i) => (
+          {table.getRowModel().rows.map((row) => (
             <TableRow
               key={row.id}
-              className={`border-b last:border-b-0 hover:bg-muted ${
-                i % 2 === 1 ? 'bg-muted/50' : 'bg-card'
-              }`}
+              className="border-b border-border last:border-b-0 hover:bg-muted/50"
             >
               {row.getVisibleCells().map((cell) => (
-                <TableCell key={cell.id} className="font-mono text-sm py-2.5 whitespace-nowrap">
+                <TableCell key={cell.id} className="px-4 py-2.5 font-mono text-sm whitespace-nowrap">
                   {flexRender(cell.column.columnDef.cell, cell.getContext())}
                 </TableCell>
               ))}

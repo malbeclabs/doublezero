@@ -323,11 +323,24 @@ Only one extractor processes each update. When multiple extractors match a path,
 
 ### Metrics
 
-The processor exposes Prometheus metrics:
-- `gnmi_processor_records_processed_total` - Records successfully written
-- `gnmi_processor_processing_duration_seconds` - Time spent processing batches
-- `gnmi_processor_processing_errors_total` - Unmarshal/extraction failures
-- `gnmi_processor_write_errors_total` - ClickHouse write failures
+The service exposes Prometheus metrics for monitoring pipeline health:
+
+**Consumer Metrics:**
+- `gnmi_writer_notifications_consumed_total` - gNMI notifications consumed from Kafka
+- `gnmi_writer_fetch_errors_total` - Kafka fetch errors
+- `gnmi_writer_unmarshal_errors_total` - Protobuf unmarshal errors
+
+**Processor Metrics:**
+- `gnmi_writer_records_processed_total` - Records successfully extracted and processed
+- `gnmi_writer_processing_duration_seconds` - Time spent processing notification batches
+- `gnmi_writer_processing_errors_total` - Notification processing failures (unmarshal/extraction errors)
+- `gnmi_writer_write_errors_total` - Record write failures
+- `gnmi_writer_commit_errors_total` - Kafka offset commit errors
+
+**ClickHouse Metrics:**
+- `gnmi_writer_clickhouse_insert_duration_seconds` - Time spent inserting batches into ClickHouse
+- `gnmi_writer_clickhouse_insert_errors_total` - ClickHouse insert errors
+- `gnmi_writer_clickhouse_records_written_total` - Records successfully written to ClickHouse
 
 ## File Reference
 

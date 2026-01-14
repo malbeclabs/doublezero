@@ -35,8 +35,9 @@ const (
 // BuildInfo is a Prometheus gauge for build metadata.
 var BuildInfo = prometheus.NewGaugeVec(
 	prometheus.GaugeOpts{
-		Name: "gnmi_writer_build_info",
-		Help: "Build information for gnmi-writer",
+		Namespace: gnmi.MetricsNamespace,
+		Name:      "build_info",
+		Help:      "Build information for gnmi-writer",
 	},
 	[]string{"version", "commit", "date"},
 )

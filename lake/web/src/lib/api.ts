@@ -1105,6 +1105,20 @@ export async function fetchDevices(limit = 100, offset = 0): Promise<PaginatedRe
   return res.json()
 }
 
+export interface DeviceDetail extends Device {
+  metro_name: string
+  validator_count: number
+  stake_sol: number
+}
+
+export async function fetchDevice(pk: string): Promise<DeviceDetail> {
+  const res = await fetchWithRetry(`/api/dz/devices/${encodeURIComponent(pk)}`)
+  if (!res.ok) {
+    throw new Error('Failed to fetch device')
+  }
+  return res.json()
+}
+
 export interface Link {
   pk: string
   code: string
@@ -1136,6 +1150,19 @@ export async function fetchLinks(limit = 100, offset = 0): Promise<PaginatedResp
   return res.json()
 }
 
+export interface LinkDetail extends Link {
+  peak_in_bps: number
+  peak_out_bps: number
+}
+
+export async function fetchLink(pk: string): Promise<LinkDetail> {
+  const res = await fetchWithRetry(`/api/dz/links/${encodeURIComponent(pk)}`)
+  if (!res.ok) {
+    throw new Error('Failed to fetch link')
+  }
+  return res.json()
+}
+
 export interface Metro {
   pk: string
   code: string
@@ -1150,6 +1177,21 @@ export async function fetchMetros(limit = 100, offset = 0): Promise<PaginatedRes
   const res = await fetchWithRetry(`/api/dz/metros?limit=${limit}&offset=${offset}`)
   if (!res.ok) {
     throw new Error('Failed to fetch metros')
+  }
+  return res.json()
+}
+
+export interface MetroDetail extends Metro {
+  validator_count: number
+  stake_sol: number
+  in_bps: number
+  out_bps: number
+}
+
+export async function fetchMetro(pk: string): Promise<MetroDetail> {
+  const res = await fetchWithRetry(`/api/dz/metros/${encodeURIComponent(pk)}`)
+  if (!res.ok) {
+    throw new Error('Failed to fetch metro')
   }
   return res.json()
 }
@@ -1172,6 +1214,20 @@ export async function fetchContributors(limit = 100, offset = 0): Promise<Pagina
   return res.json()
 }
 
+export interface ContributorDetail extends Contributor {
+  user_count: number
+  in_bps: number
+  out_bps: number
+}
+
+export async function fetchContributor(pk: string): Promise<ContributorDetail> {
+  const res = await fetchWithRetry(`/api/dz/contributors/${encodeURIComponent(pk)}`)
+  if (!res.ok) {
+    throw new Error('Failed to fetch contributor')
+  }
+  return res.json()
+}
+
 export interface User {
   pk: string
   owner_pubkey: string
@@ -1190,6 +1246,23 @@ export async function fetchUsers(limit = 100, offset = 0): Promise<PaginatedResp
   const res = await fetchWithRetry(`/api/dz/users?limit=${limit}&offset=${offset}`)
   if (!res.ok) {
     throw new Error('Failed to fetch users')
+  }
+  return res.json()
+}
+
+export interface UserDetail extends User {
+  metro_pk: string
+  contributor_pk: string
+  contributor_code: string
+  is_validator: boolean
+  vote_pubkey: string
+  stake_sol: number
+}
+
+export async function fetchUser(pk: string): Promise<UserDetail> {
+  const res = await fetchWithRetry(`/api/dz/users/${encodeURIComponent(pk)}`)
+  if (!res.ok) {
+    throw new Error('Failed to fetch user')
   }
   return res.json()
 }
@@ -1224,6 +1297,21 @@ export async function fetchValidators(limit = 100, offset = 0): Promise<Validato
   return res.json()
 }
 
+export interface ValidatorDetail extends Validator {
+  device_pk: string
+  metro_pk: string
+  gossip_ip: string
+  gossip_port: number
+}
+
+export async function fetchValidator(votePubkey: string): Promise<ValidatorDetail> {
+  const res = await fetchWithRetry(`/api/solana/validators/${encodeURIComponent(votePubkey)}`)
+  if (!res.ok) {
+    throw new Error('Failed to fetch validator')
+  }
+  return res.json()
+}
+
 export interface GossipNode {
   pubkey: string
   gossip_ip: string
@@ -1247,6 +1335,22 @@ export async function fetchGossipNodes(limit = 100, offset = 0): Promise<GossipN
   const res = await fetchWithRetry(`/api/solana/gossip-nodes?limit=${limit}&offset=${offset}`)
   if (!res.ok) {
     throw new Error('Failed to fetch gossip nodes')
+  }
+  return res.json()
+}
+
+export interface GossipNodeDetail extends GossipNode {
+  device_pk: string
+  metro_pk: string
+  vote_pubkey: string
+  in_bps: number
+  out_bps: number
+}
+
+export async function fetchGossipNode(pubkey: string): Promise<GossipNodeDetail> {
+  const res = await fetchWithRetry(`/api/solana/gossip-nodes/${encodeURIComponent(pubkey)}`)
+  if (!res.ok) {
+    throw new Error('Failed to fetch gossip node')
   }
   return res.json()
 }

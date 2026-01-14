@@ -141,14 +141,21 @@ func main() {
 
 	// DZ entity routes
 	r.Get("/api/dz/devices", handlers.GetDevices)
+	r.Get("/api/dz/devices/{pk}", handlers.GetDevice)
 	r.Get("/api/dz/links", handlers.GetLinks)
+	r.Get("/api/dz/links/{pk}", handlers.GetLink)
 	r.Get("/api/dz/metros", handlers.GetMetros)
+	r.Get("/api/dz/metros/{pk}", handlers.GetMetro)
 	r.Get("/api/dz/contributors", handlers.GetContributors)
+	r.Get("/api/dz/contributors/{pk}", handlers.GetContributor)
 	r.Get("/api/dz/users", handlers.GetUsers)
+	r.Get("/api/dz/users/{pk}", handlers.GetUser)
 
 	// Solana entity routes
 	r.Get("/api/solana/validators", handlers.GetValidators)
+	r.Get("/api/solana/validators/{vote_pubkey}", handlers.GetValidator)
 	r.Get("/api/solana/gossip-nodes", handlers.GetGossipNodes)
+	r.Get("/api/solana/gossip-nodes/{pubkey}", handlers.GetGossipNode)
 
 	r.Get("/api/topology", handlers.GetTopology)
 	r.Get("/api/topology/traffic", handlers.GetTopologyTraffic)

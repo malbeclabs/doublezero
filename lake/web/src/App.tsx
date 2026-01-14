@@ -20,6 +20,13 @@ import { ContributorsPage } from '@/components/contributors-page'
 import { UsersPage } from '@/components/users-page'
 import { ValidatorsPage } from '@/components/validators-page'
 import { GossipNodesPage } from '@/components/gossip-nodes-page'
+import { DeviceDetailPage } from '@/components/device-detail-page'
+import { LinkDetailPage } from '@/components/link-detail-page'
+import { MetroDetailPage } from '@/components/metro-detail-page'
+import { ContributorDetailPage } from '@/components/contributor-detail-page'
+import { UserDetailPage } from '@/components/user-detail-page'
+import { ValidatorDetailPage } from '@/components/validator-detail-page'
+import { GossipNodeDetailPage } from '@/components/gossip-node-detail-page'
 import { generateSessionTitle, generateChatSessionTitle, sendChatMessageStream, recommendVisualization, fetchCatalog, acquireSessionLock, releaseSessionLock, getSessionLock, watchSessionLock, getSession, type SessionQueryInfo, type SessionLock } from '@/lib/api'
 import type { TableInfo, QueryResponse, HistoryMessage, ChatMessage } from '@/lib/api'
 import {
@@ -1332,14 +1339,21 @@ function AppContent() {
 
             {/* DZ entity routes */}
             <Route path="/dz/devices" element={<DevicesPage />} />
+            <Route path="/dz/devices/:pk" element={<DeviceDetailPage />} />
             <Route path="/dz/links" element={<LinksPage />} />
+            <Route path="/dz/links/:pk" element={<LinkDetailPage />} />
             <Route path="/dz/metros" element={<MetrosPage />} />
+            <Route path="/dz/metros/:pk" element={<MetroDetailPage />} />
             <Route path="/dz/contributors" element={<ContributorsPage />} />
+            <Route path="/dz/contributors/:pk" element={<ContributorDetailPage />} />
             <Route path="/dz/users" element={<UsersPage />} />
+            <Route path="/dz/users/:pk" element={<UserDetailPage />} />
 
             {/* Solana entity routes */}
             <Route path="/solana/validators" element={<ValidatorsPage />} />
+            <Route path="/solana/validators/:vote_pubkey" element={<ValidatorDetailPage />} />
             <Route path="/solana/gossip-nodes" element={<GossipNodesPage />} />
+            <Route path="/solana/gossip-nodes/:pubkey" element={<GossipNodeDetailPage />} />
 
             {/* Default redirect */}
             <Route path="*" element={<Navigate to="/" replace />} />

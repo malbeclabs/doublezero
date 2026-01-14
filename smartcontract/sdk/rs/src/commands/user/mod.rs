@@ -9,6 +9,4 @@ pub mod get;
 pub mod list;
 pub mod reject;
 pub mod requestban;
-pub mod resume;
-pub mod suspend;
 pub mod update;

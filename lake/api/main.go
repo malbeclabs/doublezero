@@ -138,6 +138,7 @@ func main() {
 	r.Get("/api/catalog", handlers.GetCatalog)
 	r.Get("/api/stats", handlers.GetStats)
 	r.Get("/api/topology", handlers.GetTopology)
+	r.Get("/api/topology/traffic", handlers.GetTopologyTraffic)
 	r.Post("/api/query", handlers.ExecuteQuery)
 	r.Post("/api/generate", handlers.GenerateSQL)
 	r.Post("/api/generate/stream", handlers.GenerateSQLStream)

@@ -1,6 +1,9 @@
-import { useMemo, useEffect, useRef, useState } from 'react'
-import { MapContainer, TileLayer, CircleMarker, Polyline, useMap } from 'react-leaflet'
-import { ZoomIn, ZoomOut, Maximize, Users } from 'lucide-react'
+import { useMemo, useEffect, useRef, useState, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { MapContainer, TileLayer, CircleMarker, Polyline, useMap, useMapEvents } from 'react-leaflet'
+import { ZoomIn, ZoomOut, Maximize, Users, X } from 'lucide-react'
+import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip as RechartsTooltip, CartesianGrid } from 'recharts'
+import { useQuery } from '@tanstack/react-query'
 import type { Polyline as LeafletPolyline } from 'leaflet'
 import { useTheme } from '@/hooks/use-theme'
 import type { TopologyMetro, TopologyDevice, TopologyLink, TopologyValidator } from '@/lib/api'
@@ -85,6 +88,7 @@ function getLossColor(lossPercent: number | undefined, hasData: boolean, isDark:
 
 // Hovered link info type
 interface HoveredLinkInfo {
+  pk: string
   code: string
   linkType: string
   bandwidth: string
@@ -99,6 +103,7 @@ interface HoveredLinkInfo {
 
 // Hovered device info type
 interface HoveredDeviceInfo {
+  pk: string
   code: string
   deviceType: string
   status: string
@@ -111,6 +116,7 @@ interface HoveredDeviceInfo {
 
 // Hovered metro info type
 interface HoveredMetroInfo {
+  pk: string
   code: string
   name: string
   deviceCount: number
@@ -119,12 +125,24 @@ interface HoveredMetroInfo {
 // Hovered validator info type
 interface HoveredValidatorInfo {
   votePubkey: string
+  nodePubkey: string
+  tunnelId: number
   city: string
   country: string
   stakeSol: string
   stakeShare: string
   deviceCode: string
+  devicePk: string
+  inRate: string
+  outRate: string
 }
+
+// Selected item type for drawer
+type SelectedItem =
+  | { type: 'link'; data: HoveredLinkInfo }
+  | { type: 'device'; data: HoveredDeviceInfo }
+  | { type: 'metro'; data: HoveredMetroInfo }
+  | { type: 'validator'; data: HoveredValidatorInfo }
 
 // Animated polyline component with flowing dashes based on latency
 interface AnimatedPolylineProps {
@@ -136,9 +154,10 @@ interface AnimatedPolylineProps {
   isHovered: boolean
   isDark: boolean
   onHover: (hovered: boolean) => void
+  onClick?: () => void
 }
 
-function AnimatedPolyline({ positions, color, weight, latencyUs, isWan, isHovered, isDark, onHover }: AnimatedPolylineProps) {
+function AnimatedPolyline({ positions, color, weight, latencyUs, isWan, isHovered, isDark, onHover, onClick }: AnimatedPolylineProps) {
   // Hover color: light in dark mode, dark in light mode
   const hoverColor = isDark ? '#fff' : '#000'
   const polylineRef = useRef<LeafletPolyline>(null)
@@ -175,6 +194,7 @@ function AnimatedPolyline({ positions, color, weight, latencyUs, isWan, isHovere
         eventHandlers={{
           mouseover: () => onHover(true),
           mouseout: () => onHover(false),
+          click: onClick,
         }}
       />
       {/* Visible animated line */}
@@ -287,6 +307,19 @@ function MapFitBounds({ metros }: { metros: TopologyMetro[] }) {
   return null
 }
 
+// Component to handle map clicks (close drawer when clicking empty area)
+function MapClickHandler({ onMapClick, markerClickedRef }: { onMapClick: () => void; markerClickedRef: React.RefObject<boolean> }) {
+  useMapEvents({
+    click: () => {
+      // Only close drawer if a marker wasn't just clicked
+      if (!markerClickedRef.current) {
+        onMapClick()
+      }
+    },
+  })
+  return null
+}
+
 // Calculate device position with radial offset for multiple devices at same metro
 function calculateDevicePosition(
   metroLat: number,
@@ -342,11 +375,41 @@ function calculateCurvedPath(
 export function TopologyMap({ metros, devices, links, validators }: TopologyMapProps) {
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
+  const [searchParams, setSearchParams] = useSearchParams()
   const [hoveredLink, setHoveredLink] = useState<HoveredLinkInfo | null>(null)
   const [hoveredDevice, setHoveredDevice] = useState<HoveredDeviceInfo | null>(null)
   const [hoveredMetro, setHoveredMetro] = useState<HoveredMetroInfo | null>(null)
   const [hoveredValidator, setHoveredValidator] = useState<HoveredValidatorInfo | null>(null)
   const [showValidators, setShowValidators] = useState(false)
+  const [selectedItem, setSelectedItemState] = useState<SelectedItem | null>(null)
+  const markerClickedRef = useRef(false)
+
+  // Update URL when selected item changes
+  const setSelectedItem = useCallback((item: SelectedItem | null) => {
+    setSelectedItemState(item)
+    if (item === null) {
+      setSearchParams({}, { replace: true })
+    } else {
+      const params: Record<string, string> = { type: item.type }
+      if (item.type === 'validator') {
+        params.id = item.data.votePubkey
+      } else if (item.type === 'device') {
+        params.id = item.data.pk
+      } else if (item.type === 'link') {
+        params.id = item.data.pk
+      } else if (item.type === 'metro') {
+        params.id = item.data.pk
+      }
+      setSearchParams(params, { replace: true })
+    }
+  }, [setSearchParams])
+
+  // Helper to handle marker clicks - sets flag to prevent map click from clearing selection
+  const handleMarkerClick = useCallback((item: SelectedItem) => {
+    markerClickedRef.current = true
+    setSelectedItem(item)
+    setTimeout(() => { markerClickedRef.current = false }, 0)
+  }, [setSelectedItem])
 
   // Hover highlight color: light in dark mode, dark in light mode
   const hoverHighlight = isDark ? '#fff' : '#000'
@@ -368,6 +431,24 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     }
     return map
   }, [devices])
+
+  // Build link lookup map
+  const linkMap = useMemo(() => {
+    const map = new Map<string, TopologyLink>()
+    for (const link of links) {
+      map.set(link.pk, link)
+    }
+    return map
+  }, [links])
+
+  // Build validator lookup map (by vote_pubkey)
+  const validatorMap = useMemo(() => {
+    const map = new Map<string, TopologyValidator>()
+    for (const validator of validators) {
+      map.set(validator.vote_pubkey, validator)
+    }
+    return map
+  }, [validators])
 
   // Group devices by metro
   const devicesByMetro = useMemo(() => {
@@ -432,6 +513,97 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       .filter((d): d is NonNullable<typeof d> => d !== null)
   }, [links, devicePositions, deviceMap])
 
+  // Restore selected item from URL params on initial load
+  const initialLoadRef = useRef(true)
+  useEffect(() => {
+    if (!initialLoadRef.current) return
+    initialLoadRef.current = false
+
+    const type = searchParams.get('type')
+    const id = searchParams.get('id')
+    if (!type || !id) return
+
+    if (type === 'validator') {
+      const validator = validatorMap.get(id)
+      if (validator) {
+        const device = deviceMap.get(validator.device_pk)
+        setSelectedItemState({
+          type: 'validator',
+          data: {
+            votePubkey: validator.vote_pubkey,
+            nodePubkey: validator.node_pubkey,
+            tunnelId: validator.tunnel_id,
+            city: validator.city || 'Unknown',
+            country: validator.country || 'Unknown',
+            stakeSol: (validator.stake_sol ?? 0) >= 1e6 ? `${(validator.stake_sol / 1e6).toFixed(2)}M` : (validator.stake_sol ?? 0) >= 1e3 ? `${(validator.stake_sol / 1e3).toFixed(0)}k` : `${(validator.stake_sol ?? 0).toFixed(0)}`,
+            stakeShare: (validator.stake_share ?? 0) > 0 ? `${validator.stake_share.toFixed(2)}%` : '0%',
+            deviceCode: device?.code || 'Unknown',
+            devicePk: validator.device_pk,
+            inRate: formatTrafficRate(validator.in_bps),
+            outRate: formatTrafficRate(validator.out_bps),
+          },
+        })
+        setShowValidators(true) // Show validators layer when loading a validator from URL
+      }
+    } else if (type === 'device') {
+      const device = deviceMap.get(id)
+      if (device) {
+        const metro = metroMap.get(device.metro_pk)
+        setSelectedItemState({
+          type: 'device',
+          data: {
+            pk: device.pk,
+            code: device.code,
+            deviceType: device.device_type,
+            status: device.status,
+            metro: metro?.name || 'Unknown',
+            userCount: device.user_count ?? 0,
+            validatorCount: device.validator_count ?? 0,
+            stakeSol: (device.stake_sol ?? 0) >= 1e6 ? `${(device.stake_sol / 1e6).toFixed(2)}M` : (device.stake_sol ?? 0) >= 1e3 ? `${(device.stake_sol / 1e3).toFixed(0)}k` : `${(device.stake_sol ?? 0).toFixed(0)}`,
+            stakeShare: (device.stake_share ?? 0) > 0 ? `${device.stake_share.toFixed(2)}%` : '0%',
+          },
+        })
+      }
+    } else if (type === 'link') {
+      const link = linkMap.get(id)
+      if (link) {
+        const deviceA = deviceMap.get(link.side_a_pk)
+        const deviceZ = deviceMap.get(link.side_z_pk)
+        const hasLatencyData = (link.sample_count ?? 0) > 0
+        setSelectedItemState({
+          type: 'link',
+          data: {
+            pk: link.pk,
+            code: link.code,
+            linkType: link.link_type,
+            bandwidth: formatBandwidth(link.bandwidth_bps),
+            latencyMs: hasLatencyData ? (link.latency_us > 0 ? `${(link.latency_us / 1000).toFixed(2)}ms` : '0.00ms') : 'N/A',
+            jitterMs: hasLatencyData ? ((link.jitter_us ?? 0) > 0 ? `${(link.jitter_us / 1000).toFixed(3)}ms` : '0.000ms') : 'N/A',
+            lossPercent: hasLatencyData ? `${(link.loss_percent ?? 0).toFixed(2)}%` : 'N/A',
+            inRate: formatTrafficRate(link.in_bps),
+            outRate: formatTrafficRate(link.out_bps),
+            deviceA: deviceA?.code || 'Unknown',
+            deviceZ: deviceZ?.code || 'Unknown',
+          },
+        })
+      }
+    } else if (type === 'metro') {
+      const metro = metroMap.get(id)
+      if (metro) {
+        const metroDeviceCount = devicesByMetro.get(metro.pk)?.length || 0
+        setSelectedItemState({
+          type: 'metro',
+          data: {
+            pk: metro.pk,
+            code: metro.code,
+            name: metro.name,
+            deviceCount: metroDeviceCount,
+          },
+        })
+      }
+    }
+  }, [searchParams, validatorMap, deviceMap, linkMap, metroMap, devicesByMetro])
+
   // Tile layer URL based on theme
   const tileUrl = isDark
     ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
@@ -454,6 +626,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       style={{ background: 'var(--background)' }}
     >
       <MapFitBounds metros={metros} />
+      <MapClickHandler onMapClick={() => setSelectedItem(null)} markerClickedRef={markerClickedRef} />
       <MapControls
         metros={metros}
         showValidators={showValidators}
@@ -468,28 +641,32 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       {/* Metro markers (background circles) */}
       {metros.map(metro => {
         const isThisHovered = hoveredMetro?.code === metro.code
+        const isThisSelected = selectedItem?.type === 'metro' && selectedItem.data.pk === metro.pk
         const metroDeviceCount = devicesByMetro.get(metro.pk)?.length || 0
+        const metroInfo: HoveredMetroInfo = {
+          pk: metro.pk,
+          code: metro.code,
+          name: metro.name,
+          deviceCount: metroDeviceCount,
+        }
 
         return (
           <CircleMarker
             key={`metro-${metro.pk}`}
             center={[metro.latitude, metro.longitude]}
-            radius={isThisHovered ? 14 : 12}
+            radius={isThisHovered || isThisSelected ? 14 : 12}
             pathOptions={{
-              fillColor: isThisHovered ? hoverHighlight : metroColor,
-              fillOpacity: isThisHovered ? 0.5 : 0.3,
+              fillColor: isThisHovered || isThisSelected ? hoverHighlight : metroColor,
+              fillOpacity: isThisHovered || isThisSelected ? 0.5 : 0.3,
               stroke: true,
-              color: isThisHovered ? hoverHighlight : metroColor,
-              weight: isThisHovered ? 2 : 1,
-              opacity: isThisHovered ? 0.8 : 0.5,
+              color: isThisHovered || isThisSelected ? hoverHighlight : metroColor,
+              weight: isThisHovered || isThisSelected ? 2 : 1,
+              opacity: isThisHovered || isThisSelected ? 0.8 : 0.5,
             }}
             eventHandlers={{
-              mouseover: () => setHoveredMetro({
-                code: metro.code,
-                name: metro.name,
-                deviceCount: metroDeviceCount,
-              }),
+              mouseover: () => setHoveredMetro(metroInfo),
               mouseout: () => setHoveredMetro(null),
+              click: () => handleMarkerClick({ type: 'metro', data: metroInfo }),
             }}
           />
         )
@@ -502,6 +679,20 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
         const color = getLossColor(link.loss_percent, hasLatencyData, isDark)
         const weight = calculateLinkWeight(link.bandwidth_bps)
         const isThisHovered = hoveredLink?.code === link.code
+        const isThisSelected = selectedItem?.type === 'link' && selectedItem.data.pk === link.pk
+        const linkInfo: HoveredLinkInfo = {
+          pk: link.pk,
+          code: link.code,
+          linkType: link.link_type,
+          bandwidth: formatBandwidth(link.bandwidth_bps),
+          latencyMs: hasLatencyData ? (link.latency_us > 0 ? `${(link.latency_us / 1000).toFixed(2)}ms` : '0.00ms') : 'N/A',
+          jitterMs: hasLatencyData ? ((link.jitter_us ?? 0) > 0 ? `${(link.jitter_us / 1000).toFixed(3)}ms` : '0.000ms') : 'N/A',
+          lossPercent: hasLatencyData ? `${(link.loss_percent ?? 0).toFixed(2)}%` : 'N/A',
+          inRate: formatTrafficRate(link.in_bps),
+          outRate: formatTrafficRate(link.out_bps),
+          deviceA: deviceA?.code || 'Unknown',
+          deviceZ: deviceZ?.code || 'Unknown',
+        }
 
         return (
           <AnimatedPolyline
@@ -511,26 +702,16 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             weight={weight}
             latencyUs={link.latency_us}
             isWan={isWan}
-            isHovered={isThisHovered}
+            isHovered={isThisHovered || isThisSelected}
             isDark={isDark}
             onHover={(hovered) => {
               if (hovered) {
-                setHoveredLink({
-                  code: link.code,
-                  linkType: link.link_type,
-                  bandwidth: formatBandwidth(link.bandwidth_bps),
-                  latencyMs: hasLatencyData ? (link.latency_us > 0 ? `${(link.latency_us / 1000).toFixed(2)}ms` : '0.00ms') : 'N/A',
-                  jitterMs: hasLatencyData ? ((link.jitter_us ?? 0) > 0 ? `${(link.jitter_us / 1000).toFixed(3)}ms` : '0.000ms') : 'N/A',
-                  lossPercent: hasLatencyData ? `${(link.loss_percent ?? 0).toFixed(2)}%` : 'N/A',
-                  inRate: formatTrafficRate(link.in_bps),
-                  outRate: formatTrafficRate(link.out_bps),
-                  deviceA: deviceA?.code || 'Unknown',
-                  deviceZ: deviceZ?.code || 'Unknown',
-                })
+                setHoveredLink(linkInfo)
               } else {
                 setHoveredLink(null)
               }
             }}
+            onClick={() => handleMarkerClick({ type: 'link', data: linkInfo })}
           />
         )
       })}
@@ -542,32 +723,36 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
 
         const metro = metroMap.get(device.metro_pk)
         const isThisHovered = hoveredDevice?.code === device.code
+        const isThisSelected = selectedItem?.type === 'device' && selectedItem.data.pk === device.pk
+        const deviceInfo: HoveredDeviceInfo = {
+          pk: device.pk,
+          code: device.code,
+          deviceType: device.device_type,
+          status: device.status,
+          metro: metro?.name || 'Unknown',
+          userCount: device.user_count ?? 0,
+          validatorCount: device.validator_count ?? 0,
+          stakeSol: (device.stake_sol ?? 0) >= 1e6 ? `${(device.stake_sol / 1e6).toFixed(2)}M` : (device.stake_sol ?? 0) >= 1e3 ? `${(device.stake_sol / 1e3).toFixed(0)}k` : `${(device.stake_sol ?? 0).toFixed(0)}`,
+          stakeShare: (device.stake_share ?? 0) > 0 ? `${device.stake_share.toFixed(2)}%` : '0%',
+        }
 
         return (
           <CircleMarker
             key={`device-${device.pk}`}
             center={pos}
-            radius={isThisHovered ? 8 : 6}
+            radius={isThisHovered || isThisSelected ? 8 : 6}
             pathOptions={{
-              fillColor: isThisHovered ? hoverHighlight : deviceColor,
+              fillColor: isThisHovered || isThisSelected ? hoverHighlight : deviceColor,
               fillOpacity: 0.9,
               stroke: true,
               color: hoverHighlight,
-              weight: isThisHovered ? 2 : 1,
-              opacity: isThisHovered ? 1 : 0.5,
+              weight: isThisHovered || isThisSelected ? 2 : 1,
+              opacity: isThisHovered || isThisSelected ? 1 : 0.5,
             }}
             eventHandlers={{
-              mouseover: () => setHoveredDevice({
-                code: device.code,
-                deviceType: device.device_type,
-                status: device.status,
-                metro: metro?.name || 'Unknown',
-                userCount: device.user_count ?? 0,
-                validatorCount: device.validator_count ?? 0,
-                stakeSol: (device.stake_sol ?? 0) >= 1e6 ? `${(device.stake_sol / 1e6).toFixed(2)}M` : (device.stake_sol ?? 0) >= 1e3 ? `${(device.stake_sol / 1e3).toFixed(0)}k` : `${(device.stake_sol ?? 0).toFixed(0)}`,
-                stakeShare: (device.stake_share ?? 0) > 0 ? `${device.stake_share.toFixed(2)}%` : '0%',
-              }),
+              mouseover: () => setHoveredDevice(deviceInfo),
               mouseout: () => setHoveredDevice(null),
+              click: () => handleMarkerClick({ type: 'device', data: deviceInfo }),
             }}
           />
         )
@@ -603,81 +788,62 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
         const validatorPos: LatLngTuple = [validator.latitude, validator.longitude]
         const device = deviceMap.get(validator.device_pk)
         const isThisHovered = hoveredValidator?.votePubkey === validator.vote_pubkey
+        const isThisSelected = selectedItem?.type === 'validator' && selectedItem.data.votePubkey === validator.vote_pubkey
         const baseRadius = calculateValidatorRadius(validator.stake_sol)
+        const validatorInfo: HoveredValidatorInfo = {
+          votePubkey: validator.vote_pubkey,
+          nodePubkey: validator.node_pubkey,
+          tunnelId: validator.tunnel_id,
+          city: validator.city || 'Unknown',
+          country: validator.country || 'Unknown',
+          stakeSol: (validator.stake_sol ?? 0) >= 1e6 ? `${(validator.stake_sol / 1e6).toFixed(2)}M` : (validator.stake_sol ?? 0) >= 1e3 ? `${(validator.stake_sol / 1e3).toFixed(0)}k` : `${(validator.stake_sol ?? 0).toFixed(0)}`,
+          stakeShare: (validator.stake_share ?? 0) > 0 ? `${validator.stake_share.toFixed(2)}%` : '0%',
+          deviceCode: device?.code || 'Unknown',
+          devicePk: validator.device_pk,
+          inRate: formatTrafficRate(validator.in_bps),
+          outRate: formatTrafficRate(validator.out_bps),
+        }
 
         return (
           <CircleMarker
             key={`validator-${validator.vote_pubkey}`}
             center={validatorPos}
-            radius={isThisHovered ? baseRadius + 2 : baseRadius}
+            radius={isThisHovered || isThisSelected ? baseRadius + 2 : baseRadius}
             pathOptions={{
-              fillColor: isThisHovered ? hoverHighlight : validatorColor,
+              fillColor: isThisHovered || isThisSelected ? hoverHighlight : validatorColor,
               fillOpacity: 0.9,
               stroke: true,
               color: hoverHighlight,
-              weight: isThisHovered ? 2 : 1,
-              opacity: isThisHovered ? 1 : 0.5,
+              weight: isThisHovered || isThisSelected ? 2 : 1,
+              opacity: isThisHovered || isThisSelected ? 1 : 0.5,
             }}
             eventHandlers={{
-              mouseover: () => setHoveredValidator({
-                votePubkey: validator.vote_pubkey,
-                city: validator.city || 'Unknown',
-                country: validator.country || 'Unknown',
-                stakeSol: (validator.stake_sol ?? 0) >= 1e6 ? `${(validator.stake_sol / 1e6).toFixed(2)}M` : (validator.stake_sol ?? 0) >= 1e3 ? `${(validator.stake_sol / 1e3).toFixed(0)}k` : `${(validator.stake_sol ?? 0).toFixed(0)}`,
-                stakeShare: (validator.stake_share ?? 0) > 0 ? `${validator.stake_share.toFixed(2)}%` : '0%',
-                deviceCode: device?.code || 'Unknown',
-              }),
+              mouseover: () => setHoveredValidator(validatorInfo),
               mouseout: () => setHoveredValidator(null),
+              click: () => handleMarkerClick({ type: 'validator', data: validatorInfo }),
             }}
           />
         )
       })}
     </MapContainer>
 
-    {/* Info panel */}
+    {/* Info panel - shows full details on hover (top right) */}
     {(hoveredLink || hoveredDevice || hoveredMetro || hoveredValidator) && (
-      <div className="absolute top-4 right-16 z-[1000] bg-[var(--card)] border border-[var(--border)] rounded-lg shadow-lg p-4 min-w-[200px]">
+      <div className="absolute top-4 right-4 z-[1000] bg-[var(--card)] border border-[var(--border)] rounded-lg shadow-lg p-4 min-w-[200px]">
         {hoveredLink && (
           <>
             <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Link</div>
             <div className="text-sm font-medium mb-2">{hoveredLink.code}</div>
             <div className="space-y-1 text-xs">
-              <div className="flex justify-between gap-4">
-                <span className="text-muted-foreground">Type:</span>
-                <span>{hoveredLink.linkType}</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-muted-foreground">Bandwidth:</span>
-                <span>{hoveredLink.bandwidth}</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-muted-foreground">Latency:</span>
-                <span>{hoveredLink.latencyMs}</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-muted-foreground">Jitter:</span>
-                <span>{hoveredLink.jitterMs}</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-muted-foreground">Loss:</span>
-                <span>{hoveredLink.lossPercent}</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-muted-foreground">In:</span>
-                <span>{hoveredLink.inRate}</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-muted-foreground">Out:</span>
-                <span>{hoveredLink.outRate}</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-muted-foreground">Side A:</span>
-                <span>{hoveredLink.deviceA}</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-muted-foreground">Side Z:</span>
-                <span>{hoveredLink.deviceZ}</span>
-              </div>
+              <DetailRow label="Type" value={hoveredLink.linkType} />
+              <DetailRow label="Bandwidth" value={hoveredLink.bandwidth} />
+              <DetailRow label="Latency" value={hoveredLink.latencyMs} />
+              <DetailRow label="Jitter" value={hoveredLink.jitterMs} />
+              <DetailRow label="Loss" value={hoveredLink.lossPercent} />
+              <DetailRow label="In" value={hoveredLink.inRate} />
+              <DetailRow label="Out" value={hoveredLink.outRate} />
+              <DetailRow label="Side A" value={hoveredLink.deviceA} />
+              <DetailRow label="Side Z" value={hoveredLink.deviceZ} />
             </div>
           </>
         )}
@@ -686,30 +852,12 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Device</div>
             <div className="text-sm font-medium mb-2">{hoveredDevice.code}</div>
             <div className="space-y-1 text-xs">
-              <div className="flex justify-between gap-4">
-                <span className="text-muted-foreground">Type:</span>
-                <span>{hoveredDevice.deviceType}</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-muted-foreground">Metro:</span>
-                <span>{hoveredDevice.metro}</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-muted-foreground">Users:</span>
-                <span>{hoveredDevice.userCount}</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-muted-foreground">Validators:</span>
-                <span>{hoveredDevice.validatorCount}</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-muted-foreground">Stake:</span>
-                <span>{hoveredDevice.stakeSol} SOL</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-muted-foreground">Stake Share:</span>
-                <span>{hoveredDevice.stakeShare}</span>
-              </div>
+              <DetailRow label="Type" value={hoveredDevice.deviceType} />
+              <DetailRow label="Metro" value={hoveredDevice.metro} />
+              <DetailRow label="Users" value={String(hoveredDevice.userCount)} />
+              <DetailRow label="Validators" value={String(hoveredDevice.validatorCount)} />
+              <DetailRow label="Stake" value={`${hoveredDevice.stakeSol} SOL`} />
+              <DetailRow label="Stake Share" value={hoveredDevice.stakeShare} />
             </div>
           </>
         )}
@@ -718,14 +866,8 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Metro</div>
             <div className="text-sm font-medium mb-2">{hoveredMetro.name}</div>
             <div className="space-y-1 text-xs">
-              <div className="flex justify-between gap-4">
-                <span className="text-muted-foreground">Code:</span>
-                <span>{hoveredMetro.code}</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-muted-foreground">Devices:</span>
-                <span>{hoveredMetro.deviceCount}</span>
-              </div>
+              <DetailRow label="Code" value={hoveredMetro.code} />
+              <DetailRow label="Devices" value={String(hoveredMetro.deviceCount)} />
             </div>
           </>
         )}
@@ -734,27 +876,432 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Validator</div>
             <div className="text-sm font-medium font-mono mb-2">{hoveredValidator.votePubkey.slice(0, 12)}...</div>
             <div className="space-y-1 text-xs">
-              <div className="flex justify-between gap-4">
-                <span className="text-muted-foreground">Location:</span>
-                <span>{hoveredValidator.city}, {hoveredValidator.country}</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-muted-foreground">Stake:</span>
-                <span>{hoveredValidator.stakeSol} SOL</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-muted-foreground">DZ Stake Share:</span>
-                <span>{hoveredValidator.stakeShare}</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-muted-foreground">Device:</span>
-                <span>{hoveredValidator.deviceCode}</span>
-              </div>
+              <DetailRow label="Location" value={`${hoveredValidator.city}, ${hoveredValidator.country}`} />
+              <DetailRow label="Stake" value={`${hoveredValidator.stakeSol} SOL`} />
+              <DetailRow label="DZ Stake Share" value={hoveredValidator.stakeShare} />
+              <DetailRow label="Device" value={hoveredValidator.deviceCode} />
+              <DetailRow label="In" value={hoveredValidator.inRate} />
+              <DetailRow label="Out" value={hoveredValidator.outRate} />
             </div>
           </>
         )}
       </div>
     )}
+
+    {/* Detail drawer */}
+    {selectedItem && (
+      <TopologyDrawer
+        selectedItem={selectedItem}
+        onClose={() => setSelectedItem(null)}
+        isDark={isDark}
+      />
+    )}
     </>
   )
+}
+
+// Traffic data point type
+interface TrafficDataPoint {
+  time: string
+  avgIn: number
+  avgOut: number
+  peakIn: number
+  peakOut: number
+}
+
+// Fetch traffic history for a link, device, or validator
+async function fetchTrafficHistory(type: 'link' | 'device' | 'validator', pk: string): Promise<TrafficDataPoint[]> {
+  const res = await fetch(`/api/topology/traffic?type=${type}&pk=${encodeURIComponent(pk)}`)
+  if (!res.ok) return []
+  const data = await res.json()
+  return data.points || []
+}
+
+// Drawer component
+interface TopologyDrawerProps {
+  selectedItem: SelectedItem
+  onClose: () => void
+  isDark: boolean
+}
+
+function TopologyDrawer({ selectedItem, onClose, isDark }: TopologyDrawerProps) {
+  // Drawer width state with localStorage persistence
+  const [drawerWidth, setDrawerWidth] = useState(() => {
+    const saved = localStorage.getItem('topology-drawer-width')
+    return saved ? parseInt(saved, 10) : 320
+  })
+  const [isResizing, setIsResizing] = useState(false)
+
+  // Track sidebar collapsed state to position drawer correctly
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    const saved = localStorage.getItem('sidebar-collapsed')
+    return saved !== 'false' // Default to collapsed if not set
+  })
+
+  // Listen for sidebar state changes
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'sidebar-collapsed') {
+        setSidebarCollapsed(e.newValue !== 'false')
+      }
+    }
+    window.addEventListener('storage', handleStorageChange)
+
+    // Also poll for changes (for same-tab updates)
+    const interval = setInterval(() => {
+      const current = localStorage.getItem('sidebar-collapsed')
+      setSidebarCollapsed(current !== 'false')
+    }, 100)
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange)
+      clearInterval(interval)
+    }
+  }, [])
+
+  // Sidebar width: 48px collapsed, 256px expanded
+  const sidebarWidth = sidebarCollapsed ? 48 : 256
+
+  // Handle resize drag
+  useEffect(() => {
+    if (!isResizing) return
+
+    const handleMouseMove = (e: MouseEvent) => {
+      // Calculate new width based on mouse position relative to sidebar
+      const newWidth = Math.max(280, Math.min(600, e.clientX - sidebarWidth))
+      setDrawerWidth(newWidth)
+    }
+
+    const handleMouseUp = () => {
+      setIsResizing(false)
+      localStorage.setItem('topology-drawer-width', String(drawerWidth))
+    }
+
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+    document.body.style.cursor = 'ew-resize'
+    document.body.style.userSelect = 'none'
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+  }, [isResizing, drawerWidth])
+
+  // Fetch traffic data for links, devices, and validators (via their tunnel_id)
+  const trafficType = selectedItem.type === 'link' ? 'link'
+    : selectedItem.type === 'device' ? 'device'
+    : selectedItem.type === 'validator' ? 'validator'
+    : null
+  const trafficPk = selectedItem.type === 'link' ? selectedItem.data.pk
+    : selectedItem.type === 'device' ? selectedItem.data.pk
+    : selectedItem.type === 'validator' ? String(selectedItem.data.tunnelId)
+    : null
+
+  const { data: trafficData } = useQuery({
+    queryKey: ['topology-traffic', trafficType, trafficPk],
+    queryFn: () => fetchTrafficHistory(trafficType as 'link' | 'device' | 'validator', trafficPk!),
+    enabled: !!trafficPk && !!trafficType,
+    refetchInterval: 60000,
+  })
+
+  const chartColor = isDark ? '#60a5fa' : '#2563eb'
+  const chartColorSecondary = isDark ? '#f97316' : '#ea580c'
+
+  // Build stats based on selected item type
+  const stats = useMemo(() => {
+    if (selectedItem.type === 'link') {
+      const link = selectedItem.data
+      return [
+        { label: 'Bandwidth', value: link.bandwidth },
+        { label: 'Latency', value: link.latencyMs },
+        { label: 'Jitter', value: link.jitterMs },
+        { label: 'Loss', value: link.lossPercent },
+        { label: 'Current In', value: link.inRate },
+        { label: 'Current Out', value: link.outRate },
+      ]
+    }
+    if (selectedItem.type === 'device') {
+      const device = selectedItem.data
+      return [
+        { label: 'Type', value: device.deviceType },
+        { label: 'Metro', value: device.metro },
+        { label: 'Users', value: String(device.userCount) },
+        { label: 'Validators', value: String(device.validatorCount) },
+        { label: 'Stake', value: `${device.stakeSol} SOL` },
+        { label: 'Stake Share', value: device.stakeShare },
+      ]
+    }
+    if (selectedItem.type === 'metro') {
+      const metro = selectedItem.data
+      return [
+        { label: 'Code', value: metro.code },
+        { label: 'Devices', value: String(metro.deviceCount) },
+      ]
+    }
+    if (selectedItem.type === 'validator') {
+      const validator = selectedItem.data
+      return [
+        { label: 'Location', value: `${validator.city}, ${validator.country}` },
+        { label: 'Device', value: validator.deviceCode },
+        { label: 'Stake', value: `${validator.stakeSol} SOL` },
+        { label: 'DZ Stake Share', value: validator.stakeShare },
+        { label: 'Current In', value: validator.inRate },
+        { label: 'Current Out', value: validator.outRate },
+      ]
+    }
+    return []
+  }, [selectedItem])
+
+  const hasTrafficData = selectedItem.type === 'link' || selectedItem.type === 'device' || selectedItem.type === 'validator'
+
+  return (
+    <div
+      className="absolute top-0 bottom-0 z-[1000] bg-[var(--card)] border-r border-[var(--border)] shadow-xl flex flex-col"
+      style={{ width: drawerWidth, left: sidebarWidth }}
+    >
+      {/* Resize handle */}
+      <div
+        className="absolute top-0 bottom-0 right-0 w-1 cursor-ew-resize hover:bg-blue-500/50 transition-colors"
+        onMouseDown={() => setIsResizing(true)}
+      />
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)] min-w-0">
+        <div className="min-w-0 flex-1 mr-2">
+          <div className="text-xs text-muted-foreground uppercase tracking-wider">
+            {selectedItem.type}
+          </div>
+          <div className="text-sm font-medium min-w-0 flex-1">
+            {selectedItem.type === 'link' && selectedItem.data.code}
+            {selectedItem.type === 'device' && selectedItem.data.code}
+            {selectedItem.type === 'metro' && selectedItem.data.name}
+            {selectedItem.type === 'validator' && (
+              <span
+                className="font-mono block truncate"
+                title={selectedItem.data.votePubkey}
+              >
+                {selectedItem.data.votePubkey}
+              </span>
+            )}
+          </div>
+          {selectedItem.type === 'link' && (
+            <div className="text-xs text-muted-foreground mt-0.5">
+              {selectedItem.data.deviceA} ↔ {selectedItem.data.deviceZ}
+            </div>
+          )}
+        </div>
+        <button
+          onClick={onClose}
+          className="p-1.5 hover:bg-[var(--muted)] rounded transition-colors"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {/* Stats grid */}
+        <div className="grid grid-cols-2 gap-2">
+          {stats.map((stat, i) => (
+            <div key={i} className="text-center p-2 bg-[var(--muted)]/30 rounded-lg">
+              <div className="text-base font-medium tabular-nums tracking-tight">
+                {stat.value}
+              </div>
+              <div className="text-xs text-muted-foreground">{stat.label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Charts section */}
+        {!hasTrafficData && (
+          <div className="text-sm text-muted-foreground text-center py-4">
+            No traffic data available for {selectedItem.type}s
+          </div>
+        )}
+
+        {hasTrafficData && !trafficData && (
+          <div className="text-sm text-muted-foreground text-center py-4">
+            Loading traffic data...
+          </div>
+        )}
+
+        {hasTrafficData && trafficData && trafficData.length === 0 && (
+          <div className="text-sm text-muted-foreground text-center py-4">
+            No traffic data available
+          </div>
+        )}
+
+        {hasTrafficData && trafficData && trafficData.length > 0 && (
+          <>
+            {/* Average Traffic Chart */}
+            <div>
+              <div className="text-xs text-muted-foreground uppercase tracking-wider mb-2">
+                Avg Traffic Rate (24h)
+              </div>
+              <div className="h-36">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={trafficData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.5} />
+                    <XAxis
+                      dataKey="time"
+                      tick={{ fontSize: 9 }}
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <YAxis
+                      tick={{ fontSize: 9 }}
+                      tickLine={false}
+                      axisLine={false}
+                      tickFormatter={(v) => formatChartAxisRate(v)}
+                      width={40}
+                    />
+                    <RechartsTooltip
+                      contentStyle={{
+                        backgroundColor: 'var(--card)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '6px',
+                        fontSize: '11px',
+                      }}
+                      formatter={(value) => formatChartTooltipRate(value as number)}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="avgIn"
+                      stroke={chartColor}
+                      strokeWidth={1.5}
+                      dot={false}
+                      name="In"
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="avgOut"
+                      stroke={chartColorSecondary}
+                      strokeWidth={1.5}
+                      dot={false}
+                      name="Out"
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="flex justify-center gap-4 text-xs mt-1">
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: chartColor }} />
+                  In
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: chartColorSecondary }} />
+                  Out
+                </span>
+              </div>
+            </div>
+
+            {/* Peak Traffic Chart */}
+            <div>
+              <div className="text-xs text-muted-foreground uppercase tracking-wider mb-2">
+                Peak Traffic Rate (24h)
+              </div>
+              <div className="h-36">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={trafficData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.5} />
+                    <XAxis
+                      dataKey="time"
+                      tick={{ fontSize: 9 }}
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <YAxis
+                      tick={{ fontSize: 9 }}
+                      tickLine={false}
+                      axisLine={false}
+                      tickFormatter={(v) => formatChartAxisRate(v)}
+                      width={40}
+                    />
+                    <RechartsTooltip
+                      contentStyle={{
+                        backgroundColor: 'var(--card)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '6px',
+                        fontSize: '11px',
+                      }}
+                      formatter={(value) => formatChartTooltipRate(value as number)}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="peakIn"
+                      stroke={chartColor}
+                      strokeWidth={1.5}
+                      dot={false}
+                      name="In"
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="peakOut"
+                      stroke={chartColorSecondary}
+                      strokeWidth={1.5}
+                      dot={false}
+                      name="Out"
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="flex justify-center gap-4 text-xs mt-1">
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: chartColor }} />
+                  In
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: chartColorSecondary }} />
+                  Out
+                </span>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* External link for validators */}
+        {selectedItem.type === 'validator' && (
+          <div className="pt-2 border-t border-[var(--border)]">
+            <a
+              href={`https://www.validators.app/validators/${selectedItem.data.nodePubkey}?locale=en&network=mainnet`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-muted-foreground hover:text-blue-500 hover:underline"
+            >
+              View on validators.app →
+            </a>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between gap-4">
+      <span className="text-muted-foreground">{label}:</span>
+      <span>{value}</span>
+    </div>
+  )
+}
+
+// Format rate for chart axis (compact)
+function formatChartAxisRate(bps: number): string {
+  if (bps >= 1e12) return `${(bps / 1e12).toFixed(1)}T`
+  if (bps >= 1e9) return `${(bps / 1e9).toFixed(1)}G`
+  if (bps >= 1e6) return `${(bps / 1e6).toFixed(1)}M`
+  if (bps >= 1e3) return `${(bps / 1e3).toFixed(1)}K`
+  return `${bps.toFixed(0)}`
+}
+
+// Format rate for chart tooltip (full)
+function formatChartTooltipRate(bps: number): string {
+  if (bps >= 1e12) return `${(bps / 1e12).toFixed(2)} Tbps`
+  if (bps >= 1e9) return `${(bps / 1e9).toFixed(2)} Gbps`
+  if (bps >= 1e6) return `${(bps / 1e6).toFixed(2)} Mbps`
+  if (bps >= 1e3) return `${(bps / 1e3).toFixed(2)} Kbps`
+  return `${bps.toFixed(0)} bps`
 }

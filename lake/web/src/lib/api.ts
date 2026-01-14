@@ -674,12 +674,15 @@ export interface TopologyValidator {
   vote_pubkey: string
   node_pubkey: string
   device_pk: string
+  tunnel_id: number
   latitude: number
   longitude: number
   city: string
   country: string
   stake_sol: number
   stake_share: number
+  in_bps: number
+  out_bps: number
 }
 
 export interface TopologyResponse {

@@ -280,6 +280,17 @@ func (d *DimensionType2Dataset) WriteBatch(
 		}(),
 	)
 
+	// Debug: count rows in new_or_changed and deleted CTEs before inserting
+	newChangedCount, deletedCount, err := d.countDeltaRows(ctx, conn, cfg.OpID, cfg.SnapshotTS, cfg.IngestedAt)
+	if err != nil {
+		d.log.Warn("failed to count delta rows for debugging", "dataset", d.schema.Name(), "error", err)
+	} else {
+		d.log.Debug("delta row counts", "dataset", d.schema.Name(), "new_or_changed", newChangedCount, "deleted", deletedCount, "op_id", cfg.OpID)
+		if deletedCount > 0 && deletedCount > newChangedCount {
+			d.log.Warn("high delete count in delta", "dataset", d.schema.Name(), "new_or_changed", newChangedCount, "deleted", deletedCount, "op_id", cfg.OpID)
+		}
+	}
+
 	// Execute INSERT INTO ... SELECT query
 	// Parameters: run_op_id (as string for toUUID), run_snapshot_ts, run_ingested_at
 	d.log.Debug("executing delta insert query", "dataset", d.schema.Name(), "snapshot_ts", cfg.SnapshotTS, "op_id", cfg.OpID, "ingested_at", cfg.IngestedAt)
@@ -288,7 +299,7 @@ func (d *DimensionType2Dataset) WriteBatch(
 		return fmt.Errorf("failed to compute and write delta: %w", err)
 	}
 
-	d.log.Info("wrote delta to history", "dataset", d.schema.Name(), "op_id", cfg.OpID)
+	d.log.Info("wrote delta to history", "dataset", d.schema.Name(), "new_or_changed", newChangedCount, "deleted", deletedCount, "op_id", cfg.OpID)
 
 	// Optional: Clean up staging rows for this op_id
 	// This helps with fast turnover and reduces staging table size
@@ -377,6 +388,63 @@ func (d *DimensionType2Dataset) countAllStagingRows(ctx context.Context, conn cl
 		return int64(count), nil
 	}
 	return 0, nil
+}
+
+// countDeltaRows counts rows in new_or_changed and deleted CTEs for debugging
+func (d *DimensionType2Dataset) countDeltaRows(ctx context.Context, conn clickhouse.Connection, opID uuid.UUID, snapshotTS, ingestedAt time.Time) (newChanged, deleted int64, err error) {
+	// Build the same CTEs as the main query but just count the results
+	countQuery := fmt.Sprintf(`
+		WITH
+			toUUID(?) AS run_op_id,
+			toDateTime64(?, 3) AS run_snapshot_ts,
+			staging_raw AS (
+				SELECT entity_id, op_id
+				FROM %s
+				WHERE op_id = run_op_id
+			),
+			staging AS (
+				SELECT entity_id FROM staging_raw GROUP BY entity_id
+			),
+			latest AS (
+				SELECT h.entity_id, argMax(h.is_deleted, tuple(h.snapshot_ts, h.ingested_at, h.op_id)) AS is_deleted
+				FROM %s h
+				WHERE h.snapshot_ts <= run_snapshot_ts
+				GROUP BY h.entity_id
+			),
+			latest_active AS (
+				SELECT entity_id FROM latest WHERE is_deleted = 0
+			),
+			new_or_changed AS (
+				SELECT s.entity_id
+				FROM staging s
+				LEFT JOIN latest_active c ON s.entity_id = c.entity_id
+				WHERE c.entity_id = '' OR c.entity_id IS NULL
+			),
+			deleted AS (
+				SELECT c.entity_id
+				FROM latest_active c
+				LEFT JOIN staging s ON c.entity_id = s.entity_id
+				WHERE s.entity_id = '' OR s.entity_id IS NULL
+			)
+		SELECT
+			(SELECT count() FROM new_or_changed) AS new_changed_count,
+			(SELECT count() FROM deleted) AS deleted_count
+	`, d.StagingTableName(), d.HistoryTableName())
+
+	rows, err := conn.Query(ctx, countQuery, opID.String(), snapshotTS)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer rows.Close()
+
+	if rows.Next() {
+		var nc, del uint64
+		if err := rows.Scan(&nc, &del); err != nil {
+			return 0, 0, err
+		}
+		return int64(nc), int64(del), nil
+	}
+	return 0, 0, nil
 }
 
 // sampleStagingOpIDs returns a sample of distinct op_ids from staging (for debugging)

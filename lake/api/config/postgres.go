@@ -59,9 +59,14 @@ func LoadPostgres() error {
 		return fmt.Errorf("POSTGRES_PASSWORD is required")
 	}
 
+	sslMode := os.Getenv("POSTGRES_SSLMODE")
+	if sslMode == "" {
+		sslMode = "disable"
+	}
+
 	connStr := fmt.Sprintf(
-		"postgres://%s:%s@%s:%s/%s?sslmode=disable",
-		pgCfg.Username, pgCfg.Password, pgCfg.Host, pgCfg.Port, pgCfg.Database,
+		"postgres://%s:%s@%s:%s/%s?sslmode=%s",
+		pgCfg.Username, pgCfg.Password, pgCfg.Host, pgCfg.Port, pgCfg.Database, sslMode,
 	)
 
 	log.Printf("Connecting to PostgreSQL: host=%s, port=%s, database=%s, username=%s",

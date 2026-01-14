@@ -63,6 +63,7 @@ func run() error {
 	pgDatabaseFlag := flag.String("pg-database", "", "PostgreSQL database (or set POSTGRES_DB env var)")
 	pgUsernameFlag := flag.String("pg-username", "", "PostgreSQL username (or set POSTGRES_USER env var)")
 	pgPasswordFlag := flag.String("pg-password", "", "PostgreSQL password (or set POSTGRES_PASSWORD env var)")
+	pgSSLModeFlag := flag.String("pg-sslmode", "disable", "PostgreSQL SSL mode: disable, require, verify-ca, verify-full (or set POSTGRES_SSLMODE env var)")
 
 	// PostgreSQL migration commands
 	pgMigrateUpFlag := flag.Bool("pg-migrate-up", false, "Run all pending PostgreSQL migrations")
@@ -113,6 +114,9 @@ func run() error {
 	}
 	if envPgPassword := os.Getenv("POSTGRES_PASSWORD"); envPgPassword != "" {
 		*pgPasswordFlag = envPgPassword
+	}
+	if envPgSSLMode := os.Getenv("POSTGRES_SSLMODE"); envPgSSLMode != "" {
+		*pgSSLModeFlag = envPgSSLMode
 	}
 
 	// Execute commands
@@ -222,6 +226,7 @@ func run() error {
 		Database: *pgDatabaseFlag,
 		Username: *pgUsernameFlag,
 		Password: *pgPasswordFlag,
+		SSLMode:  *pgSSLModeFlag,
 	}
 
 	if *pgMigrateUpFlag {

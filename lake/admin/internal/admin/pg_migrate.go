@@ -17,6 +17,7 @@ type PgMigrateConfig struct {
 	Database string
 	Username string
 	Password string
+	SSLMode  string
 }
 
 // PgMigrateUp runs all pending PostgreSQL migrations
@@ -85,9 +86,14 @@ func PgMigrateStatus(log *slog.Logger, cfg PgMigrateConfig) error {
 }
 
 func openPgDB(cfg PgMigrateConfig) (*sql.DB, error) {
+	sslMode := cfg.SSLMode
+	if sslMode == "" {
+		sslMode = "disable"
+	}
+
 	connStr := fmt.Sprintf(
-		"postgres://%s:%s@%s:%s/%s?sslmode=disable",
-		cfg.Username, cfg.Password, cfg.Host, cfg.Port, cfg.Database,
+		"postgres://%s:%s@%s:%s/%s?sslmode=%s",
+		cfg.Username, cfg.Password, cfg.Host, cfg.Port, cfg.Database, sslMode,
 	)
 
 	db, err := sql.Open("pgx", connStr)

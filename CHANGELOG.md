@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- CLI
+  - Remove log noise on resolve route
+- Onchain programs
+   - Removed device and user allowlist functionality, updating the global state, initialization flow, tests, and processors accordingly, and cleaning up unused account checks.
+   - Deprecated the user suspend status, as it is no longer used.
+
 ### Breaking
 
 - None for this release

@@ -581,7 +581,7 @@ type UserStatus uint8
 const (
 	UserStatusPending UserStatus = iota
 	UserStatusActivated
-	UserStatusSuspended
+	UserStatusSuspendedDeprecated
 	UserStatusDeleted
 	UserStatusRejected
 	UserStatusPendingBan

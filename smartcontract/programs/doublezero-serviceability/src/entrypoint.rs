@@ -84,7 +84,6 @@ use crate::{
             closeaccount::process_closeaccount_user, create::process_create_user,
             create_subscribe::process_create_subscribe_user, delete::process_delete_user,
             reject::process_reject_user, requestban::process_request_ban_user,
-            resume::process_resume_user, suspend::process_suspend_user,
             update::process_update_user,
         },
     },
@@ -182,8 +181,8 @@ pub fn process_instruction(
         DoubleZeroInstruction::SuspendLink(value) => {
             process_suspend_link(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::SuspendUser(value) => {
-            process_suspend_user(program_id, accounts, &value)?
+        DoubleZeroInstruction::SuspendUser() => {
+            return Err(DoubleZeroError::Deprecated.into());
         }
         DoubleZeroInstruction::ResumeLocation(value) => {
             process_resume_location(program_id, accounts, &value)?
@@ -197,8 +196,8 @@ pub fn process_instruction(
         DoubleZeroInstruction::ResumeLink(value) => {
             process_resume_link(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::ResumeUser(value) => {
-            process_resume_user(program_id, accounts, &value)?
+        DoubleZeroInstruction::ResumeUser() => {
+            return Err(DoubleZeroError::Deprecated.into());
         }
         DoubleZeroInstruction::CloseAccountDevice(value) => {
             process_closeaccount_device(program_id, accounts, &value)?

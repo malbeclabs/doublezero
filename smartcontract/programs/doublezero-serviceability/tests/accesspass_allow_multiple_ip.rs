@@ -5,7 +5,7 @@ use doublezero_serviceability::{
         accesspass::set::SetAccessPassArgs,
         contributor::create::ContributorCreateArgs,
         device::update::DeviceUpdateArgs,
-        user::{activate::*, create::*, delete::*, resume::*, suspend::*, update::*},
+        user::{activate::*, create::*, delete::*, update::*},
         *,
     },
     state::{
@@ -360,52 +360,7 @@ async fn test_accesspass_allow_multiple_ip() {
 
     println!("✅ User created successfully",);
     /*****************************************************************************************************************************************************/
-    println!("🟢 9. Testing user suspend...");
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::SuspendUser(UserSuspendArgs {}),
-        vec![AccountMeta::new(user_pubkey, false)],
-        &payer,
-    )
-    .await;
-
-    let user = get_account_data(&mut banks_client, user_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_user()
-        .unwrap();
-    assert_eq!(user.account_type, AccountType::User);
-    assert_eq!(user.status, UserStatus::Suspended);
-
-    println!("✅ User suspended");
-    /*****************************************************************************************************************************************************/
-    println!("🟢 10. Testing User resumed...");
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ResumeUser(UserResumeArgs {}),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let user = get_account_data(&mut banks_client, user_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_user()
-        .unwrap();
-    assert_eq!(user.account_type, AccountType::User);
-    assert_eq!(user.status, UserStatus::Activated);
-
-    println!("✅ User resumed");
-    /*****************************************************************************************************************************************************/
-    println!("🟢 11a. Testing User update...");
+    println!("🟢 9. Testing User update...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -438,7 +393,7 @@ async fn test_accesspass_allow_multiple_ip() {
 
     println!("✅ User updated");
     /*****************************************************************************************************************************************************/
-    println!("🟢 11b. Testing User update (regression test: unspecified dz_ip should not clear the dz_ip)...");
+    println!("🟢 10. Testing User update (regression test: unspecified dz_ip should not clear the dz_ip)...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -472,7 +427,7 @@ async fn test_accesspass_allow_multiple_ip() {
 
     println!("✅ User updated");
     /*****************************************************************************************************************************************************/
-    println!("🟢 12. Testing User deletion...");
+    println!("🟢 11. Testing User deletion...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -500,7 +455,7 @@ async fn test_accesspass_allow_multiple_ip() {
     println!("✅ Link deleting");
 
     /*****************************************************************************************************************************************************/
-    println!("🟢 13. Testing User deactivation...");
+    println!("🟢 12. Testing User deactivation...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,

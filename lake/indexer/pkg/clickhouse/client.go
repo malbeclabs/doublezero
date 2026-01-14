@@ -2,6 +2,7 @@ package clickhouse
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log/slog"
 	"time"
@@ -37,7 +38,7 @@ type connection struct {
 }
 
 // NewClient creates a new ClickHouse client
-func NewClient(ctx context.Context, log *slog.Logger, addr string, database string, username string, password string) (Client, error) {
+func NewClient(ctx context.Context, log *slog.Logger, addr string, database string, username string, password string, secure bool) (Client, error) {
 	options := &clickhouse.Options{
 		Addr: []string{addr},
 		Auth: clickhouse.Auth{
@@ -51,6 +52,11 @@ func NewClient(ctx context.Context, log *slog.Logger, addr string, database stri
 		DialTimeout: 5 * time.Second,
 	}
 
+	// Enable TLS for ClickHouse Cloud (port 9440)
+	if secure {
+		options.TLS = &tls.Config{}
+	}
+
 	conn, err := clickhouse.Open(options)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open ClickHouse connection: %w", err)
@@ -61,7 +67,7 @@ func NewClient(ctx context.Context, log *slog.Logger, addr string, database stri
 		return nil, fmt.Errorf("failed to ping ClickHouse: %w", err)
 	}
 
-	log.Info("ClickHouse client initialized", "addr", addr, "database", database)
+	log.Info("ClickHouse client initialized", "addr", addr, "database", database, "secure", secure)
 
 	return &client{
 		conn: conn,

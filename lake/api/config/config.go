@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log"
 	"os"
@@ -49,21 +50,30 @@ func Load() error {
 
 	cfg.Password = os.Getenv("CLICKHOUSE_PASSWORD")
 
-	log.Printf("Connecting to ClickHouse: addr=%s, database=%s, username=%s", cfg.Addr, cfg.Database, cfg.Username)
+	secure := os.Getenv("CLICKHOUSE_SECURE") == "true"
+
+	log.Printf("Connecting to ClickHouse: addr=%s, database=%s, username=%s, secure=%v", cfg.Addr, cfg.Database, cfg.Username, secure)
 
 	// Create connection pool
-	conn, err := clickhouse.Open(&clickhouse.Options{
+	opts := &clickhouse.Options{
 		Addr: []string{cfg.Addr},
 		Auth: clickhouse.Auth{
 			Database: cfg.Database,
 			Username: cfg.Username,
 			Password: cfg.Password,
 		},
-		DialTimeout: 5 * time.Second,
+		DialTimeout:     5 * time.Second,
 		MaxOpenConns:    10,
 		MaxIdleConns:    5,
 		ConnMaxLifetime: time.Hour,
-	})
+	}
+
+	// Enable TLS for ClickHouse Cloud (port 9440)
+	if secure {
+		opts.TLS = &tls.Config{}
+	}
+
+	conn, err := clickhouse.Open(opts)
 	if err != nil {
 		return fmt.Errorf("failed to create clickhouse connection: %w", err)
 	}

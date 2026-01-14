@@ -100,7 +100,7 @@ func newTestClientInternal(t *testing.T, db *DB) (clickhouse.Client, string, err
 	var adminClient clickhouse.Client
 	for attempt := 1; attempt <= 3; attempt++ {
 		var err error
-		adminClient, err = clickhouse.NewClient(t.Context(), db.log, db.addr, db.cfg.Database, db.cfg.Username, db.cfg.Password)
+		adminClient, err = clickhouse.NewClient(t.Context(), db.log, db.addr, db.cfg.Database, db.cfg.Username, db.cfg.Password, false)
 		if err != nil {
 			if isRetryableConnectionErr(err) && attempt < 3 {
 				time.Sleep(time.Duration(attempt) * 500 * time.Millisecond)
@@ -128,7 +128,7 @@ func newTestClientInternal(t *testing.T, db *DB) (clickhouse.Client, string, err
 	var testClient clickhouse.Client
 	for attempt := 1; attempt <= 3; attempt++ {
 		var err error
-		testClient, err = clickhouse.NewClient(t.Context(), db.log, db.addr, databaseName, db.cfg.Username, db.cfg.Password)
+		testClient, err = clickhouse.NewClient(t.Context(), db.log, db.addr, databaseName, db.cfg.Username, db.cfg.Password, false)
 		if err != nil {
 			if isRetryableConnectionErr(err) && attempt < 3 {
 				time.Sleep(time.Duration(attempt) * 500 * time.Millisecond)

@@ -12,11 +12,11 @@ import (
 	"github.com/malbeclabs/doublezero/lake/indexer/pkg/clickhouse"
 )
 
-func RemoveIsDeletedFromViews(log *slog.Logger, addr, database, username, password string, dryRun, skipConfirm bool) error {
+func RemoveIsDeletedFromViews(log *slog.Logger, addr, database, username, password string, secure, dryRun, skipConfirm bool) error {
 	ctx := context.Background()
 
 	// Connect to ClickHouse
-	chDB, err := clickhouse.NewClient(ctx, log, addr, database, username, password)
+	chDB, err := clickhouse.NewClient(ctx, log, addr, database, username, password, secure)
 	if err != nil {
 		return fmt.Errorf("failed to connect to ClickHouse: %w", err)
 	}

@@ -29,6 +29,7 @@ type BackfillInternetMetroLatencyConfig struct {
 func BackfillInternetMetroLatency(
 	log *slog.Logger,
 	clickhouseAddr, clickhouseDatabase, clickhouseUsername, clickhousePassword string,
+	clickhouseSecure bool,
 	dzEnv string,
 	cfg BackfillInternetMetroLatencyConfig,
 ) error {
@@ -41,7 +42,7 @@ func BackfillInternetMetroLatency(
 	}
 
 	// Connect to ClickHouse
-	chDB, err := clickhouse.NewClient(ctx, log, clickhouseAddr, clickhouseDatabase, clickhouseUsername, clickhousePassword)
+	chDB, err := clickhouse.NewClient(ctx, log, clickhouseAddr, clickhouseDatabase, clickhouseUsername, clickhousePassword, clickhouseSecure)
 	if err != nil {
 		return fmt.Errorf("failed to connect to ClickHouse: %w", err)
 	}

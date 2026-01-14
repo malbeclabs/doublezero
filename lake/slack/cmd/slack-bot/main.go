@@ -131,7 +131,7 @@ func run() error {
 	defer cancel()
 
 	// Create ClickHouse client using config values
-	clickhouseClient, err := clickhouse.NewClient(ctx, log, cfg.ClickhouseAddr, cfg.ClickhouseDatabase, cfg.ClickhouseUsername, cfg.ClickhousePassword)
+	clickhouseClient, err := clickhouse.NewClient(ctx, log, cfg.ClickhouseAddr, cfg.ClickhouseDatabase, cfg.ClickhouseUsername, cfg.ClickhousePassword, cfg.ClickhouseSecure)
 	if err != nil {
 		return fmt.Errorf("failed to create clickhouse client: %w", err)
 	}

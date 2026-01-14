@@ -30,6 +30,7 @@ type Config struct {
 	ClickhouseDatabase string
 	ClickhouseUsername string
 	ClickhousePassword string
+	ClickhouseSecure   bool
 
 	// Server configuration
 	HTTPAddr    string
@@ -103,6 +104,7 @@ func LoadFromEnv(modeFlag, httpAddrFlag, metricsAddrFlag string, verbose, enable
 		return nil, fmt.Errorf("CLICKHOUSE_USERNAME is required (use --clickhouse-username flag or CLICKHOUSE_USERNAME env var)")
 	}
 	cfg.ClickhousePassword = os.Getenv("CLICKHOUSE_PASSWORD")
+	cfg.ClickhouseSecure = os.Getenv("CLICKHOUSE_SECURE") == "true"
 
 	return cfg, nil
 }

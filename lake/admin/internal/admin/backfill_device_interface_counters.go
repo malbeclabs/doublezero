@@ -29,13 +29,14 @@ type BackfillDeviceInterfaceCountersConfig struct {
 func BackfillDeviceInterfaceCounters(
 	log *slog.Logger,
 	clickhouseAddr, clickhouseDatabase, clickhouseUsername, clickhousePassword string,
+	clickhouseSecure bool,
 	influxDBHost, influxDBToken, influxDBBucket string,
 	cfg BackfillDeviceInterfaceCountersConfig,
 ) error {
 	ctx := context.Background()
 
 	// Connect to ClickHouse
-	chDB, err := clickhouse.NewClient(ctx, log, clickhouseAddr, clickhouseDatabase, clickhouseUsername, clickhousePassword)
+	chDB, err := clickhouse.NewClient(ctx, log, clickhouseAddr, clickhouseDatabase, clickhouseUsername, clickhousePassword, clickhouseSecure)
 	if err != nil {
 		return fmt.Errorf("failed to connect to ClickHouse: %w", err)
 	}

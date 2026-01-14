@@ -27,6 +27,7 @@ func run() error {
 	clickhouseDatabaseFlag := flag.String("clickhouse-database", "default", "ClickHouse database name (or set CLICKHOUSE_DATABASE env var)")
 	clickhouseUsernameFlag := flag.String("clickhouse-username", "default", "ClickHouse username (or set CLICKHOUSE_USERNAME env var)")
 	clickhousePasswordFlag := flag.String("clickhouse-password", "", "ClickHouse password (or set CLICKHOUSE_PASSWORD env var)")
+	clickhouseSecureFlag := flag.Bool("clickhouse-secure", false, "Enable TLS for ClickHouse Cloud (or set CLICKHOUSE_SECURE=true env var)")
 
 	// InfluxDB configuration (for usage backfill)
 	influxURLFlag := flag.String("influx-url", "", "InfluxDB URL (or set INFLUX_URL env var)")
@@ -87,6 +88,9 @@ func run() error {
 	if envClickhousePassword := os.Getenv("CLICKHOUSE_PASSWORD"); envClickhousePassword != "" {
 		*clickhousePasswordFlag = envClickhousePassword
 	}
+	if os.Getenv("CLICKHOUSE_SECURE") == "true" {
+		*clickhouseSecureFlag = true
+	}
 
 	// Override InfluxDB flags with environment variables if set
 	if envInfluxURL := os.Getenv("INFLUX_URL"); envInfluxURL != "" {
@@ -124,21 +128,21 @@ func run() error {
 		if *clickhouseAddrFlag == "" {
 			return fmt.Errorf("--clickhouse-addr is required for --reset-db")
 		}
-		return admin.ResetDB(log, *clickhouseAddrFlag, *clickhouseDatabaseFlag, *clickhouseUsernameFlag, *clickhousePasswordFlag, *dryRunFlag, *yesFlag)
+		return admin.ResetDB(log, *clickhouseAddrFlag, *clickhouseDatabaseFlag, *clickhouseUsernameFlag, *clickhousePasswordFlag, *clickhouseSecureFlag, *dryRunFlag, *yesFlag)
 	}
 
 	if *renameOwnerPKFlag {
 		if *clickhouseAddrFlag == "" {
 			return fmt.Errorf("--clickhouse-addr is required for --rename-owner-pk")
 		}
-		return admin.RenameOwnerPK(log, *clickhouseAddrFlag, *clickhouseDatabaseFlag, *clickhouseUsernameFlag, *clickhousePasswordFlag, *dryRunFlag, *yesFlag)
+		return admin.RenameOwnerPK(log, *clickhouseAddrFlag, *clickhouseDatabaseFlag, *clickhouseUsernameFlag, *clickhousePasswordFlag, *clickhouseSecureFlag, *dryRunFlag, *yesFlag)
 	}
 
 	if *removeIsDeletedFromViewsFlag {
 		if *clickhouseAddrFlag == "" {
 			return fmt.Errorf("--clickhouse-addr is required for --remove-is-deleted-from-views")
 		}
-		return admin.RemoveIsDeletedFromViews(log, *clickhouseAddrFlag, *clickhouseDatabaseFlag, *clickhouseUsernameFlag, *clickhousePasswordFlag, *dryRunFlag, *yesFlag)
+		return admin.RemoveIsDeletedFromViews(log, *clickhouseAddrFlag, *clickhouseDatabaseFlag, *clickhouseUsernameFlag, *clickhousePasswordFlag, *clickhouseSecureFlag, *dryRunFlag, *yesFlag)
 	}
 
 	if *backfillDeviceLinkLatencyFlag {
@@ -148,6 +152,7 @@ func run() error {
 		return admin.BackfillDeviceLinkLatency(
 			log,
 			*clickhouseAddrFlag, *clickhouseDatabaseFlag, *clickhouseUsernameFlag, *clickhousePasswordFlag,
+			*clickhouseSecureFlag,
 			*dzEnvFlag,
 			admin.BackfillDeviceLinkLatencyConfig{
 				StartEpoch:     *startEpochFlag,
@@ -165,6 +170,7 @@ func run() error {
 		return admin.BackfillInternetMetroLatency(
 			log,
 			*clickhouseAddrFlag, *clickhouseDatabaseFlag, *clickhouseUsernameFlag, *clickhousePasswordFlag,
+			*clickhouseSecureFlag,
 			*dzEnvFlag,
 			admin.BackfillInternetMetroLatencyConfig{
 				StartEpoch:     *startEpochFlag,
@@ -208,6 +214,7 @@ func run() error {
 		return admin.BackfillDeviceInterfaceCounters(
 			log,
 			*clickhouseAddrFlag, *clickhouseDatabaseFlag, *clickhouseUsernameFlag, *clickhousePasswordFlag,
+			*clickhouseSecureFlag,
 			*influxURLFlag, *influxTokenFlag, *influxBucketFlag,
 			admin.BackfillDeviceInterfaceCountersConfig{
 				StartTime:     startTime,

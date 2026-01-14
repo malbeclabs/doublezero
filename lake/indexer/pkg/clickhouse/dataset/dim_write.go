@@ -83,12 +83,17 @@ func (d *DimensionType2Dataset) WriteBatch(
 
 	// Verify staging data is visible before computing delta
 	// This catches issues where async insert or other factors cause data to not be immediately visible
-	stagingCount, err := d.countStagingRows(ctx, conn, cfg.OpID)
+	// Use same sync context for read to ensure consistency in replicated setups
+	syncCtx := clickhouse.ContextWithSyncInsert(ctx)
+	stagingCount, err := d.countStagingRows(syncCtx, conn, cfg.OpID)
 	if err != nil {
 		return fmt.Errorf("failed to verify staging data: %w", err)
 	}
 	if stagingCount == 0 {
-		return fmt.Errorf("staging data not visible after insert: expected %d rows for op_id %s, got 0", count, cfg.OpID)
+		// Additional debugging: check total staging table count and sample op_ids
+		totalCount, _ := d.countAllStagingRows(syncCtx, conn)
+		sampleOpIDs, _ := d.sampleStagingOpIDs(syncCtx, conn, 5)
+		return fmt.Errorf("staging data not visible after insert: expected %d rows for op_id %s, got 0 (total staging rows: %d, sample op_ids: %v)", count, cfg.OpID, totalCount, sampleOpIDs)
 	}
 	if stagingCount != int64(count) {
 		d.log.Warn("staging row count mismatch", "dataset", d.schema.Name(), "expected", count, "actual", stagingCount, "op_id", cfg.OpID)
@@ -354,6 +359,43 @@ func (d *DimensionType2Dataset) countStagingRows(ctx context.Context, conn click
 	}
 
 	return 0, nil
+}
+
+// countAllStagingRows counts total rows in staging table (for debugging)
+func (d *DimensionType2Dataset) countAllStagingRows(ctx context.Context, conn clickhouse.Connection) (int64, error) {
+	countQuery := fmt.Sprintf(`SELECT count() FROM %s`, d.StagingTableName())
+	rows, err := conn.Query(ctx, countQuery)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	if rows.Next() {
+		var count uint64
+		if err := rows.Scan(&count); err != nil {
+			return 0, err
+		}
+		return int64(count), nil
+	}
+	return 0, nil
+}
+
+// sampleStagingOpIDs returns a sample of distinct op_ids from staging (for debugging)
+func (d *DimensionType2Dataset) sampleStagingOpIDs(ctx context.Context, conn clickhouse.Connection, limit int) ([]string, error) {
+	query := fmt.Sprintf(`SELECT DISTINCT toString(op_id) FROM %s LIMIT %d`, d.StagingTableName(), limit)
+	rows, err := conn.Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var opIDs []string
+	for rows.Next() {
+		var opID string
+		if err := rows.Scan(&opID); err != nil {
+			return nil, err
+		}
+		opIDs = append(opIDs, opID)
+	}
+	return opIDs, nil
 }
 
 // cleanupStagingForOpID removes staging rows for a specific op_id

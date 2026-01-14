@@ -13,6 +13,14 @@ import (
 
 const DefaultDatabase = "default"
 
+// ContextWithSyncInsert returns a context configured for synchronous inserts.
+// Use this when you need to read data immediately after inserting.
+func ContextWithSyncInsert(ctx context.Context) context.Context {
+	return clickhouse.Context(ctx, clickhouse.WithSettings(clickhouse.Settings{
+		"async_insert": 0,
+	}))
+}
+
 // Client represents a ClickHouse database connection
 type Client interface {
 	Conn(ctx context.Context) (Connection, error)

@@ -169,7 +169,7 @@ func (d *DimensionType2Dataset) WriteBatch(
 	latestActiveSelectStr := strings.Join(latestActiveSelect, ", ")
 
 	insertQuery := fmt.Sprintf(`
-		INSERT INTO %s (%s) SETTINGS async_insert=0
+		INSERT INTO %s (%s)
 		WITH
 			toUUID(?) AS run_op_id,
 			toDateTime64(?, 3) AS run_snapshot_ts,
@@ -392,9 +392,11 @@ func (d *DimensionType2Dataset) loadSnapshotIntoStaging(
 	// We'll insert data first, then update attrs_hash using ClickHouse's cityHash64 function
 	// This ensures the hash is computed consistently with the delta query
 
-	// Use async_insert=0 to ensure staging data is immediately visible for the delta query
-	insertSQL := fmt.Sprintf("INSERT INTO %s SETTINGS async_insert=0", d.StagingTableName())
-	batch, err := conn.PrepareBatch(ctx, insertSQL)
+	// Use synchronous insert context to ensure staging data is immediately visible
+	// for the subsequent delta query that reads from staging
+	syncCtx := clickhouse.ContextWithSyncInsert(ctx)
+	insertSQL := fmt.Sprintf("INSERT INTO %s", d.StagingTableName())
+	batch, err := conn.PrepareBatch(syncCtx, insertSQL)
 	if err != nil {
 		return fmt.Errorf("failed to prepare staging batch: %w", err)
 	}
@@ -504,7 +506,7 @@ func (d *DimensionType2Dataset) processEmptySnapshot(
 	// Build INSERT INTO ... SELECT query to insert tombstones directly
 	// Use argMax approach for consistency with main write logic
 	insertQuery := fmt.Sprintf(`
-		INSERT INTO %s (%s) SETTINGS async_insert=0
+		INSERT INTO %s (%s)
 		SELECT
 			%s
 		FROM (

@@ -13,6 +13,13 @@ import { Landing } from '@/components/landing'
 import { Sidebar } from '@/components/sidebar'
 import { TopologyPage } from '@/components/topology-page'
 import { StatusPage } from '@/components/status-page'
+import { DevicesPage } from '@/components/devices-page'
+import { LinksPage } from '@/components/links-page'
+import { MetrosPage } from '@/components/metros-page'
+import { ContributorsPage } from '@/components/contributors-page'
+import { UsersPage } from '@/components/users-page'
+import { ValidatorsPage } from '@/components/validators-page'
+import { GossipNodesPage } from '@/components/gossip-nodes-page'
 import { generateSessionTitle, generateChatSessionTitle, sendChatMessageStream, recommendVisualization, fetchCatalog, acquireSessionLock, releaseSessionLock, getSessionLock, watchSessionLock, getSession, type SessionQueryInfo, type SessionLock } from '@/lib/api'
 import type { TableInfo, QueryResponse, HistoryMessage, ChatMessage } from '@/lib/api'
 import {
@@ -1322,6 +1329,17 @@ function AppContent() {
 
             {/* Status route */}
             <Route path="/status" element={<StatusPage />} />
+
+            {/* DZ entity routes */}
+            <Route path="/dz/devices" element={<DevicesPage />} />
+            <Route path="/dz/links" element={<LinksPage />} />
+            <Route path="/dz/metros" element={<MetrosPage />} />
+            <Route path="/dz/contributors" element={<ContributorsPage />} />
+            <Route path="/dz/users" element={<UsersPage />} />
+
+            {/* Solana entity routes */}
+            <Route path="/solana/validators" element={<ValidatorsPage />} />
+            <Route path="/solana/gossip-nodes" element={<GossipNodesPage />} />
 
             {/* Default redirect */}
             <Route path="*" element={<Navigate to="/" replace />} />

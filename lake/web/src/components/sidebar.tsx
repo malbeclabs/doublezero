@@ -14,6 +14,13 @@ import {
   Sun,
   Moon,
   ArrowUpCircle,
+  Server,
+  Link2,
+  MapPin,
+  Users,
+  Building2,
+  Landmark,
+  Radio,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/hooks/use-theme'
@@ -67,6 +74,8 @@ export function Sidebar({
   const isLandingPage = location.pathname === '/'
   const isTopologyPage = location.pathname === '/topology'
   const isStatusPage = location.pathname === '/status'
+  const isDZRoute = location.pathname.startsWith('/dz/')
+  const isSolanaRoute = location.pathname.startsWith('/solana/')
 
   const [isCollapsed, setIsCollapsed] = useState(() => {
     // Check localStorage for saved preference
@@ -74,8 +83,8 @@ export function Sidebar({
     if (saved !== null) return saved === 'true'
     // Default to collapsed on small screens, landing page, or topology page
     if (typeof window !== 'undefined' && window.innerWidth < 1024) return true
-    // On landing page, topology page, or status page, default to collapsed
-    return window.location.pathname === '/' || window.location.pathname === '/topology' || window.location.pathname === '/status'
+    // On landing page, topology page, status page, or entity pages, default to collapsed
+    return window.location.pathname === '/' || window.location.pathname === '/topology' || window.location.pathname === '/status' || window.location.pathname.startsWith('/dz/') || window.location.pathname.startsWith('/solana/')
   })
   const [userCollapsed, setUserCollapsed] = useState<boolean | null>(() => {
     const saved = localStorage.getItem('sidebar-user-collapsed')
@@ -91,10 +100,10 @@ export function Sidebar({
     if (isSmall) {
       setIsCollapsed(true)
     } else {
-      // Landing page, topology page, and status page default to collapsed, other pages to expanded
-      setIsCollapsed(isLandingPage || isTopologyPage || isStatusPage)
+      // Landing page, topology page, status page, and entity pages default to collapsed
+      setIsCollapsed(isLandingPage || isTopologyPage || isStatusPage || isDZRoute || isSolanaRoute)
     }
-  }, [isLandingPage, isTopologyPage, isStatusPage, userCollapsed])
+  }, [isLandingPage, isTopologyPage, isStatusPage, isDZRoute, isSolanaRoute, userCollapsed])
 
   // Auto-collapse/expand on resize based on user preference
   useEffect(() => {
@@ -105,7 +114,7 @@ export function Sidebar({
         setIsCollapsed(true)
       } else if (userCollapsed === null) {
         // No user preference - use route-based default
-        setIsCollapsed(isLandingPage || isTopologyPage || isStatusPage)
+        setIsCollapsed(isLandingPage || isTopologyPage || isStatusPage || isDZRoute || isSolanaRoute)
       } else {
         // Respect user preference
         setIsCollapsed(userCollapsed)
@@ -114,7 +123,7 @@ export function Sidebar({
 
     window.addEventListener('resize', checkWidth)
     return () => window.removeEventListener('resize', checkWidth)
-  }, [userCollapsed, isLandingPage, isTopologyPage, isStatusPage])
+  }, [userCollapsed, isLandingPage, isTopologyPage, isStatusPage, isDZRoute, isSolanaRoute])
 
   // Save collapsed state to localStorage
   useEffect(() => {
@@ -137,6 +146,15 @@ export function Sidebar({
   const isStatusRoute = location.pathname === '/status'
   const isQuerySessions = location.pathname === '/query/sessions'
   const isChatSessions = location.pathname === '/chat/sessions'
+
+  // Entity routes
+  const isDevicesRoute = location.pathname === '/dz/devices'
+  const isLinksRoute = location.pathname === '/dz/links'
+  const isMetrosRoute = location.pathname === '/dz/metros'
+  const isContributorsRoute = location.pathname === '/dz/contributors'
+  const isUsersRoute = location.pathname === '/dz/users'
+  const isValidatorsRoute = location.pathname === '/solana/validators'
+  const isGossipNodesRoute = location.pathname === '/solana/gossip-nodes'
 
   // Sort sessions by updatedAt, most recent first, filter out empty sessions, and limit to 10
   const sortedQuerySessions = [...querySessions]
@@ -219,6 +237,37 @@ export function Sidebar({
         >
           <Activity className="h-4 w-4" />
         </button>
+
+        {/* Divider */}
+        <div className="w-6 border-t border-border/50 my-2" />
+
+        {/* DZ nav item */}
+        <button
+          onClick={() => navigate('/dz/devices')}
+          className={cn(
+            'p-2 rounded transition-colors',
+            isDZRoute
+              ? 'bg-[oklch(25%_.04_250)] text-white hover:bg-[oklch(30%_.05_250)]'
+              : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+          )}
+          title="DoubleZero"
+        >
+          <Server className="h-4 w-4" />
+        </button>
+
+        {/* Solana nav item */}
+        <button
+          onClick={() => navigate('/solana/validators')}
+          className={cn(
+            'p-2 rounded transition-colors',
+            isSolanaRoute
+              ? 'bg-[oklch(25%_.04_250)] text-white hover:bg-[oklch(30%_.05_250)]'
+              : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+          )}
+          title="Solana"
+        >
+          <Landmark className="h-4 w-4" />
+        </button>
         </div>
 
         {/* Theme toggle and collapse toggle at bottom */}
@@ -272,57 +321,168 @@ export function Sidebar({
         </button>
       </div>
 
-      {/* Main nav */}
-      <div className="px-3 pt-4 space-y-1">
-        <button
-          onClick={onNewChatSession}
-          className={cn(
-            'w-full flex items-center gap-2 px-3 py-2 text-sm rounded transition-colors',
-            isChatRoute
-              ? 'bg-[oklch(25%_.04_250)] text-white hover:bg-[oklch(30%_.05_250)]'
-              : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
-          )}
-        >
-          <MessageSquare className="h-4 w-4" />
-          Chat
-        </button>
-        <button
-          onClick={onNewQuerySession}
-          className={cn(
-            'w-full flex items-center gap-2 px-3 py-2 text-sm rounded transition-colors',
-            isQueryRoute
-              ? 'bg-[oklch(25%_.04_250)] text-white hover:bg-[oklch(30%_.05_250)]'
-              : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
-          )}
-        >
-          <Database className="h-4 w-4" />
-          Query
-        </button>
-        <button
-          onClick={() => navigate('/topology')}
-          className={cn(
-            'w-full flex items-center gap-2 px-3 py-2 text-sm rounded transition-colors',
-            isTopologyRoute
-              ? 'bg-[oklch(25%_.04_250)] text-white hover:bg-[oklch(30%_.05_250)]'
-              : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
-          )}
-        >
-          <Globe className="h-4 w-4" />
-          Topology
-        </button>
-        <button
-          onClick={() => navigate('/status')}
-          className={cn(
-            'w-full flex items-center gap-2 px-3 py-2 text-sm rounded transition-colors',
-            isStatusRoute
-              ? 'bg-[oklch(25%_.04_250)] text-white hover:bg-[oklch(30%_.05_250)]'
-              : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
-          )}
-        >
-          <Activity className="h-4 w-4" />
-          Status
-        </button>
+      {/* Tools section */}
+      <div className="px-3 pt-4">
+        <div className="px-3 mb-2">
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Tools</span>
+        </div>
+        <div className="space-y-1">
+          <button
+            onClick={onNewChatSession}
+            className={cn(
+              'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',
+              isChatRoute
+                ? 'bg-[var(--sidebar-active)] text-foreground font-medium'
+                : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+            )}
+          >
+            <MessageSquare className="h-4 w-4" />
+            Chat
+          </button>
+          <button
+            onClick={onNewQuerySession}
+            className={cn(
+              'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',
+              isQueryRoute
+                ? 'bg-[var(--sidebar-active)] text-foreground font-medium'
+                : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+            )}
+          >
+            <Database className="h-4 w-4" />
+            Query
+          </button>
+          <button
+            onClick={() => navigate('/topology')}
+            className={cn(
+              'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',
+              isTopologyRoute
+                ? 'bg-[var(--sidebar-active)] text-foreground font-medium'
+                : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+            )}
+          >
+            <Globe className="h-4 w-4" />
+            Topology
+          </button>
+          <button
+            onClick={() => navigate('/status')}
+            className={cn(
+              'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',
+              isStatusRoute
+                ? 'bg-[var(--sidebar-active)] text-foreground font-medium'
+                : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+            )}
+          >
+            <Activity className="h-4 w-4" />
+            Status
+          </button>
+        </div>
       </div>
+
+      {/* DoubleZero section - hidden on tool pages */}
+      {!isChatRoute && !isQueryRoute && (
+        <div className="px-3 pt-4">
+          <div className="px-3 mb-2">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">DoubleZero</span>
+          </div>
+          <div className="space-y-1">
+            <button
+              onClick={() => navigate('/dz/devices')}
+              className={cn(
+                'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',
+                isDevicesRoute
+                  ? 'bg-[var(--sidebar-active)] text-foreground font-medium'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+              )}
+            >
+              <Server className="h-4 w-4" />
+              Devices
+            </button>
+            <button
+              onClick={() => navigate('/dz/links')}
+              className={cn(
+                'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',
+                isLinksRoute
+                  ? 'bg-[var(--sidebar-active)] text-foreground font-medium'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+              )}
+            >
+              <Link2 className="h-4 w-4" />
+              Links
+            </button>
+            <button
+              onClick={() => navigate('/dz/metros')}
+              className={cn(
+                'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',
+                isMetrosRoute
+                  ? 'bg-[var(--sidebar-active)] text-foreground font-medium'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+              )}
+            >
+              <MapPin className="h-4 w-4" />
+              Metros
+            </button>
+            <button
+              onClick={() => navigate('/dz/contributors')}
+              className={cn(
+                'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',
+                isContributorsRoute
+                  ? 'bg-[var(--sidebar-active)] text-foreground font-medium'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+              )}
+            >
+              <Building2 className="h-4 w-4" />
+              Contributors
+            </button>
+            <button
+              onClick={() => navigate('/dz/users')}
+              className={cn(
+                'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',
+                isUsersRoute
+                  ? 'bg-[var(--sidebar-active)] text-foreground font-medium'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+              )}
+            >
+              <Users className="h-4 w-4" />
+              Users
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Solana section - hidden on tool pages */}
+      {!isChatRoute && !isQueryRoute && (
+        <div className="px-3 pt-4">
+          <div className="px-3 mb-2">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Solana</span>
+          </div>
+          <div className="space-y-1">
+            <button
+              onClick={() => navigate('/solana/validators')}
+              className={cn(
+                'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',
+                isValidatorsRoute
+                  ? 'bg-[var(--sidebar-active)] text-foreground font-medium'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+              )}
+            >
+              <Landmark className="h-4 w-4" />
+              Validators
+            </button>
+            <button
+              onClick={() => navigate('/solana/gossip-nodes')}
+              className={cn(
+                'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',
+                isGossipNodesRoute
+                  ? 'bg-[var(--sidebar-active)] text-foreground font-medium'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+              )}
+            >
+              <Radio className="h-4 w-4" />
+              Gossip Nodes
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Query sub-section */}
       {isQueryRoute && (

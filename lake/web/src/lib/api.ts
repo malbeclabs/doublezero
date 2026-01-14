@@ -1069,3 +1069,184 @@ export function watchSessionLock(
     eventSource.close()
   }
 }
+
+// Paginated response type
+export interface PaginatedResponse<T> {
+  items: T[]
+  total: number
+  limit: number
+  offset: number
+}
+
+// Entity types - DoubleZero
+export interface Device {
+  pk: string
+  code: string
+  status: string
+  device_type: string
+  contributor_pk: string
+  contributor_code: string
+  metro_pk: string
+  metro_code: string
+  public_ip: string
+  max_users: number
+  current_users: number
+  in_bps: number
+  out_bps: number
+  peak_in_bps: number
+  peak_out_bps: number
+}
+
+export async function fetchDevices(limit = 100, offset = 0): Promise<PaginatedResponse<Device>> {
+  const res = await fetchWithRetry(`/api/dz/devices?limit=${limit}&offset=${offset}`)
+  if (!res.ok) {
+    throw new Error('Failed to fetch devices')
+  }
+  return res.json()
+}
+
+export interface Link {
+  pk: string
+  code: string
+  status: string
+  link_type: string
+  bandwidth_bps: number
+  side_a_pk: string
+  side_a_code: string
+  side_a_metro: string
+  side_z_pk: string
+  side_z_code: string
+  side_z_metro: string
+  contributor_pk: string
+  contributor_code: string
+  in_bps: number
+  out_bps: number
+  utilization_in: number
+  utilization_out: number
+  latency_us: number
+  jitter_us: number
+  loss_percent: number
+}
+
+export async function fetchLinks(limit = 100, offset = 0): Promise<PaginatedResponse<Link>> {
+  const res = await fetchWithRetry(`/api/dz/links?limit=${limit}&offset=${offset}`)
+  if (!res.ok) {
+    throw new Error('Failed to fetch links')
+  }
+  return res.json()
+}
+
+export interface Metro {
+  pk: string
+  code: string
+  name: string
+  latitude: number
+  longitude: number
+  device_count: number
+  user_count: number
+}
+
+export async function fetchMetros(limit = 100, offset = 0): Promise<PaginatedResponse<Metro>> {
+  const res = await fetchWithRetry(`/api/dz/metros?limit=${limit}&offset=${offset}`)
+  if (!res.ok) {
+    throw new Error('Failed to fetch metros')
+  }
+  return res.json()
+}
+
+export interface Contributor {
+  pk: string
+  code: string
+  name: string
+  device_count: number
+  side_a_devices: number
+  side_z_devices: number
+  link_count: number
+}
+
+export async function fetchContributors(limit = 100, offset = 0): Promise<PaginatedResponse<Contributor>> {
+  const res = await fetchWithRetry(`/api/dz/contributors?limit=${limit}&offset=${offset}`)
+  if (!res.ok) {
+    throw new Error('Failed to fetch contributors')
+  }
+  return res.json()
+}
+
+export interface User {
+  pk: string
+  owner_pubkey: string
+  status: string
+  kind: string
+  dz_ip: string
+  device_pk: string
+  device_code: string
+  metro_code: string
+  metro_name: string
+  in_bps: number
+  out_bps: number
+}
+
+export async function fetchUsers(limit = 100, offset = 0): Promise<PaginatedResponse<User>> {
+  const res = await fetchWithRetry(`/api/dz/users?limit=${limit}&offset=${offset}`)
+  if (!res.ok) {
+    throw new Error('Failed to fetch users')
+  }
+  return res.json()
+}
+
+// Solana entity types
+export interface Validator {
+  vote_pubkey: string
+  node_pubkey: string
+  stake_sol: number
+  stake_share: number
+  commission: number
+  on_dz: boolean
+  device_code: string
+  metro_code: string
+  city: string
+  country: string
+  in_bps: number
+  out_bps: number
+  skip_rate: number
+  version: string
+}
+
+export interface ValidatorsResponse extends PaginatedResponse<Validator> {
+  on_dz_count: number
+}
+
+export async function fetchValidators(limit = 100, offset = 0): Promise<ValidatorsResponse> {
+  const res = await fetchWithRetry(`/api/solana/validators?limit=${limit}&offset=${offset}`)
+  if (!res.ok) {
+    throw new Error('Failed to fetch validators')
+  }
+  return res.json()
+}
+
+export interface GossipNode {
+  pubkey: string
+  gossip_ip: string
+  gossip_port: number
+  version: string
+  city: string
+  country: string
+  on_dz: boolean
+  device_code: string
+  metro_code: string
+  stake_sol: number
+  is_validator: boolean
+}
+
+export interface GossipNodesResponse extends PaginatedResponse<GossipNode> {
+  on_dz_count: number
+  validator_count: number
+}
+
+export async function fetchGossipNodes(limit = 100, offset = 0): Promise<GossipNodesResponse> {
+  const res = await fetchWithRetry(`/api/solana/gossip-nodes?limit=${limit}&offset=${offset}`)
+  if (!res.ok) {
+    throw new Error('Failed to fetch gossip nodes')
+  }
+  return res.json()
+}

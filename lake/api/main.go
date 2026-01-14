@@ -138,6 +138,18 @@ func main() {
 	r.Get("/api/catalog", handlers.GetCatalog)
 	r.Get("/api/stats", handlers.GetStats)
 	r.Get("/api/status", handlers.GetStatus)
+
+	// DZ entity routes
+	r.Get("/api/dz/devices", handlers.GetDevices)
+	r.Get("/api/dz/links", handlers.GetLinks)
+	r.Get("/api/dz/metros", handlers.GetMetros)
+	r.Get("/api/dz/contributors", handlers.GetContributors)
+	r.Get("/api/dz/users", handlers.GetUsers)
+
+	// Solana entity routes
+	r.Get("/api/solana/validators", handlers.GetValidators)
+	r.Get("/api/solana/gossip-nodes", handlers.GetGossipNodes)
+
 	r.Get("/api/topology", handlers.GetTopology)
 	r.Get("/api/topology/traffic", handlers.GetTopologyTraffic)
 	r.Post("/api/query", handlers.ExecuteQuery)

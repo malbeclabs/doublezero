@@ -342,6 +342,39 @@ The service exposes Prometheus metrics for monitoring pipeline health:
 - `gnmi_writer_clickhouse_insert_errors_total` - ClickHouse insert errors
 - `gnmi_writer_clickhouse_records_written_total` - Records successfully written to ClickHouse
 
+## Tools
+
+### gnmi-prototext-convert
+
+Converts raw gNMI GET responses into SubscribeResponse format for testdata files.
+
+Raw gNMI GET responses return Notification messages directly, but gnmi-writer tests expect SubscribeResponse wrappers. This tool handles the conversion and adds the required `prefix.target` field.
+
+**Usage:**
+
+```bash
+# From file
+go run ./tools/gnmi-prototext-convert --target DEVICE_PUBKEY --input raw.prototext > formatted.prototext
+
+# From stdin
+cat raw.prototext | go run ./tools/gnmi-prototext-convert --target DEVICE_PUBKEY > formatted.prototext
+```
+
+**Supported Input Formats:**
+- Raw Notification prototext (starts with `timestamp:`, `prefix:`, etc.)
+- Non-standard `notification: { ... }` wrapper format (common from some gNMI tools)
+- Already-formatted SubscribeResponse (updates target only)
+
+**Example:**
+
+```bash
+# Convert raw gNMI GET output for interface ifindex data
+go run ./tools/gnmi-prototext-convert \
+  --target "DZd011111111111111111111111111111111111111111" \
+  --input raw_ifindexes.prototext \
+  > internal/gnmi/testdata/interfaces_ifindex.prototext
+```
+
 ## File Reference
 
 | Path | Purpose |
@@ -353,3 +386,4 @@ The service exposes Prometheus metrics for monitoring pipeline health:
 | `internal/gnmi/processor_integration_test.go` | End-to-end tests with containers |
 | `clickhouse/*.sql` | ClickHouse table schemas and views |
 | `internal/gnmi/testdata/*.prototext` | Test gNMI notifications in prototext format |
+| `tools/gnmi-prototext-convert/` | Tool to convert raw gNMI GET responses to testdata format |

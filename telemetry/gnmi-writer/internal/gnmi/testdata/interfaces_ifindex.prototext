@@ -1,5 +1,5 @@
 update: {
-  timestamp: 1768069467098308672
+  timestamp: 1768423321496926903
   prefix: {
     target: "DZd011111111111111111111111111111111111111111"
   }
@@ -45,7 +45,7 @@ update: {
         name: "interface"
         key: {
           key: "name"
-          value: "Tunnel1"
+          value: "Ethernet2"
         }
       }
       elem: {
@@ -66,7 +66,6607 @@ update: {
       }
     }
     val: {
-      uint_val: 15000001
+      uint_val: 2
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet3"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 3
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet4"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 4
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet5"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 5
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet6"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 6
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet7"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 7
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet8"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet9"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 9
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet10"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 10
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet11"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 11
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet12"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 12
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet13"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 13
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet14"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 14
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet15"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 15
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet16"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 16
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet17"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 17
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet18"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 18
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet19"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 19
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet20"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 20
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet21"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 21
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet22"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 22
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet23"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 23
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet24"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 24
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet25"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 25
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet26"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 26
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet27"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 27
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet28"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 28
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet29"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 29
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet30"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 30
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet31"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 31
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet32"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 32
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet33"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 33
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet34"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 34
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet35"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 35
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet36"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 36
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet37"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 37
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet38"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 38
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet39"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 39
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet40"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 40
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet41"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 41
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet42"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 42
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet43"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 43
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet44"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 44
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet45"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 45
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet46"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 46
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet47"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 47
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet48"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 48
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet49/1"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 49001
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet49/2"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 49002
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet49/3"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 49003
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet49/4"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 49004
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet50/1"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 50001
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet50/2"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 50002
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet50/3"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 50003
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet50/4"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 50004
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet51/1"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 51001
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet51/2"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 51002
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet51/3"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 51003
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet51/4"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 51004
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet52/1"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 52001
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet52/2"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 52002
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet52/3"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 52003
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet52/4"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 52004
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet53/1"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 53001
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet53/5"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 53005
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet54/1"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 54001
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet54/5"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 54005
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet54/6"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 54006
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet54/7"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 54007
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet54/8"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 54008
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Loopback100"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 5000100
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Loopback255"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 5000255
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Loopback256"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 5000256
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Loopback1000"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 5001000
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Management1"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 999001
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Port-Channel1000"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 1001000
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Port-Channel1000"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "2013"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 1601692648
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Port-Channel1000"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "2035"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 1607459816
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Port-Channel2000"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 1002000
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Port-Channel2000"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "1000"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 1336141776
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/1/1"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001013
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/1/2"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001014
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/1/3"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001015
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/1/4"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001016
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/2/1"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001025
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/2/2"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001026
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/2/3"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001027
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/2/4"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001028
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/3/1"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001037
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/3/2"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001038
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/3/3"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001039
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/3/4"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001040
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/4/1"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001049
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/4/2"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001050
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/4/3"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001051
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/4/4"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001052
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/5/1"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001061
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/5/2"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001062
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/5/3"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001063
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/5/4"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001064
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/6/1"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001073
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/6/2"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001074
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/6/3"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001075
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/6/4"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001076
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/7/1"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001085
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/7/2"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001086
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/7/3"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001087
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/7/4"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001088
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/8/1"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001097
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/8/2"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001098
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/8/3"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001099
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/8/4"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001100
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/9/1"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001109
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/9/2"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001110
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/9/3"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001111
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/9/4"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001112
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/10/1"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001121
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/10/2"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001122
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/10/3"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001123
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/10/4"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001124
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/11/1"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001133
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/11/2"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001134
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/11/3"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001135
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/11/4"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001136
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/12/1"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001145
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/12/2"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001146
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/12/3"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001147
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/12/4"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001148
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/13/1"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001157
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/13/2"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001158
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/13/3"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001159
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/13/4"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001160
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/14/1"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001169
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/14/2"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001170
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/14/3"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001171
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/14/4"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001172
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/15/1"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001181
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/15/2"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001182
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/15/3"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001183
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/15/4"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001184
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/16/1"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001193
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/16/2"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001194
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/16/3"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001195
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/16/4"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001196
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/17/1"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001205
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/17/2"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001206
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/17/3"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001207
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/17/4"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001208
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/18/1"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001217
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/18/2"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001218
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/18/3"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001219
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/18/4"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001220
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/19/1"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001229
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/19/2"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001230
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/19/3"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001231
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/19/4"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001232
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/20/1"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001241
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/20/2"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001242
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/20/3"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001243
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/20/4"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001244
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/21/1"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001253
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/21/2"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001254
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/21/3"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001255
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/21/3"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "1020"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 16000000
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/21/4"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001256
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/22/1"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001265
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/22/2"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001266
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/22/3"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001267
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/22/4"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001268
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/23/1"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001277
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/23/2"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001278
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/23/3"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001279
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/23/4"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001280
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/24/1"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001289
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/24/2"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001290
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/24/3"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001291
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/24/4"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001292
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/25/1"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001301
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/25/2"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001302
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/25/3"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001303
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/25/4"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001304
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/25/5"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001305
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/25/6"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001306
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/25/7"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001307
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/25/8"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001308
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/26"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001313
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/27/1"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001325
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/27/2"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001326
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/27/3"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001327
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/27/4"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001328
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/27/5"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001329
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/27/6"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001330
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/27/7"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001331
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/27/8"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001332
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/28"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001337
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/29"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001349
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/30"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001361
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/31"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001373
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Switch1/32"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8001385
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Tunnel500"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 15000500
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Tunnel501"
+        }
+      }
+      elem: {
+        name: "subinterfaces"
+      }
+      elem: {
+        name: "subinterface"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 15000501
     }
   }
 }

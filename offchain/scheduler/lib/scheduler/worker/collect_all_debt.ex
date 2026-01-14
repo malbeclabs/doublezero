@@ -25,6 +25,9 @@ defmodule Scheduler.Worker.CollectAllDebt do
   end
 
   def handle_continue(:collect_all_debt, state) do
+    # TODO: figure out why the remote env sends out an empty
+    # total debt collection
+    Process.sleep(100)
     case Scheduler.DoubleZero.collect_all_debt(ledger_rpc(), solana_rpc()) do
       {} ->
         Logger.info("Successfully collected debts for all epochs")

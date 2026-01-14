@@ -22,7 +22,7 @@ use doublezero_solana_sdk::{
     },
     try_build_instruction, zero_copy,
 };
-use futures::stream::{self, StreamExt};
+use futures::stream::{self, StreamExt, TryStreamExt};
 use serde::Serialize;
 use solana_client::{
     client_error::{ClientError, ClientErrorKind},
@@ -135,24 +135,35 @@ impl Transaction {
         )
         .await?;
 
-        for debt_entry in computed_debt.debts.iter() {
-            let debt_proof = computed_debt.find_debt_proof(&debt_entry.node_id).unwrap();
-            let (_, proof) = debt_proof;
+        let computed_debt_arc = Arc::new(computed_debt);
+        stream::iter(computed_debt_arc.debts.iter())
+            .map(|debt_entry| {
+                let debt_entry_node_id = debt_entry.node_id;
+                let computed_debt_arc = Arc::clone(&computed_debt_arc);
+                async move {
+                    let (_, proof) = computed_debt_arc
+                        .find_debt_proof(&debt_entry_node_id)
+                        .ok_or_else(|| {
+                            anyhow!("No debt proof found for node {}", debt_entry_node_id)
+                        })?;
 
-            let leaf = SolanaValidatorDebt {
-                node_id: debt_entry.node_id,
-                amount: debt_entry.amount,
-            };
+                    let leaf = SolanaValidatorDebt {
+                        node_id: debt_entry_node_id,
+                        amount: debt_entry.amount,
+                    };
 
-            self.verify_merkle_root(solana_rpc_client, dz_epoch, proof, leaf)
-                .await?;
-        }
-
-        let dz_epoch = DoubleZeroEpoch::new(dz_epoch);
+                    self.verify_merkle_root(solana_rpc_client, dz_epoch, proof, leaf)
+                        .await
+                }
+            })
+            .buffer_unordered(20)
+            .try_collect::<Vec<_>>()
+            .await?;
+        let dz_epoch_struct = DoubleZeroEpoch::new(dz_epoch);
 
         match try_build_instruction(
             &ID,
-            FinalizeDistributionDebtAccounts::new(&self.pubkey(), dz_epoch, &self.pubkey()),
+            FinalizeDistributionDebtAccounts::new(&self.pubkey(), dz_epoch_struct, &self.pubkey()),
             &RevenueDistributionInstructionData::FinalizeDistributionDebt,
         ) {
             Ok(instruction) => {

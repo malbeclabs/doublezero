@@ -545,6 +545,13 @@ pub async fn post_debt_collection_summary_to_slack(
         "Total Percentage Paid".to_string(),
         "Total Insufficient Funds Count".to_string(),
     ];
+
+    // TODO: figure out why a mysterious empty total debt collection is posted only on remote env
+    // this is a dumb bandaid to fix the quirk
+    if total_debt == 0 {
+        return Ok(());
+    };
+
     let table_values = vec![
         format!("{:.9} SOL", total_paid as f64 * 1e-9),
         format!("{:.9} SOL", total_debt as f64 * 1e-9),

@@ -285,9 +285,15 @@ func (d *DimensionType2Dataset) WriteBatch(
 	if err != nil {
 		d.log.Warn("failed to count delta rows for debugging", "dataset", d.schema.Name(), "error", err)
 	} else {
-		d.log.Debug("delta row counts", "dataset", d.schema.Name(), "new_or_changed", newChangedCount, "deleted", deletedCount, "op_id", cfg.OpID)
-		if deletedCount > 0 && deletedCount > newChangedCount {
-			d.log.Warn("high delete count in delta", "dataset", d.schema.Name(), "new_or_changed", newChangedCount, "deleted", deletedCount, "op_id", cfg.OpID)
+		// Only log deleted count if MissingMeansDeleted is true (otherwise deletes aren't applied)
+		if cfg.MissingMeansDeleted {
+			d.log.Debug("delta row counts", "dataset", d.schema.Name(), "new_or_changed", newChangedCount, "deleted", deletedCount, "op_id", cfg.OpID)
+			if deletedCount > 0 && deletedCount > newChangedCount {
+				d.log.Warn("high delete count in delta", "dataset", d.schema.Name(), "new_or_changed", newChangedCount, "deleted", deletedCount, "op_id", cfg.OpID)
+			}
+		} else {
+			d.log.Debug("delta row counts", "dataset", d.schema.Name(), "new_or_changed", newChangedCount, "op_id", cfg.OpID)
+			deletedCount = 0 // Reset for logging since deletes won't be applied
 		}
 	}
 

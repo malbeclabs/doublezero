@@ -46,9 +46,6 @@ use tempfile::NamedTempFile;
 use tokio::{fs::File, io::AsyncWriteExt, sync::Semaphore, task::JoinSet};
 use tracing::{debug, info, warn};
 
-/// Mainnet threshold date (same as python)
-const MAINNET_THRESHOLD: &str = "2025-09-12T21:00:00Z";
-
 /// Maximum number of concurrent S3 downloads
 const MAX_CONCURRENT_DOWNLOADS: usize = 10;
 
@@ -195,10 +192,6 @@ pub async fn fetch_validator_pubkeys(
         solana_epoch
     );
 
-    // Check if we need mainnet datasets based on threshold
-    let mainnet_threshold: DateTime<Utc> = MAINNET_THRESHOLD.parse()?;
-    let include_mainnet = network == Network::MainnetBeta && end_time >= mainnet_threshold;
-
     // Fetch and process hourly data in parallel
     let sem = Arc::new(Semaphore::new(MAX_CONCURRENT_DOWNLOADS));
     let mut tasks = JoinSet::new();
@@ -212,18 +205,106 @@ pub async fn fetch_validator_pubkeys(
             // Acquire permit to limit concurrent downloads
             let _permit = sem_clone.acquire().await.unwrap();
 
-            let result =
-                process_hourly_data(&s3_config_clone, timestamp, network, include_mainnet).await;
+            let result = process_hourly_data(&s3_config_clone, timestamp, network).await;
 
             (timestamp, result)
         });
     }
+
+    let leader_scheduling_epoch = solana_epoch.saturating_sub(2);
+
+    // Convert epoch to timestamp range two epochs ago.
+    let (start_time, end_time) = epoch_to_timestamps(rpc_client, leader_scheduling_epoch).await?;
+    info!(
+        "Leader scheduling epoch {} time range: {} to {}",
+        leader_scheduling_epoch, start_time, end_time
+    );
+
+    // Generate hourly timestamps
+    let hourly_timestamps = generate_hourly_timestamps(start_time, end_time);
+    info!(
+        "Processing {} hourly snapshots for epoch {}",
+        hourly_timestamps.len(),
+        solana_epoch
+    );
+
+    let mut two_epochs_ago_tasks = JoinSet::new();
+
+    // Spawn tasks for all hourly snapshots
+    for timestamp in hourly_timestamps {
+        let s3_config_clone = s3_config.clone();
+        let sem_clone = sem.clone();
+
+        two_epochs_ago_tasks.spawn(async move {
+            // Acquire permit to limit concurrent downloads
+            let _ = sem_clone.acquire().await.unwrap();
+
+            let result = download_and_parse_parquet(
+                &s3_config_clone,
+                &format!("snapshot-solana-{}-validators", network.prefix()),
+                timestamp,
+            )
+            .await;
+
+            (timestamp, result)
+        });
+    }
+
+    // This is a bloody hack to get the identities of validators that had active
+    // stake two epochs ago. We should clean this up later.
+    let mut two_epochs_ago_vote_key_identities = HashMap::new();
 
     // Collect results as they complete
     // Count hours by vote_account_pubkey (not identity_pubkey) to prevent rotation
     let mut vote_account_hours = VoteAccountHours::new();
     // Track all identity_pubkeys associated with each vote_account_pubkey
     let mut vote_account_identities = VoteAccountIdentities::new();
+
+    let mut processed_count = 0;
+    let mut failed_count = 0;
+    let total_hours = two_epochs_ago_tasks.len();
+
+    while let Some(task_result) = two_epochs_ago_tasks.join_next().await {
+        match task_result {
+            Ok((timestamp, Ok(batches))) => {
+                processed_count += 1;
+
+                let vote_key_identities = build_lut(&batches, "identity_pubkey")?
+                    .into_iter()
+                    .map(|(k, mut v)| (v.remove("vote_account_pubkey").unwrap(), k))
+                    .collect::<Vec<_>>();
+
+                for (vote_key, identity) in vote_key_identities {
+                    two_epochs_ago_vote_key_identities
+                        .entry(vote_key)
+                        .or_insert(HashSet::new())
+                        .insert(identity);
+                }
+
+                info!(
+                    "Processed vote key identities for two epochs ago hour {} [{}/{}]",
+                    timestamp.format("%Y-%m-%d %H:00"),
+                    processed_count + failed_count,
+                    total_hours,
+                );
+            }
+            Ok((timestamp, Err(e))) => {
+                failed_count += 1;
+                warn!(
+                    "Failed to process hour {} [{}/{}]: {}",
+                    timestamp.format("%Y-%m-%d %H:00"),
+                    processed_count + failed_count,
+                    total_hours,
+                    e
+                );
+            }
+            Err(e) => {
+                failed_count += 1;
+                warn!("Task join error: {}", e);
+            }
+        }
+    }
+
     let mut processed_count = 0;
     let mut failed_count = 0;
     let total_hours = tasks.len();
@@ -239,10 +320,16 @@ pub async fn fetch_validator_pubkeys(
                     *vote_account_hours
                         .entry(validator.vote_account_pubkey.clone())
                         .or_insert(0) += 1;
+
+                    let relevant_identities = two_epochs_ago_vote_key_identities
+                        .get(&validator.vote_account_pubkey)
+                        .cloned()
+                        .unwrap_or_default();
+
                     vote_account_identities
                         .entry(validator.vote_account_pubkey)
                         .or_default()
-                        .insert(validator.pubkey);
+                        .extend(relevant_identities);
                 }
 
                 info!(
@@ -286,21 +373,9 @@ pub async fn fetch_validator_pubkeys(
         }
     }
 
-    // Log validators with multiple NodeIDs (rotation detection)
-    for (vote_account, identities) in &vote_account_identities {
-        if identities.len() > 1 {
-            info!(
-                "Vote account {} used {} NodeIDs: {:?}",
-                vote_account,
-                identities.len(),
-                identities
-            );
-        }
-    }
-
     // Apply 12-hour connection rule by vote_account_pubkey
     // When a vote_account qualifies, return ALL associated identity_pubkeys
-    let mut qualified_validators: Vec<ValidatorKey> = Vec::new();
+    let mut qualified_validators = Vec::new();
     let mut qualified_vote_accounts = 0;
 
     for (vote_account, hours) in vote_account_hours {
@@ -319,6 +394,8 @@ pub async fn fetch_validator_pubkeys(
             }
         }
     }
+
+    qualified_validators.sort_by(|a, b| a.vote_account_pubkey.cmp(&b.vote_account_pubkey));
 
     info!(
         "Applied 12-hour rule: {} vote accounts qualified, {} identity pubkeys returned",
@@ -394,7 +471,6 @@ async fn process_hourly_data(
     s3_config: &S3Config,
     timestamp: DateTime<Utc>,
     network: Network,
-    _include_mainnet: bool,
 ) -> Result<Vec<ValidatorKey>> {
     // Download Parquet files for this hour
     let gossip_batches = download_and_parse_parquet(

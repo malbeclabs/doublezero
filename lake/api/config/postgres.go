@@ -2,13 +2,20 @@ package config
 
 import (
 	"context"
+	"database/sql"
+	"embed"
 	"fmt"
 	"log"
 	"os"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	_ "github.com/jackc/pgx/v5/stdlib" // Register pgx driver with database/sql
+	"github.com/pressly/goose/v3"
 )
+
+//go:embed migrations/*.sql
+var EmbedMigrations embed.FS
 
 // PgPool is the global PostgreSQL connection pool
 var PgPool *pgxpool.Pool
@@ -39,17 +46,17 @@ func LoadPostgres() error {
 
 	pgCfg.Database = os.Getenv("POSTGRES_DB")
 	if pgCfg.Database == "" {
-		pgCfg.Database = "lakedev"
+		return fmt.Errorf("POSTGRES_DB is required")
 	}
 
 	pgCfg.Username = os.Getenv("POSTGRES_USER")
 	if pgCfg.Username == "" {
-		pgCfg.Username = "lakedev"
+		return fmt.Errorf("POSTGRES_USER is required")
 	}
 
 	pgCfg.Password = os.Getenv("POSTGRES_PASSWORD")
 	if pgCfg.Password == "" {
-		pgCfg.Password = "lakedev"
+		return fmt.Errorf("POSTGRES_PASSWORD is required")
 	}
 
 	connStr := fmt.Sprintf(
@@ -85,77 +92,34 @@ func LoadPostgres() error {
 	PgPool = pool
 	log.Printf("Connected to PostgreSQL successfully")
 
-	// Run migrations
-	if err := runMigrations(ctx); err != nil {
-		return fmt.Errorf("failed to run migrations: %w", err)
+	// Run migrations only if explicitly enabled
+	if os.Getenv("POSTGRES_RUN_MIGRATIONS") == "true" {
+		if err := runMigrations(connStr); err != nil {
+			return fmt.Errorf("failed to run migrations: %w", err)
+		}
 	}
 
 	return nil
 }
 
-// runMigrations creates the required database tables
-func runMigrations(ctx context.Context) error {
+// runMigrations runs database migrations using goose
+func runMigrations(connStr string) error {
 	log.Printf("Running PostgreSQL migrations...")
 
-	// Create sessions table
-	_, err := PgPool.Exec(ctx, `
-		CREATE TABLE IF NOT EXISTS sessions (
-			id UUID PRIMARY KEY,
-			type VARCHAR(20) NOT NULL CHECK (type IN ('chat', 'query')),
-			name VARCHAR(255),
-			content JSONB NOT NULL DEFAULT '[]',
-			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-		)
-	`)
+	goose.SetBaseFS(EmbedMigrations)
+
+	db, err := sql.Open("pgx", connStr)
 	if err != nil {
-		return fmt.Errorf("failed to create sessions table: %w", err)
+		return fmt.Errorf("failed to open database for migrations: %w", err)
+	}
+	defer db.Close()
+
+	if err := goose.SetDialect("postgres"); err != nil {
+		return fmt.Errorf("failed to set goose dialect: %w", err)
 	}
 
-	// Create index for listing sessions
-	_, err = PgPool.Exec(ctx, `
-		CREATE INDEX IF NOT EXISTS idx_sessions_type_updated
-		ON sessions (type, updated_at DESC)
-	`)
-	if err != nil {
-		return fmt.Errorf("failed to create sessions index: %w", err)
-	}
-
-	// Add lock columns for cross-browser request coordination
-	_, err = PgPool.Exec(ctx, `
-		ALTER TABLE sessions
-		ADD COLUMN IF NOT EXISTS lock_id VARCHAR(36),
-		ADD COLUMN IF NOT EXISTS lock_until TIMESTAMPTZ,
-		ADD COLUMN IF NOT EXISTS lock_question TEXT
-	`)
-	if err != nil {
-		return fmt.Errorf("failed to add lock columns: %w", err)
-	}
-
-	// Create or replace the trigger function
-	_, err = PgPool.Exec(ctx, `
-		CREATE OR REPLACE FUNCTION update_updated_at_column()
-		RETURNS TRIGGER AS $$
-		BEGIN
-			NEW.updated_at = NOW();
-			RETURN NEW;
-		END;
-		$$ language 'plpgsql'
-	`)
-	if err != nil {
-		return fmt.Errorf("failed to create trigger function: %w", err)
-	}
-
-	// Create trigger (drop first to avoid conflicts)
-	_, _ = PgPool.Exec(ctx, `DROP TRIGGER IF EXISTS update_sessions_updated_at ON sessions`)
-	_, err = PgPool.Exec(ctx, `
-		CREATE TRIGGER update_sessions_updated_at
-			BEFORE UPDATE ON sessions
-			FOR EACH ROW
-			EXECUTE FUNCTION update_updated_at_column()
-	`)
-	if err != nil {
-		return fmt.Errorf("failed to create trigger: %w", err)
+	if err := goose.Up(db, "migrations"); err != nil {
+		return fmt.Errorf("failed to run migrations: %w", err)
 	}
 
 	log.Printf("PostgreSQL migrations completed")

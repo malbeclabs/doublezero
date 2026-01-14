@@ -281,7 +281,9 @@ func (d *DimensionType2Dataset) WriteBatch(
 	)
 
 	// Debug: count rows in new_or_changed and deleted CTEs before inserting
-	newChangedCount, deletedCount, err := d.countDeltaRows(ctx, conn, cfg.OpID, cfg.SnapshotTS, cfg.IngestedAt)
+	// Use sync context to ensure we see the staging data we just inserted
+	deltaSyncCtx := clickhouse.ContextWithSyncInsert(ctx)
+	newChangedCount, deletedCount, err := d.countDeltaRows(deltaSyncCtx, conn, cfg.OpID, cfg.SnapshotTS, cfg.IngestedAt)
 	if err != nil {
 		d.log.Warn("failed to count delta rows for debugging", "dataset", d.schema.Name(), "error", err)
 	} else {
@@ -299,9 +301,10 @@ func (d *DimensionType2Dataset) WriteBatch(
 
 	// Execute INSERT INTO ... SELECT query
 	// Parameters: run_op_id (as string for toUUID), run_snapshot_ts, run_ingested_at
+	// Use sync context to ensure we see the staging data we just inserted
 	d.log.Debug("executing delta insert query", "dataset", d.schema.Name(), "snapshot_ts", cfg.SnapshotTS, "op_id", cfg.OpID, "ingested_at", cfg.IngestedAt)
 
-	if err := conn.Exec(ctx, insertQuery, cfg.OpID.String(), cfg.SnapshotTS, cfg.IngestedAt); err != nil {
+	if err := conn.Exec(deltaSyncCtx, insertQuery, cfg.OpID.String(), cfg.SnapshotTS, cfg.IngestedAt); err != nil {
 		return fmt.Errorf("failed to compute and write delta: %w", err)
 	}
 

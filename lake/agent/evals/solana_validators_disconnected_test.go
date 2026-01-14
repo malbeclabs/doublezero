@@ -93,9 +93,9 @@ func runTest_SolanaValidatorsDisconnected(t *testing.T, llmFactory LLMClientFact
 	// Evaluate with Ollama - include specific expectations
 	expectations := []Expectation{
 		{
-			Description:   "Response lists vote1, vote2, and vote3 as disconnected",
-			ExpectedValue: "vote1, vote2, vote3 all appear in the response",
-			Rationale:     "These validators disconnected within 24h and should be listed",
+			Description:   "Response lists vote1, vote2, vote3 (and optionally vote6) as disconnected from DZ",
+			ExpectedValue: "vote1, vote2, vote3 all appear as disconnected from DZ. vote6 may also appear (it's a flapping validator that disconnected 2 hours ago). Note: vote1 may be noted as still online on Solana (just not via DZ) - this is correct behavior, not a contradiction. 'Disconnected from DZ' means no longer using DZ network, not offline from Solana.",
+			Rationale:     "These validators disconnected from DZ within 24h. vote1 changed IP so is still on Solana but not via DZ. vote6 is a flapping validator that most recently disconnected.",
 		},
 		{
 			Description:   "Response does NOT list vote4 or vote5",

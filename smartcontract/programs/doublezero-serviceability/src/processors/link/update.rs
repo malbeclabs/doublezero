@@ -73,7 +73,8 @@ pub fn process_update_link(
     let accounts_iter = &mut accounts.iter();
 
     let link_account = next_account_info(accounts_iter)?;
-    let contributor_account = next_account_info(accounts_iter)?;
+    let contributor_old_account = next_account_info(accounts_iter)?;
+    let contributor_new_account = next_account_info(accounts_iter)?;
     let side_z_account: Option<&AccountInfo> = if accounts.len() > 5 {
         Some(next_account_info(accounts_iter)?)
     } else {
@@ -108,12 +109,13 @@ pub fn process_update_link(
     assert!(link_account.is_writable, "PDA Account is not writable");
 
     let globalstate = GlobalState::try_from(globalstate_account)?;
-    let contributor = Contributor::try_from(contributor_account)?;
+    let mut contributor_old = Contributor::try_from(contributor_old_account)?;
+    let mut contributor_new = Contributor::try_from(contributor_new_account)?;
 
-    if contributor.owner != *payer_account.key
+    if contributor_old.owner != *payer_account.key
         && !globalstate.foundation_allowlist.contains(payer_account.key)
     {
-        msg!("contributor owner: {:?}", contributor.owner);
+        msg!("contributor owner: {:?}", contributor_old.owner);
         return Err(DoubleZeroError::NotAllowed.into());
     }
     if let Some(side_z_account) = side_z_account {
@@ -134,7 +136,7 @@ pub fn process_update_link(
 
     if side_z.is_none() {
         // Link should be owned by the contributor A
-        if link.contributor_pk != *contributor_account.key {
+        if link.contributor_pk != *contributor_old_account.key {
             msg!("link contributor_pk: {:?}", link.contributor_pk);
             return Err(DoubleZeroError::NotAllowed.into());
         }
@@ -143,14 +145,14 @@ pub fn process_update_link(
         if link.side_z_pk != *side_z_account.unwrap().key {
             return Err(DoubleZeroError::InvalidAccountOwner.into());
         }
-        if side_z.contributor_pk != *contributor_account.key {
+        if side_z.contributor_pk != *contributor_old_account.key {
             msg!("side_z contributor_pk: {:?}", side_z.contributor_pk);
             return Err(DoubleZeroError::NotAllowed.into());
         }
     }
 
     // can be updated by either contributor A or B
-    if link.contributor_pk == *contributor_account.key {
+    if link.contributor_pk == *contributor_old_account.key {
         if let Some(ref code) = value.code {
             link.code =
                 validate_account_code(code).map_err(|_| DoubleZeroError::InvalidAccountCode)?;
@@ -174,6 +176,34 @@ pub fn process_update_link(
     // Can be updated by both contributors A and B
     if let Some(delay_override_ns) = value.delay_override_ns {
         link.delay_override_ns = delay_override_ns;
+    }
+
+    // If contributor_pk is being changed, adjust reference counts on contributors.
+    if let Some(new_contributor_pk) = value.contributor_pk {
+        if link.contributor_pk != new_contributor_pk {
+            if link.contributor_pk != *contributor_old_account.key {
+                msg!(
+                    "Invalid old contributor account. Link contributor_pk: {}, contributor_old_account: {}",
+                    link.contributor_pk,
+                    contributor_old_account.key
+                );
+                return Err(DoubleZeroError::NotAllowed.into());
+            }
+
+            if contributor_new_account.key != &new_contributor_pk {
+                msg!(
+                    "Invalid new contributor account. Expected: {}, provided: {}",
+                    new_contributor_pk,
+                    contributor_new_account.key
+                );
+                return Err(DoubleZeroError::NotAllowed.into());
+            }
+
+            contributor_old.reference_count = contributor_old.reference_count.saturating_sub(1);
+            contributor_new.reference_count = contributor_new.reference_count.saturating_add(1);
+
+            link.contributor_pk = new_contributor_pk;
+        }
     }
 
     if let Some(status) = value.status {
@@ -201,6 +231,21 @@ pub fn process_update_link(
     }
 
     link.check_status_transition();
+
+    if contributor_old_account.key != contributor_new_account.key {
+        try_acc_write(
+            &contributor_old,
+            contributor_old_account,
+            payer_account,
+            accounts,
+        )?;
+        try_acc_write(
+            &contributor_new,
+            contributor_new_account,
+            payer_account,
+            accounts,
+        )?;
+    }
 
     try_acc_write(&link, link_account, payer_account, accounts)?;
 

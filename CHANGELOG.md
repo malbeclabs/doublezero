@@ -7,7 +7,8 @@ All notable changes to this project will be documented in this file.
 - CLI
   - Remove log noise on resolve route
 - Onchain programs
-   - Removed device and user allowlist functionality, updating the global state, initialization flow, tests, and processors accordingly, and cleaning up unused account checks.
+  - Removed device and user allowlist functionality, updating the global state, initialization flow, tests, and processors accordingly, and cleaning up unused account checks.
+  - Serviceability: UpdateDevice and UpdateLink now adjust contributor reference counts on both the old and new contributor accounts when `contributor_pk` is changed, ensuring accurate contributor usage tracking.
 
 ### Breaking
 

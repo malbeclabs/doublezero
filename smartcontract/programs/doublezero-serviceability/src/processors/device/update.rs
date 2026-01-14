@@ -79,10 +79,11 @@ pub fn process_update_device(
     let accounts_iter = &mut accounts.iter();
 
     let device_account = next_account_info(accounts_iter)?;
-    let contributor_account = next_account_info(accounts_iter)?;
+    let contributor_old_account = next_account_info(accounts_iter)?;
+    let contributor_new_account = next_account_info(accounts_iter)?;
     // Update location accounts (old and new)
 
-    let (location_old_account, location_new_account) = if accounts.len() == 7 {
+    let (location_old_account, location_new_account) = if accounts.len() == 8 {
         (
             Some(next_account_info(accounts_iter)?),
             Some(next_account_info(accounts_iter)?),
@@ -107,8 +108,12 @@ pub fn process_update_device(
         "Invalid PDA Account Owner"
     );
     assert_eq!(
-        contributor_account.owner, program_id,
-        "Invalid Contributor Account Owner"
+        contributor_old_account.owner, program_id,
+        "Invalid Old Contributor Account Owner"
+    );
+    assert_eq!(
+        contributor_new_account.owner, program_id,
+        "Invalid New Contributor Account Owner"
     );
     assert_eq!(
         globalstate_account.owner, program_id,
@@ -130,9 +135,10 @@ pub fn process_update_device(
     let globalstate = GlobalState::try_from(globalstate_account)?;
     assert_eq!(globalstate.account_type, AccountType::GlobalState);
 
-    let contributor = Contributor::try_from(contributor_account)?;
+    let mut contributor_old = Contributor::try_from(contributor_old_account)?;
+    let mut contributor_new = Contributor::try_from(contributor_new_account)?;
 
-    if contributor.owner != *payer_account.key
+    if contributor_old.owner != *payer_account.key
         && !globalstate.foundation_allowlist.contains(payer_account.key)
     {
         return Err(DoubleZeroError::NotAllowed.into());
@@ -143,7 +149,31 @@ pub fn process_update_device(
     // Only allow updates from the foundation allowlist
     if globalstate.foundation_allowlist.contains(payer_account.key) {
         if let Some(contributor_pk) = value.contributor_pk {
-            device.contributor_pk = contributor_pk;
+            // If the contributor changes, adjust reference counts on both old and new contributors
+            if device.contributor_pk != contributor_pk {
+                if device.contributor_pk != *contributor_old_account.key {
+                    msg!(
+                        "Invalid old contributor account. Device contributor_pk: {}, contributor_old_account: {}",
+                        device.contributor_pk,
+                        contributor_old_account.key
+                    );
+                    return Err(DoubleZeroError::NotAllowed.into());
+                }
+
+                if contributor_new_account.key != &contributor_pk {
+                    msg!(
+                        "Invalid new contributor account. Expected: {}, provided: {}",
+                        contributor_pk,
+                        contributor_new_account.key
+                    );
+                    return Err(DoubleZeroError::NotAllowed.into());
+                }
+
+                contributor_old.reference_count = contributor_old.reference_count.saturating_sub(1);
+                contributor_new.reference_count = contributor_new.reference_count.saturating_add(1);
+
+                device.contributor_pk = contributor_pk;
+            }
         }
         if let Some(users_count) = value.users_count {
             device.users_count = users_count;
@@ -215,6 +245,22 @@ pub fn process_update_device(
                 _ => return Err(DoubleZeroError::NotAllowed.into()),
             }
         }
+    }
+
+    // Write back updated contributor accounts if they were modified
+    if contributor_old_account.key != contributor_new_account.key {
+        try_acc_write(
+            &contributor_old,
+            contributor_old_account,
+            payer_account,
+            accounts,
+        )?;
+        try_acc_write(
+            &contributor_new,
+            contributor_new_account,
+            payer_account,
+            accounts,
+        )?;
     }
 
     try_acc_write(&device, device_account, payer_account, accounts)?;

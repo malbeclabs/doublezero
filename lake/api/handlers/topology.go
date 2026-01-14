@@ -48,11 +48,24 @@ type Link struct {
 	OutBps       float64 `json:"out_bps"`
 }
 
+type Validator struct {
+	VotePubkey string  `json:"vote_pubkey"`
+	NodePubkey string  `json:"node_pubkey"`
+	DevicePK   string  `json:"device_pk"`
+	Latitude   float64 `json:"latitude"`
+	Longitude  float64 `json:"longitude"`
+	City       string  `json:"city"`
+	Country    string  `json:"country"`
+	StakeSol   float64 `json:"stake_sol"`
+	StakeShare float64 `json:"stake_share"`
+}
+
 type TopologyResponse struct {
-	Metros  []Metro  `json:"metros"`
-	Devices []Device `json:"devices"`
-	Links   []Link   `json:"links"`
-	Error   string   `json:"error,omitempty"`
+	Metros     []Metro     `json:"metros"`
+	Devices    []Device    `json:"devices"`
+	Links      []Link      `json:"links"`
+	Validators []Validator `json:"validators"`
+	Error      string      `json:"error,omitempty"`
 }
 
 func GetTopology(w http.ResponseWriter, r *http.Request) {
@@ -64,6 +77,7 @@ func GetTopology(w http.ResponseWriter, r *http.Request) {
 	var metros []Metro
 	var devices []Device
 	var links []Link
+	var validators []Validator
 
 	g, ctx := errgroup.WithContext(ctx)
 
@@ -191,14 +205,67 @@ func GetTopology(w http.ResponseWriter, r *http.Request) {
 		return rows.Err()
 	})
 
+	// Fetch validators on DZ with their GeoIP locations
+	g.Go(func() error {
+		query := `
+			WITH total_dz_stake AS (
+				SELECT COALESCE(SUM(va.activated_stake_lamports), 0) as total_lamports
+				FROM dz_users_current u
+				JOIN solana_gossip_nodes_current gn ON u.dz_ip = gn.gossip_ip
+				JOIN solana_vote_accounts_current va ON gn.pubkey = va.node_pubkey
+					AND va.epoch_vote_account = 'true'
+					AND va.activated_stake_lamports > 0
+				WHERE u.status = 'activated'
+			)
+			SELECT
+				va.vote_pubkey,
+				gn.pubkey as node_pubkey,
+				u.device_pk,
+				geo.latitude,
+				geo.longitude,
+				COALESCE(geo.city, '') as city,
+				COALESCE(geo.country, '') as country,
+				va.activated_stake_lamports / 1e9 as stake_sol,
+				CASE
+					WHEN ts.total_lamports > 0 THEN va.activated_stake_lamports / ts.total_lamports * 100
+					ELSE 0
+				END as stake_share
+			FROM dz_users_current u
+			JOIN solana_gossip_nodes_current gn ON u.dz_ip = gn.gossip_ip
+			JOIN solana_vote_accounts_current va ON gn.pubkey = va.node_pubkey
+				AND va.epoch_vote_account = 'true'
+				AND va.activated_stake_lamports > 0
+			LEFT JOIN geoip_records_current geo ON gn.gossip_ip = geo.ip
+			CROSS JOIN total_dz_stake ts
+			WHERE u.status = 'activated'
+				AND geo.latitude IS NOT NULL
+				AND geo.longitude IS NOT NULL
+		`
+		rows, err := config.DB.Query(ctx, query)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var v Validator
+			if err := rows.Scan(&v.VotePubkey, &v.NodePubkey, &v.DevicePK, &v.Latitude, &v.Longitude, &v.City, &v.Country, &v.StakeSol, &v.StakeShare); err != nil {
+				return err
+			}
+			validators = append(validators, v)
+		}
+		return rows.Err()
+	})
+
 	err := g.Wait()
 	duration := time.Since(start)
 	metrics.RecordClickHouseQuery(duration, err)
 
 	response := TopologyResponse{
-		Metros:  metros,
-		Devices: devices,
-		Links:   links,
+		Metros:     metros,
+		Devices:    devices,
+		Links:      links,
+		Validators: validators,
 	}
 
 	if err != nil {
@@ -215,6 +282,9 @@ func GetTopology(w http.ResponseWriter, r *http.Request) {
 	}
 	if response.Links == nil {
 		response.Links = []Link{}
+	}
+	if response.Validators == nil {
+		response.Validators = []Validator{}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

@@ -670,10 +670,23 @@ export interface TopologyLink {
   out_bps: number
 }
 
+export interface TopologyValidator {
+  vote_pubkey: string
+  node_pubkey: string
+  device_pk: string
+  latitude: number
+  longitude: number
+  city: string
+  country: string
+  stake_sol: number
+  stake_share: number
+}
+
 export interface TopologyResponse {
   metros: TopologyMetro[]
   devices: TopologyDevice[]
   links: TopologyLink[]
+  validators: TopologyValidator[]
   error?: string
 }
 

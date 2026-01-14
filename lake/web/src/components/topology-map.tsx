@@ -1,15 +1,16 @@
 import { useMemo, useEffect, useRef, useState } from 'react'
-import { MapContainer, TileLayer, CircleMarker, Polyline, Tooltip, useMap } from 'react-leaflet'
-import { ZoomIn, ZoomOut, Maximize } from 'lucide-react'
+import { MapContainer, TileLayer, CircleMarker, Polyline, useMap } from 'react-leaflet'
+import { ZoomIn, ZoomOut, Maximize, Users } from 'lucide-react'
 import type { Polyline as LeafletPolyline } from 'leaflet'
 import { useTheme } from '@/hooks/use-theme'
-import type { TopologyMetro, TopologyDevice, TopologyLink } from '@/lib/api'
+import type { TopologyMetro, TopologyDevice, TopologyLink, TopologyValidator } from '@/lib/api'
 import type { LatLngTuple } from 'leaflet'
 
 interface TopologyMapProps {
   metros: TopologyMetro[]
   devices: TopologyDevice[]
   links: TopologyLink[]
+  validators: TopologyValidator[]
 }
 
 // Format bandwidth for display
@@ -38,6 +39,18 @@ function calculateLinkWeight(bps: number): number {
   const gbps = bps / 1e9
   const weight = Math.max(1, Math.min(8, 1 + Math.log10(Math.max(1, gbps)) * 1.5))
   return weight
+}
+
+// Calculate validator marker radius based on stake (logarithmic scale)
+// Range: 3px (small) to 10px (large)
+function calculateValidatorRadius(stakeSol: number): number {
+  if (stakeSol <= 0) return 3
+  // Log scale: 1k SOL = 3, 10k = 4.5, 100k = 6, 1M = 7.5, 10M = 9
+  const minRadius = 3
+  const maxRadius = 10
+  const minStake = 1000 // 1k SOL
+  const radius = minRadius + Math.log10(Math.max(minStake, stakeSol) / minStake) * 1.5
+  return Math.min(maxRadius, radius)
 }
 
 // Calculate link color based on loss percentage
@@ -101,6 +114,16 @@ interface HoveredMetroInfo {
   code: string
   name: string
   deviceCount: number
+}
+
+// Hovered validator info type
+interface HoveredValidatorInfo {
+  votePubkey: string
+  city: string
+  country: string
+  stakeSol: string
+  stakeShare: string
+  deviceCode: string
 }
 
 // Animated polyline component with flowing dashes based on latency
@@ -171,8 +194,15 @@ function AnimatedPolyline({ positions, color, weight, latencyUs, isWan, isHovere
   )
 }
 
-// Zoom controls component
-function MapControls({ metros }: { metros: TopologyMetro[] }) {
+// Map controls component
+interface MapControlsProps {
+  metros: TopologyMetro[]
+  showValidators: boolean
+  onToggleValidators: () => void
+  validatorCount: number
+}
+
+function MapControls({ metros, showValidators, onToggleValidators, validatorCount }: MapControlsProps) {
   const map = useMap()
 
   const handleZoomIn = () => map.zoomIn()
@@ -209,6 +239,18 @@ function MapControls({ metros }: { metros: TopologyMetro[] }) {
         title="Reset view"
       >
         <Maximize className="h-4 w-4" />
+      </button>
+      <div className="my-1 border-t border-[var(--border)]" />
+      <button
+        onClick={onToggleValidators}
+        className={`p-2 border rounded shadow-sm transition-colors ${
+          showValidators
+            ? 'bg-purple-500/20 border-purple-500/50 text-purple-500'
+            : 'bg-[var(--card)] border-[var(--border)] hover:bg-[var(--muted)]'
+        }`}
+        title={`${showValidators ? 'Hide' : 'Show'} validators (${validatorCount})`}
+      >
+        <Users className="h-4 w-4" />
       </button>
     </div>
   )
@@ -297,12 +339,14 @@ function calculateCurvedPath(
   return points
 }
 
-export function TopologyMap({ metros, devices, links }: TopologyMapProps) {
+export function TopologyMap({ metros, devices, links, validators }: TopologyMapProps) {
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
   const [hoveredLink, setHoveredLink] = useState<HoveredLinkInfo | null>(null)
   const [hoveredDevice, setHoveredDevice] = useState<HoveredDeviceInfo | null>(null)
   const [hoveredMetro, setHoveredMetro] = useState<HoveredMetroInfo | null>(null)
+  const [hoveredValidator, setHoveredValidator] = useState<HoveredValidatorInfo | null>(null)
+  const [showValidators, setShowValidators] = useState(false)
 
   // Hover highlight color: light in dark mode, dark in light mode
   const hoverHighlight = isDark ? '#fff' : '#000'
@@ -396,6 +440,8 @@ export function TopologyMap({ metros, devices, links }: TopologyMapProps) {
   // Colors
   const deviceColor = isDark ? '#f97316' : '#ea580c' // orange
   const metroColor = isDark ? '#4b5563' : '#9ca3af' // gray
+  const validatorColor = isDark ? '#a855f7' : '#9333ea' // purple
+  const validatorLinkColor = isDark ? '#7c3aed' : '#6d28d9' // darker purple for links
 
   return (
     <>
@@ -408,7 +454,12 @@ export function TopologyMap({ metros, devices, links }: TopologyMapProps) {
       style={{ background: 'var(--background)' }}
     >
       <MapFitBounds metros={metros} />
-      <MapControls metros={metros} />
+      <MapControls
+        metros={metros}
+        showValidators={showValidators}
+        onToggleValidators={() => setShowValidators(!showValidators)}
+        validatorCount={validators.length}
+      />
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
         url={tileUrl}
@@ -440,13 +491,7 @@ export function TopologyMap({ metros, devices, links }: TopologyMapProps) {
               }),
               mouseout: () => setHoveredMetro(null),
             }}
-          >
-            <Tooltip direction="top" offset={[0, -10]}>
-              <div className="text-sm font-medium">{metro.name}</div>
-              <div className="text-xs text-muted-foreground">{metro.code}</div>
-              <div className="text-xs">{metroDeviceCount} devices</div>
-            </Tooltip>
-          </CircleMarker>
+          />
         )
       })}
 
@@ -527,10 +572,70 @@ export function TopologyMap({ metros, devices, links }: TopologyMapProps) {
           />
         )
       })}
+
+      {/* Validator connections (shown when toggled) */}
+      {showValidators && validators.map(validator => {
+        const devicePos = devicePositions.get(validator.device_pk)
+        if (!devicePos) return null
+
+        const validatorPos: LatLngTuple = [validator.latitude, validator.longitude]
+        const isThisHovered = hoveredValidator?.votePubkey === validator.vote_pubkey
+
+        return (
+          <Polyline
+            key={`validator-link-${validator.vote_pubkey}`}
+            positions={[validatorPos, devicePos]}
+            pathOptions={{
+              color: isThisHovered ? hoverHighlight : validatorLinkColor,
+              weight: isThisHovered ? 2 : 1,
+              opacity: isThisHovered ? 0.9 : 0.4,
+              dashArray: '4, 4',
+            }}
+          />
+        )
+      })}
+
+      {/* Validator markers (shown when toggled) */}
+      {showValidators && validators.map(validator => {
+        const devicePos = devicePositions.get(validator.device_pk)
+        if (!devicePos) return null
+
+        const validatorPos: LatLngTuple = [validator.latitude, validator.longitude]
+        const device = deviceMap.get(validator.device_pk)
+        const isThisHovered = hoveredValidator?.votePubkey === validator.vote_pubkey
+        const baseRadius = calculateValidatorRadius(validator.stake_sol)
+
+        return (
+          <CircleMarker
+            key={`validator-${validator.vote_pubkey}`}
+            center={validatorPos}
+            radius={isThisHovered ? baseRadius + 2 : baseRadius}
+            pathOptions={{
+              fillColor: isThisHovered ? hoverHighlight : validatorColor,
+              fillOpacity: 0.9,
+              stroke: true,
+              color: hoverHighlight,
+              weight: isThisHovered ? 2 : 1,
+              opacity: isThisHovered ? 1 : 0.5,
+            }}
+            eventHandlers={{
+              mouseover: () => setHoveredValidator({
+                votePubkey: validator.vote_pubkey,
+                city: validator.city || 'Unknown',
+                country: validator.country || 'Unknown',
+                stakeSol: (validator.stake_sol ?? 0) >= 1e6 ? `${(validator.stake_sol / 1e6).toFixed(2)}M` : (validator.stake_sol ?? 0) >= 1e3 ? `${(validator.stake_sol / 1e3).toFixed(0)}k` : `${(validator.stake_sol ?? 0).toFixed(0)}`,
+                stakeShare: (validator.stake_share ?? 0) > 0 ? `${validator.stake_share.toFixed(2)}%` : '0%',
+                deviceCode: device?.code || 'Unknown',
+              }),
+              mouseout: () => setHoveredValidator(null),
+            }}
+          />
+        )
+      })}
     </MapContainer>
 
     {/* Info panel */}
-    {(hoveredLink || hoveredDevice || hoveredMetro) && (
+    {(hoveredLink || hoveredDevice || hoveredMetro || hoveredValidator) && (
       <div className="absolute top-4 right-16 z-[1000] bg-[var(--card)] border border-[var(--border)] rounded-lg shadow-lg p-4 min-w-[200px]">
         {hoveredLink && (
           <>
@@ -608,7 +713,7 @@ export function TopologyMap({ metros, devices, links }: TopologyMapProps) {
             </div>
           </>
         )}
-        {hoveredMetro && !hoveredLink && !hoveredDevice && (
+        {hoveredMetro && !hoveredLink && !hoveredDevice && !hoveredValidator && (
           <>
             <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Metro</div>
             <div className="text-sm font-medium mb-2">{hoveredMetro.name}</div>
@@ -620,6 +725,30 @@ export function TopologyMap({ metros, devices, links }: TopologyMapProps) {
               <div className="flex justify-between gap-4">
                 <span className="text-muted-foreground">Devices:</span>
                 <span>{hoveredMetro.deviceCount}</span>
+              </div>
+            </div>
+          </>
+        )}
+        {hoveredValidator && !hoveredLink && !hoveredDevice && (
+          <>
+            <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Validator</div>
+            <div className="text-sm font-medium font-mono mb-2">{hoveredValidator.votePubkey.slice(0, 12)}...</div>
+            <div className="space-y-1 text-xs">
+              <div className="flex justify-between gap-4">
+                <span className="text-muted-foreground">Location:</span>
+                <span>{hoveredValidator.city}, {hoveredValidator.country}</span>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="text-muted-foreground">Stake:</span>
+                <span>{hoveredValidator.stakeSol} SOL</span>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="text-muted-foreground">DZ Stake Share:</span>
+                <span>{hoveredValidator.stakeShare}</span>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="text-muted-foreground">Device:</span>
+                <span>{hoveredValidator.deviceCode}</span>
               </div>
             </div>
           </>

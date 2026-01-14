@@ -64,6 +64,7 @@ export function TopologyPage() {
         metros={data.metros}
         devices={data.devices}
         links={data.links}
+        validators={data.validators}
       />
     </div>
   )

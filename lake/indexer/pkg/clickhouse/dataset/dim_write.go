@@ -81,6 +81,19 @@ func (d *DimensionType2Dataset) WriteBatch(
 		return fmt.Errorf("failed to load snapshot into staging: %w", err)
 	}
 
+	// Verify staging data is visible before computing delta
+	// This catches issues where async insert or other factors cause data to not be immediately visible
+	stagingCount, err := d.countStagingRows(ctx, conn, cfg.OpID)
+	if err != nil {
+		return fmt.Errorf("failed to verify staging data: %w", err)
+	}
+	if stagingCount == 0 {
+		return fmt.Errorf("staging data not visible after insert: expected %d rows for op_id %s, got 0", count, cfg.OpID)
+	}
+	if stagingCount != int64(count) {
+		d.log.Warn("staging row count mismatch", "dataset", d.schema.Name(), "expected", count, "actual", stagingCount, "op_id", cfg.OpID)
+	}
+
 	// Step 2: Compute delta and write directly to history using INSERT INTO ... SELECT
 	d.log.Debug("computing and writing delta", "dataset", d.schema.Name(), "staging", d.StagingTableName(), "history", d.HistoryTableName(), "snapshot_ts", cfg.SnapshotTS, "ingested_at", cfg.IngestedAt, "op_id", cfg.OpID)
 
@@ -196,15 +209,15 @@ func (d *DimensionType2Dataset) WriteBatch(
 				SELECT %s
 				FROM staging s
 				LEFT JOIN latest_active c ON s.entity_id = c.entity_id
-				-- Note: ClickHouse returns empty string (not NULL) for unmatched String columns in LEFT JOINs
-				WHERE c.entity_id = '' OR s.attrs_hash != c.attrs_hash
+				-- Check both empty string (join_use_nulls=0 default) and NULL (join_use_nulls=1)
+				WHERE (c.entity_id = '' OR c.entity_id IS NULL) OR s.attrs_hash != c.attrs_hash
 			),
 			deleted AS (
 				SELECT %s
 				FROM latest_active c
 				LEFT JOIN staging s ON c.entity_id = s.entity_id
-				-- Note: ClickHouse returns empty string (not NULL) for unmatched String columns in LEFT JOINs
-				WHERE s.entity_id = ''
+				-- Check both empty string (join_use_nulls=0 default) and NULL (join_use_nulls=1)
+				WHERE s.entity_id = '' OR s.entity_id IS NULL
 			)
 		SELECT %s FROM new_or_changed
 		%s
@@ -315,6 +328,32 @@ func (d *DimensionType2Dataset) checkOpIDAlreadyProcessed(ctx context.Context, c
 	}
 
 	return false, nil
+}
+
+// countStagingRows counts the number of rows in staging for a specific op_id
+// Used to verify staging data is visible before computing delta
+func (d *DimensionType2Dataset) countStagingRows(ctx context.Context, conn clickhouse.Connection, opID uuid.UUID) (int64, error) {
+	countQuery := fmt.Sprintf(`
+		SELECT count()
+		FROM %s
+		WHERE op_id = ?
+	`, d.StagingTableName())
+
+	rows, err := conn.Query(ctx, countQuery, opID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count staging rows: %w", err)
+	}
+	defer rows.Close()
+
+	if rows.Next() {
+		var count uint64
+		if err := rows.Scan(&count); err != nil {
+			return 0, fmt.Errorf("failed to scan staging count: %w", err)
+		}
+		return int64(count), nil
+	}
+
+	return 0, nil
 }
 
 // cleanupStagingForOpID removes staging rows for a specific op_id

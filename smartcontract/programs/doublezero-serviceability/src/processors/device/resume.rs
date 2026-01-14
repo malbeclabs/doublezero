@@ -81,6 +81,12 @@ pub fn process_resume_device(
     }
 
     let mut device: Device = Device::try_from(device_account)?;
+
+    // Only resume devices that are currently Suspended
+    if device.status != DeviceStatus::Suspended {
+        return Err(DoubleZeroError::InvalidStatus.into());
+    }
+
     device.status = DeviceStatus::Activated;
 
     try_acc_write(&device, device_account, payer_account, accounts)?;

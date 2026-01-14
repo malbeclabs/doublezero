@@ -47,6 +47,7 @@ All notable changes to this project will be documented in this file.
   - Add on-chain validation to reject CloseAccountDevice when device has active references (reference_count > 0)
   - Allow contributor owner to update ops manager key
   - Add new arguments on create interface cli command
+  - Serviceability: enforce that resume instructions for locations, exchanges, contributors, devices, links, and users only succeed when the account status is `Suspended`, returning `InvalidStatus` otherwise, and add tests to cover the new behavior.
   - RequestBanUser: only allow requests when user.status is Activated or Suspended; otherwise return InvalidStatus
   - Serviceability: require device interfaces to be in `Pending` status before they can be rejected, and add tests to cover the new status check
   - Add ResourceExtension to track IP/ID allocations. Foundation instructions added to create/allocate/deallocate.

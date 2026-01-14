@@ -64,6 +64,11 @@ pub fn process_resume_user(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
+    // Only resume users that are currently Suspended
+    if user.status != UserStatus::Suspended {
+        return Err(DoubleZeroError::InvalidStatus.into());
+    }
+
     let mut accesspass = AccessPass::try_from(accesspass_account)?;
     assert_eq!(accesspass.user_payer, user.owner, "Invalid AccessPass");
     if !accesspass.allow_multiple_ip() && accesspass.client_ip != user.client_ip {

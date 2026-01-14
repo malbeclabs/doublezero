@@ -64,11 +64,14 @@ pub fn process_update_device_interface(
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
+    /*  Accounts prefixed with an underscore are not currently used.
+        They are kept for backward compatibility and may be removed in future releases.
+    */
     let device_account = next_account_info(accounts_iter)?;
-    let contributor_account = next_account_info(accounts_iter)?;
+    let _contributor_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
-    let system_program = next_account_info(accounts_iter)?;
+    let _system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
     msg!("process_update_device_interface({:?})", value);
@@ -82,25 +85,11 @@ pub fn process_update_device_interface(
         "Invalid PDA Account Owner"
     );
     assert_eq!(
-        contributor_account.owner, program_id,
-        "Invalid Contributor Account Owner"
-    );
-    assert_eq!(
         globalstate_account.owner, program_id,
         "Invalid GlobalState Account Owner"
     );
-    assert_eq!(
-        *system_program.unsigned_key(),
-        solana_program::system_program::id(),
-        "Invalid System Program Account Owner"
-    );
     // Check if the account is writable
     assert!(device_account.is_writable, "PDA Account is not writable");
-    assert_eq!(
-        *system_program.unsigned_key(),
-        solana_program::system_program::id(),
-        "Invalid System Program Account Owner"
-    );
 
     let globalstate = GlobalState::try_from(globalstate_account)?;
     assert_eq!(globalstate.account_type, AccountType::GlobalState);

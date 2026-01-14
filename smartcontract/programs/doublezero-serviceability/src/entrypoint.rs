@@ -1,20 +1,14 @@
 use crate::{
+    error::DoubleZeroError,
     instructions::*,
     processors::{
         accesspass::{
             check_status::process_check_status_access_pass, close::process_close_access_pass,
             set::process_set_access_pass,
         },
-        allowlist::{
-            device::{
-                add::process_add_device_allowlist_globalconfig,
-                remove::process_remove_device_allowlist_globalconfig,
-            },
-            foundation::{
-                add::process_add_foundation_allowlist_globalconfig,
-                remove::process_remove_foundation_allowlist_globalconfig,
-            },
-            user::{add::process_add_user_allowlist, remove::process_remove_user_allowlist},
+        allowlist::foundation::{
+            add::process_add_foundation_allowlist_globalconfig,
+            remove::process_remove_foundation_allowlist_globalconfig,
         },
         contributor::{
             create::process_create_contributor, delete::process_delete_contributor,
@@ -231,17 +225,17 @@ pub fn process_instruction(
         DoubleZeroInstruction::RemoveFoundationAllowlist(value) => {
             process_remove_foundation_allowlist_globalconfig(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::AddDeviceAllowlist(value) => {
-            process_add_device_allowlist_globalconfig(program_id, accounts, &value)?
+        DoubleZeroInstruction::AddDeviceAllowlist() => {
+            return Err(DoubleZeroError::Deprecated.into());
         }
-        DoubleZeroInstruction::RemoveDeviceAllowlist(value) => {
-            process_remove_device_allowlist_globalconfig(program_id, accounts, &value)?
+        DoubleZeroInstruction::RemoveDeviceAllowlist() => {
+            return Err(DoubleZeroError::Deprecated.into());
         }
-        DoubleZeroInstruction::AddUserAllowlist(value) => {
-            process_add_user_allowlist(program_id, accounts, &value)?
+        DoubleZeroInstruction::AddUserAllowlist() => {
+            return Err(DoubleZeroError::Deprecated.into());
         }
-        DoubleZeroInstruction::RemoveUserAllowlist(value) => {
-            process_remove_user_allowlist(program_id, accounts, &value)?
+        DoubleZeroInstruction::RemoveUserAllowlist() => {
+            return Err(DoubleZeroError::Deprecated.into());
         }
         DoubleZeroInstruction::RequestBanUser(value) => {
             process_request_ban_user(program_id, accounts, &value)?

@@ -30,10 +30,13 @@ pub fn process_check_status_access_pass(
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
+    /*  Accounts prefixed with an underscore are not currently used.
+        They are kept for backward compatibility and may be removed in future releases.
+    */
     let accesspass_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
-    let system_program = next_account_info(accounts_iter)?;
+    let _system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
     msg!("process_check_status_access_pass({:?})", _value);
@@ -54,20 +57,10 @@ pub fn process_check_status_access_pass(
         program_id.clone(),
         "Invalid GlobalState Account Owner"
     );
-    assert_eq!(
-        *system_program.unsigned_key(),
-        solana_program::system_program::id(),
-        "Invalid System Program Account Owner"
-    );
     // Check if the account is writable
     assert!(
         accesspass_account.is_writable,
         "PDA Account is not writable"
-    );
-    assert_eq!(
-        *system_program.unsigned_key(),
-        solana_program::system_program::id(),
-        "Invalid System Program Account Owner"
     );
 
     // Parse the global state account & check if the payer is in the allowlist

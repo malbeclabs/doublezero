@@ -59,7 +59,6 @@ RUST_LOG=debug ./target/doublezero-activator --program-id 7CTniUa88iJKUHTrCkB4Tj
 
 echo "Add allowlist"
 ./target/doublezero global-config allowlist add --pubkey 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX
-./target/doublezero device allowlist add --pubkey 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX
 
 ### Initialize locations
 echo "Creating locations"

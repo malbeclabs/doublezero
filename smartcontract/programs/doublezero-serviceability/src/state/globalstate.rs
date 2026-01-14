@@ -14,8 +14,14 @@ pub struct GlobalState {
     pub bump_seed: u8,                     // 1
     pub account_index: u128,               // 16
     pub foundation_allowlist: Vec<Pubkey>, // 4 + 32 * len
-    pub device_allowlist: Vec<Pubkey>,     // 4 + 32 * len
-    pub user_allowlist: Vec<Pubkey>,       // 4 + 32 * len
+    // The list of device pubkeys was migrated to the Contributor structure,
+    // which has an owner and is responsible for managing devices and links.
+    pub _device_allowlist: Vec<Pubkey>, // 4 + 32 * len
+    // Note: This list of pubkeys is no longer used.
+    // The access control logic has been migrated to AccessPasses,
+    // which now act as the canonical mechanism for authorization.
+    pub _user_allowlist: Vec<Pubkey>, // 4 + 32 * len
+    // Authorities and settings
     pub activator_authority_pk: Pubkey,    // 32
     pub sentinel_authority_pk: Pubkey,     // 32
     pub contributor_airdrop_lamports: u64, // 8
@@ -30,8 +36,8 @@ impl Default for GlobalState {
             bump_seed: 0,
             account_index: 0,
             foundation_allowlist: Vec::new(),
-            device_allowlist: Vec::new(),
-            user_allowlist: Vec::new(),
+            _device_allowlist: Vec::new(),
+            _user_allowlist: Vec::new(),
             activator_authority_pk: Pubkey::default(),
             sentinel_authority_pk: Pubkey::default(),
             contributor_airdrop_lamports: 0,
@@ -58,8 +64,8 @@ health_oracle_pk: {:?}",
             self.account_type,
             self.account_index,
             self.foundation_allowlist,
-            self.device_allowlist,
-            self.user_allowlist,
+            self._device_allowlist,
+            self._user_allowlist,
             self.activator_authority_pk,
             self.sentinel_authority_pk,
             self.contributor_airdrop_lamports,
@@ -78,8 +84,8 @@ impl TryFrom<&[u8]> for GlobalState {
             bump_seed: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             account_index: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             foundation_allowlist: deserialize_vec_with_capacity(&mut data)?,
-            device_allowlist: deserialize_vec_with_capacity(&mut data)?,
-            user_allowlist: deserialize_vec_with_capacity(&mut data)?,
+            _device_allowlist: deserialize_vec_with_capacity(&mut data)?,
+            _user_allowlist: deserialize_vec_with_capacity(&mut data)?,
             activator_authority_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             sentinel_authority_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             contributor_airdrop_lamports: BorshDeserialize::deserialize(&mut data)
@@ -152,8 +158,8 @@ mod tests {
         assert_eq!(val.bump_seed, 0);
         assert_eq!(val.account_index, 0);
         assert_eq!(val.foundation_allowlist, Vec::<Pubkey>::new());
-        assert_eq!(val.device_allowlist, Vec::<Pubkey>::new());
-        assert_eq!(val.user_allowlist, Vec::<Pubkey>::new());
+        assert_eq!(val._device_allowlist, Vec::<Pubkey>::new());
+        assert_eq!(val._user_allowlist, Vec::<Pubkey>::new());
         assert_eq!(val.activator_authority_pk, Pubkey::default());
         assert_eq!(val.sentinel_authority_pk, Pubkey::default());
         assert_eq!(val.contributor_airdrop_lamports, 0);
@@ -167,8 +173,8 @@ mod tests {
             bump_seed: 1,
             account_index: 123,
             foundation_allowlist: vec![Pubkey::new_unique(), Pubkey::new_unique()],
-            device_allowlist: vec![Pubkey::new_unique(), Pubkey::new_unique()],
-            user_allowlist: vec![Pubkey::new_unique(), Pubkey::new_unique()],
+            _device_allowlist: vec![Pubkey::new_unique(), Pubkey::new_unique()],
+            _user_allowlist: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             activator_authority_pk: Pubkey::new_unique(),
             sentinel_authority_pk: Pubkey::new_unique(),
             contributor_airdrop_lamports: 1_000_000_000,
@@ -188,8 +194,8 @@ mod tests {
         );
         assert_eq!(val.account_index, val2.account_index);
         assert_eq!(val.foundation_allowlist, val2.foundation_allowlist);
-        assert_eq!(val.device_allowlist, val2.device_allowlist);
-        assert_eq!(val.user_allowlist, val2.user_allowlist);
+        assert_eq!(val._device_allowlist, val2._device_allowlist);
+        assert_eq!(val._user_allowlist, val2._user_allowlist);
         assert_eq!(val.activator_authority_pk, val2.activator_authority_pk);
         assert_eq!(val.sentinel_authority_pk, val2.sentinel_authority_pk);
         assert_eq!(
@@ -211,8 +217,8 @@ mod tests {
             bump_seed: 1,
             account_index: 123,
             foundation_allowlist: vec![Pubkey::new_unique(), Pubkey::new_unique()],
-            device_allowlist: vec![Pubkey::new_unique(), Pubkey::new_unique()],
-            user_allowlist: vec![Pubkey::new_unique(), Pubkey::new_unique()],
+            _device_allowlist: vec![Pubkey::new_unique(), Pubkey::new_unique()],
+            _user_allowlist: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             activator_authority_pk: Pubkey::new_unique(),
             sentinel_authority_pk: Pubkey::new_unique(),
             contributor_airdrop_lamports: 1_000_000_000,

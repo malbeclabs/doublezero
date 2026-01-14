@@ -2,10 +2,8 @@ use crate::processors::{
     accesspass::{
         check_status::CheckStatusAccessPassArgs, close::CloseAccessPassArgs, set::SetAccessPassArgs,
     },
-    allowlist::{
-        device::{add::AddDeviceAllowlistArgs, remove::RemoveDeviceAllowlistArgs},
-        foundation::{add::AddFoundationAllowlistArgs, remove::RemoveFoundationAllowlistArgs},
-        user::{add::AddUserAllowlistArgs, remove::RemoveUserAllowlistArgs},
+    allowlist::foundation::{
+        add::AddFoundationAllowlistArgs, remove::RemoveFoundationAllowlistArgs,
     },
     contributor::{
         create::ContributorCreateArgs, delete::ContributorDeleteArgs,
@@ -93,10 +91,10 @@ pub enum DoubleZeroInstruction {
 
     AddFoundationAllowlist(AddFoundationAllowlistArgs), // variant 4
     RemoveFoundationAllowlist(RemoveFoundationAllowlistArgs), // variant 5
-    AddDeviceAllowlist(AddDeviceAllowlistArgs),         // variant 6
-    RemoveDeviceAllowlist(RemoveDeviceAllowlistArgs),   // variant 7
-    AddUserAllowlist(AddUserAllowlistArgs),             // variant 8
-    RemoveUserAllowlist(RemoveUserAllowlistArgs),       // variant 9
+    AddDeviceAllowlist(),                               // variant 6
+    RemoveDeviceAllowlist(),                            // variant 7
+    AddUserAllowlist(),                                 // variant 8
+    RemoveUserAllowlist(),                              // variant 9
 
     CreateLocation(LocationCreateArgs),   // variant 10
     UpdateLocation(LocationUpdateArgs),   // variant 11
@@ -203,10 +201,10 @@ impl DoubleZeroInstruction {
 
             4 => Ok(Self::AddFoundationAllowlist(AddFoundationAllowlistArgs::try_from(rest).unwrap())),
             5 => Ok(Self::RemoveFoundationAllowlist(RemoveFoundationAllowlistArgs::try_from(rest).unwrap())),
-            6 => Ok(Self::AddDeviceAllowlist(AddDeviceAllowlistArgs::try_from(rest).unwrap())),
-            7 => Ok(Self::RemoveDeviceAllowlist(RemoveDeviceAllowlistArgs::try_from(rest).unwrap())),
-            8 => Ok(Self::AddUserAllowlist(AddUserAllowlistArgs::try_from(rest).unwrap())),
-            9 => Ok(Self::RemoveUserAllowlist(RemoveUserAllowlistArgs::try_from(rest).unwrap())),
+            6 => Ok(Self::AddDeviceAllowlist()),
+            7 => Ok(Self::RemoveDeviceAllowlist()),
+            8 => Ok(Self::AddUserAllowlist()),
+            9 => Ok(Self::RemoveUserAllowlist()),
 
             10 => Ok(Self::CreateLocation(LocationCreateArgs::try_from(rest).unwrap())),
             11 => Ok(Self::UpdateLocation(LocationUpdateArgs::try_from(rest).unwrap())),
@@ -308,10 +306,10 @@ impl DoubleZeroInstruction {
 
             Self::AddFoundationAllowlist(_) => "AddFoundationAllowlist".to_string(), // variant 4
             Self::RemoveFoundationAllowlist(_) => "RemoveFoundationAllowlist".to_string(), // variant 5
-            Self::AddDeviceAllowlist(_) => "AddDeviceAllowlist".to_string(), // variant 6
-            Self::RemoveDeviceAllowlist(_) => "RemoveDeviceAllowlist".to_string(), // variant 7
-            Self::AddUserAllowlist(_) => "AddUserAllowlist".to_string(),     // variant 8
-            Self::RemoveUserAllowlist(_) => "RemoveUserAllowlist".to_string(), // variant 9
+            Self::AddDeviceAllowlist() => "AddDeviceAllowlist".to_string(), // variant 6
+            Self::RemoveDeviceAllowlist() => "RemoveDeviceAllowlist".to_string(), // variant 7
+            Self::AddUserAllowlist() => "AddUserAllowlist".to_string(),     // variant 8
+            Self::RemoveUserAllowlist() => "RemoveUserAllowlist".to_string(), // variant 9
 
             Self::CreateLocation(_) => "CreateLocation".to_string(), // variant 10
             Self::UpdateLocation(_) => "UpdateLocation".to_string(), // variant 11
@@ -415,10 +413,10 @@ impl DoubleZeroInstruction {
 
             Self::AddFoundationAllowlist(args) => format!("{args:?}"), // variant 4
             Self::RemoveFoundationAllowlist(args) => format!("{args:?}"), // variant 5
-            Self::AddDeviceAllowlist(args) => format!("{args:?}"),     // variant 6
-            Self::RemoveDeviceAllowlist(args) => format!("{args:?}"),  // variant 7
-            Self::AddUserAllowlist(args) => format!("{args:?}"),       // variant 8
-            Self::RemoveUserAllowlist(args) => format!("{args:?}"),    // variant 9
+            Self::AddDeviceAllowlist() => "".to_string(),              // variant 6
+            Self::RemoveDeviceAllowlist() => "".to_string(),           // variant 7
+            Self::AddUserAllowlist() => "".to_string(),                // variant 8
+            Self::RemoveUserAllowlist() => "".to_string(),             // variant 9
 
             Self::CreateLocation(args) => format!("{args:?}"), // variant 10
             Self::UpdateLocation(args) => format!("{args:?}"), // variant 11
@@ -786,27 +784,19 @@ mod tests {
             "RemoveFoundationAllowlist",
         );
         test_instruction(
-            DoubleZeroInstruction::AddDeviceAllowlist(AddDeviceAllowlistArgs {
-                pubkey: Pubkey::new_unique(),
-            }),
+            DoubleZeroInstruction::AddDeviceAllowlist(),
             "AddDeviceAllowlist",
         );
         test_instruction(
-            DoubleZeroInstruction::RemoveDeviceAllowlist(RemoveDeviceAllowlistArgs {
-                pubkey: Pubkey::new_unique(),
-            }),
+            DoubleZeroInstruction::RemoveDeviceAllowlist(),
             "RemoveDeviceAllowlist",
         );
         test_instruction(
-            DoubleZeroInstruction::AddUserAllowlist(AddUserAllowlistArgs {
-                pubkey: Pubkey::new_unique(),
-            }),
+            DoubleZeroInstruction::AddUserAllowlist(),
             "AddUserAllowlist",
         );
         test_instruction(
-            DoubleZeroInstruction::RemoveUserAllowlist(RemoveUserAllowlistArgs {
-                pubkey: Pubkey::new_unique(),
-            }),
+            DoubleZeroInstruction::RemoveUserAllowlist(),
             "RemoveUserAllowlist",
         );
         test_instruction(

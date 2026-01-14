@@ -4,6 +4,7 @@ interface StatCardProps {
   label: string
   value: number | undefined
   format: 'number' | 'stake' | 'bandwidth' | 'percent'
+  delta?: number // Optional delta value to show change (percentage points for percent format)
 }
 
 function useAnimatedNumber(target: number | undefined, duration = 500) {
@@ -75,9 +76,16 @@ function formatValue(
   }
 }
 
-export function StatCard({ label, value, format }: StatCardProps) {
+function formatDelta(delta: number): string {
+  const sign = delta >= 0 ? '+' : ''
+  return `${sign}${delta.toFixed(2)}%`
+}
+
+export function StatCard({ label, value, format, delta }: StatCardProps) {
   const animatedValue = useAnimatedNumber(value)
   const isLoading = value === undefined
+
+  const showDelta = delta !== undefined && delta !== 0
 
   return (
     <div className="text-center">
@@ -85,7 +93,14 @@ export function StatCard({ label, value, format }: StatCardProps) {
         {isLoading ? (
           <span className="inline-block h-10 w-16 rounded bg-muted animate-pulse" />
         ) : (
-          formatValue(animatedValue, format)
+          <span className="inline-flex items-baseline gap-2">
+            {formatValue(animatedValue, format)}
+            {showDelta && (
+              <span className={`text-sm font-normal ${delta > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                {formatDelta(delta)}
+              </span>
+            )}
+          </span>
         )}
       </div>
       <div className="text-sm text-muted-foreground">{label}</div>

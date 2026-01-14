@@ -6,6 +6,7 @@ import {
   MessageSquare,
   Database,
   Globe,
+  Activity,
   Trash2,
   MoreHorizontal,
   Pencil,
@@ -65,6 +66,7 @@ export function Sidebar({
   const { updateAvailable, reload } = useVersionCheck()
   const isLandingPage = location.pathname === '/'
   const isTopologyPage = location.pathname === '/topology'
+  const isStatusPage = location.pathname === '/status'
 
   const [isCollapsed, setIsCollapsed] = useState(() => {
     // Check localStorage for saved preference
@@ -72,8 +74,8 @@ export function Sidebar({
     if (saved !== null) return saved === 'true'
     // Default to collapsed on small screens, landing page, or topology page
     if (typeof window !== 'undefined' && window.innerWidth < 1024) return true
-    // On landing page or topology page, default to collapsed
-    return window.location.pathname === '/' || window.location.pathname === '/topology'
+    // On landing page, topology page, or status page, default to collapsed
+    return window.location.pathname === '/' || window.location.pathname === '/topology' || window.location.pathname === '/status'
   })
   const [userCollapsed, setUserCollapsed] = useState<boolean | null>(() => {
     const saved = localStorage.getItem('sidebar-user-collapsed')
@@ -89,10 +91,10 @@ export function Sidebar({
     if (isSmall) {
       setIsCollapsed(true)
     } else {
-      // Landing page and topology page default to collapsed, other pages to expanded
-      setIsCollapsed(isLandingPage || isTopologyPage)
+      // Landing page, topology page, and status page default to collapsed, other pages to expanded
+      setIsCollapsed(isLandingPage || isTopologyPage || isStatusPage)
     }
-  }, [isLandingPage, isTopologyPage, userCollapsed])
+  }, [isLandingPage, isTopologyPage, isStatusPage, userCollapsed])
 
   // Auto-collapse/expand on resize based on user preference
   useEffect(() => {
@@ -103,7 +105,7 @@ export function Sidebar({
         setIsCollapsed(true)
       } else if (userCollapsed === null) {
         // No user preference - use route-based default
-        setIsCollapsed(isLandingPage || isTopologyPage)
+        setIsCollapsed(isLandingPage || isTopologyPage || isStatusPage)
       } else {
         // Respect user preference
         setIsCollapsed(userCollapsed)
@@ -112,7 +114,7 @@ export function Sidebar({
 
     window.addEventListener('resize', checkWidth)
     return () => window.removeEventListener('resize', checkWidth)
-  }, [userCollapsed, isLandingPage, isTopologyPage])
+  }, [userCollapsed, isLandingPage, isTopologyPage, isStatusPage])
 
   // Save collapsed state to localStorage
   useEffect(() => {
@@ -132,6 +134,7 @@ export function Sidebar({
   const isQueryRoute = location.pathname.startsWith('/query')
   const isChatRoute = location.pathname.startsWith('/chat')
   const isTopologyRoute = location.pathname === '/topology'
+  const isStatusRoute = location.pathname === '/status'
   const isQuerySessions = location.pathname === '/query/sessions'
   const isChatSessions = location.pathname === '/chat/sessions'
 
@@ -201,6 +204,20 @@ export function Sidebar({
           title="Topology"
         >
           <Globe className="h-4 w-4" />
+        </button>
+
+        {/* Status nav item */}
+        <button
+          onClick={() => navigate('/status')}
+          className={cn(
+            'p-2 rounded transition-colors',
+            isStatusRoute
+              ? 'bg-[oklch(25%_.04_250)] text-white hover:bg-[oklch(30%_.05_250)]'
+              : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+          )}
+          title="Status"
+        >
+          <Activity className="h-4 w-4" />
         </button>
         </div>
 
@@ -292,6 +309,18 @@ export function Sidebar({
         >
           <Globe className="h-4 w-4" />
           Topology
+        </button>
+        <button
+          onClick={() => navigate('/status')}
+          className={cn(
+            'w-full flex items-center gap-2 px-3 py-2 text-sm rounded transition-colors',
+            isStatusRoute
+              ? 'bg-[oklch(25%_.04_250)] text-white hover:bg-[oklch(30%_.05_250)]'
+              : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+          )}
+        >
+          <Activity className="h-4 w-4" />
+          Status
         </button>
       </div>
 

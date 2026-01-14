@@ -85,17 +85,17 @@ export function Landing() {
         />
         <StatCard
           label="Devices"
-          value={stats?.active_devices}
+          value={stats?.devices}
           format="number"
         />
         <StatCard
           label="Links"
-          value={stats?.active_links}
+          value={stats?.links}
           format="number"
         />
         <StatCard
           label="Users"
-          value={stats?.active_users}
+          value={stats?.users}
           format="number"
         />
         {/* Row 2: Solana + Traffic */}

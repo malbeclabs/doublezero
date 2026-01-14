@@ -13,18 +13,18 @@ import (
 )
 
 type StatsResponse struct {
-	ValidatorsOnDZ      uint64  `json:"validators_on_dz"`
-	TotalStakeSol       float64 `json:"total_stake_sol"`
-	StakeSharePct       float64 `json:"stake_share_pct"`
-	ActiveUsers         uint64  `json:"active_users"`
-	ActiveDevices       uint64  `json:"active_devices"`
-	ActiveLinks         uint64  `json:"active_links"`
-	Contributors        uint64  `json:"contributors"`
-	Metros              uint64  `json:"metros"`
-	WANBandwidthBps     int64   `json:"wan_bandwidth_bps"`
-	UserInboundBps      float64 `json:"user_inbound_bps"`
-	FetchedAt           string  `json:"fetched_at"`
-	Error               string  `json:"error,omitempty"`
+	ValidatorsOnDZ  uint64  `json:"validators_on_dz"`
+	TotalStakeSol   float64 `json:"total_stake_sol"`
+	StakeSharePct   float64 `json:"stake_share_pct"`
+	Users           uint64  `json:"users"`
+	Devices         uint64  `json:"devices"`
+	Links           uint64  `json:"links"`
+	Contributors    uint64  `json:"contributors"`
+	Metros          uint64  `json:"metros"`
+	WANBandwidthBps int64   `json:"wan_bandwidth_bps"`
+	UserInboundBps  float64 `json:"user_inbound_bps"`
+	FetchedAt       string  `json:"fetched_at"`
+	Error           string  `json:"error,omitempty"`
 }
 
 func GetStats(w http.ResponseWriter, r *http.Request) {
@@ -85,25 +85,25 @@ func GetStats(w http.ResponseWriter, r *http.Request) {
 		return row.Scan(&stats.StakeSharePct)
 	})
 
-	// Count active users
+	// Count users
 	g.Go(func() error {
-		query := `SELECT COUNT(*) FROM dz_users_current WHERE status = 'activated'`
+		query := `SELECT COUNT(*) FROM dz_users_current`
 		row := config.DB.QueryRow(ctx, query)
-		return row.Scan(&stats.ActiveUsers)
+		return row.Scan(&stats.Users)
 	})
 
-	// Count active devices
+	// Count devices
 	g.Go(func() error {
-		query := `SELECT COUNT(*) FROM dz_devices_current WHERE status = 'activated'`
+		query := `SELECT COUNT(*) FROM dz_devices_current`
 		row := config.DB.QueryRow(ctx, query)
-		return row.Scan(&stats.ActiveDevices)
+		return row.Scan(&stats.Devices)
 	})
 
-	// Count active links
+	// Count links
 	g.Go(func() error {
-		query := `SELECT COUNT(*) FROM dz_links_current WHERE status = 'activated'`
+		query := `SELECT COUNT(*) FROM dz_links_current`
 		row := config.DB.QueryRow(ctx, query)
-		return row.Scan(&stats.ActiveLinks)
+		return row.Scan(&stats.Links)
 	})
 
 	// Count contributors

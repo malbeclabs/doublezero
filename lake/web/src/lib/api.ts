@@ -614,9 +614,9 @@ export interface StatsResponse {
   validators_on_dz: number
   total_stake_sol: number
   stake_share_pct: number
-  active_users: number
-  active_devices: number
-  active_links: number
+  users: number
+  devices: number
+  links: number
   contributors: number
   metros: number
   wan_bandwidth_bps: number
@@ -629,6 +629,137 @@ export async function fetchStats(): Promise<StatsResponse> {
   const res = await fetchWithRetry('/api/stats')
   if (!res.ok) {
     throw new Error('Failed to fetch stats')
+  }
+  return res.json()
+}
+
+// Status/health types
+export interface SystemHealth {
+  database: boolean
+  database_msg?: string
+  last_ingested?: string
+}
+
+export interface NetworkSummary {
+  validators_on_dz: number
+  total_stake_sol: number
+  stake_share_pct: number
+  stake_share_delta: number
+  users: number
+  devices: number
+  links: number
+  contributors: number
+  metros: number
+  wan_bandwidth_bps: number
+  user_inbound_bps: number
+  devices_by_status: Record<string, number>
+  links_by_status: Record<string, number>
+}
+
+export interface LinkIssue {
+  code: string
+  link_type: string
+  contributor: string
+  issue: string
+  value: number
+  threshold: number
+  side_a_metro: string
+  side_z_metro: string
+}
+
+export interface LinkMetric {
+  code: string
+  link_type: string
+  contributor: string
+  bandwidth_bps: number
+  in_bps: number
+  out_bps: number
+  utilization_in: number
+  utilization_out: number
+  side_a_metro: string
+  side_z_metro: string
+}
+
+export interface LinkHealth {
+  total: number
+  healthy: number
+  degraded: number
+  unhealthy: number
+  issues: LinkIssue[]
+  high_util_links: LinkMetric[]
+}
+
+export interface PerformanceMetrics {
+  avg_latency_us: number
+  p95_latency_us: number
+  min_latency_us: number
+  max_latency_us: number
+  avg_loss_percent: number
+  avg_jitter_us: number
+  total_in_bps: number
+  total_out_bps: number
+}
+
+export interface InterfaceIssue {
+  device_code: string
+  device_type: string
+  contributor: string
+  metro: string
+  interface_name: string
+  link_code?: string
+  link_type?: string
+  link_side?: string
+  in_errors: number
+  out_errors: number
+  in_discards: number
+  out_discards: number
+  carrier_transitions: number
+  first_seen: string
+  last_seen: string
+}
+
+export interface InterfaceHealth {
+  issues: InterfaceIssue[]
+}
+
+export interface NonActivatedDevice {
+  code: string
+  device_type: string
+  metro: string
+  status: string
+  since: string
+}
+
+export interface NonActivatedLink {
+  code: string
+  link_type: string
+  side_a_metro: string
+  side_z_metro: string
+  status: string
+  since: string
+}
+
+export interface InfrastructureAlerts {
+  devices: NonActivatedDevice[]
+  links: NonActivatedLink[]
+}
+
+export interface StatusResponse {
+  status: 'healthy' | 'degraded' | 'unhealthy'
+  timestamp: string
+  system: SystemHealth
+  network: NetworkSummary
+  links: LinkHealth
+  interfaces: InterfaceHealth
+  alerts: InfrastructureAlerts
+  performance: PerformanceMetrics
+  error?: string
+}
+
+export async function fetchStatus(): Promise<StatusResponse> {
+  const res = await fetchWithRetry('/api/status')
+  if (!res.ok) {
+    throw new Error('Failed to fetch status')
   }
   return res.json()
 }

@@ -12,6 +12,7 @@ import { Chat, type ChatProgress, type QueryProgressItem, type PipelineStep } fr
 import { Landing } from '@/components/landing'
 import { Sidebar } from '@/components/sidebar'
 import { TopologyPage } from '@/components/topology-page'
+import { StatusPage } from '@/components/status-page'
 import { generateSessionTitle, generateChatSessionTitle, sendChatMessageStream, recommendVisualization, fetchCatalog, acquireSessionLock, releaseSessionLock, getSessionLock, watchSessionLock, getSession, type SessionQueryInfo, type SessionLock } from '@/lib/api'
 import type { TableInfo, QueryResponse, HistoryMessage, ChatMessage } from '@/lib/api'
 import {
@@ -1318,6 +1319,9 @@ function AppContent() {
 
             {/* Topology route */}
             <Route path="/topology" element={<TopologyPage />} />
+
+            {/* Status route */}
+            <Route path="/status" element={<StatusPage />} />
 
             {/* Default redirect */}
             <Route path="*" element={<Navigate to="/" replace />} />

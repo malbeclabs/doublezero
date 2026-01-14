@@ -137,6 +137,7 @@ func main() {
 
 	r.Get("/api/catalog", handlers.GetCatalog)
 	r.Get("/api/stats", handlers.GetStats)
+	r.Get("/api/status", handlers.GetStatus)
 	r.Get("/api/topology", handlers.GetTopology)
 	r.Get("/api/topology/traffic", handlers.GetTopologyTraffic)
 	r.Post("/api/query", handlers.ExecuteQuery)

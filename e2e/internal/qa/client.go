@@ -42,7 +42,7 @@ const (
 	grpcDialTimeout    = 10 * time.Second
 	grpcDialMaxRetries = 5
 
-	UserStatusUp           = "up"
+	UserStatusUp           = "BGP Session Up"
 	UserStatusDisconnected = "disconnected"
 )
 

@@ -27,11 +27,12 @@ type SessionEvent struct {
 type SessionStatus int
 
 const (
-	SessionStatusunknown SessionStatus = iota
-	SessionStatusPending
+	SessionStatusPending SessionStatus = iota
 	SessionStatusInitializing
 	SessionStatusDown
 	SessionStatusUp
+	SessionStatusFailed
+	SessionStatusUnreachable
 )
 
 func (s *Session) MarshalJSON() ([]byte, error) {
@@ -51,22 +52,23 @@ type Session struct {
 
 func (s SessionStatus) String() string {
 	return [...]string{
-		"unknown",
-		"pending",
-		"initializing",
-		"down",
-		"up",
+		"Pending BGP Session",
+		"Initializing BGP Session",
+		"BGP Session Down",
+		"BGP Session Up",
+		"BGP Session Failed",
+		"Network Unreachable",
 	}[s]
-
 }
 
 func (s SessionStatus) FromString(sessionStatus string) SessionStatus {
 	return map[string]SessionStatus{
-		"unknown":      SessionStatusunknown,
-		"pending":      SessionStatusPending,
-		"initializing": SessionStatusInitializing,
-		"down":         SessionStatusDown,
-		"up":           SessionStatusUp,
+		"Pending BGP Session":      SessionStatusPending,
+		"Initializing BGP Session": SessionStatusInitializing,
+		"BGP Session Down":         SessionStatusDown,
+		"BGP Session Up":           SessionStatusUp,
+		"BGP Session Failed":       SessionStatusFailed,
+		"Network Unreachable":      SessionStatusUnreachable,
 	}[sessionStatus]
 }
 
@@ -153,6 +155,8 @@ func (b *BgpServer) AddPeer(p *PeerConfig, advertised []NLRI) error {
 		rrw = liveness.NewRouteReaderWriter(b.livenessManager, b.routeReaderWriter, p.Interface, p.NoUninstall)
 	}
 	plugin := NewBgpPlugin(advertised, p.RouteSrc, p.RouteTable, b.peerStatusChan, p.NoInstall, rrw)
+	plugin.peerAddr = p.RemoteAddress
+	plugin.startSessionTimeout()
 	err := b.server.AddPeer(corebgp.PeerConfig{
 		RemoteAddress: netip.MustParseAddr(p.RemoteAddress.String()),
 		LocalAS:       p.LocalAs,
@@ -189,5 +193,5 @@ func (b *BgpServer) GetPeerStatus(ip net.IP) Session {
 	if peerStatus, ok := b.peerStatus[ip.String()]; ok {
 		return peerStatus
 	}
-	return Session{SessionStatus: SessionStatusunknown}
+	return Session{SessionStatus: SessionStatusPending}
 }

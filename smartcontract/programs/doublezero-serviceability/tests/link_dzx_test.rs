@@ -551,6 +551,29 @@ async fn test_dzx_link() {
     /*****************************************************************************************************************************************************/
     println!("🟢 10. Activate Link...");
 
+    // Regression: activation must fail if side A/Z accounts do not match link.side_{a,z}_pk
+    let res = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
+            tunnel_id: 500,
+            tunnel_net: "10.0.0.0/21".parse().unwrap(),
+        }),
+        vec![
+            AccountMeta::new(link_dzx_pubkey, false),
+            // Intentionally swap device accounts to violate side_a_pk/side_z_pk mapping
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(device_a_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    assert!(res.is_err());
+
+    // Happy path: correct side A/Z accounts should still activate successfully
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -871,6 +894,29 @@ async fn test_dzx_link() {
 
     /*****************************************************************************************************************************************************/
     println!("🟢 20. CloseAccount Link...");
+
+    // Regression: closing must fail if owner/side A/Z accounts do not match link fields
+    let res = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CloseAccountLink(LinkCloseAccountArgs {}),
+        vec![
+            AccountMeta::new(link_dzx_pubkey, false),
+            // Intentionally pass wrong owner while keeping contributor and devices correct
+            AccountMeta::new(device_a_pubkey, false),
+            AccountMeta::new(link.contributor_pk, false),
+            AccountMeta::new(link.side_a_pk, false),
+            AccountMeta::new(link.side_z_pk, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    assert!(res.is_err());
+
+    // Happy path: correct owner and side A/Z accounts successfully close the link
     execute_transaction(
         &mut banks_client,
         recent_blockhash,

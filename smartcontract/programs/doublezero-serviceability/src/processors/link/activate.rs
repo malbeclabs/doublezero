@@ -12,6 +12,7 @@ use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
+    program_error::ProgramError,
     pubkey::Pubkey,
 };
 
@@ -84,6 +85,11 @@ pub fn process_activate_link(
     let mut link: Link = Link::try_from(link_account)?;
     let mut side_a_dev: Device = Device::try_from(side_a_device_account)?;
     let mut side_z_dev: Device = Device::try_from(side_z_device_account)?;
+
+    if link.side_a_pk != *side_a_device_account.key || link.side_z_pk != *side_z_device_account.key
+    {
+        return Err(ProgramError::InvalidAccountData);
+    }
 
     if link.status != LinkStatus::Pending {
         return Err(DoubleZeroError::InvalidStatus.into());

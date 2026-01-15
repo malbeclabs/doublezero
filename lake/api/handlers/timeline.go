@@ -160,14 +160,21 @@ type ValidatorEventDetails struct {
 	Action        string  `json:"action"` // "joined" or "left"
 }
 
+// HistogramBucket represents a time bucket with event counts
+type HistogramBucket struct {
+	Timestamp string `json:"timestamp"`
+	Count     int    `json:"count"`
+}
+
 // TimelineResponse is the API response for the timeline endpoint
 type TimelineResponse struct {
-	Events    []TimelineEvent `json:"events"`
-	Total     int             `json:"total"`
-	Limit     int             `json:"limit"`
-	Offset    int             `json:"offset"`
-	TimeRange TimeRange       `json:"time_range"`
-	Error     string          `json:"error,omitempty"`
+	Events    []TimelineEvent   `json:"events"`
+	Total     int               `json:"total"`
+	Limit     int               `json:"limit"`
+	Offset    int               `json:"offset"`
+	TimeRange TimeRange         `json:"time_range"`
+	Histogram []HistogramBucket `json:"histogram,omitempty"`
+	Error     string            `json:"error,omitempty"`
 }
 
 // TimeRange represents the time range for the query
@@ -250,13 +257,23 @@ func parseTimelineParams(r *http.Request) TimelineParams {
 	startTime := now.Add(-24 * time.Hour) // Default 24h
 
 	// Check for custom start/end dates first (takes precedence over range)
+	// Support both RFC3339 and datetime-local format (YYYY-MM-DDTHH:MM)
+	parseTime := func(s string) (time.Time, bool) {
+		if parsed, err := time.Parse(time.RFC3339, s); err == nil {
+			return parsed, true
+		}
+		if parsed, err := time.Parse("2006-01-02T15:04", s); err == nil {
+			return parsed.UTC(), true
+		}
+		return time.Time{}, false
+	}
 	if startStr := r.URL.Query().Get("start"); startStr != "" {
-		if parsed, err := time.Parse(time.RFC3339, startStr); err == nil {
+		if parsed, ok := parseTime(startStr); ok {
 			startTime = parsed
 		}
 	}
 	if endStr := r.URL.Query().Get("end"); endStr != "" {
-		if parsed, err := time.Parse(time.RFC3339, endStr); err == nil {
+		if parsed, ok := parseTime(endStr); ok {
 			endTime = parsed
 		}
 	}
@@ -670,6 +687,9 @@ func GetTimeline(w http.ResponseWriter, r *http.Request) {
 	}
 	paginatedEvents := allEvents[startIdx:endIdx]
 
+	// Compute histogram from all events (before pagination)
+	histogram := computeHistogram(allEvents, params.StartTime, params.EndTime)
+
 	duration := time.Since(start)
 	metrics.RecordClickHouseQuery(duration, nil)
 
@@ -682,12 +702,62 @@ func GetTimeline(w http.ResponseWriter, r *http.Request) {
 			Start: params.StartTime.Format(time.RFC3339),
 			End:   params.EndTime.Format(time.RFC3339),
 		},
+		Histogram: histogram,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		log.Printf("Error encoding timeline response: %v", err)
 	}
+}
+
+// computeHistogram creates time buckets from events for visualization
+func computeHistogram(events []TimelineEvent, startTime, endTime time.Time) []HistogramBucket {
+	if len(events) == 0 {
+		return nil
+	}
+
+	// Calculate bucket size based on time range
+	// Aim for ~24-48 buckets depending on range
+	duration := endTime.Sub(startTime)
+	var bucketDuration time.Duration
+	switch {
+	case duration <= 2*time.Hour:
+		bucketDuration = 5 * time.Minute
+	case duration <= 12*time.Hour:
+		bucketDuration = 15 * time.Minute
+	case duration <= 24*time.Hour:
+		bucketDuration = 30 * time.Minute
+	case duration <= 3*24*time.Hour:
+		bucketDuration = 2 * time.Hour
+	default:
+		bucketDuration = 6 * time.Hour
+	}
+
+	// Create bucket map
+	bucketCounts := make(map[time.Time]int)
+
+	// Count events per bucket
+	for _, event := range events {
+		ts, err := time.Parse(time.RFC3339, event.Timestamp)
+		if err != nil {
+			continue
+		}
+		// Round down to bucket start
+		bucketStart := ts.Truncate(bucketDuration)
+		bucketCounts[bucketStart]++
+	}
+
+	// Generate all buckets in range (including empty ones)
+	var buckets []HistogramBucket
+	for t := startTime.Truncate(bucketDuration); !t.After(endTime); t = t.Add(bucketDuration) {
+		buckets = append(buckets, HistogramBucket{
+			Timestamp: t.Format(time.RFC3339),
+			Count:     bucketCounts[t],
+		})
+	}
+
+	return buckets
 }
 
 func queryDeviceChanges(ctx context.Context, startTime, endTime time.Time) ([]TimelineEvent, error) {

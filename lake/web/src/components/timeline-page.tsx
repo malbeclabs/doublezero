@@ -32,9 +32,17 @@ import {
   Calendar,
   TrendingUp,
   TrendingDown,
+  RotateCw,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Pagination } from '@/components/pagination'
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  Tooltip,
+} from 'recharts'
 import {
   fetchTimeline,
   fetchTimelineBounds,
@@ -51,6 +59,7 @@ import {
   type MetroEntity,
   type ContributorEntity,
   type UserEntity,
+  type HistogramBucket,
 } from '@/lib/api'
 
 type Category = 'state_change' | 'packet_loss' | 'interface_carrier' | 'interface_errors' | 'interface_discards'
@@ -112,6 +121,84 @@ const dzFilterOptions: { value: DZFilter; label: string }[] = [
 
 function Skeleton({ className }: { className?: string }) {
   return <div className={`animate-pulse bg-muted rounded ${className || ''}`} />
+}
+
+function formatBucketTime(timestamp: string): string {
+  const date = new Date(timestamp)
+  if (date.getMinutes() === 0) {
+    return date.toLocaleTimeString([], { hour: 'numeric', hour12: true })
+  }
+  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })
+}
+
+function formatBucketDate(timestamp: string): string {
+  const date = new Date(timestamp)
+  return date.toLocaleDateString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+}
+
+function EventHistogram({ data, onBucketClick }: { data: HistogramBucket[], onBucketClick?: (bucket: HistogramBucket, nextBucket?: HistogramBucket) => void }) {
+  if (!data || data.length < 6) return null // Need enough bars to be useful
+
+  const maxCount = Math.max(...data.map(d => d.count))
+  if (maxCount === 0) return null
+
+  // Determine if range spans multiple days
+  const firstDate = new Date(data[0].timestamp)
+  const lastDate = new Date(data[data.length - 1].timestamp)
+  const spansDays = lastDate.getTime() - firstDate.getTime() > 24 * 60 * 60 * 1000
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handleBarClick = (barData: any) => {
+    if (!onBucketClick || !barData?.payload) return
+    const clickedBucket = barData.payload as HistogramBucket
+    const idx = data.findIndex(b => b.timestamp === clickedBucket.timestamp)
+    const nextBucket = idx >= 0 ? data[idx + 1] : undefined
+    onBucketClick(clickedBucket, nextBucket)
+  }
+
+  return (
+    <div className="mb-4 border border-border rounded-lg p-3 bg-card">
+      <div className="h-12">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
+            <XAxis
+              dataKey="timestamp"
+              axisLine={false}
+              tickLine={false}
+              tick={false}
+              hide
+            />
+            <Tooltip
+              cursor={{ fill: 'hsl(var(--foreground))', opacity: 0.1 }}
+              content={({ active, payload }) => {
+                if (!active || !payload?.[0]) return null
+                const bucket = payload[0].payload as HistogramBucket
+                return (
+                  <div className="bg-popover border border-border rounded px-2 py-1 text-xs shadow-lg">
+                    <div className="font-medium">{bucket.count} events</div>
+                    <div className="text-muted-foreground">{formatBucketDate(bucket.timestamp)}</div>
+                    {onBucketClick && <div className="text-muted-foreground/70 mt-0.5">Click to filter</div>}
+                  </div>
+                )
+              }}
+            />
+            <Bar
+              dataKey="count"
+              fill="hsl(220, 70%, 50%)"
+              opacity={0.6}
+              radius={[2, 2, 0, 0]}
+              cursor={onBucketClick ? 'pointer' : undefined}
+              onClick={handleBarClick}
+            />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+      <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
+        <span>{spansDays ? formatBucketDate(data[0].timestamp) : formatBucketTime(data[0].timestamp)}</span>
+        <span>{spansDays ? formatBucketDate(data[data.length - 1].timestamp) : formatBucketTime(data[data.length - 1].timestamp)}</span>
+      </div>
+    </div>
+  )
 }
 
 const severityStyles: Record<string, string> = {
@@ -695,6 +782,49 @@ export function TimelinePage() {
     }
   }
 
+  const resetAllFilters = () => {
+    setTimeRange('24h')
+    setSelectedCategories(new Set(ALL_CATEGORIES))
+    setSelectedEntityTypes(new Set(ALL_ENTITY_TYPES))
+    setSelectedActions(new Set(ALL_ACTIONS))
+    setDzFilter('on_dz')
+    setIncludeInternal(false)
+    setCustomStart('')
+    setCustomEnd('')
+    setOffset(0)
+    resetSeenEvents()
+  }
+
+  // Check if any filters are non-default
+  const hasActiveFilters = timeRange !== '24h' ||
+    selectedCategories.size !== ALL_CATEGORIES.length ||
+    selectedEntityTypes.size !== ALL_ENTITY_TYPES.length ||
+    selectedActions.size !== ALL_ACTIONS.length ||
+    dzFilter !== 'on_dz' ||
+    includeInternal
+
+  const handleBucketClick = (bucket: HistogramBucket, nextBucket?: HistogramBucket) => {
+    const start = new Date(bucket.timestamp)
+    // Use next bucket's timestamp as end, or add estimated bucket duration
+    let end: Date
+    if (nextBucket) {
+      end = new Date(nextBucket.timestamp)
+    } else {
+      // Estimate bucket duration from first two buckets
+      if (data?.histogram && data.histogram.length > 1) {
+        const bucketDuration = new Date(data.histogram[1].timestamp).getTime() - new Date(data.histogram[0].timestamp).getTime()
+        end = new Date(start.getTime() + bucketDuration)
+      } else {
+        end = new Date(start.getTime() + 30 * 60 * 1000) // Default 30 min
+      }
+    }
+    setTimeRange('custom')
+    setCustomStart(start.toISOString().slice(0, 16))
+    setCustomEnd(end.toISOString().slice(0, 16))
+    setOffset(0)
+    resetSeenEvents()
+  }
+
   const toggleCategory = (category: Category) => {
     setSelectedCategories(prev => {
       const next = new Set(prev)
@@ -1111,6 +1241,17 @@ export function TimelinePage() {
             />
             Show internal users
           </label>
+
+          {/* Reset filters */}
+          {hasActiveFilters && (
+            <button
+              onClick={resetAllFilters}
+              className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <RotateCw className="h-3 w-3" />
+              Reset filters
+            </button>
+          )}
         </div>
 
         {/* Loading state */}
@@ -1156,6 +1297,11 @@ export function TimelinePage() {
               No events found in the selected time range
             </div>
           </div>
+        )}
+
+        {/* Histogram */}
+        {data?.histogram && data.histogram.length > 0 && (
+          <EventHistogram data={data.histogram} onBucketClick={handleBucketClick} />
         )}
 
         {/* Event list */}

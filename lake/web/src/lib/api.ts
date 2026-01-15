@@ -1546,6 +1546,11 @@ export interface ValidatorEventDetails {
   action: 'joined' | 'left'
 }
 
+export interface HistogramBucket {
+  timestamp: string
+  count: number
+}
+
 export interface TimelineResponse {
   events: TimelineEvent[]
   total: number
@@ -1555,6 +1560,7 @@ export interface TimelineResponse {
     start: string
     end: string
   }
+  histogram?: HistogramBucket[]
   error?: string
 }
 

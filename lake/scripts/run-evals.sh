@@ -90,6 +90,7 @@ mkdir -p "$OUTPUT_DIR"
 # Output files
 SUCCESSES_FILE="$OUTPUT_DIR/successes.log"
 FAILURES_FILE="$OUTPUT_DIR/failures.log"
+FLAKY_FILE="$OUTPUT_DIR/flaky.log"
 SUMMARY_FILE="$OUTPUT_DIR/summary.log"
 
 # Lock directory for portable mutex
@@ -97,7 +98,7 @@ LOCK_DIR="$OUTPUT_DIR/.locks"
 mkdir -p "$LOCK_DIR"
 
 # Initialize files
-touch "$SUCCESSES_FILE" "$FAILURES_FILE"
+touch "$SUCCESSES_FILE" "$FAILURES_FILE" "$FLAKY_FILE"
 
 echo "=== Eval Test Runner ===" | tee "$SUMMARY_FILE"
 echo "Output directory: $OUTPUT_DIR" | tee -a "$SUMMARY_FILE"
@@ -139,8 +140,10 @@ echo "" | tee -a "$SUMMARY_FILE"
 # Counters (using temp files for atomic updates from subshells)
 PASS_COUNT_FILE="$OUTPUT_DIR/.pass_count"
 FAIL_COUNT_FILE="$OUTPUT_DIR/.fail_count"
+FLAKY_COUNT_FILE="$OUTPUT_DIR/.flaky_count"
 echo "0" > "$PASS_COUNT_FILE"
 echo "0" > "$FAIL_COUNT_FILE"
+echo "0" > "$FLAKY_COUNT_FILE"
 
 # Portable mutex using mkdir (atomic on POSIX systems)
 acquire_lock() {
@@ -222,9 +225,11 @@ run_test() {
 
         # Note if retries were needed
         local pass_suffix=""
+        local was_flaky=false
         if [[ $attempt -gt 1 ]]; then
             pass_suffix=" (after $((attempt - 1)) retry)"
             [[ $attempt -gt 2 ]] && pass_suffix=" (after $((attempt - 1)) retries)"
+            was_flaky=true
         fi
 
         acquire_lock "successes"
@@ -236,6 +241,24 @@ run_test() {
             echo ""
         } >> "$SUCCESSES_FILE"
         release_lock "successes"
+
+        # Also log to flaky file if test required retries
+        if [[ "$was_flaky" == "true" ]]; then
+            acquire_lock "flaky_count"
+            count=$(cat "$FLAKY_COUNT_FILE")
+            echo $((count + 1)) > "$FLAKY_COUNT_FILE"
+            release_lock "flaky_count"
+
+            acquire_lock "flaky"
+            {
+                echo "========================================"
+                echo "FLAKY: $test_name$pass_suffix"
+                echo "========================================"
+                echo "$all_output"
+                echo ""
+            } >> "$FLAKY_FILE"
+            release_lock "flaky"
+        fi
 
         echo "PASS: $test_name$pass_suffix"
     else
@@ -260,8 +283,8 @@ run_test() {
 
 export -f run_test acquire_lock release_lock
 export OUTPUT_DIR RETRIES TIMEOUT_MINS SHORT_MODE TIMEOUT_CMD EVALS_DIR
-export PASS_COUNT_FILE FAIL_COUNT_FILE
-export SUCCESSES_FILE FAILURES_FILE
+export PASS_COUNT_FILE FAIL_COUNT_FILE FLAKY_COUNT_FILE
+export SUCCESSES_FILE FAILURES_FILE FLAKY_FILE
 export LOCK_DIR
 
 # Run tests in parallel using xargs
@@ -275,6 +298,7 @@ wait
 # Read final counts
 PASSED=$(cat "$PASS_COUNT_FILE")
 FAILED=$(cat "$FAIL_COUNT_FILE")
+FLAKY=$(cat "$FLAKY_COUNT_FILE")
 
 # Cleanup lock directory
 rm -rf "$LOCK_DIR"
@@ -284,6 +308,9 @@ echo "" | tee -a "$SUMMARY_FILE"
 echo "=== Summary ===" | tee -a "$SUMMARY_FILE"
 echo "Passed: $PASSED/$TOTAL_TESTS" | tee -a "$SUMMARY_FILE"
 echo "Failed: $FAILED/$TOTAL_TESTS" | tee -a "$SUMMARY_FILE"
+if [[ $FLAKY -gt 0 ]]; then
+    echo "Flaky:  $FLAKY (passed on retry)" | tee -a "$SUMMARY_FILE"
+fi
 
 # Parse and summarize token usage from all test logs
 if ls "$OUTPUT_DIR"/Test*.log &>/dev/null; then
@@ -370,6 +397,9 @@ echo "" | tee -a "$SUMMARY_FILE"
 echo "Results saved to:" | tee -a "$SUMMARY_FILE"
 echo "  Successes: $SUCCESSES_FILE" | tee -a "$SUMMARY_FILE"
 echo "  Failures:  $FAILURES_FILE" | tee -a "$SUMMARY_FILE"
+if [[ $FLAKY -gt 0 ]]; then
+    echo "  Flaky:     $FLAKY_FILE" | tee -a "$SUMMARY_FILE"
+fi
 echo "  Summary:   $SUMMARY_FILE" | tee -a "$SUMMARY_FILE"
 echo "  Per-test:  $OUTPUT_DIR/<test_name>.log" | tee -a "$SUMMARY_FILE"
 

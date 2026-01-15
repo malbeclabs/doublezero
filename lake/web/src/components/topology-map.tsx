@@ -1,5 +1,5 @@
 import { useMemo, useEffect, useRef, useState, useCallback } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, Link, useNavigate } from 'react-router-dom'
 import { MapContainer, TileLayer, CircleMarker, Polyline, useMap, useMapEvents } from 'react-leaflet'
 import { ZoomIn, ZoomOut, Maximize, Users, X } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip as RechartsTooltip, CartesianGrid } from 'recharts'
@@ -97,8 +97,10 @@ interface HoveredLinkInfo {
   lossPercent: string
   inRate: string
   outRate: string
-  deviceA: string
-  deviceZ: string
+  deviceAPk: string
+  deviceACode: string
+  deviceZPk: string
+  deviceZCode: string
 }
 
 // Hovered device info type
@@ -107,7 +109,8 @@ interface HoveredDeviceInfo {
   code: string
   deviceType: string
   status: string
-  metro: string
+  metroPk: string
+  metroName: string
   userCount: number
   validatorCount: number
   stakeSol: string
@@ -131,8 +134,16 @@ interface HoveredValidatorInfo {
   country: string
   stakeSol: string
   stakeShare: string
+  commission: number
+  version: string
+  gossipIp: string
+  gossipPort: number
+  tpuQuicIp: string
+  tpuQuicPort: number
   deviceCode: string
   devicePk: string
+  metroPk: string
+  metroName: string
   inRate: string
   outRate: string
 }
@@ -527,6 +538,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       const validator = validatorMap.get(id)
       if (validator) {
         const device = deviceMap.get(validator.device_pk)
+        const metro = device ? metroMap.get(device.metro_pk) : undefined
         setSelectedItemState({
           type: 'validator',
           data: {
@@ -537,8 +549,16 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             country: validator.country || 'Unknown',
             stakeSol: (validator.stake_sol ?? 0) >= 1e6 ? `${(validator.stake_sol / 1e6).toFixed(2)}M` : (validator.stake_sol ?? 0) >= 1e3 ? `${(validator.stake_sol / 1e3).toFixed(0)}k` : `${(validator.stake_sol ?? 0).toFixed(0)}`,
             stakeShare: (validator.stake_share ?? 0) > 0 ? `${validator.stake_share.toFixed(2)}%` : '0%',
+            commission: validator.commission ?? 0,
+            version: validator.version || '',
+            gossipIp: validator.gossip_ip || '',
+            gossipPort: validator.gossip_port ?? 0,
+            tpuQuicIp: validator.tpu_quic_ip || '',
+            tpuQuicPort: validator.tpu_quic_port ?? 0,
             deviceCode: device?.code || 'Unknown',
             devicePk: validator.device_pk,
+            metroPk: device?.metro_pk || '',
+            metroName: metro?.name || 'Unknown',
             inRate: formatTrafficRate(validator.in_bps),
             outRate: formatTrafficRate(validator.out_bps),
           },
@@ -556,7 +576,8 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             code: device.code,
             deviceType: device.device_type,
             status: device.status,
-            metro: metro?.name || 'Unknown',
+            metroPk: device.metro_pk,
+            metroName: metro?.name || 'Unknown',
             userCount: device.user_count ?? 0,
             validatorCount: device.validator_count ?? 0,
             stakeSol: (device.stake_sol ?? 0) >= 1e6 ? `${(device.stake_sol / 1e6).toFixed(2)}M` : (device.stake_sol ?? 0) >= 1e3 ? `${(device.stake_sol / 1e3).toFixed(0)}k` : `${(device.stake_sol ?? 0).toFixed(0)}`,
@@ -582,8 +603,10 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             lossPercent: hasLatencyData ? `${(link.loss_percent ?? 0).toFixed(2)}%` : 'N/A',
             inRate: formatTrafficRate(link.in_bps),
             outRate: formatTrafficRate(link.out_bps),
-            deviceA: deviceA?.code || 'Unknown',
-            deviceZ: deviceZ?.code || 'Unknown',
+            deviceAPk: link.side_a_pk,
+            deviceACode: deviceA?.code || 'Unknown',
+            deviceZPk: link.side_z_pk,
+            deviceZCode: deviceZ?.code || 'Unknown',
           },
         })
       }
@@ -623,6 +646,9 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       minZoom={2}
       className="h-full w-full"
       scrollWheelZoom={true}
+      zoomSnap={0.5}
+      wheelPxPerZoomLevel={20}
+      preferCanvas={true}
       style={{ background: 'var(--background)' }}
     >
       <MapFitBounds metros={metros} />
@@ -690,8 +716,10 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           lossPercent: hasLatencyData ? `${(link.loss_percent ?? 0).toFixed(2)}%` : 'N/A',
           inRate: formatTrafficRate(link.in_bps),
           outRate: formatTrafficRate(link.out_bps),
-          deviceA: deviceA?.code || 'Unknown',
-          deviceZ: deviceZ?.code || 'Unknown',
+          deviceAPk: link.side_a_pk,
+          deviceACode: deviceA?.code || 'Unknown',
+          deviceZPk: link.side_z_pk,
+          deviceZCode: deviceZ?.code || 'Unknown',
         }
 
         return (
@@ -729,7 +757,8 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           code: device.code,
           deviceType: device.device_type,
           status: device.status,
-          metro: metro?.name || 'Unknown',
+          metroPk: device.metro_pk,
+          metroName: metro?.name || 'Unknown',
           userCount: device.user_count ?? 0,
           validatorCount: device.validator_count ?? 0,
           stakeSol: (device.stake_sol ?? 0) >= 1e6 ? `${(device.stake_sol / 1e6).toFixed(2)}M` : (device.stake_sol ?? 0) >= 1e3 ? `${(device.stake_sol / 1e3).toFixed(0)}k` : `${(device.stake_sol ?? 0).toFixed(0)}`,
@@ -787,6 +816,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
 
         const validatorPos: LatLngTuple = [validator.latitude, validator.longitude]
         const device = deviceMap.get(validator.device_pk)
+        const metro = device ? metroMap.get(device.metro_pk) : undefined
         const isThisHovered = hoveredValidator?.votePubkey === validator.vote_pubkey
         const isThisSelected = selectedItem?.type === 'validator' && selectedItem.data.votePubkey === validator.vote_pubkey
         const baseRadius = calculateValidatorRadius(validator.stake_sol)
@@ -798,8 +828,16 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           country: validator.country || 'Unknown',
           stakeSol: (validator.stake_sol ?? 0) >= 1e6 ? `${(validator.stake_sol / 1e6).toFixed(2)}M` : (validator.stake_sol ?? 0) >= 1e3 ? `${(validator.stake_sol / 1e3).toFixed(0)}k` : `${(validator.stake_sol ?? 0).toFixed(0)}`,
           stakeShare: (validator.stake_share ?? 0) > 0 ? `${validator.stake_share.toFixed(2)}%` : '0%',
+          commission: validator.commission ?? 0,
+          version: validator.version || '',
+          gossipIp: validator.gossip_ip || '',
+          gossipPort: validator.gossip_port ?? 0,
+          tpuQuicIp: validator.tpu_quic_ip || '',
+          tpuQuicPort: validator.tpu_quic_port ?? 0,
           deviceCode: device?.code || 'Unknown',
           devicePk: validator.device_pk,
+          metroPk: device?.metro_pk || '',
+          metroName: metro?.name || 'Unknown',
           inRate: formatTrafficRate(validator.in_bps),
           outRate: formatTrafficRate(validator.out_bps),
         }
@@ -827,9 +865,9 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       })}
     </MapContainer>
 
-    {/* Info panel - shows full details on hover (top right) */}
+    {/* Info panel - shows full details on hover (left of controls) */}
     {(hoveredLink || hoveredDevice || hoveredMetro || hoveredValidator) && (
-      <div className="absolute top-4 right-4 z-[1000] bg-[var(--card)] border border-[var(--border)] rounded-lg shadow-lg p-4 min-w-[200px]">
+      <div className="absolute top-4 right-16 z-[1000] bg-[var(--card)] border border-[var(--border)] rounded-lg shadow-lg p-4 min-w-[200px]">
         {hoveredLink && (
           <>
             <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Link</div>
@@ -842,8 +880,8 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
               <DetailRow label="Loss" value={hoveredLink.lossPercent} />
               <DetailRow label="In" value={hoveredLink.inRate} />
               <DetailRow label="Out" value={hoveredLink.outRate} />
-              <DetailRow label="Side A" value={hoveredLink.deviceA} />
-              <DetailRow label="Side Z" value={hoveredLink.deviceZ} />
+              <DetailRow label="Side A" value={hoveredLink.deviceACode} />
+              <DetailRow label="Side Z" value={hoveredLink.deviceZCode} />
             </div>
           </>
         )}
@@ -853,7 +891,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             <div className="text-sm font-medium mb-2">{hoveredDevice.code}</div>
             <div className="space-y-1 text-xs">
               <DetailRow label="Type" value={hoveredDevice.deviceType} />
-              <DetailRow label="Metro" value={hoveredDevice.metro} />
+              <DetailRow label="Metro" value={hoveredDevice.metroName} />
               <DetailRow label="Users" value={String(hoveredDevice.userCount)} />
               <DetailRow label="Validators" value={String(hoveredDevice.validatorCount)} />
               <DetailRow label="Stake" value={`${hoveredDevice.stakeSol} SOL`} />
@@ -874,11 +912,14 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
         {hoveredValidator && !hoveredLink && !hoveredDevice && (
           <>
             <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Validator</div>
-            <div className="text-sm font-medium font-mono mb-2">{hoveredValidator.votePubkey.slice(0, 12)}...</div>
+            <div className="text-sm font-medium font-mono mb-2" title={hoveredValidator.votePubkey}>{hoveredValidator.votePubkey.slice(0, 12)}...</div>
             <div className="space-y-1 text-xs">
               <DetailRow label="Location" value={`${hoveredValidator.city}, ${hoveredValidator.country}`} />
+              <DetailRow label="Gossip" value={hoveredValidator.gossipIp ? `${hoveredValidator.gossipIp}:${hoveredValidator.gossipPort}` : '—'} />
+              <DetailRow label="TPU QUIC" value={hoveredValidator.tpuQuicIp ? `${hoveredValidator.tpuQuicIp}:${hoveredValidator.tpuQuicPort}` : '—'} />
               <DetailRow label="Stake" value={`${hoveredValidator.stakeSol} SOL`} />
-              <DetailRow label="DZ Stake Share" value={hoveredValidator.stakeShare} />
+              <DetailRow label="Commission" value={`${hoveredValidator.commission}%`} />
+              <DetailRow label="Version" value={hoveredValidator.version || '—'} />
               <DetailRow label="Device" value={hoveredValidator.deviceCode} />
               <DetailRow label="In" value={hoveredValidator.inRate} />
               <DetailRow label="Out" value={hoveredValidator.outRate} />
@@ -1011,7 +1052,7 @@ function TopologyDrawer({ selectedItem, onClose, isDark }: TopologyDrawerProps) 
   const chartColorSecondary = isDark ? '#f97316' : '#ea580c'
 
   // Build stats based on selected item type
-  const stats = useMemo(() => {
+  const stats: { label: string; value: React.ReactNode }[] = useMemo(() => {
     if (selectedItem.type === 'link') {
       const link = selectedItem.data
       return [
@@ -1027,7 +1068,7 @@ function TopologyDrawer({ selectedItem, onClose, isDark }: TopologyDrawerProps) 
       const device = selectedItem.data
       return [
         { label: 'Type', value: device.deviceType },
-        { label: 'Metro', value: device.metro },
+        { label: 'Metro', value: device.metroPk ? <EntityLink to={`/dz/metros/${device.metroPk}`}>{device.metroName}</EntityLink> : device.metroName },
         { label: 'Users', value: String(device.userCount) },
         { label: 'Validators', value: String(device.validatorCount) },
         { label: 'Stake', value: `${device.stakeSol} SOL` },
@@ -1045,9 +1086,12 @@ function TopologyDrawer({ selectedItem, onClose, isDark }: TopologyDrawerProps) 
       const validator = selectedItem.data
       return [
         { label: 'Location', value: `${validator.city}, ${validator.country}` },
-        { label: 'Device', value: validator.deviceCode },
+        { label: 'Device', value: validator.devicePk ? <EntityLink to={`/dz/devices/${validator.devicePk}`} className="font-mono">{validator.deviceCode}</EntityLink> : validator.deviceCode },
+        { label: 'Metro', value: validator.metroPk ? <EntityLink to={`/dz/metros/${validator.metroPk}`}>{validator.metroName}</EntityLink> : validator.metroName },
         { label: 'Stake', value: `${validator.stakeSol} SOL` },
         { label: 'DZ Stake Share', value: validator.stakeShare },
+        { label: 'Commission', value: `${validator.commission}%` },
+        { label: 'Version', value: validator.version || '—' },
         { label: 'Current In', value: validator.inRate },
         { label: 'Current Out', value: validator.outRate },
       ]
@@ -1074,21 +1118,36 @@ function TopologyDrawer({ selectedItem, onClose, isDark }: TopologyDrawerProps) 
             {selectedItem.type}
           </div>
           <div className="text-sm font-medium min-w-0 flex-1">
-            {selectedItem.type === 'link' && selectedItem.data.code}
-            {selectedItem.type === 'device' && selectedItem.data.code}
-            {selectedItem.type === 'metro' && selectedItem.data.name}
+            {selectedItem.type === 'link' && (
+              <EntityLink to={`/dz/links/${selectedItem.data.pk}`}>
+                {selectedItem.data.code}
+              </EntityLink>
+            )}
+            {selectedItem.type === 'device' && (
+              <EntityLink to={`/dz/devices/${selectedItem.data.pk}`}>
+                {selectedItem.data.code}
+              </EntityLink>
+            )}
+            {selectedItem.type === 'metro' && (
+              <EntityLink to={`/dz/metros/${selectedItem.data.pk}`}>
+                {selectedItem.data.name}
+              </EntityLink>
+            )}
             {selectedItem.type === 'validator' && (
-              <span
+              <EntityLink
+                to={`/solana/validators/${selectedItem.data.votePubkey}`}
                 className="font-mono block truncate"
                 title={selectedItem.data.votePubkey}
               >
                 {selectedItem.data.votePubkey}
-              </span>
+              </EntityLink>
             )}
           </div>
           {selectedItem.type === 'link' && (
             <div className="text-xs text-muted-foreground mt-0.5">
-              {selectedItem.data.deviceA} ↔ {selectedItem.data.deviceZ}
+              <EntityLink to={`/dz/devices/${selectedItem.data.deviceAPk}`}>{selectedItem.data.deviceACode}</EntityLink>
+              {' ↔ '}
+              <EntityLink to={`/dz/devices/${selectedItem.data.deviceZPk}`}>{selectedItem.data.deviceZCode}</EntityLink>
             </div>
           )}
         </div>
@@ -1113,6 +1172,46 @@ function TopologyDrawer({ selectedItem, onClose, isDark }: TopologyDrawerProps) 
             </div>
           ))}
         </div>
+
+        {/* Validator identity section */}
+        {selectedItem.type === 'validator' && (
+          <div className="border-t border-[var(--border)] pt-4 space-y-2">
+            <div className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Identity</div>
+            <div className="space-y-1.5 text-xs">
+              <div>
+                <div className="text-muted-foreground mb-0.5">Vote Pubkey</div>
+                <EntityLink
+                  to={`/solana/validators/${selectedItem.data.votePubkey}`}
+                  className="font-mono truncate block"
+                  title={selectedItem.data.votePubkey}
+                >
+                  {selectedItem.data.votePubkey}
+                </EntityLink>
+              </div>
+              <div>
+                <div className="text-muted-foreground mb-0.5">Node Pubkey</div>
+                <EntityLink
+                  to={`/solana/gossip-nodes/${selectedItem.data.nodePubkey}`}
+                  className="font-mono truncate block"
+                  title={selectedItem.data.nodePubkey}
+                >
+                  {selectedItem.data.nodePubkey}
+                </EntityLink>
+              </div>
+            </div>
+            <div className="text-xs text-muted-foreground uppercase tracking-wider mb-2 mt-4">Network</div>
+            <div className="space-y-1.5 text-xs">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Gossip</span>
+                <span className="font-mono">{selectedItem.data.gossipIp ? `${selectedItem.data.gossipIp}:${selectedItem.data.gossipPort}` : '—'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">TPU QUIC</span>
+                <span className="font-mono">{selectedItem.data.tpuQuicIp ? `${selectedItem.data.tpuQuicIp}:${selectedItem.data.tpuQuicPort}` : '—'}</span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Charts section */}
         {!hasTrafficData && (
@@ -1285,6 +1384,40 @@ function DetailRow({ label, value }: { label: string; value: string }) {
       <span className="text-muted-foreground">{label}:</span>
       <span>{value}</span>
     </div>
+  )
+}
+
+// Entity link component - normal color styling with hover underline
+interface EntityLinkProps {
+  to: string
+  children: React.ReactNode
+  className?: string
+  title?: string
+}
+
+function EntityLink({ to, children, className = '', title }: EntityLinkProps) {
+  const navigate = useNavigate()
+
+  const handleClick = (e: React.MouseEvent) => {
+    // Support cmd/ctrl-click to open in new tab
+    if (e.metaKey || e.ctrlKey) {
+      window.open(to, '_blank')
+      e.preventDefault()
+    } else {
+      navigate(to)
+      e.preventDefault()
+    }
+  }
+
+  return (
+    <Link
+      to={to}
+      onClick={handleClick}
+      className={`hover:underline cursor-pointer ${className}`}
+      title={title}
+    >
+      {children}
+    </Link>
   )
 }
 

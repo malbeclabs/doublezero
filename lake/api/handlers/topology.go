@@ -49,18 +49,24 @@ type Link struct {
 }
 
 type Validator struct {
-	VotePubkey string  `json:"vote_pubkey"`
-	NodePubkey string  `json:"node_pubkey"`
-	DevicePK   string  `json:"device_pk"`
-	TunnelID   int32   `json:"tunnel_id"`
-	Latitude   float64 `json:"latitude"`
-	Longitude  float64 `json:"longitude"`
-	City       string  `json:"city"`
-	Country    string  `json:"country"`
-	StakeSol   float64 `json:"stake_sol"`
-	StakeShare float64 `json:"stake_share"`
-	InBps      float64 `json:"in_bps"`
-	OutBps     float64 `json:"out_bps"`
+	VotePubkey  string  `json:"vote_pubkey"`
+	NodePubkey  string  `json:"node_pubkey"`
+	DevicePK    string  `json:"device_pk"`
+	TunnelID    int32   `json:"tunnel_id"`
+	Latitude    float64 `json:"latitude"`
+	Longitude   float64 `json:"longitude"`
+	City        string  `json:"city"`
+	Country     string  `json:"country"`
+	StakeSol    float64 `json:"stake_sol"`
+	StakeShare  float64 `json:"stake_share"`
+	Commission  int64   `json:"commission"`
+	Version     string  `json:"version"`
+	GossipIP    string  `json:"gossip_ip"`
+	GossipPort  int32   `json:"gossip_port"`
+	TPUQuicIP   string  `json:"tpu_quic_ip"`
+	TPUQuicPort int32   `json:"tpu_quic_port"`
+	InBps       float64 `json:"in_bps"`
+	OutBps      float64 `json:"out_bps"`
 }
 
 type TopologyResponse struct {
@@ -244,6 +250,12 @@ func GetTopology(w http.ResponseWriter, r *http.Request) {
 					WHEN ts.total_lamports > 0 THEN va.activated_stake_lamports / ts.total_lamports * 100
 					ELSE 0
 				END as stake_share,
+				COALESCE(va.commission_percentage, 0) as commission,
+				COALESCE(gn.version, '') as version,
+				COALESCE(gn.gossip_ip, '') as gossip_ip,
+				COALESCE(gn.gossip_port, 0) as gossip_port,
+				COALESCE(gn.tpuquic_ip, '') as tpu_quic_ip,
+				COALESCE(gn.tpuquic_port, 0) as tpu_quic_port,
 				COALESCE(traffic.in_bps, 0) as in_bps,
 				COALESCE(traffic.out_bps, 0) as out_bps
 			FROM dz_users_current u
@@ -266,7 +278,7 @@ func GetTopology(w http.ResponseWriter, r *http.Request) {
 
 		for rows.Next() {
 			var v Validator
-			if err := rows.Scan(&v.VotePubkey, &v.NodePubkey, &v.DevicePK, &v.TunnelID, &v.Latitude, &v.Longitude, &v.City, &v.Country, &v.StakeSol, &v.StakeShare, &v.InBps, &v.OutBps); err != nil {
+			if err := rows.Scan(&v.VotePubkey, &v.NodePubkey, &v.DevicePK, &v.TunnelID, &v.Latitude, &v.Longitude, &v.City, &v.Country, &v.StakeSol, &v.StakeShare, &v.Commission, &v.Version, &v.GossipIP, &v.GossipPort, &v.TPUQuicIP, &v.TPUQuicPort, &v.InBps, &v.OutBps); err != nil {
 				return err
 			}
 			validators = append(validators, v)

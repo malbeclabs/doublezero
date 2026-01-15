@@ -874,6 +874,12 @@ export interface TopologyValidator {
   country: string
   stake_sol: number
   stake_share: number
+  commission: number
+  version: string
+  gossip_ip: string
+  gossip_port: number
+  tpu_quic_ip: string
+  tpu_quic_port: number
   in_bps: number
   out_bps: number
 }

@@ -139,6 +139,8 @@ func main() {
 	r.Get("/api/stats", handlers.GetStats)
 	r.Get("/api/status", handlers.GetStatus)
 	r.Get("/api/status/link-history", handlers.GetLinkHistory)
+	r.Get("/api/timeline", handlers.GetTimeline)
+	r.Get("/api/timeline/bounds", handlers.GetTimelineBounds)
 
 	// DZ entity routes
 	r.Get("/api/dz/devices", handlers.GetDevices)

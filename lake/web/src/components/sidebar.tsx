@@ -22,6 +22,7 @@ import {
   Landmark,
   Radio,
   Home,
+  Clock,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/hooks/use-theme'
@@ -145,6 +146,7 @@ export function Sidebar({
   const isChatRoute = location.pathname.startsWith('/chat')
   const isTopologyRoute = location.pathname === '/topology'
   const isStatusRoute = location.pathname === '/status'
+  const isTimelineRoute = location.pathname === '/timeline'
   const isQuerySessions = location.pathname === '/query/sessions'
   const isChatSessions = location.pathname === '/chat/sessions'
 
@@ -209,6 +211,20 @@ export function Sidebar({
           title="Status"
         >
           <Activity className="h-4 w-4" />
+        </button>
+
+        {/* Timeline nav item */}
+        <button
+          onClick={() => navigate('/timeline')}
+          className={cn(
+            'p-2 rounded transition-colors',
+            isTimelineRoute
+              ? 'bg-[oklch(25%_.04_250)] text-white hover:bg-[oklch(30%_.05_250)]'
+              : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+          )}
+          title="Timeline"
+        >
+          <Clock className="h-4 w-4" />
         </button>
 
         {/* Chat nav item */}
@@ -353,6 +369,18 @@ export function Sidebar({
           >
             <Activity className="h-4 w-4" />
             Status
+          </button>
+          <button
+            onClick={() => navigate('/timeline')}
+            className={cn(
+              'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',
+              isTimelineRoute
+                ? 'bg-[var(--sidebar-active)] text-foreground font-medium'
+                : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+            )}
+          >
+            <Clock className="h-4 w-4" />
+            Timeline
           </button>
           <button
             onClick={onNewChatSession}

@@ -1416,3 +1416,196 @@ export async function fetchGossipNode(pubkey: string): Promise<GossipNodeDetail>
   }
   return res.json()
 }
+
+// Timeline types
+export interface TimelineEvent {
+  id: string
+  event_type: string
+  timestamp: string
+  category: 'state_change' | 'packet_loss' | 'interface_carrier' | 'interface_errors' | 'interface_discards'
+  severity: 'info' | 'warning' | 'critical' | 'success'
+  title: string
+  description?: string
+  entity_type: string
+  entity_pk: string
+  entity_code: string
+  details?: EntityChangeDetails | PacketLossEventDetails | InterfaceEventDetails | ValidatorEventDetails
+}
+
+export interface EntityChangeDetails {
+  change_type: 'created' | 'updated' | 'deleted'
+  changes?: FieldChange[]
+  entity?: DeviceEntity | LinkEntity | MetroEntity | ContributorEntity | UserEntity
+}
+
+export interface FieldChange {
+  field: string
+  old_value?: unknown
+  new_value?: unknown
+}
+
+export interface DeviceEntity {
+  pk: string
+  code: string
+  status: string
+  device_type: string
+  public_ip: string
+  contributor_pk: string
+  metro_pk: string
+  max_users: number
+  contributor_code?: string
+  metro_code?: string
+}
+
+export interface LinkEntity {
+  pk: string
+  code: string
+  status: string
+  link_type: string
+  tunnel_net: string
+  contributor_pk: string
+  side_a_pk: string
+  side_z_pk: string
+  side_a_iface_name: string
+  side_z_iface_name: string
+  committed_rtt_ns: number
+  committed_jitter_ns: number
+  bandwidth_bps: number
+  isis_delay_override_ns: number
+  contributor_code?: string
+  side_a_code?: string
+  side_z_code?: string
+  side_a_metro_code?: string
+  side_z_metro_code?: string
+}
+
+export interface MetroEntity {
+  pk: string
+  code: string
+  name: string
+  longitude: number
+  latitude: number
+}
+
+export interface ContributorEntity {
+  pk: string
+  code: string
+  name: string
+}
+
+export interface UserEntity {
+  pk: string
+  owner_pubkey: string
+  status: string
+  kind: string
+  client_ip: string
+  dz_ip: string
+  device_pk: string
+  tunnel_id: number
+  device_code?: string
+  metro_code?: string
+}
+
+export interface PacketLossEventDetails {
+  link_pk: string
+  link_code: string
+  link_type: string
+  side_a_metro: string
+  side_z_metro: string
+  previous_loss_pct: number
+  current_loss_pct: number
+  direction: 'increased' | 'decreased'
+}
+
+export interface InterfaceEventDetails {
+  device_pk: string
+  device_code: string
+  interface_name: string
+  link_pk?: string
+  link_code?: string
+  in_errors?: number
+  out_errors?: number
+  in_discards?: number
+  out_discards?: number
+  carrier_transitions?: number
+  issue_type: 'errors' | 'discards' | 'carrier'
+}
+
+export interface ValidatorEventDetails {
+  owner_pubkey: string
+  dz_ip?: string
+  vote_pubkey?: string
+  node_pubkey?: string
+  stake_lamports?: number
+  stake_sol?: number
+  stake_share_pct?: number
+  device_pk?: string
+  device_code?: string
+  metro_code?: string
+  kind: 'validator' | 'gossip_only'
+  action: 'joined' | 'left'
+}
+
+export interface TimelineResponse {
+  events: TimelineEvent[]
+  total: number
+  limit: number
+  offset: number
+  time_range: {
+    start: string
+    end: string
+  }
+  error?: string
+}
+
+export type TimeRange = '1h' | '6h' | '12h' | '24h' | '3d' | '7d'
+export type ActionFilter = 'added' | 'removed' | 'changed' | 'alerting' | 'resolved'
+
+export interface TimelineParams {
+  range?: TimeRange
+  start?: string // ISO 8601 timestamp for custom range
+  end?: string   // ISO 8601 timestamp for custom range
+  category?: string
+  entity_type?: string
+  severity?: string
+  action?: string // Comma-separated action filters
+  dz_filter?: 'on_dz' | 'off_dz' // Filter Solana events by DZ connection
+  limit?: number
+  offset?: number
+  include_internal?: boolean
+}
+
+export interface TimelineBoundsResponse {
+  earliest_data: string // ISO 8601 timestamp
+  latest_data: string   // ISO 8601 timestamp
+}
+
+export async function fetchTimelineBounds(): Promise<TimelineBoundsResponse> {
+  const res = await fetchWithRetry('/api/timeline/bounds')
+  if (!res.ok) {
+    throw new Error('Failed to fetch timeline bounds')
+  }
+  return res.json()
+}
+
+export async function fetchTimeline(params: TimelineParams = {}): Promise<TimelineResponse> {
+  const searchParams = new URLSearchParams()
+  if (params.range) searchParams.set('range', params.range)
+  if (params.start) searchParams.set('start', params.start)
+  if (params.end) searchParams.set('end', params.end)
+  if (params.category) searchParams.set('category', params.category)
+  if (params.entity_type) searchParams.set('entity_type', params.entity_type)
+  if (params.severity) searchParams.set('severity', params.severity)
+  if (params.action) searchParams.set('action', params.action)
+  if (params.dz_filter) searchParams.set('dz_filter', params.dz_filter)
+  if (params.limit) searchParams.set('limit', params.limit.toString())
+  if (params.offset) searchParams.set('offset', params.offset.toString())
+  if (params.include_internal) searchParams.set('include_internal', 'true')
+
+  const url = `/api/timeline${searchParams.toString() ? '?' + searchParams.toString() : ''}`
+  const res = await fetchWithRetry(url)
+  if (!res.ok) {
+    throw new Error('Failed to fetch timeline')
+  }
+  return res.json()
+}

@@ -349,7 +349,8 @@ func NewOllamaLLMClient(baseURL, model string, maxTokens int64) *OllamaLLMClient
 }
 
 // Complete sends a prompt to Ollama and returns the response text
-func (c *OllamaLLMClient) Complete(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
+func (c *OllamaLLMClient) Complete(ctx context.Context, systemPrompt, userPrompt string, opts ...pipeline.CompleteOption) (string, error) {
+	// Note: Ollama doesn't support prompt caching, so opts are ignored
 	reqBody := map[string]any{
 		"model":  c.model,
 		"stream": false,
@@ -593,7 +594,7 @@ type debugPipelineLLMClient struct {
 	debugLevel int
 }
 
-func (d *debugPipelineLLMClient) Complete(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
+func (d *debugPipelineLLMClient) Complete(ctx context.Context, systemPrompt, userPrompt string, opts ...pipeline.CompleteOption) (string, error) {
 	// Log that we're calling the LLM
 	if d.debugLevel == 1 {
 		d.t.Logf("🤖 LLM call (system: %d chars, user: %d chars)", len(systemPrompt), len(userPrompt))
@@ -603,8 +604,8 @@ func (d *debugPipelineLLMClient) Complete(ctx context.Context, systemPrompt, use
 			truncate(userPrompt, 500))
 	}
 
-	// Call the actual LLM
-	response, err := d.LLMClient.Complete(ctx, systemPrompt, userPrompt)
+	// Call the actual LLM, passing through options
+	response, err := d.LLMClient.Complete(ctx, systemPrompt, userPrompt, opts...)
 	if err != nil {
 		if d.debugLevel == 1 {
 			d.t.Logf("❌ LLM error: %v", err)

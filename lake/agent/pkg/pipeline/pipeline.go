@@ -22,10 +22,28 @@ type Config struct {
 	FormatContext string // Optional formatting context to append to synthesize/respond prompts (e.g., Slack formatting guidelines)
 }
 
+// CompleteOptions holds options for LLM completion.
+type CompleteOptions struct {
+	CacheSystemPrompt bool // Enable prompt caching for the system prompt
+}
+
+// CompleteOption is a functional option for Complete.
+type CompleteOption func(*CompleteOptions)
+
+// WithCacheControl enables prompt caching for the system prompt.
+// This marks the system prompt as cacheable, reducing costs for
+// repeated calls with the same system prompt prefix.
+func WithCacheControl() CompleteOption {
+	return func(o *CompleteOptions) {
+		o.CacheSystemPrompt = true
+	}
+}
+
 // LLMClient is the interface for interacting with an LLM.
 type LLMClient interface {
 	// Complete sends a prompt and returns the response text.
-	Complete(ctx context.Context, systemPrompt, userPrompt string) (string, error)
+	// Options can be passed to control caching behavior.
+	Complete(ctx context.Context, systemPrompt, userPrompt string, opts ...CompleteOption) (string, error)
 }
 
 // Querier executes SQL queries.

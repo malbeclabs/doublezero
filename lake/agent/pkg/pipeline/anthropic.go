@@ -38,15 +38,27 @@ func NewAnthropicLLMClientWithName(model anthropic.Model, maxTokens int64, name 
 }
 
 // Complete sends a prompt to Claude and returns the response text.
-func (c *AnthropicLLMClient) Complete(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
+func (c *AnthropicLLMClient) Complete(ctx context.Context, systemPrompt, userPrompt string, opts ...CompleteOption) (string, error) {
+	// Apply options
+	options := &CompleteOptions{}
+	for _, opt := range opts {
+		opt(options)
+	}
+
 	start := time.Now()
-	slog.Info("Anthropic API call starting", "phase", c.name, "model", c.model, "maxTokens", c.maxTokens, "userPromptLen", len(userPrompt))
+	slog.Info("Anthropic API call starting", "phase", c.name, "model", c.model, "maxTokens", c.maxTokens, "userPromptLen", len(userPrompt), "cacheEnabled", options.CacheSystemPrompt)
+
+	// Build system prompt block with optional cache control
+	systemBlock := anthropic.TextBlockParam{Type: "text", Text: systemPrompt}
+	if options.CacheSystemPrompt {
+		systemBlock.CacheControl = anthropic.NewCacheControlEphemeralParam()
+	}
 
 	msg, err := c.client.Messages.New(ctx, anthropic.MessageNewParams{
 		Model:     c.model,
 		MaxTokens: c.maxTokens,
 		System: []anthropic.TextBlockParam{
-			{Type: "text", Text: systemPrompt},
+			systemBlock,
 		},
 		Messages: []anthropic.MessageParam{
 			anthropic.NewUserMessage(anthropic.NewTextBlock(userPrompt)),
@@ -58,12 +70,16 @@ func (c *AnthropicLLMClient) Complete(ctx context.Context, systemPrompt, userPro
 		slog.Error("Anthropic API call failed", "phase", c.name, "duration", duration, "error", err)
 		return "", fmt.Errorf("anthropic API error: %w", err)
 	}
+
+	// Log with cache metrics if available
 	slog.Info("Anthropic API call completed",
 		"phase", c.name,
 		"duration", duration,
 		"stopReason", msg.StopReason,
 		"inputTokens", msg.Usage.InputTokens,
 		"outputTokens", msg.Usage.OutputTokens,
+		"cacheCreationInputTokens", msg.Usage.CacheCreationInputTokens,
+		"cacheReadInputTokens", msg.Usage.CacheReadInputTokens,
 	)
 
 	// Extract text from response

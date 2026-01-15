@@ -27,7 +27,9 @@ func (p *Pipeline) Generate(ctx context.Context, dataQuestion DataQuestion) (Gen
 
 	userPrompt := fmt.Sprintf("Data question: %s\n\nRationale: %s", dataQuestion.Question, dataQuestion.Rationale)
 
-	response, err := p.cfg.LLM.Complete(ctx, systemPrompt, userPrompt)
+	// Use cache control for GENERATE calls - the system prompt (GENERATE.md + schema)
+	// is large (~13K tokens) and identical across parallel SQL generation calls
+	response, err := p.cfg.LLM.Complete(ctx, systemPrompt, userPrompt, WithCacheControl())
 	if err != nil {
 		return GeneratedQuery{}, fmt.Errorf("LLM completion failed: %w", err)
 	}
@@ -239,7 +241,8 @@ Please generate a corrected SQL query. Pay close attention to:
 - Join conditions
 - Filter conditions`, dataQuestion.Question, dataQuestion.Rationale, failedSQL, analysis.Reasoning, analysis.Suggestion)
 
-	response, err := p.cfg.LLM.Complete(ctx, systemPrompt, userPrompt)
+	// Use cache control - same system prompt as Generate
+	response, err := p.cfg.LLM.Complete(ctx, systemPrompt, userPrompt, WithCacheControl())
 	if err != nil {
 		return GeneratedQuery{}, fmt.Errorf("LLM completion failed: %w", err)
 	}
@@ -287,7 +290,8 @@ Error message:
 
 Generate a corrected SQL query that avoids this error.`, dataQuestion.Question, dataQuestion.Rationale, failedSQL, errorMsg)
 
-	response, err := p.cfg.LLM.Complete(ctx, systemPrompt, userPrompt)
+	// Use cache control - same system prompt as Generate
+	response, err := p.cfg.LLM.Complete(ctx, systemPrompt, userPrompt, WithCacheControl())
 	if err != nil {
 		return GeneratedQuery{}, fmt.Errorf("LLM completion failed: %w", err)
 	}

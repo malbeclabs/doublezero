@@ -760,7 +760,10 @@ func TestUnmarshal_InterfacesIfindex(t *testing.T) {
 		t.Fatalf("failed to create processor: %v", err)
 	}
 
-	// Process each update (there are 2 - one for Ethernet1, one for Tunnel1)
+	// Track which interfaces and ifindexes we've seen
+	ifindexMap := make(map[string]map[uint32]uint32) // interface -> subif_index -> ifindex
+
+	// Process each update
 	for i, update := range notification.GetUpdate() {
 		device, err := processor.unmarshalNotification(notification, update)
 		if err != nil {
@@ -773,27 +776,36 @@ func TestUnmarshal_InterfacesIfindex(t *testing.T) {
 		}
 
 		for name, iface := range device.Interfaces.Interface {
-			t.Logf("update %d: interface %s", i, name)
-
 			// Check subinterface exists
 			if iface.Subinterfaces == nil || len(iface.Subinterfaces.Subinterface) == 0 {
 				t.Errorf("update %d: expected subinterface for %s", i, name)
 				continue
 			}
 
-			// Get subinterface 0
-			subif, ok := iface.Subinterfaces.Subinterface[0]
-			if !ok {
-				t.Errorf("update %d: expected subinterface index 0 for %s", i, name)
-				continue
-			}
-
-			// Check ifindex was set (now in State container)
-			if subif.State != nil && subif.State.Ifindex != nil {
-				t.Logf("update %d: %s subinterface 0 ifindex: %d", i, name, *subif.State.Ifindex)
-			} else {
-				t.Errorf("update %d: expected ifindex for %s subinterface 0", i, name)
+			// Check all subinterfaces
+			for subifIdx, subif := range iface.Subinterfaces.Subinterface {
+				if subif.State != nil && subif.State.Ifindex != nil {
+					if ifindexMap[name] == nil {
+						ifindexMap[name] = make(map[uint32]uint32)
+					}
+					ifindexMap[name][subifIdx] = *subif.State.Ifindex
+				}
 			}
 		}
 	}
+
+	// Verify we found expected interfaces and ifindexes
+	if _, ok := ifindexMap["Ethernet1"]; !ok {
+		t.Error("expected Ethernet1 to exist")
+	} else if idx, ok := ifindexMap["Ethernet1"][0]; !ok || idx != 1 {
+		t.Errorf("expected Ethernet1 subinterface 0 ifindex=1, got %d", idx)
+	}
+
+	if _, ok := ifindexMap["Tunnel500"]; !ok {
+		t.Error("expected Tunnel500 to exist")
+	} else if idx, ok := ifindexMap["Tunnel500"][0]; !ok || idx != 15000500 {
+		t.Errorf("expected Tunnel500 subinterface 0 ifindex=15000500, got %d", idx)
+	}
+
+	t.Logf("successfully unmarshalled %d interfaces", len(ifindexMap))
 }

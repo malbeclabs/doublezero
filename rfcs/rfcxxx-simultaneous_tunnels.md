@@ -4,14 +4,14 @@
 
 **Status: `Draft`**
 
-When the RFC has been implemented, a user will be able to have simultaneous tunnels. This will likely be a single unicast and a single multicast tunnel but it doesn't have to be. The previous work that has been done to enable multicast using PIM (protocol independent multicast) and RP (rendezvous point) will now be extended to enable multiple tunnel support.
+When the RFC has been implemented, a user will be able to have simultaneous tunnels. This will be a single unicast and a single multicast-capable tunnel. The previous work that has been done to enable multicast using PIM (protocol independent multicast) and RP (rendezvous point) will now be extended to enable multiple tunnel support.
 
 Note that this RFC does not allow a user to become both a subscriber and a publisher for multicast feeds. That will be done in a subsequent RFC. The main reason for this bifurcation is that these changes are largely internal to the protocol and to the network whereas the multicast pub/sub changes are largely user-facing and perhaps more user feedback should be solicited or more thought about how the CLI should be enhanced, especially with other ongoing efforts like multi-tenancy and a push towards a single monorepo and CLI.
 
 
 ## Motivation
 
-Currently, a user can have either a unicast or multicast tunnel but not both. This was an intentional limitation at the time of initial development biasing towards trials with external parties. Now that limitation needs to be removed so multicast can be more fully adopted. 
+There are several desired use cases for DoubleZero that require the ability to transmit/receive both unicast traffic and multicast traffic. Currently, a user can have either a unicast or multicast tunnel but not both. Due to the implementation details of the IBRL mode of DoubleZero, which allows users to reuse their public IP addresses to communicate across the network, we're constrained in the ability to use a single tunnel interface to handle both unicast and multicast traffic. 
 
 ## New Terminology
 
@@ -22,26 +22,41 @@ Currently, a user can have either a unicast or multicast tunnel but not both. Th
 ## Alternatives Considered
 
 
-1. **Only support one tunnel on a user's machine.** In the current DoubleZero architecture, we're unable to support both unicast and multicast forwarding on a single tunnel. This would require a user to make a choice between using DoubleZero for unicast traffic or multicast traffic, which is not a user friendly tradeoff.
+1. **Only support one tunnel on a user's machine.** The ability to use a single tunnel for both unicast and multicast traffic would require the capability to support multicast signaling inside of the isolated routing table used for IBRL mode. There are a handful of unworkable ways to do this:
+- Use a GRE overlay internal to DoubleZero, which would require creating N X copies of multicast traffic across the core of DoubleZero
+- Utilize point-to-multicast RSVP-signaled label switch paths; While this would feasibly work, there are network platform limitations that constrain this to only 64 egress devices. There are currently 86 devices participating in DoubleZero.
+- Force the user to choose between a unicast or multicast tunnel
 
 2. **Require users to obtain a second public address.** While this would satisfy the requirement of a unique (source, destination) tunnel IP endpoint per tunnel, it pushes this issue back on the users of DoubleZero and possibly prevents user uptake at the expense of more engineering work.
   
-3.  **Use GRE keys to identify tunnels.** GRE keys enable a route to de-encapsulate packets and idenfity the right tunnel to use. This would have been a good approach except that at rates of about 250 Mbps, packets were being dropped which makes it unviable option.
+3.  **Use GRE keys to identify tunnels.** GRE keys enable tunnel endpoints with multiple tunnels between one another (same src/dst IP pair) to demultiplex packets into the correct tunnel interface. This is not currently supported on the hardware platforms used within DoubleZero
 
 
 ## Detailed Design
 
-*Exact technical specification.*
-Provide enough detail for someone to implement the feature:
+### Application Changes
 
-* Architecture overview (diagrams encouraged but optional)
-* Data structures, schemas, or message formats
-* Algorithms, control flow, or state machines
-* API or CLI changes (with example calls)
-* Configuration options, defaults, and migration steps
-  Use subsections as needed; aim for clarity over brevity.
+#### Activator
+* need to check to make sure that the 
 
+#### Client
+* remove limitation to have only a unicast or multicast tunnel
+* check to make sure that the CLI output doesn't break (shouldn't)
+#### Controller
+*  update template to render the changes required for simultaneous tunnels 
+*  validate that temnplate changes are able to be processed efficiently
+#### Serviceability
+* add ability to add more than one IP per contributor per device 
+* check to see about loopback options
+
+### Network Changes
+* rate limiting
+* additional IP, loopback on contributor devices 
+  
 ## Impact
+
+
+This woudl 
 
 
 
@@ -56,7 +71,7 @@ Discuss effects on:
 
 ## Security Considerations
 
-The security posture should largely remains the same. Unicast and multicast tunnels are already part of the baseline and have been through a security audit. 
+The security posture should largely remains the same. Unicast and multicast tunnels are already part of the baseline and have been through a security audit.  
 
 ## Backward Compatibility
 

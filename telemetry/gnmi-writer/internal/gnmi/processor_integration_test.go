@@ -245,6 +245,7 @@ func queryRows[T any](h *testHarness, query string, scan func(*sql.Rows) (T, err
 type integrationTestCase struct {
 	name          string
 	prototext     string
+	gnmiPath      string // gNMI subscription path that generated this testdata
 	consumerGroup string
 	table         string
 	minRows       int
@@ -255,6 +256,7 @@ var integrationTests = []integrationTestCase{
 	{
 		name:          "IsisAdjacency",
 		prototext:     "isis_adjacency.prototext",
+		gnmiPath:      "/network-instances/network-instance[name=default]/protocols/protocol[identifier=ISIS][name=*]/isis/interfaces/interface[interface-id=*]/levels/level/adjacencies/",
 		consumerGroup: "test-isis",
 		table:         "isis_adjacencies",
 		minRows:       2,
@@ -263,6 +265,7 @@ var integrationTests = []integrationTestCase{
 	{
 		name:          "SystemState",
 		prototext:     "system_hostname.prototext",
+		gnmiPath:      "/system/state/hostname",
 		consumerGroup: "test-system",
 		table:         "system_state",
 		minRows:       1,
@@ -271,6 +274,7 @@ var integrationTests = []integrationTestCase{
 	{
 		name:          "BgpNeighbors",
 		prototext:     "bgp_neighbors.prototext",
+		gnmiPath:      "/network-instances/.../protocols/protocol[identifier=BGP][name=*]/bgp/neighbors/neighbor/state",
 		consumerGroup: "test-bgp",
 		table:         "bgp_neighbors",
 		minRows:       2,
@@ -279,6 +283,7 @@ var integrationTests = []integrationTestCase{
 	{
 		name:          "InterfaceIfindex",
 		prototext:     "interfaces_ifindex.prototext",
+		gnmiPath:      "/interfaces/interface/subinterfaces/subinterface/state/ifindex",
 		consumerGroup: "test-ifindex",
 		table:         "interface_ifindex",
 		minRows:       2,

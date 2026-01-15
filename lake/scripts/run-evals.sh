@@ -328,6 +328,39 @@ if ls "$OUTPUT_DIR"/Test*.log &>/dev/null; then
                 grand_count, grand_input, grand_output, grand_input + grand_output
         }
         ' | tee -a "$SUMMARY_FILE"
+
+        # Calculate LLM calls per test/analysis
+        echo "" | tee -a "$SUMMARY_FILE"
+        echo "=== LLM Calls Per Analysis ===" | tee -a "$SUMMARY_FILE"
+
+        # Count agent calls per test and compute stats
+        calls_data=""
+        for logfile in "$OUTPUT_DIR"/Test*.log; do
+            if [[ -f "$logfile" ]]; then
+                # Count agent phase calls (excluding eval phase which is the test harness)
+                agent_calls=$(grep -c "phase=agent" "$logfile" 2>/dev/null || echo "0")
+                if [[ "$agent_calls" -gt 0 ]]; then
+                    calls_data+="$agent_calls "
+                fi
+            fi
+        done
+
+        if [[ -n "$calls_data" ]]; then
+            echo "$calls_data" | tr ' ' '\n' | grep -v '^$' | awk '
+            BEGIN { min = 999999 }
+            {
+                sum += $1
+                count++
+                if ($1 < min) min = $1
+                if ($1 > max) max = $1
+            }
+            END {
+                if (count > 0) {
+                    printf "  min: %d | avg: %.1f | max: %d calls per analysis (%d tests)\n", min, sum/count, max, count
+                }
+            }
+            ' | tee -a "$SUMMARY_FILE"
+        fi
     else
         echo "  (no token data - short mode or no API calls)" | tee -a "$SUMMARY_FILE"
     fi

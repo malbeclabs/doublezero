@@ -319,6 +319,17 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     }
   }, [setSearchParams])
 
+  // Close drawer on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && selectedItem) {
+        setSelectedItem(null)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [selectedItem, setSelectedItem])
+
   // Helper to handle marker clicks - sets flag to prevent map click from clearing selection
   const handleMarkerClick = useCallback((item: SelectedItem) => {
     markerClickedRef.current = true

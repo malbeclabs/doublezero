@@ -1205,24 +1205,6 @@ function AppContent() {
   // Search spotlight state
   const [isSearchOpen, setIsSearchOpen] = useState(false)
 
-  // Global keyboard shortcuts and search event
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Cmd+K (Mac) or Ctrl+K (Windows/Linux) to open search spotlight
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault()
-        setIsSearchOpen(true)
-      }
-    }
-    const handleOpenSearch = () => setIsSearchOpen(true)
-    window.addEventListener('keydown', handleKeyDown)
-    window.addEventListener('open-search', handleOpenSearch)
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown)
-      window.removeEventListener('open-search', handleOpenSearch)
-    }
-  }, [])
-
   // Sidebar handlers
   const handleNewQuerySession = () => {
     const newSession = createSession()
@@ -1309,6 +1291,29 @@ function AppContent() {
       ))
     }
   }
+
+  // Global keyboard shortcuts and search event
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only handle if Cmd/Ctrl is pressed
+      if (!e.metaKey && !e.ctrlKey) return
+
+      // Ignore if user is typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+
+      if (e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setIsSearchOpen(true)
+      }
+    }
+    const handleOpenSearch = () => setIsSearchOpen(true)
+    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('open-search', handleOpenSearch)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('open-search', handleOpenSearch)
+    }
+  }, [])
 
   return (
     <AppContext.Provider value={contextValue}>

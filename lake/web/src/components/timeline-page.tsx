@@ -54,6 +54,7 @@ import {
   type EntityChangeDetails,
   type PacketLossEventDetails,
   type InterfaceEventDetails,
+  type GroupedInterfaceDetails,
   type ValidatorEventDetails,
   type FieldChange,
   type DeviceEntity,
@@ -235,6 +236,27 @@ const entityIcons: Record<string, typeof Server> = {
   validator: Landmark,
   gossip_node: Radio,
 }
+
+// Get severity color class based on count thresholds
+function getSeverityColor(value: number, thresholds: { low: number; medium: number; high: number }): string {
+  if (value >= thresholds.high) return 'text-red-600 font-semibold'
+  if (value >= thresholds.medium) return 'text-orange-500 font-medium'
+  if (value >= thresholds.low) return 'text-amber-500'
+  return 'text-muted-foreground'
+}
+
+// Get severity color for packet loss percentage
+function getLossColor(pct: number): string {
+  if (pct >= 5) return 'text-red-600 font-semibold'
+  if (pct >= 1) return 'text-orange-500 font-medium'
+  if (pct >= 0.1) return 'text-amber-500'
+  return 'text-muted-foreground'
+}
+
+// Thresholds for different metric types
+const errorThresholds = { low: 10, medium: 100, high: 1000 }
+const discardThresholds = { low: 100, medium: 1000, high: 10000 }
+const carrierThresholds = { low: 1, medium: 5, high: 10 }
 
 function formatTimeAgo(timestamp: string): string {
   const now = new Date()
@@ -441,37 +463,9 @@ function EventDetails({ event }: { event: TimelineEvent }) {
     )
   }
 
-  if (event.event_type.startsWith('packet_loss') && 'current_loss_pct' in details) {
-    const d = details as PacketLossEventDetails
-    return (
-      <div className="text-xs text-muted-foreground mt-2 space-y-1">
-        <div>Link: {d.link_pk ? <EntityLink to={`/dz/links/${encodeURIComponent(d.link_pk)}`}>{d.link_code}</EntityLink> : <span className="font-medium">{d.link_code}</span>} ({d.link_type})</div>
-        <div>
-          Loss: <span className={d.direction === 'increased' ? 'text-red-600' : 'text-green-600'}>
-            {d.previous_loss_pct.toFixed(2)}% → {d.current_loss_pct.toFixed(2)}%
-          </span>
-        </div>
-      </div>
-    )
-  }
-
-  if (event.event_type.startsWith('interface_') && 'interface_name' in details) {
-    const d = details as InterfaceEventDetails
-    return (
-      <div className="text-xs text-muted-foreground mt-2 space-y-1">
-        <div>Interface: <span className="font-medium">{d.interface_name}</span></div>
-        {d.link_pk && d.link_code && <div>Link: <EntityLink to={`/dz/links/${encodeURIComponent(d.link_pk)}`}>{d.link_code}</EntityLink></div>}
-        {(d.in_errors || d.out_errors) && (d.in_errors! > 0 || d.out_errors! > 0) && (
-          <div>Errors: {d.in_errors} in / {d.out_errors} out</div>
-        )}
-        {(d.in_discards || d.out_discards) && (d.in_discards! > 0 || d.out_discards! > 0) && (
-          <div>Discards: {d.in_discards} in / {d.out_discards} out</div>
-        )}
-        {d.carrier_transitions && d.carrier_transitions > 0 && (
-          <div>Carrier transitions: {d.carrier_transitions}</div>
-        )}
-      </div>
-    )
+  // Packet loss and interface events - details shown outside, no need for expanded details
+  if (event.event_type.startsWith('packet_loss') || event.event_type.startsWith('interface_')) {
+    return null
   }
 
   if ((event.event_type.includes('validator') || event.event_type.includes('gossip_node')) && 'action' in details) {
@@ -505,7 +499,10 @@ function TimelineEventCard({ event, isNew }: { event: TimelineEvent; isNew?: boo
   const CategoryIcon = categoryIcons[event.category] || Server
   const EntityIcon = entityIcons[event.entity_type] || Server
   const SeverityIcon = severityIcons[event.severity]
+  // Interface and packet loss events show details outside, so no expandable details needed
   const hasDetails = event.details && Object.keys(event.details).length > 0
+    && !event.event_type.startsWith('interface_')
+    && !event.event_type.startsWith('packet_loss')
 
   // Extract changes and change type for state_change events
   const changeDetails = event.category === 'state_change' && event.details && 'change_type' in event.details
@@ -523,6 +520,35 @@ function TimelineEventCard({ event, isNew }: { event: TimelineEvent; isNew?: boo
   const packetLossDetails = event.event_type.startsWith('packet_loss') && event.details && 'current_loss_pct' in event.details
     ? event.details as PacketLossEventDetails
     : undefined
+
+  // Extract interface details (single or grouped)
+  const singleInterfaceDetails = event.event_type.startsWith('interface_') && event.details && 'interface_name' in event.details
+    ? event.details as InterfaceEventDetails
+    : undefined
+  const groupedInterfaceDetails = event.event_type.startsWith('interface_') && event.details && 'interfaces' in event.details
+    ? event.details as GroupedInterfaceDetails
+    : undefined
+
+  // Compute totals for interface events
+  const interfaceTotals = (() => {
+    if (singleInterfaceDetails) {
+      return {
+        interfaces: [singleInterfaceDetails],
+        carrierTransitions: singleInterfaceDetails.carrier_transitions || 0,
+        errors: (singleInterfaceDetails.in_errors || 0) + (singleInterfaceDetails.out_errors || 0),
+        discards: (singleInterfaceDetails.in_discards || 0) + (singleInterfaceDetails.out_discards || 0),
+      }
+    }
+    if (groupedInterfaceDetails) {
+      return {
+        interfaces: groupedInterfaceDetails.interfaces,
+        carrierTransitions: groupedInterfaceDetails.interfaces.reduce((sum, i) => sum + (i.carrier_transitions || 0), 0),
+        errors: groupedInterfaceDetails.interfaces.reduce((sum, i) => sum + (i.in_errors || 0) + (i.out_errors || 0), 0),
+        discards: groupedInterfaceDetails.interfaces.reduce((sum, i) => sum + (i.in_discards || 0) + (i.out_discards || 0), 0),
+      }
+    }
+    return null
+  })()
 
   // Extract device info from user entity change events
   const userEntity = event.entity_type === 'user' && changeDetails?.entity
@@ -669,12 +695,63 @@ function TimelineEventCard({ event, isNew }: { event: TimelineEvent; isNew?: boo
             </div>
           )}
 
-          {/* Show packet loss route prominently */}
+          {/* Show packet loss route and percentage prominently */}
           {packetLossDetails && (
-            <div className="text-xs text-muted-foreground mt-1">
-              Route: <FilterButton value={packetLossDetails.side_a_metro} className="font-medium text-foreground">{packetLossDetails.side_a_metro}</FilterButton>
-              {' → '}
-              <FilterButton value={packetLossDetails.side_z_metro} className="font-medium text-foreground">{packetLossDetails.side_z_metro}</FilterButton>
+            <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
+              <div>
+                Route: <FilterButton value={packetLossDetails.side_a_metro} className="font-medium text-foreground">{packetLossDetails.side_a_metro}</FilterButton>
+                {' → '}
+                <FilterButton value={packetLossDetails.side_z_metro} className="font-medium text-foreground">{packetLossDetails.side_z_metro}</FilterButton>
+              </div>
+              <div>
+                Loss: <span className={getLossColor(packetLossDetails.current_loss_pct)}>{packetLossDetails.current_loss_pct.toFixed(2)}%</span>
+                {packetLossDetails.previous_loss_pct !== undefined && (
+                  <span className="text-muted-foreground"> (was {packetLossDetails.previous_loss_pct.toFixed(2)}%)</span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Show interface events summary prominently */}
+          {interfaceTotals && (
+            <div className="text-xs text-muted-foreground mt-1 space-y-1">
+              {/* Show the metric count */}
+              {interfaceTotals.carrierTransitions > 0 && (
+                <div>
+                  Carrier transitions: <span className={getSeverityColor(interfaceTotals.carrierTransitions, carrierThresholds)}>{interfaceTotals.carrierTransitions}</span>
+                </div>
+              )}
+              {interfaceTotals.errors > 0 && (
+                <div>
+                  Errors: <span className={getSeverityColor(interfaceTotals.errors, errorThresholds)}>{interfaceTotals.errors}</span>
+                </div>
+              )}
+              {interfaceTotals.discards > 0 && (
+                <div>
+                  Discards: <span className={getSeverityColor(interfaceTotals.discards, discardThresholds)}>{interfaceTotals.discards}</span>
+                </div>
+              )}
+              {/* Show interface list with per-interface counts */}
+              <div className="flex flex-wrap gap-1">
+                {interfaceTotals.interfaces.map((intf, i) => {
+                  const carrier = intf.carrier_transitions || 0
+                  const errors = (intf.in_errors || 0) + (intf.out_errors || 0)
+                  const discards = (intf.in_discards || 0) + (intf.out_discards || 0)
+                  // Show the relevant metric based on issue type
+                  const count = carrier > 0 ? carrier : errors > 0 ? errors : discards
+                  const colorClass = carrier > 0
+                    ? getSeverityColor(carrier, carrierThresholds)
+                    : errors > 0
+                      ? getSeverityColor(errors, errorThresholds)
+                      : getSeverityColor(discards, discardThresholds)
+                  return (
+                    <span key={i} className="bg-muted px-1.5 py-0.5 rounded text-[10px]">
+                      {intf.interface_name}
+                      {count > 0 && <span className={colorClass}> ({count})</span>}
+                    </span>
+                  )
+                })}
+              </div>
             </div>
           )}
 
@@ -901,6 +978,14 @@ export function TimelinePage() {
       // InterfaceEventDetails - interface and link
       if ('interface_name' in details && matchesSearch(details.interface_name, lowerSearch)) return true
       if ('link_code' in details && matchesSearch(details.link_code, lowerSearch)) return true
+
+      // GroupedInterfaceDetails - search across all interfaces
+      if ('interfaces' in details && Array.isArray(details.interfaces)) {
+        for (const intf of details.interfaces) {
+          if (matchesSearch(intf.interface_name, lowerSearch)) return true
+          if (matchesSearch(intf.link_code, lowerSearch)) return true
+        }
+      }
 
       // PacketLossEventDetails - link and metros
       if ('side_a_metro' in details && matchesSearch(details.side_a_metro, lowerSearch)) return true

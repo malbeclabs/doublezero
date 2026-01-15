@@ -1585,6 +1585,13 @@ export interface InterfaceEventDetails {
   issue_type: 'errors' | 'discards' | 'carrier'
 }
 
+export interface GroupedInterfaceDetails {
+  device_pk: string
+  device_code: string
+  issue_type: 'errors' | 'discards' | 'carrier'
+  interfaces: InterfaceEventDetails[]
+}
+
 export interface ValidatorEventDetails {
   owner_pubkey: string
   dz_ip?: string

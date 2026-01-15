@@ -146,6 +146,14 @@ type InterfaceEventDetails struct {
 	IssueType          string `json:"issue_type"` // "errors", "discards", "carrier"
 }
 
+// GroupedInterfaceDetails contains details for grouped interface events (multiple interfaces on same device)
+type GroupedInterfaceDetails struct {
+	DevicePK   string                  `json:"device_pk"`
+	DeviceCode string                  `json:"device_code"`
+	IssueType  string                  `json:"issue_type"` // "errors", "discards", "carrier"
+	Interfaces []InterfaceEventDetails `json:"interfaces"`
+}
+
 // ValidatorEventDetails contains details for validator join/leave events
 type ValidatorEventDetails struct {
 	OwnerPubkey   string  `json:"owner_pubkey"`
@@ -576,6 +584,9 @@ func GetTimeline(w http.ResponseWriter, r *http.Request) {
 	allEvents = append(allEvents, gossipNetworkEvents...)
 	allEvents = append(allEvents, voteAccountEvents...)
 	allEvents = append(allEvents, stakeChangeEvents...)
+
+	// Group interface events by device + event type + timestamp
+	allEvents = groupInterfaceEvents(allEvents)
 
 	// Filter by entity type if specified
 	if len(params.EntityTypes) > 0 {
@@ -1852,7 +1863,7 @@ func queryPacketLossEvents(ctx context.Context, startTime, endTime time.Time) ([
 		var title string
 		var eventType string
 		if transitionType == "started" {
-			title = fmt.Sprintf("Packet loss started on %s (%.2f%%)", linkCode, lossPct)
+			title = fmt.Sprintf("Packet loss started on %s", linkCode)
 			eventType = "packet_loss_started"
 		} else {
 			title = fmt.Sprintf("Packet loss recovered on %s", linkCode)
@@ -2770,4 +2781,104 @@ func queryStakeChanges(ctx context.Context, startTime, endTime time.Time) ([]Tim
 	}
 
 	return events, nil
+}
+
+// groupInterfaceEvents groups interface events by device, event type, and timestamp.
+// When multiple interfaces on the same device have the same issue at the same time,
+// they are consolidated into a single event with GroupedInterfaceDetails.
+func groupInterfaceEvents(events []TimelineEvent) []TimelineEvent {
+	// Key: devicePK + eventType + timestamp
+	type groupKey struct {
+		DevicePK  string
+		EventType string
+		Timestamp string
+	}
+
+	// Map to collect events by group key
+	groups := make(map[groupKey][]TimelineEvent)
+	var nonInterfaceEvents []TimelineEvent
+
+	for _, event := range events {
+		// Only group interface events
+		if details, ok := event.Details.(InterfaceEventDetails); ok {
+			key := groupKey{
+				DevicePK:  details.DevicePK,
+				EventType: event.EventType,
+				Timestamp: event.Timestamp,
+			}
+			groups[key] = append(groups[key], event)
+		} else {
+			nonInterfaceEvents = append(nonInterfaceEvents, event)
+		}
+	}
+
+	// Build result with grouped events
+	result := nonInterfaceEvents
+
+	for key, groupEvents := range groups {
+		if len(groupEvents) == 1 {
+			// Single interface, keep as-is
+			result = append(result, groupEvents[0])
+		} else {
+			// Multiple interfaces, create grouped event
+			first := groupEvents[0]
+			firstDetails := first.Details.(InterfaceEventDetails)
+
+			// Collect all interface details
+			interfaces := make([]InterfaceEventDetails, 0, len(groupEvents))
+			for _, e := range groupEvents {
+				interfaces = append(interfaces, e.Details.(InterfaceEventDetails))
+			}
+
+			// Sort interfaces by name for consistent display
+			sort.Slice(interfaces, func(i, j int) bool {
+				return interfaces[i].InterfaceName < interfaces[j].InterfaceName
+			})
+
+			// Build title based on event type
+			var title string
+			switch key.EventType {
+			case "interface_carrier_started":
+				title = fmt.Sprintf("Carrier transitions started on %d interfaces on %s", len(interfaces), firstDetails.DeviceCode)
+			case "interface_carrier_stopped":
+				title = fmt.Sprintf("Carrier transitions stopped on %d interfaces on %s", len(interfaces), firstDetails.DeviceCode)
+			case "interface_errors_started":
+				title = fmt.Sprintf("Interface errors started on %d interfaces on %s", len(interfaces), firstDetails.DeviceCode)
+			case "interface_errors_stopped":
+				title = fmt.Sprintf("Interface errors stopped on %d interfaces on %s", len(interfaces), firstDetails.DeviceCode)
+			case "interface_discards_started":
+				title = fmt.Sprintf("Interface discards started on %d interfaces on %s", len(interfaces), firstDetails.DeviceCode)
+			case "interface_discards_stopped":
+				title = fmt.Sprintf("Interface discards stopped on %d interfaces on %s", len(interfaces), firstDetails.DeviceCode)
+			default:
+				title = fmt.Sprintf("%d interface events on %s", len(interfaces), firstDetails.DeviceCode)
+			}
+
+			result = append(result, TimelineEvent{
+				ID:         generateEventID(firstDetails.DevicePK, mustParseTime(first.Timestamp), key.EventType+"_grouped"),
+				EventType:  key.EventType,
+				Timestamp:  first.Timestamp,
+				Category:   first.Category,
+				Severity:   first.Severity,
+				Title:      title,
+				EntityType: "device",
+				EntityPK:   firstDetails.DevicePK,
+				EntityCode: firstDetails.DeviceCode,
+				Details: GroupedInterfaceDetails{
+					DevicePK:   firstDetails.DevicePK,
+					DeviceCode: firstDetails.DeviceCode,
+					IssueType:  firstDetails.IssueType,
+					Interfaces: interfaces,
+				},
+			})
+		}
+	}
+
+	return result
+}
+
+// mustParseTime parses an RFC3339 timestamp or returns zero time on error
+func mustParseTime(s string) time.Time {
+	t, _ := time.Parse(time.RFC3339, s)
+	return t
 }

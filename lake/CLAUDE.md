@@ -14,13 +14,21 @@ The agent is the core feature - it lets users ask questions like "which validato
 - `indexer/` - Data indexing service (user-managed)
 - `slack/` - Slack bot (user-managed)
 
+## Service Management
+
+You are responsible for managing the `api` and `web` services during development:
+
+- **After changes to `api/`**: Restart the API server (`go run ./api/main.go`)
+- **After changes to `web/`**: The Vite dev server hot-reloads, but run `bun run build` if needed
+
+Always restart services after making changes - do not wait for the user to ask. After restarting, tell the user where to view the logs (the background task output file path).
+
 ## Commands
 
-Run API server from lake as working directory:
-
 ```bash
+go run ./api/main.go      # Run API server (:8080)
+cd web && bun run dev     # Run web dev server (:5173)
 cd web && bun run build   # Build frontend (runs tsc first)
-go run ./api/main.go      # Run API server
 ```
 
 ### Agent Evals
@@ -38,7 +46,7 @@ Output goes to `eval-runs/<timestamp>/` with:
 - `successes.log` - All success output
 - `<TestName>.log` - Individual test logs
 
-**When to run evals:** After changing agent prompts, context, or any code in `agent/`.
+**When to run evals:** Only after changing agent logic (prompts, context, or code in `agent/`). Changes to `api/` or `web/` do not require evals. Always confirm with the user before running evals.
 
 **Evals are the source of truth for agent quality.** The agent prompts (CLASSIFY, DECOMPOSE, GENERATE, SYNTHESIZE) and evals work together:
 

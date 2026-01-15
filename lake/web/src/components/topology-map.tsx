@@ -307,11 +307,11 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
   const mapRef = useRef<MapRef>(null)
   const markerClickedRef = useRef(false)
 
-  // Update URL when selected item changes
+  // Update URL when selected item changes (push to history for back button support)
   const setSelectedItem = useCallback((item: SelectedItem | null) => {
     setSelectedItemState(item)
     if (item === null) {
-      setSearchParams({}, { replace: true })
+      setSearchParams({})
     } else {
       const params: Record<string, string> = { type: item.type }
       if (item.type === 'validator') {
@@ -323,7 +323,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       } else if (item.type === 'metro') {
         params.id = item.data.pk
       }
-      setSearchParams(params, { replace: true })
+      setSearchParams(params)
     }
   }, [setSearchParams])
 
@@ -576,7 +576,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     mapRef.current?.zoomOut()
   }, [])
 
-  // Restore selected item from URL params (on initial load and when params change)
+  // Restore selected item from URL params (on initial load and when params change, e.g. back button)
   const lastParamsRef = useRef<string | null>(null)
   useEffect(() => {
     const type = searchParams.get('type')
@@ -587,7 +587,11 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     if (paramsKey === lastParamsRef.current) return
     lastParamsRef.current = paramsKey
 
-    if (!type || !id) return
+    // If no params, close the drawer (handles back button to no-drawer state)
+    if (!type || !id) {
+      setSelectedItemState(null)
+      return
+    }
 
     if (type === 'validator') {
       const validator = validatorMap.get(id)

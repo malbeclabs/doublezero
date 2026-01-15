@@ -1593,6 +1593,7 @@ export interface ValidatorEventDetails {
   stake_lamports?: number
   stake_sol?: number
   stake_share_pct?: number
+  user_pk?: string
   device_pk?: string
   device_code?: string
   metro_code?: string

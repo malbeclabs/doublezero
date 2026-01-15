@@ -114,6 +114,7 @@ const solanaEntityOptions: { value: EntityType; label: string; icon: typeof Serv
 const ALL_DZ_ENTITIES: EntityType[] = ['device', 'link', 'metro', 'contributor', 'user']
 const ALL_SOLANA_ENTITIES: EntityType[] = ['validator', 'gossip_node']
 const ALL_ENTITY_TYPES: EntityType[] = [...ALL_DZ_ENTITIES, ...ALL_SOLANA_ENTITIES]
+const DEFAULT_ENTITY_TYPES: EntityType[] = ALL_ENTITY_TYPES.filter(e => e !== 'gossip_node')
 
 const dzFilterOptions: { value: DZFilter; label: string }[] = [
   { value: 'on_dz', label: 'On DZ' },
@@ -478,7 +479,8 @@ function EventDetails({ event }: { event: TimelineEvent }) {
     const isValidator = d.kind === 'validator'
     return (
       <div className="text-xs text-muted-foreground mt-2 space-y-1">
-        <div>Owner: <span className="font-mono break-all">{d.owner_pubkey}</span></div>
+        <div>Owner: <FilterButton value={d.owner_pubkey} className="font-mono break-all">{d.owner_pubkey}</FilterButton></div>
+        {d.user_pk && <div>User: <FilterButton value={d.user_pk} className="font-mono break-all">{d.user_pk}</FilterButton></div>}
         {d.dz_ip && <div>DZ IP: <span className="font-mono">{d.dz_ip}</span></div>}
         {isValidator && d.vote_pubkey && <div>Vote Account: <span className="font-mono break-all">{d.vote_pubkey}</span></div>}
         {!isValidator && d.node_pubkey && <div>Node Pubkey: <span className="font-mono break-all">{d.node_pubkey}</span></div>}
@@ -641,6 +643,18 @@ function TimelineEventCard({ event, isNew }: { event: TimelineEvent; isNew?: boo
             <div className="text-xs text-muted-foreground mt-1">{event.description}</div>
           )}
 
+          {/* Show owner and user for validator/gossip events */}
+          {validatorDetails?.owner_pubkey && (
+            <div className="text-xs text-muted-foreground mt-1">
+              Owner: <FilterButton value={validatorDetails.owner_pubkey} className="font-mono text-foreground">{validatorDetails.owner_pubkey.length > 20 ? validatorDetails.owner_pubkey.slice(0, 8) + '...' + validatorDetails.owner_pubkey.slice(-4) : validatorDetails.owner_pubkey}</FilterButton>
+              {validatorDetails.user_pk && (
+                <span className="ml-2">
+                  User: <FilterButton value={validatorDetails.user_pk} className="font-mono text-foreground">{validatorDetails.user_pk.length > 20 ? validatorDetails.user_pk.slice(0, 8) + '...' + validatorDetails.user_pk.slice(-4) : validatorDetails.user_pk}</FilterButton>
+                </span>
+              )}
+            </div>
+          )}
+
           {/* Show device connection for validator/gossip/user events */}
           {validatorDetails?.device_pk && validatorDetails?.device_code && (
             <div className="text-xs text-muted-foreground mt-1">
@@ -695,7 +709,7 @@ export function TimelinePage() {
 
   const [timeRange, setTimeRange] = useState<TimeRange | 'custom'>('24h')
   const [selectedCategories, setSelectedCategories] = useState<Set<Category>>(new Set(ALL_CATEGORIES))
-  const [selectedEntityTypes, setSelectedEntityTypes] = useState<Set<EntityType>>(new Set(ALL_ENTITY_TYPES))
+  const [selectedEntityTypes, setSelectedEntityTypes] = useState<Set<EntityType>>(new Set(DEFAULT_ENTITY_TYPES))
   const [selectedActions, setSelectedActions] = useState<Set<ActionFilter>>(new Set(ALL_ACTIONS))
   const [dzFilter, setDzFilter] = useState<DZFilter>('on_dz')
   const [includeInternal, setIncludeInternal] = useState(false)
@@ -826,7 +840,7 @@ export function TimelinePage() {
   const resetAllFilters = () => {
     setTimeRange('24h')
     setSelectedCategories(new Set(ALL_CATEGORIES))
-    setSelectedEntityTypes(new Set(ALL_ENTITY_TYPES))
+    setSelectedEntityTypes(new Set(DEFAULT_ENTITY_TYPES))
     setSelectedActions(new Set(ALL_ACTIONS))
     setDzFilter('on_dz')
     setIncludeInternal(false)

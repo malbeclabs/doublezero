@@ -155,6 +155,7 @@ type ValidatorEventDetails struct {
 	StakeLamports int64   `json:"stake_lamports,omitempty"`
 	StakeSol      float64 `json:"stake_sol,omitempty"`
 	StakeSharePct float64 `json:"stake_share_pct,omitempty"`
+	UserPK        string  `json:"user_pk,omitempty"`
 	DevicePK      string  `json:"device_pk,omitempty"`
 	DeviceCode    string  `json:"device_code,omitempty"`
 	MetroCode     string  `json:"metro_code,omitempty"`
@@ -2281,6 +2282,7 @@ func queryValidatorEvents(ctx context.Context, startTime, endTime time.Time, inc
 				StakeLamports: stakeLamports,
 				StakeSol:      stakeSol,
 				StakeSharePct: stakeSharePct,
+				UserPK:        pk,
 				DevicePK:      devicePK,
 				DeviceCode:    deviceCode,
 				MetroCode:     metroCode,
@@ -2404,11 +2406,6 @@ func queryGossipNetworkChanges(ctx context.Context, startTime, endTime time.Time
 			severity = "warning"
 		}
 
-		description := ""
-		if dzOwnerPubkey != "" {
-			description = fmt.Sprintf("DZ user: %s", dzOwnerPubkey[:8]+"...")
-		}
-
 		// Use node pubkey as entity code since that's the Solana identity
 		entityCode := nodePubkey
 		entityPK := nodePubkey
@@ -2420,7 +2417,7 @@ func queryGossipNetworkChanges(ctx context.Context, startTime, endTime time.Time
 			Category:    "state_change",
 			Severity:    severity,
 			Title:       title,
-			Description: description,
+			Description: "",
 			EntityType:  entityType,
 			EntityPK:    entityPK,
 			EntityCode:  entityCode,
@@ -2432,6 +2429,7 @@ func queryGossipNetworkChanges(ctx context.Context, startTime, endTime time.Time
 				StakeLamports: stakeLamports,
 				StakeSol:      stakeSol,
 				StakeSharePct: stakeSharePct,
+				UserPK:        userPK,
 				DevicePK:      devicePK,
 				DeviceCode:    deviceCode,
 				MetroCode:     metroCode,
@@ -2582,11 +2580,6 @@ func queryVoteAccountChanges(ctx context.Context, startTime, endTime time.Time) 
 			severity = "info"
 		}
 
-		description := ""
-		if dzOwnerPubkey != "" {
-			description = fmt.Sprintf("DZ user: %s", dzOwnerPubkey[:8]+"...")
-		}
-
 		events = append(events, TimelineEvent{
 			ID:          generateEventID(votePubkey, eventTS, eventType),
 			EventType:   eventType,
@@ -2594,7 +2587,7 @@ func queryVoteAccountChanges(ctx context.Context, startTime, endTime time.Time) 
 			Category:    "state_change",
 			Severity:    severity,
 			Title:       title,
-			Description: description,
+			Description: "",
 			EntityType:  "validator",
 			EntityPK:    votePubkey,
 			EntityCode:  votePubkey,
@@ -2606,6 +2599,7 @@ func queryVoteAccountChanges(ctx context.Context, startTime, endTime time.Time) 
 				StakeLamports: stakeLamports,
 				StakeSol:      stakeSol,
 				StakeSharePct: stakeSharePct,
+				UserPK:        userPK,
 				DevicePK:      devicePK,
 				DeviceCode:    deviceCode,
 				MetroCode:     metroCode,
@@ -2765,6 +2759,7 @@ func queryStakeChanges(ctx context.Context, startTime, endTime time.Time) ([]Tim
 				StakeLamports: currentStake,
 				StakeSol:      currentSol,
 				StakeSharePct: stakeSharePct,
+				UserPK:        userPK,
 				DevicePK:      devicePK,
 				DeviceCode:    deviceCode,
 				MetroCode:     metroCode,

@@ -84,7 +84,7 @@ var (
 			Name: "doublezero_lake_api_anthropic_tokens_total",
 			Help: "Total number of Anthropic API tokens used",
 		},
-		[]string{"type"}, // "input" or "output"
+		[]string{"type"}, // "input", "output", "cache_creation", "cache_read"
 	)
 )
 
@@ -136,4 +136,16 @@ func RecordAnthropicRequest(endpoint string, duration time.Duration, err error) 
 func RecordAnthropicTokens(inputTokens, outputTokens int64) {
 	AnthropicTokensTotal.WithLabelValues("input").Add(float64(inputTokens))
 	AnthropicTokensTotal.WithLabelValues("output").Add(float64(outputTokens))
+}
+
+// RecordAnthropicTokensWithCache records token usage including cache metrics.
+func RecordAnthropicTokensWithCache(inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens int64) {
+	AnthropicTokensTotal.WithLabelValues("input").Add(float64(inputTokens))
+	AnthropicTokensTotal.WithLabelValues("output").Add(float64(outputTokens))
+	if cacheCreationTokens > 0 {
+		AnthropicTokensTotal.WithLabelValues("cache_creation").Add(float64(cacheCreationTokens))
+	}
+	if cacheReadTokens > 0 {
+		AnthropicTokensTotal.WithLabelValues("cache_read").Add(float64(cacheReadTokens))
+	}
 }

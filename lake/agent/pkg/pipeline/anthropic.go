@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/malbeclabs/doublezero/lake/api/metrics"
 )
 
 // AnthropicLLMClient implements LLMClient using the Anthropic API.
@@ -68,6 +69,7 @@ func (c *AnthropicLLMClient) Complete(ctx context.Context, systemPrompt, userPro
 	duration := time.Since(start)
 	if err != nil {
 		slog.Error("Anthropic API call failed", "phase", c.name, "duration", duration, "error", err)
+		metrics.RecordAnthropicRequest(c.name, duration, err)
 		return "", fmt.Errorf("anthropic API error: %w", err)
 	}
 
@@ -80,6 +82,15 @@ func (c *AnthropicLLMClient) Complete(ctx context.Context, systemPrompt, userPro
 		"outputTokens", msg.Usage.OutputTokens,
 		"cacheCreationInputTokens", msg.Usage.CacheCreationInputTokens,
 		"cacheReadInputTokens", msg.Usage.CacheReadInputTokens,
+	)
+
+	// Record Prometheus metrics
+	metrics.RecordAnthropicRequest(c.name, duration, nil)
+	metrics.RecordAnthropicTokensWithCache(
+		msg.Usage.InputTokens,
+		msg.Usage.OutputTokens,
+		msg.Usage.CacheCreationInputTokens,
+		msg.Usage.CacheReadInputTokens,
 	)
 
 	// Extract text from response

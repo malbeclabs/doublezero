@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef } from 'react'
+import { useMemo, useState, useRef, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { ArrowUp } from 'lucide-react'
@@ -38,6 +38,14 @@ export function Landing() {
   })
 
   const exampleQuestions = useMemo(() => selectRandom(EXAMPLE_QUESTIONS, 3), [])
+
+  // Only auto-focus on desktop to avoid scroll-to-input on mobile
+  useEffect(() => {
+    const isDesktop = window.matchMedia('(hover: hover) and (pointer: fine)').matches
+    if (isDesktop && inputRef.current) {
+      inputRef.current.focus()
+    }
+  }, [])
 
   const handleStartChat = (question?: string) => {
     const q = question || input.trim()
@@ -135,7 +143,6 @@ export function Landing() {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Ask about the network..."
-            autoFocus
             rows={1}
             className="w-full bg-transparent px-4 pt-3.5 pb-2.5 pr-12 text-sm placeholder:text-muted-foreground focus:outline-none resize-none min-h-[44px] max-h-[200px] overflow-y-auto"
             style={{ height: 'auto' }}

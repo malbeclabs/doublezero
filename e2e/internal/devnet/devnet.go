@@ -725,16 +725,6 @@ func (d *Devnet) GetOrCreateDeviceOnchain(ctx context.Context, deviceCode string
 				return "", fmt.Errorf("failed to update device onchain: %w", err)
 			}
 
-			_, err = d.Manager.Exec(ctx, []string{"doublezero", "device", "set-health", "--pubkey", deviceAddress, "--health", "ready-for-links"})
-			if err != nil {
-				return "", fmt.Errorf("failed to update device onchain: %w", err)
-			}
-
-			_, err = d.Manager.Exec(ctx, []string{"doublezero", "device", "set-health", "--pubkey", deviceAddress, "--health", "ready-for-users"})
-			if err != nil {
-				return "", fmt.Errorf("failed to update device onchain: %w", err)
-			}
-
 			return deviceAddress, nil
 		}
 
@@ -754,16 +744,6 @@ func (d *Devnet) CreateDeviceOnchain(ctx context.Context, deviceCode string, loc
 	}
 
 	_, err = d.Manager.Exec(ctx, []string{"doublezero", "device", "update", "--pubkey", deviceCode, "--max-users", "128", "--desired-status", "activated"})
-	if err != nil {
-		return fmt.Errorf("failed to update device onchain: %w", err)
-	}
-
-	_, err = d.Manager.Exec(ctx, []string{"doublezero", "device", "set-health", "--pubkey", deviceCode, "--health", "ready-for-links"})
-	if err != nil {
-		return fmt.Errorf("failed to update device onchain: %w", err)
-	}
-
-	_, err = d.Manager.Exec(ctx, []string{"doublezero", "device", "set-health", "--pubkey", deviceCode, "--health", "ready-for-users"})
 	if err != nil {
 		return fmt.Errorf("failed to update device onchain: %w", err)
 	}

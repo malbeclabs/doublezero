@@ -26,9 +26,19 @@ go run ./api/main.go      # Run API server
 ### Agent Evals
 
 ```bash
-cd agent && go test -tags=evals ./evals/... -short  # Code validation only
-cd agent && go test -tags=evals ./evals/... -v      # Full evals (hits Anthropic API - confirm first)
+./scripts/run-evals.sh                 # Run all Anthropic evals in parallel
+./scripts/run-evals.sh --show-failures # Show failure logs at end
+./scripts/run-evals.sh -s              # Short mode (code validation only, no API calls)
+./scripts/run-evals.sh -r 2            # Retry failed tests up to 2 times
+./scripts/run-evals.sh -f 'NetworkHealth'  # Filter to specific tests
 ```
+
+Output goes to `eval-runs/<timestamp>/` with:
+- `failures.log` - All failure output (check this first)
+- `successes.log` - All success output
+- `<TestName>.log` - Individual test logs
+
+**When to run evals:** After changing agent prompts, context, or any code in `agent/`.
 
 **Evals are the source of truth for agent quality.** The agent prompts (CLASSIFY, DECOMPOSE, GENERATE, SYNTHESIZE) and evals work together:
 

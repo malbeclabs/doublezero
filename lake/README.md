@@ -82,6 +82,21 @@ MaxMind     ───────────────►    │
                     └───────────────────────┘
 ```
 
+## Development
+
+### Running Agent Evals
+
+The agent has evaluation tests that validate the natural language to SQL pipeline. Run them with:
+
+```bash
+./scripts/run-evals.sh                 # Run all evals in parallel
+./scripts/run-evals.sh --show-failures # Show failure logs at end
+./scripts/run-evals.sh -s              # Short mode (code validation only, no API)
+./scripts/run-evals.sh -r 2            # Retry failed tests up to 2 times
+```
+
+Output goes to `eval-runs/<timestamp>/` - check `failures.log` for any failures.
+
 ## Environment
 
 Key dependencies:

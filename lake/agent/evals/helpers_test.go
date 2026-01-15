@@ -171,9 +171,10 @@ IMPORTANT: Including additional relevant context or details beyond the expectati
 Respond with only "YES" or "NO" followed by a brief explanation.`, question, response, expectationsSection)
 
 	// Use Anthropic Haiku for evaluation - fast and reliable
-	llmClient := pipeline.NewAnthropicLLMClient(
+	llmClient := pipeline.NewAnthropicLLMClientWithName(
 		anthropic.ModelClaudeHaiku4_5_20251001,
 		1024, // Short response needed for YES/NO + explanation
+		"eval",
 	)
 
 	evalResponse, err := llmClient.Complete(ctx, "You are a test evaluator. Respond with YES or NO followed by a brief explanation.", evalPrompt)

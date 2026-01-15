@@ -14,6 +14,7 @@ type AnthropicLLMClient struct {
 	client    anthropic.Client
 	model     anthropic.Model
 	maxTokens int64
+	name      string // optional label for logging (e.g., "agent", "eval")
 }
 
 // NewAnthropicLLMClient creates a new Anthropic-based LLM client.
@@ -22,13 +23,24 @@ func NewAnthropicLLMClient(model anthropic.Model, maxTokens int64) *AnthropicLLM
 		client:    anthropic.NewClient(),
 		model:     model,
 		maxTokens: maxTokens,
+		name:      "agent",
+	}
+}
+
+// NewAnthropicLLMClientWithName creates a new Anthropic-based LLM client with a custom name for logging.
+func NewAnthropicLLMClientWithName(model anthropic.Model, maxTokens int64, name string) *AnthropicLLMClient {
+	return &AnthropicLLMClient{
+		client:    anthropic.NewClient(),
+		model:     model,
+		maxTokens: maxTokens,
+		name:      name,
 	}
 }
 
 // Complete sends a prompt to Claude and returns the response text.
 func (c *AnthropicLLMClient) Complete(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
 	start := time.Now()
-	slog.Info("Anthropic API call starting", "model", c.model, "maxTokens", c.maxTokens, "userPromptLen", len(userPrompt))
+	slog.Info("Anthropic API call starting", "phase", c.name, "model", c.model, "maxTokens", c.maxTokens, "userPromptLen", len(userPrompt))
 
 	msg, err := c.client.Messages.New(ctx, anthropic.MessageNewParams{
 		Model:     c.model,
@@ -43,10 +55,16 @@ func (c *AnthropicLLMClient) Complete(ctx context.Context, systemPrompt, userPro
 
 	duration := time.Since(start)
 	if err != nil {
-		slog.Error("Anthropic API call failed", "duration", duration, "error", err)
+		slog.Error("Anthropic API call failed", "phase", c.name, "duration", duration, "error", err)
 		return "", fmt.Errorf("anthropic API error: %w", err)
 	}
-	slog.Info("Anthropic API call completed", "duration", duration, "stopReason", msg.StopReason)
+	slog.Info("Anthropic API call completed",
+		"phase", c.name,
+		"duration", duration,
+		"stopReason", msg.StopReason,
+		"inputTokens", msg.Usage.InputTokens,
+		"outputTokens", msg.Usage.OutputTokens,
+	)
 
 	// Extract text from response
 	for _, block := range msg.Content {

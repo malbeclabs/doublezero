@@ -21,6 +21,7 @@ import {
   Building2,
   Landmark,
   Radio,
+  Home,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/hooks/use-theme'
@@ -182,6 +183,34 @@ export function Sidebar({
         </div>
 
         <div className="flex flex-col items-center gap-1 pt-4">
+        {/* Home nav item */}
+        <button
+          onClick={() => navigate('/')}
+          className={cn(
+            'p-2 rounded transition-colors',
+            isLandingPage
+              ? 'bg-[oklch(25%_.04_250)] text-white hover:bg-[oklch(30%_.05_250)]'
+              : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+          )}
+          title="Home"
+        >
+          <Home className="h-4 w-4" />
+        </button>
+
+        {/* Status nav item */}
+        <button
+          onClick={() => navigate('/status')}
+          className={cn(
+            'p-2 rounded transition-colors',
+            isStatusRoute
+              ? 'bg-[oklch(25%_.04_250)] text-white hover:bg-[oklch(30%_.05_250)]'
+              : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+          )}
+          title="Status"
+        >
+          <Activity className="h-4 w-4" />
+        </button>
+
         {/* Chat nav item */}
         <button
           onClick={onNewChatSession}
@@ -222,20 +251,6 @@ export function Sidebar({
           title="Topology"
         >
           <Globe className="h-4 w-4" />
-        </button>
-
-        {/* Status nav item */}
-        <button
-          onClick={() => navigate('/status')}
-          className={cn(
-            'p-2 rounded transition-colors',
-            isStatusRoute
-              ? 'bg-[oklch(25%_.04_250)] text-white hover:bg-[oklch(30%_.05_250)]'
-              : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
-          )}
-          title="Status"
-        >
-          <Activity className="h-4 w-4" />
         </button>
 
         {/* Divider */}
@@ -328,6 +343,18 @@ export function Sidebar({
         </div>
         <div className="space-y-1">
           <button
+            onClick={() => navigate('/status')}
+            className={cn(
+              'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',
+              isStatusRoute
+                ? 'bg-[var(--sidebar-active)] text-foreground font-medium'
+                : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+            )}
+          >
+            <Activity className="h-4 w-4" />
+            Status
+          </button>
+          <button
             onClick={onNewChatSession}
             className={cn(
               'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',
@@ -362,18 +389,6 @@ export function Sidebar({
           >
             <Globe className="h-4 w-4" />
             Topology
-          </button>
-          <button
-            onClick={() => navigate('/status')}
-            className={cn(
-              'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',
-              isStatusRoute
-                ? 'bg-[var(--sidebar-active)] text-foreground font-medium'
-                : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
-            )}
-          >
-            <Activity className="h-4 w-4" />
-            Status
           </button>
         </div>
       </div>

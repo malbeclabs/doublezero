@@ -687,6 +687,7 @@ export interface LinkHealth {
   unhealthy: number
   issues: LinkIssue[]
   high_util_links: LinkMetric[]
+  top_util_links: LinkMetric[]
 }
 
 export interface PerformanceMetrics {
@@ -744,6 +745,16 @@ export interface InfrastructureAlerts {
   links: NonActivatedLink[]
 }
 
+export interface DeviceUtilization {
+  code: string
+  device_type: string
+  contributor: string
+  metro: string
+  current_users: number
+  max_users: number
+  utilization: number
+}
+
 export interface StatusResponse {
   status: 'healthy' | 'degraded' | 'unhealthy'
   timestamp: string
@@ -753,6 +764,7 @@ export interface StatusResponse {
   interfaces: InterfaceHealth
   alerts: InfrastructureAlerts
   performance: PerformanceMetrics
+  top_device_util: DeviceUtilization[]
   error?: string
 }
 
@@ -760,6 +772,48 @@ export async function fetchStatus(): Promise<StatusResponse> {
   const res = await fetchWithRetry('/api/status')
   if (!res.ok) {
     throw new Error('Failed to fetch status')
+  }
+  return res.json()
+}
+
+// Link history types for status timeline
+export interface LinkHourStatus {
+  hour: string
+  status: 'healthy' | 'degraded' | 'unhealthy' | 'no_data' | 'disabled'
+  avg_latency_us: number
+  avg_loss_pct: number
+  samples: number
+}
+
+export interface LinkHistory {
+  code: string
+  link_type: string
+  contributor: string
+  side_a_metro: string
+  side_z_metro: string
+  side_a_device: string
+  side_z_device: string
+  bandwidth_bps: number
+  committed_rtt_us: number
+  hours: LinkHourStatus[]
+  issue_reasons: string[] // "packet_loss", "high_latency", "disabled"
+}
+
+export interface LinkHistoryResponse {
+  links: LinkHistory[]
+  time_range: string      // "24h", "3d", "7d"
+  bucket_minutes: number  // Size of each bucket in minutes
+  bucket_count: number    // Number of buckets
+}
+
+export async function fetchLinkHistory(timeRange?: string, buckets?: number): Promise<LinkHistoryResponse> {
+  const params = new URLSearchParams()
+  if (timeRange) params.set('range', timeRange)
+  if (buckets) params.set('buckets', buckets.toString())
+  const url = `/api/status/link-history${params.toString() ? '?' + params.toString() : ''}`
+  const res = await fetchWithRetry(url)
+  if (!res.ok) {
+    throw new Error('Failed to fetch link history')
   }
   return res.json()
 }

@@ -1,35 +1,114 @@
 import { useQuery } from '@tanstack/react-query'
-import { CheckCircle2, AlertTriangle, XCircle, Clock, Activity, ArrowUpDown, Gauge, Cpu } from 'lucide-react'
-import { fetchStatus, type StatusResponse, type LinkIssue, type LinkMetric, type InterfaceIssue, type NonActivatedDevice, type NonActivatedLink } from '@/lib/api'
+import { useState, useEffect, useMemo } from 'react'
+import { CheckCircle2, AlertTriangle, XCircle, ArrowUpDown, Cpu } from 'lucide-react'
+import { fetchStatus, fetchLinkHistory, type StatusResponse, type InterfaceIssue, type NonActivatedLink } from '@/lib/api'
 import { StatCard } from '@/components/stat-card'
+import { LinkStatusTimelines } from '@/components/link-status-timelines'
 
-function formatLatency(us: number): string {
-  if (us >= 1000) {
-    return `${(us / 1000).toFixed(1)}ms`
-  }
-  return `${us.toFixed(0)}μs`
+type TimeRange = '1h' | '6h' | '12h' | '24h' | '3d' | '7d'
+type IssueFilter = 'packet_loss' | 'high_latency' | 'disabled'
+
+function TimeRangeSelector({ value, onChange }: { value: TimeRange; onChange: (v: TimeRange) => void }) {
+  const options: { value: TimeRange; label: string }[] = [
+    { value: '1h', label: '1h' },
+    { value: '6h', label: '6h' },
+    { value: '12h', label: '12h' },
+    { value: '24h', label: '24h' },
+    { value: '3d', label: '3d' },
+    { value: '7d', label: '7d' },
+  ]
+
+  return (
+    <div className="inline-flex rounded-lg border border-border bg-muted/30 p-0.5">
+      {options.map((opt) => (
+        <button
+          key={opt.value}
+          onClick={() => onChange(opt.value)}
+          className={`px-3 py-1 text-sm rounded-md transition-colors ${
+            value === opt.value
+              ? 'bg-background text-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  )
 }
 
-function formatBandwidth(bps: number): string {
-  const gbps = bps / 1_000_000_000
-  if (gbps >= 1000) {
-    return `${(gbps / 1000).toFixed(1)} Tbps`
-  }
-  if (gbps >= 1) {
-    return `${gbps.toFixed(1)} Gbps`
-  }
-  const mbps = bps / 1_000_000
-  if (mbps >= 1) {
-    return `${mbps.toFixed(0)} Mbps`
-  }
-  const kbps = bps / 1_000
-  return `${kbps.toFixed(0)} Kbps`
+interface IssueCounts {
+  packet_loss: number
+  high_latency: number
+  disabled: number
+  total: number
 }
 
-function formatPercent(pct: number): string {
-  if (pct < 0.01) return '<0.01%'
-  if (pct < 1) return `${pct.toFixed(2)}%`
-  return `${pct.toFixed(1)}%`
+function IssueFilterSelector({ value, onChange, counts }: { value: IssueFilter[]; onChange: (v: IssueFilter[]) => void; counts?: IssueCounts }) {
+  const allOptions: IssueFilter[] = ['packet_loss', 'high_latency', 'disabled']
+  const options: { value: IssueFilter; label: string }[] = [
+    { value: 'packet_loss', label: 'Loss' },
+    { value: 'high_latency', label: 'Latency' },
+    { value: 'disabled', label: 'Disabled' },
+  ]
+
+  const allSelected = value.length === allOptions.length
+
+  const toggleFilter = (filter: IssueFilter) => {
+    if (value.includes(filter)) {
+      // If this is the last filter, go back to all instead of empty
+      if (value.length === 1) {
+        onChange(allOptions)
+      } else {
+        onChange(value.filter(v => v !== filter))
+      }
+    } else {
+      onChange([...value, filter])
+    }
+  }
+
+  const handleAllClick = () => {
+    // If already all selected, do nothing (don't allow deselecting all)
+    if (!allSelected) {
+      onChange(allOptions)
+    }
+  }
+
+  const getCount = (filter: IssueFilter): number => {
+    if (!counts) return 0
+    return counts[filter] || 0
+  }
+
+  return (
+    <div className="inline-flex items-center gap-2">
+      <span className="text-sm text-muted-foreground">Issues:</span>
+      <div className="inline-flex rounded-lg border border-border bg-muted/30 p-0.5 gap-0.5">
+        <button
+          onClick={handleAllClick}
+          className={`px-2 py-1 text-xs rounded-md transition-colors ${
+            allSelected
+              ? 'bg-background text-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          All{counts ? ` (${counts.total})` : ''}
+        </button>
+        {options.map((opt) => (
+          <button
+            key={opt.value}
+            onClick={() => toggleFilter(opt.value)}
+            className={`px-2 py-1 text-xs rounded-md transition-colors ${
+              value.includes(opt.value) && !allSelected
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {opt.label}{counts ? ` (${getCount(opt.value)})` : ''}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 function formatTimeAgo(isoString: string): string {
@@ -122,108 +201,147 @@ function StatusIndicator({ statusData }: { statusData: StatusResponse }) {
   )
 }
 
-function DataFreshnessCard({ system, timestamp }: { system: StatusResponse['system']; timestamp: string }) {
-  return (
-    <div className="border border-border rounded-lg p-4">
-      <div className="flex items-center gap-2 mb-4">
-        <Clock className="h-4 w-4 text-muted-foreground" />
-        <h3 className="font-medium">Data Freshness</h3>
-      </div>
-      <div className="space-y-3">
-        {system.last_ingested && (
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">Last Telemetry</span>
-            <span className="text-sm">{formatTimeAgo(system.last_ingested)}</span>
-          </div>
-        )}
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">Last Refresh</span>
-          <span className="text-sm">{formatTimeAgo(timestamp)}</span>
-        </div>
-      </div>
+function CountWithPopover({
+  count,
+  label,
+  status,
+  items,
+  renderItem
+}: {
+  count: number
+  label: string
+  status: 'good' | 'warning' | 'bad'
+  items?: { code: string; status: string }[]
+  renderItem?: (item: { code: string; status: string }) => React.ReactNode
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const hasPopover = items && items.length > 0 && renderItem
+
+  const statusColors = {
+    good: 'bg-green-500',
+    warning: 'bg-amber-500',
+    bad: 'bg-red-500'
+  }
+
+  const content = (
+    <div className="flex items-center gap-2">
+      <div className={`w-2 h-2 rounded-full ${statusColors[status]}`} />
+      <span className="font-medium tabular-nums">{count}</span>
+      <span className="text-muted-foreground">{label}</span>
     </div>
   )
-}
 
-function InfrastructureAlertsCard({ alerts }: { alerts: StatusResponse['alerts'] }) {
-  const hasAlerts = (alerts?.devices?.length || 0) > 0 || (alerts?.links?.length || 0) > 0
+  if (!hasPopover) {
+    return content
+  }
 
   return (
-    <div className="border border-border rounded-lg p-4">
-      <div className="flex items-center gap-2 mb-4">
-        <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-        <h3 className="font-medium">Infrastructure Alerts</h3>
-      </div>
-      {!hasAlerts ? (
-        <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
-          <CheckCircle2 className="h-4 w-4" />
-          All devices and links activated
-        </div>
-      ) : (
-        <div className="text-sm">
-          {(alerts?.devices?.length || 0) > 0 && (
-            <div className="text-muted-foreground">
-              {alerts!.devices.length} device{alerts!.devices.length > 1 ? 's' : ''} not activated
-            </div>
-          )}
-          {(alerts?.links?.length || 0) > 0 && (
-            <div className="text-muted-foreground">
-              {alerts!.links.length} link{alerts!.links.length > 1 ? 's' : ''} not activated
-            </div>
-          )}
-          <div className="text-xs text-muted-foreground mt-2">See details below</div>
+    <div className="relative inline-block">
+      <button
+        className="text-left hover:underline underline-offset-2"
+        onMouseEnter={() => setIsOpen(true)}
+        onMouseLeave={() => setIsOpen(false)}
+        onClick={() => setIsOpen(!isOpen)}
+      >
+        {content}
+      </button>
+      {isOpen && (
+        <div
+          className="absolute left-0 top-full mt-1 z-50 bg-popover border border-border rounded-lg shadow-lg p-3 min-w-[200px] max-h-[300px] overflow-y-auto"
+          onMouseEnter={() => setIsOpen(true)}
+          onMouseLeave={() => setIsOpen(false)}
+        >
+          <div className="space-y-1.5 text-xs">
+            {items!.map((item, idx) => (
+              <div key={`${item.code}-${idx}`}>{renderItem!(item)}</div>
+            ))}
+          </div>
         </div>
       )}
     </div>
   )
 }
 
-function NonActivatedDevicesTable({ devices }: { devices: NonActivatedDevice[] | null }) {
-  if (!devices || devices.length === 0) return null
+function IssueSummaryCard({
+  alerts,
+  linkIssuesCount,
+  interfaceIssuesCount
+}: {
+  alerts: StatusResponse['alerts']
+  linkIssuesCount: number
+  interfaceIssuesCount: number
+}) {
+  const drainedDevices = (alerts?.devices || []).filter(d =>
+    d.status === 'soft-drained' || d.status === 'hard-drained'
+  )
+  const drainedLinks = (alerts?.links || []).filter(l =>
+    l.status === 'soft-drained' || l.status === 'hard-drained'
+  )
 
-  const statusColors: Record<string, string> = {
-    'soft-drained': 'text-amber-600 dark:text-amber-400',
-    drained: 'text-gray-500',
-    suspended: 'text-red-600 dark:text-red-400',
-    pending: 'text-amber-600 dark:text-amber-400',
-    deleted: 'text-gray-400',
-    rejected: 'text-red-400',
+  const scrollToInterfaceIssues = () => {
+    document.getElementById('interface-issues')?.scrollIntoView({ behavior: 'smooth' })
+  }
+
+  const scrollToLinkHistory = () => {
+    document.getElementById('link-status-history')?.scrollIntoView({ behavior: 'smooth' })
   }
 
   return (
-    <div className="border border-border rounded-lg overflow-hidden">
-      <div className="px-4 py-3 bg-muted/50 border-b border-border flex items-center gap-2">
+    <div className="border border-border rounded-lg p-4">
+      <div className="flex items-center gap-2 mb-4">
         <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-        <h3 className="font-medium">Non-Activated Devices</h3>
+        <h3 className="font-medium">Issue Summary</h3>
+        <span className="text-xs text-muted-foreground ml-auto">Current</span>
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead>
-            <tr className="text-left text-sm text-muted-foreground border-b border-border">
-              <th className="px-4 py-2 font-medium">Device</th>
-              <th className="px-4 py-2 font-medium">Metro</th>
-              <th className="px-4 py-2 font-medium">Status</th>
-              <th className="px-4 py-2 font-medium text-right">Since</th>
-            </tr>
-          </thead>
-          <tbody>
-            {devices.map((device, idx) => (
-              <tr key={`${device.code}-${idx}`} className="border-b border-border last:border-b-0">
-                <td className="px-4 py-2.5">
-                  <span className="font-mono text-sm">{device.code}</span>
-                  <span className="text-xs text-muted-foreground ml-2">{device.device_type}</span>
-                </td>
-                <td className="px-4 py-2.5 text-sm text-muted-foreground">{device.metro}</td>
-                <td className={`px-4 py-2.5 text-sm capitalize ${statusColors[device.status] || ''}`}>
-                  {device.status.replace('-', ' ')}
-                </td>
-                <td className="px-4 py-2.5 text-sm tabular-nums text-right text-muted-foreground">
-                  {formatTimeAgo(device.since)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="space-y-2 text-sm">
+        <CountWithPopover
+          count={drainedDevices.length}
+          label={drainedDevices.length === 1 ? 'drained device' : 'drained devices'}
+          status={drainedDevices.length === 0 ? 'good' : 'warning'}
+          items={drainedDevices}
+          renderItem={(d) => (
+            <div className="flex justify-between gap-4">
+              <span className="font-mono truncate">{d.code}</span>
+              <span className="text-muted-foreground capitalize">{d.status.replace('-', ' ')}</span>
+            </div>
+          )}
+        />
+        <CountWithPopover
+          count={drainedLinks.length}
+          label={drainedLinks.length === 1 ? 'drained link' : 'drained links'}
+          status={drainedLinks.length === 0 ? 'good' : 'warning'}
+          items={drainedLinks}
+          renderItem={(l) => (
+            <div className="flex justify-between gap-4">
+              <span className="font-mono truncate">{l.code}</span>
+              <span className="text-muted-foreground capitalize">{l.status.replace('-', ' ')}</span>
+            </div>
+          )}
+        />
+        <button
+          onClick={scrollToLinkHistory}
+          className="flex items-center gap-2 text-left hover:underline underline-offset-2"
+        >
+          <div className={`w-2 h-2 rounded-full ${linkIssuesCount === 0 ? 'bg-green-500' : linkIssuesCount <= 3 ? 'bg-amber-500' : 'bg-red-500'}`} />
+          <span className="font-medium tabular-nums">{linkIssuesCount}</span>
+          <span className="text-muted-foreground">{linkIssuesCount === 1 ? 'link with issues' : 'links with issues'}</span>
+        </button>
+        {interfaceIssuesCount > 0 ? (
+          <button
+            onClick={scrollToInterfaceIssues}
+            className="flex items-center gap-2 text-left hover:underline underline-offset-2"
+          >
+            <div className={`w-2 h-2 rounded-full ${interfaceIssuesCount <= 3 ? 'bg-amber-500' : 'bg-red-500'}`} />
+            <span className="font-medium tabular-nums">{interfaceIssuesCount}</span>
+            <span className="text-muted-foreground">{interfaceIssuesCount === 1 ? 'interface issue' : 'interface issues'}</span>
+          </button>
+        ) : (
+          <CountWithPopover
+            count={0}
+            label="interface issues"
+            status="good"
+          />
+        )}
       </div>
     </div>
   )
@@ -280,6 +398,39 @@ function NonActivatedLinksTable({ links }: { links: NonActivatedLink[] | null })
   )
 }
 
+function HealthLegendItem({
+  color,
+  label,
+  count,
+  description
+}: {
+  color: string
+  label: string
+  count: number
+  description: string
+}) {
+  const [showTooltip, setShowTooltip] = useState(false)
+
+  return (
+    <div className="flex items-center justify-between relative">
+      <div
+        className="flex items-center gap-1.5 cursor-help"
+        onMouseEnter={() => setShowTooltip(true)}
+        onMouseLeave={() => setShowTooltip(false)}
+      >
+        <div className={`h-2.5 w-2.5 rounded-full ${color}`} />
+        <span className="text-muted-foreground">{label}</span>
+        {showTooltip && (
+          <div className="absolute left-0 bottom-full mb-1 z-50 bg-popover border border-border rounded-lg shadow-lg p-2 text-xs w-52">
+            {description}
+          </div>
+        )}
+      </div>
+      <span className="font-medium tabular-nums">{count}</span>
+    </div>
+  )
+}
+
 function LinkHealthCard({ links }: { links: StatusResponse['links'] }) {
   const healthyPct = links.total > 0 ? (links.healthy / links.total) * 100 : 100
   const degradedPct = links.total > 0 ? (links.degraded / links.total) * 100 : 0
@@ -290,7 +441,7 @@ function LinkHealthCard({ links }: { links: StatusResponse['links'] }) {
       <div className="flex items-center gap-2 mb-4">
         <ArrowUpDown className="h-4 w-4 text-muted-foreground" />
         <h3 className="font-medium">Link Health</h3>
-        <span className="text-sm text-muted-foreground ml-auto">{links.total} WAN links</span>
+        <span className="text-xs text-muted-foreground ml-auto">{links.total} links · Last 3h</span>
       </div>
 
       {/* Health bar */}
@@ -317,175 +468,130 @@ function LinkHealthCard({ links }: { links: StatusResponse['links'] }) {
 
       {/* Legend */}
       <div className="space-y-1.5 text-sm">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <div className="h-2.5 w-2.5 rounded-full bg-green-500" />
-            <span className="text-muted-foreground">Healthy</span>
-          </div>
-          <span className="font-medium tabular-nums">{links.healthy}</span>
-        </div>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <div className="h-2.5 w-2.5 rounded-full bg-amber-500" />
-            <span className="text-muted-foreground">Degraded</span>
-          </div>
-          <span className="font-medium tabular-nums">{links.degraded}</span>
-        </div>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <div className="h-2.5 w-2.5 rounded-full bg-red-500" />
-            <span className="text-muted-foreground">Unhealthy</span>
-          </div>
-          <span className="font-medium tabular-nums">{links.unhealthy}</span>
-        </div>
+        <HealthLegendItem
+          color="bg-green-500"
+          label="Healthy"
+          count={links.healthy}
+          description="Loss < 0.1% and latency within 20% of committed RTT"
+        />
+        <HealthLegendItem
+          color="bg-amber-500"
+          label="Degraded"
+          count={links.degraded}
+          description="Loss ≥ 0.1% or latency 20-50% over committed RTT"
+        />
+        <HealthLegendItem
+          color="bg-red-500"
+          label="Unhealthy"
+          count={links.unhealthy}
+          description="Loss ≥ 1% or latency > 50% over committed RTT"
+        />
       </div>
     </div>
   )
 }
 
-function PerformanceCard({ performance }: { performance: StatusResponse['performance'] }) {
-  return (
-    <div className="border border-border rounded-lg p-4">
-      <div className="flex items-center gap-2 mb-4">
-        <Activity className="h-4 w-4 text-muted-foreground" />
-        <h3 className="font-medium">Network Performance</h3>
-        <span className="text-sm text-muted-foreground ml-auto">Last 3 hours</span>
-      </div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div>
-          <div className="text-2xl font-medium tabular-nums">{formatLatency(performance.avg_latency_us)}</div>
-          <div className="text-sm text-muted-foreground">Avg Latency</div>
-        </div>
-        <div>
-          <div className="text-2xl font-medium tabular-nums">{formatLatency(performance.p95_latency_us)}</div>
-          <div className="text-sm text-muted-foreground">P95 Latency</div>
-        </div>
-        <div>
-          <div className="text-2xl font-medium tabular-nums">{formatPercent(performance.avg_loss_percent)}</div>
-          <div className="text-sm text-muted-foreground">Packet Loss</div>
-        </div>
-        <div>
-          <div className="text-2xl font-medium tabular-nums">{formatLatency(performance.avg_jitter_us)}</div>
-          <div className="text-sm text-muted-foreground">Avg Jitter</div>
-        </div>
-      </div>
-    </div>
-  )
+function formatBandwidth(bps: number): string {
+  if (bps >= 1e9) {
+    return `${(bps / 1e9).toFixed(1)} Gbps`
+  } else if (bps >= 1e6) {
+    return `${(bps / 1e6).toFixed(0)} Mbps`
+  } else if (bps >= 1e3) {
+    return `${(bps / 1e3).toFixed(0)} Kbps`
+  }
+  return `${bps.toFixed(0)} bps`
 }
 
-function ThroughputCard({ performance }: { performance: StatusResponse['performance'] }) {
-  return (
-    <div className="border border-border rounded-lg p-4">
-      <div className="flex items-center gap-2 mb-4">
-        <Gauge className="h-4 w-4 text-muted-foreground" />
-        <h3 className="font-medium">Current Throughput</h3>
-        <span className="text-sm text-muted-foreground ml-auto">Last 5 min</span>
-      </div>
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <div className="text-2xl font-medium tabular-nums">{formatBandwidth(performance.total_in_bps)}</div>
-          <div className="text-sm text-muted-foreground">Inbound</div>
-        </div>
-        <div>
-          <div className="text-2xl font-medium tabular-nums">{formatBandwidth(performance.total_out_bps)}</div>
-          <div className="text-sm text-muted-foreground">Outbound</div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function IssuesTable({ issues }: { issues: LinkIssue[] | null }) {
-  if (!issues || issues.length === 0) {
+function TopLinkUtilization({ links }: { links: StatusResponse['links']['top_util_links'] }) {
+  if (!links || links.length === 0) {
     return (
-      <div className="border border-border rounded-lg p-6 text-center">
-        <CheckCircle2 className="h-8 w-8 text-green-500 mx-auto mb-2" />
-        <div className="text-sm text-muted-foreground">No issues detected</div>
+      <div className="border border-border rounded-lg p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <ArrowUpDown className="h-4 w-4 text-muted-foreground" />
+          <h3 className="font-medium">Peak Link Utilization</h3>
+          <span className="text-xs text-muted-foreground ml-auto">Last 1h</span>
+        </div>
+        <div className="text-sm text-muted-foreground">No link data available</div>
       </div>
     )
   }
 
   return (
-    <div className="border border-border rounded-lg overflow-hidden">
-      <div className="px-4 py-3 bg-muted/50 border-b border-border flex items-center gap-2">
-        <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-        <h3 className="font-medium">Link Issues</h3>
-        <span className="text-sm text-muted-foreground ml-auto">Packet loss &amp; latency exceeding committed SLA</span>
+    <div className="border border-border rounded-lg p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <ArrowUpDown className="h-4 w-4 text-muted-foreground" />
+        <h3 className="font-medium">Peak Link Utilization</h3>
+        <span className="text-xs text-muted-foreground ml-auto">Last 1h</span>
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead>
-            <tr className="text-left text-sm text-muted-foreground border-b border-border">
-              <th className="px-4 py-2 font-medium">Link</th>
-              <th className="px-4 py-2 font-medium">Contributor</th>
-              <th className="px-4 py-2 font-medium">Route</th>
-              <th className="px-4 py-2 font-medium">Issue</th>
-              <th className="px-4 py-2 font-medium text-right">Value</th>
-            </tr>
-          </thead>
-          <tbody className="px-4">
-            {issues.map((issue, idx) => (
-              <tr key={`${issue.code}-${issue.issue}-${idx}`} className="border-b border-border last:border-b-0">
-                <td className="px-4 py-2.5">
-                  <span className="font-mono text-sm">{issue.code}</span>
-                  <span className="text-xs text-muted-foreground ml-2">{issue.link_type}</span>
-                </td>
-                <td className="px-4 py-2.5 text-sm text-muted-foreground">{issue.contributor || '—'}</td>
-                <td className="px-4 py-2.5 text-sm text-muted-foreground">{issue.side_a_metro} — {issue.side_z_metro}</td>
-                <td className={`px-4 py-2.5 text-sm ${issue.issue === 'packet_loss' || issue.issue === 'down' ? 'text-red-600 dark:text-red-400' : 'text-amber-600 dark:text-amber-400'}`}>
-                  {issue.issue === 'packet_loss' ? 'Packet Loss' : issue.issue === 'high_latency' ? 'High Latency' : issue.issue}
-                </td>
-                <td className="px-4 py-2.5 text-sm tabular-nums text-right">
-                  {issue.issue === 'packet_loss'
-                    ? formatPercent(issue.value)
-                    : issue.issue === 'high_latency'
-                      ? `+${formatPercent(issue.value)} over SLA`
-                      : issue.value.toFixed(1)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="space-y-2">
+        {links.slice(0, 5).map((link) => {
+          const maxUtil = Math.max(link.utilization_in, link.utilization_out)
+          const peakBps = Math.max(link.in_bps, link.out_bps)
+          return (
+            <div key={link.code} className="flex items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="font-mono text-xs truncate" title={link.code}>{link.code}</div>
+                <div className="text-[10px] text-muted-foreground">{link.side_a_metro} — {link.side_z_metro}</div>
+              </div>
+              <div className="text-xs text-muted-foreground tabular-nums w-16 text-right">
+                {formatBandwidth(peakBps)}
+              </div>
+              <div className="w-20 flex items-center gap-2">
+                <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${maxUtil >= 90 ? 'bg-red-500' : maxUtil >= 70 ? 'bg-amber-500' : 'bg-green-500'}`}
+                    style={{ width: `${Math.min(maxUtil, 100)}%` }}
+                  />
+                </div>
+                <span className="text-xs tabular-nums w-8 text-right">{maxUtil.toFixed(0)}%</span>
+              </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
 }
 
-function UtilizationTable({ links }: { links: LinkMetric[] | null }) {
-  if (!links || links.length === 0) return null
+function TopDeviceUtilization({ devices }: { devices: StatusResponse['top_device_util'] }) {
+  if (!devices || devices.length === 0) {
+    return (
+      <div className="border border-border rounded-lg p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Cpu className="h-4 w-4 text-muted-foreground" />
+          <h3 className="font-medium">Top Device Utilization</h3>
+          <span className="text-xs text-muted-foreground ml-auto">Current</span>
+        </div>
+        <div className="text-sm text-muted-foreground">No device data available</div>
+      </div>
+    )
+  }
 
   return (
-    <div className="border border-border rounded-lg overflow-hidden">
-      <div className="px-4 py-3 bg-muted/50 border-b border-border">
-        <h3 className="font-medium">High Utilization Links</h3>
+    <div className="border border-border rounded-lg p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <Cpu className="h-4 w-4 text-muted-foreground" />
+        <h3 className="font-medium">Top Device Utilization</h3>
+        <span className="text-xs text-muted-foreground ml-auto">Current</span>
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead>
-            <tr className="text-left text-sm text-muted-foreground border-b border-border">
-              <th className="px-4 py-2 font-medium">Link</th>
-              <th className="px-4 py-2 font-medium">Route</th>
-              <th className="px-4 py-2 font-medium text-right">Capacity</th>
-              <th className="px-4 py-2 font-medium text-right">In</th>
-              <th className="px-4 py-2 font-medium text-right">Out</th>
-            </tr>
-          </thead>
-          <tbody>
-            {links.map((link, idx) => (
-              <tr key={`${link.code}-${idx}`} className="border-b border-border last:border-b-0">
-                <td className="px-4 py-2.5 font-mono text-sm">{link.code}</td>
-                <td className="px-4 py-2.5 text-sm text-muted-foreground">{link.side_a_metro} — {link.side_z_metro}</td>
-                <td className="px-4 py-2.5 text-sm tabular-nums text-right">{formatBandwidth(link.bandwidth_bps)}</td>
-                <td className={`px-4 py-2.5 text-sm tabular-nums text-right ${link.utilization_in >= 90 ? 'text-red-600 dark:text-red-400' : link.utilization_in >= 70 ? 'text-amber-600 dark:text-amber-400' : ''}`}>
-                  {formatPercent(link.utilization_in)}
-                </td>
-                <td className={`px-4 py-2.5 text-sm tabular-nums text-right ${link.utilization_out >= 90 ? 'text-red-600 dark:text-red-400' : link.utilization_out >= 70 ? 'text-amber-600 dark:text-amber-400' : ''}`}>
-                  {formatPercent(link.utilization_out)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="space-y-2">
+        {devices.slice(0, 5).map((device) => (
+          <div key={device.code} className="flex items-center gap-3">
+            <div className="flex-1 min-w-0">
+              <div className="font-mono text-xs truncate" title={device.code}>{device.code}</div>
+              <div className="text-[10px] text-muted-foreground">{device.current_users}/{device.max_users} users</div>
+            </div>
+            <div className="w-24 flex items-center gap-2">
+              <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full ${device.utilization >= 80 ? 'bg-amber-500' : 'bg-green-500'}`}
+                  style={{ width: `${Math.min(device.utilization, 100)}%` }}
+                />
+              </div>
+              <span className="text-xs tabular-nums w-10 text-right">{device.utilization.toFixed(0)}%</span>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   )
@@ -563,67 +669,68 @@ function InterfaceIssuesTable({ issues }: { issues: InterfaceIssue[] | null }) {
   )
 }
 
-function StatusBreakdown({ network }: { network: StatusResponse['network'] }) {
-  const deviceStatuses = Object.entries(network.devices_by_status).sort((a, b) => b[1] - a[1])
-  const linkStatuses = Object.entries(network.links_by_status).sort((a, b) => b[1] - a[1])
+function useBucketCount() {
+  const [buckets, setBuckets] = useState(72)
 
-  const statusColors: Record<string, string> = {
-    activated: 'bg-green-500',
-    pending: 'bg-amber-500',
-    suspended: 'bg-red-500',
-    'soft-drained': 'bg-amber-500',
-    drained: 'bg-gray-500',
-    deleted: 'bg-gray-400',
-    rejected: 'bg-red-400',
-  }
+  useEffect(() => {
+    const updateBuckets = () => {
+      const width = window.innerWidth
+      if (width < 640) {
+        setBuckets(24)
+      } else if (width < 1024) {
+        setBuckets(48)
+      } else {
+        setBuckets(72)
+      }
+    }
 
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div className="border border-border rounded-lg p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <Clock className="h-4 w-4 text-muted-foreground" />
-          <h3 className="font-medium">Devices by Status</h3>
-        </div>
-        <div className="space-y-2">
-          {deviceStatuses.map(([status, count]) => (
-            <div key={status} className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className={`h-2.5 w-2.5 rounded-full ${statusColors[status] || 'bg-gray-400'}`} />
-                <span className="text-sm capitalize">{status.replace('-', ' ')}</span>
-              </div>
-              <span className="text-sm font-medium tabular-nums">{count}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="border border-border rounded-lg p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <ArrowUpDown className="h-4 w-4 text-muted-foreground" />
-          <h3 className="font-medium">Links by Status</h3>
-        </div>
-        <div className="space-y-2">
-          {linkStatuses.map(([status, count]) => (
-            <div key={status} className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className={`h-2.5 w-2.5 rounded-full ${statusColors[status] || 'bg-gray-400'}`} />
-                <span className="text-sm capitalize">{status.replace('-', ' ')}</span>
-              </div>
-              <span className="text-sm font-medium tabular-nums">{count}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  )
+    updateBuckets()
+    window.addEventListener('resize', updateBuckets)
+    return () => window.removeEventListener('resize', updateBuckets)
+  }, [])
+
+  return buckets
 }
 
 export function StatusPage() {
+  const [timeRange, setTimeRange] = useState<TimeRange>('24h')
+  const [issueFilters, setIssueFilters] = useState<IssueFilter[]>(['packet_loss', 'high_latency', 'disabled'])
+  const buckets = useBucketCount()
+
   const { data: status, isLoading, error } = useQuery({
     queryKey: ['status'],
     queryFn: fetchStatus,
     refetchInterval: 30_000,
     staleTime: 15_000,
   })
+
+  const { data: linkHistory } = useQuery({
+    queryKey: ['link-history', timeRange, buckets],
+    queryFn: () => fetchLinkHistory(timeRange, buckets),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  })
+
+  const issueCounts = useMemo((): IssueCounts => {
+    if (!linkHistory?.links) {
+      return { packet_loss: 0, high_latency: 0, disabled: 0, total: 0 }
+    }
+
+    const counts = { packet_loss: 0, high_latency: 0, disabled: 0, total: 0 }
+    const seenLinks = new Set<string>()
+
+    for (const link of linkHistory.links) {
+      if (link.issue_reasons?.includes('packet_loss')) counts.packet_loss++
+      if (link.issue_reasons?.includes('high_latency')) counts.high_latency++
+      if (link.issue_reasons?.includes('disabled')) counts.disabled++
+      if (link.issue_reasons?.length > 0 && !seenLinks.has(link.code)) {
+        counts.total++
+        seenLinks.add(link.code)
+      }
+    }
+
+    return counts
+  }, [linkHistory])
 
   if (isLoading) {
     return (
@@ -668,21 +775,19 @@ export function StatusPage() {
         </div>
 
         {/* Health Cards Row */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <DataFreshnessCard system={status.system} timestamp={status.timestamp} />
-          <InfrastructureAlertsCard alerts={status.alerts} />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+          <IssueSummaryCard
+            alerts={status.alerts}
+            linkIssuesCount={issueCounts.total}
+            interfaceIssuesCount={status.interfaces.issues?.length || 0}
+          />
           <LinkHealthCard links={status.links} />
-          <ThroughputCard performance={status.performance} />
         </div>
 
-        {/* Performance Card */}
-        <div className="mb-8">
-          <PerformanceCard performance={status.performance} />
-        </div>
-
-        {/* Status Breakdown */}
-        <div className="mb-8">
-          <StatusBreakdown network={status.network} />
+        {/* Utilization Toplists */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+          <TopLinkUtilization links={status.links.top_util_links} />
+          <TopDeviceUtilization devices={status.top_device_util} />
         </div>
 
         {/* Non-Activated Links */}
@@ -690,23 +795,20 @@ export function StatusPage() {
           <NonActivatedLinksTable links={status.alerts?.links} />
         </div>
 
-        {/* Link Issues */}
-        <div className="mb-8">
-          <IssuesTable issues={status.links.issues} />
-        </div>
-
-        {/* High Utilization Links */}
-        <div className="mb-8">
-          <UtilizationTable links={status.links.high_util_links} />
-        </div>
-
-        {/* Non-Activated Devices */}
-        <div className="mb-8">
-          <NonActivatedDevicesTable devices={status.alerts?.devices} />
+        {/* Link Status Timeline */}
+        <div id="link-status-history" className="mb-8">
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+            <h2 className="text-lg font-semibold">Link Status History</h2>
+            <div className="flex items-center gap-4 flex-wrap">
+              <IssueFilterSelector value={issueFilters} onChange={setIssueFilters} counts={issueCounts} />
+              <TimeRangeSelector value={timeRange} onChange={setTimeRange} />
+            </div>
+          </div>
+          <LinkStatusTimelines timeRange={timeRange} issueFilters={issueFilters} />
         </div>
 
         {/* Interface Issues */}
-        <div className="mb-8">
+        <div id="interface-issues" className="mb-8">
           <InterfaceIssuesTable issues={status.interfaces.issues} />
         </div>
       </div>

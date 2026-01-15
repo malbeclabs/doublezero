@@ -3,8 +3,11 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
+	"sort"
+	"strconv"
 	"time"
 
 	"github.com/malbeclabs/doublezero/lake/api/config"
@@ -35,6 +38,9 @@ type StatusResponse struct {
 
 	// Performance metrics
 	Performance PerformanceMetrics `json:"performance"`
+
+	// Device utilization (top by tunnel usage)
+	TopDeviceUtil []DeviceUtilization `json:"top_device_util"`
 
 	Error string `json:"error,omitempty"`
 }
@@ -71,6 +77,7 @@ type LinkHealth struct {
 	Unhealthy      uint64       `json:"unhealthy"` // Significant loss or down
 	Issues         []LinkIssue  `json:"issues"`    // Top issues
 	HighUtilLinks  []LinkMetric `json:"high_util_links"` // Links with high utilization
+	TopUtilLinks   []LinkMetric `json:"top_util_links"`  // Top 10 links by max utilization
 }
 
 type LinkIssue struct {
@@ -95,6 +102,16 @@ type LinkMetric struct {
 	UtilizationOut float64 `json:"utilization_out"`
 	SideAMetro     string  `json:"side_a_metro"`
 	SideZMetro     string  `json:"side_z_metro"`
+}
+
+type DeviceUtilization struct {
+	Code         string  `json:"code"`
+	DeviceType   string  `json:"device_type"`
+	Contributor  string  `json:"contributor"`
+	Metro        string  `json:"metro"`
+	CurrentUsers int32   `json:"current_users"`
+	MaxUsers     int32   `json:"max_users"`
+	Utilization  float64 `json:"utilization"` // percentage
 }
 
 type PerformanceMetrics struct {
@@ -447,15 +464,14 @@ func GetStatus(w http.ResponseWriter, r *http.Request) {
 			) lat ON l.pk = lat.link_pk
 			LEFT JOIN (
 				SELECT link_pk,
-					CASE WHEN SUM(delta_duration) > 0 THEN SUM(in_octets_delta) * 8 / SUM(delta_duration) ELSE 0 END as in_bps,
-					CASE WHEN SUM(delta_duration) > 0 THEN SUM(out_octets_delta) * 8 / SUM(delta_duration) ELSE 0 END as out_bps
+					max(CASE WHEN delta_duration > 0 THEN in_octets_delta * 8 / delta_duration ELSE 0 END) as in_bps,
+					max(CASE WHEN delta_duration > 0 THEN out_octets_delta * 8 / delta_duration ELSE 0 END) as out_bps
 				FROM fact_dz_device_interface_counters
-				WHERE event_ts > now() - INTERVAL 5 MINUTE
+				WHERE event_ts > now() - INTERVAL 1 HOUR
 					AND link_pk != ''
 				GROUP BY link_pk
 			) traffic ON l.pk = traffic.link_pk
 			WHERE l.status = 'activated'
-			  AND l.link_type = 'WAN'
 		`
 		rows, err := config.DB.Query(ctx, query)
 		if err != nil {
@@ -466,6 +482,7 @@ func GetStatus(w http.ResponseWriter, r *http.Request) {
 		var healthy, degraded, unhealthy uint64
 		var issues []LinkIssue
 		var highUtil []LinkMetric
+		var allUtilLinks []LinkMetric
 
 		for rows.Next() {
 			var code, linkType, contributor, sideAMetro, sideZMetro string
@@ -520,25 +537,45 @@ func GetStatus(w http.ResponseWriter, r *http.Request) {
 				})
 			}
 
-			// Track high utilization links
+			// Track utilization links
 			if bandwidthBps > 0 {
 				utilIn := (inBps / float64(bandwidthBps)) * 100
 				utilOut := (outBps / float64(bandwidthBps)) * 100
+				metric := LinkMetric{
+					Code:           code,
+					LinkType:       linkType,
+					Contributor:    contributor,
+					BandwidthBps:   bandwidthBps,
+					InBps:          inBps,
+					OutBps:         outBps,
+					UtilizationIn:  utilIn,
+					UtilizationOut: utilOut,
+					SideAMetro:     sideAMetro,
+					SideZMetro:     sideZMetro,
+				}
+				// Track all for top utilization list
+				allUtilLinks = append(allUtilLinks, metric)
+				// Track high utilization (>70%) separately
 				if (utilIn >= UtilWarningPct || utilOut >= UtilWarningPct) && len(highUtil) < 10 {
-					highUtil = append(highUtil, LinkMetric{
-						Code:           code,
-						LinkType:       linkType,
-						Contributor:    contributor,
-						BandwidthBps:   bandwidthBps,
-						InBps:          inBps,
-						OutBps:         outBps,
-						UtilizationIn:  utilIn,
-						UtilizationOut: utilOut,
-						SideAMetro:     sideAMetro,
-						SideZMetro:     sideZMetro,
-					})
+					highUtil = append(highUtil, metric)
 				}
 			}
+		}
+
+		// Sort all links by max utilization (descending) and take top 10
+		sort.Slice(allUtilLinks, func(i, j int) bool {
+			maxI := allUtilLinks[i].UtilizationIn
+			if allUtilLinks[i].UtilizationOut > maxI {
+				maxI = allUtilLinks[i].UtilizationOut
+			}
+			maxJ := allUtilLinks[j].UtilizationIn
+			if allUtilLinks[j].UtilizationOut > maxJ {
+				maxJ = allUtilLinks[j].UtilizationOut
+			}
+			return maxI > maxJ
+		})
+		if len(allUtilLinks) > 10 {
+			allUtilLinks = allUtilLinks[:10]
 		}
 
 		resp.Links.Total = healthy + degraded + unhealthy
@@ -547,6 +584,7 @@ func GetStatus(w http.ResponseWriter, r *http.Request) {
 		resp.Links.Unhealthy = unhealthy
 		resp.Links.Issues = issues
 		resp.Links.HighUtilLinks = highUtil
+		resp.Links.TopUtilLinks = allUtilLinks
 
 		return rows.Err()
 	})
@@ -591,6 +629,45 @@ func GetStatus(w http.ResponseWriter, r *http.Request) {
 		`
 		row := config.DB.QueryRow(ctx, query)
 		return row.Scan(&resp.Performance.TotalInBps, &resp.Performance.TotalOutBps)
+	})
+
+	// Top device utilization by tunnel usage
+	g.Go(func() error {
+		query := `
+			SELECT
+				d.code,
+				d.device_type,
+				COALESCE(c.name, c.code, '') as contributor,
+				m.code as metro,
+				toInt32(count(u.pk)) as current_users,
+				d.max_users,
+				CASE WHEN d.max_users > 0 THEN count(u.pk) * 100.0 / d.max_users ELSE 0 END as utilization
+			FROM dz_devices_current d
+			LEFT JOIN dz_users_current u ON u.device_pk = d.pk
+			LEFT JOIN dz_contributors_current c ON d.contributor_pk = c.pk
+			LEFT JOIN dz_metros_current m ON d.metro_pk = m.pk
+			WHERE d.status = 'activated'
+			  AND d.max_users > 0
+			GROUP BY d.code, d.device_type, c.name, c.code, m.code, d.max_users
+			ORDER BY utilization DESC
+			LIMIT 10
+		`
+		rows, err := config.DB.Query(ctx, query)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+
+		var devices []DeviceUtilization
+		for rows.Next() {
+			var d DeviceUtilization
+			if err := rows.Scan(&d.Code, &d.DeviceType, &d.Contributor, &d.Metro, &d.CurrentUsers, &d.MaxUsers, &d.Utilization); err != nil {
+				return err
+			}
+			devices = append(devices, d)
+		}
+		resp.TopDeviceUtil = devices
+		return rows.Err()
 	})
 
 	// Interface issues (errors, discards, carrier transitions in last 24 hours)
@@ -691,26 +768,31 @@ func GetStatus(w http.ResponseWriter, r *http.Request) {
 		return rows.Err()
 	})
 
-	// Non-activated links
+	// Non-activated links (including delay-override drained)
 	g.Go(func() error {
+		// 1000ms delay override in nanoseconds indicates soft-drained
+		const delayOverrideSoftDrainedNs = 1_000_000_000
 		query := `
 			SELECT
 				l.code,
 				l.link_type,
 				ma.code as side_a_metro,
 				mz.code as side_z_metro,
-				l.status,
+				CASE
+					WHEN l.status = 'activated' AND l.isis_delay_override_ns = ? THEN 'soft-drained'
+					ELSE l.status
+				END as status,
 				formatDateTime(l.snapshot_ts, '%Y-%m-%dT%H:%i:%sZ', 'UTC') as since
 			FROM dz_links_current l
 			JOIN dz_devices_current da ON l.side_a_pk = da.pk
 			JOIN dz_devices_current dz ON l.side_z_pk = dz.pk
 			JOIN dz_metros_current ma ON da.metro_pk = ma.pk
 			JOIN dz_metros_current mz ON dz.metro_pk = mz.pk
-			WHERE l.status != 'activated'
+			WHERE l.status != 'activated' OR l.isis_delay_override_ns = ?
 			ORDER BY l.snapshot_ts DESC
 			LIMIT 50
 		`
-		rows, err := config.DB.Query(ctx, query)
+		rows, err := config.DB.Query(ctx, query, delayOverrideSoftDrainedNs, delayOverrideSoftDrainedNs)
 		if err != nil {
 			return err
 		}
@@ -744,6 +826,407 @@ func GetStatus(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		log.Printf("JSON encoding error: %v", err)
 	}
+}
+
+// Link history types for status timeline
+type LinkHourStatus struct {
+	Hour         string  `json:"hour"`
+	Status       string  `json:"status"` // "healthy", "degraded", "unhealthy", "no_data"
+	AvgLatencyUs float64 `json:"avg_latency_us"`
+	AvgLossPct   float64 `json:"avg_loss_pct"`
+	Samples      uint64  `json:"samples"`
+}
+
+type LinkHistory struct {
+	Code           string           `json:"code"`
+	LinkType       string           `json:"link_type"`
+	Contributor    string           `json:"contributor"`
+	SideAMetro     string           `json:"side_a_metro"`
+	SideZMetro     string           `json:"side_z_metro"`
+	SideADevice    string           `json:"side_a_device"`
+	SideZDevice    string           `json:"side_z_device"`
+	BandwidthBps   int64            `json:"bandwidth_bps"`
+	CommittedRttUs float64          `json:"committed_rtt_us"`
+	Hours          []LinkHourStatus `json:"hours"`
+	IssueReasons   []string         `json:"issue_reasons"` // "packet_loss", "high_latency", "disabled"
+}
+
+type LinkHistoryResponse struct {
+	Links          []LinkHistory `json:"links"`
+	TimeRange      string        `json:"time_range"`       // "24h", "3d", "7d"
+	BucketMinutes  int           `json:"bucket_minutes"`   // Size of each bucket in minutes
+	BucketCount    int           `json:"bucket_count"`     // Number of buckets
+}
+
+func GetLinkHistory(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	defer cancel()
+
+	start := time.Now()
+
+	// Parse time range parameter
+	timeRange := r.URL.Query().Get("range")
+	if timeRange == "" {
+		timeRange = "24h"
+	}
+
+	// Parse optional bucket count (for responsive display)
+	requestedBuckets := 72 // default
+	if b := r.URL.Query().Get("buckets"); b != "" {
+		if n, err := strconv.Atoi(b); err == nil && n >= 12 && n <= 168 {
+			requestedBuckets = n
+		}
+	}
+
+	// Configure bucket size based on time range and requested bucket count
+	var totalMinutes int
+	switch timeRange {
+	case "1h":
+		totalMinutes = 60
+	case "6h":
+		totalMinutes = 6 * 60
+	case "12h":
+		totalMinutes = 12 * 60
+	case "3d":
+		totalMinutes = 3 * 24 * 60
+	case "7d":
+		totalMinutes = 7 * 24 * 60
+	default: // "24h"
+		timeRange = "24h"
+		totalMinutes = 24 * 60
+	}
+
+	// Calculate bucket size to fit requested number of buckets
+	bucketMinutes := totalMinutes / requestedBuckets
+	if bucketMinutes < 5 {
+		bucketMinutes = 5 // minimum 5 minutes
+	}
+	bucketCount := totalMinutes / bucketMinutes
+	totalHours := totalMinutes / 60
+
+	// Build the bucket interval expression
+	var bucketInterval string
+	if bucketMinutes >= 60 && bucketMinutes%60 == 0 {
+		bucketInterval = fmt.Sprintf("toStartOfInterval(event_ts, INTERVAL %d HOUR)", bucketMinutes/60)
+	} else {
+		bucketInterval = fmt.Sprintf("toStartOfInterval(event_ts, INTERVAL %d MINUTE)", bucketMinutes)
+	}
+
+	// Get all WAN links with their metadata
+	linkQuery := `
+		SELECT
+			l.pk,
+			l.code,
+			l.link_type,
+			COALESCE(c.name, c.code, '') as contributor,
+			ma.code as side_a_metro,
+			mz.code as side_z_metro,
+			da.code as side_a_device,
+			dz.code as side_z_device,
+			l.bandwidth_bps,
+			l.committed_rtt_ns / 1000.0 as committed_rtt_us,
+			l.isis_delay_override_ns,
+			l.status
+		FROM dz_links_current l
+		JOIN dz_devices_current da ON l.side_a_pk = da.pk
+		JOIN dz_devices_current dz ON l.side_z_pk = dz.pk
+		JOIN dz_metros_current ma ON da.metro_pk = ma.pk
+		JOIN dz_metros_current mz ON dz.metro_pk = mz.pk
+		LEFT JOIN dz_contributors_current c ON l.contributor_pk = c.pk
+		WHERE l.status IN ('activated', 'soft-drained', 'hard-drained')
+	`
+
+	linkRows, err := config.DB.Query(ctx, linkQuery)
+	if err != nil {
+		log.Printf("Link history query error: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer linkRows.Close()
+
+	// Build map of link metadata
+	type linkMeta struct {
+		code              string
+		linkType          string
+		contributor       string
+		sideAMetro        string
+		sideZMetro        string
+		sideADevice       string
+		sideZDevice       string
+		bandwidthBps      int64
+		committedRttUs    float64
+		delayOverrideNs   int64
+		status            string
+	}
+	linkMap := make(map[string]linkMeta)
+
+	for linkRows.Next() {
+		var pk string
+		var meta linkMeta
+		if err := linkRows.Scan(&pk, &meta.code, &meta.linkType, &meta.contributor, &meta.sideAMetro, &meta.sideZMetro, &meta.sideADevice, &meta.sideZDevice, &meta.bandwidthBps, &meta.committedRttUs, &meta.delayOverrideNs, &meta.status); err != nil {
+			log.Printf("Link scan error: %v", err)
+			continue
+		}
+		linkMap[pk] = meta
+	}
+
+	// Get stats for the configured time range
+	historyQuery := `
+		SELECT
+			link_pk,
+			` + bucketInterval + ` as bucket,
+			avg(rtt_us) as avg_latency,
+			countIf(loss OR rtt_us = 0) * 100.0 / count(*) as loss_pct,
+			count(*) as samples
+		FROM fact_dz_device_link_latency
+		WHERE event_ts > now() - INTERVAL ? HOUR
+		GROUP BY link_pk, bucket
+		ORDER BY link_pk, bucket
+	`
+
+	historyRows, err := config.DB.Query(ctx, historyQuery, totalHours)
+	if err != nil {
+		log.Printf("Link history stats query error: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer historyRows.Close()
+
+	// Build bucket stats per link
+	type bucketStats struct {
+		bucket     time.Time
+		avgLatency float64
+		lossPct    float64
+		samples    uint64
+	}
+	linkBuckets := make(map[string][]bucketStats)
+
+	for historyRows.Next() {
+		var linkPK string
+		var stats bucketStats
+		if err := historyRows.Scan(&linkPK, &stats.bucket, &stats.avgLatency, &stats.lossPct, &stats.samples); err != nil {
+			log.Printf("History scan error: %v", err)
+			continue
+		}
+		linkBuckets[linkPK] = append(linkBuckets[linkPK], stats)
+	}
+
+	// Get historical link status per bucket from dim_dz_links_history
+	// This tells us if a link was drained at each point in time
+	// Build bucket interval for snapshot_ts (history table uses snapshot_ts, not event_ts)
+	var historyBucketInterval string
+	if bucketMinutes >= 60 && bucketMinutes%60 == 0 {
+		historyBucketInterval = fmt.Sprintf("toStartOfInterval(snapshot_ts, INTERVAL %d HOUR)", bucketMinutes/60)
+	} else {
+		historyBucketInterval = fmt.Sprintf("toStartOfInterval(snapshot_ts, INTERVAL %d MINUTE)", bucketMinutes)
+	}
+
+	statusHistoryQuery := `
+		SELECT
+			pk as link_pk,
+			` + historyBucketInterval + ` as bucket,
+			argMax(status, snapshot_ts) as status
+		FROM dim_dz_links_history
+		WHERE snapshot_ts > now() - INTERVAL ? HOUR
+		GROUP BY link_pk, bucket
+		ORDER BY link_pk, bucket
+	`
+
+	statusRows, err := config.DB.Query(ctx, statusHistoryQuery, totalHours)
+	if err != nil {
+		log.Printf("Link status history query error: %v", err)
+		// Non-fatal - continue without historical status
+	}
+
+	// Build map of link status per bucket
+	type linkBucketKey struct {
+		linkPK string
+		bucket string
+	}
+	linkStatusHistory := make(map[linkBucketKey]string)
+
+	if statusRows != nil {
+		defer statusRows.Close()
+		for statusRows.Next() {
+			var linkPK, status string
+			var bucket time.Time
+			if err := statusRows.Scan(&linkPK, &bucket, &status); err != nil {
+				log.Printf("Status history scan error: %v", err)
+				continue
+			}
+			key := linkBucketKey{linkPK: linkPK, bucket: bucket.UTC().Format(time.RFC3339)}
+			linkStatusHistory[key] = status
+		}
+	}
+
+	duration := time.Since(start)
+	metrics.RecordClickHouseQuery(duration, err)
+
+	// Build response with all buckets for each link
+	now := time.Now().UTC()
+	bucketDuration := time.Duration(bucketMinutes) * time.Minute
+	var links []LinkHistory
+
+	// 1000ms delay override in nanoseconds indicates soft-drained
+	const delayOverrideSoftDrainedNs = 1_000_000_000
+
+	for pk, meta := range linkMap {
+		// Check if link is currently drained (by status or delay override)
+		isCurrentlyDrained := meta.status == "soft-drained" || meta.status == "hard-drained" || meta.delayOverrideNs == delayOverrideSoftDrainedNs
+
+		// Track issue reasons for this link
+		issueReasons := make(map[string]bool)
+
+		// Check if this link has any issues in the time range
+		buckets := linkBuckets[pk]
+		hasIssues := false
+
+		if isCurrentlyDrained {
+			hasIssues = true
+			issueReasons["disabled"] = true
+		}
+
+		// Check latency/loss issues
+		for _, b := range buckets {
+			// Check for packet loss issues
+			if b.lossPct >= LossWarningPct {
+				hasIssues = true
+				issueReasons["packet_loss"] = true
+			}
+			// Check for high latency issues
+			if meta.committedRttUs > 0 && b.avgLatency > 0 {
+				latencyOveragePct := ((b.avgLatency - meta.committedRttUs) / meta.committedRttUs) * 100
+				if latencyOveragePct >= LatencyWarningPct {
+					hasIssues = true
+					issueReasons["high_latency"] = true
+				}
+			}
+		}
+
+		// Also check if link was drained at any point in the history
+		for key := range linkStatusHistory {
+			if key.linkPK == pk {
+				if linkStatusHistory[key] == "soft-drained" || linkStatusHistory[key] == "hard-drained" {
+					hasIssues = true
+					issueReasons["disabled"] = true
+					break
+				}
+			}
+		}
+
+		// Only include links that have had issues, are drained, or have no data
+		if !hasIssues && len(buckets) > 0 {
+			continue
+		}
+
+		// Convert issue reasons to slice
+		var issueReasonsList []string
+		for reason := range issueReasons {
+			issueReasonsList = append(issueReasonsList, reason)
+		}
+		sort.Strings(issueReasonsList)
+
+		// Build bucket status array
+		bucketMap := make(map[string]bucketStats)
+		for _, b := range buckets {
+			key := b.bucket.UTC().Format(time.RFC3339)
+			bucketMap[key] = b
+		}
+
+		var hourStatuses []LinkHourStatus
+		for i := bucketCount - 1; i >= 0; i-- {
+			bucketStart := now.Truncate(bucketDuration).Add(-time.Duration(i) * bucketDuration)
+			key := bucketStart.UTC().Format(time.RFC3339)
+
+			// Check historical status for this bucket
+			histKey := linkBucketKey{linkPK: pk, bucket: key}
+			historicalStatus, hasHistory := linkStatusHistory[histKey]
+			wasDrained := hasHistory && (historicalStatus == "soft-drained" || historicalStatus == "hard-drained")
+
+			// If link was drained at this time, show as disabled
+			if wasDrained {
+				hourStatuses = append(hourStatuses, LinkHourStatus{
+					Hour:   key,
+					Status: "disabled",
+				})
+				continue
+			}
+
+			// If no historical data for this bucket but link is currently drained,
+			// fall back to current status for recent buckets
+			if !hasHistory && isCurrentlyDrained {
+				hourStatuses = append(hourStatuses, LinkHourStatus{
+					Hour:   key,
+					Status: "disabled",
+				})
+				continue
+			}
+
+			if stats, ok := bucketMap[key]; ok {
+				status := classifyLinkStatus(stats.avgLatency, stats.lossPct, meta.committedRttUs)
+				hourStatuses = append(hourStatuses, LinkHourStatus{
+					Hour:         key,
+					Status:       status,
+					AvgLatencyUs: stats.avgLatency,
+					AvgLossPct:   stats.lossPct,
+					Samples:      stats.samples,
+				})
+			} else {
+				hourStatuses = append(hourStatuses, LinkHourStatus{
+					Hour:   key,
+					Status: "no_data",
+				})
+			}
+		}
+
+		links = append(links, LinkHistory{
+			Code:           meta.code,
+			LinkType:       meta.linkType,
+			Contributor:    meta.contributor,
+			SideAMetro:     meta.sideAMetro,
+			SideZMetro:     meta.sideZMetro,
+			SideADevice:    meta.sideADevice,
+			SideZDevice:    meta.sideZDevice,
+			BandwidthBps:   meta.bandwidthBps,
+			CommittedRttUs: meta.committedRttUs,
+			Hours:          hourStatuses,
+			IssueReasons:   issueReasonsList,
+		})
+	}
+
+	// Sort links by code for consistent ordering
+	sort.Slice(links, func(i, j int) bool {
+		return links[i].Code < links[j].Code
+	})
+
+	resp := LinkHistoryResponse{
+		Links:         links,
+		TimeRange:     timeRange,
+		BucketMinutes: bucketMinutes,
+		BucketCount:   bucketCount,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		log.Printf("JSON encoding error: %v", err)
+	}
+}
+
+func classifyLinkStatus(avgLatency, lossPct, committedRttUs float64) string {
+	// Calculate latency overage percentage vs committed RTT
+	var latencyOveragePct float64
+	if committedRttUs > 0 && avgLatency > 0 {
+		latencyOveragePct = ((avgLatency - committedRttUs) / committedRttUs) * 100
+	}
+
+	// Classify based on thresholds
+	if lossPct >= LossCriticalPct || latencyOveragePct >= LatencyCriticalPct {
+		return "unhealthy"
+	}
+	if lossPct >= LossWarningPct || latencyOveragePct >= LatencyWarningPct {
+		return "degraded"
+	}
+	return "healthy"
 }
 
 func determineOverallStatus(resp *StatusResponse) string {

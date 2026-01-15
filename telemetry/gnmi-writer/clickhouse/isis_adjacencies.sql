@@ -3,7 +3,7 @@
 
 CREATE TABLE IF NOT EXISTS isis_adjacencies (
     timestamp DateTime64(9) CODEC(DoubleDelta, ZSTD(1)),
-    device_code LowCardinality(String),
+    device_pubkey LowCardinality(String),
     interface_id String,
     level UInt8,
     system_id String,
@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS isis_adjacencies (
 )
 ENGINE = MergeTree()
 PARTITION BY toYYYYMM(timestamp)
-ORDER BY (device_code, interface_id, level, system_id, timestamp)
+ORDER BY (device_pubkey, interface_id, level, system_id, timestamp)
 TTL toDateTime(timestamp) + INTERVAL 30 DAY
 SETTINGS index_granularity = 8192;
 
@@ -26,8 +26,8 @@ SETTINGS index_granularity = 8192;
 CREATE VIEW IF NOT EXISTS isis_adjacencies_latest AS
 SELECT *
 FROM isis_adjacencies
-WHERE (device_code, timestamp) IN (
-    SELECT device_code, max(timestamp)
+WHERE (device_pubkey, timestamp) IN (
+    SELECT device_pubkey, max(timestamp)
     FROM isis_adjacencies
-    GROUP BY device_code
+    GROUP BY device_pubkey
 );

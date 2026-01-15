@@ -32,7 +32,7 @@ Add a struct in `/workspaces/doublezero/telemetry/gnmi-writer/internal/gnmi/reco
 // LldpNeighborRecord represents an LLDP neighbor for storage in ClickHouse.
 type LldpNeighborRecord struct {
     Timestamp     time.Time `json:"timestamp" ch:"timestamp"`
-    DeviceCode    string    `json:"device_code" ch:"device_code"`
+    DevicePubkey  string    `json:"device_pubkey" ch:"device_pubkey"`
     InterfaceName string    `json:"interface_name" ch:"interface_name"`
     ChassisID     string    `json:"chassis_id" ch:"chassis_id"`
     PortID        string    `json:"port_id" ch:"port_id"`
@@ -46,7 +46,7 @@ func (r LldpNeighborRecord) TableName() string {
 ```
 
 **Requirements:**
-- Embed `Timestamp time.Time` and `DeviceCode string` (populated from notification metadata)
+- Embed `Timestamp time.Time` and `DevicePubkey string` (populated from notification metadata)
 - Use `ch` struct tags matching ClickHouse column names
 - Implement `TableName() string` to return the destination table
 - Use `omitempty` for optional fields
@@ -71,7 +71,7 @@ func extractLldpNeighbors(device *oc.Device, meta Metadata) []Record {
         for neighborID, neighbor := range iface.Neighbors.Neighbor {
             record := LldpNeighborRecord{
                 Timestamp:     meta.Timestamp,
-                DeviceCode:    meta.DeviceCode,
+                DevicePubkey:  meta.DevicePubkey,
                 InterfaceName: ifName,
                 ChassisID:     neighborID,
             }
@@ -98,7 +98,7 @@ func extractLldpNeighbors(device *oc.Device, meta Metadata) []Record {
 - Iterate through the `oc.Device` structure to find your data
 - Access OpenConfig state data through explicit `.State` containers (due to uncompressed path generation)
 - Handle nil pointers at both the container level (e.g., `neighbor.State`) and field level (e.g., `neighbor.State.PortId`)
-- Populate `Timestamp` and `DeviceCode` from `meta` parameter
+- Populate `Timestamp` and `DevicePubkey` from `meta` parameter
 - Return nil if no meaningful data is found
 
 **State Container Access:**
@@ -147,7 +147,7 @@ Add a schema file in `/workspaces/doublezero/telemetry/gnmi-writer/clickhouse/ll
 
 CREATE TABLE IF NOT EXISTS lldp_neighbors (
     timestamp DateTime64(9) CODEC(DoubleDelta, ZSTD(1)),
-    device_code LowCardinality(String),
+    device_pubkey LowCardinality(String),
     interface_name String,
     chassis_id String,
     port_id String,
@@ -155,7 +155,7 @@ CREATE TABLE IF NOT EXISTS lldp_neighbors (
 )
 ENGINE = MergeTree()
 PARTITION BY toYYYYMM(timestamp)
-ORDER BY (device_code, interface_name, chassis_id, timestamp)
+ORDER BY (device_pubkey, interface_name, chassis_id, timestamp)
 TTL toDateTime(timestamp) + INTERVAL 30 DAY
 SETTINGS index_granularity = 8192;
 
@@ -163,10 +163,10 @@ SETTINGS index_granularity = 8192;
 CREATE VIEW IF NOT EXISTS lldp_neighbors_latest AS
 SELECT *
 FROM lldp_neighbors
-WHERE (device_code, timestamp) IN (
-    SELECT device_code, max(timestamp)
+WHERE (device_pubkey, timestamp) IN (
+    SELECT device_pubkey, max(timestamp)
     FROM lldp_neighbors
-    GROUP BY device_code
+    GROUP BY device_pubkey
 );
 ```
 
@@ -186,7 +186,7 @@ Create a prototext file in `/workspaces/doublezero/telemetry/gnmi-writer/interna
 update: {
   timestamp: 1767996400924668639
   prefix: {
-    target: "router1"
+    target: "RTR011111111111111111111111111111111111111111"
   }
   update: {
     path: {
@@ -235,7 +235,7 @@ var integrationTests = []integrationTestCase{
 
 func verifyLldpNeighbors(t *testing.T, h *testHarness) {
     type lldpRow struct {
-        DeviceCode    string
+        DevicePubkey  string
         InterfaceName string
         ChassisID     string
         PortID        string
@@ -243,11 +243,11 @@ func verifyLldpNeighbors(t *testing.T, h *testHarness) {
     }
 
     rows := queryRows(h, fmt.Sprintf(`
-        SELECT device_code, interface_name, chassis_id, port_id, system_name
+        SELECT device_pubkey, interface_name, chassis_id, port_id, system_name
         FROM %s.lldp_neighbors
     `, chDbname), func(r *sql.Rows) (lldpRow, error) {
         var row lldpRow
-        err := r.Scan(&row.DeviceCode, &row.InterfaceName, &row.ChassisID,
+        err := r.Scan(&row.DevicePubkey, &row.InterfaceName, &row.ChassisID,
             &row.PortID, &row.SystemName)
         return row, err
     })
@@ -255,7 +255,7 @@ func verifyLldpNeighbors(t *testing.T, h *testHarness) {
     t.Logf("found %d LLDP neighbor records", len(rows))
     require.GreaterOrEqual(t, len(rows), 1)
 
-    require.Equal(t, "router1", rows[0].DeviceCode)
+    require.Equal(t, "RTR011111111111111111111111111111111111111111", rows[0].DevicePubkey)
     require.Equal(t, "Ethernet1", rows[0].InterfaceName)
     require.Equal(t, "00:11:22:33:44:55", rows[0].ChassisID)
     require.Equal(t, "Ethernet1", rows[0].PortID)

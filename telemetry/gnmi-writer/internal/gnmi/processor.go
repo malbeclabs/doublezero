@@ -189,8 +189,8 @@ func (p *Processor) processNotifications(ctx context.Context, notifications []*g
 		}
 
 		meta := Metadata{
-			DeviceCode: n.GetPrefix().GetTarget(),
-			Timestamp:  time.Unix(0, n.GetTimestamp()),
+			DevicePubkey: n.GetPrefix().GetTarget(),
+			Timestamp:    time.Unix(0, n.GetTimestamp()),
 		}
 
 		for _, update := range n.GetUpdate() {

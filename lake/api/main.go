@@ -158,6 +158,10 @@ func main() {
 	r.Get("/api/timeline", handlers.GetTimeline)
 	r.Get("/api/timeline/bounds", handlers.GetTimelineBounds)
 
+	// Search routes
+	r.Get("/api/search", handlers.Search)
+	r.Get("/api/search/autocomplete", handlers.SearchAutocomplete)
+
 	// DZ entity routes
 	r.Get("/api/dz/devices", handlers.GetDevices)
 	r.Get("/api/dz/devices/{pk}", handlers.GetDevice)

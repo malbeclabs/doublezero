@@ -25,6 +25,7 @@ import {
   Clock,
 } from 'lucide-react'
 import { cn, handleRowClick } from '@/lib/utils'
+import { SearchOmnibox } from '@/components/search-omnibox'
 import { useTheme } from '@/hooks/use-theme'
 import { useVersionCheck } from '@/hooks/use-version-check'
 import {
@@ -350,6 +351,11 @@ export function Sidebar({
         >
           <PanelLeftClose className="h-4 w-4 translate-y-0.5" />
         </button>
+      </div>
+
+      {/* Search */}
+      <div className="px-3 pt-4">
+        <SearchOmnibox placeholder="Search... (⌘K)" />
       </div>
 
       {/* Tools section */}

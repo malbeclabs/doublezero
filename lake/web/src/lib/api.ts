@@ -1621,3 +1621,53 @@ export async function fetchTimeline(params: TimelineParams = {}): Promise<Timeli
   }
   return res.json()
 }
+
+// Search types and functions
+export type SearchEntityType = 'device' | 'link' | 'metro' | 'contributor' | 'user' | 'validator' | 'gossip'
+
+export interface SearchSuggestion {
+  type: SearchEntityType
+  id: string
+  label: string
+  sublabel: string
+  url: string
+}
+
+export interface AutocompleteResponse {
+  suggestions: SearchSuggestion[]
+}
+
+export interface SearchResultGroup {
+  items: SearchSuggestion[]
+  total: number
+}
+
+export interface SearchResponse {
+  query: string
+  results: Partial<Record<SearchEntityType, SearchResultGroup>>
+}
+
+export async function fetchAutocomplete(query: string, limit = 10): Promise<AutocompleteResponse> {
+  const params = new URLSearchParams({ q: query, limit: limit.toString() })
+  const res = await fetchWithRetry(`/api/search/autocomplete?${params}`)
+  if (!res.ok) {
+    throw new Error('Failed to fetch autocomplete')
+  }
+  return res.json()
+}
+
+export async function fetchSearch(
+  query: string,
+  types?: SearchEntityType[],
+  limit = 20
+): Promise<SearchResponse> {
+  const params = new URLSearchParams({ q: query, limit: limit.toString() })
+  if (types && types.length > 0) {
+    params.set('types', types.join(','))
+  }
+  const res = await fetchWithRetry(`/api/search?${params}`)
+  if (!res.ok) {
+    throw new Error('Failed to fetch search')
+  }
+  return res.json()
+}

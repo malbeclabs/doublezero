@@ -1201,6 +1201,19 @@ function AppContent() {
     setExternalLocks,
   }
 
+  // Global keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Cmd+K (Mac) or Ctrl+K (Windows/Linux) to focus search
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('focus-search'))
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
   // Sidebar handlers
   const handleNewQuerySession = () => {
     const newSession = createSession()

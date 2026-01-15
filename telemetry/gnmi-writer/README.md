@@ -32,7 +32,7 @@ Add a struct in `/workspaces/doublezero/telemetry/gnmi-writer/internal/gnmi/reco
 // LldpNeighborRecord represents an LLDP neighbor for storage in ClickHouse.
 type LldpNeighborRecord struct {
     Timestamp     time.Time `json:"timestamp" ch:"timestamp"`
-    DevicePubkey    string    `json:"device_pubkey" ch:"device_pubkey"`
+    DevicePubkey  string    `json:"device_pubkey" ch:"device_pubkey"`
     InterfaceName string    `json:"interface_name" ch:"interface_name"`
     ChassisID     string    `json:"chassis_id" ch:"chassis_id"`
     PortID        string    `json:"port_id" ch:"port_id"`
@@ -71,7 +71,7 @@ func extractLldpNeighbors(device *oc.Device, meta Metadata) []Record {
         for neighborID, neighbor := range iface.Neighbors.Neighbor {
             record := LldpNeighborRecord{
                 Timestamp:     meta.Timestamp,
-                DevicePubkey:    meta.DevicePubkey,
+                DevicePubkey:  meta.DevicePubkey,
                 InterfaceName: ifName,
                 ChassisID:     neighborID,
             }
@@ -235,7 +235,7 @@ var integrationTests = []integrationTestCase{
 
 func verifyLldpNeighbors(t *testing.T, h *testHarness) {
     type lldpRow struct {
-        DevicePubkey    string
+        DevicePubkey  string
         InterfaceName string
         ChassisID     string
         PortID        string

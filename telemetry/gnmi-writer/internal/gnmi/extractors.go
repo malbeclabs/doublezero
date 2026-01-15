@@ -41,11 +41,11 @@ func extractIsisAdjacencies(device *oc.Device, meta Metadata) []Record {
 					}
 					for sysID, adj := range level.Adjacencies.Adjacency {
 						record := IsisAdjacencyRecord{
-							Timestamp:   meta.Timestamp,
-							DeviceCode:  meta.DeviceCode,
-							InterfaceID: ifID,
-							Level:       uint8(levelNum),
-							SystemID:    sysID,
+							Timestamp:    meta.Timestamp,
+							DevicePubkey: meta.DevicePubkey,
+							InterfaceID:  ifID,
+							Level:        uint8(levelNum),
+							SystemID:     sysID,
 						}
 
 						// All adjacency fields are now in State
@@ -93,8 +93,8 @@ func extractSystemState(device *oc.Device, meta Metadata) []Record {
 	}
 
 	record := SystemStateRecord{
-		Timestamp:  meta.Timestamp,
-		DeviceCode: meta.DeviceCode,
+		Timestamp:    meta.Timestamp,
+		DevicePubkey: meta.DevicePubkey,
 	}
 
 	// Hostname is now in State container
@@ -174,7 +174,7 @@ func extractBgpNeighbors(device *oc.Device, meta Metadata) []Record {
 			for addr, neighbor := range proto.Bgp.Neighbors.Neighbor {
 				record := BgpNeighborRecord{
 					Timestamp:       meta.Timestamp,
-					DeviceCode:      meta.DeviceCode,
+					DevicePubkey:    meta.DevicePubkey,
 					NetworkInstance: niName,
 					NeighborAddress: addr,
 				}
@@ -239,7 +239,7 @@ func extractInterfaceIfindex(device *oc.Device, meta Metadata) []Record {
 			}
 			record := InterfaceIfindexRecord{
 				Timestamp:     meta.Timestamp,
-				DeviceCode:    meta.DeviceCode,
+				DevicePubkey:  meta.DevicePubkey,
 				InterfaceName: ifName,
 				SubifIndex:    subifIdx,
 				Ifindex:       *subif.State.Ifindex,

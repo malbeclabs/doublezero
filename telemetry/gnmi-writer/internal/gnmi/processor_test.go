@@ -62,8 +62,8 @@ func TestProcessor_IsisAdjacency(t *testing.T) {
 	}
 
 	// Verify basic notification fields
-	if got := notification.GetPrefix().GetTarget(); got != "chi-dn-dzd1" {
-		t.Errorf("expected target chi-dn-dzd1, got %s", got)
+	if got := notification.GetPrefix().GetTarget(); got != "CHiDN1111111111111111111111111111111111111111" {
+		t.Errorf("expected target CHiDN1111111111111111111111111111111111111111, got %s", got)
 	}
 	if got := notification.GetTimestamp(); got != 1767996400924668639 {
 		t.Errorf("expected timestamp 1767996400924668639, got %d", got)
@@ -102,8 +102,8 @@ func TestProcessor_IsisAdjacency(t *testing.T) {
 		t.Fatalf("expected IsisAdjacencyRecord, got %T", records[0])
 	}
 
-	if record1.DeviceCode != "chi-dn-dzd1" {
-		t.Errorf("expected DeviceCode chi-dn-dzd1, got %s", record1.DeviceCode)
+	if record1.DevicePubkey != "CHiDN1111111111111111111111111111111111111111" {
+		t.Errorf("expected DevicePubkey CHiDN1111111111111111111111111111111111111111, got %s", record1.DevicePubkey)
 	}
 	if record1.InterfaceID != "Switch1/11/2" {
 		t.Errorf("expected InterfaceID Switch1/11/2, got %s", record1.InterfaceID)
@@ -185,8 +185,8 @@ func TestProcessor_SystemHostname(t *testing.T) {
 	}
 
 	// Verify basic fields
-	if got := notification.GetPrefix().GetTarget(); got != "dzd01" {
-		t.Errorf("expected target dzd01, got %s", got)
+	if got := notification.GetPrefix().GetTarget(); got != "DZd011111111111111111111111111111111111111111" {
+		t.Errorf("expected target DZd011111111111111111111111111111111111111111, got %s", got)
 	}
 
 	// Create processor with System extractor only
@@ -217,8 +217,8 @@ func TestProcessor_SystemHostname(t *testing.T) {
 	}
 
 	// Verify system hostname
-	if record.DeviceCode != "dzd01" {
-		t.Errorf("expected DeviceCode dzd01, got %s", record.DeviceCode)
+	if record.DevicePubkey != "DZd011111111111111111111111111111111111111111" {
+		t.Errorf("expected DevicePubkey DZd011111111111111111111111111111111111111111, got %s", record.DevicePubkey)
 	}
 	if record.Hostname != "e76554a34f51" {
 		t.Errorf("expected Hostname e76554a34f51, got %s", record.Hostname)
@@ -468,8 +468,8 @@ func TestExtractIsisAdjacencies_Isolation(t *testing.T) {
 	}
 
 	meta := Metadata{
-		DeviceCode: "test-device",
-		Timestamp:  time.Unix(0, notification.GetTimestamp()),
+		DevicePubkey: "test-device",
+		Timestamp:    time.Unix(0, notification.GetTimestamp()),
 	}
 
 	records := extractIsisAdjacencies(device, meta)
@@ -479,8 +479,8 @@ func TestExtractIsisAdjacencies_Isolation(t *testing.T) {
 	}
 
 	record := records[0].(IsisAdjacencyRecord)
-	if record.DeviceCode != "test-device" {
-		t.Errorf("expected DeviceCode test-device, got %s", record.DeviceCode)
+	if record.DevicePubkey != "test-device" {
+		t.Errorf("expected DevicePubkey test-device, got %s", record.DevicePubkey)
 	}
 	if record.InterfaceID != "Switch1/11/2" {
 		t.Errorf("expected InterfaceID Switch1/11/2, got %s", record.InterfaceID)
@@ -506,8 +506,8 @@ func TestExtractSystemState_Isolation(t *testing.T) {
 	}
 
 	meta := Metadata{
-		DeviceCode: "test-device",
-		Timestamp:  time.Unix(0, notification.GetTimestamp()),
+		DevicePubkey: "test-device",
+		Timestamp:    time.Unix(0, notification.GetTimestamp()),
 	}
 
 	records := extractSystemState(device, meta)
@@ -517,8 +517,8 @@ func TestExtractSystemState_Isolation(t *testing.T) {
 	}
 
 	record := records[0].(SystemStateRecord)
-	if record.DeviceCode != "test-device" {
-		t.Errorf("expected DeviceCode test-device, got %s", record.DeviceCode)
+	if record.DevicePubkey != "test-device" {
+		t.Errorf("expected DevicePubkey test-device, got %s", record.DevicePubkey)
 	}
 	if record.Hostname != "e76554a34f51" {
 		t.Errorf("expected Hostname e76554a34f51, got %s", record.Hostname)

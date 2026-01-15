@@ -5,7 +5,7 @@ import "time"
 // IsisAdjacencyRecord represents an ISIS adjacency for storage in ClickHouse.
 type IsisAdjacencyRecord struct {
 	Timestamp           time.Time `json:"timestamp" ch:"timestamp"`
-	DeviceCode          string    `json:"device_code" ch:"device_code"`
+	DevicePubkey        string    `json:"device_pubkey" ch:"device_pubkey"`
 	InterfaceID         string    `json:"interface_id" ch:"interface_id"`
 	Level               uint8     `json:"level" ch:"level"`
 	SystemID            string    `json:"system_id" ch:"system_id"`
@@ -26,15 +26,15 @@ func (r IsisAdjacencyRecord) TableName() string {
 
 // SystemStateRecord represents system state for storage in ClickHouse.
 type SystemStateRecord struct {
-	Timestamp  time.Time `json:"timestamp" ch:"timestamp"`
-	DeviceCode string    `json:"device_code" ch:"device_code"`
-	Hostname   string    `json:"hostname,omitempty" ch:"hostname"`
-	MemTotal   uint64    `json:"mem_total,omitempty" ch:"mem_total"`
-	MemUsed    uint64    `json:"mem_used,omitempty" ch:"mem_used"`
-	MemFree    uint64    `json:"mem_free,omitempty" ch:"mem_free"`
-	CpuUser    float64   `json:"cpu_user,omitempty" ch:"cpu_user"`
-	CpuSystem  float64   `json:"cpu_system,omitempty" ch:"cpu_system"`
-	CpuIdle    float64   `json:"cpu_idle,omitempty" ch:"cpu_idle"`
+	Timestamp    time.Time `json:"timestamp" ch:"timestamp"`
+	DevicePubkey string    `json:"device_pubkey" ch:"device_pubkey"`
+	Hostname     string    `json:"hostname,omitempty" ch:"hostname"`
+	MemTotal     uint64    `json:"mem_total,omitempty" ch:"mem_total"`
+	MemUsed      uint64    `json:"mem_used,omitempty" ch:"mem_used"`
+	MemFree      uint64    `json:"mem_free,omitempty" ch:"mem_free"`
+	CpuUser      float64   `json:"cpu_user,omitempty" ch:"cpu_user"`
+	CpuSystem    float64   `json:"cpu_system,omitempty" ch:"cpu_system"`
+	CpuIdle      float64   `json:"cpu_idle,omitempty" ch:"cpu_idle"`
 }
 
 // TableName returns the ClickHouse table name for system state.
@@ -45,7 +45,7 @@ func (r SystemStateRecord) TableName() string {
 // BgpNeighborRecord represents a BGP neighbor for storage in ClickHouse.
 type BgpNeighborRecord struct {
 	Timestamp              time.Time `json:"timestamp" ch:"timestamp"`
-	DeviceCode             string    `json:"device_code" ch:"device_code"`
+	DevicePubkey           string    `json:"device_pubkey" ch:"device_pubkey"`
 	NetworkInstance        string    `json:"network_instance" ch:"network_instance"`
 	NeighborAddress        string    `json:"neighbor_address" ch:"neighbor_address"`
 	Description            string    `json:"description" ch:"description"`
@@ -67,7 +67,7 @@ func (r BgpNeighborRecord) TableName() string {
 // InterfaceIfindexRecord represents an interface ifindex mapping for storage in ClickHouse.
 type InterfaceIfindexRecord struct {
 	Timestamp     time.Time `json:"timestamp" ch:"timestamp"`
-	DeviceCode    string    `json:"device_code" ch:"device_code"`
+	DevicePubkey  string    `json:"device_pubkey" ch:"device_pubkey"`
 	InterfaceName string    `json:"interface_name" ch:"interface_name"`
 	SubifIndex    uint32    `json:"subif_index" ch:"subif_index"`
 	Ifindex       uint32    `json:"ifindex" ch:"ifindex"`

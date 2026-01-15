@@ -305,7 +305,7 @@ func TestIntegration(t *testing.T) {
 
 func verifyIsisAdjacencies(t *testing.T, h *testHarness) {
 	type isisRow struct {
-		DeviceCode     string
+		DevicePubkey   string
 		InterfaceID    string
 		Level          uint8
 		SystemID       string
@@ -314,11 +314,11 @@ func verifyIsisAdjacencies(t *testing.T, h *testHarness) {
 	}
 
 	rows := queryRows(h, fmt.Sprintf(`
-		SELECT device_code, interface_id, level, system_id, adjacency_state, neighbor_ipv4
+		SELECT device_pubkey, interface_id, level, system_id, adjacency_state, neighbor_ipv4
 		FROM %s.isis_adjacencies
 	`, chDbname), func(r *sql.Rows) (isisRow, error) {
 		var row isisRow
-		err := r.Scan(&row.DeviceCode, &row.InterfaceID, &row.Level,
+		err := r.Scan(&row.DevicePubkey, &row.InterfaceID, &row.Level,
 			&row.SystemID, &row.AdjacencyState, &row.NeighborIPv4)
 		return row, err
 	})
@@ -327,7 +327,7 @@ func verifyIsisAdjacencies(t *testing.T, h *testHarness) {
 	require.GreaterOrEqual(t, len(rows), 2)
 
 	for _, row := range rows {
-		require.Equal(t, "chi-dn-dzd1", row.DeviceCode, "unexpected device_code")
+		require.Equal(t, "CHiDN1111111111111111111111111111111111111111", row.DevicePubkey, "unexpected device_pubkey")
 		require.Equal(t, uint8(2), row.Level, "unexpected level")
 		require.Equal(t, "UP", row.AdjacencyState, "unexpected adjacency_state")
 		require.Contains(t, []string{"Switch1/11/2", "Switch1/11/4"}, row.InterfaceID, "unexpected interface_id")
@@ -338,28 +338,28 @@ func verifyIsisAdjacencies(t *testing.T, h *testHarness) {
 
 func verifySystemState(t *testing.T, h *testHarness) {
 	type systemRow struct {
-		DeviceCode string
-		Hostname   string
+		DevicePubkey string
+		Hostname     string
 	}
 
 	rows := queryRows(h, fmt.Sprintf(`
-		SELECT device_code, hostname FROM %s.system_state
+		SELECT device_pubkey, hostname FROM %s.system_state
 	`, chDbname), func(r *sql.Rows) (systemRow, error) {
 		var row systemRow
-		err := r.Scan(&row.DeviceCode, &row.Hostname)
+		err := r.Scan(&row.DevicePubkey, &row.Hostname)
 		return row, err
 	})
 
 	t.Logf("found %d system state records", len(rows))
 	require.GreaterOrEqual(t, len(rows), 1)
 
-	require.Equal(t, "dzd01", rows[0].DeviceCode, "unexpected device_code")
+	require.Equal(t, "DZd011111111111111111111111111111111111111111", rows[0].DevicePubkey, "unexpected device_pubkey")
 	require.Equal(t, "e76554a34f51", rows[0].Hostname, "unexpected hostname")
 }
 
 func verifyBgpNeighbors(t *testing.T, h *testHarness) {
 	type bgpRow struct {
-		DeviceCode             string
+		DevicePubkey           string
 		NetworkInstance        string
 		NeighborAddress        string
 		Description            string
@@ -374,14 +374,14 @@ func verifyBgpNeighbors(t *testing.T, h *testHarness) {
 	}
 
 	rows := queryRows(h, fmt.Sprintf(`
-		SELECT device_code, network_instance, neighbor_address, description,
+		SELECT device_pubkey, network_instance, neighbor_address, description,
 		       peer_as, local_as, peer_type, session_state,
 		       established_transitions, last_established,
 		       messages_received_update, messages_sent_update
 		FROM %s.bgp_neighbors
 	`, chDbname), func(r *sql.Rows) (bgpRow, error) {
 		var row bgpRow
-		err := r.Scan(&row.DeviceCode, &row.NetworkInstance, &row.NeighborAddress,
+		err := r.Scan(&row.DevicePubkey, &row.NetworkInstance, &row.NeighborAddress,
 			&row.Description, &row.PeerAs, &row.LocalAs, &row.PeerType,
 			&row.SessionState, &row.EstablishedTransitions, &row.LastEstablished,
 			&row.MessagesReceivedUpdate, &row.MessagesSentUpdate)
@@ -394,7 +394,7 @@ func verifyBgpNeighbors(t *testing.T, h *testHarness) {
 	// Build a map for easy lookup
 	neighborMap := make(map[string]bgpRow)
 	for _, row := range rows {
-		require.Equal(t, "chi-dn-dzd1", row.DeviceCode, "unexpected device_code")
+		require.Equal(t, "CHiDN1111111111111111111111111111111111111111", row.DevicePubkey, "unexpected device_pubkey")
 		neighborMap[row.NeighborAddress] = row
 	}
 
@@ -424,18 +424,18 @@ func verifyBgpNeighbors(t *testing.T, h *testHarness) {
 
 func verifyInterfaceIfindex(t *testing.T, h *testHarness) {
 	type ifindexRow struct {
-		DeviceCode    string
+		DevicePubkey  string
 		InterfaceName string
 		SubifIndex    uint32
 		Ifindex       uint32
 	}
 
 	rows := queryRows(h, fmt.Sprintf(`
-		SELECT device_code, interface_name, subif_index, ifindex
+		SELECT device_pubkey, interface_name, subif_index, ifindex
 		FROM %s.interface_ifindex
 	`, chDbname), func(r *sql.Rows) (ifindexRow, error) {
 		var row ifindexRow
-		err := r.Scan(&row.DeviceCode, &row.InterfaceName, &row.SubifIndex, &row.Ifindex)
+		err := r.Scan(&row.DevicePubkey, &row.InterfaceName, &row.SubifIndex, &row.Ifindex)
 		return row, err
 	})
 
@@ -443,7 +443,7 @@ func verifyInterfaceIfindex(t *testing.T, h *testHarness) {
 	require.GreaterOrEqual(t, len(rows), 2)
 
 	for _, row := range rows {
-		require.Equal(t, "dzd01", row.DeviceCode, "unexpected device_code")
+		require.Equal(t, "DZd011111111111111111111111111111111111111111", row.DevicePubkey, "unexpected device_pubkey")
 		require.Equal(t, uint32(0), row.SubifIndex, "unexpected subif_index")
 		require.Contains(t, []string{"Ethernet1", "Tunnel1"}, row.InterfaceName, "unexpected interface_name")
 

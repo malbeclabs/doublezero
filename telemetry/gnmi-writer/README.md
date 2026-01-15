@@ -104,7 +104,7 @@ func extractLldpNeighbors(device *oc.Device, meta Metadata) []Record {
 **State Container Access:**
 OpenConfig uses uncompressed paths, meaning all operational state fields are accessed through explicit `.State` containers. For example:
 - BGP neighbor peer AS: `neighbor.State.PeerAs` (not `neighbor.PeerAs`)
-- Interface ifindex: `subif.State.Ifindex` (not `subif.Ifindex`)
+- Interface ifindex: `iface.State.Ifindex` (not `iface.Ifindex`)
 - System hostname: `device.System.State.Hostname` (not `device.System.Hostname`)
 
 Always check if the `.State` container exists before accessing its fields to avoid nil pointer panics.

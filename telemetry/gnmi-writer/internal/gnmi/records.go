@@ -69,7 +69,6 @@ type InterfaceIfindexRecord struct {
 	Timestamp     time.Time `json:"timestamp" ch:"timestamp"`
 	DevicePubkey  string    `json:"device_pubkey" ch:"device_pubkey"`
 	InterfaceName string    `json:"interface_name" ch:"interface_name"`
-	SubifIndex    uint32    `json:"subif_index" ch:"subif_index"`
 	Ifindex       uint32    `json:"ifindex" ch:"ifindex"`
 }
 

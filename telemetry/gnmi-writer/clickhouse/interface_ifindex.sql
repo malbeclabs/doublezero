@@ -5,12 +5,11 @@ CREATE TABLE IF NOT EXISTS interface_ifindex (
     timestamp DateTime64(9) CODEC(DoubleDelta, ZSTD(1)),
     device_pubkey LowCardinality(String),
     interface_name String,
-    subif_index UInt32,
     ifindex UInt32
 )
 ENGINE = MergeTree()
 PARTITION BY toYYYYMM(timestamp)
-ORDER BY (device_pubkey, interface_name, subif_index, timestamp)
+ORDER BY (device_pubkey, interface_name, timestamp)
 TTL toDateTime(timestamp) + INTERVAL 30 DAY
 SETTINGS index_granularity = 8192;
 

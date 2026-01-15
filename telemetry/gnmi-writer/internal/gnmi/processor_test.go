@@ -750,6 +750,7 @@ func TestUnmarshalNotifications_UncompressedPaths(t *testing.T) {
 
 // TestUnmarshal_InterfacesIfindex tests unmarshalling scalar values (uint_val) at leaf paths.
 // This is different from JSON blobs - the path goes all the way to the leaf and the value is a scalar.
+// Tests the /interfaces/interface/state/ifindex path.
 func TestUnmarshal_InterfacesIfindex(t *testing.T) {
 	resp := loadGoldenPrototext(t, "interfaces_ifindex.prototext")
 	resp = serializeAndDeserialize(t, resp)
@@ -761,7 +762,7 @@ func TestUnmarshal_InterfacesIfindex(t *testing.T) {
 	}
 
 	// Track which interfaces and ifindexes we've seen
-	ifindexMap := make(map[string]map[uint32]uint32) // interface -> subif_index -> ifindex
+	ifindexMap := make(map[string]uint32) // interface -> ifindex
 
 	// Process each update
 	for i, update := range notification.GetUpdate() {
@@ -776,35 +777,25 @@ func TestUnmarshal_InterfacesIfindex(t *testing.T) {
 		}
 
 		for name, iface := range device.Interfaces.Interface {
-			// Check subinterface exists
-			if iface.Subinterfaces == nil || len(iface.Subinterfaces.Subinterface) == 0 {
-				t.Errorf("update %d: expected subinterface for %s", i, name)
-				continue
-			}
-
-			// Check all subinterfaces
-			for subifIdx, subif := range iface.Subinterfaces.Subinterface {
-				if subif.State != nil && subif.State.Ifindex != nil {
-					if ifindexMap[name] == nil {
-						ifindexMap[name] = make(map[uint32]uint32)
-					}
-					ifindexMap[name][subifIdx] = *subif.State.Ifindex
-				}
+			// Check interface-level ifindex
+			if iface.State != nil && iface.State.Ifindex != nil {
+				ifindexMap[name] = *iface.State.Ifindex
 			}
 		}
 	}
 
 	// Verify we found expected interfaces and ifindexes
-	if _, ok := ifindexMap["Ethernet1"]; !ok {
+	if idx, ok := ifindexMap["Ethernet1"]; !ok {
 		t.Error("expected Ethernet1 to exist")
-	} else if idx, ok := ifindexMap["Ethernet1"][0]; !ok || idx != 1 {
-		t.Errorf("expected Ethernet1 subinterface 0 ifindex=1, got %d", idx)
+	} else if idx != 1 {
+		t.Errorf("expected Ethernet1 ifindex=1, got %d", idx)
 	}
 
-	if _, ok := ifindexMap["Tunnel500"]; !ok {
+	// Tunnel interfaces report ifindex=0 on some devices
+	if idx, ok := ifindexMap["Tunnel500"]; !ok {
 		t.Error("expected Tunnel500 to exist")
-	} else if idx, ok := ifindexMap["Tunnel500"][0]; !ok || idx != 15000500 {
-		t.Errorf("expected Tunnel500 subinterface 0 ifindex=15000500, got %d", idx)
+	} else if idx != 0 {
+		t.Errorf("expected Tunnel500 ifindex=0, got %d", idx)
 	}
 
 	t.Logf("successfully unmarshalled %d interfaces", len(ifindexMap))

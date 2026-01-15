@@ -42,6 +42,31 @@ WHERE d.pk = ''  -- Empty string means no match (NOT "IS NULL"!)
 - Intervals: `INTERVAL 24 HOUR`, `INTERVAL 7 DAY`
 - Count non-empty: `countIf(column != '')` or `sum(column != '')`
 
+### Nested Aggregates (CRITICAL)
+**ClickHouse does NOT allow aggregate functions inside other aggregate functions.**
+
+**WRONG patterns:**
+- `MAX(GREATEST(MAX(a), MAX(b)))` - nested aggregates
+- `SUM(AVG(column))` - nested aggregates
+- `MAX(SUM(column) / COUNT(*))` - nested aggregates
+
+**CORRECT patterns:**
+- Use CTEs or subqueries to compute inner aggregations first, then aggregate the results
+- `GREATEST(MAX(a), MAX(b))` is valid - GREATEST is not an aggregate, MAX is at same level
+- When you need "max of maxes", compute the inner max in a CTE, then MAX in the outer query
+
+```sql
+-- WRONG: nested aggregates
+SELECT MAX(GREATEST(MAX(in_octets), MAX(out_octets))) FROM ...
+
+-- CORRECT: compute per-group max in CTE, then aggregate
+WITH per_window AS (
+    SELECT GREATEST(MAX(in_octets), MAX(out_octets)) AS peak
+    FROM ... GROUP BY window
+)
+SELECT MAX(peak) FROM per_window
+```
+
 ## Business Rules & Constraints
 
 These rules cannot be inferred from schema alone:

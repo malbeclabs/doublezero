@@ -9,6 +9,51 @@ import { LinkStatusTimelines } from '@/components/link-status-timelines'
 type TimeRange = '1h' | '6h' | '12h' | '24h' | '3d' | '7d'
 type IssueFilter = 'packet_loss' | 'high_latency' | 'disabled'
 
+function Skeleton({ className }: { className?: string }) {
+  return <div className={`animate-pulse bg-muted rounded ${className || ''}`} />
+}
+
+function StatusPageSkeleton() {
+  return (
+    <div className="flex-1 overflow-auto">
+      <div className="max-w-6xl mx-auto px-4 sm:px-8 py-8">
+        {/* Status indicator skeleton */}
+        <div className="mb-8">
+          <Skeleton className="h-[72px] rounded-lg" />
+        </div>
+
+        {/* Stats grid skeleton */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-x-8 gap-y-6 mb-8">
+          {Array.from({ length: 10 }).map((_, i) => (
+            <Skeleton key={i} className="h-12 w-24" />
+          ))}
+        </div>
+
+        {/* Health cards skeleton */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+          <Skeleton className="h-[180px] rounded-lg" />
+          <Skeleton className="h-[180px] rounded-lg" />
+        </div>
+
+        {/* Utilization cards skeleton */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+          <Skeleton className="h-[200px] rounded-lg" />
+          <Skeleton className="h-[200px] rounded-lg" />
+        </div>
+
+        {/* Timeline section skeleton */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <Skeleton className="h-6 w-40" />
+            <Skeleton className="h-8 w-64" />
+          </div>
+          <Skeleton className="h-[300px] rounded-lg" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function TimeRangeSelector({ value, onChange }: { value: TimeRange; onChange: (v: TimeRange) => void }) {
   const options: { value: TimeRange; label: string }[] = [
     { value: '1h', label: '1h' },
@@ -872,11 +917,7 @@ export function StatusPage() {
   }, [status, packetLossDisabledLinks])
 
   if (isLoading) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="animate-pulse text-muted-foreground">Loading status...</div>
-      </div>
-    )
+    return <StatusPageSkeleton />
   }
 
   if (error || !status) {

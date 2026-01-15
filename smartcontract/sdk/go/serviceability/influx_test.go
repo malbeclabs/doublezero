@@ -158,7 +158,7 @@ func TestToLineProtocol(t *testing.T) {
 				`,pubkey=` + pubKey1B58 +
 				`,side_a_iface_name=xe-0/0/0,side_a_pubkey=` + pubKey1B58 +
 				`,side_z_iface_name=xe-0/0/1,side_z_pubkey=` + pubKey1B58 +
-				`,status=activated,tunnel_id=42,tunnel_net=172.16.0.0/24 bandwidth=1000,delay_ns=1e+06,delay_override_ns=2e+06,jitter_ns=500000,mtu=1500`,
+				`,status=activated,tunnel_id=42,tunnel_net=172.16.0.0/24 bandwidth=1000,delay_ns=1e+06,delay_override_ns=2e+06,jitter_ns=500000,link_health="pending",mtu=1500`,
 			expectErr: false,
 		},
 		{
@@ -189,7 +189,7 @@ func TestToLineProtocol(t *testing.T) {
 				`,pubkey=` + pubKey1B58 +
 				`,side_a_pubkey=` + pubKey1B58 +
 				`,side_z_pubkey=` + pubKey1B58 +
-				`,status=pending,tunnel_id=7 bandwidth=0,delay_ns=0,delay_override_ns=0,jitter_ns=0,mtu=0`,
+				`,status=pending,tunnel_id=7 bandwidth=0,delay_ns=0,delay_override_ns=0,jitter_ns=0,link_health="pending",mtu=0`,
 			expectErr: false,
 		},
 		{

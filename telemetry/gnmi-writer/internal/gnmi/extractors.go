@@ -221,6 +221,7 @@ func extractBgpNeighbors(device *oc.Device, meta Metadata) []Record {
 }
 
 // extractInterfaceIfindex extracts interface ifindex mappings from an oc.Device.
+// Extracts from /interfaces/interface/state/ifindex.
 func extractInterfaceIfindex(device *oc.Device, meta Metadata) []Record {
 	var records []Record
 
@@ -229,23 +230,16 @@ func extractInterfaceIfindex(device *oc.Device, meta Metadata) []Record {
 	}
 
 	for ifName, iface := range device.Interfaces.Interface {
-		if iface.Subinterfaces == nil {
+		if iface.State == nil || iface.State.Ifindex == nil {
 			continue
 		}
-		for subifIdx, subif := range iface.Subinterfaces.Subinterface {
-			// Ifindex is now in State
-			if subif.State == nil || subif.State.Ifindex == nil {
-				continue
-			}
-			record := InterfaceIfindexRecord{
-				Timestamp:     meta.Timestamp,
-				DevicePubkey:  meta.DevicePubkey,
-				InterfaceName: ifName,
-				SubifIndex:    subifIdx,
-				Ifindex:       *subif.State.Ifindex,
-			}
-			records = append(records, record)
+		record := InterfaceIfindexRecord{
+			Timestamp:     meta.Timestamp,
+			DevicePubkey:  meta.DevicePubkey,
+			InterfaceName: ifName,
+			Ifindex:       *iface.State.Ifindex,
 		}
+		records = append(records, record)
 	}
 
 	return records

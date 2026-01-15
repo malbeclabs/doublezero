@@ -283,7 +283,7 @@ var integrationTests = []integrationTestCase{
 	{
 		name:          "InterfaceIfindex",
 		prototext:     "interfaces_ifindex.prototext",
-		gnmiPath:      "/interfaces/interface/subinterfaces/subinterface/state/ifindex",
+		gnmiPath:      "/interfaces/interface/state/ifindex",
 		consumerGroup: "test-ifindex",
 		table:         "interface_ifindex",
 		minRows:       2,
@@ -431,39 +431,32 @@ func verifyInterfaceIfindex(t *testing.T, h *testHarness) {
 	type ifindexRow struct {
 		DevicePubkey  string
 		InterfaceName string
-		SubifIndex    uint32
 		Ifindex       uint32
 	}
 
 	rows := queryRows(h, fmt.Sprintf(`
-		SELECT device_pubkey, interface_name, subif_index, ifindex
+		SELECT device_pubkey, interface_name, ifindex
 		FROM %s.interface_ifindex
 	`, chDbname), func(r *sql.Rows) (ifindexRow, error) {
 		var row ifindexRow
-		err := r.Scan(&row.DevicePubkey, &row.InterfaceName, &row.SubifIndex, &row.Ifindex)
+		err := r.Scan(&row.DevicePubkey, &row.InterfaceName, &row.Ifindex)
 		return row, err
 	})
 
 	t.Logf("found %d interface ifindex records", len(rows))
 	require.GreaterOrEqual(t, len(rows), 2)
 
-	// Build map for easy lookup - use composite key for interfaces with multiple subinterfaces
-	type ifKey struct {
-		name  string
-		subif uint32
-	}
-	ifindexMap := make(map[ifKey]ifindexRow)
+	ifindexMap := make(map[string]ifindexRow)
 	for _, row := range rows {
 		require.Equal(t, "DZd011111111111111111111111111111111111111111", row.DevicePubkey, "unexpected device_pubkey")
-		ifindexMap[ifKey{row.InterfaceName, row.SubifIndex}] = row
+		ifindexMap[row.InterfaceName] = row
 	}
 
 	// Verify specific interfaces from testdata
-	eth1Key := ifKey{"Ethernet1", 0}
-	require.Contains(t, ifindexMap, eth1Key, "expected Ethernet1 subif 0 to exist")
-	require.Equal(t, uint32(1), ifindexMap[eth1Key].Ifindex, "unexpected ifindex for Ethernet1")
+	require.Contains(t, ifindexMap, "Ethernet1", "expected Ethernet1 to exist")
+	require.Equal(t, uint32(1), ifindexMap["Ethernet1"].Ifindex, "unexpected ifindex for Ethernet1")
 
-	tunnel500Key := ifKey{"Tunnel500", 0}
-	require.Contains(t, ifindexMap, tunnel500Key, "expected Tunnel500 subif 0 to exist")
-	require.Equal(t, uint32(15000500), ifindexMap[tunnel500Key].Ifindex, "unexpected ifindex for Tunnel500")
+	// Tunnel interfaces report ifindex=0 on some devices
+	require.Contains(t, ifindexMap, "Tunnel500", "expected Tunnel500 to exist")
+	require.Equal(t, uint32(0), ifindexMap["Tunnel500"].Ifindex, "unexpected ifindex for Tunnel500")
 }

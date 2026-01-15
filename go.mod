@@ -40,6 +40,7 @@ require (
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/openconfig/gnmi v0.14.1
 	github.com/openconfig/goyang v1.6.0
+	github.com/openconfig/grpctunnel v0.1.0
 	github.com/openconfig/ygot v0.34.0
 	github.com/oschwald/geoip2-golang v1.13.0
 	github.com/osrg/gobgp v2.0.0+incompatible

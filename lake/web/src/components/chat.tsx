@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import type { ChatMessage, ChatPipelineData } from '@/lib/api'
-import { ArrowUp, Square, Loader2, Copy, Check, ChevronDown, ChevronRight, ExternalLink, MessageCircle, Circle, XCircle, CheckCircle2 } from 'lucide-react'
+import { ArrowUp, Square, Loader2, Copy, Check, ChevronDown, ChevronRight, ExternalLink, MessageCircle, Circle, XCircle, CheckCircle2, RefreshCw, RotateCcw } from 'lucide-react'
 import { useTheme } from '@/hooks/use-theme'
 
 // Light theme for syntax highlighting
@@ -447,10 +447,11 @@ interface ChatProps {
   externalLock?: ExternalLockInfo | null
   onSendMessage: (message: string) => void
   onAbort: () => void
+  onRetry?: () => void
   onOpenInQueryEditor?: (sql: string) => void
 }
 
-export function Chat({ messages, isPending, progress, externalLock, onSendMessage, onAbort, onOpenInQueryEditor }: ChatProps) {
+export function Chat({ messages, isPending, progress, externalLock, onSendMessage, onAbort, onRetry, onOpenInQueryEditor }: ChatProps) {
   const [input, setInput] = useState('')
   const [highlightedQueries, setHighlightedQueries] = useState<Map<number, number | null>>(new Map()) // messageIndex -> queryIndex
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -601,6 +602,26 @@ export function Chat({ messages, isPending, progress, externalLock, onSendMessag
                         <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
                       </div>
                     </div>
+                  ) : msg.status === 'error' ? (
+                    // Error message with retry button
+                    <div className="px-1">
+                      <div className="flex items-start gap-3 px-4 py-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+                        <XCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-red-600 dark:text-red-400">{msg.content}</p>
+                          {onRetry && (
+                            <button
+                              onClick={onRetry}
+                              disabled={isPending}
+                              className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 dark:text-red-400 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              Retry
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   ) : (
                     <div className="px-1">
                       <div className="prose max-w-none font-sans">
@@ -699,6 +720,13 @@ export function Chat({ messages, isPending, progress, externalLock, onSendMessag
             })}
             {isPending && progress && (
               <div className="px-1">
+                {/* Reconnecting indicator */}
+                {progress.step === 'retrying' && (
+                  <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+                    <RefreshCw className="w-4 h-4 text-amber-500 animate-spin" />
+                    <span className="text-sm text-amber-600 dark:text-amber-400">{progress.status}</span>
+                  </div>
+                )}
                 {/* Step timeline */}
                 <div className="space-y-2">
                   {/* Step 1: Classifying */}

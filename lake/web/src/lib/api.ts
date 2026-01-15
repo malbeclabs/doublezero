@@ -315,6 +315,14 @@ export interface ChatStreamCallbacks {
   onQueryProgress: (data: { completed: number; total: number; question: string; success: boolean; rows: number }) => void
   onDone: (response: ChatResponse) => void
   onError: (error: string) => void
+  onRetrying?: (attempt: number, maxAttempts: number) => void
+}
+
+// Stream retry configuration (separate from connection retry)
+const STREAM_RETRY_CONFIG = {
+  maxRetries: 2,  // Retry up to 2 times on mid-stream failure
+  baseDelayMs: 1000,
+  maxDelayMs: 3000,
 }
 
 export async function sendChatMessageStream(
@@ -323,145 +331,183 @@ export async function sendChatMessageStream(
   callbacks: ChatStreamCallbacks,
   signal?: AbortSignal
 ): Promise<void> {
-  // Retry initial connection with backoff
-  let res: Response
-
-  for (let attempt = 0; attempt <= RETRY_CONFIG.maxRetries; attempt++) {
-    // Check if aborted before attempting
+  // Outer retry loop for mid-stream failures (e.g., deploy, pod restart)
+  for (let streamAttempt = 0; streamAttempt <= STREAM_RETRY_CONFIG.maxRetries; streamAttempt++) {
     if (signal?.aborted) return
 
-    try {
-      res = await fetch('/api/chat/stream', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, history }),
-        signal,
-      })
-
-      if (res.ok) break
-      if (res.status >= 400 && res.status < 500) break // Don't retry client errors
-
-      if (!isRetryableError(null, res.status) || attempt === RETRY_CONFIG.maxRetries) break
-    } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') return
-      if (!isRetryableError(err) || attempt === RETRY_CONFIG.maxRetries) {
-        callbacks.onError('Connection failed. Please check your network and try again.')
-        return
-      }
+    // Notify UI of retry attempt (skip first attempt)
+    if (streamAttempt > 0) {
+      console.log(`[SSE] Retrying stream (attempt ${streamAttempt + 1}/${STREAM_RETRY_CONFIG.maxRetries + 1})`)
+      callbacks.onRetrying?.(streamAttempt, STREAM_RETRY_CONFIG.maxRetries)
+      const delay = Math.min(
+        STREAM_RETRY_CONFIG.baseDelayMs * Math.pow(2, streamAttempt - 1) + Math.random() * 200,
+        STREAM_RETRY_CONFIG.maxDelayMs
+      )
+      await sleep(delay)
     }
 
-    const delay = Math.min(
-      RETRY_CONFIG.baseDelayMs * Math.pow(2, attempt) + Math.random() * 100,
-      RETRY_CONFIG.maxDelayMs
-    )
-    await sleep(delay)
-  }
+    // Inner retry loop for initial connection
+    let res: Response | undefined
+    for (let attempt = 0; attempt <= RETRY_CONFIG.maxRetries; attempt++) {
+      if (signal?.aborted) return
 
-  if (!res!) {
-    callbacks.onError('Connection failed. Please check your network and try again.')
-    return
-  }
+      try {
+        res = await fetch('/api/chat/stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message, history }),
+          signal,
+        })
 
-  if (!res.ok) {
-    const text = await res.text()
-    callbacks.onError(text || 'Failed to send message')
-    return
-  }
+        if (res.ok) break
+        if (res.status >= 400 && res.status < 500) break // Don't retry client errors
 
-  const reader = res.body?.getReader()
-  if (!reader) {
-    callbacks.onError('Streaming not supported')
-    return
-  }
-
-  const decoder = new TextDecoder()
-  let buffer = ''
-  let currentEvent = ''  // Persist across chunks
-
-  const processLines = (lines: string[]) => {
-    for (const line of lines) {
-      if (line.startsWith('event: ')) {
-        currentEvent = line.slice(7).trim()
-        if (currentEvent === 'done') {
-          console.log('[SSE] Got done event line, waiting for data line')
-        }
-      } else if (line.startsWith('data:') && currentEvent) {
-        if (currentEvent === 'done') {
-          console.log('[SSE] Got data line for done event, length:', line.length, 'preview:', line.slice(0, 100))
-        }
-        // Handle both 'data: {...}' and 'data:{...}' formats
-        const data = line.startsWith('data: ') ? line.slice(6) : line.slice(5)
-        // Skip empty data lines
-        if (!data.trim()) {
-          continue
-        }
-        try {
-          const parsed = JSON.parse(data)
-          switch (currentEvent) {
-            case 'status':
-              callbacks.onStatus(parsed)
-              break
-            case 'decomposed':
-              callbacks.onDecomposed(parsed)
-              break
-            case 'query_progress':
-              callbacks.onQueryProgress(parsed)
-              break
-            case 'heartbeat':
-              // Ignore heartbeat events - they're just to keep the connection alive
-              break
-            case 'done':
-              console.log('[SSE] done event received', {
-                answerLength: parsed.answer?.length,
-                hasError: !!parsed.error,
-                keys: Object.keys(parsed),
-                rawParsed: JSON.stringify(parsed).slice(0, 500)
-              })
-              callbacks.onDone(parsed)
-              console.log('[SSE] onDone callback completed')
-              break
-            case 'error':
-              callbacks.onError(parsed.error || 'Unknown error')
-              break
+        if (!isRetryableError(null, res.status) || attempt === RETRY_CONFIG.maxRetries) break
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return
+        if (!isRetryableError(err) || attempt === RETRY_CONFIG.maxRetries) {
+          // On last stream attempt, show error
+          if (streamAttempt === STREAM_RETRY_CONFIG.maxRetries) {
+            callbacks.onError('Connection failed. Please check your network and try again.')
+            return
           }
-        } catch (e) {
-          console.error('[SSE] Parse error for event', currentEvent, e, 'data:', data.slice(0, 200))
+          // Otherwise, break to outer loop for stream retry
+          break
         }
-        currentEvent = ''
-      }
-    }
-  }
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) {
-        // Process any remaining buffer when stream ends
-        if (buffer.trim()) {
-          console.log('[SSE] Stream ended, processing remaining buffer:', buffer.slice(0, 200))
-          const lines = buffer.split('\n')
-          processLines(lines)
-        } else {
-          console.log('[SSE] Stream ended, buffer empty')
-        }
-        break
       }
 
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
-      processLines(lines)
+      const delay = Math.min(
+        RETRY_CONFIG.baseDelayMs * Math.pow(2, attempt) + Math.random() * 100,
+        RETRY_CONFIG.maxDelayMs
+      )
+      await sleep(delay)
     }
-    console.log('[SSE] Stream processing complete, currentEvent:', currentEvent)
-  } catch (err) {
-    if (err instanceof Error && err.name === 'AbortError') {
+
+    if (!res) {
+      // Connection completely failed, try stream retry
+      if (streamAttempt < STREAM_RETRY_CONFIG.maxRetries) continue
+      callbacks.onError('Connection failed. Please check your network and try again.')
       return
     }
-    // Connection was interrupted mid-stream
-    if (err instanceof TypeError || (err instanceof Error && err.message.includes('network'))) {
-      callbacks.onError('Connection lost. Please try again.')
-    } else {
-      callbacks.onError(err instanceof Error ? err.message : 'Stream error')
+
+    if (!res.ok) {
+      const text = await res.text()
+      callbacks.onError(text || 'Failed to send message')
+      return
+    }
+
+    const reader = res.body?.getReader()
+    if (!reader) {
+      callbacks.onError('Streaming not supported')
+      return
+    }
+
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let currentEvent = ''
+    let streamCompleted = false  // Track if stream finished successfully
+
+    const processLines = (lines: string[]) => {
+      for (const line of lines) {
+        if (line.startsWith('event: ')) {
+          currentEvent = line.slice(7).trim()
+          if (currentEvent === 'done') {
+            console.log('[SSE] Got done event line, waiting for data line')
+          }
+        } else if (line.startsWith('data:') && currentEvent) {
+          if (currentEvent === 'done') {
+            console.log('[SSE] Got data line for done event, length:', line.length, 'preview:', line.slice(0, 100))
+          }
+          const data = line.startsWith('data: ') ? line.slice(6) : line.slice(5)
+          if (!data.trim()) {
+            continue
+          }
+          try {
+            const parsed = JSON.parse(data)
+            switch (currentEvent) {
+              case 'status':
+                callbacks.onStatus(parsed)
+                break
+              case 'decomposed':
+                callbacks.onDecomposed(parsed)
+                break
+              case 'query_progress':
+                callbacks.onQueryProgress(parsed)
+                break
+              case 'heartbeat':
+                break
+              case 'done':
+                console.log('[SSE] done event received', {
+                  answerLength: parsed.answer?.length,
+                  hasError: !!parsed.error,
+                  keys: Object.keys(parsed),
+                  rawParsed: JSON.stringify(parsed).slice(0, 500)
+                })
+                streamCompleted = true
+                callbacks.onDone(parsed)
+                console.log('[SSE] onDone callback completed')
+                break
+              case 'error':
+                streamCompleted = true  // Server-side error is a completed stream
+                callbacks.onError(parsed.error || 'Unknown error')
+                break
+            }
+          } catch (e) {
+            console.error('[SSE] Parse error for event', currentEvent, e, 'data:', data.slice(0, 200))
+          }
+          currentEvent = ''
+        }
+      }
+    }
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) {
+          if (buffer.trim()) {
+            console.log('[SSE] Stream ended, processing remaining buffer:', buffer.slice(0, 200))
+            const lines = buffer.split('\n')
+            processLines(lines)
+          } else {
+            console.log('[SSE] Stream ended, buffer empty')
+          }
+          break
+        }
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+        processLines(lines)
+      }
+      console.log('[SSE] Stream processing complete, currentEvent:', currentEvent, 'streamCompleted:', streamCompleted)
+
+      // If stream ended without done/error event, it was interrupted
+      if (!streamCompleted) {
+        console.log('[SSE] Stream ended unexpectedly without completion event')
+        if (streamAttempt < STREAM_RETRY_CONFIG.maxRetries) continue
+        callbacks.onError('Connection lost. Please try again.')
+      }
+      return  // Stream completed normally or with server error
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        return
+      }
+      // Connection was interrupted mid-stream
+      const isNetworkError = err instanceof TypeError || (err instanceof Error && err.message.includes('network'))
+      console.log('[SSE] Stream error:', err, 'isNetworkError:', isNetworkError, 'attempt:', streamAttempt)
+
+      if (isNetworkError && streamAttempt < STREAM_RETRY_CONFIG.maxRetries) {
+        // Retry the entire stream
+        continue
+      }
+
+      // Final attempt failed
+      if (isNetworkError) {
+        callbacks.onError('Connection lost. Please try again.')
+      } else {
+        callbacks.onError(err instanceof Error ? err.message : 'Stream error')
+      }
+      return
     }
   }
 }

@@ -660,6 +660,47 @@ function ChatView() {
     abortChatMessage(currentChatSessionId)
   }, [abortChatMessage, currentChatSessionId])
 
+  const handleRetry = useCallback(() => {
+    // Find the last user message to retry
+    const session = chatSessions.find(s => s.id === currentChatSessionId)
+    if (!session) return
+
+    // Find the last user message (should be right before the error message)
+    const messages = session.messages
+    let lastUserMessage: string | null = null
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') {
+        lastUserMessage = messages[i].content
+        break
+      }
+    }
+
+    if (!lastUserMessage) return
+
+    // Remove the error message and re-add streaming message
+    const messagesWithoutError = messages.filter(m => m.status !== 'error')
+
+    // Build history from messages before the last user message
+    const history = messagesWithoutError
+      .slice(0, -1) // Remove the last user message for history
+      .filter(m => m.status !== 'streaming')
+
+    // Update session state with streaming message
+    setChatSessions(prev => prev.map(s => {
+      if (s.id !== currentChatSessionId) return s
+      return {
+        ...s,
+        messages: [
+          ...messagesWithoutError,
+          { role: 'assistant' as const, content: '', status: 'streaming' as const },
+        ],
+      }
+    }))
+
+    // Resend the message
+    sendChatMessage(currentChatSessionId, lastUserMessage, history)
+  }, [currentChatSessionId, chatSessions, setChatSessions, sendChatMessage])
+
   // Get external lock for this session (if any)
   const currentExternalLock = externalLocks.get(currentChatSessionId)
 
@@ -671,6 +712,7 @@ function ChatView() {
       externalLock={currentExternalLock ? { question: currentExternalLock.question } : null}
       onSendMessage={handleSendMessage}
       onAbort={handleAbort}
+      onRetry={handleRetry}
       onOpenInQueryEditor={handleOpenInQueryEditor}
     />
   )
@@ -1129,6 +1171,14 @@ function AppContent() {
             removePending(sessionId)
             // Release lock
             releaseSessionLock(sessionId, BROWSER_ID).catch(() => {})
+          },
+          onRetrying: (attempt, maxAttempts) => {
+            console.log('[Chat] onRetrying', { sessionId, attempt, maxAttempts })
+            updatePendingProgress(sessionId, (prev) => ({
+              ...prev,
+              status: `Connection lost. Reconnecting (${attempt}/${maxAttempts})...`,
+              step: 'retrying',
+            }))
           },
         },
         abortController.signal

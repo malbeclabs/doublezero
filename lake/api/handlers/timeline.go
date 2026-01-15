@@ -649,9 +649,12 @@ func GetTimeline(w http.ResponseWriter, r *http.Request) {
 		allEvents = filtered
 	}
 
-	// Sort by timestamp descending
+	// Sort by timestamp descending, then by ID for consistent ordering
 	sort.Slice(allEvents, func(i, j int) bool {
-		return allEvents[i].Timestamp > allEvents[j].Timestamp
+		if allEvents[i].Timestamp != allEvents[j].Timestamp {
+			return allEvents[i].Timestamp > allEvents[j].Timestamp
+		}
+		return allEvents[i].ID > allEvents[j].ID
 	})
 
 	total := len(allEvents)

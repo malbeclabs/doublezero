@@ -13,6 +13,7 @@ import { Landing } from '@/components/landing'
 import { Sidebar } from '@/components/sidebar'
 import { TopologyPage } from '@/components/topology-page'
 import { StatusPage } from '@/components/status-page'
+import { StatusAppendix } from '@/components/status-appendix'
 import { DevicesPage } from '@/components/devices-page'
 import { LinksPage } from '@/components/links-page'
 import { MetrosPage } from '@/components/metros-page'
@@ -1334,8 +1335,9 @@ function AppContent() {
             {/* Topology route */}
             <Route path="/topology" element={<TopologyPage />} />
 
-            {/* Status route */}
+            {/* Status routes */}
             <Route path="/status" element={<StatusPage />} />
+            <Route path="/status/methodology" element={<StatusAppendix />} />
 
             {/* DZ entity routes */}
             <Route path="/dz/devices" element={<DevicesPage />} />

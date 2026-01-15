@@ -36,8 +36,8 @@ const statusColors = {
   healthy: 'bg-green-500',
   degraded: 'bg-amber-500',
   unhealthy: 'bg-red-500',
-  no_data: 'bg-gray-300 dark:bg-gray-600',
-  disabled: 'bg-blue-400 dark:bg-blue-500',
+  no_data: 'bg-transparent border border-gray-200 dark:border-gray-700',
+  disabled: 'bg-gray-500 dark:bg-gray-700',
 }
 
 const statusLabels = {
@@ -46,6 +46,40 @@ const statusLabels = {
   unhealthy: 'Unhealthy',
   no_data: 'No Data',
   disabled: 'Disabled',
+}
+
+// Thresholds matching backend classification
+const LOSS_WARNING_PCT = 0.1
+const LOSS_CRITICAL_PCT = 1.0
+const LOSS_DISABLED_PCT = 95.0
+const LATENCY_WARNING_PCT = 20
+const LATENCY_CRITICAL_PCT = 50
+
+function getStatusReasons(hour: LinkHourStatus, committedRttUs?: number): string[] {
+  const reasons: string[] = []
+
+  if (hour.status === 'no_data') return reasons
+
+  // Check packet loss
+  if (hour.avg_loss_pct >= LOSS_DISABLED_PCT) {
+    reasons.push('Extended packet loss (≥95%)')
+  } else if (hour.avg_loss_pct >= LOSS_CRITICAL_PCT) {
+    reasons.push(`High packet loss (${hour.avg_loss_pct.toFixed(1)}%)`)
+  } else if (hour.avg_loss_pct >= LOSS_WARNING_PCT) {
+    reasons.push(`Elevated packet loss (${hour.avg_loss_pct.toFixed(2)}%)`)
+  }
+
+  // Check latency (only if committed RTT is defined)
+  if (committedRttUs && committedRttUs > 0 && hour.avg_latency_us > 0) {
+    const latencyOveragePct = ((hour.avg_latency_us - committedRttUs) / committedRttUs) * 100
+    if (latencyOveragePct >= LATENCY_CRITICAL_PCT) {
+      reasons.push(`High latency (${latencyOveragePct.toFixed(0)}% over SLA)`)
+    } else if (latencyOveragePct >= LATENCY_WARNING_PCT) {
+      reasons.push(`Elevated latency (${latencyOveragePct.toFixed(0)}% over SLA)`)
+    }
+  }
+
+  return reasons
 }
 
 export function StatusTimeline({ hours, committedRttUs, bucketMinutes = 60, timeRange = '24h' }: StatusTimelineProps) {
@@ -64,7 +98,15 @@ export function StatusTimeline({ hours, committedRttUs, bucketMinutes = 60, time
   return (
     <div className="relative">
       <div className="flex gap-[2px]">
-        {hours.map((hour, index) => (
+        {hours.map((hour, index) => {
+          const isLastBucket = index === hours.length - 1
+          const isNoDataPending = isLastBucket && hour.status === 'no_data'
+          // Make the last "no_data" bucket very subtle - it's just waiting for fresh data
+          const colorClass = isNoDataPending
+            ? 'bg-gray-200/50 dark:bg-gray-700/30'
+            : statusColors[hour.status]
+
+          return (
           <div
             key={hour.hour}
             className="relative flex-1 min-w-0"
@@ -72,7 +114,7 @@ export function StatusTimeline({ hours, committedRttUs, bucketMinutes = 60, time
             onMouseLeave={() => setHoveredIndex(null)}
           >
             <div
-              className={`w-full h-6 rounded-sm ${statusColors[hour.status]} cursor-pointer transition-opacity hover:opacity-80`}
+              className={`w-full h-6 rounded-sm ${colorClass} cursor-pointer transition-opacity hover:opacity-80`}
             />
 
             {/* Tooltip */}
@@ -90,6 +132,18 @@ export function StatusTimeline({ hours, committedRttUs, bucketMinutes = 60, time
                   }`}>
                     {statusLabels[hour.status]}
                   </div>
+                  {/* Reasons */}
+                  {(() => {
+                    const reasons = getStatusReasons(hour, committedRttUs)
+                    if (reasons.length === 0) return null
+                    return (
+                      <div className="text-xs text-muted-foreground mb-2 space-y-0.5">
+                        {reasons.map((reason, i) => (
+                          <div key={i}>• {reason}</div>
+                        ))}
+                      </div>
+                    )
+                  })()}
                   {hour.status !== 'no_data' && (
                     <div className="space-y-1 text-muted-foreground">
                       <div className="flex justify-between gap-4">
@@ -122,7 +176,8 @@ export function StatusTimeline({ hours, committedRttUs, bucketMinutes = 60, time
               </div>
             )}
           </div>
-        ))}
+          )
+        })}
       </div>
 
       {/* Time labels */}

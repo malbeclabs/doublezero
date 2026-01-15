@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState, useEffect, useMemo } from 'react'
+import { Link } from 'react-router-dom'
 import { CheckCircle2, AlertTriangle, XCircle, ArrowUpDown, Cpu } from 'lucide-react'
 import { fetchStatus, fetchLinkHistory, type StatusResponse, type InterfaceIssue, type NonActivatedLink } from '@/lib/api'
 import { StatCard } from '@/components/stat-card'
@@ -56,10 +57,8 @@ function IssueFilterSelector({ value, onChange, counts }: { value: IssueFilter[]
 
   const toggleFilter = (filter: IssueFilter) => {
     if (value.includes(filter)) {
-      // If this is the last filter, go back to all instead of empty
-      if (value.length === 1) {
-        onChange(allOptions)
-      } else {
+      // Don't allow deselecting the last filter
+      if (value.length > 1) {
         onChange(value.filter(v => v !== filter))
       }
     } else {
@@ -68,10 +67,7 @@ function IssueFilterSelector({ value, onChange, counts }: { value: IssueFilter[]
   }
 
   const handleAllClick = () => {
-    // If already all selected, do nothing (don't allow deselecting all)
-    if (!allSelected) {
-      onChange(allOptions)
-    }
+    onChange(allOptions)
   }
 
   const getCount = (filter: IssueFilter): number => {
@@ -98,7 +94,7 @@ function IssueFilterSelector({ value, onChange, counts }: { value: IssueFilter[]
             key={opt.value}
             onClick={() => toggleFilter(opt.value)}
             className={`px-2 py-1 text-xs rounded-md transition-colors ${
-              value.includes(opt.value) && !allSelected
+              value.includes(opt.value)
                 ? 'bg-background text-foreground shadow-sm'
                 : 'text-muted-foreground hover:text-foreground'
             }`}
@@ -191,10 +187,8 @@ function StatusIndicator({ statusData }: { statusData: StatusResponse }) {
       <Icon className={`h-8 w-8 ${className}`} />
       <div className="flex-1">
         <div className={`text-lg font-medium ${className}`}>{label}</div>
-        {reasons.length > 0 ? (
+        {reasons.length > 0 && (
           <div className="text-sm text-muted-foreground">{reasons.slice(0, 2).join(' · ')}</div>
-        ) : (
-          <div className="text-sm text-muted-foreground">DoubleZero Network</div>
         )}
       </div>
     </div>
@@ -264,34 +258,27 @@ function CountWithPopover({
 
 function IssueSummaryCard({
   alerts,
-  linkIssuesCount,
-  interfaceIssuesCount
+  interfaceIssuesCount,
+  disabledLinksCount
 }: {
   alerts: StatusResponse['alerts']
-  linkIssuesCount: number
   interfaceIssuesCount: number
+  disabledLinksCount: number
 }) {
-  const drainedDevices = (alerts?.devices || []).filter(d =>
+  const disabledDevices = (alerts?.devices || []).filter(d =>
     d.status === 'soft-drained' || d.status === 'hard-drained'
-  )
-  const drainedLinks = (alerts?.links || []).filter(l =>
-    l.status === 'soft-drained' || l.status === 'hard-drained'
   )
 
   const scrollToInterfaceIssues = () => {
     document.getElementById('interface-issues')?.scrollIntoView({ behavior: 'smooth' })
   }
 
-  const scrollToLinkHistory = () => {
-    document.getElementById('link-status-history')?.scrollIntoView({ behavior: 'smooth' })
+  const scrollToDisabledDevices = () => {
+    document.getElementById('disabled-devices')?.scrollIntoView({ behavior: 'smooth' })
   }
 
-  const scrollToDrainedDevices = () => {
-    document.getElementById('non-activated-devices')?.scrollIntoView({ behavior: 'smooth' })
-  }
-
-  const scrollToDrainedLinks = () => {
-    document.getElementById('non-activated-links')?.scrollIntoView({ behavior: 'smooth' })
+  const scrollToDisabledLinks = () => {
+    document.getElementById('disabled-links')?.scrollIntoView({ behavior: 'smooth' })
   }
 
   return (
@@ -302,46 +289,38 @@ function IssueSummaryCard({
         <span className="text-xs text-muted-foreground ml-auto">Current</span>
       </div>
       <div className="space-y-2 text-sm">
-        {drainedDevices.length > 0 ? (
+        {disabledDevices.length > 0 ? (
           <button
-            onClick={scrollToDrainedDevices}
+            onClick={scrollToDisabledDevices}
             className="flex items-center gap-2 text-left hover:underline underline-offset-2"
           >
             <div className="w-2 h-2 rounded-full bg-amber-500" />
-            <span className="font-medium tabular-nums">{drainedDevices.length}</span>
-            <span className="text-muted-foreground">{drainedDevices.length === 1 ? 'drained device' : 'drained devices'}</span>
+            <span className="font-medium tabular-nums">{disabledDevices.length}</span>
+            <span className="text-muted-foreground">{disabledDevices.length === 1 ? 'disabled device' : 'disabled devices'}</span>
           </button>
         ) : (
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-green-500" />
             <span className="font-medium tabular-nums">0</span>
-            <span className="text-muted-foreground">drained devices</span>
+            <span className="text-muted-foreground">disabled devices</span>
           </div>
         )}
-        {drainedLinks.length > 0 ? (
+        {disabledLinksCount > 0 ? (
           <button
-            onClick={scrollToDrainedLinks}
+            onClick={scrollToDisabledLinks}
             className="flex items-center gap-2 text-left hover:underline underline-offset-2"
           >
             <div className="w-2 h-2 rounded-full bg-amber-500" />
-            <span className="font-medium tabular-nums">{drainedLinks.length}</span>
-            <span className="text-muted-foreground">{drainedLinks.length === 1 ? 'drained link' : 'drained links'}</span>
+            <span className="font-medium tabular-nums">{disabledLinksCount}</span>
+            <span className="text-muted-foreground">{disabledLinksCount === 1 ? 'disabled link' : 'disabled links'}</span>
           </button>
         ) : (
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-green-500" />
             <span className="font-medium tabular-nums">0</span>
-            <span className="text-muted-foreground">drained links</span>
+            <span className="text-muted-foreground">disabled links</span>
           </div>
         )}
-        <button
-          onClick={scrollToLinkHistory}
-          className="flex items-center gap-2 text-left hover:underline underline-offset-2"
-        >
-          <div className={`w-2 h-2 rounded-full ${linkIssuesCount === 0 ? 'bg-green-500' : linkIssuesCount <= 3 ? 'bg-amber-500' : 'bg-red-500'}`} />
-          <span className="font-medium tabular-nums">{linkIssuesCount}</span>
-          <span className="text-muted-foreground">{linkIssuesCount === 1 ? 'link with issues' : 'links with issues'}</span>
-        </button>
         {interfaceIssuesCount > 0 ? (
           <button
             onClick={scrollToInterfaceIssues}
@@ -363,7 +342,7 @@ function IssueSummaryCard({
   )
 }
 
-function NonActivatedDevicesTable({ devices }: { devices: StatusResponse['alerts']['devices'] | null }) {
+function DisabledDevicesTable({ devices }: { devices: StatusResponse['alerts']['devices'] | null }) {
   if (!devices || devices.length === 0) return null
 
   const statusColors: Record<string, string> = {
@@ -376,10 +355,10 @@ function NonActivatedDevicesTable({ devices }: { devices: StatusResponse['alerts
   }
 
   return (
-    <div id="non-activated-devices" className="border border-border rounded-lg overflow-hidden">
+    <div id="disabled-devices" className="border border-border rounded-lg overflow-hidden">
       <div className="px-4 py-3 bg-muted/50 border-b border-border flex items-center gap-2">
         <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-        <h3 className="font-medium">Non-Activated Devices</h3>
+        <h3 className="font-medium">Disabled Devices</h3>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full">
@@ -395,7 +374,7 @@ function NonActivatedDevicesTable({ devices }: { devices: StatusResponse['alerts
             {devices.map((device, idx) => (
               <tr key={`${device.code}-${idx}`} className="border-b border-border last:border-b-0">
                 <td className="px-4 py-2.5">
-                  <span className="font-mono text-sm">{device.code}</span>
+                  <Link to={`/dz/devices/${device.pk}`} className="font-mono text-sm hover:underline">{device.code}</Link>
                   <span className="text-xs text-muted-foreground ml-2">{device.device_type}</span>
                 </td>
                 <td className="px-4 py-2.5 text-sm text-muted-foreground">{device.metro}</td>
@@ -414,24 +393,62 @@ function NonActivatedDevicesTable({ devices }: { devices: StatusResponse['alerts
   )
 }
 
-function NonActivatedLinksTable({ links }: { links: NonActivatedLink[] | null }) {
-  if (!links || links.length === 0) return null
+interface DisabledLinkRow {
+  pk: string
+  code: string
+  link_type: string
+  side_a_metro: string
+  side_z_metro: string
+  reason: string // "drained" or "packet loss"
+}
 
-  const statusColors: Record<string, string> = {
-    'soft-drained': 'text-amber-600 dark:text-amber-400',
-    'hard-drained': 'text-amber-600 dark:text-amber-400',
-    drained: 'text-gray-500',
-    suspended: 'text-red-600 dark:text-red-400',
-    pending: 'text-amber-600 dark:text-amber-400',
-    deleted: 'text-gray-400',
-    rejected: 'text-red-400',
+function DisabledLinksTable({
+  drainedLinks,
+  packetLossLinks
+}: {
+  drainedLinks: NonActivatedLink[] | null
+  packetLossLinks: DisabledLinkRow[]
+}) {
+  // Merge drained links and packet loss links, deduping by code
+  const allLinks = useMemo(() => {
+    const linkMap = new Map<string, DisabledLinkRow>()
+
+    // Add drained links first with specific drain type
+    for (const link of drainedLinks || []) {
+      const reason = link.status === 'hard-drained' ? 'hard drained' : 'soft drained'
+      linkMap.set(link.code, {
+        pk: link.pk,
+        code: link.code,
+        link_type: link.link_type,
+        side_a_metro: link.side_a_metro,
+        side_z_metro: link.side_z_metro,
+        reason,
+      })
+    }
+
+    // Add packet loss links (won't overwrite if already drained)
+    for (const link of packetLossLinks) {
+      if (!linkMap.has(link.code)) {
+        linkMap.set(link.code, link)
+      }
+    }
+
+    return Array.from(linkMap.values())
+  }, [drainedLinks, packetLossLinks])
+
+  if (allLinks.length === 0) return null
+
+  const reasonColors: Record<string, string> = {
+    'soft drained': 'text-amber-600 dark:text-amber-400',
+    'hard drained': 'text-orange-600 dark:text-orange-400',
+    'packet loss (>2h)': 'text-red-600 dark:text-red-400',
   }
 
   return (
-    <div id="non-activated-links" className="border border-border rounded-lg overflow-hidden">
+    <div id="disabled-links" className="border border-border rounded-lg overflow-hidden">
       <div className="px-4 py-3 bg-muted/50 border-b border-border flex items-center gap-2">
         <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-        <h3 className="font-medium">Non-Activated Links</h3>
+        <h3 className="font-medium">Disabled Links</h3>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full">
@@ -439,23 +456,19 @@ function NonActivatedLinksTable({ links }: { links: NonActivatedLink[] | null })
             <tr className="text-left text-sm text-muted-foreground border-b border-border">
               <th className="px-4 py-2 font-medium">Link</th>
               <th className="px-4 py-2 font-medium">Route</th>
-              <th className="px-4 py-2 font-medium">Status</th>
-              <th className="px-4 py-2 font-medium text-right">Since</th>
+              <th className="px-4 py-2 font-medium">Reason</th>
             </tr>
           </thead>
           <tbody>
-            {links.map((link, idx) => (
+            {allLinks.map((link, idx) => (
               <tr key={`${link.code}-${idx}`} className="border-b border-border last:border-b-0">
                 <td className="px-4 py-2.5">
-                  <span className="font-mono text-sm">{link.code}</span>
+                  <Link to={`/dz/links/${link.pk}`} className="font-mono text-sm hover:underline">{link.code}</Link>
                   <span className="text-xs text-muted-foreground ml-2">{link.link_type}</span>
                 </td>
                 <td className="px-4 py-2.5 text-sm text-muted-foreground">{link.side_a_metro} — {link.side_z_metro}</td>
-                <td className={`px-4 py-2.5 text-sm capitalize ${statusColors[link.status] || ''}`}>
-                  {link.status.replace('-', ' ')}
-                </td>
-                <td className="px-4 py-2.5 text-sm tabular-nums text-right text-muted-foreground">
-                  {formatTimeAgo(link.since)}
+                <td className={`px-4 py-2.5 text-sm capitalize ${reasonColors[link.reason] || ''}`}>
+                  {link.reason}
                 </td>
               </tr>
             ))}
@@ -503,13 +516,14 @@ function LinkHealthCard({ links }: { links: StatusResponse['links'] }) {
   const healthyPct = links.total > 0 ? (links.healthy / links.total) * 100 : 100
   const degradedPct = links.total > 0 ? (links.degraded / links.total) * 100 : 0
   const unhealthyPct = links.total > 0 ? (links.unhealthy / links.total) * 100 : 0
+  const disabledPct = links.total > 0 ? ((links.disabled || 0) / links.total) * 100 : 0
 
   return (
-    <div className="border border-border rounded-lg p-4">
+    <div id="link-health" className="border border-border rounded-lg p-4">
       <div className="flex items-center gap-2 mb-4">
         <ArrowUpDown className="h-4 w-4 text-muted-foreground" />
         <h3 className="font-medium">Link Health</h3>
-        <span className="text-xs text-muted-foreground ml-auto">{links.total} links · Last 3h</span>
+        <span className="text-xs text-muted-foreground ml-auto">{links.total} links · Last 1h</span>
       </div>
 
       {/* Health bar */}
@@ -532,6 +546,12 @@ function LinkHealthCard({ links }: { links: StatusResponse['links'] }) {
             style={{ width: `${unhealthyPct}%` }}
           />
         )}
+        {disabledPct > 0 && (
+          <div
+            className="bg-gray-500 dark:bg-gray-700 h-full transition-all"
+            style={{ width: `${disabledPct}%` }}
+          />
+        )}
       </div>
 
       {/* Legend */}
@@ -540,20 +560,28 @@ function LinkHealthCard({ links }: { links: StatusResponse['links'] }) {
           color="bg-green-500"
           label="Healthy"
           count={links.healthy}
-          description="Loss < 0.1% and latency within 20% of committed RTT"
+          description="Loss < 0.1%. For inter-metro WAN links: latency within 20% of committed RTT."
         />
         <HealthLegendItem
           color="bg-amber-500"
           label="Degraded"
           count={links.degraded}
-          description="Loss ≥ 0.1% or latency 20-50% over committed RTT"
+          description="Loss ≥ 0.1%. For inter-metro WAN links: latency 20-50% over committed RTT."
         />
         <HealthLegendItem
           color="bg-red-500"
           label="Unhealthy"
           count={links.unhealthy}
-          description="Loss ≥ 1% or latency > 50% over committed RTT"
+          description="Loss ≥ 1%. For inter-metro WAN links: latency > 50% over committed RTT."
         />
+        {(links.disabled || 0) > 0 && (
+          <HealthLegendItem
+            color="bg-gray-500 dark:bg-gray-700"
+            label="Disabled"
+            count={links.disabled || 0}
+            description="Extended packet loss (≥95% over 1h). Link appears to be down or unreachable."
+          />
+        )}
       </div>
     </div>
   )
@@ -596,9 +624,9 @@ function TopLinkUtilization({ links }: { links: StatusResponse['links']['top_uti
           const maxUtil = Math.max(link.utilization_in, link.utilization_out)
           const peakBps = Math.max(link.in_bps, link.out_bps)
           return (
-            <div key={link.code} className="flex items-center gap-3">
+            <div key={link.pk} className="flex items-center gap-3">
               <div className="flex-1 min-w-0">
-                <div className="font-mono text-xs truncate" title={link.code}>{link.code}</div>
+                <Link to={`/dz/links/${link.pk}`} className="font-mono text-xs truncate hover:underline" title={link.code}>{link.code}</Link>
                 <div className="text-[10px] text-muted-foreground">{link.side_a_metro} — {link.side_z_metro}</div>
               </div>
               <div className="text-xs text-muted-foreground tabular-nums w-16 text-right">
@@ -644,9 +672,9 @@ function TopDeviceUtilization({ devices }: { devices: StatusResponse['top_device
       </div>
       <div className="space-y-2">
         {devices.slice(0, 5).map((device) => (
-          <div key={device.code} className="flex items-center gap-3">
+          <div key={device.pk} className="flex items-center gap-3">
             <div className="flex-1 min-w-0">
-              <div className="font-mono text-xs truncate" title={device.code}>{device.code}</div>
+              <Link to={`/dz/devices/${device.pk}`} className="font-mono text-xs truncate hover:underline" title={device.code}>{device.code}</Link>
               <div className="text-[10px] text-muted-foreground">{device.current_users}/{device.max_users} users</div>
             </div>
             <div className="w-24 flex items-center gap-2">
@@ -696,14 +724,14 @@ function InterfaceIssuesTable({ issues }: { issues: InterfaceIssue[] | null }) {
               return (
                 <tr key={`${issue.device_code}-${issue.interface_name}-${idx}`} className="border-b border-border last:border-b-0">
                   <td className="px-4 py-2.5">
-                    <div className="font-mono text-sm">{issue.device_code}</div>
+                    <Link to={`/dz/devices/${issue.device_pk}`} className="font-mono text-sm hover:underline">{issue.device_code}</Link>
                     <div className="text-xs text-muted-foreground">{issue.contributor || issue.device_type}</div>
                   </td>
                   <td className="px-4 py-2.5 font-mono text-sm">{issue.interface_name}</td>
                   <td className="px-4 py-2.5 text-sm">
-                    {issue.link_code ? (
+                    {issue.link_code && issue.link_pk ? (
                       <div>
-                        <span className="font-mono">{issue.link_code}</span>
+                        <Link to={`/dz/links/${issue.link_pk}`} className="font-mono hover:underline">{issue.link_code}</Link>
                         <span className="text-xs text-muted-foreground ml-1">
                           ({issue.link_type} side {issue.link_side})
                         </span>
@@ -762,7 +790,7 @@ function useBucketCount() {
 
 export function StatusPage() {
   const [timeRange, setTimeRange] = useState<TimeRange>('24h')
-  const [issueFilters, setIssueFilters] = useState<IssueFilter[]>(['packet_loss', 'high_latency', 'disabled'])
+  const [issueFilters, setIssueFilters] = useState<IssueFilter[]>(['packet_loss', 'high_latency'])
   const buckets = useBucketCount()
 
   const { data: status, isLoading, error } = useQuery({
@@ -799,6 +827,49 @@ export function StatusPage() {
 
     return counts
   }, [linkHistory])
+
+  // Extract links currently disabled due to packet loss (last 2h of 100% loss)
+  const packetLossDisabledLinks = useMemo((): DisabledLinkRow[] => {
+    if (!linkHistory?.links || !status) return []
+
+    // Get codes of drained links from alerts
+    const drainedCodes = new Set(
+      (status.alerts?.links || [])
+        .filter(l => l.status === 'soft-drained' || l.status === 'hard-drained')
+        .map(l => l.code)
+    )
+
+    // Calculate how many buckets = 2 hours
+    const bucketsFor2Hours = Math.ceil(120 / (linkHistory.bucket_minutes || 20))
+
+    // Check if a link is currently disabled (most recent buckets are all "disabled")
+    const isCurrentlyDisabledByPacketLoss = (hours: { status: string }[]): boolean => {
+      if (!hours || hours.length < bucketsFor2Hours) return false
+      // Check the most recent buckets (end of array)
+      const recentBuckets = hours.slice(-bucketsFor2Hours)
+      return recentBuckets.every(h => h.status === 'disabled')
+    }
+
+    // Get links currently disabled by packet loss (not drained)
+    return linkHistory.links
+      .filter(link => !drainedCodes.has(link.code) && isCurrentlyDisabledByPacketLoss(link.hours))
+      .map(link => ({
+        pk: link.pk,
+        code: link.code,
+        link_type: link.link_type,
+        side_a_metro: link.side_a_metro,
+        side_z_metro: link.side_z_metro,
+        reason: 'packet loss (>2h)',
+      }))
+  }, [linkHistory, status])
+
+  // Count all disabled links (drained + packet loss)
+  const disabledLinksCount = useMemo(() => {
+    const drainedCount = (status?.alerts?.links || []).filter(
+      l => l.status === 'soft-drained' || l.status === 'hard-drained'
+    ).length
+    return drainedCount + packetLossDisabledLinks.length
+  }, [status, packetLossDisabledLinks])
 
   if (isLoading) {
     return (
@@ -839,15 +910,15 @@ export function StatusPage() {
           <StatCard label="SOL Connected" value={status.network.total_stake_sol} format="stake" />
           <StatCard label="Stake Share" value={status.network.stake_share_pct} format="percent" delta={status.network.stake_share_delta} />
           <StatCard label="Capacity" value={status.network.wan_bandwidth_bps} format="bandwidth" />
-          <StatCard label="Utilization" value={status.network.user_inbound_bps} format="bandwidth" />
+          <StatCard label="User Inbound" value={status.network.user_inbound_bps} format="bandwidth" />
         </div>
 
         {/* Health Cards Row */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
           <IssueSummaryCard
             alerts={status.alerts}
-            linkIssuesCount={issueCounts.total}
             interfaceIssuesCount={status.interfaces.issues?.length || 0}
+            disabledLinksCount={disabledLinksCount}
           />
           <LinkHealthCard links={status.links} />
         </div>
@@ -870,19 +941,29 @@ export function StatusPage() {
           <LinkStatusTimelines timeRange={timeRange} issueFilters={issueFilters} />
         </div>
 
-        {/* Non-Activated Devices */}
+        {/* Disabled Devices */}
         <div className="mb-8">
-          <NonActivatedDevicesTable devices={status.alerts?.devices} />
+          <DisabledDevicesTable devices={status.alerts?.devices} />
         </div>
 
-        {/* Non-Activated Links */}
+        {/* Disabled Links */}
         <div className="mb-8">
-          <NonActivatedLinksTable links={status.alerts?.links} />
+          <DisabledLinksTable
+            drainedLinks={status.alerts?.links}
+            packetLossLinks={packetLossDisabledLinks}
+          />
         </div>
 
         {/* Interface Issues */}
         <div id="interface-issues" className="mb-8">
           <InterfaceIssuesTable issues={status.interfaces.issues} />
+        </div>
+
+        {/* Methodology link */}
+        <div className="text-center text-sm text-muted-foreground pb-4">
+          <Link to="/status/methodology" className="hover:text-foreground hover:underline">
+            How is status calculated?
+          </Link>
         </div>
       </div>
     </div>

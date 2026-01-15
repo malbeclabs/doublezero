@@ -73,8 +73,9 @@ type NetworkSummary struct {
 type LinkHealth struct {
 	Total          uint64       `json:"total"`
 	Healthy        uint64       `json:"healthy"`
-	Degraded       uint64       `json:"degraded"` // High latency or some loss
+	Degraded       uint64       `json:"degraded"`  // High latency or some loss
 	Unhealthy      uint64       `json:"unhealthy"` // Significant loss or down
+	Disabled       uint64       `json:"disabled"`  // Extended packet loss (100% for 2+ hours)
 	Issues         []LinkIssue  `json:"issues"`    // Top issues
 	HighUtilLinks  []LinkMetric `json:"high_util_links"` // Links with high utilization
 	TopUtilLinks   []LinkMetric `json:"top_util_links"`  // Top 10 links by max utilization
@@ -92,6 +93,7 @@ type LinkIssue struct {
 }
 
 type LinkMetric struct {
+	PK             string  `json:"pk"`
 	Code           string  `json:"code"`
 	LinkType       string  `json:"link_type"`
 	Contributor    string  `json:"contributor"`
@@ -105,6 +107,7 @@ type LinkMetric struct {
 }
 
 type DeviceUtilization struct {
+	PK           string  `json:"pk"`
 	Code         string  `json:"code"`
 	DeviceType   string  `json:"device_type"`
 	Contributor  string  `json:"contributor"`
@@ -137,11 +140,13 @@ type InterfaceHealth struct {
 }
 
 type InterfaceIssue struct {
+	DevicePK           string `json:"device_pk"`
 	DeviceCode         string `json:"device_code"`
 	DeviceType         string `json:"device_type"`
 	Contributor        string `json:"contributor"`
 	Metro              string `json:"metro"`
 	InterfaceName      string `json:"interface_name"`
+	LinkPK             string `json:"link_pk,omitempty"`      // Empty if not a link interface
 	LinkCode           string `json:"link_code,omitempty"`    // Empty if not a link interface
 	LinkType           string `json:"link_type,omitempty"`    // WAN, DZX, etc.
 	LinkSide           string `json:"link_side,omitempty"`    // A or Z
@@ -155,6 +160,7 @@ type InterfaceIssue struct {
 }
 
 type NonActivatedDevice struct {
+	PK         string `json:"pk"`
 	Code       string `json:"code"`
 	DeviceType string `json:"device_type"`
 	Metro      string `json:"metro"`
@@ -163,6 +169,7 @@ type NonActivatedDevice struct {
 }
 
 type NonActivatedLink struct {
+	PK         string `json:"pk"`
 	Code       string `json:"code"`
 	LinkType   string `json:"link_type"`
 	SideAMetro string `json:"side_a_metro"`
@@ -437,6 +444,7 @@ func GetStatus(w http.ResponseWriter, r *http.Request) {
 	g.Go(func() error {
 		query := `
 			SELECT
+				l.pk,
 				l.code,
 				l.link_type,
 				COALESCE(c.code, '') as contributor,
@@ -460,7 +468,7 @@ func GetStatus(w http.ResponseWriter, r *http.Request) {
 					avg(rtt_us) as avg_rtt_us,
 					countIf(loss OR rtt_us = 0) * 100.0 / count(*) as loss_percent
 				FROM fact_dz_device_link_latency
-				WHERE event_ts > now() - INTERVAL 3 HOUR
+				WHERE event_ts > now() - INTERVAL 1 HOUR
 				GROUP BY link_pk
 			) lat ON l.pk = lat.link_pk
 			-- Direct link traffic (where link_pk is populated)
@@ -492,31 +500,41 @@ func GetStatus(w http.ResponseWriter, r *http.Request) {
 		}
 		defer rows.Close()
 
-		var healthy, degraded, unhealthy uint64
+		var healthy, degraded, unhealthy, disabled uint64
 		var issues []LinkIssue
 		var highUtil []LinkMetric
 		var allUtilLinks []LinkMetric
 
+		// Threshold for "disabled" classification - near 100% loss over 3h window
+		// indicates the link has been down for an extended period
+		const DisabledLossPct = 95.0
+
 		for rows.Next() {
-			var code, linkType, contributor, sideAMetro, sideZMetro string
+			var pk, code, linkType, contributor, sideAMetro, sideZMetro string
 			var bandwidthBps int64
 			var committedRttUs, latencyUs, lossPct, inBps, outBps float64
 
-			if err := rows.Scan(&code, &linkType, &contributor, &bandwidthBps, &committedRttUs, &sideAMetro, &sideZMetro, &latencyUs, &lossPct, &inBps, &outBps); err != nil {
+			if err := rows.Scan(&pk, &code, &linkType, &contributor, &bandwidthBps, &committedRttUs, &sideAMetro, &sideZMetro, &latencyUs, &lossPct, &inBps, &outBps); err != nil {
 				return err
 			}
 
 			// Calculate latency overage percentage vs committed RTT
+			// Only consider latency for inter-metro WAN links
 			var latencyOveragePct float64
-			if committedRttUs > 0 && latencyUs > 0 {
+			isInterMetroWAN := linkType == "WAN" && sideAMetro != sideZMetro
+			if isInterMetroWAN && committedRttUs > 0 && latencyUs > 0 {
 				latencyOveragePct = ((latencyUs - committedRttUs) / committedRttUs) * 100
 			}
 
-			// Classify link health based on committed RTT comparison
-			isUnhealthy := lossPct >= LossCriticalPct || latencyOveragePct >= LatencyCriticalPct
-			isDegraded := lossPct >= LossWarningPct || latencyOveragePct >= LatencyWarningPct
+			// Classify link health
+			// First check for "disabled" - extended packet loss (near 100% over 3h)
+			isDisabled := lossPct >= DisabledLossPct
+			isUnhealthy := !isDisabled && (lossPct >= LossCriticalPct || latencyOveragePct >= LatencyCriticalPct)
+			isDegraded := !isDisabled && !isUnhealthy && (lossPct >= LossWarningPct || latencyOveragePct >= LatencyWarningPct)
 
-			if isUnhealthy {
+			if isDisabled {
+				disabled++
+			} else if isUnhealthy {
 				unhealthy++
 			} else if isDegraded {
 				degraded++
@@ -537,7 +555,7 @@ func GetStatus(w http.ResponseWriter, r *http.Request) {
 					SideZMetro:  sideZMetro,
 				})
 			}
-			if latencyOveragePct >= LatencyWarningPct && len(issues) < 10 {
+			if isInterMetroWAN && latencyOveragePct >= LatencyWarningPct && len(issues) < 10 {
 				issues = append(issues, LinkIssue{
 					Code:        code,
 					LinkType:    linkType,
@@ -555,6 +573,7 @@ func GetStatus(w http.ResponseWriter, r *http.Request) {
 				utilIn := (inBps / float64(bandwidthBps)) * 100
 				utilOut := (outBps / float64(bandwidthBps)) * 100
 				metric := LinkMetric{
+					PK:             pk,
 					Code:           code,
 					LinkType:       linkType,
 					Contributor:    contributor,
@@ -591,10 +610,11 @@ func GetStatus(w http.ResponseWriter, r *http.Request) {
 			allUtilLinks = allUtilLinks[:10]
 		}
 
-		resp.Links.Total = healthy + degraded + unhealthy
+		resp.Links.Total = healthy + degraded + unhealthy + disabled
 		resp.Links.Healthy = healthy
 		resp.Links.Degraded = degraded
 		resp.Links.Unhealthy = unhealthy
+		resp.Links.Disabled = disabled
 		resp.Links.Issues = issues
 		resp.Links.HighUtilLinks = highUtil
 		resp.Links.TopUtilLinks = allUtilLinks
@@ -648,6 +668,7 @@ func GetStatus(w http.ResponseWriter, r *http.Request) {
 	g.Go(func() error {
 		query := `
 			SELECT
+				d.pk,
 				d.code,
 				d.device_type,
 				COALESCE(c.name, c.code, '') as contributor,
@@ -661,7 +682,7 @@ func GetStatus(w http.ResponseWriter, r *http.Request) {
 			LEFT JOIN dz_metros_current m ON d.metro_pk = m.pk
 			WHERE d.status = 'activated'
 			  AND d.max_users > 0
-			GROUP BY d.code, d.device_type, c.name, c.code, m.code, d.max_users
+			GROUP BY d.pk, d.code, d.device_type, c.name, c.code, m.code, d.max_users
 			ORDER BY utilization DESC
 			LIMIT 10
 		`
@@ -674,7 +695,7 @@ func GetStatus(w http.ResponseWriter, r *http.Request) {
 		var devices []DeviceUtilization
 		for rows.Next() {
 			var d DeviceUtilization
-			if err := rows.Scan(&d.Code, &d.DeviceType, &d.Contributor, &d.Metro, &d.CurrentUsers, &d.MaxUsers, &d.Utilization); err != nil {
+			if err := rows.Scan(&d.PK, &d.Code, &d.DeviceType, &d.Contributor, &d.Metro, &d.CurrentUsers, &d.MaxUsers, &d.Utilization); err != nil {
 				return err
 			}
 			devices = append(devices, d)
@@ -687,11 +708,13 @@ func GetStatus(w http.ResponseWriter, r *http.Request) {
 	g.Go(func() error {
 		query := `
 			SELECT
+				d.pk as device_pk,
 				d.code as device_code,
 				d.device_type,
 				COALESCE(contrib.code, '') as contributor,
 				m.code as metro,
 				c.intf as interface_name,
+				COALESCE(l.pk, '') as link_pk,
 				COALESCE(l.code, '') as link_code,
 				COALESCE(l.link_type, '') as link_type,
 				COALESCE(c.link_side, '') as link_side,
@@ -710,7 +733,7 @@ func GetStatus(w http.ResponseWriter, r *http.Request) {
 			WHERE c.event_ts > now() - INTERVAL 24 HOUR
 			  AND d.status = 'activated'
 			  AND (c.in_errors_delta > 0 OR c.out_errors_delta > 0 OR c.in_discards_delta > 0 OR c.out_discards_delta > 0 OR c.carrier_transitions_delta > 0)
-			GROUP BY d.code, d.device_type, contrib.code, m.code, c.intf, l.code, l.link_type, c.link_side
+			GROUP BY d.pk, d.code, d.device_type, contrib.code, m.code, c.intf, l.pk, l.code, l.link_type, c.link_side
 			ORDER BY (in_errors + out_errors + in_discards + out_discards + carrier_transitions) DESC
 			LIMIT 20
 		`
@@ -724,11 +747,13 @@ func GetStatus(w http.ResponseWriter, r *http.Request) {
 		for rows.Next() {
 			var issue InterfaceIssue
 			if err := rows.Scan(
+				&issue.DevicePK,
 				&issue.DeviceCode,
 				&issue.DeviceType,
 				&issue.Contributor,
 				&issue.Metro,
 				&issue.InterfaceName,
+				&issue.LinkPK,
 				&issue.LinkCode,
 				&issue.LinkType,
 				&issue.LinkSide,
@@ -752,6 +777,7 @@ func GetStatus(w http.ResponseWriter, r *http.Request) {
 	g.Go(func() error {
 		query := `
 			SELECT
+				d.pk,
 				d.code,
 				d.device_type,
 				m.code as metro,
@@ -772,7 +798,7 @@ func GetStatus(w http.ResponseWriter, r *http.Request) {
 		var devices []NonActivatedDevice
 		for rows.Next() {
 			var dev NonActivatedDevice
-			if err := rows.Scan(&dev.Code, &dev.DeviceType, &dev.Metro, &dev.Status, &dev.Since); err != nil {
+			if err := rows.Scan(&dev.PK, &dev.Code, &dev.DeviceType, &dev.Metro, &dev.Status, &dev.Since); err != nil {
 				return err
 			}
 			devices = append(devices, dev)
@@ -787,6 +813,7 @@ func GetStatus(w http.ResponseWriter, r *http.Request) {
 		const delayOverrideSoftDrainedNs = 1_000_000_000
 		query := `
 			SELECT
+				l.pk,
 				l.code,
 				l.link_type,
 				ma.code as side_a_metro,
@@ -814,7 +841,7 @@ func GetStatus(w http.ResponseWriter, r *http.Request) {
 		var links []NonActivatedLink
 		for rows.Next() {
 			var link NonActivatedLink
-			if err := rows.Scan(&link.Code, &link.LinkType, &link.SideAMetro, &link.SideZMetro, &link.Status, &link.Since); err != nil {
+			if err := rows.Scan(&link.PK, &link.Code, &link.LinkType, &link.SideAMetro, &link.SideZMetro, &link.Status, &link.Since); err != nil {
 				return err
 			}
 			links = append(links, link)
@@ -851,6 +878,7 @@ type LinkHourStatus struct {
 }
 
 type LinkHistory struct {
+	PK             string           `json:"pk"`
 	Code           string           `json:"code"`
 	LinkType       string           `json:"link_type"`
 	Contributor    string           `json:"contributor"`
@@ -1106,8 +1134,9 @@ func GetLinkHistory(w http.ResponseWriter, r *http.Request) {
 				hasIssues = true
 				issueReasons["packet_loss"] = true
 			}
-			// Check for high latency issues
-			if meta.committedRttUs > 0 && b.avgLatency > 0 {
+			// Check for high latency issues (WAN links only, excluding intra-metro)
+			isInterMetro := meta.sideAMetro != meta.sideZMetro
+			if meta.linkType == "WAN" && isInterMetro && meta.committedRttUs > 0 && b.avgLatency > 0 {
 				latencyOveragePct := ((b.avgLatency - meta.committedRttUs) / meta.committedRttUs) * 100
 				if latencyOveragePct >= LatencyWarningPct {
 					hasIssues = true
@@ -1167,7 +1196,12 @@ func GetLinkHistory(w http.ResponseWriter, r *http.Request) {
 
 			// Check if we have latency/traffic data for this bucket
 			if stats, ok := bucketMap[key]; ok {
-				status := classifyLinkStatus(stats.avgLatency, stats.lossPct, meta.committedRttUs)
+				// Only consider latency for inter-metro WAN links
+				committedRtt := meta.committedRttUs
+				if meta.linkType != "WAN" || meta.sideAMetro == meta.sideZMetro {
+					committedRtt = 0
+				}
+				status := classifyLinkStatus(stats.avgLatency, stats.lossPct, committedRtt)
 				hourStatuses = append(hourStatuses, LinkHourStatus{
 					Hour:         key,
 					Status:       status,
@@ -1183,7 +1217,59 @@ func GetLinkHistory(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		// Post-process: treat consecutive 100% loss for 2+ hours as disabled
+		bucketsFor2Hours := 120 / bucketMinutes
+		if bucketsFor2Hours < 1 {
+			bucketsFor2Hours = 1
+		}
+
+		// Find runs of 100% loss and mark as disabled if >= 2 hours
+		i := 0
+		for i < len(hourStatuses) {
+			// Find start of a 100% loss run
+			if hourStatuses[i].AvgLossPct >= 99.9 && hourStatuses[i].Status != "disabled" {
+				runStart := i
+				// Find end of the run
+				for i < len(hourStatuses) && hourStatuses[i].AvgLossPct >= 99.9 && hourStatuses[i].Status != "disabled" {
+					i++
+				}
+				runLength := i - runStart
+				// If run is >= 2 hours, mark all as disabled
+				if runLength >= bucketsFor2Hours {
+					for j := runStart; j < i; j++ {
+						hourStatuses[j].Status = "disabled"
+					}
+					issueReasons["disabled"] = true
+				}
+			} else {
+				i++
+			}
+		}
+
+		// If all packet loss buckets are now disabled, remove packet_loss from reasons
+		// (disabled is a more accurate classification for extended outages)
+		if issueReasons["disabled"] && issueReasons["packet_loss"] {
+			hasNonDisabledLoss := false
+			for _, h := range hourStatuses {
+				if h.AvgLossPct >= LossWarningPct && h.Status != "disabled" {
+					hasNonDisabledLoss = true
+					break
+				}
+			}
+			if !hasNonDisabledLoss {
+				delete(issueReasons, "packet_loss")
+			}
+		}
+
+		// Update issue reasons list after potential disabled additions
+		issueReasonsList = nil
+		for reason := range issueReasons {
+			issueReasonsList = append(issueReasonsList, reason)
+		}
+		sort.Strings(issueReasonsList)
+
 		links = append(links, LinkHistory{
+			PK:             pk,
 			Code:           meta.code,
 			LinkType:       meta.linkType,
 			Contributor:    meta.contributor,

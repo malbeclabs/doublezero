@@ -668,6 +668,7 @@ export interface LinkIssue {
 }
 
 export interface LinkMetric {
+  pk: string
   code: string
   link_type: string
   contributor: string
@@ -685,6 +686,7 @@ export interface LinkHealth {
   healthy: number
   degraded: number
   unhealthy: number
+  disabled: number
   issues: LinkIssue[]
   high_util_links: LinkMetric[]
   top_util_links: LinkMetric[]
@@ -702,11 +704,13 @@ export interface PerformanceMetrics {
 }
 
 export interface InterfaceIssue {
+  device_pk: string
   device_code: string
   device_type: string
   contributor: string
   metro: string
   interface_name: string
+  link_pk?: string
   link_code?: string
   link_type?: string
   link_side?: string
@@ -724,6 +728,7 @@ export interface InterfaceHealth {
 }
 
 export interface NonActivatedDevice {
+  pk: string
   code: string
   device_type: string
   metro: string
@@ -732,6 +737,7 @@ export interface NonActivatedDevice {
 }
 
 export interface NonActivatedLink {
+  pk: string
   code: string
   link_type: string
   side_a_metro: string
@@ -746,6 +752,7 @@ export interface InfrastructureAlerts {
 }
 
 export interface DeviceUtilization {
+  pk: string
   code: string
   device_type: string
   contributor: string
@@ -786,6 +793,7 @@ export interface LinkHourStatus {
 }
 
 export interface LinkHistory {
+  pk: string
   code: string
   link_type: string
   contributor: string

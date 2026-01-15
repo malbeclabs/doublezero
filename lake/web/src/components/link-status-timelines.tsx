@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
+import { Link } from 'react-router-dom'
 import { Loader2, CheckCircle2, AlertTriangle, Info } from 'lucide-react'
 import { fetchLinkHistory } from '@/lib/api'
 import type { LinkHistory } from '@/lib/api'
@@ -110,11 +111,37 @@ export function LinkStatusTimelines({ timeRange = '24h', issueFilters = ['packet
     staleTime: 30_000,
   })
 
-  // Filter links based on issue filters
-  const filteredLinks = data?.links.filter(link => {
-    if (!link.issue_reasons || link.issue_reasons.length === 0) return false
-    return link.issue_reasons.some(reason => issueFilters.includes(reason))
-  }) || []
+  // Filter and sort links by recency of issues
+  const filteredLinks = useMemo(() => {
+    if (!data?.links) return []
+
+    // Filter by issue reasons
+    const filtered = data.links.filter(link => {
+      if (!link.issue_reasons || link.issue_reasons.length === 0) return false
+      return link.issue_reasons.some(reason => issueFilters.includes(reason))
+    })
+
+    // Sort by most recent issue (higher index in hours = more recent)
+    // Issues are: unhealthy, degraded, disabled
+    return filtered.sort((a, b) => {
+      const getLatestIssueIndex = (link: LinkHistory): number => {
+        if (!link.hours) return -1
+        for (let i = link.hours.length - 1; i >= 0; i--) {
+          const status = link.hours[i].status
+          if (status === 'unhealthy' || status === 'degraded' || status === 'disabled') {
+            return i
+          }
+        }
+        return -1
+      }
+
+      const aIndex = getLatestIssueIndex(a)
+      const bIndex = getLatestIssueIndex(b)
+
+      // Higher index = more recent = should come first
+      return bIndex - aIndex
+    })
+  }, [data?.links, issueFilters])
 
   if (isLoading) {
     return (
@@ -178,11 +205,11 @@ export function LinkStatusTimelines({ timeRange = '24h', issueFilters = ['packet
           <span>Unhealthy</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="w-2.5 h-2.5 rounded-sm bg-gray-300 dark:bg-gray-600" />
+          <div className="w-2.5 h-2.5 rounded-sm bg-transparent border border-gray-200 dark:border-gray-700" />
           <span>No Data</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="w-2.5 h-2.5 rounded-sm bg-blue-400 dark:bg-blue-500" />
+          <div className="w-2.5 h-2.5 rounded-sm bg-gray-500 dark:bg-gray-700" />
           <span>Disabled</span>
         </div>
       </div>
@@ -194,9 +221,9 @@ export function LinkStatusTimelines({ timeRange = '24h', issueFilters = ['packet
               {/* Link info */}
               <div className="flex-shrink-0 w-48">
                 <div className="flex items-center gap-1.5">
-                  <div className="font-mono text-sm truncate" title={link.code}>
+                  <Link to={`/dz/links/${link.pk}`} className="font-mono text-sm truncate hover:underline" title={link.code}>
                     {link.code}
-                  </div>
+                  </Link>
                   <LinkInfoPopover link={link} />
                 </div>
                 {link.contributor && (
@@ -223,7 +250,7 @@ export function LinkStatusTimelines({ timeRange = '24h', issueFilters = ['packet
                     {link.issue_reasons.includes('disabled') && (
                       <span
                         className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-                        style={{ backgroundColor: 'rgba(59, 130, 246, 0.15)', color: '#2563eb' }}
+                        style={{ backgroundColor: 'rgba(55, 65, 81, 0.15)', color: '#4b5563' }}
                       >
                         Disabled
                       </span>

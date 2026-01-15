@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@import "leaflet/dist/leaflet.css";
 @plugin "@tailwindcss/typography";
 
 /* Light theme variables - matching parent site */

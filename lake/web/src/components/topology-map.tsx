@@ -1,13 +1,14 @@
 import { useMemo, useEffect, useRef, useState, useCallback } from 'react'
 import { useSearchParams, Link, useNavigate } from 'react-router-dom'
-import { MapContainer, TileLayer, CircleMarker, Polyline, useMap, useMapEvents } from 'react-leaflet'
+import MapGL, { Source, Layer, Marker } from 'react-map-gl/maplibre'
+import type { MapRef, MapLayerMouseEvent, LngLatBoundsLike } from 'react-map-gl/maplibre'
+import type { StyleSpecification } from 'maplibre-gl'
+import 'maplibre-gl/dist/maplibre-gl.css'
 import { ZoomIn, ZoomOut, Maximize, Users, X } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip as RechartsTooltip, CartesianGrid } from 'recharts'
 import { useQuery } from '@tanstack/react-query'
-import type { Polyline as LeafletPolyline } from 'leaflet'
 import { useTheme } from '@/hooks/use-theme'
 import type { TopologyMetro, TopologyDevice, TopologyLink, TopologyValidator } from '@/lib/api'
-import type { LatLngTuple } from 'leaflet'
 
 interface TopologyMapProps {
   metros: TopologyMetro[]
@@ -155,117 +156,35 @@ type SelectedItem =
   | { type: 'metro'; data: HoveredMetroInfo }
   | { type: 'validator'; data: HoveredValidatorInfo }
 
-// Animated polyline component with flowing dashes based on latency
-interface AnimatedPolylineProps {
-  positions: LatLngTuple[]
-  color: string
-  weight: number
-  latencyUs: number
-  isWan: boolean
-  isHovered: boolean
-  isDark: boolean
-  onHover: (hovered: boolean) => void
-  onClick?: () => void
-}
-
-function AnimatedPolyline({ positions, color, weight, latencyUs, isWan, isHovered, isDark, onHover, onClick }: AnimatedPolylineProps) {
-  // Hover color: light in dark mode, dark in light mode
-  const hoverColor = isDark ? '#fff' : '#000'
-  const polylineRef = useRef<LeafletPolyline>(null)
-
-  useEffect(() => {
-    const polyline = polylineRef.current
-    if (!polyline) return
-
-    const element = polyline.getElement() as SVGElement | null
-    if (!element) return
-
-    // Calculate animation duration based on latency
-    // Lower latency = faster animation (shorter duration)
-    // Range: 100us -> 0.5s, 10000us -> 3s
-    const minLatency = 100
-    const maxLatency = 10000
-    const clampedLatency = Math.max(minLatency, Math.min(maxLatency, latencyUs || 1000))
-    const duration = 0.5 + ((clampedLatency - minLatency) / (maxLatency - minLatency)) * 2.5
-
-    // Apply CSS animation
-    element.style.animation = `flowingDash ${duration}s linear infinite`
-  }, [latencyUs])
-
-  return (
-    <>
-      {/* Invisible wider hit area for easier hovering */}
-      <Polyline
-        positions={positions}
-        pathOptions={{
-          color: 'transparent',
-          weight: Math.max(20, weight * 3),
-          opacity: 0,
-        }}
-        eventHandlers={{
-          mouseover: () => onHover(true),
-          mouseout: () => onHover(false),
-          click: onClick,
-        }}
-      />
-      {/* Visible animated line */}
-      <Polyline
-        ref={polylineRef}
-        positions={positions}
-        pathOptions={{
-          color: isHovered ? hoverColor : color,
-          weight: isHovered ? weight + 2 : weight,
-          opacity: isHovered ? 1 : 0.8,
-          dashArray: isWan ? '8, 4' : '4, 4',
-          lineCap: 'round',
-        }}
-        interactive={false}
-      />
-    </>
-  )
-}
-
 // Map controls component
 interface MapControlsProps {
-  metros: TopologyMetro[]
+  onZoomIn: () => void
+  onZoomOut: () => void
+  onReset: () => void
   showValidators: boolean
   onToggleValidators: () => void
   validatorCount: number
 }
 
-function MapControls({ metros, showValidators, onToggleValidators, validatorCount }: MapControlsProps) {
-  const map = useMap()
-
-  const handleZoomIn = () => map.zoomIn()
-  const handleZoomOut = () => map.zoomOut()
-  const handleReset = () => {
-    if (metros.length === 0) return
-    const lats = metros.map(m => m.latitude)
-    const lngs = metros.map(m => m.longitude)
-    map.fitBounds(
-      [[Math.min(...lats), Math.min(...lngs)], [Math.max(...lats), Math.max(...lngs)]],
-      { padding: [50, 50], maxZoom: 5 }
-    )
-  }
-
+function MapControls({ onZoomIn, onZoomOut, onReset, showValidators, onToggleValidators, validatorCount }: MapControlsProps) {
   return (
     <div className="absolute top-4 right-4 z-[1000] flex flex-col gap-1">
       <button
-        onClick={handleZoomIn}
+        onClick={onZoomIn}
         className="p-2 bg-[var(--card)] border border-[var(--border)] rounded shadow-sm hover:bg-[var(--muted)] transition-colors"
         title="Zoom in"
       >
         <ZoomIn className="h-4 w-4" />
       </button>
       <button
-        onClick={handleZoomOut}
+        onClick={onZoomOut}
         className="p-2 bg-[var(--card)] border border-[var(--border)] rounded shadow-sm hover:bg-[var(--muted)] transition-colors"
         title="Zoom out"
       >
         <ZoomOut className="h-4 w-4" />
       </button>
       <button
-        onClick={handleReset}
+        onClick={onReset}
         className="p-2 bg-[var(--card)] border border-[var(--border)] rounded shadow-sm hover:bg-[var(--muted)] transition-colors"
         title="Reset view"
       >
@@ -287,59 +206,15 @@ function MapControls({ metros, showValidators, onToggleValidators, validatorCoun
   )
 }
 
-// Component to handle map resize and fit bounds after mount
-function MapFitBounds({ metros }: { metros: TopologyMetro[] }) {
-  const map = useMap()
-
-  useEffect(() => {
-    if (metros.length === 0) return
-
-    // Calculate bounds from metros
-    const lats = metros.map(m => m.latitude)
-    const lngs = metros.map(m => m.longitude)
-
-    const minLat = Math.min(...lats)
-    const maxLat = Math.max(...lats)
-    const minLng = Math.min(...lngs)
-    const maxLng = Math.max(...lngs)
-
-    // Fit bounds after a short delay to account for container sizing
-    const timer = setTimeout(() => {
-      map.invalidateSize()
-      map.fitBounds(
-        [[minLat, minLng], [maxLat, maxLng]],
-        { padding: [50, 50], maxZoom: 5 }
-      )
-    }, 100)
-
-    return () => clearTimeout(timer)
-  }, [map, metros])
-
-  return null
-}
-
-// Component to handle map clicks (close drawer when clicking empty area)
-function MapClickHandler({ onMapClick, markerClickedRef }: { onMapClick: () => void; markerClickedRef: React.RefObject<boolean> }) {
-  useMapEvents({
-    click: () => {
-      // Only close drawer if a marker wasn't just clicked
-      if (!markerClickedRef.current) {
-        onMapClick()
-      }
-    },
-  })
-  return null
-}
-
 // Calculate device position with radial offset for multiple devices at same metro
 function calculateDevicePosition(
   metroLat: number,
   metroLng: number,
   deviceIndex: number,
   totalDevices: number
-): LatLngTuple {
+): [number, number] {
   if (totalDevices === 1) {
-    return [metroLat, metroLng]
+    return [metroLng, metroLat]
   }
 
   // Distribute devices in a circle around metro center
@@ -349,38 +224,66 @@ function calculateDevicePosition(
   // Adjust for latitude distortion
   const lngOffset = radius * Math.sin(angle) / Math.cos(metroLat * Math.PI / 180)
 
-  return [metroLat + latOffset, metroLng + lngOffset]
+  return [metroLng + lngOffset, metroLat + latOffset]
 }
 
-// Calculate curved path between two points
+// Calculate curved path between two points (returns GeoJSON coordinates [lng, lat])
 function calculateCurvedPath(
-  start: LatLngTuple,
-  end: LatLngTuple,
+  start: [number, number],
+  end: [number, number],
   curveOffset: number = 0.15
-): LatLngTuple[] {
-  const midLat = (start[0] + end[0]) / 2
-  const midLng = (start[1] + end[1]) / 2
+): [number, number][] {
+  const midLng = (start[0] + end[0]) / 2
+  const midLat = (start[1] + end[1]) / 2
 
   // Calculate perpendicular offset for curve
-  const dx = end[1] - start[1]
-  const dy = end[0] - start[0]
+  const dx = end[0] - start[0]
+  const dy = end[1] - start[1]
   const length = Math.sqrt(dx * dx + dy * dy)
 
   if (length === 0) return [start, end]
 
-  const controlLat = midLat + (dx / length) * curveOffset * length
   const controlLng = midLng - (dy / length) * curveOffset * length
+  const controlLat = midLat + (dx / length) * curveOffset * length
 
   // Generate points along quadratic bezier curve
-  const points: LatLngTuple[] = []
+  const points: [number, number][] = []
   const segments = 20
   for (let i = 0; i <= segments; i++) {
     const t = i / segments
-    const lat = (1 - t) * (1 - t) * start[0] + 2 * (1 - t) * t * controlLat + t * t * end[0]
-    const lng = (1 - t) * (1 - t) * start[1] + 2 * (1 - t) * t * controlLng + t * t * end[1]
-    points.push([lat, lng])
+    const lng = (1 - t) * (1 - t) * start[0] + 2 * (1 - t) * t * controlLng + t * t * end[0]
+    const lat = (1 - t) * (1 - t) * start[1] + 2 * (1 - t) * t * controlLat + t * t * end[1]
+    points.push([lng, lat])
   }
   return points
+}
+
+// Create MapLibre style with CARTO basemap
+function createMapStyle(isDark: boolean): StyleSpecification {
+  const tileUrl = isDark
+    ? 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'
+    : 'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png'
+
+  return {
+    version: 8,
+    sources: {
+      carto: {
+        type: 'raster',
+        tiles: [tileUrl],
+        tileSize: 256,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      },
+    },
+    layers: [
+      {
+        id: 'carto-tiles',
+        type: 'raster',
+        source: 'carto',
+        minzoom: 0,
+        maxzoom: 22,
+      },
+    ],
+  }
 }
 
 export function TopologyMap({ metros, devices, links, validators }: TopologyMapProps) {
@@ -393,6 +296,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
   const [hoveredValidator, setHoveredValidator] = useState<HoveredValidatorInfo | null>(null)
   const [showValidators, setShowValidators] = useState(false)
   const [selectedItem, setSelectedItemState] = useState<SelectedItem | null>(null)
+  const mapRef = useRef<MapRef>(null)
   const markerClickedRef = useRef(false)
 
   // Update URL when selected item changes
@@ -474,7 +378,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
 
   // Calculate device positions
   const devicePositions = useMemo(() => {
-    const positions = new Map<string, LatLngTuple>()
+    const positions = new Map<string, [number, number]>()
 
     for (const [metroPk, metroDevices] of devicesByMetro) {
       const metro = metroMap.get(metroPk)
@@ -494,35 +398,162 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     return positions
   }, [devicesByMetro, metroMap])
 
-  // Calculate map center - use Atlantic-centered view for global network
-  const mapCenter = useMemo((): LatLngTuple => {
-    if (metros.length === 0) return [30, 0]
+  // Map style based on theme
+  const mapStyle = useMemo(() => createMapStyle(isDark), [isDark])
 
-    // Center shifted right to account for sidebar on the left
-    return [30, 0]
+  // Fit bounds to metros
+  const fitBounds = useCallback(() => {
+    if (!mapRef.current || metros.length === 0) return
+
+    const lngs = metros.map(m => m.longitude)
+    const lats = metros.map(m => m.latitude)
+    const bounds: LngLatBoundsLike = [
+      [Math.min(...lngs), Math.min(...lats)],
+      [Math.max(...lngs), Math.max(...lats)],
+    ]
+    mapRef.current.fitBounds(bounds, { padding: 50, maxZoom: 5 })
   }, [metros])
 
-  // Prepare link data with positions
-  const linkData = useMemo(() => {
-    return links
-      .map(link => {
-        const startPos = devicePositions.get(link.side_a_pk)
-        const endPos = devicePositions.get(link.side_z_pk)
+  // Fit bounds on initial load
+  const initialFitRef = useRef(true)
+  useEffect(() => {
+    if (initialFitRef.current && metros.length > 0 && mapRef.current) {
+      // Wait for map to be ready
+      const timer = setTimeout(() => {
+        fitBounds()
+        initialFitRef.current = false
+      }, 100)
+      return () => clearTimeout(timer)
+    }
+  }, [metros, fitBounds])
 
-        if (!startPos || !endPos) return null
+  // GeoJSON for link lines
+  const linkGeoJson = useMemo(() => {
+    const features = links.map(link => {
+      const startPos = devicePositions.get(link.side_a_pk)
+      const endPos = devicePositions.get(link.side_z_pk)
 
-        const deviceA = deviceMap.get(link.side_a_pk)
-        const deviceZ = deviceMap.get(link.side_z_pk)
+      if (!startPos || !endPos) return null
 
-        return {
-          link,
-          path: calculateCurvedPath(startPos, endPos),
-          deviceA,
-          deviceZ,
+      const hasLatencyData = (link.sample_count ?? 0) > 0
+      const color = getLossColor(link.loss_percent, hasLatencyData, isDark)
+      const weight = calculateLinkWeight(link.bandwidth_bps)
+      const isHovered = hoveredLink?.pk === link.pk
+      const isSelected = selectedItem?.type === 'link' && selectedItem.data.pk === link.pk
+
+      return {
+        type: 'Feature' as const,
+        properties: {
+          pk: link.pk,
+          code: link.code,
+          color: isHovered || isSelected ? hoverHighlight : color,
+          weight: isHovered || isSelected ? weight + 2 : weight,
+          opacity: isHovered || isSelected ? 1 : 0.8,
+          dashArray: link.link_type === 'WAN' ? [8, 4] : [4, 4],
+        },
+        geometry: {
+          type: 'LineString' as const,
+          coordinates: calculateCurvedPath(startPos, endPos),
+        },
+      }
+    }).filter((f): f is NonNullable<typeof f> => f !== null)
+
+    return {
+      type: 'FeatureCollection' as const,
+      features,
+    }
+  }, [links, devicePositions, isDark, hoveredLink, selectedItem, hoverHighlight])
+
+  // GeoJSON for validator links (connecting lines)
+  const validatorLinksGeoJson = useMemo(() => {
+    if (!showValidators) return { type: 'FeatureCollection' as const, features: [] }
+
+    const validatorLinkColor = isDark ? '#7c3aed' : '#6d28d9'
+    const features = validators.map(validator => {
+      const devicePos = devicePositions.get(validator.device_pk)
+      if (!devicePos) return null
+
+      const isHovered = hoveredValidator?.votePubkey === validator.vote_pubkey
+
+      return {
+        type: 'Feature' as const,
+        properties: {
+          votePubkey: validator.vote_pubkey,
+          color: isHovered ? hoverHighlight : validatorLinkColor,
+          weight: isHovered ? 2 : 1,
+          opacity: isHovered ? 0.9 : 0.4,
+        },
+        geometry: {
+          type: 'LineString' as const,
+          coordinates: [
+            [validator.longitude, validator.latitude],
+            devicePos,
+          ],
+        },
+      }
+    }).filter((f): f is NonNullable<typeof f> => f !== null)
+
+    return {
+      type: 'FeatureCollection' as const,
+      features,
+    }
+  }, [validators, devicePositions, showValidators, isDark, hoveredValidator, hoverHighlight])
+
+  // Colors
+  const deviceColor = isDark ? '#f97316' : '#ea580c' // orange
+  const metroColor = isDark ? '#4b5563' : '#9ca3af' // gray
+  const validatorColor = isDark ? '#a855f7' : '#9333ea' // purple
+
+  // Build hover info for links
+  const buildLinkInfo = useCallback((link: TopologyLink): HoveredLinkInfo => {
+    const deviceA = deviceMap.get(link.side_a_pk)
+    const deviceZ = deviceMap.get(link.side_z_pk)
+    const hasLatencyData = (link.sample_count ?? 0) > 0
+    return {
+      pk: link.pk,
+      code: link.code,
+      linkType: link.link_type,
+      bandwidth: formatBandwidth(link.bandwidth_bps),
+      latencyMs: hasLatencyData ? (link.latency_us > 0 ? `${(link.latency_us / 1000).toFixed(2)}ms` : '0.00ms') : 'N/A',
+      jitterMs: hasLatencyData ? ((link.jitter_us ?? 0) > 0 ? `${(link.jitter_us / 1000).toFixed(3)}ms` : '0.000ms') : 'N/A',
+      lossPercent: hasLatencyData ? `${(link.loss_percent ?? 0).toFixed(2)}%` : 'N/A',
+      inRate: formatTrafficRate(link.in_bps),
+      outRate: formatTrafficRate(link.out_bps),
+      deviceAPk: link.side_a_pk,
+      deviceACode: deviceA?.code || 'Unknown',
+      deviceZPk: link.side_z_pk,
+      deviceZCode: deviceZ?.code || 'Unknown',
+    }
+  }, [deviceMap])
+
+  // Handle map click to deselect or select links
+  const handleMapClick = useCallback((e: MapLayerMouseEvent) => {
+    // Check if a link was clicked
+    if (e.features && e.features.length > 0) {
+      const feature = e.features[0]
+      if (feature.properties?.pk && feature.layer?.id?.includes('link')) {
+        const pk = feature.properties.pk
+        const link = linkMap.get(pk)
+        if (link) {
+          handleMarkerClick({ type: 'link', data: buildLinkInfo(link) })
+          return
         }
-      })
-      .filter((d): d is NonNullable<typeof d> => d !== null)
-  }, [links, devicePositions, deviceMap])
+      }
+    }
+    // Only close drawer if a marker wasn't just clicked
+    if (!markerClickedRef.current) {
+      setSelectedItem(null)
+    }
+  }, [setSelectedItem, linkMap, buildLinkInfo, handleMarkerClick])
+
+  // Map control handlers
+  const handleZoomIn = useCallback(() => {
+    mapRef.current?.zoomIn()
+  }, [])
+
+  const handleZoomOut = useCallback(() => {
+    mapRef.current?.zoomOut()
+  }, [])
 
   // Restore selected item from URL params on initial load
   const initialLoadRef = useRef(true)
@@ -627,316 +658,309 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     }
   }, [searchParams, validatorMap, deviceMap, linkMap, metroMap, devicesByMetro])
 
-  // Tile layer URL based on theme
-  const tileUrl = isDark
-    ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-    : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
+  // Handle link layer hover
+  const handleLinkMouseEnter = useCallback((e: MapLayerMouseEvent) => {
+    if (e.features && e.features[0]) {
+      const pk = e.features[0].properties?.pk
+      const link = linkMap.get(pk)
+      if (link) {
+        setHoveredLink(buildLinkInfo(link))
+      }
+    }
+  }, [linkMap, buildLinkInfo])
 
-  // Colors
-  const deviceColor = isDark ? '#f97316' : '#ea580c' // orange
-  const metroColor = isDark ? '#4b5563' : '#9ca3af' // gray
-  const validatorColor = isDark ? '#a855f7' : '#9333ea' // purple
-  const validatorLinkColor = isDark ? '#7c3aed' : '#6d28d9' // darker purple for links
+  const handleLinkMouseLeave = useCallback(() => {
+    setHoveredLink(null)
+  }, [])
 
   return (
     <>
-    <MapContainer
-      center={mapCenter}
-      zoom={3}
-      minZoom={2}
-      className="h-full w-full"
-      scrollWheelZoom={true}
-      zoomSnap={0.5}
-      wheelPxPerZoomLevel={20}
-      preferCanvas={true}
-      style={{ background: 'var(--background)' }}
-    >
-      <MapFitBounds metros={metros} />
-      <MapClickHandler onMapClick={() => setSelectedItem(null)} markerClickedRef={markerClickedRef} />
-      <MapControls
-        metros={metros}
-        showValidators={showValidators}
-        onToggleValidators={() => setShowValidators(!showValidators)}
-        validatorCount={validators.length}
-      />
-      <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-        url={tileUrl}
-      />
+      <MapGL
+        ref={mapRef}
+        initialViewState={{
+          longitude: 0,
+          latitude: 30,
+          zoom: 2,
+        }}
+        minZoom={2}
+        maxZoom={18}
+        mapStyle={mapStyle}
+        style={{ width: '100%', height: '100%' }}
+        onClick={handleMapClick}
+        interactiveLayerIds={['link-lines', 'link-hit-area']}
+        onMouseEnter={handleLinkMouseEnter}
+        onMouseLeave={handleLinkMouseLeave}
+        cursor={hoveredLink ? 'pointer' : undefined}
+      >
+        <MapControls
+          onZoomIn={handleZoomIn}
+          onZoomOut={handleZoomOut}
+          onReset={fitBounds}
+          showValidators={showValidators}
+          onToggleValidators={() => setShowValidators(!showValidators)}
+          validatorCount={validators.length}
+        />
 
-      {/* Metro markers (background circles) */}
-      {metros.map(metro => {
-        const isThisHovered = hoveredMetro?.code === metro.code
-        const isThisSelected = selectedItem?.type === 'metro' && selectedItem.data.pk === metro.pk
-        const metroDeviceCount = devicesByMetro.get(metro.pk)?.length || 0
-        const metroInfo: HoveredMetroInfo = {
-          pk: metro.pk,
-          code: metro.code,
-          name: metro.name,
-          deviceCount: metroDeviceCount,
-        }
-
-        return (
-          <CircleMarker
-            key={`metro-${metro.pk}`}
-            center={[metro.latitude, metro.longitude]}
-            radius={isThisHovered || isThisSelected ? 14 : 12}
-            pathOptions={{
-              fillColor: isThisHovered || isThisSelected ? hoverHighlight : metroColor,
-              fillOpacity: isThisHovered || isThisSelected ? 0.5 : 0.3,
-              stroke: true,
-              color: isThisHovered || isThisSelected ? hoverHighlight : metroColor,
-              weight: isThisHovered || isThisSelected ? 2 : 1,
-              opacity: isThisHovered || isThisSelected ? 0.8 : 0.5,
+        {/* Link lines source and layers */}
+        <Source id="links" type="geojson" data={linkGeoJson}>
+          {/* Invisible hit area for easier clicking */}
+          <Layer
+            id="link-hit-area"
+            type="line"
+            paint={{
+              'line-color': 'transparent',
+              'line-width': 20,
             }}
-            eventHandlers={{
-              mouseover: () => setHoveredMetro(metroInfo),
-              mouseout: () => setHoveredMetro(null),
-              click: () => handleMarkerClick({ type: 'metro', data: metroInfo }),
+            layout={{
+              'line-cap': 'round',
+              'line-join': 'round',
             }}
           />
-        )
-      })}
-
-      {/* Links */}
-      {linkData.map(({ link, path, deviceA, deviceZ }) => {
-        const isWan = link.link_type === 'WAN'
-        const hasLatencyData = (link.sample_count ?? 0) > 0
-        const color = getLossColor(link.loss_percent, hasLatencyData, isDark)
-        const weight = calculateLinkWeight(link.bandwidth_bps)
-        const isThisHovered = hoveredLink?.code === link.code
-        const isThisSelected = selectedItem?.type === 'link' && selectedItem.data.pk === link.pk
-        const linkInfo: HoveredLinkInfo = {
-          pk: link.pk,
-          code: link.code,
-          linkType: link.link_type,
-          bandwidth: formatBandwidth(link.bandwidth_bps),
-          latencyMs: hasLatencyData ? (link.latency_us > 0 ? `${(link.latency_us / 1000).toFixed(2)}ms` : '0.00ms') : 'N/A',
-          jitterMs: hasLatencyData ? ((link.jitter_us ?? 0) > 0 ? `${(link.jitter_us / 1000).toFixed(3)}ms` : '0.000ms') : 'N/A',
-          lossPercent: hasLatencyData ? `${(link.loss_percent ?? 0).toFixed(2)}%` : 'N/A',
-          inRate: formatTrafficRate(link.in_bps),
-          outRate: formatTrafficRate(link.out_bps),
-          deviceAPk: link.side_a_pk,
-          deviceACode: deviceA?.code || 'Unknown',
-          deviceZPk: link.side_z_pk,
-          deviceZCode: deviceZ?.code || 'Unknown',
-        }
-
-        return (
-          <AnimatedPolyline
-            key={`link-${link.pk}`}
-            positions={path}
-            color={color}
-            weight={weight}
-            latencyUs={link.latency_us}
-            isWan={isWan}
-            isHovered={isThisHovered || isThisSelected}
-            isDark={isDark}
-            onHover={(hovered) => {
-              if (hovered) {
-                setHoveredLink(linkInfo)
-              } else {
-                setHoveredLink(null)
-              }
+          {/* Render each link with its own color - using data-driven styling */}
+          <Layer
+            id="link-lines"
+            type="line"
+            paint={{
+              'line-color': ['get', 'color'],
+              'line-width': ['get', 'weight'],
+              'line-opacity': ['get', 'opacity'],
+              'line-dasharray': [4, 4],
             }}
-            onClick={() => handleMarkerClick({ type: 'link', data: linkInfo })}
-          />
-        )
-      })}
-
-      {/* Device markers */}
-      {devices.map(device => {
-        const pos = devicePositions.get(device.pk)
-        if (!pos) return null
-
-        const metro = metroMap.get(device.metro_pk)
-        const isThisHovered = hoveredDevice?.code === device.code
-        const isThisSelected = selectedItem?.type === 'device' && selectedItem.data.pk === device.pk
-        const deviceInfo: HoveredDeviceInfo = {
-          pk: device.pk,
-          code: device.code,
-          deviceType: device.device_type,
-          status: device.status,
-          metroPk: device.metro_pk,
-          metroName: metro?.name || 'Unknown',
-          userCount: device.user_count ?? 0,
-          validatorCount: device.validator_count ?? 0,
-          stakeSol: (device.stake_sol ?? 0) >= 1e6 ? `${(device.stake_sol / 1e6).toFixed(2)}M` : (device.stake_sol ?? 0) >= 1e3 ? `${(device.stake_sol / 1e3).toFixed(0)}k` : `${(device.stake_sol ?? 0).toFixed(0)}`,
-          stakeShare: (device.stake_share ?? 0) > 0 ? `${device.stake_share.toFixed(2)}%` : '0%',
-        }
-
-        return (
-          <CircleMarker
-            key={`device-${device.pk}`}
-            center={pos}
-            radius={isThisHovered || isThisSelected ? 8 : 6}
-            pathOptions={{
-              fillColor: isThisHovered || isThisSelected ? hoverHighlight : deviceColor,
-              fillOpacity: 0.9,
-              stroke: true,
-              color: hoverHighlight,
-              weight: isThisHovered || isThisSelected ? 2 : 1,
-              opacity: isThisHovered || isThisSelected ? 1 : 0.5,
-            }}
-            eventHandlers={{
-              mouseover: () => setHoveredDevice(deviceInfo),
-              mouseout: () => setHoveredDevice(null),
-              click: () => handleMarkerClick({ type: 'device', data: deviceInfo }),
+            layout={{
+              'line-cap': 'round',
+              'line-join': 'round',
             }}
           />
-        )
-      })}
+        </Source>
 
-      {/* Validator connections (shown when toggled) */}
-      {showValidators && validators.map(validator => {
-        const devicePos = devicePositions.get(validator.device_pk)
-        if (!devicePos) return null
-
-        const validatorPos: LatLngTuple = [validator.latitude, validator.longitude]
-        const isThisHovered = hoveredValidator?.votePubkey === validator.vote_pubkey
-
-        return (
-          <Polyline
-            key={`validator-link-${validator.vote_pubkey}`}
-            positions={[validatorPos, devicePos]}
-            pathOptions={{
-              color: isThisHovered ? hoverHighlight : validatorLinkColor,
-              weight: isThisHovered ? 2 : 1,
-              opacity: isThisHovered ? 0.9 : 0.4,
-              dashArray: '4, 4',
-            }}
-          />
-        )
-      })}
-
-      {/* Validator markers (shown when toggled) */}
-      {showValidators && validators.map(validator => {
-        const devicePos = devicePositions.get(validator.device_pk)
-        if (!devicePos) return null
-
-        const validatorPos: LatLngTuple = [validator.latitude, validator.longitude]
-        const device = deviceMap.get(validator.device_pk)
-        const metro = device ? metroMap.get(device.metro_pk) : undefined
-        const isThisHovered = hoveredValidator?.votePubkey === validator.vote_pubkey
-        const isThisSelected = selectedItem?.type === 'validator' && selectedItem.data.votePubkey === validator.vote_pubkey
-        const baseRadius = calculateValidatorRadius(validator.stake_sol)
-        const validatorInfo: HoveredValidatorInfo = {
-          votePubkey: validator.vote_pubkey,
-          nodePubkey: validator.node_pubkey,
-          tunnelId: validator.tunnel_id,
-          city: validator.city || 'Unknown',
-          country: validator.country || 'Unknown',
-          stakeSol: (validator.stake_sol ?? 0) >= 1e6 ? `${(validator.stake_sol / 1e6).toFixed(2)}M` : (validator.stake_sol ?? 0) >= 1e3 ? `${(validator.stake_sol / 1e3).toFixed(0)}k` : `${(validator.stake_sol ?? 0).toFixed(0)}`,
-          stakeShare: (validator.stake_share ?? 0) > 0 ? `${validator.stake_share.toFixed(2)}%` : '0%',
-          commission: validator.commission ?? 0,
-          version: validator.version || '',
-          gossipIp: validator.gossip_ip || '',
-          gossipPort: validator.gossip_port ?? 0,
-          tpuQuicIp: validator.tpu_quic_ip || '',
-          tpuQuicPort: validator.tpu_quic_port ?? 0,
-          deviceCode: device?.code || 'Unknown',
-          devicePk: validator.device_pk,
-          metroPk: device?.metro_pk || '',
-          metroName: metro?.name || 'Unknown',
-          inRate: formatTrafficRate(validator.in_bps),
-          outRate: formatTrafficRate(validator.out_bps),
-        }
-
-        return (
-          <CircleMarker
-            key={`validator-${validator.vote_pubkey}`}
-            center={validatorPos}
-            radius={isThisHovered || isThisSelected ? baseRadius + 2 : baseRadius}
-            pathOptions={{
-              fillColor: isThisHovered || isThisSelected ? hoverHighlight : validatorColor,
-              fillOpacity: 0.9,
-              stroke: true,
-              color: hoverHighlight,
-              weight: isThisHovered || isThisSelected ? 2 : 1,
-              opacity: isThisHovered || isThisSelected ? 1 : 0.5,
-            }}
-            eventHandlers={{
-              mouseover: () => setHoveredValidator(validatorInfo),
-              mouseout: () => setHoveredValidator(null),
-              click: () => handleMarkerClick({ type: 'validator', data: validatorInfo }),
-            }}
-          />
-        )
-      })}
-    </MapContainer>
-
-    {/* Info panel - shows full details on hover (left of controls) */}
-    {(hoveredLink || hoveredDevice || hoveredMetro || hoveredValidator) && (
-      <div className="absolute top-4 right-16 z-[1000] bg-[var(--card)] border border-[var(--border)] rounded-lg shadow-lg p-4 min-w-[200px]">
-        {hoveredLink && (
-          <>
-            <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Link</div>
-            <div className="text-sm font-medium mb-2">{hoveredLink.code}</div>
-            <div className="space-y-1 text-xs">
-              <DetailRow label="Type" value={hoveredLink.linkType} />
-              <DetailRow label="Bandwidth" value={hoveredLink.bandwidth} />
-              <DetailRow label="Latency" value={hoveredLink.latencyMs} />
-              <DetailRow label="Jitter" value={hoveredLink.jitterMs} />
-              <DetailRow label="Loss" value={hoveredLink.lossPercent} />
-              <DetailRow label="In" value={hoveredLink.inRate} />
-              <DetailRow label="Out" value={hoveredLink.outRate} />
-              <DetailRow label="Side A" value={hoveredLink.deviceACode} />
-              <DetailRow label="Side Z" value={hoveredLink.deviceZCode} />
-            </div>
-          </>
+        {/* Validator links (when toggled) */}
+        {showValidators && (
+          <Source id="validator-links" type="geojson" data={validatorLinksGeoJson}>
+            <Layer
+              id="validator-link-lines"
+              type="line"
+              paint={{
+                'line-color': ['get', 'color'],
+                'line-width': ['get', 'weight'],
+                'line-opacity': ['get', 'opacity'],
+                'line-dasharray': [4, 4],
+              }}
+            />
+          </Source>
         )}
-        {hoveredDevice && !hoveredLink && (
-          <>
-            <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Device</div>
-            <div className="text-sm font-medium mb-2">{hoveredDevice.code}</div>
-            <div className="space-y-1 text-xs">
-              <DetailRow label="Type" value={hoveredDevice.deviceType} />
-              <DetailRow label="Metro" value={hoveredDevice.metroName} />
-              <DetailRow label="Users" value={String(hoveredDevice.userCount)} />
-              <DetailRow label="Validators" value={String(hoveredDevice.validatorCount)} />
-              <DetailRow label="Stake" value={`${hoveredDevice.stakeSol} SOL`} />
-              <DetailRow label="Stake Share" value={hoveredDevice.stakeShare} />
-            </div>
-          </>
-        )}
-        {hoveredMetro && !hoveredLink && !hoveredDevice && !hoveredValidator && (
-          <>
-            <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Metro</div>
-            <div className="text-sm font-medium mb-2">{hoveredMetro.name}</div>
-            <div className="space-y-1 text-xs">
-              <DetailRow label="Code" value={hoveredMetro.code} />
-              <DetailRow label="Devices" value={String(hoveredMetro.deviceCount)} />
-            </div>
-          </>
-        )}
-        {hoveredValidator && !hoveredLink && !hoveredDevice && (
-          <>
-            <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Validator</div>
-            <div className="text-sm font-medium font-mono mb-2" title={hoveredValidator.votePubkey}>{hoveredValidator.votePubkey.slice(0, 12)}...</div>
-            <div className="space-y-1 text-xs">
-              <DetailRow label="Location" value={`${hoveredValidator.city}, ${hoveredValidator.country}`} />
-              <DetailRow label="Gossip" value={hoveredValidator.gossipIp ? `${hoveredValidator.gossipIp}:${hoveredValidator.gossipPort}` : '—'} />
-              <DetailRow label="TPU QUIC" value={hoveredValidator.tpuQuicIp ? `${hoveredValidator.tpuQuicIp}:${hoveredValidator.tpuQuicPort}` : '—'} />
-              <DetailRow label="Stake" value={`${hoveredValidator.stakeSol} SOL`} />
-              <DetailRow label="Commission" value={`${hoveredValidator.commission}%`} />
-              <DetailRow label="Version" value={hoveredValidator.version || '—'} />
-              <DetailRow label="Device" value={hoveredValidator.deviceCode} />
-              <DetailRow label="In" value={hoveredValidator.inRate} />
-              <DetailRow label="Out" value={hoveredValidator.outRate} />
-            </div>
-          </>
-        )}
-      </div>
-    )}
 
-    {/* Detail drawer */}
-    {selectedItem && (
-      <TopologyDrawer
-        selectedItem={selectedItem}
-        onClose={() => setSelectedItem(null)}
-        isDark={isDark}
-      />
-    )}
+        {/* Metro markers */}
+        {metros.map(metro => {
+          const isThisHovered = hoveredMetro?.code === metro.code
+          const isThisSelected = selectedItem?.type === 'metro' && selectedItem.data.pk === metro.pk
+          const metroDeviceCount = devicesByMetro.get(metro.pk)?.length || 0
+          const metroInfo: HoveredMetroInfo = {
+            pk: metro.pk,
+            code: metro.code,
+            name: metro.name,
+            deviceCount: metroDeviceCount,
+          }
+
+          return (
+            <Marker
+              key={`metro-${metro.pk}`}
+              longitude={metro.longitude}
+              latitude={metro.latitude}
+              anchor="center"
+            >
+              <div
+                className="rounded-full cursor-pointer transition-all"
+                style={{
+                  width: isThisHovered || isThisSelected ? 28 : 24,
+                  height: isThisHovered || isThisSelected ? 28 : 24,
+                  backgroundColor: isThisHovered || isThisSelected ? hoverHighlight : metroColor,
+                  opacity: isThisHovered || isThisSelected ? 0.5 : 0.3,
+                  border: `${isThisHovered || isThisSelected ? 2 : 1}px solid ${isThisHovered || isThisSelected ? hoverHighlight : metroColor}`,
+                }}
+                onMouseEnter={() => setHoveredMetro(metroInfo)}
+                onMouseLeave={() => setHoveredMetro(null)}
+                onClick={() => handleMarkerClick({ type: 'metro', data: metroInfo })}
+              />
+            </Marker>
+          )
+        })}
+
+        {/* Device markers */}
+        {devices.map(device => {
+          const pos = devicePositions.get(device.pk)
+          if (!pos) return null
+
+          const metro = metroMap.get(device.metro_pk)
+          const isThisHovered = hoveredDevice?.code === device.code
+          const isThisSelected = selectedItem?.type === 'device' && selectedItem.data.pk === device.pk
+          const deviceInfo: HoveredDeviceInfo = {
+            pk: device.pk,
+            code: device.code,
+            deviceType: device.device_type,
+            status: device.status,
+            metroPk: device.metro_pk,
+            metroName: metro?.name || 'Unknown',
+            userCount: device.user_count ?? 0,
+            validatorCount: device.validator_count ?? 0,
+            stakeSol: (device.stake_sol ?? 0) >= 1e6 ? `${(device.stake_sol / 1e6).toFixed(2)}M` : (device.stake_sol ?? 0) >= 1e3 ? `${(device.stake_sol / 1e3).toFixed(0)}k` : `${(device.stake_sol ?? 0).toFixed(0)}`,
+            stakeShare: (device.stake_share ?? 0) > 0 ? `${device.stake_share.toFixed(2)}%` : '0%',
+          }
+
+          return (
+            <Marker
+              key={`device-${device.pk}`}
+              longitude={pos[0]}
+              latitude={pos[1]}
+              anchor="center"
+            >
+              <div
+                className="rounded-full cursor-pointer transition-all"
+                style={{
+                  width: isThisHovered || isThisSelected ? 16 : 12,
+                  height: isThisHovered || isThisSelected ? 16 : 12,
+                  backgroundColor: isThisHovered || isThisSelected ? hoverHighlight : deviceColor,
+                  border: `${isThisHovered || isThisSelected ? 2 : 1}px solid ${hoverHighlight}`,
+                  opacity: isThisHovered || isThisSelected ? 1 : 0.9,
+                }}
+                onMouseEnter={() => setHoveredDevice(deviceInfo)}
+                onMouseLeave={() => setHoveredDevice(null)}
+                onClick={() => handleMarkerClick({ type: 'device', data: deviceInfo })}
+              />
+            </Marker>
+          )
+        })}
+
+        {/* Validator markers (when toggled) */}
+        {showValidators && validators.map(validator => {
+          const devicePos = devicePositions.get(validator.device_pk)
+          if (!devicePos) return null
+
+          const device = deviceMap.get(validator.device_pk)
+          const metro = device ? metroMap.get(device.metro_pk) : undefined
+          const isThisHovered = hoveredValidator?.votePubkey === validator.vote_pubkey
+          const isThisSelected = selectedItem?.type === 'validator' && selectedItem.data.votePubkey === validator.vote_pubkey
+          const baseRadius = calculateValidatorRadius(validator.stake_sol)
+          const validatorInfo: HoveredValidatorInfo = {
+            votePubkey: validator.vote_pubkey,
+            nodePubkey: validator.node_pubkey,
+            tunnelId: validator.tunnel_id,
+            city: validator.city || 'Unknown',
+            country: validator.country || 'Unknown',
+            stakeSol: (validator.stake_sol ?? 0) >= 1e6 ? `${(validator.stake_sol / 1e6).toFixed(2)}M` : (validator.stake_sol ?? 0) >= 1e3 ? `${(validator.stake_sol / 1e3).toFixed(0)}k` : `${(validator.stake_sol ?? 0).toFixed(0)}`,
+            stakeShare: (validator.stake_share ?? 0) > 0 ? `${validator.stake_share.toFixed(2)}%` : '0%',
+            commission: validator.commission ?? 0,
+            version: validator.version || '',
+            gossipIp: validator.gossip_ip || '',
+            gossipPort: validator.gossip_port ?? 0,
+            tpuQuicIp: validator.tpu_quic_ip || '',
+            tpuQuicPort: validator.tpu_quic_port ?? 0,
+            deviceCode: device?.code || 'Unknown',
+            devicePk: validator.device_pk,
+            metroPk: device?.metro_pk || '',
+            metroName: metro?.name || 'Unknown',
+            inRate: formatTrafficRate(validator.in_bps),
+            outRate: formatTrafficRate(validator.out_bps),
+          }
+
+          const size = (isThisHovered || isThisSelected ? baseRadius + 2 : baseRadius) * 2
+
+          return (
+            <Marker
+              key={`validator-${validator.vote_pubkey}`}
+              longitude={validator.longitude}
+              latitude={validator.latitude}
+              anchor="center"
+            >
+              <div
+                className="rounded-full cursor-pointer transition-all"
+                style={{
+                  width: size,
+                  height: size,
+                  backgroundColor: isThisHovered || isThisSelected ? hoverHighlight : validatorColor,
+                  border: `${isThisHovered || isThisSelected ? 2 : 1}px solid ${hoverHighlight}`,
+                  opacity: isThisHovered || isThisSelected ? 1 : 0.9,
+                }}
+                onMouseEnter={() => setHoveredValidator(validatorInfo)}
+                onMouseLeave={() => setHoveredValidator(null)}
+                onClick={() => handleMarkerClick({ type: 'validator', data: validatorInfo })}
+              />
+            </Marker>
+          )
+        })}
+      </MapGL>
+
+      {/* Info panel - shows full details on hover (left of controls) */}
+      {(hoveredLink || hoveredDevice || hoveredMetro || hoveredValidator) && (
+        <div className="absolute top-4 right-16 z-[1000] bg-[var(--card)] border border-[var(--border)] rounded-lg shadow-lg p-4 min-w-[200px]">
+          {hoveredLink && (
+            <>
+              <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Link</div>
+              <div className="text-sm font-medium mb-2">{hoveredLink.code}</div>
+              <div className="space-y-1 text-xs">
+                <DetailRow label="Type" value={hoveredLink.linkType} />
+                <DetailRow label="Bandwidth" value={hoveredLink.bandwidth} />
+                <DetailRow label="Latency" value={hoveredLink.latencyMs} />
+                <DetailRow label="Jitter" value={hoveredLink.jitterMs} />
+                <DetailRow label="Loss" value={hoveredLink.lossPercent} />
+                <DetailRow label="In" value={hoveredLink.inRate} />
+                <DetailRow label="Out" value={hoveredLink.outRate} />
+                <DetailRow label="Side A" value={hoveredLink.deviceACode} />
+                <DetailRow label="Side Z" value={hoveredLink.deviceZCode} />
+              </div>
+            </>
+          )}
+          {hoveredDevice && !hoveredLink && (
+            <>
+              <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Device</div>
+              <div className="text-sm font-medium mb-2">{hoveredDevice.code}</div>
+              <div className="space-y-1 text-xs">
+                <DetailRow label="Type" value={hoveredDevice.deviceType} />
+                <DetailRow label="Metro" value={hoveredDevice.metroName} />
+                <DetailRow label="Users" value={String(hoveredDevice.userCount)} />
+                <DetailRow label="Validators" value={String(hoveredDevice.validatorCount)} />
+                <DetailRow label="Stake" value={`${hoveredDevice.stakeSol} SOL`} />
+                <DetailRow label="Stake Share" value={hoveredDevice.stakeShare} />
+              </div>
+            </>
+          )}
+          {hoveredMetro && !hoveredLink && !hoveredDevice && !hoveredValidator && (
+            <>
+              <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Metro</div>
+              <div className="text-sm font-medium mb-2">{hoveredMetro.name}</div>
+              <div className="space-y-1 text-xs">
+                <DetailRow label="Code" value={hoveredMetro.code} />
+                <DetailRow label="Devices" value={String(hoveredMetro.deviceCount)} />
+              </div>
+            </>
+          )}
+          {hoveredValidator && !hoveredLink && !hoveredDevice && (
+            <>
+              <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Validator</div>
+              <div className="text-sm font-medium font-mono mb-2" title={hoveredValidator.votePubkey}>{hoveredValidator.votePubkey.slice(0, 12)}...</div>
+              <div className="space-y-1 text-xs">
+                <DetailRow label="Location" value={`${hoveredValidator.city}, ${hoveredValidator.country}`} />
+                <DetailRow label="Gossip" value={hoveredValidator.gossipIp ? `${hoveredValidator.gossipIp}:${hoveredValidator.gossipPort}` : '—'} />
+                <DetailRow label="TPU QUIC" value={hoveredValidator.tpuQuicIp ? `${hoveredValidator.tpuQuicIp}:${hoveredValidator.tpuQuicPort}` : '—'} />
+                <DetailRow label="Stake" value={`${hoveredValidator.stakeSol} SOL`} />
+                <DetailRow label="Commission" value={`${hoveredValidator.commission}%`} />
+                <DetailRow label="Version" value={hoveredValidator.version || '—'} />
+                <DetailRow label="Device" value={hoveredValidator.deviceCode} />
+                <DetailRow label="In" value={hoveredValidator.inRate} />
+                <DetailRow label="Out" value={hoveredValidator.outRate} />
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Detail drawer */}
+      {selectedItem && (
+        <TopologyDrawer
+          selectedItem={selectedItem}
+          onClose={() => setSelectedItem(null)}
+          isDark={isDark}
+        />
+      )}
     </>
   )
 }

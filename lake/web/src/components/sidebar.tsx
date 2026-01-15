@@ -337,7 +337,7 @@ export function Sidebar({
       {/* Header with logo and collapse */}
       <div className="px-3 h-12 flex items-center justify-between border-b border-border/50">
         <button
-          onClick={() => navigate('/')}
+          onClick={(e) => handleRowClick(e, '/', navigate)}
           className="flex items-center gap-2 hover:opacity-80 transition-opacity"
         >
           <img src={resolvedTheme === 'dark' ? '/logoDark.svg' : '/logoLight.svg'} alt="DoubleZero" className="h-6" />

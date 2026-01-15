@@ -706,15 +706,15 @@ func queryDeviceChanges(ctx context.Context, startTime, endTime time.Time) ([]Ti
 				max_users,
 				is_deleted,
 				attrs_hash,
-				ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as row_num,
-				LAG(status) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_status,
-				LAG(device_type) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_device_type,
-				LAG(public_ip) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_public_ip,
-				LAG(contributor_pk) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_contributor_pk,
-				LAG(metro_pk) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_metro_pk,
-				LAG(max_users) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_max_users,
-				LAG(attrs_hash) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_attrs_hash,
-				LAG(is_deleted) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_is_deleted
+				row_number() OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as row_num,
+				lag(status) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_status,
+				lag(device_type) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_device_type,
+				lag(public_ip) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_public_ip,
+				lag(contributor_pk) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_contributor_pk,
+				lag(metro_pk) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_metro_pk,
+				lag(max_users) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_max_users,
+				lag(attrs_hash) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_attrs_hash,
+				lag(is_deleted) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_is_deleted
 			FROM dim_dz_devices_history
 		)
 		SELECT
@@ -920,18 +920,18 @@ func queryLinkChanges(ctx context.Context, startTime, endTime time.Time) ([]Time
 				isis_delay_override_ns,
 				is_deleted,
 				attrs_hash,
-				ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as row_num,
-				LAG(status) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_status,
-				LAG(link_type) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_link_type,
-				LAG(tunnel_net) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_tunnel_net,
-				LAG(contributor_pk) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_contributor_pk,
-				LAG(side_a_pk) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_side_a_pk,
-				LAG(side_z_pk) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_side_z_pk,
-				LAG(committed_rtt_ns) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_committed_rtt_ns,
-				LAG(committed_jitter_ns) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_committed_jitter_ns,
-				LAG(bandwidth_bps) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_bandwidth_bps,
-				LAG(attrs_hash) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_attrs_hash,
-				LAG(is_deleted) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_is_deleted
+				row_number() OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as row_num,
+				lag(status) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_status,
+				lag(link_type) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_link_type,
+				lag(tunnel_net) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_tunnel_net,
+				lag(contributor_pk) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_contributor_pk,
+				lag(side_a_pk) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_side_a_pk,
+				lag(side_z_pk) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_side_z_pk,
+				lag(committed_rtt_ns) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_committed_rtt_ns,
+				lag(committed_jitter_ns) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_committed_jitter_ns,
+				lag(bandwidth_bps) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_bandwidth_bps,
+				lag(attrs_hash) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_attrs_hash,
+				lag(is_deleted) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_is_deleted
 			FROM dim_dz_links_history
 		)
 		SELECT
@@ -1178,12 +1178,12 @@ func queryMetroChanges(ctx context.Context, startTime, endTime time.Time) ([]Tim
 				latitude,
 				is_deleted,
 				attrs_hash,
-				ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as row_num,
-				LAG(name) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_name,
-				LAG(longitude) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_longitude,
-				LAG(latitude) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_latitude,
-				LAG(attrs_hash) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_attrs_hash,
-				LAG(is_deleted) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_is_deleted
+				row_number() OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as row_num,
+				lag(name) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_name,
+				lag(longitude) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_longitude,
+				lag(latitude) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_latitude,
+				lag(attrs_hash) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_attrs_hash,
+				lag(is_deleted) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_is_deleted
 			FROM dim_dz_metros_history
 		)
 		SELECT
@@ -1325,11 +1325,11 @@ func queryContributorChanges(ctx context.Context, startTime, endTime time.Time) 
 				name,
 				is_deleted,
 				attrs_hash,
-				ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as row_num,
-				LAG(name) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_name,
-				LAG(code) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_code,
-				LAG(attrs_hash) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_attrs_hash,
-				LAG(is_deleted) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_is_deleted
+				row_number() OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as row_num,
+				lag(name) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_name,
+				lag(code) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_code,
+				lag(attrs_hash) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_attrs_hash,
+				lag(is_deleted) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_is_deleted
 			FROM dim_dz_contributors_history
 		)
 		SELECT
@@ -1473,15 +1473,15 @@ func queryUserChanges(ctx context.Context, startTime, endTime time.Time, include
 				tunnel_id,
 				is_deleted,
 				attrs_hash,
-				ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as row_num,
-				LAG(status) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_status,
-				LAG(kind) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_kind,
-				LAG(client_ip) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_client_ip,
-				LAG(dz_ip) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_dz_ip,
-				LAG(device_pk) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_device_pk,
-				LAG(tunnel_id) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_tunnel_id,
-				LAG(attrs_hash) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_attrs_hash,
-				LAG(is_deleted) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_is_deleted
+				row_number() OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as row_num,
+				lag(status) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_status,
+				lag(kind) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_kind,
+				lag(client_ip) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_client_ip,
+				lag(dz_ip) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_dz_ip,
+				lag(device_pk) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_device_pk,
+				lag(tunnel_id) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_tunnel_id,
+				lag(attrs_hash) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_attrs_hash,
+				lag(is_deleted) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_is_deleted
 			FROM dim_dz_users_history
 			WHERE kind NOT IN ('validator', 'gossip_only')%s
 		)
@@ -1704,7 +1704,7 @@ func queryPacketLossEvents(ctx context.Context, startTime, endTime time.Time) ([
 				link_pk,
 				hour,
 				loss_pct,
-				LAG(loss_pct) OVER (PARTITION BY link_pk ORDER BY hour) as prev_loss_pct
+				lag(loss_pct) OVER (PARTITION BY link_pk ORDER BY hour) as prev_loss_pct
 			FROM hourly_loss
 		),
 		transitions AS (
@@ -1818,7 +1818,7 @@ func queryPacketLossEvents(ctx context.Context, startTime, endTime time.Time) ([
 }
 
 func queryInterfaceEvents(ctx context.Context, startTime, endTime time.Time) ([]TimelineEvent, error) {
-	// Detect interface issue transitions (started/stopped) using hourly aggregates with LAG()
+	// Detect interface issue transitions (started/stopped) using hourly aggregates with lag()
 	// We need to look at 1 hour before startTime to detect transitions at the boundary
 	lookbackStart := startTime.Add(-1 * time.Hour)
 
@@ -1851,9 +1851,9 @@ func queryInterfaceEvents(ctx context.Context, startTime, endTime time.Time) ([]
 				carrier_transitions,
 				in_errors + out_errors as total_errors,
 				in_discards + out_discards as total_discards,
-				LAG(in_errors + out_errors) OVER (PARTITION BY device_pk, intf ORDER BY hour) as prev_total_errors,
-				LAG(in_discards + out_discards) OVER (PARTITION BY device_pk, intf ORDER BY hour) as prev_total_discards,
-				LAG(carrier_transitions) OVER (PARTITION BY device_pk, intf ORDER BY hour) as prev_carrier_transitions
+				lag(in_errors + out_errors) OVER (PARTITION BY device_pk, intf ORDER BY hour) as prev_total_errors,
+				lag(in_discards + out_discards) OVER (PARTITION BY device_pk, intf ORDER BY hour) as prev_total_discards,
+				lag(carrier_transitions) OVER (PARTITION BY device_pk, intf ORDER BY hour) as prev_carrier_transitions
 			FROM hourly
 		),
 		transitions AS (
@@ -2054,9 +2054,9 @@ func queryValidatorEvents(ctx context.Context, startTime, endTime time.Time, inc
 				u.dz_ip,
 				u.device_pk,
 				u.attrs_hash,
-				ROW_NUMBER() OVER (PARTITION BY u.entity_id ORDER BY u.snapshot_ts, u.ingested_at, u.op_id) as row_num,
-				LAG(u.status) OVER (PARTITION BY u.entity_id ORDER BY u.snapshot_ts, u.ingested_at, u.op_id) as prev_status,
-				LAG(u.attrs_hash) OVER (PARTITION BY u.entity_id ORDER BY u.snapshot_ts, u.ingested_at, u.op_id) as prev_attrs_hash
+				row_number() OVER (PARTITION BY u.entity_id ORDER BY u.snapshot_ts, u.ingested_at, u.op_id) as row_num,
+				lag(u.status) OVER (PARTITION BY u.entity_id ORDER BY u.snapshot_ts, u.ingested_at, u.op_id) as prev_status,
+				lag(u.attrs_hash) OVER (PARTITION BY u.entity_id ORDER BY u.snapshot_ts, u.ingested_at, u.op_id) as prev_attrs_hash
 			FROM dim_dz_users_history u
 			-- Include users whose dz_ip was in the gossip nodes during the time range
 			WHERE u.dz_ip IN (SELECT gossip_ip FROM gossip_ips)%s

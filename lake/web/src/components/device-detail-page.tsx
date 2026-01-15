@@ -80,9 +80,6 @@ export function DeviceDetailPage() {
             <h1 className="text-2xl font-medium font-mono">{device.code}</h1>
             <div className="text-sm text-muted-foreground">{device.device_type}</div>
           </div>
-          <span className={`ml-4 capitalize ${statusColors[device.status] || ''}`}>
-            {device.status}
-          </span>
         </div>
 
         {/* Info grid */}
@@ -91,6 +88,10 @@ export function DeviceDetailPage() {
           <div className="border border-border rounded-lg p-4 bg-card">
             <h3 className="text-sm font-medium text-muted-foreground mb-3">Basic Info</h3>
             <dl className="space-y-2">
+              <div className="flex justify-between">
+                <dt className="text-sm text-muted-foreground">Status</dt>
+                <dd className={`text-sm capitalize ${statusColors[device.status] || ''}`}>{device.status}</dd>
+              </div>
               <div className="flex justify-between">
                 <dt className="text-sm text-muted-foreground">Type</dt>
                 <dd className="text-sm">{device.device_type}</dd>

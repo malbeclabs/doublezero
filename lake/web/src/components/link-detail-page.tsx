@@ -79,9 +79,6 @@ export function LinkDetailPage() {
             <h1 className="text-2xl font-medium font-mono">{link.code}</h1>
             <div className="text-sm text-muted-foreground">{link.link_type}</div>
           </div>
-          <span className={`ml-4 capitalize ${statusColors[link.status] || ''}`}>
-            {link.status}
-          </span>
         </div>
 
         {/* Info grid */}
@@ -90,6 +87,10 @@ export function LinkDetailPage() {
           <div className="border border-border rounded-lg p-4 bg-card">
             <h3 className="text-sm font-medium text-muted-foreground mb-3">Endpoints</h3>
             <dl className="space-y-2">
+              <div className="flex justify-between">
+                <dt className="text-sm text-muted-foreground">Status</dt>
+                <dd className={`text-sm capitalize ${statusColors[link.status] || ''}`}>{link.status}</dd>
+              </div>
               <div className="flex justify-between">
                 <dt className="text-sm text-muted-foreground">Side A</dt>
                 <dd className="text-sm">

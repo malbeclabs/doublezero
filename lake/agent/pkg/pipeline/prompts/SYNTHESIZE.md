@@ -84,6 +84,7 @@ When answering questions about network status, health, or issues:
 - **Provide context** - compare to benchmarks, historical data, or expectations when available
 - **Highlight anomalies** - call out anything unusual or concerning
 - **Beware of ingestion start dates** - earliest `snapshot_ts` = when ingestion began, not when entities were created
+- **Do NOT conflate query strategies** - If the user asks about "recently connected" validators and the comparison query (connected now but NOT connected X hours ago) returns 0 results, the answer is "0 validators connected recently". Do NOT substitute results from a first-appearance query (first seen after ingestion started) - those are validators that appeared in our tracking system since it began, which may include validators that reconnected after brief outages or were simply captured in later snapshot batches. These are fundamentally different questions with different answers.
 
 ### Correcting Previous Answers
 

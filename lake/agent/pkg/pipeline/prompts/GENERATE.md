@@ -483,15 +483,26 @@ ORDER BY last_error_time DESC
 ### Data Ingestion Start (CRITICAL)
 The earliest `snapshot_ts` in history tables = **when ingestion began**, NOT when entities were created.
 
-**For questions about growth, new connections, or "recently joined"**:
-- Entities present in the FIRST snapshot are NOT "newly joined" - they existed before ingestion started
-- Only count entities whose first appearance is AFTER the initial ingestion date
-- Use `MIN(snapshot_ts)` on the table to identify the ingestion start date, then exclude entities first seen on that date
+**For "recently connected" or "connected in the last X hours/days" questions**:
+Use the **comparison approach**: Find entities connected NOW but NOT connected X hours/days ago. This is the ONLY correct approach for time-bounded "recent" questions.
 
-**WRONG**: "All users joined on 2024-01-15" (likely just when snapshots started)
-**WRONG**: Counting validators in first snapshot as "recently connected"
-**CORRECT**: If first `snapshot_ts` equals the table's global minimum, the actual join date is unknown
-**CORRECT**: For growth queries, filter to `first_seen > (SELECT MIN(snapshot_ts) FROM table)`
+```sql
+-- Validators connected in the last 24 hours = connected now BUT NOT connected 24h ago
+SELECT vote_pubkey FROM validators_currently_connected
+WHERE vote_pubkey NOT IN (SELECT vote_pubkey FROM validators_connected_24h_ago)
+```
+
+**NEVER use first-appearance queries for "recently connected"** - a validator that first appeared in our data after ingestion started could be:
+- A long-time validator that briefly disconnected and reconnected
+- A validator captured in a later snapshot batch
+- Neither of these means "recently connected to DZ"
+
+**For "growth since tracking began" questions** (unbounded):
+Use the first-appearance approach - exclude entities from the initial ingestion snapshot.
+
+**WRONG**: Using `first_seen > MIN(snapshot_ts)` to answer "which validators connected recently"
+**CORRECT**: Using NOT IN comparison to answer "which validators connected recently"
+**CORRECT**: Using `first_seen > MIN(snapshot_ts)` ONLY when user asks about "growth since we started tracking"
 
 **WRONG**: Joining device IP to gossip IP (devices are infrastructure, not validators)
 **CORRECT**: Joining user dz_ip to gossip_ip (users ARE the validators)

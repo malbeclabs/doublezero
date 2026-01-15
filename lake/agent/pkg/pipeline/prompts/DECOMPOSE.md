@@ -42,7 +42,10 @@ Given a user's question, identify what specific data questions need to be answer
 - For counts, also consider listing the specific entities if count might be small
 - **For "which" questions**: ALWAYS include a query that lists specific entities with identifying details (vote_pubkey, device code, link code, etc.) plus relevant attributes (stake, status, timestamps). Never answer "which" with just a count.
 - **For "recently" or time-based questions**: Include when events occurred (timestamps), not just what happened. Users want a timeline.
-- **For growth/joining/new entity questions**: Exclude entities from initial data ingestion. Entities present in the first snapshot existed before tracking began - they're not "newly joined". Only count entities that appeared AFTER ingestion started.
+- **For growth/joining/new entity questions**: There are two different approaches depending on what the user is asking:
+  - **"Recently connected/joined" (time-bounded)**: Use the comparison approach - find entities connected NOW but NOT connected X hours/days ago. This catches true recent connections regardless of ingestion timing.
+  - **"Growth since we started tracking" (unbounded)**: Use first-appearance approach - exclude entities from initial ingestion snapshot. But this is ONLY appropriate when the user explicitly asks about growth since tracking began.
+  - **NEVER** use first-appearance as a substitute for "recently connected" - a validator that reconnected after a brief outage is NOT a "new connection".
 - **For network health/status questions**: Ask for specific entity lists (not just counts). Users need to know exactly which devices, links, and interfaces have issues, along with their specific status or problem details
 - Order questions logically - foundational facts first, then derived insights
 - **For confirmation responses**: If the user says "yes", "please do", "go ahead", etc., and the previous assistant message offered to run a query or investigation, extract the data questions from what was offered. Look at the conversation history to understand what query was proposed.
@@ -100,11 +103,10 @@ Respond with a JSON object containing an array of data questions:
 **User Question**: "How many validators connected in the last day?" or "Which validators connected recently?"
 
 **Good Decomposition**:
-1. Which validators are connected now but were NOT connected 24 hours ago? Include vote_pubkey, stake, and when they first appeared.
-2. For each newly connected validator, when did they connect? (first seen timestamp from history)
-3. What is the total count and combined stake of newly connected validators?
+1. Which validators are currently connected to DZ but were NOT connected 24 hours ago? Include vote_pubkey, stake, and when they first appeared in the history.
+2. What is the total count and combined stake of these newly connected validators?
 
-*Key insight*: "Connected in the last X" or "recently" means **newly connected** during that period. Always list the specific validators with their vote_pubkey, stake, and connection timestamp - not just counts. Users want to see WHO connected, not just how many.
+*Key insight*: "Connected in the last X" or "recently" means **newly connected** during that period - use the comparison approach (connected now but NOT connected X hours ago). This is the ONLY correct approach for "recently connected" questions. Do NOT substitute first-appearance-since-ingestion queries, which would include validators that reconnected after brief outages or were captured in later snapshot batches. If the comparison query returns 0 validators, the answer is "0 validators connected recently" - not "here are validators that first appeared in our tracking".
 
 **User Question**: "How is DZ performing compared to the public internet?"
 

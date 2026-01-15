@@ -35,8 +35,9 @@ const (
 // BuildInfo is a Prometheus gauge for build metadata.
 var BuildInfo = prometheus.NewGaugeVec(
 	prometheus.GaugeOpts{
-		Name: "gnmi_writer_build_info",
-		Help: "Build information for gnmi-writer",
+		Namespace: gnmi.MetricsNamespace,
+		Name:      "build_info",
+		Help:      "Build information for gnmi-writer",
 	},
 	[]string{"version", "commit", "date"},
 )
@@ -281,8 +282,9 @@ func loadConfig() (Config, error) {
 	flag.BoolVar(&cfg.KafkaTLSDisabled, "kafka-tls-disabled", getenv("KAFKA_TLS_DISABLED", "") == "true", "disable TLS for kafka (env: KAFKA_TLS_DISABLED)")
 
 	// ClickHouse configuration (tables are determined by record types)
+	// DZ_ENV sets the database name (devnet, testnet, mainnet-beta), defaults to "default"
 	flag.StringVar(&cfg.ClickhouseAddr, "clickhouse-addr", getenv("CLICKHOUSE_ADDR", "localhost:9440"), "clickhouse address (env: CLICKHOUSE_ADDR)")
-	flag.StringVar(&cfg.ClickhouseDB, "clickhouse-db", getenv("CLICKHOUSE_DB", "default"), "clickhouse database (env: CLICKHOUSE_DB)")
+	flag.StringVar(&cfg.ClickhouseDB, "clickhouse-db", getenv("DZ_ENV", "default"), "clickhouse database (env: DZ_ENV)")
 	flag.StringVar(&cfg.ClickhouseUser, "clickhouse-user", getenv("CLICKHOUSE_USER", "default"), "clickhouse username (env: CLICKHOUSE_USER)")
 	flag.StringVar(&cfg.ClickhousePassword, "clickhouse-password", getenv("CLICKHOUSE_PASS", ""), "clickhouse password (env: CLICKHOUSE_PASS)")
 	flag.BoolVar(&cfg.ClickhouseTLSDisabled, "clickhouse-tls-disabled", getenv("CLICKHOUSE_TLS_DISABLED", "") == "true", "disable TLS for clickhouse (env: CLICKHOUSE_TLS_DISABLED)")

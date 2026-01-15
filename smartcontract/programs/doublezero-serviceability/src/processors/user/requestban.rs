@@ -76,7 +76,7 @@ pub fn process_request_ban_user(
 }
 
 fn can_request_ban(status: UserStatus) -> bool {
-    status == UserStatus::Activated || status == UserStatus::Suspended
+    status == UserStatus::Activated || status == UserStatus::SuspendedDeprecated
 }
 
 #[cfg(test)]
@@ -86,7 +86,7 @@ mod tests {
     #[test]
     fn request_ban_allowed_statuses() {
         assert!(can_request_ban(UserStatus::Activated));
-        assert!(can_request_ban(UserStatus::Suspended));
+        assert!(can_request_ban(UserStatus::SuspendedDeprecated));
     }
 
     #[test]

@@ -73,8 +73,7 @@ use crate::processors::{
         activate::UserActivateArgs, ban::UserBanArgs, check_access_pass::CheckUserAccessPassArgs,
         closeaccount::UserCloseAccountArgs, create::UserCreateArgs,
         create_subscribe::UserCreateSubscribeArgs, delete::UserDeleteArgs, reject::UserRejectArgs,
-        requestban::UserRequestBanArgs, resume::UserResumeArgs, suspend::UserSuspendArgs,
-        update::UserUpdateArgs,
+        requestban::UserRequestBanArgs, update::UserUpdateArgs,
     },
 };
 use borsh::BorshSerialize;
@@ -130,8 +129,8 @@ pub enum DoubleZeroInstruction {
     ActivateUser(UserActivateArgs),         // variant 37
     RejectUser(UserRejectArgs),             // variant 38
     UpdateUser(UserUpdateArgs),             // variant 39
-    SuspendUser(UserSuspendArgs),           // variant 40
-    ResumeUser(UserResumeArgs),             // variant 41
+    SuspendUser(),                          // variant 40
+    ResumeUser(),                           // variant 41
     DeleteUser(UserDeleteArgs),             // variant 42
     CloseAccountUser(UserCloseAccountArgs), // variant 43
     RequestBanUser(UserRequestBanArgs),     // variant 44
@@ -240,8 +239,8 @@ impl DoubleZeroInstruction {
             37 => Ok(Self::ActivateUser(UserActivateArgs::try_from(rest).unwrap())),
             38 => Ok(Self::RejectUser(UserRejectArgs::try_from(rest).unwrap())),
             39 => Ok(Self::UpdateUser(UserUpdateArgs::try_from(rest).unwrap())),
-            40 => Ok(Self::SuspendUser(UserSuspendArgs::try_from(rest).unwrap())),
-            41 => Ok(Self::ResumeUser(UserResumeArgs::try_from(rest).unwrap())),
+            40 => Ok(Self::SuspendUser()),
+            41 => Ok(Self::ResumeUser()),
             42 => Ok(Self::DeleteUser(UserDeleteArgs::try_from(rest).unwrap())),
             43 => Ok(Self::CloseAccountUser(UserCloseAccountArgs::try_from(rest).unwrap())),
             44 => Ok(Self::RequestBanUser(UserRequestBanArgs::try_from(rest).unwrap())),
@@ -345,8 +344,8 @@ impl DoubleZeroInstruction {
             Self::ActivateUser(_) => "ActivateUser".to_string(), // variant 37
             Self::RejectUser(_) => "RejectUser".to_string(), // variant 38
             Self::UpdateUser(_) => "UpdateUser".to_string(), // variant 39
-            Self::SuspendUser(_) => "SuspendUser".to_string(), // variant 40
-            Self::ResumeUser(_) => "ResumeUser".to_string(), // variant 41
+            Self::SuspendUser() => "SuspendUser".to_string(), // variant 40
+            Self::ResumeUser() => "ResumeUser".to_string(),  // variant 41
             Self::DeleteUser(_) => "DeleteUser".to_string(), // variant 42
             Self::CloseAccountUser(_) => "CloseAccountUser".to_string(), // variant 43
 
@@ -452,8 +451,8 @@ impl DoubleZeroInstruction {
             Self::ActivateUser(args) => format!("{args:?}"), // variant 37
             Self::RejectUser(args) => format!("{args:?}"), // variant 38
             Self::UpdateUser(args) => format!("{args:?}"), // variant 39
-            Self::SuspendUser(args) => format!("{args:?}"), // variant 40
-            Self::ResumeUser(args) => format!("{args:?}"), // variant 41
+            Self::SuspendUser() => "".to_string(),         // variant 40
+            Self::ResumeUser() => "".to_string(),          // variant 41
             Self::DeleteUser(args) => format!("{args:?}"), // variant 42
             Self::CloseAccountUser(args) => format!("{args:?}"), // variant 43
 
@@ -729,14 +728,8 @@ mod tests {
             }),
             "UpdateUser",
         );
-        test_instruction(
-            DoubleZeroInstruction::SuspendUser(UserSuspendArgs {}),
-            "SuspendUser",
-        );
-        test_instruction(
-            DoubleZeroInstruction::ResumeUser(UserResumeArgs {}),
-            "ResumeUser",
-        );
+        test_instruction(DoubleZeroInstruction::SuspendUser(), "SuspendUser");
+        test_instruction(DoubleZeroInstruction::ResumeUser(), "ResumeUser");
         test_instruction(
             DoubleZeroInstruction::DeleteUser(UserDeleteArgs {}),
             "DeleteUser",

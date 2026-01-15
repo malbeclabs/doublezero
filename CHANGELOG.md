@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 - Onchain programs
    - Removed device and user allowlist functionality, updating the global state, initialization flow, tests, and processors accordingly, and cleaning up unused account checks.
    - Deprecated the user suspend status, as it is no longer used.
+   - Serviceability: enforce that CloseAccountUser instructions verify the target user has no multicast publishers or subscribers (both `publishers` and `subscribers` are empty) before closing, and add regression coverage for this behavior.
 
 ### Breaking
 

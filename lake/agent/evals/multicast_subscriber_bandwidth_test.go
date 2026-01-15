@@ -97,8 +97,8 @@ func runTest_MulticastSubscriberBandwidth(t *testing.T, llmFactory LLMClientFact
 	expectations := []Expectation{
 		{
 			Description:   "Highest bandwidth subscriber",
-			ExpectedValue: "owner3 (owner_pubkey) with approximately 15 GB total data volume (NOT 120 Gbits - that would be wrong unit)",
-			Rationale:     "owner3 with client_ip 3.3.3.3 consumed the most multicast bandwidth (15 GB in test period). Data volume should be reported in bytes (GB), not bits (Gbits)",
+			ExpectedValue: "owner3 (owner_pubkey) with bandwidth reported as a rate in Gbps or Mbps",
+			Rationale:     "owner3 with client_ip 3.3.3.3 consumed the most multicast bandwidth. Bandwidth should always be reported as rates (Gbps/Mbps), not data volumes (GB)",
 		},
 		{
 			Description:   "Client IP or other identifier for top subscriber",

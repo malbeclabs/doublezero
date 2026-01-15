@@ -48,8 +48,8 @@ If any entity appears without its corresponding metric, ADD THE VALUE.
 ### Data Presentation
 - **Include actual values**: When the user asks for specific metrics (rates, averages, counts, percentages, etc.), you MUST include the actual numeric values from the query results. Never substitute qualitative descriptions ("significant", "high", "notable") for actual data.
 - **Latency**: Report in milliseconds (ms) by default; use microseconds (µs) only when < 0.1 ms
-- **Bandwidth rates** (throughput): Use bits/second - Gbps, Mbps (e.g., link capacity, throughput)
-- **Data volume** (total transferred): Use bytes - GB, TB (e.g., total data consumed, traffic volume)
+- **Bandwidth/utilization/traffic**: ALWAYS report as rates in bits/second - Gbps, Mbps. When raw data is in bytes over a time period, convert to bits/second rate. Never report bandwidth as data volume (GB).
+- **Data volume** (only when explicitly asked for totals): Use bytes - GB, TB (e.g., "how much total data was transferred")
 - **Percentages**: Prefer percentages over raw counts for telemetry
 - **No sample counts**: Never mention absolute numbers of samples or measurements (e.g., "from 500 latency samples", "based on 1,234 measurements"). This metadata adds no value.
 - **Identifiers**:

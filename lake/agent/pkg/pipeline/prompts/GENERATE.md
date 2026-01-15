@@ -99,7 +99,18 @@ These rules cannot be inferred from schema alone:
 ### Bandwidth & Utilization (CRITICAL)
 **NEVER combine in and out traffic for utilization calculations.** Network interfaces are full-duplex - each direction has independent capacity.
 
-**Correct utilization calculation:**
+**Bandwidth rate calculation** (when asked about bandwidth consumption, traffic rates, throughput):
+```sql
+-- Convert bytes/time to bits per second rate
+SELECT
+    SUM(in_octets_delta) * 8.0 / SUM(delta_duration) AS in_rate_bps,
+    SUM(out_octets_delta) * 8.0 / SUM(delta_duration) AS out_rate_bps
+FROM fact_dz_device_interface_counters
+WHERE event_ts > now() - INTERVAL 1 HOUR
+```
+Use `/ 1e6` for Mbps, `/ 1e9` for Gbps (e.g., `* 8.0 / SUM(delta_duration) / 1e6 AS rate_mbps`).
+
+**Correct utilization calculation** (percentage of link capacity):
 ```sql
 -- Per-link, per-direction utilization
 SELECT

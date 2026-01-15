@@ -56,7 +56,7 @@ Discuss effects on:
 
 ## Security Considerations
 
-The security posture should largely stay the same as we aren't 
+The security posture should largely remains the same. Unicast and multicast tunnels are already part of the baseline and have been through a security audit. 
 
 ## Backward Compatibility
 

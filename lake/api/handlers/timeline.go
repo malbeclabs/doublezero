@@ -84,6 +84,8 @@ type LinkEntity struct {
 	SideZCode       string `json:"side_z_code,omitempty"`
 	SideAMetroCode  string `json:"side_a_metro_code,omitempty"`
 	SideZMetroCode  string `json:"side_z_metro_code,omitempty"`
+	SideAMetroPK    string `json:"side_a_metro_pk,omitempty"`
+	SideZMetroPK    string `json:"side_z_metro_pk,omitempty"`
 }
 
 // MetroEntity represents a metro's current state
@@ -1044,7 +1046,9 @@ func queryLinkChanges(ctx context.Context, startTime, endTime time.Time) ([]Time
 			COALESCE(da.code, '') as side_a_code,
 			COALESCE(dz.code, '') as side_z_code,
 			COALESCE(ma.code, '') as side_a_metro_code,
-			COALESCE(mz.code, '') as side_z_metro_code
+			COALESCE(mz.code, '') as side_z_metro_code,
+			COALESCE(ma.pk, '') as side_a_metro_pk,
+			COALESCE(mz.pk, '') as side_z_metro_pk
 		FROM all_history h
 		CROSS JOIN min_ts
 		LEFT JOIN dz_contributors_current c ON h.contributor_pk = c.pk
@@ -1104,6 +1108,8 @@ func queryLinkChanges(ctx context.Context, startTime, endTime time.Time) ([]Time
 			sideZCode           string
 			sideAMetroCode      string
 			sideZMetroCode      string
+			sideAMetroPK        string
+			sideZMetroPK        string
 		)
 
 		if err := rows.Scan(
@@ -1114,6 +1120,7 @@ func queryLinkChanges(ctx context.Context, startTime, endTime time.Time) ([]Time
 			&prevSideAPK, &prevSideZPK, &prevCommittedRttNs, &prevCommittedJitter,
 			&prevBandwidthBps, &prevIsDeleted, &changeType,
 			&contributorCode, &sideACode, &sideZCode, &sideAMetroCode, &sideZMetroCode,
+			&sideAMetroPK, &sideZMetroPK,
 		); err != nil {
 			continue
 		}
@@ -1212,6 +1219,8 @@ func queryLinkChanges(ctx context.Context, startTime, endTime time.Time) ([]Time
 			SideZCode:         sideZCode,
 			SideAMetroCode:    sideAMetroCode,
 			SideZMetroCode:    sideZMetroCode,
+			SideAMetroPK:      sideAMetroPK,
+			SideZMetroPK:      sideZMetroPK,
 		}
 
 		events = append(events, TimelineEvent{
@@ -1677,10 +1686,6 @@ func queryUserChanges(ctx context.Context, startTime, endTime time.Time, include
 			}
 			severity = "info"
 			eventType = "entity_created"
-			// Add metro/contributor info to description
-			if metroCode != "" {
-				description = fmt.Sprintf("Metro: %s", metroCode)
-			}
 		case "deleted":
 			if deviceCode != "" {
 				title = fmt.Sprintf("User %s disconnected from %s", displayCode, deviceCode)
@@ -1689,10 +1694,6 @@ func queryUserChanges(ctx context.Context, startTime, endTime time.Time, include
 			}
 			severity = "warning"
 			eventType = "entity_deleted"
-			// Add metro info to description
-			if metroCode != "" {
-				description = fmt.Sprintf("Metro: %s", metroCode)
-			}
 		default:
 			if len(changes) == 1 {
 				c := changes[0]
@@ -1858,11 +1859,6 @@ func queryPacketLossEvents(ctx context.Context, startTime, endTime time.Time) ([
 			severity = "success" // Recovery is success (green)
 		}
 
-		route := ""
-		if sideAMetro != "" && sideZMetro != "" {
-			route = fmt.Sprintf("%s - %s", sideAMetro, sideZMetro)
-		}
-
 		events = append(events, TimelineEvent{
 			ID:          generateEventID(linkPK, hour, eventType),
 			EventType:   eventType,
@@ -1870,7 +1866,7 @@ func queryPacketLossEvents(ctx context.Context, startTime, endTime time.Time) ([
 			Category:    "packet_loss",
 			Severity:    severity,
 			Title:       title,
-			Description: route,
+			Description: "",
 			EntityType:  "link",
 			EntityPK:    linkPK,
 			EntityCode:  linkCode,
@@ -2266,11 +2262,6 @@ func queryValidatorEvents(ctx context.Context, startTime, endTime time.Time, inc
 			severity = "warning"
 		}
 
-		description := ""
-		if metroCode != "" {
-			description = fmt.Sprintf("Metro: %s", metroCode)
-		}
-
 		events = append(events, TimelineEvent{
 			ID:          generateEventID(entityID, snapshotTS, eventType),
 			EventType:   eventType,
@@ -2278,7 +2269,7 @@ func queryValidatorEvents(ctx context.Context, startTime, endTime time.Time, inc
 			Category:    "state_change",
 			Severity:    severity,
 			Title:       title,
-			Description: description,
+			Description: "",
 			EntityType:  entityTypeStr,
 			EntityPK:    pk,
 			EntityCode:  ownerPubkey, // Full pubkey - frontend handles truncation
@@ -2416,9 +2407,6 @@ func queryGossipNetworkChanges(ctx context.Context, startTime, endTime time.Time
 		description := ""
 		if dzOwnerPubkey != "" {
 			description = fmt.Sprintf("DZ user: %s", dzOwnerPubkey[:8]+"...")
-			if metroCode != "" {
-				description += fmt.Sprintf(", Metro: %s", metroCode)
-			}
 		}
 
 		// Use node pubkey as entity code since that's the Solana identity
@@ -2597,9 +2585,6 @@ func queryVoteAccountChanges(ctx context.Context, startTime, endTime time.Time) 
 		description := ""
 		if dzOwnerPubkey != "" {
 			description = fmt.Sprintf("DZ user: %s", dzOwnerPubkey[:8]+"...")
-			if metroCode != "" {
-				description += fmt.Sprintf(", Metro: %s", metroCode)
-			}
 		}
 
 		events = append(events, TimelineEvent{
@@ -2761,11 +2746,6 @@ func queryStakeChanges(ctx context.Context, startTime, endTime time.Time) ([]Tim
 		// Add context about current stake
 		title += fmt.Sprintf(" → %.0f SOL", currentSol)
 
-		description := ""
-		if isOnDZ && metroCode != "" {
-			description = fmt.Sprintf("Metro: %s", metroCode)
-		}
-
 		events = append(events, TimelineEvent{
 			ID:          generateEventID(votePubkey, eventTS, eventType),
 			EventType:   eventType,
@@ -2773,7 +2753,7 @@ func queryStakeChanges(ctx context.Context, startTime, endTime time.Time) ([]Tim
 			Category:    "state_change",
 			Severity:    severity,
 			Title:       title,
-			Description: description,
+			Description: "",
 			EntityType:  "validator",
 			EntityPK:    votePubkey,
 			EntityCode:  votePubkey,

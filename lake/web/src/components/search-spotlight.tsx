@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Search, X, Clock, Server, Link2, MapPin, Building2, Users, Landmark, Radio, Loader2, MessageSquare } from 'lucide-react'
+import { Search, X, Clock, Server, Link2, MapPin, Building2, Users, Landmark, Radio, Loader2, MessageSquare, Filter } from 'lucide-react'
 import { cn, handleRowClick } from '@/lib/utils'
 import { useSearchAutocomplete, useRecentSearches } from '@/hooks/use-search'
 import type { SearchSuggestion, SearchEntityType } from '@/lib/api'
@@ -65,6 +65,7 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
   const { recentSearches, addRecentSearch, clearRecentSearches } = useRecentSearches()
 
   const isTopologyPage = location.pathname === '/topology'
+  const isTimelinePage = location.pathname === '/timeline'
 
   // Focus input when opened
   useEffect(() => {
@@ -95,7 +96,12 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
     : []
 
   // Build items list
-  const items: (SearchSuggestion | { type: 'prefix'; prefix: string; description: string } | { type: 'recent'; item: SearchSuggestion } | { type: 'ask-ai' })[] = []
+  const items: (SearchSuggestion | { type: 'prefix'; prefix: string; description: string } | { type: 'recent'; item: SearchSuggestion } | { type: 'ask-ai' } | { type: 'filter-timeline' })[] = []
+
+  // Add "Filter timeline" option at the top when on timeline page with a query
+  if (isTimelinePage && query.length >= 1) {
+    items.push({ type: 'filter-timeline' as const })
+  }
 
   if (matchingPrefixes.length > 0) {
     items.push(...matchingPrefixes.map(p => ({ type: 'prefix' as const, prefix: p.prefix, description: p.description })))
@@ -139,13 +145,24 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
       }
     }
 
+    // On timeline page, filter by entity label instead of navigating away
+    if (isTimelinePage) {
+      const url = `/timeline?search=${encodeURIComponent(item.label)}`
+      if (e && (e.metaKey || e.ctrlKey)) {
+        window.open(url, '_blank')
+      } else {
+        navigate(url)
+      }
+      return
+    }
+
     // Default: navigate to entity detail page
     if (e) {
       handleRowClick(e, item.url, navigate)
     } else {
       navigate(item.url)
     }
-  }, [navigate, addRecentSearch, onClose, isTopologyPage])
+  }, [navigate, addRecentSearch, onClose, isTopologyPage, isTimelinePage])
 
   const handleAskAI = useCallback(() => {
     if (!query.trim()) return
@@ -155,6 +172,13 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
     // Dispatch event to create new chat session (handled by App.tsx)
     window.dispatchEvent(new CustomEvent('new-chat-session'))
   }, [query, onClose])
+
+  const handleFilterTimeline = useCallback(() => {
+    if (!query.trim()) return
+    setQuery('')
+    onClose()
+    navigate(`/timeline?search=${encodeURIComponent(query.trim())}`)
+  }, [query, onClose, navigate])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     switch (e.key) {
@@ -177,6 +201,8 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
             handleSelect(item.item)
           } else if (item.type === 'ask-ai') {
             handleAskAI()
+          } else if (item.type === 'filter-timeline') {
+            handleFilterTimeline()
           } else if ('url' in item) {
             handleSelect(item as SearchSuggestion)
           }
@@ -219,7 +245,7 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={isTopologyPage ? "Search entities (opens in map)..." : "Search entities..."}
+            placeholder={isTopologyPage ? "Search entities (opens in map)..." : isTimelinePage ? "Filter timeline events..." : "Search entities..."}
             className="flex-1 h-14 px-3 text-lg bg-transparent border-0 focus:outline-none placeholder:text-muted-foreground"
           />
           {isLoading && query.length >= 2 && (
@@ -271,6 +297,27 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
           )}
 
           {items.map((item, index) => {
+            if (item.type === 'filter-timeline') {
+              return (
+                <button
+                  key="filter-timeline"
+                  onClick={handleFilterTimeline}
+                  className={cn(
+                    'w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted transition-colors',
+                    index === selectedIndex && 'bg-muted'
+                  )}
+                >
+                  <Filter className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">Filter timeline by "{query}"</span>
+                    </div>
+                    <div className="text-sm text-muted-foreground">Show events matching this search</div>
+                  </div>
+                </button>
+              )
+            }
+
             if ('prefix' in item && item.type === 'prefix') {
               return (
                 <button
@@ -342,6 +389,11 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
                     Show on map
                   </span>
                 )}
+                {isTimelinePage && (
+                  <span className="text-xs text-muted-foreground flex-shrink-0">
+                    Filter timeline
+                  </span>
+                )}
               </button>
             )
           })}
@@ -356,6 +408,9 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
           </div>
           {isTopologyPage && (
             <span className="text-blue-500">On topology map</span>
+          )}
+          {isTimelinePage && (
+            <span className="text-blue-500">On timeline</span>
           )}
         </div>
       </div>

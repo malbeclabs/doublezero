@@ -1529,6 +1529,8 @@ export interface LinkEntity {
   side_z_code?: string
   side_a_metro_code?: string
   side_z_metro_code?: string
+  side_a_metro_pk?: string
+  side_z_metro_pk?: string
 }
 
 export interface MetroEntity {

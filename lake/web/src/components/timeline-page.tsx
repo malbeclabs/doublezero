@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
-import { Link } from 'react-router-dom'
+import { useState, useEffect, useRef, useMemo } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   Clock,
@@ -33,6 +33,8 @@ import {
   TrendingUp,
   TrendingDown,
   RotateCw,
+  Search,
+  X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Pagination } from '@/components/pagination'
@@ -248,27 +250,6 @@ function formatTimeAgo(timestamp: string): string {
   return then.toLocaleDateString()
 }
 
-function getEntityLink(entityType: string, entityPK: string): string {
-  switch (entityType) {
-    case 'device':
-      return `/dz/devices/${encodeURIComponent(entityPK)}`
-    case 'link':
-      return `/dz/links/${encodeURIComponent(entityPK)}`
-    case 'metro':
-      return `/dz/metros/${encodeURIComponent(entityPK)}`
-    case 'contributor':
-      return `/dz/contributors/${encodeURIComponent(entityPK)}`
-    case 'user':
-      return `/dz/users/${encodeURIComponent(entityPK)}`
-    case 'validator':
-      return `/solana/validators/${encodeURIComponent(entityPK)}`
-    case 'gossip_node':
-      return `/solana/gossip-nodes/${encodeURIComponent(entityPK)}`
-    default:
-      return '#'
-  }
-}
-
 // Format a field value for display
 function formatValue(value: unknown, field: string): string {
   if (value === null || value === undefined) return '—'
@@ -340,6 +321,27 @@ function ChangeSummary({ changes }: { changes?: FieldChange[] }) {
   )
 }
 
+// Clickable filter button for timeline filtering
+function FilterButton({ children, value, className }: { children: React.ReactNode; value: string; className?: string }) {
+  const [, setSearchParams] = useSearchParams()
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setSearchParams({ search: value })
+  }
+
+  return (
+    <button
+      onClick={handleClick}
+      className={cn("hover:underline cursor-pointer", className)}
+      title={`Filter by "${value}"`}
+    >
+      {children}
+    </button>
+  )
+}
+
 // Helper component for entity links in details
 function EntityLink({ to, children }: { to: string, children: React.ReactNode }) {
   return (
@@ -372,7 +374,7 @@ function EntityDetailsView({ entity, entityType }: { entity: DeviceEntity | Link
         <div>Type: <span className="font-medium text-foreground">{d.link_type}</span></div>
         <div>Status: <span className="font-medium text-foreground">{d.status}</span></div>
         <div>Route: {d.side_a_pk ? <EntityLink to={`/dz/devices/${encodeURIComponent(d.side_a_pk)}`}>{d.side_a_code}</EntityLink> : <span className="font-medium text-foreground">{d.side_a_code}</span>} → {d.side_z_pk ? <EntityLink to={`/dz/devices/${encodeURIComponent(d.side_z_pk)}`}>{d.side_z_code}</EntityLink> : <span className="font-medium text-foreground">{d.side_z_code}</span>}</div>
-        <div>Metros: <span className="font-medium text-foreground">{d.side_a_metro_code} → {d.side_z_metro_code}</span></div>
+        <div>Metros: {d.side_a_metro_pk ? <EntityLink to={`/dz/metros/${encodeURIComponent(d.side_a_metro_pk)}`}>{d.side_a_metro_code}</EntityLink> : <span className="font-medium text-foreground">{d.side_a_metro_code}</span>} → {d.side_z_metro_pk ? <EntityLink to={`/dz/metros/${encodeURIComponent(d.side_z_metro_pk)}`}>{d.side_z_metro_code}</EntityLink> : <span className="font-medium text-foreground">{d.side_z_metro_code}</span>}</div>
         {d.bandwidth_bps > 0 && <div>Bandwidth: <span className="font-medium text-foreground">{formatValue(d.bandwidth_bps, 'bandwidth')}</span></div>}
         {d.committed_rtt_ns > 0 && <div>Committed RTT: <span className="font-medium text-foreground">{formatValue(d.committed_rtt_ns, 'rtt')}</span></div>}
         {d.contributor_pk && d.contributor_code && <div>Contributor: <EntityLink to={`/dz/contributors/${encodeURIComponent(d.contributor_pk)}`}>{d.contributor_code}</EntityLink></div>}
@@ -410,7 +412,6 @@ function EntityDetailsView({ entity, entityType }: { entity: DeviceEntity | Link
         <div>Status: <span className="font-medium text-foreground">{d.status}</span></div>
         <div>Kind: <span className="font-medium text-foreground">{d.kind}</span></div>
         {d.device_pk && d.device_code && <div>Device: <EntityLink to={`/dz/devices/${encodeURIComponent(d.device_pk)}`}>{d.device_code}</EntityLink></div>}
-        {d.metro_code && <div>Metro: <span className="font-medium text-foreground">{d.metro_code}</span></div>}
         {d.client_ip && <div>Client IP: <span className="font-mono text-foreground">{d.client_ip}</span></div>}
         {d.dz_ip && <div>DZ IP: <span className="font-mono text-foreground">{d.dz_ip}</span></div>}
       </div>
@@ -438,7 +439,6 @@ function EventDetails({ event }: { event: TimelineEvent }) {
     return (
       <div className="text-xs text-muted-foreground mt-2 space-y-1">
         <div>Link: {d.link_pk ? <EntityLink to={`/dz/links/${encodeURIComponent(d.link_pk)}`}>{d.link_code}</EntityLink> : <span className="font-medium">{d.link_code}</span>} ({d.link_type})</div>
-        <div>Route: {d.side_a_metro} → {d.side_z_metro}</div>
         <div>
           Loss: <span className={d.direction === 'increased' ? 'text-red-600' : 'text-green-600'}>
             {d.previous_loss_pct.toFixed(2)}% → {d.current_loss_pct.toFixed(2)}%
@@ -485,7 +485,6 @@ function EventDetails({ event }: { event: TimelineEvent }) {
           </div>
         )}
         {d.device_pk && d.device_code && <div>Device: <EntityLink to={`/dz/devices/${encodeURIComponent(d.device_pk)}`}>{d.device_code}</EntityLink></div>}
-        {d.metro_code && <div>Metro: <span className="font-medium text-foreground">{d.metro_code}</span></div>}
       </div>
     )
   }
@@ -512,6 +511,11 @@ function TimelineEventCard({ event, isNew }: { event: TimelineEvent; isNew?: boo
     ? event.details as ValidatorEventDetails
     : undefined
 
+  // Extract packet loss details for showing metros prominently
+  const packetLossDetails = event.event_type.startsWith('packet_loss') && event.details && 'current_loss_pct' in event.details
+    ? event.details as PacketLossEventDetails
+    : undefined
+
   // Extract device info from user entity change events
   const userEntity = event.entity_type === 'user' && changeDetails?.entity
     ? changeDetails.entity as UserEntity
@@ -532,17 +536,16 @@ function TimelineEventCard({ event, isNew }: { event: TimelineEvent; isNew?: boo
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1 flex-wrap">
-            <Link
-              to={getEntityLink(event.entity_type, event.entity_pk)}
+            <FilterButton
+              value={event.entity_code}
               className={cn(
-                "font-medium hover:underline text-sm",
+                "font-medium text-sm text-left",
                 // For pubkeys (long strings), truncate on mobile but show full on desktop
                 event.entity_code.length > 20 && "font-mono max-w-[120px] sm:max-w-[200px] md:max-w-none truncate"
               )}
-              title={event.entity_code}
             >
               {event.entity_code}
-            </Link>
+            </FilterButton>
             {/* State change badges */}
             {changeType === 'created' && (
               <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-green-500/10 text-green-600 border border-green-500/20">
@@ -635,13 +638,23 @@ function TimelineEventCard({ event, isNew }: { event: TimelineEvent; isNew?: boo
           {/* Show device connection for validator/gossip/user events */}
           {validatorDetails?.device_pk && validatorDetails?.device_code && (
             <div className="text-xs text-muted-foreground mt-1">
-              Connected to <Link to={`/dz/devices/${encodeURIComponent(validatorDetails.device_pk)}`} className="font-medium text-foreground hover:underline">{validatorDetails.device_code}</Link>
+              Connected to <FilterButton value={validatorDetails.device_code} className="font-medium text-foreground">{validatorDetails.device_code}</FilterButton>
+              {validatorDetails.metro_code && <span className="text-muted-foreground"> in <FilterButton value={validatorDetails.metro_code} className="text-foreground">{validatorDetails.metro_code}</FilterButton></span>}
             </div>
           )}
           {userEntity?.device_pk && userEntity?.device_code && (
             <div className="text-xs text-muted-foreground mt-1">
-              Connected to <Link to={`/dz/devices/${encodeURIComponent(userEntity.device_pk)}`} className="font-medium text-foreground hover:underline">{userEntity.device_code}</Link>
-              {userEntity.metro_code && <span className="text-muted-foreground"> in {userEntity.metro_code}</span>}
+              Connected to <FilterButton value={userEntity.device_code} className="font-medium text-foreground">{userEntity.device_code}</FilterButton>
+              {userEntity.metro_code && <span className="text-muted-foreground"> in <FilterButton value={userEntity.metro_code} className="text-foreground">{userEntity.metro_code}</FilterButton></span>}
+            </div>
+          )}
+
+          {/* Show packet loss route prominently */}
+          {packetLossDetails && (
+            <div className="text-xs text-muted-foreground mt-1">
+              Route: <FilterButton value={packetLossDetails.side_a_metro} className="font-medium text-foreground">{packetLossDetails.side_a_metro}</FilterButton>
+              {' → '}
+              <FilterButton value={packetLossDetails.side_z_metro} className="font-medium text-foreground">{packetLossDetails.side_z_metro}</FilterButton>
             </div>
           )}
 
@@ -669,6 +682,9 @@ function TimelineEventCard({ event, isNew }: { event: TimelineEvent; isNew?: boo
 const ALL_CATEGORIES: Category[] = ['state_change', 'packet_loss', 'interface_carrier', 'interface_errors', 'interface_discards']
 
 export function TimelinePage() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const searchFilter = searchParams.get('search') || ''
+
   const [timeRange, setTimeRange] = useState<TimeRange | 'custom'>('24h')
   const [selectedCategories, setSelectedCategories] = useState<Set<Category>>(new Set(ALL_CATEGORIES))
   const [selectedEntityTypes, setSelectedEntityTypes] = useState<Set<EntityType>>(new Set(ALL_ENTITY_TYPES))
@@ -681,6 +697,14 @@ export function TimelinePage() {
   // Custom date range state
   const [customStart, setCustomStart] = useState<string>('')
   const [customEnd, setCustomEnd] = useState<string>('')
+
+  const clearSearchFilter = () => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      next.delete('search')
+      return next
+    })
+  }
 
   // Fetch timeline data bounds
   const { data: bounds } = useQuery({
@@ -793,7 +817,65 @@ export function TimelinePage() {
     setCustomEnd('')
     setOffset(0)
     resetSeenEvents()
+    clearSearchFilter()
   }
+
+  // Filter events by search query (client-side)
+  // Searches through all relevant fields including related entities in details
+  const filteredEvents = useMemo(() => {
+    if (!data?.events || !searchFilter) return data?.events || []
+    const lowerSearch = searchFilter.toLowerCase()
+
+    const matchesSearch = (value: unknown): boolean => {
+      if (!value) return false
+      if (typeof value === 'string') return value.toLowerCase().includes(lowerSearch)
+      if (typeof value === 'number') return String(value).includes(lowerSearch)
+      return false
+    }
+
+    return data.events.filter(event => {
+      // Check main event fields
+      if (matchesSearch(event.entity_code)) return true
+      if (matchesSearch(event.title)) return true
+      if (matchesSearch(event.description)) return true
+
+      // Check event details for related entities
+      const details = event.details
+      if (!details) return false
+
+      // EntityChangeDetails - check the entity object for related codes
+      if ('entity' in details && details.entity) {
+        const entity = details.entity as unknown as Record<string, unknown>
+        if (matchesSearch(entity.device_code)) return true
+        if (matchesSearch(entity.metro_code)) return true
+        if (matchesSearch(entity.contributor_code)) return true
+        if (matchesSearch(entity.code)) return true
+        if (matchesSearch(entity.name)) return true
+        if (matchesSearch(entity.public_ip)) return true
+        if (matchesSearch(entity.client_ip)) return true
+        if (matchesSearch(entity.dz_ip)) return true
+        if (matchesSearch(entity.owner_pubkey)) return true
+      }
+
+      // ValidatorEventDetails - device, metro, pubkeys
+      if ('device_code' in details && matchesSearch(details.device_code)) return true
+      if ('metro_code' in details && matchesSearch(details.metro_code)) return true
+      if ('owner_pubkey' in details && matchesSearch(details.owner_pubkey)) return true
+      if ('vote_pubkey' in details && matchesSearch(details.vote_pubkey)) return true
+      if ('node_pubkey' in details && matchesSearch(details.node_pubkey)) return true
+      if ('dz_ip' in details && matchesSearch(details.dz_ip)) return true
+
+      // InterfaceEventDetails - interface and link
+      if ('interface_name' in details && matchesSearch(details.interface_name)) return true
+      if ('link_code' in details && matchesSearch(details.link_code)) return true
+
+      // PacketLossEventDetails - link and metros
+      if ('side_a_metro' in details && matchesSearch(details.side_a_metro)) return true
+      if ('side_z_metro' in details && matchesSearch(details.side_z_metro)) return true
+
+      return false
+    })
+  }, [data?.events, searchFilter])
 
   // Check if any filters are non-default
   const hasActiveFilters = timeRange !== '24h' ||
@@ -801,7 +883,8 @@ export function TimelinePage() {
     selectedEntityTypes.size !== ALL_ENTITY_TYPES.length ||
     selectedActions.size !== ALL_ACTIONS.length ||
     dzFilter !== 'on_dz' ||
-    includeInternal
+    includeInternal ||
+    searchFilter
 
   const handleBucketClick = (bucket: HistogramBucket, nextBucket?: HistogramBucket) => {
     const start = new Date(bucket.timestamp)
@@ -899,8 +982,18 @@ export function TimelinePage() {
               <h1 className="text-2xl font-semibold">Timeline</h1>
               {data && (
                 <span className="text-sm text-muted-foreground bg-muted px-2 py-0.5 rounded">
-                  {data.total.toLocaleString()} events
+                  {searchFilter ? `${filteredEvents.length} of ${data.total.toLocaleString()}` : data.total.toLocaleString()} events
                 </span>
+              )}
+              {searchFilter && (
+                <button
+                  onClick={clearSearchFilter}
+                  className="inline-flex items-center gap-1.5 text-sm px-2 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 transition-colors"
+                >
+                  <Search className="h-3 w-3" />
+                  "{searchFilter}"
+                  <X className="h-3 w-3" />
+                </button>
               )}
               {newEventIds.size > 0 && (
                 <span className="text-xs px-2 py-0.5 rounded-full bg-primary text-primary-foreground animate-pulse">
@@ -1290,12 +1383,22 @@ export function TimelinePage() {
         )}
 
         {/* Empty state */}
-        {data && data.events.length === 0 && (
+        {data && filteredEvents.length === 0 && (
           <div className="text-center py-12 border border-dashed border-border rounded-lg">
             <Clock className="h-12 w-12 text-muted-foreground/50 mx-auto mb-3" />
             <div className="text-sm text-muted-foreground">
-              No events found in the selected time range
+              {searchFilter
+                ? `No events matching "${searchFilter}"`
+                : 'No events found in the selected time range'}
             </div>
+            {searchFilter && (
+              <button
+                onClick={clearSearchFilter}
+                className="mt-2 text-sm text-blue-500 hover:underline"
+              >
+                Clear search filter
+              </button>
+            )}
           </div>
         )}
 
@@ -1305,16 +1408,16 @@ export function TimelinePage() {
         )}
 
         {/* Event list */}
-        {data && data.events.length > 0 && (
+        {data && filteredEvents.length > 0 && (
           <>
             <div className="space-y-3">
-              {data.events.map(event => (
+              {filteredEvents.map(event => (
                 <TimelineEventCard key={event.id} event={event} isNew={newEventIds.has(event.id)} />
               ))}
             </div>
 
-            {/* Pagination */}
-            {data.total > limit && (
+            {/* Pagination - only show when not filtering, since client-side filter doesn't work with server pagination */}
+            {!searchFilter && data.total > limit && (
               <div className="mt-6">
                 <Pagination
                   total={data.total}

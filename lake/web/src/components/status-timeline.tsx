@@ -99,13 +99,6 @@ export function StatusTimeline({ hours, committedRttUs, bucketMinutes = 60, time
     <div className="relative">
       <div className="flex gap-[2px]">
         {hours.map((hour, index) => {
-          const isLastBucket = index === hours.length - 1
-          const isNoDataPending = isLastBucket && hour.status === 'no_data'
-          // Make the last "no_data" bucket very subtle - it's just waiting for fresh data
-          const colorClass = isNoDataPending
-            ? 'bg-gray-200/50 dark:bg-gray-700/30'
-            : statusColors[hour.status]
-
           return (
           <div
             key={hour.hour}
@@ -114,7 +107,7 @@ export function StatusTimeline({ hours, committedRttUs, bucketMinutes = 60, time
             onMouseLeave={() => setHoveredIndex(null)}
           >
             <div
-              className={`w-full h-6 rounded-sm ${colorClass} cursor-pointer transition-opacity hover:opacity-80`}
+              className={`w-full h-6 rounded-sm ${statusColors[hour.status]} cursor-pointer transition-opacity hover:opacity-80`}
             />
 
             {/* Tooltip */}

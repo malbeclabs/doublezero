@@ -172,7 +172,7 @@ function StatusIndicator({ statusData }: { statusData: StatusResponse }) {
     },
     degraded: {
       icon: AlertTriangle,
-      label: 'Degraded Performance',
+      label: 'Some Issues Detected',
       className: 'text-orange-600 dark:text-orange-400',
       borderClassName: 'border-l-orange-500',
     },
@@ -286,6 +286,14 @@ function IssueSummaryCard({
     document.getElementById('link-status-history')?.scrollIntoView({ behavior: 'smooth' })
   }
 
+  const scrollToDrainedDevices = () => {
+    document.getElementById('non-activated-devices')?.scrollIntoView({ behavior: 'smooth' })
+  }
+
+  const scrollToDrainedLinks = () => {
+    document.getElementById('non-activated-links')?.scrollIntoView({ behavior: 'smooth' })
+  }
+
   return (
     <div className="border border-border rounded-lg p-4">
       <div className="flex items-center gap-2 mb-4">
@@ -294,30 +302,38 @@ function IssueSummaryCard({
         <span className="text-xs text-muted-foreground ml-auto">Current</span>
       </div>
       <div className="space-y-2 text-sm">
-        <CountWithPopover
-          count={drainedDevices.length}
-          label={drainedDevices.length === 1 ? 'drained device' : 'drained devices'}
-          status={drainedDevices.length === 0 ? 'good' : 'warning'}
-          items={drainedDevices}
-          renderItem={(d) => (
-            <div className="flex justify-between gap-4">
-              <span className="font-mono truncate">{d.code}</span>
-              <span className="text-muted-foreground capitalize">{d.status.replace('-', ' ')}</span>
-            </div>
-          )}
-        />
-        <CountWithPopover
-          count={drainedLinks.length}
-          label={drainedLinks.length === 1 ? 'drained link' : 'drained links'}
-          status={drainedLinks.length === 0 ? 'good' : 'warning'}
-          items={drainedLinks}
-          renderItem={(l) => (
-            <div className="flex justify-between gap-4">
-              <span className="font-mono truncate">{l.code}</span>
-              <span className="text-muted-foreground capitalize">{l.status.replace('-', ' ')}</span>
-            </div>
-          )}
-        />
+        {drainedDevices.length > 0 ? (
+          <button
+            onClick={scrollToDrainedDevices}
+            className="flex items-center gap-2 text-left hover:underline underline-offset-2"
+          >
+            <div className="w-2 h-2 rounded-full bg-amber-500" />
+            <span className="font-medium tabular-nums">{drainedDevices.length}</span>
+            <span className="text-muted-foreground">{drainedDevices.length === 1 ? 'drained device' : 'drained devices'}</span>
+          </button>
+        ) : (
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-green-500" />
+            <span className="font-medium tabular-nums">0</span>
+            <span className="text-muted-foreground">drained devices</span>
+          </div>
+        )}
+        {drainedLinks.length > 0 ? (
+          <button
+            onClick={scrollToDrainedLinks}
+            className="flex items-center gap-2 text-left hover:underline underline-offset-2"
+          >
+            <div className="w-2 h-2 rounded-full bg-amber-500" />
+            <span className="font-medium tabular-nums">{drainedLinks.length}</span>
+            <span className="text-muted-foreground">{drainedLinks.length === 1 ? 'drained link' : 'drained links'}</span>
+          </button>
+        ) : (
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-green-500" />
+            <span className="font-medium tabular-nums">0</span>
+            <span className="text-muted-foreground">drained links</span>
+          </div>
+        )}
         <button
           onClick={scrollToLinkHistory}
           className="flex items-center gap-2 text-left hover:underline underline-offset-2"
@@ -347,11 +363,63 @@ function IssueSummaryCard({
   )
 }
 
+function NonActivatedDevicesTable({ devices }: { devices: StatusResponse['alerts']['devices'] | null }) {
+  if (!devices || devices.length === 0) return null
+
+  const statusColors: Record<string, string> = {
+    'soft-drained': 'text-amber-600 dark:text-amber-400',
+    'hard-drained': 'text-amber-600 dark:text-amber-400',
+    suspended: 'text-red-600 dark:text-red-400',
+    pending: 'text-amber-600 dark:text-amber-400',
+    deleted: 'text-gray-400',
+    rejected: 'text-red-400',
+  }
+
+  return (
+    <div id="non-activated-devices" className="border border-border rounded-lg overflow-hidden">
+      <div className="px-4 py-3 bg-muted/50 border-b border-border flex items-center gap-2">
+        <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+        <h3 className="font-medium">Non-Activated Devices</h3>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full">
+          <thead>
+            <tr className="text-left text-sm text-muted-foreground border-b border-border">
+              <th className="px-4 py-2 font-medium">Device</th>
+              <th className="px-4 py-2 font-medium">Metro</th>
+              <th className="px-4 py-2 font-medium">Status</th>
+              <th className="px-4 py-2 font-medium text-right">Since</th>
+            </tr>
+          </thead>
+          <tbody>
+            {devices.map((device, idx) => (
+              <tr key={`${device.code}-${idx}`} className="border-b border-border last:border-b-0">
+                <td className="px-4 py-2.5">
+                  <span className="font-mono text-sm">{device.code}</span>
+                  <span className="text-xs text-muted-foreground ml-2">{device.device_type}</span>
+                </td>
+                <td className="px-4 py-2.5 text-sm text-muted-foreground">{device.metro}</td>
+                <td className={`px-4 py-2.5 text-sm capitalize ${statusColors[device.status] || ''}`}>
+                  {device.status.replace('-', ' ')}
+                </td>
+                <td className="px-4 py-2.5 text-sm tabular-nums text-right text-muted-foreground">
+                  {formatTimeAgo(device.since)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 function NonActivatedLinksTable({ links }: { links: NonActivatedLink[] | null }) {
   if (!links || links.length === 0) return null
 
   const statusColors: Record<string, string> = {
     'soft-drained': 'text-amber-600 dark:text-amber-400',
+    'hard-drained': 'text-amber-600 dark:text-amber-400',
     drained: 'text-gray-500',
     suspended: 'text-red-600 dark:text-red-400',
     pending: 'text-amber-600 dark:text-amber-400',
@@ -360,7 +428,7 @@ function NonActivatedLinksTable({ links }: { links: NonActivatedLink[] | null })
   }
 
   return (
-    <div className="border border-border rounded-lg overflow-hidden">
+    <div id="non-activated-links" className="border border-border rounded-lg overflow-hidden">
       <div className="px-4 py-3 bg-muted/50 border-b border-border flex items-center gap-2">
         <AlertTriangle className="h-4 w-4 text-muted-foreground" />
         <h3 className="font-medium">Non-Activated Links</h3>
@@ -508,8 +576,8 @@ function TopLinkUtilization({ links }: { links: StatusResponse['links']['top_uti
       <div className="border border-border rounded-lg p-4">
         <div className="flex items-center gap-2 mb-3">
           <ArrowUpDown className="h-4 w-4 text-muted-foreground" />
-          <h3 className="font-medium">Peak Link Utilization</h3>
-          <span className="text-xs text-muted-foreground ml-auto">Last 1h</span>
+          <h3 className="font-medium">Max Link Utilization</h3>
+          <span className="text-xs text-muted-foreground ml-auto">p95 · Last 24h</span>
         </div>
         <div className="text-sm text-muted-foreground">No link data available</div>
       </div>
@@ -520,8 +588,8 @@ function TopLinkUtilization({ links }: { links: StatusResponse['links']['top_uti
     <div className="border border-border rounded-lg p-4">
       <div className="flex items-center gap-2 mb-3">
         <ArrowUpDown className="h-4 w-4 text-muted-foreground" />
-        <h3 className="font-medium">Peak Link Utilization</h3>
-        <span className="text-xs text-muted-foreground ml-auto">Last 1h</span>
+        <h3 className="font-medium">Max Link Utilization</h3>
+        <span className="text-xs text-muted-foreground ml-auto">p95 · Last 24h</span>
       </div>
       <div className="space-y-2">
         {links.slice(0, 5).map((link) => {
@@ -790,11 +858,6 @@ export function StatusPage() {
           <TopDeviceUtilization devices={status.top_device_util} />
         </div>
 
-        {/* Non-Activated Links */}
-        <div className="mb-8">
-          <NonActivatedLinksTable links={status.alerts?.links} />
-        </div>
-
         {/* Link Status Timeline */}
         <div id="link-status-history" className="mb-8">
           <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
@@ -805,6 +868,16 @@ export function StatusPage() {
             </div>
           </div>
           <LinkStatusTimelines timeRange={timeRange} issueFilters={issueFilters} />
+        </div>
+
+        {/* Non-Activated Devices */}
+        <div className="mb-8">
+          <NonActivatedDevicesTable devices={status.alerts?.devices} />
+        </div>
+
+        {/* Non-Activated Links */}
+        <div className="mb-8">
+          <NonActivatedLinksTable links={status.alerts?.links} />
         </div>
 
         {/* Interface Issues */}

@@ -446,8 +446,9 @@ func GetStatus(w http.ResponseWriter, r *http.Request) {
 				mz.code as side_z_metro,
 				COALESCE(lat.avg_rtt_us, 0) as latency_us,
 				COALESCE(lat.loss_percent, 0) as loss_percent,
-				COALESCE(traffic.in_bps, 0) as in_bps,
-				COALESCE(traffic.out_bps, 0) as out_bps
+				-- Use direct link traffic if available, otherwise use parent interface traffic
+				COALESCE(traffic_direct.in_bps, traffic_parent.in_bps, 0) as in_bps,
+				COALESCE(traffic_direct.out_bps, traffic_parent.out_bps, 0) as out_bps
 			FROM dz_links_current l
 			JOIN dz_devices_current da ON l.side_a_pk = da.pk
 			JOIN dz_devices_current dz ON l.side_z_pk = dz.pk
@@ -462,15 +463,27 @@ func GetStatus(w http.ResponseWriter, r *http.Request) {
 				WHERE event_ts > now() - INTERVAL 3 HOUR
 				GROUP BY link_pk
 			) lat ON l.pk = lat.link_pk
+			-- Direct link traffic (where link_pk is populated)
 			LEFT JOIN (
 				SELECT link_pk,
-					max(CASE WHEN delta_duration > 0 THEN in_octets_delta * 8 / delta_duration ELSE 0 END) as in_bps,
-					max(CASE WHEN delta_duration > 0 THEN out_octets_delta * 8 / delta_duration ELSE 0 END) as out_bps
+					quantile(0.95)(CASE WHEN delta_duration > 0 THEN in_octets_delta * 8 / delta_duration ELSE 0 END) as in_bps,
+					quantile(0.95)(CASE WHEN delta_duration > 0 THEN out_octets_delta * 8 / delta_duration ELSE 0 END) as out_bps
 				FROM fact_dz_device_interface_counters
-				WHERE event_ts > now() - INTERVAL 1 HOUR
+				WHERE event_ts > now() - INTERVAL 24 HOUR
 					AND link_pk != ''
 				GROUP BY link_pk
-			) traffic ON l.pk = traffic.link_pk
+			) traffic_direct ON l.pk = traffic_direct.link_pk
+			-- Parent interface traffic (for sub-interfaces like PortChannel2000.10023)
+			LEFT JOIN (
+				SELECT device_pk, intf,
+					quantile(0.95)(CASE WHEN delta_duration > 0 THEN in_octets_delta * 8 / delta_duration ELSE 0 END) as in_bps,
+					quantile(0.95)(CASE WHEN delta_duration > 0 THEN out_octets_delta * 8 / delta_duration ELSE 0 END) as out_bps
+				FROM fact_dz_device_interface_counters
+				WHERE event_ts > now() - INTERVAL 24 HOUR
+				GROUP BY device_pk, intf
+			) traffic_parent ON traffic_parent.device_pk = l.side_a_pk
+				AND traffic_parent.intf = splitByChar('.', l.side_a_iface_name)[1]
+				AND traffic_direct.link_pk IS NULL
 			WHERE l.status = 'activated'
 		`
 		rows, err := config.DB.Query(ctx, query)
@@ -1143,7 +1156,7 @@ func GetLinkHistory(w http.ResponseWriter, r *http.Request) {
 			historicalStatus, hasHistory := linkStatusHistory[histKey]
 			wasDrained := hasHistory && (historicalStatus == "soft-drained" || historicalStatus == "hard-drained")
 
-			// If link was drained at this time, show as disabled
+			// If link was drained at this time (confirmed by history), show as disabled
 			if wasDrained {
 				hourStatuses = append(hourStatuses, LinkHourStatus{
 					Hour:   key,
@@ -1152,16 +1165,7 @@ func GetLinkHistory(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			// If no historical data for this bucket but link is currently drained,
-			// fall back to current status for recent buckets
-			if !hasHistory && isCurrentlyDrained {
-				hourStatuses = append(hourStatuses, LinkHourStatus{
-					Hour:   key,
-					Status: "disabled",
-				})
-				continue
-			}
-
+			// Check if we have latency/traffic data for this bucket
 			if stats, ok := bucketMap[key]; ok {
 				status := classifyLinkStatus(stats.avgLatency, stats.lossPct, meta.committedRttUs)
 				hourStatuses = append(hourStatuses, LinkHourStatus{

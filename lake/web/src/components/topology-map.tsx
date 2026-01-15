@@ -4,7 +4,7 @@ import MapGL, { Source, Layer, Marker } from 'react-map-gl/maplibre'
 import type { MapRef, MapLayerMouseEvent, LngLatBoundsLike } from 'react-map-gl/maplibre'
 import type { StyleSpecification } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { ZoomIn, ZoomOut, Maximize, Users, X } from 'lucide-react'
+import { ZoomIn, ZoomOut, Maximize, Users, X, Search } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip as RechartsTooltip, CartesianGrid } from 'recharts'
 import { useQuery } from '@tanstack/react-query'
 import { useTheme } from '@/hooks/use-theme'
@@ -169,6 +169,14 @@ interface MapControlsProps {
 function MapControls({ onZoomIn, onZoomOut, onReset, showValidators, onToggleValidators, validatorCount }: MapControlsProps) {
   return (
     <div className="absolute top-4 right-4 z-[1000] flex flex-col gap-1">
+      <button
+        onClick={() => window.dispatchEvent(new CustomEvent('open-search'))}
+        className="p-2 bg-[var(--card)] border border-[var(--border)] rounded shadow-sm hover:bg-[var(--muted)] transition-colors"
+        title="Search (Cmd+K)"
+      >
+        <Search className="h-4 w-4" />
+      </button>
+      <div className="my-1 border-t border-[var(--border)]" />
       <button
         onClick={onZoomIn}
         className="p-2 bg-[var(--card)] border border-[var(--border)] rounded shadow-sm hover:bg-[var(--muted)] transition-colors"

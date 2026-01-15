@@ -1018,6 +1018,14 @@ export function TimelinePage() {
             <div className="flex items-center gap-3">
               <Clock className="h-6 w-6 text-muted-foreground" />
               <h1 className="text-2xl font-semibold">Timeline</h1>
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent('open-search'))}
+                className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground border border-border rounded-md hover:bg-muted transition-colors"
+                title="Search (Cmd+K)"
+              >
+                <Search className="h-3 w-3" />
+                <kbd className="font-mono text-[10px]">K</kbd>
+              </button>
               {data && (
                 <span className="text-sm text-muted-foreground bg-muted px-2 py-0.5 rounded">
                   {searchFilters.length > 0 ? `${filteredEvents.length} of ${data.total.toLocaleString()}` : data.total.toLocaleString()} events

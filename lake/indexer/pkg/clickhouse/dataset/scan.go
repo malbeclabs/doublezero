@@ -37,7 +37,7 @@ func InitializeScanTargets(columnTypes []driver.ColumnType) ([]any, []any) {
 			} else {
 				valuePtrs[i] = &v
 			}
-		case baseType == "DateTime" || baseType == "DateTime64" || strings.HasPrefix(baseType, "DateTime"):
+		case baseType == "Date" || baseType == "Date32" || baseType == "DateTime" || baseType == "DateTime64" || strings.HasPrefix(baseType, "DateTime"):
 			var v time.Time
 			if isNullable {
 				var p *time.Time
@@ -53,10 +53,42 @@ func InitializeScanTargets(columnTypes []driver.ColumnType) ([]any, []any) {
 			} else {
 				valuePtrs[i] = &v
 			}
+		case baseType == "UInt16":
+			var v uint16
+			if isNullable {
+				var p *uint16
+				valuePtrs[i] = &p
+			} else {
+				valuePtrs[i] = &v
+			}
+		case baseType == "UInt32":
+			var v uint32
+			if isNullable {
+				var p *uint32
+				valuePtrs[i] = &p
+			} else {
+				valuePtrs[i] = &v
+			}
 		case baseType == "UInt64":
 			var v uint64
 			if isNullable {
 				var p *uint64
+				valuePtrs[i] = &p
+			} else {
+				valuePtrs[i] = &v
+			}
+		case baseType == "Int8":
+			var v int8
+			if isNullable {
+				var p *int8
+				valuePtrs[i] = &p
+			} else {
+				valuePtrs[i] = &v
+			}
+		case baseType == "Int16":
+			var v int16
+			if isNullable {
+				var p *int16
 				valuePtrs[i] = &p
 			} else {
 				valuePtrs[i] = &v
@@ -73,6 +105,14 @@ func InitializeScanTargets(columnTypes []driver.ColumnType) ([]any, []any) {
 			var v int64
 			if isNullable {
 				var p *int64
+				valuePtrs[i] = &p
+			} else {
+				valuePtrs[i] = &v
+			}
+		case baseType == "Float32":
+			var v float32
+			if isNullable {
+				var p *float32
 				valuePtrs[i] = &p
 			} else {
 				valuePtrs[i] = &v
@@ -149,10 +189,42 @@ func dereferencePointersToMap(valuePtrs []any, columns []string) map[string]any 
 			} else {
 				result[col] = **v
 			}
+		case *uint16:
+			result[col] = *v
+		case **uint16:
+			if v == nil || *v == nil {
+				result[col] = nil
+			} else {
+				result[col] = **v
+			}
+		case *uint32:
+			result[col] = *v
+		case **uint32:
+			if v == nil || *v == nil {
+				result[col] = nil
+			} else {
+				result[col] = **v
+			}
 		case *uint64:
 			result[col] = *v
 		case **uint64:
 			// Nullable uint64 - return nil if null, else dereference
+			if v == nil || *v == nil {
+				result[col] = nil
+			} else {
+				result[col] = **v
+			}
+		case *int8:
+			result[col] = *v
+		case **int8:
+			if v == nil || *v == nil {
+				result[col] = nil
+			} else {
+				result[col] = **v
+			}
+		case *int16:
+			result[col] = *v
+		case **int16:
 			if v == nil || *v == nil {
 				result[col] = nil
 			} else {
@@ -171,6 +243,14 @@ func dereferencePointersToMap(valuePtrs []any, columns []string) map[string]any 
 			result[col] = *v
 		case **int64:
 			// Nullable int64 - return nil if null, else dereference
+			if v == nil || *v == nil {
+				result[col] = nil
+			} else {
+				result[col] = **v
+			}
+		case *float32:
+			result[col] = *v
+		case **float32:
 			if v == nil || *v == nil {
 				result[col] = nil
 			} else {
@@ -240,9 +320,37 @@ func DereferencePointer(ptr any) any {
 			return nil
 		}
 		return **v
+	case *uint16:
+		return *v
+	case **uint16:
+		if v == nil || *v == nil {
+			return nil
+		}
+		return **v
+	case *uint32:
+		return *v
+	case **uint32:
+		if v == nil || *v == nil {
+			return nil
+		}
+		return **v
 	case *uint64:
 		return *v
 	case **uint64:
+		if v == nil || *v == nil {
+			return nil
+		}
+		return **v
+	case *int8:
+		return *v
+	case **int8:
+		if v == nil || *v == nil {
+			return nil
+		}
+		return **v
+	case *int16:
+		return *v
+	case **int16:
 		if v == nil || *v == nil {
 			return nil
 		}
@@ -257,6 +365,13 @@ func DereferencePointer(ptr any) any {
 	case *int64:
 		return *v
 	case **int64:
+		if v == nil || *v == nil {
+			return nil
+		}
+		return **v
+	case *float32:
+		return *v
+	case **float32:
 		if v == nil || *v == nil {
 			return nil
 		}

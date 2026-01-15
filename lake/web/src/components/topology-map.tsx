@@ -557,14 +557,17 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     mapRef.current?.zoomOut()
   }, [])
 
-  // Restore selected item from URL params on initial load
-  const initialLoadRef = useRef(true)
+  // Restore selected item from URL params (on initial load and when params change)
+  const lastParamsRef = useRef<string | null>(null)
   useEffect(() => {
-    if (!initialLoadRef.current) return
-    initialLoadRef.current = false
-
     const type = searchParams.get('type')
     const id = searchParams.get('id')
+    const paramsKey = type && id ? `${type}:${id}` : null
+
+    // Skip if params haven't changed (avoids loops when we set params ourselves)
+    if (paramsKey === lastParamsRef.current) return
+    lastParamsRef.current = paramsKey
+
     if (!type || !id) return
 
     if (type === 'validator') {
@@ -688,6 +691,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
         maxZoom={18}
         mapStyle={mapStyle}
         style={{ width: '100%', height: '100%' }}
+        attributionControl={false}
         onClick={handleMapClick}
         interactiveLayerIds={['link-lines', 'link-hit-area']}
         onMouseEnter={handleLinkMouseEnter}

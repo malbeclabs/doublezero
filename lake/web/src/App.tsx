@@ -11,6 +11,7 @@ import { ChatSessionsPage } from '@/components/chat-sessions-page'
 import { Chat, type ChatProgress, type QueryProgressItem, type PipelineStep } from '@/components/chat'
 import { Landing } from '@/components/landing'
 import { Sidebar } from '@/components/sidebar'
+import { SearchSpotlight } from '@/components/search-spotlight'
 import { TopologyPage } from '@/components/topology-page'
 import { StatusPage } from '@/components/status-page'
 import { TimelinePage } from '@/components/timeline-page'
@@ -1201,17 +1202,25 @@ function AppContent() {
     setExternalLocks,
   }
 
-  // Global keyboard shortcuts
+  // Search spotlight state
+  const [isSearchOpen, setIsSearchOpen] = useState(false)
+
+  // Global keyboard shortcuts and search event
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Cmd+K (Mac) or Ctrl+K (Windows/Linux) to focus search
+      // Cmd+K (Mac) or Ctrl+K (Windows/Linux) to open search spotlight
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault()
-        window.dispatchEvent(new CustomEvent('focus-search'))
+        setIsSearchOpen(true)
       }
     }
+    const handleOpenSearch = () => setIsSearchOpen(true)
     window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
+    window.addEventListener('open-search', handleOpenSearch)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('open-search', handleOpenSearch)
+    }
   }, [])
 
   // Sidebar handlers
@@ -1378,6 +1387,9 @@ function AppContent() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>
+
+        {/* Search spotlight */}
+        <SearchSpotlight isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} />
       </div>
     </AppContext.Provider>
   )

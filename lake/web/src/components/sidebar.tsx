@@ -23,9 +23,9 @@ import {
   Radio,
   Home,
   Clock,
+  Search,
 } from 'lucide-react'
 import { cn, handleRowClick } from '@/lib/utils'
-import { SearchOmnibox } from '@/components/search-omnibox'
 import { useTheme } from '@/hooks/use-theme'
 import { useVersionCheck } from '@/hooks/use-version-check'
 import {
@@ -270,6 +270,15 @@ export function Sidebar({
           <Globe className="h-4 w-4" />
         </button>
 
+        {/* Search nav item */}
+        <button
+          onClick={() => window.dispatchEvent(new CustomEvent('open-search'))}
+          className="p-2 rounded transition-colors text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]"
+          title="Search (⌘K)"
+        >
+          <Search className="h-4 w-4" />
+        </button>
+
         {/* Divider */}
         <div className="w-6 border-t border-border/50 my-2" />
 
@@ -353,11 +362,6 @@ export function Sidebar({
         </button>
       </div>
 
-      {/* Search */}
-      <div className="px-3 pt-4">
-        <SearchOmnibox placeholder="Search... (⌘K)" />
-      </div>
-
       {/* Tools section */}
       <div className="px-3 pt-4">
         <div className="px-3 mb-2">
@@ -423,6 +427,14 @@ export function Sidebar({
           >
             <Globe className="h-4 w-4" />
             Topology
+          </button>
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent('open-search'))}
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]"
+          >
+            <Search className="h-4 w-4" />
+            <span className="flex-1 text-left">Search</span>
+            <kbd className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">⌘K</kbd>
           </button>
         </div>
       </div>

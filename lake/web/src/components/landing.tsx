@@ -128,7 +128,7 @@ export function Landing() {
           format="bandwidth"
         />
         <StatCard
-          label="Utilization"
+          label="User Inbound"
           value={stats?.user_inbound_bps}
           format="bandwidth"
         />

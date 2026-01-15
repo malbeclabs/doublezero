@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Loader2, Landmark, AlertCircle, Check } from 'lucide-react'
 import { fetchValidators } from '@/lib/api'
+import { handleRowClick } from '@/lib/utils'
 import { Pagination } from './pagination'
 
 const PAGE_SIZE = 100
@@ -108,7 +109,7 @@ export function ValidatorsPage() {
                   <tr
                     key={validator.vote_pubkey}
                     className="border-b border-border last:border-b-0 hover:bg-muted/50 cursor-pointer transition-colors"
-                    onClick={() => navigate(`/solana/validators/${validator.vote_pubkey}`)}
+                    onClick={(e) => handleRowClick(e, `/solana/validators/${validator.vote_pubkey}`, navigate)}
                   >
                     <td className="px-4 py-3">
                       <span className="font-mono text-sm" title={validator.vote_pubkey}>

@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Loader2, MapPin, AlertCircle } from 'lucide-react'
 import { fetchMetros } from '@/lib/api'
+import { handleRowClick } from '@/lib/utils'
 import { Pagination } from './pagination'
 
 const PAGE_SIZE = 100
@@ -67,7 +68,7 @@ export function MetrosPage() {
                   <tr
                     key={metro.pk}
                     className="border-b border-border last:border-b-0 hover:bg-muted/50 cursor-pointer transition-colors"
-                    onClick={() => navigate(`/dz/metros/${metro.pk}`)}
+                    onClick={(e) => handleRowClick(e, `/dz/metros/${metro.pk}`, navigate)}
                   >
                     <td className="px-4 py-3">
                       <span className="font-mono text-sm">{metro.code}</span>

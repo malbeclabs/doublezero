@@ -24,7 +24,7 @@ import {
   Home,
   Clock,
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn, handleRowClick } from '@/lib/utils'
 import { useTheme } from '@/hooks/use-theme'
 import { useVersionCheck } from '@/hooks/use-version-check'
 import {
@@ -187,7 +187,7 @@ export function Sidebar({
         <div className="flex flex-col items-center gap-1 pt-4">
         {/* Home nav item */}
         <button
-          onClick={() => navigate('/')}
+          onClick={(e) => handleRowClick(e, '/', navigate)}
           className={cn(
             'p-2 rounded transition-colors',
             isLandingPage
@@ -201,7 +201,7 @@ export function Sidebar({
 
         {/* Status nav item */}
         <button
-          onClick={() => navigate('/status')}
+          onClick={(e) => handleRowClick(e, '/status', navigate)}
           className={cn(
             'p-2 rounded transition-colors',
             isStatusRoute
@@ -215,7 +215,7 @@ export function Sidebar({
 
         {/* Timeline nav item */}
         <button
-          onClick={() => navigate('/timeline')}
+          onClick={(e) => handleRowClick(e, '/timeline', navigate)}
           className={cn(
             'p-2 rounded transition-colors',
             isTimelineRoute
@@ -257,7 +257,7 @@ export function Sidebar({
 
         {/* Topology nav item */}
         <button
-          onClick={() => navigate('/topology')}
+          onClick={(e) => handleRowClick(e, '/topology', navigate)}
           className={cn(
             'p-2 rounded transition-colors',
             isTopologyRoute
@@ -274,7 +274,7 @@ export function Sidebar({
 
         {/* DZ nav item */}
         <button
-          onClick={() => navigate('/dz/devices')}
+          onClick={(e) => handleRowClick(e, '/dz/devices', navigate)}
           className={cn(
             'p-2 rounded transition-colors',
             isDZRoute
@@ -288,7 +288,7 @@ export function Sidebar({
 
         {/* Solana nav item */}
         <button
-          onClick={() => navigate('/solana/validators')}
+          onClick={(e) => handleRowClick(e, '/solana/validators', navigate)}
           className={cn(
             'p-2 rounded transition-colors',
             isSolanaRoute
@@ -359,7 +359,7 @@ export function Sidebar({
         </div>
         <div className="space-y-1">
           <button
-            onClick={() => navigate('/status')}
+            onClick={(e) => handleRowClick(e, '/status', navigate)}
             className={cn(
               'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',
               isStatusRoute
@@ -371,7 +371,7 @@ export function Sidebar({
             Status
           </button>
           <button
-            onClick={() => navigate('/timeline')}
+            onClick={(e) => handleRowClick(e, '/timeline', navigate)}
             className={cn(
               'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',
               isTimelineRoute
@@ -407,7 +407,7 @@ export function Sidebar({
             Query
           </button>
           <button
-            onClick={() => navigate('/topology')}
+            onClick={(e) => handleRowClick(e, '/topology', navigate)}
             className={cn(
               'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',
               isTopologyRoute
@@ -429,7 +429,7 @@ export function Sidebar({
           </div>
           <div className="space-y-1">
             <button
-              onClick={() => navigate('/dz/devices')}
+              onClick={(e) => handleRowClick(e, '/dz/devices', navigate)}
               className={cn(
                 'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',
                 isDevicesRoute
@@ -441,7 +441,7 @@ export function Sidebar({
               Devices
             </button>
             <button
-              onClick={() => navigate('/dz/links')}
+              onClick={(e) => handleRowClick(e, '/dz/links', navigate)}
               className={cn(
                 'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',
                 isLinksRoute
@@ -453,7 +453,7 @@ export function Sidebar({
               Links
             </button>
             <button
-              onClick={() => navigate('/dz/metros')}
+              onClick={(e) => handleRowClick(e, '/dz/metros', navigate)}
               className={cn(
                 'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',
                 isMetrosRoute
@@ -465,7 +465,7 @@ export function Sidebar({
               Metros
             </button>
             <button
-              onClick={() => navigate('/dz/contributors')}
+              onClick={(e) => handleRowClick(e, '/dz/contributors', navigate)}
               className={cn(
                 'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',
                 isContributorsRoute
@@ -477,7 +477,7 @@ export function Sidebar({
               Contributors
             </button>
             <button
-              onClick={() => navigate('/dz/users')}
+              onClick={(e) => handleRowClick(e, '/dz/users', navigate)}
               className={cn(
                 'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',
                 isUsersRoute
@@ -500,7 +500,7 @@ export function Sidebar({
           </div>
           <div className="space-y-1">
             <button
-              onClick={() => navigate('/solana/validators')}
+              onClick={(e) => handleRowClick(e, '/solana/validators', navigate)}
               className={cn(
                 'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',
                 isValidatorsRoute
@@ -512,7 +512,7 @@ export function Sidebar({
               Validators
             </button>
             <button
-              onClick={() => navigate('/solana/gossip-nodes')}
+              onClick={(e) => handleRowClick(e, '/solana/gossip-nodes', navigate)}
               className={cn(
                 'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',
                 isGossipNodesRoute
@@ -555,7 +555,7 @@ export function Sidebar({
               )
             })()}
             <button
-              onClick={() => navigate('/query/sessions')}
+              onClick={(e) => handleRowClick(e, '/query/sessions', navigate)}
               className={cn(
                 'w-full text-left px-3 py-2 text-sm rounded transition-colors',
                 isQuerySessions
@@ -621,7 +621,7 @@ export function Sidebar({
               )
             })()}
             <button
-              onClick={() => navigate('/chat/sessions')}
+              onClick={(e) => handleRowClick(e, '/chat/sessions', navigate)}
               className={cn(
                 'w-full text-left px-3 py-2 text-sm rounded transition-colors',
                 isChatSessions

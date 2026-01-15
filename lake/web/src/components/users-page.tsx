@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Loader2, Users, AlertCircle } from 'lucide-react'
 import { fetchUsers } from '@/lib/api'
+import { handleRowClick } from '@/lib/utils'
 import { Pagination } from './pagination'
 
 const PAGE_SIZE = 100
@@ -92,7 +93,7 @@ export function UsersPage() {
                   <tr
                     key={user.pk}
                     className="border-b border-border last:border-b-0 hover:bg-muted/50 cursor-pointer transition-colors"
-                    onClick={() => navigate(`/dz/users/${user.pk}`)}
+                    onClick={(e) => handleRowClick(e, `/dz/users/${user.pk}`, navigate)}
                   >
                     <td className="px-4 py-3">
                       <span className="font-mono text-sm" title={user.owner_pubkey}>

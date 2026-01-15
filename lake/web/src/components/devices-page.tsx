@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Loader2, Server, AlertCircle } from 'lucide-react'
 import { fetchDevices } from '@/lib/api'
+import { handleRowClick } from '@/lib/utils'
 import { Pagination } from './pagination'
 
 const PAGE_SIZE = 100
@@ -89,7 +90,7 @@ export function DevicesPage() {
                   <tr
                     key={device.pk}
                     className="border-b border-border last:border-b-0 hover:bg-muted/50 cursor-pointer transition-colors"
-                    onClick={() => navigate(`/dz/devices/${device.pk}`)}
+                    onClick={(e) => handleRowClick(e, `/dz/devices/${device.pk}`, navigate)}
                   >
                     <td className="px-4 py-3">
                       <span className="font-mono text-sm">{device.code}</span>

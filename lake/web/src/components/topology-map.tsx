@@ -528,6 +528,10 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
 
   // Handle map click to deselect or select links
   const handleMapClick = useCallback((e: MapLayerMouseEvent) => {
+    // If a marker was clicked, don't process map click (marker handler takes precedence)
+    if (markerClickedRef.current) {
+      return
+    }
     // Check if a link was clicked
     if (e.features && e.features.length > 0) {
       const feature = e.features[0]
@@ -540,10 +544,8 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
         }
       }
     }
-    // Only close drawer if a marker wasn't just clicked
-    if (!markerClickedRef.current) {
-      setSelectedItem(null)
-    }
+    // Close drawer when clicking empty area
+    setSelectedItem(null)
   }, [setSelectedItem, linkMap, buildLinkInfo, handleMarkerClick])
 
   // Map control handlers
@@ -709,7 +711,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             type="line"
             paint={{
               'line-color': 'transparent',
-              'line-width': 20,
+              'line-width': 12,
             }}
             layout={{
               'line-cap': 'round',

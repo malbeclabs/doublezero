@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Search, X, Clock, Server, Link2, MapPin, Building2, Users, Landmark, Radio, Loader2 } from 'lucide-react'
+import { Search, X, Clock, Server, Link2, MapPin, Building2, Users, Landmark, Radio, Loader2, MessageSquare } from 'lucide-react'
 import { cn, handleRowClick } from '@/lib/utils'
 import { useSearchAutocomplete, useRecentSearches } from '@/hooks/use-search'
 import type { SearchSuggestion, SearchEntityType } from '@/lib/api'
@@ -95,7 +95,7 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
     : []
 
   // Build items list
-  const items: (SearchSuggestion | { type: 'prefix'; prefix: string; description: string } | { type: 'recent'; item: SearchSuggestion })[] = []
+  const items: (SearchSuggestion | { type: 'prefix'; prefix: string; description: string } | { type: 'recent'; item: SearchSuggestion } | { type: 'ask-ai' })[] = []
 
   if (matchingPrefixes.length > 0) {
     items.push(...matchingPrefixes.map(p => ({ type: 'prefix' as const, prefix: p.prefix, description: p.description })))
@@ -107,6 +107,11 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
 
   if (!showRecentSearches) {
     items.push(...suggestions)
+  }
+
+  // Add "Ask AI" option when there's a query
+  if (query.length >= 2) {
+    items.push({ type: 'ask-ai' as const })
   }
 
   // Reset selection when items change
@@ -142,6 +147,15 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
     }
   }, [navigate, addRecentSearch, onClose, isTopologyPage])
 
+  const handleAskAI = useCallback(() => {
+    if (!query.trim()) return
+    sessionStorage.setItem('initialChatQuestion', query.trim())
+    setQuery('')
+    onClose()
+    // Dispatch event to create new chat session (handled by App.tsx)
+    window.dispatchEvent(new CustomEvent('new-chat-session'))
+  }, [query, onClose])
+
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     switch (e.key) {
       case 'ArrowDown':
@@ -161,6 +175,8 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
             inputRef.current?.focus()
           } else if ('item' in item && item.type === 'recent') {
             handleSelect(item.item)
+          } else if (item.type === 'ask-ai') {
+            handleAskAI()
           } else if ('url' in item) {
             handleSelect(item as SearchSuggestion)
           }
@@ -180,7 +196,7 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
         onClose()
         break
     }
-  }, [items, selectedIndex, handleSelect, onClose])
+  }, [items, selectedIndex, handleSelect, handleAskAI, onClose])
 
   if (!isOpen) return null
 
@@ -271,6 +287,27 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
                   <Search className="h-4 w-4 text-muted-foreground" />
                   <code className="text-sm bg-muted px-2 py-0.5 rounded font-mono">{item.prefix}</code>
                   <span className="text-sm text-muted-foreground">{item.description}</span>
+                </button>
+              )
+            }
+
+            if (item.type === 'ask-ai') {
+              return (
+                <button
+                  key="ask-ai"
+                  onClick={handleAskAI}
+                  className={cn(
+                    'w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted transition-colors',
+                    index === selectedIndex && 'bg-muted'
+                  )}
+                >
+                  <MessageSquare className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">Ask AI about "{query}"</span>
+                    </div>
+                    <div className="text-sm text-muted-foreground">Get an answer from the AI assistant</div>
+                  </div>
                 </button>
               )
             }

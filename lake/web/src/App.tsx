@@ -1298,22 +1298,27 @@ function AppContent() {
       // Only handle if Cmd/Ctrl is pressed
       if (!e.metaKey && !e.ctrlKey) return
 
-      // Ignore if user is typing in an input
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
-
+      // Cmd+K should always work, even in inputs
       if (e.key.toLowerCase() === 'k') {
         e.preventDefault()
         setIsSearchOpen(true)
+        return
       }
+
+      // Ignore other shortcuts if user is typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
     }
     const handleOpenSearch = () => setIsSearchOpen(true)
+    const handleNewChat = () => handleNewChatSession()
     window.addEventListener('keydown', handleKeyDown)
     window.addEventListener('open-search', handleOpenSearch)
+    window.addEventListener('new-chat-session', handleNewChat)
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('open-search', handleOpenSearch)
+      window.removeEventListener('new-chat-session', handleNewChat)
     }
-  }, [])
+  }, [handleNewChatSession])
 
   return (
     <AppContext.Provider value={contextValue}>

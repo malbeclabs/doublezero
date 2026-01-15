@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom'
 import { Search, X, Clock, Server, Link2, MapPin, Building2, Users, Landmark, Radio, Loader2, MessageSquare, Filter } from 'lucide-react'
 import { cn, handleRowClick } from '@/lib/utils'
 import { useSearchAutocomplete, useRecentSearches } from '@/hooks/use-search'
@@ -58,6 +58,7 @@ interface SearchSpotlightProps {
 export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
   const navigate = useNavigate()
   const location = useLocation()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(-1)
@@ -66,6 +67,16 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
 
   const isTopologyPage = location.pathname === '/topology'
   const isTimelinePage = location.pathname === '/timeline'
+
+  // Helper to add a filter to the timeline search (accumulating)
+  const addTimelineFilter = useCallback((filterValue: string) => {
+    const currentSearch = searchParams.get('search') || ''
+    const currentFilters = currentSearch ? currentSearch.split(',').map(f => f.trim()).filter(Boolean) : []
+    if (!currentFilters.includes(filterValue)) {
+      currentFilters.push(filterValue)
+    }
+    setSearchParams({ search: currentFilters.join(',') })
+  }, [searchParams, setSearchParams])
 
   // Focus input when opened
   useEffect(() => {
@@ -145,13 +156,13 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
       }
     }
 
-    // On timeline page, filter by entity label instead of navigating away
+    // On timeline page, add filter to accumulated filters instead of navigating away
     if (isTimelinePage) {
-      const url = `/timeline?search=${encodeURIComponent(item.label)}`
       if (e && (e.metaKey || e.ctrlKey)) {
-        window.open(url, '_blank')
+        // Open new tab with just this filter
+        window.open(`/timeline?search=${encodeURIComponent(item.label)}`, '_blank')
       } else {
-        navigate(url)
+        addTimelineFilter(item.label)
       }
       return
     }
@@ -162,7 +173,7 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
     } else {
       navigate(item.url)
     }
-  }, [navigate, addRecentSearch, onClose, isTopologyPage, isTimelinePage])
+  }, [navigate, addRecentSearch, onClose, isTopologyPage, isTimelinePage, addTimelineFilter])
 
   const handleAskAI = useCallback(() => {
     if (!query.trim()) return
@@ -177,8 +188,8 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
     if (!query.trim()) return
     setQuery('')
     onClose()
-    navigate(`/timeline?search=${encodeURIComponent(query.trim())}`)
-  }, [query, onClose, navigate])
+    addTimelineFilter(query.trim())
+  }, [query, onClose, addTimelineFilter])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     switch (e.key) {

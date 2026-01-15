@@ -321,14 +321,20 @@ function ChangeSummary({ changes }: { changes?: FieldChange[] }) {
   )
 }
 
-// Clickable filter button for timeline filtering
+// Clickable filter button for timeline filtering - accumulates filters
 function FilterButton({ children, value, className }: { children: React.ReactNode; value: string; className?: string }) {
-  const [, setSearchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
 
   const handleClick = (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    setSearchParams({ search: value })
+    // Get existing filters and add this one if not already present
+    const currentSearch = searchParams.get('search') || ''
+    const currentFilters = currentSearch ? currentSearch.split(',').map(f => f.trim()).filter(Boolean) : []
+    if (!currentFilters.includes(value)) {
+      currentFilters.push(value)
+    }
+    setSearchParams({ search: currentFilters.join(',') })
   }
 
   return (
@@ -683,7 +689,9 @@ const ALL_CATEGORIES: Category[] = ['state_change', 'packet_loss', 'interface_ca
 
 export function TimelinePage() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const searchFilter = searchParams.get('search') || ''
+  const searchParam = searchParams.get('search') || ''
+  // Parse comma-separated filters
+  const searchFilters = searchParam ? searchParam.split(',').map(f => f.trim()).filter(Boolean) : []
 
   const [timeRange, setTimeRange] = useState<TimeRange | 'custom'>('24h')
   const [selectedCategories, setSelectedCategories] = useState<Set<Category>>(new Set(ALL_CATEGORIES))
@@ -704,6 +712,15 @@ export function TimelinePage() {
       next.delete('search')
       return next
     })
+  }
+
+  const removeSearchFilter = (filterToRemove: string) => {
+    const newFilters = searchFilters.filter(f => f !== filterToRemove)
+    if (newFilters.length === 0) {
+      clearSearchFilter()
+    } else {
+      setSearchParams({ search: newFilters.join(',') })
+    }
   }
 
   // Fetch timeline data bounds
@@ -820,24 +837,26 @@ export function TimelinePage() {
     clearSearchFilter()
   }
 
-  // Filter events by search query (client-side)
+  // Filter events by search queries (client-side)
   // Searches through all relevant fields including related entities in details
+  // Matches if event matches ANY of the filters (OR logic)
   const filteredEvents = useMemo(() => {
-    if (!data?.events || !searchFilter) return data?.events || []
-    const lowerSearch = searchFilter.toLowerCase()
+    if (!data?.events || searchFilters.length === 0) return data?.events || []
 
-    const matchesSearch = (value: unknown): boolean => {
+    const matchesSearch = (value: unknown, lowerSearch: string): boolean => {
       if (!value) return false
       if (typeof value === 'string') return value.toLowerCase().includes(lowerSearch)
       if (typeof value === 'number') return String(value).includes(lowerSearch)
       return false
     }
 
-    return data.events.filter(event => {
+    const eventMatchesFilter = (event: TimelineEvent, filter: string): boolean => {
+      const lowerSearch = filter.toLowerCase()
+
       // Check main event fields
-      if (matchesSearch(event.entity_code)) return true
-      if (matchesSearch(event.title)) return true
-      if (matchesSearch(event.description)) return true
+      if (matchesSearch(event.entity_code, lowerSearch)) return true
+      if (matchesSearch(event.title, lowerSearch)) return true
+      if (matchesSearch(event.description, lowerSearch)) return true
 
       // Check event details for related entities
       const details = event.details
@@ -846,36 +865,41 @@ export function TimelinePage() {
       // EntityChangeDetails - check the entity object for related codes
       if ('entity' in details && details.entity) {
         const entity = details.entity as unknown as Record<string, unknown>
-        if (matchesSearch(entity.device_code)) return true
-        if (matchesSearch(entity.metro_code)) return true
-        if (matchesSearch(entity.contributor_code)) return true
-        if (matchesSearch(entity.code)) return true
-        if (matchesSearch(entity.name)) return true
-        if (matchesSearch(entity.public_ip)) return true
-        if (matchesSearch(entity.client_ip)) return true
-        if (matchesSearch(entity.dz_ip)) return true
-        if (matchesSearch(entity.owner_pubkey)) return true
+        if (matchesSearch(entity.device_code, lowerSearch)) return true
+        if (matchesSearch(entity.metro_code, lowerSearch)) return true
+        if (matchesSearch(entity.contributor_code, lowerSearch)) return true
+        if (matchesSearch(entity.code, lowerSearch)) return true
+        if (matchesSearch(entity.name, lowerSearch)) return true
+        if (matchesSearch(entity.public_ip, lowerSearch)) return true
+        if (matchesSearch(entity.client_ip, lowerSearch)) return true
+        if (matchesSearch(entity.dz_ip, lowerSearch)) return true
+        if (matchesSearch(entity.owner_pubkey, lowerSearch)) return true
       }
 
       // ValidatorEventDetails - device, metro, pubkeys
-      if ('device_code' in details && matchesSearch(details.device_code)) return true
-      if ('metro_code' in details && matchesSearch(details.metro_code)) return true
-      if ('owner_pubkey' in details && matchesSearch(details.owner_pubkey)) return true
-      if ('vote_pubkey' in details && matchesSearch(details.vote_pubkey)) return true
-      if ('node_pubkey' in details && matchesSearch(details.node_pubkey)) return true
-      if ('dz_ip' in details && matchesSearch(details.dz_ip)) return true
+      if ('device_code' in details && matchesSearch(details.device_code, lowerSearch)) return true
+      if ('metro_code' in details && matchesSearch(details.metro_code, lowerSearch)) return true
+      if ('owner_pubkey' in details && matchesSearch(details.owner_pubkey, lowerSearch)) return true
+      if ('vote_pubkey' in details && matchesSearch(details.vote_pubkey, lowerSearch)) return true
+      if ('node_pubkey' in details && matchesSearch(details.node_pubkey, lowerSearch)) return true
+      if ('dz_ip' in details && matchesSearch(details.dz_ip, lowerSearch)) return true
 
       // InterfaceEventDetails - interface and link
-      if ('interface_name' in details && matchesSearch(details.interface_name)) return true
-      if ('link_code' in details && matchesSearch(details.link_code)) return true
+      if ('interface_name' in details && matchesSearch(details.interface_name, lowerSearch)) return true
+      if ('link_code' in details && matchesSearch(details.link_code, lowerSearch)) return true
 
       // PacketLossEventDetails - link and metros
-      if ('side_a_metro' in details && matchesSearch(details.side_a_metro)) return true
-      if ('side_z_metro' in details && matchesSearch(details.side_z_metro)) return true
+      if ('side_a_metro' in details && matchesSearch(details.side_a_metro, lowerSearch)) return true
+      if ('side_z_metro' in details && matchesSearch(details.side_z_metro, lowerSearch)) return true
 
       return false
-    })
-  }, [data?.events, searchFilter])
+    }
+
+    // Event matches if it matches ANY of the filters (OR logic)
+    return data.events.filter(event =>
+      searchFilters.some(filter => eventMatchesFilter(event, filter))
+    )
+  }, [data?.events, searchFilters])
 
   // Check if any filters are non-default
   const hasActiveFilters = timeRange !== '24h' ||
@@ -884,7 +908,7 @@ export function TimelinePage() {
     selectedActions.size !== ALL_ACTIONS.length ||
     dzFilter !== 'on_dz' ||
     includeInternal ||
-    searchFilter
+    searchFilters.length > 0
 
   const handleBucketClick = (bucket: HistogramBucket, nextBucket?: HistogramBucket) => {
     const start = new Date(bucket.timestamp)
@@ -982,18 +1006,31 @@ export function TimelinePage() {
               <h1 className="text-2xl font-semibold">Timeline</h1>
               {data && (
                 <span className="text-sm text-muted-foreground bg-muted px-2 py-0.5 rounded">
-                  {searchFilter ? `${filteredEvents.length} of ${data.total.toLocaleString()}` : data.total.toLocaleString()} events
+                  {searchFilters.length > 0 ? `${filteredEvents.length} of ${data.total.toLocaleString()}` : data.total.toLocaleString()} events
                 </span>
               )}
-              {searchFilter && (
-                <button
-                  onClick={clearSearchFilter}
-                  className="inline-flex items-center gap-1.5 text-sm px-2 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 transition-colors"
-                >
-                  <Search className="h-3 w-3" />
-                  "{searchFilter}"
-                  <X className="h-3 w-3" />
-                </button>
+              {searchFilters.length > 0 && (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {searchFilters.map((filter, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => removeSearchFilter(filter)}
+                      className="inline-flex items-center gap-1 text-sm px-2 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 transition-colors"
+                    >
+                      <Search className="h-3 w-3" />
+                      {filter}
+                      <X className="h-3 w-3" />
+                    </button>
+                  ))}
+                  {searchFilters.length > 1 && (
+                    <button
+                      onClick={clearSearchFilter}
+                      className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      Clear all
+                    </button>
+                  )}
+                </div>
               )}
               {newEventIds.size > 0 && (
                 <span className="text-xs px-2 py-0.5 rounded-full bg-primary text-primary-foreground animate-pulse">
@@ -1387,16 +1424,16 @@ export function TimelinePage() {
           <div className="text-center py-12 border border-dashed border-border rounded-lg">
             <Clock className="h-12 w-12 text-muted-foreground/50 mx-auto mb-3" />
             <div className="text-sm text-muted-foreground">
-              {searchFilter
-                ? `No events matching "${searchFilter}"`
+              {searchFilters.length > 0
+                ? `No events matching filters: ${searchFilters.join(', ')}`
                 : 'No events found in the selected time range'}
             </div>
-            {searchFilter && (
+            {searchFilters.length > 0 && (
               <button
                 onClick={clearSearchFilter}
                 className="mt-2 text-sm text-blue-500 hover:underline"
               >
-                Clear search filter
+                Clear search filters
               </button>
             )}
           </div>
@@ -1417,7 +1454,7 @@ export function TimelinePage() {
             </div>
 
             {/* Pagination - only show when not filtering, since client-side filter doesn't work with server pagination */}
-            {!searchFilter && data.total > limit && (
+            {searchFilters.length === 0 && data.total > limit && (
               <div className="mt-6">
                 <Pagination
                   total={data.total}

@@ -8,6 +8,9 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
+
+	"github.com/malbeclabs/doublezero/lake/api/metrics"
 )
 
 // Config holds the configuration for the pipeline.
@@ -146,8 +149,15 @@ type PipelineResult struct {
 
 // Pipeline orchestrates the multi-step question-answering process.
 type Pipeline struct {
-	cfg *Config
-	log *slog.Logger
+	cfg      *Config
+	log      *slog.Logger
+	llmCalls atomic.Int32 // tracks LLM calls during a pipeline run
+}
+
+// trackLLMCall increments the LLM call counter and calls the LLM.
+func (p *Pipeline) trackLLMCall(ctx context.Context, systemPrompt, userPrompt string, opts ...CompleteOption) (string, error) {
+	p.llmCalls.Add(1)
+	return p.cfg.LLM.Complete(ctx, systemPrompt, userPrompt, opts...)
 }
 
 // New creates a new Pipeline.
@@ -307,6 +317,9 @@ func (p *Pipeline) Run(ctx context.Context, userQuestion string) (*PipelineResul
 
 // RunWithProgress executes the pipeline with progress callbacks.
 func (p *Pipeline) RunWithProgress(ctx context.Context, userQuestion string, history []ConversationMessage, onProgress ProgressCallback) (*PipelineResult, error) {
+	// Reset LLM call counter for this run
+	p.llmCalls.Store(0)
+
 	result := &PipelineResult{
 		UserQuestion: userQuestion,
 	}
@@ -340,6 +353,7 @@ func (p *Pipeline) RunWithProgress(ctx context.Context, userQuestion string, his
 			result.Answer = "I'm a DoubleZero data analyst. I can help you with questions about the DZ network, devices, links, users, connected Solana validators, and performance metrics. What would you like to know?"
 		}
 		notify(Progress{Stage: StageComplete, Classification: classification.Classification})
+		metrics.RecordPipelineRun(string(classification.Classification), int(p.llmCalls.Load()), 0)
 		return result, nil
 
 	case ClassificationConversational:
@@ -353,6 +367,7 @@ func (p *Pipeline) RunWithProgress(ctx context.Context, userQuestion string, his
 		}
 		result.Answer = answer
 		notify(Progress{Stage: StageComplete, Classification: classification.Classification})
+		metrics.RecordPipelineRun(string(classification.Classification), int(p.llmCalls.Load()), 0)
 		return result, nil
 	}
 
@@ -453,11 +468,15 @@ func (p *Pipeline) RunWithProgress(ctx context.Context, userQuestion string, his
 		QueriesDone:    len(dataQuestions),
 	})
 
+	metrics.RecordPipelineRun(string(result.Classification), int(p.llmCalls.Load()), len(executedQueries))
 	return result, nil
 }
 
 // RunWithHistory executes the full pipeline with conversation context.
 func (p *Pipeline) RunWithHistory(ctx context.Context, userQuestion string, history []ConversationMessage) (*PipelineResult, error) {
+	// Reset LLM call counter for this run
+	p.llmCalls.Store(0)
+
 	result := &PipelineResult{
 		UserQuestion: userQuestion,
 	}
@@ -486,6 +505,7 @@ func (p *Pipeline) RunWithHistory(ctx context.Context, userQuestion string, hist
 		} else {
 			result.Answer = "I'm a DoubleZero data analyst. I can help you with questions about the DZ network, devices, links, users, connected Solana validators, and performance metrics. What would you like to know?"
 		}
+		metrics.RecordPipelineRun(string(classification.Classification), int(p.llmCalls.Load()), 0)
 		return result, nil
 
 	case ClassificationConversational:
@@ -498,6 +518,7 @@ func (p *Pipeline) RunWithHistory(ctx context.Context, userQuestion string, hist
 			return nil, fmt.Errorf("conversational response failed: %w", err)
 		}
 		result.Answer = answer
+		metrics.RecordPipelineRun(string(classification.Classification), int(p.llmCalls.Load()), 0)
 		return result, nil
 
 	case ClassificationDataAnalysis:
@@ -567,5 +588,6 @@ func (p *Pipeline) RunWithHistory(ctx context.Context, userQuestion string, hist
 		p.log.Info("pipeline: answer synthesized")
 	}
 
+	metrics.RecordPipelineRun(string(result.Classification), int(p.llmCalls.Load()), len(executedQueries))
 	return result, nil
 }

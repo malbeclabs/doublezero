@@ -14,7 +14,7 @@ func (p *Pipeline) GenerateFollowUps(ctx context.Context, userQuestion string, a
 	// Build user prompt with the question and answer
 	userPrompt := fmt.Sprintf("User question: %s\n\nAnswer provided:\n%s", userQuestion, answer)
 
-	response, err := p.cfg.LLM.Complete(ctx, systemPrompt, userPrompt)
+	response, err := p.trackLLMCall(ctx, systemPrompt, userPrompt)
 	if err != nil {
 		return nil, fmt.Errorf("LLM completion failed: %w", err)
 	}

@@ -36,7 +36,7 @@ Data gathered:
 
 Please synthesize a clear, comprehensive answer to the user's question based on the data above.`, userQuestion, resultsContext.String())
 
-	response, err := p.cfg.LLM.Complete(ctx, systemPrompt, userPrompt)
+	response, err := p.trackLLMCall(ctx, systemPrompt, userPrompt)
 	if err != nil {
 		return "", fmt.Errorf("LLM completion failed: %w", err)
 	}

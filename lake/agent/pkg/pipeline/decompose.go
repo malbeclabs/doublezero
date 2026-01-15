@@ -50,7 +50,7 @@ func (p *Pipeline) DecomposeWithHistory(ctx context.Context, userQuestion string
 		userPrompt = fmt.Sprintf("User question: %s\n\nRespond with JSON only.", userQuestion)
 	}
 
-	response, err := p.cfg.LLM.Complete(ctx, systemPrompt, userPrompt)
+	response, err := p.trackLLMCall(ctx, systemPrompt, userPrompt)
 	if err != nil {
 		return nil, fmt.Errorf("LLM completion failed: %w", err)
 	}

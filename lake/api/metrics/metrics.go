@@ -86,6 +86,31 @@ var (
 		},
 		[]string{"type"}, // "input", "output", "cache_creation", "cache_read"
 	)
+
+	// Pipeline metrics
+	PipelineRunsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "doublezero_lake_api_pipeline_runs_total",
+			Help: "Total number of pipeline runs",
+		},
+		[]string{"classification"}, // "data_analysis", "conversational", "out_of_scope"
+	)
+
+	PipelineLLMCallsPerRun = promauto.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "doublezero_lake_api_pipeline_llm_calls_per_run",
+			Help:    "Number of LLM calls per pipeline run",
+			Buckets: []float64{1, 2, 3, 5, 7, 10, 15, 20, 30, 50},
+		},
+	)
+
+	PipelineQueriesPerRun = promauto.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "doublezero_lake_api_pipeline_queries_per_run",
+			Help:    "Number of SQL queries executed per pipeline run",
+			Buckets: []float64{1, 2, 3, 5, 7, 10, 15, 20},
+		},
+	)
 )
 
 // Middleware returns a chi middleware that records HTTP metrics.
@@ -148,4 +173,11 @@ func RecordAnthropicTokensWithCache(inputTokens, outputTokens, cacheCreationToke
 	if cacheReadTokens > 0 {
 		AnthropicTokensTotal.WithLabelValues("cache_read").Add(float64(cacheReadTokens))
 	}
+}
+
+// RecordPipelineRun records metrics for a completed pipeline run.
+func RecordPipelineRun(classification string, llmCalls, sqlQueries int) {
+	PipelineRunsTotal.WithLabelValues(classification).Inc()
+	PipelineLLMCallsPerRun.Observe(float64(llmCalls))
+	PipelineQueriesPerRun.Observe(float64(sqlQueries))
 }

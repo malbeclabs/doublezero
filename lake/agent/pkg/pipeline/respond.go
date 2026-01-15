@@ -48,7 +48,7 @@ func (p *Pipeline) RespondWithHistory(ctx context.Context, userQuestion string, 
 
 	userPrompt.WriteString(fmt.Sprintf("Current question: %s", userQuestion))
 
-	response, err := p.cfg.LLM.Complete(ctx, systemPrompt, userPrompt.String())
+	response, err := p.trackLLMCall(ctx, systemPrompt, userPrompt.String())
 	if err != nil {
 		return "", fmt.Errorf("LLM completion failed: %w", err)
 	}

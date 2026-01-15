@@ -112,9 +112,9 @@ func seedUserGeoMismatchData(t *testing.T, ctx context.Context, conn clickhouse.
 	require.NoError(t, err)
 
 	geoRecords := []*maxmindgeoip.Record{
-		{IP: net.ParseIP("203.0.113.1"), City: "New York", Country: "United States", CountryCode: "US"},
-		{IP: net.ParseIP("45.76.100.1"), City: "Tokyo", Country: "Japan", CountryCode: "JP"},
-		{IP: net.ParseIP("51.15.0.1"), City: "London", Country: "United Kingdom", CountryCode: "GB"},
+		{IP: net.ParseIP("203.0.113.1"), City: "New York", MetroName: "New York", Country: "United States", CountryCode: "US"},
+		{IP: net.ParseIP("45.76.100.1"), City: "Tokyo", MetroName: "Tokyo", Country: "Japan", CountryCode: "JP"},
+		{IP: net.ParseIP("51.15.0.1"), City: "London", MetroName: "London", Country: "United Kingdom", CountryCode: "GB"},
 	}
 
 	var geoSchema geoip.GeoIPRecordSchema
@@ -129,7 +129,7 @@ func seedUserGeoMismatchData(t *testing.T, ctx context.Context, conn clickhouse.
 
 func validateUserGeoMismatchQuery(t *testing.T, ctx context.Context, conn clickhouse.Connection) {
 	query := `
-SELECT u.pk, geo.city AS client_city, m.name AS connected_metro
+SELECT u.pk, geo.metro_name AS client_metro, m.name AS connected_metro
 FROM dz_users_current u
 JOIN dz_devices_current d ON u.device_pk = d.pk
 JOIN dz_metros_current m ON d.metro_pk = m.pk

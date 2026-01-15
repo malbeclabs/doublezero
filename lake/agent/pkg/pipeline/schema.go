@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 )
 
@@ -266,9 +267,73 @@ func formatSchema(columns []columnInfo, views []viewInfo) string {
 		viewDefs[v.Name] = v.AsSelect
 	}
 
-	var sb strings.Builder
-	currentTable := ""
+	// Collect unique table names and categorize them
+	tableSet := make(map[string]bool)
+	for _, col := range columns {
+		tableSet[col.Table] = true
+	}
 
+	var currentViews, historyTables, factTables, otherTables []string
+	for table := range tableSet {
+		switch {
+		case strings.HasSuffix(table, "_current"):
+			currentViews = append(currentViews, table)
+		case strings.HasPrefix(table, "dim_") && strings.HasSuffix(table, "_history"):
+			historyTables = append(historyTables, table)
+		case strings.HasPrefix(table, "fact_"):
+			factTables = append(factTables, table)
+		default:
+			otherTables = append(otherTables, table)
+		}
+	}
+
+	// Sort for consistent output
+	sort.Strings(currentViews)
+	sort.Strings(historyTables)
+	sort.Strings(factTables)
+	sort.Strings(otherTables)
+
+	var sb strings.Builder
+
+	// Write table index at the top
+	sb.WriteString("## AVAILABLE TABLES (use ONLY these exact names)\n\n")
+
+	if len(currentViews) > 0 {
+		sb.WriteString("Current state views (for current/live data):\n")
+		for _, t := range currentViews {
+			sb.WriteString("  - " + t + "\n")
+		}
+		sb.WriteString("\n")
+	}
+
+	if len(historyTables) > 0 {
+		sb.WriteString("History tables (for point-in-time queries, use snapshot_ts and is_deleted columns):\n")
+		for _, t := range historyTables {
+			sb.WriteString("  - " + t + "\n")
+		}
+		sb.WriteString("\n")
+	}
+
+	if len(factTables) > 0 {
+		sb.WriteString("Fact tables (time-series metrics and events):\n")
+		for _, t := range factTables {
+			sb.WriteString("  - " + t + "\n")
+		}
+		sb.WriteString("\n")
+	}
+
+	if len(otherTables) > 0 {
+		sb.WriteString("Other tables:\n")
+		for _, t := range otherTables {
+			sb.WriteString("  - " + t + "\n")
+		}
+		sb.WriteString("\n")
+	}
+
+	sb.WriteString("---\n\n## TABLE DETAILS\n\n")
+
+	// Write detailed schema
+	currentTable := ""
 	for _, col := range columns {
 		if col.Table != currentTable {
 			if currentTable != "" {
@@ -285,11 +350,16 @@ func formatSchema(columns []columnInfo, views []viewInfo) string {
 				sb.WriteString(col.Table + ":\n")
 			}
 		}
-		if len(col.SampleValues) > 0 {
-			sb.WriteString("  - " + col.Name + " (" + col.Type + ") values: " + strings.Join(col.SampleValues, ", ") + "\n")
-		} else {
-			sb.WriteString("  - " + col.Name + " (" + col.Type + ")\n")
+
+		// Format column with optional FK marker and sample values
+		colLine := "  - " + col.Name + " (" + col.Type + ")"
+		if strings.HasSuffix(col.Name, "_pk") {
+			colLine += " [FK]"
 		}
+		if len(col.SampleValues) > 0 {
+			colLine += " values: " + strings.Join(col.SampleValues, ", ")
+		}
+		sb.WriteString(colLine + "\n")
 	}
 
 	// Handle last table's view definition

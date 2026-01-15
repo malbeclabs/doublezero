@@ -90,17 +90,18 @@ func runTest_SolanaValidatorsDisconnected(t *testing.T, llmFactory LLMClientFact
 		t.Logf("Pipeline response:\n%s", response)
 	}
 
-	// Evaluate with Ollama - include specific expectations
+	// Evaluate with LLM - include specific expectations
+	// Keep expectations simple and binary to avoid evaluator confusion
 	expectations := []Expectation{
 		{
-			Description:   "Response lists vote1, vote2, vote3 (and optionally vote6) as disconnected from DZ",
-			ExpectedValue: "vote1, vote2, vote3 all appear as disconnected from DZ. vote6 may also appear (it's a flapping validator that disconnected 2 hours ago). Note: vote1 may be noted as still online on Solana (just not via DZ) - this is correct behavior, not a contradiction. 'Disconnected from DZ' means no longer using DZ network, not offline from Solana.",
-			Rationale:     "These validators disconnected from DZ within 24h. vote1 changed IP so is still on Solana but not via DZ. vote6 is a flapping validator that most recently disconnected.",
+			Description:   "Response identifies vote1, vote2, vote3 as disconnected",
+			ExpectedValue: "The response lists vote1, vote2, and vote3 as validators that disconnected from DZ. vote6 may also appear (acceptable). Each should have stake amounts.",
+			Rationale:     "These validators disconnected from DZ within the query timeframe",
 		},
 		{
-			Description:   "Response does NOT list vote4 or vote5",
-			ExpectedValue: "vote4 and vote5 should NOT appear (vote4 reconnected, vote5 still connected)",
-			Rationale:     "vote4 reconnected so is not disconnected; vote5 never disconnected",
+			Description:   "Response does NOT claim vote4 or vote5 disconnected",
+			ExpectedValue: "vote4 and vote5 are NOT listed among the disconnected validators. They may be mentioned as 'still connected' (which is correct) or not mentioned at all - either is fine.",
+			Rationale:     "vote4 reconnected; vote5 never disconnected - neither should be listed as having disconnected",
 		},
 	}
 	isCorrect, err := evaluateResponse(t, ctx, question, response, expectations...)

@@ -189,6 +189,45 @@ LIMIT 1 BY pk  -- Get latest snapshot per entity before the cutoff
 
 **ALWAYS look at the schema** to find the exact column names. If a table or column is not in the schema, it does NOT exist.
 
+### History Table Deduplication (CRITICAL)
+
+When querying history tables, **NEVER GROUP BY attributes that change over time** like `activated_stake_lamports`, `status`, or other mutable fields. This creates duplicate rows for the same entity across different snapshots.
+
+**WRONG** - Grouping by stake causes duplicates (same validator appears multiple times):
+```sql
+SELECT node_pubkey, vote_pubkey, activated_stake_lamports, MAX(snapshot_ts)
+FROM dim_solana_vote_accounts_history
+GROUP BY node_pubkey, vote_pubkey, activated_stake_lamports
+-- BUG: Same validator appears 3x with slightly different stake values!
+```
+
+**CORRECT** - Use row_number to get one row per entity:
+```sql
+SELECT vote_pubkey, node_pubkey, activated_stake_lamports, snapshot_ts
+FROM (
+  SELECT *,
+    row_number() OVER (
+      PARTITION BY entity_id
+      ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC
+    ) AS rn
+  FROM dim_solana_vote_accounts_history
+  WHERE snapshot_ts <= now() - INTERVAL 24 HOUR
+    AND is_deleted = 0
+)
+WHERE rn = 1  -- Latest snapshot per entity
+```
+
+**Also correct** - Use LIMIT 1 BY for simpler cases:
+```sql
+SELECT * FROM dim_dz_users_history
+WHERE snapshot_ts <= now() - INTERVAL 24 HOUR
+  AND is_deleted = 0
+ORDER BY snapshot_ts DESC
+LIMIT 1 BY entity_id
+```
+
+**Key insight**: If you need to compare "state at time A" vs "state at time B", get the latest snapshot per entity at each point in time using `row_number()` or `LIMIT 1 BY`. Never rely on GROUP BY with mutable columns.
+
 ### DZ-Solana Relationship (IMPORTANT)
 Solana validators/nodes connect to DZ as **users**, not directly to devices.
 
@@ -218,6 +257,50 @@ WHERE u.status = 'activated'
 ```
 
 **Key insight**: `dz_users_current` is the source of truth for what is currently "on DZ". Without joining through it, you're counting the entire Solana network. For historical queries, use `dim_dz_users_history` instead.
+
+### Validators That Disconnected From DZ
+
+To find validators that were on DZ at a past time but are NOT currently connected:
+
+**Strategy**: Get validators connected at the past time using history tables, then exclude those still connected using NOT IN with current tables.
+
+```sql
+-- Validators that disconnected from DZ in the past 24 hours
+WITH validators_24h_ago AS (
+  -- Get validators connected 24 hours ago using history tables
+  SELECT DISTINCT va.vote_pubkey, va.activated_stake_lamports
+  FROM (
+    SELECT *, row_number() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC) AS rn
+    FROM dim_dz_users_history
+    WHERE snapshot_ts <= now() - INTERVAL 24 HOUR AND is_deleted = 0
+  ) u
+  JOIN (
+    SELECT *, row_number() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC) AS rn
+    FROM dim_solana_gossip_nodes_history
+    WHERE snapshot_ts <= now() - INTERVAL 24 HOUR AND is_deleted = 0
+  ) gn ON u.dz_ip = gn.gossip_ip AND gn.rn = 1
+  JOIN solana_vote_accounts_current va ON gn.pubkey = va.node_pubkey
+  WHERE u.rn = 1 AND u.status = 'activated' AND u.dz_ip != ''
+),
+validators_now AS (
+  -- Get validators currently connected
+  SELECT DISTINCT va.vote_pubkey
+  FROM dz_users_current u
+  JOIN solana_gossip_nodes_current gn ON u.dz_ip = gn.gossip_ip
+  JOIN solana_vote_accounts_current va ON gn.pubkey = va.node_pubkey
+  WHERE u.status = 'activated'
+)
+-- Disconnected = was connected 24h ago but NOT connected now
+SELECT vote_pubkey, activated_stake_lamports / 1e9 AS stake_sol
+FROM validators_24h_ago
+WHERE vote_pubkey NOT IN (SELECT vote_pubkey FROM validators_now)
+ORDER BY stake_sol DESC
+```
+
+**Key points**:
+1. Use `row_number()` to get the latest snapshot per entity at the historical point
+2. Use NOT IN with the current tables to find those no longer connected
+3. Always join through `dz_users_history` for historical "on DZ" queries
 
 ### Link Outage Detection
 To find links that were "down" or had outages, look for status transitions in `dim_dz_links_history`:
@@ -321,25 +404,27 @@ LIMIT 10
 
 **Note**: GeoIP data may not be available for all IPs. The `geoip_records_current` table maps IP addresses to city/region/country/metro_name with lat/lon coordinates.
 
-### User Geo-Mismatch Detection
+### User Geo-Mismatch Detection (IMPORTANT)
 To find users whose client IP geolocates to a different location than their connected DZD:
+
+**Key insight**: GeoIP records have a `metro_name` column that matches DZ metro names. Compare `geo.metro_name` to `m.name`.
 
 ```sql
 -- Find users connected to a different metro than their client IP suggests
 SELECT
     u.pk AS user_pk,
     u.client_ip,
+    geo.metro_name AS client_metro, -- GeoIP metro (e.g., "New York")
     geo.city AS client_city,
-    geo.country AS client_country,
-    m.code AS connected_metro,
-    m.name AS connected_metro_name
+    m.code AS connected_metro_code,
+    m.name AS connected_metro_name  -- DZ metro name (e.g., "New York")
 FROM dz_users_current u
 JOIN dz_devices_current d ON u.device_pk = d.pk
 JOIN dz_metros_current m ON d.metro_pk = m.pk
 LEFT JOIN geoip_records_current geo ON u.client_ip = geo.ip
 WHERE u.status = 'activated'
-  AND geo.city != ''
-  AND geo.city != m.name  -- Mismatch between GeoIP city and connected metro
+  AND geo.metro_name != ''           -- Has GeoIP metro data
+  AND geo.metro_name != m.name       -- Mismatch between GeoIP metro and connected metro
 ORDER BY u.pk
 ```
 

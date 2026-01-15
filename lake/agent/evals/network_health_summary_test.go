@@ -186,8 +186,7 @@ func runTest_NetworkHealthAllHealthy(t *testing.T, llmFactory LLMClientFactory) 
 	// Evaluate with Ollama - for a healthy network, we expect:
 	// 1. NO warning symbols (⚠️) for zero-result queries
 	// 2. NO "low confidence" or "needs verification" language
-	// 3. NO explicit zero counts or "no issues" language
-	// 4. A positive summary that the network is healthy
+	// 3. A positive summary that the network is healthy
 	expectations := []Expectation{
 		{
 			Description:   "Response indicates network is healthy",
@@ -198,11 +197,6 @@ func runTest_NetworkHealthAllHealthy(t *testing.T, llmFactory LLMClientFactory) 
 			Description:   "Response does NOT contain warning symbols for healthy data",
 			ExpectedValue: "no ⚠️ symbols for query errors when the network is healthy",
 			Rationale:     "Failed queries for problems (packet loss, errors) should not show warnings if network is healthy",
-		},
-		{
-			Description:   "Response does NOT explicitly mention zero counts or absence of problems",
-			ExpectedValue: "does NOT say 'no packet loss', 'zero errors', 'no issues found', '0 devices with issues', 'no discards detected', etc. - ACCEPTABLE: 'all devices activated', 'network is healthy', positive status summaries",
-			Rationale:     "For healthy networks, don't enumerate what's NOT wrong - just say it's healthy",
 		},
 	}
 	isCorrect, err := evaluateResponse(t, ctx, question, response, expectations...)

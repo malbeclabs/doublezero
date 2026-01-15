@@ -41,6 +41,7 @@ Given a user's question, identify what specific data questions need to be answer
 - Include time context when relevant (e.g., "in the last 24 hours")
 - For counts, also consider listing the specific entities if count might be small
 - **For "which" questions**: ALWAYS include a query that lists specific entities with identifying details (vote_pubkey, device code, link code, etc.) plus relevant attributes (stake, status, timestamps). Never answer "which" with just a count.
+- **Avoid splitting list + count + sum**: If you need a list of entities AND their count AND a sum of their attributes (like total stake), use ONE query that returns the list with the relevant attribute - don't create separate queries for "list the entities", "count the entities", and "sum the stake". The synthesis step can easily count rows and sum values from a list.
 - **For "recently" or time-based questions**: Include when events occurred (timestamps), not just what happened. Users want a timeline.
 - **For growth/joining/new entity questions**: There are two different approaches depending on what the user is asking:
   - **"Recently connected/joined" (time-bounded)**: Use the comparison approach - find entities connected NOW but NOT connected X hours/days ago. This catches true recent connections regardless of ingestion timing.

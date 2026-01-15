@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -28,6 +29,10 @@ var (
 	version = "dev"
 	commit  = "none"
 	date    = "unknown"
+
+	// shuttingDown is set to true when shutdown signal is received.
+	// Readiness probe checks this to immediately return 503.
+	shuttingDown atomic.Bool
 )
 
 const (
@@ -79,22 +84,26 @@ func main() {
 		log.Fatalf("Failed to load PostgreSQL: %v", err)
 	}
 	defer config.ClosePostgres()
+	defer config.Close() // Close ClickHouse connection
 
 	// Start metrics server
+	var metricsServer *http.Server
 	if *metricsAddrFlag != "" {
 		metrics.BuildInfo.WithLabelValues(version, commit, date).Set(1)
-		go func() {
-			listener, err := net.Listen("tcp", *metricsAddrFlag)
-			if err != nil {
-				log.Printf("Failed to start prometheus metrics server listener: %v", err)
-				return
-			}
+		listener, err := net.Listen("tcp", *metricsAddrFlag)
+		if err != nil {
+			log.Printf("Failed to start prometheus metrics server listener: %v", err)
+		} else {
 			log.Printf("Prometheus metrics server listening on %s", listener.Addr().String())
-			http.Handle("/metrics", promhttp.Handler())
-			if err := http.Serve(listener, nil); err != nil {
-				log.Printf("Failed to start prometheus metrics server: %v", err)
-			}
-		}()
+			mux := http.NewServeMux()
+			mux.Handle("/metrics", promhttp.Handler())
+			metricsServer = &http.Server{Handler: mux}
+			go func() {
+				if err := metricsServer.Serve(listener); err != nil && err != http.ErrServerClosed {
+					log.Printf("Metrics server error: %v", err)
+				}
+			}()
+		}
 	}
 
 	r := chi.NewRouter()
@@ -122,6 +131,13 @@ func main() {
 		w.Write([]byte("ok"))
 	})
 	r.Get("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		// Immediately fail if shutting down
+		if shuttingDown.Load() {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte("shutting down"))
+			return
+		}
+
 		// Check database connectivity
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer cancel()
@@ -195,8 +211,11 @@ func main() {
 	}
 
 	server := &http.Server{
-		Addr:    ":8080",
-		Handler: r,
+		Addr:         ":8080",
+		Handler:      r,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 60 * time.Second, // Longer for streaming endpoints
+		IdleTimeout:  60 * time.Second,
 	}
 
 	// Channel to listen for shutdown signals
@@ -215,6 +234,9 @@ func main() {
 	sig := <-shutdown
 	log.Printf("Received signal %v, shutting down gracefully...", sig)
 
+	// Immediately mark as shutting down so readiness probe returns 503
+	shuttingDown.Store(true)
+
 	// Give existing connections 30 seconds to complete
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -223,5 +245,14 @@ func main() {
 		log.Printf("Graceful shutdown error: %v", err)
 	} else {
 		log.Println("Server stopped gracefully")
+	}
+
+	// Shutdown metrics server
+	if metricsServer != nil {
+		if err := metricsServer.Shutdown(ctx); err != nil {
+			log.Printf("Metrics server shutdown error: %v", err)
+		} else {
+			log.Println("Metrics server stopped gracefully")
+		}
 	}
 }

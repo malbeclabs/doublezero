@@ -316,61 +316,53 @@ ORDER BY stake_sol DESC
 3. For "recently connected" (last N hours), use: `WHERE first_connected_ts > now() - INTERVAL N HOUR`
 
 ### Link Outage Detection
-To find links that were "down" or had outages, look for status transitions in `dim_dz_links_history`:
 
-**Find links that went down (status changed from activated):**
+**Use the `dz_link_status_transitions` view** for all link outage/status change queries. It pre-computes status transitions with metro information.
+
 ```sql
--- Find outage start times: when links changed FROM activated to something else
+-- Find outages for links connected to a specific metro (e.g., Sao Paulo)
 SELECT
-    curr.code AS link_code,
-    curr.status AS outage_status,
-    curr.snapshot_ts AS outage_start,
-    prev.status AS previous_status
-FROM dim_dz_links_history curr
-LEFT JOIN dim_dz_links_history prev ON curr.pk = prev.pk
-    AND prev.snapshot_ts < curr.snapshot_ts
-    AND prev.snapshot_ts = (
-        SELECT MAX(snapshot_ts) FROM dim_dz_links_history
-        WHERE pk = curr.pk AND snapshot_ts < curr.snapshot_ts
-    )
-WHERE curr.snapshot_ts >= now() - INTERVAL 48 HOUR
-  AND curr.status != 'activated'
-  AND (prev.status = 'activated' OR prev.pk = '')  -- Was activated, or first record
-ORDER BY curr.snapshot_ts DESC
+    link_code,
+    previous_status,
+    new_status,
+    transition_ts,
+    side_a_metro,
+    side_z_metro
+FROM dz_link_status_transitions
+WHERE (side_a_metro = 'sao' OR side_z_metro = 'sao')
+  AND transition_ts >= now() - INTERVAL 30 DAY
+ORDER BY link_code, transition_ts
 ```
 
-**Find outage end times (when links recovered):**
+**Outage start**: `previous_status = 'activated'` (link went down)
+**Outage end**: `new_status = 'activated'` (link recovered)
+
 ```sql
--- Find when links returned to activated
+-- Find outage start/end pairs for a metro
 SELECT
-    curr.code AS link_code,
-    curr.snapshot_ts AS recovery_time,
-    prev.status AS was_status
-FROM dim_dz_links_history curr
-LEFT JOIN dim_dz_links_history prev ON curr.pk = prev.pk
-    AND prev.snapshot_ts < curr.snapshot_ts
-    AND prev.snapshot_ts = (
-        SELECT MAX(snapshot_ts) FROM dim_dz_links_history
-        WHERE pk = curr.pk AND snapshot_ts < curr.snapshot_ts
-    )
-WHERE curr.snapshot_ts >= now() - INTERVAL 48 HOUR
-  AND curr.status = 'activated'
-  AND prev.status != 'activated'
-  AND prev.pk != ''
-ORDER BY curr.snapshot_ts DESC
+    link_code,
+    transition_ts AS outage_start,
+    new_status AS outage_status
+FROM dz_link_status_transitions
+WHERE (side_a_metro = 'sao' OR side_z_metro = 'sao')
+  AND previous_status = 'activated'  -- Was up, now down
+  AND transition_ts >= now() - INTERVAL 30 DAY
+
+-- Ongoing outages: links that went down but haven't recovered
+SELECT t.link_code, t.transition_ts AS outage_start, t.new_status
+FROM dz_link_status_transitions t
+WHERE (t.side_a_metro = 'sao' OR t.side_z_metro = 'sao')
+  AND t.previous_status = 'activated'
+  AND t.transition_ts >= now() - INTERVAL 30 DAY
+  AND NOT EXISTS (
+    SELECT 1 FROM dz_link_status_transitions t2
+    WHERE t2.link_code = t.link_code
+      AND t2.new_status = 'activated'
+      AND t2.transition_ts > t.transition_ts
+  )
 ```
 
-**Filter by metro**: To find links "going into" a metro, join to devices and metros:
-```sql
--- Links connected to a specific metro (on either side)
-SELECT l.code, l.pk
-FROM dz_links_current l
-JOIN dz_devices_current da ON l.side_a_pk = da.pk
-JOIN dz_devices_current dz ON l.side_z_pk = dz.pk
-JOIN dz_metros_current ma ON da.metro_pk = ma.pk
-JOIN dz_metros_current mz ON dz.metro_pk = mz.pk
-WHERE ma.code = 'sao' OR mz.code = 'sao'
-```
+**Key insight**: The view handles the complex LAG() and metro joins for you. Just filter by metro and time range.
 
 ### Validators by Region/Metro
 To find which DZ metros have the most connected validators, join through users → devices → metros:

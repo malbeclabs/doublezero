@@ -905,15 +905,8 @@ export function TimelinePage() {
   })
 
   // Track the most recent event timestamp to identify new events
-  // Use sessionStorage to persist across navigation within the same session
-  const getStoredTimestamp = () => {
-    try {
-      return sessionStorage.getItem('timeline-last-seen-ts') || ''
-    } catch {
-      return ''
-    }
-  }
-  const lastSeenTimestamp = useRef<string>(getStoredTimestamp())
+  // Only track within this component's lifecycle (not persisted) so initial load never shows "new"
+  const lastSeenTimestamp = useRef<string>('')
   const [newEventIds, setNewEventIds] = useState<Set<string>>(new Set())
 
   const categoryFilter = selectedCategories.size === ALL_CATEGORIES.length
@@ -1011,11 +1004,6 @@ export function TimelinePage() {
     // Update the stored timestamp to the most recent event
     if (mostRecentTimestamp && mostRecentTimestamp > lastSeenTimestamp.current) {
       lastSeenTimestamp.current = mostRecentTimestamp
-      try {
-        sessionStorage.setItem('timeline-last-seen-ts', mostRecentTimestamp)
-      } catch {
-        // Ignore storage errors
-      }
     }
 
     if (newIds.size > 0) {
@@ -1031,11 +1019,6 @@ export function TimelinePage() {
   const resetSeenEvents = () => {
     lastSeenTimestamp.current = ''
     setNewEventIds(new Set())
-    try {
-      sessionStorage.removeItem('timeline-last-seen-ts')
-    } catch {
-      // Ignore storage errors
-    }
   }
 
   const resetAllFilters = () => {

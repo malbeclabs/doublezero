@@ -42,6 +42,34 @@ WHERE d.pk = ''  -- Empty string means no match (NOT "IS NULL"!)
 - Intervals: `INTERVAL 24 HOUR`, `INTERVAL 7 DAY`
 - Count non-empty: `countIf(column != '')` or `sum(column != '')`
 
+### Ambiguous Column References (CRITICAL)
+When joining tables/views that share column names (like `epoch`), ClickHouse may report "ambiguous identifier" errors even when the reference appears to be qualified.
+
+**Problem tables**: `solana_vote_accounts_current` and `solana_validators_on_dz_current` BOTH have an `epoch` column. When joined together, references like `va.epoch` can become ambiguous.
+
+**Solution**: Use a CTE to isolate one table's columns before joining:
+
+```sql
+-- WRONG: Ambiguous epoch reference when both tables have epoch column
+SELECT va.vote_pubkey, va.epoch
+FROM solana_vote_accounts_current AS va
+LEFT JOIN solana_validators_on_dz_current AS dz ON va.vote_pubkey = dz.vote_pubkey
+LEFT JOIN other_table AS ot ON ot.epoch = va.epoch  -- AMBIGUOUS!
+
+-- CORRECT: Isolate the base table in a CTE first
+WITH base_validators AS (
+    SELECT vote_pubkey, node_pubkey, activated_stake_lamports, epoch
+    FROM solana_vote_accounts_current
+    WHERE epoch_vote_account = 'true' AND activated_stake_lamports > 0
+)
+SELECT bv.vote_pubkey, bv.epoch
+FROM base_validators AS bv
+LEFT JOIN solana_validators_on_dz_current AS dz ON bv.vote_pubkey = dz.vote_pubkey
+LEFT JOIN other_table AS ot ON ot.epoch = bv.epoch  -- Now unambiguous
+```
+
+**When this happens**: Any time you join `solana_vote_accounts_current` with `solana_validators_on_dz_current` (or other views that expose `epoch`), wrap the base table in a CTE first.
+
 ### Nested Aggregates (CRITICAL)
 **ClickHouse does NOT allow aggregate functions inside other aggregate functions.**
 

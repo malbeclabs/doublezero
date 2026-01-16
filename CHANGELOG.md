@@ -129,6 +129,9 @@ All notable changes to this project will be documented in this file.
   - The QA alldevices test now considers device location and connects hosts to nearby devices
   - QA agent and tests now support doublezero connect ibrl's --allocate-addr flag
   - The QA alldevices test now publishes success/failure metrics to InfluxDB in support of rfc12
+- Onchain programs
+  - Fix CreateMulticastGroup to use incremented globalstate.account_index for PDA derivation instead of client-provided index, to ensure the contract is the authoritative source for account indices
+  - ReactivateMulticastGroup now enforces that the multicast group status must be Suspended before reactivation, returning InvalidStatus otherwise; negative-path regression tests were added.
 
 ## [v0.8.0](https://github.com/malbeclabs/doublezero/compare/client/v0.7.1...client/v0.8.0) – 2025-12-02
 

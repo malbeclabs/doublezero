@@ -33,7 +33,7 @@ pub fn process_closeaccount_resource_extension(
     let _system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
-    msg!("process_closeaccount_device({:?})", _value);
+    msg!("process_closeaccount_resource_extension({:?})", _value);
 
     // Check if the payer is a signer
     assert!(payer_account.is_signer, "Payer must be a signer");

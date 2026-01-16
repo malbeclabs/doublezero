@@ -159,7 +159,7 @@ async fn test_initialize_internet_latency_samples_success_suspended_origin_excha
     let (oracle_agent, origin_exchange_pk, target_exchange_pk) =
         ledger.seed_with_two_exchanges().await.unwrap();
 
-    // Suspend the origin device.
+    // Drain the origin device.
     ledger
         .serviceability
         .suspend_exchange(origin_exchange_pk)
@@ -215,7 +215,7 @@ async fn test_initialize_internet_latency_samples_success_suspended_target_excha
     let (oracle_agent, origin_exchange_pk, target_exchange_pk) =
         ledger.seed_with_two_exchanges().await.unwrap();
 
-    // Suspend the origin device.
+    // Drain the origin device.
     ledger
         .serviceability
         .suspend_exchange(target_exchange_pk)

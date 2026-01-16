@@ -61,7 +61,7 @@ pub fn process_link_event(
 
                     match res {
                         Ok(signature) => {
-                            write!(&mut log_msg, " Activated {signature}").unwrap();
+                            write!(&mut log_msg, " ReadyForService {signature}").unwrap();
 
                             metrics::counter!(
                                 "doublezero_activator_state_transition",

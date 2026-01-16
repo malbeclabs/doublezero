@@ -13,7 +13,7 @@ use doublezero_serviceability::{
         },
         exchange::create::*,
         globalconfig::set::SetGlobalConfigArgs,
-        link::{activate::*, create::*},
+        link::{activate::*, create::*, update::LinkUpdateArgs},
         location::create::*,
         user::{activate::*, create::*},
     },
@@ -307,6 +307,7 @@ async fn test_doublezero_program() {
         dz_prefixes: "100.1.0.0/23".parse().unwrap(),
         metrics_publisher_pk: Pubkey::default(), // Assuming no metrics publisher for this test
         mgmt_vrf: "mgmt".to_string(),
+        desired_status: Some(DeviceDesiredStatus::Activated),
     };
 
     println!("Testing Device LA initialization...");
@@ -431,6 +432,7 @@ async fn test_doublezero_program() {
         dz_prefixes: vec!["100.1.0.1/24".parse().unwrap()].into(),
         metrics_publisher_pk: Pubkey::default(), // Assuming no metrics publisher for this test
         mgmt_vrf: "mgmt".to_string(),
+        desired_status: Some(DeviceDesiredStatus::Activated),
     };
 
     execute_transaction(
@@ -600,6 +602,7 @@ async fn test_doublezero_program() {
         jitter_ns: 100000,
         side_a_iface_name: "Ethernet0".to_string(),
         side_z_iface_name: Some("Ethernet1".to_string()),
+        desired_status: Some(LinkDesiredStatus::Activated),
     };
 
     println!("Testing Link LA-NY initialization...");
@@ -634,6 +637,7 @@ async fn test_doublezero_program() {
         tunnel.index
     );
 
+    /***********************************************************************************************************************************/
     println!("Testing Link activation...");
     let tunnel_net: NetworkV4 = "10.31.0.0/31".parse().unwrap();
     let tunnel_activate: LinkActivateArgs = LinkActivateArgs {
@@ -668,7 +672,35 @@ async fn test_doublezero_program() {
     assert_eq!(tunnel.status, LinkStatus::Activated);
     println!("✅ Link LA-NY activated successfully with value: {tunnel_net:?}",);
 
-    println!("Start Users...");
+    /***********************************************************************************************************************************/
+    println!("Testing Link set Desired Status...");
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+            desired_status: Some(LinkDesiredStatus::Activated),
+            ..LinkUpdateArgs::default()
+        }),
+        vec![
+            AccountMeta::new(tunnel_la_ny_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Check account data
+    let tunnel = get_account_data(&mut banks_client, tunnel_la_ny_pubkey)
+        .await
+        .expect("Unable to get Link")
+        .get_tunnel()
+        .unwrap();
+
+    assert_eq!(tunnel.desired_status, LinkDesiredStatus::Activated);
+    println!("✅ Link LA-NY desired status set to Activated successfully");
+
     /***********************************************************************************************************************************/
     let user_ip = "100.0.0.1".parse().unwrap();
 

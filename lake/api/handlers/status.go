@@ -648,12 +648,12 @@ func fetchStatusData(ctx context.Context) *StatusResponse {
 	g.Go(func() error {
 		query := `
 			SELECT
-				avg(rtt_us) as avg_latency,
-				quantile(0.95)(rtt_us) as p95_latency,
-				toFloat64(min(rtt_us)) as min_latency,
-				toFloat64(max(rtt_us)) as max_latency,
-				countIf(loss OR rtt_us = 0) * 100.0 / count(*) as avg_loss,
-				avg(abs(ipdv_us)) as avg_jitter
+				ifNotFinite(avg(rtt_us), 0) as avg_latency,
+				ifNotFinite(quantile(0.95)(rtt_us), 0) as p95_latency,
+				ifNotFinite(toFloat64(min(rtt_us)), 0) as min_latency,
+				ifNotFinite(toFloat64(max(rtt_us)), 0) as max_latency,
+				ifNotFinite(countIf(loss OR rtt_us = 0) * 100.0 / count(*), 0) as avg_loss,
+				ifNotFinite(avg(abs(ipdv_us)), 0) as avg_jitter
 			FROM fact_dz_device_link_latency lat
 			JOIN dz_links_current l ON lat.link_pk = l.pk
 			WHERE lat.event_ts > now() - INTERVAL 3 HOUR

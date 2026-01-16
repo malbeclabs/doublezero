@@ -182,14 +182,6 @@ func seedSolanaValidatorsConnectedStakeIncreaseData(t *testing.T, ctx context.Co
 
 	vote1 := testVoteAccount{VotePubkey: "vote1", NodePubkey: "node1", EpochVoteAccount: true, Epoch: 100, ActivatedStake: 15000000000000, Commission: 5}
 	seedVoteAccounts(t, ctx, conn, []testVoteAccount{vote1}, now.Add(-23*time.Hour), now, testOpID()) // Connected at T1+1hour
-
-	// The solana_validator_dz_connection_events view will be automatically populated from solana_validator_dz_overlaps_windowed
-	// which is based on the overlaps between dz_users_history, solana_gossip_nodes_history, and solana_vote_accounts_history
-	// The view should show:
-	// - vote1: dz_connected event at T1+1 hour
-	// - vote2: dz_connected event at T1+30 minutes
-	// - vote3: dz_connected event before T1 (not during the increase window)
-	// - vote4: dz_connected event before T1 (not during the increase window)
 }
 
 // validateSolanaValidatorsConnectedStakeIncreaseQuery runs the ideal query to answer the question

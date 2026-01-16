@@ -55,10 +55,6 @@ CLI tool for maintenance operations:
 
 ClickHouse schema migrations for dimension and fact tables. These are applied automatically by the indexer on startup.
 
-### grafana/
-
-Grafana dashboard definitions and provisioning configuration for operational monitoring.
-
 ### utils/
 
 Shared Go packages used across lake services (logging, retry logic, test helpers).

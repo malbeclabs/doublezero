@@ -189,14 +189,6 @@ func seedSolanaValidatorsConnectedCountData(t *testing.T, ctx context.Context, c
 		{VotePubkey: "vote2", NodePubkey: "node2", EpochVoteAccount: true, Epoch: 100, ActivatedStake: 1000000000000, Commission: 5},
 	}
 	seedVoteAccounts(t, ctx, conn, voteAccounts6HoursAgo, now.Add(-6*time.Hour), now, testOpID()) // vote2: 6 hours ago
-
-	// The solana_validator_dz_connection_events view will be automatically populated from solana_validator_dz_overlaps_windowed
-	// The view should show:
-	// - vote1: dz_connected event 12 hours ago (newly connected)
-	// - vote2: dz_connected event 6 hours ago (newly connected)
-	// - vote3: dz_connected event 30 days ago (already connected, should NOT be counted)
-	// - vote4: dz_connected event 30 days ago (already connected, should NOT be counted)
-	// - vote5: dz_connected event 12 hours ago (bulk ingestion, same timestamp as vote1)
 }
 
 // validateSolanaValidatorsConnectedCountQuery runs the ideal query to answer the question

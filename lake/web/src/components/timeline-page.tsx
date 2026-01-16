@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useInfiniteQuery } from '@tanstack/react-query'
 import {
   Clock,
   Server,
@@ -37,7 +37,6 @@ import {
   X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { Pagination } from '@/components/pagination'
 import {
   ResponsiveContainer,
   BarChart,
@@ -872,8 +871,10 @@ export function TimelinePage() {
   const [selectedActions, setSelectedActions] = useState<Set<ActionFilter>>(new Set(ALL_ACTIONS))
   const [dzFilter, setDzFilter] = useState<DZFilter>('on_dz')
   const [includeInternal, setIncludeInternal] = useState(false)
-  const [offset, setOffset] = useState(0)
   const limit = 50
+
+  // Ref for infinite scroll sentinel
+  const loadMoreRef = useRef<HTMLDivElement>(null)
 
   // Custom date range state
   const [customStart, setCustomStart] = useState<string>('')
@@ -931,9 +932,18 @@ export function TimelinePage() {
   const hasSolanaEntities = ALL_SOLANA_ENTITIES.some(e => selectedEntityTypes.has(e))
   const dzFilterParam = hasSolanaEntities && dzFilter !== 'all' ? dzFilter : undefined
 
-  const { data, isLoading, error, refetch, isFetching } = useQuery({
-    queryKey: ['timeline', timeRange, customStart, customEnd, categoryFilter, entityTypeFilter, actionFilter, dzFilterParam, includeInternal, offset],
-    queryFn: () => fetchTimeline({
+  const {
+    data,
+    isLoading,
+    error,
+    refetch,
+    isFetching,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
+    queryKey: ['timeline', timeRange, customStart, customEnd, categoryFilter, entityTypeFilter, actionFilter, dzFilterParam, includeInternal],
+    queryFn: ({ pageParam = 0 }) => fetchTimeline({
       range: timeRange !== 'custom' ? timeRange : undefined,
       start: timeRange === 'custom' && customStart ? customStart : undefined,
       end: timeRange === 'custom' && customEnd ? customEnd : undefined,
@@ -943,22 +953,54 @@ export function TimelinePage() {
       dz_filter: dzFilterParam,
       include_internal: includeInternal,
       limit,
-      offset,
+      offset: pageParam,
     }),
+    getNextPageParam: (lastPage, allPages) => {
+      const totalLoaded = allPages.reduce((acc, page) => acc + page.events.length, 0)
+      return totalLoaded < lastPage.total ? totalLoaded : undefined
+    },
+    initialPageParam: 0,
     refetchInterval: timeRange !== 'custom' ? 15_000 : undefined, // Only poll for relative ranges
     staleTime: 10_000,
   })
 
+  // Flatten all pages into a single list of events
+  const allEvents = useMemo(() => {
+    return data?.pages.flatMap(page => page.events) ?? []
+  }, [data])
+
+  // Total count and histogram from first page
+  const totalCount = data?.pages[0]?.total ?? 0
+  const histogram = data?.pages[0]?.histogram
+
+  // Infinite scroll - observe the sentinel element
+  useEffect(() => {
+    const sentinel = loadMoreRef.current
+    if (!sentinel) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) {
+          fetchNextPage()
+        }
+      },
+      { threshold: 0.1 }
+    )
+
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
+
   // Track new events when data changes
   useEffect(() => {
-    if (!data?.events || data.events.length === 0 || offset !== 0) return
+    if (allEvents.length === 0) return
 
     const newIds = new Set<string>()
-    const mostRecentTimestamp = data.events[0]?.timestamp || ''
+    const mostRecentTimestamp = allEvents[0]?.timestamp || ''
 
     // Only mark events as new if we have a stored timestamp (not first load)
     if (lastSeenTimestamp.current) {
-      for (const event of data.events) {
+      for (const event of allEvents) {
         // Event is "new" if it's newer than our last seen timestamp
         if (event.timestamp > lastSeenTimestamp.current) {
           newIds.add(event.id)
@@ -983,7 +1025,7 @@ export function TimelinePage() {
         setNewEventIds(new Set())
       }, 5000)
     }
-  }, [data, offset])
+  }, [allEvents])
 
   // Reset seen events when filters change
   const resetSeenEvents = () => {
@@ -1005,7 +1047,7 @@ export function TimelinePage() {
     setIncludeInternal(false)
     setCustomStart('')
     setCustomEnd('')
-    setOffset(0)
+    
     resetSeenEvents()
     clearSearchFilter()
   }
@@ -1014,7 +1056,7 @@ export function TimelinePage() {
   // Searches through all relevant fields including related entities in details
   // Matches if event matches ANY of the filters (OR logic)
   const filteredEvents = useMemo(() => {
-    if (!data?.events || searchFilters.length === 0) return data?.events || []
+    if (allEvents.length === 0 || searchFilters.length === 0) return allEvents
 
     const matchesSearch = (value: unknown, lowerSearch: string): boolean => {
       if (!value) return false
@@ -1077,10 +1119,10 @@ export function TimelinePage() {
     }
 
     // Event matches if it matches ANY of the filters (OR logic)
-    return data.events.filter(event =>
+    return allEvents.filter(event =>
       searchFilters.some(filter => eventMatchesFilter(event, filter))
     )
-  }, [data?.events, searchFilters])
+  }, [allEvents, searchFilters])
 
   // Check if any filters are non-default
   // Check if filters differ from defaults
@@ -1101,8 +1143,8 @@ export function TimelinePage() {
       end = new Date(nextBucket.timestamp)
     } else {
       // Estimate bucket duration from first two buckets
-      if (data?.histogram && data.histogram.length > 1) {
-        const bucketDuration = new Date(data.histogram[1].timestamp).getTime() - new Date(data.histogram[0].timestamp).getTime()
+      if (histogram && histogram.length > 1) {
+        const bucketDuration = new Date(histogram[1].timestamp).getTime() - new Date(histogram[0].timestamp).getTime()
         end = new Date(start.getTime() + bucketDuration)
       } else {
         end = new Date(start.getTime() + 30 * 60 * 1000) // Default 30 min
@@ -1111,7 +1153,7 @@ export function TimelinePage() {
     setTimeRange('custom')
     setCustomStart(start.toISOString().slice(0, 16))
     setCustomEnd(end.toISOString().slice(0, 16))
-    setOffset(0)
+    
     resetSeenEvents()
   }
 
@@ -1125,7 +1167,7 @@ export function TimelinePage() {
       }
       return next
     })
-    setOffset(0)
+    
     resetSeenEvents()
   }
 
@@ -1139,7 +1181,7 @@ export function TimelinePage() {
       }
       return next
     })
-    setOffset(0)
+    
     resetSeenEvents()
   }
 
@@ -1153,7 +1195,7 @@ export function TimelinePage() {
       }
       return next
     })
-    setOffset(0)
+    
     resetSeenEvents()
   }
 
@@ -1170,7 +1212,7 @@ export function TimelinePage() {
       setCustomStart(start.toISOString().slice(0, 16))
       setCustomEnd(end.toISOString().slice(0, 16))
     }
-    setOffset(0)
+    
     resetSeenEvents()
   }
 
@@ -1187,9 +1229,9 @@ export function TimelinePage() {
             <div className="flex items-center gap-3">
               <Clock className="h-6 w-6 text-muted-foreground" />
               <h1 className="text-2xl font-semibold">Timeline</h1>
-              {data && (
+              {totalCount > 0 && (
                 <span className="text-sm text-muted-foreground bg-muted px-2 py-0.5 rounded">
-                  {searchFilters.length > 0 ? `${filteredEvents.length} of ${data.total.toLocaleString()}` : data.total.toLocaleString()} events
+                  {searchFilters.length > 0 ? `${filteredEvents.length} of ${totalCount.toLocaleString()}` : totalCount.toLocaleString()} events
                 </span>
               )}
               {searchFilters.length > 0 && (
@@ -1273,7 +1315,7 @@ export function TimelinePage() {
                     max={customEnd || maxDate}
                     onChange={(e) => {
                       setCustomStart(e.target.value)
-                      setOffset(0)
+                      
                       resetSeenEvents()
                     }}
                     className="px-2 py-1 text-sm border border-border rounded-md bg-background"
@@ -1286,7 +1328,7 @@ export function TimelinePage() {
                     max={maxDate}
                     onChange={(e) => {
                       setCustomEnd(e.target.value)
-                      setOffset(0)
+                      
                       resetSeenEvents()
                     }}
                     className="px-2 py-1 text-sm border border-border rounded-md bg-background"
@@ -1353,7 +1395,7 @@ export function TimelinePage() {
                     key={option.value}
                     onClick={() => {
                       setDzFilter(option.value)
-                      setOffset(0)
+                      
                       resetSeenEvents()
                     }}
                     className={cn(
@@ -1376,7 +1418,7 @@ export function TimelinePage() {
             <button
               onClick={() => {
                 setIncludeInternal(!includeInternal)
-                setOffset(0)
+                
               }}
               className="inline-flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
@@ -1464,8 +1506,8 @@ export function TimelinePage() {
         )}
 
         {/* Histogram */}
-        {data?.histogram && data.histogram.length > 0 && (
-          <EventHistogram data={data.histogram} onBucketClick={handleBucketClick} />
+        {histogram && histogram.length > 0 && (
+          <EventHistogram data={histogram} onBucketClick={handleBucketClick} />
         )}
 
         {/* Event list */}
@@ -1477,15 +1519,19 @@ export function TimelinePage() {
               ))}
             </div>
 
-            {/* Pagination - only show when not filtering, since client-side filter doesn't work with server pagination */}
-            {searchFilters.length === 0 && data.total > limit && (
-              <div className="mt-6">
-                <Pagination
-                  total={data.total}
-                  limit={limit}
-                  offset={offset}
-                  onOffsetChange={setOffset}
-                />
+            {/* Infinite scroll sentinel */}
+            {searchFilters.length === 0 && (
+              <div ref={loadMoreRef} className="py-8 flex justify-center">
+                {isFetchingNextPage ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    Loading more...
+                  </div>
+                ) : hasNextPage ? (
+                  <div className="text-sm text-muted-foreground">Scroll for more</div>
+                ) : allEvents.length > limit ? (
+                  <div className="text-sm text-muted-foreground">All {totalCount.toLocaleString()} events loaded</div>
+                ) : null}
               </div>
             )}
           </>

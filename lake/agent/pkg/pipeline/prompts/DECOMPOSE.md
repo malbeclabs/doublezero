@@ -31,7 +31,7 @@ Key concepts for understanding user questions:
 
 **Important**: Telemetry-based events (packet_loss, missing_telemetry, sla_breach) use hourly aggregation, so timestamps are rounded to the hour. Only status_change and isis_delay_override_soft_drain events have precise timestamps. When reporting times, note this limitation (e.g., "around 2pm" not "at 2:47pm").
 
-Filter by `event_type` if you need specific types. The view includes `start_ts`, `end_ts`, `is_ongoing`, `duration_minutes`, and metrics like `loss_pct`, `overage_pct`.
+Filter by `event_type` if you need specific types. The view includes `start_ts`, `end_ts`, `is_ongoing`, `duration_minutes`, and **metric columns that MUST be included**: `loss_pct` (packet loss %), `overage_pct` (SLA overage %), `gap_minutes` (missing telemetry duration). Without these, severity cannot be reported.
 
 **Utilization**: Always per-direction (in vs out separately). "Metro link utilization %" is INVALID (links span metros)
 
@@ -165,16 +165,16 @@ Respond with a JSON object containing an array of data questions:
 **User Question**: "What links have been down in the last 48 hours?"
 
 **Good Decomposition**:
-1. Get all issue events from `dz_link_issue_events` in the last 48 hours. Include link_code, event_type, start_ts, end_ts, is_ongoing, and relevant metrics (loss_pct for packet_loss, new_status for status_change).
+1. Get all issue events from `dz_link_issue_events` in the last 48 hours. Include link_code, event_type, start_ts, end_ts, is_ongoing, duration_minutes, loss_pct, overage_pct, gap_minutes (these metric columns contain the actual severity values).
 
-*Key insight*: The `dz_link_issue_events` view contains all issue types (status changes, ISIS delay override, packet loss, missing telemetry, SLA breach). One query gets everything - filter by time range and optionally by event_type if needed.
+*Key insight*: The `dz_link_issue_events` view contains all issue types (status changes, ISIS delay override, packet loss, missing telemetry, SLA breach). One query gets everything - filter by time range and optionally by event_type if needed. **ALWAYS include loss_pct, overage_pct, gap_minutes** to report actual severity values.
 
 **User Question**: "Identify the timestamps (start/stop) of issues on links going into Sao Paulo in the last 30 days"
 
 **Good Decomposition**:
-1. Get all issue events from `dz_link_issue_events` for links where side_a_metro='sao' OR side_z_metro='sao' in the last 30 days. Include link_code, event_type, start_ts, end_ts, is_ongoing, duration_minutes, and metrics.
+1. Get all issue events from `dz_link_issue_events` for links where side_a_metro='sao' OR side_z_metro='sao' in the last 30 days. Include link_code, event_type, start_ts, end_ts, is_ongoing, duration_minutes, loss_pct, overage_pct, gap_minutes.
 
-*Key insight*: "Going into" a metro means links where that metro is on either side. The unified view already has metro columns and all issue types (status, ISIS delay override, packet loss, missing telemetry, SLA breach). One query gets everything.
+*Key insight*: "Going into" a metro means links where that metro is on either side. The unified view already has metro columns and all issue types. **ALWAYS include metric columns (loss_pct, overage_pct, gap_minutes)** - without these, you cannot report the severity of issues.
 
 **User Question**: "Which regions have the most validators connected to DZ?"
 

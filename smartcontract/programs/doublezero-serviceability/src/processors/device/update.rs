@@ -246,6 +246,11 @@ pub fn process_update_device(
             }
         }
     }
+    if let Some(desired_status) = value.desired_status {
+        device.desired_status = desired_status;
+    }
+
+    device.check_status_transition();
 
     // Write back updated contributor accounts if they were modified
     if contributor_old_account.key != contributor_new_account.key {

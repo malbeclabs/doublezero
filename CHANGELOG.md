@@ -10,6 +10,8 @@ All notable changes to this project will be documented in this file.
   - Removed device and user allowlist functionality, updating the global state, initialization flow, tests, and processors accordingly, and cleaning up unused account checks.
   - Serviceability: UpdateDevice and UpdateLink now adjust contributor reference counts on both the old and new contributor accounts when `contributor_pk` is changed, ensuring accurate contributor usage tracking.
   - Deprecated the user suspend status, as it is no longer used.
+  - Serviceability: require DeactivateMulticastGroup to only close multicast group accounts when both `publisher_count` and `subscriber_count` are zero, preventing deletion of groups that still have active publishers or subscribers.
+  - Deprecated the user suspend status, as it is no longer used.
 - Telemetry
   - Add gNMI tunnel client for state collection
 
@@ -74,13 +76,17 @@ All notable changes to this project will be documented in this file.
   - Introduced health management for Devices and Links, adding explicit health states, authorized health updates, and related state, processor, and test enhancements.
   - Require that BanUser can only be executed when the target user's status is PendingBan, enforcing the expected user ban workflow (request-ban -> ban).
   - Introduce desired status to Link and Devices
+  - Introduced health management for Devices and Links, adding explicit health states, authorized health updates, and related state, processor, and test enhancements.
   - Restrict DeleteDeviceInterface to interfaces in Activated or Unlinked status; attempting to delete interfaces in other statuses now fails with InvalidStatus.
   - Updated validation to allow public IP prefixes for CYOA/DIA, removing the restriction imposed by type-based checks.
   - Transit devices can now be provisioned without a public IP, aligning the requirements with their actual networking model and avoiding unnecessary configuration constraints.
   - Enforce that ActivateDeviceInterface only activates interfaces in Pending or Unlinked status, returning InvalidStatus for all other interface states
+  - Introduce desired status to Link and Devices
 - Internet Latency Telemetry
   - Fixed a bug that prevented unresponsive ripeatlas probes from being replaced
   - Fixed a bug that caused ripeatlas samples to be dropped when they were delayed to the next collection cycle
+- Link & device Latency Telemetry 
+  - Telemetry data can now be received while entities are in provisioning and draining states.
 - Device controller
   - Add histogram metric for GetConfig request duration
   - Add gRPC middleware for prometheus metrics
@@ -125,6 +131,9 @@ All notable changes to this project will be documented in this file.
   - The QA alldevices test now considers device location and connects hosts to nearby devices
   - QA agent and tests now support doublezero connect ibrl's --allocate-addr flag
   - The QA alldevices test now publishes success/failure metrics to InfluxDB in support of rfc12
+- Onchain programs
+  - Fix CreateMulticastGroup to use incremented globalstate.account_index for PDA derivation instead of client-provided index, to ensure the contract is the authoritative source for account indices
+  - ReactivateMulticastGroup now enforces that the multicast group status must be Suspended before reactivation, returning InvalidStatus otherwise; negative-path regression tests were added.
 
 ## [v0.8.0](https://github.com/malbeclabs/doublezero/compare/client/v0.7.1...client/v0.8.0) – 2025-12-02
 

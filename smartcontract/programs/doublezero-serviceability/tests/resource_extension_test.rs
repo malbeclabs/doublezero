@@ -25,7 +25,10 @@ use doublezero_serviceability::{
         },
     },
     resource::{IdOrIp, ResourceType},
-    state::{accounttype::AccountType, device::DeviceType},
+    state::{
+        accounttype::AccountType,
+        device::{DeviceDesiredStatus, DeviceType},
+    },
 };
 use solana_program_test::*;
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signer};
@@ -944,6 +947,7 @@ async fn setup_device_for_dz_prefix_tests(
             dz_prefixes: "110.1.0.0/24".parse().unwrap(), // /24 block for testing
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
+            desired_status: Some(DeviceDesiredStatus::Activated),
         }),
         vec![
             AccountMeta::new(device_pubkey, false),

@@ -137,7 +137,7 @@ pub enum DoubleZeroError {
     InvalidArgument, // variant 65
     #[error("Invalid Foundation Allowlist: cannot be empty")]
     InvalidFoundationAllowlist, // variant 66
-    #[error("This feature has been deprecated")]
+    #[error("Deprecated error")]
     Deprecated, // variant 67
 }
 

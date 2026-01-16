@@ -313,6 +313,58 @@ ORDER BY stake_sol DESC
 2. Use NOT IN with the current tables to find those no longer connected
 3. Always join through `dz_users_history` for historical "on DZ" queries
 
+### Validators That Connected During a Time Window
+
+To find validators that connected to DZ during a specific past time window (e.g., "between 24h and 22h ago"):
+
+**Strategy**: Get validators connected at the END of the window (T2) but NOT at the START (T1).
+
+```sql
+-- Validators that connected between 24 hours ago (T1) and 22 hours ago (T2)
+WITH validators_at_t1 AS (
+  -- Validators connected at T1 (24 hours ago)
+  SELECT DISTINCT va.vote_pubkey
+  FROM (
+    SELECT *, row_number() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC) AS rn
+    FROM dim_dz_users_history
+    WHERE snapshot_ts <= now() - INTERVAL 24 HOUR AND is_deleted = 0
+  ) u
+  JOIN (
+    SELECT *, row_number() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC) AS rn
+    FROM dim_solana_gossip_nodes_history
+    WHERE snapshot_ts <= now() - INTERVAL 24 HOUR AND is_deleted = 0
+  ) gn ON u.dz_ip = gn.gossip_ip AND gn.rn = 1
+  JOIN solana_vote_accounts_current va ON gn.pubkey = va.node_pubkey
+  WHERE u.rn = 1 AND u.status = 'activated' AND u.dz_ip != ''
+),
+validators_at_t2 AS (
+  -- Validators connected at T2 (22 hours ago)
+  SELECT DISTINCT va.vote_pubkey, va.activated_stake_lamports
+  FROM (
+    SELECT *, row_number() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC) AS rn
+    FROM dim_dz_users_history
+    WHERE snapshot_ts <= now() - INTERVAL 22 HOUR AND is_deleted = 0
+  ) u
+  JOIN (
+    SELECT *, row_number() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC) AS rn
+    FROM dim_solana_gossip_nodes_history
+    WHERE snapshot_ts <= now() - INTERVAL 22 HOUR AND is_deleted = 0
+  ) gn ON u.dz_ip = gn.gossip_ip AND gn.rn = 1
+  JOIN solana_vote_accounts_current va ON gn.pubkey = va.node_pubkey
+  WHERE u.rn = 1 AND u.status = 'activated' AND u.dz_ip != ''
+)
+-- Connected during window = at T2 but NOT at T1
+SELECT vote_pubkey, activated_stake_lamports / 1e9 AS stake_sol
+FROM validators_at_t2
+WHERE vote_pubkey NOT IN (SELECT vote_pubkey FROM validators_at_t1)
+ORDER BY stake_sol DESC
+```
+
+**Key points**:
+1. T1 is the START of the window (24h ago), T2 is the END (22h ago)
+2. "Connected during window" means present at T2 but NOT at T1
+3. Use separate CTEs for each time point with their own `row_number()` calculations
+
 ### Link Outage Detection
 To find links that were "down" or had outages, look for status transitions in `dim_dz_links_history`:
 

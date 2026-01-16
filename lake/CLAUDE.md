@@ -43,6 +43,7 @@ cd web && bun run build   # Build frontend (runs tsc first)
 
 Output goes to `eval-runs/<timestamp>/` with:
 - `failures.log` - All failure output (check this first)
+- `flaky.log` - Tests that failed initially but passed on retry (review to identify unstable behavior)
 - `successes.log` - All success output
 - `<TestName>.log` - Individual test logs
 

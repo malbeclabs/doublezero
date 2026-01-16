@@ -24,6 +24,8 @@ Key concepts for understanding user questions:
 
 **Utilization**: Always per-direction (in vs out separately). "Metro link utilization %" is INVALID (links span metros)
 
+**Bandwidth**: When asking about bandwidth consumption, throughput, or traffic rates, always ask for **rate in bits/second** (Gbps, Mbps), NOT data volume (bytes, GB). Use `delta_duration` to calculate rates from byte deltas.
+
 **Solana Terms**: "Connected stake" = sum of stake for validators on DZ. "Stake share" = connected stake / total network stake
 
 ## Your Task
@@ -47,6 +49,7 @@ Given a user's question, identify what specific data questions need to be answer
   - **"Recently connected/joined" (time-bounded)**: Use the comparison approach - find entities connected NOW but NOT connected X hours/days ago. This catches true recent connections regardless of ingestion timing.
   - **"Growth since we started tracking" (unbounded)**: Use first-appearance approach - exclude entities from initial ingestion snapshot. But this is ONLY appropriate when the user explicitly asks about growth since tracking began.
   - **NEVER** use first-appearance as a substitute for "recently connected" - a validator that reconnected after a brief outage is NOT a "new connection".
+- **For specific past time window queries** (e.g., "between 24h ago and 22h ago"): Use double comparison - find entities connected at the END of the window (T2) but NOT connected at the START (T1). For "which validators connected between 24h ago and 22h ago", find validators that were on DZ at the 22h mark but NOT at the 24h mark.
 - **For network health/status questions**: Ask for specific entity lists (not just counts). Users need to know exactly which devices, links, and interfaces have issues, along with their specific status or problem details
 - Order questions logically - foundational facts first, then derived insights
 - **For confirmation responses**: If the user says "yes", "please do", "go ahead", etc., and the previous assistant message offered to run a query or investigation, extract the data questions from what was offered. Look at the conversation history to understand what query was proposed.

@@ -393,10 +393,14 @@ WHERE past.vote_pubkey = ''  -- Anti-join
 
 **Common columns**: `link_code`, `event_type`, `start_ts`, `end_ts`, `duration_minutes`, `is_ongoing`, `side_a_metro`, `side_z_metro`
 
+**IMPORTANT: Always include metric columns** - `loss_pct`, `overage_pct`, `gap_minutes` contain the actual values needed to answer questions. Without these columns, you cannot report the severity of issues.
+
 ```sql
 -- All issues for links connected to Sao Paulo in the last 30 days
+-- ALWAYS include loss_pct, overage_pct, gap_minutes to get actual metric values
 SELECT
-    link_code, event_type, start_ts, end_ts, duration_minutes, is_ongoing
+    link_code, event_type, start_ts, end_ts, duration_minutes, is_ongoing,
+    loss_pct, overage_pct, gap_minutes
 FROM dz_link_issue_events
 WHERE (side_a_metro = 'sao' OR side_z_metro = 'sao')
   AND start_ts >= now() - INTERVAL 30 DAY
@@ -435,7 +439,9 @@ WHERE event_type = 'sla_breach'
 **Ongoing issues:**
 ```sql
 -- Currently ongoing issues (no end_ts)
-SELECT link_code, event_type, start_ts, duration_minutes
+-- Include metric columns to report actual severity
+SELECT link_code, event_type, start_ts, duration_minutes,
+    loss_pct, overage_pct, gap_minutes
 FROM dz_link_issue_events
 WHERE is_ongoing = true
 ORDER BY start_ts

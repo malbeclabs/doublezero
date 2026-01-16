@@ -7,6 +7,10 @@
 --
 -- Filter by event_type and apply thresholds at query time.
 -- Limited to last 90 days for performance.
+--
+-- Timestamp precision:
+-- - status_change: Precise (from history table snapshot_ts)
+-- - packet_loss, link_dark, sla_breach: Hourly granularity
 
 CREATE OR REPLACE VIEW dz_link_outage_events
 AS
@@ -16,7 +20,41 @@ lookback AS (
     SELECT now() - INTERVAL 90 DAY AS min_ts
 ),
 
--- 1. STATUS CHANGES: Use window function to find recovery time
+-- 1. STATUS CHANGES: Compute transitions from history, then find recovery time
+-- First compute raw transitions with LAG
+link_transitions AS (
+    SELECT
+        lh.pk AS link_pk,
+        lh.code AS link_code,
+        lh.status AS new_status,
+        lh.snapshot_ts AS transition_ts,
+        lh.side_a_pk,
+        lh.side_z_pk,
+        LAG(lh.status) OVER (PARTITION BY lh.pk ORDER BY lh.snapshot_ts) AS previous_status
+    FROM dim_dz_links_history lh
+    CROSS JOIN lookback
+    WHERE lh.is_deleted = 0
+      AND lh.snapshot_ts >= lookback.min_ts
+),
+-- Add metro info and filter to actual status changes
+status_transitions AS (
+    SELECT
+        t.link_pk,
+        t.link_code,
+        t.previous_status,
+        t.new_status,
+        t.transition_ts,
+        ma.code AS side_a_metro,
+        mz.code AS side_z_metro
+    FROM link_transitions t
+    JOIN dz_devices_current da ON t.side_a_pk = da.pk
+    JOIN dz_devices_current dz ON t.side_z_pk = dz.pk
+    JOIN dz_metros_current ma ON da.metro_pk = ma.pk
+    JOIN dz_metros_current mz ON dz.metro_pk = mz.pk
+    WHERE t.previous_status IS NOT NULL
+      AND t.previous_status != t.new_status
+),
+-- Use LEAD to find when status returns to activated (recovery time)
 status_transitions_with_recovery AS (
     SELECT
         t.link_pk,
@@ -26,7 +64,6 @@ status_transitions_with_recovery AS (
         t.new_status,
         t.side_a_metro,
         t.side_z_metro,
-        -- Use LEAD to find the next transition back to activated
         leadInFrame(t.transition_ts) OVER (
             PARTITION BY t.link_pk
             ORDER BY t.transition_ts
@@ -35,9 +72,7 @@ status_transitions_with_recovery AS (
             PARTITION BY t.link_pk
             ORDER BY t.transition_ts
         ) AS next_status
-    FROM dz_link_status_transitions t
-    CROSS JOIN lookback
-    WHERE t.transition_ts >= lookback.min_ts
+    FROM status_transitions t
 ),
 status_events AS (
     SELECT
@@ -112,7 +147,7 @@ packet_loss_events AS (
       AND l.prev_loss_pct < 0.1  -- Previous hour was OK (this is the START of a loss period)
 ),
 
--- 3. LINK DARK: Gaps in telemetry > 30 minutes
+-- 3. LINK DARK: Gaps in telemetry >= 120 minutes
 link_activity AS (
     SELECT
         f.link_pk,

@@ -90,14 +90,14 @@ func runTest_LinkOutagesDetection(t *testing.T, llmFactory LLMClientFactory) {
 	// Evaluate with expectations
 	expectations := []Expectation{
 		{
-			Description:   "Response mentions nyc-lon-1 outage",
-			ExpectedValue: "nyc-lon-1 identified as having been down or having an outage",
-			Rationale:     "nyc-lon-1 went soft-drained and then recovered",
+			Description:   "Response mentions nyc-lon-1 outage with timestamps",
+			ExpectedValue: "nyc-lon-1 identified as having been down with timing info (went down ~24h ago, recovered ~12h ago)",
+			Rationale:     "nyc-lon-1 went soft-drained 24h ago and recovered 12h ago - timestamps/timing must be included",
 		},
 		{
-			Description:   "Response mentions tok-fra-1 outage",
-			ExpectedValue: "tok-fra-1 identified as currently down or having an outage",
-			Rationale:     "tok-fra-1 is currently soft-drained (ongoing outage)",
+			Description:   "Response mentions tok-fra-1 ongoing outage with start time",
+			ExpectedValue: "tok-fra-1 identified as currently down/ongoing with timing info (started ~6h ago)",
+			Rationale:     "tok-fra-1 is currently soft-drained since 6h ago - start time must be included",
 		},
 		{
 			Description:   "Response does NOT mention chi-nyc-1 as having outage",
@@ -251,4 +251,42 @@ ORDER BY code, snapshot_ts
 	require.GreaterOrEqual(t, historyResult.Count, 2, "Should have status changes in last 48 hours")
 
 	t.Logf("Database validation passed: Found %d links, %d history entries in last 48h", result.Count, historyResult.Count)
+
+	// Validate the link issue events view directly
+	viewQuery := `
+SELECT
+    link_code,
+    event_type,
+    start_ts,
+    end_ts,
+    is_ongoing,
+    duration_minutes,
+    new_status
+FROM dz_link_issue_events
+WHERE start_ts >= now() - INTERVAL 48 HOUR
+ORDER BY link_code, event_type, start_ts
+`
+	viewResult, err := dataset.Query(ctx, conn, viewQuery, nil)
+	require.NoError(t, err, "Failed to execute view query")
+	t.Logf("Link issue events view returned %d rows:", viewResult.Count)
+	for _, row := range viewResult.Rows {
+		t.Logf("  %v", row)
+	}
+
+	// Verify nyc-lon-1 has recovered (is_ongoing = false)
+	nycLonQuery := `
+SELECT
+    link_code,
+    event_type,
+    is_ongoing,
+    start_ts,
+    end_ts
+FROM dz_link_issue_events
+WHERE link_code = 'nyc-lon-1'
+  AND event_type = 'status_change'
+`
+	nycLonResult, err := dataset.Query(ctx, conn, nycLonQuery, nil)
+	require.NoError(t, err, "Failed to query nyc-lon-1 status_change event")
+	require.Equal(t, 1, nycLonResult.Count, "Should have exactly 1 status_change event for nyc-lon-1")
+	t.Logf("nyc-lon-1 status_change event: %v", nycLonResult.Rows[0])
 }

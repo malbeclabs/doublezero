@@ -20,13 +20,16 @@ Key concepts for understanding user questions:
 
 **Status**: "Active" = `status='activated'`. "Drained" = maintenance/soft-failure state
 
-**Link Outages**: A link can have an outage for multiple reasons. Use the `dz_link_outage_events` view which combines all outage types:
-- `status_change`: Status changed from activated (soft-drained, suspended, etc.) - **precise timestamps**
+**Link Issues**: A link can have issues for multiple reasons. Use the `dz_link_issue_events` view which combines all issue types:
+- `status_change`: Status changed from activated (soft-drained, hard-drained, etc.) - **precise timestamps**
+- `isis_delay_override_soft_drain`: ISIS delay override set to 1s (effective soft-drain without status change) - **precise timestamps**
 - `packet_loss`: Significant packet loss detected (>=0.1%) - **hourly granularity**
-- `link_dark`: No telemetry received (gap >=120 minutes) - **hourly granularity**
+- `missing_telemetry`: No telemetry received (gap >=120 minutes) - **hourly granularity**
 - `sla_breach`: Latency exceeded committed RTT (>=20% over) - **hourly granularity**
 
-**Important**: Telemetry-based events (packet_loss, link_dark, sla_breach) use hourly aggregation, so timestamps are rounded to the hour. Only status_change events have precise timestamps. When reporting outage times, note this limitation (e.g., "around 2pm" not "at 2:47pm").
+**Packet loss severity**: Minor (<1%), Moderate (1-10%), Severe (>=10%). Apply thresholds at query time based on what the user considers significant.
+
+**Important**: Telemetry-based events (packet_loss, missing_telemetry, sla_breach) use hourly aggregation, so timestamps are rounded to the hour. Only status_change and isis_delay_override_soft_drain events have precise timestamps. When reporting times, note this limitation (e.g., "around 2pm" not "at 2:47pm").
 
 Filter by `event_type` if you need specific types. The view includes `start_ts`, `end_ts`, `is_ongoing`, `duration_minutes`, and metrics like `loss_pct`, `overage_pct`.
 
@@ -155,16 +158,16 @@ Respond with a JSON object containing an array of data questions:
 **User Question**: "What links have been down in the last 48 hours?"
 
 **Good Decomposition**:
-1. Get all outage events from `dz_link_outage_events` in the last 48 hours. Include link_code, event_type, start_ts, end_ts, is_ongoing, and relevant metrics (loss_pct for packet_loss, new_status for status_change).
+1. Get all issue events from `dz_link_issue_events` in the last 48 hours. Include link_code, event_type, start_ts, end_ts, is_ongoing, and relevant metrics (loss_pct for packet_loss, new_status for status_change).
 
-*Key insight*: The `dz_link_outage_events` view contains all outage types (status changes, packet loss, link dark, SLA breach). One query gets everything - filter by time range and optionally by event_type if needed.
+*Key insight*: The `dz_link_issue_events` view contains all issue types (status changes, ISIS delay override, packet loss, missing telemetry, SLA breach). One query gets everything - filter by time range and optionally by event_type if needed.
 
-**User Question**: "Identify the timestamps (start/stop) of outages on links going into Sao Paulo in the last 30 days"
+**User Question**: "Identify the timestamps (start/stop) of issues on links going into Sao Paulo in the last 30 days"
 
 **Good Decomposition**:
-1. Get all outage events from `dz_link_outage_events` for links where side_a_metro='sao' OR side_z_metro='sao' in the last 30 days. Include link_code, event_type, start_ts, end_ts, is_ongoing, duration_minutes, and metrics.
+1. Get all issue events from `dz_link_issue_events` for links where side_a_metro='sao' OR side_z_metro='sao' in the last 30 days. Include link_code, event_type, start_ts, end_ts, is_ongoing, duration_minutes, and metrics.
 
-*Key insight*: "Going into" a metro means links where that metro is on either side. The unified view already has metro columns and all outage types (status, packet loss, link dark, SLA breach). One query gets everything.
+*Key insight*: "Going into" a metro means links where that metro is on either side. The unified view already has metro columns and all issue types (status, ISIS delay override, packet loss, missing telemetry, SLA breach). One query gets everything.
 
 **User Question**: "Which regions have the most validators connected to DZ?"
 

@@ -58,8 +58,19 @@ If any entity appears without its corresponding metric, ADD THE VALUE.
   - Validators: Always include `vote_pubkey`, stake amount, and relevant timestamps (e.g., when connected)
   - Users: Always include `owner_pubkey` and `client_ip`
 - **Small counts**: When count ≤ 10, also list the specific entities
-- **"Which" questions**: Always list specific entities with details, never just counts. Include identifying info plus key attributes.
-- **Link outage timestamps**: For telemetry-based outage events (packet_loss, link_dark, sla_breach), timestamps have hourly granularity. Use approximate language like "around 2pm" or "starting in the 2pm hour" rather than precise times. Only status_change events (soft-drained, suspended, etc.) have precise timestamps.
+- **"Which" or "What [events] occurred" questions**: Always list specific entities with details, never just counts. Include identifying info plus key attributes.
+- **Link issue questions**: When users ask about link issues (e.g., "what issues occurred", "what links have been down", "what outages happened"), include timestamps for each event:
+  - Link code
+  - Event type (status_change, isis_delay_override_soft_drain, packet_loss, missing_telemetry, sla_breach)
+  - Start date/time (use "around Xpm on DATE" for telemetry-based events due to hourly granularity)
+  - End date/time or "ongoing" if still active
+  - Duration (if resolved)
+  - Relevant metrics (loss %, overage %, etc.)
+  - For packet loss, indicate severity: minor (<1%), moderate (1-10%), severe (>=10%)
+
+  **For many events (>20)**: Group by link, showing each link's issue history with timestamps. Prioritize ongoing issues and most severe incidents at the top. Don't just give aggregate counts - users need to know *which* links and *when*.
+
+  Never aggregate issue events into just counts without timestamps. Users ask about issues because they need to know *when* things happened.
 
 ### Network Status Queries
 When answering questions about network status, health, or issues:

@@ -49,6 +49,8 @@ Output goes to `eval-runs/<timestamp>/` with:
 
 **When to run evals:** Only after changing agent logic (prompts, context, or code in `agent/`). Changes to `api/` or `web/` do not require evals. Always confirm with the user before running evals.
 
+**Do NOT run OllamaLocal evals.** The OllamaLocal tests skip when Ollama isn't available, which makes them appear to pass. Only run the Anthropic evals (filter with `-f 'Anthropic'` if needed).
+
 **Evals are the source of truth for agent quality.** The agent prompts (CLASSIFY, DECOMPOSE, GENERATE, SYNTHESIZE) and evals work together:
 
 - When changing agent prompts or context: evals must continue to pass. If an eval fails, fix the agent behavior, not the expectation.

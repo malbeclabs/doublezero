@@ -315,26 +315,29 @@ ORDER BY stake_sol DESC
 2. Simple time range filter - no complex CTEs needed
 3. For "recently connected" (last N hours), use: `WHERE first_connected_ts > now() - INTERVAL N HOUR`
 
-### Link Outage Detection
+### Link Issue Detection
 
-**Use the `dz_link_outage_events` view** for all link outage queries. It combines multiple outage signals:
+**Use the `dz_link_issue_events` view** for all link issue queries. It combines multiple issue signals:
 
 | event_type | Description | Key Columns | Precision |
 |------------|-------------|-------------|-----------|
 | `status_change` | Link status changed from activated | `previous_status`, `new_status` | Precise |
+| `isis_delay_override_soft_drain` | ISIS delay override set to 1s (effective soft-drain) | - | Precise |
 | `packet_loss` | Packet loss exceeded threshold | `loss_pct` (>=0.1% triggers event) | Hourly |
-| `link_dark` | No telemetry received | `gap_minutes` (>=120 min triggers event) | Hourly |
+| `missing_telemetry` | No telemetry received | `gap_minutes` (>=120 min triggers event) | Hourly |
 | `sla_breach` | Latency exceeded committed RTT | `overage_pct` (>=20% triggers event) | Hourly |
 
-**Timestamp precision**: Only `status_change` events have precise timestamps. Telemetry-based events (packet_loss, link_dark, sla_breach) use hourly aggregation, so `start_ts` is rounded to the hour. When presenting results, use approximate language for these events (e.g., "around 2pm" or "starting in the 2pm hour").
+**Packet loss severity**: Minor (<1%), Moderate (1-10%), Severe (>=10%). Apply thresholds at query time.
+
+**Timestamp precision**: Only `status_change` and `isis_delay_override_soft_drain` events have precise timestamps. Telemetry-based events (packet_loss, missing_telemetry, sla_breach) use hourly aggregation, so `start_ts` is rounded to the hour. When presenting results, use approximate language for these events (e.g., "around 2pm" or "starting in the 2pm hour").
 
 **Common columns**: `link_code`, `event_type`, `start_ts`, `end_ts`, `duration_minutes`, `is_ongoing`, `side_a_metro`, `side_z_metro`
 
 ```sql
--- All outages for links connected to Sao Paulo in the last 30 days
+-- All issues for links connected to Sao Paulo in the last 30 days
 SELECT
     link_code, event_type, start_ts, end_ts, duration_minutes, is_ongoing
-FROM dz_link_outage_events
+FROM dz_link_issue_events
 WHERE (side_a_metro = 'sao' OR side_z_metro = 'sao')
   AND start_ts >= now() - INTERVAL 30 DAY
 ORDER BY start_ts DESC
@@ -342,38 +345,43 @@ ORDER BY start_ts DESC
 
 **Filter by event type:**
 ```sql
--- Only status-based outages (soft-drained, suspended, etc.)
-SELECT * FROM dz_link_outage_events
+-- Only status-based issues (soft-drained, hard-drained, etc.)
+SELECT * FROM dz_link_issue_events
 WHERE event_type = 'status_change'
   AND start_ts >= now() - INTERVAL 30 DAY
 
--- Only packet loss events with loss >= 1%
-SELECT * FROM dz_link_outage_events
+-- ISIS delay override (effective soft-drain without status change)
+SELECT * FROM dz_link_issue_events
+WHERE event_type = 'isis_delay_override_soft_drain'
+  AND start_ts >= now() - INTERVAL 30 DAY
+
+-- Packet loss events with loss >= 1% (moderate or severe)
+SELECT * FROM dz_link_issue_events
 WHERE event_type = 'packet_loss'
   AND loss_pct >= 1.0
   AND start_ts >= now() - INTERVAL 30 DAY
 
--- Links that went dark for > 1 hour
-SELECT * FROM dz_link_outage_events
-WHERE event_type = 'link_dark'
-  AND gap_minutes >= 60
+-- Missing telemetry (no data for extended period)
+SELECT * FROM dz_link_issue_events
+WHERE event_type = 'missing_telemetry'
+  AND gap_minutes >= 120
 
 -- SLA breaches with latency > 50% over committed
-SELECT * FROM dz_link_outage_events
+SELECT * FROM dz_link_issue_events
 WHERE event_type = 'sla_breach'
   AND overage_pct >= 50
 ```
 
-**Ongoing outages:**
+**Ongoing issues:**
 ```sql
--- Currently ongoing outages (no end_ts)
+-- Currently ongoing issues (no end_ts)
 SELECT link_code, event_type, start_ts, duration_minutes
-FROM dz_link_outage_events
+FROM dz_link_issue_events
 WHERE is_ongoing = true
 ORDER BY start_ts
 ```
 
-**Key insight**: The view pre-computes all outage types. Apply thresholds in the WHERE clause based on what the user considers significant (e.g., `loss_pct >= 1.0` for critical loss, `gap_minutes >= 60` for extended dark periods).
+**Key insight**: The view pre-computes all issue types. Apply thresholds in the WHERE clause based on what the user considers significant (e.g., `loss_pct >= 1.0` for moderate+ loss, `loss_pct >= 10.0` for severe loss).
 
 ### Validators by Region/Metro
 To find which DZ metros have the most connected validators, join through users → devices → metros:

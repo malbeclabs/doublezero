@@ -114,12 +114,10 @@ Respond with a JSON object containing an array of data questions:
 **User Question**: "How is DZ performing compared to the public internet?"
 
 **Good Decomposition**:
-1. What is the average and P95 RTT for DZ WAN links by metro pair in the last 24 hours?
-2. What is the average and P95 RTT for public internet by metro pair in the last 24 hours?
-3. What is the packet loss rate for DZ WAN links in the last 24 hours?
-4. What is the packet loss rate for public internet in the last 24 hours?
+1. For DZ WAN links, what is the RTT (avg/P95), jitter/IPDV (avg/P95), and packet loss rate by metro pair in the last 24 hours?
+2. For public internet, what is the RTT (avg/P95), jitter/IPDV (avg/P95), and packet loss rate by metro pair in the last 24 hours?
 
-*Key insight*: Comparison questions require gathering parallel data for both cohorts, then the synthesis step can compare them.
+*Key insight*: Network comparisons need **all three metrics**: latency (RTT), jitter (IPDV), and packet loss. Consolidate into one query per network source - each query returns multiple aggregates (avg, P95) for multiple metrics in a single result.
 
 **Previous conversation**: Assistant said "Would you like me to query the WAN link utilization with the corrected filter?"
 **User Question**: "Yes"

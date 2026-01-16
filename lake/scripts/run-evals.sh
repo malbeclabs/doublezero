@@ -317,35 +317,40 @@ if ls "$OUTPUT_DIR"/Test*.log &>/dev/null; then
     echo "" | tee -a "$SUMMARY_FILE"
     echo "=== Token Usage ===" | tee -a "$SUMMARY_FILE"
 
-    # Extract token data: phase, inputTokens, outputTokens
+    # Extract token data: phase, inputTokens, outputTokens, cacheCreation, cacheRead
     TOKEN_DATA=$(grep -h "Anthropic API call completed" "$OUTPUT_DIR"/Test*.log 2>/dev/null | \
-        sed -n 's/.*phase=\([^ ]*\).*inputTokens=\([0-9]*\).*outputTokens=\([0-9]*\).*/\1 \2 \3/p' || true)
+        sed -n 's/.*phase=\([^ ]*\).*inputTokens=\([0-9]*\).*outputTokens=\([0-9]*\).*cacheCreationInputTokens=\([0-9]*\).*cacheReadInputTokens=\([0-9]*\).*/\1 \2 \3 \4 \5/p' || true)
 
     if [[ -n "$TOKEN_DATA" ]]; then
         # Calculate stats using awk
+        # Haiku 4.5 pricing: $1/M input, $5/M output, $1.25/M cache write, $0.10/M cache read
         echo "$TOKEN_DATA" | awk '
         {
             phase = $1
             input = $2
             output = $3
-            total = input + output
+            cache_create = $4
+            cache_read = $5
 
             count[phase]++
             input_sum[phase] += input
             output_sum[phase] += output
-            total_sum[phase] += total
+            cache_create_sum[phase] += cache_create
+            cache_read_sum[phase] += cache_read
 
             if (input > input_max[phase]) input_max[phase] = input
             if (output > output_max[phase]) output_max[phase] = output
 
             grand_input += input
             grand_output += output
+            grand_cache_create += cache_create
+            grand_cache_read += cache_read
             grand_count++
         }
         END {
             for (phase in count) {
                 printf "  %s: %d calls, %d input, %d output (%d total)\n",
-                    phase, count[phase], input_sum[phase], output_sum[phase], total_sum[phase]
+                    phase, count[phase], input_sum[phase], output_sum[phase], input_sum[phase] + output_sum[phase]
                 printf "         avg: %d input, %d output | max: %d input, %d output\n",
                     input_sum[phase]/count[phase], output_sum[phase]/count[phase],
                     input_max[phase], output_max[phase]
@@ -353,6 +358,25 @@ if ls "$OUTPUT_DIR"/Test*.log &>/dev/null; then
             printf "  ---\n"
             printf "  total: %d calls, %d input, %d output (%d total tokens)\n",
                 grand_count, grand_input, grand_output, grand_input + grand_output
+
+            # Cost calculation (Haiku 4.5 pricing)
+            input_cost = grand_input / 1000000.0
+            output_cost = grand_output * 5 / 1000000.0
+            cache_write_cost = grand_cache_create * 1.25 / 1000000.0
+            cache_read_cost = grand_cache_read * 0.10 / 1000000.0
+            total_cost = input_cost + output_cost + cache_write_cost + cache_read_cost
+
+            printf "\n=== Estimated Cost (Haiku 4.5) ===\n"
+            printf "  input:       $%.4f (%d tokens @ $1/M)\n", input_cost, grand_input
+            printf "  output:      $%.4f (%d tokens @ $5/M)\n", output_cost, grand_output
+            if (grand_cache_create > 0) {
+                printf "  cache write: $%.4f (%d tokens @ $1.25/M)\n", cache_write_cost, grand_cache_create
+            }
+            if (grand_cache_read > 0) {
+                printf "  cache read:  $%.4f (%d tokens @ $0.10/M)\n", cache_read_cost, grand_cache_read
+            }
+            printf "  ---\n"
+            printf "  total: $%.2f\n", total_cost
         }
         ' | tee -a "$SUMMARY_FILE"
 
@@ -366,6 +390,9 @@ if ls "$OUTPUT_DIR"/Test*.log &>/dev/null; then
             if [[ -f "$logfile" ]]; then
                 # Count agent phase calls (excluding eval phase which is the test harness)
                 agent_calls=$(grep -c "phase=agent" "$logfile" 2>/dev/null || echo "0")
+                # Extract just the first number (handles grep -c edge cases)
+                agent_calls=$(echo "$agent_calls" | head -1 | tr -cd '0-9')
+                agent_calls=${agent_calls:-0}
                 if [[ "$agent_calls" -gt 0 ]]; then
                     calls_data+="$agent_calls "
                 fi
@@ -399,7 +426,9 @@ if ls "$OUTPUT_DIR"/Test*.log &>/dev/null; then
         for logfile in "$OUTPUT_DIR"/Test*.log; do
             if [[ -f "$logfile" ]]; then
                 # Count "pipeline: query returned error" messages
-                sql_errors=$(grep -c "pipeline: query returned error" "$logfile" 2>/dev/null | tr -d '[:space:]' || echo "0")
+                sql_errors=$(grep -c "pipeline: query returned error" "$logfile" 2>/dev/null || echo "0")
+                # Extract just the first number (handles grep -c edge cases)
+                sql_errors=$(echo "$sql_errors" | head -1 | tr -cd '0-9')
                 sql_errors=${sql_errors:-0}
                 errors_data+="$sql_errors "
                 total_errors=$((total_errors + sql_errors))

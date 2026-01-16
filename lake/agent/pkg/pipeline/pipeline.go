@@ -416,33 +416,51 @@ func (p *Pipeline) RunWithProgress(ctx context.Context, userQuestion string, his
 	}
 
 	executedQueries := make([]ExecutedQuery, len(dataQuestions))
-	var wg sync.WaitGroup
 	var queriesDone int
 	var queriesMu sync.Mutex
 
-	for i, dq := range dataQuestions {
-		wg.Add(1)
-		go func(idx int, question DataQuestion) {
-			defer wg.Done()
-			executed := p.GenerateAndExecuteWithRetry(ctx, question, idx+1)
-			executedQueries[idx] = executed
-
-			// Update progress
-			queriesMu.Lock()
-			queriesDone++
-			currentDone := queriesDone
-			queriesMu.Unlock()
-
-			notify(Progress{
-				Stage:          StageExecuting,
-				Classification: classification.Classification,
-				DataQuestions:  dataQuestions,
-				QueriesTotal:   len(dataQuestions),
-				QueriesDone:    currentDone,
-			})
-		}(i, dq)
+	// Run first query synchronously to warm the prompt cache.
+	// The GENERATE system prompt (~37K tokens) is identical for all queries,
+	// so warming the cache first saves ~$0.10 per additional query.
+	if len(dataQuestions) > 0 {
+		executedQueries[0] = p.GenerateAndExecuteWithRetry(ctx, dataQuestions[0], 1)
+		queriesDone = 1
+		notify(Progress{
+			Stage:          StageExecuting,
+			Classification: classification.Classification,
+			DataQuestions:  dataQuestions,
+			QueriesTotal:   len(dataQuestions),
+			QueriesDone:    queriesDone,
+		})
 	}
-	wg.Wait()
+
+	// Run remaining queries in parallel (they'll hit the warm cache)
+	if len(dataQuestions) > 1 {
+		var wg sync.WaitGroup
+		for i := 1; i < len(dataQuestions); i++ {
+			wg.Add(1)
+			go func(idx int, question DataQuestion) {
+				defer wg.Done()
+				executed := p.GenerateAndExecuteWithRetry(ctx, question, idx+1)
+				executedQueries[idx] = executed
+
+				// Update progress
+				queriesMu.Lock()
+				queriesDone++
+				currentDone := queriesDone
+				queriesMu.Unlock()
+
+				notify(Progress{
+					Stage:          StageExecuting,
+					Classification: classification.Classification,
+					DataQuestions:  dataQuestions,
+					QueriesTotal:   len(dataQuestions),
+					QueriesDone:    currentDone,
+				})
+			}(i, dataQuestions[i])
+		}
+		wg.Wait()
+	}
 
 	// Extract generated queries
 	generatedQueries := make([]GeneratedQuery, len(executedQueries))
@@ -550,23 +568,33 @@ func (p *Pipeline) RunWithHistory(ctx context.Context, userQuestion string, hist
 		p.log.Info("pipeline: decomposed into data questions", "count", len(dataQuestions))
 	}
 
-	// Step 2 & 3: Generate SQL and execute queries (in parallel, with retries)
+	// Step 2 & 3: Generate SQL and execute queries (with cache warming, then parallel)
 	if p.log != nil {
 		p.log.Info("pipeline: step 2/3 - generating and executing queries", "count", len(dataQuestions))
 	}
 	executedQueries := make([]ExecutedQuery, len(dataQuestions))
-	var wg sync.WaitGroup
 
-	for i, dq := range dataQuestions {
-		wg.Add(1)
-		go func(idx int, question DataQuestion) {
-			defer wg.Done()
-			// Question numbers are 1-indexed for readability (Q1, Q2, ...)
-			executed := p.GenerateAndExecuteWithRetry(ctx, question, idx+1)
-			executedQueries[idx] = executed
-		}(i, dq)
+	// Run first query synchronously to warm the prompt cache.
+	// The GENERATE system prompt (~37K tokens) is identical for all queries,
+	// so warming the cache first saves ~$0.10 per additional query.
+	if len(dataQuestions) > 0 {
+		executedQueries[0] = p.GenerateAndExecuteWithRetry(ctx, dataQuestions[0], 1)
 	}
-	wg.Wait()
+
+	// Run remaining queries in parallel (they'll hit the warm cache)
+	if len(dataQuestions) > 1 {
+		var wg sync.WaitGroup
+		for i := 1; i < len(dataQuestions); i++ {
+			wg.Add(1)
+			go func(idx int, question DataQuestion) {
+				defer wg.Done()
+				// Question numbers are 1-indexed for readability (Q1, Q2, ...)
+				executed := p.GenerateAndExecuteWithRetry(ctx, question, idx+1)
+				executedQueries[idx] = executed
+			}(i, dataQuestions[i])
+		}
+		wg.Wait()
+	}
 
 	// Extract generated queries from executed results
 	generatedQueries := make([]GeneratedQuery, len(executedQueries))

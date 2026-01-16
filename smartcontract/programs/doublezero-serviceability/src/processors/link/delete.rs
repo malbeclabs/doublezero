@@ -66,9 +66,9 @@ pub fn process_delete_link(
 
     let contributor = Contributor::try_from(contributor_account)?;
 
-    if contributor.owner != *payer_account.key
-        && !globalstate.foundation_allowlist.contains(payer_account.key)
-    {
+    let payer_in_foundation = globalstate.foundation_allowlist.contains(payer_account.key);
+
+    if contributor.owner != *payer_account.key && !payer_in_foundation {
         return Err(DoubleZeroError::InvalidOwnerPubkey.into());
     }
 
@@ -77,6 +77,7 @@ pub fn process_delete_link(
     if link.status != LinkStatus::Activated && link.status != LinkStatus::Suspended {
         return Err(DoubleZeroError::InvalidStatus.into());
     }
+
     link.status = LinkStatus::Deleting;
 
     try_acc_write(&link, link_account, payer_account, accounts)?;

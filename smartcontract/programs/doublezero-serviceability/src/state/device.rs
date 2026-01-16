@@ -64,11 +64,12 @@ pub enum DeviceStatus {
     #[default]
     Pending = 0,
     Activated = 1,
-    Suspended = 2,
+    //Suspended = 2, // The suspended status is no longer used
     Deleting = 3,
     Rejected = 4,
-    SoftDrained = 5,
-    HardDrained = 6,
+    Drained = 5,
+    DeviceProvisioning = 6,
+    LinkProvisioning = 7,
 }
 
 impl From<u8> for DeviceStatus {
@@ -76,11 +77,11 @@ impl From<u8> for DeviceStatus {
         match value {
             0 => DeviceStatus::Pending,
             1 => DeviceStatus::Activated,
-            2 => DeviceStatus::Suspended,
             3 => DeviceStatus::Deleting,
             4 => DeviceStatus::Rejected,
-            5 => DeviceStatus::SoftDrained,
-            6 => DeviceStatus::HardDrained,
+            5 => DeviceStatus::Drained,
+            6 => DeviceStatus::DeviceProvisioning,
+            7 => DeviceStatus::LinkProvisioning,
             _ => DeviceStatus::Pending,
         }
     }
@@ -91,11 +92,11 @@ impl fmt::Display for DeviceStatus {
         match self {
             DeviceStatus::Pending => write!(f, "pending"),
             DeviceStatus::Activated => write!(f, "activated"),
-            DeviceStatus::Suspended => write!(f, "suspended"),
             DeviceStatus::Deleting => write!(f, "deleting"),
             DeviceStatus::Rejected => write!(f, "rejected"),
-            DeviceStatus::SoftDrained => write!(f, "soft-drained"),
-            DeviceStatus::HardDrained => write!(f, "hard-drained"),
+            DeviceStatus::Drained => write!(f, "drained"),
+            DeviceStatus::DeviceProvisioning => write!(f, "device-provisioning"),
+            DeviceStatus::LinkProvisioning => write!(f, "link-provisioning"),
         }
     }
 }
@@ -107,11 +108,11 @@ impl FromStr for DeviceStatus {
         match s.to_lowercase().as_str() {
             "pending" => Ok(DeviceStatus::Pending),
             "activated" => Ok(DeviceStatus::Activated),
-            "suspended" => Ok(DeviceStatus::Suspended),
             "deleting" => Ok(DeviceStatus::Deleting),
             "rejected" => Ok(DeviceStatus::Rejected),
-            "hard-drained" => Ok(DeviceStatus::HardDrained),
-            "soft-drained" => Ok(DeviceStatus::SoftDrained),
+            "drained" => Ok(DeviceStatus::Drained),
+            "device-provisioning" => Ok(DeviceStatus::DeviceProvisioning),
+            "link-provisioning" => Ok(DeviceStatus::LinkProvisioning),
             _ => Err(format!("Invalid DeviceStatus: {s}")),
         }
     }
@@ -178,8 +179,7 @@ pub enum DeviceDesiredStatus {
     #[default]
     Pending = 0,
     Activated = 1,
-    HardDrained = 6,
-    SoftDrained = 7,
+    Drained = 6,
 }
 
 impl From<u8> for DeviceDesiredStatus {
@@ -187,8 +187,7 @@ impl From<u8> for DeviceDesiredStatus {
         match value {
             0 => DeviceDesiredStatus::Pending,
             1 => DeviceDesiredStatus::Activated,
-            6 => DeviceDesiredStatus::HardDrained,
-            7 => DeviceDesiredStatus::SoftDrained,
+            6 => DeviceDesiredStatus::Drained,
             _ => DeviceDesiredStatus::Pending,
         }
     }
@@ -201,8 +200,7 @@ impl FromStr for DeviceDesiredStatus {
         match s.to_lowercase().as_str() {
             "pending" => Ok(DeviceDesiredStatus::Pending),
             "activated" => Ok(DeviceDesiredStatus::Activated),
-            "hard-drained" => Ok(DeviceDesiredStatus::HardDrained),
-            "soft-drained" => Ok(DeviceDesiredStatus::SoftDrained),
+            "drained" => Ok(DeviceDesiredStatus::Drained),
             _ => Err(format!("Invalid DeviceDesiredStatus: {s}")),
         }
     }
@@ -213,8 +211,7 @@ impl fmt::Display for DeviceDesiredStatus {
         match self {
             DeviceDesiredStatus::Pending => write!(f, "pending"),
             DeviceDesiredStatus::Activated => write!(f, "activated"),
-            DeviceDesiredStatus::HardDrained => write!(f, "hard-drained"),
-            DeviceDesiredStatus::SoftDrained => write!(f, "soft-drained"),
+            DeviceDesiredStatus::Drained => write!(f, "drained"),
         }
     }
 }
@@ -328,9 +325,72 @@ impl Device {
             && (self.max_users > 0 && self.users_count < self.max_users)
     }
 
-    pub fn check_status_transition(&self) {
-        // Implement any necessary status transition checks here
-        // this will be added in future iterations
+    /// Checks and updates the `status` of the `Device` based on its current `status`, `desired_status`, and `device_health`.
+    ///
+    /// The transition logic is as follows:
+    ///
+    /// | Current Status               | Desired Status           | Device Health           | New Status               |
+    /// |------------------------------|--------------------------|-------------------------|--------------------------|
+    /// | DeviceProvisioning           | Activated                | ReadyForLinks           | LinkProvisioning         |
+    /// | LinkProvisioning             | Activated                | ReadyForUsers           | Activated                |
+    /// | Activated                    | Drained                  | _                       | Drained                  |
+    /// | Drained                      | Activated                | ReadyForUsers           | Activated                |
+    /// | HardDrained                  | Activated                | ReadyForUsers           | Activated                |
+    ///
+    /// Where `_` means any value is valid for that field.
+    ///
+    pub fn check_status_transition(&mut self) {
+        match (self.status, self.desired_status, self.device_health) {
+            // Activation transition
+            (DeviceStatus::DeviceProvisioning, _, DeviceHealth::ReadyForLinks) => {
+                self.status = DeviceStatus::LinkProvisioning;
+            }
+            (
+                DeviceStatus::DeviceProvisioning,
+                DeviceDesiredStatus::Activated,
+                DeviceHealth::ReadyForUsers,
+            ) => {
+                self.status = DeviceStatus::Activated;
+            }
+            (
+                DeviceStatus::LinkProvisioning,
+                DeviceDesiredStatus::Activated,
+                DeviceHealth::ReadyForUsers,
+            ) => {
+                self.status = DeviceStatus::Activated;
+            }
+            // Drain transitions
+            (DeviceStatus::Activated, DeviceDesiredStatus::Drained, _) => {
+                self.status = DeviceStatus::Drained;
+            }
+            // ReadyForService recovery from drains
+            (
+                DeviceStatus::Drained,
+                DeviceDesiredStatus::Activated,
+                DeviceHealth::ReadyForLinks,
+            ) => {
+                self.status = DeviceStatus::Activated;
+            }
+            (
+                DeviceStatus::Drained,
+                DeviceDesiredStatus::Activated,
+                DeviceHealth::ReadyForUsers,
+            ) => {
+                self.status = DeviceStatus::Activated;
+            }
+
+            _ => {}
+        }
+    }
+
+    pub fn allow_latency(&self) -> bool {
+        matches!(
+            self.status,
+            DeviceStatus::Activated
+                | DeviceStatus::LinkProvisioning
+                | DeviceStatus::DeviceProvisioning
+                | DeviceStatus::Drained
+        )
     }
 }
 

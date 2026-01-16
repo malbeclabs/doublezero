@@ -4,10 +4,7 @@ use crate::doublezerocommand::CliCommand;
 use doublezero_sdk::{
     commands::{
         accesspass::get::GetAccessPassCommand,
-        allowlist::{
-            device::list::ListDeviceAllowlistCommand,
-            foundation::list::ListFoundationAllowlistCommand,
-        },
+        allowlist::foundation::list::ListFoundationAllowlistCommand,
     },
     get_doublezero_pubkey,
     keypair::ENV_KEYPAIR,
@@ -35,7 +32,6 @@ fn has_keypair_source() -> bool {
 pub const CHECK_ID_JSON: u8 = 1;
 pub const CHECK_BALANCE: u8 = 2;
 pub const CHECK_FOUNDATION_ALLOWLIST: u8 = 4;
-pub const CHECK_DEVICE_ALLOWLIST: u8 = 8;
 
 pub fn check_requirements(
     client: &dyn CliCommand,
@@ -52,7 +48,7 @@ pub fn check_requirements(
         check_balance(client, spinner)?;
     }
 
-    if checks & CHECK_FOUNDATION_ALLOWLIST != 0 || checks & CHECK_DEVICE_ALLOWLIST != 0 {
+    if checks & CHECK_FOUNDATION_ALLOWLIST != 0 {
         check_allowlist(client, spinner, checks)?;
     }
 
@@ -122,9 +118,6 @@ pub fn check_allowlist(
     // Check that the client is in the allowlist
     let is_in_allowlist = if checks & CHECK_FOUNDATION_ALLOWLIST != 0 {
         let allowlist = client.list_foundation_allowlist(ListFoundationAllowlistCommand)?;
-        allowlist.contains(&client.get_payer())
-    } else if checks & CHECK_DEVICE_ALLOWLIST != 0 {
-        let allowlist = client.list_device_allowlist(ListDeviceAllowlistCommand)?;
         allowlist.contains(&client.get_payer())
     } else {
         false

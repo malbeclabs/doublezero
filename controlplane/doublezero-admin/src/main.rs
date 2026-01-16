@@ -6,7 +6,7 @@ mod cli;
 use crate::cli::{
     command::Command,
     config::ConfigCommands,
-    device::{DeviceAllowlistCommands, DeviceCommands, InterfaceCommands},
+    device::{DeviceCommands, InterfaceCommands},
     exchange::ExchangeCommands,
     globalconfig::{
         AirdropCommands, AuthorityCommands, FoundationAllowlistCommands, GlobalConfigCommands,
@@ -130,14 +130,7 @@ async fn main() -> eyre::Result<()> {
             DeviceCommands::Update(args) => args.execute(&client, &mut handle),
             DeviceCommands::List(args) => args.execute(&client, &mut handle),
             DeviceCommands::Get(args) => args.execute(&client, &mut handle),
-            DeviceCommands::Suspend(args) => args.execute(&client, &mut handle),
-            DeviceCommands::Resume(args) => args.execute(&client, &mut handle),
             DeviceCommands::Delete(args) => args.execute(&client, &mut handle),
-            DeviceCommands::Allowlist(command) => match command.command {
-                DeviceAllowlistCommands::List(args) => args.execute(&client, &mut handle),
-                DeviceAllowlistCommands::Add(args) => args.execute(&client, &mut handle),
-                DeviceAllowlistCommands::Remove(args) => args.execute(&client, &mut handle),
-            },
             DeviceCommands::Interface(command) => match command.command {
                 InterfaceCommands::Create(args) => args.execute(&client, &mut handle),
                 InterfaceCommands::Update(args) => args.execute(&client, &mut handle),

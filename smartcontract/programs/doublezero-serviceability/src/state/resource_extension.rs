@@ -212,11 +212,11 @@ impl<'a> ResourceExtensionBorrowed<'a> {
                     .map_err(|_| DoubleZeroError::AllocationFailed)?;
             }
             Allocator::Id(id_allocator) => {
-                let &IdOrIp::Id(id) = value else {
+                let IdOrIp::Id(id) = value else {
                     return Err(DoubleZeroError::InvalidArgument);
                 };
                 id_allocator
-                    .allocate_specific(self.storage, id)
+                    .allocate_specific(self.storage, *id)
                     .map_err(|_| DoubleZeroError::AllocationFailed)?;
             }
         }
@@ -232,10 +232,10 @@ impl<'a> ResourceExtensionBorrowed<'a> {
                 ip_allocator.deallocate(self.storage, ip)
             }
             Allocator::Id(id_allocator) => {
-                let &IdOrIp::Id(id) = value else {
+                let IdOrIp::Id(id) = value else {
                     return false;
                 };
-                id_allocator.deallocate(self.storage, id)
+                id_allocator.deallocate(self.storage, *id)
             }
         }
     }

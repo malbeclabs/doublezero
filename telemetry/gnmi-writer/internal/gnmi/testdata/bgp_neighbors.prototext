@@ -1,0 +1,805 @@
+update: {
+  timestamp:  1768318392683045418
+  prefix: {
+    target: "CHiDN1111111111111111111111111111111111111111"
+  }
+  update:  {
+    path:  {
+      elem:  {
+        name:  "network-instances"
+      }
+      elem:  {
+        name:  "network-instance"
+        key:  {
+          key:  "name"
+          value:  "default"
+        }
+      }
+      elem:  {
+        name:  "protocols"
+      }
+      elem:  {
+        name:  "protocol"
+        key:  {
+          key:  "identifier"
+          value:  "BGP"
+        }
+        key:  {
+          key:  "name"
+          value:  "BGP"
+        }
+      }
+      elem:  {
+        name:  "bgp"
+      }
+      elem:  {
+        name:  "neighbors"
+      }
+      elem:  {
+        name:  "neighbor"
+        key:  {
+          key:  "neighbor-address"
+          value:  "11.1.2.5"
+        }
+      }
+      elem:  {
+        name:  "state"
+      }
+    }
+    val:  {
+      json_ietf_val:  "{\"openconfig-network-instance:neighbor-address\":\"11.1.2.5\"}"
+    }
+  }
+  update:  {
+    path:  {
+      elem:  {
+        name:  "network-instances"
+      }
+      elem:  {
+        name:  "network-instance"
+        key:  {
+          key:  "name"
+          value:  "default"
+        }
+      }
+      elem:  {
+        name:  "protocols"
+      }
+      elem:  {
+        name:  "protocol"
+        key:  {
+          key:  "identifier"
+          value:  "BGP"
+        }
+        key:  {
+          key:  "name"
+          value:  "BGP"
+        }
+      }
+      elem:  {
+        name:  "bgp"
+      }
+      elem:  {
+        name:  "neighbors"
+      }
+      elem:  {
+        name:  "neighbor"
+        key:  {
+          key:  "neighbor-address"
+          value:  "11.1.2.6"
+        }
+      }
+      elem:  {
+        name:  "state"
+      }
+    }
+    val:  {
+      json_ietf_val:  "{\"openconfig-network-instance:neighbor-address\":\"11.1.2.6\"}"
+    }
+  }
+  update:  {
+    path:  {
+      elem:  {
+        name:  "network-instances"
+      }
+      elem:  {
+        name:  "network-instance"
+        key:  {
+          key:  "name"
+          value:  "default"
+        }
+      }
+      elem:  {
+        name:  "protocols"
+      }
+      elem:  {
+        name:  "protocol"
+        key:  {
+          key:  "identifier"
+          value:  "BGP"
+        }
+        key:  {
+          key:  "name"
+          value:  "BGP"
+        }
+      }
+      elem:  {
+        name:  "bgp"
+      }
+      elem:  {
+        name:  "neighbors"
+      }
+      elem:  {
+        name:  "neighbor"
+        key:  {
+          key:  "neighbor-address"
+          value:  "11.1.2.7"
+        }
+      }
+      elem:  {
+        name:  "state"
+      }
+    }
+    val:  {
+      json_ietf_val:  "{\"openconfig-network-instance:neighbor-address\":\"11.1.2.7\"}"
+    }
+  }
+  update:  {
+    path:  {
+      elem:  {
+        name:  "network-instances"
+      }
+      elem:  {
+        name:  "network-instance"
+        key:  {
+          key:  "name"
+          value:  "default"
+        }
+      }
+      elem:  {
+        name:  "protocols"
+      }
+      elem:  {
+        name:  "protocol"
+        key:  {
+          key:  "identifier"
+          value:  "BGP"
+        }
+        key:  {
+          key:  "name"
+          value:  "BGP"
+        }
+      }
+      elem:  {
+        name:  "bgp"
+      }
+      elem:  {
+        name:  "neighbors"
+      }
+      elem:  {
+        name:  "neighbor"
+        key:  {
+          key:  "neighbor-address"
+          value:  "11.1.2.8"
+        }
+      }
+      elem:  {
+        name:  "state"
+      }
+    }
+    val:  {
+      json_ietf_val:  "{\"openconfig-network-instance:neighbor-address\":\"11.1.2.8\"}"
+    }
+  }
+  update:  {
+    path:  {
+      elem:  {
+        name:  "network-instances"
+      }
+      elem:  {
+        name:  "network-instance"
+        key:  {
+          key:  "name"
+          value:  "default"
+        }
+      }
+      elem:  {
+        name:  "protocols"
+      }
+      elem:  {
+        name:  "protocol"
+        key:  {
+          key:  "identifier"
+          value:  "BGP"
+        }
+        key:  {
+          key:  "name"
+          value:  "BGP"
+        }
+      }
+      elem:  {
+        name:  "bgp"
+      }
+      elem:  {
+        name:  "neighbors"
+      }
+      elem:  {
+        name:  "neighbor"
+        key:  {
+          key:  "neighbor-address"
+          value:  "11.1.2.9"
+        }
+      }
+      elem:  {
+        name:  "state"
+      }
+    }
+    val:  {
+      json_ietf_val:  "{\"openconfig-network-instance:neighbor-address\":\"11.1.2.9\"}"
+    }
+  }
+  update:  {
+    path:  {
+      elem:  {
+        name:  "network-instances"
+      }
+      elem:  {
+        name:  "network-instance"
+        key:  {
+          key:  "name"
+          value:  "default"
+        }
+      }
+      elem:  {
+        name:  "protocols"
+      }
+      elem:  {
+        name:  "protocol"
+        key:  {
+          key:  "identifier"
+          value:  "BGP"
+        }
+        key:  {
+          key:  "name"
+          value:  "BGP"
+        }
+      }
+      elem:  {
+        name:  "bgp"
+      }
+      elem:  {
+        name:  "neighbors"
+      }
+      elem:  {
+        name:  "neighbor"
+        key:  {
+          key:  "neighbor-address"
+          value:  "11.1.2.10"
+        }
+      }
+      elem:  {
+        name:  "state"
+      }
+    }
+    val:  {
+      json_ietf_val:  "{\"openconfig-network-instance:neighbor-address\":\"11.1.2.10\"}"
+    }
+  }
+  update:  {
+    path:  {
+      elem:  {
+        name:  "network-instances"
+      }
+      elem:  {
+        name:  "network-instance"
+        key:  {
+          key:  "name"
+          value:  "default"
+        }
+      }
+      elem:  {
+        name:  "protocols"
+      }
+      elem:  {
+        name:  "protocol"
+        key:  {
+          key:  "identifier"
+          value:  "BGP"
+        }
+        key:  {
+          key:  "name"
+          value:  "BGP"
+        }
+      }
+      elem:  {
+        name:  "bgp"
+      }
+      elem:  {
+        name:  "neighbors"
+      }
+      elem:  {
+        name:  "neighbor"
+        key:  {
+          key:  "neighbor-address"
+          value:  "172.16.0.1"
+        }
+      }
+      elem:  {
+        name:  "state"
+      }
+    }
+    val:  {
+      json_ietf_val:  "{\"openconfig-network-instance:description\":\"chi-dn-dzd2-vpnv4\",\"openconfig-network-instance:established-transitions\":\"1\",\"openconfig-network-instance:last-established\":\"1766077108722497224\",\"openconfig-network-instance:last-prefix-limit-exceeded\":\"0\",\"openconfig-network-instance:messages\":{\"received\":{\"NOTIFICATION\":\"0\",\"UPDATE\":\"46\"},\"sent\":{\"NOTIFICATION\":\"0\",\"UPDATE\":\"58\"}},\"openconfig-network-instance:neighbor-address\":\"172.16.0.1\",\"arista-bgp-augments:neighbor-router-id\":\"172.16.0.1\",\"arista-exp-eos-bgp:next-hop-self\":true,\"openconfig-network-instance:peer-as\":65342,\"openconfig-network-instance:peer-type\":\"INTERNAL\",\"openconfig-network-instance:queues\":{\"input\":0,\"output\":0},\"openconfig-network-instance:send-community\":\"BOTH\",\"openconfig-network-instance:session-state\":\"ESTABLISHED\",\"openconfig-network-instance:supported-capabilities\":[\"openconfig-bgp-types:ASN32\",\"openconfig-bgp-types:GRACEFUL_RESTART\",\"openconfig-bgp-types:ADD_PATHS\",\"openconfig-bgp-types:MPBGP\",\"openconfig-bgp-types:ROUTE_REFRESH\"]}"
+    }
+  }
+  update:  {
+    path:  {
+      elem:  {
+        name:  "network-instances"
+      }
+      elem:  {
+        name:  "network-instance"
+        key:  {
+          key:  "name"
+          value:  "default"
+        }
+      }
+      elem:  {
+        name:  "protocols"
+      }
+      elem:  {
+        name:  "protocol"
+        key:  {
+          key:  "identifier"
+          value:  "BGP"
+        }
+        key:  {
+          key:  "name"
+          value:  "BGP"
+        }
+      }
+      elem:  {
+        name:  "bgp"
+      }
+      elem:  {
+        name:  "neighbors"
+      }
+      elem:  {
+        name:  "neighbor"
+        key:  {
+          key:  "neighbor-address"
+          value:  "172.16.0.4"
+        }
+      }
+      elem:  {
+        name:  "state"
+      }
+    }
+    val:  {
+      json_ietf_val:  "{\"openconfig-network-instance:description\":\"test123-vpnv4\",\"openconfig-network-instance:established-transitions\":\"0\",\"openconfig-network-instance:last-established\":\"1766077008376136541\",\"openconfig-network-instance:last-prefix-limit-exceeded\":\"0\",\"openconfig-network-instance:messages\":{\"received\":{\"NOTIFICATION\":\"0\",\"UPDATE\":\"0\"},\"sent\":{\"NOTIFICATION\":\"0\",\"UPDATE\":\"0\"}},\"openconfig-network-instance:neighbor-address\":\"172.16.0.4\",\"openconfig-network-instance:neighbor-port\":0,\"arista-bgp-augments:neighbor-router-id\":\"0.0.0.0\",\"arista-exp-eos-bgp:next-hop-self\":true,\"openconfig-network-instance:peer-as\":65342,\"openconfig-network-instance:peer-type\":\"INTERNAL\",\"openconfig-network-instance:queues\":{\"input\":0,\"output\":0},\"openconfig-network-instance:send-community\":\"BOTH\",\"openconfig-network-instance:session-state\":\"CONNECT\"}"
+    }
+  }
+  update:  {
+    path:  {
+      elem:  {
+        name:  "network-instances"
+      }
+      elem:  {
+        name:  "network-instance"
+        key:  {
+          key:  "name"
+          value:  "default"
+        }
+      }
+      elem:  {
+        name:  "protocols"
+      }
+      elem:  {
+        name:  "protocol"
+        key:  {
+          key:  "identifier"
+          value:  "BGP"
+        }
+        key:  {
+          key:  "name"
+          value:  "BGP"
+        }
+      }
+      elem:  {
+        name:  "bgp"
+      }
+      elem:  {
+        name:  "neighbors"
+      }
+      elem:  {
+        name:  "neighbor"
+        key:  {
+          key:  "neighbor-address"
+          value:  "172.16.0.5"
+        }
+      }
+      elem:  {
+        name:  "state"
+      }
+    }
+    val:  {
+      json_ietf_val:  "{\"openconfig-network-instance:description\":\"chi-dn-dzd4-vpnv4\",\"openconfig-network-instance:established-transitions\":\"1\",\"openconfig-network-instance:last-established\":\"1766077108724994897\",\"openconfig-network-instance:last-prefix-limit-exceeded\":\"0\",\"openconfig-network-instance:messages\":{\"received\":{\"NOTIFICATION\":\"0\",\"UPDATE\":\"14\"},\"sent\":{\"NOTIFICATION\":\"0\",\"UPDATE\":\"58\"}},\"openconfig-network-instance:neighbor-address\":\"172.16.0.5\",\"arista-bgp-augments:neighbor-router-id\":\"172.16.0.5\",\"arista-exp-eos-bgp:next-hop-self\":true,\"openconfig-network-instance:peer-as\":65342,\"openconfig-network-instance:peer-type\":\"INTERNAL\",\"openconfig-network-instance:queues\":{\"input\":0,\"output\":0},\"openconfig-network-instance:send-community\":\"BOTH\",\"openconfig-network-instance:session-state\":\"ESTABLISHED\",\"openconfig-network-instance:supported-capabilities\":[\"openconfig-bgp-types:ADD_PATHS\",\"openconfig-bgp-types:MPBGP\",\"openconfig-bgp-types:ROUTE_REFRESH\",\"openconfig-bgp-types:ASN32\",\"openconfig-bgp-types:GRACEFUL_RESTART\"]}"
+    }
+  }
+  update:  {
+    path:  {
+      elem:  {
+        name:  "network-instances"
+      }
+      elem:  {
+        name:  "network-instance"
+        key:  {
+          key:  "name"
+          value:  "default"
+        }
+      }
+      elem:  {
+        name:  "protocols"
+      }
+      elem:  {
+        name:  "protocol"
+        key:  {
+          key:  "identifier"
+          value:  "BGP"
+        }
+        key:  {
+          key:  "name"
+          value:  "BGP"
+        }
+      }
+      elem:  {
+        name:  "bgp"
+      }
+      elem:  {
+        name:  "neighbors"
+      }
+      elem:  {
+        name:  "neighbor"
+        key:  {
+          key:  "neighbor-address"
+          value:  "172.16.0.8"
+        }
+      }
+      elem:  {
+        name:  "state"
+      }
+    }
+    val:  {
+      json_ietf_val:  "{\"openconfig-network-instance:description\":\"chi-dn-dzd4-ipv4\",\"openconfig-network-instance:established-transitions\":\"1\",\"openconfig-network-instance:last-established\":\"1766077108725606679\",\"openconfig-network-instance:last-prefix-limit-exceeded\":\"0\",\"openconfig-network-instance:messages\":{\"received\":{\"NOTIFICATION\":\"0\",\"UPDATE\":\"2\"},\"sent\":{\"NOTIFICATION\":\"0\",\"UPDATE\":\"42\"}},\"openconfig-network-instance:neighbor-address\":\"172.16.0.8\",\"arista-bgp-augments:neighbor-router-id\":\"172.16.0.5\",\"arista-exp-eos-bgp:next-hop-self\":true,\"openconfig-network-instance:peer-as\":65342,\"openconfig-network-instance:peer-type\":\"INTERNAL\",\"openconfig-network-instance:queues\":{\"input\":0,\"output\":0},\"openconfig-network-instance:send-community\":\"BOTH\",\"openconfig-network-instance:session-state\":\"ESTABLISHED\",\"openconfig-network-instance:supported-capabilities\":[\"openconfig-bgp-types:GRACEFUL_RESTART\",\"openconfig-bgp-types:ADD_PATHS\",\"openconfig-bgp-types:MPBGP\",\"openconfig-bgp-types:ROUTE_REFRESH\",\"openconfig-bgp-types:ASN32\"]}"
+    }
+  }
+  update:  {
+    path:  {
+      elem:  {
+        name:  "network-instances"
+      }
+      elem:  {
+        name:  "network-instance"
+        key:  {
+          key:  "name"
+          value:  "default"
+        }
+      }
+      elem:  {
+        name:  "protocols"
+      }
+      elem:  {
+        name:  "protocol"
+        key:  {
+          key:  "identifier"
+          value:  "BGP"
+        }
+        key:  {
+          key:  "name"
+          value:  "BGP"
+        }
+      }
+      elem:  {
+        name:  "bgp"
+      }
+      elem:  {
+        name:  "neighbors"
+      }
+      elem:  {
+        name:  "neighbor"
+        key:  {
+          key:  "neighbor-address"
+          value:  "172.16.0.9"
+        }
+      }
+      elem:  {
+        name:  "state"
+      }
+    }
+    val:  {
+      json_ietf_val:  "{\"openconfig-network-instance:description\":\"test123-ipv4\",\"openconfig-network-instance:established-transitions\":\"0\",\"openconfig-network-instance:last-established\":\"1766077008364961147\",\"openconfig-network-instance:last-prefix-limit-exceeded\":\"0\",\"openconfig-network-instance:messages\":{\"received\":{\"NOTIFICATION\":\"0\",\"UPDATE\":\"0\"},\"sent\":{\"NOTIFICATION\":\"0\",\"UPDATE\":\"0\"}},\"openconfig-network-instance:neighbor-address\":\"172.16.0.9\",\"openconfig-network-instance:neighbor-port\":0,\"arista-bgp-augments:neighbor-router-id\":\"0.0.0.0\",\"arista-exp-eos-bgp:next-hop-self\":true,\"openconfig-network-instance:peer-as\":65342,\"openconfig-network-instance:peer-type\":\"INTERNAL\",\"openconfig-network-instance:queues\":{\"input\":0,\"output\":0},\"openconfig-network-instance:send-community\":\"BOTH\",\"openconfig-network-instance:session-state\":\"CONNECT\"}"
+    }
+  }
+  update:  {
+    path:  {
+      elem:  {
+        name:  "network-instances"
+      }
+      elem:  {
+        name:  "network-instance"
+        key:  {
+          key:  "name"
+          value:  "default"
+        }
+      }
+      elem:  {
+        name:  "protocols"
+      }
+      elem:  {
+        name:  "protocol"
+        key:  {
+          key:  "identifier"
+          value:  "BGP"
+        }
+        key:  {
+          key:  "name"
+          value:  "BGP"
+        }
+      }
+      elem:  {
+        name:  "bgp"
+      }
+      elem:  {
+        name:  "neighbors"
+      }
+      elem:  {
+        name:  "neighbor"
+        key:  {
+          key:  "neighbor-address"
+          value:  "172.16.0.10"
+        }
+      }
+      elem:  {
+        name:  "state"
+      }
+    }
+    val:  {
+      json_ietf_val:  "{\"openconfig-network-instance:description\":\"dz-test-vpnv4\",\"openconfig-network-instance:established-transitions\":\"0\",\"openconfig-network-instance:last-established\":\"1766077008418535470\",\"openconfig-network-instance:last-prefix-limit-exceeded\":\"0\",\"openconfig-network-instance:messages\":{\"received\":{\"NOTIFICATION\":\"0\",\"UPDATE\":\"0\"},\"sent\":{\"NOTIFICATION\":\"0\",\"UPDATE\":\"0\"}},\"openconfig-network-instance:neighbor-address\":\"172.16.0.10\",\"openconfig-network-instance:neighbor-port\":0,\"arista-bgp-augments:neighbor-router-id\":\"0.0.0.0\",\"arista-exp-eos-bgp:next-hop-self\":true,\"openconfig-network-instance:peer-as\":65342,\"openconfig-network-instance:peer-type\":\"INTERNAL\",\"openconfig-network-instance:queues\":{\"input\":0,\"output\":0},\"openconfig-network-instance:send-community\":\"BOTH\",\"openconfig-network-instance:session-state\":\"CONNECT\"}"
+    }
+  }
+  update:  {
+    path:  {
+      elem:  {
+        name:  "network-instances"
+      }
+      elem:  {
+        name:  "network-instance"
+        key:  {
+          key:  "name"
+          value:  "default"
+        }
+      }
+      elem:  {
+        name:  "protocols"
+      }
+      elem:  {
+        name:  "protocol"
+        key:  {
+          key:  "identifier"
+          value:  "BGP"
+        }
+        key:  {
+          key:  "name"
+          value:  "BGP"
+        }
+      }
+      elem:  {
+        name:  "bgp"
+      }
+      elem:  {
+        name:  "neighbors"
+      }
+      elem:  {
+        name:  "neighbor"
+        key:  {
+          key:  "neighbor-address"
+          value:  "172.16.0.12"
+        }
+      }
+      elem:  {
+        name:  "state"
+      }
+    }
+    val:  {
+      json_ietf_val:  "{\"openconfig-network-instance:description\":\"chi-dn-dzd2-ipv4\",\"openconfig-network-instance:established-transitions\":\"1\",\"openconfig-network-instance:last-established\":\"1766077108723847627\",\"openconfig-network-instance:last-prefix-limit-exceeded\":\"0\",\"openconfig-network-instance:messages\":{\"received\":{\"NOTIFICATION\":\"0\",\"UPDATE\":\"38\"},\"sent\":{\"NOTIFICATION\":\"0\",\"UPDATE\":\"42\"}},\"openconfig-network-instance:neighbor-address\":\"172.16.0.12\",\"arista-bgp-augments:neighbor-router-id\":\"172.16.0.1\",\"arista-exp-eos-bgp:next-hop-self\":true,\"openconfig-network-instance:peer-as\":65342,\"openconfig-network-instance:peer-type\":\"INTERNAL\",\"openconfig-network-instance:queues\":{\"input\":0,\"output\":0},\"openconfig-network-instance:send-community\":\"BOTH\",\"openconfig-network-instance:session-state\":\"ESTABLISHED\",\"openconfig-network-instance:supported-capabilities\":[\"openconfig-bgp-types:ADD_PATHS\",\"openconfig-bgp-types:MPBGP\",\"openconfig-bgp-types:ROUTE_REFRESH\",\"openconfig-bgp-types:ASN32\",\"openconfig-bgp-types:GRACEFUL_RESTART\"]}"
+    }
+  }
+  update:  {
+    path:  {
+      elem:  {
+        name:  "network-instances"
+      }
+      elem:  {
+        name:  "network-instance"
+        key:  {
+          key:  "name"
+          value:  "default"
+        }
+      }
+      elem:  {
+        name:  "protocols"
+      }
+      elem:  {
+        name:  "protocol"
+        key:  {
+          key:  "identifier"
+          value:  "BGP"
+        }
+        key:  {
+          key:  "name"
+          value:  "BGP"
+        }
+      }
+      elem:  {
+        name:  "bgp"
+      }
+      elem:  {
+        name:  "neighbors"
+      }
+      elem:  {
+        name:  "neighbor"
+        key:  {
+          key:  "neighbor-address"
+          value:  "172.16.0.13"
+        }
+      }
+      elem:  {
+        name:  "state"
+      }
+    }
+    val:  {
+      json_ietf_val:  "{\"openconfig-network-instance:description\":\"chi-dn-dzd3-vpnv4\",\"openconfig-network-instance:established-transitions\":\"1\",\"openconfig-network-instance:last-established\":\"1766077108726305723\",\"openconfig-network-instance:last-prefix-limit-exceeded\":\"0\",\"openconfig-network-instance:messages\":{\"received\":{\"NOTIFICATION\":\"0\",\"UPDATE\":\"83\"},\"sent\":{\"NOTIFICATION\":\"0\",\"UPDATE\":\"58\"}},\"openconfig-network-instance:neighbor-address\":\"172.16.0.13\",\"arista-bgp-augments:neighbor-router-id\":\"172.16.0.13\",\"arista-exp-eos-bgp:next-hop-self\":true,\"openconfig-network-instance:peer-as\":65342,\"openconfig-network-instance:peer-type\":\"INTERNAL\",\"openconfig-network-instance:queues\":{\"input\":0,\"output\":0},\"openconfig-network-instance:send-community\":\"BOTH\",\"openconfig-network-instance:session-state\":\"ESTABLISHED\",\"openconfig-network-instance:supported-capabilities\":[\"openconfig-bgp-types:ASN32\",\"openconfig-bgp-types:GRACEFUL_RESTART\",\"openconfig-bgp-types:ADD_PATHS\",\"openconfig-bgp-types:MPBGP\",\"openconfig-bgp-types:ROUTE_REFRESH\"]}"
+    }
+  }
+  update:  {
+    path:  {
+      elem:  {
+        name:  "network-instances"
+      }
+      elem:  {
+        name:  "network-instance"
+        key:  {
+          key:  "name"
+          value:  "default"
+        }
+      }
+      elem:  {
+        name:  "protocols"
+      }
+      elem:  {
+        name:  "protocol"
+        key:  {
+          key:  "identifier"
+          value:  "BGP"
+        }
+        key:  {
+          key:  "name"
+          value:  "BGP"
+        }
+      }
+      elem:  {
+        name:  "bgp"
+      }
+      elem:  {
+        name:  "neighbors"
+      }
+      elem:  {
+        name:  "neighbor"
+        key:  {
+          key:  "neighbor-address"
+          value:  "172.16.0.14"
+        }
+      }
+      elem:  {
+        name:  "state"
+      }
+    }
+    val:  {
+      json_ietf_val:  "{\"openconfig-network-instance:description\":\"chi-dn-dzd3-ipv4\",\"openconfig-network-instance:established-transitions\":\"1\",\"openconfig-network-instance:last-established\":\"1766077108724488735\",\"openconfig-network-instance:last-prefix-limit-exceeded\":\"0\",\"openconfig-network-instance:messages\":{\"received\":{\"NOTIFICATION\":\"0\",\"UPDATE\":\"4\"},\"sent\":{\"NOTIFICATION\":\"0\",\"UPDATE\":\"42\"}},\"openconfig-network-instance:neighbor-address\":\"172.16.0.14\",\"arista-bgp-augments:neighbor-router-id\":\"172.16.0.13\",\"arista-exp-eos-bgp:next-hop-self\":true,\"openconfig-network-instance:peer-as\":65342,\"openconfig-network-instance:peer-type\":\"INTERNAL\",\"openconfig-network-instance:queues\":{\"input\":0,\"output\":0},\"openconfig-network-instance:send-community\":\"BOTH\",\"openconfig-network-instance:session-state\":\"ESTABLISHED\",\"openconfig-network-instance:supported-capabilities\":[\"openconfig-bgp-types:MPBGP\",\"openconfig-bgp-types:ROUTE_REFRESH\",\"openconfig-bgp-types:ASN32\",\"openconfig-bgp-types:GRACEFUL_RESTART\",\"openconfig-bgp-types:ADD_PATHS\"]}"
+    }
+  }
+  update:  {
+    path:  {
+      elem:  {
+        name:  "network-instances"
+      }
+      elem:  {
+        name:  "network-instance"
+        key:  {
+          key:  "name"
+          value:  "default"
+        }
+      }
+      elem:  {
+        name:  "protocols"
+      }
+      elem:  {
+        name:  "protocol"
+        key:  {
+          key:  "identifier"
+          value:  "BGP"
+        }
+        key:  {
+          key:  "name"
+          value:  "BGP"
+        }
+      }
+      elem:  {
+        name:  "bgp"
+      }
+      elem:  {
+        name:  "neighbors"
+      }
+      elem:  {
+        name:  "neighbor"
+        key:  {
+          key:  "neighbor-address"
+          value:  "172.16.0.21"
+        }
+      }
+      elem:  {
+        name:  "state"
+      }
+    }
+    val:  {
+      json_ietf_val:  "{\"openconfig-network-instance:description\":\"dz-test-ipv4\",\"openconfig-network-instance:established-transitions\":\"0\",\"openconfig-network-instance:last-established\":\"1766077008372051477\",\"openconfig-network-instance:last-prefix-limit-exceeded\":\"0\",\"openconfig-network-instance:messages\":{\"received\":{\"NOTIFICATION\":\"0\",\"UPDATE\":\"0\"},\"sent\":{\"NOTIFICATION\":\"0\",\"UPDATE\":\"0\"}},\"openconfig-network-instance:neighbor-address\":\"172.16.0.21\",\"openconfig-network-instance:neighbor-port\":0,\"arista-bgp-augments:neighbor-router-id\":\"0.0.0.0\",\"arista-exp-eos-bgp:next-hop-self\":true,\"openconfig-network-instance:peer-as\":65342,\"openconfig-network-instance:peer-type\":\"INTERNAL\",\"openconfig-network-instance:queues\":{\"input\":0,\"output\":0},\"openconfig-network-instance:send-community\":\"BOTH\",\"openconfig-network-instance:session-state\":\"CONNECT\"}"
+    }
+  }
+  update:  {
+    path:  {
+      elem:  {
+        name:  "network-instances"
+      }
+      elem:  {
+        name:  "network-instance"
+        key:  {
+          key:  "name"
+          value:  "vrf1"
+        }
+      }
+      elem:  {
+        name:  "protocols"
+      }
+      elem:  {
+        name:  "protocol"
+        key:  {
+          key:  "identifier"
+          value:  "BGP"
+        }
+        key:  {
+          key:  "name"
+          value:  "BGP"
+        }
+      }
+      elem:  {
+        name:  "bgp"
+      }
+      elem:  {
+        name:  "neighbors"
+      }
+      elem:  {
+        name:  "neighbor"
+        key:  {
+          key:  "neighbor-address"
+          value:  "169.254.0.1"
+        }
+      }
+      elem:  {
+        name:  "state"
+      }
+    }
+    val:  {
+      json_ietf_val:  "{\"openconfig-network-instance:description\":\"USER-500\",\"openconfig-network-instance:established-transitions\":\"0\",\"openconfig-network-instance:last-established\":\"1766077008359288930\",\"openconfig-network-instance:last-prefix-limit-exceeded\":\"0\",\"openconfig-network-instance:local-as\":21682,\"openconfig-network-instance:messages\":{\"received\":{\"NOTIFICATION\":\"0\",\"UPDATE\":\"0\"},\"sent\":{\"NOTIFICATION\":\"0\",\"UPDATE\":\"0\"}},\"openconfig-network-instance:neighbor-address\":\"169.254.0.1\",\"openconfig-network-instance:neighbor-port\":0,\"arista-bgp-augments:neighbor-router-id\":\"0.0.0.0\",\"openconfig-network-instance:peer-as\":65000,\"openconfig-network-instance:peer-type\":\"EXTERNAL\",\"openconfig-network-instance:queues\":{\"input\":0,\"output\":0},\"openconfig-network-instance:session-state\":\"ACTIVE\"}"
+    }
+  }
+}

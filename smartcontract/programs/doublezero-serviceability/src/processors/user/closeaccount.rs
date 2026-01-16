@@ -68,12 +68,21 @@ pub fn process_closeaccount_user(
 
     let user = User::try_from(user_account)?;
 
+    if user.device_pk != *device_account.key {
+        return Err(ProgramError::InvalidAccountData);
+    }
+
     if user.owner != *owner_account.key {
         return Err(ProgramError::InvalidAccountData);
     }
     if user.status != UserStatus::Deleting {
         msg!("{:?}", user);
         return Err(solana_program::program_error::ProgramError::Custom(1));
+    }
+
+    if !user.publishers.is_empty() || !user.subscribers.is_empty() {
+        msg!("{:?}", user);
+        return Err(DoubleZeroError::ReferenceCountNotZero.into());
     }
 
     let mut device = Device::try_from(device_account)?;
@@ -88,4 +97,157 @@ pub fn process_closeaccount_user(
     msg!("CloseAccount: User closed");
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use solana_program::{account_info::AccountInfo, clock::Epoch};
+
+    #[test]
+    fn test_closeaccount_user_fails_when_publishers_or_subscribers_not_empty() {
+        let program_id = Pubkey::new_unique();
+
+        let user_pk = Pubkey::new_unique();
+        let owner_pk = Pubkey::new_unique();
+        let device_pk = Pubkey::new_unique();
+        let globalstate_pk = Pubkey::new_unique();
+        let payer_pk = Pubkey::new_unique();
+
+        let mut user_lamports = 0u64;
+        let mut device_lamports = 0u64;
+        let mut globalstate_lamports = 0u64;
+        let mut payer_lamports = 0u64;
+
+        let mut user_data = vec![0u8; 1024];
+        let mut device_data = vec![0u8; 512];
+        let mut globalstate_data = vec![0u8; 512];
+
+        let user = User {
+            account_type: crate::state::accounttype::AccountType::User,
+            owner: owner_pk,
+            index: 0,
+            bump_seed: 0,
+            user_type: UserType::IBRL,
+            tenant_pk: Pubkey::default(),
+            device_pk,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: [0, 0, 0, 0].into(),
+            dz_ip: [0, 0, 0, 0].into(),
+            tunnel_id: 0,
+            tunnel_net: doublezero_program_common::types::NetworkV4::default(),
+            status: UserStatus::Deleting,
+            publishers: vec![Pubkey::new_unique()],
+            subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
+        };
+
+        let device = Device {
+            owner: payer_pk,
+            reference_count: 1,
+            users_count: 1,
+            max_users: 10,
+            status: crate::state::device::DeviceStatus::Activated,
+            desired_status: crate::state::device::DeviceDesiredStatus::Activated,
+            ..Device::default()
+        };
+
+        let globalstate = GlobalState {
+            activator_authority_pk: payer_pk,
+            ..GlobalState::default()
+        };
+
+        let user_len = borsh::to_vec(&user).unwrap().len();
+        user_data[..user_len].copy_from_slice(&borsh::to_vec(&user).unwrap());
+
+        let device_len = borsh::to_vec(&device).unwrap().len();
+        device_data[..device_len].copy_from_slice(&borsh::to_vec(&device).unwrap());
+
+        let globalstate_len = borsh::to_vec(&globalstate).unwrap().len();
+        globalstate_data[..globalstate_len].copy_from_slice(&borsh::to_vec(&globalstate).unwrap());
+
+        let user_account = AccountInfo::new(
+            &user_pk,
+            false,
+            true,
+            &mut user_lamports,
+            &mut user_data,
+            &program_id,
+            false,
+            Epoch::default(),
+        );
+        let mut owner_lamports = 0u64;
+        let owner_account = AccountInfo::new(
+            &owner_pk,
+            false,
+            false,
+            &mut owner_lamports,
+            &mut [],
+            &program_id,
+            false,
+            Epoch::default(),
+        );
+        let device_account = AccountInfo::new(
+            &device_pk,
+            false,
+            true,
+            &mut device_lamports,
+            &mut device_data,
+            &program_id,
+            false,
+            Epoch::default(),
+        );
+        let globalstate_account = AccountInfo::new(
+            &globalstate_pk,
+            false,
+            false,
+            &mut globalstate_lamports,
+            &mut globalstate_data,
+            &program_id,
+            false,
+            Epoch::default(),
+        );
+        let payer_account = AccountInfo::new(
+            &payer_pk,
+            true,
+            true,
+            &mut payer_lamports,
+            &mut [],
+            &program_id,
+            false,
+            Epoch::default(),
+        );
+        let system_program_id = solana_program::system_program::id();
+        let mut system_program_lamports = 0u64;
+        let system_program_account = AccountInfo::new(
+            &system_program_id,
+            false,
+            false,
+            &mut system_program_lamports,
+            &mut [],
+            &system_program_id,
+            false,
+            Epoch::default(),
+        );
+
+        let accounts = vec![
+            user_account,
+            owner_account,
+            device_account,
+            globalstate_account,
+            payer_account,
+            system_program_account,
+        ];
+
+        let result = process_closeaccount_user(&program_id, &accounts, &UserCloseAccountArgs {});
+
+        assert!(result.is_err());
+        let err = result.err().unwrap();
+        match err {
+            ProgramError::Custom(code) => {
+                assert_eq!(code, 13);
+            }
+            _ => panic!("Unexpected error type: {:?}", err),
+        };
+    }
 }

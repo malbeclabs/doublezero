@@ -234,8 +234,13 @@ func (p *DoubleZeroUserICMPPlanner) recordResult(source *Source, user *dz.User, 
 	if !user.ValidatorPK.IsZero() {
 		// Is the user validator pubkey in the solana vote accounts?
 		tags["user_validator_pubkey"] = user.ValidatorPK.String()
-		_, ok := validators[user.ValidatorPK]
+		val, ok := validators[user.ValidatorPK]
 		fields["user_validator_pubkey_in_solana_vote_accounts"] = ok
+
+		// Add validator vote pubkey if validator exists
+		if ok && val != nil && !val.VoteAccount.VotePubkey.IsZero() {
+			tags["validator_vote_pubkey"] = val.VoteAccount.VotePubkey.String()
+		}
 
 		// Is the user validator pubkey in the solana gossip?
 		_, ok = gossipNodes[user.ValidatorPK]

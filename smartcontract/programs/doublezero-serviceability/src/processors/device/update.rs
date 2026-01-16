@@ -205,21 +205,22 @@ pub fn process_update_device(
         if globalstate.foundation_allowlist.contains(payer_account.key) {
             device.status = status;
         } else {
-            // Contributors can only transition between Activated <-> Drained states & Drained <-> Drained states,
-            // but note: transitioning from HardDrained to Activated requires first moving to SoftDrained,
-            // to allow for maintenance draining of links and to verify establishment of connections.
+            // Contributors can only transition between Activated <-> Drained states,
+            // This enforces a maintenance step before reactivation.
             match (device.status, status) {
-                (DeviceStatus::Activated, DeviceStatus::HardDrained)
-                | (DeviceStatus::Activated, DeviceStatus::SoftDrained)
-                | (DeviceStatus::HardDrained, DeviceStatus::SoftDrained)
-                | (DeviceStatus::SoftDrained, DeviceStatus::HardDrained)
-                | (DeviceStatus::SoftDrained, DeviceStatus::Activated) => {
+                (DeviceStatus::Activated, DeviceStatus::Drained)
+                | (DeviceStatus::Drained, DeviceStatus::Activated) => {
                     device.status = status;
                 }
                 _ => return Err(DoubleZeroError::NotAllowed.into()),
             }
         }
     }
+    if let Some(desired_status) = value.desired_status {
+        device.desired_status = desired_status;
+    }
+
+    device.check_status_transition();
 
     try_acc_write(&device, device_account, payer_account, accounts)?;
 

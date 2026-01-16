@@ -37,11 +37,8 @@ stateDiagram-v2
 		LinkProvisioning --> Activated: RFS (users) criteria met
 	}
 	state Operation {
-		Activated --> SoftDrained
-		SoftDrained --> Activated
-		SoftDrained --> HardDrained
-		Activated --> HardDrained
-		HardDrained --> Activated
+		Activated --> tDrained
+		Drained --> Activated
 	}
 ```
 

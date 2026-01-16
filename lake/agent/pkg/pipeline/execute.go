@@ -43,6 +43,34 @@ func (p *Pipeline) Execute(ctx context.Context, query GeneratedQuery, questionNu
 	}, nil
 }
 
+// formatValueForLLM formats a single value for display to the LLM.
+// Floats are rounded to 2 decimal places to avoid long decimals (like 3.3333333333333335)
+// that can confuse the LLM into thinking they're encoded/hex values.
+func formatValueForLLM(v any) string {
+	switch val := v.(type) {
+	case float64:
+		// Round to 2 decimal places for cleaner output
+		if val == float64(int64(val)) {
+			return fmt.Sprintf("%.0f", val) // Whole number, no decimals
+		}
+		return fmt.Sprintf("%.2f", val)
+	case float32:
+		if val == float32(int32(val)) {
+			return fmt.Sprintf("%.0f", val)
+		}
+		return fmt.Sprintf("%.2f", val)
+	case nil:
+		return ""
+	default:
+		s := fmt.Sprintf("%v", v)
+		// Truncate long values
+		if len(s) > 100 {
+			s = s[:97] + "..."
+		}
+		return s
+	}
+}
+
 // FormatQueryResult formats a query result for display in the synthesis prompt.
 func FormatQueryResult(result QueryResult) string {
 	if result.Error != "" {
@@ -67,13 +95,7 @@ func FormatQueryResult(result QueryResult) string {
 	for i := 0; i < displayRows && i < len(result.Rows); i++ {
 		values := make([]string, len(result.Columns))
 		for j, col := range result.Columns {
-			v := result.Rows[i][col]
-			s := fmt.Sprintf("%v", v)
-			// Truncate long values
-			if len(s) > 100 {
-				s = s[:97] + "..."
-			}
-			values[j] = s
+			values[j] = formatValueForLLM(result.Rows[i][col])
 		}
 		sb.WriteString(strings.Join(values, " | ") + "\n")
 	}

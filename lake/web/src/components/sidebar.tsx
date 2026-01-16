@@ -13,6 +13,8 @@ import {
   RefreshCw,
   Sun,
   Moon,
+  Monitor,
+  Check,
   ArrowUpCircle,
   Server,
   Link2,
@@ -72,7 +74,7 @@ export function Sidebar({
 }: SidebarProps) {
   const navigate = useNavigate()
   const location = useLocation()
-  const { resolvedTheme, setTheme } = useTheme()
+  const { theme, resolvedTheme, setTheme } = useTheme()
   const { updateAvailable, reload } = useVersionCheck()
   const isLandingPage = location.pathname === '/'
   const isTopologyPage = location.pathname === '/topology'
@@ -93,6 +95,7 @@ export function Sidebar({
     const saved = localStorage.getItem('sidebar-user-collapsed')
     return saved !== null ? saved === 'true' : null
   })
+  const [themeMenuOpen, setThemeMenuOpen] = useState(false)
 
   // Auto-collapse/expand based on route and user preference
   useEffect(() => {
@@ -139,8 +142,16 @@ export function Sidebar({
     localStorage.setItem('sidebar-user-collapsed', String(collapsed))
   }
 
-  const toggleTheme = () => {
-    setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')
+  const themeOptions = [
+    { value: 'light' as const, label: 'Light', icon: Sun },
+    { value: 'dark' as const, label: 'Dark', icon: Moon },
+    { value: 'system' as const, label: 'System', icon: Monitor },
+  ]
+
+  const currentThemeIcon = () => {
+    if (theme === 'system') return <Monitor className="h-4 w-4" />
+    if (theme === 'dark') return <Moon className="h-4 w-4" />
+    return <Sun className="h-4 w-4" />
   }
 
   const isQueryRoute = location.pathname.startsWith('/query')
@@ -323,13 +334,39 @@ export function Sidebar({
               <ArrowUpCircle className="h-4 w-4" />
             </button>
           )}
-          <button
-            onClick={toggleTheme}
-            className="p-2 text-muted-foreground hover:text-foreground transition-colors"
-            title={resolvedTheme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-          >
-            {resolvedTheme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-          </button>
+          <div className="relative">
+            <button
+              onClick={() => setThemeMenuOpen(!themeMenuOpen)}
+              className="p-2 text-muted-foreground hover:text-foreground transition-colors"
+              title="Theme"
+            >
+              {currentThemeIcon()}
+            </button>
+            {themeMenuOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-10"
+                  onClick={() => setThemeMenuOpen(false)}
+                />
+                <div className="absolute right-0 top-full mt-1 z-20 bg-card border border-border rounded-md shadow-md py-1 min-w-[120px]">
+                  {themeOptions.map((option) => (
+                    <button
+                      key={option.value}
+                      onClick={() => {
+                        setTheme(option.value)
+                        setThemeMenuOpen(false)
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-foreground hover:bg-muted transition-colors"
+                    >
+                      <option.icon className="h-3.5 w-3.5" />
+                      {option.label}
+                      {theme === option.value && <Check className="h-3 w-3 ml-auto" />}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
           <button
             onClick={() => handleSetCollapsed(false)}
             className="p-2 text-muted-foreground hover:text-foreground transition-colors"
@@ -692,13 +729,40 @@ export function Sidebar({
             Update available
           </button>
         )}
-        <button
-          onClick={toggleTheme}
-          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)] rounded transition-colors"
-        >
-          {resolvedTheme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-          {resolvedTheme === 'dark' ? 'Light mode' : 'Dark mode'}
-        </button>
+        <div className="relative">
+          <button
+            onClick={() => setThemeMenuOpen(!themeMenuOpen)}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)] rounded transition-colors"
+            title="Theme"
+          >
+            {currentThemeIcon()}
+            {theme === 'system' ? 'System' : theme === 'dark' ? 'Dark' : 'Light'}
+          </button>
+          {themeMenuOpen && (
+            <>
+              <div
+                className="fixed inset-0 z-10"
+                onClick={() => setThemeMenuOpen(false)}
+              />
+              <div className="absolute left-0 bottom-full mb-1 z-20 bg-card border border-border rounded-md shadow-md py-1 min-w-[140px]">
+                {themeOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    onClick={() => {
+                      setTheme(option.value)
+                      setThemeMenuOpen(false)
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-foreground hover:bg-muted transition-colors"
+                  >
+                    <option.icon className="h-4 w-4" />
+                    {option.label}
+                    {theme === option.value && <Check className="h-3.5 w-3.5 ml-auto" />}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
         <p className="text-xs text-grey-40 leading-snug">
           Early preview. Chat and query history is stored locally in your browser and may be cleared.
         </p>

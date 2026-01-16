@@ -122,6 +122,13 @@ Respond with a JSON object containing an array of data questions:
 
 *Key insight*: One query is enough - synthesis can count rows and sum stake. "Connected in the last X" means **newly connected** during that period - use the comparison approach (connected now but NOT connected X hours ago). Do NOT use first-appearance-since-ingestion queries. If the query returns 0 validators, the answer is "0 validators connected recently".
 
+**User Question**: "Which validators disconnected in the last 24 hours?" or "Which validators left DZ recently?"
+
+**Good Decomposition**:
+1. Which validators were connected to DZ 24 hours ago but are NOT connected now, and whose user record was deleted in the past 24 hours? Include vote_pubkey, stake, and **the disconnection timestamp** (when the user record was deleted).
+
+*Key insight*: "Disconnected recently" requires: (1) was connected before, (2) not connected now, (3) user record deleted within the time window. **Always include the disconnection timestamp** (`disconnected_ts`) - users need to know WHEN each validator left, not just that they left. The disconnection timestamp is the `snapshot_ts` of the delete record in the user history table.
+
 **User Question**: "Which validators connected to DZ between 24 hours ago and 22 hours ago?"
 
 **Good Decomposition**:

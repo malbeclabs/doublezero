@@ -296,13 +296,14 @@ ORDER BY stake_sol DESC
 
 This requires using history tables to find when the user record was deleted. The `solana_validators_on_dz_connections` view does NOT have disconnection timestamps.
 
-**Strategy**: Find validators connected at time T1, exclude those currently connected, then verify the user was deleted within the time window.
+**Strategy**: Find validators connected at time T1, exclude those currently connected, then verify the user was deleted within the time window. **IMPORTANT**: Include the disconnection timestamp in the output so users know WHEN each validator disconnected.
 
 ```sql
 -- Validators that disconnected in the past 24 hours
 -- Step 1: Find validators connected 24h ago using SCD Type 2 pattern
 -- Step 2: Exclude those still connected now
 -- Step 3: Filter to those whose user record was deleted in the past 24h
+-- Step 4: INCLUDE the disconnection timestamp (when the user record was deleted)
 WITH validators_24h_ago AS (
   -- Get validators connected 24 hours ago using SCD Type 2 pattern
   SELECT DISTINCT va.vote_pubkey, va.activated_stake_lamports, u.entity_id AS user_entity_id
@@ -325,20 +326,24 @@ WITH validators_24h_ago AS (
     AND va.epoch_vote_account = 'true' AND va.activated_stake_lamports > 0
 ),
 recent_disconnections AS (
-  -- Find user entities deleted in the past 24 hours
-  SELECT DISTINCT entity_id
+  -- Find user entities deleted in the past 24 hours WITH their disconnection timestamp
+  SELECT entity_id, MAX(snapshot_ts) AS disconnected_ts
   FROM dim_dz_users_history
   WHERE is_deleted = 1
     AND snapshot_ts >= now() - INTERVAL 24 HOUR
+  GROUP BY entity_id
 )
-SELECT v.vote_pubkey, v.activated_stake_lamports / 1e9 AS stake_sol
+-- ALWAYS include disconnected_ts so users know WHEN each validator left
+SELECT v.vote_pubkey, v.activated_stake_lamports / 1e9 AS stake_sol, rd.disconnected_ts
 FROM validators_24h_ago v
+JOIN recent_disconnections rd ON v.user_entity_id = rd.entity_id
 WHERE v.vote_pubkey NOT IN (SELECT vote_pubkey FROM solana_validators_on_dz_current)
-  AND v.user_entity_id IN (SELECT entity_id FROM recent_disconnections)
-ORDER BY stake_sol DESC
+ORDER BY rd.disconnected_ts DESC, stake_sol DESC
 ```
 
-**Key insight**: "No longer connected" ≠ "recently disconnected". A validator that left 30 days ago is "no longer connected" but did NOT "recently disconnect". For stake share decrease questions, you need the time-filtered approach.
+**Key insights**:
+- "No longer connected" ≠ "recently disconnected". A validator that left 30 days ago is "no longer connected" but did NOT "recently disconnect". For stake share decrease questions, you need the time-filtered approach.
+- **Always include the disconnection timestamp** (`disconnected_ts`) - this is the `snapshot_ts` of the delete record, which is WHEN the validator left DZ. Users asking about disconnected validators need to know when it happened, not just that it happened.
 
 ### Validators That Connected During a Time Window (IMPORTANT)
 

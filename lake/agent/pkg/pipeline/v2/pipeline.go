@@ -80,8 +80,7 @@ func (p *Pipeline) RunWithProgress(ctx context.Context, userQuestion string, his
 	p.llmCalls.Store(0)
 
 	result := &pipeline.PipelineResult{
-		UserQuestion:   userQuestion,
-		Classification: pipeline.ClassificationDataAnalysis, // v2 assumes data analysis
+		UserQuestion: userQuestion,
 	}
 
 	// Helper to call progress callback if set
@@ -90,6 +89,10 @@ func (p *Pipeline) RunWithProgress(ctx context.Context, userQuestion string, his
 			// Emit actual v2 stage names for proper frontend display
 			var progressStage pipeline.ProgressStage
 			switch stage {
+			case StageClassifying:
+				progressStage = pipeline.StageClassifying
+			case StageResponding:
+				progressStage = pipeline.StageSynthesizing // Map to synthesizing for frontend
 			case StageInterpreting:
 				progressStage = pipeline.StageInterpreting
 			case StageMapping:
@@ -113,6 +116,50 @@ func (p *Pipeline) RunWithProgress(ctx context.Context, userQuestion string, his
 			})
 		}
 	}
+
+	// Stage 0: Classify
+	notify(StageClassifying, "Classifying question...")
+	p.logInfo("v2 pipeline: classifying question")
+
+	classification, err := p.ClassifyWithHistory(ctx, userQuestion, history)
+	if err != nil {
+		notify(StageError, "Classification failed")
+		return nil, fmt.Errorf("classification failed: %w", err)
+	}
+	result.Classification = classification.Classification
+	p.logInfo("v2 pipeline: question classified",
+		"classification", classification.Classification,
+		"reasoning", classification.Reasoning)
+
+	// Handle non-data-analysis classifications
+	switch classification.Classification {
+	case pipeline.ClassificationOutOfScope:
+		answer := classification.DirectResponse
+		if answer == "" {
+			answer = "I'm a DoubleZero data analyst. I can help you with questions about the DZ network, devices, links, users, connected Solana validators, and performance metrics. What would you like to know?"
+		}
+		result.Answer = answer
+		notify(StageComplete, "Complete")
+		p.logInfo("v2 pipeline: out of scope, returning direct response")
+		return result, nil
+
+	case pipeline.ClassificationConversational:
+		notify(StageResponding, "Preparing response...")
+		p.logInfo("v2 pipeline: conversational, generating response")
+
+		answer, err := p.RespondWithHistory(ctx, userQuestion, history)
+		if err != nil {
+			notify(StageError, "Response generation failed")
+			return nil, fmt.Errorf("response generation failed: %w", err)
+		}
+		result.Answer = answer
+		notify(StageComplete, "Complete")
+		p.logInfo("v2 pipeline: conversational response complete")
+		return result, nil
+	}
+
+	// Data analysis path - continue with the full pipeline
+	result.Classification = pipeline.ClassificationDataAnalysis
 
 	// Fetch schema for context
 	schema, err := p.cfg.SchemaFetcher.FetchSchema(ctx)

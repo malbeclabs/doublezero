@@ -141,6 +141,8 @@ type V2Result struct {
 type V2Stage string
 
 const (
+	StageClassifying  V2Stage = "classifying"
+	StageResponding   V2Stage = "responding"
 	StageInterpreting V2Stage = "interpreting"
 	StageMapping      V2Stage = "mapping"
 	StagePlanning     V2Stage = "planning"

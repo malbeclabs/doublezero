@@ -9,6 +9,8 @@ import (
 
 // Prompts contains all the v2 pipeline prompts loaded from embedded files.
 type Prompts struct {
+	Classify   string // Prompt for question classification
+	Respond    string // Prompt for conversational responses
 	Interpret  string // Prompt for analytical reframing of questions
 	Map        string // Prompt for mapping to data reality
 	Plan       string // Prompt for query planning
@@ -20,6 +22,10 @@ type Prompts struct {
 // This implements the pipeline.PromptsProvider interface.
 func (p *Prompts) GetPrompt(name string) string {
 	switch name {
+	case "classify":
+		return p.Classify
+	case "respond":
+		return p.Respond
 	case "interpret":
 		return p.Interpret
 	case "map":
@@ -40,6 +46,12 @@ func LoadPrompts() (*Prompts, error) {
 	p := &Prompts{}
 
 	var err error
+	if p.Classify, err = loadPrompt("CLASSIFY.md"); err != nil {
+		return nil, fmt.Errorf("failed to load CLASSIFY: %w", err)
+	}
+	if p.Respond, err = loadPrompt("RESPOND.md"); err != nil {
+		return nil, fmt.Errorf("failed to load RESPOND: %w", err)
+	}
 	if p.Interpret, err = loadPrompt("INTERPRET.md"); err != nil {
 		return nil, fmt.Errorf("failed to load INTERPRET: %w", err)
 	}

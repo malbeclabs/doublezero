@@ -28,6 +28,33 @@ type StatsResponse struct {
 }
 
 func GetStats(w http.ResponseWriter, r *http.Request) {
+	// Try to derive stats from the status cache
+	if statusCache != nil {
+		if cached := statusCache.GetStatus(); cached != nil {
+			stats := StatsResponse{
+				ValidatorsOnDZ:  cached.Network.ValidatorsOnDZ,
+				TotalStakeSol:   cached.Network.TotalStakeSol,
+				StakeSharePct:   cached.Network.StakeSharePct,
+				Users:           cached.Network.Users,
+				Devices:         cached.Network.Devices,
+				Links:           cached.Network.Links,
+				Contributors:    cached.Network.Contributors,
+				Metros:          cached.Network.Metros,
+				WANBandwidthBps: cached.Network.WANBandwidthBps,
+				UserInboundBps:  cached.Network.UserInboundBps,
+				FetchedAt:       cached.Timestamp,
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("X-Cache", "HIT")
+			if err := json.NewEncoder(w).Encode(stats); err != nil {
+				log.Printf("JSON encoding error: %v", err)
+			}
+			return
+		}
+	}
+
+	// Cache miss - fetch fresh data
+	w.Header().Set("X-Cache", "MISS")
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 

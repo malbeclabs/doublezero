@@ -86,6 +86,10 @@ func main() {
 	defer config.ClosePostgres()
 	defer config.Close() // Close ClickHouse connection
 
+	// Initialize status cache for fast page loads
+	handlers.InitStatusCache()
+	defer handlers.StopStatusCache()
+
 	// Start metrics server
 	var metricsServer *http.Server
 	if *metricsAddrFlag != "" {

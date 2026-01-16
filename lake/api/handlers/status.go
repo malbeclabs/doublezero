@@ -194,12 +194,37 @@ const (
 )
 
 func GetStatus(w http.ResponseWriter, r *http.Request) {
+	// Try to serve from cache first
+	if statusCache != nil {
+		if cached := statusCache.GetStatus(); cached != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("X-Cache", "HIT")
+			if err := json.NewEncoder(w).Encode(cached); err != nil {
+				log.Printf("JSON encoding error: %v", err)
+			}
+			return
+		}
+	}
+
+	// Cache miss - fetch fresh data (should only happen during startup)
+	w.Header().Set("X-Cache", "MISS")
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
 
+	resp := fetchStatusData(ctx)
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		log.Printf("JSON encoding error: %v", err)
+	}
+}
+
+// fetchStatusData performs the actual status data fetch from the database.
+// This is called by both the cache refresh and direct requests.
+func fetchStatusData(ctx context.Context) *StatusResponse {
 	start := time.Now()
 
-	resp := StatusResponse{
+	resp := &StatusResponse{
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 		Network: NetworkSummary{
 			DevicesByStatus: make(map[string]uint64),
@@ -857,12 +882,9 @@ func GetStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Determine overall status
-	resp.Status = determineOverallStatus(&resp)
+	resp.Status = determineOverallStatus(resp)
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		log.Printf("JSON encoding error: %v", err)
-	}
+	return resp
 }
 
 // Link history types for status timeline
@@ -897,11 +919,6 @@ type LinkHistoryResponse struct {
 }
 
 func GetLinkHistory(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
-	defer cancel()
-
-	start := time.Now()
-
 	// Parse time range parameter
 	timeRange := r.URL.Query().Get("range")
 	if timeRange == "" {
@@ -915,6 +932,40 @@ func GetLinkHistory(w http.ResponseWriter, r *http.Request) {
 			requestedBuckets = n
 		}
 	}
+
+	// Try to serve from cache first
+	if statusCache != nil {
+		if cached := statusCache.GetLinkHistory(timeRange, requestedBuckets); cached != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("X-Cache", "HIT")
+			if err := json.NewEncoder(w).Encode(cached); err != nil {
+				log.Printf("JSON encoding error: %v", err)
+			}
+			return
+		}
+	}
+
+	// Cache miss - fetch fresh data
+	w.Header().Set("X-Cache", "MISS")
+	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	defer cancel()
+
+	resp := fetchLinkHistoryData(ctx, timeRange, requestedBuckets)
+	if resp == nil {
+		http.Error(w, "Failed to fetch link history", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		log.Printf("JSON encoding error: %v", err)
+	}
+}
+
+// fetchLinkHistoryData performs the actual link history data fetch from the database.
+// This is called by both the cache refresh and direct requests.
+func fetchLinkHistoryData(ctx context.Context, timeRange string, requestedBuckets int) *LinkHistoryResponse {
+	start := time.Now()
 
 	// Configure bucket size based on time range and requested bucket count
 	var totalMinutes int
@@ -977,8 +1028,7 @@ func GetLinkHistory(w http.ResponseWriter, r *http.Request) {
 	linkRows, err := config.DB.Query(ctx, linkQuery)
 	if err != nil {
 		log.Printf("Link history query error: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return nil
 	}
 	defer linkRows.Close()
 
@@ -1025,8 +1075,7 @@ func GetLinkHistory(w http.ResponseWriter, r *http.Request) {
 	historyRows, err := config.DB.Query(ctx, historyQuery, totalHours)
 	if err != nil {
 		log.Printf("Link history stats query error: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return nil
 	}
 	defer historyRows.Close()
 
@@ -1286,17 +1335,17 @@ func GetLinkHistory(w http.ResponseWriter, r *http.Request) {
 		return links[i].Code < links[j].Code
 	})
 
-	resp := LinkHistoryResponse{
+	resp := &LinkHistoryResponse{
 		Links:         links,
 		TimeRange:     timeRange,
 		BucketMinutes: bucketMinutes,
 		BucketCount:   bucketCount,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		log.Printf("JSON encoding error: %v", err)
-	}
+	log.Printf("fetchLinkHistoryData completed in %v (range=%s, buckets=%d, links=%d)",
+		time.Since(start), timeRange, bucketCount, len(links))
+
+	return resp
 }
 
 func classifyLinkStatus(avgLatency, lossPct, committedRttUs float64) string {

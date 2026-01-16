@@ -833,6 +833,22 @@ function useBucketCount() {
   return buckets
 }
 
+// Hook to delay showing skeleton - avoids flash for fast loads
+function useDelayedLoading(isLoading: boolean, delay = 150) {
+  const [showSkeleton, setShowSkeleton] = useState(false)
+
+  useEffect(() => {
+    if (isLoading) {
+      const timer = setTimeout(() => setShowSkeleton(true), delay)
+      return () => clearTimeout(timer)
+    } else {
+      setShowSkeleton(false)
+    }
+  }, [isLoading, delay])
+
+  return showSkeleton
+}
+
 export function StatusPage() {
   const [timeRange, setTimeRange] = useState<TimeRange>('24h')
   const [issueFilters, setIssueFilters] = useState<IssueFilter[]>(['packet_loss', 'high_latency'])
@@ -916,8 +932,16 @@ export function StatusPage() {
     return drainedCount + packetLossDisabledLinks.length
   }, [status, packetLossDisabledLinks])
 
-  if (isLoading) {
+  // Only show skeleton after delay to avoid flash for fast loads
+  const showSkeleton = useDelayedLoading(isLoading)
+
+  if (isLoading && showSkeleton) {
     return <StatusPageSkeleton />
+  }
+
+  // Still loading but skeleton delay hasn't passed - show nothing briefly
+  if (isLoading) {
+    return null
   }
 
   if (error || !status) {

@@ -84,6 +84,17 @@ function formatDelta(delta: number): string {
 export function StatCard({ label, value, format, delta }: StatCardProps) {
   const animatedValue = useAnimatedNumber(value)
   const isLoading = value === undefined
+  const [showSkeleton, setShowSkeleton] = useState(false)
+
+  // Only show skeleton after a delay - avoids flash for fast loads
+  useEffect(() => {
+    if (isLoading) {
+      const timer = setTimeout(() => setShowSkeleton(true), 150)
+      return () => clearTimeout(timer)
+    } else {
+      setShowSkeleton(false)
+    }
+  }, [isLoading])
 
   const showDelta = delta !== undefined && delta !== 0
 
@@ -91,7 +102,11 @@ export function StatCard({ label, value, format, delta }: StatCardProps) {
     <div className="text-center">
       <div className="text-4xl font-medium tabular-nums tracking-tight mb-1">
         {isLoading ? (
-          <span className="inline-block h-10 w-16 rounded bg-muted animate-pulse" />
+          showSkeleton ? (
+            <span className="inline-block h-10 w-16 rounded bg-muted animate-pulse" />
+          ) : (
+            <span className="inline-block h-10 w-16" /> // Invisible placeholder
+          )
         ) : (
           <span className="inline-flex items-baseline gap-2">
             {formatValue(animatedValue, format)}

@@ -50,9 +50,13 @@ There are several desired use cases for DoubleZero that require the ability to t
 * check to see about loopback options
 
 ### Network Changes
-* rate limiting
-* additional IP, loopback on contributor devices 
-  
+* There must be at least two public IPv4 addresses configured and reachable for DZ users over the CYOA interfaces of the DZD.  As an example, for CYOA interfaces of type `gre-over-dia`, the IP addresses must be routable over the Internet.
+* On the smartcontract, these IP addresses should be registered as CYOA interfaces and tagged as `user-tunnel-endpoint`.   The `ip-net` flag should be used to allow contributors to assign their own address space.  
+* `user-tunnel-endpoint` IP addresses should be configured on Loopback interfaces to reduce the risk of an outage if a physical interface goes down.  However, if there is only a single CYOA interface, a `user-tunnel-endpoint` may be configured on a physical interface.
+* To support capacity planning, the smart-contract should support distinct max-user counts for unicast and multicast.  By default, both values should be set to 48.
+* Policing of user-tunnels, particularly important for multicast tunnels, will be addressed in a separate RFC.
+* Multicast publishers should be assigned an IP address from a global pool of address space defined in `global-config`.  It is proposed that this is set to 147.51.126.0/23, allowing 512 distinct multicast publishers.  If required to expand this block, there should be an option for including additional ranges.
+
 ## Impact
 
 

@@ -964,3 +964,239 @@ func TestExtractTransceiverThresholds_Isolation(t *testing.T) {
 
 	t.Logf("extracted %d transceiver threshold records", len(allRecords))
 }
+
+func TestAggregateTransceiverThresholds(t *testing.T) {
+	timestamp := time.Now()
+
+	// Create multiple records with the same key but different fields populated
+	records := []Record{
+		TransceiverThresholdRecord{
+			Timestamp:       timestamp,
+			DevicePubkey:    "device1",
+			InterfaceName:   "Ethernet1",
+			Severity:        "CRITICAL",
+			InputPowerLower: -20.0,
+		},
+		TransceiverThresholdRecord{
+			Timestamp:              timestamp,
+			DevicePubkey:           "device1",
+			InterfaceName:          "Ethernet1",
+			Severity:               "CRITICAL",
+			ModuleTemperatureUpper: 78.0,
+		},
+		TransceiverThresholdRecord{
+			Timestamp:             timestamp,
+			DevicePubkey:          "device1",
+			InterfaceName:         "Ethernet1",
+			Severity:              "CRITICAL",
+			LaserBiasCurrentUpper: 13.0,
+		},
+		// Different severity - should not be merged
+		TransceiverThresholdRecord{
+			Timestamp:       timestamp,
+			DevicePubkey:    "device1",
+			InterfaceName:   "Ethernet1",
+			Severity:        "WARNING",
+			InputPowerLower: -15.0,
+		},
+		// Different interface - should not be merged
+		TransceiverThresholdRecord{
+			Timestamp:       timestamp,
+			DevicePubkey:    "device1",
+			InterfaceName:   "Ethernet2",
+			Severity:        "CRITICAL",
+			InputPowerLower: -18.0,
+		},
+		// Non-threshold record - should pass through unchanged
+		IsisAdjacencyRecord{
+			Timestamp:    timestamp,
+			DevicePubkey: "device1",
+			InterfaceID:  "Ethernet1",
+		},
+	}
+
+	result := AggregateTransceiverThresholds(records)
+
+	// Should have:
+	// - 1 aggregated Ethernet1 CRITICAL
+	// - 1 Ethernet1 WARNING
+	// - 1 Ethernet2 CRITICAL
+	// - 1 IsisAdjacencyRecord
+	// Total: 4 records
+
+	var thresholdCount, isisCount int
+	var eth1Critical, eth1Warning, eth2Critical *TransceiverThresholdRecord
+
+	for _, r := range result {
+		switch rec := r.(type) {
+		case TransceiverThresholdRecord:
+			thresholdCount++
+			if rec.InterfaceName == "Ethernet1" && rec.Severity == "CRITICAL" {
+				eth1Critical = &rec
+			} else if rec.InterfaceName == "Ethernet1" && rec.Severity == "WARNING" {
+				eth1Warning = &rec
+			} else if rec.InterfaceName == "Ethernet2" && rec.Severity == "CRITICAL" {
+				eth2Critical = &rec
+			}
+		case IsisAdjacencyRecord:
+			isisCount++
+		}
+	}
+
+	if thresholdCount != 3 {
+		t.Errorf("expected 3 threshold records, got %d", thresholdCount)
+	}
+	if isisCount != 1 {
+		t.Errorf("expected 1 ISIS record, got %d", isisCount)
+	}
+
+	// Verify Ethernet1 CRITICAL has all merged fields
+	if eth1Critical == nil {
+		t.Fatal("expected Ethernet1 CRITICAL record")
+	}
+	if eth1Critical.InputPowerLower != -20.0 {
+		t.Errorf("expected InputPowerLower=-20.0, got %f", eth1Critical.InputPowerLower)
+	}
+	if eth1Critical.ModuleTemperatureUpper != 78.0 {
+		t.Errorf("expected ModuleTemperatureUpper=78.0, got %f", eth1Critical.ModuleTemperatureUpper)
+	}
+	if eth1Critical.LaserBiasCurrentUpper != 13.0 {
+		t.Errorf("expected LaserBiasCurrentUpper=13.0, got %f", eth1Critical.LaserBiasCurrentUpper)
+	}
+
+	// Verify Ethernet1 WARNING is separate
+	if eth1Warning == nil {
+		t.Fatal("expected Ethernet1 WARNING record")
+	}
+	if eth1Warning.InputPowerLower != -15.0 {
+		t.Errorf("expected InputPowerLower=-15.0, got %f", eth1Warning.InputPowerLower)
+	}
+
+	// Verify Ethernet2 CRITICAL is separate
+	if eth2Critical == nil {
+		t.Fatal("expected Ethernet2 CRITICAL record")
+	}
+	if eth2Critical.InputPowerLower != -18.0 {
+		t.Errorf("expected InputPowerLower=-18.0, got %f", eth2Critical.InputPowerLower)
+	}
+
+	t.Logf("aggregated %d records into %d records", len(records), len(result))
+}
+
+func TestAggregateTransceiverState(t *testing.T) {
+	timestamp := time.Now()
+
+	// Create multiple records with the same key but different fields populated
+	records := []Record{
+		TransceiverStateRecord{
+			Timestamp:     timestamp,
+			DevicePubkey:  "device1",
+			InterfaceName: "Ethernet1",
+			ChannelIndex:  0,
+			InputPower:    -1.89,
+		},
+		TransceiverStateRecord{
+			Timestamp:     timestamp,
+			DevicePubkey:  "device1",
+			InterfaceName: "Ethernet1",
+			ChannelIndex:  0,
+			OutputPower:   -2.39,
+		},
+		TransceiverStateRecord{
+			Timestamp:        timestamp,
+			DevicePubkey:     "device1",
+			InterfaceName:    "Ethernet1",
+			ChannelIndex:     0,
+			LaserBiasCurrent: 6.19,
+		},
+		// Different channel - should not be merged
+		TransceiverStateRecord{
+			Timestamp:     timestamp,
+			DevicePubkey:  "device1",
+			InterfaceName: "Ethernet1",
+			ChannelIndex:  1,
+			InputPower:    -1.75,
+		},
+		// Different interface - should not be merged
+		TransceiverStateRecord{
+			Timestamp:     timestamp,
+			DevicePubkey:  "device1",
+			InterfaceName: "Ethernet2",
+			ChannelIndex:  0,
+			InputPower:    -2.52,
+		},
+		// Non-transceiver record - should pass through unchanged
+		IsisAdjacencyRecord{
+			Timestamp:    timestamp,
+			DevicePubkey: "device1",
+			InterfaceID:  "Ethernet1",
+		},
+	}
+
+	result := AggregateTransceiverState(records)
+
+	// Should have:
+	// - 1 aggregated Ethernet1 channel 0
+	// - 1 Ethernet1 channel 1
+	// - 1 Ethernet2 channel 0
+	// - 1 IsisAdjacencyRecord
+	// Total: 4 records
+
+	var stateCount, isisCount int
+	var eth1Ch0, eth1Ch1, eth2Ch0 *TransceiverStateRecord
+
+	for _, r := range result {
+		switch rec := r.(type) {
+		case TransceiverStateRecord:
+			stateCount++
+			if rec.InterfaceName == "Ethernet1" && rec.ChannelIndex == 0 {
+				eth1Ch0 = &rec
+			} else if rec.InterfaceName == "Ethernet1" && rec.ChannelIndex == 1 {
+				eth1Ch1 = &rec
+			} else if rec.InterfaceName == "Ethernet2" && rec.ChannelIndex == 0 {
+				eth2Ch0 = &rec
+			}
+		case IsisAdjacencyRecord:
+			isisCount++
+		}
+	}
+
+	if stateCount != 3 {
+		t.Errorf("expected 3 transceiver state records, got %d", stateCount)
+	}
+	if isisCount != 1 {
+		t.Errorf("expected 1 ISIS record, got %d", isisCount)
+	}
+
+	// Verify Ethernet1 channel 0 has all merged fields
+	if eth1Ch0 == nil {
+		t.Fatal("expected Ethernet1 channel 0 record")
+	}
+	if eth1Ch0.InputPower != -1.89 {
+		t.Errorf("expected InputPower=-1.89, got %f", eth1Ch0.InputPower)
+	}
+	if eth1Ch0.OutputPower != -2.39 {
+		t.Errorf("expected OutputPower=-2.39, got %f", eth1Ch0.OutputPower)
+	}
+	if eth1Ch0.LaserBiasCurrent != 6.19 {
+		t.Errorf("expected LaserBiasCurrent=6.19, got %f", eth1Ch0.LaserBiasCurrent)
+	}
+
+	// Verify Ethernet1 channel 1 is separate
+	if eth1Ch1 == nil {
+		t.Fatal("expected Ethernet1 channel 1 record")
+	}
+	if eth1Ch1.InputPower != -1.75 {
+		t.Errorf("expected InputPower=-1.75, got %f", eth1Ch1.InputPower)
+	}
+
+	// Verify Ethernet2 channel 0 is separate
+	if eth2Ch0 == nil {
+		t.Fatal("expected Ethernet2 channel 0 record")
+	}
+	if eth2Ch0.InputPower != -2.52 {
+		t.Errorf("expected InputPower=-2.52, got %f", eth2Ch0.InputPower)
+	}
+
+	t.Logf("aggregated %d records into %d records", len(records), len(result))
+}

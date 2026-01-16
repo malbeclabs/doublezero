@@ -154,7 +154,11 @@ Only respond with "NO" if one or more expectations are NOT met.
 	}
 
 	// Create evaluation prompt
+	// Include current date so the evaluator doesn't think recent dates are "future dates"
+	currentDate := time.Now().UTC().Format("January 2, 2006")
 	evalPrompt := fmt.Sprintf(`You are evaluating whether an AI agent's response correctly handles a user's question.
+
+Current date: %s
 
 Question: %s
 
@@ -168,7 +172,7 @@ Evaluation criteria:
 
 IMPORTANT: Including additional relevant context or details beyond the expectations is ACCEPTABLE and should NOT cause a "NO" verdict. A comprehensive answer is better than a minimal one.
 
-Respond with only "YES" or "NO" followed by a brief explanation.`, question, response, expectationsSection)
+Respond with only "YES" or "NO" followed by a brief explanation.`, currentDate, question, response, expectationsSection)
 
 	// Use Anthropic Haiku for evaluation - fast and reliable
 	llmClient := pipeline.NewAnthropicLLMClientWithName(

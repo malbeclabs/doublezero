@@ -637,7 +637,7 @@ SELECT ...
 ## Guidelines
 
 1. **Always include time filters** on fact tables using `event_ts`
-2. **Use LIMIT** to avoid returning too much data (default to 100)
+2. **Use LIMIT** for list queries to avoid returning too much data (default to 100), but **NEVER use LIMIT on aggregation queries** (COUNT, SUM, AVG, etc.) - these should return the full result
 3. **Use device/link codes** in output, not PKs
 4. **Join to dimension tables** to get human-readable identifiers
 5. **NEVER use IS NULL or IS NOT NULL** on String columns - use `= ''` or `!= ''` instead

@@ -48,8 +48,11 @@ Common patterns in `dz_link_issue_events`:
 - `0.9722222222222222` → **0.97%**
 - `100` → **100%**
 
+**NEVER mention hex values** - Query results contain plain decimal numbers, not hex. Do NOT invent hex conversions.
+
 ❌ WRONG: "Each link is experiencing packet loss, though specific loss percentages would require further decoding"
 ❌ WRONG: "The values appear to be encoded and need conversion"
+❌ WRONG: "2.5% (hex value 0x14000264028 converted)" - there are NO hex values in the data
 ✅ CORRECT: "nyc-sao-1: 3.33% packet loss (ongoing since Jan 15)"
 
 ## Guidelines

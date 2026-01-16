@@ -228,9 +228,11 @@ func seedHealthyNetworkData(t *testing.T, ctx context.Context, conn clickhouse.C
 	// Seed links - ALL activated (healthy)
 	linkDS, err := serviceability.NewLinkDataset(log)
 	require.NoError(t, err)
+	// CommittedRTTNs must be higher than actual latency values to avoid SLA breach events
+	// Link1 latency: 50ms, Link2 latency: 75ms - set committed RTT above these
 	links := []serviceability.Link{
-		{PK: "link1", Code: "nyc-lon-1", Status: "activated", LinkType: "WAN", SideAPK: "device1", SideZPK: "device2", SideAIfaceName: "Ethernet1", SideZIfaceName: "Ethernet1", Bandwidth: 10000000000, CommittedRTTNs: 10000000},
-		{PK: "link2", Code: "chi-nyc-1", Status: "activated", LinkType: "WAN", SideAPK: "device3", SideZPK: "device1", SideAIfaceName: "Ethernet1", SideZIfaceName: "Ethernet1", Bandwidth: 10000000000, CommittedRTTNs: 15000000},
+		{PK: "link1", Code: "nyc-lon-1", Status: "activated", LinkType: "WAN", SideAPK: "device1", SideZPK: "device2", SideAIfaceName: "Ethernet1", SideZIfaceName: "Ethernet1", Bandwidth: 10000000000, CommittedRTTNs: 60000000},
+		{PK: "link2", Code: "chi-nyc-1", Status: "activated", LinkType: "WAN", SideAPK: "device3", SideZPK: "device1", SideAIfaceName: "Ethernet1", SideZIfaceName: "Ethernet1", Bandwidth: 10000000000, CommittedRTTNs: 80000000},
 	}
 	var linkSchema serviceability.LinkSchema
 	err = linkDS.WriteBatch(ctx, conn, len(links), func(i int) ([]any, error) {

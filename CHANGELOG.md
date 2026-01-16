@@ -7,12 +7,14 @@ All notable changes to this project will be documented in this file.
 - CLI
   - Remove log noise on resolve route
 - Onchain programs
-   - Removed device and user allowlist functionality, updating the global state, initialization flow, tests, and processors accordingly, and cleaning up unused account checks.
-   - Serviceability: require DeactivateMulticastGroup to only close multicast group accounts when both `publisher_count` and `subscriber_count` are zero, preventing deletion of groups that still have active publishers or subscribers.
-   - Deprecated the user suspend status, as it is no longer used.
-   - Serviceability: enforce that CloseAccountUser instructions verify the target user has no multicast publishers or subscribers (both `publishers` and `subscribers` are empty) before closing, and add regression coverage for this behavior.
+  - Removed device and user allowlist functionality, updating the global state, initialization flow, tests, and processors accordingly, and cleaning up unused account checks.
+  - Serviceability: require DeactivateMulticastGroup to only close multicast group accounts when both `publisher_count` and `subscriber_count` are zero, preventing deletion of groups that still have active publishers or subscribers.
+  - Deprecated the user suspend status, as it is no longer used.
+  - Serviceability: enforce that CloseAccountUser instructions verify the target user has no multicast publishers or subscribers (both `publishers` and `subscribers` are empty) before closing, and add regression coverage for this behavior.
 - Telemetry
   - Add gNMI tunnel client for state collection
+- Activator
+  - fix(activator): ip_to_index fn honors ip range #2658
 
 ### Breaking
 
@@ -23,7 +25,7 @@ All notable changes to this project will be documented in this file.
 - CLI
   - Remove log noise on resolve route
 - Onchain programs
-   - Removed device and user allowlist functionality, updating the global state, initialization flow, tests, and processors accordingly, and cleaning up unused account checks.
+  - Removed device and user allowlist functionality, updating the global state, initialization flow, tests, and processors accordingly, and cleaning up unused account checks.
 - Device Health Oracle
   - Add new device-health-oracle component. See rfcs/rfc12-network-provisioning.md for details.
 - Client
@@ -84,7 +86,7 @@ All notable changes to this project will be documented in this file.
 - Internet Latency Telemetry
   - Fixed a bug that prevented unresponsive ripeatlas probes from being replaced
   - Fixed a bug that caused ripeatlas samples to be dropped when they were delayed to the next collection cycle
-- Link & device Latency Telemetry 
+- Link & device Latency Telemetry
   - Telemetry data can now be received while entities are in provisioning and draining states.
 - Device controller
   - Add histogram metric for GetConfig request duration

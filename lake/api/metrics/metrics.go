@@ -111,6 +111,21 @@ var (
 			Buckets: []float64{1, 2, 3, 5, 7, 10, 15, 20},
 		},
 	)
+
+	PipelineSQLErrorsPerRun = promauto.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "doublezero_lake_api_pipeline_sql_errors_per_run",
+			Help:    "Number of SQL errors per pipeline run",
+			Buckets: []float64{0, 1, 2, 3, 5, 10},
+		},
+	)
+
+	PipelineSQLErrorsTotal = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "doublezero_lake_api_pipeline_sql_errors_total",
+			Help: "Total number of SQL errors across all pipeline runs",
+		},
+	)
 )
 
 // Middleware returns a chi middleware that records HTTP metrics.
@@ -176,8 +191,12 @@ func RecordAnthropicTokensWithCache(inputTokens, outputTokens, cacheCreationToke
 }
 
 // RecordPipelineRun records metrics for a completed pipeline run.
-func RecordPipelineRun(classification string, llmCalls, sqlQueries int) {
+func RecordPipelineRun(classification string, llmCalls, sqlQueries, sqlErrors int) {
 	PipelineRunsTotal.WithLabelValues(classification).Inc()
 	PipelineLLMCallsPerRun.Observe(float64(llmCalls))
 	PipelineQueriesPerRun.Observe(float64(sqlQueries))
+	PipelineSQLErrorsPerRun.Observe(float64(sqlErrors))
+	if sqlErrors > 0 {
+		PipelineSQLErrorsTotal.Add(float64(sqlErrors))
+	}
 }

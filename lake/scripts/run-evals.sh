@@ -388,6 +388,48 @@ if ls "$OUTPUT_DIR"/Test*.log &>/dev/null; then
             }
             ' | tee -a "$SUMMARY_FILE"
         fi
+
+        # Calculate SQL errors per test
+        echo "" | tee -a "$SUMMARY_FILE"
+        echo "=== SQL Errors Per Analysis ===" | tee -a "$SUMMARY_FILE"
+
+        errors_data=""
+        total_errors=0
+        tests_with_errors=0
+        for logfile in "$OUTPUT_DIR"/Test*.log; do
+            if [[ -f "$logfile" ]]; then
+                # Count "pipeline: query returned error" messages
+                sql_errors=$(grep -c "pipeline: query returned error" "$logfile" 2>/dev/null | tr -d '[:space:]' || echo "0")
+                sql_errors=${sql_errors:-0}
+                errors_data+="$sql_errors "
+                total_errors=$((total_errors + sql_errors))
+                if [[ "$sql_errors" -gt 0 ]]; then
+                    tests_with_errors=$((tests_with_errors + 1))
+                fi
+            fi
+        done
+
+        if [[ -n "$errors_data" ]]; then
+            test_count=$(echo "$errors_data" | tr ' ' '\n' | grep -v '^$' | wc -l | tr -d ' ')
+            if [[ $total_errors -eq 0 ]]; then
+                echo "  no SQL errors across $test_count tests" | tee -a "$SUMMARY_FILE"
+            else
+                echo "$errors_data" | tr ' ' '\n' | grep -v '^$' | awk -v total="$total_errors" -v with_errors="$tests_with_errors" '
+                BEGIN { min = 999999 }
+                {
+                    sum += $1
+                    count++
+                    if ($1 < min) min = $1
+                    if ($1 > max) max = $1
+                }
+                END {
+                    if (count > 0) {
+                        printf "  total: %d errors across %d/%d tests | max: %d per test\n", total, with_errors, count, max
+                    }
+                }
+                ' | tee -a "$SUMMARY_FILE"
+            fi
+        fi
     else
         echo "  (no token data - short mode or no API calls)" | tee -a "$SUMMARY_FILE"
     fi

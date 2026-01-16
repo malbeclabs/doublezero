@@ -90,6 +90,17 @@ type ExecutedQuery struct {
 	Result         QueryResult
 }
 
+// countSQLErrors returns the number of queries with errors.
+func countSQLErrors(queries []ExecutedQuery) int {
+	count := 0
+	for _, q := range queries {
+		if q.Result.Error != "" {
+			count++
+		}
+	}
+	return count
+}
+
 // ConversationMessage represents a message in conversation history.
 type ConversationMessage struct {
 	Role            string   // "user" or "assistant"
@@ -353,7 +364,7 @@ func (p *Pipeline) RunWithProgress(ctx context.Context, userQuestion string, his
 			result.Answer = "I'm a DoubleZero data analyst. I can help you with questions about the DZ network, devices, links, users, connected Solana validators, and performance metrics. What would you like to know?"
 		}
 		notify(Progress{Stage: StageComplete, Classification: classification.Classification})
-		metrics.RecordPipelineRun(string(classification.Classification), int(p.llmCalls.Load()), 0)
+		metrics.RecordPipelineRun(string(classification.Classification), int(p.llmCalls.Load()), 0, 0)
 		return result, nil
 
 	case ClassificationConversational:
@@ -367,7 +378,7 @@ func (p *Pipeline) RunWithProgress(ctx context.Context, userQuestion string, his
 		}
 		result.Answer = answer
 		notify(Progress{Stage: StageComplete, Classification: classification.Classification})
-		metrics.RecordPipelineRun(string(classification.Classification), int(p.llmCalls.Load()), 0)
+		metrics.RecordPipelineRun(string(classification.Classification), int(p.llmCalls.Load()), 0, 0)
 		return result, nil
 	}
 
@@ -468,7 +479,7 @@ func (p *Pipeline) RunWithProgress(ctx context.Context, userQuestion string, his
 		QueriesDone:    len(dataQuestions),
 	})
 
-	metrics.RecordPipelineRun(string(result.Classification), int(p.llmCalls.Load()), len(executedQueries))
+	metrics.RecordPipelineRun(string(result.Classification), int(p.llmCalls.Load()), len(executedQueries), countSQLErrors(executedQueries))
 	return result, nil
 }
 
@@ -505,7 +516,7 @@ func (p *Pipeline) RunWithHistory(ctx context.Context, userQuestion string, hist
 		} else {
 			result.Answer = "I'm a DoubleZero data analyst. I can help you with questions about the DZ network, devices, links, users, connected Solana validators, and performance metrics. What would you like to know?"
 		}
-		metrics.RecordPipelineRun(string(classification.Classification), int(p.llmCalls.Load()), 0)
+		metrics.RecordPipelineRun(string(classification.Classification), int(p.llmCalls.Load()), 0, 0)
 		return result, nil
 
 	case ClassificationConversational:
@@ -518,7 +529,7 @@ func (p *Pipeline) RunWithHistory(ctx context.Context, userQuestion string, hist
 			return nil, fmt.Errorf("conversational response failed: %w", err)
 		}
 		result.Answer = answer
-		metrics.RecordPipelineRun(string(classification.Classification), int(p.llmCalls.Load()), 0)
+		metrics.RecordPipelineRun(string(classification.Classification), int(p.llmCalls.Load()), 0, 0)
 		return result, nil
 
 	case ClassificationDataAnalysis:
@@ -588,6 +599,6 @@ func (p *Pipeline) RunWithHistory(ctx context.Context, userQuestion string, hist
 		p.log.Info("pipeline: answer synthesized")
 	}
 
-	metrics.RecordPipelineRun(string(result.Classification), int(p.llmCalls.Load()), len(executedQueries))
+	metrics.RecordPipelineRun(string(result.Classification), int(p.llmCalls.Load()), len(executedQueries), countSQLErrors(executedQueries))
 	return result, nil
 }

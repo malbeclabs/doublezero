@@ -317,52 +317,61 @@ ORDER BY stake_sol DESC
 
 ### Link Outage Detection
 
-**Use the `dz_link_status_transitions` view** for all link outage/status change queries. It pre-computes status transitions with metro information.
+**Use the `dz_link_outage_events` view** for all link outage queries. It combines multiple outage signals:
+
+| event_type | Description | Key Columns |
+|------------|-------------|-------------|
+| `status_change` | Link status changed from activated | `previous_status`, `new_status` |
+| `packet_loss` | Packet loss exceeded threshold | `loss_pct` (>=0.1% triggers event) |
+| `link_dark` | No telemetry received | `gap_minutes` (>=30 min triggers event) |
+| `sla_breach` | Latency exceeded committed RTT | `overage_pct` (>=20% triggers event) |
+
+**Common columns**: `link_code`, `event_type`, `start_ts`, `end_ts`, `duration_minutes`, `is_ongoing`, `side_a_metro`, `side_z_metro`
 
 ```sql
--- Find outages for links connected to a specific metro (e.g., Sao Paulo)
+-- All outages for links connected to Sao Paulo in the last 30 days
 SELECT
-    link_code,
-    previous_status,
-    new_status,
-    transition_ts,
-    side_a_metro,
-    side_z_metro
-FROM dz_link_status_transitions
+    link_code, event_type, start_ts, end_ts, duration_minutes, is_ongoing
+FROM dz_link_outage_events
 WHERE (side_a_metro = 'sao' OR side_z_metro = 'sao')
-  AND transition_ts >= now() - INTERVAL 30 DAY
-ORDER BY link_code, transition_ts
+  AND start_ts >= now() - INTERVAL 30 DAY
+ORDER BY start_ts DESC
 ```
 
-**Outage start**: `previous_status = 'activated'` (link went down)
-**Outage end**: `new_status = 'activated'` (link recovered)
-
+**Filter by event type:**
 ```sql
--- Find outage start/end pairs for a metro
-SELECT
-    link_code,
-    transition_ts AS outage_start,
-    new_status AS outage_status
-FROM dz_link_status_transitions
-WHERE (side_a_metro = 'sao' OR side_z_metro = 'sao')
-  AND previous_status = 'activated'  -- Was up, now down
-  AND transition_ts >= now() - INTERVAL 30 DAY
+-- Only status-based outages (soft-drained, suspended, etc.)
+SELECT * FROM dz_link_outage_events
+WHERE event_type = 'status_change'
+  AND start_ts >= now() - INTERVAL 30 DAY
 
--- Ongoing outages: links that went down but haven't recovered
-SELECT t.link_code, t.transition_ts AS outage_start, t.new_status
-FROM dz_link_status_transitions t
-WHERE (t.side_a_metro = 'sao' OR t.side_z_metro = 'sao')
-  AND t.previous_status = 'activated'
-  AND t.transition_ts >= now() - INTERVAL 30 DAY
-  AND NOT EXISTS (
-    SELECT 1 FROM dz_link_status_transitions t2
-    WHERE t2.link_code = t.link_code
-      AND t2.new_status = 'activated'
-      AND t2.transition_ts > t.transition_ts
-  )
+-- Only packet loss events with loss >= 1%
+SELECT * FROM dz_link_outage_events
+WHERE event_type = 'packet_loss'
+  AND loss_pct >= 1.0
+  AND start_ts >= now() - INTERVAL 30 DAY
+
+-- Links that went dark for > 1 hour
+SELECT * FROM dz_link_outage_events
+WHERE event_type = 'link_dark'
+  AND gap_minutes >= 60
+
+-- SLA breaches with latency > 50% over committed
+SELECT * FROM dz_link_outage_events
+WHERE event_type = 'sla_breach'
+  AND overage_pct >= 50
 ```
 
-**Key insight**: The view handles the complex LAG() and metro joins for you. Just filter by metro and time range.
+**Ongoing outages:**
+```sql
+-- Currently ongoing outages (no end_ts)
+SELECT link_code, event_type, start_ts, duration_minutes
+FROM dz_link_outage_events
+WHERE is_ongoing = true
+ORDER BY start_ts
+```
+
+**Key insight**: The view pre-computes all outage types. Apply thresholds in the WHERE clause based on what the user considers significant (e.g., `loss_pct >= 1.0` for critical loss, `gap_minutes >= 60` for extended dark periods).
 
 ### Validators by Region/Metro
 To find which DZ metros have the most connected validators, join through users → devices → metros:

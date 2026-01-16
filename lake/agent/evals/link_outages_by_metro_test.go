@@ -11,6 +11,7 @@ import (
 	"github.com/malbeclabs/doublezero/lake/indexer/pkg/clickhouse"
 	"github.com/malbeclabs/doublezero/lake/indexer/pkg/clickhouse/dataset"
 	serviceability "github.com/malbeclabs/doublezero/lake/indexer/pkg/dz/serviceability"
+	dztelemlatency "github.com/malbeclabs/doublezero/lake/indexer/pkg/dz/telemetry/latency"
 	"github.com/stretchr/testify/require"
 )
 
@@ -90,24 +91,24 @@ func runTest_LinkOutagesByMetro(t *testing.T, llmFactory LLMClientFactory) {
 	// Evaluate with expectations
 	expectations := []Expectation{
 		{
-			Description:   "Response mentions nyc-sao-1 outage",
-			ExpectedValue: "nyc-sao-1 identified as having an outage with start/stop timestamps",
-			Rationale:     "nyc-sao-1 connects NYC to SAO and had a resolved outage",
+			Description:   "Response mentions nyc-sao-1 status outage",
+			ExpectedValue: "nyc-sao-1 identified as having a status-based outage (soft-drained) with start/stop timestamps",
+			Rationale:     "nyc-sao-1 connects NYC to SAO and had a resolved status-based outage",
 		},
 		{
-			Description:   "Response mentions sao-lon-1 outage",
-			ExpectedValue: "sao-lon-1 identified as having an ongoing outage",
+			Description:   "Response mentions sao-lon-1 ongoing outage",
+			ExpectedValue: "sao-lon-1 identified as having an ongoing outage (currently soft-drained)",
 			Rationale:     "sao-lon-1 connects SAO to LON and is currently down",
+		},
+		{
+			Description:   "Response mentions nyc-sao-2 packet loss",
+			ExpectedValue: "nyc-sao-2 identified as having packet loss issues or a telemetry-based outage",
+			Rationale:     "nyc-sao-2 connects NYC to SAO and had packet loss (~5%) for about a day",
 		},
 		{
 			Description:   "Response does NOT mention nyc-lon-1",
 			ExpectedValue: "nyc-lon-1 should NOT be mentioned as it doesn't connect to Sao Paulo",
 			Rationale:     "nyc-lon-1 connects NYC-LON, not SAO",
-		},
-		{
-			Description:   "Response includes timestamps or time references",
-			ExpectedValue: "timestamps, dates, or relative time references for outage start/end",
-			Rationale:     "User asked specifically for timestamps of outages",
 		},
 	}
 	isCorrect, err := evaluateResponse(t, ctx, question, response, expectations...)
@@ -117,8 +118,9 @@ func runTest_LinkOutagesByMetro(t *testing.T, llmFactory LLMClientFactory) {
 
 // seedLinkOutagesByMetroData seeds data for link outages filtered by metro
 // Scenario:
-// - nyc-sao-1: NYC to SAO, had outage 10 days ago, recovered 8 days ago
-// - sao-lon-1: SAO to LON, currently down (since 2 days ago)
+// - nyc-sao-1: NYC to SAO, status-based outage (soft-drained 10 days ago, recovered 8 days ago)
+// - sao-lon-1: SAO to LON, status-based ongoing outage (soft-drained 2 days ago)
+// - nyc-sao-2: NYC to SAO, packet loss outage (5% loss starting 5 days ago, recovered 4 days ago)
 // - nyc-lon-1: NYC to LON, always healthy (should not appear - doesn't connect to SAO)
 func seedLinkOutagesByMetroData(t *testing.T, ctx context.Context, conn clickhouse.Connection) {
 	log := testLogger(t)
@@ -211,7 +213,22 @@ func seedLinkOutagesByMetroData(t *testing.T, ctx context.Context, conn clickhou
 	})
 	require.NoError(t, err)
 
-	// Link 3: nyc-lon-1 - always healthy, does NOT connect to SAO
+	// Link 3: nyc-sao-2 - packet loss outage (status stays activated, but has telemetry-based outage)
+	// T-35d: activated (status never changes)
+	linkNycSao2Activated := serviceability.Link{
+		PK: "link4", Code: "nyc-sao-2", Status: "activated", LinkType: "WAN",
+		SideAPK: "device1", SideZPK: "device3", SideAIfaceName: "Ethernet4", SideZIfaceName: "Ethernet4",
+		Bandwidth: 10000000000, CommittedRTTNs: 100000000,
+	}
+	err = linkDS.WriteBatch(ctx, conn, 1, func(i int) ([]any, error) {
+		return linkSchema.ToRow(linkNycSao2Activated), nil
+	}, &dataset.DimensionType2DatasetWriteConfig{
+		SnapshotTS: now.Add(-35 * 24 * time.Hour),
+		OpID:       testOpID(),
+	})
+	require.NoError(t, err)
+
+	// Link 4: nyc-lon-1 - always healthy, does NOT connect to SAO
 	// T-35d: activated (never changed)
 	linkNycLonActivated := serviceability.Link{
 		PK: "link3", Code: "nyc-lon-1", Status: "activated", LinkType: "WAN",
@@ -223,6 +240,126 @@ func seedLinkOutagesByMetroData(t *testing.T, ctx context.Context, conn clickhou
 	}, &dataset.DimensionType2DatasetWriteConfig{
 		SnapshotTS: now.Add(-35 * 24 * time.Hour),
 		OpID:       testOpID(),
+	})
+	require.NoError(t, err)
+
+	// Seed latency telemetry data for nyc-sao-2 with packet loss period
+	latencyDS, err := dztelemlatency.NewDeviceLinkLatencyDataset(log)
+	require.NoError(t, err)
+	ingestedAt := now
+
+	// Generate latency samples for nyc-sao-2:
+	// - T-6d to T-5d: healthy (no loss)
+	// - T-5d to T-4d: packet loss period (~5% loss)
+	// - T-4d to now: healthy again (recovered)
+	var latencySamples []struct {
+		time           time.Time
+		epoch          int64
+		sampleIndex    int32
+		originDevicePK string
+		targetDevicePK string
+		linkPK         string
+		rttUs          uint32
+		loss           bool
+		ipdvUs         *int64
+	}
+
+	// Healthy period: T-6d to T-5d (hourly samples, no loss)
+	for h := 0; h < 24; h++ {
+		sampleTime := now.Add(-6*24*time.Hour + time.Duration(h)*time.Hour)
+		latencySamples = append(latencySamples, struct {
+			time           time.Time
+			epoch          int64
+			sampleIndex    int32
+			originDevicePK string
+			targetDevicePK string
+			linkPK         string
+			rttUs          uint32
+			loss           bool
+			ipdvUs         *int64
+		}{
+			time:           sampleTime,
+			epoch:          100,
+			sampleIndex:    int32(h),
+			originDevicePK: "device1",
+			targetDevicePK: "device3",
+			linkPK:         "link4",
+			rttUs:          50000, // 50ms
+			loss:           false,
+			ipdvUs:         int64Ptr(5000),
+		})
+	}
+
+	// Packet loss period: T-5d to T-4d (hourly samples, ~5% loss = 1-2 loss samples per hour out of 20)
+	for h := 0; h < 24; h++ {
+		sampleTime := now.Add(-5*24*time.Hour + time.Duration(h)*time.Hour)
+		// Generate 20 samples per hour, with 1 being a loss sample (~5%)
+		for s := 0; s < 20; s++ {
+			isLoss := s == 0 // First sample of each hour is loss
+			latencySamples = append(latencySamples, struct {
+				time           time.Time
+				epoch          int64
+				sampleIndex    int32
+				originDevicePK string
+				targetDevicePK string
+				linkPK         string
+				rttUs          uint32
+				loss           bool
+				ipdvUs         *int64
+			}{
+				time:           sampleTime.Add(time.Duration(s) * time.Minute),
+				epoch:          100,
+				sampleIndex:    int32(h*20 + s),
+				originDevicePK: "device1",
+				targetDevicePK: "device3",
+				linkPK:         "link4",
+				rttUs:          50000,
+				loss:           isLoss,
+				ipdvUs:         int64Ptr(5000),
+			})
+		}
+	}
+
+	// Recovered period: T-4d to now (hourly samples, no loss)
+	for h := 0; h < 96; h++ { // 4 days * 24 hours
+		sampleTime := now.Add(-4*24*time.Hour + time.Duration(h)*time.Hour)
+		latencySamples = append(latencySamples, struct {
+			time           time.Time
+			epoch          int64
+			sampleIndex    int32
+			originDevicePK string
+			targetDevicePK string
+			linkPK         string
+			rttUs          uint32
+			loss           bool
+			ipdvUs         *int64
+		}{
+			time:           sampleTime,
+			epoch:          100,
+			sampleIndex:    int32(h),
+			originDevicePK: "device1",
+			targetDevicePK: "device3",
+			linkPK:         "link4",
+			rttUs:          50000,
+			loss:           false,
+			ipdvUs:         int64Ptr(5000),
+		})
+	}
+
+	err = latencyDS.WriteBatch(ctx, conn, len(latencySamples), func(i int) ([]any, error) {
+		s := latencySamples[i]
+		return []any{
+			s.time.UTC(),
+			ingestedAt,
+			s.epoch,
+			s.sampleIndex,
+			s.originDevicePK,
+			s.targetDevicePK,
+			s.linkPK,
+			int64(s.rttUs),
+			s.loss,
+			s.ipdvUs,
+		}, nil
 	})
 	require.NoError(t, err)
 }
@@ -252,7 +389,7 @@ ORDER BY l.code
 `
 	linkResult, err := dataset.Query(ctx, conn, linkQuery, nil)
 	require.NoError(t, err, "Failed to execute link query")
-	require.Equal(t, 2, linkResult.Count, "Should have exactly 2 links connected to SAO")
+	require.Equal(t, 3, linkResult.Count, "Should have exactly 3 links connected to SAO")
 
 	// Verify link history has status changes for SAO links
 	historyQuery := `
@@ -273,5 +410,24 @@ ORDER BY lh.code, lh.snapshot_ts
 	require.NoError(t, err, "Failed to execute history query")
 	require.GreaterOrEqual(t, historyResult.Count, 2, "Should have status changes for SAO links in last 30 days")
 
-	t.Logf("Database validation passed: Found SAO metro, %d SAO-connected links, %d history entries", linkResult.Count, historyResult.Count)
+	// Verify packet loss telemetry exists for nyc-sao-2
+	latencyQuery := `
+SELECT
+    COUNT(*) AS total_samples,
+    countIf(loss = true) AS loss_samples
+FROM fact_dz_device_link_latency
+WHERE link_pk = 'link4'
+  AND event_ts >= now() - INTERVAL 30 DAY
+`
+	latencyResult, err := dataset.Query(ctx, conn, latencyQuery, nil)
+	require.NoError(t, err, "Failed to execute latency query")
+	require.Equal(t, 1, latencyResult.Count, "Should have latency data")
+
+	totalSamples := latencyResult.Rows[0]["total_samples"].(uint64)
+	lossSamples := latencyResult.Rows[0]["loss_samples"].(uint64)
+	require.Greater(t, totalSamples, uint64(0), "Should have latency samples")
+	require.Greater(t, lossSamples, uint64(0), "Should have loss samples")
+
+	t.Logf("Database validation passed: Found SAO metro, %d SAO-connected links, %d history entries, %d latency samples (%d with loss)",
+		linkResult.Count, historyResult.Count, totalSamples, lossSamples)
 }

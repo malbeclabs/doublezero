@@ -20,7 +20,12 @@ Key concepts for understanding user questions:
 
 **Status**: "Active" = `status='activated'`. "Drained" = maintenance/soft-failure state
 
-**Link Outages**: A link is "down" or has an "outage" when its status changes from `activated` to any other status (soft-drained, suspended, deleted, etc.). Outage start = when status changed away from activated. Outage end = when status returned to activated. Use `dim_dz_links_history` to detect these transitions.
+**Link Outages**: A link can have an outage for multiple reasons. Use the `dz_link_outage_events` view which combines all outage types:
+- `status_change`: Status changed from activated (soft-drained, suspended, etc.)
+- `packet_loss`: Significant packet loss detected (>=0.1%)
+- `link_dark`: No telemetry received (gap >=30 minutes)
+- `sla_breach`: Latency exceeded committed RTT (>=20% over)
+Filter by `event_type` if you need specific types. The view includes `start_ts`, `end_ts`, `is_ongoing`, `duration_minutes`, and metrics like `loss_pct`, `overage_pct`.
 
 **Utilization**: Always per-direction (in vs out separately). "Metro link utilization %" is INVALID (links span metros)
 
@@ -147,20 +152,16 @@ Respond with a JSON object containing an array of data questions:
 **User Question**: "What links have been down in the last 48 hours?"
 
 **Good Decomposition**:
-1. Which links had status changes away from 'activated' in the last 48 hours? Include link code, the status it changed to, and when.
-2. Which of those links have returned to 'activated' status, and when?
-3. For links currently not activated, what is their current status?
+1. Get all outage events from `dz_link_outage_events` in the last 48 hours. Include link_code, event_type, start_ts, end_ts, is_ongoing, and relevant metrics (loss_pct for packet_loss, new_status for status_change).
 
-*Key insight*: "Down" means the link status changed from activated to something else. Use `dim_dz_links_history` to find status transitions. Include both resolved outages (returned to activated) and ongoing ones.
+*Key insight*: The `dz_link_outage_events` view contains all outage types (status changes, packet loss, link dark, SLA breach). One query gets everything - filter by time range and optionally by event_type if needed.
 
 **User Question**: "Identify the timestamps (start/stop) of outages on links going into Sao Paulo in the last 30 days"
 
 **Good Decomposition**:
-1. Which links connect to Sao Paulo (SAO metro)? List link codes and the metros on each side.
-2. For those links, find all status transitions in the last 30 days from dim_dz_links_history. Show link code, previous status, new status, and timestamp of each change.
-3. Identify outage periods: when did each link go from activated to non-activated (start), and when did it return to activated (end)?
+1. Get all outage events from `dz_link_outage_events` for links where side_a_metro='sao' OR side_z_metro='sao' in the last 30 days. Include link_code, event_type, start_ts, end_ts, is_ongoing, duration_minutes, and metrics.
 
-*Key insight*: "Going into" a metro means links where that metro is on either side (side_a or side_z). Outage start/stop requires finding status transition pairs in the history table.
+*Key insight*: "Going into" a metro means links where that metro is on either side. The unified view already has metro columns and all outage types (status, packet loss, link dark, SLA breach). One query gets everything.
 
 **User Question**: "Which regions have the most validators connected to DZ?"
 

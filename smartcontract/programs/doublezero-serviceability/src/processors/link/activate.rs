@@ -123,7 +123,7 @@ pub fn process_activate_link(
 
     link.tunnel_id = value.tunnel_id;
     link.tunnel_net = value.tunnel_net;
-    link.status = LinkStatus::ReadyForService;
+    link.status = LinkStatus::Provisioning;
 
     link.check_status_transition();
 

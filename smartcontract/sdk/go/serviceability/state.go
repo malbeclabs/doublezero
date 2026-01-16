@@ -461,6 +461,7 @@ const (
 	LinkStatusRequested
 	LinkStatusHardDrained
 	LinkStatusSoftDrained
+	LinkStatusProvisioning
 )
 
 func (l LinkStatus) String() string {
@@ -473,6 +474,7 @@ func (l LinkStatus) String() string {
 		"requested",
 		"hard-drained",
 		"soft-drained",
+		"provisioning",
 	}[l]
 }
 

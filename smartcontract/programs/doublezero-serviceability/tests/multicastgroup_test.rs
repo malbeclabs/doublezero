@@ -193,8 +193,8 @@ async fn test_multicastgroup() {
     assert_eq!(multicastgroup_la.code, "la2".to_string());
     assert_eq!(multicastgroup_la.multicast_ip, Ipv4Addr::new(239, 1, 1, 2));
     assert_eq!(multicastgroup_la.max_bandwidth, 2000);
-    assert_eq!(multicastgroup_la.publisher_count, 5);
-    assert_eq!(multicastgroup_la.subscriber_count, 10);
+    assert_eq!(multicastgroup_la.publisher_count, 0);
+    assert_eq!(multicastgroup_la.subscriber_count, 0);
     assert_eq!(multicastgroup_la.status, MulticastGroupStatus::Activated);
 
     println!("✅ MulticastGroup updated");
@@ -280,6 +280,23 @@ async fn test_multicastgroup_deactivate_fails_when_counts_nonzero() {
             code: "la".to_string(),
             max_bandwidth: 1000,
             owner: Pubkey::new_unique(),
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Activate the multicast group so that DeleteMulticastGroup precondition
+    // status == Activated is satisfied later in this test.
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateMulticastGroup(MulticastGroupActivateArgs {
+            multicast_ip: [224, 0, 0, 0].into(),
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),

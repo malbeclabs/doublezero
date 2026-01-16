@@ -17,6 +17,9 @@ The processor uses registered extractors that pattern-match against gNMI paths. 
 - BGP neighbors (session state, peer AS, local AS, peer type, description, established transitions, session timing, UPDATE message counts)
 - System state (CPU, memory, hostname)
 - Interface mappings (name to ifindex)
+- Transceiver state (optical power metrics: input power, output power, laser bias current per channel)
+- Transceiver thresholds (alarm thresholds per severity: input/output power, laser bias current, module temperature, supply voltage)
+- Interface state (admin/oper status, counters: in/out octets, packets, errors, discards)
 
 ## Developer Guide
 
@@ -119,9 +122,20 @@ var DefaultExtractors = []ExtractorDef{
     {Name: "system_state", Match: PathContains("system", "state"), Extract: extractSystemState},
     {Name: "bgp_neighbors", Match: PathContains("bgp", "neighbors"), Extract: extractBgpNeighbors},
     {Name: "interface_ifindex", Match: PathContains("interfaces", "ifindex"), Extract: extractInterfaceIfindex},
+    {Name: "transceiver_state", Match: PathContains("transceiver", "physical-channels"), Extract: extractTransceiverState},
+    {Name: "transceiver_thresholds", Match: PathContains("transceiver", "thresholds"), Extract: extractTransceiverThresholds},
+    {Name: "interface_state", Match: PathContains("interfaces", "interface", "state"), Extract: extractInterfaceState},
     {Name: "lldp_neighbors", Match: PathContains("lldp", "neighbors"), Extract: extractLldpNeighbors},
 }
 ```
+
+**Extractor Ordering:**
+
+Order matters in `DefaultExtractors`. When multiple extractors match a path, only the first one executes. Place more specific matchers before less specific ones to avoid collisions.
+
+For example, `interface_ifindex` matches paths containing `["interfaces", "ifindex"]`, but ifindex paths also contain `"interface"` and `"state"`. If `interface_state` (which matches `["interfaces", "interface", "state"]`) were registered first, it would capture ifindex updates and `interface_ifindex` would never run.
+
+When adding a new collection, consider whether your path matcher overlaps with existing ones and place it appropriately in the list.
 
 **Path Matchers:**
 - `PathContains("isis", "adjacencies")` - Matches paths containing both "isis" AND "adjacencies" elements

@@ -74,6 +74,9 @@ func newTestHarness(t *testing.T) *testHarness {
 			filepath.Join(schemaDir, "system_state.sql"),
 			filepath.Join(schemaDir, "bgp_neighbors.sql"),
 			filepath.Join(schemaDir, "interface_ifindex.sql"),
+			filepath.Join(schemaDir, "transceiver_state.sql"),
+			filepath.Join(schemaDir, "transceiver_thresholds.sql"),
+			filepath.Join(schemaDir, "interface_state.sql"),
 		),
 	)
 	require.NoError(t, err, "error setting up clickhouse container")
@@ -289,6 +292,33 @@ var integrationTests = []integrationTestCase{
 		minRows:       2,
 		verify:        verifyInterfaceIfindex,
 	},
+	{
+		name:          "TransceiverState",
+		prototext:     "transceiver_state.prototext",
+		gnmiPath:      "/components/component/transceiver/physical-channels/channel/state",
+		consumerGroup: "test-transceiver-state",
+		table:         "transceiver_state",
+		minRows:       1,
+		verify:        verifyTransceiverState,
+	},
+	{
+		name:          "InterfaceState",
+		prototext:     "interfaces.prototext",
+		gnmiPath:      "/interfaces/interface/state",
+		consumerGroup: "test-interface-state",
+		table:         "interface_state",
+		minRows:       1,
+		verify:        verifyInterfaceState,
+	},
+	{
+		name:          "TransceiverThresholds",
+		prototext:     "transceiver_thresholds.prototext",
+		gnmiPath:      "/components/component/transceiver/thresholds/threshold/state",
+		consumerGroup: "test-transceiver-thresholds",
+		table:         "transceiver_thresholds",
+		minRows:       1,
+		verify:        verifyTransceiverThresholds,
+	},
 }
 
 func TestIntegration(t *testing.T) {
@@ -459,4 +489,136 @@ func verifyInterfaceIfindex(t *testing.T, h *testHarness) {
 	// Tunnel interfaces report ifindex=0 on some devices
 	require.Contains(t, ifindexMap, "Tunnel500", "expected Tunnel500 to exist")
 	require.Equal(t, uint32(0), ifindexMap["Tunnel500"].Ifindex, "unexpected ifindex for Tunnel500")
+}
+
+func verifyTransceiverState(t *testing.T, h *testHarness) {
+	type transceiverRow struct {
+		DevicePubkey     string
+		InterfaceName    string
+		ChannelIndex     uint16
+		InputPower       float64
+		OutputPower      float64
+		LaserBiasCurrent float64
+	}
+
+	rows := queryRows(h, fmt.Sprintf(`
+		SELECT device_pubkey, interface_name, channel_index, input_power, output_power, laser_bias_current
+		FROM %s.transceiver_state
+	`, chDbname), func(r *sql.Rows) (transceiverRow, error) {
+		var row transceiverRow
+		err := r.Scan(&row.DevicePubkey, &row.InterfaceName, &row.ChannelIndex,
+			&row.InputPower, &row.OutputPower, &row.LaserBiasCurrent)
+		return row, err
+	})
+
+	t.Logf("found %d transceiver state records", len(rows))
+	require.GreaterOrEqual(t, len(rows), 1)
+
+	// Verify all records have expected device pubkey
+	for _, row := range rows {
+		require.Equal(t, "DZt011111111111111111111111111111111111111111", row.DevicePubkey, "unexpected device_pubkey")
+	}
+
+	// Find Ethernet1 channel 0 and verify values
+	var eth1Found bool
+	for _, row := range rows {
+		if row.InterfaceName == "Ethernet1" && row.ChannelIndex == 0 {
+			eth1Found = true
+			require.InDelta(t, -1.89, row.InputPower, 0.01, "unexpected input_power for Ethernet1")
+			require.InDelta(t, -2.39, row.OutputPower, 0.01, "unexpected output_power for Ethernet1")
+			require.InDelta(t, 6.19, row.LaserBiasCurrent, 0.01, "unexpected laser_bias_current for Ethernet1")
+			break
+		}
+	}
+	require.True(t, eth1Found, "expected Ethernet1 channel 0 to exist")
+}
+
+func verifyInterfaceState(t *testing.T, h *testHarness) {
+	type interfaceStateRow struct {
+		DevicePubkey       string
+		InterfaceName      string
+		AdminStatus        string
+		OperStatus         string
+		Ifindex            uint32
+		CarrierTransitions uint64
+	}
+
+	rows := queryRows(h, fmt.Sprintf(`
+		SELECT device_pubkey, interface_name, admin_status, oper_status, ifindex, carrier_transitions
+		FROM %s.interface_state
+	`, chDbname), func(r *sql.Rows) (interfaceStateRow, error) {
+		var row interfaceStateRow
+		err := r.Scan(&row.DevicePubkey, &row.InterfaceName, &row.AdminStatus,
+			&row.OperStatus, &row.Ifindex, &row.CarrierTransitions)
+		return row, err
+	})
+
+	t.Logf("found %d interface state records", len(rows))
+	require.GreaterOrEqual(t, len(rows), 1)
+
+	// Build map for easy lookup
+	ifMap := make(map[string]interfaceStateRow)
+	for _, row := range rows {
+		require.Equal(t, "DZi011111111111111111111111111111111111111111", row.DevicePubkey, "unexpected device_pubkey")
+		ifMap[row.InterfaceName] = row
+	}
+
+	// Verify Ethernet1 state
+	require.Contains(t, ifMap, "Ethernet1", "expected Ethernet1 to exist")
+	eth1 := ifMap["Ethernet1"]
+	require.Equal(t, "UP", eth1.AdminStatus, "unexpected admin_status for Ethernet1")
+	require.Equal(t, "UP", eth1.OperStatus, "unexpected oper_status for Ethernet1")
+	require.Equal(t, uint32(1), eth1.Ifindex, "unexpected ifindex for Ethernet1")
+	require.Equal(t, uint64(4), eth1.CarrierTransitions, "unexpected carrier_transitions for Ethernet1")
+
+	// Verify Ethernet2 state (NOT_PRESENT)
+	require.Contains(t, ifMap, "Ethernet2", "expected Ethernet2 to exist")
+	eth2 := ifMap["Ethernet2"]
+	require.Equal(t, "UP", eth2.AdminStatus, "unexpected admin_status for Ethernet2")
+	require.Equal(t, "NOT_PRESENT", eth2.OperStatus, "unexpected oper_status for Ethernet2")
+}
+
+func verifyTransceiverThresholds(t *testing.T, h *testHarness) {
+	type thresholdRow struct {
+		DevicePubkey           string
+		InterfaceName          string
+		Severity               string
+		ModuleTemperatureUpper float64
+		ModuleTemperatureLower float64
+		OutputPowerUpper       float64
+		OutputPowerLower       float64
+	}
+
+	rows := queryRows(h, fmt.Sprintf(`
+		SELECT device_pubkey, interface_name, severity,
+		       module_temperature_upper, module_temperature_lower,
+		       output_power_upper, output_power_lower
+		FROM %s.transceiver_thresholds
+	`, chDbname), func(r *sql.Rows) (thresholdRow, error) {
+		var row thresholdRow
+		err := r.Scan(&row.DevicePubkey, &row.InterfaceName, &row.Severity,
+			&row.ModuleTemperatureUpper, &row.ModuleTemperatureLower,
+			&row.OutputPowerUpper, &row.OutputPowerLower)
+		return row, err
+	})
+
+	t.Logf("found %d transceiver threshold records", len(rows))
+	require.GreaterOrEqual(t, len(rows), 1)
+
+	// Verify at least one record has expected device pubkey
+	for _, row := range rows {
+		require.Equal(t, "DZth11111111111111111111111111111111111111111", row.DevicePubkey, "unexpected device_pubkey")
+	}
+
+	// Find a WARNING threshold for Ethernet50 and verify values
+	var found bool
+	for _, row := range rows {
+		if row.InterfaceName == "Ethernet50" && row.Severity == "WARNING" {
+			found = true
+			require.InDelta(t, 70.0, row.ModuleTemperatureUpper, 0.01, "unexpected module_temperature_upper")
+			require.InDelta(t, 0.0, row.ModuleTemperatureLower, 0.01, "unexpected module_temperature_lower")
+			break
+		}
+	}
+	require.True(t, found, "expected Ethernet50 WARNING threshold to exist")
 }

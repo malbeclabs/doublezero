@@ -252,6 +252,12 @@ Solana validators/nodes connect to DZ as **users**, not directly to devices.
 2. Join `dz_users_current.dz_ip` to `solana_gossip_nodes_current.gossip_ip`
 3. Then join gossip to vote accounts: `solana_gossip_nodes_current.pubkey = solana_vote_accounts_current.node_pubkey`
 
+**Pre-built views for validator queries (USE THESE):**
+- `solana_validators_on_dz_current` - Validators currently on DZ with stake, connection time, etc.
+- `solana_validators_on_dz_connections` - All validator connection events with `first_connected_ts`
+
+These views handle the complex 3-way join for you. Prefer them over manual joins.
+
 **WRONG patterns:**
 - `SELECT COUNT(*) FROM solana_vote_accounts_current` - counts ALL validators, not just those on DZ
 - `SELECT * FROM solana_gossip_nodes_current g JOIN solana_vote_accounts_current v ON g.pubkey = v.node_pubkey` - still counts ALL validators
@@ -259,111 +265,55 @@ Solana validators/nodes connect to DZ as **users**, not directly to devices.
 
 **CORRECT pattern for counting validators currently on DZ:**
 ```sql
-SELECT COUNT(DISTINCT va.vote_pubkey) AS validators_on_dz
-FROM dz_users_current u
-JOIN solana_gossip_nodes_current gn ON u.dz_ip = gn.gossip_ip
-JOIN solana_vote_accounts_current va ON gn.pubkey = va.node_pubkey
-WHERE u.status = 'activated'
-  AND va.activated_stake_lamports > 0
+-- Simple: use the pre-built view
+SELECT COUNT(*) AS validators_on_dz FROM solana_validators_on_dz_current
+
+-- Or with details:
+SELECT vote_pubkey, activated_stake_lamports / 1e9 AS stake_sol, connected_ts
+FROM solana_validators_on_dz_current
+ORDER BY stake_sol DESC
 ```
 
-**Key insight**: `dz_users_current` is the source of truth for what is currently "on DZ". Without joining through it, you're counting the entire Solana network. For historical queries, use `dim_dz_users_history` instead.
+**Key insight**: `dz_users_current` is the source of truth for what is currently "on DZ". Without joining through it, you're counting the entire Solana network. For historical queries, use the `solana_validators_on_dz_connections` view.
 
 ### Validators That Disconnected From DZ
 
 To find validators that were on DZ at a past time but are NOT currently connected:
 
-**Strategy**: Get validators connected at the past time using history tables, then exclude those still connected using NOT IN with current tables.
+**Strategy**: Use `solana_validators_on_dz_connections` to find validators who connected before time T, then exclude those still in `solana_validators_on_dz_current`.
 
 ```sql
--- Validators that disconnected from DZ in the past 24 hours
-WITH validators_24h_ago AS (
-  -- Get validators connected 24 hours ago using history tables
-  SELECT DISTINCT va.vote_pubkey, va.activated_stake_lamports
-  FROM (
-    SELECT *, row_number() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC) AS rn
-    FROM dim_dz_users_history
-    WHERE snapshot_ts <= now() - INTERVAL 24 HOUR AND is_deleted = 0
-  ) u
-  JOIN (
-    SELECT *, row_number() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC) AS rn
-    FROM dim_solana_gossip_nodes_history
-    WHERE snapshot_ts <= now() - INTERVAL 24 HOUR AND is_deleted = 0
-  ) gn ON u.dz_ip = gn.gossip_ip AND gn.rn = 1
-  JOIN solana_vote_accounts_current va ON gn.pubkey = va.node_pubkey
-  WHERE u.rn = 1 AND u.status = 'activated' AND u.dz_ip != ''
-),
-validators_now AS (
-  -- Get validators currently connected
-  SELECT DISTINCT va.vote_pubkey
-  FROM dz_users_current u
-  JOIN solana_gossip_nodes_current gn ON u.dz_ip = gn.gossip_ip
-  JOIN solana_vote_accounts_current va ON gn.pubkey = va.node_pubkey
-  WHERE u.status = 'activated'
-)
--- Disconnected = was connected 24h ago but NOT connected now
-SELECT vote_pubkey, activated_stake_lamports / 1e9 AS stake_sol
-FROM validators_24h_ago
-WHERE vote_pubkey NOT IN (SELECT vote_pubkey FROM validators_now)
+-- Validators that disconnected from DZ (connected before 24h ago but not connected now)
+SELECT c.vote_pubkey, c.activated_stake_lamports / 1e9 AS stake_sol, c.first_connected_ts
+FROM solana_validators_on_dz_connections c
+WHERE c.first_connected_ts < now() - INTERVAL 24 HOUR
+  AND c.vote_pubkey NOT IN (SELECT vote_pubkey FROM solana_validators_on_dz_current)
 ORDER BY stake_sol DESC
 ```
 
 **Key points**:
-1. Use `row_number()` to get the latest snapshot per entity at the historical point
-2. Use NOT IN with the current tables to find those no longer connected
-3. Always join through `dz_users_history` for historical "on DZ" queries
+1. The `_connections` view shows all validators who ever connected
+2. The `_current` view shows validators connected now
+3. Disconnected = in connections history but NOT in current
 
 ### Validators That Connected During a Time Window
 
 To find validators that connected to DZ during a specific past time window (e.g., "between 24h and 22h ago"):
 
-**Strategy**: Get validators connected at the END of the window (T2) but NOT at the START (T1).
+**Use the `solana_validators_on_dz_connections` view** which has `first_connected_ts` for each validator:
 
 ```sql
--- Validators that connected between 24 hours ago (T1) and 22 hours ago (T2)
-WITH validators_at_t1 AS (
-  -- Validators connected at T1 (24 hours ago)
-  SELECT DISTINCT va.vote_pubkey
-  FROM (
-    SELECT *, row_number() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC) AS rn
-    FROM dim_dz_users_history
-    WHERE snapshot_ts <= now() - INTERVAL 24 HOUR AND is_deleted = 0
-  ) u
-  JOIN (
-    SELECT *, row_number() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC) AS rn
-    FROM dim_solana_gossip_nodes_history
-    WHERE snapshot_ts <= now() - INTERVAL 24 HOUR AND is_deleted = 0
-  ) gn ON u.dz_ip = gn.gossip_ip AND gn.rn = 1
-  JOIN solana_vote_accounts_current va ON gn.pubkey = va.node_pubkey
-  WHERE u.rn = 1 AND u.status = 'activated' AND u.dz_ip != ''
-),
-validators_at_t2 AS (
-  -- Validators connected at T2 (22 hours ago)
-  SELECT DISTINCT va.vote_pubkey, va.activated_stake_lamports
-  FROM (
-    SELECT *, row_number() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC) AS rn
-    FROM dim_dz_users_history
-    WHERE snapshot_ts <= now() - INTERVAL 22 HOUR AND is_deleted = 0
-  ) u
-  JOIN (
-    SELECT *, row_number() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC) AS rn
-    FROM dim_solana_gossip_nodes_history
-    WHERE snapshot_ts <= now() - INTERVAL 22 HOUR AND is_deleted = 0
-  ) gn ON u.dz_ip = gn.gossip_ip AND gn.rn = 1
-  JOIN solana_vote_accounts_current va ON gn.pubkey = va.node_pubkey
-  WHERE u.rn = 1 AND u.status = 'activated' AND u.dz_ip != ''
-)
--- Connected during window = at T2 but NOT at T1
-SELECT vote_pubkey, activated_stake_lamports / 1e9 AS stake_sol
-FROM validators_at_t2
-WHERE vote_pubkey NOT IN (SELECT vote_pubkey FROM validators_at_t1)
+-- Validators that first connected between 24 hours ago and 22 hours ago
+SELECT vote_pubkey, node_pubkey, activated_stake_lamports / 1e9 AS stake_sol, first_connected_ts
+FROM solana_validators_on_dz_connections
+WHERE first_connected_ts BETWEEN now() - INTERVAL 24 HOUR AND now() - INTERVAL 22 HOUR
 ORDER BY stake_sol DESC
 ```
 
 **Key points**:
-1. T1 is the START of the window (24h ago), T2 is the END (22h ago)
-2. "Connected during window" means present at T2 but NOT at T1
-3. Use separate CTEs for each time point with their own `row_number()` calculations
+1. The view pre-computes `first_connected_ts` for each validator
+2. Simple time range filter - no complex CTEs needed
+3. For "recently connected" (last N hours), use: `WHERE first_connected_ts > now() - INTERVAL N HOUR`
 
 ### Link Outage Detection
 To find links that were "down" or had outages, look for status transitions in `dim_dz_links_history`:

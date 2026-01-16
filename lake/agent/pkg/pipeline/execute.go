@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -72,6 +73,7 @@ func formatValueForLLM(v any) string {
 }
 
 // FormatQueryResult formats a query result for display in the synthesis prompt.
+// Uses JSON format which LLMs understand well and won't misinterpret.
 func FormatQueryResult(result QueryResult) string {
 	if result.Error != "" {
 		return fmt.Sprintf("Error: %s", result.Error)
@@ -81,10 +83,6 @@ func FormatQueryResult(result QueryResult) string {
 		return "Query returned no results."
 	}
 
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Columns: %s\n", strings.Join(result.Columns, ", ")))
-	sb.WriteString(fmt.Sprintf("Rows (%d total):\n", result.Count))
-
 	// Limit display to 50 rows
 	maxRows := 50
 	displayRows := result.Count
@@ -92,16 +90,53 @@ func FormatQueryResult(result QueryResult) string {
 		displayRows = maxRows
 	}
 
+	// Build JSON array of objects with only non-null values
+	var rows []map[string]any
 	for i := 0; i < displayRows && i < len(result.Rows); i++ {
-		values := make([]string, len(result.Columns))
-		for j, col := range result.Columns {
-			values[j] = formatValueForLLM(result.Rows[i][col])
+		row := make(map[string]any)
+		for _, col := range result.Columns {
+			val := result.Rows[i][col]
+			if val == nil {
+				continue
+			}
+			// Format floats to 2 decimal places
+			switch v := val.(type) {
+			case float64:
+				if v == float64(int64(v)) {
+					row[col] = int64(v) // Whole number
+				} else {
+					// Round to 2 decimal places
+					row[col] = float64(int64(v*100+0.5)) / 100
+				}
+			case float32:
+				if v == float32(int32(v)) {
+					row[col] = int32(v)
+				} else {
+					row[col] = float64(int64(float64(v)*100+0.5)) / 100
+				}
+			default:
+				// Skip empty strings
+				if s, ok := val.(string); ok && s == "" {
+					continue
+				}
+				row[col] = val
+			}
 		}
-		sb.WriteString(strings.Join(values, " | ") + "\n")
+		rows = append(rows, row)
 	}
 
+	// Marshal to JSON with indentation for readability
+	jsonBytes, err := json.MarshalIndent(rows, "", "  ")
+	if err != nil {
+		return fmt.Sprintf("Error formatting results: %v", err)
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Results (%d rows):\n", result.Count))
+	sb.Write(jsonBytes)
+
 	if result.Count > maxRows {
-		sb.WriteString(fmt.Sprintf("... and %d more rows\n", result.Count-maxRows))
+		sb.WriteString(fmt.Sprintf("\n\n... and %d more rows", result.Count-maxRows))
 	}
 
 	return sb.String()

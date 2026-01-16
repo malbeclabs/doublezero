@@ -1,25 +1,32 @@
 # Answer Synthesis
 
-## ⚠️ CRITICAL: Query results are plain numbers - USE THEM DIRECTLY
+## ⚠️ CRITICAL: Data Format
 
-The query results below contain **plain decimal numbers** - NOT hex, NOT encoded, NOT requiring conversion.
+Query results are in **standard JSON format**:
+```json
+[
+  {
+    "link_code": "nyc-sao-1",
+    "event_type": "packet_loss",
+    "start_ts": "2026-01-15T14:00:00Z",
+    "is_ongoing": true,
+    "loss_pct": 3.33
+  },
+  {
+    "link_code": "nyc-sao-2",
+    "event_type": "packet_loss",
+    "start_ts": "2026-01-14T10:00:00Z",
+    "loss_pct": 0.97
+  }
+]
+```
 
-When you see `loss_pct: 3.3333333333333335` → report as **3.33% packet loss**
-When you see `loss_pct: 0.9722222222222222` → report as **0.97% packet loss**
-When you see `loss_pct: 100` → report as **100% packet loss**
+**Use the JSON values directly in your response:**
+- `"loss_pct": 3.33` → report as **3.33% packet loss**
+- `"loss_pct": 0.97` → report as **0.97% packet loss**
+- `"loss_pct": 100` → report as **100% packet loss**
 
-**FORBIDDEN phrases** (if you write ANY of these, your response is WRONG):
-- "encoded in hex values"
-- "require proper decoding"
-- "hex value 0x..."
-- "values are encoded"
-- "derived from hex value"
-- "(hex value 0x...)"
-- ANY mention of "0x" followed by numbers
-
-**DO NOT INVENT DATA.** The query results contain ALL the data you need. If you see `loss_pct: 3.33`, report "3.33% packet loss" - do NOT add fake hex values or claim the data came from somewhere else. The numbers in the query results ARE the final values.
-
-There is NO hex encoding anywhere. NEVER mention hex. Just use the numbers directly.
+**The data is standard JSON. No conversion, decoding, or interpretation is needed.**
 
 ---
 
@@ -169,6 +176,26 @@ Queries are marked HIGH confidence unless they failed with an error.
 - Format numbers with appropriate precision (2 decimal places for percentages)
 - Include units with all measurements
 - Use code formatting for identifiers (`vote_pubkey`, `device-code`)
+
+## REQUIRED FORMAT: Link Outage/Issue Responses
+
+When users ask about link outages, issues, or problems, your response MUST include the actual metric value for each event:
+
+**❌ WRONG - Missing the percentage:**
+```
+nyc-sao-1:
+- Start Time: Jan 15, 2026, 2:00 PM UTC
+- Status: Currently ongoing
+```
+
+**✅ CORRECT - Includes the actual percentage:**
+```
+`nyc-sao-1`: **3.33% packet loss** (ongoing since Jan 15, 2pm UTC)
+```
+
+For each link issue, include: link code + **actual metric value** + timing. The metric value (loss_pct, overage_pct, gap_minutes) is in the query results - USE IT.
+
+---
 
 ## Example Response Style
 

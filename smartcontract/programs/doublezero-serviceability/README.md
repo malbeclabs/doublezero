@@ -388,11 +388,9 @@ stateDiagram-v2
     [*] --> Pending
     Pending --> Activated: approve
     Pending --> Rejected: reject
-    Activated --> Suspended: suspend
     Activated --> PendingBan: request_ban
     Activated --> Deleting: delete
     Suspended --> Activated: resume
-    Suspended --> Deleting: delete
     PendingBan --> Banned: ban
     PendingBan --> Activated: reject_ban
     Banned --> [*]
@@ -425,10 +423,7 @@ stateDiagram-v2
     [*] --> Pending
     Pending --> Activated: approve
     Pending --> Rejected: reject
-    Activated --> Suspended: suspend
     Activated --> Deleting: delete
-    Suspended --> Activated: resume
-    Suspended --> Deleting: delete
     Rejected --> [*]
     Deleting --> [*]
 ```
@@ -860,9 +855,9 @@ Creates a new user in the DoubleZero network, associating it with a device and t
 - `[writable]` Link account
 - `system_program`
 
-#### activate / deactivate / delete / reactivate / reject / requestban / suspend / ban
+#### activate / deactivate / delete / reactivate / reject / requestban / ban
 
-Changes the status of an existing user. Used to activate, deactivate, delete, reactivate, reject, request a ban, suspend, or ban a user.
+Changes the status of an existing user. Used to activate, deactivate, delete, reactivate, reject, request a ban, or ban a user.
 | Parameter | Type | Description |
 |-----------|--------|----------------------------|
 | index | u128 | User index (unique ID) |
@@ -886,20 +881,6 @@ Updates the fields of an existing user. Allows modification of user configuratio
 - `[signer]` Authority
 - `[writable]` User account (PDA)
 - `[writable]` GlobalState account
-
-#### resume
-
-Reactivates a suspended user, setting its status back to Activated.
-| Parameter | Type | Description |
-|-----------|--------|----------------------------|
-| index | u128 | User index (unique ID) |
-| bump_seed | u8 | PDA bump seed |
-
-**Accounts:**
-
-- `[writable]` User account (PDA)
-- `[signer]` Payer
-- `system_program`
 
 #### closeaccount
 

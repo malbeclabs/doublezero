@@ -29,8 +29,8 @@ test-programs: test-sbf
 		-p doublezero-serviceability
 
 .PHONY: test-sbf
-test:
-	cargo test
+test-sbf:
+	cargo test-sbf
 
 .PHONY: lint
 lint: lint-programs

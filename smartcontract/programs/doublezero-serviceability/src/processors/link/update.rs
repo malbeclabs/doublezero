@@ -149,7 +149,7 @@ pub fn process_update_link(
         }
     }
 
-    // can be updated by either contributor A or B
+    // can be updated by contributor A
     if link.contributor_pk == *contributor_account.key {
         if let Some(ref code) = value.code {
             link.code =
@@ -175,29 +175,17 @@ pub fn process_update_link(
     if let Some(delay_override_ns) = value.delay_override_ns {
         link.delay_override_ns = delay_override_ns;
     }
+    if let Some(desired_status) = value.desired_status {
+        link.desired_status = desired_status;
+    }
 
     if let Some(status) = value.status {
-        // Foundation members can set any status
+        // Only foundation allowlist can update the status directly
         if globalstate.foundation_allowlist.contains(payer_account.key) {
             link.status = status;
         } else {
-            // Contributors can only transition between Activated <-> Drained states & Drained <-> Drained states
-            // to allow for maintenance draining of links
-            match (link.status, status) {
-                (LinkStatus::Activated, LinkStatus::HardDrained)
-                | (LinkStatus::Activated, LinkStatus::SoftDrained)
-                | (LinkStatus::HardDrained, LinkStatus::SoftDrained)
-                | (LinkStatus::SoftDrained, LinkStatus::HardDrained)
-                // | (LinkStatus::HardDrained, LinkStatus::Activated) // Links move from HardDrained to SoftDrained before moving to Activated to verify establishment of isis adjacency
-                | (LinkStatus::SoftDrained, LinkStatus::Activated) => {
-                    link.status = status;
-                }
-                _ => return Err(DoubleZeroError::NotAllowed.into()),
-            }
+            return Err(DoubleZeroError::NotAllowed.into());
         }
-    }
-    if let Some(desired_status) = value.desired_status {
-        link.desired_status = desired_status;
     }
 
     link.check_status_transition();

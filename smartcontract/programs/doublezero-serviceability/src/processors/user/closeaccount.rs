@@ -68,6 +68,10 @@ pub fn process_closeaccount_user(
 
     let user = User::try_from(user_account)?;
 
+    if user.device_pk != *device_account.key {
+        return Err(ProgramError::InvalidAccountData);
+    }
+
     if user.owner != *owner_account.key {
         return Err(ProgramError::InvalidAccountData);
     }

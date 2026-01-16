@@ -1,0 +1,120 @@
+update: {
+  timestamp: 1767996400924668639
+  prefix: {
+    target: "CHiDN1111111111111111111111111111111111111111"
+  }
+  update: {
+    path: {
+      elem: {
+        name: "network-instances"
+      }
+      elem: {
+        name: "network-instance"
+        key: {
+          key: "name"
+          value: "default"
+        }
+      }
+      elem: {
+        name: "protocols"
+      }
+      elem: {
+        name: "protocol"
+        key: {
+          key: "identifier"
+          value: "ISIS"
+        }
+        key: {
+          key: "name"
+          value: "1"
+        }
+      }
+      elem: {
+        name: "isis"
+      }
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "interface-id"
+          value: "Switch1/11/2"
+        }
+      }
+      elem: {
+        name: "levels"
+      }
+      elem: {
+        name: "level"
+        key: {
+          key: "level-number"
+          value: "2"
+        }
+      }
+      elem: {
+        name: "adjacencies"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-network-instance:adjacency\":[{\"state\":{\"adjacency-state\":\"UP\",\"arista-isis-augments:advertised-hold-time\":3,\"area-address\":[\"49.0000\"],\"dis-system-id\":\"0000.0000.0000\",\"local-extended-circuit-id\":197,\"multi-topology\":false,\"neighbor-circuit-type\":\"LEVEL_2\",\"neighbor-extended-circuit-id\":140,\"neighbor-ipv4-address\":\"172.16.0.17\",\"neighbor-ipv6-address\":\"::\",\"neighbor-snpa\":\"00:00:00:00:00:00\",\"nlpid\":[\"IPV4\"],\"priority\":0,\"restart-status\":false,\"restart-support\":true,\"restart-suppress\":false,\"system-id\":\"ac10.0001.0000\",\"up-timestamp\":\"1766077107000000000\"},\"system-id\":\"ac10.0001.0000\"}]}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "network-instances"
+      }
+      elem: {
+        name: "network-instance"
+        key: {
+          key: "name"
+          value: "default"
+        }
+      }
+      elem: {
+        name: "protocols"
+      }
+      elem: {
+        name: "protocol"
+        key: {
+          key: "identifier"
+          value: "ISIS"
+        }
+        key: {
+          key: "name"
+          value: "1"
+        }
+      }
+      elem: {
+        name: "isis"
+      }
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "interface-id"
+          value: "Switch1/11/4"
+        }
+      }
+      elem: {
+        name: "levels"
+      }
+      elem: {
+        name: "level"
+        key: {
+          key: "level-number"
+          value: "2"
+        }
+      }
+      elem: {
+        name: "adjacencies"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-network-instance:adjacency\":[{\"state\":{\"adjacency-state\":\"UP\",\"arista-isis-augments:advertised-hold-time\":3,\"area-address\":[\"49.0000\"],\"dis-system-id\":\"0000.0000.0000\",\"local-extended-circuit-id\":218,\"multi-topology\":false,\"neighbor-circuit-type\":\"LEVEL_2\",\"neighbor-extended-circuit-id\":106,\"neighbor-ipv4-address\":\"172.16.0.23\",\"neighbor-ipv6-address\":\"::\",\"neighbor-snpa\":\"00:00:00:00:00:00\",\"nlpid\":[\"IPV4\"],\"priority\":0,\"restart-status\":false,\"restart-support\":true,\"restart-suppress\":false,\"system-id\":\"ac10.000d.0000\",\"up-timestamp\":\"1766077107000000000\"},\"system-id\":\"ac10.000d.0000\"}]}"
+    }
+  }
+}

@@ -6,9 +6,9 @@ pub enum TelemetryError {
     /// Agent is not authorized to write telemetry for this device
     UnauthorizedAgent = 1001,
     /// Device is not in activate or suspended status
-    DeviceNotActiveOrSuspended = 1002,
+    DeviceNotActivated = 1002,
     /// Link is not in activate or suspended status
-    LinkNotActiveOrSuspended = 1003,
+    LinkNotActivated = 1003,
     /// Link does not connect the specified devices
     InvalidLink = 1004,
     /// Epoch mismatch between account and instruction
@@ -52,11 +52,11 @@ impl fmt::Display for TelemetryError {
                 f,
                 "Agent is not authorized to write telemetry for this device"
             ),
-            Self::DeviceNotActiveOrSuspended => {
-                write!(f, "Device is not in activated or suspended status")
+            Self::DeviceNotActivated => {
+                write!(f, "Device is not activated")
             }
-            Self::LinkNotActiveOrSuspended => {
-                write!(f, "Link is not in activated or suspended status")
+            Self::LinkNotActivated => {
+                write!(f, "Link is not activated")
             }
             Self::InvalidLink => write!(f, "Link does not connect the specified devices"),
             Self::EpochMismatch => {

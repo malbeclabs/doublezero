@@ -184,6 +184,7 @@ async fn test_device_interfaces() {
             dz_prefixes: "110.1.0.0/23".parse().unwrap(), // Global prefix
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
+            desired_status: Some(DeviceDesiredStatus::Activated),
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -253,6 +254,9 @@ async fn test_device_interfaces() {
         .unwrap();
     assert_eq!(device.account_type, AccountType::Device);
     assert_eq!(device.code, "la".to_string());
+
+    assert_eq!(device.desired_status, DeviceDesiredStatus::Activated);
+    assert_eq!(device.device_health, DeviceHealth::ReadyForUsers);
     assert_eq!(device.status, DeviceStatus::Activated);
 
     println!("✅ Device activated");

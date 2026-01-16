@@ -30,6 +30,7 @@ pub struct DeviceCreateArgs {
     pub dz_prefixes: NetworkV4List,
     pub metrics_publisher_pk: Pubkey,
     pub mgmt_vrf: String,
+    pub desired_status: Option<DeviceDesiredStatus>,
 }
 
 impl fmt::Debug for DeviceCreateArgs {
@@ -136,7 +137,7 @@ pub fn process_create_device(
         }
     }
 
-    let device: Device = Device {
+    let mut device = Device {
         account_type: AccountType::Device,
         owner: *payer_account.key,
         index: globalstate.account_index,
@@ -155,9 +156,13 @@ pub fn process_create_device(
         interfaces: vec![],
         users_count: 0,
         max_users: 0, // Initially, the Device is locked and must be activated by modifying the maximum number of users.
-        device_health: DeviceHealth::Pending,
-        desired_status: DeviceDesiredStatus::Pending,
+        // TODO: This line show be change when the health oracle is implemented
+        // device_health: DeviceHealth::Pending,
+        device_health: DeviceHealth::ReadyForUsers, // Force the device to be ready for users until the health oracle is implemented
+        desired_status: value.desired_status.unwrap_or(DeviceDesiredStatus::Pending),
     };
+
+    device.check_status_transition();
 
     try_acc_create(
         &device,

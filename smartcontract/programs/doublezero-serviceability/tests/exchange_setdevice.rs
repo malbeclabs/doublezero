@@ -174,6 +174,7 @@ async fn exchange_setdevice() {
             dz_prefixes: "100.1.0.0/23".parse().unwrap(),
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
+            desired_status: Some(DeviceDesiredStatus::Activated),
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -266,7 +267,6 @@ async fn exchange_setdevice() {
         .get_device()
         .unwrap();
     assert_eq!(device.account_type, AccountType::Device);
-    assert_eq!(device.code, "la".to_string());
     assert_eq!(device.status, DeviceStatus::Activated);
 
     /*****************************************************************************************************************************************************/

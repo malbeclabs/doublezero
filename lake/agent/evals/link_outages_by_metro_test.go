@@ -101,9 +101,9 @@ func runTest_LinkOutagesByMetro(t *testing.T, llmFactory LLMClientFactory) {
 			Rationale:     "sao-lon-1 connects SAO to LON and is currently down",
 		},
 		{
-			Description:   "Response mentions nyc-sao-2 packet loss with percentage",
-			ExpectedValue: "nyc-sao-2 identified as having packet loss with the actual percentage value (around 5% or similar numeric value)",
-			Rationale:     "nyc-sao-2 connects NYC to SAO and had ~5% packet loss - the actual percentage must be included, not just 'packet loss detected'",
+			Description:   "Response mentions nyc-sao-2 packet loss with percentage as plain number",
+			ExpectedValue: "nyc-sao-2 identified as having packet loss with an actual percentage value (any numeric %, not just 'packet loss detected'). Must NOT mention 'hex values', 'encoded', 'require decoding', or claim values need conversion.",
+			Rationale:     "nyc-sao-2 had packet loss - the actual percentage must be included as a plain number, not described as encoded or requiring conversion",
 		},
 		{
 			Description:   "Response does NOT mention nyc-lon-1",
@@ -290,11 +290,13 @@ func seedLinkOutagesByMetroData(t *testing.T, ctx context.Context, conn clickhou
 		})
 	}
 
-	// Packet loss period: T-5d to T-4d (hourly samples, ~5% loss = 1-2 loss samples per hour out of 20)
+	// Packet loss period: T-5d to T-4d (hourly samples, ~3.33% loss = 1 loss sample per hour out of 30)
+	// Using 30 samples produces a repeating decimal (1/30 = 0.0333... = 3.33...%) to test
+	// that the synthesizer handles these values correctly without hallucinating hex encoding
 	for h := 0; h < 24; h++ {
 		sampleTime := now.Add(-5*24*time.Hour + time.Duration(h)*time.Hour)
-		// Generate 20 samples per hour, with 1 being a loss sample (~5%)
-		for s := 0; s < 20; s++ {
+		// Generate 30 samples per hour, with 1 being a loss sample (~3.33%)
+		for s := 0; s < 30; s++ {
 			isLoss := s == 0 // First sample of each hour is loss
 			latencySamples = append(latencySamples, struct {
 				time           time.Time
@@ -309,7 +311,7 @@ func seedLinkOutagesByMetroData(t *testing.T, ctx context.Context, conn clickhou
 			}{
 				time:           sampleTime.Add(time.Duration(s) * time.Minute),
 				epoch:          100,
-				sampleIndex:    int32(h*20 + s),
+				sampleIndex:    int32(h*30 + s),
 				originDevicePK: "device1",
 				targetDevicePK: "device3",
 				linkPK:         "link4",

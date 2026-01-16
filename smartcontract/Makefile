@@ -30,7 +30,11 @@ test-programs: test-sbf
 
 .PHONY: test-sbf
 test-sbf:
-	cargo test-sbf
+	cargo test --lib \
+		-p doublezero-program-common \
+		-p doublezero-record \
+		-p doublezero-telemetry \
+		-p doublezero-serviceability
 
 .PHONY: lint
 lint: lint-programs

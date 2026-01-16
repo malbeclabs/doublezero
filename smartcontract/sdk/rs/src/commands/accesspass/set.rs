@@ -39,7 +39,7 @@ impl SetAccessPassCommand {
 
         client.execute_transaction(
             DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
-                accesspass_type: self.accesspass_type,
+                accesspass_type: self.accesspass_type.clone(),
                 client_ip: self.client_ip,
                 last_access_epoch: self.last_access_epoch,
                 allow_multiple_ip: self.allow_multiple_ip,

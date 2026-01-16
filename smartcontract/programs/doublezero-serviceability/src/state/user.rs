@@ -324,9 +324,9 @@ impl User {
     pub fn try_activate(&mut self, accesspass: &mut AccessPass) -> ProgramResult {
         accesspass.update_status()?;
 
-        self.validator_pubkey = match accesspass.accesspass_type {
-            AccessPassType::SolanaValidator(pk) => pk,
-            AccessPassType::Prepaid => Pubkey::default(),
+        self.validator_pubkey = match &accesspass.accesspass_type {
+            AccessPassType::SolanaValidator(pk) => *pk,
+            _ => Pubkey::default(),
         };
 
         self.status = if accesspass.status == AccessPassStatus::Expired {

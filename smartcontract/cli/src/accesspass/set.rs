@@ -12,11 +12,14 @@ use std::{io::Write, net::Ipv4Addr, str::FromStr};
 pub enum CliAccessPassType {
     Prepaid,
     SolanaValidator,
+    SolanaRPC,
+    SolanaMulticastPublisher,
+    SolanaMulticastSubscriber,
 }
 
 #[derive(Args, Debug)]
 pub struct SetAccessPassCliCommand {
-    /// Specifies the type of access pass being set.
+    /// Specifies the access pass type (prepaid, solana_validator, solana_rpc, solana_multicast_publisher, solana_multicast_subscriber)
     #[arg(long, default_value = "prepaid")]
     pub accesspass_type: CliAccessPassType,
     /// Client IP address in IPv4 format
@@ -30,8 +33,8 @@ pub struct SetAccessPassCliCommand {
     pub epochs: String,
     /// Specifies the solana validator node id for the access pass. Required if accesspass_type is solana_validator
     #[arg(long)]
-    pub solana_validator: Option<Pubkey>,
-    /// Allow multiple IP addresses for this access pass (only for Prepaid type)
+    pub solana_validator: Option<Pubkey>, // This will be integrated with identity for all access pass types in future
+    /// Allow multiple IP addresses for this access pass (only for Prepaid type)    
     #[arg(long, default_value_t = false)]
     pub allow_multiple_ip: bool,
 }
@@ -62,6 +65,28 @@ impl SetAccessPassCliCommand {
                 Some(solana_validator) => AccessPassType::SolanaValidator(solana_validator),
                 None => eyre::bail!(
                     "Solana validator access pass type requires --solana-validator <PUBKEY>"
+                ),
+            },
+            CliAccessPassType::SolanaRPC => match self.solana_validator {
+                Some(solana_validator) => AccessPassType::SolanaRPC(solana_validator),
+                None => {
+                    eyre::bail!("Solana RPC access pass type requires --solana-validator <STRING>")
+                }
+            },
+            CliAccessPassType::SolanaMulticastPublisher => match self.solana_validator {
+                Some(solana_validator) => {
+                    AccessPassType::SolanaMulticastPublisher(solana_validator)
+                }
+                None => eyre::bail!(
+                    "Solana Multicast Publisher access pass type requires --solana-validator <STRING>"
+                ),
+            },
+            CliAccessPassType::SolanaMulticastSubscriber => match self.solana_validator {
+                Some(solana_validator) => {
+                    AccessPassType::SolanaMulticastSubscriber(solana_validator)
+                }
+                None => eyre::bail!(
+                    "Solana Multicast Subscriber access pass type requires --solana-validator <STRING>"
                 ),
             },
         };

@@ -169,11 +169,15 @@ Consider:
 - The SQL query - are there filters that might be too restrictive or use wrong values?
 - Common mistakes: wrong column values (e.g., 'active' vs 'activated'), wrong date ranges, incorrect joins
 
-IMPORTANT ClickHouse behavior:
+Time-bounded queries ("in the last N days", "recently connected") CAN legitimately return zero rows, but still check for:
+- Incorrect JOIN conditions or missing JOINs
+- Wrong column comparisons in anti-join patterns
+- Overly restrictive filters that exclude all data
+
+ClickHouse behavior:
 - String columns are NON-NULLABLE by default (not Nullable(String))
 - In LEFT JOINs with no match, non-nullable String columns return '' (empty string), NOT NULL
 - For anti-join patterns (find rows in A not in B), check for empty string: WHERE b.column = ''
-- Only Nullable(String) columns return NULL on no match
 
 Respond with JSON:
 {

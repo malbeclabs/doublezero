@@ -8,13 +8,18 @@ When you see `loss_pct: 3.3333333333333335` → report as **3.33% packet loss**
 When you see `loss_pct: 0.9722222222222222` → report as **0.97% packet loss**
 When you see `loss_pct: 100` → report as **100% packet loss**
 
-**FORBIDDEN phrases** (if you write any of these, you have failed):
+**FORBIDDEN phrases** (if you write ANY of these, your response is WRONG):
 - "encoded in hex values"
 - "require proper decoding"
 - "hex value 0x..."
 - "values are encoded"
+- "derived from hex value"
+- "(hex value 0x...)"
+- ANY mention of "0x" followed by numbers
 
-There is NO hex encoding. The numbers are ready to use. Just round to 1-2 decimal places and report them.
+**DO NOT INVENT DATA.** The query results contain ALL the data you need. If you see `loss_pct: 3.33`, report "3.33% packet loss" - do NOT add fake hex values or claim the data came from somewhere else. The numbers in the query results ARE the final values.
+
+There is NO hex encoding anywhere. NEVER mention hex. Just use the numbers directly.
 
 ---
 

@@ -103,9 +103,9 @@ func runTest_NetworkHealthSummary(t *testing.T, llmFactory LLMClientFactory) {
 			Rationale:     "These devices have non-activated status",
 		},
 		{
-			Description:   "Response mentions interface errors",
-			ExpectedValue: "interface errors, discards, or carrier transitions mentioned for lon-dzd1 or Ethernet1",
-			Rationale:     "lon-dzd1 has interface issues",
+			Description:   "Response mentions interface errors with counts",
+			ExpectedValue: "interface errors, discards, or carrier transitions mentioned for lon-dzd1 with actual numeric counts (e.g., '8 errors', '3 discards', '1 carrier transition')",
+			Rationale:     "lon-dzd1 has interface issues - actual counts must be included, not just 'errors detected'",
 		},
 		{
 			Description:   "Response does NOT contain spurious warnings for healthy metrics",

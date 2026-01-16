@@ -101,9 +101,9 @@ func runTest_LinkOutagesByMetro(t *testing.T, llmFactory LLMClientFactory) {
 			Rationale:     "sao-lon-1 connects SAO to LON and is currently down",
 		},
 		{
-			Description:   "Response mentions nyc-sao-2 packet loss",
-			ExpectedValue: "nyc-sao-2 identified as having packet loss issues or a telemetry-based outage",
-			Rationale:     "nyc-sao-2 connects NYC to SAO and had packet loss (~5%) for about a day",
+			Description:   "Response mentions nyc-sao-2 packet loss with percentage",
+			ExpectedValue: "nyc-sao-2 identified as having packet loss with the actual percentage value (around 5% or similar numeric value)",
+			Rationale:     "nyc-sao-2 connects NYC to SAO and had ~5% packet loss - the actual percentage must be included, not just 'packet loss detected'",
 		},
 		{
 			Description:   "Response does NOT mention nyc-lon-1",

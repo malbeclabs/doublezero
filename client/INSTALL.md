@@ -71,6 +71,7 @@ $ yum install doublezero-x.x.x
 
 Rust:
 ```
+$ sudo apt install libssl-dev pkg-config
 $ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
 
@@ -82,30 +83,18 @@ https://go.dev/doc/install
 # Checkout the latest stable version. You can find the latest stable version here: https://docs.malbeclabs.com/connect/
 $ git checkout client/vX.X.X
 
-# build the doublezero cli
-$ cargo build --release --target-dir ./bin --manifest-path doublezero/Cargo.toml
-$ mv bin/release/doublezero bin/.
-
-# build the doublezero daemon
-$ CGO_ENABLED=0 go build -o bin/doublezerod doublezerod/cmd/doublezerod/main.go
-
-# The doublezero cli and the daemon communicate over a unix socket. Setup socket file directory and permissions
-$ sudo mkdir /var/run/doublezerod
-$ sudo chmod 700 /var/run/doublezerod
-$ sudo chown $USER:$USER /var/run/doublezerod
-
-# Setup start directory where the DoubleZero daemon stores connection state:
-$ sudo mkdir /var/lib/doublezerod
-$ sudo chmod 700 /var/lib/doublezerod
-$ sudo chown $USER:$USER /var/lib/doublezerod
+$ cd client
+$ make build
 ```
 
-The DoubleZero daemon requires CAP_NET_ADMIN and CAP_NET_RAW capabilities. CAP_NET_ADMIN capability is for the ability to create tunnel interfaces, add IP addressing and add routes to the kernel routing table via netlink. CAP_NET_RAW capability is used for latency probing via raw sockets:
+### Install DoubleZero CLI/Daemon
+After running the Build step above, install the doublezero and doublezerod binaries, and the doublezerod systemd unit, with the following commend:
 ```
-$ sudo setcap cap_net_raw,cap_net_admin=+ep ./bin/doublezerod
-
-$ getcap bin/doublezerod
-doublezerod cap_net_admin,cap_net_raw=ep
+$ make install
+```
+To verify that the doublezerod service is runninng, run the following command:
+```
+sudo systemctl status doublezerod
 ```
 
 ### Network requirements

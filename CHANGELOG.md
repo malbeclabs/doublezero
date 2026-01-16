@@ -9,12 +9,24 @@ All notable changes to this project will be documented in this file.
 - Onchain programs
   - Removed device and user allowlist functionality, updating the global state, initialization flow, tests, and processors accordingly, and cleaning up unused account checks.
   - Serviceability: UpdateDevice and UpdateLink now adjust contributor reference counts on both the old and new contributor accounts when `contributor_pk` is changed, ensuring accurate contributor usage tracking.
+  - Deprecated the user suspend status, as it is no longer used.
+- Telemetry
+  - Add gNMI tunnel client for state collection
 
 ### Breaking
 
 - None for this release
 
 ### Changes
+
+- CLI
+  - Remove log noise on resolve route
+- Onchain programs
+   - Removed device and user allowlist functionality, updating the global state, initialization flow, tests, and processors accordingly, and cleaning up unused account checks.
+- Device Health Oracle
+  - Add new device-health-oracle component. See rfcs/rfc12-network-provisioning.md for details.
+- Client
+  - Add `make install` make target. To build and deploy from source, users can now run `cd client && make build && make install` to install the doublezero and doublezerod binaries and the doublezerod systemd unit.
 
 ## [v0.8.2](https://github.com/malbeclabs/doublezero/compare/client/v0.8.1...client/v0.8.2) – 2025-01-13
 

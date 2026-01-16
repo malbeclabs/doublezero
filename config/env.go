@@ -16,16 +16,17 @@ const (
 )
 
 type NetworkConfig struct {
-	Moniker                    string
-	LedgerPublicRPCURL         string
-	ServiceabilityProgramID    solana.PublicKey
-	TelemetryProgramID         solana.PublicKey
-	InternetLatencyCollectorPK solana.PublicKey
-	DeviceLocalASN             uint32
-	TwoZOracleURL              string
-	SolanaRPCURL               string
-	TelemetryFlowIngestURL     string
-	TelemetryStateIngestURL    string
+	Moniker                       string
+	LedgerPublicRPCURL            string
+	ServiceabilityProgramID       solana.PublicKey
+	TelemetryProgramID            solana.PublicKey
+	InternetLatencyCollectorPK    solana.PublicKey
+	DeviceLocalASN                uint32
+	TwoZOracleURL                 string
+	SolanaRPCURL                  string
+	TelemetryFlowIngestURL        string
+	TelemetryStateIngestURL       string
+	TelemetryGNMITunnelServerAddr string
 }
 
 func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
@@ -45,16 +46,17 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			return nil, fmt.Errorf("failed to parse internet latency collector oracle agent PK: %w", err)
 		}
 		config = &NetworkConfig{
-			Moniker:                    EnvMainnetBeta,
-			LedgerPublicRPCURL:         MainnetLedgerPublicRPCURL,
-			ServiceabilityProgramID:    serviceabilityProgramID,
-			TelemetryProgramID:         telemetryProgramID,
-			InternetLatencyCollectorPK: internetLatencyCollectorPK,
-			DeviceLocalASN:             MainnetDeviceLocalASN,
-			TwoZOracleURL:              MainnetTwoZOracleURL,
-			SolanaRPCURL:               MainnetSolanaRPC,
-			TelemetryFlowIngestURL:     MainnetTelemetryFlowIngestURL,
-			TelemetryStateIngestURL:    MainnetTelemetryStateIngestURL,
+			Moniker:                       EnvMainnetBeta,
+			LedgerPublicRPCURL:            MainnetLedgerPublicRPCURL,
+			ServiceabilityProgramID:       serviceabilityProgramID,
+			TelemetryProgramID:            telemetryProgramID,
+			InternetLatencyCollectorPK:    internetLatencyCollectorPK,
+			DeviceLocalASN:                MainnetDeviceLocalASN,
+			TwoZOracleURL:                 MainnetTwoZOracleURL,
+			SolanaRPCURL:                  MainnetSolanaRPC,
+			TelemetryFlowIngestURL:        MainnetTelemetryFlowIngestURL,
+			TelemetryStateIngestURL:       MainnetTelemetryStateIngestURL,
+			TelemetryGNMITunnelServerAddr: MainnetTelemetryGNMITunnelServerAddr,
 		}
 	case EnvTestnet:
 		serviceabilityProgramID, err := solana.PublicKeyFromBase58(TestnetServiceabilityProgramID)
@@ -70,16 +72,17 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			return nil, fmt.Errorf("failed to parse internet latency collector oracle agent PK: %w", err)
 		}
 		config = &NetworkConfig{
-			Moniker:                    EnvTestnet,
-			LedgerPublicRPCURL:         TestnetLedgerPublicRPCURL,
-			ServiceabilityProgramID:    serviceabilityProgramID,
-			TelemetryProgramID:         telemetryProgramID,
-			InternetLatencyCollectorPK: internetLatencyCollectorPK,
-			DeviceLocalASN:             TestnetDeviceLocalASN,
-			TwoZOracleURL:              TestnetTwoZOracleURL,
-			SolanaRPCURL:               TestnetSolanaRPC,
-			TelemetryFlowIngestURL:     TestnetTelemetryFlowIngestURL,
-			TelemetryStateIngestURL:    TestnetTelemetryStateIngestURL,
+			Moniker:                       EnvTestnet,
+			LedgerPublicRPCURL:            TestnetLedgerPublicRPCURL,
+			ServiceabilityProgramID:       serviceabilityProgramID,
+			TelemetryProgramID:            telemetryProgramID,
+			InternetLatencyCollectorPK:    internetLatencyCollectorPK,
+			DeviceLocalASN:                TestnetDeviceLocalASN,
+			TwoZOracleURL:                 TestnetTwoZOracleURL,
+			SolanaRPCURL:                  TestnetSolanaRPC,
+			TelemetryFlowIngestURL:        TestnetTelemetryFlowIngestURL,
+			TelemetryStateIngestURL:       TestnetTelemetryStateIngestURL,
+			TelemetryGNMITunnelServerAddr: TestnetTelemetryGNMITunnelServerAddr,
 		}
 	case EnvDevnet:
 		serviceabilityProgramID, err := solana.PublicKeyFromBase58(DevnetServiceabilityProgramID)
@@ -95,16 +98,17 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			return nil, fmt.Errorf("failed to parse internet latency collector oracle agent PK: %w", err)
 		}
 		config = &NetworkConfig{
-			Moniker:                    EnvDevnet,
-			LedgerPublicRPCURL:         DevnetLedgerPublicRPCURL,
-			ServiceabilityProgramID:    serviceabilityProgramID,
-			TelemetryProgramID:         telemetryProgramID,
-			InternetLatencyCollectorPK: internetLatencyCollectorPK,
-			DeviceLocalASN:             DevnetDeviceLocalASN,
-			TwoZOracleURL:              DevnetTwoZOracleURL,
-			SolanaRPCURL:               TestnetSolanaRPC,
-			TelemetryFlowIngestURL:     DevnetTelemetryFlowIngestURL,
-			TelemetryStateIngestURL:    DevnetTelemetryStateIngestURL,
+			Moniker:                       EnvDevnet,
+			LedgerPublicRPCURL:            DevnetLedgerPublicRPCURL,
+			ServiceabilityProgramID:       serviceabilityProgramID,
+			TelemetryProgramID:            telemetryProgramID,
+			InternetLatencyCollectorPK:    internetLatencyCollectorPK,
+			DeviceLocalASN:                DevnetDeviceLocalASN,
+			TwoZOracleURL:                 DevnetTwoZOracleURL,
+			SolanaRPCURL:                  TestnetSolanaRPC,
+			TelemetryFlowIngestURL:        DevnetTelemetryFlowIngestURL,
+			TelemetryStateIngestURL:       DevnetTelemetryStateIngestURL,
+			TelemetryGNMITunnelServerAddr: DevnetTelemetryGNMITunnelServerAddr,
 		}
 	case EnvLocalnet:
 		serviceabilityProgramID, err := solana.PublicKeyFromBase58(LocalnetServiceabilityProgramID)
@@ -120,16 +124,17 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			return nil, fmt.Errorf("failed to parse internet latency collector oracle agent PK: %w", err)
 		}
 		config = &NetworkConfig{
-			Moniker:                    EnvLocalnet,
-			LedgerPublicRPCURL:         LocalnetLedgerPublicRPCURL,
-			ServiceabilityProgramID:    serviceabilityProgramID,
-			TelemetryProgramID:         telemetryProgramID,
-			InternetLatencyCollectorPK: internetLatencyCollectorPK,
-			DeviceLocalASN:             LocalnetDeviceLocalASN,
-			TwoZOracleURL:              LocalnetTwoZOracleURL,
-			SolanaRPCURL:               LocalnetSolanaRPC,
-			TelemetryFlowIngestURL:     LocalnetTelemetryFlowIngestURL,
-			TelemetryStateIngestURL:    LocalnetTelemetryStateIngestURL,
+			Moniker:                       EnvLocalnet,
+			LedgerPublicRPCURL:            LocalnetLedgerPublicRPCURL,
+			ServiceabilityProgramID:       serviceabilityProgramID,
+			TelemetryProgramID:            telemetryProgramID,
+			InternetLatencyCollectorPK:    internetLatencyCollectorPK,
+			DeviceLocalASN:                LocalnetDeviceLocalASN,
+			TwoZOracleURL:                 LocalnetTwoZOracleURL,
+			SolanaRPCURL:                  LocalnetSolanaRPC,
+			TelemetryFlowIngestURL:        LocalnetTelemetryFlowIngestURL,
+			TelemetryStateIngestURL:       LocalnetTelemetryStateIngestURL,
+			TelemetryGNMITunnelServerAddr: LocalnetTelemetryGNMITunnelServerAddr,
 		}
 	default:
 		// We intentionally do not include localnet in the error message.

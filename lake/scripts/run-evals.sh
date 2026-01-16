@@ -474,6 +474,13 @@ fi
 echo "  Summary:   $SUMMARY_FILE" | tee -a "$SUMMARY_FILE"
 echo "  Per-test:  $OUTPUT_DIR/<test_name>.log" | tee -a "$SUMMARY_FILE"
 
+# List flaky tests (before failures so failures are more visible at the end)
+if [[ $FLAKY -gt 0 ]]; then
+    echo "" | tee -a "$SUMMARY_FILE"
+    echo "Flaky tests:" | tee -a "$SUMMARY_FILE"
+    grep -E "^FLAKY:" "$FLAKY_FILE" | sed 's/^FLAKY: /  - /' | head -50 | tee -a "$SUMMARY_FILE"
+fi
+
 # List failed tests
 if [[ $FAILED -gt 0 ]]; then
     echo "" | tee -a "$SUMMARY_FILE"

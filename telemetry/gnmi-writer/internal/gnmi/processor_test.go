@@ -627,41 +627,40 @@ func TestUnmarshal_Interfaces(t *testing.T) {
 		t.Fatalf("failed to create processor: %v", err)
 	}
 
-	update := notification.GetUpdate()[0]
-	device, err := processor.unmarshalNotification(notification, update)
-	if err != nil {
-		t.Fatalf("failed to unmarshal interfaces: %v", err)
-	}
+	// Track all interfaces found across all updates
+	foundInterfaces := make(map[string]bool)
 
-	// Verify the interfaces were unmarshalled correctly (uncompressed paths)
-	if device.Interfaces == nil || len(device.Interfaces.Interface) == 0 {
-		t.Fatal("expected interfaces to be populated")
-	}
+	for _, update := range notification.GetUpdate() {
+		device, err := processor.unmarshalNotification(notification, update)
+		if err != nil {
+			t.Fatalf("failed to unmarshal interfaces: %v", err)
+		}
 
-	t.Logf("Found %d interfaces", len(device.Interfaces.Interface))
+		// Verify the interfaces were unmarshalled correctly (uncompressed paths)
+		if device.Interfaces == nil || len(device.Interfaces.Interface) == 0 {
+			continue
+		}
 
-	// Verify Ethernet1 - with uncompressed paths, Name is in State or Config
-	if iface, ok := device.Interfaces.Interface["Ethernet1"]; ok {
-		if iface.State != nil && iface.State.Name != nil {
-			if *iface.State.Name != "Ethernet1" {
-				t.Errorf("expected interface name Ethernet1, got %v", *iface.State.Name)
+		for name, iface := range device.Interfaces.Interface {
+			foundInterfaces[name] = true
+			// Verify interface name matches state
+			if iface.State != nil && iface.State.Name != nil {
+				if *iface.State.Name != name {
+					t.Errorf("expected interface name %s, got %v", name, *iface.State.Name)
+				}
 			}
 		}
-		if iface.State != nil && iface.State.Mtu != nil {
-			t.Logf("Ethernet1 MTU: %d", *iface.State.Mtu)
-		}
-	} else {
+	}
+
+	t.Logf("Found %d interfaces", len(foundInterfaces))
+
+	// Verify Ethernet1 was found
+	if !foundInterfaces["Ethernet1"] {
 		t.Error("expected interface Ethernet1 to exist")
 	}
 
-	// Verify Ethernet2
-	if iface, ok := device.Interfaces.Interface["Ethernet2"]; ok {
-		if iface.State != nil && iface.State.Name != nil {
-			if *iface.State.Name != "Ethernet2" {
-				t.Errorf("expected interface name Ethernet2, got %v", *iface.State.Name)
-			}
-		}
-	} else {
+	// Verify Ethernet2 was found
+	if !foundInterfaces["Ethernet2"] {
 		t.Error("expected interface Ethernet2 to exist")
 	}
 }
@@ -799,4 +798,169 @@ func TestUnmarshal_InterfacesIfindex(t *testing.T) {
 	}
 
 	t.Logf("successfully unmarshalled %d interfaces", len(ifindexMap))
+}
+
+func TestExtractTransceiverState_Isolation(t *testing.T) {
+	resp := loadGoldenPrototext(t, "transceiver_state.prototext")
+	resp = serializeAndDeserialize(t, resp)
+	notification := resp.GetUpdate()
+
+	processor, err := NewProcessor()
+	if err != nil {
+		t.Fatalf("failed to create processor: %v", err)
+	}
+
+	meta := Metadata{
+		DevicePubkey: "test-device",
+		Timestamp:    time.Unix(0, notification.GetTimestamp()),
+	}
+
+	// Unmarshal all updates and collect records
+	var allRecords []Record
+	for _, update := range notification.GetUpdate() {
+		device, err := processor.unmarshalNotification(notification, update)
+		if err != nil {
+			t.Fatalf("failed to unmarshal: %v", err)
+		}
+		records := extractTransceiverState(device, meta)
+		allRecords = append(allRecords, records...)
+	}
+
+	if len(allRecords) == 0 {
+		t.Fatal("expected at least one transceiver state record")
+	}
+
+	// Verify first record has expected fields
+	record := allRecords[0].(TransceiverStateRecord)
+	if record.DevicePubkey != "test-device" {
+		t.Errorf("expected DevicePubkey test-device, got %s", record.DevicePubkey)
+	}
+
+	// Find Ethernet1 channel 0 and verify values
+	var eth1Found bool
+	for _, r := range allRecords {
+		rec := r.(TransceiverStateRecord)
+		if rec.InterfaceName == "Ethernet1" && rec.ChannelIndex == 0 {
+			eth1Found = true
+			if rec.InputPower < -2.0 || rec.InputPower > -1.5 {
+				t.Errorf("expected InputPower around -1.89, got %f", rec.InputPower)
+			}
+			break
+		}
+	}
+	if !eth1Found {
+		t.Error("expected Ethernet1 channel 0 record")
+	}
+
+	t.Logf("extracted %d transceiver state records", len(allRecords))
+}
+
+func TestExtractInterfaceState_Isolation(t *testing.T) {
+	resp := loadGoldenPrototext(t, "interfaces.prototext")
+	resp = serializeAndDeserialize(t, resp)
+	notification := resp.GetUpdate()
+
+	processor, err := NewProcessor()
+	if err != nil {
+		t.Fatalf("failed to create processor: %v", err)
+	}
+
+	meta := Metadata{
+		DevicePubkey: "test-device",
+		Timestamp:    time.Unix(0, notification.GetTimestamp()),
+	}
+
+	// Unmarshal all updates and collect records
+	var allRecords []Record
+	for _, update := range notification.GetUpdate() {
+		device, err := processor.unmarshalNotification(notification, update)
+		if err != nil {
+			t.Fatalf("failed to unmarshal: %v", err)
+		}
+		records := extractInterfaceState(device, meta)
+		allRecords = append(allRecords, records...)
+	}
+
+	if len(allRecords) == 0 {
+		t.Fatal("expected at least one interface state record")
+	}
+
+	// Build map for verification
+	ifMap := make(map[string]InterfaceStateRecord)
+	for _, r := range allRecords {
+		rec := r.(InterfaceStateRecord)
+		ifMap[rec.InterfaceName] = rec
+	}
+
+	// Verify Ethernet1
+	if eth1, ok := ifMap["Ethernet1"]; !ok {
+		t.Error("expected Ethernet1 record")
+	} else {
+		if eth1.AdminStatus != "UP" {
+			t.Errorf("expected Ethernet1 AdminStatus UP, got %s", eth1.AdminStatus)
+		}
+		if eth1.OperStatus != "UP" {
+			t.Errorf("expected Ethernet1 OperStatus UP, got %s", eth1.OperStatus)
+		}
+	}
+
+	// Verify Ethernet2 (NOT_PRESENT)
+	if eth2, ok := ifMap["Ethernet2"]; !ok {
+		t.Error("expected Ethernet2 record")
+	} else {
+		if eth2.OperStatus != "NOT_PRESENT" {
+			t.Errorf("expected Ethernet2 OperStatus NOT_PRESENT, got %s", eth2.OperStatus)
+		}
+	}
+
+	t.Logf("extracted %d interface state records", len(allRecords))
+}
+
+func TestExtractTransceiverThresholds_Isolation(t *testing.T) {
+	resp := loadGoldenPrototext(t, "transceiver_thresholds.prototext")
+	resp = serializeAndDeserialize(t, resp)
+	notification := resp.GetUpdate()
+
+	processor, err := NewProcessor()
+	if err != nil {
+		t.Fatalf("failed to create processor: %v", err)
+	}
+
+	meta := Metadata{
+		DevicePubkey: "test-device",
+		Timestamp:    time.Unix(0, notification.GetTimestamp()),
+	}
+
+	// Unmarshal all updates and collect records
+	var allRecords []Record
+	for _, update := range notification.GetUpdate() {
+		device, err := processor.unmarshalNotification(notification, update)
+		if err != nil {
+			t.Fatalf("failed to unmarshal: %v", err)
+		}
+		records := extractTransceiverThresholds(device, meta)
+		allRecords = append(allRecords, records...)
+	}
+
+	if len(allRecords) == 0 {
+		t.Fatal("expected at least one transceiver threshold record")
+	}
+
+	// Find Ethernet50 WARNING threshold and verify
+	var found bool
+	for _, r := range allRecords {
+		rec := r.(TransceiverThresholdRecord)
+		if rec.InterfaceName == "Ethernet50" && rec.Severity == "WARNING" {
+			found = true
+			if rec.ModuleTemperatureUpper < 69.0 || rec.ModuleTemperatureUpper > 71.0 {
+				t.Errorf("expected ModuleTemperatureUpper around 70.0, got %f", rec.ModuleTemperatureUpper)
+			}
+			break
+		}
+	}
+	if !found {
+		t.Error("expected Ethernet50 WARNING threshold record")
+	}
+
+	t.Logf("extracted %d transceiver threshold records", len(allRecords))
 }

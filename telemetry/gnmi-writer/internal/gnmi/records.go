@@ -76,3 +76,68 @@ type InterfaceIfindexRecord struct {
 func (r InterfaceIfindexRecord) TableName() string {
 	return "interface_ifindex"
 }
+
+// TransceiverStateRecord represents optical transceiver channel state for storage in ClickHouse.
+type TransceiverStateRecord struct {
+	Timestamp        time.Time `json:"timestamp" ch:"timestamp"`
+	DevicePubkey     string    `json:"device_pubkey" ch:"device_pubkey"`
+	InterfaceName    string    `json:"interface_name" ch:"interface_name"`
+	ChannelIndex     uint16    `json:"channel_index" ch:"channel_index"`
+	InputPower       float64   `json:"input_power,omitempty" ch:"input_power"`
+	OutputPower      float64   `json:"output_power,omitempty" ch:"output_power"`
+	LaserBiasCurrent float64   `json:"laser_bias_current,omitempty" ch:"laser_bias_current"`
+}
+
+// TableName returns the ClickHouse table name for transceiver state records.
+func (r TransceiverStateRecord) TableName() string {
+	return "transceiver_state"
+}
+
+// InterfaceStateRecord represents interface state for storage in ClickHouse.
+type InterfaceStateRecord struct {
+	Timestamp          time.Time `json:"timestamp" ch:"timestamp"`
+	DevicePubkey       string    `json:"device_pubkey" ch:"device_pubkey"`
+	InterfaceName      string    `json:"interface_name" ch:"interface_name"`
+	AdminStatus        string    `json:"admin_status" ch:"admin_status"`
+	OperStatus         string    `json:"oper_status" ch:"oper_status"`
+	Ifindex            uint32    `json:"ifindex,omitempty" ch:"ifindex"`
+	Mtu                uint16    `json:"mtu,omitempty" ch:"mtu"`
+	LastChange         int64     `json:"last_change,omitempty" ch:"last_change"`
+	CarrierTransitions uint64    `json:"carrier_transitions,omitempty" ch:"carrier_transitions"`
+	InOctets           uint64    `json:"in_octets,omitempty" ch:"in_octets"`
+	OutOctets          uint64    `json:"out_octets,omitempty" ch:"out_octets"`
+	InPkts             uint64    `json:"in_pkts,omitempty" ch:"in_pkts"`
+	OutPkts            uint64    `json:"out_pkts,omitempty" ch:"out_pkts"`
+	InErrors           uint64    `json:"in_errors,omitempty" ch:"in_errors"`
+	OutErrors          uint64    `json:"out_errors,omitempty" ch:"out_errors"`
+	InDiscards         uint64    `json:"in_discards,omitempty" ch:"in_discards"`
+	OutDiscards        uint64    `json:"out_discards,omitempty" ch:"out_discards"`
+}
+
+// TableName returns the ClickHouse table name for interface state records.
+func (r InterfaceStateRecord) TableName() string {
+	return "interface_state"
+}
+
+// TransceiverThresholdRecord represents transceiver alarm thresholds for storage in ClickHouse.
+type TransceiverThresholdRecord struct {
+	Timestamp              time.Time `json:"timestamp" ch:"timestamp"`
+	DevicePubkey           string    `json:"device_pubkey" ch:"device_pubkey"`
+	InterfaceName          string    `json:"interface_name" ch:"interface_name"`
+	Severity               string    `json:"severity" ch:"severity"`
+	InputPowerLower        float64   `json:"input_power_lower,omitempty" ch:"input_power_lower"`
+	InputPowerUpper        float64   `json:"input_power_upper,omitempty" ch:"input_power_upper"`
+	OutputPowerLower       float64   `json:"output_power_lower,omitempty" ch:"output_power_lower"`
+	OutputPowerUpper       float64   `json:"output_power_upper,omitempty" ch:"output_power_upper"`
+	LaserBiasCurrentLower  float64   `json:"laser_bias_current_lower,omitempty" ch:"laser_bias_current_lower"`
+	LaserBiasCurrentUpper  float64   `json:"laser_bias_current_upper,omitempty" ch:"laser_bias_current_upper"`
+	ModuleTemperatureLower float64   `json:"module_temperature_lower,omitempty" ch:"module_temperature_lower"`
+	ModuleTemperatureUpper float64   `json:"module_temperature_upper,omitempty" ch:"module_temperature_upper"`
+	SupplyVoltageLower     float64   `json:"supply_voltage_lower,omitempty" ch:"supply_voltage_lower"`
+	SupplyVoltageUpper     float64   `json:"supply_voltage_upper,omitempty" ch:"supply_voltage_upper"`
+}
+
+// TableName returns the ClickHouse table name for transceiver thresholds.
+func (r TransceiverThresholdRecord) TableName() string {
+	return "transceiver_thresholds"
+}

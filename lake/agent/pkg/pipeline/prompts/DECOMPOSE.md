@@ -60,7 +60,7 @@ Given a user's question, identify what specific data questions need to be answer
   - **"Recently connected/joined" (time-bounded)**: Use the comparison approach - find entities connected NOW but NOT connected X hours/days ago. This catches true recent connections regardless of ingestion timing.
   - **"Growth since we started tracking" (unbounded)**: Use first-appearance approach - exclude entities from initial ingestion snapshot. But this is ONLY appropriate when the user explicitly asks about growth since tracking began.
   - **NEVER** use first-appearance as a substitute for "recently connected" - a validator that reconnected after a brief outage is NOT a "new connection".
-- **For specific past time window queries** (e.g., "between 24h ago and 22h ago"): Use double comparison - find entities connected at the END of the window (T2) but NOT connected at the START (T1). For "which validators connected between 24h ago and 22h ago", find validators that were on DZ at the 22h mark but NOT at the 24h mark.
+- **For specific past time window queries** (e.g., "which validators connected between 24h ago and 22h ago"): Use `first_connected_ts BETWEEN` from the `solana_validators_on_dz_connections` view. Do NOT use the comparison approach (connected at T2 but not at T1) - that gives wrong results because it includes validators connected after the window ends.
 - **For network health/status questions**: Ask for specific entity lists (not just counts). Users need to know exactly which devices, links, and interfaces have issues, along with their specific status or problem details
 - Order questions logically - foundational facts first, then derived insights
 - **For confirmation responses**: If the user says "yes", "please do", "go ahead", etc., and the previous assistant message offered to run a query or investigation, extract the data questions from what was offered. Look at the conversation history to understand what query was proposed.
@@ -121,6 +121,13 @@ Respond with a JSON object containing an array of data questions:
 1. Which validators are currently connected to DZ but were NOT connected 24 hours ago? Include vote_pubkey, stake, and when they first appeared in the history.
 
 *Key insight*: One query is enough - synthesis can count rows and sum stake. "Connected in the last X" means **newly connected** during that period - use the comparison approach (connected now but NOT connected X hours ago). Do NOT use first-appearance-since-ingestion queries. If the query returns 0 validators, the answer is "0 validators connected recently".
+
+**User Question**: "Which validators connected to DZ between 24 hours ago and 22 hours ago?"
+
+**Good Decomposition**:
+1. List validators from `solana_validators_on_dz_connections` where `first_connected_ts` is between 24 hours ago and 22 hours ago. Include vote_pubkey, stake, and first_connected_ts.
+
+*Key insight*: For **specific past time windows** (between X and Y hours ago), use the `solana_validators_on_dz_connections` view with a BETWEEN filter on `first_connected_ts`. Do NOT use the comparison approach (connected at T2 but not at T1) - that approach is wrong because it includes validators that connected AFTER the window ends. The `first_connected_ts BETWEEN` pattern is simple and correct.
 
 **User Question**: "How is DZ performing compared to the public internet?"
 

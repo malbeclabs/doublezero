@@ -29,6 +29,7 @@ WHERE u.status = 'activated'
 -- solana_validators_on_dz_connections
 -- Shows all validator connection events (when validators first connected to DZ)
 -- Uses history tables to find the earliest time each validator was connected
+-- Returns the latest stake/commission values (not values at connection time)
 CREATE OR REPLACE VIEW solana_validators_on_dz_connections
 AS
 WITH connection_events AS (
@@ -48,14 +49,36 @@ WITH connection_events AS (
     WHERE u.is_deleted = 0 AND u.status = 'activated' AND u.dz_ip != ''
       AND gn.is_deleted = 0
       AND va.is_deleted = 0 AND va.epoch_vote_account = 'true' AND va.activated_stake_lamports > 0
+),
+first_connections AS (
+    -- Get first connection time per validator (GROUP BY only immutable identifiers)
+    SELECT
+        vote_pubkey,
+        node_pubkey,
+        MIN(connected_ts) AS first_connected_ts,
+        MAX(connected_ts) AS last_connected_ts
+    FROM connection_events
+    GROUP BY vote_pubkey, node_pubkey
+),
+latest_values AS (
+    -- Get latest stake/commission values per validator using row_number
+    SELECT
+        vote_pubkey,
+        node_pubkey,
+        owner_pubkey,
+        dz_ip,
+        activated_stake_lamports,
+        commission_percentage,
+        ROW_NUMBER() OVER (PARTITION BY vote_pubkey, node_pubkey ORDER BY connected_ts DESC) AS rn
+    FROM connection_events
 )
 SELECT
-    vote_pubkey,
-    node_pubkey,
-    owner_pubkey,
-    dz_ip,
-    activated_stake_lamports,
-    commission_percentage,
-    MIN(connected_ts) AS first_connected_ts
-FROM connection_events
-GROUP BY vote_pubkey, node_pubkey, owner_pubkey, dz_ip, activated_stake_lamports, commission_percentage;
+    fc.vote_pubkey,
+    fc.node_pubkey,
+    lv.owner_pubkey,
+    lv.dz_ip,
+    lv.activated_stake_lamports,
+    lv.commission_percentage,
+    fc.first_connected_ts
+FROM first_connections fc
+JOIN latest_values lv ON fc.vote_pubkey = lv.vote_pubkey AND fc.node_pubkey = lv.node_pubkey AND lv.rn = 1;

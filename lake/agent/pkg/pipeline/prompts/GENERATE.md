@@ -278,29 +278,73 @@ ORDER BY stake_sol DESC
 
 ### Validators That Disconnected From DZ
 
-To find validators that were on DZ at a past time but are NOT currently connected:
+**Two different questions require different approaches:**
 
-**Strategy**: Use `solana_validators_on_dz_connections` to find validators who connected before time T, then exclude those still in `solana_validators_on_dz_current`.
+#### "Which validators are no longer on DZ?" (any disconnection time)
+
+Use `solana_validators_on_dz_connections` with NOT IN pattern:
 
 ```sql
--- Validators that disconnected from DZ (connected before 24h ago but not connected now)
+-- Validators no longer on DZ (regardless of when they left)
 SELECT c.vote_pubkey, c.activated_stake_lamports / 1e9 AS stake_sol, c.first_connected_ts
 FROM solana_validators_on_dz_connections c
-WHERE c.first_connected_ts < now() - INTERVAL 24 HOUR
-  AND c.vote_pubkey NOT IN (SELECT vote_pubkey FROM solana_validators_on_dz_current)
+WHERE c.vote_pubkey NOT IN (SELECT vote_pubkey FROM solana_validators_on_dz_current)
 ORDER BY stake_sol DESC
 ```
 
-**Key points**:
-1. The `_connections` view shows all validators who ever connected
-2. The `_current` view shows validators connected now
-3. Disconnected = in connections history but NOT in current
+#### "Which validators disconnected RECENTLY?" (within a time window)
 
-### Validators That Connected During a Time Window
+This requires using history tables to find when the user record was deleted. The `solana_validators_on_dz_connections` view does NOT have disconnection timestamps.
+
+**Strategy**: Find validators connected at time T1, exclude those currently connected, then verify the user was deleted within the time window.
+
+```sql
+-- Validators that disconnected in the past 24 hours
+-- Step 1: Find validators connected 24h ago using SCD Type 2 pattern
+-- Step 2: Exclude those still connected now
+-- Step 3: Filter to those whose user record was deleted in the past 24h
+WITH validators_24h_ago AS (
+  -- Get validators connected 24 hours ago using SCD Type 2 pattern
+  SELECT DISTINCT va.vote_pubkey, va.activated_stake_lamports, u.entity_id AS user_entity_id
+  FROM (
+    SELECT *, ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
+    FROM dim_dz_users_history
+    WHERE snapshot_ts <= now() - INTERVAL 24 HOUR AND is_deleted = 0
+  ) u
+  JOIN (
+    SELECT *, ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
+    FROM dim_solana_gossip_nodes_history
+    WHERE snapshot_ts <= now() - INTERVAL 24 HOUR AND is_deleted = 0
+  ) gn ON u.dz_ip = gn.gossip_ip AND gn.gossip_ip != '' AND gn.rn = 1
+  JOIN (
+    SELECT *, ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY snapshot_ts DESC, ingested_at DESC, op_id DESC) AS rn
+    FROM dim_solana_vote_accounts_history
+    WHERE snapshot_ts <= now() - INTERVAL 24 HOUR AND is_deleted = 0
+  ) va ON gn.pubkey = va.node_pubkey AND va.rn = 1
+  WHERE u.rn = 1 AND u.status = 'activated' AND u.dz_ip != ''
+    AND va.epoch_vote_account = 'true' AND va.activated_stake_lamports > 0
+),
+recent_disconnections AS (
+  -- Find user entities deleted in the past 24 hours
+  SELECT DISTINCT entity_id
+  FROM dim_dz_users_history
+  WHERE is_deleted = 1
+    AND snapshot_ts >= now() - INTERVAL 24 HOUR
+)
+SELECT v.vote_pubkey, v.activated_stake_lamports / 1e9 AS stake_sol
+FROM validators_24h_ago v
+WHERE v.vote_pubkey NOT IN (SELECT vote_pubkey FROM solana_validators_on_dz_current)
+  AND v.user_entity_id IN (SELECT entity_id FROM recent_disconnections)
+ORDER BY stake_sol DESC
+```
+
+**Key insight**: "No longer connected" ≠ "recently disconnected". A validator that left 30 days ago is "no longer connected" but did NOT "recently disconnect". For stake share decrease questions, you need the time-filtered approach.
+
+### Validators That Connected During a Time Window (IMPORTANT)
 
 To find validators that connected to DZ during a specific past time window (e.g., "between 24h and 22h ago"):
 
-**Use the `solana_validators_on_dz_connections` view** which has `first_connected_ts` for each validator:
+**USE THIS PATTERN - it's simple and correct:**
 
 ```sql
 -- Validators that first connected between 24 hours ago and 22 hours ago
@@ -312,8 +356,24 @@ ORDER BY stake_sol DESC
 
 **Key points**:
 1. The view pre-computes `first_connected_ts` for each validator
-2. Simple time range filter - no complex CTEs needed
+2. Simple BETWEEN filter - no complex CTEs or history table joins needed
 3. For "recently connected" (last N hours), use: `WHERE first_connected_ts > now() - INTERVAL N HOUR`
+
+**WRONG approach** (do NOT use):
+```sql
+-- WRONG: This finds validators connected NOW but not at time T
+-- This is NOT the same as "connected DURING a time window"
+SELECT curr.vote_pubkey
+FROM solana_validators_on_dz_current curr
+LEFT JOIN (...validators at time T...) past ON curr.vote_pubkey = past.vote_pubkey
+WHERE past.vote_pubkey = ''  -- Anti-join
+```
+
+**Why it's wrong**: "Connected NOW but not 22h ago" includes validators that connected 1 hour ago, 10 hours ago, etc. - not just those in the specific 24h-22h window. The BETWEEN approach on `first_connected_ts` is the correct pattern.
+
+**Question decomposition**: When a question asks "which validators connected between X and Y hours ago", decompose it as:
+- "List validators with first_connected_ts between X hours ago and Y hours ago"
+- NOT as "validators connected now but not at time Y"
 
 ### Link Issue Detection
 

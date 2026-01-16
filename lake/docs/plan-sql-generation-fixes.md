@@ -61,7 +61,9 @@ Medium - These tests pass most of the time but fail intermittently, indicating t
 
 ## Status
 
-- [ ] Investigate SolanaStakeShareDecrease SQL patterns
-- [ ] Investigate SolanaValidatorsConnectedStakeIncrease SQL patterns
-- [ ] Update GENERATE.md with clearer examples
-- [ ] Verify fixes with eval runs
+- [x] Investigate SolanaStakeShareDecrease SQL patterns
+- [x] Investigate SolanaValidatorsConnectedStakeIncrease SQL patterns
+- [x] Update GENERATE.md with clearer examples
+- [x] Update DECOMPOSE.md with time window guidance
+- [x] Fix solana_validators_on_dz_connections view GROUP BY
+- [x] Verify fixes with eval runs (4/4 passing)

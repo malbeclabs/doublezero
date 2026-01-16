@@ -1,10 +1,12 @@
-package pipeline
+package v1
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline"
 )
 
 // GenerateResponse is the expected JSON response from the generate step.
@@ -15,36 +17,36 @@ type GenerateResponse struct {
 
 // Generate creates a SQL query for a data question.
 // This is Step 2 of the pipeline.
-func (p *Pipeline) Generate(ctx context.Context, dataQuestion DataQuestion) (GeneratedQuery, error) {
+func (p *Pipeline) Generate(ctx context.Context, dataQuestion pipeline.DataQuestion) (pipeline.GeneratedQuery, error) {
 	// Fetch dynamic schema from the database
 	schema, err := p.cfg.SchemaFetcher.FetchSchema(ctx)
 	if err != nil {
-		return GeneratedQuery{}, fmt.Errorf("failed to fetch schema: %w", err)
+		return pipeline.GeneratedQuery{}, fmt.Errorf("failed to fetch schema: %w", err)
 	}
 
 	// Build system prompt with dynamic schema
-	systemPrompt := buildGeneratePrompt(p.cfg.Prompts.Generate, schema)
+	systemPrompt := buildGeneratePrompt(p.prompts.Generate, schema)
 
 	userPrompt := fmt.Sprintf("Data question: %s\n\nRationale: %s", dataQuestion.Question, dataQuestion.Rationale)
 
 	// Use cache control for GENERATE calls - the system prompt (GENERATE.md + schema)
 	// is large (~13K tokens) and identical across parallel SQL generation calls
-	response, err := p.trackLLMCall(ctx, systemPrompt, userPrompt, WithCacheControl())
+	response, err := p.trackLLMCall(ctx, systemPrompt, userPrompt, pipeline.WithCacheControl())
 	if err != nil {
-		return GeneratedQuery{}, fmt.Errorf("LLM completion failed: %w", err)
+		return pipeline.GeneratedQuery{}, fmt.Errorf("LLM completion failed: %w", err)
 	}
 
 	// Parse the response
 	sql, explanation, err := parseGenerateResponse(response)
 	if err != nil {
-		return GeneratedQuery{}, fmt.Errorf("failed to parse generate response: %w", err)
+		return pipeline.GeneratedQuery{}, fmt.Errorf("failed to parse generate response: %w", err)
 	}
 
 	if sql == "" {
-		return GeneratedQuery{}, fmt.Errorf("no SQL generated")
+		return pipeline.GeneratedQuery{}, fmt.Errorf("no SQL generated")
 	}
 
-	return GeneratedQuery{
+	return pipeline.GeneratedQuery{
 		DataQuestion: dataQuestion,
 		SQL:          sql,
 		Explanation:  explanation,
@@ -161,7 +163,7 @@ type ZeroRowAnalysis struct {
 }
 
 // AnalyzeZeroResult asks the LLM whether zero rows is expected or suspicious.
-func (p *Pipeline) AnalyzeZeroResult(ctx context.Context, dataQuestion DataQuestion, sql string) (*ZeroRowAnalysis, error) {
+func (p *Pipeline) AnalyzeZeroResult(ctx context.Context, dataQuestion pipeline.DataQuestion, sql string) (*ZeroRowAnalysis, error) {
 	systemPrompt := `You are analyzing a ClickHouse SQL query that returned zero rows. Determine if this is expected or suspicious.
 
 Consider:
@@ -215,15 +217,15 @@ The query returned 0 rows. Is this expected or suspicious?`, dataQuestion.Questi
 }
 
 // RegenerateWithZeroRows creates a new SQL query when the previous one returned zero rows.
-func (p *Pipeline) RegenerateWithZeroRows(ctx context.Context, dataQuestion DataQuestion, failedSQL string, analysis *ZeroRowAnalysis) (GeneratedQuery, error) {
+func (p *Pipeline) RegenerateWithZeroRows(ctx context.Context, dataQuestion pipeline.DataQuestion, failedSQL string, analysis *ZeroRowAnalysis) (pipeline.GeneratedQuery, error) {
 	// Fetch dynamic schema from the database
 	schema, err := p.cfg.SchemaFetcher.FetchSchema(ctx)
 	if err != nil {
-		return GeneratedQuery{}, fmt.Errorf("failed to fetch schema: %w", err)
+		return pipeline.GeneratedQuery{}, fmt.Errorf("failed to fetch schema: %w", err)
 	}
 
 	// Build system prompt with dynamic schema
-	systemPrompt := buildGeneratePrompt(p.cfg.Prompts.Generate, schema)
+	systemPrompt := buildGeneratePrompt(p.prompts.Generate, schema)
 
 	// Build user prompt with zero-row context
 	userPrompt := fmt.Sprintf(`Data question: %s
@@ -246,22 +248,22 @@ Please generate a corrected SQL query. Pay close attention to:
 - Filter conditions`, dataQuestion.Question, dataQuestion.Rationale, failedSQL, analysis.Reasoning, analysis.Suggestion)
 
 	// Use cache control - same system prompt as Generate
-	response, err := p.trackLLMCall(ctx, systemPrompt, userPrompt, WithCacheControl())
+	response, err := p.trackLLMCall(ctx, systemPrompt, userPrompt, pipeline.WithCacheControl())
 	if err != nil {
-		return GeneratedQuery{}, fmt.Errorf("LLM completion failed: %w", err)
+		return pipeline.GeneratedQuery{}, fmt.Errorf("LLM completion failed: %w", err)
 	}
 
 	// Parse the response
 	sql, explanation, err := parseGenerateResponse(response)
 	if err != nil {
-		return GeneratedQuery{}, fmt.Errorf("failed to parse generate response: %w", err)
+		return pipeline.GeneratedQuery{}, fmt.Errorf("failed to parse generate response: %w", err)
 	}
 
 	if sql == "" {
-		return GeneratedQuery{}, fmt.Errorf("no SQL generated")
+		return pipeline.GeneratedQuery{}, fmt.Errorf("no SQL generated")
 	}
 
-	return GeneratedQuery{
+	return pipeline.GeneratedQuery{
 		DataQuestion: dataQuestion,
 		SQL:          sql,
 		Explanation:  explanation,
@@ -269,15 +271,15 @@ Please generate a corrected SQL query. Pay close attention to:
 }
 
 // RegenerateWithError creates a fixed SQL query based on a previous error.
-func (p *Pipeline) RegenerateWithError(ctx context.Context, dataQuestion DataQuestion, failedSQL string, errorMsg string) (GeneratedQuery, error) {
+func (p *Pipeline) RegenerateWithError(ctx context.Context, dataQuestion pipeline.DataQuestion, failedSQL string, errorMsg string) (pipeline.GeneratedQuery, error) {
 	// Fetch dynamic schema from the database
 	schema, err := p.cfg.SchemaFetcher.FetchSchema(ctx)
 	if err != nil {
-		return GeneratedQuery{}, fmt.Errorf("failed to fetch schema: %w", err)
+		return pipeline.GeneratedQuery{}, fmt.Errorf("failed to fetch schema: %w", err)
 	}
 
 	// Build system prompt with dynamic schema
-	systemPrompt := buildGeneratePrompt(p.cfg.Prompts.Generate, schema)
+	systemPrompt := buildGeneratePrompt(p.prompts.Generate, schema)
 
 	// Build user prompt with error context
 	userPrompt := fmt.Sprintf(`Data question: %s
@@ -295,22 +297,22 @@ Error message:
 Generate a corrected SQL query that avoids this error.`, dataQuestion.Question, dataQuestion.Rationale, failedSQL, errorMsg)
 
 	// Use cache control - same system prompt as Generate
-	response, err := p.trackLLMCall(ctx, systemPrompt, userPrompt, WithCacheControl())
+	response, err := p.trackLLMCall(ctx, systemPrompt, userPrompt, pipeline.WithCacheControl())
 	if err != nil {
-		return GeneratedQuery{}, fmt.Errorf("LLM completion failed: %w", err)
+		return pipeline.GeneratedQuery{}, fmt.Errorf("LLM completion failed: %w", err)
 	}
 
 	// Parse the response
 	sql, explanation, err := parseGenerateResponse(response)
 	if err != nil {
-		return GeneratedQuery{}, fmt.Errorf("failed to parse generate response: %w", err)
+		return pipeline.GeneratedQuery{}, fmt.Errorf("failed to parse generate response: %w", err)
 	}
 
 	if sql == "" {
-		return GeneratedQuery{}, fmt.Errorf("no SQL generated")
+		return pipeline.GeneratedQuery{}, fmt.Errorf("no SQL generated")
 	}
 
-	return GeneratedQuery{
+	return pipeline.GeneratedQuery{
 		DataQuestion: dataQuestion,
 		SQL:          sql,
 		Explanation:  explanation,

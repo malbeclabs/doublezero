@@ -1,9 +1,11 @@
-package pipeline
+package v1
 
 import (
 	"context"
 	"fmt"
 	"strings"
+
+	"github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline"
 )
 
 // Respond generates a conversational response without querying data.
@@ -13,8 +15,8 @@ func (p *Pipeline) Respond(ctx context.Context, userQuestion string) (string, er
 }
 
 // RespondWithHistory generates a conversational response with conversation context.
-func (p *Pipeline) RespondWithHistory(ctx context.Context, userQuestion string, history []ConversationMessage) (string, error) {
-	systemPrompt := p.cfg.Prompts.Respond
+func (p *Pipeline) RespondWithHistory(ctx context.Context, userQuestion string, history []pipeline.ConversationMessage) (string, error) {
+	systemPrompt := p.prompts.Respond
 	if p.cfg.FormatContext != "" {
 		systemPrompt = systemPrompt + "\n\n" + p.cfg.FormatContext
 	}

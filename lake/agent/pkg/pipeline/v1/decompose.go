@@ -1,4 +1,4 @@
-package pipeline
+package v1
 
 import (
 	"context"
@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+
+	"github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline"
 )
 
 // DecomposeResponse is the expected JSON response from the decompose step.
@@ -19,13 +21,13 @@ type DecomposeResponse struct {
 
 // Decompose breaks down a user question into specific data questions.
 // This is Step 1 of the pipeline.
-func (p *Pipeline) Decompose(ctx context.Context, userQuestion string) ([]DataQuestion, error) {
+func (p *Pipeline) Decompose(ctx context.Context, userQuestion string) ([]pipeline.DataQuestion, error) {
 	return p.DecomposeWithHistory(ctx, userQuestion, nil)
 }
 
 // DecomposeWithHistory breaks down a user question with conversation context.
-func (p *Pipeline) DecomposeWithHistory(ctx context.Context, userQuestion string, history []ConversationMessage) ([]DataQuestion, error) {
-	systemPrompt := p.cfg.Prompts.Decompose
+func (p *Pipeline) DecomposeWithHistory(ctx context.Context, userQuestion string, history []pipeline.ConversationMessage) ([]pipeline.DataQuestion, error) {
+	systemPrompt := p.prompts.Decompose
 
 	// Build user prompt with conversation history for context
 	var userPrompt string
@@ -69,7 +71,7 @@ func (p *Pipeline) DecomposeWithHistory(ctx context.Context, userQuestion string
 }
 
 // parseDecomposeResponse extracts data questions from the LLM response.
-func parseDecomposeResponse(response string) ([]DataQuestion, error) {
+func parseDecomposeResponse(response string) ([]pipeline.DataQuestion, error) {
 	// Try to find JSON in the response (it might be wrapped in markdown code blocks)
 	jsonStr := extractJSON(response)
 	if jsonStr == "" {
@@ -93,12 +95,12 @@ func parseDecomposeResponse(response string) ([]DataQuestion, error) {
 		return nil, fmt.Errorf("%s", parsed.Error)
 	}
 
-	result := make([]DataQuestion, 0, len(parsed.DataQuestions))
+	result := make([]pipeline.DataQuestion, 0, len(parsed.DataQuestions))
 	for _, dq := range parsed.DataQuestions {
 		if dq.Question == "" {
 			continue
 		}
-		result = append(result, DataQuestion{
+		result = append(result, pipeline.DataQuestion{
 			Question:  dq.Question,
 			Rationale: dq.Rationale,
 		})

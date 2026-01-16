@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
-	"github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline"
+	v1 "github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline/v1"
 	"github.com/malbeclabs/doublezero/lake/api/config"
 	"github.com/malbeclabs/doublezero/lake/api/metrics"
 )
@@ -50,14 +50,14 @@ func getOllamaModel() string {
 
 // Cached prompts for query generation
 var (
-	cachedPrompts     *pipeline.Prompts
+	cachedPrompts     *v1.Prompts
 	cachedPromptsOnce sync.Once
 	cachedPromptsErr  error
 )
 
 func getGeneratePrompt() (string, error) {
 	cachedPromptsOnce.Do(func() {
-		cachedPrompts, cachedPromptsErr = pipeline.LoadPrompts()
+		cachedPrompts, cachedPromptsErr = v1.LoadPrompts()
 	})
 	if cachedPromptsErr != nil {
 		return "", cachedPromptsErr

@@ -1,4 +1,4 @@
-package pipeline
+package v1
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 
 // GenerateFollowUps generates suggested follow-up questions based on the conversation.
 func (p *Pipeline) GenerateFollowUps(ctx context.Context, userQuestion string, answer string) ([]string, error) {
-	systemPrompt := p.cfg.Prompts.FollowUp
+	systemPrompt := p.prompts.FollowUp
 
 	// Build user prompt with the question and answer
 	userPrompt := fmt.Sprintf("User question: %s\n\nAnswer provided:\n%s", userQuestion, answer)
@@ -32,9 +32,7 @@ func (p *Pipeline) GenerateFollowUps(ctx context.Context, userQuestion string, a
 	var questions []string
 	if err := json.Unmarshal([]byte(response), &questions); err != nil {
 		// If parsing fails, return empty slice rather than error
-		if p.log != nil {
-			p.log.Info("pipeline: failed to parse follow-up questions", "error", err, "response", response)
-		}
+		p.logInfo("pipeline: failed to parse follow-up questions", "error", err, "response", response)
 		return nil, nil
 	}
 

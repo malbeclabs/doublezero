@@ -1,14 +1,16 @@
-package pipeline
+package v1
 
 import (
 	"context"
 	"fmt"
 	"strings"
+
+	"github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline"
 )
 
 // Synthesize creates a final answer based on the query results.
 // This is Step 4 of the pipeline.
-func (p *Pipeline) Synthesize(ctx context.Context, userQuestion string, executed []ExecutedQuery) (string, error) {
+func (p *Pipeline) Synthesize(ctx context.Context, userQuestion string, executed []pipeline.ExecutedQuery) (string, error) {
 	// Build the context for synthesis
 	var resultsContext strings.Builder
 
@@ -25,7 +27,7 @@ func (p *Pipeline) Synthesize(ctx context.Context, userQuestion string, executed
 		resultsContext.WriteString(fmt.Sprintf("**Results**:\n%s\n\n", FormatQueryResult(eq.Result)))
 	}
 
-	systemPrompt := p.cfg.Prompts.Synthesize
+	systemPrompt := p.prompts.Synthesize
 	if p.cfg.FormatContext != "" {
 		systemPrompt = systemPrompt + "\n\n" + p.cfg.FormatContext
 	}
@@ -47,7 +49,7 @@ Please synthesize a clear, comprehensive answer to the user's question based on 
 // assessQueryConfidence evaluates the reliability of a query result.
 // Only flags actual errors - zero results is not considered low confidence
 // since the LLM can determine from context whether zero results is expected.
-func assessQueryConfidence(eq ExecutedQuery) string {
+func assessQueryConfidence(eq pipeline.ExecutedQuery) string {
 	if eq.Result.Error != "" {
 		return "LOW - Query failed with error"
 	}

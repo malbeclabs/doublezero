@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline"
+	v1 "github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline/v1"
 	"github.com/slack-go/slack/slackevents"
 )
 
@@ -20,7 +21,7 @@ const (
 // Processor processes Slack messages and generates responses
 type Processor struct {
 	slackClient *Client
-	pipeline    *pipeline.Pipeline
+	pipeline    *v1.Pipeline
 	convManager *Manager
 	log         *slog.Logger
 
@@ -42,7 +43,7 @@ type threadLockEntry struct {
 // NewProcessor creates a new message processor
 func NewProcessor(
 	slackClient *Client,
-	pipeline *pipeline.Pipeline,
+	pipeline *v1.Pipeline,
 	convManager *Manager,
 	log *slog.Logger,
 ) *Processor {

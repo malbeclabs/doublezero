@@ -1,10 +1,10 @@
-package pipeline
+package v1
 
 import (
 	"fmt"
 	"strings"
 
-	"github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline/prompts"
+	"github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline/v1/prompts"
 )
 
 // Prompts contains all the pipeline prompts loaded from embedded files.
@@ -17,6 +17,31 @@ type Prompts struct {
 	Respond        string // Prompt for conversational responses (no data query)
 	Slack          string // Slack-specific formatting guidelines (optional)
 	Synthesize     string // Prompt for answer synthesis
+}
+
+// GetPrompt returns the prompt content for the given name.
+// This implements the pipeline.PromptsProvider interface.
+func (p *Prompts) GetPrompt(name string) string {
+	switch name {
+	case "catalog_summary":
+		return p.CatalogSummary
+	case "classify":
+		return p.Classify
+	case "decompose":
+		return p.Decompose
+	case "followup":
+		return p.FollowUp
+	case "generate":
+		return p.Generate
+	case "respond":
+		return p.Respond
+	case "slack":
+		return p.Slack
+	case "synthesize":
+		return p.Synthesize
+	default:
+		return ""
+	}
 }
 
 // LoadPrompts loads all prompts from the embedded filesystem.
@@ -56,7 +81,7 @@ func LoadPrompts() (*Prompts, error) {
 }
 
 func loadPrompt(path string) (string, error) {
-	data, err := prompts.PromptsFS.ReadFile(path)
+	data, err := prompts.FS.ReadFile(path)
 	if err != nil {
 		return "", fmt.Errorf("failed to read %s: %w", path, err)
 	}

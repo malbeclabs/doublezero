@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline"
+	v1 "github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline/v1"
 	"github.com/malbeclabs/doublezero/lake/indexer/pkg/clickhouse"
 	slackbot "github.com/malbeclabs/doublezero/lake/slack/internal/slack"
 	"github.com/malbeclabs/doublezero/lake/utils/pkg/logger"
@@ -139,7 +140,7 @@ func run() error {
 	log.Info("ClickHouse client initialized", "addr", cfg.ClickhouseAddr, "database", cfg.ClickhouseDatabase)
 
 	// Load pipeline prompts
-	prompts, err := pipeline.LoadPrompts()
+	prompts, err := v1.LoadPrompts()
 	if err != nil {
 		return fmt.Errorf("failed to load pipeline prompts: %w", err)
 	}
@@ -155,7 +156,7 @@ func run() error {
 	schemaFetcher := slackbot.NewClickhouseSchemaFetcher(clickhouseClient, cfg.ClickhouseDatabase)
 
 	// Create the analysis pipeline with Slack formatting context
-	p, err := pipeline.New(&pipeline.Config{
+	p, err := v1.New(&pipeline.Config{
 		Logger:        log,
 		LLM:           llmClient,
 		Querier:       querier,

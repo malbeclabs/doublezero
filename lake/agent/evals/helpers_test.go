@@ -22,6 +22,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 	"github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline"
+	v1 "github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline/v1"
+	v2 "github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline/v2"
 	"github.com/malbeclabs/doublezero/lake/indexer/pkg/clickhouse"
 	"github.com/malbeclabs/doublezero/lake/indexer/pkg/clickhouse/dataset"
 	serviceability "github.com/malbeclabs/doublezero/lake/indexer/pkg/dz/serviceability"
@@ -228,8 +230,9 @@ Respond with only "YES" or "NO" followed by a brief explanation.`, currentDate, 
 // LLMClientFactory creates an LLM client for testing
 type LLMClientFactory func(t *testing.T) pipeline.LLMClient
 
-// setupPipeline creates a pipeline instance with the given LLM client factory
-func setupPipeline(t *testing.T, ctx context.Context, clientInfo *laketesting.ClientInfo, llmFactory LLMClientFactory, debug bool, debugLevel int) *pipeline.Pipeline {
+// setupPipeline creates a pipeline instance with the given LLM client factory.
+// It uses the PIPELINE_VERSION environment variable to select v1 or v2.
+func setupPipeline(t *testing.T, ctx context.Context, clientInfo *laketesting.ClientInfo, llmFactory LLMClientFactory, debug bool, debugLevel int) pipeline.Runner {
 	// Create logger with appropriate level
 	var logger *slog.Logger
 	if debug {
@@ -237,10 +240,6 @@ func setupPipeline(t *testing.T, ctx context.Context, clientInfo *laketesting.Cl
 	} else {
 		logger = testLogger(t)
 	}
-
-	// Load prompts
-	prompts, err := pipeline.LoadPrompts()
-	require.NoError(t, err)
 
 	// Create LLM client using factory
 	baseLLMClient := llmFactory(t)
@@ -276,19 +275,37 @@ func setupPipeline(t *testing.T, ctx context.Context, clientInfo *laketesting.Cl
 		sharedDB.Password(),
 	)
 
-	// Create pipeline
-	p, err := pipeline.New(&pipeline.Config{
+	// Select pipeline version
+	version := pipeline.DefaultVersion()
+	t.Logf("Using pipeline version: %s", version)
+
+	cfg := &pipeline.Config{
 		Logger:        logger,
 		LLM:           llmClient,
 		Querier:       querier,
 		SchemaFetcher: schemaFetcher,
-		Prompts:       prompts,
 		MaxTokens:     4096,
 		MaxRetries:    4,
-	})
+	}
+
+	var runner pipeline.Runner
+	var err error
+
+	switch version {
+	case pipeline.VersionV2:
+		prompts, promptErr := v2.LoadPrompts()
+		require.NoError(t, promptErr)
+		cfg.Prompts = prompts
+		runner, err = v2.New(cfg)
+	default: // v1
+		prompts, promptErr := v1.LoadPrompts()
+		require.NoError(t, promptErr)
+		cfg.Prompts = prompts
+		runner, err = v1.New(cfg)
+	}
 	require.NoError(t, err)
 
-	return p
+	return runner
 }
 
 // getDebugLevel parses the DEBUG environment variable

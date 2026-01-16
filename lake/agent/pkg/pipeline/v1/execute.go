@@ -1,22 +1,24 @@
-package pipeline
+package v1
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline"
 )
 
 // Execute runs a SQL query and captures the results.
 // This is Step 3 of the pipeline.
 // The questionNum is a 1-indexed question identifier for logging (e.g., Q1, Q2).
-func (p *Pipeline) Execute(ctx context.Context, query GeneratedQuery, questionNum int) (ExecutedQuery, error) {
+func (p *Pipeline) Execute(ctx context.Context, query pipeline.GeneratedQuery, questionNum int) (pipeline.ExecutedQuery, error) {
 	result, err := p.cfg.Querier.Query(ctx, query.SQL)
 	if err != nil {
 		// Query execution infrastructure error (not a SQL error)
-		return ExecutedQuery{
+		return pipeline.ExecutedQuery{
 			GeneratedQuery: query,
-			Result: QueryResult{
+			Result: pipeline.QueryResult{
 				SQL:   query.SQL,
 				Error: fmt.Sprintf("execution error: %v", err),
 			},
@@ -24,21 +26,19 @@ func (p *Pipeline) Execute(ctx context.Context, query GeneratedQuery, questionNu
 	}
 
 	// Log the query execution
-	if p.log != nil {
-		if result.Error != "" {
-			p.log.Info("pipeline: query returned error",
-				"q", questionNum,
-				"question", query.DataQuestion.Question,
-				"error", result.Error)
-		} else {
-			p.log.Info("pipeline: query executed",
-				"q", questionNum,
-				"question", query.DataQuestion.Question,
-				"rows", result.Count)
-		}
+	if result.Error != "" {
+		p.logInfo("pipeline: query returned error",
+			"q", questionNum,
+			"question", query.DataQuestion.Question,
+			"error", result.Error)
+	} else {
+		p.logInfo("pipeline: query executed",
+			"q", questionNum,
+			"question", query.DataQuestion.Question,
+			"rows", result.Count)
 	}
 
-	return ExecutedQuery{
+	return pipeline.ExecutedQuery{
 		GeneratedQuery: query,
 		Result:         result,
 	}, nil
@@ -74,7 +74,7 @@ func formatValueForLLM(v any) string {
 
 // FormatQueryResult formats a query result for display in the synthesis prompt.
 // Uses JSON format which LLMs understand well and won't misinterpret.
-func FormatQueryResult(result QueryResult) string {
+func FormatQueryResult(result pipeline.QueryResult) string {
 	if result.Error != "" {
 		return fmt.Sprintf("Error: %s", result.Error)
 	}

@@ -420,8 +420,49 @@ export interface QueryProgressItem {
   rows?: number
 }
 
-// All possible steps in the pipeline
-export type PipelineStep = 'classifying' | 'decomposing' | 'executing' | 'synthesizing'
+// All possible steps in the pipeline (v1 and v2)
+// v1: classifying -> decomposing -> executing -> synthesizing
+// v2: interpreting -> mapping -> planning -> executing -> inspecting -> synthesizing
+export type PipelineStep =
+  | 'classifying' | 'decomposing' | 'executing' | 'synthesizing'  // v1 stages
+  | 'interpreting' | 'mapping' | 'planning' | 'inspecting'         // v2 stages
+
+// Step order for v1 pipeline
+export const V1_STEP_ORDER: PipelineStep[] = ['classifying', 'decomposing', 'executing', 'synthesizing']
+
+// Step order for v2 pipeline
+export const V2_STEP_ORDER: PipelineStep[] = ['interpreting', 'mapping', 'planning', 'executing', 'inspecting', 'synthesizing']
+
+// Detect which pipeline version based on the current step
+export function detectPipelineVersion(step: string): 'v1' | 'v2' {
+  if (['interpreting', 'mapping', 'planning', 'inspecting'].includes(step)) {
+    return 'v2'
+  }
+  return 'v1'
+}
+
+// Get step order for the detected pipeline version
+export function getStepOrder(step: string): PipelineStep[] {
+  return detectPipelineVersion(step) === 'v2' ? V2_STEP_ORDER : V1_STEP_ORDER
+}
+
+// Get human-readable label for a step
+export function getStepLabel(step: PipelineStep): string {
+  switch (step) {
+    // v1 labels
+    case 'classifying': return 'Understanding your question'
+    case 'decomposing': return 'Breaking down your question'
+    // v2 labels
+    case 'interpreting': return 'Interpreting your question'
+    case 'mapping': return 'Mapping to data'
+    case 'planning': return 'Planning queries'
+    case 'inspecting': return 'Inspecting results'
+    // Shared labels
+    case 'executing': return 'Running queries'
+    case 'synthesizing': return 'Preparing answer'
+    default: return step
+  }
+}
 
 export interface ChatProgress {
   status?: string
@@ -727,97 +768,90 @@ export function Chat({ messages, isPending, progress, externalLock, onSendMessag
                     <span className="text-sm text-amber-600 dark:text-amber-400">{progress.status}</span>
                   </div>
                 )}
-                {/* Step timeline */}
+                {/* Step timeline - dynamically renders v1 or v2 stages */}
                 <div className="space-y-2">
-                  {/* Step 1: Classifying */}
-                  <TimelineStep
-                    label="Understanding your question"
-                    status={
-                      progress.completedSteps?.includes('classifying') ? 'completed' :
-                      progress.step === 'classifying' ? 'running' : 'pending'
-                    }
-                  />
+                  {(() => {
+                    const currentStep = progress.step || ''
+                    const stepOrder = getStepOrder(currentStep)
+                    const currentStepIndex = stepOrder.indexOf(currentStep as PipelineStep)
 
-                  {/* Step 2: Decomposing - only show if we've moved past classifying */}
-                  {(progress.step !== 'classifying' || progress.completedSteps?.includes('classifying')) && (
-                    <TimelineStep
-                      label="Breaking down your question"
-                      status={
-                        progress.completedSteps?.includes('decomposing') ? 'completed' :
-                        progress.step === 'decomposing' ? 'running' : 'pending'
-                      }
-                    />
-                  )}
+                    return stepOrder.map((step, idx) => {
+                      // Don't show steps that haven't been reached yet (except during executing/synthesizing)
+                      const isReached = idx <= currentStepIndex || progress.completedSteps?.includes(step)
+                      // Always show first step
+                      if (idx > 0 && !isReached) return null
 
-                  {/* Step 3: Executing - only show if we have queries */}
-                  {progress.queries && progress.queries.length > 0 && (
-                    <div>
-                      <TimelineStep
-                        label={`Running ${progress.queriesTotal || 0} queries`}
-                        status={
-                          progress.completedSteps?.includes('executing') ? 'completed' :
-                          progress.step === 'executing' ? 'running' : 'pending'
-                        }
-                      />
-                      {/* Nested query progress - show during executing and synthesizing */}
-                      {(progress.step === 'executing' || progress.step === 'synthesizing') && (
-                        <div className="ml-6 mt-2 space-y-2">
-                          {/* Progress bar */}
-                          <div className="flex items-center gap-2">
-                            <div className="flex-1 h-1.5 bg-secondary rounded-full overflow-hidden">
-                              <div
-                                className="h-full bg-accent transition-all duration-300"
-                                style={{ width: `${((progress.queriesCompleted || 0) / (progress.queriesTotal || 1)) * 100}%` }}
-                              />
-                            </div>
-                            <span className="text-xs text-muted-foreground tabular-nums">
-                              {progress.queriesCompleted || 0}/{progress.queriesTotal || 0}
-                            </span>
-                          </div>
-                          {/* Query list */}
-                          <div className="space-y-1">
-                            {progress.queries.map((query, i) => (
-                              <div key={i} className="flex items-start gap-2">
-                                <div className="flex-shrink-0 mt-0.5">
-                                  {query.status === 'completed' && (
-                                    <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
-                                  )}
-                                  {query.status === 'error' && (
-                                    <XCircle className="w-3.5 h-3.5 text-red-500" />
-                                  )}
-                                  {query.status === 'running' && (
-                                    <Loader2 className="w-3.5 h-3.5 text-accent animate-spin" />
-                                  )}
-                                  {query.status === 'pending' && (
-                                    <Circle className="w-3.5 h-3.5 text-muted-foreground/30" />
-                                  )}
+                      // Determine step status
+                      const status = progress.completedSteps?.includes(step) ? 'completed' :
+                        progress.step === step ? 'running' : 'pending'
+
+                      // Special handling for executing step - show query details
+                      if (step === 'executing' && progress.queries && progress.queries.length > 0) {
+                        return (
+                          <div key={step}>
+                            <TimelineStep
+                              label={`Running ${progress.queriesTotal || 0} queries`}
+                              status={status}
+                            />
+                            {/* Nested query progress - show during/after executing */}
+                            {(progress.step === 'executing' || progress.step === 'synthesizing' || progress.step === 'inspecting') && (
+                              <div className="ml-6 mt-2 space-y-2">
+                                {/* Progress bar */}
+                                <div className="flex items-center gap-2">
+                                  <div className="flex-1 h-1.5 bg-secondary rounded-full overflow-hidden">
+                                    <div
+                                      className="h-full bg-accent transition-all duration-300"
+                                      style={{ width: `${((progress.queriesCompleted || 0) / (progress.queriesTotal || 1)) * 100}%` }}
+                                    />
+                                  </div>
+                                  <span className="text-xs text-muted-foreground tabular-nums">
+                                    {progress.queriesCompleted || 0}/{progress.queriesTotal || 0}
+                                  </span>
                                 </div>
-                                <span className={`text-xs leading-tight ${
-                                  query.status === 'completed' ? 'text-muted-foreground' :
-                                  query.status === 'error' ? 'text-red-500' :
-                                  query.status === 'running' ? 'text-foreground' :
-                                  'text-muted-foreground/50'
-                                }`}>
-                                  {query.question}
-                                </span>
+                                {/* Query list */}
+                                <div className="space-y-1">
+                                  {progress.queries.map((query, i) => (
+                                    <div key={i} className="flex items-start gap-2">
+                                      <div className="flex-shrink-0 mt-0.5">
+                                        {query.status === 'completed' && (
+                                          <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
+                                        )}
+                                        {query.status === 'error' && (
+                                          <XCircle className="w-3.5 h-3.5 text-red-500" />
+                                        )}
+                                        {query.status === 'running' && (
+                                          <Loader2 className="w-3.5 h-3.5 text-accent animate-spin" />
+                                        )}
+                                        {query.status === 'pending' && (
+                                          <Circle className="w-3.5 h-3.5 text-muted-foreground/30" />
+                                        )}
+                                      </div>
+                                      <span className={`text-xs leading-tight ${
+                                        query.status === 'completed' ? 'text-muted-foreground' :
+                                        query.status === 'error' ? 'text-red-500' :
+                                        query.status === 'running' ? 'text-foreground' :
+                                        'text-muted-foreground/50'
+                                      }`}>
+                                        {query.question}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
                               </div>
-                            ))}
+                            )}
                           </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Step 4: Synthesizing - only show if we've started it */}
-                  {(progress.step === 'synthesizing' || progress.completedSteps?.includes('synthesizing')) && (
-                    <TimelineStep
-                      label="Preparing answer"
-                      status={
-                        progress.completedSteps?.includes('synthesizing') ? 'completed' :
-                        progress.step === 'synthesizing' ? 'running' : 'pending'
+                        )
                       }
-                    />
-                  )}
+
+                      return (
+                        <TimelineStep
+                          key={step}
+                          label={getStepLabel(step)}
+                          status={status}
+                        />
+                      )
+                    })
+                  })()}
                 </div>
               </div>
             )}

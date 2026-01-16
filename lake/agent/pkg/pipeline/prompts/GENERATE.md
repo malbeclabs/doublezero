@@ -319,12 +319,14 @@ ORDER BY stake_sol DESC
 
 **Use the `dz_link_outage_events` view** for all link outage queries. It combines multiple outage signals:
 
-| event_type | Description | Key Columns |
-|------------|-------------|-------------|
-| `status_change` | Link status changed from activated | `previous_status`, `new_status` |
-| `packet_loss` | Packet loss exceeded threshold | `loss_pct` (>=0.1% triggers event) |
-| `link_dark` | No telemetry received | `gap_minutes` (>=30 min triggers event) |
-| `sla_breach` | Latency exceeded committed RTT | `overage_pct` (>=20% triggers event) |
+| event_type | Description | Key Columns | Precision |
+|------------|-------------|-------------|-----------|
+| `status_change` | Link status changed from activated | `previous_status`, `new_status` | Precise |
+| `packet_loss` | Packet loss exceeded threshold | `loss_pct` (>=0.1% triggers event) | Hourly |
+| `link_dark` | No telemetry received | `gap_minutes` (>=120 min triggers event) | Hourly |
+| `sla_breach` | Latency exceeded committed RTT | `overage_pct` (>=20% triggers event) | Hourly |
+
+**Timestamp precision**: Only `status_change` events have precise timestamps. Telemetry-based events (packet_loss, link_dark, sla_breach) use hourly aggregation, so `start_ts` is rounded to the hour. When presenting results, use approximate language for these events (e.g., "around 2pm" or "starting in the 2pm hour").
 
 **Common columns**: `link_code`, `event_type`, `start_ts`, `end_ts`, `duration_minutes`, `is_ongoing`, `side_a_metro`, `side_z_metro`
 

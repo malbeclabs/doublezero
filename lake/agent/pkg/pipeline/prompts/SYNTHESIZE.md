@@ -59,6 +59,7 @@ If any entity appears without its corresponding metric, ADD THE VALUE.
   - Users: Always include `owner_pubkey` and `client_ip`
 - **Small counts**: When count ≤ 10, also list the specific entities
 - **"Which" questions**: Always list specific entities with details, never just counts. Include identifying info plus key attributes.
+- **Link outage timestamps**: For telemetry-based outage events (packet_loss, link_dark, sla_breach), timestamps have hourly granularity. Use approximate language like "around 2pm" or "starting in the 2pm hour" rather than precise times. Only status_change events (soft-drained, suspended, etc.) have precise timestamps.
 
 ### Network Status Queries
 When answering questions about network status, health, or issues:

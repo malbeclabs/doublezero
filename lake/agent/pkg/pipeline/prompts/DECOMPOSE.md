@@ -21,10 +21,13 @@ Key concepts for understanding user questions:
 **Status**: "Active" = `status='activated'`. "Drained" = maintenance/soft-failure state
 
 **Link Outages**: A link can have an outage for multiple reasons. Use the `dz_link_outage_events` view which combines all outage types:
-- `status_change`: Status changed from activated (soft-drained, suspended, etc.)
-- `packet_loss`: Significant packet loss detected (>=0.1%)
-- `link_dark`: No telemetry received (gap >=30 minutes)
-- `sla_breach`: Latency exceeded committed RTT (>=20% over)
+- `status_change`: Status changed from activated (soft-drained, suspended, etc.) - **precise timestamps**
+- `packet_loss`: Significant packet loss detected (>=0.1%) - **hourly granularity**
+- `link_dark`: No telemetry received (gap >=120 minutes) - **hourly granularity**
+- `sla_breach`: Latency exceeded committed RTT (>=20% over) - **hourly granularity**
+
+**Important**: Telemetry-based events (packet_loss, link_dark, sla_breach) use hourly aggregation, so timestamps are rounded to the hour. Only status_change events have precise timestamps. When reporting outage times, note this limitation (e.g., "around 2pm" not "at 2:47pm").
+
 Filter by `event_type` if you need specific types. The view includes `start_ts`, `end_ts`, `is_ongoing`, `duration_minutes`, and metrics like `loss_pct`, `overage_pct`.
 
 **Utilization**: Always per-direction (in vs out separately). "Metro link utilization %" is INVALID (links span metros)

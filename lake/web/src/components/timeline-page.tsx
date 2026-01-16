@@ -127,6 +127,88 @@ function Skeleton({ className }: { className?: string }) {
   return <div className={`animate-pulse bg-muted rounded ${className || ''}`} />
 }
 
+// Compact dropdown for multi-select filters
+function FilterDropdown<T extends string>({
+  label,
+  options,
+  selected,
+  onToggle,
+  allValues,
+}: {
+  label: string
+  options: { value: T; label: string; icon?: typeof Server }[]
+  selected: Set<T>
+  onToggle: (value: T) => void
+  allValues: T[]
+}) {
+  const [open, setOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  // Close on click outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    if (open) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [open])
+
+  const allSelected = allValues.every(v => selected.has(v))
+  const noneSelected = allValues.every(v => !selected.has(v))
+  const selectedCount = allValues.filter(v => selected.has(v)).length
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button
+        onClick={() => setOpen(!open)}
+        className={cn(
+          'flex items-center gap-1.5 px-2 py-1 text-xs rounded-md border transition-colors',
+          open || (!allSelected && !noneSelected)
+            ? 'bg-background border-border text-foreground'
+            : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50'
+        )}
+      >
+        <span className="uppercase tracking-wide">{label}</span>
+        {!allSelected && (
+          <span className="bg-primary/10 text-primary px-1 rounded text-[10px] font-medium">
+            {selectedCount}
+          </span>
+        )}
+        <ChevronDown className={cn('h-3 w-3 transition-transform', open && 'rotate-180')} />
+      </button>
+
+      {open && (
+        <div className="absolute top-full left-0 mt-1 z-50 min-w-[160px] bg-popover border border-border rounded-md shadow-lg py-1 whitespace-nowrap">
+          {options.map(option => {
+            const Icon = option.icon
+            const isSelected = selected.has(option.value)
+            return (
+              <button
+                key={option.value}
+                onClick={() => onToggle(option.value)}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors"
+              >
+                <div className={cn(
+                  'w-3.5 h-3.5 rounded border flex items-center justify-center',
+                  isSelected ? 'bg-primary border-primary' : 'border-muted-foreground/30'
+                )}>
+                  {isSelected && <CheckCircle2 className="h-2.5 w-2.5 text-primary-foreground" />}
+                </div>
+                {Icon && <Icon className="h-3 w-3 text-muted-foreground" />}
+                <span className={isSelected ? 'text-foreground' : 'text-muted-foreground'}>{option.label}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function formatBucketTime(timestamp: string): string {
   const date = new Date(timestamp)
   if (date.getMinutes() === 0) {
@@ -1001,9 +1083,11 @@ export function TimelinePage() {
   }, [data?.events, searchFilters])
 
   // Check if any filters are non-default
+  // Check if filters differ from defaults
   const hasActiveFilters = timeRange !== '24h' ||
     selectedCategories.size !== ALL_CATEGORIES.length ||
-    selectedEntityTypes.size !== ALL_ENTITY_TYPES.length ||
+    selectedEntityTypes.size !== DEFAULT_ENTITY_TYPES.length ||
+    !DEFAULT_ENTITY_TYPES.every(e => selectedEntityTypes.has(e)) ||
     selectedActions.size !== ALL_ACTIONS.length ||
     dzFilter !== 'on_dz' ||
     includeInternal ||
@@ -1103,14 +1187,6 @@ export function TimelinePage() {
             <div className="flex items-center gap-3">
               <Clock className="h-6 w-6 text-muted-foreground" />
               <h1 className="text-2xl font-semibold">Timeline</h1>
-              <button
-                onClick={() => window.dispatchEvent(new CustomEvent('open-search'))}
-                className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground border border-border rounded-md hover:bg-muted transition-colors"
-                title="Search (Cmd+K)"
-              >
-                <Search className="h-3 w-3" />
-                <kbd className="font-mono text-[10px]">K</kbd>
-              </button>
               {data && (
                 <span className="text-sm text-muted-foreground bg-muted px-2 py-0.5 rounded">
                   {searchFilters.length > 0 ? `${filteredEvents.length} of ${data.total.toLocaleString()}` : data.total.toLocaleString()} events
@@ -1164,237 +1240,114 @@ export function TimelinePage() {
           </p>
         </div>
 
-        {/* Filters */}
-        <div className="flex flex-wrap items-center gap-4 mb-6">
-          {/* Time range */}
-          <div className="inline-flex items-center gap-2">
-            <div className="inline-flex rounded-lg border border-border bg-muted/30 p-0.5">
-              {timeRangeOptions.map(option => (
-                <button
-                  key={option.value}
-                  onClick={() => handleTimeRangeChange(option.value)}
-                  className={cn(
-                    'px-3 py-1 text-sm rounded-md transition-colors',
-                    timeRange === option.value
-                      ? 'bg-background text-foreground shadow-sm border border-border'
-                      : 'text-muted-foreground hover:text-foreground border border-transparent'
-                  )}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Custom date range picker */}
-            {timeRange === 'custom' && (
-              <div className="inline-flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-muted-foreground" />
-                <input
-                  type="datetime-local"
-                  value={customStart}
-                  min={minDate}
-                  max={customEnd || maxDate}
-                  onChange={(e) => {
-                    setCustomStart(e.target.value)
-                    setOffset(0)
-                    resetSeenEvents()
-                  }}
-                  className="px-2 py-1 text-sm border border-border rounded-md bg-background"
-                />
-                <span className="text-muted-foreground">to</span>
-                <input
-                  type="datetime-local"
-                  value={customEnd}
-                  min={customStart || minDate}
-                  max={maxDate}
-                  onChange={(e) => {
-                    setCustomEnd(e.target.value)
-                    setOffset(0)
-                    resetSeenEvents()
-                  }}
-                  className="px-2 py-1 text-sm border border-border rounded-md bg-background"
-                />
+        {/* Filters toolbar */}
+        <div className="rounded-lg border border-border bg-muted/20 p-3 mb-6 space-y-3">
+          {/* Row 1: Time range + Search */}
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="inline-flex rounded-md border border-border bg-background p-0.5">
+                {timeRangeOptions.map(option => (
+                  <button
+                    key={option.value}
+                    onClick={() => handleTimeRangeChange(option.value)}
+                    className={cn(
+                      'px-2.5 py-1 text-sm rounded transition-colors',
+                      timeRange === option.value
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-muted-foreground hover:text-foreground'
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                ))}
               </div>
-            )}
+
+              {/* Custom date range picker */}
+              {timeRange === 'custom' && (
+                <div className="inline-flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                  <input
+                    type="datetime-local"
+                    value={customStart}
+                    min={minDate}
+                    max={customEnd || maxDate}
+                    onChange={(e) => {
+                      setCustomStart(e.target.value)
+                      setOffset(0)
+                      resetSeenEvents()
+                    }}
+                    className="px-2 py-1 text-sm border border-border rounded-md bg-background"
+                  />
+                  <span className="text-muted-foreground">to</span>
+                  <input
+                    type="datetime-local"
+                    value={customEnd}
+                    min={customStart || minDate}
+                    max={maxDate}
+                    onChange={(e) => {
+                      setCustomEnd(e.target.value)
+                      setOffset(0)
+                      resetSeenEvents()
+                    }}
+                    className="px-2 py-1 text-sm border border-border rounded-md bg-background"
+                  />
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('open-search'))}
+              className="flex items-center gap-1.5 px-2.5 py-1 text-sm text-muted-foreground hover:text-foreground border border-border rounded-md bg-background hover:bg-muted transition-colors"
+              title="Search (Cmd+K)"
+            >
+              <Search className="h-3.5 w-3.5" />
+              <span>Search</span>
+              <kbd className="ml-1 font-mono text-[10px] text-muted-foreground">⌘K</kbd>
+            </button>
           </div>
 
-          {/* Event type filters */}
-          <div className="inline-flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Type:</span>
-            <div className="inline-flex rounded-lg border border-border bg-muted/30 p-0.5 gap-0.5">
-              <button
-                onClick={() => { setSelectedCategories(new Set(ALL_CATEGORIES)); setOffset(0); resetSeenEvents() }}
-                className={cn(
-                  'px-2 py-1 text-xs rounded-md transition-colors',
-                  selectedCategories.size === ALL_CATEGORIES.length
-                    ? 'bg-background text-foreground shadow-sm border border-border'
-                    : 'text-muted-foreground hover:text-foreground border border-transparent'
-                )}
-              >
-                All
-              </button>
-              <button
-                onClick={() => { setSelectedCategories(new Set()); setOffset(0); resetSeenEvents() }}
-                className={cn(
-                  'px-2 py-1 text-xs rounded-md transition-colors',
-                  selectedCategories.size === 0
-                    ? 'bg-background text-foreground shadow-sm border border-border'
-                    : 'text-muted-foreground hover:text-foreground border border-transparent'
-                )}
-              >
-                None
-              </button>
-              {categoryOptions.map(option => {
-                const Icon = option.icon
-                const isSelected = selectedCategories.has(option.value)
-                return (
-                  <button
-                    key={option.value}
-                    onClick={() => toggleCategory(option.value)}
-                    className={cn(
-                      'flex items-center gap-1 px-2 py-1 text-xs rounded-md transition-colors',
-                      isSelected
-                        ? 'bg-background text-foreground shadow-sm border border-border'
-                        : 'text-muted-foreground hover:text-foreground border border-transparent'
-                    )}
-                  >
-                    <Icon className="h-3 w-3" />
-                    {option.label}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
+          {/* Divider */}
+          <div className="border-t border-border" />
 
-          {/* DZ Infrastructure entity filters */}
-          <div className="inline-flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">DZ:</span>
-            <div className="inline-flex rounded-lg border border-border bg-muted/30 p-0.5 gap-0.5">
-              <button
-                onClick={() => {
-                  setSelectedEntityTypes(prev => {
-                    const next = new Set(prev)
-                    ALL_DZ_ENTITIES.forEach(e => next.add(e))
-                    return next
-                  })
-                  setOffset(0)
-                  resetSeenEvents()
-                }}
-                className={cn(
-                  'px-2 py-1 text-xs rounded-md transition-colors',
-                  ALL_DZ_ENTITIES.every(e => selectedEntityTypes.has(e))
-                    ? 'bg-background text-foreground shadow-sm border border-border'
-                    : 'text-muted-foreground hover:text-foreground border border-transparent'
-                )}
-              >
-                All
-              </button>
-              <button
-                onClick={() => {
-                  setSelectedEntityTypes(prev => {
-                    const next = new Set(prev)
-                    ALL_DZ_ENTITIES.forEach(e => next.delete(e))
-                    return next
-                  })
-                  setOffset(0)
-                  resetSeenEvents()
-                }}
-                className={cn(
-                  'px-2 py-1 text-xs rounded-md transition-colors',
-                  ALL_DZ_ENTITIES.every(e => !selectedEntityTypes.has(e))
-                    ? 'bg-background text-foreground shadow-sm border border-border'
-                    : 'text-muted-foreground hover:text-foreground border border-transparent'
-                )}
-              >
-                None
-              </button>
-              {dzEntityOptions.map(option => {
-                const Icon = option.icon
-                const isSelected = selectedEntityTypes.has(option.value)
-                return (
-                  <button
-                    key={option.value}
-                    onClick={() => toggleEntityType(option.value)}
-                    className={cn(
-                      'flex items-center gap-1 px-2 py-1 text-xs rounded-md transition-colors',
-                      isSelected
-                        ? 'bg-background text-foreground shadow-sm border border-border'
-                        : 'text-muted-foreground hover:text-foreground border border-transparent'
-                    )}
-                  >
-                    <Icon className="h-3 w-3" />
-                    {option.label}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
+          {/* Row 2: Filters */}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <FilterDropdown
+              label="Event Type"
+              options={categoryOptions}
+              selected={selectedCategories}
+              onToggle={toggleCategory}
+              allValues={ALL_CATEGORIES}
+            />
 
-          {/* Solana entity filters */}
-          <div className="inline-flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Solana:</span>
-            <div className="inline-flex rounded-lg border border-border bg-muted/30 p-0.5 gap-0.5">
-              <button
-                onClick={() => {
-                  setSelectedEntityTypes(prev => {
-                    const next = new Set(prev)
-                    ALL_SOLANA_ENTITIES.forEach(e => next.add(e))
-                    return next
-                  })
-                  setOffset(0)
-                  resetSeenEvents()
-                }}
-                className={cn(
-                  'px-2 py-1 text-xs rounded-md transition-colors',
-                  ALL_SOLANA_ENTITIES.every(e => selectedEntityTypes.has(e))
-                    ? 'bg-background text-foreground shadow-sm border border-border'
-                    : 'text-muted-foreground hover:text-foreground border border-transparent'
-                )}
-              >
-                All
-              </button>
-              <button
-                onClick={() => {
-                  setSelectedEntityTypes(prev => {
-                    const next = new Set(prev)
-                    ALL_SOLANA_ENTITIES.forEach(e => next.delete(e))
-                    return next
-                  })
-                  setOffset(0)
-                  resetSeenEvents()
-                }}
-                className={cn(
-                  'px-2 py-1 text-xs rounded-md transition-colors',
-                  ALL_SOLANA_ENTITIES.every(e => !selectedEntityTypes.has(e))
-                    ? 'bg-background text-foreground shadow-sm border border-border'
-                    : 'text-muted-foreground hover:text-foreground border border-transparent'
-                )}
-              >
-                None
-              </button>
-              {solanaEntityOptions.map(option => {
-                const Icon = option.icon
-                const isSelected = selectedEntityTypes.has(option.value)
-                return (
-                  <button
-                    key={option.value}
-                    onClick={() => toggleEntityType(option.value)}
-                    className={cn(
-                      'flex items-center gap-1 px-2 py-1 text-xs rounded-md transition-colors',
-                      isSelected
-                        ? 'bg-background text-foreground shadow-sm border border-border'
-                        : 'text-muted-foreground hover:text-foreground border border-transparent'
-                    )}
-                  >
-                    <Icon className="h-3 w-3" />
-                    {option.label}
-                  </button>
-                )
-              })}
-            </div>
-            {/* DZ filter for Solana entities */}
+            <FilterDropdown
+              label="Action"
+              options={actionOptions}
+              selected={selectedActions}
+              onToggle={toggleAction}
+              allValues={ALL_ACTIONS}
+            />
+
+            <div className="h-4 w-px bg-border" />
+
+            <FilterDropdown
+              label="DoubleZero"
+              options={dzEntityOptions}
+              selected={selectedEntityTypes}
+              onToggle={toggleEntityType}
+              allValues={ALL_DZ_ENTITIES}
+            />
+
+            <FilterDropdown
+              label="Solana"
+              options={solanaEntityOptions}
+              selected={selectedEntityTypes}
+              onToggle={toggleEntityType}
+              allValues={ALL_SOLANA_ENTITIES}
+            />
+
+            {/* DZ status for Solana entities */}
             {hasSolanaEntities && (
-              <div className="inline-flex rounded-lg border border-border bg-muted/30 p-0.5 gap-0.5">
+              <div className="inline-flex rounded-md border border-border bg-background p-0.5 gap-0.5">
                 {dzFilterOptions.map(option => (
                   <button
                     key={option.value}
@@ -1404,10 +1357,10 @@ export function TimelinePage() {
                       resetSeenEvents()
                     }}
                     className={cn(
-                      'px-2 py-1 text-xs rounded-md transition-colors',
+                      'px-2 py-0.5 text-xs rounded transition-colors',
                       dzFilter === option.value
-                        ? 'bg-background text-foreground shadow-sm border border-border'
-                        : 'text-muted-foreground hover:text-foreground border border-transparent'
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-muted-foreground hover:text-foreground'
                     )}
                   >
                     {option.label}
@@ -1415,80 +1368,44 @@ export function TimelinePage() {
                 ))}
               </div>
             )}
-          </div>
 
-          {/* Action filters */}
-          <div className="inline-flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Action:</span>
-            <div className="inline-flex rounded-lg border border-border bg-muted/30 p-0.5 gap-0.5">
-              <button
-                onClick={() => { setSelectedActions(new Set(ALL_ACTIONS)); setOffset(0); resetSeenEvents() }}
-                className={cn(
-                  'px-2 py-1 text-xs rounded-md transition-colors',
-                  selectedActions.size === ALL_ACTIONS.length
-                    ? 'bg-background text-foreground shadow-sm border border-border'
-                    : 'text-muted-foreground hover:text-foreground border border-transparent'
-                )}
-              >
-                All
-              </button>
-              <button
-                onClick={() => { setSelectedActions(new Set()); setOffset(0); resetSeenEvents() }}
-                className={cn(
-                  'px-2 py-1 text-xs rounded-md transition-colors',
-                  selectedActions.size === 0
-                    ? 'bg-background text-foreground shadow-sm border border-border'
-                    : 'text-muted-foreground hover:text-foreground border border-transparent'
-                )}
-              >
-                None
-              </button>
-              {actionOptions.map(option => {
-                const Icon = option.icon
-                const isSelected = selectedActions.has(option.value)
-                return (
-                  <button
-                    key={option.value}
-                    onClick={() => toggleAction(option.value)}
-                    className={cn(
-                      'flex items-center gap-1 px-2 py-1 text-xs rounded-md transition-colors',
-                      isSelected
-                        ? 'bg-background text-foreground shadow-sm border border-border'
-                        : 'text-muted-foreground hover:text-foreground border border-transparent'
-                    )}
-                  >
-                    <Icon className="h-3 w-3" />
-                    {option.label}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
+            {/* Spacer to push secondary options right */}
+            <div className="flex-1" />
 
-          {/* Internal users toggle */}
-          <label className="inline-flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
-            <input
-              type="checkbox"
-              checked={includeInternal}
-              onChange={(e) => {
-                setIncludeInternal(e.target.checked)
+            {/* Internal users toggle */}
+            <button
+              onClick={() => {
+                setIncludeInternal(!includeInternal)
                 setOffset(0)
               }}
-              className="rounded border-border"
-            />
-            Show internal users
-          </label>
+              className="inline-flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <span>Internal users</span>
+              <div className={cn(
+                'relative w-7 h-4 rounded-full transition-colors',
+                includeInternal ? 'bg-primary' : 'bg-muted-foreground/30'
+              )}>
+                <div className={cn(
+                  'absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform',
+                  includeInternal ? 'translate-x-3.5' : 'translate-x-0.5'
+                )} />
+              </div>
+            </button>
 
-          {/* Reset filters */}
-          {hasActiveFilters && (
             <button
               onClick={resetAllFilters}
-              className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+              disabled={!hasActiveFilters}
+              className={cn(
+                'inline-flex items-center gap-1 text-xs transition-colors',
+                hasActiveFilters
+                  ? 'text-muted-foreground hover:text-foreground cursor-pointer'
+                  : 'text-muted-foreground/40 cursor-not-allowed'
+              )}
             >
               <RotateCw className="h-3 w-3" />
-              Reset filters
+              Reset
             </button>
-          )}
+          </div>
         </div>
 
         {/* Loading state */}

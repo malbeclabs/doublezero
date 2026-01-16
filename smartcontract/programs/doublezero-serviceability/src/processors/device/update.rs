@@ -1,5 +1,6 @@
 use crate::{
     error::DoubleZeroError,
+    pda::get_resource_extension_pda,
     processors::resource::create_resource,
     resource::ResourceType,
     serializer::try_acc_write,
@@ -101,15 +102,32 @@ pub fn process_update_device(
             value.resource_count >= 2,
             "Resource count must be at least 2 (TunnelIds and at least one DzPrefixBlock)"
         );
-        Some(next_account_info(accounts_iter)?)
+        let account = next_account_info(accounts_iter)?;
+        assert_eq!(
+            account.owner, program_id,
+            "Invalid GlobalConfig Account Owner"
+        );
+        Some(account)
     } else {
         None
     };
     let mut resource_accounts = vec![];
-    for _ in 0..value.resource_count {
+    for idx in 0..value.resource_count {
         // first resource account is the TunnelIds resource, followed by DzPrefixBlock resources
         let resource_account = next_account_info(accounts_iter)?;
+        assert!(
+            resource_account.data_is_empty() || resource_account.owner == program_id,
+            "Invalid Resource Account Owner"
+        );
         resource_accounts.push(resource_account);
+        let (pda, _, _) = get_resource_extension_pda(
+            program_id,
+            match idx {
+                0 => ResourceType::TunnelIds(*device_account.key, 0),
+                _ => ResourceType::DzPrefixBlock(*device_account.key, idx - 1),
+            },
+        );
+        assert_eq!(pda, *resource_account.key, "Invalid Resource Account PDA");
     }
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
@@ -133,8 +151,6 @@ pub fn process_update_device(
         globalstate_account.owner, program_id,
         "Invalid GlobalState Account Owner"
     );
-    // TODO check owners of resource accounts
-    // TODO check pdas of resource accounts
     assert_eq!(
         *system_program.unsigned_key(),
         solana_program::system_program::id(),

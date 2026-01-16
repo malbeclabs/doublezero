@@ -200,9 +200,29 @@ function getStatusReasons(status: StatusResponse): string[] {
   return reasons
 }
 
+function formatRelativeTime(timestamp: string): string {
+  const now = Date.now()
+  const then = new Date(timestamp).getTime()
+  const seconds = Math.floor((now - then) / 1000)
+
+  if (seconds < 10) return 'just now'
+  if (seconds < 60) return `${seconds}s ago`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  return `${hours}h ago`
+}
+
 function StatusIndicator({ statusData }: { statusData: StatusResponse }) {
   const status = statusData.status
   const reasons = getStatusReasons(statusData)
+  const [, forceUpdate] = useState(0)
+
+  // Update relative time every 10 seconds
+  useEffect(() => {
+    const interval = setInterval(() => forceUpdate(n => n + 1), 10000)
+    return () => clearInterval(interval)
+  }, [])
 
   const config = {
     healthy: {
@@ -235,6 +255,9 @@ function StatusIndicator({ statusData }: { statusData: StatusResponse }) {
         {reasons.length > 0 && (
           <div className="text-sm text-muted-foreground">{reasons.slice(0, 2).join(' · ')}</div>
         )}
+      </div>
+      <div className="text-xs text-muted-foreground/60">
+        Updated {formatRelativeTime(statusData.timestamp)}
       </div>
     </div>
   )

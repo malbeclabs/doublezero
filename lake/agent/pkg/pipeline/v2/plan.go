@@ -69,6 +69,12 @@ func (p *Pipeline) Plan(ctx context.Context, interpretation *Interpretation, map
 	return plan, nil
 }
 
+// MaxValidationQueries is the maximum number of validation queries allowed.
+const MaxValidationQueries = 2
+
+// MaxAnswerQueries is the maximum number of answer queries allowed.
+const MaxAnswerQueries = 2
+
 // parseQueryPlan parses the LLM response into a QueryPlan struct.
 func parseQueryPlan(response string) (*QueryPlan, error) {
 	response = strings.TrimSpace(response)
@@ -89,9 +95,23 @@ func parseQueryPlan(response string) (*QueryPlan, error) {
 		}
 	}
 
+	// Check for truncated JSON (doesn't end with closing brace)
+	trimmed := strings.TrimSpace(response)
+	if !strings.HasSuffix(trimmed, "}") {
+		return nil, fmt.Errorf("truncated response (likely hit token limit): %s", truncateForError(response))
+	}
+
 	var result QueryPlan
 	if err := json.Unmarshal([]byte(response), &result); err != nil {
 		return nil, fmt.Errorf("invalid JSON: %w (response: %s)", err, truncateForError(response))
+	}
+
+	// Enforce query limits - truncate if too many
+	if len(result.ValidationQueries) > MaxValidationQueries {
+		result.ValidationQueries = result.ValidationQueries[:MaxValidationQueries]
+	}
+	if len(result.AnswerQueries) > MaxAnswerQueries {
+		result.AnswerQueries = result.AnswerQueries[:MaxAnswerQueries]
 	}
 
 	return &result, nil

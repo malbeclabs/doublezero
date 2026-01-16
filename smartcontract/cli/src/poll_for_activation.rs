@@ -141,7 +141,7 @@ pub fn poll_for_link_activated(
             pubkey_or_code: link_pubkey.to_string(),
         }) {
             Ok((_, link)) => {
-                if link.status == LinkStatus::ReadyForService
+                if link.status == LinkStatus::Provisioning
                     || link.status == LinkStatus::Activated
                     || link.status == LinkStatus::Rejected
                 {

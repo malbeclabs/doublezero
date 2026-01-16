@@ -512,14 +512,23 @@ func verifyTransceiverState(t *testing.T, h *testHarness) {
 	})
 
 	t.Logf("found %d transceiver state records", len(rows))
-	require.GreaterOrEqual(t, len(rows), 1)
 
-	// Verify all records have expected device pubkey
+	// The test data has 52 updates for physical-channels:
+	// - 26 updates with power metrics (input_power, output_power, laser_bias_current)
+	// - 26 updates with only description (no power metrics)
+	// The extractor skips description-only updates, so we should have exactly 26 rows.
+	require.Equal(t, 26, len(rows), "expected 26 transceiver state rows (description-only updates should be skipped)")
+
+	// Verify all records have expected device pubkey and at least one non-zero power value
+	// (no all-zero rows from description-only updates)
 	for _, row := range rows {
 		require.Equal(t, "DZt011111111111111111111111111111111111111111", row.DevicePubkey, "unexpected device_pubkey")
+		hasValue := row.InputPower != 0 || row.OutputPower != 0 || row.LaserBiasCurrent != 0
+		require.True(t, hasValue, "row for %s channel %d has all-zero power values (description-only update not skipped?)",
+			row.InterfaceName, row.ChannelIndex)
 	}
 
-	// Find Ethernet1 channel 0 and verify values
+	// Find Ethernet1 channel 0 and verify all fields are populated
 	var eth1Found bool
 	for _, row := range rows {
 		if row.InterfaceName == "Ethernet1" && row.ChannelIndex == 0 {
@@ -531,6 +540,14 @@ func verifyTransceiverState(t *testing.T, h *testHarness) {
 		}
 	}
 	require.True(t, eth1Found, "expected Ethernet1 channel 0 to exist")
+
+	// Verify there's exactly one row per (interface, channel) - no duplicates
+	seen := make(map[string]bool)
+	for _, row := range rows {
+		key := fmt.Sprintf("%s/%d", row.InterfaceName, row.ChannelIndex)
+		require.False(t, seen[key], "duplicate row for %s", key)
+		seen[key] = true
+	}
 }
 
 func verifyInterfaceState(t *testing.T, h *testHarness) {
@@ -583,42 +600,73 @@ func verifyTransceiverThresholds(t *testing.T, h *testHarness) {
 		DevicePubkey           string
 		InterfaceName          string
 		Severity               string
-		ModuleTemperatureUpper float64
-		ModuleTemperatureLower float64
-		OutputPowerUpper       float64
+		InputPowerLower        float64
+		InputPowerUpper        float64
 		OutputPowerLower       float64
+		OutputPowerUpper       float64
+		LaserBiasCurrentLower  float64
+		LaserBiasCurrentUpper  float64
+		ModuleTemperatureLower float64
+		ModuleTemperatureUpper float64
+		SupplyVoltageLower     float64
+		SupplyVoltageUpper     float64
 	}
 
 	rows := queryRows(h, fmt.Sprintf(`
 		SELECT device_pubkey, interface_name, severity,
-		       module_temperature_upper, module_temperature_lower,
-		       output_power_upper, output_power_lower
+		       input_power_lower, input_power_upper,
+		       output_power_lower, output_power_upper,
+		       laser_bias_current_lower, laser_bias_current_upper,
+		       module_temperature_lower, module_temperature_upper,
+		       supply_voltage_lower, supply_voltage_upper
 		FROM %s.transceiver_thresholds
 	`, chDbname), func(r *sql.Rows) (thresholdRow, error) {
 		var row thresholdRow
 		err := r.Scan(&row.DevicePubkey, &row.InterfaceName, &row.Severity,
-			&row.ModuleTemperatureUpper, &row.ModuleTemperatureLower,
-			&row.OutputPowerUpper, &row.OutputPowerLower)
+			&row.InputPowerLower, &row.InputPowerUpper,
+			&row.OutputPowerLower, &row.OutputPowerUpper,
+			&row.LaserBiasCurrentLower, &row.LaserBiasCurrentUpper,
+			&row.ModuleTemperatureLower, &row.ModuleTemperatureUpper,
+			&row.SupplyVoltageLower, &row.SupplyVoltageUpper)
 		return row, err
 	})
 
 	t.Logf("found %d transceiver threshold records", len(rows))
-	require.GreaterOrEqual(t, len(rows), 1)
 
-	// Verify at least one record has expected device pubkey
+	// The test data has 600 individual updates (54 interfaces × 2 severities × ~5 fields each).
+	// After aggregation, we should have exactly 108 rows (54 interfaces × 2 severities).
+	require.Equal(t, 108, len(rows), "expected 108 aggregated threshold rows (54 interfaces × 2 severities)")
+
+	// Verify all records have expected device pubkey
 	for _, row := range rows {
 		require.Equal(t, "DZth11111111111111111111111111111111111111111", row.DevicePubkey, "unexpected device_pubkey")
 	}
 
-	// Find a WARNING threshold for Ethernet50 and verify values
+	// Find a WARNING threshold for Ethernet50 and verify all fields are aggregated
 	var found bool
 	for _, row := range rows {
 		if row.InterfaceName == "Ethernet50" && row.Severity == "WARNING" {
 			found = true
+			// Verify multiple fields are populated in the same row (proves aggregation worked)
 			require.InDelta(t, 70.0, row.ModuleTemperatureUpper, 0.01, "unexpected module_temperature_upper")
 			require.InDelta(t, 0.0, row.ModuleTemperatureLower, 0.01, "unexpected module_temperature_lower")
+			require.InDelta(t, 0.0, row.OutputPowerUpper, 0.01, "unexpected output_power_upper")
+			require.InDelta(t, -7.3, row.OutputPowerLower, 0.1, "unexpected output_power_lower")
+			require.InDelta(t, -9.9, row.InputPowerLower, 0.1, "unexpected input_power_lower")
+			require.InDelta(t, 3.465, row.SupplyVoltageUpper, 0.01, "unexpected supply_voltage_upper")
+			require.InDelta(t, 3.1, row.SupplyVoltageLower, 0.01, "unexpected supply_voltage_lower")
+			require.InDelta(t, 13.0, row.LaserBiasCurrentUpper, 0.01, "unexpected laser_bias_current_upper")
+			require.InDelta(t, 3.0, row.LaserBiasCurrentLower, 0.01, "unexpected laser_bias_current_lower")
 			break
 		}
 	}
 	require.True(t, found, "expected Ethernet50 WARNING threshold to exist")
+
+	// Verify there's exactly one row per (interface, severity) - no duplicates
+	seen := make(map[string]bool)
+	for _, row := range rows {
+		key := row.InterfaceName + "/" + row.Severity
+		require.False(t, seen[key], "duplicate row for %s", key)
+		seen[key] = true
+	}
 }

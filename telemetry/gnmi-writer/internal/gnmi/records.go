@@ -93,6 +93,65 @@ func (r TransceiverStateRecord) TableName() string {
 	return "transceiver_state"
 }
 
+// transceiverStateKey is used to group TransceiverStateRecords for aggregation.
+type transceiverStateKey struct {
+	Timestamp     int64
+	DevicePubkey  string
+	InterfaceName string
+	ChannelIndex  uint16
+}
+
+// AggregateTransceiverState merges TransceiverStateRecords with the same
+// (timestamp, device_pubkey, interface_name, channel_index) key into a single record.
+// gNMI may send individual updates for each power metric, so this function combines
+// them into complete rows.
+func AggregateTransceiverState(records []Record) []Record {
+	var result []Record
+	stateMap := make(map[transceiverStateKey]*TransceiverStateRecord)
+
+	for _, r := range records {
+		state, ok := r.(TransceiverStateRecord)
+		if !ok {
+			// Keep non-state records as-is
+			result = append(result, r)
+			continue
+		}
+
+		key := transceiverStateKey{
+			Timestamp:     state.Timestamp.UnixNano(),
+			DevicePubkey:  state.DevicePubkey,
+			InterfaceName: state.InterfaceName,
+			ChannelIndex:  state.ChannelIndex,
+		}
+
+		existing, found := stateMap[key]
+		if !found {
+			// First record for this key - store a copy
+			copy := state
+			stateMap[key] = &copy
+			continue
+		}
+
+		// Merge non-zero values into existing record
+		if state.InputPower != 0 {
+			existing.InputPower = state.InputPower
+		}
+		if state.OutputPower != 0 {
+			existing.OutputPower = state.OutputPower
+		}
+		if state.LaserBiasCurrent != 0 {
+			existing.LaserBiasCurrent = state.LaserBiasCurrent
+		}
+	}
+
+	// Append aggregated state records
+	for _, state := range stateMap {
+		result = append(result, *state)
+	}
+
+	return result
+}
+
 // InterfaceStateRecord represents interface state for storage in ClickHouse.
 type InterfaceStateRecord struct {
 	Timestamp          time.Time `json:"timestamp" ch:"timestamp"`
@@ -140,4 +199,84 @@ type TransceiverThresholdRecord struct {
 // TableName returns the ClickHouse table name for transceiver thresholds.
 func (r TransceiverThresholdRecord) TableName() string {
 	return "transceiver_thresholds"
+}
+
+// thresholdKey is used to group TransceiverThresholdRecords for aggregation.
+type thresholdKey struct {
+	Timestamp     int64
+	DevicePubkey  string
+	InterfaceName string
+	Severity      string
+}
+
+// AggregateTransceiverThresholds merges TransceiverThresholdRecords with the same
+// (timestamp, device_pubkey, interface_name, severity) key into a single record.
+// gNMI sends individual updates for each threshold field, so this function combines
+// them into complete rows.
+func AggregateTransceiverThresholds(records []Record) []Record {
+	var result []Record
+	thresholdMap := make(map[thresholdKey]*TransceiverThresholdRecord)
+
+	for _, r := range records {
+		threshold, ok := r.(TransceiverThresholdRecord)
+		if !ok {
+			// Keep non-threshold records as-is
+			result = append(result, r)
+			continue
+		}
+
+		key := thresholdKey{
+			Timestamp:     threshold.Timestamp.UnixNano(),
+			DevicePubkey:  threshold.DevicePubkey,
+			InterfaceName: threshold.InterfaceName,
+			Severity:      threshold.Severity,
+		}
+
+		existing, found := thresholdMap[key]
+		if !found {
+			// First record for this key - store a copy
+			copy := threshold
+			thresholdMap[key] = &copy
+			continue
+		}
+
+		// Merge non-zero values into existing record
+		if threshold.InputPowerLower != 0 {
+			existing.InputPowerLower = threshold.InputPowerLower
+		}
+		if threshold.InputPowerUpper != 0 {
+			existing.InputPowerUpper = threshold.InputPowerUpper
+		}
+		if threshold.OutputPowerLower != 0 {
+			existing.OutputPowerLower = threshold.OutputPowerLower
+		}
+		if threshold.OutputPowerUpper != 0 {
+			existing.OutputPowerUpper = threshold.OutputPowerUpper
+		}
+		if threshold.LaserBiasCurrentLower != 0 {
+			existing.LaserBiasCurrentLower = threshold.LaserBiasCurrentLower
+		}
+		if threshold.LaserBiasCurrentUpper != 0 {
+			existing.LaserBiasCurrentUpper = threshold.LaserBiasCurrentUpper
+		}
+		if threshold.ModuleTemperatureLower != 0 {
+			existing.ModuleTemperatureLower = threshold.ModuleTemperatureLower
+		}
+		if threshold.ModuleTemperatureUpper != 0 {
+			existing.ModuleTemperatureUpper = threshold.ModuleTemperatureUpper
+		}
+		if threshold.SupplyVoltageLower != 0 {
+			existing.SupplyVoltageLower = threshold.SupplyVoltageLower
+		}
+		if threshold.SupplyVoltageUpper != 0 {
+			existing.SupplyVoltageUpper = threshold.SupplyVoltageUpper
+		}
+	}
+
+	// Append aggregated threshold records
+	for _, threshold := range thresholdMap {
+		result = append(result, *threshold)
+	}
+
+	return result
 }

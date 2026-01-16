@@ -278,14 +278,24 @@ func extractTransceiverState(device *oc.Device, meta Metadata) []Record {
 				ChannelIndex:  chanIdx,
 			}
 
+			// Check if any power metrics are present in the update.
+			// Skip updates that only contain other fields (e.g., description).
+			hasInputPower := channel.State.InputPower != nil && channel.State.InputPower.Instant != nil
+			hasOutputPower := channel.State.OutputPower != nil && channel.State.OutputPower.Instant != nil
+			hasLaserBias := channel.State.LaserBiasCurrent != nil && channel.State.LaserBiasCurrent.Instant != nil
+
+			if !hasInputPower && !hasOutputPower && !hasLaserBias {
+				continue
+			}
+
 			// Extract optical power metrics
-			if channel.State.InputPower != nil && channel.State.InputPower.Instant != nil {
+			if hasInputPower {
 				record.InputPower = *channel.State.InputPower.Instant
 			}
-			if channel.State.OutputPower != nil && channel.State.OutputPower.Instant != nil {
+			if hasOutputPower {
 				record.OutputPower = *channel.State.OutputPower.Instant
 			}
-			if channel.State.LaserBiasCurrent != nil && channel.State.LaserBiasCurrent.Instant != nil {
+			if hasLaserBias {
 				record.LaserBiasCurrent = *channel.State.LaserBiasCurrent.Instant
 			}
 

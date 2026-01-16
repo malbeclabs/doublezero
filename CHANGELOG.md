@@ -12,6 +12,8 @@ All notable changes to this project will be documented in this file.
 
 - Telemetry
   - Force IPv4-only connections for gNMI tunnel client and fix TLS credential handling
+- Client
+  - Support simultaneous unicast and multicast tunnels in doublezerod
 
 ## [v0.8.3](https://github.com/malbeclabs/doublezero/compare/client/v0.8.2...client/v0.8.3) – 2026-01-22
 

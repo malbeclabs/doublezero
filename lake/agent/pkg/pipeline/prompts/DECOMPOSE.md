@@ -36,12 +36,12 @@ Given a user's question, identify what specific data questions need to be answer
 
 ## Guidelines
 
+- **Prefer 1-2 queries, maximum 3.** More queries = more latency and cost. The synthesis step is smart - it can count rows, sum columns, and derive insights from a single well-designed query.
 - Each data question should be answerable with a single SQL query
 - Be specific - vague questions lead to vague queries
 - Include time context when relevant (e.g., "in the last 24 hours")
-- For counts, also consider listing the specific entities if count might be small
 - **For "which" questions**: ALWAYS include a query that lists specific entities with identifying details (vote_pubkey, device code, link code, etc.) plus relevant attributes (stake, status, timestamps). Never answer "which" with just a count.
-- **Avoid splitting list + count + sum**: If you need a list of entities AND their count AND a sum of their attributes (like total stake), use ONE query that returns the list with the relevant attribute - don't create separate queries for "list the entities", "count the entities", and "sum the stake". The synthesis step can easily count rows and sum values from a list.
+- **Consolidate aggressively**: If you need a list of entities AND their count AND a sum of their attributes (like total stake), use ONE query that returns the list with the relevant attribute. The synthesis step can count rows and sum values. Don't create separate queries for "list", "count", and "sum".
 - **For "recently" or time-based questions**: Include when events occurred (timestamps), not just what happened. Users want a timeline.
 - **For growth/joining/new entity questions**: There are two different approaches depending on what the user is asking:
   - **"Recently connected/joined" (time-bounded)**: Use the comparison approach - find entities connected NOW but NOT connected X hours/days ago. This catches true recent connections regardless of ingestion timing.
@@ -97,17 +97,16 @@ Respond with a JSON object containing an array of data questions:
 **User Question**: "How many validators are on DZ?"
 
 **Good Decomposition**:
-1. How many validators are currently connected to DZ?
-2. What is the total stake of validators connected to DZ?
-3. List the validators currently connected (vote_pubkey and stake)
+1. List all validators currently connected to DZ with their vote_pubkey and stake amount.
+
+*Key insight*: One query returns everything needed. The synthesis step can count rows (for "how many") and sum the stake column (for total stake). Never split into separate count/sum/list queries.
 
 **User Question**: "How many validators connected in the last day?" or "Which validators connected recently?"
 
 **Good Decomposition**:
 1. Which validators are currently connected to DZ but were NOT connected 24 hours ago? Include vote_pubkey, stake, and when they first appeared in the history.
-2. What is the total count and combined stake of these newly connected validators?
 
-*Key insight*: "Connected in the last X" or "recently" means **newly connected** during that period - use the comparison approach (connected now but NOT connected X hours ago). This is the ONLY correct approach for "recently connected" questions. Do NOT substitute first-appearance-since-ingestion queries, which would include validators that reconnected after brief outages or were captured in later snapshot batches. If the comparison query returns 0 validators, the answer is "0 validators connected recently" - not "here are validators that first appeared in our tracking".
+*Key insight*: One query is enough - synthesis can count rows and sum stake. "Connected in the last X" means **newly connected** during that period - use the comparison approach (connected now but NOT connected X hours ago). Do NOT use first-appearance-since-ingestion queries. If the query returns 0 validators, the answer is "0 validators connected recently".
 
 **User Question**: "How is DZ performing compared to the public internet?"
 
@@ -130,13 +129,9 @@ Respond with a JSON object containing an array of data questions:
 **User Question**: "Compare validators on DZ vs off DZ"
 
 **Good Decomposition**:
-1. How many validators are currently on DZ vs off DZ?
-2. What is the total stake for validators on DZ vs off DZ?
-3. What is the average vote lag (cluster_slot - last_vote_slot) for validators on DZ vs off DZ?
-4. What is the average skip rate for validators on DZ vs off DZ? (from block production: skipped = assigned - produced)
-5. List the specific validators in each group with their vote_pubkey and performance metrics
+1. List all validators with: vote_pubkey, stake, whether on DZ (boolean), vote lag, and skip rate. Include all validators (both on and off DZ).
 
-*Key insight*: Validator comparisons should include **performance metrics** (vote lag, skip rate) not just stake distribution. DZ's value proposition is better validator performance.
+*Key insight*: One query with an "on_dz" boolean column lets synthesis group, count, sum, and compare. Don't split into separate queries for each metric - that's 5 queries when 1 suffices. Include performance metrics (vote lag, skip rate) since DZ's value is better validator performance.
 
 **User Question**: "Show timeline for drained link nyc-lon-1" (or similar incident timeline request)
 
@@ -169,57 +164,44 @@ Respond with a JSON object containing an array of data questions:
 **User Question**: "Which regions have the most validators connected to DZ?"
 
 **Good Decomposition**:
-1. For each DZ metro, how many validators are connected? Include metro code/name and validator count.
-2. What is the total stake per metro for connected validators?
-3. List the top metros by validator count with their stake totals.
+1. For each DZ metro, list the validator count and total stake. Order by validator count descending.
 
-*Key insight*: Validators connect as DZ users. To get their metro/region, join: `dz_users_current` → `dz_devices_current` (via device_pk) → `dz_metros_current` (via metro_pk). Group by metro to get regional counts.
+*Key insight*: One query with GROUP BY metro gives count and stake sum together. Join path: `dz_users_current` → `dz_devices_current` (via device_pk) → `dz_metros_current` (via metro_pk).
 
 **User Question**: "List the top 10 by stake validators in Tokyo who are not connected to DZ"
 
 **Good Decomposition**:
-1. Which validators are NOT currently on DZ but have IP addresses that geolocate to Tokyo area?
-2. For those off-DZ Tokyo validators, what are their vote_pubkeys and stake amounts?
-3. Return the top 10 by activated_stake_lamports.
+1. List the top 10 validators by stake that are NOT on DZ and geolocate to Tokyo. Include vote_pubkey and stake.
 
-*Key insight*: Off-DZ validators have no device/metro association in DZ. To determine their region, use GeoIP lookup on `solana_gossip_nodes_current.gossip_ip` joined to `geoip_records`. Filter for city/region matching Tokyo. Anti-join with `dz_users_current` to exclude on-DZ validators.
+*Key insight*: One query with filtering, ordering, and LIMIT 10. Use GeoIP on `solana_gossip_nodes_current.gossip_ip` joined to `geoip_records` for Tokyo. Anti-join with `dz_users_current` to exclude on-DZ validators.
 
 **User Question**: "Which DZ links provide at least 1ms improvement over public internet? What's the min/max improvement?"
 
 **Good Decomposition**:
-1. For each metro pair, what is the median RTT for DZ links (from fact_dz_device_link_latency)?
-2. For each metro pair, what is the median RTT for public internet (from fact_dz_internet_metro_latency)?
-3. Calculate the improvement (internet RTT - DZ RTT) for each metro pair, filter for >= 1ms (1000 µs) improvement.
-4. What is the min and max improvement across all qualifying links?
+1. For each metro pair, calculate DZ median RTT and internet median RTT, compute improvement (internet - DZ), filter for >= 1ms improvement. Return metro pair, DZ RTT, internet RTT, and improvement.
 
-*Key insight*: Improvement = internet_rtt - dz_rtt (positive means DZ is faster). Use median (quantile 0.5) for stable comparison. Compare at metro-pair level since internet latency is by metro, not link.
+*Key insight*: One query can JOIN the two latency sources and compute improvement inline. Synthesis can find min/max from the results. Use median (quantile 0.5) for stable comparison.
 
 **User Question**: "Find DZ users whose client IP is in a different metro than the DZD they're connected to"
 
 **Good Decomposition**:
-1. For each active DZ user, what is their client_ip and which device/metro are they connected to?
-2. For each user's client_ip, what metro does GeoIP indicate they're in?
-3. Compare the GeoIP metro to the connected device's metro - which users have a mismatch?
-4. Optionally calculate distance between the two metros if coordinates are available.
+1. List DZ users where GeoIP metro of client_ip differs from connected device's metro. Include user ID, client_ip, GeoIP metro, device metro.
 
-*Key insight*: Users have client_ip (their actual location) and device_pk (the DZD they connect to). GeoIP lookup on client_ip gives their true location. Compare to device's metro to find mismatches.
+*Key insight*: One query with JOINs to GeoIP and device/metro tables, filtering WHERE geoip_metro != device_metro. Don't split into separate queries for each step.
 
 **User Question**: "What are the paths between SIN and TYO?"
 
 **Good Decomposition**:
-1. What links exist where one side is in Singapore (SIN) and the other side is in Tokyo (TYO)?
-2. Are there any indirect paths (multi-hop) between SIN and TYO via intermediate metros?
-3. For direct links, what are their current statuses and performance metrics?
+1. List all links connecting Singapore (SIN) and Tokyo (TYO), including link code, status, and recent performance metrics (RTT, packet loss).
+2. List any two-hop paths between SIN and TYO via intermediate metros, if they exist.
 
-*Key insight*: Paths are links. Direct paths have one device in each metro. Join links → devices → metros to find connections between specific metro pairs.
+*Key insight*: Direct paths are straightforward (one query). Multi-hop requires a separate query with self-join on links. Include status and performance in the direct links query.
 
 **User Question**: "When was the last time there were errors on the Montreal DZD?"
 
 **Good Decomposition**:
-1. Which device(s) are in Montreal? Get the device PK(s).
-2. For those device(s), query fact_dz_device_interface_counters for any records with errors > 0, discards > 0, or carrier_transitions > 0.
-3. Return the most recent timestamp when any of these occurred.
+1. Find the most recent timestamp of any interface error, discard, or carrier transition on Montreal device(s). Include the interface name and error type.
 
-*Key insight*: Interface errors are in fact_dz_device_interface_counters. Filter by device_pk and look for non-zero error/discard counts. Use MAX(event_ts) to find the most recent occurrence.
+*Key insight*: One query with JOIN to filter by Montreal metro, filter for non-zero error counts, ORDER BY timestamp DESC LIMIT 1. Don't split into "find device" then "find errors" queries.
 
 Now analyze the user's question and provide the data questions needed to answer it.

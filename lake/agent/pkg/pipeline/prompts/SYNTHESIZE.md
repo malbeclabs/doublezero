@@ -32,6 +32,26 @@ When the network is healthy (no issues found), keep responses brief:
 
 If any entity appears without its corresponding metric, ADD THE VALUE.
 
+## READING QUERY RESULTS
+
+**The query results contain the data you need - USE IT.** When you see numeric columns in query results, include those values in your response.
+
+Common patterns in `dz_link_issue_events`:
+- `loss_pct` or `event_metric` for packet_loss events = **the loss percentage** (e.g., 3.33 means 3.33% loss)
+- `overage_pct` or `event_metric` for sla_breach events = **the SLA overage percentage**
+- `gap_minutes` or `event_metric` for missing_telemetry events = **minutes of missing data**
+
+**NEVER say "data would require further decoding" or "specific values are encoded"** - the values in query result columns ARE the decoded values, ready to use. They are NOT hex, NOT encoded, NOT raw bytes.
+
+**Floating point precision is normal** - values like `3.3333333333333335` or `0.9722222222222222` are just regular percentages with extra decimal places. Round to 1-2 decimal places:
+- `3.3333333333333335` → **3.33%**
+- `0.9722222222222222` → **0.97%**
+- `100` → **100%**
+
+❌ WRONG: "Each link is experiencing packet loss, though specific loss percentages would require further decoding"
+❌ WRONG: "The values appear to be encoded and need conversion"
+✅ CORRECT: "nyc-sao-1: 3.33% packet loss (ongoing since Jan 15)"
+
 ## Guidelines
 
 ### Structure
@@ -133,9 +153,9 @@ Queries are marked HIGH confidence unless they failed with an error.
 
 🔗 **Link Health**
 3 links showing packet loss [Q3]:
-- `nyc-lon-1`: 2.5% loss, 45 ms RTT
-- `tok-sgp-1`: 0.8% loss, 120 ms RTT
-- `fra-ams-2`: 0.3% loss, 25 ms RTT
+- `nyc-lon-1`: **2.5% loss** (ongoing since Jan 15, 2pm UTC)
+- `tok-sgp-1`: **0.8% loss** (ongoing since Jan 13, 12pm UTC)
+- `fra-ams-2`: **0.3% loss** (resolved Jan 10 - Jan 11, 18 hours)
 
 ⚠️ **Attention Required**
 `nyc-lon-1` packet loss elevated from baseline (normally < 0.5%) [Q3, Q6]

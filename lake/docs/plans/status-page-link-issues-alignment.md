@@ -21,14 +21,23 @@ We've defined a clear domain model for link issues in `docs/domain/link-issues.m
 | Unhealthy | Loss >= 1%, latency > 50% over committed |
 | Disabled | Extended packet loss (>=95% over 1h) OR drained status |
 
-### Domain Link Issue Types (from `dz_link_issue_events`)
-| event_type | Trigger |
-|------------|---------|
-| `status_change` | Status changed to soft-drained/hard-drained |
-| `isis_delay_override_soft_drain` | ISIS delay override set to 1s |
-| `packet_loss` | Loss >= 0.1% |
-| `sla_breach` | Latency >= 20% over committed RTT |
-| `missing_telemetry` | No telemetry for >= 120 minutes |
+### Domain Link Health Views
+Two views provide link health information:
+
+**`dz_links_health_current`** (current state with boolean flags):
+| Column | Description |
+|--------|-------------|
+| `is_status_degraded` | Status is not 'activated' |
+| `is_isis_soft_drained` | ISIS delay override set to 1s |
+| `has_packet_loss` | Loss >= 1% in last hour |
+| `exceeds_committed_rtt` | Avg latency exceeds committed RTT |
+| `is_dark` | No telemetry in last 2 hours |
+
+**`dz_link_status_changes`** (historical status transitions):
+| Column | Description |
+|--------|-------------|
+| `previous_status`, `new_status` | Status transition |
+| `changed_ts` | When the change occurred |
 
 ## Gaps
 
@@ -64,10 +73,10 @@ We've defined a clear domain model for link issues in `docs/domain/link-issues.m
 
 Options for the status page API:
 
-**Option A: Use the view directly**
-- Query `dz_link_issue_events` from the status API
+**Option A: Use the views directly**
+- Query `dz_links_health_current` and `dz_link_status_changes` from the status API
 - Pros: Single source of truth, consistency
-- Cons: View is expensive (90-day lookback), may not suit real-time status
+- Cons: May not suit all real-time status needs
 
 **Option B: Parallel logic, same definitions**
 - Keep existing status cache queries but align thresholds/definitions

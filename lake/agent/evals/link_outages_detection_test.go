@@ -244,41 +244,40 @@ ORDER BY code, snapshot_ts
 
 	t.Logf("Database validation passed: Found %d links, %d history entries in last 48h", result.Count, historyResult.Count)
 
-	// Validate the link issue events view directly
+	// Validate the link status changes view directly
 	viewQuery := `
 SELECT
     link_code,
-    event_type,
-    start_ts,
-    end_ts,
-    is_ongoing,
-    duration_minutes,
-    new_status
-FROM dz_link_issue_events
-WHERE start_ts >= now() - INTERVAL 48 HOUR
-ORDER BY link_code, event_type, start_ts
+    previous_status,
+    new_status,
+    changed_ts
+FROM dz_link_status_changes
+WHERE changed_ts >= now() - INTERVAL 48 HOUR
+ORDER BY link_code, changed_ts
 `
 	viewResult, err := dataset.Query(ctx, conn, viewQuery, nil)
 	require.NoError(t, err, "Failed to execute view query")
-	t.Logf("Link issue events view returned %d rows:", viewResult.Count)
+	t.Logf("Link status changes view returned %d rows:", viewResult.Count)
 	for _, row := range viewResult.Rows {
 		t.Logf("  %v", row)
 	}
 
-	// Verify nyc-lon-1 has recovered (is_ongoing = false)
+	// Verify nyc-lon-1 has status changes showing outage and recovery
 	nycLonQuery := `
 SELECT
     link_code,
-    event_type,
-    is_ongoing,
-    start_ts,
-    end_ts
-FROM dz_link_issue_events
+    previous_status,
+    new_status,
+    changed_ts
+FROM dz_link_status_changes
 WHERE link_code = 'nyc-lon-1'
-  AND event_type = 'status_change'
+ORDER BY changed_ts
 `
 	nycLonResult, err := dataset.Query(ctx, conn, nycLonQuery, nil)
-	require.NoError(t, err, "Failed to query nyc-lon-1 status_change event")
-	require.Equal(t, 1, nycLonResult.Count, "Should have exactly 1 status_change event for nyc-lon-1")
-	t.Logf("nyc-lon-1 status_change event: %v", nycLonResult.Rows[0])
+	require.NoError(t, err, "Failed to query nyc-lon-1 status changes")
+	require.GreaterOrEqual(t, nycLonResult.Count, 2, "Should have at least 2 status changes for nyc-lon-1 (down then up)")
+	t.Logf("nyc-lon-1 status changes (%d total):", nycLonResult.Count)
+	for _, row := range nycLonResult.Rows {
+		t.Logf("  %v", row)
+	}
 }

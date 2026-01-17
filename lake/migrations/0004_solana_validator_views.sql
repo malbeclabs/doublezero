@@ -169,5 +169,28 @@ SELECT
     connected_ts,
     disconnected_ts
 FROM validator_disconnections
-WHERE rn = 1  -- Most recent disconnection per validator
-  AND vote_pubkey NOT IN (SELECT vote_pubkey FROM solana_validators_on_dz_current);  -- Exclude currently connected
+-- Most recent disconnection per validator, excluding currently connected
+WHERE rn = 1
+  AND vote_pubkey NOT IN (SELECT vote_pubkey FROM solana_validators_on_dz_current);
+
+-- solana_validators_new_connections
+-- Shows validators currently on DZ with their first connection timestamp
+-- Useful for finding validators that recently joined DZ (filter by first_connected_ts)
+-- Example: SELECT * FROM solana_validators_new_connections WHERE first_connected_ts >= now() - INTERVAL 1 DAY
+CREATE OR REPLACE VIEW solana_validators_new_connections
+AS
+SELECT
+    curr.vote_pubkey,
+    curr.node_pubkey,
+    curr.owner_pubkey,
+    curr.dz_ip,
+    curr.client_ip,
+    curr.device_pk,
+    curr.activated_stake_lamports,
+    curr.activated_stake_sol,
+    curr.commission_percentage,
+    conn.first_connected_ts
+FROM solana_validators_on_dz_current curr
+JOIN solana_validators_on_dz_connections conn
+  ON curr.vote_pubkey = conn.vote_pubkey
+  AND curr.node_pubkey = conn.node_pubkey;

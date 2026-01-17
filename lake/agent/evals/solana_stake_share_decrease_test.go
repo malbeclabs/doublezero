@@ -26,14 +26,6 @@ func TestLake_Agent_Evals_Anthropic_SolanaStakeShareDecrease(t *testing.T) {
 	runTest_SolanaStakeShareDecrease(t, newAnthropicLLMClient)
 }
 
-func TestLake_Agent_Evals_OllamaLocal_SolanaStakeShareDecrease(t *testing.T) {
-	t.Parallel()
-	if !isOllamaAvailable() {
-		t.Skip("Ollama not available, skipping eval test")
-	}
-
-	runTest_SolanaStakeShareDecrease(t, newOllamaLLMClient)
-}
 
 func runTest_SolanaStakeShareDecrease(t *testing.T, llmFactory LLMClientFactory) {
 	ctx := context.Background()
@@ -118,6 +110,13 @@ func runTest_SolanaStakeShareDecrease(t *testing.T, llmFactory LLMClientFactory)
 
 // seedSolanaStakeShareDecreaseData seeds Solana data for TestLake_Agent_Evals_Anthropic_SolanaStakeShareDecrease
 // Sets up a scenario where 2 validators disconnected from DZ in the past day, causing stake share to decrease
+//
+// Historical epoch data structure (to enable stake share trend analysis):
+// - Epoch 98 (5 days ago): vote1-6 all on DZ = 14.7T lamports on DZ / 29.7T total = ~49% stake share
+// - Epoch 99 (2 days ago): vote1-6 all on DZ = 14.7T lamports on DZ / 29.7T total = ~49% stake share
+// - Epoch 100 (current): vote1-3 on DZ (vote4/5 disconnected in past 24h) = 3.7T on DZ / 29.7T total = ~12% stake share
+//
+// This shows a clear decrease from ~49% to ~12% due to vote4 (5000 SOL) and vote5 (4000 SOL) disconnecting.
 func seedSolanaStakeShareDecreaseData(t *testing.T, ctx context.Context, conn clickhouse.Connection) {
 	now := testTime()
 
@@ -267,34 +266,101 @@ func seedSolanaStakeShareDecreaseData(t *testing.T, ctx context.Context, conn cl
 	seedGossipNodes(t, ctx, conn, []*testGossipNode{gossipNodesOffDZ[2]}, now.Add(-200*24*time.Hour), now, testOpID()) // node9: 200 days ago
 	seedGossipNodes(t, ctx, conn, []*testGossipNode{gossipNodesOffDZ[3]}, now.Add(-100*24*time.Hour), now, testOpID()) // node10: 100 days ago
 
-	// Seed Solana vote accounts
-	// - vote1-3: Currently on DZ (nodes 1-3) - lower stake amounts
-	// - vote4-5: Disconnected in the past day (nodes 4-5) - higher stake amounts (these caused the decrease)
-	// - vote6: Disconnected longer ago (node6) - not relevant for recent decrease
-	// - vote7-10: Not on DZ (nodes 7-10) - part of total network stake
+	// Seed Solana vote accounts for historical epochs
+	// This enables the agent to analyze stake share trends across epochs.
+	//
+	// Stake distribution (same across all epochs):
+	// - vote1: 1000 SOL (1T lamports)
+	// - vote2: 1500 SOL (1.5T lamports)
+	// - vote3: 1200 SOL (1.2T lamports)
+	// - vote4: 5000 SOL (5T lamports) - high stake, disconnected recently
+	// - vote5: 4000 SOL (4T lamports) - high stake, disconnected recently
+	// - vote6: 2000 SOL (2T lamports) - disconnected 3 days ago
+	// - vote7-10: 15000 SOL total (off-DZ, network background)
+	//
+	// Historical stake share on DZ:
+	// - Epoch 98 (5 days ago): vote1-6 on DZ = 14.7T / 29.7T = ~49.5%
+	// - Epoch 99 (2 days ago): vote1-6 on DZ = 14.7T / 29.7T = ~49.5%
+	// - Epoch 100 (now): vote1-3 on DZ = 3.7T / 29.7T = ~12.5% (vote4/5 disconnected)
+
+	// Define stake amounts in lamports
+	const (
+		vote1Stake = 1000000000000  // 1000 SOL
+		vote2Stake = 1500000000000  // 1500 SOL
+		vote3Stake = 1200000000000  // 1200 SOL
+		vote4Stake = 5000000000000  // 5000 SOL
+		vote5Stake = 4000000000000  // 4000 SOL
+		vote6Stake = 2000000000000  // 2000 SOL
+		vote7Stake = 3000000000000  // 3000 SOL
+		vote8Stake = 2500000000000  // 2500 SOL
+		vote9Stake = 6000000000000  // 6000 SOL
+		vote10Stake = 3500000000000 // 3500 SOL
+	)
+
+	// Epoch 98 - 5 days ago: All validators including vote4-6 on DZ
+	epoch98Time := now.Add(-5 * 24 * time.Hour)
+	voteAccountsEpoch98 := []testVoteAccount{
+		// On DZ (will stay connected)
+		{VotePubkey: "vote1", NodePubkey: "node1", EpochVoteAccount: true, Epoch: 98, ActivatedStake: vote1Stake, Commission: 5},
+		{VotePubkey: "vote2", NodePubkey: "node2", EpochVoteAccount: true, Epoch: 98, ActivatedStake: vote2Stake, Commission: 5},
+		{VotePubkey: "vote3", NodePubkey: "node3", EpochVoteAccount: true, Epoch: 98, ActivatedStake: vote3Stake, Commission: 5},
+		// On DZ (will disconnect)
+		{VotePubkey: "vote4", NodePubkey: "node4", EpochVoteAccount: true, Epoch: 98, ActivatedStake: vote4Stake, Commission: 5},
+		{VotePubkey: "vote5", NodePubkey: "node5", EpochVoteAccount: true, Epoch: 98, ActivatedStake: vote5Stake, Commission: 5},
+		{VotePubkey: "vote6", NodePubkey: "node6", EpochVoteAccount: true, Epoch: 98, ActivatedStake: vote6Stake, Commission: 5},
+		// Off DZ (never connected)
+		{VotePubkey: "vote7", NodePubkey: "node7", EpochVoteAccount: true, Epoch: 98, ActivatedStake: vote7Stake, Commission: 5},
+		{VotePubkey: "vote8", NodePubkey: "node8", EpochVoteAccount: true, Epoch: 98, ActivatedStake: vote8Stake, Commission: 5},
+		{VotePubkey: "vote9", NodePubkey: "node9", EpochVoteAccount: true, Epoch: 98, ActivatedStake: vote9Stake, Commission: 5},
+		{VotePubkey: "vote10", NodePubkey: "node10", EpochVoteAccount: true, Epoch: 98, ActivatedStake: vote10Stake, Commission: 5},
+	}
+	seedVoteAccounts(t, ctx, conn, voteAccountsEpoch98, epoch98Time, epoch98Time, testOpID())
+
+	// Epoch 99 - 2 days ago: All validators including vote4-6 still on DZ
+	epoch99Time := now.Add(-2 * 24 * time.Hour)
+	voteAccountsEpoch99 := []testVoteAccount{
+		// On DZ (will stay connected)
+		{VotePubkey: "vote1", NodePubkey: "node1", EpochVoteAccount: true, Epoch: 99, ActivatedStake: vote1Stake, Commission: 5},
+		{VotePubkey: "vote2", NodePubkey: "node2", EpochVoteAccount: true, Epoch: 99, ActivatedStake: vote2Stake, Commission: 5},
+		{VotePubkey: "vote3", NodePubkey: "node3", EpochVoteAccount: true, Epoch: 99, ActivatedStake: vote3Stake, Commission: 5},
+		// On DZ (will disconnect in epoch 100)
+		{VotePubkey: "vote4", NodePubkey: "node4", EpochVoteAccount: true, Epoch: 99, ActivatedStake: vote4Stake, Commission: 5},
+		{VotePubkey: "vote5", NodePubkey: "node5", EpochVoteAccount: true, Epoch: 99, ActivatedStake: vote5Stake, Commission: 5},
+		// vote6 disconnected 3 days ago, so not on DZ at epoch 99
+		{VotePubkey: "vote6", NodePubkey: "node6", EpochVoteAccount: true, Epoch: 99, ActivatedStake: vote6Stake, Commission: 5},
+		// Off DZ (never connected)
+		{VotePubkey: "vote7", NodePubkey: "node7", EpochVoteAccount: true, Epoch: 99, ActivatedStake: vote7Stake, Commission: 5},
+		{VotePubkey: "vote8", NodePubkey: "node8", EpochVoteAccount: true, Epoch: 99, ActivatedStake: vote8Stake, Commission: 5},
+		{VotePubkey: "vote9", NodePubkey: "node9", EpochVoteAccount: true, Epoch: 99, ActivatedStake: vote9Stake, Commission: 5},
+		{VotePubkey: "vote10", NodePubkey: "node10", EpochVoteAccount: true, Epoch: 99, ActivatedStake: vote10Stake, Commission: 5},
+	}
+	seedVoteAccounts(t, ctx, conn, voteAccountsEpoch99, epoch99Time, epoch99Time, testOpID())
+
+	// Epoch 100 - Current: vote4/5 disconnected in past 24h, vote6 disconnected 3 days ago
+	// Only vote1-3 remain on DZ
 	voteAccountsOnDZ := []testVoteAccount{
-		{VotePubkey: "vote1", NodePubkey: "node1", EpochVoteAccount: true, Epoch: 100, ActivatedStake: 1000000000000, Commission: 5},
-		{VotePubkey: "vote2", NodePubkey: "node2", EpochVoteAccount: true, Epoch: 100, ActivatedStake: 1500000000000, Commission: 5},
-		{VotePubkey: "vote3", NodePubkey: "node3", EpochVoteAccount: true, Epoch: 100, ActivatedStake: 1200000000000, Commission: 5},
+		{VotePubkey: "vote1", NodePubkey: "node1", EpochVoteAccount: true, Epoch: 100, ActivatedStake: vote1Stake, Commission: 5},
+		{VotePubkey: "vote2", NodePubkey: "node2", EpochVoteAccount: true, Epoch: 100, ActivatedStake: vote2Stake, Commission: 5},
+		{VotePubkey: "vote3", NodePubkey: "node3", EpochVoteAccount: true, Epoch: 100, ActivatedStake: vote3Stake, Commission: 5},
 	}
 	seedVoteAccounts(t, ctx, conn, []testVoteAccount{voteAccountsOnDZ[0]}, now.Add(-30*24*time.Hour), now, testOpID()) // vote1: 30 days ago
 	seedVoteAccounts(t, ctx, conn, []testVoteAccount{voteAccountsOnDZ[1]}, now.Add(-60*24*time.Hour), now, testOpID()) // vote2: 60 days ago
 	seedVoteAccounts(t, ctx, conn, []testVoteAccount{voteAccountsOnDZ[2]}, now.Add(-45*24*time.Hour), now, testOpID()) // vote3: 45 days ago
 
 	voteAccountsDisconnected := []testVoteAccount{
-		{VotePubkey: "vote4", NodePubkey: "node4", EpochVoteAccount: true, Epoch: 100, ActivatedStake: 5000000000000, Commission: 5},
-		{VotePubkey: "vote5", NodePubkey: "node5", EpochVoteAccount: true, Epoch: 100, ActivatedStake: 4000000000000, Commission: 5},
-		{VotePubkey: "vote6", NodePubkey: "node6", EpochVoteAccount: true, Epoch: 100, ActivatedStake: 2000000000000, Commission: 5},
+		{VotePubkey: "vote4", NodePubkey: "node4", EpochVoteAccount: true, Epoch: 100, ActivatedStake: vote4Stake, Commission: 5},
+		{VotePubkey: "vote5", NodePubkey: "node5", EpochVoteAccount: true, Epoch: 100, ActivatedStake: vote5Stake, Commission: 5},
+		{VotePubkey: "vote6", NodePubkey: "node6", EpochVoteAccount: true, Epoch: 100, ActivatedStake: vote6Stake, Commission: 5},
 	}
 	seedVoteAccounts(t, ctx, conn, []testVoteAccount{voteAccountsDisconnected[0]}, now.Add(-20*24*time.Hour), now.Add(-12*time.Hour), testOpID())   // vote4: connected 20 days ago, disconnected 12 hours ago
 	seedVoteAccounts(t, ctx, conn, []testVoteAccount{voteAccountsDisconnected[1]}, now.Add(-15*24*time.Hour), now.Add(-6*time.Hour), testOpID())    // vote5: connected 15 days ago, disconnected 6 hours ago
 	seedVoteAccounts(t, ctx, conn, []testVoteAccount{voteAccountsDisconnected[2]}, now.Add(-90*24*time.Hour), now.Add(-3*24*time.Hour), testOpID()) // vote6: connected 90 days ago, disconnected 3 days ago
 
 	voteAccountsOffDZ := []testVoteAccount{
-		{VotePubkey: "vote7", NodePubkey: "node7", EpochVoteAccount: true, Epoch: 100, ActivatedStake: 3000000000000, Commission: 5},
-		{VotePubkey: "vote8", NodePubkey: "node8", EpochVoteAccount: true, Epoch: 100, ActivatedStake: 2500000000000, Commission: 5},
-		{VotePubkey: "vote9", NodePubkey: "node9", EpochVoteAccount: true, Epoch: 100, ActivatedStake: 6000000000000, Commission: 5},
-		{VotePubkey: "vote10", NodePubkey: "node10", EpochVoteAccount: true, Epoch: 100, ActivatedStake: 3500000000000, Commission: 5},
+		{VotePubkey: "vote7", NodePubkey: "node7", EpochVoteAccount: true, Epoch: 100, ActivatedStake: vote7Stake, Commission: 5},
+		{VotePubkey: "vote8", NodePubkey: "node8", EpochVoteAccount: true, Epoch: 100, ActivatedStake: vote8Stake, Commission: 5},
+		{VotePubkey: "vote9", NodePubkey: "node9", EpochVoteAccount: true, Epoch: 100, ActivatedStake: vote9Stake, Commission: 5},
+		{VotePubkey: "vote10", NodePubkey: "node10", EpochVoteAccount: true, Epoch: 100, ActivatedStake: vote10Stake, Commission: 5},
 	}
 	seedVoteAccounts(t, ctx, conn, []testVoteAccount{voteAccountsOffDZ[0]}, now.Add(-180*24*time.Hour), now, testOpID()) // vote7: 180 days ago
 	seedVoteAccounts(t, ctx, conn, []testVoteAccount{voteAccountsOffDZ[1]}, now.Add(-150*24*time.Hour), now, testOpID()) // vote8: 150 days ago

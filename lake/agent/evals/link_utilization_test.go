@@ -28,14 +28,6 @@ func TestLake_Agent_Evals_Anthropic_LinkUtilization(t *testing.T) {
 	runTest_LinkUtilization(t, newAnthropicLLMClient)
 }
 
-func TestLake_Agent_Evals_OllamaLocal_LinkUtilization(t *testing.T) {
-	t.Parallel()
-	if !isOllamaAvailable() {
-		t.Skip("Ollama not available, skipping eval test")
-	}
-
-	runTest_LinkUtilization(t, newOllamaLLMClient)
-}
 
 func runTest_LinkUtilization(t *testing.T, llmFactory LLMClientFactory) {
 	ctx := context.Background()

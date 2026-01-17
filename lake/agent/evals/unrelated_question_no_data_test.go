@@ -21,14 +21,6 @@ func TestLake_Agent_Evals_Anthropic_UnrelatedQuestionNoData(t *testing.T) {
 	runTest_UnrelatedQuestionNoData(t, newAnthropicLLMClient)
 }
 
-func TestLake_Agent_Evals_OllamaLocal_UnrelatedQuestionNoData(t *testing.T) {
-	t.Parallel()
-	if !isOllamaAvailable() {
-		t.Skip("Ollama not available, skipping eval test")
-	}
-
-	runTest_UnrelatedQuestionNoData(t, newOllamaLLMClient)
-}
 
 func runTest_UnrelatedQuestionNoData(t *testing.T, llmFactory LLMClientFactory) {
 	ctx := context.Background()

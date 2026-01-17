@@ -21,14 +21,6 @@ func TestLake_Agent_Evals_Anthropic_ConversationalFollowup(t *testing.T) {
 	runTest_ConversationalFollowup(t, newAnthropicLLMClient)
 }
 
-func TestLake_Agent_Evals_OllamaLocal_ConversationalFollowup(t *testing.T) {
-	t.Parallel()
-	if !isOllamaAvailable() {
-		t.Skip("Ollama not available, skipping eval test")
-	}
-
-	runTest_ConversationalFollowup(t, newOllamaLLMClient)
-}
 
 func runTest_ConversationalFollowup(t *testing.T, llmFactory LLMClientFactory) {
 	ctx := context.Background()
@@ -115,14 +107,6 @@ func TestLake_Agent_Evals_Anthropic_CapabilitiesQuestion(t *testing.T) {
 	runTest_CapabilitiesQuestion(t, newAnthropicLLMClient)
 }
 
-func TestLake_Agent_Evals_OllamaLocal_CapabilitiesQuestion(t *testing.T) {
-	t.Parallel()
-	if !isOllamaAvailable() {
-		t.Skip("Ollama not available, skipping eval test")
-	}
-
-	runTest_CapabilitiesQuestion(t, newOllamaLLMClient)
-}
 
 func runTest_CapabilitiesQuestion(t *testing.T, llmFactory LLMClientFactory) {
 	ctx := context.Background()
@@ -190,14 +174,6 @@ func TestLake_Agent_Evals_Anthropic_AffirmativeQueryConfirmation(t *testing.T) {
 	runTest_AffirmativeQueryConfirmation(t, newAnthropicLLMClient)
 }
 
-func TestLake_Agent_Evals_OllamaLocal_AffirmativeQueryConfirmation(t *testing.T) {
-	t.Parallel()
-	if !isOllamaAvailable() {
-		t.Skip("Ollama not available, skipping eval test")
-	}
-
-	runTest_AffirmativeQueryConfirmation(t, newOllamaLLMClient)
-}
 
 // runTest_AffirmativeQueryConfirmation tests that when the assistant offers to run a query
 // and the user says "yes", it should be classified as data_analysis and actually execute the query.
@@ -265,14 +241,6 @@ func TestLake_Agent_Evals_Anthropic_ThankYouResponse(t *testing.T) {
 	runTest_ThankYouResponse(t, newAnthropicLLMClient)
 }
 
-func TestLake_Agent_Evals_OllamaLocal_ThankYouResponse(t *testing.T) {
-	t.Parallel()
-	if !isOllamaAvailable() {
-		t.Skip("Ollama not available, skipping eval test")
-	}
-
-	runTest_ThankYouResponse(t, newOllamaLLMClient)
-}
 
 func runTest_ThankYouResponse(t *testing.T, llmFactory LLMClientFactory) {
 	ctx := context.Background()

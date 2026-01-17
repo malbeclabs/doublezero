@@ -26,14 +26,6 @@ func TestLake_Agent_Evals_Anthropic_SolanaValidatorsDisconnected(t *testing.T) {
 	runTest_SolanaValidatorsDisconnected(t, newAnthropicLLMClient)
 }
 
-func TestLake_Agent_Evals_OllamaLocal_SolanaValidatorsDisconnected(t *testing.T) {
-	t.Parallel()
-	if !isOllamaAvailable() {
-		t.Skip("Ollama not available, skipping eval test")
-	}
-
-	runTest_SolanaValidatorsDisconnected(t, newOllamaLLMClient)
-}
 
 func runTest_SolanaValidatorsDisconnected(t *testing.T, llmFactory LLMClientFactory) {
 	ctx := context.Background()

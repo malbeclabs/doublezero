@@ -23,14 +23,6 @@ func TestLake_Agent_Evals_Anthropic_NetworkPaths(t *testing.T) {
 	runTest_NetworkPaths(t, newAnthropicLLMClient)
 }
 
-func TestLake_Agent_Evals_OllamaLocal_NetworkPaths(t *testing.T) {
-	t.Parallel()
-	if !isOllamaAvailable() {
-		t.Skip("Ollama not available, skipping eval test")
-	}
-
-	runTest_NetworkPaths(t, newOllamaLLMClient)
-}
 
 func runTest_NetworkPaths(t *testing.T, llmFactory LLMClientFactory) {
 	ctx := context.Background()

@@ -27,14 +27,6 @@ func TestLake_Agent_Evals_Anthropic_NetworkStateSummary(t *testing.T) {
 	runTest_NetworkStateSummary(t, newAnthropicLLMClient)
 }
 
-func TestLake_Agent_Evals_OllamaLocal_NetworkStateSummary(t *testing.T) {
-	t.Parallel()
-	if !isOllamaAvailable() {
-		t.Skip("Ollama not available, skipping eval test")
-	}
-
-	runTest_NetworkStateSummary(t, newOllamaLLMClient)
-}
 
 func runTest_NetworkStateSummary(t *testing.T, llmFactory LLMClientFactory) {
 	ctx := context.Background()

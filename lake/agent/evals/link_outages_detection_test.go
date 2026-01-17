@@ -24,14 +24,6 @@ func TestLake_Agent_Evals_Anthropic_LinkOutagesDetection(t *testing.T) {
 	runTest_LinkOutagesDetection(t, newAnthropicLLMClient)
 }
 
-func TestLake_Agent_Evals_OllamaLocal_LinkOutagesDetection(t *testing.T) {
-	t.Parallel()
-	if !isOllamaAvailable() {
-		t.Skip("Ollama not available, skipping eval test")
-	}
-
-	runTest_LinkOutagesDetection(t, newOllamaLLMClient)
-}
 
 func runTest_LinkOutagesDetection(t *testing.T, llmFactory LLMClientFactory) {
 	ctx := context.Background()

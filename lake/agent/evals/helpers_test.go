@@ -3,15 +3,10 @@
 package evals_test
 
 import (
-	"bufio"
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -332,121 +327,6 @@ func newAnthropicLLMClient(t *testing.T) pipeline.LLMClient {
 	)
 }
 
-// newOllamaLLMClient creates an Ollama LLM client for the pipeline
-func newOllamaLLMClient(t *testing.T) pipeline.LLMClient {
-	ollamaURL := os.Getenv("OLLAMA_URL")
-	if ollamaURL == "" {
-		// Detect if running in a devcontainer and use DIND_LOCALHOST hostname
-		if dindHost := os.Getenv("DIND_LOCALHOST"); dindHost != "" {
-			ollamaURL = fmt.Sprintf("http://%s:11434", dindHost)
-		} else {
-			ollamaURL = "http://localhost:11434"
-		}
-	}
-
-	model := os.Getenv("OLLAMA_AGENT_MODEL")
-	if model == "" {
-		// Use llama3.1:8b - good for text completion without tool calling
-		model = "llama3.1:8b"
-	}
-
-	return NewOllamaLLMClient(ollamaURL, model, 4096)
-}
-
-// OllamaLLMClient implements pipeline.LLMClient for Ollama
-type OllamaLLMClient struct {
-	baseURL   string
-	model     string
-	maxTokens int64
-}
-
-// NewOllamaLLMClient creates a new Ollama LLM client for the pipeline
-func NewOllamaLLMClient(baseURL, model string, maxTokens int64) *OllamaLLMClient {
-	return &OllamaLLMClient{
-		baseURL:   baseURL,
-		model:     model,
-		maxTokens: maxTokens,
-	}
-}
-
-// Complete sends a prompt to Ollama and returns the response text
-func (c *OllamaLLMClient) Complete(ctx context.Context, systemPrompt, userPrompt string, opts ...pipeline.CompleteOption) (string, error) {
-	// Note: Ollama doesn't support prompt caching, so opts are ignored
-	reqBody := map[string]any{
-		"model":  c.model,
-		"stream": false,
-		"options": map[string]any{
-			"num_predict": c.maxTokens,
-		},
-		"messages": []map[string]string{
-			{"role": "system", "content": systemPrompt},
-			{"role": "user", "content": userPrompt},
-		},
-	}
-
-	jsonData, err := json.Marshal(reqBody)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal request: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/api/chat", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("ollama returned status %d: %s", resp.StatusCode, string(body))
-	}
-
-	// Handle streaming response (newline-delimited JSON)
-	var fullContent strings.Builder
-	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 0, 64*1024), 10*1024*1024)
-
-	for scanner.Scan() {
-		line := bytes.TrimSpace(scanner.Bytes())
-		if len(line) == 0 {
-			continue
-		}
-
-		var chunk struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-			Done  bool   `json:"done"`
-			Error string `json:"error,omitempty"`
-		}
-
-		if err := json.Unmarshal(line, &chunk); err != nil {
-			continue
-		}
-
-		if chunk.Error != "" {
-			return "", fmt.Errorf("ollama error: %s", chunk.Error)
-		}
-
-		fullContent.WriteString(chunk.Message.Content)
-
-		if chunk.Done {
-			break
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		return "", fmt.Errorf("failed to read response: %w", err)
-	}
-
-	return fullContent.String(), nil
-}
-
 // ClickhouseQuerier implements pipeline.Querier using the clickhouse client
 type ClickhouseQuerier struct {
 	db clickhouse.Client
@@ -520,33 +400,6 @@ func formatQueryResult(result pipeline.QueryResult) string {
 	}
 
 	return sb.String()
-}
-
-// isOllamaAvailable checks if the local Ollama server is available for agent evals.
-// Currently disabled by default: local Ollama models generate unreliable SQL queries.
-// Set OLLAMA_AGENT_EVALS=1 to enable these tests for local development.
-func isOllamaAvailable() bool {
-	// Ollama agent tests are disabled by default due to unreliable SQL generation.
-	if os.Getenv("OLLAMA_AGENT_EVALS") != "1" {
-		return false
-	}
-
-	ollamaURL := os.Getenv("OLLAMA_URL")
-	if ollamaURL == "" {
-		if dindHost := os.Getenv("DIND_LOCALHOST"); dindHost != "" {
-			ollamaURL = fmt.Sprintf("http://%s:11434", dindHost)
-		} else {
-			ollamaURL = "http://localhost:11434"
-		}
-	}
-
-	client := &http.Client{Timeout: 2 * time.Second}
-	resp, err := client.Get(ollamaURL + "/api/tags")
-	if err != nil {
-		return false
-	}
-	defer resp.Body.Close()
-	return resp.StatusCode == http.StatusOK
 }
 
 // debugQuerier wraps a Querier to log all queries and results when DEBUG is enabled

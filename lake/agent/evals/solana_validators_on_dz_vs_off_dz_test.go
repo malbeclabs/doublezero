@@ -26,14 +26,6 @@ func TestLake_Agent_Evals_Anthropic_SolanaValidatorsOnDZVsOffDZ(t *testing.T) {
 	runTest_SolanaValidatorsOnDZVsOffDZ(t, newAnthropicLLMClient)
 }
 
-func TestLake_Agent_Evals_OllamaLocal_SolanaValidatorsOnDZVsOffDZ(t *testing.T) {
-	t.Parallel()
-	if !isOllamaAvailable() {
-		t.Skip("Ollama not available, skipping eval test")
-	}
-
-	runTest_SolanaValidatorsOnDZVsOffDZ(t, newOllamaLLMClient)
-}
 
 func runTest_SolanaValidatorsOnDZVsOffDZ(t *testing.T, llmFactory LLMClientFactory) {
 	ctx := context.Background()

@@ -27,14 +27,6 @@ func TestLake_Agent_Evals_Anthropic_OffDZValidatorsByRegion(t *testing.T) {
 	runTest_OffDZValidatorsByRegion(t, newAnthropicLLMClient)
 }
 
-func TestLake_Agent_Evals_OllamaLocal_OffDZValidatorsByRegion(t *testing.T) {
-	t.Parallel()
-	if !isOllamaAvailable() {
-		t.Skip("Ollama not available, skipping eval test")
-	}
-
-	runTest_OffDZValidatorsByRegion(t, newOllamaLLMClient)
-}
 
 func runTest_OffDZValidatorsByRegion(t *testing.T, llmFactory LLMClientFactory) {
 	ctx := context.Background()

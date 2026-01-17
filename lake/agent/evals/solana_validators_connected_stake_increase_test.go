@@ -26,14 +26,6 @@ func TestLake_Agent_Evals_Anthropic_SolanaValidatorsConnectedStakeIncrease(t *te
 	runTest_SolanaValidatorsConnectedStakeIncrease(t, newAnthropicLLMClient)
 }
 
-func TestLake_Agent_Evals_OllamaLocal_SolanaValidatorsConnectedStakeIncrease(t *testing.T) {
-	t.Parallel()
-	if !isOllamaAvailable() {
-		t.Skip("Ollama not available, skipping eval test")
-	}
-
-	runTest_SolanaValidatorsConnectedStakeIncrease(t, newOllamaLLMClient)
-}
 
 func runTest_SolanaValidatorsConnectedStakeIncrease(t *testing.T, llmFactory LLMClientFactory) {
 	ctx := context.Background()

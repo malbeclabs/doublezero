@@ -39,6 +39,6 @@ func DefaultVersion() Version {
 			return VersionV2
 		}
 	}
-	// v1 is the default for stability
-	return VersionV1
+	// v2 is the default
+	return VersionV2
 }

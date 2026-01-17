@@ -25,14 +25,6 @@ func TestLake_Agent_Evals_Anthropic_DZImprovementThreshold(t *testing.T) {
 	runTest_DZImprovementThreshold(t, newAnthropicLLMClient)
 }
 
-func TestLake_Agent_Evals_OllamaLocal_DZImprovementThreshold(t *testing.T) {
-	t.Parallel()
-	if !isOllamaAvailable() {
-		t.Skip("Ollama not available, skipping eval test")
-	}
-
-	runTest_DZImprovementThreshold(t, newOllamaLLMClient)
-}
 
 func runTest_DZImprovementThreshold(t *testing.T, llmFactory LLMClientFactory) {
 	ctx := context.Background()

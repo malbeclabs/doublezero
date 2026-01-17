@@ -25,14 +25,6 @@ func TestLake_Agent_Evals_Anthropic_DeviceErrorHistory(t *testing.T) {
 	runTest_DeviceErrorHistory(t, newAnthropicLLMClient)
 }
 
-func TestLake_Agent_Evals_OllamaLocal_DeviceErrorHistory(t *testing.T) {
-	t.Parallel()
-	if !isOllamaAvailable() {
-		t.Skip("Ollama not available, skipping eval test")
-	}
-
-	runTest_DeviceErrorHistory(t, newOllamaLLMClient)
-}
 
 func runTest_DeviceErrorHistory(t *testing.T, llmFactory LLMClientFactory) {
 	ctx := context.Background()

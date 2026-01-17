@@ -26,14 +26,6 @@ func TestLake_Agent_Evals_Anthropic_NetworkLinkIncidentTimeline(t *testing.T) {
 	runTest_NetworkLinkIncidentTimeline(t, newAnthropicLLMClient)
 }
 
-func TestLake_Agent_Evals_OllamaLocal_NetworkLinkIncidentTimeline(t *testing.T) {
-	t.Parallel()
-	if !isOllamaAvailable() {
-		t.Skip("Ollama not available, skipping eval test")
-	}
-
-	runTest_NetworkLinkIncidentTimeline(t, newOllamaLLMClient)
-}
 
 func runTest_NetworkLinkIncidentTimeline(t *testing.T, llmFactory LLMClientFactory) {
 	ctx := context.Background()

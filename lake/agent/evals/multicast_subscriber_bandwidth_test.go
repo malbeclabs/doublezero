@@ -26,14 +26,6 @@ func TestLake_Agent_Evals_Anthropic_MulticastSubscriberBandwidth(t *testing.T) {
 	runTest_MulticastSubscriberBandwidth(t, newAnthropicLLMClient)
 }
 
-func TestLake_Agent_Evals_OllamaLocal_MulticastSubscriberBandwidth(t *testing.T) {
-	t.Parallel()
-	if !isOllamaAvailable() {
-		t.Skip("Ollama not available, skipping eval test")
-	}
-
-	runTest_MulticastSubscriberBandwidth(t, newOllamaLLMClient)
-}
 
 func runTest_MulticastSubscriberBandwidth(t *testing.T, llmFactory LLMClientFactory) {
 	ctx := context.Background()

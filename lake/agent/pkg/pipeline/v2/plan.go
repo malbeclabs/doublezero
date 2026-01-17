@@ -5,13 +5,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline"
 )
 
 // Plan creates a query plan based on the interpretation and data mapping.
 func (p *Pipeline) Plan(ctx context.Context, interpretation *Interpretation, mapping *DataMapping, schema string, state *IterationState) (*QueryPlan, error) {
-	systemPrompt := p.prompts.Plan
+	// Include schema in system prompt for prompt caching (schema is large and stable)
+	systemPrompt := buildPlanSystemPrompt(p.prompts.Plan, schema)
 
-	// Build user prompt with context
+	// Build user prompt with context (no schema - it's in system prompt)
 	var userPrompt strings.Builder
 	userPrompt.WriteString("## Question Interpretation\n\n")
 	userPrompt.WriteString(fmt.Sprintf("- **Reframed Question**: %s\n", interpretation.Reframed))
@@ -34,11 +37,6 @@ func (p *Pipeline) Plan(ctx context.Context, interpretation *Interpretation, map
 		userPrompt.WriteString(fmt.Sprintf("- **Caveats**: %s\n", strings.Join(mapping.Caveats, "; ")))
 	}
 
-	// Include schema
-	userPrompt.WriteString("\n## Database Schema\n\n```\n")
-	userPrompt.WriteString(schema)
-	userPrompt.WriteString("\n```\n")
-
 	// Include iteration context if this is a retry
 	if state.Iteration > 1 && len(state.History) > 0 {
 		userPrompt.WriteString("\n## Previous Iteration Results\n\n")
@@ -55,7 +53,9 @@ func (p *Pipeline) Plan(ctx context.Context, interpretation *Interpretation, map
 		}
 	}
 
-	response, err := p.trackLLMCall(ctx, systemPrompt, userPrompt.String())
+	// Use cache control for PLAN calls - the system prompt (PLAN.md + schema)
+	// is large and identical across parallel SQL generation calls within an analysis
+	response, err := p.trackLLMCall(ctx, systemPrompt, userPrompt.String(), pipeline.WithCacheControl())
 	if err != nil {
 		return nil, fmt.Errorf("LLM completion failed: %w", err)
 	}
@@ -115,4 +115,15 @@ func parseQueryPlan(response string) (*QueryPlan, error) {
 	}
 
 	return &result, nil
+}
+
+// buildPlanSystemPrompt creates the system prompt for the Plan stage,
+// including the base prompt and schema for prompt caching.
+func buildPlanSystemPrompt(basePrompt, schema string) string {
+	var sb strings.Builder
+	sb.WriteString(basePrompt)
+	sb.WriteString("\n\n## Database Schema\n\n```\n")
+	sb.WriteString(schema)
+	sb.WriteString("\n```\n")
+	return sb.String()
 }

@@ -26,14 +26,6 @@ func TestLake_Agent_Evals_Anthropic_SolanaValidatorsConnectedCount(t *testing.T)
 	runTest_SolanaValidatorsConnectedCount(t, newAnthropicLLMClient)
 }
 
-func TestLake_Agent_Evals_OllamaLocal_SolanaValidatorsConnectedCount(t *testing.T) {
-	t.Parallel()
-	if !isOllamaAvailable() {
-		t.Skip("Ollama not available, skipping eval test")
-	}
-
-	runTest_SolanaValidatorsConnectedCount(t, newOllamaLLMClient)
-}
 
 func runTest_SolanaValidatorsConnectedCount(t *testing.T, llmFactory LLMClientFactory) {
 	ctx := context.Background()

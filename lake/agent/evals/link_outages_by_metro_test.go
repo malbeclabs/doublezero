@@ -25,14 +25,6 @@ func TestLake_Agent_Evals_Anthropic_LinkOutagesByMetro(t *testing.T) {
 	runTest_LinkOutagesByMetro(t, newAnthropicLLMClient)
 }
 
-func TestLake_Agent_Evals_OllamaLocal_LinkOutagesByMetro(t *testing.T) {
-	t.Parallel()
-	if !isOllamaAvailable() {
-		t.Skip("Ollama not available, skipping eval test")
-	}
-
-	runTest_LinkOutagesByMetro(t, newOllamaLLMClient)
-}
 
 func runTest_LinkOutagesByMetro(t *testing.T, llmFactory LLMClientFactory) {
 	ctx := context.Background()

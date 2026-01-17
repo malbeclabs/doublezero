@@ -23,14 +23,6 @@ func TestLake_Agent_Evals_Anthropic_EntityNotFound_Link(t *testing.T) {
 	runTest_EntityNotFound_Link(t, newAnthropicLLMClient)
 }
 
-func TestLake_Agent_Evals_OllamaLocal_EntityNotFound_Link(t *testing.T) {
-	t.Parallel()
-	if !isOllamaAvailable() {
-		t.Skip("Ollama not available, skipping eval test")
-	}
-
-	runTest_EntityNotFound_Link(t, newOllamaLLMClient)
-}
 
 func runTest_EntityNotFound_Link(t *testing.T, llmFactory LLMClientFactory) {
 	ctx := context.Background()
@@ -89,14 +81,6 @@ func TestLake_Agent_Evals_Anthropic_EntityNotFound_Device(t *testing.T) {
 	runTest_EntityNotFound_Device(t, newAnthropicLLMClient)
 }
 
-func TestLake_Agent_Evals_OllamaLocal_EntityNotFound_Device(t *testing.T) {
-	t.Parallel()
-	if !isOllamaAvailable() {
-		t.Skip("Ollama not available, skipping eval test")
-	}
-
-	runTest_EntityNotFound_Device(t, newOllamaLLMClient)
-}
 
 func runTest_EntityNotFound_Device(t *testing.T, llmFactory LLMClientFactory) {
 	ctx := context.Background()

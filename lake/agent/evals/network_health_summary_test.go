@@ -26,14 +26,6 @@ func TestLake_Agent_Evals_Anthropic_NetworkHealthSummary(t *testing.T) {
 	runTest_NetworkHealthSummary(t, newAnthropicLLMClient)
 }
 
-func TestLake_Agent_Evals_OllamaLocal_NetworkHealthSummary(t *testing.T) {
-	t.Parallel()
-	if !isOllamaAvailable() {
-		t.Skip("Ollama not available, skipping eval test")
-	}
-
-	runTest_NetworkHealthSummary(t, newOllamaLLMClient)
-}
 
 func runTest_NetworkHealthSummary(t *testing.T, llmFactory LLMClientFactory) {
 	ctx := context.Background()
@@ -128,14 +120,6 @@ func TestLake_Agent_Evals_Anthropic_NetworkHealthAllHealthy(t *testing.T) {
 	runTest_NetworkHealthAllHealthy(t, newAnthropicLLMClient)
 }
 
-func TestLake_Agent_Evals_OllamaLocal_NetworkHealthAllHealthy(t *testing.T) {
-	t.Parallel()
-	if !isOllamaAvailable() {
-		t.Skip("Ollama not available, skipping eval test")
-	}
-
-	runTest_NetworkHealthAllHealthy(t, newOllamaLLMClient)
-}
 
 // runTest_NetworkHealthAllHealthy tests that when the network is completely healthy,
 // the agent doesn't include spurious warnings or "no issues found" sections.

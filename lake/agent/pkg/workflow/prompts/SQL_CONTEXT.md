@@ -96,6 +96,7 @@ SELECT MAX(peak) FROM per_window
 |------|---------|
 | `solana_validators_on_dz_current` | Validators currently on DZ (vote_pubkey, node_pubkey, activated_stake_sol, connected_ts) |
 | `solana_validators_off_dz_current` | Validators NOT on DZ with GeoIP (vote_pubkey, activated_stake_sol, city, country) |
+| `solana_validators_performance_current` | **Validator performance metrics** (vote_lag, skip_rate, dz_status) - USE FOR COMPARISONS |
 | `solana_validators_on_dz_connections` | All connection events with `first_connected_ts` |
 | `solana_validators_disconnections` | Validators that left DZ (vote_pubkey, activated_stake_sol, connected_ts, disconnected_ts) |
 | `solana_validators_new_connections` | Recently connected validators (past 24h) |
@@ -110,6 +111,35 @@ When the question says "recently" or "recent", default to **past 24 hours** unle
 **For stake share decrease questions:**
 1. Query `solana_validators_disconnections` with `WHERE disconnected_ts > now() - INTERVAL 24 HOUR`
 2. ALWAYS return individual vote_pubkey values and their stake amounts, not just aggregates
+
+### Validator Performance Comparison (IMPORTANT)
+**When comparing validators on DZ vs off DZ**, use `solana_validators_performance_current`:
+
+```sql
+-- Compare performance metrics by DZ status
+SELECT
+    dz_status,
+    COUNT(*) AS validator_count,
+    ROUND(AVG(avg_vote_lag_slots), 2) AS avg_vote_lag,
+    ROUND(AVG(skip_rate_pct), 2) AS avg_skip_rate,
+    SUM(activated_stake_sol) AS total_stake_sol
+FROM solana_validators_performance_current
+WHERE is_delinquent = false
+GROUP BY dz_status;
+
+-- Top validators by performance (lowest vote lag)
+SELECT vote_pubkey, node_pubkey, dz_status, avg_vote_lag_slots, skip_rate_pct, activated_stake_sol
+FROM solana_validators_performance_current
+WHERE is_delinquent = false AND avg_vote_lag_slots IS NOT NULL
+ORDER BY avg_vote_lag_slots ASC
+LIMIT 10;
+
+-- Validators with high skip rate
+SELECT vote_pubkey, node_pubkey, dz_status, skip_rate_pct, slots_assigned, blocks_produced
+FROM solana_validators_performance_current
+WHERE skip_rate_pct > 5
+ORDER BY skip_rate_pct DESC;
+```
 
 ### Common View Queries
 
@@ -214,36 +244,41 @@ WHERE side_a_metro = 'NYC' OR side_z_metro = 'LON'
 ```
 
 ### Validator Performance Metrics
-**When asked to "compare validators on DZ vs off DZ"**, focus on:
-- **Vote lag**: How far behind the validator is (lower is better)
-- **Skip rate**: Percentage of missed blocks (lower is better)
+**When asked to "compare validators on DZ vs off DZ"**, use `solana_validators_performance_current` view.
+This view includes vote lag, skip rate, and DZ status pre-calculated.
+
+Key metrics:
+- **Vote lag** (`avg_vote_lag_slots`): How far behind the validator is (lower is better)
+- **Skip rate** (`skip_rate_pct`): Percentage of missed blocks (lower is better)
+- **DZ status** (`dz_status`): 'on_dz' or 'off_dz'
 
 **CRITICAL: Always include specific validator identifiers** (vote_pubkey or node_pubkey):
 - "vote1, vote2, vote3 are on DZ with avg vote lag 50 slots"
 - NOT: "on-DZ validators average 50 slots" (no identifiers!)
 
-```sql
--- Vote lag per validator
-SELECT vote_account_pubkey, node_identity_pubkey,
-       AVG(cluster_slot - last_vote_slot) AS avg_vote_lag_slots
-FROM fact_solana_vote_account_activity
-WHERE event_ts > now() - INTERVAL 24 HOUR
-GROUP BY vote_account_pubkey, node_identity_pubkey;
+**Note on delinquent validators:** The view already filters out delinquent validators from vote lag calculations.
+Delinquent validators have `is_delinquent = true` and NULL vote lag metrics.
 
--- Skip rate per validator
-SELECT leader_identity_pubkey,
-       MAX(leader_slots_assigned_cum) AS slots_assigned,
-       MAX(blocks_produced_cum) AS blocks_produced,
-       (MAX(leader_slots_assigned_cum) - MAX(blocks_produced_cum)) * 100.0 / MAX(leader_slots_assigned_cum) AS skip_rate_pct
-FROM fact_solana_block_production
-WHERE event_ts > now() - INTERVAL 24 HOUR
-GROUP BY leader_identity_pubkey;
+```sql
+-- Compare on-DZ vs off-DZ performance (USE THIS!)
+SELECT dz_status, COUNT(*) AS validators,
+       ROUND(AVG(avg_vote_lag_slots), 2) AS avg_vote_lag,
+       ROUND(AVG(skip_rate_pct), 2) AS avg_skip_rate
+FROM solana_validators_performance_current
+WHERE is_delinquent = false
+GROUP BY dz_status;
+
+-- Individual validator performance
+SELECT vote_pubkey, node_pubkey, dz_status, avg_vote_lag_slots, skip_rate_pct
+FROM solana_validators_performance_current
+WHERE is_delinquent = false
+ORDER BY avg_vote_lag_slots ASC LIMIT 10;
 ```
 
 ### Telemetry Patterns
 - **Loss detection**: `loss = true OR rtt_us = 0`
 - **For latency stats**: Always filter `WHERE loss = false AND rtt_us > 0`
-- **Vote lag**: Calculate as `cluster_slot - last_vote_slot`
+- **Vote lag**: Calculate as `cluster_slot - last_vote_slot` with `WHERE is_delinquent = false`
 - **Link interfaces**: Identified by `link_pk IS NOT NULL`
 - **User tunnel interfaces**: Identified by `user_tunnel_id IS NOT NULL`
 - **Internet comparison**: Only compare DZ WAN links to internet latency (not DZX)

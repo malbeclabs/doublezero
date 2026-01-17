@@ -12,25 +12,6 @@ Given the schema and question interpretation, identify:
 5. **Caveats**: What data quality issues or limitations should we be aware of?
 6. **Ambiguities**: Are there unresolved ambiguities in how to interpret the question?
 
-## DZ Network Domain Knowledge
-
-### Validator Connectivity
-- **On DZ**: A Solana validator is "on DZ" if their `gossip_ip` (from `solana_gossip_nodes_current`) matches a `dz_ip` in `dz_users_current`
-- **Off DZ**: A validator is "off DZ" if their `gossip_ip` does NOT match any `dz_users_current.dz_ip` (use anti-join pattern)
-- The `solana_validators_on_dz_current` view provides validators currently on DZ with stake info
-- **IMPORTANT**: Always use `vote_pubkey` (not `node_pubkey`) as the validator identifier. The `vote_pubkey` is from `solana_vote_accounts_current`, not from `solana_gossip_nodes_current`.
-
-### Key Relationships
-- `dz_users_current.dz_ip` = `solana_gossip_nodes_current.gossip_ip` (links DZ users to Solana validators)
-- **`solana_gossip_nodes_current.vote_pubkey` = `solana_vote_accounts_current.vote_pubkey`** (links gossip to stake - THIS IS THE CORRECT JOIN)
-- `geoip_records_current.ip` = `solana_gossip_nodes_current.gossip_ip` (geolocation for validators)
-- **WARNING**: Do NOT join on `node_pubkey` or `pubkey` - always use `vote_pubkey` for validator joins
-
-### Common Patterns
-- **Validators on DZ**: Use `solana_validators_on_dz_current` view or join through `dz_users_current`
-- **Validators off DZ**: LEFT JOIN to `dz_users_current` and filter WHERE `dz_users.pk = ''` or `IS NULL`
-- **Validator location**: Join `solana_gossip_nodes_current.gossip_ip` to `geoip_records_current.ip` for city/country
-
 ## Response Format
 
 **IMPORTANT: Respond with ONLY the JSON object below. No explanatory text before or after.**

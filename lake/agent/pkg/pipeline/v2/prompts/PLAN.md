@@ -62,25 +62,6 @@ Create a **minimal** query plan with two types of queries:
 - Add ORDER BY for deterministic results
 - Use LIMIT for large result sets
 
-## DZ Network Query Patterns
-
-### Validators on DZ
-Use `solana_validators_on_dz_current` view or join through `dz_users_current`:
-```sql
-SELECT vote_pubkey, activated_stake_lamports FROM solana_validators_on_dz_current;
-```
-
-### Validators NOT on DZ (off-DZ) by Region
-Use anti-join pattern with LEFT JOIN and WHERE pk = '':
-```sql
-SELECT va.vote_pubkey, va.activated_stake_lamports, geo.city FROM solana_vote_accounts_current va JOIN solana_gossip_nodes_current gn ON va.vote_pubkey = gn.vote_pubkey LEFT JOIN geoip_records_current geo ON gn.gossip_ip = geo.ip LEFT JOIN dz_users_current u ON gn.gossip_ip = u.dz_ip WHERE u.pk = '' AND geo.city = 'Tokyo' ORDER BY va.activated_stake_lamports DESC LIMIT 10;
-```
-**CRITICAL**:
-- `u.pk = ''` means no matching DZ user (validator is OFF DZ)
-- **ALWAYS select `va.vote_pubkey` from `solana_vote_accounts_current`** - this is the validator identifier users expect
-- **JOIN must be `va.vote_pubkey = gn.vote_pubkey`** - NEVER join on node_pubkey or pubkey
-- **NEVER use `gn.node_pubkey`** from gossip_nodes as the validator identifier - that's a different field
-
 ## Example
 
 Data Mapping:

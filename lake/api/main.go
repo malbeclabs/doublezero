@@ -208,6 +208,13 @@ func main() {
 	r.Delete("/api/sessions/{id}/lock", handlers.ReleaseSessionLock)
 	r.Get("/api/sessions/{id}/lock/watch", handlers.WatchSessionLock)
 
+	// Session workflow route (get running workflow for a session)
+	r.Get("/api/sessions/{id}/workflow", handlers.GetWorkflowForSession)
+
+	// Workflow routes (for durable workflow persistence)
+	r.Get("/api/workflows/{id}", handlers.GetWorkflow)
+	r.Get("/api/workflows/{id}/stream", handlers.StreamWorkflow)
+
 	// Serve static files from the web dist directory
 	webDir := os.Getenv("WEB_DIST_DIR")
 	if webDir == "" {
@@ -238,6 +245,9 @@ func main() {
 		}
 	}()
 
+	// Start auto-resume of incomplete workflows in background
+	go handlers.Manager.ResumeIncompleteWorkflows()
+
 	// Wait for shutdown signal
 	sig := <-shutdown
 	log.Printf("Received signal %v, shutting down gracefully...", sig)
@@ -264,3 +274,4 @@ func main() {
 		}
 	}
 }
+

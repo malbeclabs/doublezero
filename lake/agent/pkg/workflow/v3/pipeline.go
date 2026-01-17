@@ -525,3 +525,444 @@ func truncate(s string, n int) string {
 	}
 	return s[:n] + "..."
 }
+
+// RunWithCheckpoint executes the pipeline with checkpoint callbacks for durability.
+// The onCheckpoint callback is called after each loop iteration with the current state.
+// Checkpoint errors are logged but don't fail the pipeline (best-effort persistence).
+func (p *Pipeline) RunWithCheckpoint(
+	ctx context.Context,
+	userQuestion string,
+	history []workflow.ConversationMessage,
+	onProgress workflow.ProgressCallback,
+	onCheckpoint CheckpointCallback,
+) (*workflow.WorkflowResult, error) {
+	startTime := time.Now()
+
+	state := &LoopState{
+		Metrics: &PipelineMetrics{},
+	}
+
+	// Helper to notify progress
+	notify := func(stage workflow.ProgressStage) {
+		if onProgress != nil {
+			onProgress(workflow.Progress{
+				Stage: stage,
+			})
+		}
+	}
+
+	// Helper to checkpoint
+	checkpoint := func(iteration int, messages []workflow.ToolMessage) {
+		if onCheckpoint != nil {
+			checkpointState := &CheckpointState{
+				Iteration:       iteration,
+				Messages:        messages,
+				ThinkingSteps:   state.ThinkingSteps,
+				ExecutedQueries: state.ExecutedQueries,
+				Metrics:         state.Metrics,
+			}
+			if err := onCheckpoint(checkpointState); err != nil {
+				p.logInfo("v3 pipeline: checkpoint failed", "iteration", iteration, "error", err)
+			}
+		}
+	}
+
+	// Fetch schema once at the start
+	schema, err := p.cfg.SchemaFetcher.FetchSchema(ctx)
+	if err != nil {
+		notify(workflow.StageError)
+		return nil, fmt.Errorf("failed to fetch schema: %w", err)
+	}
+
+	// Build system prompt with schema
+	systemPrompt := BuildSystemPrompt(p.prompts.System, schema, p.cfg.FormatContext)
+
+	// Build initial messages
+	messages := p.buildMessages(userQuestion, history)
+
+	// Get tool LLM client
+	toolLLM, ok := p.cfg.LLM.(workflow.ToolLLMClient)
+	if !ok {
+		return nil, fmt.Errorf("LLM client does not support tool calling")
+	}
+
+	// Tool-calling loop
+	notify(workflow.StageExecuting)
+	p.logInfo("v3 pipeline: starting tool loop with checkpoint", "question", userQuestion)
+
+	for iteration := 0; iteration < p.maxIterations; iteration++ {
+		state.Metrics.LoopIterations++
+
+		// Check for context cancellation
+		if ctx.Err() != nil {
+			notify(workflow.StageError)
+			return nil, ctx.Err()
+		}
+
+		// Call LLM with tools
+		llmStart := time.Now()
+		response, err := toolLLM.CompleteWithTools(ctx, systemPrompt, messages, p.tools, workflow.WithCacheControl())
+		state.Metrics.LLMDuration += time.Since(llmStart)
+		state.Metrics.LLMCalls++
+
+		if err != nil {
+			notify(workflow.StageError)
+			return nil, fmt.Errorf("LLM call failed: %w", err)
+		}
+
+		state.Metrics.InputTokens += response.InputTokens
+		state.Metrics.OutputTokens += response.OutputTokens
+
+		p.logInfo("v3 pipeline: LLM response",
+			"iteration", iteration+1,
+			"stopReason", response.StopReason,
+			"toolCalls", len(response.ToolCalls()))
+
+		// Add assistant message to conversation
+		messages = append(messages, p.responseToMessage(response))
+
+		// Check if model is done (no tool calls)
+		if !response.HasToolCalls() {
+			// If the model hasn't executed any queries but is trying to answer,
+			// force it to execute queries first (unless this is the last iteration)
+			if len(state.ExecutedQueries) == 0 && state.Metrics.ThinkCalls > 0 && iteration < p.maxIterations-1 {
+				p.logInfo("v3 pipeline: enforcing query execution",
+					"iteration", iteration+1,
+					"reason", "model tried to answer without executing queries")
+				// Inject a reminder message and continue the loop
+				messages = append(messages, workflow.ToolMessage{
+					Role: "user",
+					Content: []workflow.ToolContentBlock{
+						{
+							Type: "text",
+							Text: "[System: You used the think tool but did not execute any SQL queries. For data questions, you MUST call execute_sql to get actual data before providing an answer. Please call execute_sql now with your planned queries.]",
+						},
+					},
+				})
+				// Checkpoint after the reminder
+				checkpoint(iteration, messages)
+				continue
+			}
+			state.FinalAnswer = response.Text()
+			break
+		}
+
+		// Process tool calls
+		toolResults := make([]workflow.ToolContentBlock, 0)
+		for _, call := range response.ToolCalls() {
+			result, err := p.executeTool(ctx, call, state, onProgress)
+			if err != nil {
+				// Tool execution error - report back to model
+				toolResults = append(toolResults, workflow.ToolContentBlock{
+					Type:      "tool_result",
+					ToolUseID: call.ID,
+					Content:   fmt.Sprintf("Error: %s", err.Error()),
+					IsError:   true,
+				})
+			} else {
+				toolResults = append(toolResults, workflow.ToolContentBlock{
+					Type:      "tool_result",
+					ToolUseID: call.ID,
+					Content:   result,
+					IsError:   false,
+				})
+			}
+		}
+
+		// Add tool results as user message
+		messages = append(messages, workflow.ToolMessage{
+			Role:    "user",
+			Content: toolResults,
+		})
+
+		// Warn model on penultimate iteration
+		if iteration == p.maxIterations-2 {
+			messages[len(messages)-1].Content = append(messages[len(messages)-1].Content, workflow.ToolContentBlock{
+				Type: "text",
+				Text: "[System: This is your second-to-last turn. Please wrap up your analysis and provide a final answer.]",
+			})
+		}
+
+		// Checkpoint after each iteration (after tool results appended)
+		checkpoint(iteration, messages)
+	}
+
+	// Check if we hit max iterations without answer
+	if state.FinalAnswer == "" {
+		state.Metrics.Truncated = true
+
+		// Force a finalization prompt to get a summary of what's known
+		p.logInfo("v3 pipeline: forcing finalization", "reason", "max iterations reached without final answer")
+
+		finalizationPrompt := "[System: You've reached the maximum number of iterations. Please provide your best answer now based on any data you've gathered. If you executed queries, summarize the results. If you haven't retrieved any data yet, acknowledge that you couldn't complete the analysis and explain what you were trying to do.]"
+
+		messages = append(messages, workflow.ToolMessage{
+			Role: "user",
+			Content: []workflow.ToolContentBlock{
+				{Type: "text", Text: finalizationPrompt},
+			},
+		})
+
+		// Make one final LLM call to get the summary
+		finalResponse, err := toolLLM.CompleteWithTools(ctx, systemPrompt, messages, p.tools, workflow.WithCacheControl())
+		if err == nil {
+			state.Metrics.LLMCalls++
+			state.Metrics.InputTokens += finalResponse.InputTokens
+			state.Metrics.OutputTokens += finalResponse.OutputTokens
+			state.FinalAnswer = finalResponse.Text()
+		}
+
+		// If still no answer, use a generic message
+		if state.FinalAnswer == "" {
+			state.FinalAnswer = "I was unable to complete the analysis within the allowed iterations."
+		}
+	}
+
+	state.Metrics.TotalDuration = time.Since(startTime)
+
+	// Convert to WorkflowResult
+	result := state.ToWorkflowResult(userQuestion)
+
+	notify(workflow.StageComplete)
+	p.logInfo("v3 pipeline: complete",
+		"classification", result.Classification,
+		"iterations", state.Metrics.LoopIterations,
+		"queries", len(state.ExecutedQueries),
+		"truncated", state.Metrics.Truncated)
+
+	return result, nil
+}
+
+// ResumeFromCheckpoint resumes a pipeline from a saved checkpoint state.
+// The checkpoint contains the message history and accumulated state from prior execution.
+func (p *Pipeline) ResumeFromCheckpoint(
+	ctx context.Context,
+	userQuestion string,
+	checkpoint *CheckpointState,
+	onProgress workflow.ProgressCallback,
+	onCheckpoint CheckpointCallback,
+) (*workflow.WorkflowResult, error) {
+	startTime := time.Now()
+
+	// Restore state from checkpoint
+	state := &LoopState{
+		ThinkingSteps:   checkpoint.ThinkingSteps,
+		ExecutedQueries: checkpoint.ExecutedQueries,
+		Metrics:         checkpoint.Metrics,
+	}
+	if state.Metrics == nil {
+		state.Metrics = &PipelineMetrics{}
+	}
+
+	// Copy accumulated values from checkpoint metrics
+	state.Metrics.LoopIterations = checkpoint.Iteration
+
+	// Helper to notify progress
+	notify := func(stage workflow.ProgressStage) {
+		if onProgress != nil {
+			onProgress(workflow.Progress{
+				Stage: stage,
+			})
+		}
+	}
+
+	// Helper to persist checkpoint
+	persistCheckpoint := func(iteration int, messages []workflow.ToolMessage) {
+		if onCheckpoint != nil {
+			checkpointState := &CheckpointState{
+				Iteration:       iteration,
+				Messages:        messages,
+				ThinkingSteps:   state.ThinkingSteps,
+				ExecutedQueries: state.ExecutedQueries,
+				Metrics:         state.Metrics,
+			}
+			if err := onCheckpoint(checkpointState); err != nil {
+				p.logInfo("v3 pipeline: checkpoint failed", "iteration", iteration, "error", err)
+			}
+		}
+	}
+
+	// Fetch schema
+	schema, err := p.cfg.SchemaFetcher.FetchSchema(ctx)
+	if err != nil {
+		notify(workflow.StageError)
+		return nil, fmt.Errorf("failed to fetch schema: %w", err)
+	}
+
+	// Build system prompt with schema
+	systemPrompt := BuildSystemPrompt(p.prompts.System, schema, p.cfg.FormatContext)
+
+	// Restore messages from checkpoint
+	messages := checkpoint.Messages
+
+	// Get tool LLM client
+	toolLLM, ok := p.cfg.LLM.(workflow.ToolLLMClient)
+	if !ok {
+		return nil, fmt.Errorf("LLM client does not support tool calling")
+	}
+
+	// Continue tool-calling loop from checkpoint iteration
+	notify(workflow.StageExecuting)
+	p.logInfo("v3 pipeline: resuming from checkpoint",
+		"question", userQuestion,
+		"iteration", checkpoint.Iteration,
+		"queries", len(checkpoint.ExecutedQueries))
+
+	// Emit catch-up progress events for already-executed queries
+	if onProgress != nil {
+		for _, eq := range checkpoint.ExecutedQueries {
+			onProgress(workflow.Progress{
+				Stage:         workflow.StageQueryComplete,
+				QueryQuestion: eq.GeneratedQuery.DataQuestion.Question,
+				QuerySQL:      eq.Result.SQL,
+				QueryRows:     eq.Result.Count,
+				QueryError:    eq.Result.Error,
+			})
+		}
+	}
+
+	for iteration := checkpoint.Iteration; iteration < p.maxIterations; iteration++ {
+		state.Metrics.LoopIterations++
+
+		// Check for context cancellation
+		if ctx.Err() != nil {
+			notify(workflow.StageError)
+			return nil, ctx.Err()
+		}
+
+		// Call LLM with tools
+		llmStart := time.Now()
+		response, err := toolLLM.CompleteWithTools(ctx, systemPrompt, messages, p.tools, workflow.WithCacheControl())
+		state.Metrics.LLMDuration += time.Since(llmStart)
+		state.Metrics.LLMCalls++
+
+		if err != nil {
+			notify(workflow.StageError)
+			return nil, fmt.Errorf("LLM call failed: %w", err)
+		}
+
+		state.Metrics.InputTokens += response.InputTokens
+		state.Metrics.OutputTokens += response.OutputTokens
+
+		p.logInfo("v3 pipeline: LLM response (resumed)",
+			"iteration", iteration+1,
+			"stopReason", response.StopReason,
+			"toolCalls", len(response.ToolCalls()))
+
+		// Add assistant message to conversation
+		messages = append(messages, p.responseToMessage(response))
+
+		// Check if model is done (no tool calls)
+		if !response.HasToolCalls() {
+			if len(state.ExecutedQueries) == 0 && state.Metrics.ThinkCalls > 0 && iteration < p.maxIterations-1 {
+				p.logInfo("v3 pipeline: enforcing query execution (resumed)",
+					"iteration", iteration+1)
+				messages = append(messages, workflow.ToolMessage{
+					Role: "user",
+					Content: []workflow.ToolContentBlock{
+						{
+							Type: "text",
+							Text: "[System: You used the think tool but did not execute any SQL queries. For data questions, you MUST call execute_sql to get actual data before providing an answer. Please call execute_sql now with your planned queries.]",
+						},
+					},
+				})
+				persistCheckpoint(iteration, messages)
+				continue
+			}
+			state.FinalAnswer = response.Text()
+			break
+		}
+
+		// Process tool calls
+		toolResults := make([]workflow.ToolContentBlock, 0)
+		for _, call := range response.ToolCalls() {
+			result, err := p.executeTool(ctx, call, state, onProgress)
+			if err != nil {
+				toolResults = append(toolResults, workflow.ToolContentBlock{
+					Type:      "tool_result",
+					ToolUseID: call.ID,
+					Content:   fmt.Sprintf("Error: %s", err.Error()),
+					IsError:   true,
+				})
+			} else {
+				toolResults = append(toolResults, workflow.ToolContentBlock{
+					Type:      "tool_result",
+					ToolUseID: call.ID,
+					Content:   result,
+					IsError:   false,
+				})
+			}
+		}
+
+		// Add tool results as user message
+		messages = append(messages, workflow.ToolMessage{
+			Role:    "user",
+			Content: toolResults,
+		})
+
+		// Warn model on penultimate iteration
+		if iteration == p.maxIterations-2 {
+			messages[len(messages)-1].Content = append(messages[len(messages)-1].Content, workflow.ToolContentBlock{
+				Type: "text",
+				Text: "[System: This is your second-to-last turn. Please wrap up your analysis and provide a final answer.]",
+			})
+		}
+
+		// Checkpoint after each iteration
+		persistCheckpoint(iteration, messages)
+	}
+
+	// Handle max iterations
+	if state.FinalAnswer == "" {
+		state.Metrics.Truncated = true
+		p.logInfo("v3 pipeline: forcing finalization (resumed)")
+
+		finalizationPrompt := "[System: You've reached the maximum number of iterations. Please provide your best answer now based on any data you've gathered.]"
+
+		messages = append(messages, workflow.ToolMessage{
+			Role: "user",
+			Content: []workflow.ToolContentBlock{
+				{Type: "text", Text: finalizationPrompt},
+			},
+		})
+
+		finalResponse, err := toolLLM.CompleteWithTools(ctx, systemPrompt, messages, p.tools, workflow.WithCacheControl())
+		if err == nil {
+			state.Metrics.LLMCalls++
+			state.Metrics.InputTokens += finalResponse.InputTokens
+			state.Metrics.OutputTokens += finalResponse.OutputTokens
+			state.FinalAnswer = finalResponse.Text()
+		}
+
+		if state.FinalAnswer == "" {
+			state.FinalAnswer = "I was unable to complete the analysis within the allowed iterations."
+		}
+	}
+
+	state.Metrics.TotalDuration = time.Since(startTime)
+
+	result := state.ToWorkflowResult(userQuestion)
+
+	notify(workflow.StageComplete)
+	p.logInfo("v3 pipeline: complete (resumed)",
+		"classification", result.Classification,
+		"iterations", state.Metrics.LoopIterations,
+		"queries", len(state.ExecutedQueries))
+
+	return result, nil
+}
+
+// GetFinalCheckpoint returns the final checkpoint state after completion.
+// This is useful for persisting the final state before marking the workflow complete.
+func GetFinalCheckpoint(
+	messages []workflow.ToolMessage,
+	state *LoopState,
+) *CheckpointState {
+	return &CheckpointState{
+		Iteration:       state.Metrics.LoopIterations,
+		Messages:        messages,
+		ThinkingSteps:   state.ThinkingSteps,
+		ExecutedQueries: state.ExecutedQueries,
+		Metrics:         state.Metrics,
+	}
+}

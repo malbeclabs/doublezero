@@ -106,6 +106,27 @@ type PipelineMetrics struct {
 	Truncated      bool // Hit max iterations
 }
 
+// CheckpointState captures the state of the pipeline at a point in time.
+// This is used for durable workflow persistence and resumption.
+type CheckpointState struct {
+	// Current iteration number (0-indexed)
+	Iteration int
+
+	// Message history (all messages exchanged with the LLM)
+	Messages []workflow.ToolMessage
+
+	// Accumulated state from tool calls
+	ThinkingSteps   []string
+	ExecutedQueries []workflow.ExecutedQuery
+
+	// Metrics at checkpoint time
+	Metrics *PipelineMetrics
+}
+
+// CheckpointCallback is called after each iteration to persist state.
+// Errors from the callback are logged but don't fail the pipeline.
+type CheckpointCallback func(state *CheckpointState) error
+
 // Message represents a message in the conversation.
 type Message struct {
 	Role    string         `json:"role"` // "user" or "assistant"

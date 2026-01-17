@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/google/uuid"
 	"github.com/malbeclabs/doublezero/lake/agent/pkg/workflow"
 	v3 "github.com/malbeclabs/doublezero/lake/agent/pkg/workflow/v3"
 )
@@ -25,8 +26,9 @@ type ChatMessage struct {
 
 // ChatRequest is the incoming request for a chat message.
 type ChatRequest struct {
-	Message string        `json:"message"`
-	History []ChatMessage `json:"history"`
+	Message   string        `json:"message"`
+	History   []ChatMessage `json:"history"`
+	SessionID string        `json:"session_id,omitempty"` // Optional session ID for workflow persistence
 }
 
 // DataQuestionResponse represents a decomposed data question.
@@ -267,112 +269,80 @@ func ChatStream(w http.ResponseWriter, r *http.Request) {
 	chatStreamV3(ctx, req, history, sendEvent)
 }
 
-// chatStreamV3 handles the v3 pipeline streaming using the tool-calling loop.
+// chatStreamV3 handles the v3 pipeline streaming using background execution.
+// The pipeline runs in a background goroutine and continues even if the client disconnects.
 func chatStreamV3(ctx context.Context, req ChatRequest, history []workflow.ConversationMessage, sendEvent func(string, any)) {
-	// Load v3 prompts
-	prompts, err := v3.LoadPrompts()
-	if err != nil {
-		sendEvent("error", map[string]string{"error": internalError("Failed to load prompts", err)})
+	// Validate session_id is provided (required for background execution)
+	if req.SessionID == "" {
+		sendEvent("error", map[string]string{"error": "session_id is required"})
 		return
 	}
 
-	// Create pipeline components
-	llm := workflow.NewAnthropicLLMClient(anthropic.ModelClaude3_5Haiku20241022, 4096)
-	querier := NewDBQuerier()
-	schemaFetcher := NewDBSchemaFetcher()
+	sessionUUID, err := uuid.Parse(req.SessionID)
+	if err != nil {
+		sendEvent("error", map[string]string{"error": "Invalid session_id"})
+		return
+	}
 
-	// Create v3 pipeline
-	p, err := v3.New(&workflow.Config{
-		Logger:        slog.Default(),
-		LLM:           llm,
-		Querier:       querier,
-		SchemaFetcher: schemaFetcher,
-		Prompts:       prompts,
-		MaxTokens:     4096,
+	// Start the workflow in background
+	workflowID, err := Manager.StartWorkflow(sessionUUID, req.Message, history)
+	if err != nil {
+		slog.Error("Failed to start background workflow", "session_id", req.SessionID, "error", err)
+		// Don't expose internal errors to the UI
+		sendEvent("error", map[string]string{"error": "Failed to start workflow. Please try again."})
+		return
+	}
+
+	// Send workflow_started event immediately
+	sendEvent("workflow_started", map[string]string{
+		"workflow_id": workflowID.String(),
 	})
-	if err != nil {
-		sendEvent("error", map[string]string{"error": internalError("Failed to initialize chat", err)})
+	slog.Info("Started background workflow from chat", "workflow_id", workflowID, "session_id", req.SessionID)
+
+	// Subscribe to workflow events
+	sub := Manager.Subscribe(workflowID)
+	if sub == nil {
+		// Workflow already completed (shouldn't happen, but handle gracefully)
+		sendEvent("error", map[string]string{"error": "Workflow not found"})
 		return
 	}
-
-	// Progress callback that emits SSE events
-	onProgress := func(progress workflow.Progress) {
-		switch progress.Stage {
-		case workflow.StageThinking:
-			// Emit thinking content for display
-			sendEvent("thinking", map[string]string{
-				"content": progress.ThinkingContent,
-			})
-		case workflow.StageQueryStarted:
-			// Emit query started event
-			sendEvent("query_started", map[string]string{
-				"question": progress.QueryQuestion,
-				"sql":      progress.QuerySQL,
-			})
-		case workflow.StageQueryComplete:
-			// Emit query complete event
-			sendEvent("query_done", map[string]any{
-				"question": progress.QueryQuestion,
-				"sql":      progress.QuerySQL,
-				"rows":     progress.QueryRows,
-				"error":    progress.QueryError,
-			})
-		case workflow.StageExecuting:
-			sendEvent("status", map[string]string{
-				"step":    string(progress.Stage),
-				"message": "Processing...",
-			})
-		case workflow.StageSynthesizing:
-			sendEvent("status", map[string]string{
-				"step":    string(progress.Stage),
-				"message": "Preparing answer...",
-			})
-		default:
-			sendEvent("status", map[string]string{
-				"step":    string(progress.Stage),
-				"message": "Processing...",
-			})
-		}
-	}
+	defer Manager.Unsubscribe(workflowID, sub)
 
 	// Send periodic heartbeats to keep connection alive through proxies
-	heartbeatDone := make(chan struct{})
-	go func() {
-		ticker := time.NewTicker(15 * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				sendEvent("heartbeat", map[string]string{})
-			case <-heartbeatDone:
-				return
-			case <-ctx.Done():
+	heartbeatTicker := time.NewTicker(15 * time.Second)
+	defer heartbeatTicker.Stop()
+
+	// Forward events from workflow to SSE stream
+	for {
+		select {
+		case event, ok := <-sub.Events:
+			if !ok {
+				// Channel closed, workflow done
 				return
 			}
+			sendEvent(event.Type, event.Data)
+			// If this is the final event, we're done
+			if event.Type == "done" || event.Type == "error" {
+				return
+			}
+
+		case <-sub.Done:
+			// Workflow completed (either success or error was already sent)
+			return
+
+		case <-heartbeatTicker.C:
+			sendEvent("heartbeat", map[string]string{})
+
+		case <-ctx.Done():
+			// Client disconnected - workflow continues in background
+			slog.Info("Client disconnected, workflow continues in background",
+				"workflow_id", workflowID,
+				"session_id", req.SessionID)
+			return
 		}
-	}()
-
-	// Run the v3 pipeline
-	slog.Info("Starting v3 pipeline", "message", req.Message)
-	result, err := p.RunWithProgress(ctx, req.Message, history, onProgress)
-	close(heartbeatDone)
-
-	if err != nil {
-		slog.Error("v3 pipeline failed", "error", err, "message", req.Message)
-		sendEvent("error", map[string]string{"error": fmt.Sprintf("Pipeline failed: %v", err)})
-		return
 	}
-
-	slog.Info("v3 pipeline completed",
-		"answerLen", len(result.Answer),
-		"queryCount", len(result.ExecutedQueries),
-		"classification", result.Classification,
-	)
-
-	// Build and send the response
-	response := convertWorkflowResult(result)
-	sendEvent("done", response)
 }
+
 
 // CompleteRequest is the request for a simple LLM completion.
 type CompleteRequest struct {

@@ -254,6 +254,8 @@ export interface ChatMessage {
   executedQueries?: string[]
   // Status for streaming persistence (only present during/after streaming)
   status?: 'streaming' | 'complete' | 'error'
+  // Workflow ID for durable persistence (only present on streaming messages)
+  workflowId?: string
 }
 
 // Generate a unique message ID
@@ -347,6 +349,8 @@ export interface ChatStreamCallbacks {
   onThinking: (data: { content: string }) => void
   onQueryStarted: (data: { question: string; sql: string }) => void
   onQueryDone: (data: { question: string; sql: string; rows: number; error: string }) => void
+  // Workflow events
+  onWorkflowStarted?: (data: { workflow_id: string }) => void
   // Completion events
   onDone: (response: ChatResponse) => void
   onError: (error: string) => void
@@ -364,7 +368,8 @@ export async function sendChatMessageStream(
   message: string,
   history: ChatMessage[],
   callbacks: ChatStreamCallbacks,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  sessionId?: string
 ): Promise<void> {
   // Outer retry loop for mid-stream failures (e.g., deploy, pod restart)
   for (let streamAttempt = 0; streamAttempt <= STREAM_RETRY_CONFIG.maxRetries; streamAttempt++) {
@@ -390,7 +395,7 @@ export async function sendChatMessageStream(
         res = await fetch('/api/chat/stream', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message, history }),
+          body: JSON.stringify({ message, history, session_id: sessionId }),
           signal,
         })
 
@@ -468,6 +473,9 @@ export async function sendChatMessageStream(
                 break
               case 'query_done':
                 callbacks.onQueryDone(parsed)
+                break
+              case 'workflow_started':
+                callbacks.onWorkflowStarted?.(parsed)
                 break
               case 'status':
               case 'heartbeat':
@@ -1211,6 +1219,148 @@ export function watchSessionLock(
   // Return cleanup function
   return () => {
     eventSource.close()
+  }
+}
+
+// Workflow types for durable workflow persistence
+export interface WorkflowRun {
+  id: string
+  session_id: string
+  status: 'running' | 'completed' | 'failed' | 'cancelled'
+  user_question: string
+  iteration: number
+  final_answer?: string
+  llm_calls: number
+  input_tokens: number
+  output_tokens: number
+  started_at: string
+  updated_at: string
+  completed_at?: string
+  error?: string
+}
+
+// Get a workflow run by ID
+export async function getWorkflow(workflowId: string): Promise<WorkflowRun | null> {
+  const res = await fetch(`/api/workflows/${workflowId}`)
+  if (res.status === 404) {
+    return null
+  }
+  if (!res.ok) {
+    throw new Error('Failed to get workflow')
+  }
+  return res.json()
+}
+
+// Get the running workflow for a session (if any)
+export async function getRunningWorkflowForSession(sessionId: string): Promise<WorkflowRun | null> {
+  const res = await fetch(`/api/sessions/${sessionId}/workflow`)
+  if (res.status === 204 || res.status === 404) {
+    return null // No running workflow
+  }
+  if (!res.ok) {
+    throw new Error('Failed to get running workflow')
+  }
+  return res.json()
+}
+
+// Workflow reconnection callbacks
+export interface WorkflowReconnectCallbacks {
+  onThinking: (data: { content: string }) => void
+  onQueryDone: (data: { question: string; sql: string; rows: number; error: string }) => void
+  onDone: (response: ChatResponse) => void
+  onError: (error: string) => void
+  onStatus?: (data: { status: string; iteration: number }) => void
+}
+
+// Reconnect to a running or completed workflow stream
+// This allows the frontend to catch up on progress if the page was refreshed
+export async function reconnectToWorkflow(
+  workflowId: string,
+  callbacks: WorkflowReconnectCallbacks,
+  signal?: AbortSignal
+): Promise<void> {
+  const res = await fetch(`/api/workflows/${workflowId}/stream`, { signal })
+
+  if (!res.ok) {
+    if (res.status === 404) {
+      callbacks.onError('Workflow not found')
+      return
+    }
+    callbacks.onError('Failed to connect to workflow')
+    return
+  }
+
+  if (!res.body) {
+    callbacks.onError('No response body')
+    return
+  }
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let currentEvent = ''
+
+  const processLines = (lines: string[]) => {
+    for (const line of lines) {
+      if (line.startsWith('event: ')) {
+        currentEvent = line.slice(7).trim()
+      } else if (line.startsWith('data:') && currentEvent) {
+        const data = line.startsWith('data: ') ? line.slice(6) : line.slice(5)
+        if (!data.trim()) {
+          continue
+        }
+        try {
+          const parsed = JSON.parse(data)
+          switch (currentEvent) {
+            case 'workflow_status':
+              callbacks.onStatus?.(parsed)
+              break
+            case 'thinking':
+              callbacks.onThinking(parsed)
+              break
+            case 'query_done':
+              callbacks.onQueryDone(parsed)
+              break
+            case 'done':
+              callbacks.onDone(parsed)
+              break
+            case 'error':
+              callbacks.onError(parsed.error || 'Unknown error')
+              break
+            case 'live':
+              // Workflow is still running - keep connection open
+              console.log('[Workflow] Connected to live workflow')
+              break
+          }
+        } catch (e) {
+          console.error('[Workflow] Parse error for event', currentEvent, e)
+        }
+        currentEvent = ''
+      }
+    }
+  }
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) {
+        if (buffer.trim()) {
+          const lines = buffer.split('\n')
+          processLines(lines)
+        }
+        break
+      }
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+      processLines(lines)
+    }
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      return
+    }
+    callbacks.onError(err instanceof Error ? err.message : 'Stream error')
   }
 }
 

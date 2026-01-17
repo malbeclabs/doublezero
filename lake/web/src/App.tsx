@@ -31,7 +31,7 @@ import { ContributorDetailPage } from '@/components/contributor-detail-page'
 import { UserDetailPage } from '@/components/user-detail-page'
 import { ValidatorDetailPage } from '@/components/validator-detail-page'
 import { GossipNodeDetailPage } from '@/components/gossip-node-detail-page'
-import { generateSessionTitle, generateChatSessionTitle, sendChatMessageStream, recommendVisualization, fetchCatalog, acquireSessionLock, releaseSessionLock, getSessionLock, watchSessionLock, getSession, generateMessageId, type SessionQueryInfo, type SessionLock } from '@/lib/api'
+import { generateSessionTitle, generateChatSessionTitle, sendChatMessageStream, recommendVisualization, fetchCatalog, acquireSessionLock, releaseSessionLock, getSessionLock, watchSessionLock, getSession, generateMessageId, getRunningWorkflowForSession, reconnectToWorkflow, type SessionQueryInfo, type SessionLock } from '@/lib/api'
 import type { TableInfo, QueryResponse, HistoryMessage, ChatMessage } from '@/lib/api'
 import {
   type QuerySession,
@@ -76,6 +76,7 @@ const queryClient = new QueryClient({
 interface PendingChatState {
   processingSteps: ProcessingStep[]
   abortController: AbortController
+  workflowId?: string // Workflow ID for durable persistence
 }
 
 // Context for app state
@@ -105,6 +106,7 @@ interface AppContextType {
   chatServerSyncComplete: boolean
   // Chat mutation state (lifted to persist across navigation) - now per-session
   pendingChats: Map<string, PendingChatState>
+  setPendingChats: React.Dispatch<React.SetStateAction<Map<string, PendingChatState>>>
   sendChatMessage: (sessionId: string, message: string, history: ChatMessage[], skipLock?: boolean) => void
   abortChatMessage: (sessionId: string) => void
   // External locks - locks held by other browsers
@@ -494,6 +496,7 @@ function ChatView() {
     currentChatSessionId,
     chatServerSyncComplete,
     pendingChats,
+    setPendingChats,
     sendChatMessage,
     abortChatMessage,
     pendingQueryRef,
@@ -538,34 +541,148 @@ function ChatView() {
       resumeAttempted.current = currentChatSessionId
       console.log('[Chat] Resuming incomplete streaming message for session:', currentChatSessionId)
 
-      // First check if another browser has a lock on this session
-      getSessionLock(currentChatSessionId).then(existingLock => {
-        if (existingLock && existingLock.lock_id !== BROWSER_ID) {
-          // Another browser is processing - show external lock indicator
-          console.log('[Chat] Session locked by another browser, not resuming:', existingLock)
-          setExternalLocks(prev => {
+      // Query the server for a running workflow for this session
+      getRunningWorkflowForSession(currentChatSessionId).then(runningWorkflow => {
+        if (runningWorkflow) {
+          console.log('[Chat] Found running workflow on server:', runningWorkflow.id)
+
+          // Set up pending state for the reconnection
+          const abortController = new AbortController()
+          setPendingChats(prev => {
             const next = new Map(prev)
-            next.set(currentChatSessionId, existingLock)
+            next.set(currentChatSessionId, {
+              processingSteps: [],
+              abortController,
+              workflowId: runningWorkflow.id,
+            })
             return next
           })
+
+          // Reconnect to the workflow stream
+          reconnectToWorkflow(
+            runningWorkflow.id,
+            {
+              onThinking: (data) => {
+                const step: ProcessingStep = { type: 'thinking', content: data.content }
+                setPendingChats(prev => {
+                  const existing = prev.get(currentChatSessionId)
+                  if (!existing) return prev
+                  const next = new Map(prev)
+                  next.set(currentChatSessionId, {
+                    ...existing,
+                    processingSteps: [...existing.processingSteps, step],
+                  })
+                  return next
+                })
+              },
+              onQueryDone: (data) => {
+                const step: ProcessingStep = {
+                  type: 'query',
+                  question: data.question,
+                  sql: data.sql,
+                  status: data.error ? 'error' : 'completed',
+                  rows: data.rows,
+                  error: data.error || undefined,
+                }
+                setPendingChats(prev => {
+                  const existing = prev.get(currentChatSessionId)
+                  if (!existing) return prev
+                  const next = new Map(prev)
+                  next.set(currentChatSessionId, {
+                    ...existing,
+                    processingSteps: [...existing.processingSteps, step],
+                  })
+                  return next
+                })
+              },
+              onDone: (data) => {
+                console.log('[Chat] Workflow reconnect onDone', { workflowId: runningWorkflow.id })
+                // Replace streaming message with complete message
+                setChatSessions(prev => prev.map(s => {
+                  if (s.id !== currentChatSessionId) return s
+                  const newMessages = s.messages.filter(m => m.status !== 'streaming')
+                  newMessages.push({
+                    id: generateMessageId(),
+                    role: 'assistant',
+                    content: data.answer,
+                    pipelineData: {
+                      dataQuestions: data.dataQuestions ?? [],
+                      generatedQueries: data.generatedQueries ?? [],
+                      executedQueries: data.executedQueries ?? [],
+                      followUpQuestions: data.followUpQuestions,
+                    },
+                    executedQueries: data.executedQueries?.map(q => q.sql) ?? [],
+                    status: 'complete',
+                  })
+                  return { ...s, messages: newMessages, updatedAt: new Date() }
+                }))
+                setPendingChats(prev => {
+                  const next = new Map(prev)
+                  next.delete(currentChatSessionId)
+                  return next
+                })
+              },
+              onError: (error) => {
+                console.log('[Chat] Workflow reconnect error:', error)
+                // Replace streaming message with error
+                setChatSessions(prev => prev.map(s => {
+                  if (s.id !== currentChatSessionId) return s
+                  const newMessages = s.messages.filter(m => m.status !== 'streaming')
+                  newMessages.push({
+                    id: generateMessageId(),
+                    role: 'assistant',
+                    content: error,
+                    status: 'error',
+                  })
+                  return { ...s, messages: newMessages, updatedAt: new Date() }
+                }))
+                setPendingChats(prev => {
+                  const next = new Map(prev)
+                  next.delete(currentChatSessionId)
+                  return next
+                })
+              },
+            },
+            abortController.signal
+          )
           return
         }
 
-        // Get history up to (but not including) the incomplete user message
-        const historyUpToIncomplete = chatMessages.slice(0, chatMessages.indexOf(incomplete.userMessage))
+        // No running workflow found - fall back to re-sending the message (legacy behavior)
+        // First check if another browser has a lock on this session
+        getSessionLock(currentChatSessionId).then(existingLock => {
+          if (existingLock && existingLock.lock_id !== BROWSER_ID) {
+            // Another browser is processing - show external lock indicator
+            console.log('[Chat] Session locked by another browser, not resuming:', existingLock)
+            setExternalLocks(prev => {
+              const next = new Map(prev)
+              next.set(currentChatSessionId, existingLock)
+              return next
+            })
+            return
+          }
 
-        // Don't remove the streaming message - keep it so if user reloads again, we can resume again
-        // The completion handler will replace it with the complete message when done
-        console.log('[Chat] Auto-resume: calling sendChatMessage')
-        sendChatMessage(currentChatSessionId, incomplete.userMessage.content, historyUpToIncomplete)
+          // Get history up to (but not including) the incomplete user message
+          const historyUpToIncomplete = chatMessages.slice(0, chatMessages.indexOf(incomplete.userMessage))
+
+          // Don't remove the streaming message - keep it so if user reloads again, we can resume again
+          // The completion handler will replace it with the complete message when done
+          console.log('[Chat] Auto-resume: calling sendChatMessage (no running workflow)')
+          sendChatMessage(currentChatSessionId, incomplete.userMessage.content, historyUpToIncomplete)
+        }).catch((err) => {
+          // If lock check fails, try to resume anyway
+          console.log('[Chat] Auto-resume: lock check failed, calling sendChatMessage anyway', err)
+          const historyUpToIncomplete = chatMessages.slice(0, chatMessages.indexOf(incomplete.userMessage))
+          sendChatMessage(currentChatSessionId, incomplete.userMessage.content, historyUpToIncomplete)
+        })
       }).catch((err) => {
-        // If lock check fails, try to resume anyway
-        console.log('[Chat] Auto-resume: lock check failed, calling sendChatMessage anyway', err)
+        console.log('[Chat] Auto-resume: failed to check for running workflow', err)
+        // Fall back to lock-based approach
         const historyUpToIncomplete = chatMessages.slice(0, chatMessages.indexOf(incomplete.userMessage))
         sendChatMessage(currentChatSessionId, incomplete.userMessage.content, historyUpToIncomplete)
       })
     }
-  }, [chatServerSyncComplete, currentChatSession, currentChatSessionId, chatMessages, isPending, sendChatMessage, setExternalLocks])
+  }, [chatServerSyncComplete, currentChatSession, currentChatSessionId, chatMessages, isPending, sendChatMessage, setExternalLocks, setChatSessions, setPendingChats])
 
   // Check for initial question from landing page
   const initialQuestionSent = useRef<string | null>(null)
@@ -1212,12 +1329,34 @@ function AppContent() {
             // Release lock
             releaseSessionLock(sessionId, BROWSER_ID).catch(() => {})
           },
+          onWorkflowStarted: (data) => {
+            console.log('[Chat] onWorkflowStarted', { sessionId, workflowId: data.workflow_id })
+            // Store workflow ID in pending state for potential reconnection
+            setPendingChats(prev => {
+              const existing = prev.get(sessionId)
+              if (!existing) return prev
+              const next = new Map(prev)
+              next.set(sessionId, { ...existing, workflowId: data.workflow_id })
+              return next
+            })
+            // Also store workflow_id in the streaming message for persistence across page refresh
+            setChatSessions(prev => prev.map(s => {
+              if (s.id !== sessionId) return s
+              return {
+                ...s,
+                messages: s.messages.map(m =>
+                  m.status === 'streaming' ? { ...m, workflowId: data.workflow_id } : m
+                ),
+              }
+            }))
+          },
           onRetrying: (attempt, maxAttempts) => {
             console.log('[Chat] onRetrying', { sessionId, attempt, maxAttempts })
             // Retry is handled automatically, just log for debugging
           },
         },
-        abortController.signal
+        abortController.signal,
+        sessionId // Pass session_id for workflow persistence
       )
       console.log('[Chat] sendChatMessage: sendChatMessageStream completed')
     } catch (err) {
@@ -1283,6 +1422,7 @@ function AppContent() {
     chatSessionsLoaded,
     chatServerSyncComplete,
     pendingChats,
+    setPendingChats,
     sendChatMessage,
     abortChatMessage,
     externalLocks,

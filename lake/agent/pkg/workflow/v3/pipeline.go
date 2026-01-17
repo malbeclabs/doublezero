@@ -992,6 +992,7 @@ const followUpSystemPrompt = `Given a Q&A exchange about network data, suggest 2
 
 Rules:
 - Questions should explore different angles or drill deeper into the data
+- Do NOT suggest questions that are already answered by the response (e.g., if the response lists totals, don't ask "what's the total?")
 - Output ONLY the questions, one per line
 - No preamble, no numbering, no bullet points, no explanation
 - Each line must be a complete question ending with ?`

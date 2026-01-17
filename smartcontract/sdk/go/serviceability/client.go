@@ -2,6 +2,7 @@ package serviceability
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/gagliardetto/solana-go"
 )
@@ -35,6 +36,10 @@ func (c *Client) GetProgramData(ctx context.Context) (*ProgramData, error) {
 	out, err := c.rpc.GetProgramAccounts(ctx, c.programID)
 	if err != nil {
 		return nil, err
+	}
+
+	if len(out) == 0 {
+		return nil, fmt.Errorf("GetProgramAccounts returned empty result for program %s", c.programID)
 	}
 
 	// We need to re-init these fields to prevent appending if this client is reused

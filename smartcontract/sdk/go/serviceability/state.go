@@ -610,7 +610,6 @@ type Contributor struct {
 	BumpSeed       uint8             `influx:"-"`
 	Status         ContributorStatus `influx:"tag,status"`
 	Code           string            `influx:"tag,code"`
-	Name           string            `influx:"tag,name"`
 	ReferenceCount uint32            `influx:"field,reference_count"`
 	PubKey         [32]byte          `influx:"tag,pubkey,pubkey"`
 }

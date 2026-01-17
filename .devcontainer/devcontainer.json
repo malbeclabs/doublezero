@@ -33,7 +33,7 @@
                 },
                 "gopls": {
                     "buildFlags": [
-                        "-tags=e2e integration container_tests qa stress"
+                        "-tags=e2e integration container_tests qa stress evals"
                     ]
                 },
                 "rust-analyzer.rustfmt.extraArgs": [

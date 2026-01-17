@@ -10,3 +10,10 @@ const (
 	// InternetTelemetryDataProviderNameWheresitup is the name of the WhereIsItUp data provider.
 	InternetTelemetryDataProviderNameWheresitup = "wheresitup"
 )
+
+var (
+	InternetTelemetryDataProviders = []string{
+		InternetTelemetryDataProviderNameRIPEAtlas,
+		InternetTelemetryDataProviderNameWheresitup,
+	}
+)

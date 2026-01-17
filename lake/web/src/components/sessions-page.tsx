@@ -178,7 +178,13 @@ function SessionCard({
             ) : (
               <span
                 className={`font-medium truncate cursor-pointer hover:text-accent ${!hasCustomTitle ? 'text-muted-foreground' : ''}`}
-                onClick={onSelect}
+                onClick={(e) => {
+                  if (e.metaKey || e.ctrlKey) {
+                    window.open(`/query/${session.id}`, '_blank')
+                  } else {
+                    onSelect()
+                  }
+                }}
                 title="Click to open session"
               >
                 {displayTitle}

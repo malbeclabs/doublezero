@@ -175,20 +175,28 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
     }
   }, [navigate, addRecentSearch, onClose, isTopologyPage, isTimelinePage, addTimelineFilter])
 
-  const handleAskAI = useCallback(() => {
+  const handleAskAI = useCallback((e?: React.MouseEvent) => {
     if (!query.trim()) return
     sessionStorage.setItem('initialChatQuestion', query.trim())
     setQuery('')
     onClose()
-    // Dispatch event to create new chat session (handled by App.tsx)
-    window.dispatchEvent(new CustomEvent('new-chat-session'))
+    if (e && (e.metaKey || e.ctrlKey)) {
+      window.open('/chat', '_blank')
+    } else {
+      // Dispatch event to create new chat session (handled by App.tsx)
+      window.dispatchEvent(new CustomEvent('new-chat-session'))
+    }
   }, [query, onClose])
 
-  const handleFilterTimeline = useCallback(() => {
+  const handleFilterTimeline = useCallback((e?: React.MouseEvent) => {
     if (!query.trim()) return
     setQuery('')
     onClose()
-    addTimelineFilter(query.trim())
+    if (e && (e.metaKey || e.ctrlKey)) {
+      window.open(`/timeline?search=${encodeURIComponent(query.trim())}`, '_blank')
+    } else {
+      addTimelineFilter(query.trim())
+    }
   }, [query, onClose, addTimelineFilter])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -312,7 +320,7 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
               return (
                 <button
                   key="filter-timeline"
-                  onClick={handleFilterTimeline}
+                  onClick={(e) => handleFilterTimeline(e)}
                   className={cn(
                     'w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted transition-colors',
                     index === selectedIndex && 'bg-muted'
@@ -353,7 +361,7 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
               return (
                 <button
                   key="ask-ai"
-                  onClick={handleAskAI}
+                  onClick={(e) => handleAskAI(e)}
                   className={cn(
                     'w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted transition-colors',
                     index === selectedIndex && 'bg-muted'

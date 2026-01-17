@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useLocation, Link } from 'react-router-dom'
 import {
   PanelLeftClose,
   PanelLeftOpen,
@@ -27,7 +27,7 @@ import {
   Clock,
   Search,
 } from 'lucide-react'
-import { cn, handleRowClick } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import { useTheme } from '@/hooks/use-theme'
 import { useVersionCheck } from '@/hooks/use-version-check'
 import {
@@ -72,7 +72,6 @@ export function Sidebar({
   onRenameChatSession,
   onGenerateTitleChatSession,
 }: SidebarProps) {
-  const navigate = useNavigate()
   const location = useLocation()
   const { theme, resolvedTheme, setTheme } = useTheme()
   const { updateAvailable, reload } = useVersionCheck()
@@ -205,8 +204,8 @@ export function Sidebar({
 
         <div className="flex flex-col items-center gap-1 pt-4">
         {/* Home nav item */}
-        <button
-          onClick={(e) => handleRowClick(e, '/', navigate)}
+        <Link
+          to="/"
           className={cn(
             'p-2 rounded transition-colors',
             isLandingPage
@@ -216,11 +215,11 @@ export function Sidebar({
           title="Home"
         >
           <Home className="h-4 w-4" />
-        </button>
+        </Link>
 
         {/* Status nav item */}
-        <button
-          onClick={(e) => handleRowClick(e, '/status', navigate)}
+        <Link
+          to="/status"
           className={cn(
             'p-2 rounded transition-colors',
             isStatusRoute
@@ -230,11 +229,11 @@ export function Sidebar({
           title="Status"
         >
           <Activity className="h-4 w-4" />
-        </button>
+        </Link>
 
         {/* Timeline nav item */}
-        <button
-          onClick={(e) => handleRowClick(e, '/timeline', navigate)}
+        <Link
+          to="/timeline"
           className={cn(
             'p-2 rounded transition-colors',
             isTimelineRoute
@@ -244,11 +243,17 @@ export function Sidebar({
           title="Timeline"
         >
           <Clock className="h-4 w-4" />
-        </button>
+        </Link>
 
         {/* Chat nav item */}
         <button
-          onClick={onNewChatSession}
+          onClick={(e) => {
+            if (e.metaKey || e.ctrlKey) {
+              window.open('/chat', '_blank')
+            } else {
+              onNewChatSession()
+            }
+          }}
           className={cn(
             'p-2 rounded transition-colors',
             isChatRoute
@@ -262,7 +267,13 @@ export function Sidebar({
 
         {/* Query nav item */}
         <button
-          onClick={onNewQuerySession}
+          onClick={(e) => {
+            if (e.metaKey || e.ctrlKey) {
+              window.open('/query', '_blank')
+            } else {
+              onNewQuerySession()
+            }
+          }}
           className={cn(
             'p-2 rounded transition-colors',
             isQueryRoute
@@ -275,8 +286,8 @@ export function Sidebar({
         </button>
 
         {/* Topology nav item */}
-        <button
-          onClick={(e) => handleRowClick(e, '/topology', navigate)}
+        <Link
+          to="/topology"
           className={cn(
             'p-2 rounded transition-colors',
             isTopologyRoute
@@ -286,7 +297,7 @@ export function Sidebar({
           title="Topology"
         >
           <Globe className="h-4 w-4" />
-        </button>
+        </Link>
 
         {/* Search nav item */}
         <button
@@ -301,8 +312,8 @@ export function Sidebar({
         <div className="w-6 border-t border-border/50 my-2" />
 
         {/* DZ nav item */}
-        <button
-          onClick={(e) => handleRowClick(e, '/dz/devices', navigate)}
+        <Link
+          to="/dz/devices"
           className={cn(
             'p-2 rounded transition-colors',
             isDZRoute
@@ -312,11 +323,11 @@ export function Sidebar({
           title="DoubleZero"
         >
           <Server className="h-4 w-4" />
-        </button>
+        </Link>
 
         {/* Solana nav item */}
-        <button
-          onClick={(e) => handleRowClick(e, '/solana/validators', navigate)}
+        <Link
+          to="/solana/validators"
           className={cn(
             'p-2 rounded transition-colors',
             isSolanaRoute
@@ -326,7 +337,7 @@ export function Sidebar({
           title="Solana"
         >
           <Landmark className="h-4 w-4" />
-        </button>
+        </Link>
         </div>
 
         {/* Theme toggle and collapse toggle at bottom */}
@@ -390,13 +401,13 @@ export function Sidebar({
     <div className="w-64 border-r bg-[var(--sidebar)] flex flex-col relative z-10">
       {/* Header with logo and collapse */}
       <div className="px-3 h-12 flex items-center justify-between border-b border-border/50">
-        <button
-          onClick={(e) => handleRowClick(e, '/', navigate)}
+        <Link
+          to="/"
           className="flex items-center gap-2 hover:opacity-80 transition-opacity"
         >
           <img src={resolvedTheme === 'dark' ? '/logoDark.svg' : '/logoLight.svg'} alt="DoubleZero" className="h-6" />
           <span className="wordmark text-lg">Data</span>
-        </button>
+        </Link>
         <button
           onClick={() => handleSetCollapsed(true)}
           className="p-1 text-muted-foreground hover:text-foreground transition-colors"
@@ -412,8 +423,8 @@ export function Sidebar({
           <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Tools</span>
         </div>
         <div className="space-y-1">
-          <button
-            onClick={(e) => handleRowClick(e, '/status', navigate)}
+          <Link
+            to="/status"
             className={cn(
               'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',
               isStatusRoute
@@ -423,9 +434,9 @@ export function Sidebar({
           >
             <Activity className="h-4 w-4" />
             Status
-          </button>
-          <button
-            onClick={(e) => handleRowClick(e, '/timeline', navigate)}
+          </Link>
+          <Link
+            to="/timeline"
             className={cn(
               'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',
               isTimelineRoute
@@ -435,9 +446,15 @@ export function Sidebar({
           >
             <Clock className="h-4 w-4" />
             Timeline
-          </button>
+          </Link>
           <button
-            onClick={onNewChatSession}
+            onClick={(e) => {
+              if (e.metaKey || e.ctrlKey) {
+                window.open('/chat', '_blank')
+              } else {
+                onNewChatSession()
+              }
+            }}
             className={cn(
               'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',
               isChatRoute
@@ -449,7 +466,13 @@ export function Sidebar({
             Chat
           </button>
           <button
-            onClick={onNewQuerySession}
+            onClick={(e) => {
+              if (e.metaKey || e.ctrlKey) {
+                window.open('/query', '_blank')
+              } else {
+                onNewQuerySession()
+              }
+            }}
             className={cn(
               'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',
               isQueryRoute
@@ -460,8 +483,8 @@ export function Sidebar({
             <Database className="h-4 w-4" />
             Query
           </button>
-          <button
-            onClick={(e) => handleRowClick(e, '/topology', navigate)}
+          <Link
+            to="/topology"
             className={cn(
               'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',
               isTopologyRoute
@@ -471,7 +494,7 @@ export function Sidebar({
           >
             <Globe className="h-4 w-4" />
             Topology
-          </button>
+          </Link>
           <button
             onClick={() => window.dispatchEvent(new CustomEvent('open-search'))}
             className="w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]"
@@ -490,8 +513,8 @@ export function Sidebar({
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">DoubleZero</span>
           </div>
           <div className="space-y-1">
-            <button
-              onClick={(e) => handleRowClick(e, '/dz/devices', navigate)}
+            <Link
+              to="/dz/devices"
               className={cn(
                 'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',
                 isDevicesRoute
@@ -501,9 +524,9 @@ export function Sidebar({
             >
               <Server className="h-4 w-4" />
               Devices
-            </button>
-            <button
-              onClick={(e) => handleRowClick(e, '/dz/links', navigate)}
+            </Link>
+            <Link
+              to="/dz/links"
               className={cn(
                 'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',
                 isLinksRoute
@@ -513,9 +536,9 @@ export function Sidebar({
             >
               <Link2 className="h-4 w-4" />
               Links
-            </button>
-            <button
-              onClick={(e) => handleRowClick(e, '/dz/metros', navigate)}
+            </Link>
+            <Link
+              to="/dz/metros"
               className={cn(
                 'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',
                 isMetrosRoute
@@ -525,9 +548,9 @@ export function Sidebar({
             >
               <MapPin className="h-4 w-4" />
               Metros
-            </button>
-            <button
-              onClick={(e) => handleRowClick(e, '/dz/contributors', navigate)}
+            </Link>
+            <Link
+              to="/dz/contributors"
               className={cn(
                 'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',
                 isContributorsRoute
@@ -537,9 +560,9 @@ export function Sidebar({
             >
               <Building2 className="h-4 w-4" />
               Contributors
-            </button>
-            <button
-              onClick={(e) => handleRowClick(e, '/dz/users', navigate)}
+            </Link>
+            <Link
+              to="/dz/users"
               className={cn(
                 'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',
                 isUsersRoute
@@ -549,7 +572,7 @@ export function Sidebar({
             >
               <Users className="h-4 w-4" />
               Users
-            </button>
+            </Link>
           </div>
         </div>
       )}
@@ -561,8 +584,8 @@ export function Sidebar({
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Solana</span>
           </div>
           <div className="space-y-1">
-            <button
-              onClick={(e) => handleRowClick(e, '/solana/validators', navigate)}
+            <Link
+              to="/solana/validators"
               className={cn(
                 'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',
                 isValidatorsRoute
@@ -572,9 +595,9 @@ export function Sidebar({
             >
               <Landmark className="h-4 w-4" />
               Validators
-            </button>
-            <button
-              onClick={(e) => handleRowClick(e, '/solana/gossip-nodes', navigate)}
+            </Link>
+            <Link
+              to="/solana/gossip-nodes"
               className={cn(
                 'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',
                 isGossipNodesRoute
@@ -584,7 +607,7 @@ export function Sidebar({
             >
               <Radio className="h-4 w-4" />
               Gossip Nodes
-            </button>
+            </Link>
           </div>
         </div>
       )}
@@ -604,7 +627,13 @@ export function Sidebar({
               const isNewSessionActive = isNewSession && !isQuerySessions
               return (
                 <button
-                  onClick={onNewQuerySession}
+                  onClick={(e) => {
+                    if (e.metaKey || e.ctrlKey) {
+                      window.open('/query', '_blank')
+                    } else {
+                      onNewQuerySession()
+                    }
+                  }}
                   className={cn(
                     'w-full text-left px-3 py-2 text-sm rounded transition-colors',
                     isNewSessionActive
@@ -616,17 +645,17 @@ export function Sidebar({
                 </button>
               )
             })()}
-            <button
-              onClick={(e) => handleRowClick(e, '/query/sessions', navigate)}
+            <Link
+              to="/query/sessions"
               className={cn(
-                'w-full text-left px-3 py-2 text-sm rounded transition-colors',
+                'w-full text-left block px-3 py-2 text-sm rounded transition-colors',
                 isQuerySessions
                   ? 'bg-[var(--sidebar-active)] text-foreground font-medium'
                   : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
               )}
             >
               History
-            </button>
+            </Link>
           </div>
 
           {/* Sessions history */}
@@ -640,6 +669,7 @@ export function Sidebar({
                   key={session.id}
                   title={session.name || getSessionPreview(session)}
                   isActive={session.id === currentQuerySessionId && !isQuerySessions}
+                  url={`/query/${session.id}`}
                   onClick={() => onSelectQuerySession(session)}
                   onDelete={() => {
                     if (window.confirm('Delete this session? This cannot be undone.')) {
@@ -670,7 +700,13 @@ export function Sidebar({
               const isNewSessionActive = isNewSession && !isChatSessions
               return (
                 <button
-                  onClick={onNewChatSession}
+                  onClick={(e) => {
+                    if (e.metaKey || e.ctrlKey) {
+                      window.open('/chat', '_blank')
+                    } else {
+                      onNewChatSession()
+                    }
+                  }}
                   className={cn(
                     'w-full text-left px-3 py-2 text-sm rounded transition-colors',
                     isNewSessionActive
@@ -682,17 +718,17 @@ export function Sidebar({
                 </button>
               )
             })()}
-            <button
-              onClick={(e) => handleRowClick(e, '/chat/sessions', navigate)}
+            <Link
+              to="/chat/sessions"
               className={cn(
-                'w-full text-left px-3 py-2 text-sm rounded transition-colors',
+                'w-full text-left block px-3 py-2 text-sm rounded transition-colors',
                 isChatSessions
                   ? 'bg-[var(--sidebar-active)] text-foreground font-medium'
                   : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
               )}
             >
               History
-            </button>
+            </Link>
           </div>
 
           {/* Sessions history */}
@@ -706,6 +742,7 @@ export function Sidebar({
                   key={session.id}
                   title={session.name || getChatSessionPreview(session)}
                   isActive={session.id === currentChatSessionId && !isChatSessions}
+                  url={`/chat/${session.id}`}
                   onClick={() => onSelectChatSession(session)}
                   onDelete={() => {
                     if (window.confirm('Delete this chat? This cannot be undone.')) {
@@ -781,13 +818,14 @@ export function Sidebar({
 interface SessionItemProps {
   title: string
   isActive: boolean
+  url: string
   onClick: () => void
   onDelete: () => void
   onRename: (name: string) => void
   onGenerateTitle?: () => Promise<void>
 }
 
-function SessionItem({ title, isActive, onClick, onDelete, onRename, onGenerateTitle }: SessionItemProps) {
+function SessionItem({ title, isActive, url, onClick, onDelete, onRename, onGenerateTitle }: SessionItemProps) {
   const [showMenu, setShowMenu] = useState(false)
   const [isRenaming, setIsRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState('')
@@ -850,7 +888,13 @@ function SessionItem({ title, isActive, onClick, onDelete, onRename, onGenerateT
           ? 'bg-[var(--sidebar-active)] text-foreground'
           : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
       )}
-      onClick={onClick}
+      onClick={(e) => {
+        if (e.metaKey || e.ctrlKey) {
+          window.open(url, '_blank')
+        } else {
+          onClick()
+        }
+      }}
     >
       <div className={cn('flex-1 min-w-0 text-sm truncate', isActive && 'font-medium')}>
         {isGenerating ? (

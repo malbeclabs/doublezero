@@ -208,6 +208,25 @@ WHERE start_ts > now() - INTERVAL 7 DAY;
 - **User kinds**: `ibrl` (unicast), `multicast`, `edge_filtering`
 - **Link types**: WAN (inter-metro), DZX (intra-metro)
 
+## Metro Codes (IMPORTANT)
+Metro codes are **lowercase 3-letter codes**. Common examples:
+- `nyc` (New York), `lon` (London), `tyo` (Tokyo), `sin` (Singapore)
+- `sao` (São Paulo), `fra` (Frankfurt), `chi` (Chicago), `lax` (Los Angeles)
+
+**Always use lowercase** when filtering by metro code:
+```sql
+-- CORRECT
+WHERE side_a_metro = 'nyc' OR side_z_metro = 'lon'
+
+-- WRONG (will return 0 rows)
+WHERE side_a_metro = 'NYC' OR side_z_metro = 'LON'
+```
+
+If unsure of the exact code, query `dz_metros_current` first:
+```sql
+SELECT code, name FROM dz_metros_current WHERE name LIKE '%Tokyo%';
+```
+
 ## Validator Performance Metrics
 When comparing validator performance, use these tables:
 

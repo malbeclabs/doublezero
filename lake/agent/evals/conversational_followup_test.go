@@ -68,13 +68,18 @@ func runTest_ConversationalFollowup(t *testing.T, llmFactory LLMClientFactory) {
 	require.NotNil(t, followupResult)
 	require.NotEmpty(t, followupResult.Answer)
 
-	// Verify it was classified as conversational (not data_analysis)
-	require.Equal(t, pipeline.ClassificationConversational, followupResult.Classification,
-		"Follow-up question should be classified as conversational, not data_analysis")
+	// V3 classifies based on tool usage (whether queries were executed), not question semantics.
+	// The model may choose to re-run a query to provide a better answer, which is acceptable.
+	// Only check classification for v1/v2 pipelines.
+	if pipeline.DefaultVersion() != pipeline.VersionV3 {
+		// Verify it was classified as conversational (not data_analysis)
+		require.Equal(t, pipeline.ClassificationConversational, followupResult.Classification,
+			"Follow-up question should be classified as conversational, not data_analysis")
 
-	// Verify no data questions were generated (conversational path doesn't query data)
-	require.Empty(t, followupResult.DataQuestions,
-		"Conversational questions should not generate data questions")
+		// Verify no data questions were generated (conversational path doesn't query data)
+		require.Empty(t, followupResult.DataQuestions,
+			"Conversational questions should not generate data questions")
+	}
 
 	if debug {
 		t.Logf("=== Follow-up response (classification: %s) ===\n%s\n",

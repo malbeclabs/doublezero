@@ -227,20 +227,29 @@ func (p *Pipeline) RunWithProgress(ctx context.Context, userQuestion string, his
 	// Check if we hit max iterations without answer
 	if state.FinalAnswer == "" {
 		state.Metrics.Truncated = true
-		// Use last assistant text if available
-		for i := len(messages) - 1; i >= 0; i-- {
-			if messages[i].Role == "assistant" {
-				for _, block := range messages[i].Content {
-					if block.Type == "text" && block.Text != "" {
-						state.FinalAnswer = block.Text
-						break
-					}
-				}
-				if state.FinalAnswer != "" {
-					break
-				}
-			}
+
+		// Force a finalization prompt to get a summary of what's known
+		p.logInfo("v3 pipeline: forcing finalization", "reason", "max iterations reached without final answer")
+
+		finalizationPrompt := "[System: You've reached the maximum number of iterations. Please provide your best answer now based on any data you've gathered. If you executed queries, summarize the results. If you haven't retrieved any data yet, acknowledge that you couldn't complete the analysis and explain what you were trying to do.]"
+
+		messages = append(messages, pipeline.ToolMessage{
+			Role: "user",
+			Content: []pipeline.ToolContentBlock{
+				{Type: "text", Text: finalizationPrompt},
+			},
+		})
+
+		// Make one final LLM call to get the summary
+		finalResponse, err := toolLLM.CompleteWithTools(ctx, systemPrompt, messages, p.tools, pipeline.WithCacheControl())
+		if err == nil {
+			state.Metrics.LLMCalls++
+			state.Metrics.InputTokens += finalResponse.InputTokens
+			state.Metrics.OutputTokens += finalResponse.OutputTokens
+			state.FinalAnswer = finalResponse.Text()
 		}
+
+		// If still no answer, use a generic message
 		if state.FinalAnswer == "" {
 			state.FinalAnswer = "I was unable to complete the analysis within the allowed iterations."
 		}

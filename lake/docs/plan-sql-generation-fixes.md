@@ -20,7 +20,7 @@ Two eval tests are failing due to SQL generation issues. These are flaky failure
 **Relevant Prompt Section:** `GENERATE.md` - "Validators That Disconnected From DZ" (lines 279-298)
 
 **Files to Investigate:**
-- `agent/pkg/pipeline/prompts/GENERATE.md` - Check disconnection query examples
+- `agent/pkg/workflow/v3/prompts/GENERATE.md` - Check disconnection query examples
 - `agent/evals/solana_stake_share_decrease_test.go` - Understand test data setup
 
 
@@ -42,7 +42,7 @@ Two eval tests are failing due to SQL generation issues. These are flaky failure
 **Relevant Prompt Section:** `GENERATE.md` - "Validators That Connected During a Time Window" (lines 299-317)
 
 **Files to Investigate:**
-- `agent/pkg/pipeline/prompts/GENERATE.md` - Check time window query examples
+- `agent/pkg/workflow/v3/prompts/GENERATE.md` - Check time window query examples
 - `agent/evals/solana_validators_connected_stake_increase_test.go` - Understand test data setup
 
 

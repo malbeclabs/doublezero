@@ -139,24 +139,24 @@ func run() error {
 	defer clickhouseClient.Close()
 	log.Info("ClickHouse client initialized", "addr", cfg.ClickhouseAddr, "database", cfg.ClickhouseDatabase)
 
-	// Load pipeline prompts
+	// Load workflow prompts
 	prompts, err := v3.LoadPrompts()
 	if err != nil {
-		return fmt.Errorf("failed to load pipeline prompts: %w", err)
+		return fmt.Errorf("failed to load workflow prompts: %w", err)
 	}
 
-	// Create LLM client for the pipeline
+	// Create LLM client for the workflow
 	// Using Claude Sonnet 4.5 for good balance of speed and capability
 	llmClient := workflow.NewAnthropicLLMClient("claude-sonnet-4-20250514", 4096)
 
-	// Create querier for the pipeline
+	// Create querier for the workflow
 	querier := slackbot.NewClickhouseQuerier(clickhouseClient)
 
-	// Create schema fetcher for the pipeline (uses TCP, same as querier)
+	// Create schema fetcher for the workflow (uses TCP, same as querier)
 	schemaFetcher := slackbot.NewClickhouseSchemaFetcher(clickhouseClient, cfg.ClickhouseDatabase)
 
-	// Create the analysis pipeline with Slack formatting context
-	p, err := v3.New(&workflow.Config{
+	// Create the analysis workflow with Slack formatting context
+	wf, err := v3.New(&workflow.Config{
 		Logger:        log,
 		LLM:           llmClient,
 		Querier:       querier,
@@ -167,7 +167,7 @@ func run() error {
 		FormatContext: prompts.Slack, // Apply Slack-specific formatting guidelines
 	})
 	if err != nil {
-		return fmt.Errorf("failed to create pipeline: %w", err)
+		return fmt.Errorf("failed to create workflow: %w", err)
 	}
 
 	// Initialize Slack client
@@ -185,7 +185,7 @@ func run() error {
 	// Set up message processor
 	msgProcessor := slackbot.NewProcessor(
 		slackClient,
-		p,
+		wf,
 		convManager,
 		log,
 	)

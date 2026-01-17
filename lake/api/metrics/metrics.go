@@ -87,43 +87,43 @@ var (
 		[]string{"type"}, // "input", "output", "cache_creation", "cache_read"
 	)
 
-	// Pipeline metrics
-	PipelineRunsTotal = promauto.NewCounterVec(
+	// Workflow metrics
+	WorkflowRunsTotal = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "doublezero_lake_api_pipeline_runs_total",
-			Help: "Total number of pipeline runs",
+			Name: "doublezero_lake_api_workflow_runs_total",
+			Help: "Total number of workflow runs",
 		},
 		[]string{"classification"}, // "data_analysis", "conversational", "out_of_scope"
 	)
 
-	PipelineLLMCallsPerRun = promauto.NewHistogram(
+	WorkflowLLMCallsPerRun = promauto.NewHistogram(
 		prometheus.HistogramOpts{
-			Name:    "doublezero_lake_api_pipeline_llm_calls_per_run",
-			Help:    "Number of LLM calls per pipeline run",
+			Name:    "doublezero_lake_api_workflow_llm_calls_per_run",
+			Help:    "Number of LLM calls per workflow run",
 			Buckets: []float64{1, 2, 3, 5, 7, 10, 15, 20, 30, 50},
 		},
 	)
 
-	PipelineQueriesPerRun = promauto.NewHistogram(
+	WorkflowQueriesPerRun = promauto.NewHistogram(
 		prometheus.HistogramOpts{
-			Name:    "doublezero_lake_api_pipeline_queries_per_run",
-			Help:    "Number of SQL queries executed per pipeline run",
+			Name:    "doublezero_lake_api_workflow_queries_per_run",
+			Help:    "Number of SQL queries executed per workflow run",
 			Buckets: []float64{1, 2, 3, 5, 7, 10, 15, 20},
 		},
 	)
 
-	PipelineSQLErrorsPerRun = promauto.NewHistogram(
+	WorkflowSQLErrorsPerRun = promauto.NewHistogram(
 		prometheus.HistogramOpts{
-			Name:    "doublezero_lake_api_pipeline_sql_errors_per_run",
-			Help:    "Number of SQL errors per pipeline run",
+			Name:    "doublezero_lake_api_workflow_sql_errors_per_run",
+			Help:    "Number of SQL errors per workflow run",
 			Buckets: []float64{0, 1, 2, 3, 5, 10},
 		},
 	)
 
-	PipelineSQLErrorsTotal = promauto.NewCounter(
+	WorkflowSQLErrorsTotal = promauto.NewCounter(
 		prometheus.CounterOpts{
-			Name: "doublezero_lake_api_pipeline_sql_errors_total",
-			Help: "Total number of SQL errors across all pipeline runs",
+			Name: "doublezero_lake_api_workflow_sql_errors_total",
+			Help: "Total number of SQL errors across all workflow runs",
 		},
 	)
 )
@@ -190,13 +190,13 @@ func RecordAnthropicTokensWithCache(inputTokens, outputTokens, cacheCreationToke
 	}
 }
 
-// RecordPipelineRun records metrics for a completed pipeline run.
-func RecordPipelineRun(classification string, llmCalls, sqlQueries, sqlErrors int) {
-	PipelineRunsTotal.WithLabelValues(classification).Inc()
-	PipelineLLMCallsPerRun.Observe(float64(llmCalls))
-	PipelineQueriesPerRun.Observe(float64(sqlQueries))
-	PipelineSQLErrorsPerRun.Observe(float64(sqlErrors))
+// RecordWorkflowRun records metrics for a completed workflow run.
+func RecordWorkflowRun(classification string, llmCalls, sqlQueries, sqlErrors int) {
+	WorkflowRunsTotal.WithLabelValues(classification).Inc()
+	WorkflowLLMCallsPerRun.Observe(float64(llmCalls))
+	WorkflowQueriesPerRun.Observe(float64(sqlQueries))
+	WorkflowSQLErrorsPerRun.Observe(float64(sqlErrors))
 	if sqlErrors > 0 {
-		PipelineSQLErrorsTotal.Add(float64(sqlErrors))
+		WorkflowSQLErrorsTotal.Add(float64(sqlErrors))
 	}
 }

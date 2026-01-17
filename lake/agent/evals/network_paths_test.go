@@ -37,11 +37,11 @@ func runTest_NetworkPaths(t *testing.T, llmFactory LLMClientFactory) {
 	validateNetworkPathsQuery(t, ctx, conn)
 
 	if testing.Short() {
-		t.Log("Skipping pipeline execution in short mode")
+		t.Log("Skipping workflow execution in short mode")
 		return
 	}
 
-	p := setupPipeline(t, ctx, clientInfo, llmFactory, debug, debugLevel)
+	p := setupWorkflow(t, ctx, clientInfo, llmFactory, debug, debugLevel)
 
 	question := "confirm for me the paths between SIN and TYO"
 	result, err := p.Run(ctx, question)
@@ -50,7 +50,7 @@ func runTest_NetworkPaths(t *testing.T, llmFactory LLMClientFactory) {
 	require.NotEmpty(t, result.Answer)
 
 	response := result.Answer
-	t.Logf("Pipeline response:\n%s", response)
+	t.Logf("Workflow response:\n%s", response)
 
 	expectations := []Expectation{
 		{

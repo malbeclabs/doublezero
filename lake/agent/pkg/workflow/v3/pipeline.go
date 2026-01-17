@@ -16,8 +16,8 @@ const (
 	DefaultMaxIterations = 10
 )
 
-// Pipeline orchestrates the v3 tool-calling workflow.
-type Pipeline struct {
+// Workflow orchestrates the v3 tool-calling workflow.
+type Workflow struct {
 	cfg           *workflow.Config
 	prompts       *Prompts
 	systemPrompt  string // Cached system prompt with schema
@@ -26,14 +26,14 @@ type Pipeline struct {
 }
 
 // logInfo logs an info message if a logger is configured.
-func (p *Pipeline) logInfo(msg string, args ...any) {
+func (p *Workflow) logInfo(msg string, args ...any) {
 	if p.cfg.Logger != nil {
 		p.cfg.Logger.Info(msg, args...)
 	}
 }
 
-// New creates a new v3 Pipeline.
-func New(cfg *workflow.Config) (*Pipeline, error) {
+// New creates a new v3 Workflow.
+func New(cfg *workflow.Config) (*Workflow, error) {
 	if cfg.LLM == nil {
 		return nil, fmt.Errorf("LLM client is required")
 	}
@@ -74,7 +74,7 @@ func New(cfg *workflow.Config) (*Pipeline, error) {
 		}
 	}
 
-	return &Pipeline{
+	return &Workflow{
 		cfg:           cfg,
 		prompts:       prompts,
 		tools:         tools,
@@ -82,22 +82,22 @@ func New(cfg *workflow.Config) (*Pipeline, error) {
 	}, nil
 }
 
-// Run executes the full pipeline for a user question.
-func (p *Pipeline) Run(ctx context.Context, userQuestion string) (*workflow.WorkflowResult, error) {
+// Run executes the full workflow for a user question.
+func (p *Workflow) Run(ctx context.Context, userQuestion string) (*workflow.WorkflowResult, error) {
 	return p.RunWithHistory(ctx, userQuestion, nil)
 }
 
-// RunWithHistory executes the full pipeline with conversation context.
-func (p *Pipeline) RunWithHistory(ctx context.Context, userQuestion string, history []workflow.ConversationMessage) (*workflow.WorkflowResult, error) {
+// RunWithHistory executes the full workflow with conversation context.
+func (p *Workflow) RunWithHistory(ctx context.Context, userQuestion string, history []workflow.ConversationMessage) (*workflow.WorkflowResult, error) {
 	return p.RunWithProgress(ctx, userQuestion, history, nil)
 }
 
-// RunWithProgress executes the pipeline with progress callbacks.
-func (p *Pipeline) RunWithProgress(ctx context.Context, userQuestion string, history []workflow.ConversationMessage, onProgress workflow.ProgressCallback) (*workflow.WorkflowResult, error) {
+// RunWithProgress executes the workflow with progress callbacks.
+func (p *Workflow) RunWithProgress(ctx context.Context, userQuestion string, history []workflow.ConversationMessage, onProgress workflow.ProgressCallback) (*workflow.WorkflowResult, error) {
 	startTime := time.Now()
 
 	state := &LoopState{
-		Metrics: &PipelineMetrics{},
+		Metrics: &WorkflowMetrics{},
 	}
 
 	// Helper to notify progress
@@ -130,7 +130,7 @@ func (p *Pipeline) RunWithProgress(ctx context.Context, userQuestion string, his
 
 	// Tool-calling loop
 	notify(workflow.StageExecuting)
-	p.logInfo("v3 pipeline: starting tool loop", "question", userQuestion)
+	p.logInfo("workflow: starting tool loop", "question", userQuestion)
 
 	for iteration := 0; iteration < p.maxIterations; iteration++ {
 		state.Metrics.LoopIterations++
@@ -155,7 +155,7 @@ func (p *Pipeline) RunWithProgress(ctx context.Context, userQuestion string, his
 		state.Metrics.InputTokens += response.InputTokens
 		state.Metrics.OutputTokens += response.OutputTokens
 
-		p.logInfo("v3 pipeline: LLM response",
+		p.logInfo("workflow: LLM response",
 			"iteration", iteration+1,
 			"stopReason", response.StopReason,
 			"toolCalls", len(response.ToolCalls()))
@@ -168,7 +168,7 @@ func (p *Pipeline) RunWithProgress(ctx context.Context, userQuestion string, his
 			// If the model hasn't executed any queries but is trying to answer,
 			// force it to execute queries first (unless this is the last iteration)
 			if len(state.ExecutedQueries) == 0 && state.Metrics.ThinkCalls > 0 && iteration < p.maxIterations-1 {
-				p.logInfo("v3 pipeline: enforcing query execution",
+				p.logInfo("workflow: enforcing query execution",
 					"iteration", iteration+1,
 					"reason", "model tried to answer without executing queries")
 				// Inject a reminder message and continue the loop
@@ -229,7 +229,7 @@ func (p *Pipeline) RunWithProgress(ctx context.Context, userQuestion string, his
 		state.Metrics.Truncated = true
 
 		// Force a finalization prompt to get a summary of what's known
-		p.logInfo("v3 pipeline: forcing finalization", "reason", "max iterations reached without final answer")
+		p.logInfo("workflow: forcing finalization", "reason", "max iterations reached without final answer")
 
 		finalizationPrompt := "[System: You've reached the maximum number of iterations. Please provide your best answer now based on any data you've gathered. If you executed queries, summarize the results. If you haven't retrieved any data yet, acknowledge that you couldn't complete the analysis and explain what you were trying to do.]"
 
@@ -261,7 +261,7 @@ func (p *Pipeline) RunWithProgress(ctx context.Context, userQuestion string, his
 	result := state.ToWorkflowResult(userQuestion)
 
 	notify(workflow.StageComplete)
-	p.logInfo("v3 pipeline: complete",
+	p.logInfo("workflow: complete",
 		"classification", result.Classification,
 		"iterations", state.Metrics.LoopIterations,
 		"queries", len(state.ExecutedQueries),
@@ -271,7 +271,7 @@ func (p *Pipeline) RunWithProgress(ctx context.Context, userQuestion string, his
 }
 
 // buildMessages constructs the initial message list from conversation history.
-func (p *Pipeline) buildMessages(userQuestion string, history []workflow.ConversationMessage) []workflow.ToolMessage {
+func (p *Workflow) buildMessages(userQuestion string, history []workflow.ConversationMessage) []workflow.ToolMessage {
 	messages := make([]workflow.ToolMessage, 0, len(history)+1)
 
 	// Add conversation history
@@ -296,7 +296,7 @@ func (p *Pipeline) buildMessages(userQuestion string, history []workflow.Convers
 }
 
 // responseToMessage converts an LLM response to a ToolMessage for conversation history.
-func (p *Pipeline) responseToMessage(response *workflow.ToolLLMResponse) workflow.ToolMessage {
+func (p *Workflow) responseToMessage(response *workflow.ToolLLMResponse) workflow.ToolMessage {
 	content := make([]workflow.ToolContentBlock, len(response.Content))
 	for i, block := range response.Content {
 		content[i] = block
@@ -316,7 +316,7 @@ func (p *Pipeline) responseToMessage(response *workflow.ToolLLMResponse) workflo
 }
 
 // executeTool executes a single tool call and returns the result.
-func (p *Pipeline) executeTool(ctx context.Context, call workflow.ToolCallInfo, state *LoopState, onProgress workflow.ProgressCallback) (string, error) {
+func (p *Workflow) executeTool(ctx context.Context, call workflow.ToolCallInfo, state *LoopState, onProgress workflow.ProgressCallback) (string, error) {
 	switch call.Name {
 	case "think":
 		return p.executeThink(call.Parameters, state, onProgress)
@@ -328,20 +328,20 @@ func (p *Pipeline) executeTool(ctx context.Context, call workflow.ToolCallInfo, 
 }
 
 // executeThink handles the think tool - extracts reasoning and records it.
-func (p *Pipeline) executeThink(params map[string]any, state *LoopState, onProgress workflow.ProgressCallback) (string, error) {
+func (p *Workflow) executeThink(params map[string]any, state *LoopState, onProgress workflow.ProgressCallback) (string, error) {
 	content, _ := params["content"].(string)
 	if content != "" {
 		state.ThinkingSteps = append(state.ThinkingSteps, content)
 		state.Metrics.ThinkCalls++
 		state.Metrics.ConsecutiveThinks++
 		// Log full content for debugging (truncated version in summary log)
-		p.logInfo("v3 pipeline: think",
+		p.logInfo("workflow: think",
 			"thinkStep", state.Metrics.ThinkCalls,
 			"consecutiveThinks", state.Metrics.ConsecutiveThinks,
 			"contentLen", len(content),
 			"preview", truncate(content, 200))
 		if p.cfg.Logger != nil {
-			p.cfg.Logger.Debug("v3 pipeline: think content", "full", content)
+			p.cfg.Logger.Debug("workflow: think content", "full", content)
 		}
 
 		// Emit thinking progress event
@@ -366,7 +366,7 @@ func (p *Pipeline) executeThink(params map[string]any, state *LoopState, onProgr
 }
 
 // executeSQL handles the execute_sql tool - runs queries in parallel.
-func (p *Pipeline) executeSQL(ctx context.Context, params map[string]any, state *LoopState, onProgress workflow.ProgressCallback) (string, error) {
+func (p *Workflow) executeSQL(ctx context.Context, params map[string]any, state *LoopState, onProgress workflow.ProgressCallback) (string, error) {
 	queries, err := ParseQueries(params)
 	if err != nil || len(queries) == 0 {
 		return "", fmt.Errorf("no valid queries provided")
@@ -376,10 +376,10 @@ func (p *Pipeline) executeSQL(ctx context.Context, params map[string]any, state 
 	state.Metrics.ConsecutiveThinks = 0
 
 	// Log each query question and SQL for debugging
-	p.logInfo("v3 pipeline: executing SQL", "count", len(queries))
+	p.logInfo("workflow: executing SQL", "count", len(queries))
 	for i, q := range queries {
 		qNum := len(state.ExecutedQueries) + i + 1
-		p.logInfo("v3 pipeline: query",
+		p.logInfo("workflow: query",
 			"q", qNum,
 			"question", q.Question,
 			"sql", truncate(q.SQL, 200))
@@ -469,12 +469,12 @@ func (p *Pipeline) executeSQL(ctx context.Context, params map[string]any, state 
 		qNum := len(state.ExecutedQueries) + i + 1
 		result := results[i]
 		if result.Result.Error != "" {
-			p.logInfo("v3 pipeline: query result",
+			p.logInfo("workflow: query result",
 				"q", qNum,
 				"question", q.Question,
 				"error", result.Result.Error)
 		} else {
-			p.logInfo("v3 pipeline: query result",
+			p.logInfo("workflow: query result",
 				"q", qNum,
 				"question", q.Question,
 				"rows", result.Result.Count)
@@ -526,10 +526,10 @@ func truncate(s string, n int) string {
 	return s[:n] + "..."
 }
 
-// RunWithCheckpoint executes the pipeline with checkpoint callbacks for durability.
+// RunWithCheckpoint executes the workflow with checkpoint callbacks for durability.
 // The onCheckpoint callback is called after each loop iteration with the current state.
-// Checkpoint errors are logged but don't fail the pipeline (best-effort persistence).
-func (p *Pipeline) RunWithCheckpoint(
+// Checkpoint errors are logged but don't fail the workflow (best-effort persistence).
+func (p *Workflow) RunWithCheckpoint(
 	ctx context.Context,
 	userQuestion string,
 	history []workflow.ConversationMessage,
@@ -539,7 +539,7 @@ func (p *Pipeline) RunWithCheckpoint(
 	startTime := time.Now()
 
 	state := &LoopState{
-		Metrics: &PipelineMetrics{},
+		Metrics: &WorkflowMetrics{},
 	}
 
 	// Helper to notify progress
@@ -562,7 +562,7 @@ func (p *Pipeline) RunWithCheckpoint(
 				Metrics:         state.Metrics,
 			}
 			if err := onCheckpoint(checkpointState); err != nil {
-				p.logInfo("v3 pipeline: checkpoint failed", "iteration", iteration, "error", err)
+				p.logInfo("workflow: checkpoint failed", "iteration", iteration, "error", err)
 			}
 		}
 	}
@@ -588,7 +588,7 @@ func (p *Pipeline) RunWithCheckpoint(
 
 	// Tool-calling loop
 	notify(workflow.StageExecuting)
-	p.logInfo("v3 pipeline: starting tool loop with checkpoint", "question", userQuestion)
+	p.logInfo("workflow: starting tool loop with checkpoint", "question", userQuestion)
 
 	for iteration := 0; iteration < p.maxIterations; iteration++ {
 		state.Metrics.LoopIterations++
@@ -613,7 +613,7 @@ func (p *Pipeline) RunWithCheckpoint(
 		state.Metrics.InputTokens += response.InputTokens
 		state.Metrics.OutputTokens += response.OutputTokens
 
-		p.logInfo("v3 pipeline: LLM response",
+		p.logInfo("workflow: LLM response",
 			"iteration", iteration+1,
 			"stopReason", response.StopReason,
 			"toolCalls", len(response.ToolCalls()))
@@ -626,7 +626,7 @@ func (p *Pipeline) RunWithCheckpoint(
 			// If the model hasn't executed any queries but is trying to answer,
 			// force it to execute queries first (unless this is the last iteration)
 			if len(state.ExecutedQueries) == 0 && state.Metrics.ThinkCalls > 0 && iteration < p.maxIterations-1 {
-				p.logInfo("v3 pipeline: enforcing query execution",
+				p.logInfo("workflow: enforcing query execution",
 					"iteration", iteration+1,
 					"reason", "model tried to answer without executing queries")
 				// Inject a reminder message and continue the loop
@@ -692,7 +692,7 @@ func (p *Pipeline) RunWithCheckpoint(
 		state.Metrics.Truncated = true
 
 		// Force a finalization prompt to get a summary of what's known
-		p.logInfo("v3 pipeline: forcing finalization", "reason", "max iterations reached without final answer")
+		p.logInfo("workflow: forcing finalization", "reason", "max iterations reached without final answer")
 
 		finalizationPrompt := "[System: You've reached the maximum number of iterations. Please provide your best answer now based on any data you've gathered. If you executed queries, summarize the results. If you haven't retrieved any data yet, acknowledge that you couldn't complete the analysis and explain what you were trying to do.]"
 
@@ -724,7 +724,7 @@ func (p *Pipeline) RunWithCheckpoint(
 	result := state.ToWorkflowResult(userQuestion)
 
 	notify(workflow.StageComplete)
-	p.logInfo("v3 pipeline: complete",
+	p.logInfo("workflow: complete",
 		"classification", result.Classification,
 		"iterations", state.Metrics.LoopIterations,
 		"queries", len(state.ExecutedQueries),
@@ -733,9 +733,9 @@ func (p *Pipeline) RunWithCheckpoint(
 	return result, nil
 }
 
-// ResumeFromCheckpoint resumes a pipeline from a saved checkpoint state.
+// ResumeFromCheckpoint resumes a workflow from a saved checkpoint state.
 // The checkpoint contains the message history and accumulated state from prior execution.
-func (p *Pipeline) ResumeFromCheckpoint(
+func (p *Workflow) ResumeFromCheckpoint(
 	ctx context.Context,
 	userQuestion string,
 	checkpoint *CheckpointState,
@@ -751,7 +751,7 @@ func (p *Pipeline) ResumeFromCheckpoint(
 		Metrics:         checkpoint.Metrics,
 	}
 	if state.Metrics == nil {
-		state.Metrics = &PipelineMetrics{}
+		state.Metrics = &WorkflowMetrics{}
 	}
 
 	// Copy accumulated values from checkpoint metrics
@@ -777,7 +777,7 @@ func (p *Pipeline) ResumeFromCheckpoint(
 				Metrics:         state.Metrics,
 			}
 			if err := onCheckpoint(checkpointState); err != nil {
-				p.logInfo("v3 pipeline: checkpoint failed", "iteration", iteration, "error", err)
+				p.logInfo("workflow: checkpoint failed", "iteration", iteration, "error", err)
 			}
 		}
 	}
@@ -803,7 +803,7 @@ func (p *Pipeline) ResumeFromCheckpoint(
 
 	// Continue tool-calling loop from checkpoint iteration
 	notify(workflow.StageExecuting)
-	p.logInfo("v3 pipeline: resuming from checkpoint",
+	p.logInfo("workflow: resuming from checkpoint",
 		"question", userQuestion,
 		"iteration", checkpoint.Iteration,
 		"queries", len(checkpoint.ExecutedQueries))
@@ -844,7 +844,7 @@ func (p *Pipeline) ResumeFromCheckpoint(
 		state.Metrics.InputTokens += response.InputTokens
 		state.Metrics.OutputTokens += response.OutputTokens
 
-		p.logInfo("v3 pipeline: LLM response (resumed)",
+		p.logInfo("workflow: LLM response (resumed)",
 			"iteration", iteration+1,
 			"stopReason", response.StopReason,
 			"toolCalls", len(response.ToolCalls()))
@@ -855,7 +855,7 @@ func (p *Pipeline) ResumeFromCheckpoint(
 		// Check if model is done (no tool calls)
 		if !response.HasToolCalls() {
 			if len(state.ExecutedQueries) == 0 && state.Metrics.ThinkCalls > 0 && iteration < p.maxIterations-1 {
-				p.logInfo("v3 pipeline: enforcing query execution (resumed)",
+				p.logInfo("workflow: enforcing query execution (resumed)",
 					"iteration", iteration+1)
 				messages = append(messages, workflow.ToolMessage{
 					Role: "user",
@@ -915,7 +915,7 @@ func (p *Pipeline) ResumeFromCheckpoint(
 	// Handle max iterations
 	if state.FinalAnswer == "" {
 		state.Metrics.Truncated = true
-		p.logInfo("v3 pipeline: forcing finalization (resumed)")
+		p.logInfo("workflow: forcing finalization (resumed)")
 
 		finalizationPrompt := "[System: You've reached the maximum number of iterations. Please provide your best answer now based on any data you've gathered.]"
 
@@ -944,7 +944,7 @@ func (p *Pipeline) ResumeFromCheckpoint(
 	result := state.ToWorkflowResult(userQuestion)
 
 	notify(workflow.StageComplete)
-	p.logInfo("v3 pipeline: complete (resumed)",
+	p.logInfo("workflow: complete (resumed)",
 		"classification", result.Classification,
 		"iterations", state.Metrics.LoopIterations,
 		"queries", len(state.ExecutedQueries))

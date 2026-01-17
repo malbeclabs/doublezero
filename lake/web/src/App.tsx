@@ -605,7 +605,7 @@ function ChatView() {
                     id: generateMessageId(),
                     role: 'assistant',
                     content: data.answer,
-                    pipelineData: {
+                    workflowData: {
                       dataQuestions: data.dataQuestions ?? [],
                       generatedQueries: data.generatedQueries ?? [],
                       executedQueries: data.executedQueries ?? [],
@@ -1255,7 +1255,7 @@ function AppContent() {
                   id: generateMessageId(),
                   role: 'assistant',
                   content: data.answer,
-                  pipelineData: {
+                  workflowData: {
                     dataQuestions: data.dataQuestions ?? [],
                     generatedQueries: data.generatedQueries ?? [],
                     executedQueries: data.executedQueries ?? [],

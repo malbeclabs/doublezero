@@ -21,7 +21,7 @@ const (
 // Processor processes Slack messages and generates responses
 type Processor struct {
 	slackClient *Client
-	pipeline    *v3.Pipeline
+	workflow    *v3.Workflow
 	convManager *Manager
 	log         *slog.Logger
 
@@ -43,13 +43,13 @@ type threadLockEntry struct {
 // NewProcessor creates a new message processor
 func NewProcessor(
 	slackClient *Client,
-	pipeline *v3.Pipeline,
+	workflow *v3.Workflow,
 	convManager *Manager,
 	log *slog.Logger,
 ) *Processor {
 	return &Processor{
 		slackClient:       slackClient,
-		pipeline:          pipeline,
+		workflow:          workflow,
 		convManager:       convManager,
 		log:               log,
 		respondedMessages: make(map[string]time.Time),
@@ -267,7 +267,7 @@ func (p *Processor) ProcessMessage(
 	}
 
 	defer func() {
-		MessageProcessingDuration.WithLabelValues("pipeline").Observe(time.Since(startTime).Seconds())
+		MessageProcessingDuration.WithLabelValues("workflow").Observe(time.Since(startTime).Seconds())
 	}()
 
 	// Always thread responses (both channels and DMs)
@@ -347,11 +347,11 @@ func (p *Processor) ProcessMessage(
 		}
 	}
 
-	// Run the pipeline with progress callbacks
-	result, err := p.pipeline.RunWithProgress(ctx, txt, history, onProgress)
+	// Run the workflow with progress callbacks
+	result, err := p.workflow.RunWithProgress(ctx, txt, history, onProgress)
 	if err != nil {
-		AgentErrorsTotal.WithLabelValues("pipeline", "pipeline").Inc()
-		p.log.Error("pipeline error", "error", err, "message_ts", ev.TimeStamp, "envelope_id", eventID)
+		AgentErrorsTotal.WithLabelValues("workflow", "workflow").Inc()
+		p.log.Error("workflow error", "error", err, "message_ts", ev.TimeStamp, "envelope_id", eventID)
 
 		p.MarkResponded(messageKey)
 
@@ -363,7 +363,7 @@ func (p *Processor) ProcessMessage(
 			}
 		}
 
-		MessagesPostedTotal.WithLabelValues("error", "pipeline").Inc()
+		MessagesPostedTotal.WithLabelValues("error", "workflow").Inc()
 		return
 	}
 
@@ -373,7 +373,7 @@ func (p *Processor) ProcessMessage(
 	}
 	reply = normalizeTwoWayArrow(reply)
 
-	p.log.Debug("pipeline response",
+	p.log.Debug("workflow response",
 		"reply", reply,
 		"classification", result.Classification,
 		"data_questions", len(result.DataQuestions))
@@ -406,12 +406,12 @@ func (p *Processor) ProcessMessage(
 
 	if err != nil {
 		SlackAPIErrorsTotal.WithLabelValues("post_message").Inc()
-		MessagesPostedTotal.WithLabelValues("error", "pipeline").Inc()
+		MessagesPostedTotal.WithLabelValues("error", "workflow").Inc()
 		errorReply := "Sorry, I encountered an error. Please try again."
 		errorReply = normalizeTwoWayArrow(errorReply)
 		_, _ = p.slackClient.PostMessage(ctx, ev.Channel, errorReply, nil, threadTS)
 	} else {
-		MessagesPostedTotal.WithLabelValues("success", "pipeline").Inc()
+		MessagesPostedTotal.WithLabelValues("success", "workflow").Inc()
 		p.log.Info("reply posted successfully", "channel", ev.Channel, "thread_ts", threadKey, "reply_ts", respTS)
 
 		// Extract SQL queries from executed queries

@@ -220,7 +220,7 @@ func (f *DefaultFetcher) FetchThreadHistory(ctx context.Context, api *slack.Clie
 
 		f.log.Debug("fetchThreadHistory: got messages", "count", len(msgs), "thread_ts", threadTS)
 
-		// Convert Slack messages to pipeline conversation messages
+		// Convert Slack messages to workflow conversation messages
 		for _, msg := range msgs {
 			// Skip messages without text
 			if strings.TrimSpace(msg.Text) == "" {

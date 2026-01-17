@@ -8,7 +8,7 @@ import (
 	"github.com/malbeclabs/doublezero/lake/agent/pkg/workflow/v3/prompts"
 )
 
-// Prompts contains all the v3 pipeline prompts loaded from embedded files.
+// Prompts contains all the v3 workflow prompts loaded from embedded files.
 type Prompts struct {
 	System     string // Main system prompt with workflow guidance and domain knowledge
 	SQLContext string // Shared SQL/domain context

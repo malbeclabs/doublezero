@@ -425,8 +425,8 @@ if ls "$OUTPUT_DIR"/Test*.log &>/dev/null; then
         tests_with_errors=0
         for logfile in "$OUTPUT_DIR"/Test*.log; do
             if [[ -f "$logfile" ]]; then
-                # Count "pipeline: query returned error" messages
-                sql_errors=$(grep -c "pipeline: query returned error" "$logfile" 2>/dev/null || echo "0")
+                # Count "workflow: query returned error" messages
+                sql_errors=$(grep -c "workflow: query returned error" "$logfile" 2>/dev/null || echo "0")
                 # Extract just the first number (handles grep -c edge cases)
                 sql_errors=$(echo "$sql_errors" | head -1 | tr -cd '0-9')
                 sql_errors=${sql_errors:-0}

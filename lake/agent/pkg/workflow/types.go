@@ -42,7 +42,7 @@ type LLMClient interface {
 }
 
 // ToolLLMClient extends LLMClient with tool-calling capabilities.
-// Used by v3 pipeline for agentic tool loops.
+// Used by v3 workflow for agentic tool loops.
 type ToolLLMClient interface {
 	LLMClient
 
@@ -205,7 +205,7 @@ type ClassifyResult struct {
 	DirectResponse string         `json:"direct_response,omitempty"`
 }
 
-// ProgressStage represents a stage in the pipeline execution.
+// ProgressStage represents a stage in the workflow execution.
 type ProgressStage string
 
 const (
@@ -230,7 +230,7 @@ const (
 	StageQueryComplete ProgressStage = "query_done"    // Individual query completed
 )
 
-// Progress represents the current state of pipeline execution.
+// Progress represents the current state of workflow execution.
 type Progress struct {
 	Stage          ProgressStage
 	Classification Classification // Set after classifying
@@ -247,7 +247,7 @@ type Progress struct {
 	QueryError      string // For StageQueryComplete: error if failed
 }
 
-// ProgressCallback is called at each stage of pipeline execution.
+// ProgressCallback is called at each stage of workflow execution.
 type ProgressCallback func(Progress)
 
 // WorkflowResult holds the complete result of running the workflow.

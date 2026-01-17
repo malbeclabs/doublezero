@@ -36,8 +36,8 @@ func runTest_UnrelatedQuestionNoData(t *testing.T, llmFactory LLMClientFactory) 
 	require.NoError(t, err)
 	defer conn.Close()
 
-	// Set up pipeline with LLM client
-	p := setupPipeline(t, ctx, clientInfo, llmFactory, debug, debugLevel)
+	// Set up workflow with LLM client
+	p := setupWorkflow(t, ctx, clientInfo, llmFactory, debug, debugLevel)
 
 	// Run the query - asking something completely unrelated to DZ or Solana
 	question := "what's the weather today?"
@@ -45,14 +45,14 @@ func runTest_UnrelatedQuestionNoData(t *testing.T, llmFactory LLMClientFactory) 
 		if debugLevel == 1 {
 			t.Logf("=== Query: '%s' ===\n", question)
 		} else {
-			t.Logf("=== Starting pipeline query: '%s' ===\n", question)
+			t.Logf("=== Starting workflow query: '%s' ===\n", question)
 		}
 	}
 	result, err := p.Run(ctx, question)
 
 	var response string
 	if err != nil {
-		// For unrelated questions, the pipeline might return an error from decomposition
+		// For unrelated questions, the workflow might return an error from decomposition
 		// which is the expected behavior
 		response = err.Error()
 	} else {
@@ -65,10 +65,10 @@ func runTest_UnrelatedQuestionNoData(t *testing.T, llmFactory LLMClientFactory) 
 		if debugLevel == 1 {
 			t.Logf("=== Response ===\n%s\n", response)
 		} else {
-			t.Logf("\n=== Final Pipeline Response ===\n%s\n", response)
+			t.Logf("\n=== Final Workflow Response ===\n%s\n", response)
 		}
 	} else {
-		t.Logf("Pipeline response:\n%s", response)
+		t.Logf("Workflow response:\n%s", response)
 	}
 
 	// Deterministic validation: agent should redirect to relevant topics, not answer weather

@@ -670,10 +670,10 @@ export function Chat({ messages, isPending, processingSteps, externalLock, onSen
                   ) : (
                     <div className="px-1">
                       {/* Processing timeline - shows for completed messages with processing steps */}
-                      {msg.pipelineData?.processingSteps && msg.pipelineData.processingSteps.length > 0 && (
+                      {msg.workflowData?.processingSteps && msg.workflowData.processingSteps.length > 0 && (
                         <div className="mb-3">
                           <ProcessingTimeline
-                            steps={msg.pipelineData.processingSteps}
+                            steps={msg.workflowData.processingSteps}
                             isStreaming={false}
                             onOpenInQueryEditor={onOpenInQueryEditor}
                             onAskAboutQuery={handleAskAboutQuery}
@@ -709,11 +709,11 @@ export function Chat({ messages, isPending, processingSteps, externalLock, onSen
                               return (
                                 <p>
                                   {typeof children === 'string' ? (
-                                    <CitationText text={children} onCitationClick={msg.pipelineData ? handleCitationClick : undefined} />
+                                    <CitationText text={children} onCitationClick={msg.workflowData ? handleCitationClick : undefined} />
                                   ) : Array.isArray(children) ? (
                                     children.map((child, idx) =>
                                       typeof child === 'string' ? (
-                                        <CitationText key={idx} text={child} onCitationClick={msg.pipelineData ? handleCitationClick : undefined} />
+                                        <CitationText key={idx} text={child} onCitationClick={msg.workflowData ? handleCitationClick : undefined} />
                                       ) : (
                                         child
                                       )
@@ -728,11 +728,11 @@ export function Chat({ messages, isPending, processingSteps, externalLock, onSen
                               return (
                                 <li>
                                   {typeof children === 'string' ? (
-                                    <CitationText text={children} onCitationClick={msg.pipelineData ? handleCitationClick : undefined} />
+                                    <CitationText text={children} onCitationClick={msg.workflowData ? handleCitationClick : undefined} />
                                   ) : Array.isArray(children) ? (
                                     children.map((child, idx) =>
                                       typeof child === 'string' ? (
-                                        <CitationText key={idx} text={child} onCitationClick={msg.pipelineData ? handleCitationClick : undefined} />
+                                        <CitationText key={idx} text={child} onCitationClick={msg.workflowData ? handleCitationClick : undefined} />
                                       ) : (
                                         child
                                       )
@@ -749,9 +749,9 @@ export function Chat({ messages, isPending, processingSteps, externalLock, onSen
                         </ReactMarkdown>
                       </div>
                       {/* Follow-up suggestions */}
-                      {msg.pipelineData?.followUpQuestions && msg.pipelineData.followUpQuestions.length > 0 && (
+                      {msg.workflowData?.followUpQuestions && msg.workflowData.followUpQuestions.length > 0 && (
                         <div className="mt-4 flex flex-wrap gap-2">
-                          {msg.pipelineData.followUpQuestions.map((question, i) => (
+                          {msg.workflowData.followUpQuestions.map((question, i) => (
                             <button
                               key={i}
                               onClick={() => onSendMessage(question)}

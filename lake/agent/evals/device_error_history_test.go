@@ -39,11 +39,11 @@ func runTest_DeviceErrorHistory(t *testing.T, llmFactory LLMClientFactory) {
 	validateDeviceErrorHistoryQuery(t, ctx, conn)
 
 	if testing.Short() {
-		t.Log("Skipping pipeline execution in short mode")
+		t.Log("Skipping workflow execution in short mode")
 		return
 	}
 
-	p := setupPipeline(t, ctx, clientInfo, llmFactory, debug, debugLevel)
+	p := setupWorkflow(t, ctx, clientInfo, llmFactory, debug, debugLevel)
 
 	question := "when is the last time there have been errors on the Montreal DZD?"
 	result, err := p.Run(ctx, question)
@@ -52,7 +52,7 @@ func runTest_DeviceErrorHistory(t *testing.T, llmFactory LLMClientFactory) {
 	require.NotEmpty(t, result.Answer)
 
 	response := result.Answer
-	t.Logf("Pipeline response:\n%s", response)
+	t.Logf("Workflow response:\n%s", response)
 
 	expectations := []Expectation{
 		{

@@ -7,7 +7,7 @@ import (
 	"github.com/malbeclabs/doublezero/lake/agent/pkg/workflow"
 )
 
-// V3Stage represents a stage in the v3 pipeline execution.
+// V3Stage represents a stage in the v3 workflow execution.
 type V3Stage string
 
 const (
@@ -43,7 +43,7 @@ type StreamEvent struct {
 	Payload map[string]any `json:"payload"`
 }
 
-// StreamCallback is called for each event during pipeline execution.
+// StreamCallback is called for each event during workflow execution.
 type StreamCallback func(event StreamEvent)
 
 // LoopState tracks state during the tool-calling loop.
@@ -51,7 +51,7 @@ type LoopState struct {
 	ThinkingSteps   []string                 // Content from think() calls
 	ExecutedQueries []workflow.ExecutedQuery // All SQL executed
 	FinalAnswer     string                   // Last assistant text (non-tool response)
-	Metrics         *PipelineMetrics         // Metrics collected during execution
+	Metrics         *WorkflowMetrics         // Metrics collected during execution
 }
 
 // InferClassification determines classification based on tool usage behavior.
@@ -83,8 +83,8 @@ func (state *LoopState) ToWorkflowResult(userQuestion string) *workflow.Workflow
 	return result
 }
 
-// PipelineMetrics tracks metrics during pipeline execution.
-type PipelineMetrics struct {
+// WorkflowMetrics tracks metrics during workflow execution.
+type WorkflowMetrics struct {
 	// LLM usage
 	LLMCalls     int // Total API calls to LLM
 	InputTokens  int // Total input tokens
@@ -106,7 +106,7 @@ type PipelineMetrics struct {
 	Truncated      bool // Hit max iterations
 }
 
-// CheckpointState captures the state of the pipeline at a point in time.
+// CheckpointState captures the state of the workflow at a point in time.
 // This is used for durable workflow persistence and resumption.
 type CheckpointState struct {
 	// Current iteration number (0-indexed)
@@ -120,11 +120,11 @@ type CheckpointState struct {
 	ExecutedQueries []workflow.ExecutedQuery
 
 	// Metrics at checkpoint time
-	Metrics *PipelineMetrics
+	Metrics *WorkflowMetrics
 }
 
 // CheckpointCallback is called after each iteration to persist state.
-// Errors from the callback are logged but don't fail the pipeline.
+// Errors from the callback are logged but don't fail the workflow.
 type CheckpointCallback func(state *CheckpointState) error
 
 // Message represents a message in the conversation.

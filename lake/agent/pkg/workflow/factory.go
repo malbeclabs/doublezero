@@ -1,7 +1,7 @@
 package workflow
 
 // Note: Due to import cycle constraints, callers should import the v3
-// package directly and create pipelines accordingly.
+// package directly and create workflows accordingly.
 //
 // Example usage:
 //

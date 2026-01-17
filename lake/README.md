@@ -25,7 +25,7 @@ React/TypeScript single-page application. Features:
 
 ### agent/
 
-LLM-powered pipeline for answering natural language questions. Implements a multi-step process: classify → decompose → generate SQL → execute → synthesize answer. Includes evaluation tests for validating pipeline accuracy.
+LLM-powered workflow for answering natural language questions. Implements a multi-step process: classify → decompose → generate SQL → execute → synthesize answer. Includes evaluation tests for validating agent accuracy.
 
 See [agent/README.md](agent/README.md) for architecture details.
 
@@ -42,7 +42,7 @@ See [indexer/README.md](indexer/README.md) for architecture details.
 
 ### slack/
 
-Slack bot that provides a chat interface for data queries. Users can ask questions in Slack and receive answers powered by the agent pipeline.
+Slack bot that provides a chat interface for data queries. Users can ask questions in Slack and receive answers powered by the agent workflow.
 
 ### admin/
 
@@ -73,7 +73,7 @@ MaxMind     ───────────────►    │
                     ┌───────────────────────┐
                     │      API Server       │◄────── Web UI
                     │  • Query execution    │◄────── Slack Bot
-                    │  • Agent pipeline     │
+                    │  • Agent workflow     │
                     │  • Chat interface     │
                     └───────────────────────┘
 ```
@@ -82,7 +82,7 @@ MaxMind     ───────────────►    │
 
 ### Running Agent Evals
 
-The agent has evaluation tests that validate the natural language to SQL pipeline. Run them with:
+The agent has evaluation tests that validate the natural language to SQL workflow. Run them with:
 
 ```bash
 ./scripts/run-evals.sh                 # Run all evals in parallel

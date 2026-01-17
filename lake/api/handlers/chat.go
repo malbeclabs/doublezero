@@ -54,12 +54,12 @@ type ExecutedQueryResponse struct {
 	Error    string   `json:"error,omitempty"`
 }
 
-// ChatResponse is the full pipeline result returned to the UI.
+// ChatResponse is the full workflow result returned to the UI.
 type ChatResponse struct {
 	// The final synthesized answer
 	Answer string `json:"answer"`
 
-	// Pipeline steps (for transparency)
+	// Workflow steps (for transparency)
 	DataQuestions    []DataQuestionResponse    `json:"dataQuestions,omitempty"`
 	GeneratedQueries []GeneratedQueryResponse  `json:"generatedQueries,omitempty"`
 	ExecutedQueries  []ExecutedQueryResponse   `json:"executedQueries,omitempty"`
@@ -67,7 +67,7 @@ type ChatResponse struct {
 	// Suggested follow-up questions
 	FollowUpQuestions []string `json:"followUpQuestions,omitempty"`
 
-	// Error if pipeline failed
+	// Error if workflow failed
 	Error string `json:"error,omitempty"`
 }
 
@@ -98,13 +98,13 @@ func Chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create pipeline components
+	// Create workflow components
 	llm := workflow.NewAnthropicLLMClient(anthropic.ModelClaude3_5Haiku20241022, 4096)
 	querier := NewDBQuerier()
 	schemaFetcher := NewDBSchemaFetcher()
 
-	// Create and run pipeline
-	p, err := v3.New(&workflow.Config{
+	// Create and run workflow
+	wf, err := v3.New(&workflow.Config{
 		Logger:        slog.Default(),
 		LLM:           llm,
 		Querier:       querier,
@@ -118,7 +118,7 @@ func Chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Convert history to pipeline format
+	// Convert history to workflow format
 	var history []workflow.ConversationMessage
 	for _, msg := range req.History {
 		history = append(history, workflow.ConversationMessage{
@@ -128,21 +128,21 @@ func Chat(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	result, err := p.RunWithHistory(r.Context(), req.Message, history)
+	result, err := wf.RunWithHistory(r.Context(), req.Message, history)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(ChatResponse{Error: internalError("Chat processing failed", err)})
 		return
 	}
 
-	// Convert pipeline result to response
+	// Convert workflow result to response
 	response := convertWorkflowResult(result)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 }
 
-// convertWorkflowResult converts the internal pipeline result to the API response format.
+// convertWorkflowResult converts the internal workflow result to the API response format.
 func convertWorkflowResult(result *workflow.WorkflowResult) ChatResponse {
 	resp := ChatResponse{
 		Answer:            result.Answer,
@@ -253,7 +253,7 @@ func ChatStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Convert history to pipeline format
+	// Convert history to workflow format
 	var history []workflow.ConversationMessage
 	for _, msg := range req.History {
 		history = append(history, workflow.ConversationMessage{
@@ -265,12 +265,12 @@ func ChatStream(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	// Use v3 pipeline
+	// Use v3 workflow
 	chatStreamV3(ctx, req, history, sendEvent)
 }
 
-// chatStreamV3 handles the v3 pipeline streaming using background execution.
-// The pipeline runs in a background goroutine and continues even if the client disconnects.
+// chatStreamV3 handles the v3 workflow streaming using background execution.
+// The workflow runs in a background goroutine and continues even if the client disconnects.
 func chatStreamV3(ctx context.Context, req ChatRequest, history []workflow.ConversationMessage, sendEvent func(string, any)) {
 	// Validate session_id is provided (required for background execution)
 	if req.SessionID == "" {

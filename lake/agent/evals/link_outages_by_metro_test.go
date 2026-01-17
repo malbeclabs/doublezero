@@ -46,14 +46,14 @@ func runTest_LinkOutagesByMetro(t *testing.T, llmFactory LLMClientFactory) {
 	// Validate database query results before testing agent
 	validateLinkOutagesByMetroQuery(t, ctx, conn)
 
-	// Skip pipeline execution in short mode
+	// Skip workflow execution in short mode
 	if testing.Short() {
-		t.Log("Skipping pipeline execution in short mode")
+		t.Log("Skipping workflow execution in short mode")
 		return
 	}
 
-	// Set up pipeline with LLM client
-	p := setupPipeline(t, ctx, clientInfo, llmFactory, debug, debugLevel)
+	// Set up workflow with LLM client
+	p := setupWorkflow(t, ctx, clientInfo, llmFactory, debug, debugLevel)
 
 	// Run the query - ask about outages for links going into Sao Paulo
 	question := "identify the timestamps of outages on links going into Sao Paulo in the last 30 days"
@@ -61,7 +61,7 @@ func runTest_LinkOutagesByMetro(t *testing.T, llmFactory LLMClientFactory) {
 		if debugLevel == 1 {
 			t.Logf("=== Query: '%s' ===\n", question)
 		} else {
-			t.Logf("=== Starting pipeline query: '%s' ===\n", question)
+			t.Logf("=== Starting workflow query: '%s' ===\n", question)
 		}
 	}
 	result, err := p.Run(ctx, question)
@@ -74,10 +74,10 @@ func runTest_LinkOutagesByMetro(t *testing.T, llmFactory LLMClientFactory) {
 		if debugLevel == 1 {
 			t.Logf("=== Response ===\n%s\n", response)
 		} else {
-			t.Logf("\n=== Final Pipeline Response ===\n%s\n", response)
+			t.Logf("\n=== Final Workflow Response ===\n%s\n", response)
 		}
 	} else {
-		t.Logf("Pipeline response:\n%s", response)
+		t.Logf("Workflow response:\n%s", response)
 	}
 
 	// Evaluate with expectations

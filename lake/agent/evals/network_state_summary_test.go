@@ -41,11 +41,11 @@ func runTest_NetworkStateSummary(t *testing.T, llmFactory LLMClientFactory) {
 	validateNetworkStateSummaryQuery(t, ctx, conn)
 
 	if testing.Short() {
-		t.Log("Skipping pipeline execution in short mode")
+		t.Log("Skipping workflow execution in short mode")
 		return
 	}
 
-	p := setupPipeline(t, ctx, clientInfo, llmFactory, debug, debugLevel)
+	p := setupWorkflow(t, ctx, clientInfo, llmFactory, debug, debugLevel)
 
 	question := "summarize the current state of the DZ network with headline stats"
 	result, err := p.Run(ctx, question)
@@ -54,7 +54,7 @@ func runTest_NetworkStateSummary(t *testing.T, llmFactory LLMClientFactory) {
 	require.NotEmpty(t, result.Answer)
 
 	response := result.Answer
-	t.Logf("Pipeline response:\n%s", response)
+	t.Logf("Workflow response:\n%s", response)
 
 	expectations := []Expectation{
 		{

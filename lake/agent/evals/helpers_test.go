@@ -224,8 +224,8 @@ Respond with only "YES" or "NO" followed by a brief explanation.`, currentDate, 
 // LLMClientFactory creates an LLM client for testing
 type LLMClientFactory func(t *testing.T) workflow.LLMClient
 
-// setupPipeline creates a v3 pipeline instance with the given LLM client factory.
-func setupPipeline(t *testing.T, ctx context.Context, clientInfo *laketesting.ClientInfo, llmFactory LLMClientFactory, debug bool, debugLevel int) workflow.Runner {
+// setupWorkflow creates a v3 workflow instance with the given LLM client factory.
+func setupWorkflow(t *testing.T, ctx context.Context, clientInfo *laketesting.ClientInfo, llmFactory LLMClientFactory, debug bool, debugLevel int) workflow.Runner {
 	// Create logger with appropriate level
 	var logger *slog.Logger
 	if debug {
@@ -240,7 +240,7 @@ func setupPipeline(t *testing.T, ctx context.Context, clientInfo *laketesting.Cl
 	// Wrap LLM client with debug logging if DEBUG is set
 	var llmClient workflow.LLMClient = baseLLMClient
 	if debug {
-		llmClient = &debugPipelineLLMClient{
+		llmClient = &debugWorkflowLLMClient{
 			LLMClient:  baseLLMClient,
 			t:          t,
 			debugLevel: debugLevel,
@@ -299,7 +299,7 @@ func getDebugLevel() (int, bool) {
 	return debugLevel, debugLevel > 0
 }
 
-// newAnthropicLLMClient creates an Anthropic LLM client for the pipeline
+// newAnthropicLLMClient creates an Anthropic LLM client for the workflow
 func newAnthropicLLMClient(t *testing.T) workflow.LLMClient {
 	apiKey := os.Getenv("ANTHROPIC_API_KEY")
 	require.NotEmpty(t, apiKey, "ANTHROPIC_API_KEY must be set for Anthropic tests")
@@ -444,14 +444,14 @@ func truncate(s string, maxLen int) string {
 	return s[:maxLen] + "... (truncated)"
 }
 
-// debugPipelineLLMClient wraps an LLMClient to log all responses when DEBUG is enabled
-type debugPipelineLLMClient struct {
+// debugWorkflowLLMClient wraps an LLMClient to log all responses when DEBUG is enabled
+type debugWorkflowLLMClient struct {
 	workflow.LLMClient
 	t          *testing.T
 	debugLevel int
 }
 
-func (d *debugPipelineLLMClient) Complete(ctx context.Context, systemPrompt, userPrompt string, opts ...workflow.CompleteOption) (string, error) {
+func (d *debugWorkflowLLMClient) Complete(ctx context.Context, systemPrompt, userPrompt string, opts ...workflow.CompleteOption) (string, error) {
 	// Log that we're calling the LLM
 	if d.debugLevel == 1 {
 		d.t.Logf("🤖 LLM call (system: %d chars, user: %d chars)", len(systemPrompt), len(userPrompt))

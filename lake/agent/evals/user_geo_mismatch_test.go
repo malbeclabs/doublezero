@@ -41,11 +41,11 @@ func runTest_UserGeoMismatch(t *testing.T, llmFactory LLMClientFactory) {
 	validateUserGeoMismatchQuery(t, ctx, conn)
 
 	if testing.Short() {
-		t.Log("Skipping pipeline execution in short mode")
+		t.Log("Skipping workflow execution in short mode")
 		return
 	}
 
-	p := setupPipeline(t, ctx, clientInfo, llmFactory, debug, debugLevel)
+	p := setupWorkflow(t, ctx, clientInfo, llmFactory, debug, debugLevel)
 
 	question := "find DZ users with client IPs in a different metro than the DZD they're connected to"
 	result, err := p.Run(ctx, question)
@@ -54,7 +54,7 @@ func runTest_UserGeoMismatch(t *testing.T, llmFactory LLMClientFactory) {
 	require.NotEmpty(t, result.Answer)
 
 	response := result.Answer
-	t.Logf("Pipeline response:\n%s", response)
+	t.Logf("Workflow response:\n%s", response)
 
 	expectations := []Expectation{
 		{

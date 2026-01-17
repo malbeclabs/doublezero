@@ -1,7 +1,7 @@
-// Package pipeline implements multi-step question-answering pipelines.
-// The pipeline breaks the process into discrete steps that vary by version.
+// Package workflow implements multi-step question-answering workflows.
+// The workflow breaks the process into discrete steps that vary by version.
 //
-// For v1 pipeline:
+// For v1 workflow:
 //
 //	import (
 //	    "github.com/malbeclabs/doublezero/lake/agent/pkg/workflow"

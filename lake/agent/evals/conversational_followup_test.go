@@ -36,8 +36,8 @@ func runTest_ConversationalFollowup(t *testing.T, llmFactory LLMClientFactory) {
 	require.NoError(t, err)
 	defer conn.Close()
 
-	// Set up pipeline with LLM client
-	p := setupPipeline(t, ctx, clientInfo, llmFactory, debug, debugLevel)
+	// Set up workflow with LLM client
+	p := setupWorkflow(t, ctx, clientInfo, llmFactory, debug, debugLevel)
 
 	// First, run a data query to establish conversation history
 	firstQuestion := "How many devices are there?"
@@ -117,8 +117,8 @@ func runTest_CapabilitiesQuestion(t *testing.T, llmFactory LLMClientFactory) {
 	require.NoError(t, err)
 	defer conn.Close()
 
-	// Set up pipeline with LLM client
-	p := setupPipeline(t, ctx, clientInfo, llmFactory, debug, debugLevel)
+	// Set up workflow with LLM client
+	p := setupWorkflow(t, ctx, clientInfo, llmFactory, debug, debugLevel)
 
 	// Ask about capabilities - this should be conversational, not require data
 	question := "What kind of questions can you help me with?"
@@ -186,8 +186,8 @@ func runTest_AffirmativeQueryConfirmation(t *testing.T, llmFactory LLMClientFact
 	require.NoError(t, err)
 	defer conn.Close()
 
-	// Set up pipeline with LLM client
-	p := setupPipeline(t, ctx, clientInfo, llmFactory, debug, debugLevel)
+	// Set up workflow with LLM client
+	p := setupWorkflow(t, ctx, clientInfo, llmFactory, debug, debugLevel)
 
 	// Build conversation history where assistant offered to run a query
 	history := []workflow.ConversationMessage{
@@ -251,8 +251,8 @@ func runTest_ThankYouResponse(t *testing.T, llmFactory LLMClientFactory) {
 	require.NoError(t, err)
 	defer conn.Close()
 
-	// Set up pipeline with LLM client
-	p := setupPipeline(t, ctx, clientInfo, llmFactory, debug, debugLevel)
+	// Set up workflow with LLM client
+	p := setupWorkflow(t, ctx, clientInfo, llmFactory, debug, debugLevel)
 
 	// Build conversation history as if we just answered a question
 	history := []workflow.ConversationMessage{

@@ -1,11 +1,11 @@
-# Plan: Reduce LLM Calls in Agent Pipeline
+# Plan: Reduce LLM Calls in Agent Workflow
 
 **Status**: ✅ Completed
 **Date**: 2026-01-15
 
 ## Problem
 
-The agent pipeline was making 12-30 LLM calls per user query. Based on analysis of eval runs, here's where calls were going:
+The agent workflow was making 12-30 LLM calls per user query. Based on analysis of eval runs, here's where calls were going:
 
 | Stage | Calls | Notes |
 |-------|-------|-------|
@@ -36,7 +36,7 @@ All evals continue to pass.
 
 **Problem**: DECOMPOSE broke user questions into 3-6 sub-questions, each requiring a GENERATE call.
 
-**Fix**: Updated `agent/pkg/pipeline/prompts/DECOMPOSE.md`:
+**Fix**: Updated `agent/pkg/workflow/v3/prompts/DECOMPOSE.md`:
 - Added explicit guidance: "prefer 1-2 queries, maximum 3"
 - Updated all examples to show consolidated single-query approaches
 - Emphasized that synthesis step can count rows and sum columns
@@ -50,7 +50,7 @@ All evals continue to pass.
 
 **Problem**: Every query returning 0 rows triggered analysis + regeneration, even for time-bounded queries where zero rows is legitimate.
 
-**Fix**: Updated `agent/pkg/pipeline/generate.go` AnalyzeZeroResult prompt:
+**Fix**: Updated `agent/pkg/workflow/v3/generate.go` AnalyzeZeroResult prompt:
 - Added guidance that time-bounded queries can legitimately return zero rows
 - Still checks for real query bugs (incorrect JOINs, wrong column values)
 

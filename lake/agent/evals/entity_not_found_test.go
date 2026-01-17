@@ -38,11 +38,11 @@ func runTest_EntityNotFound_Link(t *testing.T, llmFactory LLMClientFactory) {
 	validateEntityNotFoundData(t, ctx, conn)
 
 	if testing.Short() {
-		t.Log("Skipping pipeline execution in short mode")
+		t.Log("Skipping workflow execution in short mode")
 		return
 	}
 
-	p := setupPipeline(t, ctx, clientInfo, llmFactory, debug, debugLevel)
+	p := setupWorkflow(t, ctx, clientInfo, llmFactory, debug, debugLevel)
 
 	// Ask about a link that doesn't exist
 	question := "What is the status of link xyz-fake-link-1?"
@@ -52,7 +52,7 @@ func runTest_EntityNotFound_Link(t *testing.T, llmFactory LLMClientFactory) {
 	require.NotEmpty(t, result.Answer)
 
 	response := result.Answer
-	t.Logf("Pipeline response:\n%s", response)
+	t.Logf("Workflow response:\n%s", response)
 
 	expectations := []Expectation{
 		{
@@ -96,11 +96,11 @@ func runTest_EntityNotFound_Device(t *testing.T, llmFactory LLMClientFactory) {
 	validateEntityNotFoundData(t, ctx, conn)
 
 	if testing.Short() {
-		t.Log("Skipping pipeline execution in short mode")
+		t.Log("Skipping workflow execution in short mode")
 		return
 	}
 
-	p := setupPipeline(t, ctx, clientInfo, llmFactory, debug, debugLevel)
+	p := setupWorkflow(t, ctx, clientInfo, llmFactory, debug, debugLevel)
 
 	// Ask about a device that doesn't exist
 	question := "Show me the error history for device abc-nonexistent-dzd9"
@@ -110,7 +110,7 @@ func runTest_EntityNotFound_Device(t *testing.T, llmFactory LLMClientFactory) {
 	require.NotEmpty(t, result.Answer)
 
 	response := result.Answer
-	t.Logf("Pipeline response:\n%s", response)
+	t.Logf("Workflow response:\n%s", response)
 
 	expectations := []Expectation{
 		{

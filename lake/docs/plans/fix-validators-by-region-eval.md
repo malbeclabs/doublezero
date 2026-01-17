@@ -45,7 +45,7 @@ The query is likely double-counting validators due to one of:
 
 - `agent/evals/validators_by_region_test.go` - Test definition and seeding
 - `migrations/0004_solana_validator_views.sql` - Validator views
-- `agent/pkg/pipeline/prompts/GENERATE.md` - SQL generation guidance
+- `agent/pkg/workflow/v3/prompts/GENERATE.md` - SQL generation guidance
 
 ## Possible Fixes
 

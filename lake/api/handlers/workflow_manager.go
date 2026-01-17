@@ -89,7 +89,7 @@ var Manager = &WorkflowManager{
 }
 
 // StartWorkflow starts a new workflow in the background.
-// Returns the workflow ID immediately - the pipeline runs asynchronously.
+// Returns the workflow ID immediately - the workflow runs asynchronously.
 func (m *WorkflowManager) StartWorkflow(
 	sessionID uuid.UUID,
 	question string,
@@ -108,8 +108,8 @@ func (m *WorkflowManager) StartWorkflow(
 		return uuid.Nil, fmt.Errorf("failed to create workflow: %w", err)
 	}
 
-	// Create cancellable context for the pipeline
-	pipelineCtx, cancel := context.WithCancel(context.Background())
+	// Create cancellable context for the workflow
+	workflowCtx, cancel := context.WithCancel(context.Background())
 
 	// Track the running workflow
 	rw := &runningWorkflow{
@@ -125,8 +125,8 @@ func (m *WorkflowManager) StartWorkflow(
 	m.bySession[sessionID] = run.ID
 	m.mu.Unlock()
 
-	// Start pipeline in background goroutine
-	go m.runPipeline(pipelineCtx, rw, question, history)
+	// Start workflow in background goroutine
+	go m.runWorkflow(workflowCtx, rw, question, history)
 
 	slog.Info("Started background workflow",
 		"workflow_id", run.ID,
@@ -198,8 +198,8 @@ func (m *WorkflowManager) CancelWorkflow(workflowID uuid.UUID) bool {
 	return true
 }
 
-// runPipeline executes the pipeline in the background.
-func (m *WorkflowManager) runPipeline(
+// runWorkflow executes the workflow in the background.
+func (m *WorkflowManager) runWorkflow(
 	ctx context.Context,
 	rw *runningWorkflow,
 	question string,
@@ -222,13 +222,13 @@ func (m *WorkflowManager) runPipeline(
 		return
 	}
 
-	// Create pipeline components
+	// Create workflow components
 	llm := workflow.NewAnthropicLLMClient(anthropic.ModelClaude3_5Haiku20241022, 4096)
 	querier := NewDBQuerier()
 	schemaFetcher := NewDBSchemaFetcher()
 
-	// Create pipeline
-	p, err := v3.New(&workflow.Config{
+	// Create workflow
+	wf, err := v3.New(&workflow.Config{
 		Logger:        slog.Default(),
 		LLM:           llm,
 		Querier:       querier,
@@ -237,8 +237,8 @@ func (m *WorkflowManager) runPipeline(
 		MaxTokens:     4096,
 	})
 	if err != nil {
-		slog.Error("Background workflow failed to create pipeline", "workflow_id", rw.ID, "error", err)
-		m.failWorkflow(ctx, rw, fmt.Sprintf("Failed to create pipeline: %v", err))
+		slog.Error("Background workflow failed to create workflow", "workflow_id", rw.ID, "error", err)
+		m.failWorkflow(ctx, rw, fmt.Sprintf("Failed to create workflow: %v", err))
 		return
 	}
 
@@ -285,9 +285,9 @@ func (m *WorkflowManager) runPipeline(
 		return UpdateWorkflowCheckpoint(ctx, rw.ID, checkpoint)
 	}
 
-	// Run the pipeline
-	slog.Info("Background workflow starting pipeline", "workflow_id", rw.ID)
-	result, err := p.RunWithCheckpoint(ctx, question, history, onProgress, onCheckpoint)
+	// Run the workflow
+	slog.Info("Background workflow starting", "workflow_id", rw.ID)
+	result, err := wf.RunWithCheckpoint(ctx, question, history, onProgress, onCheckpoint)
 
 	if err != nil {
 		if ctx.Err() != nil {
@@ -364,7 +364,7 @@ func (m *WorkflowManager) ResumeWorkflowBackground(run *WorkflowRun) error {
 		Messages:        messages,
 		ThinkingSteps:   thinkingSteps,
 		ExecutedQueries: executedQueries,
-		Metrics: &v3.PipelineMetrics{
+		Metrics: &v3.WorkflowMetrics{
 			LLMCalls:     run.LLMCalls,
 			InputTokens:  run.InputTokens,
 			OutputTokens: run.OutputTokens,
@@ -372,7 +372,7 @@ func (m *WorkflowManager) ResumeWorkflowBackground(run *WorkflowRun) error {
 	}
 
 	// Create cancellable context
-	pipelineCtx, cancel := context.WithCancel(context.Background())
+	workflowCtx, cancel := context.WithCancel(context.Background())
 
 	// Track the running workflow
 	rw := &runningWorkflow{
@@ -389,7 +389,7 @@ func (m *WorkflowManager) ResumeWorkflowBackground(run *WorkflowRun) error {
 	m.mu.Unlock()
 
 	// Start resume in background
-	go m.resumePipeline(pipelineCtx, rw, checkpoint)
+	go m.resumeWorkflow(workflowCtx, rw, checkpoint)
 
 	slog.Info("Resuming background workflow",
 		"workflow_id", run.ID,
@@ -399,7 +399,7 @@ func (m *WorkflowManager) ResumeWorkflowBackground(run *WorkflowRun) error {
 	return nil
 }
 
-func (m *WorkflowManager) resumePipeline(
+func (m *WorkflowManager) resumeWorkflow(
 	ctx context.Context,
 	rw *runningWorkflow,
 	checkpoint *v3.CheckpointState,
@@ -420,13 +420,13 @@ func (m *WorkflowManager) resumePipeline(
 		return
 	}
 
-	// Create pipeline components
+	// Create workflow components
 	llm := workflow.NewAnthropicLLMClient(anthropic.ModelClaude3_5Haiku20241022, 4096)
 	querier := NewDBQuerier()
 	schemaFetcher := NewDBSchemaFetcher()
 
-	// Create pipeline
-	p, err := v3.New(&workflow.Config{
+	// Create workflow
+	wf, err := v3.New(&workflow.Config{
 		Logger:        slog.Default(),
 		LLM:           llm,
 		Querier:       querier,
@@ -435,8 +435,8 @@ func (m *WorkflowManager) resumePipeline(
 		MaxTokens:     4096,
 	})
 	if err != nil {
-		slog.Error("Resume workflow failed to create pipeline", "workflow_id", rw.ID, "error", err)
-		m.failWorkflow(ctx, rw, fmt.Sprintf("Failed to create pipeline: %v", err))
+		slog.Error("Resume workflow failed to create workflow", "workflow_id", rw.ID, "error", err)
+		m.failWorkflow(ctx, rw, fmt.Sprintf("Failed to create workflow: %v", err))
 		return
 	}
 
@@ -483,9 +483,9 @@ func (m *WorkflowManager) resumePipeline(
 		return UpdateWorkflowCheckpoint(ctx, rw.ID, wfCheckpoint)
 	}
 
-	// Resume the pipeline
-	slog.Info("Resume workflow starting pipeline", "workflow_id", rw.ID)
-	result, err := p.ResumeFromCheckpoint(ctx, rw.Question, checkpoint, onProgress, onCheckpoint)
+	// Resume the workflow
+	slog.Info("Resuming workflow", "workflow_id", rw.ID)
+	result, err := wf.ResumeFromCheckpoint(ctx, rw.Question, checkpoint, onProgress, onCheckpoint)
 
 	if err != nil {
 		if ctx.Err() != nil {

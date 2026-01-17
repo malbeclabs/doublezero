@@ -1,10 +1,10 @@
 # Agent Cost Optimization
 
-This document summarizes the cost analysis and optimizations for the Lake agent pipeline.
+This document summarizes the cost analysis and optimizations for the Lake agent workflow.
 
 ## Current Architecture
 
-The agent uses a 4-step pipeline for data analysis questions:
+The agent uses a 4-step workflow for data analysis questions:
 
 1. **CLASSIFY** - Route question (data_analysis / conversational / out_of_scope)
 2. **DECOMPOSE** - Break question into specific data questions
@@ -16,7 +16,7 @@ The agent uses a 4-step pipeline for data analysis questions:
 - **Production API:** `claude-3.5-haiku-20241022`
 - **Evals:** `claude-haiku-4-5-20251001`
 
-All phases use the same model. The pipeline uses Anthropic's prompt caching for GENERATE calls.
+All phases use the same model. The workflow uses Anthropic's prompt caching for GENERATE calls.
 
 ## Cost Breakdown by Phase
 
@@ -95,5 +95,5 @@ The eval script now includes cost estimates in its output. Example:
 ## References
 
 - [Anthropic Pricing](https://www.anthropic.com/pricing)
-- Prompt files: `agent/pkg/pipeline/prompts/`
-- Pipeline code: `agent/pkg/pipeline/pipeline.go`
+- Prompt files: `agent/pkg/workflow/v3/prompts/`
+- Workflow code: `agent/pkg/workflow/v3/pipeline.go`

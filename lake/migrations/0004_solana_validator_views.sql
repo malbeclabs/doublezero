@@ -14,6 +14,7 @@ SELECT
     u.client_ip,
     u.device_pk,
     va.activated_stake_lamports,
+    va.activated_stake_lamports / 1000000000.0 AS activated_stake_sol,
     va.commission_percentage,
     va.epoch,
     -- Connection timestamp is the latest of when each component appeared
@@ -78,6 +79,7 @@ SELECT
     lv.owner_pubkey,
     lv.dz_ip,
     lv.activated_stake_lamports,
+    lv.activated_stake_lamports / 1000000000.0 AS activated_stake_sol,
     lv.commission_percentage,
     fc.first_connected_ts
 FROM first_connections fc
@@ -92,6 +94,7 @@ SELECT
     va.vote_pubkey,
     va.node_pubkey,
     va.activated_stake_lamports,
+    va.activated_stake_lamports / 1000000000.0 AS activated_stake_sol,
     va.commission_percentage,
     va.epoch,
     gn.gossip_ip,
@@ -161,6 +164,7 @@ SELECT
     owner_pubkey,
     dz_ip,
     activated_stake_lamports,
+    activated_stake_lamports / 1000000000.0 AS activated_stake_sol,
     commission_percentage,
     connected_ts,
     disconnected_ts

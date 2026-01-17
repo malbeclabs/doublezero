@@ -91,9 +91,10 @@ type PipelineMetrics struct {
 	OutputTokens int // Total output tokens
 
 	// Tool usage
-	ThinkCalls int // Number of think() invocations
-	SQLQueries int // Total SQL queries executed
-	SQLErrors  int // Queries that returned errors
+	ThinkCalls        int // Number of think() invocations
+	ConsecutiveThinks int // Consecutive think calls without execute_sql (reset on execute_sql)
+	SQLQueries        int // Total SQL queries executed
+	SQLErrors         int // Queries that returned errors
 
 	// Timing
 	TotalDuration time.Duration // End-to-end time

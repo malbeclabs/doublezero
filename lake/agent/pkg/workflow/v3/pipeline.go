@@ -333,9 +333,11 @@ func (p *Pipeline) executeThink(params map[string]any, state *LoopState, onProgr
 	if content != "" {
 		state.ThinkingSteps = append(state.ThinkingSteps, content)
 		state.Metrics.ThinkCalls++
+		state.Metrics.ConsecutiveThinks++
 		// Log full content for debugging (truncated version in summary log)
 		p.logInfo("v3 pipeline: think",
 			"thinkStep", state.Metrics.ThinkCalls,
+			"consecutiveThinks", state.Metrics.ConsecutiveThinks,
 			"contentLen", len(content),
 			"preview", truncate(content, 200))
 		if p.cfg.Logger != nil {
@@ -350,6 +352,14 @@ func (p *Pipeline) executeThink(params map[string]any, state *LoopState, onProgr
 			})
 		}
 	}
+
+	// Return progressively stronger messages based on consecutive think calls
+	if state.Metrics.ConsecutiveThinks >= 3 {
+		return "STOP PLANNING. You have called think 3+ times without executing any queries. Call execute_sql NOW with your queries. Do not call think again.", nil
+	}
+	if state.Metrics.ConsecutiveThinks >= 2 {
+		return "Reasoning recorded. You have now called think twice without executing queries. You MUST call execute_sql next - do not call think again until you have data.", nil
+	}
 	// Return a directive message that reminds the model it needs to execute queries
 	// This is important because the model sometimes hallucinates results after thinking
 	return "Reasoning recorded. You have NOT retrieved any data yet. To get actual data, you MUST call execute_sql with your planned queries.", nil
@@ -361,6 +371,9 @@ func (p *Pipeline) executeSQL(ctx context.Context, params map[string]any, state 
 	if err != nil || len(queries) == 0 {
 		return "", fmt.Errorf("no valid queries provided")
 	}
+
+	// Reset consecutive think counter since the model is now executing queries
+	state.Metrics.ConsecutiveThinks = 0
 
 	// Log each query question and SQL for debugging
 	p.logInfo("v3 pipeline: executing SQL", "count", len(queries))

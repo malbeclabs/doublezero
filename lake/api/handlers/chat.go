@@ -64,6 +64,12 @@ type ChatResponse struct {
 	GeneratedQueries []GeneratedQueryResponse  `json:"generatedQueries,omitempty"`
 	ExecutedQueries  []ExecutedQueryResponse   `json:"executedQueries,omitempty"`
 
+	// Thinking steps from the agent (for timeline display)
+	ThinkingSteps []string `json:"thinking_steps,omitempty"`
+
+	// Unified steps in execution order (thinking + queries interleaved)
+	Steps []WorkflowStep `json:"steps,omitempty"`
+
 	// Suggested follow-up questions
 	FollowUpQuestions []string `json:"followUpQuestions,omitempty"`
 

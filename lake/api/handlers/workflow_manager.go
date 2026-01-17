@@ -242,10 +242,18 @@ func (m *WorkflowManager) runWorkflow(
 		return
 	}
 
-	// Progress callback - broadcast to subscribers
+	// Track steps in execution order for unified timeline
+	var steps []WorkflowStep
+
+	// Progress callback - broadcast to subscribers and track steps
 	onProgress := func(progress workflow.Progress) {
 		switch progress.Stage {
 		case workflow.StageThinking:
+			// Track thinking step
+			steps = append(steps, WorkflowStep{
+				Type:    "thinking",
+				Content: progress.ThinkingContent,
+			})
 			rw.broadcast(WorkflowEvent{
 				Type: "thinking",
 				Data: map[string]string{"content": progress.ThinkingContent},
@@ -259,6 +267,19 @@ func (m *WorkflowManager) runWorkflow(
 				},
 			})
 		case workflow.StageQueryComplete:
+			// Track query step with results
+			status := "completed"
+			if progress.QueryError != "" {
+				status = "error"
+			}
+			steps = append(steps, WorkflowStep{
+				Type:     "query",
+				Question: progress.QueryQuestion,
+				SQL:      progress.QuerySQL,
+				Status:   status,
+				Count:    progress.QueryRows, // Row count available during progress
+				Error:    progress.QueryError,
+			})
 			rw.broadcast(WorkflowEvent{
 				Type: "query_done",
 				Data: map[string]any{
@@ -278,6 +299,7 @@ func (m *WorkflowManager) runWorkflow(
 			Messages:        state.Messages,
 			ThinkingSteps:   state.ThinkingSteps,
 			ExecutedQueries: state.ExecutedQueries,
+			Steps:           steps, // Include unified steps
 			LLMCalls:        state.Metrics.LLMCalls,
 			InputTokens:     state.Metrics.InputTokens,
 			OutputTokens:    state.Metrics.OutputTokens,
@@ -305,8 +327,12 @@ func (m *WorkflowManager) runWorkflow(
 		return
 	}
 
-	// Build and broadcast the done event
+	// Build final steps with full row data from result
+	finalSteps := buildFinalSteps(steps, result)
+
+	// Build and broadcast the done event with steps
 	response := convertWorkflowResult(result)
+	response.Steps = finalSteps
 	rw.broadcast(WorkflowEvent{
 		Type: "done",
 		Data: response,
@@ -318,6 +344,7 @@ func (m *WorkflowManager) runWorkflow(
 		Messages:        nil,
 		ThinkingSteps:   nil,
 		ExecutedQueries: result.ExecutedQueries,
+		Steps:           finalSteps,
 		LLMCalls:        0,
 		InputTokens:     0,
 		OutputTokens:    0,
@@ -440,10 +467,18 @@ func (m *WorkflowManager) resumeWorkflow(
 		return
 	}
 
-	// Progress callback
+	// Track steps in execution order for unified timeline
+	var steps []WorkflowStep
+
+	// Progress callback - broadcast to subscribers and track steps
 	onProgress := func(progress workflow.Progress) {
 		switch progress.Stage {
 		case workflow.StageThinking:
+			// Track thinking step
+			steps = append(steps, WorkflowStep{
+				Type:    "thinking",
+				Content: progress.ThinkingContent,
+			})
 			rw.broadcast(WorkflowEvent{
 				Type: "thinking",
 				Data: map[string]string{"content": progress.ThinkingContent},
@@ -457,6 +492,19 @@ func (m *WorkflowManager) resumeWorkflow(
 				},
 			})
 		case workflow.StageQueryComplete:
+			// Track query step with results
+			status := "completed"
+			if progress.QueryError != "" {
+				status = "error"
+			}
+			steps = append(steps, WorkflowStep{
+				Type:     "query",
+				Question: progress.QueryQuestion,
+				SQL:      progress.QuerySQL,
+				Status:   status,
+				Count:    progress.QueryRows,
+				Error:    progress.QueryError,
+			})
 			rw.broadcast(WorkflowEvent{
 				Type: "query_done",
 				Data: map[string]any{
@@ -469,13 +517,14 @@ func (m *WorkflowManager) resumeWorkflow(
 		}
 	}
 
-	// Checkpoint callback
+	// Checkpoint callback - persist to database
 	onCheckpoint := func(state *v3.CheckpointState) error {
 		wfCheckpoint := &WorkflowCheckpoint{
 			Iteration:       state.Iteration,
 			Messages:        state.Messages,
 			ThinkingSteps:   state.ThinkingSteps,
 			ExecutedQueries: state.ExecutedQueries,
+			Steps:           steps, // Include unified steps
 			LLMCalls:        state.Metrics.LLMCalls,
 			InputTokens:     state.Metrics.InputTokens,
 			OutputTokens:    state.Metrics.OutputTokens,
@@ -498,8 +547,12 @@ func (m *WorkflowManager) resumeWorkflow(
 		return
 	}
 
-	// Broadcast done
+	// Build final steps with full row data from result
+	finalSteps := buildFinalSteps(steps, result)
+
+	// Broadcast done with steps
 	response := convertWorkflowResult(result)
+	response.Steps = finalSteps
 	rw.broadcast(WorkflowEvent{
 		Type: "done",
 		Data: response,
@@ -511,6 +564,7 @@ func (m *WorkflowManager) resumeWorkflow(
 		Messages:        nil,
 		ThinkingSteps:   nil,
 		ExecutedQueries: result.ExecutedQueries,
+		Steps:           finalSteps,
 	}
 	if err := CompleteWorkflowRun(context.Background(), rw.ID, result.Answer, finalCheckpoint); err != nil {
 		slog.Warn("Failed to mark resumed workflow as completed", "workflow_id", rw.ID, "error", err)
@@ -576,4 +630,48 @@ func ensureSessionExists(ctx context.Context, sessionID uuid.UUID) error {
 	}
 	slog.Info("ensureSessionExists completed", "session_id", sessionID, "rows_affected", result.RowsAffected())
 	return nil
+}
+
+// buildFinalSteps enriches the tracked steps with full row data from the result.
+// During progress tracking, we only have row counts. At completion, we can add full data.
+func buildFinalSteps(steps []WorkflowStep, result *workflow.WorkflowResult) []WorkflowStep {
+	// Build a map of executed queries by SQL for quick lookup
+	queryBySQL := make(map[string]*workflow.ExecutedQuery)
+	for i := range result.ExecutedQueries {
+		eq := &result.ExecutedQueries[i]
+		queryBySQL[eq.Result.SQL] = eq
+	}
+
+	// Enrich query steps with full row data
+	finalSteps := make([]WorkflowStep, len(steps))
+	for i, step := range steps {
+		if step.Type == "query" {
+			if eq, ok := queryBySQL[step.SQL]; ok {
+				// Convert rows from map format to array format
+				var rows [][]any
+				for _, row := range eq.Result.Rows {
+					rowData := make([]any, 0, len(eq.Result.Columns))
+					for _, col := range eq.Result.Columns {
+						rowData = append(rowData, sanitizeValue(row[col]))
+					}
+					rows = append(rows, rowData)
+				}
+				finalSteps[i] = WorkflowStep{
+					Type:     "query",
+					Question: step.Question,
+					SQL:      step.SQL,
+					Status:   step.Status,
+					Columns:  eq.Result.Columns,
+					Rows:     rows,
+					Count:    eq.Result.Count,
+					Error:    step.Error,
+				}
+			} else {
+				finalSteps[i] = step
+			}
+		} else {
+			finalSteps[i] = step
+		}
+	}
+	return finalSteps
 }

@@ -29,15 +29,28 @@ export function loadSessions(): QuerySession[] {
     if (!raw) return []
     const sessions = JSON.parse(raw) as QuerySession[]
     // Convert date strings back to Date objects
-    return sessions.map(s => ({
-      ...s,
-      createdAt: new Date(s.createdAt),
-      updatedAt: new Date(s.updatedAt),
-      history: s.history.map(h => ({
-        ...h,
-        timestamp: new Date(h.timestamp),
-      })),
-    }))
+    // Handle missing dates from old localStorage data
+    const result = sessions.map(s => {
+      const createdAt = s.createdAt ? new Date(s.createdAt) : new Date(0)
+      const updatedAt = s.updatedAt ? new Date(s.updatedAt) : createdAt
+      return {
+        ...s,
+        createdAt,
+        updatedAt,
+        history: s.history.map(h => ({
+          ...h,
+          timestamp: new Date(h.timestamp),
+        })),
+      }
+    })
+
+    // Sort by updatedAt descending, with id as tiebreaker for stable ordering
+    result.sort((a, b) => {
+      const timeDiff = b.updatedAt.getTime() - a.updatedAt.getTime()
+      return timeDiff !== 0 ? timeDiff : a.id.localeCompare(b.id)
+    })
+
+    return result
   } catch {
     return []
   }
@@ -115,26 +128,33 @@ export function loadChatSessions(): ChatSession[] {
       }
     }
 
-    return sessions.map(s => ({
-      ...s,
-      createdAt: new Date(s.createdAt),
-      updatedAt: new Date(s.updatedAt),
-      // Ensure all messages have IDs (migration for old data)
-      messages: s.messages?.map(ensureMessageId) ?? [],
-    }))
+    // Convert date strings back to Date objects
+    // Handle missing dates from old localStorage data
+    const result = sessions.map(s => {
+      const createdAt = s.createdAt ? new Date(s.createdAt) : new Date(0)
+      const updatedAt = s.updatedAt ? new Date(s.updatedAt) : createdAt
+      return {
+        ...s,
+        createdAt,
+        updatedAt,
+        // Ensure all messages have IDs (migration for old data)
+        messages: s.messages?.map(ensureMessageId) ?? [],
+      }
+    })
+
+    // Sort by updatedAt descending, with id as tiebreaker for stable ordering
+    result.sort((a, b) => {
+      const timeDiff = b.updatedAt.getTime() - a.updatedAt.getTime()
+      return timeDiff !== 0 ? timeDiff : a.id.localeCompare(b.id)
+    })
+
+    return result
   } catch {
     return []
   }
 }
 
 export function saveChatSessions(sessions: ChatSession[]): void {
-  // Debug: check for streaming messages being saved
-  for (const s of sessions) {
-    const hasStreaming = s.messages?.some((m: { status?: string }) => m.status === 'streaming')
-    if (hasStreaming) {
-      console.log('[Sessions] Saving session with streaming to localStorage:', s.id, 'msgCount:', s.messages?.length)
-    }
-  }
   localStorage.setItem(CHAT_SESSIONS_KEY, JSON.stringify(sessions))
 }
 

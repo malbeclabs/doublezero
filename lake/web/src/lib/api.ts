@@ -317,12 +317,29 @@ export interface ChatWorkflowData {
   processingSteps?: ProcessingStep[]
 }
 
+// Server-side workflow step (matches WorkflowStep in Go)
+export interface ServerWorkflowStep {
+  type: 'thinking' | 'query'
+  // For thinking steps
+  content?: string
+  // For query steps
+  question?: string
+  sql?: string
+  status?: 'running' | 'completed' | 'error'
+  columns?: string[]
+  rows?: unknown[][]
+  count?: number
+  error?: string
+}
+
 export interface ChatResponse {
   answer: string
   dataQuestions?: DataQuestion[]
   generatedQueries?: GeneratedQuery[]
   executedQueries?: ExecutedQuery[]
   followUpQuestions?: string[]
+  thinking_steps?: string[]  // Server sends snake_case (legacy)
+  steps?: ServerWorkflowStep[]  // Unified steps in execution order
   error?: string
 }
 

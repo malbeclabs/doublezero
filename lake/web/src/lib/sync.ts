@@ -88,30 +88,15 @@ function mergeSessions<T extends { id: string; updatedAt: Date }>(
       const localMsgCount = getMessageCount(localSession)
       const serverMsgCount = getMessageCount(serverSession)
 
-      // Debug: log details for sessions with potential streaming
-      if (localMsgCount > 0 || serverMsgCount > 0) {
-        console.log('[Sync] Session compare:', id, {
-          localMsgCount,
-          serverMsgCount,
-          localHasStreaming,
-          localUpdated: localSession.updatedAt.toISOString(),
-          serverUpdated: serverSession.updatedAt.toISOString(),
-        })
-      }
-
       if (localHasStreaming) {
         // Local has streaming - ALWAYS use local (critical for resume)
-        console.log('[Sync] Using LOCAL (has streaming):', id)
         merged.push(localSession)
       } else if (localMsgCount > serverMsgCount) {
         // Local has more messages - use local (server is stale)
-        console.log('[Sync] Using LOCAL (more messages):', id, { local: localMsgCount, server: serverMsgCount })
         merged.push(localSession)
       } else if (localSession.updatedAt.getTime() > serverSession.updatedAt.getTime()) {
-        console.log('[Sync] Using LOCAL (newer):', id)
         merged.push(localSession)
       } else {
-        console.log('[Sync] Using SERVER:', id)
         merged.push(serverSession)
       }
     } else if (serverSession) {
@@ -121,8 +106,11 @@ function mergeSessions<T extends { id: string; updatedAt: Date }>(
     }
   }
 
-  // Sort by updatedAt descending
-  merged.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+  // Sort by updatedAt descending, with id as tiebreaker for stable ordering
+  merged.sort((a, b) => {
+    const timeDiff = b.updatedAt.getTime() - a.updatedAt.getTime()
+    return timeDiff !== 0 ? timeDiff : a.id.localeCompare(b.id)
+  })
 
   return merged
 }

@@ -14,6 +14,24 @@ import (
 	"github.com/malbeclabs/doublezero/lake/api/config"
 )
 
+// WorkflowStep represents a single step in the workflow execution timeline.
+// Steps are stored in execution order to preserve the interleaving of thinking and queries.
+type WorkflowStep struct {
+	Type string `json:"type"` // "thinking" or "query"
+
+	// For thinking steps
+	Content string `json:"content,omitempty"`
+
+	// For query steps
+	Question string   `json:"question,omitempty"`
+	SQL      string   `json:"sql,omitempty"`
+	Status   string   `json:"status,omitempty"` // "running", "completed", "error"
+	Columns  []string `json:"columns,omitempty"`
+	Rows     [][]any  `json:"rows,omitempty"`
+	Count    int      `json:"count,omitempty"`
+	Error    string   `json:"error,omitempty"`
+}
+
 // WorkflowRun represents a persistent workflow execution.
 type WorkflowRun struct {
 	ID           uuid.UUID       `json:"id"`
@@ -24,8 +42,9 @@ type WorkflowRun struct {
 	// Checkpoint state
 	Iteration       int             `json:"iteration"`
 	Messages        json.RawMessage `json:"messages"`
-	ThinkingSteps   json.RawMessage `json:"thinking_steps"`
-	ExecutedQueries json.RawMessage `json:"executed_queries"`
+	ThinkingSteps   json.RawMessage `json:"thinking_steps"`   // Legacy - kept for backward compatibility
+	ExecutedQueries json.RawMessage `json:"executed_queries"` // Legacy - kept for backward compatibility
+	Steps           json.RawMessage `json:"steps"`            // Unified timeline of all steps in order
 	FinalAnswer     *string         `json:"final_answer,omitempty"`
 
 	// Metrics
@@ -46,8 +65,9 @@ type WorkflowRun struct {
 type WorkflowCheckpoint struct {
 	Iteration       int                      `json:"iteration"`
 	Messages        []workflow.ToolMessage   `json:"messages"`
-	ThinkingSteps   []string                 `json:"thinking_steps"`
-	ExecutedQueries []workflow.ExecutedQuery `json:"executed_queries"`
+	ThinkingSteps   []string                 `json:"thinking_steps"`   // Legacy
+	ExecutedQueries []workflow.ExecutedQuery `json:"executed_queries"` // Legacy
+	Steps           []WorkflowStep           `json:"steps"`            // Unified timeline
 
 	// Metrics
 	LLMCalls     int `json:"llm_calls"`
@@ -62,11 +82,11 @@ func CreateWorkflowRun(ctx context.Context, sessionID uuid.UUID, question string
 		INSERT INTO workflow_runs (session_id, user_question)
 		VALUES ($1, $2)
 		RETURNING id, session_id, status, user_question, iteration, messages, thinking_steps,
-		          executed_queries, final_answer, llm_calls, input_tokens, output_tokens,
+		          executed_queries, steps, final_answer, llm_calls, input_tokens, output_tokens,
 		          started_at, updated_at, completed_at, error
 	`, sessionID, question).Scan(
 		&run.ID, &run.SessionID, &run.Status, &run.UserQuestion,
-		&run.Iteration, &run.Messages, &run.ThinkingSteps, &run.ExecutedQueries,
+		&run.Iteration, &run.Messages, &run.ThinkingSteps, &run.ExecutedQueries, &run.Steps,
 		&run.FinalAnswer, &run.LLMCalls, &run.InputTokens, &run.OutputTokens,
 		&run.StartedAt, &run.UpdatedAt, &run.CompletedAt, &run.Error,
 	)
@@ -90,13 +110,17 @@ func UpdateWorkflowCheckpoint(ctx context.Context, id uuid.UUID, checkpoint *Wor
 	if err != nil {
 		return fmt.Errorf("failed to marshal executed queries: %w", err)
 	}
+	stepsJSON, err := json.Marshal(checkpoint.Steps)
+	if err != nil {
+		return fmt.Errorf("failed to marshal steps: %w", err)
+	}
 
 	_, err = config.PgPool.Exec(ctx, `
 		UPDATE workflow_runs
-		SET iteration = $2, messages = $3, thinking_steps = $4, executed_queries = $5,
-		    llm_calls = $6, input_tokens = $7, output_tokens = $8
+		SET iteration = $2, messages = $3, thinking_steps = $4, executed_queries = $5, steps = $6,
+		    llm_calls = $7, input_tokens = $8, output_tokens = $9
 		WHERE id = $1
-	`, id, checkpoint.Iteration, messagesJSON, thinkingJSON, queriesJSON,
+	`, id, checkpoint.Iteration, messagesJSON, thinkingJSON, queriesJSON, stepsJSON,
 		checkpoint.LLMCalls, checkpoint.InputTokens, checkpoint.OutputTokens)
 	if err != nil {
 		return fmt.Errorf("failed to update workflow checkpoint: %w", err)
@@ -118,14 +142,18 @@ func CompleteWorkflowRun(ctx context.Context, id uuid.UUID, answer string, final
 	if err != nil {
 		return fmt.Errorf("failed to marshal executed queries: %w", err)
 	}
+	stepsJSON, err := json.Marshal(finalCheckpoint.Steps)
+	if err != nil {
+		return fmt.Errorf("failed to marshal steps: %w", err)
+	}
 
 	_, err = config.PgPool.Exec(ctx, `
 		UPDATE workflow_runs
 		SET status = 'completed', final_answer = $2, completed_at = NOW(),
-		    iteration = $3, messages = $4, thinking_steps = $5, executed_queries = $6,
-		    llm_calls = $7, input_tokens = $8, output_tokens = $9
+		    iteration = $3, messages = $4, thinking_steps = $5, executed_queries = $6, steps = $7,
+		    llm_calls = $8, input_tokens = $9, output_tokens = $10
 		WHERE id = $1
-	`, id, answer, finalCheckpoint.Iteration, messagesJSON, thinkingJSON, queriesJSON,
+	`, id, answer, finalCheckpoint.Iteration, messagesJSON, thinkingJSON, queriesJSON, stepsJSON,
 		finalCheckpoint.LLMCalls, finalCheckpoint.InputTokens, finalCheckpoint.OutputTokens)
 	if err != nil {
 		return fmt.Errorf("failed to complete workflow run: %w", err)
@@ -164,13 +192,13 @@ func GetWorkflowRun(ctx context.Context, id uuid.UUID) (*WorkflowRun, error) {
 	var run WorkflowRun
 	err := config.PgPool.QueryRow(ctx, `
 		SELECT id, session_id, status, user_question, iteration, messages, thinking_steps,
-		       executed_queries, final_answer, llm_calls, input_tokens, output_tokens,
+		       executed_queries, steps, final_answer, llm_calls, input_tokens, output_tokens,
 		       started_at, updated_at, completed_at, error
 		FROM workflow_runs
 		WHERE id = $1
 	`, id).Scan(
 		&run.ID, &run.SessionID, &run.Status, &run.UserQuestion,
-		&run.Iteration, &run.Messages, &run.ThinkingSteps, &run.ExecutedQueries,
+		&run.Iteration, &run.Messages, &run.ThinkingSteps, &run.ExecutedQueries, &run.Steps,
 		&run.FinalAnswer, &run.LLMCalls, &run.InputTokens, &run.OutputTokens,
 		&run.StartedAt, &run.UpdatedAt, &run.CompletedAt, &run.Error,
 	)
@@ -187,7 +215,7 @@ func GetWorkflowRun(ctx context.Context, id uuid.UUID) (*WorkflowRun, error) {
 func GetIncompleteWorkflows(ctx context.Context) ([]WorkflowRun, error) {
 	rows, err := config.PgPool.Query(ctx, `
 		SELECT id, session_id, status, user_question, iteration, messages, thinking_steps,
-		       executed_queries, final_answer, llm_calls, input_tokens, output_tokens,
+		       executed_queries, steps, final_answer, llm_calls, input_tokens, output_tokens,
 		       started_at, updated_at, completed_at, error
 		FROM workflow_runs
 		WHERE status = 'running'
@@ -203,7 +231,7 @@ func GetIncompleteWorkflows(ctx context.Context) ([]WorkflowRun, error) {
 		var run WorkflowRun
 		if err := rows.Scan(
 			&run.ID, &run.SessionID, &run.Status, &run.UserQuestion,
-			&run.Iteration, &run.Messages, &run.ThinkingSteps, &run.ExecutedQueries,
+			&run.Iteration, &run.Messages, &run.ThinkingSteps, &run.ExecutedQueries, &run.Steps,
 			&run.FinalAnswer, &run.LLMCalls, &run.InputTokens, &run.OutputTokens,
 			&run.StartedAt, &run.UpdatedAt, &run.CompletedAt, &run.Error,
 		); err != nil {
@@ -222,7 +250,7 @@ func GetRunningWorkflowForSession(ctx context.Context, sessionID uuid.UUID) (*Wo
 	var run WorkflowRun
 	err := config.PgPool.QueryRow(ctx, `
 		SELECT id, session_id, status, user_question, iteration, messages, thinking_steps,
-		       executed_queries, final_answer, llm_calls, input_tokens, output_tokens,
+		       executed_queries, steps, final_answer, llm_calls, input_tokens, output_tokens,
 		       started_at, updated_at, completed_at, error
 		FROM workflow_runs
 		WHERE session_id = $1 AND status = 'running'
@@ -230,7 +258,7 @@ func GetRunningWorkflowForSession(ctx context.Context, sessionID uuid.UUID) (*Wo
 		LIMIT 1
 	`, sessionID).Scan(
 		&run.ID, &run.SessionID, &run.Status, &run.UserQuestion,
-		&run.Iteration, &run.Messages, &run.ThinkingSteps, &run.ExecutedQueries,
+		&run.Iteration, &run.Messages, &run.ThinkingSteps, &run.ExecutedQueries, &run.Steps,
 		&run.FinalAnswer, &run.LLMCalls, &run.InputTokens, &run.OutputTokens,
 		&run.StartedAt, &run.UpdatedAt, &run.CompletedAt, &run.Error,
 	)
@@ -354,31 +382,57 @@ func StreamWorkflow(w http.ResponseWriter, r *http.Request) {
 	})
 
 	// Emit catch-up events from stored state
-	var thinkingSteps []string
-	if err := json.Unmarshal(run.ThinkingSteps, &thinkingSteps); err == nil {
-		for _, step := range thinkingSteps {
-			sendEvent("thinking", map[string]string{"content": step})
+	// Prefer unified steps array (preserves interleaved order)
+	var steps []WorkflowStep
+	if err := json.Unmarshal(run.Steps, &steps); err == nil && len(steps) > 0 {
+		for _, step := range steps {
+			if step.Type == "thinking" {
+				sendEvent("thinking", map[string]string{"content": step.Content})
+			} else if step.Type == "query" {
+				sendEvent("query_done", map[string]any{
+					"question": step.Question,
+					"sql":      step.SQL,
+					"rows":     step.Count,
+					"error":    step.Error,
+				})
+			}
+		}
+	} else {
+		// Fallback to legacy arrays (order not preserved)
+		var thinkingSteps []string
+		if err := json.Unmarshal(run.ThinkingSteps, &thinkingSteps); err == nil {
+			for _, step := range thinkingSteps {
+				sendEvent("thinking", map[string]string{"content": step})
+			}
+		}
+
+		var executedQueries []workflow.ExecutedQuery
+		if err := json.Unmarshal(run.ExecutedQueries, &executedQueries); err == nil {
+			for _, eq := range executedQueries {
+				sendEvent("query_done", map[string]any{
+					"question": eq.GeneratedQuery.DataQuestion.Question,
+					"sql":      eq.Result.SQL,
+					"rows":     eq.Result.Count,
+					"error":    eq.Result.Error,
+				})
+			}
 		}
 	}
 
+	// Parse legacy arrays for building response (still needed for completed workflows)
+	var thinkingSteps []string
+	_ = json.Unmarshal(run.ThinkingSteps, &thinkingSteps)
 	var executedQueries []workflow.ExecutedQuery
-	if err := json.Unmarshal(run.ExecutedQueries, &executedQueries); err == nil {
-		for _, eq := range executedQueries {
-			sendEvent("query_done", map[string]any{
-				"question": eq.GeneratedQuery.DataQuestion.Question,
-				"sql":      eq.Result.SQL,
-				"rows":     eq.Result.Count,
-				"error":    eq.Result.Error,
-			})
-		}
-	}
+	_ = json.Unmarshal(run.ExecutedQueries, &executedQueries)
 
 	// Handle based on workflow status
 	switch run.Status {
 	case "completed":
 		// Build the response from stored data
 		response := ChatResponse{
-			Answer: "",
+			Answer:        "",
+			ThinkingSteps: thinkingSteps,
+			Steps:         steps, // Include unified steps
 		}
 		if run.FinalAnswer != nil {
 			response.Answer = *run.FinalAnswer
@@ -420,7 +474,10 @@ func StreamWorkflow(w http.ResponseWriter, r *http.Request) {
 			}
 			// Recursively handle the new status
 			if run.Status == "completed" && run.FinalAnswer != nil {
-				response := ChatResponse{Answer: *run.FinalAnswer}
+				// Re-parse steps from refetched workflow
+				var refetchedSteps []WorkflowStep
+				_ = json.Unmarshal(run.Steps, &refetchedSteps)
+				response := ChatResponse{Answer: *run.FinalAnswer, ThinkingSteps: thinkingSteps, Steps: refetchedSteps}
 				for _, eq := range executedQueries {
 					response.ExecutedQueries = append(response.ExecutedQueries, ExecutedQueryResponse{
 						Question: eq.GeneratedQuery.DataQuestion.Question,

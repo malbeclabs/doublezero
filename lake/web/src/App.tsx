@@ -54,6 +54,57 @@ import {
   migrateLocalSessions,
   findIncompleteMessage,
 } from '@/lib/sync'
+import type { ChatResponse } from '@/lib/api'
+
+// Build processing steps from server response data (source of truth)
+// Prefers unified steps array which preserves execution order
+function buildProcessingSteps(data: ChatResponse): ProcessingStep[] {
+  // If server provides unified steps, use them (preserves interleaved order)
+  if (data.steps && data.steps.length > 0) {
+    return data.steps.map(step => {
+      if (step.type === 'thinking') {
+        return { type: 'thinking' as const, content: step.content ?? '' }
+      } else {
+        return {
+          type: 'query' as const,
+          question: step.question ?? '',
+          sql: step.sql ?? '',
+          status: step.status ?? 'completed',
+          columns: step.columns,
+          data: step.rows,
+          rows: step.count,
+          error: step.error,
+        }
+      }
+    })
+  }
+
+  // Fallback: build from legacy separate arrays (order not preserved)
+  const steps: ProcessingStep[] = []
+
+  if (data.thinking_steps) {
+    for (const content of data.thinking_steps) {
+      steps.push({ type: 'thinking', content })
+    }
+  }
+
+  if (data.executedQueries) {
+    for (const q of data.executedQueries) {
+      steps.push({
+        type: 'query',
+        question: q.question,
+        sql: q.sql,
+        status: q.error ? 'error' : 'completed',
+        columns: q.columns,
+        data: q.rows,
+        rows: q.count,
+        error: q.error,
+      })
+    }
+  }
+
+  return steps
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -603,6 +654,10 @@ function ChatView() {
               },
               onDone: (data) => {
                 console.log('[Chat] Workflow reconnect onDone', { workflowId: runningWorkflow.id })
+                // Build processing steps from server data (source of truth)
+                const processingSteps = buildProcessingSteps(data)
+                console.log('[Chat] Workflow reconnect processingSteps from server:', processingSteps.length)
+
                 // Replace streaming message with complete message
                 setChatSessions(prev => prev.map(s => {
                   if (s.id !== currentChatSessionId) return s
@@ -616,6 +671,7 @@ function ChatView() {
                       generatedQueries: data.generatedQueries ?? [],
                       executedQueries: data.executedQueries ?? [],
                       followUpQuestions: data.followUpQuestions,
+                      processingSteps,
                     },
                     executedQueries: data.executedQueries?.map(q => q.sql) ?? [],
                     status: 'complete',
@@ -1000,6 +1056,7 @@ function AppContent() {
   // Chat mutation state (lifted to persist across navigation) - now per-session
   const [pendingChats, setPendingChats] = useState<Map<string, PendingChatState>>(new Map())
 
+
   // External locks - tracks locks held by other browsers on sessions
   const [externalLocks, setExternalLocks] = useState<Map<string, SessionLock>>(new Map())
 
@@ -1083,7 +1140,9 @@ function AppContent() {
   }, [])
 
   // Sync hooks for server persistence
-  const [syncQuerySession, queryServerSyncComplete] = useQuerySessionSync(
+  // Note: sync functions are called only when sessions are actually modified,
+  // not on every state change, to avoid updating timestamps for unchanged sessions
+  const [_syncQuerySession, queryServerSyncComplete] = useQuerySessionSync(
     setSessions,
     sessionsLoaded
   )
@@ -1100,29 +1159,25 @@ function AppContent() {
     }
   }, [sessionsLoaded, chatSessionsLoaded]) // Only run once when both are loaded
 
-  // Save sessions to localStorage and sync to server when they change
+  // Save sessions to localStorage when they change
+  // Note: Server sync is handled separately when sessions are explicitly modified
+  // to avoid updating all sessions' updated_at timestamps on every state change
   useEffect(() => {
     if (sessionsLoaded) {
       const nonEmptySessions = sessions.filter(s => s.history.length > 0)
       saveSessions(nonEmptySessions)
-      // Sync each non-empty session to server
-      nonEmptySessions.forEach(session => syncQuerySession(session))
     }
-  }, [sessions, sessionsLoaded, syncQuerySession])
+  }, [sessions, sessionsLoaded])
 
-  // Save chat sessions to localStorage and sync to server when they change
+  // Save chat sessions to localStorage when they change
+  // Note: Server sync is handled separately when sessions are explicitly modified
+  // to avoid updating all sessions' updated_at timestamps on every state change
   useEffect(() => {
     if (chatSessionsLoaded) {
       const nonEmptyChatSessions = chatSessions.filter(s => s.messages.length > 0)
       saveChatSessions(nonEmptyChatSessions)
-      // Sync each non-empty session to server immediately
-      // We use immediate sync to ensure the latest state is always persisted
-      // before the user can reload the page (streaming or complete)
-      nonEmptyChatSessions.forEach(session => {
-        chatSyncFns.syncImmediate(session)
-      })
     }
-  }, [chatSessions, chatSessionsLoaded, chatSyncFns])
+  }, [chatSessions, chatSessionsLoaded])
 
   // Helper to add a processing step to a session's pending state
   const addProcessingStep = useCallback((sessionId: string, step: ProcessingStep) => {
@@ -1197,9 +1252,6 @@ function AppContent() {
       }
     }
 
-    // Local array to accumulate processing steps (avoids stale closure issue with pendingChats)
-    const localSteps: ProcessingStep[] = []
-
     // Add this session to pending with initial state
     console.log('[Chat] sendChatMessage: adding to pendingChats, starting stream')
     setPendingChats(prev => {
@@ -1219,22 +1271,13 @@ function AppContent() {
         {
           onThinking: (data) => {
             const step: ProcessingStep = { type: 'thinking', content: data.content }
-            localSteps.push(step)
             addProcessingStep(sessionId, step)
           },
           onQueryStarted: (data) => {
             const step: ProcessingStep = { type: 'query', question: data.question, sql: data.sql, status: 'running' }
-            localSteps.push(step)
             addProcessingStep(sessionId, step)
           },
           onQueryDone: (data) => {
-            // Update the local step
-            const step = localSteps.find(s => s.type === 'query' && s.question === data.question)
-            if (step && step.type === 'query') {
-              step.status = data.error ? 'error' : 'completed'
-              step.rows = data.rows
-              step.error = data.error || undefined
-            }
             updateQueryStep(sessionId, data.question, {
               status: data.error ? 'error' : 'completed',
               rows: data.rows,
@@ -1243,14 +1286,15 @@ function AppContent() {
           },
           onDone: (data) => {
             console.log('[Chat] onDone called', { sessionId, hasAnswer: !!data.answer, answerLen: data.answer?.length, error: data.error })
-            console.log('[Chat] onDone captured steps:', localSteps.length)
+            // Build processing steps from server data (source of truth)
+            const processingSteps = buildProcessingSteps(data)
+            console.log('[Chat] onDone processingSteps from server:', processingSteps.length)
 
             // Update the session - replace streaming message with complete message
             setChatSessions(prev => {
               const session = prev.find(s => s.id === sessionId)
-              console.log('[Chat] onDone setChatSessions', { sessionId, foundSession: !!session, msgCount: session?.messages.length })
               if (!session) {
-                console.log('[Chat] onDone: session not found!', { sessionId, sessionIds: prev.map(s => s.id) })
+                console.log('[Chat] onDone: session not found!', { sessionId })
                 return prev
               }
 
@@ -1275,29 +1319,17 @@ function AppContent() {
                     generatedQueries: data.generatedQueries ?? [],
                     executedQueries: data.executedQueries ?? [],
                     followUpQuestions: data.followUpQuestions,
-                    // Enrich processing steps with actual data from executedQueries
-                    // (SSE events only send row count, not columns/data)
-                    processingSteps: localSteps.map(step => {
-                      if (step.type !== 'query') return step
-                      const executed = data.executedQueries?.find(q => q.question === step.question)
-                      if (!executed) return step
-                      return {
-                        ...step,
-                        columns: executed.columns,
-                        data: executed.rows,
-                        rows: executed.count,
-                      }
-                    }),
+                    processingSteps,
                   },
                   executedQueries: data.executedQueries?.map(q => q.sql) ?? [],
                   status: 'complete',
                 }
 
+              console.log('[Chat] onDone assistantMessage', { hasWorkflowData: !!assistantMessage.workflowData, stepsCount: assistantMessage.workflowData?.processingSteps?.length })
+
               // Replace the streaming message with the complete one
               const newMessages = session.messages.filter(m => m.status !== 'streaming')
               newMessages.push(assistantMessage)
-
-              console.log('[Chat] onDone: new message count:', newMessages.length)
 
               return prev.map(s =>
                 s.id === sessionId ? { ...s, messages: newMessages, updatedAt: new Date() } : s
@@ -1308,24 +1340,33 @@ function AppContent() {
             // Release lock
             releaseSessionLock(sessionId, BROWSER_ID).catch(() => {})
 
-            // Auto-generate title for new sessions (after state is updated)
-            if (!data.error) {
-              setTimeout(() => {
-                setChatSessions(prev => {
-                  const session = prev.find(s => s.id === sessionId)
-                  if (session && !session.name && session.messages.length <= 2) {
-                    generateChatSessionTitle(session.messages).then(result => {
-                      if (result.title) {
-                        setChatSessions(p => p.map(s =>
-                          s.id === sessionId ? { ...s, name: result.title, updatedAt: new Date() } : s
-                        ))
-                      }
-                    }).catch(() => { /* ignore */ })
-                  }
-                  return prev
-                })
-              }, 100)
-            }
+            // Sync the completed session to server (after state is updated)
+            setTimeout(() => {
+              setChatSessions(prev => {
+                const session = prev.find(s => s.id === sessionId)
+                if (session) {
+                  chatSyncFns.syncImmediate(session)
+                }
+
+                // Auto-generate title for new sessions
+                if (!data.error && session && !session.name && session.messages.length <= 2) {
+                  generateChatSessionTitle(session.messages).then(result => {
+                    if (result.title) {
+                      setChatSessions(p => p.map(s =>
+                        s.id === sessionId ? { ...s, name: result.title, updatedAt: new Date() } : s
+                      ))
+                      // Sync again after title update
+                      setChatSessions(p => {
+                        const updated = p.find(s => s.id === sessionId)
+                        if (updated) chatSyncFns.syncImmediate(updated)
+                        return p
+                      })
+                    }
+                  }).catch(() => { /* ignore */ })
+                }
+                return prev
+              })
+            }, 100)
           },
           onError: (error) => {
             // Update session - replace streaming message with error
@@ -1343,6 +1384,14 @@ function AppContent() {
             removePending(sessionId)
             // Release lock
             releaseSessionLock(sessionId, BROWSER_ID).catch(() => {})
+            // Sync the errored session to server
+            setTimeout(() => {
+              setChatSessions(prev => {
+                const session = prev.find(s => s.id === sessionId)
+                if (session) chatSyncFns.syncImmediate(session)
+                return prev
+              })
+            }, 100)
           },
           onWorkflowStarted: (data) => {
             console.log('[Chat] onWorkflowStarted', { sessionId, workflowId: data.workflow_id })

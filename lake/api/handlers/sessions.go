@@ -83,12 +83,13 @@ func ListSessions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get sessions
+	// Use id as secondary sort key for stable ordering when timestamps are equal
 	rows, err := config.PgPool.Query(ctx, `
 		SELECT id, type, name, jsonb_array_length(content) as content_length,
 		       created_at, updated_at
 		FROM sessions
 		WHERE type = $1
-		ORDER BY updated_at DESC
+		ORDER BY updated_at DESC, id ASC
 		LIMIT $2 OFFSET $3
 	`, sessionType, limit, offset)
 	if err != nil {
@@ -378,7 +379,17 @@ func AcquireSessionLock(w http.ResponseWriter, r *http.Request) {
 		`, id).Scan(&lockID, &existingLockUntil, &question)
 		if err != nil {
 			if err.Error() == "no rows in result set" {
-				http.Error(w, "Session not found", http.StatusNotFound)
+				// Session doesn't exist on server yet (only in browser localStorage).
+				// No other browser can have a lock on it, so return success.
+				// The session will be created when it's synced after the response completes.
+				lock := SessionLock{
+					SessionID: id.String(),
+					LockID:    req.LockID,
+					Until:     lockUntil,
+					Question:  req.Question,
+				}
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(lock)
 				return
 			}
 			http.Error(w, internalError("Failed to check lock", err), http.StatusInternalServerError)
@@ -433,7 +444,7 @@ func ReleaseSessionLock(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	// Only release if we own the lock
-	result, err := config.PgPool.Exec(ctx, `
+	_, err = config.PgPool.Exec(ctx, `
 		UPDATE sessions
 		SET lock_id = NULL, lock_until = NULL, lock_question = NULL
 		WHERE id = $1 AND lock_id = $2
@@ -443,12 +454,9 @@ func ReleaseSessionLock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if result.RowsAffected() == 0 {
-		// Either session doesn't exist, or we don't own the lock
-		http.Error(w, "Lock not found or not owned by this client", http.StatusNotFound)
-		return
-	}
-
+	// If no rows affected, either session doesn't exist or we don't own the lock.
+	// Either way, the end state is "we don't have a lock" which is what we want.
+	// Return success (no-op for non-existent sessions).
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -492,15 +500,18 @@ func WatchSessionLock(w http.ResponseWriter, r *http.Request) {
 		return lockID, lockUntil, question, err
 	}
 
-	// Send initial state
+	// Send initial state (if session exists)
 	lockID, lockUntil, question, err := getLockState()
 	if err != nil {
 		if err.Error() == "no rows in result set" {
-			http.Error(w, "Session not found", http.StatusNotFound)
+			// Session doesn't exist yet - just keep connection open.
+			// No other browser can have a lock on it, so nothing to watch.
+			// The ticker loop will pick up changes if/when the session is created.
+			lockID = nil
+		} else {
+			http.Error(w, internalError("Failed to get lock", err), http.StatusInternalServerError)
 			return
 		}
-		http.Error(w, internalError("Failed to get lock", err), http.StatusInternalServerError)
-		return
 	}
 
 	// Send initial lock state (if locked by someone else)

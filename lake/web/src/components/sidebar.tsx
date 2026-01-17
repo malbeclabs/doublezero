@@ -172,13 +172,20 @@ export function Sidebar({
   const isGossipNodesRoute = location.pathname === '/solana/gossip-nodes'
 
   // Sort sessions by updatedAt, most recent first, filter out empty sessions, and limit to 10
+  // Use id as tiebreaker for stable ordering when timestamps are equal
   const sortedQuerySessions = [...querySessions]
     .filter(s => s.history.length > 0)
-    .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+    .sort((a, b) => {
+      const timeDiff = b.updatedAt.getTime() - a.updatedAt.getTime()
+      return timeDiff !== 0 ? timeDiff : a.id.localeCompare(b.id)
+    })
     .slice(0, 10)
   const sortedChatSessions = [...chatSessions]
     .filter(s => s.messages.length > 0)
-    .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+    .sort((a, b) => {
+      const timeDiff = b.updatedAt.getTime() - a.updatedAt.getTime()
+      return timeDiff !== 0 ? timeDiff : a.id.localeCompare(b.id)
+    })
     .slice(0, 10)
 
   if (isCollapsed) {

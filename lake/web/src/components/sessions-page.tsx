@@ -23,9 +23,13 @@ export function SessionsPage({
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null)
 
   // Sort sessions by updatedAt, most recent first, and filter out empty sessions
+  // Use id as tiebreaker for stable ordering when timestamps are equal
   const sortedSessions = [...sessions]
     .filter(s => s.history.length > 0)
-    .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+    .sort((a, b) => {
+      const timeDiff = b.updatedAt.getTime() - a.updatedAt.getTime()
+      return timeDiff !== 0 ? timeDiff : a.id.localeCompare(b.id)
+    })
 
   return (
     <div className="flex-1 flex flex-col px-8 pb-8 overflow-hidden">

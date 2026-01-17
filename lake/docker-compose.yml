@@ -1,4 +1,17 @@
 services:
+  postgres:
+    image: postgres:16
+    container_name: postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: lakedev
+      POSTGRES_PASSWORD: lakedev
+      POSTGRES_DB: lakedev
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
   clickhouse:
     image: clickhouse/clickhouse-server:25.12
     container_name: clickhouse
@@ -32,6 +45,7 @@ services:
       - neo4j-logs:/logs
 
 volumes:
+  pgdata:
   clickhouse-data:
   clickhouse-logs:
   neo4j-data:

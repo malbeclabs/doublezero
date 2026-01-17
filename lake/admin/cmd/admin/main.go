@@ -75,6 +75,19 @@ func run() error {
 	chunkIntervalFlag := flag.Duration("chunk-interval", 1*time.Hour, "Chunk interval for usage backfill")
 	queryDelayFlag := flag.Duration("query-delay", 5*time.Second, "Delay between InfluxDB queries to avoid rate limits")
 
+	// PostgreSQL configuration
+	pgHostFlag := flag.String("pg-host", "localhost", "PostgreSQL host (or set POSTGRES_HOST env var)")
+	pgPortFlag := flag.String("pg-port", "5432", "PostgreSQL port (or set POSTGRES_PORT env var)")
+	pgDatabaseFlag := flag.String("pg-database", "", "PostgreSQL database (or set POSTGRES_DB env var)")
+	pgUsernameFlag := flag.String("pg-username", "", "PostgreSQL username (or set POSTGRES_USER env var)")
+	pgPasswordFlag := flag.String("pg-password", "", "PostgreSQL password (or set POSTGRES_PASSWORD env var)")
+	pgSSLModeFlag := flag.String("pg-sslmode", "disable", "PostgreSQL SSL mode: disable, require, verify-ca, verify-full (or set POSTGRES_SSLMODE env var)")
+
+	// PostgreSQL migration commands
+	pgMigrateUpFlag := flag.Bool("pg-migrate-up", false, "Run all pending PostgreSQL migrations")
+	pgMigrateDownFlag := flag.Bool("pg-migrate-down", false, "Rollback the last PostgreSQL migration")
+	pgMigrateStatusFlag := flag.Bool("pg-migrate-status", false, "Show PostgreSQL migration status")
+
 	flag.Parse()
 
 	log := logger.New(*verboseFlag)
@@ -217,6 +230,27 @@ func run() error {
 		})
 	}
 
+	// Override PostgreSQL flags with environment variables if set
+	if envPgHost := os.Getenv("POSTGRES_HOST"); envPgHost != "" {
+		*pgHostFlag = envPgHost
+	}
+	if envPgPort := os.Getenv("POSTGRES_PORT"); envPgPort != "" {
+		*pgPortFlag = envPgPort
+	}
+	if envPgDatabase := os.Getenv("POSTGRES_DB"); envPgDatabase != "" {
+		*pgDatabaseFlag = envPgDatabase
+	}
+	if envPgUsername := os.Getenv("POSTGRES_USER"); envPgUsername != "" {
+		*pgUsernameFlag = envPgUsername
+	}
+	if envPgPassword := os.Getenv("POSTGRES_PASSWORD"); envPgPassword != "" {
+		*pgPasswordFlag = envPgPassword
+	}
+	if envPgSSLMode := os.Getenv("POSTGRES_SSLMODE"); envPgSSLMode != "" {
+		*pgSSLModeFlag = envPgSSLMode
+	}
+
+	// Execute commands
 	if *resetDBFlag {
 		if *clickhouseAddrFlag == "" {
 			return fmt.Errorf("--clickhouse-addr is required for --reset-db")
@@ -303,6 +337,37 @@ func run() error {
 				DryRun:        *dryRunFlag,
 			},
 		)
+	}
+
+	// PostgreSQL migration commands
+	pgCfg := admin.PgMigrateConfig{
+		Host:     *pgHostFlag,
+		Port:     *pgPortFlag,
+		Database: *pgDatabaseFlag,
+		Username: *pgUsernameFlag,
+		Password: *pgPasswordFlag,
+		SSLMode:  *pgSSLModeFlag,
+	}
+
+	if *pgMigrateUpFlag {
+		if pgCfg.Database == "" || pgCfg.Username == "" || pgCfg.Password == "" {
+			return fmt.Errorf("--pg-database, --pg-username, and --pg-password are required for --pg-migrate-up")
+		}
+		return admin.PgMigrateUp(log, pgCfg)
+	}
+
+	if *pgMigrateDownFlag {
+		if pgCfg.Database == "" || pgCfg.Username == "" || pgCfg.Password == "" {
+			return fmt.Errorf("--pg-database, --pg-username, and --pg-password are required for --pg-migrate-down")
+		}
+		return admin.PgMigrateDown(log, pgCfg)
+	}
+
+	if *pgMigrateStatusFlag {
+		if pgCfg.Database == "" || pgCfg.Username == "" || pgCfg.Password == "" {
+			return fmt.Errorf("--pg-database, --pg-username, and --pg-password are required for --pg-migrate-status")
+		}
+		return admin.PgMigrateStatus(log, pgCfg)
 	}
 
 	return nil

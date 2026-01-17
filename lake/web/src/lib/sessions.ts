@@ -57,7 +57,22 @@ export function loadSessions(): QuerySession[] {
 }
 
 export function saveSessions(sessions: QuerySession[]): void {
-  localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions))
+  try {
+    localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions))
+  } catch (e) {
+    // localStorage quota exceeded - prune oldest sessions and retry
+    if (e instanceof DOMException && e.name === 'QuotaExceededError') {
+      console.warn('[Sessions] localStorage quota exceeded, pruning old query sessions')
+      const pruned = [...sessions]
+        .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+        .slice(0, 50)
+      try {
+        localStorage.setItem(SESSIONS_KEY, JSON.stringify(pruned))
+      } catch {
+        console.error('[Sessions] Failed to save query sessions even after pruning')
+      }
+    }
+  }
 }
 
 export function loadCurrentSessionId(): string | null {
@@ -155,7 +170,24 @@ export function loadChatSessions(): ChatSession[] {
 }
 
 export function saveChatSessions(sessions: ChatSession[]): void {
-  localStorage.setItem(CHAT_SESSIONS_KEY, JSON.stringify(sessions))
+  try {
+    localStorage.setItem(CHAT_SESSIONS_KEY, JSON.stringify(sessions))
+  } catch (e) {
+    // localStorage quota exceeded - prune oldest sessions and retry
+    if (e instanceof DOMException && e.name === 'QuotaExceededError') {
+      console.warn('[Sessions] localStorage quota exceeded, pruning old sessions')
+      // Keep only the 50 most recent sessions
+      const pruned = [...sessions]
+        .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+        .slice(0, 50)
+      try {
+        localStorage.setItem(CHAT_SESSIONS_KEY, JSON.stringify(pruned))
+      } catch {
+        // If still failing, just log and continue - server has the data
+        console.error('[Sessions] Failed to save sessions even after pruning')
+      }
+    }
+  }
 }
 
 export function loadCurrentChatSessionId(): string | null {

@@ -82,3 +82,26 @@ SELECT
     fc.first_connected_ts
 FROM first_connections fc
 JOIN latest_values lv ON fc.vote_pubkey = lv.vote_pubkey AND fc.node_pubkey = lv.node_pubkey AND lv.rn = 1;
+
+-- solana_validators_off_dz_current
+-- Shows validators NOT currently connected to DZ, with their geoip location
+-- Useful for regional analysis of validators not yet on the network
+CREATE OR REPLACE VIEW solana_validators_off_dz_current
+AS
+SELECT
+    va.vote_pubkey,
+    va.node_pubkey,
+    va.activated_stake_lamports,
+    va.commission_percentage,
+    va.epoch,
+    gn.gossip_ip,
+    geo.city,
+    geo.region,
+    geo.country,
+    geo.country_code
+FROM solana_vote_accounts_current va
+JOIN solana_gossip_nodes_current gn ON va.node_pubkey = gn.pubkey
+LEFT JOIN geoip_records_current geo ON gn.gossip_ip = geo.ip
+WHERE va.epoch_vote_account = 'true'
+  AND va.activated_stake_lamports > 0
+  AND va.vote_pubkey NOT IN (SELECT vote_pubkey FROM solana_validators_on_dz_current);

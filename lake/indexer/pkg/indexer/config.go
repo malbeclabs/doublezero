@@ -12,6 +12,7 @@ import (
 	dzsvc "github.com/malbeclabs/doublezero/lake/indexer/pkg/dz/serviceability"
 	dztelemlatency "github.com/malbeclabs/doublezero/lake/indexer/pkg/dz/telemetry/latency"
 	dztelemusage "github.com/malbeclabs/doublezero/lake/indexer/pkg/dz/telemetry/usage"
+	"github.com/malbeclabs/doublezero/lake/indexer/pkg/neo4j"
 	"github.com/malbeclabs/doublezero/lake/indexer/pkg/sol"
 	"github.com/malbeclabs/doublezero/tools/maxmind/pkg/geoip"
 )
@@ -22,6 +23,9 @@ type Config struct {
 	ClickHouse       clickhouse.Client
 	MigrationsEnable bool
 	MigrationsConfig clickhouse.MigrationConfig
+
+	Neo4jMigrationsEnable bool
+	Neo4jMigrationsConfig neo4j.MigrationConfig
 
 	RefreshInterval time.Duration
 	MaxConcurrency  int
@@ -47,6 +51,16 @@ type Config struct {
 
 	// Solana configuration.
 	SolanaRPC sol.SolanaRPC
+
+	// Neo4j configuration (optional).
+	Neo4j neo4j.Client
+
+	// ISIS configuration (optional, requires Neo4j).
+	ISISEnabled         bool
+	ISISS3Bucket        string        // S3 bucket for IS-IS dumps (default: doublezero-mn-beta-isis-db)
+	ISISS3Region        string        // AWS region (default: us-east-1)
+	ISISS3EndpointURL   string        // Custom S3 endpoint URL (for testing)
+	ISISRefreshInterval time.Duration // Refresh interval for IS-IS sync (default: 30s)
 }
 
 func (c *Config) Validate() error {
@@ -101,6 +115,12 @@ func (c *Config) Validate() error {
 		}
 	} else if c.ReadyIncludesDeviceUsage {
 		return errors.New("device usage influx client is required when ready includes device usage")
+	}
+
+	// ISIS configuration validation.
+	// ISIS requires Neo4j to be configured.
+	if c.ISISEnabled && c.Neo4j == nil {
+		return errors.New("neo4j is required when isis is enabled")
 	}
 
 	// Optional with defaults

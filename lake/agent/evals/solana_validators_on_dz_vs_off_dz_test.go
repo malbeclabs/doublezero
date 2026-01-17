@@ -95,12 +95,12 @@ func runTest_SolanaValidatorsOnDZVsOffDZ(t *testing.T, llmFactory LLMClientFacto
 		{
 			Description:   "On-DZ validators data",
 			ExpectedValue: "3 validators on DZ with better performance metrics (lower vote lag ~50 slots OR lower skip rate ~2%)",
-			Rationale:     "vote1, vote2, vote3 are on DZ - either vote lag or skip rate metric is acceptable",
+			Rationale:     "vote1/node1, vote2/node2, vote3/node3 are on DZ (either identifier type acceptable) - either vote lag or skip rate metric is acceptable",
 		},
 		{
 			Description:   "Off-DZ validators data",
 			ExpectedValue: "3 validators off DZ with worse performance metrics (higher vote lag ~200 slots OR higher skip rate ~8%)",
-			Rationale:     "vote4, vote5, vote6 are off DZ - either vote lag or skip rate metric is acceptable",
+			Rationale:     "vote4/node4, vote5/node5, vote6/node6 are off DZ (either identifier type acceptable) - either vote lag or skip rate metric is acceptable",
 		},
 		{
 			Description:   "Comparison conclusion",

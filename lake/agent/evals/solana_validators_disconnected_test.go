@@ -95,12 +95,12 @@ func runTest_SolanaValidatorsDisconnected(t *testing.T, llmFactory LLMClientFact
 	expectations := []Expectation{
 		{
 			Description:   "Response identifies vote1, vote2, vote3 as disconnected",
-			ExpectedValue: "The response lists vote1, vote2, and vote3 as validators that disconnected from DZ. vote6 may also appear (acceptable). Each should have stake amounts.",
+			ExpectedValue: "The response lists vote1/node1, vote2/node2, and vote3/node3 as validators that disconnected from DZ (either vote_pubkey or node_pubkey identifier is acceptable). vote6/node6 may also appear (acceptable). Each should have stake amounts.",
 			Rationale:     "These validators disconnected from DZ within the query timeframe",
 		},
 		{
 			Description:   "Response does NOT claim vote4 or vote5 disconnected",
-			ExpectedValue: "vote4 and vote5 are NOT listed among the disconnected validators. They may be mentioned as 'still connected' (which is correct) or not mentioned at all - either is fine.",
+			ExpectedValue: "vote4/node4 and vote5/node5 are NOT listed among the disconnected validators. They may be mentioned as 'still connected' (which is correct) or not mentioned at all - either is fine.",
 			Rationale:     "vote4 reconnected; vote5 never disconnected - neither should be listed as having disconnected",
 		},
 	}

@@ -99,8 +99,8 @@ func runTest_SolanaValidatorsConnectedCount(t *testing.T, llmFactory LLMClientFa
 		},
 		{
 			Description:   "List of newly connected validators",
-			ExpectedValue: "vote1, vote2, and/or vote5 should be listed with their vote_pubkey identifiers",
-			Rationale:     "When count is small, specific validators should be listed per ROLE.md guidelines",
+			ExpectedValue: "vote1/node1, vote2/node2, and/or vote5/node5 (either vote_pubkey or node_pubkey identifier is acceptable)",
+			Rationale:     "When count is small, specific validators should be listed - either identifier type is valid",
 		},
 	}
 	isCorrect, err := evaluateResponse(t, ctx, question, response, expectations...)

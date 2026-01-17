@@ -95,17 +95,17 @@ func runTest_OffDZValidatorsByRegion(t *testing.T, llmFactory LLMClientFactory) 
 	expectations := []Expectation{
 		{
 			Description:   "Response includes the 3 off-DZ Tokyo validators",
-			ExpectedValue: "offvote1, offvote2, offvote3 all appear in the response",
-			Rationale:     "Test data has exactly 3 off-DZ validators in Tokyo with these vote pubkeys",
+			ExpectedValue: "offvote1/offnode1, offvote2/offnode2, offvote3/offnode3 all appear in the response (either vote_pubkey or node_pubkey identifier is acceptable)",
+			Rationale:     "Test data has exactly 3 off-DZ validators in Tokyo",
 		},
 		{
-			Description:   "Validators are ranked with offvote1 first (highest stake)",
-			ExpectedValue: "offvote1 appears first or at rank 1, as it has the highest stake",
-			Rationale:     "offvote1 has the most stake and should be ranked first",
+			Description:   "Validators are ranked with offvote1/offnode1 first (highest stake)",
+			ExpectedValue: "offvote1 or offnode1 appears first or at rank 1, as it has the highest stake",
+			Rationale:     "offvote1/offnode1 has the most stake and should be ranked first",
 		},
 		{
 			Description:   "Response correctly excludes on-DZ validators",
-			ExpectedValue: "onvote1 and onvote2 do NOT appear in the results",
+			ExpectedValue: "onvote1/onnode1 and onvote2/onnode2 do NOT appear in the results",
 			Rationale:     "These validators ARE connected to DZ and should be filtered out",
 		},
 	}

@@ -97,18 +97,18 @@ func runTest_SolanaStakeShareDecrease(t *testing.T, llmFactory LLMClientFactory)
 	expectations := []Expectation{
 		{
 			Description:   "Validators that disconnected",
-			ExpectedValue: "vote4 and/or vote5",
+			ExpectedValue: "vote4/node4 and/or vote5/node5 (either vote_pubkey or node_pubkey identifier is acceptable)",
 			Rationale:     "These two validators disconnected in the past day, causing the stake share decrease",
 		},
 		{
-			Description:   "Stake amount for vote4",
-			ExpectedValue: "5000 SOL or 5,000 SOL",
-			Rationale:     "vote4 had 5000 SOL of activated stake when it disconnected",
+			Description:   "Stake amount for vote4/node4",
+			ExpectedValue: "5000 SOL or 5,000 SOL or 5T lamports",
+			Rationale:     "vote4/node4 had 5000 SOL (5 trillion lamports) of activated stake when it disconnected",
 		},
 		{
-			Description:   "Stake amount for vote5",
-			ExpectedValue: "4000 SOL or 4,000 SOL",
-			Rationale:     "vote5 had 4000 SOL of activated stake when it disconnected",
+			Description:   "Stake amount for vote5/node5",
+			ExpectedValue: "4000 SOL or 4,000 SOL or 4T lamports",
+			Rationale:     "vote5/node5 had 4000 SOL (4 trillion lamports) of activated stake when it disconnected",
 		},
 	}
 	isCorrect, err := evaluateResponse(t, ctx, question, response, expectations...)

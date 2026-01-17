@@ -661,7 +661,14 @@ export function Chat({ messages, isPending, processingSteps, externalLock, onSen
                   {exampleQuestions.map((question) => (
                     <button
                       key={question}
-                      onClick={() => onSendMessage(question)}
+                      onClick={(e) => {
+                        if (e.metaKey || e.ctrlKey) {
+                          sessionStorage.setItem('initialChatQuestion', question)
+                          window.open('/chat', '_blank')
+                        } else {
+                          onSendMessage(question)
+                        }
+                      }}
                       className="px-3 py-1.5 text-sm border border-border rounded-full hover:bg-secondary hover:border-muted-foreground/30 transition-colors"
                     >
                       {question}
@@ -798,7 +805,14 @@ export function Chat({ messages, isPending, processingSteps, externalLock, onSen
                           {msg.workflowData.followUpQuestions.map((question, i) => (
                             <button
                               key={i}
-                              onClick={() => onSendMessage(question)}
+                              onClick={(e) => {
+                                if (e.metaKey || e.ctrlKey) {
+                                  sessionStorage.setItem('initialChatQuestion', question)
+                                  window.open('/chat', '_blank')
+                                } else {
+                                  onSendMessage(question)
+                                }
+                              }}
                               className="px-3 py-1.5 text-sm border border-border rounded-full hover:bg-secondary hover:border-muted-foreground/30 transition-colors text-muted-foreground hover:text-foreground"
                             >
                               {question}

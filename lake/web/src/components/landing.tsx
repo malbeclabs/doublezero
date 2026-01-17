@@ -167,7 +167,14 @@ export function Landing() {
         {exampleQuestions.map((question) => (
           <button
             key={question}
-            onClick={() => handleStartChat(question)}
+            onClick={(e) => {
+              if (e.metaKey || e.ctrlKey) {
+                sessionStorage.setItem('initialChatQuestion', question)
+                window.open('/chat', '_blank')
+              } else {
+                handleStartChat(question)
+              }
+            }}
             className="px-3 py-1.5 text-sm border border-border rounded-full hover:bg-secondary hover:border-muted-foreground/30 transition-colors text-muted-foreground hover:text-foreground"
           >
             {question}

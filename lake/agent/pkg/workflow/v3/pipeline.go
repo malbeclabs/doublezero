@@ -468,18 +468,23 @@ func (p *Pipeline) executeSQL(ctx context.Context, params map[string]any, state 
 		}
 	}
 
+	// Track starting query number before appending
+	startNum := len(state.ExecutedQueries)
+
 	// Append to state
 	state.ExecutedQueries = append(state.ExecutedQueries, results...)
 
 	// Format results for model
-	return formatQueryResults(queries, results), nil
+	return formatQueryResults(queries, results, startNum), nil
 }
 
 // formatQueryResults formats query results for the model to consume.
-func formatQueryResults(queries []QueryInput, results []workflow.ExecutedQuery) string {
+// startNum is the number of queries already executed (0-indexed), so the first
+// query in this batch will be numbered startNum+1.
+func formatQueryResults(queries []QueryInput, results []workflow.ExecutedQuery, startNum int) string {
 	var sb strings.Builder
 	for i, q := range queries {
-		sb.WriteString(fmt.Sprintf("## Q%d: %s\n\n", i+1, q.Question))
+		sb.WriteString(fmt.Sprintf("## Q%d: %s\n\n", startNum+i+1, q.Question))
 		result := results[i].Result
 		if result.Error != "" {
 			sb.WriteString(fmt.Sprintf("**Error:** %s\n\n", result.Error))

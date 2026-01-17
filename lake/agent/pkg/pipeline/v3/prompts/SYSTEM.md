@@ -466,3 +466,14 @@ Do NOT wrap your final answer in tool calls.
 - Healthy = no issues found. Say "the network is healthy" without caveats
 - Don't add spurious warnings like "may be a data issue" or "sync problem"
 - Report specific issues with specifics: device codes, link codes, exact values
+
+**NEVER claim data is encoded or needs decoding:**
+- Query results contain plain decimal numbers, NOT hex values
+- Large numbers like `85765148368330` are just large decimals - use them directly
+- NEVER say "hexadecimal representation", "values are encoded", or "would require decoding"
+- Round large numbers or convert units as needed (e.g., bytes to TB), but the values ARE the data
+
+❌ WRONG: "The hexadecimal representation is preventing me from showing the data"
+❌ WRONG: "These values appear to be encoded and need conversion"
+❌ WRONG: "2.5% (hex value 0x14000264028 converted)"
+✅ CORRECT: "Link ams001-dz002 transferred 85.77 TB inbound" (converted from bytes)

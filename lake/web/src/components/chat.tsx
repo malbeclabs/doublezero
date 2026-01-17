@@ -485,6 +485,50 @@ interface ExternalLockInfo {
   question?: string
 }
 
+// Skeleton component for loading state
+function Skeleton({ className }: { className?: string }) {
+  return <div className={`animate-pulse bg-muted rounded ${className || ''}`} />
+}
+
+// Skeleton for chat loading state - shows placeholder messages
+export function ChatSkeleton() {
+  return (
+    <div className="flex flex-col flex-1 min-h-0">
+      <div className="flex-1 overflow-auto">
+        <div className="max-w-3xl mx-auto min-h-full">
+          <div className="px-4 py-8 space-y-6">
+            {/* User message skeleton */}
+            <div className="flex justify-end">
+              <Skeleton className="h-10 w-48 rounded-3xl" />
+            </div>
+            {/* Assistant message skeleton */}
+            <div className="px-1 space-y-2">
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-5/6" />
+              <Skeleton className="h-4 w-4/6" />
+            </div>
+            {/* Another user message */}
+            <div className="flex justify-end">
+              <Skeleton className="h-10 w-64 rounded-3xl" />
+            </div>
+            {/* Another assistant message */}
+            <div className="px-1 space-y-2">
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-3/4" />
+            </div>
+          </div>
+        </div>
+      </div>
+      {/* Input area skeleton */}
+      <div className="p-4 border-t border-border">
+        <div className="max-w-3xl mx-auto">
+          <Skeleton className="h-12 w-full rounded-2xl" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 interface ChatProps {
   messages: ChatMessage[]
   isPending: boolean

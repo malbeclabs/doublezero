@@ -8,7 +8,8 @@ import { ResultsView } from '@/components/results-view'
 import { SessionHistory, type GenerationRecord } from '@/components/session-history'
 import { SessionsPage } from '@/components/sessions-page'
 import { ChatSessionsPage } from '@/components/chat-sessions-page'
-import { Chat } from '@/components/chat'
+import { Chat, ChatSkeleton } from '@/components/chat'
+import { useDelayedLoading } from '@/hooks/use-delayed-loading'
 import type { ProcessingStep } from '@/lib/api'
 import { Landing } from '@/components/landing'
 import { Sidebar } from '@/components/sidebar'
@@ -494,6 +495,7 @@ function ChatView() {
     chatSessions,
     setChatSessions,
     currentChatSessionId,
+    chatSessionsLoaded,
     chatServerSyncComplete,
     pendingChats,
     setPendingChats,
@@ -503,6 +505,10 @@ function ChatView() {
     externalLocks,
     setExternalLocks,
   } = useAppContext()
+
+  // Show skeleton while loading (delayed to avoid flash for fast loads)
+  const isLoading = !chatSessionsLoaded || !chatServerSyncComplete
+  const showSkeleton = useDelayedLoading(isLoading)
 
   const currentChatSession = chatSessions.find(s => s.id === currentChatSessionId)
   const chatMessages = currentChatSession?.messages ?? []
@@ -847,6 +853,15 @@ function ChatView() {
 
   // Get external lock for this session (if any)
   const currentExternalLock = externalLocks.get(currentChatSessionId)
+
+  // Show skeleton while loading (with delay to avoid flash)
+  if (isLoading && showSkeleton) {
+    return <ChatSkeleton />
+  }
+  // Still loading but delay hasn't passed - show nothing briefly
+  if (isLoading) {
+    return null
+  }
 
   return (
     <Chat

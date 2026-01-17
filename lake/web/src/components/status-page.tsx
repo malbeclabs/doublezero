@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState, useEffect, useMemo } from 'react'
+import { useDelayedLoading } from '@/hooks/use-delayed-loading'
 import { Link } from 'react-router-dom'
 import { CheckCircle2, AlertTriangle, XCircle, ArrowUpDown, Cpu } from 'lucide-react'
 import { fetchStatus, fetchLinkHistory, type StatusResponse, type InterfaceIssue, type NonActivatedLink } from '@/lib/api'
@@ -854,22 +855,6 @@ function useBucketCount() {
   }, [])
 
   return buckets
-}
-
-// Hook to delay showing skeleton - avoids flash for fast loads
-function useDelayedLoading(isLoading: boolean, delay = 150) {
-  const [showSkeleton, setShowSkeleton] = useState(false)
-
-  useEffect(() => {
-    if (isLoading) {
-      const timer = setTimeout(() => setShowSkeleton(true), delay)
-      return () => clearTimeout(timer)
-    } else {
-      setShowSkeleton(false)
-    }
-  }, [isLoading, delay])
-
-  return showSkeleton
 }
 
 export function StatusPage() {

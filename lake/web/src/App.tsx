@@ -1143,7 +1143,19 @@ function AppContent() {
                     generatedQueries: data.generatedQueries ?? [],
                     executedQueries: data.executedQueries ?? [],
                     followUpQuestions: data.followUpQuestions,
-                    processingSteps: [...localSteps], // Copy from local array
+                    // Enrich processing steps with actual data from executedQueries
+                    // (SSE events only send row count, not columns/data)
+                    processingSteps: localSteps.map(step => {
+                      if (step.type !== 'query') return step
+                      const executed = data.executedQueries?.find(q => q.question === step.question)
+                      if (!executed) return step
+                      return {
+                        ...step,
+                        columns: executed.columns,
+                        data: executed.rows,
+                        rows: executed.count,
+                      }
+                    }),
                   },
                   executedQueries: data.executedQueries?.map(q => q.sql) ?? [],
                   status: 'complete',

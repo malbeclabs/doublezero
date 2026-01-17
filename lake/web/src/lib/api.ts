@@ -275,11 +275,32 @@ export interface ExecutedQuery {
   error?: string
 }
 
+// Processing step types for unified timeline
+export interface ThinkingStep {
+  type: 'thinking'
+  content: string
+}
+
+export interface QueryStep {
+  type: 'query'
+  question: string
+  sql: string
+  status: 'running' | 'completed' | 'error'
+  rows?: number
+  columns?: string[]
+  data?: unknown[][]
+  error?: string
+}
+
+export type ProcessingStep = ThinkingStep | QueryStep
+
 export interface ChatPipelineData {
   dataQuestions: DataQuestion[]
   generatedQueries: GeneratedQuery[]
   executedQueries: ExecutedQuery[]
   followUpQuestions?: string[]
+  // Processing timeline for unified display
+  processingSteps?: ProcessingStep[]
 }
 
 export interface ChatResponse {
@@ -310,13 +331,11 @@ export async function sendChatMessage(
 }
 
 export interface ChatStreamCallbacks {
-  onStatus: (status: { step: string; message: string }) => void
-  onDecomposed: (data: { count: number; questions: DataQuestion[] }) => void
-  onQueryProgress: (data: { completed: number; total: number; question: string; success: boolean; rows: number }) => void
-  // v3 callbacks
-  onThinking?: (data: { content: string }) => void
-  onQueryStarted?: (data: { question: string; sql: string }) => void
-  onQueryDone?: (data: { question: string; sql: string; rows: number; error: string }) => void
+  // Processing events
+  onThinking: (data: { content: string }) => void
+  onQueryStarted: (data: { question: string; sql: string }) => void
+  onQueryDone: (data: { question: string; sql: string; rows: number; error: string }) => void
+  // Completion events
   onDone: (response: ChatResponse) => void
   onError: (error: string) => void
   onRetrying?: (attempt: number, maxAttempts: number) => void
@@ -429,40 +448,25 @@ export async function sendChatMessageStream(
           try {
             const parsed = JSON.parse(data)
             switch (currentEvent) {
-              case 'status':
-                callbacks.onStatus(parsed)
-                break
-              case 'decomposed':
-                callbacks.onDecomposed(parsed)
-                break
-              case 'query_progress':
-                callbacks.onQueryProgress(parsed)
-                break
-              // v3 events
               case 'thinking':
-                callbacks.onThinking?.(parsed)
+                callbacks.onThinking(parsed)
                 break
               case 'query_started':
-                callbacks.onQueryStarted?.(parsed)
+                callbacks.onQueryStarted(parsed)
                 break
               case 'query_done':
-                callbacks.onQueryDone?.(parsed)
+                callbacks.onQueryDone(parsed)
                 break
+              case 'status':
               case 'heartbeat':
+                // Ignore legacy status events and heartbeats
                 break
               case 'done':
-                console.log('[SSE] done event received', {
-                  answerLength: parsed.answer?.length,
-                  hasError: !!parsed.error,
-                  keys: Object.keys(parsed),
-                  rawParsed: JSON.stringify(parsed).slice(0, 500)
-                })
                 streamCompleted = true
                 callbacks.onDone(parsed)
-                console.log('[SSE] onDone callback completed')
                 break
               case 'error':
-                streamCompleted = true  // Server-side error is a completed stream
+                streamCompleted = true
                 callbacks.onError(parsed.error || 'Unknown error')
                 break
             }

@@ -2,9 +2,24 @@ import { useRef, useEffect, useState, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import type { ChatMessage, ChatPipelineData } from '@/lib/api'
-import { ArrowUp, Square, Loader2, Copy, Check, ChevronDown, ChevronRight, ExternalLink, MessageCircle, Circle, XCircle, CheckCircle2, RefreshCw, RotateCcw } from 'lucide-react'
+import { format as formatSQL } from 'sql-formatter'
+import type { ChatMessage, ProcessingStep } from '@/lib/api'
+import { ArrowUp, Square, Loader2, Copy, Check, ChevronDown, ChevronRight, ExternalLink, MessageCircle, CheckCircle2, XCircle, Brain, RotateCcw } from 'lucide-react'
 import { useTheme } from '@/hooks/use-theme'
+
+// Format SQL for display
+function formatSQLForDisplay(sql: string): string {
+  try {
+    return formatSQL(sql, {
+      language: 'sql',
+      tabWidth: 2,
+      keywordCase: 'upper',
+    })
+  } catch {
+    // If formatting fails, return original
+    return sql
+  }
+}
 
 // Light theme for syntax highlighting
 const lightCodeTheme: { [key: string]: React.CSSProperties } = {
@@ -177,8 +192,10 @@ function CodeBlock({ language, children, isDark }: { language: string; children:
   )
 }
 
-interface PipelineDetailsProps {
-  data: ChatPipelineData
+// Processing timeline component - shows thinking and query steps
+interface ProcessingTimelineProps {
+  steps: ProcessingStep[]
+  isStreaming?: boolean
   onOpenInQueryEditor?: (sql: string) => void
   onAskAboutQuery?: (question: string, sql: string, rowCount: number) => void
   highlightedQuery?: number | null
@@ -186,24 +203,34 @@ interface PipelineDetailsProps {
   isDark: boolean
 }
 
-function PipelineDetails({ data, onOpenInQueryEditor, onAskAboutQuery, highlightedQuery, onHighlightClear, isDark }: PipelineDetailsProps) {
-  const [isExpanded, setIsExpanded] = useState(false)
+function ProcessingTimeline({
+  steps,
+  isStreaming = false,
+  onOpenInQueryEditor,
+  onAskAboutQuery,
+  highlightedQuery,
+  onHighlightClear,
+  isDark
+}: ProcessingTimelineProps) {
+  const [isExpanded, setIsExpanded] = useState(isStreaming)
   const [expandedQueries, setExpandedQueries] = useState<Set<number>>(new Set())
   const queryRefs = useRef<Map<number, HTMLDivElement>>(new Map())
+
+  // Auto-expand when streaming
+  useEffect(() => {
+    if (isStreaming) setIsExpanded(true)
+  }, [isStreaming])
 
   // Auto-expand and scroll when a query is highlighted
   useEffect(() => {
     if (highlightedQuery !== null && highlightedQuery !== undefined) {
       setIsExpanded(true)
       setExpandedQueries(prev => new Set([...prev, highlightedQuery]))
-
-      // Scroll to the query after a brief delay for rendering
       setTimeout(() => {
         const ref = queryRefs.current.get(highlightedQuery)
         if (ref) {
           ref.scrollIntoView({ behavior: 'smooth', block: 'center' })
         }
-        // Clear highlight after scrolling
         if (onHighlightClear) {
           setTimeout(onHighlightClear, 1500)
         }
@@ -211,132 +238,172 @@ function PipelineDetails({ data, onOpenInQueryEditor, onAskAboutQuery, highlight
     }
   }, [highlightedQuery, onHighlightClear])
 
-  const totalQueries = data.executedQueries?.length ?? 0
-  const successfulQueries = data.executedQueries?.filter(q => !q.error).length ?? 0
+  if (steps.length === 0 && !isStreaming) return null
 
-  if (totalQueries === 0) return null
+  const querySteps = steps.filter((s): s is Extract<ProcessingStep, { type: 'query' }> => s.type === 'query')
+  const completedQueries = querySteps.filter(q => q.status === 'completed').length
+  const totalQueries = querySteps.length
 
   const toggleQuery = (index: number) => {
     setExpandedQueries(prev => {
       const next = new Set(prev)
-      if (next.has(index)) {
-        next.delete(index)
-      } else {
-        next.add(index)
-      }
+      if (next.has(index)) next.delete(index)
+      else next.add(index)
       return next
     })
   }
 
+  // Build summary text
+  const thinkingSteps = steps.filter(s => s.type === 'thinking')
+  const getSummary = () => {
+    if (isStreaming && steps.length === 0) return 'Processing...'
+    if (isStreaming) {
+      if (totalQueries === 0 && thinkingSteps.length > 0) return 'Thinking...'
+      if (totalQueries > 0) return `Running ${totalQueries} ${totalQueries === 1 ? 'query' : 'queries'}...`
+      return 'Processing...'
+    }
+    // Completed state - show what was done
+    const parts: string[] = []
+    if (thinkingSteps.length > 0) parts.push(`${thinkingSteps.length} ${thinkingSteps.length === 1 ? 'thought' : 'thoughts'}`)
+    if (totalQueries > 0) parts.push(`${completedQueries} ${completedQueries === 1 ? 'query' : 'queries'}`)
+    if (parts.length === 0) return 'Processing complete'
+    return parts.join(', ')
+  }
+
   return (
-    <div className="mt-3 border border-border rounded-lg overflow-hidden">
+    <div className={`border border-border rounded-lg overflow-hidden ${isStreaming ? 'border-accent/30' : ''}`}>
       <button
         onClick={() => setIsExpanded(!isExpanded)}
         className="w-full flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:bg-secondary/50 transition-colors"
       >
-        {isExpanded ? (
+        {isStreaming ? (
+          <Loader2 className="w-4 h-4 text-accent animate-spin" />
+        ) : isExpanded ? (
           <ChevronDown className="w-4 h-4" />
         ) : (
           <ChevronRight className="w-4 h-4" />
         )}
-        <span>
-          {successfulQueries}/{totalQueries} queries executed
-        </span>
+        <span>{getSummary()}</span>
       </button>
 
       {isExpanded && (
-        <div className="border-t border-border">
-          {/* Executed Queries */}
-          {data.executedQueries && data.executedQueries.length > 0 && (
-            <div className="divide-y divide-border">
-              {data.executedQueries.map((eq, i) => (
-                <div
-                  key={i}
-                  ref={(el) => { if (el) queryRefs.current.set(i, el) }}
-                  className={`px-3 py-2 transition-colors ${highlightedQuery === i ? 'bg-accent-orange-20' : ''}`}
-                >
-                  <button
-                    onClick={() => toggleQuery(i)}
-                    className="w-full flex items-center gap-2 text-left"
-                  >
-                    {expandedQueries.has(i) ? (
-                      <ChevronDown className="w-3 h-3 text-muted-foreground flex-shrink-0" />
-                    ) : (
-                      <ChevronRight className="w-3 h-3 text-muted-foreground flex-shrink-0" />
-                    )}
-                    <span className="text-sm truncate flex-1">
-                      {eq.question}
-                    </span>
-                    <span className={`text-xs ${eq.error ? 'text-red-500' : 'text-green-600'}`}>
-                      {eq.error ? 'error' : `${eq.count} rows`}
-                    </span>
-                  </button>
+        <div className="border-t border-border divide-y divide-border">
+          {steps.map((step, i) => {
+            if (step.type === 'thinking') {
+              return (
+                <div key={i} className="px-3 py-2">
+                  <div className="flex items-start gap-2">
+                    <Brain className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                    <p className="text-sm text-muted-foreground leading-relaxed">
+                      {step.content}
+                    </p>
+                  </div>
+                </div>
+              )
+            }
 
-                  {expandedQueries.has(i) && (
-                    <div className="mt-2 ml-5">
-                      <div className="relative">
-                        <CodeBlock language="sql" isDark={isDark}>{eq.sql}</CodeBlock>
-                        <div className="absolute right-10 top-2 flex items-center gap-1 z-10">
-                          {onAskAboutQuery && !eq.error && (
-                            <button
-                              onClick={() => onAskAboutQuery(eq.question, eq.sql, eq.count)}
-                              className="p-1.5 rounded border border-border bg-card/80 text-accent hover:bg-accent-orange-20 transition-colors flex items-center gap-1 text-xs"
-                              title="Ask about this result"
-                            >
-                              <MessageCircle className="h-3 w-3" />
-                              <span>Ask</span>
-                            </button>
-                          )}
-                          {onOpenInQueryEditor && (
-                            <button
-                              onClick={() => onOpenInQueryEditor(eq.sql)}
-                              className="p-1.5 rounded border border-border bg-card/80 text-muted-foreground hover:text-foreground hover:bg-accent-orange-20 transition-colors flex items-center gap-1 text-xs"
-                              title="Open in Query Editor"
-                            >
-                              <ExternalLink className="h-3 w-3" />
-                              <span>Edit</span>
-                            </button>
-                          )}
-                        </div>
+            // Query step - find its index among query steps for highlighting
+            const queryIndex = querySteps.findIndex(q => q === step)
+            const isHighlighted = highlightedQuery === queryIndex
+
+            return (
+              <div
+                key={i}
+                ref={(el) => { if (el) queryRefs.current.set(queryIndex, el) }}
+                className={`px-3 py-2 transition-colors ${isHighlighted ? 'bg-accent-orange-20' : ''}`}
+              >
+                <button
+                  onClick={() => toggleQuery(queryIndex)}
+                  className="w-full flex items-center gap-2 text-left"
+                >
+                  <div className="flex-shrink-0">
+                    {step.status === 'running' && (
+                      <Loader2 className="w-4 h-4 text-accent animate-spin" />
+                    )}
+                    {step.status === 'completed' && (
+                      <CheckCircle2 className="w-4 h-4 text-green-500" />
+                    )}
+                    {step.status === 'error' && (
+                      <XCircle className="w-4 h-4 text-red-500" />
+                    )}
+                  </div>
+                  <span className="text-sm truncate flex-1">{step.question}</span>
+                  {step.status !== 'running' && (
+                    <span className={`text-xs ${step.error ? 'text-red-500' : 'text-green-600'}`}>
+                      {step.error ? 'error' : `${step.rows ?? 0} rows`}
+                    </span>
+                  )}
+                </button>
+
+                {expandedQueries.has(queryIndex) && (
+                  <div className="mt-2 ml-6">
+                    <div className="relative">
+                      <CodeBlock language="sql" isDark={isDark}>{formatSQLForDisplay(step.sql)}</CodeBlock>
+                      <div className="absolute right-10 top-2 flex items-center gap-1 z-10">
+                        {onAskAboutQuery && step.status === 'completed' && !step.error && (
+                          <button
+                            onClick={() => onAskAboutQuery(step.question, step.sql, step.rows ?? 0)}
+                            className="p-1.5 rounded border border-border bg-card/80 text-accent hover:bg-accent-orange-20 transition-colors flex items-center gap-1 text-xs"
+                            title="Ask about this result"
+                          >
+                            <MessageCircle className="h-3 w-3" />
+                            <span>Ask</span>
+                          </button>
+                        )}
+                        {onOpenInQueryEditor && (
+                          <button
+                            onClick={() => onOpenInQueryEditor(step.sql)}
+                            className="p-1.5 rounded border border-border bg-card/80 text-muted-foreground hover:text-foreground hover:bg-accent-orange-20 transition-colors flex items-center gap-1 text-xs"
+                            title="Open in Query Editor"
+                          >
+                            <ExternalLink className="h-3 w-3" />
+                            <span>Edit</span>
+                          </button>
+                        )}
                       </div>
-                      {eq.error && (
-                        <div className="text-sm text-red-500 mt-2">{eq.error}</div>
-                      )}
-                      {!eq.error && eq.rows && eq.rows.length > 0 && (
-                        <div className="mt-2 overflow-x-auto">
-                          <table className="text-xs w-full">
-                            <thead>
-                              <tr className="border-b border-border">
-                                {eq.columns.map((col, ci) => (
-                                  <th key={ci} className="text-left px-2 py-1 font-medium text-muted-foreground">
-                                    {col}
-                                  </th>
+                    </div>
+                    {step.error && (
+                      <div className="text-sm text-red-500 mt-2">{step.error}</div>
+                    )}
+                    {!step.error && step.data && step.data.length > 0 && step.columns && (
+                      <div className="mt-2 overflow-x-auto">
+                        <table className="text-xs w-full">
+                          <thead>
+                            <tr className="border-b border-border">
+                              {step.columns.map((col, ci) => (
+                                <th key={ci} className="text-left px-2 py-1 font-medium text-muted-foreground">
+                                  {col}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {step.data.slice(0, 10).map((row, ri) => (
+                              <tr key={ri} className="border-b border-border/50">
+                                {(row as unknown[]).map((cell, ci) => (
+                                  <td key={ci} className="px-2 py-1 text-foreground">
+                                    {String(cell ?? '')}
+                                  </td>
                                 ))}
                               </tr>
-                            </thead>
-                            <tbody>
-                              {eq.rows.slice(0, 10).map((row, ri) => (
-                                <tr key={ri} className="border-b border-border/50">
-                                  {(row as unknown[]).map((cell, ci) => (
-                                    <td key={ci} className="px-2 py-1 text-foreground">
-                                      {String(cell ?? '')}
-                                    </td>
-                                  ))}
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                          {eq.rows.length > 10 && (
-                            <div className="text-xs text-muted-foreground mt-1">
-                              ... and {eq.rows.length - 10} more rows
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))}
+                            ))}
+                          </tbody>
+                        </table>
+                        {step.data.length > 10 && (
+                          <div className="text-xs text-muted-foreground mt-1">
+                            ... and {step.data.length - 10} more rows
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+          {isStreaming && steps.length === 0 && (
+            <div className="px-3 py-2 text-sm text-muted-foreground">
+              Analyzing your question...
             </div>
           )}
         </div>
@@ -388,69 +455,6 @@ function CitationText({ text, onCitationClick }: { text: string; onCitationClick
   return <>{parts}</>
 }
 
-// Timeline step component for progress display
-function TimelineStep({ label, status }: { label: string; status: 'pending' | 'running' | 'completed' }) {
-  return (
-    <div className="flex items-center gap-2">
-      <div className="flex-shrink-0">
-        {status === 'completed' && (
-          <CheckCircle2 className="w-4 h-4 text-green-500" />
-        )}
-        {status === 'running' && (
-          <Loader2 className="w-4 h-4 text-accent animate-spin" />
-        )}
-        {status === 'pending' && (
-          <Circle className="w-4 h-4 text-muted-foreground/30" />
-        )}
-      </div>
-      <span className={`text-sm ${
-        status === 'completed' ? 'text-muted-foreground' :
-        status === 'running' ? 'text-foreground' :
-        'text-muted-foreground/50'
-      }`}>
-        {label}
-      </span>
-    </div>
-  )
-}
-
-export interface QueryProgressItem {
-  question: string
-  status: 'pending' | 'running' | 'completed' | 'error'
-  rows?: number
-}
-
-// Workflow step types
-export type WorkflowStep = 'thinking' | 'executing' | 'synthesizing'
-
-// Step order for the workflow
-export const STEP_ORDER: WorkflowStep[] = ['thinking', 'executing', 'synthesizing']
-
-// Get human-readable label for a step
-export function getStepLabel(step: WorkflowStep | string): string {
-  switch (step) {
-    case 'thinking': return 'Analyzing'
-    case 'executing': return 'Running queries'
-    case 'synthesizing': return 'Preparing answer'
-    default: return step
-  }
-}
-
-export interface ChatProgress {
-  status?: string
-  step?: string
-  questionsCount?: number
-  queriesCompleted?: number
-  queriesTotal?: number
-  lastQuery?: string
-  // Full list of queries with their completion status
-  queries?: QueryProgressItem[]
-  // Track which steps have been completed
-  completedSteps?: WorkflowStep[]
-  // v3: Thinking content from the model
-  thinkingContent?: string
-}
-
 interface ExternalLockInfo {
   question?: string
 }
@@ -458,7 +462,7 @@ interface ExternalLockInfo {
 interface ChatProps {
   messages: ChatMessage[]
   isPending: boolean
-  progress?: ChatProgress
+  processingSteps?: ProcessingStep[]
   externalLock?: ExternalLockInfo | null
   onSendMessage: (message: string) => void
   onAbort: () => void
@@ -466,7 +470,7 @@ interface ChatProps {
   onOpenInQueryEditor?: (sql: string) => void
 }
 
-export function Chat({ messages, isPending, progress, externalLock, onSendMessage, onAbort, onRetry, onOpenInQueryEditor }: ChatProps) {
+export function Chat({ messages, isPending, processingSteps, externalLock, onSendMessage, onAbort, onRetry, onOpenInQueryEditor }: ChatProps) {
   const [input, setInput] = useState('')
   const [highlightedQueries, setHighlightedQueries] = useState<Map<number, number | null>>(new Map()) // messageIndex -> queryIndex
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -534,10 +538,10 @@ export function Chat({ messages, isPending, progress, externalLock, onSendMessag
 
   // Scroll to follow progress updates if user is at bottom
   useEffect(() => {
-    if (isPending && progress) {
+    if (isPending && processingSteps && processingSteps.length > 0) {
       scrollToBottomIfNeeded()
     }
-  }, [isPending, progress])
+  }, [isPending, processingSteps])
 
   // Scroll when external lock appears if user is at bottom
   useEffect(() => {
@@ -639,6 +643,20 @@ export function Chat({ messages, isPending, progress, externalLock, onSendMessag
                     </div>
                   ) : (
                     <div className="px-1">
+                      {/* Processing timeline - shows for completed messages with processing steps */}
+                      {msg.pipelineData?.processingSteps && msg.pipelineData.processingSteps.length > 0 && (
+                        <div className="mb-3">
+                          <ProcessingTimeline
+                            steps={msg.pipelineData.processingSteps}
+                            isStreaming={false}
+                            onOpenInQueryEditor={onOpenInQueryEditor}
+                            onAskAboutQuery={handleAskAboutQuery}
+                            highlightedQuery={highlightedQueries.get(msgIndex) ?? null}
+                            onHighlightClear={handleHighlightClear}
+                            isDark={isDark}
+                          />
+                        </div>
+                      )}
                       <div className="prose max-w-none font-sans">
                         <ReactMarkdown
                           remarkPlugins={[remarkGfm]}
@@ -704,16 +722,6 @@ export function Chat({ messages, isPending, progress, externalLock, onSendMessag
                           {msg.content}
                         </ReactMarkdown>
                       </div>
-                      {msg.pipelineData && (
-                        <PipelineDetails
-                          data={msg.pipelineData}
-                          onOpenInQueryEditor={onOpenInQueryEditor}
-                          onAskAboutQuery={handleAskAboutQuery}
-                          highlightedQuery={highlightedQueries.get(msgIndex) ?? null}
-                          onHighlightClear={handleHighlightClear}
-                          isDark={isDark}
-                        />
-                      )}
                       {/* Follow-up suggestions */}
                       {msg.pipelineData?.followUpQuestions && msg.pipelineData.followUpQuestions.length > 0 && (
                         <div className="mt-4 flex flex-wrap gap-2">
@@ -733,127 +741,15 @@ export function Chat({ messages, isPending, progress, externalLock, onSendMessag
                 </div>
               )
             })}
-            {isPending && progress && (
-              <div className="px-1">
-                {/* Reconnecting indicator */}
-                {progress.step === 'retrying' && (
-                  <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-amber-500/10 border border-amber-500/20 rounded-lg">
-                    <RefreshCw className="w-4 h-4 text-amber-500 animate-spin" />
-                    <span className="text-sm text-amber-600 dark:text-amber-400">{progress.status}</span>
-                  </div>
-                )}
-                {/* Step timeline */}
-                <div className="space-y-2">
-                  {(() => {
-                    const currentStep = progress.step || ''
-                    const currentStepIndex = STEP_ORDER.indexOf(currentStep as WorkflowStep)
-
-                    return STEP_ORDER.map((step, idx) => {
-                      // Don't show steps that haven't been reached yet
-                      const isReached = idx <= currentStepIndex || progress.completedSteps?.includes(step)
-                      // Always show first step
-                      if (idx > 0 && !isReached) return null
-
-                      // Determine step status
-                      const status = progress.completedSteps?.includes(step) ? 'completed' :
-                        progress.step === step ? 'running' : 'pending'
-
-                      // Special handling for thinking step - show thinking content
-                      if (step === 'thinking' && progress.thinkingContent) {
-                        return (
-                          <div key={step}>
-                            <TimelineStep
-                              label={getStepLabel(step)}
-                              status={status}
-                            />
-                            {/* Show thinking content when in thinking step */}
-                            {progress.step === 'thinking' && (
-                              <div className="ml-6 mt-2">
-                                <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">
-                                  {progress.thinkingContent}
-                                </p>
-                              </div>
-                            )}
-                          </div>
-                        )
-                      }
-
-                      // Special handling for executing step - show query details
-                      if (step === 'executing' && progress.queries && progress.queries.length > 0) {
-                        return (
-                          <div key={step}>
-                            <TimelineStep
-                              label={`Running ${progress.queriesTotal || 0} ${(progress.queriesTotal || 0) === 1 ? 'query' : 'queries'}`}
-                              status={status}
-                            />
-                            {/* Nested query progress - show during/after executing */}
-                            {(progress.step === 'executing' || progress.step === 'synthesizing') && (
-                              <div className="ml-6 mt-2 space-y-2">
-                                {/* Progress bar */}
-                                <div className="flex items-center gap-2">
-                                  <div className="flex-1 h-1.5 bg-secondary rounded-full overflow-hidden">
-                                    <div
-                                      className="h-full bg-accent transition-all duration-300"
-                                      style={{ width: `${((progress.queriesCompleted || 0) / (progress.queriesTotal || 1)) * 100}%` }}
-                                    />
-                                  </div>
-                                  <span className="text-xs text-muted-foreground tabular-nums">
-                                    {progress.queriesCompleted || 0}/{progress.queriesTotal || 0}
-                                  </span>
-                                </div>
-                                {/* Query list */}
-                                <div className="space-y-1">
-                                  {progress.queries.map((query, i) => (
-                                    <div key={i} className="flex items-start gap-2">
-                                      <div className="flex-shrink-0 mt-0.5">
-                                        {query.status === 'completed' && (
-                                          <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
-                                        )}
-                                        {query.status === 'error' && (
-                                          <XCircle className="w-3.5 h-3.5 text-red-500" />
-                                        )}
-                                        {query.status === 'running' && (
-                                          <Loader2 className="w-3.5 h-3.5 text-accent animate-spin" />
-                                        )}
-                                        {query.status === 'pending' && (
-                                          <Circle className="w-3.5 h-3.5 text-muted-foreground/30" />
-                                        )}
-                                      </div>
-                                      <span className={`text-xs leading-tight ${
-                                        query.status === 'completed' ? 'text-muted-foreground' :
-                                        query.status === 'error' ? 'text-red-500' :
-                                        query.status === 'running' ? 'text-foreground' :
-                                        'text-muted-foreground/50'
-                                      }`}>
-                                        {query.question}
-                                      </span>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )
-                      }
-
-                      return (
-                        <TimelineStep
-                          key={step}
-                          label={getStepLabel(step)}
-                          status={status}
-                        />
-                      )
-                    })
-                  })()}
-                </div>
-              </div>
-            )}
-            {isPending && !progress && (
-              <div className="px-1">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span className="text-sm">Thinking...</span>
-                </div>
+            {/* Streaming progress - shows ProcessingTimeline during streaming */}
+            {isPending && (
+              <div className="px-1 mt-3">
+                <ProcessingTimeline
+                  steps={processingSteps || []}
+                  isStreaming={true}
+                  onOpenInQueryEditor={onOpenInQueryEditor}
+                  isDark={isDark}
+                />
               </div>
             )}
             {externalLock && !isPending && (

@@ -8,7 +8,8 @@ import { ResultsView } from '@/components/results-view'
 import { SessionHistory, type GenerationRecord } from '@/components/session-history'
 import { SessionsPage } from '@/components/sessions-page'
 import { ChatSessionsPage } from '@/components/chat-sessions-page'
-import { Chat, type ChatProgress, type QueryProgressItem, type WorkflowStep, STEP_ORDER } from '@/components/chat'
+import { Chat } from '@/components/chat'
+import type { ProcessingStep } from '@/lib/api'
 import { Landing } from '@/components/landing'
 import { Sidebar } from '@/components/sidebar'
 import { SearchSpotlight } from '@/components/search-spotlight'
@@ -73,7 +74,7 @@ const queryClient = new QueryClient({
 
 // Per-session pending state for concurrent chat requests
 interface PendingChatState {
-  progress: ChatProgress
+  processingSteps: ProcessingStep[]
   abortController: AbortController
 }
 
@@ -504,7 +505,7 @@ function ChatView() {
   const chatMessages = currentChatSession?.messages ?? []
   const pendingState = pendingChats.get(currentChatSessionId)
   const isPending = !!pendingState
-  const currentProgress = pendingState?.progress ?? null
+  const currentProcessingSteps = pendingState?.processingSteps ?? []
 
   // Auto-resume incomplete streaming messages on page load
   // Wait for server sync to complete before checking - otherwise we might miss streaming messages
@@ -708,7 +709,7 @@ function ChatView() {
     <Chat
       messages={chatMessages}
       isPending={isPending}
-      progress={currentProgress ?? undefined}
+      processingSteps={currentProcessingSteps}
       externalLock={currentExternalLock ? { question: currentExternalLock.question } : null}
       onSendMessage={handleSendMessage}
       onAbort={handleAbort}
@@ -965,20 +966,37 @@ function AppContent() {
     }
   }, [chatSessions, chatSessionsLoaded, chatSyncFns])
 
-  // Helper to update progress for a specific session
-  // Accepts either a progress object or a function that receives the previous progress
-  const updatePendingProgress = useCallback((
+  // Helper to add a processing step to a session's pending state
+  const addProcessingStep = useCallback((sessionId: string, step: ProcessingStep) => {
+    setPendingChats(prev => {
+      const existing = prev.get(sessionId)
+      if (!existing) return prev
+      const next = new Map(prev)
+      next.set(sessionId, {
+        ...existing,
+        processingSteps: [...existing.processingSteps, step],
+      })
+      return next
+    })
+  }, [])
+
+  // Helper to update a query step (e.g., mark as completed)
+  const updateQueryStep = useCallback((
     sessionId: string,
-    progressOrFn: ChatProgress | ((prev: ChatProgress) => ChatProgress)
+    question: string,
+    update: { status: 'completed' | 'error'; rows?: number; error?: string }
   ) => {
     setPendingChats(prev => {
       const existing = prev.get(sessionId)
       if (!existing) return prev
       const next = new Map(prev)
-      const newProgress = typeof progressOrFn === 'function'
-        ? progressOrFn(existing.progress)
-        : progressOrFn
-      next.set(sessionId, { ...existing, progress: newProgress })
+      const updatedSteps = existing.processingSteps.map(step => {
+        if (step.type === 'query' && step.question === question) {
+          return { ...step, ...update }
+        }
+        return step
+      })
+      next.set(sessionId, { ...existing, processingSteps: updatedSteps })
       return next
     })
   }, [])
@@ -1026,7 +1044,7 @@ function AppContent() {
     setPendingChats(prev => {
       const next = new Map(prev)
       next.set(sessionId, {
-        progress: { status: 'Starting...' },
+        processingSteps: [],
         abortController,
       })
       return next
@@ -1038,156 +1056,71 @@ function AppContent() {
         message,
         history,
         {
-          onStatus: (status) => {
-            updatePendingProgress(sessionId, (prev) => {
-              // Track completed steps - when we move to a new step, previous ones are done
-              const currentStepIndex = STEP_ORDER.indexOf(status.step as WorkflowStep)
-              const completedSteps = currentStepIndex > 0
-                ? STEP_ORDER.slice(0, currentStepIndex)
-                : []
-              return {
-                ...prev,
-                status: status.message,
-                step: status.step,
-                completedSteps,
-              }
-            })
-          },
-          onDecomposed: (data) => {
-            // Initialize all queries as pending, first one as running
-            const queries: QueryProgressItem[] = data.questions.map((q, i) => ({
-              question: q.question,
-              status: i === 0 ? 'running' : 'pending',
-            }))
-            updatePendingProgress(sessionId, (prev) => {
-              // Get steps before 'executing'
-              const executingIndex = STEP_ORDER.indexOf('executing')
-              const completedSteps = executingIndex > 0 ? STEP_ORDER.slice(0, executingIndex) : []
-              return {
-                ...prev,
-                status: `Running ${data.count} queries...`,
-                step: 'executing',
-                questionsCount: data.count,
-                queriesCompleted: 0,
-                queriesTotal: data.count,
-                queries,
-                completedSteps,
-              }
-            })
-          },
-          onQueryProgress: (data) => {
-            updatePendingProgress(sessionId, (prev) => {
-              // Update queries list: mark completed query, set next to running
-              const queries = prev.queries?.map((q, i) => {
-                if (q.question === data.question) {
-                  return {
-                    ...q,
-                    status: data.success ? 'completed' : 'error',
-                    rows: data.rows,
-                  } as QueryProgressItem
-                }
-                // Set the next pending query to running
-                if (q.status === 'pending' && i === data.completed) {
-                  return { ...q, status: 'running' } as QueryProgressItem
-                }
-                return q
-              })
-              return {
-                ...prev,
-                status: `Running queries...`,
-                step: 'executing',
-                queriesCompleted: data.completed,
-                queriesTotal: data.total,
-                lastQuery: data.question,
-                queries,
-              }
-            })
-          },
-          // v3 callbacks
           onThinking: (data) => {
-            updatePendingProgress(sessionId, (prev) => ({
-              ...prev,
-              status: 'Thinking...',
-              step: 'thinking',
-              thinkingContent: data.content,
-            }))
+            addProcessingStep(sessionId, {
+              type: 'thinking',
+              content: data.content,
+            })
           },
           onQueryStarted: (data) => {
-            updatePendingProgress(sessionId, (prev) => {
-              // Add query to the list as running
-              const existingQueries = prev.queries || []
-              // Check if query already exists (avoid duplicates)
-              const queryExists = existingQueries.some(q => q.question === data.question)
-              const queries: QueryProgressItem[] = queryExists
-                ? existingQueries
-                : [...existingQueries, { question: data.question, status: 'running' as const }]
-              return {
-                ...prev,
-                status: 'Running queries...',
-                step: 'executing',
-                queriesTotal: queries.length,
-                queries,
-              }
+            addProcessingStep(sessionId, {
+              type: 'query',
+              question: data.question,
+              sql: data.sql,
+              status: 'running',
             })
           },
           onQueryDone: (data) => {
-            updatePendingProgress(sessionId, (prev) => {
-              // Mark the query as completed or error
-              const queries = prev.queries?.map(q => {
-                if (q.question === data.question) {
-                  return {
-                    ...q,
-                    status: data.error ? 'error' : 'completed',
-                    rows: data.rows,
-                  } as QueryProgressItem
-                }
-                return q
-              }) || []
-              const completedCount = queries.filter(q => q.status === 'completed' || q.status === 'error').length
-              return {
-                ...prev,
-                status: 'Running queries...',
-                step: 'executing',
-                queriesCompleted: completedCount,
-                queriesTotal: queries.length,
-                lastQuery: data.question,
-                queries,
-              }
+            updateQueryStep(sessionId, data.question, {
+              status: data.error ? 'error' : 'completed',
+              rows: data.rows,
+              error: data.error || undefined,
             })
           },
           onDone: (data) => {
             console.log('[Chat] onDone called', { sessionId, hasAnswer: !!data.answer, answerLen: data.answer?.length, error: data.error })
-            // Update the session - replace streaming message with complete message
-            setChatSessions(prev => {
-              const session = prev.find(s => s.id === sessionId)
-              console.log('[Chat] onDone setChatSessions', { sessionId, foundSession: !!session, sessionCount: prev.length })
-              if (!session) {
-                console.log('[Chat] onDone: session not found!', { sessionId, sessionIds: prev.map(s => s.id) })
-                return prev
-              }
 
-              const assistantMessage: ChatMessage = data.error
-                ? { role: 'assistant', content: data.error, status: 'error' }
-                : {
-                  role: 'assistant',
-                  content: data.answer,
-                  pipelineData: {
-                    dataQuestions: data.dataQuestions ?? [],
-                    generatedQueries: data.generatedQueries ?? [],
-                    executedQueries: data.executedQueries ?? [],
-                    followUpQuestions: data.followUpQuestions,
-                  },
-                  executedQueries: data.executedQueries?.map(q => q.sql) ?? [],
-                  status: 'complete',
+            // Get the processing steps and update sessions atomically
+            // Use setPendingChats to access current state, then update sessions inside
+            setPendingChats(pendingPrev => {
+              const capturedSteps = pendingPrev.get(sessionId)?.processingSteps ?? []
+              console.log('[Chat] onDone captured steps:', capturedSteps.length)
+
+              // Update the session - replace streaming message with complete message
+              setChatSessions(prev => {
+                const session = prev.find(s => s.id === sessionId)
+                console.log('[Chat] onDone setChatSessions', { sessionId, foundSession: !!session, stepsCount: capturedSteps.length })
+                if (!session) {
+                  console.log('[Chat] onDone: session not found!', { sessionId, sessionIds: prev.map(s => s.id) })
+                  return prev
                 }
 
-              // Replace the last streaming message with the complete one
-              const newMessages = session.messages.filter(m => m.status !== 'streaming')
-              newMessages.push(assistantMessage)
+                const assistantMessage: ChatMessage = data.error
+                  ? { role: 'assistant', content: data.error, status: 'error' }
+                  : {
+                    role: 'assistant',
+                    content: data.answer,
+                    pipelineData: {
+                      dataQuestions: data.dataQuestions ?? [],
+                      generatedQueries: data.generatedQueries ?? [],
+                      executedQueries: data.executedQueries ?? [],
+                      followUpQuestions: data.followUpQuestions,
+                      processingSteps: capturedSteps,
+                    },
+                    executedQueries: data.executedQueries?.map(q => q.sql) ?? [],
+                    status: 'complete',
+                  }
 
-              return prev.map(s =>
-                s.id === sessionId ? { ...s, messages: newMessages, updatedAt: new Date() } : s
-              )
+                // Replace the last streaming message with the complete one
+                const newMessages = session.messages.filter(m => m.status !== 'streaming')
+                newMessages.push(assistantMessage)
+
+                return prev.map(s =>
+                  s.id === sessionId ? { ...s, messages: newMessages, updatedAt: new Date() } : s
+                )
+              })
+
+              return pendingPrev // Don't modify pending state here
             })
 
             // Auto-generate title for new sessions
@@ -1230,11 +1163,7 @@ function AppContent() {
           },
           onRetrying: (attempt, maxAttempts) => {
             console.log('[Chat] onRetrying', { sessionId, attempt, maxAttempts })
-            updatePendingProgress(sessionId, (prev) => ({
-              ...prev,
-              status: `Connection lost. Reconnecting (${attempt}/${maxAttempts})...`,
-              step: 'retrying',
-            }))
+            // Retry is handled automatically, just log for debugging
           },
         },
         abortController.signal
@@ -1270,7 +1199,7 @@ function AppContent() {
       // Release lock
       releaseSessionLock(sessionId, BROWSER_ID).catch(() => {})
     }
-  }, [updatePendingProgress, removePending])
+  }, [addProcessingStep, updateQueryStep, removePending, pendingChats])
 
   const abortChatMessage = useCallback((sessionId: string) => {
     const pending = pendingChats.get(sessionId)

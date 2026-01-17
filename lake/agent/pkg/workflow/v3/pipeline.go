@@ -257,6 +257,11 @@ func (p *Workflow) RunWithProgress(ctx context.Context, userQuestion string, his
 
 	state.Metrics.TotalDuration = time.Since(startTime)
 
+	// Generate follow-up questions (non-blocking, best-effort)
+	if state.FinalAnswer != "" {
+		state.FollowUpQuestions = p.generateFollowUpQuestions(ctx, userQuestion, state.FinalAnswer)
+	}
+
 	// Convert to WorkflowResult
 	result := state.ToWorkflowResult(userQuestion)
 
@@ -321,8 +326,13 @@ func (p *Workflow) executeTool(ctx context.Context, call workflow.ToolCallInfo, 
 	case "think":
 		return p.executeThink(call.Parameters, state, onProgress)
 	case "execute_sql":
-		return p.executeSQL(ctx, call.Parameters, state, onProgress)
+		result, err := p.executeSQL(ctx, call.Parameters, state, onProgress)
+		if err != nil {
+			p.logInfo("workflow: execute_sql failed", "error", err, "params", call.Parameters)
+		}
+		return result, err
 	default:
+		p.logInfo("workflow: unknown tool called", "name", call.Name)
 		return "", fmt.Errorf("unknown tool: %s", call.Name)
 	}
 }
@@ -720,6 +730,11 @@ func (p *Workflow) RunWithCheckpoint(
 
 	state.Metrics.TotalDuration = time.Since(startTime)
 
+	// Generate follow-up questions (non-blocking, best-effort)
+	if state.FinalAnswer != "" {
+		state.FollowUpQuestions = p.generateFollowUpQuestions(ctx, userQuestion, state.FinalAnswer)
+	}
+
 	// Convert to WorkflowResult
 	result := state.ToWorkflowResult(userQuestion)
 
@@ -941,6 +956,11 @@ func (p *Workflow) ResumeFromCheckpoint(
 
 	state.Metrics.TotalDuration = time.Since(startTime)
 
+	// Generate follow-up questions (non-blocking, best-effort)
+	if state.FinalAnswer != "" {
+		state.FollowUpQuestions = p.generateFollowUpQuestions(ctx, userQuestion, state.FinalAnswer)
+	}
+
 	result := state.ToWorkflowResult(userQuestion)
 
 	notify(workflow.StageComplete)
@@ -965,4 +985,49 @@ func GetFinalCheckpoint(
 		ExecutedQueries: state.ExecutedQueries,
 		Metrics:         state.Metrics,
 	}
+}
+
+// followUpSystemPrompt is the system prompt for generating follow-up questions.
+const followUpSystemPrompt = `Given a Q&A exchange about network data, suggest 2-3 follow-up questions.
+
+Rules:
+- Questions should explore different angles or drill deeper into the data
+- Output ONLY the questions, one per line
+- No preamble, no numbering, no bullet points, no explanation
+- Each line must be a complete question ending with ?`
+
+// generateFollowUpQuestions generates follow-up question suggestions based on the Q&A.
+// Uses a lightweight LLM call with just the question and answer as context.
+func (p *Workflow) generateFollowUpQuestions(ctx context.Context, userQuestion, answer string) []string {
+	// Get the LLM to use for follow-ups (defaults to main LLM if not configured)
+	llm := p.cfg.FollowUpLLM
+	if llm == nil {
+		llm = p.cfg.LLM
+	}
+
+	userPrompt := fmt.Sprintf("User question: %s\n\nAssistant answer: %s", userQuestion, answer)
+
+	response, err := llm.Complete(ctx, followUpSystemPrompt, userPrompt)
+	if err != nil {
+		p.logInfo("workflow: failed to generate follow-up questions", "error", err)
+		return nil
+	}
+
+	// Parse response into individual questions (one per line, must end with ?)
+	var questions []string
+	for _, line := range strings.Split(response, "\n") {
+		line = strings.TrimSpace(line)
+		// Only include lines that look like questions
+		if line != "" && strings.HasSuffix(line, "?") {
+			questions = append(questions, line)
+		}
+	}
+
+	// Limit to 3 questions max
+	if len(questions) > 3 {
+		questions = questions[:3]
+	}
+
+	p.logInfo("workflow: generated follow-up questions", "count", len(questions))
+	return questions
 }

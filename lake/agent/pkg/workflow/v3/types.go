@@ -48,10 +48,11 @@ type StreamCallback func(event StreamEvent)
 
 // LoopState tracks state during the tool-calling loop.
 type LoopState struct {
-	ThinkingSteps   []string                 // Content from think() calls
-	ExecutedQueries []workflow.ExecutedQuery // All SQL executed
-	FinalAnswer     string                   // Last assistant text (non-tool response)
-	Metrics         *WorkflowMetrics         // Metrics collected during execution
+	ThinkingSteps     []string                 // Content from think() calls
+	ExecutedQueries   []workflow.ExecutedQuery // All SQL executed
+	FinalAnswer       string                   // Last assistant text (non-tool response)
+	FollowUpQuestions []string                 // Suggested follow-up questions
+	Metrics           *WorkflowMetrics         // Metrics collected during execution
 }
 
 // InferClassification determines classification based on tool usage behavior.
@@ -68,10 +69,11 @@ func (state *LoopState) InferClassification() workflow.Classification {
 // ToWorkflowResult converts LoopState to a WorkflowResult.
 func (state *LoopState) ToWorkflowResult(userQuestion string) *workflow.WorkflowResult {
 	result := &workflow.WorkflowResult{
-		UserQuestion:    userQuestion,
-		Classification:  state.InferClassification(),
-		Answer:          state.FinalAnswer,
-		ExecutedQueries: state.ExecutedQueries,
+		UserQuestion:      userQuestion,
+		Classification:    state.InferClassification(),
+		Answer:            state.FinalAnswer,
+		ExecutedQueries:   state.ExecutedQueries,
+		FollowUpQuestions: state.FollowUpQuestions,
 	}
 
 	// Extract DataQuestions and GeneratedQueries from ExecutedQueries

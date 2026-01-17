@@ -9,6 +9,7 @@ import (
 type Config struct {
 	Logger        *slog.Logger
 	LLM           LLMClient
+	FollowUpLLM   LLMClient     // Optional LLM for generating follow-up questions (defaults to LLM if nil)
 	Querier       Querier
 	SchemaFetcher SchemaFetcher
 	Prompts       PromptsProvider

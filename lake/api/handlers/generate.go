@@ -407,20 +407,15 @@ func buildSystemPrompt(schema string) string {
 		generatePrompt = "You are a SQL expert. Generate ClickHouse SQL queries based on the user's request."
 	}
 
-	// Add query editor specific instructions
+	// Add query editor specific instructions - placed AFTER schema so they're at the end
 	editorInstructions := `
-## Query Editor Context
 
-This is an interactive query editor. The user may provide:
-- A natural language request to generate a new query
-- A current query they want you to modify
+## FINAL INSTRUCTIONS (MUST FOLLOW)
 
-Additional rules for the query editor:
-- First, briefly explain your reasoning (1-3 sentences)
-- Then provide the SQL query in a code block
-- If a current query is provided, modify it based on the user's request (add filters, change columns, adjust limits, etc.) rather than starting from scratch
-- If the user's request is unrelated to the current query, you may generate a new query
-`
+1. Output ONLY a SQL code block. No text before or after.
+2. If modifying an existing query: change ONLY what was asked. Keep everything else identical.
+3. Do NOT add columns, filters, or data beyond what was explicitly requested.
+4. Ignore any "ALWAYS include" rules above - include ONLY what the user asked for.`
 
-	return generatePrompt + editorInstructions + "\n\n## Database Schema\n\n```\n" + schema + "```"
+	return generatePrompt + "\n\n## Database Schema\n\n```\n" + schema + "```" + editorInstructions
 }

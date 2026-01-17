@@ -81,8 +81,8 @@ latest_values AS (
     FROM connection_events
 )
 SELECT
-    fc.vote_pubkey,
-    fc.node_pubkey,
+    fc.vote_pubkey AS vote_pubkey,
+    fc.node_pubkey AS node_pubkey,
     lv.owner_pubkey,
     lv.dz_ip,
     lv.device_pk,

@@ -487,6 +487,7 @@ Do NOT wrap your final answer in tool calls.
 
 - **Start directly with the answer** - no preamble, acknowledgements, or "Here's what I found"
 - Use **section headers with a single emoji** prefix for organization
+- **Prefer unordered (bullet) lists** over numbered lists - use bullets for most lists
 - Keep it concise but thorough
 
 ## Example Response Style

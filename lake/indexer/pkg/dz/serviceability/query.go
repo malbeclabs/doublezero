@@ -62,6 +62,44 @@ type metroRow struct {
 	Latitude  float64 `ch:"latitude"`
 }
 
+// contributorRow is an intermediate struct for reading from ClickHouse
+type contributorRow struct {
+	PK   string `ch:"pk"`
+	Code string `ch:"code"`
+	Name string `ch:"name"`
+}
+
+// QueryCurrentContributors queries all current (non-deleted) contributors from ClickHouse
+func QueryCurrentContributors(ctx context.Context, log *slog.Logger, db clickhouse.Client) ([]Contributor, error) {
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get connection: %w", err)
+	}
+	defer conn.Close()
+
+	d, err := NewContributorDataset(log)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create dataset: %w", err)
+	}
+
+	typed := dataset.NewTypedDimensionType2Dataset[contributorRow](d)
+	rows, err := typed.GetCurrentRows(ctx, conn, nil) // nil = all entities
+	if err != nil {
+		return nil, fmt.Errorf("failed to query contributors: %w", err)
+	}
+
+	contributors := make([]Contributor, len(rows))
+	for i, row := range rows {
+		contributors[i] = Contributor{
+			PK:   row.PK,
+			Code: row.Code,
+			Name: row.Name,
+		}
+	}
+
+	return contributors, nil
+}
+
 // QueryCurrentDevices queries all current (non-deleted) devices from ClickHouse
 func QueryCurrentDevices(ctx context.Context, log *slog.Logger, db clickhouse.Client) ([]Device, error) {
 	conn, err := db.Conn(ctx)

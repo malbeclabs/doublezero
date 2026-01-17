@@ -11,6 +11,7 @@ import (
 	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/lake/admin/internal/admin"
 	"github.com/malbeclabs/doublezero/lake/indexer/pkg/clickhouse"
+	"github.com/malbeclabs/doublezero/lake/indexer/pkg/neo4j"
 	"github.com/malbeclabs/doublezero/lake/utils/pkg/logger"
 )
 
@@ -31,6 +32,12 @@ func run() error {
 	clickhousePasswordFlag := flag.String("clickhouse-password", "", "ClickHouse password (or set CLICKHOUSE_PASSWORD env var)")
 	clickhouseSecureFlag := flag.Bool("clickhouse-secure", false, "Enable TLS for ClickHouse Cloud (or set CLICKHOUSE_SECURE=true env var)")
 
+	// Neo4j configuration
+	neo4jURIFlag := flag.String("neo4j-uri", "", "Neo4j URI (e.g., bolt://localhost:7687) (or set NEO4J_URI env var)")
+	neo4jDatabaseFlag := flag.String("neo4j-database", "neo4j", "Neo4j database name (or set NEO4J_DATABASE env var)")
+	neo4jUsernameFlag := flag.String("neo4j-username", "neo4j", "Neo4j username (or set NEO4J_USERNAME env var)")
+	neo4jPasswordFlag := flag.String("neo4j-password", "", "Neo4j password (or set NEO4J_PASSWORD env var)")
+
 	// InfluxDB configuration (for usage backfill)
 	influxURLFlag := flag.String("influx-url", "", "InfluxDB URL (or set INFLUX_URL env var)")
 	influxTokenFlag := flag.String("influx-token", "", "InfluxDB token (or set INFLUX_TOKEN env var)")
@@ -39,6 +46,8 @@ func run() error {
 	// Commands
 	clickhouseMigrateFlag := flag.Bool("clickhouse-migrate", false, "Run ClickHouse/indexer database migrations using goose")
 	clickhouseMigrateStatusFlag := flag.Bool("clickhouse-migrate-status", false, "Show ClickHouse/indexer database migration status")
+	neo4jMigrateFlag := flag.Bool("neo4j-migrate", false, "Run Neo4j database migrations")
+	neo4jMigrateStatusFlag := flag.Bool("neo4j-migrate-status", false, "Show Neo4j database migration status")
 	resetDBFlag := flag.Bool("reset-db", false, "Drop all database tables (dim_*, stg_*, fact_*) and views")
 	dryRunFlag := flag.Bool("dry-run", false, "Dry run mode - show what would be done without actually executing")
 	yesFlag := flag.Bool("yes", false, "Skip confirmation prompt (use with caution)")
@@ -81,6 +90,20 @@ func run() error {
 		*clickhouseSecureFlag = true
 	}
 
+	// Override Neo4j flags with environment variables if set
+	if envNeo4jURI := os.Getenv("NEO4J_URI"); envNeo4jURI != "" {
+		*neo4jURIFlag = envNeo4jURI
+	}
+	if envNeo4jDatabase := os.Getenv("NEO4J_DATABASE"); envNeo4jDatabase != "" {
+		*neo4jDatabaseFlag = envNeo4jDatabase
+	}
+	if envNeo4jUsername := os.Getenv("NEO4J_USERNAME"); envNeo4jUsername != "" {
+		*neo4jUsernameFlag = envNeo4jUsername
+	}
+	if envNeo4jPassword := os.Getenv("NEO4J_PASSWORD"); envNeo4jPassword != "" {
+		*neo4jPasswordFlag = envNeo4jPassword
+	}
+
 	// Override InfluxDB flags with environment variables if set
 	if envInfluxURL := os.Getenv("INFLUX_URL"); envInfluxURL != "" {
 		*influxURLFlag = envInfluxURL
@@ -119,6 +142,30 @@ func run() error {
 			Username: *clickhouseUsernameFlag,
 			Password: *clickhousePasswordFlag,
 			Secure:   *clickhouseSecureFlag,
+		})
+	}
+
+	if *neo4jMigrateFlag {
+		if *neo4jURIFlag == "" {
+			return fmt.Errorf("--neo4j-uri is required for --neo4j-migrate")
+		}
+		return neo4j.RunMigrations(context.Background(), log, neo4j.MigrationConfig{
+			URI:      *neo4jURIFlag,
+			Database: *neo4jDatabaseFlag,
+			Username: *neo4jUsernameFlag,
+			Password: *neo4jPasswordFlag,
+		})
+	}
+
+	if *neo4jMigrateStatusFlag {
+		if *neo4jURIFlag == "" {
+			return fmt.Errorf("--neo4j-uri is required for --neo4j-migrate-status")
+		}
+		return neo4j.MigrationStatus(context.Background(), log, neo4j.MigrationConfig{
+			URI:      *neo4jURIFlag,
+			Database: *neo4jDatabaseFlag,
+			Username: *neo4jUsernameFlag,
+			Password: *neo4jPasswordFlag,
 		})
 	}
 

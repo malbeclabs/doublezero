@@ -23,6 +23,7 @@ import (
 	dztelemusage "github.com/malbeclabs/doublezero/lake/indexer/pkg/dz/telemetry/usage"
 	"github.com/malbeclabs/doublezero/lake/indexer/pkg/indexer"
 	"github.com/malbeclabs/doublezero/lake/indexer/pkg/metrics"
+	"github.com/malbeclabs/doublezero/lake/indexer/pkg/neo4j"
 	"github.com/malbeclabs/doublezero/lake/indexer/pkg/server"
 	"github.com/malbeclabs/doublezero/lake/utils/pkg/logger"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
@@ -76,6 +77,13 @@ func run() error {
 	clickhousePasswordFlag := flag.String("clickhouse-password", "", "ClickHouse password (or set CLICKHOUSE_PASSWORD env var)")
 	clickhouseSecureFlag := flag.Bool("clickhouse-secure", false, "Enable TLS for ClickHouse Cloud (or set CLICKHOUSE_SECURE=true env var)")
 
+	// Neo4j configuration (optional)
+	neo4jURIFlag := flag.String("neo4j-uri", "", "Neo4j server URI (e.g., bolt://localhost:7687, or set NEO4J_URI env var)")
+	neo4jDatabaseFlag := flag.String("neo4j-database", "neo4j", "Neo4j database name (or set NEO4J_DATABASE env var)")
+	neo4jUsernameFlag := flag.String("neo4j-username", "neo4j", "Neo4j username (or set NEO4J_USERNAME env var)")
+	neo4jPasswordFlag := flag.String("neo4j-password", "", "Neo4j password (or set NEO4J_PASSWORD env var)")
+	neo4jMigrationsEnableFlag := flag.Bool("neo4j-migrations-enable", false, "Enable Neo4j migrations on startup")
+
 	// GeoIP configuration
 	geoipCityDBPathFlag := flag.String("geoip-city-db-path", defaultGeoipCityDBPath, "Path to MaxMind GeoIP2 City database file (or set MCP_GEOIP_CITY_DB_PATH env var)")
 	geoipASNDBPathFlag := flag.String("geoip-asn-db-path", defaultGeoipASNDBPath, "Path to MaxMind GeoIP2 ASN database file (or set MCP_GEOIP_ASN_DB_PATH env var)")
@@ -87,6 +95,12 @@ func run() error {
 	maxConcurrencyFlag := flag.Int("max-concurrency", defaultMaxConcurrency, "maximum number of concurrent operations")
 	deviceUsageQueryWindowFlag := flag.Duration("device-usage-query-window", defaultDeviceUsageInfluxQueryWindow, "Query window for device usage (default: 1 hour)")
 	deviceUsageRefreshIntervalFlag := flag.Duration("device-usage-refresh-interval", defaultDeviceUsageRefreshInterval, "Refresh interval for device usage (default: 5 minutes)")
+
+	// ISIS configuration (requires Neo4j, enabled by default when Neo4j is configured)
+	isisEnabledFlag := flag.Bool("isis-enabled", true, "Enable IS-IS sync from S3 (or set ISIS_ENABLED env var)")
+	isisS3BucketFlag := flag.String("isis-s3-bucket", "doublezero-mn-beta-isis-db", "S3 bucket for IS-IS dumps (or set ISIS_S3_BUCKET env var)")
+	isisS3RegionFlag := flag.String("isis-s3-region", "us-east-1", "AWS region for IS-IS S3 bucket (or set ISIS_S3_REGION env var)")
+	isisRefreshIntervalFlag := flag.Duration("isis-refresh-interval", 30*time.Second, "Refresh interval for IS-IS sync (or set ISIS_REFRESH_INTERVAL env var)")
 
 	flag.Parse()
 
@@ -108,6 +122,36 @@ func run() error {
 	}
 	if envDZEnv := os.Getenv("DZ_ENV"); envDZEnv != "" {
 		*dzEnvFlag = envDZEnv
+	}
+
+	// Override Neo4j flags with environment variables if set
+	if envNeo4jURI := os.Getenv("NEO4J_URI"); envNeo4jURI != "" {
+		*neo4jURIFlag = envNeo4jURI
+	}
+	if envNeo4jDatabase := os.Getenv("NEO4J_DATABASE"); envNeo4jDatabase != "" {
+		*neo4jDatabaseFlag = envNeo4jDatabase
+	}
+	if envNeo4jUsername := os.Getenv("NEO4J_USERNAME"); envNeo4jUsername != "" {
+		*neo4jUsernameFlag = envNeo4jUsername
+	}
+	if envNeo4jPassword := os.Getenv("NEO4J_PASSWORD"); envNeo4jPassword != "" {
+		*neo4jPasswordFlag = envNeo4jPassword
+	}
+
+	// Override ISIS flags with environment variables if set
+	if envISISEnabled := os.Getenv("ISIS_ENABLED"); envISISEnabled != "" {
+		*isisEnabledFlag = envISISEnabled == "true"
+	}
+	if envISISBucket := os.Getenv("ISIS_S3_BUCKET"); envISISBucket != "" {
+		*isisS3BucketFlag = envISISBucket
+	}
+	if envISISRegion := os.Getenv("ISIS_S3_REGION"); envISISRegion != "" {
+		*isisS3RegionFlag = envISISRegion
+	}
+	if envISISRefreshInterval := os.Getenv("ISIS_REFRESH_INTERVAL"); envISISRefreshInterval != "" {
+		if d, err := time.ParseDuration(envISISRefreshInterval); err == nil {
+			*isisRefreshIntervalFlag = d
+		}
 	}
 
 	networkConfig, err := config.NetworkConfigForEnv(*dzEnvFlag)
@@ -244,6 +288,26 @@ func run() error {
 		log.Info("device usage (InfluxDB) environment variables not set, telemetry usage view will be disabled")
 	}
 
+	// Initialize Neo4j client (optional)
+	var neo4jClient neo4j.Client
+	if *neo4jURIFlag != "" {
+		neo4jClient, err = neo4j.NewClient(ctx, log, *neo4jURIFlag, *neo4jDatabaseFlag, *neo4jUsernameFlag, *neo4jPasswordFlag)
+		if err != nil {
+			return fmt.Errorf("failed to create Neo4j client: %w", err)
+		}
+		defer func() {
+			if neo4jClient != nil {
+				if closeErr := neo4jClient.Close(ctx); closeErr != nil {
+					log.Warn("failed to close Neo4j client", "error", closeErr)
+				}
+			}
+		}()
+
+		log.Info("Neo4j client initialized", "uri", *neo4jURIFlag, "database", *neo4jDatabaseFlag)
+	} else {
+		log.Info("Neo4j URI not set, graph store will be disabled")
+	}
+
 	// Initialize server
 	server, err := server.New(ctx, server.Config{
 		ListenAddr:        *listenAddrFlag,
@@ -290,6 +354,22 @@ func run() error {
 
 			// Solana configuration
 			SolanaRPC: solanaRPC,
+
+			// Neo4j configuration
+			Neo4j:                 neo4jClient,
+			Neo4jMigrationsEnable: *neo4jMigrationsEnableFlag,
+			Neo4jMigrationsConfig: neo4j.MigrationConfig{
+				URI:      *neo4jURIFlag,
+				Database: *neo4jDatabaseFlag,
+				Username: *neo4jUsernameFlag,
+				Password: *neo4jPasswordFlag,
+			},
+
+			// ISIS configuration
+			ISISEnabled:         *isisEnabledFlag,
+			ISISS3Bucket:        *isisS3BucketFlag,
+			ISISS3Region:        *isisS3RegionFlag,
+			ISISRefreshInterval: *isisRefreshIntervalFlag,
 		},
 	})
 	if err != nil {

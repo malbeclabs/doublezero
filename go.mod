@@ -9,6 +9,7 @@ require (
 	github.com/aristanetworks/goeapi v1.0.1-0.20250411124937-7090068b8735
 	github.com/aws/aws-sdk-go-v2 v1.41.0
 	github.com/aws/aws-sdk-go-v2/config v1.32.6
+	github.com/aws/aws-sdk-go-v2/credentials v1.19.6
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.93.1
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/cenkalti/backoff/v5 v5.0.3
@@ -37,6 +38,7 @@ require (
 	github.com/minio/minio-go v6.0.14+incompatible
 	github.com/mr-tron/base58 v1.2.0
 	github.com/near/borsh-go v0.3.1
+	github.com/neo4j/neo4j-go-driver/v5 v5.28.4
 	github.com/netsampler/goflow2/v2 v2.2.3
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/openconfig/gnmi v0.14.1
@@ -56,6 +58,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/testcontainers/testcontainers-go v0.40.0
 	github.com/testcontainers/testcontainers-go/modules/clickhouse v0.40.0
+	github.com/testcontainers/testcontainers-go/modules/neo4j v0.40.0
 	github.com/testcontainers/testcontainers-go/modules/redpanda v0.40.0
 	github.com/twmb/franz-go v1.20.5
 	github.com/twmb/franz-go/pkg/kadm v1.17.1
@@ -80,7 +83,6 @@ require (
 	github.com/apache/arrow-go/v18 v18.4.1 // indirect
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.4 // indirect
-	github.com/aws/aws-sdk-go-v2/credentials v1.19.6 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.16 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.16 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.16 // indirect
@@ -153,6 +155,7 @@ require (
 	github.com/mostynb/zstdpool-freelist v0.0.0-20201229113212-927304c0c3b1 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/oapi-codegen/runtime v1.0.0 // indirect
+	github.com/onsi/gomega v1.15.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/oschwald/maxminddb-golang v1.13.0 // indirect

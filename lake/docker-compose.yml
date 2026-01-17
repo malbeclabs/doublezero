@@ -16,6 +16,23 @@ services:
         soft: 262144
         hard: 262144
 
+  neo4j:
+    image: neo4j:5-community
+    container_name: neo4j
+    restart: unless-stopped
+    ports:
+      - "7474:7474"  # Browser
+      - "7687:7687"  # Bolt protocol
+    environment:
+      NEO4J_AUTH: neo4j/password
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_dbms_security_procedures_unrestricted: apoc.*
+    volumes:
+      - neo4j-data:/data
+      - neo4j-logs:/logs
+
 volumes:
   clickhouse-data:
   clickhouse-logs:
+  neo4j-data:
+  neo4j-logs:

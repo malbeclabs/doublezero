@@ -298,7 +298,14 @@ func (p *Pipeline) executeThink(params map[string]any, state *LoopState) (string
 	if content != "" {
 		state.ThinkingSteps = append(state.ThinkingSteps, content)
 		state.Metrics.ThinkCalls++
-		p.logInfo("v3 pipeline: think", "content", truncate(content, 100))
+		// Log full content for debugging (truncated version in summary log)
+		p.logInfo("v3 pipeline: think",
+			"thinkStep", state.Metrics.ThinkCalls,
+			"contentLen", len(content),
+			"preview", truncate(content, 200))
+		if p.cfg.Logger != nil {
+			p.cfg.Logger.Debug("v3 pipeline: think content", "full", content)
+		}
 	}
 	// Think tool returns empty acknowledgment
 	return "Thinking recorded.", nil
@@ -311,7 +318,15 @@ func (p *Pipeline) executeSQL(ctx context.Context, params map[string]any, state 
 		return "", fmt.Errorf("no valid queries provided")
 	}
 
+	// Log each query question and SQL for debugging
 	p.logInfo("v3 pipeline: executing SQL", "count", len(queries))
+	for i, q := range queries {
+		qNum := len(state.ExecutedQueries) + i + 1
+		p.logInfo("v3 pipeline: query",
+			"q", qNum,
+			"question", q.Question,
+			"sql", truncate(q.SQL, 200))
+	}
 
 	// Execute queries in parallel
 	sqlStart := time.Now()
@@ -361,6 +376,23 @@ func (p *Pipeline) executeSQL(ctx context.Context, params map[string]any, state 
 	wg.Wait()
 	state.Metrics.SQLDuration += time.Since(sqlStart)
 	state.Metrics.SQLQueries += len(queries)
+
+	// Log results for each query
+	for i, q := range queries {
+		qNum := len(state.ExecutedQueries) + i + 1
+		result := results[i]
+		if result.Result.Error != "" {
+			p.logInfo("v3 pipeline: query result",
+				"q", qNum,
+				"question", q.Question,
+				"error", result.Result.Error)
+		} else {
+			p.logInfo("v3 pipeline: query result",
+				"q", qNum,
+				"question", q.Question,
+				"rows", result.Result.Count)
+		}
+	}
 
 	// Append to state
 	state.ExecutedQueries = append(state.ExecutedQueries, results...)

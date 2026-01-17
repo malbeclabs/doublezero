@@ -120,7 +120,7 @@ func (c *AnthropicLLMClient) CompleteWithTools(
 	}
 
 	start := time.Now()
-	slog.Info("Anthropic API tool call starting",
+	slog.Info("Anthropic API call starting",
 		"phase", c.name,
 		"model", c.model,
 		"maxTokens", c.maxTokens,
@@ -209,13 +209,13 @@ func (c *AnthropicLLMClient) CompleteWithTools(
 
 	duration := time.Since(start)
 	if err != nil {
-		slog.Error("Anthropic API tool call failed", "phase", c.name, "duration", duration, "error", err)
+		slog.Error("Anthropic API call failed", "phase", c.name, "duration", duration, "error", err)
 		metrics.RecordAnthropicRequest(c.name, duration, err)
 		return nil, fmt.Errorf("anthropic API error: %w", err)
 	}
 
-	// Log with cache metrics if available
-	slog.Info("Anthropic API tool call completed",
+	// Log with cache metrics if available (use same format as Complete for eval script parsing)
+	slog.Info("Anthropic API call completed",
 		"phase", c.name,
 		"duration", duration,
 		"stopReason", msg.StopReason,

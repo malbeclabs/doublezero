@@ -2,12 +2,14 @@ package telemetry
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
 
+	bin "github.com/gagliardetto/binary"
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/gagliardetto/solana-go/rpc/jsonrpc"
@@ -98,6 +100,107 @@ func (c *Client) GetDeviceLatencySamples(
 		return &instance, nil
 	default:
 		return nil, fmt.Errorf("unknown account type: %d", headerOnlyAccountType.AccountType)
+	}
+}
+
+func (c *Client) GetDeviceLatencySamplesTail(
+	ctx context.Context,
+	originDevicePK solana.PublicKey,
+	targetDevicePK solana.PublicKey,
+	linkPK solana.PublicKey,
+	epoch uint64,
+	existingMaxIdx int,
+) (*DeviceLatencySamplesHeader, int, []uint32, error) {
+	pda, _, err := DeriveDeviceLatencySamplesPDA(c.executor.programID, originDevicePK, targetDevicePK, linkPK, epoch)
+	if err != nil {
+		return nil, 0, nil, fmt.Errorf("failed to derive PDA: %w", err)
+	}
+
+	account, err := c.rpc.GetAccountInfo(ctx, pda)
+	if err != nil {
+		if errors.Is(err, solanarpc.ErrNotFound) {
+			return nil, 0, nil, ErrAccountNotFound
+		}
+		return nil, 0, nil, fmt.Errorf("failed to get account data: %w", err)
+	}
+	if account.Value == nil {
+		return nil, 0, nil, ErrAccountNotFound
+	}
+
+	data := account.Value.Data.GetBinary()
+	if len(data) < 1 {
+		return nil, 0, nil, fmt.Errorf("short account data: %d", len(data))
+	}
+
+	switch AccountType(data[0]) {
+	case AccountTypeDeviceLatencySamples:
+		dec := bin.NewBorshDecoder(data)
+		var hdr DeviceLatencySamplesHeader
+		if err := dec.Decode(&hdr); err != nil {
+			return nil, 0, nil, fmt.Errorf("failed to decode header: %w", err)
+		}
+
+		if hdr.NextSampleIndex > MaxDeviceLatencySamplesPerAccount {
+			return nil, 0, nil, fmt.Errorf("next sample index %d exceeds max allowed samples %d", hdr.NextSampleIndex, MaxDeviceLatencySamplesPerAccount)
+		}
+
+		headerBytes := dec.Position()
+		end := int(hdr.NextSampleIndex)
+
+		start := existingMaxIdx + 1
+		if start < 0 {
+			start = 0
+		}
+		if start > end {
+			start = end
+		}
+		if start == end {
+			return &hdr, start, nil, nil
+		}
+
+		need := int(headerBytes) + end*4
+		if len(data) < need {
+			return nil, 0, nil, fmt.Errorf("short samples region: have %d need %d", len(data), need)
+		}
+
+		n := end - start
+		out := make([]uint32, n)
+		base := int(headerBytes) + start*4
+		for i := 0; i < n; i++ {
+			off := base + i*4
+			out[i] = binary.LittleEndian.Uint32(data[off : off+4])
+		}
+
+		return &hdr, start, out, nil
+
+	case AccountTypeDeviceLatencySamplesV0:
+		// Keep legacy behavior for now. If V0 still matters and you know its layout,
+		// you can add a tail decoder for it too.
+		var v0 DeviceLatencySamplesV0
+		if err := v0.Deserialize(data); err != nil {
+			return nil, 0, nil, fmt.Errorf("failed to deserialize v0: %w", err)
+		}
+		v1 := v0.ToV1()
+		hdr := v1.DeviceLatencySamplesHeader
+
+		end := int(hdr.NextSampleIndex)
+		start := existingMaxIdx + 1
+		if start < 0 {
+			start = 0
+		}
+		if start > end {
+			start = end
+		}
+		if start == end {
+			return &hdr, start, nil, nil
+		}
+
+		tail := make([]uint32, end-start)
+		copy(tail, v1.Samples[start:end])
+		return &hdr, start, tail, nil
+
+	default:
+		return nil, 0, nil, fmt.Errorf("unknown account type: %d", data[0])
 	}
 }
 

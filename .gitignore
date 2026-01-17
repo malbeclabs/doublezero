@@ -17,6 +17,8 @@ controlplane/funder/cmd/funder/funder
 .vscode/*
 .vscode
 .zed
+.tmp
+.env
 
 dist/
 

@@ -12,7 +12,7 @@ This document defines what constitutes a link "issue" in the DZ network.
 - Link status transitions from `activated` to `soft-drained` or `hard-drained`
 - Source: `dim_dz_links_history.status`
 - Timestamp precision: Exact
-- **Currently in view**: Yes (`status_change` event type)
+- **View**: `dz_link_status_changes` (historical), `dz_links_health_current.is_status_degraded` (current)
 
 ### 2. ISIS Delay Override (Effective Soft-Drain)
 - Link `isis_delay_override_ns` set to 1s (1,000,000,000 ns)
@@ -20,13 +20,13 @@ This document defines what constitutes a link "issue" in the DZ network.
 - Does NOT change the `status` field - so it's distinct from status changes
 - Source: `dim_dz_links_history.isis_delay_override_ns`
 - Timestamp precision: Exact
-- **Currently in view**: NO - gap to fill
+- **View**: `dz_links_health_current.is_isis_soft_drained` (current)
 
 ### 3. Packet Loss
 - Link experiencing measurable packet loss
 - Source: `fact_dz_device_link_latency.loss`
 - Timestamp precision: Hourly (aggregated)
-- **Currently in view**: Yes (`packet_loss` event type, threshold >= 0.1%)
+- **View**: `dz_links_health_current.has_packet_loss`, `dz_links_health_current.loss_pct` (current)
 
 **Severity levels** (proposed):
 | Severity | Loss % | Notes |
@@ -35,43 +35,54 @@ This document defines what constitutes a link "issue" in the DZ network.
 | Moderate | 1% - 10% | Noticeable degradation |
 | Severe | >= 10% | Significant impact |
 
-**Open question**: Should severity be based on:
-- Peak loss % in a single hour?
-- Average loss % over the event duration?
-- Some rolling window calculation?
-
 ### 4. Latency SLA Breach
 - Link measured RTT exceeds committed RTT significantly
 - Source: `fact_dz_device_link_latency.rtt_us` vs `dim_dz_links.committed_rtt_ns`
 - Timestamp precision: Hourly (aggregated)
-- **Currently in view**: Yes (`sla_breach` event type, threshold >= 20% over committed)
-
-**Open question**: Should there be severity levels for SLA breaches too?
+- **View**: `dz_links_health_current.exceeds_committed_rtt` (current)
 
 ### 5. Missing Telemetry (Link Dark)
 - No latency samples received for extended period
 - Could indicate: link down, monitoring failure, or connectivity issue
 - Source: gaps in `fact_dz_device_link_latency`
 - Timestamp precision: Hourly
-- **Currently in view**: Yes (`missing_telemetry` event type, threshold >= 120 minutes)
+- **View**: `dz_links_health_current.is_dark` (current, 2-hour threshold)
 
-## View Implementation (`dz_link_issue_events`)
+## View Implementation
 
-View location: `migrations/0005_link_issue_events_view.sql`
+Two views provide link health information:
 
-| event_type | Trigger | Key Columns |
-|------------|---------|-------------|
-| `status_change` | Status changed FROM activated | `previous_status`, `new_status` |
-| `isis_delay_override_soft_drain` | isis_delay_override_ns set to 1s | - |
-| `packet_loss` | Loss >= 0.1% | `loss_pct` |
-| `missing_telemetry` | Telemetry gap >= 120 min | `gap_minutes` |
-| `sla_breach` | Latency >= 20% over committed | `overage_pct`, `latency_us` |
+### `dz_links_health_current` (Current State)
+Shows current health state of each link with boolean flags.
+
+| Column | Description |
+|--------|-------------|
+| `is_status_degraded` | Status is not 'activated' |
+| `is_isis_soft_drained` | ISIS delay override set to 1s |
+| `has_packet_loss` | Loss >= 1% in last hour |
+| `loss_pct` | Packet loss percentage (last hour) |
+| `exceeds_committed_rtt` | Avg latency exceeds committed RTT |
+| `avg_rtt_us`, `p95_rtt_us` | Latency metrics (last hour) |
+| `is_dark` | No telemetry in last 2 hours |
+
+### `dz_link_status_changes` (Historical)
+Shows all status transitions for links.
+
+| Column | Description |
+|--------|-------------|
+| `link_pk`, `link_code` | Link identifier |
+| `previous_status`, `new_status` | Status transition |
+| `changed_ts` | When the change occurred |
+| `side_a_metro`, `side_z_metro` | Metro codes |
+
+### For Packet Loss / Latency History
+Query the raw `fact_dz_device_link_latency` table directly with time filters.
 
 ## Design Decisions
 
-1. **View stays simple** - surfaces all issues with raw metrics, no severity classification
-2. **Severity is query-time** - queries/agent apply thresholds based on context
-3. **"Outage" is presentation-layer** - agent decides what constitutes an outage based on:
+1. **Two focused views** - One for current state (boolean flags), one for historical changes
+2. **Severity is query-time** - Queries/agent apply thresholds based on context
+3. **"Outage" is presentation-layer** - Agent decides what constitutes an outage based on:
    - Issue type
    - Severity (from raw metrics)
    - Duration
@@ -87,14 +98,6 @@ View location: `migrations/0005_link_issue_events_view.sql`
 | Severe | >= 10% |
 
 **SLA Breach**: TBD - may want similar tiering based on overage %
-
-## Implementation Status
-
-All items completed:
-- [x] Added ISIS delay override detection → `isis_delay_override_soft_drain`
-- [x] Renamed `link_dark` → `missing_telemetry`
-- [x] Renamed view → `dz_link_issue_events`
-- [x] Updated agent prompts (DECOMPOSE.md, GENERATE.md, SYNTHESIZE.md) with new names and severity guidelines
 
 ## Next Steps
 

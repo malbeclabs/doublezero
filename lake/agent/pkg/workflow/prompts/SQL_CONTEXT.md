@@ -100,7 +100,8 @@ SELECT MAX(peak) FROM per_window
 | `solana_validators_on_dz_connections` | All connection events with `first_connected_ts`, device_code, device_metro_code |
 | `solana_validators_disconnections` | Validators that left DZ (vote_pubkey, activated_stake_sol, device_code, device_metro_code, connected_ts, disconnected_ts) |
 | `solana_validators_new_connections` | Recently connected validators with device_code, device_metro_code |
-| `dz_link_issue_events` | Link issues (status_change, packet_loss, sla_breach, missing_telemetry) |
+| `dz_links_health_current` | Current link health (status, packet loss, latency vs committed, is_dark) |
+| `dz_link_status_changes` | Link status transitions with timestamps (previous_status, new_status, changed_ts) |
 | `dz_vs_internet_latency_comparison` | Compare DZ vs public internet latency per metro pair |
 
 ### Time Windows
@@ -166,10 +167,17 @@ FROM solana_validators_off_dz_current
 WHERE city = 'Tokyo'
 ORDER BY activated_stake_sol DESC LIMIT 10;
 
--- Link issues in past 7 days
-SELECT link_code, event_type, start_ts, loss_pct, overage_pct
-FROM dz_link_issue_events
-WHERE start_ts > now() - INTERVAL 7 DAY;
+-- Links with current issues
+SELECT code, status, is_status_degraded, is_isis_soft_drained,
+       has_packet_loss, loss_pct, exceeds_committed_rtt, is_dark
+FROM dz_links_health_current
+WHERE is_status_degraded OR is_isis_soft_drained OR has_packet_loss OR exceeds_committed_rtt OR is_dark;
+
+-- Link status changes in past 7 days
+SELECT link_code, previous_status, new_status, changed_ts
+FROM dz_link_status_changes
+WHERE changed_ts > now() - INTERVAL 7 DAY
+ORDER BY changed_ts DESC;
 
 -- DZ vs Internet latency comparison
 SELECT origin_metro, target_metro,
@@ -220,7 +228,7 @@ SELECT code, status, metro_pk FROM dz_devices_current WHERE status = 'drained';
 ```
 
 **For "network health" questions**, check and list:
-1. Link issues from `dz_link_issue_events` - include link_code, event_type, **loss_pct**
+1. Link issues from `dz_links_health_current` - check is_status_degraded, is_isis_soft_drained, has_packet_loss, exceeds_committed_rtt, is_dark
 2. Drained devices - **MUST list specific device codes**
 3. Interface errors from `fact_dz_device_interface_counters` - include device code and **actual numeric counts**
 
@@ -444,37 +452,50 @@ WHERE first_connected_ts BETWEEN now() - INTERVAL 24 HOUR AND now() - INTERVAL 2
 ORDER BY stake_sol DESC
 ```
 
-### Link Issue Detection
-**Use the `dz_link_issue_events` view** for all link issue queries:
+### Link Health & Status
+**Use `dz_links_health_current` for current state** and **`dz_link_status_changes` for history**.
 
-| event_type | Description | Key Columns |
-|------------|-------------|-------------|
-| `status_change` | Link status changed | `previous_status`, `new_status` |
-| `isis_delay_override_soft_drain` | ISIS delay override set | - |
-| `packet_loss` | Packet loss exceeded threshold | `loss_pct` |
-| `missing_telemetry` | No telemetry received | `gap_minutes` |
-| `sla_breach` | Latency exceeded committed RTT | `overage_pct` |
+**`dz_links_health_current` columns:**
+| Column | Description |
+|--------|-------------|
+| `is_status_degraded` | Link status is not 'activated' |
+| `is_isis_soft_drained` | ISIS delay override set to 1s |
+| `has_packet_loss` | Loss >= 1% in last hour |
+| `loss_pct` | Packet loss percentage (last hour) |
+| `exceeds_committed_rtt` | Avg latency exceeds committed RTT |
+| `avg_rtt_us`, `p95_rtt_us` | Latency metrics (last hour) |
+| `is_dark` | No telemetry in last 2 hours |
 
-**IMPORTANT: Always include metric columns** - `loss_pct`, `overage_pct`, `gap_minutes`:
 ```sql
--- All issues for links connected to Sao Paulo
-SELECT
-    link_code, event_type, start_ts, end_ts, duration_minutes, is_ongoing,
-    loss_pct, overage_pct, gap_minutes
-FROM dz_link_issue_events
+-- Links with current issues
+SELECT code, side_a_metro, side_z_metro, status, loss_pct,
+       is_status_degraded, is_isis_soft_drained, has_packet_loss, exceeds_committed_rtt, is_dark
+FROM dz_links_health_current
+WHERE is_status_degraded OR is_isis_soft_drained OR has_packet_loss OR exceeds_committed_rtt OR is_dark;
+
+-- Links with issues in a specific metro
+SELECT code, status, loss_pct, is_dark
+FROM dz_links_health_current
 WHERE (side_a_metro = 'sao' OR side_z_metro = 'sao')
-  AND start_ts >= now() - INTERVAL 30 DAY
-ORDER BY start_ts DESC
+  AND (is_status_degraded OR has_packet_loss OR is_dark);
 ```
 
-**Ongoing issues:**
+**`dz_link_status_changes` for history:**
 ```sql
-SELECT link_code, event_type, start_ts, duration_minutes,
-    loss_pct, overage_pct, gap_minutes
-FROM dz_link_issue_events
-WHERE is_ongoing = true
-ORDER BY start_ts
+-- When did a link go down?
+SELECT link_code, previous_status, new_status, changed_ts
+FROM dz_link_status_changes
+WHERE link_code = 'nyc-lon-1'
+ORDER BY changed_ts DESC;
+
+-- Recent status changes
+SELECT link_code, previous_status, new_status, changed_ts, side_a_metro, side_z_metro
+FROM dz_link_status_changes
+WHERE changed_ts > now() - INTERVAL 48 HOUR
+ORDER BY changed_ts DESC;
 ```
+
+**For packet loss / latency history**, query `fact_dz_device_link_latency` directly with time filters.
 
 ### Validators by Region/Metro
 The pre-built views include `device_code`, `device_metro_code`, and `device_metro_name` columns. Use these for regional analysis:

@@ -301,6 +301,14 @@ func (p *Pipeline) responseToMessage(response *pipeline.ToolLLMResponse) pipelin
 	for i, block := range response.Content {
 		content[i] = block
 	}
+	// Ensure content is never empty - the Anthropic API requires non-empty content
+	// for assistant messages. This can happen when the model returns with stop_reason=end_turn
+	// but no actual text or tool calls (e.g., outputTokens=2).
+	if len(content) == 0 {
+		content = []pipeline.ToolContentBlock{
+			{Type: "text", Text: "(considering...)"},
+		}
+	}
 	return pipeline.ToolMessage{
 		Role:    "assistant",
 		Content: content,

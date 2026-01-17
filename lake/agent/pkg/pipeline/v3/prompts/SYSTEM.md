@@ -227,8 +227,12 @@ If unsure of the exact code, query `dz_metros_current` first:
 SELECT code, name FROM dz_metros_current WHERE name LIKE '%Tokyo%';
 ```
 
-## Validator Performance Metrics
-When comparing validator performance, use these tables:
+## Validator Performance Metrics (IMPORTANT)
+**When asked to "compare validators on DZ vs off DZ"**, focus on performance metrics - these are the key differentiators showing DZ's value:
+- **Vote lag**: How far behind the validator is (lower is better)
+- **Skip rate**: Percentage of missed blocks (lower is better)
+
+Use these tables to compare performance:
 
 **Vote Lag** (lower is better) from `fact_solana_vote_account_activity`:
 ```sql
@@ -302,12 +306,27 @@ Validators connect to DZ as **users**. Join path:
 
 **Use the pre-built views instead of manual joins.**
 
-## Link Issue Detection
-Use `dz_link_issue_events` view with event_type filtering:
-- `status_change` - Link status changes (precise timestamps)
-- `packet_loss` - Loss events (filter by `loss_pct >= 1.0` for moderate+)
+## Link Issue Detection (IMPORTANT)
+Use `dz_link_issue_events` view to find link problems. Event types:
+- `status_change` - Link status changes (e.g., activated → soft-drained)
+- `packet_loss` - Loss events (includes `loss_pct` percentage)
 - `sla_breach` - Latency exceeded committed RTT
 - `missing_telemetry` - No data received
+
+**When asked about "outages" or "issues":**
+- Query ALL event types, not just `status_change`
+- For packet_loss events, ALWAYS select `loss_pct` to get the percentage
+- Include `link_code`, `event_type`, `start_ts`, `end_ts`, `is_ongoing`
+
+```sql
+-- All link issues for a metro (outages = all event types)
+SELECT link_code, event_type, start_ts, end_ts, is_ongoing, loss_pct, overage_pct,
+       side_a_metro, side_z_metro
+FROM dz_link_issue_events
+WHERE (side_a_metro = 'sao' OR side_z_metro = 'sao')
+  AND start_ts > now() - INTERVAL 30 DAY
+ORDER BY start_ts DESC;
+```
 
 ## Common Joins
 - User to Device: `dz_users_current.device_pk = dz_devices_current.pk`
@@ -347,3 +366,16 @@ This allows users to trace any claim back to the specific query that produced it
 When calling `execute_sql`, include meaningful questions that describe what each query answers. These become the Q1, Q2, etc. references in your final answer.
 
 Do NOT wrap your final answer in tool calls.
+
+## Interpreting Results (CRITICAL)
+
+**State what the data shows, not what you speculate:**
+- If a query returns 0 rows, say "no X found in the data" - don't speculate about data sync issues
+- If validators = 0, the network simply has 0 validators connected right now
+- If link issues = 0, the links are healthy - don't add warnings about "potential problems"
+- Empty results are valid answers; don't frame them as errors or problems
+
+**For "network health" questions:**
+- Healthy = no issues found. Say "the network is healthy" without caveats
+- Don't add spurious warnings like "may be a data issue" or "sync problem"
+- Report specific issues with specifics: device codes, link codes, exact values

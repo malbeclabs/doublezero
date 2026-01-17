@@ -117,8 +117,15 @@ func (r *ToolLLMResponse) Text() string {
 }
 
 // HasToolCalls returns true if the response contains tool calls.
+// We check the actual content blocks instead of StopReason because the API
+// can sometimes return tool_use blocks with stop_reason="end_turn".
 func (r *ToolLLMResponse) HasToolCalls() bool {
-	return r.StopReason == "tool_use"
+	for _, block := range r.Content {
+		if block.Type == "tool_use" {
+			return true
+		}
+	}
+	return false
 }
 
 // ToolCallInfo represents a tool invocation from the LLM.

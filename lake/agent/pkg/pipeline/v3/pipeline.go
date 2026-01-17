@@ -165,6 +165,24 @@ func (p *Pipeline) RunWithProgress(ctx context.Context, userQuestion string, his
 
 		// Check if model is done (no tool calls)
 		if !response.HasToolCalls() {
+			// If the model hasn't executed any queries but is trying to answer,
+			// force it to execute queries first (unless this is the last iteration)
+			if len(state.ExecutedQueries) == 0 && state.Metrics.ThinkCalls > 0 && iteration < p.maxIterations-1 {
+				p.logInfo("v3 pipeline: enforcing query execution",
+					"iteration", iteration+1,
+					"reason", "model tried to answer without executing queries")
+				// Inject a reminder message and continue the loop
+				messages = append(messages, pipeline.ToolMessage{
+					Role: "user",
+					Content: []pipeline.ToolContentBlock{
+						{
+							Type: "text",
+							Text: "[System: You used the think tool but did not execute any SQL queries. For data questions, you MUST call execute_sql to get actual data before providing an answer. Please call execute_sql now with your planned queries.]",
+						},
+					},
+				})
+				continue
+			}
 			state.FinalAnswer = response.Text()
 			break
 		}
@@ -307,8 +325,9 @@ func (p *Pipeline) executeThink(params map[string]any, state *LoopState) (string
 			p.cfg.Logger.Debug("v3 pipeline: think content", "full", content)
 		}
 	}
-	// Think tool returns empty acknowledgment
-	return "Thinking recorded.", nil
+	// Return a directive message that reminds the model it needs to execute queries
+	// This is important because the model sometimes hallucinates results after thinking
+	return "Reasoning recorded. You have NOT retrieved any data yet. To get actual data, you MUST call execute_sql with your planned queries.", nil
 }
 
 // executeSQL handles the execute_sql tool - runs queries in parallel.

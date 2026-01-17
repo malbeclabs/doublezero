@@ -124,6 +124,43 @@ WHERE start_ts > now() - INTERVAL 7 DAY;
 - **User kinds**: `ibrl` (unicast), `multicast`, `edge_filtering`
 - **Link types**: WAN (inter-metro), DZX (intra-metro)
 
+### Validator Performance Metrics
+When comparing validator performance, use these tables:
+
+**Vote Lag** (lower is better) from `fact_solana_vote_account_activity`:
+```sql
+-- Vote lag = cluster_slot - last_vote_slot (how far behind the validator is)
+SELECT vote_account_pubkey, node_identity_pubkey,
+       AVG(cluster_slot - last_vote_slot) AS avg_vote_lag_slots
+FROM fact_solana_vote_account_activity
+WHERE event_ts > now() - INTERVAL 24 HOUR
+GROUP BY vote_account_pubkey, node_identity_pubkey;
+```
+
+**Skip Rate** (lower is better) from `fact_solana_block_production`:
+```sql
+-- Skip rate = missed blocks / assigned slots
+SELECT leader_identity_pubkey,
+       MAX(leader_slots_assigned_cum) AS slots_assigned,
+       MAX(blocks_produced_cum) AS blocks_produced,
+       (MAX(leader_slots_assigned_cum) - MAX(blocks_produced_cum)) * 100.0 / MAX(leader_slots_assigned_cum) AS skip_rate_pct
+FROM fact_solana_block_production
+WHERE event_ts > now() - INTERVAL 24 HOUR
+GROUP BY leader_identity_pubkey;
+```
+
+**Comparing on-DZ vs off-DZ performance:**
+```sql
+-- Join performance data with on-DZ/off-DZ status
+SELECT
+    CASE WHEN dz.vote_pubkey != '' THEN 'on-dz' ELSE 'off-dz' END AS dz_status,
+    AVG(va.cluster_slot - va.last_vote_slot) AS avg_vote_lag
+FROM fact_solana_vote_account_activity va
+LEFT JOIN solana_validators_on_dz_current dz ON va.vote_account_pubkey = dz.vote_pubkey
+WHERE va.event_ts > now() - INTERVAL 24 HOUR
+GROUP BY dz_status;
+```
+
 ### Telemetry Patterns
 - **Loss detection**: `loss = true OR rtt_us = 0`
 - **For latency stats**: `WHERE loss = false AND rtt_us > 0`

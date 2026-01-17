@@ -421,15 +421,16 @@ export interface QueryProgressItem {
 }
 
 // Workflow step types
-export type WorkflowStep = 'executing' | 'synthesizing'
+export type WorkflowStep = 'thinking' | 'executing' | 'synthesizing'
 
 // Step order for the workflow
-export const STEP_ORDER: WorkflowStep[] = ['executing', 'synthesizing']
+export const STEP_ORDER: WorkflowStep[] = ['thinking', 'executing', 'synthesizing']
 
 // Get human-readable label for a step
 export function getStepLabel(step: WorkflowStep | string): string {
   switch (step) {
-    case 'executing': return 'Processing'
+    case 'thinking': return 'Analyzing'
+    case 'executing': return 'Running queries'
     case 'synthesizing': return 'Preparing answer'
     default: return step
   }
@@ -446,6 +447,8 @@ export interface ChatProgress {
   queries?: QueryProgressItem[]
   // Track which steps have been completed
   completedSteps?: WorkflowStep[]
+  // v3: Thinking content from the model
+  thinkingContent?: string
 }
 
 interface ExternalLockInfo {
@@ -755,12 +758,32 @@ export function Chat({ messages, isPending, progress, externalLock, onSendMessag
                       const status = progress.completedSteps?.includes(step) ? 'completed' :
                         progress.step === step ? 'running' : 'pending'
 
+                      // Special handling for thinking step - show thinking content
+                      if (step === 'thinking' && progress.thinkingContent) {
+                        return (
+                          <div key={step}>
+                            <TimelineStep
+                              label={getStepLabel(step)}
+                              status={status}
+                            />
+                            {/* Show thinking content when in thinking step */}
+                            {progress.step === 'thinking' && (
+                              <div className="ml-6 mt-2">
+                                <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">
+                                  {progress.thinkingContent}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      }
+
                       // Special handling for executing step - show query details
                       if (step === 'executing' && progress.queries && progress.queries.length > 0) {
                         return (
                           <div key={step}>
                             <TimelineStep
-                              label={`Running ${progress.queriesTotal || 0} queries`}
+                              label={`Running ${progress.queriesTotal || 0} ${(progress.queriesTotal || 0) === 1 ? 'query' : 'queries'}`}
                               status={status}
                             />
                             {/* Nested query progress - show during/after executing */}

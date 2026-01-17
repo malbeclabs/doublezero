@@ -297,21 +297,42 @@ func chatStreamV3(ctx context.Context, req ChatRequest, history []workflow.Conve
 
 	// Progress callback that emits SSE events
 	onProgress := func(progress workflow.Progress) {
-		// Map stage to status message
-		var message string
 		switch progress.Stage {
+		case workflow.StageThinking:
+			// Emit thinking content for display
+			sendEvent("thinking", map[string]string{
+				"content": progress.ThinkingContent,
+			})
+		case workflow.StageQueryStarted:
+			// Emit query started event
+			sendEvent("query_started", map[string]string{
+				"question": progress.QueryQuestion,
+				"sql":      progress.QuerySQL,
+			})
+		case workflow.StageQueryComplete:
+			// Emit query complete event
+			sendEvent("query_done", map[string]any{
+				"question": progress.QueryQuestion,
+				"sql":      progress.QuerySQL,
+				"rows":     progress.QueryRows,
+				"error":    progress.QueryError,
+			})
 		case workflow.StageExecuting:
-			message = "Processing..."
+			sendEvent("status", map[string]string{
+				"step":    string(progress.Stage),
+				"message": "Processing...",
+			})
 		case workflow.StageSynthesizing:
-			message = "Preparing answer..."
+			sendEvent("status", map[string]string{
+				"step":    string(progress.Stage),
+				"message": "Preparing answer...",
+			})
 		default:
-			message = "Processing..."
+			sendEvent("status", map[string]string{
+				"step":    string(progress.Stage),
+				"message": "Processing...",
+			})
 		}
-
-		sendEvent("status", map[string]string{
-			"step":    string(progress.Stage),
-			"message": message,
-		})
 	}
 
 	// Send periodic heartbeats to keep connection alive through proxies

@@ -1103,6 +1103,58 @@ function AppContent() {
               }
             })
           },
+          // v3 callbacks
+          onThinking: (data) => {
+            updatePendingProgress(sessionId, (prev) => ({
+              ...prev,
+              status: 'Thinking...',
+              step: 'thinking',
+              thinkingContent: data.content,
+            }))
+          },
+          onQueryStarted: (data) => {
+            updatePendingProgress(sessionId, (prev) => {
+              // Add query to the list as running
+              const existingQueries = prev.queries || []
+              // Check if query already exists (avoid duplicates)
+              const queryExists = existingQueries.some(q => q.question === data.question)
+              const queries: QueryProgressItem[] = queryExists
+                ? existingQueries
+                : [...existingQueries, { question: data.question, status: 'running' as const }]
+              return {
+                ...prev,
+                status: 'Running queries...',
+                step: 'executing',
+                queriesTotal: queries.length,
+                queries,
+              }
+            })
+          },
+          onQueryDone: (data) => {
+            updatePendingProgress(sessionId, (prev) => {
+              // Mark the query as completed or error
+              const queries = prev.queries?.map(q => {
+                if (q.question === data.question) {
+                  return {
+                    ...q,
+                    status: data.error ? 'error' : 'completed',
+                    rows: data.rows,
+                  } as QueryProgressItem
+                }
+                return q
+              }) || []
+              const completedCount = queries.filter(q => q.status === 'completed' || q.status === 'error').length
+              return {
+                ...prev,
+                status: 'Running queries...',
+                step: 'executing',
+                queriesCompleted: completedCount,
+                queriesTotal: queries.length,
+                lastQuery: data.question,
+                queries,
+              }
+            })
+          },
           onDone: (data) => {
             console.log('[Chat] onDone called', { sessionId, hasAnswer: !!data.answer, answerLen: data.answer?.length, error: data.error })
             // Update the session - replace streaming message with complete message

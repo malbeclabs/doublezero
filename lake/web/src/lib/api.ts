@@ -313,6 +313,10 @@ export interface ChatStreamCallbacks {
   onStatus: (status: { step: string; message: string }) => void
   onDecomposed: (data: { count: number; questions: DataQuestion[] }) => void
   onQueryProgress: (data: { completed: number; total: number; question: string; success: boolean; rows: number }) => void
+  // v3 callbacks
+  onThinking?: (data: { content: string }) => void
+  onQueryStarted?: (data: { question: string; sql: string }) => void
+  onQueryDone?: (data: { question: string; sql: string; rows: number; error: string }) => void
   onDone: (response: ChatResponse) => void
   onError: (error: string) => void
   onRetrying?: (attempt: number, maxAttempts: number) => void
@@ -433,6 +437,16 @@ export async function sendChatMessageStream(
                 break
               case 'query_progress':
                 callbacks.onQueryProgress(parsed)
+                break
+              // v3 events
+              case 'thinking':
+                callbacks.onThinking?.(parsed)
+                break
+              case 'query_started':
+                callbacks.onQueryStarted?.(parsed)
+                break
+              case 'query_done':
+                callbacks.onQueryDone?.(parsed)
                 break
               case 'heartbeat':
                 break

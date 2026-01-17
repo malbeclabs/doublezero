@@ -190,7 +190,7 @@ func (p *Pipeline) RunWithProgress(ctx context.Context, userQuestion string, his
 		// Process tool calls
 		toolResults := make([]workflow.ToolContentBlock, 0)
 		for _, call := range response.ToolCalls() {
-			result, err := p.executeTool(ctx, call, state)
+			result, err := p.executeTool(ctx, call, state, onProgress)
 			if err != nil {
 				// Tool execution error - report back to model
 				toolResults = append(toolResults, workflow.ToolContentBlock{
@@ -316,19 +316,19 @@ func (p *Pipeline) responseToMessage(response *workflow.ToolLLMResponse) workflo
 }
 
 // executeTool executes a single tool call and returns the result.
-func (p *Pipeline) executeTool(ctx context.Context, call workflow.ToolCallInfo, state *LoopState) (string, error) {
+func (p *Pipeline) executeTool(ctx context.Context, call workflow.ToolCallInfo, state *LoopState, onProgress workflow.ProgressCallback) (string, error) {
 	switch call.Name {
 	case "think":
-		return p.executeThink(call.Parameters, state)
+		return p.executeThink(call.Parameters, state, onProgress)
 	case "execute_sql":
-		return p.executeSQL(ctx, call.Parameters, state)
+		return p.executeSQL(ctx, call.Parameters, state, onProgress)
 	default:
 		return "", fmt.Errorf("unknown tool: %s", call.Name)
 	}
 }
 
 // executeThink handles the think tool - extracts reasoning and records it.
-func (p *Pipeline) executeThink(params map[string]any, state *LoopState) (string, error) {
+func (p *Pipeline) executeThink(params map[string]any, state *LoopState, onProgress workflow.ProgressCallback) (string, error) {
 	content, _ := params["content"].(string)
 	if content != "" {
 		state.ThinkingSteps = append(state.ThinkingSteps, content)
@@ -341,6 +341,14 @@ func (p *Pipeline) executeThink(params map[string]any, state *LoopState) (string
 		if p.cfg.Logger != nil {
 			p.cfg.Logger.Debug("v3 pipeline: think content", "full", content)
 		}
+
+		// Emit thinking progress event
+		if onProgress != nil {
+			onProgress(workflow.Progress{
+				Stage:           workflow.StageThinking,
+				ThinkingContent: content,
+			})
+		}
 	}
 	// Return a directive message that reminds the model it needs to execute queries
 	// This is important because the model sometimes hallucinates results after thinking
@@ -348,7 +356,7 @@ func (p *Pipeline) executeThink(params map[string]any, state *LoopState) (string
 }
 
 // executeSQL handles the execute_sql tool - runs queries in parallel.
-func (p *Pipeline) executeSQL(ctx context.Context, params map[string]any, state *LoopState) (string, error) {
+func (p *Pipeline) executeSQL(ctx context.Context, params map[string]any, state *LoopState, onProgress workflow.ProgressCallback) (string, error) {
 	queries, err := ParseQueries(params)
 	if err != nil || len(queries) == 0 {
 		return "", fmt.Errorf("no valid queries provided")
@@ -362,6 +370,17 @@ func (p *Pipeline) executeSQL(ctx context.Context, params map[string]any, state 
 			"q", qNum,
 			"question", q.Question,
 			"sql", truncate(q.SQL, 200))
+	}
+
+	// Emit query started events for all queries
+	if onProgress != nil {
+		for _, q := range queries {
+			onProgress(workflow.Progress{
+				Stage:         workflow.StageQueryStarted,
+				QueryQuestion: q.Question,
+				QuerySQL:      q.SQL,
+			})
+		}
 	}
 
 	// Execute queries in parallel
@@ -394,6 +413,15 @@ func (p *Pipeline) executeSQL(ctx context.Context, params map[string]any, state 
 						Error: err.Error(),
 					},
 				}
+				// Emit query complete with error
+				if onProgress != nil {
+					onProgress(workflow.Progress{
+						Stage:         workflow.StageQueryComplete,
+						QueryQuestion: query.Question,
+						QuerySQL:      sql,
+						QueryError:    err.Error(),
+					})
+				}
 				return
 			}
 
@@ -405,6 +433,16 @@ func (p *Pipeline) executeSQL(ctx context.Context, params map[string]any, state 
 					SQL: sql,
 				},
 				Result: queryResult,
+			}
+
+			// Emit query complete with success
+			if onProgress != nil {
+				onProgress(workflow.Progress{
+					Stage:         workflow.StageQueryComplete,
+					QueryQuestion: query.Question,
+					QuerySQL:      sql,
+					QueryRows:     queryResult.Count,
+				})
 			}
 		}(i, q)
 	}

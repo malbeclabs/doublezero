@@ -223,16 +223,28 @@ const (
 	StageMapping      ProgressStage = "mapping"
 	StagePlanning     ProgressStage = "planning"
 	StageInspecting   ProgressStage = "inspecting"
+
+	// v3 stages
+	StageThinking      ProgressStage = "thinking"      // Model is reasoning
+	StageQueryStarted  ProgressStage = "query_started" // Individual query started
+	StageQueryComplete ProgressStage = "query_done"    // Individual query completed
 )
 
 // Progress represents the current state of pipeline execution.
 type Progress struct {
 	Stage          ProgressStage
-	Classification Classification    // Set after classifying
-	DataQuestions  []DataQuestion    // Set after decomposing
-	QueriesTotal   int               // Total queries to execute
-	QueriesDone    int               // Queries completed so far
-	Error          error             // Set if an error occurred
+	Classification Classification // Set after classifying
+	DataQuestions  []DataQuestion // Set after decomposing
+	QueriesTotal   int            // Total queries to execute
+	QueriesDone    int            // Queries completed so far
+	Error          error          // Set if an error occurred
+
+	// v3 fields
+	ThinkingContent string // For StageThinking: the thinking content
+	QueryQuestion   string // For StageQueryStarted/StageQueryComplete: the query question
+	QuerySQL        string // For StageQueryStarted/StageQueryComplete: the SQL
+	QueryRows       int    // For StageQueryComplete: row count
+	QueryError      string // For StageQueryComplete: error if failed
 }
 
 // ProgressCallback is called at each stage of pipeline execution.

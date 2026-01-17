@@ -241,13 +241,13 @@ func seedHealthyNetworkData(t *testing.T, ctx context.Context, conn clickhouse.C
 		loss           bool
 		ipdvUs         *int64
 	}{
-		// Link1 (nyc-lon): Healthy
-		{now.Add(-1 * time.Hour), 1, 1, "device1", "device2", "link1", 50000, false, int64Ptr(2000)},
-		{now.Add(-1 * time.Hour), 1, 2, "device1", "device2", "link1", 51000, false, int64Ptr(2100)},
-		{now.Add(-2 * time.Hour), 1, 1, "device2", "device1", "link1", 49000, false, int64Ptr(1900)},
+		// Link1 (nyc-lon): Healthy - use -30 minutes to ensure samples are within the 1-hour window
+		{now.Add(-30 * time.Minute), 1, 1, "device1", "device2", "link1", 50000, false, int64Ptr(2000)},
+		{now.Add(-30 * time.Minute), 1, 2, "device1", "device2", "link1", 51000, false, int64Ptr(2100)},
+		{now.Add(-45 * time.Minute), 1, 1, "device2", "device1", "link1", 49000, false, int64Ptr(1900)},
 		// Link2 (chi-nyc): Healthy
-		{now.Add(-1 * time.Hour), 1, 1, "device3", "device1", "link2", 75000, false, int64Ptr(3000)},
-		{now.Add(-1 * time.Hour), 1, 2, "device1", "device3", "link2", 73000, false, int64Ptr(2800)},
+		{now.Add(-30 * time.Minute), 1, 1, "device3", "device1", "link2", 75000, false, int64Ptr(3000)},
+		{now.Add(-30 * time.Minute), 1, 2, "device1", "device3", "link2", 73000, false, int64Ptr(2800)},
 	}
 	err = latencyDS.WriteBatch(ctx, conn, len(latencySamples), func(i int) ([]any, error) {
 		s := latencySamples[i]
@@ -399,20 +399,20 @@ func seedNetworkHealthSummaryData(t *testing.T, ctx context.Context, conn clickh
 		loss           bool
 		ipdvUs         *int64
 	}{
-		// Link1 (nyc-lon): Mostly healthy, some loss
-		{now.Add(-1 * time.Hour), 1, 1, "device1", "device2", "link1", 50000, false, int64Ptr(2000)},
-		{now.Add(-1 * time.Hour), 1, 2, "device1", "device2", "link1", 51000, false, int64Ptr(2100)},
-		{now.Add(-1 * time.Hour), 1, 3, "device1", "device2", "link1", 0, true, nil},
-		{now.Add(-2 * time.Hour), 1, 1, "device2", "device1", "link1", 49000, false, int64Ptr(1900)},
-		{now.Add(-2 * time.Hour), 1, 2, "device2", "device1", "link1", 0, true, nil},
+		// Link1 (nyc-lon): Mostly healthy, some loss - use -30 minutes to ensure within 1-hour window
+		{now.Add(-30 * time.Minute), 1, 1, "device1", "device2", "link1", 50000, false, int64Ptr(2000)},
+		{now.Add(-30 * time.Minute), 1, 2, "device1", "device2", "link1", 51000, false, int64Ptr(2100)},
+		{now.Add(-30 * time.Minute), 1, 3, "device1", "device2", "link1", 0, true, nil},
+		{now.Add(-45 * time.Minute), 1, 1, "device2", "device1", "link1", 49000, false, int64Ptr(1900)},
+		{now.Add(-45 * time.Minute), 1, 2, "device2", "device1", "link1", 0, true, nil},
 		// Link2 (chi-nyc): Healthy
-		{now.Add(-1 * time.Hour), 1, 1, "device3", "device1", "link2", 75000, false, int64Ptr(3000)},
-		{now.Add(-1 * time.Hour), 1, 2, "device1", "device3", "link2", 73000, false, int64Ptr(2800)},
-		// Link4 (tok-fra): High loss
-		{now.Add(-1 * time.Hour), 1, 1, "device5", "device6", "link4", 0, true, nil},
-		{now.Add(-1 * time.Hour), 1, 2, "device5", "device6", "link4", 0, true, nil},
-		{now.Add(-2 * time.Hour), 1, 1, "device6", "device5", "link4", 0, true, nil},
-		{now.Add(-2 * time.Hour), 1, 2, "device6", "device5", "link4", 180000, false, int64Ptr(5000)},
+		{now.Add(-30 * time.Minute), 1, 1, "device3", "device1", "link2", 75000, false, int64Ptr(3000)},
+		{now.Add(-30 * time.Minute), 1, 2, "device1", "device3", "link2", 73000, false, int64Ptr(2800)},
+		// Link4 (tok-fra): High loss (75% - 3 out of 4 samples)
+		{now.Add(-30 * time.Minute), 1, 1, "device5", "device6", "link4", 0, true, nil},
+		{now.Add(-30 * time.Minute), 1, 2, "device5", "device6", "link4", 0, true, nil},
+		{now.Add(-45 * time.Minute), 1, 1, "device6", "device5", "link4", 0, true, nil},
+		{now.Add(-45 * time.Minute), 1, 2, "device6", "device5", "link4", 180000, false, int64Ptr(5000)},
 	}
 	err = latencyDS.WriteBatch(ctx, conn, len(latencySamples), func(i int) ([]any, error) {
 		s := latencySamples[i]

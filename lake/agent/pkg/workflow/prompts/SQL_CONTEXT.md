@@ -495,7 +495,45 @@ WHERE changed_ts > now() - INTERVAL 48 HOUR
 ORDER BY changed_ts DESC;
 ```
 
-**For packet loss / latency history**, query `fact_dz_device_link_latency` directly with time filters.
+**For historical packet loss / latency** (beyond the last hour), query `fact_dz_device_link_latency` directly:
+
+```sql
+-- Historical packet loss by link (last 30 days, hourly buckets)
+SELECT
+    l.code AS link_code,
+    toStartOfHour(f.event_ts) AS hour,
+    count(*) AS samples,
+    countIf(f.loss = true) AS lost_samples,
+    round(countIf(f.loss = true) * 100.0 / count(*), 1) AS loss_pct
+FROM fact_dz_device_link_latency f
+JOIN dz_links_current l ON f.link_pk = l.pk
+WHERE f.event_ts > now() - INTERVAL 30 DAY
+  AND f.link_pk != ''
+GROUP BY l.code, hour
+HAVING loss_pct >= 1  -- Only show hours with packet loss
+ORDER BY hour DESC;
+
+-- Packet loss for links in a specific metro
+SELECT
+    l.code AS link_code,
+    ma.code AS side_a_metro,
+    mz.code AS side_z_metro,
+    toDate(f.event_ts) AS date,
+    round(countIf(f.loss = true) * 100.0 / count(*), 1) AS loss_pct
+FROM fact_dz_device_link_latency f
+JOIN dz_links_current l ON f.link_pk = l.pk
+LEFT JOIN dz_devices_current da ON l.side_a_pk = da.pk
+LEFT JOIN dz_devices_current dz ON l.side_z_pk = dz.pk
+LEFT JOIN dz_metros_current ma ON da.metro_pk = ma.pk
+LEFT JOIN dz_metros_current mz ON dz.metro_pk = mz.pk
+WHERE f.event_ts > now() - INTERVAL 30 DAY
+  AND (ma.code = 'sao' OR mz.code = 'sao')
+GROUP BY l.code, ma.code, mz.code, date
+HAVING loss_pct >= 1
+ORDER BY date DESC;
+```
+
+**IMPORTANT for "outage" questions**: Check BOTH status changes (`dz_link_status_changes`) AND historical packet loss (`fact_dz_device_link_latency`). A link can have an "outage" due to status change OR due to packet loss.
 
 ### Validators by Region/Metro
 The pre-built views include `device_code`, `device_metro_code`, and `device_metro_name` columns. Use these for regional analysis:

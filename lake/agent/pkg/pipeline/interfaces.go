@@ -23,4 +23,5 @@ type Version string
 const (
 	VersionV1 Version = "v1"
 	VersionV2 Version = "v2"
+	VersionV3 Version = "v3"
 )

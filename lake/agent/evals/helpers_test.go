@@ -19,6 +19,7 @@ import (
 	"github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline"
 	v1 "github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline/v1"
 	v2 "github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline/v2"
+	v3 "github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline/v3"
 	"github.com/malbeclabs/doublezero/lake/indexer/pkg/clickhouse"
 	"github.com/malbeclabs/doublezero/lake/indexer/pkg/clickhouse/dataset"
 	serviceability "github.com/malbeclabs/doublezero/lake/indexer/pkg/dz/serviceability"
@@ -287,6 +288,11 @@ func setupPipeline(t *testing.T, ctx context.Context, clientInfo *laketesting.Cl
 	var err error
 
 	switch version {
+	case pipeline.VersionV3:
+		prompts, promptErr := v3.LoadPrompts()
+		require.NoError(t, promptErr)
+		cfg.Prompts = prompts
+		runner, err = v3.New(cfg)
 	case pipeline.VersionV2:
 		prompts, promptErr := v2.LoadPrompts()
 		require.NoError(t, promptErr)

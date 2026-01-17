@@ -41,6 +41,93 @@ type LLMClient interface {
 	Complete(ctx context.Context, systemPrompt, userPrompt string, opts ...CompleteOption) (string, error)
 }
 
+// ToolLLMClient extends LLMClient with tool-calling capabilities.
+// Used by v3 pipeline for agentic tool loops.
+type ToolLLMClient interface {
+	LLMClient
+
+	// CompleteWithTools sends a request with tools and returns a response that may contain tool calls.
+	// The systemPrompt is separate to enable prompt caching.
+	// Returns the response, input tokens, output tokens, and any error.
+	CompleteWithTools(
+		ctx context.Context,
+		systemPrompt string,
+		messages []ToolMessage,
+		tools []ToolDefinition,
+		opts ...CompleteOption,
+	) (*ToolLLMResponse, error)
+}
+
+// ToolMessage represents a message in a tool-calling conversation.
+type ToolMessage struct {
+	Role    string             `json:"role"` // "user" or "assistant"
+	Content []ToolContentBlock `json:"content"`
+}
+
+// ToolContentBlock represents a block of content in a tool message.
+type ToolContentBlock struct {
+	Type      string         `json:"type"` // "text", "tool_use", "tool_result"
+	Text      string         `json:"text,omitempty"`
+	ID        string         `json:"id,omitempty"`          // For tool_use
+	Name      string         `json:"name,omitempty"`        // For tool_use
+	Input     map[string]any `json:"input,omitempty"`       // For tool_use
+	ToolUseID string         `json:"tool_use_id,omitempty"` // For tool_result
+	Content   string         `json:"content,omitempty"`     // For tool_result
+	IsError   bool           `json:"is_error,omitempty"`    // For tool_result
+}
+
+// ToolDefinition represents a tool that can be called by the LLM.
+type ToolDefinition struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	InputSchema any    `json:"input_schema"` // JSON Schema for parameters
+}
+
+// ToolLLMResponse represents the response from a tool-calling LLM request.
+type ToolLLMResponse struct {
+	StopReason   string             // "end_turn" or "tool_use"
+	Content      []ToolContentBlock // May include both text and tool_use blocks
+	InputTokens  int
+	OutputTokens int
+}
+
+// ToolCalls extracts tool calls from the response.
+func (r *ToolLLMResponse) ToolCalls() []ToolCallInfo {
+	var calls []ToolCallInfo
+	for _, block := range r.Content {
+		if block.Type == "tool_use" {
+			calls = append(calls, ToolCallInfo{
+				ID:         block.ID,
+				Name:       block.Name,
+				Parameters: block.Input,
+			})
+		}
+	}
+	return calls
+}
+
+// Text extracts text content from the response.
+func (r *ToolLLMResponse) Text() string {
+	for _, block := range r.Content {
+		if block.Type == "text" {
+			return block.Text
+		}
+	}
+	return ""
+}
+
+// HasToolCalls returns true if the response contains tool calls.
+func (r *ToolLLMResponse) HasToolCalls() bool {
+	return r.StopReason == "tool_use"
+}
+
+// ToolCallInfo represents a tool invocation from the LLM.
+type ToolCallInfo struct {
+	ID         string
+	Name       string
+	Parameters map[string]any
+}
+
 // Querier executes SQL queries.
 type Querier interface {
 	// Query executes a SQL query and returns formatted results.

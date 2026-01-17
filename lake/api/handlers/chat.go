@@ -16,6 +16,7 @@ import (
 	"github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline"
 	v1 "github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline/v1"
 	v2 "github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline/v2"
+	v3 "github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline/v3"
 )
 
 // ChatMessage represents a single message in conversation history.
@@ -268,6 +269,12 @@ func ChatStream(w http.ResponseWriter, r *http.Request) {
 	// Check which pipeline version to use
 	version := pipeline.DefaultVersion()
 	slog.Info("Using pipeline version", "version", version)
+
+	if version == pipeline.VersionV3 {
+		// v3 pipeline path - tool-calling loop
+		chatStreamV3(ctx, req, history, sendEvent)
+		return
+	}
 
 	if version == pipeline.VersionV2 {
 		// v2 pipeline path - uses RunWithProgress with progress callbacks
@@ -561,6 +568,92 @@ func chatStreamV2(ctx context.Context, req ChatRequest, history []pipeline.Conve
 		"answerLen", len(result.Answer),
 		"queryCount", len(result.ExecutedQueries),
 		"lastStage", lastStage,
+	)
+
+	// Build and send the response
+	response := convertPipelineResult(result)
+	sendEvent("done", response)
+}
+
+// chatStreamV3 handles the v3 pipeline streaming using the tool-calling loop.
+func chatStreamV3(ctx context.Context, req ChatRequest, history []pipeline.ConversationMessage, sendEvent func(string, any)) {
+	// Load v3 prompts
+	prompts, err := v3.LoadPrompts()
+	if err != nil {
+		sendEvent("error", map[string]string{"error": internalError("Failed to load prompts", err)})
+		return
+	}
+
+	// Create pipeline components
+	llm := pipeline.NewAnthropicLLMClient(anthropic.ModelClaude3_5Haiku20241022, 4096)
+	querier := NewDBQuerier()
+	schemaFetcher := NewDBSchemaFetcher()
+
+	// Create v3 pipeline
+	p, err := v3.New(&pipeline.Config{
+		Logger:        slog.Default(),
+		LLM:           llm,
+		Querier:       querier,
+		SchemaFetcher: schemaFetcher,
+		Prompts:       prompts,
+		MaxTokens:     4096,
+	})
+	if err != nil {
+		sendEvent("error", map[string]string{"error": internalError("Failed to initialize chat", err)})
+		return
+	}
+
+	// Progress callback that emits SSE events
+	onProgress := func(progress pipeline.Progress) {
+		// Map stage to status message
+		var message string
+		switch progress.Stage {
+		case pipeline.StageExecuting:
+			message = "Processing..."
+		case pipeline.StageSynthesizing:
+			message = "Preparing answer..."
+		default:
+			message = "Processing..."
+		}
+
+		sendEvent("status", map[string]string{
+			"step":    string(progress.Stage),
+			"message": message,
+		})
+	}
+
+	// Send periodic heartbeats to keep connection alive through proxies
+	heartbeatDone := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(15 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				sendEvent("heartbeat", map[string]string{})
+			case <-heartbeatDone:
+				return
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	// Run the v3 pipeline
+	slog.Info("Starting v3 pipeline", "message", req.Message)
+	result, err := p.RunWithProgress(ctx, req.Message, history, onProgress)
+	close(heartbeatDone)
+
+	if err != nil {
+		slog.Error("v3 pipeline failed", "error", err, "message", req.Message)
+		sendEvent("error", map[string]string{"error": fmt.Sprintf("Pipeline failed: %v", err)})
+		return
+	}
+
+	slog.Info("v3 pipeline completed",
+		"answerLen", len(result.Answer),
+		"queryCount", len(result.ExecutedQueries),
+		"classification", result.Classification,
 	)
 
 	// Build and send the response

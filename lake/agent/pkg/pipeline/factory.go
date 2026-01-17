@@ -11,6 +11,7 @@ import "os"
 //	    "github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline"
 //	    v1 "github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline/v1"
 //	    v2 "github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline/v2"
+//	    v3 "github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline/v3"
 //	)
 //
 //	version := pipeline.DefaultVersion()
@@ -26,6 +27,10 @@ import "os"
 //	    prompts, _ := v2.LoadPrompts()
 //	    cfg.Prompts = prompts
 //	    runner, err = v2.New(cfg)
+//	case pipeline.VersionV3:
+//	    prompts, _ := v3.LoadPrompts()
+//	    cfg.Prompts = prompts
+//	    runner, err = v3.New(cfg)
 //	}
 
 // DefaultVersion returns the default pipeline version.
@@ -37,8 +42,10 @@ func DefaultVersion() Version {
 			return VersionV1
 		case VersionV2:
 			return VersionV2
+		case VersionV3:
+			return VersionV3
 		}
 	}
-	// v2 is the default
-	return VersionV2
+	// v3 is the default
+	return VersionV3
 }

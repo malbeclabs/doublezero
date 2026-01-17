@@ -1,0 +1,59 @@
+package v3
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline/v3/prompts"
+)
+
+// Prompts contains all the v3 pipeline prompts loaded from embedded files.
+type Prompts struct {
+	System string // Main system prompt with workflow guidance and domain knowledge
+}
+
+// GetPrompt returns the prompt content for the given name.
+// This implements the pipeline.PromptsProvider interface.
+func (p *Prompts) GetPrompt(name string) string {
+	switch name {
+	case "system":
+		return p.System
+	default:
+		return ""
+	}
+}
+
+// LoadPrompts loads all v3 prompts from the embedded filesystem.
+func LoadPrompts() (*Prompts, error) {
+	p := &Prompts{}
+
+	var err error
+	if p.System, err = loadPrompt("SYSTEM.md"); err != nil {
+		return nil, fmt.Errorf("failed to load SYSTEM: %w", err)
+	}
+
+	return p, nil
+}
+
+func loadPrompt(path string) (string, error) {
+	data, err := prompts.FS.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("failed to read %s: %w", path, err)
+	}
+	return strings.TrimSpace(string(data)), nil
+}
+
+// BuildSystemPrompt constructs the full system prompt with schema and optional format context.
+func BuildSystemPrompt(basePrompt, schema, formatContext string) string {
+	prompt := basePrompt
+
+	// Add schema
+	prompt += fmt.Sprintf("\n\n# Database Schema\n\n%s", schema)
+
+	// Add platform-specific formatting if provided
+	if formatContext != "" {
+		prompt += fmt.Sprintf("\n\n# Output Formatting\n\n%s", formatContext)
+	}
+
+	return prompt
+}

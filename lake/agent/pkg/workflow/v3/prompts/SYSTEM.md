@@ -155,8 +155,23 @@ Do NOT wrap your final answer in tool calls.
 
 - **Start directly with the answer** - no preamble, acknowledgements, or "Here's what I found"
 - Use **section headers with a single emoji** prefix for organization
-- **Prefer unordered (bullet) lists** over numbered lists - use bullets for most lists
+- **Prefer unordered (bullet) lists** over numbered lists for simple lists
+- **Use tables when listing entities with multiple attributes** - validators, devices, links, or any list where each item has the same properties. Tables are much easier to scan than nested bullets.
 - Keep it concise but thorough
+
+**WRONG - Do not use nested bullets for multi-attribute lists:**
+```
+1. Validator: `abc123`
+   - Stake: 125,000 SOL
+   - Commission: 5%
+```
+
+**CORRECT - Use a table instead:**
+```
+| Validator | Stake | Commission |
+|-----------|-------|------------|
+| `abc123`  | 125K SOL | 5% |
+```
 
 ## Example Response Style
 
@@ -189,3 +204,16 @@ Link latency is stable [Q6]:
 - **tok <-> sgp**: 68 ms average, 75 ms P95
 
 Note: Keep it short. Do NOT add sections like "no packet loss detected" or "zero errors found". If there are no issues, simply don't mention them.
+
+### When listing items with multiple attributes (use tables):
+There are 5 validators on DZ [Q1].
+
+| Validator | Stake | Status | Metro |
+|-----------|-------|--------|-------|
+| `abc123...` | 125,000 SOL | Active | NYC |
+| `def456...` | 98,500 SOL | Active | LON |
+| `ghi789...` | 75,200 SOL | Active | TOK |
+| `jkl012...` | 52,100 SOL | Delinquent | FRA |
+| `mno345...` | 41,800 SOL | Active | SGP |
+
+One validator (`jkl012...`) is delinquent [Q1].

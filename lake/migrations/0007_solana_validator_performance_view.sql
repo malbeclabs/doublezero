@@ -57,6 +57,11 @@ SELECT
     va.commission_percentage,
     -- DZ connection status
     CASE WHEN dz.vote_pubkey != '' THEN 'on_dz' ELSE 'off_dz' END AS dz_status,
+    -- DZ device/metro info (NULL if not on DZ)
+    dz.device_pk,
+    dz.device_code,
+    dz.device_metro_code,
+    dz.device_metro_name,
     -- Vote lag metrics (NULL if delinquent or no recent activity)
     vl.avg_vote_lag_slots,
     vl.min_vote_lag_slots,

@@ -94,12 +94,12 @@ SELECT MAX(peak) FROM per_window
 
 | View | Use For |
 |------|---------|
-| `solana_validators_on_dz_current` | Validators currently on DZ (vote_pubkey, node_pubkey, activated_stake_sol, connected_ts) |
+| `solana_validators_on_dz_current` | Validators currently on DZ (vote_pubkey, node_pubkey, activated_stake_sol, device_code, device_metro_code, connected_ts) |
 | `solana_validators_off_dz_current` | Validators NOT on DZ with GeoIP (vote_pubkey, activated_stake_sol, city, country) |
-| `solana_validators_performance_current` | **Validator performance metrics** (vote_lag, skip_rate, dz_status) - USE FOR COMPARISONS |
-| `solana_validators_on_dz_connections` | All connection events with `first_connected_ts` |
-| `solana_validators_disconnections` | Validators that left DZ (vote_pubkey, activated_stake_sol, connected_ts, disconnected_ts) |
-| `solana_validators_new_connections` | Recently connected validators (past 24h) |
+| `solana_validators_performance_current` | **Validator performance metrics** (vote_lag, skip_rate, dz_status, device_code, device_metro_code) - USE FOR COMPARISONS |
+| `solana_validators_on_dz_connections` | All connection events with `first_connected_ts`, device_code, device_metro_code |
+| `solana_validators_disconnections` | Validators that left DZ (vote_pubkey, activated_stake_sol, device_code, device_metro_code, connected_ts, disconnected_ts) |
+| `solana_validators_new_connections` | Recently connected validators with device_code, device_metro_code |
 | `dz_link_issue_events` | Link issues (status_change, packet_loss, sla_breach, missing_telemetry) |
 | `dz_vs_internet_latency_comparison` | Compare DZ vs public internet latency per metro pair |
 
@@ -477,21 +477,26 @@ ORDER BY start_ts
 ```
 
 ### Validators by Region/Metro
+The pre-built views include `device_code`, `device_metro_code`, and `device_metro_name` columns. Use these for regional analysis:
 ```sql
-SELECT
-    m.code AS metro_code,
-    m.name AS metro_name,
-    COUNT(DISTINCT va.vote_pubkey) AS validator_count,
-    SUM(va.activated_stake_lamports) / 1e9 AS total_stake_sol
-FROM dz_users_current u
-JOIN dz_devices_current d ON u.device_pk = d.pk
-JOIN dz_metros_current m ON d.metro_pk = m.pk
-JOIN solana_gossip_nodes_current gn ON u.dz_ip = gn.gossip_ip
-JOIN solana_vote_accounts_current va ON gn.pubkey = va.node_pubkey
-WHERE u.status = 'activated'
-  AND va.activated_stake_lamports > 0
-GROUP BY m.pk, m.code, m.name
-ORDER BY validator_count DESC
+-- Validators by metro (simple - use the view!)
+SELECT device_metro_code, device_metro_name, COUNT(*) AS validator_count, SUM(activated_stake_sol) AS total_stake_sol
+FROM solana_validators_on_dz_current
+GROUP BY device_metro_code, device_metro_name
+ORDER BY validator_count DESC;
+
+-- Validators by device
+SELECT device_code, device_metro_code, COUNT(*) AS validator_count, SUM(activated_stake_sol) AS total_stake_sol
+FROM solana_validators_on_dz_current
+GROUP BY device_code, device_metro_code
+ORDER BY validator_count DESC;
+
+-- Performance by metro
+SELECT device_metro_code, dz_status, COUNT(*) AS validators, ROUND(AVG(avg_vote_lag_slots), 2) AS avg_vote_lag
+FROM solana_validators_performance_current
+WHERE is_delinquent = false AND device_metro_code != ''
+GROUP BY device_metro_code, dz_status
+ORDER BY device_metro_code;
 ```
 
 ### Off-DZ Validators by GeoIP Region

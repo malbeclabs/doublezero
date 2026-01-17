@@ -13,6 +13,9 @@ SELECT
     u.dz_ip,
     u.client_ip,
     u.device_pk,
+    d.code AS device_code,
+    m.code AS device_metro_code,
+    m.name AS device_metro_name,
     va.activated_stake_lamports,
     va.activated_stake_lamports / 1000000000.0 AS activated_stake_sol,
     va.commission_percentage,
@@ -22,6 +25,8 @@ SELECT
 FROM dz_users_current u
 JOIN solana_gossip_nodes_current gn ON u.dz_ip = gn.gossip_ip
 JOIN solana_vote_accounts_current va ON gn.pubkey = va.node_pubkey
+LEFT JOIN dz_devices_current d ON u.device_pk = d.pk
+LEFT JOIN dz_metros_current m ON d.metro_pk = m.pk
 WHERE u.status = 'activated'
   AND u.dz_ip != ''
   AND va.epoch_vote_account = 'true'
@@ -41,6 +46,7 @@ WITH connection_events AS (
         va.node_pubkey,
         u.owner_pubkey,
         u.dz_ip,
+        u.device_pk,
         va.activated_stake_lamports,
         va.commission_percentage,
         GREATEST(u.snapshot_ts, gn.snapshot_ts, va.snapshot_ts) AS connected_ts
@@ -68,6 +74,7 @@ latest_values AS (
         node_pubkey,
         owner_pubkey,
         dz_ip,
+        device_pk,
         activated_stake_lamports,
         commission_percentage,
         ROW_NUMBER() OVER (PARTITION BY vote_pubkey, node_pubkey ORDER BY connected_ts DESC) AS rn
@@ -78,12 +85,18 @@ SELECT
     fc.node_pubkey,
     lv.owner_pubkey,
     lv.dz_ip,
+    lv.device_pk,
+    d.code AS device_code,
+    m.code AS device_metro_code,
+    m.name AS device_metro_name,
     lv.activated_stake_lamports,
     lv.activated_stake_lamports / 1000000000.0 AS activated_stake_sol,
     lv.commission_percentage,
     fc.first_connected_ts
 FROM first_connections fc
-JOIN latest_values lv ON fc.vote_pubkey = lv.vote_pubkey AND fc.node_pubkey = lv.node_pubkey AND lv.rn = 1;
+JOIN latest_values lv ON fc.vote_pubkey = lv.vote_pubkey AND fc.node_pubkey = lv.node_pubkey AND lv.rn = 1
+LEFT JOIN dz_devices_current d ON lv.device_pk = d.pk
+LEFT JOIN dz_metros_current m ON d.metro_pk = m.pk;
 
 -- solana_validators_off_dz_current
 -- Shows validators NOT currently connected to DZ, with their geoip location
@@ -122,6 +135,7 @@ WITH connection_events AS (
         va.node_pubkey,
         u.owner_pubkey,
         u.dz_ip,
+        u.device_pk,
         u.entity_id AS user_entity_id,
         va.activated_stake_lamports,
         va.commission_percentage,
@@ -149,6 +163,7 @@ validator_disconnections AS (
         ce.node_pubkey,
         ce.owner_pubkey,
         ce.dz_ip,
+        ce.device_pk,
         ce.activated_stake_lamports,
         ce.commission_percentage,
         ce.connected_ts,
@@ -159,19 +174,25 @@ validator_disconnections AS (
     WHERE de.disconnected_ts > ce.connected_ts  -- Disconnection must be after connection
 )
 SELECT
-    vote_pubkey,
-    node_pubkey,
-    owner_pubkey,
-    dz_ip,
-    activated_stake_lamports,
-    activated_stake_lamports / 1000000000.0 AS activated_stake_sol,
-    commission_percentage,
-    connected_ts,
-    disconnected_ts
-FROM validator_disconnections
+    vd.vote_pubkey,
+    vd.node_pubkey,
+    vd.owner_pubkey,
+    vd.dz_ip,
+    vd.device_pk,
+    d.code AS device_code,
+    m.code AS device_metro_code,
+    m.name AS device_metro_name,
+    vd.activated_stake_lamports,
+    vd.activated_stake_lamports / 1000000000.0 AS activated_stake_sol,
+    vd.commission_percentage,
+    vd.connected_ts,
+    vd.disconnected_ts
+FROM validator_disconnections vd
+LEFT JOIN dz_devices_current d ON vd.device_pk = d.pk
+LEFT JOIN dz_metros_current m ON d.metro_pk = m.pk
 -- Most recent disconnection per validator, excluding currently connected
-WHERE rn = 1
-  AND vote_pubkey NOT IN (SELECT vote_pubkey FROM solana_validators_on_dz_current);
+WHERE vd.rn = 1
+  AND vd.vote_pubkey NOT IN (SELECT vote_pubkey FROM solana_validators_on_dz_current);
 
 -- solana_validators_new_connections
 -- Shows validators currently on DZ with their first connection timestamp
@@ -186,6 +207,9 @@ SELECT
     curr.dz_ip,
     curr.client_ip,
     curr.device_pk,
+    curr.device_code,
+    curr.device_metro_code,
+    curr.device_metro_name,
     curr.activated_stake_lamports,
     curr.activated_stake_sol,
     curr.commission_percentage,

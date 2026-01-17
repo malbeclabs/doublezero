@@ -1,5 +1,6 @@
 import type { GenerationRecord } from '@/components/session-history'
 import type { ChatMessage } from './api'
+import { ensureMessageId } from './api'
 
 export interface QuerySession {
   id: string
@@ -118,6 +119,8 @@ export function loadChatSessions(): ChatSession[] {
       ...s,
       createdAt: new Date(s.createdAt),
       updatedAt: new Date(s.updatedAt),
+      // Ensure all messages have IDs (migration for old data)
+      messages: s.messages?.map(ensureMessageId) ?? [],
     }))
   } catch {
     return []

@@ -245,6 +245,7 @@ export async function generateSQLStream(
 }
 
 export interface ChatMessage {
+  id?: string // Unique message ID for deduplication (optional for backward compat)
   role: 'user' | 'assistant'
   content: string
   // Pipeline data (only present on assistant messages)
@@ -253,6 +254,17 @@ export interface ChatMessage {
   executedQueries?: string[]
   // Status for streaming persistence (only present during/after streaming)
   status?: 'streaming' | 'complete' | 'error'
+}
+
+// Generate a unique message ID
+export function generateMessageId(): string {
+  return crypto.randomUUID()
+}
+
+// Ensure a message has an ID (for migration of old data)
+export function ensureMessageId(message: ChatMessage): ChatMessage {
+  if (message.id) return message
+  return { ...message, id: generateMessageId() }
 }
 
 export interface DataQuestion {

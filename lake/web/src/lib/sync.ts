@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef } from 'react'
 import type { GenerationRecord } from '@/components/session-history'
 import type { ChatMessage, ServerSession } from './api'
+import { ensureMessageId } from './api'
 import type { QuerySession, ChatSession } from './sessions'
 import * as api from './api'
 
@@ -47,7 +48,8 @@ function serverToChatSession(server: ServerSession<ChatMessage[]>): ChatSession 
     name: server.name ?? undefined,
     createdAt: new Date(server.created_at),
     updatedAt: new Date(server.updated_at),
-    messages: server.content,
+    // Ensure all messages have IDs (migration for old data)
+    messages: server.content.map(ensureMessageId),
   }
 }
 

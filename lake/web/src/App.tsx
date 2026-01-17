@@ -31,7 +31,7 @@ import { ContributorDetailPage } from '@/components/contributor-detail-page'
 import { UserDetailPage } from '@/components/user-detail-page'
 import { ValidatorDetailPage } from '@/components/validator-detail-page'
 import { GossipNodeDetailPage } from '@/components/gossip-node-detail-page'
-import { generateSessionTitle, generateChatSessionTitle, sendChatMessageStream, recommendVisualization, fetchCatalog, acquireSessionLock, releaseSessionLock, getSessionLock, watchSessionLock, getSession, type SessionQueryInfo, type SessionLock } from '@/lib/api'
+import { generateSessionTitle, generateChatSessionTitle, sendChatMessageStream, recommendVisualization, fetchCatalog, acquireSessionLock, releaseSessionLock, getSessionLock, watchSessionLock, getSession, generateMessageId, type SessionQueryInfo, type SessionLock } from '@/lib/api'
 import type { TableInfo, QueryResponse, HistoryMessage, ChatMessage } from '@/lib/api'
 import {
   type QuerySession,
@@ -428,7 +428,7 @@ function QueryEditorView() {
       // Use existing empty session, add user message, then send
       setChatSessions(prev => prev.map(s =>
         s.id === emptySession.id
-          ? { ...s, messages: [{ role: 'user' as const, content: question }], updatedAt: new Date() }
+          ? { ...s, messages: [{ id: generateMessageId(), role: 'user' as const, content: question }], updatedAt: new Date() }
           : s
       ))
       sendChatMessage(emptySession.id, question, [])
@@ -436,7 +436,7 @@ function QueryEditorView() {
     } else {
       // Create a new session
       const newSession = createChatSession()
-      setChatSessions(prev => [...prev, { ...newSession, messages: [{ role: 'user' as const, content: question }] }])
+      setChatSessions(prev => [...prev, { ...newSession, messages: [{ id: generateMessageId(), role: 'user' as const, content: question }] }])
       sendChatMessage(newSession.id, question, [])
       navigate(`/chat/${newSession.id}`)
     }
@@ -506,6 +506,9 @@ function ChatView() {
   const pendingState = pendingChats.get(currentChatSessionId)
   const isPending = !!pendingState
   const currentProcessingSteps = pendingState?.processingSteps ?? []
+
+  // Guard to prevent double-sends from rapid clicks (React state updates are async)
+  const sendingRef = useRef(false)
 
   // Auto-resume incomplete streaming messages on page load
   // Wait for server sync to complete before checking - otherwise we might miss streaming messages
@@ -582,7 +585,7 @@ function ChatView() {
           return {
             ...session,
             updatedAt: new Date(),
-            messages: [...session.messages, { role: 'user' as const, content: initialQuestion }],
+            messages: [...session.messages, { id: generateMessageId(), role: 'user' as const, content: initialQuestion }],
           }
         }
         return session
@@ -593,50 +596,73 @@ function ChatView() {
   }, [currentChatSession, currentChatSessionId, chatMessages.length, isPending, setChatSessions, sendChatMessage])
 
   const handleSendMessage = useCallback(async (message: string) => {
-    console.log('[Chat] handleSendMessage called:', { message: message.slice(0, 50), currentChatSessionId })
-    console.trace('[Chat] handleSendMessage stack trace')
-    // Try to acquire lock FIRST before saving streaming message
-    // This prevents race conditions where another browser sees the streaming message
-    // but the lock hasn't been acquired yet
-    const lockResult = await acquireSessionLock(currentChatSessionId, BROWSER_ID, 300, message).catch(() => null)
-    if (lockResult && !lockResult.acquired) {
-      // Another browser has the lock - show indicator and don't proceed
-      console.log('[Lock] Cannot send - session locked by another browser:', lockResult.lock)
-      if (lockResult.lock) {
-        setExternalLocks(prev => {
-          const next = new Map(prev)
-          next.set(currentChatSessionId, lockResult.lock!)
-          return next
-        })
-      }
+    // Synchronous guard to prevent double-sends from rapid clicks
+    if (sendingRef.current) {
+      console.log('[Chat] handleSendMessage blocked - already sending')
       return
     }
+    sendingRef.current = true
 
-    // Create updated session with streaming message
-    const updatedSessions = chatSessions.map(session => {
-      if (session.id === currentChatSessionId) {
-        return {
-          ...session,
-          updatedAt: new Date(),
-          messages: [
-            ...session.messages,
-            { role: 'user' as const, content: message },
-            { role: 'assistant' as const, content: '', status: 'streaming' as const },
-          ],
+    try {
+      console.log('[Chat] handleSendMessage called:', { message: message.slice(0, 50), currentChatSessionId })
+      // Try to acquire lock FIRST before saving streaming message
+      // This prevents race conditions where another browser sees the streaming message
+      // but the lock hasn't been acquired yet
+      const lockResult = await acquireSessionLock(currentChatSessionId, BROWSER_ID, 300, message).catch(() => null)
+      if (lockResult && !lockResult.acquired) {
+        // Another browser has the lock - show indicator and don't proceed
+        console.log('[Lock] Cannot send - session locked by another browser:', lockResult.lock)
+        if (lockResult.lock) {
+          setExternalLocks(prev => {
+            const next = new Map(prev)
+            next.set(currentChatSessionId, lockResult.lock!)
+            return next
+          })
         }
+        return
       }
-      return session
-    })
 
-    // Save to localStorage SYNCHRONOUSLY before React state update
-    // This ensures the streaming message is persisted even if user reloads immediately
-    saveChatSessions(updatedSessions.filter(s => s.messages.length > 0))
+      // Check if there's already a streaming message (safety check for double-sends)
+      const currentSession = chatSessions.find(s => s.id === currentChatSessionId)
+      if (currentSession?.messages.some(m => m.status === 'streaming')) {
+        console.log('[Chat] handleSendMessage blocked - session already has streaming message')
+        return
+      }
 
-    // Update React state
-    setChatSessions(updatedSessions)
+      // Create updated session with streaming message
+      const userMessageId = generateMessageId()
+      const streamingMessageId = generateMessageId()
+      const updatedSessions = chatSessions.map(session => {
+        if (session.id === currentChatSessionId) {
+          return {
+            ...session,
+            updatedAt: new Date(),
+            messages: [
+              ...session.messages,
+              { id: userMessageId, role: 'user' as const, content: message },
+              { id: streamingMessageId, role: 'assistant' as const, content: '', status: 'streaming' as const },
+            ],
+          }
+        }
+        return session
+      })
 
-    // Send to API - lock is already acquired, so pass skipLock flag
-    sendChatMessage(currentChatSessionId, message, chatMessages, true)
+      // Save to localStorage SYNCHRONOUSLY before React state update
+      // This ensures the streaming message is persisted even if user reloads immediately
+      saveChatSessions(updatedSessions.filter(s => s.messages.length > 0))
+
+      // Update React state
+      setChatSessions(updatedSessions)
+
+      // Send to API - lock is already acquired, so pass skipLock flag
+      sendChatMessage(currentChatSessionId, message, chatMessages, true)
+    } finally {
+      // Reset guard after a short delay to allow state to update
+      // This prevents blocking legitimate new sends after the stream completes
+      setTimeout(() => {
+        sendingRef.current = false
+      }, 100)
+    }
   }, [currentChatSessionId, chatSessions, setChatSessions, sendChatMessage, chatMessages, setExternalLocks])
 
   const handleOpenInQueryEditor = useCallback((sql: string) => {
@@ -693,7 +719,7 @@ function ChatView() {
         ...s,
         messages: [
           ...messagesWithoutError,
-          { role: 'assistant' as const, content: '', status: 'streaming' as const },
+          { id: generateMessageId(), role: 'assistant' as const, content: '', status: 'streaming' as const },
         ],
       }
     }))
@@ -1039,12 +1065,15 @@ function AppContent() {
       }
     }
 
+    // Local array to accumulate processing steps (avoids stale closure issue with pendingChats)
+    const localSteps: ProcessingStep[] = []
+
     // Add this session to pending with initial state
     console.log('[Chat] sendChatMessage: adding to pendingChats, starting stream')
     setPendingChats(prev => {
       const next = new Map(prev)
       next.set(sessionId, {
-        processingSteps: [],
+        processingSteps: [], // Start empty - addProcessingStep will update for display
         abortController,
       })
       return next
@@ -1057,20 +1086,23 @@ function AppContent() {
         history,
         {
           onThinking: (data) => {
-            addProcessingStep(sessionId, {
-              type: 'thinking',
-              content: data.content,
-            })
+            const step: ProcessingStep = { type: 'thinking', content: data.content }
+            localSteps.push(step)
+            addProcessingStep(sessionId, step)
           },
           onQueryStarted: (data) => {
-            addProcessingStep(sessionId, {
-              type: 'query',
-              question: data.question,
-              sql: data.sql,
-              status: 'running',
-            })
+            const step: ProcessingStep = { type: 'query', question: data.question, sql: data.sql, status: 'running' }
+            localSteps.push(step)
+            addProcessingStep(sessionId, step)
           },
           onQueryDone: (data) => {
+            // Update the local step
+            const step = localSteps.find(s => s.type === 'query' && s.question === data.question)
+            if (step && step.type === 'query') {
+              step.status = data.error ? 'error' : 'completed'
+              step.rows = data.rows
+              step.error = data.error || undefined
+            }
             updateQueryStep(sessionId, data.question, {
               status: data.error ? 'error' : 'completed',
               rows: data.rows,
@@ -1079,71 +1111,77 @@ function AppContent() {
           },
           onDone: (data) => {
             console.log('[Chat] onDone called', { sessionId, hasAnswer: !!data.answer, answerLen: data.answer?.length, error: data.error })
+            console.log('[Chat] onDone captured steps:', localSteps.length)
 
-            // Get the processing steps and update sessions atomically
-            // Use setPendingChats to access current state, then update sessions inside
-            setPendingChats(pendingPrev => {
-              const capturedSteps = pendingPrev.get(sessionId)?.processingSteps ?? []
-              console.log('[Chat] onDone captured steps:', capturedSteps.length)
-
-              // Update the session - replace streaming message with complete message
-              setChatSessions(prev => {
-                const session = prev.find(s => s.id === sessionId)
-                console.log('[Chat] onDone setChatSessions', { sessionId, foundSession: !!session, stepsCount: capturedSteps.length })
-                if (!session) {
-                  console.log('[Chat] onDone: session not found!', { sessionId, sessionIds: prev.map(s => s.id) })
-                  return prev
-                }
-
-                const assistantMessage: ChatMessage = data.error
-                  ? { role: 'assistant', content: data.error, status: 'error' }
-                  : {
-                    role: 'assistant',
-                    content: data.answer,
-                    pipelineData: {
-                      dataQuestions: data.dataQuestions ?? [],
-                      generatedQueries: data.generatedQueries ?? [],
-                      executedQueries: data.executedQueries ?? [],
-                      followUpQuestions: data.followUpQuestions,
-                      processingSteps: capturedSteps,
-                    },
-                    executedQueries: data.executedQueries?.map(q => q.sql) ?? [],
-                    status: 'complete',
-                  }
-
-                // Replace the last streaming message with the complete one
-                const newMessages = session.messages.filter(m => m.status !== 'streaming')
-                newMessages.push(assistantMessage)
-
-                return prev.map(s =>
-                  s.id === sessionId ? { ...s, messages: newMessages, updatedAt: new Date() } : s
-                )
-              })
-
-              return pendingPrev // Don't modify pending state here
-            })
-
-            // Auto-generate title for new sessions
-            if (!data.error) {
-              setChatSessions(prev => {
-                const session = prev.find(s => s.id === sessionId)
-                if (session && !session.name && session.messages.length <= 2) {
-                  // Generate title async (don't await)
-                  generateChatSessionTitle(session.messages).then(result => {
-                    if (result.title) {
-                      setChatSessions(p => p.map(s =>
-                        s.id === sessionId ? { ...s, name: result.title, updatedAt: new Date() } : s
-                      ))
-                    }
-                  }).catch(() => { /* ignore */ })
-                }
+            // Update the session - replace streaming message with complete message
+            setChatSessions(prev => {
+              const session = prev.find(s => s.id === sessionId)
+              console.log('[Chat] onDone setChatSessions', { sessionId, foundSession: !!session, msgCount: session?.messages.length })
+              if (!session) {
+                console.log('[Chat] onDone: session not found!', { sessionId, sessionIds: prev.map(s => s.id) })
                 return prev
-              })
-            }
+              }
+
+              // Safety check: if there's already a complete assistant message for this turn, don't add another
+              const lastUserIdx = session.messages.map(m => m.role).lastIndexOf('user')
+              const hasCompleteAfterLastUser = session.messages.slice(lastUserIdx + 1).some(
+                m => m.role === 'assistant' && m.status === 'complete'
+              )
+              if (hasCompleteAfterLastUser) {
+                console.log('[Chat] onDone: already has complete message, skipping')
+                return prev
+              }
+
+              const assistantMessage: ChatMessage = data.error
+                ? { id: generateMessageId(), role: 'assistant', content: data.error, status: 'error' }
+                : {
+                  id: generateMessageId(),
+                  role: 'assistant',
+                  content: data.answer,
+                  pipelineData: {
+                    dataQuestions: data.dataQuestions ?? [],
+                    generatedQueries: data.generatedQueries ?? [],
+                    executedQueries: data.executedQueries ?? [],
+                    followUpQuestions: data.followUpQuestions,
+                    processingSteps: [...localSteps], // Copy from local array
+                  },
+                  executedQueries: data.executedQueries?.map(q => q.sql) ?? [],
+                  status: 'complete',
+                }
+
+              // Replace the streaming message with the complete one
+              const newMessages = session.messages.filter(m => m.status !== 'streaming')
+              newMessages.push(assistantMessage)
+
+              console.log('[Chat] onDone: new message count:', newMessages.length)
+
+              return prev.map(s =>
+                s.id === sessionId ? { ...s, messages: newMessages, updatedAt: new Date() } : s
+              )
+            })
 
             removePending(sessionId)
             // Release lock
             releaseSessionLock(sessionId, BROWSER_ID).catch(() => {})
+
+            // Auto-generate title for new sessions (after state is updated)
+            if (!data.error) {
+              setTimeout(() => {
+                setChatSessions(prev => {
+                  const session = prev.find(s => s.id === sessionId)
+                  if (session && !session.name && session.messages.length <= 2) {
+                    generateChatSessionTitle(session.messages).then(result => {
+                      if (result.title) {
+                        setChatSessions(p => p.map(s =>
+                          s.id === sessionId ? { ...s, name: result.title, updatedAt: new Date() } : s
+                        ))
+                      }
+                    }).catch(() => { /* ignore */ })
+                  }
+                  return prev
+                })
+              }, 100)
+            }
           },
           onError: (error) => {
             // Update session - replace streaming message with error
@@ -1151,6 +1189,7 @@ function AppContent() {
               if (s.id !== sessionId) return s
               const newMessages = s.messages.filter(m => m.status !== 'streaming')
               newMessages.push({
+                id: generateMessageId(),
                 role: 'assistant',
                 content: error,
                 status: 'error',
@@ -1189,6 +1228,7 @@ function AppContent() {
         if (s.id !== sessionId) return s
         const newMessages = s.messages.filter(m => m.status !== 'streaming')
         newMessages.push({
+          id: generateMessageId(),
           role: 'assistant',
           content: err instanceof Error ? err.message : 'Something went wrong. Please try again.',
           status: 'error',

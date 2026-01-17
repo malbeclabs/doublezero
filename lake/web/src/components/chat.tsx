@@ -214,6 +214,7 @@ function ProcessingTimeline({
 }: ProcessingTimelineProps) {
   const [isExpanded, setIsExpanded] = useState(isStreaming)
   const [expandedQueries, setExpandedQueries] = useState<Set<number>>(new Set())
+  const [expandedThinking, setExpandedThinking] = useState<Set<number>>(new Set())
   const queryRefs = useRef<Map<number, HTMLDivElement>>(new Map())
 
   // Auto-expand when streaming
@@ -246,6 +247,15 @@ function ProcessingTimeline({
 
   const toggleQuery = (index: number) => {
     setExpandedQueries(prev => {
+      const next = new Set(prev)
+      if (next.has(index)) next.delete(index)
+      else next.add(index)
+      return next
+    })
+  }
+
+  const toggleThinking = (index: number) => {
+    setExpandedThinking(prev => {
       const next = new Set(prev)
       if (next.has(index)) next.delete(index)
       else next.add(index)
@@ -290,14 +300,30 @@ function ProcessingTimeline({
         <div className="border-t border-border divide-y divide-border">
           {steps.map((step, i) => {
             if (step.type === 'thinking') {
+              // Track thinking step index for expansion state
+              const thinkingIndex = steps.slice(0, i + 1).filter(s => s.type === 'thinking').length - 1
+              const isThinkingExpanded = isStreaming || expandedThinking.has(thinkingIndex)
+              const needsTruncation = step.content.length > 80 || step.content.includes('\n')
+
               return (
                 <div key={i} className="px-3 py-2">
-                  <div className="flex items-start gap-2">
+                  <button
+                    onClick={() => toggleThinking(thinkingIndex)}
+                    className="w-full flex items-start gap-2 text-left"
+                  >
                     <Brain className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-                    <p className="text-sm text-muted-foreground leading-relaxed">
-                      {step.content}
-                    </p>
-                  </div>
+                    {isThinkingExpanded ? (
+                      <p className="text-sm text-muted-foreground leading-relaxed">
+                        {step.content}
+                      </p>
+                    ) : (
+                      <p className="text-sm text-muted-foreground truncate">
+                        {needsTruncation
+                          ? step.content.split('\n')[0].slice(0, 80) + '...'
+                          : step.content}
+                      </p>
+                    )}
+                  </button>
                 </div>
               )
             }

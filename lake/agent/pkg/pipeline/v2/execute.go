@@ -15,6 +15,11 @@ func (p *Pipeline) Execute(ctx context.Context, plan *QueryPlan) ([]pipeline.Exe
 	allQueries = append(allQueries, plan.ValidationQueries...)
 	allQueries = append(allQueries, plan.AnswerQueries...)
 
+	// Log queries for debugging
+	for i, pq := range allQueries {
+		p.logInfo("v2 pipeline: executing query", "index", i, "purpose", pq.Purpose, "sql", pq.SQL)
+	}
+
 	if len(allQueries) == 0 {
 		return nil, nil
 	}

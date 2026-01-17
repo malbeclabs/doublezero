@@ -157,6 +157,7 @@ SELECT MAX(total) FROM totals
 | `solana_validators_disconnections` | Validators that left DZ (vote_pubkey, activated_stake_sol, connected_ts, disconnected_ts) |
 | `solana_validators_new_connections` | Recently connected validators (past 24h) |
 | `dz_link_issue_events` | Link issues (status_change, packet_loss, sla_breach, missing_telemetry) |
+| `dz_vs_internet_latency_comparison` | Compare DZ vs public internet latency per metro pair |
 
 ## Time Windows
 When the question says "recently" or "recent", default to **past 24 hours** unless context suggests otherwise.
@@ -198,7 +199,20 @@ ORDER BY activated_stake_sol DESC LIMIT 10;
 SELECT link_code, event_type, start_ts, loss_pct, overage_pct
 FROM dz_link_issue_events
 WHERE start_ts > now() - INTERVAL 7 DAY;
+
+-- DZ vs Internet latency comparison (IMPORTANT for "compare DZ to internet" questions)
+SELECT origin_metro, target_metro,
+       dz_avg_rtt_ms, internet_avg_rtt_ms, rtt_improvement_pct,
+       dz_avg_jitter_ms, internet_avg_jitter_ms, jitter_improvement_pct
+FROM dz_vs_internet_latency_comparison
+ORDER BY origin_metro, target_metro;
 ```
+
+## DZ vs Public Internet Comparison
+**When asked to "compare DZ to the public internet"**, use the `dz_vs_internet_latency_comparison` view:
+- Shows side-by-side DZ and internet latency for each metro pair
+- Includes RTT (round-trip time), jitter, and improvement percentages
+- Positive `rtt_improvement_pct` means DZ is faster than internet
 
 # Business Rules
 

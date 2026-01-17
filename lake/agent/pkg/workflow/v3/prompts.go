@@ -10,8 +10,9 @@ import (
 
 // Prompts contains all the v3 pipeline prompts loaded from embedded files.
 type Prompts struct {
-	System string // Main system prompt with workflow guidance and domain knowledge
-	Slack  string // Slack-specific formatting guidelines
+	System     string // Main system prompt with workflow guidance and domain knowledge
+	SQLContext string // Shared SQL/domain context
+	Slack      string // Slack-specific formatting guidelines
 }
 
 // GetPrompt returns the prompt content for the given name.
@@ -30,9 +31,18 @@ func LoadPrompts() (*Prompts, error) {
 	p := &Prompts{}
 
 	var err error
-	if p.System, err = loadPrompt("SYSTEM.md"); err != nil {
+
+	// Load SQL_CONTEXT first (shared content)
+	if p.SQLContext, err = loadCommonPrompt("SQL_CONTEXT.md"); err != nil {
+		return nil, fmt.Errorf("failed to load SQL_CONTEXT: %w", err)
+	}
+
+	// Load system prompt and compose with SQL_CONTEXT
+	rawSystem, err := loadPrompt("SYSTEM.md")
+	if err != nil {
 		return nil, fmt.Errorf("failed to load SYSTEM: %w", err)
 	}
+	p.System = strings.ReplaceAll(rawSystem, "{{SQL_CONTEXT}}", p.SQLContext)
 
 	// Load common prompts (Slack formatting)
 	if p.Slack, err = loadCommonPrompt("SLACK.md"); err != nil {

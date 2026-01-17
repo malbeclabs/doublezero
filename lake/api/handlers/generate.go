@@ -1,12 +1,9 @@
 package handlers
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -37,35 +34,41 @@ type GenerateResponse struct {
 	Error    string `json:"error,omitempty"`
 }
 
-const ollamaURL = "http://localhost:11434"
-const defaultOllamaModel = "llama3.1"
 const maxValidationAttempts = 3
 
-func getOllamaModel() string {
-	if model := os.Getenv("OLLAMA_MODEL"); model != "" {
-		return model
-	}
-	return defaultOllamaModel
-}
-
-// Cached prompt for query generation
+// Cached prompts for query generation
 var (
-	cachedGeneratePrompt     string
-	cachedGeneratePromptsOnce sync.Once
-	cachedGeneratePromptsErr  error
+	cachedGeneratePrompt   string
+	cachedSQLContext       string
+	cachedPromptsOnce      sync.Once
+	cachedPromptsErr       error
 )
 
-func getGeneratePrompt() (string, error) {
-	cachedGeneratePromptsOnce.Do(func() {
-		data, err := prompts.PromptsFS.ReadFile("GENERATE.md")
+func loadGeneratePrompts() error {
+	cachedPromptsOnce.Do(func() {
+		// Load SQL_CONTEXT
+		sqlContextData, err := prompts.PromptsFS.ReadFile("SQL_CONTEXT.md")
 		if err != nil {
-			cachedGeneratePromptsErr = err
+			cachedPromptsErr = fmt.Errorf("failed to load SQL_CONTEXT: %w", err)
 			return
 		}
-		cachedGeneratePrompt = strings.TrimSpace(string(data))
+		cachedSQLContext = strings.TrimSpace(string(sqlContextData))
+
+		// Load GENERATE.md and compose with SQL_CONTEXT
+		generateData, err := prompts.PromptsFS.ReadFile("GENERATE.md")
+		if err != nil {
+			cachedPromptsErr = fmt.Errorf("failed to load GENERATE: %w", err)
+			return
+		}
+		rawPrompt := strings.TrimSpace(string(generateData))
+		cachedGeneratePrompt = strings.ReplaceAll(rawPrompt, "{{SQL_CONTEXT}}", cachedSQLContext)
 	})
-	if cachedGeneratePromptsErr != nil {
-		return "", cachedGeneratePromptsErr
+	return cachedPromptsErr
+}
+
+func getGeneratePrompt() (string, error) {
+	if err := loadGeneratePrompts(); err != nil {
+		return "", err
 	}
 	return cachedGeneratePrompt, nil
 }
@@ -82,25 +85,20 @@ func GenerateSQL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fetch schema for context
-	schema, err := fetchSchema()
+	// Fetch schema using shared DBSchemaFetcher
+	schemaFetcher := NewDBSchemaFetcher()
+	schema, err := schemaFetcher.FetchSchema(r.Context())
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(GenerateResponse{Error: internalError("Failed to fetch schema", err)})
 		return
 	}
 
-	// Determine provider - require Anthropic API key unless OLLAMA_MODEL is explicitly set
-	useAnthropic := os.Getenv("ANTHROPIC_API_KEY") != ""
-	useOllama := os.Getenv("OLLAMA_MODEL") != ""
-	if !useAnthropic && !useOllama {
+	// Require Anthropic API key
+	if os.Getenv("ANTHROPIC_API_KEY") == "" {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(GenerateResponse{Error: "ANTHROPIC_API_KEY environment variable is not set"})
 		return
-	}
-	provider := "anthropic"
-	if !useAnthropic && useOllama {
-		provider = "ollama"
 	}
 
 	var sql string
@@ -121,15 +119,10 @@ func GenerateSQL(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Generate SQL
-		if useAnthropic {
-			sql, err = generateWithAnthropic(schema, prompt, req.History)
-		} else {
-			sql, err = generateWithOllama(schema, prompt)
-		}
-
+		sql, err = generateWithAnthropic(schema, prompt, req.History)
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(GenerateResponse{Error: internalError("Failed to generate SQL", err), Provider: provider, Attempts: attempts})
+			json.NewEncoder(w).Encode(GenerateResponse{Error: internalError("Failed to generate SQL", err), Provider: "anthropic", Attempts: attempts})
 			return
 		}
 
@@ -141,7 +134,7 @@ func GenerateSQL(w http.ResponseWriter, r *http.Request) {
 		if validationErr == "" {
 			// Query is valid
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(GenerateResponse{SQL: sql, Provider: provider, Attempts: attempts})
+			json.NewEncoder(w).Encode(GenerateResponse{SQL: sql, Provider: "anthropic", Attempts: attempts})
 			return
 		}
 
@@ -153,7 +146,7 @@ func GenerateSQL(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(GenerateResponse{
 		SQL:      sql,
-		Provider: provider,
+		Provider: "anthropic",
 		Attempts: attempts,
 		Error:    fmt.Sprintf("Query validation failed after %d attempts: %s", attempts, lastError),
 	})
@@ -190,26 +183,21 @@ func GenerateSQLStream(w http.ResponseWriter, r *http.Request) {
 		flusher.Flush()
 	}
 
-	// Fetch schema for context
-	schema, err := fetchSchema()
+	// Fetch schema using shared DBSchemaFetcher
+	schemaFetcher := NewDBSchemaFetcher()
+	schema, err := schemaFetcher.FetchSchema(r.Context())
 	if err != nil {
 		sendEvent("error", internalError("Failed to fetch schema", err))
 		return
 	}
 
-	// Determine provider - require Anthropic API key unless OLLAMA_MODEL is explicitly set
-	useAnthropic := os.Getenv("ANTHROPIC_API_KEY") != ""
-	useOllama := os.Getenv("OLLAMA_MODEL") != ""
-	if !useAnthropic && !useOllama {
+	// Require Anthropic API key
+	if os.Getenv("ANTHROPIC_API_KEY") == "" {
 		sendEvent("error", "ANTHROPIC_API_KEY environment variable is not set")
 		return
 	}
-	provider := "anthropic"
-	if !useAnthropic && useOllama {
-		provider = "ollama"
-	}
 
-	sendEvent("status", fmt.Sprintf(`{"provider":"%s","status":"generating"}`, provider))
+	sendEvent("status", `{"provider":"anthropic","status":"generating"}`)
 
 	var fullResponse strings.Builder
 	var lastError string
@@ -234,17 +222,10 @@ func GenerateSQLStream(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Stream generation
-		if useAnthropic {
-			err = streamWithAnthropic(schema, prompt, req.History, func(text string) {
-				fullResponse.WriteString(text)
-				sendEvent("token", escapeJSON(text))
-			})
-		} else {
-			err = streamWithOllama(schema, prompt, func(text string) {
-				fullResponse.WriteString(text)
-				sendEvent("token", escapeJSON(text))
-			})
-		}
+		err = streamWithAnthropic(schema, prompt, req.History, func(text string) {
+			fullResponse.WriteString(text)
+			sendEvent("token", escapeJSON(text))
+		})
 
 		if err != nil {
 			sendEvent("error", internalError("Failed to generate SQL", err))
@@ -259,7 +240,7 @@ func GenerateSQLStream(w http.ResponseWriter, r *http.Request) {
 		validationErr := validateQuery(sql)
 		if validationErr == "" {
 			// Query is valid
-			sendEvent("done", fmt.Sprintf(`{"sql":"%s","provider":"%s","attempts":%d}`, escapeJSON(sql), provider, attempts))
+			sendEvent("done", fmt.Sprintf(`{"sql":"%s","provider":"anthropic","attempts":%d}`, escapeJSON(sql), attempts))
 			return
 		}
 
@@ -269,8 +250,8 @@ func GenerateSQLStream(w http.ResponseWriter, r *http.Request) {
 
 	// Max attempts reached
 	sql := cleanSQL(fullResponse.String())
-	sendEvent("done", fmt.Sprintf(`{"sql":"%s","provider":"%s","attempts":%d,"error":"Query validation failed after %d attempts: %s"}`,
-		escapeJSON(sql), provider, attempts, attempts, escapeJSON(lastError)))
+	sendEvent("done", fmt.Sprintf(`{"sql":"%s","provider":"anthropic","attempts":%d,"error":"Query validation failed after %d attempts: %s"}`,
+		escapeJSON(sql), attempts, attempts, escapeJSON(lastError)))
 }
 
 func escapeJSON(s string) string {
@@ -311,52 +292,6 @@ func streamWithAnthropic(schema, prompt string, history []HistoryMessage, onToke
 	metrics.RecordAnthropicRequest("messages/stream", duration, err)
 
 	return err
-}
-
-func streamWithOllama(schema, prompt string, onToken func(string)) error {
-	systemPrompt := buildSystemPrompt(schema)
-
-	reqBody := map[string]any{
-		"model":  getOllamaModel(),
-		"prompt": prompt,
-		"system": systemPrompt,
-		"stream": true,
-	}
-
-	jsonBody, err := json.Marshal(reqBody)
-	if err != nil {
-		return err
-	}
-
-	resp, err := http.Post(ollamaURL+"/api/generate", "application/json", bytes.NewReader(jsonBody))
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("ollama error: %s", string(body))
-	}
-
-	scanner := bufio.NewScanner(resp.Body)
-	for scanner.Scan() {
-		var chunk struct {
-			Response string `json:"response"`
-			Done     bool   `json:"done"`
-		}
-		if err := json.Unmarshal(scanner.Bytes(), &chunk); err != nil {
-			continue
-		}
-		if chunk.Response != "" {
-			onToken(chunk.Response)
-		}
-		if chunk.Done {
-			break
-		}
-	}
-
-	return scanner.Err()
 }
 
 func cleanSQL(response string) string {
@@ -464,49 +399,8 @@ func buildAnthropicMessages(history []HistoryMessage, currentPrompt string) []an
 	return messages
 }
 
-func generateWithOllama(schema, prompt string) (string, error) {
-	systemPrompt := buildSystemPrompt(schema)
-
-	reqBody := map[string]any{
-		"model":  getOllamaModel(),
-		"prompt": prompt,
-		"system": systemPrompt,
-		"stream": false,
-	}
-
-	jsonBody, err := json.Marshal(reqBody)
-	if err != nil {
-		return "", err
-	}
-
-	resp, err := http.Post(ollamaURL+"/api/generate", "application/json", bytes.NewReader(jsonBody))
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("ollama error: %s", string(body))
-	}
-
-	var ollamaResp struct {
-		Response string `json:"response"`
-	}
-
-	if err := json.Unmarshal(body, &ollamaResp); err != nil {
-		return "", err
-	}
-
-	return ollamaResp.Response, nil
-}
-
 func buildSystemPrompt(schema string) string {
-	// Load the unified GENERATE.md prompt
+	// Load the unified GENERATE.md prompt with SQL_CONTEXT composed
 	generatePrompt, err := getGeneratePrompt()
 	if err != nil {
 		// Fall back to basic prompt if loading fails
@@ -529,100 +423,4 @@ Additional rules for the query editor:
 `
 
 	return generatePrompt + editorInstructions + "\n\n## Database Schema\n\n```\n" + schema + "```"
-}
-
-func fetchSchema() (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	// Fetch columns
-	start := time.Now()
-	rows, err := config.DB.Query(ctx, `
-		SELECT
-			table,
-			name,
-			type
-		FROM system.columns
-		WHERE database = $1
-		  AND table NOT LIKE 'stg_%'
-		ORDER BY table, position
-	`, config.Database())
-	duration := time.Since(start)
-	if err != nil {
-		metrics.RecordClickHouseQuery(duration, err)
-		return "", err
-	}
-	defer rows.Close()
-	metrics.RecordClickHouseQuery(duration, nil)
-
-	type columnInfo struct {
-		Table string
-		Name  string
-		Type  string
-	}
-	var columns []columnInfo
-	for rows.Next() {
-		var c columnInfo
-		if err := rows.Scan(&c.Table, &c.Name, &c.Type); err != nil {
-			return "", err
-		}
-		columns = append(columns, c)
-	}
-
-	// Fetch view definitions
-	start = time.Now()
-	viewRows, err := config.DB.Query(ctx, `
-		SELECT
-			name,
-			as_select
-		FROM system.tables
-		WHERE database = $1
-		  AND engine = 'View'
-		  AND name NOT LIKE 'stg_%'
-	`, config.Database())
-	duration = time.Since(start)
-	if err != nil {
-		metrics.RecordClickHouseQuery(duration, err)
-		return "", err
-	}
-	defer viewRows.Close()
-	metrics.RecordClickHouseQuery(duration, nil)
-
-	// Build view definitions map
-	viewDefs := make(map[string]string)
-	for viewRows.Next() {
-		var name, asSelect string
-		if err := viewRows.Scan(&name, &asSelect); err != nil {
-			return "", err
-		}
-		viewDefs[name] = asSelect
-	}
-
-	// Format schema as readable text
-	var sb strings.Builder
-	currentTable := ""
-	for _, col := range columns {
-		if col.Table != currentTable {
-			if currentTable != "" {
-				// Add view definition if this was a view
-				if def, ok := viewDefs[currentTable]; ok {
-					sb.WriteString("  Definition: " + def + "\n")
-				}
-				sb.WriteString("\n")
-			}
-			currentTable = col.Table
-			if _, isView := viewDefs[col.Table]; isView {
-				sb.WriteString(col.Table + " (VIEW):\n")
-			} else {
-				sb.WriteString(col.Table + ":\n")
-			}
-		}
-		sb.WriteString("  - " + col.Name + " (" + col.Type + ")\n")
-	}
-	// Handle last table's view definition
-	if def, ok := viewDefs[currentTable]; ok {
-		sb.WriteString("  Definition: " + def + "\n")
-	}
-
-	return sb.String(), nil
 }

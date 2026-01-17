@@ -221,6 +221,44 @@ ORDER BY origin_metro, target_metro;
 - **Staked validator**: `epoch_vote_account = 'true' AND activated_stake_lamports > 0` (String, not Boolean)
 - **User kinds**: `ibrl` (unicast), `multicast`, `edge_filtering`
 - **Link types**: WAN (inter-metro), DZX (intra-metro)
+- **Device status**: `activated`, `drained` (and transitional: `pending`, `suspended`, `deactivated`)
+- **Drained devices**: Devices with `status = 'drained'` - not actively routing traffic
+
+**For "network state" or "network summary" questions**, include:
+1. Device count (total and by status - activated vs drained)
+2. Link count (activated links)
+3. User count (connected users with `dz_ip != ''`)
+4. Metro count
+
+```sql
+-- Network state summary queries
+SELECT COUNT(*) AS total_devices, countIf(status = 'activated') AS active, countIf(status = 'drained') AS drained FROM dz_devices_current;
+SELECT COUNT(*) AS active_links FROM dz_links_current WHERE status = 'activated';
+SELECT COUNT(*) AS connected_users FROM dz_users_current WHERE status = 'activated' AND dz_ip != '';
+SELECT COUNT(DISTINCT pk) AS metro_count FROM dz_metros_current;
+
+-- Find drained devices (ALWAYS list specific device codes!)
+SELECT code, status, metro_pk FROM dz_devices_current WHERE status = 'drained';
+```
+
+**For "network health" questions**, you MUST check and list:
+1. Link issues from `dz_link_issue_events` - include link_code, event_type, **loss_pct** (the percentage)
+2. Drained devices - **MUST list specific device codes** (e.g., "tok-dzd1 (suspended), chi-dzd1 (pending)")
+3. Interface errors from `fact_dz_device_interface_counters` - include device code and **actual numeric counts**
+
+**CRITICAL QUERIES for network health:**
+```sql
+-- Get drained device codes (REQUIRED - don't just count!)
+SELECT code, status FROM dz_devices_current WHERE status = 'drained';
+
+-- Get link issues with loss percentage
+SELECT link_code, event_type, loss_pct, overage_pct FROM dz_link_issue_events WHERE is_ongoing = true;
+```
+
+**CRITICAL: Always include specific identifiers and counts:**
+- "tok-dzd1 is drained, chi-dzd1 is drained" (NOT just "2 drained devices")
+- "tok-fra-1 has 50% packet loss" (NOT just "packet loss detected")
+- "lon-dzd1 has 8 in_errors, 3 discards" (NOT just "interface errors detected")
 
 ## Metro Codes (IMPORTANT)
 Metro codes are **lowercase 3-letter codes**. Common examples:
@@ -246,11 +284,16 @@ SELECT code, name FROM dz_metros_current WHERE name LIKE '%Tokyo%';
 - **Vote lag**: How far behind the validator is (lower is better)
 - **Skip rate**: Percentage of missed blocks (lower is better)
 
+**CRITICAL: Always include specific validator identifiers** (vote_pubkey or node_pubkey), not just aggregates:
+- "vote1, vote2, vote3 are on DZ with avg vote lag 50 slots"
+- "vote4, vote5, vote6 are off DZ with avg vote lag 200 slots"
+- NOT: "on-DZ validators average 50 slots" (no identifiers!)
+
 Use these tables to compare performance:
 
 **Vote Lag** (lower is better) from `fact_solana_vote_account_activity`:
 ```sql
--- Vote lag = cluster_slot - last_vote_slot (how far behind the validator is)
+-- Vote lag per validator (INCLUDE vote_account_pubkey!)
 SELECT vote_account_pubkey, node_identity_pubkey,
        AVG(cluster_slot - last_vote_slot) AS avg_vote_lag_slots
 FROM fact_solana_vote_account_activity
@@ -260,7 +303,7 @@ GROUP BY vote_account_pubkey, node_identity_pubkey;
 
 **Skip Rate** (lower is better) from `fact_solana_block_production`:
 ```sql
--- Skip rate = missed blocks / assigned slots
+-- Skip rate per validator (INCLUDE leader_identity_pubkey!)
 SELECT leader_identity_pubkey,
        MAX(leader_slots_assigned_cum) AS slots_assigned,
        MAX(blocks_produced_cum) AS blocks_produced,
@@ -270,20 +313,50 @@ WHERE event_ts > now() - INTERVAL 24 HOUR
 GROUP BY leader_identity_pubkey;
 ```
 
-**Comparing on-DZ vs off-DZ performance:**
+**On-DZ vs off-DZ comparison with identifiers:**
 ```sql
-SELECT
-    CASE WHEN dz.vote_pubkey != '' THEN 'on-dz' ELSE 'off-dz' END AS dz_status,
-    AVG(va.cluster_slot - va.last_vote_slot) AS avg_vote_lag
+-- Get on-DZ validators with performance
+SELECT dz.vote_pubkey, dz.node_pubkey, AVG(va.cluster_slot - va.last_vote_slot) AS avg_vote_lag
+FROM solana_validators_on_dz_current dz
+JOIN fact_solana_vote_account_activity va ON va.vote_account_pubkey = dz.vote_pubkey
+WHERE va.event_ts > now() - INTERVAL 24 HOUR
+GROUP BY dz.vote_pubkey, dz.node_pubkey;
+
+-- Get off-DZ validators with performance (use anti-join)
+SELECT va.vote_account_pubkey, va.node_identity_pubkey, AVG(va.cluster_slot - va.last_vote_slot) AS avg_vote_lag
 FROM fact_solana_vote_account_activity va
 LEFT JOIN solana_validators_on_dz_current dz ON va.vote_account_pubkey = dz.vote_pubkey
-WHERE va.event_ts > now() - INTERVAL 24 HOUR
-GROUP BY dz_status;
+WHERE va.event_ts > now() - INTERVAL 24 HOUR AND dz.vote_pubkey = ''
+GROUP BY va.vote_account_pubkey, va.node_identity_pubkey;
 ```
 
 ## Telemetry Patterns
 - **Loss detection**: `loss = true OR rtt_us = 0`
 - **For latency stats**: `WHERE loss = false AND rtt_us > 0`
+
+## Interface Errors & Health
+Use `fact_dz_device_interface_counters` for interface-level issues:
+- `in_errors_delta`, `out_errors_delta` - Packet errors
+- `in_discards_delta`, `out_discards_delta` - Dropped packets
+- `carrier_transitions_delta` - Link flaps (carrier up/down)
+
+```sql
+-- Find devices with interface errors (past 24h)
+SELECT d.code AS device_code, f.intf,
+       SUM(f.in_errors_delta) AS in_errors,
+       SUM(f.out_errors_delta) AS out_errors,
+       SUM(f.in_discards_delta) AS in_discards,
+       SUM(f.out_discards_delta) AS out_discards,
+       SUM(f.carrier_transitions_delta) AS carrier_transitions
+FROM fact_dz_device_interface_counters f
+JOIN dz_devices_current d ON f.device_pk = d.pk
+WHERE f.event_ts > now() - INTERVAL 24 HOUR
+GROUP BY d.code, f.intf
+HAVING in_errors > 0 OR out_errors > 0 OR in_discards > 0 OR out_discards > 0 OR carrier_transitions > 0
+ORDER BY in_errors + out_errors DESC;
+```
+
+**For "network health" questions**, check this table for interface problems in addition to link issues.
 
 ## Bandwidth & Utilization
 - Calculate in/out directions SEPARATELY (full-duplex)

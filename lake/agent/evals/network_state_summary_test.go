@@ -59,8 +59,8 @@ func runTest_NetworkStateSummary(t *testing.T, llmFactory LLMClientFactory) {
 	expectations := []Expectation{
 		{
 			Description:   "Response includes device count",
-			ExpectedValue: "8 devices or similar device count mentioned (6 activated + 2 non-activated like pending/suspended)",
-			Rationale:     "Test data has 8 devices (6 activated + 2 other status)",
+			ExpectedValue: "8 devices or similar device count mentioned (6 activated + 2 drained)",
+			Rationale:     "Test data has 8 devices (6 activated + 2 drained)",
 		},
 		{
 			Description:   "Response includes link count",
@@ -68,8 +68,8 @@ func runTest_NetworkStateSummary(t *testing.T, llmFactory LLMClientFactory) {
 			Rationale:     "Test data has 5 WAN links",
 		},
 		{
-			Description:   "Response includes user count or connected entities",
-			ExpectedValue: "6 users or validators or connections mentioned",
+			Description:   "Response includes user count",
+			ExpectedValue: "6 users or connected users mentioned",
 			Rationale:     "Test data has 6 connected users",
 		},
 	}
@@ -80,7 +80,7 @@ func runTest_NetworkStateSummary(t *testing.T, llmFactory LLMClientFactory) {
 
 // seedNetworkStateSummaryData creates a representative network state for summary
 // - 4 metros across different regions
-// - 8 devices (6 activated, 2 other status)
+// - 8 devices (6 activated, 2 drained)
 // - 5 WAN links
 // - 6 users connected
 func seedNetworkStateSummaryData(t *testing.T, ctx context.Context, conn clickhouse.Connection) {
@@ -103,8 +103,8 @@ func seedNetworkStateSummaryData(t *testing.T, ctx context.Context, conn clickho
 		{PK: "device4", Code: "tyo-dzd1", Status: "activated", MetroPK: "metro3", DeviceType: "DZD"},
 		{PK: "device5", Code: "sin-dzd1", Status: "activated", MetroPK: "metro4", DeviceType: "DZD"},
 		{PK: "device6", Code: "sin-dzd2", Status: "activated", MetroPK: "metro4", DeviceType: "DZD"},
-		{PK: "device7", Code: "nyc-dzd3", Status: "pending", MetroPK: "metro1", DeviceType: "DZD"},
-		{PK: "device8", Code: "lon-dzd2", Status: "suspended", MetroPK: "metro2", DeviceType: "DZD"},
+		{PK: "device7", Code: "nyc-dzd3", Status: "drained", MetroPK: "metro1", DeviceType: "DZD"},
+		{PK: "device8", Code: "lon-dzd2", Status: "drained", MetroPK: "metro2", DeviceType: "DZD"},
 	}
 	seedDevices(t, ctx, conn, devices, now, now)
 

@@ -90,9 +90,9 @@ func runTest_NetworkHealthSummary(t *testing.T, llmFactory LLMClientFactory) {
 			Rationale:     "tok-fra-1 link has packet loss that should be reported",
 		},
 		{
-			Description:   "Response mentions device status issues",
-			ExpectedValue: "tok-dzd1 (suspended) and/or chi-dzd1 (pending) appear in response",
-			Rationale:     "These devices have non-activated status",
+			Description:   "Response mentions drained devices",
+			ExpectedValue: "tok-dzd1 and/or chi-dzd1 appear in response as drained",
+			Rationale:     "These devices have drained status",
 		},
 		{
 			Description:   "Response mentions interface errors with counts",
@@ -357,9 +357,9 @@ func seedNetworkHealthSummaryData(t *testing.T, ctx context.Context, conn clickh
 	devices := []serviceability.Device{
 		{PK: "device1", Code: "nyc-dzd1", Status: "activated", MetroPK: "metro1", DeviceType: "DZD"},
 		{PK: "device2", Code: "lon-dzd1", Status: "activated", MetroPK: "metro2", DeviceType: "DZD"},
-		{PK: "device3", Code: "chi-dzd1", Status: "pending", MetroPK: "metro3", DeviceType: "DZD"},
+		{PK: "device3", Code: "chi-dzd1", Status: "drained", MetroPK: "metro3", DeviceType: "DZD"},
 		{PK: "device4", Code: "sf-dzd1", Status: "activated", MetroPK: "metro4", DeviceType: "DZD"},
-		{PK: "device5", Code: "tok-dzd1", Status: "suspended", MetroPK: "metro5", DeviceType: "DZD"},
+		{PK: "device5", Code: "tok-dzd1", Status: "drained", MetroPK: "metro5", DeviceType: "DZD"},
 		{PK: "device6", Code: "fra-dzd1", Status: "activated", MetroPK: "metro6", DeviceType: "DZD"},
 		{PK: "device7", Code: "nyc-dzd2", Status: "activated", MetroPK: "metro1", DeviceType: "DZD"},
 	}
@@ -371,7 +371,7 @@ func seedNetworkHealthSummaryData(t *testing.T, ctx context.Context, conn clickh
 	links := []serviceability.Link{
 		{PK: "link1", Code: "nyc-lon-1", Status: "activated", LinkType: "WAN", SideAPK: "device1", SideZPK: "device2", SideAIfaceName: "Ethernet1", SideZIfaceName: "Ethernet1", Bandwidth: 10000000000, CommittedRTTNs: 10000000},
 		{PK: "link2", Code: "chi-nyc-1", Status: "activated", LinkType: "WAN", SideAPK: "device3", SideZPK: "device1", SideAIfaceName: "Ethernet1", SideZIfaceName: "Ethernet1", Bandwidth: 10000000000, CommittedRTTNs: 15000000},
-		{PK: "link3", Code: "sf-nyc-1", Status: "pending", LinkType: "WAN", SideAPK: "device4", SideZPK: "device1", SideAIfaceName: "Ethernet1", SideZIfaceName: "Ethernet1", Bandwidth: 10000000000, CommittedRTTNs: 12000000},
+		{PK: "link3", Code: "sf-nyc-1", Status: "drained", LinkType: "WAN", SideAPK: "device4", SideZPK: "device1", SideAIfaceName: "Ethernet1", SideZIfaceName: "Ethernet1", Bandwidth: 10000000000, CommittedRTTNs: 12000000},
 		{PK: "link4", Code: "tok-fra-1", Status: "activated", LinkType: "WAN", SideAPK: "device5", SideZPK: "device6", SideAIfaceName: "Ethernet1", SideZIfaceName: "Ethernet1", Bandwidth: 10000000000, CommittedRTTNs: 20000000},
 		{PK: "link5", Code: "nyc-local-1", Status: "activated", LinkType: "DZX", SideAPK: "device1", SideZPK: "device7", SideAIfaceName: "Ethernet2", SideZIfaceName: "Ethernet1", Bandwidth: 10000000000, CommittedRTTNs: 5000000},
 	}

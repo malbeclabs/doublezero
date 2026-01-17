@@ -54,14 +54,14 @@ func RunMigrations(ctx context.Context, log *slog.Logger, cfg MigrationConfig) e
 
 	// Set up goose with our logger
 	goose.SetLogger(&slogGooseLogger{log: log})
-	goose.SetBaseFS(indexer.MigrationsFS)
+	goose.SetBaseFS(indexer.ClickHouseMigrationsFS)
 
 	if err := goose.SetDialect("clickhouse"); err != nil {
 		return fmt.Errorf("failed to set goose dialect: %w", err)
 	}
 
 	// Run migrations
-	if err := goose.UpContext(ctx, db, "migrations"); err != nil {
+	if err := goose.UpContext(ctx, db, "db/clickhouse/migrations"); err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
 	}
 
@@ -81,13 +81,13 @@ func MigrationStatus(ctx context.Context, log *slog.Logger, cfg MigrationConfig)
 
 	// Set up goose with our logger
 	goose.SetLogger(&slogGooseLogger{log: log})
-	goose.SetBaseFS(indexer.MigrationsFS)
+	goose.SetBaseFS(indexer.ClickHouseMigrationsFS)
 
 	if err := goose.SetDialect("clickhouse"); err != nil {
 		return fmt.Errorf("failed to set goose dialect: %w", err)
 	}
 
-	return goose.StatusContext(ctx, db, "migrations")
+	return goose.StatusContext(ctx, db, "db/clickhouse/migrations")
 }
 
 // newSQLDB creates a database/sql compatible connection for goose

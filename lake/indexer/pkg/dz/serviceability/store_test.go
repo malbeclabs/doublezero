@@ -132,7 +132,15 @@ func TestLake_Serviceability_Store_ReplaceContributors(t *testing.T) {
 		err = store.ReplaceContributors(ctx, contributors1)
 		require.NoError(t, err)
 
+		// Wait a moment to ensure different snapshot_ts (truncated to seconds)
+		time.Sleep(1100 * time.Millisecond)
+
 		contributors2 := []Contributor{
+			{
+				PK:   contributorPK1,
+				Code: "TEST1",
+				Name: "Test Contributor 1",
+			},
 			{
 				PK:   contributorPK2,
 				Code: "TEST2",

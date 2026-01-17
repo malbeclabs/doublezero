@@ -7,10 +7,13 @@ import (
 	"time"
 
 	"github.com/malbeclabs/doublezero/lake/indexer/pkg/clickhouse"
+	dzgraph "github.com/malbeclabs/doublezero/lake/indexer/pkg/dz/graph"
+	"github.com/malbeclabs/doublezero/lake/indexer/pkg/dz/isis"
 	dzsvc "github.com/malbeclabs/doublezero/lake/indexer/pkg/dz/serviceability"
 	dztelemlatency "github.com/malbeclabs/doublezero/lake/indexer/pkg/dz/telemetry/latency"
 	dztelemusage "github.com/malbeclabs/doublezero/lake/indexer/pkg/dz/telemetry/usage"
 	mcpgeoip "github.com/malbeclabs/doublezero/lake/indexer/pkg/geoip"
+	"github.com/malbeclabs/doublezero/lake/indexer/pkg/neo4j"
 	"github.com/malbeclabs/doublezero/lake/indexer/pkg/sol"
 )
 
@@ -19,10 +22,12 @@ type Indexer struct {
 	cfg Config
 
 	svc          *dzsvc.View
+	graphStore   *dzgraph.Store
 	telemLatency *dztelemlatency.View
 	telemUsage   *dztelemusage.View
 	sol          *sol.View
 	geoip        *mcpgeoip.View
+	isisSource   isis.Source
 
 	startedAt time.Time
 }
@@ -38,6 +43,13 @@ func New(ctx context.Context, cfg Config) (*Indexer, error) {
 			return nil, fmt.Errorf("failed to run ClickHouse migrations: %w", err)
 		}
 		cfg.Logger.Info("ClickHouse migrations completed")
+	}
+
+	if cfg.Neo4jMigrationsEnable && cfg.Neo4j != nil {
+		if err := neo4j.RunMigrations(ctx, cfg.Logger, cfg.Neo4jMigrationsConfig); err != nil {
+			return nil, fmt.Errorf("failed to run Neo4j migrations: %w", err)
+		}
+		cfg.Logger.Info("Neo4j migrations completed")
 	}
 
 	// Initialize GeoIP store
@@ -104,6 +116,20 @@ func New(ctx context.Context, cfg Config) (*Indexer, error) {
 		return nil, fmt.Errorf("failed to create geoip view: %w", err)
 	}
 
+	// Initialize graph store if Neo4j is configured
+	var graphStore *dzgraph.Store
+	if cfg.Neo4j != nil {
+		graphStore, err = dzgraph.NewStore(dzgraph.StoreConfig{
+			Logger:     cfg.Logger,
+			Neo4j:      cfg.Neo4j,
+			ClickHouse: cfg.ClickHouse,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create graph store: %w", err)
+		}
+		cfg.Logger.Info("Neo4j graph store initialized")
+	}
+
 	// Initialize telemetry usage view if influx client is configured
 	var telemetryUsageView *dztelemusage.View
 	if cfg.DeviceUsageInfluxClient != nil {
@@ -121,15 +147,33 @@ func New(ctx context.Context, cfg Config) (*Indexer, error) {
 		}
 	}
 
+	// Initialize ISIS source if enabled
+	var isisSource isis.Source
+	if cfg.ISISEnabled {
+		isisSource, err = isis.NewS3Source(ctx, isis.S3SourceConfig{
+			Bucket:      cfg.ISISS3Bucket,
+			Region:      cfg.ISISS3Region,
+			EndpointURL: cfg.ISISS3EndpointURL,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create ISIS S3 source: %w", err)
+		}
+		cfg.Logger.Info("ISIS S3 source initialized",
+			"bucket", cfg.ISISS3Bucket,
+			"region", cfg.ISISS3Region)
+	}
+
 	i := &Indexer{
 		log: cfg.Logger,
 		cfg: cfg,
 
 		svc:          svcView,
+		graphStore:   graphStore,
 		telemLatency: telemView,
 		telemUsage:   telemetryUsageView,
 		sol:          solanaView,
 		geoip:        geoipView,
+		isisSource:   isisSource,
 	}
 
 	return i, nil
@@ -154,8 +198,136 @@ func (i *Indexer) Start(ctx context.Context) {
 		i.telemUsage.Start(ctx)
 	}
 
+	// Start graph sync loop if Neo4j is configured
+	if i.graphStore != nil {
+		go i.startGraphSync(ctx)
+	}
+
+	// Start ISIS sync loop if enabled
+	if i.isisSource != nil {
+		go i.startISISSync(ctx)
+	}
+}
+
+// startGraphSync runs the graph sync loop.
+// It waits for the serviceability view to be ready, then syncs the graph periodically.
+func (i *Indexer) startGraphSync(ctx context.Context) {
+	i.log.Info("graph_sync: waiting for serviceability view to be ready")
+
+	// Wait for serviceability to be ready before first sync
+	if err := i.svc.WaitReady(ctx); err != nil {
+		i.log.Error("graph_sync: failed to wait for serviceability view", "error", err)
+		return
+	}
+
+	// Initial sync
+	i.log.Info("graph_sync: starting initial sync")
+	if err := i.graphStore.Sync(ctx); err != nil {
+		i.log.Error("graph_sync: initial sync failed", "error", err)
+	} else {
+		i.log.Info("graph_sync: initial sync completed")
+	}
+
+	// Periodic sync
+	ticker := i.cfg.Clock.NewTicker(i.cfg.RefreshInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.Chan():
+			if err := i.graphStore.Sync(ctx); err != nil {
+				i.log.Error("graph_sync: sync failed", "error", err)
+			}
+		}
+	}
 }
 
 func (i *Indexer) Close() error {
+	if i.isisSource != nil {
+		if err := i.isisSource.Close(); err != nil {
+			i.log.Warn("failed to close ISIS source", "error", err)
+		}
+	}
 	return nil
+}
+
+// startISISSync runs the ISIS sync loop.
+// It waits for the graph sync to complete its initial sync, then syncs IS-IS data periodically.
+func (i *Indexer) startISISSync(ctx context.Context) {
+	i.log.Info("isis_sync: waiting for serviceability view to be ready")
+
+	// Wait for serviceability to be ready (graph sync will also be waiting)
+	if err := i.svc.WaitReady(ctx); err != nil {
+		i.log.Error("isis_sync: failed to wait for serviceability view", "error", err)
+		return
+	}
+
+	// Add a small delay to let graph sync complete its initial sync
+	select {
+	case <-ctx.Done():
+		return
+	case <-i.cfg.Clock.After(5 * time.Second):
+	}
+
+	// Determine refresh interval
+	refreshInterval := i.cfg.ISISRefreshInterval
+	if refreshInterval <= 0 {
+		refreshInterval = 30 * time.Second
+	}
+
+	// Initial sync
+	i.log.Info("isis_sync: starting initial sync")
+	if err := i.doISISSync(ctx); err != nil {
+		i.log.Error("isis_sync: initial sync failed", "error", err)
+	} else {
+		i.log.Info("isis_sync: initial sync completed")
+	}
+
+	// Periodic sync
+	ticker := i.cfg.Clock.NewTicker(refreshInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.Chan():
+			if err := i.doISISSync(ctx); err != nil {
+				i.log.Error("isis_sync: sync failed", "error", err)
+			}
+		}
+	}
+}
+
+// doISISSync performs a single IS-IS sync operation.
+func (i *Indexer) doISISSync(ctx context.Context) error {
+	i.log.Debug("isis_sync: fetching latest dump")
+
+	// Fetch the latest IS-IS dump from S3
+	dump, err := i.isisSource.FetchLatest(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to fetch ISIS dump: %w", err)
+	}
+
+	i.log.Debug("isis_sync: parsing dump", "file", dump.FileName, "size", len(dump.RawJSON))
+
+	// Parse the dump
+	lsps, err := isis.Parse(dump.RawJSON)
+	if err != nil {
+		return fmt.Errorf("failed to parse ISIS dump: %w", err)
+	}
+
+	i.log.Debug("isis_sync: syncing to Neo4j", "lsps", len(lsps))
+
+	// Sync to Neo4j
+	if err := i.graphStore.SyncISIS(ctx, lsps); err != nil {
+		return fmt.Errorf("failed to sync ISIS to graph: %w", err)
+	}
+
+	return nil
+}
+
+// GraphStore returns the Neo4j graph store, or nil if Neo4j is not configured.
+func (i *Indexer) GraphStore() *dzgraph.Store {
+	return i.graphStore
 }

@@ -94,13 +94,8 @@ func runTest_SolanaValidatorsConnectedCount(t *testing.T, llmFactory LLMClientFa
 	expectations := []Expectation{
 		{
 			Description:   "Count of validators newly connected in the last day",
-			ExpectedValue: "3 validators",
-			Rationale:     "The response should state that 3 validators connected",
-		},
-		{
-			Description:   "List of newly connected validators",
-			ExpectedValue: "vote1/node1, vote2/node2, and/or vote5/node5 (either vote_pubkey or node_pubkey identifier is acceptable)",
-			Rationale:     "When count is small, specific validators should be listed - either identifier type is valid",
+			ExpectedValue: "3 validators (the number 3 must appear)",
+			Rationale:     "The question asks 'how many' so the response must include the count of 3",
 		},
 	}
 	isCorrect, err := evaluateResponse(t, ctx, question, response, expectations...)

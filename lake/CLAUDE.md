@@ -53,7 +53,7 @@ Output goes to `eval-runs/<timestamp>/` with:
 
 **Do NOT run OllamaLocal evals.** The OllamaLocal tests skip when Ollama isn't available, which makes them appear to pass. Only run the Anthropic evals (filter with `-f 'Anthropic'` if needed).
 
-**Evals are the source of truth for agent quality.** The agent prompts (CLASSIFY, DECOMPOSE, GENERATE, SYNTHESIZE) and evals work together:
+**Evals are the source of truth for agent quality.** The agent system prompt and evals work together:
 
 - When changing agent prompts or context: evals must continue to pass. If an eval fails, fix the agent behavior, not the expectation.
 - When working on evals: the goal is to improve the agent. Add expectations that enforce better behavior, don't weaken expectations to make tests pass.

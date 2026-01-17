@@ -9,14 +9,11 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
-	"github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline"
-	v1 "github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline/v1"
-	v2 "github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline/v2"
-	v3 "github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline/v3"
+	"github.com/malbeclabs/doublezero/lake/agent/pkg/workflow"
+	v3 "github.com/malbeclabs/doublezero/lake/agent/pkg/workflow/v3"
 )
 
 // ChatMessage represents a single message in conversation history.
@@ -92,7 +89,7 @@ func Chat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Load prompts
-	prompts, err := v1.LoadPrompts()
+	prompts, err := v3.LoadPrompts()
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(ChatResponse{Error: internalError("Failed to load prompts", err)})
@@ -100,12 +97,12 @@ func Chat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create pipeline components
-	llm := pipeline.NewAnthropicLLMClient(anthropic.ModelClaude3_5Haiku20241022, 4096)
+	llm := workflow.NewAnthropicLLMClient(anthropic.ModelClaude3_5Haiku20241022, 4096)
 	querier := NewDBQuerier()
 	schemaFetcher := NewDBSchemaFetcher()
 
 	// Create and run pipeline
-	p, err := v1.New(&pipeline.Config{
+	p, err := v3.New(&workflow.Config{
 		Logger:        slog.Default(),
 		LLM:           llm,
 		Querier:       querier,
@@ -120,9 +117,9 @@ func Chat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Convert history to pipeline format
-	var history []pipeline.ConversationMessage
+	var history []workflow.ConversationMessage
 	for _, msg := range req.History {
-		history = append(history, pipeline.ConversationMessage{
+		history = append(history, workflow.ConversationMessage{
 			Role:            msg.Role,
 			Content:         msg.Content,
 			ExecutedQueries: msg.ExecutedQueries,
@@ -137,14 +134,14 @@ func Chat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Convert pipeline result to response
-	response := convertPipelineResult(result)
+	response := convertWorkflowResult(result)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 }
 
-// convertPipelineResult converts the internal pipeline result to the API response format.
-func convertPipelineResult(result *pipeline.PipelineResult) ChatResponse {
+// convertWorkflowResult converts the internal pipeline result to the API response format.
+func convertWorkflowResult(result *workflow.WorkflowResult) ChatResponse {
 	resp := ChatResponse{
 		Answer:            result.Answer,
 		FollowUpQuestions: result.FollowUpQuestions,
@@ -255,9 +252,9 @@ func ChatStream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Convert history to pipeline format
-	var history []pipeline.ConversationMessage
+	var history []workflow.ConversationMessage
 	for _, msg := range req.History {
-		history = append(history, pipeline.ConversationMessage{
+		history = append(history, workflow.ConversationMessage{
 			Role:            msg.Role,
 			Content:         msg.Content,
 			ExecutedQueries: msg.ExecutedQueries,
@@ -266,317 +263,12 @@ func ChatStream(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	// Check which pipeline version to use
-	version := pipeline.DefaultVersion()
-	slog.Info("Using pipeline version", "version", version)
-
-	if version == pipeline.VersionV3 {
-		// v3 pipeline path - tool-calling loop
-		chatStreamV3(ctx, req, history, sendEvent)
-		return
-	}
-
-	if version == pipeline.VersionV2 {
-		// v2 pipeline path - uses RunWithProgress with progress callbacks
-		chatStreamV2(ctx, req, history, sendEvent)
-		return
-	}
-
-	// v1 pipeline path - manual orchestration
-	// Load prompts
-	prompts, err := v1.LoadPrompts()
-	if err != nil {
-		sendEvent("error", map[string]string{"error": internalError("Failed to load prompts", err)})
-		return
-	}
-
-	// Create pipeline components
-	llm := pipeline.NewAnthropicLLMClient(anthropic.ModelClaude3_5Haiku20241022, 4096)
-	querier := NewDBQuerier()
-	schemaFetcher := NewDBSchemaFetcher()
-
-	// Create pipeline
-	p, err := v1.New(&pipeline.Config{
-		Logger:        slog.Default(),
-		LLM:           llm,
-		Querier:       querier,
-		SchemaFetcher: schemaFetcher,
-		Prompts:       prompts,
-		MaxTokens:     4096,
-	})
-	if err != nil {
-		sendEvent("error", map[string]string{"error": internalError("Failed to initialize chat", err)})
-		return
-	}
-
-	// Pre-step: Classify the question
-	sendEvent("status", map[string]string{"step": "classifying", "message": "Understanding your question..."})
-
-	classification, err := p.ClassifyWithHistory(ctx, req.Message, history)
-	if err != nil {
-		sendEvent("error", map[string]string{"error": internalError("Failed to classify question", err)})
-		return
-	}
-
-	// Handle non-data-analysis classifications
-	switch classification.Classification {
-	case pipeline.ClassificationOutOfScope:
-		answer := classification.DirectResponse
-		if answer == "" {
-			answer = "I'm a DoubleZero data analyst. I can help you with questions about the DZ network, devices, links, users, connected Solana validators, and performance metrics. What would you like to know?"
-		}
-		response := ChatResponse{Answer: answer}
-		sendEvent("done", response)
-		return
-
-	case pipeline.ClassificationConversational:
-		sendEvent("status", map[string]string{"step": "responding", "message": "Preparing response..."})
-		answer, err := p.RespondWithHistory(ctx, req.Message, history)
-		if err != nil {
-			sendEvent("error", map[string]string{"error": internalError("Failed to generate response", err)})
-			return
-		}
-		response := ChatResponse{Answer: answer}
-		sendEvent("done", response)
-		return
-	}
-
-	// Step 1: Decompose (only for data_analysis questions)
-	sendEvent("status", map[string]string{"step": "decomposing", "message": "Breaking down your question..."})
-
-	dataQuestions, err := p.DecomposeWithHistory(ctx, req.Message, history)
-	if err != nil {
-		sendEvent("error", map[string]string{"error": internalError("Failed to process question", err)})
-		return
-	}
-
-	// Send decomposed questions
-	questions := make([]DataQuestionResponse, 0, len(dataQuestions))
-	for _, dq := range dataQuestions {
-		questions = append(questions, DataQuestionResponse{
-			Question:  dq.Question,
-			Rationale: dq.Rationale,
-		})
-	}
-	sendEvent("decomposed", map[string]any{
-		"count":     len(dataQuestions),
-		"questions": questions,
-	})
-
-	// Step 2 & 3: Generate and execute queries in parallel
-	sendEvent("status", map[string]string{"step": "executing", "message": fmt.Sprintf("Running %d queries...", len(dataQuestions))})
-
-	executedQueries := make([]pipeline.ExecutedQuery, len(dataQuestions))
-	var wg sync.WaitGroup
-	var completedCount int
-	var mu sync.Mutex
-
-	for i, dq := range dataQuestions {
-		wg.Add(1)
-		go func(idx int, question pipeline.DataQuestion) {
-			defer wg.Done()
-			// Question numbers are 1-indexed for readability (Q1, Q2, ...)
-			executed := p.GenerateAndExecuteWithRetry(ctx, question, idx+1)
-			executedQueries[idx] = executed
-
-			mu.Lock()
-			completedCount++
-			// Send progress update
-			sendEvent("query_progress", map[string]any{
-				"completed": completedCount,
-				"total":     len(dataQuestions),
-				"question":  question.Question,
-				"success":   executed.Result.Error == "",
-				"rows":      executed.Result.Count,
-			})
-			mu.Unlock()
-		}(i, dq)
-	}
-	wg.Wait()
-
-	// Build generated queries from executed
-	generatedQueries := make([]pipeline.GeneratedQuery, len(executedQueries))
-	for i, eq := range executedQueries {
-		generatedQueries[i] = eq.GeneratedQuery
-	}
-
-	// Step 4: Synthesize
-	sendEvent("status", map[string]string{"step": "synthesizing", "message": "Preparing answer..."})
-
-	// Send periodic heartbeats to keep connection alive through proxies (e.g., Cloudflare)
-	heartbeatDone := make(chan struct{})
-	go func() {
-		ticker := time.NewTicker(15 * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				sendEvent("heartbeat", map[string]string{})
-			case <-heartbeatDone:
-				return
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
-
-	slog.Info("Starting synthesize", "message", req.Message, "queryCount", len(executedQueries))
-	answer, err := p.Synthesize(ctx, req.Message, executedQueries)
-	close(heartbeatDone)
-	slog.Info("Synthesize completed", "answerLen", len(answer), "error", err)
-	if err != nil {
-		sendEvent("error", map[string]string{"error": internalError("Failed to generate answer", err)})
-		return
-	}
-
-	// Generate follow-up suggestions (non-blocking, errors are logged but not returned)
-	var followUpQuestions []string
-	if followUps, err := p.GenerateFollowUps(ctx, req.Message, answer); err == nil {
-		followUpQuestions = followUps
-	}
-
-	// Build final response
-	result := &pipeline.PipelineResult{
-		UserQuestion:      req.Message,
-		DataQuestions:     dataQuestions,
-		GeneratedQueries:  generatedQueries,
-		ExecutedQueries:   executedQueries,
-		Answer:            answer,
-		FollowUpQuestions: followUpQuestions,
-	}
-
-	response := convertPipelineResult(result)
-	slog.Info("Sending done event",
-		"answerLen", len(response.Answer),
-		"dataQuestionsCount", len(response.DataQuestions),
-		"generatedQueriesCount", len(response.GeneratedQueries),
-		"executedQueriesCount", len(response.ExecutedQueries),
-		"followUpQuestionsCount", len(response.FollowUpQuestions),
-		"hasError", response.Error != "",
-	)
-	sendEvent("done", response)
-}
-
-// chatStreamV2 handles the v2 pipeline streaming using RunWithProgress.
-func chatStreamV2(ctx context.Context, req ChatRequest, history []pipeline.ConversationMessage, sendEvent func(string, any)) {
-	// Load v2 prompts
-	prompts, err := v2.LoadPrompts()
-	if err != nil {
-		sendEvent("error", map[string]string{"error": internalError("Failed to load prompts", err)})
-		return
-	}
-
-	// Create pipeline components
-	llm := pipeline.NewAnthropicLLMClient(anthropic.ModelClaude3_5Haiku20241022, 4096)
-	querier := NewDBQuerier()
-	schemaFetcher := NewDBSchemaFetcher()
-
-	// Create v2 pipeline
-	p, err := v2.New(&pipeline.Config{
-		Logger:        slog.Default(),
-		LLM:           llm,
-		Querier:       querier,
-		SchemaFetcher: schemaFetcher,
-		Prompts:       prompts,
-		MaxTokens:     4096,
-	})
-	if err != nil {
-		sendEvent("error", map[string]string{"error": internalError("Failed to initialize chat", err)})
-		return
-	}
-
-	// Track progress state for decomposed event
-	var lastStage pipeline.ProgressStage
-	var dataQuestions []pipeline.DataQuestion
-	decomposedSent := false
-
-	// Progress callback that emits SSE events
-	onProgress := func(progress pipeline.Progress) {
-		// Map stage to status message
-		var message string
-		switch progress.Stage {
-		case pipeline.StageInterpreting:
-			message = "Interpreting your question..."
-		case pipeline.StageMapping:
-			message = "Mapping to data..."
-		case pipeline.StagePlanning:
-			message = "Planning queries..."
-		case pipeline.StageExecuting:
-			message = "Executing queries..."
-		case pipeline.StageInspecting:
-			message = "Inspecting results..."
-		case pipeline.StageSynthesizing:
-			message = "Preparing answer..."
-		default:
-			message = "Processing..."
-		}
-
-		sendEvent("status", map[string]string{
-			"step":    string(progress.Stage),
-			"message": message,
-		})
-
-		// Send decomposed event when we have data questions and move to executing
-		if progress.Stage == pipeline.StageExecuting && !decomposedSent && len(progress.DataQuestions) > 0 {
-			dataQuestions = progress.DataQuestions
-			questions := make([]DataQuestionResponse, 0, len(dataQuestions))
-			for _, dq := range dataQuestions {
-				questions = append(questions, DataQuestionResponse{
-					Question:  dq.Question,
-					Rationale: dq.Rationale,
-				})
-			}
-			sendEvent("decomposed", map[string]any{
-				"count":     len(dataQuestions),
-				"questions": questions,
-			})
-			decomposedSent = true
-		}
-
-		lastStage = progress.Stage
-	}
-
-	// Send periodic heartbeats to keep connection alive through proxies
-	heartbeatDone := make(chan struct{})
-	go func() {
-		ticker := time.NewTicker(15 * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				sendEvent("heartbeat", map[string]string{})
-			case <-heartbeatDone:
-				return
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
-
-	// Run the v2 pipeline
-	slog.Info("Starting v2 pipeline", "message", req.Message)
-	result, err := p.RunWithProgress(ctx, req.Message, history, onProgress)
-	close(heartbeatDone)
-
-	if err != nil {
-		slog.Error("v2 pipeline failed", "error", err, "message", req.Message)
-		sendEvent("error", map[string]string{"error": fmt.Sprintf("Pipeline failed: %v", err)})
-		return
-	}
-
-	slog.Info("v2 pipeline completed",
-		"answerLen", len(result.Answer),
-		"queryCount", len(result.ExecutedQueries),
-		"lastStage", lastStage,
-	)
-
-	// Build and send the response
-	response := convertPipelineResult(result)
-	sendEvent("done", response)
+	// Use v3 pipeline
+	chatStreamV3(ctx, req, history, sendEvent)
 }
 
 // chatStreamV3 handles the v3 pipeline streaming using the tool-calling loop.
-func chatStreamV3(ctx context.Context, req ChatRequest, history []pipeline.ConversationMessage, sendEvent func(string, any)) {
+func chatStreamV3(ctx context.Context, req ChatRequest, history []workflow.ConversationMessage, sendEvent func(string, any)) {
 	// Load v3 prompts
 	prompts, err := v3.LoadPrompts()
 	if err != nil {
@@ -585,12 +277,12 @@ func chatStreamV3(ctx context.Context, req ChatRequest, history []pipeline.Conve
 	}
 
 	// Create pipeline components
-	llm := pipeline.NewAnthropicLLMClient(anthropic.ModelClaude3_5Haiku20241022, 4096)
+	llm := workflow.NewAnthropicLLMClient(anthropic.ModelClaude3_5Haiku20241022, 4096)
 	querier := NewDBQuerier()
 	schemaFetcher := NewDBSchemaFetcher()
 
 	// Create v3 pipeline
-	p, err := v3.New(&pipeline.Config{
+	p, err := v3.New(&workflow.Config{
 		Logger:        slog.Default(),
 		LLM:           llm,
 		Querier:       querier,
@@ -604,13 +296,13 @@ func chatStreamV3(ctx context.Context, req ChatRequest, history []pipeline.Conve
 	}
 
 	// Progress callback that emits SSE events
-	onProgress := func(progress pipeline.Progress) {
+	onProgress := func(progress workflow.Progress) {
 		// Map stage to status message
 		var message string
 		switch progress.Stage {
-		case pipeline.StageExecuting:
+		case workflow.StageExecuting:
 			message = "Processing..."
-		case pipeline.StageSynthesizing:
+		case workflow.StageSynthesizing:
 			message = "Preparing answer..."
 		default:
 			message = "Processing..."
@@ -657,7 +349,7 @@ func chatStreamV3(ctx context.Context, req ChatRequest, history []pipeline.Conve
 	)
 
 	// Build and send the response
-	response := convertPipelineResult(result)
+	response := convertWorkflowResult(result)
 	sendEvent("done", response)
 }
 
@@ -672,7 +364,7 @@ type CompleteResponse struct {
 	Error    string `json:"error,omitempty"`
 }
 
-// Complete handles simple LLM completion requests without the full pipeline.
+// Complete handles simple LLM completion requests without the full workflow.
 // This is useful for tasks like generating titles.
 func Complete(w http.ResponseWriter, r *http.Request) {
 	var req CompleteRequest
@@ -694,7 +386,7 @@ func Complete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create a simple LLM client
-	llm := pipeline.NewAnthropicLLMClient(anthropic.ModelClaude3_5Haiku20241022, 256)
+	llm := workflow.NewAnthropicLLMClient(anthropic.ModelClaude3_5Haiku20241022, 256)
 
 	// Simple completion with minimal system prompt
 	response, err := llm.Complete(r.Context(), "You are a helpful assistant. Respond concisely.", req.Message)

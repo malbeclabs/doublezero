@@ -7,12 +7,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline"
+	"github.com/malbeclabs/doublezero/lake/agent/pkg/workflow"
 	"github.com/malbeclabs/doublezero/lake/api/config"
 	"github.com/malbeclabs/doublezero/lake/api/metrics"
 )
 
-// DBQuerier implements pipeline.Querier using the global connection pool.
+// DBQuerier implements workflow.Querier using the global connection pool.
 type DBQuerier struct{}
 
 // NewDBQuerier creates a new DBQuerier.
@@ -21,7 +21,7 @@ func NewDBQuerier() *DBQuerier {
 }
 
 // Query executes a SQL query and returns the result.
-func (q *DBQuerier) Query(ctx context.Context, sql string) (pipeline.QueryResult, error) {
+func (q *DBQuerier) Query(ctx context.Context, sql string) (workflow.QueryResult, error) {
 	sql = strings.TrimSuffix(strings.TrimSpace(sql), ";")
 
 	start := time.Now()
@@ -29,7 +29,7 @@ func (q *DBQuerier) Query(ctx context.Context, sql string) (pipeline.QueryResult
 	duration := time.Since(start)
 	if err != nil {
 		metrics.RecordClickHouseQuery(duration, err)
-		return pipeline.QueryResult{SQL: sql, Error: err.Error()}, nil
+		return workflow.QueryResult{SQL: sql, Error: err.Error()}, nil
 	}
 	defer rows.Close()
 
@@ -51,7 +51,7 @@ func (q *DBQuerier) Query(ctx context.Context, sql string) (pipeline.QueryResult
 
 		if err := rows.Scan(values...); err != nil {
 			metrics.RecordClickHouseQuery(duration, err)
-			return pipeline.QueryResult{SQL: sql, Error: fmt.Sprintf("scan error: %v", err)}, nil
+			return workflow.QueryResult{SQL: sql, Error: fmt.Sprintf("scan error: %v", err)}, nil
 		}
 
 		// Dereference pointers and build map
@@ -64,12 +64,12 @@ func (q *DBQuerier) Query(ctx context.Context, sql string) (pipeline.QueryResult
 
 	if err := rows.Err(); err != nil {
 		metrics.RecordClickHouseQuery(duration, err)
-		return pipeline.QueryResult{SQL: sql, Error: err.Error()}, nil
+		return workflow.QueryResult{SQL: sql, Error: err.Error()}, nil
 	}
 
 	metrics.RecordClickHouseQuery(duration, nil)
 
-	result := pipeline.QueryResult{
+	result := workflow.QueryResult{
 		SQL:     sql,
 		Columns: columns,
 		Rows:    resultRows,
@@ -81,7 +81,7 @@ func (q *DBQuerier) Query(ctx context.Context, sql string) (pipeline.QueryResult
 }
 
 // formatQueryResult creates a human-readable format of the query result.
-func formatQueryResult(result pipeline.QueryResult) string {
+func formatQueryResult(result workflow.QueryResult) string {
 	if result.Error != "" {
 		return fmt.Sprintf("Error: %s", result.Error)
 	}
@@ -114,7 +114,7 @@ func formatQueryResult(result pipeline.QueryResult) string {
 	return sb.String()
 }
 
-// DBSchemaFetcher implements pipeline.SchemaFetcher using the global connection pool.
+// DBSchemaFetcher implements workflow.SchemaFetcher using the global connection pool.
 type DBSchemaFetcher struct{}
 
 // NewDBSchemaFetcher creates a new DBSchemaFetcher.

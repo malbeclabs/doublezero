@@ -2,7 +2,7 @@ package v3
 
 import "encoding/json"
 
-// Tool definitions for v3 pipeline.
+// Tool definitions for v3 workflow.
 var (
 	// ThinkTool allows the model to externalize reasoning for streaming to users.
 	ThinkTool = Tool{
@@ -51,7 +51,7 @@ var (
 	}
 )
 
-// DefaultTools returns the default set of tools for the v3 pipeline.
+// DefaultTools returns the default set of tools for the v3 workflow.
 func DefaultTools() []Tool {
 	return []Tool{ThinkTool, ExecuteSQLTool}
 }

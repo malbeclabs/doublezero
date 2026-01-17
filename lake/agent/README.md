@@ -1,135 +1,141 @@
-# Lake Analysis Pipeline Agent
+# Lake Analysis Agent
 
-A multi-step LLM-powered pipeline for answering natural language questions about DoubleZero network and Solana validator data.
+An LLM-powered agent for answering natural language questions about DoubleZero network and Solana validator data.
 
 ## Overview
 
-The analysis pipeline transforms natural language questions into SQL queries, executes them against ClickHouse, and synthesizes the results into comprehensive answers. Unlike a ReAct-style agent that loops until done, this pipeline uses discrete, well-defined steps for predictability and debuggability.
+The agent transforms natural language questions into SQL queries, executes them against ClickHouse, and synthesizes the results into comprehensive answers. It uses a tool-calling workflow where the LLM iteratively reasons about the question and executes queries until it has enough data to answer.
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                              User Question                                  │
-└─────────────────────────────────┬───────────────────────────────────────────┘
-                                  │
-                                  ▼
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                         CLASSIFY (Pre-step)                                 │
-│  Determines how to route the question:                                      │
-│  • data_analysis → full pipeline                                            │
-│  • conversational → direct response (no data query)                         │
-│  • out_of_scope → polite rejection                                          │
-└─────────────────────────────────┬───────────────────────────────────────────┘
-                                  │
-            ┌─────────────────────┼─────────────────────┐
-            │                     │                     │
-            ▼                     ▼                     ▼
-     ┌──────────┐          ┌──────────┐          ┌──────────┐
-     │out_of_   │          │conversa- │          │  data_   │
-     │scope     │          │tional    │          │ analysis │
-     └────┬─────┘          └────┬─────┘          └────┬─────┘
-          │                     │                     │
-          ▼                     ▼                     │
-    Direct message          RESPOND                   │
-    (capabilities)       (uses history)               │
-          │                     │                     │
-          └──────────┬──────────┘                     │
-                     │                                │
-                     │                                ▼
-                     │         ┌──────────────────────────────────────────┐
-                     │         │              DECOMPOSE (Step 1)          │
-                     │         │  Breaks question into data questions     │
-                     │         └─────────────────┬────────────────────────┘
-                     │                           │
-                     │                           ▼
-                     │         ┌──────────────────────────────────────────┐
-                     │         │           GENERATE (Step 2)              │
-                     │         │  Creates SQL for each data question      │
-                     │         │  (runs in parallel)                      │
-                     │         └─────────────────┬────────────────────────┘
-                     │                           │
-                     │                           ▼
-                     │         ┌──────────────────────────────────────────┐
-                     │         │            EXECUTE (Step 3)              │
-                     │         │  Runs SQL against ClickHouse             │
-                     │         │  with retry and zero-row analysis        │
-                     │         └─────────────────┬────────────────────────┘
-                     │                           │
-                     │                           ▼
-                     │         ┌──────────────────────────────────────────┐
-                     │         │           SYNTHESIZE (Step 4)            │
-                     │         │  Combines results into cited answer      │
-                     │         └─────────────────┬────────────────────────┘
-                     │                           │
-                     └───────────────────────────┤
-                                                 ▼
-                              ┌───────────────────────────────────────────┐
-                              │               Final Answer                │
-                              └───────────────────────────────────────────┘
+│                            Tool-Calling Loop                                │
+│                                                                             │
+│   ┌─────────────────────────────────────────────────────────────────────┐   │
+│   │  LLM with System Prompt + Schema + Conversation History             │   │
+│   └─────────────────────────────────────────────────────────────────────┘   │
+│                          │                    │                             │
+│                          ▼                    ▼                             │
+│                    ┌──────────┐        ┌─────────────┐                      │
+│                    │  think   │        │ execute_sql │                      │
+│                    │          │        │             │                      │
+│                    │ Record   │        │ Run queries │                      │
+│                    │ reasoning│        │ against DB  │                      │
+│                    └──────────┘        └─────────────┘                      │
+│                          │                    │                             │
+│                          └────────────────────┘                             │
+│                                   │                                         │
+│                                   ▼                                         │
+│                          [Loop until done]                                  │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              Final Answer                                   │
+│                                                                             │
+│  Natural language response with:                                            │
+│  • Direct answer to the question                                            │
+│  • Citations [Q1], [Q2] referencing specific queries                        │
+│  • Caveats and limitations                                                  │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-## Pipeline Steps
+## Workflow
 
-### Pre-step: Classify
+The agent follows an iterative workflow guided by the system prompt:
 
-Routes questions to the appropriate handler:
+### 1. Interpret
+Understand what is actually being asked:
+- What type of question? (descriptive, comparative, diagnostic)
+- What entities and time windows are implied?
+- What would a wrong answer look like?
 
-| Classification | Description | Handler |
-|---------------|-------------|---------|
-| `data_analysis` | Questions requiring database queries | Full pipeline |
-| `conversational` | Follow-ups, clarifications, capabilities | Direct LLM response |
-| `out_of_scope` | Unrelated questions | Polite rejection |
+### 2. Map to Data
+Translate to concrete data terms:
+- Which tables/views are relevant?
+- What is the unit of analysis?
+- Are there known caveats or gaps?
 
-### Step 1: Decompose
+### 3. Plan Queries
+Outline the query approach:
+- Start with small validation queries (row counts, time coverage)
+- Separate exploration from answer-producing queries
+- Batch independent queries for parallel execution
 
-Breaks a complex user question into specific, queryable data questions.
+### 4. Execute
+Run queries and assess results:
+- Check row counts against intuition
+- Look for outliers or suspiciously clean results
+- Investigate if results contradict expectations
 
-- Domain terminology mapping (e.g., "active" → `status = 'activated'`)
-- Multi-faceted breakdown (e.g., "network health" → device status, link status, latency)
-- Comparison awareness (current vs historical queries)
+### 5. Iterate
+Refine as needed:
+- Adjust filters after seeing real distributions
+- Validate that metrics mean what the question assumes
+- Only proceed when the pattern is robust
 
-### Step 2: Generate
+### 6. Synthesize
+Turn data into an answer:
+- State what the data shows, not what it implies
+- Tie each claim to an observed metric
+- Quantify uncertainty and blind spots
 
-Creates SQL queries for each data question using dynamic schema context.
+## Tools
 
-- Fetches current table/column info from ClickHouse
-- Includes sample enum values from actual data
-- Handles ClickHouse-specific syntax
+The agent has access to two tools:
 
-### Step 3: Execute
+| Tool | Purpose |
+|------|---------|
+| `think` | Record reasoning process (shown to users for transparency) |
+| `execute_sql` | Run SQL queries against ClickHouse and get results |
 
-Runs SQL queries against ClickHouse with intelligent error recovery.
+## Question Types
 
-- Parallel execution of all data questions
-- Up to 4 retries with error context for regeneration
-- Zero-row analysis: detects suspicious empty results and regenerates
-
-### Step 4: Synthesize
-
-Combines query results into a coherent, cited answer.
-
-- Confidence tracking (HIGH/MEDIUM/LOW based on query success)
-- Citation format: `[Q1]`, `[Q2]` references to data sources
-- Anomaly highlighting for concerning values
+| Type | Handling |
+|------|----------|
+| **Data Analysis** | Questions requiring SQL queries (e.g., "How many validators are on DZ?") - uses full workflow |
+| **Conversational** | Clarifications, capabilities, follow-ups - direct response without queries |
+| **Out of Scope** | Unrelated questions - polite redirect |
 
 ## Domain Knowledge
 
-The pipeline includes domain context for:
+The system prompt includes domain context for:
 
 - **Network**: Devices, links (WAN/DZX), metros, contributors
 - **Users**: Multicast (`kind = 'multicast'`), unicast (`kind = 'ibrl'`), edge filtering
 - **Solana**: Validators joined via `dz_users.dz_ip = solana_gossip_nodes.gossip_ip`
 - **Status values**: `pending`, `activated`, `suspended`, `deleted`, `rejected`, `drained`
+- **ClickHouse specifics**: NULL vs empty string, quantile syntax, date functions
+
+## Pre-built Views
+
+The schema includes pre-built views that the agent is instructed to prefer:
+
+| View | Use For |
+|------|---------|
+| `solana_validators_on_dz_current` | Validators currently on DZ |
+| `solana_validators_off_dz_current` | Validators NOT on DZ with GeoIP |
+| `solana_validators_on_dz_connections` | All connection events |
+| `solana_validators_disconnections` | Validators that left DZ |
+| `solana_validators_new_connections` | Recently connected validators |
+| `dz_link_issue_events` | Link issues |
+| `dz_vs_internet_latency_comparison` | DZ vs public internet latency |
 
 ## Design Decisions
 
-### Why a Pipeline Instead of ReAct?
+### Why Tool-Calling?
 
-1. **Predictability**: Fixed steps mean consistent latency and cost
-2. **Debuggability**: Each step's output is inspectable
-3. **Parallelization**: Data questions execute concurrently
-4. **Separation of concerns**: Each step has a single responsibility
+1. **Flexibility**: The agent can execute as many queries as needed
+2. **Iteration**: Results inform the next step, allowing refinement
+3. **Transparency**: The `think` tool makes reasoning visible to users
+4. **Natural flow**: Mirrors how a human analyst would work
 
 ### Why Dynamic Schema?
 
@@ -137,8 +143,9 @@ The pipeline includes domain context for:
 - Sample values help the LLM use correct enum values
 - View definitions provide query hints
 
-### Why Zero-Row Analysis?
+### Why Claim Attribution?
 
-- Empty results are often caused by incorrect filter values
-- LLM can reason about whether zero rows is expected
-- Automatic regeneration improves success rate
+Every factual claim references its source query (e.g., `[Q1]`):
+- Users can trace any claim back to the data
+- Builds trust through transparency
+- Makes it easy to verify specific numbers

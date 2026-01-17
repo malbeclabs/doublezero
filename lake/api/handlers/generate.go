@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
-	v1 "github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline/v1"
+	"github.com/malbeclabs/doublezero/lake/agent/pkg/workflow/prompts"
 	"github.com/malbeclabs/doublezero/lake/api/config"
 	"github.com/malbeclabs/doublezero/lake/api/metrics"
 )
@@ -48,21 +48,26 @@ func getOllamaModel() string {
 	return defaultOllamaModel
 }
 
-// Cached prompts for query generation
+// Cached prompt for query generation
 var (
-	cachedPrompts     *v1.Prompts
-	cachedPromptsOnce sync.Once
-	cachedPromptsErr  error
+	cachedGeneratePrompt     string
+	cachedGeneratePromptsOnce sync.Once
+	cachedGeneratePromptsErr  error
 )
 
 func getGeneratePrompt() (string, error) {
-	cachedPromptsOnce.Do(func() {
-		cachedPrompts, cachedPromptsErr = v1.LoadPrompts()
+	cachedGeneratePromptsOnce.Do(func() {
+		data, err := prompts.PromptsFS.ReadFile("GENERATE.md")
+		if err != nil {
+			cachedGeneratePromptsErr = err
+			return
+		}
+		cachedGeneratePrompt = strings.TrimSpace(string(data))
 	})
-	if cachedPromptsErr != nil {
-		return "", cachedPromptsErr
+	if cachedGeneratePromptsErr != nil {
+		return "", cachedGeneratePromptsErr
 	}
-	return cachedPrompts.Generate, nil
+	return cachedGeneratePrompt, nil
 }
 
 func GenerateSQL(w http.ResponseWriter, r *http.Request) {

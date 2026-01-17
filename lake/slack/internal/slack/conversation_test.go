@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline"
+	"github.com/malbeclabs/doublezero/lake/agent/pkg/workflow"
 	"github.com/stretchr/testify/require"
 )
 
@@ -43,7 +43,7 @@ func TestAI_Slack_Manager_UpdateConversationHistory(t *testing.T) {
 	threadKey := "1234567890.123456"
 
 	// Create empty messages list
-	msgs := []pipeline.ConversationMessage{}
+	msgs := []workflow.ConversationMessage{}
 
 	m.UpdateConversationHistory(threadKey, msgs)
 

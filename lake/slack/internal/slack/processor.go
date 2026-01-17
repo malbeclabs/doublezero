@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline"
-	v1 "github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline/v1"
+	"github.com/malbeclabs/doublezero/lake/agent/pkg/workflow"
+	v3 "github.com/malbeclabs/doublezero/lake/agent/pkg/workflow/v3"
 	"github.com/slack-go/slack/slackevents"
 )
 
@@ -21,7 +21,7 @@ const (
 // Processor processes Slack messages and generates responses
 type Processor struct {
 	slackClient *Client
-	pipeline    *v1.Pipeline
+	pipeline    *v3.Pipeline
 	convManager *Manager
 	log         *slog.Logger
 
@@ -43,7 +43,7 @@ type threadLockEntry struct {
 // NewProcessor creates a new message processor
 func NewProcessor(
 	slackClient *Client,
-	pipeline *v1.Pipeline,
+	pipeline *v3.Pipeline,
 	convManager *Manager,
 	log *slog.Logger,
 ) *Processor {
@@ -154,25 +154,25 @@ func containsNonBotMention(text, botUserID string) bool {
 }
 
 // formatThinkingMessage formats the thinking message based on progress
-func formatThinkingMessage(progress pipeline.Progress) string {
+func formatThinkingMessage(progress workflow.Progress) string {
 	var sb strings.Builder
 
 	switch progress.Stage {
-	case pipeline.StageClassifying:
+	case workflow.StageClassifying:
 		sb.WriteString(":hourglass_flowing_sand: *Understanding your question...*")
 
-	case pipeline.StageDecomposing:
+	case workflow.StageDecomposing:
 		sb.WriteString("✓ Understood your question\n")
 		sb.WriteString(":hourglass_flowing_sand: *Breaking down into queries...*")
 
-	case pipeline.StageDecomposed:
+	case workflow.StageDecomposed:
 		sb.WriteString("✓ Understood your question\n")
 		sb.WriteString("✓ Identified data questions:\n")
 		for i, q := range progress.DataQuestions {
 			sb.WriteString(fmt.Sprintf("    %d. %s\n", i+1, q.Question))
 		}
 
-	case pipeline.StageExecuting:
+	case workflow.StageExecuting:
 		sb.WriteString("✓ Understood your question\n")
 		sb.WriteString(fmt.Sprintf(":hourglass_flowing_sand: *Running queries (%d/%d):*\n", progress.QueriesDone, progress.QueriesTotal))
 		for i, q := range progress.DataQuestions {
@@ -183,7 +183,7 @@ func formatThinkingMessage(progress pipeline.Progress) string {
 			}
 		}
 
-	case pipeline.StageSynthesizing:
+	case workflow.StageSynthesizing:
 		sb.WriteString("✓ Understood your question\n")
 		sb.WriteString(fmt.Sprintf("✓ Queries complete (%d/%d):\n", progress.QueriesDone, progress.QueriesTotal))
 		for i, q := range progress.DataQuestions {
@@ -191,9 +191,9 @@ func formatThinkingMessage(progress pipeline.Progress) string {
 		}
 		sb.WriteString("\n:hourglass_flowing_sand: *Preparing answer...*")
 
-	case pipeline.StageComplete:
+	case workflow.StageComplete:
 		// For data_analysis, show summary
-		if progress.Classification == pipeline.ClassificationDataAnalysis && len(progress.DataQuestions) > 0 {
+		if progress.Classification == workflow.ClassificationDataAnalysis && len(progress.DataQuestions) > 0 {
 			sb.WriteString(":brain: *Analysis complete*\n\n")
 			sb.WriteString("Answered by querying:\n")
 			for i, q := range progress.DataQuestions {
@@ -202,7 +202,7 @@ func formatThinkingMessage(progress pipeline.Progress) string {
 		}
 		// For conversational/out_of_scope, we don't show anything (just answer)
 
-	case pipeline.StageError:
+	case workflow.StageError:
 		sb.WriteString(":x: *Error*\n")
 		if progress.Error != nil {
 			sb.WriteString(fmt.Sprintf("_%s_", progress.Error.Error()))
@@ -304,11 +304,11 @@ func (p *Processor) ProcessMessage(
 	if err != nil {
 		p.log.Warn("failed to get conversation history", "error", err)
 		ConversationHistoryErrorsTotal.Inc()
-		history = []pipeline.ConversationMessage{}
+		history = []workflow.ConversationMessage{}
 	}
 
 	// Post initial thinking message
-	initialThinking := formatThinkingMessage(pipeline.Progress{Stage: pipeline.StageClassifying})
+	initialThinking := formatThinkingMessage(workflow.Progress{Stage: workflow.StageClassifying})
 	thinkingTS, err := p.slackClient.PostMessage(ctx, ev.Channel, initialThinking, nil, threadTS)
 	if err != nil {
 		p.log.Warn("failed to post thinking message", "error", err)
@@ -317,12 +317,12 @@ func (p *Processor) ProcessMessage(
 	}
 
 	// Track last progress stage to avoid redundant updates
-	var lastStage pipeline.ProgressStage
+	var lastStage workflow.ProgressStage
 	var lastQueriesDone int
 	var thinkingMu sync.Mutex
 
 	// Progress callback to update thinking message
-	onProgress := func(progress pipeline.Progress) {
+	onProgress := func(progress workflow.Progress) {
 		thinkingMu.Lock()
 		defer thinkingMu.Unlock()
 
@@ -334,7 +334,7 @@ func (p *Processor) ProcessMessage(
 		lastQueriesDone = progress.QueriesDone
 
 		// Don't update on complete - we'll handle that separately
-		if progress.Stage == pipeline.StageComplete {
+		if progress.Stage == workflow.StageComplete {
 			return
 		}
 
@@ -379,9 +379,9 @@ func (p *Processor) ProcessMessage(
 		"data_questions", len(result.DataQuestions))
 
 	// For data analysis, update thinking message with summary
-	if result.Classification == pipeline.ClassificationDataAnalysis && len(result.DataQuestions) > 0 && thinkingTS != "" {
-		summaryText := formatThinkingMessage(pipeline.Progress{
-			Stage:          pipeline.StageComplete,
+	if result.Classification == workflow.ClassificationDataAnalysis && len(result.DataQuestions) > 0 && thinkingTS != "" {
+		summaryText := formatThinkingMessage(workflow.Progress{
+			Stage:          workflow.StageComplete,
 			Classification: result.Classification,
 			DataQuestions:  result.DataQuestions,
 			QueriesTotal:   len(result.DataQuestions),
@@ -422,8 +422,8 @@ func (p *Processor) ProcessMessage(
 
 		// Update conversation history with the new exchange
 		newHistory := append(history,
-			pipeline.ConversationMessage{Role: "user", Content: txt},
-			pipeline.ConversationMessage{Role: "assistant", Content: result.Answer, ExecutedQueries: executedSQL},
+			workflow.ConversationMessage{Role: "user", Content: txt},
+			workflow.ConversationMessage{Role: "assistant", Content: result.Answer, ExecutedQueries: executedSQL},
 		)
 		p.convManager.UpdateConversationHistory(threadKey, newHistory)
 	}

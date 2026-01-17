@@ -4,16 +4,18 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline/v3/prompts"
+	commonprompts "github.com/malbeclabs/doublezero/lake/agent/pkg/workflow/prompts"
+	"github.com/malbeclabs/doublezero/lake/agent/pkg/workflow/v3/prompts"
 )
 
 // Prompts contains all the v3 pipeline prompts loaded from embedded files.
 type Prompts struct {
 	System string // Main system prompt with workflow guidance and domain knowledge
+	Slack  string // Slack-specific formatting guidelines
 }
 
 // GetPrompt returns the prompt content for the given name.
-// This implements the pipeline.PromptsProvider interface.
+// This implements the workflow.PromptsProvider interface.
 func (p *Prompts) GetPrompt(name string) string {
 	switch name {
 	case "system":
@@ -32,6 +34,11 @@ func LoadPrompts() (*Prompts, error) {
 		return nil, fmt.Errorf("failed to load SYSTEM: %w", err)
 	}
 
+	// Load common prompts (Slack formatting)
+	if p.Slack, err = loadCommonPrompt("SLACK.md"); err != nil {
+		return nil, fmt.Errorf("failed to load SLACK: %w", err)
+	}
+
 	return p, nil
 }
 
@@ -39,6 +46,14 @@ func loadPrompt(path string) (string, error) {
 	data, err := prompts.FS.ReadFile(path)
 	if err != nil {
 		return "", fmt.Errorf("failed to read %s: %w", path, err)
+	}
+	return strings.TrimSpace(string(data)), nil
+}
+
+func loadCommonPrompt(path string) (string, error) {
+	data, err := commonprompts.PromptsFS.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("failed to read common prompt %s: %w", path, err)
 	}
 	return strings.TrimSpace(string(data)), nil
 }

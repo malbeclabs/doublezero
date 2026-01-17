@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline"
+	"github.com/malbeclabs/doublezero/lake/agent/pkg/workflow"
 	"github.com/malbeclabs/doublezero/lake/indexer/pkg/clickhouse"
 	"github.com/malbeclabs/doublezero/lake/indexer/pkg/clickhouse/dataset"
 )
 
-// ClickhouseQuerier implements pipeline.Querier using the clickhouse client
+// ClickhouseQuerier implements workflow.Querier using the clickhouse client
 type ClickhouseQuerier struct {
 	db clickhouse.Client
 }
@@ -21,21 +21,21 @@ func NewClickhouseQuerier(db clickhouse.Client) *ClickhouseQuerier {
 }
 
 // Query executes a SQL query and returns the result
-func (q *ClickhouseQuerier) Query(ctx context.Context, sql string) (pipeline.QueryResult, error) {
+func (q *ClickhouseQuerier) Query(ctx context.Context, sql string) (workflow.QueryResult, error) {
 	sql = strings.TrimSuffix(strings.TrimSpace(sql), ";")
 
 	conn, err := q.db.Conn(ctx)
 	if err != nil {
-		return pipeline.QueryResult{SQL: sql, Error: fmt.Sprintf("connection error: %v", err)}, nil
+		return workflow.QueryResult{SQL: sql, Error: fmt.Sprintf("connection error: %v", err)}, nil
 	}
 	defer conn.Close()
 
 	result, err := dataset.Query(ctx, conn, sql, nil)
 	if err != nil {
-		return pipeline.QueryResult{SQL: sql, Error: err.Error()}, nil
+		return workflow.QueryResult{SQL: sql, Error: err.Error()}, nil
 	}
 
-	qr := pipeline.QueryResult{
+	qr := workflow.QueryResult{
 		SQL:     sql,
 		Columns: result.Columns,
 		Rows:    result.Rows,
@@ -49,7 +49,7 @@ func (q *ClickhouseQuerier) Query(ctx context.Context, sql string) (pipeline.Que
 }
 
 // formatQueryResult creates a human-readable format of the query result
-func formatQueryResult(result pipeline.QueryResult) string {
+func formatQueryResult(result workflow.QueryResult) string {
 	if result.Error != "" {
 		return fmt.Sprintf("Error: %s", result.Error)
 	}
@@ -85,7 +85,7 @@ func formatQueryResult(result pipeline.QueryResult) string {
 	return sb.String()
 }
 
-// ClickhouseSchemaFetcher implements pipeline.SchemaFetcher using the clickhouse client (TCP)
+// ClickhouseSchemaFetcher implements workflow.SchemaFetcher using the clickhouse client (TCP)
 type ClickhouseSchemaFetcher struct {
 	db       clickhouse.Client
 	database string

@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline"
+	"github.com/malbeclabs/doublezero/lake/agent/pkg/workflow"
 	"github.com/stretchr/testify/require"
 )
 
@@ -47,13 +47,13 @@ func runTest_ConversationalFollowup(t *testing.T, llmFactory LLMClientFactory) {
 	firstResult, err := p.Run(ctx, firstQuestion)
 	require.NoError(t, err)
 	require.NotNil(t, firstResult)
-	require.Equal(t, pipeline.ClassificationDataAnalysis, firstResult.Classification)
+	require.Equal(t, workflow.ClassificationDataAnalysis, firstResult.Classification)
 	if debug {
 		t.Logf("=== First response ===\n%s\n", firstResult.Answer)
 	}
 
 	// Build conversation history
-	history := []pipeline.ConversationMessage{
+	history := []workflow.ConversationMessage{
 		{Role: "user", Content: firstQuestion},
 		{Role: "assistant", Content: firstResult.Answer},
 	}
@@ -71,9 +71,9 @@ func runTest_ConversationalFollowup(t *testing.T, llmFactory LLMClientFactory) {
 	// V3 classifies based on tool usage (whether queries were executed), not question semantics.
 	// The model may choose to re-run a query to provide a better answer, which is acceptable.
 	// Only check classification for v1/v2 pipelines.
-	if pipeline.DefaultVersion() != pipeline.VersionV3 {
+	if workflow.DefaultVersion() != workflow.VersionV3 {
 		// Verify it was classified as conversational (not data_analysis)
-		require.Equal(t, pipeline.ClassificationConversational, followupResult.Classification,
+		require.Equal(t, workflow.ClassificationConversational, followupResult.Classification,
 			"Follow-up question should be classified as conversational, not data_analysis")
 
 		// Verify no data questions were generated (conversational path doesn't query data)
@@ -141,7 +141,7 @@ func runTest_CapabilitiesQuestion(t *testing.T, llmFactory LLMClientFactory) {
 	require.NotEmpty(t, result.Answer)
 
 	// Verify it was classified as conversational
-	require.Equal(t, pipeline.ClassificationConversational, result.Classification,
+	require.Equal(t, workflow.ClassificationConversational, result.Classification,
 		"Capabilities question should be classified as conversational")
 
 	// Verify no data questions were generated
@@ -200,7 +200,7 @@ func runTest_AffirmativeQueryConfirmation(t *testing.T, llmFactory LLMClientFact
 	p := setupPipeline(t, ctx, clientInfo, llmFactory, debug, debugLevel)
 
 	// Build conversation history where assistant offered to run a query
-	history := []pipeline.ConversationMessage{
+	history := []workflow.ConversationMessage{
 		{Role: "user", Content: "What's the WAN link utilization?"},
 		{Role: "assistant", Content: "I noticed there may have been an issue with the query. Would you like me to query the WAN link utilization with the corrected filter (link_type = 'WAN')?"},
 	}
@@ -216,7 +216,7 @@ func runTest_AffirmativeQueryConfirmation(t *testing.T, llmFactory LLMClientFact
 	require.NotEmpty(t, result.Answer)
 
 	// KEY ASSERTION: "Yes" to a query offer should be data_analysis, NOT conversational
-	require.Equal(t, pipeline.ClassificationDataAnalysis, result.Classification,
+	require.Equal(t, workflow.ClassificationDataAnalysis, result.Classification,
 		"Affirmative response to query offer should be classified as data_analysis, not conversational")
 
 	// Verify data questions WERE generated (the query should actually run)
@@ -265,7 +265,7 @@ func runTest_ThankYouResponse(t *testing.T, llmFactory LLMClientFactory) {
 	p := setupPipeline(t, ctx, clientInfo, llmFactory, debug, debugLevel)
 
 	// Build conversation history as if we just answered a question
-	history := []pipeline.ConversationMessage{
+	history := []workflow.ConversationMessage{
 		{Role: "user", Content: "How many validators are connected?"},
 		{Role: "assistant", Content: "There are currently 50 validators connected to the DoubleZero network."},
 	}
@@ -281,7 +281,7 @@ func runTest_ThankYouResponse(t *testing.T, llmFactory LLMClientFactory) {
 	require.NotEmpty(t, result.Answer)
 
 	// Verify it was classified as conversational
-	require.Equal(t, pipeline.ClassificationConversational, result.Classification,
+	require.Equal(t, workflow.ClassificationConversational, result.Classification,
 		"Thank you message should be classified as conversational")
 
 	// Verify no data questions were generated

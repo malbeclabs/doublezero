@@ -420,45 +420,16 @@ export interface QueryProgressItem {
   rows?: number
 }
 
-// All possible steps in the pipeline (v1 and v2)
-// v1: classifying -> decomposing -> executing -> synthesizing
-// v2: interpreting -> mapping -> planning -> executing -> inspecting -> synthesizing
-export type PipelineStep =
-  | 'classifying' | 'decomposing' | 'executing' | 'synthesizing'  // v1 stages
-  | 'interpreting' | 'mapping' | 'planning' | 'inspecting'         // v2 stages
+// Workflow step types
+export type WorkflowStep = 'executing' | 'synthesizing'
 
-// Step order for v1 pipeline
-export const V1_STEP_ORDER: PipelineStep[] = ['classifying', 'decomposing', 'executing', 'synthesizing']
-
-// Step order for v2 pipeline
-export const V2_STEP_ORDER: PipelineStep[] = ['interpreting', 'mapping', 'planning', 'executing', 'inspecting', 'synthesizing']
-
-// Detect which pipeline version based on the current step
-export function detectPipelineVersion(step: string): 'v1' | 'v2' {
-  if (['interpreting', 'mapping', 'planning', 'inspecting'].includes(step)) {
-    return 'v2'
-  }
-  return 'v1'
-}
-
-// Get step order for the detected pipeline version
-export function getStepOrder(step: string): PipelineStep[] {
-  return detectPipelineVersion(step) === 'v2' ? V2_STEP_ORDER : V1_STEP_ORDER
-}
+// Step order for the workflow
+export const STEP_ORDER: WorkflowStep[] = ['executing', 'synthesizing']
 
 // Get human-readable label for a step
-export function getStepLabel(step: PipelineStep): string {
+export function getStepLabel(step: WorkflowStep | string): string {
   switch (step) {
-    // v1 labels
-    case 'classifying': return 'Understanding your question'
-    case 'decomposing': return 'Breaking down your question'
-    // v2 labels
-    case 'interpreting': return 'Interpreting your question'
-    case 'mapping': return 'Mapping to data'
-    case 'planning': return 'Planning queries'
-    case 'inspecting': return 'Inspecting results'
-    // Shared labels
-    case 'executing': return 'Running queries'
+    case 'executing': return 'Processing'
     case 'synthesizing': return 'Preparing answer'
     default: return step
   }
@@ -474,7 +445,7 @@ export interface ChatProgress {
   // Full list of queries with their completion status
   queries?: QueryProgressItem[]
   // Track which steps have been completed
-  completedSteps?: PipelineStep[]
+  completedSteps?: WorkflowStep[]
 }
 
 interface ExternalLockInfo {
@@ -768,15 +739,14 @@ export function Chat({ messages, isPending, progress, externalLock, onSendMessag
                     <span className="text-sm text-amber-600 dark:text-amber-400">{progress.status}</span>
                   </div>
                 )}
-                {/* Step timeline - dynamically renders v1 or v2 stages */}
+                {/* Step timeline */}
                 <div className="space-y-2">
                   {(() => {
                     const currentStep = progress.step || ''
-                    const stepOrder = getStepOrder(currentStep)
-                    const currentStepIndex = stepOrder.indexOf(currentStep as PipelineStep)
+                    const currentStepIndex = STEP_ORDER.indexOf(currentStep as WorkflowStep)
 
-                    return stepOrder.map((step, idx) => {
-                      // Don't show steps that haven't been reached yet (except during executing/synthesizing)
+                    return STEP_ORDER.map((step, idx) => {
+                      // Don't show steps that haven't been reached yet
                       const isReached = idx <= currentStepIndex || progress.completedSteps?.includes(step)
                       // Always show first step
                       if (idx > 0 && !isReached) return null
@@ -794,7 +764,7 @@ export function Chat({ messages, isPending, progress, externalLock, onSendMessag
                               status={status}
                             />
                             {/* Nested query progress - show during/after executing */}
-                            {(progress.step === 'executing' || progress.step === 'synthesizing' || progress.step === 'inspecting') && (
+                            {(progress.step === 'executing' || progress.step === 'synthesizing') && (
                               <div className="ml-6 mt-2 space-y-2">
                                 {/* Progress bar */}
                                 <div className="flex items-center gap-2">

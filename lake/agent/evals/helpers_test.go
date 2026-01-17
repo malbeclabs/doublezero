@@ -16,10 +16,8 @@ import (
 	anthropic "github.com/anthropics/anthropic-sdk-go"
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
-	"github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline"
-	v1 "github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline/v1"
-	v2 "github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline/v2"
-	v3 "github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline/v3"
+	"github.com/malbeclabs/doublezero/lake/agent/pkg/workflow"
+	v3 "github.com/malbeclabs/doublezero/lake/agent/pkg/workflow/v3"
 	"github.com/malbeclabs/doublezero/lake/indexer/pkg/clickhouse"
 	"github.com/malbeclabs/doublezero/lake/indexer/pkg/clickhouse/dataset"
 	serviceability "github.com/malbeclabs/doublezero/lake/indexer/pkg/dz/serviceability"
@@ -173,7 +171,7 @@ IMPORTANT: Including additional relevant context or details beyond the expectati
 Respond with only "YES" or "NO" followed by a brief explanation.`, currentDate, question, response, expectationsSection)
 
 	// Use Anthropic Haiku for evaluation - fast and reliable
-	llmClient := pipeline.NewAnthropicLLMClientWithName(
+	llmClient := workflow.NewAnthropicLLMClientWithName(
 		anthropic.ModelClaudeHaiku4_5_20251001,
 		1024, // Short response needed for YES/NO + explanation
 		"eval",
@@ -224,11 +222,10 @@ Respond with only "YES" or "NO" followed by a brief explanation.`, currentDate, 
 }
 
 // LLMClientFactory creates an LLM client for testing
-type LLMClientFactory func(t *testing.T) pipeline.LLMClient
+type LLMClientFactory func(t *testing.T) workflow.LLMClient
 
-// setupPipeline creates a pipeline instance with the given LLM client factory.
-// It uses the PIPELINE_VERSION environment variable to select v1 or v2.
-func setupPipeline(t *testing.T, ctx context.Context, clientInfo *laketesting.ClientInfo, llmFactory LLMClientFactory, debug bool, debugLevel int) pipeline.Runner {
+// setupPipeline creates a v3 pipeline instance with the given LLM client factory.
+func setupPipeline(t *testing.T, ctx context.Context, clientInfo *laketesting.ClientInfo, llmFactory LLMClientFactory, debug bool, debugLevel int) workflow.Runner {
 	// Create logger with appropriate level
 	var logger *slog.Logger
 	if debug {
@@ -241,7 +238,7 @@ func setupPipeline(t *testing.T, ctx context.Context, clientInfo *laketesting.Cl
 	baseLLMClient := llmFactory(t)
 
 	// Wrap LLM client with debug logging if DEBUG is set
-	var llmClient pipeline.LLMClient = baseLLMClient
+	var llmClient workflow.LLMClient = baseLLMClient
 	if debug {
 		llmClient = &debugPipelineLLMClient{
 			LLMClient:  baseLLMClient,
@@ -254,7 +251,7 @@ func setupPipeline(t *testing.T, ctx context.Context, clientInfo *laketesting.Cl
 	baseQuerier := NewClickhouseQuerier(clientInfo.Client)
 
 	// Wrap querier with debug logging if DEBUG is set
-	var querier pipeline.Querier = baseQuerier
+	var querier workflow.Querier = baseQuerier
 	if debug {
 		querier = &debugQuerier{
 			Querier:    baseQuerier,
@@ -264,18 +261,14 @@ func setupPipeline(t *testing.T, ctx context.Context, clientInfo *laketesting.Cl
 	}
 
 	// Create schema fetcher using HTTP with auth (same code path as API)
-	schemaFetcher := pipeline.NewHTTPSchemaFetcherWithAuth(
+	schemaFetcher := workflow.NewHTTPSchemaFetcherWithAuth(
 		sharedDB.HTTPAddr(),
 		clientInfo.Database,
 		sharedDB.Username(),
 		sharedDB.Password(),
 	)
 
-	// Select pipeline version
-	version := pipeline.DefaultVersion()
-	t.Logf("Using pipeline version: %s", version)
-
-	cfg := &pipeline.Config{
+	cfg := &workflow.Config{
 		Logger:        logger,
 		LLM:           llmClient,
 		Querier:       querier,
@@ -284,26 +277,10 @@ func setupPipeline(t *testing.T, ctx context.Context, clientInfo *laketesting.Cl
 		MaxRetries:    4,
 	}
 
-	var runner pipeline.Runner
-	var err error
-
-	switch version {
-	case pipeline.VersionV3:
-		prompts, promptErr := v3.LoadPrompts()
-		require.NoError(t, promptErr)
-		cfg.Prompts = prompts
-		runner, err = v3.New(cfg)
-	case pipeline.VersionV2:
-		prompts, promptErr := v2.LoadPrompts()
-		require.NoError(t, promptErr)
-		cfg.Prompts = prompts
-		runner, err = v2.New(cfg)
-	default: // v1
-		prompts, promptErr := v1.LoadPrompts()
-		require.NoError(t, promptErr)
-		cfg.Prompts = prompts
-		runner, err = v1.New(cfg)
-	}
+	prompts, promptErr := v3.LoadPrompts()
+	require.NoError(t, promptErr)
+	cfg.Prompts = prompts
+	runner, err := v3.New(cfg)
 	require.NoError(t, err)
 
 	return runner
@@ -323,17 +300,17 @@ func getDebugLevel() (int, bool) {
 }
 
 // newAnthropicLLMClient creates an Anthropic LLM client for the pipeline
-func newAnthropicLLMClient(t *testing.T) pipeline.LLMClient {
+func newAnthropicLLMClient(t *testing.T) workflow.LLMClient {
 	apiKey := os.Getenv("ANTHROPIC_API_KEY")
 	require.NotEmpty(t, apiKey, "ANTHROPIC_API_KEY must be set for Anthropic tests")
 
-	return pipeline.NewAnthropicLLMClient(
+	return workflow.NewAnthropicLLMClient(
 		anthropic.ModelClaudeHaiku4_5_20251001, // Use Haiku for faster/cheaper eval tests
 		4096,
 	)
 }
 
-// ClickhouseQuerier implements pipeline.Querier using the clickhouse client
+// ClickhouseQuerier implements workflow.Querier using the clickhouse client
 type ClickhouseQuerier struct {
 	db clickhouse.Client
 }
@@ -344,21 +321,21 @@ func NewClickhouseQuerier(db clickhouse.Client) *ClickhouseQuerier {
 }
 
 // Query executes a SQL query and returns the result
-func (q *ClickhouseQuerier) Query(ctx context.Context, sql string) (pipeline.QueryResult, error) {
+func (q *ClickhouseQuerier) Query(ctx context.Context, sql string) (workflow.QueryResult, error) {
 	sql = strings.TrimSuffix(strings.TrimSpace(sql), ";")
 
 	conn, err := q.db.Conn(ctx)
 	if err != nil {
-		return pipeline.QueryResult{SQL: sql, Error: fmt.Sprintf("connection error: %v", err)}, nil
+		return workflow.QueryResult{SQL: sql, Error: fmt.Sprintf("connection error: %v", err)}, nil
 	}
 	defer conn.Close()
 
 	result, err := dataset.Query(ctx, conn, sql, nil)
 	if err != nil {
-		return pipeline.QueryResult{SQL: sql, Error: err.Error()}, nil
+		return workflow.QueryResult{SQL: sql, Error: err.Error()}, nil
 	}
 
-	qr := pipeline.QueryResult{
+	qr := workflow.QueryResult{
 		SQL:     sql,
 		Columns: result.Columns,
 		Rows:    result.Rows,
@@ -372,7 +349,7 @@ func (q *ClickhouseQuerier) Query(ctx context.Context, sql string) (pipeline.Que
 }
 
 // formatQueryResult creates a human-readable format of the query result
-func formatQueryResult(result pipeline.QueryResult) string {
+func formatQueryResult(result workflow.QueryResult) string {
 	if result.Error != "" {
 		return fmt.Sprintf("Error: %s", result.Error)
 	}
@@ -410,12 +387,12 @@ func formatQueryResult(result pipeline.QueryResult) string {
 
 // debugQuerier wraps a Querier to log all queries and results when DEBUG is enabled
 type debugQuerier struct {
-	pipeline.Querier
+	workflow.Querier
 	t          *testing.T
 	debugLevel int
 }
 
-func (d *debugQuerier) Query(ctx context.Context, sql string) (pipeline.QueryResult, error) {
+func (d *debugQuerier) Query(ctx context.Context, sql string) (workflow.QueryResult, error) {
 	// Log query
 	sqlStr := sql
 	if d.debugLevel == 1 {
@@ -469,12 +446,12 @@ func truncate(s string, maxLen int) string {
 
 // debugPipelineLLMClient wraps an LLMClient to log all responses when DEBUG is enabled
 type debugPipelineLLMClient struct {
-	pipeline.LLMClient
+	workflow.LLMClient
 	t          *testing.T
 	debugLevel int
 }
 
-func (d *debugPipelineLLMClient) Complete(ctx context.Context, systemPrompt, userPrompt string, opts ...pipeline.CompleteOption) (string, error) {
+func (d *debugPipelineLLMClient) Complete(ctx context.Context, systemPrompt, userPrompt string, opts ...workflow.CompleteOption) (string, error) {
 	// Log that we're calling the LLM
 	if d.debugLevel == 1 {
 		d.t.Logf("🤖 LLM call (system: %d chars, user: %d chars)", len(systemPrompt), len(userPrompt))

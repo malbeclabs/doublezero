@@ -4,10 +4,10 @@
 // For v1 pipeline:
 //
 //	import (
-//	    "github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline"
-//	    v1 "github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline/v1"
+//	    "github.com/malbeclabs/doublezero/lake/agent/pkg/workflow"
+//	    v1 "github.com/malbeclabs/doublezero/lake/agent/pkg/workflow/v1"
 //	)
 //
 //	prompts, _ := v1.LoadPrompts()
-//	p, _ := v1.New(&pipeline.Config{Prompts: prompts, ...})
-package pipeline
+//	p, _ := v1.New(&workflow.Config{Prompts: prompts, ...})
+package workflow

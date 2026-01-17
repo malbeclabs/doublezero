@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline"
+	"github.com/malbeclabs/doublezero/lake/agent/pkg/workflow"
 )
 
 // V3Stage represents a stage in the v3 pipeline execution.
@@ -49,25 +49,25 @@ type StreamCallback func(event StreamEvent)
 // LoopState tracks state during the tool-calling loop.
 type LoopState struct {
 	ThinkingSteps   []string                 // Content from think() calls
-	ExecutedQueries []pipeline.ExecutedQuery // All SQL executed
+	ExecutedQueries []workflow.ExecutedQuery // All SQL executed
 	FinalAnswer     string                   // Last assistant text (non-tool response)
 	Metrics         *PipelineMetrics         // Metrics collected during execution
 }
 
 // InferClassification determines classification based on tool usage behavior.
-func (state *LoopState) InferClassification() pipeline.Classification {
+func (state *LoopState) InferClassification() workflow.Classification {
 	// If model executed SQL queries, it's data analysis
 	if len(state.ExecutedQueries) > 0 {
-		return pipeline.ClassificationDataAnalysis
+		return workflow.ClassificationDataAnalysis
 	}
 
 	// Direct response with no queries = conversational or out-of-scope
-	return pipeline.ClassificationConversational
+	return workflow.ClassificationConversational
 }
 
-// ToPipelineResult converts LoopState to a PipelineResult.
-func (state *LoopState) ToPipelineResult(userQuestion string) *pipeline.PipelineResult {
-	result := &pipeline.PipelineResult{
+// ToWorkflowResult converts LoopState to a WorkflowResult.
+func (state *LoopState) ToWorkflowResult(userQuestion string) *workflow.WorkflowResult {
+	result := &workflow.WorkflowResult{
 		UserQuestion:    userQuestion,
 		Classification:  state.InferClassification(),
 		Answer:          state.FinalAnswer,

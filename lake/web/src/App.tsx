@@ -8,7 +8,7 @@ import { ResultsView } from '@/components/results-view'
 import { SessionHistory, type GenerationRecord } from '@/components/session-history'
 import { SessionsPage } from '@/components/sessions-page'
 import { ChatSessionsPage } from '@/components/chat-sessions-page'
-import { Chat, type ChatProgress, type QueryProgressItem, type PipelineStep, getStepOrder } from '@/components/chat'
+import { Chat, type ChatProgress, type QueryProgressItem, type WorkflowStep, STEP_ORDER } from '@/components/chat'
 import { Landing } from '@/components/landing'
 import { Sidebar } from '@/components/sidebar'
 import { SearchSpotlight } from '@/components/search-spotlight'
@@ -1041,11 +1041,9 @@ function AppContent() {
           onStatus: (status) => {
             updatePendingProgress(sessionId, (prev) => {
               // Track completed steps - when we move to a new step, previous ones are done
-              // Uses dynamic step order based on the current step (v1 or v2)
-              const stepOrder = getStepOrder(status.step)
-              const currentStepIndex = stepOrder.indexOf(status.step as PipelineStep)
+              const currentStepIndex = STEP_ORDER.indexOf(status.step as WorkflowStep)
               const completedSteps = currentStepIndex > 0
-                ? stepOrder.slice(0, currentStepIndex)
+                ? STEP_ORDER.slice(0, currentStepIndex)
                 : []
               return {
                 ...prev,
@@ -1062,11 +1060,9 @@ function AppContent() {
               status: i === 0 ? 'running' : 'pending',
             }))
             updatePendingProgress(sessionId, (prev) => {
-              // Get steps before 'executing' based on the pipeline version we've been using
-              // Use prev.step to detect version since it was set by earlier onStatus calls
-              const stepOrder = getStepOrder(prev.step || 'classifying')
-              const executingIndex = stepOrder.indexOf('executing')
-              const completedSteps = executingIndex > 0 ? stepOrder.slice(0, executingIndex) : []
+              // Get steps before 'executing'
+              const executingIndex = STEP_ORDER.indexOf('executing')
+              const completedSteps = executingIndex > 0 ? STEP_ORDER.slice(0, executingIndex) : []
               return {
                 ...prev,
                 status: `Running ${data.count} queries...`,

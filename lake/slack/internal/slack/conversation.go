@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline"
+	"github.com/malbeclabs/doublezero/lake/agent/pkg/workflow"
 	"github.com/malbeclabs/doublezero/lake/utils/pkg/retry"
 	"github.com/slack-go/slack"
 )
@@ -26,7 +26,7 @@ type Manager struct {
 	// Conversation history cache
 	// Key: thread timestamp (or message timestamp if no thread)
 	// Value: conversation history
-	conversations   map[string][]pipeline.ConversationMessage
+	conversations   map[string][]workflow.ConversationMessage
 	conversationsMu sync.RWMutex
 
 	// Track active threads where the bot was mentioned
@@ -40,7 +40,7 @@ type Manager struct {
 // NewManager creates a new conversation manager
 func NewManager(log *slog.Logger) *Manager {
 	return &Manager{
-		conversations: make(map[string][]pipeline.ConversationMessage),
+		conversations: make(map[string][]workflow.ConversationMessage),
 		activeThreads: make(map[string]time.Time),
 		log:           log,
 	}
@@ -82,7 +82,7 @@ func (m *Manager) cleanup() {
 	m.conversationsMu.Lock()
 	if len(m.conversations) > maxConversations {
 		// Simple approach: clear all and let them rebuild (better would be LRU)
-		m.conversations = make(map[string][]pipeline.ConversationMessage)
+		m.conversations = make(map[string][]workflow.ConversationMessage)
 	}
 	m.conversationsMu.Unlock()
 }
@@ -109,7 +109,7 @@ func (m *Manager) IsThreadActive(channelID, threadTS string) bool {
 
 // HistoryFetcher fetches conversation history from Slack
 type HistoryFetcher interface {
-	FetchThreadHistory(ctx context.Context, api *slack.Client, channelID, threadTS, botUserID string) ([]pipeline.ConversationMessage, error)
+	FetchThreadHistory(ctx context.Context, api *slack.Client, channelID, threadTS, botUserID string) ([]workflow.ConversationMessage, error)
 }
 
 // GetConversationHistory gets conversation history for a thread, fetching from Slack if not cached
@@ -119,7 +119,7 @@ func (m *Manager) GetConversationHistory(
 	channelID, messageTS, threadTS string,
 	botUserID string,
 	fetcher HistoryFetcher,
-) ([]pipeline.ConversationMessage, error) {
+) ([]workflow.ConversationMessage, error) {
 	// Determine thread key: use thread timestamp if in thread, otherwise use message timestamp
 	threadKey := messageTS
 	if threadTS != "" {
@@ -141,13 +141,13 @@ func (m *Manager) GetConversationHistory(
 		threadMsgs, err := fetcher.FetchThreadHistory(ctx, api, channelID, threadKey, botUserID)
 		if err != nil {
 			m.log.Warn("failed to fetch thread history", "thread", threadKey, "error", err)
-			msgs = []pipeline.ConversationMessage{}
+			msgs = []workflow.ConversationMessage{}
 		} else {
 			msgs = threadMsgs
 		}
 	} else {
 		// Top-level message - start with empty history (new conversation)
-		msgs = []pipeline.ConversationMessage{}
+		msgs = []workflow.ConversationMessage{}
 		m.log.Debug("starting new conversation for top-level message", "message_ts", messageTS)
 	}
 
@@ -160,7 +160,7 @@ func (m *Manager) GetConversationHistory(
 }
 
 // UpdateConversationHistory updates the conversation history cache
-func (m *Manager) UpdateConversationHistory(threadKey string, msgs []pipeline.ConversationMessage) {
+func (m *Manager) UpdateConversationHistory(threadKey string, msgs []workflow.ConversationMessage) {
 	m.conversationsMu.Lock()
 	m.conversations[threadKey] = msgs
 	m.conversationsMu.Unlock()
@@ -185,14 +185,14 @@ func NewDefaultFetcher(log *slog.Logger) *DefaultFetcher {
 }
 
 // FetchThreadHistory fetches conversation history from Slack for a thread
-func (f *DefaultFetcher) FetchThreadHistory(ctx context.Context, api *slack.Client, channelID, threadTS, botUserID string) ([]pipeline.ConversationMessage, error) {
+func (f *DefaultFetcher) FetchThreadHistory(ctx context.Context, api *slack.Client, channelID, threadTS, botUserID string) ([]workflow.ConversationMessage, error) {
 	params := &slack.GetConversationRepliesParameters{
 		ChannelID: channelID,
 		Timestamp: threadTS,
 		Limit:     100, // Max messages to fetch
 	}
 
-	var allMessages []pipeline.ConversationMessage
+	var allMessages []workflow.ConversationMessage
 	var cursor string
 
 	for {
@@ -235,13 +235,13 @@ func (f *DefaultFetcher) FetchThreadHistory(ctx context.Context, api *slack.Clie
 
 			if isBotMessage {
 				f.log.Debug("fetchThreadHistory: including bot message", "ts", msg.Timestamp, "bot_id", msg.BotID, "user", msg.User, "text_preview", TruncateString(plainText, 50))
-				allMessages = append(allMessages, pipeline.ConversationMessage{
+				allMessages = append(allMessages, workflow.ConversationMessage{
 					Role:    "assistant",
 					Content: plainText,
 				})
 			} else {
 				f.log.Debug("fetchThreadHistory: including message", "ts", msg.Timestamp, "bot_id", msg.BotID, "user", msg.User, "text_preview", TruncateString(plainText, 50))
-				allMessages = append(allMessages, pipeline.ConversationMessage{
+				allMessages = append(allMessages, workflow.ConversationMessage{
 					Role:    "user",
 					Content: plainText,
 				})

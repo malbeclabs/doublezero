@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/malbeclabs/doublezero/lake/agent/pkg/pipeline"
+	"github.com/malbeclabs/doublezero/lake/agent/pkg/workflow"
 )
 
 const (
@@ -16,12 +16,12 @@ const (
 	DefaultMaxIterations = 10
 )
 
-// Pipeline orchestrates the v3 tool-calling pipeline.
+// Pipeline orchestrates the v3 tool-calling workflow.
 type Pipeline struct {
-	cfg           *pipeline.Config
+	cfg           *workflow.Config
 	prompts       *Prompts
 	systemPrompt  string // Cached system prompt with schema
-	tools         []pipeline.ToolDefinition
+	tools         []workflow.ToolDefinition
 	maxIterations int
 }
 
@@ -33,7 +33,7 @@ func (p *Pipeline) logInfo(msg string, args ...any) {
 }
 
 // New creates a new v3 Pipeline.
-func New(cfg *pipeline.Config) (*Pipeline, error) {
+func New(cfg *workflow.Config) (*Pipeline, error) {
 	if cfg.LLM == nil {
 		return nil, fmt.Errorf("LLM client is required")
 	}
@@ -59,15 +59,15 @@ func New(cfg *pipeline.Config) (*Pipeline, error) {
 		return nil, fmt.Errorf("prompts must be *v3.Prompts")
 	}
 
-	// Convert tools to pipeline.ToolDefinition format
+	// Convert tools to workflow.ToolDefinition format
 	v3Tools := DefaultTools()
-	tools := make([]pipeline.ToolDefinition, len(v3Tools))
+	tools := make([]workflow.ToolDefinition, len(v3Tools))
 	for i, t := range v3Tools {
 		var schema any
 		if err := json.Unmarshal(t.InputSchema, &schema); err != nil {
 			return nil, fmt.Errorf("invalid tool schema for %s: %w", t.Name, err)
 		}
-		tools[i] = pipeline.ToolDefinition{
+		tools[i] = workflow.ToolDefinition{
 			Name:        t.Name,
 			Description: t.Description,
 			InputSchema: schema,
@@ -83,17 +83,17 @@ func New(cfg *pipeline.Config) (*Pipeline, error) {
 }
 
 // Run executes the full pipeline for a user question.
-func (p *Pipeline) Run(ctx context.Context, userQuestion string) (*pipeline.PipelineResult, error) {
+func (p *Pipeline) Run(ctx context.Context, userQuestion string) (*workflow.WorkflowResult, error) {
 	return p.RunWithHistory(ctx, userQuestion, nil)
 }
 
 // RunWithHistory executes the full pipeline with conversation context.
-func (p *Pipeline) RunWithHistory(ctx context.Context, userQuestion string, history []pipeline.ConversationMessage) (*pipeline.PipelineResult, error) {
+func (p *Pipeline) RunWithHistory(ctx context.Context, userQuestion string, history []workflow.ConversationMessage) (*workflow.WorkflowResult, error) {
 	return p.RunWithProgress(ctx, userQuestion, history, nil)
 }
 
 // RunWithProgress executes the pipeline with progress callbacks.
-func (p *Pipeline) RunWithProgress(ctx context.Context, userQuestion string, history []pipeline.ConversationMessage, onProgress pipeline.ProgressCallback) (*pipeline.PipelineResult, error) {
+func (p *Pipeline) RunWithProgress(ctx context.Context, userQuestion string, history []workflow.ConversationMessage, onProgress workflow.ProgressCallback) (*workflow.WorkflowResult, error) {
 	startTime := time.Now()
 
 	state := &LoopState{
@@ -101,9 +101,9 @@ func (p *Pipeline) RunWithProgress(ctx context.Context, userQuestion string, his
 	}
 
 	// Helper to notify progress
-	notify := func(stage pipeline.ProgressStage) {
+	notify := func(stage workflow.ProgressStage) {
 		if onProgress != nil {
-			onProgress(pipeline.Progress{
+			onProgress(workflow.Progress{
 				Stage: stage,
 			})
 		}
@@ -112,7 +112,7 @@ func (p *Pipeline) RunWithProgress(ctx context.Context, userQuestion string, his
 	// Fetch schema once at the start
 	schema, err := p.cfg.SchemaFetcher.FetchSchema(ctx)
 	if err != nil {
-		notify(pipeline.StageError)
+		notify(workflow.StageError)
 		return nil, fmt.Errorf("failed to fetch schema: %w", err)
 	}
 
@@ -123,13 +123,13 @@ func (p *Pipeline) RunWithProgress(ctx context.Context, userQuestion string, his
 	messages := p.buildMessages(userQuestion, history)
 
 	// Get tool LLM client
-	toolLLM, ok := p.cfg.LLM.(pipeline.ToolLLMClient)
+	toolLLM, ok := p.cfg.LLM.(workflow.ToolLLMClient)
 	if !ok {
 		return nil, fmt.Errorf("LLM client does not support tool calling")
 	}
 
 	// Tool-calling loop
-	notify(pipeline.StageExecuting)
+	notify(workflow.StageExecuting)
 	p.logInfo("v3 pipeline: starting tool loop", "question", userQuestion)
 
 	for iteration := 0; iteration < p.maxIterations; iteration++ {
@@ -137,18 +137,18 @@ func (p *Pipeline) RunWithProgress(ctx context.Context, userQuestion string, his
 
 		// Check for context cancellation
 		if ctx.Err() != nil {
-			notify(pipeline.StageError)
+			notify(workflow.StageError)
 			return nil, ctx.Err()
 		}
 
 		// Call LLM with tools
 		llmStart := time.Now()
-		response, err := toolLLM.CompleteWithTools(ctx, systemPrompt, messages, p.tools, pipeline.WithCacheControl())
+		response, err := toolLLM.CompleteWithTools(ctx, systemPrompt, messages, p.tools, workflow.WithCacheControl())
 		state.Metrics.LLMDuration += time.Since(llmStart)
 		state.Metrics.LLMCalls++
 
 		if err != nil {
-			notify(pipeline.StageError)
+			notify(workflow.StageError)
 			return nil, fmt.Errorf("LLM call failed: %w", err)
 		}
 
@@ -172,9 +172,9 @@ func (p *Pipeline) RunWithProgress(ctx context.Context, userQuestion string, his
 					"iteration", iteration+1,
 					"reason", "model tried to answer without executing queries")
 				// Inject a reminder message and continue the loop
-				messages = append(messages, pipeline.ToolMessage{
+				messages = append(messages, workflow.ToolMessage{
 					Role: "user",
-					Content: []pipeline.ToolContentBlock{
+					Content: []workflow.ToolContentBlock{
 						{
 							Type: "text",
 							Text: "[System: You used the think tool but did not execute any SQL queries. For data questions, you MUST call execute_sql to get actual data before providing an answer. Please call execute_sql now with your planned queries.]",
@@ -188,19 +188,19 @@ func (p *Pipeline) RunWithProgress(ctx context.Context, userQuestion string, his
 		}
 
 		// Process tool calls
-		toolResults := make([]pipeline.ToolContentBlock, 0)
+		toolResults := make([]workflow.ToolContentBlock, 0)
 		for _, call := range response.ToolCalls() {
 			result, err := p.executeTool(ctx, call, state)
 			if err != nil {
 				// Tool execution error - report back to model
-				toolResults = append(toolResults, pipeline.ToolContentBlock{
+				toolResults = append(toolResults, workflow.ToolContentBlock{
 					Type:      "tool_result",
 					ToolUseID: call.ID,
 					Content:   fmt.Sprintf("Error: %s", err.Error()),
 					IsError:   true,
 				})
 			} else {
-				toolResults = append(toolResults, pipeline.ToolContentBlock{
+				toolResults = append(toolResults, workflow.ToolContentBlock{
 					Type:      "tool_result",
 					ToolUseID: call.ID,
 					Content:   result,
@@ -210,14 +210,14 @@ func (p *Pipeline) RunWithProgress(ctx context.Context, userQuestion string, his
 		}
 
 		// Add tool results as user message
-		messages = append(messages, pipeline.ToolMessage{
+		messages = append(messages, workflow.ToolMessage{
 			Role:    "user",
 			Content: toolResults,
 		})
 
 		// Warn model on penultimate iteration
 		if iteration == p.maxIterations-2 {
-			messages[len(messages)-1].Content = append(messages[len(messages)-1].Content, pipeline.ToolContentBlock{
+			messages[len(messages)-1].Content = append(messages[len(messages)-1].Content, workflow.ToolContentBlock{
 				Type: "text",
 				Text: "[System: This is your second-to-last turn. Please wrap up your analysis and provide a final answer.]",
 			})
@@ -233,15 +233,15 @@ func (p *Pipeline) RunWithProgress(ctx context.Context, userQuestion string, his
 
 		finalizationPrompt := "[System: You've reached the maximum number of iterations. Please provide your best answer now based on any data you've gathered. If you executed queries, summarize the results. If you haven't retrieved any data yet, acknowledge that you couldn't complete the analysis and explain what you were trying to do.]"
 
-		messages = append(messages, pipeline.ToolMessage{
+		messages = append(messages, workflow.ToolMessage{
 			Role: "user",
-			Content: []pipeline.ToolContentBlock{
+			Content: []workflow.ToolContentBlock{
 				{Type: "text", Text: finalizationPrompt},
 			},
 		})
 
 		// Make one final LLM call to get the summary
-		finalResponse, err := toolLLM.CompleteWithTools(ctx, systemPrompt, messages, p.tools, pipeline.WithCacheControl())
+		finalResponse, err := toolLLM.CompleteWithTools(ctx, systemPrompt, messages, p.tools, workflow.WithCacheControl())
 		if err == nil {
 			state.Metrics.LLMCalls++
 			state.Metrics.InputTokens += finalResponse.InputTokens
@@ -257,10 +257,10 @@ func (p *Pipeline) RunWithProgress(ctx context.Context, userQuestion string, his
 
 	state.Metrics.TotalDuration = time.Since(startTime)
 
-	// Convert to PipelineResult
-	result := state.ToPipelineResult(userQuestion)
+	// Convert to WorkflowResult
+	result := state.ToWorkflowResult(userQuestion)
 
-	notify(pipeline.StageComplete)
+	notify(workflow.StageComplete)
 	p.logInfo("v3 pipeline: complete",
 		"classification", result.Classification,
 		"iterations", state.Metrics.LoopIterations,
@@ -271,23 +271,23 @@ func (p *Pipeline) RunWithProgress(ctx context.Context, userQuestion string, his
 }
 
 // buildMessages constructs the initial message list from conversation history.
-func (p *Pipeline) buildMessages(userQuestion string, history []pipeline.ConversationMessage) []pipeline.ToolMessage {
-	messages := make([]pipeline.ToolMessage, 0, len(history)+1)
+func (p *Pipeline) buildMessages(userQuestion string, history []workflow.ConversationMessage) []workflow.ToolMessage {
+	messages := make([]workflow.ToolMessage, 0, len(history)+1)
 
 	// Add conversation history
 	for _, msg := range history {
-		messages = append(messages, pipeline.ToolMessage{
+		messages = append(messages, workflow.ToolMessage{
 			Role: msg.Role,
-			Content: []pipeline.ToolContentBlock{
+			Content: []workflow.ToolContentBlock{
 				{Type: "text", Text: msg.Content},
 			},
 		})
 	}
 
 	// Add current user question
-	messages = append(messages, pipeline.ToolMessage{
+	messages = append(messages, workflow.ToolMessage{
 		Role: "user",
-		Content: []pipeline.ToolContentBlock{
+		Content: []workflow.ToolContentBlock{
 			{Type: "text", Text: userQuestion},
 		},
 	})
@@ -296,8 +296,8 @@ func (p *Pipeline) buildMessages(userQuestion string, history []pipeline.Convers
 }
 
 // responseToMessage converts an LLM response to a ToolMessage for conversation history.
-func (p *Pipeline) responseToMessage(response *pipeline.ToolLLMResponse) pipeline.ToolMessage {
-	content := make([]pipeline.ToolContentBlock, len(response.Content))
+func (p *Pipeline) responseToMessage(response *workflow.ToolLLMResponse) workflow.ToolMessage {
+	content := make([]workflow.ToolContentBlock, len(response.Content))
 	for i, block := range response.Content {
 		content[i] = block
 	}
@@ -305,18 +305,18 @@ func (p *Pipeline) responseToMessage(response *pipeline.ToolLLMResponse) pipelin
 	// for assistant messages. This can happen when the model returns with stop_reason=end_turn
 	// but no actual text or tool calls (e.g., outputTokens=2).
 	if len(content) == 0 {
-		content = []pipeline.ToolContentBlock{
+		content = []workflow.ToolContentBlock{
 			{Type: "text", Text: "(considering...)"},
 		}
 	}
-	return pipeline.ToolMessage{
+	return workflow.ToolMessage{
 		Role:    "assistant",
 		Content: content,
 	}
 }
 
 // executeTool executes a single tool call and returns the result.
-func (p *Pipeline) executeTool(ctx context.Context, call pipeline.ToolCallInfo, state *LoopState) (string, error) {
+func (p *Pipeline) executeTool(ctx context.Context, call workflow.ToolCallInfo, state *LoopState) (string, error) {
 	switch call.Name {
 	case "think":
 		return p.executeThink(call.Parameters, state)
@@ -366,7 +366,7 @@ func (p *Pipeline) executeSQL(ctx context.Context, params map[string]any, state 
 
 	// Execute queries in parallel
 	sqlStart := time.Now()
-	results := make([]pipeline.ExecutedQuery, len(queries))
+	results := make([]workflow.ExecutedQuery, len(queries))
 	var wg sync.WaitGroup
 
 	for i, q := range queries {
@@ -382,14 +382,14 @@ func (p *Pipeline) executeSQL(ctx context.Context, params map[string]any, state 
 			queryResult, err := p.cfg.Querier.Query(ctx, sql)
 			if err != nil {
 				state.Metrics.SQLErrors++
-				results[idx] = pipeline.ExecutedQuery{
-					GeneratedQuery: pipeline.GeneratedQuery{
-						DataQuestion: pipeline.DataQuestion{
+				results[idx] = workflow.ExecutedQuery{
+					GeneratedQuery: workflow.GeneratedQuery{
+						DataQuestion: workflow.DataQuestion{
 							Question: query.Question,
 						},
 						SQL: sql,
 					},
-					Result: pipeline.QueryResult{
+					Result: workflow.QueryResult{
 						SQL:   sql,
 						Error: err.Error(),
 					},
@@ -397,9 +397,9 @@ func (p *Pipeline) executeSQL(ctx context.Context, params map[string]any, state 
 				return
 			}
 
-			results[idx] = pipeline.ExecutedQuery{
-				GeneratedQuery: pipeline.GeneratedQuery{
-					DataQuestion: pipeline.DataQuestion{
+			results[idx] = workflow.ExecutedQuery{
+				GeneratedQuery: workflow.GeneratedQuery{
+					DataQuestion: workflow.DataQuestion{
 						Question: query.Question,
 					},
 					SQL: sql,
@@ -438,7 +438,7 @@ func (p *Pipeline) executeSQL(ctx context.Context, params map[string]any, state 
 }
 
 // formatQueryResults formats query results for the model to consume.
-func formatQueryResults(queries []QueryInput, results []pipeline.ExecutedQuery) string {
+func formatQueryResults(queries []QueryInput, results []workflow.ExecutedQuery) string {
 	var sb strings.Builder
 	for i, q := range queries {
 		sb.WriteString(fmt.Sprintf("## Q%d: %s\n\n", i+1, q.Question))

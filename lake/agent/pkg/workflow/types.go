@@ -1,11 +1,11 @@
-package pipeline
+package workflow
 
 import (
 	"context"
 	"log/slog"
 )
 
-// Config holds the configuration for the pipeline.
+// Config holds the configuration for the workflow.
 type Config struct {
 	Logger        *slog.Logger
 	LLM           LLMClient
@@ -238,8 +238,8 @@ type Progress struct {
 // ProgressCallback is called at each stage of pipeline execution.
 type ProgressCallback func(Progress)
 
-// PipelineResult holds the complete result of running the pipeline.
-type PipelineResult struct {
+// WorkflowResult holds the complete result of running the workflow.
+type WorkflowResult struct {
 	// Input
 	UserQuestion string
 

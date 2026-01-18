@@ -7,6 +7,7 @@ import type { ChatMessage, ProcessingStep } from '@/lib/api'
 import { ArrowUp, Square, Loader2, Copy, Check, ChevronDown, ChevronRight, ExternalLink, MessageCircle, CheckCircle2, XCircle, Brain, RotateCcw } from 'lucide-react'
 import { useTheme } from '@/hooks/use-theme'
 import { formatNeo4jValue, isNeo4jValue } from '@/lib/neo4j-utils'
+import { isCypherQuery, formatCypher } from '@/lib/format-cypher'
 
 // Format SQL for display
 function formatSQLForDisplay(sql: string): string {
@@ -20,6 +21,14 @@ function formatSQLForDisplay(sql: string): string {
     // If formatting fails, return original
     return sql
   }
+}
+
+// Format a query (SQL or Cypher) for display, returning both formatted text and language
+function formatQueryForDisplay(query: string): { formatted: string; language: 'sql' | 'cypher' } {
+  if (isCypherQuery(query)) {
+    return { formatted: formatCypher(query), language: 'cypher' }
+  }
+  return { formatted: formatSQLForDisplay(query), language: 'sql' }
 }
 
 // Light theme for syntax highlighting
@@ -370,7 +379,10 @@ function ProcessingTimeline({
                 {expandedQueries.has(queryIndex) && (
                   <div className="mt-2 ml-6">
                     <div className="relative">
-                      <CodeBlock language="sql" isDark={isDark}>{formatSQLForDisplay(step.sql)}</CodeBlock>
+                      {(() => {
+                        const { formatted, language } = formatQueryForDisplay(step.sql)
+                        return <CodeBlock language={language} isDark={isDark}>{formatted}</CodeBlock>
+                      })()}
                       <div className="absolute right-10 top-2 flex items-center gap-1 z-10">
                         {onAskAboutQuery && step.status === 'completed' && !step.error && (
                           <button

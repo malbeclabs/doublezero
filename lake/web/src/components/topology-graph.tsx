@@ -5,7 +5,7 @@ import type { Core, NodeSingular, EdgeSingular } from 'cytoscape'
 import { useQuery } from '@tanstack/react-query'
 import { ZoomIn, ZoomOut, Maximize, Search, Filter, Route, X, GitCompare, AlertTriangle, Zap, Lightbulb, ChevronDown, ChevronUp } from 'lucide-react'
 import { fetchISISTopology, fetchISISPath, fetchTopologyCompare, fetchFailureImpact } from '@/lib/api'
-import type { PathResponse, PathMode, TopologyCompareResponse, FailureImpactResponse } from '@/lib/api'
+import type { PathResponse, PathMode, FailureImpactResponse } from '@/lib/api'
 import { useTheme } from '@/hooks/use-theme'
 
 // Device type colors
@@ -1091,9 +1091,10 @@ export function TopologyGraph({
         </div>
       )}
 
-      {/* Guided questions panel */}
-      <div className="absolute bottom-4 left-4 z-[1000] flex flex-col gap-2">
-        <div className="bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm text-xs">
+      {/* Bottom right panels - Guided questions, Legend, Stats */}
+      <div className="absolute bottom-4 right-4 z-[998] flex flex-col gap-2 items-end">
+        {/* Guided questions panel */}
+        <div className="bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm text-xs max-w-48">
           <button
             onClick={() => setShowGuide(!showGuide)}
             className="w-full flex items-center justify-between p-2 hover:bg-[var(--muted)] rounded-md transition-colors"
@@ -1165,7 +1166,7 @@ export function TopologyGraph({
           )}
         </div>
 
-        {/* Legend */}
+        {/* Legend + Stats combined */}
         <div className="bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm p-2 text-xs">
           <div className="font-medium mb-1 text-muted-foreground">Device Types</div>
           <div className="flex flex-col gap-1">
@@ -1192,6 +1193,15 @@ export function TopologyGraph({
               <span>Inactive</span>
             </div>
           </div>
+          {/* Stats integrated */}
+          {filteredData && (
+            <div className="mt-2 pt-2 border-t border-[var(--border)] text-muted-foreground">
+              <div>{filteredData.nodes.length} devices · {filteredData.edges.length} adjacencies</div>
+              {(localStatusFilter !== 'all' || localTypeFilter !== 'all') && (
+                <div className="mt-1 text-amber-500">Filtered</div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -1229,15 +1239,6 @@ export function TopologyGraph({
         </div>
       )}
 
-      {/* Stats */}
-      {filteredData && (
-        <div className="absolute bottom-4 right-4 bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm p-2 text-xs text-muted-foreground">
-          <div>{filteredData.nodes.length} devices · {filteredData.edges.length} adjacencies</div>
-          {(localStatusFilter !== 'all' || localTypeFilter !== 'all') && (
-            <div className="mt-1 pt-1 border-t border-[var(--border)] text-amber-500">Filtered</div>
-          )}
-        </div>
-      )}
     </div>
   )
 }

@@ -19,6 +19,7 @@ import { TopologyPage } from '@/components/topology-page'
 import { PathCalculatorPage } from '@/components/path-calculator-page'
 import { RedundancyReportPage } from '@/components/redundancy-report-page'
 import { MetroMatrixPage } from '@/components/metro-matrix-page'
+import { MaintenancePlannerPage } from '@/components/maintenance-planner-page'
 import { StatusPage } from '@/components/status-page'
 import { TimelinePage } from '@/components/timeline-page'
 import { StatusAppendix } from '@/components/status-appendix'
@@ -1680,6 +1681,7 @@ function AppContent() {
             <Route path="/topology/path-calculator" element={<PathCalculatorPage />} />
             <Route path="/topology/redundancy" element={<RedundancyReportPage />} />
             <Route path="/topology/metro-matrix" element={<MetroMatrixPage />} />
+            <Route path="/topology/maintenance" element={<MaintenancePlannerPage />} />
 
             {/* Status routes */}
             <Route path="/status" element={<StatusPage />} />

@@ -238,6 +238,22 @@ export function HelpPage() {
             </div>
           </CollapsibleSection>
 
+          <CollapsibleSection title="Topology / Maintenance Planner">
+            <div className="space-y-3 text-sm">
+              <p>
+                The <Link to="/topology/maintenance" className="text-accent hover:underline">maintenance planner</Link> helps
+                plan maintenance windows by analyzing impact.
+              </p>
+              <ul className="list-disc list-inside space-y-1 text-muted-foreground">
+                <li>Select multiple devices and links for planned maintenance</li>
+                <li>Analyzes impact on network paths and connectivity</li>
+                <li>Shows whether maintenance causes network partition</li>
+                <li>Recommends optimal maintenance order (least impact first)</li>
+                <li>Export maintenance plan as a text file</li>
+              </ul>
+            </div>
+          </CollapsibleSection>
+
           <CollapsibleSection title="Status">
             <div className="space-y-3 text-sm">
               <p>

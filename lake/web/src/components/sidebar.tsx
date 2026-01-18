@@ -32,6 +32,7 @@ import {
   Shield,
   HelpCircle,
   Grid3X3,
+  Wrench,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/hooks/use-theme'
@@ -193,6 +194,7 @@ export function Sidebar({
   const isTopologyPathCalculator = location.pathname === '/topology/path-calculator'
   const isTopologyRedundancy = location.pathname === '/topology/redundancy'
   const isTopologyMetroMatrix = location.pathname === '/topology/metro-matrix'
+  const isTopologyMaintenance = location.pathname === '/topology/maintenance'
 
   // Entity routes
   const isDevicesRoute = location.pathname === '/dz/devices'
@@ -872,6 +874,18 @@ export function Sidebar({
             >
               <Grid3X3 className="h-4 w-4" />
               Metro Matrix
+            </Link>
+            <Link
+              to="/topology/maintenance"
+              className={cn(
+                'w-full flex items-center gap-2 px-3 py-2 text-sm rounded transition-colors',
+                isTopologyMaintenance
+                  ? 'bg-[var(--sidebar-active)] text-foreground font-medium'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+              )}
+            >
+              <Wrench className="h-4 w-4" />
+              Maintenance
             </Link>
           </div>
         </div>

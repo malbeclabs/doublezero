@@ -145,6 +145,11 @@ const EXAMPLE_QUESTIONS = [
   "Which validators connected recently?",
   "Which validators have the highest stake?",
   "Compare validator performance on vs off DZ",
+  // Graph/topology questions
+  "If the Hong Kong device goes down, what metros lose connectivity?",
+  "What metros can I reach from Singapore?",
+  "Show the paths between NYC and LON",
+  "Show me all devices and links connected to the Singapore device",
 ]
 
 // Randomly select n items from an array (Fisher-Yates shuffle, take first n)

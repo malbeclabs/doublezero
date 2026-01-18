@@ -665,6 +665,56 @@ export function TopologyGraph({
     setImpactResult(null)
   }
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't capture if typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return
+      }
+
+      switch (e.key) {
+        case 'Escape':
+          // Exit current mode or clear selection
+          if (mode !== 'explore') {
+            setMode('explore')
+          } else if (impactDevice) {
+            clearImpact()
+          } else if (selectedDevicePK) {
+            onDeviceSelectRef.current?.(null)
+          }
+          cyRef.current?.elements().unselect()
+          break
+        case '?':
+          // Toggle guide panel
+          setShowGuide(!showGuide)
+          break
+        case 'p':
+          // Toggle path mode
+          if (!e.metaKey && !e.ctrlKey) {
+            setMode(mode === 'path' ? 'explore' : 'path')
+          }
+          break
+        case 'c':
+          // Toggle compare mode
+          if (!e.metaKey && !e.ctrlKey) {
+            setMode(mode === 'compare' ? 'explore' : 'compare')
+          }
+          break
+        case 'f':
+          // Focus search
+          if (!e.metaKey && !e.ctrlKey) {
+            e.preventDefault()
+            setShowSearch(true)
+          }
+          break
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [mode, showGuide, impactDevice, selectedDevicePK])
+
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center bg-background">

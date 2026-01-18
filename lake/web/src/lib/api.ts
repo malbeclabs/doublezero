@@ -1274,6 +1274,93 @@ export async function fetchFailureImpact(devicePK: string): Promise<FailureImpac
   return res.json()
 }
 
+// What-If simulation types
+export interface AffectedPath {
+  fromPK: string
+  fromCode: string
+  toPK: string
+  toCode: string
+  beforeHops: number
+  beforeMetric: number
+  afterHops: number
+  afterMetric: number
+  hasAlternate: boolean
+}
+
+export interface SimulateLinkRemovalResponse {
+  sourcePK: string
+  sourceCode: string
+  targetPK: string
+  targetCode: string
+  disconnectedDevices: ImpactDevice[]
+  disconnectedCount: number
+  affectedPaths: AffectedPath[]
+  affectedPathCount: number
+  causesPartition: boolean
+  error?: string
+}
+
+export async function fetchSimulateLinkRemoval(
+  sourcePK: string,
+  targetPK: string
+): Promise<SimulateLinkRemovalResponse> {
+  const res = await fetch(
+    `/api/topology/simulate-link-removal?sourcePK=${encodeURIComponent(sourcePK)}&targetPK=${encodeURIComponent(targetPK)}`
+  )
+  if (!res.ok) {
+    throw new Error('Failed to simulate link removal')
+  }
+  return res.json()
+}
+
+export interface ImprovedPath {
+  fromPK: string
+  fromCode: string
+  toPK: string
+  toCode: string
+  beforeHops: number
+  beforeMetric: number
+  afterHops: number
+  afterMetric: number
+  hopReduction: number
+  metricReduction: number
+}
+
+export interface RedundancyGain {
+  devicePK: string
+  deviceCode: string
+  oldDegree: number
+  newDegree: number
+  wasLeaf: boolean
+}
+
+export interface SimulateLinkAdditionResponse {
+  sourcePK: string
+  sourceCode: string
+  targetPK: string
+  targetCode: string
+  metric: number
+  improvedPaths: ImprovedPath[]
+  improvedPathCount: number
+  redundancyGains: RedundancyGain[]
+  redundancyCount: number
+  error?: string
+}
+
+export async function fetchSimulateLinkAddition(
+  sourcePK: string,
+  targetPK: string,
+  metric: number = 1000
+): Promise<SimulateLinkAdditionResponse> {
+  const res = await fetch(
+    `/api/topology/simulate-link-addition?sourcePK=${encodeURIComponent(sourcePK)}&targetPK=${encodeURIComponent(targetPK)}&metric=${metric}`
+  )
+  if (!res.ok) {
+    throw new Error('Failed to simulate link addition')
+  }
+  return res.json()
+}
+
 // Version check
 export interface VersionResponse {
   buildTimestamp: string

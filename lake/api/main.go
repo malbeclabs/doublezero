@@ -202,6 +202,8 @@ func main() {
 	r.Get("/api/topology/impact/{pk}", handlers.GetFailureImpact)
 	r.Get("/api/topology/critical-links", handlers.GetCriticalLinks)
 	r.Get("/api/topology/redundancy-report", handlers.GetRedundancyReport)
+	r.Get("/api/topology/simulate-link-removal", handlers.GetSimulateLinkRemoval)
+	r.Get("/api/topology/simulate-link-addition", handlers.GetSimulateLinkAddition)
 	r.Post("/api/query", handlers.ExecuteQuery)
 	r.Post("/api/generate", handlers.GenerateSQL)
 	r.Post("/api/generate/stream", handlers.GenerateSQLStream)

@@ -3,9 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import cytoscape from 'cytoscape'
 import type { Core, NodeSingular, EdgeSingular } from 'cytoscape'
 import { useQuery } from '@tanstack/react-query'
-import { ZoomIn, ZoomOut, Maximize, Search, Filter, Route, X, GitCompare, AlertTriangle, Zap, Lightbulb, ChevronDown, ChevronUp, Shield } from 'lucide-react'
-import { fetchISISTopology, fetchISISPaths, fetchTopologyCompare, fetchFailureImpact, fetchCriticalLinks } from '@/lib/api'
-import type { PathMode, FailureImpactResponse, MultiPathResponse } from '@/lib/api'
+import { ZoomIn, ZoomOut, Maximize, Search, Filter, Route, X, GitCompare, AlertTriangle, Zap, Lightbulb, ChevronDown, ChevronUp, Shield, MinusCircle, PlusCircle } from 'lucide-react'
+import { fetchISISTopology, fetchISISPaths, fetchTopologyCompare, fetchFailureImpact, fetchCriticalLinks, fetchSimulateLinkRemoval, fetchSimulateLinkAddition } from '@/lib/api'
+import type { PathMode, FailureImpactResponse, MultiPathResponse, SimulateLinkRemovalResponse, SimulateLinkAdditionResponse } from '@/lib/api'
 import { useTheme } from '@/hooks/use-theme'
 
 // Device type colors
@@ -25,7 +25,7 @@ const PATH_COLORS = [
   { light: '#0891b2', dark: '#06b6d4' },  // cyan - alternate 4
 ]
 
-type InteractionMode = 'explore' | 'path' | 'compare' | 'criticality'
+type InteractionMode = 'explore' | 'path' | 'compare' | 'criticality' | 'whatif-removal' | 'whatif-addition'
 
 interface TopologyGraphProps {
   onDeviceSelect?: (devicePK: string | null) => void
@@ -68,6 +68,18 @@ export function TopologyGraph({
   const [impactDevice, setImpactDevice] = useState<string | null>(null)
   const [impactResult, setImpactResult] = useState<FailureImpactResponse | null>(null)
   const [impactLoading, setImpactLoading] = useState(false)
+
+  // What-If Link Removal state
+  const [removalLink, setRemovalLink] = useState<{ sourcePK: string; targetPK: string } | null>(null)
+  const [removalResult, setRemovalResult] = useState<SimulateLinkRemovalResponse | null>(null)
+  const [removalLoading, setRemovalLoading] = useState(false)
+
+  // What-If Link Addition state
+  const [additionSource, setAdditionSource] = useState<string | null>(null)
+  const [additionTarget, setAdditionTarget] = useState<string | null>(null)
+  const [additionMetric, setAdditionMetric] = useState<number>(1000)
+  const [additionResult, setAdditionResult] = useState<SimulateLinkAdditionResponse | null>(null)
+  const [additionLoading, setAdditionLoading] = useState(false)
 
   const [hoveredNode, setHoveredNode] = useState<{
     id: string
@@ -289,28 +301,69 @@ export function TopologyGraph({
 
   // Clear classes when mode changes
   useEffect(() => {
+    const allClasses = 'path-node path-edge path-source path-target path-0 path-1 path-2 path-3 path-4 path-selected health-matched health-extra health-missing health-mismatch criticality-critical criticality-important criticality-redundant whatif-removed whatif-rerouted whatif-disconnected whatif-added whatif-addition-source whatif-addition-target whatif-improved whatif-redundancy-gained'
+
     if (mode === 'explore') {
       setPathSource(null)
       setPathTarget(null)
       setPathsResult(null)
       setSelectedPathIndex(0)
+      setRemovalLink(null)
+      setRemovalResult(null)
+      setAdditionSource(null)
+      setAdditionTarget(null)
+      setAdditionResult(null)
       if (cyRef.current) {
-        cyRef.current.elements().removeClass('path-node path-edge path-source path-target path-0 path-1 path-2 path-3 path-4 path-selected health-matched health-extra health-missing health-mismatch criticality-critical criticality-important criticality-redundant')
+        cyRef.current.elements().removeClass(allClasses)
       }
     } else if (mode === 'path') {
-      // Clear compare and criticality classes
+      // Clear other mode classes
+      setRemovalLink(null)
+      setRemovalResult(null)
+      setAdditionSource(null)
+      setAdditionTarget(null)
+      setAdditionResult(null)
       if (cyRef.current) {
-        cyRef.current.elements().removeClass('health-matched health-extra health-missing health-mismatch criticality-critical criticality-important criticality-redundant')
+        cyRef.current.elements().removeClass('health-matched health-extra health-missing health-mismatch criticality-critical criticality-important criticality-redundant whatif-removed whatif-rerouted whatif-disconnected whatif-added whatif-addition-source whatif-addition-target whatif-improved whatif-redundancy-gained')
       }
     } else if (mode === 'compare') {
-      // Clear path and criticality classes
+      setRemovalLink(null)
+      setRemovalResult(null)
+      setAdditionSource(null)
+      setAdditionTarget(null)
+      setAdditionResult(null)
       if (cyRef.current) {
-        cyRef.current.elements().removeClass('path-node path-edge path-source path-target criticality-critical criticality-important criticality-redundant')
+        cyRef.current.elements().removeClass('path-node path-edge path-source path-target criticality-critical criticality-important criticality-redundant whatif-removed whatif-rerouted whatif-disconnected whatif-added whatif-addition-source whatif-addition-target whatif-improved whatif-redundancy-gained')
       }
     } else if (mode === 'criticality') {
-      // Clear path and compare classes
+      setRemovalLink(null)
+      setRemovalResult(null)
+      setAdditionSource(null)
+      setAdditionTarget(null)
+      setAdditionResult(null)
       if (cyRef.current) {
-        cyRef.current.elements().removeClass('path-node path-edge path-source path-target health-matched health-extra health-missing health-mismatch')
+        cyRef.current.elements().removeClass('path-node path-edge path-source path-target health-matched health-extra health-missing health-mismatch whatif-removed whatif-rerouted whatif-disconnected whatif-added whatif-addition-source whatif-addition-target whatif-improved whatif-redundancy-gained')
+      }
+    } else if (mode === 'whatif-removal') {
+      // Clear other mode classes
+      setPathSource(null)
+      setPathTarget(null)
+      setPathsResult(null)
+      setAdditionSource(null)
+      setAdditionTarget(null)
+      setAdditionResult(null)
+      if (cyRef.current) {
+        cyRef.current.elements().removeClass('path-node path-edge path-source path-target path-0 path-1 path-2 path-3 path-4 path-selected health-matched health-extra health-missing health-mismatch criticality-critical criticality-important criticality-redundant whatif-added whatif-addition-source whatif-addition-target whatif-improved whatif-redundancy-gained')
+      }
+    } else if (mode === 'whatif-addition') {
+      // Clear other mode classes
+      setPathSource(null)
+      setPathTarget(null)
+      setPathsResult(null)
+      setRemovalLink(null)
+      setRemovalResult(null)
+      if (cyRef.current) {
+        cyRef.current.elements().removeClass('path-node path-edge path-source path-target path-0 path-1 path-2 path-3 path-4 path-selected health-matched health-extra health-missing health-mismatch criticality-critical criticality-important criticality-redundant whatif-removed whatif-rerouted whatif-disconnected')
       }
     }
   }, [mode])
@@ -367,6 +420,108 @@ export function TopologyGraph({
       }
     })
   }, [mode, criticalLinksData, edgeCriticality])
+
+  // Fetch link removal simulation when link is selected
+  useEffect(() => {
+    if (!removalLink) return
+
+    setRemovalLoading(true)
+    fetchSimulateLinkRemoval(removalLink.sourcePK, removalLink.targetPK)
+      .then(result => {
+        setRemovalResult(result)
+      })
+      .catch(err => {
+        setRemovalResult({
+          sourcePK: removalLink.sourcePK,
+          sourceCode: '',
+          targetPK: removalLink.targetPK,
+          targetCode: '',
+          disconnectedDevices: [],
+          disconnectedCount: 0,
+          affectedPaths: [],
+          affectedPathCount: 0,
+          causesPartition: false,
+          error: err.message,
+        })
+      })
+      .finally(() => {
+        setRemovalLoading(false)
+      })
+  }, [removalLink])
+
+  // Apply whatif-removal visualization styles
+  useEffect(() => {
+    if (!cyRef.current || !removalResult) return
+    const cy = cyRef.current
+
+    // Highlight disconnected devices
+    removalResult.disconnectedDevices.forEach(device => {
+      const node = cy.getElementById(device.pk)
+      if (node.length) {
+        node.addClass('whatif-disconnected')
+      }
+    })
+
+    // Highlight rerouted paths
+    removalResult.affectedPaths.forEach(path => {
+      if (path.hasAlternate) {
+        const fromNode = cy.getElementById(path.fromPK)
+        const toNode = cy.getElementById(path.toPK)
+        if (fromNode.length) fromNode.addClass('whatif-rerouted')
+        if (toNode.length) toNode.addClass('whatif-rerouted')
+      }
+    })
+  }, [removalResult])
+
+  // Fetch link addition simulation when both devices are selected
+  useEffect(() => {
+    if (!additionSource || !additionTarget) return
+
+    setAdditionLoading(true)
+    fetchSimulateLinkAddition(additionSource, additionTarget, additionMetric)
+      .then(result => {
+        setAdditionResult(result)
+      })
+      .catch(err => {
+        setAdditionResult({
+          sourcePK: additionSource,
+          sourceCode: '',
+          targetPK: additionTarget,
+          targetCode: '',
+          metric: additionMetric,
+          improvedPaths: [],
+          improvedPathCount: 0,
+          redundancyGains: [],
+          redundancyCount: 0,
+          error: err.message,
+        })
+      })
+      .finally(() => {
+        setAdditionLoading(false)
+      })
+  }, [additionSource, additionTarget, additionMetric])
+
+  // Apply whatif-addition visualization styles
+  useEffect(() => {
+    if (!cyRef.current || !additionResult) return
+    const cy = cyRef.current
+
+    // Highlight devices that would have improved paths
+    additionResult.improvedPaths.forEach(path => {
+      const fromNode = cy.getElementById(path.fromPK)
+      const toNode = cy.getElementById(path.toPK)
+      if (fromNode.length) fromNode.addClass('whatif-improved')
+      if (toNode.length) toNode.addClass('whatif-improved')
+    })
+
+    // Highlight devices that would gain redundancy
+    additionResult.redundancyGains.forEach(gain => {
+      const node = cy.getElementById(gain.devicePK)
+      if (node.length) {
+        node.addClass('whatif-redundancy-gained')
+      }
+    })
+  }, [additionResult])
 
   // Initialize Cytoscape
   useEffect(() => {
@@ -628,6 +783,72 @@ export function TopologyGraph({
             'z-index': 10,
           },
         },
+        // What-If Link Removal styles
+        {
+          selector: 'edge.whatif-removed',
+          style: {
+            'line-color': '#ef4444',
+            'target-arrow-color': '#ef4444',
+            'line-style': 'dashed',
+            'width': 4,
+            'opacity': 0.6,
+          },
+        },
+        {
+          selector: 'edge.whatif-rerouted',
+          style: {
+            'line-color': '#f97316',
+            'target-arrow-color': '#f97316',
+            'width': 4,
+            'opacity': 1,
+          },
+        },
+        {
+          selector: 'node.whatif-disconnected',
+          style: {
+            'border-width': 5,
+            'border-color': '#ef4444',
+            'overlay-opacity': 0.2,
+            'overlay-color': '#ef4444',
+          },
+        },
+        // What-If Link Addition styles
+        {
+          selector: 'node.whatif-addition-source',
+          style: {
+            'border-width': 5,
+            'border-color': '#22c55e',
+            'overlay-opacity': 0.2,
+            'overlay-color': '#22c55e',
+          },
+        },
+        {
+          selector: 'node.whatif-addition-target',
+          style: {
+            'border-width': 5,
+            'border-color': '#ef4444',
+            'overlay-opacity': 0.2,
+            'overlay-color': '#ef4444',
+          },
+        },
+        {
+          selector: 'node.whatif-improved',
+          style: {
+            'border-width': 4,
+            'border-color': '#22c55e',
+            'overlay-opacity': 0.15,
+            'overlay-color': '#22c55e',
+          },
+        },
+        {
+          selector: 'node.whatif-redundancy-gained',
+          style: {
+            'border-width': 4,
+            'border-color': '#06b6d4',
+            'overlay-opacity': 0.15,
+            'overlay-color': '#06b6d4',
+          },
+        },
       ],
       layout: {
         name: 'cose',
@@ -728,6 +949,22 @@ export function TopologyGraph({
           cy.elements().removeClass('path-node path-edge path-source path-target path-0 path-1 path-2 path-3 path-4 path-selected')
           node.addClass('path-source')
         }
+      } else if (mode === 'whatif-addition') {
+        if (!additionSource) {
+          setAdditionSource(devicePK)
+          cy.nodes().removeClass('whatif-addition-source whatif-addition-target')
+          node.addClass('whatif-addition-source')
+        } else if (!additionTarget && devicePK !== additionSource) {
+          setAdditionTarget(devicePK)
+          node.addClass('whatif-addition-target')
+        } else {
+          // Reset and start new addition
+          setAdditionSource(devicePK)
+          setAdditionTarget(null)
+          setAdditionResult(null)
+          cy.elements().removeClass('whatif-addition-source whatif-addition-target whatif-improved whatif-redundancy-gained')
+          node.addClass('whatif-addition-source')
+        }
       }
     }
 
@@ -743,7 +980,35 @@ export function TopologyGraph({
       cy.off('tap', 'node', handleNodeTap)
       cy.off('dbltap', 'node', handleNodeDblTap)
     }
-  }, [mode, pathSource, pathTarget])
+  }, [mode, pathSource, pathTarget, additionSource, additionTarget])
+
+  // Handle edge clicks for whatif-removal mode
+  useEffect(() => {
+    if (!cyRef.current) return
+    const cy = cyRef.current
+
+    const handleEdgeTap = (event: cytoscape.EventObject) => {
+      if (mode !== 'whatif-removal') return
+
+      const edge = event.target
+      const sourcePK = edge.data('source')
+      const targetPK = edge.data('target')
+
+      // Clear previous simulation
+      cy.elements().removeClass('whatif-removed whatif-rerouted whatif-disconnected')
+      setRemovalResult(null)
+
+      // Set the selected link
+      setRemovalLink({ sourcePK, targetPK })
+      edge.addClass('whatif-removed')
+    }
+
+    cy.on('tap', 'edge', handleEdgeTap)
+
+    return () => {
+      cy.off('tap', 'edge', handleEdgeTap)
+    }
+  }, [mode])
 
   // Handle external selection changes
   useEffect(() => {
@@ -878,6 +1143,18 @@ export function TopologyGraph({
           if (!e.metaKey && !e.ctrlKey) {
             e.preventDefault()
             setShowSearch(true)
+          }
+          break
+        case 'r':
+          // Toggle whatif-removal mode
+          if (!e.metaKey && !e.ctrlKey) {
+            setMode(mode === 'whatif-removal' ? 'explore' : 'whatif-removal')
+          }
+          break
+        case 'a':
+          // Toggle whatif-addition mode
+          if (!e.metaKey && !e.ctrlKey) {
+            setMode(mode === 'whatif-addition' ? 'explore' : 'whatif-addition')
           }
           break
       }
@@ -1051,6 +1328,32 @@ export function TopologyGraph({
           disabled={!selectedDevicePK && !impactDevice}
         >
           <Zap className="h-4 w-4" />
+        </button>
+
+        <div className="my-1 border-t border-[var(--border)]" />
+
+        {/* What-If mode toggles */}
+        <button
+          onClick={() => setMode(mode === 'whatif-removal' ? 'explore' : 'whatif-removal')}
+          className={`p-2 border rounded shadow-sm transition-colors ${
+            mode === 'whatif-removal'
+              ? 'bg-red-500/20 border-red-500/50 text-red-500'
+              : 'bg-[var(--card)] border-[var(--border)] hover:bg-[var(--muted)]'
+          }`}
+          title={mode === 'whatif-removal' ? 'Exit link removal simulation' : 'Simulate removing a link (r)'}
+        >
+          <MinusCircle className="h-4 w-4" />
+        </button>
+        <button
+          onClick={() => setMode(mode === 'whatif-addition' ? 'explore' : 'whatif-addition')}
+          className={`p-2 border rounded shadow-sm transition-colors ${
+            mode === 'whatif-addition'
+              ? 'bg-green-500/20 border-green-500/50 text-green-500'
+              : 'bg-[var(--card)] border-[var(--border)] hover:bg-[var(--muted)]'
+          }`}
+          title={mode === 'whatif-addition' ? 'Exit link addition simulation' : 'Simulate adding a new link (a)'}
+        >
+          <PlusCircle className="h-4 w-4" />
         </button>
       </div>
 
@@ -1396,6 +1699,272 @@ export function TopologyGraph({
 
           {impactResult?.error && (
             <div className="text-destructive">{impactResult.error}</div>
+          )}
+        </div>
+      )}
+
+      {/* What-If Link Removal panel */}
+      {mode === 'whatif-removal' && (
+        <div className="absolute top-[340px] right-4 z-[999] bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm p-3 text-xs max-w-56">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-medium flex items-center gap-1.5">
+              <MinusCircle className="h-3.5 w-3.5 text-red-500" />
+              Simulate Link Removal
+            </span>
+            {removalLink && (
+              <button
+                onClick={() => {
+                  setRemovalLink(null)
+                  setRemovalResult(null)
+                  cyRef.current?.elements().removeClass('whatif-removed whatif-rerouted whatif-disconnected')
+                }}
+                className="p-1 hover:bg-[var(--muted)] rounded"
+                title="Clear"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            )}
+          </div>
+
+          {!removalLink && (
+            <div className="text-muted-foreground">Click a link to simulate its removal</div>
+          )}
+
+          {removalLoading && (
+            <div className="text-muted-foreground">Analyzing impact...</div>
+          )}
+
+          {removalResult && !removalResult.error && (
+            <div className="space-y-3">
+              <div className="text-muted-foreground">
+                Removing link: <span className="font-medium text-foreground">{removalResult.sourceCode}</span> — <span className="font-medium text-foreground">{removalResult.targetCode}</span>
+              </div>
+
+              {/* Partition warning */}
+              {removalResult.causesPartition && (
+                <div className="p-2 bg-red-500/10 border border-red-500/30 rounded text-red-500 flex items-center gap-1.5">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  <span className="font-medium">Would cause network partition!</span>
+                </div>
+              )}
+
+              {/* Disconnected devices */}
+              {removalResult.disconnectedCount > 0 && (
+                <div className="space-y-1">
+                  <div className="text-red-500 font-medium">
+                    {removalResult.disconnectedCount} device{removalResult.disconnectedCount !== 1 ? 's' : ''} would become unreachable
+                  </div>
+                  <div className="space-y-0.5 max-h-24 overflow-y-auto">
+                    {removalResult.disconnectedDevices.slice(0, 5).map(device => (
+                      <div key={device.pk} className="flex items-center gap-1.5 text-red-400">
+                        <div className="w-2 h-2 rounded-full bg-red-500" />
+                        <span>{device.code}</span>
+                      </div>
+                    ))}
+                    {removalResult.disconnectedCount > 5 && (
+                      <div className="text-muted-foreground">+{removalResult.disconnectedCount - 5} more</div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Affected paths */}
+              {removalResult.affectedPathCount > 0 && (
+                <div className="space-y-1 pt-2 border-t border-[var(--border)]">
+                  <div className="text-amber-500 font-medium">
+                    {removalResult.affectedPathCount} path{removalResult.affectedPathCount !== 1 ? 's' : ''} affected
+                  </div>
+                  <div className="space-y-1 max-h-32 overflow-y-auto">
+                    {removalResult.affectedPaths.slice(0, 5).map((path, i) => (
+                      <div key={i} className="text-muted-foreground">
+                        <span className="text-foreground">{path.fromCode}</span> → <span className="text-foreground">{path.toCode}</span>
+                        <div className="ml-2 text-[10px]">
+                          {path.hasAlternate ? (
+                            <span className="text-amber-500">
+                              {path.beforeHops} → {path.afterHops} hops (+{path.afterHops - path.beforeHops})
+                            </span>
+                          ) : (
+                            <span className="text-red-500">No alternate path</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    {removalResult.affectedPathCount > 5 && (
+                      <div className="text-muted-foreground">+{removalResult.affectedPathCount - 5} more</div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {removalResult.disconnectedCount === 0 && removalResult.affectedPathCount === 0 && (
+                <div className="text-green-500 flex items-center gap-1.5">
+                  <div className="w-2 h-2 rounded-full bg-green-500" />
+                  Safe to remove - no impact
+                </div>
+              )}
+
+              {/* Legend */}
+              <div className="pt-2 border-t border-[var(--border)]">
+                <div className="text-muted-foreground mb-1.5">Legend</div>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-4 h-0.5 bg-red-500" style={{ borderTop: '2px dashed #ef4444' }} />
+                    <span>Removed link</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded-full border-2 border-red-500" />
+                    <span>Disconnected device</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {removalResult?.error && (
+            <div className="text-destructive">{removalResult.error}</div>
+          )}
+        </div>
+      )}
+
+      {/* What-If Link Addition panel */}
+      {mode === 'whatif-addition' && (
+        <div className="absolute top-[340px] right-4 z-[999] bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm p-3 text-xs max-w-56">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-medium flex items-center gap-1.5">
+              <PlusCircle className="h-3.5 w-3.5 text-green-500" />
+              Simulate Link Addition
+            </span>
+            {(additionSource || additionTarget) && (
+              <button
+                onClick={() => {
+                  setAdditionSource(null)
+                  setAdditionTarget(null)
+                  setAdditionResult(null)
+                  cyRef.current?.elements().removeClass('whatif-addition-source whatif-addition-target whatif-improved whatif-redundancy-gained')
+                }}
+                className="p-1 hover:bg-[var(--muted)] rounded"
+                title="Clear"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            )}
+          </div>
+
+          {/* Metric input */}
+          <div className="mb-3">
+            <div className="text-muted-foreground mb-1.5">Link Latency</div>
+            <div className="flex gap-1">
+              {[1000, 5000, 10000, 50000].map(m => (
+                <button
+                  key={m}
+                  onClick={() => setAdditionMetric(m)}
+                  className={`px-2 py-1 rounded text-[10px] transition-colors ${
+                    additionMetric === m
+                      ? 'bg-green-500/20 text-green-500'
+                      : 'bg-muted hover:bg-muted/80 text-muted-foreground'
+                  }`}
+                >
+                  {m / 1000}ms
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {!additionSource && (
+            <div className="text-muted-foreground">Click a device to set the <span className="text-green-500 font-medium">source</span></div>
+          )}
+          {additionSource && !additionTarget && (
+            <div className="text-muted-foreground">Click another device to set the <span className="text-red-500 font-medium">target</span></div>
+          )}
+
+          {additionLoading && (
+            <div className="text-muted-foreground">Analyzing benefits...</div>
+          )}
+
+          {additionResult && !additionResult.error && (
+            <div className="space-y-3">
+              <div className="text-muted-foreground">
+                New link: <span className="font-medium text-green-500">{additionResult.sourceCode}</span> — <span className="font-medium text-red-500">{additionResult.targetCode}</span>
+              </div>
+
+              {/* Link already exists warning */}
+              {additionResult.error === 'Link already exists between these devices' && (
+                <div className="p-2 bg-amber-500/10 border border-amber-500/30 rounded text-amber-500">
+                  Link already exists
+                </div>
+              )}
+
+              {/* Redundancy gains */}
+              {additionResult.redundancyCount > 0 && (
+                <div className="space-y-1">
+                  <div className="text-cyan-500 font-medium flex items-center gap-1.5">
+                    <Shield className="h-3 w-3" />
+                    {additionResult.redundancyCount} device{additionResult.redundancyCount !== 1 ? 's' : ''} would gain redundancy
+                  </div>
+                  <div className="space-y-0.5 max-h-16 overflow-y-auto">
+                    {additionResult.redundancyGains.map(gain => (
+                      <div key={gain.devicePK} className="flex items-center gap-1.5 text-cyan-400">
+                        <div className="w-2 h-2 rounded-full bg-cyan-500" />
+                        <span>{gain.deviceCode}</span>
+                        {gain.wasLeaf && <span className="text-[10px] text-muted-foreground">(was leaf)</span>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Improved paths */}
+              {additionResult.improvedPathCount > 0 && (
+                <div className="space-y-1 pt-2 border-t border-[var(--border)]">
+                  <div className="text-green-500 font-medium">
+                    {additionResult.improvedPathCount} path{additionResult.improvedPathCount !== 1 ? 's' : ''} would improve
+                  </div>
+                  <div className="space-y-1 max-h-32 overflow-y-auto">
+                    {additionResult.improvedPaths.slice(0, 5).map((path, i) => (
+                      <div key={i} className="text-muted-foreground">
+                        <span className="text-foreground">{path.fromCode}</span> → <span className="text-foreground">{path.toCode}</span>
+                        <div className="ml-2 text-[10px] text-green-500">
+                          {path.beforeHops} → {path.afterHops} hops (-{path.hopReduction})
+                        </div>
+                      </div>
+                    ))}
+                    {additionResult.improvedPathCount > 5 && (
+                      <div className="text-muted-foreground">+{additionResult.improvedPathCount - 5} more</div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {additionResult.redundancyCount === 0 && additionResult.improvedPathCount === 0 && (
+                <div className="text-muted-foreground flex items-center gap-1.5">
+                  <div className="w-2 h-2 rounded-full bg-muted-foreground" />
+                  No significant improvements
+                </div>
+              )}
+
+              {/* Legend */}
+              <div className="pt-2 border-t border-[var(--border)]">
+                <div className="text-muted-foreground mb-1.5">Legend</div>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded-full border-2 border-green-500" />
+                    <span>Source device</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded-full border-2 border-red-500" />
+                    <span>Target device</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded-full border-2 border-cyan-500" />
+                    <span>Gains redundancy</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {additionResult?.error && additionResult.error !== 'Link already exists between these devices' && (
+            <div className="text-destructive">{additionResult.error}</div>
           )}
         </div>
       )}

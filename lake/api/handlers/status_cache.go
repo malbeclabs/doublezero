@@ -35,10 +35,13 @@ var linkHistoryConfigs = []struct {
 	timeRange string
 	buckets   int
 }{
-	{"24h", 72},  // Default view
-	{"24h", 48},  // Responsive (smaller screens)
-	{"7d", 84},   // Week view
+	{"3h", 36},   // 3-hour view
+	{"6h", 36},   // 6-hour view
+	{"12h", 48},  // 12-hour view (default filter)
+	{"24h", 72},  // 24-hour view
+	{"24h", 48},  // 24-hour responsive (smaller screens)
 	{"3d", 72},   // 3-day view
+	{"7d", 84},   // 7-day view
 }
 
 // NewStatusCache creates a new cache with the specified refresh intervals.

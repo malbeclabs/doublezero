@@ -469,7 +469,7 @@ Show actual measured latency on paths, not just ISIS metric.
 ---
 
 ### 21. Latency Degradation Alerts in Redundancy Report
-**Priority: Medium** | **Complexity: Low** | **Status: Not Started**
+**Priority: Medium** | **Complexity: Low** | **Status: Done**
 
 Add latency health issues to the redundancy report.
 
@@ -486,9 +486,14 @@ Add latency health issues to the redundancy report.
 - Complement to structural redundancy analysis
 
 **Implementation:**
-1. Add query to redundancy report API
-2. Display as new section in report page
-3. Link to graph view to highlight degraded links
+- Uses existing `GET /api/dz/links-health` API
+- Display as new "Latency Degradation" section in redundancy report page
+- Summary cards: Critical Links, Warning Links, Healthy Links, Total Links
+- Expandable degraded link rows showing:
+  - P95 RTT vs committed RTT
+  - Packet loss percentage
+  - SLA ratio
+  - Links to device details, graph view, and map view
 
 ---
 
@@ -667,11 +672,11 @@ Enhance maintenance planner and failure analysis with stake impact.
 - [x] Traffic Flow Visualization (#12) - edge color/thickness by utilization on both views
 - [x] Metro Clustering View (#11) - metro colors and collapse/expand on both views
 
-### Phase 12: Latency Intelligence (Mostly Done)
+### Phase 12: Latency Intelligence (Done)
 - [x] Link Health Overlay (#18) - color by SLA compliance
 - [x] DZ vs Internet Comparison (#19) - metro matrix enhancement
 - [x] Path Calculator Measured Latency (#20) - both metro and device-level
-- [ ] Degraded Links in Redundancy Report (#21)
+- [x] Degraded Links in Redundancy Report (#21) - latency degradation section in redundancy report
 - [x] Path Finding by Measured Latency (#23) - optimize mode toggle in metro matrix
 
 ### Phase 13: Capacity & Bandwidth (Mostly Done)

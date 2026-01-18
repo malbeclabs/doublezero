@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import cytoscape from 'cytoscape'
 import type { Core, NodeSingular, EdgeSingular } from 'cytoscape'
 import { useQuery } from '@tanstack/react-query'
-import { ZoomIn, ZoomOut, Maximize, Search, Filter, Route, X, GitCompare, AlertTriangle, Zap } from 'lucide-react'
+import { ZoomIn, ZoomOut, Maximize, Search, Filter, Route, X, GitCompare, AlertTriangle, Zap, Lightbulb, ChevronDown, ChevronUp } from 'lucide-react'
 import { fetchISISTopology, fetchISISPath, fetchTopologyCompare, fetchFailureImpact } from '@/lib/api'
 import type { PathResponse, PathMode, TopologyCompareResponse, FailureImpactResponse } from '@/lib/api'
 import { useTheme } from '@/hooks/use-theme'
@@ -83,6 +83,7 @@ export function TopologyGraph({
   const [searchResults, setSearchResults] = useState<{ id: string; label: string }[]>([])
   const [showSearch, setShowSearch] = useState(false)
   const [showFilters, setShowFilters] = useState(false)
+  const [showGuide, setShowGuide] = useState(true)
   const [localStatusFilter, setLocalStatusFilter] = useState(statusFilter || 'all')
   const [localTypeFilter, setLocalTypeFilter] = useState(deviceTypeFilter || 'all')
 
@@ -1040,31 +1041,106 @@ export function TopologyGraph({
         </div>
       )}
 
-      {/* Legend */}
-      <div className="absolute bottom-4 left-4 bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm p-2 text-xs">
-        <div className="font-medium mb-1 text-muted-foreground">Device Types</div>
-        <div className="flex flex-col gap-1">
-          {Object.entries(DEVICE_TYPE_COLORS).filter(([k]) => k !== 'default').map(([type, colors]) => (
-            <div key={type} className="flex items-center gap-1.5">
-              <div
-                className="w-3 h-3 rounded-full border-2"
-                style={{
-                  backgroundColor: isDark ? colors.dark : colors.light,
-                  borderColor: isDark ? '#22c55e' : '#16a34a',
-                }}
-              />
-              <span className="capitalize">{type}</span>
+      {/* Guided questions panel */}
+      <div className="absolute bottom-4 left-4 z-[1000] flex flex-col gap-2">
+        <div className="bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm text-xs">
+          <button
+            onClick={() => setShowGuide(!showGuide)}
+            className="w-full flex items-center justify-between p-2 hover:bg-[var(--muted)] rounded-md transition-colors"
+          >
+            <span className="flex items-center gap-1.5 font-medium">
+              <Lightbulb className="h-3.5 w-3.5 text-amber-500" />
+              Explore
+            </span>
+            {showGuide ? <ChevronDown className="h-3 w-3" /> : <ChevronUp className="h-3 w-3" />}
+          </button>
+
+          {showGuide && (
+            <div className="px-2 pb-2 space-y-2">
+              {/* Contextual suggestions when device selected */}
+              {selectedDevicePK && mode === 'explore' && (
+                <div className="space-y-1">
+                  <div className="text-muted-foreground text-[10px] uppercase tracking-wide">Selected Device</div>
+                  <button
+                    onClick={() => analyzeImpact(selectedDevicePK)}
+                    className="w-full text-left px-2 py-1 hover:bg-[var(--muted)] rounded text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    What if this device goes down?
+                  </button>
+                  <button
+                    onClick={() => { setMode('path'); setPathSource(selectedDevicePK); }}
+                    className="w-full text-left px-2 py-1 hover:bg-[var(--muted)] rounded text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Find path from this device
+                  </button>
+                </div>
+              )}
+
+              {/* Global suggestions */}
+              <div className="space-y-1">
+                <div className="text-muted-foreground text-[10px] uppercase tracking-wide">Check Health</div>
+                <button
+                  onClick={() => setMode('compare')}
+                  className={`w-full text-left px-2 py-1 hover:bg-[var(--muted)] rounded transition-colors ${mode === 'compare' ? 'text-blue-500' : 'text-muted-foreground hover:text-foreground'}`}
+                >
+                  Compare configured vs ISIS
+                </button>
+              </div>
+
+              <div className="space-y-1">
+                <div className="text-muted-foreground text-[10px] uppercase tracking-wide">Routing</div>
+                <button
+                  onClick={() => setMode('path')}
+                  className={`w-full text-left px-2 py-1 hover:bg-[var(--muted)] rounded transition-colors ${mode === 'path' ? 'text-amber-500' : 'text-muted-foreground hover:text-foreground'}`}
+                >
+                  Find path between devices
+                </button>
+              </div>
+
+              {/* Anomaly alert if issues detected */}
+              {compareData && compareData.discrepancies.length > 0 && mode !== 'compare' && (
+                <div className="pt-1 border-t border-[var(--border)]">
+                  <button
+                    onClick={() => setMode('compare')}
+                    className="w-full text-left px-2 py-1 hover:bg-[var(--muted)] rounded transition-colors text-amber-500"
+                  >
+                    <span className="flex items-center gap-1">
+                      <AlertTriangle className="h-3 w-3" />
+                      {compareData.discrepancies.length} topology issues
+                    </span>
+                  </button>
+                </div>
+              )}
             </div>
-          ))}
+          )}
         </div>
-        <div className="mt-2 pt-2 border-t border-[var(--border)]">
-          <div className="flex items-center gap-1.5">
-            <div className="w-3 h-3 rounded-full border-2" style={{ borderColor: isDark ? '#22c55e' : '#16a34a', backgroundColor: 'transparent' }} />
-            <span>Active</span>
+
+        {/* Legend */}
+        <div className="bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm p-2 text-xs">
+          <div className="font-medium mb-1 text-muted-foreground">Device Types</div>
+          <div className="flex flex-col gap-1">
+            {Object.entries(DEVICE_TYPE_COLORS).filter(([k]) => k !== 'default').map(([type, colors]) => (
+              <div key={type} className="flex items-center gap-1.5">
+                <div
+                  className="w-3 h-3 rounded-full border-2"
+                  style={{
+                    backgroundColor: isDark ? colors.dark : colors.light,
+                    borderColor: isDark ? '#22c55e' : '#16a34a',
+                  }}
+                />
+                <span className="capitalize">{type}</span>
+              </div>
+            ))}
           </div>
-          <div className="flex items-center gap-1.5 mt-1">
-            <div className="w-3 h-3 rounded-full border-2" style={{ borderColor: isDark ? '#ef4444' : '#dc2626', backgroundColor: 'transparent' }} />
-            <span>Inactive</span>
+          <div className="mt-2 pt-2 border-t border-[var(--border)]">
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded-full border-2" style={{ borderColor: isDark ? '#22c55e' : '#16a34a', backgroundColor: 'transparent' }} />
+              <span>Active</span>
+            </div>
+            <div className="flex items-center gap-1.5 mt-1">
+              <div className="w-3 h-3 rounded-full border-2" style={{ borderColor: isDark ? '#ef4444' : '#dc2626', backgroundColor: 'transparent' }} />
+              <span>Inactive</span>
+            </div>
           </div>
         </div>
       </div>

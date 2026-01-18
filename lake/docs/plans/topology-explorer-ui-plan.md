@@ -2,30 +2,39 @@
 
 ## Overview
 
-A web-based visualization tool for exploring IS-IS network topology using data from the Neo4j graph database. The primary focus is helping users understand routing and topology structure through interactive graph visualization.
+Add an interactive graph visualization to the existing topology page, complementing the current MapLibre geo map. The graph view helps users understand logical network structure—routing paths, adjacencies, and topology health—while the geo map shows physical locations.
 
 ## Goals
 
-1. Visualize the IS-IS topology as an interactive graph
+1. Add abstract graph view (Cytoscape.js) alongside existing geo map
 2. Enable path exploration between devices
 3. Surface topology anomalies (configured vs discovered mismatches)
 4. Guide users with suggested questions and exploration patterns
 
-## Tech Stack
+## Existing Infrastructure
 
-| Layer | Technology |
-|-------|------------|
-| Framework | React 18+ with TypeScript |
-| Build | Vite |
-| Graph Visualization | Cytoscape.js (or vis.js) |
-| Geographic View | MapLibre GL JS (secondary view) |
-| State Management | TanStack Query (for API data) |
-| Styling | Tailwind CSS |
-| API Layer | REST endpoints from lake/indexer |
+### Current State
 
-## Data Source
+The topology feature already exists:
 
-The Neo4j graph store already exposes these query methods in `lake/indexer/pkg/dz/graph/query.go`:
+- **API**: `api/handlers/topology.go` - serves metros, devices, links, validators from ClickHouse
+- **Frontend**: `web/src/components/topology-page.tsx` and `topology-map.tsx` - MapLibre geo visualization
+- **Data**: TanStack Query with 60s refresh interval
+
+### What's Missing
+
+The current implementation shows physical topology on a map but lacks:
+- Abstract graph view for understanding logical connectivity
+- Path finding between devices
+- Topology health comparison (configured vs ISIS adjacencies)
+- Failure impact analysis
+
+### Data Sources
+
+**ClickHouse (existing)**: Metros, devices, links, validators, traffic stats
+**Neo4j (new)**: ISIS adjacencies, routing paths, topology comparison
+
+The Neo4j graph store exposes query methods in `indexer/pkg/dz/graph/query.go`:
 
 ```go
 // Core topology
@@ -43,8 +52,6 @@ CompareTopology(ctx)                                 // Configured vs discovered
 UnreachableIfDown(ctx, devicePK, maxHops)            // Failure impact
 ReachableFromMetro(ctx, metroPK, activeOnly)         // Metro reachability
 ```
-
-**Required**: Expose these as REST endpoints (see API section below).
 
 ---
 
@@ -266,179 +273,165 @@ When anomalies are detected:
 
 ## API Endpoints
 
-New REST endpoints needed in `lake/indexer/pkg/server/`:
+New endpoints in `api/handlers/isis.go`:
 
 ```
-GET /api/v1/topology/isis
+GET /api/topology/isis
     → Full ISIS topology graph (nodes + edges)
     → Response: { nodes: [...], edges: [...] }
 
-GET /api/v1/topology/isis/device/{pk}
-    → Single device with its adjacencies
-    → Response: { device: {...}, adjacencies: [...] }
-
-GET /api/v1/topology/isis/device/{pk}/neighborhood?hops=2
+GET /api/topology/isis/device/{pk}/neighborhood?hops=2
     → N-hop subgraph around device
     → Response: { nodes: [...], edges: [...] }
 
-GET /api/v1/topology/path?from={pk}&to={pk}&weight=isis_metric
+GET /api/topology/path?from={pk}&to={pk}&weight=isis_metric
     → Shortest path between devices
     → weight: hops | isis_metric | rtt | bandwidth
     → Response: { path: [...], totalCost: N, details: [...] }
 
-GET /api/v1/topology/compare
-    → Topology health comparison
+GET /api/topology/compare
+    → Topology health comparison (configured links vs ISIS adjacencies)
     → Response: { matched: [...], missingAdjacencies: [...], unexpectedAdjacencies: [...] }
 
-GET /api/v1/topology/impact/{devicePK}?maxHops=5
+GET /api/topology/impact/{devicePK}?maxHops=5
     → Failure impact analysis
     → Response: { unreachableDevices: [...], affectedUsers: N }
-
-GET /api/v1/devices
-    → List all devices (for search/filter)
-    → Query params: status, contributor, metro, type
-
-GET /api/v1/metros
-    → List all metros with coordinates
-    → Response: [{ pk, code, name, lat, lng }, ...]
 ```
+
+**Note**: Existing endpoints already cover devices (`/api/devices`) and metros (`/api/metros`).
+
+### Neo4j Connection
+
+The API connects directly to Neo4j (same pattern as ClickHouse connection in `api/config/`). Add:
+
+```go
+// api/config/neo4j.go
+var Neo4jDriver neo4j.DriverWithContext
+
+func InitNeo4j() error {
+    driver, err := neo4j.NewDriverWithContext(
+        os.Getenv("NEO4J_URI"),
+        neo4j.BasicAuth(os.Getenv("NEO4J_USER"), os.Getenv("NEO4J_PASSWORD"), ""),
+    )
+    // ...
+}
+```
+
+The graph query logic from `indexer/pkg/dz/graph/query.go` can be adapted for use in the API handlers.
 
 ---
 
 ## Implementation Phases
 
-### Phase 1: Foundation
-- [ ] Set up React/Vite/TypeScript project structure
-- [ ] Add Cytoscape.js and basic graph rendering
-- [ ] Implement REST API endpoints for topology data
-- [ ] Basic graph display with pan/zoom
-- [ ] Device click → side panel details
+### Phase 1: Graph View Foundation
 
-### Phase 2: Core Features
-- [ ] Node/edge styling (color, size based on properties)
-- [ ] Filter controls (contributor, metro, status)
-- [ ] Search functionality
-- [ ] Path mode with shortest path visualization
-- [ ] Weight selector for path calculation
+**Backend** (`api/`):
+- [ ] Add Neo4j driver to `api/config/` (same pattern as ClickHouse)
+- [ ] Create `handlers/isis.go` with `GET /api/topology/isis` endpoint
+- [ ] Port graph query logic from `indexer/pkg/dz/graph/query.go`
+- [ ] Return ISIS topology as Cytoscape-compatible JSON
 
-### Phase 3: Topology Health
-- [ ] Compare mode (configured vs discovered)
-- [ ] Anomaly highlighting
-- [ ] Failure impact analysis view
-- [ ] Summary statistics panel
+**Frontend** (`web/src/components/`):
+- [ ] Add Cytoscape.js dependency (`bun add cytoscape @types/cytoscape`)
+- [ ] Create `topology-graph.tsx` component with basic graph rendering
+- [ ] Add view toggle (Graph | Map) to `topology-page.tsx`
+- [ ] Implement pan/zoom and node click → show details in side panel
 
-### Phase 4: Guided Experience
-- [ ] Suggested questions panel
-- [ ] Contextual suggestions based on selection
-- [ ] Click-to-action for each suggestion
-- [ ] Issue detection and investigation flows
+### Phase 2: Core Graph Features
 
-### Phase 5: Polish & Geographic View
-- [ ] MapLibre integration for geo view
-- [ ] Toggle between graph/map layouts
-- [ ] Performance optimization for large graphs
-- [ ] Export/share functionality
+**Frontend**:
+- [ ] Node styling: size by degree, color by status/contributor
+- [ ] Edge styling: thickness by metric, color by health
+- [ ] Filter controls matching existing map filters (contributor, metro, status)
+- [ ] Search box with device autocomplete
+- [ ] Linked selection: click in graph highlights on map and vice versa
+
+### Phase 3: Path Finding
+
+**Backend**:
+- [ ] Add `GET /api/topology/path` endpoint
+- [ ] Support weight options: hops, isis_metric, rtt, bandwidth
+
+**Frontend**:
+- [ ] Path mode: click source → click destination → show path
+- [ ] Highlight path on graph with step-by-step details in side panel
+- [ ] Weight selector dropdown
+
+### Phase 4: Topology Health
+
+**Backend**:
+- [ ] Add `GET /api/topology/compare` endpoint
+- [ ] Add `GET /api/topology/impact/{pk}` endpoint
+
+**Frontend**:
+- [ ] Compare mode: overlay showing configured vs discovered
+- [ ] Color edges by match status (green=match, orange=unexpected, red=missing)
+- [ ] Summary stats panel: X matched, Y issues
+- [ ] Failure impact view: "what if this device goes down?"
+
+### Phase 5: Guided Experience
+
+**Frontend**:
+- [ ] Suggested questions panel (collapsible)
+- [ ] Contextual suggestions based on current selection
+- [ ] Click-to-action: each question triggers the relevant analysis
+- [ ] Issue detection: surface anomalies proactively
+
+### Phase 6: Polish
+
+- [ ] Performance optimization for large graphs (virtualization, clustering)
+- [ ] URL state sync for shareable views
+- [ ] Keyboard shortcuts (Esc to deselect, arrow keys, etc.)
+- [ ] Export graph as PNG/SVG
 
 ---
 
-## Geo Map Integration
+## Graph + Map Integration
 
-Since there's already a MapLibre geo map in the app, the topology explorer can integrate with it rather than replace it. The two views answer different questions:
+The existing `topology-map.tsx` already renders metros, devices, links, and validators on a MapLibre map. The new graph view complements it:
 
-| Abstract Graph | Geo Map |
-|----------------|---------|
+| Graph View (new) | Map View (existing) |
+|------------------|---------------------|
 | Logical topology structure | Physical location |
 | "How is the network connected?" | "Where are things?" |
-| Routing paths by metric | Routing paths by geography |
-| Cluster/density of connections | Regional distribution |
+| Routing paths by ISIS metric | Device locations by metro |
+| Adjacency health | Traffic and latency stats |
 
-### Integration Patterns
+### Integration Approach
 
-#### 1. Linked Selection (Cross-Highlighting)
-When user selects a device in either view, highlight it in both:
-- Select device on map → pulse/highlight same node in graph view
-- Select device in graph → fly-to and highlight on map
-- Enables quick context switching: "I see this device is in NYC, what's its logical connectivity?"
+#### Shared State
 
-#### 2. Metro Aggregation Layer (Map)
-Add a topology layer to the existing map:
+Both views share selection and filter state via React context or URL params:
 
-```
-┌─────────────────────────────────────────┐
-│                   Map                   │
-│                                         │
-│     ○ SEA                               │
-│      \                                  │
-│       \_____ ○ CHI ───── ○ NYC          │
-│              / \          |             │
-│     ○ LAX __/   \        |             │
-│      \           ○ DFW ──┘             │
-│       \_________/                       │
-│                                         │
-│  ○ = Metro (size = device count)        │
-│  ─ = Links between metros               │
-└─────────────────────────────────────────┘
-```
+- **Selected device/link**: Click in either view updates both
+- **Filters**: Contributor, metro, status filters apply to both views
+- **Mode**: Explore/Path/Compare mode applies to graph; map stays in explore mode
 
-- **Metro nodes**: Circles sized by device count, colored by health (% online)
-- **Metro links**: Lines showing aggregate connectivity between metros
-  - Thickness = number of links or total bandwidth
-  - Color = health (green if all adjacencies up, red if issues)
-- **Click metro** → zoom in to show individual devices, or filter graph view to that metro
+#### Linked Selection
 
-#### 3. Path Visualization on Map
-When a path is calculated in the graph view, optionally show it on the map:
-- Draw the geographic route as a highlighted line
-- Shows "logical path goes NYC → CHI → LAX" overlaid on geography
-- Useful for understanding if traffic takes a geographically sensible route
+- Click device in graph → map flies to that device's metro, highlights marker
+- Click device on map → graph centers on that node, highlights it
+- Path calculated in graph → optionally overlay path on map as highlighted line
 
-#### 4. Regional Health Overlay (Map)
-Heat map or status indicators by region:
-- Color metros by health status
-- Show mini-badges: "3 devices, 2 issues"
-- Quick visual scan for regional problems
+#### View Toggle
 
-#### 5. Geo-Aware Suggested Questions
-When viewing the map, surface location-relevant questions:
+Add toggle in `topology-page.tsx` toolbar:
 
-```
-💡 Geographic Questions
-• Which metros have the most devices?
-• What's the furthest geographic path in the network?
-• Are there any isolated metros (single link)?
-• Show all devices within 100ms RTT of NYC
+```tsx
+<div className="flex gap-2">
+  <button onClick={() => setView('map')} className={view === 'map' ? 'active' : ''}>
+    <Globe /> Map
+  </button>
+  <button onClick={() => setView('graph')} className={view === 'graph' ? 'active' : ''}>
+    <Network /> Graph
+  </button>
+  <button onClick={() => setView('split')} className={view === 'split' ? 'active' : ''}>
+    <Columns /> Split
+  </button>
+</div>
 ```
 
-### Map-Specific Features
-
-**Device Markers** (when zoomed into a metro):
-```
-┌──────────────────────────────────────────┐
-│ NYC Metro (zoomed)                       │
-│                                          │
-│         🟢 nyc-core-01                   │
-│        /   \                             │
-│   🟢 nyc-edge-01   🟢 nyc-edge-02        │
-│        \   /                             │
-│         🟢 nyc-core-02                   │
-│                                          │
-│  🟢 = online  🔴 = offline  🟡 = issues  │
-└──────────────────────────────────────────┘
-```
-
-**Link Lines on Map**:
-- Straight lines or great-circle arcs between connected devices
-- Styled similarly to graph edges (color by health, thickness by metric)
-- Toggle visibility to reduce clutter
-
-**Cluster Expansion**:
-- At low zoom: show metros as single markers with count badges
-- At medium zoom: show device clusters
-- At high zoom: show individual devices with connections
-
-### Sync State Between Views
-
-Keep both views in sync:
+### Shared State Interface
 
 ```typescript
 interface ViewState {
@@ -467,86 +460,66 @@ interface ViewState {
 
 Filters, selection, and path state shared so both views stay coherent.
 
-### Suggested UI Layout
-
-**Option A: Side-by-side**
-```
-┌────────────────────┬────────────────────┐
-│                    │                    │
-│   Abstract Graph   │     Geo Map        │
-│                    │                    │
-└────────────────────┴────────────────────┘
-```
-
-**Option B: Tabbed/Toggle**
-```
-┌─────────────────────────────────────────┐
-│ [Graph View] [Map View]                 │
-├─────────────────────────────────────────┤
-│                                         │
-│         (current view)                  │
-│                                         │
-└─────────────────────────────────────────┘
-```
-
-**Option C: Map with Graph Overlay Panel**
-```
-┌─────────────────────────────────────────┐
-│  Map (full width)          ┌──────────┐ │
-│                            │ Graph    │ │
-│    ○ SEA                   │ (mini)   │ │
-│     \                      │          │ │
-│      ○ CHI ── ○ NYC        │  ◯──◯    │ │
-│                            │  |  |    │ │
-│                            │  ◯──◯    │ │
-│                            └──────────┘ │
-└─────────────────────────────────────────┘
-```
-
-Option C works well if the map is the primary navigation and graph is supplementary.
-
 ---
 
 ## Open Questions
 
-1. **Scale**: How many devices/links typical? Affects rendering strategy.
-2. **Real-time**: Should topology updates stream live, or poll/refresh?
-3. **Permissions**: Any RBAC needed (view-only vs admin)?
-4. **History**: Show topology changes over time, or just current state?
-5. **Integration**: Embed in existing app or standalone?
+1. **Scale**: How many devices/links typical? May need lazy loading or clustering.
+2. **Real-time**: Poll (current 60s interval) or WebSocket for live updates?
+3. **History**: Show topology changes over time, or just current state?
 
 ---
 
-## Appendix: Graph Data Format
+## File Structure
 
-Cytoscape.js expected format:
+```
+api/
+  config/
+    db.go                # Existing - ClickHouse connection
+    neo4j.go             # New - Neo4j connection
+  handlers/
+    topology.go          # Existing - ClickHouse queries for map
+    isis.go              # New - Neo4j graph endpoints
+
+web/src/
+  components/
+    topology-page.tsx    # Existing - add view toggle
+    topology-map.tsx     # Existing - MapLibre geo view
+    topology-graph.tsx   # New - Cytoscape.js graph view
+    topology-sidebar.tsx # New - shared side panel for details
+  lib/
+    api.ts               # Add new ISIS topology fetch functions
+  hooks/
+    use-topology-state.ts # New - shared state for selection/filters
+```
+
+---
+
+## Appendix: Cytoscape.js Data Format
 
 ```typescript
-interface TopologyResponse {
+interface ISISTopologyResponse {
   nodes: Array<{
     data: {
-      id: string;          // device PK
-      label: string;       // device code
+      id: string;              // device PK
+      label: string;           // device code
       status: string;
       deviceType: string;
-      metro: string;
-      contributor: string;
+      metroPK: string;
+      contributorPK: string;
       isisSystemId?: string;
       isisRouterId?: string;
-      // For geo view
-      lat?: number;
-      lng?: number;
+      degree?: number;         // number of adjacencies
     }
   }>;
   edges: Array<{
     data: {
-      id: string;          // edge ID
-      source: string;      // from device PK
-      target: string;      // to device PK
+      id: string;              // adjacency ID
+      source: string;          // from device PK
+      target: string;          // to device PK
       isisMetric?: number;
       adjSids?: number[];
       lastSeen?: string;
-      // For comparison
       hasConfiguredLink: boolean;
       configuredLinkCode?: string;
     }

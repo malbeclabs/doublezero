@@ -177,27 +177,17 @@ export function useQuerySessionSync(
 
     const loadFromServer = async () => {
       try {
-        const response = await api.listSessions('query', 100, 0)
+        // Use include_content=true to get all sessions with content in ONE request
+        // instead of N+1 queries (list + N individual fetches)
+        const response = await api.listSessionsWithContent<GenerationRecord[]>('query', 100, 0)
         if (response.sessions.length === 0) {
           setServerSyncComplete(true)
           return
         }
 
-        // Fetch full content for each session
-        const serverSessions = await Promise.all(
-          response.sessions.map(async (meta) => {
-            try {
-              const full = await api.getSession<GenerationRecord[]>(meta.id)
-              return serverToQuerySession(full)
-            } catch {
-              return null
-            }
-          })
-        )
-
-        const validSessions = serverSessions.filter((s): s is QuerySession => s !== null)
+        const serverSessions = response.sessions.map(serverToQuerySession)
         // Use callback form to get latest sessions state
-        onSessionsUpdated(prev => mergeSessions(prev, validSessions))
+        onSessionsUpdated(prev => mergeSessions(prev, serverSessions))
         setServerSyncComplete(true)
       } catch (err) {
         console.error('[Sync] Failed to load query sessions from server:', err)
@@ -278,27 +268,17 @@ export function useChatSessionSync(
 
     const loadFromServer = async () => {
       try {
-        const response = await api.listSessions('chat', 100, 0)
+        // Use include_content=true to get all sessions with content in ONE request
+        // instead of N+1 queries (list + N individual fetches)
+        const response = await api.listSessionsWithContent<ChatMessage[]>('chat', 100, 0)
         if (response.sessions.length === 0) {
           setServerSyncComplete(true)
           return
         }
 
-        // Fetch full content for each session
-        const serverSessions = await Promise.all(
-          response.sessions.map(async (meta) => {
-            try {
-              const full = await api.getSession<ChatMessage[]>(meta.id)
-              return serverToChatSession(full)
-            } catch {
-              return null
-            }
-          })
-        )
-
-        const validSessions = serverSessions.filter((s): s is ChatSession => s !== null)
+        const serverSessions = response.sessions.map(serverToChatSession)
         // Use callback form to get latest sessions state
-        onSessionsUpdated(prev => mergeSessions(prev, validSessions))
+        onSessionsUpdated(prev => mergeSessions(prev, serverSessions))
         setServerSyncComplete(true)
       } catch (err) {
         console.error('[Sync] Failed to load chat sessions from server:', err)

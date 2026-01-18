@@ -39,6 +39,13 @@ type SessionListResponse struct {
 	HasMore  bool              `json:"has_more"`
 }
 
+// SessionListWithContentResponse is the response for listing sessions with full content
+type SessionListWithContentResponse struct {
+	Sessions []Session `json:"sessions"`
+	Total    int       `json:"total"`
+	HasMore  bool      `json:"has_more"`
+}
+
 // CreateSessionRequest is the request body for creating a session
 type CreateSessionRequest struct {
 	ID      uuid.UUID       `json:"id"`
@@ -69,6 +76,7 @@ func ListSessions(w http.ResponseWriter, r *http.Request) {
 	if offset < 0 {
 		offset = 0
 	}
+	includeContent := r.URL.Query().Get("include_content") == "true"
 
 	ctx := r.Context()
 
@@ -82,7 +90,48 @@ func ListSessions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get sessions
+	w.Header().Set("Content-Type", "application/json")
+
+	// If include_content is true, return full sessions
+	if includeContent {
+		rows, err := config.PgPool.Query(ctx, `
+			SELECT id, type, name, content, created_at, updated_at
+			FROM sessions
+			WHERE type = $1
+			ORDER BY updated_at DESC, id ASC
+			LIMIT $2 OFFSET $3
+		`, sessionType, limit, offset)
+		if err != nil {
+			http.Error(w, internalError("Failed to list sessions", err), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		sessions := []Session{}
+		for rows.Next() {
+			var s Session
+			if err := rows.Scan(&s.ID, &s.Type, &s.Name, &s.Content, &s.CreatedAt, &s.UpdatedAt); err != nil {
+				http.Error(w, internalError("Failed to scan session", err), http.StatusInternalServerError)
+				return
+			}
+			sessions = append(sessions, s)
+		}
+
+		if err := rows.Err(); err != nil {
+			http.Error(w, internalError("Failed to iterate sessions", err), http.StatusInternalServerError)
+			return
+		}
+
+		response := SessionListWithContentResponse{
+			Sessions: sessions,
+			Total:    total,
+			HasMore:  offset+len(sessions) < total,
+		}
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+
+	// Get sessions without content
 	// Use id as secondary sort key for stable ordering when timestamps are equal
 	rows, err := config.PgPool.Query(ctx, `
 		SELECT id, type, name, jsonb_array_length(content) as content_length,
@@ -118,8 +167,6 @@ func ListSessions(w http.ResponseWriter, r *http.Request) {
 		Total:    total,
 		HasMore:  offset+len(sessions) < total,
 	}
-
-	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 }
 

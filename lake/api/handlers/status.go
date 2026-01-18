@@ -183,12 +183,13 @@ type InfrastructureAlerts struct {
 	Links   []NonActivatedLink   `json:"links"`
 }
 
-// Thresholds for health classification
+// Thresholds for health classification (matching methodology)
+// Packet loss severity: Minor (<1%), Moderate (1-10%), Severe (≥10%)
 const (
 	LatencyWarningPct  = 20.0  // 20% over committed RTT
 	LatencyCriticalPct = 50.0  // 50% over committed RTT
-	LossWarningPct     = 0.1   // 0.1%
-	LossCriticalPct    = 1.0   // 1%
+	LossWarningPct     = 1.0   // 1% - Moderate (degraded)
+	LossCriticalPct    = 10.0  // 10% - Severe (unhealthy)
 	UtilWarningPct     = 70.0  // 70%
 	UtilCriticalPct    = 90.0  // 90%
 )
@@ -908,7 +909,7 @@ type LinkHistory struct {
 	BandwidthBps   int64            `json:"bandwidth_bps"`
 	CommittedRttUs float64          `json:"committed_rtt_us"`
 	Hours          []LinkHourStatus `json:"hours"`
-	IssueReasons   []string         `json:"issue_reasons"` // "packet_loss", "high_latency", "disabled"
+	IssueReasons   []string         `json:"issue_reasons"` // "packet_loss", "high_latency", "drained", "no_data"
 }
 
 type LinkHistoryResponse struct {
@@ -1166,18 +1167,15 @@ func fetchLinkHistoryData(ctx context.Context, timeRange string, requestedBucket
 
 		// Check if this link has any issues in the time range
 		buckets := linkBuckets[pk]
-		hasIssues := false
 
 		if isCurrentlyDrained {
-			hasIssues = true
-			issueReasons["disabled"] = true
+			issueReasons["drained"] = true
 		}
 
 		// Check latency/loss issues
 		for _, b := range buckets {
 			// Check for packet loss issues
 			if b.lossPct >= LossWarningPct {
-				hasIssues = true
 				issueReasons["packet_loss"] = true
 			}
 			// Check for high latency issues (WAN links only, excluding intra-metro)
@@ -1185,7 +1183,6 @@ func fetchLinkHistoryData(ctx context.Context, timeRange string, requestedBucket
 			if meta.linkType == "WAN" && isInterMetro && meta.committedRttUs > 0 && b.avgLatency > 0 {
 				latencyOveragePct := ((b.avgLatency - meta.committedRttUs) / meta.committedRttUs) * 100
 				if latencyOveragePct >= LatencyWarningPct {
-					hasIssues = true
 					issueReasons["high_latency"] = true
 				}
 			}
@@ -1195,17 +1192,13 @@ func fetchLinkHistoryData(ctx context.Context, timeRange string, requestedBucket
 		for key := range linkStatusHistory {
 			if key.linkPK == pk {
 				if linkStatusHistory[key] == "soft-drained" || linkStatusHistory[key] == "hard-drained" {
-					hasIssues = true
-					issueReasons["disabled"] = true
+					issueReasons["drained"] = true
 					break
 				}
 			}
 		}
 
-		// Only include links that have had issues, are drained, or have no data
-		if !hasIssues && len(buckets) > 0 {
-			continue
-		}
+		// Include all links (both healthy and those with issues)
 
 		// Convert issue reasons to slice
 		var issueReasonsList []string
@@ -1263,6 +1256,18 @@ func fetchLinkHistoryData(ctx context.Context, timeRange string, requestedBucket
 			}
 		}
 
+		// Check if there are any no_data buckets (missing telemetry)
+		// Skip the most recent bucket (last in array) since it may still be collecting data
+		for idx, h := range hourStatuses {
+			if idx == len(hourStatuses)-1 {
+				continue // skip most recent bucket
+			}
+			if h.Status == "no_data" {
+				issueReasons["no_data"] = true
+				break
+			}
+		}
+
 		// Post-process: treat consecutive 100% loss for 2+ hours as disabled
 		bucketsFor2Hours := 120 / bucketMinutes
 		if bucketsFor2Hours < 1 {
@@ -1285,7 +1290,7 @@ func fetchLinkHistoryData(ctx context.Context, timeRange string, requestedBucket
 					for j := runStart; j < i; j++ {
 						hourStatuses[j].Status = "disabled"
 					}
-					issueReasons["disabled"] = true
+					issueReasons["extended_loss"] = true
 				}
 			} else {
 				i++
@@ -1293,8 +1298,8 @@ func fetchLinkHistoryData(ctx context.Context, timeRange string, requestedBucket
 		}
 
 		// If all packet loss buckets are now disabled, remove packet_loss from reasons
-		// (disabled is a more accurate classification for extended outages)
-		if issueReasons["disabled"] && issueReasons["packet_loss"] {
+		// (extended_loss is a more accurate classification for extended outages)
+		if issueReasons["extended_loss"] && issueReasons["packet_loss"] {
 			hasNonDisabledLoss := false
 			for _, h := range hourStatuses {
 				if h.AvgLossPct >= LossWarningPct && h.Status != "disabled" {

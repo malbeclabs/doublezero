@@ -168,10 +168,10 @@ WHERE city = 'Tokyo'
 ORDER BY activated_stake_sol DESC LIMIT 10;
 
 -- Links with current issues
-SELECT code, status, is_status_degraded, is_isis_soft_drained,
+SELECT code, status, is_soft_drained, is_hard_drained, is_isis_soft_drained,
        has_packet_loss, loss_pct, exceeds_committed_rtt, is_dark
 FROM dz_links_health_current
-WHERE is_status_degraded OR is_isis_soft_drained OR has_packet_loss OR exceeds_committed_rtt OR is_dark;
+WHERE is_soft_drained OR is_hard_drained OR is_isis_soft_drained OR has_packet_loss OR exceeds_committed_rtt OR is_dark;
 
 -- Link status changes in past 7 days
 SELECT link_code, previous_status, new_status, changed_ts
@@ -228,7 +228,7 @@ SELECT code, status, metro_pk FROM dz_devices_current WHERE status = 'drained';
 ```
 
 **For "network health" questions**, check and list:
-1. Link issues from `dz_links_health_current` - check is_status_degraded, is_isis_soft_drained, has_packet_loss, exceeds_committed_rtt, is_dark
+1. Link issues from `dz_links_health_current` - check is_soft_drained, is_hard_drained, is_isis_soft_drained, has_packet_loss, exceeds_committed_rtt, is_dark
 2. Drained devices - **MUST list specific device codes**
 3. Interface errors from `fact_dz_device_interface_counters` - include device code and **actual numeric counts**
 
@@ -458,8 +458,9 @@ ORDER BY stake_sol DESC
 **`dz_links_health_current` columns:**
 | Column | Description |
 |--------|-------------|
-| `is_status_degraded` | Link status is not 'activated' |
-| `is_isis_soft_drained` | ISIS delay override set to 1s |
+| `is_soft_drained` | Link status is 'soft-drained' |
+| `is_hard_drained` | Link status is 'hard-drained' |
+| `is_isis_soft_drained` | ISIS delay override set to 1000ms |
 | `has_packet_loss` | Loss >= 1% in last hour |
 | `loss_pct` | Packet loss percentage (last hour) |
 | `exceeds_committed_rtt` | Avg latency exceeds committed RTT |
@@ -469,15 +470,15 @@ ORDER BY stake_sol DESC
 ```sql
 -- Links with current issues
 SELECT code, side_a_metro, side_z_metro, status, loss_pct,
-       is_status_degraded, is_isis_soft_drained, has_packet_loss, exceeds_committed_rtt, is_dark
+       is_soft_drained, is_hard_drained, is_isis_soft_drained, has_packet_loss, exceeds_committed_rtt, is_dark
 FROM dz_links_health_current
-WHERE is_status_degraded OR is_isis_soft_drained OR has_packet_loss OR exceeds_committed_rtt OR is_dark;
+WHERE is_soft_drained OR is_hard_drained OR is_isis_soft_drained OR has_packet_loss OR exceeds_committed_rtt OR is_dark;
 
 -- Links with issues in a specific metro
 SELECT code, status, loss_pct, is_dark
 FROM dz_links_health_current
 WHERE (side_a_metro = 'sao' OR side_z_metro = 'sao')
-  AND (is_status_degraded OR has_packet_loss OR is_dark);
+  AND (is_soft_drained OR is_hard_drained OR has_packet_loss OR is_dark);
 ```
 
 **`dz_link_status_changes` for history:**

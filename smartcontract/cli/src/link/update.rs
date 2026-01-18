@@ -120,11 +120,8 @@ mod tests {
         tests::utils::create_test_client,
     };
     use doublezero_sdk::{
-        commands::{
-            contributor::get::GetContributorCommand,
-            link::{get::GetLinkCommand, update::UpdateLinkCommand},
-        },
-        get_link_pda, AccountType, Contributor, ContributorStatus, Link, LinkLinkType, LinkStatus,
+        commands::link::{get::GetLinkCommand, update::UpdateLinkCommand},
+        get_link_pda, AccountType, Link, LinkLinkType, LinkStatus,
     };
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
@@ -134,16 +131,6 @@ mod tests {
         let mut client = create_test_client();
 
         let contributor_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcd");
-        let contributor = Contributor {
-            account_type: AccountType::Contributor,
-            owner: Pubkey::default(),
-            bump_seed: 255,
-            reference_count: 0,
-            index: 1,
-            status: ContributorStatus::Activated,
-            code: "co01".to_string(),
-            ops_manager_pk: Pubkey::default(),
-        };
         let (pda_pubkey, _bump_seed) = get_link_pda(&client.get_program_id(), 1);
         let (pda_pubkey2, _bump_seed) = get_link_pda(&client.get_program_id(), 2);
         let signature = Signature::from([

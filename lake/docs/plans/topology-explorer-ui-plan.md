@@ -342,7 +342,7 @@ Historical topology changes over time.
 - [x] What-If Link Addition - Graph UI + Map UI
 
 ### Phase 10: Planning Tools
-- [ ] Metro Connectivity Matrix page
+- [x] Metro Connectivity Matrix page
 - [ ] Maintenance Planner page
 
 ### Phase 11: Advanced Visualization

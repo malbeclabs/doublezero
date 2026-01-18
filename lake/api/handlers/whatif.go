@@ -122,11 +122,12 @@ func GetSimulateLinkRemoval(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		log.Printf("Simulate link removal disconnect query error: %v", err)
-		// Non-fatal - continue with empty disconnected list
+		response.Error = "failed to query disconnect impact"
 	} else {
 		disconnectRecords, err := disconnectResult.Collect(ctx)
 		if err != nil {
 			log.Printf("Simulate link removal disconnect collect error: %v", err)
+			response.Error = "failed to query disconnect impact"
 		} else {
 			log.Printf("Simulate link removal disconnect query returned %d records", len(disconnectRecords))
 			for _, record := range disconnectRecords {
@@ -202,12 +203,13 @@ func GetSimulateLinkRemoval(w http.ResponseWriter, r *http.Request) {
 		"target_pk": targetPK,
 	})
 	if err != nil {
-		// Don't fail the whole request if affected paths query fails
 		log.Printf("Simulate link removal affected paths query error: %v", err)
+		response.Error = "failed to query affected paths"
 	} else {
 		affectedRecords, err := affectedResult.Collect(ctx)
 		if err != nil {
 			log.Printf("Simulate link removal affected paths collect error: %v", err)
+			response.Error = "failed to query affected paths"
 		} else {
 			for _, record := range affectedRecords {
 				fromPK, _ := record.Get("from_pk")
@@ -462,12 +464,13 @@ func GetSimulateLinkAddition(w http.ResponseWriter, r *http.Request) {
 		"metric":    int64(metric),
 	})
 	if err != nil {
-		// Don't fail the whole request if improved paths query fails
 		log.Printf("Simulate link addition improved paths query error: %v", err)
+		response.Error = "failed to query improved paths"
 	} else {
 		improvedRecords, err := improvedResult.Collect(ctx)
 		if err != nil {
 			log.Printf("Simulate link addition improved paths collect error: %v", err)
+			response.Error = "failed to query improved paths"
 		} else {
 			for _, record := range improvedRecords {
 				fromPK, _ := record.Get("from_pk")

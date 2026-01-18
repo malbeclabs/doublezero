@@ -199,29 +199,38 @@ export function MaintenancePlannerPage() {
       lines.push('')
     }
 
-    // Affected metro pairs
+    // Affected links by metro
     if (analysisResult.affectedMetros && analysisResult.affectedMetros.length > 0) {
-      lines.push('Affected Metro Connectivity')
-      lines.push('---------------------------')
-      for (const pair of analysisResult.affectedMetros) {
-        lines.push(`  ${pair.sourceMetro} ↔ ${pair.targetMetro} (${pair.status})`)
-      }
+      lines.push('Affected Links by Metro')
+      lines.push('-----------------------')
+      lines.push('ISIS adjacencies that will go down:')
       lines.push('')
+      for (const pair of analysisResult.affectedMetros) {
+        lines.push(`  ${pair.sourceMetro} ↔ ${pair.targetMetro} (${pair.affectedLinks.length} link${pair.affectedLinks.length !== 1 ? 's' : ''} down)`)
+        for (const link of pair.affectedLinks) {
+          lines.push(`    ✕ ${link.sourceDevice} → ${link.targetDevice}`)
+        }
+        lines.push('')
+      }
     }
 
-    // Affected paths
+    // Routing impact
     if (analysisResult.affectedPaths && analysisResult.affectedPaths.length > 0) {
-      lines.push('Sample Affected Paths')
-      lines.push('---------------------')
+      lines.push('Routing Impact')
+      lines.push('--------------')
+      lines.push('Device pairs whose shortest path changes:')
+      lines.push('')
       for (const path of analysisResult.affectedPaths) {
-        lines.push(`  ${path.source} (${path.sourceMetro}) → ${path.target} (${path.targetMetro})`)
+        const latencyBeforeMs = (path.metricBefore / 1000).toFixed(2)
+        const latencyAfterMs = (path.metricAfter / 1000).toFixed(2)
+        lines.push(`  ${path.source} → ${path.target}`)
         if (path.hopsAfter === -1) {
-          lines.push(`    Status: DISCONNECTED (was ${path.hopsBefore} hops, ${path.metricBefore} metric)`)
+          lines.push(`    Status: DISCONNECTED (was ${path.hopsBefore} hops, ${latencyBeforeMs}ms)`)
         } else {
           const hopDiff = path.hopsAfter - path.hopsBefore
-          const metricDiff = path.metricAfter - path.metricBefore
+          const latencyDiffMs = ((path.metricAfter - path.metricBefore) / 1000).toFixed(2)
           lines.push(`    Hops: ${path.hopsBefore} → ${path.hopsAfter} (${hopDiff > 0 ? '+' : ''}${hopDiff})`)
-          lines.push(`    Metric: ${path.metricBefore} → ${path.metricAfter} (${metricDiff > 0 ? '+' : ''}${metricDiff})`)
+          lines.push(`    Latency: ${latencyBeforeMs}ms → ${latencyAfterMs}ms (${Number(latencyDiffMs) > 0 ? '+' : ''}${latencyDiffMs}ms)`)
           lines.push(`    Status: ${path.status.toUpperCase()}`)
         }
         lines.push('')
@@ -406,24 +415,53 @@ export function MaintenancePlannerPage() {
               ) : (
                 <>
                   {/* Summary */}
-                  <div className="grid grid-cols-3 gap-4 mb-6">
-                    <div className="bg-muted rounded-lg p-3">
-                      <div className="text-xs text-muted-foreground mb-1">Items</div>
-                      <div className="text-xl font-bold">{analysisResult.items.length}</div>
-                    </div>
-                    <div className={`rounded-lg p-3 ${analysisResult.totalImpact > 20 ? 'bg-yellow-100 dark:bg-yellow-900/40' : 'bg-muted'}`}>
-                      <div className="text-xs text-muted-foreground mb-1">Affected Paths</div>
-                      <div className={`text-xl font-bold ${analysisResult.totalImpact > 20 ? 'text-yellow-700 dark:text-yellow-400' : ''}`}>
-                        {analysisResult.totalImpact}
+                  {(() => {
+                    // Compute real stats from affected paths
+                    const adjacenciesDown = analysisResult.affectedMetros?.reduce(
+                      (sum, m) => sum + (m.affectedLinks?.length || 0), 0
+                    ) || 0
+                    const rerouted = analysisResult.affectedPaths?.filter(p => p.status === 'rerouted' || p.status === 'degraded') || []
+                    const disconnected = analysisResult.affectedPaths?.filter(p => p.status === 'disconnected') || []
+                    const avgHopIncrease = rerouted.length > 0
+                      ? rerouted.reduce((sum, p) => sum + (p.hopsAfter - p.hopsBefore), 0) / rerouted.length
+                      : 0
+                    // Convert metric (microseconds) to milliseconds
+                    const avgLatencyIncreaseMs = rerouted.length > 0
+                      ? rerouted.reduce((sum, p) => sum + (p.metricAfter - p.metricBefore), 0) / rerouted.length / 1000
+                      : 0
+
+                    return (
+                      <div className="grid grid-cols-4 gap-3 mb-6">
+                        <div className="bg-muted rounded-lg p-3">
+                          <div className="text-xs text-muted-foreground mb-1">ISIS Adjacencies Down</div>
+                          <div className="text-xl font-bold">{adjacenciesDown}</div>
+                        </div>
+                        <div className={`rounded-lg p-3 ${rerouted.length > 0 ? 'bg-yellow-100 dark:bg-yellow-900/40' : 'bg-muted'}`}>
+                          <div className="text-xs text-muted-foreground mb-1">Paths Rerouted</div>
+                          <div className={`text-xl font-bold ${rerouted.length > 0 ? 'text-yellow-700 dark:text-yellow-400' : ''}`}>
+                            {rerouted.length}
+                          </div>
+                          {rerouted.length > 0 && (
+                            <div className="text-xs text-muted-foreground mt-1">
+                              avg +{avgHopIncrease.toFixed(1)} hops, +{avgLatencyIncreaseMs.toFixed(2)}ms
+                            </div>
+                          )}
+                        </div>
+                        <div className={`rounded-lg p-3 ${disconnected.length > 0 ? 'bg-red-100 dark:bg-red-900/40' : 'bg-muted'}`}>
+                          <div className="text-xs text-muted-foreground mb-1">Paths Disconnected</div>
+                          <div className={`text-xl font-bold ${disconnected.length > 0 ? 'text-red-700 dark:text-red-400' : ''}`}>
+                            {disconnected.length}
+                          </div>
+                        </div>
+                        <div className={`rounded-lg p-3 ${analysisResult.totalDisconnected > 0 ? 'bg-red-100 dark:bg-red-900/40' : 'bg-muted'}`}>
+                          <div className="text-xs text-muted-foreground mb-1">Devices Isolated</div>
+                          <div className={`text-xl font-bold ${analysisResult.totalDisconnected > 0 ? 'text-red-700 dark:text-red-400' : ''}`}>
+                            {analysisResult.totalDisconnected}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                    <div className={`rounded-lg p-3 ${analysisResult.totalDisconnected > 0 ? 'bg-red-100 dark:bg-red-900/40' : 'bg-muted'}`}>
-                      <div className="text-xs text-muted-foreground mb-1">Disconnected Devices</div>
-                      <div className={`text-xl font-bold ${analysisResult.totalDisconnected > 0 ? 'text-red-700 dark:text-red-400' : ''}`}>
-                        {analysisResult.totalDisconnected}
-                      </div>
-                    </div>
-                  </div>
+                    )
+                  })()}
 
                   {/* Warnings */}
                   {analysisResult.items.some(i => i.causesPartition) && (
@@ -459,79 +497,107 @@ export function MaintenancePlannerPage() {
                   {/* Affected metro pairs */}
                   {analysisResult.affectedMetros && analysisResult.affectedMetros.length > 0 && (
                     <div className="mb-4">
-                      <h3 className="text-sm font-medium mb-2">Affected Metro Connectivity</h3>
-                      <div className="grid grid-cols-2 gap-2">
+                      <h3 className="text-sm font-medium mb-2">Affected Links by Metro</h3>
+                      <p className="text-xs text-muted-foreground mb-2">
+                        ISIS adjacencies that will go down when maintenance targets are taken offline.
+                      </p>
+                      <div className="space-y-3">
                         {analysisResult.affectedMetros.map((pair, idx) => (
-                          <div key={idx} className="flex items-center gap-2 p-2 bg-muted rounded text-sm">
-                            <span className="font-medium">{pair.sourceMetro}</span>
-                            <span className="text-muted-foreground">↔</span>
-                            <span className="font-medium">{pair.targetMetro}</span>
-                            <span className={`ml-auto text-xs px-2 py-0.5 rounded ${
-                              pair.status === 'disconnected'
-                                ? 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400'
-                                : 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-400'
-                            }`}>
-                              {pair.status}
-                            </span>
+                          <div key={idx} className="p-3 bg-muted rounded">
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="font-medium text-sm">{pair.sourceMetro}</span>
+                              <span className="text-muted-foreground">↔</span>
+                              <span className="font-medium text-sm">{pair.targetMetro}</span>
+                              <span className={`ml-auto text-xs px-2 py-0.5 rounded ${
+                                pair.status === 'disconnected'
+                                  ? 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400'
+                                  : 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-400'
+                              }`}>
+                                {pair.affectedLinks.length} link{pair.affectedLinks.length !== 1 ? 's' : ''} down
+                              </span>
+                            </div>
+                            <div className="space-y-1">
+                              {pair.affectedLinks.map((link, linkIdx) => (
+                                <div key={linkIdx} className="flex items-center gap-2 text-xs text-muted-foreground pl-2">
+                                  <span className="text-red-500">✕</span>
+                                  <span className="font-mono">{link.sourceDevice}</span>
+                                  <span>→</span>
+                                  <span className="font-mono">{link.targetDevice}</span>
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         ))}
                       </div>
                     </div>
                   )}
 
-                  {/* Affected paths sample */}
+                  {/* Routing Impact - detailed path changes */}
                   {analysisResult.affectedPaths && analysisResult.affectedPaths.length > 0 && (
                     <div className="mb-4">
-                      <h3 className="text-sm font-medium mb-2">Sample Affected Paths</h3>
-                      <div className="space-y-2">
+                      <h3 className="text-sm font-medium mb-2">Routing Impact</h3>
+                      <p className="text-xs text-muted-foreground mb-3">
+                        Device pairs whose shortest path changes when maintenance targets go offline.
+                      </p>
+
+                      {/* Table header */}
+                      <div className="grid grid-cols-12 gap-2 px-3 py-2 bg-muted/50 rounded-t text-xs font-medium text-muted-foreground">
+                        <div className="col-span-5">Path</div>
+                        <div className="col-span-2 text-center">Hops</div>
+                        <div className="col-span-3 text-center">Latency</div>
+                        <div className="col-span-2 text-right">Status</div>
+                      </div>
+
+                      {/* Table rows */}
+                      <div className="border border-border rounded-b divide-y divide-border">
                         {analysisResult.affectedPaths.map((path, idx) => {
                           const hopDiff = path.hopsAfter - path.hopsBefore
-                          const metricDiff = path.metricAfter - path.metricBefore
+                          // Convert metric (microseconds) to milliseconds
+                          const latencyBeforeMs = path.metricBefore / 1000
+                          const latencyAfterMs = path.metricAfter / 1000
+                          const latencyDiffMs = latencyAfterMs - latencyBeforeMs
                           return (
-                            <div key={idx} className="p-3 bg-muted rounded text-sm">
-                              <div className="flex items-center justify-between mb-2">
-                                <div className="flex items-center gap-2">
-                                  <span className="font-medium">{path.source}</span>
-                                  <span className="text-xs text-muted-foreground">({path.sourceMetro})</span>
-                                  <span className="text-muted-foreground">→</span>
-                                  <span className="font-medium">{path.target}</span>
-                                  <span className="text-xs text-muted-foreground">({path.targetMetro})</span>
-                                </div>
+                            <div key={idx} className="grid grid-cols-12 gap-2 px-3 py-2 text-sm items-center hover:bg-muted/30">
+                              <div className="col-span-5 flex items-center gap-1 min-w-0">
+                                <span className="font-mono text-xs truncate">{path.source}</span>
+                                <span className="text-muted-foreground text-xs">→</span>
+                                <span className="font-mono text-xs truncate">{path.target}</span>
+                              </div>
+                              <div className="col-span-2 text-center text-xs">
+                                {path.hopsAfter === -1 ? (
+                                  <span className="text-red-500">{path.hopsBefore} → ✕</span>
+                                ) : (
+                                  <span>
+                                    {path.hopsBefore} → {path.hopsAfter}
+                                    <span className={`ml-1 ${hopDiff > 0 ? 'text-yellow-600 dark:text-yellow-400' : 'text-green-600'}`}>
+                                      ({hopDiff > 0 ? '+' : ''}{hopDiff})
+                                    </span>
+                                  </span>
+                                )}
+                              </div>
+                              <div className="col-span-3 text-center text-xs">
+                                {path.metricAfter === -1 ? (
+                                  <span className="text-red-500">{latencyBeforeMs.toFixed(2)}ms → ✕</span>
+                                ) : (
+                                  <span>
+                                    {latencyBeforeMs.toFixed(2)} → {latencyAfterMs.toFixed(2)}ms
+                                    <span className={`ml-1 ${latencyDiffMs > 0 ? 'text-yellow-600 dark:text-yellow-400' : 'text-green-600'}`}>
+                                      ({latencyDiffMs > 0 ? '+' : ''}{latencyDiffMs.toFixed(2)})
+                                    </span>
+                                  </span>
+                                )}
+                              </div>
+                              <div className="col-span-2 text-right">
                                 <span className={`text-xs px-2 py-0.5 rounded ${
                                   path.status === 'disconnected'
                                     ? 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400'
                                     : path.status === 'degraded'
                                     ? 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-400'
-                                    : 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400'
+                                    : 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400'
                                 }`}>
                                   {path.status}
                                 </span>
                               </div>
-                              {path.hopsAfter === -1 ? (
-                                <div className="text-xs text-red-600 dark:text-red-400">
-                                  <span className="font-medium">No alternate path available</span>
-                                  <span className="text-muted-foreground ml-2">
-                                    (was {path.hopsBefore} hops, {path.metricBefore} metric)
-                                  </span>
-                                </div>
-                              ) : (
-                                <div className="grid grid-cols-2 gap-4 text-xs">
-                                  <div>
-                                    <span className="text-muted-foreground">Hops: </span>
-                                    <span>{path.hopsBefore} → {path.hopsAfter}</span>
-                                    <span className={`ml-1 ${hopDiff > 0 ? 'text-yellow-600 dark:text-yellow-400' : 'text-green-600 dark:text-green-400'}`}>
-                                      ({hopDiff > 0 ? '+' : ''}{hopDiff})
-                                    </span>
-                                  </div>
-                                  <div>
-                                    <span className="text-muted-foreground">Metric: </span>
-                                    <span>{path.metricBefore} → {path.metricAfter}</span>
-                                    <span className={`ml-1 ${metricDiff > 0 ? 'text-yellow-600 dark:text-yellow-400' : 'text-green-600 dark:text-green-400'}`}>
-                                      ({metricDiff > 0 ? '+' : ''}{metricDiff})
-                                    </span>
-                                  </div>
-                                </div>
-                              )}
                             </div>
                           )
                         })}

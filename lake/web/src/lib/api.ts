@@ -2477,11 +2477,16 @@ export interface MaintenanceAffectedPath {
   status: 'rerouted' | 'degraded' | 'disconnected'
 }
 
+export interface AffectedLink {
+  sourceDevice: string
+  targetDevice: string
+  status: 'offline' | 'rerouted'
+}
+
 export interface AffectedMetroPair {
   sourceMetro: string
   targetMetro: string
-  pathsBefore: number
-  pathsAfter: number
+  affectedLinks: AffectedLink[]
   status: 'reduced' | 'degraded' | 'disconnected'
 }
 

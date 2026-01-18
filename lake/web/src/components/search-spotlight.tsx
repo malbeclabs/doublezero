@@ -67,6 +67,7 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
 
   const isTopologyPage = location.pathname === '/topology'
   const isTimelinePage = location.pathname === '/timeline'
+  const isStatusPage = location.pathname.startsWith('/status')
 
   // Helper to add a filter to the timeline search (accumulating)
   const addTimelineFilter = useCallback((filterValue: string) => {
@@ -76,6 +77,20 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
       currentFilters.push(filterValue)
     }
     setSearchParams({ search: currentFilters.join(',') })
+  }, [searchParams, setSearchParams])
+
+  // Helper to add a filter to the status page (accumulating)
+  const addStatusFilter = useCallback((entityType: SearchEntityType, value: string) => {
+    const currentFilter = searchParams.get('filter') || ''
+    const filters = currentFilter ? currentFilter.split(',').map(f => f.trim()).filter(Boolean) : []
+    const newFilter = `${entityType}:${value}`
+    if (!filters.includes(newFilter)) {
+      filters.push(newFilter)
+    }
+    setSearchParams(prev => {
+      prev.set('filter', filters.join(','))
+      return prev
+    })
   }, [searchParams, setSearchParams])
 
   // Focus input when opened
@@ -167,13 +182,24 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
       return
     }
 
+    // On status page, add filter to accumulated filters instead of navigating away
+    if (isStatusPage) {
+      if (e && (e.metaKey || e.ctrlKey)) {
+        // Open new tab with just this filter
+        window.open(`${location.pathname}?filter=${encodeURIComponent(`${item.type}:${item.label}`)}`, '_blank')
+      } else {
+        addStatusFilter(item.type, item.label)
+      }
+      return
+    }
+
     // Default: navigate to entity detail page
     if (e) {
       handleRowClick(e, item.url, navigate)
     } else {
       navigate(item.url)
     }
-  }, [navigate, addRecentSearch, onClose, isTopologyPage, isTimelinePage, addTimelineFilter])
+  }, [navigate, addRecentSearch, onClose, isTopologyPage, isTimelinePage, addTimelineFilter, isStatusPage, addStatusFilter, location.pathname])
 
   const handleAskAI = useCallback((e?: React.MouseEvent) => {
     if (!query.trim()) return
@@ -264,7 +290,7 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={isTopologyPage ? "Search entities (opens in map)..." : isTimelinePage ? "Filter timeline events..." : "Search entities..."}
+            placeholder={isTopologyPage ? "Search entities (opens in map)..." : isTimelinePage ? "Filter timeline events..." : isStatusPage ? "Filter status by entity..." : "Search entities..."}
             className="flex-1 h-14 px-3 text-lg bg-transparent border-0 focus:outline-none placeholder:text-muted-foreground"
           />
           {isLoading && query.length >= 2 && (
@@ -413,6 +439,11 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
                     Filter timeline
                   </span>
                 )}
+                {isStatusPage && (
+                  <span className="text-xs text-muted-foreground flex-shrink-0">
+                    Filter status
+                  </span>
+                )}
               </button>
             )
           })}
@@ -430,6 +461,9 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
           )}
           {isTimelinePage && (
             <span className="text-blue-500">On timeline</span>
+          )}
+          {isStatusPage && (
+            <span className="text-blue-500">On status</span>
           )}
         </div>
       </div>

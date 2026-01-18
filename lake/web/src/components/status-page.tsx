@@ -3,7 +3,8 @@ import { useState, useEffect, useMemo } from 'react'
 import { useDelayedLoading } from '@/hooks/use-delayed-loading'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { CheckCircle2, AlertTriangle, XCircle, ArrowUpDown, Cpu, ChevronDown } from 'lucide-react'
-import { fetchStatus, fetchLinkHistory, fetchDeviceHistory, fetchInterfaceIssues, type StatusResponse, type InterfaceIssue, type NonActivatedLink, type LinkHistory, type DeviceHistory } from '@/lib/api'
+import { fetchStatus, fetchLinkHistory, fetchDeviceHistory, fetchInterfaceIssues, type StatusResponse, type InterfaceIssue, type NonActivatedLink, type LinkHistory, type DeviceHistory, type LinkMetric, type DeviceUtilization } from '@/lib/api'
+import { StatusFilters, useStatusFilters, type StatusFilter } from '@/components/status-search-bar'
 import { StatCard } from '@/components/stat-card'
 import { LinkStatusTimelines } from '@/components/link-status-timelines'
 import { DeviceStatusTimelines } from '@/components/device-status-timelines'
@@ -216,29 +217,38 @@ function StatusIndicator({ statusData }: { statusData: StatusResponse }) {
 
 function TabNavigation({ activeTab }: { activeTab: 'links' | 'devices' }) {
   const navigate = useNavigate()
+  const location = useLocation()
+
+  // Preserve query params when switching tabs
+  const navigateWithParams = (path: string) => {
+    navigate(path + location.search)
+  }
 
   return (
-    <div className="flex gap-1 border-b border-border mb-6">
-      <button
-        onClick={() => navigate('/status/links')}
-        className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-          activeTab === 'links'
-            ? 'border-primary text-foreground'
-            : 'border-transparent text-muted-foreground hover:text-foreground'
-        }`}
-      >
-        Links
-      </button>
-      <button
-        onClick={() => navigate('/status/devices')}
-        className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-          activeTab === 'devices'
-            ? 'border-primary text-foreground'
-            : 'border-transparent text-muted-foreground hover:text-foreground'
-        }`}
-      >
-        Devices
-      </button>
+    <div className="flex items-center justify-between border-b border-border mb-6">
+      <div className="flex gap-1">
+        <button
+          onClick={() => navigateWithParams('/status/links')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            activeTab === 'links'
+              ? 'border-primary text-foreground'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          Links
+        </button>
+        <button
+          onClick={() => navigateWithParams('/status/devices')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            activeTab === 'devices'
+              ? 'border-primary text-foreground'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          Devices
+        </button>
+      </div>
+      <StatusFilters className="pb-2" />
     </div>
   )
 }
@@ -1025,6 +1035,9 @@ function LinksContent({ status, linkHistory }: { status: StatusResponse; linkHis
   const [issueFilters, setIssueFilters] = useState<IssueFilter[]>(['packet_loss', 'high_latency', 'extended_loss', 'drained'])
   const [healthFilters, setHealthFilters] = useState<HealthFilter[]>(['healthy', 'degraded', 'unhealthy', 'disabled'])
 
+  // Get search filters from URL
+  const searchFilters = useStatusFilters()
+
   // Bucket count based on filter time range
   const filterBuckets = (() => {
     switch (filterTimeRange) {
@@ -1045,6 +1058,17 @@ function LinksContent({ status, linkHistory }: { status: StatusResponse; linkHis
     refetchInterval: 60_000,
     staleTime: 30_000,
   })
+
+  // Apply search filters to link history
+  const filteredLinkHistory = useMemo(() => {
+    if (!filterLinkHistory?.links || searchFilters.length === 0) {
+      return filterLinkHistory
+    }
+    return {
+      ...filterLinkHistory,
+      links: filterLinkHistory.links.filter((link: LinkHistory) => linkMatchesSearchFilters(link, searchFilters))
+    }
+  }, [filterLinkHistory, searchFilters])
 
   // Helper to get the effective health status from a link's hours
   // Returns the worst status seen in the time range
@@ -1083,13 +1107,13 @@ function LinksContent({ status, linkHistory }: { status: StatusResponse; linkHis
 
   // Calculate health counts from link history (based on most recent bucket status)
   const healthCounts = useMemo(() => {
-    if (!filterLinkHistory?.links) {
+    if (!filteredLinkHistory?.links) {
       return { healthy: 0, degraded: 0, unhealthy: 0, disabled: 0, total: 0 }
     }
 
     const counts = { healthy: 0, degraded: 0, unhealthy: 0, disabled: 0, total: 0 }
 
-    for (const link of filterLinkHistory.links) {
+    for (const link of filteredLinkHistory.links) {
       counts.total++
       const status = getEffectiveHealth(link)
       if (status === 'healthy') counts.healthy++
@@ -1099,7 +1123,7 @@ function LinksContent({ status, linkHistory }: { status: StatusResponse; linkHis
     }
 
     return counts
-  }, [filterLinkHistory])
+  }, [filteredLinkHistory])
 
   // Calculate issue breakdown per health category
   const issuesByHealth = useMemo((): IssuesByHealth => {
@@ -1118,9 +1142,9 @@ function LinksContent({ status, linkHistory }: { status: StatusResponse; linkHis
       disabled: emptyBreakdown(),
     }
 
-    if (!filterLinkHistory?.links) return result
+    if (!filteredLinkHistory?.links) return result
 
-    for (const link of filterLinkHistory.links) {
+    for (const link of filteredLinkHistory.links) {
       const rawHealth = getEffectiveHealth(link)
       // Map no_data to unhealthy for categorization
       const health = rawHealth === 'no_data' ? 'unhealthy' : rawHealth
@@ -1137,7 +1161,7 @@ function LinksContent({ status, linkHistory }: { status: StatusResponse; linkHis
     }
 
     return result
-  }, [filterLinkHistory])
+  }, [filteredLinkHistory])
 
   // Calculate health breakdown per issue type
   const healthByIssue = useMemo((): HealthByIssue => {
@@ -1157,9 +1181,9 @@ function LinksContent({ status, linkHistory }: { status: StatusResponse; linkHis
       no_issues: emptyBreakdown(),
     }
 
-    if (!filterLinkHistory?.links) return result
+    if (!filteredLinkHistory?.links) return result
 
-    for (const link of filterLinkHistory.links) {
+    for (const link of filteredLinkHistory.links) {
       const rawHealth = getEffectiveHealth(link)
       // Map no_data to unhealthy for categorization
       const health = (rawHealth === 'no_data' ? 'unhealthy' : rawHealth) as keyof IssueHealthBreakdown
@@ -1177,18 +1201,18 @@ function LinksContent({ status, linkHistory }: { status: StatusResponse; linkHis
     }
 
     return result
-  }, [filterLinkHistory])
+  }, [filteredLinkHistory])
 
   // Issue counts from filter time range
   const issueCounts = useMemo((): IssueCounts => {
-    if (!filterLinkHistory?.links) {
+    if (!filteredLinkHistory?.links) {
       return { packet_loss: 0, high_latency: 0, extended_loss: 0, drained: 0, no_data: 0, no_issues: 0, total: 0 }
     }
 
     const counts = { packet_loss: 0, high_latency: 0, extended_loss: 0, drained: 0, no_data: 0, no_issues: 0, total: 0 }
     const seenLinks = new Set<string>()
 
-    for (const link of filterLinkHistory.links) {
+    for (const link of filteredLinkHistory.links) {
       if (link.issue_reasons?.includes('packet_loss')) counts.packet_loss++
       if (link.issue_reasons?.includes('high_latency')) counts.high_latency++
       if (link.issue_reasons?.includes('extended_loss')) counts.extended_loss++
@@ -1204,29 +1228,29 @@ function LinksContent({ status, linkHistory }: { status: StatusResponse; linkHis
     counts.no_issues = Math.max(0, totalLinks - counts.total)
 
     return counts
-  }, [filterLinkHistory, healthCounts])
+  }, [filteredLinkHistory, healthCounts])
 
   // Get set of link codes with issues in the filter time range (for filtering history table)
   const linksWithIssues = useMemo(() => {
-    if (!filterLinkHistory?.links) return new Map<string, string[]>()
+    if (!filteredLinkHistory?.links) return new Map<string, string[]>()
     const map = new Map<string, string[]>()
-    for (const link of filterLinkHistory.links) {
+    for (const link of filteredLinkHistory.links) {
       if (link.issue_reasons?.length > 0) {
         map.set(link.code, link.issue_reasons)
       }
     }
     return map
-  }, [filterLinkHistory])
+  }, [filteredLinkHistory])
 
   // Get health status for each link from the filter time range (for filtering history table)
   const linksWithHealth = useMemo(() => {
-    if (!filterLinkHistory?.links) return new Map<string, string>()
+    if (!filteredLinkHistory?.links) return new Map<string, string>()
     const map = new Map<string, string>()
-    for (const link of filterLinkHistory.links) {
+    for (const link of filteredLinkHistory.links) {
       map.set(link.code, getEffectiveHealth(link))
     }
     return map
-  }, [filterLinkHistory])
+  }, [filteredLinkHistory])
 
   const packetLossDisabledLinks = useMemo((): DisabledLinkRow[] => {
     if (!linkHistory?.links || !status) return []
@@ -1547,12 +1571,112 @@ function DeviceIssuesFilterCard({
   )
 }
 
+// Helper to check if a device matches search filters
+function deviceMatchesSearchFilters(device: DeviceHistory, filters: StatusFilter[]): boolean {
+  if (filters.length === 0) return true
+
+  return filters.some(filter => {
+    switch (filter.type) {
+      case 'device':
+        return device.code.toLowerCase().includes(filter.value.toLowerCase())
+      case 'metro':
+        return device.metro?.toLowerCase() === filter.value.toLowerCase()
+      case 'contributor':
+        return device.contributor?.toLowerCase().includes(filter.value.toLowerCase())
+      default:
+        return false
+    }
+  })
+}
+
+// Helper to check if an interface issue matches search filters
+function interfaceIssueMatchesSearchFilters(issue: InterfaceIssue, filters: StatusFilter[]): boolean {
+  if (filters.length === 0) return true
+
+  return filters.some(filter => {
+    switch (filter.type) {
+      case 'device':
+        return issue.device_code.toLowerCase().includes(filter.value.toLowerCase())
+      case 'metro':
+        return issue.metro?.toLowerCase() === filter.value.toLowerCase()
+      case 'contributor':
+        return issue.contributor?.toLowerCase().includes(filter.value.toLowerCase())
+      case 'link':
+        return issue.link_code?.toLowerCase().includes(filter.value.toLowerCase())
+      default:
+        return false
+    }
+  })
+}
+
+// Helper to check if a link matches search filters
+function linkMatchesSearchFilters(link: LinkHistory, filters: StatusFilter[]): boolean {
+  if (filters.length === 0) return true
+
+  return filters.some(filter => {
+    switch (filter.type) {
+      case 'link':
+        return link.code.toLowerCase().includes(filter.value.toLowerCase())
+      case 'device':
+        return link.side_a_device?.toLowerCase().includes(filter.value.toLowerCase()) ||
+               link.side_z_device?.toLowerCase().includes(filter.value.toLowerCase())
+      case 'metro':
+        return link.side_a_metro?.toLowerCase() === filter.value.toLowerCase() ||
+               link.side_z_metro?.toLowerCase() === filter.value.toLowerCase()
+      case 'contributor':
+        return link.contributor?.toLowerCase().includes(filter.value.toLowerCase())
+      default:
+        return false
+    }
+  })
+}
+
+// Helper to check if a link metric (for utilization) matches search filters
+function linkMetricMatchesSearchFilters(link: LinkMetric, filters: StatusFilter[]): boolean {
+  if (filters.length === 0) return true
+
+  return filters.some(filter => {
+    switch (filter.type) {
+      case 'link':
+        return link.code.toLowerCase().includes(filter.value.toLowerCase())
+      case 'metro':
+        return link.side_a_metro?.toLowerCase() === filter.value.toLowerCase() ||
+               link.side_z_metro?.toLowerCase() === filter.value.toLowerCase()
+      case 'contributor':
+        return link.contributor?.toLowerCase().includes(filter.value.toLowerCase())
+      default:
+        return false
+    }
+  })
+}
+
+// Helper to check if a device utilization matches search filters
+function deviceUtilMatchesSearchFilters(device: DeviceUtilization, filters: StatusFilter[]): boolean {
+  if (filters.length === 0) return true
+
+  return filters.some(filter => {
+    switch (filter.type) {
+      case 'device':
+        return device.code.toLowerCase().includes(filter.value.toLowerCase())
+      case 'metro':
+        return device.metro?.toLowerCase() === filter.value.toLowerCase()
+      case 'contributor':
+        return device.contributor?.toLowerCase().includes(filter.value.toLowerCase())
+      default:
+        return false
+    }
+  })
+}
+
 // Devices tab content
 function DevicesContent({ status }: { status: StatusResponse }) {
   const [timeRange, setTimeRange] = useState<TimeRange>('24h')
   const [filterTimeRange, setFilterTimeRange] = useState<FilterTimeRange>('12h')
   const [issueFilters, setIssueFilters] = useState<DeviceIssueFilter[]>(['interface_errors', 'carrier_transitions', 'drained'])
   const [healthFilters, setHealthFilters] = useState<HealthFilter[]>(['healthy', 'degraded', 'unhealthy', 'disabled'])
+
+  // Get search filters from URL
+  const searchFilters = useStatusFilters()
 
   // Bucket count based on filter time range
   const filterBuckets = (() => {
@@ -1582,6 +1706,25 @@ function DevicesContent({ status }: { status: StatusResponse }) {
     refetchInterval: 60_000,
     staleTime: 30_000,
   })
+
+  // Apply search filters to device history
+  const filteredDeviceHistory = useMemo(() => {
+    if (!filterDeviceHistory?.devices || searchFilters.length === 0) {
+      return filterDeviceHistory
+    }
+    return {
+      ...filterDeviceHistory,
+      devices: filterDeviceHistory.devices.filter(d => deviceMatchesSearchFilters(d, searchFilters))
+    }
+  }, [filterDeviceHistory, searchFilters])
+
+  // Apply search filters to interface issues
+  const filteredInterfaceIssues = useMemo(() => {
+    if (!interfaceIssuesData?.issues || searchFilters.length === 0) {
+      return interfaceIssuesData?.issues ?? null
+    }
+    return interfaceIssuesData.issues.filter(i => interfaceIssueMatchesSearchFilters(i, searchFilters))
+  }, [interfaceIssuesData, searchFilters])
 
   // Helper to get the effective health status from a device's hours
   const getEffectiveHealth = (device: DeviceHistory): string => {
@@ -1617,13 +1760,13 @@ function DevicesContent({ status }: { status: StatusResponse }) {
 
   // Calculate health counts from device history
   const healthCounts = useMemo(() => {
-    if (!filterDeviceHistory?.devices) {
+    if (!filteredDeviceHistory?.devices) {
       return { healthy: 0, degraded: 0, unhealthy: 0, disabled: 0, total: 0 }
     }
 
     const counts = { healthy: 0, degraded: 0, unhealthy: 0, disabled: 0, total: 0 }
 
-    for (const device of filterDeviceHistory.devices) {
+    for (const device of filteredDeviceHistory.devices) {
       counts.total++
       const status = getEffectiveHealth(device)
       if (status === 'healthy') counts.healthy++
@@ -1633,7 +1776,7 @@ function DevicesContent({ status }: { status: StatusResponse }) {
     }
 
     return counts
-  }, [filterDeviceHistory])
+  }, [filteredDeviceHistory])
 
   // Calculate issue breakdown per health category
   const issuesByHealth = useMemo((): DeviceIssuesByHealth => {
@@ -1646,9 +1789,9 @@ function DevicesContent({ status }: { status: StatusResponse }) {
       disabled: emptyBreakdown(),
     }
 
-    if (!filterDeviceHistory?.devices) return result
+    if (!filteredDeviceHistory?.devices) return result
 
-    for (const device of filterDeviceHistory.devices) {
+    for (const device of filteredDeviceHistory.devices) {
       const rawHealth = getEffectiveHealth(device)
       const health = rawHealth === 'no_data' ? 'unhealthy' : rawHealth
       if (!(health in result)) continue
@@ -1662,7 +1805,7 @@ function DevicesContent({ status }: { status: StatusResponse }) {
     }
 
     return result
-  }, [filterDeviceHistory])
+  }, [filteredDeviceHistory])
 
   // Calculate health breakdown per issue type
   const healthByIssue = useMemo((): DeviceHealthByIssue => {
@@ -1675,9 +1818,9 @@ function DevicesContent({ status }: { status: StatusResponse }) {
       no_issues: emptyBreakdown(),
     }
 
-    if (!filterDeviceHistory?.devices) return result
+    if (!filteredDeviceHistory?.devices) return result
 
-    for (const device of filterDeviceHistory.devices) {
+    for (const device of filteredDeviceHistory.devices) {
       const rawHealth = getEffectiveHealth(device)
       const health = (rawHealth === 'no_data' ? 'unhealthy' : rawHealth) as keyof IssueHealthBreakdown
       const issues = device.issue_reasons ?? []
@@ -1692,18 +1835,18 @@ function DevicesContent({ status }: { status: StatusResponse }) {
     }
 
     return result
-  }, [filterDeviceHistory])
+  }, [filteredDeviceHistory])
 
   // Issue counts from filter time range
   const issueCounts = useMemo((): DeviceIssueCounts => {
-    if (!filterDeviceHistory?.devices) {
+    if (!filteredDeviceHistory?.devices) {
       return { interface_errors: 0, carrier_transitions: 0, drained: 0, no_issues: 0, total: 0 }
     }
 
     const counts = { interface_errors: 0, carrier_transitions: 0, drained: 0, no_issues: 0, total: 0 }
     const seenDevices = new Set<string>()
 
-    for (const device of filterDeviceHistory.devices) {
+    for (const device of filteredDeviceHistory.devices) {
       if (device.issue_reasons?.includes('interface_errors')) counts.interface_errors++
       if (device.issue_reasons?.includes('carrier_transitions')) counts.carrier_transitions++
       if (device.issue_reasons?.includes('drained')) counts.drained++
@@ -1717,29 +1860,29 @@ function DevicesContent({ status }: { status: StatusResponse }) {
     counts.no_issues = Math.max(0, totalDevices - counts.total)
 
     return counts
-  }, [filterDeviceHistory, healthCounts])
+  }, [filteredDeviceHistory, healthCounts])
 
   // Get set of device codes with issues in the filter time range
   const devicesWithIssues = useMemo(() => {
-    if (!filterDeviceHistory?.devices) return new Map<string, string[]>()
+    if (!filteredDeviceHistory?.devices) return new Map<string, string[]>()
     const map = new Map<string, string[]>()
-    for (const device of filterDeviceHistory.devices) {
+    for (const device of filteredDeviceHistory.devices) {
       if (device.issue_reasons?.length > 0) {
         map.set(device.code, device.issue_reasons)
       }
     }
     return map
-  }, [filterDeviceHistory])
+  }, [filteredDeviceHistory])
 
   // Get health status for each device from the filter time range
   const devicesWithHealth = useMemo(() => {
-    if (!filterDeviceHistory?.devices) return new Map<string, string>()
+    if (!filteredDeviceHistory?.devices) return new Map<string, string>()
     const map = new Map<string, string>()
-    for (const device of filterDeviceHistory.devices) {
+    for (const device of filteredDeviceHistory.devices) {
       map.set(device.code, getEffectiveHealth(device))
     }
     return map
-  }, [filterDeviceHistory])
+  }, [filteredDeviceHistory])
 
   return (
     <>
@@ -1783,7 +1926,7 @@ function DevicesContent({ status }: { status: StatusResponse }) {
       {/* Interface Issues */}
       <div className="mb-8">
         <InterfaceIssuesTable
-          issues={interfaceIssuesData?.issues ?? null}
+          issues={filteredInterfaceIssues}
           timeRange={timeRange}
           onTimeRangeChange={setTimeRange}
           isLoading={interfaceIssuesLoading}
@@ -1808,12 +1951,12 @@ export function StatusPage() {
   // Determine active tab from URL
   const activeTab = location.pathname.includes('/devices') ? 'devices' : 'links'
 
-  // Redirect /status to /status/links
+  // Redirect /status to /status/links (preserving query params)
   useEffect(() => {
     if (location.pathname === '/status') {
-      navigate('/status/links', { replace: true })
+      navigate('/status/links' + location.search, { replace: true })
     }
-  }, [location.pathname, navigate])
+  }, [location.pathname, location.search, navigate])
 
   const { data: status, isLoading, error } = useQuery({
     queryKey: ['status'],
@@ -1830,6 +1973,25 @@ export function StatusPage() {
   })
 
   const showSkeleton = useDelayedLoading(isLoading)
+
+  // Get search filters for filtering utilization data
+  const searchFilters = useStatusFilters()
+
+  // Filter top link utilization by search filters
+  const filteredTopLinks = useMemo(() => {
+    if (!status?.links?.top_util_links || searchFilters.length === 0) {
+      return status?.links?.top_util_links ?? []
+    }
+    return status.links.top_util_links.filter(link => linkMetricMatchesSearchFilters(link, searchFilters))
+  }, [status?.links?.top_util_links, searchFilters])
+
+  // Filter top device utilization by search filters
+  const filteredTopDevices = useMemo(() => {
+    if (!status?.top_device_util || searchFilters.length === 0) {
+      return status?.top_device_util ?? []
+    }
+    return status.top_device_util.filter(device => deviceUtilMatchesSearchFilters(device, searchFilters))
+  }, [status?.top_device_util, searchFilters])
 
   if (isLoading && showSkeleton) {
     return <StatusPageSkeleton />
@@ -1875,8 +2037,8 @@ export function StatusPage() {
 
         {/* Utilization Charts */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          <TopLinkUtilization links={status.links.top_util_links} />
-          <TopDeviceUtilization devices={status.top_device_util} />
+          <TopLinkUtilization links={filteredTopLinks} />
+          <TopDeviceUtilization devices={filteredTopDevices} />
         </div>
 
         {/* Tab Navigation */}

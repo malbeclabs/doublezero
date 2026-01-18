@@ -312,9 +312,9 @@ Historical topology changes over time.
 
 ## Implementation Phases
 
-### Phase 7: Path Analysis
-- [ ] Find All Paths (K-shortest) - API + Graph UI
-- [ ] Path Calculator page
+### Phase 7: Path Analysis (Done)
+- [x] Find All Paths (K-shortest) - API + Graph UI
+- [x] Path Calculator page
 
 ### Phase 8: Risk Analysis
 - [ ] Critical Links detection - API + Graph UI overlay

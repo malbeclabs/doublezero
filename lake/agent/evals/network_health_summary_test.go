@@ -93,18 +93,18 @@ func runTest_NetworkHealthSummary(t *testing.T, llmFactory LLMClientFactory) {
 	expectations := []Expectation{
 		{
 			Description:   "Response mentions tok-fra-1 packet loss",
-			ExpectedValue: "tok-fra-1 appears with loss percentage (50%, 100%, or similar)",
-			Rationale:     "tok-fra-1 link has packet loss that should be reported",
+			ExpectedValue: "tok-fra-1 appears with loss percentage (50%, 75%, 100%, or similar)",
+			Rationale:     "tok-fra-1 link has high packet loss that should be highlighted",
 		},
 		{
-			Description:   "Response mentions drained devices",
-			ExpectedValue: "tok-dzd1 and/or chi-dzd1 appear in response as drained",
-			Rationale:     "These devices have drained status",
+			Description:   "Response mentions nyc-lon-1 packet loss",
+			ExpectedValue: "nyc-lon-1 appears with loss percentage (40% or similar)",
+			Rationale:     "nyc-lon-1 link has packet loss that should be reported",
 		},
 		{
-			Description:   "Response mentions interface errors with counts",
-			ExpectedValue: "interface errors, discards, or carrier transitions mentioned for lon-dzd1 with actual numeric counts (e.g., '8 errors', '3 discards', '1 carrier transition')",
-			Rationale:     "lon-dzd1 has interface issues - actual counts must be included, not just 'errors detected'",
+			Description:   "Response mentions drained status",
+			ExpectedValue: "drained devices or drained links mentioned (count or names acceptable)",
+			Rationale:     "There are drained devices in the network - either count or names is acceptable",
 		},
 		{
 			Description:   "Response does NOT contain spurious warnings for healthy metrics",

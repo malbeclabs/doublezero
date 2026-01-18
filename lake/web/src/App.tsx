@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback, createContext, useContext } from 'react'
 import { Routes, Route, Navigate, useNavigate, useParams } from 'react-router-dom'
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
+import { format as formatSQL } from 'sql-formatter'
 import { Catalog } from '@/components/catalog'
 import { PromptInput } from '@/components/prompt-input'
 import { QueryEditor, type QueryEditorHandle } from '@/components/query-editor'
@@ -845,8 +846,20 @@ function ChatView() {
   }, [currentChatSessionId, chatSessions, setChatSessions, sendChatMessage, chatMessages, setExternalLocks])
 
   const handleOpenInQueryEditor = useCallback((sql: string) => {
+    // Format the SQL for better readability
+    let formattedSQL = sql
+    try {
+      formattedSQL = formatSQL(sql, {
+        language: 'sql',
+        tabWidth: 2,
+        keywordCase: 'upper',
+      })
+    } catch {
+      // If formatting fails, use original
+    }
+
     // Store the SQL to be loaded when the query editor syncs
-    pendingQueryRef.current = sql
+    pendingQueryRef.current = formattedSQL
 
     // Find or create a query session to use
     const emptySession = sessions.find(s => s.history.length === 0)

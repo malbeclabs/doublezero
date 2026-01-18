@@ -204,6 +204,157 @@ func TestStore_SyncISIS_EmptyLSPs(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestStore_SyncISIS_RemovesStaleAdjacencies(t *testing.T) {
+	chClient := testClickHouseClient(t)
+	neo4jClient := testNeo4jClient(t)
+	log := laketesting.NewLogger()
+	ctx := t.Context()
+
+	// Clear any existing data
+	clearTestData(t, chClient)
+
+	store, err := dzsvc.NewStore(dzsvc.StoreConfig{
+		Logger:     log,
+		ClickHouse: chClient,
+	})
+	require.NoError(t, err)
+
+	// Create test contributors
+	contributors := []dzsvc.Contributor{
+		{PK: "contrib1", Code: "test1", Name: "Test Contributor 1"},
+	}
+	err = store.ReplaceContributors(ctx, contributors)
+	require.NoError(t, err)
+
+	// Create test metros
+	metros := []dzsvc.Metro{
+		{PK: "metro1", Code: "NYC", Name: "New York", Longitude: -74.006, Latitude: 40.7128},
+	}
+	err = store.ReplaceMetros(ctx, metros)
+	require.NoError(t, err)
+
+	// Create test devices (3 devices for testing removal)
+	devices := []dzsvc.Device{
+		{PK: "device1", Status: "active", DeviceType: "router", Code: "DZ-NY7-SW01", PublicIP: "1.2.3.4", ContributorPK: "contrib1", MetroPK: "metro1", MaxUsers: 100},
+		{PK: "device2", Status: "active", DeviceType: "router", Code: "DZ-DC1-SW01", PublicIP: "1.2.3.5", ContributorPK: "contrib1", MetroPK: "metro1", MaxUsers: 100},
+		{PK: "device3", Status: "active", DeviceType: "router", Code: "DZ-LA1-SW01", PublicIP: "1.2.3.6", ContributorPK: "contrib1", MetroPK: "metro1", MaxUsers: 100},
+	}
+	err = store.ReplaceDevices(ctx, devices)
+	require.NoError(t, err)
+
+	// Create test links
+	links := []dzsvc.Link{
+		{PK: "link1", Status: "active", Code: "link1", TunnelNet: "172.16.0.0/31", ContributorPK: "contrib1", SideAPK: "device1", SideZPK: "device2", SideAIfaceName: "eth0", SideZIfaceName: "eth0", LinkType: "direct", CommittedRTTNs: 1000000, CommittedJitterNs: 100000, Bandwidth: 10000000000},
+		{PK: "link2", Status: "active", Code: "link2", TunnelNet: "172.16.0.2/31", ContributorPK: "contrib1", SideAPK: "device2", SideZPK: "device3", SideAIfaceName: "eth1", SideZIfaceName: "eth0", LinkType: "direct", CommittedRTTNs: 1000000, CommittedJitterNs: 100000, Bandwidth: 10000000000},
+	}
+	err = store.ReplaceLinks(ctx, links)
+	require.NoError(t, err)
+
+	// Create graph store and sync initial data
+	graphStore, err := NewStore(StoreConfig{
+		Logger:     log,
+		Neo4j:      neo4jClient,
+		ClickHouse: chClient,
+	})
+	require.NoError(t, err)
+
+	err = graphStore.Sync(ctx)
+	require.NoError(t, err)
+
+	// First ISIS sync: device1 -> device2 and device2 -> device3
+	lsps := []isis.LSP{
+		{
+			SystemID: "0001.0001.0001.00-00",
+			Hostname: "DZ-NY7-SW01",
+			RouterID: "172.16.0.1",
+			Neighbors: []isis.Neighbor{
+				{SystemID: "0001.0001.0002", Metric: 1000, NeighborAddr: "172.16.0.1", AdjSIDs: []uint32{100001}},
+			},
+		},
+		{
+			SystemID: "0001.0001.0002.00-00",
+			Hostname: "DZ-DC1-SW01",
+			RouterID: "172.16.0.2",
+			Neighbors: []isis.Neighbor{
+				{SystemID: "0001.0001.0003", Metric: 2000, NeighborAddr: "172.16.0.3", AdjSIDs: []uint32{100002}},
+			},
+		},
+	}
+
+	err = graphStore.SyncISIS(ctx, lsps)
+	require.NoError(t, err)
+
+	// Verify both adjacencies exist
+	session, err := neo4jClient.Session(ctx)
+	require.NoError(t, err)
+	defer session.Close(ctx)
+
+	res, err := session.Run(ctx, "MATCH ()-[r:ISIS_ADJACENT]->() RETURN count(r) AS count", nil)
+	require.NoError(t, err)
+	record, err := res.Single(ctx)
+	require.NoError(t, err)
+	count, _ := record.Get("count")
+	require.Equal(t, int64(2), count, "expected 2 ISIS_ADJACENT relationships after first sync")
+
+	// Verify link1 has ISIS properties
+	res, err = session.Run(ctx, "MATCH (l:Link {pk: 'link1'}) RETURN l.isis_metric AS metric", nil)
+	require.NoError(t, err)
+	record, err = res.Single(ctx)
+	require.NoError(t, err)
+	metric, _ := record.Get("metric")
+	require.Equal(t, int64(1000), metric, "expected link1 to have ISIS metric")
+
+	// Second ISIS sync: only device1 -> device2 (device2 -> device3 adjacency gone)
+	lsps = []isis.LSP{
+		{
+			SystemID: "0001.0001.0001.00-00",
+			Hostname: "DZ-NY7-SW01",
+			RouterID: "172.16.0.1",
+			Neighbors: []isis.Neighbor{
+				{SystemID: "0001.0001.0002", Metric: 1500, NeighborAddr: "172.16.0.1", AdjSIDs: []uint32{100001}},
+			},
+		},
+	}
+
+	err = graphStore.SyncISIS(ctx, lsps)
+	require.NoError(t, err)
+
+	// Verify only 1 adjacency exists now
+	res, err = session.Run(ctx, "MATCH ()-[r:ISIS_ADJACENT]->() RETURN count(r) AS count", nil)
+	require.NoError(t, err)
+	record, err = res.Single(ctx)
+	require.NoError(t, err)
+	count, _ = record.Get("count")
+	require.Equal(t, int64(1), count, "expected 1 ISIS_ADJACENT relationship after second sync (stale one removed)")
+
+	// Verify link2 no longer has ISIS properties (it was cleared)
+	res, err = session.Run(ctx, "MATCH (l:Link {pk: 'link2'}) RETURN l.isis_metric AS metric", nil)
+	require.NoError(t, err)
+	record, err = res.Single(ctx)
+	require.NoError(t, err)
+	metric, _ = record.Get("metric")
+	require.Nil(t, metric, "expected link2 ISIS metric to be cleared")
+
+	// Verify device2 no longer has ISIS properties (it wasn't in the second sync)
+	res, err = session.Run(ctx, "MATCH (d:Device {pk: 'device2'}) RETURN d.isis_system_id AS system_id", nil)
+	require.NoError(t, err)
+	record, err = res.Single(ctx)
+	require.NoError(t, err)
+	systemID, _ := record.Get("system_id")
+	require.Nil(t, systemID, "expected device2 ISIS system_id to be cleared")
+
+	// Third ISIS sync: empty - all adjacencies should be removed
+	err = graphStore.SyncISIS(ctx, []isis.LSP{})
+	require.NoError(t, err)
+
+	res, err = session.Run(ctx, "MATCH ()-[r:ISIS_ADJACENT]->() RETURN count(r) AS count", nil)
+	require.NoError(t, err)
+	record, err = res.Single(ctx)
+	require.NoError(t, err)
+	count, _ = record.Get("count")
+	require.Equal(t, int64(0), count, "expected 0 ISIS_ADJACENT relationships after empty sync")
+}
+
 func TestParseTunnelNet31(t *testing.T) {
 	t.Run("valid /31", func(t *testing.T) {
 		ip1, ip2, err := parseTunnelNet31("172.16.0.116/31")

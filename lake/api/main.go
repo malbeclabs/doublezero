@@ -160,6 +160,7 @@ func main() {
 	r.Get("/api/status", handlers.GetStatus)
 	r.Get("/api/status/link-history", handlers.GetLinkHistory)
 	r.Get("/api/status/device-history", handlers.GetDeviceHistory)
+	r.Get("/api/status/interface-issues", handlers.GetInterfaceIssues)
 	r.Get("/api/timeline", handlers.GetTimeline)
 	r.Get("/api/timeline/bounds", handlers.GetTimelineBounds)
 

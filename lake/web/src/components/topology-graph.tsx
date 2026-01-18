@@ -8,11 +8,11 @@ import { fetchISISTopology, fetchISISPaths, fetchTopologyCompare, fetchFailureIm
 import type { PathMode, FailureImpactResponse, MultiPathResponse, SimulateLinkRemovalResponse, SimulateLinkAdditionResponse } from '@/lib/api'
 import { useTheme } from '@/hooks/use-theme'
 
-// Device type colors
+// Device type colors (types from serviceability smart contract: hybrid, transit, edge)
 const DEVICE_TYPE_COLORS: Record<string, { light: string; dark: string }> = {
-  core: { light: '#7c3aed', dark: '#a78bfa' },      // purple
-  edge: { light: '#2563eb', dark: '#60a5fa' },      // blue
-  pop: { light: '#0891b2', dark: '#22d3ee' },       // cyan
+  hybrid: { light: '#7c3aed', dark: '#a78bfa' },    // purple
+  transit: { light: '#2563eb', dark: '#60a5fa' },   // blue
+  edge: { light: '#0891b2', dark: '#22d3ee' },      // cyan
   default: { light: '#6b7280', dark: '#9ca3af' },   // gray
 }
 
@@ -2506,18 +2506,21 @@ export function TopologyGraph({
         <div className="bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm p-2 text-xs">
           <div className="font-medium mb-1 text-muted-foreground">Device Types</div>
           <div className="flex flex-col gap-1">
-            {Object.entries(DEVICE_TYPE_COLORS).filter(([k]) => k !== 'default').map(([type, colors]) => (
-              <div key={type} className="flex items-center gap-1.5">
-                <div
-                  className="w-3 h-3 rounded-full border-2"
-                  style={{
-                    backgroundColor: isDark ? colors.dark : colors.light,
-                    borderColor: isDark ? '#22c55e' : '#16a34a',
-                  }}
-                />
-                <span className="capitalize">{type}</span>
-              </div>
-            ))}
+            {deviceTypes.map((type) => {
+              const colors = DEVICE_TYPE_COLORS[type.toLowerCase()] || DEVICE_TYPE_COLORS.default
+              return (
+                <div key={type} className="flex items-center gap-1.5">
+                  <div
+                    className="w-3 h-3 rounded-full border-2"
+                    style={{
+                      backgroundColor: isDark ? colors.dark : colors.light,
+                      borderColor: isDark ? '#22c55e' : '#16a34a',
+                    }}
+                  />
+                  <span className="capitalize">{type}</span>
+                </div>
+              )
+            })}
           </div>
           <div className="mt-2 pt-2 border-t border-[var(--border)]">
             <div className="flex items-center gap-1.5">

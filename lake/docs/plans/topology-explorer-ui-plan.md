@@ -337,9 +337,9 @@ Historical topology changes over time.
 - [x] Critical Links detection - API + Graph UI + Map UI overlay
 - [x] Redundancy Report page
 
-### Phase 9: What-If Simulation
-- [ ] What-If Link Removal - Graph UI + Map UI
-- [ ] What-If Link Addition - Graph UI + Map UI
+### Phase 9: What-If Simulation (Done)
+- [x] What-If Link Removal - Graph UI + Map UI
+- [x] What-If Link Addition - Graph UI + Map UI
 
 ### Phase 10: Planning Tools
 - [ ] Metro Connectivity Matrix page

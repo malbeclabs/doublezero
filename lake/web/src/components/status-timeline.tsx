@@ -48,10 +48,11 @@ const statusLabels = {
   disabled: 'Disabled',
 }
 
-// Thresholds matching backend classification
-const LOSS_WARNING_PCT = 0.1
-const LOSS_CRITICAL_PCT = 1.0
-const LOSS_DISABLED_PCT = 95.0
+// Thresholds matching backend classification and methodology
+const LOSS_MINOR_PCT = 0.1      // Minor: detectable but not impactful
+const LOSS_MODERATE_PCT = 1.0   // Moderate: noticeable degradation
+const LOSS_SEVERE_PCT = 10.0    // Severe: significant impact
+const LOSS_EXTENDED_PCT = 95.0  // Extended: link effectively down
 const LATENCY_WARNING_PCT = 20
 const LATENCY_CRITICAL_PCT = 50
 
@@ -60,13 +61,15 @@ function getStatusReasons(hour: LinkHourStatus, committedRttUs?: number): string
 
   if (hour.status === 'no_data') return reasons
 
-  // Check packet loss
-  if (hour.avg_loss_pct >= LOSS_DISABLED_PCT) {
+  // Check packet loss (using severity terms from methodology)
+  if (hour.avg_loss_pct >= LOSS_EXTENDED_PCT) {
     reasons.push('Extended packet loss (≥95%)')
-  } else if (hour.avg_loss_pct >= LOSS_CRITICAL_PCT) {
-    reasons.push(`High packet loss (${hour.avg_loss_pct.toFixed(1)}%)`)
-  } else if (hour.avg_loss_pct >= LOSS_WARNING_PCT) {
-    reasons.push(`Elevated packet loss (${hour.avg_loss_pct.toFixed(2)}%)`)
+  } else if (hour.avg_loss_pct >= LOSS_SEVERE_PCT) {
+    reasons.push(`Severe packet loss (${hour.avg_loss_pct.toFixed(1)}%)`)
+  } else if (hour.avg_loss_pct >= LOSS_MODERATE_PCT) {
+    reasons.push(`Moderate packet loss (${hour.avg_loss_pct.toFixed(1)}%)`)
+  } else if (hour.avg_loss_pct >= LOSS_MINOR_PCT) {
+    reasons.push(`Minor packet loss (${hour.avg_loss_pct.toFixed(2)}%)`)
   }
 
   // Check latency (only if committed RTT is defined)

@@ -27,8 +27,9 @@ Two views provide link health information:
 **`dz_links_health_current`** (current state with boolean flags):
 | Column | Description |
 |--------|-------------|
-| `is_status_degraded` | Status is not 'activated' |
-| `is_isis_soft_drained` | ISIS delay override set to 1s |
+| `is_soft_drained` | Status is 'soft-drained' |
+| `is_hard_drained` | Status is 'hard-drained' |
+| `is_isis_soft_drained` | ISIS delay override set to 1000ms |
 | `has_packet_loss` | Loss >= 1% in last hour |
 | `exceeds_committed_rtt` | Avg latency exceeds committed RTT |
 | `is_dark` | No telemetry in last 2 hours |

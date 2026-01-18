@@ -9,6 +9,7 @@ import { StatusTimeline } from './status-timeline'
 interface LinkStatusTimelinesProps {
   timeRange?: string
   issueFilters?: string[]
+  healthFilters?: string[]
 }
 
 function formatBandwidth(bps: number): string {
@@ -101,7 +102,11 @@ function useBucketCount() {
   return buckets
 }
 
-export function LinkStatusTimelines({ timeRange = '24h', issueFilters = ['packet_loss', 'high_latency', 'disabled'] }: LinkStatusTimelinesProps) {
+export function LinkStatusTimelines({
+  timeRange = '24h',
+  issueFilters = ['packet_loss', 'high_latency', 'extended_loss', 'drained', 'no_data'],
+  healthFilters = ['healthy', 'degraded', 'unhealthy', 'disabled']
+}: LinkStatusTimelinesProps) {
   const buckets = useBucketCount()
 
   const { data, isLoading, error } = useQuery({
@@ -111,14 +116,46 @@ export function LinkStatusTimelines({ timeRange = '24h', issueFilters = ['packet
     staleTime: 30_000,
   })
 
+  // Helper to check if a link has any buckets matching the health filters
+  const linkMatchesHealthFilters = (link: LinkHistory): boolean => {
+    if (!link.hours || link.hours.length === 0) return false
+    return link.hours.some(hour => {
+      const status = hour.status
+      if (status === 'healthy' && healthFilters.includes('healthy')) return true
+      if (status === 'degraded' && healthFilters.includes('degraded')) return true
+      if (status === 'unhealthy' && healthFilters.includes('unhealthy')) return true
+      if (status === 'disabled' && healthFilters.includes('disabled')) return true
+      if (status === 'no_data' && healthFilters.includes('unhealthy')) return true // no_data maps to unhealthy
+      return false
+    })
+  }
+
+  // Check which issue filters are selected
+  const issueTypesSelected = issueFilters.filter(f => f !== 'no_issues')
+  const noIssuesSelected = issueFilters.includes('no_issues')
+
   // Filter and sort links by recency of issues
   const filteredLinks = useMemo(() => {
     if (!data?.links) return []
 
-    // Filter by issue reasons
+    // Filter by issue reasons AND health status
     const filtered = data.links.filter(link => {
-      if (!link.issue_reasons || link.issue_reasons.length === 0) return false
-      return link.issue_reasons.some(reason => issueFilters.includes(reason))
+      const hasIssues = link.issue_reasons && link.issue_reasons.length > 0
+
+      // Check if link matches issue filters
+      let matchesIssue = false
+      if (hasIssues) {
+        // Link has issues - check if any match the selected issue types
+        matchesIssue = link.issue_reasons.some(reason => issueTypesSelected.includes(reason))
+      } else {
+        // Link has no issues - include if "no_issues" filter is selected
+        matchesIssue = noIssuesSelected
+      }
+
+      // Must match at least one health filter
+      const matchesHealth = linkMatchesHealthFilters(link)
+
+      return matchesIssue && matchesHealth
     })
 
     // Sort by most recent issue (higher index in hours = more recent)
@@ -141,7 +178,7 @@ export function LinkStatusTimelines({ timeRange = '24h', issueFilters = ['packet
       // Higher index = more recent = should come first
       return bIndex - aIndex
     })
-  }, [data?.links, issueFilters])
+  }, [data?.links, issueFilters, healthFilters, noIssuesSelected, issueTypesSelected])
 
   if (isLoading) {
     return (
@@ -167,8 +204,8 @@ export function LinkStatusTimelines({ timeRange = '24h', issueFilters = ['packet
         <CheckCircle2 className="h-8 w-8 text-green-500 mx-auto mb-2" />
         <div className="text-sm text-muted-foreground">
           {data?.links.length === 0
-            ? 'All links healthy in the selected time range'
-            : 'No links match the selected issue filters'}
+            ? 'No links available in the selected time range'
+            : 'No links match the selected filters'}
         </div>
       </div>
     )
@@ -178,15 +215,9 @@ export function LinkStatusTimelines({ timeRange = '24h', issueFilters = ['packet
     <div className="border border-border rounded-lg">
       <div className="px-4 py-3 bg-muted/50 border-b border-border flex items-center gap-2 rounded-t-lg">
         <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-        <h3 className="font-medium">Link Status (Last {
-          data?.time_range === '1h' ? 'Hour' :
-          data?.time_range === '6h' ? '6 Hours' :
-          data?.time_range === '12h' ? '12 Hours' :
-          data?.time_range === '24h' ? '24 Hours' :
-          data?.time_range === '3d' ? '3 Days' : '7 Days'
-        })</h3>
+        <h3 className="font-medium">Link Status</h3>
         <span className="text-sm text-muted-foreground ml-auto">
-          {filteredLinks.length} link{filteredLinks.length !== 1 ? 's' : ''} with issues
+          {filteredLinks.length} link{filteredLinks.length !== 1 ? 's' : ''}
         </span>
       </div>
 
@@ -234,7 +265,7 @@ export function LinkStatusTimelines({ timeRange = '24h', issueFilters = ['packet
                     {link.issue_reasons.includes('packet_loss') && (
                       <span
                         className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-                        style={{ backgroundColor: 'rgba(239, 68, 68, 0.15)', color: '#dc2626' }}
+                        style={{ backgroundColor: 'rgba(168, 85, 247, 0.15)', color: '#9333ea' }}
                       >
                         Loss
                       </span>
@@ -242,17 +273,33 @@ export function LinkStatusTimelines({ timeRange = '24h', issueFilters = ['packet
                     {link.issue_reasons.includes('high_latency') && (
                       <span
                         className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-                        style={{ backgroundColor: 'rgba(245, 158, 11, 0.15)', color: '#d97706' }}
+                        style={{ backgroundColor: 'rgba(59, 130, 246, 0.15)', color: '#2563eb' }}
                       >
-                        Latency
+                        High Latency
                       </span>
                     )}
-                    {link.issue_reasons.includes('disabled') && (
+                    {link.issue_reasons.includes('extended_loss') && (
                       <span
                         className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-                        style={{ backgroundColor: 'rgba(55, 65, 81, 0.15)', color: '#4b5563' }}
+                        style={{ backgroundColor: 'rgba(249, 115, 22, 0.15)', color: '#ea580c' }}
                       >
-                        Disabled
+                        Extended Loss
+                      </span>
+                    )}
+                    {link.issue_reasons.includes('drained') && (
+                      <span
+                        className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                        style={{ backgroundColor: 'rgba(100, 116, 139, 0.15)', color: '#475569' }}
+                      >
+                        Drained
+                      </span>
+                    )}
+                    {link.issue_reasons.includes('no_data') && (
+                      <span
+                        className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                        style={{ backgroundColor: 'rgba(236, 72, 153, 0.15)', color: '#db2777' }}
+                      >
+                        No Data
                       </span>
                     )}
                   </div>

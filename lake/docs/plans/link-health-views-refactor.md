@@ -21,8 +21,9 @@ Shows current health state of each link with simple boolean flags. Use for "what
 - `pk`, `code`, `status`, `isis_delay_override_ns`
 - `committed_rtt_ns`, `bandwidth_bps`
 - `side_a_metro`, `side_z_metro`
-- `is_status_degraded` - Link status is not 'activated'
-- `is_isis_soft_drained` - ISIS delay override set to 1s
+- `is_soft_drained` - Link status is 'soft-drained'
+- `is_hard_drained` - Link status is 'hard-drained'
+- `is_isis_soft_drained` - ISIS delay override set to 1000ms
 - `loss_pct` - Packet loss percentage (last hour)
 - `has_packet_loss` - Loss >= 1% in last hour
 - `avg_rtt_us`, `p95_rtt_us` - Latency metrics (last hour)
@@ -79,7 +80,8 @@ SELECT
     l.bandwidth_bps,
     ma.code AS side_a_metro,
     mz.code AS side_z_metro,
-    l.status != 'activated' AS is_status_degraded,
+    l.status = 'soft-drained' AS is_soft_drained,
+    l.status = 'hard-drained' AS is_hard_drained,
     l.isis_delay_override_ns = 1000000000 AS is_isis_soft_drained,
     COALESCE(rl.loss_pct, 0) AS loss_pct,
     COALESCE(rl.loss_pct, 0) >= 1 AS has_packet_loss,

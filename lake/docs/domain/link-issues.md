@@ -8,45 +8,61 @@ This document defines what constitutes a link "issue" in the DZ network.
 
 ## Issue Types
 
-### 1. Status Change
-- Link status transitions from `activated` to `soft-drained` or `hard-drained`
+### 1. Soft-Drained
+- Link status set to `soft-drained`
+- Traffic is routed away but the link remains available for failover
 - Source: `dim_dz_links_history.status`
 - Timestamp precision: Exact
-- **View**: `dz_link_status_changes` (historical), `dz_links_health_current.is_status_degraded` (current)
+- **View**: `dz_link_status_changes` (historical), `dz_links_health_current.is_soft_drained` (current)
 
-### 2. ISIS Delay Override (Effective Soft-Drain)
-- Link `isis_delay_override_ns` set to 1s (1,000,000,000 ns)
+### 2. Hard-Drained
+- Link status set to `hard-drained`
+- Link is fully disabled and not available for traffic
+- Source: `dim_dz_links_history.status`
+- Timestamp precision: Exact
+- **View**: `dz_link_status_changes` (historical), `dz_links_health_current.is_hard_drained` (current)
+
+### 3. ISIS Delay Override (Effective Soft-Drain)
+- Link `isis_delay_override_ns` set to 1000ms (1,000,000,000 ns)
 - This makes the link less preferred in routing, effectively soft-draining it
 - Does NOT change the `status` field - so it's distinct from status changes
 - Source: `dim_dz_links_history.isis_delay_override_ns`
 - Timestamp precision: Exact
 - **View**: `dz_links_health_current.is_isis_soft_drained` (current)
 
-### 3. Packet Loss
+### 4. Packet Loss
 - Link experiencing measurable packet loss
 - Source: `fact_dz_device_link_latency.loss`
 - Timestamp precision: Hourly (aggregated)
 - **View**: `dz_links_health_current.has_packet_loss`, `dz_links_health_current.loss_pct` (current)
 
-**Severity levels** (proposed):
+**Severity levels**:
 | Severity | Loss % | Notes |
 |----------|--------|-------|
 | Minor | < 1% | Detectable but likely not impactful |
 | Moderate | 1% - 10% | Noticeable degradation |
 | Severe | >= 10% | Significant impact |
 
-### 4. Latency SLA Breach
+### 5. Latency SLA Breach
 - Link measured RTT exceeds committed RTT significantly
+- Only applies to activated links (drained links are excluded)
 - Source: `fact_dz_device_link_latency.rtt_us` vs `dim_dz_links.committed_rtt_ns`
 - Timestamp precision: Hourly (aggregated)
 - **View**: `dz_links_health_current.exceeds_committed_rtt` (current)
 
-### 5. Missing Telemetry (Link Dark)
+### 6. Missing Telemetry (Link Dark)
 - No latency samples received for extended period
 - Could indicate: link down, monitoring failure, or connectivity issue
 - Source: gaps in `fact_dz_device_link_latency`
 - Timestamp precision: Hourly
 - **View**: `dz_links_health_current.is_dark` (current, 2-hour threshold)
+
+### 7. Extended Packet Loss (Effective Disabled)
+- Link has 100% packet loss for 2+ consecutive hours
+- Telemetry is being received but all probes are failing
+- Indicates link is effectively down even though not officially drained
+- Source: `fact_dz_device_link_latency.loss` over time window
+- Timestamp precision: Hourly (aggregated)
 
 ## View Implementation
 
@@ -57,8 +73,9 @@ Shows current health state of each link with boolean flags.
 
 | Column | Description |
 |--------|-------------|
-| `is_status_degraded` | Status is not 'activated' |
-| `is_isis_soft_drained` | ISIS delay override set to 1s |
+| `is_soft_drained` | Status is 'soft-drained' |
+| `is_hard_drained` | Status is 'hard-drained' |
+| `is_isis_soft_drained` | ISIS delay override set to 1000ms |
 | `has_packet_loss` | Loss >= 1% in last hour |
 | `loss_pct` | Packet loss percentage (last hour) |
 | `exceeds_committed_rtt` | Avg latency exceeds committed RTT |

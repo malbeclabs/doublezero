@@ -8,7 +8,7 @@ import { StatCard } from '@/components/stat-card'
 import { LinkStatusTimelines } from '@/components/link-status-timelines'
 
 type TimeRange = '1h' | '6h' | '12h' | '24h' | '3d' | '7d'
-type IssueFilter = 'packet_loss' | 'high_latency' | 'disabled'
+type IssueFilter = 'packet_loss' | 'high_latency' | 'extended_loss' | 'drained' | 'no_data' | 'no_issues'
 
 function Skeleton({ className }: { className?: string }) {
   return <div className={`animate-pulse bg-muted rounded ${className || ''}`} />
@@ -87,70 +87,11 @@ function TimeRangeSelector({ value, onChange }: { value: TimeRange; onChange: (v
 interface IssueCounts {
   packet_loss: number
   high_latency: number
-  disabled: number
+  extended_loss: number
+  drained: number
+  no_data: number
+  no_issues: number
   total: number
-}
-
-function IssueFilterSelector({ value, onChange, counts }: { value: IssueFilter[]; onChange: (v: IssueFilter[]) => void; counts?: IssueCounts }) {
-  const allOptions: IssueFilter[] = ['packet_loss', 'high_latency', 'disabled']
-  const options: { value: IssueFilter; label: string }[] = [
-    { value: 'packet_loss', label: 'Loss' },
-    { value: 'high_latency', label: 'Latency' },
-    { value: 'disabled', label: 'Disabled' },
-  ]
-
-  const allSelected = value.length === allOptions.length
-
-  const toggleFilter = (filter: IssueFilter) => {
-    if (value.includes(filter)) {
-      // Don't allow deselecting the last filter
-      if (value.length > 1) {
-        onChange(value.filter(v => v !== filter))
-      }
-    } else {
-      onChange([...value, filter])
-    }
-  }
-
-  const handleAllClick = () => {
-    onChange(allOptions)
-  }
-
-  const getCount = (filter: IssueFilter): number => {
-    if (!counts) return 0
-    return counts[filter] || 0
-  }
-
-  return (
-    <div className="inline-flex items-center gap-2">
-      <span className="text-sm text-muted-foreground">Issues:</span>
-      <div className="inline-flex rounded-lg border border-border bg-muted/30 p-0.5 gap-0.5">
-        <button
-          onClick={handleAllClick}
-          className={`px-2 py-1 text-xs rounded-md transition-colors ${
-            allSelected
-              ? 'bg-background text-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          All{counts ? ` (${counts.total})` : ''}
-        </button>
-        {options.map((opt) => (
-          <button
-            key={opt.value}
-            onClick={() => toggleFilter(opt.value)}
-            className={`px-2 py-1 text-xs rounded-md transition-colors ${
-              value.includes(opt.value)
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            {opt.label}{counts ? ` (${getCount(opt.value)})` : ''}
-          </button>
-        ))}
-      </div>
-    </div>
-  )
 }
 
 function formatTimeAgo(isoString: string): string {
@@ -510,7 +451,8 @@ function DisabledLinksTable({
   const reasonColors: Record<string, string> = {
     'soft drained': 'text-amber-600 dark:text-amber-400',
     'hard drained': 'text-orange-600 dark:text-orange-400',
-    'packet loss (>2h)': 'text-red-600 dark:text-red-400',
+    'isis delay override': 'text-amber-600 dark:text-amber-400',
+    'extended packet loss': 'text-red-600 dark:text-red-400',
   }
 
   return (
@@ -548,109 +490,280 @@ function DisabledLinksTable({
   )
 }
 
-function HealthLegendItem({
+type HealthFilter = 'healthy' | 'degraded' | 'unhealthy' | 'disabled'
+
+function HealthFilterItem({
   color,
   label,
   count,
-  description
+  description,
+  selected,
+  onClick
 }: {
   color: string
   label: string
   count: number
   description: string
+  selected: boolean
+  onClick: () => void
 }) {
   const [showTooltip, setShowTooltip] = useState(false)
 
   return (
-    <div className="flex items-center justify-between relative">
+    <button
+      onClick={onClick}
+      className="flex items-center justify-between relative w-full text-left rounded px-1.5 py-0.5 -mx-1.5 transition-colors hover:bg-muted/50"
+    >
       <div
-        className="flex items-center gap-1.5 cursor-help"
+        className="flex items-center gap-1.5"
         onMouseEnter={() => setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
       >
-        <div className={`h-2.5 w-2.5 rounded-full ${color}`} />
-        <span className="text-muted-foreground">{label}</span>
+        <div className={`h-2.5 w-2.5 rounded-full ${color} transition-opacity ${!selected ? 'opacity-25' : ''}`} />
+        <span className={`transition-colors ${selected ? 'text-foreground' : 'text-muted-foreground/50'}`}>{label}</span>
         {showTooltip && (
           <div className="absolute left-0 bottom-full mb-1 z-50 bg-popover border border-border rounded-lg shadow-lg p-2 text-xs w-52">
             {description}
           </div>
         )}
       </div>
-      <span className="font-medium tabular-nums">{count}</span>
-    </div>
+      <span className={`font-medium tabular-nums transition-colors ${!selected ? 'text-muted-foreground/50' : ''}`}>{count}</span>
+    </button>
   )
 }
 
-function LinkHealthCard({ links }: { links: StatusResponse['links'] }) {
+function LinkHealthFilterCard({
+  links,
+  selected,
+  onChange
+}: {
+  links: StatusResponse['links']
+  selected: HealthFilter[]
+  onChange: (filters: HealthFilter[]) => void
+}) {
+  const toggleFilter = (filter: HealthFilter) => {
+    if (selected.includes(filter)) {
+      // Don't allow deselecting the last filter
+      if (selected.length > 1) {
+        onChange(selected.filter(f => f !== filter))
+      }
+    } else {
+      onChange([...selected, filter])
+    }
+  }
+
+  const allSelected = selected.length === 4
+
   const healthyPct = links.total > 0 ? (links.healthy / links.total) * 100 : 100
   const degradedPct = links.total > 0 ? (links.degraded / links.total) * 100 : 0
   const unhealthyPct = links.total > 0 ? (links.unhealthy / links.total) * 100 : 0
   const disabledPct = links.total > 0 ? ((links.disabled || 0) / links.total) * 100 : 0
 
   return (
-    <div id="link-health" className="border border-border rounded-lg p-4">
-      <div className="flex items-center gap-2 mb-4">
+    <div className="border border-border rounded-lg p-4">
+      <div className="flex items-center gap-2 mb-3">
         <ArrowUpDown className="h-4 w-4 text-muted-foreground" />
         <h3 className="font-medium">Link Health</h3>
-        <span className="text-xs text-muted-foreground ml-auto">{links.total} links · Last 1h</span>
+        <span className="text-xs text-muted-foreground">(Last Hour)</span>
+        <button
+          onClick={() => onChange(['healthy', 'degraded', 'unhealthy', 'disabled'])}
+          className={`text-xs ml-auto px-1.5 py-0.5 rounded transition-colors ${
+            allSelected ? 'text-muted-foreground' : 'text-primary hover:underline'
+          }`}
+        >
+          {allSelected ? 'All selected' : 'Select all'}
+        </button>
       </div>
 
       {/* Health bar */}
-      <div className="h-3 rounded-full overflow-hidden flex mb-4 bg-muted">
+      <div className="h-2 rounded-full overflow-hidden flex mb-3 bg-muted">
         {healthyPct > 0 && (
           <div
-            className="bg-green-500 h-full transition-all"
+            className={`bg-green-500 h-full transition-all ${!selected.includes('healthy') ? 'opacity-30' : ''}`}
             style={{ width: `${healthyPct}%` }}
           />
         )}
         {degradedPct > 0 && (
           <div
-            className="bg-amber-500 h-full transition-all"
+            className={`bg-amber-500 h-full transition-all ${!selected.includes('degraded') ? 'opacity-30' : ''}`}
             style={{ width: `${degradedPct}%` }}
           />
         )}
         {unhealthyPct > 0 && (
           <div
-            className="bg-red-500 h-full transition-all"
+            className={`bg-red-500 h-full transition-all ${!selected.includes('unhealthy') ? 'opacity-30' : ''}`}
             style={{ width: `${unhealthyPct}%` }}
           />
         )}
         {disabledPct > 0 && (
           <div
-            className="bg-gray-500 dark:bg-gray-700 h-full transition-all"
+            className={`bg-gray-500 dark:bg-gray-700 h-full transition-all ${!selected.includes('disabled') ? 'opacity-30' : ''}`}
             style={{ width: `${disabledPct}%` }}
           />
         )}
       </div>
 
       {/* Legend */}
-      <div className="space-y-1.5 text-sm">
-        <HealthLegendItem
+      <div className="space-y-0.5 text-sm">
+        <HealthFilterItem
           color="bg-green-500"
           label="Healthy"
           count={links.healthy}
-          description="Loss < 0.1%. For inter-metro WAN links: latency within 20% of committed RTT."
+          description="No active issues detected."
+          selected={selected.includes('healthy')}
+          onClick={() => toggleFilter('healthy')}
         />
-        <HealthLegendItem
+        <HealthFilterItem
           color="bg-amber-500"
           label="Degraded"
           count={links.degraded}
-          description="Loss ≥ 0.1%. For inter-metro WAN links: latency 20-50% over committed RTT."
+          description="Moderate packet loss (1% - 10%), or latency SLA breach."
+          selected={selected.includes('degraded')}
+          onClick={() => toggleFilter('degraded')}
         />
-        <HealthLegendItem
+        <HealthFilterItem
           color="bg-red-500"
           label="Unhealthy"
           count={links.unhealthy}
-          description="Loss ≥ 1%. For inter-metro WAN links: latency > 50% over committed RTT."
+          description="Severe packet loss (≥ 10%), or missing telemetry (link dark)."
+          selected={selected.includes('unhealthy')}
+          onClick={() => toggleFilter('unhealthy')}
         />
-        {(links.disabled || 0) > 0 && (
-          <HealthLegendItem
-            color="bg-gray-500 dark:bg-gray-700"
-            label="Disabled"
-            count={links.disabled || 0}
-            description="Extended packet loss (≥95% over 1h). Link appears to be down or unreachable."
+        <HealthFilterItem
+          color="bg-gray-500 dark:bg-gray-700"
+          label="Disabled"
+          count={links.disabled || 0}
+          description="Drained (soft, hard, or ISIS delay override), or extended packet loss (100% for 2+ hours)."
+          selected={selected.includes('disabled')}
+          onClick={() => toggleFilter('disabled')}
+        />
+      </div>
+    </div>
+  )
+}
+
+const timeRangeLabels: Record<TimeRange, string> = {
+  '1h': 'Last Hour',
+  '6h': 'Last 6 Hours',
+  '12h': 'Last 12 Hours',
+  '24h': 'Last 24 Hours',
+  '3d': 'Last 3 Days',
+  '7d': 'Last 7 Days',
+}
+
+function LinkIssuesFilterCard({
+  counts,
+  selected,
+  onChange,
+  timeRange
+}: {
+  counts: IssueCounts
+  selected: IssueFilter[]
+  onChange: (filters: IssueFilter[]) => void
+  timeRange: TimeRange
+}) {
+  const allFilters: IssueFilter[] = ['packet_loss', 'high_latency', 'extended_loss', 'drained', 'no_data', 'no_issues']
+
+  const toggleFilter = (filter: IssueFilter) => {
+    if (selected.includes(filter)) {
+      // Don't allow deselecting the last filter
+      if (selected.length > 1) {
+        onChange(selected.filter(f => f !== filter))
+      }
+    } else {
+      onChange([...selected, filter])
+    }
+  }
+
+  const allSelected = selected.length === allFilters.length
+
+  const items: { filter: IssueFilter; label: string; color: string; description: string }[] = [
+    { filter: 'packet_loss', label: 'Packet Loss', color: 'bg-purple-500', description: 'Link experiencing measurable packet loss (≥ 1%).' },
+    { filter: 'high_latency', label: 'High Latency', color: 'bg-blue-500', description: 'Link latency exceeds committed RTT.' },
+    { filter: 'extended_loss', label: 'Extended Loss', color: 'bg-orange-500', description: 'Link has 100% packet loss for 2+ hours.' },
+    { filter: 'drained', label: 'Drained', color: 'bg-slate-500 dark:bg-slate-600', description: 'Link is soft-drained, hard-drained, or has ISIS delay override.' },
+    { filter: 'no_data', label: 'No Data', color: 'bg-pink-500', description: 'No telemetry received for this link.' },
+    { filter: 'no_issues', label: 'No Issues', color: 'bg-cyan-500', description: 'Link with no detected issues in the time range.' },
+  ]
+
+  // Calculate percentages for the bar (total includes no_issues)
+  const grandTotal = (counts.total + counts.no_issues) || 1
+  const packetLossPct = (counts.packet_loss / grandTotal) * 100
+  const highLatencyPct = (counts.high_latency / grandTotal) * 100
+  const extendedLossPct = (counts.extended_loss / grandTotal) * 100
+  const drainedPct = (counts.drained / grandTotal) * 100
+  const noDataPct = (counts.no_data / grandTotal) * 100
+  const noIssuesPct = (counts.no_issues / grandTotal) * 100
+
+  return (
+    <div className="border border-border rounded-lg p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+        <h3 className="font-medium">Link Issues</h3>
+        <span className="text-xs text-muted-foreground">({timeRangeLabels[timeRange]})</span>
+        <button
+          onClick={() => onChange(allFilters)}
+          className={`text-xs ml-auto px-1.5 py-0.5 rounded transition-colors ${
+            allSelected ? 'text-muted-foreground' : 'text-primary hover:underline'
+          }`}
+        >
+          {allSelected ? 'All selected' : 'Select all'}
+        </button>
+      </div>
+
+      {/* Issues bar */}
+      <div className="h-2 rounded-full overflow-hidden flex mb-3 bg-muted">
+        {noIssuesPct > 0 && (
+          <div
+            className={`bg-cyan-500 h-full transition-all ${!selected.includes('no_issues') ? 'opacity-30' : ''}`}
+            style={{ width: `${noIssuesPct}%` }}
           />
         )}
+        {packetLossPct > 0 && (
+          <div
+            className={`bg-purple-500 h-full transition-all ${!selected.includes('packet_loss') ? 'opacity-30' : ''}`}
+            style={{ width: `${packetLossPct}%` }}
+          />
+        )}
+        {highLatencyPct > 0 && (
+          <div
+            className={`bg-blue-500 h-full transition-all ${!selected.includes('high_latency') ? 'opacity-30' : ''}`}
+            style={{ width: `${highLatencyPct}%` }}
+          />
+        )}
+        {extendedLossPct > 0 && (
+          <div
+            className={`bg-orange-500 h-full transition-all ${!selected.includes('extended_loss') ? 'opacity-30' : ''}`}
+            style={{ width: `${extendedLossPct}%` }}
+          />
+        )}
+        {drainedPct > 0 && (
+          <div
+            className={`bg-slate-500 dark:bg-slate-600 h-full transition-all ${!selected.includes('drained') ? 'opacity-30' : ''}`}
+            style={{ width: `${drainedPct}%` }}
+          />
+        )}
+        {noDataPct > 0 && (
+          <div
+            className={`bg-pink-500 h-full transition-all ${!selected.includes('no_data') ? 'opacity-30' : ''}`}
+            style={{ width: `${noDataPct}%` }}
+          />
+        )}
+      </div>
+
+      {/* Issues list */}
+      <div className="space-y-0.5 text-sm">
+        {items.map(({ filter, label, color, description }) => (
+          <HealthFilterItem
+            key={filter}
+            color={color}
+            label={label}
+            count={counts[filter] || 0}
+            description={description}
+            selected={selected.includes(filter)}
+            onClick={() => toggleFilter(filter)}
+          />
+        ))}
       </div>
     </div>
   )
@@ -859,7 +972,8 @@ function useBucketCount() {
 
 export function StatusPage() {
   const [timeRange, setTimeRange] = useState<TimeRange>('24h')
-  const [issueFilters, setIssueFilters] = useState<IssueFilter[]>(['packet_loss', 'high_latency'])
+  const [issueFilters, setIssueFilters] = useState<IssueFilter[]>(['packet_loss', 'high_latency', 'extended_loss', 'drained', 'no_data'])
+  const [healthFilters, setHealthFilters] = useState<HealthFilter[]>(['healthy', 'degraded', 'unhealthy', 'disabled'])
   const buckets = useBucketCount()
 
   const { data: status, isLoading, error } = useQuery({
@@ -878,24 +992,30 @@ export function StatusPage() {
 
   const issueCounts = useMemo((): IssueCounts => {
     if (!linkHistory?.links) {
-      return { packet_loss: 0, high_latency: 0, disabled: 0, total: 0 }
+      return { packet_loss: 0, high_latency: 0, extended_loss: 0, drained: 0, no_data: 0, no_issues: 0, total: 0 }
     }
 
-    const counts = { packet_loss: 0, high_latency: 0, disabled: 0, total: 0 }
+    const counts = { packet_loss: 0, high_latency: 0, extended_loss: 0, drained: 0, no_data: 0, no_issues: 0, total: 0 }
     const seenLinks = new Set<string>()
 
     for (const link of linkHistory.links) {
       if (link.issue_reasons?.includes('packet_loss')) counts.packet_loss++
       if (link.issue_reasons?.includes('high_latency')) counts.high_latency++
-      if (link.issue_reasons?.includes('disabled')) counts.disabled++
+      if (link.issue_reasons?.includes('extended_loss')) counts.extended_loss++
+      if (link.issue_reasons?.includes('drained')) counts.drained++
+      if (link.issue_reasons?.includes('no_data')) counts.no_data++
       if (link.issue_reasons?.length > 0 && !seenLinks.has(link.code)) {
         counts.total++
         seenLinks.add(link.code)
       }
     }
 
+    // Calculate no_issues as total links minus links with issues
+    const totalLinks = status?.links.total || 0
+    counts.no_issues = Math.max(0, totalLinks - counts.total)
+
     return counts
-  }, [linkHistory])
+  }, [linkHistory, status])
 
   // Extract links currently disabled due to packet loss (last 2h of 100% loss)
   const packetLossDisabledLinks = useMemo((): DisabledLinkRow[] => {
@@ -928,7 +1048,7 @@ export function StatusPage() {
         link_type: link.link_type,
         side_a_metro: link.side_a_metro,
         side_z_metro: link.side_z_metro,
-        reason: 'packet loss (>2h)',
+        reason: 'extended packet loss',
       }))
   }, [linkHistory, status])
 
@@ -986,14 +1106,14 @@ export function StatusPage() {
           <StatCard label="User Inbound" value={status.network.user_inbound_bps} format="bandwidth" />
         </div>
 
-        {/* Health Cards Row */}
+        {/* Summary Cards Row */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
           <IssueSummaryCard
             alerts={status.alerts}
             interfaceIssuesCount={status.interfaces.issues?.length || 0}
             disabledLinksCount={disabledLinksCount}
           />
-          <LinkHealthCard links={status.links} />
+          <div /> {/* Placeholder for balance */}
         </div>
 
         {/* Utilization Toplists */}
@@ -1006,12 +1126,25 @@ export function StatusPage() {
         <div id="link-status-history" className="mb-8">
           <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
             <h2 className="text-lg font-semibold">Link Status History</h2>
-            <div className="flex items-center gap-4 flex-wrap">
-              <IssueFilterSelector value={issueFilters} onChange={setIssueFilters} counts={issueCounts} />
-              <TimeRangeSelector value={timeRange} onChange={setTimeRange} />
-            </div>
+            <TimeRangeSelector value={timeRange} onChange={setTimeRange} />
           </div>
-          <LinkStatusTimelines timeRange={timeRange} issueFilters={issueFilters} />
+
+          {/* Filter Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <LinkHealthFilterCard
+              links={status.links}
+              selected={healthFilters}
+              onChange={setHealthFilters}
+            />
+            <LinkIssuesFilterCard
+              counts={issueCounts}
+              selected={issueFilters}
+              onChange={setIssueFilters}
+              timeRange={timeRange}
+            />
+          </div>
+
+          <LinkStatusTimelines timeRange={timeRange} issueFilters={issueFilters} healthFilters={healthFilters} />
         </div>
 
         {/* Disabled Devices */}

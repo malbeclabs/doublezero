@@ -21,12 +21,126 @@ export function StatusAppendix() {
           </p>
         </div>
 
-        {/* Link Health Classification */}
-        <section className="mb-10">
-          <h2 className="text-lg font-semibold mb-4 pb-2 border-b border-border">Link Health Classification</h2>
+        {/* Links Section */}
+        <section className="mb-12">
+          <h2 className="text-xl font-semibold mb-6 pb-2 border-b-2 border-border">Links</h2>
+
+          {/* Link Issue Types */}
+          <div className="mb-8">
+            <h3 className="text-lg font-semibold mb-4">Issue Types</h3>
           <p className="text-sm text-muted-foreground mb-4">
-            Link health is calculated over a 1-hour rolling window based on packet loss and latency metrics.
-            Each activated link is classified into one of four states:
+            A link "issue" is any degradation or problem. Seven distinct link issue types are tracked:
+          </p>
+
+          <div className="space-y-4">
+            <div className="border border-border rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <h3 className="font-medium">1. Soft-Drained</h3>
+                <span className="text-xs px-1.5 py-0.5 rounded bg-gray-500/5 dark:bg-gray-500/20 text-gray-700 dark:text-gray-400">
+                  Disabled
+                </span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Link status set to <code className="bg-muted px-1 py-0.5 rounded text-xs">soft-drained</code>.
+                Traffic is routed away but the link remains available for failover.
+              </p>
+            </div>
+
+            <div className="border border-border rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <h3 className="font-medium">2. Hard-Drained</h3>
+                <span className="text-xs px-1.5 py-0.5 rounded bg-gray-500/5 dark:bg-gray-500/20 text-gray-700 dark:text-gray-400">
+                  Disabled
+                </span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Link status set to <code className="bg-muted px-1 py-0.5 rounded text-xs">hard-drained</code>.
+                Link is fully disabled and not available for traffic.
+              </p>
+            </div>
+
+            <div className="border border-border rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <h3 className="font-medium">3. ISIS Delay Override (Effective Soft-Drain)</h3>
+                <span className="text-xs px-1.5 py-0.5 rounded bg-gray-500/5 dark:bg-gray-500/20 text-gray-700 dark:text-gray-400">
+                  Disabled
+                </span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Link has <code className="bg-muted px-1 py-0.5 rounded text-xs">isis_delay_override_ns</code> set to <code className="bg-muted px-1 py-0.5 rounded text-xs">1000ms</code>.
+                This makes the link less preferred in routing, effectively soft-draining it without changing the status field.
+              </p>
+            </div>
+
+            <div className="border border-border rounded-lg p-4">
+              <h3 className="font-medium mb-2">4. Packet Loss</h3>
+              <p className="text-sm text-muted-foreground mb-2">
+                Link experiencing measurable packet loss. Severity levels:
+              </p>
+              <ul className="text-sm text-muted-foreground space-y-2 ml-5 list-disc">
+                <li><strong>Minor:</strong> Loss &lt; 1% — Detectable but likely not impactful</li>
+                <li className="flex items-center gap-2 flex-wrap">
+                  <span><strong>Moderate:</strong> Loss 1% - 10% — Noticeable degradation</span>
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-amber-500/5 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400">
+                    Degraded
+                  </span>
+                </li>
+                <li className="flex items-center gap-2 flex-wrap">
+                  <span><strong>Severe:</strong> Loss &ge; 10% — Significant impact</span>
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-red-500/5 dark:bg-red-500/20 text-red-700 dark:text-red-400">
+                    Unhealthy
+                  </span>
+                </li>
+              </ul>
+            </div>
+
+            <div className="border border-border rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <h3 className="font-medium">5. High Latency</h3>
+                <span className="text-xs px-1.5 py-0.5 rounded bg-amber-500/5 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400">
+                  Degraded
+                </span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Link measured RTT significantly exceeds the committed RTT (SLA).
+                Only applies to activated inter-metro WAN links with a committed RTT configured.
+              </p>
+            </div>
+
+            <div className="border border-border rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <h3 className="font-medium">6. Missing Telemetry (Link Dark)</h3>
+                <span className="text-xs px-1.5 py-0.5 rounded bg-red-500/5 dark:bg-red-500/20 text-red-700 dark:text-red-400">
+                  Unhealthy
+                </span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                No latency samples received for 2+ hours. Could indicate: link down, monitoring failure,
+                or connectivity issue. Distinguished from packet loss since we have no measurements at all.
+              </p>
+            </div>
+
+            <div className="border border-border rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <h3 className="font-medium">7. Extended Packet Loss (Effective Disabled)</h3>
+                <span className="text-xs px-1.5 py-0.5 rounded bg-gray-500/5 dark:bg-gray-500/20 text-gray-700 dark:text-gray-400">
+                  Disabled
+                </span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Link has had 100% packet loss for 2+ consecutive hours. The link is receiving telemetry
+                but all probes are failing, indicating the link is effectively down even though it hasn't
+                been officially drained.
+              </p>
+            </div>
+          </div>
+          </div>
+
+          {/* Link Health Classification */}
+          <div className="mb-8">
+            <h3 className="text-lg font-semibold mb-4">Health Classification</h3>
+          <p className="text-sm text-muted-foreground mb-4">
+            Links are classified into health states based on which issue types apply:
           </p>
 
           <div className="space-y-4">
@@ -35,10 +149,9 @@ export function StatusAppendix() {
                 <div className="w-3 h-3 rounded-full bg-green-500" />
                 <h3 className="font-medium">Healthy</h3>
               </div>
-              <ul className="text-sm text-muted-foreground space-y-1 ml-5">
-                <li>Packet loss &lt; 0.1%</li>
-                <li>For inter-metro WAN links: latency within 20% of committed RTT</li>
-              </ul>
+              <p className="text-sm text-muted-foreground ml-5">
+                No active issues detected.
+              </p>
             </div>
 
             <div className="border border-border rounded-lg p-4">
@@ -47,8 +160,8 @@ export function StatusAppendix() {
                 <h3 className="font-medium">Degraded</h3>
               </div>
               <ul className="text-sm text-muted-foreground space-y-1 ml-5">
-                <li>Packet loss &ge; 0.1% and &lt; 1%</li>
-                <li>For inter-metro WAN links: latency 20-50% over committed RTT</li>
+                <li>Moderate packet loss (1% - 10%)</li>
+                <li>High latency</li>
               </ul>
             </div>
 
@@ -58,8 +171,8 @@ export function StatusAppendix() {
                 <h3 className="font-medium">Unhealthy</h3>
               </div>
               <ul className="text-sm text-muted-foreground space-y-1 ml-5">
-                <li>Packet loss &ge; 1% and &lt; 95%</li>
-                <li>For inter-metro WAN links: latency &gt; 50% over committed RTT</li>
+                <li>Severe packet loss (&ge; 10%)</li>
+                <li>Missing telemetry (link dark)</li>
               </ul>
             </div>
 
@@ -69,17 +182,16 @@ export function StatusAppendix() {
                 <h3 className="font-medium">Disabled</h3>
               </div>
               <ul className="text-sm text-muted-foreground space-y-1 ml-5">
-                <li>Packet loss &ge; 95% over the 1-hour window</li>
-                <li>Indicates the link is effectively down or unreachable</li>
-                <li>Distinguished from "unhealthy" to avoid inflating critical issue counts</li>
+                <li>Soft-drained, hard-drained, or ISIS delay override</li>
+                <li>Extended packet loss (100% for 2+ hours)</li>
               </ul>
             </div>
           </div>
-        </section>
+          </div>
 
-        {/* Latency Considerations */}
-        <section className="mb-10">
-          <h2 className="text-lg font-semibold mb-4 pb-2 border-b border-border">Latency Classification</h2>
+          {/* Latency Considerations */}
+          <div className="mb-8">
+            <h3 className="text-lg font-semibold mb-4">Latency Classification</h3>
           <p className="text-sm text-muted-foreground mb-4">
             Latency is only considered for link health classification when all of the following conditions are met:
           </p>
@@ -94,11 +206,11 @@ export function StatusAppendix() {
           <pre className="bg-muted/50 border border-border rounded-lg p-3 mt-2 text-xs font-mono overflow-x-auto">
             overage_pct = ((measured_latency - committed_rtt) / committed_rtt) * 100
           </pre>
-        </section>
+          </div>
 
-        {/* Link Status Timeline */}
-        <section className="mb-10">
-          <h2 className="text-lg font-semibold mb-4 pb-2 border-b border-border">Link Status Timeline</h2>
+          {/* Link Status Timeline */}
+          <div className="mb-8">
+            <h3 className="text-lg font-semibold mb-4">Status Timeline</h3>
           <p className="text-sm text-muted-foreground mb-4">
             The timeline shows historical link health in time buckets. The bucket size varies based on the selected time range:
           </p>
@@ -126,25 +238,25 @@ export function StatusAppendix() {
             <div className="flex items-start gap-3">
               <div className="w-4 h-4 rounded-sm bg-green-500 flex-shrink-0 mt-0.5" />
               <div className="text-sm text-muted-foreground">
-                <strong className="text-foreground">Healthy</strong> — Normal operation within thresholds
+                <strong className="text-foreground">Healthy</strong> — No active issues detected
               </div>
             </div>
             <div className="flex items-start gap-3">
               <div className="w-4 h-4 rounded-sm bg-amber-500 flex-shrink-0 mt-0.5" />
               <div className="text-sm text-muted-foreground">
-                <strong className="text-foreground">Degraded</strong> — Minor packet loss or elevated latency
+                <strong className="text-foreground">Degraded</strong> — Moderate packet loss (1% - 10%) or latency SLA breach
               </div>
             </div>
             <div className="flex items-start gap-3">
               <div className="w-4 h-4 rounded-sm bg-red-500 flex-shrink-0 mt-0.5" />
               <div className="text-sm text-muted-foreground">
-                <strong className="text-foreground">Unhealthy</strong> — Significant packet loss or high latency
+                <strong className="text-foreground">Unhealthy</strong> — Severe packet loss (&ge; 10%) or missing telemetry (link dark)
               </div>
             </div>
             <div className="flex items-start gap-3">
               <div className="w-4 h-4 rounded-sm bg-gray-500 dark:bg-gray-700 flex-shrink-0 mt-0.5" />
               <div className="text-sm text-muted-foreground">
-                <strong className="text-foreground">Disabled</strong> — Link drained or 100% packet loss for 2+ consecutive hours
+                <strong className="text-foreground">Disabled</strong> — Drained (soft, hard, or ISIS delay override) or extended packet loss (100% for 2+ hours)
               </div>
             </div>
             <div className="flex items-start gap-3">
@@ -154,28 +266,29 @@ export function StatusAppendix() {
               </div>
             </div>
           </div>
-        </section>
+          </div>
 
-        {/* Disabled Links */}
-        <section className="mb-10">
-          <h2 className="text-lg font-semibold mb-4 pb-2 border-b border-border">Disabled Links</h2>
+          {/* Disabled Links */}
+          <div className="mb-8">
+            <h3 className="text-lg font-semibold mb-4">Disabled Links</h3>
           <p className="text-sm text-muted-foreground mb-4">
             Links can be classified as "disabled" for several reasons:
           </p>
           <ul className="text-sm text-muted-foreground space-y-2 ml-5 list-disc">
-            <li><strong>Soft drained</strong> — Link has ISIS delay override set to 1000ms, routing traffic away</li>
-            <li><strong>Hard drained</strong> — Link status explicitly set to hard-drained in the system</li>
-            <li><strong>Extended packet loss (&gt;2h)</strong> — 100% packet loss for 2+ consecutive hours in the timeline</li>
+            <li><strong>Soft drained</strong> — Link status set to soft-drained</li>
+            <li><strong>Hard drained</strong> — Link status set to hard-drained</li>
+            <li><strong>ISIS delay override</strong> — Link has <code className="bg-muted px-1 py-0.5 rounded text-xs">isis_delay_override_ns</code> set to 1000ms, effectively soft-draining it without changing the status field</li>
+            <li><strong>Link dark</strong> — No telemetry received for 2+ hours</li>
           </ul>
           <p className="text-sm text-muted-foreground mt-4">
             The "Disabled Links" table shows the current state, not historical. A link appears there only if it is
             currently disabled, not if it was disabled at some point in the past.
           </p>
-        </section>
+          </div>
 
-        {/* Issue Reasons */}
-        <section className="mb-10">
-          <h2 className="text-lg font-semibold mb-4 pb-2 border-b border-border">Issue Reason Tags</h2>
+          {/* Issue Reasons */}
+          <div className="mb-8">
+            <h3 className="text-lg font-semibold mb-4">Issue Reason Tags</h3>
           <p className="text-sm text-muted-foreground mb-4">
             Links in the status timeline can have issue reason tags that indicate why they appear in the list:
           </p>
@@ -188,7 +301,7 @@ export function StatusAppendix() {
                 Loss
               </span>
               <div className="text-sm text-muted-foreground">
-                At least one bucket has packet loss &ge; 0.1% (and is not classified as disabled)
+                At least one bucket has packet loss &ge; 1% (moderate or severe)
               </div>
             </div>
             <div className="flex items-start gap-3">
@@ -199,7 +312,7 @@ export function StatusAppendix() {
                 Latency
               </span>
               <div className="text-sm text-muted-foreground">
-                At least one bucket has latency &ge; 20% over committed RTT (inter-metro WAN links only)
+                At least one bucket has latency SLA breach (inter-metro WAN links only)
               </div>
             </div>
             <div className="flex items-start gap-3">
@@ -210,7 +323,7 @@ export function StatusAppendix() {
                 Disabled
               </span>
               <div className="text-sm text-muted-foreground">
-                Link is drained or has extended packet loss (100% for 2+ consecutive hours)
+                Link is drained (soft, hard, or ISIS delay override) or has extended packet loss (100% for 2+ hours)
               </div>
             </div>
           </div>
@@ -218,11 +331,80 @@ export function StatusAppendix() {
             If a link has only the "Disabled" tag, the "Loss" tag is suppressed since the extended outage
             is a more accurate characterization than packet loss.
           </p>
+          </div>
+        </section>
+
+        {/* Devices Section */}
+        <section className="mb-12">
+          <h2 className="text-xl font-semibold mb-6 pb-2 border-b-2 border-border">Devices</h2>
+
+          {/* Device Issue Types */}
+          <div className="mb-8">
+            <h3 className="text-lg font-semibold mb-4">Issue Types</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              A device "issue" is any problem detected on the device or its interfaces. Four distinct device issue types are tracked.
+              Device interfaces may be associated with a link (as side A or side Z), but not all interfaces are part of a link.
+            </p>
+
+            <div className="space-y-4">
+              <div className="border border-border rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <h4 className="font-medium">1. Drained</h4>
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-gray-500/5 dark:bg-gray-500/20 text-gray-700 dark:text-gray-400">
+                    Disabled
+                  </span>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Device status set to <code className="bg-muted px-1 py-0.5 rounded text-xs">drained</code>.
+                  Traffic is routed away from this device.
+                </p>
+              </div>
+
+              <div className="border border-border rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <h4 className="font-medium">2. Interface Discards</h4>
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-amber-500/5 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400">
+                    Degraded
+                  </span>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Interface is dropping packets. Can be inbound (rx) or outbound (tx) discards.
+                  Often indicates buffer overflow, QoS policy drops, or congestion.
+                </p>
+              </div>
+
+              <div className="border border-border rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <h4 className="font-medium">3. Interface Errors</h4>
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-red-500/5 dark:bg-red-500/20 text-red-700 dark:text-red-400">
+                    Unhealthy
+                  </span>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Interface is experiencing errors. Can be inbound (rx) or outbound (tx) errors.
+                  Often indicates physical layer issues, CRC errors, or hardware problems.
+                </p>
+              </div>
+
+              <div className="border border-border rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <h4 className="font-medium">4. Interface Carrier Transitions</h4>
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-red-500/5 dark:bg-red-500/20 text-red-700 dark:text-red-400">
+                    Unhealthy
+                  </span>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Interface carrier state is flapping (going up and down). Can be inbound (rx) or outbound (tx).
+                  Indicates link instability, often due to physical layer issues or misconfiguration.
+                </p>
+              </div>
+            </div>
+          </div>
         </section>
 
         {/* Overall Status */}
         <section className="mb-10">
-          <h2 className="text-lg font-semibold mb-4 pb-2 border-b border-border">Overall Network Status</h2>
+          <h2 className="text-xl font-semibold mb-6 pb-2 border-b-2 border-border">Overall Network Status</h2>
           <p className="text-sm text-muted-foreground mb-4">
             The banner at the top of the status page shows overall network health, determined by:
           </p>
@@ -230,7 +412,6 @@ export function StatusAppendix() {
             <div className="border border-border rounded-lg p-4 border-l-4 border-l-red-500">
               <h3 className="font-medium mb-2">Unhealthy</h3>
               <ul className="text-sm text-muted-foreground space-y-1 ml-5 list-disc">
-                <li>Database connectivity issues</li>
                 <li>&gt; 10% of links are unhealthy</li>
                 <li>Average packet loss &ge; 1%</li>
               </ul>
@@ -256,15 +437,22 @@ export function StatusAppendix() {
 
         {/* Data Sources */}
         <section className="mb-10">
-          <h2 className="text-lg font-semibold mb-4 pb-2 border-b border-border">Data Sources</h2>
+          <h2 className="text-xl font-semibold mb-6 pb-2 border-b-2 border-border">Data Sources</h2>
           <p className="text-sm text-muted-foreground mb-4">
             Status metrics are derived from the following data sources:
           </p>
+
+          <h3 className="font-medium mt-4 mb-2">Views</h3>
+          <ul className="text-sm text-muted-foreground space-y-2 ml-5 list-disc">
+            <li><code className="bg-muted px-1 py-0.5 rounded text-xs">dz_links_health_current</code> — Current health state of each link with boolean flags (is_soft_drained, is_hard_drained, is_isis_soft_drained, has_packet_loss, exceeds_committed_rtt, is_dark)</li>
+            <li><code className="bg-muted px-1 py-0.5 rounded text-xs">dz_link_status_changes</code> — Historical status transitions for links</li>
+          </ul>
+
+          <h3 className="font-medium mt-4 mb-2">Base Tables</h3>
           <ul className="text-sm text-muted-foreground space-y-2 ml-5 list-disc">
             <li><code className="bg-muted px-1 py-0.5 rounded text-xs">fact_dz_device_link_latency</code> — Per-second latency and loss measurements from network probes</li>
             <li><code className="bg-muted px-1 py-0.5 rounded text-xs">fact_dz_device_interface_counters</code> — Interface error and discard counters</li>
-            <li><code className="bg-muted px-1 py-0.5 rounded text-xs">dz_links_current</code> — Current link configuration and status</li>
-            <li><code className="bg-muted px-1 py-0.5 rounded text-xs">dim_dz_links_history</code> — Historical link status for drain detection</li>
+            <li><code className="bg-muted px-1 py-0.5 rounded text-xs">dim_dz_links_history</code> — Historical link status and configuration (including isis_delay_override_ns)</li>
           </ul>
         </section>
 

@@ -157,6 +157,12 @@ Every factual claim must reference its source question. Number your data questio
 
 This allows users to trace any claim back to the specific query that produced it.
 
+**WRONG - missing claim references:**
+> There are 150 validators on DZ, with total stake of ~12M SOL.
+
+**CORRECT - includes [Q1], [Q2] references:**
+> There are 150 validators on DZ [Q1], with total stake of ~12M SOL [Q2].
+
 ## Query Numbering
 
 When calling `execute_sql`, include meaningful questions that describe what each query answers. These become the Q1, Q2, etc. references in your final answer.
@@ -220,6 +226,7 @@ NEVER give a vague contextual summary when you have specific data to show. NEVER
 - **Prefer unordered (bullet) lists** over numbered lists for simple lists
 - **Use tables when listing entities with multiple attributes** - validators, devices, links, or any list where each item has the same properties. Tables are much easier to scan than nested bullets.
 - Keep it concise but thorough
+- **ALWAYS include [Q1], [Q2] references** - every factual claim must cite its source query (see Claim Attribution section above)
 
 **WRONG - Do not use nested bullets for multi-attribute lists:**
 ```

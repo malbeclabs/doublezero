@@ -180,22 +180,66 @@ export function MaintenancePlannerPage() {
       'Maintenance Plan',
       '================',
       '',
-      `Total items: ${selectedItems.length}`,
-      `Total impact: ${analysisResult.totalImpact} affected paths`,
-      `Total disconnected: ${analysisResult.totalDisconnected} devices`,
+      `Generated: ${new Date().toISOString()}`,
       '',
-      'Recommended Order (least impact first):',
+      'Summary',
+      '-------',
+      `Total items: ${selectedItems.length}`,
+      `Total affected paths: ${analysisResult.totalImpact}`,
+      `Total disconnected devices: ${analysisResult.totalDisconnected}`,
       '',
     ]
+
+    // Disconnected devices warning
+    if (analysisResult.disconnectedList && analysisResult.disconnectedList.length > 0) {
+      lines.push('⚠️  DEVICES THAT WILL LOSE CONNECTIVITY:')
+      for (const device of analysisResult.disconnectedList) {
+        lines.push(`    - ${device}`)
+      }
+      lines.push('')
+    }
+
+    // Affected metro pairs
+    if (analysisResult.affectedMetros && analysisResult.affectedMetros.length > 0) {
+      lines.push('Affected Metro Connectivity')
+      lines.push('---------------------------')
+      for (const pair of analysisResult.affectedMetros) {
+        lines.push(`  ${pair.sourceMetro} ↔ ${pair.targetMetro} (${pair.status})`)
+      }
+      lines.push('')
+    }
+
+    // Affected paths
+    if (analysisResult.affectedPaths && analysisResult.affectedPaths.length > 0) {
+      lines.push('Sample Affected Paths')
+      lines.push('---------------------')
+      for (const path of analysisResult.affectedPaths) {
+        const hopsInfo = path.hopsAfter === -1
+          ? `${path.hopsBefore} hops → DISCONNECTED`
+          : `${path.hopsBefore} → ${path.hopsAfter} hops`
+        lines.push(`  ${path.source} (${path.sourceMetro}) → ${path.target} (${path.targetMetro})`)
+        lines.push(`    ${hopsInfo} [${path.status}]`)
+      }
+      lines.push('')
+    }
+
+    // Recommended order
+    lines.push('Recommended Maintenance Order')
+    lines.push('-----------------------------')
+    lines.push('(Items ordered from least impactful to most impactful)')
+    lines.push('')
 
     for (let i = 0; i < analysisResult.recommendedOrder.length; i++) {
       const pk = analysisResult.recommendedOrder[i]
       const item = analysisResult.items.find(it => it.pk === pk)
       if (item) {
         lines.push(`${i + 1}. [${item.type.toUpperCase()}] ${item.code}`)
-        lines.push(`   Impact: ${item.impact} paths, ${item.disconnected} disconnected`)
+        lines.push(`   Impact: ${item.impact} paths affected`)
+        if (item.disconnectedDevices && item.disconnectedDevices.length > 0) {
+          lines.push(`   Disconnects: ${item.disconnectedDevices.join(', ')}`)
+        }
         if (item.causesPartition) {
-          lines.push('   WARNING: Causes network partition!')
+          lines.push('   ⚠️  WARNING: Causes network partition!')
         }
         lines.push('')
       }

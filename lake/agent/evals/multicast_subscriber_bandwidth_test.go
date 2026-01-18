@@ -88,14 +88,19 @@ func runTest_MulticastSubscriberBandwidth(t *testing.T, llmFactory LLMClientFact
 	// Evaluate with Ollama - include specific expectations
 	expectations := []Expectation{
 		{
-			Description:   "Highest bandwidth subscriber",
-			ExpectedValue: "owner3 (owner_pubkey) with bandwidth reported as a rate in Gbps or Mbps",
-			Rationale:     "owner3 with client_ip 3.3.3.3 consumed the most multicast bandwidth. Bandwidth should always be reported as rates (Gbps/Mbps), not data volumes (GB)",
+			Description:   "Highest bandwidth subscriber identified",
+			ExpectedValue: "owner3 (owner_pubkey) is the top consumer",
+			Rationale:     "owner3 consumed the most multicast bandwidth",
 		},
 		{
-			Description:   "Client IP or other identifier for top subscriber",
-			ExpectedValue: "3.3.3.3 or 10.0.0.3 (dz_ip) or tunnel_id 503",
-			Rationale:     "These are the stable identifiers for the subscriber",
+			Description:   "DZ IP identifier for top subscriber",
+			ExpectedValue: "10.0.0.3 (dz_ip) appears as the subscriber identifier",
+			Rationale:     "DZ IP is the primary network identifier for subscribers",
+		},
+		{
+			Description:   "Bandwidth reported as a rate",
+			ExpectedValue: "bandwidth shown as Gbps or Mbps (rate), not just GB (volume)",
+			Rationale:     "Bandwidth should always be reported as rates (Gbps/Mbps), not data volumes (GB). Total data transferred (GB) may be shown alongside but rate must be included.",
 		},
 	}
 	isCorrect, err := evaluateResponse(t, ctx, question, response, expectations...)

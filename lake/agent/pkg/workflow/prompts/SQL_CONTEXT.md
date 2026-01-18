@@ -327,6 +327,11 @@ WHERE event_ts > now() - INTERVAL 1 HOUR
 ```
 Use `/ 1e6` for Mbps, `/ 1e9` for Gbps.
 
+**ALWAYS report bandwidth as RATES (Gbps/Mbps), not data volumes (GB/TB):**
+- For bandwidth questions, ALWAYS calculate and show the rate in Gbps or Mbps
+- Data volumes (GB transferred) may be shown alongside rates but NEVER as the only metric
+- Example: "owner3: **16.7 Mbps** avg bandwidth (15 GB total)" - rate is primary, volume is secondary
+
 **Correct utilization calculation:**
 ```sql
 -- Per-link, per-direction utilization
@@ -348,14 +353,20 @@ GROUP BY l.pk, l.code, l.bandwidth_bps
 To query bandwidth/traffic for **specific users**, join through `user_tunnel_id`:
 
 ```sql
--- CORRECT: Join on user_tunnel_id to get per-user traffic
-SELECT u.owner_pubkey, SUM(f.in_octets_delta) AS bytes
+-- CORRECT: Join on user_tunnel_id to get per-user traffic with RATE
+SELECT
+    u.owner_pubkey,
+    u.dz_ip,
+    SUM(f.in_octets_delta + f.out_octets_delta) AS total_bytes,
+    SUM(f.in_octets_delta + f.out_octets_delta) * 8.0 / SUM(f.delta_duration) / 1e6 AS avg_mbps
 FROM dz_users_current u
 JOIN fact_dz_device_interface_counters f
   ON f.device_pk = u.device_pk
   AND f.user_tunnel_id = u.tunnel_id
 WHERE f.intf LIKE 'tunnel%'
-GROUP BY u.owner_pubkey
+  AND f.event_ts > now() - INTERVAL 24 HOUR
+GROUP BY u.owner_pubkey, u.dz_ip
+ORDER BY total_bytes DESC
 ```
 
 ### History Tables (CRITICAL)

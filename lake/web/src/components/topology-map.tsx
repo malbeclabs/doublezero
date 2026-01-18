@@ -9,7 +9,7 @@ import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip as Recharts
 import { useQuery } from '@tanstack/react-query'
 import { useTheme } from '@/hooks/use-theme'
 import type { TopologyMetro, TopologyDevice, TopologyLink, TopologyValidator, PathResponse, PathMode } from '@/lib/api'
-import { fetchISISPath } from '@/lib/api'
+import { fetchISISPath, fetchISISTopology } from '@/lib/api'
 
 interface TopologyMapProps {
   metros: TopologyMetro[]
@@ -329,6 +329,19 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
   const [pathResult, setPathResult] = useState<PathResponse | null>(null)
   const [pathLoading, setPathLoading] = useState(false)
   const [pathMode, setPathMode] = useState<PathMode>('hops')
+
+  // Fetch ISIS topology to determine which devices have ISIS data
+  const { data: isisTopology } = useQuery({
+    queryKey: ['isis-topology'],
+    queryFn: fetchISISTopology,
+    enabled: pathModeEnabled,
+  })
+
+  // Build set of ISIS-enabled device PKs
+  const isisDevicePKs = useMemo(() => {
+    if (!isisTopology?.nodes) return new Set<string>()
+    return new Set(isisTopology.nodes.map(node => node.data.id))
+  }, [isisTopology])
 
   // Update URL when selected item changes (push to history for back button support)
   const setSelectedItem = useCallback((item: SelectedItem | null) => {
@@ -936,7 +949,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           )
         })}
 
-        {/* Device markers */}
+        {/* Device markers - show disabled state for non-ISIS devices in path mode */}
         {devices.map(device => {
           const pos = devicePositions.get(device.pk)
           if (!pos) return null
@@ -947,6 +960,9 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           const isPathSource = pathSource === device.pk
           const isPathTarget = pathTarget === device.pk
           const isInPath = pathDevicePKs.has(device.pk)
+          // Check if device has ISIS data (can participate in path finding)
+          const isISISEnabled = isisDevicePKs.size === 0 || isisDevicePKs.has(device.pk)
+          const isDisabledInPathMode = pathModeEnabled && !isISISEnabled
           const deviceInfo: HoveredDeviceInfo = {
             pk: device.pk,
             code: device.code,
@@ -964,23 +980,33 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           let markerColor = deviceColor
           let markerSize = 12
           let borderWidth = 1
+          let opacity = 0.9
 
-          if (isPathSource) {
+          if (isDisabledInPathMode) {
+            // Grey out non-ISIS devices in path mode
+            markerColor = isDark ? '#4b5563' : '#9ca3af' // gray
+            markerSize = 10
+            opacity = 0.4
+          } else if (isPathSource) {
             markerColor = '#22c55e' // green
             markerSize = 18
             borderWidth = 3
+            opacity = 1
           } else if (isPathTarget) {
             markerColor = '#ef4444' // red
             markerSize = 18
             borderWidth = 3
+            opacity = 1
           } else if (isInPath) {
             markerColor = pathHighlightColor // amber
             markerSize = 16
             borderWidth = 2
+            opacity = 1
           } else if (isThisHovered || isThisSelected) {
             markerColor = hoverHighlight
             markerSize = 16
             borderWidth = 2
+            opacity = 1
           }
 
           return (
@@ -991,21 +1017,25 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
               anchor="center"
             >
               <div
-                className="rounded-full cursor-pointer transition-all"
+                className={`rounded-full transition-all ${isDisabledInPathMode ? 'cursor-not-allowed' : 'cursor-pointer'}`}
                 style={{
                   width: markerSize,
                   height: markerSize,
                   backgroundColor: markerColor,
-                  border: `${borderWidth}px solid ${isPathSource ? '#22c55e' : isPathTarget ? '#ef4444' : hoverHighlight}`,
-                  opacity: isThisHovered || isThisSelected || isPathSource || isPathTarget || isInPath ? 1 : 0.9,
+                  border: `${borderWidth}px solid ${isPathSource ? '#22c55e' : isPathTarget ? '#ef4444' : isDisabledInPathMode ? (isDark ? '#4b5563' : '#9ca3af') : hoverHighlight}`,
+                  opacity,
                 }}
                 onMouseEnter={() => setHoveredDevice(deviceInfo)}
                 onMouseLeave={() => setHoveredDevice(null)}
+                title={isDisabledInPathMode ? 'No ISIS data - cannot use for path finding' : undefined}
                 onClick={() => {
                   markerClickedRef.current = true
                   setTimeout(() => { markerClickedRef.current = false }, 0)
                   if (pathModeEnabled) {
-                    handlePathDeviceClick(device.pk)
+                    // Only allow clicking ISIS-enabled devices in path mode
+                    if (!isDisabledInPathMode) {
+                      handlePathDeviceClick(device.pk)
+                    }
                   } else {
                     handleMarkerClick({ type: 'device', data: deviceInfo })
                   }
@@ -1152,6 +1182,13 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
               </button>
             )}
           </div>
+
+          {/* Device count note */}
+          {isisDevicePKs.size > 0 && (
+            <div className="text-muted-foreground mb-2">
+              {isisDevicePKs.size} ISIS-enabled devices
+            </div>
+          )}
 
           {/* Mode toggle */}
           <div className="flex gap-1 mb-3 p-0.5 bg-[var(--muted)] rounded">

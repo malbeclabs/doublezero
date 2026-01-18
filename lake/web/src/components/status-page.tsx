@@ -3,13 +3,15 @@ import { useState, useEffect, useMemo } from 'react'
 import { useDelayedLoading } from '@/hooks/use-delayed-loading'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { CheckCircle2, AlertTriangle, XCircle, ArrowUpDown, Cpu, ChevronDown } from 'lucide-react'
-import { fetchStatus, fetchLinkHistory, type StatusResponse, type InterfaceIssue, type NonActivatedLink, type LinkHistory } from '@/lib/api'
+import { fetchStatus, fetchLinkHistory, fetchDeviceHistory, type StatusResponse, type InterfaceIssue, type NonActivatedLink, type LinkHistory, type DeviceHistory } from '@/lib/api'
 import { StatCard } from '@/components/stat-card'
 import { LinkStatusTimelines } from '@/components/link-status-timelines'
+import { DeviceStatusTimelines } from '@/components/device-status-timelines'
 
 type TimeRange = '3h' | '6h' | '12h' | '24h' | '3d' | '7d'
 type FilterTimeRange = '3h' | '6h' | '12h' | '24h' | '3d' | '7d'
 type IssueFilter = 'packet_loss' | 'high_latency' | 'extended_loss' | 'drained' | 'no_data' | 'no_issues'
+type DeviceIssueFilter = 'interface_errors' | 'carrier_transitions' | 'drained' | 'no_issues'
 type HealthFilter = 'healthy' | 'degraded' | 'unhealthy' | 'disabled'
 
 const filterTimeRangeLabels: Record<FilterTimeRange, string> = {
@@ -1224,10 +1226,471 @@ function LinksContent({ status, linkHistory }: { status: StatusResponse; linkHis
   )
 }
 
+// Device issue counts interface
+interface DeviceIssueCounts {
+  interface_errors: number
+  carrier_transitions: number
+  drained: number
+  no_issues: number
+  total: number
+}
+
+// Device issues breakdown per health category
+interface DeviceIssuesByHealth {
+  healthy: { interface_errors: number; carrier_transitions: number; drained: number }
+  degraded: { interface_errors: number; carrier_transitions: number; drained: number }
+  unhealthy: { interface_errors: number; carrier_transitions: number; drained: number }
+  disabled: { interface_errors: number; carrier_transitions: number; drained: number }
+}
+
+// Device health breakdown per issue type
+interface DeviceHealthByIssue {
+  interface_errors: { healthy: number; degraded: number; unhealthy: number; disabled: number }
+  carrier_transitions: { healthy: number; degraded: number; unhealthy: number; disabled: number }
+  drained: { healthy: number; degraded: number; unhealthy: number; disabled: number }
+  no_issues: { healthy: number; degraded: number; unhealthy: number; disabled: number }
+}
+
+function DeviceHealthFilterCard({
+  devices,
+  selected,
+  onChange,
+  filterTimeRange,
+  onFilterTimeRangeChange,
+  issuesByHealth,
+}: {
+  devices: { healthy: number; degraded: number; unhealthy: number; disabled: number; total: number }
+  selected: HealthFilter[]
+  onChange: (filters: HealthFilter[]) => void
+  filterTimeRange: FilterTimeRange
+  onFilterTimeRangeChange: (range: FilterTimeRange) => void
+  issuesByHealth?: DeviceIssuesByHealth
+}) {
+  const toggleFilter = (filter: HealthFilter) => {
+    if (selected.includes(filter)) {
+      if (selected.length > 1) {
+        onChange(selected.filter(f => f !== filter))
+      }
+    } else {
+      onChange([...selected, filter])
+    }
+  }
+
+  const allSelected = selected.length === 4
+
+  const healthyPct = devices.total > 0 ? (devices.healthy / devices.total) * 100 : 100
+  const degradedPct = devices.total > 0 ? (devices.degraded / devices.total) * 100 : 0
+  const unhealthyPct = devices.total > 0 ? (devices.unhealthy / devices.total) * 100 : 0
+  const disabledPct = devices.total > 0 ? ((devices.disabled || 0) / devices.total) * 100 : 0
+
+  return (
+    <div className="border border-border rounded-lg p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <Cpu className="h-4 w-4 text-muted-foreground" />
+        <h3 className="font-medium">Device Health</h3>
+        <FilterTimeRangeSelector value={filterTimeRange} onChange={onFilterTimeRangeChange} />
+        <button
+          onClick={() => onChange(['healthy', 'degraded', 'unhealthy', 'disabled'])}
+          className={`text-xs ml-auto px-1.5 py-0.5 rounded transition-colors ${
+            allSelected ? 'text-muted-foreground' : 'text-primary hover:underline'
+          }`}
+        >
+          {allSelected ? 'All selected' : 'Select all'}
+        </button>
+      </div>
+
+      <div className="h-2 rounded-full overflow-hidden flex mb-3 bg-muted">
+        {healthyPct > 0 && (
+          <div
+            className={`bg-green-500 h-full transition-all ${!selected.includes('healthy') ? 'opacity-30' : ''}`}
+            style={{ width: `${healthyPct}%` }}
+          />
+        )}
+        {degradedPct > 0 && (
+          <div
+            className={`bg-amber-500 h-full transition-all ${!selected.includes('degraded') ? 'opacity-30' : ''}`}
+            style={{ width: `${degradedPct}%` }}
+          />
+        )}
+        {unhealthyPct > 0 && (
+          <div
+            className={`bg-red-500 h-full transition-all ${!selected.includes('unhealthy') ? 'opacity-30' : ''}`}
+            style={{ width: `${unhealthyPct}%` }}
+          />
+        )}
+        {disabledPct > 0 && (
+          <div
+            className={`bg-gray-500 dark:bg-gray-700 h-full transition-all ${!selected.includes('disabled') ? 'opacity-30' : ''}`}
+            style={{ width: `${disabledPct}%` }}
+          />
+        )}
+      </div>
+
+      <div className="space-y-0.5 text-sm">
+        <HealthFilterItem
+          color="bg-green-500"
+          label="Healthy"
+          count={devices.healthy}
+          description="No interface issues detected."
+          selected={selected.includes('healthy')}
+          onClick={() => toggleFilter('healthy')}
+          issueBreakdown={issuesByHealth?.healthy ? { ...issuesByHealth.healthy, high_latency: 0, extended_loss: 0, packet_loss: 0, no_data: 0 } : undefined}
+        />
+        <HealthFilterItem
+          color="bg-amber-500"
+          label="Degraded"
+          count={devices.degraded}
+          description="Moderate interface errors or discards."
+          selected={selected.includes('degraded')}
+          onClick={() => toggleFilter('degraded')}
+          issueBreakdown={issuesByHealth?.degraded ? { ...issuesByHealth.degraded, high_latency: 0, extended_loss: 0, packet_loss: 0, no_data: 0 } : undefined}
+        />
+        <HealthFilterItem
+          color="bg-red-500"
+          label="Unhealthy"
+          count={devices.unhealthy}
+          description="Significant interface errors or carrier transitions."
+          selected={selected.includes('unhealthy')}
+          onClick={() => toggleFilter('unhealthy')}
+          issueBreakdown={issuesByHealth?.unhealthy ? { ...issuesByHealth.unhealthy, high_latency: 0, extended_loss: 0, packet_loss: 0, no_data: 0 } : undefined}
+        />
+        <HealthFilterItem
+          color="bg-gray-500 dark:bg-gray-700"
+          label="Disabled"
+          count={devices.disabled || 0}
+          description="Device is drained or suspended."
+          selected={selected.includes('disabled')}
+          onClick={() => toggleFilter('disabled')}
+          issueBreakdown={issuesByHealth?.disabled ? { ...issuesByHealth.disabled, high_latency: 0, extended_loss: 0, packet_loss: 0, no_data: 0 } : undefined}
+        />
+      </div>
+    </div>
+  )
+}
+
+function DeviceIssuesFilterCard({
+  counts,
+  selected,
+  onChange,
+  filterTimeRange,
+  onFilterTimeRangeChange,
+  healthByIssue,
+}: {
+  counts: DeviceIssueCounts
+  selected: DeviceIssueFilter[]
+  onChange: (filters: DeviceIssueFilter[]) => void
+  filterTimeRange: FilterTimeRange
+  onFilterTimeRangeChange: (range: FilterTimeRange) => void
+  healthByIssue?: DeviceHealthByIssue
+}) {
+  const allFilters: DeviceIssueFilter[] = ['interface_errors', 'carrier_transitions', 'drained', 'no_issues']
+
+  const toggleFilter = (filter: DeviceIssueFilter) => {
+    if (selected.includes(filter)) {
+      if (selected.length > 1) {
+        onChange(selected.filter(f => f !== filter))
+      }
+    } else {
+      onChange([...selected, filter])
+    }
+  }
+
+  const allSelected = selected.length === allFilters.length
+
+  const grandTotal = (counts.total + counts.no_issues) || 1
+  const interfaceErrorsPct = (counts.interface_errors / grandTotal) * 100
+  const carrierTransitionsPct = (counts.carrier_transitions / grandTotal) * 100
+  const drainedPct = (counts.drained / grandTotal) * 100
+  const noIssuesPct = (counts.no_issues / grandTotal) * 100
+
+  const items: { filter: DeviceIssueFilter; label: string; color: string; description: string }[] = [
+    { filter: 'interface_errors', label: 'Interface Errors', color: 'bg-fuchsia-500', description: 'Device experiencing interface errors or discards.' },
+    { filter: 'carrier_transitions', label: 'Link Flapping', color: 'bg-orange-500', description: 'Device experiencing carrier state changes (link up/down).' },
+    { filter: 'drained', label: 'Drained', color: 'bg-slate-500 dark:bg-slate-600', description: 'Device is soft-drained, hard-drained, or suspended.' },
+    { filter: 'no_issues', label: 'No Issues', color: 'bg-cyan-500', description: 'Device with no detected issues in the time range.' },
+  ]
+
+  return (
+    <div className="border border-border rounded-lg p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+        <h3 className="font-medium">Device Issues</h3>
+        <FilterTimeRangeSelector value={filterTimeRange} onChange={onFilterTimeRangeChange} />
+        <button
+          onClick={() => onChange(allFilters)}
+          className={`text-xs ml-auto px-1.5 py-0.5 rounded transition-colors ${
+            allSelected ? 'text-muted-foreground' : 'text-primary hover:underline'
+          }`}
+        >
+          {allSelected ? 'All selected' : 'Select all'}
+        </button>
+      </div>
+
+      <div className="h-2 rounded-full overflow-hidden flex mb-3 bg-muted">
+        {noIssuesPct > 0 && (
+          <div
+            className={`bg-cyan-500 h-full transition-all ${!selected.includes('no_issues') ? 'opacity-30' : ''}`}
+            style={{ width: `${noIssuesPct}%` }}
+          />
+        )}
+        {interfaceErrorsPct > 0 && (
+          <div
+            className={`bg-fuchsia-500 h-full transition-all ${!selected.includes('interface_errors') ? 'opacity-30' : ''}`}
+            style={{ width: `${interfaceErrorsPct}%` }}
+          />
+        )}
+        {carrierTransitionsPct > 0 && (
+          <div
+            className={`bg-orange-500 h-full transition-all ${!selected.includes('carrier_transitions') ? 'opacity-30' : ''}`}
+            style={{ width: `${carrierTransitionsPct}%` }}
+          />
+        )}
+        {drainedPct > 0 && (
+          <div
+            className={`bg-slate-500 dark:bg-slate-600 h-full transition-all ${!selected.includes('drained') ? 'opacity-30' : ''}`}
+            style={{ width: `${drainedPct}%` }}
+          />
+        )}
+      </div>
+
+      <div className="space-y-0.5 text-sm">
+        {items.map(({ filter, label, color, description }) => (
+          <HealthFilterItem
+            key={filter}
+            color={color}
+            label={label}
+            count={counts[filter] || 0}
+            description={description}
+            selected={selected.includes(filter)}
+            onClick={() => toggleFilter(filter)}
+            healthBreakdown={healthByIssue?.[filter]}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // Devices tab content
 function DevicesContent({ status }: { status: StatusResponse }) {
+  const [timeRange, setTimeRange] = useState<TimeRange>('24h')
+  const [filterTimeRange, setFilterTimeRange] = useState<FilterTimeRange>('12h')
+  const [issueFilters, setIssueFilters] = useState<DeviceIssueFilter[]>(['interface_errors', 'carrier_transitions', 'drained'])
+  const [healthFilters, setHealthFilters] = useState<HealthFilter[]>(['healthy', 'degraded', 'unhealthy', 'disabled'])
+
+  // Bucket count based on filter time range
+  const filterBuckets = (() => {
+    switch (filterTimeRange) {
+      case '3h': return 36
+      case '6h': return 36
+      case '12h': return 48
+      case '24h': return 72
+      case '3d': return 72
+      case '7d': return 84
+      default: return 72
+    }
+  })()
+
+  // Fetch device history for the filter time range
+  const { data: filterDeviceHistory } = useQuery({
+    queryKey: ['device-history', filterTimeRange, filterBuckets],
+    queryFn: () => fetchDeviceHistory(filterTimeRange, filterBuckets),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  })
+
+  // Helper to get the effective health status from a device's hours
+  const getEffectiveHealth = (device: DeviceHistory): string => {
+    if (!device.hours || device.hours.length === 0) return 'healthy'
+
+    const statusPriority: Record<string, number> = {
+      'unhealthy': 0,
+      'no_data': 1,
+      'disabled': 2,
+      'degraded': 3,
+      'healthy': 4,
+    }
+
+    let worstStatus = 'healthy'
+    let worstPriority = statusPriority['healthy']
+
+    // Skip the last bucket if it's no_data (still being collected)
+    const lastBucket = device.hours[device.hours.length - 1]
+    const skipLastBucket = lastBucket?.status === 'no_data' && device.hours.length > 1
+    const bucketsToCheck = skipLastBucket ? device.hours.slice(0, -1) : device.hours
+
+    for (const bucket of bucketsToCheck) {
+      const status = bucket.status || 'healthy'
+      const priority = statusPriority[status] ?? 4
+      if (priority < worstPriority) {
+        worstPriority = priority
+        worstStatus = status
+      }
+    }
+
+    return worstStatus
+  }
+
+  // Calculate health counts from device history
+  const healthCounts = useMemo(() => {
+    if (!filterDeviceHistory?.devices) {
+      return { healthy: 0, degraded: 0, unhealthy: 0, disabled: 0, total: 0 }
+    }
+
+    const counts = { healthy: 0, degraded: 0, unhealthy: 0, disabled: 0, total: 0 }
+
+    for (const device of filterDeviceHistory.devices) {
+      counts.total++
+      const status = getEffectiveHealth(device)
+      if (status === 'healthy') counts.healthy++
+      else if (status === 'degraded') counts.degraded++
+      else if (status === 'unhealthy' || status === 'no_data') counts.unhealthy++
+      else if (status === 'disabled') counts.disabled++
+    }
+
+    return counts
+  }, [filterDeviceHistory])
+
+  // Calculate issue breakdown per health category
+  const issuesByHealth = useMemo((): DeviceIssuesByHealth => {
+    const emptyBreakdown = () => ({ interface_errors: 0, carrier_transitions: 0, drained: 0 })
+
+    const result: DeviceIssuesByHealth = {
+      healthy: emptyBreakdown(),
+      degraded: emptyBreakdown(),
+      unhealthy: emptyBreakdown(),
+      disabled: emptyBreakdown(),
+    }
+
+    if (!filterDeviceHistory?.devices) return result
+
+    for (const device of filterDeviceHistory.devices) {
+      const rawHealth = getEffectiveHealth(device)
+      const health = rawHealth === 'no_data' ? 'unhealthy' : rawHealth
+      if (!(health in result)) continue
+
+      const breakdown = result[health as keyof DeviceIssuesByHealth]
+      const issues = device.issue_reasons ?? []
+
+      if (issues.includes('interface_errors')) breakdown.interface_errors++
+      if (issues.includes('carrier_transitions')) breakdown.carrier_transitions++
+      if (issues.includes('drained')) breakdown.drained++
+    }
+
+    return result
+  }, [filterDeviceHistory])
+
+  // Calculate health breakdown per issue type
+  const healthByIssue = useMemo((): DeviceHealthByIssue => {
+    const emptyBreakdown = () => ({ healthy: 0, degraded: 0, unhealthy: 0, disabled: 0 })
+
+    const result: DeviceHealthByIssue = {
+      interface_errors: emptyBreakdown(),
+      carrier_transitions: emptyBreakdown(),
+      drained: emptyBreakdown(),
+      no_issues: emptyBreakdown(),
+    }
+
+    if (!filterDeviceHistory?.devices) return result
+
+    for (const device of filterDeviceHistory.devices) {
+      const rawHealth = getEffectiveHealth(device)
+      const health = (rawHealth === 'no_data' ? 'unhealthy' : rawHealth) as keyof IssueHealthBreakdown
+      const issues = device.issue_reasons ?? []
+
+      if (issues.length === 0) {
+        result.no_issues[health]++
+      } else {
+        if (issues.includes('interface_errors')) result.interface_errors[health]++
+        if (issues.includes('carrier_transitions')) result.carrier_transitions[health]++
+        if (issues.includes('drained')) result.drained[health]++
+      }
+    }
+
+    return result
+  }, [filterDeviceHistory])
+
+  // Issue counts from filter time range
+  const issueCounts = useMemo((): DeviceIssueCounts => {
+    if (!filterDeviceHistory?.devices) {
+      return { interface_errors: 0, carrier_transitions: 0, drained: 0, no_issues: 0, total: 0 }
+    }
+
+    const counts = { interface_errors: 0, carrier_transitions: 0, drained: 0, no_issues: 0, total: 0 }
+    const seenDevices = new Set<string>()
+
+    for (const device of filterDeviceHistory.devices) {
+      if (device.issue_reasons?.includes('interface_errors')) counts.interface_errors++
+      if (device.issue_reasons?.includes('carrier_transitions')) counts.carrier_transitions++
+      if (device.issue_reasons?.includes('drained')) counts.drained++
+      if (device.issue_reasons?.length > 0 && !seenDevices.has(device.code)) {
+        counts.total++
+        seenDevices.add(device.code)
+      }
+    }
+
+    const totalDevices = healthCounts.total || 0
+    counts.no_issues = Math.max(0, totalDevices - counts.total)
+
+    return counts
+  }, [filterDeviceHistory, healthCounts])
+
+  // Get set of device codes with issues in the filter time range
+  const devicesWithIssues = useMemo(() => {
+    if (!filterDeviceHistory?.devices) return new Map<string, string[]>()
+    const map = new Map<string, string[]>()
+    for (const device of filterDeviceHistory.devices) {
+      if (device.issue_reasons?.length > 0) {
+        map.set(device.code, device.issue_reasons)
+      }
+    }
+    return map
+  }, [filterDeviceHistory])
+
+  // Get health status for each device from the filter time range
+  const devicesWithHealth = useMemo(() => {
+    if (!filterDeviceHistory?.devices) return new Map<string, string>()
+    const map = new Map<string, string>()
+    for (const device of filterDeviceHistory.devices) {
+      map.set(device.code, getEffectiveHealth(device))
+    }
+    return map
+  }, [filterDeviceHistory])
+
   return (
     <>
+      {/* Device Health & Issues */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <DeviceHealthFilterCard
+          devices={healthCounts}
+          selected={healthFilters}
+          onChange={setHealthFilters}
+          filterTimeRange={filterTimeRange}
+          onFilterTimeRangeChange={setFilterTimeRange}
+          issuesByHealth={issuesByHealth}
+        />
+        <DeviceIssuesFilterCard
+          counts={issueCounts}
+          selected={issueFilters}
+          onChange={setIssueFilters}
+          filterTimeRange={filterTimeRange}
+          onFilterTimeRangeChange={setFilterTimeRange}
+          healthByIssue={healthByIssue}
+        />
+      </div>
+
+      {/* Device Status History */}
+      <div className="mb-8">
+        <DeviceStatusTimelines
+          timeRange={timeRange}
+          onTimeRangeChange={setTimeRange}
+          issueFilters={issueFilters}
+          healthFilters={healthFilters}
+          devicesWithIssues={devicesWithIssues}
+          devicesWithHealth={devicesWithHealth}
+        />
+      </div>
+
       {/* Disabled Devices */}
       <div className="mb-8">
         <DisabledDevicesTable devices={status.alerts?.devices} />

@@ -927,6 +927,50 @@ export async function fetchLinkHistory(timeRange?: string, buckets?: number): Pr
   return res.json()
 }
 
+// Device history types for status timeline
+export interface DeviceHourStatus {
+  hour: string
+  status: 'healthy' | 'degraded' | 'unhealthy' | 'no_data' | 'disabled'
+  current_users: number
+  max_users: number
+  utilization_pct: number
+  in_errors: number
+  out_errors: number
+  in_discards: number
+  out_discards: number
+  carrier_transitions: number
+}
+
+export interface DeviceHistory {
+  pk: string
+  code: string
+  device_type: string
+  contributor: string
+  metro: string
+  max_users: number
+  hours: DeviceHourStatus[]
+  issue_reasons: string[] // "interface_errors", "high_utilization", "drained", "no_data"
+}
+
+export interface DeviceHistoryResponse {
+  devices: DeviceHistory[]
+  time_range: string      // "24h", "3d", "7d"
+  bucket_minutes: number  // Size of each bucket in minutes
+  bucket_count: number    // Number of buckets
+}
+
+export async function fetchDeviceHistory(timeRange?: string, buckets?: number): Promise<DeviceHistoryResponse> {
+  const params = new URLSearchParams()
+  if (timeRange) params.set('range', timeRange)
+  if (buckets) params.set('buckets', buckets.toString())
+  const url = `/api/status/device-history${params.toString() ? '?' + params.toString() : ''}`
+  const res = await fetchWithRetry(url)
+  if (!res.ok) {
+    throw new Error('Failed to fetch device history')
+  }
+  return res.json()
+}
+
 // Topology types
 export interface TopologyMetro {
   pk: string

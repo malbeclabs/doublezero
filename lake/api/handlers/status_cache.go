@@ -14,16 +14,18 @@ type StatusCache struct {
 	mu sync.RWMutex
 
 	// Cached responses
-	status      *StatusResponse
-	linkHistory map[string]*LinkHistoryResponse // keyed by "range:buckets" e.g. "24h:72"
+	status        *StatusResponse
+	linkHistory   map[string]*LinkHistoryResponse   // keyed by "range:buckets" e.g. "24h:72"
+	deviceHistory map[string]*DeviceHistoryResponse // keyed by "range:buckets" e.g. "24h:72"
 
 	// Refresh intervals
 	statusInterval      time.Duration
 	linkHistoryInterval time.Duration
 
 	// Last refresh times (for observability)
-	statusLastRefresh      time.Time
-	linkHistoryLastRefresh time.Time
+	statusLastRefresh        time.Time
+	linkHistoryLastRefresh   time.Time
+	deviceHistoryLastRefresh time.Time
 
 	// Context for cancellation
 	ctx    context.Context
@@ -44,11 +46,26 @@ var linkHistoryConfigs = []struct {
 	{"7d", 84},   // 7-day view
 }
 
+// Common device history configurations to pre-cache (same as link history)
+var deviceHistoryConfigs = []struct {
+	timeRange string
+	buckets   int
+}{
+	{"3h", 36},   // 3-hour view
+	{"6h", 36},   // 6-hour view
+	{"12h", 48},  // 12-hour view (default filter)
+	{"24h", 72},  // 24-hour view
+	{"24h", 48},  // 24-hour responsive (smaller screens)
+	{"3d", 72},   // 3-day view
+	{"7d", 84},   // 7-day view
+}
+
 // NewStatusCache creates a new cache with the specified refresh intervals.
 func NewStatusCache(statusInterval, linkHistoryInterval time.Duration) *StatusCache {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &StatusCache{
 		linkHistory:         make(map[string]*LinkHistoryResponse),
+		deviceHistory:       make(map[string]*DeviceHistoryResponse),
 		statusInterval:      statusInterval,
 		linkHistoryInterval: linkHistoryInterval,
 		ctx:                 ctx,
@@ -65,10 +82,12 @@ func (c *StatusCache) Start() {
 	// Initial refresh (synchronous to ensure cache is warm)
 	c.refreshStatus()
 	c.refreshLinkHistory()
+	c.refreshDeviceHistory()
 
 	// Start background refresh goroutines
 	go c.statusRefreshLoop()
 	go c.linkHistoryRefreshLoop()
+	go c.deviceHistoryRefreshLoop()
 }
 
 // Stop cancels the background refresh goroutines.
@@ -92,6 +111,15 @@ func (c *StatusCache) GetLinkHistory(timeRange string, buckets int) *LinkHistory
 	defer c.mu.RUnlock()
 	key := linkHistoryCacheKey(timeRange, buckets)
 	return c.linkHistory[key]
+}
+
+// GetDeviceHistory returns the cached device history response for the given parameters.
+// Returns nil if the specific configuration is not cached.
+func (c *StatusCache) GetDeviceHistory(timeRange string, buckets int) *DeviceHistoryResponse {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	key := deviceHistoryCacheKey(timeRange, buckets)
+	return c.deviceHistory[key]
 }
 
 // statusRefreshLoop runs the status refresh on a ticker.
@@ -118,6 +146,21 @@ func (c *StatusCache) linkHistoryRefreshLoop() {
 		select {
 		case <-ticker.C:
 			c.refreshLinkHistory()
+		case <-c.ctx.Done():
+			return
+		}
+	}
+}
+
+// deviceHistoryRefreshLoop runs the device history refresh on a ticker.
+func (c *StatusCache) deviceHistoryRefreshLoop() {
+	ticker := time.NewTicker(c.linkHistoryInterval) // Use same interval as link history
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			c.refreshDeviceHistory()
 		case <-c.ctx.Done():
 			return
 		}
@@ -166,7 +209,37 @@ func (c *StatusCache) refreshLinkHistory() {
 		time.Since(start), len(linkHistoryConfigs))
 }
 
+// refreshDeviceHistory fetches fresh device history data for all configured ranges.
+func (c *StatusCache) refreshDeviceHistory() {
+	start := time.Now()
+
+	// Refresh all common configurations
+	for _, cfg := range deviceHistoryConfigs {
+		ctx, cancel := context.WithTimeout(c.ctx, 20*time.Second)
+		resp := fetchDeviceHistoryData(ctx, cfg.timeRange, cfg.buckets)
+		cancel()
+
+		if resp != nil {
+			key := deviceHistoryCacheKey(cfg.timeRange, cfg.buckets)
+			c.mu.Lock()
+			c.deviceHistory[key] = resp
+			c.mu.Unlock()
+		}
+	}
+
+	c.mu.Lock()
+	c.deviceHistoryLastRefresh = time.Now()
+	c.mu.Unlock()
+
+	log.Printf("Device history cache refreshed in %v (%d configs)",
+		time.Since(start), len(deviceHistoryConfigs))
+}
+
 func linkHistoryCacheKey(timeRange string, buckets int) string {
+	return timeRange + ":" + strconv.Itoa(buckets)
+}
+
+func deviceHistoryCacheKey(timeRange string, buckets int) string {
 	return timeRange + ":" + strconv.Itoa(buckets)
 }
 

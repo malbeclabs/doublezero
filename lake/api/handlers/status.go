@@ -1401,3 +1401,406 @@ func determineOverallStatus(resp *StatusResponse) string {
 
 	return "healthy"
 }
+
+// Device history types for status timeline
+type DeviceHourStatus struct {
+	Hour               string  `json:"hour"`
+	Status             string  `json:"status"` // "healthy", "degraded", "unhealthy", "no_data", "disabled"
+	CurrentUsers       int32   `json:"current_users"`
+	MaxUsers           int32   `json:"max_users"`
+	UtilizationPct     float64 `json:"utilization_pct"`
+	InErrors           uint64  `json:"in_errors"`
+	OutErrors          uint64  `json:"out_errors"`
+	InDiscards         uint64  `json:"in_discards"`
+	OutDiscards        uint64  `json:"out_discards"`
+	CarrierTransitions uint64  `json:"carrier_transitions"`
+}
+
+type DeviceHistory struct {
+	PK           string             `json:"pk"`
+	Code         string             `json:"code"`
+	DeviceType   string             `json:"device_type"`
+	Contributor  string             `json:"contributor"`
+	Metro        string             `json:"metro"`
+	MaxUsers     int32              `json:"max_users"`
+	Hours        []DeviceHourStatus `json:"hours"`
+	IssueReasons []string           `json:"issue_reasons"` // "interface_errors", "carrier_transitions", "drained"
+}
+
+type DeviceHistoryResponse struct {
+	Devices       []DeviceHistory `json:"devices"`
+	TimeRange     string          `json:"time_range"`
+	BucketMinutes int             `json:"bucket_minutes"`
+	BucketCount   int             `json:"bucket_count"`
+}
+
+func GetDeviceHistory(w http.ResponseWriter, r *http.Request) {
+	// Parse time range parameter
+	timeRange := r.URL.Query().Get("range")
+	if timeRange == "" {
+		timeRange = "24h"
+	}
+
+	// Parse optional bucket count (for responsive display)
+	requestedBuckets := 72 // default
+	if b := r.URL.Query().Get("buckets"); b != "" {
+		if n, err := strconv.Atoi(b); err == nil && n >= 12 && n <= 168 {
+			requestedBuckets = n
+		}
+	}
+
+	// Try to serve from cache first
+	if statusCache != nil {
+		if cached := statusCache.GetDeviceHistory(timeRange, requestedBuckets); cached != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("X-Cache", "HIT")
+			if err := json.NewEncoder(w).Encode(cached); err != nil {
+				log.Printf("JSON encoding error: %v", err)
+			}
+			return
+		}
+	}
+
+	// Cache miss - fetch fresh data
+	w.Header().Set("X-Cache", "MISS")
+	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	defer cancel()
+
+	resp := fetchDeviceHistoryData(ctx, timeRange, requestedBuckets)
+	if resp == nil {
+		http.Error(w, "Failed to fetch device history", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		log.Printf("JSON encoding error: %v", err)
+	}
+}
+
+// fetchDeviceHistoryData performs the actual device history data fetch from the database.
+func fetchDeviceHistoryData(ctx context.Context, timeRange string, requestedBuckets int) *DeviceHistoryResponse {
+	start := time.Now()
+
+	// Configure bucket size based on time range and requested bucket count
+	var totalMinutes int
+	switch timeRange {
+	case "1h":
+		totalMinutes = 60
+	case "3h":
+		totalMinutes = 3 * 60
+	case "6h":
+		totalMinutes = 6 * 60
+	case "12h":
+		totalMinutes = 12 * 60
+	case "3d":
+		totalMinutes = 3 * 24 * 60
+	case "7d":
+		totalMinutes = 7 * 24 * 60
+	default: // "24h"
+		timeRange = "24h"
+		totalMinutes = 24 * 60
+	}
+
+	// Calculate bucket size to fit requested number of buckets
+	bucketMinutes := totalMinutes / requestedBuckets
+	if bucketMinutes < 5 {
+		bucketMinutes = 5 // minimum 5 minutes
+	}
+	bucketCount := totalMinutes / bucketMinutes
+	totalHours := totalMinutes / 60
+
+	// Build the bucket interval expression
+	var bucketInterval string
+	if bucketMinutes >= 60 && bucketMinutes%60 == 0 {
+		bucketInterval = fmt.Sprintf("toStartOfInterval(event_ts, INTERVAL %d HOUR)", bucketMinutes/60)
+	} else {
+		bucketInterval = fmt.Sprintf("toStartOfInterval(event_ts, INTERVAL %d MINUTE)", bucketMinutes)
+	}
+
+	// Get all devices with their metadata
+	deviceQuery := `
+		SELECT
+			d.pk,
+			d.code,
+			d.device_type,
+			COALESCE(c.name, c.code, '') as contributor,
+			m.code as metro,
+			d.max_users,
+			d.status
+		FROM dz_devices_current d
+		LEFT JOIN dz_contributors_current c ON d.contributor_pk = c.pk
+		LEFT JOIN dz_metros_current m ON d.metro_pk = m.pk
+		WHERE d.status IN ('activated', 'soft-drained', 'hard-drained', 'suspended')
+	`
+
+	deviceRows, err := config.DB.Query(ctx, deviceQuery)
+	if err != nil {
+		log.Printf("Device history query error: %v", err)
+		return nil
+	}
+	defer deviceRows.Close()
+
+	// Build map of device metadata
+	type deviceMeta struct {
+		code        string
+		deviceType  string
+		contributor string
+		metro       string
+		maxUsers    int32
+		status      string
+	}
+	deviceMap := make(map[string]deviceMeta)
+
+	for deviceRows.Next() {
+		var pk string
+		var meta deviceMeta
+		if err := deviceRows.Scan(&pk, &meta.code, &meta.deviceType, &meta.contributor, &meta.metro, &meta.maxUsers, &meta.status); err != nil {
+			log.Printf("Device scan error: %v", err)
+			continue
+		}
+		deviceMap[pk] = meta
+	}
+
+	// Get interface issues per bucket
+	interfaceQuery := `
+		SELECT
+			device_pk,
+			` + bucketInterval + ` as bucket,
+			toUInt64(SUM(in_errors_delta)) as in_errors,
+			toUInt64(SUM(out_errors_delta)) as out_errors,
+			toUInt64(SUM(in_discards_delta)) as in_discards,
+			toUInt64(SUM(out_discards_delta)) as out_discards,
+			toUInt64(SUM(carrier_transitions_delta)) as carrier_transitions
+		FROM fact_dz_device_interface_counters
+		WHERE event_ts > now() - INTERVAL ? HOUR
+		GROUP BY device_pk, bucket
+		ORDER BY device_pk, bucket
+	`
+
+	interfaceRows, err := config.DB.Query(ctx, interfaceQuery, totalHours)
+	if err != nil {
+		log.Printf("Device interface query error: %v", err)
+		return nil
+	}
+	defer interfaceRows.Close()
+
+	// Build bucket stats per device
+	type bucketStats struct {
+		bucket             time.Time
+		inErrors           uint64
+		outErrors          uint64
+		inDiscards         uint64
+		outDiscards        uint64
+		carrierTransitions uint64
+	}
+	deviceBuckets := make(map[string][]bucketStats)
+
+	for interfaceRows.Next() {
+		var devicePK string
+		var stats bucketStats
+		if err := interfaceRows.Scan(&devicePK, &stats.bucket, &stats.inErrors, &stats.outErrors, &stats.inDiscards, &stats.outDiscards, &stats.carrierTransitions); err != nil {
+			log.Printf("Interface scan error: %v", err)
+			continue
+		}
+		deviceBuckets[devicePK] = append(deviceBuckets[devicePK], stats)
+	}
+
+	// Get historical device status per bucket
+	var historyBucketInterval string
+	if bucketMinutes >= 60 && bucketMinutes%60 == 0 {
+		historyBucketInterval = fmt.Sprintf("toStartOfInterval(snapshot_ts, INTERVAL %d HOUR)", bucketMinutes/60)
+	} else {
+		historyBucketInterval = fmt.Sprintf("toStartOfInterval(snapshot_ts, INTERVAL %d MINUTE)", bucketMinutes)
+	}
+
+	statusHistoryQuery := `
+		SELECT
+			pk as device_pk,
+			` + historyBucketInterval + ` as bucket,
+			argMax(status, snapshot_ts) as status
+		FROM dim_dz_devices_history
+		WHERE snapshot_ts > now() - INTERVAL ? HOUR
+		GROUP BY device_pk, bucket
+		ORDER BY device_pk, bucket
+	`
+
+	statusRows, err := config.DB.Query(ctx, statusHistoryQuery, totalHours)
+	if err != nil {
+		log.Printf("Device status history query error: %v", err)
+		// Non-fatal - continue without historical status
+	}
+
+	// Build map of device status per bucket
+	type deviceBucketKey struct {
+		devicePK string
+		bucket   string
+	}
+	deviceStatusHistory := make(map[deviceBucketKey]string)
+
+	if statusRows != nil {
+		defer statusRows.Close()
+		for statusRows.Next() {
+			var devicePK, status string
+			var bucket time.Time
+			if err := statusRows.Scan(&devicePK, &bucket, &status); err != nil {
+				log.Printf("Status history scan error: %v", err)
+				continue
+			}
+			key := deviceBucketKey{devicePK: devicePK, bucket: bucket.UTC().Format(time.RFC3339)}
+			deviceStatusHistory[key] = status
+		}
+	}
+
+	duration := time.Since(start)
+	metrics.RecordClickHouseQuery(duration, err)
+
+	// Build response with all buckets for each device
+	now := time.Now().UTC()
+	bucketDuration := time.Duration(bucketMinutes) * time.Minute
+	var devices []DeviceHistory
+
+	// Thresholds for device health
+	const (
+		ErrorWarningThreshold  = 100  // errors per bucket
+		ErrorCriticalThreshold = 1000 // errors per bucket
+	)
+
+	for pk, meta := range deviceMap {
+		// Check if device is currently drained
+		isCurrentlyDrained := meta.status == "soft-drained" || meta.status == "hard-drained" || meta.status == "suspended"
+
+		// Track issue reasons for this device
+		issueReasons := make(map[string]bool)
+
+		if isCurrentlyDrained {
+			issueReasons["drained"] = true
+		}
+
+		// Get interface stats for this device
+		buckets := deviceBuckets[pk]
+
+		// Check for interface issues
+		for _, b := range buckets {
+			totalErrors := b.inErrors + b.outErrors
+			totalDiscards := b.inDiscards + b.outDiscards
+			if totalErrors >= ErrorWarningThreshold || totalDiscards >= ErrorWarningThreshold {
+				issueReasons["interface_errors"] = true
+			}
+			if b.carrierTransitions > 0 {
+				issueReasons["carrier_transitions"] = true
+			}
+		}
+
+		// Also check if device was drained at any point in the history
+		for key := range deviceStatusHistory {
+			if key.devicePK == pk {
+				status := deviceStatusHistory[key]
+				if status == "soft-drained" || status == "hard-drained" || status == "suspended" {
+					issueReasons["drained"] = true
+					break
+				}
+			}
+		}
+
+		// Convert issue reasons to slice
+		var issueReasonsList []string
+		for reason := range issueReasons {
+			issueReasonsList = append(issueReasonsList, reason)
+		}
+		sort.Strings(issueReasonsList)
+
+		// Build bucket status array
+		bucketMap := make(map[string]bucketStats)
+		for _, b := range buckets {
+			key := b.bucket.UTC().Format(time.RFC3339)
+			bucketMap[key] = b
+		}
+
+		var hourStatuses []DeviceHourStatus
+		for i := bucketCount - 1; i >= 0; i-- {
+			bucketStart := now.Truncate(bucketDuration).Add(-time.Duration(i) * bucketDuration)
+			key := bucketStart.UTC().Format(time.RFC3339)
+
+			// Check historical status for this bucket
+			histKey := deviceBucketKey{devicePK: pk, bucket: key}
+			historicalStatus, hasHistory := deviceStatusHistory[histKey]
+			wasDrained := hasHistory && (historicalStatus == "soft-drained" || historicalStatus == "hard-drained" || historicalStatus == "suspended")
+
+			// If device was drained at this time, show as disabled
+			if wasDrained {
+				hourStatuses = append(hourStatuses, DeviceHourStatus{
+					Hour:   key,
+					Status: "disabled",
+				})
+				continue
+			}
+
+			// Check if we have interface data for this bucket
+			if stats, ok := bucketMap[key]; ok {
+				status := classifyDeviceStatus(stats.inErrors+stats.outErrors, stats.inDiscards+stats.outDiscards, stats.carrierTransitions)
+				hourStatuses = append(hourStatuses, DeviceHourStatus{
+					Hour:               key,
+					Status:             status,
+					MaxUsers:           meta.maxUsers,
+					InErrors:           stats.inErrors,
+					OutErrors:          stats.outErrors,
+					InDiscards:         stats.inDiscards,
+					OutDiscards:        stats.outDiscards,
+					CarrierTransitions: stats.carrierTransitions,
+				})
+			} else {
+				// No interface data - show as healthy (no errors)
+				hourStatuses = append(hourStatuses, DeviceHourStatus{
+					Hour:     key,
+					Status:   "healthy",
+					MaxUsers: meta.maxUsers,
+				})
+			}
+		}
+
+		devices = append(devices, DeviceHistory{
+			PK:           pk,
+			Code:         meta.code,
+			DeviceType:   meta.deviceType,
+			Contributor:  meta.contributor,
+			Metro:        meta.metro,
+			MaxUsers:     meta.maxUsers,
+			Hours:        hourStatuses,
+			IssueReasons: issueReasonsList,
+		})
+	}
+
+	// Sort devices by code for consistent ordering
+	sort.Slice(devices, func(i, j int) bool {
+		return devices[i].Code < devices[j].Code
+	})
+
+	resp := &DeviceHistoryResponse{
+		Devices:       devices,
+		TimeRange:     timeRange,
+		BucketMinutes: bucketMinutes,
+		BucketCount:   bucketCount,
+	}
+
+	log.Printf("fetchDeviceHistoryData completed in %v (range=%s, buckets=%d, devices=%d)",
+		time.Since(start), timeRange, bucketCount, len(devices))
+
+	return resp
+}
+
+func classifyDeviceStatus(totalErrors, totalDiscards uint64, carrierTransitions uint64) string {
+	// Thresholds for device health
+	const (
+		ErrorWarningThreshold  = 100   // errors per bucket
+		ErrorCriticalThreshold = 1000  // errors per bucket
+	)
+
+	if totalErrors >= ErrorCriticalThreshold || carrierTransitions >= 10 {
+		return "unhealthy"
+	}
+	if totalErrors >= ErrorWarningThreshold || totalDiscards >= ErrorWarningThreshold || carrierTransitions > 0 {
+		return "degraded"
+	}
+	return "healthy"
+}

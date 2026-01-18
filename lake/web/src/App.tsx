@@ -16,6 +16,7 @@ import { Landing } from '@/components/landing'
 import { Sidebar } from '@/components/sidebar'
 import { SearchSpotlight } from '@/components/search-spotlight'
 import { TopologyPage } from '@/components/topology-page'
+import { PathCalculatorPage } from '@/components/path-calculator-page'
 import { StatusPage } from '@/components/status-page'
 import { TimelinePage } from '@/components/timeline-page'
 import { StatusAppendix } from '@/components/status-appendix'
@@ -1669,8 +1670,9 @@ function AppContent() {
             } />
             <Route path="/chat/sessions" element={<ChatSessionsView />} />
 
-            {/* Topology route */}
+            {/* Topology routes */}
             <Route path="/topology" element={<TopologyPage />} />
+            <Route path="/topology/path-calculator" element={<PathCalculatorPage />} />
 
             {/* Status routes */}
             <Route path="/status" element={<StatusPage />} />

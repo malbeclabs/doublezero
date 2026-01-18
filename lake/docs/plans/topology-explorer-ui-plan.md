@@ -178,47 +178,38 @@ Group and color devices by metro/datacenter.
 ---
 
 ### 12. Traffic Flow Visualization
-**Priority: Medium** | **Complexity: Medium** | **Status: Not Started**
+**Priority: Medium** | **Complexity: Medium** | **Status: Done**
 
-Overlay real-time and historical traffic utilization on topology views.
+Overlay real-time traffic utilization on topology views.
 
 **Features:**
 - Edge thickness = bandwidth utilization percentage
-- Color gradient: green (0-50%) → yellow (50-80%) → red (80%+)
-- Tooltip shows: current bps, utilization %, peak in last hour
-- Toggle between in/out/bidirectional view
-- Time slider for historical playback (last 24h, 7d, 30d)
-- Animate flow direction (optional, can be distracting)
+- Color gradient: green (<20%) → lime (20-50%) → yellow (50-80%) → red (≥80%)
+- Legend panel shows utilization breakdown and high utilization links
+- Available on both Graph and Map views
 
 **Use Cases:**
 - Capacity monitoring - identify saturated links
 - Troubleshooting congestion - where is the bottleneck?
 - Capacity planning - which links need upgrades?
 
-**Data Source:** `fact_dz_device_interface_counters` (ClickHouse)
-- `in_octets_delta`, `out_octets_delta` for bytes transferred
-- `delta_duration` for rate calculation
-- `link_pk` to join with topology
-- `bandwidth_bps` from `dim_dz_links_current` for utilization %
-
-**API:** `GET /api/topology/traffic-overlay?timeRange=5m`
-
-**Query Pattern:**
-```sql
-SELECT
-  link_pk,
-  SUM(in_octets_delta) * 8 / SUM(delta_duration) AS in_bps,
-  SUM(out_octets_delta) * 8 / SUM(delta_duration) AS out_bps
-FROM fact_dz_device_interface_counters
-WHERE event_ts > now() - INTERVAL 5 MINUTE
-  AND link_pk != ''
-GROUP BY link_pk
-```
+**Data Source:** Existing `GET /api/topology` response
+- `in_bps`, `out_bps` for current traffic
+- `bandwidth_bps` for capacity
+- Utilization calculated as: `(in_bps + out_bps) / bandwidth_bps * 100`
 
 **Implementation:**
-1. API endpoint returns traffic per link_pk
-2. Graph/Map views merge with topology data
-3. Apply visual styles based on utilization thresholds
+- Frontend: `topology-graph.tsx` and `topology-map.tsx` with `trafficFlowEnabled`/`trafficFlowMode` toggle
+- Toggle button with BarChart3 icon, keyboard shortcut `t`
+- Edge coloring based on utilization levels (low/medium/high/critical/idle)
+- Legend panel showing summary stats and top high-utilization links
+- Auto-refresh every 30 seconds when enabled
+
+**Future enhancements:**
+- Time slider for historical playback
+- Animate flow direction
+- Toggle between in/out/bidirectional view
+- Dedicated `/api/topology/traffic-overlay` endpoint for more granular data
 
 ---
 
@@ -672,9 +663,9 @@ Enhance maintenance planner and failure analysis with stake impact.
 - [x] Metro Connectivity Matrix page
 - [x] Maintenance Planner page
 
-### Phase 11: Traffic & Utilization (Partial)
-- [ ] Traffic Flow Visualization (#12) - edge thickness by utilization
-- [x] Metro Clustering View (#11) - metro colors and collapse/expand in graph view
+### Phase 11: Traffic & Utilization (Done)
+- [x] Traffic Flow Visualization (#12) - edge color/thickness by utilization on both views
+- [x] Metro Clustering View (#11) - metro colors and collapse/expand on both views
 
 ### Phase 12: Latency Intelligence (Mostly Done)
 - [x] Link Health Overlay (#18) - color by SLA compliance

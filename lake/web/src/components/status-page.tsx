@@ -1,14 +1,68 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState, useEffect, useMemo } from 'react'
 import { useDelayedLoading } from '@/hooks/use-delayed-loading'
-import { Link } from 'react-router-dom'
-import { CheckCircle2, AlertTriangle, XCircle, ArrowUpDown, Cpu } from 'lucide-react'
-import { fetchStatus, fetchLinkHistory, type StatusResponse, type InterfaceIssue, type NonActivatedLink } from '@/lib/api'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { CheckCircle2, AlertTriangle, XCircle, ArrowUpDown, Cpu, ChevronDown } from 'lucide-react'
+import { fetchStatus, fetchLinkHistory, type StatusResponse, type InterfaceIssue, type NonActivatedLink, type LinkHistory } from '@/lib/api'
 import { StatCard } from '@/components/stat-card'
 import { LinkStatusTimelines } from '@/components/link-status-timelines'
 
 type TimeRange = '1h' | '6h' | '12h' | '24h' | '3d' | '7d'
+type FilterTimeRange = '3h' | '6h' | '12h' | '24h'
 type IssueFilter = 'packet_loss' | 'high_latency' | 'extended_loss' | 'drained' | 'no_data' | 'no_issues'
+type HealthFilter = 'healthy' | 'degraded' | 'unhealthy' | 'disabled'
+
+const filterTimeRangeLabels: Record<FilterTimeRange, string> = {
+  '3h': 'Last 3 Hours',
+  '6h': 'Last 6 Hours',
+  '12h': 'Last 12 Hours',
+  '24h': 'Last 24 Hours',
+}
+
+function FilterTimeRangeSelector({
+  value,
+  onChange,
+}: {
+  value: FilterTimeRange
+  onChange: (value: FilterTimeRange) => void
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+
+  return (
+    <div className="relative inline-block">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-0.5 transition-colors"
+      >
+        ({filterTimeRangeLabels[value]})
+        <ChevronDown className="h-3 w-3" />
+      </button>
+      {isOpen && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
+          <div className="absolute left-0 top-full mt-1 z-50 bg-popover border border-border rounded-md shadow-lg py-1 min-w-[120px]">
+            {(Object.keys(filterTimeRangeLabels) as FilterTimeRange[]).map((range) => (
+              <button
+                key={range}
+                onClick={() => {
+                  onChange(range)
+                  setIsOpen(false)
+                }}
+                className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
+                  value === range
+                    ? 'bg-muted text-foreground'
+                    : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                }`}
+              >
+                {filterTimeRangeLabels[range]}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
 
 function Skeleton({ className }: { className?: string }) {
   return <div className={`animate-pulse bg-muted rounded ${className || ''}`} />
@@ -18,68 +72,23 @@ function StatusPageSkeleton() {
   return (
     <div className="flex-1 overflow-auto">
       <div className="max-w-6xl mx-auto px-4 sm:px-8 py-8">
-        {/* Status indicator skeleton */}
         <div className="mb-8">
           <Skeleton className="h-[72px] rounded-lg" />
         </div>
-
-        {/* Stats grid skeleton */}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-x-8 gap-y-6 mb-8">
           {Array.from({ length: 10 }).map((_, i) => (
             <Skeleton key={i} className="h-12 w-24" />
           ))}
         </div>
-
-        {/* Health cards skeleton */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-          <Skeleton className="h-[180px] rounded-lg" />
-          <Skeleton className="h-[180px] rounded-lg" />
+        <div className="mb-6">
+          <Skeleton className="h-10 w-48" />
         </div>
-
-        {/* Utilization cards skeleton */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
           <Skeleton className="h-[200px] rounded-lg" />
           <Skeleton className="h-[200px] rounded-lg" />
         </div>
-
-        {/* Timeline section skeleton */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <Skeleton className="h-6 w-40" />
-            <Skeleton className="h-8 w-64" />
-          </div>
-          <Skeleton className="h-[300px] rounded-lg" />
-        </div>
+        <Skeleton className="h-[300px] rounded-lg" />
       </div>
-    </div>
-  )
-}
-
-function TimeRangeSelector({ value, onChange }: { value: TimeRange; onChange: (v: TimeRange) => void }) {
-  const options: { value: TimeRange; label: string }[] = [
-    { value: '1h', label: '1h' },
-    { value: '6h', label: '6h' },
-    { value: '12h', label: '12h' },
-    { value: '24h', label: '24h' },
-    { value: '3d', label: '3d' },
-    { value: '7d', label: '7d' },
-  ]
-
-  return (
-    <div className="inline-flex rounded-lg border border-border bg-muted/30 p-0.5">
-      {options.map((opt) => (
-        <button
-          key={opt.value}
-          onClick={() => onChange(opt.value)}
-          className={`px-3 py-1 text-sm rounded-md transition-colors ${
-            value === opt.value
-              ? 'bg-background text-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          {opt.label}
-        </button>
-      ))}
     </div>
   )
 }
@@ -109,7 +118,6 @@ function formatTimeAgo(isoString: string): string {
 function getStatusReasons(status: StatusResponse): string[] {
   const reasons: string[] = []
 
-  // Check link health
   if (status.links.unhealthy > 0) {
     reasons.push(`${status.links.unhealthy} link${status.links.unhealthy > 1 ? 's' : ''} with critical issues`)
   }
@@ -117,14 +125,12 @@ function getStatusReasons(status: StatusResponse): string[] {
     reasons.push(`${status.links.degraded} link${status.links.degraded > 1 ? 's' : ''} with degraded performance`)
   }
 
-  // Check packet loss
   if (status.performance.avg_loss_percent >= 1.0) {
     reasons.push(`${status.performance.avg_loss_percent.toFixed(1)}% average packet loss`)
   } else if (status.performance.avg_loss_percent >= 0.1) {
     reasons.push(`${status.performance.avg_loss_percent.toFixed(2)}% packet loss detected`)
   }
 
-  // Check for non-activated devices/links
   const nonActivatedDevices = Object.entries(status.network.devices_by_status)
     .filter(([s]) => s !== 'activated')
     .reduce((sum, [, count]) => sum + count, 0)
@@ -160,7 +166,6 @@ function StatusIndicator({ statusData }: { statusData: StatusResponse }) {
   const reasons = getStatusReasons(statusData)
   const [, forceUpdate] = useState(0)
 
-  // Update relative time every 10 seconds
   useEffect(() => {
     const interval = setInterval(() => forceUpdate(n => n + 1), 10000)
     return () => clearInterval(interval)
@@ -205,292 +210,34 @@ function StatusIndicator({ statusData }: { statusData: StatusResponse }) {
   )
 }
 
-function CountWithPopover({
-  count,
-  label,
-  status,
-  items,
-  renderItem
-}: {
-  count: number
-  label: string
-  status: 'good' | 'warning' | 'bad'
-  items?: { code: string; status: string }[]
-  renderItem?: (item: { code: string; status: string }) => React.ReactNode
-}) {
-  const [isOpen, setIsOpen] = useState(false)
-  const hasPopover = items && items.length > 0 && renderItem
-
-  const statusColors = {
-    good: 'bg-green-500',
-    warning: 'bg-amber-500',
-    bad: 'bg-red-500'
-  }
-
-  const content = (
-    <div className="flex items-center gap-2">
-      <div className={`w-2 h-2 rounded-full ${statusColors[status]}`} />
-      <span className="font-medium tabular-nums">{count}</span>
-      <span className="text-muted-foreground">{label}</span>
-    </div>
-  )
-
-  if (!hasPopover) {
-    return content
-  }
+function TabNavigation({ activeTab }: { activeTab: 'links' | 'devices' }) {
+  const navigate = useNavigate()
 
   return (
-    <div className="relative inline-block">
+    <div className="flex gap-1 border-b border-border mb-6">
       <button
-        className="text-left hover:underline underline-offset-2"
-        onMouseEnter={() => setIsOpen(true)}
-        onMouseLeave={() => setIsOpen(false)}
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => navigate('/status/links')}
+        className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+          activeTab === 'links'
+            ? 'border-primary text-foreground'
+            : 'border-transparent text-muted-foreground hover:text-foreground'
+        }`}
       >
-        {content}
+        Links
       </button>
-      {isOpen && (
-        <div
-          className="absolute left-0 top-full mt-1 z-50 bg-popover border border-border rounded-lg shadow-lg p-3 min-w-[200px] max-h-[300px] overflow-y-auto"
-          onMouseEnter={() => setIsOpen(true)}
-          onMouseLeave={() => setIsOpen(false)}
-        >
-          <div className="space-y-1.5 text-xs">
-            {items!.map((item, idx) => (
-              <div key={`${item.code}-${idx}`}>{renderItem!(item)}</div>
-            ))}
-          </div>
-        </div>
-      )}
+      <button
+        onClick={() => navigate('/status/devices')}
+        className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+          activeTab === 'devices'
+            ? 'border-primary text-foreground'
+            : 'border-transparent text-muted-foreground hover:text-foreground'
+        }`}
+      >
+        Devices
+      </button>
     </div>
   )
 }
-
-function IssueSummaryCard({
-  alerts,
-  interfaceIssuesCount,
-  disabledLinksCount
-}: {
-  alerts: StatusResponse['alerts']
-  interfaceIssuesCount: number
-  disabledLinksCount: number
-}) {
-  const disabledDevices = (alerts?.devices || []).filter(d =>
-    d.status === 'soft-drained' || d.status === 'hard-drained'
-  )
-
-  const scrollToInterfaceIssues = () => {
-    document.getElementById('interface-issues')?.scrollIntoView({ behavior: 'smooth' })
-  }
-
-  const scrollToDisabledDevices = () => {
-    document.getElementById('disabled-devices')?.scrollIntoView({ behavior: 'smooth' })
-  }
-
-  const scrollToDisabledLinks = () => {
-    document.getElementById('disabled-links')?.scrollIntoView({ behavior: 'smooth' })
-  }
-
-  return (
-    <div className="border border-border rounded-lg p-4">
-      <div className="flex items-center gap-2 mb-4">
-        <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-        <h3 className="font-medium">Issue Summary</h3>
-        <span className="text-xs text-muted-foreground ml-auto">Current</span>
-      </div>
-      <div className="space-y-2 text-sm">
-        {disabledDevices.length > 0 ? (
-          <button
-            onClick={scrollToDisabledDevices}
-            className="flex items-center gap-2 text-left hover:underline underline-offset-2"
-          >
-            <div className="w-2 h-2 rounded-full bg-amber-500" />
-            <span className="font-medium tabular-nums">{disabledDevices.length}</span>
-            <span className="text-muted-foreground">{disabledDevices.length === 1 ? 'disabled device' : 'disabled devices'}</span>
-          </button>
-        ) : (
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-green-500" />
-            <span className="font-medium tabular-nums">0</span>
-            <span className="text-muted-foreground">disabled devices</span>
-          </div>
-        )}
-        {disabledLinksCount > 0 ? (
-          <button
-            onClick={scrollToDisabledLinks}
-            className="flex items-center gap-2 text-left hover:underline underline-offset-2"
-          >
-            <div className="w-2 h-2 rounded-full bg-amber-500" />
-            <span className="font-medium tabular-nums">{disabledLinksCount}</span>
-            <span className="text-muted-foreground">{disabledLinksCount === 1 ? 'disabled link' : 'disabled links'}</span>
-          </button>
-        ) : (
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-green-500" />
-            <span className="font-medium tabular-nums">0</span>
-            <span className="text-muted-foreground">disabled links</span>
-          </div>
-        )}
-        {interfaceIssuesCount > 0 ? (
-          <button
-            onClick={scrollToInterfaceIssues}
-            className="flex items-center gap-2 text-left hover:underline underline-offset-2"
-          >
-            <div className={`w-2 h-2 rounded-full ${interfaceIssuesCount <= 3 ? 'bg-amber-500' : 'bg-red-500'}`} />
-            <span className="font-medium tabular-nums">{interfaceIssuesCount}</span>
-            <span className="text-muted-foreground">{interfaceIssuesCount === 1 ? 'interface issue' : 'interface issues'}</span>
-          </button>
-        ) : (
-          <CountWithPopover
-            count={0}
-            label="interface issues"
-            status="good"
-          />
-        )}
-      </div>
-    </div>
-  )
-}
-
-function DisabledDevicesTable({ devices }: { devices: StatusResponse['alerts']['devices'] | null }) {
-  if (!devices || devices.length === 0) return null
-
-  const statusColors: Record<string, string> = {
-    'soft-drained': 'text-amber-600 dark:text-amber-400',
-    'hard-drained': 'text-amber-600 dark:text-amber-400',
-    suspended: 'text-red-600 dark:text-red-400',
-    pending: 'text-amber-600 dark:text-amber-400',
-    deleted: 'text-gray-400',
-    rejected: 'text-red-400',
-  }
-
-  return (
-    <div id="disabled-devices" className="border border-border rounded-lg overflow-hidden">
-      <div className="px-4 py-3 bg-muted/50 border-b border-border flex items-center gap-2">
-        <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-        <h3 className="font-medium">Disabled Devices</h3>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead>
-            <tr className="text-left text-sm text-muted-foreground border-b border-border">
-              <th className="px-4 py-2 font-medium">Device</th>
-              <th className="px-4 py-2 font-medium">Metro</th>
-              <th className="px-4 py-2 font-medium">Status</th>
-              <th className="px-4 py-2 font-medium text-right">Since</th>
-            </tr>
-          </thead>
-          <tbody>
-            {devices.map((device, idx) => (
-              <tr key={`${device.code}-${idx}`} className="border-b border-border last:border-b-0">
-                <td className="px-4 py-2.5">
-                  <Link to={`/dz/devices/${device.pk}`} className="font-mono text-sm hover:underline">{device.code}</Link>
-                  <span className="text-xs text-muted-foreground ml-2">{device.device_type}</span>
-                </td>
-                <td className="px-4 py-2.5 text-sm text-muted-foreground">{device.metro}</td>
-                <td className={`px-4 py-2.5 text-sm capitalize ${statusColors[device.status] || ''}`}>
-                  {device.status.replace('-', ' ')}
-                </td>
-                <td className="px-4 py-2.5 text-sm tabular-nums text-right text-muted-foreground">
-                  {formatTimeAgo(device.since)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  )
-}
-
-interface DisabledLinkRow {
-  pk: string
-  code: string
-  link_type: string
-  side_a_metro: string
-  side_z_metro: string
-  reason: string // "drained" or "packet loss"
-}
-
-function DisabledLinksTable({
-  drainedLinks,
-  packetLossLinks
-}: {
-  drainedLinks: NonActivatedLink[] | null
-  packetLossLinks: DisabledLinkRow[]
-}) {
-  // Merge drained links and packet loss links, deduping by code
-  const allLinks = useMemo(() => {
-    const linkMap = new Map<string, DisabledLinkRow>()
-
-    // Add drained links first with specific drain type
-    for (const link of drainedLinks || []) {
-      const reason = link.status === 'hard-drained' ? 'hard drained' : 'soft drained'
-      linkMap.set(link.code, {
-        pk: link.pk,
-        code: link.code,
-        link_type: link.link_type,
-        side_a_metro: link.side_a_metro,
-        side_z_metro: link.side_z_metro,
-        reason,
-      })
-    }
-
-    // Add packet loss links (won't overwrite if already drained)
-    for (const link of packetLossLinks) {
-      if (!linkMap.has(link.code)) {
-        linkMap.set(link.code, link)
-      }
-    }
-
-    return Array.from(linkMap.values())
-  }, [drainedLinks, packetLossLinks])
-
-  if (allLinks.length === 0) return null
-
-  const reasonColors: Record<string, string> = {
-    'soft drained': 'text-amber-600 dark:text-amber-400',
-    'hard drained': 'text-orange-600 dark:text-orange-400',
-    'isis delay override': 'text-amber-600 dark:text-amber-400',
-    'extended packet loss': 'text-red-600 dark:text-red-400',
-  }
-
-  return (
-    <div id="disabled-links" className="border border-border rounded-lg overflow-hidden">
-      <div className="px-4 py-3 bg-muted/50 border-b border-border flex items-center gap-2">
-        <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-        <h3 className="font-medium">Disabled Links</h3>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead>
-            <tr className="text-left text-sm text-muted-foreground border-b border-border">
-              <th className="px-4 py-2 font-medium">Link</th>
-              <th className="px-4 py-2 font-medium">Route</th>
-              <th className="px-4 py-2 font-medium">Reason</th>
-            </tr>
-          </thead>
-          <tbody>
-            {allLinks.map((link, idx) => (
-              <tr key={`${link.code}-${idx}`} className="border-b border-border last:border-b-0">
-                <td className="px-4 py-2.5">
-                  <Link to={`/dz/links/${link.pk}`} className="font-mono text-sm hover:underline">{link.code}</Link>
-                  <span className="text-xs text-muted-foreground ml-2">{link.link_type}</span>
-                </td>
-                <td className="px-4 py-2.5 text-sm text-muted-foreground">{link.side_a_metro} — {link.side_z_metro}</td>
-                <td className={`px-4 py-2.5 text-sm capitalize ${reasonColors[link.reason] || ''}`}>
-                  {link.reason}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  )
-}
-
-type HealthFilter = 'healthy' | 'degraded' | 'unhealthy' | 'disabled'
 
 function HealthFilterItem({
   color,
@@ -535,15 +282,18 @@ function HealthFilterItem({
 function LinkHealthFilterCard({
   links,
   selected,
-  onChange
+  onChange,
+  filterTimeRange,
+  onFilterTimeRangeChange,
 }: {
-  links: StatusResponse['links']
+  links: { healthy: number; degraded: number; unhealthy: number; disabled: number; total: number }
   selected: HealthFilter[]
   onChange: (filters: HealthFilter[]) => void
+  filterTimeRange: FilterTimeRange
+  onFilterTimeRangeChange: (range: FilterTimeRange) => void
 }) {
   const toggleFilter = (filter: HealthFilter) => {
     if (selected.includes(filter)) {
-      // Don't allow deselecting the last filter
       if (selected.length > 1) {
         onChange(selected.filter(f => f !== filter))
       }
@@ -564,7 +314,7 @@ function LinkHealthFilterCard({
       <div className="flex items-center gap-2 mb-3">
         <ArrowUpDown className="h-4 w-4 text-muted-foreground" />
         <h3 className="font-medium">Link Health</h3>
-        <span className="text-xs text-muted-foreground">(Last Hour)</span>
+        <FilterTimeRangeSelector value={filterTimeRange} onChange={onFilterTimeRangeChange} />
         <button
           onClick={() => onChange(['healthy', 'degraded', 'unhealthy', 'disabled'])}
           className={`text-xs ml-auto px-1.5 py-0.5 rounded transition-colors ${
@@ -575,7 +325,6 @@ function LinkHealthFilterCard({
         </button>
       </div>
 
-      {/* Health bar */}
       <div className="h-2 rounded-full overflow-hidden flex mb-3 bg-muted">
         {healthyPct > 0 && (
           <div
@@ -603,7 +352,6 @@ function LinkHealthFilterCard({
         )}
       </div>
 
-      {/* Legend */}
       <div className="space-y-0.5 text-sm">
         <HealthFilterItem
           color="bg-green-500"
@@ -625,7 +373,7 @@ function LinkHealthFilterCard({
           color="bg-red-500"
           label="Unhealthy"
           count={links.unhealthy}
-          description="Severe packet loss (≥ 10%), or missing telemetry (link dark)."
+          description="Severe packet loss (>= 10%), or missing telemetry (link dark)."
           selected={selected.includes('unhealthy')}
           onClick={() => toggleFilter('unhealthy')}
         />
@@ -642,31 +390,23 @@ function LinkHealthFilterCard({
   )
 }
 
-const timeRangeLabels: Record<TimeRange, string> = {
-  '1h': 'Last Hour',
-  '6h': 'Last 6 Hours',
-  '12h': 'Last 12 Hours',
-  '24h': 'Last 24 Hours',
-  '3d': 'Last 3 Days',
-  '7d': 'Last 7 Days',
-}
-
 function LinkIssuesFilterCard({
   counts,
   selected,
   onChange,
-  timeRange
+  filterTimeRange,
+  onFilterTimeRangeChange,
 }: {
   counts: IssueCounts
   selected: IssueFilter[]
   onChange: (filters: IssueFilter[]) => void
-  timeRange: TimeRange
+  filterTimeRange: FilterTimeRange
+  onFilterTimeRangeChange: (range: FilterTimeRange) => void
 }) {
   const allFilters: IssueFilter[] = ['packet_loss', 'high_latency', 'extended_loss', 'drained', 'no_data', 'no_issues']
 
   const toggleFilter = (filter: IssueFilter) => {
     if (selected.includes(filter)) {
-      // Don't allow deselecting the last filter
       if (selected.length > 1) {
         onChange(selected.filter(f => f !== filter))
       }
@@ -678,7 +418,7 @@ function LinkIssuesFilterCard({
   const allSelected = selected.length === allFilters.length
 
   const items: { filter: IssueFilter; label: string; color: string; description: string }[] = [
-    { filter: 'packet_loss', label: 'Packet Loss', color: 'bg-purple-500', description: 'Link experiencing measurable packet loss (≥ 1%).' },
+    { filter: 'packet_loss', label: 'Packet Loss', color: 'bg-purple-500', description: 'Link experiencing measurable packet loss (>= 1%).' },
     { filter: 'high_latency', label: 'High Latency', color: 'bg-blue-500', description: 'Link latency exceeds committed RTT.' },
     { filter: 'extended_loss', label: 'Extended Loss', color: 'bg-orange-500', description: 'Link has 100% packet loss for 2+ hours.' },
     { filter: 'drained', label: 'Drained', color: 'bg-slate-500 dark:bg-slate-600', description: 'Link is soft-drained, hard-drained, or has ISIS delay override.' },
@@ -686,7 +426,6 @@ function LinkIssuesFilterCard({
     { filter: 'no_issues', label: 'No Issues', color: 'bg-cyan-500', description: 'Link with no detected issues in the time range.' },
   ]
 
-  // Calculate percentages for the bar (total includes no_issues)
   const grandTotal = (counts.total + counts.no_issues) || 1
   const packetLossPct = (counts.packet_loss / grandTotal) * 100
   const highLatencyPct = (counts.high_latency / grandTotal) * 100
@@ -700,7 +439,7 @@ function LinkIssuesFilterCard({
       <div className="flex items-center gap-2 mb-3">
         <AlertTriangle className="h-4 w-4 text-muted-foreground" />
         <h3 className="font-medium">Link Issues</h3>
-        <span className="text-xs text-muted-foreground">({timeRangeLabels[timeRange]})</span>
+        <FilterTimeRangeSelector value={filterTimeRange} onChange={onFilterTimeRangeChange} />
         <button
           onClick={() => onChange(allFilters)}
           className={`text-xs ml-auto px-1.5 py-0.5 rounded transition-colors ${
@@ -711,7 +450,6 @@ function LinkIssuesFilterCard({
         </button>
       </div>
 
-      {/* Issues bar */}
       <div className="h-2 rounded-full overflow-hidden flex mb-3 bg-muted">
         {noIssuesPct > 0 && (
           <div
@@ -751,7 +489,6 @@ function LinkIssuesFilterCard({
         )}
       </div>
 
-      {/* Issues list */}
       <div className="space-y-0.5 text-sm">
         {items.map(({ filter, label, color, description }) => (
           <HealthFilterItem
@@ -787,7 +524,7 @@ function TopLinkUtilization({ links }: { links: StatusResponse['links']['top_uti
         <div className="flex items-center gap-2 mb-3">
           <ArrowUpDown className="h-4 w-4 text-muted-foreground" />
           <h3 className="font-medium">Max Link Utilization</h3>
-          <span className="text-xs text-muted-foreground ml-auto">p95 · Last 24h</span>
+          <span className="text-xs text-muted-foreground ml-auto">p95 - Last 24h</span>
         </div>
         <div className="text-sm text-muted-foreground">No link data available</div>
       </div>
@@ -799,7 +536,7 @@ function TopLinkUtilization({ links }: { links: StatusResponse['links']['top_uti
       <div className="flex items-center gap-2 mb-3">
         <ArrowUpDown className="h-4 w-4 text-muted-foreground" />
         <h3 className="font-medium">Max Link Utilization</h3>
-        <span className="text-xs text-muted-foreground ml-auto">p95 · Last 24h</span>
+        <span className="text-xs text-muted-foreground ml-auto">p95 - Last 24h</span>
       </div>
       <div className="space-y-2">
         {links.slice(0, 5).map((link) => {
@@ -809,7 +546,7 @@ function TopLinkUtilization({ links }: { links: StatusResponse['links']['top_uti
             <div key={link.pk} className="flex items-center gap-3">
               <div className="flex-1 min-w-0">
                 <Link to={`/dz/links/${link.pk}`} className="font-mono text-xs truncate hover:underline" title={link.code}>{link.code}</Link>
-                <div className="text-[10px] text-muted-foreground">{link.side_a_metro} — {link.side_z_metro}</div>
+                <div className="text-[10px] text-muted-foreground">{link.side_a_metro} - {link.side_z_metro}</div>
               </div>
               <div className="text-xs text-muted-foreground tabular-nums w-16 text-right">
                 {formatBandwidth(peakBps)}
@@ -875,6 +612,141 @@ function TopDeviceUtilization({ devices }: { devices: StatusResponse['top_device
   )
 }
 
+interface DisabledLinkRow {
+  pk: string
+  code: string
+  link_type: string
+  side_a_metro: string
+  side_z_metro: string
+  reason: string
+}
+
+function DisabledLinksTable({
+  drainedLinks,
+  packetLossLinks
+}: {
+  drainedLinks: NonActivatedLink[] | null
+  packetLossLinks: DisabledLinkRow[]
+}) {
+  const allLinks = useMemo(() => {
+    const linkMap = new Map<string, DisabledLinkRow>()
+
+    for (const link of drainedLinks || []) {
+      const reason = link.status === 'hard-drained' ? 'hard drained' : 'soft drained'
+      linkMap.set(link.code, {
+        pk: link.pk,
+        code: link.code,
+        link_type: link.link_type,
+        side_a_metro: link.side_a_metro,
+        side_z_metro: link.side_z_metro,
+        reason,
+      })
+    }
+
+    for (const link of packetLossLinks) {
+      if (!linkMap.has(link.code)) {
+        linkMap.set(link.code, link)
+      }
+    }
+
+    return Array.from(linkMap.values())
+  }, [drainedLinks, packetLossLinks])
+
+  if (allLinks.length === 0) return null
+
+  const reasonColors: Record<string, string> = {
+    'soft drained': 'text-amber-600 dark:text-amber-400',
+    'hard drained': 'text-orange-600 dark:text-orange-400',
+    'isis delay override': 'text-amber-600 dark:text-amber-400',
+    'extended packet loss': 'text-red-600 dark:text-red-400',
+  }
+
+  return (
+    <div id="disabled-links" className="border border-border rounded-lg overflow-hidden">
+      <div className="px-4 py-3 bg-muted/50 border-b border-border flex items-center gap-2">
+        <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+        <h3 className="font-medium">Disabled Links</h3>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full">
+          <thead>
+            <tr className="text-left text-sm text-muted-foreground border-b border-border">
+              <th className="px-4 py-2 font-medium">Link</th>
+              <th className="px-4 py-2 font-medium">Route</th>
+              <th className="px-4 py-2 font-medium">Reason</th>
+            </tr>
+          </thead>
+          <tbody>
+            {allLinks.map((link, idx) => (
+              <tr key={`${link.code}-${idx}`} className="border-b border-border last:border-b-0">
+                <td className="px-4 py-2.5">
+                  <Link to={`/dz/links/${link.pk}`} className="font-mono text-sm hover:underline">{link.code}</Link>
+                  <span className="text-xs text-muted-foreground ml-2">{link.link_type}</span>
+                </td>
+                <td className="px-4 py-2.5 text-sm text-muted-foreground">{link.side_a_metro} - {link.side_z_metro}</td>
+                <td className={`px-4 py-2.5 text-sm capitalize ${reasonColors[link.reason] || ''}`}>
+                  {link.reason}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+function DisabledDevicesTable({ devices }: { devices: StatusResponse['alerts']['devices'] | null }) {
+  if (!devices || devices.length === 0) return null
+
+  const statusColors: Record<string, string> = {
+    'soft-drained': 'text-amber-600 dark:text-amber-400',
+    'hard-drained': 'text-amber-600 dark:text-amber-400',
+    suspended: 'text-red-600 dark:text-red-400',
+    pending: 'text-amber-600 dark:text-amber-400',
+    deleted: 'text-gray-400',
+    rejected: 'text-red-400',
+  }
+
+  return (
+    <div id="disabled-devices" className="border border-border rounded-lg overflow-hidden">
+      <div className="px-4 py-3 bg-muted/50 border-b border-border flex items-center gap-2">
+        <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+        <h3 className="font-medium">Disabled Devices</h3>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full">
+          <thead>
+            <tr className="text-left text-sm text-muted-foreground border-b border-border">
+              <th className="px-4 py-2 font-medium">Device</th>
+              <th className="px-4 py-2 font-medium">Metro</th>
+              <th className="px-4 py-2 font-medium">Status</th>
+              <th className="px-4 py-2 font-medium text-right">Since</th>
+            </tr>
+          </thead>
+          <tbody>
+            {devices.map((device, idx) => (
+              <tr key={`${device.code}-${idx}`} className="border-b border-border last:border-b-0">
+                <td className="px-4 py-2.5">
+                  <Link to={`/dz/devices/${device.pk}`} className="font-mono text-sm hover:underline">{device.code}</Link>
+                  <span className="text-xs text-muted-foreground ml-2">{device.device_type}</span>
+                </td>
+                <td className="px-4 py-2.5 text-sm text-muted-foreground">{device.metro}</td>
+                <td className={`px-4 py-2.5 text-sm capitalize ${statusColors[device.status] || ''}`}>
+                  {device.status.replace('-', ' ')}
+                </td>
+                <td className="px-4 py-2.5 text-sm tabular-nums text-right text-muted-foreground">
+                  {formatTimeAgo(device.since)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 function InterfaceIssuesTable({ issues }: { issues: InterfaceIssue[] | null }) {
   if (!issues || issues.length === 0) return null
 
@@ -919,23 +791,23 @@ function InterfaceIssuesTable({ issues }: { issues: InterfaceIssue[] | null }) {
                         </span>
                       </div>
                     ) : (
-                      <span className="text-muted-foreground">—</span>
+                      <span className="text-muted-foreground">-</span>
                     )}
                   </td>
                   <td className={`px-4 py-2.5 text-sm tabular-nums text-right ${totalErrors > 0 ? 'text-red-600 dark:text-red-400' : ''}`}>
-                    {totalErrors > 0 ? totalErrors.toLocaleString() : '—'}
+                    {totalErrors > 0 ? totalErrors.toLocaleString() : '-'}
                   </td>
                   <td className={`px-4 py-2.5 text-sm tabular-nums text-right ${totalDiscards > 0 ? 'text-amber-600 dark:text-amber-400' : ''}`}>
-                    {totalDiscards > 0 ? totalDiscards.toLocaleString() : '—'}
+                    {totalDiscards > 0 ? totalDiscards.toLocaleString() : '-'}
                   </td>
                   <td className={`px-4 py-2.5 text-sm tabular-nums text-right ${issue.carrier_transitions > 0 ? 'text-amber-600 dark:text-amber-400' : ''}`}>
-                    {issue.carrier_transitions > 0 ? issue.carrier_transitions.toLocaleString() : '—'}
+                    {issue.carrier_transitions > 0 ? issue.carrier_transitions.toLocaleString() : '-'}
                   </td>
                   <td className="px-4 py-2.5 text-sm tabular-nums text-right text-muted-foreground">
-                    {issue.first_seen ? formatTimeAgo(issue.first_seen) : '—'}
+                    {issue.first_seen ? formatTimeAgo(issue.first_seen) : '-'}
                   </td>
                   <td className="px-4 py-2.5 text-sm tabular-nums text-right text-muted-foreground">
-                    {issue.last_seen ? formatTimeAgo(issue.last_seen) : '—'}
+                    {issue.last_seen ? formatTimeAgo(issue.last_seen) : '-'}
                   </td>
                 </tr>
               )
@@ -970,35 +842,56 @@ function useBucketCount() {
   return buckets
 }
 
-export function StatusPage() {
+// Links tab content
+function LinksContent({ status, linkHistory }: { status: StatusResponse; linkHistory: any }) {
   const [timeRange, setTimeRange] = useState<TimeRange>('24h')
+  const [filterTimeRange, setFilterTimeRange] = useState<FilterTimeRange>('3h')
   const [issueFilters, setIssueFilters] = useState<IssueFilter[]>(['packet_loss', 'high_latency', 'extended_loss', 'drained', 'no_data'])
   const [healthFilters, setHealthFilters] = useState<HealthFilter[]>(['healthy', 'degraded', 'unhealthy', 'disabled'])
-  const buckets = useBucketCount()
 
-  const { data: status, isLoading, error } = useQuery({
-    queryKey: ['status'],
-    queryFn: fetchStatus,
-    refetchInterval: 30_000,
-    staleTime: 15_000,
-  })
+  // Bucket count based on filter time range
+  const filterBuckets = filterTimeRange === '3h' ? 36 : filterTimeRange === '6h' ? 36 : filterTimeRange === '12h' ? 48 : 72
 
-  const { data: linkHistory } = useQuery({
-    queryKey: ['link-history', timeRange, buckets],
-    queryFn: () => fetchLinkHistory(timeRange, buckets),
+  // Fetch link history for the filter time range (used for health and issue counts)
+  const { data: filterLinkHistory } = useQuery({
+    queryKey: ['link-history', filterTimeRange, filterBuckets],
+    queryFn: () => fetchLinkHistory(filterTimeRange, filterBuckets),
     refetchInterval: 60_000,
     staleTime: 30_000,
   })
 
+  // Calculate health counts from link history (based on most recent bucket status)
+  const healthCounts = useMemo(() => {
+    if (!filterLinkHistory?.links) {
+      return { healthy: 0, degraded: 0, unhealthy: 0, disabled: 0, total: 0 }
+    }
+
+    const counts = { healthy: 0, degraded: 0, unhealthy: 0, disabled: 0, total: 0 }
+
+    for (const link of filterLinkHistory.links) {
+      counts.total++
+      // Use the most recent bucket to determine current health
+      const lastBucket = link.hours?.[link.hours.length - 1]
+      const status = lastBucket?.status || 'healthy'
+      if (status === 'healthy') counts.healthy++
+      else if (status === 'degraded') counts.degraded++
+      else if (status === 'unhealthy') counts.unhealthy++
+      else if (status === 'disabled') counts.disabled++
+    }
+
+    return counts
+  }, [filterLinkHistory])
+
+  // Issue counts from filter time range
   const issueCounts = useMemo((): IssueCounts => {
-    if (!linkHistory?.links) {
+    if (!filterLinkHistory?.links) {
       return { packet_loss: 0, high_latency: 0, extended_loss: 0, drained: 0, no_data: 0, no_issues: 0, total: 0 }
     }
 
     const counts = { packet_loss: 0, high_latency: 0, extended_loss: 0, drained: 0, no_data: 0, no_issues: 0, total: 0 }
     const seenLinks = new Set<string>()
 
-    for (const link of linkHistory.links) {
+    for (const link of filterLinkHistory.links) {
       if (link.issue_reasons?.includes('packet_loss')) counts.packet_loss++
       if (link.issue_reasons?.includes('high_latency')) counts.high_latency++
       if (link.issue_reasons?.includes('extended_loss')) counts.extended_loss++
@@ -1010,39 +903,57 @@ export function StatusPage() {
       }
     }
 
-    // Calculate no_issues as total links minus links with issues
-    const totalLinks = status?.links.total || 0
+    const totalLinks = healthCounts.total || 0
     counts.no_issues = Math.max(0, totalLinks - counts.total)
 
     return counts
-  }, [linkHistory, status])
+  }, [filterLinkHistory, healthCounts])
 
-  // Extract links currently disabled due to packet loss (last 2h of 100% loss)
+  // Get set of link codes with issues in the filter time range (for filtering history table)
+  const linksWithIssues = useMemo(() => {
+    if (!filterLinkHistory?.links) return new Map<string, string[]>()
+    const map = new Map<string, string[]>()
+    for (const link of filterLinkHistory.links) {
+      if (link.issue_reasons?.length > 0) {
+        map.set(link.code, link.issue_reasons)
+      }
+    }
+    return map
+  }, [filterLinkHistory])
+
+  // Get health status for each link from the filter time range (for filtering history table)
+  const linksWithHealth = useMemo(() => {
+    if (!filterLinkHistory?.links) return new Map<string, string>()
+    const map = new Map<string, string>()
+    for (const link of filterLinkHistory.links) {
+      // Use the most recent bucket to determine current health
+      const lastBucket = link.hours?.[link.hours.length - 1]
+      const health = lastBucket?.status || 'healthy'
+      map.set(link.code, health)
+    }
+    return map
+  }, [filterLinkHistory])
+
   const packetLossDisabledLinks = useMemo((): DisabledLinkRow[] => {
     if (!linkHistory?.links || !status) return []
 
-    // Get codes of drained links from alerts
     const drainedCodes = new Set(
       (status.alerts?.links || [])
         .filter(l => l.status === 'soft-drained' || l.status === 'hard-drained')
         .map(l => l.code)
     )
 
-    // Calculate how many buckets = 2 hours
     const bucketsFor2Hours = Math.ceil(120 / (linkHistory.bucket_minutes || 20))
 
-    // Check if a link is currently disabled (most recent buckets are all "disabled")
     const isCurrentlyDisabledByPacketLoss = (hours: { status: string }[]): boolean => {
       if (!hours || hours.length < bucketsFor2Hours) return false
-      // Check the most recent buckets (end of array)
       const recentBuckets = hours.slice(-bucketsFor2Hours)
       return recentBuckets.every(h => h.status === 'disabled')
     }
 
-    // Get links currently disabled by packet loss (not drained)
     return linkHistory.links
-      .filter(link => !drainedCodes.has(link.code) && isCurrentlyDisabledByPacketLoss(link.hours))
-      .map(link => ({
+      .filter((link: LinkHistory) => !drainedCodes.has(link.code) && isCurrentlyDisabledByPacketLoss(link.hours))
+      .map((link: LinkHistory) => ({
         pk: link.pk,
         code: link.code,
         link_type: link.link_type,
@@ -1052,22 +963,108 @@ export function StatusPage() {
       }))
   }, [linkHistory, status])
 
-  // Count all disabled links (drained + packet loss)
-  const disabledLinksCount = useMemo(() => {
-    const drainedCount = (status?.alerts?.links || []).filter(
-      l => l.status === 'soft-drained' || l.status === 'hard-drained'
-    ).length
-    return drainedCount + packetLossDisabledLinks.length
-  }, [status, packetLossDisabledLinks])
+  return (
+    <>
+      {/* Link Health & Issues */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <LinkHealthFilterCard
+          links={healthCounts}
+          selected={healthFilters}
+          onChange={setHealthFilters}
+          filterTimeRange={filterTimeRange}
+          onFilterTimeRangeChange={setFilterTimeRange}
+        />
+        <LinkIssuesFilterCard
+          counts={issueCounts}
+          selected={issueFilters}
+          onChange={setIssueFilters}
+          filterTimeRange={filterTimeRange}
+          onFilterTimeRangeChange={setFilterTimeRange}
+        />
+      </div>
 
-  // Only show skeleton after delay to avoid flash for fast loads
+      {/* Link Status History */}
+      <div className="mb-8">
+        <LinkStatusTimelines timeRange={timeRange} onTimeRangeChange={setTimeRange} issueFilters={issueFilters} healthFilters={healthFilters} linksWithIssues={linksWithIssues} linksWithHealth={linksWithHealth} />
+      </div>
+
+      {/* Disabled Links */}
+      <div className="mb-8">
+        <DisabledLinksTable
+          drainedLinks={status.alerts?.links}
+          packetLossLinks={packetLossDisabledLinks}
+        />
+      </div>
+
+      {/* Methodology link */}
+      <div className="text-center text-sm text-muted-foreground pb-4">
+        <Link to="/status/methodology" className="hover:text-foreground hover:underline">
+          How is status calculated?
+        </Link>
+      </div>
+    </>
+  )
+}
+
+// Devices tab content
+function DevicesContent({ status }: { status: StatusResponse }) {
+  return (
+    <>
+      {/* Disabled Devices */}
+      <div className="mb-8">
+        <DisabledDevicesTable devices={status.alerts?.devices} />
+      </div>
+
+      {/* Interface Issues */}
+      <div className="mb-8">
+        <InterfaceIssuesTable issues={status.interfaces.issues} />
+      </div>
+
+      {/* Methodology link */}
+      <div className="text-center text-sm text-muted-foreground pb-4">
+        <Link to="/status/methodology" className="hover:text-foreground hover:underline">
+          How is status calculated?
+        </Link>
+      </div>
+    </>
+  )
+}
+
+export function StatusPage() {
+  const location = useLocation()
+  const navigate = useNavigate()
+  const buckets = useBucketCount()
+
+  // Determine active tab from URL
+  const activeTab = location.pathname.includes('/devices') ? 'devices' : 'links'
+
+  // Redirect /status to /status/links
+  useEffect(() => {
+    if (location.pathname === '/status') {
+      navigate('/status/links', { replace: true })
+    }
+  }, [location.pathname, navigate])
+
+  const { data: status, isLoading, error } = useQuery({
+    queryKey: ['status'],
+    queryFn: fetchStatus,
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  })
+
+  const { data: linkHistory } = useQuery({
+    queryKey: ['link-history', '24h', buckets],
+    queryFn: () => fetchLinkHistory('24h', buckets),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  })
+
   const showSkeleton = useDelayedLoading(isLoading)
 
   if (isLoading && showSkeleton) {
     return <StatusPageSkeleton />
   }
 
-  // Still loading but skeleton delay hasn't passed - show nothing briefly
   if (isLoading) {
     return null
   }
@@ -1106,72 +1103,31 @@ export function StatusPage() {
           <StatCard label="User Inbound" value={status.network.user_inbound_bps} format="bandwidth" />
         </div>
 
-        {/* Summary Cards Row */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-          <IssueSummaryCard
-            alerts={status.alerts}
-            interfaceIssuesCount={status.interfaces.issues?.length || 0}
-            disabledLinksCount={disabledLinksCount}
-          />
-          <div /> {/* Placeholder for balance */}
-        </div>
-
-        {/* Utilization Toplists */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+        {/* Utilization Charts */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
           <TopLinkUtilization links={status.links.top_util_links} />
           <TopDeviceUtilization devices={status.top_device_util} />
         </div>
 
-        {/* Link Status Timeline */}
-        <div id="link-status-history" className="mb-8">
-          <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-            <h2 className="text-lg font-semibold">Link Status History</h2>
-            <TimeRangeSelector value={timeRange} onChange={setTimeRange} />
-          </div>
+        {/* Tab Navigation */}
+        <TabNavigation activeTab={activeTab} />
 
-          {/* Filter Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <LinkHealthFilterCard
-              links={status.links}
-              selected={healthFilters}
-              onChange={setHealthFilters}
-            />
-            <LinkIssuesFilterCard
-              counts={issueCounts}
-              selected={issueFilters}
-              onChange={setIssueFilters}
-              timeRange={timeRange}
-            />
-          </div>
-
-          <LinkStatusTimelines timeRange={timeRange} issueFilters={issueFilters} healthFilters={healthFilters} />
-        </div>
-
-        {/* Disabled Devices */}
-        <div className="mb-8">
-          <DisabledDevicesTable devices={status.alerts?.devices} />
-        </div>
-
-        {/* Disabled Links */}
-        <div className="mb-8">
-          <DisabledLinksTable
-            drainedLinks={status.alerts?.links}
-            packetLossLinks={packetLossDisabledLinks}
-          />
-        </div>
-
-        {/* Interface Issues */}
-        <div id="interface-issues" className="mb-8">
-          <InterfaceIssuesTable issues={status.interfaces.issues} />
-        </div>
-
-        {/* Methodology link */}
-        <div className="text-center text-sm text-muted-foreground pb-4">
-          <Link to="/status/methodology" className="hover:text-foreground hover:underline">
-            How is status calculated?
-          </Link>
-        </div>
+        {/* Tab Content */}
+        {activeTab === 'links' ? (
+          <LinksContent status={status} linkHistory={linkHistory} />
+        ) : (
+          <DevicesContent status={status} />
+        )}
       </div>
     </div>
   )
+}
+
+// Export for routes
+export function StatusLinksPage() {
+  return <StatusPage />
+}
+
+export function StatusDevicesPage() {
+  return <StatusPage />
 }

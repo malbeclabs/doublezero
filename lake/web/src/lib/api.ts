@@ -18,6 +18,17 @@ export interface QueryResponse {
   error?: string
 }
 
+// Cypher query response uses map rows instead of array rows
+export interface CypherQueryResponse {
+  columns: string[]
+  rows: Record<string, unknown>[]
+  row_count: number
+  elapsed_ms: number
+  error?: string
+}
+
+export type QueryMode = 'sql' | 'cypher' | 'auto'
+
 // Retry configuration
 const RETRY_CONFIG = {
   maxRetries: 3,
@@ -93,8 +104,9 @@ export async function fetchCatalog(): Promise<CatalogResponse> {
   return res.json()
 }
 
-export async function executeQuery(query: string): Promise<QueryResponse> {
-  const res = await fetchWithRetry('/api/query', {
+// SQL query execution (uses new /api/sql/query endpoint)
+export async function executeSqlQuery(query: string): Promise<QueryResponse> {
+  const res = await fetchWithRetry('/api/sql/query', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ query }),
@@ -105,6 +117,23 @@ export async function executeQuery(query: string): Promise<QueryResponse> {
   }
   return res.json()
 }
+
+// Cypher query execution
+export async function executeCypherQuery(query: string): Promise<CypherQueryResponse> {
+  const res = await fetchWithRetry('/api/cypher/query', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query }),
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(text || 'Failed to execute Cypher query')
+  }
+  return res.json()
+}
+
+// Backward compatibility alias
+export const executeQuery = executeSqlQuery
 
 export interface GenerateResponse {
   sql: string
@@ -136,7 +165,154 @@ export interface StreamCallbacks {
   onError: (error: string) => void
 }
 
-export async function generateSQLStream(
+// SQL generation stream (uses new /api/sql/generate/stream endpoint)
+export async function generateSqlStream(
+  prompt: string,
+  currentQuery: string | undefined,
+  history: HistoryMessage[] | undefined,
+  callbacks: StreamCallbacks
+): Promise<void> {
+  await generateQueryStream('/api/sql/generate/stream', prompt, currentQuery, history, callbacks)
+}
+
+// Cypher generation stream
+export async function generateCypherStream(
+  prompt: string,
+  currentQuery: string | undefined,
+  history: HistoryMessage[] | undefined,
+  callbacks: StreamCallbacks
+): Promise<void> {
+  await generateQueryStream('/api/cypher/generate/stream', prompt, currentQuery, history, callbacks)
+}
+
+// Auto-detection stream callbacks
+export interface AutoStreamCallbacks {
+  onMode: (mode: 'sql' | 'cypher') => void
+  onToken: (token: string) => void
+  onStatus: (status: { provider?: string; status?: string; attempt?: number; error?: string }) => void
+  onDone: (result: GenerateResponse) => void
+  onError: (error: string) => void
+}
+
+// Auto-detection generation stream
+export async function generateAutoStream(
+  prompt: string,
+  currentQuery: string | undefined,
+  callbacks: AutoStreamCallbacks
+): Promise<void> {
+  // Retry initial connection with backoff
+  let res: Response
+
+  for (let attempt = 0; attempt <= RETRY_CONFIG.maxRetries; attempt++) {
+    try {
+      res = await fetch('/api/auto/generate/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, currentQuery }),
+      })
+
+      if (res.ok) break
+      if (res.status >= 400 && res.status < 500) break // Don't retry client errors
+
+      if (!isRetryableError(null, res.status) || attempt === RETRY_CONFIG.maxRetries) break
+    } catch (err) {
+      if (!isRetryableError(err) || attempt === RETRY_CONFIG.maxRetries) {
+        callbacks.onError('Connection failed. Please check your network and try again.')
+        return
+      }
+    }
+
+    const delay = Math.min(
+      RETRY_CONFIG.baseDelayMs * Math.pow(2, attempt) + Math.random() * 100,
+      RETRY_CONFIG.maxDelayMs
+    )
+    await sleep(delay)
+  }
+
+  if (!res!) {
+    callbacks.onError('Connection failed. Please check your network and try again.')
+    return
+  }
+
+  if (!res.ok) {
+    const text = await res.text()
+    callbacks.onError(text || 'Failed to generate query')
+    return
+  }
+
+  const reader = res.body?.getReader()
+  if (!reader) {
+    callbacks.onError('Streaming not supported')
+    return
+  }
+
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i]
+        if (line.startsWith('event: ')) {
+          const eventType = line.slice(7)
+          const nextLine = lines[i + 1]
+          if (nextLine?.startsWith('data: ')) {
+            const data = nextLine.slice(6)
+            i++ // Skip the data line we just processed
+            switch (eventType) {
+              case 'mode':
+                try {
+                  const modeData = JSON.parse(data)
+                  callbacks.onMode(modeData.mode)
+                } catch {
+                  // Ignore parse errors
+                }
+                break
+              case 'token':
+                callbacks.onToken(data)
+                break
+              case 'status':
+                try {
+                  callbacks.onStatus(JSON.parse(data))
+                } catch {
+                  callbacks.onStatus({ status: data })
+                }
+                break
+              case 'done':
+                try {
+                  callbacks.onDone(JSON.parse(data))
+                } catch {
+                  callbacks.onError('Invalid response')
+                }
+                break
+              case 'error':
+                callbacks.onError(data)
+                break
+            }
+          }
+        }
+      }
+    }
+  } catch (err) {
+    // Connection was interrupted mid-stream
+    if (err instanceof TypeError || (err instanceof Error && err.message.includes('network'))) {
+      callbacks.onError('Connection lost. Please try again.')
+    } else {
+      callbacks.onError(err instanceof Error ? err.message : 'Stream error')
+    }
+  }
+}
+
+// Generic query generation stream (internal helper)
+async function generateQueryStream(
+  endpoint: string,
   prompt: string,
   currentQuery: string | undefined,
   history: HistoryMessage[] | undefined,
@@ -147,7 +323,7 @@ export async function generateSQLStream(
 
   for (let attempt = 0; attempt <= RETRY_CONFIG.maxRetries; attempt++) {
     try {
-      res = await fetch('/api/generate/stream', {
+      res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt, currentQuery, history }),
@@ -178,7 +354,7 @@ export async function generateSQLStream(
 
   if (!res.ok) {
     const text = await res.text()
-    callbacks.onError(text || 'Failed to generate SQL')
+    callbacks.onError(text || 'Failed to generate query')
     return
   }
 
@@ -242,6 +418,16 @@ export async function generateSQLStream(
       callbacks.onError(err instanceof Error ? err.message : 'Stream error')
     }
   }
+}
+
+// Backward compatibility alias
+export async function generateSQLStream(
+  prompt: string,
+  currentQuery: string | undefined,
+  history: HistoryMessage[] | undefined,
+  callbacks: StreamCallbacks
+): Promise<void> {
+  return generateSqlStream(prompt, currentQuery, history, callbacks)
 }
 
 export interface ChatMessage {

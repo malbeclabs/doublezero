@@ -1,528 +1,407 @@
 # Topology Explorer UI Plan
 
-## Overview
+This document captures the full roadmap for topology exploration features using Neo4j graph data.
 
-Add an interactive graph visualization to the existing topology page, complementing the current MapLibre geo map. The graph view helps users understand logical network structure—routing paths, adjacencies, and topology health—while the geo map shows physical locations.
+## Completed Work
 
-## Goals
+### Phase 1-6: Foundation (Done)
 
-1. Add abstract graph view (Cytoscape.js) alongside existing geo map
-2. Enable path exploration between devices
-3. Surface topology anomalies (configured vs discovered mismatches)
-4. Guide users with suggested questions and exploration patterns
+- [x] ISIS topology graph visualization (Cytoscape.js)
+- [x] Path finding between two devices (shortest path)
+- [x] Compare mode (configured links vs ISIS adjacencies)
+- [x] Failure impact analysis (what if device X goes down)
+- [x] Guided exploration panel with suggestions
+- [x] Keyboard shortcuts (Esc, ?, p, c, f)
+- [x] Device filtering and search
+- [x] Non-ISIS devices shown as disabled in path mode
 
-## Existing Infrastructure
+---
 
-### Current State
+## Roadmap: Graph/Map View Enhancements
 
-The topology feature already exists:
+These features enhance the existing topology graph view with interactive, visual explorations.
 
-- **API**: `api/handlers/topology.go` - serves metros, devices, links, validators from ClickHouse
-- **Frontend**: `web/src/components/topology-page.tsx` and `topology-map.tsx` - MapLibre geo visualization
-- **Data**: TanStack Query with 60s refresh interval
+### 7. Find All Paths (K-Shortest Paths)
+**Priority: High** | **Complexity: Medium** | **Status: Not Started**
 
-### What's Missing
+Show multiple paths between two devices, not just the shortest.
 
-The current implementation shows physical topology on a map but lacks:
-- Abstract graph view for understanding logical connectivity
-- Path finding between devices
-- Topology health comparison (configured vs ISIS adjacencies)
-- Failure impact analysis
+**Features:**
+- Use Neo4j's `allShortestPaths()` or custom K-shortest implementation
+- Display up to 5 paths with different colors
+- Show path metrics (total cost, hop count)
+- Allow user to highlight/compare specific paths
+- Toggle between paths in the UI
 
-### Data Sources
+**Use Cases:**
+- Understanding redundancy between two points
+- Capacity planning - see alternative routes
+- Troubleshooting - why is traffic taking this path?
 
-**ClickHouse (existing)**: Metros, devices, links, validators, traffic stats
-**Neo4j (new)**: ISIS adjacencies, routing paths, topology comparison
+**API:** `GET /api/topology/paths?from={pk}&to={pk}&k=5`
 
-The Neo4j graph store exposes query methods in `indexer/pkg/dz/graph/query.go`:
-
-```go
-// Core topology
-ISISTopology(ctx)                                    // Full graph
-ISISAdjacencies(ctx, devicePK)                       // Device's neighbors
-NetworkAroundDevice(ctx, devicePK, hops)             // N-hop subgraph
-
-// Path analysis
-ShortestPath(ctx, from, to, weightBy)                // Weighted shortest path
-ShortestPathByISISMetric(ctx, from, to)              // ISIS metric path
-ExplainRoute(ctx, from, to)                          // Detailed breakdown
-
-// Topology health
-CompareTopology(ctx)                                 // Configured vs discovered
-UnreachableIfDown(ctx, devicePK, maxHops)            // Failure impact
-ReachableFromMetro(ctx, metroPK, activeOnly)         // Metro reachability
+**Neo4j Query:**
+```cypher
+MATCH (a:Device {pk: $from}), (b:Device {pk: $to})
+MATCH path = (a)-[:ISIS_ADJACENT*1..15]-(b)
+WITH path, reduce(cost = 0, r IN relationships(path) | cost + r.metric) AS totalMetric
+ORDER BY totalMetric
+LIMIT $k
+RETURN path, totalMetric
 ```
 
 ---
 
-## UI Components
+### 8. Critical Links Detection
+**Priority: High** | **Complexity: Medium** | **Status: Not Started**
 
-### 1. Main Graph Canvas
+Identify and highlight links that would partition the network if removed (bridge edges).
 
-The primary view is a force-directed graph layout.
+**Features:**
+- Find "bridge" edges in the graph (single points of failure)
+- Color-code edges by criticality:
+  - Red = critical (removal partitions network)
+  - Yellow = important (removal significantly increases path lengths)
+  - Green = redundant (removal has minimal impact)
+- Toggle overlay on/off in graph view
+- Click critical link to see what would be disconnected
 
-**Nodes (Devices):**
-- Shape: Circle
-- Size: Based on degree (number of adjacencies)
-- Color: By status (green=online, red=offline) or by contributor (categorical)
-- Label: Device code
-- Tooltip: system_id, router_id, metro, contributor
+**Use Cases:**
+- Risk assessment before maintenance
+- Identifying where to add redundancy
+- Network design validation
 
-**Edges (ISIS_ADJACENT relationships):**
-- Thickness: Inverse of ISIS metric (lower metric = thicker line)
-- Color:
-  - Green = healthy (adjacency matches configured link)
-  - Orange = adjacency exists but no configured link
-  - Red dashed = configured link but no adjacency (problem!)
-- Label (on hover): metric value, RTT
-- Animation: Optional pulse for active/recent adjacencies
+**API:** `GET /api/topology/critical-links`
 
-**Layout Options:**
-- Force-directed (default) - best for seeing cluster structure
-- Hierarchical - if there's a clear core/edge pattern
-- Geographic - switch to MapLibre view with devices at metro coords
-
-### 2. Toolbar / Controls
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ [View: Graph ▼] [Layout: Force ▼] [Color by: Status ▼]         │
-│ [Filter: Contributor ▼] [Metro ▼] [Status ▼]                   │
-│ [🔍 Search device...]                              [⚙️ Settings]│
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### 3. Mode Selector
-
-Three primary interaction modes:
-
-#### Explore Mode (default)
-- Pan/zoom the graph
-- Click node → show details in side panel
-- Click edge → show link details
-- Drag nodes to rearrange
-
-#### Path Mode
-- Click first device (highlighted as "source")
-- Click second device (highlighted as "destination")
-- Show shortest path highlighted on graph
-- Weight selector: Hops | ISIS Metric | RTT | Bandwidth
-
-#### Compare Mode
-- Overlay view showing topology health
-- Highlight mismatches between configured links and ISIS adjacencies
-- Summary stats: X matched, Y missing adjacencies, Z unexpected adjacencies
-
-### 4. Side Panel
-
-Contextual details based on selection:
-
-**When nothing selected:**
-```
-┌─────────────────────────────┐
-│ Topology Summary            │
-│ ─────────────────────────── │
-│ Devices: 142 (138 online)   │
-│ Adjacencies: 387            │
-│ Metros: 12                  │
-│ Contributors: 8             │
-│                             │
-│ Health                      │
-│ ─────────────────────────── │
-│ ✓ 382 links match config    │
-│ ⚠ 3 missing adjacencies     │
-│ ⚠ 2 unexpected adjacencies  │
-│                             │
-│ [View Issues →]             │
-└─────────────────────────────┘
-```
-
-**When device selected:**
-```
-┌─────────────────────────────┐
-│ Device: nyc-edge-01         │
-│ ─────────────────────────── │
-│ Status: 🟢 Online           │
-│ Type: edge                  │
-│ Metro: NYC                  │
-│ Contributor: Acme Networks  │
-│                             │
-│ ISIS Identity               │
-│ ─────────────────────────── │
-│ System ID: 0000.0000.0001   │
-│ Router ID: 10.0.0.1         │
-│ Last Sync: 2 min ago        │
-│                             │
-│ Adjacencies (4)             │
-│ ─────────────────────────── │
-│ → nyc-core-01  metric: 10   │
-│ → nyc-core-02  metric: 10   │
-│ → ewr-edge-01  metric: 50   │
-│ → jfk-edge-01  metric: 30   │
-│                             │
-│ [Failure Impact Analysis →] │
-│ [Show N-hop neighborhood →] │
-└─────────────────────────────┘
-```
-
-**When edge selected:**
-```
-┌─────────────────────────────┐
-│ Link: nyc-edge-01 ↔ nyc-... │
-│ ─────────────────────────── │
-│ ISIS Metric: 10             │
-│ Adj SIDs: [16001, 16002]    │
-│ Last Seen: 30s ago          │
-│                             │
-│ Configured Link             │
-│ ─────────────────────────── │
-│ Code: link-nyc-001          │
-│ Status: 🟢 Active           │
-│ Bandwidth: 10 Gbps          │
-│ Committed RTT: 2ms          │
-│ Tunnel Net: 10.255.0.0/31   │
-└─────────────────────────────┘
-```
-
-**When path selected:**
-```
-┌─────────────────────────────┐
-│ Path: nyc-edge-01 → lax-... │
-│ ─────────────────────────── │
-│ Weight: ISIS Metric         │
-│ Total Cost: 180             │
-│ Hops: 5                     │
-│                             │
-│ Route                       │
-│ ─────────────────────────── │
-│ 1. nyc-edge-01              │
-│    ↓ metric: 10             │
-│ 2. nyc-core-01              │
-│    ↓ metric: 40             │
-│ 3. chi-core-01              │
-│    ↓ metric: 40             │
-│ 4. lax-core-01              │
-│    ↓ metric: 10             │
-│ 5. lax-edge-01              │
-│                             │
-│ [Compare by RTT →]          │
-│ [Compare by Bandwidth →]    │
-└─────────────────────────────┘
-```
-
-### 5. Guided Questions Panel
-
-This is a key UX element. Users often don't know what questions to ask. Provide contextual suggestions:
-
-**Global suggestions (always visible, collapsible):**
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ 💡 Explore your topology                                        │
-│ ─────────────────────────────────────────────────────────────── │
-│                                                                 │
-│ Understand Structure                                            │
-│ • Which devices have the most connections?                      │
-│ • Are there any single points of failure?                       │
-│ • How many hops between my furthest devices?                    │
-│                                                                 │
-│ Check Health                                                    │
-│ • Are all configured links showing ISIS adjacencies?            │
-│ • Which devices have degraded connectivity?                     │
-│ • Are there any unexpected adjacencies?                         │
-│                                                                 │
-│ Plan & Troubleshoot                                             │
-│ • What's the best path between two devices?                     │
-│ • What happens if device X goes down?                           │
-│ • Which devices can reach metro Y?                              │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-Each question is clickable and triggers the appropriate action:
-- "Which devices have the most connections?" → Sorts/highlights by degree
-- "Are there any single points of failure?" → Runs articulation point analysis
-- "Are all configured links showing ISIS adjacencies?" → Enters Compare Mode
-
-**Contextual suggestions (based on current selection):**
-
-When a device is selected:
-```
-│ 💡 About nyc-edge-01:                                           │
-│ • What devices would lose connectivity if this goes down?       │
-│ • Show all devices within 3 hops                                │
-│ • Find shortest path to another device                          │
-```
-
-When viewing a path:
-```
-│ 💡 About this path:                                             │
-│ • Would a different metric give a shorter path?                 │
-│ • Are there alternative equal-cost paths?                       │
-│ • Which link on this path has the worst latency?                │
-```
-
-When anomalies are detected:
-```
-│ ⚠️ 3 issues detected:                                           │
-│ • 2 links configured but no ISIS adjacency                      │
-│   [Investigate →]                                               │
-│ • 1 adjacency with no configured link                           │
-│   [Investigate →]                                               │
+**Neo4j Query:**
+```cypher
+// Find edges whose removal disconnects the graph
+MATCH (a:Device)-[r:ISIS_ADJACENT]-(b:Device)
+WHERE a.isis_system_id IS NOT NULL AND b.isis_system_id IS NOT NULL
+WITH a, b, r
+// Check if removing this edge disconnects a from b
+WHERE NOT EXISTS {
+  MATCH path = (a)-[:ISIS_ADJACENT*1..20]-(b)
+  WHERE NOT r IN relationships(path)
+}
+RETURN a.pk AS fromPK, a.code AS fromCode,
+       b.pk AS toPK, b.code AS toCode,
+       r.metric AS metric
 ```
 
 ---
 
-## API Endpoints
+### 9. What-If Link Removal
+**Priority: Medium** | **Complexity: Medium** | **Status: Not Started**
 
-New endpoints in `api/handlers/isis.go`:
+Simulate removing a link and show impact on paths.
 
+**Features:**
+- Click a link to simulate its removal
+- Show which paths would be rerouted
+- Display new path metrics vs old (before/after comparison)
+- Highlight affected devices
+- Show if any devices become unreachable
+
+**Use Cases:**
+- Maintenance planning - "what if I take this link down?"
+- Risk assessment - "how bad would it be if this link fails?"
+- Change validation - verify redundancy works
+
+**Implementation Options:**
+1. Server-side: `GET /api/topology/simulate-removal?link={pk}`
+2. Client-side: Temporarily remove edge from Cytoscape graph, recalculate paths
+
+---
+
+### 10. What-If Link Addition
+**Priority: Medium** | **Complexity: Medium** | **Status: Not Started**
+
+Simulate adding a new link between two devices.
+
+**Features:**
+- Select two devices to add simulated link
+- Input metric for the new link
+- Show how paths would change
+- Display connectivity improvements
+- Show new redundancy created
+
+**Use Cases:**
+- Capacity planning - "where should we add links?"
+- Network design - "what if we connect these two metros?"
+- Cost-benefit analysis for new links
+
+**API:** `GET /api/topology/simulate-addition?from={pk}&to={pk}&metric={n}`
+
+---
+
+### 11. Metro Clustering View
+**Priority: Low** | **Complexity: Low** | **Status: Not Started**
+
+Group and color devices by metro/datacenter.
+
+**Features:**
+- Color-code nodes by metro (each metro gets a distinct color)
+- Option to collapse metro into single "super node"
+- Show inter-metro links only in collapsed view
+- Expand metro on click to see internal topology
+
+**Use Cases:**
+- Geographic visualization at high level
+- Understanding inter-metro connectivity
+- Simplifying view for large networks
+
+**Implementation:** Client-side using existing metro data on nodes. No new API needed.
+
+---
+
+### 12. Traffic Flow Visualization
+**Priority: Low** | **Complexity: High** | **Status: Not Started**
+
+Animate traffic flowing along paths (requires traffic data).
+
+**Features:**
+- Overlay traffic volume on edges (thickness = bandwidth utilization)
+- Animate packets/flows along paths
+- Show congestion hotspots (red = congested)
+- Historical playback - see traffic patterns over time
+
+**Use Cases:**
+- Capacity monitoring
+- Troubleshooting congestion
+- Understanding traffic patterns
+
+**Dependency:** Requires traffic telemetry data in ClickHouse (partially available)
+
+---
+
+## Roadmap: Separate Pages/Tools
+
+These features are better as dedicated analysis tools with tables and reports.
+
+### 13. Redundancy Report
+**Priority: High** | **Complexity: Medium** | **Status: Not Started**
+
+Comprehensive report of single points of failure.
+
+**Page:** `/topology/redundancy`
+
+**Sections:**
+1. **Leaf Devices** - Devices with only 1 ISIS neighbor (at risk if that neighbor fails)
+2. **Critical Links** - Bridge edges (from feature #8)
+3. **Single-Exit Metros** - Metros with only one path to the rest of the network
+4. **No-Backup Devices** - Devices with no redundant path to core
+
+**Output:** Sortable table with:
+- Severity (critical/warning/info)
+- Device/link info
+- Impact description
+- Recommendation
+
+**API:** `GET /api/topology/redundancy-report`
+
+---
+
+### 14. Metro Connectivity Matrix
+**Priority: Medium** | **Complexity: Medium** | **Status: Not Started**
+
+Grid showing connectivity between all metros.
+
+**Page:** `/topology/metro-matrix`
+
+**Features:**
+- NxN grid of metros (rows and columns)
+- Cell shows:
+  - Path count (number of distinct paths)
+  - Min hops
+  - Min total metric
+- Color-code by connectivity strength:
+  - Green = well connected (multiple paths)
+  - Yellow = limited (1-2 paths)
+  - Red = single path or disconnected
+- Click cell to see paths between those metros
+- Export to CSV
+
+**API:** `GET /api/topology/metro-connectivity`
+
+**Neo4j Query:**
+```cypher
+MATCH (m1:Metro)<-[:LOCATED_IN]-(d1:Device)
+MATCH (m2:Metro)<-[:LOCATED_IN]-(d2:Device)
+WHERE m1 <> m2
+  AND d1.isis_system_id IS NOT NULL
+  AND d2.isis_system_id IS NOT NULL
+MATCH path = shortestPath((d1)-[:ISIS_ADJACENT*]-(d2))
+WITH m1, m2, min(length(path)) AS minHops, count(DISTINCT path) AS pathCount
+RETURN m1.code AS fromMetro, m2.code AS toMetro, minHops, pathCount
 ```
-GET /api/topology/isis
-    → Full ISIS topology graph (nodes + edges)
-    → Response: { nodes: [...], edges: [...] }
 
-GET /api/topology/isis/device/{pk}/neighborhood?hops=2
-    → N-hop subgraph around device
-    → Response: { nodes: [...], edges: [...] }
+---
 
-GET /api/topology/path?from={pk}&to={pk}&weight=isis_metric
-    → Shortest path between devices
-    → weight: hops | isis_metric | rtt | bandwidth
-    → Response: { path: [...], totalCost: N, details: [...] }
+### 15. Path Calculator
+**Priority: Medium** | **Complexity: Low** | **Status: Not Started**
 
-GET /api/topology/compare
-    → Topology health comparison (configured links vs ISIS adjacencies)
-    → Response: { matched: [...], missingAdjacencies: [...], unexpectedAdjacencies: [...] }
+Detailed multi-path analysis tool.
 
-GET /api/topology/impact/{devicePK}?maxHops=5
-    → Failure impact analysis
-    → Response: { unreachableDevices: [...], affectedUsers: N }
-```
+**Page:** `/topology/path-calculator`
 
-**Note**: Existing endpoints already cover devices (`/api/devices`) and metros (`/api/metros`).
+**Features:**
+- Input source and destination (autocomplete search)
+- Show all paths (up to K) with details:
+  - Total metric
+  - Hop count
+  - Each hop with interface/metric breakdown
+  - Segment routing SID stack
+- Compare paths side-by-side
+- Copy SR SID stack for troubleshooting
+- Link to graph view to visualize
 
-### Neo4j Connection
+**API:** Extends existing `/api/topology/path` with `?detail=full`
 
-The API connects directly to Neo4j (same pattern as ClickHouse connection in `api/config/`). Add:
+---
 
-```go
-// api/config/neo4j.go
-var Neo4jDriver neo4j.DriverWithContext
+### 16. Maintenance Planner
+**Priority: Medium** | **Complexity: High** | **Status: Not Started**
 
-func InitNeo4j() error {
-    driver, err := neo4j.NewDriverWithContext(
-        os.Getenv("NEO4J_URI"),
-        neo4j.BasicAuth(os.Getenv("NEO4J_USER"), os.Getenv("NEO4J_PASSWORD"), ""),
-    )
-    // ...
+Plan maintenance windows with impact analysis.
+
+**Page:** `/topology/maintenance`
+
+**Features:**
+- Select multiple devices/links to take offline (multi-select)
+- Show comprehensive impact:
+  - Affected paths (before/after comparison)
+  - Devices that lose connectivity
+  - Traffic that needs rerouting
+  - Estimated failover paths and new metrics
+- Generate maintenance checklist
+- Recommended maintenance order (take down least impactful first)
+- Schedule and track maintenance windows (optional)
+
+**API:** `POST /api/topology/maintenance-impact`
+```json
+{
+  "devices": ["pk1", "pk2"],
+  "links": ["linkpk1"]
 }
 ```
 
-The graph query logic from `indexer/pkg/dz/graph/query.go` can be adapted for use in the API handlers.
+---
+
+### 17. Network Evolution Timeline
+**Priority: Low** | **Complexity: High** | **Status: Not Started**
+
+Historical topology changes over time.
+
+**Page:** `/topology/history`
+
+**Features:**
+- Timeline slider to view topology at point in time
+- Diff view showing:
+  - Added devices (green)
+  - Removed devices (red)
+  - Added links
+  - Removed links
+- Track when links flapped (went up/down)
+- Correlate with incidents
+- Animation: play topology evolution over time
+
+**Dependency:** Requires historical topology snapshots stored in ClickHouse. Need indexer work to periodically snapshot topology state.
 
 ---
 
 ## Implementation Phases
 
-### Phase 1: Graph View Foundation
+### Phase 7: Path Analysis
+- [ ] Find All Paths (K-shortest) - API + Graph UI
+- [ ] Path Calculator page
 
-**Backend** (`api/`):
-- [ ] Add Neo4j driver to `api/config/` (same pattern as ClickHouse)
-- [ ] Create `handlers/isis.go` with `GET /api/topology/isis` endpoint
-- [ ] Port graph query logic from `indexer/pkg/dz/graph/query.go`
-- [ ] Return ISIS topology as Cytoscape-compatible JSON
+### Phase 8: Risk Analysis
+- [ ] Critical Links detection - API + Graph UI overlay
+- [ ] Redundancy Report page
 
-**Frontend** (`web/src/components/`):
-- [ ] Add Cytoscape.js dependency (`bun add cytoscape @types/cytoscape`)
-- [ ] Create `topology-graph.tsx` component with basic graph rendering
-- [ ] Add view toggle (Graph | Map) to `topology-page.tsx`
-- [ ] Implement pan/zoom and node click → show details in side panel
+### Phase 9: What-If Simulation
+- [ ] What-If Link Removal - Graph UI
+- [ ] What-If Link Addition - Graph UI
 
-### Phase 2: Core Graph Features
+### Phase 10: Planning Tools
+- [ ] Metro Connectivity Matrix page
+- [ ] Maintenance Planner page
 
-**Frontend**:
-- [ ] Node styling: size by degree, color by status/contributor
-- [ ] Edge styling: thickness by metric, color by health
-- [ ] Filter controls matching existing map filters (contributor, metro, status)
-- [ ] Search box with device autocomplete
-- [ ] Linked selection: click in graph highlights on map and vice versa
-
-### Phase 3: Path Finding
-
-**Backend**:
-- [ ] Add `GET /api/topology/path` endpoint
-- [ ] Support weight options: hops, isis_metric, rtt, bandwidth
-
-**Frontend**:
-- [ ] Path mode: click source → click destination → show path
-- [ ] Highlight path on graph with step-by-step details in side panel
-- [ ] Weight selector dropdown
-
-### Phase 4: Topology Health
-
-**Backend**:
-- [ ] Add `GET /api/topology/compare` endpoint
-- [ ] Add `GET /api/topology/impact/{pk}` endpoint
-
-**Frontend**:
-- [ ] Compare mode: overlay showing configured vs discovered
-- [ ] Color edges by match status (green=match, orange=unexpected, red=missing)
-- [ ] Summary stats panel: X matched, Y issues
-- [ ] Failure impact view: "what if this device goes down?"
-
-### Phase 5: Guided Experience
-
-**Frontend**:
-- [ ] Suggested questions panel (collapsible)
-- [ ] Contextual suggestions based on current selection
-- [ ] Click-to-action: each question triggers the relevant analysis
-- [ ] Issue detection: surface anomalies proactively
-
-### Phase 6: Polish
-
-- [ ] Performance optimization for large graphs (virtualization, clustering)
-- [ ] URL state sync for shareable views
-- [ ] Keyboard shortcuts (Esc to deselect, arrow keys, etc.)
-- [ ] Export graph as PNG/SVG
+### Phase 11: Advanced Visualization
+- [ ] Metro Clustering View
+- [ ] Traffic Flow Visualization
+- [ ] Network Evolution Timeline
 
 ---
 
-## Graph + Map Integration
+## Data Requirements
 
-The existing `topology-map.tsx` already renders metros, devices, links, and validators on a MapLibre map. The new graph view complements it:
+| Feature | Data Source | Available? |
+|---------|-------------|------------|
+| ISIS Topology | Neo4j | Yes |
+| Device Metros | Neo4j | Yes |
+| Link Metrics | Neo4j | Yes |
+| Segment Routing SIDs | Neo4j | Yes |
+| Traffic Data | ClickHouse | Partial |
+| Historical Topology | ClickHouse | No (needs indexer work) |
 
-| Graph View (new) | Map View (existing) |
-|------------------|---------------------|
-| Logical topology structure | Physical location |
-| "How is the network connected?" | "Where are things?" |
-| Routing paths by ISIS metric | Device locations by metro |
-| Adjacency health | Traffic and latency stats |
+---
 
-### Integration Approach
+## UI/UX Notes
 
-#### Shared State
+### Graph View vs Separate Page Decision Matrix
 
-Both views share selection and filter state via React context or URL params:
+| Feature | Graph View | Separate Page | Rationale |
+|---------|------------|---------------|-----------|
+| Find All Paths | Yes | - | Visual comparison of routes |
+| Critical Links | Yes | - | Color overlay on existing graph |
+| What-If Removal | Yes | - | Interactive, see changes visually |
+| What-If Addition | Yes | - | Interactive, see changes visually |
+| Metro Clustering | Yes | - | Alternative graph layout |
+| Traffic Flow | Yes | - | Animation on graph |
+| Redundancy Report | - | Yes | Tabular checklist for ops |
+| Metro Matrix | - | Yes | NxN grid doesn't fit graph |
+| Path Calculator | - | Yes | Detailed text output |
+| Maintenance Planner | - | Yes | Complex multi-step workflow |
+| Network Evolution | - | Yes | Timeline/diff view, not spatial |
 
-- **Selected device/link**: Click in either view updates both
-- **Filters**: Contributor, metro, status filters apply to both views
-- **Mode**: Explore/Path/Compare mode applies to graph; map stays in explore mode
+### Navigation
 
-#### Linked Selection
-
-- Click device in graph → map flies to that device's metro, highlights marker
-- Click device on map → graph centers on that node, highlights it
-- Path calculated in graph → optionally overlay path on map as highlighted line
-
-#### View Toggle
-
-Add toggle in `topology-page.tsx` toolbar:
-
-```tsx
-<div className="flex gap-2">
-  <button onClick={() => setView('map')} className={view === 'map' ? 'active' : ''}>
-    <Globe /> Map
-  </button>
-  <button onClick={() => setView('graph')} className={view === 'graph' ? 'active' : ''}>
-    <Network /> Graph
-  </button>
-  <button onClick={() => setView('split')} className={view === 'split' ? 'active' : ''}>
-    <Columns /> Split
-  </button>
-</div>
+Add new nav items under Topology section:
 ```
-
-### Shared State Interface
-
-```typescript
-interface ViewState {
-  // Selection
-  selectedDevicePK: string | null;
-  selectedLinkPK: string | null;
-
-  // Filters (apply to both views)
-  filters: {
-    contributors: string[];
-    metros: string[];
-    statuses: string[];
-    deviceTypes: string[];
-  };
-
-  // Mode
-  mode: 'explore' | 'path' | 'compare';
-
-  // Path mode state
-  pathSource: string | null;
-  pathDestination: string | null;
-  pathWeight: 'hops' | 'isis_metric' | 'rtt' | 'bandwidth';
-  calculatedPath: string[] | null;
-}
+Topology
+├── Map View (existing)
+├── Graph View (existing)
+├── Path Calculator (new)
+├── Redundancy Report (new)
+├── Metro Matrix (new)
+├── Maintenance Planner (new)
+└── History (new, future)
 ```
-
-Filters, selection, and path state shared so both views stay coherent.
 
 ---
 
 ## Open Questions
 
-1. **Scale**: How many devices/links typical? May need lazy loading or clustering.
-2. **Real-time**: Poll (current 60s interval) or WebSocket for live updates?
-3. **History**: Show topology changes over time, or just current state?
+1. **What-If simulations**: Client-side (faster, works offline) or server-side (more accurate, handles complex scenarios)?
+2. **Historical snapshots**: How often to snapshot? How long to retain?
+3. **Maintenance Planner**: Integrate with external ticketing (PagerDuty, Jira)?
+4. **Role-based access**: Should maintenance operations require elevated permissions?
+5. **Traffic data**: What traffic metrics are available? Interface counters? Flow data?
 
 ---
 
-## File Structure
+## Appendix: Existing API Endpoints
 
 ```
-api/
-  config/
-    db.go                # Existing - ClickHouse connection
-    neo4j.go             # New - Neo4j connection
-  handlers/
-    topology.go          # Existing - ClickHouse queries for map
-    isis.go              # New - Neo4j graph endpoints
+# ISIS Topology (implemented)
+GET /api/topology/isis              # Full graph
+GET /api/topology/path              # Shortest path
+GET /api/topology/compare           # Config vs ISIS comparison
+GET /api/topology/impact/{pk}       # Failure impact analysis
 
-web/src/
-  components/
-    topology-page.tsx    # Existing - add view toggle
-    topology-map.tsx     # Existing - MapLibre geo view
-    topology-graph.tsx   # New - Cytoscape.js graph view
-    topology-sidebar.tsx # New - shared side panel for details
-  lib/
-    api.ts               # Add new ISIS topology fetch functions
-  hooks/
-    use-topology-state.ts # New - shared state for selection/filters
-```
-
----
-
-## Appendix: Cytoscape.js Data Format
-
-```typescript
-interface ISISTopologyResponse {
-  nodes: Array<{
-    data: {
-      id: string;              // device PK
-      label: string;           // device code
-      status: string;
-      deviceType: string;
-      metroPK: string;
-      contributorPK: string;
-      isisSystemId?: string;
-      isisRouterId?: string;
-      degree?: number;         // number of adjacencies
-    }
-  }>;
-  edges: Array<{
-    data: {
-      id: string;              // adjacency ID
-      source: string;          // from device PK
-      target: string;          // to device PK
-      isisMetric?: number;
-      adjSids?: number[];
-      lastSeen?: string;
-      hasConfiguredLink: boolean;
-      configuredLinkCode?: string;
-    }
-  }>;
-}
+# ClickHouse Topology (implemented)
+GET /api/topology                   # Metros, devices, links
+GET /api/topology/traffic           # Traffic stats
 ```

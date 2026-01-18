@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { generateSQLStream, type HistoryMessage } from '@/lib/api'
+import { generateSqlStream, generateCypherStream, generateAutoStream, type HistoryMessage, type QueryMode } from '@/lib/api'
 import { Sparkles, Loader2 } from 'lucide-react'
 import type { GenerationRecord } from './session-history'
 
@@ -12,9 +12,11 @@ interface PromptInputProps {
   onGenerationComplete: (record: GenerationRecord) => void
   autoRun: boolean
   onAutoRunChange: (autoRun: boolean) => void
+  mode?: QueryMode
+  onModeDetected?: (mode: 'sql' | 'cypher') => void
 }
 
-export function PromptInput({ currentQuery, conversationHistory, onGenerated, onGenerationComplete, autoRun, onAutoRunChange }: PromptInputProps) {
+export function PromptInput({ currentQuery, conversationHistory, onGenerated, onGenerationComplete, autoRun, onAutoRunChange, mode = 'auto', onModeDetected }: PromptInputProps) {
   const [prompt, setPrompt] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
@@ -38,67 +40,83 @@ export function PromptInput({ currentQuery, conversationHistory, onGenerated, on
     attemptsRef.current = 1
     currentPromptRef.current = prompt
 
-    try {
-      await generateSQLStream(prompt, currentQuery || undefined, conversationHistory, {
-        onToken: (token) => {
-          setThinking(prev => prev + token)
-          thinkingAccumulatorRef.current += token
-          // Auto-scroll thinking area
-          if (thinkingRef.current) {
-            thinkingRef.current.scrollTop = thinkingRef.current.scrollHeight
-          }
-        },
-        onStatus: (s) => {
-          if (s.status === 'generating') {
-            setStatus('Generating...')
-            if (s.provider) providerRef.current = s.provider
-          } else if (s.status === 'validating') {
-            setStatus('Validating query...')
-          } else if (s.status === 'retrying') {
-            setStatus(`Attempt ${s.attempt}: Fixing error...`)
-            if (s.attempt) attemptsRef.current = s.attempt
-            setThinking('')
-            // Keep accumulating thinking across retries
-            thinkingAccumulatorRef.current += '\n\n--- Retry ---\n\n'
-          }
-        },
-        onDone: (result) => {
-          setIsGenerating(false)
-          setStatus(null)
-          setThinking('')
-
-          // Create history record
-          const record: GenerationRecord = {
-            id: crypto.randomUUID(),
-            type: 'generation',
-            timestamp: new Date(),
-            prompt: currentPromptRef.current,
-            thinking: thinkingAccumulatorRef.current,
-            sql: result.sql,
-            provider: providerRef.current,
-            attempts: attemptsRef.current,
-            error: result.error,
-          }
-          onGenerationComplete(record)
-
-          if (result.error) {
-            setError(result.error)
-            if (result.sql) {
-              onGenerated(result.sql, false)
-            }
-          } else {
-            setError(null)
-            onGenerated(result.sql, autoRun)
-            setPrompt('')
-          }
-        },
-        onError: (err) => {
-          setIsGenerating(false)
-          setStatus(null)
-          setThinking('')
-          setError(err)
+    // Common callbacks for all generators
+    const callbacks = {
+      onToken: (token: string) => {
+        setThinking(prev => prev + token)
+        thinkingAccumulatorRef.current += token
+        // Auto-scroll thinking area
+        if (thinkingRef.current) {
+          thinkingRef.current.scrollTop = thinkingRef.current.scrollHeight
         }
-      })
+      },
+      onStatus: (s: { provider?: string; status?: string; attempt?: number; error?: string }) => {
+        if (s.status === 'generating') {
+          setStatus('Generating...')
+          if (s.provider) providerRef.current = s.provider
+        } else if (s.status === 'validating') {
+          setStatus('Validating query...')
+        } else if (s.status === 'retrying') {
+          setStatus(`Attempt ${s.attempt}: Fixing error...`)
+          if (s.attempt) attemptsRef.current = s.attempt
+          setThinking('')
+          // Keep accumulating thinking across retries
+          thinkingAccumulatorRef.current += '\n\n--- Retry ---\n\n'
+        }
+      },
+      onDone: (result: { sql: string; error?: string }) => {
+        setIsGenerating(false)
+        setStatus(null)
+        setThinking('')
+
+        // Create history record
+        const record: GenerationRecord = {
+          id: crypto.randomUUID(),
+          type: 'generation',
+          timestamp: new Date(),
+          prompt: currentPromptRef.current,
+          thinking: thinkingAccumulatorRef.current,
+          sql: result.sql,
+          provider: providerRef.current,
+          attempts: attemptsRef.current,
+          error: result.error,
+        }
+        onGenerationComplete(record)
+
+        if (result.error) {
+          setError(result.error)
+          if (result.sql) {
+            onGenerated(result.sql, false)
+          }
+        } else {
+          setError(null)
+          onGenerated(result.sql, autoRun)
+          setPrompt('')
+        }
+      },
+      onError: (err: string) => {
+        setIsGenerating(false)
+        setStatus(null)
+        setThinking('')
+        setError(err)
+      }
+    }
+
+    try {
+      // Call the appropriate generator based on mode
+      if (mode === 'cypher') {
+        await generateCypherStream(prompt, currentQuery || undefined, conversationHistory, callbacks)
+      } else if (mode === 'sql') {
+        await generateSqlStream(prompt, currentQuery || undefined, conversationHistory, callbacks)
+      } else {
+        // Auto mode - detect SQL vs Cypher
+        await generateAutoStream(prompt, currentQuery || undefined, {
+          ...callbacks,
+          onMode: (detectedMode) => {
+            onModeDetected?.(detectedMode)
+          }
+        })
+      }
     } catch (err) {
       setIsGenerating(false)
       setStatus(null)

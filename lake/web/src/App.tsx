@@ -516,6 +516,8 @@ function QueryEditorView() {
           onGenerationComplete={handleGenerationComplete}
           autoRun={autoRun}
           onAutoRunChange={setAutoRun}
+          mode={mode}
+          onModeDetected={setActiveMode}
         />
       </div>
       <div className="flex-1 overflow-auto px-8 pb-8">

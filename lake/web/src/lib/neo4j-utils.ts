@@ -83,9 +83,43 @@ export function isNeo4jPath(value: unknown): value is Neo4jPath {
   )
 }
 
+/** Path element from shortestPath projection (device or link with code) */
+interface PathElement {
+  type: 'device' | 'link'
+  code: string
+  [key: string]: unknown
+}
+
+/** Check if an array is a path projection (array of device/link objects) */
+export function isPathArray(value: unknown): value is PathElement[] {
+  if (!Array.isArray(value) || value.length < 2) return false
+  // Check first few elements to see if they match the pattern
+  for (let i = 0; i < Math.min(value.length, 4); i++) {
+    const item = value[i]
+    if (!item || typeof item !== 'object') return false
+    const obj = item as Record<string, unknown>
+    if (typeof obj.type !== 'string' || typeof obj.code !== 'string') return false
+    if (obj.type !== 'device' && obj.type !== 'link') return false
+  }
+  return true
+}
+
+/** Format a path array as "device1 → device2 → device3" */
+export function formatPathArray(arr: PathElement[]): string {
+  const parts: string[] = []
+  for (const item of arr) {
+    if (item.type === 'device') {
+      parts.push(item.code)
+    } else if (item.type === 'link') {
+      parts.push('→')
+    }
+  }
+  return parts.join(' ')
+}
+
 /** Check if a value contains any Neo4j graph objects */
 export function isNeo4jValue(value: unknown): boolean {
-  return isNeo4jNode(value) || isNeo4jRelationship(value) || isNeo4jPath(value)
+  return isNeo4jNode(value) || isNeo4jRelationship(value) || isNeo4jPath(value) || isPathArray(value)
 }
 
 // ============================================================================
@@ -187,6 +221,11 @@ export function formatNeo4jValue(value: unknown): string {
     return formatNeo4jPath(value)
   }
 
+  // Check for path arrays before generic array handling
+  if (isPathArray(value)) {
+    return formatPathArray(value)
+  }
+
   if (Array.isArray(value)) {
     // Handle arrays of Neo4j values
     const formatted = value.map(v => formatNeo4jValue(v))
@@ -214,6 +253,10 @@ export function containsGraphData(rows: unknown[][]): boolean {
   for (const row of rows) {
     for (const cell of row) {
       if (isNeo4jNode(cell) || isNeo4jRelationship(cell) || isNeo4jPath(cell)) {
+        return true
+      }
+      // Check for path arrays
+      if (isPathArray(cell)) {
         return true
       }
       // Check arrays

@@ -188,6 +188,10 @@ func formatNeo4jValue(v any) string {
 		if len(val) == 0 {
 			return "[]"
 		}
+		// Check if this looks like a path (array of objects with type: device/link)
+		if isPathArray(val) {
+			return formatPathArray(val)
+		}
 		parts := make([]string, 0, len(val))
 		for _, item := range val {
 			parts = append(parts, formatNeo4jValue(item))
@@ -259,6 +263,55 @@ func formatNeo4jRelationship(val map[string]any, relType any) string {
 		return fmt.Sprintf("[:%s {%s}]", typeStr, strings.Join(propParts, ", "))
 	}
 	return fmt.Sprintf("[:%s]", typeStr)
+}
+
+// isPathArray checks if an array looks like a path (alternating device/link objects).
+func isPathArray(arr []any) bool {
+	if len(arr) < 2 {
+		return false
+	}
+	// Check first few elements for device/link pattern
+	for i := 0; i < len(arr) && i < 4; i++ {
+		obj, ok := arr[i].(map[string]any)
+		if !ok {
+			return false
+		}
+		typeVal, hasType := obj["type"]
+		_, hasCode := obj["code"]
+		if !hasType || !hasCode {
+			return false
+		}
+		typeStr, ok := typeVal.(string)
+		if !ok {
+			return false
+		}
+		if typeStr != "device" && typeStr != "link" {
+			return false
+		}
+	}
+	return true
+}
+
+// formatPathArray formats an array of path elements (device/link objects) as a visual path.
+// Output: "device1 → link1 → device2" or with details
+func formatPathArray(arr []any) string {
+	parts := make([]string, 0, len(arr))
+	for _, item := range arr {
+		obj, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		code, _ := obj["code"].(string)
+		itemType, _ := obj["type"].(string)
+
+		if itemType == "device" {
+			parts = append(parts, code)
+		} else if itemType == "link" {
+			// For links, show a simpler arrow representation
+			parts = append(parts, "→")
+		}
+	}
+	return strings.Join(parts, " ")
 }
 
 // formatNeo4jPath formats a Neo4j path for agent-friendly display.

@@ -203,6 +203,143 @@ type LinkDetail struct {
 	PeakOutBps      float64 `json:"peak_out_bps"`
 }
 
+// TopologyLinkHealth represents the SLA health status of a link for topology overlay
+type TopologyLinkHealth struct {
+	LinkPK          string  `json:"link_pk"`
+	SideAPK         string  `json:"side_a_pk"`
+	SideACode       string  `json:"side_a_code"`
+	SideZPK         string  `json:"side_z_pk"`
+	SideZCode       string  `json:"side_z_code"`
+	AvgRttUs        float64 `json:"avg_rtt_us"`
+	P95RttUs        float64 `json:"p95_rtt_us"`
+	CommittedRttNs  int64   `json:"committed_rtt_ns"`
+	LossPct         float64 `json:"loss_pct"`
+	ExceedsCommit   bool    `json:"exceeds_commit"`
+	HasPacketLoss   bool    `json:"has_packet_loss"`
+	IsDark          bool    `json:"is_dark"`
+	SlaStatus       string  `json:"sla_status"` // "healthy", "warning", "critical", "unknown"
+	SlaRatio        float64 `json:"sla_ratio"`  // measured / committed (0 if no commitment)
+}
+
+type TopologyLinkHealthResponse struct {
+	Links         []TopologyLinkHealth `json:"links"`
+	TotalLinks    int          `json:"total_links"`
+	HealthyCount  int          `json:"healthy_count"`
+	WarningCount  int          `json:"warning_count"`
+	CriticalCount int          `json:"critical_count"`
+	UnknownCount  int          `json:"unknown_count"`
+}
+
+func GetLinkHealth(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	start := time.Now()
+	query := `
+		SELECT
+			h.pk AS link_pk,
+			l.side_a_pk,
+			COALESCE(da.code, '') AS side_a_code,
+			l.side_z_pk,
+			COALESCE(dz.code, '') AS side_z_code,
+			h.avg_rtt_us,
+			h.p95_rtt_us,
+			h.committed_rtt_ns,
+			h.loss_pct,
+			h.exceeds_committed_rtt,
+			h.has_packet_loss,
+			h.is_dark
+		FROM dz_links_health_current h
+		JOIN dz_links_current l ON h.pk = l.pk
+		LEFT JOIN dz_devices_current da ON l.side_a_pk = da.pk
+		LEFT JOIN dz_devices_current dz ON l.side_z_pk = dz.pk
+		WHERE l.side_a_pk != '' AND l.side_z_pk != ''
+	`
+
+	rows, err := config.DB.Query(ctx, query)
+	duration := time.Since(start)
+	metrics.RecordClickHouseQuery(duration, err)
+
+	if err != nil {
+		log.Printf("Link health query error: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var links []TopologyLinkHealth
+	healthyCount, warningCount, criticalCount, unknownCount := 0, 0, 0, 0
+
+	for rows.Next() {
+		var lh TopologyLinkHealth
+		if err := rows.Scan(
+			&lh.LinkPK,
+			&lh.SideAPK,
+			&lh.SideACode,
+			&lh.SideZPK,
+			&lh.SideZCode,
+			&lh.AvgRttUs,
+			&lh.P95RttUs,
+			&lh.CommittedRttNs,
+			&lh.LossPct,
+			&lh.ExceedsCommit,
+			&lh.HasPacketLoss,
+			&lh.IsDark,
+		); err != nil {
+			log.Printf("Link health scan error: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// Calculate SLA status
+		if lh.IsDark || lh.CommittedRttNs == 0 {
+			lh.SlaStatus = "unknown"
+			lh.SlaRatio = 0
+			unknownCount++
+		} else {
+			committedUs := float64(lh.CommittedRttNs) / 1000.0
+			lh.SlaRatio = lh.AvgRttUs / committedUs
+
+			if lh.ExceedsCommit || lh.HasPacketLoss {
+				lh.SlaStatus = "critical"
+				criticalCount++
+			} else if lh.SlaRatio >= 0.8 {
+				lh.SlaStatus = "warning"
+				warningCount++
+			} else {
+				lh.SlaStatus = "healthy"
+				healthyCount++
+			}
+		}
+
+		links = append(links, lh)
+	}
+
+	if err := rows.Err(); err != nil {
+		log.Printf("Link health rows error: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if links == nil {
+		links = []TopologyLinkHealth{}
+	}
+
+	response := TopologyLinkHealthResponse{
+		Links:         links,
+		TotalLinks:    len(links),
+		HealthyCount:  healthyCount,
+		WarningCount:  warningCount,
+		CriticalCount: criticalCount,
+		UnknownCount:  unknownCount,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("JSON encoding error: %v", err)
+	}
+}
+
 func GetLink(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()

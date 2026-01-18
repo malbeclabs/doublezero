@@ -341,9 +341,9 @@ Historical topology changes over time.
 - [x] What-If Link Removal - Graph UI + Map UI
 - [x] What-If Link Addition - Graph UI + Map UI
 
-### Phase 10: Planning Tools
+### Phase 10: Planning Tools (Done)
 - [x] Metro Connectivity Matrix page
-- [ ] Maintenance Planner page
+- [x] Maintenance Planner page
 
 ### Phase 11: Advanced Visualization
 - [ ] Metro Clustering View

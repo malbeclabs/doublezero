@@ -6,10 +6,12 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/malbeclabs/doublezero/lake/api/config"
 	"github.com/malbeclabs/doublezero/lake/api/metrics"
+	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 )
 
 // ISISNode represents a device node in the ISIS topology graph
@@ -1456,4 +1458,266 @@ func GetMetroConnectivity(w http.ResponseWriter, r *http.Request) {
 		len(response.Metros), len(response.Connectivity), duration)
 
 	writeJSON(w, response)
+}
+
+// MaintenanceImpactRequest is the request body for maintenance impact analysis
+type MaintenanceImpactRequest struct {
+	Devices []string `json:"devices"` // Device PKs to take offline
+	Links   []string `json:"links"`   // Link PKs to take offline (as "sourcePK:targetPK")
+}
+
+// MaintenanceItem represents a device or link being taken offline
+type MaintenanceItem struct {
+	Type           string `json:"type"`           // "device" or "link"
+	PK             string `json:"pk"`             // Device PK or "sourcePK:targetPK" for links
+	Code           string `json:"code"`           // Device code or "sourceCode - targetCode"
+	Impact         int    `json:"impact"`         // Number of affected paths/devices
+	Disconnected   int    `json:"disconnected"`   // Devices that would lose connectivity
+	CausesPartition bool  `json:"causesPartition"` // Would this cause a network partition?
+}
+
+// MaintenanceImpactResponse is the response for maintenance impact analysis
+type MaintenanceImpactResponse struct {
+	Items            []MaintenanceItem `json:"items"`            // Items with their individual impacts
+	TotalImpact      int               `json:"totalImpact"`      // Total affected paths when all items are down
+	TotalDisconnected int              `json:"totalDisconnected"` // Total devices that lose connectivity
+	RecommendedOrder []string          `json:"recommendedOrder"` // PKs in recommended maintenance order (least impact first)
+	Error            string            `json:"error,omitempty"`
+}
+
+// PostMaintenanceImpact analyzes the impact of taking multiple devices/links offline
+func PostMaintenanceImpact(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+
+	start := time.Now()
+
+	// Parse request body
+	var req MaintenanceImpactRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, MaintenanceImpactResponse{Error: "Invalid request body: " + err.Error()})
+		return
+	}
+
+	if len(req.Devices) == 0 && len(req.Links) == 0 {
+		writeJSON(w, MaintenanceImpactResponse{Error: "No devices or links specified"})
+		return
+	}
+
+	session := config.Neo4jSession(ctx)
+	defer session.Close(ctx)
+
+	response := MaintenanceImpactResponse{
+		Items:            []MaintenanceItem{},
+		RecommendedOrder: []string{},
+	}
+
+	// Analyze each device
+	for _, devicePK := range req.Devices {
+		item := analyzeDeviceImpact(ctx, session, devicePK)
+		response.Items = append(response.Items, item)
+	}
+
+	// Analyze each link
+	for _, linkPK := range req.Links {
+		item := analyzeLinkImpact(ctx, session, linkPK)
+		response.Items = append(response.Items, item)
+	}
+
+	// Sort items by impact (ascending) for recommended order
+	// Make a copy to sort
+	sortedItems := make([]MaintenanceItem, len(response.Items))
+	copy(sortedItems, response.Items)
+
+	// Simple bubble sort by impact (least impactful first)
+	for i := 0; i < len(sortedItems)-1; i++ {
+		for j := 0; j < len(sortedItems)-i-1; j++ {
+			if sortedItems[j].Impact > sortedItems[j+1].Impact {
+				sortedItems[j], sortedItems[j+1] = sortedItems[j+1], sortedItems[j]
+			}
+		}
+	}
+
+	// Build recommended order
+	for _, item := range sortedItems {
+		response.RecommendedOrder = append(response.RecommendedOrder, item.PK)
+	}
+
+	// Calculate total impact (simplified - just sum individual impacts)
+	// A more accurate calculation would consider combined effects
+	for _, item := range response.Items {
+		response.TotalImpact += item.Impact
+		response.TotalDisconnected += item.Disconnected
+	}
+
+	duration := time.Since(start)
+	metrics.RecordClickHouseQuery(duration, nil)
+
+	log.Printf("Maintenance impact analyzed %d devices, %d links in %v",
+		len(req.Devices), len(req.Links), duration)
+
+	writeJSON(w, response)
+}
+
+// analyzeDeviceImpact computes the impact of taking a single device offline
+func analyzeDeviceImpact(ctx context.Context, session neo4j.SessionWithContext, devicePK string) MaintenanceItem {
+	item := MaintenanceItem{
+		Type: "device",
+		PK:   devicePK,
+	}
+
+	// Get device code
+	codeCypher := `
+		MATCH (d:Device {pk: $pk})
+		RETURN d.code AS code
+	`
+	codeResult, err := session.Run(ctx, codeCypher, map[string]interface{}{"pk": devicePK})
+	if err == nil {
+		if record, err := codeResult.Single(ctx); err == nil {
+			if code, ok := record.Get("code"); ok {
+				item.Code = asString(code)
+			}
+		}
+	}
+
+	// Count paths that go through this device
+	pathsCypher := `
+		MATCH (d:Device {pk: $pk})
+		WHERE d.isis_system_id IS NOT NULL
+		OPTIONAL MATCH (other:Device)
+		WHERE other.isis_system_id IS NOT NULL AND other.pk <> d.pk
+		OPTIONAL MATCH path = shortestPath((other)-[:ISIS_ADJACENT*]-(d))
+		WITH d, count(path) AS pathCount
+		RETURN pathCount
+	`
+	pathsResult, err := session.Run(ctx, pathsCypher, map[string]interface{}{"pk": devicePK})
+	if err == nil {
+		if record, err := pathsResult.Single(ctx); err == nil {
+			if pathCount, ok := record.Get("pathCount"); ok {
+				item.Impact = int(asInt64(pathCount))
+			}
+		}
+	}
+
+	// Check if this device is critical (would disconnect others)
+	// A device is critical if any of its neighbors have degree 1 (only connected to this device)
+	criticalCypher := `
+		MATCH (d:Device {pk: $pk})-[:ISIS_ADJACENT]-(neighbor:Device)
+		WHERE d.isis_system_id IS NOT NULL AND neighbor.isis_system_id IS NOT NULL
+		WITH neighbor
+		MATCH (neighbor)-[:ISIS_ADJACENT]-(any:Device)
+		WHERE any.isis_system_id IS NOT NULL
+		WITH neighbor, count(DISTINCT any) AS degree
+		WHERE degree = 1
+		RETURN count(neighbor) AS disconnectedCount
+	`
+	criticalResult, err := session.Run(ctx, criticalCypher, map[string]interface{}{"pk": devicePK})
+	if err == nil {
+		if record, err := criticalResult.Single(ctx); err == nil {
+			if disconnectedCount, ok := record.Get("disconnectedCount"); ok {
+				item.Disconnected = int(asInt64(disconnectedCount))
+				item.CausesPartition = item.Disconnected > 0
+			}
+		}
+	}
+
+	return item
+}
+
+// analyzeLinkImpact computes the impact of taking a single link offline
+func analyzeLinkImpact(ctx context.Context, session neo4j.SessionWithContext, linkPK string) MaintenanceItem {
+	item := MaintenanceItem{
+		Type: "link",
+		PK:   linkPK,
+	}
+
+	// Parse link PK as "sourcePK:targetPK"
+	parts := strings.Split(linkPK, ":")
+	if len(parts) != 2 {
+		item.Code = "Invalid link format"
+		return item
+	}
+	sourcePK, targetPK := parts[0], parts[1]
+
+	// Get device codes for the link
+	codeCypher := `
+		MATCH (s:Device {pk: $sourcePK}), (t:Device {pk: $targetPK})
+		RETURN s.code AS sourceCode, t.code AS targetCode
+	`
+	codeResult, err := session.Run(ctx, codeCypher, map[string]interface{}{
+		"sourcePK": sourcePK,
+		"targetPK": targetPK,
+	})
+	if err == nil {
+		if record, err := codeResult.Single(ctx); err == nil {
+			sourceCode, _ := record.Get("sourceCode")
+			targetCode, _ := record.Get("targetCode")
+			item.Code = asString(sourceCode) + " - " + asString(targetCode)
+		}
+	}
+
+	// Check if removing this link would disconnect devices
+	// If either endpoint has degree 1, removing the link disconnects that device
+	degreeCypher := `
+		MATCH (s:Device {pk: $sourcePK}), (t:Device {pk: $targetPK})
+		WHERE s.isis_system_id IS NOT NULL AND t.isis_system_id IS NOT NULL
+		OPTIONAL MATCH (s)-[:ISIS_ADJACENT]-(sn:Device) WHERE sn.isis_system_id IS NOT NULL
+		WITH s, t, count(DISTINCT sn) AS sourceDegree
+		OPTIONAL MATCH (t)-[:ISIS_ADJACENT]-(tn:Device) WHERE tn.isis_system_id IS NOT NULL
+		WITH s, t, sourceDegree, count(DISTINCT tn) AS targetDegree
+		RETURN sourceDegree, targetDegree
+	`
+	degreeResult, err := session.Run(ctx, degreeCypher, map[string]interface{}{
+		"sourcePK": sourcePK,
+		"targetPK": targetPK,
+	})
+	if err == nil {
+		if record, err := degreeResult.Single(ctx); err == nil {
+			sourceDegree, _ := record.Get("sourceDegree")
+			targetDegree, _ := record.Get("targetDegree")
+			sDeg := int(asInt64(sourceDegree))
+			tDeg := int(asInt64(targetDegree))
+
+			// If either has degree 1, this link is critical
+			if sDeg == 1 || tDeg == 1 {
+				item.CausesPartition = true
+				if sDeg == 1 {
+					item.Disconnected++
+				}
+				if tDeg == 1 {
+					item.Disconnected++
+				}
+			}
+		}
+	}
+
+	// Count paths that use this link
+	// We count device pairs where the shortest path goes through this link
+	pathsCypher := `
+		MATCH (s:Device {pk: $sourcePK})-[:ISIS_ADJACENT]-(t:Device {pk: $targetPK})
+		WHERE s.isis_system_id IS NOT NULL AND t.isis_system_id IS NOT NULL
+		// Get neighbors of source (excluding target)
+		OPTIONAL MATCH (s)-[:ISIS_ADJACENT]-(sNeighbor:Device)
+		WHERE sNeighbor.isis_system_id IS NOT NULL AND sNeighbor.pk <> t.pk
+		WITH s, t, collect(DISTINCT sNeighbor.pk) AS sourceNeighbors
+		// Get neighbors of target (excluding source)
+		OPTIONAL MATCH (t)-[:ISIS_ADJACENT]-(tNeighbor:Device)
+		WHERE tNeighbor.isis_system_id IS NOT NULL AND tNeighbor.pk <> s.pk
+		WITH sourceNeighbors, collect(DISTINCT tNeighbor.pk) AS targetNeighbors
+		// Rough estimate: paths affected = sourceNeighbors * targetNeighbors
+		RETURN size(sourceNeighbors) * size(targetNeighbors) AS affectedPaths
+	`
+	pathsResult, err := session.Run(ctx, pathsCypher, map[string]interface{}{
+		"sourcePK": sourcePK,
+		"targetPK": targetPK,
+	})
+	if err == nil {
+		if record, err := pathsResult.Single(ctx); err == nil {
+			if affectedPaths, ok := record.Get("affectedPaths"); ok {
+				item.Impact = int(asInt64(affectedPaths))
+			}
+		}
+	}
+
+	return item
 }

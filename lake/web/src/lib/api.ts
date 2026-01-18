@@ -2454,6 +2454,44 @@ export async function fetchMetroConnectivity(): Promise<MetroConnectivityRespons
   return res.json()
 }
 
+// Maintenance planner types
+export interface MaintenanceItem {
+  type: 'device' | 'link'
+  pk: string
+  code: string
+  impact: number
+  disconnected: number
+  causesPartition: boolean
+}
+
+export interface MaintenanceImpactRequest {
+  devices: string[]
+  links: string[]
+}
+
+export interface MaintenanceImpactResponse {
+  items: MaintenanceItem[]
+  totalImpact: number
+  totalDisconnected: number
+  recommendedOrder: string[]
+  error?: string
+}
+
+export async function fetchMaintenanceImpact(
+  devices: string[],
+  links: string[]
+): Promise<MaintenanceImpactResponse> {
+  const res = await fetch('/api/topology/maintenance-impact', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ devices, links }),
+  })
+  if (!res.ok) {
+    throw new Error('Failed to analyze maintenance impact')
+  }
+  return res.json()
+}
+
 // Search types and functions
 export type SearchEntityType = 'device' | 'link' | 'metro' | 'contributor' | 'user' | 'validator' | 'gossip'
 

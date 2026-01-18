@@ -1,9 +1,9 @@
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { Loader2, Shield, AlertTriangle, AlertCircle, Info, ExternalLink, ChevronDown, ChevronRight } from 'lucide-react'
-import { fetchRedundancyReport } from '@/lib/api'
-import type { RedundancyIssue } from '@/lib/api'
+import { Loader2, Shield, AlertTriangle, AlertCircle, Info, ExternalLink, ChevronDown, ChevronRight, Activity, Wifi } from 'lucide-react'
+import { fetchRedundancyReport, fetchLinkHealth } from '@/lib/api'
+import type { RedundancyIssue, TopologyLinkHealth } from '@/lib/api'
 
 // Severity colors
 const SEVERITY_COLORS = {
@@ -196,6 +196,135 @@ function IssueRow({
   )
 }
 
+function formatMicroseconds(us: number): string {
+  if (us >= 1000) {
+    return `${(us / 1000).toFixed(1)}ms`
+  }
+  return `${us.toFixed(0)}µs`
+}
+
+function DegradedLinkRow({
+  link,
+  isExpanded,
+  onToggle,
+}: {
+  link: TopologyLinkHealth
+  isExpanded: boolean
+  onToggle: () => void
+}) {
+  const isCritical = link.sla_status === 'critical'
+  const severity = isCritical ? SEVERITY_COLORS.critical : SEVERITY_COLORS.warning
+  const Icon = severity.icon
+
+  const committedRttUs = link.committed_rtt_ns / 1000
+
+  return (
+    <div className={`border rounded-lg ${severity.border} overflow-hidden`}>
+      <button
+        onClick={onToggle}
+        className={`w-full flex items-center gap-3 p-3 text-left hover:bg-muted/50 transition-colors`}
+      >
+        <div className={`p-1.5 rounded ${severity.bg}`}>
+          <Icon className={`h-4 w-4 ${severity.text}`} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="font-medium">
+              {link.side_a_code} <span className="text-muted-foreground">↔</span> {link.side_z_code}
+            </span>
+            <span className={`text-xs px-2 py-0.5 rounded ${severity.bg} ${severity.text}`}>
+              {isCritical ? 'SLA Critical' : 'SLA Warning'}
+            </span>
+          </div>
+          <div className="text-sm text-muted-foreground truncate flex items-center gap-3">
+            <span className="inline-flex items-center gap-1">
+              <Activity className="h-3 w-3" />
+              P95: {formatMicroseconds(link.p95_rtt_us)}
+              {link.exceeds_commit && <span className="text-red-500">(exceeds {formatMicroseconds(committedRttUs)} commit)</span>}
+            </span>
+            {link.has_packet_loss && (
+              <span className="inline-flex items-center gap-1 text-red-500">
+                <Wifi className="h-3 w-3" />
+                {link.loss_pct.toFixed(2)}% loss
+              </span>
+            )}
+          </div>
+        </div>
+        {isExpanded ? (
+          <ChevronDown className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+        ) : (
+          <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+        )}
+      </button>
+
+      {isExpanded && (
+        <div className="px-3 pb-3 border-t border-border bg-muted/30">
+          <div className="pt-3 space-y-3">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Average RTT</div>
+                <div className="text-sm font-medium">{formatMicroseconds(link.avg_rtt_us)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">P95 RTT</div>
+                <div className="text-sm font-medium">{formatMicroseconds(link.p95_rtt_us)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Committed RTT</div>
+                <div className="text-sm font-medium">{formatMicroseconds(committedRttUs)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">SLA Ratio</div>
+                <div className="text-sm font-medium">{(link.sla_ratio * 100).toFixed(1)}%</div>
+              </div>
+            </div>
+
+            {link.has_packet_loss && (
+              <div>
+                <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Packet Loss</div>
+                <div className="text-sm font-medium text-red-500">{link.loss_pct.toFixed(2)}%</div>
+              </div>
+            )}
+
+            <div className="pt-2 flex gap-2">
+              <Link
+                to={`/dz/devices/${link.side_a_pk}`}
+                className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+              >
+                View {link.side_a_code}
+                <ExternalLink className="h-3 w-3" />
+              </Link>
+              <span className="text-muted-foreground">|</span>
+              <Link
+                to={`/dz/devices/${link.side_z_pk}`}
+                className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+              >
+                View {link.side_z_code}
+                <ExternalLink className="h-3 w-3" />
+              </Link>
+            </div>
+
+            <div className="pt-2 flex gap-2">
+              <Link
+                to={`/topology/graph?highlight=${link.side_a_pk}`}
+                className="text-xs px-2 py-1 bg-muted rounded hover:bg-muted/80 transition-colors"
+              >
+                Show in Graph
+              </Link>
+              <Link
+                to={`/topology/map?type=link&sideA=${link.side_a_pk}&sideZ=${link.side_z_pk}`}
+                className="text-xs px-2 py-1 bg-muted rounded hover:bg-muted/80 transition-colors"
+              >
+                Show in Map
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 type FilterType = 'all' | 'leaf_device' | 'critical_link' | 'single_exit_metro'
 type FilterSeverity = 'all' | 'critical' | 'warning' | 'info'
 
@@ -203,10 +332,16 @@ export function RedundancyReportPage() {
   const [filterType, setFilterType] = useState<FilterType>('all')
   const [filterSeverity, setFilterSeverity] = useState<FilterSeverity>('all')
   const [expandedIssues, setExpandedIssues] = useState<Set<string>>(new Set())
+  const [expandedDegradedLinks, setExpandedDegradedLinks] = useState<Set<string>>(new Set())
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['redundancy-report'],
     queryFn: fetchRedundancyReport,
+  })
+
+  const { data: linkHealthData, isLoading: linkHealthLoading } = useQuery({
+    queryKey: ['link-health'],
+    queryFn: fetchLinkHealth,
   })
 
   const filteredIssues = useMemo(() => {
@@ -232,6 +367,25 @@ export function RedundancyReportPage() {
 
   const getIssueKey = (issue: RedundancyIssue, index: number) => {
     return `${issue.type}-${issue.entityPK}-${issue.targetPK || ''}-${index}`
+  }
+
+  const degradedLinks = useMemo(() => {
+    if (!linkHealthData?.links) return []
+    return linkHealthData.links.filter(
+      link => link.sla_status === 'critical' || link.sla_status === 'warning'
+    )
+  }, [linkHealthData?.links])
+
+  const toggleDegradedLink = (linkPk: string) => {
+    setExpandedDegradedLinks(prev => {
+      const next = new Set(prev)
+      if (next.has(linkPk)) {
+        next.delete(linkPk)
+      } else {
+        next.add(linkPk)
+      }
+      return next
+    })
   }
 
   if (isLoading) {
@@ -366,6 +520,71 @@ export function RedundancyReportPage() {
             )
           })
         )}
+      </div>
+
+      {/* Degraded Links Section */}
+      <div className="mt-8">
+        <div className="flex items-center gap-3 mb-4">
+          <Activity className="h-5 w-5 text-primary" />
+          <h2 className="text-lg font-semibold">Latency Degradation</h2>
+          {linkHealthLoading && (
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          )}
+        </div>
+
+        {linkHealthData && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <SummaryCard
+              label="Critical Links"
+              value={linkHealthData.critical_count}
+              color="critical"
+              icon={AlertCircle}
+            />
+            <SummaryCard
+              label="Warning Links"
+              value={linkHealthData.warning_count}
+              color="warning"
+              icon={AlertTriangle}
+            />
+            <SummaryCard
+              label="Healthy Links"
+              value={linkHealthData.healthy_count}
+              color="neutral"
+              icon={Shield}
+            />
+            <SummaryCard
+              label="Total Links"
+              value={linkHealthData.total_links}
+              color="neutral"
+              icon={Activity}
+            />
+          </div>
+        )}
+
+        <div className="space-y-3">
+          {degradedLinks.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground bg-muted/30 rounded-lg">
+              {linkHealthLoading ? (
+                <>Loading link health data...</>
+              ) : (
+                <>
+                  <Shield className="h-10 w-10 mx-auto mb-3 text-green-500" />
+                  <div className="text-base font-medium text-foreground">All links healthy</div>
+                  <div className="text-sm mt-1">No SLA violations detected.</div>
+                </>
+              )}
+            </div>
+          ) : (
+            degradedLinks.map(link => (
+              <DegradedLinkRow
+                key={link.link_pk}
+                link={link}
+                isExpanded={expandedDegradedLinks.has(link.link_pk)}
+                onToggle={() => toggleDegradedLink(link.link_pk)}
+              />
+            ))
+          )}
+        </div>
       </div>
 
       {/* Footer links */}

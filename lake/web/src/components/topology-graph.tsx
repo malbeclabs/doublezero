@@ -1,0 +1,783 @@
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
+import cytoscape from 'cytoscape'
+import type { Core, NodeSingular, EdgeSingular } from 'cytoscape'
+import { useQuery } from '@tanstack/react-query'
+import { ZoomIn, ZoomOut, Maximize, Search, Filter, Route, X } from 'lucide-react'
+import { fetchISISTopology, fetchISISPath } from '@/lib/api'
+import type { PathResponse } from '@/lib/api'
+import { useTheme } from '@/hooks/use-theme'
+
+// Device type colors
+const DEVICE_TYPE_COLORS: Record<string, { light: string; dark: string }> = {
+  core: { light: '#7c3aed', dark: '#a78bfa' },      // purple
+  edge: { light: '#2563eb', dark: '#60a5fa' },      // blue
+  pop: { light: '#0891b2', dark: '#22d3ee' },       // cyan
+  default: { light: '#6b7280', dark: '#9ca3af' },   // gray
+}
+
+type InteractionMode = 'explore' | 'path'
+
+interface TopologyGraphProps {
+  onDeviceSelect?: (devicePK: string | null) => void
+  selectedDevicePK?: string | null
+  statusFilter?: string
+  deviceTypeFilter?: string
+}
+
+export function TopologyGraph({
+  onDeviceSelect,
+  selectedDevicePK,
+  statusFilter,
+  deviceTypeFilter,
+}: TopologyGraphProps) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const cyRef = useRef<Core | null>(null)
+  const navigate = useNavigate()
+  const { theme } = useTheme()
+  const isDark = theme === 'dark'
+
+  // Use refs for callbacks to avoid re-initializing the graph
+  const onDeviceSelectRef = useRef(onDeviceSelect)
+  const navigateRef = useRef(navigate)
+  useEffect(() => {
+    onDeviceSelectRef.current = onDeviceSelect
+  }, [onDeviceSelect])
+  useEffect(() => {
+    navigateRef.current = navigate
+  }, [navigate])
+
+  const [mode, setMode] = useState<InteractionMode>('explore')
+  const [pathSource, setPathSource] = useState<string | null>(null)
+  const [pathTarget, setPathTarget] = useState<string | null>(null)
+  const [pathResult, setPathResult] = useState<PathResponse | null>(null)
+  const [pathLoading, setPathLoading] = useState(false)
+
+  const [hoveredNode, setHoveredNode] = useState<{
+    id: string
+    label: string
+    status: string
+    deviceType: string
+    systemId?: string
+    degree: number
+    x: number
+    y: number
+  } | null>(null)
+
+  const [hoveredEdge, setHoveredEdge] = useState<{
+    id: string
+    source: string
+    target: string
+    metric: number
+    x: number
+    y: number
+  } | null>(null)
+
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<{ id: string; label: string }[]>([])
+  const [showSearch, setShowSearch] = useState(false)
+  const [showFilters, setShowFilters] = useState(false)
+  const [localStatusFilter, setLocalStatusFilter] = useState(statusFilter || 'all')
+  const [localTypeFilter, setLocalTypeFilter] = useState(deviceTypeFilter || 'all')
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['isis-topology'],
+    queryFn: fetchISISTopology,
+    refetchInterval: 60000,
+  })
+
+  // Calculate degree for each node
+  const nodesDegree = useMemo(() => {
+    if (!data) return new Map<string, number>()
+    const degrees = new Map<string, number>()
+    data.nodes.forEach(node => degrees.set(node.data.id, 0))
+    data.edges.forEach(edge => {
+      degrees.set(edge.data.source, (degrees.get(edge.data.source) || 0) + 1)
+      degrees.set(edge.data.target, (degrees.get(edge.data.target) || 0) + 1)
+    })
+    return degrees
+  }, [data])
+
+  // Get unique device types for filter
+  const deviceTypes = useMemo(() => {
+    if (!data) return []
+    const types = new Set(data.nodes.map(n => n.data.deviceType).filter(Boolean))
+    return Array.from(types).sort()
+  }, [data])
+
+  // Filter nodes and edges
+  const filteredData = useMemo(() => {
+    if (!data) return null
+
+    const activeStatusFilter = statusFilter || localStatusFilter
+    const activeTypeFilter = deviceTypeFilter || localTypeFilter
+
+    const filteredNodes = data.nodes.filter(node => {
+      if (activeStatusFilter !== 'all') {
+        const isActive = node.data.status === 'active' || node.data.status === 'activated'
+        if (activeStatusFilter === 'active' && !isActive) return false
+        if (activeStatusFilter === 'inactive' && isActive) return false
+      }
+      if (activeTypeFilter !== 'all' && node.data.deviceType !== activeTypeFilter) {
+        return false
+      }
+      return true
+    })
+
+    const nodeIds = new Set(filteredNodes.map(n => n.data.id))
+    const filteredEdges = data.edges.filter(
+      edge => nodeIds.has(edge.data.source) && nodeIds.has(edge.data.target)
+    )
+
+    return { nodes: filteredNodes, edges: filteredEdges }
+  }, [data, statusFilter, localStatusFilter, deviceTypeFilter, localTypeFilter])
+
+  // Get device type color
+  const getDeviceTypeColor = useCallback((deviceType: string) => {
+    const colors = DEVICE_TYPE_COLORS[deviceType?.toLowerCase()] || DEVICE_TYPE_COLORS.default
+    return isDark ? colors.dark : colors.light
+  }, [isDark])
+
+  // Get status border color
+  const getStatusBorderColor = useCallback((status: string) => {
+    if (status === 'active' || status === 'activated') {
+      return isDark ? '#22c55e' : '#16a34a' // green
+    }
+    return isDark ? '#ef4444' : '#dc2626' // red
+  }, [isDark])
+
+  // Calculate node size based on degree
+  const getNodeSize = useCallback((degree: number) => {
+    const minSize = 16
+    const maxSize = 40
+    if (degree <= 1) return minSize
+    const size = minSize + Math.log2(degree) * 6
+    return Math.min(maxSize, size)
+  }, [])
+
+  // Fetch path when source and target are set
+  useEffect(() => {
+    if (mode !== 'path' || !pathSource || !pathTarget) return
+
+    setPathLoading(true)
+    fetchISISPath(pathSource, pathTarget)
+      .then(result => {
+        setPathResult(result)
+      })
+      .catch(err => {
+        setPathResult({ path: [], totalMetric: 0, hopCount: 0, error: err.message })
+      })
+      .finally(() => {
+        setPathLoading(false)
+      })
+  }, [mode, pathSource, pathTarget])
+
+  // Highlight path on graph
+  useEffect(() => {
+    if (!cyRef.current || !pathResult?.path?.length) return
+    const cy = cyRef.current
+
+    // Clear previous path highlighting
+    cy.elements().removeClass('path-node path-edge')
+
+    // Highlight path nodes and edges
+    const pathNodeIds = new Set(pathResult.path.map(h => h.devicePK))
+    cy.nodes().forEach(node => {
+      if (pathNodeIds.has(node.id())) {
+        node.addClass('path-node')
+      }
+    })
+
+    // Highlight edges between consecutive path nodes
+    for (let i = 0; i < pathResult.path.length - 1; i++) {
+      const from = pathResult.path[i].devicePK
+      const to = pathResult.path[i + 1].devicePK
+      // Try both directions since ISIS adjacencies are directed
+      const edge = cy.edges(`[source="${from}"][target="${to}"], [source="${to}"][target="${from}"]`)
+      edge.addClass('path-edge')
+    }
+  }, [pathResult])
+
+  // Clear path when mode changes
+  useEffect(() => {
+    if (mode === 'explore') {
+      setPathSource(null)
+      setPathTarget(null)
+      setPathResult(null)
+      if (cyRef.current) {
+        cyRef.current.elements().removeClass('path-node path-edge path-source path-target')
+      }
+    }
+  }, [mode])
+
+  // Initialize Cytoscape
+  useEffect(() => {
+    if (!containerRef.current || !filteredData) return
+
+    const cy = cytoscape({
+      container: containerRef.current,
+      elements: [
+        ...filteredData.nodes.map(node => ({
+          group: 'nodes' as const,
+          data: {
+            id: node.data.id,
+            label: node.data.label,
+            status: node.data.status,
+            deviceType: node.data.deviceType,
+            systemId: node.data.systemId,
+            routerId: node.data.routerId,
+            metroPK: node.data.metroPK,
+            degree: nodesDegree.get(node.data.id) || 0,
+          },
+        })),
+        ...filteredData.edges.map(edge => ({
+          group: 'edges' as const,
+          data: {
+            id: edge.data.id,
+            source: edge.data.source,
+            target: edge.data.target,
+            metric: edge.data.metric,
+          },
+        })),
+      ],
+      style: [
+        {
+          selector: 'node',
+          style: {
+            'background-color': (ele: NodeSingular) => getDeviceTypeColor(ele.data('deviceType')),
+            'label': 'data(label)',
+            'text-valign': 'bottom',
+            'text-halign': 'center',
+            'font-size': '9px',
+            'color': isDark ? '#d1d5db' : '#4b5563',
+            'text-margin-y': 4,
+            'width': (ele: NodeSingular) => getNodeSize(ele.data('degree')),
+            'height': (ele: NodeSingular) => getNodeSize(ele.data('degree')),
+            'border-width': 3,
+            'border-color': (ele: NodeSingular) => getStatusBorderColor(ele.data('status')),
+          },
+        },
+        {
+          selector: 'node:selected',
+          style: {
+            'border-width': 4,
+            'border-color': '#3b82f6',
+            'overlay-opacity': 0.1,
+            'overlay-color': '#3b82f6',
+          },
+        },
+        {
+          selector: 'node.highlighted',
+          style: {
+            'border-width': 4,
+            'border-color': '#f59e0b',
+            'overlay-opacity': 0.15,
+            'overlay-color': '#f59e0b',
+          },
+        },
+        {
+          selector: 'node.path-source',
+          style: {
+            'border-width': 5,
+            'border-color': '#22c55e',
+            'overlay-opacity': 0.2,
+            'overlay-color': '#22c55e',
+          },
+        },
+        {
+          selector: 'node.path-target',
+          style: {
+            'border-width': 5,
+            'border-color': '#ef4444',
+            'overlay-opacity': 0.2,
+            'overlay-color': '#ef4444',
+          },
+        },
+        {
+          selector: 'node.path-node',
+          style: {
+            'border-width': 4,
+            'border-color': '#f59e0b',
+            'overlay-opacity': 0.15,
+            'overlay-color': '#f59e0b',
+          },
+        },
+        {
+          selector: 'edge',
+          style: {
+            'width': (ele: EdgeSingular) => {
+              const metric = ele.data('metric') || 100
+              return Math.max(1, Math.min(6, 600 / metric))
+            },
+            'line-color': isDark ? '#4b5563' : '#9ca3af',
+            'curve-style': 'bezier',
+            'target-arrow-shape': 'triangle',
+            'target-arrow-color': isDark ? '#4b5563' : '#9ca3af',
+            'arrow-scale': 0.6,
+            'opacity': 0.7,
+          },
+        },
+        {
+          selector: 'edge:selected',
+          style: {
+            'line-color': '#3b82f6',
+            'target-arrow-color': '#3b82f6',
+            'width': 3,
+            'opacity': 1,
+          },
+        },
+        {
+          selector: 'edge.hover',
+          style: {
+            'line-color': '#f59e0b',
+            'target-arrow-color': '#f59e0b',
+            'opacity': 1,
+          },
+        },
+        {
+          selector: 'edge.path-edge',
+          style: {
+            'line-color': '#f59e0b',
+            'target-arrow-color': '#f59e0b',
+            'width': 4,
+            'opacity': 1,
+          },
+        },
+      ],
+      layout: {
+        name: 'cose',
+        animate: false,
+        nodeDimensionsIncludeLabels: true,
+        idealEdgeLength: 120,
+        nodeRepulsion: 10000,
+        gravity: 0.2,
+        numIter: 500,
+      },
+      minZoom: 0.1,
+      maxZoom: 3,
+      wheelSensitivity: 0.3,
+    })
+
+    cyRef.current = cy
+
+    // Node hover
+    cy.on('mouseover', 'node', (event) => {
+      const node = event.target
+      const pos = node.renderedPosition()
+      setHoveredNode({
+        id: node.data('id'),
+        label: node.data('label'),
+        status: node.data('status'),
+        deviceType: node.data('deviceType'),
+        systemId: node.data('systemId'),
+        degree: node.data('degree'),
+        x: pos.x,
+        y: pos.y,
+      })
+    })
+
+    cy.on('mouseout', 'node', () => {
+      setHoveredNode(null)
+    })
+
+    // Edge hover
+    cy.on('mouseover', 'edge', (event) => {
+      const edge = event.target
+      edge.addClass('hover')
+      const midpoint = edge.midpoint()
+      const pan = cy.pan()
+      const zoom = cy.zoom()
+      setHoveredEdge({
+        id: edge.data('id'),
+        source: edge.data('source'),
+        target: edge.data('target'),
+        metric: edge.data('metric'),
+        x: midpoint.x * zoom + pan.x,
+        y: midpoint.y * zoom + pan.y,
+      })
+    })
+
+    cy.on('mouseout', 'edge', (event) => {
+      event.target.removeClass('hover')
+      setHoveredEdge(null)
+    })
+
+    // Background click - deselect
+    cy.on('tap', (event) => {
+      if (event.target === cy) {
+        onDeviceSelectRef.current?.(null)
+      }
+    })
+
+    return () => {
+      cy.destroy()
+      cyRef.current = null
+    }
+  }, [filteredData, nodesDegree, isDark, getDeviceTypeColor, getStatusBorderColor, getNodeSize])
+
+  // Handle node clicks based on mode
+  useEffect(() => {
+    if (!cyRef.current) return
+    const cy = cyRef.current
+
+    const handleNodeTap = (event: cytoscape.EventObject) => {
+      const node = event.target
+      const devicePK = node.data('id')
+
+      if (mode === 'explore') {
+        onDeviceSelectRef.current?.(devicePK)
+      } else if (mode === 'path') {
+        if (!pathSource) {
+          setPathSource(devicePK)
+          cy.nodes().removeClass('path-source path-target')
+          node.addClass('path-source')
+        } else if (!pathTarget && devicePK !== pathSource) {
+          setPathTarget(devicePK)
+          node.addClass('path-target')
+        } else {
+          // Reset and start new path
+          setPathSource(devicePK)
+          setPathTarget(null)
+          setPathResult(null)
+          cy.elements().removeClass('path-node path-edge path-source path-target')
+          node.addClass('path-source')
+        }
+      }
+    }
+
+    const handleNodeDblTap = (event: cytoscape.EventObject) => {
+      const node = event.target
+      navigateRef.current(`/devices/${node.data('id')}`)
+    }
+
+    cy.on('tap', 'node', handleNodeTap)
+    cy.on('dbltap', 'node', handleNodeDblTap)
+
+    return () => {
+      cy.off('tap', 'node', handleNodeTap)
+      cy.off('dbltap', 'node', handleNodeDblTap)
+    }
+  }, [mode, pathSource, pathTarget])
+
+  // Handle external selection changes
+  useEffect(() => {
+    if (!cyRef.current || mode !== 'explore') return
+    const cy = cyRef.current
+
+    cy.nodes().removeClass('highlighted')
+
+    if (selectedDevicePK) {
+      const node = cy.getElementById(selectedDevicePK)
+      if (node.length) {
+        node.addClass('highlighted')
+        cy.animate({
+          center: { eles: node },
+          zoom: 1.5,
+          duration: 300,
+        })
+      }
+    }
+  }, [selectedDevicePK, mode])
+
+  // Search functionality
+  useEffect(() => {
+    if (!filteredData || !searchQuery.trim()) {
+      setSearchResults([])
+      return
+    }
+
+    const query = searchQuery.toLowerCase()
+    const results = filteredData.nodes
+      .filter(node =>
+        node.data.label.toLowerCase().includes(query) ||
+        node.data.id.toLowerCase().includes(query)
+      )
+      .slice(0, 10)
+      .map(node => ({ id: node.data.id, label: node.data.label }))
+
+    setSearchResults(results)
+  }, [searchQuery, filteredData])
+
+  const handleSearchSelect = (id: string) => {
+    if (!cyRef.current) return
+    const cy = cyRef.current
+    const node = cy.getElementById(id)
+    if (node.length) {
+      cy.animate({
+        center: { eles: node },
+        zoom: 1.5,
+        duration: 300,
+      })
+      node.select()
+      if (mode === 'explore') {
+        onDeviceSelectRef.current?.(id)
+      }
+    }
+    setSearchQuery('')
+    setSearchResults([])
+    setShowSearch(false)
+  }
+
+  const handleZoomIn = () => cyRef.current?.zoom(cyRef.current.zoom() * 1.3)
+  const handleZoomOut = () => cyRef.current?.zoom(cyRef.current.zoom() / 1.3)
+  const handleFit = () => cyRef.current?.fit(undefined, 50)
+
+  const clearPath = () => {
+    setPathSource(null)
+    setPathTarget(null)
+    setPathResult(null)
+    if (cyRef.current) {
+      cyRef.current.elements().removeClass('path-node path-edge path-source path-target')
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex-1 flex items-center justify-center bg-background">
+        <div className="text-muted-foreground">Loading ISIS topology...</div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex-1 flex items-center justify-center bg-background">
+        <div className="text-destructive">
+          Failed to load ISIS topology: {error instanceof Error ? error.message : 'Unknown error'}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="relative w-full h-full">
+      {/* Graph container */}
+      <div ref={containerRef} className="w-full h-full bg-background" />
+
+      {/* Right side controls - matches MapControls style */}
+      <div className="absolute top-4 right-4 z-[1000] flex flex-col gap-1">
+        {/* Search */}
+        <div className="relative">
+          <button
+            onClick={() => { setShowSearch(!showSearch); setShowFilters(false) }}
+            className={`p-2 bg-[var(--card)] border border-[var(--border)] rounded shadow-sm hover:bg-[var(--muted)] transition-colors ${showSearch ? 'bg-[var(--muted)]' : ''}`}
+            title="Search devices"
+          >
+            <Search className="h-4 w-4" />
+          </button>
+          {showSearch && (
+            <div className="absolute right-0 top-full mt-1 w-64 bg-[var(--card)] border border-[var(--border)] rounded-md shadow-lg z-50">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search devices..."
+                className="w-full px-3 py-2 text-sm border-b border-[var(--border)] bg-transparent focus:outline-none"
+                autoFocus
+              />
+              {searchResults.length > 0 && (
+                <div className="max-h-48 overflow-y-auto">
+                  {searchResults.map(result => (
+                    <button
+                      key={result.id}
+                      onClick={() => handleSearchSelect(result.id)}
+                      className="w-full px-3 py-2 text-left text-sm hover:bg-[var(--muted)]"
+                    >
+                      {result.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="my-1 border-t border-[var(--border)]" />
+
+        {/* Zoom controls */}
+        <button onClick={handleZoomIn} className="p-2 bg-[var(--card)] border border-[var(--border)] rounded shadow-sm hover:bg-[var(--muted)] transition-colors" title="Zoom in">
+          <ZoomIn className="h-4 w-4" />
+        </button>
+        <button onClick={handleZoomOut} className="p-2 bg-[var(--card)] border border-[var(--border)] rounded shadow-sm hover:bg-[var(--muted)] transition-colors" title="Zoom out">
+          <ZoomOut className="h-4 w-4" />
+        </button>
+        <button onClick={handleFit} className="p-2 bg-[var(--card)] border border-[var(--border)] rounded shadow-sm hover:bg-[var(--muted)] transition-colors" title="Fit to screen">
+          <Maximize className="h-4 w-4" />
+        </button>
+
+        <div className="my-1 border-t border-[var(--border)]" />
+
+        {/* Filters */}
+        <div className="relative">
+          <button
+            onClick={() => { setShowFilters(!showFilters); setShowSearch(false) }}
+            className={`p-2 bg-[var(--card)] border border-[var(--border)] rounded shadow-sm hover:bg-[var(--muted)] transition-colors ${showFilters ? 'bg-[var(--muted)]' : ''}`}
+            title="Filter devices"
+          >
+            <Filter className="h-4 w-4" />
+          </button>
+          {showFilters && (
+            <div className="absolute right-0 top-full mt-1 w-48 bg-[var(--card)] border border-[var(--border)] rounded-md shadow-lg z-50 p-3">
+              <div className="text-xs font-medium text-muted-foreground mb-2">Status</div>
+              <select
+                value={localStatusFilter}
+                onChange={(e) => setLocalStatusFilter(e.target.value)}
+                className="w-full px-2 py-1 text-sm border border-[var(--border)] rounded bg-[var(--card)] mb-3"
+              >
+                <option value="all">All</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+
+              <div className="text-xs font-medium text-muted-foreground mb-2">Device Type</div>
+              <select
+                value={localTypeFilter}
+                onChange={(e) => setLocalTypeFilter(e.target.value)}
+                className="w-full px-2 py-1 text-sm border border-[var(--border)] rounded bg-[var(--card)]"
+              >
+                <option value="all">All</option>
+                {deviceTypes.map(type => (
+                  <option key={type} value={type}>{type}</option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+
+        {/* Mode toggle */}
+        <button
+          onClick={() => setMode(mode === 'explore' ? 'path' : 'explore')}
+          className={`p-2 border rounded shadow-sm transition-colors ${
+            mode === 'path'
+              ? 'bg-amber-500/20 border-amber-500/50 text-amber-500'
+              : 'bg-[var(--card)] border-[var(--border)] hover:bg-[var(--muted)]'
+          }`}
+          title={mode === 'explore' ? 'Switch to path finding mode' : 'Switch to explore mode'}
+        >
+          <Route className="h-4 w-4" />
+        </button>
+      </div>
+
+      {/* Path mode panel - on the right side below controls */}
+      {mode === 'path' && (
+        <div className="absolute top-[280px] right-4 z-[999] bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm p-3 text-xs max-w-52">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-medium flex items-center gap-1.5">
+              <Route className="h-3.5 w-3.5 text-amber-500" />
+              Path Finding
+            </span>
+            {(pathSource || pathTarget) && (
+              <button onClick={clearPath} className="p-1 hover:bg-[var(--muted)] rounded" title="Clear path">
+                <X className="h-3 w-3" />
+              </button>
+            )}
+          </div>
+
+          {!pathSource && (
+            <div className="text-muted-foreground">Click a device to set the <span className="text-green-500 font-medium">source</span></div>
+          )}
+          {pathSource && !pathTarget && (
+            <div className="text-muted-foreground">Click another device to set the <span className="text-red-500 font-medium">target</span></div>
+          )}
+          {pathLoading && (
+            <div className="text-muted-foreground">Finding path...</div>
+          )}
+          {pathResult && !pathResult.error && pathResult.path.length > 0 && (
+            <div>
+              <div className="space-y-1 text-muted-foreground">
+                <div>Hops: <span className="text-foreground font-medium">{pathResult.hopCount}</span></div>
+                <div>Metric: <span className="text-foreground font-medium">{pathResult.totalMetric}</span></div>
+              </div>
+              <div className="mt-2 pt-2 border-t border-[var(--border)] space-y-0.5 max-h-32 overflow-y-auto">
+                {pathResult.path.map((hop, i) => (
+                  <div key={hop.devicePK} className="flex items-center gap-1">
+                    <span className="text-muted-foreground w-4">{i + 1}.</span>
+                    <span className={i === 0 ? 'text-green-500' : i === pathResult.path.length - 1 ? 'text-red-500' : 'text-amber-500'}>
+                      {hop.deviceCode}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {pathResult?.error && (
+            <div className="text-destructive">{pathResult.error}</div>
+          )}
+        </div>
+      )}
+
+      {/* Legend */}
+      <div className="absolute bottom-4 left-4 bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm p-2 text-xs">
+        <div className="font-medium mb-1 text-muted-foreground">Device Types</div>
+        <div className="flex flex-col gap-1">
+          {Object.entries(DEVICE_TYPE_COLORS).filter(([k]) => k !== 'default').map(([type, colors]) => (
+            <div key={type} className="flex items-center gap-1.5">
+              <div
+                className="w-3 h-3 rounded-full border-2"
+                style={{
+                  backgroundColor: isDark ? colors.dark : colors.light,
+                  borderColor: isDark ? '#22c55e' : '#16a34a',
+                }}
+              />
+              <span className="capitalize">{type}</span>
+            </div>
+          ))}
+        </div>
+        <div className="mt-2 pt-2 border-t border-[var(--border)]">
+          <div className="flex items-center gap-1.5">
+            <div className="w-3 h-3 rounded-full border-2" style={{ borderColor: isDark ? '#22c55e' : '#16a34a', backgroundColor: 'transparent' }} />
+            <span>Active</span>
+          </div>
+          <div className="flex items-center gap-1.5 mt-1">
+            <div className="w-3 h-3 rounded-full border-2" style={{ borderColor: isDark ? '#ef4444' : '#dc2626', backgroundColor: 'transparent' }} />
+            <span>Inactive</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Node tooltip */}
+      {hoveredNode && (
+        <div
+          className="absolute pointer-events-none z-50 bg-background/95 backdrop-blur border rounded-md shadow-lg p-3 text-sm"
+          style={{
+            left: Math.min(hoveredNode.x + 20, (containerRef.current?.clientWidth || 500) - 200),
+            top: hoveredNode.y - 10,
+          }}
+        >
+          <div className="font-medium">{hoveredNode.label}</div>
+          <div className="text-muted-foreground text-xs mt-1 space-y-0.5">
+            <div>Type: <span className="capitalize">{hoveredNode.deviceType}</span></div>
+            <div>Status: {hoveredNode.status}</div>
+            <div>Connections: {hoveredNode.degree}</div>
+            {hoveredNode.systemId && <div>System ID: {hoveredNode.systemId}</div>}
+          </div>
+        </div>
+      )}
+
+      {/* Edge tooltip */}
+      {hoveredEdge && (
+        <div
+          className="absolute pointer-events-none z-50 bg-background/95 backdrop-blur border rounded-md shadow-lg p-2 text-xs"
+          style={{
+            left: hoveredEdge.x + 10,
+            top: hoveredEdge.y - 10,
+          }}
+        >
+          <div className="text-muted-foreground">
+            ISIS Metric: <span className="font-medium text-foreground">{hoveredEdge.metric || 'N/A'}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Stats */}
+      {filteredData && (
+        <div className="absolute bottom-4 right-4 bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm p-2 text-xs text-muted-foreground">
+          <div>{filteredData.nodes.length} devices · {filteredData.edges.length} adjacencies</div>
+          {(localStatusFilter !== 'all' || localTypeFilter !== 'all') && (
+            <div className="mt-1 pt-1 border-t border-[var(--border)] text-amber-500">Filtered</div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}

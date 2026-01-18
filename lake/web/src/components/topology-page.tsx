@@ -1,11 +1,15 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { fetchTopology } from '@/lib/api'
 import { TopologyMap } from '@/components/topology-map'
-import { Globe } from 'lucide-react'
+import { TopologyGraph } from '@/components/topology-graph'
+import { Globe, Network } from 'lucide-react'
 
 // Only show loading indicator after this delay to avoid flash on fast loads
 const LOADING_DELAY_MS = 300
+
+type ViewMode = 'map' | 'graph'
 
 function TopologyLoading() {
   return (
@@ -18,12 +22,79 @@ function TopologyLoading() {
   )
 }
 
+function ViewToggle({ view, onViewChange }: { view: ViewMode; onViewChange: (v: ViewMode) => void }) {
+  return (
+    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1001] flex bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm">
+      <button
+        onClick={() => onViewChange('map')}
+        className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-l-md transition-colors ${
+          view === 'map'
+            ? 'bg-primary text-primary-foreground'
+            : 'hover:bg-[var(--muted)] text-muted-foreground'
+        }`}
+        title="Geographic map view"
+      >
+        <Globe className="h-4 w-4" />
+        <span>Map</span>
+      </button>
+      <button
+        onClick={() => onViewChange('graph')}
+        className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-r-md transition-colors ${
+          view === 'graph'
+            ? 'bg-primary text-primary-foreground'
+            : 'hover:bg-[var(--muted)] text-muted-foreground'
+        }`}
+        title="ISIS topology graph view"
+      >
+        <Network className="h-4 w-4" />
+        <span>Graph</span>
+      </button>
+    </div>
+  )
+}
+
 export function TopologyPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [view, setView] = useState<ViewMode>(() => {
+    const v = searchParams.get('view')
+    return v === 'graph' ? 'graph' : 'map'
+  })
+
+  // Get selected device from URL (shared between views)
+  const selectedDevicePK = searchParams.get('type') === 'device' ? searchParams.get('id') : null
+
   const { data, isLoading, error } = useQuery({
     queryKey: ['topology'],
     queryFn: fetchTopology,
     refetchInterval: 60000, // Refresh every minute
   })
+
+  // Sync view to URL
+  const handleViewChange = (newView: ViewMode) => {
+    setView(newView)
+    setSearchParams(prev => {
+      if (newView === 'map') {
+        prev.delete('view')
+      } else {
+        prev.set('view', newView)
+      }
+      return prev
+    })
+  }
+
+  // Handle device selection from graph view
+  const handleGraphDeviceSelect = useCallback((devicePK: string | null) => {
+    setSearchParams(prev => {
+      if (devicePK === null) {
+        prev.delete('type')
+        prev.delete('id')
+      } else {
+        prev.set('type', 'device')
+        prev.set('id', devicePK)
+      }
+      return prev
+    })
+  }, [setSearchParams])
 
   // Delay showing loading indicator to avoid flash on fast loads
   const [showLoading, setShowLoading] = useState(false)
@@ -35,12 +106,12 @@ export function TopologyPage() {
     setShowLoading(false)
   }, [isLoading])
 
-  if (isLoading) {
+  if (isLoading && view === 'map') {
     // Only show loading indicator after delay to avoid flash
     return showLoading ? <TopologyLoading /> : null
   }
 
-  if (error) {
+  if (error && view === 'map') {
     return (
       <div className="flex-1 flex items-center justify-center">
         <div className="text-destructive">
@@ -50,22 +121,25 @@ export function TopologyPage() {
     )
   }
 
-  if (!data) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="text-muted-foreground">No topology data available</div>
-      </div>
-    )
-  }
-
   return (
     <div className="fixed inset-0 z-0 h-screen w-screen">
-      <TopologyMap
-        metros={data.metros}
-        devices={data.devices}
-        links={data.links}
-        validators={data.validators}
-      />
+      <ViewToggle view={view} onViewChange={handleViewChange} />
+
+      {view === 'map' && data && (
+        <TopologyMap
+          metros={data.metros}
+          devices={data.devices}
+          links={data.links}
+          validators={data.validators}
+        />
+      )}
+
+      {view === 'graph' && (
+        <TopologyGraph
+          selectedDevicePK={selectedDevicePK}
+          onDeviceSelect={handleGraphDeviceSelect}
+        />
+      )}
     </div>
   )
 }

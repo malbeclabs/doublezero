@@ -35,6 +35,7 @@ import { ContributorDetailPage } from '@/components/contributor-detail-page'
 import { UserDetailPage } from '@/components/user-detail-page'
 import { ValidatorDetailPage } from '@/components/validator-detail-page'
 import { GossipNodeDetailPage } from '@/components/gossip-node-detail-page'
+import { HelpPage } from '@/components/help-page'
 import { generateSessionTitle, generateChatSessionTitle, sendChatMessageStream, recommendVisualization, fetchCatalog, acquireSessionLock, releaseSessionLock, getSessionLock, watchSessionLock, getSession, generateMessageId, getRunningWorkflowForSession, reconnectToWorkflow, type SessionQueryInfo, type SessionLock } from '@/lib/api'
 import type { TableInfo, QueryResponse, HistoryMessage, ChatMessage } from '@/lib/api'
 import {
@@ -1686,6 +1687,9 @@ function AppContent() {
 
             {/* Timeline route */}
             <Route path="/timeline" element={<TimelinePage />} />
+
+            {/* Help route */}
+            <Route path="/help" element={<HelpPage />} />
 
             {/* DZ entity routes */}
             <Route path="/dz/devices" element={<DevicesPage />} />

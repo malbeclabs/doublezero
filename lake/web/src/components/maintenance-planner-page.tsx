@@ -391,6 +391,87 @@ export function MaintenancePlannerPage() {
                     </div>
                   )}
 
+                  {/* Disconnected devices */}
+                  {analysisResult.disconnectedList && analysisResult.disconnectedList.length > 0 && (
+                    <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                      <div className="text-sm font-medium text-red-700 dark:text-red-400 mb-2">
+                        Devices That Will Lose Connectivity ({analysisResult.disconnectedList.length})
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {analysisResult.disconnectedList.map((code, idx) => (
+                          <span key={idx} className="px-2 py-1 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400 rounded text-xs font-medium">
+                            {code}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Affected metro pairs */}
+                  {analysisResult.affectedMetros && analysisResult.affectedMetros.length > 0 && (
+                    <div className="mb-4">
+                      <h3 className="text-sm font-medium mb-2">Affected Metro Connectivity</h3>
+                      <div className="grid grid-cols-2 gap-2">
+                        {analysisResult.affectedMetros.map((pair, idx) => (
+                          <div key={idx} className="flex items-center gap-2 p-2 bg-muted rounded text-sm">
+                            <span className="font-medium">{pair.sourceMetro}</span>
+                            <span className="text-muted-foreground">↔</span>
+                            <span className="font-medium">{pair.targetMetro}</span>
+                            <span className={`ml-auto text-xs px-2 py-0.5 rounded ${
+                              pair.status === 'disconnected'
+                                ? 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400'
+                                : 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-400'
+                            }`}>
+                              {pair.status}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Affected paths sample */}
+                  {analysisResult.affectedPaths && analysisResult.affectedPaths.length > 0 && (
+                    <div className="mb-4">
+                      <h3 className="text-sm font-medium mb-2">Sample Affected Paths</h3>
+                      <div className="space-y-2">
+                        {analysisResult.affectedPaths.map((path, idx) => (
+                          <div key={idx} className="flex items-center gap-2 p-2 bg-muted rounded text-sm">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium">{path.source}</span>
+                                <span className="text-xs text-muted-foreground">({path.sourceMetro})</span>
+                                <span className="text-muted-foreground">→</span>
+                                <span className="font-medium">{path.target}</span>
+                                <span className="text-xs text-muted-foreground">({path.targetMetro})</span>
+                              </div>
+                              <div className="text-xs text-muted-foreground mt-1">
+                                {path.hopsAfter === -1 ? (
+                                  <span className="text-red-600 dark:text-red-400">
+                                    {path.hopsBefore} hops → disconnected
+                                  </span>
+                                ) : (
+                                  <span>
+                                    {path.hopsBefore} hops → {path.hopsAfter} hops ({path.hopsAfter > path.hopsBefore ? '+' : ''}{path.hopsAfter - path.hopsBefore})
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <span className={`text-xs px-2 py-0.5 rounded ${
+                              path.status === 'disconnected'
+                                ? 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400'
+                                : path.status === 'degraded'
+                                ? 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-400'
+                                : 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400'
+                            }`}>
+                              {path.status}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Recommended order */}
                   <div>
                     <h3 className="text-sm font-medium mb-2">Recommended Maintenance Order</h3>

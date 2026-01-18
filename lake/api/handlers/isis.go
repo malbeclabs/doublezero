@@ -6,7 +6,6 @@ import (
 	"log"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/malbeclabs/doublezero/lake/api/config"
@@ -1631,30 +1630,32 @@ func analyzeLinkImpact(ctx context.Context, session neo4j.SessionWithContext, li
 		PK:   linkPK,
 	}
 
-	// Parse link PK as "sourcePK:targetPK"
-	parts := strings.Split(linkPK, ":")
-	if len(parts) != 2 {
-		item.Code = "Invalid link format"
+	// Look up link from ClickHouse to get side_a_pk and side_z_pk
+	linkQuery := `
+		SELECT
+			l.code,
+			COALESCE(l.side_a_pk, '') as side_a_pk,
+			COALESCE(l.side_z_pk, '') as side_z_pk,
+			COALESCE(da.code, '') as side_a_code,
+			COALESCE(dz.code, '') as side_z_code
+		FROM dz_links_current l
+		LEFT JOIN dz_devices_current da ON l.side_a_pk = da.pk
+		LEFT JOIN dz_devices_current dz ON l.side_z_pk = dz.pk
+		WHERE l.pk = $1
+	`
+	var linkCode, sideAPK, sideZPK, sideACode, sideZCode string
+	if err := config.DB.QueryRow(ctx, linkQuery, linkPK).Scan(&linkCode, &sideAPK, &sideZPK, &sideACode, &sideZCode); err != nil {
+		item.Code = "Link not found"
 		return item
 	}
-	sourcePK, targetPK := parts[0], parts[1]
 
-	// Get device codes for the link
-	codeCypher := `
-		MATCH (s:Device {pk: $sourcePK}), (t:Device {pk: $targetPK})
-		RETURN s.code AS sourceCode, t.code AS targetCode
-	`
-	codeResult, err := session.Run(ctx, codeCypher, map[string]interface{}{
-		"sourcePK": sourcePK,
-		"targetPK": targetPK,
-	})
-	if err == nil {
-		if record, err := codeResult.Single(ctx); err == nil {
-			sourceCode, _ := record.Get("sourceCode")
-			targetCode, _ := record.Get("targetCode")
-			item.Code = asString(sourceCode) + " - " + asString(targetCode)
-		}
+	if sideAPK == "" || sideZPK == "" {
+		item.Code = linkCode + " (missing endpoints)"
+		return item
 	}
+
+	item.Code = sideACode + " - " + sideZCode
+	sourcePK, targetPK := sideAPK, sideZPK
 
 	// Check if removing this link would disconnect devices
 	// If either endpoint has degree 1, removing the link disconnects that device

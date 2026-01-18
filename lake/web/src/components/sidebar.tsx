@@ -165,11 +165,9 @@ export function Sidebar({
   const isChatSessions = location.pathname === '/chat/sessions'
 
   // Topology sub-routes
-  const isTopologyExplorer = location.pathname === '/topology'
+  const isTopologyMap = location.pathname === '/topology/map'
+  const isTopologyGraph = location.pathname === '/topology/graph'
   const isTopologyPathCalculator = location.pathname === '/topology/path-calculator'
-  const topologyView = new URLSearchParams(location.search).get('view') || 'map'
-  const isTopologyMap = isTopologyExplorer && topologyView === 'map'
-  const isTopologyGraph = isTopologyExplorer && topologyView === 'graph'
 
   // Entity routes
   const isDevicesRoute = location.pathname === '/dz/devices'
@@ -779,7 +777,7 @@ export function Sidebar({
           {/* Sub-nav */}
           <div className="px-3 space-y-1">
             <Link
-              to="/topology?view=map"
+              to="/topology/map"
               className={cn(
                 'w-full flex items-center gap-2 px-3 py-2 text-sm rounded transition-colors',
                 isTopologyMap
@@ -791,7 +789,7 @@ export function Sidebar({
               Map
             </Link>
             <Link
-              to="/topology?view=graph"
+              to="/topology/graph"
               className={cn(
                 'w-full flex items-center gap-2 px-3 py-2 text-sm rounded transition-colors',
                 isTopologyGraph

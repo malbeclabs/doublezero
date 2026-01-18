@@ -1671,7 +1671,9 @@ function AppContent() {
             <Route path="/chat/sessions" element={<ChatSessionsView />} />
 
             {/* Topology routes */}
-            <Route path="/topology" element={<TopologyPage />} />
+            <Route path="/topology" element={<Navigate to="/topology/map" replace />} />
+            <Route path="/topology/map" element={<TopologyPage view="map" />} />
+            <Route path="/topology/graph" element={<TopologyPage view="graph" />} />
             <Route path="/topology/path-calculator" element={<PathCalculatorPage />} />
 
             {/* Status routes */}

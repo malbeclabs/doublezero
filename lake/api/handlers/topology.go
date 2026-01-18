@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -426,7 +427,9 @@ func GetTopologyTraffic(w http.ResponseWriter, r *http.Request) {
 		var avgIn, avgOut, peakIn, peakOut *float64
 		if err := rows.Scan(&p.Time, &avgIn, &avgOut, &peakIn, &peakOut); err != nil {
 			log.Printf("Traffic scan error: %v", err)
-			continue
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(TrafficResponse{Error: fmt.Sprintf("scan error: %v", err)})
+			return
 		}
 		if avgIn != nil {
 			p.AvgIn = *avgIn
@@ -556,7 +559,8 @@ func GetLatencyComparison(w http.ResponseWriter, r *http.Request) {
 			&lc.JitterImprovementPct,
 		); err != nil {
 			log.Printf("Latency comparison scan error: %v", err)
-			continue
+			http.Error(w, fmt.Sprintf("scan error: %v", err), http.StatusInternalServerError)
+			return
 		}
 
 		if lc.RttImprovementPct != nil {

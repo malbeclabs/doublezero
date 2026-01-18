@@ -207,6 +207,9 @@ func main() {
 	r.Get("/api/topology/simulate-link-addition", handlers.GetSimulateLinkAddition)
 	r.Get("/api/topology/metro-connectivity", handlers.GetMetroConnectivity)
 	r.Get("/api/topology/latency-comparison", handlers.GetLatencyComparison)
+	r.Get("/api/topology/metro-path-latency", handlers.GetMetroPathLatency)
+	r.Get("/api/topology/metro-path-detail", handlers.GetMetroPathDetail)
+	r.Get("/api/topology/metro-paths", handlers.GetMetroPaths)
 	r.Post("/api/topology/maintenance-impact", handlers.PostMaintenanceImpact)
 
 	// SQL endpoints

@@ -9,6 +9,9 @@
 --
 -- The improvement_pct shows how much faster DZ is compared to internet
 -- (positive = DZ is faster, negative = internet is faster)
+--
+-- NOTE: Metro pairs are normalized using least/greatest so that both directions
+-- (e.g., ams→fra and fra→ams) are combined into a single comparison.
 
 -- +goose StatementBegin
 CREATE OR REPLACE VIEW dz_vs_internet_latency_comparison
@@ -19,14 +22,16 @@ lookback AS (
     SELECT now() - INTERVAL 24 HOUR AS min_ts
 ),
 
--- DZ latency aggregated by metro pair
+-- DZ latency aggregated by metro pair (normalized direction)
 -- Join through links and devices to get metro codes
+-- Use least/greatest to normalize direction so both a→z and z→a are combined
 dz_latency AS (
     SELECT
-        ma.code AS origin_metro,
-        ma.name AS origin_metro_name,
-        mz.code AS target_metro,
-        mz.name AS target_metro_name,
+        least(ma.code, mz.code) AS metro1,
+        greatest(ma.code, mz.code) AS metro2,
+        -- Pick name corresponding to the normalized codes
+        if(ma.code < mz.code, ma.name, mz.name) AS metro1_name,
+        if(ma.code < mz.code, mz.name, ma.name) AS metro2_name,
         round(avg(f.rtt_us) / 1000.0, 2) AS avg_rtt_ms,
         round(quantile(0.95)(f.rtt_us) / 1000.0, 2) AS p95_rtt_ms,
         round(avg(f.ipdv_us) / 1000.0, 2) AS avg_jitter_ms,
@@ -42,16 +47,17 @@ dz_latency AS (
     JOIN dz_metros_current mz ON dz.metro_pk = mz.pk
     WHERE f.event_ts >= lookback.min_ts
       AND f.link_pk != ''
-    GROUP BY ma.code, ma.name, mz.code, mz.name
+      AND ma.code != mz.code  -- Exclude intra-metro links
+    GROUP BY metro1, metro2, metro1_name, metro2_name
 ),
 
--- Internet latency aggregated by metro pair
+-- Internet latency aggregated by metro pair (normalized direction)
 internet_latency AS (
     SELECT
-        ma.code AS origin_metro,
-        ma.name AS origin_metro_name,
-        mz.code AS target_metro,
-        mz.name AS target_metro_name,
+        least(ma.code, mz.code) AS metro1,
+        greatest(ma.code, mz.code) AS metro2,
+        if(ma.code < mz.code, ma.name, mz.name) AS metro1_name,
+        if(ma.code < mz.code, mz.name, ma.name) AS metro2_name,
         round(avg(f.rtt_us) / 1000.0, 2) AS avg_rtt_ms,
         round(quantile(0.95)(f.rtt_us) / 1000.0, 2) AS p95_rtt_ms,
         round(avg(f.ipdv_us) / 1000.0, 2) AS avg_jitter_ms,
@@ -62,15 +68,16 @@ internet_latency AS (
     JOIN dz_metros_current ma ON f.origin_metro_pk = ma.pk
     JOIN dz_metros_current mz ON f.target_metro_pk = mz.pk
     WHERE f.event_ts >= lookback.min_ts
-    GROUP BY ma.code, ma.name, mz.code, mz.name
+      AND ma.code != mz.code  -- Exclude same-metro measurements
+    GROUP BY metro1, metro2, metro1_name, metro2_name
 )
 
 -- Join DZ and Internet latency for comparison
 SELECT
-    COALESCE(dz.origin_metro, inet.origin_metro) AS origin_metro,
-    COALESCE(dz.origin_metro_name, inet.origin_metro_name) AS origin_metro_name,
-    COALESCE(dz.target_metro, inet.target_metro) AS target_metro,
-    COALESCE(dz.target_metro_name, inet.target_metro_name) AS target_metro_name,
+    COALESCE(dz.metro1, inet.metro1) AS origin_metro,
+    COALESCE(dz.metro1_name, inet.metro1_name) AS origin_metro_name,
+    COALESCE(dz.metro2, inet.metro2) AS target_metro,
+    COALESCE(dz.metro2_name, inet.metro2_name) AS target_metro_name,
 
     -- DZ metrics
     dz.avg_rtt_ms AS dz_avg_rtt_ms,
@@ -102,8 +109,8 @@ SELECT
 
 FROM dz_latency dz
 FULL OUTER JOIN internet_latency inet
-    ON dz.origin_metro = inet.origin_metro
-    AND dz.target_metro = inet.target_metro
+    ON dz.metro1 = inet.metro1
+    AND dz.metro2 = inet.metro2
 WHERE dz.sample_count > 0 OR inet.sample_count > 0
 ORDER BY origin_metro, target_metro;
 -- +goose StatementEnd

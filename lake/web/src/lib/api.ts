@@ -2528,6 +2528,111 @@ export async function fetchLatencyComparison(): Promise<LatencyComparisonRespons
   return res.json()
 }
 
+// Metro path latency types (path-based DZ vs Internet comparison)
+export type PathOptimizeMode = 'hops' | 'latency' | 'bandwidth'
+
+export interface MetroPathLatency {
+  fromMetroPK: string
+  fromMetroCode: string
+  toMetroPK: string
+  toMetroCode: string
+  pathLatencyMs: number
+  hopCount: number
+  bottleneckBwGbps: number
+  internetLatencyMs: number
+  improvementPct: number
+}
+
+export interface MetroPathLatencyResponse {
+  optimize: PathOptimizeMode
+  paths: MetroPathLatency[]
+  summary: {
+    totalPairs: number
+    pairsWithInternet: number
+    avgImprovementPct: number
+    maxImprovementPct: number
+  }
+  error?: string
+}
+
+export async function fetchMetroPathLatency(optimize: PathOptimizeMode = 'latency'): Promise<MetroPathLatencyResponse> {
+  const res = await fetch(`/api/topology/metro-path-latency?optimize=${optimize}`)
+  if (!res.ok) {
+    throw new Error('Failed to fetch metro path latency')
+  }
+  return res.json()
+}
+
+// Metro path detail types (single path breakdown)
+export interface MetroPathDetailHop {
+  devicePK: string
+  deviceCode: string
+  metroPK: string
+  metroCode: string
+  linkMetric: number
+  linkBwGbps: number
+  linkLatency: number
+}
+
+export interface MetroPathDetailResponse {
+  fromMetroCode: string
+  toMetroCode: string
+  optimize: PathOptimizeMode
+  totalLatencyMs: number
+  totalHops: number
+  bottleneckBwGbps: number
+  internetLatencyMs: number
+  improvementPct: number
+  hops: MetroPathDetailHop[]
+  error?: string
+}
+
+export async function fetchMetroPathDetail(
+  from: string,
+  to: string,
+  optimize: PathOptimizeMode = 'latency'
+): Promise<MetroPathDetailResponse> {
+  const res = await fetch(`/api/topology/metro-path-detail?from=${from}&to=${to}&optimize=${optimize}`)
+  if (!res.ok) {
+    throw new Error('Failed to fetch metro path detail')
+  }
+  return res.json()
+}
+
+// Metro paths types (for connectivity matrix detail)
+export interface MetroPathsHop {
+  devicePK: string
+  deviceCode: string
+  metroPK: string
+  metroCode: string
+}
+
+export interface MetroPath {
+  hops: MetroPathsHop[]
+  totalHops: number
+  totalMetric: number
+  latencyMs: number
+}
+
+export interface MetroPathsResponse {
+  fromMetroCode: string
+  toMetroCode: string
+  paths: MetroPath[]
+  error?: string
+}
+
+export async function fetchMetroPaths(
+  fromPK: string,
+  toPK: string,
+  k: number = 5
+): Promise<MetroPathsResponse> {
+  const res = await fetch(`/api/topology/metro-paths?from=${fromPK}&to=${toPK}&k=${k}`)
+  if (!res.ok) {
+    throw new Error('Failed to fetch metro paths')
+  }
+  return res.json()
+}
+
 // Maintenance planner types
 export interface MaintenanceItem {
   type: 'device' | 'link'

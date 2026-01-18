@@ -1128,6 +1128,60 @@ export async function fetchISISPath(fromPK: string, toPK: string, mode: PathMode
   return res.json()
 }
 
+// Topology comparison types
+export interface TopologyDiscrepancy {
+  type: 'missing_isis' | 'extra_isis' | 'metric_mismatch'
+  linkPK?: string
+  linkCode?: string
+  deviceAPK: string
+  deviceACode: string
+  deviceBPK: string
+  deviceBCode: string
+  configuredRttUs?: number
+  isisMetric?: number
+  details: string
+}
+
+export interface TopologyCompareResponse {
+  configuredLinks: number
+  isisAdjacencies: number
+  matchedLinks: number
+  discrepancies: TopologyDiscrepancy[]
+  error?: string
+}
+
+export async function fetchTopologyCompare(): Promise<TopologyCompareResponse> {
+  const res = await fetch('/api/topology/compare')
+  if (!res.ok) {
+    throw new Error('Failed to fetch topology comparison')
+  }
+  return res.json()
+}
+
+// Failure impact types
+export interface ImpactDevice {
+  pk: string
+  code: string
+  status: string
+  deviceType: string
+}
+
+export interface FailureImpactResponse {
+  devicePK: string
+  deviceCode: string
+  unreachableDevices: ImpactDevice[]
+  unreachableCount: number
+  error?: string
+}
+
+export async function fetchFailureImpact(devicePK: string): Promise<FailureImpactResponse> {
+  const res = await fetch(`/api/topology/impact/${encodeURIComponent(devicePK)}`)
+  if (!res.ok) {
+    throw new Error('Failed to fetch failure impact')
+  }
+  return res.json()
+}
+
 // Version check
 export interface VersionResponse {
   buildTimestamp: string

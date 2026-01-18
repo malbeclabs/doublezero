@@ -3,9 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import cytoscape from 'cytoscape'
 import type { Core, NodeSingular, EdgeSingular } from 'cytoscape'
 import { useQuery } from '@tanstack/react-query'
-import { ZoomIn, ZoomOut, Maximize, Search, Filter, Route, X } from 'lucide-react'
-import { fetchISISTopology, fetchISISPath } from '@/lib/api'
-import type { PathResponse, PathMode } from '@/lib/api'
+import { ZoomIn, ZoomOut, Maximize, Search, Filter, Route, X, GitCompare, AlertTriangle } from 'lucide-react'
+import { fetchISISTopology, fetchISISPath, fetchTopologyCompare } from '@/lib/api'
+import type { PathResponse, PathMode, TopologyCompareResponse } from '@/lib/api'
 import { useTheme } from '@/hooks/use-theme'
 
 // Device type colors
@@ -16,7 +16,7 @@ const DEVICE_TYPE_COLORS: Record<string, { light: string; dark: string }> = {
   default: { light: '#6b7280', dark: '#9ca3af' },   // gray
 }
 
-type InteractionMode = 'explore' | 'path'
+type InteractionMode = 'explore' | 'path' | 'compare'
 
 interface TopologyGraphProps {
   onDeviceSelect?: (devicePK: string | null) => void
@@ -87,6 +87,14 @@ export function TopologyGraph({
     refetchInterval: 60000,
   })
 
+  // Fetch topology comparison when in compare mode
+  const { data: compareData, isLoading: compareLoading } = useQuery({
+    queryKey: ['topology-compare'],
+    queryFn: fetchTopologyCompare,
+    enabled: mode === 'compare',
+    refetchInterval: 60000,
+  })
+
   // Calculate degree for each node
   const nodesDegree = useMemo(() => {
     if (!data) return new Map<string, number>()
@@ -98,6 +106,31 @@ export function TopologyGraph({
     })
     return degrees
   }, [data])
+
+  // Build edge health status from compare data
+  // Returns: 'matched' | 'missing' | 'extra' | 'mismatch' | undefined
+  const edgeHealthStatus = useMemo(() => {
+    if (!compareData?.discrepancies) return new Map<string, string>()
+    const status = new Map<string, string>()
+
+    for (const d of compareData.discrepancies) {
+      // Create edge keys for both directions
+      const key1 = `${d.deviceAPK}->${d.deviceBPK}`
+      const key2 = `${d.deviceBPK}->${d.deviceAPK}`
+
+      if (d.type === 'missing_isis') {
+        status.set(key1, 'missing')
+        status.set(key2, 'missing')
+      } else if (d.type === 'extra_isis') {
+        status.set(key1, 'extra')
+        status.set(key2, 'extra')
+      } else if (d.type === 'metric_mismatch') {
+        status.set(key1, 'mismatch')
+        status.set(key2, 'mismatch')
+      }
+    }
+    return status
+  }, [compareData])
 
   // Get unique device types for filter
   const deviceTypes = useMemo(() => {
@@ -206,10 +239,48 @@ export function TopologyGraph({
       setPathTarget(null)
       setPathResult(null)
       if (cyRef.current) {
+        cyRef.current.elements().removeClass('path-node path-edge path-source path-target health-matched health-extra health-missing health-mismatch')
+      }
+    } else if (mode === 'path') {
+      // Clear compare classes
+      if (cyRef.current) {
+        cyRef.current.elements().removeClass('health-matched health-extra health-missing health-mismatch')
+      }
+    } else if (mode === 'compare') {
+      // Clear path classes
+      if (cyRef.current) {
         cyRef.current.elements().removeClass('path-node path-edge path-source path-target')
       }
     }
   }, [mode])
+
+  // Apply health status classes in compare mode
+  useEffect(() => {
+    if (!cyRef.current || mode !== 'compare') return
+    const cy = cyRef.current
+
+    // Clear previous health classes
+    cy.edges().removeClass('health-matched health-extra health-missing health-mismatch')
+
+    if (!compareData) return
+
+    // Apply classes based on edge health status
+    cy.edges().forEach(edge => {
+      const edgeId = edge.data('id') // format: source->target
+      const status = edgeHealthStatus.get(edgeId)
+
+      if (status === 'missing') {
+        edge.addClass('health-missing')
+      } else if (status === 'extra') {
+        edge.addClass('health-extra')
+      } else if (status === 'mismatch') {
+        edge.addClass('health-mismatch')
+      } else {
+        // Default to matched if no discrepancy found
+        edge.addClass('health-matched')
+      }
+    })
+  }, [mode, compareData, edgeHealthStatus])
 
   // Initialize Cytoscape
   useEffect(() => {
@@ -341,6 +412,43 @@ export function TopologyGraph({
             'line-color': '#f59e0b',
             'target-arrow-color': '#f59e0b',
             'width': 4,
+            'opacity': 1,
+          },
+        },
+        // Compare mode styles
+        {
+          selector: 'edge.health-matched',
+          style: {
+            'line-color': '#22c55e',
+            'target-arrow-color': '#22c55e',
+            'opacity': 0.8,
+          },
+        },
+        {
+          selector: 'edge.health-extra',
+          style: {
+            'line-color': '#f59e0b',
+            'target-arrow-color': '#f59e0b',
+            'width': 3,
+            'opacity': 1,
+          },
+        },
+        {
+          selector: 'edge.health-missing',
+          style: {
+            'line-color': '#ef4444',
+            'target-arrow-color': '#ef4444',
+            'line-style': 'dashed',
+            'width': 3,
+            'opacity': 1,
+          },
+        },
+        {
+          selector: 'edge.health-mismatch',
+          style: {
+            'line-color': '#eab308',
+            'target-arrow-color': '#eab308',
+            'width': 3,
             'opacity': 1,
           },
         },
@@ -645,17 +753,28 @@ export function TopologyGraph({
           )}
         </div>
 
-        {/* Mode toggle */}
+        {/* Mode toggles */}
         <button
-          onClick={() => setMode(mode === 'explore' ? 'path' : 'explore')}
+          onClick={() => setMode(mode === 'path' ? 'explore' : 'path')}
           className={`p-2 border rounded shadow-sm transition-colors ${
             mode === 'path'
               ? 'bg-amber-500/20 border-amber-500/50 text-amber-500'
               : 'bg-[var(--card)] border-[var(--border)] hover:bg-[var(--muted)]'
           }`}
-          title={mode === 'explore' ? 'Switch to path finding mode' : 'Switch to explore mode'}
+          title={mode === 'path' ? 'Exit path finding mode' : 'Switch to path finding mode'}
         >
           <Route className="h-4 w-4" />
+        </button>
+        <button
+          onClick={() => setMode(mode === 'compare' ? 'explore' : 'compare')}
+          className={`p-2 border rounded shadow-sm transition-colors ${
+            mode === 'compare'
+              ? 'bg-blue-500/20 border-blue-500/50 text-blue-500'
+              : 'bg-[var(--card)] border-[var(--border)] hover:bg-[var(--muted)]'
+          }`}
+          title={mode === 'compare' ? 'Exit compare mode' : 'Compare configured vs discovered topology'}
+        >
+          <GitCompare className="h-4 w-4" />
         </button>
       </div>
 
@@ -725,6 +844,104 @@ export function TopologyGraph({
           )}
           {pathResult?.error && (
             <div className="text-destructive">{pathResult.error}</div>
+          )}
+        </div>
+      )}
+
+      {/* Compare mode panel */}
+      {mode === 'compare' && (
+        <div className="absolute top-[280px] right-4 z-[999] bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm p-3 text-xs max-w-56">
+          <div className="flex items-center gap-1.5 mb-3">
+            <GitCompare className="h-3.5 w-3.5 text-blue-500" />
+            <span className="font-medium">Topology Health</span>
+          </div>
+
+          {compareLoading && (
+            <div className="text-muted-foreground">Loading comparison...</div>
+          )}
+
+          {compareData && !compareData.error && (
+            <div className="space-y-3">
+              {/* Summary stats */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Configured Links</span>
+                  <span className="font-medium">{compareData.configuredLinks}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">ISIS Adjacencies</span>
+                  <span className="font-medium">{compareData.isisAdjacencies}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Matched</span>
+                  <span className="font-medium text-green-500">{compareData.matchedLinks}</span>
+                </div>
+              </div>
+
+              {/* Discrepancy summary */}
+              {compareData.discrepancies.length > 0 && (
+                <div className="pt-2 border-t border-[var(--border)]">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+                    <span className="font-medium">{compareData.discrepancies.length} Issues</span>
+                  </div>
+                  <div className="space-y-1">
+                    {compareData.discrepancies.filter(d => d.type === 'missing_isis').length > 0 && (
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-3 h-0.5 bg-red-500" style={{ borderStyle: 'dashed', borderWidth: '1px', borderColor: '#ef4444' }} />
+                        <span className="text-red-500">{compareData.discrepancies.filter(d => d.type === 'missing_isis').length} missing ISIS</span>
+                      </div>
+                    )}
+                    {compareData.discrepancies.filter(d => d.type === 'extra_isis').length > 0 && (
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-3 h-0.5 bg-amber-500" />
+                        <span className="text-amber-500">{compareData.discrepancies.filter(d => d.type === 'extra_isis').length} extra adjacencies</span>
+                      </div>
+                    )}
+                    {compareData.discrepancies.filter(d => d.type === 'metric_mismatch').length > 0 && (
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-3 h-0.5 bg-yellow-500" />
+                        <span className="text-yellow-500">{compareData.discrepancies.filter(d => d.type === 'metric_mismatch').length} metric mismatches</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {compareData.discrepancies.length === 0 && (
+                <div className="pt-2 border-t border-[var(--border)] text-green-500 flex items-center gap-1.5">
+                  <div className="w-2 h-2 rounded-full bg-green-500" />
+                  All links healthy
+                </div>
+              )}
+
+              {/* Edge legend */}
+              <div className="pt-2 border-t border-[var(--border)]">
+                <div className="text-muted-foreground mb-1.5">Edge Colors</div>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-4 h-0.5 bg-green-500" />
+                    <span>Matched</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-4 h-0.5 bg-red-500" style={{ borderTop: '2px dashed #ef4444' }} />
+                    <span>Missing ISIS</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-4 h-0.5 bg-amber-500" />
+                    <span>Extra adjacency</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-4 h-0.5 bg-yellow-500" />
+                    <span>Metric mismatch</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {compareData?.error && (
+            <div className="text-destructive">{compareData.error}</div>
           )}
         </div>
       )}

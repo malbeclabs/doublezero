@@ -344,3 +344,346 @@ func parsePathHops(v any) []PathHop {
 	}
 	return hops
 }
+
+// TopologyDiscrepancy represents a mismatch between configured and ISIS topology
+type TopologyDiscrepancy struct {
+	Type            string `json:"type"` // "missing_isis", "extra_isis", "metric_mismatch"
+	LinkPK          string `json:"linkPK,omitempty"`
+	LinkCode        string `json:"linkCode,omitempty"`
+	DeviceAPK       string `json:"deviceAPK"`
+	DeviceACode     string `json:"deviceACode"`
+	DeviceBPK       string `json:"deviceBPK"`
+	DeviceBCode     string `json:"deviceBCode"`
+	ConfiguredRTTUs uint64 `json:"configuredRttUs,omitempty"`
+	ISISMetric      uint32 `json:"isisMetric,omitempty"`
+	Details         string `json:"details"`
+}
+
+// TopologyCompareResponse is the response for the topology compare endpoint
+type TopologyCompareResponse struct {
+	ConfiguredLinks int                   `json:"configuredLinks"`
+	ISISAdjacencies int                   `json:"isisAdjacencies"`
+	MatchedLinks    int                   `json:"matchedLinks"`
+	Discrepancies   []TopologyDiscrepancy `json:"discrepancies"`
+	Error           string                `json:"error,omitempty"`
+}
+
+// GetTopologyCompare compares configured links vs ISIS adjacencies
+func GetTopologyCompare(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	start := time.Now()
+
+	session := config.Neo4jSession(ctx)
+	defer session.Close(ctx)
+
+	response := TopologyCompareResponse{
+		Discrepancies: []TopologyDiscrepancy{},
+	}
+
+	// Query 1: Find configured links and check if they have ISIS adjacencies
+	configuredCypher := `
+		MATCH (l:Link)-[:CONNECTS]->(da:Device)
+		MATCH (l)-[:CONNECTS]->(db:Device)
+		WHERE da.pk < db.pk
+		OPTIONAL MATCH (da)-[isis:ISIS_ADJACENT]->(db)
+		OPTIONAL MATCH (db)-[isis_rev:ISIS_ADJACENT]->(da)
+		RETURN l.pk AS link_pk,
+		       l.code AS link_code,
+		       l.status AS link_status,
+		       l.committed_rtt_ns AS configured_rtt_ns,
+		       da.pk AS device_a_pk,
+		       da.code AS device_a_code,
+		       db.pk AS device_b_pk,
+		       db.code AS device_b_code,
+		       isis.metric AS isis_metric_forward,
+		       isis IS NOT NULL AS has_forward_adj,
+		       isis_rev IS NOT NULL AS has_reverse_adj
+	`
+
+	configuredResult, err := session.Run(ctx, configuredCypher, nil)
+	if err != nil {
+		log.Printf("Topology compare configured query error: %v", err)
+		response.Error = err.Error()
+		writeJSON(w, response)
+		return
+	}
+
+	configuredRecords, err := configuredResult.Collect(ctx)
+	if err != nil {
+		log.Printf("Topology compare configured collect error: %v", err)
+		response.Error = err.Error()
+		writeJSON(w, response)
+		return
+	}
+
+	response.ConfiguredLinks = len(configuredRecords)
+
+	for _, record := range configuredRecords {
+		linkPK, _ := record.Get("link_pk")
+		linkCode, _ := record.Get("link_code")
+		linkStatus, _ := record.Get("link_status")
+		configuredRTTNs, _ := record.Get("configured_rtt_ns")
+		deviceAPK, _ := record.Get("device_a_pk")
+		deviceACode, _ := record.Get("device_a_code")
+		deviceBPK, _ := record.Get("device_b_pk")
+		deviceBCode, _ := record.Get("device_b_code")
+		hasForwardAdj, _ := record.Get("has_forward_adj")
+		hasReverseAdj, _ := record.Get("has_reverse_adj")
+		isisMetricForward, _ := record.Get("isis_metric_forward")
+
+		hasForward := asBool(hasForwardAdj)
+		hasReverse := asBool(hasReverseAdj)
+		status := asString(linkStatus)
+
+		if hasForward || hasReverse {
+			response.MatchedLinks++
+		}
+
+		// Check for missing ISIS adjacencies on active links
+		if status == "active" && !hasForward && !hasReverse {
+			response.Discrepancies = append(response.Discrepancies, TopologyDiscrepancy{
+				Type:        "missing_isis",
+				LinkPK:      asString(linkPK),
+				LinkCode:    asString(linkCode),
+				DeviceAPK:   asString(deviceAPK),
+				DeviceACode: asString(deviceACode),
+				DeviceBPK:   asString(deviceBPK),
+				DeviceBCode: asString(deviceBCode),
+				Details:     "Active link has no ISIS adjacency in either direction",
+			})
+		} else if status == "active" && hasForward != hasReverse {
+			direction := "forward only"
+			if hasReverse && !hasForward {
+				direction = "reverse only"
+			}
+			response.Discrepancies = append(response.Discrepancies, TopologyDiscrepancy{
+				Type:        "missing_isis",
+				LinkPK:      asString(linkPK),
+				LinkCode:    asString(linkCode),
+				DeviceAPK:   asString(deviceAPK),
+				DeviceACode: asString(deviceACode),
+				DeviceBPK:   asString(deviceBPK),
+				DeviceBCode: asString(deviceBCode),
+				Details:     "ISIS adjacency is " + direction + " (should be bidirectional)",
+			})
+		}
+
+		// Check for metric mismatch
+		configRTTNs := asInt64(configuredRTTNs)
+		isisMetric := asInt64(isisMetricForward)
+		if hasForward && configRTTNs > 0 && isisMetric > 0 {
+			configRTTUs := uint64(configRTTNs) / 1000
+			if configRTTUs > 0 {
+				ratio := float64(isisMetric) / float64(configRTTUs)
+				if ratio < 0.5 || ratio > 2.0 {
+					response.Discrepancies = append(response.Discrepancies, TopologyDiscrepancy{
+						Type:            "metric_mismatch",
+						LinkPK:          asString(linkPK),
+						LinkCode:        asString(linkCode),
+						DeviceAPK:       asString(deviceAPK),
+						DeviceACode:     asString(deviceACode),
+						DeviceBPK:       asString(deviceBPK),
+						DeviceBCode:     asString(deviceBCode),
+						ConfiguredRTTUs: configRTTUs,
+						ISISMetric:      uint32(isisMetric),
+						Details:         "ISIS metric differs significantly from configured RTT",
+					})
+				}
+			}
+		}
+	}
+
+	// Query 2: Find ISIS adjacencies that don't correspond to any configured link
+	extraCypher := `
+		MATCH (da:Device)-[isis:ISIS_ADJACENT]->(db:Device)
+		WHERE NOT EXISTS {
+			MATCH (l:Link)-[:CONNECTS]->(da)
+			MATCH (l)-[:CONNECTS]->(db)
+		}
+		RETURN da.pk AS device_a_pk,
+		       da.code AS device_a_code,
+		       db.pk AS device_b_pk,
+		       db.code AS device_b_code,
+		       isis.metric AS isis_metric,
+		       isis.neighbor_addr AS neighbor_addr
+	`
+
+	extraResult, err := session.Run(ctx, extraCypher, nil)
+	if err != nil {
+		log.Printf("Topology compare extra query error: %v", err)
+		response.Error = err.Error()
+		writeJSON(w, response)
+		return
+	}
+
+	extraRecords, err := extraResult.Collect(ctx)
+	if err != nil {
+		log.Printf("Topology compare extra collect error: %v", err)
+		response.Error = err.Error()
+		writeJSON(w, response)
+		return
+	}
+
+	for _, record := range extraRecords {
+		deviceAPK, _ := record.Get("device_a_pk")
+		deviceACode, _ := record.Get("device_a_code")
+		deviceBPK, _ := record.Get("device_b_pk")
+		deviceBCode, _ := record.Get("device_b_code")
+		isisMetric, _ := record.Get("isis_metric")
+		neighborAddr, _ := record.Get("neighbor_addr")
+
+		response.Discrepancies = append(response.Discrepancies, TopologyDiscrepancy{
+			Type:        "extra_isis",
+			DeviceAPK:   asString(deviceAPK),
+			DeviceACode: asString(deviceACode),
+			DeviceBPK:   asString(deviceBPK),
+			DeviceBCode: asString(deviceBCode),
+			ISISMetric:  uint32(asInt64(isisMetric)),
+			Details:     "ISIS adjacency exists (neighbor: " + asString(neighborAddr) + ") but no configured link found",
+		})
+	}
+
+	// Count total ISIS adjacencies
+	countCypher := `MATCH ()-[r:ISIS_ADJACENT]->() RETURN count(r) AS count`
+	countResult, err := session.Run(ctx, countCypher, nil)
+	if err != nil {
+		log.Printf("Topology compare count query error: %v", err)
+	} else {
+		if countRecord, err := countResult.Single(ctx); err == nil {
+			count, _ := countRecord.Get("count")
+			response.ISISAdjacencies = int(asInt64(count))
+		}
+	}
+
+	duration := time.Since(start)
+	metrics.RecordClickHouseQuery(duration, nil)
+
+	writeJSON(w, response)
+}
+
+func asBool(v any) bool {
+	if v == nil {
+		return false
+	}
+	if b, ok := v.(bool); ok {
+		return b
+	}
+	return false
+}
+
+// ImpactDevice represents a device that would be affected by a failure
+type ImpactDevice struct {
+	PK         string `json:"pk"`
+	Code       string `json:"code"`
+	Status     string `json:"status"`
+	DeviceType string `json:"deviceType"`
+}
+
+// FailureImpactResponse is the response for the failure impact endpoint
+type FailureImpactResponse struct {
+	DevicePK           string         `json:"devicePK"`
+	DeviceCode         string         `json:"deviceCode"`
+	UnreachableDevices []ImpactDevice `json:"unreachableDevices"`
+	UnreachableCount   int            `json:"unreachableCount"`
+	Error              string         `json:"error,omitempty"`
+}
+
+// GetFailureImpact returns devices that would become unreachable if a device goes down
+func GetFailureImpact(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	// Get device PK from URL path
+	devicePK := r.PathValue("pk")
+	if devicePK == "" {
+		writeJSON(w, FailureImpactResponse{Error: "device pk is required"})
+		return
+	}
+
+	start := time.Now()
+
+	session := config.Neo4jSession(ctx)
+	defer session.Close(ctx)
+
+	response := FailureImpactResponse{
+		DevicePK:           devicePK,
+		UnreachableDevices: []ImpactDevice{},
+	}
+
+	// First get the device code
+	deviceCypher := `MATCH (d:Device {pk: $pk}) RETURN d.code AS code`
+	deviceResult, err := session.Run(ctx, deviceCypher, map[string]any{"pk": devicePK})
+	if err != nil {
+		log.Printf("Failure impact device query error: %v", err)
+		response.Error = err.Error()
+		writeJSON(w, response)
+		return
+	}
+	if deviceRecord, err := deviceResult.Single(ctx); err == nil {
+		code, _ := deviceRecord.Get("code")
+		response.DeviceCode = asString(code)
+	}
+
+	// Find devices that would become unreachable if this device goes down
+	// This uses ISIS adjacencies to find devices that only have paths through the target device
+	impactCypher := `
+		MATCH (target:Device {pk: $device_pk})
+		MATCH (other:Device)
+		WHERE other.pk <> $device_pk
+		  AND other.isis_system_id IS NOT NULL
+		WITH target, other
+		// Check if there's any path to this device that doesn't go through target
+		WHERE NOT EXISTS {
+			MATCH path = (other)-[:ISIS_ADJACENT*1..10]-(anyDevice:Device)
+			WHERE anyDevice.pk <> $device_pk
+			  AND anyDevice <> other
+			  AND anyDevice.isis_system_id IS NOT NULL
+			  AND NOT ANY(n IN nodes(path) WHERE n.pk = $device_pk)
+		}
+		RETURN other.pk AS pk,
+		       other.code AS code,
+		       other.status AS status,
+		       other.device_type AS device_type
+	`
+
+	impactResult, err := session.Run(ctx, impactCypher, map[string]any{
+		"device_pk": devicePK,
+	})
+	if err != nil {
+		log.Printf("Failure impact query error: %v", err)
+		response.Error = err.Error()
+		writeJSON(w, response)
+		return
+	}
+
+	impactRecords, err := impactResult.Collect(ctx)
+	if err != nil {
+		log.Printf("Failure impact collect error: %v", err)
+		response.Error = err.Error()
+		writeJSON(w, response)
+		return
+	}
+
+	for _, record := range impactRecords {
+		pk, _ := record.Get("pk")
+		code, _ := record.Get("code")
+		status, _ := record.Get("status")
+		deviceType, _ := record.Get("device_type")
+
+		response.UnreachableDevices = append(response.UnreachableDevices, ImpactDevice{
+			PK:         asString(pk),
+			Code:       asString(code),
+			Status:     asString(status),
+			DeviceType: asString(deviceType),
+		})
+	}
+
+	response.UnreachableCount = len(response.UnreachableDevices)
+
+	duration := time.Since(start)
+	metrics.RecordClickHouseQuery(duration, nil)
+
+	writeJSON(w, response)
+}

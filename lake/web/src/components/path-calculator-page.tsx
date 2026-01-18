@@ -1,7 +1,7 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
-import { Loader2, Route, AlertCircle, ArrowRight, Search, X, Copy, Check, ExternalLink } from 'lucide-react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { Loader2, Route, AlertCircle, ArrowRight, Search, X, Copy, Check, ExternalLink, RotateCcw } from 'lucide-react'
 import { fetchISISTopology, fetchISISPaths } from '@/lib/api'
 import type { MultiPathResponse, SinglePath } from '@/lib/api'
 
@@ -221,9 +221,11 @@ function PathCard({
 }
 
 export function PathCalculatorPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const [sourceDevice, setSourceDevice] = useState<DeviceOption | null>(null)
   const [targetDevice, setTargetDevice] = useState<DeviceOption | null>(null)
   const [selectedPathIndex, setSelectedPathIndex] = useState(0)
+  const [initializedFromUrl, setInitializedFromUrl] = useState(false)
 
   // Fetch topology for device list
   const { data: topology, isLoading: topologyLoading } = useQuery({
@@ -242,6 +244,57 @@ export function PathCalculatorPage() {
       deviceType: n.data.deviceType,
     })).sort((a, b) => a.code.localeCompare(b.code))
   }, [topology])
+
+  // Initialize from URL params once devices are loaded
+  useEffect(() => {
+    if (initializedFromUrl || devices.length === 0) return
+
+    const fromParam = searchParams.get('from')
+    const toParam = searchParams.get('to')
+
+    if (fromParam) {
+      const device = devices.find(d => d.pk === fromParam || d.code === fromParam)
+      if (device) setSourceDevice(device)
+    }
+    if (toParam) {
+      const device = devices.find(d => d.pk === toParam || d.code === toParam)
+      if (device) setTargetDevice(device)
+    }
+
+    setInitializedFromUrl(true)
+  }, [devices, searchParams, initializedFromUrl])
+
+  // Update URL when devices change
+  const updateSource = (device: DeviceOption | null) => {
+    setSourceDevice(device)
+    setSelectedPathIndex(0)
+    const newParams = new URLSearchParams(searchParams)
+    if (device) {
+      newParams.set('from', device.pk)
+    } else {
+      newParams.delete('from')
+    }
+    setSearchParams(newParams, { replace: true })
+  }
+
+  const updateTarget = (device: DeviceOption | null) => {
+    setTargetDevice(device)
+    setSelectedPathIndex(0)
+    const newParams = new URLSearchParams(searchParams)
+    if (device) {
+      newParams.set('to', device.pk)
+    } else {
+      newParams.delete('to')
+    }
+    setSearchParams(newParams, { replace: true })
+  }
+
+  const resetSelection = () => {
+    setSourceDevice(null)
+    setTargetDevice(null)
+    setSelectedPathIndex(0)
+    setSearchParams({}, { replace: true })
+  }
 
   // Fetch paths when both devices are selected
   const {
@@ -288,7 +341,7 @@ export function PathCalculatorPage() {
               label="Source Device"
               placeholder="Search source..."
               value={sourceDevice}
-              onChange={(d) => { setSourceDevice(d); setSelectedPathIndex(0) }}
+              onChange={updateSource}
               devices={devices}
               excludePK={targetDevice?.pk}
             />
@@ -301,10 +354,20 @@ export function PathCalculatorPage() {
               label="Destination Device"
               placeholder="Search destination..."
               value={targetDevice}
-              onChange={(d) => { setTargetDevice(d); setSelectedPathIndex(0) }}
+              onChange={updateTarget}
               devices={devices}
               excludePK={sourceDevice?.pk}
             />
+
+            {(sourceDevice || targetDevice) && (
+              <button
+                onClick={resetSelection}
+                className="pb-2 p-2 hover:bg-muted rounded-md text-muted-foreground hover:text-foreground transition-colors"
+                title="Reset selection"
+              >
+                <RotateCcw className="h-5 w-5" />
+              </button>
+            )}
           </div>
 
           {sourceDevice && targetDevice && (

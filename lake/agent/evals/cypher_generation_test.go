@@ -115,6 +115,20 @@ func runTest_CypherGenerationLiteral(t *testing.T) {
 			},
 		},
 		{
+			name:   "shortest path between metros",
+			prompt: "find the shortest path between NYC and LON metros",
+			mustContain: []string{
+				"MATCH",
+				"Metro",
+				"shortestPath",
+				"ORDER BY",
+				"LIMIT",
+			},
+			mustNotContain: []string{
+				"allShortestPaths", // Should use shortestPath for single path
+			},
+		},
+		{
 			name:   "reachability from a device",
 			prompt: "what devices are reachable from nyc-dzd1 within 3 hops",
 			mustContain: []string{
@@ -430,6 +444,12 @@ func TestLake_Agent_Evals_Anthropic_CypherExecutionIntegration(t *testing.T) {
 			name:           "devices reachable from nyc-dzd1",
 			prompt:         "what devices are reachable from nyc-dzd1 within 4 hops",
 			expectRows:     -1, // Variable
+			expectNonEmpty: true,
+		},
+		{
+			name:           "shortest path between metros",
+			prompt:         "find the shortest path between nyc and lon metros",
+			expectRows:     -1, // Path query returns structured data
 			expectNonEmpty: true,
 		},
 	}

@@ -1489,13 +1489,19 @@ type MaintenanceAffectedPath struct {
 	Status       string `json:"status"`       // "rerouted", "degraded", or "disconnected"
 }
 
+// AffectedLink represents a specific link affected by maintenance
+type AffectedLink struct {
+	SourceDevice string `json:"sourceDevice"` // Device code in source metro
+	TargetDevice string `json:"targetDevice"` // Device code in target metro
+	Status       string `json:"status"`       // "offline" (device going down) or "rerouted"
+}
+
 // AffectedMetroPair represents connectivity impact between two metros
 type AffectedMetroPair struct {
-	SourceMetro string `json:"sourceMetro"`
-	TargetMetro string `json:"targetMetro"`
-	PathsBefore int    `json:"pathsBefore"` // Number of paths before
-	PathsAfter  int    `json:"pathsAfter"`  // Number of paths after
-	Status      string `json:"status"`      // "reduced", "degraded", or "disconnected"
+	SourceMetro   string         `json:"sourceMetro"`
+	TargetMetro   string         `json:"targetMetro"`
+	AffectedLinks []AffectedLink `json:"affectedLinks"` // Specific links affected
+	Status        string         `json:"status"`        // "reduced", "degraded", or "disconnected"
 }
 
 // MaintenanceImpactResponse is the response for maintenance impact analysis
@@ -1548,28 +1554,32 @@ func PostMaintenanceImpact(w http.ResponseWriter, r *http.Request) {
 		offlineDevicePKs[pk] = true
 	}
 
-	// Analyze each device
-	for _, devicePK := range req.Devices {
-		item := analyzeDeviceImpact(ctx, session, devicePK)
-		response.Items = append(response.Items, item)
-		// Collect disconnected devices
-		for _, dc := range item.DisconnectedDevices {
-			response.DisconnectedList = append(response.DisconnectedList, dc)
+	// Batch analyze all devices in a single query
+	if len(req.Devices) > 0 {
+		deviceItems := analyzeDevicesImpactBatch(ctx, session, req.Devices)
+		for _, item := range deviceItems {
+			response.Items = append(response.Items, item)
+			for _, dc := range item.DisconnectedDevices {
+				response.DisconnectedList = append(response.DisconnectedList, dc)
+			}
 		}
 	}
 
-	// Analyze each link - need to look up endpoints first
-	for _, linkPK := range req.Links {
-		item := analyzeLinkImpact(ctx, session, linkPK)
-		response.Items = append(response.Items, item)
-		// Collect disconnected devices
-		for _, dc := range item.DisconnectedDevices {
-			response.DisconnectedList = append(response.DisconnectedList, dc)
+	// Batch analyze all links
+	if len(req.Links) > 0 {
+		linkItems := analyzeLinksImpactBatch(ctx, session, req.Links)
+		for _, item := range linkItems {
+			response.Items = append(response.Items, item)
+			for _, dc := range item.DisconnectedDevices {
+				response.DisconnectedList = append(response.DisconnectedList, dc)
+			}
 		}
 		// Track link endpoints for path analysis
-		endpoints := getLinkEndpoints(ctx, linkPK)
-		if endpoints != "" {
-			offlineLinkEndpoints[endpoints] = true
+		for _, linkPK := range req.Links {
+			endpoints := getLinkEndpoints(ctx, linkPK)
+			if endpoints != "" {
+				offlineLinkEndpoints[endpoints] = true
+			}
 		}
 	}
 
@@ -1597,11 +1607,11 @@ func PostMaintenanceImpact(w http.ResponseWriter, r *http.Request) {
 		response.TotalDisconnected += item.Disconnected
 	}
 
-	// Compute affected paths (sample of top 10 most impacted paths)
-	response.AffectedPaths = computeAffectedPaths(ctx, session, offlineDevicePKs, offlineLinkEndpoints, 10)
+	// Compute affected paths with before/after routing metrics
+	response.AffectedPaths = computeAffectedPathsFast(ctx, session, offlineDevicePKs, 50)
 
-	// Compute affected metro pairs
-	response.AffectedMetros = computeAffectedMetros(ctx, session, offlineDevicePKs, offlineLinkEndpoints)
+	// Compute affected metro pairs - simplified
+	response.AffectedMetros = computeAffectedMetrosFast(ctx, session, offlineDevicePKs)
 
 	duration := time.Since(start)
 	metrics.RecordClickHouseQuery(duration, nil)
@@ -1780,9 +1790,442 @@ func computeAffectedPaths(ctx context.Context, session neo4j.SessionWithContext,
 	return result
 }
 
-// computeAffectedMetros computes metro pairs whose connectivity is impacted
-func computeAffectedMetros(ctx context.Context, session neo4j.SessionWithContext,
-	offlineDevices map[string]bool, offlineLinks map[string]bool) []AffectedMetroPair {
+
+// analyzeDevicesImpactBatch computes the impact of taking multiple devices offline in a single query
+func analyzeDevicesImpactBatch(ctx context.Context, session neo4j.SessionWithContext, devicePKs []string) []MaintenanceItem {
+	items := make([]MaintenanceItem, 0, len(devicePKs))
+
+	// Single query to get all device info, neighbor counts, and leaf neighbors
+	cypher := `
+		UNWIND $devicePKs AS devicePK
+		MATCH (d:Device {pk: devicePK})
+		WHERE d.isis_system_id IS NOT NULL
+
+		// Get device code
+		WITH d, devicePK
+
+		// Count neighbors (for impact estimate)
+		OPTIONAL MATCH (d)-[:ISIS_ADJACENT]-(neighbor:Device)
+		WHERE neighbor.isis_system_id IS NOT NULL
+		WITH d, devicePK, count(DISTINCT neighbor) AS neighborCount
+
+		// Find leaf neighbors (degree 1) that would be disconnected
+		OPTIONAL MATCH (d)-[:ISIS_ADJACENT]-(leafNeighbor:Device)
+		WHERE leafNeighbor.isis_system_id IS NOT NULL
+		WITH d, devicePK, neighborCount, leafNeighbor
+		OPTIONAL MATCH (leafNeighbor)-[:ISIS_ADJACENT]-(leafNeighborNeighbor:Device)
+		WHERE leafNeighborNeighbor.isis_system_id IS NOT NULL
+		WITH d, devicePK, neighborCount, leafNeighbor, count(DISTINCT leafNeighborNeighbor) AS leafNeighborDegree
+		WITH d, devicePK, neighborCount,
+		     CASE WHEN leafNeighborDegree = 1 THEN leafNeighbor.code ELSE null END AS disconnectedCode
+
+		WITH d.pk AS pk, d.code AS code, neighborCount,
+		     collect(disconnectedCode) AS disconnectedCodes
+
+		RETURN pk, code, neighborCount,
+		       [x IN disconnectedCodes WHERE x IS NOT NULL] AS disconnectedDevices
+	`
+
+	result, err := session.Run(ctx, cypher, map[string]interface{}{
+		"devicePKs": devicePKs,
+	})
+	if err != nil {
+		log.Printf("Batch device impact query error: %v", err)
+		// Fallback to individual queries
+		for _, pk := range devicePKs {
+			items = append(items, analyzeDeviceImpact(ctx, session, pk))
+		}
+		return items
+	}
+
+	resultMap := make(map[string]MaintenanceItem)
+	for result.Next(ctx) {
+		record := result.Record()
+		pk, _ := record.Get("pk")
+		code, _ := record.Get("code")
+		neighborCount, _ := record.Get("neighborCount")
+		disconnectedDevices, _ := record.Get("disconnectedDevices")
+
+		disconnectedList := []string{}
+		if arr, ok := disconnectedDevices.([]interface{}); ok {
+			for _, v := range arr {
+				if s := asString(v); s != "" {
+					disconnectedList = append(disconnectedList, s)
+				}
+			}
+		}
+
+		// Impact estimate: neighbor count squared (rough approximation of paths through this device)
+		nc := int(asInt64(neighborCount))
+		impact := nc * nc
+
+		item := MaintenanceItem{
+			Type:                "device",
+			PK:                  asString(pk),
+			Code:                asString(code),
+			Impact:              impact,
+			Disconnected:        len(disconnectedList),
+			CausesPartition:     len(disconnectedList) > 0,
+			DisconnectedDevices: disconnectedList,
+		}
+		resultMap[asString(pk)] = item
+	}
+
+	// Return items in the same order as input
+	for _, pk := range devicePKs {
+		if item, ok := resultMap[pk]; ok {
+			items = append(items, item)
+		} else {
+			// Device not found in graph
+			items = append(items, MaintenanceItem{
+				Type: "device",
+				PK:   pk,
+				Code: "Unknown device",
+			})
+		}
+	}
+
+	return items
+}
+
+// analyzeLinksImpactBatch computes the impact of taking multiple links offline
+func analyzeLinksImpactBatch(ctx context.Context, session neo4j.SessionWithContext, linkPKs []string) []MaintenanceItem {
+	items := make([]MaintenanceItem, 0, len(linkPKs))
+
+	// First, batch lookup links from ClickHouse
+	if len(linkPKs) == 0 {
+		return items
+	}
+
+	// Build placeholders for ClickHouse query
+	linkQuery := `
+		SELECT
+			l.pk,
+			l.code,
+			COALESCE(l.side_a_pk, '') as side_a_pk,
+			COALESCE(l.side_z_pk, '') as side_z_pk,
+			COALESCE(da.code, '') as side_a_code,
+			COALESCE(dz.code, '') as side_z_code
+		FROM dz_links_current l
+		LEFT JOIN dz_devices_current da ON l.side_a_pk = da.pk
+		LEFT JOIN dz_devices_current dz ON l.side_z_pk = dz.pk
+		WHERE l.pk IN ($1)
+	`
+
+	// For ClickHouse we need to pass as a tuple
+	rows, err := config.DB.Query(ctx, linkQuery, linkPKs)
+	if err != nil {
+		log.Printf("Batch link lookup error: %v", err)
+		// Fallback to individual queries
+		for _, pk := range linkPKs {
+			items = append(items, analyzeLinkImpact(ctx, session, pk))
+		}
+		return items
+	}
+	defer rows.Close()
+
+	type linkInfo struct {
+		pk        string
+		code      string
+		sideAPK   string
+		sideZPK   string
+		sideACode string
+		sideZCode string
+	}
+	linkMap := make(map[string]linkInfo)
+
+	for rows.Next() {
+		var li linkInfo
+		if err := rows.Scan(&li.pk, &li.code, &li.sideAPK, &li.sideZPK, &li.sideACode, &li.sideZCode); err != nil {
+			continue
+		}
+		linkMap[li.pk] = li
+	}
+
+	// Now batch query Neo4j for degree information
+	var linkEndpoints []map[string]string
+	for _, pk := range linkPKs {
+		if li, ok := linkMap[pk]; ok && li.sideAPK != "" && li.sideZPK != "" {
+			linkEndpoints = append(linkEndpoints, map[string]string{
+				"pk":      pk,
+				"sourceA": li.sideAPK,
+				"sourceZ": li.sideZPK,
+			})
+		}
+	}
+
+	// Single Neo4j query for all link endpoints
+	degreeCypher := `
+		UNWIND $links AS link
+		MATCH (s:Device {pk: link.sourceA}), (t:Device {pk: link.sourceZ})
+		WHERE s.isis_system_id IS NOT NULL AND t.isis_system_id IS NOT NULL
+
+		OPTIONAL MATCH (s)-[:ISIS_ADJACENT]-(sn:Device) WHERE sn.isis_system_id IS NOT NULL
+		WITH link, s, t, count(DISTINCT sn) AS sourceDegree
+		OPTIONAL MATCH (t)-[:ISIS_ADJACENT]-(tn:Device) WHERE tn.isis_system_id IS NOT NULL
+		WITH link, s, t, sourceDegree, count(DISTINCT tn) AS targetDegree
+
+		RETURN link.pk AS pk, s.code AS sourceCode, t.code AS targetCode, sourceDegree, targetDegree
+	`
+
+	degreeMap := make(map[string]struct {
+		sourceCode   string
+		targetCode   string
+		sourceDegree int
+		targetDegree int
+	})
+
+	if len(linkEndpoints) > 0 {
+		result, err := session.Run(ctx, degreeCypher, map[string]interface{}{
+			"links": linkEndpoints,
+		})
+		if err == nil {
+			for result.Next(ctx) {
+				record := result.Record()
+				pk, _ := record.Get("pk")
+				sourceCode, _ := record.Get("sourceCode")
+				targetCode, _ := record.Get("targetCode")
+				sourceDegree, _ := record.Get("sourceDegree")
+				targetDegree, _ := record.Get("targetDegree")
+
+				degreeMap[asString(pk)] = struct {
+					sourceCode   string
+					targetCode   string
+					sourceDegree int
+					targetDegree int
+				}{
+					sourceCode:   asString(sourceCode),
+					targetCode:   asString(targetCode),
+					sourceDegree: int(asInt64(sourceDegree)),
+					targetDegree: int(asInt64(targetDegree)),
+				}
+			}
+		}
+	}
+
+	// Build items in order
+	for _, pk := range linkPKs {
+		li, hasLink := linkMap[pk]
+		if !hasLink {
+			items = append(items, MaintenanceItem{
+				Type: "link",
+				PK:   pk,
+				Code: "Link not found",
+			})
+			continue
+		}
+
+		if li.sideAPK == "" || li.sideZPK == "" {
+			items = append(items, MaintenanceItem{
+				Type: "link",
+				PK:   pk,
+				Code: li.code + " (missing endpoints)",
+			})
+			continue
+		}
+
+		item := MaintenanceItem{
+			Type: "link",
+			PK:   pk,
+			Code: li.sideACode + " - " + li.sideZCode,
+		}
+
+		if deg, ok := degreeMap[pk]; ok {
+			// If either has degree 1, this link is critical
+			if deg.sourceDegree == 1 || deg.targetDegree == 1 {
+				item.CausesPartition = true
+				if deg.sourceDegree == 1 {
+					item.DisconnectedDevices = append(item.DisconnectedDevices, deg.sourceCode)
+					item.Disconnected++
+				}
+				if deg.targetDegree == 1 {
+					item.DisconnectedDevices = append(item.DisconnectedDevices, deg.targetCode)
+					item.Disconnected++
+				}
+			}
+			// Impact estimate: product of (degree-1) for each side (paths that would need rerouting)
+			srcNeighbors := deg.sourceDegree - 1
+			tgtNeighbors := deg.targetDegree - 1
+			if srcNeighbors < 0 {
+				srcNeighbors = 0
+			}
+			if tgtNeighbors < 0 {
+				tgtNeighbors = 0
+			}
+			item.Impact = srcNeighbors * tgtNeighbors
+		}
+
+		items = append(items, item)
+	}
+
+	return items
+}
+
+// computeAffectedPathsFast finds all paths affected by taking devices offline
+// Returns paths that will be rerouted (with before/after metrics) and paths that will be disconnected
+func computeAffectedPathsFast(ctx context.Context, session neo4j.SessionWithContext,
+	offlineDevices map[string]bool, limit int) []MaintenanceAffectedPath {
+
+	result := []MaintenanceAffectedPath{}
+
+	offlineDevicePKs := make([]string, 0, len(offlineDevices))
+	for pk := range offlineDevices {
+		offlineDevicePKs = append(offlineDevicePKs, pk)
+	}
+
+	if len(offlineDevicePKs) == 0 {
+		return result
+	}
+
+	// Step 1: Find all neighbors of offline devices (these are the directly affected connections)
+	// For each neighbor pair (neighbor of offline device A, neighbor of offline device B or other device),
+	// compute the current shortest path and the alternate path avoiding offline devices
+	cypher := `
+		// Find all ISIS neighbors of offline devices
+		MATCH (offline:Device)-[:ISIS_ADJACENT]-(neighbor:Device)
+		WHERE offline.pk IN $offlineDevicePKs
+		  AND offline.isis_system_id IS NOT NULL
+		  AND neighbor.isis_system_id IS NOT NULL
+		  AND NOT neighbor.pk IN $offlineDevicePKs
+
+		WITH DISTINCT neighbor
+
+		// For each neighbor, find paths to other devices that currently go through an offline device
+		MATCH (neighbor)-[:ISIS_ADJACENT*1..2]-(other:Device)
+		WHERE other.isis_system_id IS NOT NULL
+		  AND other.pk <> neighbor.pk
+		  AND NOT other.pk IN $offlineDevicePKs
+
+		WITH DISTINCT neighbor, other
+		WHERE neighbor.pk < other.pk  // Avoid duplicates
+
+		// Get current shortest path
+		MATCH currentPath = shortestPath((neighbor)-[:ISIS_ADJACENT*]-(other))
+		WITH neighbor, other, currentPath,
+		     length(currentPath) AS currentHops,
+		     reduce(m = 0, r IN relationships(currentPath) | m + coalesce(r.metric, 10)) AS currentMetric,
+		     any(n IN nodes(currentPath) WHERE n.pk IN $offlineDevicePKs) AS goesThruOffline
+
+		WHERE goesThruOffline = true
+
+		// Get metro info
+		OPTIONAL MATCH (neighbor)-[:LOCATED_IN]->(nm:Metro)
+		OPTIONAL MATCH (other)-[:LOCATED_IN]->(om:Metro)
+
+		RETURN neighbor.pk AS sourcePK, neighbor.code AS sourceCode,
+		       other.pk AS targetPK, other.code AS targetCode,
+		       COALESCE(nm.code, 'unknown') AS sourceMetro,
+		       COALESCE(om.code, 'unknown') AS targetMetro,
+		       currentHops, currentMetric
+		LIMIT $limit
+	`
+
+	records, err := session.Run(ctx, cypher, map[string]interface{}{
+		"offlineDevicePKs": offlineDevicePKs,
+		"limit":            limit * 2, // Get more candidates, we'll filter
+	})
+	if err != nil {
+		log.Printf("Error computing affected paths: %v", err)
+		return result
+	}
+
+	// Collect paths that need alternate route computation
+	type pathCandidate struct {
+		sourcePK      string
+		sourceCode    string
+		targetPK      string
+		targetCode    string
+		sourceMetro   string
+		targetMetro   string
+		currentHops   int
+		currentMetric int
+	}
+	candidates := []pathCandidate{}
+
+	for records.Next(ctx) {
+		record := records.Record()
+		sourcePK, _ := record.Get("sourcePK")
+		sourceCode, _ := record.Get("sourceCode")
+		targetPK, _ := record.Get("targetPK")
+		targetCode, _ := record.Get("targetCode")
+		sourceMetro, _ := record.Get("sourceMetro")
+		targetMetro, _ := record.Get("targetMetro")
+		currentHops, _ := record.Get("currentHops")
+		currentMetric, _ := record.Get("currentMetric")
+
+		candidates = append(candidates, pathCandidate{
+			sourcePK:      asString(sourcePK),
+			sourceCode:    asString(sourceCode),
+			targetPK:      asString(targetPK),
+			targetCode:    asString(targetCode),
+			sourceMetro:   asString(sourceMetro),
+			targetMetro:   asString(targetMetro),
+			currentHops:   int(asInt64(currentHops)),
+			currentMetric: int(asInt64(currentMetric)),
+		})
+	}
+
+	// Step 2: For each candidate, find alternate path avoiding offline devices
+	for _, c := range candidates {
+		if len(result) >= limit {
+			break
+		}
+
+		path := MaintenanceAffectedPath{
+			Source:       c.sourceCode,
+			Target:       c.targetCode,
+			SourceMetro:  c.sourceMetro,
+			TargetMetro:  c.targetMetro,
+			HopsBefore:   c.currentHops,
+			MetricBefore: c.currentMetric,
+			HopsAfter:    -1,
+			MetricAfter:  -1,
+			Status:       "disconnected",
+		}
+
+		// Try to find alternate path
+		altCypher := `
+			MATCH (source:Device {pk: $sourcePK}), (target:Device {pk: $targetPK})
+			MATCH altPath = shortestPath((source)-[:ISIS_ADJACENT*]-(target))
+			WHERE none(n IN nodes(altPath) WHERE n.pk IN $offlineDevicePKs)
+			WITH altPath, length(altPath) AS altHops,
+			     reduce(m = 0, r IN relationships(altPath) | m + coalesce(r.metric, 10)) AS altMetric
+			RETURN altHops, altMetric
+			LIMIT 1
+		`
+
+		altResult, err := session.Run(ctx, altCypher, map[string]interface{}{
+			"sourcePK":         c.sourcePK,
+			"targetPK":         c.targetPK,
+			"offlineDevicePKs": offlineDevicePKs,
+		})
+		if err == nil && altResult.Next(ctx) {
+			record := altResult.Record()
+			altHops, _ := record.Get("altHops")
+			altMetric, _ := record.Get("altMetric")
+
+			path.HopsAfter = int(asInt64(altHops))
+			path.MetricAfter = int(asInt64(altMetric))
+
+			// Classify based on degradation
+			hopIncrease := path.HopsAfter - path.HopsBefore
+			metricIncrease := path.MetricAfter - path.MetricBefore
+			if hopIncrease > 2 || metricIncrease > 50 {
+				path.Status = "degraded"
+			} else {
+				path.Status = "rerouted"
+			}
+		}
+
+		result = append(result, path)
+	}
+
+	return result
+}
+
+// computeAffectedMetrosFast computes affected metro pairs with specific link details
+func computeAffectedMetrosFast(ctx context.Context, session neo4j.SessionWithContext,
+	offlineDevices map[string]bool) []AffectedMetroPair {
 
 	result := []AffectedMetroPair{}
 
@@ -1795,50 +2238,84 @@ func computeAffectedMetros(ctx context.Context, session neo4j.SessionWithContext
 		return result
 	}
 
-	// Find metro pairs that have paths going through offline devices
+	// Query: find ISIS adjacencies that involve offline devices, grouped by metro pair
+	// Returns the specific device pairs affected
 	cypher := `
-		MATCH (d:Device)-[:LOCATED_IN]->(m:Metro)
-		WHERE d.pk IN $offlineDevicePKs
-		WITH collect(DISTINCT m.code) AS affectedMetros, collect(d.pk) AS offlineDevices
-
-		MATCH (m1:Metro)<-[:LOCATED_IN]-(d1:Device)-[:ISIS_ADJACENT*1..3]-(d2:Device)-[:LOCATED_IN]->(m2:Metro)
-		WHERE m1.code < m2.code
+		MATCH (d1:Device)-[:ISIS_ADJACENT]-(d2:Device)
+		WHERE d1.pk IN $offlineDevicePKs
 		  AND d1.isis_system_id IS NOT NULL
 		  AND d2.isis_system_id IS NOT NULL
-		  AND (m1.code IN affectedMetros OR m2.code IN affectedMetros OR
-		       any(dk IN offlineDevices WHERE any(n IN nodes((d1)-[:ISIS_ADJACENT*1..3]-(d2)) WHERE n.pk = dk)))
+		  AND NOT d2.pk IN $offlineDevicePKs
 
-		WITH m1.code AS metro1, m2.code AS metro2, count(*) AS pathCount
-		WHERE pathCount > 0
+		// Get metro info for both devices
+		OPTIONAL MATCH (d1)-[:LOCATED_IN]->(m1:Metro)
+		OPTIONAL MATCH (d2)-[:LOCATED_IN]->(m2:Metro)
 
-		RETURN metro1, metro2, pathCount
-		ORDER BY pathCount DESC
-		LIMIT 10
+		WITH COALESCE(m1.code, 'unknown') AS metro1,
+		     COALESCE(m2.code, 'unknown') AS metro2,
+		     d1.code AS device1,
+		     d2.code AS device2,
+		     d1.pk AS d1pk
+
+		// Return individual links grouped by metro pair
+		RETURN metro1, metro2, device1, device2, d1pk
+		ORDER BY metro1, metro2, device1
+		LIMIT 50
 	`
 
 	records, err := session.Run(ctx, cypher, map[string]interface{}{
 		"offlineDevicePKs": offlineDevicePKs,
 	})
 	if err != nil {
-		log.Printf("Error computing affected metros: %v", err)
+		log.Printf("Error computing affected metros fast: %v", err)
 		return result
 	}
+
+	// Group links by metro pair
+	type metroPairKey struct {
+		metro1, metro2 string
+	}
+	metroPairs := make(map[metroPairKey]*AffectedMetroPair)
 
 	for records.Next(ctx) {
 		record := records.Record()
 		metro1, _ := record.Get("metro1")
 		metro2, _ := record.Get("metro2")
-		pathCount, _ := record.Get("pathCount")
+		device1, _ := record.Get("device1")
+		device2, _ := record.Get("device2")
 
-		pair := AffectedMetroPair{
-			SourceMetro: asString(metro1),
-			TargetMetro: asString(metro2),
-			PathsBefore: int(asInt64(pathCount)),
-			PathsAfter:  0, // Simplified - would need more complex query
-			Status:      "reduced",
+		m1 := asString(metro1)
+		m2 := asString(metro2)
+
+		// Normalize key so we don't duplicate metro pairs in different order
+		key := metroPairKey{m1, m2}
+		if m1 > m2 {
+			key = metroPairKey{m2, m1}
 		}
 
-		result = append(result, pair)
+		pair, exists := metroPairs[key]
+		if !exists {
+			pair = &AffectedMetroPair{
+				SourceMetro:   key.metro1,
+				TargetMetro:   key.metro2,
+				AffectedLinks: []AffectedLink{},
+				Status:        "reduced",
+			}
+			metroPairs[key] = pair
+		}
+
+		// Add the affected link
+		link := AffectedLink{
+			SourceDevice: asString(device1),
+			TargetDevice: asString(device2),
+			Status:       "offline", // The source device is going offline
+		}
+		pair.AffectedLinks = append(pair.AffectedLinks, link)
+	}
+
+	// Convert map to slice
+	for _, pair := range metroPairs {
+		result = append(result, *pair)
 	}
 
 	return result

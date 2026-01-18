@@ -213,15 +213,17 @@ func (c *StatusCache) refreshLinkHistory() {
 	// Refresh all common configurations
 	for _, cfg := range linkHistoryConfigs {
 		ctx, cancel := context.WithTimeout(c.ctx, 20*time.Second)
-		resp := fetchLinkHistoryData(ctx, cfg.timeRange, cfg.buckets)
+		resp, err := fetchLinkHistoryData(ctx, cfg.timeRange, cfg.buckets)
 		cancel()
 
-		if resp != nil {
-			key := linkHistoryCacheKey(cfg.timeRange, cfg.buckets)
-			c.mu.Lock()
-			c.linkHistory[key] = resp
-			c.mu.Unlock()
+		if err != nil {
+			log.Printf("Link history cache refresh error (range=%s, buckets=%d): %v", cfg.timeRange, cfg.buckets, err)
+			continue
 		}
+		key := linkHistoryCacheKey(cfg.timeRange, cfg.buckets)
+		c.mu.Lock()
+		c.linkHistory[key] = resp
+		c.mu.Unlock()
 	}
 
 	c.mu.Lock()
@@ -239,15 +241,17 @@ func (c *StatusCache) refreshDeviceHistory() {
 	// Refresh all common configurations
 	for _, cfg := range deviceHistoryConfigs {
 		ctx, cancel := context.WithTimeout(c.ctx, 20*time.Second)
-		resp := fetchDeviceHistoryData(ctx, cfg.timeRange, cfg.buckets)
+		resp, err := fetchDeviceHistoryData(ctx, cfg.timeRange, cfg.buckets)
 		cancel()
 
-		if resp != nil {
-			key := deviceHistoryCacheKey(cfg.timeRange, cfg.buckets)
-			c.mu.Lock()
-			c.deviceHistory[key] = resp
-			c.mu.Unlock()
+		if err != nil {
+			log.Printf("Device history cache refresh error (range=%s, buckets=%d): %v", cfg.timeRange, cfg.buckets, err)
+			continue
 		}
+		key := deviceHistoryCacheKey(cfg.timeRange, cfg.buckets)
+		c.mu.Lock()
+		c.deviceHistory[key] = resp
+		c.mu.Unlock()
 	}
 
 	c.mu.Lock()

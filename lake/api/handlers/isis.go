@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -873,7 +874,10 @@ func GetISISPaths(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Enrich paths with measured latency from ClickHouse
-	enrichPathsWithMeasuredLatency(ctx, &response)
+	if err := enrichPathsWithMeasuredLatency(ctx, &response); err != nil {
+		log.Printf("enrichPathsWithMeasuredLatency error: %v", err)
+		response.Error = fmt.Sprintf("failed to enrich paths with measured latency: %v", err)
+	}
 
 	duration := time.Since(start)
 	metrics.RecordClickHouseQuery(duration, nil)
@@ -937,9 +941,9 @@ type linkLatencyData struct {
 }
 
 // enrichPathsWithMeasuredLatency queries ClickHouse for measured latency and adds it to path hops
-func enrichPathsWithMeasuredLatency(ctx context.Context, response *MultiPathResponse) {
+func enrichPathsWithMeasuredLatency(ctx context.Context, response *MultiPathResponse) error {
 	if len(response.Paths) == 0 {
-		return
+		return nil
 	}
 
 	// Query ClickHouse for measured latency per link, including device endpoints
@@ -961,8 +965,7 @@ func enrichPathsWithMeasuredLatency(ctx context.Context, response *MultiPathResp
 
 	rows, err := config.DB.Query(ctx, query)
 	if err != nil {
-		log.Printf("enrichPathsWithMeasuredLatency query error: %v", err)
-		return
+		return fmt.Errorf("enrichPathsWithMeasuredLatency query error: %w", err)
 	}
 	defer rows.Close()
 
@@ -972,12 +975,14 @@ func enrichPathsWithMeasuredLatency(ctx context.Context, response *MultiPathResp
 	for rows.Next() {
 		var data linkLatencyData
 		if err := rows.Scan(&data.SideAPK, &data.SideZPK, &data.AvgRttMs, &data.AvgJitterMs, &data.LossPct, &data.SampleCount); err != nil {
-			log.Printf("enrichPathsWithMeasuredLatency scan error: %v", err)
-			continue
+			return fmt.Errorf("enrichPathsWithMeasuredLatency scan error: %w", err)
 		}
 		// Store in both directions
 		latencyMap[data.SideAPK+":"+data.SideZPK] = data
 		latencyMap[data.SideZPK+":"+data.SideAPK] = data
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("enrichPathsWithMeasuredLatency rows error: %w", err)
 	}
 
 	// Update each path with measured latency
@@ -1010,6 +1015,7 @@ func enrichPathsWithMeasuredLatency(ctx context.Context, response *MultiPathResp
 			path.TotalSamples = minSamples
 		}
 	}
+	return nil
 }
 
 // CriticalLink represents a link that is critical for network connectivity
@@ -1794,7 +1800,9 @@ func GetMetroPathLatency(w http.ResponseWriter, r *http.Request) {
 			var metro1, metro2 string
 			var avgRttMs float64
 			if err := rows.Scan(&metro1, &metro2, &avgRttMs); err != nil {
-				continue
+				response.Error = fmt.Sprintf("failed to scan internet latency row: %v", err)
+				writeJSON(w, response)
+				return
 			}
 			// Update both directions in pathMap
 			key1 := metro1 + ":" + metro2
@@ -2289,7 +2297,12 @@ func PostMaintenanceImpact(w http.ResponseWriter, r *http.Request) {
 
 	// Batch analyze all links
 	if len(req.Links) > 0 {
-		linkItems := analyzeLinksImpactBatch(ctx, session, req.Links)
+		linkItems, err := analyzeLinksImpactBatch(ctx, session, req.Links)
+		if err != nil {
+			response.Error = fmt.Sprintf("failed to analyze links impact: %v", err)
+			writeJSON(w, response)
+			return
+		}
 		for _, item := range linkItems {
 			response.Items = append(response.Items, item)
 			for _, dc := range item.DisconnectedDevices {
@@ -2611,12 +2624,12 @@ func analyzeDevicesImpactBatch(ctx context.Context, session neo4j.SessionWithCon
 }
 
 // analyzeLinksImpactBatch computes the impact of taking multiple links offline
-func analyzeLinksImpactBatch(ctx context.Context, session neo4j.SessionWithContext, linkPKs []string) []MaintenanceItem {
+func analyzeLinksImpactBatch(ctx context.Context, session neo4j.SessionWithContext, linkPKs []string) ([]MaintenanceItem, error) {
 	items := make([]MaintenanceItem, 0, len(linkPKs))
 
 	// First, batch lookup links from ClickHouse
 	if len(linkPKs) == 0 {
-		return items
+		return items, nil
 	}
 
 	// Build placeholders for ClickHouse query
@@ -2637,12 +2650,7 @@ func analyzeLinksImpactBatch(ctx context.Context, session neo4j.SessionWithConte
 	// For ClickHouse we need to pass as a tuple
 	rows, err := config.DB.Query(ctx, linkQuery, linkPKs)
 	if err != nil {
-		log.Printf("Batch link lookup error: %v", err)
-		// Fallback to individual queries
-		for _, pk := range linkPKs {
-			items = append(items, analyzeLinkImpact(ctx, session, pk))
-		}
-		return items
+		return nil, fmt.Errorf("batch link lookup error: %w", err)
 	}
 	defer rows.Close()
 
@@ -2659,9 +2667,12 @@ func analyzeLinksImpactBatch(ctx context.Context, session neo4j.SessionWithConte
 	for rows.Next() {
 		var li linkInfo
 		if err := rows.Scan(&li.pk, &li.code, &li.sideAPK, &li.sideZPK, &li.sideACode, &li.sideZCode); err != nil {
-			continue
+			return nil, fmt.Errorf("failed to scan link info row: %w", err)
 		}
 		linkMap[li.pk] = li
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate link info rows: %w", err)
 	}
 
 	// Now batch query Neo4j for degree information
@@ -2780,7 +2791,7 @@ func analyzeLinksImpactBatch(ctx context.Context, session neo4j.SessionWithConte
 		items = append(items, item)
 	}
 
-	return items
+	return items, nil
 }
 
 // computeAffectedPathsFast finds all paths affected by taking devices offline

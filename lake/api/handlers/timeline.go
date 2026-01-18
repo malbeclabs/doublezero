@@ -883,7 +883,7 @@ func queryDeviceChanges(ctx context.Context, startTime, endTime time.Time) ([]Ti
 			&prevMetroPK, &prevMaxUsers, &prevIsDeleted, &changeType,
 			&contributorCode, &metroCode,
 		); err != nil {
-			continue
+			return nil, fmt.Errorf("device scan error: %w", err)
 		}
 
 		// Build changes list for updates
@@ -1134,7 +1134,7 @@ func queryLinkChanges(ctx context.Context, startTime, endTime time.Time) ([]Time
 			&contributorCode, &sideACode, &sideZCode, &sideAMetroCode, &sideZMetroCode,
 			&sideAMetroPK, &sideZMetroPK,
 		); err != nil {
-			continue
+			return nil, fmt.Errorf("link scan error: %w", err)
 		}
 
 		// Build changes list for updates
@@ -1335,7 +1335,7 @@ func queryMetroChanges(ctx context.Context, startTime, endTime time.Time) ([]Tim
 		)
 
 		if err := rows.Scan(&entityID, &snapshotTS, &pk, &code, &name, &longitude, &latitude, &isDeleted, &prevName, &prevLongitude, &prevLatitude, &prevIsDeleted, &changeType); err != nil {
-			continue
+			return nil, fmt.Errorf("metro scan error: %w", err)
 		}
 
 		// Build changes list
@@ -1475,7 +1475,7 @@ func queryContributorChanges(ctx context.Context, startTime, endTime time.Time) 
 		)
 
 		if err := rows.Scan(&entityID, &snapshotTS, &pk, &code, &name, &isDeleted, &prevCode, &prevName, &prevIsDeleted, &changeType); err != nil {
-			continue
+			return nil, fmt.Errorf("contributor scan error: %w", err)
 		}
 
 		// Build changes list
@@ -1657,7 +1657,7 @@ func queryUserChanges(ctx context.Context, startTime, endTime time.Time, include
 			&prevStatus, &prevKind, &prevClientIP, &prevDZIP, &prevDevicePK, &prevTunnelID, &prevIsDeleted,
 			&changeType, &deviceCode, &metroCode,
 		); err != nil {
-			continue
+			return nil, fmt.Errorf("user scan error: %w", err)
 		}
 
 		// Build changes list
@@ -1857,7 +1857,7 @@ func queryPacketLossEvents(ctx context.Context, startTime, endTime time.Time) ([
 		)
 
 		if err := rows.Scan(&linkPK, &hour, &lossPct, &prevLossPct, &transitionType, &severity, &linkCode, &linkType, &sideAMetro, &sideZMetro); err != nil {
-			continue
+			return nil, fmt.Errorf("packet loss event scan error: %w", err)
 		}
 
 		var title string
@@ -2009,7 +2009,7 @@ func queryInterfaceEvents(ctx context.Context, startTime, endTime time.Time) ([]
 		)
 
 		if err := rows.Scan(&hour, &devicePK, &intf, &linkPK, &inErrors, &outErrors, &inDiscards, &outDiscards, &carrierTransitions, &transitionType, &deviceCode, &linkCode); err != nil {
-			continue
+			return nil, fmt.Errorf("interface event scan error: %w", err)
 		}
 
 		var title string
@@ -2228,7 +2228,7 @@ func queryValidatorEvents(ctx context.Context, startTime, endTime time.Time, inc
 		)
 
 		if err := rows.Scan(&entityID, &snapshotTS, &pk, &ownerPubkey, &kind, &status, &prevStatus, &dzIP, &devicePK, &deviceCode, &metroCode, &nodePubkey, &votePubkey, &stakeLamports, &stakeSharePct, &validatorKind); err != nil {
-			continue
+			return nil, fmt.Errorf("validator event scan error: %w", err)
 		}
 
 		var title string
@@ -2389,7 +2389,7 @@ func queryGossipNetworkChanges(ctx context.Context, startTime, endTime time.Time
 		)
 
 		if err := rows.Scan(&gossipIP, &nodePubkey, &eventTS, &changeType, &votePubkey, &stakeLamports, &stakeSharePct, &dzOwnerPubkey, &userPK, &deviceCode, &devicePK, &metroCode); err != nil {
-			continue
+			return nil, fmt.Errorf("gossip network change scan error: %w", err)
 		}
 
 		stakeSol := float64(stakeLamports) / 1_000_000_000
@@ -2564,7 +2564,7 @@ func queryVoteAccountChanges(ctx context.Context, startTime, endTime time.Time) 
 		)
 
 		if err := rows.Scan(&votePubkey, &nodePubkey, &eventTS, &changeType, &stakeLamports, &stakeSharePct, &gossipIP, &dzOwnerPubkey, &userPK, &deviceCode, &devicePK, &metroCode); err != nil {
-			continue
+			return nil, fmt.Errorf("vote account change scan error: %w", err)
 		}
 
 		stakeSol := float64(stakeLamports) / 1_000_000_000
@@ -2719,7 +2719,7 @@ func queryStakeChanges(ctx context.Context, startTime, endTime time.Time) ([]Tim
 		)
 
 		if err := rows.Scan(&votePubkey, &nodePubkey, &eventTS, &currentStake, &prevStake, &change, &changePct, &stakeSharePct, &gossipIP, &isOnDZ, &dzOwnerPubkey, &userPK, &deviceCode, &devicePK, &metroCode); err != nil {
-			continue
+			return nil, fmt.Errorf("stake change scan error: %w", err)
 		}
 
 		changeSol := float64(change) / 1_000_000_000

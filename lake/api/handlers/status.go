@@ -917,6 +917,7 @@ type LinkHistoryResponse struct {
 	TimeRange      string        `json:"time_range"`       // "24h", "3d", "7d"
 	BucketMinutes  int           `json:"bucket_minutes"`   // Size of each bucket in minutes
 	BucketCount    int           `json:"bucket_count"`     // Number of buckets
+	Error          string        `json:"error,omitempty"`
 }
 
 func GetLinkHistory(w http.ResponseWriter, r *http.Request) {
@@ -951,8 +952,9 @@ func GetLinkHistory(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
 
-	resp := fetchLinkHistoryData(ctx, timeRange, requestedBuckets)
-	if resp == nil {
+	resp, err := fetchLinkHistoryData(ctx, timeRange, requestedBuckets)
+	if err != nil {
+		log.Printf("fetchLinkHistoryData error: %v", err)
 		http.Error(w, "Failed to fetch link history", http.StatusInternalServerError)
 		return
 	}
@@ -965,7 +967,7 @@ func GetLinkHistory(w http.ResponseWriter, r *http.Request) {
 
 // fetchLinkHistoryData performs the actual link history data fetch from the database.
 // This is called by both the cache refresh and direct requests.
-func fetchLinkHistoryData(ctx context.Context, timeRange string, requestedBuckets int) *LinkHistoryResponse {
+func fetchLinkHistoryData(ctx context.Context, timeRange string, requestedBuckets int) (*LinkHistoryResponse, error) {
 	start := time.Now()
 
 	// Configure bucket size based on time range and requested bucket count
@@ -1030,8 +1032,7 @@ func fetchLinkHistoryData(ctx context.Context, timeRange string, requestedBucket
 
 	linkRows, err := config.DB.Query(ctx, linkQuery)
 	if err != nil {
-		log.Printf("Link history query error: %v", err)
-		return nil
+		return nil, fmt.Errorf("link history query error: %w", err)
 	}
 	defer linkRows.Close()
 
@@ -1055,10 +1056,12 @@ func fetchLinkHistoryData(ctx context.Context, timeRange string, requestedBucket
 		var pk string
 		var meta linkMeta
 		if err := linkRows.Scan(&pk, &meta.code, &meta.linkType, &meta.contributor, &meta.sideAMetro, &meta.sideZMetro, &meta.sideADevice, &meta.sideZDevice, &meta.bandwidthBps, &meta.committedRttUs, &meta.delayOverrideNs, &meta.status); err != nil {
-			log.Printf("Link scan error: %v", err)
-			continue
+			return nil, fmt.Errorf("link scan error: %w", err)
 		}
 		linkMap[pk] = meta
+	}
+	if err := linkRows.Err(); err != nil {
+		return nil, fmt.Errorf("link rows iteration error: %w", err)
 	}
 
 	// Get stats for the configured time range
@@ -1077,8 +1080,7 @@ func fetchLinkHistoryData(ctx context.Context, timeRange string, requestedBucket
 
 	historyRows, err := config.DB.Query(ctx, historyQuery, totalHours)
 	if err != nil {
-		log.Printf("Link history stats query error: %v", err)
-		return nil
+		return nil, fmt.Errorf("link history stats query error: %w", err)
 	}
 	defer historyRows.Close()
 
@@ -1095,10 +1097,12 @@ func fetchLinkHistoryData(ctx context.Context, timeRange string, requestedBucket
 		var linkPK string
 		var stats bucketStats
 		if err := historyRows.Scan(&linkPK, &stats.bucket, &stats.avgLatency, &stats.lossPct, &stats.samples); err != nil {
-			log.Printf("History scan error: %v", err)
-			continue
+			return nil, fmt.Errorf("history scan error: %w", err)
 		}
 		linkBuckets[linkPK] = append(linkBuckets[linkPK], stats)
+	}
+	if err := historyRows.Err(); err != nil {
+		return nil, fmt.Errorf("history rows iteration error: %w", err)
 	}
 
 	// Get historical link status per bucket from dim_dz_links_history
@@ -1141,11 +1145,13 @@ func fetchLinkHistoryData(ctx context.Context, timeRange string, requestedBucket
 			var linkPK, status string
 			var bucket time.Time
 			if err := statusRows.Scan(&linkPK, &bucket, &status); err != nil {
-				log.Printf("Status history scan error: %v", err)
-				continue
+				return nil, fmt.Errorf("status history scan error: %w", err)
 			}
 			key := linkBucketKey{linkPK: linkPK, bucket: bucket.UTC().Format(time.RFC3339)}
 			linkStatusHistory[key] = status
+		}
+		if err := statusRows.Err(); err != nil {
+			return nil, fmt.Errorf("status rows iteration error: %w", err)
 		}
 	}
 
@@ -1352,7 +1358,7 @@ func fetchLinkHistoryData(ctx context.Context, timeRange string, requestedBucket
 	log.Printf("fetchLinkHistoryData completed in %v (range=%s, buckets=%d, links=%d)",
 		time.Since(start), timeRange, bucketCount, len(links))
 
-	return resp
+	return resp, nil
 }
 
 func classifyLinkStatus(avgLatency, lossPct, committedRttUs float64) string {
@@ -1466,8 +1472,9 @@ func GetDeviceHistory(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
 
-	resp := fetchDeviceHistoryData(ctx, timeRange, requestedBuckets)
-	if resp == nil {
+	resp, err := fetchDeviceHistoryData(ctx, timeRange, requestedBuckets)
+	if err != nil {
+		log.Printf("fetchDeviceHistoryData error: %v", err)
 		http.Error(w, "Failed to fetch device history", http.StatusInternalServerError)
 		return
 	}
@@ -1479,7 +1486,7 @@ func GetDeviceHistory(w http.ResponseWriter, r *http.Request) {
 }
 
 // fetchDeviceHistoryData performs the actual device history data fetch from the database.
-func fetchDeviceHistoryData(ctx context.Context, timeRange string, requestedBuckets int) *DeviceHistoryResponse {
+func fetchDeviceHistoryData(ctx context.Context, timeRange string, requestedBuckets int) (*DeviceHistoryResponse, error) {
 	start := time.Now()
 
 	// Configure bucket size based on time range and requested bucket count
@@ -1536,8 +1543,7 @@ func fetchDeviceHistoryData(ctx context.Context, timeRange string, requestedBuck
 
 	deviceRows, err := config.DB.Query(ctx, deviceQuery)
 	if err != nil {
-		log.Printf("Device history query error: %v", err)
-		return nil
+		return nil, fmt.Errorf("device history query error: %w", err)
 	}
 	defer deviceRows.Close()
 
@@ -1556,10 +1562,12 @@ func fetchDeviceHistoryData(ctx context.Context, timeRange string, requestedBuck
 		var pk string
 		var meta deviceMeta
 		if err := deviceRows.Scan(&pk, &meta.code, &meta.deviceType, &meta.contributor, &meta.metro, &meta.maxUsers, &meta.status); err != nil {
-			log.Printf("Device scan error: %v", err)
-			continue
+			return nil, fmt.Errorf("device scan error: %w", err)
 		}
 		deviceMap[pk] = meta
+	}
+	if err := deviceRows.Err(); err != nil {
+		return nil, fmt.Errorf("device rows iteration error: %w", err)
 	}
 
 	// Get interface issues per bucket
@@ -1580,8 +1588,7 @@ func fetchDeviceHistoryData(ctx context.Context, timeRange string, requestedBuck
 
 	interfaceRows, err := config.DB.Query(ctx, interfaceQuery, totalHours)
 	if err != nil {
-		log.Printf("Device interface query error: %v", err)
-		return nil
+		return nil, fmt.Errorf("device interface query error: %w", err)
 	}
 	defer interfaceRows.Close()
 
@@ -1600,10 +1607,12 @@ func fetchDeviceHistoryData(ctx context.Context, timeRange string, requestedBuck
 		var devicePK string
 		var stats bucketStats
 		if err := interfaceRows.Scan(&devicePK, &stats.bucket, &stats.inErrors, &stats.outErrors, &stats.inDiscards, &stats.outDiscards, &stats.carrierTransitions); err != nil {
-			log.Printf("Interface scan error: %v", err)
-			continue
+			return nil, fmt.Errorf("interface scan error: %w", err)
 		}
 		deviceBuckets[devicePK] = append(deviceBuckets[devicePK], stats)
+	}
+	if err := interfaceRows.Err(); err != nil {
+		return nil, fmt.Errorf("interface rows iteration error: %w", err)
 	}
 
 	// Get historical device status per bucket
@@ -1644,11 +1653,13 @@ func fetchDeviceHistoryData(ctx context.Context, timeRange string, requestedBuck
 			var devicePK, status string
 			var bucket time.Time
 			if err := statusRows.Scan(&devicePK, &bucket, &status); err != nil {
-				log.Printf("Status history scan error: %v", err)
-				continue
+				return nil, fmt.Errorf("device status history scan error: %w", err)
 			}
 			key := deviceBucketKey{devicePK: devicePK, bucket: bucket.UTC().Format(time.RFC3339)}
 			deviceStatusHistory[key] = status
+		}
+		if err := statusRows.Err(); err != nil {
+			return nil, fmt.Errorf("device status rows iteration error: %w", err)
 		}
 	}
 
@@ -1786,7 +1797,7 @@ func fetchDeviceHistoryData(ctx context.Context, timeRange string, requestedBuck
 	log.Printf("fetchDeviceHistoryData completed in %v (range=%s, buckets=%d, devices=%d)",
 		time.Since(start), timeRange, bucketCount, len(devices))
 
-	return resp
+	return resp, nil
 }
 
 func classifyDeviceStatus(totalErrors, totalDiscards uint64, carrierTransitions uint64) string {

@@ -94,9 +94,16 @@ func GetCatalog(w http.ResponseWriter, r *http.Request) {
 	for colRows.Next() {
 		var tableName, colName string
 		if err := colRows.Scan(&tableName, &colName); err != nil {
-			continue
+			metrics.RecordClickHouseQuery(colDuration, err)
+			http.Error(w, internalError("Failed to scan column row", err), http.StatusInternalServerError)
+			return
 		}
 		tableColumns[tableName] = append(tableColumns[tableName], colName)
+	}
+	if err := colRows.Err(); err != nil {
+		metrics.RecordClickHouseQuery(colDuration, err)
+		http.Error(w, internalError("Failed to iterate column rows", err), http.StatusInternalServerError)
+		return
 	}
 	metrics.RecordClickHouseQuery(colDuration, nil)
 

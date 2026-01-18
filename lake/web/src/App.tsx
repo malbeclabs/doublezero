@@ -17,6 +17,7 @@ import { Sidebar } from '@/components/sidebar'
 import { SearchSpotlight } from '@/components/search-spotlight'
 import { TopologyPage } from '@/components/topology-page'
 import { PathCalculatorPage } from '@/components/path-calculator-page'
+import { RedundancyReportPage } from '@/components/redundancy-report-page'
 import { StatusPage } from '@/components/status-page'
 import { TimelinePage } from '@/components/timeline-page'
 import { StatusAppendix } from '@/components/status-appendix'
@@ -1675,6 +1676,7 @@ function AppContent() {
             <Route path="/topology/map" element={<TopologyPage view="map" />} />
             <Route path="/topology/graph" element={<TopologyPage view="graph" />} />
             <Route path="/topology/path-calculator" element={<PathCalculatorPage />} />
+            <Route path="/topology/redundancy" element={<RedundancyReportPage />} />
 
             {/* Status routes */}
             <Route path="/status" element={<StatusPage />} />

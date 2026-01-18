@@ -899,3 +899,393 @@ func parseNodeListWithMetrics(nodeListVal, edgeMetricsVal any) []MultiPathHop {
 	}
 	return hops
 }
+
+// CriticalLink represents a link that is critical for network connectivity
+type CriticalLink struct {
+	SourcePK   string `json:"sourcePK"`
+	SourceCode string `json:"sourceCode"`
+	TargetPK   string `json:"targetPK"`
+	TargetCode string `json:"targetCode"`
+	Metric     uint32 `json:"metric"`
+	Criticality string `json:"criticality"` // "critical", "important", "redundant"
+}
+
+// CriticalLinksResponse is the response for the critical links endpoint
+type CriticalLinksResponse struct {
+	Links []CriticalLink `json:"links"`
+	Error string         `json:"error,omitempty"`
+}
+
+// GetCriticalLinks returns links that are critical for network connectivity
+// Critical links are identified based on node degrees and connectivity patterns
+func GetCriticalLinks(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	start := time.Now()
+
+	session := config.Neo4jSession(ctx)
+	defer session.Close(ctx)
+
+	response := CriticalLinksResponse{
+		Links: []CriticalLink{},
+	}
+
+	// Efficient approach: for each edge, check the degree of both endpoints
+	// - If either endpoint has degree 1, this is a critical link (leaf edge)
+	// - If min(degreeA, degreeB) == 2, it's important (limited redundancy)
+	// - Otherwise it's redundant (well-connected)
+	cypher := `
+		MATCH (a:Device)-[r:ISIS_ADJACENT]-(b:Device)
+		WHERE a.isis_system_id IS NOT NULL
+		  AND b.isis_system_id IS NOT NULL
+		  AND id(a) < id(b)
+		WITH a, b, min(r.metric) AS metric  // Deduplicate multiple edges between same nodes
+		// Count neighbors for each endpoint
+		OPTIONAL MATCH (a)-[:ISIS_ADJACENT]-(na:Device)
+		WHERE na.isis_system_id IS NOT NULL
+		WITH a, b, metric, count(DISTINCT na) AS degreeA
+		OPTIONAL MATCH (b)-[:ISIS_ADJACENT]-(nb:Device)
+		WHERE nb.isis_system_id IS NOT NULL
+		WITH a, b, metric, degreeA, count(DISTINCT nb) AS degreeB
+		RETURN a.pk AS sourcePK,
+		       a.code AS sourceCode,
+		       b.pk AS targetPK,
+		       b.code AS targetCode,
+		       metric,
+		       degreeA,
+		       degreeB
+		ORDER BY CASE
+		  WHEN degreeA = 1 OR degreeB = 1 THEN 0
+		  WHEN degreeA = 2 OR degreeB = 2 THEN 1
+		  ELSE 2
+		END, metric DESC
+	`
+
+	result, err := session.Run(ctx, cypher, nil)
+	if err != nil {
+		log.Printf("Critical links query error: %v", err)
+		response.Error = err.Error()
+		writeJSON(w, response)
+		return
+	}
+
+	records, err := result.Collect(ctx)
+	if err != nil {
+		log.Printf("Critical links collect error: %v", err)
+		response.Error = err.Error()
+		writeJSON(w, response)
+		return
+	}
+
+	for _, record := range records {
+		sourcePK, _ := record.Get("sourcePK")
+		sourceCode, _ := record.Get("sourceCode")
+		targetPK, _ := record.Get("targetPK")
+		targetCode, _ := record.Get("targetCode")
+		metric, _ := record.Get("metric")
+		degreeA, _ := record.Get("degreeA")
+		degreeB, _ := record.Get("degreeB")
+
+		dA := asInt64(degreeA)
+		dB := asInt64(degreeB)
+		minDegree := dA
+		if dB < dA {
+			minDegree = dB
+		}
+
+		// Determine criticality based on minimum degree
+		var criticality string
+		if minDegree <= 1 {
+			criticality = "critical" // At least one endpoint has only this connection
+		} else if minDegree == 2 {
+			criticality = "important" // Limited redundancy
+		} else {
+			criticality = "redundant" // Well-connected endpoints
+		}
+
+		response.Links = append(response.Links, CriticalLink{
+			SourcePK:    asString(sourcePK),
+			SourceCode:  asString(sourceCode),
+			TargetPK:    asString(targetPK),
+			TargetCode:  asString(targetCode),
+			Metric:      uint32(asInt64(metric)),
+			Criticality: criticality,
+		})
+	}
+
+	duration := time.Since(start)
+	metrics.RecordClickHouseQuery(duration, nil)
+
+	criticalCount := 0
+	importantCount := 0
+	for _, link := range response.Links {
+		if link.Criticality == "critical" {
+			criticalCount++
+		} else if link.Criticality == "important" {
+			importantCount++
+		}
+	}
+	log.Printf("Critical links query returned %d links (%d critical, %d important) in %v",
+		len(response.Links), criticalCount, importantCount, duration)
+
+	writeJSON(w, response)
+}
+
+// RedundancyIssue represents a single redundancy issue in the network
+type RedundancyIssue struct {
+	Type        string `json:"type"`        // "leaf_device", "critical_link", "single_exit_metro", "no_backup_device"
+	Severity    string `json:"severity"`    // "critical", "warning", "info"
+	EntityPK    string `json:"entityPK"`    // PK of affected entity
+	EntityCode  string `json:"entityCode"`  // Code/name of affected entity
+	EntityType  string `json:"entityType"`  // "device", "link", "metro"
+	Description string `json:"description"` // Human-readable description
+	Impact      string `json:"impact"`      // Impact description
+	// Extra fields for links
+	TargetPK   string `json:"targetPK,omitempty"`
+	TargetCode string `json:"targetCode,omitempty"`
+	// Extra fields for context
+	MetroPK   string `json:"metroPK,omitempty"`
+	MetroCode string `json:"metroCode,omitempty"`
+}
+
+// RedundancyReportResponse is the response for the redundancy report endpoint
+type RedundancyReportResponse struct {
+	Issues         []RedundancyIssue `json:"issues"`
+	Summary        RedundancySummary `json:"summary"`
+	Error          string            `json:"error,omitempty"`
+}
+
+type RedundancySummary struct {
+	TotalIssues     int `json:"totalIssues"`
+	CriticalCount   int `json:"criticalCount"`
+	WarningCount    int `json:"warningCount"`
+	InfoCount       int `json:"infoCount"`
+	LeafDevices     int `json:"leafDevices"`
+	CriticalLinks   int `json:"criticalLinks"`
+	SingleExitMetros int `json:"singleExitMetros"`
+}
+
+// GetRedundancyReport returns a comprehensive redundancy analysis report
+func GetRedundancyReport(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+
+	start := time.Now()
+
+	session := config.Neo4jSession(ctx)
+	defer session.Close(ctx)
+
+	response := RedundancyReportResponse{
+		Issues: []RedundancyIssue{},
+	}
+
+	// 1. Find leaf devices (devices with only 1 ISIS neighbor)
+	leafCypher := `
+		MATCH (d:Device)
+		WHERE d.isis_system_id IS NOT NULL
+		OPTIONAL MATCH (d)-[:ISIS_ADJACENT]-(n:Device)
+		WHERE n.isis_system_id IS NOT NULL
+		WITH d, count(DISTINCT n) AS neighborCount
+		WHERE neighborCount = 1
+		OPTIONAL MATCH (d)-[:LOCATED_IN]->(m:Metro)
+		RETURN d.pk AS pk,
+		       d.code AS code,
+		       m.pk AS metroPK,
+		       m.code AS metroCode
+		ORDER BY d.code
+	`
+
+	leafResult, err := session.Run(ctx, leafCypher, nil)
+	if err != nil {
+		log.Printf("Redundancy report leaf devices query error: %v", err)
+		response.Error = err.Error()
+		writeJSON(w, response)
+		return
+	}
+
+	leafRecords, err := leafResult.Collect(ctx)
+	if err != nil {
+		log.Printf("Redundancy report leaf devices collect error: %v", err)
+		response.Error = err.Error()
+		writeJSON(w, response)
+		return
+	}
+
+	for _, record := range leafRecords {
+		pk, _ := record.Get("pk")
+		code, _ := record.Get("code")
+		metroPK, _ := record.Get("metroPK")
+		metroCode, _ := record.Get("metroCode")
+
+		response.Issues = append(response.Issues, RedundancyIssue{
+			Type:        "leaf_device",
+			Severity:    "critical",
+			EntityPK:    asString(pk),
+			EntityCode:  asString(code),
+			EntityType:  "device",
+			Description: "Device has only one ISIS neighbor",
+			Impact:      "If the single neighbor fails, this device loses connectivity to the network",
+			MetroPK:     asString(metroPK),
+			MetroCode:   asString(metroCode),
+		})
+	}
+
+	// 2. Find critical links (links where at least one endpoint has only this connection)
+	criticalLinksCypher := `
+		MATCH (a:Device)-[r:ISIS_ADJACENT]-(b:Device)
+		WHERE a.isis_system_id IS NOT NULL
+		  AND b.isis_system_id IS NOT NULL
+		  AND id(a) < id(b)
+		WITH a, b, min(r.metric) AS metric
+		OPTIONAL MATCH (a)-[:ISIS_ADJACENT]-(na:Device)
+		WHERE na.isis_system_id IS NOT NULL
+		WITH a, b, metric, count(DISTINCT na) AS degreeA
+		OPTIONAL MATCH (b)-[:ISIS_ADJACENT]-(nb:Device)
+		WHERE nb.isis_system_id IS NOT NULL
+		WITH a, b, metric, degreeA, count(DISTINCT nb) AS degreeB
+		WHERE degreeA = 1 OR degreeB = 1
+		RETURN a.pk AS sourcePK,
+		       a.code AS sourceCode,
+		       b.pk AS targetPK,
+		       b.code AS targetCode,
+		       degreeA,
+		       degreeB
+		ORDER BY sourceCode
+	`
+
+	criticalResult, err := session.Run(ctx, criticalLinksCypher, nil)
+	if err != nil {
+		log.Printf("Redundancy report critical links query error: %v", err)
+		response.Error = err.Error()
+		writeJSON(w, response)
+		return
+	}
+
+	criticalRecords, err := criticalResult.Collect(ctx)
+	if err != nil {
+		log.Printf("Redundancy report critical links collect error: %v", err)
+		response.Error = err.Error()
+		writeJSON(w, response)
+		return
+	}
+
+	for _, record := range criticalRecords {
+		sourcePK, _ := record.Get("sourcePK")
+		sourceCode, _ := record.Get("sourceCode")
+		targetPK, _ := record.Get("targetPK")
+		targetCode, _ := record.Get("targetCode")
+
+		response.Issues = append(response.Issues, RedundancyIssue{
+			Type:        "critical_link",
+			Severity:    "critical",
+			EntityPK:    asString(sourcePK),
+			EntityCode:  asString(sourceCode),
+			EntityType:  "link",
+			TargetPK:    asString(targetPK),
+			TargetCode:  asString(targetCode),
+			Description: "Link connects a leaf device to the network",
+			Impact:      "If this link fails, one or both devices lose network connectivity",
+		})
+	}
+
+	// 3. Find single-exit metros (metros where only one device has external connections)
+	singleExitCypher := `
+		MATCH (m:Metro)<-[:LOCATED_IN]-(d:Device)
+		WHERE d.isis_system_id IS NOT NULL
+		MATCH (d)-[:ISIS_ADJACENT]-(n:Device)
+		WHERE n.isis_system_id IS NOT NULL
+		OPTIONAL MATCH (n)-[:LOCATED_IN]->(nm:Metro)
+		WITH m, d, n, nm
+		WHERE nm IS NULL OR nm.pk <> m.pk
+		WITH m, count(DISTINCT d) AS exitDeviceCount
+		WHERE exitDeviceCount = 1
+		RETURN m.pk AS pk,
+		       m.code AS code,
+		       m.name AS name
+		ORDER BY m.code
+	`
+
+	singleExitResult, err := session.Run(ctx, singleExitCypher, nil)
+	if err != nil {
+		log.Printf("Redundancy report single-exit metros query error: %v", err)
+		response.Error = err.Error()
+		writeJSON(w, response)
+		return
+	}
+
+	singleExitRecords, err := singleExitResult.Collect(ctx)
+	if err != nil {
+		log.Printf("Redundancy report single-exit metros collect error: %v", err)
+		response.Error = err.Error()
+		writeJSON(w, response)
+		return
+	}
+
+	for _, record := range singleExitRecords {
+		pk, _ := record.Get("pk")
+		code, _ := record.Get("code")
+		name, _ := record.Get("name")
+
+		displayName := asString(name)
+		if displayName == "" {
+			displayName = asString(code)
+		}
+
+		response.Issues = append(response.Issues, RedundancyIssue{
+			Type:        "single_exit_metro",
+			Severity:    "warning",
+			EntityPK:    asString(pk),
+			EntityCode:  displayName,
+			EntityType:  "metro",
+			Description: "Metro has only one device with external connections",
+			Impact:      "If that device fails, the entire metro loses external connectivity",
+		})
+	}
+
+	// Build summary
+	criticalCount := 0
+	warningCount := 0
+	infoCount := 0
+	leafDeviceCount := 0
+	criticalLinkCount := 0
+	singleExitMetroCount := 0
+
+	for _, issue := range response.Issues {
+		switch issue.Severity {
+		case "critical":
+			criticalCount++
+		case "warning":
+			warningCount++
+		case "info":
+			infoCount++
+		}
+
+		switch issue.Type {
+		case "leaf_device":
+			leafDeviceCount++
+		case "critical_link":
+			criticalLinkCount++
+		case "single_exit_metro":
+			singleExitMetroCount++
+		}
+	}
+
+	response.Summary = RedundancySummary{
+		TotalIssues:      len(response.Issues),
+		CriticalCount:    criticalCount,
+		WarningCount:     warningCount,
+		InfoCount:        infoCount,
+		LeafDevices:      leafDeviceCount,
+		CriticalLinks:    criticalLinkCount,
+		SingleExitMetros: singleExitMetroCount,
+	}
+
+	duration := time.Since(start)
+	metrics.RecordClickHouseQuery(duration, nil)
+
+	log.Printf("Redundancy report returned %d issues (%d critical, %d warning, %d info) in %v",
+		len(response.Issues), criticalCount, warningCount, infoCount, duration)
+
+	writeJSON(w, response)
+}

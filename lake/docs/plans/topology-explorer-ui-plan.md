@@ -69,7 +69,7 @@ RETURN path, totalMetric
 ---
 
 ### 8. Critical Links Detection
-**Priority: High** | **Complexity: Medium** | **Status: Not Started**
+**Priority: High** | **Complexity: Medium** | **Status: Done**
 
 Identify and highlight links that would partition the network if removed (bridge edges).
 
@@ -196,7 +196,7 @@ Animate traffic flowing along paths (requires traffic data).
 These features are better as dedicated analysis tools with tables and reports.
 
 ### 13. Redundancy Report
-**Priority: High** | **Complexity: Medium** | **Status: Not Started**
+**Priority: High** | **Complexity: Medium** | **Status: Done**
 
 Comprehensive report of single points of failure.
 
@@ -333,9 +333,9 @@ Historical topology changes over time.
 - [x] Path Calculator page
 - [x] Topology sub-navigation (Map, Graph, Path Calculator)
 
-### Phase 8: Risk Analysis
-- [ ] Critical Links detection - API + Graph UI + Map UI overlay
-- [ ] Redundancy Report page
+### Phase 8: Risk Analysis (Done)
+- [x] Critical Links detection - API + Graph UI + Map UI overlay
+- [x] Redundancy Report page
 
 ### Phase 9: What-If Simulation
 - [ ] What-If Link Removal - Graph UI + Map UI

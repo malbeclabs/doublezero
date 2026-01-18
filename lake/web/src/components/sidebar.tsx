@@ -29,6 +29,7 @@ import {
   Route,
   Map,
   Network,
+  Shield,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/hooks/use-theme'
@@ -168,6 +169,7 @@ export function Sidebar({
   const isTopologyMap = location.pathname === '/topology/map'
   const isTopologyGraph = location.pathname === '/topology/graph'
   const isTopologyPathCalculator = location.pathname === '/topology/path-calculator'
+  const isTopologyRedundancy = location.pathname === '/topology/redundancy'
 
   // Entity routes
   const isDevicesRoute = location.pathname === '/dz/devices'
@@ -811,6 +813,18 @@ export function Sidebar({
             >
               <Route className="h-4 w-4" />
               Path Calculator
+            </Link>
+            <Link
+              to="/topology/redundancy"
+              className={cn(
+                'w-full flex items-center gap-2 px-3 py-2 text-sm rounded transition-colors',
+                isTopologyRedundancy
+                  ? 'bg-[var(--sidebar-active)] text-foreground font-medium'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+              )}
+            >
+              <Shield className="h-4 w-4" />
+              Redundancy
             </Link>
           </div>
         </div>

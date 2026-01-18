@@ -1158,6 +1158,68 @@ export async function fetchISISPaths(fromPK: string, toPK: string, k: number = 5
   return res.json()
 }
 
+// Critical links types
+export interface CriticalLink {
+  sourcePK: string
+  sourceCode: string
+  targetPK: string
+  targetCode: string
+  metric: number
+  criticality: 'critical' | 'important' | 'redundant'
+}
+
+export interface CriticalLinksResponse {
+  links: CriticalLink[]
+  error?: string
+}
+
+export async function fetchCriticalLinks(): Promise<CriticalLinksResponse> {
+  const res = await fetch('/api/topology/critical-links')
+  if (!res.ok) {
+    throw new Error('Failed to fetch critical links')
+  }
+  return res.json()
+}
+
+// Redundancy report types
+export interface RedundancyIssue {
+  type: 'leaf_device' | 'critical_link' | 'single_exit_metro' | 'no_backup_device'
+  severity: 'critical' | 'warning' | 'info'
+  entityPK: string
+  entityCode: string
+  entityType: 'device' | 'link' | 'metro'
+  description: string
+  impact: string
+  targetPK?: string
+  targetCode?: string
+  metroPK?: string
+  metroCode?: string
+}
+
+export interface RedundancySummary {
+  totalIssues: number
+  criticalCount: number
+  warningCount: number
+  infoCount: number
+  leafDevices: number
+  criticalLinks: number
+  singleExitMetros: number
+}
+
+export interface RedundancyReportResponse {
+  issues: RedundancyIssue[]
+  summary: RedundancySummary
+  error?: string
+}
+
+export async function fetchRedundancyReport(): Promise<RedundancyReportResponse> {
+  const res = await fetch('/api/topology/redundancy-report')
+  if (!res.ok) {
+    throw new Error('Failed to fetch redundancy report')
+  }
+  return res.json()
+}
+
 // Topology comparison types
 export interface TopologyDiscrepancy {
   type: 'missing_isis' | 'extra_isis' | 'metric_mismatch'

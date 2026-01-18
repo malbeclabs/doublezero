@@ -200,6 +200,8 @@ func main() {
 	r.Get("/api/topology/paths", handlers.GetISISPaths)
 	r.Get("/api/topology/compare", handlers.GetTopologyCompare)
 	r.Get("/api/topology/impact/{pk}", handlers.GetFailureImpact)
+	r.Get("/api/topology/critical-links", handlers.GetCriticalLinks)
+	r.Get("/api/topology/redundancy-report", handlers.GetRedundancyReport)
 	r.Post("/api/query", handlers.ExecuteQuery)
 	r.Post("/api/generate", handlers.GenerateSQL)
 	r.Post("/api/generate/stream", handlers.GenerateSQLStream)

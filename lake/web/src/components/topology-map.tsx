@@ -4,12 +4,12 @@ import MapGL, { Source, Layer, Marker } from 'react-map-gl/maplibre'
 import type { MapRef, MapLayerMouseEvent, LngLatBoundsLike } from 'react-map-gl/maplibre'
 import type { StyleSpecification } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { ZoomIn, ZoomOut, Maximize, Users, X, Search, Route } from 'lucide-react'
+import { ZoomIn, ZoomOut, Maximize, Users, X, Search, Route, Shield } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip as RechartsTooltip, CartesianGrid } from 'recharts'
 import { useQuery } from '@tanstack/react-query'
 import { useTheme } from '@/hooks/use-theme'
 import type { TopologyMetro, TopologyDevice, TopologyLink, TopologyValidator, MultiPathResponse } from '@/lib/api'
-import { fetchISISPaths, fetchISISTopology } from '@/lib/api'
+import { fetchISISPaths, fetchISISTopology, fetchCriticalLinks } from '@/lib/api'
 
 // Path colors for multi-path visualization
 const PATH_COLORS = [
@@ -176,9 +176,11 @@ interface MapControlsProps {
   validatorCount: number
   pathMode: boolean
   onTogglePathMode: () => void
+  criticalityMode: boolean
+  onToggleCriticalityMode: () => void
 }
 
-function MapControls({ onZoomIn, onZoomOut, onReset, showValidators, onToggleValidators, validatorCount, pathMode, onTogglePathMode }: MapControlsProps) {
+function MapControls({ onZoomIn, onZoomOut, onReset, showValidators, onToggleValidators, validatorCount, pathMode, onTogglePathMode, criticalityMode, onToggleCriticalityMode }: MapControlsProps) {
   return (
     <div className="absolute top-4 right-4 z-[1000] flex flex-col gap-1">
       <button
@@ -213,26 +215,39 @@ function MapControls({ onZoomIn, onZoomOut, onReset, showValidators, onToggleVal
       <div className="my-1 border-t border-[var(--border)]" />
       <button
         onClick={onToggleValidators}
-        disabled={pathMode}
+        disabled={pathMode || criticalityMode}
         className={`p-2 border rounded shadow-sm transition-colors ${
           showValidators
             ? 'bg-purple-500/20 border-purple-500/50 text-purple-500'
             : 'bg-[var(--card)] border-[var(--border)] hover:bg-[var(--muted)]'
-        } ${pathMode ? 'opacity-40 cursor-not-allowed' : ''}`}
-        title={pathMode ? 'Disabled in path mode' : `${showValidators ? 'Hide' : 'Show'} validators (${validatorCount})`}
+        } ${pathMode || criticalityMode ? 'opacity-40 cursor-not-allowed' : ''}`}
+        title={pathMode || criticalityMode ? 'Disabled in current mode' : `${showValidators ? 'Hide' : 'Show'} validators (${validatorCount})`}
       >
         <Users className="h-4 w-4" />
       </button>
       <button
         onClick={onTogglePathMode}
+        disabled={criticalityMode}
         className={`p-2 border rounded shadow-sm transition-colors ${
           pathMode
             ? 'bg-amber-500/20 border-amber-500/50 text-amber-500'
             : 'bg-[var(--card)] border-[var(--border)] hover:bg-[var(--muted)]'
-        }`}
-        title={pathMode ? 'Exit path finding mode' : 'Enter path finding mode'}
+        } ${criticalityMode ? 'opacity-40 cursor-not-allowed' : ''}`}
+        title={criticalityMode ? 'Disabled in criticality mode' : (pathMode ? 'Exit path finding mode' : 'Enter path finding mode')}
       >
         <Route className="h-4 w-4" />
+      </button>
+      <button
+        onClick={onToggleCriticalityMode}
+        disabled={pathMode}
+        className={`p-2 border rounded shadow-sm transition-colors ${
+          criticalityMode
+            ? 'bg-red-500/20 border-red-500/50 text-red-500'
+            : 'bg-[var(--card)] border-[var(--border)] hover:bg-[var(--muted)]'
+        } ${pathMode ? 'opacity-40 cursor-not-allowed' : ''}`}
+        title={pathMode ? 'Disabled in path mode' : (criticalityMode ? 'Exit criticality mode' : 'Show link criticality (single points of failure)')}
+      >
+        <Shield className="h-4 w-4" />
       </button>
     </div>
   )
@@ -339,6 +354,9 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
   const [pathLoading, setPathLoading] = useState(false)
   const [selectedPathIndex, setSelectedPathIndex] = useState(0)
 
+  // Criticality mode state
+  const [criticalityModeEnabled, setCriticalityModeEnabled] = useState(false)
+
   // Fetch ISIS topology to determine which devices have ISIS data
   const { data: isisTopology } = useQuery({
     queryKey: ['isis-topology'],
@@ -351,6 +369,38 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     if (!isisTopology?.nodes) return new Set<string>()
     return new Set(isisTopology.nodes.map(node => node.data.id))
   }, [isisTopology])
+
+  // Fetch critical links when in criticality mode
+  const { data: criticalLinksData } = useQuery({
+    queryKey: ['critical-links'],
+    queryFn: fetchCriticalLinks,
+    enabled: criticalityModeEnabled,
+  })
+
+  // Build link criticality map (keyed by link PK)
+  const linkCriticalityMap = useMemo(() => {
+    const map = new Map<string, 'critical' | 'important' | 'redundant'>()
+    if (!criticalLinksData?.links) return map
+
+    // Build a map from device pair to link PK
+    const devicePairToLinkPK = new Map<string, string>()
+    for (const link of links) {
+      const key1 = `${link.side_a_pk}|${link.side_z_pk}`
+      const key2 = `${link.side_z_pk}|${link.side_a_pk}`
+      devicePairToLinkPK.set(key1, link.pk)
+      devicePairToLinkPK.set(key2, link.pk)
+    }
+
+    // Map critical links to link PKs
+    for (const critLink of criticalLinksData.links) {
+      const key = `${critLink.sourcePK}|${critLink.targetPK}`
+      const linkPK = devicePairToLinkPK.get(key)
+      if (linkPK) {
+        map.set(linkPK, critLink.criticality)
+      }
+    }
+    return map
+  }, [criticalLinksData, links])
 
   // Update URL when selected item changes (push to history for back button support)
   const setSelectedItem = useCallback((item: SelectedItem | null) => {
@@ -586,6 +636,13 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     setSelectedPathIndex(0)
   }, [])
 
+  // Criticality colors
+  const criticalityColors = {
+    critical: '#ef4444',    // red
+    important: '#eab308',   // yellow
+    redundant: '#22c55e',   // green
+  }
+
   // GeoJSON for link lines
   const linkGeoJson = useMemo(() => {
     const features = links.map(link => {
@@ -602,13 +659,19 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       const linkPathIndices = linkPathMap.get(link.pk)
       const isInAnyPath = linkPathIndices && linkPathIndices.length > 0
       const isInSelectedPath = linkPathIndices?.includes(selectedPathIndex)
+      const criticality = linkCriticalityMap.get(link.pk)
 
-      // Path links get colored by path index, hover/selected get white/black, otherwise normal color
+      // Determine display color based on mode
       let displayColor = color
       let displayWeight = weight
       let displayOpacity = 0.8
 
-      if (isInSelectedPath && linkPathIndices) {
+      if (criticalityModeEnabled && criticality) {
+        // Criticality mode: color by criticality level
+        displayColor = criticalityColors[criticality]
+        displayWeight = criticality === 'critical' ? weight + 3 : criticality === 'important' ? weight + 2 : weight + 1
+        displayOpacity = 1
+      } else if (isInSelectedPath && linkPathIndices) {
         // Use the selected path's color
         displayColor = PATH_COLORS[selectedPathIndex % PATH_COLORS.length]
         displayWeight = weight + 3
@@ -646,7 +709,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       type: 'FeatureCollection' as const,
       features,
     }
-  }, [links, devicePositions, isDark, hoveredLink, selectedItem, hoverHighlight, linkPathMap, selectedPathIndex])
+  }, [links, devicePositions, isDark, hoveredLink, selectedItem, hoverHighlight, linkPathMap, selectedPathIndex, criticalityModeEnabled, linkCriticalityMap])
 
   // GeoJSON for validator links (connecting lines)
   const validatorLinksGeoJson = useMemo(() => {
@@ -899,6 +962,8 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           validatorCount={validators.length}
           pathMode={pathModeEnabled}
           onTogglePathMode={() => setPathModeEnabled(!pathModeEnabled)}
+          criticalityMode={criticalityModeEnabled}
+          onToggleCriticalityMode={() => setCriticalityModeEnabled(!criticalityModeEnabled)}
         />
 
         {/* Link lines source and layers */}
@@ -1305,6 +1370,74 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           )}
           {pathsResult?.error && (
             <div className="text-destructive">{pathsResult.error}</div>
+          )}
+        </div>
+      )}
+
+      {/* Criticality panel */}
+      {criticalityModeEnabled && (
+        <div className="absolute top-[280px] right-4 z-[999] bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm p-3 text-xs max-w-52">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-medium flex items-center gap-1.5">
+              <Shield className="h-3.5 w-3.5 text-red-500" />
+              Link Criticality
+            </span>
+          </div>
+
+          {!criticalLinksData && (
+            <div className="text-muted-foreground">Loading critical links...</div>
+          )}
+
+          {criticalLinksData && (
+            <>
+              {/* Stats */}
+              <div className="space-y-1 mb-3">
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-red-500" />
+                    Critical
+                  </span>
+                  <span className="font-medium">
+                    {criticalLinksData.links.filter(l => l.criticality === 'critical').length}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-yellow-500" />
+                    Important
+                  </span>
+                  <span className="font-medium">
+                    {criticalLinksData.links.filter(l => l.criticality === 'important').length}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-green-500" />
+                    Redundant
+                  </span>
+                  <span className="font-medium">
+                    {criticalLinksData.links.filter(l => l.criticality === 'redundant').length}
+                  </span>
+                </div>
+              </div>
+
+              {/* Critical links list */}
+              {criticalLinksData.links.filter(l => l.criticality === 'critical').length > 0 && (
+                <div className="pt-2 border-t border-[var(--border)]">
+                  <div className="text-muted-foreground mb-1">Critical Links:</div>
+                  <div className="space-y-0.5 max-h-24 overflow-y-auto">
+                    {criticalLinksData.links.filter(l => l.criticality === 'critical').slice(0, 5).map((link, i) => (
+                      <div key={i} className="text-red-500">{link.sourceCode} ↔ {link.targetCode}</div>
+                    ))}
+                    {criticalLinksData.links.filter(l => l.criticality === 'critical').length > 5 && (
+                      <div className="text-muted-foreground">
+                        +{criticalLinksData.links.filter(l => l.criticality === 'critical').length - 5} more
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}

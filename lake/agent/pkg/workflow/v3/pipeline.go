@@ -458,13 +458,14 @@ func (p *Workflow) executeSQL(ctx context.Context, params map[string]any, state 
 				Result: queryResult,
 			}
 
-			// Emit query complete with success
+			// Emit query complete (includes error if query failed)
 			if onProgress != nil {
 				onProgress(workflow.Progress{
 					Stage:         workflow.StageQueryComplete,
 					QueryQuestion: query.Question,
 					QuerySQL:      sql,
 					QueryRows:     queryResult.Count,
+					QueryError:    queryResult.Error,
 				})
 			}
 		}(i, q)

@@ -697,37 +697,9 @@ export function TopologyGraph({
     })
   }, [additionResult])
 
-  // Initialize Cytoscape
-  useEffect(() => {
-    if (!containerRef.current || !filteredData) return
-
-    const cy = cytoscape({
-      container: containerRef.current,
-      elements: [
-        ...filteredData.nodes.map(node => ({
-          group: 'nodes' as const,
-          data: {
-            id: node.data.id,
-            label: node.data.label,
-            status: node.data.status,
-            deviceType: node.data.deviceType,
-            systemId: node.data.systemId,
-            routerId: node.data.routerId,
-            metroPK: node.data.metroPK,
-            degree: nodesDegree.get(node.data.id) || 0,
-          },
-        })),
-        ...filteredData.edges.map(edge => ({
-          group: 'edges' as const,
-          data: {
-            id: edge.data.id,
-            source: edge.data.source,
-            target: edge.data.target,
-            metric: edge.data.metric,
-          },
-        })),
-      ],
-      style: [
+  // Build styles as a function so we can update them when theme changes
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const buildStyles = useCallback((): any[] => [
         {
           selector: 'node',
           style: {
@@ -1060,83 +1032,221 @@ export function TopologyGraph({
             'opacity': 0.5,
           },
         },
-      ],
-      layout: {
-        name: 'cose',
-        animate: false,
-        nodeDimensionsIncludeLabels: true,
-        idealEdgeLength: 120,
-        nodeRepulsion: 10000,
-        gravity: 0.2,
-        numIter: 500,
-      },
-      minZoom: 0.1,
-      maxZoom: 3,
-      wheelSensitivity: 0.3,
-    })
+      ], [isDark, getDeviceTypeColor, getStatusBorderColor, getNodeSize])
 
-    cyRef.current = cy
-    setCyGeneration(g => g + 1)
+  // Initialize Cytoscape and sync data
+  useEffect(() => {
+    if (!containerRef.current || !filteredData) return
 
-    // Node hover
-    cy.on('mouseover', 'node', (event) => {
-      const node = event.target
-      const pos = node.renderedPosition()
-      setHoveredNode({
-        id: node.data('id'),
-        label: node.data('label'),
-        status: node.data('status'),
-        deviceType: node.data('deviceType'),
-        systemId: node.data('systemId'),
-        degree: node.data('degree'),
-        x: pos.x,
-        y: pos.y,
+    // Initialize cytoscape if needed
+    if (!cyRef.current) {
+      const cy = cytoscape({
+        container: containerRef.current,
+        elements: [],
+        style: buildStyles(),
+        minZoom: 0.1,
+        maxZoom: 3,
+        wheelSensitivity: 0.3,
       })
-    })
 
-    cy.on('mouseout', 'node', () => {
-      setHoveredNode(null)
-    })
+      cyRef.current = cy
+      setCyGeneration(g => g + 1)
 
-    // Edge hover
-    cy.on('mouseover', 'edge', (event) => {
-      const edge = event.target
-      edge.addClass('hover')
-      const midpoint = edge.midpoint()
-      const pan = cy.pan()
-      const zoom = cy.zoom()
-      const source = edge.data('source')
-      const target = edge.data('target')
-      const edgeKey = `${source}->${target}`
-      const healthInfo = edgeSlaStatusRef.current.get(edgeKey)
-      setHoveredEdge({
-        id: edge.data('id'),
-        source,
-        target,
-        metric: edge.data('metric'),
-        x: midpoint.x * zoom + pan.x,
-        y: midpoint.y * zoom + pan.y,
-        health: healthInfo,
+      // Node hover
+      cy.on('mouseover', 'node', (event) => {
+        const node = event.target
+        const pos = node.renderedPosition()
+        setHoveredNode({
+          id: node.data('id'),
+          label: node.data('label'),
+          status: node.data('status'),
+          deviceType: node.data('deviceType'),
+          systemId: node.data('systemId'),
+          degree: node.data('degree'),
+          x: pos.x,
+          y: pos.y,
+        })
       })
-    })
 
-    cy.on('mouseout', 'edge', (event) => {
-      event.target.removeClass('hover')
-      setHoveredEdge(null)
-    })
+      cy.on('mouseout', 'node', () => {
+        setHoveredNode(null)
+      })
 
-    // Background click - deselect
-    cy.on('tap', (event) => {
-      if (event.target === cy) {
-        onDeviceSelectRef.current?.(null)
+      // Edge hover
+      cy.on('mouseover', 'edge', (event) => {
+        const edge = event.target
+        edge.addClass('hover')
+        const midpoint = edge.midpoint()
+        const pan = cy.pan()
+        const zoom = cy.zoom()
+        const source = edge.data('source')
+        const target = edge.data('target')
+        const edgeKey = `${source}->${target}`
+        const healthInfo = edgeSlaStatusRef.current.get(edgeKey)
+        setHoveredEdge({
+          id: edge.data('id'),
+          source,
+          target,
+          metric: edge.data('metric'),
+          x: midpoint.x * zoom + pan.x,
+          y: midpoint.y * zoom + pan.y,
+          health: healthInfo,
+        })
+      })
+
+      cy.on('mouseout', 'edge', (event) => {
+        event.target.removeClass('hover')
+        setHoveredEdge(null)
+      })
+
+      // Background click - deselect
+      cy.on('tap', (event) => {
+        if (event.target === cy) {
+          onDeviceSelectRef.current?.(null)
+        }
+      })
+    }
+
+    const cy = cyRef.current
+
+    // Sync data incrementally - preserve layout for existing nodes
+    const currentNodeIds = new Set(cy.nodes().map(n => n.id()))
+    const newNodeIds = new Set(filteredData.nodes.map(n => n.data.id))
+    const newEdgeIds = new Set(filteredData.edges.map(e => e.data.id))
+
+    // Remove deleted elements
+    cy.nodes().forEach(node => {
+      if (!newNodeIds.has(node.id())) {
+        node.remove()
+      }
+    })
+    cy.edges().forEach(edge => {
+      if (!newEdgeIds.has(edge.id())) {
+        edge.remove()
       }
     })
 
-    return () => {
-      cy.destroy()
-      cyRef.current = null
+    // Track new nodes for layout
+    const nodesToLayout: string[] = []
+
+    // Add or update nodes
+    filteredData.nodes.forEach(node => {
+      const existingNode = cy.getElementById(node.data.id)
+      const degree = nodesDegree.get(node.data.id) || 0
+
+      if (existingNode.length) {
+        // Update existing node data
+        existingNode.data({
+          label: node.data.label,
+          status: node.data.status,
+          deviceType: node.data.deviceType,
+          systemId: node.data.systemId,
+          routerId: node.data.routerId,
+          metroPK: node.data.metroPK,
+          degree,
+        })
+      } else {
+        // Add new node
+        cy.add({
+          group: 'nodes',
+          data: {
+            id: node.data.id,
+            label: node.data.label,
+            status: node.data.status,
+            deviceType: node.data.deviceType,
+            systemId: node.data.systemId,
+            routerId: node.data.routerId,
+            metroPK: node.data.metroPK,
+            degree,
+          },
+        })
+        nodesToLayout.push(node.data.id)
+      }
+    })
+
+    // Add or update edges
+    filteredData.edges.forEach(edge => {
+      const existingEdge = cy.getElementById(edge.data.id)
+
+      if (existingEdge.length) {
+        // Update existing edge data
+        existingEdge.data({
+          metric: edge.data.metric,
+        })
+      } else {
+        // Add new edge
+        cy.add({
+          group: 'edges',
+          data: {
+            id: edge.data.id,
+            source: edge.data.source,
+            target: edge.data.target,
+            metric: edge.data.metric,
+          },
+        })
+      }
+    })
+
+    // Run layout only for new nodes, or full layout if this is initial load
+    if (nodesToLayout.length > 0) {
+      if (currentNodeIds.size === 0) {
+        // Initial load - run full layout
+        cy.layout({
+          name: 'cose',
+          animate: false,
+          nodeDimensionsIncludeLabels: true,
+          idealEdgeLength: 120,
+          nodeRepulsion: 10000,
+          gravity: 0.2,
+          numIter: 500,
+        } as cytoscape.LayoutOptions).run()
+      } else {
+        // Incremental update - position new nodes near their neighbors
+        nodesToLayout.forEach(nodeId => {
+          const node = cy.getElementById(nodeId)
+          const neighborNodes = node.neighborhood().nodes()
+
+          if (neighborNodes.length > 0) {
+            // Position near the centroid of neighbors
+            let avgX = 0, avgY = 0
+            neighborNodes.forEach(n => {
+              const pos = n.position()
+              avgX += pos.x
+              avgY += pos.y
+            })
+            avgX /= neighborNodes.length
+            avgY /= neighborNodes.length
+            // Add some random offset to avoid overlap
+            node.position({
+              x: avgX + (Math.random() - 0.5) * 100,
+              y: avgY + (Math.random() - 0.5) * 100,
+            })
+          } else {
+            // No neighbors - position randomly in viewport
+            const extent = cy.extent()
+            node.position({
+              x: extent.x1 + Math.random() * (extent.x2 - extent.x1),
+              y: extent.y1 + Math.random() * (extent.y2 - extent.y1),
+            })
+          }
+        })
+      }
     }
-  }, [filteredData, nodesDegree, isDark, getDeviceTypeColor, getStatusBorderColor, getNodeSize])
+
+    return () => {
+      // Only destroy on unmount, not on data changes
+    }
+  }, [filteredData, nodesDegree, buildStyles])
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (cyRef.current) {
+        cyRef.current.destroy()
+        cyRef.current = null
+      }
+    }
+  }, [])
 
   // Handle node clicks based on mode
   useEffect(() => {

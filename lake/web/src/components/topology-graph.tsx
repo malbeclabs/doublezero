@@ -42,6 +42,7 @@ export function TopologyGraph({
 }: TopologyGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const cyRef = useRef<Core | null>(null)
+  const [cyGeneration, setCyGeneration] = useState(0)
   const navigate = useNavigate()
   const { theme } = useTheme()
   const isDark = theme === 'dark'
@@ -1075,6 +1076,7 @@ export function TopologyGraph({
     })
 
     cyRef.current = cy
+    setCyGeneration(g => g + 1)
 
     // Node hover
     cy.on('mouseover', 'node', (event) => {
@@ -1199,7 +1201,7 @@ export function TopologyGraph({
       cy.off('tap', 'node', handleNodeTap)
       cy.off('dbltap', 'node', handleNodeDblTap)
     }
-  }, [mode, pathSource, pathTarget, additionSource, additionTarget, impactDevice])
+  }, [mode, pathSource, pathTarget, additionSource, additionTarget, impactDevice, cyGeneration])
 
   // Handle edge clicks for whatif-removal mode
   useEffect(() => {
@@ -1227,7 +1229,7 @@ export function TopologyGraph({
     return () => {
       cy.off('tap', 'edge', handleEdgeTap)
     }
-  }, [mode])
+  }, [mode, cyGeneration])
 
   // Handle external selection changes
   useEffect(() => {
@@ -1247,7 +1249,7 @@ export function TopologyGraph({
         })
       }
     }
-  }, [selectedDevicePK, mode])
+  }, [selectedDevicePK, mode, cyGeneration])
 
   // Search functionality
   useEffect(() => {

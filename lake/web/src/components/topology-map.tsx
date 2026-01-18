@@ -4,7 +4,7 @@ import MapGL, { Source, Layer, Marker } from 'react-map-gl/maplibre'
 import type { MapRef, MapLayerMouseEvent, LngLatBoundsLike } from 'react-map-gl/maplibre'
 import type { StyleSpecification } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { ZoomIn, ZoomOut, Maximize, Users, X, Search, Route, Shield, MinusCircle, PlusCircle, AlertTriangle, Zap } from 'lucide-react'
+import { ZoomIn, ZoomOut, Maximize, Users, X, Search, Route, Shield, MinusCircle, PlusCircle, AlertTriangle, Zap, Coins } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip as RechartsTooltip, CartesianGrid } from 'recharts'
 import { useQuery } from '@tanstack/react-query'
 import { useTheme } from '@/hooks/use-theme'
@@ -65,6 +65,29 @@ function calculateValidatorRadius(stakeSol: number): number {
   const minStake = 1000 // 1k SOL
   const radius = minRadius + Math.log10(Math.max(minStake, stakeSol) / minStake) * 1.5
   return Math.min(maxRadius, radius)
+}
+
+// Calculate device marker size based on stake (for stake overlay mode)
+// Range: 8px (no stake) to 28px (high stake)
+function calculateDeviceStakeSize(stakeSol: number): number {
+  if (stakeSol <= 0) return 8
+  // Log scale: 10k = 10, 100k = 14, 1M = 18, 10M = 22, 100M = 26
+  const minSize = 8
+  const maxSize = 28
+  const minStake = 10000 // 10k SOL
+  const size = minSize + Math.log10(Math.max(minStake, stakeSol) / minStake) * 4.5
+  return Math.min(maxSize, size)
+}
+
+// Get stake-based color intensity (yellow to orange gradient based on stake share)
+function getStakeColor(stakeShare: number): string {
+  if (stakeShare <= 0) return '#6b7280' // gray for no stake
+  // Scale: 0% = yellow, 1%+ = deep orange
+  const t = Math.min(stakeShare / 1.0, 1) // cap at 1%
+  const r = Math.round(234 + t * (234 - 234))
+  const g = Math.round(179 - t * (179 - 88))
+  const b = Math.round(8 + t * (8 - 8))
+  return `rgb(${r}, ${g}, ${b})`
 }
 
 // Calculate link color based on loss percentage
@@ -185,13 +208,16 @@ interface MapControlsProps {
   impactMode: boolean
   onToggleImpactMode: () => void
   selectedDevicePK: string | null
+  stakeOverlayMode: boolean
+  onToggleStakeOverlayMode: () => void
 }
 
 function MapControls({
   onZoomIn, onZoomOut, onReset, showValidators, onToggleValidators, validatorCount,
   pathMode, onTogglePathMode, criticalityMode, onToggleCriticalityMode,
   whatifRemovalMode, onToggleWhatifRemovalMode, whatifAdditionMode, onToggleWhatifAdditionMode,
-  impactMode, onToggleImpactMode, selectedDevicePK
+  impactMode, onToggleImpactMode, selectedDevicePK,
+  stakeOverlayMode, onToggleStakeOverlayMode
 }: MapControlsProps) {
   const anyModeActive = pathMode || criticalityMode || whatifRemovalMode || whatifAdditionMode || impactMode
   return (
@@ -298,6 +324,19 @@ function MapControls({
         title={impactMode ? 'Close impact analysis' : selectedDevicePK ? 'Analyze failure impact of selected device' : 'Select a device first'}
       >
         <Zap className="h-4 w-4" />
+      </button>
+      <div className="my-1 border-t border-[var(--border)]" />
+      <button
+        onClick={onToggleStakeOverlayMode}
+        disabled={anyModeActive}
+        className={`p-2 border rounded shadow-sm transition-colors ${
+          stakeOverlayMode
+            ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-500'
+            : 'bg-[var(--card)] border-[var(--border)] hover:bg-[var(--muted)]'
+        } ${anyModeActive ? 'opacity-40 cursor-not-allowed' : ''}`}
+        title={anyModeActive ? 'Disabled in current mode' : (stakeOverlayMode ? 'Hide stake overlay' : 'Show stake distribution (s)')}
+      >
+        <Coins className="h-4 w-4" />
       </button>
     </div>
   )
@@ -426,6 +465,9 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
   const [impactResult, setImpactResult] = useState<FailureImpactResponse | null>(null)
   const [impactLoading, setImpactLoading] = useState(false)
 
+  // Stake Overlay state
+  const [stakeOverlayMode, setStakeOverlayMode] = useState(false)
+
   // Fetch ISIS topology to determine which devices have ISIS data
   const { data: isisTopology } = useQuery({
     queryKey: ['isis-topology'],
@@ -491,16 +533,21 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     }
   }, [setSearchParams])
 
-  // Close drawer on Escape key
+  // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger shortcuts when typing in input fields
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+
       if (e.key === 'Escape' && selectedItem) {
         setSelectedItem(null)
+      } else if (e.key === 's' && !pathModeEnabled && !criticalityModeEnabled && !whatifRemovalMode && !whatifAdditionMode && !impactDevice) {
+        setStakeOverlayMode(prev => !prev)
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedItem, setSelectedItem])
+  }, [selectedItem, setSelectedItem, pathModeEnabled, criticalityModeEnabled, whatifRemovalMode, whatifAdditionMode, impactDevice])
 
   // Helper to handle marker clicks - sets flag to prevent map click from clearing selection
   const handleMarkerClick = useCallback((item: SelectedItem) => {
@@ -1171,6 +1218,8 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             }
           }}
           selectedDevicePK={selectedItem?.type === 'device' ? selectedItem.data.pk : null}
+          stakeOverlayMode={stakeOverlayMode}
+          onToggleStakeOverlayMode={() => setStakeOverlayMode(!stakeOverlayMode)}
         />
 
         {/* Link lines source and layers */}
@@ -1296,6 +1345,17 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           let borderWidth = 1
           let opacity = 0.9
           let borderColor = hoverHighlight
+
+          // Stake overlay mode - size and color based on stake
+          if (stakeOverlayMode) {
+            const stakeSol = device.stake_sol ?? 0
+            const stakeShare = device.stake_share ?? 0
+            markerSize = calculateDeviceStakeSize(stakeSol)
+            markerColor = getStakeColor(stakeShare)
+            borderColor = markerColor
+            borderWidth = stakeSol > 0 ? 2 : 1
+            opacity = stakeSol > 0 ? 1 : 0.4
+          }
 
           if (isDisabledInPathMode) {
             // Grey out non-ISIS devices in path mode
@@ -1685,6 +1745,84 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
               )}
             </>
           )}
+        </div>
+      )}
+
+      {/* Stake Overlay Legend */}
+      {stakeOverlayMode && (
+        <div className="absolute top-[280px] right-4 z-[999] bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm p-3 text-xs max-w-52">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-medium flex items-center gap-1.5">
+              <Coins className="h-3.5 w-3.5 text-yellow-500" />
+              Stake Distribution
+            </span>
+          </div>
+
+          {/* Summary stats */}
+          <div className="space-y-1 mb-3">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Devices with stake</span>
+              <span className="font-medium">
+                {devices.filter(d => (d.stake_sol ?? 0) > 0).length}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Total validators</span>
+              <span className="font-medium">
+                {devices.reduce((sum, d) => sum + (d.validator_count ?? 0), 0)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Total stake</span>
+              <span className="font-medium">
+                {(() => {
+                  const total = devices.reduce((sum, d) => sum + (d.stake_sol ?? 0), 0)
+                  if (total >= 1e9) return `${(total / 1e9).toFixed(1)}B`
+                  if (total >= 1e6) return `${(total / 1e6).toFixed(1)}M`
+                  if (total >= 1e3) return `${(total / 1e3).toFixed(0)}k`
+                  return total.toFixed(0)
+                })()} SOL
+              </span>
+            </div>
+          </div>
+
+          {/* Size legend */}
+          <div className="pt-2 border-t border-[var(--border)]">
+            <div className="text-muted-foreground mb-2">Device size = stake amount</div>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1">
+                <div className="w-2 h-2 rounded-full bg-gray-500" />
+                <span className="text-muted-foreground">No stake</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded-full bg-yellow-500" />
+                <span className="text-muted-foreground">100k</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-4 h-4 rounded-full bg-orange-500" />
+                <span className="text-muted-foreground">1M+</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Top devices by stake */}
+          <div className="pt-2 mt-2 border-t border-[var(--border)]">
+            <div className="text-muted-foreground mb-1">Top by stake:</div>
+            <div className="space-y-0.5 max-h-24 overflow-y-auto">
+              {[...devices]
+                .filter(d => (d.stake_sol ?? 0) > 0)
+                .sort((a, b) => (b.stake_sol ?? 0) - (a.stake_sol ?? 0))
+                .slice(0, 5)
+                .map((device) => (
+                  <div key={device.pk} className="flex items-center justify-between">
+                    <span className="text-yellow-500">{device.code}</span>
+                    <span className="text-muted-foreground">
+                      {(device.stake_sol ?? 0) >= 1e6 ? `${(device.stake_sol / 1e6).toFixed(1)}M` : `${((device.stake_sol ?? 0) / 1e3).toFixed(0)}k`}
+                    </span>
+                  </div>
+                ))}
+            </div>
+          </div>
         </div>
       )}
 

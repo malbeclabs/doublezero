@@ -719,18 +719,24 @@ func GetFailureImpact(w http.ResponseWriter, r *http.Request) {
 
 // MultiPathHop represents a hop in a path with edge metric information
 type MultiPathHop struct {
-	DevicePK   string `json:"devicePK"`
-	DeviceCode string `json:"deviceCode"`
-	Status     string `json:"status"`
-	DeviceType string `json:"deviceType"`
-	EdgeMetric uint32 `json:"edgeMetric,omitempty"` // metric to reach this hop from previous
+	DevicePK        string  `json:"devicePK"`
+	DeviceCode      string  `json:"deviceCode"`
+	Status          string  `json:"status"`
+	DeviceType      string  `json:"deviceType"`
+	EdgeMetric      uint32  `json:"edgeMetric,omitempty"`      // ISIS metric to reach this hop from previous
+	EdgeMeasuredMs  float64 `json:"edgeMeasuredMs,omitempty"`  // measured RTT in ms to reach this hop
+	EdgeJitterMs    float64 `json:"edgeJitterMs,omitempty"`    // measured jitter in ms
+	EdgeLossPct     float64 `json:"edgeLossPct,omitempty"`     // packet loss percentage
+	EdgeSampleCount int64   `json:"edgeSampleCount,omitempty"` // number of samples for confidence
 }
 
 // SinglePath represents one path in a multi-path response
 type SinglePath struct {
-	Path        []MultiPathHop `json:"path"`
-	TotalMetric uint32         `json:"totalMetric"`
-	HopCount    int            `json:"hopCount"`
+	Path              []MultiPathHop `json:"path"`
+	TotalMetric       uint32         `json:"totalMetric"`
+	HopCount          int            `json:"hopCount"`
+	MeasuredLatencyMs float64        `json:"measuredLatencyMs,omitempty"` // sum of measured RTT along path
+	TotalSamples      int64          `json:"totalSamples,omitempty"`      // min samples across hops
 }
 
 // MultiPathResponse is the response for the K-shortest paths endpoint
@@ -866,6 +872,9 @@ func GetISISPaths(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Enrich paths with measured latency from ClickHouse
+	enrichPathsWithMeasuredLatency(ctx, &response)
+
 	duration := time.Since(start)
 	metrics.RecordClickHouseQuery(duration, nil)
 	log.Printf("ISIS multi-path query returned %d paths in %v", len(response.Paths), duration)
@@ -915,6 +924,92 @@ func parseNodeListWithMetrics(nodeListVal, edgeMetricsVal any) []MultiPathHop {
 		hops = append(hops, hop)
 	}
 	return hops
+}
+
+// linkLatencyData holds measured latency data for a link
+type linkLatencyData struct {
+	SideAPK     string
+	SideZPK     string
+	AvgRttMs    float64
+	AvgJitterMs float64
+	LossPct     float64
+	SampleCount uint64
+}
+
+// enrichPathsWithMeasuredLatency queries ClickHouse for measured latency and adds it to path hops
+func enrichPathsWithMeasuredLatency(ctx context.Context, response *MultiPathResponse) {
+	if len(response.Paths) == 0 {
+		return
+	}
+
+	// Query ClickHouse for measured latency per link, including device endpoints
+	query := `
+		SELECT
+			l.side_a_pk,
+			l.side_z_pk,
+			round(avg(lat.rtt_us) / 1000.0, 3) AS avg_rtt_ms,
+			round(avg(abs(lat.ipdv_us)) / 1000.0, 3) AS avg_jitter_ms,
+			countIf(lat.loss OR lat.rtt_us = 0) * 100.0 / count(*) AS loss_pct,
+			count(*) AS sample_count
+		FROM dz_links_current l
+		JOIN fact_dz_device_link_latency lat ON l.pk = lat.link_pk
+		WHERE lat.event_ts > now() - INTERVAL 3 HOUR
+		  AND l.side_a_pk != ''
+		  AND l.side_z_pk != ''
+		GROUP BY l.side_a_pk, l.side_z_pk
+	`
+
+	rows, err := config.DB.Query(ctx, query)
+	if err != nil {
+		log.Printf("enrichPathsWithMeasuredLatency query error: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	// Build lookup map: "deviceA:deviceB" -> latency data
+	// Store both directions since links are bidirectional
+	latencyMap := make(map[string]linkLatencyData)
+	for rows.Next() {
+		var data linkLatencyData
+		if err := rows.Scan(&data.SideAPK, &data.SideZPK, &data.AvgRttMs, &data.AvgJitterMs, &data.LossPct, &data.SampleCount); err != nil {
+			log.Printf("enrichPathsWithMeasuredLatency scan error: %v", err)
+			continue
+		}
+		// Store in both directions
+		latencyMap[data.SideAPK+":"+data.SideZPK] = data
+		latencyMap[data.SideZPK+":"+data.SideAPK] = data
+	}
+
+	// Update each path with measured latency
+	for pathIdx := range response.Paths {
+		path := &response.Paths[pathIdx]
+		var totalMeasuredMs float64
+		var minSamples int64 = -1
+
+		for hopIdx := 1; hopIdx < len(path.Path); hopIdx++ {
+			prevDevice := path.Path[hopIdx-1].DevicePK
+			currDevice := path.Path[hopIdx].DevicePK
+			key := prevDevice + ":" + currDevice
+
+			if data, ok := latencyMap[key]; ok {
+				path.Path[hopIdx].EdgeMeasuredMs = data.AvgRttMs
+				path.Path[hopIdx].EdgeJitterMs = data.AvgJitterMs
+				path.Path[hopIdx].EdgeLossPct = data.LossPct
+				path.Path[hopIdx].EdgeSampleCount = int64(data.SampleCount)
+				totalMeasuredMs += data.AvgRttMs
+				if minSamples < 0 || int64(data.SampleCount) < minSamples {
+					minSamples = int64(data.SampleCount)
+				}
+			}
+		}
+
+		if totalMeasuredMs > 0 {
+			path.MeasuredLatencyMs = totalMeasuredMs
+		}
+		if minSamples > 0 {
+			path.TotalSamples = minSamples
+		}
+	}
 }
 
 // CriticalLink represents a link that is critical for network connectivity
@@ -1309,15 +1404,16 @@ func GetRedundancyReport(w http.ResponseWriter, r *http.Request) {
 
 // MetroConnectivity represents connectivity between two metros
 type MetroConnectivity struct {
-	FromMetroPK   string `json:"fromMetroPK"`
-	FromMetroCode string `json:"fromMetroCode"`
-	FromMetroName string `json:"fromMetroName"`
-	ToMetroPK     string `json:"toMetroPK"`
-	ToMetroCode   string `json:"toMetroCode"`
-	ToMetroName   string `json:"toMetroName"`
-	PathCount     int    `json:"pathCount"`
-	MinHops       int    `json:"minHops"`
-	MinMetric     int64  `json:"minMetric"`
+	FromMetroPK      string  `json:"fromMetroPK"`
+	FromMetroCode    string  `json:"fromMetroCode"`
+	FromMetroName    string  `json:"fromMetroName"`
+	ToMetroPK        string  `json:"toMetroPK"`
+	ToMetroCode      string  `json:"toMetroCode"`
+	ToMetroName      string  `json:"toMetroName"`
+	PathCount        int     `json:"pathCount"`
+	MinHops          int     `json:"minHops"`
+	MinMetric        int64   `json:"minMetric"`
+	BottleneckBwGbps float64 `json:"bottleneckBwGbps,omitempty"` // min bandwidth along best path
 }
 
 // MetroConnectivityResponse is the response for the metro connectivity endpoint
@@ -1392,6 +1488,7 @@ func GetMetroConnectivity(w http.ResponseWriter, r *http.Request) {
 
 	// For each pair of metros, find the best path between any devices in those metros
 	// This query finds the shortest path between any two ISIS devices in different metros
+	// and calculates bottleneck bandwidth (min bandwidth along path)
 	connectivityCypher := `
 		MATCH (m1:Metro)<-[:LOCATED_IN]-(d1:Device)
 		MATCH (m2:Metro)<-[:LOCATED_IN]-(d2:Device)
@@ -1402,11 +1499,15 @@ func GetMetroConnectivity(w http.ResponseWriter, r *http.Request) {
 		MATCH path = shortestPath((d1)-[:ISIS_ADJACENT*]-(d2))
 		WITH m1, m2,
 		     length(path) AS hops,
-		     reduce(total = 0, r IN relationships(path) | total + coalesce(r.metric, 0)) AS metric
-		WITH m1, m2, min(hops) AS minHops, min(metric) AS minMetric, count(*) AS pathCount
+		     reduce(total = 0, r IN relationships(path) | total + coalesce(r.metric, 0)) AS metric,
+		     reduce(minBw = 9999999999999, r IN relationships(path) |
+		       CASE WHEN coalesce(r.bandwidth_bps, 9999999999999) < minBw
+		            THEN coalesce(r.bandwidth_bps, 9999999999999) ELSE minBw END) AS bottleneckBw
+		WITH m1, m2, min(hops) AS minHops, min(metric) AS minMetric, count(*) AS pathCount,
+		     max(bottleneckBw) AS maxBottleneckBw
 		RETURN m1.pk AS fromPK, m1.code AS fromCode, m1.name AS fromName,
 		       m2.pk AS toPK, m2.code AS toCode, m2.name AS toName,
-		       minHops, minMetric, pathCount
+		       minHops, minMetric, pathCount, maxBottleneckBw
 		ORDER BY fromCode, toCode
 	`
 
@@ -1436,32 +1537,42 @@ func GetMetroConnectivity(w http.ResponseWriter, r *http.Request) {
 		minHops, _ := record.Get("minHops")
 		minMetric, _ := record.Get("minMetric")
 		pathCount, _ := record.Get("pathCount")
+		maxBottleneckBw, _ := record.Get("maxBottleneckBw")
+
+		// Convert bandwidth from bps to Gbps, handle sentinel value
+		bottleneckBwGbps := 0.0
+		bwBps := asFloat64(maxBottleneckBw)
+		if bwBps > 0 && bwBps < 9999999999999 {
+			bottleneckBwGbps = bwBps / 1e9
+		}
 
 		// Add both directions (matrix is symmetric)
 		conn := MetroConnectivity{
-			FromMetroPK:   asString(fromPK),
-			FromMetroCode: asString(fromCode),
-			FromMetroName: asString(fromName),
-			ToMetroPK:     asString(toPK),
-			ToMetroCode:   asString(toCode),
-			ToMetroName:   asString(toName),
-			PathCount:     int(asInt64(pathCount)),
-			MinHops:       int(asInt64(minHops)),
-			MinMetric:     asInt64(minMetric),
+			FromMetroPK:      asString(fromPK),
+			FromMetroCode:    asString(fromCode),
+			FromMetroName:    asString(fromName),
+			ToMetroPK:        asString(toPK),
+			ToMetroCode:      asString(toCode),
+			ToMetroName:      asString(toName),
+			PathCount:        int(asInt64(pathCount)),
+			MinHops:          int(asInt64(minHops)),
+			MinMetric:        asInt64(minMetric),
+			BottleneckBwGbps: bottleneckBwGbps,
 		}
 		response.Connectivity = append(response.Connectivity, conn)
 
 		// Add reverse direction
 		connReverse := MetroConnectivity{
-			FromMetroPK:   asString(toPK),
-			FromMetroCode: asString(toCode),
-			FromMetroName: asString(toName),
-			ToMetroPK:     asString(fromPK),
-			ToMetroCode:   asString(fromCode),
-			ToMetroName:   asString(fromName),
-			PathCount:     int(asInt64(pathCount)),
-			MinHops:       int(asInt64(minHops)),
-			MinMetric:     asInt64(minMetric),
+			FromMetroPK:      asString(toPK),
+			FromMetroCode:    asString(toCode),
+			FromMetroName:    asString(toName),
+			ToMetroPK:        asString(fromPK),
+			ToMetroCode:      asString(fromCode),
+			ToMetroName:      asString(fromName),
+			PathCount:        int(asInt64(pathCount)),
+			MinHops:          int(asInt64(minHops)),
+			MinMetric:        asInt64(minMetric),
+			BottleneckBwGbps: bottleneckBwGbps,
 		}
 		response.Connectivity = append(response.Connectivity, connReverse)
 	}

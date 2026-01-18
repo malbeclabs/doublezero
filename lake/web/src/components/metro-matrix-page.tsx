@@ -67,14 +67,21 @@ function MatrixCell({
   const strength = getConnectivityStrength(connectivity.pathCount)
   const colors = STRENGTH_COLORS[strength]
 
+  const bwDisplay = connectivity.bottleneckBwGbps && connectivity.bottleneckBwGbps > 0
+    ? `${connectivity.bottleneckBwGbps.toFixed(0)}G`
+    : null
+
   return (
     <button
       onClick={onClick}
       className={`w-full h-full flex flex-col items-center justify-center p-1 transition-colors cursor-pointer ${colors.bg} ${colors.hover} ${isSelected ? 'ring-2 ring-accent ring-inset' : ''}`}
-      title={`${connectivity.fromMetroCode} → ${connectivity.toMetroCode}: ${connectivity.pathCount} paths, ${connectivity.minHops} hops, ${formatMetric(connectivity.minMetric)}`}
+      title={`${connectivity.fromMetroCode} → ${connectivity.toMetroCode}: ${connectivity.pathCount} paths, ${connectivity.minHops} hops, ${formatMetric(connectivity.minMetric)}${bwDisplay ? `, ${bwDisplay} bottleneck` : ''}`}
     >
       <span className={`text-sm font-medium ${colors.text}`}>{connectivity.pathCount}</span>
-      <span className="text-[10px] text-muted-foreground">{connectivity.minHops}h</span>
+      <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+        <span>{connectivity.minHops}h</span>
+        {bwDisplay && <span className="text-primary/70">• {bwDisplay}</span>}
+      </div>
     </button>
   )
 }
@@ -110,7 +117,7 @@ function ConnectivityDetail({
         </button>
       </div>
 
-      <div className="grid grid-cols-3 gap-4 mb-4">
+      <div className="grid grid-cols-4 gap-3 mb-4">
         <div className={`rounded-lg p-3 ${colors.bg}`}>
           <div className="text-xs text-muted-foreground mb-1">Paths</div>
           <div className={`text-xl font-bold ${colors.text}`}>{connectivity.pathCount}</div>
@@ -122,6 +129,14 @@ function ConnectivityDetail({
         <div className="rounded-lg p-3 bg-muted">
           <div className="text-xs text-muted-foreground mb-1">Min Latency</div>
           <div className="text-xl font-bold">{formatMetric(connectivity.minMetric)}</div>
+        </div>
+        <div className="rounded-lg p-3 bg-muted">
+          <div className="text-xs text-muted-foreground mb-1">Bottleneck</div>
+          <div className="text-xl font-bold">
+            {connectivity.bottleneckBwGbps && connectivity.bottleneckBwGbps > 0
+              ? `${connectivity.bottleneckBwGbps.toFixed(0)} Gbps`
+              : '-'}
+          </div>
         </div>
       </div>
 
@@ -552,13 +567,14 @@ export function MetroMatrixPage() {
   const handleExport = () => {
     if (!data) return
 
-    const headers = ['From Metro', 'To Metro', 'Path Count', 'Min Hops', 'Min Latency (ms)']
+    const headers = ['From Metro', 'To Metro', 'Path Count', 'Min Hops', 'Min Latency (ms)', 'Bottleneck BW (Gbps)']
     const rows = data.connectivity.map(conn => [
       conn.fromMetroCode,
       conn.toMetroCode,
       conn.pathCount.toString(),
       conn.minHops.toString(),
       (conn.minMetric / 1000).toFixed(1),
+      conn.bottleneckBwGbps && conn.bottleneckBwGbps > 0 ? conn.bottleneckBwGbps.toFixed(1) : '-',
     ])
 
     const csv = [headers.join(','), ...rows.map(row => row.join(','))].join('\n')
@@ -669,7 +685,7 @@ export function MetroMatrixPage() {
         {/* View descriptions */}
         {viewMode === 'connectivity' && (
           <p className="mt-3 text-sm text-muted-foreground">
-            Shows the number of distinct ISIS routing paths between each metro pair. More paths means better redundancy—if one path fails, traffic can reroute automatically.
+            Shows routing paths and bottleneck bandwidth between each metro pair. More paths means better redundancy. Bandwidth shows the minimum link capacity along the best path.
           </p>
         )}
         {viewMode === 'vs-internet' && (

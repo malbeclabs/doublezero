@@ -8,6 +8,8 @@ import (
 	"time"
 )
 
+const cacheStopTimeout = 5 * time.Second
+
 // StatusCache provides periodic background caching for status endpoints.
 // This ensures fast initial page loads by pre-computing expensive queries.
 type StatusCache struct {
@@ -30,6 +32,9 @@ type StatusCache struct {
 	// Context for cancellation
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	// WaitGroup to track running goroutines
+	wg sync.WaitGroup
 }
 
 // Common link history configurations to pre-cache
@@ -85,15 +90,30 @@ func (c *StatusCache) Start() {
 	c.refreshDeviceHistory()
 
 	// Start background refresh goroutines
+	c.wg.Add(3)
 	go c.statusRefreshLoop()
 	go c.linkHistoryRefreshLoop()
 	go c.deviceHistoryRefreshLoop()
 }
 
-// Stop cancels the background refresh goroutines.
+// Stop cancels the background refresh goroutines and waits for them to exit.
 func (c *StatusCache) Stop() {
-	log.Println("Stopping status cache")
+	log.Println("Stopping status cache...")
 	c.cancel()
+
+	// Wait for goroutines to exit with a timeout
+	done := make(chan struct{})
+	go func() {
+		c.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		log.Println("Status cache stopped")
+	case <-time.After(cacheStopTimeout):
+		log.Println("Status cache stop timed out, continuing shutdown")
+	}
 }
 
 // GetStatus returns the cached status response.
@@ -124,6 +144,7 @@ func (c *StatusCache) GetDeviceHistory(timeRange string, buckets int) *DeviceHis
 
 // statusRefreshLoop runs the status refresh on a ticker.
 func (c *StatusCache) statusRefreshLoop() {
+	defer c.wg.Done()
 	ticker := time.NewTicker(c.statusInterval)
 	defer ticker.Stop()
 
@@ -139,6 +160,7 @@ func (c *StatusCache) statusRefreshLoop() {
 
 // linkHistoryRefreshLoop runs the link history refresh on a ticker.
 func (c *StatusCache) linkHistoryRefreshLoop() {
+	defer c.wg.Done()
 	ticker := time.NewTicker(c.linkHistoryInterval)
 	defer ticker.Stop()
 
@@ -154,6 +176,7 @@ func (c *StatusCache) linkHistoryRefreshLoop() {
 
 // deviceHistoryRefreshLoop runs the device history refresh on a ticker.
 func (c *StatusCache) deviceHistoryRefreshLoop() {
+	defer c.wg.Done()
 	ticker := time.NewTicker(c.linkHistoryInterval) // Use same interval as link history
 	defer ticker.Stop()
 

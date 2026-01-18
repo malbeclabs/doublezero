@@ -95,7 +95,7 @@ func main() {
 
 	// Initialize status cache for fast page loads
 	handlers.InitStatusCache()
-	defer handlers.StopStatusCache()
+	// Note: StopStatusCache() is called explicitly before server shutdown, not deferred
 
 	// Start metrics server
 	var metricsServer *http.Server
@@ -294,6 +294,9 @@ func main() {
 
 	// Immediately mark as shutting down so readiness probe returns 503
 	shuttingDown.Store(true)
+
+	// Stop background cache goroutines first (they may be blocking on DB queries)
+	handlers.StopStatusCache()
 
 	// Give existing connections 30 seconds to complete
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

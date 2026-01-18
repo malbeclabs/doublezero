@@ -4,12 +4,12 @@ import MapGL, { Source, Layer, Marker } from 'react-map-gl/maplibre'
 import type { MapRef, MapLayerMouseEvent, LngLatBoundsLike } from 'react-map-gl/maplibre'
 import type { StyleSpecification } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { ZoomIn, ZoomOut, Maximize, Users, X, Search, Route, Shield, MinusCircle, PlusCircle, AlertTriangle, Zap, Coins } from 'lucide-react'
+import { ZoomIn, ZoomOut, Maximize, Users, X, Search, Route, Shield, MinusCircle, PlusCircle, AlertTriangle, Zap, Coins, Activity } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip as RechartsTooltip, CartesianGrid } from 'recharts'
 import { useQuery } from '@tanstack/react-query'
 import { useTheme } from '@/hooks/use-theme'
 import type { TopologyMetro, TopologyDevice, TopologyLink, TopologyValidator, MultiPathResponse, SimulateLinkRemovalResponse, SimulateLinkAdditionResponse, FailureImpactResponse } from '@/lib/api'
-import { fetchISISPaths, fetchISISTopology, fetchCriticalLinks, fetchSimulateLinkRemoval, fetchSimulateLinkAddition, fetchFailureImpact } from '@/lib/api'
+import { fetchISISPaths, fetchISISTopology, fetchCriticalLinks, fetchSimulateLinkRemoval, fetchSimulateLinkAddition, fetchFailureImpact, fetchLinkHealth } from '@/lib/api'
 
 // Path colors for multi-path visualization
 const PATH_COLORS = [
@@ -210,6 +210,8 @@ interface MapControlsProps {
   selectedDevicePK: string | null
   stakeOverlayMode: boolean
   onToggleStakeOverlayMode: () => void
+  linkHealthMode: boolean
+  onToggleLinkHealthMode: () => void
 }
 
 function MapControls({
@@ -217,7 +219,8 @@ function MapControls({
   pathMode, onTogglePathMode, criticalityMode, onToggleCriticalityMode,
   whatifRemovalMode, onToggleWhatifRemovalMode, whatifAdditionMode, onToggleWhatifAdditionMode,
   impactMode, onToggleImpactMode, selectedDevicePK,
-  stakeOverlayMode, onToggleStakeOverlayMode
+  stakeOverlayMode, onToggleStakeOverlayMode,
+  linkHealthMode, onToggleLinkHealthMode
 }: MapControlsProps) {
   const anyModeActive = pathMode || criticalityMode || whatifRemovalMode || whatifAdditionMode || impactMode
   return (
@@ -337,6 +340,18 @@ function MapControls({
         title={anyModeActive ? 'Disabled in current mode' : (stakeOverlayMode ? 'Hide stake overlay' : 'Show stake distribution (s)')}
       >
         <Coins className="h-4 w-4" />
+      </button>
+      <button
+        onClick={onToggleLinkHealthMode}
+        disabled={anyModeActive}
+        className={`p-2 border rounded shadow-sm transition-colors ${
+          linkHealthMode
+            ? 'bg-green-500/20 border-green-500/50 text-green-500'
+            : 'bg-[var(--card)] border-[var(--border)] hover:bg-[var(--muted)]'
+        } ${anyModeActive ? 'opacity-40 cursor-not-allowed' : ''}`}
+        title={anyModeActive ? 'Disabled in current mode' : (linkHealthMode ? 'Hide link health overlay' : 'Show link health (h)')}
+      >
+        <Activity className="h-4 w-4" />
       </button>
     </div>
   )
@@ -468,6 +483,9 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
   // Stake Overlay state
   const [stakeOverlayMode, setStakeOverlayMode] = useState(false)
 
+  // Link Health Overlay state
+  const [linkHealthMode, setLinkHealthMode] = useState(false)
+
   // Fetch ISIS topology to determine which devices have ISIS data
   const { data: isisTopology } = useQuery({
     queryKey: ['isis-topology'],
@@ -487,6 +505,30 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     queryFn: fetchCriticalLinks,
     enabled: criticalityModeEnabled,
   })
+
+  // Fetch link health data when link health mode is enabled
+  const { data: linkHealthData } = useQuery({
+    queryKey: ['link-health'],
+    queryFn: fetchLinkHealth,
+    enabled: linkHealthMode,
+    staleTime: 30000,
+  })
+
+  // Build link SLA status map (keyed by link PK)
+  const linkSlaStatus = useMemo(() => {
+    if (!linkHealthData?.links) return new Map<string, { status: string; avgRttUs: number; committedRttNs: number; lossPct: number }>()
+    const slaMap = new Map<string, { status: string; avgRttUs: number; committedRttNs: number; lossPct: number }>()
+
+    for (const link of linkHealthData.links) {
+      slaMap.set(link.link_pk, {
+        status: link.sla_status,
+        avgRttUs: link.avg_rtt_us,
+        committedRttNs: link.committed_rtt_ns,
+        lossPct: link.loss_pct,
+      })
+    }
+    return slaMap
+  }, [linkHealthData])
 
   // Build link criticality map (keyed by link PK)
   const linkCriticalityMap = useMemo(() => {
@@ -543,6 +585,8 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
         setSelectedItem(null)
       } else if (e.key === 's' && !pathModeEnabled && !criticalityModeEnabled && !whatifRemovalMode && !whatifAdditionMode && !impactDevice) {
         setStakeOverlayMode(prev => !prev)
+      } else if (e.key === 'h' && !pathModeEnabled && !criticalityModeEnabled && !whatifRemovalMode && !whatifAdditionMode && !impactDevice) {
+        setLinkHealthMode(prev => !prev)
       }
     }
     window.addEventListener('keydown', handleKeyDown)
@@ -898,6 +942,34 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
         displayWeight = weight + 3
         displayOpacity = 0.6
         dashArray = [6, 4]
+      } else if (linkHealthMode) {
+        // Link health mode: color by SLA status
+        const slaInfo = linkSlaStatus.get(link.pk)
+        if (slaInfo) {
+          switch (slaInfo.status) {
+            case 'healthy':
+              displayColor = '#22c55e' // green
+              displayWeight = weight + 1
+              displayOpacity = 0.9
+              break
+            case 'warning':
+              displayColor = '#eab308' // yellow
+              displayWeight = weight + 1
+              displayOpacity = 1
+              break
+            case 'critical':
+              displayColor = '#ef4444' // red
+              displayWeight = weight + 2
+              displayOpacity = 1
+              break
+            default:
+              displayColor = isDark ? '#6b7280' : '#9ca3af' // gray
+              displayOpacity = 0.5
+          }
+        } else {
+          displayColor = isDark ? '#6b7280' : '#9ca3af' // gray for no data
+          displayOpacity = 0.5
+        }
       } else if (criticalityModeEnabled && criticality) {
         // Criticality mode: color by criticality level
         displayColor = criticalityColors[criticality]
@@ -941,7 +1013,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       type: 'FeatureCollection' as const,
       features,
     }
-  }, [links, devicePositions, isDark, hoveredLink, selectedItem, hoverHighlight, linkPathMap, selectedPathIndex, criticalityModeEnabled, linkCriticalityMap, whatifRemovalMode, removalLink])
+  }, [links, devicePositions, isDark, hoveredLink, selectedItem, hoverHighlight, linkPathMap, selectedPathIndex, criticalityModeEnabled, linkCriticalityMap, whatifRemovalMode, removalLink, linkHealthMode, linkSlaStatus])
 
   // GeoJSON for validator links (connecting lines)
   const validatorLinksGeoJson = useMemo(() => {
@@ -1220,6 +1292,8 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           selectedDevicePK={selectedItem?.type === 'device' ? selectedItem.data.pk : null}
           stakeOverlayMode={stakeOverlayMode}
           onToggleStakeOverlayMode={() => setStakeOverlayMode(!stakeOverlayMode)}
+          linkHealthMode={linkHealthMode}
+          onToggleLinkHealthMode={() => setLinkHealthMode(!linkHealthMode)}
         />
 
         {/* Link lines source and layers */}
@@ -1823,6 +1897,106 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
                 ))}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Link Health Legend */}
+      {linkHealthMode && (
+        <div className="absolute top-[280px] right-4 z-[999] bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm p-3 text-xs max-w-56">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-medium flex items-center gap-1.5">
+              <Activity className="h-3.5 w-3.5 text-green-500" />
+              Link Health (SLA)
+            </span>
+            <button
+              onClick={() => setLinkHealthMode(false)}
+              className="p-1 hover:bg-[var(--muted)] rounded"
+              title="Close"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+
+          {!linkHealthData && (
+            <div className="text-muted-foreground">Loading health data...</div>
+          )}
+
+          {linkHealthData && (
+            <div className="space-y-3">
+              {/* Summary stats */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Total Links</span>
+                  <span className="font-medium">{linkHealthData.total_links}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-green-500">Healthy</span>
+                  <span className="font-medium text-green-500">{linkHealthData.healthy_count}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-yellow-500">Warning</span>
+                  <span className="font-medium text-yellow-500">{linkHealthData.warning_count}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-red-500">Critical</span>
+                  <span className="font-medium text-red-500">{linkHealthData.critical_count}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Unknown</span>
+                  <span className="font-medium text-muted-foreground">{linkHealthData.unknown_count}</span>
+                </div>
+              </div>
+
+              {/* Critical links list */}
+              {linkHealthData.critical_count > 0 && (
+                <div className="pt-2 border-t border-[var(--border)]">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <AlertTriangle className="h-3.5 w-3.5 text-red-500" />
+                    <span className="font-medium text-red-500">SLA Violations</span>
+                  </div>
+                  <div className="space-y-1 max-h-24 overflow-y-auto">
+                    {linkHealthData.links
+                      .filter(l => l.sla_status === 'critical')
+                      .slice(0, 5)
+                      .map(link => (
+                        <div key={link.link_pk} className="text-red-400 truncate text-[10px]">
+                          {link.side_a_code} — {link.side_z_code}
+                          <span className="text-muted-foreground ml-1">
+                            ({(link.avg_rtt_us / 1000).toFixed(1)}ms vs {(link.committed_rtt_ns / 1_000_000).toFixed(1)}ms SLA)
+                          </span>
+                        </div>
+                      ))}
+                    {linkHealthData.critical_count > 5 && (
+                      <div className="text-muted-foreground">+{linkHealthData.critical_count - 5} more</div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Legend */}
+              <div className="pt-2 border-t border-[var(--border)]">
+                <div className="text-muted-foreground mb-1.5">Link Colors</div>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-4 h-0.5 bg-green-500 rounded" />
+                    <span>Healthy (&lt;80% of SLA)</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-4 h-0.5 bg-yellow-500 rounded" />
+                    <span>Warning (80-100% of SLA)</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-4 h-1 bg-red-500 rounded" />
+                    <span>Critical (exceeds SLA)</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-4 h-0.5 bg-gray-400 rounded opacity-50" />
+                    <span>Unknown (no data)</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

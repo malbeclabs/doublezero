@@ -55,9 +55,14 @@ Example: "What's the latency on the path from NYC to LON?"
 
 ### Relationships
 
-- `(:Device)-[:CONNECTS]->(:Link)`: Bidirectional connection between device and link
-- `(:Link)-[:CONNECTS]->(:Device)`: Links connect to devices on both sides
+- `(:Link)-[:CONNECTS]->(:Device)`: Links connect to devices (direction is Link→Device)
+  - `side` (string): "A" or "Z" indicating which end of the link
+  - `iface_name` (string): Interface name on the device
+  - **Note**: Each Link has exactly two CONNECTS relationships, one to each endpoint device
+  - **Important**: Use undirected pattern `(:Device)-[:CONNECTS]-(:Link)` for traversal queries
 - `(:Device)-[:LOCATED_IN]->(:Metro)`: Device location
+- `(:Device)-[:OPERATES]->(:Contributor)`: Device operator
+- `(:Link)-[:OWNED_BY]->(:Contributor)`: Link owner
 - `(:Device)-[:ISIS_ADJACENT]->(:Device)`: ISIS control plane adjacency
   - `metric` (int): ISIS metric
   - `neighbor_addr` (string): Neighbor address
@@ -173,7 +178,7 @@ RETURN l.code AS link_code, l.status,
 ```cypher
 MATCH (ma:Metro {code: 'nyc'})<-[:LOCATED_IN]-(da:Device)
 MATCH (mz:Metro {code: 'lon'})<-[:LOCATED_IN]-(dz:Device)
-MATCH (da)-[:CONNECTS]->(l:Link)<-[:CONNECTS]-(dz)
+MATCH (da)<-[:CONNECTS]-(l:Link)-[:CONNECTS]->(dz)
 RETURN l.code AS link_code, l.status, l.committed_rtt_ns / 1000000.0 AS rtt_ms
 ```
 
@@ -183,6 +188,6 @@ RETURN l.code AS link_code, l.status, l.committed_rtt_ns / 1000000.0 AS rtt_ms
 2. **Filter by status early**: Add `WHERE status = 'activated'` close to MATCH for efficiency
 3. **Limit path depth**: Use `*1..10` not `*` to avoid unbounded traversals
 4. **Return structured data**: Use CASE expressions to return clean objects
-5. **Check both directions**: Links connect bidirectionally through Link nodes
+5. **CONNECTS direction**: Links point TO devices (`(:Link)-[:CONNECTS]->(:Device)`). For traversal, use undirected: `(d1:Device)-[:CONNECTS]-(:Link)-[:CONNECTS]-(d2:Device)`
 6. **Do NOT use APOC**: APOC procedures are not available. Use built-in Cypher only.
 7. **ALL/ANY syntax**: Use `ALL(x IN list WHERE condition)` NOT `ALL(x IN list | condition)`

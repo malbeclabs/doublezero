@@ -313,6 +313,7 @@ type tunnelMapping struct {
 // SyncISIS updates the Neo4j graph with IS-IS adjacency data.
 // It correlates IS-IS neighbors with existing Links via tunnel_net IP addresses,
 // creates ISIS_ADJACENT relationships between Devices, and updates Link properties.
+// This performs a full sync, clearing existing ISIS data before rebuilding.
 func (s *Store) SyncISIS(ctx context.Context, lsps []isis.LSP) error {
 	s.log.Debug("graph: starting ISIS sync", "lsps", len(lsps))
 
@@ -321,6 +322,11 @@ func (s *Store) SyncISIS(ctx context.Context, lsps []isis.LSP) error {
 		return fmt.Errorf("failed to create Neo4j session: %w", err)
 	}
 	defer session.Close(ctx)
+
+	// Clear existing ISIS data before rebuilding
+	if err := s.clearISISData(ctx, session); err != nil {
+		return fmt.Errorf("failed to clear ISIS data: %w", err)
+	}
 
 	// Step 1: Query all Links with their tunnel_net and side device PKs
 	tunnelMap, err := s.buildTunnelMap(ctx, session)
@@ -383,6 +389,48 @@ func (s *Store) SyncISIS(ctx context.Context, lsps []isis.LSP) error {
 		"devices_updated", devicesUpdated,
 		"unmatched_neighbors", unmatchedNeighbors)
 
+	return nil
+}
+
+// clearISISData removes all ISIS_ADJACENT relationships and clears ISIS properties from nodes.
+// This ensures stale adjacencies are removed when they no longer appear in the IS-IS LSDB.
+func (s *Store) clearISISData(ctx context.Context, session neo4j.Session) error {
+	// Delete all ISIS_ADJACENT relationships
+	res, err := session.Run(ctx, "MATCH ()-[r:ISIS_ADJACENT]->() DELETE r", nil)
+	if err != nil {
+		return fmt.Errorf("failed to delete ISIS_ADJACENT relationships: %w", err)
+	}
+	if _, err := res.Consume(ctx); err != nil {
+		return fmt.Errorf("failed to consume delete result: %w", err)
+	}
+
+	// Clear ISIS properties from Links
+	res, err = session.Run(ctx, `
+		MATCH (link:Link)
+		WHERE link.isis_metric IS NOT NULL
+		REMOVE link.isis_metric, link.isis_adj_sids, link.isis_last_sync
+	`, nil)
+	if err != nil {
+		return fmt.Errorf("failed to clear ISIS properties from links: %w", err)
+	}
+	if _, err := res.Consume(ctx); err != nil {
+		return fmt.Errorf("failed to consume clear result: %w", err)
+	}
+
+	// Clear ISIS properties from Devices
+	res, err = session.Run(ctx, `
+		MATCH (d:Device)
+		WHERE d.isis_system_id IS NOT NULL
+		REMOVE d.isis_system_id, d.isis_router_id, d.isis_last_sync
+	`, nil)
+	if err != nil {
+		return fmt.Errorf("failed to clear ISIS properties from devices: %w", err)
+	}
+	if _, err := res.Consume(ctx); err != nil {
+		return fmt.Errorf("failed to consume clear result: %w", err)
+	}
+
+	s.log.Debug("graph: cleared existing ISIS data")
 	return nil
 }
 

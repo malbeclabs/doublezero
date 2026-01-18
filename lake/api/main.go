@@ -204,6 +204,20 @@ func main() {
 	r.Get("/api/topology/redundancy-report", handlers.GetRedundancyReport)
 	r.Get("/api/topology/simulate-link-removal", handlers.GetSimulateLinkRemoval)
 	r.Get("/api/topology/simulate-link-addition", handlers.GetSimulateLinkAddition)
+	// SQL endpoints
+	r.Post("/api/sql/query", handlers.ExecuteQuery)
+	r.Post("/api/sql/generate", handlers.GenerateSQL)
+	r.Post("/api/sql/generate/stream", handlers.GenerateSQLStream)
+
+	// Cypher endpoints
+	r.Post("/api/cypher/query", handlers.ExecuteCypher)
+	r.Post("/api/cypher/generate", handlers.GenerateCypher)
+	r.Post("/api/cypher/generate/stream", handlers.GenerateCypherStream)
+
+	// Auto-detection endpoint
+	r.Post("/api/auto/generate/stream", handlers.AutoGenerateStream)
+
+	// Legacy SQL endpoints (backward compatibility)
 	r.Post("/api/query", handlers.ExecuteQuery)
 	r.Post("/api/generate", handlers.GenerateSQL)
 	r.Post("/api/generate/stream", handlers.GenerateSQLStream)

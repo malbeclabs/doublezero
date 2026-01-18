@@ -5,6 +5,7 @@ package evals_test
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/malbeclabs/doublezero/lake/indexer/pkg/clickhouse"
@@ -22,6 +23,19 @@ func TestLake_Agent_Evals_Anthropic_NetworkPaths(t *testing.T) {
 	}
 
 	runTest_NetworkPaths(t, newAnthropicLLMClient)
+}
+
+// TestLake_Agent_Evals_Anthropic_ShortestPath tests that "shortest path" prompts
+// correctly route to Cypher (not SQL). This is a regression test for a bug where
+// the model would use SQL latency comparison views instead of Cypher path finding.
+func TestLake_Agent_Evals_Anthropic_ShortestPath(t *testing.T) {
+	t.Parallel()
+	apiKey := os.Getenv("ANTHROPIC_API_KEY")
+	if apiKey == "" {
+		t.Skip("ANTHROPIC_API_KEY not set, skipping eval test")
+	}
+
+	runTest_ShortestPath(t, newAnthropicLLMClient)
 }
 
 
@@ -150,6 +164,91 @@ WHERE (ma.code = 'sin' AND mz.code = 'tyo') OR (ma.code = 'tyo' AND mz.code = 's
 	require.NoError(t, err)
 	require.Equal(t, 4, allLinksResult.Count, "Should have 4 links total")
 	t.Logf("Database validation passed: 0 direct SIN-TYO links, 4 total links for multi-hop paths")
+}
+
+// runTest_ShortestPath tests that "shortest path" questions route to Cypher, not SQL.
+// This is a regression test - the model was incorrectly using dz_vs_internet_latency_comparison
+// SQL view when asked for "shortest path" between metros.
+func runTest_ShortestPath(t *testing.T, llmFactory LLMClientFactory) {
+	ctx := context.Background()
+	debugLevel, debug := getDebugLevel()
+	clientInfo := testClientInfo(t)
+
+	conn, err := clientInfo.Client.Conn(ctx)
+	require.NoError(t, err)
+	defer conn.Close()
+
+	// Seed ClickHouse data (for SQL queries)
+	seedNetworkPathsData(t, ctx, conn)
+
+	// Get Neo4j client and seed graph data - REQUIRED for this test
+	neo4jClient := testNeo4jClient(t)
+	if neo4jClient == nil {
+		t.Skip("Neo4j not available, skipping shortest path test (requires graph database)")
+	}
+	seedNetworkPathsGraphData(t, ctx, neo4jClient)
+	validateGraphData(t, ctx, neo4jClient, 4, 4)
+
+	if testing.Short() {
+		t.Log("Skipping workflow execution in short mode")
+		return
+	}
+
+	p := setupWorkflowWithNeo4j(t, ctx, clientInfo, neo4jClient, llmFactory, debug, debugLevel)
+
+	// This exact phrasing was failing - it triggered SQL instead of Cypher
+	question := "shortest path from sin to tyo"
+	result, err := p.Run(ctx, question)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotEmpty(t, result.Answer)
+
+	// CRITICAL: Verify Cypher was used, not SQL
+	// Check executed queries for Cypher syntax (MATCH) vs SQL syntax (SELECT)
+	require.NotEmpty(t, result.ExecutedQueries, "Should have executed at least one query")
+
+	foundCypher := false
+	for _, eq := range result.ExecutedQueries {
+		query := eq.Result.SQL // This field holds either SQL or Cypher
+		t.Logf("Executed query: %s", query)
+
+		// Check for SQL patterns that indicate wrong routing
+		if strings.Contains(strings.ToUpper(query), "DZ_VS_INTERNET_LATENCY_COMPARISON") {
+			t.Errorf("WRONG: Used SQL latency comparison view instead of Cypher for path finding")
+		}
+		if strings.Contains(strings.ToUpper(query), "SELECT") && !strings.Contains(strings.ToUpper(query), "MATCH") {
+			t.Logf("WARNING: Query appears to be SQL, not Cypher: %s", query)
+		}
+
+		// Check for Cypher patterns
+		if strings.Contains(strings.ToUpper(query), "MATCH") {
+			foundCypher = true
+		}
+		if strings.Contains(strings.ToLower(query), "shortestpath") {
+			foundCypher = true
+		}
+	}
+	require.True(t, foundCypher, "Should have used Cypher (with MATCH or shortestPath) for path finding, but only SQL was found")
+
+	response := result.Answer
+	t.Logf("Workflow response:\n%s", response)
+
+	// Verify the response describes the actual path(s)
+	expectations := []Expectation{
+		{
+			Description:   "Response identifies a path through an intermediate metro",
+			ExpectedValue: "Mentions HKG (Hong Kong) or SEL (Seoul) as intermediate hop, or lists the links (sin-hkg-1, hkg-tyo-1, sin-sel-1, sel-tyo-1)",
+			Rationale:     "There is no direct SIN-TYO link; path must go through HKG or SEL",
+		},
+		{
+			Description:   "Response describes topology, not latency metrics",
+			ExpectedValue: "Describes devices/links in the path, not RTT or latency comparison numbers",
+			Rationale:     "This is a path-finding question, not a latency metrics question",
+		},
+	}
+	isCorrect, err := evaluateResponse(t, ctx, question, response, expectations...)
+	require.NoError(t, err)
+	require.True(t, isCorrect, "Evaluation failed for shortest path")
 }
 
 // seedNetworkPathsGraphData seeds the Neo4j graph with the same multi-hop topology

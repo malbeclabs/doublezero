@@ -51,6 +51,16 @@ Use for things SQL cannot do well:
 Examples: "What's the path from NYC to LON?", "What devices are reachable from Tokyo?", "What's affected if chi-dzd1 goes down?"
 
 ### Choosing Between Them
+
+**CRITICAL - Path keywords ALWAYS mean Cypher:**
+If the question contains "path", "route", "shortest", "traverse", "hops", "reachable", or "connectivity" → use `execute_cypher`, NOT SQL. This applies even when metros are mentioned. The SQL `dz_vs_internet_latency_comparison` view is for latency metrics, NOT for finding paths.
+
+- "shortest path from NYC to Singapore" → **Cypher** (path finding)
+- "latency between NYC and Singapore" → **SQL** (metrics)
+- "route from Tokyo to London" → **Cypher** (path finding)
+- "compare DZ vs internet for NYC-LON" → **SQL** (metrics comparison)
+
+**Decision matrix:**
 - **Listing, metrics, status → SQL** (show devices, link health, validator stats)
 - **Paths, reachability, impact → Cypher** (route finding, connectivity analysis)
 

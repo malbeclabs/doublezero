@@ -193,6 +193,8 @@ ORDER BY origin_metro, target_metro;
 - Includes RTT (round-trip time), jitter, and improvement percentages
 - Positive `rtt_improvement_pct` means DZ is faster than internet
 
+**NOT for path questions:** This view shows latency metrics, NOT network paths. For questions about "path", "route", "shortest path", or "how to get from X to Y", use `execute_cypher` instead.
+
 ## Business Rules
 
 ### Status & State

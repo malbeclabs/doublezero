@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/table'
 import { Download, MessageCircle } from 'lucide-react'
 import type { QueryResponse } from '@/lib/api'
+import { formatNeo4jValue, isNeo4jValue } from '@/lib/neo4j-utils'
 
 interface ResultsTableProps {
   results: QueryResponse | null
@@ -58,7 +59,15 @@ export function ResultsTable({ results, onAskAboutResults, embedded = false }: R
         if (value === null) {
           return <span className="text-muted-foreground italic">null</span>
         }
+        // Format Neo4j objects (nodes, relationships, paths) nicely
+        if (isNeo4jValue(value)) {
+          return <span className="text-primary">{formatNeo4jValue(value)}</span>
+        }
         if (typeof value === 'object') {
+          // Check if any array items are Neo4j values
+          if (Array.isArray(value) && value.some(v => isNeo4jValue(v))) {
+            return <span className="text-primary">{formatNeo4jValue(value)}</span>
+          }
           return JSON.stringify(value)
         }
         return String(value)

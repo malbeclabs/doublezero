@@ -27,9 +27,9 @@ type jsonLevel struct {
 
 // jsonLSP represents a Link State PDU from a router.
 type jsonLSP struct {
-	Hostname           jsonHostname           `json:"hostname"`
-	Neighbors          []jsonNeighbor         `json:"neighbors"`
-	RouterCapabilities jsonRouterCapabilities `json:"routerCapabilities"`
+	Hostname           jsonHostname             `json:"hostname"`
+	Neighbors          []jsonNeighbor           `json:"neighbors"`
+	RouterCapabilities []jsonRouterCapabilities `json:"routerCapabilities"`
 }
 
 // jsonHostname contains the router hostname.
@@ -39,10 +39,15 @@ type jsonHostname struct {
 
 // jsonNeighbor represents an IS-IS adjacency.
 type jsonNeighbor struct {
-	SystemID     string   `json:"systemId"`
-	Metric       uint32   `json:"metric"`
-	NeighborAddr string   `json:"neighborAddr"`
-	AdjSIDs      []uint32 `json:"adjSids"`
+	SystemID     string       `json:"systemId"`
+	Metric       uint32       `json:"metric"`
+	NeighborAddr string       `json:"neighborAddr"`
+	AdjSIDs      []jsonAdjSID `json:"adjSids"`
+}
+
+// jsonAdjSID represents an adjacency SID entry.
+type jsonAdjSID struct {
+	AdjSID uint32 `json:"adjSid"`
 }
 
 // jsonRouterCapabilities contains router capability information.
@@ -82,16 +87,24 @@ func Parse(data []byte) ([]LSP, error) {
 		lsp := LSP{
 			SystemID: systemID,
 			Hostname: jsonLSP.Hostname.Name,
-			RouterID: jsonLSP.RouterCapabilities.RouterID,
+		}
+		// RouterCapabilities is an array; use the first entry if present
+		if len(jsonLSP.RouterCapabilities) > 0 {
+			lsp.RouterID = jsonLSP.RouterCapabilities[0].RouterID
 		}
 
 		// Convert neighbors
 		for _, jn := range jsonLSP.Neighbors {
+			// Extract adjSid values from the adjSids objects
+			var adjSIDs []uint32
+			for _, adj := range jn.AdjSIDs {
+				adjSIDs = append(adjSIDs, adj.AdjSID)
+			}
 			neighbor := Neighbor{
 				SystemID:     jn.SystemID,
 				Metric:       jn.Metric,
 				NeighborAddr: jn.NeighborAddr,
-				AdjSIDs:      jn.AdjSIDs,
+				AdjSIDs:      adjSIDs,
 			}
 			lsp.Neighbors = append(lsp.Neighbors, neighbor)
 		}

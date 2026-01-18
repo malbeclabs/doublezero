@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import cytoscape from 'cytoscape'
 import type { Core, NodeSingular, EdgeSingular } from 'cytoscape'
 import { useQuery } from '@tanstack/react-query'
-import { ZoomIn, ZoomOut, Maximize, Search, Filter, Route, X, GitCompare, AlertTriangle, Zap, Lightbulb, ChevronDown, ChevronUp } from 'lucide-react'
-import { fetchISISTopology, fetchISISPaths, fetchTopologyCompare, fetchFailureImpact } from '@/lib/api'
+import { ZoomIn, ZoomOut, Maximize, Search, Filter, Route, X, GitCompare, AlertTriangle, Zap, Lightbulb, ChevronDown, ChevronUp, Shield } from 'lucide-react'
+import { fetchISISTopology, fetchISISPaths, fetchTopologyCompare, fetchFailureImpact, fetchCriticalLinks } from '@/lib/api'
 import type { PathMode, FailureImpactResponse, MultiPathResponse } from '@/lib/api'
 import { useTheme } from '@/hooks/use-theme'
 
@@ -25,7 +25,7 @@ const PATH_COLORS = [
   { light: '#0891b2', dark: '#06b6d4' },  // cyan - alternate 4
 ]
 
-type InteractionMode = 'explore' | 'path' | 'compare'
+type InteractionMode = 'explore' | 'path' | 'compare' | 'criticality'
 
 interface TopologyGraphProps {
   onDeviceSelect?: (devicePK: string | null) => void
@@ -110,6 +110,29 @@ export function TopologyGraph({
     enabled: mode === 'compare',
     refetchInterval: 60000,
   })
+
+  // Fetch critical links when in criticality mode
+  const { data: criticalLinksData, isLoading: criticalLinksLoading } = useQuery({
+    queryKey: ['critical-links'],
+    queryFn: fetchCriticalLinks,
+    enabled: mode === 'criticality',
+    staleTime: 60000,
+  })
+
+  // Build edge criticality map from critical links data
+  const edgeCriticality = useMemo(() => {
+    if (!criticalLinksData?.links) return new Map<string, string>()
+    const criticality = new Map<string, string>()
+
+    for (const link of criticalLinksData.links) {
+      // Create edge keys for both directions
+      const key1 = `${link.sourcePK}->${link.targetPK}`
+      const key2 = `${link.targetPK}->${link.sourcePK}`
+      criticality.set(key1, link.criticality)
+      criticality.set(key2, link.criticality)
+    }
+    return criticality
+  }, [criticalLinksData])
 
   // Calculate degree for each node
   const nodesDegree = useMemo(() => {
@@ -264,7 +287,7 @@ export function TopologyGraph({
     })
   }, [pathsResult, selectedPathIndex, isDark])
 
-  // Clear path when mode changes
+  // Clear classes when mode changes
   useEffect(() => {
     if (mode === 'explore') {
       setPathSource(null)
@@ -272,17 +295,22 @@ export function TopologyGraph({
       setPathsResult(null)
       setSelectedPathIndex(0)
       if (cyRef.current) {
-        cyRef.current.elements().removeClass('path-node path-edge path-source path-target path-0 path-1 path-2 path-3 path-4 path-selected health-matched health-extra health-missing health-mismatch')
+        cyRef.current.elements().removeClass('path-node path-edge path-source path-target path-0 path-1 path-2 path-3 path-4 path-selected health-matched health-extra health-missing health-mismatch criticality-critical criticality-important criticality-redundant')
       }
     } else if (mode === 'path') {
-      // Clear compare classes
+      // Clear compare and criticality classes
       if (cyRef.current) {
-        cyRef.current.elements().removeClass('health-matched health-extra health-missing health-mismatch')
+        cyRef.current.elements().removeClass('health-matched health-extra health-missing health-mismatch criticality-critical criticality-important criticality-redundant')
       }
     } else if (mode === 'compare') {
-      // Clear path classes
+      // Clear path and criticality classes
       if (cyRef.current) {
-        cyRef.current.elements().removeClass('path-node path-edge path-source path-target')
+        cyRef.current.elements().removeClass('path-node path-edge path-source path-target criticality-critical criticality-important criticality-redundant')
+      }
+    } else if (mode === 'criticality') {
+      // Clear path and compare classes
+      if (cyRef.current) {
+        cyRef.current.elements().removeClass('path-node path-edge path-source path-target health-matched health-extra health-missing health-mismatch')
       }
     }
   }, [mode])
@@ -314,6 +342,31 @@ export function TopologyGraph({
       }
     })
   }, [mode, compareData, edgeHealthStatus])
+
+  // Apply criticality classes in criticality mode
+  useEffect(() => {
+    if (!cyRef.current || mode !== 'criticality') return
+    const cy = cyRef.current
+
+    // Clear previous criticality classes
+    cy.edges().removeClass('criticality-critical criticality-important criticality-redundant')
+
+    if (!criticalLinksData) return
+
+    // Apply classes based on edge criticality
+    cy.edges().forEach(edge => {
+      const edgeId = edge.data('id') // format: source->target
+      const crit = edgeCriticality.get(edgeId)
+
+      if (crit === 'critical') {
+        edge.addClass('criticality-critical')
+      } else if (crit === 'important') {
+        edge.addClass('criticality-important')
+      } else {
+        edge.addClass('criticality-redundant')
+      }
+    })
+  }, [mode, criticalLinksData, edgeCriticality])
 
   // Initialize Cytoscape
   useEffect(() => {
@@ -483,6 +536,34 @@ export function TopologyGraph({
             'target-arrow-color': '#eab308',
             'width': 3,
             'opacity': 1,
+          },
+        },
+        // Criticality mode styles
+        {
+          selector: 'edge.criticality-critical',
+          style: {
+            'line-color': '#ef4444',
+            'target-arrow-color': '#ef4444',
+            'width': 4,
+            'opacity': 1,
+          },
+        },
+        {
+          selector: 'edge.criticality-important',
+          style: {
+            'line-color': '#f59e0b',
+            'target-arrow-color': '#f59e0b',
+            'width': 3,
+            'opacity': 0.9,
+          },
+        },
+        {
+          selector: 'edge.criticality-redundant',
+          style: {
+            'line-color': '#22c55e',
+            'target-arrow-color': '#22c55e',
+            'width': 2,
+            'opacity': 0.6,
           },
         },
         // Multi-path styles - each path gets a distinct color
@@ -943,6 +1024,17 @@ export function TopologyGraph({
           <GitCompare className="h-4 w-4" />
         </button>
         <button
+          onClick={() => setMode(mode === 'criticality' ? 'explore' : 'criticality')}
+          className={`p-2 border rounded shadow-sm transition-colors ${
+            mode === 'criticality'
+              ? 'bg-red-500/20 border-red-500/50 text-red-500'
+              : 'bg-[var(--card)] border-[var(--border)] hover:bg-[var(--muted)]'
+          }`}
+          title={mode === 'criticality' ? 'Exit criticality mode' : 'Show link criticality (single points of failure)'}
+        >
+          <Shield className="h-4 w-4" />
+        </button>
+        <button
           onClick={() => {
             if (impactDevice) {
               clearImpact()
@@ -1163,6 +1255,95 @@ export function TopologyGraph({
 
           {compareData?.error && (
             <div className="text-destructive">{compareData.error}</div>
+          )}
+        </div>
+      )}
+
+      {/* Criticality mode panel */}
+      {mode === 'criticality' && (
+        <div className="absolute top-[280px] right-4 z-[999] bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm p-3 text-xs max-w-56">
+          <div className="flex items-center gap-1.5 mb-3">
+            <Shield className="h-3.5 w-3.5 text-red-500" />
+            <span className="font-medium">Link Criticality</span>
+          </div>
+
+          {criticalLinksLoading && (
+            <div className="text-muted-foreground">Analyzing links...</div>
+          )}
+
+          {criticalLinksData && !criticalLinksData.error && (
+            <div className="space-y-3">
+              {/* Summary stats */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Total Links</span>
+                  <span className="font-medium">{criticalLinksData.links.length}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-red-500">Critical</span>
+                  <span className="font-medium text-red-500">
+                    {criticalLinksData.links.filter(l => l.criticality === 'critical').length}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-amber-500">Important</span>
+                  <span className="font-medium text-amber-500">
+                    {criticalLinksData.links.filter(l => l.criticality === 'important').length}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-green-500">Redundant</span>
+                  <span className="font-medium text-green-500">
+                    {criticalLinksData.links.filter(l => l.criticality === 'redundant').length}
+                  </span>
+                </div>
+              </div>
+
+              {/* Critical links list */}
+              {criticalLinksData.links.filter(l => l.criticality === 'critical').length > 0 && (
+                <div className="pt-2 border-t border-[var(--border)]">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <AlertTriangle className="h-3.5 w-3.5 text-red-500" />
+                    <span className="font-medium text-red-500">Single Points of Failure</span>
+                  </div>
+                  <div className="space-y-1 max-h-24 overflow-y-auto">
+                    {criticalLinksData.links.filter(l => l.criticality === 'critical').slice(0, 5).map((link, i) => (
+                      <div key={i} className="text-red-400 truncate">
+                        {link.sourceCode} — {link.targetCode}
+                      </div>
+                    ))}
+                    {criticalLinksData.links.filter(l => l.criticality === 'critical').length > 5 && (
+                      <div className="text-muted-foreground">
+                        +{criticalLinksData.links.filter(l => l.criticality === 'critical').length - 5} more
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Legend */}
+              <div className="pt-2 border-t border-[var(--border)]">
+                <div className="text-muted-foreground mb-1.5">Edge Colors</div>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-4 h-1 bg-red-500 rounded" />
+                    <span>Critical (no redundancy)</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-4 h-0.5 bg-amber-500 rounded" />
+                    <span>Important (limited)</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-4 h-0.5 bg-green-500 rounded opacity-60" />
+                    <span>Redundant (safe)</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {criticalLinksData?.error && (
+            <div className="text-destructive">{criticalLinksData.error}</div>
           )}
         </div>
       )}

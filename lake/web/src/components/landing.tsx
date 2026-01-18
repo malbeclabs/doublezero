@@ -13,6 +13,10 @@ const EXAMPLE_QUESTIONS = [
   'Which metros have the most validators?',
   'Show me link latency by metro pair',
   'Which links have the highest utilization?',
+  // Graph/topology questions
+  'If the Hong Kong device goes down, what metros lose connectivity?',
+  'What metros can I reach from Singapore?',
+  'Show the paths between NYC and LON',
 ]
 
 function selectRandom<T>(arr: T[], n: number): T[] {

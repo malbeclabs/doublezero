@@ -592,7 +592,7 @@ type FailureImpactResponse struct {
 
 // GetFailureImpact returns devices that would become unreachable if a device goes down
 func GetFailureImpact(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
 	// Get device PK from URL path
@@ -627,25 +627,36 @@ func GetFailureImpact(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Find devices that would become unreachable if this device goes down
-	// This uses ISIS adjacencies to find devices that only have paths through the target device
+	// Strategy: Find a reference device (most connected, not the target), then find all devices
+	// reachable from it without going through the target. Unreachable = ISIS devices not in that set.
 	impactCypher := `
-		MATCH (target:Device {pk: $device_pk})
-		MATCH (other:Device)
-		WHERE other.pk <> $device_pk
-		  AND other.isis_system_id IS NOT NULL
-		WITH target, other
-		// Check if there's any path to this device that doesn't go through target
-		WHERE NOT EXISTS {
-			MATCH path = (other)-[:ISIS_ADJACENT*1..10]-(anyDevice:Device)
-			WHERE anyDevice.pk <> $device_pk
-			  AND anyDevice <> other
-			  AND anyDevice.isis_system_id IS NOT NULL
-			  AND NOT ANY(n IN nodes(path) WHERE n.pk = $device_pk)
+		// First, find a good reference device (most ISIS adjacencies, not the target)
+		MATCH (ref:Device)-[:ISIS_ADJACENT]-()
+		WHERE ref.pk <> $device_pk AND ref.isis_system_id IS NOT NULL
+		WITH ref, count(*) AS adjCount
+		ORDER BY adjCount DESC
+		LIMIT 1
+
+		// Find all devices reachable from reference without going through target
+		CALL {
+			WITH ref
+			MATCH (target:Device {pk: $device_pk})
+			MATCH path = (ref)-[:ISIS_ADJACENT*0..20]-(reachable:Device)
+			WHERE reachable.isis_system_id IS NOT NULL
+			  AND NONE(n IN nodes(path) WHERE n.pk = $device_pk)
+			RETURN DISTINCT reachable
 		}
-		RETURN other.pk AS pk,
-		       other.code AS code,
-		       other.status AS status,
-		       other.device_type AS device_type
+
+		// Find all ISIS devices
+		WITH collect(reachable.pk) AS reachablePKs
+		MATCH (d:Device)
+		WHERE d.isis_system_id IS NOT NULL
+		  AND d.pk <> $device_pk
+		  AND NOT d.pk IN reachablePKs
+		RETURN d.pk AS pk,
+		       d.code AS code,
+		       d.status AS status,
+		       d.device_type AS device_type
 	`
 
 	impactResult, err := session.Run(ctx, impactCypher, map[string]any{

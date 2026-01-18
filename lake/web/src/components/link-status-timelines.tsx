@@ -1,15 +1,20 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { Loader2, CheckCircle2, AlertTriangle, Info } from 'lucide-react'
+import { Loader2, CheckCircle2, AlertTriangle, History, Info } from 'lucide-react'
 import { fetchLinkHistory } from '@/lib/api'
 import type { LinkHistory } from '@/lib/api'
 import { StatusTimeline } from './status-timeline'
 
+type TimeRange = '1h' | '6h' | '12h' | '24h' | '3d' | '7d'
+
 interface LinkStatusTimelinesProps {
   timeRange?: string
+  onTimeRangeChange?: (range: TimeRange) => void
   issueFilters?: string[]
   healthFilters?: string[]
+  linksWithIssues?: Map<string, string[]>  // Map of link code -> issue reasons (from filter time range)
+  linksWithHealth?: Map<string, string>    // Map of link code -> health status (from filter time range)
 }
 
 function formatBandwidth(bps: number): string {
@@ -104,9 +109,20 @@ function useBucketCount() {
 
 export function LinkStatusTimelines({
   timeRange = '24h',
+  onTimeRangeChange,
   issueFilters = ['packet_loss', 'high_latency', 'extended_loss', 'drained', 'no_data'],
-  healthFilters = ['healthy', 'degraded', 'unhealthy', 'disabled']
+  healthFilters = ['healthy', 'degraded', 'unhealthy', 'disabled'],
+  linksWithIssues,
+  linksWithHealth,
 }: LinkStatusTimelinesProps) {
+  const timeRangeOptions: { value: TimeRange; label: string }[] = [
+    { value: '1h', label: '1h' },
+    { value: '6h', label: '6h' },
+    { value: '12h', label: '12h' },
+    { value: '24h', label: '24h' },
+    { value: '3d', label: '3d' },
+    { value: '7d', label: '7d' },
+  ]
   const buckets = useBucketCount()
 
   const { data, isLoading, error } = useQuery({
@@ -116,8 +132,20 @@ export function LinkStatusTimelines({
     staleTime: 30_000,
   })
 
-  // Helper to check if a link has any buckets matching the health filters
+  // Helper to check if a link matches health filters
+  // Uses linksWithHealth (from filter time range) if provided, otherwise falls back to link's own hours
   const linkMatchesHealthFilters = (link: LinkHistory): boolean => {
+    // If we have health data from the filter time range, use it
+    if (linksWithHealth) {
+      const health = linksWithHealth.get(link.code)
+      if (health) {
+        return healthFilters.includes(health as any)
+      }
+      // Link not in filter data - check if it exists in history
+      return false
+    }
+
+    // Fallback: check link's own hours data
     if (!link.hours || link.hours.length === 0) return false
     return link.hours.some(hour => {
       const status = hour.status
@@ -138,15 +166,20 @@ export function LinkStatusTimelines({
   const filteredLinks = useMemo(() => {
     if (!data?.links) return []
 
-    // Filter by issue reasons AND health status
+    // Filter by issue reasons (from filter time range if provided) AND health status
     const filtered = data.links.filter(link => {
-      const hasIssues = link.issue_reasons && link.issue_reasons.length > 0
+      // Use linksWithIssues if provided - if link not in map, it has no issues in the filter time range
+      // Only fall back to link.issue_reasons if linksWithIssues is not provided at all
+      const issueReasons = linksWithIssues
+        ? (linksWithIssues.get(link.code) ?? [])
+        : (link.issue_reasons ?? [])
+      const hasIssues = issueReasons.length > 0
 
       // Check if link matches issue filters
       let matchesIssue = false
       if (hasIssues) {
         // Link has issues - check if any match the selected issue types
-        matchesIssue = link.issue_reasons.some(reason => issueTypesSelected.includes(reason))
+        matchesIssue = issueReasons.some(reason => issueTypesSelected.includes(reason))
       } else {
         // Link has no issues - include if "no_issues" filter is selected
         matchesIssue = noIssuesSelected
@@ -178,7 +211,7 @@ export function LinkStatusTimelines({
       // Higher index = more recent = should come first
       return bIndex - aIndex
     })
-  }, [data?.links, issueFilters, healthFilters, noIssuesSelected, issueTypesSelected])
+  }, [data?.links, issueFilters, healthFilters, noIssuesSelected, issueTypesSelected, linksWithIssues, linksWithHealth])
 
   if (isLoading) {
     return (
@@ -213,12 +246,31 @@ export function LinkStatusTimelines({
 
   return (
     <div className="border border-border rounded-lg">
-      <div className="px-4 py-3 bg-muted/50 border-b border-border flex items-center gap-2 rounded-t-lg">
-        <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-        <h3 className="font-medium">Link Status</h3>
-        <span className="text-sm text-muted-foreground ml-auto">
-          {filteredLinks.length} link{filteredLinks.length !== 1 ? 's' : ''}
-        </span>
+      <div className="px-4 py-2.5 bg-muted/50 border-b border-border flex items-center gap-2 rounded-t-lg">
+        <History className="h-4 w-4 text-muted-foreground" />
+        <h3 className="font-medium">
+          Link Status History
+          <span className="text-sm text-muted-foreground font-normal ml-1">
+            ({filteredLinks.length} link{filteredLinks.length !== 1 ? 's' : ''})
+          </span>
+        </h3>
+        {onTimeRangeChange && (
+          <div className="inline-flex rounded-lg border border-border bg-background/50 p-0.5 ml-auto">
+            {timeRangeOptions.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => onTimeRangeChange(opt.value)}
+                className={`px-2.5 py-0.5 text-xs rounded-md transition-colors ${
+                  timeRange === opt.value
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Legend */}
@@ -260,50 +312,55 @@ export function LinkStatusTimelines({
                 {link.contributor && (
                   <div className="text-xs text-muted-foreground">{link.contributor}</div>
                 )}
-                {link.issue_reasons && link.issue_reasons.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {link.issue_reasons.includes('packet_loss') && (
-                      <span
-                        className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-                        style={{ backgroundColor: 'rgba(168, 85, 247, 0.15)', color: '#9333ea' }}
-                      >
-                        Loss
-                      </span>
-                    )}
-                    {link.issue_reasons.includes('high_latency') && (
-                      <span
-                        className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-                        style={{ backgroundColor: 'rgba(59, 130, 246, 0.15)', color: '#2563eb' }}
-                      >
-                        High Latency
-                      </span>
-                    )}
-                    {link.issue_reasons.includes('extended_loss') && (
-                      <span
-                        className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-                        style={{ backgroundColor: 'rgba(249, 115, 22, 0.15)', color: '#ea580c' }}
-                      >
-                        Extended Loss
-                      </span>
-                    )}
-                    {link.issue_reasons.includes('drained') && (
-                      <span
-                        className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-                        style={{ backgroundColor: 'rgba(100, 116, 139, 0.15)', color: '#475569' }}
-                      >
-                        Drained
-                      </span>
-                    )}
-                    {link.issue_reasons.includes('no_data') && (
-                      <span
-                        className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-                        style={{ backgroundColor: 'rgba(236, 72, 153, 0.15)', color: '#db2777' }}
-                      >
-                        No Data
-                      </span>
-                    )}
-                  </div>
-                )}
+                {(() => {
+                  const issueReasons = linksWithIssues
+                    ? (linksWithIssues.get(link.code) ?? [])
+                    : (link.issue_reasons ?? [])
+                  return issueReasons.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {issueReasons.includes('packet_loss') && (
+                        <span
+                          className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                          style={{ backgroundColor: 'rgba(168, 85, 247, 0.15)', color: '#9333ea' }}
+                        >
+                          Loss
+                        </span>
+                      )}
+                      {issueReasons.includes('high_latency') && (
+                        <span
+                          className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                          style={{ backgroundColor: 'rgba(59, 130, 246, 0.15)', color: '#2563eb' }}
+                        >
+                          High Latency
+                        </span>
+                      )}
+                      {issueReasons.includes('extended_loss') && (
+                        <span
+                          className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                          style={{ backgroundColor: 'rgba(249, 115, 22, 0.15)', color: '#ea580c' }}
+                        >
+                          Extended Loss
+                        </span>
+                      )}
+                      {issueReasons.includes('drained') && (
+                        <span
+                          className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                          style={{ backgroundColor: 'rgba(100, 116, 139, 0.15)', color: '#475569' }}
+                        >
+                          Drained
+                        </span>
+                      )}
+                      {issueReasons.includes('no_data') && (
+                        <span
+                          className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                          style={{ backgroundColor: 'rgba(236, 72, 153, 0.15)', color: '#db2777' }}
+                        >
+                          No Data
+                        </span>
+                      )}
+                    </div>
+                  )
+                })()}
               </div>
 
               {/* Timeline */}

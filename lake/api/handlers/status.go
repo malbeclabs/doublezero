@@ -973,6 +973,8 @@ func fetchLinkHistoryData(ctx context.Context, timeRange string, requestedBucket
 	switch timeRange {
 	case "1h":
 		totalMinutes = 60
+	case "3h":
+		totalMinutes = 3 * 60
 	case "6h":
 		totalMinutes = 6 * 60
 	case "12h":

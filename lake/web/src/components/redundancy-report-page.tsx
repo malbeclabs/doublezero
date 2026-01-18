@@ -257,7 +257,8 @@ export function RedundancyReportPage() {
   const summary = data?.summary
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="h-full overflow-auto p-6">
+    <div className="max-w-5xl mx-auto">
       {/* Header */}
       <div className="mb-6">
         <div className="flex items-center gap-3 mb-2">
@@ -387,6 +388,7 @@ export function RedundancyReportPage() {
           </Link>
         </div>
       </div>
+    </div>
     </div>
   )
 }

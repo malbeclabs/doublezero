@@ -320,11 +320,13 @@ func GetLinkHealth(w http.ResponseWriter, r *http.Request) {
 				lh.SlaRatio = 0
 			}
 
-			// Thresholds: healthy < 150%, warning 150-200%, critical > 200% or packet loss
-			if lh.HasPacketLoss || lh.SlaRatio >= 2.0 {
+			// Thresholds:
+			// - Latency: healthy < 150%, warning 150-200%, critical > 200%
+			// - Packet loss: warning > 0.1%, critical > 10%
+			if lh.LossPct > 10.0 || lh.SlaRatio >= 2.0 {
 				lh.SlaStatus = "critical"
 				criticalCount++
-			} else if lh.SlaRatio >= 1.5 {
+			} else if lh.LossPct > 0.1 || lh.SlaRatio >= 1.5 {
 				lh.SlaStatus = "warning"
 				warningCount++
 			} else {

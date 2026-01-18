@@ -4,19 +4,18 @@ This document contains Cypher query patterns and guidance for the DZ network gra
 
 ## When to Use Graph Queries
 
-Use `execute_cypher` for:
+Use `execute_cypher` for things SQL cannot do efficiently:
 - **Path finding**: "What's the path between device A and device B?"
 - **Reachability analysis**: "What devices are reachable from metro X?"
 - **Impact analysis**: "What's affected if device X goes down?"
-- **Topology traversal**: "Show devices connected to this link"
-- **Connectivity questions**: "Are these two devices connected?"
-- **Network structure**: "What's the topology around this device?"
+- **Multi-hop connectivity**: "What devices are N hops from X?"
+- **Network traversal**: "Show the route between these points"
 
 Use `execute_sql` for:
+- Listing entities (devices, links, metros)
 - Time-series data and metrics
 - Validator performance and stake data
-- Historical analysis
-- Aggregations and statistics
+- Historical analysis and aggregations
 
 ## Combining Tools
 

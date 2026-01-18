@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useDelayedLoading } from '@/hooks/use-delayed-loading'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { CheckCircle2, AlertTriangle, XCircle, ArrowUpDown, Cpu, ChevronDown } from 'lucide-react'
-import { fetchStatus, fetchLinkHistory, fetchDeviceHistory, type StatusResponse, type InterfaceIssue, type NonActivatedLink, type LinkHistory, type DeviceHistory } from '@/lib/api'
+import { fetchStatus, fetchLinkHistory, fetchDeviceHistory, fetchInterfaceIssues, type StatusResponse, type InterfaceIssue, type NonActivatedLink, type LinkHistory, type DeviceHistory } from '@/lib/api'
 import { StatCard } from '@/components/stat-card'
 import { LinkStatusTimelines } from '@/components/link-status-timelines'
 import { DeviceStatusTimelines } from '@/components/device-status-timelines'
@@ -766,6 +766,7 @@ function DisabledLinksTable({
       <div className="px-4 py-3 bg-muted/50 border-b border-border flex items-center gap-2">
         <AlertTriangle className="h-4 w-4 text-muted-foreground" />
         <h3 className="font-medium">Disabled Links</h3>
+        <span className="text-sm text-muted-foreground ml-auto">Current</span>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full">
@@ -813,6 +814,7 @@ function DisabledDevicesTable({ devices }: { devices: StatusResponse['alerts']['
       <div className="px-4 py-3 bg-muted/50 border-b border-border flex items-center gap-2">
         <AlertTriangle className="h-4 w-4 text-muted-foreground" />
         <h3 className="font-medium">Disabled Devices</h3>
+        <span className="text-sm text-muted-foreground ml-auto">Current</span>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full">
@@ -847,15 +849,89 @@ function DisabledDevicesTable({ devices }: { devices: StatusResponse['alerts']['
   )
 }
 
-function InterfaceIssuesTable({ issues }: { issues: InterfaceIssue[] | null }) {
-  if (!issues || issues.length === 0) return null
+function InterfaceIssuesTable({
+  issues,
+  timeRange,
+  onTimeRangeChange,
+  isLoading,
+}: {
+  issues: InterfaceIssue[] | null
+  timeRange: TimeRange
+  onTimeRangeChange: (range: TimeRange) => void
+  isLoading?: boolean
+}) {
+  const timeRangeOptions: { value: TimeRange; label: string }[] = [
+    { value: '3h', label: '3h' },
+    { value: '6h', label: '6h' },
+    { value: '12h', label: '12h' },
+    { value: '24h', label: '24h' },
+    { value: '3d', label: '3d' },
+    { value: '7d', label: '7d' },
+  ]
+
+  if (isLoading) {
+    return (
+      <div className="border border-border rounded-lg overflow-hidden">
+        <div className="px-4 py-3 bg-muted/50 border-b border-border flex items-center gap-2">
+          <Cpu className="h-4 w-4 text-muted-foreground" />
+          <h3 className="font-medium">Interface Issues</h3>
+        </div>
+        <div className="p-6 text-center text-sm text-muted-foreground">
+          Loading interface issues...
+        </div>
+      </div>
+    )
+  }
+
+  if (!issues || issues.length === 0) {
+    return (
+      <div className="border border-border rounded-lg overflow-hidden">
+        <div className="px-4 py-3 bg-muted/50 border-b border-border flex items-center gap-2">
+          <Cpu className="h-4 w-4 text-muted-foreground" />
+          <h3 className="font-medium">Interface Issues</h3>
+          <div className="inline-flex rounded-lg border border-border bg-background/50 p-0.5 ml-auto">
+            {timeRangeOptions.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => onTimeRangeChange(opt.value)}
+                className={`px-2.5 py-0.5 text-xs rounded-md transition-colors ${
+                  timeRange === opt.value
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="p-6 text-center text-sm text-muted-foreground">
+          No interface issues in the selected time range
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="border border-border rounded-lg overflow-hidden">
       <div className="px-4 py-3 bg-muted/50 border-b border-border flex items-center gap-2">
         <Cpu className="h-4 w-4 text-muted-foreground" />
         <h3 className="font-medium">Interface Issues</h3>
-        <span className="text-sm text-muted-foreground ml-auto">Last 24 hours</span>
+        <div className="inline-flex rounded-lg border border-border bg-background/50 p-0.5 ml-auto">
+          {timeRangeOptions.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => onTimeRangeChange(opt.value)}
+              className={`px-2.5 py-0.5 text-xs rounded-md transition-colors ${
+                timeRange === opt.value
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full">
@@ -1499,6 +1575,14 @@ function DevicesContent({ status }: { status: StatusResponse }) {
     staleTime: 30_000,
   })
 
+  // Fetch interface issues for the selected time range
+  const { data: interfaceIssuesData, isLoading: interfaceIssuesLoading } = useQuery({
+    queryKey: ['interface-issues', timeRange],
+    queryFn: () => fetchInterfaceIssues(timeRange),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  })
+
   // Helper to get the effective health status from a device's hours
   const getEffectiveHealth = (device: DeviceHistory): string => {
     if (!device.hours || device.hours.length === 0) return 'healthy'
@@ -1698,7 +1782,12 @@ function DevicesContent({ status }: { status: StatusResponse }) {
 
       {/* Interface Issues */}
       <div className="mb-8">
-        <InterfaceIssuesTable issues={status.interfaces.issues} />
+        <InterfaceIssuesTable
+          issues={interfaceIssuesData?.issues ?? null}
+          timeRange={timeRange}
+          onTimeRangeChange={setTimeRange}
+          isLoading={interfaceIssuesLoading}
+        />
       </div>
 
       {/* Methodology link */}

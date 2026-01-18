@@ -1804,3 +1804,127 @@ func classifyDeviceStatus(totalErrors, totalDiscards uint64, carrierTransitions 
 	}
 	return "healthy"
 }
+
+// InterfaceIssuesResponse is the response for interface issues endpoint
+type InterfaceIssuesResponse struct {
+	Issues    []InterfaceIssue `json:"issues"`
+	TimeRange string           `json:"time_range"`
+}
+
+// GetInterfaceIssues returns interface issues for a given time range
+func GetInterfaceIssues(w http.ResponseWriter, r *http.Request) {
+	timeRange := r.URL.Query().Get("range")
+	if timeRange == "" {
+		timeRange = "24h"
+	}
+
+	// Convert time range to duration
+	var duration time.Duration
+	switch timeRange {
+	case "3h":
+		duration = 3 * time.Hour
+	case "6h":
+		duration = 6 * time.Hour
+	case "12h":
+		duration = 12 * time.Hour
+	case "24h":
+		duration = 24 * time.Hour
+	case "3d":
+		duration = 3 * 24 * time.Hour
+	case "7d":
+		duration = 7 * 24 * time.Hour
+	default:
+		duration = 24 * time.Hour
+		timeRange = "24h"
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	issues, err := fetchInterfaceIssuesData(ctx, duration)
+	if err != nil {
+		log.Printf("Error fetching interface issues: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	resp := &InterfaceIssuesResponse{
+		Issues:    issues,
+		TimeRange: timeRange,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+func fetchInterfaceIssuesData(ctx context.Context, duration time.Duration) ([]InterfaceIssue, error) {
+	// Convert duration to hours for the SQL interval
+	hours := int(duration.Hours())
+
+	query := fmt.Sprintf(`
+		SELECT
+			d.pk as device_pk,
+			d.code as device_code,
+			d.device_type,
+			COALESCE(contrib.code, '') as contributor,
+			m.code as metro,
+			c.intf as interface_name,
+			COALESCE(l.pk, '') as link_pk,
+			COALESCE(l.code, '') as link_code,
+			COALESCE(l.link_type, '') as link_type,
+			COALESCE(c.link_side, '') as link_side,
+			toUInt64(SUM(c.in_errors_delta)) as in_errors,
+			toUInt64(SUM(c.out_errors_delta)) as out_errors,
+			toUInt64(SUM(c.in_discards_delta)) as in_discards,
+			toUInt64(SUM(c.out_discards_delta)) as out_discards,
+			toUInt64(SUM(c.carrier_transitions_delta)) as carrier_transitions,
+			formatDateTime(min(c.event_ts), '%%Y-%%m-%%dT%%H:%%i:%%sZ', 'UTC') as first_seen,
+			formatDateTime(max(c.event_ts), '%%Y-%%m-%%dT%%H:%%i:%%sZ', 'UTC') as last_seen
+		FROM fact_dz_device_interface_counters c
+		JOIN dz_devices_current d ON c.device_pk = d.pk
+		JOIN dz_metros_current m ON d.metro_pk = m.pk
+		LEFT JOIN dz_contributors_current contrib ON d.contributor_pk = contrib.pk
+		LEFT JOIN dz_links_current l ON c.link_pk = l.pk
+		WHERE c.event_ts > now() - INTERVAL %d HOUR
+		  AND d.status = 'activated'
+		  AND (c.in_errors_delta > 0 OR c.out_errors_delta > 0 OR c.in_discards_delta > 0 OR c.out_discards_delta > 0 OR c.carrier_transitions_delta > 0)
+		GROUP BY d.pk, d.code, d.device_type, contrib.code, m.code, c.intf, l.pk, l.code, l.link_type, c.link_side
+		ORDER BY (in_errors + out_errors + in_discards + out_discards + carrier_transitions) DESC
+		LIMIT 50
+	`, hours)
+
+	rows, err := config.DB.Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var issues []InterfaceIssue
+	for rows.Next() {
+		var issue InterfaceIssue
+		if err := rows.Scan(
+			&issue.DevicePK,
+			&issue.DeviceCode,
+			&issue.DeviceType,
+			&issue.Contributor,
+			&issue.Metro,
+			&issue.InterfaceName,
+			&issue.LinkPK,
+			&issue.LinkCode,
+			&issue.LinkType,
+			&issue.LinkSide,
+			&issue.InErrors,
+			&issue.OutErrors,
+			&issue.InDiscards,
+			&issue.OutDiscards,
+			&issue.CarrierTransitions,
+			&issue.FirstSeen,
+			&issue.LastSeen,
+		); err != nil {
+			return nil, err
+		}
+		issues = append(issues, issue)
+	}
+
+	return issues, rows.Err()
+}

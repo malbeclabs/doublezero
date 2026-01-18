@@ -828,6 +828,11 @@ export interface InterfaceHealth {
   issues: InterfaceIssue[]
 }
 
+export interface InterfaceIssuesResponse {
+  issues: InterfaceIssue[]
+  time_range: string
+}
+
 export interface NonActivatedDevice {
   pk: string
   code: string
@@ -967,6 +972,17 @@ export async function fetchDeviceHistory(timeRange?: string, buckets?: number): 
   const res = await fetchWithRetry(url)
   if (!res.ok) {
     throw new Error('Failed to fetch device history')
+  }
+  return res.json()
+}
+
+export async function fetchInterfaceIssues(timeRange?: string): Promise<InterfaceIssuesResponse> {
+  const params = new URLSearchParams()
+  if (timeRange) params.set('range', timeRange)
+  const url = `/api/status/interface-issues${params.toString() ? '?' + params.toString() : ''}`
+  const res = await fetchWithRetry(url)
+  if (!res.ok) {
+    throw new Error('Failed to fetch interface issues')
   }
   return res.json()
 }

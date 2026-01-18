@@ -1398,6 +1398,10 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
                     }
                   } else {
                     handleMarkerClick({ type: 'device', data: deviceInfo })
+                    // If impact panel is open, update to show new device's impact
+                    if (impactDevice) {
+                      setImpactDevice(device.pk)
+                    }
                   }
                 }}
               />

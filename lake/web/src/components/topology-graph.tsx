@@ -932,6 +932,10 @@ export function TopologyGraph({
 
       if (mode === 'explore') {
         onDeviceSelectRef.current?.(devicePK)
+        // If impact panel is open, update to show new device's impact
+        if (impactDevice) {
+          setImpactDevice(devicePK)
+        }
       } else if (mode === 'path') {
         if (!pathSource) {
           setPathSource(devicePK)
@@ -980,7 +984,7 @@ export function TopologyGraph({
       cy.off('tap', 'node', handleNodeTap)
       cy.off('dbltap', 'node', handleNodeDblTap)
     }
-  }, [mode, pathSource, pathTarget, additionSource, additionTarget])
+  }, [mode, pathSource, pathTarget, additionSource, additionTarget, impactDevice])
 
   // Handle edge clicks for whatif-removal mode
   useEffect(() => {

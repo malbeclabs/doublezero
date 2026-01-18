@@ -15,6 +15,8 @@ All notable changes to this project will be documented in this file.
   - Add gNMI tunnel client for state collection
 - Activator
   - fix(activator): ip_to_index fn honors ip range #2658
+- E2E tests
+  - Add influxdb and device-health-oracle containers
 
 ### Breaking
 

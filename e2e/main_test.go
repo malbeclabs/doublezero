@@ -287,6 +287,20 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 	err = client.WaitForLatencyResults(t.Context(), device.ID, 75*time.Second)
 	require.NoError(t, err)
 
+	// Verify device has published telemetry to InfluxDB.
+	if dn.InfluxDB != nil && dn.InfluxDB.InternalURL != "" {
+		dn.log.Info("==> Verifying device telemetry in InfluxDB", "device", device.Spec.Code, "pubkey", device.ID)
+		require.Eventually(t, func() bool {
+			hasData, err := dn.InfluxDB.HasDeviceData(ctx, device.ID)
+			if err != nil {
+				dn.log.Debug("Failed to query InfluxDB for device data", "error", err)
+				return false
+			}
+			return hasData
+		}, 60*time.Second, 3*time.Second, "device %s did not publish telemetry to InfluxDB", device.Spec.Code)
+		dn.log.Info("--> Device telemetry verified in InfluxDB")
+	}
+
 	return device, client
 }
 

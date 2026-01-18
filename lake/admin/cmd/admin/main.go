@@ -44,8 +44,14 @@ func run() error {
 	influxBucketFlag := flag.String("influx-bucket", "", "InfluxDB bucket (or set INFLUX_BUCKET env var)")
 
 	// Commands
-	clickhouseMigrateFlag := flag.Bool("clickhouse-migrate", false, "Run ClickHouse/indexer database migrations using goose")
+	clickhouseMigrateFlag := flag.Bool("clickhouse-migrate", false, "Run ClickHouse/indexer database migrations (up)")
+	clickhouseMigrateUpToFlag := flag.Int64("clickhouse-migrate-up-to", 0, "Run ClickHouse migrations up to a specific version")
+	clickhouseMigrateDownFlag := flag.Bool("clickhouse-migrate-down", false, "Roll back the most recent ClickHouse migration")
+	clickhouseMigrateDownToFlag := flag.Int64("clickhouse-migrate-down-to", 0, "Roll back ClickHouse migrations to a specific version")
+	clickhouseMigrateRedoFlag := flag.Bool("clickhouse-migrate-redo", false, "Roll back and re-apply the most recent ClickHouse migration")
 	clickhouseMigrateStatusFlag := flag.Bool("clickhouse-migrate-status", false, "Show ClickHouse/indexer database migration status")
+	clickhouseMigrateVersionFlag := flag.Bool("clickhouse-migrate-version", false, "Show current ClickHouse migration version")
+	clickhouseMigrateResetFlag := flag.Bool("clickhouse-migrate-reset", false, "Roll back all ClickHouse migrations (dangerous!)")
 	neo4jMigrateFlag := flag.Bool("neo4j-migrate", false, "Run Neo4j database migrations")
 	neo4jMigrateStatusFlag := flag.Bool("neo4j-migrate-status", false, "Show Neo4j database migration status")
 	resetDBFlag := flag.Bool("reset-db", false, "Drop all database tables (dim_*, stg_*, fact_*) and views")
@@ -118,31 +124,73 @@ func run() error {
 		*dzEnvFlag = envDZEnv
 	}
 
+	// ClickHouse migration config helper
+	chMigrationCfg := clickhouse.MigrationConfig{
+		Addr:     *clickhouseAddrFlag,
+		Database: *clickhouseDatabaseFlag,
+		Username: *clickhouseUsernameFlag,
+		Password: *clickhousePasswordFlag,
+		Secure:   *clickhouseSecureFlag,
+	}
+
 	// Execute commands
 	if *clickhouseMigrateFlag {
 		if *clickhouseAddrFlag == "" {
 			return fmt.Errorf("--clickhouse-addr is required for --clickhouse-migrate")
 		}
-		return clickhouse.RunMigrations(context.Background(), log, clickhouse.MigrationConfig{
-			Addr:     *clickhouseAddrFlag,
-			Database: *clickhouseDatabaseFlag,
-			Username: *clickhouseUsernameFlag,
-			Password: *clickhousePasswordFlag,
-			Secure:   *clickhouseSecureFlag,
-		})
+		return clickhouse.Up(context.Background(), log, chMigrationCfg)
+	}
+
+	if *clickhouseMigrateUpToFlag != 0 {
+		if *clickhouseAddrFlag == "" {
+			return fmt.Errorf("--clickhouse-addr is required for --clickhouse-migrate-up-to")
+		}
+		return clickhouse.UpTo(context.Background(), log, chMigrationCfg, *clickhouseMigrateUpToFlag)
+	}
+
+	if *clickhouseMigrateDownFlag {
+		if *clickhouseAddrFlag == "" {
+			return fmt.Errorf("--clickhouse-addr is required for --clickhouse-migrate-down")
+		}
+		return clickhouse.Down(context.Background(), log, chMigrationCfg)
+	}
+
+	if *clickhouseMigrateDownToFlag != 0 {
+		if *clickhouseAddrFlag == "" {
+			return fmt.Errorf("--clickhouse-addr is required for --clickhouse-migrate-down-to")
+		}
+		return clickhouse.DownTo(context.Background(), log, chMigrationCfg, *clickhouseMigrateDownToFlag)
+	}
+
+	if *clickhouseMigrateRedoFlag {
+		if *clickhouseAddrFlag == "" {
+			return fmt.Errorf("--clickhouse-addr is required for --clickhouse-migrate-redo")
+		}
+		return clickhouse.Redo(context.Background(), log, chMigrationCfg)
 	}
 
 	if *clickhouseMigrateStatusFlag {
 		if *clickhouseAddrFlag == "" {
 			return fmt.Errorf("--clickhouse-addr is required for --clickhouse-migrate-status")
 		}
-		return clickhouse.MigrationStatus(context.Background(), log, clickhouse.MigrationConfig{
-			Addr:     *clickhouseAddrFlag,
-			Database: *clickhouseDatabaseFlag,
-			Username: *clickhouseUsernameFlag,
-			Password: *clickhousePasswordFlag,
-			Secure:   *clickhouseSecureFlag,
-		})
+		return clickhouse.MigrationStatus(context.Background(), log, chMigrationCfg)
+	}
+
+	if *clickhouseMigrateVersionFlag {
+		if *clickhouseAddrFlag == "" {
+			return fmt.Errorf("--clickhouse-addr is required for --clickhouse-migrate-version")
+		}
+		return clickhouse.Version(context.Background(), log, chMigrationCfg)
+	}
+
+	if *clickhouseMigrateResetFlag {
+		if *clickhouseAddrFlag == "" {
+			return fmt.Errorf("--clickhouse-addr is required for --clickhouse-migrate-reset")
+		}
+		if !*yesFlag {
+			return fmt.Errorf("--clickhouse-migrate-reset requires --yes flag (this will roll back ALL migrations)")
+		}
+		return clickhouse.Reset(context.Background(), log, chMigrationCfg)
 	}
 
 	if *neo4jMigrateFlag {

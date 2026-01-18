@@ -214,13 +214,18 @@ export function MaintenancePlannerPage() {
       lines.push('Sample Affected Paths')
       lines.push('---------------------')
       for (const path of analysisResult.affectedPaths) {
-        const hopsInfo = path.hopsAfter === -1
-          ? `${path.hopsBefore} hops → DISCONNECTED`
-          : `${path.hopsBefore} → ${path.hopsAfter} hops`
         lines.push(`  ${path.source} (${path.sourceMetro}) → ${path.target} (${path.targetMetro})`)
-        lines.push(`    ${hopsInfo} [${path.status}]`)
+        if (path.hopsAfter === -1) {
+          lines.push(`    Status: DISCONNECTED (was ${path.hopsBefore} hops, ${path.metricBefore} metric)`)
+        } else {
+          const hopDiff = path.hopsAfter - path.hopsBefore
+          const metricDiff = path.metricAfter - path.metricBefore
+          lines.push(`    Hops: ${path.hopsBefore} → ${path.hopsAfter} (${hopDiff > 0 ? '+' : ''}${hopDiff})`)
+          lines.push(`    Metric: ${path.metricBefore} → ${path.metricAfter} (${metricDiff > 0 ? '+' : ''}${metricDiff})`)
+          lines.push(`    Status: ${path.status.toUpperCase()}`)
+        }
+        lines.push('')
       }
-      lines.push('')
     }
 
     // Recommended order
@@ -479,39 +484,57 @@ export function MaintenancePlannerPage() {
                     <div className="mb-4">
                       <h3 className="text-sm font-medium mb-2">Sample Affected Paths</h3>
                       <div className="space-y-2">
-                        {analysisResult.affectedPaths.map((path, idx) => (
-                          <div key={idx} className="flex items-center gap-2 p-2 bg-muted rounded text-sm">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2">
-                                <span className="font-medium">{path.source}</span>
-                                <span className="text-xs text-muted-foreground">({path.sourceMetro})</span>
-                                <span className="text-muted-foreground">→</span>
-                                <span className="font-medium">{path.target}</span>
-                                <span className="text-xs text-muted-foreground">({path.targetMetro})</span>
+                        {analysisResult.affectedPaths.map((path, idx) => {
+                          const hopDiff = path.hopsAfter - path.hopsBefore
+                          const metricDiff = path.metricAfter - path.metricBefore
+                          return (
+                            <div key={idx} className="p-3 bg-muted rounded text-sm">
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium">{path.source}</span>
+                                  <span className="text-xs text-muted-foreground">({path.sourceMetro})</span>
+                                  <span className="text-muted-foreground">→</span>
+                                  <span className="font-medium">{path.target}</span>
+                                  <span className="text-xs text-muted-foreground">({path.targetMetro})</span>
+                                </div>
+                                <span className={`text-xs px-2 py-0.5 rounded ${
+                                  path.status === 'disconnected'
+                                    ? 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400'
+                                    : path.status === 'degraded'
+                                    ? 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-400'
+                                    : 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400'
+                                }`}>
+                                  {path.status}
+                                </span>
                               </div>
-                              <div className="text-xs text-muted-foreground mt-1">
-                                {path.hopsAfter === -1 ? (
-                                  <span className="text-red-600 dark:text-red-400">
-                                    {path.hopsBefore} hops → disconnected
+                              {path.hopsAfter === -1 ? (
+                                <div className="text-xs text-red-600 dark:text-red-400">
+                                  <span className="font-medium">No alternate path available</span>
+                                  <span className="text-muted-foreground ml-2">
+                                    (was {path.hopsBefore} hops, {path.metricBefore} metric)
                                   </span>
-                                ) : (
-                                  <span>
-                                    {path.hopsBefore} hops → {path.hopsAfter} hops ({path.hopsAfter > path.hopsBefore ? '+' : ''}{path.hopsAfter - path.hopsBefore})
-                                  </span>
-                                )}
-                              </div>
+                                </div>
+                              ) : (
+                                <div className="grid grid-cols-2 gap-4 text-xs">
+                                  <div>
+                                    <span className="text-muted-foreground">Hops: </span>
+                                    <span>{path.hopsBefore} → {path.hopsAfter}</span>
+                                    <span className={`ml-1 ${hopDiff > 0 ? 'text-yellow-600 dark:text-yellow-400' : 'text-green-600 dark:text-green-400'}`}>
+                                      ({hopDiff > 0 ? '+' : ''}{hopDiff})
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground">Metric: </span>
+                                    <span>{path.metricBefore} → {path.metricAfter}</span>
+                                    <span className={`ml-1 ${metricDiff > 0 ? 'text-yellow-600 dark:text-yellow-400' : 'text-green-600 dark:text-green-400'}`}>
+                                      ({metricDiff > 0 ? '+' : ''}{metricDiff})
+                                    </span>
+                                  </div>
+                                </div>
+                              )}
                             </div>
-                            <span className={`text-xs px-2 py-0.5 rounded ${
-                              path.status === 'disconnected'
-                                ? 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400'
-                                : path.status === 'degraded'
-                                ? 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-400'
-                                : 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400'
-                            }`}>
-                              {path.status}
-                            </span>
-                          </div>
-                        ))}
+                          )
+                        })}
                       </div>
                     </div>
                   )}

@@ -2472,6 +2472,8 @@ export interface MaintenanceAffectedPath {
   targetMetro: string
   hopsBefore: number
   hopsAfter: number
+  metricBefore: number
+  metricAfter: number
   status: 'rerouted' | 'degraded' | 'disconnected'
 }
 

@@ -1478,13 +1478,15 @@ type MaintenanceItem struct {
 
 // MaintenanceAffectedPath represents a path that would be impacted by maintenance
 type MaintenanceAffectedPath struct {
-	Source      string `json:"source"`      // Source device code
-	Target      string `json:"target"`      // Target device code
-	SourceMetro string `json:"sourceMetro"` // Source metro code
-	TargetMetro string `json:"targetMetro"` // Target metro code
-	HopsBefore  int    `json:"hopsBefore"`  // Hops before maintenance
-	HopsAfter   int    `json:"hopsAfter"`   // Hops after maintenance (-1 = disconnected)
-	Status      string `json:"status"`      // "rerouted", "degraded", or "disconnected"
+	Source       string `json:"source"`       // Source device code
+	Target       string `json:"target"`       // Target device code
+	SourceMetro  string `json:"sourceMetro"`  // Source metro code
+	TargetMetro  string `json:"targetMetro"`  // Target metro code
+	HopsBefore   int    `json:"hopsBefore"`   // Hops before maintenance
+	HopsAfter    int    `json:"hopsAfter"`    // Hops after maintenance (-1 = disconnected)
+	MetricBefore int    `json:"metricBefore"` // Total ISIS metric before
+	MetricAfter  int    `json:"metricAfter"`  // Total ISIS metric after (-1 = disconnected)
+	Status       string `json:"status"`       // "rerouted", "degraded", or "disconnected"
 }
 
 // AffectedMetroPair represents connectivity impact between two metros
@@ -1624,41 +1626,11 @@ func getLinkEndpoints(ctx context.Context, linkPK string) string {
 }
 
 // computeAffectedPaths finds paths that would be affected by the maintenance
+// and computes alternate routes with before/after hops and metrics
 func computeAffectedPaths(ctx context.Context, session neo4j.SessionWithContext,
 	offlineDevices map[string]bool, offlineLinks map[string]bool, limit int) []MaintenanceAffectedPath {
 
 	result := []MaintenanceAffectedPath{}
-
-	// Get sample paths that go through offline devices or links
-	cypher := `
-		MATCH (d:Device)
-		WHERE d.isis_system_id IS NOT NULL AND d.pk IN $offlineDevicePKs
-		WITH collect(d.pk) AS offlineDevices
-
-		MATCH (source:Device), (target:Device)
-		WHERE source.isis_system_id IS NOT NULL
-		  AND target.isis_system_id IS NOT NULL
-		  AND source.pk < target.pk
-		  AND source.pk NOT IN offlineDevices
-		  AND target.pk NOT IN offlineDevices
-
-		// Find shortest path
-		MATCH path = shortestPath((source)-[:ISIS_ADJACENT*]-(target))
-		WHERE any(n IN nodes(path) WHERE n.pk IN offlineDevices)
-		   OR any(n IN nodes(path) WHERE n.pk IN $offlineDevicePKs)
-
-		WITH source, target, path, length(path) AS hopsBefore, offlineDevices
-		LIMIT $limit
-
-		// Get metro info
-		OPTIONAL MATCH (source)-[:LOCATED_IN]->(sm:Metro)
-		OPTIONAL MATCH (target)-[:LOCATED_IN]->(tm:Metro)
-
-		RETURN source.code AS sourceCode, target.code AS targetCode,
-			   COALESCE(sm.code, 'unknown') AS sourceMetro,
-			   COALESCE(tm.code, 'unknown') AS targetMetro,
-			   hopsBefore
-	`
 
 	offlineDevicePKs := make([]string, 0, len(offlineDevices))
 	for pk := range offlineDevices {
@@ -1670,6 +1642,40 @@ func computeAffectedPaths(ctx context.Context, session neo4j.SessionWithContext,
 		return result
 	}
 
+	// Find paths that go through offline devices, compute before/after metrics
+	// This query finds the original shortest path, then tries to find an alternate
+	cypher := `
+		// First, find device pairs where the shortest path goes through an offline device
+		MATCH (source:Device), (target:Device)
+		WHERE source.isis_system_id IS NOT NULL
+		  AND target.isis_system_id IS NOT NULL
+		  AND source.pk < target.pk
+		  AND NOT source.pk IN $offlineDevicePKs
+		  AND NOT target.pk IN $offlineDevicePKs
+
+		// Find the current shortest path
+		MATCH originalPath = shortestPath((source)-[:ISIS_ADJACENT*]-(target))
+		WHERE any(n IN nodes(originalPath) WHERE n.pk IN $offlineDevicePKs)
+
+		// Calculate original path metrics
+		WITH source, target, originalPath,
+		     length(originalPath) AS hopsBefore,
+		     reduce(m = 0, r IN relationships(originalPath) | m + coalesce(r.metric, 10)) AS metricBefore
+
+		LIMIT $limit
+
+		// Get metro info
+		OPTIONAL MATCH (source)-[:LOCATED_IN]->(sm:Metro)
+		OPTIONAL MATCH (target)-[:LOCATED_IN]->(tm:Metro)
+
+		// Return with source/target PKs for alternate path lookup
+		RETURN source.pk AS sourcePK, source.code AS sourceCode,
+		       target.pk AS targetPK, target.code AS targetCode,
+		       COALESCE(sm.code, 'unknown') AS sourceMetro,
+		       COALESCE(tm.code, 'unknown') AS targetMetro,
+		       hopsBefore, metricBefore
+	`
+
 	records, err := session.Run(ctx, cypher, map[string]interface{}{
 		"offlineDevicePKs": offlineDevicePKs,
 		"limit":            limit,
@@ -1679,25 +1685,96 @@ func computeAffectedPaths(ctx context.Context, session neo4j.SessionWithContext,
 		return result
 	}
 
+	// Collect paths that need alternate route computation
+	type pathInfo struct {
+		sourcePK     string
+		targetPK     string
+		sourceCode   string
+		targetCode   string
+		sourceMetro  string
+		targetMetro  string
+		hopsBefore   int
+		metricBefore int
+	}
+	paths := []pathInfo{}
+
 	for records.Next(ctx) {
 		record := records.Record()
+		sourcePK, _ := record.Get("sourcePK")
+		targetPK, _ := record.Get("targetPK")
 		sourceCode, _ := record.Get("sourceCode")
 		targetCode, _ := record.Get("targetCode")
 		sourceMetro, _ := record.Get("sourceMetro")
 		targetMetro, _ := record.Get("targetMetro")
 		hopsBefore, _ := record.Get("hopsBefore")
+		metricBefore, _ := record.Get("metricBefore")
 
-		path := MaintenanceAffectedPath{
-			Source:      asString(sourceCode),
-			Target:      asString(targetCode),
-			SourceMetro: asString(sourceMetro),
-			TargetMetro: asString(targetMetro),
-			HopsBefore:  int(asInt64(hopsBefore)),
-			HopsAfter:   -1, // Will be computed below
-			Status:      "disconnected",
+		paths = append(paths, pathInfo{
+			sourcePK:     asString(sourcePK),
+			targetPK:     asString(targetPK),
+			sourceCode:   asString(sourceCode),
+			targetCode:   asString(targetCode),
+			sourceMetro:  asString(sourceMetro),
+			targetMetro:  asString(targetMetro),
+			hopsBefore:   int(asInt64(hopsBefore)),
+			metricBefore: int(asInt64(metricBefore)),
+		})
+	}
+
+	// For each affected path, try to find an alternate route
+	for _, p := range paths {
+		affectedPath := MaintenanceAffectedPath{
+			Source:       p.sourceCode,
+			Target:       p.targetCode,
+			SourceMetro:  p.sourceMetro,
+			TargetMetro:  p.targetMetro,
+			HopsBefore:   p.hopsBefore,
+			MetricBefore: p.metricBefore,
+			HopsAfter:    -1,
+			MetricAfter:  -1,
+			Status:       "disconnected",
 		}
 
-		result = append(result, path)
+		// Try to find alternate path avoiding offline devices
+		altCypher := `
+			MATCH (source:Device {pk: $sourcePK}), (target:Device {pk: $targetPK})
+
+			// Find shortest path that avoids offline devices
+			MATCH altPath = shortestPath((source)-[:ISIS_ADJACENT*]-(target))
+			WHERE none(n IN nodes(altPath) WHERE n.pk IN $offlineDevicePKs)
+
+			WITH altPath, length(altPath) AS hopsAfter,
+			     reduce(m = 0, r IN relationships(altPath) | m + coalesce(r.metric, 10)) AS metricAfter
+
+			RETURN hopsAfter, metricAfter
+			LIMIT 1
+		`
+
+		altRecords, err := session.Run(ctx, altCypher, map[string]interface{}{
+			"sourcePK":         p.sourcePK,
+			"targetPK":         p.targetPK,
+			"offlineDevicePKs": offlineDevicePKs,
+		})
+		if err == nil && altRecords.Next(ctx) {
+			record := altRecords.Record()
+			hopsAfter, _ := record.Get("hopsAfter")
+			metricAfter, _ := record.Get("metricAfter")
+
+			affectedPath.HopsAfter = int(asInt64(hopsAfter))
+			affectedPath.MetricAfter = int(asInt64(metricAfter))
+
+			// Determine status based on degradation
+			hopIncrease := affectedPath.HopsAfter - affectedPath.HopsBefore
+			metricIncrease := affectedPath.MetricAfter - affectedPath.MetricBefore
+
+			if hopIncrease > 2 || metricIncrease > 100 {
+				affectedPath.Status = "degraded"
+			} else {
+				affectedPath.Status = "rerouted"
+			}
+		}
+
+		result = append(result, affectedPath)
 	}
 
 	return result

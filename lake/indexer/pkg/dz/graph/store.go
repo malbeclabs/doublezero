@@ -432,6 +432,7 @@ type tunnelMapping struct {
 	linkPK     string // Link primary key
 	neighborPK string // Device PK of the neighbor (device with this IP)
 	localPK    string // Device PK of the other side
+	bandwidth  int64  // Link bandwidth in bps
 }
 
 // SyncISIS updates the Neo4j graph with IS-IS adjacency data.
@@ -488,8 +489,8 @@ func (s *Store) SyncISIS(ctx context.Context, lsps []isis.LSP) error {
 				devicesUpdated++
 			}
 
-			// Create ISIS_ADJACENT relationship
-			if err := s.createISISAdjacent(ctx, session, mapping.localPK, mapping.neighborPK, neighbor, now); err != nil {
+			// Create ISIS_ADJACENT relationship with bandwidth from the link
+			if err := s.createISISAdjacent(ctx, session, mapping.localPK, mapping.neighborPK, neighbor, mapping.bandwidth, now); err != nil {
 				s.log.Warn("graph: failed to create ISIS_ADJACENT",
 					"from", mapping.localPK,
 					"to", mapping.neighborPK,
@@ -518,7 +519,8 @@ func (s *Store) buildTunnelMap(ctx context.Context, session neo4j.Session) (map[
 		WHERE link.tunnel_net IS NOT NULL AND link.tunnel_net <> ''
 		MATCH (link)-[:CONNECTS {side: 'A'}]->(devA:Device)
 		MATCH (link)-[:CONNECTS {side: 'Z'}]->(devZ:Device)
-		RETURN link.pk AS pk, link.tunnel_net AS tunnel_net, devA.pk AS side_a_pk, devZ.pk AS side_z_pk
+		RETURN link.pk AS pk, link.tunnel_net AS tunnel_net, devA.pk AS side_a_pk, devZ.pk AS side_z_pk,
+		       coalesce(link.bandwidth, 0) AS bandwidth
 	`
 	result, err := session.Run(ctx, cypher, nil)
 	if err != nil {
@@ -533,6 +535,7 @@ func (s *Store) buildTunnelMap(ctx context.Context, session neo4j.Session) (map[
 		sideAPK, _ := record.Get("side_a_pk")
 		sideZPK, _ := record.Get("side_z_pk")
 		linkPK, _ := record.Get("pk")
+		bandwidth, _ := record.Get("bandwidth")
 
 		tunnelNetStr, ok := tunnelNet.(string)
 		if !ok || tunnelNetStr == "" {
@@ -541,6 +544,7 @@ func (s *Store) buildTunnelMap(ctx context.Context, session neo4j.Session) (map[
 		sideAPKStr, _ := sideAPK.(string)
 		sideZPKStr, _ := sideZPK.(string)
 		linkPKStr, _ := linkPK.(string)
+		bandwidthInt, _ := bandwidth.(int64)
 
 		// Parse the /31 CIDR to get both IPs
 		ip1, ip2, err := parseTunnelNet31(tunnelNetStr)
@@ -557,11 +561,13 @@ func (s *Store) buildTunnelMap(ctx context.Context, session neo4j.Session) (map[
 			linkPK:     linkPKStr,
 			neighborPK: sideAPKStr, // Device at ip1 (lower) is side_a
 			localPK:    sideZPKStr,
+			bandwidth:  bandwidthInt,
 		}
 		tunnelMap[ip2] = tunnelMapping{
 			linkPK:     linkPKStr,
 			neighborPK: sideZPKStr, // Device at ip2 (higher) is side_z
 			localPK:    sideAPKStr,
+			bandwidth:  bandwidthInt,
 		}
 	}
 
@@ -615,7 +621,7 @@ func (s *Store) updateDeviceISIS(ctx context.Context, session neo4j.Session, dev
 }
 
 // createISISAdjacent creates or updates an ISIS_ADJACENT relationship between two devices.
-func (s *Store) createISISAdjacent(ctx context.Context, session neo4j.Session, fromPK, toPK string, neighbor isis.Neighbor, timestamp time.Time) error {
+func (s *Store) createISISAdjacent(ctx context.Context, session neo4j.Session, fromPK, toPK string, neighbor isis.Neighbor, bandwidth int64, timestamp time.Time) error {
 	cypher := `
 		MATCH (d1:Device {pk: $from_pk})
 		MATCH (d2:Device {pk: $to_pk})
@@ -623,7 +629,8 @@ func (s *Store) createISISAdjacent(ctx context.Context, session neo4j.Session, f
 		SET r.metric = $metric,
 		    r.neighbor_addr = $neighbor_addr,
 		    r.adj_sids = $adj_sids,
-		    r.last_seen = $last_seen
+		    r.last_seen = $last_seen,
+		    r.bandwidth_bps = $bandwidth_bps
 	`
 	res, err := session.Run(ctx, cypher, map[string]any{
 		"from_pk":       fromPK,
@@ -632,6 +639,7 @@ func (s *Store) createISISAdjacent(ctx context.Context, session neo4j.Session, f
 		"neighbor_addr": neighbor.NeighborAddr,
 		"adj_sids":      neighbor.AdjSIDs,
 		"last_seen":     timestamp.Unix(),
+		"bandwidth_bps": bandwidth,
 	})
 	if err != nil {
 		return err

@@ -165,9 +165,23 @@ function PathCard({
           <span className="font-medium">{path.hopCount}</span>
         </div>
         <div>
-          <span className="text-muted-foreground">Total Metric:</span>{' '}
+          <span className="text-muted-foreground">ISIS Metric:</span>{' '}
           <span className="font-medium">{(path.totalMetric / 1000).toFixed(2)}ms</span>
         </div>
+        {path.measuredLatencyMs !== undefined && path.measuredLatencyMs > 0 && (
+          <>
+            <div>
+              <span className="text-muted-foreground">Measured:</span>{' '}
+              <span className="font-medium text-primary">{path.measuredLatencyMs.toFixed(2)}ms</span>
+            </div>
+            {path.totalSamples !== undefined && (
+              <div>
+                <span className="text-muted-foreground">Samples:</span>{' '}
+                <span className="font-medium">{path.totalSamples.toLocaleString()}</span>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       <div className="space-y-1">
@@ -182,11 +196,23 @@ function PathCard({
               {hop.deviceCode}
               <ExternalLink className="h-3 w-3 opacity-0 hover:opacity-100" />
             </Link>
-            {hop.edgeMetric !== undefined && hop.edgeMetric > 0 && (
-              <span className="text-muted-foreground text-xs ml-auto">
-                +{(hop.edgeMetric / 1000).toFixed(1)}ms
-              </span>
-            )}
+            <div className="ml-auto flex items-center gap-2">
+              {hop.edgeMeasuredMs !== undefined && hop.edgeMeasuredMs > 0 && (
+                <span className="text-primary text-xs" title={`Measured RTT: ${hop.edgeMeasuredMs.toFixed(2)}ms (${hop.edgeSampleCount?.toLocaleString() ?? 0} samples)`}>
+                  {hop.edgeMeasuredMs.toFixed(1)}ms measured
+                </span>
+              )}
+              {hop.edgeLossPct !== undefined && hop.edgeLossPct > 0.1 && (
+                <span className={`text-xs ${hop.edgeLossPct > 1 ? 'text-red-500' : 'text-yellow-500'}`} title={`Packet loss: ${hop.edgeLossPct.toFixed(2)}%`}>
+                  {hop.edgeLossPct.toFixed(1)}% loss
+                </span>
+              )}
+              {hop.edgeMetric !== undefined && hop.edgeMetric > 0 && (
+                <span className="text-muted-foreground text-xs" title="ISIS metric (configured on router)">
+                  {(hop.edgeMetric / 1000).toFixed(1)}ms ISIS
+                </span>
+              )}
+            </div>
           </div>
         ))}
       </div>

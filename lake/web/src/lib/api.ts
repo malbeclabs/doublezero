@@ -1321,12 +1321,18 @@ export interface MultiPathHop {
   status: string
   deviceType: string
   edgeMetric?: number
+  edgeMeasuredMs?: number   // measured RTT in ms to reach this hop
+  edgeJitterMs?: number     // measured jitter in ms
+  edgeLossPct?: number      // packet loss percentage
+  edgeSampleCount?: number  // number of samples for confidence
 }
 
 export interface SinglePath {
   path: MultiPathHop[]
   totalMetric: number
   hopCount: number
+  measuredLatencyMs?: number  // sum of measured RTT along path
+  totalSamples?: number       // min samples across hops
 }
 
 export interface MultiPathResponse {
@@ -2494,6 +2500,7 @@ export interface MetroConnectivity {
   pathCount: number
   minHops: number
   minMetric: number
+  bottleneckBwGbps?: number  // min bandwidth along best path
 }
 
 export interface MetroConnectivityResponse {

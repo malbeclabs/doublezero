@@ -1,6 +1,6 @@
 # Topology Explorer UI Plan
 
-This document captures the full roadmap for topology exploration features using Neo4j graph data.
+This document captures the full roadmap for topology exploration features using Neo4j graph data, including latency intelligence, bandwidth capacity analysis, and stake distribution visualization.
 
 ## Completed Work
 
@@ -370,7 +370,7 @@ WHERE snapshot_ts BETWEEN {from} AND {to}
 ---
 
 ### 18. Link Health Overlay (Latency vs SLA)
-**Priority: High** | **Complexity: Medium** | **Status: Not Started**
+**Priority: High** | **Complexity: Medium** | **Status: Done**
 
 Color links by measured latency health compared to SLA commitments.
 
@@ -391,32 +391,18 @@ Color links by measured latency health compared to SLA commitments.
 
 **Data Source:** `fact_dz_device_link_latency` + `dim_dz_links_current` (ClickHouse)
 
-**API:** `GET /api/topology/link-health`
-
-**Query Pattern:**
-```sql
-SELECT
-  l.link_pk,
-  AVG(l.rtt_us) AS avg_rtt_us,
-  AVG(l.ipdv_us) AS avg_jitter_us,
-  countIf(l.loss = true) * 100.0 / count(*) AS loss_pct,
-  dl.committed_rtt_ns / 1000 AS committed_rtt_us,
-  dl.committed_jitter_ns / 1000 AS committed_jitter_us
-FROM fact_dz_device_link_latency l
-JOIN dim_dz_links_current dl ON l.link_pk = dl.pk
-WHERE l.event_ts > now() - INTERVAL 5 MINUTE
-GROUP BY l.link_pk, dl.committed_rtt_ns, dl.committed_jitter_ns
-```
+**API:** `GET /api/dz/links-health`
 
 **Implementation:**
-1. API returns per-link health metrics
-2. Graph/Map views apply color based on SLA %
-3. Keyboard shortcut: `h` for health overlay
+- API handler: `GetLinkHealth()` in `api/handlers/links.go`
+- Returns SLA status per link (healthy/warning/critical/unknown)
+- Frontend: `topology-graph.tsx` with `linkHealthOverlayEnabled` toggle
+- Edge coloring by SLA status with tooltips
 
 ---
 
 ### 19. DZ vs Internet Latency Comparison
-**Priority: Medium** | **Complexity: Medium** | **Status: Not Started**
+**Priority: Medium** | **Complexity: Medium** | **Status: Done**
 
 Show how much faster DZ is compared to public internet between metros.
 
@@ -438,47 +424,20 @@ Show how much faster DZ is compared to public internet between metros.
 - `fact_dz_device_link_latency` - DZ link latency
 - `fact_dz_internet_metro_latency` - Public internet baseline
 
-**API:** `GET /api/topology/metro-latency-comparison`
+**APIs:**
+- `GET /api/topology/latency-comparison` - Direct adjacency comparison
+- `GET /api/topology/metro-path-latency` - Path-based latency with optimization modes
 
-**Query Pattern:**
-```sql
--- DZ latency between metros (via device links)
-WITH dz_latency AS (
-  SELECT
-    d1.metro_pk AS from_metro,
-    d2.metro_pk AS to_metro,
-    AVG(l.rtt_us) AS dz_rtt_us
-  FROM fact_dz_device_link_latency l
-  JOIN dim_dz_devices_current d1 ON l.origin_device_pk = d1.pk
-  JOIN dim_dz_devices_current d2 ON l.target_device_pk = d2.pk
-  WHERE l.event_ts > now() - INTERVAL 1 HOUR
-  GROUP BY d1.metro_pk, d2.metro_pk
-),
--- Internet latency between same metros
-internet_latency AS (
-  SELECT
-    origin_metro_pk AS from_metro,
-    target_metro_pk AS to_metro,
-    AVG(rtt_us) AS internet_rtt_us
-  FROM fact_dz_internet_metro_latency
-  WHERE event_ts > now() - INTERVAL 1 HOUR
-  GROUP BY origin_metro_pk, target_metro_pk
-)
-SELECT
-  d.from_metro,
-  d.to_metro,
-  d.dz_rtt_us,
-  i.internet_rtt_us,
-  i.internet_rtt_us / d.dz_rtt_us AS speedup_factor,
-  i.internet_rtt_us - d.dz_rtt_us AS latency_saved_us
-FROM dz_latency d
-LEFT JOIN internet_latency i ON d.from_metro = i.from_metro AND d.to_metro = i.to_metro
-```
+**Implementation:**
+- API handler: `GetLatencyComparison()` in `api/handlers/topology.go`
+- API handler: `GetMetroPathLatency()` in `api/handlers/isis.go`
+- Frontend: Metro matrix page with "DZ vs Internet" tab showing comparison grid
+- Also: "Path Latency" tab with optimization mode selector (hops/latency/bandwidth)
 
 ---
 
 ### 20. Enhanced Path Calculator with Measured Latency
-**Priority: Medium** | **Complexity: Low** | **Status: Not Started**
+**Priority: Medium** | **Complexity: Low** | **Status: Done**
 
 Show actual measured latency on paths, not just ISIS metric.
 
@@ -498,9 +457,15 @@ Show actual measured latency on paths, not just ISIS metric.
 - Capacity planning: identify consistently slow links
 
 **Implementation:**
-1. Extend existing path API to include measured latency
-2. Join path links with `fact_dz_device_link_latency`
-3. Display side-by-side in path calculator UI
+- API: `GET /api/topology/paths` now includes `measuredLatencyMs`, `totalSamples` per path
+- API: Each hop includes `edgeMeasuredMs`, `edgeJitterMs`, `edgeLossPct`, `edgeSampleCount`
+- Data source: Joins with `fact_dz_device_link_latency` via device pair matching
+- UI: Path calculator shows both ISIS metric and measured latency
+- UI: Per-hop display shows measured latency, highlights packet loss
+
+**Also implemented for metro-level:**
+- `GET /api/topology/metro-path-latency` - path latency between metros
+- `GET /api/topology/metro-path-detail` - hop-by-hop breakdown
 
 ---
 
@@ -529,7 +494,7 @@ Add latency health issues to the redundancy report.
 ---
 
 ### 22. Metro Connectivity with Bandwidth
-**Priority: High** | **Complexity: Medium** | **Status: Not Started**
+**Priority: High** | **Complexity: Medium** | **Status: Done**
 
 Enhance metro connectivity matrix with bandwidth metrics.
 
@@ -547,18 +512,17 @@ Enhance metro connectivity matrix with bandwidth metrics.
 
 **Data Source:** `dim_dz_links_current.bandwidth_bps` joined with path topology
 
-**API Enhancement:** Extend `GET /api/topology/metro-connectivity` response
+**Implementation:**
+- API: `GET /api/topology/metro-connectivity` now includes `bottleneckBwGbps` per metro pair
+- Cypher query calculates min bandwidth across shortestPath using `reduce`
+- UI: Matrix cell shows bandwidth alongside hop count
+- UI: Detail panel has 4-column layout with Bottleneck BW metric
+- CSV export includes bandwidth column
+- Also available in path latency view via `metro-path-latency` API
 
-**Query Pattern:**
-```sql
--- Get bandwidth for links in a path
-SELECT
-  l.pk as link_pk,
-  l.bandwidth_bps
-FROM dim_dz_links_current l
-WHERE l.pk IN (... path link pks ...)
--- Min of these = bottleneck bandwidth
-```
+**Future enhancements:**
+- Color-coding by bandwidth adequacy
+- Max bandwidth and aggregate bandwidth calculations
 
 ---
 
@@ -624,7 +588,7 @@ Identify where network latency could be improved.
 ---
 
 ### 25. Stake Overlay on Topology
-**Priority: High** | **Complexity: Medium** | **Status: Not Started**
+**Priority: High** | **Complexity: Medium** | **Status: Done**
 
 Visualize Solana validator stake distribution on topology views.
 
@@ -640,33 +604,15 @@ Visualize Solana validator stake distribution on topology views.
 - Capacity planning: ensure high-stake locations have redundancy
 - Sales: show stake distribution to potential contributors
 
-**Data Source:** Join chain already exists:
-```sql
-SELECT
-  d.pk as device_pk,
-  d.code as device_code,
-  m.pk as metro_pk,
-  m.code as metro_code,
-  SUM(v.activated_stake_lamports) / 1e9 as total_stake_sol,
-  COUNT(DISTINCT v.vote_pubkey) as validator_count
-FROM solana_vote_accounts_current v
-JOIN solana_gossip_nodes_current g ON v.node_pubkey = g.pubkey
-JOIN dz_users_current u ON g.gossip_ip = u.dz_ip
-JOIN dz_devices_current d ON u.device_pk = d.pk
-LEFT JOIN dz_metros_current m ON d.metro_pk = m.pk
-WHERE v.epoch_vote_account = 'true'
-  AND u.status = 'activated'
-GROUP BY d.pk, d.code, m.pk, m.code
-```
-
-**API:** `GET /api/topology/stake-distribution`
-
 **Implementation:**
-1. API returns stake per device and per metro
-2. Graph/Map views merge stake data with topology
-3. Visual encoding: node size or color gradient
-4. Maintenance planner shows stake impact
-5. Path calculator shows stake served by path
+- Data included in `GET /api/topology` response (devices include `stake_sol`, `stake_share`)
+- Frontend: `topology-graph.tsx` with `stakeOverlayEnabled` toggle
+- Visual encoding: node size and color gradient based on stake distribution
+- Tooltips show stake info per device
+
+**Future Enhancements (see #26):**
+- Maintenance planner stake impact
+- Path calculator stake served by path
 
 ---
 
@@ -718,19 +664,19 @@ Enhance maintenance planner and failure analysis with stake impact.
 - [ ] Traffic Flow Visualization (#12) - edge thickness by utilization
 - [ ] Metro Clustering View (#11) - collapse metros in graph view
 
-### Phase 12: Latency Intelligence
-- [ ] Link Health Overlay (#18) - color by SLA compliance
-- [ ] DZ vs Internet Comparison (#19) - metro matrix enhancement
-- [ ] Path Calculator Measured Latency (#20)
+### Phase 12: Latency Intelligence (Mostly Done)
+- [x] Link Health Overlay (#18) - color by SLA compliance
+- [x] DZ vs Internet Comparison (#19) - metro matrix enhancement
+- [x] Path Calculator Measured Latency (#20) - both metro and device-level
 - [ ] Degraded Links in Redundancy Report (#21)
 - [ ] Path Finding by Measured Latency (#23) - Dijkstra on actual RTT
 
-### Phase 13: Capacity & Bandwidth
-- [ ] Metro Connectivity with Bandwidth (#22) - bottleneck bandwidth per metro pair
+### Phase 13: Capacity & Bandwidth (Mostly Done)
+- [x] Metro Connectivity with Bandwidth (#22) - bottleneck bandwidth in main grid + detail panel
 - [ ] Latency Optimization Opportunities (#24) - identify improvement areas
 
-### Phase 14: Stake Integration
-- [ ] Stake Overlay on Topology (#25) - visualize validator stake distribution
+### Phase 14: Stake Integration (Partial)
+- [x] Stake Overlay on Topology (#25) - visualize validator stake distribution
 - [ ] Stake-Weighted Impact Analysis (#26) - maintenance planner enhancement
 
 ### Phase 15: Historical Analysis
@@ -820,21 +766,25 @@ POST /api/topology/maintenance-impact     # Maintenance impact analysis
 GET /api/topology/redundancy-report       # Redundancy analysis
 
 # ClickHouse Topology (implemented)
-GET /api/topology                         # Metros, devices, links
+GET /api/topology                         # Metros, devices, links (includes stake data)
 GET /api/topology/traffic                 # Traffic stats
 
-# Planned Endpoints - Latency & Traffic
+# Latency Intelligence (implemented)
+GET /api/dz/links-health                  # Link health vs SLA (healthy/warning/critical)
+GET /api/topology/latency-comparison      # DZ vs Internet latency (direct adjacencies)
+GET /api/topology/metro-path-latency      # Path-based latency with optimization modes
+GET /api/topology/metro-path-detail       # Hop-by-hop breakdown with measured latency
+
+# Planned Endpoints - Traffic
 GET /api/topology/traffic-overlay         # Per-link traffic for visualization
-GET /api/topology/link-health             # Latency vs SLA per link
-GET /api/topology/metro-latency-comparison # DZ vs Internet latency
+
+# Planned Endpoints - Latency (partial work remaining)
 GET /api/topology/path?metric=measured    # Path by measured latency (Dijkstra)
 
 # Planned Endpoints - Capacity
-GET /api/topology/metro-connectivity      # (enhance with bandwidth)
 GET /api/topology/optimization            # Latency optimization opportunities
 
 # Planned Endpoints - Stake
-GET /api/topology/stake-distribution      # Stake per device/metro
 POST /api/topology/maintenance-impact     # (enhance with stake impact)
 
 # Planned Endpoints - Historical

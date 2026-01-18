@@ -1,13 +1,15 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Table, BarChart3, Loader2, Download, MessageCircle, Sparkles } from 'lucide-react'
+import { Table, BarChart3, Loader2, Download, MessageCircle, Sparkles, Share2 } from 'lucide-react'
 import type { QueryResponse } from '@/lib/api'
 import type { VisualizationConfig, ColumnAnalysis } from '@/lib/visualization'
 import { analyzeColumns, getDefaultConfig, getCompatibleChartTypes } from '@/lib/visualization'
+import { containsGraphData, extractGraphData } from '@/lib/neo4j-utils'
 import { ResultsTable } from './results-table'
 import { ResultsChart } from './results-chart'
 import { ChartConfigPanel } from './chart-config-panel'
+import { CypherGraph } from './cypher-graph'
 
-type ViewMode = 'table' | 'chart'
+type ViewMode = 'table' | 'chart' | 'graph'
 
 interface ResultsViewProps {
   results: QueryResponse | null
@@ -40,6 +42,18 @@ export function ResultsView({
     if (columnAnalysis.length === 0) return false
     return getCompatibleChartTypes(columnAnalysis).length > 0
   }, [columnAnalysis])
+
+  // Check if results contain graph data (Neo4j nodes/relationships/paths)
+  const hasGraphData = useMemo(() => {
+    if (!results || !results.rows.length) return false
+    return containsGraphData(results.rows)
+  }, [results])
+
+  // Extract graph data for visualization (only compute if hasGraphData)
+  const graphData = useMemo(() => {
+    if (!hasGraphData || !results) return null
+    return extractGraphData(results.rows)
+  }, [hasGraphData, results])
 
   // Initialize config when results change or recommendation arrives
   useEffect(() => {
@@ -133,6 +147,20 @@ export function ResultsView({
               <BarChart3 className="w-4 h-4" />
               <span>Chart</span>
             </button>
+            <button
+              onClick={() => setViewMode('graph')}
+              disabled={!hasGraphData}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                viewMode === 'graph'
+                  ? 'bg-foreground text-background'
+                  : hasGraphData
+                  ? 'bg-card hover:bg-muted text-foreground'
+                  : 'bg-muted text-muted-foreground cursor-not-allowed'
+              }`}
+            >
+              <Share2 className="w-4 h-4" />
+              <span>Graph</span>
+            </button>
           </div>
 
           {/* Loading indicator for LLM recommendation */}
@@ -190,10 +218,12 @@ export function ResultsView({
       )}
 
       {/* Content area */}
-      <div className={viewMode === 'chart' ? 'p-4' : ''}>
+      <div className={viewMode === 'chart' || viewMode === 'graph' ? 'p-4' : ''}>
         {viewMode === 'table' ? (
           <ResultsTable results={results} embedded />
-        ) : config ? (
+        ) : viewMode === 'graph' && graphData ? (
+          <CypherGraph data={graphData} />
+        ) : viewMode === 'chart' && config ? (
           <ResultsChart results={results} config={config} />
         ) : (
           <div className="flex items-center justify-center h-[400px] text-muted-foreground">

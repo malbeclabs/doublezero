@@ -6,6 +6,7 @@ import { format as formatSQL } from 'sql-formatter'
 import type { ChatMessage, ProcessingStep } from '@/lib/api'
 import { ArrowUp, Square, Loader2, Copy, Check, ChevronDown, ChevronRight, ExternalLink, MessageCircle, CheckCircle2, XCircle, Brain, RotateCcw } from 'lucide-react'
 import { useTheme } from '@/hooks/use-theme'
+import { formatNeo4jValue, isNeo4jValue } from '@/lib/neo4j-utils'
 
 // Format SQL for display
 function formatSQLForDisplay(sql: string): string {
@@ -413,7 +414,11 @@ function ProcessingTimeline({
                               <tr key={ri} className="border-b border-border/50">
                                 {(row as unknown[]).map((cell, ci) => (
                                   <td key={ci} className="px-2 py-1 text-foreground">
-                                    {String(cell ?? '')}
+                                    {isNeo4jValue(cell) ? (
+                                      <span className="text-primary">{formatNeo4jValue(cell)}</span>
+                                    ) : (
+                                      String(cell ?? '')
+                                    )}
                                   </td>
                                 ))}
                               </tr>

@@ -37,9 +37,9 @@ export interface QueryEditorHandle {
 
 // Convert Cypher response (map rows) to SQL response format (array rows)
 function cypherToQueryResponse(response: CypherQueryResponse): QueryResponse {
-  const rows = response.rows.map(row => response.columns.map(col => row[col]))
+  const rows = (response.rows ?? []).map(row => (response.columns ?? []).map(col => row[col]))
   return {
-    columns: response.columns,
+    columns: response.columns ?? [],
     rows,
     row_count: response.row_count,
     elapsed_ms: response.elapsed_ms,
@@ -66,7 +66,7 @@ export const QueryEditor = forwardRef<QueryEditorHandle, QueryEditorProps>(
     const runQueryRef = useRef<(sql: string, isAutoRun?: boolean) => void>(() => {})
 
     // Internal mode state (used if no external control provided)
-    const [internalMode, setInternalMode] = useState<QueryMode>('sql')
+    const [internalMode, setInternalMode] = useState<QueryMode>('auto')
     const [internalActiveMode, setInternalActiveMode] = useState<'sql' | 'cypher'>('sql')
 
     // Use external mode if provided, otherwise use internal
@@ -229,6 +229,13 @@ export const QueryEditor = forwardRef<QueryEditorHandle, QueryEditorProps>(
           {onModeChange && (
             <div className="ml-auto flex items-center gap-1 bg-muted rounded-md p-0.5">
               <button
+                onClick={() => setMode('auto')}
+                className={`${getModeButtonClass('auto')} flex items-center gap-1`}
+              >
+                Auto
+                <Sparkles className="h-3 w-3" />
+              </button>
+              <button
                 onClick={() => setMode('sql')}
                 className={getModeButtonClass('sql')}
               >
@@ -239,13 +246,6 @@ export const QueryEditor = forwardRef<QueryEditorHandle, QueryEditorProps>(
                 className={getModeButtonClass('cypher')}
               >
                 Cypher
-              </button>
-              <button
-                onClick={() => setMode('auto')}
-                className={`${getModeButtonClass('auto')} flex items-center gap-1`}
-              >
-                Auto
-                <Sparkles className="h-3 w-3" />
               </button>
             </div>
           )}

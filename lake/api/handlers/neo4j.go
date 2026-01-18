@@ -173,7 +173,7 @@ func formatCypherResult(columns []string, rows []map[string]any) string {
 	return sb.String()
 }
 
-// formatNeo4jValue formats a single value for display.
+// formatNeo4jValue formats a single value for display, optimized for agent understanding.
 func formatNeo4jValue(v any) string {
 	if v == nil {
 		return ""
@@ -193,22 +193,134 @@ func formatNeo4jValue(v any) string {
 			parts = append(parts, formatNeo4jValue(item))
 		}
 		result := "[" + strings.Join(parts, ", ") + "]"
-		if len(result) > 50 {
-			return result[:47] + "..."
+		if len(result) > 80 {
+			return result[:77] + "..."
 		}
 		return result
 	case map[string]any:
-		// Check for Neo4j node/relationship representation
+		// Check for Neo4j node representation
 		if labels, ok := val["_labels"]; ok {
-			return fmt.Sprintf("Node%v", labels)
+			return formatNeo4jNode(val, labels)
 		}
+		// Check for Neo4j relationship representation
 		if relType, ok := val["_type"]; ok {
-			return fmt.Sprintf("[:%s]", relType)
+			return formatNeo4jRelationship(val, relType)
+		}
+		// Check for Neo4j path representation
+		if nodes, ok := val["_nodes"]; ok {
+			if rels, ok := val["_relationships"]; ok {
+				return formatNeo4jPath(nodes, rels)
+			}
 		}
 		return fmt.Sprintf("%v", val)
 	default:
 		return fmt.Sprintf("%v", val)
 	}
+}
+
+// formatNeo4jNode formats a Neo4j node for agent-friendly display.
+// Output: "Device(NYC-CORE-01)" or "Metro(NYC)"
+func formatNeo4jNode(val map[string]any, labels any) string {
+	// Get primary label
+	label := "Node"
+	if labelsArr, ok := labels.([]any); ok && len(labelsArr) > 0 {
+		label = fmt.Sprintf("%v", labelsArr[0])
+	}
+
+	// Get identifying property
+	identifier := getNodeIdentifier(val)
+	if identifier != "" {
+		return fmt.Sprintf("%s(%s)", label, identifier)
+	}
+	return fmt.Sprintf("%s(?)", label)
+}
+
+// formatNeo4jRelationship formats a Neo4j relationship for agent-friendly display.
+// Output: "[:ISIS_ADJACENT {metric: 100}]"
+func formatNeo4jRelationship(val map[string]any, relType any) string {
+	typeStr := fmt.Sprintf("%v", relType)
+
+	// Get key properties to show
+	props, _ := val["_properties"].(map[string]any)
+	if len(props) == 0 {
+		return fmt.Sprintf("[:%s]", typeStr)
+	}
+
+	// Show important properties (metric, weight, cost, name)
+	propParts := make([]string, 0, 2)
+	priorityKeys := []string{"metric", "weight", "cost", "name", "type"}
+	for _, key := range priorityKeys {
+		if v, ok := props[key]; ok && len(propParts) < 2 {
+			propParts = append(propParts, fmt.Sprintf("%s: %v", key, v))
+		}
+	}
+
+	if len(propParts) > 0 {
+		return fmt.Sprintf("[:%s {%s}]", typeStr, strings.Join(propParts, ", "))
+	}
+	return fmt.Sprintf("[:%s]", typeStr)
+}
+
+// formatNeo4jPath formats a Neo4j path for agent-friendly display.
+// Output: "[Device(A) -[:HAS_LINK]-> Link(L1) -[:HAS_LINK]-> Device(B)]"
+func formatNeo4jPath(nodes any, rels any) string {
+	nodesArr, ok1 := nodes.([]any)
+	relsArr, ok2 := rels.([]any)
+	if !ok1 || !ok2 || len(nodesArr) == 0 {
+		return "[empty path]"
+	}
+
+	parts := make([]string, 0, len(nodesArr)*2)
+	for i, node := range nodesArr {
+		nodeMap, ok := node.(map[string]any)
+		if ok {
+			labels := nodeMap["_labels"]
+			parts = append(parts, formatNeo4jNode(nodeMap, labels))
+		} else {
+			parts = append(parts, formatNeo4jValue(node))
+		}
+
+		if i < len(relsArr) {
+			relMap, ok := relsArr[i].(map[string]any)
+			if ok {
+				relType := relMap["_type"]
+				parts = append(parts, fmt.Sprintf("-[:%v]->", relType))
+			} else {
+				parts = append(parts, "->")
+			}
+		}
+	}
+
+	return "[" + strings.Join(parts, " ") + "]"
+}
+
+// getNodeIdentifier extracts the identifying property from a node.
+// Checks: code, name, pk, id in priority order.
+func getNodeIdentifier(val map[string]any) string {
+	props, _ := val["_properties"].(map[string]any)
+	if props == nil {
+		return ""
+	}
+
+	// Priority order for identifying properties
+	candidates := []string{"code", "name", "pk", "id"}
+	for _, key := range candidates {
+		if v, ok := props[key]; ok && v != nil {
+			return fmt.Sprintf("%v", v)
+		}
+	}
+
+	// Fallback to first property
+	for _, v := range props {
+		if v != nil {
+			s := fmt.Sprintf("%v", v)
+			if len(s) > 30 {
+				return s[:27] + "..."
+			}
+			return s
+		}
+	}
+	return ""
 }
 
 // Neo4jSchemaFetcher implements workflow.SchemaFetcher for Neo4j.

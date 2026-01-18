@@ -1061,6 +1061,71 @@ export async function fetchTopology(): Promise<TopologyResponse> {
   return res.json()
 }
 
+// ISIS Topology types (graph view)
+export interface ISISNodeData {
+  id: string
+  label: string
+  status: string
+  deviceType: string
+  metroPK?: string
+  systemId?: string
+  routerId?: string
+}
+
+export interface ISISNode {
+  data: ISISNodeData
+}
+
+export interface ISISEdgeData {
+  id: string
+  source: string
+  target: string
+  metric?: number
+  adjSids?: number[]
+  neighborAddr?: string
+}
+
+export interface ISISEdge {
+  data: ISISEdgeData
+}
+
+export interface ISISTopologyResponse {
+  nodes: ISISNode[]
+  edges: ISISEdge[]
+  error?: string
+}
+
+export async function fetchISISTopology(): Promise<ISISTopologyResponse> {
+  const res = await fetchWithRetry('/api/topology/isis')
+  if (!res.ok) {
+    throw new Error('Failed to fetch ISIS topology')
+  }
+  return res.json()
+}
+
+// Path finding types
+export interface PathHop {
+  devicePK: string
+  deviceCode: string
+  status: string
+  deviceType: string
+}
+
+export interface PathResponse {
+  path: PathHop[]
+  totalMetric: number
+  hopCount: number
+  error?: string
+}
+
+export async function fetchISISPath(fromPK: string, toPK: string): Promise<PathResponse> {
+  const res = await fetch(`/api/topology/path?from=${encodeURIComponent(fromPK)}&to=${encodeURIComponent(toPK)}`)
+  if (!res.ok) {
+    throw new Error('Failed to fetch path')
+  }
+  return res.json()
+}
+
 // Version check
 export interface VersionResponse {
   buildTimestamp: string

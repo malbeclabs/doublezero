@@ -86,6 +86,13 @@ func main() {
 	defer config.ClosePostgres()
 	defer config.Close() // Close ClickHouse connection
 
+	// Load Neo4j (optional - log warning if unavailable)
+	if err := config.LoadNeo4j(); err != nil {
+		log.Printf("Warning: Neo4j not available: %v", err)
+	} else {
+		defer config.CloseNeo4j()
+	}
+
 	// Initialize status cache for fast page loads
 	handlers.InitStatusCache()
 	defer handlers.StopStatusCache()
@@ -188,6 +195,8 @@ func main() {
 
 	r.Get("/api/topology", handlers.GetTopology)
 	r.Get("/api/topology/traffic", handlers.GetTopologyTraffic)
+	r.Get("/api/topology/isis", handlers.GetISISTopology)
+	r.Get("/api/topology/path", handlers.GetISISPath)
 	r.Post("/api/query", handlers.ExecuteQuery)
 	r.Post("/api/generate", handlers.GenerateSQL)
 	r.Post("/api/generate/stream", handlers.GenerateSQLStream)

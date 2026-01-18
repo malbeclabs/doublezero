@@ -153,29 +153,37 @@ func GetSimulateLinkRemoval(w http.ResponseWriter, r *http.Request) {
 		MATCH (src:Device {pk: $source_pk}), (tgt:Device {pk: $target_pk})
 		WHERE src.isis_system_id IS NOT NULL AND tgt.isis_system_id IS NOT NULL
 
-		// Get immediate neighbors of source (excluding target)
-		OPTIONAL MATCH (src)-[:ISIS_ADJACENT]-(srcNeighbor:Device)
-		WHERE srcNeighbor.isis_system_id IS NOT NULL AND srcNeighbor.pk <> tgt.pk
-		WITH src, tgt, collect(DISTINCT srcNeighbor) AS srcNeighbors
+		// Get the metric of the link being removed
+		OPTIONAL MATCH (src)-[linkRel:ISIS_ADJACENT]-(tgt)
+		WITH src, tgt, min(linkRel.metric) AS linkMetric
 
-		// Get immediate neighbors of target (excluding source)
-		OPTIONAL MATCH (tgt)-[:ISIS_ADJACENT]-(tgtNeighbor:Device)
+		// Get immediate neighbors of source with their link metrics
+		OPTIONAL MATCH (src)-[srcRel:ISIS_ADJACENT]-(srcNeighbor:Device)
+		WHERE srcNeighbor.isis_system_id IS NOT NULL AND srcNeighbor.pk <> tgt.pk
+		WITH src, tgt, linkMetric, collect(DISTINCT {device: srcNeighbor, metric: srcRel.metric}) AS srcNeighborsData
+
+		// Get immediate neighbors of target with their link metrics
+		OPTIONAL MATCH (tgt)-[tgtRel:ISIS_ADJACENT]-(tgtNeighbor:Device)
 		WHERE tgtNeighbor.isis_system_id IS NOT NULL AND tgtNeighbor.pk <> src.pk
-		WITH src, tgt, srcNeighbors, collect(DISTINCT tgtNeighbor) AS tgtNeighbors
+		WITH src, tgt, linkMetric, srcNeighborsData, collect(DISTINCT {device: tgtNeighbor, metric: tgtRel.metric}) AS tgtNeighborsData
 
 		// For each source neighbor, check path to target neighbors via this link
-		UNWIND CASE WHEN size(srcNeighbors) > 0 THEN srcNeighbors ELSE [null] END AS fromDevice
-		UNWIND CASE WHEN size(tgtNeighbors) > 0 THEN tgtNeighbors ELSE [null] END AS toDevice
-		WITH src, tgt, fromDevice, toDevice
-		WHERE fromDevice IS NOT NULL AND toDevice IS NOT NULL
+		UNWIND CASE WHEN size(srcNeighborsData) > 0 THEN srcNeighborsData ELSE [null] END AS srcData
+		UNWIND CASE WHEN size(tgtNeighborsData) > 0 THEN tgtNeighborsData ELSE [null] END AS tgtData
+		WITH src, tgt, linkMetric, srcData, tgtData
+		WHERE srcData IS NOT NULL AND tgtData IS NOT NULL
 
-		// Current path: fromDevice -> src -> tgt -> toDevice (uses the link)
-		WITH fromDevice, toDevice, 3 AS beforeHops
+		WITH srcData.device AS fromDevice, tgtData.device AS toDevice,
+		     3 AS beforeHops,
+		     coalesce(srcData.metric, 0) + coalesce(linkMetric, 0) + coalesce(tgtData.metric, 0) AS beforeMetric
 
 		// Check if there's an alternate path not using this link
 		OPTIONAL MATCH altPath = shortestPath((fromDevice)-[:ISIS_ADJACENT*]-(toDevice))
-		WITH fromDevice, toDevice, beforeHops,
-		     CASE WHEN altPath IS NOT NULL THEN length(altPath) ELSE 0 END AS afterHops
+		WITH fromDevice, toDevice, beforeHops, beforeMetric, altPath,
+		     CASE WHEN altPath IS NOT NULL THEN length(altPath) ELSE 0 END AS afterHops,
+		     CASE WHEN altPath IS NOT NULL
+		          THEN reduce(total = 0, r IN relationships(altPath) | total + coalesce(r.metric, 0))
+		          ELSE 0 END AS afterMetric
 		WHERE afterHops > 0
 
 		RETURN fromDevice.pk AS from_pk,
@@ -183,9 +191,9 @@ func GetSimulateLinkRemoval(w http.ResponseWriter, r *http.Request) {
 		       toDevice.pk AS to_pk,
 		       toDevice.code AS to_code,
 		       beforeHops,
-		       0 AS beforeMetric,
+		       beforeMetric,
 		       afterHops,
-		       0 AS afterMetric
+		       afterMetric
 		LIMIT 5
 	`
 

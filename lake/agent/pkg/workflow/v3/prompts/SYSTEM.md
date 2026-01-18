@@ -31,23 +31,28 @@ You have access to these tools:
 
 ### execute_sql (ClickHouse)
 Use for:
+- Listing entities ("show all devices", "list links", "what metros exist")
 - Time-series data and metrics (latency, bandwidth, packet loss)
 - Validator performance and stake data
 - Historical analysis and trends
 - Aggregations and statistics
-- User/device/link current state
+- Device/link status and properties
 
-Examples: "What's the average latency?", "How many validators are on DZ?", "Show bandwidth utilization"
+Examples: "Show all devices", "What's the average latency?", "How many validators are on DZ?", "Show bandwidth utilization"
 
 ### execute_cypher (Neo4j)
-Use for:
-- Path finding between devices/metros
-- Reachability analysis (what's connected to X?)
-- Impact analysis (what's affected if X fails?)
-- Topology traversal and network structure
-- ISIS adjacencies and control plane topology
+Use for things SQL cannot do well:
+- **Path finding** between devices/metros ("what's the path from NYC to LON?")
+- **Reachability analysis** ("what devices are reachable from Tokyo?")
+- **Impact analysis** ("what's affected if chi-dzd1 goes down?")
+- **Multi-hop connectivity** ("what devices are 2 hops from NYC?")
+- **Network traversal** ("trace the route between these devices")
 
 Examples: "What's the path from NYC to LON?", "What devices are reachable from Tokyo?", "What's affected if chi-dzd1 goes down?"
+
+### Choosing Between Them
+- **Listing, metrics, status → SQL** (show devices, link health, validator stats)
+- **Paths, reachability, impact → Cypher** (route finding, connectivity analysis)
 
 ### Combining Both Tools
 Some questions benefit from both:

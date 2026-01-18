@@ -4,12 +4,12 @@ import MapGL, { Source, Layer, Marker } from 'react-map-gl/maplibre'
 import type { MapRef, MapLayerMouseEvent, LngLatBoundsLike } from 'react-map-gl/maplibre'
 import type { StyleSpecification } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { ZoomIn, ZoomOut, Maximize, Users, X, Search, Route, Shield, MinusCircle, PlusCircle, AlertTriangle } from 'lucide-react'
+import { ZoomIn, ZoomOut, Maximize, Users, X, Search, Route, Shield, MinusCircle, PlusCircle, AlertTriangle, Zap } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip as RechartsTooltip, CartesianGrid } from 'recharts'
 import { useQuery } from '@tanstack/react-query'
 import { useTheme } from '@/hooks/use-theme'
-import type { TopologyMetro, TopologyDevice, TopologyLink, TopologyValidator, MultiPathResponse, SimulateLinkRemovalResponse, SimulateLinkAdditionResponse } from '@/lib/api'
-import { fetchISISPaths, fetchISISTopology, fetchCriticalLinks, fetchSimulateLinkRemoval, fetchSimulateLinkAddition } from '@/lib/api'
+import type { TopologyMetro, TopologyDevice, TopologyLink, TopologyValidator, MultiPathResponse, SimulateLinkRemovalResponse, SimulateLinkAdditionResponse, FailureImpactResponse } from '@/lib/api'
+import { fetchISISPaths, fetchISISTopology, fetchCriticalLinks, fetchSimulateLinkRemoval, fetchSimulateLinkAddition, fetchFailureImpact } from '@/lib/api'
 
 // Path colors for multi-path visualization
 const PATH_COLORS = [
@@ -182,14 +182,18 @@ interface MapControlsProps {
   onToggleWhatifRemovalMode: () => void
   whatifAdditionMode: boolean
   onToggleWhatifAdditionMode: () => void
+  impactMode: boolean
+  onToggleImpactMode: () => void
+  selectedDevicePK: string | null
 }
 
 function MapControls({
   onZoomIn, onZoomOut, onReset, showValidators, onToggleValidators, validatorCount,
   pathMode, onTogglePathMode, criticalityMode, onToggleCriticalityMode,
-  whatifRemovalMode, onToggleWhatifRemovalMode, whatifAdditionMode, onToggleWhatifAdditionMode
+  whatifRemovalMode, onToggleWhatifRemovalMode, whatifAdditionMode, onToggleWhatifAdditionMode,
+  impactMode, onToggleImpactMode, selectedDevicePK
 }: MapControlsProps) {
-  const anyModeActive = pathMode || criticalityMode || whatifRemovalMode || whatifAdditionMode
+  const anyModeActive = pathMode || criticalityMode || whatifRemovalMode || whatifAdditionMode || impactMode
   return (
     <div className="absolute top-4 right-4 z-[1000] flex flex-col gap-1">
       <button
@@ -273,15 +277,27 @@ function MapControls({
       </button>
       <button
         onClick={onToggleWhatifAdditionMode}
-        disabled={pathMode || criticalityMode || whatifRemovalMode}
+        disabled={pathMode || criticalityMode || whatifRemovalMode || impactMode}
         className={`p-2 border rounded shadow-sm transition-colors ${
           whatifAdditionMode
             ? 'bg-green-500/20 border-green-500/50 text-green-500'
             : 'bg-[var(--card)] border-[var(--border)] hover:bg-[var(--muted)]'
-        } ${pathMode || criticalityMode || whatifRemovalMode ? 'opacity-40 cursor-not-allowed' : ''}`}
-        title={pathMode || criticalityMode || whatifRemovalMode ? 'Disabled in current mode' : (whatifAdditionMode ? 'Exit link addition simulation' : 'Simulate adding a new link (a)')}
+        } ${pathMode || criticalityMode || whatifRemovalMode || impactMode ? 'opacity-40 cursor-not-allowed' : ''}`}
+        title={pathMode || criticalityMode || whatifRemovalMode || impactMode ? 'Disabled in current mode' : (whatifAdditionMode ? 'Exit link addition simulation' : 'Simulate adding a new link (a)')}
       >
         <PlusCircle className="h-4 w-4" />
+      </button>
+      <button
+        onClick={onToggleImpactMode}
+        disabled={pathMode || criticalityMode || whatifRemovalMode || whatifAdditionMode || (!selectedDevicePK && !impactMode)}
+        className={`p-2 border rounded shadow-sm transition-colors ${
+          impactMode
+            ? 'bg-purple-500/20 border-purple-500/50 text-purple-500'
+            : 'bg-[var(--card)] border-[var(--border)] hover:bg-[var(--muted)]'
+        } ${pathMode || criticalityMode || whatifRemovalMode || whatifAdditionMode ? 'opacity-40 cursor-not-allowed' : ''} ${!selectedDevicePK && !impactMode ? 'opacity-50 cursor-not-allowed' : ''}`}
+        title={impactMode ? 'Close impact analysis' : selectedDevicePK ? 'Analyze failure impact of selected device' : 'Select a device first'}
+      >
+        <Zap className="h-4 w-4" />
       </button>
     </div>
   )
@@ -404,6 +420,11 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
   const [additionMetric, setAdditionMetric] = useState<number>(1000)
   const [additionResult, setAdditionResult] = useState<SimulateLinkAdditionResponse | null>(null)
   const [additionLoading, setAdditionLoading] = useState(false)
+
+  // Failure Impact state
+  const [impactDevice, setImpactDevice] = useState<string | null>(null)
+  const [impactResult, setImpactResult] = useState<FailureImpactResponse | null>(null)
+  const [impactLoading, setImpactLoading] = useState(false)
 
   // Fetch ISIS topology to determine which devices have ISIS data
   const { data: isisTopology } = useQuery({
@@ -689,6 +710,32 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
         setAdditionLoading(false)
       })
   }, [additionSource, additionTarget, additionMetric])
+
+  // Analyze failure impact when impactDevice changes
+  useEffect(() => {
+    if (!impactDevice) {
+      setImpactResult(null)
+      return
+    }
+
+    setImpactLoading(true)
+    fetchFailureImpact(impactDevice)
+      .then(result => {
+        setImpactResult(result)
+      })
+      .catch(err => {
+        setImpactResult({
+          devicePK: impactDevice,
+          deviceCode: '',
+          unreachableDevices: [],
+          unreachableCount: 0,
+          error: err.message,
+        })
+      })
+      .finally(() => {
+        setImpactLoading(false)
+      })
+  }, [impactDevice])
 
   // Build map of device PKs to path indices for all paths
   const devicePathMap = useMemo(() => {
@@ -1115,6 +1162,15 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           onToggleWhatifRemovalMode={() => setWhatifRemovalMode(!whatifRemovalMode)}
           whatifAdditionMode={whatifAdditionMode}
           onToggleWhatifAdditionMode={() => setWhatifAdditionMode(!whatifAdditionMode)}
+          impactMode={!!impactDevice}
+          onToggleImpactMode={() => {
+            if (impactDevice) {
+              setImpactDevice(null)
+            } else if (selectedItem?.type === 'device') {
+              setImpactDevice(selectedItem.data.pk)
+            }
+          }}
+          selectedDevicePK={selectedItem?.type === 'device' ? selectedItem.data.pk : null}
         />
 
         {/* Link lines source and layers */}
@@ -1819,6 +1875,65 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
 
           {additionResult?.error && (
             <div className="text-destructive">{additionResult.error}</div>
+          )}
+        </div>
+      )}
+
+      {/* Failure Impact panel */}
+      {(impactDevice || impactLoading) && (
+        <div className="absolute top-[320px] right-4 z-[999] bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm p-3 text-xs max-w-52">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-medium flex items-center gap-1.5">
+              <Zap className="h-3.5 w-3.5 text-purple-500" />
+              Failure Impact
+            </span>
+            <button
+              onClick={() => {
+                setImpactDevice(null)
+                setImpactResult(null)
+              }}
+              className="p-1 hover:bg-[var(--muted)] rounded"
+              title="Close"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+
+          {impactLoading && (
+            <div className="text-muted-foreground">Analyzing impact...</div>
+          )}
+
+          {impactResult && !impactResult.error && (
+            <div className="space-y-2">
+              <div className="text-muted-foreground">
+                If <span className="font-medium text-foreground">{impactResult.deviceCode}</span> goes down:
+              </div>
+
+              {impactResult.unreachableCount === 0 ? (
+                <div className="text-green-500 flex items-center gap-1.5">
+                  <div className="w-2 h-2 rounded-full bg-green-500" />
+                  No devices would become unreachable
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="text-red-500 font-medium">
+                    {impactResult.unreachableCount} device{impactResult.unreachableCount !== 1 ? 's' : ''} would become unreachable
+                  </div>
+                  <div className="space-y-0.5 max-h-32 overflow-y-auto">
+                    {impactResult.unreachableDevices.map(device => (
+                      <div key={device.pk} className="flex items-center gap-1.5">
+                        <div className={`w-2 h-2 rounded-full ${device.status === 'active' ? 'bg-green-500' : 'bg-red-500'}`} />
+                        <span>{device.code}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {impactResult?.error && (
+            <div className="text-destructive">{impactResult.error}</div>
           )}
         </div>
       )}

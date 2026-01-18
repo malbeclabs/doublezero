@@ -211,6 +211,8 @@ func (i *Indexer) Start(ctx context.Context) {
 
 // startGraphSync runs the graph sync loop.
 // It waits for the serviceability view to be ready, then syncs the graph periodically.
+// When ISIS is enabled, it fetches ISIS data first and syncs everything atomically
+// to ensure there is never a moment where the graph has nodes but no ISIS relationships.
 func (i *Indexer) startGraphSync(ctx context.Context) {
 	i.log.Info("graph_sync: waiting for serviceability view to be ready")
 
@@ -222,7 +224,7 @@ func (i *Indexer) startGraphSync(ctx context.Context) {
 
 	// Initial sync
 	i.log.Info("graph_sync: starting initial sync")
-	if err := i.graphStore.Sync(ctx); err != nil {
+	if err := i.doGraphSync(ctx); err != nil {
 		i.log.Error("graph_sync: initial sync failed", "error", err)
 	} else {
 		i.log.Info("graph_sync: initial sync completed")
@@ -236,11 +238,44 @@ func (i *Indexer) startGraphSync(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.Chan():
-			if err := i.graphStore.Sync(ctx); err != nil {
+			if err := i.doGraphSync(ctx); err != nil {
 				i.log.Error("graph_sync: sync failed", "error", err)
 			}
 		}
 	}
+}
+
+// doGraphSync performs a single graph sync operation.
+// If ISIS is enabled, it fetches ISIS data and syncs atomically with the graph.
+// Otherwise, it syncs just the base graph.
+func (i *Indexer) doGraphSync(ctx context.Context) error {
+	if i.isisSource != nil {
+		// Fetch ISIS data first, then sync everything atomically
+		lsps, err := i.fetchISISData(ctx)
+		if err != nil {
+			i.log.Warn("graph_sync: failed to fetch ISIS data, syncing without ISIS", "error", err)
+			// Fall back to sync without ISIS data
+			return i.graphStore.Sync(ctx)
+		}
+		return i.graphStore.SyncWithISIS(ctx, lsps)
+	}
+	// No ISIS source configured, just sync the base graph
+	return i.graphStore.Sync(ctx)
+}
+
+// fetchISISData fetches and parses ISIS data from the source.
+func (i *Indexer) fetchISISData(ctx context.Context) ([]isis.LSP, error) {
+	dump, err := i.isisSource.FetchLatest(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch ISIS dump: %w", err)
+	}
+
+	lsps, err := isis.Parse(dump.RawJSON)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse ISIS dump: %w", err)
+	}
+
+	return lsps, nil
 }
 
 func (i *Indexer) Close() error {
@@ -252,22 +287,16 @@ func (i *Indexer) Close() error {
 	return nil
 }
 
-// startISISSync runs the ISIS sync loop.
-// It waits for the graph sync to complete its initial sync, then syncs IS-IS data periodically.
+// startISISSync runs the ISIS sync loop for picking up topology changes between graph syncs.
+// The initial ISIS sync is handled atomically by startGraphSync, so this loop only handles
+// periodic updates to catch IS-IS topology changes that occur between full graph syncs.
 func (i *Indexer) startISISSync(ctx context.Context) {
 	i.log.Info("isis_sync: waiting for serviceability view to be ready")
 
-	// Wait for serviceability to be ready (graph sync will also be waiting)
+	// Wait for serviceability to be ready
 	if err := i.svc.WaitReady(ctx); err != nil {
 		i.log.Error("isis_sync: failed to wait for serviceability view", "error", err)
 		return
-	}
-
-	// Add a small delay to let graph sync complete its initial sync
-	select {
-	case <-ctx.Done():
-		return
-	case <-i.cfg.Clock.After(5 * time.Second):
 	}
 
 	// Determine refresh interval
@@ -276,15 +305,7 @@ func (i *Indexer) startISISSync(ctx context.Context) {
 		refreshInterval = 30 * time.Second
 	}
 
-	// Initial sync
-	i.log.Info("isis_sync: starting initial sync")
-	if err := i.doISISSync(ctx); err != nil {
-		i.log.Error("isis_sync: initial sync failed", "error", err)
-	} else {
-		i.log.Info("isis_sync: initial sync completed")
-	}
-
-	// Periodic sync
+	// Periodic sync only - initial sync is handled atomically by graph sync
 	ticker := i.cfg.Clock.NewTicker(refreshInterval)
 	defer ticker.Stop()
 	for {

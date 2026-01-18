@@ -144,6 +144,298 @@ func (s *Store) Sync(ctx context.Context) error {
 	return nil
 }
 
+// SyncWithISIS reads current state from ClickHouse and IS-IS data, then replaces the Neo4j graph
+// atomically within a single transaction. This ensures there is never a moment where the graph
+// has base nodes but no ISIS relationships.
+func (s *Store) SyncWithISIS(ctx context.Context, lsps []isis.LSP) error {
+	s.log.Debug("graph: starting sync with ISIS", "lsps", len(lsps))
+
+	// Read current data from ClickHouse
+	devices, err := dzsvc.QueryCurrentDevices(ctx, s.log, s.cfg.ClickHouse)
+	if err != nil {
+		return fmt.Errorf("failed to query devices: %w", err)
+	}
+
+	links, err := dzsvc.QueryCurrentLinks(ctx, s.log, s.cfg.ClickHouse)
+	if err != nil {
+		return fmt.Errorf("failed to query links: %w", err)
+	}
+
+	metros, err := dzsvc.QueryCurrentMetros(ctx, s.log, s.cfg.ClickHouse)
+	if err != nil {
+		return fmt.Errorf("failed to query metros: %w", err)
+	}
+
+	users, err := dzsvc.QueryCurrentUsers(ctx, s.log, s.cfg.ClickHouse)
+	if err != nil {
+		return fmt.Errorf("failed to query users: %w", err)
+	}
+
+	contributors, err := dzsvc.QueryCurrentContributors(ctx, s.log, s.cfg.ClickHouse)
+	if err != nil {
+		return fmt.Errorf("failed to query contributors: %w", err)
+	}
+
+	s.log.Debug("graph: fetched data from ClickHouse",
+		"devices", len(devices),
+		"links", len(links),
+		"metros", len(metros),
+		"users", len(users),
+		"contributors", len(contributors))
+
+	session, err := s.cfg.Neo4j.Session(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create Neo4j session: %w", err)
+	}
+	defer session.Close(ctx)
+
+	// Perform atomic sync within a single write transaction
+	_, err = session.ExecuteWrite(ctx, func(tx neo4j.Transaction) (any, error) {
+		// Delete all existing nodes and relationships
+		res, err := tx.Run(ctx, "MATCH (n) DETACH DELETE n", nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to clear graph: %w", err)
+		}
+		if _, err := res.Consume(ctx); err != nil {
+			return nil, fmt.Errorf("failed to consume clear result: %w", err)
+		}
+
+		// Create all nodes and relationships using batched UNWIND queries
+		if err := batchCreateContributors(ctx, tx, contributors); err != nil {
+			return nil, fmt.Errorf("failed to create contributors: %w", err)
+		}
+
+		if err := batchCreateMetros(ctx, tx, metros); err != nil {
+			return nil, fmt.Errorf("failed to create metros: %w", err)
+		}
+
+		if err := batchCreateDevices(ctx, tx, devices); err != nil {
+			return nil, fmt.Errorf("failed to create devices: %w", err)
+		}
+
+		if err := batchCreateLinks(ctx, tx, links); err != nil {
+			return nil, fmt.Errorf("failed to create links: %w", err)
+		}
+
+		if err := batchCreateUsers(ctx, tx, users); err != nil {
+			return nil, fmt.Errorf("failed to create users: %w", err)
+		}
+
+		// Now create ISIS relationships within the same transaction
+		if len(lsps) > 0 {
+			if err := s.syncISISInTx(ctx, tx, lsps); err != nil {
+				return nil, fmt.Errorf("failed to sync ISIS data: %w", err)
+			}
+		}
+
+		return nil, nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed to sync graph with ISIS: %w", err)
+	}
+
+	s.log.Info("graph: sync with ISIS completed",
+		"devices", len(devices),
+		"links", len(links),
+		"metros", len(metros),
+		"users", len(users),
+		"lsps", len(lsps))
+
+	return nil
+}
+
+// syncISISInTx creates ISIS relationships within an existing transaction.
+func (s *Store) syncISISInTx(ctx context.Context, tx neo4j.Transaction, lsps []isis.LSP) error {
+	// Build tunnel map from the newly created links
+	tunnelMap, err := s.buildTunnelMapInTx(ctx, tx)
+	if err != nil {
+		return fmt.Errorf("failed to build tunnel map: %w", err)
+	}
+	s.log.Debug("graph: built tunnel map", "mappings", len(tunnelMap))
+
+	now := time.Now()
+	var adjacenciesCreated, linksUpdated, devicesUpdated, unmatchedNeighbors int
+
+	for _, lsp := range lsps {
+		for _, neighbor := range lsp.Neighbors {
+			mapping, found := tunnelMap[neighbor.NeighborAddr]
+			if !found {
+				unmatchedNeighbors++
+				continue
+			}
+
+			// Update Link with IS-IS metric
+			if err := updateLinkISISInTx(ctx, tx, mapping.linkPK, neighbor, now); err != nil {
+				s.log.Warn("graph: failed to update link ISIS data",
+					"link_pk", mapping.linkPK,
+					"error", err)
+				continue
+			}
+			linksUpdated++
+
+			// Update Device with IS-IS properties
+			if err := updateDeviceISISInTx(ctx, tx, mapping.localPK, lsp, now); err != nil {
+				s.log.Warn("graph: failed to update device ISIS data",
+					"device_pk", mapping.localPK,
+					"error", err)
+			} else {
+				devicesUpdated++
+			}
+
+			// Create ISIS_ADJACENT relationship
+			if err := createISISAdjacentInTx(ctx, tx, mapping.localPK, mapping.neighborPK, neighbor, mapping.bandwidth, now); err != nil {
+				s.log.Warn("graph: failed to create ISIS_ADJACENT",
+					"from", mapping.localPK,
+					"to", mapping.neighborPK,
+					"error", err)
+				continue
+			}
+			adjacenciesCreated++
+		}
+	}
+
+	s.log.Debug("graph: ISIS sync in transaction completed",
+		"adjacencies_created", adjacenciesCreated,
+		"links_updated", linksUpdated,
+		"devices_updated", devicesUpdated,
+		"unmatched_neighbors", unmatchedNeighbors)
+
+	return nil
+}
+
+// buildTunnelMapInTx queries Links within a transaction.
+func (s *Store) buildTunnelMapInTx(ctx context.Context, tx neo4j.Transaction) (map[string]tunnelMapping, error) {
+	cypher := `
+		MATCH (link:Link)
+		WHERE link.tunnel_net IS NOT NULL AND link.tunnel_net <> ''
+		MATCH (link)-[:CONNECTS {side: 'A'}]->(devA:Device)
+		MATCH (link)-[:CONNECTS {side: 'Z'}]->(devZ:Device)
+		RETURN link.pk AS pk, link.tunnel_net AS tunnel_net, devA.pk AS side_a_pk, devZ.pk AS side_z_pk,
+		       coalesce(link.bandwidth, 0) AS bandwidth
+	`
+	result, err := tx.Run(ctx, cypher, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query links: %w", err)
+	}
+
+	tunnelMap := make(map[string]tunnelMapping)
+
+	for result.Next(ctx) {
+		record := result.Record()
+		tunnelNet, _ := record.Get("tunnel_net")
+		sideAPK, _ := record.Get("side_a_pk")
+		sideZPK, _ := record.Get("side_z_pk")
+		linkPK, _ := record.Get("pk")
+		bandwidth, _ := record.Get("bandwidth")
+
+		tunnelNetStr, ok := tunnelNet.(string)
+		if !ok || tunnelNetStr == "" {
+			continue
+		}
+		sideAPKStr, _ := sideAPK.(string)
+		sideZPKStr, _ := sideZPK.(string)
+		linkPKStr, _ := linkPK.(string)
+		bandwidthInt, _ := bandwidth.(int64)
+
+		ip1, ip2, err := parseTunnelNet31(tunnelNetStr)
+		if err != nil {
+			s.log.Debug("graph: failed to parse tunnel_net",
+				"tunnel_net", tunnelNetStr,
+				"error", err)
+			continue
+		}
+
+		tunnelMap[ip1] = tunnelMapping{
+			linkPK:     linkPKStr,
+			neighborPK: sideAPKStr,
+			localPK:    sideZPKStr,
+			bandwidth:  bandwidthInt,
+		}
+		tunnelMap[ip2] = tunnelMapping{
+			linkPK:     linkPKStr,
+			neighborPK: sideZPKStr,
+			localPK:    sideAPKStr,
+			bandwidth:  bandwidthInt,
+		}
+	}
+
+	if err := result.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating results: %w", err)
+	}
+
+	return tunnelMap, nil
+}
+
+// updateLinkISISInTx updates a Link node with IS-IS metric data within a transaction.
+func updateLinkISISInTx(ctx context.Context, tx neo4j.Transaction, linkPK string, neighbor isis.Neighbor, timestamp time.Time) error {
+	cypher := `
+		MATCH (link:Link {pk: $pk})
+		SET link.isis_metric = $metric,
+		    link.isis_adj_sids = $adj_sids,
+		    link.isis_last_sync = $last_sync
+	`
+	res, err := tx.Run(ctx, cypher, map[string]any{
+		"pk":        linkPK,
+		"metric":    neighbor.Metric,
+		"adj_sids":  neighbor.AdjSIDs,
+		"last_sync": timestamp.Unix(),
+	})
+	if err != nil {
+		return err
+	}
+	_, err = res.Consume(ctx)
+	return err
+}
+
+// updateDeviceISISInTx updates a Device node with IS-IS properties within a transaction.
+func updateDeviceISISInTx(ctx context.Context, tx neo4j.Transaction, devicePK string, lsp isis.LSP, timestamp time.Time) error {
+	cypher := `
+		MATCH (d:Device {pk: $pk})
+		SET d.isis_system_id = $system_id,
+		    d.isis_router_id = $router_id,
+		    d.isis_last_sync = $last_sync
+	`
+	res, err := tx.Run(ctx, cypher, map[string]any{
+		"pk":        devicePK,
+		"system_id": lsp.SystemID,
+		"router_id": lsp.RouterID,
+		"last_sync": timestamp.Unix(),
+	})
+	if err != nil {
+		return err
+	}
+	_, err = res.Consume(ctx)
+	return err
+}
+
+// createISISAdjacentInTx creates or updates an ISIS_ADJACENT relationship within a transaction.
+func createISISAdjacentInTx(ctx context.Context, tx neo4j.Transaction, fromPK, toPK string, neighbor isis.Neighbor, bandwidth int64, timestamp time.Time) error {
+	cypher := `
+		MATCH (d1:Device {pk: $from_pk})
+		MATCH (d2:Device {pk: $to_pk})
+		MERGE (d1)-[r:ISIS_ADJACENT]->(d2)
+		SET r.metric = $metric,
+		    r.neighbor_addr = $neighbor_addr,
+		    r.adj_sids = $adj_sids,
+		    r.last_seen = $last_seen,
+		    r.bandwidth_bps = $bandwidth_bps
+	`
+	res, err := tx.Run(ctx, cypher, map[string]any{
+		"from_pk":       fromPK,
+		"to_pk":         toPK,
+		"metric":        neighbor.Metric,
+		"neighbor_addr": neighbor.NeighborAddr,
+		"adj_sids":      neighbor.AdjSIDs,
+		"last_seen":     timestamp.Unix(),
+		"bandwidth_bps": bandwidth,
+	})
+	if err != nil {
+		return err
+	}
+	_, err = res.Consume(ctx)
+	return err
+}
+
 // batchCreateContributors creates all Contributor nodes in a single batched query.
 func batchCreateContributors(ctx context.Context, tx neo4j.Transaction, contributors []dzsvc.Contributor) error {
 	if len(contributors) == 0 {

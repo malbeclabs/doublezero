@@ -6,7 +6,7 @@ import { fetchLinkHistory } from '@/lib/api'
 import type { LinkHistory } from '@/lib/api'
 import { StatusTimeline } from './status-timeline'
 
-type TimeRange = '1h' | '6h' | '12h' | '24h' | '3d' | '7d'
+type TimeRange = '3h' | '6h' | '12h' | '24h' | '3d' | '7d'
 
 interface LinkStatusTimelinesProps {
   timeRange?: string
@@ -110,13 +110,13 @@ function useBucketCount() {
 export function LinkStatusTimelines({
   timeRange = '24h',
   onTimeRangeChange,
-  issueFilters = ['packet_loss', 'high_latency', 'extended_loss', 'drained', 'no_data'],
+  issueFilters = ['packet_loss', 'high_latency', 'extended_loss', 'drained'],
   healthFilters = ['healthy', 'degraded', 'unhealthy', 'disabled'],
   linksWithIssues,
   linksWithHealth,
 }: LinkStatusTimelinesProps) {
   const timeRangeOptions: { value: TimeRange; label: string }[] = [
-    { value: '1h', label: '1h' },
+    { value: '3h', label: '3h' },
     { value: '6h', label: '6h' },
     { value: '12h', label: '12h' },
     { value: '24h', label: '24h' },
@@ -139,7 +139,9 @@ export function LinkStatusTimelines({
     if (linksWithHealth) {
       const health = linksWithHealth.get(link.code)
       if (health) {
-        return healthFilters.includes(health as any)
+        // Map no_data to unhealthy for filter matching (no_data is a status, not a filter option)
+        const filterHealth = health === 'no_data' ? 'unhealthy' : health
+        return healthFilters.includes(filterHealth as any)
       }
       // Link not in filter data - check if it exists in history
       return false

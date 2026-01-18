@@ -7,8 +7,8 @@ import { fetchStatus, fetchLinkHistory, type StatusResponse, type InterfaceIssue
 import { StatCard } from '@/components/stat-card'
 import { LinkStatusTimelines } from '@/components/link-status-timelines'
 
-type TimeRange = '1h' | '6h' | '12h' | '24h' | '3d' | '7d'
-type FilterTimeRange = '3h' | '6h' | '12h' | '24h'
+type TimeRange = '3h' | '6h' | '12h' | '24h' | '3d' | '7d'
+type FilterTimeRange = '3h' | '6h' | '12h' | '24h' | '3d' | '7d'
 type IssueFilter = 'packet_loss' | 'high_latency' | 'extended_loss' | 'drained' | 'no_data' | 'no_issues'
 type HealthFilter = 'healthy' | 'degraded' | 'unhealthy' | 'disabled'
 
@@ -17,6 +17,8 @@ const filterTimeRangeLabels: Record<FilterTimeRange, string> = {
   '6h': 'Last 6 Hours',
   '12h': 'Last 12 Hours',
   '24h': 'Last 24 Hours',
+  '3d': 'Last 3 Days',
+  '7d': 'Last 7 Days',
 }
 
 function FilterTimeRangeSelector({
@@ -239,13 +241,30 @@ function TabNavigation({ activeTab }: { activeTab: 'links' | 'devices' }) {
   )
 }
 
+interface HealthIssueBreakdown {
+  packet_loss: number
+  high_latency: number
+  extended_loss: number
+  drained: number
+  no_data: number
+}
+
+interface IssueHealthBreakdown {
+  healthy: number
+  degraded: number
+  unhealthy: number
+  disabled: number
+}
+
 function HealthFilterItem({
   color,
   label,
   count,
   description,
   selected,
-  onClick
+  onClick,
+  issueBreakdown,
+  healthBreakdown,
 }: {
   color: string
   label: string
@@ -253,8 +272,28 @@ function HealthFilterItem({
   description: string
   selected: boolean
   onClick: () => void
+  issueBreakdown?: HealthIssueBreakdown
+  healthBreakdown?: IssueHealthBreakdown
 }) {
   const [showTooltip, setShowTooltip] = useState(false)
+
+  const issueLabels: { key: keyof HealthIssueBreakdown; label: string; color: string }[] = [
+    { key: 'packet_loss', label: 'Packet Loss', color: 'bg-purple-500' },
+    { key: 'high_latency', label: 'High Latency', color: 'bg-blue-500' },
+    { key: 'extended_loss', label: 'Extended Loss', color: 'bg-orange-500' },
+    { key: 'drained', label: 'Drained', color: 'bg-slate-500' },
+    { key: 'no_data', label: 'No Data', color: 'bg-pink-500' },
+  ]
+
+  const healthLabels: { key: keyof IssueHealthBreakdown; label: string; color: string }[] = [
+    { key: 'healthy', label: 'Healthy', color: 'bg-green-500' },
+    { key: 'degraded', label: 'Degraded', color: 'bg-amber-500' },
+    { key: 'unhealthy', label: 'Unhealthy', color: 'bg-red-500' },
+    { key: 'disabled', label: 'Disabled', color: 'bg-gray-500' },
+  ]
+
+  const hasIssues = issueBreakdown && Object.values(issueBreakdown).some(v => v > 0)
+  const hasHealth = healthBreakdown && Object.values(healthBreakdown).some(v => v > 0)
 
   return (
     <button
@@ -270,7 +309,41 @@ function HealthFilterItem({
         <span className={`transition-colors ${selected ? 'text-foreground' : 'text-muted-foreground/50'}`}>{label}</span>
         {showTooltip && (
           <div className="absolute left-0 bottom-full mb-1 z-50 bg-popover border border-border rounded-lg shadow-lg p-2 text-xs w-52">
-            {description}
+            <div className="mb-1">{description}</div>
+            {hasIssues && (
+              <div className="mt-2 pt-2 border-t border-border space-y-1">
+                {issueLabels.map(({ key, label, color }) => {
+                  const issueCount = issueBreakdown[key]
+                  if (issueCount === 0) return null
+                  return (
+                    <div key={key} className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <div className={`h-2 w-2 rounded-full ${color}`} />
+                        <span className="text-muted-foreground">{label}</span>
+                      </div>
+                      <span className="font-medium tabular-nums">{issueCount}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+            {hasHealth && (
+              <div className="mt-2 pt-2 border-t border-border space-y-1">
+                {healthLabels.map(({ key, label, color }) => {
+                  const healthCount = healthBreakdown[key]
+                  if (healthCount === 0) return null
+                  return (
+                    <div key={key} className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <div className={`h-2 w-2 rounded-full ${color}`} />
+                        <span className="text-muted-foreground">{label}</span>
+                      </div>
+                      <span className="font-medium tabular-nums">{healthCount}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -279,18 +352,36 @@ function HealthFilterItem({
   )
 }
 
+interface IssuesByHealth {
+  healthy: HealthIssueBreakdown
+  degraded: HealthIssueBreakdown
+  unhealthy: HealthIssueBreakdown
+  disabled: HealthIssueBreakdown
+}
+
+interface HealthByIssue {
+  packet_loss: IssueHealthBreakdown
+  high_latency: IssueHealthBreakdown
+  extended_loss: IssueHealthBreakdown
+  drained: IssueHealthBreakdown
+  no_data: IssueHealthBreakdown
+  no_issues: IssueHealthBreakdown
+}
+
 function LinkHealthFilterCard({
   links,
   selected,
   onChange,
   filterTimeRange,
   onFilterTimeRangeChange,
+  issuesByHealth,
 }: {
   links: { healthy: number; degraded: number; unhealthy: number; disabled: number; total: number }
   selected: HealthFilter[]
   onChange: (filters: HealthFilter[]) => void
   filterTimeRange: FilterTimeRange
   onFilterTimeRangeChange: (range: FilterTimeRange) => void
+  issuesByHealth?: IssuesByHealth
 }) {
   const toggleFilter = (filter: HealthFilter) => {
     if (selected.includes(filter)) {
@@ -360,6 +451,7 @@ function LinkHealthFilterCard({
           description="No active issues detected."
           selected={selected.includes('healthy')}
           onClick={() => toggleFilter('healthy')}
+          issueBreakdown={issuesByHealth?.healthy}
         />
         <HealthFilterItem
           color="bg-amber-500"
@@ -368,6 +460,7 @@ function LinkHealthFilterCard({
           description="Moderate packet loss (1% - 10%), or latency SLA breach."
           selected={selected.includes('degraded')}
           onClick={() => toggleFilter('degraded')}
+          issueBreakdown={issuesByHealth?.degraded}
         />
         <HealthFilterItem
           color="bg-red-500"
@@ -376,6 +469,7 @@ function LinkHealthFilterCard({
           description="Severe packet loss (>= 10%), or missing telemetry (link dark)."
           selected={selected.includes('unhealthy')}
           onClick={() => toggleFilter('unhealthy')}
+          issueBreakdown={issuesByHealth?.unhealthy}
         />
         <HealthFilterItem
           color="bg-gray-500 dark:bg-gray-700"
@@ -384,6 +478,7 @@ function LinkHealthFilterCard({
           description="Drained (soft, hard, or ISIS delay override), or extended packet loss (100% for 2+ hours)."
           selected={selected.includes('disabled')}
           onClick={() => toggleFilter('disabled')}
+          issueBreakdown={issuesByHealth?.disabled}
         />
       </div>
     </div>
@@ -396,12 +491,14 @@ function LinkIssuesFilterCard({
   onChange,
   filterTimeRange,
   onFilterTimeRangeChange,
+  healthByIssue,
 }: {
   counts: IssueCounts
   selected: IssueFilter[]
   onChange: (filters: IssueFilter[]) => void
   filterTimeRange: FilterTimeRange
   onFilterTimeRangeChange: (range: FilterTimeRange) => void
+  healthByIssue?: HealthByIssue
 }) {
   const allFilters: IssueFilter[] = ['packet_loss', 'high_latency', 'extended_loss', 'drained', 'no_data', 'no_issues']
 
@@ -499,6 +596,7 @@ function LinkIssuesFilterCard({
             description={description}
             selected={selected.includes(filter)}
             onClick={() => toggleFilter(filter)}
+            healthBreakdown={healthByIssue?.[filter]}
           />
         ))}
       </div>
@@ -845,12 +943,22 @@ function useBucketCount() {
 // Links tab content
 function LinksContent({ status, linkHistory }: { status: StatusResponse; linkHistory: any }) {
   const [timeRange, setTimeRange] = useState<TimeRange>('24h')
-  const [filterTimeRange, setFilterTimeRange] = useState<FilterTimeRange>('3h')
-  const [issueFilters, setIssueFilters] = useState<IssueFilter[]>(['packet_loss', 'high_latency', 'extended_loss', 'drained', 'no_data'])
+  const [filterTimeRange, setFilterTimeRange] = useState<FilterTimeRange>('12h')
+  const [issueFilters, setIssueFilters] = useState<IssueFilter[]>(['packet_loss', 'high_latency', 'extended_loss', 'drained'])
   const [healthFilters, setHealthFilters] = useState<HealthFilter[]>(['healthy', 'degraded', 'unhealthy', 'disabled'])
 
   // Bucket count based on filter time range
-  const filterBuckets = filterTimeRange === '3h' ? 36 : filterTimeRange === '6h' ? 36 : filterTimeRange === '12h' ? 48 : 72
+  const filterBuckets = (() => {
+    switch (filterTimeRange) {
+      case '3h': return 36
+      case '6h': return 36
+      case '12h': return 48
+      case '24h': return 72
+      case '3d': return 72
+      case '7d': return 84
+      default: return 72
+    }
+  })()
 
   // Fetch link history for the filter time range (used for health and issue counts)
   const { data: filterLinkHistory } = useQuery({
@@ -859,6 +967,41 @@ function LinksContent({ status, linkHistory }: { status: StatusResponse; linkHis
     refetchInterval: 60_000,
     staleTime: 30_000,
   })
+
+  // Helper to get the effective health status from a link's hours
+  // Returns the worst status seen in the time range
+  // Excludes the latest bucket if it's no_data (likely still being collected)
+  const getEffectiveHealth = (link: LinkHistory): string => {
+    if (!link.hours || link.hours.length === 0) return 'healthy'
+
+    // Priority from worst to best (lower index = worse)
+    const statusPriority: Record<string, number> = {
+      'unhealthy': 0,
+      'no_data': 1,
+      'disabled': 2,
+      'degraded': 3,
+      'healthy': 4,
+    }
+
+    let worstStatus = 'healthy'
+    let worstPriority = statusPriority['healthy']
+
+    // Check if we should skip the last bucket (if it's no_data, it's likely still being collected)
+    const lastBucket = link.hours[link.hours.length - 1]
+    const skipLastBucket = lastBucket?.status === 'no_data' && link.hours.length > 1
+    const bucketsToCheck = skipLastBucket ? link.hours.slice(0, -1) : link.hours
+
+    for (const bucket of bucketsToCheck) {
+      const status = bucket.status || 'healthy'
+      const priority = statusPriority[status] ?? 4
+      if (priority < worstPriority) {
+        worstPriority = priority
+        worstStatus = status
+      }
+    }
+
+    return worstStatus
+  }
 
   // Calculate health counts from link history (based on most recent bucket status)
   const healthCounts = useMemo(() => {
@@ -870,16 +1013,92 @@ function LinksContent({ status, linkHistory }: { status: StatusResponse; linkHis
 
     for (const link of filterLinkHistory.links) {
       counts.total++
-      // Use the most recent bucket to determine current health
-      const lastBucket = link.hours?.[link.hours.length - 1]
-      const status = lastBucket?.status || 'healthy'
+      const status = getEffectiveHealth(link)
       if (status === 'healthy') counts.healthy++
       else if (status === 'degraded') counts.degraded++
-      else if (status === 'unhealthy') counts.unhealthy++
+      else if (status === 'unhealthy' || status === 'no_data') counts.unhealthy++ // no_data maps to unhealthy
       else if (status === 'disabled') counts.disabled++
     }
 
     return counts
+  }, [filterLinkHistory])
+
+  // Calculate issue breakdown per health category
+  const issuesByHealth = useMemo((): IssuesByHealth => {
+    const emptyBreakdown = (): HealthIssueBreakdown => ({
+      packet_loss: 0,
+      high_latency: 0,
+      extended_loss: 0,
+      drained: 0,
+      no_data: 0,
+    })
+
+    const result: IssuesByHealth = {
+      healthy: emptyBreakdown(),
+      degraded: emptyBreakdown(),
+      unhealthy: emptyBreakdown(),
+      disabled: emptyBreakdown(),
+    }
+
+    if (!filterLinkHistory?.links) return result
+
+    for (const link of filterLinkHistory.links) {
+      const rawHealth = getEffectiveHealth(link)
+      // Map no_data to unhealthy for categorization
+      const health = rawHealth === 'no_data' ? 'unhealthy' : rawHealth
+      if (!(health in result)) continue
+
+      const breakdown = result[health as keyof IssuesByHealth]
+      const issues = link.issue_reasons ?? []
+
+      if (issues.includes('packet_loss')) breakdown.packet_loss++
+      if (issues.includes('high_latency')) breakdown.high_latency++
+      if (issues.includes('extended_loss')) breakdown.extended_loss++
+      if (issues.includes('drained')) breakdown.drained++
+      if (issues.includes('no_data')) breakdown.no_data++
+    }
+
+    return result
+  }, [filterLinkHistory])
+
+  // Calculate health breakdown per issue type
+  const healthByIssue = useMemo((): HealthByIssue => {
+    const emptyBreakdown = (): IssueHealthBreakdown => ({
+      healthy: 0,
+      degraded: 0,
+      unhealthy: 0,
+      disabled: 0,
+    })
+
+    const result: HealthByIssue = {
+      packet_loss: emptyBreakdown(),
+      high_latency: emptyBreakdown(),
+      extended_loss: emptyBreakdown(),
+      drained: emptyBreakdown(),
+      no_data: emptyBreakdown(),
+      no_issues: emptyBreakdown(),
+    }
+
+    if (!filterLinkHistory?.links) return result
+
+    for (const link of filterLinkHistory.links) {
+      const rawHealth = getEffectiveHealth(link)
+      // Map no_data to unhealthy for categorization
+      const health = (rawHealth === 'no_data' ? 'unhealthy' : rawHealth) as keyof IssueHealthBreakdown
+      const issues = link.issue_reasons ?? []
+
+      if (issues.length === 0) {
+        result.no_issues[health]++
+      } else {
+        if (issues.includes('packet_loss')) result.packet_loss[health]++
+        if (issues.includes('high_latency')) result.high_latency[health]++
+        if (issues.includes('extended_loss')) result.extended_loss[health]++
+        if (issues.includes('drained')) result.drained[health]++
+        if (issues.includes('no_data')) result.no_data[health]++
+      }
+    }
+
+    return result
   }, [filterLinkHistory])
 
   // Issue counts from filter time range
@@ -926,10 +1145,7 @@ function LinksContent({ status, linkHistory }: { status: StatusResponse; linkHis
     if (!filterLinkHistory?.links) return new Map<string, string>()
     const map = new Map<string, string>()
     for (const link of filterLinkHistory.links) {
-      // Use the most recent bucket to determine current health
-      const lastBucket = link.hours?.[link.hours.length - 1]
-      const health = lastBucket?.status || 'healthy'
-      map.set(link.code, health)
+      map.set(link.code, getEffectiveHealth(link))
     }
     return map
   }, [filterLinkHistory])
@@ -973,6 +1189,7 @@ function LinksContent({ status, linkHistory }: { status: StatusResponse; linkHis
           onChange={setHealthFilters}
           filterTimeRange={filterTimeRange}
           onFilterTimeRangeChange={setFilterTimeRange}
+          issuesByHealth={issuesByHealth}
         />
         <LinkIssuesFilterCard
           counts={issueCounts}
@@ -980,6 +1197,7 @@ function LinksContent({ status, linkHistory }: { status: StatusResponse; linkHis
           onChange={setIssueFilters}
           filterTimeRange={filterTimeRange}
           onFilterTimeRangeChange={setFilterTimeRange}
+          healthByIssue={healthByIssue}
         />
       </div>
 

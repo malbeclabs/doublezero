@@ -8,8 +8,17 @@ import { ZoomIn, ZoomOut, Maximize, Users, X, Search, Route } from 'lucide-react
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip as RechartsTooltip, CartesianGrid } from 'recharts'
 import { useQuery } from '@tanstack/react-query'
 import { useTheme } from '@/hooks/use-theme'
-import type { TopologyMetro, TopologyDevice, TopologyLink, TopologyValidator, PathResponse, PathMode } from '@/lib/api'
-import { fetchISISPath, fetchISISTopology } from '@/lib/api'
+import type { TopologyMetro, TopologyDevice, TopologyLink, TopologyValidator, MultiPathResponse } from '@/lib/api'
+import { fetchISISPaths, fetchISISTopology } from '@/lib/api'
+
+// Path colors for multi-path visualization
+const PATH_COLORS = [
+  '#22c55e',  // green - primary/shortest
+  '#3b82f6',  // blue - alternate 1
+  '#a855f7',  // purple - alternate 2
+  '#f97316',  // orange - alternate 3
+  '#06b6d4',  // cyan - alternate 4
+]
 
 interface TopologyMapProps {
   metros: TopologyMetro[]
@@ -326,9 +335,9 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
   const [pathModeEnabled, setPathModeEnabled] = useState(false)
   const [pathSource, setPathSource] = useState<string | null>(null)
   const [pathTarget, setPathTarget] = useState<string | null>(null)
-  const [pathResult, setPathResult] = useState<PathResponse | null>(null)
+  const [pathsResult, setPathsResult] = useState<MultiPathResponse | null>(null)
   const [pathLoading, setPathLoading] = useState(false)
-  const [pathMode, setPathMode] = useState<PathMode>('hops')
+  const [selectedPathIndex, setSelectedPathIndex] = useState(0)
 
   // Fetch ISIS topology to determine which devices have ISIS data
   const { data: isisTopology } = useQuery({
@@ -482,59 +491,78 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     }
   }, [metros, fitBounds])
 
-  // Fetch path when source and target are set
+  // Fetch paths when source and target are set
   useEffect(() => {
     if (!pathModeEnabled || !pathSource || !pathTarget) return
 
     setPathLoading(true)
-    fetchISISPath(pathSource, pathTarget, pathMode)
+    setSelectedPathIndex(0)
+    fetchISISPaths(pathSource, pathTarget, 5)
       .then(result => {
-        setPathResult(result)
+        setPathsResult(result)
       })
       .catch(err => {
-        setPathResult({ path: [], totalMetric: 0, hopCount: 0, error: err.message })
+        setPathsResult({ paths: [], from: pathSource, to: pathTarget, error: err.message })
       })
       .finally(() => {
         setPathLoading(false)
       })
-  }, [pathModeEnabled, pathSource, pathTarget, pathMode])
+  }, [pathModeEnabled, pathSource, pathTarget])
 
   // Clear path when exiting path mode
   useEffect(() => {
     if (!pathModeEnabled) {
       setPathSource(null)
       setPathTarget(null)
-      setPathResult(null)
+      setPathsResult(null)
+      setSelectedPathIndex(0)
     }
   }, [pathModeEnabled])
 
-  // Build set of device PKs in the current path for highlighting
-  const pathDevicePKs = useMemo(() => {
-    if (!pathResult?.path?.length) return new Set<string>()
-    return new Set(pathResult.path.map(hop => hop.devicePK))
-  }, [pathResult])
+  // Build map of device PKs to path indices for all paths
+  const devicePathMap = useMemo(() => {
+    const map = new Map<string, number[]>()
+    if (!pathsResult?.paths?.length) return map
 
-  // Build set of links in the path (by checking if both endpoints are consecutive in path)
-  const pathLinkPKs = useMemo(() => {
-    if (!pathResult?.path?.length) return new Set<string>()
-    const linkSet = new Set<string>()
+    pathsResult.paths.forEach((path, pathIndex) => {
+      path.path.forEach(hop => {
+        const existing = map.get(hop.devicePK) || []
+        if (!existing.includes(pathIndex)) {
+          existing.push(pathIndex)
+        }
+        map.set(hop.devicePK, existing)
+      })
+    })
+    return map
+  }, [pathsResult])
 
-    // For each consecutive pair in the path, find the link between them
-    for (let i = 0; i < pathResult.path.length - 1; i++) {
-      const fromPK = pathResult.path[i].devicePK
-      const toPK = pathResult.path[i + 1].devicePK
+  // Build map of link PKs to path indices for all paths
+  const linkPathMap = useMemo(() => {
+    const map = new Map<string, number[]>()
+    if (!pathsResult?.paths?.length) return map
 
-      // Find link that connects these two devices
-      for (const link of links) {
-        if ((link.side_a_pk === fromPK && link.side_z_pk === toPK) ||
-            (link.side_a_pk === toPK && link.side_z_pk === fromPK)) {
-          linkSet.add(link.pk)
-          break
+    pathsResult.paths.forEach((singlePath, pathIndex) => {
+      // For each consecutive pair in the path, find the link between them
+      for (let i = 0; i < singlePath.path.length - 1; i++) {
+        const fromPK = singlePath.path[i].devicePK
+        const toPK = singlePath.path[i + 1].devicePK
+
+        // Find link that connects these two devices
+        for (const link of links) {
+          if ((link.side_a_pk === fromPK && link.side_z_pk === toPK) ||
+              (link.side_a_pk === toPK && link.side_z_pk === fromPK)) {
+            const existing = map.get(link.pk) || []
+            if (!existing.includes(pathIndex)) {
+              existing.push(pathIndex)
+            }
+            map.set(link.pk, existing)
+            break
+          }
         }
       }
-    }
-    return linkSet
-  }, [pathResult, links])
+    })
+    return map
+  }, [pathsResult, links])
 
   // Handle device click for path finding
   const handlePathDeviceClick = useCallback((devicePK: string) => {
@@ -546,18 +574,17 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       // Reset and start new path
       setPathSource(devicePK)
       setPathTarget(null)
-      setPathResult(null)
+      setPathsResult(null)
+      setSelectedPathIndex(0)
     }
   }, [pathSource, pathTarget])
 
   const clearPath = useCallback(() => {
     setPathSource(null)
     setPathTarget(null)
-    setPathResult(null)
+    setPathsResult(null)
+    setSelectedPathIndex(0)
   }, [])
-
-  // Path highlight color
-  const pathHighlightColor = '#f59e0b' // amber
 
   // GeoJSON for link lines
   const linkGeoJson = useMemo(() => {
@@ -572,17 +599,26 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       const weight = calculateLinkWeight(link.bandwidth_bps)
       const isHovered = hoveredLink?.pk === link.pk
       const isSelected = selectedItem?.type === 'link' && selectedItem.data.pk === link.pk
-      const isInPath = pathLinkPKs.has(link.pk)
+      const linkPathIndices = linkPathMap.get(link.pk)
+      const isInAnyPath = linkPathIndices && linkPathIndices.length > 0
+      const isInSelectedPath = linkPathIndices?.includes(selectedPathIndex)
 
-      // Path links get amber highlight, hover/selected get white/black, otherwise normal color
+      // Path links get colored by path index, hover/selected get white/black, otherwise normal color
       let displayColor = color
       let displayWeight = weight
       let displayOpacity = 0.8
 
-      if (isInPath) {
-        displayColor = pathHighlightColor
+      if (isInSelectedPath && linkPathIndices) {
+        // Use the selected path's color
+        displayColor = PATH_COLORS[selectedPathIndex % PATH_COLORS.length]
         displayWeight = weight + 3
         displayOpacity = 1
+      } else if (isInAnyPath && linkPathIndices) {
+        // In another path but not selected - use first path's color but dimmed
+        const firstPathIndex = linkPathIndices[0]
+        displayColor = PATH_COLORS[firstPathIndex % PATH_COLORS.length]
+        displayWeight = weight + 1
+        displayOpacity = 0.4
       } else if (isHovered || isSelected) {
         displayColor = hoverHighlight
         displayWeight = weight + 2
@@ -610,7 +646,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       type: 'FeatureCollection' as const,
       features,
     }
-  }, [links, devicePositions, isDark, hoveredLink, selectedItem, hoverHighlight, pathLinkPKs, pathHighlightColor])
+  }, [links, devicePositions, isDark, hoveredLink, selectedItem, hoverHighlight, linkPathMap, selectedPathIndex])
 
   // GeoJSON for validator links (connecting lines)
   const validatorLinksGeoJson = useMemo(() => {
@@ -914,7 +950,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
         )}
 
         {/* Metro markers - hidden in path mode */}
-        {!pathMode && metros.map(metro => {
+        {!pathModeEnabled && metros.map(metro => {
           const isThisHovered = hoveredMetro?.code === metro.code
           const isThisSelected = selectedItem?.type === 'metro' && selectedItem.data.pk === metro.pk
           const metroDeviceCount = devicesByMetro.get(metro.pk)?.length || 0
@@ -959,7 +995,9 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           const isThisSelected = selectedItem?.type === 'device' && selectedItem.data.pk === device.pk
           const isPathSource = pathSource === device.pk
           const isPathTarget = pathTarget === device.pk
-          const isInPath = pathDevicePKs.has(device.pk)
+          const devicePathIndices = devicePathMap.get(device.pk)
+          const isInSelectedPath = devicePathIndices?.includes(selectedPathIndex)
+          const isInAnyPath = devicePathIndices && devicePathIndices.length > 0
           // Check if device has ISIS data (can participate in path finding)
           const isISISEnabled = isisDevicePKs.size === 0 || isisDevicePKs.has(device.pk)
           const isDisabledInPathMode = pathModeEnabled && !isISISEnabled
@@ -981,29 +1019,44 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           let markerSize = 12
           let borderWidth = 1
           let opacity = 0.9
+          let borderColor = hoverHighlight
 
           if (isDisabledInPathMode) {
             // Grey out non-ISIS devices in path mode
             markerColor = isDark ? '#4b5563' : '#9ca3af' // gray
+            borderColor = markerColor
             markerSize = 10
             opacity = 0.4
           } else if (isPathSource) {
             markerColor = '#22c55e' // green
+            borderColor = '#22c55e'
             markerSize = 18
             borderWidth = 3
             opacity = 1
           } else if (isPathTarget) {
             markerColor = '#ef4444' // red
+            borderColor = '#ef4444'
             markerSize = 18
             borderWidth = 3
             opacity = 1
-          } else if (isInPath) {
-            markerColor = pathHighlightColor // amber
+          } else if (isInSelectedPath && devicePathIndices) {
+            // Use selected path's color
+            markerColor = PATH_COLORS[selectedPathIndex % PATH_COLORS.length]
+            borderColor = markerColor
             markerSize = 16
             borderWidth = 2
             opacity = 1
+          } else if (isInAnyPath && devicePathIndices) {
+            // In another path but not selected
+            const firstPathIndex = devicePathIndices[0]
+            markerColor = PATH_COLORS[firstPathIndex % PATH_COLORS.length]
+            borderColor = markerColor
+            markerSize = 14
+            borderWidth = 1
+            opacity = 0.5
           } else if (isThisHovered || isThisSelected) {
             markerColor = hoverHighlight
+            borderColor = hoverHighlight
             markerSize = 16
             borderWidth = 2
             opacity = 1
@@ -1022,7 +1075,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
                   width: markerSize,
                   height: markerSize,
                   backgroundColor: markerColor,
-                  border: `${borderWidth}px solid ${isPathSource ? '#22c55e' : isPathTarget ? '#ef4444' : isDisabledInPathMode ? (isDark ? '#4b5563' : '#9ca3af') : hoverHighlight}`,
+                  border: `${borderWidth}px solid ${borderColor}`,
                   opacity,
                 }}
                 onMouseEnter={() => setHoveredDevice(deviceInfo)}
@@ -1173,7 +1226,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
         <div className="absolute top-[280px] right-4 z-[999] bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm p-3 text-xs max-w-52">
           <div className="flex items-center justify-between mb-2">
             <span className="font-medium flex items-center gap-1.5">
-              <Route className="h-3.5 w-3.5 text-amber-500" />
+              <Route className="h-3.5 w-3.5 text-green-500" />
               Path Finding
             </span>
             {(pathSource || pathTarget) && (
@@ -1190,28 +1243,6 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             </div>
           )}
 
-          {/* Mode toggle */}
-          <div className="flex gap-1 mb-3 p-0.5 bg-[var(--muted)] rounded">
-            <button
-              onClick={() => setPathMode('hops')}
-              className={`flex-1 px-2 py-1 rounded text-xs transition-colors ${
-                pathMode === 'hops' ? 'bg-[var(--card)] shadow-sm' : 'hover:bg-[var(--card)]/50'
-              }`}
-              title="Find path with fewest hops"
-            >
-              Fewest Hops
-            </button>
-            <button
-              onClick={() => setPathMode('latency')}
-              className={`flex-1 px-2 py-1 rounded text-xs transition-colors ${
-                pathMode === 'latency' ? 'bg-[var(--card)] shadow-sm' : 'hover:bg-[var(--card)]/50'
-              }`}
-              title="Find path with lowest latency"
-            >
-              Lowest Latency
-            </button>
-          </div>
-
           {!pathSource && (
             <div className="text-muted-foreground">Click a device to set the <span className="text-green-500 font-medium">source</span></div>
           )}
@@ -1219,28 +1250,61 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             <div className="text-muted-foreground">Click another device to set the <span className="text-red-500 font-medium">target</span></div>
           )}
           {pathLoading && (
-            <div className="text-muted-foreground">Finding path...</div>
+            <div className="text-muted-foreground">Finding paths...</div>
           )}
-          {pathResult && !pathResult.error && pathResult.path.length > 0 && (
+          {pathsResult && !pathsResult.error && pathsResult.paths.length > 0 && (
             <div>
-              <div className="space-y-1 text-muted-foreground">
-                <div>Hops: <span className="text-foreground font-medium">{pathResult.hopCount}</span></div>
-                <div>Latency: <span className="text-foreground font-medium">{(pathResult.totalMetric / 1000).toFixed(2)}ms</span></div>
-              </div>
-              <div className="mt-2 pt-2 border-t border-[var(--border)] space-y-0.5 max-h-32 overflow-y-auto">
-                {pathResult.path.map((hop, i) => (
-                  <div key={hop.devicePK} className="flex items-center gap-1">
-                    <span className="text-muted-foreground w-4">{i + 1}.</span>
-                    <span className={i === 0 ? 'text-green-500' : i === pathResult.path.length - 1 ? 'text-red-500' : 'text-amber-500'}>
-                      {hop.deviceCode}
-                    </span>
-                  </div>
+              {/* Path selector buttons */}
+              <div className="flex flex-wrap gap-1 mb-2">
+                {pathsResult.paths.map((_, index) => (
+                  <button
+                    key={index}
+                    onClick={() => setSelectedPathIndex(index)}
+                    className={`px-2 py-1 rounded text-xs transition-colors flex items-center gap-1 ${
+                      selectedPathIndex === index
+                        ? 'ring-1 ring-foreground/30'
+                        : 'hover:bg-[var(--muted)]'
+                    }`}
+                    style={{
+                      backgroundColor: selectedPathIndex === index
+                        ? `${PATH_COLORS[index % PATH_COLORS.length]}30`
+                        : undefined,
+                      color: PATH_COLORS[index % PATH_COLORS.length],
+                    }}
+                    title={`Path ${index + 1}`}
+                  >
+                    <span
+                      className="w-2 h-2 rounded-full"
+                      style={{ backgroundColor: PATH_COLORS[index % PATH_COLORS.length] }}
+                    />
+                    {index + 1}
+                  </button>
                 ))}
               </div>
+
+              {/* Selected path details */}
+              {pathsResult.paths[selectedPathIndex] && (
+                <>
+                  <div className="space-y-1 text-muted-foreground">
+                    <div>Hops: <span className="text-foreground font-medium">{pathsResult.paths[selectedPathIndex].hopCount}</span></div>
+                    <div>Metric: <span className="text-foreground font-medium">{(pathsResult.paths[selectedPathIndex].totalMetric / 1000).toFixed(2)}ms</span></div>
+                  </div>
+                  <div className="mt-2 pt-2 border-t border-[var(--border)] space-y-0.5 max-h-32 overflow-y-auto">
+                    {pathsResult.paths[selectedPathIndex].path.map((hop, i) => (
+                      <div key={hop.devicePK} className="flex items-center gap-1">
+                        <span className="text-muted-foreground w-4">{i + 1}.</span>
+                        <span style={{ color: i === 0 ? '#22c55e' : i === pathsResult.paths[selectedPathIndex].path.length - 1 ? '#ef4444' : PATH_COLORS[selectedPathIndex % PATH_COLORS.length] }}>
+                          {hop.deviceCode}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           )}
-          {pathResult?.error && (
-            <div className="text-destructive">{pathResult.error}</div>
+          {pathsResult?.error && (
+            <div className="text-destructive">{pathsResult.error}</div>
           )}
         </div>
       )}

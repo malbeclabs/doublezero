@@ -4,12 +4,16 @@ import { useQuery } from '@tanstack/react-query'
 import { fetchTopology } from '@/lib/api'
 import { TopologyMap } from '@/components/topology-map'
 import { TopologyGraph } from '@/components/topology-graph'
-import { Globe, Network } from 'lucide-react'
+import { Globe } from 'lucide-react'
 
 // Only show loading indicator after this delay to avoid flash on fast loads
 const LOADING_DELAY_MS = 300
 
 type ViewMode = 'map' | 'graph'
+
+interface TopologyPageProps {
+  view: ViewMode
+}
 
 function TopologyLoading() {
   return (
@@ -22,43 +26,8 @@ function TopologyLoading() {
   )
 }
 
-function ViewToggle({ view, onViewChange }: { view: ViewMode; onViewChange: (v: ViewMode) => void }) {
-  return (
-    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1001] flex bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm">
-      <button
-        onClick={() => onViewChange('map')}
-        className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-l-md transition-colors ${
-          view === 'map'
-            ? 'bg-primary text-primary-foreground'
-            : 'hover:bg-[var(--muted)] text-muted-foreground'
-        }`}
-        title="Geographic map view"
-      >
-        <Globe className="h-4 w-4" />
-        <span>Map</span>
-      </button>
-      <button
-        onClick={() => onViewChange('graph')}
-        className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-r-md transition-colors ${
-          view === 'graph'
-            ? 'bg-primary text-primary-foreground'
-            : 'hover:bg-[var(--muted)] text-muted-foreground'
-        }`}
-        title="ISIS topology graph view"
-      >
-        <Network className="h-4 w-4" />
-        <span>Graph</span>
-      </button>
-    </div>
-  )
-}
-
-export function TopologyPage() {
+export function TopologyPage({ view }: TopologyPageProps) {
   const [searchParams, setSearchParams] = useSearchParams()
-  const [view, setView] = useState<ViewMode>(() => {
-    const v = searchParams.get('view')
-    return v === 'graph' ? 'graph' : 'map'
-  })
 
   // Get selected device from URL (shared between views)
   const selectedDevicePK = searchParams.get('type') === 'device' ? searchParams.get('id') : null
@@ -68,19 +37,6 @@ export function TopologyPage() {
     queryFn: fetchTopology,
     refetchInterval: 60000, // Refresh every minute
   })
-
-  // Sync view to URL
-  const handleViewChange = (newView: ViewMode) => {
-    setView(newView)
-    setSearchParams(prev => {
-      if (newView === 'map') {
-        prev.delete('view')
-      } else {
-        prev.set('view', newView)
-      }
-      return prev
-    })
-  }
 
   // Handle device selection from graph view
   const handleGraphDeviceSelect = useCallback((devicePK: string | null) => {
@@ -123,8 +79,6 @@ export function TopologyPage() {
 
   return (
     <div className="fixed inset-0 z-0 h-screen w-screen">
-      <ViewToggle view={view} onViewChange={handleViewChange} />
-
       {view === 'map' && data && (
         <TopologyMap
           metros={data.metros}

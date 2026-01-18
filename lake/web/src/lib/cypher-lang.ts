@@ -1,4 +1,4 @@
-import { StreamLanguage, LanguageSupport, StreamParser } from '@codemirror/language'
+import { StreamLanguage, LanguageSupport, type StreamParser } from '@codemirror/language'
 
 // Cypher keywords
 const keywords = new Set([

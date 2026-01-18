@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/malbeclabs/doublezero/lake/agent/pkg/workflow"
 	v3 "github.com/malbeclabs/doublezero/lake/agent/pkg/workflow/v3"
+	"github.com/malbeclabs/doublezero/lake/api/config"
 )
 
 // ChatMessage represents a single message in conversation history.
@@ -109,15 +110,24 @@ func Chat(w http.ResponseWriter, r *http.Request) {
 	querier := NewDBQuerier()
 	schemaFetcher := NewDBSchemaFetcher()
 
-	// Create and run workflow
-	wf, err := v3.New(&workflow.Config{
+	// Create workflow config
+	cfg := &workflow.Config{
 		Logger:        slog.Default(),
 		LLM:           llm,
 		Querier:       querier,
 		SchemaFetcher: schemaFetcher,
 		Prompts:       prompts,
 		MaxTokens:     4096,
-	})
+	}
+
+	// Add Neo4j support if available
+	if config.Neo4j != nil {
+		cfg.GraphQuerier = NewNeo4jQuerier()
+		cfg.GraphSchemaFetcher = NewNeo4jSchemaFetcher()
+	}
+
+	// Create and run workflow
+	wf, err := v3.New(cfg)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(ChatResponse{Error: internalError("Failed to initialize chat", err)})

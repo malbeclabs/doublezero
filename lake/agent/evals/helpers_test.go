@@ -21,6 +21,7 @@ import (
 	"github.com/malbeclabs/doublezero/lake/indexer/pkg/clickhouse"
 	"github.com/malbeclabs/doublezero/lake/indexer/pkg/clickhouse/dataset"
 	serviceability "github.com/malbeclabs/doublezero/lake/indexer/pkg/dz/serviceability"
+	"github.com/malbeclabs/doublezero/lake/indexer/pkg/neo4j"
 	"github.com/malbeclabs/doublezero/lake/indexer/pkg/sol"
 	laketesting "github.com/malbeclabs/doublezero/lake/utils/pkg/testing"
 	"github.com/stretchr/testify/require"
@@ -226,6 +227,11 @@ type LLMClientFactory func(t *testing.T) workflow.LLMClient
 
 // setupWorkflow creates a v3 workflow instance with the given LLM client factory.
 func setupWorkflow(t *testing.T, ctx context.Context, clientInfo *laketesting.ClientInfo, llmFactory LLMClientFactory, debug bool, debugLevel int) workflow.Runner {
+	return setupWorkflowWithNeo4j(t, ctx, clientInfo, nil, llmFactory, debug, debugLevel)
+}
+
+// setupWorkflowWithNeo4j creates a v3 workflow instance with optional Neo4j support.
+func setupWorkflowWithNeo4j(t *testing.T, ctx context.Context, clientInfo *laketesting.ClientInfo, neo4jClient neo4j.Client, llmFactory LLMClientFactory, debug bool, debugLevel int) workflow.Runner {
 	// Create logger with appropriate level
 	var logger *slog.Logger
 	if debug {
@@ -275,6 +281,22 @@ func setupWorkflow(t *testing.T, ctx context.Context, clientInfo *laketesting.Cl
 		SchemaFetcher: schemaFetcher,
 		MaxTokens:     4096,
 		MaxRetries:    4,
+	}
+
+	// Add Neo4j support if available
+	if neo4jClient != nil {
+		baseGraphQuerier := NewNeo4jQuerier(neo4jClient)
+		var graphQuerier workflow.Querier = baseGraphQuerier
+		if debug {
+			graphQuerier = &debugQuerier{
+				Querier:    baseGraphQuerier,
+				t:          t,
+				debugLevel: debugLevel,
+			}
+		}
+		cfg.GraphQuerier = graphQuerier
+		cfg.GraphSchemaFetcher = NewNeo4jSchemaFetcher(neo4jClient)
+		t.Log("Neo4j support enabled for workflow")
 	}
 
 	prompts, promptErr := v3.LoadPrompts()
@@ -346,6 +368,159 @@ func (q *ClickhouseQuerier) Query(ctx context.Context, sql string) (workflow.Que
 	qr.Formatted = formatQueryResult(qr)
 
 	return qr, nil
+}
+
+// Neo4jQuerier implements workflow.Querier using the Neo4j client
+type Neo4jQuerier struct {
+	client neo4j.Client
+}
+
+// NewNeo4jQuerier creates a new Neo4jQuerier
+func NewNeo4jQuerier(client neo4j.Client) *Neo4jQuerier {
+	return &Neo4jQuerier{client: client}
+}
+
+// Query executes a Cypher query and returns the result
+func (q *Neo4jQuerier) Query(ctx context.Context, cypher string) (workflow.QueryResult, error) {
+	session, err := q.client.Session(ctx)
+	if err != nil {
+		return workflow.QueryResult{SQL: cypher, Error: fmt.Sprintf("session error: %v", err)}, nil
+	}
+	defer session.Close(ctx)
+
+	result, err := session.ExecuteRead(ctx, func(tx neo4j.Transaction) (any, error) {
+		res, err := tx.Run(ctx, cypher, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		records, err := res.Collect(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		// Get column names from keys
+		var columns []string
+		if len(records) > 0 {
+			columns = records[0].Keys
+		}
+
+		// Convert records to row maps
+		rows := make([]map[string]any, 0, len(records))
+		for _, record := range records {
+			row := make(map[string]any)
+			for _, key := range record.Keys {
+				val, _ := record.Get(key)
+				row[key] = val
+			}
+			rows = append(rows, row)
+		}
+
+		return workflow.QueryResult{
+			SQL:     cypher,
+			Columns: columns,
+			Rows:    rows,
+			Count:   len(rows),
+		}, nil
+	})
+
+	if err != nil {
+		return workflow.QueryResult{SQL: cypher, Error: err.Error()}, nil
+	}
+
+	qr := result.(workflow.QueryResult)
+	qr.Formatted = formatQueryResult(qr)
+	return qr, nil
+}
+
+// Neo4jSchemaFetcher implements workflow.SchemaFetcher for Neo4j
+type Neo4jSchemaFetcher struct {
+	client neo4j.Client
+}
+
+// NewNeo4jSchemaFetcher creates a new Neo4jSchemaFetcher
+func NewNeo4jSchemaFetcher(client neo4j.Client) *Neo4jSchemaFetcher {
+	return &Neo4jSchemaFetcher{client: client}
+}
+
+// FetchSchema returns a formatted string describing the Neo4j graph schema
+func (f *Neo4jSchemaFetcher) FetchSchema(ctx context.Context) (string, error) {
+	session, err := f.client.Session(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to create session: %w", err)
+	}
+	defer session.Close(ctx)
+
+	var sb strings.Builder
+	sb.WriteString("## Graph Database Schema (Neo4j)\n\n")
+
+	// Get node labels
+	labelsResult, err := session.ExecuteRead(ctx, func(tx neo4j.Transaction) (any, error) {
+		res, err := tx.Run(ctx, "CALL db.labels()", nil)
+		if err != nil {
+			return nil, err
+		}
+		records, err := res.Collect(ctx)
+		if err != nil {
+			return nil, err
+		}
+		labels := make([]string, 0, len(records))
+		for _, record := range records {
+			if len(record.Values) > 0 {
+				if label, ok := record.Values[0].(string); ok {
+					labels = append(labels, label)
+				}
+			}
+		}
+		return labels, nil
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to get labels: %w", err)
+	}
+
+	labels := labelsResult.([]string)
+	if len(labels) > 0 {
+		sb.WriteString("### Node Labels\n")
+		for _, label := range labels {
+			sb.WriteString(fmt.Sprintf("- `%s`\n", label))
+		}
+		sb.WriteString("\n")
+	}
+
+	// Get relationship types
+	relTypesResult, err := session.ExecuteRead(ctx, func(tx neo4j.Transaction) (any, error) {
+		res, err := tx.Run(ctx, "CALL db.relationshipTypes()", nil)
+		if err != nil {
+			return nil, err
+		}
+		records, err := res.Collect(ctx)
+		if err != nil {
+			return nil, err
+		}
+		types := make([]string, 0, len(records))
+		for _, record := range records {
+			if len(record.Values) > 0 {
+				if relType, ok := record.Values[0].(string); ok {
+					types = append(types, relType)
+				}
+			}
+		}
+		return types, nil
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to get relationship types: %w", err)
+	}
+
+	relTypes := relTypesResult.([]string)
+	if len(relTypes) > 0 {
+		sb.WriteString("### Relationship Types\n")
+		for _, relType := range relTypes {
+			sb.WriteString(fmt.Sprintf("- `%s`\n", relType))
+		}
+		sb.WriteString("\n")
+	}
+
+	return sb.String(), nil
 }
 
 // formatQueryResult creates a human-readable format of the query result
@@ -628,4 +803,136 @@ func seedLinks(t *testing.T, ctx context.Context, conn clickhouse.Connection, li
 		OpID:       opID,
 	})
 	require.NoError(t, err)
+}
+
+// Neo4j graph data structures for seeding
+type graphMetro struct {
+	PK   string
+	Code string
+	Name string
+}
+
+type graphDevice struct {
+	PK       string
+	Code     string
+	Status   string
+	MetroPK  string
+	MetroCode string
+}
+
+type graphLink struct {
+	PK      string
+	Code    string
+	Status  string
+	SideAPK string
+	SideZPK string
+}
+
+// seedGraphData seeds the Neo4j graph with topology data
+func seedGraphData(t *testing.T, ctx context.Context, client neo4j.Client, metros []graphMetro, devices []graphDevice, links []graphLink) {
+	session, err := client.Session(ctx)
+	require.NoError(t, err)
+	defer session.Close(ctx)
+
+	// Create metros
+	for _, metro := range metros {
+		_, err := session.ExecuteWrite(ctx, func(tx neo4j.Transaction) (any, error) {
+			_, err := tx.Run(ctx, `
+				MERGE (m:Metro {pk: $pk})
+				SET m.code = $code, m.name = $name
+			`, map[string]any{
+				"pk":   metro.PK,
+				"code": metro.Code,
+				"name": metro.Name,
+			})
+			return nil, err
+		})
+		require.NoError(t, err)
+	}
+
+	// Create devices with LOCATED_IN relationships
+	for _, device := range devices {
+		_, err := session.ExecuteWrite(ctx, func(tx neo4j.Transaction) (any, error) {
+			_, err := tx.Run(ctx, `
+				MERGE (d:Device {pk: $pk})
+				SET d.code = $code, d.status = $status
+				WITH d
+				MATCH (m:Metro {pk: $metro_pk})
+				MERGE (d)-[:LOCATED_IN]->(m)
+			`, map[string]any{
+				"pk":       device.PK,
+				"code":     device.Code,
+				"status":   device.Status,
+				"metro_pk": device.MetroPK,
+			})
+			return nil, err
+		})
+		require.NoError(t, err)
+	}
+
+	// Create links with CONNECTS relationships
+	for _, link := range links {
+		_, err := session.ExecuteWrite(ctx, func(tx neo4j.Transaction) (any, error) {
+			_, err := tx.Run(ctx, `
+				MERGE (l:Link {pk: $pk})
+				SET l.code = $code, l.status = $status
+				WITH l
+				MATCH (da:Device {pk: $side_a_pk})
+				MATCH (dz:Device {pk: $side_z_pk})
+				MERGE (da)-[:CONNECTS]->(l)
+				MERGE (l)-[:CONNECTS]->(dz)
+			`, map[string]any{
+				"pk":        link.PK,
+				"code":      link.Code,
+				"status":    link.Status,
+				"side_a_pk": link.SideAPK,
+				"side_z_pk": link.SideZPK,
+			})
+			return nil, err
+		})
+		require.NoError(t, err)
+	}
+
+	t.Logf("Seeded Neo4j graph: %d metros, %d devices, %d links", len(metros), len(devices), len(links))
+}
+
+// validateGraphData verifies the graph was seeded correctly
+func validateGraphData(t *testing.T, ctx context.Context, client neo4j.Client, expectedDevices, expectedLinks int) {
+	session, err := client.Session(ctx)
+	require.NoError(t, err)
+	defer session.Close(ctx)
+
+	// Count devices
+	deviceCount, err := session.ExecuteRead(ctx, func(tx neo4j.Transaction) (any, error) {
+		res, err := tx.Run(ctx, "MATCH (d:Device) RETURN count(d) AS count", nil)
+		if err != nil {
+			return nil, err
+		}
+		record, err := res.Single(ctx)
+		if err != nil {
+			return nil, err
+		}
+		count, _ := record.Get("count")
+		return count, nil
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(expectedDevices), deviceCount.(int64), "Device count mismatch")
+
+	// Count links
+	linkCount, err := session.ExecuteRead(ctx, func(tx neo4j.Transaction) (any, error) {
+		res, err := tx.Run(ctx, "MATCH (l:Link) RETURN count(l) AS count", nil)
+		if err != nil {
+			return nil, err
+		}
+		record, err := res.Single(ctx)
+		if err != nil {
+			return nil, err
+		}
+		count, _ := record.Get("count")
+		return count, nil
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(expectedLinks), linkCount.(int64), "Link count mismatch")
+
+	t.Logf("Graph validation passed: %d devices, %d links", expectedDevices, expectedLinks)
 }

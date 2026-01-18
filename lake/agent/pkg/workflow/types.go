@@ -16,6 +16,10 @@ type Config struct {
 	MaxTokens     int64
 	MaxRetries    int    // Max retries for failed queries (default 5)
 	FormatContext string // Optional formatting context to append to synthesize/respond prompts (e.g., Slack formatting guidelines)
+
+	// Graph database support (optional)
+	GraphQuerier       Querier       // Optional Neo4j querier for execute_cypher tool
+	GraphSchemaFetcher SchemaFetcher // Optional Neo4j schema fetcher
 }
 
 // CompleteOptions holds options for LLM completion.

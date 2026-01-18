@@ -49,11 +49,47 @@ var (
 			"required": ["queries"]
 		}`),
 	}
+
+	// ExecuteCypherTool allows the model to execute Cypher queries against Neo4j.
+	ExecuteCypherTool = Tool{
+		Name:        "execute_cypher",
+		Description: "Execute one or more Cypher queries against the Neo4j graph database. Use this for topology questions, path finding, reachability, and relationship traversal. Queries run in parallel.",
+		InputSchema: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"queries": {
+					"type": "array",
+					"items": {
+						"type": "object",
+						"properties": {
+							"question": {
+								"type": "string",
+								"description": "The graph question this query answers, e.g. 'What is the path between device A and device B?'"
+							},
+							"cypher": {
+								"type": "string",
+								"description": "The Cypher query to execute"
+							}
+						},
+						"required": ["question", "cypher"]
+					},
+					"description": "List of Cypher queries to execute"
+				}
+			},
+			"required": ["queries"]
+		}`),
+	}
 )
 
 // DefaultTools returns the default set of tools for the v3 workflow.
+// If includeGraph is true, includes the execute_cypher tool for Neo4j queries.
 func DefaultTools() []Tool {
 	return []Tool{ThinkTool, ExecuteSQLTool}
+}
+
+// DefaultToolsWithGraph returns tools including graph database support.
+func DefaultToolsWithGraph() []Tool {
+	return []Tool{ThinkTool, ExecuteSQLTool, ExecuteCypherTool}
 }
 
 // ParseQueries extracts QueryInput from execute_sql parameters.
@@ -77,6 +113,40 @@ func ParseQueries(params map[string]any) ([]QueryInput, error) {
 			queries = append(queries, QueryInput{
 				Question: question,
 				SQL:      sql,
+			})
+		}
+	}
+
+	return queries, nil
+}
+
+// CypherQueryInput represents a single query in an execute_cypher tool call.
+type CypherQueryInput struct {
+	Question string `json:"question"`
+	Cypher   string `json:"cypher"`
+}
+
+// ParseCypherQueries extracts CypherQueryInput from execute_cypher parameters.
+func ParseCypherQueries(params map[string]any) ([]CypherQueryInput, error) {
+	queriesRaw, ok := params["queries"].([]any)
+	if !ok {
+		return nil, nil
+	}
+
+	var queries []CypherQueryInput
+	for _, q := range queriesRaw {
+		qMap, ok := q.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		question, _ := qMap["question"].(string)
+		cypher, _ := qMap["cypher"].(string)
+
+		if question != "" && cypher != "" {
+			queries = append(queries, CypherQueryInput{
+				Question: question,
+				Cypher:   cypher,
 			})
 		}
 	}

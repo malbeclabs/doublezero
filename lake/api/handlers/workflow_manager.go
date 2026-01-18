@@ -227,15 +227,24 @@ func (m *WorkflowManager) runWorkflow(
 	querier := NewDBQuerier()
 	schemaFetcher := NewDBSchemaFetcher()
 
-	// Create workflow
-	wf, err := v3.New(&workflow.Config{
+	// Create workflow config
+	cfg := &workflow.Config{
 		Logger:        slog.Default(),
 		LLM:           llm,
 		Querier:       querier,
 		SchemaFetcher: schemaFetcher,
 		Prompts:       prompts,
 		MaxTokens:     4096,
-	})
+	}
+
+	// Add Neo4j support if available
+	if config.Neo4j != nil {
+		cfg.GraphQuerier = NewNeo4jQuerier()
+		cfg.GraphSchemaFetcher = NewNeo4jSchemaFetcher()
+	}
+
+	// Create workflow
+	wf, err := v3.New(cfg)
 	if err != nil {
 		slog.Error("Background workflow failed to create workflow", "workflow_id", rw.ID, "error", err)
 		m.failWorkflow(ctx, rw, fmt.Sprintf("Failed to create workflow: %v", err))
@@ -452,15 +461,24 @@ func (m *WorkflowManager) resumeWorkflow(
 	querier := NewDBQuerier()
 	schemaFetcher := NewDBSchemaFetcher()
 
-	// Create workflow
-	wf, err := v3.New(&workflow.Config{
+	// Create workflow config
+	cfg := &workflow.Config{
 		Logger:        slog.Default(),
 		LLM:           llm,
 		Querier:       querier,
 		SchemaFetcher: schemaFetcher,
 		Prompts:       prompts,
 		MaxTokens:     4096,
-	})
+	}
+
+	// Add Neo4j support if available
+	if config.Neo4j != nil {
+		cfg.GraphQuerier = NewNeo4jQuerier()
+		cfg.GraphSchemaFetcher = NewNeo4jSchemaFetcher()
+	}
+
+	// Create workflow
+	wf, err := v3.New(cfg)
 	if err != nil {
 		slog.Error("Resume workflow failed to create workflow", "workflow_id", rw.ID, "error", err)
 		m.failWorkflow(ctx, rw, fmt.Sprintf("Failed to create workflow: %v", err))

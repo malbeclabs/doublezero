@@ -339,8 +339,8 @@ function QueryEditorView() {
     queryFn: fetchCatalog,
   })
 
-  // Query mode state
-  const [mode, setMode] = useState<QueryMode>('sql')
+  // Query mode state - default to 'auto' for new sessions
+  const [mode, setMode] = useState<QueryMode>('auto')
   const [activeMode, setActiveMode] = useState<'sql' | 'cypher'>('sql')
 
   // Visualization recommendation state
@@ -357,7 +357,12 @@ function QueryEditorView() {
   // Detect mode from session's most recent query on mount/session change
   const latestHistoryEntry = generationHistory[0]
   useEffect(() => {
-    if (!latestHistoryEntry) return
+    if (!latestHistoryEntry) {
+      // New session with no history - default to auto
+      setMode('auto')
+      setActiveMode('sql')
+      return
+    }
     // Use saved queryType if available, otherwise detect from content
     let detectedType = latestHistoryEntry.queryType
     if (!detectedType) {

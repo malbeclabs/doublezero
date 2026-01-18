@@ -19,39 +19,39 @@ func TestParse(t *testing.T) {
 									"lsps": {
 										"ac10.0001.0000.00-00": {
 											"hostname": {"name": "DZ-NY7-SW01"},
-											"routerCapabilities": {
+											"routerCapabilities": [{
 												"routerId": "172.16.0.1",
 												"srgbBase": 16000,
 												"srgbRange": 8000
-											},
+											}],
 											"neighbors": [
 												{
 													"systemId": "ac10.0002.0000",
 													"metric": 1000,
 													"neighborAddr": "172.16.0.117",
-													"adjSids": [100001, 100002]
+													"adjSids": [{"adjSid": 100001}, {"adjSid": 100002}]
 												},
 												{
 													"systemId": "ac10.0003.0000",
 													"metric": 2000,
 													"neighborAddr": "172.16.0.119",
-													"adjSids": [100003]
+													"adjSids": [{"adjSid": 100003}]
 												}
 											]
 										},
 										"ac10.0002.0000.00-00": {
 											"hostname": {"name": "DZ-DC1-SW01"},
-											"routerCapabilities": {
+											"routerCapabilities": [{
 												"routerId": "172.16.0.2",
 												"srgbBase": 16000,
 												"srgbRange": 8000
-											},
+											}],
 											"neighbors": [
 												{
 													"systemId": "ac10.0001.0000",
 													"metric": 1000,
 													"neighborAddr": "172.16.0.116",
-													"adjSids": [100001]
+													"adjSids": [{"adjSid": 100001}]
 												}
 											]
 										}
@@ -101,7 +101,7 @@ func TestParse(t *testing.T) {
 									"lsps": {
 										"ac10.0001.0000.00-00": {
 											"hostname": {"name": "DZ-NY7-SW01"},
-											"routerCapabilities": {"routerId": "172.16.0.1"},
+											"routerCapabilities": [{"routerId": "172.16.0.1"}],
 											"neighbors": []
 										}
 									}
@@ -182,7 +182,7 @@ func TestParse(t *testing.T) {
 									"lsps": {
 										"ac10.0001.0000.00-00": {
 											"hostname": {"name": "DZ-NY7-SW01"},
-											"routerCapabilities": {"routerId": "172.16.0.1"},
+											"routerCapabilities": [{"routerId": "172.16.0.1"}],
 											"neighbors": [
 												{
 													"systemId": "ac10.0002.0000",

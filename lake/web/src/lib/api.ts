@@ -1622,6 +1622,12 @@ export interface SessionListResponse {
   has_more: boolean
 }
 
+export interface SessionListWithContentResponse<T> {
+  sessions: ServerSession<T>[]
+  total: number
+  has_more: boolean
+}
+
 // Session API functions
 export async function listSessions(
   type: 'chat' | 'query',
@@ -1630,6 +1636,21 @@ export async function listSessions(
 ): Promise<SessionListResponse> {
   const res = await fetchWithRetry(
     `/api/sessions?type=${type}&limit=${limit}&offset=${offset}`
+  )
+  if (!res.ok) {
+    throw new Error('Failed to list sessions')
+  }
+  return res.json()
+}
+
+// List sessions with full content (avoids N+1 queries when loading all sessions)
+export async function listSessionsWithContent<T>(
+  type: 'chat' | 'query',
+  limit = 50,
+  offset = 0
+): Promise<SessionListWithContentResponse<T>> {
+  const res = await fetchWithRetry(
+    `/api/sessions?type=${type}&limit=${limit}&offset=${offset}&include_content=true`
   )
   if (!res.ok) {
     throw new Error('Failed to list sessions')

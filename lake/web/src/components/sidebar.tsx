@@ -85,7 +85,7 @@ export function Sidebar({
   const { updateAvailable, reload } = useVersionCheck()
   const isLandingPage = location.pathname === '/'
   const isTopologyPage = location.pathname === '/topology'
-  const isStatusPage = location.pathname === '/status'
+  const isStatusPage = location.pathname.startsWith('/status')
   const isDZRoute = location.pathname.startsWith('/dz/')
   const isSolanaRoute = location.pathname.startsWith('/solana/')
 
@@ -182,7 +182,7 @@ export function Sidebar({
   const isQueryRoute = location.pathname.startsWith('/query')
   const isChatRoute = location.pathname.startsWith('/chat')
   const isTopologyRoute = location.pathname === '/topology' || location.pathname.startsWith('/topology/')
-  const isStatusRoute = location.pathname === '/status'
+  const isStatusRoute = location.pathname.startsWith('/status')
   const isTimelineRoute = location.pathname === '/timeline'
   const isHelpRoute = location.pathname === '/help'
   const isQuerySessions = location.pathname === '/query/sessions'
@@ -193,7 +193,7 @@ export function Sidebar({
   const isTopologyGraph = location.pathname === '/topology/graph'
   const isTopologyPathCalculator = location.pathname === '/topology/path-calculator'
   const isTopologyRedundancy = location.pathname === '/topology/redundancy'
-  const isTopologyMetroMatrix = location.pathname === '/topology/metro-matrix'
+  const isTopologyMetroMatrix = location.pathname.startsWith('/topology/metro-matrix')
   const isTopologyMaintenance = location.pathname === '/topology/maintenance'
 
   // Entity routes

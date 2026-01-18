@@ -1688,7 +1688,8 @@ function AppContent() {
             <Route path="/topology/graph" element={<TopologyPage view="graph" />} />
             <Route path="/topology/path-calculator" element={<PathCalculatorPage />} />
             <Route path="/topology/redundancy" element={<RedundancyReportPage />} />
-            <Route path="/topology/metro-matrix" element={<MetroMatrixPage />} />
+            <Route path="/topology/metro-matrix" element={<Navigate to="/topology/metro-matrix/connectivity" replace />} />
+            <Route path="/topology/metro-matrix/:view" element={<MetroMatrixPage />} />
             <Route path="/topology/maintenance" element={<MaintenancePlannerPage />} />
 
             {/* Status routes */}

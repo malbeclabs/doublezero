@@ -31,6 +31,7 @@ import {
   Network,
   Shield,
   HelpCircle,
+  Grid3X3,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/hooks/use-theme'
@@ -191,6 +192,7 @@ export function Sidebar({
   const isTopologyGraph = location.pathname === '/topology/graph'
   const isTopologyPathCalculator = location.pathname === '/topology/path-calculator'
   const isTopologyRedundancy = location.pathname === '/topology/redundancy'
+  const isTopologyMetroMatrix = location.pathname === '/topology/metro-matrix'
 
   // Entity routes
   const isDevicesRoute = location.pathname === '/dz/devices'
@@ -858,6 +860,18 @@ export function Sidebar({
             >
               <Shield className="h-4 w-4" />
               Redundancy
+            </Link>
+            <Link
+              to="/topology/metro-matrix"
+              className={cn(
+                'w-full flex items-center gap-2 px-3 py-2 text-sm rounded transition-colors',
+                isTopologyMetroMatrix
+                  ? 'bg-[var(--sidebar-active)] text-foreground font-medium'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+              )}
+            >
+              <Grid3X3 className="h-4 w-4" />
+              Metro Matrix
             </Link>
           </div>
         </div>

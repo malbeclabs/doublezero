@@ -2421,6 +2421,39 @@ export async function fetchTimeline(params: TimelineParams = {}): Promise<Timeli
   return res.json()
 }
 
+// Metro connectivity matrix types
+export interface MetroInfo {
+  pk: string
+  code: string
+  name: string
+}
+
+export interface MetroConnectivity {
+  fromMetroPK: string
+  fromMetroCode: string
+  fromMetroName: string
+  toMetroPK: string
+  toMetroCode: string
+  toMetroName: string
+  pathCount: number
+  minHops: number
+  minMetric: number
+}
+
+export interface MetroConnectivityResponse {
+  metros: MetroInfo[]
+  connectivity: MetroConnectivity[]
+  error?: string
+}
+
+export async function fetchMetroConnectivity(): Promise<MetroConnectivityResponse> {
+  const res = await fetch('/api/topology/metro-connectivity')
+  if (!res.ok) {
+    throw new Error('Failed to fetch metro connectivity')
+  }
+  return res.json()
+}
+
 // Search types and functions
 export type SearchEntityType = 'device' | 'link' | 'metro' | 'contributor' | 'user' | 'validator' | 'gossip'
 

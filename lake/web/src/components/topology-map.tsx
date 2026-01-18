@@ -135,6 +135,12 @@ interface HoveredLinkInfo {
   deviceACode: string
   deviceZPk: string
   deviceZCode: string
+  health?: {
+    status: string
+    committedRttNs: number
+    slaRatio: number
+    lossPct: number
+  }
 }
 
 // Hovered device info type
@@ -516,8 +522,8 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
 
   // Build link SLA status map (keyed by link PK)
   const linkSlaStatus = useMemo(() => {
-    if (!linkHealthData?.links) return new Map<string, { status: string; avgRttUs: number; committedRttNs: number; lossPct: number }>()
-    const slaMap = new Map<string, { status: string; avgRttUs: number; committedRttNs: number; lossPct: number }>()
+    if (!linkHealthData?.links) return new Map<string, { status: string; avgRttUs: number; committedRttNs: number; lossPct: number; slaRatio: number }>()
+    const slaMap = new Map<string, { status: string; avgRttUs: number; committedRttNs: number; lossPct: number; slaRatio: number }>()
 
     for (const link of linkHealthData.links) {
       slaMap.set(link.link_pk, {
@@ -525,6 +531,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
         avgRttUs: link.avg_rtt_us,
         committedRttNs: link.committed_rtt_ns,
         lossPct: link.loss_pct,
+        slaRatio: link.sla_ratio,
       })
     }
     return slaMap
@@ -1060,6 +1067,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     const deviceA = deviceMap.get(link.side_a_pk)
     const deviceZ = deviceMap.get(link.side_z_pk)
     const hasLatencyData = (link.sample_count ?? 0) > 0
+    const healthInfo = linkSlaStatus.get(link.pk)
     return {
       pk: link.pk,
       code: link.code,
@@ -1074,8 +1082,14 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       deviceACode: deviceA?.code || 'Unknown',
       deviceZPk: link.side_z_pk,
       deviceZCode: deviceZ?.code || 'Unknown',
+      health: healthInfo ? {
+        status: healthInfo.status,
+        committedRttNs: healthInfo.committedRttNs,
+        slaRatio: healthInfo.slaRatio,
+        lossPct: healthInfo.lossPct,
+      } : undefined,
     }
-  }, [deviceMap])
+  }, [deviceMap, linkSlaStatus])
 
   // Handle map click to deselect or select links
   const handleMapClick = useCallback((e: MapLayerMouseEvent) => {
@@ -1619,6 +1633,36 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
                 <DetailRow label="Out" value={hoveredLink.outRate} />
                 <DetailRow label="Side A" value={hoveredLink.deviceACode} />
                 <DetailRow label="Side Z" value={hoveredLink.deviceZCode} />
+                {hoveredLink.health && (
+                  <>
+                    <div className="border-t border-border mt-2 pt-2">
+                      <div className="text-muted-foreground uppercase tracking-wider mb-1">Health</div>
+                    </div>
+                    <DetailRow label="Committed" value={`${(hoveredLink.health.committedRttNs / 1000000).toFixed(2)}ms`} />
+                    <DetailRow
+                      label="SLA Ratio"
+                      value={<span className={
+                        hoveredLink.health.slaRatio >= 2.0 ? 'text-red-500' :
+                        hoveredLink.health.slaRatio >= 1.5 ? 'text-yellow-500' : 'text-green-500'
+                      }>{(hoveredLink.health.slaRatio * 100).toFixed(0)}%</span>}
+                    />
+                    <DetailRow
+                      label="Pkt Loss"
+                      value={<span className={
+                        hoveredLink.health.lossPct > 10 ? 'text-red-500' :
+                        hoveredLink.health.lossPct > 0.1 ? 'text-yellow-500' : 'text-green-500'
+                      }>{hoveredLink.health.lossPct.toFixed(2)}%</span>}
+                    />
+                    <DetailRow
+                      label="Status"
+                      value={<span className={
+                        hoveredLink.health.status === 'critical' ? 'text-red-500' :
+                        hoveredLink.health.status === 'warning' ? 'text-yellow-500' :
+                        hoveredLink.health.status === 'healthy' ? 'text-green-500' : 'text-muted-foreground'
+                      }>{hoveredLink.health.status}</span>}
+                    />
+                  </>
+                )}
               </div>
             </>
           )}
@@ -2703,7 +2747,7 @@ function TopologyDrawer({ selectedItem, onClose, isDark }: TopologyDrawerProps) 
   )
 }
 
-function DetailRow({ label, value }: { label: string; value: string }) {
+function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex justify-between gap-4">
       <span className="text-muted-foreground">{label}:</span>

@@ -49,6 +49,7 @@ export function TopologyGraph({
   // Use refs for callbacks to avoid re-initializing the graph
   const onDeviceSelectRef = useRef(onDeviceSelect)
   const navigateRef = useRef(navigate)
+  const edgeSlaStatusRef = useRef<Map<string, { status: string; avgRttUs: number; committedRttNs: number; lossPct: number; slaRatio: number }>>(new Map())
   useEffect(() => {
     onDeviceSelectRef.current = onDeviceSelect
   }, [onDeviceSelect])
@@ -99,6 +100,13 @@ export function TopologyGraph({
     metric: number
     x: number
     y: number
+    health?: {
+      status: string
+      avgRttUs: number
+      committedRttNs: number
+      lossPct: number
+      slaRatio: number
+    }
   } | null>(null)
 
   const [searchQuery, setSearchQuery] = useState('')
@@ -184,8 +192,8 @@ export function TopologyGraph({
 
   // Build edge SLA status map from link health data (maps device pair to SLA status)
   const edgeSlaStatus = useMemo(() => {
-    if (!linkHealthData?.links) return new Map<string, { status: string; avgRttUs: number; committedRttNs: number; lossPct: number }>()
-    const slaMap = new Map<string, { status: string; avgRttUs: number; committedRttNs: number; lossPct: number }>()
+    if (!linkHealthData?.links) return new Map<string, { status: string; avgRttUs: number; committedRttNs: number; lossPct: number; slaRatio: number }>()
+    const slaMap = new Map<string, { status: string; avgRttUs: number; committedRttNs: number; lossPct: number; slaRatio: number }>()
 
     for (const link of linkHealthData.links) {
       // Create edge keys for both directions
@@ -196,12 +204,18 @@ export function TopologyGraph({
         avgRttUs: link.avg_rtt_us,
         committedRttNs: link.committed_rtt_ns,
         lossPct: link.loss_pct,
+        slaRatio: link.sla_ratio,
       }
       slaMap.set(key1, info)
       slaMap.set(key2, info)
     }
     return slaMap
   }, [linkHealthData])
+
+  // Keep edgeSlaStatus ref updated for hover handlers
+  useEffect(() => {
+    edgeSlaStatusRef.current = edgeSlaStatus
+  }, [edgeSlaStatus])
 
   // Calculate degree for each node
   const nodesDegree = useMemo(() => {
@@ -1089,13 +1103,18 @@ export function TopologyGraph({
       const midpoint = edge.midpoint()
       const pan = cy.pan()
       const zoom = cy.zoom()
+      const source = edge.data('source')
+      const target = edge.data('target')
+      const edgeKey = `${source}->${target}`
+      const healthInfo = edgeSlaStatusRef.current.get(edgeKey)
       setHoveredEdge({
         id: edge.data('id'),
-        source: edge.data('source'),
-        target: edge.data('target'),
+        source,
+        target,
         metric: edge.data('metric'),
         x: midpoint.x * zoom + pan.x,
         y: midpoint.y * zoom + pan.y,
+        health: healthInfo,
       })
     })
 
@@ -2553,6 +2572,32 @@ export function TopologyGraph({
           <div className="text-muted-foreground">
             Latency: <span className="font-medium text-foreground">{hoveredEdge.metric ? `${(hoveredEdge.metric / 1000).toFixed(2)}ms` : 'N/A'}</span>
           </div>
+          {hoveredEdge.health && (
+            <>
+              <div className="text-muted-foreground">
+                Committed: <span className="font-medium text-foreground">{(hoveredEdge.health.committedRttNs / 1000000).toFixed(2)}ms</span>
+              </div>
+              <div className="text-muted-foreground">
+                SLA Ratio: <span className={`font-medium ${
+                  hoveredEdge.health.slaRatio >= 2.0 ? 'text-red-500' :
+                  hoveredEdge.health.slaRatio >= 1.5 ? 'text-yellow-500' : 'text-green-500'
+                }`}>{(hoveredEdge.health.slaRatio * 100).toFixed(0)}%</span>
+              </div>
+              <div className="text-muted-foreground">
+                Packet Loss: <span className={`font-medium ${
+                  hoveredEdge.health.lossPct > 10 ? 'text-red-500' :
+                  hoveredEdge.health.lossPct > 0.1 ? 'text-yellow-500' : 'text-green-500'
+                }`}>{hoveredEdge.health.lossPct.toFixed(2)}%</span>
+              </div>
+              <div className="text-muted-foreground">
+                Status: <span className={`font-medium ${
+                  hoveredEdge.health.status === 'critical' ? 'text-red-500' :
+                  hoveredEdge.health.status === 'warning' ? 'text-yellow-500' :
+                  hoveredEdge.health.status === 'healthy' ? 'text-green-500' : 'text-muted-foreground'
+                }`}>{hoveredEdge.health.status}</span>
+              </div>
+            </>
+          )}
         </div>
       )}
 

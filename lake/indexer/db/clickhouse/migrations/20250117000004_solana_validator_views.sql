@@ -10,19 +10,19 @@
 CREATE OR REPLACE VIEW solana_validators_on_dz_current
 AS
 SELECT
-    va.vote_pubkey,
-    va.node_pubkey,
-    u.owner_pubkey,
-    u.dz_ip,
-    u.client_ip,
-    u.device_pk,
+    va.vote_pubkey AS vote_pubkey,
+    va.node_pubkey AS node_pubkey,
+    u.owner_pubkey AS owner_pubkey,
+    u.dz_ip AS dz_ip,
+    u.client_ip AS client_ip,
+    u.device_pk AS device_pk,
     d.code AS device_code,
     m.code AS device_metro_code,
     m.name AS device_metro_name,
-    va.activated_stake_lamports,
+    va.activated_stake_lamports AS activated_stake_lamports,
     va.activated_stake_lamports / 1000000000.0 AS activated_stake_sol,
-    va.commission_percentage,
-    va.epoch,
+    va.commission_percentage AS commission_percentage,
+    va.epoch AS epoch,
     -- Connection timestamp is the latest of when each component appeared
     GREATEST(u.snapshot_ts, gn.snapshot_ts, va.snapshot_ts) AS connected_ts
 FROM dz_users_current u
@@ -88,16 +88,16 @@ latest_values AS (
 SELECT
     fc.vote_pubkey AS vote_pubkey,
     fc.node_pubkey AS node_pubkey,
-    lv.owner_pubkey,
-    lv.dz_ip,
-    lv.device_pk,
+    lv.owner_pubkey AS owner_pubkey,
+    lv.dz_ip AS dz_ip,
+    lv.device_pk AS device_pk,
     d.code AS device_code,
     m.code AS device_metro_code,
     m.name AS device_metro_name,
-    lv.activated_stake_lamports,
+    lv.activated_stake_lamports AS activated_stake_lamports,
     lv.activated_stake_lamports / 1000000000.0 AS activated_stake_sol,
-    lv.commission_percentage,
-    fc.first_connected_ts
+    lv.commission_percentage AS commission_percentage,
+    fc.first_connected_ts AS first_connected_ts
 FROM first_connections fc
 JOIN latest_values lv ON fc.vote_pubkey = lv.vote_pubkey AND fc.node_pubkey = lv.node_pubkey AND lv.rn = 1
 LEFT JOIN dz_devices_current d ON lv.device_pk = d.pk
@@ -111,17 +111,17 @@ LEFT JOIN dz_metros_current m ON d.metro_pk = m.pk;
 CREATE OR REPLACE VIEW solana_validators_off_dz_current
 AS
 SELECT
-    va.vote_pubkey,
-    va.node_pubkey,
-    va.activated_stake_lamports,
+    va.vote_pubkey AS vote_pubkey,
+    va.node_pubkey AS node_pubkey,
+    va.activated_stake_lamports AS activated_stake_lamports,
     va.activated_stake_lamports / 1000000000.0 AS activated_stake_sol,
-    va.commission_percentage,
-    va.epoch,
-    gn.gossip_ip,
-    geo.city,
-    geo.region,
-    geo.country,
-    geo.country_code
+    va.commission_percentage AS commission_percentage,
+    va.epoch AS epoch,
+    gn.gossip_ip AS gossip_ip,
+    geo.city AS city,
+    geo.region AS region,
+    geo.country AS country,
+    geo.country_code AS country_code
 FROM solana_vote_accounts_current va
 JOIN solana_gossip_nodes_current gn ON va.node_pubkey = gn.pubkey
 LEFT JOIN geoip_records_current geo ON gn.gossip_ip = geo.ip
@@ -183,19 +183,19 @@ validator_disconnections AS (
     WHERE de.disconnected_ts > ce.connected_ts  -- Disconnection must be after connection
 )
 SELECT
-    vd.vote_pubkey,
-    vd.node_pubkey,
-    vd.owner_pubkey,
-    vd.dz_ip,
-    vd.device_pk,
+    vd.vote_pubkey AS vote_pubkey,
+    vd.node_pubkey AS node_pubkey,
+    vd.owner_pubkey AS owner_pubkey,
+    vd.dz_ip AS dz_ip,
+    vd.device_pk AS device_pk,
     d.code AS device_code,
     m.code AS device_metro_code,
     m.name AS device_metro_name,
-    vd.activated_stake_lamports,
+    vd.activated_stake_lamports AS activated_stake_lamports,
     vd.activated_stake_lamports / 1000000000.0 AS activated_stake_sol,
-    vd.commission_percentage,
-    vd.connected_ts,
-    vd.disconnected_ts
+    vd.commission_percentage AS commission_percentage,
+    vd.connected_ts AS connected_ts,
+    vd.disconnected_ts AS disconnected_ts
 FROM validator_disconnections vd
 LEFT JOIN dz_devices_current d ON vd.device_pk = d.pk
 LEFT JOIN dz_metros_current m ON d.metro_pk = m.pk
@@ -212,19 +212,19 @@ WHERE vd.rn = 1
 CREATE OR REPLACE VIEW solana_validators_new_connections
 AS
 SELECT
-    curr.vote_pubkey,
-    curr.node_pubkey,
-    curr.owner_pubkey,
-    curr.dz_ip,
-    curr.client_ip,
-    curr.device_pk,
-    curr.device_code,
-    curr.device_metro_code,
-    curr.device_metro_name,
-    curr.activated_stake_lamports,
-    curr.activated_stake_sol,
-    curr.commission_percentage,
-    conn.first_connected_ts
+    curr.vote_pubkey AS vote_pubkey,
+    curr.node_pubkey AS node_pubkey,
+    curr.owner_pubkey AS owner_pubkey,
+    curr.dz_ip AS dz_ip,
+    curr.client_ip AS client_ip,
+    curr.device_pk AS device_pk,
+    curr.device_code AS device_code,
+    curr.device_metro_code AS device_metro_code,
+    curr.device_metro_name AS device_metro_name,
+    curr.activated_stake_lamports AS activated_stake_lamports,
+    curr.activated_stake_sol AS activated_stake_sol,
+    curr.commission_percentage AS commission_percentage,
+    conn.first_connected_ts AS first_connected_ts
 FROM solana_validators_on_dz_current curr
 JOIN solana_validators_on_dz_connections conn
   ON curr.vote_pubkey = conn.vote_pubkey

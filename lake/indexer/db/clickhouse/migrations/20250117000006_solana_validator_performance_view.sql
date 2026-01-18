@@ -53,27 +53,27 @@ delinquent_status AS (
     GROUP BY vote_account_pubkey, node_identity_pubkey
 )
 SELECT
-    va.vote_pubkey,
-    va.node_pubkey,
-    va.activated_stake_lamports,
+    va.vote_pubkey AS vote_pubkey,
+    va.node_pubkey AS node_pubkey,
+    va.activated_stake_lamports AS activated_stake_lamports,
     va.activated_stake_lamports / 1000000000.0 AS activated_stake_sol,
-    va.commission_percentage,
+    va.commission_percentage AS commission_percentage,
     -- DZ connection status
     CASE WHEN dz.vote_pubkey != '' THEN 'on_dz' ELSE 'off_dz' END AS dz_status,
     -- DZ device/metro info (NULL if not on DZ)
-    dz.device_pk,
-    dz.device_code,
-    dz.device_metro_code,
-    dz.device_metro_name,
+    dz.device_pk AS device_pk,
+    dz.device_code AS device_code,
+    dz.device_metro_code AS device_metro_code,
+    dz.device_metro_name AS device_metro_name,
     -- Vote lag metrics (NULL if delinquent or no recent activity)
-    vl.avg_vote_lag_slots,
-    vl.min_vote_lag_slots,
-    vl.max_vote_lag_slots,
-    vl.vote_samples,
+    vl.avg_vote_lag_slots AS avg_vote_lag_slots,
+    vl.min_vote_lag_slots AS min_vote_lag_slots,
+    vl.max_vote_lag_slots AS max_vote_lag_slots,
+    vl.vote_samples AS vote_samples,
     -- Skip rate metrics (NULL if no block production data)
-    sr.slots_assigned,
-    sr.blocks_produced,
-    sr.skip_rate_pct,
+    sr.slots_assigned AS slots_assigned,
+    sr.blocks_produced AS blocks_produced,
+    sr.skip_rate_pct AS skip_rate_pct,
     -- Delinquent status
     COALESCE(ds.is_delinquent, false) AS is_delinquent
 FROM solana_vote_accounts_current va

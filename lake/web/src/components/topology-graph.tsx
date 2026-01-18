@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import cytoscape from 'cytoscape'
 import type { Core, NodeSingular, EdgeSingular } from 'cytoscape'
 import { useQuery } from '@tanstack/react-query'
-import { ZoomIn, ZoomOut, Maximize, Search, Filter, Route, X, GitCompare, AlertTriangle, Zap, Lightbulb, ChevronDown, ChevronUp, Shield, MinusCircle, PlusCircle } from 'lucide-react'
-import { fetchISISTopology, fetchISISPaths, fetchTopologyCompare, fetchFailureImpact, fetchCriticalLinks, fetchSimulateLinkRemoval, fetchSimulateLinkAddition } from '@/lib/api'
+import { ZoomIn, ZoomOut, Maximize, Search, Filter, Route, X, GitCompare, AlertTriangle, Zap, Lightbulb, ChevronDown, ChevronUp, Shield, MinusCircle, PlusCircle, Coins } from 'lucide-react'
+import { fetchISISTopology, fetchISISPaths, fetchTopologyCompare, fetchFailureImpact, fetchCriticalLinks, fetchSimulateLinkRemoval, fetchSimulateLinkAddition, fetchTopology } from '@/lib/api'
 import type { PathMode, FailureImpactResponse, MultiPathResponse, SimulateLinkRemovalResponse, SimulateLinkAdditionResponse } from '@/lib/api'
 import { useTheme } from '@/hooks/use-theme'
 
@@ -131,6 +131,31 @@ export function TopologyGraph({
     staleTime: 60000,
   })
 
+  // Stake overlay state
+  const [stakeOverlayEnabled, setStakeOverlayEnabled] = useState(false)
+
+  // Fetch ClickHouse topology for stake data when stake overlay is enabled
+  const { data: topologyData } = useQuery({
+    queryKey: ['topology'],
+    queryFn: fetchTopology,
+    enabled: stakeOverlayEnabled,
+    staleTime: 60000,
+  })
+
+  // Build device stake map from topology data (maps device PK to stake info)
+  const deviceStakeMap = useMemo(() => {
+    const map = new Map<string, { stakeSol: number; stakeShare: number; validatorCount: number }>()
+    if (!topologyData?.devices) return map
+    for (const device of topologyData.devices) {
+      map.set(device.pk, {
+        stakeSol: device.stake_sol ?? 0,
+        stakeShare: device.stake_share ?? 0,
+        validatorCount: device.validator_count ?? 0,
+      })
+    }
+    return map
+  }, [topologyData])
+
   // Build edge criticality map from critical links data
   const edgeCriticality = useMemo(() => {
     if (!criticalLinksData?.links) return new Map<string, string>()
@@ -239,6 +264,36 @@ export function TopologyGraph({
     const size = minSize + Math.log2(degree) * 6
     return Math.min(maxSize, size)
   }, [])
+
+  // Calculate node size based on stake (for stake overlay mode)
+  const getStakeNodeSize = useCallback((stakeSol: number) => {
+    if (stakeSol <= 0) return 16
+    const minSize = 16
+    const maxSize = 48
+    const minStake = 10000 // 10k SOL
+    const size = minSize + Math.log10(Math.max(minStake, stakeSol) / minStake) * 8
+    return Math.min(maxSize, size)
+  }, [])
+
+  // Get stake-based color
+  const getStakeColor = useCallback((stakeShare: number) => {
+    if (stakeShare <= 0) return isDark ? '#6b7280' : '#9ca3af' // gray for no stake
+    // Orange gradient from light (low stake) to bright (high stake)
+    const t = Math.min(stakeShare / 1.0, 1) // cap at 1%
+    if (isDark) {
+      // Dark mode: brighter oranges
+      const r = Math.round(251)
+      const g = Math.round(191 - t * 100)
+      const b = Math.round(36)
+      return `rgb(${r}, ${g}, ${b})`
+    } else {
+      // Light mode: deeper oranges
+      const r = Math.round(234)
+      const g = Math.round(179 - t * 90)
+      const b = Math.round(8)
+      return `rgb(${r}, ${g}, ${b})`
+    }
+  }, [isDark])
 
   // Fetch paths when source and target are set
   useEffect(() => {
@@ -420,6 +475,48 @@ export function TopologyGraph({
       }
     })
   }, [mode, criticalLinksData, edgeCriticality])
+
+  // Apply stake overlay styling when enabled
+  useEffect(() => {
+    if (!cyRef.current) return
+    const cy = cyRef.current
+
+    cy.batch(() => {
+      if (stakeOverlayEnabled && deviceStakeMap.size > 0) {
+        // Apply stake-based sizing and coloring
+        cy.nodes().forEach(node => {
+          const devicePK = node.data('id')
+          const stakeInfo = deviceStakeMap.get(devicePK)
+          if (stakeInfo) {
+            const size = getStakeNodeSize(stakeInfo.stakeSol)
+            node.style({
+              'width': size,
+              'height': size,
+              'background-color': getStakeColor(stakeInfo.stakeShare),
+            })
+          } else {
+            // No stake data - use gray and small size
+            node.style({
+              'width': 16,
+              'height': 16,
+              'background-color': isDark ? '#6b7280' : '#9ca3af',
+            })
+          }
+        })
+      } else {
+        // Revert to default degree-based sizing
+        cy.nodes().forEach(node => {
+          const degree = node.data('degree')
+          const deviceType = node.data('deviceType')
+          node.style({
+            'width': getNodeSize(degree),
+            'height': getNodeSize(degree),
+            'background-color': getDeviceTypeColor(deviceType),
+          })
+        })
+      }
+    })
+  }, [stakeOverlayEnabled, deviceStakeMap, getStakeNodeSize, getStakeColor, getNodeSize, getDeviceTypeColor, isDark])
 
   // Fetch link removal simulation when link is selected
   useEffect(() => {
@@ -1161,6 +1258,12 @@ export function TopologyGraph({
             setMode(mode === 'whatif-addition' ? 'explore' : 'whatif-addition')
           }
           break
+        case 's':
+          // Toggle stake overlay
+          if (!e.metaKey && !e.ctrlKey) {
+            setStakeOverlayEnabled(prev => !prev)
+          }
+          break
       }
     }
 
@@ -1358,6 +1461,21 @@ export function TopologyGraph({
           title={mode === 'whatif-addition' ? 'Exit link addition simulation' : 'Simulate adding a new link (a)'}
         >
           <PlusCircle className="h-4 w-4" />
+        </button>
+
+        <div className="my-1 border-t border-[var(--border)]" />
+
+        {/* Stake overlay toggle */}
+        <button
+          onClick={() => setStakeOverlayEnabled(prev => !prev)}
+          className={`p-2 border rounded shadow-sm transition-colors ${
+            stakeOverlayEnabled
+              ? 'bg-amber-500/20 border-amber-500/50 text-amber-500'
+              : 'bg-[var(--card)] border-[var(--border)] hover:bg-[var(--muted)]'
+          }`}
+          title={stakeOverlayEnabled ? 'Hide stake overlay (s)' : 'Show stake overlay (s)'}
+        >
+          <Coins className="h-4 w-4" />
         </button>
       </div>
 
@@ -1974,6 +2092,102 @@ export function TopologyGraph({
 
           {additionResult?.error && additionResult.error !== 'Link already exists between these devices' && (
             <div className="text-destructive">{additionResult.error}</div>
+          )}
+        </div>
+      )}
+
+      {/* Stake overlay panel */}
+      {stakeOverlayEnabled && (
+        <div className="absolute top-[340px] right-4 z-[999] bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm p-3 text-xs max-w-56">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-medium flex items-center gap-1.5">
+              <Coins className="h-3.5 w-3.5 text-amber-500" />
+              Stake Overlay
+            </span>
+            <button
+              onClick={() => setStakeOverlayEnabled(false)}
+              className="p-1 hover:bg-[var(--muted)] rounded"
+              title="Close"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+
+          {!topologyData && (
+            <div className="text-muted-foreground">Loading stake data...</div>
+          )}
+
+          {topologyData && (
+            <div className="space-y-3">
+              {/* Summary stats */}
+              <div className="space-y-1.5">
+                {(() => {
+                  const devicesWithStake = Array.from(deviceStakeMap.entries()).filter(([, s]) => s.stakeSol > 0)
+                  const totalStake = devicesWithStake.reduce((sum, [, s]) => sum + s.stakeSol, 0)
+                  const totalValidators = devicesWithStake.reduce((sum, [, s]) => sum + s.validatorCount, 0)
+                  return (
+                    <>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Devices w/ Stake</span>
+                        <span className="font-medium">{devicesWithStake.length}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Total Validators</span>
+                        <span className="font-medium">{totalValidators.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Total Stake</span>
+                        <span className="font-medium">{(totalStake / 1_000_000).toFixed(1)}M SOL</span>
+                      </div>
+                    </>
+                  )
+                })()}
+              </div>
+
+              {/* Top devices by stake */}
+              <div className="pt-2 border-t border-[var(--border)]">
+                <div className="text-muted-foreground mb-1.5">Top by Stake</div>
+                <div className="space-y-1 max-h-24 overflow-y-auto">
+                  {Array.from(deviceStakeMap.entries())
+                    .filter(([, s]) => s.stakeSol > 0)
+                    .sort((a, b) => b[1].stakeSol - a[1].stakeSol)
+                    .slice(0, 5)
+                    .map(([pk, stake]) => {
+                      const node = cyRef.current?.getElementById(pk)
+                      const label = node?.data('label') || pk.substring(0, 8)
+                      return (
+                        <div key={pk} className="flex items-center justify-between gap-2">
+                          <span className="truncate">{label}</span>
+                          <span className="text-amber-500 font-medium whitespace-nowrap">
+                            {stake.stakeSol >= 1_000_000
+                              ? `${(stake.stakeSol / 1_000_000).toFixed(1)}M`
+                              : `${(stake.stakeSol / 1_000).toFixed(0)}K`}
+                          </span>
+                        </div>
+                      )
+                    })}
+                </div>
+              </div>
+
+              {/* Legend */}
+              <div className="pt-2 border-t border-[var(--border)]">
+                <div className="text-muted-foreground mb-1.5">Node Size = Stake Amount</div>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-5 h-5 rounded-full" style={{ backgroundColor: getStakeColor(1.0) }} />
+                    <span>High stake (&gt;1% share)</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-4 h-4 rounded-full" style={{ backgroundColor: getStakeColor(0.3) }} />
+                    <span>Medium stake</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: getStakeColor(0) }} />
+                    <span>No validators</span>
+                  </div>
+                </div>
+              </div>
+            </div>
           )}
         </div>
       )}

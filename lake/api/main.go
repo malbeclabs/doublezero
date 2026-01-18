@@ -283,6 +283,14 @@ func main() {
 	shutdown := make(chan os.Signal, 1)
 	signal.Notify(shutdown, syscall.SIGINT, syscall.SIGTERM)
 
+	// Create a cancellable context for all requests - this allows us to signal
+	// SSE connections to close during shutdown (http.Server.Shutdown does NOT
+	// cancel request contexts by default)
+	serverCtx, serverCancel := context.WithCancel(context.Background())
+	server.BaseContext = func(_ net.Listener) context.Context {
+		return serverCtx
+	}
+
 	// Start server in a goroutine
 	go func() {
 		log.Println("API server starting on :8080")
@@ -301,11 +309,15 @@ func main() {
 	// Immediately mark as shutting down so readiness probe returns 503
 	shuttingDown.Store(true)
 
-	// Stop background cache goroutines first (they may be blocking on DB queries)
+	// Cancel the server context to signal SSE connections to close
+	// This triggers ctx.Done() in all active request handlers
+	serverCancel()
+
+	// Stop background cache goroutines (they may be blocking on DB queries)
 	handlers.StopStatusCache()
 
-	// Give existing connections 30 seconds to complete
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// Give existing connections a short time to complete after context cancellation
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	if err := server.Shutdown(ctx); err != nil {

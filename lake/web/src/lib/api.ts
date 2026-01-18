@@ -1128,6 +1128,36 @@ export async function fetchISISPath(fromPK: string, toPK: string, mode: PathMode
   return res.json()
 }
 
+// Multi-path types
+export interface MultiPathHop {
+  devicePK: string
+  deviceCode: string
+  status: string
+  deviceType: string
+  edgeMetric?: number
+}
+
+export interface SinglePath {
+  path: MultiPathHop[]
+  totalMetric: number
+  hopCount: number
+}
+
+export interface MultiPathResponse {
+  paths: SinglePath[]
+  from: string
+  to: string
+  error?: string
+}
+
+export async function fetchISISPaths(fromPK: string, toPK: string, k: number = 5): Promise<MultiPathResponse> {
+  const res = await fetch(`/api/topology/paths?from=${encodeURIComponent(fromPK)}&to=${encodeURIComponent(toPK)}&k=${k}`)
+  if (!res.ok) {
+    throw new Error('Failed to fetch paths')
+  }
+  return res.json()
+}
+
 // Topology comparison types
 export interface TopologyDiscrepancy {
   type: 'missing_isis' | 'extra_isis' | 'metric_mismatch'

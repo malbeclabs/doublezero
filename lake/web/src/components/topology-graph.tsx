@@ -4,8 +4,8 @@ import cytoscape from 'cytoscape'
 import type { Core, NodeSingular, EdgeSingular } from 'cytoscape'
 import { useQuery } from '@tanstack/react-query'
 import { ZoomIn, ZoomOut, Maximize, Search, Filter, Route, X, GitCompare, AlertTriangle, Zap, Lightbulb, ChevronDown, ChevronUp } from 'lucide-react'
-import { fetchISISTopology, fetchISISPath, fetchTopologyCompare, fetchFailureImpact } from '@/lib/api'
-import type { PathResponse, PathMode, FailureImpactResponse } from '@/lib/api'
+import { fetchISISTopology, fetchISISPaths, fetchTopologyCompare, fetchFailureImpact } from '@/lib/api'
+import type { PathMode, FailureImpactResponse, MultiPathResponse } from '@/lib/api'
 import { useTheme } from '@/hooks/use-theme'
 
 // Device type colors
@@ -15,6 +15,15 @@ const DEVICE_TYPE_COLORS: Record<string, { light: string; dark: string }> = {
   pop: { light: '#0891b2', dark: '#22d3ee' },       // cyan
   default: { light: '#6b7280', dark: '#9ca3af' },   // gray
 }
+
+// Path colors for K-shortest paths visualization
+const PATH_COLORS = [
+  { light: '#16a34a', dark: '#22c55e' },  // green - primary/shortest
+  { light: '#2563eb', dark: '#3b82f6' },  // blue - alternate 1
+  { light: '#9333ea', dark: '#a855f7' },  // purple - alternate 2
+  { light: '#ea580c', dark: '#f97316' },  // orange - alternate 3
+  { light: '#0891b2', dark: '#06b6d4' },  // cyan - alternate 4
+]
 
 type InteractionMode = 'explore' | 'path' | 'compare'
 
@@ -50,7 +59,8 @@ export function TopologyGraph({
   const [mode, setMode] = useState<InteractionMode>('explore')
   const [pathSource, setPathSource] = useState<string | null>(null)
   const [pathTarget, setPathTarget] = useState<string | null>(null)
-  const [pathResult, setPathResult] = useState<PathResponse | null>(null)
+  const [pathsResult, setPathsResult] = useState<MultiPathResponse | null>(null)
+  const [selectedPathIndex, setSelectedPathIndex] = useState<number>(0)
   const [pathLoading, setPathLoading] = useState(false)
   const [pathMode, setPathMode] = useState<PathMode>('hops')
 
@@ -195,57 +205,74 @@ export function TopologyGraph({
     return Math.min(maxSize, size)
   }, [])
 
-  // Fetch path when source and target are set
+  // Fetch paths when source and target are set
   useEffect(() => {
     if (mode !== 'path' || !pathSource || !pathTarget) return
 
     setPathLoading(true)
-    fetchISISPath(pathSource, pathTarget, pathMode)
+    setSelectedPathIndex(0) // Reset to first path
+    fetchISISPaths(pathSource, pathTarget, 5)
       .then(result => {
-        setPathResult(result)
+        setPathsResult(result)
       })
       .catch(err => {
-        setPathResult({ path: [], totalMetric: 0, hopCount: 0, error: err.message })
+        setPathsResult({ paths: [], from: pathSource, to: pathTarget, error: err.message })
       })
       .finally(() => {
         setPathLoading(false)
       })
   }, [mode, pathSource, pathTarget, pathMode])
 
-  // Highlight path on graph
+  // Highlight paths on graph - show all paths with different colors, selected path is prominent
   useEffect(() => {
-    if (!cyRef.current || !pathResult?.path?.length) return
+    if (!cyRef.current) return
     const cy = cyRef.current
 
     // Clear previous path highlighting
-    cy.elements().removeClass('path-node path-edge')
+    cy.elements().removeClass('path-node path-edge path-0 path-1 path-2 path-3 path-4 path-selected')
+    cy.elements().removeData('pathIndex')
 
-    // Highlight path nodes and edges
-    const pathNodeIds = new Set(pathResult.path.map(h => h.devicePK))
-    cy.nodes().forEach(node => {
-      if (pathNodeIds.has(node.id())) {
-        node.addClass('path-node')
+    if (!pathsResult?.paths?.length) return
+
+    // Highlight all paths with their respective colors
+    pathsResult.paths.forEach((singlePath, pathIndex) => {
+      if (!singlePath.path.length) return
+
+      const pathClass = `path-${pathIndex}`
+      const isSelected = pathIndex === selectedPathIndex
+
+      // Highlight path nodes
+      singlePath.path.forEach(hop => {
+        const node = cy.getElementById(hop.devicePK)
+        if (node.length) {
+          node.addClass('path-node')
+          node.addClass(pathClass)
+          if (isSelected) node.addClass('path-selected')
+        }
+      })
+
+      // Highlight edges between consecutive path nodes
+      for (let i = 0; i < singlePath.path.length - 1; i++) {
+        const from = singlePath.path[i].devicePK
+        const to = singlePath.path[i + 1].devicePK
+        // Try both directions since ISIS adjacencies are directed
+        const edge = cy.edges(`[source="${from}"][target="${to}"], [source="${to}"][target="${from}"]`)
+        edge.addClass('path-edge')
+        edge.addClass(pathClass)
+        if (isSelected) edge.addClass('path-selected')
       }
     })
-
-    // Highlight edges between consecutive path nodes
-    for (let i = 0; i < pathResult.path.length - 1; i++) {
-      const from = pathResult.path[i].devicePK
-      const to = pathResult.path[i + 1].devicePK
-      // Try both directions since ISIS adjacencies are directed
-      const edge = cy.edges(`[source="${from}"][target="${to}"], [source="${to}"][target="${from}"]`)
-      edge.addClass('path-edge')
-    }
-  }, [pathResult])
+  }, [pathsResult, selectedPathIndex, isDark])
 
   // Clear path when mode changes
   useEffect(() => {
     if (mode === 'explore') {
       setPathSource(null)
       setPathTarget(null)
-      setPathResult(null)
+      setPathsResult(null)
+      setSelectedPathIndex(0)
       if (cyRef.current) {
-        cyRef.current.elements().removeClass('path-node path-edge path-source path-target health-matched health-extra health-missing health-mismatch')
+        cyRef.current.elements().removeClass('path-node path-edge path-source path-target path-0 path-1 path-2 path-3 path-4 path-selected health-matched health-extra health-missing health-mismatch')
       }
     } else if (mode === 'path') {
       // Clear compare classes
@@ -458,6 +485,68 @@ export function TopologyGraph({
             'opacity': 1,
           },
         },
+        // Multi-path styles - each path gets a distinct color
+        {
+          selector: 'edge.path-0',
+          style: {
+            'line-color': isDark ? '#22c55e' : '#16a34a',
+            'target-arrow-color': isDark ? '#22c55e' : '#16a34a',
+            'width': 3,
+            'opacity': 0.6,
+          },
+        },
+        {
+          selector: 'edge.path-1',
+          style: {
+            'line-color': isDark ? '#3b82f6' : '#2563eb',
+            'target-arrow-color': isDark ? '#3b82f6' : '#2563eb',
+            'width': 3,
+            'opacity': 0.6,
+          },
+        },
+        {
+          selector: 'edge.path-2',
+          style: {
+            'line-color': isDark ? '#a855f7' : '#9333ea',
+            'target-arrow-color': isDark ? '#a855f7' : '#9333ea',
+            'width': 3,
+            'opacity': 0.6,
+          },
+        },
+        {
+          selector: 'edge.path-3',
+          style: {
+            'line-color': isDark ? '#f97316' : '#ea580c',
+            'target-arrow-color': isDark ? '#f97316' : '#ea580c',
+            'width': 3,
+            'opacity': 0.6,
+          },
+        },
+        {
+          selector: 'edge.path-4',
+          style: {
+            'line-color': isDark ? '#06b6d4' : '#0891b2',
+            'target-arrow-color': isDark ? '#06b6d4' : '#0891b2',
+            'width': 3,
+            'opacity': 0.6,
+          },
+        },
+        // Selected path is more prominent
+        {
+          selector: 'edge.path-selected',
+          style: {
+            'width': 5,
+            'opacity': 1,
+            'z-index': 10,
+          },
+        },
+        {
+          selector: 'node.path-selected',
+          style: {
+            'overlay-opacity': 0.2,
+            'z-index': 10,
+          },
+        },
       ],
       layout: {
         name: 'cose',
@@ -553,8 +642,9 @@ export function TopologyGraph({
           // Reset and start new path
           setPathSource(devicePK)
           setPathTarget(null)
-          setPathResult(null)
-          cy.elements().removeClass('path-node path-edge path-source path-target')
+          setPathsResult(null)
+          setSelectedPathIndex(0)
+          cy.elements().removeClass('path-node path-edge path-source path-target path-0 path-1 path-2 path-3 path-4 path-selected')
           node.addClass('path-source')
         }
       }
@@ -640,9 +730,10 @@ export function TopologyGraph({
   const clearPath = () => {
     setPathSource(null)
     setPathTarget(null)
-    setPathResult(null)
+    setPathsResult(null)
+    setSelectedPathIndex(0)
     if (cyRef.current) {
-      cyRef.current.elements().removeClass('path-node path-edge path-source path-target')
+      cyRef.current.elements().removeClass('path-node path-edge path-source path-target path-0 path-1 path-2 path-3 path-4 path-selected')
     }
   }
 
@@ -915,28 +1006,65 @@ export function TopologyGraph({
             <div className="text-muted-foreground">Click another device to set the <span className="text-red-500 font-medium">target</span></div>
           )}
           {pathLoading && (
-            <div className="text-muted-foreground">Finding path...</div>
+            <div className="text-muted-foreground">Finding paths...</div>
           )}
-          {pathResult && !pathResult.error && pathResult.path.length > 0 && (
+          {pathsResult && !pathsResult.error && pathsResult.paths.length > 0 && (
             <div>
-              <div className="space-y-1 text-muted-foreground">
-                <div>Hops: <span className="text-foreground font-medium">{pathResult.hopCount}</span></div>
-                <div>Latency: <span className="text-foreground font-medium">{(pathResult.totalMetric / 1000).toFixed(2)}ms</span></div>
-              </div>
-              <div className="mt-2 pt-2 border-t border-[var(--border)] space-y-0.5 max-h-32 overflow-y-auto">
-                {pathResult.path.map((hop, i) => (
-                  <div key={hop.devicePK} className="flex items-center gap-1">
-                    <span className="text-muted-foreground w-4">{i + 1}.</span>
-                    <span className={i === 0 ? 'text-green-500' : i === pathResult.path.length - 1 ? 'text-red-500' : 'text-amber-500'}>
-                      {hop.deviceCode}
-                    </span>
+              {/* Path selector - show if multiple paths */}
+              {pathsResult.paths.length > 1 && (
+                <div className="mb-2">
+                  <div className="text-muted-foreground mb-1">
+                    {pathsResult.paths.length} paths found
                   </div>
-                ))}
-              </div>
+                  <div className="flex flex-wrap gap-1">
+                    {pathsResult.paths.map((_, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setSelectedPathIndex(i)}
+                        className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                          selectedPathIndex === i
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-muted hover:bg-muted/80 text-muted-foreground'
+                        }`}
+                        style={{
+                          borderLeft: `3px solid ${
+                            isDark ? PATH_COLORS[i % PATH_COLORS.length].dark : PATH_COLORS[i % PATH_COLORS.length].light
+                          }`,
+                        }}
+                      >
+                        Path {i + 1}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Selected path details */}
+              {pathsResult.paths[selectedPathIndex] && (
+                <>
+                  <div className="space-y-1 text-muted-foreground">
+                    <div>Hops: <span className="text-foreground font-medium">{pathsResult.paths[selectedPathIndex].hopCount}</span></div>
+                    <div>Latency: <span className="text-foreground font-medium">{(pathsResult.paths[selectedPathIndex].totalMetric / 1000).toFixed(2)}ms</span></div>
+                  </div>
+                  <div className="mt-2 pt-2 border-t border-[var(--border)] space-y-0.5 max-h-32 overflow-y-auto">
+                    {pathsResult.paths[selectedPathIndex].path.map((hop, i) => (
+                      <div key={hop.devicePK} className="flex items-center gap-1">
+                        <span className="text-muted-foreground w-4">{i + 1}.</span>
+                        <span className={i === 0 ? 'text-green-500' : i === pathsResult.paths[selectedPathIndex].path.length - 1 ? 'text-red-500' : 'text-foreground'}>
+                          {hop.deviceCode}
+                        </span>
+                        {hop.edgeMetric !== undefined && hop.edgeMetric > 0 && (
+                          <span className="text-muted-foreground text-[10px]">({(hop.edgeMetric / 1000).toFixed(1)}ms)</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           )}
-          {pathResult?.error && (
-            <div className="text-destructive">{pathResult.error}</div>
+          {pathsResult?.error && (
+            <div className="text-destructive">{pathsResult.error}</div>
           )}
         </div>
       )}

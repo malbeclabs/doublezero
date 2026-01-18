@@ -197,6 +197,7 @@ func main() {
 	r.Get("/api/topology/traffic", handlers.GetTopologyTraffic)
 	r.Get("/api/topology/isis", handlers.GetISISTopology)
 	r.Get("/api/topology/path", handlers.GetISISPath)
+	r.Get("/api/topology/paths", handlers.GetISISPaths)
 	r.Get("/api/topology/compare", handlers.GetTopologyCompare)
 	r.Get("/api/topology/impact/{pk}", handlers.GetFailureImpact)
 	r.Post("/api/query", handlers.ExecuteQuery)

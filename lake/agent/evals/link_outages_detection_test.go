@@ -11,6 +11,7 @@ import (
 	"github.com/malbeclabs/doublezero/lake/indexer/pkg/clickhouse"
 	"github.com/malbeclabs/doublezero/lake/indexer/pkg/clickhouse/dataset"
 	serviceability "github.com/malbeclabs/doublezero/lake/indexer/pkg/dz/serviceability"
+	dztelemlatency "github.com/malbeclabs/doublezero/lake/indexer/pkg/dz/telemetry/latency"
 	"github.com/stretchr/testify/require"
 )
 
@@ -54,8 +55,8 @@ func runTest_LinkOutagesDetection(t *testing.T, llmFactory LLMClientFactory) {
 	// Set up workflow with LLM client
 	p := setupWorkflow(t, ctx, clientInfo, llmFactory, debug, debugLevel)
 
-	// Run the query
-	question := "what links have been down in the last 48 hours?"
+	// Run the query - ask about outages and whether they're still down or recovered
+	question := "what links have had outages in the last 48 hours and are they still down?"
 	if debug {
 		if debugLevel == 1 {
 			t.Logf("=== Query: '%s' ===\n", question)
@@ -82,19 +83,19 @@ func runTest_LinkOutagesDetection(t *testing.T, llmFactory LLMClientFactory) {
 	// Evaluate with expectations
 	expectations := []Expectation{
 		{
-			Description:   "Response mentions nyc-lon-1 outage with timestamps",
-			ExpectedValue: "nyc-lon-1 identified as having been down with timing info (went down ~24h ago, recovered ~12h ago)",
-			Rationale:     "nyc-lon-1 went soft-drained 24h ago and recovered 12h ago - timestamps/timing must be included",
+			Description:   "Response identifies nyc-lon-1 as recovered",
+			ExpectedValue: "nyc-lon-1 identified as having had an outage AND now recovered/activated",
+			Rationale:     "nyc-lon-1 went soft-drained and later recovered to activated status",
 		},
 		{
-			Description:   "Response mentions tok-fra-1 ongoing outage with start time",
-			ExpectedValue: "tok-fra-1 identified as currently down/ongoing with timing info (started ~6h ago)",
-			Rationale:     "tok-fra-1 is currently soft-drained since 6h ago - start time must be included",
+			Description:   "Response identifies tok-fra-1 as currently down",
+			ExpectedValue: "tok-fra-1 identified as currently down/soft-drained (ongoing outage)",
+			Rationale:     "tok-fra-1 is currently soft-drained and has not recovered",
 		},
 		{
 			Description:   "Response does NOT mention chi-nyc-1 as having outage",
-			ExpectedValue: "chi-nyc-1 should NOT be listed as down since it was always activated",
-			Rationale:     "chi-nyc-1 never changed status - it was always healthy",
+			ExpectedValue: "chi-nyc-1 should NOT be listed as having an outage",
+			Rationale:     "chi-nyc-1 never had a status change - it was always healthy",
 		},
 	}
 	isCorrect, err := evaluateResponse(t, ctx, question, response, expectations...)
@@ -215,6 +216,52 @@ func seedLinkOutagesDetectionData(t *testing.T, ctx context.Context, conn clickh
 	}, &dataset.DimensionType2DatasetWriteConfig{
 		SnapshotTS: now.Add(-72 * time.Hour),
 		OpID:       testOpID(),
+	})
+	require.NoError(t, err)
+
+	// Seed telemetry for healthy links so they don't appear "dark"
+	// chi-nyc-1: recent healthy telemetry (always healthy)
+	// nyc-lon-1: recent healthy telemetry (after recovery)
+	latencyDS, err := dztelemlatency.NewDeviceLinkLatencyDataset(log)
+	require.NoError(t, err)
+	ingestedAt := now
+
+	latencySamples := []struct {
+		time           time.Time
+		epoch          int64
+		sampleIndex    int32
+		originDevicePK string
+		targetDevicePK string
+		linkPK         string
+		rttUs          uint32
+		loss           bool
+		ipdvUs         *int64
+	}{
+		// chi-nyc-1 (link3): Recent healthy samples - link is healthy
+		{now.Add(-1 * time.Hour), 100, 1, "device3", "device1", "link3", 12000, false, int64Ptr(2000)},
+		{now.Add(-30 * time.Minute), 100, 2, "device3", "device1", "link3", 13000, false, int64Ptr(2100)},
+		{now, 100, 3, "device3", "device1", "link3", 12500, false, int64Ptr(1900)},
+
+		// nyc-lon-1 (link1): Recent healthy samples after recovery at -12h
+		{now.Add(-10 * time.Hour), 100, 4, "device1", "device2", "link1", 45000, false, int64Ptr(5000)},
+		{now.Add(-6 * time.Hour), 100, 5, "device1", "device2", "link1", 46000, false, int64Ptr(5200)},
+		{now.Add(-1 * time.Hour), 100, 6, "device1", "device2", "link1", 47000, false, int64Ptr(4800)},
+		{now, 100, 7, "device1", "device2", "link1", 45500, false, int64Ptr(5100)},
+	}
+	err = latencyDS.WriteBatch(ctx, conn, len(latencySamples), func(i int) ([]any, error) {
+		s := latencySamples[i]
+		return []any{
+			s.time.UTC(),     // event_ts
+			ingestedAt,       // ingested_at
+			s.epoch,          // epoch
+			s.sampleIndex,    // sample_index
+			s.originDevicePK, // origin_device_pk
+			s.targetDevicePK, // target_device_pk
+			s.linkPK,         // link_pk
+			int64(s.rttUs),   // rtt_us
+			s.loss,           // loss
+			s.ipdvUs,         // ipdv_us
+		}, nil
 	})
 	require.NoError(t, err)
 }

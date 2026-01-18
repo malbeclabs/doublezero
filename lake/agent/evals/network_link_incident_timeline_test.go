@@ -56,8 +56,8 @@ func runTest_NetworkLinkIncidentTimeline(t *testing.T, llmFactory LLMClientFacto
 	// Set up workflow with LLM client
 	p := setupWorkflow(t, ctx, clientInfo, llmFactory, debug, debugLevel)
 
-	// Run the query
-	question := "show timeline for drained link nyc-lon-1"
+	// Run the query - ask for full incident details including metrics
+	question := "show incident timeline for link nyc-lon-1 including when it was drained and any packet loss or errors"
 	if debug {
 		if debugLevel == 1 {
 			t.Logf("=== Query: '%s' ===\n", question)

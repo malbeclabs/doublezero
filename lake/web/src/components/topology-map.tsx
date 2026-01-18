@@ -1671,20 +1671,58 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
                 </div>
               )}
 
+              {/* Disconnected devices */}
               {removalResult.disconnectedCount > 0 && (
-                <div className="text-red-500 font-medium">
-                  {removalResult.disconnectedCount} device{removalResult.disconnectedCount !== 1 ? 's' : ''} disconnected
+                <div className="space-y-1">
+                  <div className="text-red-500 font-medium">
+                    {removalResult.disconnectedCount} device{removalResult.disconnectedCount !== 1 ? 's' : ''} disconnected
+                  </div>
+                  <div className="space-y-0.5 max-h-24 overflow-y-auto">
+                    {removalResult.disconnectedDevices.slice(0, 5).map((device) => (
+                      <div key={device.pk} className="text-muted-foreground">
+                        {device.code}
+                      </div>
+                    ))}
+                    {removalResult.disconnectedCount > 5 && (
+                      <div className="text-muted-foreground">+{removalResult.disconnectedCount - 5} more</div>
+                    )}
+                  </div>
                 </div>
               )}
 
+              {/* Affected paths */}
               {removalResult.affectedPathCount > 0 && (
-                <div className="text-amber-500">
-                  {removalResult.affectedPathCount} path{removalResult.affectedPathCount !== 1 ? 's' : ''} affected
+                <div className="space-y-1 pt-2 border-t border-[var(--border)]">
+                  <div className="text-amber-500 font-medium">
+                    {removalResult.affectedPathCount} path{removalResult.affectedPathCount !== 1 ? 's' : ''} affected
+                  </div>
+                  <div className="space-y-1 max-h-32 overflow-y-auto">
+                    {removalResult.affectedPaths.slice(0, 5).map((path, i) => (
+                      <div key={i} className="text-muted-foreground">
+                        <span className="text-foreground">{path.fromCode}</span> → <span className="text-foreground">{path.toCode}</span>
+                        <div className="ml-2 text-[10px]">
+                          {path.hasAlternate ? (
+                            <span className="text-amber-500">
+                              {path.beforeHops} → {path.afterHops} hops (+{path.afterHops - path.beforeHops})
+                            </span>
+                          ) : (
+                            <span className="text-red-500">No alternate path</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    {removalResult.affectedPathCount > 5 && (
+                      <div className="text-muted-foreground">+{removalResult.affectedPathCount - 5} more</div>
+                    )}
+                  </div>
                 </div>
               )}
 
               {removalResult.disconnectedCount === 0 && removalResult.affectedPathCount === 0 && (
-                <div className="text-green-500">Safe to remove</div>
+                <div className="text-green-500 flex items-center gap-1.5">
+                  <div className="w-2 h-2 rounded-full bg-green-500" />
+                  Safe to remove - no impact
+                </div>
               )}
             </div>
           )}

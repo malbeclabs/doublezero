@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"math"
 	"net/http"
 	"time"
 
@@ -246,9 +247,9 @@ func GetLinkHealth(w http.ResponseWriter, r *http.Request) {
 			h.p95_rtt_us,
 			h.committed_rtt_ns,
 			h.loss_pct,
-			h.exceeds_committed_rtt,
-			h.has_packet_loss,
-			h.is_dark
+			toUInt8(h.exceeds_committed_rtt) AS exceeds_committed_rtt,
+			toUInt8(h.has_packet_loss) AS has_packet_loss,
+			toUInt8(h.is_dark) AS is_dark
 		FROM dz_links_health_current h
 		JOIN dz_links_current l ON h.pk = l.pk
 		LEFT JOIN dz_devices_current da ON l.side_a_pk = da.pk
@@ -272,6 +273,7 @@ func GetLinkHealth(w http.ResponseWriter, r *http.Request) {
 
 	for rows.Next() {
 		var lh TopologyLinkHealth
+		var exceedsCommit, hasPacketLoss, isDark uint8
 		if err := rows.Scan(
 			&lh.LinkPK,
 			&lh.SideAPK,
@@ -282,13 +284,27 @@ func GetLinkHealth(w http.ResponseWriter, r *http.Request) {
 			&lh.P95RttUs,
 			&lh.CommittedRttNs,
 			&lh.LossPct,
-			&lh.ExceedsCommit,
-			&lh.HasPacketLoss,
-			&lh.IsDark,
+			&exceedsCommit,
+			&hasPacketLoss,
+			&isDark,
 		); err != nil {
 			log.Printf("Link health scan error: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
+		}
+		lh.ExceedsCommit = exceedsCommit != 0
+		lh.HasPacketLoss = hasPacketLoss != 0
+		lh.IsDark = isDark != 0
+
+		// Sanitize NaN/Inf values from ClickHouse
+		if math.IsNaN(lh.AvgRttUs) || math.IsInf(lh.AvgRttUs, 0) {
+			lh.AvgRttUs = 0
+		}
+		if math.IsNaN(lh.P95RttUs) || math.IsInf(lh.P95RttUs, 0) {
+			lh.P95RttUs = 0
+		}
+		if math.IsNaN(lh.LossPct) || math.IsInf(lh.LossPct, 0) {
+			lh.LossPct = 0
 		}
 
 		// Calculate SLA status
@@ -299,6 +315,10 @@ func GetLinkHealth(w http.ResponseWriter, r *http.Request) {
 		} else {
 			committedUs := float64(lh.CommittedRttNs) / 1000.0
 			lh.SlaRatio = lh.AvgRttUs / committedUs
+			// Sanitize SlaRatio as well
+			if math.IsNaN(lh.SlaRatio) || math.IsInf(lh.SlaRatio, 0) {
+				lh.SlaRatio = 0
+			}
 
 			if lh.ExceedsCommit || lh.HasPacketLoss {
 				lh.SlaStatus = "critical"

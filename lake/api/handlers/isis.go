@@ -1289,3 +1289,171 @@ func GetRedundancyReport(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, response)
 }
+
+// MetroConnectivity represents connectivity between two metros
+type MetroConnectivity struct {
+	FromMetroPK   string `json:"fromMetroPK"`
+	FromMetroCode string `json:"fromMetroCode"`
+	FromMetroName string `json:"fromMetroName"`
+	ToMetroPK     string `json:"toMetroPK"`
+	ToMetroCode   string `json:"toMetroCode"`
+	ToMetroName   string `json:"toMetroName"`
+	PathCount     int    `json:"pathCount"`
+	MinHops       int    `json:"minHops"`
+	MinMetric     int64  `json:"minMetric"`
+}
+
+// MetroConnectivityResponse is the response for the metro connectivity endpoint
+type MetroConnectivityResponse struct {
+	Metros       []MetroInfo         `json:"metros"`
+	Connectivity []MetroConnectivity `json:"connectivity"`
+	Error        string              `json:"error,omitempty"`
+}
+
+// MetroInfo is a lightweight metro representation for the matrix
+type MetroInfo struct {
+	PK   string `json:"pk"`
+	Code string `json:"code"`
+	Name string `json:"name"`
+}
+
+// GetMetroConnectivity returns the connectivity matrix between all metros
+func GetMetroConnectivity(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+
+	start := time.Now()
+
+	session := config.Neo4jSession(ctx)
+	defer session.Close(ctx)
+
+	response := MetroConnectivityResponse{
+		Metros:       []MetroInfo{},
+		Connectivity: []MetroConnectivity{},
+	}
+
+	// First, get all metros that have ISIS-enabled devices
+	metroCypher := `
+		MATCH (m:Metro)<-[:LOCATED_IN]-(d:Device)
+		WHERE d.isis_system_id IS NOT NULL
+		WITH m, count(d) AS deviceCount
+		WHERE deviceCount > 0
+		RETURN m.pk AS pk, m.code AS code, m.name AS name
+		ORDER BY m.code
+	`
+
+	metroResult, err := session.Run(ctx, metroCypher, nil)
+	if err != nil {
+		log.Printf("Metro connectivity metro query error: %v", err)
+		response.Error = err.Error()
+		writeJSON(w, response)
+		return
+	}
+
+	metroRecords, err := metroResult.Collect(ctx)
+	if err != nil {
+		log.Printf("Metro connectivity metro collect error: %v", err)
+		response.Error = err.Error()
+		writeJSON(w, response)
+		return
+	}
+
+	metroMap := make(map[string]MetroInfo)
+	for _, record := range metroRecords {
+		pk, _ := record.Get("pk")
+		code, _ := record.Get("code")
+		name, _ := record.Get("name")
+
+		metro := MetroInfo{
+			PK:   asString(pk),
+			Code: asString(code),
+			Name: asString(name),
+		}
+		response.Metros = append(response.Metros, metro)
+		metroMap[metro.PK] = metro
+	}
+
+	// For each pair of metros, find the best path between any devices in those metros
+	// This query finds the shortest path between any two ISIS devices in different metros
+	connectivityCypher := `
+		MATCH (m1:Metro)<-[:LOCATED_IN]-(d1:Device)
+		MATCH (m2:Metro)<-[:LOCATED_IN]-(d2:Device)
+		WHERE m1.pk < m2.pk
+		  AND d1.isis_system_id IS NOT NULL
+		  AND d2.isis_system_id IS NOT NULL
+		WITH m1, m2, d1, d2
+		MATCH path = shortestPath((d1)-[:ISIS_ADJACENT*]-(d2))
+		WITH m1, m2,
+		     length(path) AS hops,
+		     reduce(total = 0, r IN relationships(path) | total + coalesce(r.metric, 0)) AS metric
+		WITH m1, m2, min(hops) AS minHops, min(metric) AS minMetric, count(*) AS pathCount
+		RETURN m1.pk AS fromPK, m1.code AS fromCode, m1.name AS fromName,
+		       m2.pk AS toPK, m2.code AS toCode, m2.name AS toName,
+		       minHops, minMetric, pathCount
+		ORDER BY fromCode, toCode
+	`
+
+	connResult, err := session.Run(ctx, connectivityCypher, nil)
+	if err != nil {
+		log.Printf("Metro connectivity query error: %v", err)
+		response.Error = err.Error()
+		writeJSON(w, response)
+		return
+	}
+
+	connRecords, err := connResult.Collect(ctx)
+	if err != nil {
+		log.Printf("Metro connectivity collect error: %v", err)
+		response.Error = err.Error()
+		writeJSON(w, response)
+		return
+	}
+
+	for _, record := range connRecords {
+		fromPK, _ := record.Get("fromPK")
+		fromCode, _ := record.Get("fromCode")
+		fromName, _ := record.Get("fromName")
+		toPK, _ := record.Get("toPK")
+		toCode, _ := record.Get("toCode")
+		toName, _ := record.Get("toName")
+		minHops, _ := record.Get("minHops")
+		minMetric, _ := record.Get("minMetric")
+		pathCount, _ := record.Get("pathCount")
+
+		// Add both directions (matrix is symmetric)
+		conn := MetroConnectivity{
+			FromMetroPK:   asString(fromPK),
+			FromMetroCode: asString(fromCode),
+			FromMetroName: asString(fromName),
+			ToMetroPK:     asString(toPK),
+			ToMetroCode:   asString(toCode),
+			ToMetroName:   asString(toName),
+			PathCount:     int(asInt64(pathCount)),
+			MinHops:       int(asInt64(minHops)),
+			MinMetric:     asInt64(minMetric),
+		}
+		response.Connectivity = append(response.Connectivity, conn)
+
+		// Add reverse direction
+		connReverse := MetroConnectivity{
+			FromMetroPK:   asString(toPK),
+			FromMetroCode: asString(toCode),
+			FromMetroName: asString(toName),
+			ToMetroPK:     asString(fromPK),
+			ToMetroCode:   asString(fromCode),
+			ToMetroName:   asString(fromName),
+			PathCount:     int(asInt64(pathCount)),
+			MinHops:       int(asInt64(minHops)),
+			MinMetric:     asInt64(minMetric),
+		}
+		response.Connectivity = append(response.Connectivity, connReverse)
+	}
+
+	duration := time.Since(start)
+	metrics.RecordClickHouseQuery(duration, nil) // Reuse existing metric for now
+
+	log.Printf("Metro connectivity returned %d metros, %d connections in %v",
+		len(response.Metros), len(response.Connectivity), duration)
+
+	writeJSON(w, response)
+}

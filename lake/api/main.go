@@ -204,6 +204,8 @@ func main() {
 	r.Get("/api/topology/redundancy-report", handlers.GetRedundancyReport)
 	r.Get("/api/topology/simulate-link-removal", handlers.GetSimulateLinkRemoval)
 	r.Get("/api/topology/simulate-link-addition", handlers.GetSimulateLinkAddition)
+	r.Get("/api/topology/metro-connectivity", handlers.GetMetroConnectivity)
+
 	// SQL endpoints
 	r.Post("/api/sql/query", handlers.ExecuteQuery)
 	r.Post("/api/sql/generate", handlers.GenerateSQL)

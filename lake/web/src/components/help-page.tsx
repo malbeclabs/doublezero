@@ -91,8 +91,14 @@ export function HelpPage() {
                 <KeyboardShortcut keys={['Shift', 'Enter']} description="New line" />
               </div>
               <div className="pt-2">
-                <h4 className="text-sm font-medium mb-2">Topology</h4>
-                <KeyboardShortcut keys={['Escape']} description="Close drawer" />
+                <h4 className="text-sm font-medium mb-2">Topology (Graph View)</h4>
+                <KeyboardShortcut keys={['Escape']} description="Exit mode / close drawer" />
+                <KeyboardShortcut keys={['p']} description="Toggle path finding mode" />
+                <KeyboardShortcut keys={['c']} description="Toggle topology compare mode" />
+                <KeyboardShortcut keys={['r']} description="Toggle What-If link removal mode" />
+                <KeyboardShortcut keys={['a']} description="Toggle What-If link addition mode" />
+                <KeyboardShortcut keys={['f']} description="Focus search" />
+                <KeyboardShortcut keys={['?']} description="Toggle guide panel" />
               </div>
             </div>
           </CollapsibleSection>
@@ -161,6 +167,8 @@ export function HelpPage() {
                 <li><strong>Validators mode:</strong> Show Solana validator locations on the map</li>
                 <li><strong>Path Finding mode:</strong> Calculate and visualize routes between devices</li>
                 <li><strong>Criticality mode:</strong> Highlight single points of failure in the network</li>
+                <li><strong>What-If Removal:</strong> Simulate removing a link to see impact on connectivity</li>
+                <li><strong>What-If Addition:</strong> Simulate adding a new link to see path improvements</li>
                 <li>Color coding: Blue = healthy, Yellow = degraded, Red = critical</li>
                 <li>Click on devices or links for detailed information</li>
                 <li>Pan and zoom to explore different regions</li>
@@ -176,9 +184,10 @@ export function HelpPage() {
               </p>
               <ul className="list-disc list-inside space-y-1 text-muted-foreground">
                 <li>Interactive node and link visualization</li>
-                <li>Same modes as map view: Validators, Path Finding, Criticality</li>
+                <li>Same modes as map view: Validators, Path Finding, Criticality, What-If simulation</li>
                 <li>Drag nodes to rearrange the layout</li>
                 <li>Compare mode for topology analysis</li>
+                <li>Keyboard shortcuts for quick mode switching (p, c, r, a)</li>
               </ul>
             </div>
           </CollapsibleSection>

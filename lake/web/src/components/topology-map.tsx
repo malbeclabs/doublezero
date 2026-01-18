@@ -4,12 +4,12 @@ import MapGL, { Source, Layer, Marker } from 'react-map-gl/maplibre'
 import type { MapRef, MapLayerMouseEvent, LngLatBoundsLike } from 'react-map-gl/maplibre'
 import type { StyleSpecification } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { ZoomIn, ZoomOut, Maximize, Users, X, Search, Route, Shield } from 'lucide-react'
+import { ZoomIn, ZoomOut, Maximize, Users, X, Search, Route, Shield, MinusCircle, PlusCircle, AlertTriangle } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip as RechartsTooltip, CartesianGrid } from 'recharts'
 import { useQuery } from '@tanstack/react-query'
 import { useTheme } from '@/hooks/use-theme'
-import type { TopologyMetro, TopologyDevice, TopologyLink, TopologyValidator, MultiPathResponse } from '@/lib/api'
-import { fetchISISPaths, fetchISISTopology, fetchCriticalLinks } from '@/lib/api'
+import type { TopologyMetro, TopologyDevice, TopologyLink, TopologyValidator, MultiPathResponse, SimulateLinkRemovalResponse, SimulateLinkAdditionResponse } from '@/lib/api'
+import { fetchISISPaths, fetchISISTopology, fetchCriticalLinks, fetchSimulateLinkRemoval, fetchSimulateLinkAddition } from '@/lib/api'
 
 // Path colors for multi-path visualization
 const PATH_COLORS = [
@@ -178,9 +178,18 @@ interface MapControlsProps {
   onTogglePathMode: () => void
   criticalityMode: boolean
   onToggleCriticalityMode: () => void
+  whatifRemovalMode: boolean
+  onToggleWhatifRemovalMode: () => void
+  whatifAdditionMode: boolean
+  onToggleWhatifAdditionMode: () => void
 }
 
-function MapControls({ onZoomIn, onZoomOut, onReset, showValidators, onToggleValidators, validatorCount, pathMode, onTogglePathMode, criticalityMode, onToggleCriticalityMode }: MapControlsProps) {
+function MapControls({
+  onZoomIn, onZoomOut, onReset, showValidators, onToggleValidators, validatorCount,
+  pathMode, onTogglePathMode, criticalityMode, onToggleCriticalityMode,
+  whatifRemovalMode, onToggleWhatifRemovalMode, whatifAdditionMode, onToggleWhatifAdditionMode
+}: MapControlsProps) {
+  const anyModeActive = pathMode || criticalityMode || whatifRemovalMode || whatifAdditionMode
   return (
     <div className="absolute top-4 right-4 z-[1000] flex flex-col gap-1">
       <button
@@ -215,39 +224,64 @@ function MapControls({ onZoomIn, onZoomOut, onReset, showValidators, onToggleVal
       <div className="my-1 border-t border-[var(--border)]" />
       <button
         onClick={onToggleValidators}
-        disabled={pathMode || criticalityMode}
+        disabled={anyModeActive}
         className={`p-2 border rounded shadow-sm transition-colors ${
           showValidators
             ? 'bg-purple-500/20 border-purple-500/50 text-purple-500'
             : 'bg-[var(--card)] border-[var(--border)] hover:bg-[var(--muted)]'
-        } ${pathMode || criticalityMode ? 'opacity-40 cursor-not-allowed' : ''}`}
-        title={pathMode || criticalityMode ? 'Disabled in current mode' : `${showValidators ? 'Hide' : 'Show'} validators (${validatorCount})`}
+        } ${anyModeActive ? 'opacity-40 cursor-not-allowed' : ''}`}
+        title={anyModeActive ? 'Disabled in current mode' : `${showValidators ? 'Hide' : 'Show'} validators (${validatorCount})`}
       >
         <Users className="h-4 w-4" />
       </button>
       <button
         onClick={onTogglePathMode}
-        disabled={criticalityMode}
+        disabled={criticalityMode || whatifRemovalMode || whatifAdditionMode}
         className={`p-2 border rounded shadow-sm transition-colors ${
           pathMode
             ? 'bg-amber-500/20 border-amber-500/50 text-amber-500'
             : 'bg-[var(--card)] border-[var(--border)] hover:bg-[var(--muted)]'
-        } ${criticalityMode ? 'opacity-40 cursor-not-allowed' : ''}`}
-        title={criticalityMode ? 'Disabled in criticality mode' : (pathMode ? 'Exit path finding mode' : 'Enter path finding mode')}
+        } ${criticalityMode || whatifRemovalMode || whatifAdditionMode ? 'opacity-40 cursor-not-allowed' : ''}`}
+        title={criticalityMode || whatifRemovalMode || whatifAdditionMode ? 'Disabled in current mode' : (pathMode ? 'Exit path finding mode' : 'Enter path finding mode')}
       >
         <Route className="h-4 w-4" />
       </button>
       <button
         onClick={onToggleCriticalityMode}
-        disabled={pathMode}
+        disabled={pathMode || whatifRemovalMode || whatifAdditionMode}
         className={`p-2 border rounded shadow-sm transition-colors ${
           criticalityMode
             ? 'bg-red-500/20 border-red-500/50 text-red-500'
             : 'bg-[var(--card)] border-[var(--border)] hover:bg-[var(--muted)]'
-        } ${pathMode ? 'opacity-40 cursor-not-allowed' : ''}`}
-        title={pathMode ? 'Disabled in path mode' : (criticalityMode ? 'Exit criticality mode' : 'Show link criticality (single points of failure)')}
+        } ${pathMode || whatifRemovalMode || whatifAdditionMode ? 'opacity-40 cursor-not-allowed' : ''}`}
+        title={pathMode || whatifRemovalMode || whatifAdditionMode ? 'Disabled in current mode' : (criticalityMode ? 'Exit criticality mode' : 'Show link criticality (single points of failure)')}
       >
         <Shield className="h-4 w-4" />
+      </button>
+      <div className="my-1 border-t border-[var(--border)]" />
+      <button
+        onClick={onToggleWhatifRemovalMode}
+        disabled={pathMode || criticalityMode || whatifAdditionMode}
+        className={`p-2 border rounded shadow-sm transition-colors ${
+          whatifRemovalMode
+            ? 'bg-red-500/20 border-red-500/50 text-red-500'
+            : 'bg-[var(--card)] border-[var(--border)] hover:bg-[var(--muted)]'
+        } ${pathMode || criticalityMode || whatifAdditionMode ? 'opacity-40 cursor-not-allowed' : ''}`}
+        title={pathMode || criticalityMode || whatifAdditionMode ? 'Disabled in current mode' : (whatifRemovalMode ? 'Exit link removal simulation' : 'Simulate removing a link (r)')}
+      >
+        <MinusCircle className="h-4 w-4" />
+      </button>
+      <button
+        onClick={onToggleWhatifAdditionMode}
+        disabled={pathMode || criticalityMode || whatifRemovalMode}
+        className={`p-2 border rounded shadow-sm transition-colors ${
+          whatifAdditionMode
+            ? 'bg-green-500/20 border-green-500/50 text-green-500'
+            : 'bg-[var(--card)] border-[var(--border)] hover:bg-[var(--muted)]'
+        } ${pathMode || criticalityMode || whatifRemovalMode ? 'opacity-40 cursor-not-allowed' : ''}`}
+        title={pathMode || criticalityMode || whatifRemovalMode ? 'Disabled in current mode' : (whatifAdditionMode ? 'Exit link addition simulation' : 'Simulate adding a new link (a)')}
+      >
+        <PlusCircle className="h-4 w-4" />
       </button>
     </div>
   )
@@ -356,6 +390,20 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
 
   // Criticality mode state
   const [criticalityModeEnabled, setCriticalityModeEnabled] = useState(false)
+
+  // What-If Link Removal state
+  const [whatifRemovalMode, setWhatifRemovalMode] = useState(false)
+  const [removalLink, setRemovalLink] = useState<{ sourcePK: string; targetPK: string; linkPK: string } | null>(null)
+  const [removalResult, setRemovalResult] = useState<SimulateLinkRemovalResponse | null>(null)
+  const [removalLoading, setRemovalLoading] = useState(false)
+
+  // What-If Link Addition state
+  const [whatifAdditionMode, setWhatifAdditionMode] = useState(false)
+  const [additionSource, setAdditionSource] = useState<string | null>(null)
+  const [additionTarget, setAdditionTarget] = useState<string | null>(null)
+  const [additionMetric, setAdditionMetric] = useState<number>(1000)
+  const [additionResult, setAdditionResult] = useState<SimulateLinkAdditionResponse | null>(null)
+  const [additionLoading, setAdditionLoading] = useState(false)
 
   // Fetch ISIS topology to determine which devices have ISIS data
   const { data: isisTopology } = useQuery({
@@ -569,6 +617,79 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     }
   }, [pathModeEnabled])
 
+  // Clear whatif-removal state when exiting mode
+  useEffect(() => {
+    if (!whatifRemovalMode) {
+      setRemovalLink(null)
+      setRemovalResult(null)
+    }
+  }, [whatifRemovalMode])
+
+  // Clear whatif-addition state when exiting mode
+  useEffect(() => {
+    if (!whatifAdditionMode) {
+      setAdditionSource(null)
+      setAdditionTarget(null)
+      setAdditionResult(null)
+    }
+  }, [whatifAdditionMode])
+
+  // Fetch link removal simulation when link is selected
+  useEffect(() => {
+    if (!removalLink) return
+
+    setRemovalLoading(true)
+    fetchSimulateLinkRemoval(removalLink.sourcePK, removalLink.targetPK)
+      .then(result => {
+        setRemovalResult(result)
+      })
+      .catch(err => {
+        setRemovalResult({
+          sourcePK: removalLink.sourcePK,
+          sourceCode: '',
+          targetPK: removalLink.targetPK,
+          targetCode: '',
+          disconnectedDevices: [],
+          disconnectedCount: 0,
+          affectedPaths: [],
+          affectedPathCount: 0,
+          causesPartition: false,
+          error: err.message,
+        })
+      })
+      .finally(() => {
+        setRemovalLoading(false)
+      })
+  }, [removalLink])
+
+  // Fetch link addition simulation when both devices are selected
+  useEffect(() => {
+    if (!additionSource || !additionTarget) return
+
+    setAdditionLoading(true)
+    fetchSimulateLinkAddition(additionSource, additionTarget, additionMetric)
+      .then(result => {
+        setAdditionResult(result)
+      })
+      .catch(err => {
+        setAdditionResult({
+          sourcePK: additionSource,
+          sourceCode: '',
+          targetPK: additionTarget,
+          targetCode: '',
+          metric: additionMetric,
+          improvedPaths: [],
+          improvedPathCount: 0,
+          redundancyGains: [],
+          redundancyCount: 0,
+          error: err.message,
+        })
+      })
+      .finally(() => {
+        setAdditionLoading(false)
+      })
+  }, [additionSource, additionTarget, additionMetric])
+
   // Build map of device PKs to path indices for all paths
   const devicePathMap = useMemo(() => {
     const map = new Map<string, number[]>()
@@ -643,6 +764,15 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     redundant: '#22c55e',   // green
   }
 
+  // Build set of disconnected device PKs from removal result
+  const disconnectedDevicePKs = useMemo(() => {
+    const set = new Set<string>()
+    if (removalResult?.disconnectedDevices) {
+      removalResult.disconnectedDevices.forEach(d => set.add(d.pk))
+    }
+    return set
+  }, [removalResult])
+
   // GeoJSON for link lines
   const linkGeoJson = useMemo(() => {
     const features = links.map(link => {
@@ -660,13 +790,21 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       const isInAnyPath = linkPathIndices && linkPathIndices.length > 0
       const isInSelectedPath = linkPathIndices?.includes(selectedPathIndex)
       const criticality = linkCriticalityMap.get(link.pk)
+      const isRemovedLink = removalLink?.linkPK === link.pk
 
       // Determine display color based on mode
       let displayColor = color
       let displayWeight = weight
       let displayOpacity = 0.8
+      let dashArray: number[] = link.link_type === 'WAN' ? [8, 4] : [4, 4]
 
-      if (criticalityModeEnabled && criticality) {
+      if (whatifRemovalMode && isRemovedLink) {
+        // Whatif-removal mode: highlight removed link in red dashed
+        displayColor = '#ef4444'
+        displayWeight = weight + 3
+        displayOpacity = 0.6
+        dashArray = [6, 4]
+      } else if (criticalityModeEnabled && criticality) {
         // Criticality mode: color by criticality level
         displayColor = criticalityColors[criticality]
         displayWeight = criticality === 'critical' ? weight + 3 : criticality === 'important' ? weight + 2 : weight + 1
@@ -696,7 +834,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           color: displayColor,
           weight: displayWeight,
           opacity: displayOpacity,
-          dashArray: link.link_type === 'WAN' ? [8, 4] : [4, 4],
+          dashArray,
         },
         geometry: {
           type: 'LineString' as const,
@@ -709,7 +847,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       type: 'FeatureCollection' as const,
       features,
     }
-  }, [links, devicePositions, isDark, hoveredLink, selectedItem, hoverHighlight, linkPathMap, selectedPathIndex, criticalityModeEnabled, linkCriticalityMap])
+  }, [links, devicePositions, isDark, hoveredLink, selectedItem, hoverHighlight, linkPathMap, selectedPathIndex, criticalityModeEnabled, linkCriticalityMap, whatifRemovalMode, removalLink])
 
   // GeoJSON for validator links (connecting lines)
   const validatorLinksGeoJson = useMemo(() => {
@@ -779,8 +917,8 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     if (markerClickedRef.current) {
       return
     }
-    // Don't handle link clicks in path mode
-    if (pathModeEnabled) {
+    // Don't handle link clicks in path mode or addition mode
+    if (pathModeEnabled || whatifAdditionMode) {
       return
     }
     // Check if a link was clicked
@@ -790,6 +928,15 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
         const pk = feature.properties.pk
         const link = linkMap.get(pk)
         if (link) {
+          // Handle whatif-removal mode link click
+          if (whatifRemovalMode) {
+            setRemovalLink({
+              sourcePK: link.side_a_pk,
+              targetPK: link.side_z_pk,
+              linkPK: link.pk,
+            })
+            return
+          }
           handleMarkerClick({ type: 'link', data: buildLinkInfo(link) })
           return
         }
@@ -797,7 +944,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     }
     // Close drawer when clicking empty area
     setSelectedItem(null)
-  }, [setSelectedItem, linkMap, buildLinkInfo, handleMarkerClick, pathModeEnabled])
+  }, [setSelectedItem, linkMap, buildLinkInfo, handleMarkerClick, pathModeEnabled, whatifRemovalMode, whatifAdditionMode])
 
   // Map control handlers
   const handleZoomIn = useCallback(() => {
@@ -964,6 +1111,10 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           onTogglePathMode={() => setPathModeEnabled(!pathModeEnabled)}
           criticalityMode={criticalityModeEnabled}
           onToggleCriticalityMode={() => setCriticalityModeEnabled(!criticalityModeEnabled)}
+          whatifRemovalMode={whatifRemovalMode}
+          onToggleWhatifRemovalMode={() => setWhatifRemovalMode(!whatifRemovalMode)}
+          whatifAdditionMode={whatifAdditionMode}
+          onToggleWhatifAdditionMode={() => setWhatifAdditionMode(!whatifAdditionMode)}
         />
 
         {/* Link lines source and layers */}
@@ -1066,6 +1217,10 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           // Check if device has ISIS data (can participate in path finding)
           const isISISEnabled = isisDevicePKs.size === 0 || isisDevicePKs.has(device.pk)
           const isDisabledInPathMode = pathModeEnabled && !isISISEnabled
+          // What-If mode states
+          const isAdditionSource = additionSource === device.pk
+          const isAdditionTarget = additionTarget === device.pk
+          const isDisconnected = disconnectedDevicePKs.has(device.pk)
           const deviceInfo: HoveredDeviceInfo = {
             pk: device.pk,
             code: device.code,
@@ -1092,6 +1247,25 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             borderColor = markerColor
             markerSize = 10
             opacity = 0.4
+          } else if (whatifRemovalMode && isDisconnected) {
+            // Disconnected device in whatif-removal mode
+            markerColor = '#ef4444' // red
+            borderColor = '#ef4444'
+            markerSize = 16
+            borderWidth = 3
+            opacity = 1
+          } else if (isAdditionSource) {
+            markerColor = '#22c55e' // green
+            borderColor = '#22c55e'
+            markerSize = 18
+            borderWidth = 3
+            opacity = 1
+          } else if (isAdditionTarget) {
+            markerColor = '#ef4444' // red
+            borderColor = '#ef4444'
+            markerSize = 18
+            borderWidth = 3
+            opacity = 1
           } else if (isPathSource) {
             markerColor = '#22c55e' // green
             borderColor = '#22c55e'
@@ -1153,6 +1327,18 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
                     // Only allow clicking ISIS-enabled devices in path mode
                     if (!isDisabledInPathMode) {
                       handlePathDeviceClick(device.pk)
+                    }
+                  } else if (whatifAdditionMode) {
+                    // Handle whatif-addition mode device clicks
+                    if (!additionSource) {
+                      setAdditionSource(device.pk)
+                    } else if (!additionTarget && device.pk !== additionSource) {
+                      setAdditionTarget(device.pk)
+                    } else {
+                      // Reset and start new addition
+                      setAdditionSource(device.pk)
+                      setAdditionTarget(null)
+                      setAdditionResult(null)
                     }
                   } else {
                     handleMarkerClick({ type: 'device', data: deviceInfo })
@@ -1438,6 +1624,158 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
                 </div>
               )}
             </>
+          )}
+        </div>
+      )}
+
+      {/* What-If Link Removal panel */}
+      {whatifRemovalMode && (
+        <div className="absolute top-[320px] right-4 z-[999] bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm p-3 text-xs max-w-52">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-medium flex items-center gap-1.5">
+              <MinusCircle className="h-3.5 w-3.5 text-red-500" />
+              Simulate Link Removal
+            </span>
+            {removalLink && (
+              <button
+                onClick={() => {
+                  setRemovalLink(null)
+                  setRemovalResult(null)
+                }}
+                className="p-1 hover:bg-[var(--muted)] rounded"
+                title="Clear"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            )}
+          </div>
+
+          {!removalLink && (
+            <div className="text-muted-foreground">Click a link to simulate its removal</div>
+          )}
+
+          {removalLoading && (
+            <div className="text-muted-foreground">Analyzing impact...</div>
+          )}
+
+          {removalResult && !removalResult.error && (
+            <div className="space-y-2">
+              <div className="text-muted-foreground">
+                Removing: <span className="text-foreground font-medium">{removalResult.sourceCode}</span> — <span className="text-foreground font-medium">{removalResult.targetCode}</span>
+              </div>
+
+              {removalResult.causesPartition && (
+                <div className="p-2 bg-red-500/10 border border-red-500/30 rounded text-red-500 flex items-center gap-1.5">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  <span className="font-medium">Network partition!</span>
+                </div>
+              )}
+
+              {removalResult.disconnectedCount > 0 && (
+                <div className="text-red-500 font-medium">
+                  {removalResult.disconnectedCount} device{removalResult.disconnectedCount !== 1 ? 's' : ''} disconnected
+                </div>
+              )}
+
+              {removalResult.affectedPathCount > 0 && (
+                <div className="text-amber-500">
+                  {removalResult.affectedPathCount} path{removalResult.affectedPathCount !== 1 ? 's' : ''} affected
+                </div>
+              )}
+
+              {removalResult.disconnectedCount === 0 && removalResult.affectedPathCount === 0 && (
+                <div className="text-green-500">Safe to remove</div>
+              )}
+            </div>
+          )}
+
+          {removalResult?.error && (
+            <div className="text-destructive">{removalResult.error}</div>
+          )}
+        </div>
+      )}
+
+      {/* What-If Link Addition panel */}
+      {whatifAdditionMode && (
+        <div className="absolute top-[320px] right-4 z-[999] bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm p-3 text-xs max-w-52">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-medium flex items-center gap-1.5">
+              <PlusCircle className="h-3.5 w-3.5 text-green-500" />
+              Simulate Link Addition
+            </span>
+            {(additionSource || additionTarget) && (
+              <button
+                onClick={() => {
+                  setAdditionSource(null)
+                  setAdditionTarget(null)
+                  setAdditionResult(null)
+                }}
+                className="p-1 hover:bg-[var(--muted)] rounded"
+                title="Clear"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            )}
+          </div>
+
+          {/* Metric input */}
+          <div className="mb-2">
+            <div className="text-muted-foreground mb-1">Link Latency</div>
+            <div className="flex gap-1">
+              {[1000, 5000, 10000, 50000].map(m => (
+                <button
+                  key={m}
+                  onClick={() => setAdditionMetric(m)}
+                  className={`px-2 py-1 rounded text-[10px] transition-colors ${
+                    additionMetric === m
+                      ? 'bg-green-500/20 text-green-500'
+                      : 'bg-muted hover:bg-muted/80 text-muted-foreground'
+                  }`}
+                >
+                  {m / 1000}ms
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {!additionSource && (
+            <div className="text-muted-foreground">Click a device to set the <span className="text-green-500 font-medium">source</span></div>
+          )}
+          {additionSource && !additionTarget && (
+            <div className="text-muted-foreground">Click another device to set the <span className="text-red-500 font-medium">target</span></div>
+          )}
+
+          {additionLoading && (
+            <div className="text-muted-foreground">Analyzing benefits...</div>
+          )}
+
+          {additionResult && !additionResult.error && (
+            <div className="space-y-2">
+              <div className="text-muted-foreground">
+                New link: <span className="text-green-500 font-medium">{additionResult.sourceCode}</span> — <span className="text-red-500 font-medium">{additionResult.targetCode}</span>
+              </div>
+
+              {additionResult.redundancyCount > 0 && (
+                <div className="text-cyan-500 flex items-center gap-1.5">
+                  <Shield className="h-3 w-3" />
+                  {additionResult.redundancyCount} device{additionResult.redundancyCount !== 1 ? 's' : ''} gain redundancy
+                </div>
+              )}
+
+              {additionResult.improvedPathCount > 0 && (
+                <div className="text-green-500">
+                  {additionResult.improvedPathCount} path{additionResult.improvedPathCount !== 1 ? 's' : ''} would improve
+                </div>
+              )}
+
+              {additionResult.redundancyCount === 0 && additionResult.improvedPathCount === 0 && (
+                <div className="text-muted-foreground">No significant improvements</div>
+              )}
+            </div>
+          )}
+
+          {additionResult?.error && (
+            <div className="text-destructive">{additionResult.error}</div>
           )}
         </div>
       )}

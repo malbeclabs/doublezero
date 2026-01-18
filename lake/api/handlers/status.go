@@ -629,8 +629,8 @@ func fetchStatusData(ctx context.Context) *StatusResponse {
 			}
 			return maxI > maxJ
 		})
-		if len(allUtilLinks) > 10 {
-			allUtilLinks = allUtilLinks[:10]
+		if len(allUtilLinks) > 100 {
+			allUtilLinks = allUtilLinks[:100]
 		}
 
 		resp.Links.Total = healthy + degraded + unhealthy + disabled
@@ -694,7 +694,7 @@ func fetchStatusData(ctx context.Context) *StatusResponse {
 				d.pk,
 				d.code,
 				d.device_type,
-				COALESCE(c.name, c.code, '') as contributor,
+				COALESCE(c.code, '') as contributor,
 				m.code as metro,
 				toInt32(count(u.pk)) as current_users,
 				d.max_users,
@@ -705,9 +705,9 @@ func fetchStatusData(ctx context.Context) *StatusResponse {
 			LEFT JOIN dz_metros_current m ON d.metro_pk = m.pk
 			WHERE d.status = 'activated'
 			  AND d.max_users > 0
-			GROUP BY d.pk, d.code, d.device_type, c.name, c.code, m.code, d.max_users
+			GROUP BY d.pk, d.code, d.device_type, c.code, m.code, d.max_users
 			ORDER BY utilization DESC
-			LIMIT 10
+			LIMIT 100
 		`
 		rows, err := config.DB.Query(ctx, query)
 		if err != nil {
@@ -1010,7 +1010,7 @@ func fetchLinkHistoryData(ctx context.Context, timeRange string, requestedBucket
 			l.pk,
 			l.code,
 			l.link_type,
-			COALESCE(c.name, c.code, '') as contributor,
+			COALESCE(c.code, '') as contributor,
 			ma.code as side_a_metro,
 			mz.code as side_z_metro,
 			da.code as side_a_device,
@@ -1524,7 +1524,7 @@ func fetchDeviceHistoryData(ctx context.Context, timeRange string, requestedBuck
 			d.pk,
 			d.code,
 			d.device_type,
-			COALESCE(c.name, c.code, '') as contributor,
+			COALESCE(c.code, '') as contributor,
 			m.code as metro,
 			d.max_users,
 			d.status

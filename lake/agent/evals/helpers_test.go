@@ -870,8 +870,8 @@ func seedGraphData(t *testing.T, ctx context.Context, client neo4j.Client, metro
 		require.NoError(t, err)
 	}
 
-	// Create links with bidirectional CONNECTS relationships
-	// Both devices connect to link, and link connects to both devices
+	// Create links with CONNECTS relationships pointing from Link to Device
+	// This matches the actual graph structure created by the indexer store
 	for _, link := range links {
 		_, err := session.ExecuteWrite(ctx, func(tx neo4j.Transaction) (any, error) {
 			_, err := tx.Run(ctx, `
@@ -880,10 +880,8 @@ func seedGraphData(t *testing.T, ctx context.Context, client neo4j.Client, metro
 				WITH l
 				MATCH (da:Device {pk: $side_a_pk})
 				MATCH (dz:Device {pk: $side_z_pk})
-				MERGE (da)-[:CONNECTS]->(l)
-				MERGE (l)-[:CONNECTS]->(da)
-				MERGE (dz)-[:CONNECTS]->(l)
-				MERGE (l)-[:CONNECTS]->(dz)
+				MERGE (l)-[:CONNECTS {side: 'A'}]->(da)
+				MERGE (l)-[:CONNECTS {side: 'Z'}]->(dz)
 			`, map[string]any{
 				"pk":        link.PK,
 				"code":      link.Code,

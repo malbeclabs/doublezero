@@ -223,7 +223,7 @@ func runTest_CypherGenerationPreserveQuery(t *testing.T) {
 		},
 		{
 			name:         "change return columns should preserve match",
-			currentQuery: "MATCH (d:Device {code: 'nyc-dzd1'})-[:CONNECTS]->(l:Link) RETURN l.code",
+			currentQuery: "MATCH (d:Device {code: 'nyc-dzd1'})<-[:CONNECTS]-(l:Link) RETURN l.code",
 			prompt:       "also return the link status",
 			mustContain: []string{
 				"Device",
@@ -302,7 +302,7 @@ func buildTestCypherGeneratePrompt(t *testing.T) string {
 2. If modifying an existing query: change ONLY what was asked. Keep everything else identical.
 3. Do NOT add nodes, relationships, or properties beyond what was explicitly requested.`
 
-	// Add a minimal schema for testing
+	// Add a minimal schema for testing (must match actual graph structure)
 	schema := `
 ## Graph Schema
 
@@ -310,11 +310,13 @@ Node Labels:
 - Device (pk, code, status, device_type, public_ip)
 - Link (pk, code, status, bandwidth, isis_delay_override_ns)
 - Metro (pk, code, name)
+- Contributor (pk, code, name)
 
 Relationships:
-- (:Device)-[:CONNECTS]->(:Link)
-- (:Link)-[:CONNECTS]->(:Device)
+- (:Link)-[:CONNECTS {side, iface_name}]->(:Device) - Links point TO devices, use undirected for traversal
 - (:Device)-[:LOCATED_IN]->(:Metro)
+- (:Device)-[:OPERATES]->(:Contributor)
+- (:Link)-[:OWNED_BY]->(:Contributor)
 - (:Device)-[:ISIS_ADJACENT {metric}]->(:Device)
 `
 
@@ -339,4 +341,142 @@ func extractCypher(response string) string {
 
 	// If no code block, return the whole response (might be raw Cypher)
 	return response
+}
+
+// TestLake_Agent_Evals_Anthropic_CypherExecutionIntegration tests that generated Cypher
+// queries actually execute correctly against a real Neo4j database.
+// This catches issues where queries look syntactically correct but fail due to schema mismatches.
+func TestLake_Agent_Evals_Anthropic_CypherExecutionIntegration(t *testing.T) {
+	t.Parallel()
+
+	apiKey := os.Getenv("ANTHROPIC_API_KEY")
+	if apiKey == "" {
+		t.Skip("ANTHROPIC_API_KEY not set, skipping eval test")
+	}
+
+	neo4jClient := testNeo4jClient(t)
+	if neo4jClient == nil {
+		t.Skip("Neo4j not available, skipping integration test")
+	}
+
+	ctx := t.Context()
+	debugLevel, debug := getDebugLevel()
+
+	// Seed the graph with a known topology:
+	// NYC metro: nyc-dzd1, nyc-dzd2
+	// LON metro: lon-dzd1
+	// Links: nyc-dzd1 <-> nyc-dzd2, nyc-dzd2 <-> lon-dzd1
+	metros := []graphMetro{
+		{PK: "metro-nyc", Code: "nyc", Name: "New York"},
+		{PK: "metro-lon", Code: "lon", Name: "London"},
+	}
+	devices := []graphDevice{
+		{PK: "dev-nyc1", Code: "nyc-dzd1", Status: "active", MetroPK: "metro-nyc"},
+		{PK: "dev-nyc2", Code: "nyc-dzd2", Status: "active", MetroPK: "metro-nyc"},
+		{PK: "dev-lon1", Code: "lon-dzd1", Status: "active", MetroPK: "metro-lon"},
+	}
+	links := []graphLink{
+		{PK: "link-1", Code: "nyc-internal-1", Status: "activated", SideAPK: "dev-nyc1", SideZPK: "dev-nyc2"},
+		{PK: "link-2", Code: "nyc-lon-1", Status: "activated", SideAPK: "dev-nyc2", SideZPK: "dev-lon1"},
+	}
+
+	seedGraphData(t, ctx, neo4jClient, metros, devices, links)
+	validateGraphData(t, ctx, neo4jClient, 3, 2)
+
+	// Build system prompt
+	systemPrompt := buildTestCypherGeneratePrompt(t)
+
+	// Create LLM client
+	llmClient := workflow.NewAnthropicLLMClientWithName(
+		anthropic.ModelClaude3_5Haiku20241022,
+		1024,
+		"cypher-exec-eval",
+	)
+
+	// Create querier for executing generated Cypher
+	querier := NewNeo4jQuerier(neo4jClient)
+
+	testCases := []struct {
+		name           string
+		prompt         string
+		expectRows     int  // Expected minimum row count (-1 to skip check)
+		expectNonEmpty bool // Expect at least one row
+	}{
+		{
+			name:           "find devices in NYC metro",
+			prompt:         "find all devices in the nyc metro",
+			expectRows:     2,
+			expectNonEmpty: true,
+		},
+		{
+			name:           "find devices connected to nyc-dzd1",
+			prompt:         "what devices are directly connected to nyc-dzd1",
+			expectRows:     1, // nyc-dzd2
+			expectNonEmpty: true,
+		},
+		{
+			name:           "shortest path between NYC and LON devices",
+			prompt:         "find the shortest path between nyc-dzd1 and lon-dzd1",
+			expectRows:     -1, // Path query returns structured data
+			expectNonEmpty: true,
+		},
+		{
+			name:           "all metros",
+			prompt:         "list all metros",
+			expectRows:     2,
+			expectNonEmpty: true,
+		},
+		{
+			name:           "devices reachable from nyc-dzd1",
+			prompt:         "what devices are reachable from nyc-dzd1 within 4 hops",
+			expectRows:     -1, // Variable
+			expectNonEmpty: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if debug {
+				t.Logf("=== Testing: %s ===", tc.name)
+				t.Logf("Prompt: %s", tc.prompt)
+			}
+
+			// Generate Cypher
+			response, err := llmClient.Complete(ctx, systemPrompt, tc.prompt)
+			require.NoError(t, err)
+
+			cypher := extractCypher(response)
+			if debug {
+				if debugLevel == 1 {
+					t.Logf("Generated Cypher: %s", truncate(cypher, 200))
+				} else {
+					t.Logf("Generated Cypher:\n%s", cypher)
+				}
+			}
+			require.NotEmpty(t, cypher, "Should have generated Cypher")
+
+			// Execute the generated Cypher against Neo4j
+			result, err := querier.Query(ctx, cypher)
+			require.NoError(t, err, "Query execution should not error")
+
+			if debug {
+				t.Logf("Result: %d rows, error: %q", result.Count, result.Error)
+				if debugLevel >= 2 && len(result.Rows) > 0 {
+					t.Logf("First row: %v", result.Rows[0])
+				}
+			}
+
+			// Verify no query error
+			require.Empty(t, result.Error, "Query should not return error: %s\nCypher: %s", result.Error, cypher)
+
+			// Verify expected results
+			if tc.expectNonEmpty {
+				require.Greater(t, result.Count, 0, "Query should return results\nCypher: %s", cypher)
+			}
+			if tc.expectRows >= 0 {
+				require.GreaterOrEqual(t, result.Count, tc.expectRows,
+					"Query should return at least %d rows, got %d\nCypher: %s", tc.expectRows, result.Count, cypher)
+			}
+		})
+	}
 }

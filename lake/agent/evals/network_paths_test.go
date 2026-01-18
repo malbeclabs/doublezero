@@ -279,3 +279,193 @@ func seedNetworkPathsGraphData(t *testing.T, ctx context.Context, client neo4j.C
 
 	seedGraphData(t, ctx, client, metros, devices, links)
 }
+
+// TestLake_Agent_Evals_Anthropic_MetroToMetroShortestPath tests that "shortest path between
+// metro A and metro B" queries correctly find the overall shortest path among all device pairs.
+// This is a regression test for a bug where the agent would create a cartesian product of
+// all devices in each metro without ordering by path length to find the true shortest.
+func TestLake_Agent_Evals_Anthropic_MetroToMetroShortestPath(t *testing.T) {
+	t.Parallel()
+	apiKey := os.Getenv("ANTHROPIC_API_KEY")
+	if apiKey == "" {
+		t.Skip("ANTHROPIC_API_KEY not set, skipping eval test")
+	}
+
+	runTest_MetroToMetroShortestPath(t, newAnthropicLLMClient)
+}
+
+// runTest_MetroToMetroShortestPath tests metro-to-metro shortest path queries.
+// The topology has multiple devices per metro with different path lengths:
+// - NYC: nyc-dzd1, nyc-dzd2
+// - LON: lon-dzd1, lon-dzd2
+// - Paths: nyc-dzd1 -> lon-dzd1 (direct, 1 hop)
+//          nyc-dzd2 -> fra-dzd1 -> lon-dzd2 (2 hops via Frankfurt)
+// The query must find the shortest (nyc-dzd1 -> lon-dzd1), not an arbitrary path.
+func runTest_MetroToMetroShortestPath(t *testing.T, llmFactory LLMClientFactory) {
+	ctx := context.Background()
+	debugLevel, debug := getDebugLevel()
+	clientInfo := testClientInfo(t)
+
+	conn, err := clientInfo.Client.Conn(ctx)
+	require.NoError(t, err)
+	defer conn.Close()
+
+	// Seed ClickHouse data
+	seedMetroToMetroShortestPathData(t, ctx, conn)
+
+	// Get Neo4j client - REQUIRED for this test
+	neo4jClient := testNeo4jClient(t)
+	if neo4jClient == nil {
+		t.Skip("Neo4j not available, skipping metro-to-metro shortest path test (requires graph database)")
+	}
+	seedMetroToMetroShortestPathGraphData(t, ctx, neo4jClient)
+	validateGraphData(t, ctx, neo4jClient, 5, 3) // 5 devices, 3 links
+
+	if testing.Short() {
+		t.Log("Skipping workflow execution in short mode")
+		return
+	}
+
+	p := setupWorkflowWithNeo4j(t, ctx, clientInfo, neo4jClient, llmFactory, debug, debugLevel)
+
+	// Use metro names, not device codes - this is the key difference from the device-to-device test
+	question := "find the shortest path between NYC and LON"
+	result, err := p.Run(ctx, question)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotEmpty(t, result.Answer)
+
+	// CRITICAL: Verify Cypher query structure
+	require.NotEmpty(t, result.ExecutedQueries, "Should have executed at least one query")
+
+	foundCypher := false
+	foundOrderBy := false
+	foundLimit := false
+	for _, eq := range result.ExecutedQueries {
+		query := eq.Result.SQL // This field holds either SQL or Cypher
+		queryUpper := strings.ToUpper(query)
+		queryLower := strings.ToLower(query)
+
+		if debug {
+			if debugLevel == 1 {
+				t.Logf("Executed query: %s", truncate(query, 200))
+			} else {
+				t.Logf("Executed query: %s", query)
+			}
+		}
+
+		// Check for SQL patterns that indicate wrong routing
+		if strings.Contains(queryUpper, "SELECT") && !strings.Contains(queryUpper, "MATCH") {
+			t.Logf("WARNING: Query appears to be SQL, not Cypher")
+		}
+
+		// Check for Cypher patterns
+		if strings.Contains(queryUpper, "MATCH") {
+			foundCypher = true
+
+			// For metro-to-metro queries, must have ORDER BY and LIMIT
+			if strings.Contains(queryUpper, "ORDER BY") {
+				foundOrderBy = true
+			}
+			if strings.Contains(queryUpper, "LIMIT") {
+				foundLimit = true
+			}
+
+			// Check for problematic patterns that indicate the cartesian product bug
+			if strings.Contains(queryLower, "collect(distinct") && !strings.Contains(queryUpper, "ORDER BY") {
+				t.Errorf("WRONG: Using COLLECT(DISTINCT ...) without ORDER BY - this mixes results from multiple paths")
+			}
+		}
+	}
+
+	require.True(t, foundCypher, "Should have used Cypher for path finding")
+	require.True(t, foundOrderBy, "Metro-to-metro shortest path query should ORDER BY path length to find the true shortest")
+	require.True(t, foundLimit, "Metro-to-metro shortest path query should LIMIT 1 to return only the shortest path")
+
+	response := result.Answer
+	t.Logf("Workflow response:\n%s", response)
+
+	// Verify the response describes the actual shortest path
+	expectations := []Expectation{
+		{
+			Description:   "Response identifies the direct NYC-LON path",
+			ExpectedValue: "Mentions nyc-dzd1, lon-dzd1, or nyc-lon-direct link as the shortest path",
+			Rationale:     "The direct path (1 hop) is shorter than the Frankfurt path (2 hops)",
+		},
+		{
+			Description:   "Response describes a single shortest path, not multiple paths",
+			ExpectedValue: "Describes one clear path, not a mix of segments from different paths",
+			Rationale:     "Query asked for 'shortest path' (singular), should return the one shortest",
+		},
+	}
+	isCorrect, err := evaluateResponse(t, ctx, question, response, expectations...)
+	require.NoError(t, err)
+	require.True(t, isCorrect, "Evaluation failed for metro-to-metro shortest path")
+}
+
+// seedMetroToMetroShortestPathData creates topology with multiple devices per metro
+// and different path lengths between metros.
+func seedMetroToMetroShortestPathData(t *testing.T, ctx context.Context, conn clickhouse.Connection) {
+	log := testLogger(t)
+	now := testTime()
+
+	metros := []serviceability.Metro{
+		{PK: "metro1", Code: "nyc", Name: "New York"},
+		{PK: "metro2", Code: "lon", Name: "London"},
+		{PK: "metro3", Code: "fra", Name: "Frankfurt"},
+	}
+	seedMetros(t, ctx, conn, metros, now, now)
+
+	// Multiple devices per metro
+	devices := []serviceability.Device{
+		{PK: "device1", Code: "nyc-dzd1", Status: "activated", MetroPK: "metro1", DeviceType: "DZD"},
+		{PK: "device2", Code: "nyc-dzd2", Status: "activated", MetroPK: "metro1", DeviceType: "DZD"},
+		{PK: "device3", Code: "lon-dzd1", Status: "activated", MetroPK: "metro2", DeviceType: "DZD"},
+		{PK: "device4", Code: "lon-dzd2", Status: "activated", MetroPK: "metro2", DeviceType: "DZD"},
+		{PK: "device5", Code: "fra-dzd1", Status: "activated", MetroPK: "metro3", DeviceType: "DZD"},
+	}
+	seedDevices(t, ctx, conn, devices, now, now)
+
+	linkDS, err := serviceability.NewLinkDataset(log)
+	require.NoError(t, err)
+	// Topology:
+	// - Direct: nyc-dzd1 <-> lon-dzd1 (1 hop - shortest!)
+	// - Via FRA: nyc-dzd2 <-> fra-dzd1 <-> lon-dzd2 (2 hops)
+	links := []serviceability.Link{
+		{PK: "link1", Code: "nyc-lon-direct", Status: "activated", LinkType: "WAN", SideAPK: "device1", SideZPK: "device3", SideAIfaceName: "Ethernet1", SideZIfaceName: "Ethernet1", Bandwidth: 10000000000},
+		{PK: "link2", Code: "nyc-fra-1", Status: "activated", LinkType: "WAN", SideAPK: "device2", SideZPK: "device5", SideAIfaceName: "Ethernet1", SideZIfaceName: "Ethernet1", Bandwidth: 10000000000},
+		{PK: "link3", Code: "fra-lon-1", Status: "activated", LinkType: "WAN", SideAPK: "device5", SideZPK: "device4", SideAIfaceName: "Ethernet2", SideZIfaceName: "Ethernet1", Bandwidth: 10000000000},
+	}
+	var linkSchema serviceability.LinkSchema
+	err = linkDS.WriteBatch(ctx, conn, len(links), func(i int) ([]any, error) {
+		return linkSchema.ToRow(links[i]), nil
+	}, &dataset.DimensionType2DatasetWriteConfig{
+		SnapshotTS: now,
+		OpID:       testOpID(),
+	})
+	require.NoError(t, err)
+}
+
+// seedMetroToMetroShortestPathGraphData seeds Neo4j with the same topology
+func seedMetroToMetroShortestPathGraphData(t *testing.T, ctx context.Context, client neo4j.Client) {
+	metros := []graphMetro{
+		{PK: "metro1", Code: "nyc", Name: "New York"},
+		{PK: "metro2", Code: "lon", Name: "London"},
+		{PK: "metro3", Code: "fra", Name: "Frankfurt"},
+	}
+	devices := []graphDevice{
+		{PK: "device1", Code: "nyc-dzd1", Status: "activated", MetroPK: "metro1", MetroCode: "nyc"},
+		{PK: "device2", Code: "nyc-dzd2", Status: "activated", MetroPK: "metro1", MetroCode: "nyc"},
+		{PK: "device3", Code: "lon-dzd1", Status: "activated", MetroPK: "metro2", MetroCode: "lon"},
+		{PK: "device4", Code: "lon-dzd2", Status: "activated", MetroPK: "metro2", MetroCode: "lon"},
+		{PK: "device5", Code: "fra-dzd1", Status: "activated", MetroPK: "metro3", MetroCode: "fra"},
+	}
+	// Same topology as ClickHouse seed
+	links := []graphLink{
+		{PK: "link1", Code: "nyc-lon-direct", Status: "activated", SideAPK: "device1", SideZPK: "device3"},
+		{PK: "link2", Code: "nyc-fra-1", Status: "activated", SideAPK: "device2", SideZPK: "device5"},
+		{PK: "link3", Code: "fra-lon-1", Status: "activated", SideAPK: "device5", SideZPK: "device4"},
+	}
+
+	seedGraphData(t, ctx, client, metros, devices, links)
+}

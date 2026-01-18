@@ -116,22 +116,50 @@ RETURN from.code AS from_device, to.code AS to_device,
        r.metric AS isis_metric, r.neighbor_addr
 ```
 
-### Devices Affected if Another Goes Down
+### Impact Analysis: Find Devices That Lose Connectivity
+
+**CRITICAL: When checking alternate paths, you must exclude paths that go THROUGH the failed device using NONE() on intermediate nodes.**
+
+**Step 1: Find devices directly connected to the target**
 ```cypher
-MATCH (target:Device {code: 'chi-dzd1'})
-MATCH (other:Device)
-WHERE other.code <> target.code
-  AND other.status = 'active'
-WITH target, other
-WHERE NOT EXISTS {
-  MATCH path = (other)-[:CONNECTS*1..10]-(anyDevice:Device)
-  WHERE anyDevice.code <> target.code
-    AND anyDevice <> other
-    AND NOT ANY(n IN nodes(path) WHERE n:Device AND n.code = target.code)
-    AND ALL(link IN [n IN nodes(path) WHERE n:Link] | link.status = 'activated')
-}
-RETURN other.code AS affected_device, other.status
+MATCH (target:Device {code: 'hkg-dzd1'})-[:CONNECTS]-(:Link)-[:CONNECTS]-(neighbor:Device)
+RETURN DISTINCT neighbor.code AS connected_device
 ```
+
+**Step 2: Check which devices have alternate paths NOT going through the target**
+```cypher
+// For each device connected to target, check if it can reach ANY other device
+// via a path that does NOT include the target device
+MATCH (target:Device {code: 'hkg-dzd1'})
+MATCH (candidate:Device)-[:CONNECTS]-(:Link)-[:CONNECTS]-(target)
+WHERE candidate <> target
+// Try to find an alternate path from candidate to any other device
+OPTIONAL MATCH path = (candidate)-[:CONNECTS*1..10]-(other:Device)
+WHERE other <> target
+  AND other <> candidate
+  AND NONE(n IN nodes(path) WHERE n:Device AND n.code = target.code)  // <-- CRITICAL: exclude paths through target
+WITH candidate, count(DISTINCT other) AS reachable_without_target
+RETURN candidate.code AS device,
+       CASE WHEN reachable_without_target > 0 THEN 'connected' ELSE 'isolated' END AS status
+```
+
+**Step 3: Simpler check - does device have any direct connection besides target?**
+```cypher
+MATCH (target:Device {code: 'hkg-dzd1'})
+MATCH (candidate:Device)-[:CONNECTS]-(:Link)-[:CONNECTS]-(target)
+WHERE candidate <> target
+// Count non-target neighbors
+OPTIONAL MATCH (candidate)-[:CONNECTS]-(:Link)-[:CONNECTS]-(other:Device)
+WHERE other <> target AND other <> candidate
+WITH candidate, count(DISTINCT other) AS other_neighbors
+RETURN candidate.code AS device,
+       CASE WHEN other_neighbors = 0 THEN 'ISOLATED' ELSE 'has_redundancy' END AS status
+```
+
+**Key insight:**
+- Use `NONE(n IN nodes(path) WHERE n:Device AND n.code = 'target-code')` to exclude paths through the target
+- A device is ISOLATED if it has ZERO connections to non-target devices
+- Don't just filter the destination - filter ALL intermediate nodes in the path
 
 ### Find Drained Links
 ```cypher
@@ -152,7 +180,9 @@ RETURN l.code AS link_code, l.status, l.committed_rtt_ns / 1000000.0 AS rtt_ms
 ## Query Tips
 
 1. **Use lowercase metro codes**: `{code: 'nyc'}` not `{code: 'NYC'}`
-2. **Filter by status early**: Add `WHERE status = 'active'` close to MATCH for efficiency
+2. **Filter by status early**: Add `WHERE status = 'activated'` close to MATCH for efficiency
 3. **Limit path depth**: Use `*1..10` not `*` to avoid unbounded traversals
 4. **Return structured data**: Use CASE expressions to return clean objects
 5. **Check both directions**: Links connect bidirectionally through Link nodes
+6. **Do NOT use APOC**: APOC procedures are not available. Use built-in Cypher only.
+7. **ALL/ANY syntax**: Use `ALL(x IN list WHERE condition)` NOT `ALL(x IN list | condition)`

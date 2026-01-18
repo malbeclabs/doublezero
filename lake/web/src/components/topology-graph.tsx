@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import cytoscape from 'cytoscape'
 import type { Core, NodeSingular, EdgeSingular } from 'cytoscape'
 import { useQuery } from '@tanstack/react-query'
-import { ZoomIn, ZoomOut, Maximize, Search, Filter, Route, X, GitCompare, AlertTriangle, Zap, Lightbulb, ChevronDown, ChevronUp, Shield, MinusCircle, PlusCircle, Coins, Activity, MapPin } from 'lucide-react'
+import { ZoomIn, ZoomOut, Maximize, Search, Filter, Route, X, GitCompare, AlertTriangle, Zap, Lightbulb, ChevronDown, ChevronUp, Shield, MinusCircle, PlusCircle, Coins, Activity, MapPin, BarChart3 } from 'lucide-react'
 import { fetchISISTopology, fetchISISPaths, fetchTopologyCompare, fetchFailureImpact, fetchCriticalLinks, fetchSimulateLinkRemoval, fetchSimulateLinkAddition, fetchTopology, fetchLinkHealth } from '@/lib/api'
 import type { PathMode, FailureImpactResponse, MultiPathResponse, SimulateLinkRemovalResponse, SimulateLinkAdditionResponse } from '@/lib/api'
 import { useTheme } from '@/hooks/use-theme'
@@ -38,6 +38,15 @@ const METRO_COLORS = [
   { light: '#0d9488', dark: '#2dd4bf' },  // teal
   { light: '#be185d', dark: '#f472b6' },  // rose
 ]
+
+// Format bits per second to human readable
+function formatBps(bps: number): string {
+  if (bps >= 1e12) return `${(bps / 1e12).toFixed(1)}Tbps`
+  if (bps >= 1e9) return `${(bps / 1e9).toFixed(1)}Gbps`
+  if (bps >= 1e6) return `${(bps / 1e6).toFixed(1)}Mbps`
+  if (bps >= 1e3) return `${(bps / 1e3).toFixed(0)}Kbps`
+  return `${bps.toFixed(0)}bps`
+}
 
 type InteractionMode = 'explore' | 'path' | 'compare' | 'criticality' | 'whatif-removal' | 'whatif-addition'
 
@@ -163,16 +172,20 @@ export function TopologyGraph({
   // Link health overlay state
   const [linkHealthOverlayEnabled, setLinkHealthOverlayEnabled] = useState(false)
 
+  // Traffic flow overlay state
+  const [trafficFlowEnabled, setTrafficFlowEnabled] = useState(false)
+
   // Metro clustering overlay state
   const [metroClusteringEnabled, setMetroClusteringEnabled] = useState(false)
   const [collapsedMetros, setCollapsedMetros] = useState<Set<string>>(new Set())
 
-  // Fetch ClickHouse topology for stake/metro data when overlay is enabled
+  // Fetch ClickHouse topology for stake/metro/traffic data when overlay is enabled
   const { data: topologyData } = useQuery({
     queryKey: ['topology'],
     queryFn: fetchTopology,
-    enabled: stakeOverlayEnabled || metroClusteringEnabled,
-    staleTime: 60000,
+    enabled: stakeOverlayEnabled || metroClusteringEnabled || trafficFlowEnabled,
+    staleTime: 30000, // Refresh every 30 seconds for traffic data
+    refetchInterval: trafficFlowEnabled ? 30000 : undefined,
   })
 
   // Fetch link health data when link health overlay is enabled
@@ -261,6 +274,37 @@ export function TopologyGraph({
   useEffect(() => {
     edgeSlaStatusRef.current = edgeSlaStatus
   }, [edgeSlaStatus])
+
+  // Build edge traffic map from topology data (maps device pair to traffic info)
+  const edgeTrafficMap = useMemo(() => {
+    if (!topologyData?.links) return new Map<string, { inBps: number; outBps: number; bandwidthBps: number; utilization: number }>()
+    const trafficMap = new Map<string, { inBps: number; outBps: number; bandwidthBps: number; utilization: number }>()
+
+    for (const link of topologyData.links) {
+      // Create edge keys for both directions
+      const key1 = `${link.side_a_pk}->${link.side_z_pk}`
+      const key2 = `${link.side_z_pk}->${link.side_a_pk}`
+      const totalBps = (link.in_bps ?? 0) + (link.out_bps ?? 0)
+      const utilization = link.bandwidth_bps > 0 ? (totalBps / link.bandwidth_bps) * 100 : 0
+      const info = {
+        inBps: link.in_bps ?? 0,
+        outBps: link.out_bps ?? 0,
+        bandwidthBps: link.bandwidth_bps ?? 0,
+        utilization,
+      }
+      trafficMap.set(key1, info)
+      trafficMap.set(key2, info)
+    }
+    return trafficMap
+  }, [topologyData])
+
+  // Get traffic utilization level for coloring
+  const getTrafficLevel = useCallback((utilization: number): 'low' | 'medium' | 'high' | 'critical' => {
+    if (utilization >= 80) return 'critical'
+    if (utilization >= 50) return 'high'
+    if (utilization >= 20) return 'medium'
+    return 'low'
+  }, [])
 
   // Calculate degree for each node
   const nodesDegree = useMemo(() => {
@@ -638,6 +682,29 @@ export function TopologyGraph({
       })
     }
   }, [linkHealthOverlayEnabled, edgeSlaStatus])
+
+  // Apply traffic flow overlay styling when enabled
+  useEffect(() => {
+    if (!cyRef.current) return
+    const cy = cyRef.current
+
+    // Clear previous traffic classes
+    cy.edges().removeClass('traffic-low traffic-medium traffic-high traffic-critical traffic-idle')
+
+    if (trafficFlowEnabled && edgeTrafficMap.size > 0) {
+      cy.edges().forEach(edge => {
+        const edgeId = edge.data('id') // format: source->target
+        const trafficInfo = edgeTrafficMap.get(edgeId)
+
+        if (trafficInfo) {
+          const level = getTrafficLevel(trafficInfo.utilization)
+          edge.addClass(`traffic-${level}`)
+        } else {
+          edge.addClass('traffic-idle')
+        }
+      })
+    }
+  }, [trafficFlowEnabled, edgeTrafficMap, getTrafficLevel])
 
   // Apply metro clustering overlay styling when enabled (only if stake overlay is not active)
   useEffect(() => {
@@ -1309,6 +1376,52 @@ export function TopologyGraph({
             'opacity': 0.5,
           },
         },
+        // Traffic Flow (utilization) styles
+        {
+          selector: 'edge.traffic-low',
+          style: {
+            'line-color': '#22c55e', // green
+            'target-arrow-color': '#22c55e',
+            'width': 2,
+            'opacity': 0.8,
+          },
+        },
+        {
+          selector: 'edge.traffic-medium',
+          style: {
+            'line-color': '#84cc16', // lime
+            'target-arrow-color': '#84cc16',
+            'width': 3,
+            'opacity': 0.9,
+          },
+        },
+        {
+          selector: 'edge.traffic-high',
+          style: {
+            'line-color': '#eab308', // yellow
+            'target-arrow-color': '#eab308',
+            'width': 4,
+            'opacity': 1,
+          },
+        },
+        {
+          selector: 'edge.traffic-critical',
+          style: {
+            'line-color': '#ef4444', // red
+            'target-arrow-color': '#ef4444',
+            'width': 5,
+            'opacity': 1,
+          },
+        },
+        {
+          selector: 'edge.traffic-idle',
+          style: {
+            'line-color': isDark ? '#6b7280' : '#9ca3af',
+            'target-arrow-color': isDark ? '#6b7280' : '#9ca3af',
+            'width': 1,
+            'opacity': 0.4,
+          },
+        },
       ], [isDark, getDeviceTypeColor, getStatusBorderColor, getNodeSize])
 
   // Initialize Cytoscape and sync data
@@ -1793,6 +1906,12 @@ export function TopologyGraph({
             setLinkHealthOverlayEnabled(prev => !prev)
           }
           break
+        case 't':
+          // Toggle traffic flow overlay
+          if (!e.metaKey && !e.ctrlKey) {
+            setTrafficFlowEnabled(prev => !prev)
+          }
+          break
         case 'm':
           // Toggle metro clustering overlay
           if (!e.metaKey && !e.ctrlKey) {
@@ -2022,6 +2141,17 @@ export function TopologyGraph({
           title={linkHealthOverlayEnabled ? 'Hide link health overlay (h)' : 'Show link health overlay (h)'}
         >
           <Activity className="h-4 w-4" />
+        </button>
+        <button
+          onClick={() => setTrafficFlowEnabled(prev => !prev)}
+          className={`p-2 border rounded shadow-sm transition-colors ${
+            trafficFlowEnabled
+              ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-500'
+              : 'bg-[var(--card)] border-[var(--border)] hover:bg-[var(--muted)]'
+          }`}
+          title={trafficFlowEnabled ? 'Hide traffic flow overlay (t)' : 'Show traffic flow overlay (t)'}
+        >
+          <BarChart3 className="h-4 w-4" />
         </button>
         <button
           onClick={() => setMetroClusteringEnabled(prev => !prev)}
@@ -2841,6 +2971,134 @@ export function TopologyGraph({
                   <div className="flex items-center gap-1.5">
                     <div className="w-4 h-0.5 bg-gray-400 rounded opacity-50" />
                     <span>Unknown (no data)</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Traffic Flow overlay panel */}
+      {trafficFlowEnabled && (
+        <div className="absolute top-[340px] right-4 z-[999] bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm p-3 text-xs max-w-56">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-medium flex items-center gap-1.5">
+              <BarChart3 className="h-3.5 w-3.5 text-cyan-500" />
+              Traffic Flow
+            </span>
+            <button
+              onClick={() => setTrafficFlowEnabled(false)}
+              className="p-1 hover:bg-[var(--muted)] rounded"
+              title="Close"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+
+          {!topologyData && (
+            <div className="text-muted-foreground">Loading traffic data...</div>
+          )}
+
+          {topologyData && (
+            <div className="space-y-3">
+              {/* Summary stats */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Links with traffic</span>
+                  <span className="font-medium">{edgeTrafficMap.size / 2}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-red-500">Critical (≥80%)</span>
+                  <span className="font-medium text-red-500">
+                    {Array.from(edgeTrafficMap.values()).filter((v, i) => i % 2 === 0 && v.utilization >= 80).length}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-yellow-500">High (50-80%)</span>
+                  <span className="font-medium text-yellow-500">
+                    {Array.from(edgeTrafficMap.values()).filter((v, i) => i % 2 === 0 && v.utilization >= 50 && v.utilization < 80).length}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-lime-500">Medium (20-50%)</span>
+                  <span className="font-medium text-lime-500">
+                    {Array.from(edgeTrafficMap.values()).filter((v, i) => i % 2 === 0 && v.utilization >= 20 && v.utilization < 50).length}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-green-500">Low (&lt;20%)</span>
+                  <span className="font-medium text-green-500">
+                    {Array.from(edgeTrafficMap.values()).filter((v, i) => i % 2 === 0 && v.utilization > 0 && v.utilization < 20).length}
+                  </span>
+                </div>
+              </div>
+
+              {/* High utilization links */}
+              {(() => {
+                const highUtilLinks = topologyData.links
+                  .filter(l => {
+                    const totalBps = (l.in_bps ?? 0) + (l.out_bps ?? 0)
+                    const util = l.bandwidth_bps > 0 ? (totalBps / l.bandwidth_bps) * 100 : 0
+                    return util >= 50
+                  })
+                  .sort((a, b) => {
+                    const utilA = a.bandwidth_bps > 0 ? ((a.in_bps ?? 0) + (a.out_bps ?? 0)) / a.bandwidth_bps : 0
+                    const utilB = b.bandwidth_bps > 0 ? ((b.in_bps ?? 0) + (b.out_bps ?? 0)) / b.bandwidth_bps : 0
+                    return utilB - utilA
+                  })
+                  .slice(0, 5)
+
+                if (highUtilLinks.length === 0) return null
+
+                return (
+                  <div className="pt-2 border-t border-[var(--border)]">
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <AlertTriangle className="h-3.5 w-3.5 text-yellow-500" />
+                      <span className="font-medium text-yellow-500">High Utilization</span>
+                    </div>
+                    <div className="space-y-1 max-h-24 overflow-y-auto">
+                      {highUtilLinks.map(link => {
+                        const totalBps = (link.in_bps ?? 0) + (link.out_bps ?? 0)
+                        const util = link.bandwidth_bps > 0 ? (totalBps / link.bandwidth_bps) * 100 : 0
+                        const color = util >= 80 ? 'text-red-400' : 'text-yellow-400'
+                        return (
+                          <div key={link.pk} className={`${color} truncate text-[10px]`}>
+                            {link.code}
+                            <span className="text-muted-foreground ml-1">
+                              ({util.toFixed(0)}% - {formatBps(totalBps)})
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {/* Legend */}
+              <div className="pt-2 border-t border-[var(--border)]">
+                <div className="text-muted-foreground mb-1.5">Link Colors (by utilization)</div>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-4 h-0.5 bg-green-500 rounded" />
+                    <span>Low (&lt;20%)</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-4 h-0.5 bg-lime-500 rounded" />
+                    <span>Medium (20-50%)</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-4 h-1 bg-yellow-500 rounded" />
+                    <span>High (50-80%)</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-4 h-1.5 bg-red-500 rounded" />
+                    <span>Critical (≥80%)</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-4 h-0.5 bg-gray-400 rounded opacity-40" />
+                    <span>Idle (no traffic)</span>
                   </div>
                 </div>
               </div>

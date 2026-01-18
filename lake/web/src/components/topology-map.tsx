@@ -4,7 +4,7 @@ import MapGL, { Source, Layer, Marker } from 'react-map-gl/maplibre'
 import type { MapRef, MapLayerMouseEvent, LngLatBoundsLike } from 'react-map-gl/maplibre'
 import type { StyleSpecification } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { ZoomIn, ZoomOut, Maximize, Users, X, Search, Route, Shield, MinusCircle, PlusCircle, AlertTriangle, Zap, Coins, Activity, MapPin } from 'lucide-react'
+import { ZoomIn, ZoomOut, Maximize, Users, X, Search, Route, Shield, MinusCircle, PlusCircle, AlertTriangle, Zap, Coins, Activity, MapPin, BarChart3 } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip as RechartsTooltip, CartesianGrid } from 'recharts'
 import { useQuery } from '@tanstack/react-query'
 import { useTheme } from '@/hooks/use-theme'
@@ -240,6 +240,8 @@ interface MapControlsProps {
   onToggleStakeOverlayMode: () => void
   linkHealthMode: boolean
   onToggleLinkHealthMode: () => void
+  trafficFlowMode: boolean
+  onToggleTrafficFlowMode: () => void
   metroClusteringMode: boolean
   onToggleMetroClusteringMode: () => void
 }
@@ -251,6 +253,7 @@ function MapControls({
   impactMode, onToggleImpactMode, selectedDevicePK,
   stakeOverlayMode, onToggleStakeOverlayMode,
   linkHealthMode, onToggleLinkHealthMode,
+  trafficFlowMode, onToggleTrafficFlowMode,
   metroClusteringMode, onToggleMetroClusteringMode
 }: MapControlsProps) {
   const anyModeActive = pathMode || criticalityMode || whatifRemovalMode || whatifAdditionMode || impactMode
@@ -383,6 +386,18 @@ function MapControls({
         title={anyModeActive ? 'Disabled in current mode' : (linkHealthMode ? 'Hide link health overlay' : 'Show link health (h)')}
       >
         <Activity className="h-4 w-4" />
+      </button>
+      <button
+        onClick={onToggleTrafficFlowMode}
+        disabled={anyModeActive}
+        className={`p-2 border rounded shadow-sm transition-colors ${
+          trafficFlowMode
+            ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-500'
+            : 'bg-[var(--card)] border-[var(--border)] hover:bg-[var(--muted)]'
+        } ${anyModeActive ? 'opacity-40 cursor-not-allowed' : ''}`}
+        title={anyModeActive ? 'Disabled in current mode' : (trafficFlowMode ? 'Hide traffic flow overlay' : 'Show traffic flow (t)')}
+      >
+        <BarChart3 className="h-4 w-4" />
       </button>
       <button
         onClick={onToggleMetroClusteringMode}
@@ -533,6 +548,9 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
   const [metroClusteringMode, setMetroClusteringMode] = useState(false)
   const [collapsedMetros, setCollapsedMetros] = useState<Set<string>>(new Set())
 
+  // Traffic Flow Overlay state
+  const [trafficFlowMode, setTrafficFlowMode] = useState(false)
+
   // Fetch ISIS topology to determine which devices have ISIS data
   const { data: isisTopology } = useQuery({
     queryKey: ['isis-topology'],
@@ -635,6 +653,8 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
         setStakeOverlayMode(prev => !prev)
       } else if (e.key === 'h' && !pathModeEnabled && !criticalityModeEnabled && !whatifRemovalMode && !whatifAdditionMode && !impactDevice) {
         setLinkHealthMode(prev => !prev)
+      } else if (e.key === 't' && !pathModeEnabled && !criticalityModeEnabled && !whatifRemovalMode && !whatifAdditionMode && !impactDevice) {
+        setTrafficFlowMode(prev => !prev)
       } else if (e.key === 'm' && !pathModeEnabled && !criticalityModeEnabled && !whatifRemovalMode && !whatifAdditionMode && !impactDevice) {
         setMetroClusteringMode(prev => !prev)
       }
@@ -670,6 +690,24 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       return newSet
     })
   }, [])
+
+  // Get traffic color based on utilization
+  const getTrafficColor = useCallback((link: TopologyLink): { color: string; weight: number; opacity: number } => {
+    const totalBps = (link.in_bps ?? 0) + (link.out_bps ?? 0)
+    const utilization = link.bandwidth_bps > 0 ? (totalBps / link.bandwidth_bps) * 100 : 0
+
+    if (utilization >= 80) {
+      return { color: '#ef4444', weight: 5, opacity: 1 } // red - critical
+    } else if (utilization >= 50) {
+      return { color: '#eab308', weight: 4, opacity: 1 } // yellow - high
+    } else if (utilization >= 20) {
+      return { color: '#84cc16', weight: 3, opacity: 0.9 } // lime - medium
+    } else if (totalBps > 0) {
+      return { color: '#22c55e', weight: 2, opacity: 0.8 } // green - low
+    } else {
+      return { color: isDark ? '#6b7280' : '#9ca3af', weight: 1, opacity: 0.4 } // gray - idle
+    }
+  }, [isDark])
 
   // Clear collapsed metros when metro clustering is disabled
   useEffect(() => {
@@ -1093,6 +1131,12 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           displayColor = isDark ? '#6b7280' : '#9ca3af' // gray for no data
           displayOpacity = 0.5
         }
+      } else if (trafficFlowMode) {
+        // Traffic flow mode: color by utilization
+        const trafficStyle = getTrafficColor(link)
+        displayColor = trafficStyle.color
+        displayWeight = trafficStyle.weight
+        displayOpacity = trafficStyle.opacity
       } else if (criticalityModeEnabled && criticality) {
         // Criticality mode: color by criticality level
         displayColor = criticalityColors[criticality]
@@ -1176,7 +1220,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       type: 'FeatureCollection' as const,
       features,
     }
-  }, [links, devicePositions, isDark, hoveredLink, selectedItem, hoverHighlight, linkPathMap, selectedPathIndex, criticalityModeEnabled, linkCriticalityMap, whatifRemovalMode, removalLink, linkHealthMode, linkSlaStatus, metroClusteringMode, collapsedMetros, deviceMap, metroMap])
+  }, [links, devicePositions, isDark, hoveredLink, selectedItem, hoverHighlight, linkPathMap, selectedPathIndex, criticalityModeEnabled, linkCriticalityMap, whatifRemovalMode, removalLink, linkHealthMode, linkSlaStatus, trafficFlowMode, getTrafficColor, metroClusteringMode, collapsedMetros, deviceMap, metroMap])
 
   // GeoJSON for validator links (connecting lines)
   const validatorLinksGeoJson = useMemo(() => {
@@ -1497,6 +1541,8 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           onToggleStakeOverlayMode={() => setStakeOverlayMode(!stakeOverlayMode)}
           linkHealthMode={linkHealthMode}
           onToggleLinkHealthMode={() => setLinkHealthMode(!linkHealthMode)}
+          trafficFlowMode={trafficFlowMode}
+          onToggleTrafficFlowMode={() => setTrafficFlowMode(!trafficFlowMode)}
           metroClusteringMode={metroClusteringMode}
           onToggleMetroClusteringMode={() => setMetroClusteringMode(!metroClusteringMode)}
         />
@@ -2297,6 +2343,140 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Traffic Flow Legend */}
+      {trafficFlowMode && (
+        <div className="absolute top-[280px] right-4 z-[999] bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm p-3 text-xs max-w-56">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-medium flex items-center gap-1.5">
+              <BarChart3 className="h-3.5 w-3.5 text-cyan-500" />
+              Traffic Flow
+            </span>
+            <button
+              onClick={() => setTrafficFlowMode(false)}
+              className="p-1 hover:bg-[var(--muted)] rounded"
+              title="Close"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+
+          <div className="space-y-3">
+            {/* Summary stats */}
+            <div className="space-y-1.5">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Total Links</span>
+                <span className="font-medium">{links.length}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-red-500">Critical (≥80%)</span>
+                <span className="font-medium text-red-500">
+                  {links.filter(l => {
+                    const util = l.bandwidth_bps > 0 ? ((l.in_bps ?? 0) + (l.out_bps ?? 0)) / l.bandwidth_bps * 100 : 0
+                    return util >= 80
+                  }).length}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-yellow-500">High (50-80%)</span>
+                <span className="font-medium text-yellow-500">
+                  {links.filter(l => {
+                    const util = l.bandwidth_bps > 0 ? ((l.in_bps ?? 0) + (l.out_bps ?? 0)) / l.bandwidth_bps * 100 : 0
+                    return util >= 50 && util < 80
+                  }).length}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-lime-500">Medium (20-50%)</span>
+                <span className="font-medium text-lime-500">
+                  {links.filter(l => {
+                    const util = l.bandwidth_bps > 0 ? ((l.in_bps ?? 0) + (l.out_bps ?? 0)) / l.bandwidth_bps * 100 : 0
+                    return util >= 20 && util < 50
+                  }).length}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-green-500">Low (&lt;20%)</span>
+                <span className="font-medium text-green-500">
+                  {links.filter(l => {
+                    const util = l.bandwidth_bps > 0 ? ((l.in_bps ?? 0) + (l.out_bps ?? 0)) / l.bandwidth_bps * 100 : 0
+                    return util > 0 && util < 20
+                  }).length}
+                </span>
+              </div>
+            </div>
+
+            {/* High utilization links */}
+            {(() => {
+              const highUtilLinks = links
+                .filter(l => {
+                  const totalBps = (l.in_bps ?? 0) + (l.out_bps ?? 0)
+                  const util = l.bandwidth_bps > 0 ? (totalBps / l.bandwidth_bps) * 100 : 0
+                  return util >= 50
+                })
+                .sort((a, b) => {
+                  const utilA = a.bandwidth_bps > 0 ? ((a.in_bps ?? 0) + (a.out_bps ?? 0)) / a.bandwidth_bps : 0
+                  const utilB = b.bandwidth_bps > 0 ? ((b.in_bps ?? 0) + (b.out_bps ?? 0)) / b.bandwidth_bps : 0
+                  return utilB - utilA
+                })
+                .slice(0, 5)
+
+              if (highUtilLinks.length === 0) return null
+
+              return (
+                <div className="pt-2 border-t border-[var(--border)]">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <AlertTriangle className="h-3.5 w-3.5 text-yellow-500" />
+                    <span className="font-medium text-yellow-500">High Utilization</span>
+                  </div>
+                  <div className="space-y-1 max-h-24 overflow-y-auto">
+                    {highUtilLinks.map(link => {
+                      const totalBps = (link.in_bps ?? 0) + (link.out_bps ?? 0)
+                      const util = link.bandwidth_bps > 0 ? (totalBps / link.bandwidth_bps) * 100 : 0
+                      const color = util >= 80 ? 'text-red-400' : 'text-yellow-400'
+                      return (
+                        <div key={link.pk} className={`${color} truncate text-[10px]`}>
+                          {link.code}
+                          <span className="text-muted-foreground ml-1">
+                            ({util.toFixed(0)}% - {formatBandwidth(totalBps)})
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })()}
+
+            {/* Legend */}
+            <div className="pt-2 border-t border-[var(--border)]">
+              <div className="text-muted-foreground mb-1.5">Link Colors (by utilization)</div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-4 h-0.5 bg-green-500 rounded" />
+                  <span>Low (&lt;20%)</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-4 h-0.5 bg-lime-500 rounded" />
+                  <span>Medium (20-50%)</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-4 h-1 bg-yellow-500 rounded" />
+                  <span>High (50-80%)</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-4 h-1.5 bg-red-500 rounded" />
+                  <span>Critical (≥80%)</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-4 h-0.5 bg-gray-400 rounded opacity-40" />
+                  <span>Idle (no traffic)</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

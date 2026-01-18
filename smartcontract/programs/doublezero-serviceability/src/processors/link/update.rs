@@ -34,9 +34,6 @@ impl fmt::Debug for LinkUpdateArgs {
         if let Some(ref code) = self.code {
             parts.push(format!("code: {:?}", code));
         }
-        if let Some(ref contributor_pk) = self.contributor_pk {
-            parts.push(format!("contributor_pk: {:?}", contributor_pk));
-        }
         if let Some(ref tunnel_type) = self.tunnel_type {
             parts.push(format!("tunnel_type: {:?}", tunnel_type));
         }

@@ -87,12 +87,12 @@ mod tests {
             .with(
                 predicate::eq(DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
                     code: Some("test_device".to_string()),
+                    contributor_pk: None,
                     device_type: Some(DeviceType::Hybrid),
                     public_ip: None,
                     dz_prefixes: Some("10.0.0.0/8".parse().unwrap()),
                     metrics_publisher_pk: None,
                     mgmt_vrf: Some("mgmt".to_string()),
-                    contributor_pk: None,
                     max_users: None,
                     users_count: None,
                     status: None,
@@ -105,7 +105,6 @@ mod tests {
         let update_command = UpdateDeviceCommand {
             pubkey: device_pubkey,
             code: Some("test_device".to_string()),
-            contributor_pk: None,
             device_type: Some(DeviceType::Hybrid),
             public_ip: None,
             dz_prefixes: Some("10.0.0.0/8".parse().unwrap()),

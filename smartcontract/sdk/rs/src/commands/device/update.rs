@@ -22,7 +22,6 @@ pub struct UpdateDeviceCommand {
     pub public_ip: Option<Ipv4Addr>,
     pub dz_prefixes: Option<NetworkV4List>,
     pub metrics_publisher: Option<Pubkey>,
-    pub contributor_pk: Option<Pubkey>,
     pub location_pk: Option<Pubkey>,
     pub mgmt_vrf: Option<String>,
     pub interfaces: Option<Vec<Interface>>,
@@ -53,7 +52,7 @@ impl UpdateDeviceCommand {
         client.execute_transaction(
             DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
                 code,
-                contributor_pk: self.contributor_pk,
+                contributor_pk: None,
                 device_type: self.device_type,
                 public_ip: self.public_ip,
                 dz_prefixes: self.dz_prefixes.clone(),
@@ -133,12 +132,12 @@ mod tests {
             .with(
                 predicate::eq(DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
                     code: Some("test_device".to_string()),
+                    contributor_pk: None,
                     device_type: Some(DeviceType::Hybrid),
                     public_ip: None,
                     dz_prefixes: Some("10.0.0.0/8".parse().unwrap()),
                     metrics_publisher_pk: None,
                     mgmt_vrf: Some("mgmt".to_string()),
-                    contributor_pk: None,
                     max_users: None,
                     users_count: None,
                     status: None,
@@ -151,7 +150,6 @@ mod tests {
         let update_command = UpdateDeviceCommand {
             pubkey: device_pubkey,
             code: Some("test_device".to_string()),
-            contributor_pk: None,
             device_type: Some(DeviceType::Hybrid),
             public_ip: None,
             dz_prefixes: Some("10.0.0.0/8".parse().unwrap()),

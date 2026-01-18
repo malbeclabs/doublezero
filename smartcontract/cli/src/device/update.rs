@@ -33,9 +33,6 @@ pub struct UpdateDeviceCliCommand {
     /// Metrics publisher Pubkey (optional)
     #[arg(long, value_parser = validate_pubkey)]
     pub metrics_publisher: Option<String>,
-    /// Contributor Pubkey (optional)
-    #[arg(long, value_parser = validate_pubkey)]
-    pub contributor: Option<String>,
     /// Location Pubkey (optional)
     #[arg(long, value_parser = validate_pubkey)]
     pub location: Option<String>,
@@ -139,19 +136,6 @@ impl UpdateDeviceCliCommand {
             None
         };
 
-        let contributor = if let Some(contributor) = &self.contributor {
-            if contributor == "me" {
-                Some(client.get_payer())
-            } else {
-                match Pubkey::from_str(contributor) {
-                    Ok(pk) => Some(pk),
-                    Err(_) => return Err(eyre::eyre!("Invalid contributor Pubkey")),
-                }
-            }
-        } else {
-            None
-        };
-
         let signature = client.update_device(UpdateDeviceCommand {
             pubkey,
             code: self.code,
@@ -159,7 +143,6 @@ impl UpdateDeviceCliCommand {
             public_ip: self.public_ip,
             dz_prefixes: self.dz_prefixes,
             metrics_publisher,
-            contributor_pk: contributor,
             location_pk: match &self.location {
                 Some(location) => Some(Pubkey::from_str(location)?),
                 None => None,
@@ -317,9 +300,6 @@ mod tests {
                 metrics_publisher: Some(Pubkey::from_str_const(
                     "HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx",
                 )),
-                contributor_pk: Some(Pubkey::from_str_const(
-                    "HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx",
-                )),
                 location_pk: Some(Pubkey::from_str_const(
                     "HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx",
                 )),
@@ -342,7 +322,6 @@ mod tests {
             device_type: Some(DeviceType::Hybrid),
             dz_prefixes: Some("10.1.2.3/32".parse().unwrap()),
             metrics_publisher: Some("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx".to_string()),
-            contributor: Some("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx".to_string()),
             location: Some("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx".to_string()),
             mgmt_vrf: Some("default".to_string()),
             max_users: Some(1025),
@@ -443,7 +422,6 @@ mod tests {
             dz_prefixes: None,
             metrics_publisher: None,
             location: None,
-            contributor: None,
             mgmt_vrf: None,
             max_users: Some(255),
             users_count: Some(0),
@@ -542,7 +520,6 @@ mod tests {
             metrics_publisher: None,
             device_type: None,
             location: None,
-            contributor: None,
             mgmt_vrf: None,
             max_users: None,
             users_count: None,

@@ -142,9 +142,6 @@ pub fn process_update_device(
 
     // Only allow updates from the foundation allowlist
     if globalstate.foundation_allowlist.contains(payer_account.key) {
-        if let Some(contributor_pk) = value.contributor_pk {
-            device.contributor_pk = contributor_pk;
-        }
         if let Some(users_count) = value.users_count {
             device.users_count = users_count;
         }

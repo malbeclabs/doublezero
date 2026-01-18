@@ -17,12 +17,28 @@ This document captures the full roadmap for topology exploration features using 
 
 ---
 
+## Development Guidelines
+
+### Dual-View Implementation
+When adding visual/interactive features to the topology views, **implement on both Graph and Map views** where appropriate. Both views share the same underlying data and many features benefit from being available in either visualization:
+
+- **Path finding** → Both views (implemented)
+- **Critical links overlay** → Both views
+- **What-if simulations** → Both views
+- **Failure impact** → Both views
+
+Features that are view-specific:
+- **Metro clustering** → Graph only (map already shows geographic clustering)
+- **Geographic context** → Map only
+
+---
+
 ## Roadmap: Graph/Map View Enhancements
 
-These features enhance the existing topology graph view with interactive, visual explorations.
+These features enhance both the topology graph and map views with interactive, visual explorations.
 
 ### 7. Find All Paths (K-Shortest Paths)
-**Priority: High** | **Complexity: Medium** | **Status: Not Started**
+**Priority: High** | **Complexity: Medium** | **Status: Done**
 
 Show multiple paths between two devices, not just the shortest.
 
@@ -313,16 +329,17 @@ Historical topology changes over time.
 ## Implementation Phases
 
 ### Phase 7: Path Analysis (Done)
-- [x] Find All Paths (K-shortest) - API + Graph UI
+- [x] Find All Paths (K-shortest) - API + Graph UI + Map UI
 - [x] Path Calculator page
+- [x] Topology sub-navigation (Map, Graph, Path Calculator)
 
 ### Phase 8: Risk Analysis
-- [ ] Critical Links detection - API + Graph UI overlay
+- [ ] Critical Links detection - API + Graph UI + Map UI overlay
 - [ ] Redundancy Report page
 
 ### Phase 9: What-If Simulation
-- [ ] What-If Link Removal - Graph UI
-- [ ] What-If Link Addition - Graph UI
+- [ ] What-If Link Removal - Graph UI + Map UI
+- [ ] What-If Link Addition - Graph UI + Map UI
 
 ### Phase 10: Planning Tools
 - [ ] Metro Connectivity Matrix page
@@ -350,34 +367,34 @@ Historical topology changes over time.
 
 ## UI/UX Notes
 
-### Graph View vs Separate Page Decision Matrix
+### Graph View vs Map View vs Separate Page Decision Matrix
 
-| Feature | Graph View | Separate Page | Rationale |
-|---------|------------|---------------|-----------|
-| Find All Paths | Yes | - | Visual comparison of routes |
-| Critical Links | Yes | - | Color overlay on existing graph |
-| What-If Removal | Yes | - | Interactive, see changes visually |
-| What-If Addition | Yes | - | Interactive, see changes visually |
-| Metro Clustering | Yes | - | Alternative graph layout |
-| Traffic Flow | Yes | - | Animation on graph |
-| Redundancy Report | - | Yes | Tabular checklist for ops |
-| Metro Matrix | - | Yes | NxN grid doesn't fit graph |
-| Path Calculator | - | Yes | Detailed text output |
-| Maintenance Planner | - | Yes | Complex multi-step workflow |
-| Network Evolution | - | Yes | Timeline/diff view, not spatial |
+| Feature | Graph View | Map View | Separate Page | Rationale |
+|---------|------------|----------|---------------|-----------|
+| Find All Paths | Yes | Yes | - | Visual comparison of routes on both |
+| Critical Links | Yes | Yes | - | Color overlay works on both |
+| What-If Removal | Yes | Yes | - | Interactive simulation on both |
+| What-If Addition | Yes | Yes | - | Interactive simulation on both |
+| Metro Clustering | Yes | - | - | Graph only (map is already geographic) |
+| Traffic Flow | Yes | Yes | - | Animation works on both |
+| Redundancy Report | - | - | Yes | Tabular checklist for ops |
+| Metro Matrix | - | - | Yes | NxN grid doesn't fit visual views |
+| Path Calculator | - | - | Yes | Detailed text output |
+| Maintenance Planner | - | - | Yes | Complex multi-step workflow |
+| Network Evolution | - | - | Yes | Timeline/diff view, not spatial |
 
 ### Navigation
 
-Add new nav items under Topology section:
+Topology section in sidebar (implemented):
 ```
 Topology
-├── Map View (existing)
-├── Graph View (existing)
-├── Path Calculator (new)
-├── Redundancy Report (new)
-├── Metro Matrix (new)
-├── Maintenance Planner (new)
-└── History (new, future)
+├── /topology/map          - Map View (geographic)
+├── /topology/graph        - Graph View (ISIS topology)
+├── /topology/path-calculator - Path Calculator (done)
+├── /topology/redundancy   - Redundancy Report (planned)
+├── /topology/metro-matrix - Metro Matrix (planned)
+├── /topology/maintenance  - Maintenance Planner (planned)
+└── /topology/history      - History (future)
 ```
 
 ---

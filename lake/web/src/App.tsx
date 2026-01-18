@@ -38,6 +38,7 @@ import { UserDetailPage } from '@/components/user-detail-page'
 import { ValidatorDetailPage } from '@/components/validator-detail-page'
 import { GossipNodeDetailPage } from '@/components/gossip-node-detail-page'
 import { HelpPage } from '@/components/help-page'
+import { StakePage } from '@/components/stake-page'
 import { generateSessionTitle, generateChatSessionTitle, sendChatMessageStream, recommendVisualization, fetchCatalog, acquireSessionLock, releaseSessionLock, getSessionLock, watchSessionLock, getSession, generateMessageId, getRunningWorkflowForSession, reconnectToWorkflow, type SessionQueryInfo, type SessionLock } from '@/lib/api'
 import type { TableInfo, QueryResponse, HistoryMessage, ChatMessage, QueryMode } from '@/lib/api'
 import {
@@ -1738,6 +1739,9 @@ function AppContent() {
 
             {/* Timeline route */}
             <Route path="/timeline" element={<TimelinePage />} />
+
+            {/* Stake analytics route */}
+            <Route path="/stake" element={<StakePage />} />
 
             {/* Help route */}
             <Route path="/help" element={<HelpPage />} />

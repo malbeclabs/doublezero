@@ -194,6 +194,12 @@ func main() {
 	r.Get("/api/solana/gossip-nodes", handlers.GetGossipNodes)
 	r.Get("/api/solana/gossip-nodes/{pubkey}", handlers.GetGossipNode)
 
+	// Stake analytics routes
+	r.Get("/api/stake/overview", handlers.GetStakeOverview)
+	r.Get("/api/stake/history", handlers.GetStakeHistory)
+	r.Get("/api/stake/changes", handlers.GetStakeChanges)
+	r.Get("/api/stake/validators", handlers.GetStakeValidators)
+
 	r.Get("/api/topology", handlers.GetTopology)
 	r.Get("/api/topology/traffic", handlers.GetTopologyTraffic)
 	r.Get("/api/topology/isis", handlers.GetISISTopology)

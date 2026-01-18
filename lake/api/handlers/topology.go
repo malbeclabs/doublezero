@@ -445,3 +445,146 @@ func GetTopologyTraffic(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(TrafficResponse{Points: points})
 }
+
+// DZ vs Internet latency comparison types
+type LatencyComparison struct {
+	OriginMetroPK      string   `json:"origin_metro_pk"`
+	OriginMetroCode    string   `json:"origin_metro_code"`
+	OriginMetroName    string   `json:"origin_metro_name"`
+	TargetMetroPK      string   `json:"target_metro_pk"`
+	TargetMetroCode    string   `json:"target_metro_code"`
+	TargetMetroName    string   `json:"target_metro_name"`
+	DzAvgRttMs         float64  `json:"dz_avg_rtt_ms"`
+	DzP95RttMs         float64  `json:"dz_p95_rtt_ms"`
+	DzAvgJitterMs      *float64 `json:"dz_avg_jitter_ms"`
+	DzLossPct          float64  `json:"dz_loss_pct"`
+	DzSampleCount      uint64   `json:"dz_sample_count"`
+	InternetAvgRttMs   float64  `json:"internet_avg_rtt_ms"`
+	InternetP95RttMs   float64  `json:"internet_p95_rtt_ms"`
+	InternetAvgJitterMs *float64 `json:"internet_avg_jitter_ms"`
+	InternetSampleCount uint64  `json:"internet_sample_count"`
+	RttImprovementPct  *float64 `json:"rtt_improvement_pct"`
+	JitterImprovementPct *float64 `json:"jitter_improvement_pct"`
+}
+
+type LatencyComparisonResponse struct {
+	Comparisons []LatencyComparison `json:"comparisons"`
+	Summary     struct {
+		TotalPairs         int     `json:"total_pairs"`
+		AvgImprovementPct  float64 `json:"avg_improvement_pct"`
+		MaxImprovementPct  float64 `json:"max_improvement_pct"`
+		PairsWithData      int     `json:"pairs_with_data"`
+	} `json:"summary"`
+}
+
+func GetLatencyComparison(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	start := time.Now()
+
+	// Query the pre-built comparison view
+	query := `
+		SELECT
+			m1.pk AS origin_metro_pk,
+			c.origin_metro AS origin_metro_code,
+			c.origin_metro_name,
+			m2.pk AS target_metro_pk,
+			c.target_metro AS target_metro_code,
+			c.target_metro_name,
+			c.dz_avg_rtt_ms,
+			c.dz_p95_rtt_ms,
+			c.dz_avg_jitter_ms,
+			c.dz_loss_pct,
+			c.dz_sample_count,
+			c.internet_avg_rtt_ms,
+			c.internet_p95_rtt_ms,
+			c.internet_avg_jitter_ms,
+			c.internet_sample_count,
+			c.rtt_improvement_pct,
+			c.jitter_improvement_pct
+		FROM dz_vs_internet_latency_comparison c
+		JOIN dz_metros_current m1 ON c.origin_metro = m1.code
+		JOIN dz_metros_current m2 ON c.target_metro = m2.code
+		WHERE c.dz_sample_count > 0
+		ORDER BY c.origin_metro, c.target_metro
+	`
+
+	rows, err := config.DB.Query(ctx, query)
+	duration := time.Since(start)
+	metrics.RecordClickHouseQuery(duration, err)
+
+	if err != nil {
+		log.Printf("Latency comparison query error: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var comparisons []LatencyComparison
+	var totalImprovement float64
+	var maxImprovement float64
+	var pairsWithData int
+
+	for rows.Next() {
+		var lc LatencyComparison
+		if err := rows.Scan(
+			&lc.OriginMetroPK,
+			&lc.OriginMetroCode,
+			&lc.OriginMetroName,
+			&lc.TargetMetroPK,
+			&lc.TargetMetroCode,
+			&lc.TargetMetroName,
+			&lc.DzAvgRttMs,
+			&lc.DzP95RttMs,
+			&lc.DzAvgJitterMs,
+			&lc.DzLossPct,
+			&lc.DzSampleCount,
+			&lc.InternetAvgRttMs,
+			&lc.InternetP95RttMs,
+			&lc.InternetAvgJitterMs,
+			&lc.InternetSampleCount,
+			&lc.RttImprovementPct,
+			&lc.JitterImprovementPct,
+		); err != nil {
+			log.Printf("Latency comparison scan error: %v", err)
+			continue
+		}
+
+		if lc.RttImprovementPct != nil {
+			pairsWithData++
+			totalImprovement += *lc.RttImprovementPct
+			if *lc.RttImprovementPct > maxImprovement {
+				maxImprovement = *lc.RttImprovementPct
+			}
+		}
+
+		comparisons = append(comparisons, lc)
+	}
+
+	if err := rows.Err(); err != nil {
+		log.Printf("Latency comparison rows error: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if comparisons == nil {
+		comparisons = []LatencyComparison{}
+	}
+
+	avgImprovement := 0.0
+	if pairsWithData > 0 {
+		avgImprovement = totalImprovement / float64(pairsWithData)
+	}
+
+	response := LatencyComparisonResponse{
+		Comparisons: comparisons,
+	}
+	response.Summary.TotalPairs = len(comparisons)
+	response.Summary.AvgImprovementPct = avgImprovement
+	response.Summary.MaxImprovementPct = maxImprovement
+	response.Summary.PairsWithData = pairsWithData
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}

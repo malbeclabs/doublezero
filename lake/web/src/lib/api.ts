@@ -2489,6 +2489,45 @@ export async function fetchMetroConnectivity(): Promise<MetroConnectivityRespons
   return res.json()
 }
 
+// DZ vs Internet latency comparison types
+export interface LatencyComparison {
+  origin_metro_pk: string
+  origin_metro_code: string
+  origin_metro_name: string
+  target_metro_pk: string
+  target_metro_code: string
+  target_metro_name: string
+  dz_avg_rtt_ms: number
+  dz_p95_rtt_ms: number
+  dz_avg_jitter_ms: number | null
+  dz_loss_pct: number
+  dz_sample_count: number
+  internet_avg_rtt_ms: number
+  internet_p95_rtt_ms: number
+  internet_avg_jitter_ms: number | null
+  internet_sample_count: number
+  rtt_improvement_pct: number | null
+  jitter_improvement_pct: number | null
+}
+
+export interface LatencyComparisonResponse {
+  comparisons: LatencyComparison[]
+  summary: {
+    total_pairs: number
+    avg_improvement_pct: number
+    max_improvement_pct: number
+    pairs_with_data: number
+  }
+}
+
+export async function fetchLatencyComparison(): Promise<LatencyComparisonResponse> {
+  const res = await fetch('/api/topology/latency-comparison')
+  if (!res.ok) {
+    throw new Error('Failed to fetch latency comparison')
+  }
+  return res.json()
+}
+
 // Maintenance planner types
 export interface MaintenanceItem {
   type: 'device' | 'link'

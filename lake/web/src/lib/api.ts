@@ -1118,8 +1118,10 @@ export interface PathResponse {
   error?: string
 }
 
-export async function fetchISISPath(fromPK: string, toPK: string): Promise<PathResponse> {
-  const res = await fetch(`/api/topology/path?from=${encodeURIComponent(fromPK)}&to=${encodeURIComponent(toPK)}`)
+export type PathMode = 'hops' | 'latency'
+
+export async function fetchISISPath(fromPK: string, toPK: string, mode: PathMode = 'hops'): Promise<PathResponse> {
+  const res = await fetch(`/api/topology/path?from=${encodeURIComponent(fromPK)}&to=${encodeURIComponent(toPK)}&mode=${mode}`)
   if (!res.ok) {
     throw new Error('Failed to fetch path')
   }

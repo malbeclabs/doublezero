@@ -4,11 +4,12 @@ import MapGL, { Source, Layer, Marker } from 'react-map-gl/maplibre'
 import type { MapRef, MapLayerMouseEvent, LngLatBoundsLike } from 'react-map-gl/maplibre'
 import type { StyleSpecification } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { ZoomIn, ZoomOut, Maximize, Users, X, Search } from 'lucide-react'
+import { ZoomIn, ZoomOut, Maximize, Users, X, Search, Route } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip as RechartsTooltip, CartesianGrid } from 'recharts'
 import { useQuery } from '@tanstack/react-query'
 import { useTheme } from '@/hooks/use-theme'
-import type { TopologyMetro, TopologyDevice, TopologyLink, TopologyValidator } from '@/lib/api'
+import type { TopologyMetro, TopologyDevice, TopologyLink, TopologyValidator, PathResponse, PathMode } from '@/lib/api'
+import { fetchISISPath } from '@/lib/api'
 
 interface TopologyMapProps {
   metros: TopologyMetro[]
@@ -164,9 +165,11 @@ interface MapControlsProps {
   showValidators: boolean
   onToggleValidators: () => void
   validatorCount: number
+  pathMode: boolean
+  onTogglePathMode: () => void
 }
 
-function MapControls({ onZoomIn, onZoomOut, onReset, showValidators, onToggleValidators, validatorCount }: MapControlsProps) {
+function MapControls({ onZoomIn, onZoomOut, onReset, showValidators, onToggleValidators, validatorCount, pathMode, onTogglePathMode }: MapControlsProps) {
   return (
     <div className="absolute top-4 right-4 z-[1000] flex flex-col gap-1">
       <button
@@ -201,14 +204,26 @@ function MapControls({ onZoomIn, onZoomOut, onReset, showValidators, onToggleVal
       <div className="my-1 border-t border-[var(--border)]" />
       <button
         onClick={onToggleValidators}
+        disabled={pathMode}
         className={`p-2 border rounded shadow-sm transition-colors ${
           showValidators
             ? 'bg-purple-500/20 border-purple-500/50 text-purple-500'
             : 'bg-[var(--card)] border-[var(--border)] hover:bg-[var(--muted)]'
-        }`}
-        title={`${showValidators ? 'Hide' : 'Show'} validators (${validatorCount})`}
+        } ${pathMode ? 'opacity-40 cursor-not-allowed' : ''}`}
+        title={pathMode ? 'Disabled in path mode' : `${showValidators ? 'Hide' : 'Show'} validators (${validatorCount})`}
       >
         <Users className="h-4 w-4" />
+      </button>
+      <button
+        onClick={onTogglePathMode}
+        className={`p-2 border rounded shadow-sm transition-colors ${
+          pathMode
+            ? 'bg-amber-500/20 border-amber-500/50 text-amber-500'
+            : 'bg-[var(--card)] border-[var(--border)] hover:bg-[var(--muted)]'
+        }`}
+        title={pathMode ? 'Exit path finding mode' : 'Enter path finding mode'}
+      >
+        <Route className="h-4 w-4" />
       </button>
     </div>
   )
@@ -306,6 +321,14 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
   const [selectedItem, setSelectedItemState] = useState<SelectedItem | null>(null)
   const mapRef = useRef<MapRef>(null)
   const markerClickedRef = useRef(false)
+
+  // Path finding state
+  const [pathModeEnabled, setPathModeEnabled] = useState(false)
+  const [pathSource, setPathSource] = useState<string | null>(null)
+  const [pathTarget, setPathTarget] = useState<string | null>(null)
+  const [pathResult, setPathResult] = useState<PathResponse | null>(null)
+  const [pathLoading, setPathLoading] = useState(false)
+  const [pathMode, setPathMode] = useState<PathMode>('hops')
 
   // Update URL when selected item changes (push to history for back button support)
   const setSelectedItem = useCallback((item: SelectedItem | null) => {
@@ -446,6 +469,83 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     }
   }, [metros, fitBounds])
 
+  // Fetch path when source and target are set
+  useEffect(() => {
+    if (!pathModeEnabled || !pathSource || !pathTarget) return
+
+    setPathLoading(true)
+    fetchISISPath(pathSource, pathTarget, pathMode)
+      .then(result => {
+        setPathResult(result)
+      })
+      .catch(err => {
+        setPathResult({ path: [], totalMetric: 0, hopCount: 0, error: err.message })
+      })
+      .finally(() => {
+        setPathLoading(false)
+      })
+  }, [pathModeEnabled, pathSource, pathTarget, pathMode])
+
+  // Clear path when exiting path mode
+  useEffect(() => {
+    if (!pathModeEnabled) {
+      setPathSource(null)
+      setPathTarget(null)
+      setPathResult(null)
+    }
+  }, [pathModeEnabled])
+
+  // Build set of device PKs in the current path for highlighting
+  const pathDevicePKs = useMemo(() => {
+    if (!pathResult?.path?.length) return new Set<string>()
+    return new Set(pathResult.path.map(hop => hop.devicePK))
+  }, [pathResult])
+
+  // Build set of links in the path (by checking if both endpoints are consecutive in path)
+  const pathLinkPKs = useMemo(() => {
+    if (!pathResult?.path?.length) return new Set<string>()
+    const linkSet = new Set<string>()
+
+    // For each consecutive pair in the path, find the link between them
+    for (let i = 0; i < pathResult.path.length - 1; i++) {
+      const fromPK = pathResult.path[i].devicePK
+      const toPK = pathResult.path[i + 1].devicePK
+
+      // Find link that connects these two devices
+      for (const link of links) {
+        if ((link.side_a_pk === fromPK && link.side_z_pk === toPK) ||
+            (link.side_a_pk === toPK && link.side_z_pk === fromPK)) {
+          linkSet.add(link.pk)
+          break
+        }
+      }
+    }
+    return linkSet
+  }, [pathResult, links])
+
+  // Handle device click for path finding
+  const handlePathDeviceClick = useCallback((devicePK: string) => {
+    if (!pathSource) {
+      setPathSource(devicePK)
+    } else if (!pathTarget && devicePK !== pathSource) {
+      setPathTarget(devicePK)
+    } else {
+      // Reset and start new path
+      setPathSource(devicePK)
+      setPathTarget(null)
+      setPathResult(null)
+    }
+  }, [pathSource, pathTarget])
+
+  const clearPath = useCallback(() => {
+    setPathSource(null)
+    setPathTarget(null)
+    setPathResult(null)
+  }, [])
+
+  // Path highlight color
+  const pathHighlightColor = '#f59e0b' // amber
+
   // GeoJSON for link lines
   const linkGeoJson = useMemo(() => {
     const features = links.map(link => {
@@ -459,15 +559,31 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       const weight = calculateLinkWeight(link.bandwidth_bps)
       const isHovered = hoveredLink?.pk === link.pk
       const isSelected = selectedItem?.type === 'link' && selectedItem.data.pk === link.pk
+      const isInPath = pathLinkPKs.has(link.pk)
+
+      // Path links get amber highlight, hover/selected get white/black, otherwise normal color
+      let displayColor = color
+      let displayWeight = weight
+      let displayOpacity = 0.8
+
+      if (isInPath) {
+        displayColor = pathHighlightColor
+        displayWeight = weight + 3
+        displayOpacity = 1
+      } else if (isHovered || isSelected) {
+        displayColor = hoverHighlight
+        displayWeight = weight + 2
+        displayOpacity = 1
+      }
 
       return {
         type: 'Feature' as const,
         properties: {
           pk: link.pk,
           code: link.code,
-          color: isHovered || isSelected ? hoverHighlight : color,
-          weight: isHovered || isSelected ? weight + 2 : weight,
-          opacity: isHovered || isSelected ? 1 : 0.8,
+          color: displayColor,
+          weight: displayWeight,
+          opacity: displayOpacity,
           dashArray: link.link_type === 'WAN' ? [8, 4] : [4, 4],
         },
         geometry: {
@@ -481,7 +597,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       type: 'FeatureCollection' as const,
       features,
     }
-  }, [links, devicePositions, isDark, hoveredLink, selectedItem, hoverHighlight])
+  }, [links, devicePositions, isDark, hoveredLink, selectedItem, hoverHighlight, pathLinkPKs, pathHighlightColor])
 
   // GeoJSON for validator links (connecting lines)
   const validatorLinksGeoJson = useMemo(() => {
@@ -551,6 +667,10 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     if (markerClickedRef.current) {
       return
     }
+    // Don't handle link clicks in path mode
+    if (pathModeEnabled) {
+      return
+    }
     // Check if a link was clicked
     if (e.features && e.features.length > 0) {
       const feature = e.features[0]
@@ -565,7 +685,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     }
     // Close drawer when clicking empty area
     setSelectedItem(null)
-  }, [setSelectedItem, linkMap, buildLinkInfo, handleMarkerClick])
+  }, [setSelectedItem, linkMap, buildLinkInfo, handleMarkerClick, pathModeEnabled])
 
   // Map control handlers
   const handleZoomIn = useCallback(() => {
@@ -728,6 +848,8 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           showValidators={showValidators}
           onToggleValidators={() => setShowValidators(!showValidators)}
           validatorCount={validators.length}
+          pathMode={pathModeEnabled}
+          onTogglePathMode={() => setPathModeEnabled(!pathModeEnabled)}
         />
 
         {/* Link lines source and layers */}
@@ -762,8 +884,8 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           />
         </Source>
 
-        {/* Validator links (when toggled) */}
-        {showValidators && (
+        {/* Validator links (when toggled, hidden in path mode) */}
+        {showValidators && !pathModeEnabled && (
           <Source id="validator-links" type="geojson" data={validatorLinksGeoJson}>
             <Layer
               id="validator-link-lines"
@@ -778,8 +900,8 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           </Source>
         )}
 
-        {/* Metro markers */}
-        {metros.map(metro => {
+        {/* Metro markers - hidden in path mode */}
+        {!pathMode && metros.map(metro => {
           const isThisHovered = hoveredMetro?.code === metro.code
           const isThisSelected = selectedItem?.type === 'metro' && selectedItem.data.pk === metro.pk
           const metroDeviceCount = devicesByMetro.get(metro.pk)?.length || 0
@@ -822,6 +944,9 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           const metro = metroMap.get(device.metro_pk)
           const isThisHovered = hoveredDevice?.code === device.code
           const isThisSelected = selectedItem?.type === 'device' && selectedItem.data.pk === device.pk
+          const isPathSource = pathSource === device.pk
+          const isPathTarget = pathTarget === device.pk
+          const isInPath = pathDevicePKs.has(device.pk)
           const deviceInfo: HoveredDeviceInfo = {
             pk: device.pk,
             code: device.code,
@@ -835,6 +960,29 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             stakeShare: (device.stake_share ?? 0) > 0 ? `${device.stake_share.toFixed(2)}%` : '0%',
           }
 
+          // Determine marker styling based on path state
+          let markerColor = deviceColor
+          let markerSize = 12
+          let borderWidth = 1
+
+          if (isPathSource) {
+            markerColor = '#22c55e' // green
+            markerSize = 18
+            borderWidth = 3
+          } else if (isPathTarget) {
+            markerColor = '#ef4444' // red
+            markerSize = 18
+            borderWidth = 3
+          } else if (isInPath) {
+            markerColor = pathHighlightColor // amber
+            markerSize = 16
+            borderWidth = 2
+          } else if (isThisHovered || isThisSelected) {
+            markerColor = hoverHighlight
+            markerSize = 16
+            borderWidth = 2
+          }
+
           return (
             <Marker
               key={`device-${device.pk}`}
@@ -845,22 +993,30 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
               <div
                 className="rounded-full cursor-pointer transition-all"
                 style={{
-                  width: isThisHovered || isThisSelected ? 16 : 12,
-                  height: isThisHovered || isThisSelected ? 16 : 12,
-                  backgroundColor: isThisHovered || isThisSelected ? hoverHighlight : deviceColor,
-                  border: `${isThisHovered || isThisSelected ? 2 : 1}px solid ${hoverHighlight}`,
-                  opacity: isThisHovered || isThisSelected ? 1 : 0.9,
+                  width: markerSize,
+                  height: markerSize,
+                  backgroundColor: markerColor,
+                  border: `${borderWidth}px solid ${isPathSource ? '#22c55e' : isPathTarget ? '#ef4444' : hoverHighlight}`,
+                  opacity: isThisHovered || isThisSelected || isPathSource || isPathTarget || isInPath ? 1 : 0.9,
                 }}
                 onMouseEnter={() => setHoveredDevice(deviceInfo)}
                 onMouseLeave={() => setHoveredDevice(null)}
-                onClick={() => handleMarkerClick({ type: 'device', data: deviceInfo })}
+                onClick={() => {
+                  markerClickedRef.current = true
+                  setTimeout(() => { markerClickedRef.current = false }, 0)
+                  if (pathModeEnabled) {
+                    handlePathDeviceClick(device.pk)
+                  } else {
+                    handleMarkerClick({ type: 'device', data: deviceInfo })
+                  }
+                }}
               />
             </Marker>
           )
         })}
 
-        {/* Validator markers (when toggled) */}
-        {showValidators && validators.map(validator => {
+        {/* Validator markers (when toggled, hidden in path mode) */}
+        {showValidators && !pathModeEnabled && validators.map(validator => {
           const devicePos = devicePositions.get(validator.device_pk)
           if (!devicePos) return null
 
@@ -978,6 +1134,76 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
                 <DetailRow label="Out" value={hoveredValidator.outRate} />
               </div>
             </>
+          )}
+        </div>
+      )}
+
+      {/* Path finding panel */}
+      {pathModeEnabled && (
+        <div className="absolute top-[280px] right-4 z-[999] bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm p-3 text-xs max-w-52">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-medium flex items-center gap-1.5">
+              <Route className="h-3.5 w-3.5 text-amber-500" />
+              Path Finding
+            </span>
+            {(pathSource || pathTarget) && (
+              <button onClick={clearPath} className="p-1 hover:bg-[var(--muted)] rounded" title="Clear path">
+                <X className="h-3 w-3" />
+              </button>
+            )}
+          </div>
+
+          {/* Mode toggle */}
+          <div className="flex gap-1 mb-3 p-0.5 bg-[var(--muted)] rounded">
+            <button
+              onClick={() => setPathMode('hops')}
+              className={`flex-1 px-2 py-1 rounded text-xs transition-colors ${
+                pathMode === 'hops' ? 'bg-[var(--card)] shadow-sm' : 'hover:bg-[var(--card)]/50'
+              }`}
+              title="Find path with fewest hops"
+            >
+              Fewest Hops
+            </button>
+            <button
+              onClick={() => setPathMode('latency')}
+              className={`flex-1 px-2 py-1 rounded text-xs transition-colors ${
+                pathMode === 'latency' ? 'bg-[var(--card)] shadow-sm' : 'hover:bg-[var(--card)]/50'
+              }`}
+              title="Find path with lowest latency"
+            >
+              Lowest Latency
+            </button>
+          </div>
+
+          {!pathSource && (
+            <div className="text-muted-foreground">Click a device to set the <span className="text-green-500 font-medium">source</span></div>
+          )}
+          {pathSource && !pathTarget && (
+            <div className="text-muted-foreground">Click another device to set the <span className="text-red-500 font-medium">target</span></div>
+          )}
+          {pathLoading && (
+            <div className="text-muted-foreground">Finding path...</div>
+          )}
+          {pathResult && !pathResult.error && pathResult.path.length > 0 && (
+            <div>
+              <div className="space-y-1 text-muted-foreground">
+                <div>Hops: <span className="text-foreground font-medium">{pathResult.hopCount}</span></div>
+                <div>Latency: <span className="text-foreground font-medium">{(pathResult.totalMetric / 1000).toFixed(2)}ms</span></div>
+              </div>
+              <div className="mt-2 pt-2 border-t border-[var(--border)] space-y-0.5 max-h-32 overflow-y-auto">
+                {pathResult.path.map((hop, i) => (
+                  <div key={hop.devicePK} className="flex items-center gap-1">
+                    <span className="text-muted-foreground w-4">{i + 1}.</span>
+                    <span className={i === 0 ? 'text-green-500' : i === pathResult.path.length - 1 ? 'text-red-500' : 'text-amber-500'}>
+                      {hop.deviceCode}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {pathResult?.error && (
+            <div className="text-destructive">{pathResult.error}</div>
           )}
         </div>
       )}

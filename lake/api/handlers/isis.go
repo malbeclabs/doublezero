@@ -238,6 +238,7 @@ func GetISISPath(w http.ResponseWriter, r *http.Request) {
 
 	fromPK := r.URL.Query().Get("from")
 	toPK := r.URL.Query().Get("to")
+	mode := r.URL.Query().Get("mode") // "hops" or "latency"
 
 	if fromPK == "" || toPK == "" {
 		writeJSON(w, PathResponse{Error: "from and to parameters are required"})
@@ -249,24 +250,44 @@ func GetISISPath(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if mode == "" {
+		mode = "hops" // default to fewest hops
+	}
+
 	start := time.Now()
 
 	session := config.Neo4jSession(ctx)
 	defer session.Close(ctx)
 
-	// Find shortest path using ISIS adjacencies
-	cypher := `
-		MATCH (a:Device {pk: $from_pk}), (b:Device {pk: $to_pk})
-		MATCH path = shortestPath((a)-[:ISIS_ADJACENT*]->(b))
-		WITH path, reduce(total = 0, r IN relationships(path) | total + coalesce(r.metric, 0)) AS total_metric
-		RETURN [n IN nodes(path) | {
-			pk: n.pk,
-			code: n.code,
-			status: n.status,
-			device_type: n.device_type
-		}] AS devices,
-		total_metric
-	`
+	var cypher string
+	if mode == "latency" {
+		// Use APOC Dijkstra for weighted shortest path (lowest total metric)
+		cypher = `
+			MATCH (a:Device {pk: $from_pk}), (b:Device {pk: $to_pk})
+			CALL apoc.algo.dijkstra(a, b, 'ISIS_ADJACENT>', 'metric') YIELD path, weight
+			RETURN [n IN nodes(path) | {
+				pk: n.pk,
+				code: n.code,
+				status: n.status,
+				device_type: n.device_type
+			}] AS devices,
+			weight AS total_metric
+		`
+	} else {
+		// Default: fewest hops using shortestPath
+		cypher = `
+			MATCH (a:Device {pk: $from_pk}), (b:Device {pk: $to_pk})
+			MATCH path = shortestPath((a)-[:ISIS_ADJACENT*]->(b))
+			WITH path, reduce(total = 0, r IN relationships(path) | total + coalesce(r.metric, 0)) AS total_metric
+			RETURN [n IN nodes(path) | {
+				pk: n.pk,
+				code: n.code,
+				status: n.status,
+				device_type: n.device_type
+			}] AS devices,
+			total_metric
+		`
+	}
 
 	result, err := session.Run(ctx, cypher, map[string]any{
 		"from_pk": fromPK,

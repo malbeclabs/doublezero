@@ -5,7 +5,7 @@ import type { Core, NodeSingular, EdgeSingular } from 'cytoscape'
 import { useQuery } from '@tanstack/react-query'
 import { ZoomIn, ZoomOut, Maximize, Search, Filter, Route, X } from 'lucide-react'
 import { fetchISISTopology, fetchISISPath } from '@/lib/api'
-import type { PathResponse } from '@/lib/api'
+import type { PathResponse, PathMode } from '@/lib/api'
 import { useTheme } from '@/hooks/use-theme'
 
 // Device type colors
@@ -52,6 +52,7 @@ export function TopologyGraph({
   const [pathTarget, setPathTarget] = useState<string | null>(null)
   const [pathResult, setPathResult] = useState<PathResponse | null>(null)
   const [pathLoading, setPathLoading] = useState(false)
+  const [pathMode, setPathMode] = useState<PathMode>('hops')
 
   const [hoveredNode, setHoveredNode] = useState<{
     id: string
@@ -160,7 +161,7 @@ export function TopologyGraph({
     if (mode !== 'path' || !pathSource || !pathTarget) return
 
     setPathLoading(true)
-    fetchISISPath(pathSource, pathTarget)
+    fetchISISPath(pathSource, pathTarget, pathMode)
       .then(result => {
         setPathResult(result)
       })
@@ -170,7 +171,7 @@ export function TopologyGraph({
       .finally(() => {
         setPathLoading(false)
       })
-  }, [mode, pathSource, pathTarget])
+  }, [mode, pathSource, pathTarget, pathMode])
 
   // Highlight path on graph
   useEffect(() => {
@@ -673,6 +674,28 @@ export function TopologyGraph({
             )}
           </div>
 
+          {/* Mode toggle */}
+          <div className="flex gap-1 mb-3 p-0.5 bg-[var(--muted)] rounded">
+            <button
+              onClick={() => setPathMode('hops')}
+              className={`flex-1 px-2 py-1 rounded text-xs transition-colors ${
+                pathMode === 'hops' ? 'bg-[var(--card)] shadow-sm' : 'hover:bg-[var(--card)]/50'
+              }`}
+              title="Find path with fewest hops"
+            >
+              Fewest Hops
+            </button>
+            <button
+              onClick={() => setPathMode('latency')}
+              className={`flex-1 px-2 py-1 rounded text-xs transition-colors ${
+                pathMode === 'latency' ? 'bg-[var(--card)] shadow-sm' : 'hover:bg-[var(--card)]/50'
+              }`}
+              title="Find path with lowest latency"
+            >
+              Lowest Latency
+            </button>
+          </div>
+
           {!pathSource && (
             <div className="text-muted-foreground">Click a device to set the <span className="text-green-500 font-medium">source</span></div>
           )}
@@ -686,7 +709,7 @@ export function TopologyGraph({
             <div>
               <div className="space-y-1 text-muted-foreground">
                 <div>Hops: <span className="text-foreground font-medium">{pathResult.hopCount}</span></div>
-                <div>Metric: <span className="text-foreground font-medium">{pathResult.totalMetric}</span></div>
+                <div>Latency: <span className="text-foreground font-medium">{(pathResult.totalMetric / 1000).toFixed(2)}ms</span></div>
               </div>
               <div className="mt-2 pt-2 border-t border-[var(--border)] space-y-0.5 max-h-32 overflow-y-auto">
                 {pathResult.path.map((hop, i) => (
@@ -764,7 +787,7 @@ export function TopologyGraph({
           }}
         >
           <div className="text-muted-foreground">
-            ISIS Metric: <span className="font-medium text-foreground">{hoveredEdge.metric || 'N/A'}</span>
+            Latency: <span className="font-medium text-foreground">{hoveredEdge.metric ? `${(hoveredEdge.metric / 1000).toFixed(2)}ms` : 'N/A'}</span>
           </div>
         </div>
       )}

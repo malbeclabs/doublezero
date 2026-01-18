@@ -26,6 +26,9 @@ import {
   Home,
   Clock,
   Search,
+  Route,
+  Map,
+  Network,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/hooks/use-theme'
@@ -155,11 +158,18 @@ export function Sidebar({
 
   const isQueryRoute = location.pathname.startsWith('/query')
   const isChatRoute = location.pathname.startsWith('/chat')
-  const isTopologyRoute = location.pathname === '/topology'
+  const isTopologyRoute = location.pathname === '/topology' || location.pathname.startsWith('/topology/')
   const isStatusRoute = location.pathname === '/status'
   const isTimelineRoute = location.pathname === '/timeline'
   const isQuerySessions = location.pathname === '/query/sessions'
   const isChatSessions = location.pathname === '/chat/sessions'
+
+  // Topology sub-routes
+  const isTopologyExplorer = location.pathname === '/topology'
+  const isTopologyPathCalculator = location.pathname === '/topology/path-calculator'
+  const topologyView = new URLSearchParams(location.search).get('view') || 'map'
+  const isTopologyMap = isTopologyExplorer && topologyView === 'map'
+  const isTopologyGraph = isTopologyExplorer && topologyView === 'graph'
 
   // Entity routes
   const isDevicesRoute = location.pathname === '/dz/devices'
@@ -507,7 +517,7 @@ export function Sidebar({
       </div>
 
       {/* DoubleZero section - hidden on tool pages */}
-      {!isChatRoute && !isQueryRoute && (
+      {!isChatRoute && !isQueryRoute && !isTopologyRoute && (
         <div className="px-3 pt-4">
           <div className="px-3 mb-2">
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">DoubleZero</span>
@@ -578,7 +588,7 @@ export function Sidebar({
       )}
 
       {/* Solana section - hidden on tool pages */}
-      {!isChatRoute && !isQueryRoute && (
+      {!isChatRoute && !isQueryRoute && !isTopologyRoute && (
         <div className="px-3 pt-4">
           <div className="px-3 mb-2">
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Solana</span>
@@ -758,8 +768,58 @@ export function Sidebar({
         </div>
       )}
 
+      {/* Topology sub-section */}
+      {isTopologyRoute && (
+        <div className="flex-1 flex flex-col min-h-0 mt-6">
+          {/* Section title */}
+          <div className="px-3 mb-2">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Topology</span>
+          </div>
+
+          {/* Sub-nav */}
+          <div className="px-3 space-y-1">
+            <Link
+              to="/topology?view=map"
+              className={cn(
+                'w-full flex items-center gap-2 px-3 py-2 text-sm rounded transition-colors',
+                isTopologyMap
+                  ? 'bg-[var(--sidebar-active)] text-foreground font-medium'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+              )}
+            >
+              <Map className="h-4 w-4" />
+              Map
+            </Link>
+            <Link
+              to="/topology?view=graph"
+              className={cn(
+                'w-full flex items-center gap-2 px-3 py-2 text-sm rounded transition-colors',
+                isTopologyGraph
+                  ? 'bg-[var(--sidebar-active)] text-foreground font-medium'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+              )}
+            >
+              <Network className="h-4 w-4" />
+              Graph
+            </Link>
+            <Link
+              to="/topology/path-calculator"
+              className={cn(
+                'w-full flex items-center gap-2 px-3 py-2 text-sm rounded transition-colors',
+                isTopologyPathCalculator
+                  ? 'bg-[var(--sidebar-active)] text-foreground font-medium'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+              )}
+            >
+              <Route className="h-4 w-4" />
+              Path Calculator
+            </Link>
+          </div>
+        </div>
+      )}
+
       {/* Spacer when no section is active */}
-      {!isQueryRoute && !isChatRoute && <div className="flex-1" />}
+      {!isQueryRoute && !isChatRoute && !isTopologyRoute && <div className="flex-1" />}
 
       {/* Theme toggle and development notice footer */}
       <div className="mt-auto px-3 py-3 border-t border-border/50 space-y-3">

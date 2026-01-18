@@ -1547,6 +1547,41 @@ export async function fetchSimulateLinkAddition(
   return res.json()
 }
 
+// Link Health (SLA compliance) for topology overlay
+export interface TopologyLinkHealth {
+  link_pk: string
+  side_a_pk: string
+  side_a_code: string
+  side_z_pk: string
+  side_z_code: string
+  avg_rtt_us: number
+  p95_rtt_us: number
+  committed_rtt_ns: number
+  loss_pct: number
+  exceeds_commit: boolean
+  has_packet_loss: boolean
+  is_dark: boolean
+  sla_status: 'healthy' | 'warning' | 'critical' | 'unknown'
+  sla_ratio: number
+}
+
+export interface LinkHealthResponse {
+  links: TopologyLinkHealth[]
+  total_links: number
+  healthy_count: number
+  warning_count: number
+  critical_count: number
+  unknown_count: number
+}
+
+export async function fetchLinkHealth(): Promise<LinkHealthResponse> {
+  const res = await fetch('/api/dz/links-health')
+  if (!res.ok) {
+    throw new Error('Failed to fetch link health')
+  }
+  return res.json()
+}
+
 // Version check
 export interface VersionResponse {
   buildTimestamp: string

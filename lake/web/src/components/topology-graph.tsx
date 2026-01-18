@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import cytoscape from 'cytoscape'
 import type { Core, NodeSingular, EdgeSingular } from 'cytoscape'
 import { useQuery } from '@tanstack/react-query'
-import { ZoomIn, ZoomOut, Maximize, Search, Filter, Route, X, GitCompare, AlertTriangle, Zap, Lightbulb, ChevronDown, ChevronUp, Shield, MinusCircle, PlusCircle, Coins } from 'lucide-react'
-import { fetchISISTopology, fetchISISPaths, fetchTopologyCompare, fetchFailureImpact, fetchCriticalLinks, fetchSimulateLinkRemoval, fetchSimulateLinkAddition, fetchTopology } from '@/lib/api'
+import { ZoomIn, ZoomOut, Maximize, Search, Filter, Route, X, GitCompare, AlertTriangle, Zap, Lightbulb, ChevronDown, ChevronUp, Shield, MinusCircle, PlusCircle, Coins, Activity } from 'lucide-react'
+import { fetchISISTopology, fetchISISPaths, fetchTopologyCompare, fetchFailureImpact, fetchCriticalLinks, fetchSimulateLinkRemoval, fetchSimulateLinkAddition, fetchTopology, fetchLinkHealth } from '@/lib/api'
 import type { PathMode, FailureImpactResponse, MultiPathResponse, SimulateLinkRemovalResponse, SimulateLinkAdditionResponse } from '@/lib/api'
 import { useTheme } from '@/hooks/use-theme'
 
@@ -134,12 +134,23 @@ export function TopologyGraph({
   // Stake overlay state
   const [stakeOverlayEnabled, setStakeOverlayEnabled] = useState(false)
 
+  // Link health overlay state
+  const [linkHealthOverlayEnabled, setLinkHealthOverlayEnabled] = useState(false)
+
   // Fetch ClickHouse topology for stake data when stake overlay is enabled
   const { data: topologyData } = useQuery({
     queryKey: ['topology'],
     queryFn: fetchTopology,
     enabled: stakeOverlayEnabled,
     staleTime: 60000,
+  })
+
+  // Fetch link health data when link health overlay is enabled
+  const { data: linkHealthData } = useQuery({
+    queryKey: ['link-health'],
+    queryFn: fetchLinkHealth,
+    enabled: linkHealthOverlayEnabled,
+    staleTime: 30000, // Refresh every 30 seconds
   })
 
   // Build device stake map from topology data (maps device PK to stake info)
@@ -170,6 +181,27 @@ export function TopologyGraph({
     }
     return criticality
   }, [criticalLinksData])
+
+  // Build edge SLA status map from link health data (maps device pair to SLA status)
+  const edgeSlaStatus = useMemo(() => {
+    if (!linkHealthData?.links) return new Map<string, { status: string; avgRttUs: number; committedRttNs: number; lossPct: number }>()
+    const slaMap = new Map<string, { status: string; avgRttUs: number; committedRttNs: number; lossPct: number }>()
+
+    for (const link of linkHealthData.links) {
+      // Create edge keys for both directions
+      const key1 = `${link.side_a_pk}->${link.side_z_pk}`
+      const key2 = `${link.side_z_pk}->${link.side_a_pk}`
+      const info = {
+        status: link.sla_status,
+        avgRttUs: link.avg_rtt_us,
+        committedRttNs: link.committed_rtt_ns,
+        lossPct: link.loss_pct,
+      }
+      slaMap.set(key1, info)
+      slaMap.set(key2, info)
+    }
+    return slaMap
+  }, [linkHealthData])
 
   // Calculate degree for each node
   const nodesDegree = useMemo(() => {
@@ -517,6 +549,36 @@ export function TopologyGraph({
       }
     })
   }, [stakeOverlayEnabled, deviceStakeMap, getStakeNodeSize, getStakeColor, getNodeSize, getDeviceTypeColor, isDark])
+
+  // Apply link health overlay styling when enabled
+  useEffect(() => {
+    if (!cyRef.current) return
+    const cy = cyRef.current
+
+    // Clear previous link health classes
+    cy.edges().removeClass('sla-healthy sla-warning sla-critical sla-unknown')
+
+    if (linkHealthOverlayEnabled && edgeSlaStatus.size > 0) {
+      cy.edges().forEach(edge => {
+        const edgeId = edge.data('id') // format: source->target
+        const slaInfo = edgeSlaStatus.get(edgeId)
+
+        if (slaInfo) {
+          if (slaInfo.status === 'healthy') {
+            edge.addClass('sla-healthy')
+          } else if (slaInfo.status === 'warning') {
+            edge.addClass('sla-warning')
+          } else if (slaInfo.status === 'critical') {
+            edge.addClass('sla-critical')
+          } else {
+            edge.addClass('sla-unknown')
+          }
+        } else {
+          edge.addClass('sla-unknown')
+        }
+      })
+    }
+  }, [linkHealthOverlayEnabled, edgeSlaStatus])
 
   // Fetch link removal simulation when link is selected
   useEffect(() => {
@@ -946,6 +1008,43 @@ export function TopologyGraph({
             'overlay-color': '#06b6d4',
           },
         },
+        // Link Health (SLA compliance) styles
+        {
+          selector: 'edge.sla-healthy',
+          style: {
+            'line-color': '#22c55e',
+            'target-arrow-color': '#22c55e',
+            'width': 3,
+            'opacity': 0.9,
+          },
+        },
+        {
+          selector: 'edge.sla-warning',
+          style: {
+            'line-color': '#eab308',
+            'target-arrow-color': '#eab308',
+            'width': 3,
+            'opacity': 1,
+          },
+        },
+        {
+          selector: 'edge.sla-critical',
+          style: {
+            'line-color': '#ef4444',
+            'target-arrow-color': '#ef4444',
+            'width': 4,
+            'opacity': 1,
+          },
+        },
+        {
+          selector: 'edge.sla-unknown',
+          style: {
+            'line-color': isDark ? '#6b7280' : '#9ca3af',
+            'target-arrow-color': isDark ? '#6b7280' : '#9ca3af',
+            'width': 2,
+            'opacity': 0.5,
+          },
+        },
       ],
       layout: {
         name: 'cose',
@@ -1264,6 +1363,12 @@ export function TopologyGraph({
             setStakeOverlayEnabled(prev => !prev)
           }
           break
+        case 'h':
+          // Toggle link health overlay
+          if (!e.metaKey && !e.ctrlKey) {
+            setLinkHealthOverlayEnabled(prev => !prev)
+          }
+          break
       }
     }
 
@@ -1476,6 +1581,17 @@ export function TopologyGraph({
           title={stakeOverlayEnabled ? 'Hide stake overlay (s)' : 'Show stake overlay (s)'}
         >
           <Coins className="h-4 w-4" />
+        </button>
+        <button
+          onClick={() => setLinkHealthOverlayEnabled(prev => !prev)}
+          className={`p-2 border rounded shadow-sm transition-colors ${
+            linkHealthOverlayEnabled
+              ? 'bg-green-500/20 border-green-500/50 text-green-500'
+              : 'bg-[var(--card)] border-[var(--border)] hover:bg-[var(--muted)]'
+          }`}
+          title={linkHealthOverlayEnabled ? 'Hide link health overlay (h)' : 'Show link health overlay (h)'}
+        >
+          <Activity className="h-4 w-4" />
         </button>
       </div>
 
@@ -2184,6 +2300,106 @@ export function TopologyGraph({
                   <div className="flex items-center gap-1.5">
                     <div className="w-3 h-3 rounded-full" style={{ backgroundColor: getStakeColor(0) }} />
                     <span>No validators</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Link Health overlay panel */}
+      {linkHealthOverlayEnabled && (
+        <div className="absolute top-[340px] right-4 z-[999] bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm p-3 text-xs max-w-56">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-medium flex items-center gap-1.5">
+              <Activity className="h-3.5 w-3.5 text-green-500" />
+              Link Health (SLA)
+            </span>
+            <button
+              onClick={() => setLinkHealthOverlayEnabled(false)}
+              className="p-1 hover:bg-[var(--muted)] rounded"
+              title="Close"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+
+          {!linkHealthData && (
+            <div className="text-muted-foreground">Loading health data...</div>
+          )}
+
+          {linkHealthData && (
+            <div className="space-y-3">
+              {/* Summary stats */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Total Links</span>
+                  <span className="font-medium">{linkHealthData.total_links}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-green-500">Healthy</span>
+                  <span className="font-medium text-green-500">{linkHealthData.healthy_count}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-yellow-500">Warning</span>
+                  <span className="font-medium text-yellow-500">{linkHealthData.warning_count}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-red-500">Critical</span>
+                  <span className="font-medium text-red-500">{linkHealthData.critical_count}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Unknown</span>
+                  <span className="font-medium text-muted-foreground">{linkHealthData.unknown_count}</span>
+                </div>
+              </div>
+
+              {/* Critical links list */}
+              {linkHealthData.critical_count > 0 && (
+                <div className="pt-2 border-t border-[var(--border)]">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <AlertTriangle className="h-3.5 w-3.5 text-red-500" />
+                    <span className="font-medium text-red-500">SLA Violations</span>
+                  </div>
+                  <div className="space-y-1 max-h-24 overflow-y-auto">
+                    {linkHealthData.links
+                      .filter(l => l.sla_status === 'critical')
+                      .slice(0, 5)
+                      .map(link => (
+                        <div key={link.link_pk} className="text-red-400 truncate text-[10px]">
+                          {link.side_a_code} — {link.side_z_code}
+                          <span className="text-muted-foreground ml-1">
+                            ({(link.avg_rtt_us / 1000).toFixed(1)}ms vs {(link.committed_rtt_ns / 1_000_000).toFixed(1)}ms SLA)
+                          </span>
+                        </div>
+                      ))}
+                    {linkHealthData.critical_count > 5 && (
+                      <div className="text-muted-foreground">+{linkHealthData.critical_count - 5} more</div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Legend */}
+              <div className="pt-2 border-t border-[var(--border)]">
+                <div className="text-muted-foreground mb-1.5">Link Colors</div>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-4 h-0.5 bg-green-500 rounded" />
+                    <span>Healthy (&lt;80% of SLA)</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-4 h-0.5 bg-yellow-500 rounded" />
+                    <span>Warning (80-100% of SLA)</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-4 h-1 bg-red-500 rounded" />
+                    <span>Critical (exceeds SLA)</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-4 h-0.5 bg-gray-400 rounded opacity-50" />
+                    <span>Unknown (no data)</span>
                   </div>
                 </div>
               </div>

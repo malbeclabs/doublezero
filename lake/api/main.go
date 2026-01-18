@@ -180,6 +180,7 @@ func main() {
 	r.Get("/api/dz/devices/{pk}", handlers.GetDevice)
 	r.Get("/api/dz/links", handlers.GetLinks)
 	r.Get("/api/dz/links/{pk}", handlers.GetLink)
+	r.Get("/api/dz/links-health", handlers.GetLinkHealth)
 	r.Get("/api/dz/metros", handlers.GetMetros)
 	r.Get("/api/dz/metros/{pk}", handlers.GetMetro)
 	r.Get("/api/dz/contributors", handlers.GetContributors)

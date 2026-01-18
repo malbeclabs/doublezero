@@ -2732,6 +2732,135 @@ export async function fetchMaintenanceImpact(
   return res.json()
 }
 
+// Stake analytics types
+export interface StakeOverview {
+  dz_stake_sol: number
+  total_stake_sol: number
+  stake_share_pct: number
+  validator_count: number
+  dz_stake_sol_24h_ago: number
+  stake_share_pct_24h_ago: number
+  dz_stake_change_24h: number
+  share_change_24h: number
+  dz_stake_sol_7d_ago: number
+  stake_share_pct_7d_ago: number
+  dz_stake_change_7d: number
+  share_change_7d: number
+  fetched_at: string
+  error?: string
+}
+
+export interface StakeHistoryPoint {
+  timestamp: string
+  dz_stake_sol: number
+  total_stake_sol: number
+  stake_share_pct: number
+}
+
+export interface StakeHistoryResponse {
+  points: StakeHistoryPoint[]
+  fetched_at: string
+  error?: string
+}
+
+export async function fetchStakeOverview(): Promise<StakeOverview> {
+  const res = await fetchWithRetry('/api/stake/overview')
+  if (!res.ok) {
+    throw new Error('Failed to fetch stake overview')
+  }
+  return res.json()
+}
+
+export async function fetchStakeHistory(
+  range: '24h' | '7d' | '30d' = '7d',
+  interval: '5m' | '15m' | '1h' | '6h' | '1d' = '1h'
+): Promise<StakeHistoryResponse> {
+  const params = new URLSearchParams({ range, interval })
+  const res = await fetchWithRetry(`/api/stake/history?${params}`)
+  if (!res.ok) {
+    throw new Error('Failed to fetch stake history')
+  }
+  return res.json()
+}
+
+// Stake changes (attribution)
+export interface StakeChange {
+  category: 'joined' | 'left' | 'stake_increase' | 'stake_decrease'
+  vote_pubkey: string
+  node_pubkey: string
+  stake_sol: number
+  stake_change_sol: number
+  timestamp: string
+  city?: string
+  country?: string
+}
+
+export interface ChangeSummary {
+  joined_count: number
+  joined_stake_sol: number
+  left_count: number
+  left_stake_sol: number
+  stake_increase_sol: number
+  stake_decrease_sol: number
+  net_change_sol: number
+}
+
+export interface StakeChangesResponse {
+  changes: StakeChange[]
+  summary: ChangeSummary
+  range: string
+  fetched_at: string
+  error?: string
+}
+
+export async function fetchStakeChanges(
+  range: '24h' | '7d' | '30d' = '24h'
+): Promise<StakeChangesResponse> {
+  const params = new URLSearchParams({ range })
+  const res = await fetchWithRetry(`/api/stake/changes?${params}`)
+  if (!res.ok) {
+    throw new Error('Failed to fetch stake changes')
+  }
+  return res.json()
+}
+
+// Stake validators
+export interface StakeValidator {
+  vote_pubkey: string
+  node_pubkey: string
+  stake_sol: number
+  stake_share_pct: number
+  commission: number
+  version: string
+  city: string
+  country: string
+  on_dz: boolean
+  device_code?: string
+  metro_code?: string
+}
+
+export interface StakeValidatorsResponse {
+  validators: StakeValidator[]
+  total_count: number
+  on_dz_count: number
+  total_stake_sol: number
+  dz_stake_sol: number
+  fetched_at: string
+  error?: string
+}
+
+export async function fetchStakeValidators(
+  filter: 'all' | 'on_dz' | 'off_dz' = 'on_dz',
+  limit: number = 100
+): Promise<StakeValidatorsResponse> {
+  const params = new URLSearchParams({ filter, limit: limit.toString() })
+  const res = await fetchWithRetry(`/api/stake/validators?${params}`)
+  if (!res.ok) {
+    throw new Error('Failed to fetch stake validators')
+  }
+  return res.json()
+}
+
 // Search types and functions
 export type SearchEntityType = 'device' | 'link' | 'metro' | 'contributor' | 'user' | 'validator' | 'gossip'
 

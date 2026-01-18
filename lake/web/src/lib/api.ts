@@ -1188,6 +1188,8 @@ export interface TopologyDevice {
   status: string
   device_type: string
   metro_pk: string
+  contributor_pk: string
+  contributor_code: string
   user_count: number
   validator_count: number
   stake_sol: number
@@ -1202,6 +1204,8 @@ export interface TopologyLink {
   bandwidth_bps: number
   side_a_pk: string
   side_z_pk: string
+  contributor_pk: string
+  contributor_code: string
   latency_us: number
   jitter_us: number
   loss_percent: number

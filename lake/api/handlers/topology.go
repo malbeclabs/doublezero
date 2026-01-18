@@ -21,31 +21,35 @@ type Metro struct {
 }
 
 type Device struct {
-	PK             string  `json:"pk"`
-	Code           string  `json:"code"`
-	Status         string  `json:"status"`
-	DeviceType     string  `json:"device_type"`
-	MetroPK        string  `json:"metro_pk"`
-	UserCount      uint64  `json:"user_count"`
-	ValidatorCount uint64  `json:"validator_count"`
-	StakeSol       float64 `json:"stake_sol"`
-	StakeShare     float64 `json:"stake_share"`
+	PK              string  `json:"pk"`
+	Code            string  `json:"code"`
+	Status          string  `json:"status"`
+	DeviceType      string  `json:"device_type"`
+	MetroPK         string  `json:"metro_pk"`
+	ContributorPK   string  `json:"contributor_pk"`
+	ContributorCode string  `json:"contributor_code"`
+	UserCount       uint64  `json:"user_count"`
+	ValidatorCount  uint64  `json:"validator_count"`
+	StakeSol        float64 `json:"stake_sol"`
+	StakeShare      float64 `json:"stake_share"`
 }
 
 type Link struct {
-	PK           string  `json:"pk"`
-	Code         string  `json:"code"`
-	Status       string  `json:"status"`
-	LinkType     string  `json:"link_type"`
-	BandwidthBps int64   `json:"bandwidth_bps"`
-	SideAPK      string  `json:"side_a_pk"`
-	SideZPK      string  `json:"side_z_pk"`
-	LatencyUs    float64 `json:"latency_us"`
-	JitterUs     float64 `json:"jitter_us"`
-	LossPercent  float64 `json:"loss_percent"`
-	SampleCount  uint64  `json:"sample_count"`
-	InBps        float64 `json:"in_bps"`
-	OutBps       float64 `json:"out_bps"`
+	PK              string  `json:"pk"`
+	Code            string  `json:"code"`
+	Status          string  `json:"status"`
+	LinkType        string  `json:"link_type"`
+	BandwidthBps    int64   `json:"bandwidth_bps"`
+	SideAPK         string  `json:"side_a_pk"`
+	SideZPK         string  `json:"side_z_pk"`
+	ContributorPK   string  `json:"contributor_pk"`
+	ContributorCode string  `json:"contributor_code"`
+	LatencyUs       float64 `json:"latency_us"`
+	JitterUs        float64 `json:"jitter_us"`
+	LossPercent     float64 `json:"loss_percent"`
+	SampleCount     uint64  `json:"sample_count"`
+	InBps           float64 `json:"in_bps"`
+	OutBps          float64 `json:"out_bps"`
 }
 
 type Validator struct {
@@ -137,6 +141,7 @@ func GetTopology(w http.ResponseWriter, r *http.Request) {
 			)
 			SELECT
 				d.pk, d.code, d.status, d.device_type, d.metro_pk,
+				d.contributor_pk, c.code as contributor_code,
 				COALESCE(ds.user_count, 0) as user_count,
 				COALESCE(ds.validator_count, 0) as validator_count,
 				COALESCE(ds.stake_sol, 0) as stake_sol,
@@ -147,6 +152,7 @@ func GetTopology(w http.ResponseWriter, r *http.Request) {
 			FROM dz_devices_current d
 			CROSS JOIN total_stake ts
 			LEFT JOIN device_stats ds ON d.pk = ds.device_pk
+			LEFT JOIN dz_contributors_current c ON d.contributor_pk = c.pk
 			WHERE d.status = 'activated'
 		`
 		rows, err := config.DB.Query(ctx, query)
@@ -157,7 +163,7 @@ func GetTopology(w http.ResponseWriter, r *http.Request) {
 
 		for rows.Next() {
 			var d Device
-			if err := rows.Scan(&d.PK, &d.Code, &d.Status, &d.DeviceType, &d.MetroPK, &d.UserCount, &d.ValidatorCount, &d.StakeSol, &d.StakeShare); err != nil {
+			if err := rows.Scan(&d.PK, &d.Code, &d.Status, &d.DeviceType, &d.MetroPK, &d.ContributorPK, &d.ContributorCode, &d.UserCount, &d.ValidatorCount, &d.StakeSol, &d.StakeShare); err != nil {
 				return err
 			}
 			devices = append(devices, d)
@@ -170,6 +176,7 @@ func GetTopology(w http.ResponseWriter, r *http.Request) {
 		query := `
 			SELECT
 				l.pk, l.code, l.status, l.link_type, l.bandwidth_bps, l.side_a_pk, l.side_z_pk,
+				l.contributor_pk, c.code as contributor_code,
 				COALESCE(lat.avg_rtt_us, 0) as latency_us,
 				COALESCE(lat.avg_ipdv_us, 0) as jitter_us,
 				COALESCE(lat.loss_percent, 0) as loss_percent,
@@ -177,6 +184,7 @@ func GetTopology(w http.ResponseWriter, r *http.Request) {
 				COALESCE(traffic.in_bps, 0) as in_bps,
 				COALESCE(traffic.out_bps, 0) as out_bps
 			FROM dz_links_current l
+			LEFT JOIN dz_contributors_current c ON l.contributor_pk = c.pk
 			LEFT JOIN (
 				SELECT link_pk,
 					avg(rtt_us) as avg_rtt_us,
@@ -206,7 +214,7 @@ func GetTopology(w http.ResponseWriter, r *http.Request) {
 
 		for rows.Next() {
 			var l Link
-			if err := rows.Scan(&l.PK, &l.Code, &l.Status, &l.LinkType, &l.BandwidthBps, &l.SideAPK, &l.SideZPK, &l.LatencyUs, &l.JitterUs, &l.LossPercent, &l.SampleCount, &l.InBps, &l.OutBps); err != nil {
+			if err := rows.Scan(&l.PK, &l.Code, &l.Status, &l.LinkType, &l.BandwidthBps, &l.SideAPK, &l.SideZPK, &l.ContributorPK, &l.ContributorCode, &l.LatencyUs, &l.JitterUs, &l.LossPercent, &l.SampleCount, &l.InBps, &l.OutBps); err != nil {
 				return err
 			}
 			links = append(links, l)

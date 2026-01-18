@@ -135,6 +135,8 @@ interface HoveredLinkInfo {
   deviceACode: string
   deviceZPk: string
   deviceZCode: string
+  contributorPk: string
+  contributorCode: string
   health?: {
     status: string
     committedRttNs: number
@@ -151,6 +153,8 @@ interface HoveredDeviceInfo {
   status: string
   metroPk: string
   metroName: string
+  contributorPk: string
+  contributorCode: string
   userCount: number
   validatorCount: number
   stakeSol: string
@@ -1082,6 +1086,8 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       deviceACode: deviceA?.code || 'Unknown',
       deviceZPk: link.side_z_pk,
       deviceZCode: deviceZ?.code || 'Unknown',
+      contributorPk: link.contributor_pk,
+      contributorCode: link.contributor_code,
       health: healthInfo ? {
         status: healthInfo.status,
         committedRttNs: healthInfo.committedRttNs,
@@ -1196,6 +1202,8 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             status: device.status,
             metroPk: device.metro_pk,
             metroName: metro?.name || 'Unknown',
+            contributorPk: device.contributor_pk,
+            contributorCode: device.contributor_code,
             userCount: device.user_count ?? 0,
             validatorCount: device.validator_count ?? 0,
             stakeSol: (device.stake_sol ?? 0) >= 1e6 ? `${(device.stake_sol / 1e6).toFixed(2)}M` : (device.stake_sol ?? 0) >= 1e3 ? `${(device.stake_sol / 1e3).toFixed(0)}k` : `${(device.stake_sol ?? 0).toFixed(0)}`,
@@ -1225,6 +1233,8 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             deviceACode: deviceA?.code || 'Unknown',
             deviceZPk: link.side_z_pk,
             deviceZCode: deviceZ?.code || 'Unknown',
+            contributorPk: link.contributor_pk,
+            contributorCode: link.contributor_code,
           },
         })
       }
@@ -1421,6 +1431,8 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             status: device.status,
             metroPk: device.metro_pk,
             metroName: metro?.name || 'Unknown',
+            contributorPk: device.contributor_pk,
+            contributorCode: device.contributor_code,
             userCount: device.user_count ?? 0,
             validatorCount: device.validator_count ?? 0,
             stakeSol: (device.stake_sol ?? 0) >= 1e6 ? `${(device.stake_sol / 1e6).toFixed(2)}M` : (device.stake_sol ?? 0) >= 1e3 ? `${(device.stake_sol / 1e3).toFixed(0)}k` : `${(device.stake_sol ?? 0).toFixed(0)}`,
@@ -1625,6 +1637,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
               <div className="text-sm font-medium mb-2">{hoveredLink.code}</div>
               <div className="space-y-1 text-xs">
                 <DetailRow label="Type" value={hoveredLink.linkType} />
+                <DetailRow label="Contributor" value={hoveredLink.contributorCode || '—'} />
                 <DetailRow label="Bandwidth" value={hoveredLink.bandwidth} />
                 <DetailRow label="Latency" value={hoveredLink.latencyMs} />
                 <DetailRow label="Jitter" value={hoveredLink.jitterMs} />
@@ -1672,6 +1685,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
               <div className="text-sm font-medium mb-2">{hoveredDevice.code}</div>
               <div className="space-y-1 text-xs">
                 <DetailRow label="Type" value={hoveredDevice.deviceType} />
+                <DetailRow label="Contributor" value={hoveredDevice.contributorCode || '—'} />
                 <DetailRow label="Metro" value={hoveredDevice.metroName} />
                 <DetailRow label="Users" value={String(hoveredDevice.userCount)} />
                 <DetailRow label="Validators" value={String(hoveredDevice.validatorCount)} />
@@ -2425,6 +2439,7 @@ function TopologyDrawer({ selectedItem, onClose, isDark }: TopologyDrawerProps) 
     if (selectedItem.type === 'link') {
       const link = selectedItem.data
       return [
+        { label: 'Contributor', value: link.contributorPk ? <EntityLink to={`/dz/contributors/${link.contributorPk}`}>{link.contributorCode}</EntityLink> : link.contributorCode || '—' },
         { label: 'Bandwidth', value: link.bandwidth },
         { label: 'Latency', value: link.latencyMs },
         { label: 'Jitter', value: link.jitterMs },
@@ -2437,6 +2452,7 @@ function TopologyDrawer({ selectedItem, onClose, isDark }: TopologyDrawerProps) 
       const device = selectedItem.data
       return [
         { label: 'Type', value: device.deviceType },
+        { label: 'Contributor', value: device.contributorPk ? <EntityLink to={`/dz/contributors/${device.contributorPk}`}>{device.contributorCode}</EntityLink> : device.contributorCode || '—' },
         { label: 'Metro', value: device.metroPk ? <EntityLink to={`/dz/metros/${device.metroPk}`}>{device.metroName}</EntityLink> : device.metroName },
         { label: 'Users', value: String(device.userCount) },
         { label: 'Validators', value: String(device.validatorCount) },

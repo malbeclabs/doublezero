@@ -2462,6 +2462,25 @@ export interface MaintenanceItem {
   impact: number
   disconnected: number
   causesPartition: boolean
+  disconnectedDevices?: string[]
+}
+
+export interface MaintenanceAffectedPath {
+  source: string
+  target: string
+  sourceMetro: string
+  targetMetro: string
+  hopsBefore: number
+  hopsAfter: number
+  status: 'rerouted' | 'degraded' | 'disconnected'
+}
+
+export interface AffectedMetroPair {
+  sourceMetro: string
+  targetMetro: string
+  pathsBefore: number
+  pathsAfter: number
+  status: 'reduced' | 'degraded' | 'disconnected'
 }
 
 export interface MaintenanceImpactRequest {
@@ -2474,6 +2493,9 @@ export interface MaintenanceImpactResponse {
   totalImpact: number
   totalDisconnected: number
   recommendedOrder: string[]
+  affectedPaths?: MaintenanceAffectedPath[]
+  affectedMetros?: AffectedMetroPair[]
+  disconnectedList?: string[]
   error?: string
 }
 

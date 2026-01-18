@@ -3,9 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import cytoscape from 'cytoscape'
 import type { Core, NodeSingular, EdgeSingular } from 'cytoscape'
 import { useQuery } from '@tanstack/react-query'
-import { ZoomIn, ZoomOut, Maximize, Search, Filter, Route, X, GitCompare, AlertTriangle } from 'lucide-react'
-import { fetchISISTopology, fetchISISPath, fetchTopologyCompare } from '@/lib/api'
-import type { PathResponse, PathMode, TopologyCompareResponse } from '@/lib/api'
+import { ZoomIn, ZoomOut, Maximize, Search, Filter, Route, X, GitCompare, AlertTriangle, Zap } from 'lucide-react'
+import { fetchISISTopology, fetchISISPath, fetchTopologyCompare, fetchFailureImpact } from '@/lib/api'
+import type { PathResponse, PathMode, TopologyCompareResponse, FailureImpactResponse } from '@/lib/api'
 import { useTheme } from '@/hooks/use-theme'
 
 // Device type colors
@@ -53,6 +53,11 @@ export function TopologyGraph({
   const [pathResult, setPathResult] = useState<PathResponse | null>(null)
   const [pathLoading, setPathLoading] = useState(false)
   const [pathMode, setPathMode] = useState<PathMode>('hops')
+
+  // Failure impact state
+  const [impactDevice, setImpactDevice] = useState<string | null>(null)
+  const [impactResult, setImpactResult] = useState<FailureImpactResponse | null>(null)
+  const [impactLoading, setImpactLoading] = useState(false)
 
   const [hoveredNode, setHoveredNode] = useState<{
     id: string
@@ -640,6 +645,25 @@ export function TopologyGraph({
     }
   }
 
+  const analyzeImpact = async (devicePK: string) => {
+    setImpactDevice(devicePK)
+    setImpactLoading(true)
+    setImpactResult(null)
+    try {
+      const result = await fetchFailureImpact(devicePK)
+      setImpactResult(result)
+    } catch {
+      setImpactResult({ devicePK, deviceCode: '', unreachableDevices: [], unreachableCount: 0, error: 'Failed to analyze impact' })
+    } finally {
+      setImpactLoading(false)
+    }
+  }
+
+  const clearImpact = () => {
+    setImpactDevice(null)
+    setImpactResult(null)
+  }
+
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center bg-background">
@@ -775,6 +799,24 @@ export function TopologyGraph({
           title={mode === 'compare' ? 'Exit compare mode' : 'Compare configured vs discovered topology'}
         >
           <GitCompare className="h-4 w-4" />
+        </button>
+        <button
+          onClick={() => {
+            if (impactDevice) {
+              clearImpact()
+            } else if (selectedDevicePK) {
+              analyzeImpact(selectedDevicePK)
+            }
+          }}
+          className={`p-2 border rounded shadow-sm transition-colors ${
+            impactDevice
+              ? 'bg-purple-500/20 border-purple-500/50 text-purple-500'
+              : 'bg-[var(--card)] border-[var(--border)] hover:bg-[var(--muted)]'
+          } ${!selectedDevicePK && !impactDevice ? 'opacity-50 cursor-not-allowed' : ''}`}
+          title={impactDevice ? 'Close impact analysis' : selectedDevicePK ? 'Analyze failure impact of selected device' : 'Select a device first'}
+          disabled={!selectedDevicePK && !impactDevice}
+        >
+          <Zap className="h-4 w-4" />
         </button>
       </div>
 
@@ -942,6 +984,58 @@ export function TopologyGraph({
 
           {compareData?.error && (
             <div className="text-destructive">{compareData.error}</div>
+          )}
+        </div>
+      )}
+
+      {/* Impact analysis panel */}
+      {(impactDevice || impactLoading) && (
+        <div className="absolute top-[320px] right-4 z-[999] bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm p-3 text-xs max-w-56">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-medium flex items-center gap-1.5">
+              <Zap className="h-3.5 w-3.5 text-purple-500" />
+              Failure Impact
+            </span>
+            <button onClick={clearImpact} className="p-1 hover:bg-[var(--muted)] rounded" title="Close">
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+
+          {impactLoading && (
+            <div className="text-muted-foreground">Analyzing impact...</div>
+          )}
+
+          {impactResult && !impactResult.error && (
+            <div className="space-y-2">
+              <div className="text-muted-foreground">
+                If <span className="font-medium text-foreground">{impactResult.deviceCode}</span> goes down:
+              </div>
+
+              {impactResult.unreachableCount === 0 ? (
+                <div className="text-green-500 flex items-center gap-1.5">
+                  <div className="w-2 h-2 rounded-full bg-green-500" />
+                  No devices would become unreachable
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="text-red-500 font-medium">
+                    {impactResult.unreachableCount} device{impactResult.unreachableCount !== 1 ? 's' : ''} would become unreachable
+                  </div>
+                  <div className="space-y-0.5 max-h-32 overflow-y-auto">
+                    {impactResult.unreachableDevices.map(device => (
+                      <div key={device.pk} className="flex items-center gap-1.5">
+                        <div className={`w-2 h-2 rounded-full ${device.status === 'active' ? 'bg-green-500' : 'bg-red-500'}`} />
+                        <span>{device.code}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {impactResult?.error && (
+            <div className="text-destructive">{impactResult.error}</div>
           )}
         </div>
       )}

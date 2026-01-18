@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import cytoscape from 'cytoscape'
 import type { Core, NodeSingular, EdgeSingular } from 'cytoscape'
 import { useQuery } from '@tanstack/react-query'
-import { ZoomIn, ZoomOut, Maximize, Search, Filter, Route, X, GitCompare, AlertTriangle, Zap, Lightbulb, ChevronDown, ChevronUp, Shield, MinusCircle, PlusCircle, Coins, Activity } from 'lucide-react'
+import { ZoomIn, ZoomOut, Maximize, Search, Filter, Route, X, GitCompare, AlertTriangle, Zap, Lightbulb, ChevronDown, ChevronUp, Shield, MinusCircle, PlusCircle, Coins, Activity, MapPin } from 'lucide-react'
 import { fetchISISTopology, fetchISISPaths, fetchTopologyCompare, fetchFailureImpact, fetchCriticalLinks, fetchSimulateLinkRemoval, fetchSimulateLinkAddition, fetchTopology, fetchLinkHealth } from '@/lib/api'
 import type { PathMode, FailureImpactResponse, MultiPathResponse, SimulateLinkRemovalResponse, SimulateLinkAdditionResponse } from '@/lib/api'
 import { useTheme } from '@/hooks/use-theme'
@@ -23,6 +23,20 @@ const PATH_COLORS = [
   { light: '#9333ea', dark: '#a855f7' },  // purple - alternate 2
   { light: '#ea580c', dark: '#f97316' },  // orange - alternate 3
   { light: '#0891b2', dark: '#06b6d4' },  // cyan - alternate 4
+]
+
+// Metro colors for metro clustering visualization (10 distinct colors)
+const METRO_COLORS = [
+  { light: '#2563eb', dark: '#3b82f6' },  // blue
+  { light: '#7c3aed', dark: '#a78bfa' },  // purple
+  { light: '#db2777', dark: '#f472b6' },  // pink
+  { light: '#ea580c', dark: '#f97316' },  // orange
+  { light: '#16a34a', dark: '#22c55e' },  // green
+  { light: '#0891b2', dark: '#22d3ee' },  // cyan
+  { light: '#4f46e5', dark: '#818cf8' },  // indigo
+  { light: '#ca8a04', dark: '#facc15' },  // yellow
+  { light: '#0d9488', dark: '#2dd4bf' },  // teal
+  { light: '#be185d', dark: '#f472b6' },  // rose
 ]
 
 type InteractionMode = 'explore' | 'path' | 'compare' | 'criticality' | 'whatif-removal' | 'whatif-addition'
@@ -108,6 +122,9 @@ export function TopologyGraph({
       lossPct: number
       slaRatio: number
     }
+    isInterMetroEdge?: boolean
+    linkCount?: number
+    avgMetric?: number | null
   } | null>(null)
 
   const [searchQuery, setSearchQuery] = useState('')
@@ -146,11 +163,15 @@ export function TopologyGraph({
   // Link health overlay state
   const [linkHealthOverlayEnabled, setLinkHealthOverlayEnabled] = useState(false)
 
-  // Fetch ClickHouse topology for stake data when stake overlay is enabled
+  // Metro clustering overlay state
+  const [metroClusteringEnabled, setMetroClusteringEnabled] = useState(false)
+  const [collapsedMetros, setCollapsedMetros] = useState<Set<string>>(new Set())
+
+  // Fetch ClickHouse topology for stake/metro data when overlay is enabled
   const { data: topologyData } = useQuery({
     queryKey: ['topology'],
     queryFn: fetchTopology,
-    enabled: stakeOverlayEnabled,
+    enabled: stakeOverlayEnabled || metroClusteringEnabled,
     staleTime: 60000,
   })
 
@@ -175,6 +196,29 @@ export function TopologyGraph({
     }
     return map
   }, [topologyData])
+
+  // Build metro info map from topology data (maps metro PK to code/name)
+  const metroInfoMap = useMemo(() => {
+    const map = new Map<string, { code: string; name: string; colorIndex: number }>()
+    if (!topologyData?.metros) return map
+    topologyData.metros.forEach((metro, index) => {
+      map.set(metro.pk, {
+        code: metro.code,
+        name: metro.name,
+        colorIndex: index % METRO_COLORS.length,
+      })
+    })
+    return map
+  }, [topologyData])
+
+  // Get metro color by PK
+  const getMetroColor = useCallback((metroPK: string | undefined) => {
+    if (!metroPK) return isDark ? '#6b7280' : '#9ca3af' // gray for unknown
+    const metroInfo = metroInfoMap.get(metroPK)
+    if (!metroInfo) return isDark ? '#6b7280' : '#9ca3af'
+    const colors = METRO_COLORS[metroInfo.colorIndex]
+    return isDark ? colors.dark : colors.light
+  }, [metroInfoMap, isDark])
 
   // Build edge criticality map from critical links data
   const edgeCriticality = useMemo(() => {
@@ -594,6 +638,239 @@ export function TopologyGraph({
       })
     }
   }, [linkHealthOverlayEnabled, edgeSlaStatus])
+
+  // Apply metro clustering overlay styling when enabled (only if stake overlay is not active)
+  useEffect(() => {
+    if (!cyRef.current) return
+    const cy = cyRef.current
+
+    // Skip if stake overlay is active (it takes precedence)
+    if (stakeOverlayEnabled) return
+
+    cy.batch(() => {
+      if (metroClusteringEnabled && metroInfoMap.size > 0) {
+        // Apply metro-based coloring (keep degree-based sizing)
+        cy.nodes().forEach(node => {
+          const metroPK = node.data('metroPK')
+          const degree = node.data('degree')
+          node.style({
+            'width': getNodeSize(degree),
+            'height': getNodeSize(degree),
+            'background-color': getMetroColor(metroPK),
+          })
+        })
+      } else {
+        // Revert to default device type coloring
+        cy.nodes().forEach(node => {
+          const degree = node.data('degree')
+          const deviceType = node.data('deviceType')
+          node.style({
+            'width': getNodeSize(degree),
+            'height': getNodeSize(degree),
+            'background-color': getDeviceTypeColor(deviceType),
+          })
+        })
+      }
+    })
+  }, [metroClusteringEnabled, metroInfoMap, getMetroColor, getNodeSize, getDeviceTypeColor, stakeOverlayEnabled])
+
+  // Toggle metro collapse state
+  const toggleMetroCollapse = useCallback((metroPK: string) => {
+    setCollapsedMetros(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(metroPK)) {
+        newSet.delete(metroPK)
+      } else {
+        newSet.add(metroPK)
+      }
+      return newSet
+    })
+  }, [])
+
+  // Ref for toggleMetroCollapse to use in event handlers without dependency issues
+  const toggleMetroCollapseRef = useRef(toggleMetroCollapse)
+  useEffect(() => {
+    toggleMetroCollapseRef.current = toggleMetroCollapse
+  }, [toggleMetroCollapse])
+
+  // Handle metro collapse/expand - hide/show nodes and create super nodes with inter-metro edges
+  useEffect(() => {
+    if (!cyRef.current || !metroClusteringEnabled) return
+    const cy = cyRef.current
+
+    cy.batch(() => {
+      // First, remove any existing super nodes and inter-metro edges
+      cy.nodes('[?isMetroSuperNode]').remove()
+      cy.edges('[?isInterMetroEdge]').remove()
+
+      // Process each metro - create super nodes for collapsed metros
+      metroInfoMap.forEach((info, metroPK) => {
+        const metroNodes = cy.nodes().filter(n => n.data('metroPK') === metroPK && !n.data('isMetroSuperNode'))
+
+        if (collapsedMetros.has(metroPK)) {
+          // Metro is collapsed - hide device nodes and create super node
+          metroNodes.forEach(node => {
+            node.style('display', 'none')
+          })
+
+          // Calculate average position for super node
+          let avgX = 0, avgY = 0, count = 0
+          metroNodes.forEach(node => {
+            const pos = node.position()
+            avgX += pos.x
+            avgY += pos.y
+            count++
+          })
+          if (count > 0) {
+            avgX /= count
+            avgY /= count
+
+            // Create super node for this metro
+            const superNodeId = `metro-super-${metroPK}`
+            cy.add({
+              group: 'nodes',
+              data: {
+                id: superNodeId,
+                label: `${info.code} (${count})`,
+                metroPK: metroPK,
+                isMetroSuperNode: true,
+                deviceCount: count,
+              },
+              position: { x: avgX, y: avgY },
+            })
+
+            // Style the super node
+            const superNode = cy.getElementById(superNodeId)
+            superNode.style({
+              'width': Math.min(60, 20 + count * 3),
+              'height': Math.min(60, 20 + count * 3),
+              'background-color': getMetroColor(metroPK),
+              'border-width': 3,
+              'border-color': isDark ? '#ffffff' : '#000000',
+              'border-opacity': 0.5,
+              'shape': 'round-rectangle',
+              'font-size': '10px',
+              'text-valign': 'center',
+              'text-halign': 'center',
+            })
+          }
+        } else {
+          // Metro is expanded - show device nodes
+          metroNodes.forEach(node => {
+            node.style('display', 'element')
+          })
+        }
+      })
+
+      // Track inter-metro edges to aggregate them (including latency data)
+      const interMetroEdges = new Map<string, {
+        count: number
+        sourceId: string
+        targetId: string
+        totalMetric: number
+        metricCount: number
+      }>()
+
+      // Process original edges - hide them and track inter-metro connections
+      cy.edges().forEach(edge => {
+        // Skip edges we created
+        if (edge.data('isInterMetroEdge')) return
+
+        const sourceNode = cy.getElementById(edge.data('source'))
+        const targetNode = cy.getElementById(edge.data('target'))
+
+        // Skip if nodes don't exist (shouldn't happen)
+        if (!sourceNode.length || !targetNode.length) return
+
+        const sourceMetro = sourceNode.data('metroPK')
+        const targetMetro = targetNode.data('metroPK')
+        const sourceCollapsed = sourceMetro && collapsedMetros.has(sourceMetro)
+        const targetCollapsed = targetMetro && collapsedMetros.has(targetMetro)
+
+        // Case 1: Both endpoints in same collapsed metro - hide (intra-metro)
+        if (sourceMetro && targetMetro && sourceMetro === targetMetro && sourceCollapsed) {
+          edge.style('display', 'none')
+          return
+        }
+
+        // Case 2: Neither endpoint in collapsed metro - show normally
+        if (!sourceCollapsed && !targetCollapsed) {
+          edge.style('display', 'element')
+          return
+        }
+
+        // Case 3: At least one endpoint in collapsed metro - hide original, track for aggregation
+        edge.style('display', 'none')
+
+        // Determine the effective source and target (device or super node)
+        const effectiveSourceId = sourceCollapsed ? `metro-super-${sourceMetro}` : edge.data('source')
+        const effectiveTargetId = targetCollapsed ? `metro-super-${targetMetro}` : edge.data('target')
+
+        // Skip self-loops (both devices in same collapsed metro - already handled above)
+        if (effectiveSourceId === effectiveTargetId) return
+
+        // Get metric for averaging
+        const metric = edge.data('metric')
+
+        // Create a canonical key (sorted to avoid duplicates for A->B and B->A)
+        const edgeKey = [effectiveSourceId, effectiveTargetId].sort().join('|')
+        const existing = interMetroEdges.get(edgeKey)
+        if (existing) {
+          existing.count++
+          if (metric) {
+            existing.totalMetric += metric
+            existing.metricCount++
+          }
+        } else {
+          interMetroEdges.set(edgeKey, {
+            count: 1,
+            sourceId: effectiveSourceId,
+            targetId: effectiveTargetId,
+            totalMetric: metric || 0,
+            metricCount: metric ? 1 : 0,
+          })
+        }
+      })
+
+      // Create aggregated inter-metro edges
+      interMetroEdges.forEach((edgeInfo, edgeKey) => {
+        const edgeId = `inter-metro-${edgeKey}`
+        const avgMetric = edgeInfo.metricCount > 0 ? edgeInfo.totalMetric / edgeInfo.metricCount : null
+        cy.add({
+          group: 'edges',
+          data: {
+            id: edgeId,
+            source: edgeInfo.sourceId,
+            target: edgeInfo.targetId,
+            isInterMetroEdge: true,
+            linkCount: edgeInfo.count,
+            avgMetric: avgMetric,
+          },
+        })
+
+        // Style the inter-metro edge
+        const edge = cy.getElementById(edgeId)
+        edge.style({
+          'width': Math.min(8, 1 + edgeInfo.count),
+          'line-color': isDark ? '#64748b' : '#94a3b8',
+          'target-arrow-color': isDark ? '#64748b' : '#94a3b8',
+          'curve-style': 'bezier',
+          'label': edgeInfo.count > 1 ? `${edgeInfo.count}` : '',
+          'font-size': '8px',
+          'text-background-color': isDark ? '#1e293b' : '#f1f5f9',
+          'text-background-opacity': 0.8,
+          'text-background-padding': '2px',
+        })
+      })
+    })
+  }, [metroClusteringEnabled, collapsedMetros, metroInfoMap, getMetroColor, isDark])
+
+  // Clear collapsed metros when metro clustering is disabled
+  useEffect(() => {
+    if (!metroClusteringEnabled) {
+      setCollapsedMetros(new Set())
+    }
+  }, [metroClusteringEnabled])
 
   // Fetch link removal simulation when link is selected
   useEffect(() => {
@@ -1091,6 +1368,9 @@ export function TopologyGraph({
           x: midpoint.x * zoom + pan.x,
           y: midpoint.y * zoom + pan.y,
           health: healthInfo,
+          isInterMetroEdge: edge.data('isInterMetroEdge') || false,
+          linkCount: edge.data('linkCount'),
+          avgMetric: edge.data('avgMetric'),
         })
       })
 
@@ -1257,6 +1537,15 @@ export function TopologyGraph({
       const node = event.target
       const devicePK = node.data('id')
 
+      // Handle super node clicks - expand the metro
+      if (node.data('isMetroSuperNode')) {
+        const metroPK = node.data('metroPK')
+        if (metroPK) {
+          toggleMetroCollapseRef.current(metroPK)
+        }
+        return
+      }
+
       if (mode === 'explore') {
         onDeviceSelectRef.current?.(devicePK)
         // If impact panel is open, update to show new device's impact
@@ -1301,6 +1590,10 @@ export function TopologyGraph({
 
     const handleNodeDblTap = (event: cytoscape.EventObject) => {
       const node = event.target
+      // Don't navigate for super nodes
+      if (node.data('isMetroSuperNode')) {
+        return
+      }
       navigateRef.current(`/devices/${node.data('id')}`)
     }
 
@@ -1498,6 +1791,12 @@ export function TopologyGraph({
           // Toggle link health overlay
           if (!e.metaKey && !e.ctrlKey) {
             setLinkHealthOverlayEnabled(prev => !prev)
+          }
+          break
+        case 'm':
+          // Toggle metro clustering overlay
+          if (!e.metaKey && !e.ctrlKey) {
+            setMetroClusteringEnabled(prev => !prev)
           }
           break
       }
@@ -1723,6 +2022,17 @@ export function TopologyGraph({
           title={linkHealthOverlayEnabled ? 'Hide link health overlay (h)' : 'Show link health overlay (h)'}
         >
           <Activity className="h-4 w-4" />
+        </button>
+        <button
+          onClick={() => setMetroClusteringEnabled(prev => !prev)}
+          className={`p-2 border rounded shadow-sm transition-colors ${
+            metroClusteringEnabled
+              ? 'bg-blue-500/20 border-blue-500/50 text-blue-500'
+              : 'bg-[var(--card)] border-[var(--border)] hover:bg-[var(--muted)]'
+          }`}
+          title={metroClusteringEnabled ? 'Hide metro colors (m)' : 'Show metro colors (m)'}
+        >
+          <MapPin className="h-4 w-4" />
         </button>
       </div>
 
@@ -2539,6 +2849,107 @@ export function TopologyGraph({
         </div>
       )}
 
+      {/* Metro Clustering overlay panel */}
+      {metroClusteringEnabled && (
+        <div className="absolute top-[340px] right-4 z-[999] bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm p-3 text-xs max-w-56">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-medium flex items-center gap-1.5">
+              <MapPin className="h-3.5 w-3.5 text-blue-500" />
+              Metro Colors
+            </span>
+            <button
+              onClick={() => setMetroClusteringEnabled(false)}
+              className="p-1 hover:bg-[var(--muted)] rounded"
+              title="Close"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+
+          {!topologyData && (
+            <div className="text-muted-foreground">Loading metro data...</div>
+          )}
+
+          {topologyData && (
+            <div className="space-y-3">
+              {/* Summary stats */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Total Metros</span>
+                  <span className="font-medium">{metroInfoMap.size}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Devices</span>
+                  <span className="font-medium">{filteredData?.nodes.length ?? 0}</span>
+                </div>
+              </div>
+
+              {/* Metro list with colors - clickable to collapse/expand */}
+              <div className="pt-2 border-t border-[var(--border)]">
+                <div className="text-muted-foreground mb-1.5">Metros (click to collapse)</div>
+                <div className="space-y-0.5 max-h-40 overflow-y-auto">
+                  {Array.from(metroInfoMap.entries())
+                    .sort((a, b) => a[1].code.localeCompare(b[1].code))
+                    .map(([pk, info]) => {
+                      const deviceCount = filteredData?.nodes.filter(n => n.data.metroPK === pk).length ?? 0
+                      if (deviceCount === 0) return null
+                      const isCollapsed = collapsedMetros.has(pk)
+                      return (
+                        <button
+                          key={pk}
+                          onClick={() => toggleMetroCollapse(pk)}
+                          className={`w-full flex items-center justify-between gap-2 px-1.5 py-1 rounded transition-colors ${
+                            isCollapsed
+                              ? 'bg-blue-500/20 border border-blue-500/30'
+                              : 'hover:bg-[var(--muted)]'
+                          }`}
+                          title={isCollapsed ? 'Click to expand' : 'Click to collapse'}
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <div
+                              className={`w-3 h-3 flex-shrink-0 ${isCollapsed ? 'rounded' : 'rounded-full'}`}
+                              style={{ backgroundColor: getMetroColor(pk) }}
+                            />
+                            <span className="truncate">{info.code}</span>
+                          </div>
+                          <span className={isCollapsed ? 'text-blue-400 font-medium' : 'text-muted-foreground'}>
+                            {isCollapsed ? `(${deviceCount})` : deviceCount}
+                          </span>
+                        </button>
+                      )
+                    })}
+                </div>
+              </div>
+
+              {/* Collapse all / Expand all buttons */}
+              {metroInfoMap.size > 0 && (
+                <div className="pt-2 border-t border-[var(--border)] flex gap-2">
+                  <button
+                    onClick={() => setCollapsedMetros(new Set(metroInfoMap.keys()))}
+                    className="flex-1 px-2 py-1 bg-[var(--muted)] hover:bg-[var(--muted)]/80 rounded text-[10px]"
+                    disabled={collapsedMetros.size === metroInfoMap.size}
+                  >
+                    Collapse All
+                  </button>
+                  <button
+                    onClick={() => setCollapsedMetros(new Set())}
+                    className="flex-1 px-2 py-1 bg-[var(--muted)] hover:bg-[var(--muted)]/80 rounded text-[10px]"
+                    disabled={collapsedMetros.size === 0}
+                  >
+                    Expand All
+                  </button>
+                </div>
+              )}
+
+              {/* Keyboard shortcut hint */}
+              <div className="pt-2 border-t border-[var(--border)] text-muted-foreground">
+                Press <kbd className="px-1 py-0.5 bg-[var(--muted)] rounded text-[10px]">m</kbd> to toggle
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Bottom right panels - Guided questions, Legend, Stats */}
       <div className="absolute bottom-4 right-4 z-[998] flex flex-col gap-2 items-end">
         {/* Guided questions panel */}
@@ -2684,33 +3095,51 @@ export function TopologyGraph({
             top: hoveredEdge.y - 10,
           }}
         >
-          <div className="text-muted-foreground">
-            Latency: <span className="font-medium text-foreground">{hoveredEdge.metric ? `${(hoveredEdge.metric / 1000).toFixed(2)}ms` : 'N/A'}</span>
-          </div>
-          {hoveredEdge.health && (
+          {hoveredEdge.isInterMetroEdge ? (
+            // Inter-metro edge tooltip
+            <div className="text-muted-foreground">
+              <div className="font-medium text-foreground mb-1">Inter-Metro Link</div>
+              <div>
+                Links: <span className="font-medium text-blue-500">{hoveredEdge.linkCount || 1}</span>
+              </div>
+              <div>
+                Avg Latency: <span className="font-medium text-foreground">
+                  {hoveredEdge.avgMetric ? `${(hoveredEdge.avgMetric / 1000).toFixed(2)}ms` : 'N/A'}
+                </span>
+              </div>
+            </div>
+          ) : (
+            // Regular edge tooltip
             <>
               <div className="text-muted-foreground">
-                Committed: <span className="font-medium text-foreground">{(hoveredEdge.health.committedRttNs / 1000000).toFixed(2)}ms</span>
+                Latency: <span className="font-medium text-foreground">{hoveredEdge.metric ? `${(hoveredEdge.metric / 1000).toFixed(2)}ms` : 'N/A'}</span>
               </div>
-              <div className="text-muted-foreground">
-                SLA Ratio: <span className={`font-medium ${
-                  hoveredEdge.health.slaRatio >= 2.0 ? 'text-red-500' :
-                  hoveredEdge.health.slaRatio >= 1.5 ? 'text-yellow-500' : 'text-green-500'
-                }`}>{(hoveredEdge.health.slaRatio * 100).toFixed(0)}%</span>
-              </div>
-              <div className="text-muted-foreground">
-                Packet Loss: <span className={`font-medium ${
-                  hoveredEdge.health.lossPct > 10 ? 'text-red-500' :
-                  hoveredEdge.health.lossPct > 0.1 ? 'text-yellow-500' : 'text-green-500'
-                }`}>{hoveredEdge.health.lossPct.toFixed(2)}%</span>
-              </div>
-              <div className="text-muted-foreground">
-                Status: <span className={`font-medium ${
-                  hoveredEdge.health.status === 'critical' ? 'text-red-500' :
-                  hoveredEdge.health.status === 'warning' ? 'text-yellow-500' :
-                  hoveredEdge.health.status === 'healthy' ? 'text-green-500' : 'text-muted-foreground'
-                }`}>{hoveredEdge.health.status}</span>
-              </div>
+              {hoveredEdge.health && (
+                <>
+                  <div className="text-muted-foreground">
+                    Committed: <span className="font-medium text-foreground">{(hoveredEdge.health.committedRttNs / 1000000).toFixed(2)}ms</span>
+                  </div>
+                  <div className="text-muted-foreground">
+                    SLA Ratio: <span className={`font-medium ${
+                      hoveredEdge.health.slaRatio >= 2.0 ? 'text-red-500' :
+                      hoveredEdge.health.slaRatio >= 1.5 ? 'text-yellow-500' : 'text-green-500'
+                    }`}>{(hoveredEdge.health.slaRatio * 100).toFixed(0)}%</span>
+                  </div>
+                  <div className="text-muted-foreground">
+                    Packet Loss: <span className={`font-medium ${
+                      hoveredEdge.health.lossPct > 10 ? 'text-red-500' :
+                      hoveredEdge.health.lossPct > 0.1 ? 'text-yellow-500' : 'text-green-500'
+                    }`}>{hoveredEdge.health.lossPct.toFixed(2)}%</span>
+                  </div>
+                  <div className="text-muted-foreground">
+                    Status: <span className={`font-medium ${
+                      hoveredEdge.health.status === 'critical' ? 'text-red-500' :
+                      hoveredEdge.health.status === 'warning' ? 'text-yellow-500' :
+                      hoveredEdge.health.status === 'healthy' ? 'text-green-500' : 'text-muted-foreground'
+                    }`}>{hoveredEdge.health.status}</span>
+                  </div>
+                </>
+              )}
             </>
           )}
         </div>

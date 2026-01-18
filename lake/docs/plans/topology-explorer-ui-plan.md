@@ -150,7 +150,7 @@ Simulate adding a new link between two devices.
 ---
 
 ### 11. Metro Clustering View
-**Priority: Low** | **Complexity: Low** | **Status: Not Started**
+**Priority: Low** | **Complexity: Low** | **Status: Done**
 
 Group and color devices by metro/datacenter.
 
@@ -165,7 +165,15 @@ Group and color devices by metro/datacenter.
 - Understanding inter-metro connectivity
 - Simplifying view for large networks
 
-**Implementation:** Client-side using existing metro data on nodes. No new API needed.
+**Implementation:**
+- Frontend: `topology-graph.tsx` with `metroClusteringEnabled` toggle
+- Toggle button with MapPin icon, keyboard shortcut `m`
+- 10 distinct metro colors that cycle through metros
+- Legend panel showing all metros with colors and device counts
+- Click on metro in legend to collapse/expand
+- Click on super node in graph to expand
+- Collapse All / Expand All buttons in legend
+- Super nodes show metro code and device count, sized by device count
 
 ---
 
@@ -527,7 +535,7 @@ Enhance metro connectivity matrix with bandwidth metrics.
 ---
 
 ### 23. Path Finding by Measured Latency
-**Priority: High** | **Complexity: Medium** | **Status: Not Started**
+**Priority: High** | **Complexity: Medium** | **Status: Done**
 
 Find paths optimized for actual measured latency, not just ISIS metric.
 
@@ -546,13 +554,17 @@ Find paths optimized for actual measured latency, not just ISIS metric.
 - Neo4j for topology structure
 - ClickHouse `fact_dz_device_link_latency` for measured RTT per link
 
-**API:** `GET /api/topology/path?from={pk}&to={pk}&metric=measured`
+**API:** `GET /api/topology/metro-path-latency?optimizeFor=latency|hops|bandwidth`
 
 **Implementation:**
-1. Query measured latency per link from ClickHouse
-2. Build weighted graph with RTT values
-3. Run Dijkstra (or use Neo4j with custom weights)
-4. Return path with measured latency breakdown
+- Frontend: Metro Matrix page has "Path Latency" tab with optimize mode selector
+- API: `GetMetroPathLatency()` in `api/handlers/isis.go` accepts `optimizeFor` parameter
+- Three optimization modes:
+  - `latency` - optimize for measured RTT
+  - `hops` - optimize for hop count
+  - `bandwidth` - optimize for bottleneck bandwidth
+- Path calculator shows measured latency per hop (`edge_measured_ms`, `edge_loss_pct`)
+- Location: `web/src/components/metro-matrix-page.tsx` (lines 700-716)
 
 ---
 
@@ -660,16 +672,16 @@ Enhance maintenance planner and failure analysis with stake impact.
 - [x] Metro Connectivity Matrix page
 - [x] Maintenance Planner page
 
-### Phase 11: Traffic & Utilization
+### Phase 11: Traffic & Utilization (Partial)
 - [ ] Traffic Flow Visualization (#12) - edge thickness by utilization
-- [ ] Metro Clustering View (#11) - collapse metros in graph view
+- [x] Metro Clustering View (#11) - metro colors and collapse/expand in graph view
 
 ### Phase 12: Latency Intelligence (Mostly Done)
 - [x] Link Health Overlay (#18) - color by SLA compliance
 - [x] DZ vs Internet Comparison (#19) - metro matrix enhancement
 - [x] Path Calculator Measured Latency (#20) - both metro and device-level
 - [ ] Degraded Links in Redundancy Report (#21)
-- [ ] Path Finding by Measured Latency (#23) - Dijkstra on actual RTT
+- [x] Path Finding by Measured Latency (#23) - optimize mode toggle in metro matrix
 
 ### Phase 13: Capacity & Bandwidth (Mostly Done)
 - [x] Metro Connectivity with Bandwidth (#22) - bottleneck bandwidth in main grid + detail panel
@@ -778,8 +790,8 @@ GET /api/topology/metro-path-detail       # Hop-by-hop breakdown with measured l
 # Planned Endpoints - Traffic
 GET /api/topology/traffic-overlay         # Per-link traffic for visualization
 
-# Planned Endpoints - Latency (partial work remaining)
-GET /api/topology/path?metric=measured    # Path by measured latency (Dijkstra)
+# Implemented Endpoints - Latency Optimization
+GET /api/topology/metro-path-latency?optimizeFor=latency  # Path optimized by measured RTT
 
 # Planned Endpoints - Capacity
 GET /api/topology/optimization            # Latency optimization opportunities

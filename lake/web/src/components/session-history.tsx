@@ -10,6 +10,7 @@ export interface GenerationRecord {
   prompt?: string
   thinking?: string
   sql: string
+  queryType?: 'sql' | 'cypher'  // Track whether this is SQL or Cypher
   provider?: string
   attempts?: number
   error?: string
@@ -17,7 +18,7 @@ export interface GenerationRecord {
 
 interface SessionHistoryProps {
   history: GenerationRecord[]
-  onRestoreQuery: (sql: string) => void
+  onRestoreQuery: (sql: string, queryType?: 'sql' | 'cypher') => void
 }
 
 export function SessionHistory({ history, onRestoreQuery }: SessionHistoryProps) {
@@ -95,7 +96,9 @@ export function SessionHistory({ history, onRestoreQuery }: SessionHistoryProps)
                   )}
                   <div>
                     <div className="text-xs text-muted-foreground mb-1">
-                      {record.type === 'generation' ? 'Generated SQL' : 'SQL'}
+                      {record.type === 'generation'
+                        ? `Generated ${record.queryType === 'cypher' ? 'Cypher' : 'SQL'}`
+                        : (record.queryType === 'cypher' ? 'Cypher' : 'SQL')}
                     </div>
                     <div className="font-mono text-xs bg-muted border p-2 max-h-32 overflow-y-auto whitespace-pre-wrap">
                       {record.sql}
@@ -105,7 +108,7 @@ export function SessionHistory({ history, onRestoreQuery }: SessionHistoryProps)
                     <div className="text-xs text-destructive">{record.error}</div>
                   )}
                   <button
-                    onClick={() => onRestoreQuery(record.sql)}
+                    onClick={() => onRestoreQuery(record.sql, record.queryType)}
                     className="text-xs text-muted-foreground hover:text-foreground transition-colors"
                   >
                     Restore this query

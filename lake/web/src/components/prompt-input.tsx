@@ -27,6 +27,7 @@ export function PromptInput({ currentQuery, conversationHistory, onGenerated, on
   const providerRef = useRef('')
   const attemptsRef = useRef(1)
   const currentPromptRef = useRef('')
+  const queryTypeRef = useRef<'sql' | 'cypher'>('sql')
 
   const handleGenerate = async () => {
     if (!prompt.trim() || isGenerating) return
@@ -39,6 +40,8 @@ export function PromptInput({ currentQuery, conversationHistory, onGenerated, on
     providerRef.current = ''
     attemptsRef.current = 1
     currentPromptRef.current = prompt
+    // Set initial query type based on mode (auto will update via onMode callback)
+    queryTypeRef.current = mode === 'cypher' ? 'cypher' : 'sql'
 
     // Common callbacks for all generators
     const callbacks = {
@@ -77,6 +80,7 @@ export function PromptInput({ currentQuery, conversationHistory, onGenerated, on
           prompt: currentPromptRef.current,
           thinking: thinkingAccumulatorRef.current,
           sql: result.sql,
+          queryType: queryTypeRef.current,
           provider: providerRef.current,
           attempts: attemptsRef.current,
           error: result.error,
@@ -113,6 +117,7 @@ export function PromptInput({ currentQuery, conversationHistory, onGenerated, on
         await generateAutoStream(prompt, currentQuery || undefined, {
           ...callbacks,
           onMode: (detectedMode) => {
+            queryTypeRef.current = detectedMode
             onModeDetected?.(detectedMode)
           }
         })

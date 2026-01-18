@@ -143,6 +143,7 @@ export const QueryEditor = forwardRef<QueryEditorHandle, QueryEditorProps>(
           type: 'manual',
           timestamp: new Date(),
           sql: queryText,
+          queryType: activeMode,
         })
       }
       lastRecordedSqlRef.current = queryText

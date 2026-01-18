@@ -354,6 +354,24 @@ function QueryEditorView() {
   const currentSession = sessions.find(s => s.id === currentSessionId)
   const generationHistory = currentSession?.history ?? []
 
+  // Detect mode from session's most recent query on mount/session change
+  const latestHistoryEntry = generationHistory[0]
+  useEffect(() => {
+    if (!latestHistoryEntry) return
+    // Use saved queryType if available, otherwise detect from content
+    let detectedType = latestHistoryEntry.queryType
+    if (!detectedType) {
+      const upper = latestHistoryEntry.sql.toUpperCase().trim()
+      if (upper.startsWith('MATCH') || upper.includes('MATCH (') || upper.includes('MATCH(')) {
+        detectedType = 'cypher'
+      } else {
+        detectedType = 'sql'
+      }
+    }
+    setMode(detectedType)
+    setActiveMode(detectedType)
+  }, [currentSessionId, latestHistoryEntry?.sql]) // Run when session changes or first query loads
+
   const handleUpdateTitle = useCallback((title: string) => {
     setSessions(prev => prev.map(session => {
       if (session.id === currentSessionId) {
@@ -470,8 +488,21 @@ function QueryEditorView() {
     addToHistory(record)
   }
 
-  const handleRestoreQuery = (sql: string) => {
+  const handleRestoreQuery = (sql: string, queryType?: 'sql' | 'cypher') => {
     setQuery(sql)
+    // Restore the query type/mode if provided, otherwise detect from content
+    let detectedType = queryType
+    if (!detectedType) {
+      // Heuristic: Cypher uses MATCH, SQL uses SELECT
+      const upper = sql.toUpperCase().trim()
+      if (upper.startsWith('MATCH') || upper.includes('MATCH (') || upper.includes('MATCH(')) {
+        detectedType = 'cypher'
+      } else {
+        detectedType = 'sql'
+      }
+    }
+    setMode(detectedType)
+    setActiveMode(detectedType)
   }
 
   const handleAskAboutResults = useCallback(() => {

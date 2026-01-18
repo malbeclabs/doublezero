@@ -222,6 +222,22 @@ export function HelpPage() {
             </div>
           </CollapsibleSection>
 
+          <CollapsibleSection title="Topology / Metro Matrix">
+            <div className="space-y-3 text-sm">
+              <p>
+                The <Link to="/topology/metro-matrix" className="text-accent hover:underline">metro matrix</Link> shows
+                connectivity between all metros in an NxN grid.
+              </p>
+              <ul className="list-disc list-inside space-y-1 text-muted-foreground">
+                <li>Path count between each metro pair</li>
+                <li>Minimum hops and latency for each connection</li>
+                <li>Color-coded by connectivity strength (green/yellow/red)</li>
+                <li>Click cells for detailed connectivity info</li>
+                <li>Export to CSV for analysis</li>
+              </ul>
+            </div>
+          </CollapsibleSection>
+
           <CollapsibleSection title="Status">
             <div className="space-y-3 text-sm">
               <p>

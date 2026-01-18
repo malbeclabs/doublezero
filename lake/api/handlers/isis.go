@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/malbeclabs/doublezero/lake/api/config"
@@ -697,4 +698,204 @@ func GetFailureImpact(w http.ResponseWriter, r *http.Request) {
 	metrics.RecordClickHouseQuery(duration, nil)
 
 	writeJSON(w, response)
+}
+
+// MultiPathHop represents a hop in a path with edge metric information
+type MultiPathHop struct {
+	DevicePK   string `json:"devicePK"`
+	DeviceCode string `json:"deviceCode"`
+	Status     string `json:"status"`
+	DeviceType string `json:"deviceType"`
+	EdgeMetric uint32 `json:"edgeMetric,omitempty"` // metric to reach this hop from previous
+}
+
+// SinglePath represents one path in a multi-path response
+type SinglePath struct {
+	Path        []MultiPathHop `json:"path"`
+	TotalMetric uint32         `json:"totalMetric"`
+	HopCount    int            `json:"hopCount"`
+}
+
+// MultiPathResponse is the response for the K-shortest paths endpoint
+type MultiPathResponse struct {
+	Paths []SinglePath `json:"paths"`
+	From  string       `json:"from"`
+	To    string       `json:"to"`
+	Error string       `json:"error,omitempty"`
+}
+
+// GetISISPaths finds K-shortest paths between two devices
+func GetISISPaths(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	fromPK := r.URL.Query().Get("from")
+	toPK := r.URL.Query().Get("to")
+	kStr := r.URL.Query().Get("k")
+
+	if fromPK == "" || toPK == "" {
+		writeJSON(w, MultiPathResponse{Error: "from and to parameters are required"})
+		return
+	}
+
+	if fromPK == toPK {
+		writeJSON(w, MultiPathResponse{Error: "from and to must be different devices"})
+		return
+	}
+
+	k := 5 // default
+	if kStr != "" {
+		if parsed, err := strconv.Atoi(kStr); err == nil && parsed > 0 && parsed <= 10 {
+			k = parsed
+		}
+	}
+
+	start := time.Now()
+
+	session := config.Neo4jSession(ctx)
+	defer session.Close(ctx)
+
+	response := MultiPathResponse{
+		From:  fromPK,
+		To:    toPK,
+		Paths: []SinglePath{},
+	}
+
+	// Find K-shortest paths by total metric
+	// Uses allShortestPaths to get multiple equal-cost paths, plus some longer alternatives
+	cypher := `
+		MATCH (a:Device {pk: $from_pk}), (b:Device {pk: $to_pk})
+
+		// First get all shortest paths (equal cost)
+		CALL {
+			WITH a, b
+			MATCH path = allShortestPaths((a)-[:ISIS_ADJACENT*]->(b))
+			RETURN path,
+			       reduce(cost = 0, r IN relationships(path) | cost + coalesce(r.metric, 1)) AS totalMetric
+		}
+
+		WITH path, totalMetric
+		ORDER BY totalMetric
+		LIMIT 50
+
+		WITH path, totalMetric,
+		     [n IN nodes(path) | {
+		       pk: n.pk,
+		       code: n.code,
+		       status: n.status,
+		       device_type: n.device_type
+		     }] AS nodeList,
+		     [r IN relationships(path) | r.metric] AS edgeMetrics
+		RETURN nodeList, edgeMetrics, totalMetric
+	`
+
+	result, err := session.Run(ctx, cypher, map[string]any{
+		"from_pk": fromPK,
+		"to_pk":   toPK,
+	})
+	if err != nil {
+		log.Printf("ISIS multi-path query error: %v", err)
+		response.Error = "Failed to find paths: " + err.Error()
+		writeJSON(w, response)
+		return
+	}
+
+	records, err := result.Collect(ctx)
+	if err != nil {
+		log.Printf("ISIS multi-path collect error: %v", err)
+		response.Error = "Failed to collect paths: " + err.Error()
+		writeJSON(w, response)
+		return
+	}
+
+	if len(records) == 0 {
+		response.Error = "No paths found between devices"
+		writeJSON(w, response)
+		return
+	}
+
+	// Track unique paths to avoid duplicates
+	seenPaths := make(map[string]bool)
+
+	for _, record := range records {
+		nodeListVal, _ := record.Get("nodeList")
+		edgeMetricsVal, _ := record.Get("edgeMetrics")
+		totalMetric, _ := record.Get("totalMetric")
+
+		hops := parseNodeListWithMetrics(nodeListVal, edgeMetricsVal)
+		if len(hops) == 0 {
+			continue
+		}
+
+		// Create a key for deduplication based on the path's device PKs
+		pathKey := ""
+		for _, hop := range hops {
+			pathKey += hop.DevicePK + ","
+		}
+
+		if seenPaths[pathKey] {
+			continue
+		}
+		seenPaths[pathKey] = true
+
+		response.Paths = append(response.Paths, SinglePath{
+			Path:        hops,
+			TotalMetric: uint32(asInt64(totalMetric)),
+			HopCount:    len(hops) - 1,
+		})
+
+		if len(response.Paths) >= k {
+			break
+		}
+	}
+
+	duration := time.Since(start)
+	metrics.RecordClickHouseQuery(duration, nil)
+	log.Printf("ISIS multi-path query returned %d paths in %v", len(response.Paths), duration)
+
+	writeJSON(w, response)
+}
+
+func parseNodeListWithMetrics(nodeListVal, edgeMetricsVal any) []MultiPathHop {
+	if nodeListVal == nil {
+		return []MultiPathHop{}
+	}
+	nodeArr, ok := nodeListVal.([]any)
+	if !ok {
+		return []MultiPathHop{}
+	}
+
+	// Parse edge metrics
+	var edgeMetrics []int64
+	if edgeMetricsVal != nil {
+		if metricsArr, ok := edgeMetricsVal.([]any); ok {
+			for _, m := range metricsArr {
+				edgeMetrics = append(edgeMetrics, asInt64(m))
+			}
+		}
+	}
+
+	hops := make([]MultiPathHop, 0, len(nodeArr))
+	for i, item := range nodeArr {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		hop := MultiPathHop{
+			DevicePK:   asString(m["pk"]),
+			DeviceCode: asString(m["code"]),
+			Status:     asString(m["status"]),
+			DeviceType: asString(m["device_type"]),
+		}
+
+		// Edge metric is the metric to reach this hop from the previous one
+		// So hop[i] uses edgeMetrics[i-1]
+		if i > 0 && i-1 < len(edgeMetrics) {
+			hop.EdgeMetric = uint32(edgeMetrics[i-1])
+		}
+
+		hops = append(hops, hop)
+	}
+	return hops
 }

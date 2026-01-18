@@ -1186,9 +1186,10 @@ func GetFinalCheckpoint(
 }
 
 // followUpSystemPrompt is the system prompt for generating follow-up questions.
-const followUpSystemPrompt = `Given a Q&A exchange about network data, suggest 2-3 follow-up questions.
+const followUpSystemPrompt = `Given a Q&A exchange about DZ network data, suggest 2-3 follow-up questions.
 
 Rules:
+- Questions should be related to DZ (DoubleZero) network data and analytics
 - Questions should explore different angles or drill deeper into the data
 - Do NOT suggest questions that are already answered by the response (e.g., if the response lists totals, don't ask "what's the total?")
 - Output ONLY the questions, one per line

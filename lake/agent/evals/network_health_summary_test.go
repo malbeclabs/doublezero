@@ -13,6 +13,7 @@ import (
 	serviceability "github.com/malbeclabs/doublezero/lake/indexer/pkg/dz/serviceability"
 	dztelemlatency "github.com/malbeclabs/doublezero/lake/indexer/pkg/dz/telemetry/latency"
 	dztelemusage "github.com/malbeclabs/doublezero/lake/indexer/pkg/dz/telemetry/usage"
+	"github.com/malbeclabs/doublezero/lake/indexer/pkg/neo4j"
 	"github.com/stretchr/testify/require"
 )
 
@@ -47,14 +48,20 @@ func runTest_NetworkHealthSummary(t *testing.T, llmFactory LLMClientFactory) {
 	// Validate database query results before testing agent
 	validateNetworkHealthSummaryQuery(t, ctx, conn)
 
+	// Get Neo4j client and seed graph data if available
+	neo4jClient := testNeo4jClient(t)
+	if neo4jClient != nil {
+		seedNetworkHealthSummaryGraphData(t, ctx, neo4jClient)
+	}
+
 	// Skip workflow execution in short mode
 	if testing.Short() {
 		t.Log("Skipping workflow execution in short mode")
 		return
 	}
 
-	// Set up workflow with LLM client
-	p := setupWorkflow(t, ctx, clientInfo, llmFactory, debug, debugLevel)
+	// Set up workflow with LLM client and Neo4j support
+	p := setupWorkflowWithNeo4j(t, ctx, clientInfo, neo4jClient, llmFactory, debug, debugLevel)
 
 	// Run the query
 	question := "how is the network doing?"
@@ -141,14 +148,20 @@ func runTest_NetworkHealthAllHealthy(t *testing.T, llmFactory LLMClientFactory) 
 	// Seed a completely healthy network
 	seedHealthyNetworkData(t, ctx, conn)
 
+	// Get Neo4j client and seed graph data if available
+	neo4jClient := testNeo4jClient(t)
+	if neo4jClient != nil {
+		seedHealthyNetworkGraphData(t, ctx, neo4jClient)
+	}
+
 	// Skip workflow execution in short mode
 	if testing.Short() {
 		t.Log("Skipping workflow execution in short mode")
 		return
 	}
 
-	// Set up workflow with LLM client
-	p := setupWorkflow(t, ctx, clientInfo, llmFactory, debug, debugLevel)
+	// Set up workflow with LLM client and Neo4j support
+	p := setupWorkflowWithNeo4j(t, ctx, clientInfo, neo4jClient, llmFactory, debug, debugLevel)
 
 	// Run the query
 	question := "how is the network doing?"
@@ -544,4 +557,52 @@ ORDER BY code
 	require.GreaterOrEqual(t, linkResult.Count, 3, "Should have at least 3 links")
 
 	t.Logf("Database validation passed: Found %d devices and %d links", result.Count, linkResult.Count)
+}
+
+// seedNetworkHealthSummaryGraphData seeds Neo4j with topology matching ClickHouse data
+func seedNetworkHealthSummaryGraphData(t *testing.T, ctx context.Context, client neo4j.Client) {
+	metros := []graphMetro{
+		{PK: "metro1", Code: "nyc", Name: "New York"},
+		{PK: "metro2", Code: "lon", Name: "London"},
+		{PK: "metro3", Code: "chi", Name: "Chicago"},
+		{PK: "metro4", Code: "sf", Name: "San Francisco"},
+		{PK: "metro5", Code: "tok", Name: "Tokyo"},
+		{PK: "metro6", Code: "fra", Name: "Frankfurt"},
+	}
+	devices := []graphDevice{
+		{PK: "device1", Code: "nyc-dzd1", Status: "activated", MetroPK: "metro1"},
+		{PK: "device2", Code: "lon-dzd1", Status: "activated", MetroPK: "metro2"},
+		{PK: "device3", Code: "chi-dzd1", Status: "drained", MetroPK: "metro3"},
+		{PK: "device4", Code: "sf-dzd1", Status: "activated", MetroPK: "metro4"},
+		{PK: "device5", Code: "tok-dzd1", Status: "drained", MetroPK: "metro5"},
+		{PK: "device6", Code: "fra-dzd1", Status: "activated", MetroPK: "metro6"},
+		{PK: "device7", Code: "nyc-dzd2", Status: "activated", MetroPK: "metro1"},
+	}
+	links := []graphLink{
+		{PK: "link1", Code: "nyc-lon-1", Status: "activated", SideAPK: "device1", SideZPK: "device2"},
+		{PK: "link2", Code: "chi-nyc-1", Status: "activated", SideAPK: "device3", SideZPK: "device1"},
+		{PK: "link3", Code: "sf-nyc-1", Status: "drained", SideAPK: "device4", SideZPK: "device1"},
+		{PK: "link4", Code: "tok-fra-1", Status: "activated", SideAPK: "device5", SideZPK: "device6"},
+		{PK: "link5", Code: "nyc-local-1", Status: "activated", SideAPK: "device1", SideZPK: "device7"},
+	}
+	seedGraphData(t, ctx, client, metros, devices, links)
+}
+
+// seedHealthyNetworkGraphData seeds Neo4j with healthy network topology
+func seedHealthyNetworkGraphData(t *testing.T, ctx context.Context, client neo4j.Client) {
+	metros := []graphMetro{
+		{PK: "metro1", Code: "nyc", Name: "New York"},
+		{PK: "metro2", Code: "lon", Name: "London"},
+		{PK: "metro3", Code: "chi", Name: "Chicago"},
+	}
+	devices := []graphDevice{
+		{PK: "device1", Code: "nyc-dzd1", Status: "activated", MetroPK: "metro1"},
+		{PK: "device2", Code: "lon-dzd1", Status: "activated", MetroPK: "metro2"},
+		{PK: "device3", Code: "chi-dzd1", Status: "activated", MetroPK: "metro3"},
+	}
+	links := []graphLink{
+		{PK: "link1", Code: "nyc-lon-1", Status: "activated", SideAPK: "device1", SideZPK: "device2"},
+		{PK: "link2", Code: "chi-nyc-1", Status: "activated", SideAPK: "device3", SideZPK: "device1"},
+	}
+	seedGraphData(t, ctx, client, metros, devices, links)
 }

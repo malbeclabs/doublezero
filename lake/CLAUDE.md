@@ -16,12 +16,7 @@ The agent is the core feature - it lets users ask questions like "which validato
 
 ## Service Management
 
-You are responsible for managing the `api` and `web` services during development:
-
-- **After changes to `api/`**: Restart the API server (`go run ./api/main.go`)
-- **After changes to `web/`**: The Vite dev server hot-reloads, but run `bun run build` if needed
-
-Always restart services after making changes - do not wait for the user to ask. After restarting, tell the user where to view the logs (the background task output file path).
+Do NOT manage the `api` or `web` services. The user runs these separately and will restart them as needed.
 
 ## Commands
 

@@ -60,7 +60,13 @@ func New(cfg *workflow.Config) (*Workflow, error) {
 	}
 
 	// Convert tools to workflow.ToolDefinition format
-	v3Tools := DefaultTools()
+	// Include graph tools if GraphQuerier is configured
+	var v3Tools []Tool
+	if cfg.GraphQuerier != nil {
+		v3Tools = DefaultToolsWithGraph()
+	} else {
+		v3Tools = DefaultTools()
+	}
 	tools := make([]workflow.ToolDefinition, len(v3Tools))
 	for i, t := range v3Tools {
 		var schema any
@@ -109,15 +115,25 @@ func (p *Workflow) RunWithProgress(ctx context.Context, userQuestion string, his
 		}
 	}
 
-	// Fetch schema once at the start
-	schema, err := p.cfg.SchemaFetcher.FetchSchema(ctx)
+	// Fetch SQL schema once at the start
+	sqlSchema, err := p.cfg.SchemaFetcher.FetchSchema(ctx)
 	if err != nil {
 		notify(workflow.StageError)
-		return nil, fmt.Errorf("failed to fetch schema: %w", err)
+		return nil, fmt.Errorf("failed to fetch SQL schema: %w", err)
 	}
 
-	// Build system prompt with schema
-	systemPrompt := BuildSystemPrompt(p.prompts.System, schema, p.cfg.FormatContext)
+	// Fetch graph schema if available
+	var graphSchema string
+	if p.cfg.GraphSchemaFetcher != nil {
+		graphSchema, err = p.cfg.GraphSchemaFetcher.FetchSchema(ctx)
+		if err != nil {
+			p.logInfo("workflow: failed to fetch graph schema", "error", err)
+			// Continue without graph schema - it's optional
+		}
+	}
+
+	// Build system prompt with schemas
+	systemPrompt := BuildSystemPromptWithGraph(p.prompts.System, sqlSchema, graphSchema, p.prompts.CypherContext, p.cfg.FormatContext)
 
 	// Build initial messages
 	messages := p.buildMessages(userQuestion, history)
@@ -331,6 +347,12 @@ func (p *Workflow) executeTool(ctx context.Context, call workflow.ToolCallInfo, 
 			p.logInfo("workflow: execute_sql failed", "error", err, "params", call.Parameters)
 		}
 		return result, err
+	case "execute_cypher":
+		result, err := p.executeCypher(ctx, call.Parameters, state, onProgress)
+		if err != nil {
+			p.logInfo("workflow: execute_cypher failed", "error", err, "params", call.Parameters)
+		}
+		return result, err
 	default:
 		p.logInfo("workflow: unknown tool called", "name", call.Name)
 		return "", fmt.Errorf("unknown tool: %s", call.Name)
@@ -537,6 +559,161 @@ func truncate(s string, n int) string {
 	return s[:n] + "..."
 }
 
+// executeCypher handles the execute_cypher tool - runs Cypher queries in parallel.
+func (p *Workflow) executeCypher(ctx context.Context, params map[string]any, state *LoopState, onProgress workflow.ProgressCallback) (string, error) {
+	if p.cfg.GraphQuerier == nil {
+		return "", fmt.Errorf("graph database not configured")
+	}
+
+	queries, err := ParseCypherQueries(params)
+	if err != nil || len(queries) == 0 {
+		return "", fmt.Errorf("no valid Cypher queries provided")
+	}
+
+	// Reset consecutive think counter since the model is now executing queries
+	state.Metrics.ConsecutiveThinks = 0
+
+	// Log each query question and Cypher for debugging
+	p.logInfo("workflow: executing Cypher", "count", len(queries))
+	for i, q := range queries {
+		qNum := len(state.ExecutedQueries) + i + 1
+		p.logInfo("workflow: cypher query",
+			"q", qNum,
+			"question", q.Question,
+			"cypher", truncate(q.Cypher, 200))
+	}
+
+	// Emit query started events for all queries
+	if onProgress != nil {
+		for _, q := range queries {
+			onProgress(workflow.Progress{
+				Stage:         workflow.StageQueryStarted,
+				QueryQuestion: q.Question,
+				QuerySQL:      q.Cypher, // Reuse SQL field for Cypher
+			})
+		}
+	}
+
+	// Execute queries in parallel
+	cypherStart := time.Now()
+	results := make([]workflow.ExecutedQuery, len(queries))
+	var wg sync.WaitGroup
+
+	for i, q := range queries {
+		wg.Add(1)
+		go func(idx int, query CypherQueryInput) {
+			defer wg.Done()
+
+			// Clean up Cypher
+			cypher := strings.TrimSpace(query.Cypher)
+
+			// Execute query using GraphQuerier
+			queryResult, err := p.cfg.GraphQuerier.Query(ctx, cypher)
+			if err != nil {
+				state.Metrics.SQLErrors++ // Reuse SQL error counter for graph errors
+				results[idx] = workflow.ExecutedQuery{
+					GeneratedQuery: workflow.GeneratedQuery{
+						DataQuestion: workflow.DataQuestion{
+							Question: query.Question,
+						},
+						SQL: cypher, // Store Cypher in SQL field for compatibility
+					},
+					Result: workflow.QueryResult{
+						SQL:   cypher,
+						Error: err.Error(),
+					},
+				}
+				// Emit query complete with error
+				if onProgress != nil {
+					onProgress(workflow.Progress{
+						Stage:         workflow.StageQueryComplete,
+						QueryQuestion: query.Question,
+						QuerySQL:      cypher,
+						QueryError:    err.Error(),
+					})
+				}
+				return
+			}
+
+			results[idx] = workflow.ExecutedQuery{
+				GeneratedQuery: workflow.GeneratedQuery{
+					DataQuestion: workflow.DataQuestion{
+						Question: query.Question,
+					},
+					SQL: cypher,
+				},
+				Result: queryResult,
+			}
+
+			// Emit query complete
+			if onProgress != nil {
+				onProgress(workflow.Progress{
+					Stage:         workflow.StageQueryComplete,
+					QueryQuestion: query.Question,
+					QuerySQL:      cypher,
+					QueryRows:     queryResult.Count,
+					QueryError:    queryResult.Error,
+				})
+			}
+		}(i, q)
+	}
+
+	wg.Wait()
+	state.Metrics.SQLDuration += time.Since(cypherStart) // Reuse SQL duration for graph queries
+	state.Metrics.SQLQueries += len(queries)
+
+	// Log results for each query
+	for i, q := range queries {
+		qNum := len(state.ExecutedQueries) + i + 1
+		result := results[i]
+		if result.Result.Error != "" {
+			p.logInfo("workflow: cypher result",
+				"q", qNum,
+				"question", q.Question,
+				"error", result.Result.Error)
+		} else {
+			p.logInfo("workflow: cypher result",
+				"q", qNum,
+				"question", q.Question,
+				"rows", result.Result.Count)
+		}
+	}
+
+	// Track starting query number before appending
+	startNum := len(state.ExecutedQueries)
+
+	// Append to state
+	state.ExecutedQueries = append(state.ExecutedQueries, results...)
+
+	// Format results for model
+	return formatCypherQueryResults(queries, results, startNum), nil
+}
+
+// formatCypherQueryResults formats Cypher query results for the model to consume.
+func formatCypherQueryResults(queries []CypherQueryInput, results []workflow.ExecutedQuery, startNum int) string {
+	var sb strings.Builder
+	for i, q := range queries {
+		sb.WriteString(fmt.Sprintf("## Q%d: %s\n\n", startNum+i+1, q.Question))
+		result := results[i].Result
+		if result.Error != "" {
+			sb.WriteString(fmt.Sprintf("**Error:** %s\n\n", result.Error))
+		} else {
+			sb.WriteString(fmt.Sprintf("```cypher\n%s\n```\n\n", result.SQL))
+			sb.WriteString(fmt.Sprintf("**Rows:** %d\n\n", result.Count))
+			if result.Formatted != "" {
+				// Truncate if too long
+				formatted := result.Formatted
+				if len(formatted) > 5000 {
+					formatted = formatted[:5000] + "\n... (truncated, " + fmt.Sprintf("%d", len(result.Formatted)-5000) + " more characters)"
+				}
+				sb.WriteString(formatted)
+			}
+		}
+		sb.WriteString("\n")
+	}
+	return sb.String()
+}
+
 // RunWithCheckpoint executes the workflow with checkpoint callbacks for durability.
 // The onCheckpoint callback is called after each loop iteration with the current state.
 // Checkpoint errors are logged but don't fail the workflow (best-effort persistence).
@@ -578,15 +755,25 @@ func (p *Workflow) RunWithCheckpoint(
 		}
 	}
 
-	// Fetch schema once at the start
-	schema, err := p.cfg.SchemaFetcher.FetchSchema(ctx)
+	// Fetch SQL schema once at the start
+	sqlSchema, err := p.cfg.SchemaFetcher.FetchSchema(ctx)
 	if err != nil {
 		notify(workflow.StageError)
-		return nil, fmt.Errorf("failed to fetch schema: %w", err)
+		return nil, fmt.Errorf("failed to fetch SQL schema: %w", err)
 	}
 
-	// Build system prompt with schema
-	systemPrompt := BuildSystemPrompt(p.prompts.System, schema, p.cfg.FormatContext)
+	// Fetch graph schema if available
+	var graphSchema string
+	if p.cfg.GraphSchemaFetcher != nil {
+		graphSchema, err = p.cfg.GraphSchemaFetcher.FetchSchema(ctx)
+		if err != nil {
+			p.logInfo("workflow: failed to fetch graph schema", "error", err)
+			// Continue without graph schema - it's optional
+		}
+	}
+
+	// Build system prompt with schemas
+	systemPrompt := BuildSystemPromptWithGraph(p.prompts.System, sqlSchema, graphSchema, p.prompts.CypherContext, p.cfg.FormatContext)
 
 	// Build initial messages
 	messages := p.buildMessages(userQuestion, history)
@@ -798,15 +985,25 @@ func (p *Workflow) ResumeFromCheckpoint(
 		}
 	}
 
-	// Fetch schema
-	schema, err := p.cfg.SchemaFetcher.FetchSchema(ctx)
+	// Fetch SQL schema
+	sqlSchema, err := p.cfg.SchemaFetcher.FetchSchema(ctx)
 	if err != nil {
 		notify(workflow.StageError)
-		return nil, fmt.Errorf("failed to fetch schema: %w", err)
+		return nil, fmt.Errorf("failed to fetch SQL schema: %w", err)
 	}
 
-	// Build system prompt with schema
-	systemPrompt := BuildSystemPrompt(p.prompts.System, schema, p.cfg.FormatContext)
+	// Fetch graph schema if available
+	var graphSchema string
+	if p.cfg.GraphSchemaFetcher != nil {
+		graphSchema, err = p.cfg.GraphSchemaFetcher.FetchSchema(ctx)
+		if err != nil {
+			p.logInfo("workflow: failed to fetch graph schema", "error", err)
+			// Continue without graph schema - it's optional
+		}
+	}
+
+	// Build system prompt with schemas
+	systemPrompt := BuildSystemPromptWithGraph(p.prompts.System, sqlSchema, graphSchema, p.prompts.CypherContext, p.cfg.FormatContext)
 
 	// Restore messages from checkpoint
 	messages := checkpoint.Messages

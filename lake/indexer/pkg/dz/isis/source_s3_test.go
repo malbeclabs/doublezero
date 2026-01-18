@@ -108,17 +108,17 @@ func TestParseISISJSONStructure(t *testing.T) {
 										"hostname": map[string]any{
 											"name": "DZ-NY7-SW01",
 										},
-										"routerCapabilities": map[string]any{
+										"routerCapabilities": []any{map[string]any{
 											"routerId":  "172.16.0.1",
 											"srgbBase":  16000,
 											"srgbRange": 8000,
-										},
+										}},
 										"neighbors": []any{
 											map[string]any{
 												"systemId":     "ac10.0002.0000",
 												"metric":       float64(1000),
 												"neighborAddr": "172.16.0.117",
-												"adjSids":      []any{float64(100001)},
+												"adjSids":      []any{map[string]any{"adjSid": float64(100001)}},
 											},
 										},
 									},
@@ -175,7 +175,7 @@ func createTestISISDump(t *testing.T, devices []struct {
 		for _, n := range device.neighbors {
 			adjSids := make([]any, 0, len(n.adjSIDs))
 			for _, sid := range n.adjSIDs {
-				adjSids = append(adjSids, float64(sid))
+				adjSids = append(adjSids, map[string]any{"adjSid": float64(sid)})
 			}
 			neighbors = append(neighbors, map[string]any{
 				"systemId":     n.systemID,
@@ -189,9 +189,9 @@ func createTestISISDump(t *testing.T, devices []struct {
 			"hostname": map[string]any{
 				"name": device.hostname,
 			},
-			"routerCapabilities": map[string]any{
+			"routerCapabilities": []any{map[string]any{
 				"routerId": device.routerID,
-			},
+			}},
 			"neighbors": neighbors,
 		}
 	}

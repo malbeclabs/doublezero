@@ -39,7 +39,7 @@ import { ValidatorDetailPage } from '@/components/validator-detail-page'
 import { GossipNodeDetailPage } from '@/components/gossip-node-detail-page'
 import { HelpPage } from '@/components/help-page'
 import { generateSessionTitle, generateChatSessionTitle, sendChatMessageStream, recommendVisualization, fetchCatalog, acquireSessionLock, releaseSessionLock, getSessionLock, watchSessionLock, getSession, generateMessageId, getRunningWorkflowForSession, reconnectToWorkflow, type SessionQueryInfo, type SessionLock } from '@/lib/api'
-import type { TableInfo, QueryResponse, HistoryMessage, ChatMessage } from '@/lib/api'
+import type { TableInfo, QueryResponse, HistoryMessage, ChatMessage, QueryMode } from '@/lib/api'
 import {
   type QuerySession,
   type ChatSession,
@@ -339,6 +339,10 @@ function QueryEditorView() {
     queryFn: fetchCatalog,
   })
 
+  // Query mode state
+  const [mode, setMode] = useState<QueryMode>('sql')
+  const [activeMode, setActiveMode] = useState<'sql' | 'cypher'>('sql')
+
   // Visualization recommendation state
   const [isRecommending, setIsRecommending] = useState(false)
   const [recommendedConfig, setRecommendedConfig] = useState<{
@@ -529,6 +533,10 @@ function QueryEditorView() {
             onClear={handleClear}
             onManualRun={handleManualRun}
             schema={catalogData?.tables}
+            mode={mode}
+            onModeChange={setMode}
+            activeMode={activeMode}
+            onActiveModeChange={setActiveMode}
           />
           <ResultsView
             results={results}

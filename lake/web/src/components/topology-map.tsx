@@ -325,7 +325,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
   const markerClickedRef = useRef(false)
 
   // Get unified topology context
-  const { mode, setMode, overlays, toggleOverlay, panel, openPanel, closePanel } = useTopology()
+  const { mode, setMode, pathMode, setPathMode, overlays, toggleOverlay, panel, openPanel, closePanel } = useTopology()
 
   // Derive mode states from context
   const pathModeEnabled = mode === 'path'
@@ -779,7 +779,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       .finally(() => {
         setPathLoading(false)
       })
-  }, [pathModeEnabled, pathSource, pathTarget])
+  }, [pathModeEnabled, pathSource, pathTarget, pathMode])
 
   // Clear path when exiting path mode
   useEffect(() => {
@@ -2061,9 +2061,9 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
               pathTarget={pathTarget}
               pathsResult={pathsResult}
               pathLoading={pathLoading}
-              pathMode="hops"
+              pathMode={pathMode}
               selectedPathIndex={selectedPathIndex}
-              onPathModeChange={() => {}}
+              onPathModeChange={setPathMode}
               onSelectPath={setSelectedPathIndex}
               onClearPath={clearPath}
             />

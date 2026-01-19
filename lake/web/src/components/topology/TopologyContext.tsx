@@ -92,12 +92,12 @@ const DEFAULT_PANEL_WIDTH = 320
 function parseOverlaysFromUrl(param: string | null, view: 'map' | 'graph'): OverlayState {
   const defaultState: OverlayState = {
     validators: false,
-    deviceType: true,               // Default on for both views
+    deviceType: true,               // Default device overlay
     stake: false,
     metroClustering: false,
     contributorDevices: false,
-    linkType: true,                 // Default on for both views
-    bandwidth: true,                // Default on for both views
+    linkType: true,                 // Default link overlay
+    bandwidth: false,
     linkHealth: false,
     trafficFlow: false,
     contributorLinks: false,
@@ -221,46 +221,31 @@ export function TopologyProvider({ children, view }: TopologyProviderProps) {
     localStorage.setItem('topology-panel-width', String(clampedWidth))
   }, [])
 
-  // Overlay groups - overlays in the same group are mutually exclusive
-  // Device overlays: deviceType, stake, metroClustering, contributorDevices (mutually exclusive)
-  // Link color overlays: linkType, linkHealth, trafficFlow, contributorLinks, criticality (mutually exclusive)
-  // isisHealth: affects both color AND thickness, so exclusive with color overlays AND bandwidth
-  // bandwidth: affects thickness only, can combine with color overlays, but not isisHealth
-  // Independent: validators
+  // Device overlays (mutually exclusive within group)
   const deviceOverlays: (keyof OverlayState)[] = ['deviceType', 'stake', 'metroClustering', 'contributorDevices']
-  const linkColorOverlays: (keyof OverlayState)[] = ['linkType', 'linkHealth', 'trafficFlow', 'contributorLinks', 'criticality']
-  const overlayGroups: Record<keyof OverlayState, (keyof OverlayState)[]> = {
-    // Device overlays (mutually exclusive)
-    deviceType: deviceOverlays.filter(o => o !== 'deviceType'),
-    stake: deviceOverlays.filter(o => o !== 'stake'),
-    metroClustering: deviceOverlays.filter(o => o !== 'metroClustering'),
-    contributorDevices: deviceOverlays.filter(o => o !== 'contributorDevices'),
-    // Link type: conflicts with other link color overlays and isisHealth
-    linkType: [...linkColorOverlays.filter(o => o !== 'linkType'), 'isisHealth'],
-    // Bandwidth: only conflicts with isisHealth (both affect thickness)
-    bandwidth: ['isisHealth'],
-    // Link color overlays: conflict with each other, linkType, and isisHealth
-    linkHealth: [...linkColorOverlays.filter(o => o !== 'linkHealth'), 'isisHealth'],
-    trafficFlow: [...linkColorOverlays.filter(o => o !== 'trafficFlow'), 'isisHealth'],
-    contributorLinks: [...linkColorOverlays.filter(o => o !== 'contributorLinks'), 'isisHealth'],
-    criticality: [...linkColorOverlays.filter(o => o !== 'criticality'), 'isisHealth'],
-    // isisHealth: conflicts with all link color overlays AND bandwidth (affects both color and thickness)
-    isisHealth: [...linkColorOverlays, 'bandwidth'],
-    // Independent
-    validators: [],
-  }
+  // Link overlays (mutually exclusive within group)
+  const linkOverlays: (keyof OverlayState)[] = ['linkType', 'bandwidth', 'linkHealth', 'trafficFlow', 'contributorLinks', 'criticality', 'isisHealth']
 
-  // Overlay toggle - also updates URL and handles mutual exclusion
+  // Overlay toggle - one device overlay + one link overlay allowed (validators independent)
   const toggleOverlay = useCallback((overlay: keyof OverlayState) => {
     setOverlays(prev => {
       const newValue = !prev[overlay]
       const newState = { ...prev, [overlay]: newValue }
 
-      // If turning on, turn off conflicting overlays in the same group
+      // If turning on, turn off other overlays in the same group
       if (newValue) {
-        for (const conflicting of overlayGroups[overlay]) {
-          newState[conflicting] = false
+        if (deviceOverlays.includes(overlay)) {
+          // Turn off other device overlays
+          for (const other of deviceOverlays) {
+            if (other !== overlay) newState[other] = false
+          }
+        } else if (linkOverlays.includes(overlay)) {
+          // Turn off other link overlays
+          for (const other of linkOverlays) {
+            if (other !== overlay) newState[other] = false
+          }
         }
+        // validators is independent, no conflicts
       }
 
       // Update URL params

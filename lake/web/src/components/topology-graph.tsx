@@ -970,8 +970,8 @@ export function TopologyGraph({
     prevModeRef.current = mode
   }, [mode, selectedDevicePK])
 
-  // Apply health status styles when ISIS health overlay is enabled (using direct .style() for reliability)
-  // Combined: color by health status, thickness by metric (unless bandwidth overlay controls width)
+  // Apply health status styles when ISIS health overlay is enabled
+  // Color by health status, thickness by ISIS metric
   useEffect(() => {
     if (!cyRef.current || !isisHealthEnabled) return
     const cy = cyRef.current
@@ -993,28 +993,28 @@ export function TopologyGraph({
         const edgeId = edge.data('id') // format: source->target
         const status = edgeHealthStatus.get(edgeId)
         const metric = edge.data('metric') ?? 0
-        const width = bandwidthEnabled ? undefined : getMetricWidth(metric)
+        const width = getMetricWidth(metric)
 
         if (status === 'missing') {
           edge.style({
             'line-color': '#ef4444',
             'target-arrow-color': '#ef4444',
             'line-style': 'dashed',
-            ...(width !== undefined && { 'width': width }),
+            'width': width,
             'opacity': 1,
           })
         } else if (status === 'extra') {
           edge.style({
             'line-color': '#f59e0b',
             'target-arrow-color': '#f59e0b',
-            ...(width !== undefined && { 'width': width }),
+            'width': width,
             'opacity': 1,
           })
         } else if (status === 'mismatch') {
           edge.style({
             'line-color': '#eab308',
             'target-arrow-color': '#eab308',
-            ...(width !== undefined && { 'width': width }),
+            'width': width,
             'opacity': 1,
           })
         } else {
@@ -1022,16 +1022,15 @@ export function TopologyGraph({
           edge.style({
             'line-color': '#22c55e',
             'target-arrow-color': '#22c55e',
-            ...(width !== undefined && { 'width': width }),
+            'width': width,
             'opacity': 0.8,
           })
         }
       })
     })
-  }, [isisHealthEnabled, compareData, edgeHealthStatus, cyGeneration, bandwidthEnabled])
+  }, [isisHealthEnabled, compareData, edgeHealthStatus, cyGeneration])
 
-  // Apply criticality styles when criticality overlay is enabled (using direct .style() for reliability)
-  // Width is only set if bandwidth overlay is not active
+  // Apply criticality styles when criticality overlay is enabled
   useEffect(() => {
     if (!cyRef.current || !criticalityEnabled) return
     const cy = cyRef.current
@@ -1048,14 +1047,14 @@ export function TopologyGraph({
           edge.style({
             'line-color': '#ef4444',
             'target-arrow-color': '#ef4444',
-            ...(!bandwidthEnabled && { 'width': 4 }),
+            'width': 4,
             'opacity': 1,
           })
         } else if (crit === 'important') {
           edge.style({
             'line-color': '#f59e0b',
             'target-arrow-color': '#f59e0b',
-            ...(!bandwidthEnabled && { 'width': 3 }),
+            'width': 3,
             'opacity': 0.9,
           })
         } else {
@@ -1063,54 +1062,41 @@ export function TopologyGraph({
           edge.style({
             'line-color': isDark ? '#4b5563' : '#9ca3af',
             'target-arrow-color': isDark ? '#4b5563' : '#9ca3af',
-            ...(!bandwidthEnabled && { 'width': 1 }),
+            'width': 1,
             'opacity': 0.4,
           })
         }
       })
     })
-  }, [criticalityEnabled, criticalLinksData, edgeCriticality, isDark, cyGeneration, bandwidthEnabled])
+  }, [criticalityEnabled, criticalLinksData, edgeCriticality, isDark, cyGeneration])
 
   // Apply stake overlay styling when enabled
   useEffect(() => {
-    if (!cyRef.current) return
+    if (!cyRef.current || !stakeOverlayEnabled) return
     const cy = cyRef.current
 
     cy.batch(() => {
-      if (stakeOverlayEnabled && deviceStakeMap.size > 0) {
-        // Apply stake-based sizing and coloring
-        cy.nodes().forEach(node => {
-          const devicePK = node.data('id')
-          const stakeInfo = deviceStakeMap.get(devicePK)
-          if (stakeInfo) {
-            const size = getStakeNodeSize(stakeInfo.stakeSol)
-            node.style({
-              'width': size,
-              'height': size,
-              'background-color': getStakeColor(stakeInfo.stakeShare),
-            })
-          } else {
-            // No stake data - use gray and small size
-            node.style({
-              'width': 16,
-              'height': 16,
-              'background-color': isDark ? '#6b7280' : '#9ca3af',
-            })
-          }
-        })
-      } else {
-        // Revert to default degree-based sizing and neutral color
-        cy.nodes().forEach(node => {
-          const degree = node.data('degree')
+      cy.nodes().forEach(node => {
+        const devicePK = node.data('id')
+        const stakeInfo = deviceStakeMap.get(devicePK)
+        if (stakeInfo) {
+          const size = getStakeNodeSize(stakeInfo.stakeSol)
           node.style({
-            'width': getNodeSize(degree),
-            'height': getNodeSize(degree),
-            'background-color': deviceTypeEnabled ? getDeviceTypeColor(node.data('deviceType')) : (isDark ? '#9ca3af' : '#1f2937'),
+            'width': size,
+            'height': size,
+            'background-color': getStakeColor(stakeInfo.stakeShare),
           })
-        })
-      }
+        } else {
+          // No stake data - use gray and small size
+          node.style({
+            'width': 16,
+            'height': 16,
+            'background-color': isDark ? '#6b7280' : '#9ca3af',
+          })
+        }
+      })
     })
-  }, [stakeOverlayEnabled, deviceStakeMap, getStakeNodeSize, getStakeColor, getNodeSize, getDeviceTypeColor, deviceTypeEnabled, isDark, cyGeneration])
+  }, [stakeOverlayEnabled, deviceStakeMap, getStakeNodeSize, getStakeColor, isDark, cyGeneration])
 
   // Apply link health overlay styling when enabled
   useEffect(() => {
@@ -1165,112 +1151,73 @@ export function TopologyGraph({
     }
   }, [trafficFlowEnabled, edgeTrafficMap, getTrafficLevel, cyGeneration])
 
-  // Apply metro clustering overlay styling when enabled (only if stake overlay is not active)
+  // Apply metro clustering overlay styling when enabled
   useEffect(() => {
-    if (!cyRef.current) return
+    if (!cyRef.current || !metroClusteringEnabled) return
     const cy = cyRef.current
 
-    // Skip if stake overlay is active (it takes precedence)
-    if (stakeOverlayEnabled) return
-
     cy.batch(() => {
-      if (metroClusteringEnabled && metroInfoMap.size > 0) {
-        // Apply metro-based coloring (keep degree-based sizing)
-        cy.nodes().forEach(node => {
-          const metroPK = node.data('metroPK')
-          const degree = node.data('degree')
-          node.style({
-            'width': getNodeSize(degree),
-            'height': getNodeSize(degree),
-            'background-color': getMetroColor(metroPK),
-          })
+      cy.nodes().forEach(node => {
+        const metroPK = node.data('metroPK')
+        const degree = node.data('degree')
+        node.style({
+          'width': getNodeSize(degree),
+          'height': getNodeSize(degree),
+          'background-color': getMetroColor(metroPK),
         })
-      } else {
-        // Revert to neutral color (or device type if that overlay is active)
-        cy.nodes().forEach(node => {
-          const degree = node.data('degree')
-          node.style({
-            'width': getNodeSize(degree),
-            'height': getNodeSize(degree),
-            'background-color': deviceTypeEnabled ? getDeviceTypeColor(node.data('deviceType')) : (isDark ? '#9ca3af' : '#1f2937'),
-          })
-        })
-      }
+      })
     })
-  }, [metroClusteringEnabled, metroInfoMap, getMetroColor, getNodeSize, getDeviceTypeColor, deviceTypeEnabled, stakeOverlayEnabled, isDark, cyGeneration])
+  }, [metroClusteringEnabled, metroInfoMap, getMetroColor, getNodeSize, cyGeneration])
 
-  // Update node and edge colors when contributors overlay is enabled
-  // Skip if in an analysis mode that styles edges (bandwidth is OK - it only sets width when contributors is active)
-  const isEdgeStylingMode = isisHealthEnabled || criticalityEnabled || mode === 'path' || mode === 'whatif-removal' || mode === 'whatif-addition'
-
+  // Apply contributor devices overlay (node coloring)
   useEffect(() => {
-    if (!cyRef.current) return
+    if (!cyRef.current || !contributorDevicesEnabled) return
     const cy = cyRef.current
 
     cy.batch(() => {
-      // Apply contributor-based coloring to nodes if enabled (and stake/metro not active)
-      if (contributorDevicesEnabled && contributorInfoMap.size > 0 && !stakeOverlayEnabled && !metroClusteringEnabled) {
-        cy.nodes().forEach(node => {
-          const devicePK = node.data('id')
-          const contributorPK = deviceContributorMap.get(devicePK)
-          const degree = node.data('degree')
-          node.style({
-            'width': getNodeSize(degree),
-            'height': getNodeSize(degree),
-            'background-color': getContributorColor(contributorPK),
-          })
+      cy.nodes().forEach(node => {
+        const devicePK = node.data('id')
+        const contributorPK = deviceContributorMap.get(devicePK)
+        const degree = node.data('degree')
+        node.style({
+          'width': getNodeSize(degree),
+          'height': getNodeSize(degree),
+          'background-color': getContributorColor(contributorPK),
         })
-      } else if (!stakeOverlayEnabled && !metroClusteringEnabled) {
-        // Revert to neutral color (or device type if that overlay is active)
-        cy.nodes().forEach(node => {
-          const degree = node.data('degree')
-          node.style({
-            'width': getNodeSize(degree),
-            'height': getNodeSize(degree),
-            'background-color': deviceTypeEnabled ? getDeviceTypeColor(node.data('deviceType')) : (isDark ? '#9ca3af' : '#1f2937'),
-          })
-        })
-      }
+      })
+    })
+  }, [contributorDevicesEnabled, contributorInfoMap, deviceContributorMap, getContributorColor, getNodeSize, cyGeneration])
 
-      // Skip edge styling if in an analysis mode that controls edges
-      if (isEdgeStylingMode) return
+  // Apply contributor links overlay (edge coloring)
+  // Skip if in path/whatif mode (those control edge styling)
+  const isPathMode = mode === 'path' || mode === 'whatif-removal' || mode === 'whatif-addition'
 
-      // Apply contributor-based coloring to edges if enabled (and linkHealth/traffic not active)
-      // Skip path edges - they have their own styling
-      if (contributorLinksEnabled && contributorInfoMap.size > 0 && !linkHealthOverlayEnabled && !trafficFlowEnabled) {
-        cy.edges().not('.path-edge').forEach(edge => {
-          const edgeId = edge.data('id')
-          const contributorPK = edgeContributorMap.get(edgeId)
-          if (contributorPK) {
-            edge.style({
-              'line-color': getContributorColor(contributorPK),
-              'target-arrow-color': getContributorColor(contributorPK),
-              'width': 2,
-              'opacity': 0.8,
-            })
-          } else {
-            // No contributor - dim the edge
-            edge.style({
-              'line-color': isDark ? '#6b7280' : '#9ca3af',
-              'target-arrow-color': isDark ? '#6b7280' : '#9ca3af',
-              'opacity': 0.3,
-            })
-          }
-        })
-      } else if (!linkHealthOverlayEnabled && !trafficFlowEnabled) {
-        // Revert to neutral grey (or link type colors if that overlay is active)
-        // Skip path edges - they have their own styling
-        const defaultColor = isDark ? '#4b5563' : '#9ca3af'
-        cy.edges().not('.path-edge').forEach(edge => {
+  useEffect(() => {
+    if (!cyRef.current || !contributorLinksEnabled || isPathMode) return
+    const cy = cyRef.current
+
+    cy.batch(() => {
+      cy.edges().not('.path-edge').forEach(edge => {
+        const edgeId = edge.data('id')
+        const contributorPK = edgeContributorMap.get(edgeId)
+        if (contributorPK) {
           edge.style({
-            'line-color': defaultColor,
-            'target-arrow-color': defaultColor,
-            'opacity': 0.7,
+            'line-color': getContributorColor(contributorPK),
+            'target-arrow-color': getContributorColor(contributorPK),
+            'width': 2,
+            'opacity': 0.8,
           })
-        })
-      }
+        } else {
+          // No contributor - dim the edge
+          edge.style({
+            'line-color': isDark ? '#6b7280' : '#9ca3af',
+            'target-arrow-color': isDark ? '#6b7280' : '#9ca3af',
+            'opacity': 0.3,
+          })
+        }
+      })
     })
-  }, [contributorDevicesEnabled, contributorLinksEnabled, contributorInfoMap, deviceContributorMap, edgeContributorMap, getContributorColor, getNodeSize, getDeviceTypeColor, deviceTypeEnabled, stakeOverlayEnabled, metroClusteringEnabled, linkHealthOverlayEnabled, trafficFlowEnabled, isDark, isEdgeStylingMode, cyGeneration])
+  }, [contributorLinksEnabled, contributorInfoMap, edgeContributorMap, getContributorColor, isDark, isPathMode, cyGeneration])
 
   // Apply bandwidth edge styling - only sets width, never color
   useEffect(() => {
@@ -1337,49 +1284,54 @@ export function TopologyGraph({
 
   // Apply device type node styling when enabled
   useEffect(() => {
-    if (!cyRef.current) return
+    if (!cyRef.current || !deviceTypeEnabled) return
     const cy = cyRef.current
 
     cy.batch(() => {
-      if (deviceTypeEnabled) {
-        // Apply device type colors
-        cy.nodes().forEach(node => {
-          const deviceType = node.data('deviceType')
-          node.style({
-            'background-color': getDeviceTypeColor(deviceType),
-          })
-        })
-      } else {
-        // Reset to neutral colors (unless another overlay is active)
-        if (!stakeOverlayEnabled && !metroClusteringEnabled && !contributorDevicesEnabled) {
-          cy.nodes().forEach(node => {
-            node.style({
-              'background-color': isDark ? '#9ca3af' : '#1f2937',
-            })
-          })
-        }
-      }
-    })
-  }, [deviceTypeEnabled, stakeOverlayEnabled, metroClusteringEnabled, contributorDevicesEnabled, getDeviceTypeColor, isDark, cyGeneration])
-
-  // Reset link colors when link type overlay is disabled (skip path edges - they have their own styling)
-  useEffect(() => {
-    if (!cyRef.current || linkTypeEnabled) return
-    const cy = cyRef.current
-
-    // Reset to neutral grey (unless another link overlay is active)
-    if (!linkHealthOverlayEnabled && !trafficFlowEnabled && !bandwidthEnabled && !contributorLinksEnabled && !isisHealthEnabled && !criticalityEnabled) {
-      cy.batch(() => {
-        cy.edges().not('.path-edge').forEach(edge => {
-          edge.style({
-            'line-color': isDark ? '#4b5563' : '#9ca3af',
-            'target-arrow-color': isDark ? '#4b5563' : '#9ca3af',
-            'opacity': 0.7,
-          })
+      cy.nodes().forEach(node => {
+        const deviceType = node.data('deviceType')
+        node.style({
+          'background-color': getDeviceTypeColor(deviceType),
         })
       })
-    }
-  }, [linkTypeEnabled, linkHealthOverlayEnabled, trafficFlowEnabled, bandwidthEnabled, contributorLinksEnabled, isisHealthEnabled, criticalityEnabled, isDark, cyGeneration])
+    })
+  }, [deviceTypeEnabled, getDeviceTypeColor, cyGeneration])
+
+  // Default node styling when no device overlay is active
+  const noDeviceOverlay = !deviceTypeEnabled && !stakeOverlayEnabled && !metroClusteringEnabled && !contributorDevicesEnabled
+  useEffect(() => {
+    if (!cyRef.current || !noDeviceOverlay) return
+    const cy = cyRef.current
+
+    cy.batch(() => {
+      cy.nodes().forEach(node => {
+        const degree = node.data('degree')
+        node.style({
+          'width': getNodeSize(degree),
+          'height': getNodeSize(degree),
+          'background-color': isDark ? '#9ca3af' : '#1f2937',
+        })
+      })
+    })
+  }, [noDeviceOverlay, getNodeSize, isDark, cyGeneration])
+
+  // Default link styling when no link overlay is active (skip path edges - they have their own styling)
+  const noLinkOverlay = !linkTypeEnabled && !linkHealthOverlayEnabled && !trafficFlowEnabled && !bandwidthEnabled && !contributorLinksEnabled && !isisHealthEnabled && !criticalityEnabled
+  useEffect(() => {
+    if (!cyRef.current || !noLinkOverlay || isPathMode) return
+    const cy = cyRef.current
+
+    cy.batch(() => {
+      cy.edges().not('.path-edge').forEach(edge => {
+        edge.style({
+          'line-color': isDark ? '#4b5563' : '#9ca3af',
+          'target-arrow-color': isDark ? '#4b5563' : '#9ca3af',
+          'width': 1,
+          'opacity': 0.7,
+        })
+      })
+    })
+  }, [noLinkOverlay, isDark, isPathMode, cyGeneration])
 
   // Toggle metro collapse state
   const toggleMetroCollapse = useCallback((metroPK: string) => {

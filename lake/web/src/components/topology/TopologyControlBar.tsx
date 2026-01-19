@@ -132,9 +132,6 @@ export function TopologyControlBar({
     localStorage.setItem(STORAGE_KEY, String(collapsed))
   }, [collapsed])
 
-  // Mode conflicts - certain modes can't be active together
-  const isInAnalysisMode = mode === 'path' || mode === 'whatif-removal' || mode === 'whatif-addition' || mode === 'impact'
-
   // Toggle mode helper
   const toggleMode = (targetMode: TopologyMode) => {
     if (mode === targetMode) {
@@ -316,7 +313,6 @@ export function TopologyControlBar({
             onClick={() => handleToggleOverlay('deviceType')}
             active={overlays.deviceType}
             activeColor="blue"
-            disabled={isInAnalysisMode}
             collapsed={collapsed}
           />
 
@@ -327,7 +323,6 @@ export function TopologyControlBar({
             onClick={() => handleToggleOverlay('metroClustering')}
             active={overlays.metroClustering}
             activeColor="blue"
-            disabled={isInAnalysisMode}
             collapsed={collapsed}
           />
 
@@ -337,7 +332,6 @@ export function TopologyControlBar({
             onClick={() => handleToggleOverlay('contributorDevices')}
             active={overlays.contributorDevices}
             activeColor="purple"
-            disabled={isInAnalysisMode}
             collapsed={collapsed}
           />
 
@@ -348,7 +342,6 @@ export function TopologyControlBar({
               onClick={() => handleToggleOverlay('validators')}
               active={overlays.validators}
               activeColor="purple"
-              disabled={isInAnalysisMode}
               collapsed={collapsed}
             />
           )}
@@ -360,7 +353,6 @@ export function TopologyControlBar({
             onClick={() => handleToggleOverlay('stake')}
             active={overlays.stake}
             activeColor="yellow"
-            disabled={isInAnalysisMode}
             collapsed={collapsed}
           />
 
@@ -374,7 +366,6 @@ export function TopologyControlBar({
             onClick={() => handleToggleOverlay('linkType')}
             active={overlays.linkType}
             activeColor="blue"
-            disabled={isInAnalysisMode}
             collapsed={collapsed}
           />
 
@@ -385,7 +376,6 @@ export function TopologyControlBar({
             onClick={() => handleToggleOverlay('bandwidth')}
             active={overlays.bandwidth}
             activeColor="blue"
-            disabled={isInAnalysisMode}
             collapsed={collapsed}
           />
 
@@ -395,7 +385,6 @@ export function TopologyControlBar({
             onClick={() => handleToggleOverlay('isisHealth')}
             active={overlays.isisHealth}
             activeColor="green"
-            disabled={isInAnalysisMode}
             collapsed={collapsed}
           />
 
@@ -406,7 +395,6 @@ export function TopologyControlBar({
             onClick={() => handleToggleOverlay('linkHealth')}
             active={overlays.linkHealth}
             activeColor="green"
-            disabled={isInAnalysisMode}
             collapsed={collapsed}
           />
 
@@ -417,7 +405,6 @@ export function TopologyControlBar({
             onClick={() => handleToggleOverlay('trafficFlow')}
             active={overlays.trafficFlow}
             activeColor="cyan"
-            disabled={isInAnalysisMode}
             collapsed={collapsed}
           />
 
@@ -427,7 +414,6 @@ export function TopologyControlBar({
             onClick={() => handleToggleOverlay('contributorLinks')}
             active={overlays.contributorLinks}
             activeColor="purple"
-            disabled={isInAnalysisMode}
             collapsed={collapsed}
           />
 
@@ -438,7 +424,6 @@ export function TopologyControlBar({
             onClick={() => handleToggleOverlay('criticality')}
             active={overlays.criticality}
             activeColor="red"
-            disabled={isInAnalysisMode}
             collapsed={collapsed}
           />
         </div>

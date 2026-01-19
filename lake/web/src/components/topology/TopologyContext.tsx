@@ -28,12 +28,15 @@ export interface PanelState {
 
 // Overlay toggles (visualization modes)
 export interface OverlayState {
-  validators: boolean       // Show validator markers (map only)
-  stake: boolean           // Stake distribution overlay
-  linkHealth: boolean      // Link health/SLA overlay
-  trafficFlow: boolean     // Traffic flow visualization
-  metroClustering: boolean // Color by metro
-  contributors: boolean    // Color by contributor
+  validators: boolean          // Show validator markers (map only)
+  // Device overlays (mutually exclusive)
+  stake: boolean               // Stake distribution overlay (devices)
+  metroClustering: boolean     // Color devices by metro
+  contributorDevices: boolean  // Color devices by contributor
+  // Link overlays (mutually exclusive)
+  linkHealth: boolean          // Link health/SLA overlay
+  trafficFlow: boolean         // Traffic flow visualization
+  contributorLinks: boolean    // Color links by contributor
 }
 
 // Context value type
@@ -78,10 +81,11 @@ function parseOverlaysFromUrl(param: string | null): OverlayState {
   const defaultState: OverlayState = {
     validators: false,
     stake: false,
+    metroClustering: false,
+    contributorDevices: false,
     linkHealth: false,
     trafficFlow: false,
-    metroClustering: false,
-    contributors: false,
+    contributorLinks: false,
   }
   if (!param) return defaultState
 
@@ -180,15 +184,19 @@ export function TopologyProvider({ children, view }: TopologyProviderProps) {
   }, [])
 
   // Overlay groups - overlays in the same group are mutually exclusive
-  // Node color overlays: stake, metroClustering, contributors
-  // Edge color overlays: linkHealth, trafficFlow
+  // Device overlays: stake, metroClustering, contributorDevices
+  // Link overlays: linkHealth, trafficFlow, contributorLinks
   // Independent: validators
   const overlayGroups: Record<keyof OverlayState, (keyof OverlayState)[]> = {
-    stake: ['metroClustering', 'contributors'],
-    metroClustering: ['stake', 'contributors'],
-    contributors: ['stake', 'metroClustering'],
-    linkHealth: ['trafficFlow'],
-    trafficFlow: ['linkHealth'],
+    // Device overlays (mutually exclusive)
+    stake: ['metroClustering', 'contributorDevices'],
+    metroClustering: ['stake', 'contributorDevices'],
+    contributorDevices: ['stake', 'metroClustering'],
+    // Link overlays (mutually exclusive)
+    linkHealth: ['trafficFlow', 'contributorLinks'],
+    trafficFlow: ['linkHealth', 'contributorLinks'],
+    contributorLinks: ['linkHealth', 'trafficFlow'],
+    // Independent
     validators: [],
   }
 

@@ -1,5 +1,4 @@
-import { Building2, X } from 'lucide-react'
-import { useTopology } from '../TopologyContext'
+import { Building2 } from 'lucide-react'
 
 interface ContributorInfo {
   code: string
@@ -25,8 +24,6 @@ export function ContributorsOverlayPanel({
   totalLinkCount,
   isLoading,
 }: ContributorsOverlayPanelProps) {
-  const { toggleOverlay } = useTopology()
-
   // Sort contributors by device count descending
   const sortedContributors = Array.from(contributorInfoMap.entries())
     .map(([pk, info]) => ({
@@ -40,18 +37,9 @@ export function ContributorsOverlayPanel({
 
   return (
     <div className="p-3 text-xs">
-      <div className="flex items-center justify-between mb-2">
-        <span className="font-medium flex items-center gap-1.5">
-          <Building2 className="h-3.5 w-3.5 text-purple-500" />
-          Contributors
-        </span>
-        <button
-          onClick={() => toggleOverlay('contributors')}
-          className="p-1 hover:bg-[var(--muted)] rounded"
-          title="Close"
-        >
-          <X className="h-3 w-3" />
-        </button>
+      <div className="flex items-center gap-1.5 mb-2">
+        <Building2 className="h-3.5 w-3.5 text-purple-500" />
+        <span className="font-medium">Contributors</span>
       </div>
 
       {isLoading && (
@@ -118,10 +106,6 @@ export function ContributorsOverlayPanel({
             </div>
           </div>
 
-          {/* Keyboard shortcut hint */}
-          <div className="pt-2 border-t border-[var(--border)] text-muted-foreground">
-            Press <kbd className="px-1 py-0.5 bg-[var(--muted)] rounded text-[10px]">o</kbd> to toggle
-          </div>
         </div>
       )}
 

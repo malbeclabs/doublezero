@@ -55,7 +55,7 @@ export function WhatIfRemovalPanel({ removalLink, result, isLoading, onClear }: 
               <div className="text-red-500 font-medium">
                 {result.disconnectedCount} device{result.disconnectedCount !== 1 ? 's' : ''} would become unreachable
               </div>
-              <div className="space-y-0.5 max-h-24 overflow-y-auto">
+              <div className="space-y-0.5">
                 {result.disconnectedDevices.slice(0, 5).map(device => (
                   <div key={device.pk} className="flex items-center gap-1.5 text-red-400">
                     <div className="w-2 h-2 rounded-full bg-red-500" />
@@ -75,7 +75,7 @@ export function WhatIfRemovalPanel({ removalLink, result, isLoading, onClear }: 
               <div className="text-amber-500 font-medium">
                 {result.affectedPathCount} path{result.affectedPathCount !== 1 ? 's' : ''} affected
               </div>
-              <div className="space-y-1 max-h-32 overflow-y-auto">
+              <div className="space-y-1">
                 {result.affectedPaths.slice(0, 5).map((path, i) => (
                   <div key={i} className="text-muted-foreground">
                     <span className="text-foreground">{path.fromCode}</span> → <span className="text-foreground">{path.toCode}</span>

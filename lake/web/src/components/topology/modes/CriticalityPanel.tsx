@@ -53,7 +53,7 @@ export function CriticalityPanel({ data, isLoading }: CriticalityPanelProps) {
                 <AlertTriangle className="h-3.5 w-3.5 text-red-500" />
                 <span className="font-medium text-red-500">Single Points of Failure</span>
               </div>
-              <div className="space-y-1 max-h-24 overflow-y-auto">
+              <div className="space-y-1">
                 {data.links.filter(l => l.criticality === 'critical').slice(0, 5).map((link, i) => (
                   <div key={i} className="text-red-400 truncate">
                     {link.sourceCode} — {link.targetCode}

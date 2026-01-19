@@ -89,7 +89,7 @@ export function WhatIfAdditionPanel({
                 <Shield className="h-3 w-3" />
                 {result.redundancyCount} device{result.redundancyCount !== 1 ? 's' : ''} would gain redundancy
               </div>
-              <div className="space-y-0.5 max-h-16 overflow-y-auto">
+              <div className="space-y-0.5">
                 {result.redundancyGains.map(gain => (
                   <div key={gain.devicePK} className="flex items-center gap-1.5 text-cyan-400">
                     <div className="w-2 h-2 rounded-full bg-cyan-500" />
@@ -107,7 +107,7 @@ export function WhatIfAdditionPanel({
               <div className="text-green-500 font-medium">
                 {result.improvedPathCount} path{result.improvedPathCount !== 1 ? 's' : ''} would improve
               </div>
-              <div className="space-y-1 max-h-32 overflow-y-auto">
+              <div className="space-y-1">
                 {result.improvedPaths.slice(0, 5).map((path, i) => (
                   <div key={i} className="text-muted-foreground">
                     <span className="text-foreground">{path.fromCode}</span> → <span className="text-foreground">{path.toCode}</span>

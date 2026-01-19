@@ -374,11 +374,11 @@ export function TopologyControlBar({
           />
 
           <NavItem
-            icon={<Route className="h-3.5 w-3.5" />}
-            label="ISIS metric"
-            onClick={() => handleToggleOverlay('isisMetric')}
-            active={overlays.isisMetric}
-            activeColor="blue"
+            icon={<GitCompare className="h-3.5 w-3.5" />}
+            label="ISIS"
+            onClick={() => handleToggleOverlay('isisHealth')}
+            active={overlays.isisHealth}
+            activeColor="green"
             disabled={isInAnalysisMode}
             collapsed={collapsed}
           />
@@ -425,18 +425,6 @@ export function TopologyControlBar({
             disabled={isInAnalysisMode}
             collapsed={collapsed}
           />
-
-          {view === 'graph' && (
-            <NavItem
-              icon={<GitCompare className="h-3.5 w-3.5" />}
-              label="ISIS health"
-              onClick={() => handleToggleOverlay('isisHealth')}
-              active={overlays.isisHealth}
-              activeColor="blue"
-              disabled={isInAnalysisMode}
-              collapsed={collapsed}
-            />
-          )}
         </div>
       </div>
     </div>

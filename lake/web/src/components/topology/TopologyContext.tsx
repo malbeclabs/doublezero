@@ -34,14 +34,14 @@ export interface OverlayState {
   stake: boolean               // Stake distribution overlay (devices)
   metroClustering: boolean     // Color devices by metro
   contributorDevices: boolean  // Color devices by contributor
-  // Link overlays (mutually exclusive)
-  bandwidth: boolean           // Link bandwidth/capacity visualization
-  isisMetric: boolean          // ISIS metric/latency visualization
+  // Link thickness overlay (can combine with color overlays)
+  bandwidth: boolean           // Link bandwidth/capacity - affects thickness only
+  // Link color overlays (mutually exclusive with each other)
   linkHealth: boolean          // Link health/SLA overlay
   trafficFlow: boolean         // Traffic flow visualization
   contributorLinks: boolean    // Color links by contributor
   criticality: boolean         // Link criticality analysis
-  isisHealth: boolean          // ISIS health comparison (graph only)
+  isisHealth: boolean          // ISIS overlay - color by health, thickness by metric
 }
 
 // Context value type
@@ -94,12 +94,11 @@ function parseOverlaysFromUrl(param: string | null, view: 'map' | 'graph'): Over
     metroClustering: false,
     contributorDevices: false,
     bandwidth: view === 'map',      // Default on for map view
-    isisMetric: view === 'graph',   // Default on for graph view
     linkHealth: false,
     trafficFlow: false,
     contributorLinks: false,
     criticality: false,
-    isisHealth: false,
+    isisHealth: view === 'graph',   // Default on for graph view (combines metric + health)
   }
   if (!param) return defaultState
 
@@ -110,7 +109,6 @@ function parseOverlaysFromUrl(param: string | null, view: 'map' | 'graph'): Over
     metroClustering: false,
     contributorDevices: false,
     bandwidth: false,
-    isisMetric: false,
     linkHealth: false,
     trafficFlow: false,
     contributorLinks: false,
@@ -215,23 +213,26 @@ export function TopologyProvider({ children, view }: TopologyProviderProps) {
   }, [])
 
   // Overlay groups - overlays in the same group are mutually exclusive
-  // Device overlays: stake, metroClustering, contributorDevices
-  // Link overlays: bandwidth, isisMetric, linkHealth, trafficFlow, contributorLinks, criticality, isisHealth
+  // Device overlays: stake, metroClustering, contributorDevices (mutually exclusive)
+  // Link color overlays: linkHealth, trafficFlow, contributorLinks, criticality (mutually exclusive)
+  // isisHealth: affects both color AND thickness, so exclusive with color overlays AND bandwidth
+  // bandwidth: affects thickness only, can combine with color overlays, but not isisHealth
   // Independent: validators
-  const linkOverlays: (keyof OverlayState)[] = ['bandwidth', 'isisMetric', 'linkHealth', 'trafficFlow', 'contributorLinks', 'criticality', 'isisHealth']
+  const linkColorOverlays: (keyof OverlayState)[] = ['linkHealth', 'trafficFlow', 'contributorLinks', 'criticality']
   const overlayGroups: Record<keyof OverlayState, (keyof OverlayState)[]> = {
     // Device overlays (mutually exclusive)
     stake: ['metroClustering', 'contributorDevices'],
     metroClustering: ['stake', 'contributorDevices'],
     contributorDevices: ['stake', 'metroClustering'],
-    // Link overlays (mutually exclusive) - each excludes all others
-    bandwidth: linkOverlays.filter(o => o !== 'bandwidth'),
-    isisMetric: linkOverlays.filter(o => o !== 'isisMetric'),
-    linkHealth: linkOverlays.filter(o => o !== 'linkHealth'),
-    trafficFlow: linkOverlays.filter(o => o !== 'trafficFlow'),
-    contributorLinks: linkOverlays.filter(o => o !== 'contributorLinks'),
-    criticality: linkOverlays.filter(o => o !== 'criticality'),
-    isisHealth: linkOverlays.filter(o => o !== 'isisHealth'),
+    // Bandwidth: only conflicts with isisHealth (both affect thickness)
+    bandwidth: ['isisHealth'],
+    // Link color overlays: conflict with each other and isisHealth
+    linkHealth: [...linkColorOverlays.filter(o => o !== 'linkHealth'), 'isisHealth'],
+    trafficFlow: [...linkColorOverlays.filter(o => o !== 'trafficFlow'), 'isisHealth'],
+    contributorLinks: [...linkColorOverlays.filter(o => o !== 'contributorLinks'), 'isisHealth'],
+    criticality: [...linkColorOverlays.filter(o => o !== 'criticality'), 'isisHealth'],
+    // isisHealth: conflicts with all color overlays AND bandwidth (affects both color and thickness)
+    isisHealth: [...linkColorOverlays, 'bandwidth'],
     // Independent
     validators: [],
   }

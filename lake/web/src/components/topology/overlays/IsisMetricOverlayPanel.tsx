@@ -9,10 +9,10 @@ export function IsisMetricOverlayPanel() {
       <div className="flex items-center justify-between mb-2">
         <span className="font-medium flex items-center gap-1.5">
           <Route className="h-3.5 w-3.5 text-green-500" />
-          ISIS Metric / Latency
+          ISIS
         </span>
         <button
-          onClick={() => toggleOverlay('isisMetric')}
+          onClick={() => toggleOverlay('isisHealth')}
           className="p-1 hover:bg-[var(--muted)] rounded"
           title="Close"
         >
@@ -21,7 +21,7 @@ export function IsisMetricOverlayPanel() {
       </div>
 
       <div className="text-muted-foreground mb-3">
-        Links colored by ISIS metric (latency). Lower values indicate better paths.
+        Link color shows health status, thickness shows ISIS metric (latency). Lower metric values indicate better paths.
       </div>
 
       {/* Legend */}

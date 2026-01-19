@@ -84,19 +84,14 @@ function calculateLinkWeight(bps: number): number {
   return weight
 }
 
-// Get link color based on bandwidth capacity (blue gradient)
-function getBandwidthColor(bps: number, isDark: boolean): { color: string; weight: number; opacity: number } {
+// Get link weight based on bandwidth capacity (for thickness-only mode)
+function getBandwidthWeight(bps: number): number {
   const gbps = bps / 1e9
-  if (gbps >= 100) {
-    return { color: isDark ? '#3b82f6' : '#2563eb', weight: 5, opacity: 1 } // blue-500 - 100G+
-  } else if (gbps >= 10) {
-    return { color: isDark ? '#60a5fa' : '#3b82f6', weight: 4, opacity: 0.9 } // blue-400 - 10G+
-  } else if (gbps >= 1) {
-    return { color: isDark ? '#93c5fd' : '#60a5fa', weight: 3, opacity: 0.8 } // blue-300 - 1G+
-  } else if (gbps > 0) {
-    return { color: isDark ? '#bfdbfe' : '#93c5fd', weight: 2, opacity: 0.7 } // blue-200 - <1G
-  }
-  return { color: isDark ? '#6b7280' : '#9ca3af', weight: 1, opacity: 0.5 } // gray - unknown
+  if (gbps >= 100) return 5
+  if (gbps >= 10) return 4
+  if (gbps >= 1) return 3
+  if (gbps > 0) return 2
+  return 1
 }
 
 // Get link color based on ISIS metric (lower metric = better = more prominent)
@@ -344,11 +339,10 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
   const contributorDevicesMode = overlays.contributorDevices
   const contributorLinksMode = overlays.contributorLinks
   const bandwidthMode = overlays.bandwidth
-  const isisMetricMode = overlays.isisMetric
+  const isisHealthMode = overlays.isisHealth
 
-  // Check if any "analysis" link overlay is active (these show dashed colored lines)
-  // Note: bandwidth and isisMetric are "base" overlays that show solid lines, not dashed
-  const hasLinkOverlay = linkHealthMode || trafficFlowMode || contributorLinksMode || criticalityOverlayEnabled
+  // Check if any link color overlay is active (these show colored lines)
+  const hasColorOverlay = linkHealthMode || trafficFlowMode || contributorLinksMode || criticalityOverlayEnabled || isisHealthMode
 
   // Path finding operational state (local)
   const [pathSource, setPathSource] = useState<string | null>(null)
@@ -1057,7 +1051,8 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       // Determine display color based on mode
       // Default to solid grey when no overlay is active (like graph view)
       let displayColor = isDark ? '#4b5563' : '#9ca3af'
-      let displayWeight = weight
+      // Apply bandwidth thickness first (can combine with color overlays)
+      let displayWeight = bandwidthMode ? getBandwidthWeight(link.bandwidth_bps) : weight
       let displayOpacity = 0.6
       let useDash = false
 
@@ -1068,23 +1063,23 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
         displayOpacity = 0.6
         useDash = true
       } else if (linkHealthMode) {
-        // Link health mode: color by SLA status
+        // Link health mode: color by SLA status (preserves bandwidth weight if active)
         const slaInfo = linkSlaStatus.get(link.pk)
         if (slaInfo) {
           switch (slaInfo.status) {
             case 'healthy':
               displayColor = '#22c55e' // green
-              displayWeight = weight + 1
+              if (!bandwidthMode) displayWeight = weight + 1
               displayOpacity = 0.9
               break
             case 'warning':
               displayColor = '#eab308' // yellow
-              displayWeight = weight + 1
+              if (!bandwidthMode) displayWeight = weight + 1
               displayOpacity = 1
               break
             case 'critical':
               displayColor = '#ef4444' // red
-              displayWeight = weight + 2
+              if (!bandwidthMode) displayWeight = weight + 2
               displayOpacity = 1
               break
             default:
@@ -1096,35 +1091,29 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           displayOpacity = 0.5
         }
       } else if (trafficFlowMode) {
-        // Traffic flow mode: color by utilization
+        // Traffic flow mode: color by utilization (preserves bandwidth weight if active)
         const trafficStyle = getTrafficColor(link)
         displayColor = trafficStyle.color
-        displayWeight = trafficStyle.weight
+        if (!bandwidthMode) displayWeight = trafficStyle.weight
         displayOpacity = trafficStyle.opacity
       } else if (contributorLinksMode && link.contributor_pk) {
-        // Contributor links mode: color by contributor
+        // Contributor links mode: color by contributor (preserves bandwidth weight if active)
         const contributorIndex = contributorIndexMap.get(link.contributor_pk) ?? 0
         displayColor = CONTRIBUTOR_COLORS[contributorIndex % CONTRIBUTOR_COLORS.length]
-        displayWeight = weight + 1
+        if (!bandwidthMode) displayWeight = weight + 1
         displayOpacity = 0.9
       } else if (contributorLinksMode && !link.contributor_pk) {
         // Contributor links mode but no contributor - dim the link
         displayColor = isDark ? '#6b7280' : '#9ca3af'
         displayOpacity = 0.3
       } else if (criticalityOverlayEnabled && criticality) {
-        // Criticality mode: color by criticality level
+        // Criticality mode: color by criticality level (preserves bandwidth weight if active)
         displayColor = criticalityColors[criticality]
-        displayWeight = criticality === 'critical' ? weight + 3 : criticality === 'important' ? weight + 2 : weight + 1
+        if (!bandwidthMode) displayWeight = criticality === 'critical' ? weight + 3 : criticality === 'important' ? weight + 2 : weight + 1
         displayOpacity = 1
         useDash = true
-      } else if (bandwidthMode) {
-        // Bandwidth overlay: color by link capacity
-        const bandwidthStyle = getBandwidthColor(link.bandwidth_bps, isDark)
-        displayColor = bandwidthStyle.color
-        displayWeight = bandwidthStyle.weight
-        displayOpacity = bandwidthStyle.opacity
-      } else if (isisMetricMode) {
-        // ISIS metric overlay: color by latency (using latency_us as proxy for metric)
+      } else if (isisHealthMode) {
+        // ISIS overlay: color AND thickness by metric
         const metricStyle = getIsisMetricColor(link.latency_us, isDark)
         displayColor = metricStyle.color
         displayWeight = metricStyle.weight
@@ -1207,7 +1196,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       type: 'FeatureCollection' as const,
       features,
     }
-  }, [links, devicePositions, isDark, hoveredLink, selectedItem, hoverHighlight, linkPathMap, selectedPathIndex, criticalityOverlayEnabled, linkCriticalityMap, whatifRemovalMode, removalLink, linkHealthMode, linkSlaStatus, trafficFlowMode, getTrafficColor, metroClusteringMode, collapsedMetros, deviceMap, metroMap, contributorLinksMode, contributorIndexMap, bandwidthMode, isisMetricMode])
+  }, [links, devicePositions, isDark, hoveredLink, selectedItem, hoverHighlight, linkPathMap, selectedPathIndex, criticalityOverlayEnabled, linkCriticalityMap, whatifRemovalMode, removalLink, linkHealthMode, linkSlaStatus, trafficFlowMode, getTrafficColor, metroClusteringMode, collapsedMetros, deviceMap, metroMap, contributorLinksMode, contributorIndexMap, bandwidthMode, isisHealthMode])
 
   // GeoJSON for validator links (connecting lines)
   const validatorLinksGeoJson = useMemo(() => {
@@ -1579,7 +1568,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
               'line-color': ['get', 'color'],
               'line-width': ['get', 'weight'],
               'line-opacity': ['get', 'opacity'],
-              ...(hasLinkOverlay && { 'line-dasharray': [4, 4] }),
+              ...(hasColorOverlay && { 'line-dasharray': [4, 4] }),
             }}
             layout={{
               'line-cap': 'round',
@@ -2153,7 +2142,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           {bandwidthMode && (
             <BandwidthOverlayPanel />
           )}
-          {isisMetricMode && (
+          {isisHealthMode && (
             <IsisMetricOverlayPanel />
           )}
           {linkHealthMode && (

@@ -1469,10 +1469,14 @@ export function TopologyGraph({
         {
           selector: 'edge.highlighted',
           style: {
-            'line-color': '#f59e0b',
-            'target-arrow-color': '#f59e0b',
-            'width': 3,
+            'line-color': '#3b82f6',
+            'target-arrow-color': '#3b82f6',
+            'width': 5,
             'opacity': 1,
+            'z-index': 999,
+            'overlay-color': '#3b82f6',
+            'overlay-padding': 4,
+            'overlay-opacity': 0.2,
           },
         },
         {

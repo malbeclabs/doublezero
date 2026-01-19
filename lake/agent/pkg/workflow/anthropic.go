@@ -250,9 +250,17 @@ func (c *AnthropicLLMClient) CompleteWithTools(
 			})
 		case "tool_use":
 			// Parse the input JSON
+			// Debug: log raw input from API to diagnose parsing issues
+			rawInput := string(block.Input)
+			if len(rawInput) > 500 {
+				slog.Info("DEBUG: Raw tool input from API (truncated)", "name", block.Name, "raw", rawInput[:500]+"...")
+			} else {
+				slog.Info("DEBUG: Raw tool input from API", "name", block.Name, "raw", rawInput)
+			}
+
 			var input map[string]any
 			if err := json.Unmarshal(block.Input, &input); err != nil {
-				slog.Warn("Failed to parse tool input", "error", err, "raw", string(block.Input))
+				slog.Warn("Failed to parse tool input", "error", err, "raw", rawInput)
 				input = make(map[string]any)
 			}
 

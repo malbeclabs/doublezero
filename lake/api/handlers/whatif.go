@@ -173,6 +173,7 @@ func GetSimulateLinkRemoval(w http.ResponseWriter, r *http.Request) {
 		UNWIND CASE WHEN size(tgtNeighborsData) > 0 THEN tgtNeighborsData ELSE [null] END AS tgtData
 		WITH src, tgt, linkMetric, srcData, tgtData
 		WHERE srcData IS NOT NULL AND tgtData IS NOT NULL
+		  AND srcData.device.pk <> tgtData.device.pk
 
 		WITH srcData.device AS fromDevice, tgtData.device AS toDevice,
 		     3 AS beforeHops,

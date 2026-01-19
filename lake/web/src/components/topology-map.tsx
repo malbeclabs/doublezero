@@ -341,9 +341,6 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
   const bandwidthMode = overlays.bandwidth
   const isisHealthMode = overlays.isisHealth
 
-  // Check if any link color overlay is active (these show colored lines)
-  const hasColorOverlay = linkHealthMode || trafficFlowMode || contributorLinksMode || criticalityOverlayEnabled || isisHealthMode
-
   // Path finding operational state (local)
   const [pathSource, setPathSource] = useState<string | null>(null)
   const [pathTarget, setPathTarget] = useState<string | null>(null)
@@ -1568,7 +1565,6 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
               'line-color': ['get', 'color'],
               'line-width': ['get', 'weight'],
               'line-opacity': ['get', 'opacity'],
-              ...(hasColorOverlay && { 'line-dasharray': [4, 4] }),
             }}
             layout={{
               'line-cap': 'round',

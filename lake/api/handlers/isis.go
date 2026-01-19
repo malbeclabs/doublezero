@@ -895,11 +895,18 @@ func GetISISPaths(w http.ResponseWriter, r *http.Request) {
 	var cypher string
 	if pathMode == "latency" {
 		// Latency mode: Find paths optimized for lowest total metric (latency)
-		// Uses variable-length paths and sorts by total metric to find low-latency routes
-		// even if they have more hops
+		// First find the shortest path length, then search for paths up to 2 hops longer
+		// that might have lower total metric
 		cypher = `
 			MATCH (a:Device {pk: $from_pk}), (b:Device {pk: $to_pk})
-			MATCH path = (a)-[:ISIS_ADJACENT*1..15]->(b)
+
+			// Get the minimum hop count first
+			MATCH shortestPath = shortestPath((a)-[:ISIS_ADJACENT*]->(b))
+			WITH a, b, length(shortestPath) AS minHops
+
+			// Find paths up to minHops + 2, sorted by total metric
+			MATCH path = (a)-[:ISIS_ADJACENT*]->(b)
+			WHERE length(path) <= minHops + 2
 			WITH path,
 			     reduce(cost = 0, r IN relationships(path) | cost + coalesce(r.metric, 10)) AS totalMetric,
 			     length(path) AS hopCount

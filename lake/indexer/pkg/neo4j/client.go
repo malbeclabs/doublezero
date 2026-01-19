@@ -46,6 +46,7 @@ type client struct {
 	driver   neo4j.DriverWithContext
 	database string
 	log      *slog.Logger
+	readOnly bool
 }
 
 type session struct {
@@ -63,6 +64,17 @@ type result struct {
 
 // NewClient creates a new Neo4j client.
 func NewClient(ctx context.Context, log *slog.Logger, uri, database, username, password string) (Client, error) {
+	return newClient(ctx, log, uri, database, username, password, false)
+}
+
+// NewReadOnlyClient creates a new Neo4j client that only allows read operations.
+// All sessions created from this client will use AccessModeRead, which the database
+// enforces by rejecting any write operations (CREATE, MERGE, SET, DELETE, etc.).
+func NewReadOnlyClient(ctx context.Context, log *slog.Logger, uri, database, username, password string) (Client, error) {
+	return newClient(ctx, log, uri, database, username, password, true)
+}
+
+func newClient(ctx context.Context, log *slog.Logger, uri, database, username, password string, readOnly bool) (Client, error) {
 	auth := neo4j.BasicAuth(username, password, "")
 	driver, err := neo4j.NewDriverWithContext(uri, auth)
 	if err != nil {
@@ -74,19 +86,24 @@ func NewClient(ctx context.Context, log *slog.Logger, uri, database, username, p
 		return nil, fmt.Errorf("failed to verify Neo4j connectivity: %w", err)
 	}
 
-	log.Info("Neo4j client initialized", "uri", uri, "database", database)
+	log.Info("Neo4j client initialized", "uri", uri, "database", database, "readOnly", readOnly)
 
 	return &client{
 		driver:   driver,
 		database: database,
 		log:      log,
+		readOnly: readOnly,
 	}, nil
 }
 
 func (c *client) Session(ctx context.Context) (Session, error) {
-	sess := c.driver.NewSession(ctx, neo4j.SessionConfig{
+	cfg := neo4j.SessionConfig{
 		DatabaseName: c.database,
-	})
+	}
+	if c.readOnly {
+		cfg.AccessMode = neo4j.AccessModeRead
+	}
+	sess := c.driver.NewSession(ctx, cfg)
 	return &session{sess: sess, database: c.database}, nil
 }
 

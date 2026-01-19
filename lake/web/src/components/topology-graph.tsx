@@ -178,19 +178,21 @@ export function TopologyGraph({
     refetchInterval: 60000,
   })
 
-  // Fetch topology comparison when in compare mode
+  // Fetch topology comparison when ISIS health overlay is enabled
+  const isisHealthEnabled = overlays.isisHealth
   const { data: compareData, isLoading: compareLoading } = useQuery({
     queryKey: ['topology-compare'],
     queryFn: fetchTopologyCompare,
-    enabled: mode === 'compare',
+    enabled: isisHealthEnabled,
     refetchInterval: 60000,
   })
 
-  // Fetch critical links when in criticality mode
+  // Fetch critical links when criticality overlay is enabled
+  const criticalityEnabled = overlays.criticality
   const { data: criticalLinksData, isLoading: criticalLinksLoading } = useQuery({
     queryKey: ['critical-links'],
     queryFn: fetchCriticalLinks,
-    enabled: mode === 'criticality',
+    enabled: criticalityEnabled,
     staleTime: 60000,
   })
 
@@ -662,25 +664,7 @@ export function TopologyGraph({
       setAdditionTarget(null)
       setAdditionResult(null)
       if (cyRef.current) {
-        cyRef.current.elements().removeClass('health-matched health-extra health-missing health-mismatch criticality-critical criticality-important criticality-redundant whatif-removed whatif-rerouted whatif-disconnected whatif-added whatif-addition-source whatif-addition-target whatif-improved whatif-redundancy-gained')
-      }
-    } else if (mode === 'compare') {
-      setRemovalLink(null)
-      setRemovalResult(null)
-      setAdditionSource(null)
-      setAdditionTarget(null)
-      setAdditionResult(null)
-      if (cyRef.current) {
-        cyRef.current.elements().removeClass('path-node path-edge path-source path-target criticality-critical criticality-important criticality-redundant whatif-removed whatif-rerouted whatif-disconnected whatif-added whatif-addition-source whatif-addition-target whatif-improved whatif-redundancy-gained')
-      }
-    } else if (mode === 'criticality') {
-      setRemovalLink(null)
-      setRemovalResult(null)
-      setAdditionSource(null)
-      setAdditionTarget(null)
-      setAdditionResult(null)
-      if (cyRef.current) {
-        cyRef.current.elements().removeClass('path-node path-edge path-source path-target health-matched health-extra health-missing health-mismatch whatif-removed whatif-rerouted whatif-disconnected whatif-added whatif-addition-source whatif-addition-target whatif-improved whatif-redundancy-gained')
+        cyRef.current.elements().removeClass('whatif-removed whatif-rerouted whatif-disconnected whatif-added whatif-addition-source whatif-addition-target whatif-improved whatif-redundancy-gained')
       }
     } else if (mode === 'whatif-removal') {
       // Clear other mode classes
@@ -706,9 +690,9 @@ export function TopologyGraph({
     }
   }, [mode])
 
-  // Apply health status styles in compare mode (using direct .style() for reliability)
+  // Apply health status styles when ISIS health overlay is enabled (using direct .style() for reliability)
   useEffect(() => {
-    if (!cyRef.current || mode !== 'compare') return
+    if (!cyRef.current || !isisHealthEnabled) return
     const cy = cyRef.current
 
     if (!compareData) return
@@ -751,11 +735,11 @@ export function TopologyGraph({
         }
       })
     })
-  }, [mode, compareData, edgeHealthStatus])
+  }, [isisHealthEnabled, compareData, edgeHealthStatus])
 
-  // Apply criticality styles in criticality mode (using direct .style() for reliability)
+  // Apply criticality styles when criticality overlay is enabled (using direct .style() for reliability)
   useEffect(() => {
-    if (!cyRef.current || mode !== 'criticality') return
+    if (!cyRef.current || !criticalityEnabled) return
     const cy = cyRef.current
 
     if (!criticalLinksData) return
@@ -790,7 +774,7 @@ export function TopologyGraph({
         }
       })
     })
-  }, [mode, criticalLinksData, edgeCriticality, isDark])
+  }, [criticalityEnabled, criticalLinksData, edgeCriticality, isDark])
 
   // Apply stake overlay styling when enabled
   useEffect(() => {
@@ -923,8 +907,8 @@ export function TopologyGraph({
   }, [metroClusteringEnabled, metroInfoMap, getMetroColor, getNodeSize, getDeviceTypeColor, stakeOverlayEnabled])
 
   // Update node and edge colors when contributors overlay is enabled
-  // Skip if in an analysis mode that styles edges (let those modes control edge appearance)
-  const isEdgeStylingMode = mode === 'compare' || mode === 'criticality' || mode === 'path' || mode === 'whatif-removal' || mode === 'whatif-addition'
+  // Skip if in an analysis mode that styles edges or if a link overlay is active (let those control edge appearance)
+  const isEdgeStylingMode = isisHealthEnabled || criticalityEnabled || mode === 'path' || mode === 'whatif-removal' || mode === 'whatif-addition'
 
   useEffect(() => {
     if (!cyRef.current) return
@@ -2112,7 +2096,7 @@ export function TopologyGraph({
   }, [])
 
   // Helper to toggle mode with panel state
-  const toggleMode = useCallback((targetMode: 'path' | 'compare' | 'criticality' | 'whatif-removal' | 'whatif-addition' | 'impact') => {
+  const toggleMode = useCallback((targetMode: 'path' | 'whatif-removal' | 'whatif-addition' | 'impact') => {
     if (mode === targetMode) {
       // Switching off - go back to explore
       setMode('explore')
@@ -2156,9 +2140,9 @@ export function TopologyGraph({
           }
           break
         case 'c':
-          // Toggle compare mode
+          // Toggle criticality overlay
           if (!e.metaKey && !e.ctrlKey) {
-            toggleMode('compare')
+            toggleOverlay('criticality')
           }
           break
         case 'r':
@@ -2279,8 +2263,6 @@ export function TopologyGraph({
         <TopologyPanel
           title={
             mode === 'path' ? 'Path Finding' :
-            mode === 'compare' ? 'ISIS Health' :
-            mode === 'criticality' ? 'Link Criticality' :
             mode === 'whatif-removal' ? 'Simulate Link Removal' :
             mode === 'whatif-addition' ? 'Simulate Link Addition' :
             mode === 'impact' ? 'Failure Impact' :
@@ -2298,18 +2280,6 @@ export function TopologyGraph({
               onPathModeChange={setPathMode}
               onSelectPath={setSelectedPathIndex}
               onClearPath={clearPath}
-            />
-          )}
-          {mode === 'compare' && (
-            <ComparePanel
-              data={compareData ?? null}
-              isLoading={compareLoading}
-            />
-          )}
-          {mode === 'criticality' && (
-            <CriticalityPanel
-              data={criticalLinksData ?? null}
-              isLoading={criticalLinksLoading}
             />
           )}
           {mode === 'whatif-removal' && (
@@ -2337,6 +2307,30 @@ export function TopologyGraph({
               result={impactResult}
               isLoading={impactLoading}
               onClose={clearImpact}
+            />
+          )}
+        </TopologyPanel>
+      )}
+
+      {/* Overlay panels (right panel) */}
+      {panel.isOpen && panel.content === 'overlay' && (
+        <TopologyPanel
+          title={
+            isisHealthEnabled ? 'ISIS Health' :
+            criticalityEnabled ? 'Link Criticality' :
+            'Overlay'
+          }
+        >
+          {isisHealthEnabled && (
+            <ComparePanel
+              data={compareData ?? null}
+              isLoading={compareLoading}
+            />
+          )}
+          {criticalityEnabled && (
+            <CriticalityPanel
+              data={criticalLinksData ?? null}
+              isLoading={criticalLinksLoading}
             />
           )}
         </TopologyPanel>

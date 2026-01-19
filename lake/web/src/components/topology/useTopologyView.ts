@@ -19,12 +19,12 @@
  *     overlays, toggleOverlay,
  *   } = useTopologyView()
  *
- *   // Use mode instead of local pathModeEnabled, criticalityModeEnabled, etc.
+ *   // Use mode instead of local pathModeEnabled, etc.
  *   const isPathMode = mode === 'path'
- *   const isCriticalityMode = mode === 'criticality'
  *
  *   // Use overlays instead of local showValidators, stakeOverlayMode, etc.
  *   const showValidators = overlays.validators
+ *   const showCriticality = overlays.criticality
  * }
  * ```
  */
@@ -39,8 +39,6 @@ export interface TopologyViewState {
   setMode: (mode: TopologyMode) => void
   isExploreMode: boolean
   isPathMode: boolean
-  isCriticalityMode: boolean
-  isCompareMode: boolean
   isWhatIfRemovalMode: boolean
   isWhatIfAdditionMode: boolean
   isImpactMode: boolean
@@ -70,11 +68,15 @@ export interface TopologyViewState {
   showLinkHealth: boolean
   showTrafficFlow: boolean
   showMetroClustering: boolean
+  showCriticality: boolean
+  showIsisHealth: boolean
   toggleValidators: () => void
   toggleStakeOverlay: () => void
   toggleLinkHealth: () => void
   toggleTrafficFlow: () => void
   toggleMetroClustering: () => void
+  toggleCriticality: () => void
+  toggleIsisHealth: () => void
 
   // View type
   view: 'map' | 'graph'
@@ -98,8 +100,6 @@ export function useTopologyView(): TopologyViewState {
   // Mode convenience helpers
   const isExploreMode = mode === 'explore'
   const isPathMode = mode === 'path'
-  const isCriticalityMode = mode === 'criticality'
-  const isCompareMode = mode === 'compare'
   const isWhatIfRemovalMode = mode === 'whatif-removal'
   const isWhatIfAdditionMode = mode === 'whatif-addition'
   const isImpactMode = mode === 'impact'
@@ -125,20 +125,22 @@ export function useTopologyView(): TopologyViewState {
   const showLinkHealth = overlays.linkHealth
   const showTrafficFlow = overlays.trafficFlow
   const showMetroClustering = overlays.metroClustering
+  const showCriticality = overlays.criticality
+  const showIsisHealth = overlays.isisHealth
 
   const toggleValidators = useCallback(() => toggleOverlay('validators'), [toggleOverlay])
   const toggleStakeOverlay = useCallback(() => toggleOverlay('stake'), [toggleOverlay])
   const toggleLinkHealth = useCallback(() => toggleOverlay('linkHealth'), [toggleOverlay])
   const toggleTrafficFlow = useCallback(() => toggleOverlay('trafficFlow'), [toggleOverlay])
   const toggleMetroClustering = useCallback(() => toggleOverlay('metroClustering'), [toggleOverlay])
+  const toggleCriticality = useCallback(() => toggleOverlay('criticality'), [toggleOverlay])
+  const toggleIsisHealth = useCallback(() => toggleOverlay('isisHealth'), [toggleOverlay])
 
   return {
     mode,
     setMode,
     isExploreMode,
     isPathMode,
-    isCriticalityMode,
-    isCompareMode,
     isWhatIfRemovalMode,
     isWhatIfAdditionMode,
     isImpactMode,
@@ -165,11 +167,15 @@ export function useTopologyView(): TopologyViewState {
     showLinkHealth,
     showTrafficFlow,
     showMetroClustering,
+    showCriticality,
+    showIsisHealth,
     toggleValidators,
     toggleStakeOverlay,
     toggleLinkHealth,
     toggleTrafficFlow,
     toggleMetroClustering,
+    toggleCriticality,
+    toggleIsisHealth,
 
     view,
   }

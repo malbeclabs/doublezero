@@ -22,7 +22,7 @@ import {
   Network,
   Building2,
 } from 'lucide-react'
-import { useTopology, type TopologyMode } from './TopologyContext'
+import { useTopology, type TopologyMode, type PathMode } from './TopologyContext'
 
 interface TopologyControlBarProps {
   // Zoom controls (view-specific)
@@ -112,7 +112,7 @@ export function TopologyControlBar({
   onReset,
   hasSelectedDevice = false,
 }: TopologyControlBarProps) {
-  const { mode, setMode, overlays, toggleOverlay, view, panel, openPanel, closePanel } = useTopology()
+  const { mode, setMode, pathMode, setPathMode, overlays, toggleOverlay, view, panel, openPanel, closePanel } = useTopology()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
 
@@ -134,7 +134,7 @@ export function TopologyControlBar({
   }, [collapsed])
 
   // Mode conflicts - certain modes can't be active together
-  const isInAnalysisMode = mode === 'path' || mode === 'criticality' || mode === 'whatif-removal' || mode === 'whatif-addition' || mode === 'impact' || mode === 'compare'
+  const isInAnalysisMode = mode === 'path' || mode === 'whatif-removal' || mode === 'whatif-addition' || mode === 'impact'
 
   // Toggle mode helper
   const toggleMode = (targetMode: TopologyMode) => {
@@ -145,6 +145,15 @@ export function TopologyControlBar({
       }
     } else {
       setMode(targetMode)
+      openPanel('mode')
+    }
+  }
+
+  // Enter path mode with specific path type
+  const enterPathMode = (pathType: PathMode) => {
+    setPathMode(pathType)
+    if (mode !== 'path') {
+      setMode('path')
       openPanel('mode')
     }
   }
@@ -246,39 +255,28 @@ export function TopologyControlBar({
             />
           )}
 
-          {/* Analysis modes */}
-          <SectionHeader title="Analysis" collapsed={collapsed} />
+          {/* Find paths */}
+          <SectionHeader title="Find Paths" collapsed={collapsed} />
 
           <NavItem
             icon={<Route className="h-3.5 w-3.5" />}
-            label="Find paths"
+            label="Fewest hops"
             shortcut="p"
-            onClick={() => toggleMode('path')}
-            active={mode === 'path'}
+            onClick={() => enterPathMode('hops')}
+            active={mode === 'path' && pathMode === 'hops'}
             activeColor="amber"
             collapsed={collapsed}
           />
 
           <NavItem
-            icon={<Shield className="h-3.5 w-3.5" />}
-            label="Link criticality"
-            shortcut="c"
-            onClick={() => toggleMode('criticality')}
-            active={mode === 'criticality'}
-            activeColor="red"
+            icon={<Route className="h-3.5 w-3.5" />}
+            label="Lowest latency"
+            shortcut="l"
+            onClick={() => enterPathMode('latency')}
+            active={mode === 'path' && pathMode === 'latency'}
+            activeColor="amber"
             collapsed={collapsed}
           />
-
-          {view === 'graph' && (
-            <NavItem
-              icon={<GitCompare className="h-3.5 w-3.5" />}
-              label="ISIS health"
-              onClick={() => toggleMode('compare')}
-              active={mode === 'compare'}
-              activeColor="blue"
-              collapsed={collapsed}
-            />
-          )}
 
           {/* What-if scenarios */}
           <SectionHeader title="What-if" collapsed={collapsed} />
@@ -395,6 +393,29 @@ export function TopologyControlBar({
             disabled={isInAnalysisMode}
             collapsed={collapsed}
           />
+
+          <NavItem
+            icon={<Shield className="h-3.5 w-3.5" />}
+            label="Criticality"
+            shortcut="c"
+            onClick={() => handleToggleOverlay('criticality')}
+            active={overlays.criticality}
+            activeColor="red"
+            disabled={isInAnalysisMode}
+            collapsed={collapsed}
+          />
+
+          {view === 'graph' && (
+            <NavItem
+              icon={<GitCompare className="h-3.5 w-3.5" />}
+              label="ISIS health"
+              onClick={() => handleToggleOverlay('isisHealth')}
+              active={overlays.isisHealth}
+              activeColor="blue"
+              disabled={isInAnalysisMode}
+              collapsed={collapsed}
+            />
+          )}
         </div>
       </div>
     </div>

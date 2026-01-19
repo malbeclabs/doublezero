@@ -1,4 +1,4 @@
-export { TopologyProvider, useTopology, type TopologyMode, type SelectionType, type Selection, type PanelState, type OverlayState } from './TopologyContext'
+export { TopologyProvider, useTopology, type TopologyMode, type PathMode, type SelectionType, type Selection, type PanelState, type OverlayState } from './TopologyContext'
 export { TopologyPanel, EmptyPanelContent } from './TopologyPanel'
 export { TopologyControlBar } from './TopologyControlBar'
 export { TopologyHoverPopover, type HoverData } from './TopologyHoverPopover'

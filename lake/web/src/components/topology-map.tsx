@@ -1268,6 +1268,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           weight: displayWeight,
           opacity: displayOpacity,
           useDash,
+          isSelected: isSelected ? 1 : 0,
         },
         geometry: {
           type: 'LineString' as const,
@@ -1785,6 +1786,21 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             paint={{
               'line-color': 'transparent',
               'line-width': 12,
+            }}
+            layout={{
+              'line-cap': 'round',
+              'line-join': 'round',
+            }}
+          />
+          {/* Selection halo - renders before main lines */}
+          <Layer
+            id="link-selection-halo"
+            type="line"
+            filter={['==', ['get', 'isSelected'], 1]}
+            paint={{
+              'line-color': '#3b82f6',
+              'line-width': ['+', ['get', 'weight'], 8],
+              'line-opacity': 0.3,
             }}
             layout={{
               'line-cap': 'round',

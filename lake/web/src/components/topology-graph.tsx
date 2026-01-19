@@ -917,7 +917,7 @@ export function TopologyGraph({
         }
       })
     })
-  }, [isisHealthEnabled, compareData, edgeHealthStatus])
+  }, [isisHealthEnabled, compareData, edgeHealthStatus, cyGeneration])
 
   // Apply criticality styles when criticality overlay is enabled (using direct .style() for reliability)
   useEffect(() => {
@@ -956,7 +956,7 @@ export function TopologyGraph({
         }
       })
     })
-  }, [criticalityEnabled, criticalLinksData, edgeCriticality, isDark])
+  }, [criticalityEnabled, criticalLinksData, edgeCriticality, isDark, cyGeneration])
 
   // Apply stake overlay styling when enabled
   useEffect(() => {
@@ -997,7 +997,7 @@ export function TopologyGraph({
         })
       }
     })
-  }, [stakeOverlayEnabled, deviceStakeMap, getStakeNodeSize, getStakeColor, getNodeSize, getDeviceTypeColor, deviceTypeEnabled, isDark])
+  }, [stakeOverlayEnabled, deviceStakeMap, getStakeNodeSize, getStakeColor, getNodeSize, getDeviceTypeColor, deviceTypeEnabled, isDark, cyGeneration])
 
   // Apply link health overlay styling when enabled
   useEffect(() => {
@@ -1027,7 +1027,7 @@ export function TopologyGraph({
         }
       })
     }
-  }, [linkHealthOverlayEnabled, edgeSlaStatus])
+  }, [linkHealthOverlayEnabled, edgeSlaStatus, cyGeneration])
 
   // Apply traffic flow overlay styling when enabled
   useEffect(() => {
@@ -1050,7 +1050,7 @@ export function TopologyGraph({
         }
       })
     }
-  }, [trafficFlowEnabled, edgeTrafficMap, getTrafficLevel])
+  }, [trafficFlowEnabled, edgeTrafficMap, getTrafficLevel, cyGeneration])
 
   // Apply metro clustering overlay styling when enabled (only if stake overlay is not active)
   useEffect(() => {
@@ -1084,7 +1084,7 @@ export function TopologyGraph({
         })
       }
     })
-  }, [metroClusteringEnabled, metroInfoMap, getMetroColor, getNodeSize, getDeviceTypeColor, deviceTypeEnabled, stakeOverlayEnabled, isDark])
+  }, [metroClusteringEnabled, metroInfoMap, getMetroColor, getNodeSize, getDeviceTypeColor, deviceTypeEnabled, stakeOverlayEnabled, isDark, cyGeneration])
 
   // Update node and edge colors when contributors overlay is enabled
   // Skip if in an analysis mode that styles edges or if a link overlay is active (let those control edge appearance)
@@ -1155,7 +1155,7 @@ export function TopologyGraph({
         })
       }
     })
-  }, [contributorDevicesEnabled, contributorLinksEnabled, contributorInfoMap, deviceContributorMap, edgeContributorMap, getContributorColor, getNodeSize, getDeviceTypeColor, deviceTypeEnabled, stakeOverlayEnabled, metroClusteringEnabled, linkHealthOverlayEnabled, trafficFlowEnabled, isDark, isEdgeStylingMode])
+  }, [contributorDevicesEnabled, contributorLinksEnabled, contributorInfoMap, deviceContributorMap, edgeContributorMap, getContributorColor, getNodeSize, getDeviceTypeColor, deviceTypeEnabled, stakeOverlayEnabled, metroClusteringEnabled, linkHealthOverlayEnabled, trafficFlowEnabled, isDark, isEdgeStylingMode, cyGeneration])
 
   // Apply bandwidth edge styling
   // Sets width based on bandwidth, and resets color to grey (other overlays will override if active)
@@ -1194,7 +1194,7 @@ export function TopologyGraph({
         })
       })
     })
-  }, [bandwidthEnabled, isDark])
+  }, [bandwidthEnabled, isDark, cyGeneration])
 
   // Apply link type edge styling
   useEffect(() => {
@@ -1221,7 +1221,7 @@ export function TopologyGraph({
         })
       })
     })
-  }, [linkTypeEnabled, linkByDevicePairMap, isDark])
+  }, [linkTypeEnabled, linkByDevicePairMap, isDark, cyGeneration])
 
   // Apply device type node styling when enabled
   useEffect(() => {
@@ -1248,7 +1248,7 @@ export function TopologyGraph({
         }
       }
     })
-  }, [deviceTypeEnabled, stakeOverlayEnabled, metroClusteringEnabled, contributorDevicesEnabled, getDeviceTypeColor, isDark])
+  }, [deviceTypeEnabled, stakeOverlayEnabled, metroClusteringEnabled, contributorDevicesEnabled, getDeviceTypeColor, isDark, cyGeneration])
 
   // Reset link colors when link type overlay is disabled
   useEffect(() => {
@@ -1267,7 +1267,7 @@ export function TopologyGraph({
         })
       })
     }
-  }, [linkTypeEnabled, linkHealthOverlayEnabled, trafficFlowEnabled, bandwidthEnabled, contributorLinksEnabled, isisHealthEnabled, criticalityEnabled, isDark])
+  }, [linkTypeEnabled, linkHealthOverlayEnabled, trafficFlowEnabled, bandwidthEnabled, contributorLinksEnabled, isisHealthEnabled, criticalityEnabled, isDark, cyGeneration])
 
   // Toggle metro collapse state
   const toggleMetroCollapse = useCallback((metroPK: string) => {
@@ -1458,7 +1458,7 @@ export function TopologyGraph({
         })
       })
     })
-  }, [metroClusteringEnabled, collapsedMetros, metroInfoMap, getMetroColor, isDark])
+  }, [metroClusteringEnabled, collapsedMetros, metroInfoMap, getMetroColor, isDark, cyGeneration])
 
   // Clear collapsed metros when metro clustering is disabled
   useEffect(() => {
@@ -1592,8 +1592,9 @@ export function TopologyGraph({
           style: {
             'border-width': 4,
             'border-color': '#3b82f6',
-            'overlay-opacity': 0.1,
+            'overlay-opacity': 0.25,
             'overlay-color': '#3b82f6',
+            'overlay-padding': 6,
           },
         },
         {
@@ -1654,6 +1655,9 @@ export function TopologyGraph({
             'target-arrow-color': '#3b82f6',
             'width': 3,
             'opacity': 1,
+            'overlay-color': '#3b82f6',
+            'overlay-padding': 4,
+            'overlay-opacity': 0.25,
           },
         },
         {

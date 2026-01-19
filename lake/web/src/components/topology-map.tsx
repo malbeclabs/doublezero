@@ -1659,8 +1659,8 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           </Source>
         )}
 
-        {/* Metro markers - hidden in path mode */}
-        {!pathModeEnabled && metros.map(metro => {
+        {/* Metro markers - only show when metros overlay is active */}
+        {metroClusteringMode && metros.map(metro => {
           const isThisHovered = hoveredMetro?.code === metro.code
           const isThisSelected = selectedItem?.type === 'metro' && selectedItem.data.pk === metro.pk
           const metroDeviceCount = devicesByMetro.get(metro.pk)?.length || 0

@@ -315,6 +315,18 @@ export function TopologyGraph({
     return map
   }, [topologyData])
 
+  // Build reverse lookup: device pair -> link info (for finding link from edge source/target)
+  const linkByDevicePairMap = useMemo(() => {
+    const map = new Map<string, LinkInfo>()
+    linkInfoMap.forEach((linkInfo) => {
+      // Store both directions for easy lookup
+      map.set(`${linkInfo.deviceAPk}->${linkInfo.deviceZPk}`, linkInfo)
+      map.set(`${linkInfo.deviceZPk}->${linkInfo.deviceAPk}`, linkInfo)
+    })
+    return map
+  }, [linkInfoMap])
+  const linkByDevicePairMapRef = useRef<Map<string, LinkInfo>>(new Map())
+
   // Keep refs updated for use in event handlers
   useEffect(() => {
     deviceInfoMapRef.current = deviceInfoMap
@@ -322,6 +334,9 @@ export function TopologyGraph({
   useEffect(() => {
     linkInfoMapRef.current = linkInfoMap
   }, [linkInfoMap])
+  useEffect(() => {
+    linkByDevicePairMapRef.current = linkByDevicePairMap
+  }, [linkByDevicePairMap])
   useEffect(() => {
     openPanelRef.current = openPanel
   }, [openPanel])
@@ -1452,6 +1467,15 @@ export function TopologyGraph({
           },
         },
         {
+          selector: 'edge.highlighted',
+          style: {
+            'line-color': '#f59e0b',
+            'target-arrow-color': '#f59e0b',
+            'width': 3,
+            'opacity': 1,
+          },
+        },
+        {
           selector: 'edge.hover',
           style: {
             'line-color': '#f59e0b',
@@ -2081,25 +2105,45 @@ export function TopologyGraph({
     }
   }, [mode, pathSource, pathTarget, additionSource, additionTarget, impactDevice, cyGeneration, analyzeImpact])
 
-  // Handle edge clicks for whatif-removal mode
+  // Handle edge clicks for explore mode (link selection) and whatif-removal mode
   useEffect(() => {
     if (!cyRef.current) return
     const cy = cyRef.current
 
     const handleEdgeTap = (event: cytoscape.EventObject) => {
-      if (mode !== 'whatif-removal') return
-
       const edge = event.target
       const sourcePK = edge.data('source')
       const targetPK = edge.data('target')
 
-      // Clear previous simulation
-      cy.elements().removeClass('whatif-removed whatif-rerouted whatif-disconnected')
-      setRemovalResult(null)
+      // Handle whatif-removal mode
+      if (mode === 'whatif-removal') {
+        // Clear previous simulation
+        cy.elements().removeClass('whatif-removed whatif-rerouted whatif-disconnected')
+        setRemovalResult(null)
 
-      // Set the selected link
-      setRemovalLink({ sourcePK, targetPK })
-      edge.addClass('whatif-removed')
+        // Set the selected link
+        setRemovalLink({ sourcePK, targetPK })
+        edge.addClass('whatif-removed')
+        return
+      }
+
+      // Handle explore mode - select link for details panel
+      if (mode === 'explore') {
+        // Find link info from device pair
+        const linkInfo = linkByDevicePairMapRef.current.get(`${sourcePK}->${targetPK}`)
+        if (linkInfo) {
+          // Update URL with link selection
+          navigateRef.current(`/topology/graph?type=link&id=${linkInfo.pk}`)
+          // Update state for details panel
+          setSelectedLinkRef.current(linkInfo)
+          setSelectedDeviceRef.current(null)
+          openPanelRef.current('details')
+          // Highlight the edge
+          cy.edges().removeClass('highlighted')
+          cy.nodes().removeClass('highlighted')
+          edge.addClass('highlighted')
+        }
+      }
     }
 
     cy.on('tap', 'edge', handleEdgeTap)

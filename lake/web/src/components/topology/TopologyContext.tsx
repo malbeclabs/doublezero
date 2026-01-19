@@ -72,6 +72,34 @@ interface TopologyProviderProps {
 
 const DEFAULT_PANEL_WIDTH = 320
 
+// Parse overlays from URL param (comma-separated)
+function parseOverlaysFromUrl(param: string | null): OverlayState {
+  const defaultState: OverlayState = {
+    validators: false,
+    stake: false,
+    linkHealth: false,
+    trafficFlow: false,
+    metroClustering: false,
+  }
+  if (!param) return defaultState
+
+  const activeOverlays = param.split(',').filter(Boolean)
+  for (const overlay of activeOverlays) {
+    if (overlay in defaultState) {
+      defaultState[overlay as keyof OverlayState] = true
+    }
+  }
+  return defaultState
+}
+
+// Serialize overlays to URL param (comma-separated)
+function serializeOverlaysToUrl(overlays: OverlayState): string | null {
+  const active = Object.entries(overlays)
+    .filter(([, value]) => value)
+    .map(([key]) => key)
+  return active.length > 0 ? active.join(',') : null
+}
+
 export function TopologyProvider({ children, view }: TopologyProviderProps) {
   const [searchParams, setSearchParams] = useSearchParams()
 
@@ -85,14 +113,10 @@ export function TopologyProvider({ children, view }: TopologyProviderProps) {
     content: 'details' as const,
   }))
 
-  // Overlay state
-  const [overlays, setOverlays] = useState<OverlayState>({
-    validators: false,
-    stake: false,
-    linkHealth: false,
-    trafficFlow: false,
-    metroClustering: false,
-  })
+  // Overlay state - initialized from URL params
+  const [overlays, setOverlays] = useState<OverlayState>(() =>
+    parseOverlaysFromUrl(searchParams.get('overlays'))
+  )
 
   // Hover state
   const [hoveredEntity, setHoveredEntity] = useState<{ type: SelectionType; id: string; x: number; y: number } | null>(null)
@@ -153,10 +177,23 @@ export function TopologyProvider({ children, view }: TopologyProviderProps) {
     localStorage.setItem('topology-panel-width', String(clampedWidth))
   }, [])
 
-  // Overlay toggle
+  // Overlay toggle - also updates URL
   const toggleOverlay = useCallback((overlay: keyof OverlayState) => {
-    setOverlays(prev => ({ ...prev, [overlay]: !prev[overlay] }))
-  }, [])
+    setOverlays(prev => {
+      const newState = { ...prev, [overlay]: !prev[overlay] }
+      // Update URL params
+      setSearchParams(params => {
+        const serialized = serializeOverlaysToUrl(newState)
+        if (serialized) {
+          params.set('overlays', serialized)
+        } else {
+          params.delete('overlays')
+        }
+        return params
+      })
+      return newState
+    })
+  }, [setSearchParams])
 
   const value: TopologyContextValue = {
     mode,

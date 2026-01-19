@@ -808,6 +808,24 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     }
   }, [whatifAdditionMode])
 
+  // When entering analysis modes with a device already selected, use it as source
+  const prevMapModeRef = useRef<string>(mode)
+  useEffect(() => {
+    const selectedDevicePK = selectedItem?.type === 'device' ? selectedItem.data.pk : null
+
+    // whatif-addition: use selected device as source
+    if (whatifAdditionMode && prevMapModeRef.current !== 'whatif-addition' && selectedDevicePK) {
+      setAdditionSource(selectedDevicePK)
+    }
+
+    // path mode: use selected device as source
+    if (pathModeEnabled && prevMapModeRef.current !== 'path' && selectedDevicePK) {
+      setPathSource(selectedDevicePK)
+    }
+
+    prevMapModeRef.current = mode
+  }, [mode, whatifAdditionMode, pathModeEnabled, selectedItem])
+
   // Fetch link removal simulation when link is selected
   useEffect(() => {
     if (!removalLink) return

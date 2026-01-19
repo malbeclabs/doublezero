@@ -640,7 +640,7 @@ export function TopologyGraph({
 
   // Clear classes when mode changes
   useEffect(() => {
-    const allClasses = 'path-node path-edge path-source path-target path-0 path-1 path-2 path-3 path-4 path-selected health-matched health-extra health-missing health-mismatch criticality-critical criticality-important criticality-redundant whatif-removed whatif-rerouted whatif-disconnected whatif-added whatif-addition-source whatif-addition-target whatif-improved whatif-redundancy-gained'
+    const allClasses = 'path-node path-edge path-source path-target path-0 path-1 path-2 path-3 path-4 path-selected health-matched health-extra health-missing health-mismatch criticality-critical criticality-important criticality-redundant whatif-removal-candidate whatif-removed whatif-rerouted whatif-disconnected whatif-added whatif-addition-source whatif-addition-target whatif-improved whatif-redundancy-gained'
 
     if (mode === 'explore') {
       setPathSource(null)
@@ -663,7 +663,7 @@ export function TopologyGraph({
       setAdditionTarget(null)
       setAdditionResult(null)
       if (cyRef.current) {
-        cyRef.current.elements().removeClass('whatif-removed whatif-rerouted whatif-disconnected whatif-added whatif-addition-source whatif-addition-target whatif-improved whatif-redundancy-gained')
+        cyRef.current.elements().removeClass('whatif-removal-candidate whatif-removed whatif-rerouted whatif-disconnected whatif-added whatif-addition-source whatif-addition-target whatif-improved whatif-redundancy-gained')
       }
     } else if (mode === 'whatif-removal') {
       // Clear other mode classes
@@ -675,6 +675,8 @@ export function TopologyGraph({
       setAdditionResult(null)
       if (cyRef.current) {
         cyRef.current.elements().removeClass('path-node path-edge path-source path-target path-0 path-1 path-2 path-3 path-4 path-selected health-matched health-extra health-missing health-mismatch criticality-critical criticality-important criticality-redundant whatif-added whatif-addition-source whatif-addition-target whatif-improved whatif-redundancy-gained')
+        // Make edges more prominent for easier clicking
+        cyRef.current.edges().addClass('whatif-removal-candidate')
       }
     } else if (mode === 'whatif-addition') {
       // Clear other mode classes
@@ -684,7 +686,7 @@ export function TopologyGraph({
       setRemovalLink(null)
       setRemovalResult(null)
       if (cyRef.current) {
-        cyRef.current.elements().removeClass('path-node path-edge path-source path-target path-0 path-1 path-2 path-3 path-4 path-selected health-matched health-extra health-missing health-mismatch criticality-critical criticality-important criticality-redundant whatif-removed whatif-rerouted whatif-disconnected')
+        cyRef.current.elements().removeClass('path-node path-edge path-source path-target path-0 path-1 path-2 path-3 path-4 path-selected health-matched health-extra health-missing health-mismatch criticality-critical criticality-important criticality-redundant whatif-removal-candidate whatif-removed whatif-rerouted whatif-disconnected')
       }
     }
   }, [mode])
@@ -1548,6 +1550,14 @@ export function TopologyGraph({
           },
         },
         // What-If Link Removal styles
+        {
+          selector: 'edge.whatif-removal-candidate',
+          style: {
+            'width': 4,
+            'opacity': 0.8,
+            'cursor': 'pointer',
+          },
+        },
         {
           selector: 'edge.whatif-removed',
           style: {

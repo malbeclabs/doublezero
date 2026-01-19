@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"reflect"
 	"strings"
 )
 
@@ -80,25 +81,41 @@ func (q *HTTPQuerier) Query(ctx context.Context, sql string) (QueryResult, error
 	return result, nil
 }
 
-// formatValue formats a single value for display to the LLM.
-// Floats are rounded to 2 decimal places to avoid long decimals (like 3.3333333333333335)
-// that can confuse the LLM into thinking they're encoded values.
-func formatValue(v any) string {
+// FormatValue formats a single value for display to the LLM.
+// Pointer types are dereferenced to get the actual value - this is critical
+// for ClickHouse Decimal types which are scanned as pointers.
+// This is exported so it can be used by other packages (api/handlers, slack, etc).
+func FormatValue(v any) string {
+	if v == nil {
+		return ""
+	}
+
+	// Handle pointer types by dereferencing them
+	// This is critical for ClickHouse Decimal types which scan as pointers
+	rv := reflect.ValueOf(v)
+	if rv.Kind() == reflect.Ptr {
+		if rv.IsNil() {
+			return ""
+		}
+		return FormatValue(rv.Elem().Interface())
+	}
+
 	switch val := v.(type) {
 	case float64:
-		// Round to 2 decimal places for cleaner output
-		// This prevents the LLM from misinterpreting long decimals as encoded data
-		if val == float64(int64(val)) {
-			return fmt.Sprintf("%.0f", val) // Whole number, no decimals
-		}
-		return fmt.Sprintf("%.2f", val)
+		return fmt.Sprintf("%v", val)
 	case float32:
-		if val == float32(int32(val)) {
-			return fmt.Sprintf("%.0f", val)
+		return fmt.Sprintf("%v", val)
+	case string:
+		return val
+	case int, int8, int16, int32, int64:
+		return fmt.Sprintf("%d", val)
+	case uint, uint8, uint16, uint32, uint64:
+		return fmt.Sprintf("%d", val)
+	case bool:
+		if val {
+			return "true"
 		}
-		return fmt.Sprintf("%.2f", val)
-	case nil:
-		return ""
+		return "false"
 	default:
 		return fmt.Sprintf("%v", v)
 	}
@@ -126,7 +143,7 @@ func formatResult(result QueryResult) string {
 		row := result.Rows[i]
 		var values []string
 		for _, col := range result.Columns {
-			values = append(values, formatValue(row[col]))
+			values = append(values, FormatValue(row[col]))
 		}
 		sb.WriteString(strings.Join(values, " | ") + "\n")
 	}

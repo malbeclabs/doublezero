@@ -548,7 +548,8 @@ func formatQueryResult(result workflow.QueryResult) string {
 		row := result.Rows[i]
 		var values []string
 		for _, col := range result.Columns {
-			values = append(values, fmt.Sprintf("%v", row[col]))
+			// Use workflow.FormatValue to properly handle pointer types (e.g., ClickHouse Decimals)
+			values = append(values, workflow.FormatValue(row[col]))
 		}
 		sb.WriteString(strings.Join(values, " | ") + "\n")
 	}

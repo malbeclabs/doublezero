@@ -196,7 +196,7 @@ func formatThinkingMessage(progress workflow.Progress, sessionURL string) string
 				sb.WriteString(fmt.Sprintf("_• %s_\n", q.Question))
 			}
 			if sessionURL != "" {
-				sb.WriteString(fmt.Sprintf("\n<%s|:link: View full session>", sessionURL))
+				sb.WriteString(fmt.Sprintf("\n<%s|View on web>", sessionURL))
 			}
 		}
 		// For conversational/out_of_scope, we don't show anything (just answer)

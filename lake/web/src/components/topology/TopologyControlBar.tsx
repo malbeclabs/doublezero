@@ -298,7 +298,7 @@ export function TopologyControlBar({
 
           <NavItem
             icon={<Zap className="h-3.5 w-3.5" />}
-            label="Failure impact"
+            label="Device failure"
             shortcut="i"
             onClick={() => toggleMode('impact')}
             active={mode === 'impact'}

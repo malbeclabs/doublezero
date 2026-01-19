@@ -29,8 +29,6 @@ interface TopologyControlBarProps {
   onZoomIn?: () => void
   onZoomOut?: () => void
   onReset?: () => void
-  // Validator count for badge (map only)
-  validatorCount?: number
   // Whether a device is selected (for impact mode)
   hasSelectedDevice?: boolean
 }
@@ -112,7 +110,6 @@ export function TopologyControlBar({
   onZoomIn,
   onZoomOut,
   onReset,
-  validatorCount = 0,
   hasSelectedDevice = false,
 }: TopologyControlBarProps) {
   const { mode, setMode, overlays, toggleOverlay, view, panel, openPanel, closePanel } = useTopology()
@@ -349,8 +346,8 @@ export function TopologyControlBar({
           {view === 'map' && (
             <NavItem
               icon={<Users className="h-3.5 w-3.5" />}
-              label={`Validators (${validatorCount})`}
-              onClick={() => toggleOverlay('validators')}
+              label="Validators"
+              onClick={() => handleToggleOverlay('validators')}
               active={overlays.validators}
               activeColor="purple"
               disabled={isInAnalysisMode}

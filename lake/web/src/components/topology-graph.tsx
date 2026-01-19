@@ -2389,7 +2389,7 @@ export function TopologyGraph({
             mode === 'path' ? 'Path Finding' :
             mode === 'whatif-removal' ? 'Simulate Link Removal' :
             mode === 'whatif-addition' ? 'Simulate Link Addition' :
-            mode === 'impact' ? 'Failure Impact' :
+            mode === 'impact' ? 'Device Failure' :
             'Mode'
           }
         >
@@ -2572,7 +2572,7 @@ export function TopologyGraph({
           <div className="flex items-center justify-between mb-2">
             <span className="font-medium flex items-center gap-1.5">
               <Zap className="h-3.5 w-3.5 text-purple-500" />
-              Failure Impact
+              Device Failure
             </span>
             <button onClick={clearImpact} className="p-1 hover:bg-[var(--muted)] rounded" title="Close">
               <X className="h-3 w-3" />

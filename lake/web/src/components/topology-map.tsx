@@ -2061,7 +2061,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             mode === 'path' ? 'Path Finding' :
             mode === 'whatif-removal' ? 'Simulate Link Removal' :
             mode === 'whatif-addition' ? 'Simulate Link Addition' :
-            mode === 'impact' ? 'Failure Impact' :
+            mode === 'impact' ? 'Device Failure' :
             'Analysis Mode'
           }
         >

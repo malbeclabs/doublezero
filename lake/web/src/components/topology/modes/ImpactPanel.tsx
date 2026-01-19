@@ -19,7 +19,7 @@ export function ImpactPanel({ devicePK, result, isLoading, onClose }: ImpactPane
       <div className="flex items-center justify-between mb-2">
         <span className="font-medium flex items-center gap-1.5">
           <Zap className="h-3.5 w-3.5 text-purple-500" />
-          Failure Impact
+          Device Failure
         </span>
         {devicePK && (
           <button onClick={onClose} className="p-1 hover:bg-[var(--muted)] rounded" title="Clear">

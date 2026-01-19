@@ -2553,6 +2553,12 @@ export function TopologyGraph({
           openPanel('details')
         }
       }
+    } else {
+      // No selection - clear highlights and local state
+      cy.nodes().removeClass('highlighted')
+      cy.edges().removeClass('highlighted')
+      setSelectedDevice(null)
+      setSelectedLink(null)
     }
   }, [selectedDevicePK, selectedLinkPK, mode, cyGeneration, openPanel, deviceInfoMap, linkInfoMap, pathSource, pathTarget, additionSource, additionTarget, analyzeImpact])
 

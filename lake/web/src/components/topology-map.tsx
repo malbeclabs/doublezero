@@ -306,7 +306,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
   const markerClickedRef = useRef(false)
 
   // Get unified topology context
-  const { mode, setMode, pathMode, setPathMode, overlays, toggleOverlay, panel, openPanel, closePanel } = useTopology()
+  const { mode, setMode, pathMode, setPathMode, overlays, toggleOverlay, panel, openPanel, closePanel, selection } = useTopology()
 
   // Derive mode states from context
   const pathModeEnabled = mode === 'path'
@@ -485,6 +485,13 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       }
     }
   }, [setSearchParams, panel.content, closePanel, mode, openPanel])
+
+  // Sync context selection to local state (handles external deselection like closing panel)
+  useEffect(() => {
+    if (selection === null && selectedItem !== null) {
+      setSelectedItemState(null)
+    }
+  }, [selection, selectedItem])
 
   // Keyboard shortcuts
   useEffect(() => {

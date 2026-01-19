@@ -38,6 +38,7 @@ import { UserDetailPage } from '@/components/user-detail-page'
 import { ValidatorDetailPage } from '@/components/validator-detail-page'
 import { GossipNodeDetailPage } from '@/components/gossip-node-detail-page'
 import { StakePage } from '@/components/stake-page'
+import { SettingsPage } from '@/components/settings-page'
 import { generateSessionTitle, generateChatSessionTitle, sendChatMessageStream, recommendVisualization, fetchCatalog, acquireSessionLock, releaseSessionLock, getSessionLock, watchSessionLock, getSession, generateMessageId, getRunningWorkflowForSession, reconnectToWorkflow, type SessionQueryInfo, type SessionLock } from '@/lib/api'
 import type { TableInfo, QueryResponse, HistoryMessage, ChatMessage, QueryMode } from '@/lib/api'
 import {
@@ -1741,6 +1742,9 @@ function AppContent() {
 
             {/* Stake analytics route */}
             <Route path="/stake" element={<StakePage />} />
+
+            {/* Settings */}
+            <Route path="/settings" element={<SettingsPage />} />
 
             {/* DZ entity routes */}
             <Route path="/dz/devices" element={<DevicesPage />} />

@@ -816,6 +816,44 @@ export function Chat({ messages, isPending, processingSteps, externalLock, onSen
                                 </li>
                               )
                             },
+                            td({ children }) {
+                              return (
+                                <td>
+                                  {typeof children === 'string' ? (
+                                    <CitationText text={children} onCitationClick={msg.workflowData ? handleCitationClick : undefined} />
+                                  ) : Array.isArray(children) ? (
+                                    children.map((child, idx) =>
+                                      typeof child === 'string' ? (
+                                        <CitationText key={idx} text={child} onCitationClick={msg.workflowData ? handleCitationClick : undefined} />
+                                      ) : (
+                                        child
+                                      )
+                                    )
+                                  ) : (
+                                    children
+                                  )}
+                                </td>
+                              )
+                            },
+                            th({ children }) {
+                              return (
+                                <th>
+                                  {typeof children === 'string' ? (
+                                    <CitationText text={children} onCitationClick={msg.workflowData ? handleCitationClick : undefined} />
+                                  ) : Array.isArray(children) ? (
+                                    children.map((child, idx) =>
+                                      typeof child === 'string' ? (
+                                        <CitationText key={idx} text={child} onCitationClick={msg.workflowData ? handleCitationClick : undefined} />
+                                      ) : (
+                                        child
+                                      )
+                                    )
+                                  ) : (
+                                    children
+                                  )}
+                                </th>
+                              )
+                            },
                           }}
                         >
                           {msg.content}

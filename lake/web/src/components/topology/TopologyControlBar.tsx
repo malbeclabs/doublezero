@@ -256,7 +256,6 @@ export function TopologyControlBar({
             onClick={() => toggleMode('path')}
             active={mode === 'path'}
             activeColor="amber"
-            disabled={mode !== 'explore' && mode !== 'path'}
             collapsed={collapsed}
           />
 
@@ -267,7 +266,6 @@ export function TopologyControlBar({
             onClick={() => toggleMode('criticality')}
             active={mode === 'criticality'}
             activeColor="red"
-            disabled={mode !== 'explore' && mode !== 'criticality'}
             collapsed={collapsed}
           />
 
@@ -278,7 +276,6 @@ export function TopologyControlBar({
               onClick={() => toggleMode('compare')}
               active={mode === 'compare'}
               activeColor="blue"
-              disabled={mode !== 'explore' && mode !== 'compare'}
               collapsed={collapsed}
             />
           )}
@@ -293,7 +290,6 @@ export function TopologyControlBar({
             onClick={() => toggleMode('whatif-removal')}
             active={mode === 'whatif-removal'}
             activeColor="red"
-            disabled={mode !== 'explore' && mode !== 'whatif-removal'}
             collapsed={collapsed}
           />
 
@@ -304,7 +300,6 @@ export function TopologyControlBar({
             onClick={() => toggleMode('whatif-addition')}
             active={mode === 'whatif-addition'}
             activeColor="green"
-            disabled={mode !== 'explore' && mode !== 'whatif-addition'}
             collapsed={collapsed}
           />
 
@@ -315,7 +310,7 @@ export function TopologyControlBar({
             onClick={() => toggleMode('impact')}
             active={mode === 'impact'}
             activeColor="purple"
-            disabled={(mode !== 'explore' && mode !== 'impact') || (!hasSelectedDevice && mode !== 'impact')}
+            disabled={!hasSelectedDevice && mode !== 'impact'}
             collapsed={collapsed}
           />
 

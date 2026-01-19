@@ -150,10 +150,11 @@ export function TopologyProvider({ children, view }: TopologyProviderProps) {
   const [pathMode, setPathMode] = useState<PathMode>('hops')
 
   // Panel state with localStorage persistence for width
+  // Default to open with overlay content since device/link type overlays are on by default
   const [panel, setPanel] = useState<PanelState>(() => ({
-    isOpen: false,
+    isOpen: true,
     width: parseInt(localStorage.getItem('topology-panel-width') ?? String(DEFAULT_PANEL_WIDTH), 10),
-    content: 'details' as const,
+    content: 'overlay' as const,
   }))
 
   // Overlay state - initialized from URL params with view-specific defaults

@@ -32,6 +32,7 @@ type runningWorkflow struct {
 	ID          uuid.UUID
 	SessionID   uuid.UUID
 	Question    string
+	Format      string // Output format: "slack" for Slack-specific formatting
 	Cancel      context.CancelFunc
 	subscribers map[*WorkflowSubscriber]struct{}
 	mu          sync.RWMutex
@@ -90,10 +91,12 @@ var Manager = &WorkflowManager{
 
 // StartWorkflow starts a new workflow in the background.
 // Returns the workflow ID immediately - the workflow runs asynchronously.
+// The format parameter controls output formatting: "slack" for Slack-specific formatting.
 func (m *WorkflowManager) StartWorkflow(
 	sessionID uuid.UUID,
 	question string,
 	history []workflow.ConversationMessage,
+	format string,
 ) (uuid.UUID, error) {
 	ctx := context.Background()
 
@@ -116,6 +119,7 @@ func (m *WorkflowManager) StartWorkflow(
 		ID:          run.ID,
 		SessionID:   sessionID,
 		Question:    question,
+		Format:      format,
 		Cancel:      cancel,
 		subscribers: make(map[*WorkflowSubscriber]struct{}),
 	}
@@ -235,6 +239,11 @@ func (m *WorkflowManager) runWorkflow(
 		SchemaFetcher: schemaFetcher,
 		Prompts:       prompts,
 		MaxTokens:     4096,
+	}
+
+	// Apply format-specific context
+	if rw.Format == "slack" {
+		cfg.FormatContext = prompts.Slack
 	}
 
 	// Add Neo4j support if available
@@ -477,6 +486,11 @@ func (m *WorkflowManager) resumeWorkflow(
 		SchemaFetcher: schemaFetcher,
 		Prompts:       prompts,
 		MaxTokens:     4096,
+	}
+
+	// Apply format-specific context
+	if rw.Format == "slack" {
+		cfg.FormatContext = prompts.Slack
 	}
 
 	// Add Neo4j support if available

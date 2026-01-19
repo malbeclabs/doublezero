@@ -47,6 +47,7 @@ type chatRequest struct {
 	Message   string        `json:"message"`
 	History   []chatMessage `json:"history"`
 	SessionID string        `json:"session_id"`
+	Format    string        `json:"format,omitempty"`
 }
 
 // chatMessage represents a message in the conversation history.
@@ -115,6 +116,7 @@ func (c *APIClient) ChatStream(
 		Message:   message,
 		History:   apiHistory,
 		SessionID: uuid.New().String(),
+		Format:    "slack",
 	}
 
 	bodyBytes, err := json.Marshal(reqBody)

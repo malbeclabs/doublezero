@@ -132,8 +132,8 @@ func (p *Workflow) RunWithProgress(ctx context.Context, userQuestion string, his
 		}
 	}
 
-	// Build system prompt with schemas
-	systemPrompt := BuildSystemPromptWithGraph(p.prompts.System, sqlSchema, graphSchema, p.prompts.CypherContext, p.cfg.FormatContext)
+	// Build system prompt with schemas (format context is applied only during synthesis)
+	systemPrompt := BuildSystemPromptWithGraph(p.prompts.System, sqlSchema, graphSchema, p.prompts.CypherContext, "")
 
 	// Build initial messages
 	messages := p.buildMessages(userQuestion, history)
@@ -723,8 +723,8 @@ func (p *Workflow) RunWithCheckpoint(
 		}
 	}
 
-	// Build system prompt with schemas
-	systemPrompt := BuildSystemPromptWithGraph(p.prompts.System, sqlSchema, graphSchema, p.prompts.CypherContext, p.cfg.FormatContext)
+	// Build system prompt with schemas (format context is applied only during synthesis)
+	systemPrompt := BuildSystemPromptWithGraph(p.prompts.System, sqlSchema, graphSchema, p.prompts.CypherContext, "")
 
 	// Build initial messages
 	messages := p.buildMessages(userQuestion, history)
@@ -942,8 +942,8 @@ func (p *Workflow) ResumeFromCheckpoint(
 		}
 	}
 
-	// Build system prompt with schemas
-	systemPrompt := BuildSystemPromptWithGraph(p.prompts.System, sqlSchema, graphSchema, p.prompts.CypherContext, p.cfg.FormatContext)
+	// Build system prompt with schemas (format context is applied only during synthesis)
+	systemPrompt := BuildSystemPromptWithGraph(p.prompts.System, sqlSchema, graphSchema, p.prompts.CypherContext, "")
 
 	// Restore messages from checkpoint
 	messages := checkpoint.Messages
@@ -1123,9 +1123,9 @@ func GetFinalCheckpoint(
 	}
 }
 
-// synthesisPrompt is the system prompt for the synthesis phase.
+// baseSynthesisPrompt is the base prompt for the synthesis phase.
 // It asks the model to produce a clean, user-facing answer from the data gathered.
-const synthesisPrompt = `You have finished gathering data. Now produce your final answer for the user.
+const baseSynthesisPrompt = `You have finished gathering data. Now produce your final answer for the user.
 
 CRITICAL RULES:
 1. Start directly with the answer - no preamble like "Based on the data..." or "Here's what I found..."
@@ -1136,14 +1136,18 @@ CRITICAL RULES:
 BE HONEST ABOUT FAILURES:
 - If your queries returned errors or no data, say so clearly - don't make up an answer
 - If you couldn't retrieve the data needed, say "I wasn't able to retrieve the data needed to answer this question" and briefly explain what went wrong
-- NEVER invent data or provide estimates based on "typical" values or prior knowledge
-
-Refer to the system prompt for formatting guidelines.`
+- NEVER invent data or provide estimates based on "typical" values or prior knowledge`
 
 // synthesizeAnswer makes a final LLM call to produce a clean user-facing answer.
 // This is the "synthesis phase" that separates working notes from the final response.
 func (p *Workflow) synthesizeAnswer(ctx context.Context, llm workflow.ToolLLMClient, systemPrompt string, messages []workflow.ToolMessage, state *LoopState) (string, error) {
 	p.logInfo("workflow: starting synthesis phase", "queries", len(state.ExecutedQueries))
+
+	// Build synthesis prompt, appending format context if configured
+	synthesisPrompt := baseSynthesisPrompt
+	if p.cfg.FormatContext != "" {
+		synthesisPrompt += "\n\n# Output Formatting\n\n" + p.cfg.FormatContext
+	}
 
 	// Add synthesis prompt to messages
 	synthesisMessages := make([]workflow.ToolMessage, len(messages)+1)

@@ -30,6 +30,7 @@ type ChatRequest struct {
 	Message   string        `json:"message"`
 	History   []ChatMessage `json:"history"`
 	SessionID string        `json:"session_id,omitempty"` // Optional session ID for workflow persistence
+	Format    string        `json:"format,omitempty"`     // Output format: "slack" for Slack-specific formatting
 }
 
 // DataQuestionResponse represents a decomposed data question.
@@ -301,7 +302,7 @@ func chatStreamV3(ctx context.Context, req ChatRequest, history []workflow.Conve
 	}
 
 	// Start the workflow in background
-	workflowID, err := Manager.StartWorkflow(sessionUUID, req.Message, history)
+	workflowID, err := Manager.StartWorkflow(sessionUUID, req.Message, history, req.Format)
 	if err != nil {
 		slog.Error("Failed to start background workflow", "session_id", req.SessionID, "error", err)
 		// Don't expose internal errors to the UI

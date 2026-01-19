@@ -1512,21 +1512,18 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     modeParamsRestoredRef.current = true
   }, [searchParams, deviceMap, linkMap, mode, setMode, openPanel])
 
-  // Restore selected item from URL params (on initial load and when params change, e.g. back button or omnisearch)
-  const lastParamsRef = useRef<string | null>(null)
+  // Restore selected item from URL params on initial load only
+  // TODO: Add proper back/forward navigation support
+  const itemParamsRestoredRef = useRef(false)
   useEffect(() => {
+    if (itemParamsRestoredRef.current) return
+
     const type = searchParams.get('type')
     const id = searchParams.get('id')
-    const paramsKey = type && id ? `${type}:${id}` : null
 
-    // Skip if params haven't changed AND we already found the item (avoids loops when we set params ourselves)
-    // We don't skip if params are the same but we haven't found the item yet (waiting for data to load)
-    if (paramsKey === lastParamsRef.current) return
-
-    // If no params, close the drawer (handles back button to no-drawer state)
+    // No params to restore
     if (!type || !id) {
-      lastParamsRef.current = null
-      setSelectedItemState(null)
+      itemParamsRestoredRef.current = true
       return
     }
 
@@ -1692,10 +1689,9 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       openPanel('details')
     }
 
-    // Only mark params as processed after we successfully found the item
-    // If item wasn't found (data still loading), the useEffect will run again when data loads
+    // Mark as restored once we've processed (even if item not found)
     if (itemFound) {
-      lastParamsRef.current = paramsKey
+      itemParamsRestoredRef.current = true
     }
   }, [searchParams, validatorMap, deviceMap, linkMap, metroMap, devicesByMetro, showValidators, toggleOverlay, mode, openPanel, impactMode, pathModeEnabled, whatifAdditionMode, whatifRemovalMode, pathSource, pathTarget, additionSource, additionTarget])
 

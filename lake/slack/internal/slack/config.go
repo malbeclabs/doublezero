@@ -22,15 +22,8 @@ type Config struct {
 	Mode          Mode
 	BotUserID     string
 
-	// Anthropic configuration
-	AnthropicAPIKey string
-
-	// ClickHouse configuration
-	ClickhouseAddr     string
-	ClickhouseDatabase string
-	ClickhouseUsername string
-	ClickhousePassword string
-	ClickhouseSecure   bool
+	// API configuration
+	APIBaseURL string
 
 	// Server configuration
 	HTTPAddr    string
@@ -84,27 +77,11 @@ func LoadFromEnv(modeFlag, httpAddrFlag, metricsAddrFlag string, verbose, enable
 		}
 	}
 
-	// Load Anthropic API key
-	cfg.AnthropicAPIKey = os.Getenv("ANTHROPIC_API_KEY")
-	if cfg.AnthropicAPIKey == "" {
-		return nil, fmt.Errorf("ANTHROPIC_API_KEY is required")
+	// Load API configuration
+	cfg.APIBaseURL = os.Getenv("API_BASE_URL")
+	if cfg.APIBaseURL == "" {
+		cfg.APIBaseURL = "http://localhost:8080"
 	}
-
-	// Load ClickHouse configuration (native TCP protocol)
-	cfg.ClickhouseAddr = os.Getenv("CLICKHOUSE_ADDR_TCP")
-	if cfg.ClickhouseAddr == "" {
-		return nil, fmt.Errorf("CLICKHOUSE_ADDR_TCP is required (use --clickhouse-addr flag or CLICKHOUSE_ADDR_TCP env var)")
-	}
-	cfg.ClickhouseDatabase = os.Getenv("CLICKHOUSE_DATABASE")
-	if cfg.ClickhouseDatabase == "" {
-		return nil, fmt.Errorf("CLICKHOUSE_DATABASE is required (use --clickhouse-database flag or CLICKHOUSE_DATABASE env var)")
-	}
-	cfg.ClickhouseUsername = os.Getenv("CLICKHOUSE_USERNAME")
-	if cfg.ClickhouseUsername == "" {
-		return nil, fmt.Errorf("CLICKHOUSE_USERNAME is required (use --clickhouse-username flag or CLICKHOUSE_USERNAME env var)")
-	}
-	cfg.ClickhousePassword = os.Getenv("CLICKHOUSE_PASSWORD")
-	cfg.ClickhouseSecure = os.Getenv("CLICKHOUSE_SECURE") == "true"
 
 	return cfg, nil
 }

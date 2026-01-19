@@ -14,9 +14,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/malbeclabs/doublezero/lake/agent/pkg/workflow"
-	v3 "github.com/malbeclabs/doublezero/lake/agent/pkg/workflow/v3"
-	"github.com/malbeclabs/doublezero/lake/indexer/pkg/clickhouse"
 	slackbot "github.com/malbeclabs/doublezero/lake/slack/internal/slack"
 	"github.com/malbeclabs/doublezero/lake/utils/pkg/logger"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -71,12 +68,6 @@ func run() error {
 	httpAddrFlag := flag.String("http-addr", defaultHTTPAddr, "Address to listen on for HTTP events (production mode)")
 	shutdownTimeoutFlag := flag.Duration("shutdown-timeout", 60*time.Second, "Maximum time to wait for in-flight operations to complete during graceful shutdown")
 
-	// ClickHouse configuration flags (used as fallback if env vars not set)
-	clickhouseAddrFlag := flag.String("clickhouse-addr", "", "ClickHouse server address (e.g., localhost:9000, or set CLICKHOUSE_ADDR_TCP env var)")
-	clickhouseDatabaseFlag := flag.String("clickhouse-database", "default", "ClickHouse database name (or set CLICKHOUSE_DATABASE env var)")
-	clickhouseUsernameFlag := flag.String("clickhouse-username", "default", "ClickHouse username (or set CLICKHOUSE_USERNAME env var)")
-	clickhousePasswordFlag := flag.String("clickhouse-password", "", "ClickHouse password (or set CLICKHOUSE_PASSWORD env var)")
-
 	flag.Parse()
 
 	log := logger.New(*verboseFlag)
@@ -85,20 +76,6 @@ func run() error {
 	cfg, err := slackbot.LoadFromEnv(*modeFlag, *httpAddrFlag, *metricsAddrFlag, *verboseFlag, *enablePprofFlag)
 	if err != nil {
 		return err
-	}
-
-	// Override config with flags if flags are provided (flags take precedence)
-	if *clickhouseAddrFlag != "" {
-		cfg.ClickhouseAddr = *clickhouseAddrFlag
-	}
-	if *clickhouseDatabaseFlag != "" && *clickhouseDatabaseFlag != "default" {
-		cfg.ClickhouseDatabase = *clickhouseDatabaseFlag
-	}
-	if *clickhouseUsernameFlag != "" && *clickhouseUsernameFlag != "default" {
-		cfg.ClickhouseUsername = *clickhouseUsernameFlag
-	}
-	if *clickhousePasswordFlag != "" {
-		cfg.ClickhousePassword = *clickhousePasswordFlag
 	}
 
 	// Start pprof server if enabled
@@ -131,44 +108,9 @@ func run() error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	// Create ClickHouse client using config values
-	clickhouseClient, err := clickhouse.NewClient(ctx, log, cfg.ClickhouseAddr, cfg.ClickhouseDatabase, cfg.ClickhouseUsername, cfg.ClickhousePassword, cfg.ClickhouseSecure)
-	if err != nil {
-		return fmt.Errorf("failed to create clickhouse client: %w", err)
-	}
-	defer clickhouseClient.Close()
-	log.Info("ClickHouse client initialized", "addr", cfg.ClickhouseAddr, "database", cfg.ClickhouseDatabase)
-
-	// Load workflow prompts
-	prompts, err := v3.LoadPrompts()
-	if err != nil {
-		return fmt.Errorf("failed to load workflow prompts: %w", err)
-	}
-
-	// Create LLM client for the workflow
-	// Using Claude Sonnet 4.5 for good balance of speed and capability
-	llmClient := workflow.NewAnthropicLLMClient("claude-sonnet-4-20250514", 4096)
-
-	// Create querier for the workflow
-	querier := slackbot.NewClickhouseQuerier(clickhouseClient)
-
-	// Create schema fetcher for the workflow (uses TCP, same as querier)
-	schemaFetcher := slackbot.NewClickhouseSchemaFetcher(clickhouseClient, cfg.ClickhouseDatabase)
-
-	// Create the analysis workflow with Slack formatting context
-	wf, err := v3.New(&workflow.Config{
-		Logger:        log,
-		LLM:           llmClient,
-		Querier:       querier,
-		SchemaFetcher: schemaFetcher,
-		Prompts:       prompts,
-		MaxTokens:     4096,
-		MaxRetries:    4,
-		FormatContext: prompts.Slack, // Apply Slack-specific formatting guidelines
-	})
-	if err != nil {
-		return fmt.Errorf("failed to create workflow: %w", err)
-	}
+	// Create API client
+	apiClient := slackbot.NewAPIClient(cfg.APIBaseURL, log)
+	log.Info("API client initialized", "base_url", cfg.APIBaseURL)
 
 	// Initialize Slack client
 	slackClient := slackbot.NewClient(cfg.BotToken, cfg.AppToken, log)
@@ -185,7 +127,7 @@ func run() error {
 	// Set up message processor
 	msgProcessor := slackbot.NewProcessor(
 		slackClient,
-		wf,
+		apiClient,
 		convManager,
 		log,
 	)

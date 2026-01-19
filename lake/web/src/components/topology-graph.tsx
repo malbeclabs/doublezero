@@ -147,6 +147,7 @@ export function TopologyGraph({
     deviceType: string
     systemId?: string
     degree: number
+    contributorCode?: string
     x: number
     y: number
   } | null>(null)
@@ -156,6 +157,11 @@ export function TopologyGraph({
     source: string
     target: string
     metric: number
+    code?: string
+    linkType?: string
+    contributorCode?: string
+    bandwidth?: string
+    latencyMs?: string
     x: number
     y: number
     health?: {
@@ -1160,41 +1166,62 @@ export function TopologyGraph({
   // Apply bandwidth edge styling
   // Sets width based on bandwidth, and resets color to grey (other overlays will override if active)
   useEffect(() => {
-    if (!cyRef.current || !bandwidthEnabled) return
+    if (!cyRef.current) return
     const cy = cyRef.current
 
     const defaultColor = isDark ? '#6b7280' : '#9ca3af'
 
     cy.batch(() => {
-      cy.edges().forEach(edge => {
-        const bandwidth = edge.data('bandwidth') ?? 0 // bandwidth in bps
-        const gbps = bandwidth / 1e9
-        let width: number
+      if (bandwidthEnabled && edgeTrafficMap.size > 0) {
+        // Apply bandwidth-based widths
+        cy.edges().forEach(edge => {
+          const sourcePK = edge.data('source')
+          const targetPK = edge.data('target')
+          // Look up bandwidth from topology data via edgeTrafficMap
+          const trafficInfo = edgeTrafficMap.get(`${sourcePK}->${targetPK}`)
+          const bandwidth = trafficInfo?.bandwidthBps ?? 0
+          const gbps = bandwidth / 1e9
+          let width: number
 
-        if (gbps >= 100) {
-          width = 5
-        } else if (gbps >= 10) {
-          width = 4
-        } else if (gbps >= 1) {
-          width = 3
-        } else if (gbps > 0) {
-          width = 2
-        } else {
-          width = 1
-        }
+          // Width based on bandwidth capacity (most links are 10-100 Gbps)
+          if (gbps >= 100) {
+            width = 6
+          } else if (gbps >= 40) {
+            width = 4
+          } else if (gbps >= 10) {
+            width = 2
+          } else if (gbps >= 1) {
+            width = 1.5
+          } else {
+            width = 1
+          }
 
-        // Set width and reset color to default grey
-        // Color overlays (linkHealth, trafficFlow, etc.) will override if active
-        edge.style({
-          'line-color': defaultColor,
-          'target-arrow-color': defaultColor,
-          'width': width,
-          'opacity': 0.6,
-          'line-style': 'solid',
+          // Set width and reset color to default grey
+          // Color overlays (linkHealth, trafficFlow, etc.) will override if active
+          edge.style({
+            'line-color': defaultColor,
+            'target-arrow-color': defaultColor,
+            'width': width,
+            'opacity': 0.7,
+            'line-style': 'solid',
+          })
         })
-      })
+      } else if (!bandwidthEnabled) {
+        // Reset to default width when disabled (unless another link overlay is active)
+        if (!linkHealthOverlayEnabled && !trafficFlowEnabled && !contributorLinksEnabled && !isisHealthEnabled && !criticalityEnabled && !linkTypeEnabled) {
+          cy.edges().forEach(edge => {
+            edge.style({
+              'line-color': defaultColor,
+              'target-arrow-color': defaultColor,
+              'width': 1,
+              'opacity': 0.7,
+              'line-style': 'solid',
+            })
+          })
+        }
+      }
     })
-  }, [bandwidthEnabled, isDark, cyGeneration])
+  }, [bandwidthEnabled, isDark, cyGeneration, edgeTrafficMap, linkHealthOverlayEnabled, trafficFlowEnabled, contributorLinksEnabled, isisHealthEnabled, criticalityEnabled, linkTypeEnabled])
 
   // Apply link type edge styling
   useEffect(() => {
@@ -1998,13 +2025,17 @@ export function TopologyGraph({
       cy.on('mouseover', 'node', (event) => {
         const node = event.target
         const pos = node.renderedPosition()
+        const devicePK = node.data('id')
+        // Look up device info for contributor
+        const deviceInfo = deviceInfoMapRef.current.get(devicePK)
         setHoveredNode({
-          id: node.data('id'),
+          id: devicePK,
           label: node.data('label'),
           status: node.data('status'),
           deviceType: node.data('deviceType'),
           systemId: node.data('systemId'),
           degree: node.data('degree'),
+          contributorCode: deviceInfo?.contributorCode,
           x: pos.x,
           y: pos.y,
         })
@@ -2025,11 +2056,18 @@ export function TopologyGraph({
         const target = edge.data('target')
         const edgeKey = `${source}->${target}`
         const healthInfo = edgeSlaStatusRef.current.get(edgeKey)
+        // Look up link info for code, type, contributor, bandwidth
+        const linkInfo = linkByDevicePairMapRef.current.get(edgeKey)
         setHoveredEdge({
           id: edge.data('id'),
           source,
           target,
           metric: edge.data('metric'),
+          code: linkInfo?.code,
+          linkType: linkInfo?.linkType,
+          contributorCode: linkInfo?.contributorCode,
+          bandwidth: linkInfo?.bandwidth,
+          latencyMs: linkInfo?.latencyMs,
           x: midpoint.x * zoom + pan.x,
           y: midpoint.y * zoom + pan.y,
           health: healthInfo,
@@ -2789,18 +2827,20 @@ export function TopologyGraph({
       {/* Node tooltip */}
       {hoveredNode && (
         <div
-          className="absolute pointer-events-none z-50 bg-background/95 backdrop-blur border rounded-md shadow-lg p-3 text-sm"
+          className="absolute pointer-events-none z-50 bg-background/95 backdrop-blur border rounded-md shadow-lg px-3 py-2"
           style={{
             left: Math.min(hoveredNode.x + 20, (containerRef.current?.clientWidth || 500) - 200),
             top: hoveredNode.y - 10,
           }}
         >
-          <div className="font-medium">{hoveredNode.label}</div>
-          <div className="text-muted-foreground text-xs mt-1 space-y-0.5">
-            <div>Type: <span className="capitalize">{hoveredNode.deviceType}</span></div>
-            <div>Status: {hoveredNode.status}</div>
-            <div>Connections: {hoveredNode.degree}</div>
-            {hoveredNode.systemId && <div>System ID: {hoveredNode.systemId}</div>}
+          <div className="space-y-1">
+            <div className="text-sm font-medium">{hoveredNode.label}</div>
+            <div className="text-xs text-muted-foreground space-y-0.5">
+              <div>Type: <span className="text-foreground capitalize">{hoveredNode.deviceType}</span></div>
+              {hoveredNode.contributorCode && (
+                <div>Contributor: <span className="text-foreground">{hoveredNode.contributorCode}</span></div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -2808,7 +2848,7 @@ export function TopologyGraph({
       {/* Edge tooltip */}
       {hoveredEdge && (
         <div
-          className="absolute pointer-events-none z-50 bg-background/95 backdrop-blur border rounded-md shadow-lg p-2 text-xs"
+          className="absolute pointer-events-none z-50 bg-background/95 backdrop-blur border rounded-md shadow-lg px-3 py-2"
           style={{
             left: hoveredEdge.x + 10,
             top: hoveredEdge.y - 10,
@@ -2816,50 +2856,28 @@ export function TopologyGraph({
         >
           {hoveredEdge.isInterMetroEdge ? (
             // Inter-metro edge tooltip
-            <div className="text-muted-foreground">
-              <div className="font-medium text-foreground mb-1">Inter-Metro Link</div>
-              <div>
-                Links: <span className="font-medium text-blue-500">{hoveredEdge.linkCount || 1}</span>
-              </div>
-              <div>
-                Avg Latency: <span className="font-medium text-foreground">
+            <div className="space-y-1">
+              <div className="text-sm font-medium">Inter-Metro Link</div>
+              <div className="text-xs text-muted-foreground space-y-0.5">
+                <div>Links: <span className="text-foreground">{hoveredEdge.linkCount || 1}</span></div>
+                <div>Avg Latency: <span className="text-foreground">
                   {hoveredEdge.avgMetric ? `${(hoveredEdge.avgMetric / 1000).toFixed(2)}ms` : 'N/A'}
-                </span>
+                </span></div>
               </div>
             </div>
           ) : (
             // Regular edge tooltip
-            <>
-              <div className="text-muted-foreground">
-                Latency: <span className="font-medium text-foreground">{hoveredEdge.metric ? `${(hoveredEdge.metric / 1000).toFixed(2)}ms` : 'N/A'}</span>
+            <div className="space-y-1">
+              <div className="text-sm font-medium">{hoveredEdge.code || `${hoveredEdge.source.substring(0, 8)}...→${hoveredEdge.target.substring(0, 8)}...`}</div>
+              <div className="text-xs text-muted-foreground space-y-0.5">
+                <div>Type: <span className="text-foreground">{hoveredEdge.linkType || 'unknown'}</span></div>
+                {hoveredEdge.contributorCode && (
+                  <div>Contributor: <span className="text-foreground">{hoveredEdge.contributorCode}</span></div>
+                )}
+                <div>Latency: <span className="text-foreground">{hoveredEdge.latencyMs || (hoveredEdge.metric ? `${(hoveredEdge.metric / 1000).toFixed(2)}ms` : 'N/A')}</span></div>
+                <div>Bandwidth: <span className="text-foreground">{hoveredEdge.bandwidth || 'N/A'}</span></div>
               </div>
-              {hoveredEdge.health && (
-                <>
-                  <div className="text-muted-foreground">
-                    Committed: <span className="font-medium text-foreground">{(hoveredEdge.health.committedRttNs / 1000000).toFixed(2)}ms</span>
-                  </div>
-                  <div className="text-muted-foreground">
-                    SLA Ratio: <span className={`font-medium ${
-                      hoveredEdge.health.slaRatio >= 2.0 ? 'text-red-500' :
-                      hoveredEdge.health.slaRatio >= 1.5 ? 'text-yellow-500' : 'text-green-500'
-                    }`}>{(hoveredEdge.health.slaRatio * 100).toFixed(0)}%</span>
-                  </div>
-                  <div className="text-muted-foreground">
-                    Packet Loss: <span className={`font-medium ${
-                      hoveredEdge.health.lossPct > 10 ? 'text-red-500' :
-                      hoveredEdge.health.lossPct > 0.1 ? 'text-yellow-500' : 'text-green-500'
-                    }`}>{hoveredEdge.health.lossPct.toFixed(2)}%</span>
-                  </div>
-                  <div className="text-muted-foreground">
-                    Status: <span className={`font-medium ${
-                      hoveredEdge.health.status === 'critical' ? 'text-red-500' :
-                      hoveredEdge.health.status === 'warning' ? 'text-yellow-500' :
-                      hoveredEdge.health.status === 'healthy' ? 'text-green-500' : 'text-muted-foreground'
-                    }`}>{hoveredEdge.health.status}</span>
-                  </div>
-                </>
-              )}
-            </>
+            </div>
           )}
         </div>
       )}

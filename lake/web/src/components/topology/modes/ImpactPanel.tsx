@@ -124,9 +124,9 @@ export function ImpactPanel({ devicePK, result, isLoading, onClose }: ImpactPane
                         </div>
 
                         {/* Impact summary */}
-                        {path.hasAlternate && (hopDelta > 0 || metricDelta > 0) && (
-                          <div className="text-yellow-500 text-[10px]">
-                            +{hopDelta} hop{hopDelta !== 1 ? 's' : ''}, +{metricToMs(metricDelta)}ms latency
+                        {path.hasAlternate && (
+                          <div className={`text-[10px] ${hopDelta > 0 || metricDelta > 0 ? 'text-yellow-500' : 'text-green-500'}`}>
+                            {hopDelta > 0 ? '+' : ''}{hopDelta} hop{hopDelta !== 1 && hopDelta !== -1 ? 's' : ''}, {metricDelta > 0 ? '+' : ''}{metricToMs(metricDelta)}ms latency
                           </div>
                         )}
                         {!path.hasAlternate && (

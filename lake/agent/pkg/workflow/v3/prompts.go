@@ -3,6 +3,7 @@ package v3
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	commonprompts "github.com/malbeclabs/doublezero/lake/agent/pkg/workflow/prompts"
 	"github.com/malbeclabs/doublezero/lake/agent/pkg/workflow/v3/prompts"
@@ -79,7 +80,9 @@ func BuildSystemPrompt(basePrompt, schema, formatContext string) string {
 
 // BuildSystemPromptWithGraph constructs the full system prompt with SQL schema, graph schema, and optional format context.
 func BuildSystemPromptWithGraph(basePrompt, sqlSchema, graphSchema, cypherContext, formatContext string) string {
-	prompt := basePrompt
+	// Add current date context at the beginning so the model knows what "today" is
+	currentDate := time.Now().UTC().Format("2006-01-02")
+	prompt := fmt.Sprintf("Today's date: %s (UTC)\n\n%s", currentDate, basePrompt)
 
 	// Add SQL schema
 	prompt += fmt.Sprintf("\n\n# SQL Database Schema (ClickHouse)\n\n%s", sqlSchema)

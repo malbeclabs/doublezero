@@ -322,8 +322,29 @@ export function TopologyControlBar({
             collapsed={collapsed}
           />
 
-          {/* Overlays */}
-          <SectionHeader title="Overlays" collapsed={collapsed} />
+          {/* Device Overlays */}
+          <SectionHeader title="Device Overlays" collapsed={collapsed} />
+
+          <NavItem
+            icon={<MapPin className="h-3.5 w-3.5" />}
+            label="Metros"
+            shortcut="m"
+            onClick={() => handleToggleOverlay('metroClustering')}
+            active={overlays.metroClustering}
+            activeColor="blue"
+            disabled={isInAnalysisMode}
+            collapsed={collapsed}
+          />
+
+          <NavItem
+            icon={<Building2 className="h-3.5 w-3.5" />}
+            label="Contributors"
+            onClick={() => handleToggleOverlay('contributorDevices')}
+            active={overlays.contributorDevices}
+            activeColor="purple"
+            disabled={isInAnalysisMode}
+            collapsed={collapsed}
+          />
 
           {view === 'map' && (
             <NavItem
@@ -339,7 +360,7 @@ export function TopologyControlBar({
 
           <NavItem
             icon={<Coins className="h-3.5 w-3.5" />}
-            label="Stake distribution"
+            label="Stake"
             shortcut="s"
             onClick={() => handleToggleOverlay('stake')}
             active={overlays.stake}
@@ -348,9 +369,12 @@ export function TopologyControlBar({
             collapsed={collapsed}
           />
 
+          {/* Link Overlays */}
+          <SectionHeader title="Link Overlays" collapsed={collapsed} />
+
           <NavItem
             icon={<Activity className="h-3.5 w-3.5" />}
-            label="Link health"
+            label="Health"
             shortcut="h"
             onClick={() => handleToggleOverlay('linkHealth')}
             active={overlays.linkHealth}
@@ -361,7 +385,7 @@ export function TopologyControlBar({
 
           <NavItem
             icon={<BarChart3 className="h-3.5 w-3.5" />}
-            label="Traffic flow"
+            label="Traffic"
             shortcut="t"
             onClick={() => handleToggleOverlay('trafficFlow')}
             active={overlays.trafficFlow}
@@ -371,22 +395,10 @@ export function TopologyControlBar({
           />
 
           <NavItem
-            icon={<MapPin className="h-3.5 w-3.5" />}
-            label="Metro colors"
-            shortcut="m"
-            onClick={() => handleToggleOverlay('metroClustering')}
-            active={overlays.metroClustering}
-            activeColor="blue"
-            disabled={isInAnalysisMode}
-            collapsed={collapsed}
-          />
-
-          <NavItem
             icon={<Building2 className="h-3.5 w-3.5" />}
             label="Contributors"
-            shortcut="o"
-            onClick={() => handleToggleOverlay('contributors')}
-            active={overlays.contributors}
+            onClick={() => handleToggleOverlay('contributorLinks')}
+            active={overlays.contributorLinks}
             activeColor="purple"
             disabled={isInAnalysisMode}
             collapsed={collapsed}

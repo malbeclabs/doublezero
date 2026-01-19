@@ -339,7 +339,8 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
   const linkHealthMode = overlays.linkHealth
   const trafficFlowMode = overlays.trafficFlow
   const metroClusteringMode = overlays.metroClustering
-  const contributorsMode = overlays.contributors
+  const contributorDevicesMode = overlays.contributorDevices
+  const contributorLinksMode = overlays.contributorLinks
 
   // Path finding operational state (local)
   const [pathSource, setPathSource] = useState<string | null>(null)
@@ -1075,14 +1076,14 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
         displayColor = trafficStyle.color
         displayWeight = trafficStyle.weight
         displayOpacity = trafficStyle.opacity
-      } else if (contributorsMode && link.contributor_pk) {
-        // Contributors mode: color by contributor
+      } else if (contributorLinksMode && link.contributor_pk) {
+        // Contributor links mode: color by contributor
         const contributorIndex = contributorIndexMap.get(link.contributor_pk) ?? 0
         displayColor = CONTRIBUTOR_COLORS[contributorIndex % CONTRIBUTOR_COLORS.length]
         displayWeight = weight + 1
         displayOpacity = 0.9
-      } else if (contributorsMode && !link.contributor_pk) {
-        // Contributors mode but no contributor - dim the link
+      } else if (contributorLinksMode && !link.contributor_pk) {
+        // Contributor links mode but no contributor - dim the link
         displayColor = isDark ? '#6b7280' : '#9ca3af'
         displayOpacity = 0.3
       } else if (criticalityModeEnabled && criticality) {
@@ -1168,7 +1169,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       type: 'FeatureCollection' as const,
       features,
     }
-  }, [links, devicePositions, isDark, hoveredLink, selectedItem, hoverHighlight, linkPathMap, selectedPathIndex, criticalityModeEnabled, linkCriticalityMap, whatifRemovalMode, removalLink, linkHealthMode, linkSlaStatus, trafficFlowMode, getTrafficColor, metroClusteringMode, collapsedMetros, deviceMap, metroMap, contributorsMode, contributorIndexMap])
+  }, [links, devicePositions, isDark, hoveredLink, selectedItem, hoverHighlight, linkPathMap, selectedPathIndex, criticalityModeEnabled, linkCriticalityMap, whatifRemovalMode, removalLink, linkHealthMode, linkSlaStatus, trafficFlowMode, getTrafficColor, metroClusteringMode, collapsedMetros, deviceMap, metroMap, contributorLinksMode, contributorIndexMap])
 
   // GeoJSON for validator links (connecting lines)
   const validatorLinksGeoJson = useMemo(() => {
@@ -1661,7 +1662,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           }
 
           // Metro clustering mode - color based on metro
-          if (metroClusteringMode && !stakeOverlayMode && !contributorsMode) {
+          if (metroClusteringMode && !stakeOverlayMode && !contributorDevicesMode) {
             const metroIndex = metroIndexMap.get(device.metro_pk) ?? 0
             markerColor = getMetroColor(device.metro_pk, metroIndex)
             borderColor = markerColor
@@ -1669,8 +1670,8 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             opacity = 1
           }
 
-          // Contributors mode - color based on contributor
-          if (contributorsMode && !stakeOverlayMode && !metroClusteringMode) {
+          // Contributor devices mode - color based on contributor
+          if (contributorDevicesMode && !stakeOverlayMode && !metroClusteringMode) {
             const contributorIndex = contributorIndexMap.get(device.contributor_pk) ?? 0
             markerColor = getContributorColor(device.contributor_pk, contributorIndex)
             borderColor = markerColor
@@ -2101,11 +2102,11 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       {panel.isOpen && panel.content === 'overlay' && (
         <TopologyPanel
           title={
-            stakeOverlayMode ? 'Stake Distribution' :
-            linkHealthMode ? 'Link Health' :
-            trafficFlowMode ? 'Traffic Flow' :
-            metroClusteringMode ? 'Metro Clustering' :
-            contributorsMode ? 'Contributors' :
+            stakeOverlayMode ? 'Stake' :
+            linkHealthMode ? 'Health' :
+            trafficFlowMode ? 'Traffic' :
+            metroClusteringMode ? 'Metros' :
+            (contributorDevicesMode || contributorLinksMode) ? 'Contributors' :
             'Overlay'
           }
         >
@@ -2143,7 +2144,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
               isLoading={metros.length === 0}
             />
           )}
-          {contributorsMode && (
+          {(contributorDevicesMode || contributorLinksMode) && (
             <ContributorsOverlayPanel
               contributorInfoMap={contributorInfoMap}
               getContributorColor={(pk) => getContributorColor(pk, contributorIndexMap.get(pk) ?? 0)}

@@ -107,7 +107,8 @@ export function TopologyGraph({
   const linkHealthOverlayEnabled = overlays.linkHealth
   const trafficFlowEnabled = overlays.trafficFlow
   const metroClusteringEnabled = overlays.metroClustering
-  const contributorsEnabled = overlays.contributors
+  const contributorDevicesEnabled = overlays.contributorDevices
+  const contributorLinksEnabled = overlays.contributorLinks
 
   // Path finding operational state (local)
   const [pathSource, setPathSource] = useState<string | null>(null)
@@ -893,12 +894,9 @@ export function TopologyGraph({
     if (!cyRef.current) return
     const cy = cyRef.current
 
-    // Skip if stake or metro overlay is active (they take precedence)
-    if (stakeOverlayEnabled || metroClusteringEnabled) return
-
     cy.batch(() => {
-      if (contributorsEnabled && contributorInfoMap.size > 0) {
-        // Apply contributor-based coloring to nodes (keep degree-based sizing)
+      // Apply contributor-based coloring to nodes if enabled (and stake/metro not active)
+      if (contributorDevicesEnabled && contributorInfoMap.size > 0 && !stakeOverlayEnabled && !metroClusteringEnabled) {
         cy.nodes().forEach(node => {
           const devicePK = node.data('id')
           const contributorPK = deviceContributorMap.get(devicePK)
@@ -909,7 +907,21 @@ export function TopologyGraph({
             'background-color': getContributorColor(contributorPK),
           })
         })
-        // Apply contributor-based coloring to edges
+      } else if (!stakeOverlayEnabled && !metroClusteringEnabled) {
+        // Revert to default device type coloring for nodes
+        cy.nodes().forEach(node => {
+          const degree = node.data('degree')
+          const deviceType = node.data('deviceType')
+          node.style({
+            'width': getNodeSize(degree),
+            'height': getNodeSize(degree),
+            'background-color': getDeviceTypeColor(deviceType),
+          })
+        })
+      }
+
+      // Apply contributor-based coloring to edges if enabled (and linkHealth/traffic not active)
+      if (contributorLinksEnabled && contributorInfoMap.size > 0 && !linkHealthOverlayEnabled && !trafficFlowEnabled) {
         cy.edges().forEach(edge => {
           const edgeId = edge.data('id')
           const contributorPK = edgeContributorMap.get(edgeId)
@@ -929,17 +941,7 @@ export function TopologyGraph({
             })
           }
         })
-      } else {
-        // Revert to default device type coloring for nodes
-        cy.nodes().forEach(node => {
-          const degree = node.data('degree')
-          const deviceType = node.data('deviceType')
-          node.style({
-            'width': getNodeSize(degree),
-            'height': getNodeSize(degree),
-            'background-color': getDeviceTypeColor(deviceType),
-          })
-        })
+      } else if (!linkHealthOverlayEnabled && !trafficFlowEnabled) {
         // Revert to default edge styling
         cy.edges().forEach(edge => {
           const linkType = edge.data('linkType')
@@ -952,7 +954,7 @@ export function TopologyGraph({
         })
       }
     })
-  }, [contributorsEnabled, contributorInfoMap, deviceContributorMap, edgeContributorMap, getContributorColor, getNodeSize, getDeviceTypeColor, stakeOverlayEnabled, metroClusteringEnabled, isDark])
+  }, [contributorDevicesEnabled, contributorLinksEnabled, contributorInfoMap, deviceContributorMap, edgeContributorMap, getContributorColor, getNodeSize, getDeviceTypeColor, stakeOverlayEnabled, metroClusteringEnabled, linkHealthOverlayEnabled, trafficFlowEnabled, isDark])
 
   // Toggle metro collapse state
   const toggleMetroCollapse = useCallback((metroPK: string) => {
@@ -2316,11 +2318,11 @@ export function TopologyGraph({
       {panel.isOpen && panel.content === 'overlay' && (
         <TopologyPanel
           title={
-            stakeOverlayEnabled ? 'Stake Distribution' :
-            linkHealthOverlayEnabled ? 'Link Health' :
-            trafficFlowEnabled ? 'Traffic Flow' :
-            metroClusteringEnabled ? 'Metro Clustering' :
-            contributorsEnabled ? 'Contributors' :
+            stakeOverlayEnabled ? 'Stake' :
+            linkHealthOverlayEnabled ? 'Health' :
+            trafficFlowEnabled ? 'Traffic' :
+            metroClusteringEnabled ? 'Metros' :
+            (contributorDevicesEnabled || contributorLinksEnabled) ? 'Contributors' :
             'Overlay'
           }
         >
@@ -2358,7 +2360,7 @@ export function TopologyGraph({
               isLoading={!topologyData}
             />
           )}
-          {contributorsEnabled && (
+          {(contributorDevicesEnabled || contributorLinksEnabled) && (
             <ContributorsOverlayPanel
               contributorInfoMap={contributorInfoMap}
               getContributorColor={getContributorColor}

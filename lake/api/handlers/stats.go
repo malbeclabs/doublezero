@@ -147,12 +147,13 @@ func GetStats(w http.ResponseWriter, r *http.Request) {
 		return row.Scan(&stats.Metros)
 	})
 
-	// Sum total bandwidth for all activated links
+	// Sum total bandwidth for activated WAN links
 	g.Go(func() error {
 		query := `
 			SELECT COALESCE(SUM(bandwidth_bps), 0)
 			FROM dz_links_current
 			WHERE status = 'activated'
+			  AND link_type = 'WAN'
 		`
 		row := config.DB.QueryRow(ctx, query)
 		return row.Scan(&stats.WANBandwidthBps)

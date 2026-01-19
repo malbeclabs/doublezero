@@ -178,13 +178,13 @@ export function TopologyControlBar({
 
   return (
     <div
-      className="absolute top-4 right-4 z-[999]"
+      className="absolute top-4 right-4 z-[999] flex flex-col max-h-[calc(100vh-2rem)]"
     >
-      <div className={`bg-[var(--card)] border border-[var(--border)] rounded-lg shadow-sm overflow-hidden transition-all duration-200 ${collapsed ? 'w-10' : 'w-44'}`}>
+      <div className={`bg-[var(--card)] border border-[var(--border)] rounded-lg shadow-sm overflow-hidden transition-all duration-200 flex flex-col max-h-full ${collapsed ? 'w-10' : 'w-44'}`}>
         {/* Collapse toggle */}
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="w-full flex items-center justify-between px-2 py-1.5 hover:bg-[var(--muted)] transition-colors border-b border-[var(--border)]"
+          className="w-full flex items-center justify-between px-2 py-1.5 hover:bg-[var(--muted)] transition-colors border-b border-[var(--border)] flex-shrink-0"
           title={collapsed ? 'Expand controls' : 'Collapse controls'}
         >
           {!collapsed && <span className="text-xs font-medium">Controls</span>}
@@ -195,7 +195,7 @@ export function TopologyControlBar({
           )}
         </button>
 
-        <div className="p-1 space-y-0.5">
+        <div className="p-1 space-y-0.5 overflow-y-auto flex-1">
           {/* Search */}
           <NavItem
             icon={<Search className="h-3.5 w-3.5" />}

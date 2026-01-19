@@ -14,8 +14,6 @@ function metricToMs(metric: number): string {
 }
 
 export function ImpactPanel({ devicePK, result, isLoading, onClose }: ImpactPanelProps) {
-  if (!devicePK && !isLoading) return null
-
   return (
     <div className="p-3 text-xs">
       <div className="flex items-center justify-between mb-2">
@@ -23,10 +21,19 @@ export function ImpactPanel({ devicePK, result, isLoading, onClose }: ImpactPane
           <Zap className="h-3.5 w-3.5 text-purple-500" />
           Failure Impact
         </span>
-        <button onClick={onClose} className="p-1 hover:bg-[var(--muted)] rounded" title="Close">
-          <X className="h-3 w-3" />
-        </button>
+        {devicePK && (
+          <button onClick={onClose} className="p-1 hover:bg-[var(--muted)] rounded" title="Clear">
+            <X className="h-3 w-3" />
+          </button>
+        )}
       </div>
+
+      {/* Show prompt when no device selected */}
+      {!devicePK && !isLoading && (
+        <div className="text-muted-foreground">
+          Click a device to analyze what happens if it fails.
+        </div>
+      )}
 
       {isLoading && (
         <div className="text-muted-foreground">Analyzing impact...</div>
@@ -140,12 +147,6 @@ export function ImpactPanel({ devicePK, result, isLoading, onClose }: ImpactPane
 
       {result?.error && (
         <div className="text-destructive">{result.error}</div>
-      )}
-
-      {!isLoading && !result && devicePK && (
-        <div className="text-muted-foreground">
-          Click a device to analyze its failure impact
-        </div>
       )}
     </div>
   )

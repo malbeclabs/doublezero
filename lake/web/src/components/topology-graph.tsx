@@ -2380,7 +2380,6 @@ export function TopologyGraph({
         onZoomIn={handleZoomIn}
         onZoomOut={handleZoomOut}
         onReset={handleFit}
-        hasSelectedDevice={!!selectedDevicePK}
       />
 
       {/* Mode panel (right panel) */}

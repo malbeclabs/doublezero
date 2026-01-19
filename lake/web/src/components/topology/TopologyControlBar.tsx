@@ -31,8 +31,6 @@ interface TopologyControlBarProps {
   onZoomIn?: () => void
   onZoomOut?: () => void
   onReset?: () => void
-  // Whether a device is selected (for impact mode)
-  hasSelectedDevice?: boolean
 }
 
 interface NavItemProps {
@@ -110,7 +108,6 @@ export function TopologyControlBar({
   onZoomIn,
   onZoomOut,
   onReset,
-  hasSelectedDevice = false,
 }: TopologyControlBarProps) {
   const { mode, setMode, pathMode, setPathMode, overlays, toggleOverlay, view, panel, openPanel, closePanel } = useTopology()
   const navigate = useNavigate()
@@ -306,7 +303,6 @@ export function TopologyControlBar({
             onClick={() => toggleMode('impact')}
             active={mode === 'impact'}
             activeColor="purple"
-            disabled={!hasSelectedDevice && mode !== 'impact'}
             collapsed={collapsed}
           />
 

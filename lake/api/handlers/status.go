@@ -1571,15 +1571,16 @@ func fetchDeviceHistoryData(ctx context.Context, timeRange string, requestedBuck
 	}
 
 	// Get interface issues per bucket
+	// Use greatest(0, delta) to ignore negative deltas (counter resets from device restarts)
 	interfaceQuery := `
 		SELECT
 			device_pk,
 			` + bucketInterval + ` as bucket,
-			toUInt64(SUM(in_errors_delta)) as in_errors,
-			toUInt64(SUM(out_errors_delta)) as out_errors,
-			toUInt64(SUM(in_discards_delta)) as in_discards,
-			toUInt64(SUM(out_discards_delta)) as out_discards,
-			toUInt64(SUM(carrier_transitions_delta)) as carrier_transitions
+			toUInt64(SUM(greatest(0, in_errors_delta))) as in_errors,
+			toUInt64(SUM(greatest(0, out_errors_delta))) as out_errors,
+			toUInt64(SUM(greatest(0, in_discards_delta))) as in_discards,
+			toUInt64(SUM(greatest(0, out_discards_delta))) as out_discards,
+			toUInt64(SUM(greatest(0, carrier_transitions_delta))) as carrier_transitions
 		FROM fact_dz_device_interface_counters
 		WHERE event_ts > now() - INTERVAL ? HOUR
 		GROUP BY device_pk, bucket

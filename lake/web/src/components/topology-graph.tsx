@@ -337,6 +337,7 @@ export function TopologyGraph({
     return map
   }, [linkInfoMap])
   const linkByDevicePairMapRef = useRef<Map<string, LinkInfo>>(new Map())
+  const previousPathEdgeIdsRef = useRef<Set<string>>(new Set())
 
   // Keep refs updated for use in event handlers
   useEffect(() => {
@@ -610,44 +611,91 @@ export function TopologyGraph({
   }, [mode, pathSource, pathTarget, pathMode])
 
   // Highlight paths on graph - show all paths with different colors, selected path is prominent
+  // Uses direct .style() calls to override any other overlay styles (bandwidth, link type, etc.)
   useEffect(() => {
     if (!cyRef.current) return
     const cy = cyRef.current
 
-    // Clear previous path highlighting
+    // Path colors (matching the stylesheet definitions)
+    const PATH_COLORS = [
+      { light: '#16a34a', dark: '#22c55e' },  // Path 0 - Green (shortest)
+      { light: '#2563eb', dark: '#3b82f6' },  // Path 1 - Blue
+      { light: '#9333ea', dark: '#a855f7' },  // Path 2 - Purple
+      { light: '#ea580c', dark: '#f97316' },  // Path 3 - Orange
+      { light: '#0891b2', dark: '#06b6d4' },  // Path 4 - Cyan
+    ]
+
+    // Clear previous path highlighting - reset styles on previously tracked path edges
+    // This must happen before removing classes, as we track edges by ID not class
+    const defaultColor = isDark ? '#6b7280' : '#9ca3af'
+    previousPathEdgeIdsRef.current.forEach(edgeId => {
+      const edge = cy.getElementById(edgeId)
+      if (edge.length) {
+        edge.removeStyle('line-color target-arrow-color width opacity z-index')
+        // Reset to default color
+        edge.style({
+          'line-color': defaultColor,
+          'target-arrow-color': defaultColor,
+          'width': 1,
+          'opacity': 0.7,
+        })
+      }
+    })
+    previousPathEdgeIdsRef.current.clear()
+
     cy.elements().removeClass('path-node path-edge path-0 path-1 path-2 path-3 path-4 path-selected')
     cy.elements().removeData('pathIndex')
 
     if (!pathsResult?.paths?.length) return
 
-    // Highlight all paths with their respective colors
-    pathsResult.paths.forEach((singlePath, pathIndex) => {
-      if (!singlePath.path.length) return
+    const newPathEdgeIds = new Set<string>()
 
-      const pathClass = `path-${pathIndex}`
-      const isSelected = pathIndex === selectedPathIndex
+    cy.batch(() => {
+      // Highlight all paths with their respective colors
+      pathsResult.paths.forEach((singlePath, pathIndex) => {
+        if (!singlePath.path.length) return
 
-      // Highlight path nodes
-      singlePath.path.forEach(hop => {
-        const node = cy.getElementById(hop.devicePK)
-        if (node.length) {
-          node.addClass('path-node')
-          node.addClass(pathClass)
-          if (isSelected) node.addClass('path-selected')
+        const pathClass = `path-${pathIndex}`
+        const isSelected = pathIndex === selectedPathIndex
+        const color = isDark ? PATH_COLORS[pathIndex % PATH_COLORS.length].dark : PATH_COLORS[pathIndex % PATH_COLORS.length].light
+
+        // Highlight path nodes
+        singlePath.path.forEach(hop => {
+          const node = cy.getElementById(hop.devicePK)
+          if (node.length) {
+            node.addClass('path-node')
+            node.addClass(pathClass)
+            if (isSelected) node.addClass('path-selected')
+          }
+        })
+
+        // Highlight edges between consecutive path nodes
+        for (let i = 0; i < singlePath.path.length - 1; i++) {
+          const from = singlePath.path[i].devicePK
+          const to = singlePath.path[i + 1].devicePK
+          // Try both directions since ISIS adjacencies are directed
+          const edge = cy.edges(`[source="${from}"][target="${to}"], [source="${to}"][target="${from}"]`)
+          edge.addClass('path-edge')
+          edge.addClass(pathClass)
+          if (isSelected) edge.addClass('path-selected')
+
+          // Track edge IDs for cleanup on next path change
+          edge.forEach(e => { newPathEdgeIds.add(e.id()) })
+
+          // Apply styles directly to override any other overlay styles
+          edge.style({
+            'line-color': color,
+            'target-arrow-color': color,
+            'width': isSelected ? 5 : 3,
+            'opacity': isSelected ? 1 : 0.6,
+            'z-index': isSelected ? 10 : 1,
+          })
         }
       })
-
-      // Highlight edges between consecutive path nodes
-      for (let i = 0; i < singlePath.path.length - 1; i++) {
-        const from = singlePath.path[i].devicePK
-        const to = singlePath.path[i + 1].devicePK
-        // Try both directions since ISIS adjacencies are directed
-        const edge = cy.edges(`[source="${from}"][target="${to}"], [source="${to}"][target="${from}"]`)
-        edge.addClass('path-edge')
-        edge.addClass(pathClass)
-        if (isSelected) edge.addClass('path-selected')
-      }
     })
+
+    // Store current path edge IDs for next cleanup
+    previousPathEdgeIdsRef.current = newPathEdgeIds
   }, [pathsResult, selectedPathIndex, isDark])
 
   // Clear classes when mode changes
@@ -665,7 +713,23 @@ export function TopologyGraph({
       setAdditionTarget(null)
       setAdditionResult(null)
       if (cyRef.current) {
-        cyRef.current.elements().removeClass(allClasses)
+        const cy = cyRef.current
+        // Reset path edge styles before removing classes
+        const defaultColor = isDark ? '#6b7280' : '#9ca3af'
+        previousPathEdgeIdsRef.current.forEach(edgeId => {
+          const edge = cy.getElementById(edgeId)
+          if (edge.length) {
+            edge.removeStyle('line-color target-arrow-color width opacity z-index')
+            edge.style({
+              'line-color': defaultColor,
+              'target-arrow-color': defaultColor,
+              'width': 1,
+              'opacity': 0.7,
+            })
+          }
+        })
+        previousPathEdgeIdsRef.current.clear()
+        cy.elements().removeClass(allClasses)
       }
     } else if (mode === 'path') {
       // Clear other mode classes
@@ -686,9 +750,25 @@ export function TopologyGraph({
       setAdditionTarget(null)
       setAdditionResult(null)
       if (cyRef.current) {
-        cyRef.current.elements().removeClass('path-node path-edge path-source path-target path-0 path-1 path-2 path-3 path-4 path-selected health-matched health-extra health-missing health-mismatch criticality-critical criticality-important criticality-redundant whatif-added whatif-addition-source whatif-addition-target whatif-improved whatif-redundancy-gained')
+        const cy = cyRef.current
+        // Reset path edge styles before removing classes
+        const defaultColor = isDark ? '#6b7280' : '#9ca3af'
+        previousPathEdgeIdsRef.current.forEach(edgeId => {
+          const edge = cy.getElementById(edgeId)
+          if (edge.length) {
+            edge.removeStyle('line-color target-arrow-color width opacity z-index')
+            edge.style({
+              'line-color': defaultColor,
+              'target-arrow-color': defaultColor,
+              'width': 1,
+              'opacity': 0.7,
+            })
+          }
+        })
+        previousPathEdgeIdsRef.current.clear()
+        cy.elements().removeClass('path-node path-edge path-source path-target path-0 path-1 path-2 path-3 path-4 path-selected health-matched health-extra health-missing health-mismatch criticality-critical criticality-important criticality-redundant whatif-added whatif-addition-source whatif-addition-target whatif-improved whatif-redundancy-gained')
         // Make edges more prominent for easier clicking
-        cyRef.current.edges().addClass('whatif-removal-candidate')
+        cy.edges().addClass('whatif-removal-candidate')
       }
     } else if (mode === 'whatif-addition') {
       // Clear other mode classes
@@ -698,10 +778,26 @@ export function TopologyGraph({
       setRemovalLink(null)
       setRemovalResult(null)
       if (cyRef.current) {
-        cyRef.current.elements().removeClass('path-node path-edge path-source path-target path-0 path-1 path-2 path-3 path-4 path-selected health-matched health-extra health-missing health-mismatch criticality-critical criticality-important criticality-redundant whatif-removal-candidate whatif-removed whatif-rerouted whatif-disconnected')
+        const cy = cyRef.current
+        // Reset path edge styles before removing classes
+        const defaultColor = isDark ? '#6b7280' : '#9ca3af'
+        previousPathEdgeIdsRef.current.forEach(edgeId => {
+          const edge = cy.getElementById(edgeId)
+          if (edge.length) {
+            edge.removeStyle('line-color target-arrow-color width opacity z-index')
+            edge.style({
+              'line-color': defaultColor,
+              'target-arrow-color': defaultColor,
+              'width': 1,
+              'opacity': 0.7,
+            })
+          }
+        })
+        previousPathEdgeIdsRef.current.clear()
+        cy.elements().removeClass('path-node path-edge path-source path-target path-0 path-1 path-2 path-3 path-4 path-selected health-matched health-extra health-missing health-mismatch criticality-critical criticality-important criticality-redundant whatif-removal-candidate whatif-removed whatif-rerouted whatif-disconnected')
       }
     }
-  }, [mode])
+  }, [mode, isDark])
 
   // Sync mode selections to URL for sharing
   const pathModeEnabled = mode === 'path'
@@ -892,7 +988,8 @@ export function TopologyGraph({
     }
 
     cy.batch(() => {
-      cy.edges().forEach(edge => {
+      // Skip path edges - they have their own styling
+      cy.edges().not('.path-edge').forEach(edge => {
         const edgeId = edge.data('id') // format: source->target
         const status = edgeHealthStatus.get(edgeId)
         const metric = edge.data('metric') ?? 0
@@ -941,7 +1038,8 @@ export function TopologyGraph({
     if (!criticalLinksData) return
 
     cy.batch(() => {
-      cy.edges().forEach(edge => {
+      // Skip path edges - they have their own styling
+      cy.edges().not('.path-edge').forEach(edge => {
         const edgeId = edge.data('id') // format: source->target
         const crit = edgeCriticality.get(edgeId)
 
@@ -1137,8 +1235,9 @@ export function TopologyGraph({
       if (isEdgeStylingMode) return
 
       // Apply contributor-based coloring to edges if enabled (and linkHealth/traffic not active)
+      // Skip path edges - they have their own styling
       if (contributorLinksEnabled && contributorInfoMap.size > 0 && !linkHealthOverlayEnabled && !trafficFlowEnabled) {
-        cy.edges().forEach(edge => {
+        cy.edges().not('.path-edge').forEach(edge => {
           const edgeId = edge.data('id')
           const contributorPK = edgeContributorMap.get(edgeId)
           if (contributorPK) {
@@ -1159,8 +1258,9 @@ export function TopologyGraph({
         })
       } else if (!linkHealthOverlayEnabled && !trafficFlowEnabled) {
         // Revert to neutral grey (or link type colors if that overlay is active)
+        // Skip path edges - they have their own styling
         const defaultColor = isDark ? '#4b5563' : '#9ca3af'
-        cy.edges().forEach(edge => {
+        cy.edges().not('.path-edge').forEach(edge => {
           edge.style({
             'line-color': defaultColor,
             'target-arrow-color': defaultColor,
@@ -1181,8 +1281,8 @@ export function TopologyGraph({
 
     cy.batch(() => {
       if (bandwidthEnabled && edgeTrafficMap.size > 0) {
-        // Apply bandwidth-based widths
-        cy.edges().forEach(edge => {
+        // Apply bandwidth-based widths (skip path edges - they have their own styling)
+        cy.edges().not('.path-edge').forEach(edge => {
           const sourcePK = edge.data('source')
           const targetPK = edge.data('target')
           // Look up bandwidth from topology data via edgeTrafficMap
@@ -1217,7 +1317,7 @@ export function TopologyGraph({
       } else if (!bandwidthEnabled) {
         // Reset to default width when disabled (unless another link overlay is active)
         if (!linkHealthOverlayEnabled && !trafficFlowEnabled && !contributorLinksEnabled && !isisHealthEnabled && !criticalityEnabled && !linkTypeEnabled) {
-          cy.edges().forEach(edge => {
+          cy.edges().not('.path-edge').forEach(edge => {
             edge.style({
               'line-color': defaultColor,
               'target-arrow-color': defaultColor,
@@ -1231,13 +1331,13 @@ export function TopologyGraph({
     })
   }, [bandwidthEnabled, isDark, cyGeneration, edgeTrafficMap, linkHealthOverlayEnabled, trafficFlowEnabled, contributorLinksEnabled, isisHealthEnabled, criticalityEnabled, linkTypeEnabled])
 
-  // Apply link type edge styling
+  // Apply link type edge styling (skip path edges - they have their own styling)
   useEffect(() => {
     if (!cyRef.current || !linkTypeEnabled) return
     const cy = cyRef.current
 
     cy.batch(() => {
-      cy.edges().forEach(edge => {
+      cy.edges().not('.path-edge').forEach(edge => {
         const sourcePK = edge.data('source')
         const targetPK = edge.data('target')
 
@@ -1285,7 +1385,7 @@ export function TopologyGraph({
     })
   }, [deviceTypeEnabled, stakeOverlayEnabled, metroClusteringEnabled, contributorDevicesEnabled, getDeviceTypeColor, isDark, cyGeneration])
 
-  // Reset link colors when link type overlay is disabled
+  // Reset link colors when link type overlay is disabled (skip path edges - they have their own styling)
   useEffect(() => {
     if (!cyRef.current || linkTypeEnabled) return
     const cy = cyRef.current
@@ -1293,7 +1393,7 @@ export function TopologyGraph({
     // Reset to neutral grey (unless another link overlay is active)
     if (!linkHealthOverlayEnabled && !trafficFlowEnabled && !bandwidthEnabled && !contributorLinksEnabled && !isisHealthEnabled && !criticalityEnabled) {
       cy.batch(() => {
-        cy.edges().forEach(edge => {
+        cy.edges().not('.path-edge').forEach(edge => {
           edge.style({
             'line-color': isDark ? '#4b5563' : '#9ca3af',
             'target-arrow-color': isDark ? '#4b5563' : '#9ca3af',
@@ -1719,8 +1819,7 @@ export function TopologyGraph({
         {
           selector: 'edge.path-edge',
           style: {
-            'line-color': '#f59e0b',
-            'target-arrow-color': '#f59e0b',
+            // Colors are set by path-specific classes (path-0, path-1, etc.)
             'width': 4,
             'opacity': 1,
           },

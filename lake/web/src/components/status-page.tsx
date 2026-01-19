@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useState, useEffect, useMemo } from 'react'
 import { useDelayedLoading } from '@/hooks/use-delayed-loading'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { CheckCircle2, AlertTriangle, XCircle, ArrowUpDown, Cpu, ChevronDown } from 'lucide-react'
+import { CheckCircle2, AlertTriangle, XCircle, ArrowUpDown, Cpu } from 'lucide-react'
 import { fetchStatus, fetchLinkHistory, fetchDeviceHistory, fetchInterfaceIssues, type StatusResponse, type InterfaceIssue, type NonActivatedLink, type LinkHistory, type DeviceHistory, type LinkMetric, type DeviceUtilization } from '@/lib/api'
 import { StatusFilters, useStatusFilters, type StatusFilter } from '@/components/status-search-bar'
 import { StatCard } from '@/components/stat-card'
@@ -10,63 +10,17 @@ import { LinkStatusTimelines } from '@/components/link-status-timelines'
 import { DeviceStatusTimelines } from '@/components/device-status-timelines'
 
 type TimeRange = '3h' | '6h' | '12h' | '24h' | '3d' | '7d'
-type FilterTimeRange = '3h' | '6h' | '12h' | '24h' | '3d' | '7d'
 type IssueFilter = 'packet_loss' | 'high_latency' | 'extended_loss' | 'drained' | 'no_data' | 'no_issues'
 type DeviceIssueFilter = 'interface_errors' | 'carrier_transitions' | 'drained' | 'no_issues'
 type HealthFilter = 'healthy' | 'degraded' | 'unhealthy' | 'disabled'
 
-const filterTimeRangeLabels: Record<FilterTimeRange, string> = {
-  '3h': 'Last 3 Hours',
-  '6h': 'Last 6 Hours',
-  '12h': 'Last 12 Hours',
-  '24h': 'Last 24 Hours',
-  '3d': 'Last 3 Days',
-  '7d': 'Last 7 Days',
-}
-
-function FilterTimeRangeSelector({
-  value,
-  onChange,
-}: {
-  value: FilterTimeRange
-  onChange: (value: FilterTimeRange) => void
-}) {
-  const [isOpen, setIsOpen] = useState(false)
-
-  return (
-    <div className="relative inline-block">
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-0.5 transition-colors"
-      >
-        ({filterTimeRangeLabels[value]})
-        <ChevronDown className="h-3 w-3" />
-      </button>
-      {isOpen && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
-          <div className="absolute left-0 top-full mt-1 z-50 bg-popover border border-border rounded-md shadow-lg py-1 min-w-[120px]">
-            {(Object.keys(filterTimeRangeLabels) as FilterTimeRange[]).map((range) => (
-              <button
-                key={range}
-                onClick={() => {
-                  onChange(range)
-                  setIsOpen(false)
-                }}
-                className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
-                  value === range
-                    ? 'bg-muted text-foreground'
-                    : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
-                }`}
-              >
-                {filterTimeRangeLabels[range]}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  )
+const timeRangeLabels: Record<TimeRange, string> = {
+  '3h': 'Last 3 hours',
+  '6h': 'Last 6 hours',
+  '12h': 'Last 12 hours',
+  '24h': 'Last 24 hours',
+  '3d': 'Last 3 days',
+  '7d': 'Last 7 days',
 }
 
 function Skeleton({ className }: { className?: string }) {
@@ -384,16 +338,14 @@ function LinkHealthFilterCard({
   links,
   selected,
   onChange,
-  filterTimeRange,
-  onFilterTimeRangeChange,
   issuesByHealth,
+  timeRange,
 }: {
   links: { healthy: number; degraded: number; unhealthy: number; disabled: number; total: number }
   selected: HealthFilter[]
   onChange: (filters: HealthFilter[]) => void
-  filterTimeRange: FilterTimeRange
-  onFilterTimeRangeChange: (range: FilterTimeRange) => void
   issuesByHealth?: IssuesByHealth
+  timeRange: TimeRange
 }) {
   const toggleFilter = (filter: HealthFilter) => {
     if (selected.includes(filter)) {
@@ -417,7 +369,7 @@ function LinkHealthFilterCard({
       <div className="flex items-center gap-2 mb-3">
         <ArrowUpDown className="h-4 w-4 text-muted-foreground" />
         <h3 className="font-medium">Link Health</h3>
-        <FilterTimeRangeSelector value={filterTimeRange} onChange={onFilterTimeRangeChange} />
+        <span className="text-xs text-muted-foreground">({timeRangeLabels[timeRange]})</span>
         <button
           onClick={() => onChange(['healthy', 'degraded', 'unhealthy', 'disabled'])}
           className={`text-xs ml-auto px-1.5 py-0.5 rounded transition-colors ${
@@ -501,16 +453,14 @@ function LinkIssuesFilterCard({
   counts,
   selected,
   onChange,
-  filterTimeRange,
-  onFilterTimeRangeChange,
   healthByIssue,
+  timeRange,
 }: {
   counts: IssueCounts
   selected: IssueFilter[]
   onChange: (filters: IssueFilter[]) => void
-  filterTimeRange: FilterTimeRange
-  onFilterTimeRangeChange: (range: FilterTimeRange) => void
   healthByIssue?: HealthByIssue
+  timeRange: TimeRange
 }) {
   const allFilters: IssueFilter[] = ['packet_loss', 'high_latency', 'extended_loss', 'drained', 'no_data', 'no_issues']
 
@@ -548,7 +498,7 @@ function LinkIssuesFilterCard({
       <div className="flex items-center gap-2 mb-3">
         <AlertTriangle className="h-4 w-4 text-muted-foreground" />
         <h3 className="font-medium">Link Issues</h3>
-        <FilterTimeRangeSelector value={filterTimeRange} onChange={onFilterTimeRangeChange} />
+        <span className="text-xs text-muted-foreground">({timeRangeLabels[timeRange]})</span>
         <button
           onClick={() => onChange(allFilters)}
           className={`text-xs ml-auto px-1.5 py-0.5 rounded transition-colors ${
@@ -1031,16 +981,15 @@ function useBucketCount() {
 // Links tab content
 function LinksContent({ status, linkHistory }: { status: StatusResponse; linkHistory: any }) {
   const [timeRange, setTimeRange] = useState<TimeRange>('24h')
-  const [filterTimeRange, setFilterTimeRange] = useState<FilterTimeRange>('12h')
   const [issueFilters, setIssueFilters] = useState<IssueFilter[]>(['packet_loss', 'high_latency', 'extended_loss', 'drained'])
   const [healthFilters, setHealthFilters] = useState<HealthFilter[]>(['healthy', 'degraded', 'unhealthy', 'disabled'])
 
   // Get search filters from URL
   const searchFilters = useStatusFilters()
 
-  // Bucket count based on filter time range
-  const filterBuckets = (() => {
-    switch (filterTimeRange) {
+  // Bucket count based on time range
+  const buckets = (() => {
+    switch (timeRange) {
       case '3h': return 36
       case '6h': return 36
       case '12h': return 48
@@ -1051,24 +1000,24 @@ function LinksContent({ status, linkHistory }: { status: StatusResponse; linkHis
     }
   })()
 
-  // Fetch link history for the filter time range (used for health and issue counts)
-  const { data: filterLinkHistory } = useQuery({
-    queryKey: ['link-history', filterTimeRange, filterBuckets],
-    queryFn: () => fetchLinkHistory(filterTimeRange, filterBuckets),
+  // Fetch link history for the selected time range (used for both display and health/issue counts)
+  const { data: linkHistoryData } = useQuery({
+    queryKey: ['link-history', timeRange, buckets],
+    queryFn: () => fetchLinkHistory(timeRange, buckets),
     refetchInterval: 60_000,
     staleTime: 30_000,
   })
 
   // Apply search filters to link history
   const filteredLinkHistory = useMemo(() => {
-    if (!filterLinkHistory?.links || searchFilters.length === 0) {
-      return filterLinkHistory
+    if (!linkHistoryData?.links || searchFilters.length === 0) {
+      return linkHistoryData
     }
     return {
-      ...filterLinkHistory,
-      links: filterLinkHistory.links.filter((link: LinkHistory) => linkMatchesSearchFilters(link, searchFilters))
+      ...linkHistoryData,
+      links: linkHistoryData.links.filter((link: LinkHistory) => linkMatchesSearchFilters(link, searchFilters))
     }
-  }, [filterLinkHistory, searchFilters])
+  }, [linkHistoryData, searchFilters])
 
   // Helper to get the effective health status from a link's hours
   // Returns the worst status seen in the time range
@@ -1289,17 +1238,15 @@ function LinksContent({ status, linkHistory }: { status: StatusResponse; linkHis
           links={healthCounts}
           selected={healthFilters}
           onChange={setHealthFilters}
-          filterTimeRange={filterTimeRange}
-          onFilterTimeRangeChange={setFilterTimeRange}
           issuesByHealth={issuesByHealth}
+          timeRange={timeRange}
         />
         <LinkIssuesFilterCard
           counts={issueCounts}
           selected={issueFilters}
           onChange={setIssueFilters}
-          filterTimeRange={filterTimeRange}
-          onFilterTimeRangeChange={setFilterTimeRange}
           healthByIssue={healthByIssue}
+          timeRange={timeRange}
         />
       </div>
 
@@ -1355,16 +1302,14 @@ function DeviceHealthFilterCard({
   devices,
   selected,
   onChange,
-  filterTimeRange,
-  onFilterTimeRangeChange,
   issuesByHealth,
+  timeRange,
 }: {
   devices: { healthy: number; degraded: number; unhealthy: number; disabled: number; total: number }
   selected: HealthFilter[]
   onChange: (filters: HealthFilter[]) => void
-  filterTimeRange: FilterTimeRange
-  onFilterTimeRangeChange: (range: FilterTimeRange) => void
   issuesByHealth?: DeviceIssuesByHealth
+  timeRange: TimeRange
 }) {
   const toggleFilter = (filter: HealthFilter) => {
     if (selected.includes(filter)) {
@@ -1388,7 +1333,7 @@ function DeviceHealthFilterCard({
       <div className="flex items-center gap-2 mb-3">
         <Cpu className="h-4 w-4 text-muted-foreground" />
         <h3 className="font-medium">Device Health</h3>
-        <FilterTimeRangeSelector value={filterTimeRange} onChange={onFilterTimeRangeChange} />
+        <span className="text-xs text-muted-foreground">({timeRangeLabels[timeRange]})</span>
         <button
           onClick={() => onChange(['healthy', 'degraded', 'unhealthy', 'disabled'])}
           className={`text-xs ml-auto px-1.5 py-0.5 rounded transition-colors ${
@@ -1472,16 +1417,14 @@ function DeviceIssuesFilterCard({
   counts,
   selected,
   onChange,
-  filterTimeRange,
-  onFilterTimeRangeChange,
   healthByIssue,
+  timeRange,
 }: {
   counts: DeviceIssueCounts
   selected: DeviceIssueFilter[]
   onChange: (filters: DeviceIssueFilter[]) => void
-  filterTimeRange: FilterTimeRange
-  onFilterTimeRangeChange: (range: FilterTimeRange) => void
   healthByIssue?: DeviceHealthByIssue
+  timeRange: TimeRange
 }) {
   const allFilters: DeviceIssueFilter[] = ['interface_errors', 'carrier_transitions', 'drained', 'no_issues']
 
@@ -1515,7 +1458,7 @@ function DeviceIssuesFilterCard({
       <div className="flex items-center gap-2 mb-3">
         <AlertTriangle className="h-4 w-4 text-muted-foreground" />
         <h3 className="font-medium">Device Issues</h3>
-        <FilterTimeRangeSelector value={filterTimeRange} onChange={onFilterTimeRangeChange} />
+        <span className="text-xs text-muted-foreground">({timeRangeLabels[timeRange]})</span>
         <button
           onClick={() => onChange(allFilters)}
           className={`text-xs ml-auto px-1.5 py-0.5 rounded transition-colors ${
@@ -1671,16 +1614,15 @@ function deviceUtilMatchesSearchFilters(device: DeviceUtilization, filters: Stat
 // Devices tab content
 function DevicesContent({ status }: { status: StatusResponse }) {
   const [timeRange, setTimeRange] = useState<TimeRange>('24h')
-  const [filterTimeRange, setFilterTimeRange] = useState<FilterTimeRange>('12h')
   const [issueFilters, setIssueFilters] = useState<DeviceIssueFilter[]>(['interface_errors', 'carrier_transitions', 'drained'])
   const [healthFilters, setHealthFilters] = useState<HealthFilter[]>(['healthy', 'degraded', 'unhealthy', 'disabled'])
 
   // Get search filters from URL
   const searchFilters = useStatusFilters()
 
-  // Bucket count based on filter time range
-  const filterBuckets = (() => {
-    switch (filterTimeRange) {
+  // Bucket count based on time range
+  const buckets = (() => {
+    switch (timeRange) {
       case '3h': return 36
       case '6h': return 36
       case '12h': return 48
@@ -1691,10 +1633,10 @@ function DevicesContent({ status }: { status: StatusResponse }) {
     }
   })()
 
-  // Fetch device history for the filter time range
-  const { data: filterDeviceHistory } = useQuery({
-    queryKey: ['device-history', filterTimeRange, filterBuckets],
-    queryFn: () => fetchDeviceHistory(filterTimeRange, filterBuckets),
+  // Fetch device history for the selected time range (used for both display and health/issue counts)
+  const { data: deviceHistoryData } = useQuery({
+    queryKey: ['device-history', timeRange, buckets],
+    queryFn: () => fetchDeviceHistory(timeRange, buckets),
     refetchInterval: 60_000,
     staleTime: 30_000,
   })
@@ -1709,14 +1651,14 @@ function DevicesContent({ status }: { status: StatusResponse }) {
 
   // Apply search filters to device history
   const filteredDeviceHistory = useMemo(() => {
-    if (!filterDeviceHistory?.devices || searchFilters.length === 0) {
-      return filterDeviceHistory
+    if (!deviceHistoryData?.devices || searchFilters.length === 0) {
+      return deviceHistoryData
     }
     return {
-      ...filterDeviceHistory,
-      devices: filterDeviceHistory.devices.filter(d => deviceMatchesSearchFilters(d, searchFilters))
+      ...deviceHistoryData,
+      devices: deviceHistoryData.devices.filter(d => deviceMatchesSearchFilters(d, searchFilters))
     }
-  }, [filterDeviceHistory, searchFilters])
+  }, [deviceHistoryData, searchFilters])
 
   // Apply search filters to interface issues
   const filteredInterfaceIssues = useMemo(() => {
@@ -1892,17 +1834,15 @@ function DevicesContent({ status }: { status: StatusResponse }) {
           devices={healthCounts}
           selected={healthFilters}
           onChange={setHealthFilters}
-          filterTimeRange={filterTimeRange}
-          onFilterTimeRangeChange={setFilterTimeRange}
           issuesByHealth={issuesByHealth}
+          timeRange={timeRange}
         />
         <DeviceIssuesFilterCard
           counts={issueCounts}
           selected={issueFilters}
           onChange={setIssueFilters}
-          filterTimeRange={filterTimeRange}
-          onFilterTimeRangeChange={setFilterTimeRange}
           healthByIssue={healthByIssue}
+          timeRange={timeRange}
         />
       </div>
 

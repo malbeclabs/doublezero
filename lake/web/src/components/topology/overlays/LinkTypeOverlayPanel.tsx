@@ -1,6 +1,7 @@
 // Link type colors (distinct from device type colors: purple, orange, cyan)
+// Avoid green/red as those indicate status
 export const LINK_TYPE_COLORS: Record<string, { light: string; dark: string }> = {
-  WAN: { light: '#16a34a', dark: '#22c55e' },           // green - inter-metro wide area
+  WAN: { light: '#2563eb', dark: '#3b82f6' },           // blue - inter-metro wide area
   DZX: { light: '#db2777', dark: '#ec4899' },           // pink - local exchange
   'Inter-Metro': { light: '#6b7280', dark: '#9ca3af' }, // gray - aggregated inter-metro
   default: { light: '#6b7280', dark: '#9ca3af' },       // gray

@@ -7,7 +7,7 @@ import { Filter, X, Zap } from 'lucide-react'
 import { fetchISISTopology, fetchISISPaths, fetchTopologyCompare, fetchFailureImpact, fetchCriticalLinks, fetchSimulateLinkRemoval, fetchSimulateLinkAddition, fetchTopology, fetchLinkHealth } from '@/lib/api'
 import type { FailureImpactResponse, MultiPathResponse, SimulateLinkRemovalResponse, SimulateLinkAdditionResponse } from '@/lib/api'
 import { useTheme } from '@/hooks/use-theme'
-import { useTopology, TopologyPanel, TopologyControlBar, DeviceDetails, LinkDetails, PathModePanel, CriticalityPanel, WhatIfRemovalPanel, WhatIfAdditionPanel, ImpactPanel, ComparePanel, StakeOverlayPanel, LinkHealthOverlayPanel, TrafficFlowOverlayPanel, MetroClusteringOverlayPanel, ContributorsOverlayPanel, type DeviceInfo, type LinkInfo } from '@/components/topology'
+import { useTopology, TopologyPanel, TopologyControlBar, DeviceDetails, LinkDetails, PathModePanel, CriticalityPanel, WhatIfRemovalPanel, WhatIfAdditionPanel, ImpactPanel, ComparePanel, StakeOverlayPanel, LinkHealthOverlayPanel, TrafficFlowOverlayPanel, MetroClusteringOverlayPanel, ContributorsOverlayPanel, BandwidthOverlayPanel, IsisMetricOverlayPanel, type DeviceInfo, type LinkInfo } from '@/components/topology'
 
 // Device type colors (types from serviceability smart contract: hybrid, transit, edge)
 const DEVICE_TYPE_COLORS: Record<string, { light: string; dark: string }> = {
@@ -109,6 +109,8 @@ export function TopologyGraph({
   const metroClusteringEnabled = overlays.metroClustering
   const contributorDevicesEnabled = overlays.contributorDevices
   const contributorLinksEnabled = overlays.contributorLinks
+  const bandwidthEnabled = overlays.bandwidth
+  const isisMetricEnabled = overlays.isisMetric
 
   // Path finding operational state (local)
   const [pathSource, setPathSource] = useState<string | null>(null)
@@ -946,7 +948,7 @@ export function TopologyGraph({
 
   // Update node and edge colors when contributors overlay is enabled
   // Skip if in an analysis mode that styles edges or if a link overlay is active (let those control edge appearance)
-  const isEdgeStylingMode = isisHealthEnabled || criticalityEnabled || mode === 'path' || mode === 'whatif-removal' || mode === 'whatif-addition'
+  const isEdgeStylingMode = isisHealthEnabled || criticalityEnabled || bandwidthEnabled || isisMetricEnabled || mode === 'path' || mode === 'whatif-removal' || mode === 'whatif-addition'
 
   useEffect(() => {
     if (!cyRef.current) return
@@ -1016,6 +1018,91 @@ export function TopologyGraph({
       }
     })
   }, [contributorDevicesEnabled, contributorLinksEnabled, contributorInfoMap, deviceContributorMap, edgeContributorMap, getContributorColor, getNodeSize, getDeviceTypeColor, stakeOverlayEnabled, metroClusteringEnabled, linkHealthOverlayEnabled, trafficFlowEnabled, isDark, isEdgeStylingMode])
+
+  // Apply bandwidth or ISIS metric edge styling
+  useEffect(() => {
+    if (!cyRef.current) return
+    const cy = cyRef.current
+
+    cy.batch(() => {
+      if (bandwidthEnabled) {
+        // Color edges by bandwidth capacity (blue gradient, thicker = more capacity)
+        cy.edges().forEach(edge => {
+          const bandwidth = edge.data('bandwidth') ?? 0 // bandwidth in bps
+          const gbps = bandwidth / 1e9
+          let color: string
+          let width: number
+          let opacity: number
+
+          if (gbps >= 100) {
+            color = isDark ? '#3b82f6' : '#2563eb' // blue-500 - 100G+
+            width = 5
+            opacity = 1
+          } else if (gbps >= 10) {
+            color = isDark ? '#60a5fa' : '#3b82f6' // blue-400 - 10G+
+            width = 4
+            opacity = 0.9
+          } else if (gbps >= 1) {
+            color = isDark ? '#93c5fd' : '#60a5fa' // blue-300 - 1G+
+            width = 3
+            opacity = 0.8
+          } else if (gbps > 0) {
+            color = isDark ? '#bfdbfe' : '#93c5fd' // blue-200 - <1G
+            width = 2
+            opacity = 0.7
+          } else {
+            color = isDark ? '#6b7280' : '#9ca3af' // gray - unknown
+            width = 1
+            opacity = 0.5
+          }
+
+          edge.style({
+            'line-color': color,
+            'target-arrow-color': color,
+            'width': width,
+            'opacity': opacity,
+          })
+        })
+      } else if (isisMetricEnabled) {
+        // Color edges by ISIS metric (lower = better = more prominent green)
+        cy.edges().forEach(edge => {
+          const metric = edge.data('metric') ?? 0
+          let color: string
+          let width: number
+          let opacity: number
+
+          if (metric <= 0) {
+            color = isDark ? '#6b7280' : '#9ca3af' // gray - no data
+            width = 1
+            opacity = 0.5
+          } else if (metric <= 1000) {
+            color = isDark ? '#22c55e' : '#16a34a' // green - excellent (<1ms)
+            width = 4
+            opacity = 1
+          } else if (metric <= 5000) {
+            color = isDark ? '#84cc16' : '#65a30d' // lime - good (<5ms)
+            width = 3
+            opacity = 0.9
+          } else if (metric <= 20000) {
+            color = isDark ? '#eab308' : '#ca8a04' // yellow - moderate (<20ms)
+            width = 2
+            opacity = 0.8
+          } else {
+            color = isDark ? '#f97316' : '#ea580c' // orange - high (>20ms)
+            width = 2
+            opacity = 0.7
+          }
+
+          edge.style({
+            'line-color': color,
+            'target-arrow-color': color,
+            'width': width,
+            'opacity': opacity,
+          })
+        })
+      }
+    })
+  }, [bandwidthEnabled, isisMetricEnabled, isDark])
 
   // Toggle metro collapse state
   const toggleMetroCollapse = useCallback((metroPK: string) => {
@@ -2412,6 +2499,12 @@ export function TopologyGraph({
               getDeviceLabel={(pk) => cyRef.current?.getElementById(pk)?.data('label') || pk.substring(0, 8)}
               isLoading={!topologyData}
             />
+          )}
+          {bandwidthEnabled && (
+            <BandwidthOverlayPanel />
+          )}
+          {isisMetricEnabled && (
+            <IsisMetricOverlayPanel />
           )}
           {linkHealthOverlayEnabled && (
             <LinkHealthOverlayPanel

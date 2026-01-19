@@ -970,6 +970,40 @@ export function TopologyGraph({
     prevModeRef.current = mode
   }, [mode, selectedDevicePK])
 
+  // Reset edge styles when link overlay changes (before specific overlay applies its styling)
+  // This ensures clean transitions between overlays
+  const activeLinkOverlay = linkTypeEnabled ? 'linkType' :
+    bandwidthEnabled ? 'bandwidth' :
+    linkHealthOverlayEnabled ? 'linkHealth' :
+    trafficFlowEnabled ? 'trafficFlow' :
+    contributorLinksEnabled ? 'contributorLinks' :
+    criticalityEnabled ? 'criticality' :
+    isisHealthEnabled ? 'isisHealth' : 'none'
+
+  const inPathMode = mode === 'path' || mode === 'whatif-removal' || mode === 'whatif-addition'
+
+  useEffect(() => {
+    if (!cyRef.current || inPathMode) return
+    const cy = cyRef.current
+
+    const defaultColor = isDark ? '#4b5563' : '#9ca3af'
+
+    cy.batch(() => {
+      // Reset all edges to neutral state (skip path edges)
+      cy.edges().not('.path-edge').forEach(edge => {
+        edge.style({
+          'line-color': defaultColor,
+          'target-arrow-color': defaultColor,
+          'width': 1,
+          'opacity': 0.7,
+          'line-style': 'solid',
+        })
+      })
+      // Clear CSS classes used by some overlays
+      cy.edges().removeClass('sla-healthy sla-warning sla-critical sla-unknown traffic-low traffic-medium traffic-high traffic-critical traffic-idle')
+    })
+  }, [activeLinkOverlay, isDark, inPathMode, cyGeneration])
+
   // Apply health status styles when ISIS health overlay is enabled
   // Color by health status, thickness by ISIS metric
   useEffect(() => {
@@ -1069,6 +1103,31 @@ export function TopologyGraph({
       })
     })
   }, [criticalityEnabled, criticalLinksData, edgeCriticality, isDark, cyGeneration])
+
+  // Reset node styles when device overlay changes (before specific overlay applies its styling)
+  const activeDeviceOverlay = deviceTypeEnabled ? 'deviceType' :
+    stakeOverlayEnabled ? 'stake' :
+    metroClusteringEnabled ? 'metroClustering' :
+    contributorDevicesEnabled ? 'contributorDevices' : 'none'
+
+  useEffect(() => {
+    if (!cyRef.current) return
+    const cy = cyRef.current
+
+    const defaultColor = isDark ? '#9ca3af' : '#1f2937'
+
+    cy.batch(() => {
+      // Reset all nodes to neutral state
+      cy.nodes().forEach(node => {
+        const degree = node.data('degree')
+        node.style({
+          'width': getNodeSize(degree),
+          'height': getNodeSize(degree),
+          'background-color': defaultColor,
+        })
+      })
+    })
+  }, [activeDeviceOverlay, isDark, getNodeSize, cyGeneration])
 
   // Apply stake overlay styling when enabled
   useEffect(() => {
@@ -1296,42 +1355,6 @@ export function TopologyGraph({
       })
     })
   }, [deviceTypeEnabled, getDeviceTypeColor, cyGeneration])
-
-  // Default node styling when no device overlay is active
-  const noDeviceOverlay = !deviceTypeEnabled && !stakeOverlayEnabled && !metroClusteringEnabled && !contributorDevicesEnabled
-  useEffect(() => {
-    if (!cyRef.current || !noDeviceOverlay) return
-    const cy = cyRef.current
-
-    cy.batch(() => {
-      cy.nodes().forEach(node => {
-        const degree = node.data('degree')
-        node.style({
-          'width': getNodeSize(degree),
-          'height': getNodeSize(degree),
-          'background-color': isDark ? '#9ca3af' : '#1f2937',
-        })
-      })
-    })
-  }, [noDeviceOverlay, getNodeSize, isDark, cyGeneration])
-
-  // Default link styling when no link overlay is active (skip path edges - they have their own styling)
-  const noLinkOverlay = !linkTypeEnabled && !linkHealthOverlayEnabled && !trafficFlowEnabled && !bandwidthEnabled && !contributorLinksEnabled && !isisHealthEnabled && !criticalityEnabled
-  useEffect(() => {
-    if (!cyRef.current || !noLinkOverlay || isPathMode) return
-    const cy = cyRef.current
-
-    cy.batch(() => {
-      cy.edges().not('.path-edge').forEach(edge => {
-        edge.style({
-          'line-color': isDark ? '#4b5563' : '#9ca3af',
-          'target-arrow-color': isDark ? '#4b5563' : '#9ca3af',
-          'width': 1,
-          'opacity': 0.7,
-        })
-      })
-    })
-  }, [noLinkOverlay, isDark, isPathMode, cyGeneration])
 
   // Toggle metro collapse state
   const toggleMetroCollapse = useCallback((metroPK: string) => {

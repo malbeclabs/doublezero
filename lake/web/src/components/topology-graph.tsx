@@ -1272,73 +1272,41 @@ export function TopologyGraph({
     })
   }, [contributorDevicesEnabled, contributorLinksEnabled, contributorInfoMap, deviceContributorMap, edgeContributorMap, getContributorColor, getNodeSize, getDeviceTypeColor, deviceTypeEnabled, stakeOverlayEnabled, metroClusteringEnabled, linkHealthOverlayEnabled, trafficFlowEnabled, isDark, isEdgeStylingMode, cyGeneration])
 
-  // Apply bandwidth edge styling
-  // Sets width based on bandwidth. Only sets color to grey if no other color overlay is active.
+  // Apply bandwidth edge styling - only sets width, never color
   useEffect(() => {
-    if (!cyRef.current) return
+    if (!cyRef.current || !bandwidthEnabled) return
     const cy = cyRef.current
 
-    const defaultColor = isDark ? '#6b7280' : '#9ca3af'
-    // Don't set colors if another color overlay will handle it
-    const shouldSetColor = !contributorLinksEnabled && !linkHealthOverlayEnabled && !trafficFlowEnabled && !linkTypeEnabled && !isisHealthEnabled && !criticalityEnabled
+    if (edgeTrafficMap.size === 0) return
 
     cy.batch(() => {
-      if (bandwidthEnabled && edgeTrafficMap.size > 0) {
-        // Apply bandwidth-based widths (skip path edges - they have their own styling)
-        cy.edges().not('.path-edge').forEach(edge => {
-          const sourcePK = edge.data('source')
-          const targetPK = edge.data('target')
-          // Look up bandwidth from topology data via edgeTrafficMap
-          const trafficInfo = edgeTrafficMap.get(`${sourcePK}->${targetPK}`)
-          const bandwidth = trafficInfo?.bandwidthBps ?? 0
-          const gbps = bandwidth / 1e9
-          let width: number
+      // Apply bandwidth-based widths (skip path edges - they have their own styling)
+      cy.edges().not('.path-edge').forEach(edge => {
+        const sourcePK = edge.data('source')
+        const targetPK = edge.data('target')
+        // Look up bandwidth from topology data via edgeTrafficMap
+        const trafficInfo = edgeTrafficMap.get(`${sourcePK}->${targetPK}`)
+        const bandwidth = trafficInfo?.bandwidthBps ?? 0
+        const gbps = bandwidth / 1e9
+        let width: number
 
-          // Width based on bandwidth capacity (most links are 10-100 Gbps)
-          if (gbps >= 100) {
-            width = 6
-          } else if (gbps >= 40) {
-            width = 4
-          } else if (gbps >= 10) {
-            width = 2
-          } else if (gbps >= 1) {
-            width = 1.5
-          } else {
-            width = 1
-          }
-
-          // Set width, and optionally color (if no other color overlay is active)
-          if (shouldSetColor) {
-            edge.style({
-              'line-color': defaultColor,
-              'target-arrow-color': defaultColor,
-              'width': width,
-              'opacity': 0.7,
-              'line-style': 'solid',
-            })
-          } else {
-            edge.style({
-              'width': width,
-              'line-style': 'solid',
-            })
-          }
-        })
-      } else if (!bandwidthEnabled) {
-        // Reset to default width when disabled (unless another link overlay is active)
-        if (!linkHealthOverlayEnabled && !trafficFlowEnabled && !contributorLinksEnabled && !isisHealthEnabled && !criticalityEnabled && !linkTypeEnabled) {
-          cy.edges().not('.path-edge').forEach(edge => {
-            edge.style({
-              'line-color': defaultColor,
-              'target-arrow-color': defaultColor,
-              'width': 1,
-              'opacity': 0.7,
-              'line-style': 'solid',
-            })
-          })
+        // Width based on bandwidth capacity (most links are 10-100 Gbps)
+        if (gbps >= 100) {
+          width = 6
+        } else if (gbps >= 40) {
+          width = 4
+        } else if (gbps >= 10) {
+          width = 2
+        } else if (gbps >= 1) {
+          width = 1.5
+        } else {
+          width = 1
         }
-      }
+
+        edge.style({ 'width': width })
+      })
     })
-  }, [bandwidthEnabled, isDark, cyGeneration, edgeTrafficMap, linkHealthOverlayEnabled, trafficFlowEnabled, contributorLinksEnabled, isisHealthEnabled, criticalityEnabled, linkTypeEnabled])
+  }, [bandwidthEnabled, cyGeneration, edgeTrafficMap])
 
   // Apply link type edge styling (skip path edges - they have their own styling)
   useEffect(() => {

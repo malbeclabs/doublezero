@@ -89,6 +89,132 @@ var Manager = &WorkflowManager{
 	bySession: make(map[uuid.UUID]uuid.UUID),
 }
 
+// SessionChatMessage represents a message in session content, matching the web's ChatMessage format.
+type SessionChatMessage struct {
+	ID              string               `json:"id"`
+	Role            string               `json:"role"` // "user" or "assistant"
+	Content         string               `json:"content"`
+	WorkflowData    *SessionWorkflowData `json:"workflowData,omitempty"`
+	ExecutedQueries []string             `json:"executedQueries,omitempty"`
+	Status          string               `json:"status,omitempty"` // "streaming", "complete", "error"
+	WorkflowID      string               `json:"workflowId,omitempty"`
+}
+
+// SessionWorkflowData contains workflow execution details for display in the web UI.
+type SessionWorkflowData struct {
+	DataQuestions     []DataQuestionResponse     `json:"dataQuestions,omitempty"`
+	GeneratedQueries  []GeneratedQueryResponse   `json:"generatedQueries,omitempty"`
+	ExecutedQueries   []ExecutedQueryResponse    `json:"executedQueries,omitempty"`
+	FollowUpQuestions []string                   `json:"followUpQuestions,omitempty"`
+	ProcessingSteps   []ClientProcessingStep     `json:"processingSteps,omitempty"`
+}
+
+// ClientProcessingStep matches the web's ProcessingStep format (different field names than WorkflowStep).
+type ClientProcessingStep struct {
+	Type    string   `json:"type"` // "thinking" or "query"
+	Content string   `json:"content,omitempty"`
+	// Query fields - note: "rows" is count, "data" is row data (matches web format)
+	Question string   `json:"question,omitempty"`
+	SQL      string   `json:"sql,omitempty"`
+	Status   string   `json:"status,omitempty"`
+	Rows     int      `json:"rows,omitempty"`     // Row count (web expects this as number)
+	Columns  []string `json:"columns,omitempty"`
+	Data     [][]any  `json:"data,omitempty"`     // Actual row data
+	Error    string   `json:"error,omitempty"`
+}
+
+// toClientFormat converts a WorkflowStep to ClientProcessingStep format.
+func (s WorkflowStep) toClientFormat() ClientProcessingStep {
+	return ClientProcessingStep{
+		Type:     s.Type,
+		Content:  s.Content,
+		Question: s.Question,
+		SQL:      s.SQL,
+		Status:   s.Status,
+		Rows:     s.Count,   // Server's "Count" -> Client's "rows"
+		Columns:  s.Columns,
+		Data:     s.Rows,    // Server's "Rows" -> Client's "data"
+		Error:    s.Error,
+	}
+}
+
+// updateSessionContent updates the session's content field with the given messages.
+func updateSessionContent(ctx context.Context, sessionID uuid.UUID, messages []SessionChatMessage) error {
+	contentJSON, err := json.Marshal(messages)
+	if err != nil {
+		return fmt.Errorf("failed to marshal session content: %w", err)
+	}
+
+	_, err = config.PgPool.Exec(ctx, `
+		UPDATE sessions SET content = $2, updated_at = NOW()
+		WHERE id = $1
+	`, sessionID, contentJSON)
+	if err != nil {
+		return fmt.Errorf("failed to update session content: %w", err)
+	}
+	return nil
+}
+
+// buildSessionMessages builds the session content messages from workflow state.
+func buildSessionMessages(
+	workflowID uuid.UUID,
+	question string,
+	answer string,
+	status string,
+	steps []WorkflowStep,
+	executedQueries []workflow.ExecutedQuery,
+) []SessionChatMessage {
+	messages := []SessionChatMessage{
+		{
+			ID:      uuid.NewString(),
+			Role:    "user",
+			Content: question,
+		},
+	}
+
+	// Build assistant message
+	assistantMsg := SessionChatMessage{
+		ID:         uuid.NewString(),
+		Role:       "assistant",
+		Content:    answer,
+		Status:     status,
+		WorkflowID: workflowID.String(),
+	}
+
+	// Add workflow data if we have steps or queries
+	if len(steps) > 0 || len(executedQueries) > 0 {
+		// Convert steps to client format
+		clientSteps := make([]ClientProcessingStep, len(steps))
+		for i, s := range steps {
+			clientSteps[i] = s.toClientFormat()
+		}
+
+		workflowData := &SessionWorkflowData{
+			ProcessingSteps: clientSteps,
+		}
+
+		// Convert executed queries
+		var sqlQueries []string
+		for _, eq := range executedQueries {
+			workflowData.ExecutedQueries = append(workflowData.ExecutedQueries, ExecutedQueryResponse{
+				Question: eq.GeneratedQuery.DataQuestion.Question,
+				SQL:      eq.Result.SQL,
+				Columns:  eq.Result.Columns,
+				Rows:     convertRowsToArray(eq.Result),
+				Count:    eq.Result.Count,
+				Error:    eq.Result.Error,
+			})
+			sqlQueries = append(sqlQueries, eq.Result.SQL)
+		}
+
+		assistantMsg.WorkflowData = workflowData
+		assistantMsg.ExecutedQueries = sqlQueries
+	}
+
+	messages = append(messages, assistantMsg)
+	return messages
+}
+
 // StartWorkflow starts a new workflow in the background.
 // Returns the workflow ID immediately - the workflow runs asynchronously.
 // The format parameter controls output formatting: "slack" for Slack-specific formatting.
@@ -109,6 +235,12 @@ func (m *WorkflowManager) StartWorkflow(
 	run, err := CreateWorkflowRun(ctx, sessionID, question)
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("failed to create workflow: %w", err)
+	}
+
+	// Initialize session content with user message and streaming assistant message
+	initialMessages := buildSessionMessages(run.ID, question, "", "streaming", nil, nil)
+	if err := updateSessionContent(ctx, sessionID, initialMessages); err != nil {
+		slog.Warn("Failed to initialize session content", "session_id", sessionID, "error", err)
 	}
 
 	// Create cancellable context for the workflow
@@ -330,7 +462,16 @@ func (m *WorkflowManager) runWorkflow(
 			InputTokens:     state.Metrics.InputTokens,
 			OutputTokens:    state.Metrics.OutputTokens,
 		}
-		return UpdateWorkflowCheckpoint(ctx, rw.ID, checkpoint)
+		if err := UpdateWorkflowCheckpoint(ctx, rw.ID, checkpoint); err != nil {
+			return err
+		}
+
+		// Also update session content with current progress
+		sessionMessages := buildSessionMessages(rw.ID, question, "", "streaming", steps, state.ExecutedQueries)
+		if err := updateSessionContent(ctx, rw.SessionID, sessionMessages); err != nil {
+			slog.Warn("Failed to update session content at checkpoint", "session_id", rw.SessionID, "error", err)
+		}
+		return nil
 	}
 
 	// Run the workflow
@@ -377,6 +518,12 @@ func (m *WorkflowManager) runWorkflow(
 	}
 	if err := CompleteWorkflowRun(context.Background(), rw.ID, result.Answer, finalCheckpoint); err != nil {
 		slog.Warn("Failed to mark workflow as completed", "workflow_id", rw.ID, "error", err)
+	}
+
+	// Update session content with final answer and status 'complete'
+	finalMessages := buildSessionMessages(rw.ID, question, result.Answer, "complete", finalSteps, result.ExecutedQueries)
+	if err := updateSessionContent(context.Background(), rw.SessionID, finalMessages); err != nil {
+		slog.Warn("Failed to update session content on completion", "session_id", rw.SessionID, "error", err)
 	}
 
 	slog.Info("Background workflow completed",
@@ -577,7 +724,16 @@ func (m *WorkflowManager) resumeWorkflow(
 			InputTokens:     state.Metrics.InputTokens,
 			OutputTokens:    state.Metrics.OutputTokens,
 		}
-		return UpdateWorkflowCheckpoint(ctx, rw.ID, wfCheckpoint)
+		if err := UpdateWorkflowCheckpoint(ctx, rw.ID, wfCheckpoint); err != nil {
+			return err
+		}
+
+		// Also update session content with current progress
+		sessionMessages := buildSessionMessages(rw.ID, rw.Question, "", "streaming", steps, state.ExecutedQueries)
+		if err := updateSessionContent(ctx, rw.SessionID, sessionMessages); err != nil {
+			slog.Warn("Failed to update session content at checkpoint", "session_id", rw.SessionID, "error", err)
+		}
+		return nil
 	}
 
 	// Resume the workflow
@@ -619,6 +775,12 @@ func (m *WorkflowManager) resumeWorkflow(
 	}
 	if err := CompleteWorkflowRun(context.Background(), rw.ID, result.Answer, finalCheckpoint); err != nil {
 		slog.Warn("Failed to mark resumed workflow as completed", "workflow_id", rw.ID, "error", err)
+	}
+
+	// Update session content with final answer and status 'complete'
+	finalMessages := buildSessionMessages(rw.ID, rw.Question, result.Answer, "complete", finalSteps, result.ExecutedQueries)
+	if err := updateSessionContent(context.Background(), rw.SessionID, finalMessages); err != nil {
+		slog.Warn("Failed to update session content on completion", "session_id", rw.SessionID, "error", err)
 	}
 
 	slog.Info("Resume workflow completed",

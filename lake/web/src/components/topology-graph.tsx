@@ -5,7 +5,7 @@ import type { Core, NodeSingular, EdgeSingular } from 'cytoscape'
 import { useQuery } from '@tanstack/react-query'
 import { Filter, X, Zap } from 'lucide-react'
 import { fetchISISTopology, fetchISISPaths, fetchTopologyCompare, fetchFailureImpact, fetchCriticalLinks, fetchSimulateLinkRemoval, fetchSimulateLinkAddition, fetchTopology, fetchLinkHealth } from '@/lib/api'
-import type { PathMode, FailureImpactResponse, MultiPathResponse, SimulateLinkRemovalResponse, SimulateLinkAdditionResponse } from '@/lib/api'
+import type { FailureImpactResponse, MultiPathResponse, SimulateLinkRemovalResponse, SimulateLinkAdditionResponse } from '@/lib/api'
 import { useTheme } from '@/hooks/use-theme'
 import { useTopology, TopologyPanel, TopologyControlBar, DeviceDetails, LinkDetails, PathModePanel, CriticalityPanel, WhatIfRemovalPanel, WhatIfAdditionPanel, ImpactPanel, ComparePanel, StakeOverlayPanel, LinkHealthOverlayPanel, TrafficFlowOverlayPanel, MetroClusteringOverlayPanel, ContributorsOverlayPanel, type DeviceInfo, type LinkInfo } from '@/components/topology'
 
@@ -96,7 +96,7 @@ export function TopologyGraph({
   const setSelectedLinkRef = useRef<(link: LinkInfo | null) => void>(() => {})
 
   // Get unified topology context
-  const { mode, setMode, overlays, toggleOverlay, panel, openPanel, closePanel } = useTopology()
+  const { mode, setMode, pathMode, setPathMode, overlays, toggleOverlay, panel, openPanel, closePanel } = useTopology()
 
   // Get URL params for link selection (device selection comes via props, but links need direct access)
   const [searchParams] = useSearchParams()
@@ -116,7 +116,6 @@ export function TopologyGraph({
   const [pathsResult, setPathsResult] = useState<MultiPathResponse | null>(null)
   const [selectedPathIndex, setSelectedPathIndex] = useState<number>(0)
   const [pathLoading, setPathLoading] = useState(false)
-  const [pathMode, setPathMode] = useState<PathMode>('hops')
 
   // Failure impact state
   const [impactDevice, setImpactDevice] = useState<string | null>(null)

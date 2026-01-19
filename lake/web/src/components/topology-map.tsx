@@ -7,8 +7,8 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import { useQuery } from '@tanstack/react-query'
 import { useTheme } from '@/hooks/use-theme'
 import type { TopologyMetro, TopologyDevice, TopologyLink, TopologyValidator, MultiPathResponse, SimulateLinkRemovalResponse, SimulateLinkAdditionResponse, FailureImpactResponse } from '@/lib/api'
-import { fetchISISPaths, fetchISISTopology, fetchCriticalLinks, fetchSimulateLinkRemoval, fetchSimulateLinkAddition, fetchFailureImpact, fetchLinkHealth } from '@/lib/api'
-import { useTopology, TopologyControlBar, TopologyPanel, DeviceDetails, LinkDetails, MetroDetails, ValidatorDetails, EntityLink as TopologyEntityLink, PathModePanel, CriticalityPanel, WhatIfRemovalPanel, WhatIfAdditionPanel, ImpactPanel, StakeOverlayPanel, LinkHealthOverlayPanel, TrafficFlowOverlayPanel, MetroClusteringOverlayPanel, ContributorsOverlayPanel, ValidatorsOverlayPanel, BandwidthOverlayPanel, IsisMetricOverlayPanel } from '@/components/topology'
+import { fetchISISPaths, fetchISISTopology, fetchCriticalLinks, fetchSimulateLinkRemoval, fetchSimulateLinkAddition, fetchFailureImpact, fetchLinkHealth, fetchTopologyCompare } from '@/lib/api'
+import { useTopology, TopologyControlBar, TopologyPanel, DeviceDetails, LinkDetails, MetroDetails, ValidatorDetails, EntityLink as TopologyEntityLink, PathModePanel, CriticalityPanel, WhatIfRemovalPanel, WhatIfAdditionPanel, ImpactPanel, ComparePanel, StakeOverlayPanel, LinkHealthOverlayPanel, TrafficFlowOverlayPanel, MetroClusteringOverlayPanel, ContributorsOverlayPanel, ValidatorsOverlayPanel, BandwidthOverlayPanel } from '@/components/topology'
 
 // Path colors for multi-path visualization
 const PATH_COLORS = [
@@ -92,23 +92,6 @@ function getBandwidthWeight(bps: number): number {
   if (gbps >= 1) return 3
   if (gbps > 0) return 2
   return 1
-}
-
-// Get link color based on ISIS metric (lower metric = better = more prominent)
-function getIsisMetricColor(metric: number, isDark: boolean): { color: string; weight: number; opacity: number } {
-  // Metric is in microseconds, lower is better
-  // Typical values: 1000 (1ms) to 100000 (100ms)
-  if (metric <= 0) {
-    return { color: isDark ? '#6b7280' : '#9ca3af', weight: 1, opacity: 0.5 } // gray - no data
-  } else if (metric <= 1000) {
-    return { color: isDark ? '#22c55e' : '#16a34a', weight: 4, opacity: 1 } // green - excellent (<1ms)
-  } else if (metric <= 5000) {
-    return { color: isDark ? '#84cc16' : '#65a30d', weight: 3, opacity: 0.9 } // lime - good (<5ms)
-  } else if (metric <= 20000) {
-    return { color: isDark ? '#eab308' : '#ca8a04', weight: 2, opacity: 0.8 } // yellow - moderate (<20ms)
-  } else {
-    return { color: isDark ? '#f97316' : '#ea580c', weight: 2, opacity: 0.7 } // orange - high (>20ms)
-  }
 }
 
 // Calculate validator marker radius based on stake (logarithmic scale)
@@ -396,6 +379,14 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     staleTime: 30000,
   })
 
+  // Fetch topology comparison when ISIS health overlay is enabled
+  const { data: compareData, isLoading: compareLoading } = useQuery({
+    queryKey: ['topology-compare'],
+    queryFn: fetchTopologyCompare,
+    enabled: isisHealthMode,
+    refetchInterval: 60000,
+  })
+
   // Build link SLA status map (keyed by link PK)
   const linkSlaStatus = useMemo(() => {
     if (!linkHealthData?.links) return new Map<string, { status: string; avgRttUs: number; committedRttNs: number; lossPct: number; slaRatio: number }>()
@@ -412,6 +403,31 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     }
     return slaMap
   }, [linkHealthData])
+
+  // Build edge health status from compare data (keyed by device pair)
+  // Returns: 'matched' | 'missing' | 'extra' | 'mismatch' | undefined
+  const edgeHealthStatus = useMemo(() => {
+    if (!compareData?.discrepancies) return new Map<string, string>()
+    const status = new Map<string, string>()
+
+    for (const d of compareData.discrepancies) {
+      // Create keys for both directions (using | separator to match link lookup)
+      const key1 = `${d.deviceAPK}|${d.deviceBPK}`
+      const key2 = `${d.deviceBPK}|${d.deviceAPK}`
+
+      if (d.type === 'missing_isis') {
+        status.set(key1, 'missing')
+        status.set(key2, 'missing')
+      } else if (d.type === 'extra_isis') {
+        status.set(key1, 'extra')
+        status.set(key2, 'extra')
+      } else if (d.type === 'metric_mismatch') {
+        status.set(key1, 'mismatch')
+        status.set(key2, 'mismatch')
+      }
+    }
+    return status
+  }, [compareData])
 
   // Build link criticality map (keyed by link PK)
   const linkCriticalityMap = useMemo(() => {
@@ -1110,11 +1126,38 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
         displayOpacity = 1
         useDash = true
       } else if (isisHealthMode) {
-        // ISIS overlay: color AND thickness by metric
-        const metricStyle = getIsisMetricColor(link.latency_us, isDark)
-        displayColor = metricStyle.color
-        displayWeight = metricStyle.weight
-        displayOpacity = metricStyle.opacity
+        // ISIS overlay: color by health status, thickness by metric
+        const healthKey = `${link.side_a_pk}|${link.side_z_pk}`
+        const healthStatus = edgeHealthStatus.get(healthKey)
+
+        // Get metric-based width
+        const metric = link.latency_us ?? 0
+        if (metric <= 0) {
+          displayWeight = 1
+        } else if (metric <= 1000) {
+          displayWeight = 4
+        } else if (metric <= 5000) {
+          displayWeight = 3
+        } else {
+          displayWeight = 2
+        }
+
+        // Color by health status
+        if (healthStatus === 'missing') {
+          displayColor = '#ef4444' // red
+          useDash = true
+          displayOpacity = 1
+        } else if (healthStatus === 'extra') {
+          displayColor = '#f59e0b' // amber
+          displayOpacity = 1
+        } else if (healthStatus === 'mismatch') {
+          displayColor = '#eab308' // yellow
+          displayOpacity = 1
+        } else {
+          // Default to matched (green)
+          displayColor = '#22c55e'
+          displayOpacity = 0.8
+        }
       } else if (isInSelectedPath && linkPathIndices) {
         // Use the selected path's color
         displayColor = PATH_COLORS[selectedPathIndex % PATH_COLORS.length]
@@ -1193,7 +1236,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       type: 'FeatureCollection' as const,
       features,
     }
-  }, [links, devicePositions, isDark, hoveredLink, selectedItem, hoverHighlight, linkPathMap, selectedPathIndex, criticalityOverlayEnabled, linkCriticalityMap, whatifRemovalMode, removalLink, linkHealthMode, linkSlaStatus, trafficFlowMode, getTrafficColor, metroClusteringMode, collapsedMetros, deviceMap, metroMap, contributorLinksMode, contributorIndexMap, bandwidthMode, isisHealthMode])
+  }, [links, devicePositions, isDark, hoveredLink, selectedItem, hoverHighlight, linkPathMap, selectedPathIndex, criticalityOverlayEnabled, linkCriticalityMap, whatifRemovalMode, removalLink, linkHealthMode, linkSlaStatus, trafficFlowMode, getTrafficColor, metroClusteringMode, collapsedMetros, deviceMap, metroMap, contributorLinksMode, contributorIndexMap, bandwidthMode, isisHealthMode, edgeHealthStatus])
 
   // GeoJSON for validator links (connecting lines)
   const validatorLinksGeoJson = useMemo(() => {
@@ -2118,6 +2161,8 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
         <TopologyPanel
           title={
             stakeOverlayMode ? 'Stake' :
+            isisHealthMode ? 'ISIS' :
+            bandwidthMode ? 'Bandwidth' :
             linkHealthMode ? 'Health' :
             trafficFlowMode ? 'Traffic' :
             criticalityOverlayEnabled ? 'Link Criticality' :
@@ -2139,7 +2184,10 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             <BandwidthOverlayPanel />
           )}
           {isisHealthMode && (
-            <IsisMetricOverlayPanel />
+            <ComparePanel
+              data={compareData ?? null}
+              isLoading={compareLoading}
+            />
           )}
           {linkHealthMode && (
             <LinkHealthOverlayPanel

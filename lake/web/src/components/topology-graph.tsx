@@ -595,6 +595,11 @@ export function TopologyGraph({
     fetchISISPaths(pathSource, pathTarget, 5)
       .then(result => {
         setPathsResult(result)
+        // Turn off device/link type overlays when path is found to make path visualization clearer
+        if (result.paths?.length > 0) {
+          if (overlays.deviceType) toggleOverlay('deviceType')
+          if (overlays.linkType) toggleOverlay('linkType')
+        }
       })
       .catch(err => {
         setPathsResult({ paths: [], from: pathSource, to: pathTarget, error: err.message })

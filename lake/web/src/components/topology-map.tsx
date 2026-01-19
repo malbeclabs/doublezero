@@ -800,6 +800,11 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     fetchISISPaths(pathSource, pathTarget, 5)
       .then(result => {
         setPathsResult(result)
+        // Turn off device/link type overlays when path is found to make path visualization clearer
+        if (result.paths?.length > 0) {
+          if (overlays.deviceType) toggleOverlay('deviceType')
+          if (overlays.linkType) toggleOverlay('linkType')
+        }
       })
       .catch(err => {
         setPathsResult({ paths: [], from: pathSource, to: pathTarget, error: err.message })
@@ -807,6 +812,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       .finally(() => {
         setPathLoading(false)
       })
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- overlays/toggleOverlay are intentionally excluded to avoid re-fetching when overlays change
   }, [pathModeEnabled, pathSource, pathTarget, pathMode])
 
   // Clear path when exiting path mode

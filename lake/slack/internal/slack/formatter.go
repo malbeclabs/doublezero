@@ -224,10 +224,10 @@ func ConvertMarkdownToBlocks(text string, log *slog.Logger) []slack.Block {
 	}
 
 	// The slackutil library doesn't handle nested lists properly - nested items get dropped.
-	// Fall back to plain mrkdwn text which preserves the structure with literal dashes.
+	// Use our own rich_text list builder that properly supports nesting.
 	if containsNestedList(text) {
-		log.Debug("detected nested list, using plain mrkdwn to preserve structure")
-		return convertToMrkdwnSectionBlocks(text, log)
+		log.Debug("detected nested list, using custom rich_text conversion")
+		return convertToRichTextBlocks(text, log)
 	}
 
 	convertedBlocks, err := slackutil.ConvertMarkdownTextToBlocks(text)
@@ -243,31 +243,182 @@ func ConvertMarkdownToBlocks(text string, log *slog.Logger) []slack.Block {
 // headerPattern matches markdown headers (# to ######)
 var headerPattern = regexp.MustCompile(`(?m)^(#{1,6})\s+(.+)$`)
 
-// convertToMrkdwnSectionBlocks converts markdown text to Slack section blocks using mrkdwn format.
-// This preserves list structure that would be lost by the slackutil library for nested lists.
-// Headers are converted to proper Slack header blocks for prominent display.
-func convertToMrkdwnSectionBlocks(text string, log *slog.Logger) []slack.Block {
-	return convertTextWithHeaders(text, func(segment string) []slack.Block {
-		// Convert markdown formatting to mrkdwn (but not headers - those are handled separately)
-		mrkdwn := convertMarkdownToMrkdwn(segment)
+// listItemPattern matches bullet (-) or numbered (1.) list items with optional indentation
+var listItemPattern = regexp.MustCompile(`^(\s*)([-*]|\d+\.)\s+(.*)$`)
 
-		// Split into paragraphs for better formatting
-		paragraphs := strings.Split(mrkdwn, "\n\n")
+// parsedListItem represents a parsed list item with its indent level and content
+type parsedListItem struct {
+	indent  int    // Indent level (0 = top level, 1 = first nested, etc.)
+	content string // Text content of the item
+	ordered bool   // Whether this is part of an ordered list
+}
+
+// parseListItems parses markdown text to extract list items with their indent levels
+func parseListItems(text string) []parsedListItem {
+	var items []parsedListItem
+	lines := strings.Split(text, "\n")
+
+	for _, line := range lines {
+		matches := listItemPattern.FindStringSubmatch(line)
+		if matches == nil {
+			continue
+		}
+
+		whitespace := matches[1]
+		marker := matches[2]
+		content := matches[3]
+
+		// Calculate indent level based on whitespace (2 spaces or 1 tab = 1 level)
+		indent := 0
+		for _, ch := range whitespace {
+			if ch == '\t' {
+				indent++
+			} else if ch == ' ' {
+				indent++ // Each space adds to count
+			}
+		}
+		// Convert space count to indent level (2 spaces = 1 level)
+		indent = indent / 2
+
+		// Determine if ordered (numbered) or bullet
+		ordered := len(marker) > 1 || (marker[0] >= '0' && marker[0] <= '9')
+
+		items = append(items, parsedListItem{
+			indent:  indent,
+			content: content,
+			ordered: ordered,
+		})
+	}
+
+	return items
+}
+
+// buildRichTextListElements builds RichTextList elements from parsed list items.
+// Each RichTextList contains consecutive items at the same indent level.
+func buildRichTextListElements(items []parsedListItem) []slack.RichTextElement {
+	if len(items) == 0 {
+		return nil
+	}
+
+	var elements []slack.RichTextElement
+	var currentItems []slack.RichTextElement
+	currentIndent := items[0].indent
+	currentOrdered := items[0].ordered
+
+	flushCurrentList := func() {
+		if len(currentItems) > 0 {
+			style := slack.RTEListBullet
+			if currentOrdered {
+				style = slack.RTEListOrdered
+			}
+			list := slack.NewRichTextList(style, currentIndent, currentItems...)
+			elements = append(elements, list)
+			currentItems = nil
+		}
+	}
+
+	for _, item := range items {
+		// If indent level or list type changes, flush current list and start new one
+		if item.indent != currentIndent || item.ordered != currentOrdered {
+			flushCurrentList()
+			currentIndent = item.indent
+			currentOrdered = item.ordered
+		}
+
+		// Create a rich text section for this item
+		textElement := slack.NewRichTextSectionTextElement(item.content, nil)
+		section := slack.NewRichTextSection(textElement)
+		currentItems = append(currentItems, section)
+	}
+
+	// Flush remaining items
+	flushCurrentList()
+
+	return elements
+}
+
+// convertToRichTextBlocks converts markdown text to Slack rich_text blocks with proper list nesting.
+// This handles nested lists that slackutil drops.
+func convertToRichTextBlocks(text string, _ *slog.Logger) []slack.Block {
+	return convertTextWithHeaders(text, func(segment string) []slack.Block {
 		var blocks []slack.Block
 
-		for _, para := range paragraphs {
-			para = strings.TrimSpace(para)
-			if para == "" {
-				continue
-			}
+		// Split segment into list and non-list parts
+		lines := strings.Split(segment, "\n")
+		var currentParagraph strings.Builder
+		var currentListText strings.Builder
+		inList := false
 
-			textBlock := slack.NewTextBlockObject(slack.MarkdownType, para, false, false)
-			sectionBlock := &slack.SectionBlock{
-				Type:   slack.MBTSection,
-				Text:   textBlock,
-				Expand: true,
+		flushParagraph := func() {
+			if currentParagraph.Len() > 0 {
+				paraText := strings.TrimSpace(currentParagraph.String())
+				if paraText != "" {
+					mrkdwn := convertMarkdownToMrkdwn(paraText)
+					textBlock := slack.NewTextBlockObject(slack.MarkdownType, mrkdwn, false, false)
+					sectionBlock := &slack.SectionBlock{
+						Type:   slack.MBTSection,
+						Text:   textBlock,
+						Expand: true,
+					}
+					blocks = append(blocks, sectionBlock)
+				}
+				currentParagraph.Reset()
 			}
-			blocks = append(blocks, sectionBlock)
+		}
+
+		flushList := func() {
+			if currentListText.Len() > 0 {
+				listText := currentListText.String()
+				items := parseListItems(listText)
+				if len(items) > 0 {
+					listElements := buildRichTextListElements(items)
+					if len(listElements) > 0 {
+						richTextBlock := slack.NewRichTextBlock("", listElements...)
+						blocks = append(blocks, richTextBlock)
+					}
+				}
+				currentListText.Reset()
+			}
+		}
+
+		for _, line := range lines {
+			isListLine := listItemPattern.MatchString(line)
+
+			if isListLine {
+				// Starting or continuing a list
+				if !inList {
+					flushParagraph()
+					inList = true
+				}
+				currentListText.WriteString(line)
+				currentListText.WriteString("\n")
+			} else {
+				// Not a list line
+				if inList {
+					flushList()
+					inList = false
+				}
+
+				// Empty lines create paragraph breaks
+				trimmed := strings.TrimSpace(line)
+				if trimmed == "" {
+					if currentParagraph.Len() > 0 {
+						flushParagraph()
+					}
+				} else {
+					if currentParagraph.Len() > 0 {
+						currentParagraph.WriteString("\n")
+					}
+					currentParagraph.WriteString(line)
+				}
+			}
+		}
+
+		// Flush remaining content
+		if inList {
+			flushList()
+		} else {
+			flushParagraph()
 		}
 
 		return blocks

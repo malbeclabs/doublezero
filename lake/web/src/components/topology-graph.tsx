@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import cytoscape from 'cytoscape'
 import type { Core, NodeSingular, EdgeSingular } from 'cytoscape'
 import { useQuery } from '@tanstack/react-query'
-import { Filter, X, Zap } from 'lucide-react'
+import { X, Zap } from 'lucide-react'
 import { fetchISISTopology, fetchISISPaths, fetchTopologyCompare, fetchFailureImpact, fetchCriticalLinks, fetchSimulateLinkRemoval, fetchSimulateLinkAddition, fetchTopology, fetchLinkHealth } from '@/lib/api'
 import type { FailureImpactResponse, MultiPathResponse, SimulateLinkRemovalResponse, SimulateLinkAdditionResponse } from '@/lib/api'
 import { useTheme } from '@/hooks/use-theme'
@@ -168,9 +168,6 @@ export function TopologyGraph({
     avgMetric?: number | null
   } | null>(null)
 
-  const [showFilters, setShowFilters] = useState(false)
-  const [localStatusFilter, setLocalStatusFilter] = useState(statusFilter || 'all')
-  const [localTypeFilter, setLocalTypeFilter] = useState(deviceTypeFilter || 'all')
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['isis-topology'],
@@ -504,16 +501,13 @@ export function TopologyGraph({
   const filteredData = useMemo(() => {
     if (!data) return null
 
-    const activeStatusFilter = statusFilter || localStatusFilter
-    const activeTypeFilter = deviceTypeFilter || localTypeFilter
-
     const filteredNodes = data.nodes.filter(node => {
-      if (activeStatusFilter !== 'all') {
+      if (statusFilter && statusFilter !== 'all') {
         const isActive = node.data.status === 'active' || node.data.status === 'activated'
-        if (activeStatusFilter === 'active' && !isActive) return false
-        if (activeStatusFilter === 'inactive' && isActive) return false
+        if (statusFilter === 'active' && !isActive) return false
+        if (statusFilter === 'inactive' && isActive) return false
       }
-      if (activeTypeFilter !== 'all' && node.data.deviceType !== activeTypeFilter) {
+      if (deviceTypeFilter && deviceTypeFilter !== 'all' && node.data.deviceType !== deviceTypeFilter) {
         return false
       }
       return true
@@ -525,7 +519,7 @@ export function TopologyGraph({
     )
 
     return { nodes: filteredNodes, edges: filteredEdges }
-  }, [data, statusFilter, localStatusFilter, deviceTypeFilter, localTypeFilter])
+  }, [data, statusFilter, deviceTypeFilter])
 
   // Get device type color
   const getDeviceTypeColor = useCallback((deviceType: string) => {
@@ -2317,45 +2311,6 @@ export function TopologyGraph({
         hasSelectedDevice={!!selectedDevicePK}
       />
 
-      {/* Filter dropdown (graph-specific) */}
-      <div className="absolute top-4 left-4 z-[999]">
-        <div className="relative">
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className={`p-2 bg-[var(--card)] border border-[var(--border)] rounded shadow-sm hover:bg-[var(--muted)] transition-colors ${showFilters ? 'bg-[var(--muted)]' : ''}`}
-            title="Filter devices"
-          >
-            <Filter className="h-4 w-4" />
-          </button>
-          {showFilters && (
-            <div className="absolute left-0 top-full mt-1 w-48 bg-[var(--card)] border border-[var(--border)] rounded-md shadow-lg z-50 p-3">
-              <div className="text-xs font-medium text-muted-foreground mb-2">Status</div>
-              <select
-                value={localStatusFilter}
-                onChange={(e) => setLocalStatusFilter(e.target.value)}
-                className="w-full px-2 py-1 text-sm border border-[var(--border)] rounded bg-[var(--card)] mb-3"
-              >
-                <option value="all">All</option>
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-              </select>
-
-              <div className="text-xs font-medium text-muted-foreground mb-2">Device Type</div>
-              <select
-                value={localTypeFilter}
-                onChange={(e) => setLocalTypeFilter(e.target.value)}
-                className="w-full px-2 py-1 text-sm border border-[var(--border)] rounded bg-[var(--card)]"
-              >
-                <option value="all">All</option>
-                {deviceTypes.map(type => (
-                  <option key={type} value={type}>{type}</option>
-                ))}
-              </select>
-            </div>
-          )}
-        </div>
-      </div>
-
       {/* Mode panel (right panel) */}
       {panel.isOpen && panel.content === 'mode' && (
         <TopologyPanel
@@ -2606,9 +2561,6 @@ export function TopologyGraph({
           {filteredData && (
             <div className="mt-2 pt-2 border-t border-[var(--border)] text-muted-foreground">
               <div>{filteredData.nodes.length} devices · {filteredData.edges.length} adjacencies</div>
-              {(localStatusFilter !== 'all' || localTypeFilter !== 'all') && (
-                <div className="mt-1 text-amber-500">Filtered</div>
-              )}
             </div>
           )}
         </div>

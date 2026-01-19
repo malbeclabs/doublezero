@@ -148,19 +148,29 @@ Content for section 2.`
 		headerBlock := blocks[0].(*slackapi.HeaderBlock)
 		require.Equal(t, "Summary", headerBlock.Text.Text)
 
-		// Nested list items should be preserved
-		foundNestedItems := false
+		// Nested list items should be preserved in rich_text blocks
+		foundNestedItem := false
 		for _, block := range blocks {
-			if block.BlockType() == slackapi.MBTSection {
-				sectionBlock := block.(*slackapi.SectionBlock)
-				if sectionBlock.Text != nil {
-					if strings.Contains(sectionBlock.Text.Text, "Nested item") {
-						foundNestedItems = true
+			if block.BlockType() == slackapi.MBTRichText {
+				richTextBlock := block.(*slackapi.RichTextBlock)
+				for _, element := range richTextBlock.Elements {
+					if list, ok := element.(*slackapi.RichTextList); ok {
+						for _, listElement := range list.Elements {
+							if section, ok := listElement.(*slackapi.RichTextSection); ok {
+								for _, sectionElement := range section.Elements {
+									if textElement, ok := sectionElement.(*slackapi.RichTextSectionTextElement); ok {
+										if strings.Contains(textElement.Text, "Nested item") {
+											foundNestedItem = true
+										}
+									}
+								}
+							}
+						}
 					}
 				}
 			}
 		}
-		require.True(t, foundNestedItems, "nested list items should be preserved")
+		require.True(t, foundNestedItem, "nested list items should be preserved in rich_text blocks")
 	})
 
 	t.Run("header with emoji prefix", func(t *testing.T) {
@@ -299,23 +309,36 @@ func TestAI_Slack_ConvertMarkdownToBlocks_NestedLists(t *testing.T) {
 		// First block should be a header
 		require.Equal(t, slackapi.MBTHeader, blocks[0].BlockType())
 
-		// Verify nested list items are present in the output
-		foundNestedItems := false
+		// Verify nested list items are present in rich_text blocks
+		foundValidator1, foundValidator2, foundValidator3 := false, false, false
 		for _, block := range blocks {
-			if block.BlockType() == slackapi.MBTSection {
-				sectionBlock := block.(*slackapi.SectionBlock)
-				if sectionBlock.Text != nil {
-					text := sectionBlock.Text.Text
-					// Check that nested items are present
-					if strings.Contains(text, "validator1") &&
-						strings.Contains(text, "validator2") &&
-						strings.Contains(text, "validator3") {
-						foundNestedItems = true
+			if block.BlockType() == slackapi.MBTRichText {
+				richTextBlock := block.(*slackapi.RichTextBlock)
+				for _, element := range richTextBlock.Elements {
+					if list, ok := element.(*slackapi.RichTextList); ok {
+						for _, listElement := range list.Elements {
+							if section, ok := listElement.(*slackapi.RichTextSection); ok {
+								for _, sectionElement := range section.Elements {
+									if textElement, ok := sectionElement.(*slackapi.RichTextSectionTextElement); ok {
+										if strings.Contains(textElement.Text, "validator1") {
+											foundValidator1 = true
+										}
+										if strings.Contains(textElement.Text, "validator2") {
+											foundValidator2 = true
+										}
+										if strings.Contains(textElement.Text, "validator3") {
+											foundValidator3 = true
+										}
+									}
+								}
+							}
+						}
 					}
 				}
 			}
 		}
-		require.True(t, foundNestedItems, "nested list items should be preserved in output")
+		require.True(t, foundValidator1 && foundValidator2 && foundValidator3,
+			"nested list items should be preserved in rich_text blocks")
 	})
 
 	t.Run("simple list without nesting uses rich text blocks", func(t *testing.T) {

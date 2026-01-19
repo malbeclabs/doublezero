@@ -2924,3 +2924,69 @@ export async function fetchSearch(
   }
   return res.json()
 }
+
+// Link outages types
+export type OutageTimeRange = '3h' | '6h' | '12h' | '24h' | '3d' | '7d' | '30d'
+export type OutageType = 'status' | 'packet_loss' | 'no_data'
+export type OutageThreshold = 1 | 10
+
+export interface LinkOutage {
+  id: string
+  link_pk: string
+  link_code: string
+  link_type: string
+  side_a_metro: string
+  side_z_metro: string
+  contributor_code: string
+  outage_type: OutageType
+  // Status outages
+  previous_status?: string
+  new_status?: string
+  // Packet loss outages
+  threshold_pct?: number
+  peak_loss_pct?: number
+  // Common
+  started_at: string
+  ended_at?: string
+  duration_seconds?: number
+  is_ongoing: boolean
+}
+
+export interface LinkOutagesSummary {
+  total: number
+  ongoing: number
+  by_type: {
+    status: number
+    packet_loss: number
+    no_data?: number
+  }
+}
+
+export interface LinkOutagesResponse {
+  outages: LinkOutage[]
+  summary: LinkOutagesSummary
+}
+
+export interface FetchLinkOutagesParams {
+  range?: OutageTimeRange
+  threshold?: OutageThreshold
+  type?: 'all' | 'status' | 'loss' | 'no_data'
+  filter?: string // Format: "type:value,type:value" (e.g., "metro:SAO,contributor:ZAYO")
+}
+
+export async function fetchLinkOutages(params: FetchLinkOutagesParams = {}): Promise<LinkOutagesResponse> {
+  const searchParams = new URLSearchParams()
+  if (params.range) searchParams.set('range', params.range)
+  if (params.threshold) searchParams.set('threshold', params.threshold.toString())
+  if (params.type) searchParams.set('type', params.type)
+  if (params.filter) searchParams.set('filter', params.filter)
+
+  const queryString = searchParams.toString()
+  const url = `/api/outages/links${queryString ? `?${queryString}` : ''}`
+
+  const res = await fetchWithRetry(url)
+  if (!res.ok) {
+    throw new Error('Failed to fetch link outages')
+  }
+  return res.json()
+}

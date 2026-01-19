@@ -177,10 +177,31 @@ export function TopologyProvider({ children, view }: TopologyProviderProps) {
     localStorage.setItem('topology-panel-width', String(clampedWidth))
   }, [])
 
-  // Overlay toggle - also updates URL
+  // Overlay groups - overlays in the same group are mutually exclusive
+  // Node color overlays: stake, metroClustering
+  // Edge color overlays: linkHealth, trafficFlow
+  // Independent: validators
+  const overlayGroups: Record<keyof OverlayState, (keyof OverlayState)[]> = {
+    stake: ['metroClustering'],
+    metroClustering: ['stake'],
+    linkHealth: ['trafficFlow'],
+    trafficFlow: ['linkHealth'],
+    validators: [],
+  }
+
+  // Overlay toggle - also updates URL and handles mutual exclusion
   const toggleOverlay = useCallback((overlay: keyof OverlayState) => {
     setOverlays(prev => {
-      const newState = { ...prev, [overlay]: !prev[overlay] }
+      const newValue = !prev[overlay]
+      const newState = { ...prev, [overlay]: newValue }
+
+      // If turning on, turn off conflicting overlays in the same group
+      if (newValue) {
+        for (const conflicting of overlayGroups[overlay]) {
+          newState[conflicting] = false
+        }
+      }
+
       // Update URL params
       setSearchParams(params => {
         const serialized = serializeOverlaysToUrl(newState)

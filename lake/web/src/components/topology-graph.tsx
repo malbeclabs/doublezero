@@ -726,6 +726,13 @@ export function TopologyGraph({
       }
     }
 
+    // In analysis modes, clear the generic selection params to avoid duplication
+    const inAnalysisMode = pathModeEnabled || whatifRemovalMode || whatifAdditionMode || impactMode
+    if (inAnalysisMode) {
+      setParam('type', null)
+      setParam('id', null)
+    }
+
     // Path mode params
     setParam('path_source', pathModeEnabled ? pathSource : null)
     setParam('path_target', pathModeEnabled ? pathTarget : null)

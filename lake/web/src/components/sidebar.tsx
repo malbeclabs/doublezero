@@ -83,8 +83,6 @@ export function Sidebar({
   const { resolvedTheme, setTheme } = useTheme()
   const { updateAvailable, reload } = useVersionCheck()
   const isLandingPage = location.pathname === '/'
-  const isTopologyPage = location.pathname === '/topology'
-  const isTopologyMapOrGraph = location.pathname === '/topology/map' || location.pathname === '/topology/graph'
   const isTopologyRoute = location.pathname === '/topology' || location.pathname.startsWith('/topology/')
   const isStatusPage = location.pathname.startsWith('/status')
   const isOutagesPage = location.pathname === '/outages'

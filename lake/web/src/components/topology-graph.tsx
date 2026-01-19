@@ -593,7 +593,7 @@ export function TopologyGraph({
 
     setPathLoading(true)
     setSelectedPathIndex(0) // Reset to first path
-    fetchISISPaths(pathSource, pathTarget, 5)
+    fetchISISPaths(pathSource, pathTarget, 5, pathMode)
       .then(result => {
         setPathsResult(result)
         // Turn off device/link type overlays when path is found to make path visualization clearer

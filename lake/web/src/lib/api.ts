@@ -1346,8 +1346,8 @@ export interface MultiPathResponse {
   error?: string
 }
 
-export async function fetchISISPaths(fromPK: string, toPK: string, k: number = 5): Promise<MultiPathResponse> {
-  const res = await fetch(`/api/topology/paths?from=${encodeURIComponent(fromPK)}&to=${encodeURIComponent(toPK)}&k=${k}`)
+export async function fetchISISPaths(fromPK: string, toPK: string, k: number = 5, mode: 'hops' | 'latency' = 'hops'): Promise<MultiPathResponse> {
+  const res = await fetch(`/api/topology/paths?from=${encodeURIComponent(fromPK)}&to=${encodeURIComponent(toPK)}&k=${k}&mode=${mode}`)
   if (!res.ok) {
     throw new Error('Failed to fetch paths')
   }

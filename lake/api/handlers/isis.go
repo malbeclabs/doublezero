@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"slices"
 	"strconv"
 	"time"
 
@@ -849,6 +850,7 @@ type MultiPathResponse struct {
 }
 
 // GetISISPaths finds K-shortest paths between two devices
+// mode parameter: "hops" (default) sorts by hop count, "latency" sorts by measured latency
 func GetISISPaths(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
@@ -856,6 +858,10 @@ func GetISISPaths(w http.ResponseWriter, r *http.Request) {
 	fromPK := r.URL.Query().Get("from")
 	toPK := r.URL.Query().Get("to")
 	kStr := r.URL.Query().Get("k")
+	pathMode := r.URL.Query().Get("mode") // "hops" or "latency"
+	if pathMode == "" {
+		pathMode = "hops"
+	}
 
 	if fromPK == "" || toPK == "" {
 		writeJSON(w, MultiPathResponse{Error: "from and to parameters are required"})
@@ -979,9 +985,37 @@ func GetISISPaths(w http.ResponseWriter, r *http.Request) {
 		response.Error = fmt.Sprintf("failed to enrich paths with measured latency: %v", err)
 	}
 
+	// Re-sort paths based on mode
+	if pathMode == "latency" {
+		// Sort by total measured latency (MeasuredLatencyMs)
+		slices.SortFunc(response.Paths, func(a, b SinglePath) int {
+			if a.MeasuredLatencyMs < b.MeasuredLatencyMs {
+				return -1
+			}
+			if a.MeasuredLatencyMs > b.MeasuredLatencyMs {
+				return 1
+			}
+			return 0
+		})
+	} else {
+		// Sort by hop count first, then by metric (default "hops" mode)
+		slices.SortFunc(response.Paths, func(a, b SinglePath) int {
+			if a.HopCount != b.HopCount {
+				return a.HopCount - b.HopCount
+			}
+			if a.TotalMetric < b.TotalMetric {
+				return -1
+			}
+			if a.TotalMetric > b.TotalMetric {
+				return 1
+			}
+			return 0
+		})
+	}
+
 	duration := time.Since(start)
 	metrics.RecordClickHouseQuery(duration, nil)
-	log.Printf("ISIS multi-path query returned %d paths in %v", len(response.Paths), duration)
+	log.Printf("ISIS multi-path query (%s mode) returned %d paths in %v", pathMode, len(response.Paths), duration)
 
 	writeJSON(w, response)
 }

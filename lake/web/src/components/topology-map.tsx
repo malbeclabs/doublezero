@@ -1354,7 +1354,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
   }, [validators, devicePositions, showValidators, isDark, hoveredValidator, hoverHighlight])
 
   // Colors
-  const deviceColor = isDark ? '#f97316' : '#ea580c' // orange
+  const deviceColor = isDark ? '#6b7280' : '#1f2937' // neutral grey/dark - overlays will override
   const metroColor = isDark ? '#4b5563' : '#9ca3af' // gray
   const validatorColor = isDark ? '#a855f7' : '#9333ea' // purple
 

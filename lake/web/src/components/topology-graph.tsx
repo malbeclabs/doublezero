@@ -538,14 +538,6 @@ export function TopologyGraph({
     return isDark ? colors.dark : colors.light
   }, [isDark])
 
-  // Get status border color
-  const getStatusBorderColor = useCallback((status: string) => {
-    if (status === 'active' || status === 'activated') {
-      return isDark ? '#22c55e' : '#16a34a' // green
-    }
-    return isDark ? '#ef4444' : '#dc2626' // red
-  }, [isDark])
-
   // Calculate node size based on degree
   const getNodeSize = useCallback((degree: number) => {
     const minSize = 16
@@ -994,19 +986,18 @@ export function TopologyGraph({
           }
         })
       } else {
-        // Revert to default degree-based sizing
+        // Revert to default degree-based sizing and neutral color
         cy.nodes().forEach(node => {
           const degree = node.data('degree')
-          const deviceType = node.data('deviceType')
           node.style({
             'width': getNodeSize(degree),
             'height': getNodeSize(degree),
-            'background-color': getDeviceTypeColor(deviceType),
+            'background-color': deviceTypeEnabled ? getDeviceTypeColor(node.data('deviceType')) : (isDark ? '#6b7280' : '#1f2937'),
           })
         })
       }
     })
-  }, [stakeOverlayEnabled, deviceStakeMap, getStakeNodeSize, getStakeColor, getNodeSize, getDeviceTypeColor, isDark])
+  }, [stakeOverlayEnabled, deviceStakeMap, getStakeNodeSize, getStakeColor, getNodeSize, getDeviceTypeColor, deviceTypeEnabled, isDark])
 
   // Apply link health overlay styling when enabled
   useEffect(() => {
@@ -1082,19 +1073,18 @@ export function TopologyGraph({
           })
         })
       } else {
-        // Revert to default device type coloring
+        // Revert to neutral color (or device type if that overlay is active)
         cy.nodes().forEach(node => {
           const degree = node.data('degree')
-          const deviceType = node.data('deviceType')
           node.style({
             'width': getNodeSize(degree),
             'height': getNodeSize(degree),
-            'background-color': getDeviceTypeColor(deviceType),
+            'background-color': deviceTypeEnabled ? getDeviceTypeColor(node.data('deviceType')) : (isDark ? '#6b7280' : '#1f2937'),
           })
         })
       }
     })
-  }, [metroClusteringEnabled, metroInfoMap, getMetroColor, getNodeSize, getDeviceTypeColor, stakeOverlayEnabled])
+  }, [metroClusteringEnabled, metroInfoMap, getMetroColor, getNodeSize, getDeviceTypeColor, deviceTypeEnabled, stakeOverlayEnabled, isDark])
 
   // Update node and edge colors when contributors overlay is enabled
   // Skip if in an analysis mode that styles edges or if a link overlay is active (let those control edge appearance)
@@ -1118,14 +1108,13 @@ export function TopologyGraph({
           })
         })
       } else if (!stakeOverlayEnabled && !metroClusteringEnabled) {
-        // Revert to default device type coloring for nodes
+        // Revert to neutral color (or device type if that overlay is active)
         cy.nodes().forEach(node => {
           const degree = node.data('degree')
-          const deviceType = node.data('deviceType')
           node.style({
             'width': getNodeSize(degree),
             'height': getNodeSize(degree),
-            'background-color': getDeviceTypeColor(deviceType),
+            'background-color': deviceTypeEnabled ? getDeviceTypeColor(node.data('deviceType')) : (isDark ? '#6b7280' : '#1f2937'),
           })
         })
       }
@@ -1155,19 +1144,18 @@ export function TopologyGraph({
           }
         })
       } else if (!linkHealthOverlayEnabled && !trafficFlowEnabled) {
-        // Revert to default edge styling
+        // Revert to neutral grey (or link type colors if that overlay is active)
+        const defaultColor = isDark ? '#4b5563' : '#9ca3af'
         cy.edges().forEach(edge => {
-          const linkType = edge.data('linkType')
           edge.style({
-            'line-color': linkType === 'WAN' ? (isDark ? '#60a5fa' : '#2563eb') : (isDark ? '#9ca3af' : '#6b7280'),
-            'target-arrow-color': linkType === 'WAN' ? (isDark ? '#60a5fa' : '#2563eb') : (isDark ? '#9ca3af' : '#6b7280'),
-            'width': linkType === 'WAN' ? 2 : 1,
-            'opacity': 0.6,
+            'line-color': defaultColor,
+            'target-arrow-color': defaultColor,
+            'opacity': 0.7,
           })
         })
       }
     })
-  }, [contributorDevicesEnabled, contributorLinksEnabled, contributorInfoMap, deviceContributorMap, edgeContributorMap, getContributorColor, getNodeSize, getDeviceTypeColor, stakeOverlayEnabled, metroClusteringEnabled, linkHealthOverlayEnabled, trafficFlowEnabled, isDark, isEdgeStylingMode])
+  }, [contributorDevicesEnabled, contributorLinksEnabled, contributorInfoMap, deviceContributorMap, edgeContributorMap, getContributorColor, getNodeSize, getDeviceTypeColor, deviceTypeEnabled, stakeOverlayEnabled, metroClusteringEnabled, linkHealthOverlayEnabled, trafficFlowEnabled, isDark, isEdgeStylingMode])
 
   // Apply bandwidth edge styling
   // Sets width based on bandwidth, and resets color to grey (other overlays will override if active)
@@ -1234,6 +1222,52 @@ export function TopologyGraph({
       })
     })
   }, [linkTypeEnabled, linkByDevicePairMap, isDark])
+
+  // Apply device type node styling when enabled
+  useEffect(() => {
+    if (!cyRef.current) return
+    const cy = cyRef.current
+
+    cy.batch(() => {
+      if (deviceTypeEnabled) {
+        // Apply device type colors
+        cy.nodes().forEach(node => {
+          const deviceType = node.data('deviceType')
+          node.style({
+            'background-color': getDeviceTypeColor(deviceType),
+          })
+        })
+      } else {
+        // Reset to neutral colors (unless another overlay is active)
+        if (!stakeOverlayEnabled && !metroClusteringEnabled && !contributorDevicesEnabled) {
+          cy.nodes().forEach(node => {
+            node.style({
+              'background-color': isDark ? '#6b7280' : '#1f2937',
+            })
+          })
+        }
+      }
+    })
+  }, [deviceTypeEnabled, stakeOverlayEnabled, metroClusteringEnabled, contributorDevicesEnabled, getDeviceTypeColor, isDark])
+
+  // Reset link colors when link type overlay is disabled
+  useEffect(() => {
+    if (!cyRef.current || linkTypeEnabled) return
+    const cy = cyRef.current
+
+    // Reset to neutral grey (unless another link overlay is active)
+    if (!linkHealthOverlayEnabled && !trafficFlowEnabled && !bandwidthEnabled && !contributorLinksEnabled && !isisHealthEnabled && !criticalityEnabled) {
+      cy.batch(() => {
+        cy.edges().forEach(edge => {
+          edge.style({
+            'line-color': isDark ? '#4b5563' : '#9ca3af',
+            'target-arrow-color': isDark ? '#4b5563' : '#9ca3af',
+            'opacity': 0.7,
+          })
+        })
+      })
+    }
+  }, [linkTypeEnabled, linkHealthOverlayEnabled, trafficFlowEnabled, bandwidthEnabled, contributorLinksEnabled, isisHealthEnabled, criticalityEnabled, isDark])
 
   // Toggle metro collapse state
   const toggleMetroCollapse = useCallback((metroPK: string) => {
@@ -1541,7 +1575,7 @@ export function TopologyGraph({
         {
           selector: 'node',
           style: {
-            'background-color': (ele: NodeSingular) => getDeviceTypeColor(ele.data('deviceType')),
+            'background-color': isDark ? '#6b7280' : '#1f2937', // neutral grey/dark - overlays will override
             'label': 'data(label)',
             'text-valign': 'bottom',
             'text-halign': 'center',
@@ -1550,8 +1584,7 @@ export function TopologyGraph({
             'text-margin-y': 4,
             'width': (ele: NodeSingular) => getNodeSize(ele.data('degree')),
             'height': (ele: NodeSingular) => getNodeSize(ele.data('degree')),
-            'border-width': 3,
-            'border-color': (ele: NodeSingular) => getStatusBorderColor(ele.data('status')),
+            'border-width': 0,
           },
         },
         {
@@ -1937,7 +1970,7 @@ export function TopologyGraph({
             'opacity': 0.4,
           },
         },
-      ], [isDark, getDeviceTypeColor, getStatusBorderColor, getNodeSize])
+      ], [isDark, getDeviceTypeColor, getNodeSize])
 
   // Initialize Cytoscape and sync data
   useEffect(() => {

@@ -587,6 +587,19 @@ And more text after.`
 		require.Contains(t, result, "+")
 	})
 
+	t.Run("table with trailing whitespace converts", func(t *testing.T) {
+		t.Parallel()
+		// Note: trailing space after "Metro |" on header row
+		input := "| Validator | Stake | Metro | \n|-----------|-------|-------|\n| foo | 100 | NYC |\n"
+
+		result := convertMarkdownTablesToASCII(input)
+
+		// Should be wrapped in code block
+		require.Contains(t, result, "```")
+		require.Contains(t, result, "Validator")
+		require.Contains(t, result, "foo")
+	})
+
 	t.Run("table renders correctly in blocks", func(t *testing.T) {
 		t.Parallel()
 		input := `### 📊 Results

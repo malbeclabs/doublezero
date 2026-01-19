@@ -1,15 +1,15 @@
 import { useMemo, useEffect, useRef, useState, useCallback } from 'react'
-import { useSearchParams, Link, useNavigate } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import MapGL, { Source, Layer, Marker } from 'react-map-gl/maplibre'
 import type { MapRef, MapLayerMouseEvent, LngLatBoundsLike } from 'react-map-gl/maplibre'
 import type { StyleSpecification } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { ZoomIn, ZoomOut, Maximize, Users, X, Search, Route, Shield, MinusCircle, PlusCircle, AlertTriangle, Zap, Coins, Activity, MapPin, BarChart3 } from 'lucide-react'
-import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip as RechartsTooltip, CartesianGrid } from 'recharts'
+import { X, AlertTriangle, Coins, Activity, BarChart3, MapPin } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { useTheme } from '@/hooks/use-theme'
 import type { TopologyMetro, TopologyDevice, TopologyLink, TopologyValidator, MultiPathResponse, SimulateLinkRemovalResponse, SimulateLinkAdditionResponse, FailureImpactResponse } from '@/lib/api'
 import { fetchISISPaths, fetchISISTopology, fetchCriticalLinks, fetchSimulateLinkRemoval, fetchSimulateLinkAddition, fetchFailureImpact, fetchLinkHealth } from '@/lib/api'
+import { useTopology, TopologyControlBar, TopologyPanel, DeviceDetails, LinkDetails, MetroDetails, ValidatorDetails, EntityLink as TopologyEntityLink, PathModePanel, CriticalityPanel, WhatIfRemovalPanel, WhatIfAdditionPanel, ImpactPanel } from '@/components/topology'
 
 // Path colors for multi-path visualization
 const PATH_COLORS = [
@@ -217,204 +217,6 @@ type SelectedItem =
   | { type: 'metro'; data: HoveredMetroInfo }
   | { type: 'validator'; data: HoveredValidatorInfo }
 
-// Map controls component
-interface MapControlsProps {
-  onZoomIn: () => void
-  onZoomOut: () => void
-  onReset: () => void
-  showValidators: boolean
-  onToggleValidators: () => void
-  validatorCount: number
-  pathMode: boolean
-  onTogglePathMode: () => void
-  criticalityMode: boolean
-  onToggleCriticalityMode: () => void
-  whatifRemovalMode: boolean
-  onToggleWhatifRemovalMode: () => void
-  whatifAdditionMode: boolean
-  onToggleWhatifAdditionMode: () => void
-  impactMode: boolean
-  onToggleImpactMode: () => void
-  selectedDevicePK: string | null
-  stakeOverlayMode: boolean
-  onToggleStakeOverlayMode: () => void
-  linkHealthMode: boolean
-  onToggleLinkHealthMode: () => void
-  trafficFlowMode: boolean
-  onToggleTrafficFlowMode: () => void
-  metroClusteringMode: boolean
-  onToggleMetroClusteringMode: () => void
-}
-
-function MapControls({
-  onZoomIn, onZoomOut, onReset, showValidators, onToggleValidators, validatorCount,
-  pathMode, onTogglePathMode, criticalityMode, onToggleCriticalityMode,
-  whatifRemovalMode, onToggleWhatifRemovalMode, whatifAdditionMode, onToggleWhatifAdditionMode,
-  impactMode, onToggleImpactMode, selectedDevicePK,
-  stakeOverlayMode, onToggleStakeOverlayMode,
-  linkHealthMode, onToggleLinkHealthMode,
-  trafficFlowMode, onToggleTrafficFlowMode,
-  metroClusteringMode, onToggleMetroClusteringMode
-}: MapControlsProps) {
-  const anyModeActive = pathMode || criticalityMode || whatifRemovalMode || whatifAdditionMode || impactMode
-  return (
-    <div className="absolute top-4 right-4 z-[1000] flex flex-col gap-1">
-      <button
-        onClick={() => window.dispatchEvent(new CustomEvent('open-search'))}
-        className="p-2 bg-[var(--card)] border border-[var(--border)] rounded shadow-sm hover:bg-[var(--muted)] transition-colors"
-        title="Search (Cmd+K)"
-      >
-        <Search className="h-4 w-4" />
-      </button>
-      <div className="my-1 border-t border-[var(--border)]" />
-      <button
-        onClick={onZoomIn}
-        className="p-2 bg-[var(--card)] border border-[var(--border)] rounded shadow-sm hover:bg-[var(--muted)] transition-colors"
-        title="Zoom in"
-      >
-        <ZoomIn className="h-4 w-4" />
-      </button>
-      <button
-        onClick={onZoomOut}
-        className="p-2 bg-[var(--card)] border border-[var(--border)] rounded shadow-sm hover:bg-[var(--muted)] transition-colors"
-        title="Zoom out"
-      >
-        <ZoomOut className="h-4 w-4" />
-      </button>
-      <button
-        onClick={onReset}
-        className="p-2 bg-[var(--card)] border border-[var(--border)] rounded shadow-sm hover:bg-[var(--muted)] transition-colors"
-        title="Reset view"
-      >
-        <Maximize className="h-4 w-4" />
-      </button>
-      <div className="my-1 border-t border-[var(--border)]" />
-      <button
-        onClick={onToggleValidators}
-        disabled={anyModeActive}
-        className={`p-2 border rounded shadow-sm transition-colors ${
-          showValidators
-            ? 'bg-purple-500/20 border-purple-500/50 text-purple-500'
-            : 'bg-[var(--card)] border-[var(--border)] hover:bg-[var(--muted)]'
-        } ${anyModeActive ? 'opacity-40 cursor-not-allowed' : ''}`}
-        title={anyModeActive ? 'Disabled in current mode' : `${showValidators ? 'Hide' : 'Show'} validators (${validatorCount})`}
-      >
-        <Users className="h-4 w-4" />
-      </button>
-      <button
-        onClick={onTogglePathMode}
-        disabled={criticalityMode || whatifRemovalMode || whatifAdditionMode}
-        className={`p-2 border rounded shadow-sm transition-colors ${
-          pathMode
-            ? 'bg-amber-500/20 border-amber-500/50 text-amber-500'
-            : 'bg-[var(--card)] border-[var(--border)] hover:bg-[var(--muted)]'
-        } ${criticalityMode || whatifRemovalMode || whatifAdditionMode ? 'opacity-40 cursor-not-allowed' : ''}`}
-        title={criticalityMode || whatifRemovalMode || whatifAdditionMode ? 'Disabled in current mode' : (pathMode ? 'Exit path finding mode' : 'Enter path finding mode')}
-      >
-        <Route className="h-4 w-4" />
-      </button>
-      <button
-        onClick={onToggleCriticalityMode}
-        disabled={pathMode || whatifRemovalMode || whatifAdditionMode}
-        className={`p-2 border rounded shadow-sm transition-colors ${
-          criticalityMode
-            ? 'bg-red-500/20 border-red-500/50 text-red-500'
-            : 'bg-[var(--card)] border-[var(--border)] hover:bg-[var(--muted)]'
-        } ${pathMode || whatifRemovalMode || whatifAdditionMode ? 'opacity-40 cursor-not-allowed' : ''}`}
-        title={pathMode || whatifRemovalMode || whatifAdditionMode ? 'Disabled in current mode' : (criticalityMode ? 'Exit criticality mode' : 'Show link criticality (single points of failure)')}
-      >
-        <Shield className="h-4 w-4" />
-      </button>
-      <div className="my-1 border-t border-[var(--border)]" />
-      <button
-        onClick={onToggleWhatifRemovalMode}
-        disabled={pathMode || criticalityMode || whatifAdditionMode}
-        className={`p-2 border rounded shadow-sm transition-colors ${
-          whatifRemovalMode
-            ? 'bg-red-500/20 border-red-500/50 text-red-500'
-            : 'bg-[var(--card)] border-[var(--border)] hover:bg-[var(--muted)]'
-        } ${pathMode || criticalityMode || whatifAdditionMode ? 'opacity-40 cursor-not-allowed' : ''}`}
-        title={pathMode || criticalityMode || whatifAdditionMode ? 'Disabled in current mode' : (whatifRemovalMode ? 'Exit link removal simulation' : 'Simulate removing a link (r)')}
-      >
-        <MinusCircle className="h-4 w-4" />
-      </button>
-      <button
-        onClick={onToggleWhatifAdditionMode}
-        disabled={pathMode || criticalityMode || whatifRemovalMode || impactMode}
-        className={`p-2 border rounded shadow-sm transition-colors ${
-          whatifAdditionMode
-            ? 'bg-green-500/20 border-green-500/50 text-green-500'
-            : 'bg-[var(--card)] border-[var(--border)] hover:bg-[var(--muted)]'
-        } ${pathMode || criticalityMode || whatifRemovalMode || impactMode ? 'opacity-40 cursor-not-allowed' : ''}`}
-        title={pathMode || criticalityMode || whatifRemovalMode || impactMode ? 'Disabled in current mode' : (whatifAdditionMode ? 'Exit link addition simulation' : 'Simulate adding a new link (a)')}
-      >
-        <PlusCircle className="h-4 w-4" />
-      </button>
-      <button
-        onClick={onToggleImpactMode}
-        disabled={pathMode || criticalityMode || whatifRemovalMode || whatifAdditionMode || (!selectedDevicePK && !impactMode)}
-        className={`p-2 border rounded shadow-sm transition-colors ${
-          impactMode
-            ? 'bg-purple-500/20 border-purple-500/50 text-purple-500'
-            : 'bg-[var(--card)] border-[var(--border)] hover:bg-[var(--muted)]'
-        } ${pathMode || criticalityMode || whatifRemovalMode || whatifAdditionMode ? 'opacity-40 cursor-not-allowed' : ''} ${!selectedDevicePK && !impactMode ? 'opacity-50 cursor-not-allowed' : ''}`}
-        title={impactMode ? 'Close impact analysis' : selectedDevicePK ? 'Analyze failure impact of selected device' : 'Select a device first'}
-      >
-        <Zap className="h-4 w-4" />
-      </button>
-      <div className="my-1 border-t border-[var(--border)]" />
-      <button
-        onClick={onToggleStakeOverlayMode}
-        disabled={anyModeActive}
-        className={`p-2 border rounded shadow-sm transition-colors ${
-          stakeOverlayMode
-            ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-500'
-            : 'bg-[var(--card)] border-[var(--border)] hover:bg-[var(--muted)]'
-        } ${anyModeActive ? 'opacity-40 cursor-not-allowed' : ''}`}
-        title={anyModeActive ? 'Disabled in current mode' : (stakeOverlayMode ? 'Hide stake overlay' : 'Show stake distribution (s)')}
-      >
-        <Coins className="h-4 w-4" />
-      </button>
-      <button
-        onClick={onToggleLinkHealthMode}
-        disabled={anyModeActive}
-        className={`p-2 border rounded shadow-sm transition-colors ${
-          linkHealthMode
-            ? 'bg-green-500/20 border-green-500/50 text-green-500'
-            : 'bg-[var(--card)] border-[var(--border)] hover:bg-[var(--muted)]'
-        } ${anyModeActive ? 'opacity-40 cursor-not-allowed' : ''}`}
-        title={anyModeActive ? 'Disabled in current mode' : (linkHealthMode ? 'Hide link health overlay' : 'Show link health (h)')}
-      >
-        <Activity className="h-4 w-4" />
-      </button>
-      <button
-        onClick={onToggleTrafficFlowMode}
-        disabled={anyModeActive}
-        className={`p-2 border rounded shadow-sm transition-colors ${
-          trafficFlowMode
-            ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-500'
-            : 'bg-[var(--card)] border-[var(--border)] hover:bg-[var(--muted)]'
-        } ${anyModeActive ? 'opacity-40 cursor-not-allowed' : ''}`}
-        title={anyModeActive ? 'Disabled in current mode' : (trafficFlowMode ? 'Hide traffic flow overlay' : 'Show traffic flow (t)')}
-      >
-        <BarChart3 className="h-4 w-4" />
-      </button>
-      <button
-        onClick={onToggleMetroClusteringMode}
-        disabled={anyModeActive}
-        className={`p-2 border rounded shadow-sm transition-colors ${
-          metroClusteringMode
-            ? 'bg-blue-500/20 border-blue-500/50 text-blue-500'
-            : 'bg-[var(--card)] border-[var(--border)] hover:bg-[var(--muted)]'
-        } ${anyModeActive ? 'opacity-40 cursor-not-allowed' : ''}`}
-        title={anyModeActive ? 'Disabled in current mode' : (metroClusteringMode ? 'Hide metro colors' : 'Show metro colors (m)')}
-      >
-        <MapPin className="h-4 w-4" />
-      </button>
-    </div>
-  )
-}
-
 // Calculate device position with radial offset for multiple devices at same metro
 function calculateDevicePosition(
   metroLat: number,
@@ -503,53 +305,52 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
   const [hoveredDevice, setHoveredDevice] = useState<HoveredDeviceInfo | null>(null)
   const [hoveredMetro, setHoveredMetro] = useState<HoveredMetroInfo | null>(null)
   const [hoveredValidator, setHoveredValidator] = useState<HoveredValidatorInfo | null>(null)
-  const [showValidators, setShowValidators] = useState(false)
   const [selectedItem, setSelectedItemState] = useState<SelectedItem | null>(null)
   const mapRef = useRef<MapRef>(null)
   const markerClickedRef = useRef(false)
 
-  // Path finding state
-  const [pathModeEnabled, setPathModeEnabled] = useState(false)
+  // Get unified topology context
+  const { mode, setMode, overlays, toggleOverlay, panel, openPanel, closePanel } = useTopology()
+
+  // Derive mode states from context
+  const pathModeEnabled = mode === 'path'
+  const criticalityModeEnabled = mode === 'criticality'
+  const whatifRemovalMode = mode === 'whatif-removal'
+  const whatifAdditionMode = mode === 'whatif-addition'
+
+  // Derive overlay states from context
+  const showValidators = overlays.validators
+  const stakeOverlayMode = overlays.stake
+  const linkHealthMode = overlays.linkHealth
+  const trafficFlowMode = overlays.trafficFlow
+  const metroClusteringMode = overlays.metroClustering
+
+  // Path finding operational state (local)
   const [pathSource, setPathSource] = useState<string | null>(null)
   const [pathTarget, setPathTarget] = useState<string | null>(null)
   const [pathsResult, setPathsResult] = useState<MultiPathResponse | null>(null)
   const [pathLoading, setPathLoading] = useState(false)
   const [selectedPathIndex, setSelectedPathIndex] = useState(0)
 
-  // Criticality mode state
-  const [criticalityModeEnabled, setCriticalityModeEnabled] = useState(false)
-
-  // What-If Link Removal state
-  const [whatifRemovalMode, setWhatifRemovalMode] = useState(false)
+  // What-If Link Removal operational state (local)
   const [removalLink, setRemovalLink] = useState<{ sourcePK: string; targetPK: string; linkPK: string } | null>(null)
   const [removalResult, setRemovalResult] = useState<SimulateLinkRemovalResponse | null>(null)
   const [removalLoading, setRemovalLoading] = useState(false)
 
-  // What-If Link Addition state
-  const [whatifAdditionMode, setWhatifAdditionMode] = useState(false)
+  // What-If Link Addition operational state (local)
   const [additionSource, setAdditionSource] = useState<string | null>(null)
   const [additionTarget, setAdditionTarget] = useState<string | null>(null)
   const [additionMetric, setAdditionMetric] = useState<number>(1000)
   const [additionResult, setAdditionResult] = useState<SimulateLinkAdditionResponse | null>(null)
   const [additionLoading, setAdditionLoading] = useState(false)
 
-  // Failure Impact state
+  // Failure Impact operational state (local)
   const [impactDevice, setImpactDevice] = useState<string | null>(null)
   const [impactResult, setImpactResult] = useState<FailureImpactResponse | null>(null)
   const [impactLoading, setImpactLoading] = useState(false)
 
-  // Stake Overlay state
-  const [stakeOverlayMode, setStakeOverlayMode] = useState(false)
-
-  // Link Health Overlay state
-  const [linkHealthMode, setLinkHealthMode] = useState(false)
-
-  // Metro Clustering state
-  const [metroClusteringMode, setMetroClusteringMode] = useState(false)
+  // Metro Clustering operational state (local)
   const [collapsedMetros, setCollapsedMetros] = useState<Set<string>>(new Set())
-
-  // Traffic Flow Overlay state
-  const [trafficFlowMode, setTrafficFlowMode] = useState(false)
 
   // Fetch ISIS topology to determine which devices have ISIS data
   const { data: isisTopology } = useQuery({
@@ -621,11 +422,15 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     return map
   }, [criticalLinksData, links])
 
-  // Update URL when selected item changes (push to history for back button support)
+  // Update URL and panel when selected item changes
   const setSelectedItem = useCallback((item: SelectedItem | null) => {
     setSelectedItemState(item)
     if (item === null) {
       setSearchParams({})
+      // Close panel when deselecting (only if showing details, not mode)
+      if (panel.content === 'details') {
+        closePanel()
+      }
     } else {
       const params: Record<string, string> = { type: item.type }
       if (item.type === 'validator') {
@@ -638,8 +443,12 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
         params.id = item.data.pk
       }
       setSearchParams(params)
+      // Open panel to show details (only in explore mode)
+      if (mode === 'explore') {
+        openPanel('details')
+      }
     }
-  }, [setSearchParams])
+  }, [setSearchParams, panel.content, closePanel, mode, openPanel])
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -647,21 +456,35 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       // Don't trigger shortcuts when typing in input fields
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
 
-      if (e.key === 'Escape' && selectedItem) {
-        setSelectedItem(null)
-      } else if (e.key === 's' && !pathModeEnabled && !criticalityModeEnabled && !whatifRemovalMode && !whatifAdditionMode && !impactDevice) {
-        setStakeOverlayMode(prev => !prev)
-      } else if (e.key === 'h' && !pathModeEnabled && !criticalityModeEnabled && !whatifRemovalMode && !whatifAdditionMode && !impactDevice) {
-        setLinkHealthMode(prev => !prev)
-      } else if (e.key === 't' && !pathModeEnabled && !criticalityModeEnabled && !whatifRemovalMode && !whatifAdditionMode && !impactDevice) {
-        setTrafficFlowMode(prev => !prev)
-      } else if (e.key === 'm' && !pathModeEnabled && !criticalityModeEnabled && !whatifRemovalMode && !whatifAdditionMode && !impactDevice) {
-        setMetroClusteringMode(prev => !prev)
+      const isInMode = mode !== 'explore'
+
+      if (e.key === 'Escape') {
+        if (mode !== 'explore') {
+          setMode('explore')
+        } else if (selectedItem) {
+          setSelectedItem(null)
+        }
+      } else if (e.key === 'p' && !isInMode) {
+        setMode('path')
+      } else if (e.key === 'c' && !isInMode) {
+        setMode('criticality')
+      } else if (e.key === 'r' && !isInMode) {
+        setMode('whatif-removal')
+      } else if (e.key === 'a' && !isInMode) {
+        setMode('whatif-addition')
+      } else if (e.key === 's' && !isInMode) {
+        toggleOverlay('stake')
+      } else if (e.key === 'h' && !isInMode) {
+        toggleOverlay('linkHealth')
+      } else if (e.key === 't' && !isInMode) {
+        toggleOverlay('trafficFlow')
+      } else if (e.key === 'm' && !isInMode) {
+        toggleOverlay('metroClustering')
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedItem, setSelectedItem, pathModeEnabled, criticalityModeEnabled, whatifRemovalMode, whatifAdditionMode, impactDevice])
+  }, [mode, setMode, toggleOverlay, selectedItem, setSelectedItem])
 
   // Helper to handle marker clicks - sets flag to prevent map click from clearing selection
   const handleMarkerClick = useCallback((item: SelectedItem) => {
@@ -1337,22 +1160,36 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     mapRef.current?.zoomOut()
   }, [])
 
-  // Restore selected item from URL params (on initial load and when params change, e.g. back button)
+  // Restore selected item from URL params (on initial load and when params change, e.g. back button or omnisearch)
   const lastParamsRef = useRef<string | null>(null)
   useEffect(() => {
     const type = searchParams.get('type')
     const id = searchParams.get('id')
     const paramsKey = type && id ? `${type}:${id}` : null
 
-    // Skip if params haven't changed (avoids loops when we set params ourselves)
+    // Skip if params haven't changed AND we already found the item (avoids loops when we set params ourselves)
+    // We don't skip if params are the same but we haven't found the item yet (waiting for data to load)
     if (paramsKey === lastParamsRef.current) return
-    lastParamsRef.current = paramsKey
 
     // If no params, close the drawer (handles back button to no-drawer state)
     if (!type || !id) {
+      lastParamsRef.current = null
       setSelectedItemState(null)
       return
     }
+
+    // Helper to fly to location (gentle zoom - just enough to see the item)
+    const flyToLocation = (lng: number, lat: number, zoom = 3) => {
+      if (mapRef.current) {
+        mapRef.current.flyTo({
+          center: [lng, lat],
+          zoom,
+          duration: 1000,
+        })
+      }
+    }
+
+    let itemFound = false
 
     if (type === 'validator') {
       const validator = validatorMap.get(id)
@@ -1383,7 +1220,12 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             outRate: formatTrafficRate(validator.out_bps),
           },
         })
-        setShowValidators(true) // Show validators layer when loading a validator from URL
+        if (!showValidators) toggleOverlay('validators') // Show validators layer when loading a validator from URL
+        // Fly to validator's metro location
+        if (metro) {
+          flyToLocation(metro.longitude, metro.latitude, 4)
+        }
+        itemFound = true
       }
     } else if (type === 'device') {
       const device = deviceMap.get(id)
@@ -1406,6 +1248,11 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             stakeShare: (device.stake_share ?? 0) > 0 ? `${device.stake_share.toFixed(2)}%` : '0%',
           },
         })
+        // Fly to device's metro location
+        if (metro) {
+          flyToLocation(metro.longitude, metro.latitude, 4)
+        }
+        itemFound = true
       }
     } else if (type === 'link') {
       const link = linkMap.get(id)
@@ -1433,6 +1280,17 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             contributorCode: link.contributor_code,
           },
         })
+        // Fly to the midpoint of the link
+        const metroA = deviceA ? metroMap.get(deviceA.metro_pk) : undefined
+        const metroZ = deviceZ ? metroMap.get(deviceZ.metro_pk) : undefined
+        if (metroA && metroZ) {
+          const midLng = (metroA.longitude + metroZ.longitude) / 2
+          const midLat = (metroA.latitude + metroZ.latitude) / 2
+          flyToLocation(midLng, midLat, 3)
+        } else if (metroA) {
+          flyToLocation(metroA.longitude, metroA.latitude, 3)
+        }
+        itemFound = true
       }
     } else if (type === 'metro') {
       const metro = metroMap.get(id)
@@ -1447,9 +1305,23 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             deviceCount: metroDeviceCount,
           },
         })
+        // Fly to metro location
+        flyToLocation(metro.longitude, metro.latitude, 4)
+        itemFound = true
       }
     }
-  }, [searchParams, validatorMap, deviceMap, linkMap, metroMap, devicesByMetro])
+
+    // Open the details panel if item was found (in explore mode)
+    if (itemFound && mode === 'explore') {
+      openPanel('details')
+    }
+
+    // Only mark params as processed after we successfully found the item
+    // If item wasn't found (data still loading), the useEffect will run again when data loads
+    if (itemFound) {
+      lastParamsRef.current = paramsKey
+    }
+  }, [searchParams, validatorMap, deviceMap, linkMap, metroMap, devicesByMetro, showValidators, toggleOverlay, mode, openPanel])
 
   // Handle link layer hover
   const handleLinkMouseEnter = useCallback((e: MapLayerMouseEvent) => {
@@ -1513,38 +1385,12 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
         onMouseLeave={handleLinkMouseLeave}
         cursor={hoveredLink ? 'pointer' : undefined}
       >
-        <MapControls
+        <TopologyControlBar
           onZoomIn={handleZoomIn}
           onZoomOut={handleZoomOut}
           onReset={fitBounds}
-          showValidators={showValidators}
-          onToggleValidators={() => setShowValidators(!showValidators)}
           validatorCount={validators.length}
-          pathMode={pathModeEnabled}
-          onTogglePathMode={() => setPathModeEnabled(!pathModeEnabled)}
-          criticalityMode={criticalityModeEnabled}
-          onToggleCriticalityMode={() => setCriticalityModeEnabled(!criticalityModeEnabled)}
-          whatifRemovalMode={whatifRemovalMode}
-          onToggleWhatifRemovalMode={() => setWhatifRemovalMode(!whatifRemovalMode)}
-          whatifAdditionMode={whatifAdditionMode}
-          onToggleWhatifAdditionMode={() => setWhatifAdditionMode(!whatifAdditionMode)}
-          impactMode={!!impactDevice}
-          onToggleImpactMode={() => {
-            if (impactDevice) {
-              setImpactDevice(null)
-            } else if (selectedItem?.type === 'device') {
-              setImpactDevice(selectedItem.data.pk)
-            }
-          }}
-          selectedDevicePK={selectedItem?.type === 'device' ? selectedItem.data.pk : null}
-          stakeOverlayMode={stakeOverlayMode}
-          onToggleStakeOverlayMode={() => setStakeOverlayMode(!stakeOverlayMode)}
-          linkHealthMode={linkHealthMode}
-          onToggleLinkHealthMode={() => setLinkHealthMode(!linkHealthMode)}
-          trafficFlowMode={trafficFlowMode}
-          onToggleTrafficFlowMode={() => setTrafficFlowMode(!trafficFlowMode)}
-          metroClusteringMode={metroClusteringMode}
-          onToggleMetroClusteringMode={() => setMetroClusteringMode(!metroClusteringMode)}
+          hasSelectedDevice={selectedItem?.type === 'device'}
         />
 
         {/* Link lines source and layers */}
@@ -2012,162 +1858,6 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
         </div>
       )}
 
-      {/* Path finding panel */}
-      {pathModeEnabled && (
-        <div className="absolute top-[280px] right-4 z-[999] bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm p-3 text-xs max-w-52">
-          <div className="flex items-center justify-between mb-2">
-            <span className="font-medium flex items-center gap-1.5">
-              <Route className="h-3.5 w-3.5 text-green-500" />
-              Path Finding
-            </span>
-            {(pathSource || pathTarget) && (
-              <button onClick={clearPath} className="p-1 hover:bg-[var(--muted)] rounded" title="Clear path">
-                <X className="h-3 w-3" />
-              </button>
-            )}
-          </div>
-
-          {/* Device count note */}
-          {isisDevicePKs.size > 0 && (
-            <div className="text-muted-foreground mb-2">
-              {isisDevicePKs.size} ISIS-enabled devices
-            </div>
-          )}
-
-          {!pathSource && (
-            <div className="text-muted-foreground">Click a device to set the <span className="text-green-500 font-medium">source</span></div>
-          )}
-          {pathSource && !pathTarget && (
-            <div className="text-muted-foreground">Click another device to set the <span className="text-red-500 font-medium">target</span></div>
-          )}
-          {pathLoading && (
-            <div className="text-muted-foreground">Finding paths...</div>
-          )}
-          {pathsResult && !pathsResult.error && pathsResult.paths.length > 0 && (
-            <div>
-              {/* Path selector buttons */}
-              <div className="flex flex-wrap gap-1 mb-2">
-                {pathsResult.paths.map((_, index) => (
-                  <button
-                    key={index}
-                    onClick={() => setSelectedPathIndex(index)}
-                    className={`px-2 py-1 rounded text-xs transition-colors flex items-center gap-1 ${
-                      selectedPathIndex === index
-                        ? 'ring-1 ring-foreground/30'
-                        : 'hover:bg-[var(--muted)]'
-                    }`}
-                    style={{
-                      backgroundColor: selectedPathIndex === index
-                        ? `${PATH_COLORS[index % PATH_COLORS.length]}30`
-                        : undefined,
-                      color: PATH_COLORS[index % PATH_COLORS.length],
-                    }}
-                    title={`Path ${index + 1}`}
-                  >
-                    <span
-                      className="w-2 h-2 rounded-full"
-                      style={{ backgroundColor: PATH_COLORS[index % PATH_COLORS.length] }}
-                    />
-                    {index + 1}
-                  </button>
-                ))}
-              </div>
-
-              {/* Selected path details */}
-              {pathsResult.paths[selectedPathIndex] && (
-                <>
-                  <div className="space-y-1 text-muted-foreground">
-                    <div>Hops: <span className="text-foreground font-medium">{pathsResult.paths[selectedPathIndex].hopCount}</span></div>
-                    <div>Metric: <span className="text-foreground font-medium">{(pathsResult.paths[selectedPathIndex].totalMetric / 1000).toFixed(2)}ms</span></div>
-                  </div>
-                  <div className="mt-2 pt-2 border-t border-[var(--border)] space-y-0.5 max-h-32 overflow-y-auto">
-                    {pathsResult.paths[selectedPathIndex].path.map((hop, i) => (
-                      <div key={hop.devicePK} className="flex items-center gap-1">
-                        <span className="text-muted-foreground w-4">{i + 1}.</span>
-                        <span style={{ color: i === 0 ? '#22c55e' : i === pathsResult.paths[selectedPathIndex].path.length - 1 ? '#ef4444' : PATH_COLORS[selectedPathIndex % PATH_COLORS.length] }}>
-                          {hop.deviceCode}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-          {pathsResult?.error && (
-            <div className="text-destructive">{pathsResult.error}</div>
-          )}
-        </div>
-      )}
-
-      {/* Criticality panel */}
-      {criticalityModeEnabled && (
-        <div className="absolute top-[280px] right-4 z-[999] bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm p-3 text-xs max-w-52">
-          <div className="flex items-center justify-between mb-2">
-            <span className="font-medium flex items-center gap-1.5">
-              <Shield className="h-3.5 w-3.5 text-red-500" />
-              Link Criticality
-            </span>
-          </div>
-
-          {!criticalLinksData && (
-            <div className="text-muted-foreground">Loading critical links...</div>
-          )}
-
-          {criticalLinksData && (
-            <>
-              {/* Stats */}
-              <div className="space-y-1 mb-3">
-                <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-red-500" />
-                    Critical
-                  </span>
-                  <span className="font-medium">
-                    {criticalLinksData.links.filter(l => l.criticality === 'critical').length}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-yellow-500" />
-                    Important
-                  </span>
-                  <span className="font-medium">
-                    {criticalLinksData.links.filter(l => l.criticality === 'important').length}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-green-500" />
-                    Redundant
-                  </span>
-                  <span className="font-medium">
-                    {criticalLinksData.links.filter(l => l.criticality === 'redundant').length}
-                  </span>
-                </div>
-              </div>
-
-              {/* Critical links list */}
-              {criticalLinksData.links.filter(l => l.criticality === 'critical').length > 0 && (
-                <div className="pt-2 border-t border-[var(--border)]">
-                  <div className="text-muted-foreground mb-1">Critical Links:</div>
-                  <div className="space-y-0.5 max-h-24 overflow-y-auto">
-                    {criticalLinksData.links.filter(l => l.criticality === 'critical').slice(0, 5).map((link, i) => (
-                      <div key={i} className="text-red-500">{link.sourceCode} ↔ {link.targetCode}</div>
-                    ))}
-                    {criticalLinksData.links.filter(l => l.criticality === 'critical').length > 5 && (
-                      <div className="text-muted-foreground">
-                        +{criticalLinksData.links.filter(l => l.criticality === 'critical').length - 5} more
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
-
       {/* Stake Overlay Legend */}
       {stakeOverlayMode && (
         <div className="absolute top-[280px] right-4 z-[999] bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm p-3 text-xs max-w-52">
@@ -2255,7 +1945,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
               Link Health (SLA)
             </span>
             <button
-              onClick={() => setLinkHealthMode(false)}
+              onClick={() => toggleOverlay('linkHealth')}
               className="p-1 hover:bg-[var(--muted)] rounded"
               title="Close"
             >
@@ -2355,7 +2045,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
               Traffic Flow
             </span>
             <button
-              onClick={() => setTrafficFlowMode(false)}
+              onClick={() => toggleOverlay('trafficFlow')}
               className="p-1 hover:bg-[var(--muted)] rounded"
               title="Close"
             >
@@ -2489,7 +2179,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
               Metro Clustering
             </span>
             <button
-              onClick={() => setMetroClusteringMode(false)}
+              onClick={() => toggleOverlay('metroClustering')}
               className="p-1 hover:bg-[var(--muted)] rounded"
               title="Close"
             >
@@ -2558,711 +2248,115 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
         </div>
       )}
 
-      {/* What-If Link Removal panel */}
-      {whatifRemovalMode && (
-        <div className="absolute top-[320px] right-4 z-[999] bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm p-3 text-xs max-w-52">
-          <div className="flex items-center justify-between mb-2">
-            <span className="font-medium flex items-center gap-1.5">
-              <MinusCircle className="h-3.5 w-3.5 text-red-500" />
-              Simulate Link Removal
-            </span>
-            {removalLink && (
-              <button
-                onClick={() => {
-                  setRemovalLink(null)
-                  setRemovalResult(null)
-                }}
-                className="p-1 hover:bg-[var(--muted)] rounded"
-                title="Clear"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            )}
-          </div>
-
-          {!removalLink && (
-            <div className="text-muted-foreground">Click a link to simulate its removal</div>
+      {/* Detail panel (right side) - shown when entity selected in explore mode */}
+      {selectedItem && panel.isOpen && panel.content === 'details' && (
+        <TopologyPanel
+          title={
+            selectedItem.type === 'device' ? selectedItem.data.code :
+            selectedItem.type === 'link' ? selectedItem.data.code :
+            selectedItem.type === 'metro' ? selectedItem.data.name :
+            selectedItem.data.votePubkey.substring(0, 12) + '...'
+          }
+          subtitle={
+            selectedItem.type === 'link' ? (
+              <span>
+                <TopologyEntityLink to={`/dz/devices/${selectedItem.data.deviceAPk}`}>{selectedItem.data.deviceACode}</TopologyEntityLink>
+                {' ↔ '}
+                <TopologyEntityLink to={`/dz/devices/${selectedItem.data.deviceZPk}`}>{selectedItem.data.deviceZCode}</TopologyEntityLink>
+              </span>
+            ) : undefined
+          }
+        >
+          {selectedItem.type === 'device' && (
+            <DeviceDetails device={selectedItem.data as any} />
           )}
-
-          {removalLoading && (
-            <div className="text-muted-foreground">Analyzing impact...</div>
+          {selectedItem.type === 'link' && (
+            <LinkDetails link={selectedItem.data as any} />
           )}
-
-          {removalResult && !removalResult.error && (
-            <div className="space-y-2">
-              <div className="text-muted-foreground">
-                Removing: <span className="text-foreground font-medium">{removalResult.sourceCode}</span> — <span className="text-foreground font-medium">{removalResult.targetCode}</span>
-              </div>
-
-              {removalResult.causesPartition && (
-                <div className="p-2 bg-red-500/10 border border-red-500/30 rounded text-red-500 flex items-center gap-1.5">
-                  <AlertTriangle className="h-3.5 w-3.5" />
-                  <span className="font-medium">Network partition!</span>
-                </div>
-              )}
-
-              {/* Disconnected devices */}
-              {removalResult.disconnectedCount > 0 && (
-                <div className="space-y-1">
-                  <div className="text-red-500 font-medium">
-                    {removalResult.disconnectedCount} device{removalResult.disconnectedCount !== 1 ? 's' : ''} disconnected
-                  </div>
-                  <div className="space-y-0.5 max-h-24 overflow-y-auto">
-                    {removalResult.disconnectedDevices.slice(0, 5).map((device) => (
-                      <div key={device.pk} className="text-muted-foreground">
-                        {device.code}
-                      </div>
-                    ))}
-                    {removalResult.disconnectedCount > 5 && (
-                      <div className="text-muted-foreground">+{removalResult.disconnectedCount - 5} more</div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Affected paths */}
-              {removalResult.affectedPathCount > 0 && (
-                <div className="space-y-1 pt-2 border-t border-[var(--border)]">
-                  <div className="text-amber-500 font-medium">
-                    {removalResult.affectedPathCount} path{removalResult.affectedPathCount !== 1 ? 's' : ''} affected
-                  </div>
-                  <div className="space-y-1 max-h-32 overflow-y-auto">
-                    {removalResult.affectedPaths.slice(0, 5).map((path, i) => (
-                      <div key={i} className="text-muted-foreground">
-                        <span className="text-foreground">{path.fromCode}</span> → <span className="text-foreground">{path.toCode}</span>
-                        <div className="ml-2 text-[10px]">
-                          {path.hasAlternate ? (
-                            <span className="text-amber-500">
-                              {path.beforeHops} → {path.afterHops} hops (+{path.afterHops - path.beforeHops})
-                              {path.beforeMetric > 0 && path.afterMetric > 0 && (
-                                <span className="ml-1 text-muted-foreground">
-                                  | {(path.afterMetric / 1000).toFixed(1)}ms (+{((path.afterMetric - path.beforeMetric) / 1000).toFixed(1)}ms)
-                                </span>
-                              )}
-                            </span>
-                          ) : (
-                            <span className="text-red-500">No alternate path</span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                    {removalResult.affectedPathCount > 5 && (
-                      <div className="text-muted-foreground">+{removalResult.affectedPathCount - 5} more</div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {removalResult.disconnectedCount === 0 && removalResult.affectedPathCount === 0 && (
-                <div className="text-green-500 flex items-center gap-1.5">
-                  <div className="w-2 h-2 rounded-full bg-green-500" />
-                  Safe to remove - no impact
-                </div>
-              )}
-            </div>
+          {selectedItem.type === 'metro' && (
+            <MetroDetails metro={selectedItem.data as any} />
           )}
-
-          {removalResult?.error && (
-            <div className="text-destructive">{removalResult.error}</div>
+          {selectedItem.type === 'validator' && (
+            <ValidatorDetails validator={selectedItem.data as any} />
           )}
-        </div>
+        </TopologyPanel>
       )}
 
-      {/* What-If Link Addition panel */}
-      {whatifAdditionMode && (
-        <div className="absolute top-[320px] right-4 z-[999] bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm p-3 text-xs max-w-52">
-          <div className="flex items-center justify-between mb-2">
-            <span className="font-medium flex items-center gap-1.5">
-              <PlusCircle className="h-3.5 w-3.5 text-green-500" />
-              Simulate Link Addition
-            </span>
-            {(additionSource || additionTarget) && (
-              <button
-                onClick={() => {
-                  setAdditionSource(null)
-                  setAdditionTarget(null)
-                  setAdditionResult(null)
-                }}
-                className="p-1 hover:bg-[var(--muted)] rounded"
-                title="Clear"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            )}
-          </div>
-
-          {/* Metric input */}
-          <div className="mb-2">
-            <div className="text-muted-foreground mb-1">Link Latency</div>
-            <div className="flex gap-1">
-              {[1000, 5000, 10000, 50000].map(m => (
-                <button
-                  key={m}
-                  onClick={() => setAdditionMetric(m)}
-                  className={`px-2 py-1 rounded text-[10px] transition-colors ${
-                    additionMetric === m
-                      ? 'bg-green-500/20 text-green-500'
-                      : 'bg-muted hover:bg-muted/80 text-muted-foreground'
-                  }`}
-                >
-                  {m / 1000}ms
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {!additionSource && (
-            <div className="text-muted-foreground">Click a device to set the <span className="text-green-500 font-medium">source</span></div>
+      {/* Mode panel (right side) - shown when in analysis mode */}
+      {panel.isOpen && panel.content === 'mode' && (
+        <TopologyPanel
+          title={
+            mode === 'path' ? 'Path Finding' :
+            mode === 'criticality' ? 'Link Criticality' :
+            mode === 'whatif-removal' ? 'Simulate Link Removal' :
+            mode === 'whatif-addition' ? 'Simulate Link Addition' :
+            mode === 'impact' ? 'Failure Impact' :
+            'Analysis Mode'
+          }
+        >
+          {mode === 'path' && (
+            <PathModePanel
+              pathSource={pathSource}
+              pathTarget={pathTarget}
+              pathsResult={pathsResult}
+              pathLoading={pathLoading}
+              pathMode="hops"
+              selectedPathIndex={selectedPathIndex}
+              onPathModeChange={() => {}}
+              onSelectPath={setSelectedPathIndex}
+              onClearPath={clearPath}
+            />
           )}
-          {additionSource && !additionTarget && (
-            <div className="text-muted-foreground">Click another device to set the <span className="text-red-500 font-medium">target</span></div>
+          {mode === 'criticality' && (
+            <CriticalityPanel
+              data={criticalLinksData ?? null}
+              isLoading={false}
+            />
           )}
-
-          {additionLoading && (
-            <div className="text-muted-foreground">Analyzing benefits...</div>
+          {mode === 'whatif-removal' && (
+            <WhatIfRemovalPanel
+              removalLink={removalLink}
+              result={removalResult}
+              isLoading={removalLoading}
+              onClear={() => {
+                setRemovalLink(null)
+                setRemovalResult(null)
+              }}
+            />
           )}
-
-          {additionResult && !additionResult.error && (
-            <div className="space-y-2">
-              <div className="text-muted-foreground">
-                New link: <span className="text-green-500 font-medium">{additionResult.sourceCode}</span> — <span className="text-red-500 font-medium">{additionResult.targetCode}</span>
-              </div>
-
-              {additionResult.redundancyCount > 0 && (
-                <div className="text-cyan-500 flex items-center gap-1.5">
-                  <Shield className="h-3 w-3" />
-                  {additionResult.redundancyCount} device{additionResult.redundancyCount !== 1 ? 's' : ''} gain redundancy
-                </div>
-              )}
-
-              {additionResult.improvedPathCount > 0 && (
-                <div className="text-green-500">
-                  {additionResult.improvedPathCount} path{additionResult.improvedPathCount !== 1 ? 's' : ''} would improve
-                </div>
-              )}
-
-              {additionResult.redundancyCount === 0 && additionResult.improvedPathCount === 0 && (
-                <div className="text-muted-foreground">No significant improvements</div>
-              )}
-            </div>
+          {mode === 'whatif-addition' && (
+            <WhatIfAdditionPanel
+              additionSource={additionSource}
+              additionTarget={additionTarget}
+              additionMetric={additionMetric}
+              result={additionResult}
+              isLoading={additionLoading}
+              onMetricChange={setAdditionMetric}
+              onClear={() => {
+                setAdditionSource(null)
+                setAdditionTarget(null)
+                setAdditionResult(null)
+              }}
+            />
           )}
-
-          {additionResult?.error && (
-            <div className="text-destructive">{additionResult.error}</div>
-          )}
-        </div>
-      )}
-
-      {/* Failure Impact panel */}
-      {(impactDevice || impactLoading) && (
-        <div className="absolute top-[320px] right-4 z-[999] bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm p-3 text-xs max-w-52">
-          <div className="flex items-center justify-between mb-2">
-            <span className="font-medium flex items-center gap-1.5">
-              <Zap className="h-3.5 w-3.5 text-purple-500" />
-              Failure Impact
-            </span>
-            <button
-              onClick={() => {
+          {mode === 'impact' && (
+            <ImpactPanel
+              devicePK={impactDevice}
+              result={impactResult}
+              isLoading={impactLoading}
+              onClose={() => {
                 setImpactDevice(null)
                 setImpactResult(null)
               }}
-              className="p-1 hover:bg-[var(--muted)] rounded"
-              title="Close"
-            >
-              <X className="h-3 w-3" />
-            </button>
-          </div>
-
-          {impactLoading && (
-            <div className="text-muted-foreground">Analyzing impact...</div>
+            />
           )}
-
-          {impactResult && !impactResult.error && (
-            <div className="space-y-2">
-              <div className="text-muted-foreground">
-                If <span className="font-medium text-foreground">{impactResult.deviceCode}</span> goes down:
-              </div>
-
-              {impactResult.unreachableCount === 0 ? (
-                <div className="text-green-500 flex items-center gap-1.5">
-                  <div className="w-2 h-2 rounded-full bg-green-500" />
-                  No devices would become unreachable
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <div className="text-red-500 font-medium">
-                    {impactResult.unreachableCount} device{impactResult.unreachableCount !== 1 ? 's' : ''} would become unreachable
-                  </div>
-                  <div className="space-y-0.5 max-h-32 overflow-y-auto">
-                    {impactResult.unreachableDevices.map(device => (
-                      <div key={device.pk} className="flex items-center gap-1.5">
-                        <div className={`w-2 h-2 rounded-full ${device.status === 'active' ? 'bg-green-500' : 'bg-red-500'}`} />
-                        <span>{device.code}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {impactResult?.error && (
-            <div className="text-destructive">{impactResult.error}</div>
-          )}
-        </div>
-      )}
-
-      {/* Detail drawer */}
-      {selectedItem && (
-        <TopologyDrawer
-          selectedItem={selectedItem}
-          onClose={() => setSelectedItem(null)}
-          isDark={isDark}
-        />
+        </TopologyPanel>
       )}
     </>
   )
 }
 
-// Traffic data point type
-interface TrafficDataPoint {
-  time: string
-  avgIn: number
-  avgOut: number
-  peakIn: number
-  peakOut: number
-}
-
-// Fetch traffic history for a link, device, or validator
-async function fetchTrafficHistory(type: 'link' | 'device' | 'validator', pk: string): Promise<TrafficDataPoint[]> {
-  const res = await fetch(`/api/topology/traffic?type=${type}&pk=${encodeURIComponent(pk)}`)
-  if (!res.ok) return []
-  const data = await res.json()
-  return data.points || []
-}
-
-// Drawer component
-interface TopologyDrawerProps {
-  selectedItem: SelectedItem
-  onClose: () => void
-  isDark: boolean
-}
-
-function TopologyDrawer({ selectedItem, onClose, isDark }: TopologyDrawerProps) {
-  // Drawer width state with localStorage persistence
-  const [drawerWidth, setDrawerWidth] = useState(() => {
-    const saved = localStorage.getItem('topology-drawer-width')
-    return saved ? parseInt(saved, 10) : 320
-  })
-  const [isResizing, setIsResizing] = useState(false)
-
-  // Track sidebar collapsed state to position drawer correctly
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    const saved = localStorage.getItem('sidebar-collapsed')
-    return saved !== 'false' // Default to collapsed if not set
-  })
-
-  // Listen for sidebar state changes
-  useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'sidebar-collapsed') {
-        setSidebarCollapsed(e.newValue !== 'false')
-      }
-    }
-    window.addEventListener('storage', handleStorageChange)
-
-    // Also poll for changes (for same-tab updates)
-    const interval = setInterval(() => {
-      const current = localStorage.getItem('sidebar-collapsed')
-      setSidebarCollapsed(current !== 'false')
-    }, 100)
-
-    return () => {
-      window.removeEventListener('storage', handleStorageChange)
-      clearInterval(interval)
-    }
-  }, [])
-
-  // Sidebar width: 48px collapsed, 256px expanded
-  const sidebarWidth = sidebarCollapsed ? 48 : 256
-
-  // Handle resize drag
-  useEffect(() => {
-    if (!isResizing) return
-
-    const handleMouseMove = (e: MouseEvent) => {
-      // Calculate new width based on mouse position relative to sidebar
-      const newWidth = Math.max(280, Math.min(600, e.clientX - sidebarWidth))
-      setDrawerWidth(newWidth)
-    }
-
-    const handleMouseUp = () => {
-      setIsResizing(false)
-      localStorage.setItem('topology-drawer-width', String(drawerWidth))
-    }
-
-    document.addEventListener('mousemove', handleMouseMove)
-    document.addEventListener('mouseup', handleMouseUp)
-    document.body.style.cursor = 'ew-resize'
-    document.body.style.userSelect = 'none'
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove)
-      document.removeEventListener('mouseup', handleMouseUp)
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
-    }
-  }, [isResizing, drawerWidth])
-
-  // Fetch traffic data for links, devices, and validators (via their tunnel_id)
-  const trafficType = selectedItem.type === 'link' ? 'link'
-    : selectedItem.type === 'device' ? 'device'
-    : selectedItem.type === 'validator' ? 'validator'
-    : null
-  const trafficPk = selectedItem.type === 'link' ? selectedItem.data.pk
-    : selectedItem.type === 'device' ? selectedItem.data.pk
-    : selectedItem.type === 'validator' ? String(selectedItem.data.tunnelId)
-    : null
-
-  const { data: trafficData } = useQuery({
-    queryKey: ['topology-traffic', trafficType, trafficPk],
-    queryFn: () => fetchTrafficHistory(trafficType as 'link' | 'device' | 'validator', trafficPk!),
-    enabled: !!trafficPk && !!trafficType,
-    refetchInterval: 60000,
-  })
-
-  const chartColor = isDark ? '#60a5fa' : '#2563eb'
-  const chartColorSecondary = isDark ? '#f97316' : '#ea580c'
-
-  // Build stats based on selected item type
-  const stats: { label: string; value: React.ReactNode }[] = useMemo(() => {
-    if (selectedItem.type === 'link') {
-      const link = selectedItem.data
-      return [
-        { label: 'Contributor', value: link.contributorPk ? <EntityLink to={`/dz/contributors/${link.contributorPk}`}>{link.contributorCode}</EntityLink> : link.contributorCode || '—' },
-        { label: 'Bandwidth', value: link.bandwidth },
-        { label: 'Latency', value: link.latencyMs },
-        { label: 'Jitter', value: link.jitterMs },
-        { label: 'Loss', value: link.lossPercent },
-        { label: 'Current In', value: link.inRate },
-        { label: 'Current Out', value: link.outRate },
-      ]
-    }
-    if (selectedItem.type === 'device') {
-      const device = selectedItem.data
-      return [
-        { label: 'Type', value: device.deviceType },
-        { label: 'Contributor', value: device.contributorPk ? <EntityLink to={`/dz/contributors/${device.contributorPk}`}>{device.contributorCode}</EntityLink> : device.contributorCode || '—' },
-        { label: 'Metro', value: device.metroPk ? <EntityLink to={`/dz/metros/${device.metroPk}`}>{device.metroName}</EntityLink> : device.metroName },
-        { label: 'Users', value: String(device.userCount) },
-        { label: 'Validators', value: String(device.validatorCount) },
-        { label: 'Stake', value: `${device.stakeSol} SOL` },
-        { label: 'Stake Share', value: device.stakeShare },
-      ]
-    }
-    if (selectedItem.type === 'metro') {
-      const metro = selectedItem.data
-      return [
-        { label: 'Code', value: metro.code },
-        { label: 'Devices', value: String(metro.deviceCount) },
-      ]
-    }
-    if (selectedItem.type === 'validator') {
-      const validator = selectedItem.data
-      return [
-        { label: 'Location', value: `${validator.city}, ${validator.country}` },
-        { label: 'Device', value: validator.devicePk ? <EntityLink to={`/dz/devices/${validator.devicePk}`} className="font-mono">{validator.deviceCode}</EntityLink> : validator.deviceCode },
-        { label: 'Metro', value: validator.metroPk ? <EntityLink to={`/dz/metros/${validator.metroPk}`}>{validator.metroName}</EntityLink> : validator.metroName },
-        { label: 'Stake', value: `${validator.stakeSol} SOL` },
-        { label: 'DZ Stake Share', value: validator.stakeShare },
-        { label: 'Commission', value: `${validator.commission}%` },
-        { label: 'Version', value: validator.version || '—' },
-        { label: 'Current In', value: validator.inRate },
-        { label: 'Current Out', value: validator.outRate },
-      ]
-    }
-    return []
-  }, [selectedItem])
-
-  const hasTrafficData = selectedItem.type === 'link' || selectedItem.type === 'device' || selectedItem.type === 'validator'
-
-  return (
-    <div
-      className="absolute top-0 bottom-0 z-[1000] bg-[var(--card)] border-r border-[var(--border)] shadow-xl flex flex-col"
-      style={{ width: drawerWidth, left: sidebarWidth }}
-    >
-      {/* Resize handle */}
-      <div
-        className="absolute top-0 bottom-0 right-0 w-1 cursor-ew-resize hover:bg-blue-500/50 transition-colors"
-        onMouseDown={() => setIsResizing(true)}
-      />
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)] min-w-0">
-        <div className="min-w-0 flex-1 mr-2">
-          <div className="text-xs text-muted-foreground uppercase tracking-wider">
-            {selectedItem.type}
-          </div>
-          <div className="text-sm font-medium min-w-0 flex-1">
-            {selectedItem.type === 'link' && (
-              <EntityLink to={`/dz/links/${selectedItem.data.pk}`}>
-                {selectedItem.data.code}
-              </EntityLink>
-            )}
-            {selectedItem.type === 'device' && (
-              <EntityLink to={`/dz/devices/${selectedItem.data.pk}`}>
-                {selectedItem.data.code}
-              </EntityLink>
-            )}
-            {selectedItem.type === 'metro' && (
-              <EntityLink to={`/dz/metros/${selectedItem.data.pk}`}>
-                {selectedItem.data.name}
-              </EntityLink>
-            )}
-            {selectedItem.type === 'validator' && (
-              <EntityLink
-                to={`/solana/validators/${selectedItem.data.votePubkey}`}
-                className="font-mono block truncate"
-                title={selectedItem.data.votePubkey}
-              >
-                {selectedItem.data.votePubkey}
-              </EntityLink>
-            )}
-          </div>
-          {selectedItem.type === 'link' && (
-            <div className="text-xs text-muted-foreground mt-0.5">
-              <EntityLink to={`/dz/devices/${selectedItem.data.deviceAPk}`}>{selectedItem.data.deviceACode}</EntityLink>
-              {' ↔ '}
-              <EntityLink to={`/dz/devices/${selectedItem.data.deviceZPk}`}>{selectedItem.data.deviceZCode}</EntityLink>
-            </div>
-          )}
-        </div>
-        <button
-          onClick={onClose}
-          className="p-1.5 hover:bg-[var(--muted)] rounded transition-colors"
-        >
-          <X className="h-4 w-4" />
-        </button>
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {/* Stats grid */}
-        <div className="grid grid-cols-2 gap-2">
-          {stats.map((stat, i) => (
-            <div key={i} className="text-center p-2 bg-[var(--muted)]/30 rounded-lg">
-              <div className="text-base font-medium tabular-nums tracking-tight">
-                {stat.value}
-              </div>
-              <div className="text-xs text-muted-foreground">{stat.label}</div>
-            </div>
-          ))}
-        </div>
-
-        {/* Validator identity section */}
-        {selectedItem.type === 'validator' && (
-          <div className="border-t border-[var(--border)] pt-4 space-y-2">
-            <div className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Identity</div>
-            <div className="space-y-1.5 text-xs">
-              <div>
-                <div className="text-muted-foreground mb-0.5">Vote Pubkey</div>
-                <EntityLink
-                  to={`/solana/validators/${selectedItem.data.votePubkey}`}
-                  className="font-mono truncate block"
-                  title={selectedItem.data.votePubkey}
-                >
-                  {selectedItem.data.votePubkey}
-                </EntityLink>
-              </div>
-              <div>
-                <div className="text-muted-foreground mb-0.5">Node Pubkey</div>
-                <EntityLink
-                  to={`/solana/gossip-nodes/${selectedItem.data.nodePubkey}`}
-                  className="font-mono truncate block"
-                  title={selectedItem.data.nodePubkey}
-                >
-                  {selectedItem.data.nodePubkey}
-                </EntityLink>
-              </div>
-            </div>
-            <div className="text-xs text-muted-foreground uppercase tracking-wider mb-2 mt-4">Network</div>
-            <div className="space-y-1.5 text-xs">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Gossip</span>
-                <span className="font-mono">{selectedItem.data.gossipIp ? `${selectedItem.data.gossipIp}:${selectedItem.data.gossipPort}` : '—'}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">TPU QUIC</span>
-                <span className="font-mono">{selectedItem.data.tpuQuicIp ? `${selectedItem.data.tpuQuicIp}:${selectedItem.data.tpuQuicPort}` : '—'}</span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Charts section */}
-        {!hasTrafficData && (
-          <div className="text-sm text-muted-foreground text-center py-4">
-            No traffic data available for {selectedItem.type}s
-          </div>
-        )}
-
-        {hasTrafficData && !trafficData && (
-          <div className="text-sm text-muted-foreground text-center py-4">
-            Loading traffic data...
-          </div>
-        )}
-
-        {hasTrafficData && trafficData && trafficData.length === 0 && (
-          <div className="text-sm text-muted-foreground text-center py-4">
-            No traffic data available
-          </div>
-        )}
-
-        {hasTrafficData && trafficData && trafficData.length > 0 && (
-          <>
-            {/* Average Traffic Chart */}
-            <div>
-              <div className="text-xs text-muted-foreground uppercase tracking-wider mb-2">
-                Avg Traffic Rate (24h)
-              </div>
-              <div className="h-36">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={trafficData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.5} />
-                    <XAxis
-                      dataKey="time"
-                      tick={{ fontSize: 9 }}
-                      tickLine={false}
-                      axisLine={false}
-                    />
-                    <YAxis
-                      tick={{ fontSize: 9 }}
-                      tickLine={false}
-                      axisLine={false}
-                      tickFormatter={(v) => formatChartAxisRate(v)}
-                      width={40}
-                    />
-                    <RechartsTooltip
-                      contentStyle={{
-                        backgroundColor: 'var(--card)',
-                        border: '1px solid var(--border)',
-                        borderRadius: '6px',
-                        fontSize: '11px',
-                      }}
-                      formatter={(value) => formatChartTooltipRate(value as number)}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="avgIn"
-                      stroke={chartColor}
-                      strokeWidth={1.5}
-                      dot={false}
-                      name="In"
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="avgOut"
-                      stroke={chartColorSecondary}
-                      strokeWidth={1.5}
-                      dot={false}
-                      name="Out"
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="flex justify-center gap-4 text-xs mt-1">
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: chartColor }} />
-                  In
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: chartColorSecondary }} />
-                  Out
-                </span>
-              </div>
-            </div>
-
-            {/* Peak Traffic Chart */}
-            <div>
-              <div className="text-xs text-muted-foreground uppercase tracking-wider mb-2">
-                Peak Traffic Rate (24h)
-              </div>
-              <div className="h-36">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={trafficData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.5} />
-                    <XAxis
-                      dataKey="time"
-                      tick={{ fontSize: 9 }}
-                      tickLine={false}
-                      axisLine={false}
-                    />
-                    <YAxis
-                      tick={{ fontSize: 9 }}
-                      tickLine={false}
-                      axisLine={false}
-                      tickFormatter={(v) => formatChartAxisRate(v)}
-                      width={40}
-                    />
-                    <RechartsTooltip
-                      contentStyle={{
-                        backgroundColor: 'var(--card)',
-                        border: '1px solid var(--border)',
-                        borderRadius: '6px',
-                        fontSize: '11px',
-                      }}
-                      formatter={(value) => formatChartTooltipRate(value as number)}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="peakIn"
-                      stroke={chartColor}
-                      strokeWidth={1.5}
-                      dot={false}
-                      name="In"
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="peakOut"
-                      stroke={chartColorSecondary}
-                      strokeWidth={1.5}
-                      dot={false}
-                      name="Out"
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="flex justify-center gap-4 text-xs mt-1">
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: chartColor }} />
-                  In
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: chartColorSecondary }} />
-                  Out
-                </span>
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* External link for validators */}
-        {selectedItem.type === 'validator' && (
-          <div className="pt-2 border-t border-[var(--border)]">
-            <a
-              href={`https://www.validators.app/validators/${selectedItem.data.nodePubkey}?locale=en&network=mainnet`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-muted-foreground hover:text-blue-500 hover:underline"
-            >
-              View on validators.app →
-            </a>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
+// Simple row component for hover info display
 function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex justify-between gap-4">
@@ -3270,56 +2364,4 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
       <span>{value}</span>
     </div>
   )
-}
-
-// Entity link component - normal color styling with hover underline
-interface EntityLinkProps {
-  to: string
-  children: React.ReactNode
-  className?: string
-  title?: string
-}
-
-function EntityLink({ to, children, className = '', title }: EntityLinkProps) {
-  const navigate = useNavigate()
-
-  const handleClick = (e: React.MouseEvent) => {
-    // Support cmd/ctrl-click to open in new tab
-    if (e.metaKey || e.ctrlKey) {
-      window.open(to, '_blank')
-      e.preventDefault()
-    } else {
-      navigate(to)
-      e.preventDefault()
-    }
-  }
-
-  return (
-    <Link
-      to={to}
-      onClick={handleClick}
-      className={`hover:underline cursor-pointer ${className}`}
-      title={title}
-    >
-      {children}
-    </Link>
-  )
-}
-
-// Format rate for chart axis (compact)
-function formatChartAxisRate(bps: number): string {
-  if (bps >= 1e12) return `${(bps / 1e12).toFixed(1)}T`
-  if (bps >= 1e9) return `${(bps / 1e9).toFixed(1)}G`
-  if (bps >= 1e6) return `${(bps / 1e6).toFixed(1)}M`
-  if (bps >= 1e3) return `${(bps / 1e3).toFixed(1)}K`
-  return `${bps.toFixed(0)}`
-}
-
-// Format rate for chart tooltip (full)
-function formatChartTooltipRate(bps: number): string {
-  if (bps >= 1e12) return `${(bps / 1e12).toFixed(2)} Tbps`
-  if (bps >= 1e9) return `${(bps / 1e9).toFixed(2)} Gbps`
-  if (bps >= 1e6) return `${(bps / 1e6).toFixed(2)} Mbps`
-  if (bps >= 1e3) return `${(bps / 1e3).toFixed(2)} Kbps`
-  return `${bps.toFixed(0)} bps`
 }

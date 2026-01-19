@@ -271,8 +271,13 @@ func main() {
 		r.Get("/*", spaHandler(webDir))
 	}
 
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
 	server := &http.Server{
-		Addr:         ":8080",
+		Addr:         ":" + port,
 		Handler:      r,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 0, // Disabled for SSE streaming endpoints
@@ -293,7 +298,7 @@ func main() {
 
 	// Start server in a goroutine
 	go func() {
-		log.Println("API server starting on :8080")
+		log.Printf("API server starting on :%s", port)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Server error: %v", err)
 		}

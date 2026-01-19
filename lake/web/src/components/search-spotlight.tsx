@@ -65,7 +65,7 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const { recentSearches, addRecentSearch, clearRecentSearches } = useRecentSearches()
 
-  const isTopologyPage = location.pathname === '/topology'
+  const isTopologyPage = location.pathname === '/topology/map' || location.pathname === '/topology/graph'
   const isTimelinePage = location.pathname === '/timeline'
   const isStatusPage = location.pathname.startsWith('/status')
 
@@ -160,8 +160,8 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
     if (isTopologyPage) {
       const topologyType = topologyTypeMap[item.type]
       if (topologyType) {
-        // Navigate to topology with params to open drawer
-        const url = `/topology?type=${topologyType}&id=${encodeURIComponent(item.id)}`
+        // Stay on current topology view (map or graph) with params to select item
+        const url = `${location.pathname}?type=${topologyType}&id=${encodeURIComponent(item.id)}`
         if (e && (e.metaKey || e.ctrlKey)) {
           window.open(url, '_blank')
         } else {

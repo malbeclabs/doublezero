@@ -1030,11 +1030,13 @@ export function TopologyGraph({
     })
   }, [contributorDevicesEnabled, contributorLinksEnabled, contributorInfoMap, deviceContributorMap, edgeContributorMap, getContributorColor, getNodeSize, getDeviceTypeColor, stakeOverlayEnabled, metroClusteringEnabled, linkHealthOverlayEnabled, trafficFlowEnabled, isDark, isEdgeStylingMode])
 
-  // Apply bandwidth edge styling (thickness only, uses default grey color)
-  // This can combine with color overlays like linkHealth, trafficFlow, etc.
+  // Apply bandwidth edge styling
+  // Sets width based on bandwidth, and resets color to grey (other overlays will override if active)
   useEffect(() => {
     if (!cyRef.current || !bandwidthEnabled) return
     const cy = cyRef.current
+
+    const defaultColor = isDark ? '#6b7280' : '#9ca3af'
 
     cy.batch(() => {
       cy.edges().forEach(edge => {
@@ -1054,13 +1056,18 @@ export function TopologyGraph({
           width = 1
         }
 
-        // Only set width, preserve existing color from other overlays
+        // Set width and reset color to default grey
+        // Color overlays (linkHealth, trafficFlow, etc.) will override if active
         edge.style({
+          'line-color': defaultColor,
+          'target-arrow-color': defaultColor,
           'width': width,
+          'opacity': 0.6,
+          'line-style': 'solid',
         })
       })
     })
-  }, [bandwidthEnabled])
+  }, [bandwidthEnabled, isDark])
 
   // Toggle metro collapse state
   const toggleMetroCollapse = useCallback((metroPK: string) => {

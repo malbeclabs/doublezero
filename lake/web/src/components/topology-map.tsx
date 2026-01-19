@@ -1442,8 +1442,8 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           },
         })
         if (!showValidators) toggleOverlay('validators') // Show validators layer when loading a validator from URL
-        // Fly to validator's metro location
-        if (metro) {
+        // Fly to validator's metro location (skip in analysis modes)
+        if (metro && !pathModeEnabled && !impactMode) {
           flyToLocation(metro.longitude, metro.latitude, 4)
         }
         itemFound = true
@@ -1469,8 +1469,8 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             stakeShare: (device.stake_share ?? 0) > 0 ? `${device.stake_share.toFixed(2)}%` : '0%',
           },
         })
-        // Fly to device's metro location
-        if (metro) {
+        // Fly to device's metro location (skip in analysis modes)
+        if (metro && !pathModeEnabled && !impactMode) {
           flyToLocation(metro.longitude, metro.latitude, 4)
         }
         itemFound = true
@@ -1518,15 +1518,17 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             contributorCode: link.contributor_code,
           },
         })
-        // Fly to the midpoint of the link
-        const metroA = deviceA ? metroMap.get(deviceA.metro_pk) : undefined
-        const metroZ = deviceZ ? metroMap.get(deviceZ.metro_pk) : undefined
-        if (metroA && metroZ) {
-          const midLng = (metroA.longitude + metroZ.longitude) / 2
-          const midLat = (metroA.latitude + metroZ.latitude) / 2
-          flyToLocation(midLng, midLat, 3)
-        } else if (metroA) {
-          flyToLocation(metroA.longitude, metroA.latitude, 3)
+        // Fly to the midpoint of the link (skip in analysis modes)
+        if (!pathModeEnabled && !impactMode && !whatifRemovalMode) {
+          const metroA = deviceA ? metroMap.get(deviceA.metro_pk) : undefined
+          const metroZ = deviceZ ? metroMap.get(deviceZ.metro_pk) : undefined
+          if (metroA && metroZ) {
+            const midLng = (metroA.longitude + metroZ.longitude) / 2
+            const midLat = (metroA.latitude + metroZ.latitude) / 2
+            flyToLocation(midLng, midLat, 3)
+          } else if (metroA) {
+            flyToLocation(metroA.longitude, metroA.latitude, 3)
+          }
         }
         itemFound = true
 

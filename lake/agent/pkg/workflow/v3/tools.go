@@ -3,6 +3,7 @@ package v3
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -26,12 +27,12 @@ var (
 							},
 							"sql": {
 								"type": "string",
-								"description": "The SQL query to execute"
+								"description": "The SQL query to execute. Must be a single JSON string - do NOT use string concatenation with + operators."
 							}
 						},
 						"required": ["question", "sql"]
 					},
-					"description": "List of queries to execute"
+					"description": "List of queries to execute. Must be valid JSON array - do NOT use string concatenation."
 				}
 			},
 			"required": ["queries"]
@@ -56,12 +57,12 @@ var (
 							},
 							"cypher": {
 								"type": "string",
-								"description": "The Cypher query to execute"
+								"description": "The Cypher query to execute. Must be a single JSON string - do NOT use string concatenation with + operators."
 							}
 						},
 						"required": ["question", "cypher"]
 					},
-					"description": "List of Cypher queries to execute"
+					"description": "List of Cypher queries to execute. Must be valid JSON array - do NOT use string concatenation."
 				}
 			},
 			"required": ["queries"]
@@ -93,6 +94,9 @@ func ParseQueries(params map[string]any) ([]QueryInput, error) {
 			// Clean up any XML-style tags that models sometimes include
 			// (e.g., </invoke><invoke name="...">)
 			cleanStr := cleanXMLTags(queriesStr)
+			// Clean up JavaScript-style string concatenation that models sometimes use
+			// (e.g., "SELECT " + "* FROM" instead of "SELECT * FROM")
+			cleanStr = cleanJSStringConcat(cleanStr)
 			suffixStart := len(cleanStr) - 50
 			if suffixStart < 0 {
 				suffixStart = 0
@@ -141,6 +145,15 @@ func ParseQueries(params map[string]any) ([]QueryInput, error) {
 	}
 
 	return queries, nil
+}
+
+// cleanJSStringConcat joins JavaScript-style concatenated strings that models sometimes produce.
+// e.g., "SELECT " + "* FROM" → "SELECT * FROM"
+// This handles cases where the model tries to format long queries readably but breaks JSON.
+var jsStringConcatRegex = regexp.MustCompile(`"\s*\+\s*"`)
+
+func cleanJSStringConcat(s string) string {
+	return jsStringConcatRegex.ReplaceAllString(s, "")
 }
 
 // cleanXMLTags removes XML-style invocation tags that models sometimes include.
@@ -195,6 +208,8 @@ func ParseCypherQueries(params map[string]any) ([]CypherQueryInput, error) {
 		if queriesStr, strOk := params["queries"].(string); strOk {
 			// Clean up any XML-style tags that models sometimes include
 			cleanStr := cleanXMLTags(queriesStr)
+			// Clean up JavaScript-style string concatenation
+			cleanStr = cleanJSStringConcat(cleanStr)
 
 			var arr []any
 			if json.Unmarshal([]byte(cleanStr), &arr) == nil {

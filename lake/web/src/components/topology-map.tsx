@@ -1468,6 +1468,23 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           flyToLocation(metro.longitude, metro.latitude, 4)
         }
         itemFound = true
+
+        // Handle mode-specific actions for device selection via search
+        if (impactMode) {
+          setImpactDevice(id)
+        } else if (pathModeEnabled) {
+          if (!pathSource) {
+            setPathSource(id)
+          } else if (!pathTarget && id !== pathSource) {
+            setPathTarget(id)
+          }
+        } else if (whatifAdditionMode) {
+          if (!additionSource) {
+            setAdditionSource(id)
+          } else if (!additionTarget && id !== additionSource) {
+            setAdditionTarget(id)
+          }
+        }
       }
     } else if (type === 'link') {
       const link = linkMap.get(id)
@@ -1506,6 +1523,11 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           flyToLocation(metroA.longitude, metroA.latitude, 3)
         }
         itemFound = true
+
+        // Handle mode-specific actions for link selection via search
+        if (whatifRemovalMode) {
+          setRemovalLink({ sourcePK: link.side_a_pk, targetPK: link.side_z_pk, linkPK: link.pk })
+        }
       }
     } else if (type === 'metro') {
       const metro = metroMap.get(id)
@@ -1536,7 +1558,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     if (itemFound) {
       lastParamsRef.current = paramsKey
     }
-  }, [searchParams, validatorMap, deviceMap, linkMap, metroMap, devicesByMetro, showValidators, toggleOverlay, mode, openPanel])
+  }, [searchParams, validatorMap, deviceMap, linkMap, metroMap, devicesByMetro, showValidators, toggleOverlay, mode, openPanel, impactMode, pathModeEnabled, whatifAdditionMode, whatifRemovalMode, pathSource, pathTarget, additionSource, additionTarget])
 
   // Handle link layer hover
   const handleLinkMouseEnter = useCallback((e: MapLayerMouseEvent) => {

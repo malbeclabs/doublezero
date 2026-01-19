@@ -2183,54 +2183,82 @@ export function TopologyGraph({
 
   // Handle external selection changes (from URL params / omnisearch)
   useEffect(() => {
-    if (!cyRef.current || mode !== 'explore') return
+    if (!cyRef.current) return
     const cy = cyRef.current
 
-    cy.nodes().removeClass('highlighted')
-    cy.edges().removeClass('highlighted')
-
+    // Handle mode-specific actions for device selection via search
     if (selectedDevicePK) {
-      const node = cy.getElementById(selectedDevicePK)
-      if (node.length) {
-        node.addClass('highlighted')
-        cy.animate({
-          center: { eles: node },
-          zoom: Math.max(cy.zoom(), 0.4), // Zoom in slightly if very far out, otherwise keep current zoom
-          duration: 300,
-        })
-        // Set selectedDevice for the details panel
-        const deviceInfo = deviceInfoMap.get(selectedDevicePK)
-        if (deviceInfo) {
-          setSelectedDevice(deviceInfo)
-          setSelectedLink(null)
-          openPanel('details')
+      if (mode === 'impact') {
+        analyzeImpact(selectedDevicePK)
+      } else if (mode === 'path') {
+        if (!pathSource) {
+          setPathSource(selectedDevicePK)
+          const node = cy.getElementById(selectedDevicePK)
+          if (node.length) node.addClass('path-source')
+        } else if (!pathTarget && selectedDevicePK !== pathSource) {
+          setPathTarget(selectedDevicePK)
+          const node = cy.getElementById(selectedDevicePK)
+          if (node.length) node.addClass('path-target')
+        }
+      } else if (mode === 'whatif-addition') {
+        if (!additionSource) {
+          setAdditionSource(selectedDevicePK)
+          const node = cy.getElementById(selectedDevicePK)
+          if (node.length) node.addClass('whatif-addition-source')
+        } else if (!additionTarget && selectedDevicePK !== additionSource) {
+          setAdditionTarget(selectedDevicePK)
+          const node = cy.getElementById(selectedDevicePK)
+          if (node.length) node.addClass('whatif-addition-target')
+        }
+      } else if (mode === 'explore') {
+        // Highlight and center on selected device in explore mode
+        cy.nodes().removeClass('highlighted')
+        cy.edges().removeClass('highlighted')
+        const node = cy.getElementById(selectedDevicePK)
+        if (node.length) {
+          node.addClass('highlighted')
+          cy.animate({
+            center: { eles: node },
+            zoom: Math.max(cy.zoom(), 0.4),
+            duration: 300,
+          })
+          const deviceInfo = deviceInfoMap.get(selectedDevicePK)
+          if (deviceInfo) {
+            setSelectedDevice(deviceInfo)
+            setSelectedLink(null)
+            openPanel('details')
+          }
         }
       }
     } else if (selectedLinkPK) {
-      // Handle link selection from URL
-      // First get link info to find the device PKs
       const linkInfo = linkInfoMap.get(selectedLinkPK)
       if (linkInfo) {
-        // Edge ID format is "source->target", try both directions
-        const edgeId1 = `${linkInfo.deviceAPk}->${linkInfo.deviceZPk}`
-        const edgeId2 = `${linkInfo.deviceZPk}->${linkInfo.deviceAPk}`
-        const edge = cy.getElementById(edgeId1).length ? cy.getElementById(edgeId1) : cy.getElementById(edgeId2)
+        // Handle mode-specific actions for link selection via search
+        if (mode === 'whatif-removal') {
+          setRemovalLink({ sourcePK: linkInfo.deviceAPk, targetPK: linkInfo.deviceZPk })
+        } else if (mode === 'explore') {
+          // Highlight and center on selected link in explore mode
+          cy.nodes().removeClass('highlighted')
+          cy.edges().removeClass('highlighted')
+          const edgeId1 = `${linkInfo.deviceAPk}->${linkInfo.deviceZPk}`
+          const edgeId2 = `${linkInfo.deviceZPk}->${linkInfo.deviceAPk}`
+          const edge = cy.getElementById(edgeId1).length ? cy.getElementById(edgeId1) : cy.getElementById(edgeId2)
 
-        if (edge.length) {
-          edge.addClass('highlighted')
-          cy.animate({
-            center: { eles: edge },
-            zoom: Math.max(cy.zoom(), 0.4), // Zoom in slightly if very far out, otherwise keep current zoom
-            duration: 300,
-          })
+          if (edge.length) {
+            edge.addClass('highlighted')
+            cy.animate({
+              center: { eles: edge },
+              zoom: Math.max(cy.zoom(), 0.4),
+              duration: 300,
+            })
+          }
+          setSelectedLink(linkInfo)
+          setSelectedDevice(null)
+          openPanel('details')
         }
-        // Set selectedLink for the details panel even if edge not found in graph
-        setSelectedLink(linkInfo)
-        setSelectedDevice(null)
-        openPanel('details')
       }
     }
-  }, [selectedDevicePK, selectedLinkPK, mode, cyGeneration, openPanel, deviceInfoMap, linkInfoMap])
+  }, [selectedDevicePK, selectedLinkPK, mode, cyGeneration, openPanel, deviceInfoMap, linkInfoMap, pathSource, pathTarget, additionSource, additionTarget, analyzeImpact])
 
   const handleZoomIn = () => cyRef.current?.zoom(cyRef.current.zoom() * 1.3)
   const handleZoomOut = () => cyRef.current?.zoom(cyRef.current.zoom() / 1.3)

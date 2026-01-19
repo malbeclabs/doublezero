@@ -2425,6 +2425,13 @@ export function TopologyGraph({
             mode === 'impact' ? 'Device Failure' :
             'Mode'
           }
+          subtitle={
+            mode === 'path' ? 'Find shortest paths between two devices by hop count or latency.' :
+            mode === 'whatif-removal' ? 'Analyze what happens to network paths if a link is removed.' :
+            mode === 'whatif-addition' ? 'See how adding a new link would improve connectivity.' :
+            mode === 'impact' ? 'Analyze the impact of a device failure on network paths.' :
+            undefined
+          }
         >
           {mode === 'path' && (
             <PathModePanel
@@ -2469,13 +2476,18 @@ export function TopologyGraph({
         </TopologyPanel>
       )}
 
-      {/* Overlay panels (right panel) */}
-      {panel.isOpen && panel.content === 'overlay' && (
+      {/* Overlay panels (right panel) - ISIS and Criticality */}
+      {panel.isOpen && panel.content === 'overlay' && (isisHealthEnabled || criticalityEnabled) && (
         <TopologyPanel
           title={
-            isisHealthEnabled ? 'ISIS Health' :
+            isisHealthEnabled ? 'ISIS' :
             criticalityEnabled ? 'Link Criticality' :
             'Overlay'
+          }
+          subtitle={
+            isisHealthEnabled ? 'Compare current topology to baseline.' :
+            criticalityEnabled ? 'Links ranked by impact if removed.' :
+            undefined
           }
         >
           {isisHealthEnabled && (
@@ -2504,8 +2516,8 @@ export function TopologyGraph({
         </TopologyPanel>
       )}
 
-      {/* Overlay panel (right panel) */}
-      {panel.isOpen && panel.content === 'overlay' && (
+      {/* Overlay panel (right panel) - other overlays (not ISIS/Criticality) */}
+      {panel.isOpen && panel.content === 'overlay' && !isisHealthEnabled && !criticalityEnabled && (
         <TopologyPanel
           title={
             deviceTypeEnabled ? 'Device Types' :
@@ -2516,6 +2528,16 @@ export function TopologyGraph({
             metroClusteringEnabled ? 'Metros' :
             (contributorDevicesEnabled || contributorLinksEnabled) ? 'Contributors' :
             'Overlay'
+          }
+          subtitle={
+            deviceTypeEnabled ? 'Devices colored by type (router, switch, etc.).' :
+            linkTypeEnabled ? 'Links colored by type (fiber, wavelength, etc.).' :
+            stakeOverlayEnabled ? 'Devices sized by validator stake.' :
+            linkHealthOverlayEnabled ? 'Links colored by latency, jitter, and loss.' :
+            trafficFlowEnabled ? 'Links sized by traffic volume.' :
+            metroClusteringEnabled ? 'Devices grouped by metro location.' :
+            (contributorDevicesEnabled || contributorLinksEnabled) ? 'Devices and links by network contributor.' :
+            undefined
           }
         >
           {deviceTypeEnabled && (

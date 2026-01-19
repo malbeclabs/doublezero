@@ -2094,6 +2094,13 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             mode === 'impact' ? 'Device Failure' :
             'Analysis Mode'
           }
+          subtitle={
+            mode === 'path' ? 'Find shortest paths between two devices by hop count or latency.' :
+            mode === 'whatif-removal' ? 'Analyze what happens to network paths if a link is removed.' :
+            mode === 'whatif-addition' ? 'See how adding a new link would improve connectivity.' :
+            mode === 'impact' ? 'Analyze the impact of a device failure on network paths.' :
+            undefined
+          }
         >
           {mode === 'path' && (
             <PathModePanel
@@ -2164,6 +2171,20 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             showValidators ? 'Validators' :
             (contributorDevicesMode || contributorLinksMode) ? 'Contributors' :
             'Overlay'
+          }
+          subtitle={
+            deviceTypeMode ? 'Devices colored by type (router, switch, etc.).' :
+            linkTypeMode ? 'Links colored by type (fiber, wavelength, etc.).' :
+            stakeOverlayMode ? 'Devices sized by validator stake.' :
+            isisHealthMode ? 'Compare current topology to baseline.' :
+            bandwidthMode ? 'Links sized by bandwidth capacity.' :
+            linkHealthMode ? 'Links colored by latency, jitter, and loss.' :
+            trafficFlowMode ? 'Links sized by traffic volume.' :
+            criticalityOverlayEnabled ? 'Links ranked by impact if removed.' :
+            metroClusteringMode ? 'Devices grouped by metro location.' :
+            showValidators ? 'Solana validators on the network.' :
+            (contributorDevicesMode || contributorLinksMode) ? 'Devices and links by network contributor.' :
+            undefined
           }
         >
           {deviceTypeMode && (

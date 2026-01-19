@@ -1,8 +1,8 @@
-// Link type colors
+// Link type colors (distinct from device type colors: purple, orange, cyan)
 export const LINK_TYPE_COLORS: Record<string, { light: string; dark: string }> = {
-  WAN: { light: '#2563eb', dark: '#60a5fa' },           // blue - inter-metro wide area
-  DZX: { light: '#7c3aed', dark: '#a78bfa' },           // purple - local exchange
-  'Inter-Metro': { light: '#0891b2', dark: '#22d3ee' }, // cyan - aggregated inter-metro
+  WAN: { light: '#16a34a', dark: '#22c55e' },           // green - inter-metro wide area
+  DZX: { light: '#db2777', dark: '#ec4899' },           // pink - local exchange
+  'Inter-Metro': { light: '#6b7280', dark: '#9ca3af' }, // gray - aggregated inter-metro
   default: { light: '#6b7280', dark: '#9ca3af' },       // gray
 }
 
@@ -49,25 +49,6 @@ export function LinkTypeOverlayPanel({ isDark, linkCounts }: LinkTypeOverlayPane
         })}
       </div>
 
-      <div className="pt-3 border-t border-[var(--border)]">
-        <h4 className="text-xs font-medium mb-2 text-muted-foreground">Line Style</h4>
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <div
-              className="w-6 h-0.5 rounded-full"
-              style={{ backgroundColor: isDark ? '#9ca3af' : '#6b7280' }}
-            />
-            <span className="text-sm">Standard link</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div
-              className="w-6 h-1 rounded-full"
-              style={{ backgroundColor: isDark ? '#60a5fa' : '#2563eb' }}
-            />
-            <span className="text-sm">WAN link (thicker)</span>
-          </div>
-        </div>
-      </div>
     </div>
   )
 }

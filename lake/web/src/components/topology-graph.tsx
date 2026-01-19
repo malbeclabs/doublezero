@@ -10,8 +10,9 @@ import { useTheme } from '@/hooks/use-theme'
 import { useTopology, TopologyPanel, TopologyControlBar, DeviceDetails, LinkDetails, PathModePanel, CriticalityPanel, WhatIfRemovalPanel, WhatIfAdditionPanel, ImpactPanel, ComparePanel, StakeOverlayPanel, LinkHealthOverlayPanel, TrafficFlowOverlayPanel, MetroClusteringOverlayPanel, ContributorsOverlayPanel, BandwidthOverlayPanel, DeviceTypeOverlayPanel, LinkTypeOverlayPanel, LINK_TYPE_COLORS, type DeviceInfo, type LinkInfo } from '@/components/topology'
 
 // Device type colors (types from serviceability smart contract: hybrid, transit, edge)
+// Avoid green/red (status colors) and blue/purple (link colors)
 const DEVICE_TYPE_COLORS: Record<string, { light: string; dark: string }> = {
-  hybrid: { light: '#7c3aed', dark: '#a78bfa' },    // purple
+  hybrid: { light: '#ca8a04', dark: '#eab308' },    // yellow
   transit: { light: '#ea580c', dark: '#f97316' },   // orange
   edge: { light: '#0891b2', dark: '#22d3ee' },      // cyan
   default: { light: '#6b7280', dark: '#9ca3af' },   // gray

@@ -73,7 +73,7 @@ WITH transitions AS (
         lh.code AS link_code,
         lh.status AS new_status,
         lh.snapshot_ts AS changed_ts,
-        LAG(lh.status) OVER (PARTITION BY lh.pk ORDER BY lh.snapshot_ts) AS previous_status
+        lag(lh.status) OVER (PARTITION BY lh.pk ORDER BY lh.snapshot_ts) AS previous_status
     FROM dim_dz_links_history lh
     WHERE lh.is_deleted = 0
 )

@@ -1249,7 +1249,11 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
         displayColor = PATH_COLORS[firstPathIndex % PATH_COLORS.length]
         displayWeight = weight + 1
         displayOpacity = 0.4
-      } else if (isHovered || isSelected) {
+      } else if (isSelected) {
+        displayColor = '#3b82f6' // blue - selection color
+        displayWeight = weight + 3
+        displayOpacity = 1
+      } else if (isHovered) {
         displayColor = hoverHighlight
         displayWeight = weight + 2
         displayOpacity = 1
@@ -1357,6 +1361,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
   const deviceColor = isDark ? '#6b7280' : '#1f2937' // neutral grey/dark - overlays will override
   const metroColor = isDark ? '#4b5563' : '#9ca3af' // gray
   const validatorColor = isDark ? '#a855f7' : '#9333ea' // purple
+  const selectionColor = '#3b82f6' // blue - consistent with graph view
 
   // Build hover info for links
   const buildLinkInfo = useCallback((link: TopologyLink): HoveredLinkInfo => {
@@ -1840,11 +1845,16 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
               <div
                 className="rounded-full cursor-pointer transition-all"
                 style={{
-                  width: isThisHovered || isThisSelected ? 28 : 24,
-                  height: isThisHovered || isThisSelected ? 28 : 24,
-                  backgroundColor: isThisHovered || isThisSelected ? hoverHighlight : metroColor,
+                  width: isThisSelected ? 28 : isThisHovered ? 26 : 24,
+                  height: isThisSelected ? 28 : isThisHovered ? 26 : 24,
+                  backgroundColor: metroColor,
                   opacity: isThisHovered || isThisSelected ? 0.5 : 0.3,
-                  border: `${isThisHovered || isThisSelected ? 2 : 1}px solid ${isThisHovered || isThisSelected ? hoverHighlight : metroColor}`,
+                  border: `${isThisSelected ? 3 : isThisHovered ? 2 : 1}px solid ${isThisSelected ? selectionColor : isThisHovered ? hoverHighlight : metroColor}`,
+                  boxShadow: isThisSelected
+                    ? `0 0 0 4px ${selectionColor}40, 0 0 12px ${selectionColor}60`
+                    : isThisHovered
+                      ? `0 0 0 2px ${hoverHighlight}40`
+                      : undefined,
                 }}
                 onMouseEnter={() => setHoveredMetro(metroInfo)}
                 onMouseLeave={() => setHoveredMetro(null)}
@@ -1991,13 +2001,26 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             markerSize = 14
             borderWidth = 1
             opacity = 0.5
-          } else if (isThisHovered || isThisSelected) {
-            markerColor = hoverHighlight
+          } else if (isThisSelected) {
+            // Selected: blue border with halo
+            borderColor = selectionColor
+            markerSize = 14
+            borderWidth = 3
+            opacity = 1
+          } else if (isThisHovered) {
+            // Hovered: amber highlight
             borderColor = hoverHighlight
-            markerSize = 16
+            markerSize = 14
             borderWidth = 2
             opacity = 1
           }
+
+          // Selection halo effect
+          const boxShadow = isThisSelected
+            ? `0 0 0 4px ${selectionColor}40, 0 0 12px ${selectionColor}60`
+            : isThisHovered
+              ? `0 0 0 2px ${hoverHighlight}40`
+              : undefined
 
           return (
             <Marker
@@ -2014,6 +2037,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
                   backgroundColor: markerColor,
                   border: `${borderWidth}px solid ${borderColor}`,
                   opacity,
+                  boxShadow,
                 }}
                 onMouseEnter={() => setHoveredDevice(deviceInfo)}
                 onMouseLeave={() => setHoveredDevice(null)}
@@ -2116,7 +2140,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             outRate: formatTrafficRate(validator.out_bps),
           }
 
-          const size = (isThisHovered || isThisSelected ? baseRadius + 2 : baseRadius) * 2
+          const size = (isThisSelected ? baseRadius + 3 : isThisHovered ? baseRadius + 2 : baseRadius) * 2
 
           return (
             <Marker
@@ -2130,9 +2154,14 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
                 style={{
                   width: size,
                   height: size,
-                  backgroundColor: isThisHovered || isThisSelected ? hoverHighlight : validatorColor,
-                  border: `${isThisHovered || isThisSelected ? 2 : 1}px solid ${hoverHighlight}`,
+                  backgroundColor: validatorColor,
+                  border: `${isThisSelected ? 3 : isThisHovered ? 2 : 1}px solid ${isThisSelected ? selectionColor : hoverHighlight}`,
                   opacity: isThisHovered || isThisSelected ? 1 : 0.9,
+                  boxShadow: isThisSelected
+                    ? `0 0 0 4px ${selectionColor}40, 0 0 12px ${selectionColor}60`
+                    : isThisHovered
+                      ? `0 0 0 2px ${hoverHighlight}40`
+                      : undefined,
                 }}
                 onMouseEnter={() => setHoveredValidator(validatorInfo)}
                 onMouseLeave={() => setHoveredValidator(null)}

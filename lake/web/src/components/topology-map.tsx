@@ -8,7 +8,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useTheme } from '@/hooks/use-theme'
 import type { TopologyMetro, TopologyDevice, TopologyLink, TopologyValidator, MultiPathResponse, SimulateLinkRemovalResponse, SimulateLinkAdditionResponse, FailureImpactResponse } from '@/lib/api'
 import { fetchISISPaths, fetchISISTopology, fetchCriticalLinks, fetchSimulateLinkRemoval, fetchSimulateLinkAddition, fetchFailureImpact, fetchLinkHealth, fetchTopologyCompare } from '@/lib/api'
-import { useTopology, TopologyControlBar, TopologyPanel, DeviceDetails, LinkDetails, MetroDetails, ValidatorDetails, EntityLink as TopologyEntityLink, PathModePanel, CriticalityPanel, WhatIfRemovalPanel, WhatIfAdditionPanel, ImpactPanel, ComparePanel, StakeOverlayPanel, LinkHealthOverlayPanel, TrafficFlowOverlayPanel, MetroClusteringOverlayPanel, ContributorsOverlayPanel, ValidatorsOverlayPanel, BandwidthOverlayPanel } from '@/components/topology'
+import { useTopology, TopologyControlBar, TopologyPanel, DeviceDetails, LinkDetails, MetroDetails, ValidatorDetails, EntityLink as TopologyEntityLink, PathModePanel, CriticalityPanel, WhatIfRemovalPanel, WhatIfAdditionPanel, ImpactPanel, ComparePanel, StakeOverlayPanel, LinkHealthOverlayPanel, TrafficFlowOverlayPanel, MetroClusteringOverlayPanel, ContributorsOverlayPanel, ValidatorsOverlayPanel, BandwidthOverlayPanel, DeviceTypeOverlayPanel, LinkTypeOverlayPanel, LINK_TYPE_COLORS } from '@/components/topology'
 
 // Path colors for multi-path visualization
 const PATH_COLORS = [
@@ -48,6 +48,14 @@ const CONTRIBUTOR_COLORS = [
   '#ef4444',  // red
   '#0ea5e9',  // sky
 ]
+
+// Device type colors (hybrid, transit, edge)
+const DEVICE_TYPE_COLORS: Record<string, string> = {
+  hybrid: '#a78bfa',    // purple
+  transit: '#60a5fa',   // blue
+  edge: '#22d3ee',      // cyan
+  default: '#9ca3af',   // gray
+}
 
 interface TopologyMapProps {
   metros: TopologyMetro[]
@@ -315,6 +323,8 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
   // Derive overlay states from context
   const criticalityOverlayEnabled = overlays.criticality
   const showValidators = overlays.validators
+  const deviceTypeMode = overlays.deviceType
+  const linkTypeMode = overlays.linkType
   const stakeOverlayMode = overlays.stake
   const linkHealthMode = overlays.linkHealth
   const trafficFlowMode = overlays.trafficFlow
@@ -1119,6 +1129,13 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
         // Contributor links mode but no contributor - dim the link
         displayColor = isDark ? '#6b7280' : '#9ca3af'
         displayOpacity = 0.3
+      } else if (linkTypeMode) {
+        // Link type mode: color by link type (default overlay)
+        const linkType = link.link_type || 'default'
+        const colors = LINK_TYPE_COLORS[linkType] || LINK_TYPE_COLORS.default
+        displayColor = isDark ? colors.dark : colors.light
+        if (!bandwidthMode) displayWeight = linkType === 'WAN' ? weight + 1 : weight
+        displayOpacity = 0.8
       } else if (criticalityOverlayEnabled && criticality) {
         // Criticality mode: color by criticality level (preserves bandwidth weight if active)
         displayColor = criticalityColors[criticality]
@@ -1236,7 +1253,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       type: 'FeatureCollection' as const,
       features,
     }
-  }, [links, devicePositions, isDark, hoveredLink, selectedItem, hoverHighlight, linkPathMap, selectedPathIndex, criticalityOverlayEnabled, linkCriticalityMap, whatifRemovalMode, removalLink, linkHealthMode, linkSlaStatus, trafficFlowMode, getTrafficColor, metroClusteringMode, collapsedMetros, deviceMap, metroMap, contributorLinksMode, contributorIndexMap, bandwidthMode, isisHealthMode, edgeHealthStatus])
+  }, [links, devicePositions, isDark, hoveredLink, selectedItem, hoverHighlight, linkPathMap, selectedPathIndex, criticalityOverlayEnabled, linkCriticalityMap, whatifRemovalMode, removalLink, linkHealthMode, linkSlaStatus, trafficFlowMode, getTrafficColor, metroClusteringMode, collapsedMetros, deviceMap, metroMap, contributorLinksMode, contributorIndexMap, bandwidthMode, isisHealthMode, edgeHealthStatus, linkTypeMode])
 
   // GeoJSON for validator links (connecting lines)
   const validatorLinksGeoJson = useMemo(() => {
@@ -1715,6 +1732,15 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           let opacity = 0.9
           let borderColor = hoverHighlight
 
+          // Device type mode - color based on device type (default overlay)
+          if (deviceTypeMode && !stakeOverlayMode && !metroClusteringMode && !contributorDevicesMode) {
+            const deviceType = device.device_type?.toLowerCase() || 'default'
+            markerColor = DEVICE_TYPE_COLORS[deviceType] || DEVICE_TYPE_COLORS.default
+            borderColor = device.status === 'activated' ? '#22c55e' : '#ef4444' // green/red for status
+            borderWidth = 2
+            opacity = 1
+          }
+
           // Stake overlay mode - size and color based on stake
           if (stakeOverlayMode) {
             const stakeSol = device.stake_sol ?? 0
@@ -2160,6 +2186,8 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       {panel.isOpen && panel.content === 'overlay' && (
         <TopologyPanel
           title={
+            deviceTypeMode ? 'Device Types' :
+            linkTypeMode ? 'Link Types' :
             stakeOverlayMode ? 'Stake' :
             isisHealthMode ? 'ISIS' :
             bandwidthMode ? 'Bandwidth' :
@@ -2172,6 +2200,26 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             'Overlay'
           }
         >
+          {deviceTypeMode && (
+            <DeviceTypeOverlayPanel
+              isDark={isDark}
+              deviceCounts={devices.reduce((acc, d) => {
+                const type = d.device_type?.toLowerCase() || 'unknown'
+                acc[type] = (acc[type] || 0) + 1
+                return acc
+              }, {} as Record<string, number>)}
+            />
+          )}
+          {linkTypeMode && (
+            <LinkTypeOverlayPanel
+              isDark={isDark}
+              linkCounts={links.reduce((acc, l) => {
+                const type = l.link_type || 'unknown'
+                acc[type] = (acc[type] || 0) + 1
+                return acc
+              }, {} as Record<string, number>)}
+            />
+          )}
           {stakeOverlayMode && (
             <StakeOverlayPanel
               deviceStakeMap={deviceStakeMap}

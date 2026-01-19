@@ -21,6 +21,8 @@ import {
   Map,
   Network,
   Building2,
+  Server,
+  Link2,
 } from 'lucide-react'
 import { useTopology, type TopologyMode, type PathMode } from './TopologyContext'
 
@@ -312,6 +314,17 @@ export function TopologyControlBar({
           <SectionHeader title="Device Overlays" collapsed={collapsed} />
 
           <NavItem
+            icon={<Server className="h-3.5 w-3.5" />}
+            label="Type"
+            shortcut="d"
+            onClick={() => handleToggleOverlay('deviceType')}
+            active={overlays.deviceType}
+            activeColor="blue"
+            disabled={isInAnalysisMode}
+            collapsed={collapsed}
+          />
+
+          <NavItem
             icon={<MapPin className="h-3.5 w-3.5" />}
             label="Metros"
             shortcut="m"
@@ -357,6 +370,17 @@ export function TopologyControlBar({
 
           {/* Link Overlays */}
           <SectionHeader title="Link Overlays" collapsed={collapsed} />
+
+          <NavItem
+            icon={<Link2 className="h-3.5 w-3.5" />}
+            label="Type"
+            shortcut="l"
+            onClick={() => handleToggleOverlay('linkType')}
+            active={overlays.linkType}
+            activeColor="blue"
+            disabled={isInAnalysisMode}
+            collapsed={collapsed}
+          />
 
           <NavItem
             icon={<Activity className="h-3.5 w-3.5" />}

@@ -7,7 +7,7 @@ import { X, Zap } from 'lucide-react'
 import { fetchISISTopology, fetchISISPaths, fetchTopologyCompare, fetchFailureImpact, fetchCriticalLinks, fetchSimulateLinkRemoval, fetchSimulateLinkAddition, fetchTopology, fetchLinkHealth } from '@/lib/api'
 import type { FailureImpactResponse, MultiPathResponse, SimulateLinkRemovalResponse, SimulateLinkAdditionResponse } from '@/lib/api'
 import { useTheme } from '@/hooks/use-theme'
-import { useTopology, TopologyPanel, TopologyControlBar, DeviceDetails, LinkDetails, PathModePanel, CriticalityPanel, WhatIfRemovalPanel, WhatIfAdditionPanel, ImpactPanel, ComparePanel, StakeOverlayPanel, LinkHealthOverlayPanel, TrafficFlowOverlayPanel, MetroClusteringOverlayPanel, ContributorsOverlayPanel, BandwidthOverlayPanel, type DeviceInfo, type LinkInfo } from '@/components/topology'
+import { useTopology, TopologyPanel, TopologyControlBar, DeviceDetails, LinkDetails, PathModePanel, CriticalityPanel, WhatIfRemovalPanel, WhatIfAdditionPanel, ImpactPanel, ComparePanel, StakeOverlayPanel, LinkHealthOverlayPanel, TrafficFlowOverlayPanel, MetroClusteringOverlayPanel, ContributorsOverlayPanel, BandwidthOverlayPanel, DeviceTypeOverlayPanel, LinkTypeOverlayPanel, LINK_TYPE_COLORS, type DeviceInfo, type LinkInfo } from '@/components/topology'
 
 // Device type colors (types from serviceability smart contract: hybrid, transit, edge)
 const DEVICE_TYPE_COLORS: Record<string, { light: string; dark: string }> = {
@@ -103,6 +103,8 @@ export function TopologyGraph({
   const selectedLinkPK = searchParams.get('type') === 'link' ? searchParams.get('id') : null
 
   // Derive overlay states from context
+  const deviceTypeEnabled = overlays.deviceType
+  const linkTypeEnabled = overlays.linkType
   const stakeOverlayEnabled = overlays.stake
   const linkHealthOverlayEnabled = overlays.linkHealth
   const trafficFlowEnabled = overlays.trafficFlow
@@ -505,12 +507,6 @@ export function TopologyGraph({
     return status
   }, [compareData])
 
-  // Get unique device types for filter
-  const deviceTypes = useMemo(() => {
-    if (!data) return []
-    const types = new Set(data.nodes.map(n => n.data.deviceType).filter(Boolean))
-    return Array.from(types).sort()
-  }, [data])
 
   // Filter nodes and edges
   const filteredData = useMemo(() => {
@@ -1077,6 +1073,33 @@ export function TopologyGraph({
       })
     })
   }, [bandwidthEnabled, isDark])
+
+  // Apply link type edge styling
+  useEffect(() => {
+    if (!cyRef.current || !linkTypeEnabled) return
+    const cy = cyRef.current
+
+    cy.batch(() => {
+      cy.edges().forEach(edge => {
+        const sourcePK = edge.data('source')
+        const targetPK = edge.data('target')
+
+        // Look up link info to get link type
+        const linkInfo = linkByDevicePairMap.get(`${sourcePK}->${targetPK}`)
+        const linkType = linkInfo?.linkType || 'unknown'
+
+        const colors = LINK_TYPE_COLORS[linkType] || LINK_TYPE_COLORS.default
+        const color = isDark ? colors.dark : colors.light
+
+        edge.style({
+          'line-color': color,
+          'target-arrow-color': color,
+          'width': linkType === 'WAN' ? 2 : 1,
+          'opacity': 0.7,
+        })
+      })
+    })
+  }, [linkTypeEnabled, linkByDevicePairMap, isDark])
 
   // Toggle metro collapse state
   const toggleMetroCollapse = useCallback((metroPK: string) => {
@@ -2452,6 +2475,8 @@ export function TopologyGraph({
       {panel.isOpen && panel.content === 'overlay' && (
         <TopologyPanel
           title={
+            deviceTypeEnabled ? 'Device Types' :
+            linkTypeEnabled ? 'Link Types' :
             stakeOverlayEnabled ? 'Stake' :
             linkHealthOverlayEnabled ? 'Health' :
             trafficFlowEnabled ? 'Traffic' :
@@ -2460,6 +2485,26 @@ export function TopologyGraph({
             'Overlay'
           }
         >
+          {deviceTypeEnabled && (
+            <DeviceTypeOverlayPanel
+              isDark={isDark}
+              deviceCounts={filteredData?.nodes.reduce((acc, n) => {
+                const type = n.data.deviceType?.toLowerCase() || 'unknown'
+                acc[type] = (acc[type] || 0) + 1
+                return acc
+              }, {} as Record<string, number>)}
+            />
+          )}
+          {linkTypeEnabled && (
+            <LinkTypeOverlayPanel
+              isDark={isDark}
+              linkCounts={topologyData?.links?.reduce((acc, l) => {
+                const type = l.link_type || 'unknown'
+                acc[type] = (acc[type] || 0) + 1
+                return acc
+              }, {} as Record<string, number>)}
+            />
+          )}
           {stakeOverlayEnabled && (
             <StakeOverlayPanel
               deviceStakeMap={deviceStakeMap}
@@ -2572,47 +2617,6 @@ export function TopologyGraph({
           )}
         </div>
       )}
-
-      {/* Bottom right panels - Legend, Stats */}
-      <div className="absolute bottom-4 right-4 z-[998] flex flex-col gap-2 items-end">
-        {/* Legend + Stats combined */}
-        <div className="bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm p-2 text-xs">
-          <div className="font-medium mb-1 text-muted-foreground">Device Types</div>
-          <div className="flex flex-col gap-1">
-            {deviceTypes.map((type) => {
-              const colors = DEVICE_TYPE_COLORS[type.toLowerCase()] || DEVICE_TYPE_COLORS.default
-              return (
-                <div key={type} className="flex items-center gap-1.5">
-                  <div
-                    className="w-3 h-3 rounded-full border-2"
-                    style={{
-                      backgroundColor: isDark ? colors.dark : colors.light,
-                      borderColor: isDark ? '#22c55e' : '#16a34a',
-                    }}
-                  />
-                  <span className="capitalize">{type}</span>
-                </div>
-              )
-            })}
-          </div>
-          <div className="mt-2 pt-2 border-t border-[var(--border)]">
-            <div className="flex items-center gap-1.5">
-              <div className="w-3 h-3 rounded-full border-2" style={{ borderColor: isDark ? '#22c55e' : '#16a34a', backgroundColor: 'transparent' }} />
-              <span>Active</span>
-            </div>
-            <div className="flex items-center gap-1.5 mt-1">
-              <div className="w-3 h-3 rounded-full border-2" style={{ borderColor: isDark ? '#ef4444' : '#dc2626', backgroundColor: 'transparent' }} />
-              <span>Inactive</span>
-            </div>
-          </div>
-          {/* Stats integrated */}
-          {filteredData && (
-            <div className="mt-2 pt-2 border-t border-[var(--border)] text-muted-foreground">
-              <div>{filteredData.nodes.length} devices · {filteredData.edges.length} adjacencies</div>
-            </div>
-          )}
-        </div>
-      </div>
 
       {/* Node tooltip */}
       {hoveredNode && (

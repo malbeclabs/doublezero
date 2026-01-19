@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { fetchTopology } from '@/lib/api'
 import { TopologyMap } from '@/components/topology-map'
 import { TopologyGraph } from '@/components/topology-graph'
+import { TopologyProvider } from '@/components/topology'
 import { Globe } from 'lucide-react'
 
 // Only show loading indicator after this delay to avoid flash on fast loads
@@ -78,22 +79,24 @@ export function TopologyPage({ view }: TopologyPageProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-0 h-screen w-screen">
-      {view === 'map' && data && (
-        <TopologyMap
-          metros={data.metros}
-          devices={data.devices}
-          links={data.links}
-          validators={data.validators}
-        />
-      )}
+    <TopologyProvider view={view}>
+      <div className="fixed inset-0 z-0 h-screen w-screen">
+        {view === 'map' && data && (
+          <TopologyMap
+            metros={data.metros}
+            devices={data.devices}
+            links={data.links}
+            validators={data.validators}
+          />
+        )}
 
-      {view === 'graph' && (
-        <TopologyGraph
-          selectedDevicePK={selectedDevicePK}
-          onDeviceSelect={handleGraphDeviceSelect}
-        />
-      )}
-    </div>
+        {view === 'graph' && (
+          <TopologyGraph
+            selectedDevicePK={selectedDevicePK}
+            onDeviceSelect={handleGraphDeviceSelect}
+          />
+        )}
+      </div>
+    </TopologyProvider>
   )
 }

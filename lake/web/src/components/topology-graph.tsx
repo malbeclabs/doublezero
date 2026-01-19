@@ -689,6 +689,43 @@ export function TopologyGraph({
     }
   }, [mode])
 
+  // When entering analysis modes with a device already selected, use it appropriately
+  const prevModeRef = useRef<string>(mode)
+  useEffect(() => {
+    const cy = cyRef.current
+    if (!cy) return
+
+    // whatif-addition: use selected device as source
+    if (mode === 'whatif-addition' && prevModeRef.current !== 'whatif-addition' && selectedDevicePK) {
+      setAdditionSource(selectedDevicePK)
+      const node = cy.getElementById(selectedDevicePK)
+      if (node.length) {
+        node.addClass('whatif-addition-source')
+      }
+    }
+
+    // path mode: use selected device as source
+    if (mode === 'path' && prevModeRef.current !== 'path' && selectedDevicePK) {
+      setPathSource(selectedDevicePK)
+      const node = cy.getElementById(selectedDevicePK)
+      if (node.length) {
+        node.addClass('path-source')
+      }
+    }
+
+    // whatif-removal: highlight adjacent links of selected device
+    if (mode === 'whatif-removal' && prevModeRef.current !== 'whatif-removal' && selectedDevicePK) {
+      const node = cy.getElementById(selectedDevicePK)
+      if (node.length) {
+        // Highlight the selected device and its adjacent edges
+        node.addClass('highlighted')
+        node.connectedEdges().addClass('highlighted')
+      }
+    }
+
+    prevModeRef.current = mode
+  }, [mode, selectedDevicePK])
+
   // Apply health status styles when ISIS health overlay is enabled (using direct .style() for reliability)
   useEffect(() => {
     if (!cyRef.current || !isisHealthEnabled) return

@@ -3,7 +3,6 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import cytoscape from 'cytoscape'
 import type { Core, NodeSingular, EdgeSingular } from 'cytoscape'
 import { useQuery } from '@tanstack/react-query'
-import { X, Zap } from 'lucide-react'
 import { fetchISISTopology, fetchISISPaths, fetchTopologyCompare, fetchFailureImpact, fetchCriticalLinks, fetchSimulateLinkRemoval, fetchSimulateLinkAddition, fetchTopology, fetchLinkHealth } from '@/lib/api'
 import type { FailureImpactResponse, MultiPathResponse, SimulateLinkRemovalResponse, SimulateLinkAdditionResponse } from '@/lib/api'
 import { useTheme } from '@/hooks/use-theme'
@@ -2748,58 +2747,6 @@ export function TopologyGraph({
             />
           )}
         </TopologyPanel>
-      )}
-
-      {/* Impact analysis panel - Keep as floating panel (not mode-based) */}
-      {(impactDevice || impactLoading) && (
-        <div className="absolute top-[320px] right-4 z-[999] bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm p-3 text-xs max-w-56">
-          <div className="flex items-center justify-between mb-2">
-            <span className="font-medium flex items-center gap-1.5">
-              <Zap className="h-3.5 w-3.5 text-purple-500" />
-              Device Failure
-            </span>
-            <button onClick={clearImpact} className="p-1 hover:bg-[var(--muted)] rounded" title="Close">
-              <X className="h-3 w-3" />
-            </button>
-          </div>
-
-          {impactLoading && (
-            <div className="text-muted-foreground">Analyzing impact...</div>
-          )}
-
-          {impactResult && !impactResult.error && (
-            <div className="space-y-2">
-              <div className="text-muted-foreground">
-                If <span className="font-medium text-foreground">{impactResult.deviceCode}</span> goes down:
-              </div>
-
-              {impactResult.unreachableCount === 0 ? (
-                <div className="text-green-500 flex items-center gap-1.5">
-                  <div className="w-2 h-2 rounded-full bg-green-500" />
-                  No devices would become unreachable
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <div className="text-red-500 font-medium">
-                    {impactResult.unreachableCount} device{impactResult.unreachableCount !== 1 ? 's' : ''} would become unreachable
-                  </div>
-                  <div className="space-y-0.5 max-h-32 overflow-y-auto">
-                    {impactResult.unreachableDevices.map(device => (
-                      <div key={device.pk} className="flex items-center gap-1.5">
-                        <div className={`w-2 h-2 rounded-full ${device.status === 'active' ? 'bg-green-500' : 'bg-red-500'}`} />
-                        <span>{device.code}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {impactResult?.error && (
-            <div className="text-destructive">{impactResult.error}</div>
-          )}
-        </div>
       )}
 
       {/* Node tooltip */}

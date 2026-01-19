@@ -2,6 +2,7 @@ import { useState, useRef } from 'react'
 import { ChevronRight, MessageSquare, Trash2, Clock, Pencil, Check, X, RefreshCw, Sparkles, User } from 'lucide-react'
 import { type ChatSession, getChatSessionPreview, formatSessionDate } from '@/lib/sessions'
 import type { ChatMessage } from '@/lib/api'
+import { ConfirmDialog } from './confirm-dialog'
 
 interface ChatSessionsPageProps {
   sessions: ChatSession[]
@@ -21,6 +22,7 @@ export function ChatSessionsPage({
   onGenerateTitle,
 }: ChatSessionsPageProps) {
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null)
+  const [deleteSessionId, setDeleteSessionId] = useState<string | null>(null)
 
   // Sort sessions by updatedAt, most recent first, and filter out empty sessions
   // Use id as tiebreaker for stable ordering when timestamps are equal
@@ -30,6 +32,8 @@ export function ChatSessionsPage({
       const timeDiff = b.updatedAt.getTime() - a.updatedAt.getTime()
       return timeDiff !== 0 ? timeDiff : a.id.localeCompare(b.id)
     })
+
+  const sessionToDelete = deleteSessionId ? sortedSessions.find(s => s.id === deleteSessionId) : null
 
   return (
     <div className="flex-1 flex flex-col px-8 pb-8 overflow-hidden">
@@ -50,11 +54,7 @@ export function ChatSessionsPage({
                   expandedSessionId === session.id ? null : session.id
                 )}
                 onSelect={() => onSelectSession(session)}
-                onDelete={() => {
-                  if (window.confirm('Delete this chat? This cannot be undone.')) {
-                    onDeleteSession(session.id)
-                  }
-                }}
+                onDelete={() => setDeleteSessionId(session.id)}
                 onUpdateTitle={onUpdateSessionTitle ? (title) => onUpdateSessionTitle(session.id, title) : undefined}
                 onGenerateTitle={onGenerateTitle ? () => onGenerateTitle(session.id) : undefined}
               />
@@ -62,6 +62,19 @@ export function ChatSessionsPage({
           </div>
         )}
       </div>
+
+      {sessionToDelete && (
+        <ConfirmDialog
+          isOpen={true}
+          title="Delete chat"
+          message={`Delete "${sessionToDelete.name || getChatSessionPreview(sessionToDelete)}"? This cannot be undone.`}
+          onConfirm={() => {
+            onDeleteSession(sessionToDelete.id)
+            setDeleteSessionId(null)
+          }}
+          onCancel={() => setDeleteSessionId(null)}
+        />
+      )}
     </div>
   )
 }

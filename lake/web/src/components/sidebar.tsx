@@ -13,8 +13,7 @@ import {
   RefreshCw,
   Sun,
   Moon,
-  Monitor,
-  Check,
+  Settings,
   ArrowUpCircle,
   Server,
   Link2,
@@ -42,6 +41,7 @@ import {
   getSessionPreview,
   getChatSessionPreview,
 } from '@/lib/sessions'
+import { ConfirmDialog } from './confirm-dialog'
 
 interface SidebarProps {
   // Query sessions
@@ -79,7 +79,7 @@ export function Sidebar({
   onGenerateTitleChatSession,
 }: SidebarProps) {
   const location = useLocation()
-  const { theme, resolvedTheme, setTheme } = useTheme()
+  const { resolvedTheme, setTheme } = useTheme()
   const { updateAvailable, reload } = useVersionCheck()
   const isLandingPage = location.pathname === '/'
   const isTopologyPage = location.pathname === '/topology'
@@ -100,7 +100,7 @@ export function Sidebar({
     const saved = localStorage.getItem('sidebar-user-collapsed')
     return saved !== null ? saved === 'true' : null
   })
-  const [themeMenuOpen, setThemeMenuOpen] = useState(false)
+  const [deleteSession, setDeleteSession] = useState<{ id: string; type: 'query' | 'chat'; title: string } | null>(null)
 
   // Auto-collapse/expand based on route and user preference
   useEffect(() => {
@@ -147,16 +147,13 @@ export function Sidebar({
     localStorage.setItem('sidebar-user-collapsed', String(collapsed))
   }
 
-  const themeOptions = [
-    { value: 'light' as const, label: 'Light', icon: Sun },
-    { value: 'dark' as const, label: 'Dark', icon: Moon },
-    { value: 'system' as const, label: 'System', icon: Monitor },
-  ]
+  // Toggle between light and dark (respects current resolved theme)
+  const toggleTheme = () => {
+    setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')
+  }
 
   const currentThemeIcon = () => {
-    if (theme === 'system') return <Monitor className="h-4 w-4" />
-    if (theme === 'dark') return <Moon className="h-4 w-4" />
-    return <Sun className="h-4 w-4" />
+    return resolvedTheme === 'dark' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />
   }
 
   const isQueryRoute = location.pathname.startsWith('/query')
@@ -366,39 +363,20 @@ export function Sidebar({
               <ArrowUpCircle className="h-4 w-4" />
             </button>
           )}
-          <div className="relative">
-            <button
-              onClick={() => setThemeMenuOpen(!themeMenuOpen)}
-              className="p-2 text-muted-foreground hover:text-foreground transition-colors"
-              title="Theme"
-            >
-              {currentThemeIcon()}
-            </button>
-            {themeMenuOpen && (
-              <>
-                <div
-                  className="fixed inset-0 z-10"
-                  onClick={() => setThemeMenuOpen(false)}
-                />
-                <div className="absolute right-0 top-full mt-1 z-20 bg-card border border-border rounded-md shadow-md py-1 min-w-[120px]">
-                  {themeOptions.map((option) => (
-                    <button
-                      key={option.value}
-                      onClick={() => {
-                        setTheme(option.value)
-                        setThemeMenuOpen(false)
-                      }}
-                      className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-foreground hover:bg-muted transition-colors"
-                    >
-                      <option.icon className="h-3.5 w-3.5" />
-                      {option.label}
-                      {theme === option.value && <Check className="h-3 w-3 ml-auto" />}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
+          <button
+            onClick={toggleTheme}
+            className="p-2 text-muted-foreground hover:text-foreground transition-colors"
+            title={`Switch to ${resolvedTheme === 'dark' ? 'light' : 'dark'} mode`}
+          >
+            {currentThemeIcon()}
+          </button>
+          <Link
+            to="/settings"
+            className="p-2 text-muted-foreground hover:text-foreground transition-colors"
+            title="Settings"
+          >
+            <Settings className="h-4 w-4" />
+          </Link>
           <button
             onClick={() => handleSetCollapsed(false)}
             className="p-2 text-muted-foreground hover:text-foreground transition-colors"
@@ -685,11 +663,11 @@ export function Sidebar({
                   isActive={session.id === currentQuerySessionId && !isQuerySessions}
                   url={`/query/${session.id}`}
                   onClick={() => onSelectQuerySession(session)}
-                  onDelete={() => {
-                    if (window.confirm('Delete this session? This cannot be undone.')) {
-                      onDeleteQuerySession(session.id)
-                    }
-                  }}
+                  onDelete={() => setDeleteSession({
+                    id: session.id,
+                    type: 'query',
+                    title: session.name || getSessionPreview(session),
+                  })}
                   onRename={(name) => onRenameQuerySession(session.id, name)}
                   onGenerateTitle={onGenerateTitleQuerySession ? () => onGenerateTitleQuerySession(session.id) : undefined}
                 />
@@ -758,11 +736,11 @@ export function Sidebar({
                   isActive={session.id === currentChatSessionId && !isChatSessions}
                   url={`/chat/${session.id}`}
                   onClick={() => onSelectChatSession(session)}
-                  onDelete={() => {
-                    if (window.confirm('Delete this chat? This cannot be undone.')) {
-                      onDeleteChatSession(session.id)
-                    }
-                  }}
+                  onDelete={() => setDeleteSession({
+                    id: session.id,
+                    type: 'chat',
+                    title: session.name || getChatSessionPreview(session),
+                  })}
                   onRename={(name) => onRenameChatSession(session.id, name)}
                   onGenerateTitle={onGenerateTitleChatSession ? () => onGenerateTitleChatSession(session.id) : undefined}
                 />
@@ -861,8 +839,8 @@ export function Sidebar({
       {/* Spacer when no section is active */}
       {!isQueryRoute && !isChatRoute && !isTopologyRoute && <div className="flex-1" />}
 
-      {/* Theme toggle and development notice footer */}
-      <div className="mt-auto px-3 py-3 border-t border-border/50 space-y-3">
+      {/* Footer */}
+      <div className="mt-auto px-3 py-3 border-t border-border/50 space-y-2">
         {updateAvailable && (
           <button
             onClick={reload}
@@ -873,44 +851,44 @@ export function Sidebar({
             Update available
           </button>
         )}
-        <div className="relative">
+        <div className="flex items-center gap-1">
           <button
-            onClick={() => setThemeMenuOpen(!themeMenuOpen)}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)] rounded transition-colors"
-            title="Theme"
+            onClick={toggleTheme}
+            className="flex-1 flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)] rounded transition-colors"
+            title={`Switch to ${resolvedTheme === 'dark' ? 'light' : 'dark'} mode`}
           >
             {currentThemeIcon()}
-            {theme === 'system' ? 'System' : theme === 'dark' ? 'Dark' : 'Light'}
+            {resolvedTheme === 'dark' ? 'Dark' : 'Light'}
           </button>
-          {themeMenuOpen && (
-            <>
-              <div
-                className="fixed inset-0 z-10"
-                onClick={() => setThemeMenuOpen(false)}
-              />
-              <div className="absolute left-0 bottom-full mb-1 z-20 bg-card border border-border rounded-md shadow-md py-1 min-w-[140px]">
-                {themeOptions.map((option) => (
-                  <button
-                    key={option.value}
-                    onClick={() => {
-                      setTheme(option.value)
-                      setThemeMenuOpen(false)
-                    }}
-                    className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-foreground hover:bg-muted transition-colors"
-                  >
-                    <option.icon className="h-4 w-4" />
-                    {option.label}
-                    {theme === option.value && <Check className="h-3.5 w-3.5 ml-auto" />}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
+          <Link
+            to="/settings"
+            className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)] rounded transition-colors"
+            title="Settings"
+          >
+            <Settings className="h-4 w-4" />
+          </Link>
         </div>
         <p className="text-xs text-grey-40 leading-snug">
           Early preview. Chat and query history is stored locally in your browser and may be cleared.
         </p>
       </div>
+
+      <ConfirmDialog
+        isOpen={!!deleteSession}
+        title={deleteSession?.type === 'chat' ? 'Delete chat' : 'Delete session'}
+        message={`Delete "${deleteSession?.title}"? This cannot be undone.`}
+        onConfirm={() => {
+          if (deleteSession) {
+            if (deleteSession.type === 'chat') {
+              onDeleteChatSession(deleteSession.id)
+            } else {
+              onDeleteQuerySession(deleteSession.id)
+            }
+          }
+          setDeleteSession(null)
+        }}
+        onCancel={() => setDeleteSession(null)}
+      />
     </div>
   )
 }

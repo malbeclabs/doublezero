@@ -987,12 +987,22 @@ func GetISISPaths(w http.ResponseWriter, r *http.Request) {
 
 	// Re-sort paths based on mode
 	if pathMode == "latency" {
-		// Sort by total measured latency (MeasuredLatencyMs)
+		// Sort by total measured latency, fall back to ISIS metric if no measured data
 		slices.SortFunc(response.Paths, func(a, b SinglePath) int {
-			if a.MeasuredLatencyMs < b.MeasuredLatencyMs {
+			// If both have measured latency, sort by that
+			if a.MeasuredLatencyMs > 0 && b.MeasuredLatencyMs > 0 {
+				if a.MeasuredLatencyMs < b.MeasuredLatencyMs {
+					return -1
+				}
+				if a.MeasuredLatencyMs > b.MeasuredLatencyMs {
+					return 1
+				}
+			}
+			// Fall back to ISIS metric (which represents configured latency)
+			if a.TotalMetric < b.TotalMetric {
 				return -1
 			}
-			if a.MeasuredLatencyMs > b.MeasuredLatencyMs {
+			if a.TotalMetric > b.TotalMetric {
 				return 1
 			}
 			return 0

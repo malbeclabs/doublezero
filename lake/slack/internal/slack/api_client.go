@@ -40,6 +40,7 @@ type ChatStreamResult struct {
 	Classification  workflow.Classification
 	DataQuestions   []workflow.DataQuestion
 	ExecutedQueries []workflow.ExecutedQuery
+	SessionID       string // The session ID for linking to the web UI
 }
 
 // chatRequest is the request body for POST /api/chat/stream.
@@ -112,10 +113,11 @@ func (c *APIClient) ChatStream(
 	}
 
 	// Build request body
+	sessionID := uuid.New().String()
 	reqBody := chatRequest{
 		Message:   message,
 		History:   apiHistory,
-		SessionID: uuid.New().String(),
+		SessionID: sessionID,
 		Format:    "slack",
 	}
 
@@ -145,7 +147,12 @@ func (c *APIClient) ChatStream(
 	}
 
 	// Parse SSE stream
-	return c.parseSSEStream(ctx, resp.Body, onProgress)
+	result, err := c.parseSSEStream(ctx, resp.Body, onProgress)
+	if err != nil {
+		return result, err
+	}
+	result.SessionID = sessionID
+	return result, nil
 }
 
 // parseSSEStream reads the SSE stream and returns the result.

@@ -24,6 +24,7 @@ type Config struct {
 
 	// API configuration
 	APIBaseURL string
+	WebBaseURL string // Base URL for web UI (for session links)
 
 	// Server configuration
 	HTTPAddr    string
@@ -81,6 +82,12 @@ func LoadFromEnv(modeFlag, httpAddrFlag, metricsAddrFlag string, verbose, enable
 	cfg.APIBaseURL = os.Getenv("API_BASE_URL")
 	if cfg.APIBaseURL == "" {
 		cfg.APIBaseURL = "http://localhost:8080"
+	}
+
+	// Load web UI configuration (defaults to API URL if not set)
+	cfg.WebBaseURL = os.Getenv("WEB_BASE_URL")
+	if cfg.WebBaseURL == "" {
+		cfg.WebBaseURL = cfg.APIBaseURL
 	}
 
 	return cfg, nil

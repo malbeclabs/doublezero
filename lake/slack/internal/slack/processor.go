@@ -22,6 +22,7 @@ type Processor struct {
 	slackClient *Client
 	apiClient   *APIClient
 	convManager *Manager
+	webBaseURL  string
 	log         *slog.Logger
 
 	// Track messages we've already responded to (by message timestamp) to prevent duplicate error messages
@@ -44,12 +45,14 @@ func NewProcessor(
 	slackClient *Client,
 	apiClient *APIClient,
 	convManager *Manager,
+	webBaseURL string,
 	log *slog.Logger,
 ) *Processor {
 	return &Processor{
 		slackClient:       slackClient,
 		apiClient:         apiClient,
 		convManager:       convManager,
+		webBaseURL:        strings.TrimSuffix(webBaseURL, "/"),
 		log:               log,
 		respondedMessages: make(map[string]time.Time),
 		threadLocks:       make(map[string]*threadLockEntry),
@@ -152,51 +155,48 @@ func containsNonBotMention(text, botUserID string) bool {
 	return false
 }
 
-// formatThinkingMessage formats the thinking message based on progress
-func formatThinkingMessage(progress workflow.Progress) string {
+// formatThinkingMessage formats the thinking message based on progress.
+// sessionURL is optional - when provided, it will be included as a link.
+func formatThinkingMessage(progress workflow.Progress, sessionURL string) string {
 	var sb strings.Builder
 
 	switch progress.Stage {
 	case workflow.StageClassifying:
-		sb.WriteString(":hourglass_flowing_sand: *Understanding your question...*")
+		sb.WriteString("_:hourglass_flowing_sand: Understanding your question..._")
 
 	case workflow.StageDecomposing:
-		sb.WriteString("✓ Understood your question\n")
-		sb.WriteString(":hourglass_flowing_sand: *Breaking down into queries...*")
+		sb.WriteString("_:hourglass_flowing_sand: Breaking down into queries..._")
 
 	case workflow.StageDecomposed:
-		sb.WriteString("✓ Understood your question\n")
-		sb.WriteString("✓ Identified data questions:\n")
+		sb.WriteString("_Identified data questions:_\n")
 		for i, q := range progress.DataQuestions {
-			sb.WriteString(fmt.Sprintf("    %d. %s\n", i+1, q.Question))
+			sb.WriteString(fmt.Sprintf("_%d. %s_\n", i+1, q.Question))
 		}
 
 	case workflow.StageExecuting:
-		sb.WriteString("✓ Understood your question\n")
-		sb.WriteString(fmt.Sprintf(":hourglass_flowing_sand: *Running queries (%d/%d):*\n", progress.QueriesDone, progress.QueriesTotal))
+		sb.WriteString(fmt.Sprintf("_:hourglass_flowing_sand: Running queries (%d/%d)..._\n", progress.QueriesDone, progress.QueriesTotal))
 		for i, q := range progress.DataQuestions {
 			if i < progress.QueriesDone {
-				sb.WriteString(fmt.Sprintf("    %d. %s ✓\n", i+1, q.Question))
+				sb.WriteString(fmt.Sprintf("_• %s ✓_\n", q.Question))
+			} else if i == progress.QueriesDone {
+				sb.WriteString(fmt.Sprintf("_• %s :hourglass_flowing_sand:_\n", q.Question))
 			} else {
-				sb.WriteString(fmt.Sprintf("    %d. %s\n", i+1, q.Question))
+				sb.WriteString(fmt.Sprintf("_• %s_\n", q.Question))
 			}
 		}
 
 	case workflow.StageSynthesizing:
-		sb.WriteString("✓ Understood your question\n")
-		sb.WriteString(fmt.Sprintf("✓ Queries complete (%d/%d):\n", progress.QueriesDone, progress.QueriesTotal))
-		for i, q := range progress.DataQuestions {
-			sb.WriteString(fmt.Sprintf("    %d. %s ✓\n", i+1, q.Question))
-		}
-		sb.WriteString("\n:hourglass_flowing_sand: *Preparing answer...*")
+		sb.WriteString(fmt.Sprintf("_:hourglass_flowing_sand: Preparing answer (%d queries complete)..._", progress.QueriesTotal))
 
 	case workflow.StageComplete:
-		// For data_analysis, show summary
+		// For data_analysis, show compact summary
 		if progress.Classification == workflow.ClassificationDataAnalysis && len(progress.DataQuestions) > 0 {
-			sb.WriteString(":brain: *Analysis complete*\n\n")
-			sb.WriteString("Answered by querying:\n")
-			for i, q := range progress.DataQuestions {
-				sb.WriteString(fmt.Sprintf("    %d. %s\n", i+1, q.Question))
+			sb.WriteString("_:mag: Answered by querying:_\n")
+			for _, q := range progress.DataQuestions {
+				sb.WriteString(fmt.Sprintf("_• %s_\n", q.Question))
+			}
+			if sessionURL != "" {
+				sb.WriteString(fmt.Sprintf("\n<%s|:link: View full session>", sessionURL))
 			}
 		}
 		// For conversational/out_of_scope, we don't show anything (just answer)
@@ -307,7 +307,7 @@ func (p *Processor) ProcessMessage(
 	}
 
 	// Post initial thinking message
-	initialThinking := formatThinkingMessage(workflow.Progress{Stage: workflow.StageClassifying})
+	initialThinking := formatThinkingMessage(workflow.Progress{Stage: workflow.StageClassifying}, "")
 	thinkingTS, err := p.slackClient.PostMessage(ctx, ev.Channel, initialThinking, nil, threadTS)
 	if err != nil {
 		p.log.Warn("failed to post thinking message", "error", err)
@@ -339,7 +339,7 @@ func (p *Processor) ProcessMessage(
 
 		// Update thinking message
 		if thinkingTS != "" {
-			thinkingText := formatThinkingMessage(progress)
+			thinkingText := formatThinkingMessage(progress, "")
 			if err := p.slackClient.UpdateMessage(ctx, ev.Channel, thinkingTS, thinkingText, nil); err != nil {
 				p.log.Debug("failed to update thinking message", "error", err)
 			}
@@ -377,15 +377,19 @@ func (p *Processor) ProcessMessage(
 		"classification", result.Classification,
 		"data_questions", len(result.DataQuestions))
 
-	// For data analysis, update thinking message with summary
+	// For data analysis, update thinking message with summary and session link
 	if result.Classification == workflow.ClassificationDataAnalysis && len(result.DataQuestions) > 0 && thinkingTS != "" {
+		sessionURL := ""
+		if p.webBaseURL != "" && result.SessionID != "" {
+			sessionURL = fmt.Sprintf("%s/sessions/%s", p.webBaseURL, result.SessionID)
+		}
 		summaryText := formatThinkingMessage(workflow.Progress{
 			Stage:          workflow.StageComplete,
 			Classification: result.Classification,
 			DataQuestions:  result.DataQuestions,
 			QueriesTotal:   len(result.DataQuestions),
 			QueriesDone:    len(result.DataQuestions),
-		})
+		}, sessionURL)
 		if err := p.slackClient.UpdateMessage(ctx, ev.Channel, thinkingTS, summaryText, nil); err != nil {
 			p.log.Debug("failed to update thinking message with summary", "error", err)
 		}

@@ -189,6 +189,11 @@ export function TopologyProvider({ children, view }: TopologyProviderProps) {
     })
   }, [setSearchParams])
 
+  // Path-related modes that style edges (mutually exclusive with link overlays)
+  const edgeStylingModes: TopologyMode[] = ['path', 'whatif-removal', 'whatif-addition']
+  // Link overlays (defined here for use in setMode)
+  const linkOverlayKeys: (keyof OverlayState)[] = ['linkType', 'bandwidth', 'linkHealth', 'trafficFlow', 'contributorLinks', 'criticality', 'isisHealth']
+
   // Set mode with side effects
   const setMode = useCallback((newMode: TopologyMode) => {
     setModeInternal(newMode)
@@ -196,11 +201,32 @@ export function TopologyProvider({ children, view }: TopologyProviderProps) {
     // When entering a mode, open the panel with mode content
     if (newMode !== 'explore') {
       setPanel(prev => ({ ...prev, isOpen: true, content: 'mode' }))
+
+      // When entering an edge-styling mode, clear all link overlays
+      if (edgeStylingModes.includes(newMode)) {
+        setOverlays(prev => {
+          const newState = { ...prev }
+          for (const overlay of linkOverlayKeys) {
+            newState[overlay] = false
+          }
+          // Update URL params
+          setSearchParams(params => {
+            const serialized = serializeOverlaysToUrl(newState)
+            if (serialized) {
+              params.set('overlays', serialized)
+            } else {
+              params.delete('overlays')
+            }
+            return params
+          })
+          return newState
+        })
+      }
     } else {
       // When returning to explore, close panel if showing mode content
       setPanel(prev => prev.content === 'mode' ? { ...prev, isOpen: false } : prev)
     }
-  }, [])
+  }, [setSearchParams])
 
   // Panel controls
   const openPanel = useCallback((content: 'details' | 'mode' | 'overlay') => {
@@ -233,6 +259,7 @@ export function TopologyProvider({ children, view }: TopologyProviderProps) {
   const linkOverlays: (keyof OverlayState)[] = ['linkType', 'bandwidth', 'linkHealth', 'trafficFlow', 'contributorLinks', 'criticality', 'isisHealth']
 
   // Overlay toggle - one device overlay + one link overlay allowed (validators independent)
+  // Enabling a link overlay exits edge-styling modes (path, whatif)
   const toggleOverlay = useCallback((overlay: keyof OverlayState) => {
     setOverlays(prev => {
       const newValue = !prev[overlay]
@@ -250,6 +277,11 @@ export function TopologyProvider({ children, view }: TopologyProviderProps) {
           for (const other of linkOverlays) {
             if (other !== overlay) newState[other] = false
           }
+          // Exit edge-styling modes when enabling a link overlay
+          if (edgeStylingModes.includes(mode)) {
+            setModeInternal('explore')
+            setPanel(prev => prev.content === 'mode' ? { ...prev, isOpen: false } : prev)
+          }
         }
         // validators is independent, no conflicts
       }
@@ -266,7 +298,7 @@ export function TopologyProvider({ children, view }: TopologyProviderProps) {
       })
       return newState
     })
-  }, [setSearchParams])
+  }, [setSearchParams, mode])
 
   const value: TopologyContextValue = {
     mode,

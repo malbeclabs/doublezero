@@ -1610,7 +1610,6 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           onZoomIn={handleZoomIn}
           onZoomOut={handleZoomOut}
           onReset={fitBounds}
-          hasSelectedDevice={selectedItem?.type === 'device'}
         />
 
         {/* Link lines source and layers */}

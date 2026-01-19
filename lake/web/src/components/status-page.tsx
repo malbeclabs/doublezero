@@ -11,7 +11,7 @@ import { DeviceStatusTimelines } from '@/components/device-status-timelines'
 
 type TimeRange = '3h' | '6h' | '12h' | '24h' | '3d' | '7d'
 type IssueFilter = 'packet_loss' | 'high_latency' | 'extended_loss' | 'drained' | 'no_data' | 'no_issues'
-type DeviceIssueFilter = 'interface_errors' | 'carrier_transitions' | 'drained' | 'no_issues'
+type DeviceIssueFilter = 'interface_errors' | 'discards' | 'carrier_transitions' | 'drained' | 'no_issues'
 type HealthFilter = 'healthy' | 'degraded' | 'unhealthy' | 'disabled'
 
 const timeRangeLabels: Record<TimeRange, string> = {
@@ -1276,6 +1276,7 @@ function LinksContent({ status, linkHistory }: { status: StatusResponse; linkHis
 // Device issue counts interface
 interface DeviceIssueCounts {
   interface_errors: number
+  discards: number
   carrier_transitions: number
   drained: number
   no_issues: number
@@ -1284,15 +1285,16 @@ interface DeviceIssueCounts {
 
 // Device issues breakdown per health category
 interface DeviceIssuesByHealth {
-  healthy: { interface_errors: number; carrier_transitions: number; drained: number }
-  degraded: { interface_errors: number; carrier_transitions: number; drained: number }
-  unhealthy: { interface_errors: number; carrier_transitions: number; drained: number }
-  disabled: { interface_errors: number; carrier_transitions: number; drained: number }
+  healthy: { interface_errors: number; discards: number; carrier_transitions: number; drained: number }
+  degraded: { interface_errors: number; discards: number; carrier_transitions: number; drained: number }
+  unhealthy: { interface_errors: number; discards: number; carrier_transitions: number; drained: number }
+  disabled: { interface_errors: number; discards: number; carrier_transitions: number; drained: number }
 }
 
 // Device health breakdown per issue type
 interface DeviceHealthByIssue {
   interface_errors: { healthy: number; degraded: number; unhealthy: number; disabled: number }
+  discards: { healthy: number; degraded: number; unhealthy: number; disabled: number }
   carrier_transitions: { healthy: number; degraded: number; unhealthy: number; disabled: number }
   drained: { healthy: number; degraded: number; unhealthy: number; disabled: number }
   no_issues: { healthy: number; degraded: number; unhealthy: number; disabled: number }
@@ -1426,7 +1428,7 @@ function DeviceIssuesFilterCard({
   healthByIssue?: DeviceHealthByIssue
   timeRange: TimeRange
 }) {
-  const allFilters: DeviceIssueFilter[] = ['interface_errors', 'carrier_transitions', 'drained', 'no_issues']
+  const allFilters: DeviceIssueFilter[] = ['interface_errors', 'discards', 'carrier_transitions', 'drained', 'no_issues']
 
   const toggleFilter = (filter: DeviceIssueFilter) => {
     if (selected.includes(filter)) {
@@ -1442,12 +1444,14 @@ function DeviceIssuesFilterCard({
 
   const grandTotal = (counts.total + counts.no_issues) || 1
   const interfaceErrorsPct = (counts.interface_errors / grandTotal) * 100
+  const discardsPct = (counts.discards / grandTotal) * 100
   const carrierTransitionsPct = (counts.carrier_transitions / grandTotal) * 100
   const drainedPct = (counts.drained / grandTotal) * 100
   const noIssuesPct = (counts.no_issues / grandTotal) * 100
 
   const items: { filter: DeviceIssueFilter; label: string; color: string; description: string }[] = [
-    { filter: 'interface_errors', label: 'Interface Errors', color: 'bg-fuchsia-500', description: 'Device experiencing interface errors or discards.' },
+    { filter: 'interface_errors', label: 'Interface Errors', color: 'bg-fuchsia-500', description: 'Device experiencing interface errors.' },
+    { filter: 'discards', label: 'Discards', color: 'bg-rose-500', description: 'Device experiencing interface discards.' },
     { filter: 'carrier_transitions', label: 'Link Flapping', color: 'bg-orange-500', description: 'Device experiencing carrier state changes (link up/down).' },
     { filter: 'drained', label: 'Drained', color: 'bg-slate-500 dark:bg-slate-600', description: 'Device is soft-drained, hard-drained, or suspended.' },
     { filter: 'no_issues', label: 'No Issues', color: 'bg-cyan-500', description: 'Device with no detected issues in the time range.' },
@@ -1480,6 +1484,12 @@ function DeviceIssuesFilterCard({
           <div
             className={`bg-fuchsia-500 h-full transition-all ${!selected.includes('interface_errors') ? 'opacity-30' : ''}`}
             style={{ width: `${interfaceErrorsPct}%` }}
+          />
+        )}
+        {discardsPct > 0 && (
+          <div
+            className={`bg-rose-500 h-full transition-all ${!selected.includes('discards') ? 'opacity-30' : ''}`}
+            style={{ width: `${discardsPct}%` }}
           />
         )}
         {carrierTransitionsPct > 0 && (
@@ -1614,7 +1624,7 @@ function deviceUtilMatchesSearchFilters(device: DeviceUtilization, filters: Stat
 // Devices tab content
 function DevicesContent({ status }: { status: StatusResponse }) {
   const [timeRange, setTimeRange] = useState<TimeRange>('24h')
-  const [issueFilters, setIssueFilters] = useState<DeviceIssueFilter[]>(['interface_errors', 'carrier_transitions', 'drained'])
+  const [issueFilters, setIssueFilters] = useState<DeviceIssueFilter[]>(['interface_errors', 'discards', 'carrier_transitions', 'drained'])
   const [healthFilters, setHealthFilters] = useState<HealthFilter[]>(['healthy', 'degraded', 'unhealthy', 'disabled'])
 
   // Get search filters from URL
@@ -1722,7 +1732,7 @@ function DevicesContent({ status }: { status: StatusResponse }) {
 
   // Calculate issue breakdown per health category
   const issuesByHealth = useMemo((): DeviceIssuesByHealth => {
-    const emptyBreakdown = () => ({ interface_errors: 0, carrier_transitions: 0, drained: 0 })
+    const emptyBreakdown = () => ({ interface_errors: 0, discards: 0, carrier_transitions: 0, drained: 0 })
 
     const result: DeviceIssuesByHealth = {
       healthy: emptyBreakdown(),
@@ -1742,6 +1752,7 @@ function DevicesContent({ status }: { status: StatusResponse }) {
       const issues = device.issue_reasons ?? []
 
       if (issues.includes('interface_errors')) breakdown.interface_errors++
+      if (issues.includes('discards')) breakdown.discards++
       if (issues.includes('carrier_transitions')) breakdown.carrier_transitions++
       if (issues.includes('drained')) breakdown.drained++
     }
@@ -1755,6 +1766,7 @@ function DevicesContent({ status }: { status: StatusResponse }) {
 
     const result: DeviceHealthByIssue = {
       interface_errors: emptyBreakdown(),
+      discards: emptyBreakdown(),
       carrier_transitions: emptyBreakdown(),
       drained: emptyBreakdown(),
       no_issues: emptyBreakdown(),
@@ -1771,6 +1783,7 @@ function DevicesContent({ status }: { status: StatusResponse }) {
         result.no_issues[health]++
       } else {
         if (issues.includes('interface_errors')) result.interface_errors[health]++
+        if (issues.includes('discards')) result.discards[health]++
         if (issues.includes('carrier_transitions')) result.carrier_transitions[health]++
         if (issues.includes('drained')) result.drained[health]++
       }
@@ -1782,14 +1795,15 @@ function DevicesContent({ status }: { status: StatusResponse }) {
   // Issue counts from filter time range
   const issueCounts = useMemo((): DeviceIssueCounts => {
     if (!filteredDeviceHistory?.devices) {
-      return { interface_errors: 0, carrier_transitions: 0, drained: 0, no_issues: 0, total: 0 }
+      return { interface_errors: 0, discards: 0, carrier_transitions: 0, drained: 0, no_issues: 0, total: 0 }
     }
 
-    const counts = { interface_errors: 0, carrier_transitions: 0, drained: 0, no_issues: 0, total: 0 }
+    const counts = { interface_errors: 0, discards: 0, carrier_transitions: 0, drained: 0, no_issues: 0, total: 0 }
     const seenDevices = new Set<string>()
 
     for (const device of filteredDeviceHistory.devices) {
       if (device.issue_reasons?.includes('interface_errors')) counts.interface_errors++
+      if (device.issue_reasons?.includes('discards')) counts.discards++
       if (device.issue_reasons?.includes('carrier_transitions')) counts.carrier_transitions++
       if (device.issue_reasons?.includes('drained')) counts.drained++
       if (device.issue_reasons?.length > 0 && !seenDevices.has(device.code)) {

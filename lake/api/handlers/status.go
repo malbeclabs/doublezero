@@ -1430,7 +1430,7 @@ type DeviceHistory struct {
 	Metro        string             `json:"metro"`
 	MaxUsers     int32              `json:"max_users"`
 	Hours        []DeviceHourStatus `json:"hours"`
-	IssueReasons []string           `json:"issue_reasons"` // "interface_errors", "carrier_transitions", "drained"
+	IssueReasons []string           `json:"issue_reasons"` // "interface_errors", "discards", "carrier_transitions", "drained"
 }
 
 type DeviceHistoryResponse struct {
@@ -1695,8 +1695,11 @@ func fetchDeviceHistoryData(ctx context.Context, timeRange string, requestedBuck
 		for _, b := range buckets {
 			totalErrors := b.inErrors + b.outErrors
 			totalDiscards := b.inDiscards + b.outDiscards
-			if totalErrors >= ErrorWarningThreshold || totalDiscards >= ErrorWarningThreshold {
+			if totalErrors >= ErrorWarningThreshold {
 				issueReasons["interface_errors"] = true
+			}
+			if totalDiscards >= ErrorWarningThreshold {
+				issueReasons["discards"] = true
 			}
 			if b.carrierTransitions > 0 {
 				issueReasons["carrier_transitions"] = true

@@ -254,6 +254,9 @@ func (m *WorkflowManager) runWorkflow(
 	// Track steps in execution order for unified timeline
 	var steps []WorkflowStep
 
+	// Track metrics from the last checkpoint (for final persistence)
+	var lastLLMCalls, lastInputTokens, lastOutputTokens int
+
 	// Progress callback - broadcast to subscribers and track steps
 	onProgress := func(progress workflow.Progress) {
 		switch progress.Stage {
@@ -303,6 +306,11 @@ func (m *WorkflowManager) runWorkflow(
 
 	// Checkpoint callback - persist to database
 	onCheckpoint := func(state *v3.CheckpointState) error {
+		// Track latest metrics for final persistence
+		lastLLMCalls = state.Metrics.LLMCalls
+		lastInputTokens = state.Metrics.InputTokens
+		lastOutputTokens = state.Metrics.OutputTokens
+
 		checkpoint := &WorkflowCheckpoint{
 			Iteration:       state.Iteration,
 			Messages:        state.Messages,
@@ -347,16 +355,16 @@ func (m *WorkflowManager) runWorkflow(
 		Data: response,
 	})
 
-	// Mark workflow as completed
+	// Mark workflow as completed (preserve metrics from last checkpoint)
 	finalCheckpoint := &WorkflowCheckpoint{
 		Iteration:       0,
 		Messages:        nil,
 		ThinkingSteps:   nil,
 		ExecutedQueries: result.ExecutedQueries,
 		Steps:           finalSteps,
-		LLMCalls:        0,
-		InputTokens:     0,
-		OutputTokens:    0,
+		LLMCalls:        lastLLMCalls,
+		InputTokens:     lastInputTokens,
+		OutputTokens:    lastOutputTokens,
 	}
 	if err := CompleteWorkflowRun(context.Background(), rw.ID, result.Answer, finalCheckpoint); err != nil {
 		slog.Warn("Failed to mark workflow as completed", "workflow_id", rw.ID, "error", err)
@@ -488,6 +496,9 @@ func (m *WorkflowManager) resumeWorkflow(
 	// Track steps in execution order for unified timeline
 	var steps []WorkflowStep
 
+	// Track metrics from the last checkpoint (for final persistence)
+	var lastLLMCalls, lastInputTokens, lastOutputTokens int
+
 	// Progress callback - broadcast to subscribers and track steps
 	onProgress := func(progress workflow.Progress) {
 		switch progress.Stage {
@@ -537,6 +548,11 @@ func (m *WorkflowManager) resumeWorkflow(
 
 	// Checkpoint callback - persist to database
 	onCheckpoint := func(state *v3.CheckpointState) error {
+		// Track latest metrics for final persistence
+		lastLLMCalls = state.Metrics.LLMCalls
+		lastInputTokens = state.Metrics.InputTokens
+		lastOutputTokens = state.Metrics.OutputTokens
+
 		wfCheckpoint := &WorkflowCheckpoint{
 			Iteration:       state.Iteration,
 			Messages:        state.Messages,
@@ -576,13 +592,16 @@ func (m *WorkflowManager) resumeWorkflow(
 		Data: response,
 	})
 
-	// Mark complete
+	// Mark complete (preserve metrics from last checkpoint)
 	finalCheckpoint := &WorkflowCheckpoint{
 		Iteration:       checkpoint.Iteration,
 		Messages:        nil,
 		ThinkingSteps:   nil,
 		ExecutedQueries: result.ExecutedQueries,
 		Steps:           finalSteps,
+		LLMCalls:        lastLLMCalls,
+		InputTokens:     lastInputTokens,
+		OutputTokens:    lastOutputTokens,
 	}
 	if err := CompleteWorkflowRun(context.Background(), rw.ID, result.Answer, finalCheckpoint); err != nil {
 		slog.Warn("Failed to mark resumed workflow as completed", "workflow_id", rw.ID, "error", err)

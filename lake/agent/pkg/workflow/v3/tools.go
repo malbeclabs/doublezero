@@ -1,6 +1,10 @@
 package v3
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+)
 
 // Tool definitions for v3 workflow.
 var (
@@ -79,7 +83,31 @@ func DefaultToolsWithGraph() []Tool {
 func ParseQueries(params map[string]any) ([]QueryInput, error) {
 	queriesRaw, ok := params["queries"].([]any)
 	if !ok {
-		return nil, nil
+		// Model might send queries as a string containing JSON (common with some model behaviors)
+		if queriesStr, strOk := params["queries"].(string); strOk {
+			// Clean up any XML-style tags that models sometimes include
+			// (e.g., </invoke><invoke name="...">)
+			cleanStr := cleanXMLTags(queriesStr)
+
+			var arr []any
+			if json.Unmarshal([]byte(cleanStr), &arr) == nil {
+				queriesRaw = arr
+			} else {
+				return nil, fmt.Errorf("params['queries'] is a string but not valid JSON: %s", truncateStr(queriesStr, 100))
+			}
+		} else {
+			if params == nil {
+				return nil, fmt.Errorf("params is nil")
+			}
+			if _, exists := params["queries"]; !exists {
+				keys := make([]string, 0, len(params))
+				for k := range params {
+					keys = append(keys, k)
+				}
+				return nil, fmt.Errorf("params missing 'queries' key, got keys: %v", keys)
+			}
+			return nil, fmt.Errorf("params['queries'] is not []any or string, got %T", params["queries"])
+		}
 	}
 
 	var queries []QueryInput
@@ -103,6 +131,31 @@ func ParseQueries(params map[string]any) ([]QueryInput, error) {
 	return queries, nil
 }
 
+// cleanXMLTags removes XML-style invocation tags that models sometimes include.
+// This handles cases like: [...]}]</invoke><invoke name="execute_cypher">...
+func cleanXMLTags(s string) string {
+	// Find the first occurrence of </invoke> or similar XML tags and truncate there
+	if idx := strings.Index(s, "</invoke>"); idx > 0 {
+		s = s[:idx]
+	}
+	if idx := strings.Index(s, "<invoke"); idx > 0 {
+		s = s[:idx]
+	}
+	// Also handle </parameter> tags
+	if idx := strings.Index(s, "</parameter>"); idx > 0 {
+		s = s[:idx]
+	}
+	return strings.TrimSpace(s)
+}
+
+// truncateStr truncates a string for error messages.
+func truncateStr(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "..."
+}
+
 // CypherQueryInput represents a single query in an execute_cypher tool call.
 type CypherQueryInput struct {
 	Question string `json:"question"`
@@ -113,7 +166,30 @@ type CypherQueryInput struct {
 func ParseCypherQueries(params map[string]any) ([]CypherQueryInput, error) {
 	queriesRaw, ok := params["queries"].([]any)
 	if !ok {
-		return nil, nil
+		// Model might send queries as a string containing JSON (common with some model behaviors)
+		if queriesStr, strOk := params["queries"].(string); strOk {
+			// Clean up any XML-style tags that models sometimes include
+			cleanStr := cleanXMLTags(queriesStr)
+
+			var arr []any
+			if json.Unmarshal([]byte(cleanStr), &arr) == nil {
+				queriesRaw = arr
+			} else {
+				return nil, fmt.Errorf("params['queries'] is a string but not valid JSON: %s", truncateStr(queriesStr, 100))
+			}
+		} else {
+			if params == nil {
+				return nil, fmt.Errorf("params is nil")
+			}
+			if _, exists := params["queries"]; !exists {
+				keys := make([]string, 0, len(params))
+				for k := range params {
+					keys = append(keys, k)
+				}
+				return nil, fmt.Errorf("params missing 'queries' key, got keys: %v", keys)
+			}
+			return nil, fmt.Errorf("params['queries'] is not []any or string, got %T", params["queries"])
+		}
 	}
 
 	var queries []CypherQueryInput

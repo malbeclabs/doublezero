@@ -84,11 +84,8 @@ func LoadFromEnv(modeFlag, httpAddrFlag, metricsAddrFlag string, verbose, enable
 		cfg.APIBaseURL = "http://localhost:8080"
 	}
 
-	// Load web UI configuration
+	// Load web UI configuration (optional - if not set, "View on web" links won't be shown)
 	cfg.WebBaseURL = os.Getenv("WEB_BASE_URL")
-	if cfg.WebBaseURL == "" {
-		cfg.WebBaseURL = "http://localhost:5173"
-	}
 
 	return cfg, nil
 }

@@ -600,13 +600,28 @@ type ImpactDevice struct {
 	DeviceType string `json:"deviceType"`
 }
 
+// FailureImpactPath represents a path affected by device failure
+type FailureImpactPath struct {
+	FromPK       string `json:"fromPK"`
+	FromCode     string `json:"fromCode"`
+	ToPK         string `json:"toPK"`
+	ToCode       string `json:"toCode"`
+	BeforeHops   int    `json:"beforeHops"`
+	BeforeMetric uint32 `json:"beforeMetric"`
+	AfterHops    int    `json:"afterHops,omitempty"`   // 0 if no alternate path
+	AfterMetric  uint32 `json:"afterMetric,omitempty"` // 0 if no alternate path
+	HasAlternate bool   `json:"hasAlternate"`
+}
+
 // FailureImpactResponse is the response for the failure impact endpoint
 type FailureImpactResponse struct {
-	DevicePK           string         `json:"devicePK"`
-	DeviceCode         string         `json:"deviceCode"`
-	UnreachableDevices []ImpactDevice `json:"unreachableDevices"`
-	UnreachableCount   int            `json:"unreachableCount"`
-	Error              string         `json:"error,omitempty"`
+	DevicePK           string              `json:"devicePK"`
+	DeviceCode         string              `json:"deviceCode"`
+	UnreachableDevices []ImpactDevice      `json:"unreachableDevices"`
+	UnreachableCount   int                 `json:"unreachableCount"`
+	AffectedPaths      []FailureImpactPath `json:"affectedPaths"`
+	AffectedPathCount  int                 `json:"affectedPathCount"`
+	Error              string              `json:"error,omitempty"`
 }
 
 // GetFailureImpact returns devices that would become unreachable if a device goes down
@@ -629,6 +644,7 @@ func GetFailureImpact(w http.ResponseWriter, r *http.Request) {
 	response := FailureImpactResponse{
 		DevicePK:           devicePK,
 		UnreachableDevices: []ImpactDevice{},
+		AffectedPaths:      []FailureImpactPath{},
 	}
 
 	// First get the device code
@@ -712,8 +728,94 @@ func GetFailureImpact(w http.ResponseWriter, r *http.Request) {
 
 	response.UnreachableCount = len(response.UnreachableDevices)
 
+	// Find affected paths - paths that currently use this device as an intermediate hop
+	// For each affected path, calculate before (through device) and after (rerouted) metrics
+	affectedCypher := `
+		// Get the failing device
+		MATCH (target:Device {pk: $device_pk})
+		WHERE target.isis_system_id IS NOT NULL
+
+		// Find devices that have shortest paths going through target
+		// These are neighbors of target where going through target is part of their shortest path
+		MATCH (target)-[r1:ISIS_ADJACENT]-(neighbor1:Device)
+		WHERE neighbor1.isis_system_id IS NOT NULL
+		WITH target, neighbor1, r1.metric AS metric1
+		MATCH (target)-[r2:ISIS_ADJACENT]-(neighbor2:Device)
+		WHERE neighbor2.isis_system_id IS NOT NULL
+		  AND neighbor2.pk > neighbor1.pk  // Avoid duplicate pairs
+		WITH target, neighbor1, neighbor2, metric1, r2.metric AS metric2
+
+		// Calculate path through target device
+		WITH neighbor1, neighbor2, target,
+		     metric1 + metric2 AS throughTargetMetric
+
+		// Find shortest path between neighbors NOT going through target
+		OPTIONAL MATCH altPath = shortestPath((neighbor1)-[:ISIS_ADJACENT*]-(neighbor2))
+		WHERE NONE(n IN nodes(altPath) WHERE n.pk = target.pk)
+		WITH neighbor1, neighbor2, target, throughTargetMetric,
+		     CASE WHEN altPath IS NOT NULL THEN length(altPath) ELSE 0 END AS altHops,
+		     CASE WHEN altPath IS NOT NULL
+		          THEN reduce(total = 0, rel IN relationships(altPath) | total + coalesce(rel.metric, 0))
+		          ELSE 0 END AS altMetric
+
+		// Only include paths where alternate exists and is worse or doesn't exist
+		WHERE altHops > 0 OR altMetric = 0
+		RETURN neighbor1.pk AS from_pk,
+		       neighbor1.code AS from_code,
+		       neighbor2.pk AS to_pk,
+		       neighbor2.code AS to_code,
+		       2 AS before_hops,
+		       throughTargetMetric AS before_metric,
+		       altHops AS after_hops,
+		       altMetric AS after_metric,
+		       altHops > 0 AS has_alternate
+		ORDER BY (altMetric - throughTargetMetric) DESC
+		LIMIT 20
+	`
+
+	affectedResult, err := session.Run(ctx, affectedCypher, map[string]any{
+		"device_pk": devicePK,
+	})
+	if err != nil {
+		log.Printf("Failure impact affected paths query error: %v", err)
+		// Don't fail the whole response, just log the error
+	} else {
+		affectedRecords, err := affectedResult.Collect(ctx)
+		if err != nil {
+			log.Printf("Failure impact affected paths collect error: %v", err)
+		} else {
+			for _, record := range affectedRecords {
+				fromPK, _ := record.Get("from_pk")
+				fromCode, _ := record.Get("from_code")
+				toPK, _ := record.Get("to_pk")
+				toCode, _ := record.Get("to_code")
+				beforeHops, _ := record.Get("before_hops")
+				beforeMetric, _ := record.Get("before_metric")
+				afterHops, _ := record.Get("after_hops")
+				afterMetric, _ := record.Get("after_metric")
+				hasAlternate, _ := record.Get("has_alternate")
+
+				response.AffectedPaths = append(response.AffectedPaths, FailureImpactPath{
+					FromPK:       asString(fromPK),
+					FromCode:     asString(fromCode),
+					ToPK:         asString(toPK),
+					ToCode:       asString(toCode),
+					BeforeHops:   int(asInt64(beforeHops)),
+					BeforeMetric: uint32(asInt64(beforeMetric)),
+					AfterHops:    int(asInt64(afterHops)),
+					AfterMetric:  uint32(asInt64(afterMetric)),
+					HasAlternate: asBool(hasAlternate),
+				})
+			}
+		}
+	}
+	response.AffectedPathCount = len(response.AffectedPaths)
+
 	duration := time.Since(start)
 	metrics.RecordClickHouseQuery(duration, nil)
+
+	log.Printf("Failure impact: %s, unreachable=%d, affectedPaths=%d in %v",
+		response.DeviceCode, response.UnreachableCount, response.AffectedPathCount, duration)
 
 	writeJSON(w, response)
 }

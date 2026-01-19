@@ -93,15 +93,13 @@ type WorkflowMetrics struct {
 	OutputTokens int // Total output tokens
 
 	// Tool usage
-	ThinkCalls        int // Number of think() invocations
-	ConsecutiveThinks int // Consecutive think calls without execute_sql (reset on execute_sql)
-	SQLQueries        int // Total SQL queries executed
-	SQLErrors         int // Queries that returned errors
+	Queries      int // Total queries executed (SQL + Cypher)
+	QueryErrors  int // Queries that returned errors
 
 	// Timing
 	TotalDuration time.Duration // End-to-end time
 	LLMDuration   time.Duration // Time spent in LLM calls
-	SQLDuration   time.Duration // Time spent executing SQL
+	QueryDuration time.Duration // Time spent executing queries
 
 	// Loop behavior
 	LoopIterations int  // LLM round-trips

@@ -309,6 +309,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
   const [hoveredDevice, setHoveredDevice] = useState<HoveredDeviceInfo | null>(null)
   const [hoveredMetro, setHoveredMetro] = useState<HoveredMetroInfo | null>(null)
   const [hoveredValidator, setHoveredValidator] = useState<HoveredValidatorInfo | null>(null)
+  const [mousePos, setMousePos] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const [selectedItem, setSelectedItemState] = useState<SelectedItem | null>(null)
   const mapRef = useRef<MapRef>(null)
   const markerClickedRef = useRef(false)
@@ -1576,6 +1577,11 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     setHoveredLink(null)
   }, [])
 
+  // Track mouse position for cursor-following popover
+  const handleMouseMove = useCallback((e: maplibregl.MapMouseEvent) => {
+    setMousePos({ x: e.point.x, y: e.point.y })
+  }, [])
+
   return (
     <>
       <MapGL
@@ -1594,6 +1600,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
         interactiveLayerIds={['link-lines', 'link-hit-area']}
         onMouseEnter={handleLinkMouseEnter}
         onMouseLeave={handleLinkMouseLeave}
+        onMouseMove={handleMouseMove}
         cursor={hoveredLink ? 'pointer' : undefined}
       >
         <TopologyControlBar
@@ -1976,111 +1983,38 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
         })}
       </MapGL>
 
-      {/* Info panel - shows full details on hover (left of controls) */}
+      {/* Hover tooltip - cursor-following, minimal info */}
       {(hoveredLink || hoveredDevice || hoveredMetro || hoveredValidator) && (
-        <div className="absolute top-4 right-16 z-[1000] bg-[var(--card)] border border-[var(--border)] rounded-lg shadow-lg p-4 min-w-[200px]">
+        <div
+          className="absolute z-[1000] bg-[var(--card)]/95 backdrop-blur border border-[var(--border)] rounded-md shadow-lg px-3 py-2 pointer-events-none"
+          style={{
+            left: mousePos.x + 16,
+            top: mousePos.y + 16,
+          }}
+        >
           {hoveredLink && (
-            <>
-              {hoveredLink.isInterMetro ? (
-                <>
-                  <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Inter-Metro Link</div>
-                  <div className="text-sm font-medium mb-2">{hoveredLink.code}</div>
-                  <div className="space-y-1 text-xs">
-                    <DetailRow label="Links" value={String(hoveredLink.linkCount ?? 0)} />
-                    <DetailRow label="Avg Latency" value={hoveredLink.avgLatencyMs ?? 'N/A'} />
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Link</div>
-                  <div className="text-sm font-medium mb-2">{hoveredLink.code}</div>
-                  <div className="space-y-1 text-xs">
-                    <DetailRow label="Type" value={hoveredLink.linkType} />
-                    <DetailRow label="Contributor" value={hoveredLink.contributorCode || '—'} />
-                    <DetailRow label="Bandwidth" value={hoveredLink.bandwidth} />
-                    <DetailRow label="Latency" value={hoveredLink.latencyMs} />
-                    <DetailRow label="Jitter" value={hoveredLink.jitterMs} />
-                    <DetailRow label="Loss" value={hoveredLink.lossPercent} />
-                    <DetailRow label="In" value={hoveredLink.inRate} />
-                    <DetailRow label="Out" value={hoveredLink.outRate} />
-                    <DetailRow label="Side A" value={hoveredLink.deviceACode} />
-                    <DetailRow label="Side Z" value={hoveredLink.deviceZCode} />
-                    {hoveredLink.health && (
-                      <>
-                        <div className="border-t border-border mt-2 pt-2">
-                          <div className="text-muted-foreground uppercase tracking-wider mb-1">Health</div>
-                        </div>
-                        <DetailRow label="Committed" value={`${(hoveredLink.health.committedRttNs / 1000000).toFixed(2)}ms`} />
-                        <DetailRow
-                          label="SLA Ratio"
-                          value={<span className={
-                            hoveredLink.health.slaRatio >= 2.0 ? 'text-red-500' :
-                            hoveredLink.health.slaRatio >= 1.5 ? 'text-yellow-500' : 'text-green-500'
-                          }>{(hoveredLink.health.slaRatio * 100).toFixed(0)}%</span>}
-                        />
-                        <DetailRow
-                          label="Pkt Loss"
-                          value={<span className={
-                            hoveredLink.health.lossPct > 10 ? 'text-red-500' :
-                            hoveredLink.health.lossPct > 0.1 ? 'text-yellow-500' : 'text-green-500'
-                          }>{hoveredLink.health.lossPct.toFixed(2)}%</span>}
-                        />
-                        <DetailRow
-                          label="Status"
-                          value={<span className={
-                            hoveredLink.health.status === 'critical' ? 'text-red-500' :
-                            hoveredLink.health.status === 'warning' ? 'text-yellow-500' :
-                            hoveredLink.health.status === 'healthy' ? 'text-green-500' : 'text-muted-foreground'
-                          }>{hoveredLink.health.status}</span>}
-                        />
-                      </>
-                    )}
-                  </div>
-                </>
-              )}
-            </>
+            <div>
+              <div className="text-xs text-muted-foreground">{hoveredLink.isInterMetro ? 'Inter-Metro' : hoveredLink.linkType}</div>
+              <div className="text-sm font-medium">{hoveredLink.code}</div>
+            </div>
           )}
           {hoveredDevice && !hoveredLink && (
-            <>
-              <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Device</div>
-              <div className="text-sm font-medium mb-2">{hoveredDevice.code}</div>
-              <div className="space-y-1 text-xs">
-                <DetailRow label="Type" value={hoveredDevice.deviceType} />
-                <DetailRow label="Contributor" value={hoveredDevice.contributorCode || '—'} />
-                <DetailRow label="Metro" value={hoveredDevice.metroName} />
-                <DetailRow label="Users" value={String(hoveredDevice.userCount)} />
-                <DetailRow label="Validators" value={String(hoveredDevice.validatorCount)} />
-                <DetailRow label="Stake" value={`${hoveredDevice.stakeSol} SOL`} />
-                <DetailRow label="Stake Share" value={hoveredDevice.stakeShare} />
-              </div>
-            </>
+            <div>
+              <div className="text-xs text-muted-foreground capitalize">{hoveredDevice.deviceType}</div>
+              <div className="text-sm font-medium">{hoveredDevice.code}</div>
+            </div>
           )}
           {hoveredMetro && !hoveredLink && !hoveredDevice && !hoveredValidator && (
-            <>
-              <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Metro</div>
-              <div className="text-sm font-medium mb-2">{hoveredMetro.name}</div>
-              <div className="space-y-1 text-xs">
-                <DetailRow label="Code" value={hoveredMetro.code} />
-                <DetailRow label="Devices" value={String(hoveredMetro.deviceCount)} />
-              </div>
-            </>
+            <div>
+              <div className="text-xs text-muted-foreground">Metro</div>
+              <div className="text-sm font-medium">{hoveredMetro.name}</div>
+            </div>
           )}
           {hoveredValidator && !hoveredLink && !hoveredDevice && (
-            <>
-              <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Validator</div>
-              <div className="text-sm font-medium font-mono mb-2" title={hoveredValidator.votePubkey}>{hoveredValidator.votePubkey.slice(0, 12)}...</div>
-              <div className="space-y-1 text-xs">
-                <DetailRow label="Location" value={`${hoveredValidator.city}, ${hoveredValidator.country}`} />
-                <DetailRow label="Gossip" value={hoveredValidator.gossipIp ? `${hoveredValidator.gossipIp}:${hoveredValidator.gossipPort}` : '—'} />
-                <DetailRow label="TPU QUIC" value={hoveredValidator.tpuQuicIp ? `${hoveredValidator.tpuQuicIp}:${hoveredValidator.tpuQuicPort}` : '—'} />
-                <DetailRow label="Stake" value={`${hoveredValidator.stakeSol} SOL`} />
-                <DetailRow label="Commission" value={`${hoveredValidator.commission}%`} />
-                <DetailRow label="Version" value={hoveredValidator.version || '—'} />
-                <DetailRow label="Device" value={hoveredValidator.deviceCode} />
-                <DetailRow label="In" value={hoveredValidator.inRate} />
-                <DetailRow label="Out" value={hoveredValidator.outRate} />
-              </div>
-            </>
+            <div>
+              <div className="text-xs text-muted-foreground">Validator</div>
+              <div className="text-sm font-medium font-mono">{hoveredValidator.votePubkey.slice(0, 12)}...</div>
+            </div>
           )}
         </div>
       )}
@@ -2293,12 +2227,3 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
   )
 }
 
-// Simple row component for hover info display
-function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="flex justify-between gap-4">
-      <span className="text-muted-foreground">{label}:</span>
-      <span>{value}</span>
-    </div>
-  )
-}

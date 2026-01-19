@@ -234,7 +234,7 @@ function useBucketCount() {
 export function DeviceStatusTimelines({
   timeRange = '24h',
   onTimeRangeChange,
-  issueFilters = ['interface_errors', 'carrier_transitions', 'drained'],
+  issueFilters = ['interface_errors', 'discards', 'carrier_transitions', 'drained'],
   healthFilters = ['healthy', 'degraded', 'unhealthy', 'disabled'],
   devicesWithIssues,
   devicesWithHealth,
@@ -437,6 +437,14 @@ export function DeviceStatusTimelines({
                           style={{ backgroundColor: 'rgba(217, 70, 239, 0.15)', color: '#a21caf' }}
                         >
                           Interface Errors
+                        </span>
+                      )}
+                      {issueReasons.includes('discards') && (
+                        <span
+                          className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                          style={{ backgroundColor: 'rgba(244, 63, 94, 0.15)', color: '#be123c' }}
+                        >
+                          Discards
                         </span>
                       )}
                       {issueReasons.includes('carrier_transitions') && (

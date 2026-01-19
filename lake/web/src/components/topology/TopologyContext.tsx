@@ -97,7 +97,7 @@ function parseOverlaysFromUrl(param: string | null, view: 'map' | 'graph'): Over
     metroClustering: false,
     contributorDevices: false,
     linkType: true,                 // Default on for both views
-    bandwidth: false,
+    bandwidth: true,                // Default on for both views
     linkHealth: false,
     trafficFlow: false,
     contributorLinks: false,

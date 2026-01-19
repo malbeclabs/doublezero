@@ -1,0 +1,77 @@
+// Device type colors (must match topology-graph.tsx and topology-map.tsx)
+const DEVICE_TYPE_COLORS: Record<string, { light: string; dark: string }> = {
+  hybrid: { light: '#7c3aed', dark: '#a78bfa' },    // purple
+  transit: { light: '#2563eb', dark: '#60a5fa' },   // blue
+  edge: { light: '#0891b2', dark: '#22d3ee' },      // cyan
+  default: { light: '#6b7280', dark: '#9ca3af' },   // gray
+}
+
+const DEVICE_TYPES = ['hybrid', 'transit', 'edge']
+
+interface DeviceTypeOverlayPanelProps {
+  isDark: boolean
+  deviceCounts?: Record<string, number>
+}
+
+export function DeviceTypeOverlayPanel({ isDark, deviceCounts }: DeviceTypeOverlayPanelProps) {
+  return (
+    <div className="p-4 space-y-4">
+      <div>
+        <h3 className="text-sm font-medium mb-2">Device Types</h3>
+        <p className="text-xs text-muted-foreground mb-3">
+          Devices are colored by their network role type.
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        {DEVICE_TYPES.map((type) => {
+          const colors = DEVICE_TYPE_COLORS[type] || DEVICE_TYPE_COLORS.default
+          const count = deviceCounts?.[type] ?? 0
+          return (
+            <div key={type} className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div
+                  className="w-4 h-4 rounded-full border-2"
+                  style={{
+                    backgroundColor: isDark ? colors.dark : colors.light,
+                    borderColor: isDark ? '#22c55e' : '#16a34a',
+                  }}
+                />
+                <span className="text-sm capitalize">{type}</span>
+              </div>
+              {deviceCounts && (
+                <span className="text-xs text-muted-foreground">{count}</span>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      <div className="pt-3 border-t border-[var(--border)]">
+        <h4 className="text-xs font-medium mb-2 text-muted-foreground">Status Border</h4>
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <div
+              className="w-4 h-4 rounded-full border-2"
+              style={{
+                borderColor: isDark ? '#22c55e' : '#16a34a',
+                backgroundColor: 'transparent'
+              }}
+            />
+            <span className="text-sm">Active</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div
+              className="w-4 h-4 rounded-full border-2"
+              style={{
+                borderColor: isDark ? '#ef4444' : '#dc2626',
+                backgroundColor: 'transparent'
+              }}
+            />
+            <span className="text-sm">Inactive</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}

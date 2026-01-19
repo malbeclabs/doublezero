@@ -971,7 +971,7 @@ export function TopologyGraph({
   }, [mode, selectedDevicePK])
 
   // Apply health status styles when ISIS health overlay is enabled (using direct .style() for reliability)
-  // Combined: color by health status, thickness by metric
+  // Combined: color by health status, thickness by metric (unless bandwidth overlay controls width)
   useEffect(() => {
     if (!cyRef.current || !isisHealthEnabled) return
     const cy = cyRef.current
@@ -993,28 +993,28 @@ export function TopologyGraph({
         const edgeId = edge.data('id') // format: source->target
         const status = edgeHealthStatus.get(edgeId)
         const metric = edge.data('metric') ?? 0
-        const width = getMetricWidth(metric)
+        const width = bandwidthEnabled ? undefined : getMetricWidth(metric)
 
         if (status === 'missing') {
           edge.style({
             'line-color': '#ef4444',
             'target-arrow-color': '#ef4444',
             'line-style': 'dashed',
-            'width': width,
+            ...(width !== undefined && { 'width': width }),
             'opacity': 1,
           })
         } else if (status === 'extra') {
           edge.style({
             'line-color': '#f59e0b',
             'target-arrow-color': '#f59e0b',
-            'width': width,
+            ...(width !== undefined && { 'width': width }),
             'opacity': 1,
           })
         } else if (status === 'mismatch') {
           edge.style({
             'line-color': '#eab308',
             'target-arrow-color': '#eab308',
-            'width': width,
+            ...(width !== undefined && { 'width': width }),
             'opacity': 1,
           })
         } else {
@@ -1022,15 +1022,16 @@ export function TopologyGraph({
           edge.style({
             'line-color': '#22c55e',
             'target-arrow-color': '#22c55e',
-            'width': width,
+            ...(width !== undefined && { 'width': width }),
             'opacity': 0.8,
           })
         }
       })
     })
-  }, [isisHealthEnabled, compareData, edgeHealthStatus, cyGeneration])
+  }, [isisHealthEnabled, compareData, edgeHealthStatus, cyGeneration, bandwidthEnabled])
 
   // Apply criticality styles when criticality overlay is enabled (using direct .style() for reliability)
+  // Width is only set if bandwidth overlay is not active
   useEffect(() => {
     if (!cyRef.current || !criticalityEnabled) return
     const cy = cyRef.current
@@ -1047,14 +1048,14 @@ export function TopologyGraph({
           edge.style({
             'line-color': '#ef4444',
             'target-arrow-color': '#ef4444',
-            'width': 4,
+            ...(!bandwidthEnabled && { 'width': 4 }),
             'opacity': 1,
           })
         } else if (crit === 'important') {
           edge.style({
             'line-color': '#f59e0b',
             'target-arrow-color': '#f59e0b',
-            'width': 3,
+            ...(!bandwidthEnabled && { 'width': 3 }),
             'opacity': 0.9,
           })
         } else {
@@ -1062,13 +1063,13 @@ export function TopologyGraph({
           edge.style({
             'line-color': isDark ? '#4b5563' : '#9ca3af',
             'target-arrow-color': isDark ? '#4b5563' : '#9ca3af',
-            'width': 1,
+            ...(!bandwidthEnabled && { 'width': 1 }),
             'opacity': 0.4,
           })
         }
       })
     })
-  }, [criticalityEnabled, criticalLinksData, edgeCriticality, isDark, cyGeneration])
+  }, [criticalityEnabled, criticalLinksData, edgeCriticality, isDark, cyGeneration, bandwidthEnabled])
 
   // Apply stake overlay styling when enabled
   useEffect(() => {
@@ -1279,7 +1280,7 @@ export function TopologyGraph({
 
     const defaultColor = isDark ? '#6b7280' : '#9ca3af'
     // Don't set colors if another color overlay will handle it
-    const shouldSetColor = !contributorLinksEnabled && !linkHealthOverlayEnabled && !trafficFlowEnabled && !linkTypeEnabled
+    const shouldSetColor = !contributorLinksEnabled && !linkHealthOverlayEnabled && !trafficFlowEnabled && !linkTypeEnabled && !isisHealthEnabled && !criticalityEnabled
 
     cy.batch(() => {
       if (bandwidthEnabled && edgeTrafficMap.size > 0) {

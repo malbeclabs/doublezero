@@ -4,12 +4,11 @@ import MapGL, { Source, Layer, Marker } from 'react-map-gl/maplibre'
 import type { MapRef, MapLayerMouseEvent, LngLatBoundsLike } from 'react-map-gl/maplibre'
 import type { StyleSpecification } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { X, AlertTriangle, Coins, Activity, BarChart3, MapPin } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { useTheme } from '@/hooks/use-theme'
 import type { TopologyMetro, TopologyDevice, TopologyLink, TopologyValidator, MultiPathResponse, SimulateLinkRemovalResponse, SimulateLinkAdditionResponse, FailureImpactResponse } from '@/lib/api'
 import { fetchISISPaths, fetchISISTopology, fetchCriticalLinks, fetchSimulateLinkRemoval, fetchSimulateLinkAddition, fetchFailureImpact, fetchLinkHealth } from '@/lib/api'
-import { useTopology, TopologyControlBar, TopologyPanel, DeviceDetails, LinkDetails, MetroDetails, ValidatorDetails, EntityLink as TopologyEntityLink, PathModePanel, CriticalityPanel, WhatIfRemovalPanel, WhatIfAdditionPanel, ImpactPanel } from '@/components/topology'
+import { useTopology, TopologyControlBar, TopologyPanel, DeviceDetails, LinkDetails, MetroDetails, ValidatorDetails, EntityLink as TopologyEntityLink, PathModePanel, CriticalityPanel, WhatIfRemovalPanel, WhatIfAdditionPanel, ImpactPanel, StakeOverlayPanel, LinkHealthOverlayPanel, TrafficFlowOverlayPanel, MetroClusteringOverlayPanel } from '@/components/topology'
 
 // Path colors for multi-path visualization
 const PATH_COLORS = [
@@ -598,6 +597,40 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     }
     return map
   }, [devices])
+
+  // Build device stake map for overlay panel (maps device PK to stake info)
+  const deviceStakeMap = useMemo(() => {
+    const map = new Map<string, { stakeSol: number; validatorCount: number }>()
+    for (const device of devices) {
+      map.set(device.pk, {
+        stakeSol: device.stake_sol ?? 0,
+        validatorCount: device.validator_count ?? 0,
+      })
+    }
+    return map
+  }, [devices])
+
+  // Build metro info map for overlay panel (maps metro PK to code/name)
+  const metroInfoMap = useMemo(() => {
+    const map = new Map<string, { code: string; name: string }>()
+    for (const metro of metros) {
+      map.set(metro.pk, { code: metro.code, name: metro.name })
+    }
+    return map
+  }, [metros])
+
+  // Build edge traffic map for overlay panel (maps link PK to traffic info)
+  const edgeTrafficMap = useMemo(() => {
+    const map = new Map<string, { inBps: number; outBps: number; bandwidthBps: number; utilization: number }>()
+    for (const link of links) {
+      const inBps = link.in_bps ?? 0
+      const outBps = link.out_bps ?? 0
+      const bandwidthBps = link.bandwidth_bps ?? 0
+      const utilization = bandwidthBps > 0 ? Math.max(inBps, outBps) / bandwidthBps : 0
+      map.set(link.pk, { inBps, outBps, bandwidthBps, utilization })
+    }
+    return map
+  }, [links])
 
   // Calculate device positions
   const devicePositions = useMemo(() => {
@@ -1861,396 +1894,6 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
         </div>
       )}
 
-      {/* Stake Overlay Legend */}
-      {stakeOverlayMode && (
-        <div className="absolute top-[280px] right-4 z-[999] bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm p-3 text-xs max-w-52">
-          <div className="flex items-center justify-between mb-2">
-            <span className="font-medium flex items-center gap-1.5">
-              <Coins className="h-3.5 w-3.5 text-yellow-500" />
-              Stake Distribution
-            </span>
-          </div>
-
-          {/* Summary stats */}
-          <div className="space-y-1 mb-3">
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Devices with stake</span>
-              <span className="font-medium">
-                {devices.filter(d => (d.stake_sol ?? 0) > 0).length}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Total validators</span>
-              <span className="font-medium">
-                {devices.reduce((sum, d) => sum + (d.validator_count ?? 0), 0)}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Total stake</span>
-              <span className="font-medium">
-                {(() => {
-                  const total = devices.reduce((sum, d) => sum + (d.stake_sol ?? 0), 0)
-                  if (total >= 1e9) return `${(total / 1e9).toFixed(1)}B`
-                  if (total >= 1e6) return `${(total / 1e6).toFixed(1)}M`
-                  if (total >= 1e3) return `${(total / 1e3).toFixed(0)}k`
-                  return total.toFixed(0)
-                })()} SOL
-              </span>
-            </div>
-          </div>
-
-          {/* Size legend */}
-          <div className="pt-2 border-t border-[var(--border)]">
-            <div className="text-muted-foreground mb-2">Device size = stake amount</div>
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-1">
-                <div className="w-2 h-2 rounded-full bg-gray-500" />
-                <span className="text-muted-foreground">No stake</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-3 rounded-full bg-yellow-500" />
-                <span className="text-muted-foreground">100k</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <div className="w-4 h-4 rounded-full bg-orange-500" />
-                <span className="text-muted-foreground">1M+</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Top devices by stake */}
-          <div className="pt-2 mt-2 border-t border-[var(--border)]">
-            <div className="text-muted-foreground mb-1">Top by stake:</div>
-            <div className="space-y-0.5 max-h-24 overflow-y-auto">
-              {[...devices]
-                .filter(d => (d.stake_sol ?? 0) > 0)
-                .sort((a, b) => (b.stake_sol ?? 0) - (a.stake_sol ?? 0))
-                .slice(0, 5)
-                .map((device) => (
-                  <div key={device.pk} className="flex items-center justify-between">
-                    <span className="text-yellow-500">{device.code}</span>
-                    <span className="text-muted-foreground">
-                      {(device.stake_sol ?? 0) >= 1e6 ? `${(device.stake_sol / 1e6).toFixed(1)}M` : `${((device.stake_sol ?? 0) / 1e3).toFixed(0)}k`}
-                    </span>
-                  </div>
-                ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Link Health Legend */}
-      {linkHealthMode && (
-        <div className="absolute top-[280px] right-4 z-[999] bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm p-3 text-xs max-w-56">
-          <div className="flex items-center justify-between mb-2">
-            <span className="font-medium flex items-center gap-1.5">
-              <Activity className="h-3.5 w-3.5 text-green-500" />
-              Link Health (SLA)
-            </span>
-            <button
-              onClick={() => toggleOverlay('linkHealth')}
-              className="p-1 hover:bg-[var(--muted)] rounded"
-              title="Close"
-            >
-              <X className="h-3 w-3" />
-            </button>
-          </div>
-
-          {!linkHealthData && (
-            <div className="text-muted-foreground">Loading health data...</div>
-          )}
-
-          {linkHealthData && (
-            <div className="space-y-3">
-              {/* Summary stats */}
-              <div className="space-y-1.5">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Total Links</span>
-                  <span className="font-medium">{linkHealthData.total_links}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-green-500">Healthy</span>
-                  <span className="font-medium text-green-500">{linkHealthData.healthy_count}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-yellow-500">Warning</span>
-                  <span className="font-medium text-yellow-500">{linkHealthData.warning_count}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-red-500">Critical</span>
-                  <span className="font-medium text-red-500">{linkHealthData.critical_count}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Unknown</span>
-                  <span className="font-medium text-muted-foreground">{linkHealthData.unknown_count}</span>
-                </div>
-              </div>
-
-              {/* Critical links list */}
-              {linkHealthData.critical_count > 0 && (
-                <div className="pt-2 border-t border-[var(--border)]">
-                  <div className="flex items-center gap-1.5 mb-2">
-                    <AlertTriangle className="h-3.5 w-3.5 text-red-500" />
-                    <span className="font-medium text-red-500">SLA Violations</span>
-                  </div>
-                  <div className="space-y-1 max-h-24 overflow-y-auto">
-                    {linkHealthData.links
-                      .filter(l => l.sla_status === 'critical')
-                      .slice(0, 5)
-                      .map(link => (
-                        <div key={link.link_pk} className="text-red-400 truncate text-[10px]">
-                          {link.side_a_code} — {link.side_z_code}
-                          <span className="text-muted-foreground ml-1">
-                            ({(link.avg_rtt_us / 1000).toFixed(1)}ms vs {(link.committed_rtt_ns / 1_000_000).toFixed(1)}ms SLA)
-                          </span>
-                        </div>
-                      ))}
-                    {linkHealthData.critical_count > 5 && (
-                      <div className="text-muted-foreground">+{linkHealthData.critical_count - 5} more</div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Legend */}
-              <div className="pt-2 border-t border-[var(--border)]">
-                <div className="text-muted-foreground mb-1.5">Link Colors</div>
-                <div className="space-y-1">
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-4 h-0.5 bg-green-500 rounded" />
-                    <span>Healthy (&lt;80% of SLA)</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-4 h-0.5 bg-yellow-500 rounded" />
-                    <span>Warning (80-100% of SLA)</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-4 h-1 bg-red-500 rounded" />
-                    <span>Critical (exceeds SLA)</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-4 h-0.5 bg-gray-400 rounded opacity-50" />
-                    <span>Unknown (no data)</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Traffic Flow Legend */}
-      {trafficFlowMode && (
-        <div className="absolute top-[280px] right-4 z-[999] bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm p-3 text-xs max-w-56">
-          <div className="flex items-center justify-between mb-2">
-            <span className="font-medium flex items-center gap-1.5">
-              <BarChart3 className="h-3.5 w-3.5 text-cyan-500" />
-              Traffic Flow
-            </span>
-            <button
-              onClick={() => toggleOverlay('trafficFlow')}
-              className="p-1 hover:bg-[var(--muted)] rounded"
-              title="Close"
-            >
-              <X className="h-3 w-3" />
-            </button>
-          </div>
-
-          <div className="space-y-3">
-            {/* Summary stats */}
-            <div className="space-y-1.5">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Total Links</span>
-                <span className="font-medium">{links.length}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-red-500">Critical (≥80%)</span>
-                <span className="font-medium text-red-500">
-                  {links.filter(l => {
-                    const util = l.bandwidth_bps > 0 ? ((l.in_bps ?? 0) + (l.out_bps ?? 0)) / l.bandwidth_bps * 100 : 0
-                    return util >= 80
-                  }).length}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-yellow-500">High (50-80%)</span>
-                <span className="font-medium text-yellow-500">
-                  {links.filter(l => {
-                    const util = l.bandwidth_bps > 0 ? ((l.in_bps ?? 0) + (l.out_bps ?? 0)) / l.bandwidth_bps * 100 : 0
-                    return util >= 50 && util < 80
-                  }).length}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-lime-500">Medium (20-50%)</span>
-                <span className="font-medium text-lime-500">
-                  {links.filter(l => {
-                    const util = l.bandwidth_bps > 0 ? ((l.in_bps ?? 0) + (l.out_bps ?? 0)) / l.bandwidth_bps * 100 : 0
-                    return util >= 20 && util < 50
-                  }).length}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-green-500">Low (&lt;20%)</span>
-                <span className="font-medium text-green-500">
-                  {links.filter(l => {
-                    const util = l.bandwidth_bps > 0 ? ((l.in_bps ?? 0) + (l.out_bps ?? 0)) / l.bandwidth_bps * 100 : 0
-                    return util > 0 && util < 20
-                  }).length}
-                </span>
-              </div>
-            </div>
-
-            {/* High utilization links */}
-            {(() => {
-              const highUtilLinks = links
-                .filter(l => {
-                  const totalBps = (l.in_bps ?? 0) + (l.out_bps ?? 0)
-                  const util = l.bandwidth_bps > 0 ? (totalBps / l.bandwidth_bps) * 100 : 0
-                  return util >= 50
-                })
-                .sort((a, b) => {
-                  const utilA = a.bandwidth_bps > 0 ? ((a.in_bps ?? 0) + (a.out_bps ?? 0)) / a.bandwidth_bps : 0
-                  const utilB = b.bandwidth_bps > 0 ? ((b.in_bps ?? 0) + (b.out_bps ?? 0)) / b.bandwidth_bps : 0
-                  return utilB - utilA
-                })
-                .slice(0, 5)
-
-              if (highUtilLinks.length === 0) return null
-
-              return (
-                <div className="pt-2 border-t border-[var(--border)]">
-                  <div className="flex items-center gap-1.5 mb-2">
-                    <AlertTriangle className="h-3.5 w-3.5 text-yellow-500" />
-                    <span className="font-medium text-yellow-500">High Utilization</span>
-                  </div>
-                  <div className="space-y-1 max-h-24 overflow-y-auto">
-                    {highUtilLinks.map(link => {
-                      const totalBps = (link.in_bps ?? 0) + (link.out_bps ?? 0)
-                      const util = link.bandwidth_bps > 0 ? (totalBps / link.bandwidth_bps) * 100 : 0
-                      const color = util >= 80 ? 'text-red-400' : 'text-yellow-400'
-                      return (
-                        <div key={link.pk} className={`${color} truncate text-[10px]`}>
-                          {link.code}
-                          <span className="text-muted-foreground ml-1">
-                            ({util.toFixed(0)}% - {formatBandwidth(totalBps)})
-                          </span>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              )
-            })()}
-
-            {/* Legend */}
-            <div className="pt-2 border-t border-[var(--border)]">
-              <div className="text-muted-foreground mb-1.5">Link Colors (by utilization)</div>
-              <div className="space-y-1">
-                <div className="flex items-center gap-1.5">
-                  <div className="w-4 h-0.5 bg-green-500 rounded" />
-                  <span>Low (&lt;20%)</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-4 h-0.5 bg-lime-500 rounded" />
-                  <span>Medium (20-50%)</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-4 h-1 bg-yellow-500 rounded" />
-                  <span>High (50-80%)</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-4 h-1.5 bg-red-500 rounded" />
-                  <span>Critical (≥80%)</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-4 h-0.5 bg-gray-400 rounded opacity-40" />
-                  <span>Idle (no traffic)</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Metro Clustering Legend */}
-      {metroClusteringMode && (
-        <div className="absolute top-[280px] right-4 z-[999] bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm p-3 text-xs max-w-56">
-          <div className="flex items-center justify-between mb-2">
-            <span className="font-medium flex items-center gap-1.5">
-              <MapPin className="h-3.5 w-3.5 text-blue-500" />
-              Metro Clustering
-            </span>
-            <button
-              onClick={() => toggleOverlay('metroClustering')}
-              className="p-1 hover:bg-[var(--muted)] rounded"
-              title="Close"
-            >
-              <X className="h-3 w-3" />
-            </button>
-          </div>
-
-          {/* Collapse/Expand all buttons */}
-          <div className="flex gap-2 mb-3">
-            <button
-              onClick={() => setCollapsedMetros(new Set(metros.map(m => m.pk)))}
-              className="flex-1 px-2 py-1 text-[10px] bg-[var(--muted)] hover:bg-[var(--muted)]/80 rounded transition-colors"
-            >
-              Collapse All
-            </button>
-            <button
-              onClick={() => setCollapsedMetros(new Set())}
-              className="flex-1 px-2 py-1 text-[10px] bg-[var(--muted)] hover:bg-[var(--muted)]/80 rounded transition-colors"
-            >
-              Expand All
-            </button>
-          </div>
-
-          {/* Summary */}
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-muted-foreground">Metros</span>
-            <span className="font-medium">{metros.length}</span>
-          </div>
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-muted-foreground">Collapsed</span>
-            <span className="font-medium">{collapsedMetros.size}</span>
-          </div>
-
-          {/* Metro list */}
-          <div className="pt-2 border-t border-[var(--border)]">
-            <div className="text-muted-foreground mb-1.5">Click to collapse/expand:</div>
-            <div className="space-y-1 max-h-40 overflow-y-auto">
-              {[...metros]
-                .sort((a, b) => a.code.localeCompare(b.code))
-                .map((metro) => {
-                  const metroIndex = metroIndexMap.get(metro.pk) ?? 0
-                  const color = getMetroColor(metro.pk, metroIndex)
-                  const isCollapsed = collapsedMetros.has(metro.pk)
-                  const deviceCount = devicesByMetro.get(metro.pk)?.length ?? 0
-                  return (
-                    <div
-                      key={metro.pk}
-                      className={`flex items-center justify-between cursor-pointer hover:bg-[var(--muted)] rounded px-1 py-0.5 transition-colors ${isCollapsed ? 'opacity-60' : ''}`}
-                      onClick={() => toggleMetroCollapse(metro.pk)}
-                    >
-                      <div className="flex items-center gap-1.5">
-                        <div
-                          className="w-3 h-3 rounded-full"
-                          style={{ backgroundColor: color }}
-                        />
-                        <span style={{ color }}>{metro.code}</span>
-                      </div>
-                      <span className="text-muted-foreground">
-                        {isCollapsed ? `(${deviceCount})` : deviceCount}
-                      </span>
-                    </div>
-                  )
-                })}
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Detail panel (right side) - shown when entity selected in explore mode */}
       {selectedItem && panel.isOpen && panel.content === 'details' && (
         <TopologyPanel
@@ -2351,6 +1994,54 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
                 setImpactDevice(null)
                 setImpactResult(null)
               }}
+            />
+          )}
+        </TopologyPanel>
+      )}
+
+      {/* Overlay panel (right side) - shown when overlay is active */}
+      {panel.isOpen && panel.content === 'overlay' && (
+        <TopologyPanel
+          title={
+            stakeOverlayMode ? 'Stake Distribution' :
+            linkHealthMode ? 'Link Health' :
+            trafficFlowMode ? 'Traffic Flow' :
+            metroClusteringMode ? 'Metro Clustering' :
+            'Overlay'
+          }
+        >
+          {stakeOverlayMode && (
+            <StakeOverlayPanel
+              deviceStakeMap={deviceStakeMap}
+              getStakeColor={getStakeColor}
+              getDeviceLabel={(pk) => deviceMap.get(pk)?.code || pk.substring(0, 8)}
+              isLoading={devices.length === 0}
+            />
+          )}
+          {linkHealthMode && (
+            <LinkHealthOverlayPanel
+              linkHealthData={linkHealthData}
+              isLoading={!linkHealthData}
+            />
+          )}
+          {trafficFlowMode && (
+            <TrafficFlowOverlayPanel
+              edgeTrafficMap={edgeTrafficMap}
+              links={links}
+              isLoading={links.length === 0}
+            />
+          )}
+          {metroClusteringMode && (
+            <MetroClusteringOverlayPanel
+              metroInfoMap={metroInfoMap}
+              collapsedMetros={collapsedMetros}
+              getMetroColor={(pk) => getMetroColor(pk, metroIndexMap.get(pk) ?? 0)}
+              getDeviceCountForMetro={(pk) => devicesByMetro.get(pk)?.length ?? 0}
+              totalDeviceCount={devices.length}
+              onToggleMetroCollapse={toggleMetroCollapse}
+              onCollapseAll={() => setCollapsedMetros(new Set(metroInfoMap.keys()))}
+              onExpandAll={() => setCollapsedMetros(new Set())}
+              isLoading={metros.length === 0}
             />
           )}
         </TopologyPanel>

@@ -12,7 +12,7 @@ import { useTopology, TopologyPanel, TopologyControlBar, DeviceDetails, LinkDeta
 // Device type colors (types from serviceability smart contract: hybrid, transit, edge)
 const DEVICE_TYPE_COLORS: Record<string, { light: string; dark: string }> = {
   hybrid: { light: '#7c3aed', dark: '#a78bfa' },    // purple
-  transit: { light: '#2563eb', dark: '#60a5fa' },   // blue
+  transit: { light: '#ea580c', dark: '#f97316' },   // orange
   edge: { light: '#0891b2', dark: '#22d3ee' },      // cyan
   default: { light: '#6b7280', dark: '#9ca3af' },   // gray
 }

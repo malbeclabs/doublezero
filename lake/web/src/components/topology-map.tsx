@@ -52,7 +52,7 @@ const CONTRIBUTOR_COLORS = [
 // Device type colors (hybrid, transit, edge)
 const DEVICE_TYPE_COLORS: Record<string, string> = {
   hybrid: '#a78bfa',    // purple
-  transit: '#60a5fa',   // blue
+  transit: '#f97316',   // orange
   edge: '#22d3ee',      // cyan
   default: '#9ca3af',   // gray
 }
@@ -1736,7 +1736,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           if (deviceTypeMode && !stakeOverlayMode && !metroClusteringMode && !contributorDevicesMode) {
             const deviceType = device.device_type?.toLowerCase() || 'default'
             markerColor = DEVICE_TYPE_COLORS[deviceType] || DEVICE_TYPE_COLORS.default
-            borderColor = device.status === 'activated' ? '#22c55e' : '#ef4444' // green/red for status
+            borderColor = markerColor
             borderWidth = 2
             opacity = 1
           }

@@ -381,7 +381,7 @@ func (p *Processor) ProcessMessage(
 	if result.Classification == workflow.ClassificationDataAnalysis && len(result.DataQuestions) > 0 && thinkingTS != "" {
 		sessionURL := ""
 		if p.webBaseURL != "" && result.SessionID != "" {
-			sessionURL = fmt.Sprintf("%s/sessions/%s", p.webBaseURL, result.SessionID)
+			sessionURL = fmt.Sprintf("%s/chat/%s", p.webBaseURL, result.SessionID)
 		}
 		summaryText := formatThinkingMessage(workflow.Progress{
 			Stage:          workflow.StageComplete,

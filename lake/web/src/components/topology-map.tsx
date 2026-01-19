@@ -8,7 +8,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useTheme } from '@/hooks/use-theme'
 import type { TopologyMetro, TopologyDevice, TopologyLink, TopologyValidator, MultiPathResponse, SimulateLinkRemovalResponse, SimulateLinkAdditionResponse, FailureImpactResponse } from '@/lib/api'
 import { fetchISISPaths, fetchISISTopology, fetchCriticalLinks, fetchSimulateLinkRemoval, fetchSimulateLinkAddition, fetchFailureImpact, fetchLinkHealth } from '@/lib/api'
-import { useTopology, TopologyControlBar, TopologyPanel, DeviceDetails, LinkDetails, MetroDetails, ValidatorDetails, EntityLink as TopologyEntityLink, PathModePanel, CriticalityPanel, WhatIfRemovalPanel, WhatIfAdditionPanel, ImpactPanel, StakeOverlayPanel, LinkHealthOverlayPanel, TrafficFlowOverlayPanel, MetroClusteringOverlayPanel } from '@/components/topology'
+import { useTopology, TopologyControlBar, TopologyPanel, DeviceDetails, LinkDetails, MetroDetails, ValidatorDetails, EntityLink as TopologyEntityLink, PathModePanel, CriticalityPanel, WhatIfRemovalPanel, WhatIfAdditionPanel, ImpactPanel, StakeOverlayPanel, LinkHealthOverlayPanel, TrafficFlowOverlayPanel, MetroClusteringOverlayPanel, ContributorsOverlayPanel } from '@/components/topology'
 
 // Path colors for multi-path visualization
 const PATH_COLORS = [
@@ -31,6 +31,22 @@ const METRO_COLORS = [
   '#facc15',  // yellow
   '#2dd4bf',  // teal
   '#f472b6',  // rose
+]
+
+// Contributor colors for contributor overlay visualization (12 distinct colors)
+const CONTRIBUTOR_COLORS = [
+  '#8b5cf6',  // violet
+  '#ec4899',  // pink
+  '#06b6d4',  // cyan
+  '#84cc16',  // lime
+  '#f59e0b',  // amber
+  '#6366f1',  // indigo
+  '#14b8a6',  // teal
+  '#f97316',  // orange
+  '#a855f7',  // purple
+  '#10b981',  // emerald
+  '#ef4444',  // red
+  '#0ea5e9',  // sky
 ]
 
 interface TopologyMapProps {
@@ -323,6 +339,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
   const linkHealthMode = overlays.linkHealth
   const trafficFlowMode = overlays.trafficFlow
   const metroClusteringMode = overlays.metroClustering
+  const contributorsMode = overlays.contributors
 
   // Path finding operational state (local)
   const [pathSource, setPathSource] = useState<string | null>(null)
@@ -594,6 +611,68 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       const list = map.get(device.metro_pk) || []
       list.push(device)
       map.set(device.metro_pk, list)
+    }
+    return map
+  }, [devices])
+
+  // Build contributor index map (for consistent colors)
+  const contributorIndexMap = useMemo(() => {
+    const map = new Map<string, number>()
+    // Get unique contributors from devices, sorted by code
+    const contributorSet = new Map<string, string>() // pk -> code
+    for (const device of devices) {
+      if (device.contributor_pk) {
+        contributorSet.set(device.contributor_pk, device.contributor_code || device.contributor_pk)
+      }
+    }
+    const sorted = [...contributorSet.entries()].sort((a, b) => a[1].localeCompare(b[1]))
+    sorted.forEach(([pk], index) => {
+      map.set(pk, index)
+    })
+    return map
+  }, [devices])
+
+  // Get contributor color based on index
+  const getContributorColor = useCallback((_contributorPK: string, contributorIndex: number) => {
+    return CONTRIBUTOR_COLORS[contributorIndex % CONTRIBUTOR_COLORS.length]
+  }, [])
+
+  // Group devices by contributor
+  const devicesByContributor = useMemo(() => {
+    const map = new Map<string, TopologyDevice[]>()
+    for (const device of devices) {
+      if (device.contributor_pk) {
+        const list = map.get(device.contributor_pk) || []
+        list.push(device)
+        map.set(device.contributor_pk, list)
+      }
+    }
+    return map
+  }, [devices])
+
+  // Group links by contributor
+  const linksByContributor = useMemo(() => {
+    const map = new Map<string, TopologyLink[]>()
+    for (const link of links) {
+      if (link.contributor_pk) {
+        const list = map.get(link.contributor_pk) || []
+        list.push(link)
+        map.set(link.contributor_pk, list)
+      }
+    }
+    return map
+  }, [links])
+
+  // Build contributor info map for overlay panel
+  const contributorInfoMap = useMemo(() => {
+    const map = new Map<string, { code: string; name: string }>()
+    for (const device of devices) {
+      if (device.contributor_pk && !map.has(device.contributor_pk)) {
+        map.set(device.contributor_pk, {
+          code: device.contributor_code || device.contributor_pk.substring(0, 8),
+          name: device.contributor_code || '', // Use code as name if no name available
+        })
+      }
     }
     return map
   }, [devices])
@@ -996,6 +1075,16 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
         displayColor = trafficStyle.color
         displayWeight = trafficStyle.weight
         displayOpacity = trafficStyle.opacity
+      } else if (contributorsMode && link.contributor_pk) {
+        // Contributors mode: color by contributor
+        const contributorIndex = contributorIndexMap.get(link.contributor_pk) ?? 0
+        displayColor = CONTRIBUTOR_COLORS[contributorIndex % CONTRIBUTOR_COLORS.length]
+        displayWeight = weight + 1
+        displayOpacity = 0.9
+      } else if (contributorsMode && !link.contributor_pk) {
+        // Contributors mode but no contributor - dim the link
+        displayColor = isDark ? '#6b7280' : '#9ca3af'
+        displayOpacity = 0.3
       } else if (criticalityModeEnabled && criticality) {
         // Criticality mode: color by criticality level
         displayColor = criticalityColors[criticality]
@@ -1079,7 +1168,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       type: 'FeatureCollection' as const,
       features,
     }
-  }, [links, devicePositions, isDark, hoveredLink, selectedItem, hoverHighlight, linkPathMap, selectedPathIndex, criticalityModeEnabled, linkCriticalityMap, whatifRemovalMode, removalLink, linkHealthMode, linkSlaStatus, trafficFlowMode, getTrafficColor, metroClusteringMode, collapsedMetros, deviceMap, metroMap])
+  }, [links, devicePositions, isDark, hoveredLink, selectedItem, hoverHighlight, linkPathMap, selectedPathIndex, criticalityModeEnabled, linkCriticalityMap, whatifRemovalMode, removalLink, linkHealthMode, linkSlaStatus, trafficFlowMode, getTrafficColor, metroClusteringMode, collapsedMetros, deviceMap, metroMap, contributorsMode, contributorIndexMap])
 
   // GeoJSON for validator links (connecting lines)
   const validatorLinksGeoJson = useMemo(() => {
@@ -1572,12 +1661,21 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           }
 
           // Metro clustering mode - color based on metro
-          if (metroClusteringMode && !stakeOverlayMode) {
+          if (metroClusteringMode && !stakeOverlayMode && !contributorsMode) {
             const metroIndex = metroIndexMap.get(device.metro_pk) ?? 0
             markerColor = getMetroColor(device.metro_pk, metroIndex)
             borderColor = markerColor
             borderWidth = 2
             opacity = 1
+          }
+
+          // Contributors mode - color based on contributor
+          if (contributorsMode && !stakeOverlayMode && !metroClusteringMode) {
+            const contributorIndex = contributorIndexMap.get(device.contributor_pk) ?? 0
+            markerColor = getContributorColor(device.contributor_pk, contributorIndex)
+            borderColor = markerColor
+            borderWidth = 2
+            opacity = device.contributor_pk ? 1 : 0.4
           }
 
           if (isDisabledInPathMode) {
@@ -2007,6 +2105,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             linkHealthMode ? 'Link Health' :
             trafficFlowMode ? 'Traffic Flow' :
             metroClusteringMode ? 'Metro Clustering' :
+            contributorsMode ? 'Contributors' :
             'Overlay'
           }
         >
@@ -2042,6 +2141,17 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
               onCollapseAll={() => setCollapsedMetros(new Set(metroInfoMap.keys()))}
               onExpandAll={() => setCollapsedMetros(new Set())}
               isLoading={metros.length === 0}
+            />
+          )}
+          {contributorsMode && (
+            <ContributorsOverlayPanel
+              contributorInfoMap={contributorInfoMap}
+              getContributorColor={(pk) => getContributorColor(pk, contributorIndexMap.get(pk) ?? 0)}
+              getDeviceCountForContributor={(pk) => devicesByContributor.get(pk)?.length ?? 0}
+              getLinkCountForContributor={(pk) => linksByContributor.get(pk)?.length ?? 0}
+              totalDeviceCount={devices.length}
+              totalLinkCount={links.length}
+              isLoading={devices.length === 0}
             />
           )}
         </TopologyPanel>

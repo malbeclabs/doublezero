@@ -7,7 +7,7 @@ import { Filter, X, Zap } from 'lucide-react'
 import { fetchISISTopology, fetchISISPaths, fetchTopologyCompare, fetchFailureImpact, fetchCriticalLinks, fetchSimulateLinkRemoval, fetchSimulateLinkAddition, fetchTopology, fetchLinkHealth } from '@/lib/api'
 import type { PathMode, FailureImpactResponse, MultiPathResponse, SimulateLinkRemovalResponse, SimulateLinkAdditionResponse } from '@/lib/api'
 import { useTheme } from '@/hooks/use-theme'
-import { useTopology, TopologyPanel, TopologyControlBar, DeviceDetails, LinkDetails, PathModePanel, CriticalityPanel, WhatIfRemovalPanel, WhatIfAdditionPanel, ImpactPanel, ComparePanel, StakeOverlayPanel, LinkHealthOverlayPanel, TrafficFlowOverlayPanel, MetroClusteringOverlayPanel, type DeviceInfo, type LinkInfo } from '@/components/topology'
+import { useTopology, TopologyPanel, TopologyControlBar, DeviceDetails, LinkDetails, PathModePanel, CriticalityPanel, WhatIfRemovalPanel, WhatIfAdditionPanel, ImpactPanel, ComparePanel, StakeOverlayPanel, LinkHealthOverlayPanel, TrafficFlowOverlayPanel, MetroClusteringOverlayPanel, ContributorsOverlayPanel, type DeviceInfo, type LinkInfo } from '@/components/topology'
 
 // Device type colors (types from serviceability smart contract: hybrid, transit, edge)
 const DEVICE_TYPE_COLORS: Record<string, { light: string; dark: string }> = {
@@ -29,6 +29,22 @@ const METRO_COLORS = [
   { light: '#ca8a04', dark: '#facc15' },  // yellow
   { light: '#0d9488', dark: '#2dd4bf' },  // teal
   { light: '#be185d', dark: '#f472b6' },  // rose
+]
+
+// Contributor colors for contributor overlay visualization (12 distinct colors)
+const CONTRIBUTOR_COLORS = [
+  { light: '#7c3aed', dark: '#8b5cf6' },  // violet
+  { light: '#db2777', dark: '#ec4899' },  // pink
+  { light: '#0891b2', dark: '#06b6d4' },  // cyan
+  { light: '#65a30d', dark: '#84cc16' },  // lime
+  { light: '#d97706', dark: '#f59e0b' },  // amber
+  { light: '#4f46e5', dark: '#6366f1' },  // indigo
+  { light: '#0d9488', dark: '#14b8a6' },  // teal
+  { light: '#ea580c', dark: '#f97316' },  // orange
+  { light: '#9333ea', dark: '#a855f7' },  // purple
+  { light: '#059669', dark: '#10b981' },  // emerald
+  { light: '#dc2626', dark: '#ef4444' },  // red
+  { light: '#0284c7', dark: '#0ea5e9' },  // sky
 ]
 
 // Format bits per second to human readable
@@ -91,6 +107,7 @@ export function TopologyGraph({
   const linkHealthOverlayEnabled = overlays.linkHealth
   const trafficFlowEnabled = overlays.trafficFlow
   const metroClusteringEnabled = overlays.metroClustering
+  const contributorsEnabled = overlays.contributors
 
   // Path finding operational state (local)
   const [pathSource, setPathSource] = useState<string | null>(null)
@@ -224,6 +241,28 @@ export function TopologyGraph({
     return map
   }, [topologyData])
 
+  // Build contributor info map from topology data (maps contributor PK to info)
+  const contributorInfoMap = useMemo(() => {
+    const map = new Map<string, { code: string; name: string; colorIndex: number }>()
+    if (!topologyData?.devices) return map
+    // Get unique contributors from devices, sorted by code
+    const contributorSet = new Map<string, string>() // pk -> code
+    for (const device of topologyData.devices) {
+      if (device.contributor_pk && !contributorSet.has(device.contributor_pk)) {
+        contributorSet.set(device.contributor_pk, device.contributor_code || device.contributor_pk)
+      }
+    }
+    const sorted = [...contributorSet.entries()].sort((a, b) => a[1].localeCompare(b[1]))
+    sorted.forEach(([pk, code], index) => {
+      map.set(pk, {
+        code,
+        name: code, // Use code as name since we don't have name from topology
+        colorIndex: index % CONTRIBUTOR_COLORS.length,
+      })
+    })
+    return map
+  }, [topologyData])
+
   // Build device info map from topology data (maps device PK to DeviceInfo)
   const deviceInfoMap = useMemo(() => {
     const map = new Map<string, DeviceInfo>()
@@ -305,6 +344,15 @@ export function TopologyGraph({
     return isDark ? colors.dark : colors.light
   }, [metroInfoMap, isDark])
 
+  // Get contributor color by PK
+  const getContributorColor = useCallback((contributorPK: string | undefined) => {
+    if (!contributorPK) return isDark ? '#6b7280' : '#9ca3af' // gray for unknown
+    const contributorInfo = contributorInfoMap.get(contributorPK)
+    if (!contributorInfo) return isDark ? '#6b7280' : '#9ca3af'
+    const colors = CONTRIBUTOR_COLORS[contributorInfo.colorIndex]
+    return isDark ? colors.dark : colors.light
+  }, [contributorInfoMap, isDark])
+
   // Build edge criticality map from critical links data
   const edgeCriticality = useMemo(() => {
     if (!criticalLinksData?.links) return new Map<string, string>()
@@ -368,6 +416,33 @@ export function TopologyGraph({
       trafficMap.set(key2, info)
     }
     return trafficMap
+  }, [topologyData])
+
+  // Build device contributor map from topology data (maps device PK to contributor PK)
+  const deviceContributorMap = useMemo(() => {
+    const map = new Map<string, string>()
+    if (!topologyData?.devices) return map
+    for (const device of topologyData.devices) {
+      if (device.contributor_pk) {
+        map.set(device.pk, device.contributor_pk)
+      }
+    }
+    return map
+  }, [topologyData])
+
+  // Build edge contributor map from topology data (maps edge key to contributor PK)
+  const edgeContributorMap = useMemo(() => {
+    const map = new Map<string, string>()
+    if (!topologyData?.links) return map
+    for (const link of topologyData.links) {
+      if (link.contributor_pk) {
+        const key1 = `${link.side_a_pk}->${link.side_z_pk}`
+        const key2 = `${link.side_z_pk}->${link.side_a_pk}`
+        map.set(key1, link.contributor_pk)
+        map.set(key2, link.contributor_pk)
+      }
+    }
+    return map
   }, [topologyData])
 
   // Get traffic utilization level for coloring
@@ -812,6 +887,72 @@ export function TopologyGraph({
       }
     })
   }, [metroClusteringEnabled, metroInfoMap, getMetroColor, getNodeSize, getDeviceTypeColor, stakeOverlayEnabled])
+
+  // Update node and edge colors when contributors overlay is enabled
+  useEffect(() => {
+    if (!cyRef.current) return
+    const cy = cyRef.current
+
+    // Skip if stake or metro overlay is active (they take precedence)
+    if (stakeOverlayEnabled || metroClusteringEnabled) return
+
+    cy.batch(() => {
+      if (contributorsEnabled && contributorInfoMap.size > 0) {
+        // Apply contributor-based coloring to nodes (keep degree-based sizing)
+        cy.nodes().forEach(node => {
+          const devicePK = node.data('id')
+          const contributorPK = deviceContributorMap.get(devicePK)
+          const degree = node.data('degree')
+          node.style({
+            'width': getNodeSize(degree),
+            'height': getNodeSize(degree),
+            'background-color': getContributorColor(contributorPK),
+          })
+        })
+        // Apply contributor-based coloring to edges
+        cy.edges().forEach(edge => {
+          const edgeId = edge.data('id')
+          const contributorPK = edgeContributorMap.get(edgeId)
+          if (contributorPK) {
+            edge.style({
+              'line-color': getContributorColor(contributorPK),
+              'target-arrow-color': getContributorColor(contributorPK),
+              'width': 2,
+              'opacity': 0.8,
+            })
+          } else {
+            // No contributor - dim the edge
+            edge.style({
+              'line-color': isDark ? '#6b7280' : '#9ca3af',
+              'target-arrow-color': isDark ? '#6b7280' : '#9ca3af',
+              'opacity': 0.3,
+            })
+          }
+        })
+      } else {
+        // Revert to default device type coloring for nodes
+        cy.nodes().forEach(node => {
+          const degree = node.data('degree')
+          const deviceType = node.data('deviceType')
+          node.style({
+            'width': getNodeSize(degree),
+            'height': getNodeSize(degree),
+            'background-color': getDeviceTypeColor(deviceType),
+          })
+        })
+        // Revert to default edge styling
+        cy.edges().forEach(edge => {
+          const linkType = edge.data('linkType')
+          edge.style({
+            'line-color': linkType === 'WAN' ? (isDark ? '#60a5fa' : '#2563eb') : (isDark ? '#9ca3af' : '#6b7280'),
+            'target-arrow-color': linkType === 'WAN' ? (isDark ? '#60a5fa' : '#2563eb') : (isDark ? '#9ca3af' : '#6b7280'),
+            'width': linkType === 'WAN' ? 2 : 1,
+            'opacity': 0.6,
+          })
+        })
+      }
+    })
+  }, [contributorsEnabled, contributorInfoMap, deviceContributorMap, edgeContributorMap, getContributorColor, getNodeSize, getDeviceTypeColor, stakeOverlayEnabled, metroClusteringEnabled, isDark])
 
   // Toggle metro collapse state
   const toggleMetroCollapse = useCallback((metroPK: string) => {
@@ -2179,6 +2320,7 @@ export function TopologyGraph({
             linkHealthOverlayEnabled ? 'Link Health' :
             trafficFlowEnabled ? 'Traffic Flow' :
             metroClusteringEnabled ? 'Metro Clustering' :
+            contributorsEnabled ? 'Contributors' :
             'Overlay'
           }
         >
@@ -2213,6 +2355,27 @@ export function TopologyGraph({
               onToggleMetroCollapse={toggleMetroCollapse}
               onCollapseAll={() => setCollapsedMetros(new Set(metroInfoMap.keys()))}
               onExpandAll={() => setCollapsedMetros(new Set())}
+              isLoading={!topologyData}
+            />
+          )}
+          {contributorsEnabled && (
+            <ContributorsOverlayPanel
+              contributorInfoMap={contributorInfoMap}
+              getContributorColor={getContributorColor}
+              getDeviceCountForContributor={(pk) => {
+                let count = 0
+                deviceContributorMap.forEach((cpk) => { if (cpk === pk) count++ })
+                return count
+              }}
+              getLinkCountForContributor={(pk) => {
+                const seen = new Set<string>()
+                edgeContributorMap.forEach((cpk, key) => {
+                  if (cpk === pk && !seen.has(key)) seen.add(key)
+                })
+                return seen.size / 2 // Each link has 2 entries (both directions)
+              }}
+              totalDeviceCount={filteredData?.nodes.length ?? 0}
+              totalLinkCount={topologyData?.links?.length ?? 0}
               isLoading={!topologyData}
             />
           )}

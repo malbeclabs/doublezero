@@ -22,6 +22,7 @@ import { MetroMatrixPage } from '@/components/metro-matrix-page'
 import { MaintenancePlannerPage } from '@/components/maintenance-planner-page'
 import { StatusPage } from '@/components/status-page'
 import { TimelinePage } from '@/components/timeline-page'
+import { OutagesPage } from '@/components/outages-page'
 import { StatusAppendix } from '@/components/status-appendix'
 import { DevicesPage } from '@/components/devices-page'
 import { LinksPage } from '@/components/links-page'
@@ -1760,6 +1761,9 @@ function AppContent() {
 
             {/* Timeline route */}
             <Route path="/timeline" element={<TimelinePage />} />
+
+            {/* Outages route */}
+            <Route path="/outages" element={<OutagesPage />} />
 
             {/* Stake analytics route */}
             <Route path="/stake" element={<StakePage />} />

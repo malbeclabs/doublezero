@@ -171,6 +171,10 @@ func main() {
 	r.Get("/api/timeline", handlers.GetTimeline)
 	r.Get("/api/timeline/bounds", handlers.GetTimelineBounds)
 
+	// Outage routes
+	r.Get("/api/outages/links", handlers.GetLinkOutages)
+	r.Get("/api/outages/links/csv", handlers.GetLinkOutagesCSV)
+
 	// Search routes
 	r.Get("/api/search", handlers.Search)
 	r.Get("/api/search/autocomplete", handlers.SearchAutocomplete)

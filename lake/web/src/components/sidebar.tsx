@@ -31,6 +31,7 @@ import {
   Shield,
   Grid3X3,
   Wrench,
+  AlertTriangle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/hooks/use-theme'
@@ -85,6 +86,7 @@ export function Sidebar({
   const isTopologyPage = location.pathname === '/topology'
   const isTopologyMapOrGraph = location.pathname === '/topology/map' || location.pathname === '/topology/graph'
   const isStatusPage = location.pathname.startsWith('/status')
+  const isOutagesPage = location.pathname === '/outages'
   const isDZRoute = location.pathname.startsWith('/dz/')
   const isSolanaRoute = location.pathname.startsWith('/solana/')
 
@@ -94,8 +96,8 @@ export function Sidebar({
     if (saved !== null) return saved === 'true'
     // Default to collapsed on small screens, landing page, or topology page
     if (typeof window !== 'undefined' && window.innerWidth < 1024) return true
-    // On landing page, topology page, status page, or entity pages, default to collapsed
-    return window.location.pathname === '/' || window.location.pathname === '/topology' || window.location.pathname === '/status' || window.location.pathname.startsWith('/dz/') || window.location.pathname.startsWith('/solana/')
+    // On landing page, topology page, status page, outages page, or entity pages, default to collapsed
+    return window.location.pathname === '/' || window.location.pathname === '/topology' || window.location.pathname === '/status' || window.location.pathname === '/outages' || window.location.pathname.startsWith('/dz/') || window.location.pathname.startsWith('/solana/')
   })
   const [userCollapsed, setUserCollapsed] = useState<boolean | null>(() => {
     const saved = localStorage.getItem('sidebar-user-collapsed')
@@ -119,7 +121,7 @@ export function Sidebar({
       setIsCollapsed(true)
     } else {
       // Landing page, topology page, status page, and entity pages default to collapsed
-      setIsCollapsed(isLandingPage || isTopologyPage || isStatusPage || isDZRoute || isSolanaRoute)
+      setIsCollapsed(isLandingPage || isTopologyPage || isStatusPage || isOutagesPage || isDZRoute || isSolanaRoute)
     }
   }, [isLandingPage, isTopologyPage, isTopologyMapOrGraph, isStatusPage, isDZRoute, isSolanaRoute, userCollapsed])
 
@@ -138,7 +140,7 @@ export function Sidebar({
         setIsCollapsed(true)
       } else if (userCollapsed === null) {
         // No user preference - use route-based default
-        setIsCollapsed(isLandingPage || isTopologyPage || isStatusPage || isDZRoute || isSolanaRoute)
+        setIsCollapsed(isLandingPage || isTopologyPage || isStatusPage || isOutagesPage || isDZRoute || isSolanaRoute)
       } else {
         // Respect user preference
         setIsCollapsed(userCollapsed)
@@ -174,6 +176,7 @@ export function Sidebar({
   const isTopologyRoute = location.pathname === '/topology' || location.pathname.startsWith('/topology/')
   const isStatusRoute = location.pathname.startsWith('/status')
   const isTimelineRoute = location.pathname === '/timeline'
+  const isOutagesRoute = location.pathname === '/outages'
   const isQuerySessions = location.pathname === '/query/sessions'
   const isChatSessions = location.pathname === '/chat/sessions'
 
@@ -321,6 +324,20 @@ export function Sidebar({
           title="Topology"
         >
           <Globe className="h-4 w-4" />
+        </Link>
+
+        {/* Outages nav item */}
+        <Link
+          to="/outages"
+          className={cn(
+            'p-2 rounded transition-colors',
+            isOutagesRoute
+              ? 'bg-[oklch(25%_.04_250)] text-white hover:bg-[oklch(30%_.05_250)]'
+              : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+          )}
+          title="Outages"
+        >
+          <AlertTriangle className="h-4 w-4" />
         </Link>
 
         {/* Search nav item */}
@@ -511,6 +528,18 @@ export function Sidebar({
           >
             <Globe className="h-4 w-4" />
             Topology
+          </Link>
+          <Link
+            to="/outages"
+            className={cn(
+              'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',
+              isOutagesRoute
+                ? 'bg-[var(--sidebar-active)] text-foreground font-medium'
+                : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+            )}
+          >
+            <AlertTriangle className="h-4 w-4" />
+            Outages
           </Link>
           <button
             onClick={() => window.dispatchEvent(new CustomEvent('open-search'))}

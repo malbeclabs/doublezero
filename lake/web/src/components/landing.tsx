@@ -89,42 +89,50 @@ export function Landing() {
           label="Contributors"
           value={stats?.contributors}
           format="number"
+          href="/dz/contributors"
         />
         <StatCard
           label="Metros"
           value={stats?.metros}
           format="number"
+          href="/dz/metros"
         />
         <StatCard
           label="Devices"
           value={stats?.devices}
           format="number"
+          href="/dz/devices"
         />
         <StatCard
           label="Links"
           value={stats?.links}
           format="number"
+          href="/dz/links"
         />
         <StatCard
           label="Users"
           value={stats?.users}
           format="number"
+          href="/dz/users"
         />
         {/* Row 2: Solana + Traffic */}
         <StatCard
           label="Validators on DZ"
           value={stats?.validators_on_dz}
           format="number"
+          href="/solana/validators"
         />
         <StatCard
           label="SOL Connected"
           value={stats?.total_stake_sol}
           format="stake"
+          href="/stake"
         />
         <StatCard
           label="Stake Share"
           value={stats?.stake_share_pct}
           format="percent"
+          href="/stake"
         />
         <StatCard
           label="WAN Capacity"

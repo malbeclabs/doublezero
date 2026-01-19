@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 
 interface StatCardProps {
   label: string
   value: number | undefined
   format: 'number' | 'stake' | 'bandwidth' | 'percent'
   delta?: number // Optional delta value to show change (percentage points for percent format)
+  href?: string // Optional link to entity listing page
 }
 
 function useAnimatedNumber(target: number | undefined, duration = 500) {
@@ -81,7 +83,7 @@ function formatDelta(delta: number): string {
   return `${sign}${delta.toFixed(2)}%`
 }
 
-export function StatCard({ label, value, format, delta }: StatCardProps) {
+export function StatCard({ label, value, format, delta, href }: StatCardProps) {
   const animatedValue = useAnimatedNumber(value)
   const isLoading = value === undefined
   const [showSkeleton, setShowSkeleton] = useState(false)
@@ -98,8 +100,8 @@ export function StatCard({ label, value, format, delta }: StatCardProps) {
 
   const showDelta = delta !== undefined && delta !== 0
 
-  return (
-    <div className="text-center">
+  const content = (
+    <>
       <div className="text-4xl font-medium tabular-nums tracking-tight mb-1">
         {isLoading ? (
           showSkeleton ? (
@@ -119,6 +121,16 @@ export function StatCard({ label, value, format, delta }: StatCardProps) {
         )}
       </div>
       <div className="text-sm text-muted-foreground">{label}</div>
-    </div>
+    </>
   )
+
+  if (href) {
+    return (
+      <Link to={href} className="text-center block transition-opacity hover:opacity-70">
+        {content}
+      </Link>
+    )
+  }
+
+  return <div className="text-center">{content}</div>
 }

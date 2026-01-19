@@ -8,7 +8,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useTheme } from '@/hooks/use-theme'
 import type { TopologyMetro, TopologyDevice, TopologyLink, TopologyValidator, MultiPathResponse, SimulateLinkRemovalResponse, SimulateLinkAdditionResponse, FailureImpactResponse } from '@/lib/api'
 import { fetchISISPaths, fetchISISTopology, fetchCriticalLinks, fetchSimulateLinkRemoval, fetchSimulateLinkAddition, fetchFailureImpact, fetchLinkHealth } from '@/lib/api'
-import { useTopology, TopologyControlBar, TopologyPanel, DeviceDetails, LinkDetails, MetroDetails, ValidatorDetails, EntityLink as TopologyEntityLink, PathModePanel, CriticalityPanel, WhatIfRemovalPanel, WhatIfAdditionPanel, ImpactPanel, StakeOverlayPanel, LinkHealthOverlayPanel, TrafficFlowOverlayPanel, MetroClusteringOverlayPanel, ContributorsOverlayPanel } from '@/components/topology'
+import { useTopology, TopologyControlBar, TopologyPanel, DeviceDetails, LinkDetails, MetroDetails, ValidatorDetails, EntityLink as TopologyEntityLink, PathModePanel, CriticalityPanel, WhatIfRemovalPanel, WhatIfAdditionPanel, ImpactPanel, StakeOverlayPanel, LinkHealthOverlayPanel, TrafficFlowOverlayPanel, MetroClusteringOverlayPanel, ContributorsOverlayPanel, ValidatorsOverlayPanel } from '@/components/topology'
 
 // Path colors for multi-path visualization
 const PATH_COLORS = [
@@ -1515,7 +1515,6 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           onZoomIn={handleZoomIn}
           onZoomOut={handleZoomOut}
           onReset={fitBounds}
-          validatorCount={validators.length}
           hasSelectedDevice={selectedItem?.type === 'device'}
         />
 
@@ -2106,6 +2105,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             linkHealthMode ? 'Health' :
             trafficFlowMode ? 'Traffic' :
             metroClusteringMode ? 'Metros' :
+            showValidators ? 'Validators' :
             (contributorDevicesMode || contributorLinksMode) ? 'Contributors' :
             'Overlay'
           }
@@ -2142,6 +2142,12 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
               onCollapseAll={() => setCollapsedMetros(new Set(metroInfoMap.keys()))}
               onExpandAll={() => setCollapsedMetros(new Set())}
               isLoading={metros.length === 0}
+            />
+          )}
+          {showValidators && (
+            <ValidatorsOverlayPanel
+              validators={validators}
+              isLoading={validators.length === 0}
             />
           )}
           {(contributorDevicesMode || contributorLinksMode) && (

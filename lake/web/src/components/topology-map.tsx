@@ -458,6 +458,9 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
 
       const isInMode = mode !== 'explore'
 
+      // Ignore keyboard shortcuts when modifier keys are pressed (e.g., Cmd+R to refresh)
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+
       if (e.key === 'Escape') {
         if (mode !== 'explore') {
           setMode('explore')

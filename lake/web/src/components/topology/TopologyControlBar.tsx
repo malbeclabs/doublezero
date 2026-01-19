@@ -1,3 +1,5 @@
+import { useState, useEffect } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Search,
   ZoomIn,
@@ -14,6 +16,10 @@ import {
   BarChart3,
   MapPin,
   GitCompare,
+  ChevronLeft,
+  ChevronRight,
+  Map,
+  Network,
 } from 'lucide-react'
 import { useTopology, type TopologyMode } from './TopologyContext'
 
@@ -28,45 +34,78 @@ interface TopologyControlBarProps {
   hasSelectedDevice?: boolean
 }
 
-interface ControlButtonProps {
+interface NavItemProps {
   icon: React.ReactNode
-  title: string
+  label: string
+  shortcut?: string
   onClick: () => void
   active?: boolean
   disabled?: boolean
   activeColor?: 'amber' | 'red' | 'green' | 'purple' | 'blue' | 'cyan' | 'yellow'
+  collapsed?: boolean
 }
 
-function ControlButton({ icon, title, onClick, active = false, disabled = false, activeColor = 'blue' }: ControlButtonProps) {
+function NavItem({ icon, label, shortcut, onClick, active = false, disabled = false, activeColor = 'blue', collapsed = false }: NavItemProps) {
   const colorClasses: Record<string, string> = {
-    amber: 'bg-amber-500/20 border-amber-500/50 text-amber-500',
-    red: 'bg-red-500/20 border-red-500/50 text-red-500',
-    green: 'bg-green-500/20 border-green-500/50 text-green-500',
-    purple: 'bg-purple-500/20 border-purple-500/50 text-purple-500',
-    blue: 'bg-blue-500/20 border-blue-500/50 text-blue-500',
-    cyan: 'bg-cyan-500/20 border-cyan-500/50 text-cyan-500',
-    yellow: 'bg-yellow-500/20 border-yellow-500/50 text-yellow-500',
+    amber: 'bg-amber-500/20 text-amber-500',
+    red: 'bg-red-500/20 text-red-500',
+    green: 'bg-green-500/20 text-green-500',
+    purple: 'bg-purple-500/20 text-purple-500',
+    blue: 'bg-blue-500/20 text-blue-500',
+    cyan: 'bg-cyan-500/20 text-cyan-500',
+    yellow: 'bg-yellow-500/20 text-yellow-500',
+  }
+
+  const activeTextClasses: Record<string, string> = {
+    amber: 'text-amber-500',
+    red: 'text-red-500',
+    green: 'text-green-500',
+    purple: 'text-purple-500',
+    blue: 'text-blue-500',
+    cyan: 'text-cyan-500',
+    yellow: 'text-yellow-500',
   }
 
   return (
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`p-2 border rounded shadow-sm transition-colors ${
+      className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-colors w-full ${
         active
           ? colorClasses[activeColor]
-          : 'bg-[var(--card)] border-[var(--border)] hover:bg-[var(--muted)]'
+          : 'hover:bg-[var(--muted)] text-muted-foreground hover:text-foreground'
       } ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
-      title={title}
+      title={collapsed ? `${label}${shortcut ? ` (${shortcut})` : ''}` : undefined}
     >
-      {icon}
+      <span className={`flex-shrink-0 ${active ? activeTextClasses[activeColor] : ''}`}>
+        {icon}
+      </span>
+      {!collapsed && (
+        <>
+          <span className="flex-1 text-left truncate">{label}</span>
+          {shortcut && (
+            <kbd className="px-1 py-0.5 bg-[var(--muted)] rounded text-[10px] text-muted-foreground flex-shrink-0">
+              {shortcut}
+            </kbd>
+          )}
+        </>
+      )}
     </button>
   )
 }
 
-function Divider() {
-  return <div className="my-1 border-t border-[var(--border)]" />
+function SectionHeader({ title, collapsed }: { title: string; collapsed: boolean }) {
+  if (collapsed) {
+    return <div className="my-1.5 border-t border-[var(--border)]" />
+  }
+  return (
+    <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
+      {title}
+    </div>
+  )
 }
+
+const STORAGE_KEY = 'topology-nav-collapsed'
 
 export function TopologyControlBar({
   onZoomIn,
@@ -76,13 +115,40 @@ export function TopologyControlBar({
   hasSelectedDevice = false,
 }: TopologyControlBarProps) {
   const { mode, setMode, overlays, toggleOverlay, view, panel, openPanel, closePanel } = useTopology()
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+
+  // Switch view while preserving selection params
+  const switchView = (targetView: 'map' | 'graph') => {
+    if (view === targetView) return
+    const params = searchParams.toString()
+    navigate(`/topology/${targetView}${params ? `?${params}` : ''}`)
+  }
+
+  // Persist collapsed state
+  const [collapsed, setCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return localStorage.getItem(STORAGE_KEY) === 'true'
+  })
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, String(collapsed))
+  }, [collapsed])
 
   // Mode conflicts - certain modes can't be active together
   const isInAnalysisMode = mode === 'path' || mode === 'criticality' || mode === 'whatif-removal' || mode === 'whatif-addition' || mode === 'impact' || mode === 'compare'
 
   // Toggle mode helper
   const toggleMode = (targetMode: TopologyMode) => {
-    setMode(mode === targetMode ? 'explore' : targetMode)
+    if (mode === targetMode) {
+      setMode('explore')
+      if (panel.content === 'mode') {
+        closePanel()
+      }
+    } else {
+      setMode(targetMode)
+      openPanel('mode')
+    }
   }
 
   // Toggle overlay with panel management
@@ -91,10 +157,8 @@ export function TopologyControlBar({
     toggleOverlay(overlay)
 
     if (!currentlyActive) {
-      // Turning on - open the panel with overlay content
       openPanel('overlay')
     } else {
-      // Turning off - check if any other overlays are still active
       const otherOverlays = Object.entries(overlays)
         .filter(([key]) => key !== overlay)
         .some(([, value]) => value)
@@ -110,157 +174,213 @@ export function TopologyControlBar({
 
   return (
     <div
-      className="absolute top-4 z-[999] flex flex-col gap-1 transition-all duration-200"
+      className="absolute top-4 z-[999] transition-all duration-200"
       style={{ right: rightOffset }}
     >
-      {/* Search (opens omnisearch) */}
-      <ControlButton
-        icon={<Search className="h-4 w-4" />}
-        title="Search (Cmd+K)"
-        onClick={() => window.dispatchEvent(new CustomEvent('open-search'))}
-      />
+      <div className={`bg-[var(--card)] border border-[var(--border)] rounded-lg shadow-sm overflow-hidden transition-all duration-200 ${collapsed ? 'w-10' : 'w-44'}`}>
+        {/* Collapse toggle */}
+        <button
+          onClick={() => setCollapsed(!collapsed)}
+          className="w-full flex items-center justify-between px-2 py-1.5 hover:bg-[var(--muted)] transition-colors border-b border-[var(--border)]"
+          title={collapsed ? 'Expand controls' : 'Collapse controls'}
+        >
+          {!collapsed && <span className="text-xs font-medium">Controls</span>}
+          {collapsed ? (
+            <ChevronLeft className="h-4 w-4 mx-auto text-muted-foreground" />
+          ) : (
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          )}
+        </button>
 
-      <Divider />
+        <div className="p-1 space-y-0.5">
+          {/* Search */}
+          <NavItem
+            icon={<Search className="h-3.5 w-3.5" />}
+            label="Search"
+            shortcut="⌘K"
+            onClick={() => window.dispatchEvent(new CustomEvent('open-search'))}
+            collapsed={collapsed}
+          />
 
-      {/* Zoom controls */}
-      {onZoomIn && (
-        <ControlButton
-          icon={<ZoomIn className="h-4 w-4" />}
-          title="Zoom in"
-          onClick={onZoomIn}
-        />
-      )}
-      {onZoomOut && (
-        <ControlButton
-          icon={<ZoomOut className="h-4 w-4" />}
-          title="Zoom out"
-          onClick={onZoomOut}
-        />
-      )}
-      {onReset && (
-        <ControlButton
-          icon={<Maximize className="h-4 w-4" />}
-          title="Reset view"
-          onClick={onReset}
-        />
-      )}
+          {/* View controls */}
+          <SectionHeader title="View" collapsed={collapsed} />
 
-      {(onZoomIn || onZoomOut || onReset) && <Divider />}
+          {/* View toggle */}
+          <NavItem
+            icon={<Map className="h-3.5 w-3.5" />}
+            label="Map view"
+            onClick={() => switchView('map')}
+            active={view === 'map'}
+            activeColor="blue"
+            collapsed={collapsed}
+          />
+          <NavItem
+            icon={<Network className="h-3.5 w-3.5" />}
+            label="Graph view"
+            onClick={() => switchView('graph')}
+            active={view === 'graph'}
+            activeColor="blue"
+            collapsed={collapsed}
+          />
 
-      {/* Validators toggle (map only) */}
-      {view === 'map' && (
-        <ControlButton
-          icon={<Users className="h-4 w-4" />}
-          title={overlays.validators ? `Hide validators (${validatorCount})` : `Show validators (${validatorCount})`}
-          onClick={() => toggleOverlay('validators')}
-          active={overlays.validators}
-          activeColor="purple"
-          disabled={isInAnalysisMode}
-        />
-      )}
+          {onZoomIn && (
+            <NavItem
+              icon={<ZoomIn className="h-3.5 w-3.5" />}
+              label="Zoom in"
+              onClick={onZoomIn}
+              collapsed={collapsed}
+            />
+          )}
+          {onZoomOut && (
+            <NavItem
+              icon={<ZoomOut className="h-3.5 w-3.5" />}
+              label="Zoom out"
+              onClick={onZoomOut}
+              collapsed={collapsed}
+            />
+          )}
+          {onReset && (
+            <NavItem
+              icon={<Maximize className="h-3.5 w-3.5" />}
+              label="Reset view"
+              onClick={onReset}
+              collapsed={collapsed}
+            />
+          )}
 
-      {/* Path mode */}
-      <ControlButton
-        icon={<Route className="h-4 w-4" />}
-        title={mode === 'path' ? 'Exit path finding (Esc)' : 'Find paths (p)'}
-        onClick={() => toggleMode('path')}
-        active={mode === 'path'}
-        activeColor="amber"
-        disabled={mode !== 'explore' && mode !== 'path'}
-      />
+          {/* Analysis modes */}
+          <SectionHeader title="Analysis" collapsed={collapsed} />
 
-      {/* Criticality mode */}
-      <ControlButton
-        icon={<Shield className="h-4 w-4" />}
-        title={mode === 'criticality' ? 'Exit criticality mode (Esc)' : 'Show link criticality (c)'}
-        onClick={() => toggleMode('criticality')}
-        active={mode === 'criticality'}
-        activeColor="red"
-        disabled={mode !== 'explore' && mode !== 'criticality'}
-      />
+          <NavItem
+            icon={<Route className="h-3.5 w-3.5" />}
+            label="Find paths"
+            shortcut="p"
+            onClick={() => toggleMode('path')}
+            active={mode === 'path'}
+            activeColor="amber"
+            disabled={mode !== 'explore' && mode !== 'path'}
+            collapsed={collapsed}
+          />
 
-      {/* Compare mode (graph only) */}
-      {view === 'graph' && (
-        <ControlButton
-          icon={<GitCompare className="h-4 w-4" />}
-          title={mode === 'compare' ? 'Exit compare mode (Esc)' : 'Compare topology'}
-          onClick={() => toggleMode('compare')}
-          active={mode === 'compare'}
-          activeColor="blue"
-          disabled={mode !== 'explore' && mode !== 'compare'}
-        />
-      )}
+          <NavItem
+            icon={<Shield className="h-3.5 w-3.5" />}
+            label="Link criticality"
+            shortcut="c"
+            onClick={() => toggleMode('criticality')}
+            active={mode === 'criticality'}
+            activeColor="red"
+            disabled={mode !== 'explore' && mode !== 'criticality'}
+            collapsed={collapsed}
+          />
 
-      <Divider />
+          {view === 'graph' && (
+            <NavItem
+              icon={<GitCompare className="h-3.5 w-3.5" />}
+              label="Compare topology"
+              onClick={() => toggleMode('compare')}
+              active={mode === 'compare'}
+              activeColor="blue"
+              disabled={mode !== 'explore' && mode !== 'compare'}
+              collapsed={collapsed}
+            />
+          )}
 
-      {/* What-if removal mode */}
-      <ControlButton
-        icon={<MinusCircle className="h-4 w-4" />}
-        title={mode === 'whatif-removal' ? 'Exit link removal simulation (Esc)' : 'Simulate link removal (r)'}
-        onClick={() => toggleMode('whatif-removal')}
-        active={mode === 'whatif-removal'}
-        activeColor="red"
-        disabled={mode !== 'explore' && mode !== 'whatif-removal'}
-      />
+          {/* What-if scenarios */}
+          <SectionHeader title="What-if" collapsed={collapsed} />
 
-      {/* What-if addition mode */}
-      <ControlButton
-        icon={<PlusCircle className="h-4 w-4" />}
-        title={mode === 'whatif-addition' ? 'Exit link addition simulation (Esc)' : 'Simulate adding a link (a)'}
-        onClick={() => toggleMode('whatif-addition')}
-        active={mode === 'whatif-addition'}
-        activeColor="green"
-        disabled={mode !== 'explore' && mode !== 'whatif-addition'}
-      />
+          <NavItem
+            icon={<MinusCircle className="h-3.5 w-3.5" />}
+            label="Remove link"
+            shortcut="r"
+            onClick={() => toggleMode('whatif-removal')}
+            active={mode === 'whatif-removal'}
+            activeColor="red"
+            disabled={mode !== 'explore' && mode !== 'whatif-removal'}
+            collapsed={collapsed}
+          />
 
-      {/* Impact mode */}
-      <ControlButton
-        icon={<Zap className="h-4 w-4" />}
-        title={mode === 'impact' ? 'Exit impact analysis (Esc)' : hasSelectedDevice ? 'Analyze failure impact (i)' : 'Select a device first'}
-        onClick={() => toggleMode('impact')}
-        active={mode === 'impact'}
-        activeColor="purple"
-        disabled={(mode !== 'explore' && mode !== 'impact') || (!hasSelectedDevice && mode !== 'impact')}
-      />
+          <NavItem
+            icon={<PlusCircle className="h-3.5 w-3.5" />}
+            label="Add link"
+            shortcut="a"
+            onClick={() => toggleMode('whatif-addition')}
+            active={mode === 'whatif-addition'}
+            activeColor="green"
+            disabled={mode !== 'explore' && mode !== 'whatif-addition'}
+            collapsed={collapsed}
+          />
 
-      <Divider />
+          <NavItem
+            icon={<Zap className="h-3.5 w-3.5" />}
+            label="Failure impact"
+            shortcut="i"
+            onClick={() => toggleMode('impact')}
+            active={mode === 'impact'}
+            activeColor="purple"
+            disabled={(mode !== 'explore' && mode !== 'impact') || (!hasSelectedDevice && mode !== 'impact')}
+            collapsed={collapsed}
+          />
 
-      {/* Overlay toggles */}
-      <ControlButton
-        icon={<Coins className="h-4 w-4" />}
-        title={overlays.stake ? 'Hide stake overlay (s)' : 'Show stake distribution (s)'}
-        onClick={() => handleToggleOverlay('stake')}
-        active={overlays.stake}
-        activeColor="yellow"
-        disabled={isInAnalysisMode}
-      />
+          {/* Overlays */}
+          <SectionHeader title="Overlays" collapsed={collapsed} />
 
-      <ControlButton
-        icon={<Activity className="h-4 w-4" />}
-        title={overlays.linkHealth ? 'Hide link health (h)' : 'Show link health (h)'}
-        onClick={() => handleToggleOverlay('linkHealth')}
-        active={overlays.linkHealth}
-        activeColor="green"
-        disabled={isInAnalysisMode}
-      />
+          {view === 'map' && (
+            <NavItem
+              icon={<Users className="h-3.5 w-3.5" />}
+              label={`Validators (${validatorCount})`}
+              onClick={() => toggleOverlay('validators')}
+              active={overlays.validators}
+              activeColor="purple"
+              disabled={isInAnalysisMode}
+              collapsed={collapsed}
+            />
+          )}
 
-      <ControlButton
-        icon={<BarChart3 className="h-4 w-4" />}
-        title={overlays.trafficFlow ? 'Hide traffic flow (t)' : 'Show traffic flow (t)'}
-        onClick={() => handleToggleOverlay('trafficFlow')}
-        active={overlays.trafficFlow}
-        activeColor="cyan"
-        disabled={isInAnalysisMode}
-      />
+          <NavItem
+            icon={<Coins className="h-3.5 w-3.5" />}
+            label="Stake distribution"
+            shortcut="s"
+            onClick={() => handleToggleOverlay('stake')}
+            active={overlays.stake}
+            activeColor="yellow"
+            disabled={isInAnalysisMode}
+            collapsed={collapsed}
+          />
 
-      <ControlButton
-        icon={<MapPin className="h-4 w-4" />}
-        title={overlays.metroClustering ? 'Hide metro colors (m)' : 'Show metro colors (m)'}
-        onClick={() => handleToggleOverlay('metroClustering')}
-        active={overlays.metroClustering}
-        activeColor="blue"
-        disabled={isInAnalysisMode}
-      />
+          <NavItem
+            icon={<Activity className="h-3.5 w-3.5" />}
+            label="Link health"
+            shortcut="h"
+            onClick={() => handleToggleOverlay('linkHealth')}
+            active={overlays.linkHealth}
+            activeColor="green"
+            disabled={isInAnalysisMode}
+            collapsed={collapsed}
+          />
+
+          <NavItem
+            icon={<BarChart3 className="h-3.5 w-3.5" />}
+            label="Traffic flow"
+            shortcut="t"
+            onClick={() => handleToggleOverlay('trafficFlow')}
+            active={overlays.trafficFlow}
+            activeColor="cyan"
+            disabled={isInAnalysisMode}
+            collapsed={collapsed}
+          />
+
+          <NavItem
+            icon={<MapPin className="h-3.5 w-3.5" />}
+            label="Metro colors"
+            shortcut="m"
+            onClick={() => handleToggleOverlay('metroClustering')}
+            active={overlays.metroClustering}
+            activeColor="blue"
+            disabled={isInAnalysisMode}
+            collapsed={collapsed}
+          />
+        </div>
+      </div>
     </div>
   )
 }

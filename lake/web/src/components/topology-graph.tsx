@@ -706,58 +706,91 @@ export function TopologyGraph({
     }
   }, [mode])
 
-  // Apply health status classes in compare mode
+  // Apply health status styles in compare mode (using direct .style() for reliability)
   useEffect(() => {
     if (!cyRef.current || mode !== 'compare') return
     const cy = cyRef.current
 
-    // Clear previous health classes
-    cy.edges().removeClass('health-matched health-extra health-missing health-mismatch')
-
     if (!compareData) return
 
-    // Apply classes based on edge health status
-    cy.edges().forEach(edge => {
-      const edgeId = edge.data('id') // format: source->target
-      const status = edgeHealthStatus.get(edgeId)
+    cy.batch(() => {
+      cy.edges().forEach(edge => {
+        const edgeId = edge.data('id') // format: source->target
+        const status = edgeHealthStatus.get(edgeId)
 
-      if (status === 'missing') {
-        edge.addClass('health-missing')
-      } else if (status === 'extra') {
-        edge.addClass('health-extra')
-      } else if (status === 'mismatch') {
-        edge.addClass('health-mismatch')
-      } else {
-        // Default to matched if no discrepancy found
-        edge.addClass('health-matched')
-      }
+        if (status === 'missing') {
+          edge.style({
+            'line-color': '#ef4444',
+            'target-arrow-color': '#ef4444',
+            'line-style': 'dashed',
+            'width': 3,
+            'opacity': 1,
+          })
+        } else if (status === 'extra') {
+          edge.style({
+            'line-color': '#f59e0b',
+            'target-arrow-color': '#f59e0b',
+            'width': 3,
+            'opacity': 1,
+          })
+        } else if (status === 'mismatch') {
+          edge.style({
+            'line-color': '#eab308',
+            'target-arrow-color': '#eab308',
+            'width': 3,
+            'opacity': 1,
+          })
+        } else {
+          // Default to matched if no discrepancy found
+          edge.style({
+            'line-color': '#22c55e',
+            'target-arrow-color': '#22c55e',
+            'width': 2,
+            'opacity': 0.8,
+          })
+        }
+      })
     })
   }, [mode, compareData, edgeHealthStatus])
 
-  // Apply criticality classes in criticality mode
+  // Apply criticality styles in criticality mode (using direct .style() for reliability)
   useEffect(() => {
     if (!cyRef.current || mode !== 'criticality') return
     const cy = cyRef.current
 
-    // Clear previous criticality classes
-    cy.edges().removeClass('criticality-critical criticality-important criticality-redundant')
-
     if (!criticalLinksData) return
 
-    // Apply classes based on edge criticality
-    cy.edges().forEach(edge => {
-      const edgeId = edge.data('id') // format: source->target
-      const crit = edgeCriticality.get(edgeId)
+    cy.batch(() => {
+      cy.edges().forEach(edge => {
+        const edgeId = edge.data('id') // format: source->target
+        const crit = edgeCriticality.get(edgeId)
 
-      if (crit === 'critical') {
-        edge.addClass('criticality-critical')
-      } else if (crit === 'important') {
-        edge.addClass('criticality-important')
-      } else {
-        edge.addClass('criticality-redundant')
-      }
+        if (crit === 'critical') {
+          edge.style({
+            'line-color': '#ef4444',
+            'target-arrow-color': '#ef4444',
+            'width': 4,
+            'opacity': 1,
+          })
+        } else if (crit === 'important') {
+          edge.style({
+            'line-color': '#f59e0b',
+            'target-arrow-color': '#f59e0b',
+            'width': 3,
+            'opacity': 0.9,
+          })
+        } else {
+          // Redundant links - dim them
+          edge.style({
+            'line-color': isDark ? '#4b5563' : '#9ca3af',
+            'target-arrow-color': isDark ? '#4b5563' : '#9ca3af',
+            'width': 1,
+            'opacity': 0.4,
+          })
+        }
+      })
     })
-  }, [mode, criticalLinksData, edgeCriticality])
+  }, [mode, criticalLinksData, edgeCriticality, isDark])
 
   // Apply stake overlay styling when enabled
   useEffect(() => {
@@ -890,6 +923,9 @@ export function TopologyGraph({
   }, [metroClusteringEnabled, metroInfoMap, getMetroColor, getNodeSize, getDeviceTypeColor, stakeOverlayEnabled])
 
   // Update node and edge colors when contributors overlay is enabled
+  // Skip if in an analysis mode that styles edges (let those modes control edge appearance)
+  const isEdgeStylingMode = mode === 'compare' || mode === 'criticality' || mode === 'path' || mode === 'whatif-removal' || mode === 'whatif-addition'
+
   useEffect(() => {
     if (!cyRef.current) return
     const cy = cyRef.current
@@ -919,6 +955,9 @@ export function TopologyGraph({
           })
         })
       }
+
+      // Skip edge styling if in an analysis mode that controls edges
+      if (isEdgeStylingMode) return
 
       // Apply contributor-based coloring to edges if enabled (and linkHealth/traffic not active)
       if (contributorLinksEnabled && contributorInfoMap.size > 0 && !linkHealthOverlayEnabled && !trafficFlowEnabled) {
@@ -954,7 +993,7 @@ export function TopologyGraph({
         })
       }
     })
-  }, [contributorDevicesEnabled, contributorLinksEnabled, contributorInfoMap, deviceContributorMap, edgeContributorMap, getContributorColor, getNodeSize, getDeviceTypeColor, stakeOverlayEnabled, metroClusteringEnabled, linkHealthOverlayEnabled, trafficFlowEnabled, isDark])
+  }, [contributorDevicesEnabled, contributorLinksEnabled, contributorInfoMap, deviceContributorMap, edgeContributorMap, getContributorColor, getNodeSize, getDeviceTypeColor, stakeOverlayEnabled, metroClusteringEnabled, linkHealthOverlayEnabled, trafficFlowEnabled, isDark, isEdgeStylingMode])
 
   // Toggle metro collapse state
   const toggleMetroCollapse = useCallback((metroPK: string) => {
@@ -2240,7 +2279,7 @@ export function TopologyGraph({
         <TopologyPanel
           title={
             mode === 'path' ? 'Path Finding' :
-            mode === 'compare' ? 'Topology Health' :
+            mode === 'compare' ? 'ISIS Health' :
             mode === 'criticality' ? 'Link Criticality' :
             mode === 'whatif-removal' ? 'Simulate Link Removal' :
             mode === 'whatif-addition' ? 'Simulate Link Addition' :

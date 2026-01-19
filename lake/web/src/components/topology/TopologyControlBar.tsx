@@ -176,13 +176,9 @@ export function TopologyControlBar({
     }
   }
 
-  // Calculate right offset based on panel state
-  const rightOffset = panel.isOpen ? panel.width + 16 : 16
-
   return (
     <div
-      className="absolute top-4 z-[999] transition-all duration-200"
-      style={{ right: rightOffset }}
+      className="absolute top-4 right-4 z-[999]"
     >
       <div className={`bg-[var(--card)] border border-[var(--border)] rounded-lg shadow-sm overflow-hidden transition-all duration-200 ${collapsed ? 'w-10' : 'w-44'}`}>
         {/* Collapse toggle */}

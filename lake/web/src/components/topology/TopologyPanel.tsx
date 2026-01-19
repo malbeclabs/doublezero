@@ -17,8 +17,8 @@ export function TopologyPanel({ children, title, subtitle }: TopologyPanelProps)
     if (!isResizing) return
 
     const handleMouseMove = (e: MouseEvent) => {
-      // Calculate width from right edge of screen
-      const newWidth = window.innerWidth - e.clientX
+      // Calculate width from left edge of screen (panel is on left)
+      const newWidth = e.clientX
       setPanelWidth(newWidth)
     }
 
@@ -44,12 +44,12 @@ export function TopologyPanel({ children, title, subtitle }: TopologyPanelProps)
 
   return (
     <div
-      className="absolute top-0 bottom-0 right-0 z-[1000] bg-[var(--card)] border-l border-[var(--border)] shadow-xl flex flex-col"
+      className="absolute top-0 bottom-0 left-0 z-[1000] bg-[var(--card)] border-r border-[var(--border)] shadow-xl flex flex-col"
       style={{ width: panel.width }}
     >
-      {/* Resize handle on the left edge */}
+      {/* Resize handle on the right edge */}
       <div
-        className="absolute top-0 bottom-0 left-0 w-1 cursor-ew-resize hover:bg-blue-500/50 transition-colors"
+        className="absolute top-0 bottom-0 right-0 w-1 cursor-ew-resize hover:bg-blue-500/50 transition-colors"
         onMouseDown={() => setIsResizing(true)}
       />
 

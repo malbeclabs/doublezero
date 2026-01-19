@@ -351,7 +351,10 @@ func (p *Workflow) executeTool(ctx context.Context, call workflow.ToolCallInfo, 
 // executeSQL handles the execute_sql tool - runs queries in parallel.
 func (p *Workflow) executeSQL(ctx context.Context, params map[string]any, state *LoopState, onProgress workflow.ProgressCallback) (string, error) {
 	queries, err := ParseQueries(params)
-	if err != nil || len(queries) == 0 {
+	if err != nil {
+		return "", fmt.Errorf("failed to parse queries: %w", err)
+	}
+	if len(queries) == 0 {
 		return "", fmt.Errorf("no valid queries provided")
 	}
 
@@ -514,7 +517,10 @@ func (p *Workflow) executeCypher(ctx context.Context, params map[string]any, sta
 	}
 
 	queries, err := ParseCypherQueries(params)
-	if err != nil || len(queries) == 0 {
+	if err != nil {
+		return "", fmt.Errorf("failed to parse Cypher queries: %w", err)
+	}
+	if len(queries) == 0 {
 		return "", fmt.Errorf("no valid Cypher queries provided")
 	}
 

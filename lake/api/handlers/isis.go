@@ -891,33 +891,49 @@ func GetISISPaths(w http.ResponseWriter, r *http.Request) {
 		Paths: []SinglePath{},
 	}
 
-	// Both modes use allShortestPaths to find candidate paths efficiently
-	// The difference is in sorting:
-	// - Hops mode: paths are already minimum hops, sort by metric as tie-breaker
-	// - Latency mode: sort by metric first to prioritize low-latency among equal-hop paths
-	// Note: allShortestPaths finds minimum-hop paths, so both modes have same hop count
-	// The real difference comes after enrichment when latency mode sorts by measured RTT
-	cypher := `
-		MATCH (a:Device {pk: $from_pk}), (b:Device {pk: $to_pk})
-		CALL {
-			WITH a, b
-			MATCH path = allShortestPaths((a)-[:ISIS_ADJACENT*]->(b))
-			RETURN path,
-			       reduce(cost = 0, r IN relationships(path) | cost + coalesce(r.metric, 1)) AS totalMetric
-		}
-		WITH path, totalMetric
-		ORDER BY totalMetric
-		LIMIT 50
-		WITH path, totalMetric,
-		     [n IN nodes(path) | {
-		       pk: n.pk,
-		       code: n.code,
-		       status: n.status,
-		       device_type: n.device_type
-		     }] AS nodeList,
-		     [r IN relationships(path) | r.metric] AS edgeMetrics
-		RETURN nodeList, edgeMetrics, totalMetric
-	`
+	var cypher string
+	if pathMode == "latency" {
+		// Latency mode: Use APOC Dijkstra to find lowest total metric path
+		// This can find longer paths if they have lower total latency
+		cypher = `
+			MATCH (a:Device {pk: $from_pk}), (b:Device {pk: $to_pk})
+			CALL apoc.algo.dijkstra(a, b, 'ISIS_ADJACENT>', 'metric') YIELD path, weight
+			WITH path, toInteger(weight) AS totalMetric
+			WITH path, totalMetric,
+			     [n IN nodes(path) | {
+			       pk: n.pk,
+			       code: n.code,
+			       status: n.status,
+			       device_type: n.device_type
+			     }] AS nodeList,
+			     [r IN relationships(path) | r.metric] AS edgeMetrics
+			RETURN nodeList, edgeMetrics, totalMetric
+			LIMIT 1
+		`
+	} else {
+		// Hops mode: Use allShortestPaths to find minimum hop paths
+		cypher = `
+			MATCH (a:Device {pk: $from_pk}), (b:Device {pk: $to_pk})
+			CALL {
+				WITH a, b
+				MATCH path = allShortestPaths((a)-[:ISIS_ADJACENT*]->(b))
+				RETURN path,
+				       reduce(cost = 0, r IN relationships(path) | cost + coalesce(r.metric, 1)) AS totalMetric
+			}
+			WITH path, totalMetric
+			ORDER BY totalMetric
+			LIMIT 50
+			WITH path, totalMetric,
+			     [n IN nodes(path) | {
+			       pk: n.pk,
+			       code: n.code,
+			       status: n.status,
+			       device_type: n.device_type
+			     }] AS nodeList,
+			     [r IN relationships(path) | r.metric] AS edgeMetrics
+			RETURN nodeList, edgeMetrics, totalMetric
+		`
+	}
 
 	result, err := session.Run(ctx, cypher, map[string]any{
 		"from_pk": fromPK,

@@ -260,11 +260,32 @@ function ChatSessionSync({ children }: { children: React.ReactNode }) {
 
     const session = chatSessions.find(s => s.id === sessionId)
 
-    // If session doesn't exist (e.g., page refresh on a new empty session),
-    // create it with the URL's ID to preserve the URL
+    // If session doesn't exist locally, try to fetch it from server
+    // This handles sessions created externally (e.g., from Slack)
     if (!session) {
-      const newSession = createChatSessionWithId(sessionId)
-      setChatSessions(prev => [...prev, newSession])
+      getSession<ChatMessage[]>(sessionId)
+        .then(serverSession => {
+          if (serverSession && serverSession.content) {
+            // Session exists on server - add it to local state
+            const newSession: ChatSession = {
+              id: serverSession.id,
+              name: serverSession.name ?? undefined,
+              createdAt: new Date(serverSession.created_at),
+              updatedAt: new Date(serverSession.updated_at),
+              messages: serverSession.content,
+            }
+            setChatSessions(prev => [...prev, newSession])
+          } else {
+            // Session doesn't exist on server either - create empty one
+            const newSession = createChatSessionWithId(sessionId)
+            setChatSessions(prev => [...prev, newSession])
+          }
+        })
+        .catch(() => {
+          // Failed to fetch - create empty session as fallback
+          const newSession = createChatSessionWithId(sessionId)
+          setChatSessions(prev => [...prev, newSession])
+        })
     }
 
     setCurrentChatSessionId(sessionId)

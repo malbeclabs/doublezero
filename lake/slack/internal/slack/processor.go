@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/malbeclabs/doublezero/lake/agent/pkg/workflow"
 	"github.com/slack-go/slack/slackevents"
 )
@@ -195,9 +196,6 @@ func formatThinkingMessage(progress workflow.Progress, sessionURL string) string
 			for _, q := range progress.DataQuestions {
 				sb.WriteString(fmt.Sprintf("_• %s_\n", q.Question))
 			}
-			if sessionURL != "" {
-				sb.WriteString(fmt.Sprintf("\n<%s|View on web>", sessionURL))
-			}
 		}
 		// For conversational/out_of_scope, we don't show anything (just answer)
 
@@ -206,6 +204,11 @@ func formatThinkingMessage(progress workflow.Progress, sessionURL string) string
 		if progress.Error != nil {
 			sb.WriteString(fmt.Sprintf("_%s_", progress.Error.Error()))
 		}
+	}
+
+	// Add web link to all stages (except error) if URL is provided
+	if sessionURL != "" && progress.Stage != workflow.StageError {
+		sb.WriteString(fmt.Sprintf("\n<%s|View on web>", sessionURL))
 	}
 
 	return sb.String()
@@ -306,8 +309,15 @@ func (p *Processor) ProcessMessage(
 		history = []workflow.ConversationMessage{}
 	}
 
-	// Post initial thinking message
-	initialThinking := formatThinkingMessage(workflow.Progress{Stage: workflow.StageClassifying}, "")
+	// Generate session ID upfront so we can show the web link immediately
+	sessionID := uuid.New().String()
+	sessionURL := ""
+	if p.webBaseURL != "" {
+		sessionURL = fmt.Sprintf("%s/chat/%s", p.webBaseURL, sessionID)
+	}
+
+	// Post initial thinking message with web link
+	initialThinking := formatThinkingMessage(workflow.Progress{Stage: workflow.StageClassifying}, sessionURL)
 	thinkingTS, err := p.slackClient.PostMessage(ctx, ev.Channel, initialThinking, nil, threadTS)
 	if err != nil {
 		p.log.Warn("failed to post thinking message", "error", err)
@@ -337,9 +347,9 @@ func (p *Processor) ProcessMessage(
 			return
 		}
 
-		// Update thinking message
+		// Update thinking message with web link
 		if thinkingTS != "" {
-			thinkingText := formatThinkingMessage(progress, "")
+			thinkingText := formatThinkingMessage(progress, sessionURL)
 			if err := p.slackClient.UpdateMessage(ctx, ev.Channel, thinkingTS, thinkingText, nil); err != nil {
 				p.log.Debug("failed to update thinking message", "error", err)
 			}
@@ -347,7 +357,7 @@ func (p *Processor) ProcessMessage(
 	}
 
 	// Run the API chat stream
-	result, err := p.apiClient.ChatStream(ctx, txt, history, onProgress)
+	result, err := p.apiClient.ChatStream(ctx, txt, history, sessionID, onProgress)
 	if err != nil {
 		AgentErrorsTotal.WithLabelValues("workflow", "api").Inc()
 		p.log.Error("API error", "error", err, "message_ts", ev.TimeStamp, "envelope_id", eventID)
@@ -379,10 +389,6 @@ func (p *Processor) ProcessMessage(
 
 	// For data analysis, update thinking message with summary and session link
 	if result.Classification == workflow.ClassificationDataAnalysis && len(result.DataQuestions) > 0 && thinkingTS != "" {
-		sessionURL := ""
-		if p.webBaseURL != "" && result.SessionID != "" {
-			sessionURL = fmt.Sprintf("%s/chat/%s", p.webBaseURL, result.SessionID)
-		}
 		summaryText := formatThinkingMessage(workflow.Progress{
 			Stage:          workflow.StageComplete,
 			Classification: result.Classification,

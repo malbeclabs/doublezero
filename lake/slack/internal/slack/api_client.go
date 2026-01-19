@@ -96,10 +96,12 @@ type queryDoneEventData struct {
 
 // ChatStream sends a message to the API and streams the response.
 // It calls onProgress for each progress update and returns the final result.
+// If sessionID is empty, a new one will be generated.
 func (c *APIClient) ChatStream(
 	ctx context.Context,
 	message string,
 	history []workflow.ConversationMessage,
+	sessionID string,
 	onProgress func(workflow.Progress),
 ) (ChatStreamResult, error) {
 	// Convert history to API format
@@ -112,8 +114,10 @@ func (c *APIClient) ChatStream(
 		})
 	}
 
-	// Build request body
-	sessionID := uuid.New().String()
+	// Generate session ID if not provided
+	if sessionID == "" {
+		sessionID = uuid.New().String()
+	}
 	reqBody := chatRequest{
 		Message:   message,
 		History:   apiHistory,

@@ -402,46 +402,66 @@ func GetSimulateLinkAddition(w http.ResponseWriter, r *http.Request) {
 	response.RedundancyCount = len(response.RedundancyGains)
 
 	// Find paths that would be improved by the new link
-	// We look at paths from devices near source to devices near target
+	// We use a simpler approach: check current path between source and target,
+	// and also check paths from their immediate neighbors
 	improvedCypher := `
 		// Get the source and target devices
 		MATCH (src:Device {pk: $source_pk}), (tgt:Device {pk: $target_pk})
-		WHERE src.isis_system_id IS NOT NULL AND tgt.isis_system_id IS NOT NULL
 
-		// Get devices within 4 hops of source
-		OPTIONAL MATCH (src)-[:ISIS_ADJACENT*1..4]-(nearSource:Device)
-		WHERE nearSource.isis_system_id IS NOT NULL
-		WITH src, tgt, collect(DISTINCT nearSource) + [src] AS sourceSideDevices
+		// Get immediate neighbors of source (1 hop)
+		OPTIONAL MATCH (src)-[:ISIS_ADJACENT]-(srcNeighbor:Device)
+		WHERE srcNeighbor.isis_system_id IS NOT NULL AND srcNeighbor.pk <> tgt.pk
+		WITH src, tgt, collect(DISTINCT srcNeighbor) AS srcNeighbors
 
-		// Get devices within 4 hops of target
-		WITH src, tgt, sourceSideDevices
-		OPTIONAL MATCH (tgt)-[:ISIS_ADJACENT*1..4]-(nearTarget:Device)
-		WHERE nearTarget.isis_system_id IS NOT NULL
-		WITH src, tgt, sourceSideDevices, collect(DISTINCT nearTarget) AS nearTargetDevices
-		WITH src, tgt, sourceSideDevices, nearTargetDevices + [tgt] AS targetSideDevices
+		// Get immediate neighbors of target (1 hop)
+		OPTIONAL MATCH (tgt)-[:ISIS_ADJACENT]-(tgtNeighbor:Device)
+		WHERE tgtNeighbor.isis_system_id IS NOT NULL AND tgtNeighbor.pk <> src.pk
+		WITH src, tgt, srcNeighbors, collect(DISTINCT tgtNeighbor) AS tgtNeighbors
 
-		// Check paths between source-side and target-side devices
-		UNWIND sourceSideDevices AS from
-		UNWIND targetSideDevices AS to
+		// Build device pairs to check: (source neighbors) -> (target neighbors)
+		// Include src->tgt direct path check
+		WITH src, tgt, srcNeighbors, tgtNeighbors,
+		     [src] + srcNeighbors AS sourceSide,
+		     [tgt] + tgtNeighbors AS targetSide
+
+		UNWIND sourceSide AS from
+		UNWIND targetSide AS to
 		WITH src, tgt, from, to
 		WHERE from.pk <> to.pk
 
-		// Get current shortest path
-		MATCH currentPath = shortestPath((from)-[:ISIS_ADJACENT*]-(to))
-		WITH from, to, src, tgt,
-		     length(currentPath) AS currentHops,
-		     reduce(total = 0, r IN relationships(currentPath) | total + coalesce(r.metric, 0)) AS currentMetric
+		// Get current shortest path (OPTIONAL to handle disconnected graphs)
+		OPTIONAL MATCH currentPath = shortestPath((from)-[:ISIS_ADJACENT*..10]-(to))
+		WITH from, to, src, tgt, currentPath,
+		     CASE WHEN currentPath IS NOT NULL THEN length(currentPath) ELSE 999 END AS currentHops,
+		     CASE WHEN currentPath IS NOT NULL
+		          THEN reduce(total = 0, r IN relationships(currentPath) | total + coalesce(r.metric, 0))
+		          ELSE 999999 END AS currentMetric
+		WHERE currentPath IS NOT NULL AND length(currentPath) > 2
 
 		// Calculate path via new link: from -> src -> [new link] -> tgt -> to
-		OPTIONAL MATCH p1 = shortestPath((from)-[:ISIS_ADJACENT*]-(src))
-		OPTIONAL MATCH p2 = shortestPath((tgt)-[:ISIS_ADJACENT*]-(to))
-		WITH from, to, currentHops, currentMetric, p1, p2,
-		     CASE WHEN p1 IS NOT NULL AND p2 IS NOT NULL
-		          THEN length(p1) + 1 + length(p2)
+		// Handle shortestPath carefully to avoid same start/end node error
+		OPTIONAL MATCH p1 = shortestPath((from)-[:ISIS_ADJACENT*..10]-(src))
+		WHERE from.pk <> src.pk
+		OPTIONAL MATCH p2 = shortestPath((tgt)-[:ISIS_ADJACENT*..10]-(to))
+		WHERE to.pk <> tgt.pk
+		WITH from, to, src, tgt, currentHops, currentMetric, p1, p2,
+		     from.pk = src.pk AS fromIsSrc,
+		     to.pk = tgt.pk AS toIsTgt
+		WITH from, to,
+		     currentHops, currentMetric,
+		     CASE WHEN fromIsSrc AND toIsTgt THEN 1
+		          WHEN fromIsSrc AND p2 IS NOT NULL THEN 1 + length(p2)
+		          WHEN toIsTgt AND p1 IS NOT NULL THEN length(p1) + 1
+		          WHEN p1 IS NOT NULL AND p2 IS NOT NULL THEN length(p1) + 1 + length(p2)
 		          ELSE 999 END AS viaNewLinkHops,
-		     CASE WHEN p1 IS NOT NULL AND p2 IS NOT NULL
-		          THEN reduce(t = 0, r IN relationships(p1) | t + coalesce(r.metric, 0)) + $metric +
-		               reduce(t = 0, r IN relationships(p2) | t + coalesce(r.metric, 0))
+		     CASE WHEN fromIsSrc AND toIsTgt THEN $metric
+		          WHEN fromIsSrc AND p2 IS NOT NULL
+		               THEN $metric + reduce(t = 0, r IN relationships(p2) | t + coalesce(r.metric, 0))
+		          WHEN toIsTgt AND p1 IS NOT NULL
+		               THEN reduce(t = 0, r IN relationships(p1) | t + coalesce(r.metric, 0)) + $metric
+		          WHEN p1 IS NOT NULL AND p2 IS NOT NULL
+		               THEN reduce(t = 0, r IN relationships(p1) | t + coalesce(r.metric, 0)) + $metric +
+		                    reduce(t = 0, r IN relationships(p2) | t + coalesce(r.metric, 0))
 		          ELSE 999999 END AS viaNewLinkMetric
 
 		// Only return if the new link provides improvement
@@ -465,12 +485,12 @@ func GetSimulateLinkAddition(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		log.Printf("Simulate link addition improved paths query error: %v", err)
-		response.Error = "failed to query improved paths"
+		response.Error = "failed to query improved paths: " + err.Error()
 	} else {
 		improvedRecords, err := improvedResult.Collect(ctx)
 		if err != nil {
 			log.Printf("Simulate link addition improved paths collect error: %v", err)
-			response.Error = "failed to query improved paths"
+			response.Error = "failed to query improved paths: " + err.Error()
 		} else {
 			for _, record := range improvedRecords {
 				fromPK, _ := record.Get("from_pk")

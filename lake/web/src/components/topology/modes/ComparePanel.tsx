@@ -11,7 +11,7 @@ export function ComparePanel({ data, isLoading }: ComparePanelProps) {
     <div className="p-3 text-xs">
       <div className="flex items-center gap-1.5 mb-3">
         <GitCompare className="h-3.5 w-3.5 text-blue-500" />
-        <span className="font-medium">Topology Health</span>
+        <span className="font-medium">ISIS Health</span>
       </div>
 
       {isLoading && (

@@ -272,7 +272,7 @@ export function TopologyControlBar({
           {view === 'graph' && (
             <NavItem
               icon={<GitCompare className="h-3.5 w-3.5" />}
-              label="Compare topology"
+              label="ISIS health"
               onClick={() => toggleMode('compare')}
               active={mode === 'compare'}
               activeColor="blue"

@@ -118,7 +118,7 @@ export function PathModePanel({
                 <div>Hops: <span className="text-foreground font-medium">{pathsResult.paths[selectedPathIndex].hopCount}</span></div>
                 <div>Latency: <span className="text-foreground font-medium">{(pathsResult.paths[selectedPathIndex].totalMetric / 1000).toFixed(2)}ms</span></div>
               </div>
-              <div className="mt-2 pt-2 border-t border-[var(--border)] space-y-0.5 max-h-32 overflow-y-auto">
+              <div className="mt-2 pt-2 border-t border-[var(--border)] space-y-0.5">
                 {pathsResult.paths[selectedPathIndex].path.map((hop, i) => (
                   <div key={hop.devicePK} className="flex items-center gap-1">
                     <span className="text-muted-foreground w-4">{i + 1}.</span>

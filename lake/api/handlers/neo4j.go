@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/malbeclabs/doublezero/lake/agent/pkg/workflow"
@@ -123,6 +124,17 @@ func convertNeo4jValue(val any) any {
 			result[k] = convertNeo4jValue(mv)
 		}
 		return result
+	case float64:
+		// Sanitize NaN/Inf which aren't valid JSON
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			return nil
+		}
+		return v
+	case float32:
+		if math.IsNaN(float64(v)) || math.IsInf(float64(v), 0) {
+			return nil
+		}
+		return v
 	default:
 		return v
 	}

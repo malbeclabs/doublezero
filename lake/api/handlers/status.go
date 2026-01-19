@@ -403,12 +403,13 @@ func fetchStatusData(ctx context.Context) *StatusResponse {
 		return row.Scan(&resp.Network.Metros)
 	})
 
-	// Sum total bandwidth for all activated links
+	// Sum total bandwidth for activated WAN links
 	g.Go(func() error {
 		query := `
 			SELECT COALESCE(SUM(bandwidth_bps), 0)
 			FROM dz_links_current
 			WHERE status = 'activated'
+			  AND link_type = 'WAN'
 		`
 		row := config.DB.QueryRow(ctx, query)
 		return row.Scan(&resp.Network.WANBandwidthBps)

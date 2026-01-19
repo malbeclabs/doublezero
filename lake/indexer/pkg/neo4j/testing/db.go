@@ -63,32 +63,9 @@ func (cfg *DBConfig) Validate() error {
 
 // NewTestClient creates a test Neo4j client connected to the shared container.
 func NewTestClient(t *testing.T, db *DB) (neo4j.Client, error) {
-	return newTestClient(t, db, false)
-}
-
-// NewReadOnlyTestClient creates a read-only test Neo4j client connected to the shared container.
-func NewReadOnlyTestClient(t *testing.T, db *DB) (neo4j.Client, error) {
-	return newTestClient(t, db, true)
-}
-
-func newTestClient(t *testing.T, db *DB, readOnly bool) (neo4j.Client, error) {
-	var client neo4j.Client
-	var err error
-	if readOnly {
-		client, err = neo4j.NewReadOnlyClient(t.Context(), slog.Default(), db.boltURL, neo4j.DefaultDatabase, db.cfg.Username, db.cfg.Password)
-	} else {
-		client, err = neo4j.NewClient(t.Context(), slog.Default(), db.boltURL, neo4j.DefaultDatabase, db.cfg.Username, db.cfg.Password)
-	}
+	client, err := neo4j.NewClient(t.Context(), slog.Default(), db.boltURL, neo4j.DefaultDatabase, db.cfg.Username, db.cfg.Password)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Neo4j client: %w", err)
-	}
-
-	// For read-only clients, skip database clearing and migrations
-	if readOnly {
-		t.Cleanup(func() {
-			client.Close(t.Context())
-		})
-		return client, nil
 	}
 
 	// Clear the database for this test

@@ -342,6 +342,9 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
   const contributorDevicesMode = overlays.contributorDevices
   const contributorLinksMode = overlays.contributorLinks
 
+  // Check if any link overlay is active (determines if links should be dashed/colored)
+  const hasLinkOverlay = linkHealthMode || trafficFlowMode || contributorLinksMode || criticalityOverlayEnabled
+
   // Path finding operational state (local)
   const [pathSource, setPathSource] = useState<string | null>(null)
   const [pathTarget, setPathTarget] = useState<string | null>(null)
@@ -1049,17 +1052,18 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       const isRemovedLink = removalLink?.linkPK === link.pk
 
       // Determine display color based on mode
-      let displayColor = color
+      // Default to solid grey when no overlay is active (like graph view)
+      let displayColor = hasLinkOverlay ? color : (isDark ? '#4b5563' : '#9ca3af')
       let displayWeight = weight
-      let displayOpacity = 0.8
-      let dashArray: number[] = link.link_type === 'WAN' ? [8, 4] : [4, 4]
+      let displayOpacity = hasLinkOverlay ? 0.8 : 0.6
+      let useDash = hasLinkOverlay // Only use dashed lines when an overlay is active
 
       if (whatifRemovalMode && isRemovedLink) {
         // Whatif-removal mode: highlight removed link in red dashed
         displayColor = '#ef4444'
         displayWeight = weight + 3
         displayOpacity = 0.6
-        dashArray = [6, 4]
+        useDash = true
       } else if (linkHealthMode) {
         // Link health mode: color by SLA status
         const slaInfo = linkSlaStatus.get(link.pk)
@@ -1134,7 +1138,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           color: displayColor,
           weight: displayWeight,
           opacity: displayOpacity,
-          dashArray,
+          useDash,
         },
         geometry: {
           type: 'LineString' as const,
@@ -1167,7 +1171,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             color: isDark ? '#94a3b8' : '#64748b',
             weight: 4,
             opacity: 0.8,
-            dashArray: [8, 4],
+            useDash: true,
             isInterMetro: true,
             linkCount: data.count,
             avgLatencyMs,
@@ -1187,7 +1191,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       type: 'FeatureCollection' as const,
       features,
     }
-  }, [links, devicePositions, isDark, hoveredLink, selectedItem, hoverHighlight, linkPathMap, selectedPathIndex, criticalityOverlayEnabled, linkCriticalityMap, whatifRemovalMode, removalLink, linkHealthMode, linkSlaStatus, trafficFlowMode, getTrafficColor, metroClusteringMode, collapsedMetros, deviceMap, metroMap, contributorLinksMode, contributorIndexMap])
+  }, [links, devicePositions, isDark, hoveredLink, selectedItem, hoverHighlight, linkPathMap, selectedPathIndex, criticalityOverlayEnabled, linkCriticalityMap, whatifRemovalMode, removalLink, linkHealthMode, linkSlaStatus, trafficFlowMode, getTrafficColor, metroClusteringMode, collapsedMetros, deviceMap, metroMap, contributorLinksMode, contributorIndexMap, hasLinkOverlay])
 
   // GeoJSON for validator links (connecting lines)
   const validatorLinksGeoJson = useMemo(() => {
@@ -1559,7 +1563,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
               'line-color': ['get', 'color'],
               'line-width': ['get', 'weight'],
               'line-opacity': ['get', 'opacity'],
-              'line-dasharray': [4, 4],
+              ...(hasLinkOverlay && { 'line-dasharray': [4, 4] }),
             }}
             layout={{
               'line-cap': 'round',

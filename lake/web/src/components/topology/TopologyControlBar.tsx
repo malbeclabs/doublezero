@@ -104,8 +104,6 @@ function SectionHeader({ title, collapsed }: { title: string; collapsed: boolean
   )
 }
 
-const STORAGE_KEY = 'topology-nav-collapsed'
-
 export function TopologyControlBar({
   onZoomIn,
   onZoomOut,
@@ -122,6 +120,8 @@ export function TopologyControlBar({
     const params = searchParams.toString()
     navigate(`/topology/${targetView}${params ? `?${params}` : ''}`)
   }
+
+  const STORAGE_KEY = 'topology-nav-collapsed'
 
   // Persist collapsed state
   const [collapsed, setCollapsed] = useState(() => {

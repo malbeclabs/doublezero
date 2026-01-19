@@ -217,6 +217,9 @@ func containsNestedList(text string) bool {
 
 // ConvertMarkdownToBlocks converts markdown text to Slack blocks
 func ConvertMarkdownToBlocks(text string, log *slog.Logger) []slack.Block {
+	// Convert markdown tables to ASCII tables for better Slack rendering
+	text = convertMarkdownTablesToASCII(text)
+
 	// Handle code blocks specially - the library tends to split them incorrectly
 	// Extract code blocks and process text segments separately
 	if strings.Contains(text, "```") {
@@ -238,6 +241,123 @@ func ConvertMarkdownToBlocks(text string, log *slog.Logger) []slack.Block {
 
 	// Set expand=true on all section blocks to prevent "see more" truncation
 	return SetExpandOnSectionBlocks(convertedBlocks, log)
+}
+
+// markdownTablePattern matches a complete markdown table (header row, separator row, and data rows)
+var markdownTablePattern = regexp.MustCompile(`(?m)^(\|[^\n]+\|\n)(\|[-:\s|]+\|\n)((?:\|[^\n]+\|\n?)*)`)
+
+// convertMarkdownTablesToASCII converts markdown tables to ASCII box-drawing tables
+func convertMarkdownTablesToASCII(text string) string {
+	return markdownTablePattern.ReplaceAllStringFunc(text, func(tableMatch string) string {
+		lines := strings.Split(strings.TrimSuffix(tableMatch, "\n"), "\n")
+		if len(lines) < 2 {
+			return tableMatch // Not a valid table
+		}
+
+		// Parse all rows (skip separator row at index 1)
+		var rows [][]string
+		var maxWidths []int
+
+		for i, line := range lines {
+			if i == 1 {
+				continue // Skip separator row (|---|---|)
+			}
+
+			cells := parseTableRow(line)
+			if len(cells) == 0 {
+				continue
+			}
+
+			rows = append(rows, cells)
+
+			// Track max width for each column
+			for j, cell := range cells {
+				if j >= len(maxWidths) {
+					maxWidths = append(maxWidths, len(cell))
+				} else if len(cell) > maxWidths[j] {
+					maxWidths[j] = len(cell)
+				}
+			}
+		}
+
+		if len(rows) == 0 || len(maxWidths) == 0 {
+			return tableMatch
+		}
+
+		// Build ASCII table
+		var result strings.Builder
+
+		// Build separator line
+		separator := buildASCIISeparator(maxWidths)
+
+		// Top border
+		result.WriteString(separator)
+		result.WriteString("\n")
+
+		// Header row
+		result.WriteString(buildASCIIRow(rows[0], maxWidths))
+		result.WriteString("\n")
+
+		// Separator after header
+		result.WriteString(separator)
+		result.WriteString("\n")
+
+		// Data rows
+		for i := 1; i < len(rows); i++ {
+			result.WriteString(buildASCIIRow(rows[i], maxWidths))
+			result.WriteString("\n")
+		}
+
+		// Bottom border
+		result.WriteString(separator)
+		result.WriteString("\n")
+
+		// Wrap in code block for monospace rendering
+		return "```\n" + result.String() + "```\n"
+	})
+}
+
+// parseTableRow extracts cells from a markdown table row
+func parseTableRow(line string) []string {
+	// Remove leading/trailing pipes and split by |
+	line = strings.TrimSpace(line)
+	if !strings.HasPrefix(line, "|") || !strings.HasSuffix(line, "|") {
+		return nil
+	}
+
+	line = strings.TrimPrefix(line, "|")
+	line = strings.TrimSuffix(line, "|")
+
+	parts := strings.Split(line, "|")
+	cells := make([]string, 0, len(parts))
+	for _, part := range parts {
+		cells = append(cells, strings.TrimSpace(part))
+	}
+	return cells
+}
+
+// buildASCIISeparator builds a separator line like +------+------+
+func buildASCIISeparator(widths []int) string {
+	var parts []string
+	for _, w := range widths {
+		parts = append(parts, strings.Repeat("-", w+2)) // +2 for padding spaces
+	}
+	return "+" + strings.Join(parts, "+") + "+"
+}
+
+// buildASCIIRow builds a data row like | foo  | bar  |
+func buildASCIIRow(cells []string, widths []int) string {
+	var parts []string
+	for i, w := range widths {
+		cell := ""
+		if i < len(cells) {
+			cell = cells[i]
+		}
+		// Left-pad cell to width
+		padded := cell + strings.Repeat(" ", w-len(cell))
+		parts = append(parts, " "+padded+" ")
+	}
+	return "|" + strings.Join(parts, "|") + "|"
 }
 
 // headerPattern matches markdown headers (# to ######)

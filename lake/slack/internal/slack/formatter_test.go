@@ -516,6 +516,111 @@ func TestAI_Slack_ConvertMarkdownToBlocks_InlineFormatting(t *testing.T) {
 	})
 }
 
+func TestAI_Slack_ConvertMarkdownTablesToASCII(t *testing.T) {
+	t.Parallel()
+
+	t.Run("simple markdown table converts to ASCII", func(t *testing.T) {
+		t.Parallel()
+		input := `| Name | Value |
+|------|-------|
+| foo  | 123   |
+| bar  | 456   |
+`
+		result := convertMarkdownTablesToASCII(input)
+
+		// Should be wrapped in code block
+		require.Contains(t, result, "```")
+
+		// Should have ASCII box characters
+		require.Contains(t, result, "+")
+		require.Contains(t, result, "|")
+
+		// Should contain the data
+		require.Contains(t, result, "Name")
+		require.Contains(t, result, "foo")
+		require.Contains(t, result, "123")
+	})
+
+	t.Run("table with varying column widths", func(t *testing.T) {
+		t.Parallel()
+		input := `| Short | Much Longer Header |
+|-------|-------------------|
+| a     | b                 |
+| longer text | c         |
+`
+		result := convertMarkdownTablesToASCII(input)
+
+		// Columns should be padded to max width
+		require.Contains(t, result, "```")
+		require.Contains(t, result, "Short")
+		require.Contains(t, result, "Much Longer Header")
+		require.Contains(t, result, "longer text")
+	})
+
+	t.Run("text without tables passes through unchanged", func(t *testing.T) {
+		t.Parallel()
+		input := "Just some regular text\nwith multiple lines\n- and a list"
+
+		result := convertMarkdownTablesToASCII(input)
+
+		require.Equal(t, input, result)
+	})
+
+	t.Run("mixed content with table", func(t *testing.T) {
+		t.Parallel()
+		input := `Here is some text.
+
+| Col1 | Col2 |
+|------|------|
+| a    | b    |
+
+And more text after.`
+
+		result := convertMarkdownTablesToASCII(input)
+
+		// Should preserve text before and after
+		require.Contains(t, result, "Here is some text.")
+		require.Contains(t, result, "And more text after.")
+
+		// Table should be converted
+		require.Contains(t, result, "```")
+		require.Contains(t, result, "+")
+	})
+
+	t.Run("table renders correctly in blocks", func(t *testing.T) {
+		t.Parallel()
+		input := `### 📊 Results
+
+| Metric | Value |
+|--------|-------|
+| Count  | 100   |
+| Avg    | 50.5  |
+`
+		blocks := ConvertMarkdownToBlocks(input, slog.Default())
+
+		require.NotNil(t, blocks)
+		require.Greater(t, len(blocks), 0)
+
+		// Should have header block
+		require.Equal(t, slackapi.MBTHeader, blocks[0].BlockType())
+
+		// Should have code block with table
+		foundTable := false
+		for _, block := range blocks {
+			if block.BlockType() == slackapi.MBTSection {
+				sectionBlock := block.(*slackapi.SectionBlock)
+				if sectionBlock.Text != nil && strings.Contains(sectionBlock.Text.Text, "```") {
+					if strings.Contains(sectionBlock.Text.Text, "Metric") &&
+						strings.Contains(sectionBlock.Text.Text, "Count") {
+						foundTable = true
+					}
+				}
+			}
+		}
+		require.True(t, foundTable, "table should be rendered as code block")
+	})
+}
+
 func TestAI_Slack_ConvertMarkdownToBlocks_CodeBlocks(t *testing.T) {
 	t.Parallel()
 

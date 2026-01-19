@@ -999,8 +999,6 @@ export function TopologyGraph({
           'line-style': 'solid',
         })
       })
-      // Clear CSS classes used by some overlays
-      cy.edges().removeClass('sla-healthy sla-warning sla-critical sla-unknown traffic-low traffic-medium traffic-high traffic-critical traffic-idle')
     })
   }, [activeLinkOverlay, isDark, inPathMode, cyGeneration])
 
@@ -1159,56 +1157,87 @@ export function TopologyGraph({
 
   // Apply link health overlay styling when enabled
   useEffect(() => {
-    if (!cyRef.current) return
+    if (!cyRef.current || !linkHealthOverlayEnabled) return
     const cy = cyRef.current
 
-    // Clear previous link health classes
-    cy.edges().removeClass('sla-healthy sla-warning sla-critical sla-unknown')
-
-    if (linkHealthOverlayEnabled && edgeSlaStatus.size > 0) {
-      cy.edges().forEach(edge => {
+    cy.batch(() => {
+      cy.edges().not('.path-edge').forEach(edge => {
         const edgeId = edge.data('id') // format: source->target
         const slaInfo = edgeSlaStatus.get(edgeId)
 
         if (slaInfo) {
           if (slaInfo.status === 'healthy') {
-            edge.addClass('sla-healthy')
+            edge.style({
+              'line-color': '#22c55e',
+              'target-arrow-color': '#22c55e',
+              'width': 2,
+              'opacity': 0.9,
+            })
           } else if (slaInfo.status === 'warning') {
-            edge.addClass('sla-warning')
+            edge.style({
+              'line-color': '#eab308',
+              'target-arrow-color': '#eab308',
+              'width': 2,
+              'opacity': 1,
+            })
           } else if (slaInfo.status === 'critical') {
-            edge.addClass('sla-critical')
+            edge.style({
+              'line-color': '#ef4444',
+              'target-arrow-color': '#ef4444',
+              'width': 3,
+              'opacity': 1,
+            })
           } else {
-            edge.addClass('sla-unknown')
+            edge.style({
+              'line-color': isDark ? '#6b7280' : '#9ca3af',
+              'target-arrow-color': isDark ? '#6b7280' : '#9ca3af',
+              'width': 1,
+              'opacity': 0.5,
+            })
           }
         } else {
-          edge.addClass('sla-unknown')
+          edge.style({
+            'line-color': isDark ? '#6b7280' : '#9ca3af',
+            'target-arrow-color': isDark ? '#6b7280' : '#9ca3af',
+            'width': 1,
+            'opacity': 0.5,
+          })
         }
       })
-    }
-  }, [linkHealthOverlayEnabled, edgeSlaStatus, cyGeneration])
+    })
+  }, [linkHealthOverlayEnabled, edgeSlaStatus, isDark, cyGeneration])
 
   // Apply traffic flow overlay styling when enabled
   useEffect(() => {
-    if (!cyRef.current) return
+    if (!cyRef.current || !trafficFlowEnabled) return
     const cy = cyRef.current
 
-    // Clear previous traffic classes
-    cy.edges().removeClass('traffic-low traffic-medium traffic-high traffic-critical traffic-idle')
+    // Traffic level colors: idle=gray, low=green, medium=yellow, high=orange, critical=red
+    const trafficColors: Record<string, { color: string; width: number; opacity: number }> = {
+      idle: { color: isDark ? '#6b7280' : '#9ca3af', width: 1, opacity: 0.5 },
+      low: { color: '#22c55e', width: 1.5, opacity: 0.8 },
+      medium: { color: '#eab308', width: 2, opacity: 0.9 },
+      high: { color: '#f97316', width: 2.5, opacity: 1 },
+      critical: { color: '#ef4444', width: 3, opacity: 1 },
+    }
 
-    if (trafficFlowEnabled && edgeTrafficMap.size > 0) {
-      cy.edges().forEach(edge => {
+    cy.batch(() => {
+      cy.edges().not('.path-edge').forEach(edge => {
         const edgeId = edge.data('id') // format: source->target
         const trafficInfo = edgeTrafficMap.get(edgeId)
 
-        if (trafficInfo) {
-          const level = getTrafficLevel(trafficInfo.utilization)
-          edge.addClass(`traffic-${level}`)
-        } else {
-          edge.addClass('traffic-idle')
-        }
+        const level = trafficInfo ? getTrafficLevel(trafficInfo.utilization) : 'idle'
+        const style = trafficColors[level] || trafficColors.idle
+
+        edge.style({
+          'line-color': style.color,
+          'target-arrow-color': style.color,
+          'width': style.width,
+          'opacity': style.opacity,
+        })
       })
-    }
-  }, [trafficFlowEnabled, edgeTrafficMap, getTrafficLevel, cyGeneration])
+    })
+  }, [trafficFlowEnabled, edgeTrafficMap, getTrafficLevel, isDark, cyGeneration])
 
   // Apply metro clustering overlay styling when enabled
   useEffect(() => {

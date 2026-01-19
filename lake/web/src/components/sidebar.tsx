@@ -85,6 +85,7 @@ export function Sidebar({
   const isLandingPage = location.pathname === '/'
   const isTopologyPage = location.pathname === '/topology'
   const isTopologyMapOrGraph = location.pathname === '/topology/map' || location.pathname === '/topology/graph'
+  const isTopologyRoute = location.pathname === '/topology' || location.pathname.startsWith('/topology/')
   const isStatusPage = location.pathname.startsWith('/status')
   const isOutagesPage = location.pathname === '/outages'
   const isDZRoute = location.pathname.startsWith('/dz/')
@@ -107,29 +108,32 @@ export function Sidebar({
 
   // Auto-collapse/expand based on route and user preference
   useEffect(() => {
-    // Always collapse on topology map/graph views (ignores user preference)
-    if (isTopologyMapOrGraph) {
+    // Always collapse on topology views (ignores user preference)
+    if (isTopologyRoute) {
       setIsCollapsed(true)
       return
     }
 
-    // If user has explicit preference, respect it
-    if (userCollapsed !== null) return
+    // If user has explicit preference, respect it for non-topology pages
+    if (userCollapsed !== null) {
+      setIsCollapsed(userCollapsed)
+      return
+    }
 
     const isSmall = typeof window !== 'undefined' && window.innerWidth < 1024
     if (isSmall) {
       setIsCollapsed(true)
     } else {
-      // Landing page, topology page, status page, and entity pages default to collapsed
-      setIsCollapsed(isLandingPage || isTopologyPage || isStatusPage || isOutagesPage || isDZRoute || isSolanaRoute)
+      // Landing page, status page, and entity pages default to collapsed
+      setIsCollapsed(isLandingPage || isStatusPage || isOutagesPage || isDZRoute || isSolanaRoute)
     }
-  }, [isLandingPage, isTopologyPage, isTopologyMapOrGraph, isStatusPage, isDZRoute, isSolanaRoute, userCollapsed])
+  }, [isLandingPage, isTopologyRoute, isStatusPage, isOutagesPage, isDZRoute, isSolanaRoute, userCollapsed])
 
   // Auto-collapse/expand on resize based on user preference
   useEffect(() => {
     const checkWidth = () => {
-      // Always collapse on topology map/graph views
-      if (isTopologyMapOrGraph) {
+      // Always collapse on topology views
+      if (isTopologyRoute) {
         setIsCollapsed(true)
         return
       }
@@ -140,7 +144,7 @@ export function Sidebar({
         setIsCollapsed(true)
       } else if (userCollapsed === null) {
         // No user preference - use route-based default
-        setIsCollapsed(isLandingPage || isTopologyPage || isStatusPage || isOutagesPage || isDZRoute || isSolanaRoute)
+        setIsCollapsed(isLandingPage || isStatusPage || isOutagesPage || isDZRoute || isSolanaRoute)
       } else {
         // Respect user preference
         setIsCollapsed(userCollapsed)
@@ -149,7 +153,7 @@ export function Sidebar({
 
     window.addEventListener('resize', checkWidth)
     return () => window.removeEventListener('resize', checkWidth)
-  }, [userCollapsed, isLandingPage, isTopologyPage, isTopologyMapOrGraph, isStatusPage, isDZRoute, isSolanaRoute])
+  }, [userCollapsed, isLandingPage, isTopologyRoute, isStatusPage, isOutagesPage, isDZRoute, isSolanaRoute])
 
   // Save collapsed state to localStorage
   useEffect(() => {
@@ -173,7 +177,6 @@ export function Sidebar({
 
   const isQueryRoute = location.pathname.startsWith('/query')
   const isChatRoute = location.pathname.startsWith('/chat')
-  const isTopologyRoute = location.pathname === '/topology' || location.pathname.startsWith('/topology/')
   const isStatusRoute = location.pathname.startsWith('/status')
   const isTimelineRoute = location.pathname === '/timeline'
   const isOutagesRoute = location.pathname === '/outages'

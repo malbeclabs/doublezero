@@ -14,7 +14,7 @@ import (
 	"github.com/malbeclabs/doublezero/lake/agent/pkg/workflow/prompts"
 	"github.com/malbeclabs/doublezero/lake/api/config"
 	"github.com/malbeclabs/doublezero/lake/api/metrics"
-	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
+	"github.com/malbeclabs/doublezero/lake/indexer/pkg/neo4j"
 )
 
 // Cached prompts for Cypher generation
@@ -68,7 +68,7 @@ func GenerateCypher(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if Neo4j is available for schema fetching
-	if config.Neo4j == nil {
+	if config.Neo4jClient == nil {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(GenerateResponse{Error: "Neo4j is not available"})
 		return
@@ -173,7 +173,7 @@ func GenerateCypherStream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if Neo4j is available
-	if config.Neo4j == nil {
+	if config.Neo4jClient == nil {
 		sendEvent("error", "Neo4j is not available")
 		return
 	}
@@ -275,7 +275,7 @@ func cleanCypher(response string) string {
 }
 
 func validateCypherQuery(ctx context.Context, cypher string) string {
-	if config.Neo4j == nil {
+	if config.Neo4jClient == nil {
 		return "Neo4j is not available"
 	}
 
@@ -285,7 +285,7 @@ func validateCypherQuery(ctx context.Context, cypher string) string {
 	session := config.Neo4jSession(ctx)
 	defer session.Close(ctx)
 
-	_, err := session.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
+	_, err := session.ExecuteRead(ctx, func(tx neo4j.Transaction) (any, error) {
 		res, err := tx.Run(ctx, explainQuery, nil)
 		if err != nil {
 			return nil, err

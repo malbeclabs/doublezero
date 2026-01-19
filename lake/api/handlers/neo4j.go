@@ -8,7 +8,8 @@ import (
 
 	"github.com/malbeclabs/doublezero/lake/agent/pkg/workflow"
 	"github.com/malbeclabs/doublezero/lake/api/config"
-	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
+	"github.com/malbeclabs/doublezero/lake/indexer/pkg/neo4j"
+	neo4jdriver "github.com/neo4j/neo4j-go-driver/v5/neo4j"
 )
 
 // Neo4jQuerier implements workflow.Querier for Neo4j graph queries.
@@ -24,7 +25,7 @@ func (q *Neo4jQuerier) Query(ctx context.Context, cypher string) (workflow.Query
 	session := config.Neo4jSession(ctx)
 	defer session.Close(ctx)
 
-	result, err := session.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
+	result, err := session.ExecuteRead(ctx, func(tx neo4j.Transaction) (any, error) {
 		res, err := tx.Run(ctx, cypher, nil)
 		if err != nil {
 			return nil, err
@@ -78,7 +79,7 @@ func convertNeo4jValue(val any) any {
 	}
 
 	switch v := val.(type) {
-	case neo4j.Node:
+	case neo4jdriver.Node:
 		// Convert Node to a map with labels and properties
 		props := make(map[string]any)
 		for k, pv := range v.Props {
@@ -88,7 +89,7 @@ func convertNeo4jValue(val any) any {
 			"_labels":     v.Labels,
 			"_properties": props,
 		}
-	case neo4j.Relationship:
+	case neo4jdriver.Relationship:
 		// Convert Relationship to a map
 		props := make(map[string]any)
 		for k, pv := range v.Props {
@@ -98,7 +99,7 @@ func convertNeo4jValue(val any) any {
 			"_type":       v.Type,
 			"_properties": props,
 		}
-	case neo4j.Path:
+	case neo4jdriver.Path:
 		// Convert Path to nodes and relationships
 		nodes := make([]any, len(v.Nodes))
 		for i, n := range v.Nodes {
@@ -464,9 +465,9 @@ type relTypeInfo struct {
 	Properties []propertyInfo
 }
 
-func (f *Neo4jSchemaFetcher) getNodeLabels(ctx context.Context, session neo4j.SessionWithContext) ([]labelInfo, error) {
+func (f *Neo4jSchemaFetcher) getNodeLabels(ctx context.Context, session neo4j.Session) ([]labelInfo, error) {
 	// Get labels
-	labelsResult, err := session.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
+	labelsResult, err := session.ExecuteRead(ctx, func(tx neo4j.Transaction) (any, error) {
 		res, err := tx.Run(ctx, "CALL db.labels()", nil)
 		if err != nil {
 			return nil, err
@@ -490,7 +491,7 @@ func (f *Neo4jSchemaFetcher) getNodeLabels(ctx context.Context, session neo4j.Se
 	labels := labelsResult.([]string)
 
 	// Get properties for each label using schema.nodeTypeProperties if available
-	propsResult, err := session.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
+	propsResult, err := session.ExecuteRead(ctx, func(tx neo4j.Transaction) (any, error) {
 		res, err := tx.Run(ctx, "CALL db.schema.nodeTypeProperties()", nil)
 		if err != nil {
 			// Fall back if procedure doesn't exist
@@ -540,9 +541,9 @@ func (f *Neo4jSchemaFetcher) getNodeLabels(ctx context.Context, session neo4j.Se
 	return result, nil
 }
 
-func (f *Neo4jSchemaFetcher) getRelationshipTypes(ctx context.Context, session neo4j.SessionWithContext) ([]relTypeInfo, error) {
+func (f *Neo4jSchemaFetcher) getRelationshipTypes(ctx context.Context, session neo4j.Session) ([]relTypeInfo, error) {
 	// Get relationship types
-	typesResult, err := session.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
+	typesResult, err := session.ExecuteRead(ctx, func(tx neo4j.Transaction) (any, error) {
 		res, err := tx.Run(ctx, "CALL db.relationshipTypes()", nil)
 		if err != nil {
 			return nil, err
@@ -566,7 +567,7 @@ func (f *Neo4jSchemaFetcher) getRelationshipTypes(ctx context.Context, session n
 	relTypes := typesResult.([]string)
 
 	// Get properties for each relationship type
-	propsResult, err := session.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
+	propsResult, err := session.ExecuteRead(ctx, func(tx neo4j.Transaction) (any, error) {
 		res, err := tx.Run(ctx, "CALL db.schema.relTypeProperties()", nil)
 		if err != nil {
 			return nil, nil

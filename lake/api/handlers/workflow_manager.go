@@ -379,7 +379,7 @@ func (m *WorkflowManager) runWorkflow(
 	}
 
 	// Add Neo4j support if available
-	if config.Neo4j != nil {
+	if config.Neo4jClient != nil {
 		cfg.GraphQuerier = NewNeo4jQuerier()
 		cfg.GraphSchemaFetcher = NewNeo4jSchemaFetcher()
 	}
@@ -641,7 +641,7 @@ func (m *WorkflowManager) resumeWorkflow(
 	}
 
 	// Add Neo4j support if available
-	if config.Neo4j != nil {
+	if config.Neo4jClient != nil {
 		cfg.GraphQuerier = NewNeo4jQuerier()
 		cfg.GraphSchemaFetcher = NewNeo4jSchemaFetcher()
 	}

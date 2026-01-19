@@ -122,7 +122,7 @@ func Chat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Add Neo4j support if available
-	if config.Neo4j != nil {
+	if config.Neo4jClient != nil {
 		cfg.GraphQuerier = NewNeo4jQuerier()
 		cfg.GraphSchemaFetcher = NewNeo4jSchemaFetcher()
 	}

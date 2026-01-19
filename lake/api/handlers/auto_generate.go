@@ -58,7 +58,7 @@ func AutoGenerateStream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if Neo4j is available - if not, default to SQL
-	neo4jAvailable := config.Neo4j != nil
+	neo4jAvailable := config.Neo4jClient != nil
 
 	// Classify the question
 	var mode string
@@ -213,7 +213,7 @@ func streamSQLGeneration(ctx context.Context, req AutoGenerateRequest, sendEvent
 // streamCypherGeneration handles the Cypher generation portion of auto-generate.
 func streamCypherGeneration(ctx context.Context, req AutoGenerateRequest, sendEvent func(string, string)) {
 	// Check if Neo4j is available
-	if config.Neo4j == nil {
+	if config.Neo4jClient == nil {
 		sendEvent("error", "Neo4j is not available")
 		return
 	}

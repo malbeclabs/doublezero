@@ -11,7 +11,7 @@ import (
 
 	"github.com/malbeclabs/doublezero/lake/api/config"
 	"github.com/malbeclabs/doublezero/lake/api/metrics"
-	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
+	"github.com/malbeclabs/doublezero/lake/indexer/pkg/neo4j"
 )
 
 // ISISNode represents a device node in the ISIS topology graph
@@ -2474,7 +2474,7 @@ func getLinkEndpoints(ctx context.Context, linkPK string) string {
 
 // computeAffectedPaths finds paths that would be affected by the maintenance
 // and computes alternate routes with before/after hops and metrics
-func computeAffectedPaths(ctx context.Context, session neo4j.SessionWithContext,
+func computeAffectedPaths(ctx context.Context, session neo4j.Session,
 	offlineDevices map[string]bool, offlineLinks map[string]bool, limit int) []MaintenanceAffectedPath {
 
 	result := []MaintenanceAffectedPath{}
@@ -2629,7 +2629,7 @@ func computeAffectedPaths(ctx context.Context, session neo4j.SessionWithContext,
 
 
 // analyzeDevicesImpactBatch computes the impact of taking multiple devices offline in a single query
-func analyzeDevicesImpactBatch(ctx context.Context, session neo4j.SessionWithContext, devicePKs []string) []MaintenanceItem {
+func analyzeDevicesImpactBatch(ctx context.Context, session neo4j.Session, devicePKs []string) []MaintenanceItem {
 	items := make([]MaintenanceItem, 0, len(devicePKs))
 
 	// Single query to get all device info, neighbor counts, and leaf neighbors
@@ -2726,7 +2726,7 @@ func analyzeDevicesImpactBatch(ctx context.Context, session neo4j.SessionWithCon
 }
 
 // analyzeLinksImpactBatch computes the impact of taking multiple links offline
-func analyzeLinksImpactBatch(ctx context.Context, session neo4j.SessionWithContext, linkPKs []string) ([]MaintenanceItem, error) {
+func analyzeLinksImpactBatch(ctx context.Context, session neo4j.Session, linkPKs []string) ([]MaintenanceItem, error) {
 	items := make([]MaintenanceItem, 0, len(linkPKs))
 
 	// First, batch lookup links from ClickHouse
@@ -2898,7 +2898,7 @@ func analyzeLinksImpactBatch(ctx context.Context, session neo4j.SessionWithConte
 
 // computeAffectedPathsFast finds all paths affected by taking devices offline
 // Returns paths that will be rerouted (with before/after metrics) and paths that will be disconnected
-func computeAffectedPathsFast(ctx context.Context, session neo4j.SessionWithContext,
+func computeAffectedPathsFast(ctx context.Context, session neo4j.Session,
 	offlineDevices map[string]bool, limit int) []MaintenanceAffectedPath {
 
 	result := []MaintenanceAffectedPath{}
@@ -3059,7 +3059,7 @@ func computeAffectedPathsFast(ctx context.Context, session neo4j.SessionWithCont
 }
 
 // computeAffectedMetrosFast computes affected metro pairs with specific link details
-func computeAffectedMetrosFast(ctx context.Context, session neo4j.SessionWithContext,
+func computeAffectedMetrosFast(ctx context.Context, session neo4j.Session,
 	offlineDevices map[string]bool) []AffectedMetroPair {
 
 	result := []AffectedMetroPair{}
@@ -3157,7 +3157,7 @@ func computeAffectedMetrosFast(ctx context.Context, session neo4j.SessionWithCon
 }
 
 // analyzeDeviceImpact computes the impact of taking a single device offline
-func analyzeDeviceImpact(ctx context.Context, session neo4j.SessionWithContext, devicePK string) MaintenanceItem {
+func analyzeDeviceImpact(ctx context.Context, session neo4j.Session, devicePK string) MaintenanceItem {
 	item := MaintenanceItem{
 		Type: "device",
 		PK:   devicePK,
@@ -3224,7 +3224,7 @@ func analyzeDeviceImpact(ctx context.Context, session neo4j.SessionWithContext, 
 }
 
 // analyzeLinkImpact computes the impact of taking a single link offline
-func analyzeLinkImpact(ctx context.Context, session neo4j.SessionWithContext, linkPK string) MaintenanceItem {
+func analyzeLinkImpact(ctx context.Context, session neo4j.Session, linkPK string) MaintenanceItem {
 	item := MaintenanceItem{
 		Type: "link",
 		PK:   linkPK,

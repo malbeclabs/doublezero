@@ -2,21 +2,22 @@ package config
 
 import (
 	"context"
-	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"time"
 
-	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
+	"github.com/malbeclabs/doublezero/lake/indexer/pkg/neo4j"
 )
 
-// Neo4j is the global Neo4j driver
-var Neo4j neo4j.DriverWithContext
+// Neo4jClient is the global read-only Neo4j client
+var Neo4jClient neo4j.Client
 
 // Neo4jDatabase is the configured database name
 var Neo4jDatabase string
 
-// LoadNeo4j initializes the Neo4j driver from environment variables
+// LoadNeo4j initializes the Neo4j client from environment variables.
+// The client is read-only to prevent accidental writes from the API layer.
 func LoadNeo4j() error {
 	uri := os.Getenv("NEO4J_URI")
 	if uri == "" {
@@ -25,7 +26,7 @@ func LoadNeo4j() error {
 
 	Neo4jDatabase = os.Getenv("NEO4J_DATABASE")
 	if Neo4jDatabase == "" {
-		Neo4jDatabase = "neo4j"
+		Neo4jDatabase = neo4j.DefaultDatabase
 	}
 
 	username := os.Getenv("NEO4J_USERNAME")
@@ -35,41 +36,34 @@ func LoadNeo4j() error {
 
 	password := os.Getenv("NEO4J_PASSWORD")
 
-	log.Printf("Connecting to Neo4j: uri=%s, database=%s, username=%s", uri, Neo4jDatabase, username)
+	log.Printf("Connecting to Neo4j (read-only): uri=%s, database=%s, username=%s", uri, Neo4jDatabase, username)
 
-	driver, err := neo4j.NewDriverWithContext(uri, neo4j.BasicAuth(username, password, ""))
-	if err != nil {
-		return fmt.Errorf("failed to create Neo4j driver: %w", err)
-	}
-
-	// Test the connection
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := driver.VerifyConnectivity(ctx); err != nil {
-		driver.Close(ctx)
-		return fmt.Errorf("failed to verify Neo4j connectivity: %w", err)
+	client, err := neo4j.NewReadOnlyClient(ctx, slog.Default(), uri, Neo4jDatabase, username, password)
+	if err != nil {
+		return err
 	}
 
-	Neo4j = driver
-	log.Printf("Connected to Neo4j successfully")
+	Neo4jClient = client
+	log.Printf("Connected to Neo4j successfully (read-only)")
 
 	return nil
 }
 
-// CloseNeo4j closes the Neo4j driver
+// CloseNeo4j closes the Neo4j client
 func CloseNeo4j() error {
-	if Neo4j != nil {
+	if Neo4jClient != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		return Neo4j.Close(ctx)
+		return Neo4jClient.Close(ctx)
 	}
 	return nil
 }
 
 // Neo4jSession creates a new Neo4j session
-func Neo4jSession(ctx context.Context) neo4j.SessionWithContext {
-	return Neo4j.NewSession(ctx, neo4j.SessionConfig{
-		DatabaseName: Neo4jDatabase,
-	})
+func Neo4jSession(ctx context.Context) neo4j.Session {
+	session, _ := Neo4jClient.Session(ctx)
+	return session
 }

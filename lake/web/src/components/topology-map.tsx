@@ -329,11 +329,11 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
 
   // Derive mode states from context
   const pathModeEnabled = mode === 'path'
-  const criticalityModeEnabled = mode === 'criticality'
   const whatifRemovalMode = mode === 'whatif-removal'
   const whatifAdditionMode = mode === 'whatif-addition'
 
   // Derive overlay states from context
+  const criticalityOverlayEnabled = overlays.criticality
   const showValidators = overlays.validators
   const stakeOverlayMode = overlays.stake
   const linkHealthMode = overlays.linkHealth
@@ -386,7 +386,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
   const { data: criticalLinksData } = useQuery({
     queryKey: ['critical-links'],
     queryFn: fetchCriticalLinks,
-    enabled: criticalityModeEnabled,
+    enabled: criticalityOverlayEnabled,
   })
 
   // Fetch link health data when link health mode is enabled
@@ -487,7 +487,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       } else if (e.key === 'p' && !isInMode) {
         setMode('path')
       } else if (e.key === 'c' && !isInMode) {
-        setMode('criticality')
+        toggleOverlay('criticality')
       } else if (e.key === 'r' && !isInMode) {
         setMode('whatif-removal')
       } else if (e.key === 'a' && !isInMode) {
@@ -1086,7 +1086,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
         // Contributor links mode but no contributor - dim the link
         displayColor = isDark ? '#6b7280' : '#9ca3af'
         displayOpacity = 0.3
-      } else if (criticalityModeEnabled && criticality) {
+      } else if (criticalityOverlayEnabled && criticality) {
         // Criticality mode: color by criticality level
         displayColor = criticalityColors[criticality]
         displayWeight = criticality === 'critical' ? weight + 3 : criticality === 'important' ? weight + 2 : weight + 1
@@ -1169,7 +1169,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       type: 'FeatureCollection' as const,
       features,
     }
-  }, [links, devicePositions, isDark, hoveredLink, selectedItem, hoverHighlight, linkPathMap, selectedPathIndex, criticalityModeEnabled, linkCriticalityMap, whatifRemovalMode, removalLink, linkHealthMode, linkSlaStatus, trafficFlowMode, getTrafficColor, metroClusteringMode, collapsedMetros, deviceMap, metroMap, contributorLinksMode, contributorIndexMap])
+  }, [links, devicePositions, isDark, hoveredLink, selectedItem, hoverHighlight, linkPathMap, selectedPathIndex, criticalityOverlayEnabled, linkCriticalityMap, whatifRemovalMode, removalLink, linkHealthMode, linkSlaStatus, trafficFlowMode, getTrafficColor, metroClusteringMode, collapsedMetros, deviceMap, metroMap, contributorLinksMode, contributorIndexMap])
 
   // GeoJSON for validator links (connecting lines)
   const validatorLinksGeoJson = useMemo(() => {
@@ -2031,7 +2031,6 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
         <TopologyPanel
           title={
             mode === 'path' ? 'Path Finding' :
-            mode === 'criticality' ? 'Link Criticality' :
             mode === 'whatif-removal' ? 'Simulate Link Removal' :
             mode === 'whatif-addition' ? 'Simulate Link Addition' :
             mode === 'impact' ? 'Failure Impact' :
@@ -2049,12 +2048,6 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
               onPathModeChange={() => {}}
               onSelectPath={setSelectedPathIndex}
               onClearPath={clearPath}
-            />
-          )}
-          {mode === 'criticality' && (
-            <CriticalityPanel
-              data={criticalLinksData ?? null}
-              isLoading={false}
             />
           )}
           {mode === 'whatif-removal' && (
@@ -2104,6 +2097,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             stakeOverlayMode ? 'Stake' :
             linkHealthMode ? 'Health' :
             trafficFlowMode ? 'Traffic' :
+            criticalityOverlayEnabled ? 'Link Criticality' :
             metroClusteringMode ? 'Metros' :
             showValidators ? 'Validators' :
             (contributorDevicesMode || contributorLinksMode) ? 'Contributors' :
@@ -2129,6 +2123,12 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
               edgeTrafficMap={edgeTrafficMap}
               links={links}
               isLoading={links.length === 0}
+            />
+          )}
+          {criticalityOverlayEnabled && (
+            <CriticalityPanel
+              data={criticalLinksData ?? null}
+              isLoading={!criticalLinksData}
             />
           )}
           {metroClusteringMode && (

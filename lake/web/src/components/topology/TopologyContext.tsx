@@ -5,11 +5,12 @@ import { useSearchParams } from 'react-router-dom'
 export type TopologyMode =
   | 'explore'      // Default mode - clicking entities selects them
   | 'path'         // Path finding mode - click source then target
-  | 'criticality'  // Show link criticality analysis
   | 'whatif-removal'   // Simulate link removal
   | 'whatif-addition'  // Simulate link addition
   | 'impact'       // Device failure impact analysis
-  | 'compare'      // Topology comparison (graph only)
+
+// Path finding optimization mode
+export type PathMode = 'hops' | 'latency'
 
 // Selection types that can be displayed in the panel
 export type SelectionType = 'device' | 'link' | 'metro' | 'validator'
@@ -37,6 +38,8 @@ export interface OverlayState {
   linkHealth: boolean          // Link health/SLA overlay
   trafficFlow: boolean         // Traffic flow visualization
   contributorLinks: boolean    // Color links by contributor
+  criticality: boolean         // Link criticality analysis
+  isisHealth: boolean          // ISIS health comparison (graph only)
 }
 
 // Context value type
@@ -44,6 +47,10 @@ export interface TopologyContextValue {
   // Current mode
   mode: TopologyMode
   setMode: (mode: TopologyMode) => void
+
+  // Path finding mode (hops vs latency)
+  pathMode: PathMode
+  setPathMode: (mode: PathMode) => void
 
   // Selection state (synced with URL)
   selection: Selection | null
@@ -86,6 +93,8 @@ function parseOverlaysFromUrl(param: string | null): OverlayState {
     linkHealth: false,
     trafficFlow: false,
     contributorLinks: false,
+    criticality: false,
+    isisHealth: false,
   }
   if (!param) return defaultState
 
@@ -111,6 +120,9 @@ export function TopologyProvider({ children, view }: TopologyProviderProps) {
 
   // Mode state
   const [mode, setModeInternal] = useState<TopologyMode>('explore')
+
+  // Path finding mode (hops vs latency)
+  const [pathMode, setPathMode] = useState<PathMode>('hops')
 
   // Panel state with localStorage persistence for width
   const [panel, setPanel] = useState<PanelState>(() => ({
@@ -185,7 +197,7 @@ export function TopologyProvider({ children, view }: TopologyProviderProps) {
 
   // Overlay groups - overlays in the same group are mutually exclusive
   // Device overlays: stake, metroClustering, contributorDevices
-  // Link overlays: linkHealth, trafficFlow, contributorLinks
+  // Link overlays: linkHealth, trafficFlow, contributorLinks, criticality, isisHealth
   // Independent: validators
   const overlayGroups: Record<keyof OverlayState, (keyof OverlayState)[]> = {
     // Device overlays (mutually exclusive)
@@ -193,9 +205,11 @@ export function TopologyProvider({ children, view }: TopologyProviderProps) {
     metroClustering: ['stake', 'contributorDevices'],
     contributorDevices: ['stake', 'metroClustering'],
     // Link overlays (mutually exclusive)
-    linkHealth: ['trafficFlow', 'contributorLinks'],
-    trafficFlow: ['linkHealth', 'contributorLinks'],
-    contributorLinks: ['linkHealth', 'trafficFlow'],
+    linkHealth: ['trafficFlow', 'contributorLinks', 'criticality', 'isisHealth'],
+    trafficFlow: ['linkHealth', 'contributorLinks', 'criticality', 'isisHealth'],
+    contributorLinks: ['linkHealth', 'trafficFlow', 'criticality', 'isisHealth'],
+    criticality: ['linkHealth', 'trafficFlow', 'contributorLinks', 'isisHealth'],
+    isisHealth: ['linkHealth', 'trafficFlow', 'contributorLinks', 'criticality'],
     // Independent
     validators: [],
   }
@@ -230,6 +244,8 @@ export function TopologyProvider({ children, view }: TopologyProviderProps) {
   const value: TopologyContextValue = {
     mode,
     setMode,
+    pathMode,
+    setPathMode,
     selection,
     setSelection,
     panel,

@@ -93,12 +93,19 @@ func ParseQueries(params map[string]any) ([]QueryInput, error) {
 			// Clean up any XML-style tags that models sometimes include
 			// (e.g., </invoke><invoke name="...">)
 			cleanStr := cleanXMLTags(queriesStr)
+			suffixStart := len(cleanStr) - 50
+			if suffixStart < 0 {
+				suffixStart = 0
+			}
+			fmt.Printf("DEBUG cleanXMLTags: input_len=%d output_len=%d output_suffix=%q\n",
+				len(queriesStr), len(cleanStr), cleanStr[suffixStart:])
 
 			var arr []any
-			if json.Unmarshal([]byte(cleanStr), &arr) == nil {
+			if err := json.Unmarshal([]byte(cleanStr), &arr); err == nil {
 				queriesRaw = arr
 			} else {
-				return nil, fmt.Errorf("params['queries'] is a string but not valid JSON: %s", truncateStr(queriesStr, 100))
+				fmt.Printf("DEBUG JSON unmarshal failed: %v\n", err)
+				return nil, fmt.Errorf("params['queries'] is a string but not valid JSON after cleaning: %s", truncateStr(cleanStr, 200))
 			}
 		} else {
 			if params == nil {

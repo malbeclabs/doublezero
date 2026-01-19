@@ -14,8 +14,7 @@ func TestAI_Slack_LoadFromEnv(t *testing.T) {
 		"SLACK_BOT_TOKEN",
 		"SLACK_APP_TOKEN",
 		"SLACK_SIGNING_SECRET",
-		"ANTHROPIC_API_KEY",
-		"LAKE_QUERIER_URI",
+		"API_BASE_URL",
 	}
 
 	for _, key := range envVars {
@@ -51,22 +50,13 @@ func TestAI_Slack_LoadFromEnv(t *testing.T) {
 			setupEnv: func() {
 				os.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
 				os.Setenv("SLACK_APP_TOKEN", "xapp-test")
-				os.Setenv("ANTHROPIC_API_KEY", "sk-test")
-				os.Setenv("CLICKHOUSE_ADDR_TCP", "localhost:9000")
-				os.Setenv("CLICKHOUSE_DATABASE", "default")
-				os.Setenv("CLICKHOUSE_USERNAME", "default")
-				os.Setenv("CLICKHOUSE_PASSWORD", "")
 			},
 			modeFlag: "socket",
 			checkConfig: func(t *testing.T, cfg *Config) {
 				require.Equal(t, ModeSocket, cfg.Mode)
 				require.Equal(t, "xoxb-test", cfg.BotToken)
 				require.Equal(t, "xapp-test", cfg.AppToken)
-				require.Equal(t, "sk-test", cfg.AnthropicAPIKey)
-				require.Equal(t, "localhost:9000", cfg.ClickhouseAddr)
-				require.Equal(t, "default", cfg.ClickhouseDatabase)
-				require.Equal(t, "default", cfg.ClickhouseUsername)
-				require.Equal(t, "", cfg.ClickhousePassword)
+				require.Equal(t, "http://localhost:8080", cfg.APIBaseURL)
 			},
 		},
 		{
@@ -74,11 +64,6 @@ func TestAI_Slack_LoadFromEnv(t *testing.T) {
 			setupEnv: func() {
 				os.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
 				os.Setenv("SLACK_SIGNING_SECRET", "secret")
-				os.Setenv("ANTHROPIC_API_KEY", "sk-test")
-				os.Setenv("CLICKHOUSE_ADDR_TCP", "localhost:9000")
-				os.Setenv("CLICKHOUSE_DATABASE", "default")
-				os.Setenv("CLICKHOUSE_USERNAME", "default")
-				os.Setenv("CLICKHOUSE_PASSWORD", "")
 			},
 			modeFlag: "http",
 			checkConfig: func(t *testing.T, cfg *Config) {
@@ -91,11 +76,6 @@ func TestAI_Slack_LoadFromEnv(t *testing.T) {
 			setupEnv: func() {
 				os.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
 				os.Setenv("SLACK_APP_TOKEN", "xapp-test")
-				os.Setenv("ANTHROPIC_API_KEY", "sk-test")
-				os.Setenv("CLICKHOUSE_ADDR_TCP", "localhost:9000")
-				os.Setenv("CLICKHOUSE_DATABASE", "default")
-				os.Setenv("CLICKHOUSE_USERNAME", "default")
-				os.Setenv("CLICKHOUSE_PASSWORD", "")
 			},
 			modeFlag: "",
 			checkConfig: func(t *testing.T, cfg *Config) {
@@ -107,8 +87,6 @@ func TestAI_Slack_LoadFromEnv(t *testing.T) {
 			setupEnv: func() {
 				os.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
 				os.Setenv("SLACK_SIGNING_SECRET", "secret")
-				os.Setenv("ANTHROPIC_API_KEY", "sk-test")
-				os.Setenv("LAKE_QUERIER_URI", "postgres://user:pass@localhost:5432/dbname")
 			},
 			modeFlag: "",
 			checkConfig: func(t *testing.T, cfg *Config) {
@@ -118,11 +96,7 @@ func TestAI_Slack_LoadFromEnv(t *testing.T) {
 		{
 			name: "missing bot token",
 			setupEnv: func() {
-				os.Setenv("ANTHROPIC_API_KEY", "sk-test")
-				os.Setenv("CLICKHOUSE_ADDR_TCP", "localhost:9000")
-				os.Setenv("CLICKHOUSE_DATABASE", "default")
-				os.Setenv("CLICKHOUSE_USERNAME", "default")
-				os.Setenv("CLICKHOUSE_PASSWORD", "")
+				// No env vars set
 			},
 			modeFlag:    "socket",
 			wantErr:     true,
@@ -132,11 +106,6 @@ func TestAI_Slack_LoadFromEnv(t *testing.T) {
 			name: "missing app token for socket mode",
 			setupEnv: func() {
 				os.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
-				os.Setenv("ANTHROPIC_API_KEY", "sk-test")
-				os.Setenv("CLICKHOUSE_ADDR_TCP", "localhost:9000")
-				os.Setenv("CLICKHOUSE_DATABASE", "default")
-				os.Setenv("CLICKHOUSE_USERNAME", "default")
-				os.Setenv("CLICKHOUSE_PASSWORD", "")
 			},
 			modeFlag:    "socket",
 			wantErr:     true,
@@ -146,49 +115,16 @@ func TestAI_Slack_LoadFromEnv(t *testing.T) {
 			name: "missing signing secret for http mode",
 			setupEnv: func() {
 				os.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
-				os.Setenv("ANTHROPIC_API_KEY", "sk-test")
-				os.Setenv("LAKE_QUERIER_URI", "postgres://user:pass@localhost:5432/dbname")
 			},
 			modeFlag:    "http",
 			wantErr:     true,
 			errContains: "SLACK_SIGNING_SECRET is required for HTTP mode",
 		},
 		{
-			name: "missing anthropic key",
-			setupEnv: func() {
-				os.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
-				os.Setenv("SLACK_APP_TOKEN", "xapp-test")
-				os.Setenv("CLICKHOUSE_ADDR_TCP", "localhost:9000")
-				os.Setenv("CLICKHOUSE_DATABASE", "default")
-				os.Setenv("CLICKHOUSE_USERNAME", "default")
-				os.Setenv("CLICKHOUSE_PASSWORD", "")
-			},
-			modeFlag:    "socket",
-			wantErr:     true,
-			errContains: "ANTHROPIC_API_KEY is required",
-		},
-		{
-			name: "missing ClickHouse address",
-			setupEnv: func() {
-				os.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
-				os.Setenv("SLACK_APP_TOKEN", "xapp-test")
-				os.Setenv("ANTHROPIC_API_KEY", "sk-test")
-				os.Unsetenv("CLICKHOUSE_ADDR_TCP") // Ensure it's unset
-			},
-			modeFlag:    "socket",
-			wantErr:     true,
-			errContains: "CLICKHOUSE_ADDR_TCP is required (use --clickhouse-addr flag or CLICKHOUSE_ADDR_TCP env var)",
-		},
-		{
 			name: "invalid mode",
 			setupEnv: func() {
 				os.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
 				os.Setenv("SLACK_APP_TOKEN", "xapp-test")
-				os.Setenv("ANTHROPIC_API_KEY", "sk-test")
-				os.Setenv("CLICKHOUSE_ADDR_TCP", "localhost:9000")
-				os.Setenv("CLICKHOUSE_DATABASE", "default")
-				os.Setenv("CLICKHOUSE_USERNAME", "default")
-				os.Setenv("CLICKHOUSE_PASSWORD", "")
 			},
 			modeFlag:    "invalid",
 			wantErr:     true,
@@ -199,11 +135,6 @@ func TestAI_Slack_LoadFromEnv(t *testing.T) {
 			setupEnv: func() {
 				os.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
 				os.Setenv("SLACK_APP_TOKEN", "xapp-test")
-				os.Setenv("ANTHROPIC_API_KEY", "sk-test")
-				os.Setenv("CLICKHOUSE_ADDR_TCP", "localhost:9000")
-				os.Setenv("CLICKHOUSE_DATABASE", "default")
-				os.Setenv("CLICKHOUSE_USERNAME", "default")
-				os.Setenv("CLICKHOUSE_PASSWORD", "")
 			},
 			modeFlag:        "socket",
 			httpAddrFlag:    "0.0.0.0:3000",
@@ -217,10 +148,21 @@ func TestAI_Slack_LoadFromEnv(t *testing.T) {
 				require.True(t, cfg.EnablePprof)
 			},
 		},
+		{
+			name: "custom API base URL",
+			setupEnv: func() {
+				os.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
+				os.Setenv("SLACK_APP_TOKEN", "xapp-test")
+				os.Setenv("API_BASE_URL", "https://api.example.com")
+			},
+			modeFlag: "socket",
+			checkConfig: func(t *testing.T, cfg *Config) {
+				require.Equal(t, "https://api.example.com", cfg.APIBaseURL)
+			},
+		},
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			// Don't run subtests in parallel - they modify shared environment variables
 			// Clean up env before each test

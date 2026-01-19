@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/malbeclabs/doublezero/lake/agent/pkg/workflow"
-	v3 "github.com/malbeclabs/doublezero/lake/agent/pkg/workflow/v3"
 	"github.com/slack-go/slack/slackevents"
 )
 
@@ -21,7 +20,7 @@ const (
 // Processor processes Slack messages and generates responses
 type Processor struct {
 	slackClient *Client
-	workflow    *v3.Workflow
+	apiClient   *APIClient
 	convManager *Manager
 	log         *slog.Logger
 
@@ -30,8 +29,8 @@ type Processor struct {
 	respondedMessagesMu sync.RWMutex
 
 	// Per-thread locks to ensure messages in the same thread are processed sequentially
-	threadLocks    map[string]*threadLockEntry
-	threadLocksMu  sync.Mutex
+	threadLocks   map[string]*threadLockEntry
+	threadLocksMu sync.Mutex
 }
 
 // threadLockEntry holds a mutex and tracks when it was last used
@@ -43,13 +42,13 @@ type threadLockEntry struct {
 // NewProcessor creates a new message processor
 func NewProcessor(
 	slackClient *Client,
-	workflow *v3.Workflow,
+	apiClient *APIClient,
 	convManager *Manager,
 	log *slog.Logger,
 ) *Processor {
 	return &Processor{
 		slackClient:       slackClient,
-		workflow:          workflow,
+		apiClient:         apiClient,
 		convManager:       convManager,
 		log:               log,
 		respondedMessages: make(map[string]time.Time),
@@ -267,7 +266,7 @@ func (p *Processor) ProcessMessage(
 	}
 
 	defer func() {
-		MessageProcessingDuration.WithLabelValues("workflow").Observe(time.Since(startTime).Seconds())
+		MessageProcessingDuration.WithLabelValues("api").Observe(time.Since(startTime).Seconds())
 	}()
 
 	// Always thread responses (both channels and DMs)
@@ -347,11 +346,11 @@ func (p *Processor) ProcessMessage(
 		}
 	}
 
-	// Run the workflow with progress callbacks
-	result, err := p.workflow.RunWithProgress(ctx, txt, history, onProgress)
+	// Run the API chat stream
+	result, err := p.apiClient.ChatStream(ctx, txt, history, onProgress)
 	if err != nil {
-		AgentErrorsTotal.WithLabelValues("workflow", "workflow").Inc()
-		p.log.Error("workflow error", "error", err, "message_ts", ev.TimeStamp, "envelope_id", eventID)
+		AgentErrorsTotal.WithLabelValues("workflow", "api").Inc()
+		p.log.Error("API error", "error", err, "message_ts", ev.TimeStamp, "envelope_id", eventID)
 
 		p.MarkResponded(messageKey)
 
@@ -363,7 +362,7 @@ func (p *Processor) ProcessMessage(
 			}
 		}
 
-		MessagesPostedTotal.WithLabelValues("error", "workflow").Inc()
+		MessagesPostedTotal.WithLabelValues("error", "api").Inc()
 		return
 	}
 
@@ -373,7 +372,7 @@ func (p *Processor) ProcessMessage(
 	}
 	reply = normalizeTwoWayArrow(reply)
 
-	p.log.Debug("workflow response",
+	p.log.Debug("API response",
 		"reply", reply,
 		"classification", result.Classification,
 		"data_questions", len(result.DataQuestions))
@@ -406,12 +405,12 @@ func (p *Processor) ProcessMessage(
 
 	if err != nil {
 		SlackAPIErrorsTotal.WithLabelValues("post_message").Inc()
-		MessagesPostedTotal.WithLabelValues("error", "workflow").Inc()
+		MessagesPostedTotal.WithLabelValues("error", "api").Inc()
 		errorReply := "Sorry, I encountered an error. Please try again."
 		errorReply = normalizeTwoWayArrow(errorReply)
 		_, _ = p.slackClient.PostMessage(ctx, ev.Channel, errorReply, nil, threadTS)
 	} else {
-		MessagesPostedTotal.WithLabelValues("success", "workflow").Inc()
+		MessagesPostedTotal.WithLabelValues("success", "api").Inc()
 		p.log.Info("reply posted successfully", "channel", ev.Channel, "thread_ts", threadKey, "reply_ts", respTS)
 
 		// Extract SQL queries from executed queries

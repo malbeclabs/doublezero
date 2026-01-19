@@ -100,7 +100,7 @@ export function TopologyGraph({
   const { mode, setMode, pathMode, setPathMode, overlays, toggleOverlay, panel, openPanel, closePanel } = useTopology()
 
   // Get URL params for link selection (device selection comes via props, but links need direct access)
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const selectedLinkPK = searchParams.get('type') === 'link' ? searchParams.get('id') : null
 
   // Derive overlay states from context
@@ -702,6 +702,128 @@ export function TopologyGraph({
       }
     }
   }, [mode])
+
+  // Sync mode selections to URL for sharing
+  const pathModeEnabled = mode === 'path'
+  const whatifRemovalMode = mode === 'whatif-removal'
+  const whatifAdditionMode = mode === 'whatif-addition'
+  const impactMode = mode === 'impact'
+
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams)
+    let changed = false
+
+    // Helper to set or delete a param
+    const setParam = (key: string, value: string | null) => {
+      if (value) {
+        if (params.get(key) !== value) {
+          params.set(key, value)
+          changed = true
+        }
+      } else if (params.has(key)) {
+        params.delete(key)
+        changed = true
+      }
+    }
+
+    // Path mode params
+    setParam('path_source', pathModeEnabled ? pathSource : null)
+    setParam('path_target', pathModeEnabled ? pathTarget : null)
+
+    // What-if removal params - use edge ID format
+    const removalEdgeId = whatifRemovalMode && removalLink ? `${removalLink.sourcePK}->${removalLink.targetPK}` : null
+    setParam('removal_edge', removalEdgeId)
+
+    // What-if addition params
+    setParam('addition_source', whatifAdditionMode ? additionSource : null)
+    setParam('addition_target', whatifAdditionMode ? additionTarget : null)
+
+    // Impact mode params
+    setParam('impact_device', impactMode ? impactDevice : null)
+
+    if (changed) {
+      setSearchParams(params, { replace: true })
+    }
+  }, [searchParams, setSearchParams, pathModeEnabled, pathSource, pathTarget, whatifRemovalMode, removalLink, whatifAdditionMode, additionSource, additionTarget, impactMode, impactDevice])
+
+  // Restore mode selections from URL params on initial load
+  const modeParamsRestoredRef = useRef(false)
+  useEffect(() => {
+    // Only run once when data is available
+    if (modeParamsRestoredRef.current) return
+    if (!topologyData?.devices?.length) return
+
+    const devicePKs = new Set(topologyData.devices.map(d => d.pk))
+
+    const pathSourceParam = searchParams.get('path_source')
+    const pathTargetParam = searchParams.get('path_target')
+    const removalEdgeParam = searchParams.get('removal_edge')
+    const additionSourceParam = searchParams.get('addition_source')
+    const additionTargetParam = searchParams.get('addition_target')
+    const impactDeviceParam = searchParams.get('impact_device')
+
+    // Restore path mode
+    if (pathSourceParam || pathTargetParam) {
+      if (pathSourceParam && devicePKs.has(pathSourceParam)) {
+        setPathSource(pathSourceParam)
+      }
+      if (pathTargetParam && devicePKs.has(pathTargetParam)) {
+        setPathTarget(pathTargetParam)
+      }
+      if (mode !== 'path') {
+        setMode('path')
+        openPanel('mode')
+      }
+      modeParamsRestoredRef.current = true
+      return
+    }
+
+    // Restore what-if removal mode
+    if (removalEdgeParam) {
+      const [sourcePK, targetPK] = removalEdgeParam.split('->')
+      if (sourcePK && targetPK && devicePKs.has(sourcePK) && devicePKs.has(targetPK)) {
+        setRemovalLink({ sourcePK, targetPK })
+        if (mode !== 'whatif-removal') {
+          setMode('whatif-removal')
+          openPanel('mode')
+        }
+        modeParamsRestoredRef.current = true
+        return
+      }
+    }
+
+    // Restore what-if addition mode
+    if (additionSourceParam || additionTargetParam) {
+      if (additionSourceParam && devicePKs.has(additionSourceParam)) {
+        setAdditionSource(additionSourceParam)
+      }
+      if (additionTargetParam && devicePKs.has(additionTargetParam)) {
+        setAdditionTarget(additionTargetParam)
+      }
+      if (mode !== 'whatif-addition') {
+        setMode('whatif-addition')
+        openPanel('mode')
+      }
+      modeParamsRestoredRef.current = true
+      return
+    }
+
+    // Restore impact mode
+    if (impactDeviceParam) {
+      if (devicePKs.has(impactDeviceParam)) {
+        setImpactDevice(impactDeviceParam)
+        if (mode !== 'impact') {
+          setMode('impact')
+          openPanel('mode')
+        }
+        modeParamsRestoredRef.current = true
+        return
+      }
+    }
+
+    // No mode params to restore
+    modeParamsRestoredRef.current = true
+  }, [searchParams, topologyData, mode, setMode, openPanel])
 
   // When entering analysis modes with a device already selected, use it appropriately
   const prevModeRef = useRef<string>(mode)

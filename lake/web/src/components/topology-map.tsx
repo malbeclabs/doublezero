@@ -842,6 +842,51 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     }
   }, [whatifAdditionMode])
 
+  // Clear impact state when exiting mode
+  useEffect(() => {
+    if (!impactMode) {
+      setImpactDevice(null)
+      setImpactResult(null)
+    }
+  }, [impactMode])
+
+  // Sync mode selections to URL for sharing
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams)
+    let changed = false
+
+    // Helper to set or delete a param
+    const setParam = (key: string, value: string | null) => {
+      if (value) {
+        if (params.get(key) !== value) {
+          params.set(key, value)
+          changed = true
+        }
+      } else if (params.has(key)) {
+        params.delete(key)
+        changed = true
+      }
+    }
+
+    // Path mode params
+    setParam('path_source', pathModeEnabled ? pathSource : null)
+    setParam('path_target', pathModeEnabled ? pathTarget : null)
+
+    // What-if removal params
+    setParam('removal_link', whatifRemovalMode ? removalLink?.linkPK ?? null : null)
+
+    // What-if addition params
+    setParam('addition_source', whatifAdditionMode ? additionSource : null)
+    setParam('addition_target', whatifAdditionMode ? additionTarget : null)
+
+    // Impact mode params
+    setParam('impact_device', impactMode ? impactDevice : null)
+
+    if (changed) {
+      setSearchParams(params, { replace: true })
+    }
+  }, [searchParams, setSearchParams, pathModeEnabled, pathSource, pathTarget, whatifRemovalMode, removalLink, whatifAdditionMode, additionSource, additionTarget, impactMode, impactDevice])
+
   // When entering analysis modes with a device already selected, use it as source
   const prevMapModeRef = useRef<string>(mode)
   useEffect(() => {
@@ -1380,6 +1425,83 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
   const handleZoomOut = useCallback(() => {
     mapRef.current?.zoomOut()
   }, [])
+
+  // Restore mode selections from URL params on initial load
+  const modeParamsRestoredRef = useRef(false)
+  useEffect(() => {
+    // Only run once when data is available
+    if (modeParamsRestoredRef.current) return
+    if (deviceMap.size === 0 || linkMap.size === 0) return
+
+    const pathSourceParam = searchParams.get('path_source')
+    const pathTargetParam = searchParams.get('path_target')
+    const removalLinkParam = searchParams.get('removal_link')
+    const additionSourceParam = searchParams.get('addition_source')
+    const additionTargetParam = searchParams.get('addition_target')
+    const impactDeviceParam = searchParams.get('impact_device')
+
+    // Restore path mode
+    if (pathSourceParam || pathTargetParam) {
+      if (pathSourceParam && deviceMap.has(pathSourceParam)) {
+        setPathSource(pathSourceParam)
+      }
+      if (pathTargetParam && deviceMap.has(pathTargetParam)) {
+        setPathTarget(pathTargetParam)
+      }
+      if (mode !== 'path') {
+        setMode('path')
+        openPanel('mode')
+      }
+      modeParamsRestoredRef.current = true
+      return
+    }
+
+    // Restore what-if removal mode
+    if (removalLinkParam) {
+      const link = linkMap.get(removalLinkParam)
+      if (link) {
+        setRemovalLink({ sourcePK: link.side_a_pk, targetPK: link.side_z_pk, linkPK: link.pk })
+        if (mode !== 'whatif-removal') {
+          setMode('whatif-removal')
+          openPanel('mode')
+        }
+        modeParamsRestoredRef.current = true
+        return
+      }
+    }
+
+    // Restore what-if addition mode
+    if (additionSourceParam || additionTargetParam) {
+      if (additionSourceParam && deviceMap.has(additionSourceParam)) {
+        setAdditionSource(additionSourceParam)
+      }
+      if (additionTargetParam && deviceMap.has(additionTargetParam)) {
+        setAdditionTarget(additionTargetParam)
+      }
+      if (mode !== 'whatif-addition') {
+        setMode('whatif-addition')
+        openPanel('mode')
+      }
+      modeParamsRestoredRef.current = true
+      return
+    }
+
+    // Restore impact mode
+    if (impactDeviceParam) {
+      if (deviceMap.has(impactDeviceParam)) {
+        setImpactDevice(impactDeviceParam)
+        if (mode !== 'impact') {
+          setMode('impact')
+          openPanel('mode')
+        }
+        modeParamsRestoredRef.current = true
+        return
+      }
+    }
+
+    // No mode params to restore
+    modeParamsRestoredRef.current = true
+  }, [searchParams, deviceMap, linkMap, mode, setMode, openPanel])
 
   // Restore selected item from URL params (on initial load and when params change, e.g. back button or omnisearch)
   const lastParamsRef = useRef<string | null>(null)

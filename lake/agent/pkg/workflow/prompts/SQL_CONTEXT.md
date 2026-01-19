@@ -34,6 +34,7 @@ WHERE d.pk = ''  -- Empty string means no match (NOT "IS NULL"!)
 ```
 
 ### Other ClickHouse Specifics
+- **Function names are case-sensitive**: Use lowercase `lag`, `lead`, `row_number` (not `LAG`, `LEAD`, `ROW_NUMBER`)
 - Quantiles: `quantile(0.95)(column)` not `PERCENTILE_CONT`
 - Date functions: `now()`, `toDate()`, `toDateTime()`
 - Intervals: `INTERVAL 24 HOUR`, `INTERVAL 7 DAY`

@@ -352,33 +352,113 @@ export function Sidebar({
         {/* Divider */}
         <div className="w-6 border-t border-border/50 my-2" />
 
-        {/* DZ nav item */}
-        <Link
-          to="/dz/devices"
-          className={cn(
-            'p-2 rounded transition-colors',
-            isDZRoute
-              ? 'bg-[oklch(25%_.04_250)] text-white hover:bg-[oklch(30%_.05_250)]'
-              : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
-          )}
-          title="DoubleZero"
-        >
-          <Server className="h-4 w-4" />
-        </Link>
+        {/* Topology sub-pages when on topology route */}
+        {isTopologyRoute ? (
+          <>
+            <Link
+              to="/topology/map"
+              className={cn(
+                'p-2 rounded transition-colors',
+                isTopologyMap
+                  ? 'bg-[oklch(25%_.04_250)] text-white hover:bg-[oklch(30%_.05_250)]'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+              )}
+              title="Map"
+            >
+              <Map className="h-4 w-4" />
+            </Link>
+            <Link
+              to="/topology/graph"
+              className={cn(
+                'p-2 rounded transition-colors',
+                isTopologyGraph
+                  ? 'bg-[oklch(25%_.04_250)] text-white hover:bg-[oklch(30%_.05_250)]'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+              )}
+              title="Graph"
+            >
+              <Network className="h-4 w-4" />
+            </Link>
+            <Link
+              to="/topology/path-calculator"
+              className={cn(
+                'p-2 rounded transition-colors',
+                isTopologyPathCalculator
+                  ? 'bg-[oklch(25%_.04_250)] text-white hover:bg-[oklch(30%_.05_250)]'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+              )}
+              title="Path Calculator"
+            >
+              <Route className="h-4 w-4" />
+            </Link>
+            <Link
+              to="/topology/redundancy"
+              className={cn(
+                'p-2 rounded transition-colors',
+                isTopologyRedundancy
+                  ? 'bg-[oklch(25%_.04_250)] text-white hover:bg-[oklch(30%_.05_250)]'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+              )}
+              title="Redundancy"
+            >
+              <Shield className="h-4 w-4" />
+            </Link>
+            <Link
+              to="/topology/metro-matrix"
+              className={cn(
+                'p-2 rounded transition-colors',
+                isTopologyMetroMatrix
+                  ? 'bg-[oklch(25%_.04_250)] text-white hover:bg-[oklch(30%_.05_250)]'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+              )}
+              title="Metro Matrix"
+            >
+              <Grid3X3 className="h-4 w-4" />
+            </Link>
+            <Link
+              to="/topology/maintenance"
+              className={cn(
+                'p-2 rounded transition-colors',
+                isTopologyMaintenance
+                  ? 'bg-[oklch(25%_.04_250)] text-white hover:bg-[oklch(30%_.05_250)]'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+              )}
+              title="Maintenance"
+            >
+              <Wrench className="h-4 w-4" />
+            </Link>
+          </>
+        ) : (
+          <>
+            {/* DZ nav item */}
+            <Link
+              to="/dz/devices"
+              className={cn(
+                'p-2 rounded transition-colors',
+                isDZRoute
+                  ? 'bg-[oklch(25%_.04_250)] text-white hover:bg-[oklch(30%_.05_250)]'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+              )}
+              title="DoubleZero"
+            >
+              <Server className="h-4 w-4" />
+            </Link>
 
-        {/* Solana nav item */}
-        <Link
-          to="/solana/validators"
-          className={cn(
-            'p-2 rounded transition-colors',
-            isSolanaRoute
-              ? 'bg-[oklch(25%_.04_250)] text-white hover:bg-[oklch(30%_.05_250)]'
-              : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
-          )}
-          title="Solana"
-        >
-          <Landmark className="h-4 w-4" />
-        </Link>
+            {/* Solana nav item */}
+            <Link
+              to="/solana/validators"
+              className={cn(
+                'p-2 rounded transition-colors',
+                isSolanaRoute
+                  ? 'bg-[oklch(25%_.04_250)] text-white hover:bg-[oklch(30%_.05_250)]'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+              )}
+              title="Solana"
+            >
+              <Landmark className="h-4 w-4" />
+            </Link>
+          </>
+        )}
         </div>
 
         {/* Theme toggle and collapse toggle at bottom */}

@@ -240,49 +240,94 @@ func ConvertMarkdownToBlocks(text string, log *slog.Logger) []slack.Block {
 	return SetExpandOnSectionBlocks(convertedBlocks, log)
 }
 
+// headerPattern matches markdown headers (# to ######)
+var headerPattern = regexp.MustCompile(`(?m)^(#{1,6})\s+(.+)$`)
+
 // convertToMrkdwnSectionBlocks converts markdown text to Slack section blocks using mrkdwn format.
 // This preserves list structure that would be lost by the slackutil library for nested lists.
+// Headers are converted to proper Slack header blocks for prominent display.
 func convertToMrkdwnSectionBlocks(text string, log *slog.Logger) []slack.Block {
-	// Convert common markdown to Slack mrkdwn:
-	// - **bold** -> *bold*
-	// - __bold__ -> *bold*
-	// - *italic* -> _italic_
-	// - _italic_ -> _italic_ (already correct)
-	// - ~~strike~~ -> ~strike~
-	// List markers (- and *) are kept as-is since Slack displays them literally
+	return convertTextWithHeaders(text, func(segment string) []slack.Block {
+		// Convert markdown formatting to mrkdwn (but not headers - those are handled separately)
+		mrkdwn := convertMarkdownToMrkdwn(segment)
 
-	mrkdwn := convertMarkdownToMrkdwn(text)
+		// Split into paragraphs for better formatting
+		paragraphs := strings.Split(mrkdwn, "\n\n")
+		var blocks []slack.Block
 
-	// Split into paragraphs for better formatting
-	paragraphs := strings.Split(mrkdwn, "\n\n")
+		for _, para := range paragraphs {
+			para = strings.TrimSpace(para)
+			if para == "" {
+				continue
+			}
+
+			textBlock := slack.NewTextBlockObject(slack.MarkdownType, para, false, false)
+			sectionBlock := &slack.SectionBlock{
+				Type:   slack.MBTSection,
+				Text:   textBlock,
+				Expand: true,
+			}
+			blocks = append(blocks, sectionBlock)
+		}
+
+		return blocks
+	})
+}
+
+// convertTextWithHeaders extracts headers from text and converts them to proper Slack header blocks.
+// Non-header segments are processed by the provided converter function.
+func convertTextWithHeaders(text string, convertNonHeader func(string) []slack.Block) []slack.Block {
 	var blocks []slack.Block
 
-	for _, para := range paragraphs {
-		para = strings.TrimSpace(para)
-		if para == "" {
-			continue
+	// Find all header matches
+	matches := headerPattern.FindAllStringSubmatchIndex(text, -1)
+	if matches == nil {
+		// No headers, process entire text
+		return convertNonHeader(text)
+	}
+
+	lastEnd := 0
+	for _, match := range matches {
+		headerStart := match[0]
+		headerEnd := match[1]
+		// match[4] and match[5] are the header text capture group
+		headerTextStart := match[4]
+		headerTextEnd := match[5]
+
+		// Process text before the header
+		if headerStart > lastEnd {
+			beforeText := strings.TrimSpace(text[lastEnd:headerStart])
+			if beforeText != "" {
+				blocks = append(blocks, convertNonHeader(beforeText)...)
+			}
 		}
 
-		textBlock := slack.NewTextBlockObject(slack.MarkdownType, para, false, false)
-		sectionBlock := &slack.SectionBlock{
-			Type:   slack.MBTSection,
-			Text:   textBlock,
-			Expand: true,
+		// Create header block
+		headerText := strings.TrimSpace(text[headerTextStart:headerTextEnd])
+		headerBlock := slack.NewHeaderBlock(
+			slack.NewTextBlockObject(slack.PlainTextType, headerText, true, false),
+		)
+		blocks = append(blocks, headerBlock)
+
+		lastEnd = headerEnd
+	}
+
+	// Process any remaining text after the last header
+	if lastEnd < len(text) {
+		afterText := strings.TrimSpace(text[lastEnd:])
+		if afterText != "" {
+			blocks = append(blocks, convertNonHeader(afterText)...)
 		}
-		blocks = append(blocks, sectionBlock)
 	}
 
 	return blocks
 }
 
-// convertMarkdownToMrkdwn converts standard markdown formatting to Slack mrkdwn format
+// convertMarkdownToMrkdwn converts standard markdown formatting to Slack mrkdwn format.
+// Note: Headers are NOT converted here - they should be extracted and converted to
+// proper Slack header blocks by the caller using convertTextWithHeaders.
 func convertMarkdownToMrkdwn(text string) string {
 	// Order matters - process more specific patterns first
-
-	// Convert headers: ### Header -> *Header*
-	// Slack doesn't have header syntax, so we bold them
-	headerPattern := regexp.MustCompile(`(?m)^(#{1,6})\s+(.+)$`)
-	text = headerPattern.ReplaceAllString(text, "*$2*")
 
 	// Convert bold: **text** or __text__ -> *text*
 	boldPattern1 := regexp.MustCompile(`\*\*([^*]+)\*\*`)

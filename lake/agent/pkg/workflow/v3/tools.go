@@ -83,6 +83,11 @@ func DefaultToolsWithGraph() []Tool {
 func ParseQueries(params map[string]any) ([]QueryInput, error) {
 	queriesRaw, ok := params["queries"].([]any)
 	if !ok {
+		// Debug: log what type we actually got
+		if params["queries"] != nil {
+			fmt.Printf("DEBUG ParseQueries: params['queries'] type=%T value=%v\n", params["queries"], truncateStr(fmt.Sprintf("%v", params["queries"]), 200))
+		}
+
 		// Model might send queries as a string containing JSON (common with some model behaviors)
 		if queriesStr, strOk := params["queries"].(string); strOk {
 			// Clean up any XML-style tags that models sometimes include
@@ -145,7 +150,20 @@ func cleanXMLTags(s string) string {
 	if idx := strings.Index(s, "</parameter>"); idx > 0 {
 		s = s[:idx]
 	}
-	return strings.TrimSpace(s)
+	s = strings.TrimSpace(s)
+
+	// The model sometimes outputs ]} after the array (extra closing brace)
+	// Try to fix by finding a valid JSON array ending
+	if strings.HasSuffix(s, "]}") {
+		// Check if removing the extra } makes it valid JSON
+		trimmed := s[:len(s)-1] // Remove trailing }
+		var test []any
+		if json.Unmarshal([]byte(trimmed), &test) == nil {
+			return trimmed
+		}
+	}
+
+	return s
 }
 
 // truncateStr truncates a string for error messages.

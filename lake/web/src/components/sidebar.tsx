@@ -416,6 +416,18 @@ export function Sidebar({
         </div>
         <div className="space-y-1">
           <Link
+            to="/"
+            className={cn(
+              'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',
+              isLandingPage
+                ? 'bg-[var(--sidebar-active)] text-foreground font-medium'
+                : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+            )}
+          >
+            <Home className="h-4 w-4" />
+            Explore
+          </Link>
+          <Link
             to="/status"
             className={cn(
               'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',

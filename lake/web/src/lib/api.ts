@@ -1454,11 +1454,25 @@ export interface ImpactDevice {
   deviceType: string
 }
 
+export interface FailureImpactPath {
+  fromPK: string
+  fromCode: string
+  toPK: string
+  toCode: string
+  beforeHops: number
+  beforeMetric: number
+  afterHops: number
+  afterMetric: number
+  hasAlternate: boolean
+}
+
 export interface FailureImpactResponse {
   devicePK: string
   deviceCode: string
   unreachableDevices: ImpactDevice[]
   unreachableCount: number
+  affectedPaths: FailureImpactPath[]
+  affectedPathCount: number
   error?: string
 }
 

@@ -321,6 +321,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
   const pathModeEnabled = mode === 'path'
   const whatifRemovalMode = mode === 'whatif-removal'
   const whatifAdditionMode = mode === 'whatif-addition'
+  const impactMode = mode === 'impact'
 
   // Derive overlay states from context
   const criticalityOverlayEnabled = overlays.criticality
@@ -927,6 +928,8 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           deviceCode: '',
           unreachableDevices: [],
           unreachableCount: 0,
+          affectedPaths: [],
+          affectedPathCount: 0,
           error: err.message,
         })
       })
@@ -1877,12 +1880,11 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
                       setAdditionTarget(null)
                       setAdditionResult(null)
                     }
+                  } else if (impactMode) {
+                    // Handle impact mode device clicks - analyze failure impact
+                    setImpactDevice(device.pk)
                   } else {
                     handleMarkerClick({ type: 'device', data: deviceInfo })
-                    // If impact panel is open, update to show new device's impact
-                    if (impactDevice) {
-                      setImpactDevice(device.pk)
-                    }
                   }
                 }}
               />

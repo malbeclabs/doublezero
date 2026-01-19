@@ -129,6 +129,7 @@ func run() error {
 		slackClient,
 		apiClient,
 		convManager,
+		cfg.WebBaseURL,
 		log,
 	)
 	msgProcessor.StartCleanup(ctx)

@@ -4,22 +4,6 @@ import "encoding/json"
 
 // Tool definitions for v3 workflow.
 var (
-	// ThinkTool allows the model to externalize reasoning for streaming to users.
-	ThinkTool = Tool{
-		Name:        "think",
-		Description: "Record your reasoning, interpretation, or analysis plan. This is shown to users so they can follow your thought process. Use this before executing queries to explain what you're investigating and why.",
-		InputSchema: json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"content": {
-					"type": "string",
-					"description": "Your reasoning or analysis"
-				}
-			},
-			"required": ["content"]
-		}`),
-	}
-
 	// ExecuteSQLTool allows the model to execute SQL queries.
 	ExecuteSQLTool = Tool{
 		Name:        "execute_sql",
@@ -82,14 +66,13 @@ var (
 )
 
 // DefaultTools returns the default set of tools for the v3 workflow.
-// If includeGraph is true, includes the execute_cypher tool for Neo4j queries.
 func DefaultTools() []Tool {
-	return []Tool{ThinkTool, ExecuteSQLTool}
+	return []Tool{ExecuteSQLTool}
 }
 
 // DefaultToolsWithGraph returns tools including graph database support.
 func DefaultToolsWithGraph() []Tool {
-	return []Tool{ThinkTool, ExecuteSQLTool, ExecuteCypherTool}
+	return []Tool{ExecuteSQLTool, ExecuteCypherTool}
 }
 
 // ParseQueries extracts QueryInput from execute_sql parameters.

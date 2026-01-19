@@ -148,6 +148,10 @@ func (p *Workflow) RunWithProgress(ctx context.Context, userQuestion string, his
 	notify(workflow.StageExecuting)
 	p.logInfo("workflow: starting tool loop", "question", userQuestion)
 
+	// Track the last text response during the working phase (for conversational responses)
+	var lastTextResponse string
+	var loopComplete bool
+
 	for iteration := 0; iteration < p.maxIterations; iteration++ {
 		state.Metrics.LoopIterations++
 
@@ -179,27 +183,21 @@ func (p *Workflow) RunWithProgress(ctx context.Context, userQuestion string, his
 		// Add assistant message to conversation
 		messages = append(messages, p.responseToMessage(response))
 
+		// Track text output (for conversational responses without queries)
+		if text := response.Text(); text != "" {
+			lastTextResponse = text
+			// Emit thinking progress for text output during working phase
+			if response.HasToolCalls() && onProgress != nil {
+				onProgress(workflow.Progress{
+					Stage:           workflow.StageThinking,
+					ThinkingContent: text,
+				})
+			}
+		}
+
 		// Check if model is done (no tool calls)
 		if !response.HasToolCalls() {
-			// If the model hasn't executed any queries but is trying to answer,
-			// force it to execute queries first (unless this is the last iteration)
-			if len(state.ExecutedQueries) == 0 && state.Metrics.ThinkCalls > 0 && iteration < p.maxIterations-1 {
-				p.logInfo("workflow: enforcing query execution",
-					"iteration", iteration+1,
-					"reason", "model tried to answer without executing queries")
-				// Inject a reminder message and continue the loop
-				messages = append(messages, workflow.ToolMessage{
-					Role: "user",
-					Content: []workflow.ToolContentBlock{
-						{
-							Type: "text",
-							Text: "[System: You used the think tool but did not execute any SQL queries. For data questions, you MUST call execute_sql to get actual data before providing an answer. Please call execute_sql now with your planned queries.]",
-						},
-					},
-				})
-				continue
-			}
-			state.FinalAnswer = response.Text()
+			loopComplete = true
 			break
 		}
 
@@ -240,35 +238,28 @@ func (p *Workflow) RunWithProgress(ctx context.Context, userQuestion string, his
 		}
 	}
 
-	// Check if we hit max iterations without answer
-	if state.FinalAnswer == "" {
+	// Handle truncated execution (hit max iterations while still making tool calls)
+	if !loopComplete {
 		state.Metrics.Truncated = true
+		p.logInfo("workflow: hit max iterations", "queries", len(state.ExecutedQueries))
+	}
 
-		// Force a finalization prompt to get a summary of what's known
-		p.logInfo("workflow: forcing finalization", "reason", "max iterations reached without final answer")
-
-		finalizationPrompt := "[System: You've reached the maximum number of iterations. Please provide your best answer now based on any data you've gathered. If you executed queries, summarize the results. If you haven't retrieved any data yet, acknowledge that you couldn't complete the analysis and explain what you were trying to do.]"
-
-		messages = append(messages, workflow.ToolMessage{
-			Role: "user",
-			Content: []workflow.ToolContentBlock{
-				{Type: "text", Text: finalizationPrompt},
-			},
-		})
-
-		// Make one final LLM call to get the summary
-		finalResponse, err := toolLLM.CompleteWithTools(ctx, systemPrompt, messages, p.tools, workflow.WithCacheControl())
-		if err == nil {
-			state.Metrics.LLMCalls++
-			state.Metrics.InputTokens += finalResponse.InputTokens
-			state.Metrics.OutputTokens += finalResponse.OutputTokens
-			state.FinalAnswer = finalResponse.Text()
+	// Synthesis phase: generate the final user-facing answer
+	if len(state.ExecutedQueries) > 0 {
+		// Data analysis: run synthesis to produce clean answer from query results
+		state.FinalAnswer, err = p.synthesizeAnswer(ctx, toolLLM, systemPrompt, messages, state)
+		if err != nil {
+			p.logInfo("workflow: synthesis failed, using last response", "error", err)
+			state.FinalAnswer = lastTextResponse
 		}
+	} else {
+		// Conversational response: use the direct text output
+		state.FinalAnswer = lastTextResponse
+	}
 
-		// If still no answer, use a generic message
-		if state.FinalAnswer == "" {
-			state.FinalAnswer = "I was unable to complete the analysis within the allowed iterations."
-		}
+	// Final fallback if still no answer
+	if state.FinalAnswer == "" {
+		state.FinalAnswer = "I was unable to complete the analysis within the allowed iterations."
 	}
 
 	state.Metrics.TotalDuration = time.Since(startTime)
@@ -339,8 +330,6 @@ func (p *Workflow) responseToMessage(response *workflow.ToolLLMResponse) workflo
 // executeTool executes a single tool call and returns the result.
 func (p *Workflow) executeTool(ctx context.Context, call workflow.ToolCallInfo, state *LoopState, onProgress workflow.ProgressCallback) (string, error) {
 	switch call.Name {
-	case "think":
-		return p.executeThink(call.Parameters, state, onProgress)
 	case "execute_sql":
 		result, err := p.executeSQL(ctx, call.Parameters, state, onProgress)
 		if err != nil {
@@ -359,53 +348,12 @@ func (p *Workflow) executeTool(ctx context.Context, call workflow.ToolCallInfo, 
 	}
 }
 
-// executeThink handles the think tool - extracts reasoning and records it.
-func (p *Workflow) executeThink(params map[string]any, state *LoopState, onProgress workflow.ProgressCallback) (string, error) {
-	content, _ := params["content"].(string)
-	if content != "" {
-		state.ThinkingSteps = append(state.ThinkingSteps, content)
-		state.Metrics.ThinkCalls++
-		state.Metrics.ConsecutiveThinks++
-		// Log full content for debugging (truncated version in summary log)
-		p.logInfo("workflow: think",
-			"thinkStep", state.Metrics.ThinkCalls,
-			"consecutiveThinks", state.Metrics.ConsecutiveThinks,
-			"contentLen", len(content),
-			"preview", truncate(content, 200))
-		if p.cfg.Logger != nil {
-			p.cfg.Logger.Debug("workflow: think content", "full", content)
-		}
-
-		// Emit thinking progress event
-		if onProgress != nil {
-			onProgress(workflow.Progress{
-				Stage:           workflow.StageThinking,
-				ThinkingContent: content,
-			})
-		}
-	}
-
-	// Return progressively stronger messages based on consecutive think calls
-	if state.Metrics.ConsecutiveThinks >= 3 {
-		return "STOP PLANNING. You have called think 3+ times without executing any queries. Call execute_sql NOW with your queries. Do not call think again.", nil
-	}
-	if state.Metrics.ConsecutiveThinks >= 2 {
-		return "Reasoning recorded. You have now called think twice without executing queries. You MUST call execute_sql next - do not call think again until you have data.", nil
-	}
-	// Return a directive message that reminds the model it needs to execute queries
-	// This is important because the model sometimes hallucinates results after thinking
-	return "Reasoning recorded. You have NOT retrieved any data yet. To get actual data, you MUST call execute_sql with your planned queries.", nil
-}
-
 // executeSQL handles the execute_sql tool - runs queries in parallel.
 func (p *Workflow) executeSQL(ctx context.Context, params map[string]any, state *LoopState, onProgress workflow.ProgressCallback) (string, error) {
 	queries, err := ParseQueries(params)
 	if err != nil || len(queries) == 0 {
 		return "", fmt.Errorf("no valid queries provided")
 	}
-
-	// Reset consecutive think counter since the model is now executing queries
-	state.Metrics.ConsecutiveThinks = 0
 
 	// Log each query question and SQL for debugging
 	p.logInfo("workflow: executing SQL", "count", len(queries))
@@ -445,7 +393,7 @@ func (p *Workflow) executeSQL(ctx context.Context, params map[string]any, state 
 			// Execute query
 			queryResult, err := p.cfg.Querier.Query(ctx, sql)
 			if err != nil {
-				state.Metrics.SQLErrors++
+				state.Metrics.QueryErrors++
 				results[idx] = workflow.ExecutedQuery{
 					GeneratedQuery: workflow.GeneratedQuery{
 						DataQuestion: workflow.DataQuestion{
@@ -494,8 +442,8 @@ func (p *Workflow) executeSQL(ctx context.Context, params map[string]any, state 
 	}
 
 	wg.Wait()
-	state.Metrics.SQLDuration += time.Since(sqlStart)
-	state.Metrics.SQLQueries += len(queries)
+	state.Metrics.QueryDuration += time.Since(sqlStart)
+	state.Metrics.Queries += len(queries)
 
 	// Log results for each query
 	for i, q := range queries {
@@ -570,9 +518,6 @@ func (p *Workflow) executeCypher(ctx context.Context, params map[string]any, sta
 		return "", fmt.Errorf("no valid Cypher queries provided")
 	}
 
-	// Reset consecutive think counter since the model is now executing queries
-	state.Metrics.ConsecutiveThinks = 0
-
 	// Log each query question and Cypher for debugging
 	p.logInfo("workflow: executing Cypher", "count", len(queries))
 	for i, q := range queries {
@@ -589,7 +534,7 @@ func (p *Workflow) executeCypher(ctx context.Context, params map[string]any, sta
 			onProgress(workflow.Progress{
 				Stage:         workflow.StageQueryStarted,
 				QueryQuestion: q.Question,
-				QuerySQL:      q.Cypher, // Reuse SQL field for Cypher
+				QuerySQL:      q.Cypher,
 			})
 		}
 	}
@@ -610,7 +555,7 @@ func (p *Workflow) executeCypher(ctx context.Context, params map[string]any, sta
 			// Execute query using GraphQuerier
 			queryResult, err := p.cfg.GraphQuerier.Query(ctx, cypher)
 			if err != nil {
-				state.Metrics.SQLErrors++ // Reuse SQL error counter for graph errors
+				state.Metrics.QueryErrors++
 				results[idx] = workflow.ExecutedQuery{
 					GeneratedQuery: workflow.GeneratedQuery{
 						DataQuestion: workflow.DataQuestion{
@@ -659,8 +604,8 @@ func (p *Workflow) executeCypher(ctx context.Context, params map[string]any, sta
 	}
 
 	wg.Wait()
-	state.Metrics.SQLDuration += time.Since(cypherStart) // Reuse SQL duration for graph queries
-	state.Metrics.SQLQueries += len(queries)
+	state.Metrics.QueryDuration += time.Since(cypherStart)
+	state.Metrics.Queries += len(queries)
 
 	// Log results for each query
 	for i, q := range queries {
@@ -788,6 +733,10 @@ func (p *Workflow) RunWithCheckpoint(
 	notify(workflow.StageExecuting)
 	p.logInfo("workflow: starting tool loop with checkpoint", "question", userQuestion)
 
+	// Track the last text response during the working phase (for conversational responses)
+	var lastTextResponse string
+	var loopComplete bool
+
 	for iteration := 0; iteration < p.maxIterations; iteration++ {
 		state.Metrics.LoopIterations++
 
@@ -819,29 +768,21 @@ func (p *Workflow) RunWithCheckpoint(
 		// Add assistant message to conversation
 		messages = append(messages, p.responseToMessage(response))
 
+		// Track text output (for conversational responses without queries)
+		if text := response.Text(); text != "" {
+			lastTextResponse = text
+			// Emit thinking progress for text output during working phase
+			if response.HasToolCalls() && onProgress != nil {
+				onProgress(workflow.Progress{
+					Stage:           workflow.StageThinking,
+					ThinkingContent: text,
+				})
+			}
+		}
+
 		// Check if model is done (no tool calls)
 		if !response.HasToolCalls() {
-			// If the model hasn't executed any queries but is trying to answer,
-			// force it to execute queries first (unless this is the last iteration)
-			if len(state.ExecutedQueries) == 0 && state.Metrics.ThinkCalls > 0 && iteration < p.maxIterations-1 {
-				p.logInfo("workflow: enforcing query execution",
-					"iteration", iteration+1,
-					"reason", "model tried to answer without executing queries")
-				// Inject a reminder message and continue the loop
-				messages = append(messages, workflow.ToolMessage{
-					Role: "user",
-					Content: []workflow.ToolContentBlock{
-						{
-							Type: "text",
-							Text: "[System: You used the think tool but did not execute any SQL queries. For data questions, you MUST call execute_sql to get actual data before providing an answer. Please call execute_sql now with your planned queries.]",
-						},
-					},
-				})
-				// Checkpoint after the reminder
-				checkpoint(iteration, messages)
-				continue
-			}
-			state.FinalAnswer = response.Text()
+			loopComplete = true
 			break
 		}
 
@@ -885,35 +826,28 @@ func (p *Workflow) RunWithCheckpoint(
 		checkpoint(iteration, messages)
 	}
 
-	// Check if we hit max iterations without answer
-	if state.FinalAnswer == "" {
+	// Handle truncated execution (hit max iterations while still making tool calls)
+	if !loopComplete {
 		state.Metrics.Truncated = true
+		p.logInfo("workflow: hit max iterations", "queries", len(state.ExecutedQueries))
+	}
 
-		// Force a finalization prompt to get a summary of what's known
-		p.logInfo("workflow: forcing finalization", "reason", "max iterations reached without final answer")
-
-		finalizationPrompt := "[System: You've reached the maximum number of iterations. Please provide your best answer now based on any data you've gathered. If you executed queries, summarize the results. If you haven't retrieved any data yet, acknowledge that you couldn't complete the analysis and explain what you were trying to do.]"
-
-		messages = append(messages, workflow.ToolMessage{
-			Role: "user",
-			Content: []workflow.ToolContentBlock{
-				{Type: "text", Text: finalizationPrompt},
-			},
-		})
-
-		// Make one final LLM call to get the summary
-		finalResponse, err := toolLLM.CompleteWithTools(ctx, systemPrompt, messages, p.tools, workflow.WithCacheControl())
-		if err == nil {
-			state.Metrics.LLMCalls++
-			state.Metrics.InputTokens += finalResponse.InputTokens
-			state.Metrics.OutputTokens += finalResponse.OutputTokens
-			state.FinalAnswer = finalResponse.Text()
+	// Synthesis phase: generate the final user-facing answer
+	if len(state.ExecutedQueries) > 0 {
+		// Data analysis: run synthesis to produce clean answer from query results
+		state.FinalAnswer, err = p.synthesizeAnswer(ctx, toolLLM, systemPrompt, messages, state)
+		if err != nil {
+			p.logInfo("workflow: synthesis failed, using last response", "error", err)
+			state.FinalAnswer = lastTextResponse
 		}
+	} else {
+		// Conversational response: use the direct text output
+		state.FinalAnswer = lastTextResponse
+	}
 
-		// If still no answer, use a generic message
-		if state.FinalAnswer == "" {
-			state.FinalAnswer = "I was unable to complete the analysis within the allowed iterations."
-		}
+	// Final fallback if still no answer
+	if state.FinalAnswer == "" {
+		state.FinalAnswer = "I was unable to complete the analysis within the allowed iterations."
 	}
 
 	state.Metrics.TotalDuration = time.Since(startTime)
@@ -1034,6 +968,10 @@ func (p *Workflow) ResumeFromCheckpoint(
 		}
 	}
 
+	// Track the last text response during the working phase (for conversational responses)
+	var lastTextResponse string
+	var loopComplete bool
+
 	for iteration := checkpoint.Iteration; iteration < p.maxIterations; iteration++ {
 		state.Metrics.LoopIterations++
 
@@ -1065,24 +1003,21 @@ func (p *Workflow) ResumeFromCheckpoint(
 		// Add assistant message to conversation
 		messages = append(messages, p.responseToMessage(response))
 
+		// Track text output (for conversational responses without queries)
+		if text := response.Text(); text != "" {
+			lastTextResponse = text
+			// Emit thinking progress for text output during working phase
+			if response.HasToolCalls() && onProgress != nil {
+				onProgress(workflow.Progress{
+					Stage:           workflow.StageThinking,
+					ThinkingContent: text,
+				})
+			}
+		}
+
 		// Check if model is done (no tool calls)
 		if !response.HasToolCalls() {
-			if len(state.ExecutedQueries) == 0 && state.Metrics.ThinkCalls > 0 && iteration < p.maxIterations-1 {
-				p.logInfo("workflow: enforcing query execution (resumed)",
-					"iteration", iteration+1)
-				messages = append(messages, workflow.ToolMessage{
-					Role: "user",
-					Content: []workflow.ToolContentBlock{
-						{
-							Type: "text",
-							Text: "[System: You used the think tool but did not execute any SQL queries. For data questions, you MUST call execute_sql to get actual data before providing an answer. Please call execute_sql now with your planned queries.]",
-						},
-					},
-				})
-				persistCheckpoint(iteration, messages)
-				continue
-			}
-			state.FinalAnswer = response.Text()
+			loopComplete = true
 			break
 		}
 
@@ -1125,31 +1060,28 @@ func (p *Workflow) ResumeFromCheckpoint(
 		persistCheckpoint(iteration, messages)
 	}
 
-	// Handle max iterations
-	if state.FinalAnswer == "" {
+	// Handle truncated execution (hit max iterations while still making tool calls)
+	if !loopComplete {
 		state.Metrics.Truncated = true
-		p.logInfo("workflow: forcing finalization (resumed)")
+		p.logInfo("workflow: hit max iterations (resumed)", "queries", len(state.ExecutedQueries))
+	}
 
-		finalizationPrompt := "[System: You've reached the maximum number of iterations. Please provide your best answer now based on any data you've gathered.]"
-
-		messages = append(messages, workflow.ToolMessage{
-			Role: "user",
-			Content: []workflow.ToolContentBlock{
-				{Type: "text", Text: finalizationPrompt},
-			},
-		})
-
-		finalResponse, err := toolLLM.CompleteWithTools(ctx, systemPrompt, messages, p.tools, workflow.WithCacheControl())
-		if err == nil {
-			state.Metrics.LLMCalls++
-			state.Metrics.InputTokens += finalResponse.InputTokens
-			state.Metrics.OutputTokens += finalResponse.OutputTokens
-			state.FinalAnswer = finalResponse.Text()
+	// Synthesis phase: generate the final user-facing answer
+	if len(state.ExecutedQueries) > 0 {
+		// Data analysis: run synthesis to produce clean answer from query results
+		state.FinalAnswer, err = p.synthesizeAnswer(ctx, toolLLM, systemPrompt, messages, state)
+		if err != nil {
+			p.logInfo("workflow: synthesis failed, using last response", "error", err)
+			state.FinalAnswer = lastTextResponse
 		}
+	} else {
+		// Conversational response: use the direct text output
+		state.FinalAnswer = lastTextResponse
+	}
 
-		if state.FinalAnswer == "" {
-			state.FinalAnswer = "I was unable to complete the analysis within the allowed iterations."
-		}
+	// Final fallback if still no answer
+	if state.FinalAnswer == "" {
+		state.FinalAnswer = "I was unable to complete the analysis within the allowed iterations."
 	}
 
 	state.Metrics.TotalDuration = time.Since(startTime)
@@ -1183,6 +1115,57 @@ func GetFinalCheckpoint(
 		ExecutedQueries: state.ExecutedQueries,
 		Metrics:         state.Metrics,
 	}
+}
+
+// synthesisPrompt is the system prompt for the synthesis phase.
+// It asks the model to produce a clean, user-facing answer from the data gathered.
+const synthesisPrompt = `You have finished gathering data. Now produce your final answer for the user.
+
+CRITICAL RULES:
+1. Start directly with the answer - no preamble like "Based on the data..." or "Here's what I found..."
+2. Include [Q1], [Q2] references to cite which query each claim comes from
+3. Use tables for multi-attribute lists (validators, devices, links)
+4. Keep it concise but thorough
+
+BE HONEST ABOUT FAILURES:
+- If your queries returned errors or no data, say so clearly - don't make up an answer
+- If you couldn't retrieve the data needed, say "I wasn't able to retrieve the data needed to answer this question" and briefly explain what went wrong
+- NEVER invent data or provide estimates based on "typical" values or prior knowledge
+
+Refer to the system prompt for formatting guidelines.`
+
+// synthesizeAnswer makes a final LLM call to produce a clean user-facing answer.
+// This is the "synthesis phase" that separates working notes from the final response.
+func (p *Workflow) synthesizeAnswer(ctx context.Context, llm workflow.ToolLLMClient, systemPrompt string, messages []workflow.ToolMessage, state *LoopState) (string, error) {
+	p.logInfo("workflow: starting synthesis phase", "queries", len(state.ExecutedQueries))
+
+	// Add synthesis prompt to messages
+	synthesisMessages := make([]workflow.ToolMessage, len(messages)+1)
+	copy(synthesisMessages, messages)
+	synthesisMessages[len(synthesisMessages)-1] = workflow.ToolMessage{
+		Role: "user",
+		Content: []workflow.ToolContentBlock{
+			{Type: "text", Text: synthesisPrompt},
+		},
+	}
+
+	// Make synthesis LLM call (no tools - just produce the answer)
+	llmStart := time.Now()
+	response, err := llm.CompleteWithTools(ctx, systemPrompt, synthesisMessages, nil, workflow.WithCacheControl())
+	state.Metrics.LLMDuration += time.Since(llmStart)
+	state.Metrics.LLMCalls++
+
+	if err != nil {
+		return "", fmt.Errorf("synthesis LLM call failed: %w", err)
+	}
+
+	state.Metrics.InputTokens += response.InputTokens
+	state.Metrics.OutputTokens += response.OutputTokens
+
+	answer := response.Text()
+	p.logInfo("workflow: synthesis complete", "answerLen", len(answer))
+
+	return answer, nil
 }
 
 // followUpSystemPrompt is the system prompt for generating follow-up questions.

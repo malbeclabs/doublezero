@@ -1199,8 +1199,8 @@ export function TopologyGraph({
   }, [metroClusteringEnabled, metroInfoMap, getMetroColor, getNodeSize, getDeviceTypeColor, deviceTypeEnabled, stakeOverlayEnabled, isDark, cyGeneration])
 
   // Update node and edge colors when contributors overlay is enabled
-  // Skip if in an analysis mode that styles edges or if a link overlay is active (let those control edge appearance)
-  const isEdgeStylingMode = isisHealthEnabled || criticalityEnabled || bandwidthEnabled || mode === 'path' || mode === 'whatif-removal' || mode === 'whatif-addition'
+  // Skip if in an analysis mode that styles edges (bandwidth is OK - it only sets width when contributors is active)
+  const isEdgeStylingMode = isisHealthEnabled || criticalityEnabled || mode === 'path' || mode === 'whatif-removal' || mode === 'whatif-addition'
 
   useEffect(() => {
     if (!cyRef.current) return
@@ -1272,12 +1272,14 @@ export function TopologyGraph({
   }, [contributorDevicesEnabled, contributorLinksEnabled, contributorInfoMap, deviceContributorMap, edgeContributorMap, getContributorColor, getNodeSize, getDeviceTypeColor, deviceTypeEnabled, stakeOverlayEnabled, metroClusteringEnabled, linkHealthOverlayEnabled, trafficFlowEnabled, isDark, isEdgeStylingMode, cyGeneration])
 
   // Apply bandwidth edge styling
-  // Sets width based on bandwidth, and resets color to grey (other overlays will override if active)
+  // Sets width based on bandwidth. Only sets color to grey if no other color overlay is active.
   useEffect(() => {
     if (!cyRef.current) return
     const cy = cyRef.current
 
     const defaultColor = isDark ? '#6b7280' : '#9ca3af'
+    // Don't set colors if another color overlay will handle it
+    const shouldSetColor = !contributorLinksEnabled && !linkHealthOverlayEnabled && !trafficFlowEnabled && !linkTypeEnabled
 
     cy.batch(() => {
       if (bandwidthEnabled && edgeTrafficMap.size > 0) {
@@ -1304,15 +1306,21 @@ export function TopologyGraph({
             width = 1
           }
 
-          // Set width and reset color to default grey
-          // Color overlays (linkHealth, trafficFlow, etc.) will override if active
-          edge.style({
-            'line-color': defaultColor,
-            'target-arrow-color': defaultColor,
-            'width': width,
-            'opacity': 0.7,
-            'line-style': 'solid',
-          })
+          // Set width, and optionally color (if no other color overlay is active)
+          if (shouldSetColor) {
+            edge.style({
+              'line-color': defaultColor,
+              'target-arrow-color': defaultColor,
+              'width': width,
+              'opacity': 0.7,
+              'line-style': 'solid',
+            })
+          } else {
+            edge.style({
+              'width': width,
+              'line-style': 'solid',
+            })
+          }
         })
       } else if (!bandwidthEnabled) {
         // Reset to default width when disabled (unless another link overlay is active)

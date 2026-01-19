@@ -460,6 +460,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
 
   // Update URL and panel when selected item changes
   const setSelectedItem = useCallback((item: SelectedItem | null) => {
+    settingSelectionLocallyRef.current = true
     setSelectedItemState(item)
     if (item === null) {
       setSearchParams({})
@@ -486,8 +487,16 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     }
   }, [setSearchParams, panel.content, closePanel, mode, openPanel])
 
+  // Track when we're setting selection locally to avoid sync conflicts
+  const settingSelectionLocallyRef = useRef(false)
+
   // Sync context selection to local state (handles external deselection like closing panel)
   useEffect(() => {
+    // Skip if we just set the selection locally (avoid race with URL param update)
+    if (settingSelectionLocallyRef.current) {
+      settingSelectionLocallyRef.current = false
+      return
+    }
     if (selection === null && selectedItem !== null) {
       setSelectedItemState(null)
     }

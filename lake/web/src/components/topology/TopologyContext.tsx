@@ -213,7 +213,13 @@ export function TopologyProvider({ children, view }: TopologyProviderProps) {
     if (mode !== 'explore') {
       setModeInternal('explore')
     }
-  }, [mode])
+    // Clear selection when closing panel
+    setSearchParams(prev => {
+      prev.delete('type')
+      prev.delete('id')
+      return prev
+    })
+  }, [mode, setSearchParams])
 
   const setPanelWidth = useCallback((width: number) => {
     const clampedWidth = Math.max(280, Math.min(600, width))

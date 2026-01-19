@@ -33,6 +33,7 @@ export interface OverlayState {
   linkHealth: boolean      // Link health/SLA overlay
   trafficFlow: boolean     // Traffic flow visualization
   metroClustering: boolean // Color by metro
+  contributors: boolean    // Color by contributor
 }
 
 // Context value type
@@ -80,6 +81,7 @@ function parseOverlaysFromUrl(param: string | null): OverlayState {
     linkHealth: false,
     trafficFlow: false,
     metroClustering: false,
+    contributors: false,
   }
   if (!param) return defaultState
 
@@ -178,12 +180,13 @@ export function TopologyProvider({ children, view }: TopologyProviderProps) {
   }, [])
 
   // Overlay groups - overlays in the same group are mutually exclusive
-  // Node color overlays: stake, metroClustering
+  // Node color overlays: stake, metroClustering, contributors
   // Edge color overlays: linkHealth, trafficFlow
   // Independent: validators
   const overlayGroups: Record<keyof OverlayState, (keyof OverlayState)[]> = {
-    stake: ['metroClustering'],
-    metroClustering: ['stake'],
+    stake: ['metroClustering', 'contributors'],
+    metroClustering: ['stake', 'contributors'],
+    contributors: ['stake', 'metroClustering'],
     linkHealth: ['trafficFlow'],
     trafficFlow: ['linkHealth'],
     validators: [],

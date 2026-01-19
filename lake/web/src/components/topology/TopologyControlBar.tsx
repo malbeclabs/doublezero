@@ -20,6 +20,7 @@ import {
   ChevronRight,
   Map,
   Network,
+  Building2,
 } from 'lucide-react'
 import { useTopology, type TopologyMode } from './TopologyContext'
 
@@ -376,6 +377,17 @@ export function TopologyControlBar({
             onClick={() => handleToggleOverlay('metroClustering')}
             active={overlays.metroClustering}
             activeColor="blue"
+            disabled={isInAnalysisMode}
+            collapsed={collapsed}
+          />
+
+          <NavItem
+            icon={<Building2 className="h-3.5 w-3.5" />}
+            label="Contributors"
+            shortcut="o"
+            onClick={() => handleToggleOverlay('contributors')}
+            active={overlays.contributors}
+            activeColor="purple"
             disabled={isInAnalysisMode}
             collapsed={collapsed}
           />

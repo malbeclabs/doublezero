@@ -38,9 +38,9 @@ func TestAI_Slack_ConvertMarkdownToMrkdwn(t *testing.T) {
 			expected: "Check out <https://google.com|Google>",
 		},
 		{
-			name:     "header conversion",
+			name:     "headers are NOT converted (handled separately)",
 			input:    "### My Header",
-			expected: "*My Header*",
+			expected: "### My Header",
 		},
 		{
 			name:     "inline code preserved",
@@ -55,13 +55,126 @@ func TestAI_Slack_ConvertMarkdownToMrkdwn(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			result := convertMarkdownToMrkdwn(tt.input)
 			require.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+func TestAI_Slack_ConvertMarkdownToBlocks_Headers(t *testing.T) {
+	t.Parallel()
+
+	t.Run("header becomes header block type", func(t *testing.T) {
+		t.Parallel()
+		input := "### My Header\n\nSome content here."
+
+		blocks := ConvertMarkdownToBlocks(input, slog.Default())
+
+		require.NotNil(t, blocks)
+		require.GreaterOrEqual(t, len(blocks), 2)
+
+		// First block should be a header block
+		require.Equal(t, slackapi.MBTHeader, blocks[0].BlockType())
+		headerBlock := blocks[0].(*slackapi.HeaderBlock)
+		require.Equal(t, "My Header", headerBlock.Text.Text)
+	})
+
+	t.Run("multiple headers become header blocks", func(t *testing.T) {
+		t.Parallel()
+		input := `### Section 1
+
+Content for section 1.
+
+### Section 2
+
+Content for section 2.`
+
+		blocks := ConvertMarkdownToBlocks(input, slog.Default())
+
+		require.NotNil(t, blocks)
+
+		// Count header blocks
+		headerCount := 0
+		for _, block := range blocks {
+			if block.BlockType() == slackapi.MBTHeader {
+				headerCount++
+			}
+		}
+		require.Equal(t, 2, headerCount, "should have 2 header blocks")
+	})
+
+	t.Run("h1 through h6 all become header blocks", func(t *testing.T) {
+		t.Parallel()
+		inputs := []struct {
+			markdown string
+			expected string
+		}{
+			{"# H1 Header", "H1 Header"},
+			{"## H2 Header", "H2 Header"},
+			{"### H3 Header", "H3 Header"},
+			{"#### H4 Header", "H4 Header"},
+			{"##### H5 Header", "H5 Header"},
+			{"###### H6 Header", "H6 Header"},
+		}
+
+		for _, tc := range inputs {
+			blocks := ConvertMarkdownToBlocks(tc.markdown, slog.Default())
+			require.NotNil(t, blocks)
+			require.GreaterOrEqual(t, len(blocks), 1)
+			require.Equal(t, slackapi.MBTHeader, blocks[0].BlockType())
+			headerBlock := blocks[0].(*slackapi.HeaderBlock)
+			require.Equal(t, tc.expected, headerBlock.Text.Text)
+		}
+	})
+
+	t.Run("header with nested list still uses header blocks", func(t *testing.T) {
+		t.Parallel()
+		input := `### Summary
+
+- Item 1
+  - Nested item 1.1
+  - Nested item 1.2
+- Item 2`
+
+		blocks := ConvertMarkdownToBlocks(input, slog.Default())
+
+		require.NotNil(t, blocks)
+		require.GreaterOrEqual(t, len(blocks), 1)
+
+		// First block should be a header block (not bold text)
+		require.Equal(t, slackapi.MBTHeader, blocks[0].BlockType())
+		headerBlock := blocks[0].(*slackapi.HeaderBlock)
+		require.Equal(t, "Summary", headerBlock.Text.Text)
+
+		// Nested list items should be preserved
+		foundNestedItems := false
+		for _, block := range blocks {
+			if block.BlockType() == slackapi.MBTSection {
+				sectionBlock := block.(*slackapi.SectionBlock)
+				if sectionBlock.Text != nil {
+					if strings.Contains(sectionBlock.Text.Text, "Nested item") {
+						foundNestedItems = true
+					}
+				}
+			}
+		}
+		require.True(t, foundNestedItems, "nested list items should be preserved")
+	})
+
+	t.Run("header with emoji prefix", func(t *testing.T) {
+		t.Parallel()
+		input := "### 📊 Summary\n\nSome data here."
+
+		blocks := ConvertMarkdownToBlocks(input, slog.Default())
+
+		require.NotNil(t, blocks)
+		require.GreaterOrEqual(t, len(blocks), 1)
+		require.Equal(t, slackapi.MBTHeader, blocks[0].BlockType())
+		headerBlock := blocks[0].(*slackapi.HeaderBlock)
+		require.Equal(t, "📊 Summary", headerBlock.Text.Text)
+	})
 }
 
 func TestAI_Slack_SanitizeErrorMessage(t *testing.T) {
@@ -136,7 +249,6 @@ func TestAI_Slack_SanitizeErrorMessage(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -184,10 +296,13 @@ func TestAI_Slack_ConvertMarkdownToBlocks_NestedLists(t *testing.T) {
 		require.NotNil(t, blocks)
 		require.Greater(t, len(blocks), 0)
 
+		// First block should be a header
+		require.Equal(t, slackapi.MBTHeader, blocks[0].BlockType())
+
 		// Verify nested list items are present in the output
 		foundNestedItems := false
 		for _, block := range blocks {
-			if block.BlockType() == "section" {
+			if block.BlockType() == slackapi.MBTSection {
 				sectionBlock := block.(*slackapi.SectionBlock)
 				if sectionBlock.Text != nil {
 					text := sectionBlock.Text.Text
@@ -251,7 +366,6 @@ func TestAI_Slack_ConvertMarkdownToBlocks_NestedLists(t *testing.T) {
 		}
 
 		for _, tt := range tests {
-			tt := tt
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
 				result := containsNestedList(tt.input)
@@ -278,7 +392,7 @@ func TestAI_Slack_ConvertMarkdownToBlocks_CodeBlocks(t *testing.T) {
 		// Note: language specifier (sql) is stripped since Slack doesn't support it
 		foundCodeBlock := false
 		for _, block := range blocks {
-			if block.BlockType() == "section" {
+			if block.BlockType() == slackapi.MBTSection {
 				sectionBlock := block.(*slackapi.SectionBlock)
 				if sectionBlock.Text != nil && strings.Contains(sectionBlock.Text.Text, "SELECT *") {
 					// Verify the entire code block is in one section
@@ -307,7 +421,7 @@ func TestAI_Slack_ConvertMarkdownToBlocks_CodeBlocks(t *testing.T) {
 		// Find the code block
 		foundCodeBlock := false
 		for _, block := range blocks {
-			if block.BlockType() == "section" {
+			if block.BlockType() == slackapi.MBTSection {
 				sectionBlock := block.(*slackapi.SectionBlock)
 				if sectionBlock.Text != nil && strings.Contains(sectionBlock.Text.Text, "```") {
 					require.Contains(t, sectionBlock.Text.Text, "line 1")
@@ -331,7 +445,7 @@ func TestAI_Slack_ConvertMarkdownToBlocks_CodeBlocks(t *testing.T) {
 		// Count code blocks
 		codeBlockCount := 0
 		for _, block := range blocks {
-			if block.BlockType() == "section" {
+			if block.BlockType() == slackapi.MBTSection {
 				sectionBlock := block.(*slackapi.SectionBlock)
 				if sectionBlock.Text != nil && strings.Contains(sectionBlock.Text.Text, "```") {
 					codeBlockCount++
@@ -350,4 +464,190 @@ func TestAI_Slack_ConvertMarkdownToBlocks_CodeBlocks(t *testing.T) {
 		// Should still work normally
 		require.NotNil(t, blocks)
 	})
+
+	t.Run("header with code block", func(t *testing.T) {
+		t.Parallel()
+		input := `### Query Results
+
+Here's the SQL:
+` + "```sql\nSELECT * FROM validators;\n```"
+
+		blocks := ConvertMarkdownToBlocks(input, slog.Default())
+
+		require.NotNil(t, blocks)
+
+		// Should have a header block
+		foundHeader := false
+		foundCode := false
+		for _, block := range blocks {
+			if block.BlockType() == slackapi.MBTHeader {
+				headerBlock := block.(*slackapi.HeaderBlock)
+				if headerBlock.Text.Text == "Query Results" {
+					foundHeader = true
+				}
+			}
+			if block.BlockType() == slackapi.MBTSection {
+				sectionBlock := block.(*slackapi.SectionBlock)
+				if sectionBlock.Text != nil && strings.Contains(sectionBlock.Text.Text, "SELECT * FROM validators") {
+					foundCode = true
+				}
+			}
+		}
+		require.True(t, foundHeader, "should have header block")
+		require.True(t, foundCode, "should have code block")
+	})
+}
+
+func TestAI_Slack_ConvertTextWithHeaders(t *testing.T) {
+	t.Parallel()
+
+	t.Run("no headers passes through to converter", func(t *testing.T) {
+		t.Parallel()
+		input := "Just some text without headers"
+		called := false
+
+		blocks := convertTextWithHeaders(input, func(text string) []slackapi.Block {
+			called = true
+			require.Equal(t, input, text)
+			return []slackapi.Block{
+				&slackapi.SectionBlock{
+					Type: slackapi.MBTSection,
+					Text: slackapi.NewTextBlockObject(slackapi.MarkdownType, text, false, false),
+				},
+			}
+		})
+
+		require.True(t, called)
+		require.Len(t, blocks, 1)
+	})
+
+	t.Run("header at start creates header block first", func(t *testing.T) {
+		t.Parallel()
+		input := "### Header\n\nContent after"
+
+		blocks := convertTextWithHeaders(input, func(text string) []slackapi.Block {
+			return []slackapi.Block{
+				&slackapi.SectionBlock{
+					Type: slackapi.MBTSection,
+					Text: slackapi.NewTextBlockObject(slackapi.MarkdownType, text, false, false),
+				},
+			}
+		})
+
+		require.GreaterOrEqual(t, len(blocks), 2)
+		require.Equal(t, slackapi.MBTHeader, blocks[0].BlockType())
+		headerBlock := blocks[0].(*slackapi.HeaderBlock)
+		require.Equal(t, "Header", headerBlock.Text.Text)
+	})
+
+	t.Run("content before header is processed first", func(t *testing.T) {
+		t.Parallel()
+		input := "Content before\n\n### Header\n\nContent after"
+
+		var segments []string
+		blocks := convertTextWithHeaders(input, func(text string) []slackapi.Block {
+			segments = append(segments, text)
+			return []slackapi.Block{
+				&slackapi.SectionBlock{
+					Type: slackapi.MBTSection,
+					Text: slackapi.NewTextBlockObject(slackapi.MarkdownType, text, false, false),
+				},
+			}
+		})
+
+		require.GreaterOrEqual(t, len(blocks), 3)
+		require.Len(t, segments, 2) // before and after header
+
+		// First segment should be content before header
+		require.Contains(t, segments[0], "Content before")
+
+		// Should have header block in the middle
+		foundHeader := false
+		for _, block := range blocks {
+			if block.BlockType() == slackapi.MBTHeader {
+				headerBlock := block.(*slackapi.HeaderBlock)
+				if headerBlock.Text.Text == "Header" {
+					foundHeader = true
+				}
+			}
+		}
+		require.True(t, foundHeader)
+	})
+
+	t.Run("multiple headers in sequence", func(t *testing.T) {
+		t.Parallel()
+		input := `### Header 1
+
+Content 1
+
+### Header 2
+
+Content 2
+
+### Header 3
+
+Content 3`
+
+		blocks := convertTextWithHeaders(input, func(text string) []slackapi.Block {
+			return []slackapi.Block{
+				&slackapi.SectionBlock{
+					Type: slackapi.MBTSection,
+					Text: slackapi.NewTextBlockObject(slackapi.MarkdownType, text, false, false),
+				},
+			}
+		})
+
+		// Count header blocks
+		headerCount := 0
+		headerTexts := []string{}
+		for _, block := range blocks {
+			if block.BlockType() == slackapi.MBTHeader {
+				headerCount++
+				headerBlock := block.(*slackapi.HeaderBlock)
+				headerTexts = append(headerTexts, headerBlock.Text.Text)
+			}
+		}
+
+		require.Equal(t, 3, headerCount)
+		require.Equal(t, []string{"Header 1", "Header 2", "Header 3"}, headerTexts)
+	})
+}
+
+func TestAI_Slack_NormalizeTwoWayArrow(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "two-way arrow",
+			input:    "nyc ↔ lon",
+			expected: "nyc ⇔ lon",
+		},
+		{
+			name:     "slack emoji",
+			input:    "nyc :left_right_arrow: lon",
+			expected: "nyc ⇔ lon",
+		},
+		{
+			name:     "already correct",
+			input:    "nyc ⇔ lon",
+			expected: "nyc ⇔ lon",
+		},
+		{
+			name:     "no arrow",
+			input:    "just text",
+			expected: "just text",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result := normalizeTwoWayArrow(tt.input)
+			require.Equal(t, tt.expected, result)
+		})
+	}
 }

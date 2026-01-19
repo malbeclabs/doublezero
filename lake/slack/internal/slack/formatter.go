@@ -244,7 +244,8 @@ func ConvertMarkdownToBlocks(text string, log *slog.Logger) []slack.Block {
 }
 
 // markdownTablePattern matches a complete markdown table (header row, separator row, and data rows)
-var markdownTablePattern = regexp.MustCompile(`(?m)^(\|[^\n]+\|\n)(\|[-:\s|]+\|\n)((?:\|[^\n]+\|\n?)*)`)
+// Allows optional trailing whitespace after the last | on each row
+var markdownTablePattern = regexp.MustCompile(`(?m)^(\|[^\n]+\|\s*\n)(\|[-:\s|]+\|\s*\n)((?:\|[^\n]+\|\s*\n?)*)`)
 
 // convertMarkdownTablesToASCII converts markdown tables to ASCII box-drawing tables
 func convertMarkdownTablesToASCII(text string) string {

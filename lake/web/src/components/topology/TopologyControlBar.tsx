@@ -364,6 +364,27 @@ export function TopologyControlBar({
 
           <NavItem
             icon={<Activity className="h-3.5 w-3.5" />}
+            label="Bandwidth"
+            shortcut="b"
+            onClick={() => handleToggleOverlay('bandwidth')}
+            active={overlays.bandwidth}
+            activeColor="blue"
+            disabled={isInAnalysisMode}
+            collapsed={collapsed}
+          />
+
+          <NavItem
+            icon={<Route className="h-3.5 w-3.5" />}
+            label="ISIS metric"
+            onClick={() => handleToggleOverlay('isisMetric')}
+            active={overlays.isisMetric}
+            activeColor="blue"
+            disabled={isInAnalysisMode}
+            collapsed={collapsed}
+          />
+
+          <NavItem
+            icon={<Activity className="h-3.5 w-3.5" />}
             label="Health"
             shortcut="h"
             onClick={() => handleToggleOverlay('linkHealth')}

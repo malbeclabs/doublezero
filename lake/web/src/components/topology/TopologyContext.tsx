@@ -35,6 +35,8 @@ export interface OverlayState {
   metroClustering: boolean     // Color devices by metro
   contributorDevices: boolean  // Color devices by contributor
   // Link overlays (mutually exclusive)
+  bandwidth: boolean           // Link bandwidth/capacity visualization
+  isisMetric: boolean          // ISIS metric/latency visualization
   linkHealth: boolean          // Link health/SLA overlay
   trafficFlow: boolean         // Traffic flow visualization
   contributorLinks: boolean    // Color links by contributor
@@ -84,12 +86,15 @@ interface TopologyProviderProps {
 const DEFAULT_PANEL_WIDTH = 320
 
 // Parse overlays from URL param (comma-separated)
-function parseOverlaysFromUrl(param: string | null): OverlayState {
+// If no param, use view-specific defaults
+function parseOverlaysFromUrl(param: string | null, view: 'map' | 'graph'): OverlayState {
   const defaultState: OverlayState = {
     validators: false,
     stake: false,
     metroClustering: false,
     contributorDevices: false,
+    bandwidth: view === 'map',      // Default on for map view
+    isisMetric: view === 'graph',   // Default on for graph view
     linkHealth: false,
     trafficFlow: false,
     contributorLinks: false,
@@ -98,13 +103,27 @@ function parseOverlaysFromUrl(param: string | null): OverlayState {
   }
   if (!param) return defaultState
 
+  // If URL has overlays param, parse it (overrides defaults)
+  const parsed: OverlayState = {
+    validators: false,
+    stake: false,
+    metroClustering: false,
+    contributorDevices: false,
+    bandwidth: false,
+    isisMetric: false,
+    linkHealth: false,
+    trafficFlow: false,
+    contributorLinks: false,
+    criticality: false,
+    isisHealth: false,
+  }
   const activeOverlays = param.split(',').filter(Boolean)
   for (const overlay of activeOverlays) {
-    if (overlay in defaultState) {
-      defaultState[overlay as keyof OverlayState] = true
+    if (overlay in parsed) {
+      parsed[overlay as keyof OverlayState] = true
     }
   }
-  return defaultState
+  return parsed
 }
 
 // Serialize overlays to URL param (comma-separated)
@@ -131,9 +150,9 @@ export function TopologyProvider({ children, view }: TopologyProviderProps) {
     content: 'details' as const,
   }))
 
-  // Overlay state - initialized from URL params
+  // Overlay state - initialized from URL params with view-specific defaults
   const [overlays, setOverlays] = useState<OverlayState>(() =>
-    parseOverlaysFromUrl(searchParams.get('overlays'))
+    parseOverlaysFromUrl(searchParams.get('overlays'), view)
   )
 
   // Hover state
@@ -197,19 +216,22 @@ export function TopologyProvider({ children, view }: TopologyProviderProps) {
 
   // Overlay groups - overlays in the same group are mutually exclusive
   // Device overlays: stake, metroClustering, contributorDevices
-  // Link overlays: linkHealth, trafficFlow, contributorLinks, criticality, isisHealth
+  // Link overlays: bandwidth, isisMetric, linkHealth, trafficFlow, contributorLinks, criticality, isisHealth
   // Independent: validators
+  const linkOverlays: (keyof OverlayState)[] = ['bandwidth', 'isisMetric', 'linkHealth', 'trafficFlow', 'contributorLinks', 'criticality', 'isisHealth']
   const overlayGroups: Record<keyof OverlayState, (keyof OverlayState)[]> = {
     // Device overlays (mutually exclusive)
     stake: ['metroClustering', 'contributorDevices'],
     metroClustering: ['stake', 'contributorDevices'],
     contributorDevices: ['stake', 'metroClustering'],
-    // Link overlays (mutually exclusive)
-    linkHealth: ['trafficFlow', 'contributorLinks', 'criticality', 'isisHealth'],
-    trafficFlow: ['linkHealth', 'contributorLinks', 'criticality', 'isisHealth'],
-    contributorLinks: ['linkHealth', 'trafficFlow', 'criticality', 'isisHealth'],
-    criticality: ['linkHealth', 'trafficFlow', 'contributorLinks', 'isisHealth'],
-    isisHealth: ['linkHealth', 'trafficFlow', 'contributorLinks', 'criticality'],
+    // Link overlays (mutually exclusive) - each excludes all others
+    bandwidth: linkOverlays.filter(o => o !== 'bandwidth'),
+    isisMetric: linkOverlays.filter(o => o !== 'isisMetric'),
+    linkHealth: linkOverlays.filter(o => o !== 'linkHealth'),
+    trafficFlow: linkOverlays.filter(o => o !== 'trafficFlow'),
+    contributorLinks: linkOverlays.filter(o => o !== 'contributorLinks'),
+    criticality: linkOverlays.filter(o => o !== 'criticality'),
+    isisHealth: linkOverlays.filter(o => o !== 'isisHealth'),
     // Independent
     validators: [],
   }

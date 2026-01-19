@@ -8,7 +8,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useTheme } from '@/hooks/use-theme'
 import type { TopologyMetro, TopologyDevice, TopologyLink, TopologyValidator, MultiPathResponse, SimulateLinkRemovalResponse, SimulateLinkAdditionResponse, FailureImpactResponse } from '@/lib/api'
 import { fetchISISPaths, fetchISISTopology, fetchCriticalLinks, fetchSimulateLinkRemoval, fetchSimulateLinkAddition, fetchFailureImpact, fetchLinkHealth } from '@/lib/api'
-import { useTopology, TopologyControlBar, TopologyPanel, DeviceDetails, LinkDetails, MetroDetails, ValidatorDetails, EntityLink as TopologyEntityLink, PathModePanel, CriticalityPanel, WhatIfRemovalPanel, WhatIfAdditionPanel, ImpactPanel, StakeOverlayPanel, LinkHealthOverlayPanel, TrafficFlowOverlayPanel, MetroClusteringOverlayPanel, ContributorsOverlayPanel, ValidatorsOverlayPanel } from '@/components/topology'
+import { useTopology, TopologyControlBar, TopologyPanel, DeviceDetails, LinkDetails, MetroDetails, ValidatorDetails, EntityLink as TopologyEntityLink, PathModePanel, CriticalityPanel, WhatIfRemovalPanel, WhatIfAdditionPanel, ImpactPanel, StakeOverlayPanel, LinkHealthOverlayPanel, TrafficFlowOverlayPanel, MetroClusteringOverlayPanel, ContributorsOverlayPanel, ValidatorsOverlayPanel, BandwidthOverlayPanel, IsisMetricOverlayPanel } from '@/components/topology'
 
 // Path colors for multi-path visualization
 const PATH_COLORS = [
@@ -84,6 +84,38 @@ function calculateLinkWeight(bps: number): number {
   return weight
 }
 
+// Get link color based on bandwidth capacity (blue gradient)
+function getBandwidthColor(bps: number, isDark: boolean): { color: string; weight: number; opacity: number } {
+  const gbps = bps / 1e9
+  if (gbps >= 100) {
+    return { color: isDark ? '#3b82f6' : '#2563eb', weight: 5, opacity: 1 } // blue-500 - 100G+
+  } else if (gbps >= 10) {
+    return { color: isDark ? '#60a5fa' : '#3b82f6', weight: 4, opacity: 0.9 } // blue-400 - 10G+
+  } else if (gbps >= 1) {
+    return { color: isDark ? '#93c5fd' : '#60a5fa', weight: 3, opacity: 0.8 } // blue-300 - 1G+
+  } else if (gbps > 0) {
+    return { color: isDark ? '#bfdbfe' : '#93c5fd', weight: 2, opacity: 0.7 } // blue-200 - <1G
+  }
+  return { color: isDark ? '#6b7280' : '#9ca3af', weight: 1, opacity: 0.5 } // gray - unknown
+}
+
+// Get link color based on ISIS metric (lower metric = better = more prominent)
+function getIsisMetricColor(metric: number, isDark: boolean): { color: string; weight: number; opacity: number } {
+  // Metric is in microseconds, lower is better
+  // Typical values: 1000 (1ms) to 100000 (100ms)
+  if (metric <= 0) {
+    return { color: isDark ? '#6b7280' : '#9ca3af', weight: 1, opacity: 0.5 } // gray - no data
+  } else if (metric <= 1000) {
+    return { color: isDark ? '#22c55e' : '#16a34a', weight: 4, opacity: 1 } // green - excellent (<1ms)
+  } else if (metric <= 5000) {
+    return { color: isDark ? '#84cc16' : '#65a30d', weight: 3, opacity: 0.9 } // lime - good (<5ms)
+  } else if (metric <= 20000) {
+    return { color: isDark ? '#eab308' : '#ca8a04', weight: 2, opacity: 0.8 } // yellow - moderate (<20ms)
+  } else {
+    return { color: isDark ? '#f97316' : '#ea580c', weight: 2, opacity: 0.7 } // orange - high (>20ms)
+  }
+}
+
 // Calculate validator marker radius based on stake (logarithmic scale)
 // Range: 3px (small) to 10px (large)
 function calculateValidatorRadius(stakeSol: number): number {
@@ -117,36 +149,6 @@ function getStakeColor(stakeShare: number): string {
   const g = Math.round(179 - t * (179 - 88))
   const b = Math.round(8 + t * (8 - 8))
   return `rgb(${r}, ${g}, ${b})`
-}
-
-// Calculate link color based on loss percentage
-// 0% = blue, 1% = yellow, 5%+ = red, no data = gray
-function getLossColor(lossPercent: number | undefined, hasData: boolean, isDark: boolean): string {
-  if (!hasData) {
-    return isDark ? '#6b7280' : '#9ca3af' // gray for no data
-  }
-
-  const loss = lossPercent ?? 0
-
-  // Clamp loss between 0 and 5 for color interpolation
-  const t = Math.min(loss / 5, 1)
-
-  // Blue (0%) -> Yellow (1%) -> Red (5%+)
-  if (t <= 0.2) {
-    // Blue to yellow (0-1% loss)
-    const ratio = t / 0.2
-    const r = Math.round(59 + ratio * (234 - 59))
-    const g = Math.round(130 + ratio * (179 - 130))
-    const b = Math.round(246 + ratio * (8 - 246))
-    return `rgb(${r}, ${g}, ${b})`
-  } else {
-    // Yellow to red (1-5% loss)
-    const ratio = (t - 0.2) / 0.8
-    const r = Math.round(234 + ratio * (239 - 234))
-    const g = Math.round(179 - ratio * 179)
-    const b = Math.round(8 - ratio * 8)
-    return `rgb(${r}, ${g}, ${b})`
-  }
 }
 
 // Hovered link info type
@@ -341,8 +343,11 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
   const metroClusteringMode = overlays.metroClustering
   const contributorDevicesMode = overlays.contributorDevices
   const contributorLinksMode = overlays.contributorLinks
+  const bandwidthMode = overlays.bandwidth
+  const isisMetricMode = overlays.isisMetric
 
-  // Check if any link overlay is active (determines if links should be dashed/colored)
+  // Check if any "analysis" link overlay is active (these show dashed colored lines)
+  // Note: bandwidth and isisMetric are "base" overlays that show solid lines, not dashed
   const hasLinkOverlay = linkHealthMode || trafficFlowMode || contributorLinksMode || criticalityOverlayEnabled
 
   // Path finding operational state (local)
@@ -1040,8 +1045,6 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
 
       if (!startPos || !endPos) return null
 
-      const hasLatencyData = (link.sample_count ?? 0) > 0
-      const color = getLossColor(link.loss_percent, hasLatencyData, isDark)
       const weight = calculateLinkWeight(link.bandwidth_bps)
       const isHovered = hoveredLink?.pk === link.pk
       const isSelected = selectedItem?.type === 'link' && selectedItem.data.pk === link.pk
@@ -1053,10 +1056,10 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
 
       // Determine display color based on mode
       // Default to solid grey when no overlay is active (like graph view)
-      let displayColor = hasLinkOverlay ? color : (isDark ? '#4b5563' : '#9ca3af')
+      let displayColor = isDark ? '#4b5563' : '#9ca3af'
       let displayWeight = weight
-      let displayOpacity = hasLinkOverlay ? 0.8 : 0.6
-      let useDash = hasLinkOverlay // Only use dashed lines when an overlay is active
+      let displayOpacity = 0.6
+      let useDash = false
 
       if (whatifRemovalMode && isRemovedLink) {
         // Whatif-removal mode: highlight removed link in red dashed
@@ -1113,6 +1116,19 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
         displayColor = criticalityColors[criticality]
         displayWeight = criticality === 'critical' ? weight + 3 : criticality === 'important' ? weight + 2 : weight + 1
         displayOpacity = 1
+        useDash = true
+      } else if (bandwidthMode) {
+        // Bandwidth overlay: color by link capacity
+        const bandwidthStyle = getBandwidthColor(link.bandwidth_bps, isDark)
+        displayColor = bandwidthStyle.color
+        displayWeight = bandwidthStyle.weight
+        displayOpacity = bandwidthStyle.opacity
+      } else if (isisMetricMode) {
+        // ISIS metric overlay: color by latency (using latency_us as proxy for metric)
+        const metricStyle = getIsisMetricColor(link.latency_us, isDark)
+        displayColor = metricStyle.color
+        displayWeight = metricStyle.weight
+        displayOpacity = metricStyle.opacity
       } else if (isInSelectedPath && linkPathIndices) {
         // Use the selected path's color
         displayColor = PATH_COLORS[selectedPathIndex % PATH_COLORS.length]
@@ -1191,7 +1207,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       type: 'FeatureCollection' as const,
       features,
     }
-  }, [links, devicePositions, isDark, hoveredLink, selectedItem, hoverHighlight, linkPathMap, selectedPathIndex, criticalityOverlayEnabled, linkCriticalityMap, whatifRemovalMode, removalLink, linkHealthMode, linkSlaStatus, trafficFlowMode, getTrafficColor, metroClusteringMode, collapsedMetros, deviceMap, metroMap, contributorLinksMode, contributorIndexMap, hasLinkOverlay])
+  }, [links, devicePositions, isDark, hoveredLink, selectedItem, hoverHighlight, linkPathMap, selectedPathIndex, criticalityOverlayEnabled, linkCriticalityMap, whatifRemovalMode, removalLink, linkHealthMode, linkSlaStatus, trafficFlowMode, getTrafficColor, metroClusteringMode, collapsedMetros, deviceMap, metroMap, contributorLinksMode, contributorIndexMap, bandwidthMode, isisMetricMode])
 
   // GeoJSON for validator links (connecting lines)
   const validatorLinksGeoJson = useMemo(() => {
@@ -2133,6 +2149,12 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
               getDeviceLabel={(pk) => deviceMap.get(pk)?.code || pk.substring(0, 8)}
               isLoading={devices.length === 0}
             />
+          )}
+          {bandwidthMode && (
+            <BandwidthOverlayPanel />
+          )}
+          {isisMetricMode && (
+            <IsisMetricOverlayPanel />
           )}
           {linkHealthMode && (
             <LinkHealthOverlayPanel

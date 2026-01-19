@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useLocation, Link, useNavigate } from 'react-router-dom'
+import { useLocation, Link } from 'react-router-dom'
 import {
   PanelLeftClose,
   PanelLeftOpen,
@@ -30,7 +30,6 @@ import {
   Map,
   Network,
   Shield,
-  HelpCircle,
   Grid3X3,
   Wrench,
 } from 'lucide-react'
@@ -80,7 +79,6 @@ export function Sidebar({
   onGenerateTitleChatSession,
 }: SidebarProps) {
   const location = useLocation()
-  const navigate = useNavigate()
   const { theme, resolvedTheme, setTheme } = useTheme()
   const { updateAvailable, reload } = useVersionCheck()
   const isLandingPage = location.pathname === '/'
@@ -143,24 +141,6 @@ export function Sidebar({
     localStorage.setItem('sidebar-collapsed', String(isCollapsed))
   }, [isCollapsed])
 
-  // Keyboard shortcut for help page (? key)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if user is typing in an input or textarea
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
-      // Ignore if modifier keys are pressed (except shift for ?)
-      if (e.metaKey || e.ctrlKey || e.altKey) return
-
-      if (e.key === '?') {
-        e.preventDefault()
-        navigate('/help')
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [navigate])
-
   const handleSetCollapsed = (collapsed: boolean) => {
     setIsCollapsed(collapsed)
     setUserCollapsed(collapsed)
@@ -184,7 +164,6 @@ export function Sidebar({
   const isTopologyRoute = location.pathname === '/topology' || location.pathname.startsWith('/topology/')
   const isStatusRoute = location.pathname.startsWith('/status')
   const isTimelineRoute = location.pathname === '/timeline'
-  const isHelpRoute = location.pathname === '/help'
   const isQuerySessions = location.pathname === '/query/sessions'
   const isChatSessions = location.pathname === '/chat/sessions'
 
@@ -375,7 +354,7 @@ export function Sidebar({
         </Link>
         </div>
 
-        {/* Help, theme toggle, and collapse toggle at bottom */}
+        {/* Theme toggle and collapse toggle at bottom */}
         <div className="flex-1" />
         <div className="flex flex-col items-center gap-1 mb-3">
           {updateAvailable && (
@@ -387,18 +366,6 @@ export function Sidebar({
               <ArrowUpCircle className="h-4 w-4" />
             </button>
           )}
-          <Link
-            to="/help"
-            className={cn(
-              'p-2 transition-colors',
-              isHelpRoute
-                ? 'text-foreground'
-                : 'text-muted-foreground hover:text-foreground'
-            )}
-            title="Help (?)"
-          >
-            <HelpCircle className="h-4 w-4" />
-          </Link>
           <div className="relative">
             <button
               onClick={() => setThemeMenuOpen(!themeMenuOpen)}
@@ -894,7 +861,7 @@ export function Sidebar({
       {/* Spacer when no section is active */}
       {!isQueryRoute && !isChatRoute && !isTopologyRoute && <div className="flex-1" />}
 
-      {/* Help, theme toggle, and development notice footer */}
+      {/* Theme toggle and development notice footer */}
       <div className="mt-auto px-3 py-3 border-t border-border/50 space-y-3">
         {updateAvailable && (
           <button
@@ -906,19 +873,6 @@ export function Sidebar({
             Update available
           </button>
         )}
-        <Link
-          to="/help"
-          className={cn(
-            'w-full flex items-center gap-2 px-3 py-2 text-sm rounded transition-colors',
-            isHelpRoute
-              ? 'bg-[var(--sidebar-active)] text-foreground font-medium'
-              : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
-          )}
-        >
-          <HelpCircle className="h-4 w-4" />
-          <span className="flex-1 text-left">Help</span>
-          <kbd className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">?</kbd>
-        </Link>
         <div className="relative">
           <button
             onClick={() => setThemeMenuOpen(!themeMenuOpen)}

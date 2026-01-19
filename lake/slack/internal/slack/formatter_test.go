@@ -398,6 +398,124 @@ func TestAI_Slack_ConvertMarkdownToBlocks_NestedLists(t *testing.T) {
 	})
 }
 
+func TestAI_Slack_ParseInlineFormatting(t *testing.T) {
+	t.Parallel()
+
+	t.Run("plain text returns single element", func(t *testing.T) {
+		t.Parallel()
+		elements := parseInlineFormatting("plain text here")
+		require.Len(t, elements, 1)
+		require.Equal(t, "plain text here", elements[0].Text)
+		require.Nil(t, elements[0].Style)
+	})
+
+	t.Run("bold text with double asterisks", func(t *testing.T) {
+		t.Parallel()
+		elements := parseInlineFormatting("this is **bold** text")
+		require.Len(t, elements, 3)
+		require.Equal(t, "this is ", elements[0].Text)
+		require.Nil(t, elements[0].Style)
+		require.Equal(t, "bold", elements[1].Text)
+		require.NotNil(t, elements[1].Style)
+		require.True(t, elements[1].Style.Bold)
+		require.Equal(t, " text", elements[2].Text)
+		require.Nil(t, elements[2].Style)
+	})
+
+	t.Run("inline code with backticks", func(t *testing.T) {
+		t.Parallel()
+		elements := parseInlineFormatting("run `npm install` command")
+		require.Len(t, elements, 3)
+		require.Equal(t, "run ", elements[0].Text)
+		require.Equal(t, "npm install", elements[1].Text)
+		require.NotNil(t, elements[1].Style)
+		require.True(t, elements[1].Style.Code)
+		require.Equal(t, " command", elements[2].Text)
+	})
+
+	t.Run("italic text with single asterisk", func(t *testing.T) {
+		t.Parallel()
+		elements := parseInlineFormatting("this is *italic* text")
+		require.Len(t, elements, 3)
+		require.Equal(t, "italic", elements[1].Text)
+		require.NotNil(t, elements[1].Style)
+		require.True(t, elements[1].Style.Italic)
+	})
+
+	t.Run("strikethrough with tildes", func(t *testing.T) {
+		t.Parallel()
+		elements := parseInlineFormatting("this is ~~deleted~~ text")
+		require.Len(t, elements, 3)
+		require.Equal(t, "deleted", elements[1].Text)
+		require.NotNil(t, elements[1].Style)
+		require.True(t, elements[1].Style.Strike)
+	})
+
+	t.Run("multiple formatting in one string", func(t *testing.T) {
+		t.Parallel()
+		elements := parseInlineFormatting("**bold** and `code` mixed")
+		require.Len(t, elements, 4)
+		require.Equal(t, "bold", elements[0].Text)
+		require.True(t, elements[0].Style.Bold)
+		require.Equal(t, " and ", elements[1].Text)
+		require.Equal(t, "code", elements[2].Text)
+		require.True(t, elements[2].Style.Code)
+		require.Equal(t, " mixed", elements[3].Text)
+	})
+
+	t.Run("empty string returns nil", func(t *testing.T) {
+		t.Parallel()
+		elements := parseInlineFormatting("")
+		require.Nil(t, elements)
+	})
+}
+
+func TestAI_Slack_ConvertMarkdownToBlocks_InlineFormatting(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nested list with bold text preserves formatting", func(t *testing.T) {
+		t.Parallel()
+		input := `- **Bold item**
+  - Nested with `+ "`code`" + `
+  - Normal nested`
+
+		blocks := ConvertMarkdownToBlocks(input, slog.Default())
+
+		require.NotNil(t, blocks)
+		require.Greater(t, len(blocks), 0)
+
+		// Find rich_text block and verify formatting
+		foundBold, foundCode := false, false
+		for _, block := range blocks {
+			if block.BlockType() == slackapi.MBTRichText {
+				richTextBlock := block.(*slackapi.RichTextBlock)
+				for _, element := range richTextBlock.Elements {
+					if list, ok := element.(*slackapi.RichTextList); ok {
+						for _, listElement := range list.Elements {
+							if section, ok := listElement.(*slackapi.RichTextSection); ok {
+								for _, sectionElement := range section.Elements {
+									if textElement, ok := sectionElement.(*slackapi.RichTextSectionTextElement); ok {
+										if textElement.Style != nil {
+											if textElement.Style.Bold && textElement.Text == "Bold item" {
+												foundBold = true
+											}
+											if textElement.Style.Code && textElement.Text == "code" {
+												foundCode = true
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		require.True(t, foundBold, "bold formatting should be preserved in rich_text blocks")
+		require.True(t, foundCode, "inline code formatting should be preserved in rich_text blocks")
+	})
+}
+
 func TestAI_Slack_ConvertMarkdownToBlocks_CodeBlocks(t *testing.T) {
 	t.Parallel()
 

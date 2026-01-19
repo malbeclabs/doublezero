@@ -293,6 +293,86 @@ func parseListItems(text string) []parsedListItem {
 	return items
 }
 
+// inlineFormatPattern matches inline markdown formatting: **bold**, *italic*, ~~strike~~, `code`
+// Order matters: check ** before * to avoid matching bold as italic
+var inlineFormatPattern = regexp.MustCompile("(`[^`]+`|\\*\\*[^*]+\\*\\*|\\*[^*]+\\*|~~[^~]+~~)")
+
+// parseInlineFormatting parses markdown inline formatting and returns rich text section elements
+// with appropriate styles (bold, italic, strikethrough, code).
+func parseInlineFormatting(text string) []*slack.RichTextSectionTextElement {
+	if text == "" {
+		return nil
+	}
+
+	var elements []*slack.RichTextSectionTextElement
+
+	// Find all inline format matches
+	matches := inlineFormatPattern.FindAllStringSubmatchIndex(text, -1)
+	if matches == nil {
+		// No formatting, return plain text
+		return []*slack.RichTextSectionTextElement{
+			slack.NewRichTextSectionTextElement(text, nil),
+		}
+	}
+
+	lastEnd := 0
+	for _, match := range matches {
+		matchStart := match[0]
+		matchEnd := match[1]
+
+		// Add text before this match as plain text
+		if matchStart > lastEnd {
+			plainText := text[lastEnd:matchStart]
+			if plainText != "" {
+				elements = append(elements, slack.NewRichTextSectionTextElement(plainText, nil))
+			}
+		}
+
+		// Extract the matched text and determine its style
+		matchedText := text[matchStart:matchEnd]
+		var content string
+		var style *slack.RichTextSectionTextStyle
+
+		switch {
+		case strings.HasPrefix(matchedText, "`") && strings.HasSuffix(matchedText, "`"):
+			// Inline code: `code`
+			content = matchedText[1 : len(matchedText)-1]
+			style = &slack.RichTextSectionTextStyle{Code: true}
+		case strings.HasPrefix(matchedText, "**") && strings.HasSuffix(matchedText, "**"):
+			// Bold: **text**
+			content = matchedText[2 : len(matchedText)-2]
+			style = &slack.RichTextSectionTextStyle{Bold: true}
+		case strings.HasPrefix(matchedText, "*") && strings.HasSuffix(matchedText, "*"):
+			// Italic: *text*
+			content = matchedText[1 : len(matchedText)-1]
+			style = &slack.RichTextSectionTextStyle{Italic: true}
+		case strings.HasPrefix(matchedText, "~~") && strings.HasSuffix(matchedText, "~~"):
+			// Strikethrough: ~~text~~
+			content = matchedText[2 : len(matchedText)-2]
+			style = &slack.RichTextSectionTextStyle{Strike: true}
+		default:
+			// Shouldn't happen, but fallback to plain text
+			content = matchedText
+		}
+
+		if content != "" {
+			elements = append(elements, slack.NewRichTextSectionTextElement(content, style))
+		}
+
+		lastEnd = matchEnd
+	}
+
+	// Add any remaining text after the last match
+	if lastEnd < len(text) {
+		remainingText := text[lastEnd:]
+		if remainingText != "" {
+			elements = append(elements, slack.NewRichTextSectionTextElement(remainingText, nil))
+		}
+	}
+
+	return elements
+}
+
 // buildRichTextListElements builds RichTextList elements from parsed list items.
 // Each RichTextList contains consecutive items at the same indent level.
 func buildRichTextListElements(items []parsedListItem) []slack.RichTextElement {
@@ -325,9 +405,14 @@ func buildRichTextListElements(items []parsedListItem) []slack.RichTextElement {
 			currentOrdered = item.ordered
 		}
 
-		// Create a rich text section for this item
-		textElement := slack.NewRichTextSectionTextElement(item.content, nil)
-		section := slack.NewRichTextSection(textElement)
+		// Create a rich text section for this item with inline formatting
+		textElements := parseInlineFormatting(item.content)
+		// Convert to interface slice for NewRichTextSection
+		sectionElements := make([]slack.RichTextSectionElement, len(textElements))
+		for i, elem := range textElements {
+			sectionElements[i] = elem
+		}
+		section := slack.NewRichTextSection(sectionElements...)
 		currentItems = append(currentItems, section)
 	}
 

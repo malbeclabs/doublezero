@@ -88,15 +88,46 @@ func parseQuery(q string) (term string, types []entityType) {
 	return q, allEntityTypes
 }
 
+// buildSearchCondition builds a WHERE clause for multi-token search.
+// Each token must match at least one of the fields.
+// Returns the condition string and the arguments.
+func buildSearchCondition(term string, fields []string) (string, []any) {
+	tokens := strings.Fields(term)
+	if len(tokens) == 0 {
+		return "1=0", nil
+	}
+
+	var args []any
+	var tokenConditions []string
+
+	for _, token := range tokens {
+		pattern := "%" + token + "%"
+		var fieldConditions []string
+		for _, field := range fields {
+			fieldConditions = append(fieldConditions, fmt.Sprintf("%s ILIKE ?", field))
+			args = append(args, pattern)
+		}
+		tokenConditions = append(tokenConditions, "("+strings.Join(fieldConditions, " OR ")+")")
+	}
+
+	return strings.Join(tokenConditions, " AND "), args
+}
+
 // searchDevices searches for devices matching the query
 func searchDevices(ctx context.Context, term string, limit int) ([]SearchSuggestion, int, error) {
-	pattern := "%" + term + "%"
+	// Count query uses unqualified names (single table)
+	countFields := []string{"code", "pk", "public_ip"}
+	countCondition, countArgs := buildSearchCondition(term, countFields)
 
-	countQuery := `SELECT count(*) FROM dz_devices_current WHERE code ILIKE ? OR pk ILIKE ? OR public_ip ILIKE ?`
+	countQuery := `SELECT count(*) FROM dz_devices_current WHERE ` + countCondition
 	var total uint64
-	if err := config.DB.QueryRow(ctx, countQuery, pattern, pattern, pattern).Scan(&total); err != nil {
+	if err := config.DB.QueryRow(ctx, countQuery, countArgs...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
+
+	// Main query uses qualified names (has JOIN)
+	mainFields := []string{"d.code", "d.pk", "d.public_ip"}
+	mainCondition, mainArgs := buildSearchCondition(term, mainFields)
 
 	query := `
 		SELECT
@@ -106,12 +137,12 @@ func searchDevices(ctx context.Context, term string, limit int) ([]SearchSuggest
 			COALESCE(m.code, '') as metro_code
 		FROM dz_devices_current d
 		LEFT JOIN dz_metros_current m ON d.metro_pk = m.pk
-		WHERE d.code ILIKE ? OR d.pk ILIKE ? OR d.public_ip ILIKE ?
+		WHERE ` + mainCondition + `
 		ORDER BY d.code
 		LIMIT ?
 	`
 
-	rows, err := config.DB.Query(ctx, query, pattern, pattern, pattern, limit)
+	rows, err := config.DB.Query(ctx, query, append(mainArgs, limit)...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -140,13 +171,19 @@ func searchDevices(ctx context.Context, term string, limit int) ([]SearchSuggest
 
 // searchLinks searches for links matching the query
 func searchLinks(ctx context.Context, term string, limit int) ([]SearchSuggestion, int, error) {
-	pattern := "%" + term + "%"
+	// Count query uses unqualified names (single table)
+	countFields := []string{"code", "pk"}
+	countCondition, countArgs := buildSearchCondition(term, countFields)
 
-	countQuery := `SELECT count(*) FROM dz_links_current WHERE code ILIKE ? OR pk ILIKE ?`
+	countQuery := `SELECT count(*) FROM dz_links_current WHERE ` + countCondition
 	var total uint64
-	if err := config.DB.QueryRow(ctx, countQuery, pattern, pattern).Scan(&total); err != nil {
+	if err := config.DB.QueryRow(ctx, countQuery, countArgs...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
+
+	// Main query uses qualified names (has JOINs)
+	mainFields := []string{"l.code", "l.pk"}
+	mainCondition, mainArgs := buildSearchCondition(term, mainFields)
 
 	query := `
 		SELECT
@@ -159,12 +196,12 @@ func searchLinks(ctx context.Context, term string, limit int) ([]SearchSuggestio
 		LEFT JOIN dz_metros_current ma ON da.metro_pk = ma.pk
 		LEFT JOIN dz_devices_current dz ON l.side_z_pk = dz.pk
 		LEFT JOIN dz_metros_current mz ON dz.metro_pk = mz.pk
-		WHERE l.code ILIKE ? OR l.pk ILIKE ?
+		WHERE ` + mainCondition + `
 		ORDER BY l.code
 		LIMIT ?
 	`
 
-	rows, err := config.DB.Query(ctx, query, pattern, pattern, limit)
+	rows, err := config.DB.Query(ctx, query, append(mainArgs, limit)...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -193,23 +230,24 @@ func searchLinks(ctx context.Context, term string, limit int) ([]SearchSuggestio
 
 // searchMetros searches for metros matching the query
 func searchMetros(ctx context.Context, term string, limit int) ([]SearchSuggestion, int, error) {
-	pattern := "%" + term + "%"
+	fields := []string{"code", "name", "pk"}
+	condition, args := buildSearchCondition(term, fields)
 
-	countQuery := `SELECT count(*) FROM dz_metros_current WHERE code ILIKE ? OR name ILIKE ? OR pk ILIKE ?`
+	countQuery := `SELECT count(*) FROM dz_metros_current WHERE ` + condition
 	var total uint64
-	if err := config.DB.QueryRow(ctx, countQuery, pattern, pattern, pattern).Scan(&total); err != nil {
+	if err := config.DB.QueryRow(ctx, countQuery, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
 	query := `
 		SELECT pk, code, name
 		FROM dz_metros_current
-		WHERE code ILIKE ? OR name ILIKE ? OR pk ILIKE ?
+		WHERE ` + condition + `
 		ORDER BY code
 		LIMIT ?
 	`
 
-	rows, err := config.DB.Query(ctx, query, pattern, pattern, pattern, limit)
+	rows, err := config.DB.Query(ctx, query, append(args, limit)...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -234,23 +272,24 @@ func searchMetros(ctx context.Context, term string, limit int) ([]SearchSuggesti
 
 // searchContributors searches for contributors matching the query
 func searchContributors(ctx context.Context, term string, limit int) ([]SearchSuggestion, int, error) {
-	pattern := "%" + term + "%"
+	fields := []string{"code", "name", "pk"}
+	condition, args := buildSearchCondition(term, fields)
 
-	countQuery := `SELECT count(*) FROM dz_contributors_current WHERE code ILIKE ? OR name ILIKE ? OR pk ILIKE ?`
+	countQuery := `SELECT count(*) FROM dz_contributors_current WHERE ` + condition
 	var total uint64
-	if err := config.DB.QueryRow(ctx, countQuery, pattern, pattern, pattern).Scan(&total); err != nil {
+	if err := config.DB.QueryRow(ctx, countQuery, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
 	query := `
 		SELECT pk, code, name
 		FROM dz_contributors_current
-		WHERE code ILIKE ? OR name ILIKE ? OR pk ILIKE ?
+		WHERE ` + condition + `
 		ORDER BY code
 		LIMIT ?
 	`
 
-	rows, err := config.DB.Query(ctx, query, pattern, pattern, pattern, limit)
+	rows, err := config.DB.Query(ctx, query, append(args, limit)...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -275,13 +314,19 @@ func searchContributors(ctx context.Context, term string, limit int) ([]SearchSu
 
 // searchUsers searches for users matching the query
 func searchUsers(ctx context.Context, term string, limit int) ([]SearchSuggestion, int, error) {
-	pattern := "%" + term + "%"
+	// Count query uses unqualified names
+	countFields := []string{"pk", "owner_pubkey", "dz_ip"}
+	countCondition, countArgs := buildSearchCondition(term, countFields)
 
-	countQuery := `SELECT count(*) FROM dz_users_current WHERE pk ILIKE ? OR owner_pubkey ILIKE ? OR dz_ip ILIKE ?`
+	countQuery := `SELECT count(*) FROM dz_users_current WHERE ` + countCondition
 	var total uint64
-	if err := config.DB.QueryRow(ctx, countQuery, pattern, pattern, pattern).Scan(&total); err != nil {
+	if err := config.DB.QueryRow(ctx, countQuery, countArgs...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
+
+	// Main query uses qualified names
+	mainFields := []string{"u.pk", "u.owner_pubkey", "u.dz_ip"}
+	mainCondition, mainArgs := buildSearchCondition(term, mainFields)
 
 	query := `
 		SELECT
@@ -289,12 +334,12 @@ func searchUsers(ctx context.Context, term string, limit int) ([]SearchSuggestio
 			u.kind,
 			COALESCE(u.dz_ip, '') as dz_ip
 		FROM dz_users_current u
-		WHERE u.pk ILIKE ? OR u.owner_pubkey ILIKE ? OR u.dz_ip ILIKE ?
+		WHERE ` + mainCondition + `
 		ORDER BY u.pk
 		LIMIT ?
 	`
 
-	rows, err := config.DB.Query(ctx, query, pattern, pattern, pattern, limit)
+	rows, err := config.DB.Query(ctx, query, append(mainArgs, limit)...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -328,18 +373,24 @@ func searchUsers(ctx context.Context, term string, limit int) ([]SearchSuggestio
 
 // searchValidators searches for validators matching the query
 func searchValidators(ctx context.Context, term string, limit int) ([]SearchSuggestion, int, error) {
-	pattern := "%" + term + "%"
+	// Count query uses unqualified names
+	countFields := []string{"vote_pubkey", "node_pubkey"}
+	countCondition, countArgs := buildSearchCondition(term, countFields)
 
 	countQuery := `
 		SELECT count(*)
 		FROM solana_vote_accounts_current
 		WHERE epoch_vote_account = 'true'
-		AND (vote_pubkey ILIKE ? OR node_pubkey ILIKE ?)
+		AND (` + countCondition + `)
 	`
 	var total uint64
-	if err := config.DB.QueryRow(ctx, countQuery, pattern, pattern).Scan(&total); err != nil {
+	if err := config.DB.QueryRow(ctx, countQuery, countArgs...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
+
+	// Main query uses qualified names
+	mainFields := []string{"v.vote_pubkey", "v.node_pubkey"}
+	mainCondition, mainArgs := buildSearchCondition(term, mainFields)
 
 	query := `
 		SELECT
@@ -348,12 +399,12 @@ func searchValidators(ctx context.Context, term string, limit int) ([]SearchSugg
 			v.activated_stake_lamports
 		FROM solana_vote_accounts_current v
 		WHERE v.epoch_vote_account = 'true'
-		AND (v.vote_pubkey ILIKE ? OR v.node_pubkey ILIKE ?)
+		AND (` + mainCondition + `)
 		ORDER BY v.activated_stake_lamports DESC
 		LIMIT ?
 	`
 
-	rows, err := config.DB.Query(ctx, query, pattern, pattern, limit)
+	rows, err := config.DB.Query(ctx, query, append(mainArgs, limit)...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -390,13 +441,19 @@ func searchValidators(ctx context.Context, term string, limit int) ([]SearchSugg
 
 // searchGossipNodes searches for gossip nodes matching the query
 func searchGossipNodes(ctx context.Context, term string, limit int) ([]SearchSuggestion, int, error) {
-	pattern := "%" + term + "%"
+	// Count query uses unqualified names
+	countFields := []string{"pubkey", "gossip_ip"}
+	countCondition, countArgs := buildSearchCondition(term, countFields)
 
-	countQuery := `SELECT count(*) FROM solana_gossip_nodes_current WHERE pubkey ILIKE ? OR gossip_ip ILIKE ?`
+	countQuery := `SELECT count(*) FROM solana_gossip_nodes_current WHERE ` + countCondition
 	var total uint64
-	if err := config.DB.QueryRow(ctx, countQuery, pattern, pattern).Scan(&total); err != nil {
+	if err := config.DB.QueryRow(ctx, countQuery, countArgs...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
+
+	// Main query uses qualified names
+	mainFields := []string{"g.pubkey", "g.gossip_ip"}
+	mainCondition, mainArgs := buildSearchCondition(term, mainFields)
 
 	query := `
 		SELECT
@@ -404,12 +461,12 @@ func searchGossipNodes(ctx context.Context, term string, limit int) ([]SearchSug
 			COALESCE(g.version, '') as version,
 			COALESCE(g.gossip_ip, '') as gossip_ip
 		FROM solana_gossip_nodes_current g
-		WHERE g.pubkey ILIKE ? OR g.gossip_ip ILIKE ?
+		WHERE ` + mainCondition + `
 		ORDER BY g.pubkey
 		LIMIT ?
 	`
 
-	rows, err := config.DB.Query(ctx, query, pattern, pattern, limit)
+	rows, err := config.DB.Query(ctx, query, append(mainArgs, limit)...)
 	if err != nil {
 		return nil, 0, err
 	}

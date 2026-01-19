@@ -10,8 +10,10 @@ import (
 	"time"
 
 	"github.com/malbeclabs/doublezero/lake/api/config"
+	"github.com/malbeclabs/doublezero/lake/api/handlers/dberror"
 	"github.com/malbeclabs/doublezero/lake/api/metrics"
 	"github.com/malbeclabs/doublezero/lake/indexer/pkg/neo4j"
+	neo4jdriver "github.com/neo4j/neo4j-go-driver/v5/neo4j"
 )
 
 // ISISNode represents a device node in the ISIS topology graph
@@ -57,12 +59,24 @@ func GetISISTopology(w http.ResponseWriter, r *http.Request) {
 
 	start := time.Now()
 
-	session := config.Neo4jSession(ctx)
-	defer session.Close(ctx)
-
 	response := ISISTopologyResponse{
 		Nodes: []ISISNode{},
 		Edges: []ISISEdge{},
+	}
+
+	// Helper to run Neo4j query with retry
+	runNeo4jQuery := func(cypher string) ([]*neo4jdriver.Record, error) {
+		cfg := dberror.DefaultRetryConfig()
+		return dberror.Retry(ctx, cfg, func() ([]*neo4jdriver.Record, error) {
+			session := config.Neo4jSession(ctx)
+			defer session.Close(ctx)
+
+			result, err := session.Run(ctx, cypher, nil)
+			if err != nil {
+				return nil, err
+			}
+			return result.Collect(ctx)
+		})
 	}
 
 	// Get devices with ISIS data
@@ -79,18 +93,10 @@ func GetISISTopology(w http.ResponseWriter, r *http.Request) {
 		       m.pk AS metro_pk
 	`
 
-	deviceResult, err := session.Run(ctx, deviceCypher, nil)
+	deviceRecords, err := runNeo4jQuery(deviceCypher)
 	if err != nil {
 		log.Printf("ISIS topology device query error: %v", err)
-		response.Error = err.Error()
-		writeJSON(w, response)
-		return
-	}
-
-	deviceRecords, err := deviceResult.Collect(ctx)
-	if err != nil {
-		log.Printf("ISIS topology device collect error: %v", err)
-		response.Error = err.Error()
+		response.Error = dberror.UserMessage(err)
 		writeJSON(w, response)
 		return
 	}
@@ -127,18 +133,10 @@ func GetISISTopology(w http.ResponseWriter, r *http.Request) {
 		       r.adj_sids AS adj_sids
 	`
 
-	adjResult, err := session.Run(ctx, adjCypher, nil)
+	adjRecords, err := runNeo4jQuery(adjCypher)
 	if err != nil {
 		log.Printf("ISIS topology adjacency query error: %v", err)
-		response.Error = err.Error()
-		writeJSON(w, response)
-		return
-	}
-
-	adjRecords, err := adjResult.Collect(ctx)
-	if err != nil {
-		log.Printf("ISIS topology adjacency collect error: %v", err)
-		response.Error = err.Error()
+		response.Error = dberror.UserMessage(err)
 		writeJSON(w, response)
 		return
 	}
@@ -1545,12 +1543,24 @@ func GetMetroConnectivity(w http.ResponseWriter, r *http.Request) {
 
 	start := time.Now()
 
-	session := config.Neo4jSession(ctx)
-	defer session.Close(ctx)
-
 	response := MetroConnectivityResponse{
 		Metros:       []MetroInfo{},
 		Connectivity: []MetroConnectivity{},
+	}
+
+	// Helper to run Neo4j query with retry
+	runNeo4jQuery := func(cypher string) ([]*neo4jdriver.Record, error) {
+		cfg := dberror.DefaultRetryConfig()
+		return dberror.Retry(ctx, cfg, func() ([]*neo4jdriver.Record, error) {
+			session := config.Neo4jSession(ctx)
+			defer session.Close(ctx)
+
+			result, err := session.Run(ctx, cypher, nil)
+			if err != nil {
+				return nil, err
+			}
+			return result.Collect(ctx)
+		})
 	}
 
 	// First, get all metros that have ISIS-enabled devices
@@ -1563,18 +1573,10 @@ func GetMetroConnectivity(w http.ResponseWriter, r *http.Request) {
 		ORDER BY m.code
 	`
 
-	metroResult, err := session.Run(ctx, metroCypher, nil)
+	metroRecords, err := runNeo4jQuery(metroCypher)
 	if err != nil {
 		log.Printf("Metro connectivity metro query error: %v", err)
-		response.Error = err.Error()
-		writeJSON(w, response)
-		return
-	}
-
-	metroRecords, err := metroResult.Collect(ctx)
-	if err != nil {
-		log.Printf("Metro connectivity metro collect error: %v", err)
-		response.Error = err.Error()
+		response.Error = dberror.UserMessage(err)
 		writeJSON(w, response)
 		return
 	}
@@ -1619,18 +1621,10 @@ func GetMetroConnectivity(w http.ResponseWriter, r *http.Request) {
 		ORDER BY fromCode, toCode
 	`
 
-	connResult, err := session.Run(ctx, connectivityCypher, nil)
+	connRecords, err := runNeo4jQuery(connectivityCypher)
 	if err != nil {
 		log.Printf("Metro connectivity query error: %v", err)
-		response.Error = err.Error()
-		writeJSON(w, response)
-		return
-	}
-
-	connRecords, err := connResult.Collect(ctx)
-	if err != nil {
-		log.Printf("Metro connectivity collect error: %v", err)
-		response.Error = err.Error()
+		response.Error = dberror.UserMessage(err)
 		writeJSON(w, response)
 		return
 	}

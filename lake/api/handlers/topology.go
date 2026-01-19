@@ -3,12 +3,12 @@ package handlers
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"time"
 
 	"github.com/malbeclabs/doublezero/lake/api/config"
+	"github.com/malbeclabs/doublezero/lake/api/handlers/dberror"
 	"github.com/malbeclabs/doublezero/lake/api/metrics"
 	"golang.org/x/sync/errgroup"
 )
@@ -308,7 +308,7 @@ func GetTopology(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		log.Printf("Topology query error: %v", err)
-		response.Error = err.Error()
+		response.Error = dberror.UserMessage(err)
 	}
 
 	// Ensure non-nil slices for JSON serialization
@@ -417,7 +417,7 @@ func GetTopologyTraffic(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("Traffic query error: %v", err)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(TrafficResponse{Error: err.Error()})
+		json.NewEncoder(w).Encode(TrafficResponse{Error: dberror.UserMessage(err)})
 		return
 	}
 	defer rows.Close()
@@ -428,7 +428,7 @@ func GetTopologyTraffic(w http.ResponseWriter, r *http.Request) {
 		if err := rows.Scan(&p.Time, &avgIn, &avgOut, &peakIn, &peakOut); err != nil {
 			log.Printf("Traffic scan error: %v", err)
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(TrafficResponse{Error: fmt.Sprintf("scan error: %v", err)})
+			json.NewEncoder(w).Encode(TrafficResponse{Error: dberror.UserMessage(err)})
 			return
 		}
 		if avgIn != nil {
@@ -527,7 +527,7 @@ func GetLatencyComparison(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		log.Printf("Latency comparison query error: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, dberror.UserMessage(err), http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
@@ -559,7 +559,7 @@ func GetLatencyComparison(w http.ResponseWriter, r *http.Request) {
 			&lc.JitterImprovementPct,
 		); err != nil {
 			log.Printf("Latency comparison scan error: %v", err)
-			http.Error(w, fmt.Sprintf("scan error: %v", err), http.StatusInternalServerError)
+			http.Error(w, dberror.UserMessage(err), http.StatusInternalServerError)
 			return
 		}
 
@@ -576,7 +576,7 @@ func GetLatencyComparison(w http.ResponseWriter, r *http.Request) {
 
 	if err := rows.Err(); err != nil {
 		log.Printf("Latency comparison rows error: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, dberror.UserMessage(err), http.StatusInternalServerError)
 		return
 	}
 

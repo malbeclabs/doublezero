@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/malbeclabs/doublezero/lake/api/config"
+	"github.com/malbeclabs/doublezero/lake/api/handlers/dberror"
 	"github.com/malbeclabs/doublezero/lake/api/metrics"
 )
 
@@ -34,7 +35,7 @@ func GetMetros(w http.ResponseWriter, r *http.Request) {
 	var total uint64
 	if err := config.DB.QueryRow(ctx, countQuery).Scan(&total); err != nil {
 		log.Printf("Metros count error: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, dberror.UserMessage(err), http.StatusInternalServerError)
 		return
 	}
 
@@ -73,7 +74,7 @@ func GetMetros(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		log.Printf("Metros query error: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, dberror.UserMessage(err), http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
@@ -91,7 +92,7 @@ func GetMetros(w http.ResponseWriter, r *http.Request) {
 			&m.UserCount,
 		); err != nil {
 			log.Printf("Metros scan error: %v", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			http.Error(w, dberror.UserMessage(err), http.StatusInternalServerError)
 			return
 		}
 		metros = append(metros, m)
@@ -99,7 +100,7 @@ func GetMetros(w http.ResponseWriter, r *http.Request) {
 
 	if err := rows.Err(); err != nil {
 		log.Printf("Metros rows error: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, dberror.UserMessage(err), http.StatusInternalServerError)
 		return
 	}
 

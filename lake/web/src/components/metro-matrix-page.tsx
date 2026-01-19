@@ -1,9 +1,10 @@
 import { useState, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { Loader2, Grid3X3, Download, ArrowRight, Zap, Network, Route, ChevronDown } from 'lucide-react'
 import { fetchMetroConnectivity, fetchLatencyComparison, fetchMetroPathLatency, fetchMetroPathDetail, fetchMetroPaths } from '@/lib/api'
 import type { MetroConnectivity, LatencyComparison, MetroPathLatency, MetroPathDetailResponse, MetroPathsResponse, PathOptimizeMode } from '@/lib/api'
+import { ErrorState } from '@/components/ui/error-state'
 
 type ViewMode = 'connectivity' | 'vs-internet' | 'path-latency'
 
@@ -468,11 +469,13 @@ export function MetroMatrixPage() {
 
   const viewMode: ViewMode = view === 'vs-internet' ? 'vs-internet' : view === 'path-latency' ? 'path-latency' : 'connectivity'
   const [selectedCell, setSelectedCell] = useState<{ from: string; to: string } | null>(null)
+  const queryClient = useQueryClient()
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, isFetching } = useQuery({
     queryKey: ['metro-connectivity'],
     queryFn: fetchMetroConnectivity,
     staleTime: 60000, // 1 minute
+    retry: 2, // Built-in retry for transient errors
   })
 
   const { data: latencyData, isLoading: latencyLoading } = useQuery({
@@ -609,11 +612,15 @@ export function MetroMatrixPage() {
   }
 
   if (error || data?.error) {
+    const errorMessage = data?.error || (error instanceof Error ? error.message : 'Unknown error')
     return (
       <div className="flex-1 flex items-center justify-center bg-background">
-        <div className="text-destructive">
-          Failed to load metro connectivity: {data?.error || (error instanceof Error ? error.message : 'Unknown error')}
-        </div>
+        <ErrorState
+          title="Failed to load metro connectivity"
+          message={errorMessage}
+          onRetry={() => queryClient.invalidateQueries({ queryKey: ['metro-connectivity'] })}
+          retrying={isFetching}
+        />
       </div>
     )
   }

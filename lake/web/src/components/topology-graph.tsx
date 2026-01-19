@@ -2,11 +2,12 @@ import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import cytoscape from 'cytoscape'
 import type { Core, NodeSingular, EdgeSingular } from 'cytoscape'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchISISTopology, fetchISISPaths, fetchTopologyCompare, fetchFailureImpact, fetchCriticalLinks, fetchSimulateLinkRemoval, fetchSimulateLinkAddition, fetchTopology, fetchLinkHealth } from '@/lib/api'
 import type { FailureImpactResponse, MultiPathResponse, SimulateLinkRemovalResponse, SimulateLinkAdditionResponse } from '@/lib/api'
 import { useTheme } from '@/hooks/use-theme'
 import { useTopology, TopologyPanel, TopologyControlBar, DeviceDetails, LinkDetails, PathModePanel, CriticalityPanel, WhatIfRemovalPanel, WhatIfAdditionPanel, ImpactPanel, ComparePanel, StakeOverlayPanel, LinkHealthOverlayPanel, TrafficFlowOverlayPanel, MetroClusteringOverlayPanel, ContributorsOverlayPanel, BandwidthOverlayPanel, DeviceTypeOverlayPanel, LinkTypeOverlayPanel, LINK_TYPE_COLORS, type DeviceInfo, type LinkInfo } from '@/components/topology'
+import { ErrorState } from '@/components/ui/error-state'
 
 // Device type colors (types from serviceability smart contract: hybrid, transit, edge)
 // Avoid green/red (status colors) and blue/purple (link colors)
@@ -73,6 +74,7 @@ export function TopologyGraph({
   const cyRef = useRef<Core | null>(null)
   const [cyGeneration, setCyGeneration] = useState(0)
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const { theme } = useTheme()
   const isDark = theme === 'dark'
 
@@ -177,10 +179,11 @@ export function TopologyGraph({
   } | null>(null)
 
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, isFetching } = useQuery({
     queryKey: ['isis-topology'],
     queryFn: fetchISISTopology,
     refetchInterval: 60000,
+    retry: 2,
   })
 
   // Fetch topology comparison when ISIS health overlay is enabled
@@ -2602,11 +2605,15 @@ export function TopologyGraph({
   }
 
   if (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
     return (
       <div className="flex-1 flex items-center justify-center bg-background">
-        <div className="text-destructive">
-          Failed to load ISIS topology: {error instanceof Error ? error.message : 'Unknown error'}
-        </div>
+        <ErrorState
+          title="Failed to load ISIS topology"
+          message={errorMessage}
+          onRetry={() => queryClient.invalidateQueries({ queryKey: ['isis-topology'] })}
+          retrying={isFetching}
+        />
       </div>
     )
   }

@@ -84,6 +84,7 @@ export function Sidebar({
   const { updateAvailable, reload } = useVersionCheck()
   const isLandingPage = location.pathname === '/'
   const isTopologyRoute = location.pathname === '/topology' || location.pathname.startsWith('/topology/')
+  const isTopologyMapOrGraph = location.pathname === '/topology/map' || location.pathname === '/topology/graph'
   const isStatusPage = location.pathname.startsWith('/status')
   const isOutagesPage = location.pathname === '/outages'
   const isDZRoute = location.pathname.startsWith('/dz/')
@@ -106,13 +107,13 @@ export function Sidebar({
 
   // Auto-collapse/expand based on route and user preference
   useEffect(() => {
-    // Always collapse on topology views (ignores user preference)
-    if (isTopologyRoute) {
+    // Always collapse on topology map/graph views (ignores user preference)
+    if (isTopologyMapOrGraph) {
       setIsCollapsed(true)
       return
     }
 
-    // If user has explicit preference, respect it for non-topology pages
+    // If user has explicit preference, respect it
     if (userCollapsed !== null) {
       setIsCollapsed(userCollapsed)
       return
@@ -125,13 +126,13 @@ export function Sidebar({
       // Landing page, status page, and entity pages default to collapsed
       setIsCollapsed(isLandingPage || isStatusPage || isOutagesPage || isDZRoute || isSolanaRoute)
     }
-  }, [isLandingPage, isTopologyRoute, isStatusPage, isOutagesPage, isDZRoute, isSolanaRoute, userCollapsed])
+  }, [isLandingPage, isTopologyMapOrGraph, isStatusPage, isOutagesPage, isDZRoute, isSolanaRoute, userCollapsed])
 
   // Auto-collapse/expand on resize based on user preference
   useEffect(() => {
     const checkWidth = () => {
-      // Always collapse on topology views
-      if (isTopologyRoute) {
+      // Always collapse on topology map/graph views
+      if (isTopologyMapOrGraph) {
         setIsCollapsed(true)
         return
       }
@@ -151,7 +152,7 @@ export function Sidebar({
 
     window.addEventListener('resize', checkWidth)
     return () => window.removeEventListener('resize', checkWidth)
-  }, [userCollapsed, isLandingPage, isTopologyRoute, isStatusPage, isOutagesPage, isDZRoute, isSolanaRoute])
+  }, [userCollapsed, isLandingPage, isTopologyMapOrGraph, isStatusPage, isOutagesPage, isDZRoute, isSolanaRoute])
 
   // Save collapsed state to localStorage
   useEffect(() => {

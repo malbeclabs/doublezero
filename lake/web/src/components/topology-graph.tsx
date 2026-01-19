@@ -863,6 +863,11 @@ export function TopologyGraph({
       }
     }
 
+    // impact mode: use selected device for failure analysis
+    if (mode === 'impact' && prevModeRef.current !== 'impact' && selectedDevicePK) {
+      setImpactDevice(selectedDevicePK)
+    }
+
     prevModeRef.current = mode
   }, [mode, selectedDevicePK])
 

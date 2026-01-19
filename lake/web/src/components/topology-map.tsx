@@ -900,8 +900,13 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       setPathSource(selectedDevicePK)
     }
 
+    // impact mode: use selected device for failure analysis
+    if (impactMode && prevMapModeRef.current !== 'impact' && selectedDevicePK) {
+      setImpactDevice(selectedDevicePK)
+    }
+
     prevMapModeRef.current = mode
-  }, [mode, whatifAdditionMode, pathModeEnabled, selectedItem])
+  }, [mode, whatifAdditionMode, pathModeEnabled, impactMode, selectedItem])
 
   // Fetch link removal simulation when link is selected
   useEffect(() => {

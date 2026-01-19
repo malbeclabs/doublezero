@@ -84,22 +84,13 @@ function formatTrafficRate(bps: number | undefined | null): string {
   return `${bps.toFixed(0)} bps`
 }
 
-// Calculate link weight based on bandwidth (logarithmic scale)
-function calculateLinkWeight(bps: number): number {
-  if (bps <= 0) return 1
-  // Log scale: 1 Gbps = 2, 10 Gbps = 3, 100 Gbps = 4, 400 Gbps = 5
-  const gbps = bps / 1e9
-  const weight = Math.max(1, Math.min(8, 1 + Math.log10(Math.max(1, gbps)) * 1.5))
-  return weight
-}
-
-// Get link weight based on bandwidth capacity (for thickness-only mode)
+// Get link weight based on bandwidth capacity (most links are 10-100 Gbps)
 function getBandwidthWeight(bps: number): number {
   const gbps = bps / 1e9
-  if (gbps >= 100) return 5
-  if (gbps >= 10) return 4
-  if (gbps >= 1) return 3
-  if (gbps > 0) return 2
+  if (gbps >= 100) return 6
+  if (gbps >= 40) return 4
+  if (gbps >= 10) return 2
+  if (gbps >= 1) return 1.5
   return 1
 }
 
@@ -1125,7 +1116,6 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
 
       if (!startPos || !endPos) return null
 
-      const weight = calculateLinkWeight(link.bandwidth_bps)
       const isHovered = hoveredLink?.pk === link.pk
       const isSelected = selectedItem?.type === 'link' && selectedItem.data.pk === link.pk
       const linkPathIndices = linkPathMap.get(link.pk)
@@ -1137,15 +1127,16 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       // Determine display color based on mode
       // Default to solid grey when no overlay is active (like graph view)
       let displayColor = isDark ? '#4b5563' : '#9ca3af'
-      // Apply bandwidth thickness first (can combine with color overlays)
-      let displayWeight = bandwidthMode ? getBandwidthWeight(link.bandwidth_bps) : weight
+      // Default weight is uniform; bandwidth overlay applies thickness based on capacity
+      const defaultWeight = 1.5
+      let displayWeight = bandwidthMode ? getBandwidthWeight(link.bandwidth_bps) : defaultWeight
       let displayOpacity = 0.6
       let useDash = false
 
       if (whatifRemovalMode && isRemovedLink) {
         // Whatif-removal mode: highlight removed link in red dashed
         displayColor = '#ef4444'
-        displayWeight = weight + 3
+        displayWeight = defaultWeight + 3
         displayOpacity = 0.6
         useDash = true
       } else if (linkHealthMode) {
@@ -1155,17 +1146,17 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           switch (slaInfo.status) {
             case 'healthy':
               displayColor = '#22c55e' // green
-              if (!bandwidthMode) displayWeight = weight + 1
+              if (!bandwidthMode) displayWeight = defaultWeight + 1
               displayOpacity = 0.9
               break
             case 'warning':
               displayColor = '#eab308' // yellow
-              if (!bandwidthMode) displayWeight = weight + 1
+              if (!bandwidthMode) displayWeight = defaultWeight + 1
               displayOpacity = 1
               break
             case 'critical':
               displayColor = '#ef4444' // red
-              if (!bandwidthMode) displayWeight = weight + 2
+              if (!bandwidthMode) displayWeight = defaultWeight + 2
               displayOpacity = 1
               break
             default:
@@ -1186,7 +1177,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
         // Contributor links mode: color by contributor (preserves bandwidth weight if active)
         const contributorIndex = contributorIndexMap.get(link.contributor_pk) ?? 0
         displayColor = CONTRIBUTOR_COLORS[contributorIndex % CONTRIBUTOR_COLORS.length]
-        if (!bandwidthMode) displayWeight = weight + 1
+        if (!bandwidthMode) displayWeight = defaultWeight + 1
         displayOpacity = 0.9
       } else if (contributorLinksMode && !link.contributor_pk) {
         // Contributor links mode but no contributor - dim the link
@@ -1197,12 +1188,12 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
         const linkType = link.link_type || 'default'
         const colors = LINK_TYPE_COLORS[linkType] || LINK_TYPE_COLORS.default
         displayColor = isDark ? colors.dark : colors.light
-        if (!bandwidthMode) displayWeight = linkType === 'WAN' ? weight + 1 : weight
+        if (!bandwidthMode) displayWeight = linkType === 'WAN' ? defaultWeight + 1 : defaultWeight
         displayOpacity = 0.8
       } else if (criticalityOverlayEnabled && criticality) {
         // Criticality mode: color by criticality level (preserves bandwidth weight if active)
         displayColor = criticalityColors[criticality]
-        if (!bandwidthMode) displayWeight = criticality === 'critical' ? weight + 3 : criticality === 'important' ? weight + 2 : weight + 1
+        if (!bandwidthMode) displayWeight = criticality === 'critical' ? defaultWeight + 3 : criticality === 'important' ? defaultWeight + 2 : defaultWeight + 1
         displayOpacity = 1
         useDash = true
       } else if (isisHealthMode) {
@@ -1241,21 +1232,21 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       } else if (isInSelectedPath && linkPathIndices) {
         // Use the selected path's color
         displayColor = PATH_COLORS[selectedPathIndex % PATH_COLORS.length]
-        displayWeight = weight + 3
+        displayWeight = defaultWeight + 3
         displayOpacity = 1
       } else if (isInAnyPath && linkPathIndices) {
         // In another path but not selected - use first path's color but dimmed
         const firstPathIndex = linkPathIndices[0]
         displayColor = PATH_COLORS[firstPathIndex % PATH_COLORS.length]
-        displayWeight = weight + 1
+        displayWeight = defaultWeight + 1
         displayOpacity = 0.4
       } else if (isSelected) {
         displayColor = '#3b82f6' // blue - selection color
-        displayWeight = weight + 3
+        displayWeight = defaultWeight + 3
         displayOpacity = 1
       } else if (isHovered) {
         displayColor = hoverHighlight
-        displayWeight = weight + 2
+        displayWeight = defaultWeight + 2
         displayOpacity = 1
       }
 
@@ -1872,7 +1863,10 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
                       ? `0 0 0 2px ${hoverHighlight}40`
                       : undefined,
                 }}
-                onMouseEnter={() => setHoveredMetro(metroInfo)}
+                onMouseEnter={() => {
+                  setHoveredMetro(metroInfo)
+                  setHoveredLink(null)
+                }}
                 onMouseLeave={() => setHoveredMetro(null)}
                 onClick={() => handleMarkerClick({ type: 'metro', data: metroInfo })}
               />
@@ -2055,7 +2049,10 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
                   opacity,
                   boxShadow,
                 }}
-                onMouseEnter={() => setHoveredDevice(deviceInfo)}
+                onMouseEnter={() => {
+                  setHoveredDevice(deviceInfo)
+                  setHoveredLink(null) // Clear link hover so device takes priority
+                }}
                 onMouseLeave={() => setHoveredDevice(null)}
                 title={isDisabledInPathMode ? 'No ISIS data - cannot use for path finding' : undefined}
                 onClick={() => {
@@ -2179,7 +2176,10 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
                       ? `0 0 0 2px ${hoverHighlight}40`
                       : undefined,
                 }}
-                onMouseEnter={() => setHoveredValidator(validatorInfo)}
+                onMouseEnter={() => {
+                  setHoveredValidator(validatorInfo)
+                  setHoveredLink(null)
+                }}
                 onMouseLeave={() => setHoveredValidator(null)}
                 onClick={() => handleMarkerClick({ type: 'validator', data: validatorInfo })}
               />
@@ -2188,7 +2188,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
         })}
       </MapGL>
 
-      {/* Hover tooltip - cursor-following, minimal info */}
+      {/* Hover tooltip - cursor-following */}
       {(hoveredLink || hoveredDevice || hoveredMetro || hoveredValidator) && (
         <div
           className="absolute z-[1000] bg-[var(--card)]/95 backdrop-blur border border-[var(--border)] rounded-md shadow-lg px-3 py-2 pointer-events-none"
@@ -2198,15 +2198,36 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           }}
         >
           {hoveredLink && (
-            <div>
-              <div className="text-xs text-muted-foreground">{hoveredLink.isInterMetro ? 'Inter-Metro' : hoveredLink.linkType}</div>
+            <div className="space-y-1">
               <div className="text-sm font-medium">{hoveredLink.code}</div>
+              <div className="text-xs text-muted-foreground space-y-0.5">
+                <div>Type: <span className="text-foreground">{hoveredLink.isInterMetro ? 'Inter-Metro' : hoveredLink.linkType}</span></div>
+                {hoveredLink.contributorCode && (
+                  <div>Contributor: <span className="text-foreground">{hoveredLink.contributorCode}</span></div>
+                )}
+                {hoveredLink.isInterMetro ? (
+                  <>
+                    <div>Links: <span className="text-foreground">{hoveredLink.linkCount}</span></div>
+                    <div>Avg Latency: <span className="text-foreground">{hoveredLink.avgLatencyMs}</span></div>
+                  </>
+                ) : (
+                  <>
+                    <div>Latency: <span className="text-foreground">{hoveredLink.latencyMs}</span></div>
+                    <div>Bandwidth: <span className="text-foreground">{hoveredLink.bandwidth}</span></div>
+                  </>
+                )}
+              </div>
             </div>
           )}
           {hoveredDevice && !hoveredLink && (
-            <div>
-              <div className="text-xs text-muted-foreground capitalize">{hoveredDevice.deviceType}</div>
+            <div className="space-y-1">
               <div className="text-sm font-medium">{hoveredDevice.code}</div>
+              <div className="text-xs text-muted-foreground space-y-0.5">
+                <div>Type: <span className="text-foreground capitalize">{hoveredDevice.deviceType}</span></div>
+                {hoveredDevice.contributorCode && (
+                  <div>Contributor: <span className="text-foreground">{hoveredDevice.contributorCode}</span></div>
+                )}
+              </div>
             </div>
           )}
           {hoveredMetro && !hoveredLink && !hoveredDevice && !hoveredValidator && (

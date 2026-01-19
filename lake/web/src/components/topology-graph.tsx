@@ -805,6 +805,7 @@ export function TopologyGraph({
   const whatifAdditionMode = mode === 'whatif-addition'
   const impactMode = mode === 'impact'
 
+  // Sync state TO URL (for sharing URLs)
   useEffect(() => {
     const params = new URLSearchParams(searchParams)
     let changed = false
@@ -849,14 +850,12 @@ export function TopologyGraph({
     }
   }, [searchParams, setSearchParams, pathModeEnabled, pathSource, pathTarget, whatifRemovalMode, removalLink, whatifAdditionMode, additionSource, additionTarget, impactMode, impactDevice])
 
-  // Restore mode selections from URL params on initial load
+  // Restore mode selections from URL params on initial load only
+  // TODO: Add proper back/forward navigation support
   const modeParamsRestoredRef = useRef(false)
   useEffect(() => {
-    // Only run once when data is available
     if (modeParamsRestoredRef.current) return
     if (!topologyData?.devices?.length) return
-
-    const devicePKs = new Set(topologyData.devices.map(d => d.pk))
 
     const pathSourceParam = searchParams.get('path_source')
     const pathTargetParam = searchParams.get('path_target')
@@ -864,6 +863,8 @@ export function TopologyGraph({
     const additionSourceParam = searchParams.get('addition_source')
     const additionTargetParam = searchParams.get('addition_target')
     const impactDeviceParam = searchParams.get('impact_device')
+
+    const devicePKs = new Set(topologyData.devices.map(d => d.pk))
 
     // Restore path mode
     if (pathSourceParam || pathTargetParam) {
@@ -924,7 +925,6 @@ export function TopologyGraph({
       }
     }
 
-    // No mode params to restore
     modeParamsRestoredRef.current = true
   }, [searchParams, topologyData, mode, setMode, openPanel])
 
@@ -1104,7 +1104,7 @@ export function TopologyGraph({
           node.style({
             'width': getNodeSize(degree),
             'height': getNodeSize(degree),
-            'background-color': deviceTypeEnabled ? getDeviceTypeColor(node.data('deviceType')) : (isDark ? '#6b7280' : '#1f2937'),
+            'background-color': deviceTypeEnabled ? getDeviceTypeColor(node.data('deviceType')) : (isDark ? '#9ca3af' : '#1f2937'),
           })
         })
       }
@@ -1191,7 +1191,7 @@ export function TopologyGraph({
           node.style({
             'width': getNodeSize(degree),
             'height': getNodeSize(degree),
-            'background-color': deviceTypeEnabled ? getDeviceTypeColor(node.data('deviceType')) : (isDark ? '#6b7280' : '#1f2937'),
+            'background-color': deviceTypeEnabled ? getDeviceTypeColor(node.data('deviceType')) : (isDark ? '#9ca3af' : '#1f2937'),
           })
         })
       }
@@ -1226,7 +1226,7 @@ export function TopologyGraph({
           node.style({
             'width': getNodeSize(degree),
             'height': getNodeSize(degree),
-            'background-color': deviceTypeEnabled ? getDeviceTypeColor(node.data('deviceType')) : (isDark ? '#6b7280' : '#1f2937'),
+            'background-color': deviceTypeEnabled ? getDeviceTypeColor(node.data('deviceType')) : (isDark ? '#9ca3af' : '#1f2937'),
           })
         })
       }
@@ -1377,7 +1377,7 @@ export function TopologyGraph({
         if (!stakeOverlayEnabled && !metroClusteringEnabled && !contributorDevicesEnabled) {
           cy.nodes().forEach(node => {
             node.style({
-              'background-color': isDark ? '#6b7280' : '#1f2937',
+              'background-color': isDark ? '#9ca3af' : '#1f2937',
             })
           })
         }
@@ -1710,7 +1710,7 @@ export function TopologyGraph({
         {
           selector: 'node',
           style: {
-            'background-color': isDark ? '#6b7280' : '#1f2937', // neutral grey/dark - overlays will override
+            'background-color': isDark ? '#9ca3af' : '#1f2937', // neutral grey/dark - overlays will override
             'label': 'data(label)',
             'text-valign': 'bottom',
             'text-halign': 'center',

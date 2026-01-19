@@ -61,7 +61,7 @@ export function ImpactPanel({ devicePK, result, isLoading, onClose }: ImpactPane
                   <AlertTriangle className="h-3.5 w-3.5" />
                   {result.unreachableCount} device{result.unreachableCount !== 1 ? 's' : ''} would be isolated
                 </div>
-                <div className="space-y-0.5 max-h-24 overflow-y-auto">
+                <div className="space-y-0.5">
                   {result.unreachableDevices.map(device => (
                     <div key={device.pk} className="flex items-center gap-1.5 pl-1">
                       <div className={`w-2 h-2 rounded-full ${device.status === 'active' ? 'bg-green-500' : 'bg-red-500'}`} />
@@ -89,7 +89,7 @@ export function ImpactPanel({ devicePK, result, isLoading, onClose }: ImpactPane
                 <div className="text-yellow-500 font-medium">
                   {result.affectedPathCount} path{result.affectedPathCount !== 1 ? 's' : ''} would reroute
                 </div>
-                <div className="space-y-2 max-h-48 overflow-y-auto">
+                <div className="space-y-2">
                   {result.affectedPaths.map((path, idx) => {
                     const hopDelta = path.hasAlternate ? path.afterHops - path.beforeHops : 0
                     const metricDelta = path.hasAlternate ? path.afterMetric - path.beforeMetric : 0

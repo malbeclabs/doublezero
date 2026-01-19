@@ -50,8 +50,9 @@ const CONTRIBUTOR_COLORS = [
 ]
 
 // Device type colors (hybrid, transit, edge)
+// Avoid green/red (status colors) and blue/purple (link colors)
 const DEVICE_TYPE_COLORS: Record<string, string> = {
-  hybrid: '#a78bfa',    // purple
+  hybrid: '#eab308',    // yellow
   transit: '#f97316',   // orange
   edge: '#22d3ee',      // cyan
   default: '#9ca3af',   // gray

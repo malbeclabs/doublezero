@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2, Zap, Download, ArrowRight, ChevronUp, ChevronDown } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip as RechartsTooltip, CartesianGrid } from 'recharts'
@@ -25,9 +26,9 @@ function getImprovementBg(pct: number): string {
 }
 
 export function DzVsInternetPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const [sortField, setSortField] = useState<SortField>('improvement')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
-  const [selectedComparison, setSelectedComparison] = useState<LatencyComparison | null>(null)
   const queryClient = useQueryClient()
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
@@ -39,6 +40,27 @@ export function DzVsInternetPage() {
     staleTime: 60000,
     retry: 2,
   })
+
+  // Get selected route from URL
+  const selectedRoute = searchParams.get('route')
+
+  // Find the selected comparison from the data based on URL param
+  const selectedComparison = useMemo(() => {
+    if (!selectedRoute || !latencyData) return null
+    const [origin, target] = selectedRoute.split('-')
+    return latencyData.comparisons.find(
+      c => c.origin_metro_code === origin && c.target_metro_code === target
+    ) ?? null
+  }, [selectedRoute, latencyData])
+
+  // Update URL when selection changes
+  const setSelectedComparison = useCallback((comp: LatencyComparison | null) => {
+    if (comp) {
+      setSearchParams({ route: `${comp.origin_metro_code}-${comp.target_metro_code}` })
+    } else {
+      setSearchParams({})
+    }
+  }, [setSearchParams])
 
   // Fetch latency history for selected comparison
   const { data: historyData, isLoading: historyLoading } = useQuery({

@@ -21,6 +21,8 @@ All notable changes to this project will be documented in this file.
   - Add influxdb and device-health-oracle containers
 - SDK
   - Commands for setting global config, activating devices, updating devices, and closing device accounts now manage resource accounts.
+- Smartcontract
+  - feat(smartcontract): RFC 11 activation for User entity
 
 ### Breaking
 

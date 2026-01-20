@@ -29,9 +29,10 @@ import {
   Map,
   Network,
   Shield,
-  Grid3X3,
   Wrench,
   AlertTriangle,
+  Gauge,
+  Zap,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/hooks/use-theme'
@@ -179,6 +180,7 @@ export function Sidebar({
   const isStatusRoute = location.pathname.startsWith('/status')
   const isTimelineRoute = location.pathname === '/timeline'
   const isOutagesRoute = location.pathname === '/outages'
+  const isPerformanceRoute = location.pathname.startsWith('/performance')
   const isQuerySessions = location.pathname === '/query/sessions'
   const isChatSessions = location.pathname === '/chat/sessions'
 
@@ -187,8 +189,12 @@ export function Sidebar({
   const isTopologyGraph = location.pathname === '/topology/graph'
   const isTopologyPathCalculator = location.pathname === '/topology/path-calculator'
   const isTopologyRedundancy = location.pathname === '/topology/redundancy'
-  const isTopologyMetroMatrix = location.pathname.startsWith('/topology/metro-matrix')
+  const isTopologyMetroConnectivity = location.pathname === '/topology/metro-connectivity'
   const isTopologyMaintenance = location.pathname === '/topology/maintenance'
+
+  // Performance sub-routes
+  const isPerformanceDzVsInternet = location.pathname === '/performance/dz-vs-internet'
+  const isPerformancePathLatency = location.pathname === '/performance/path-latency'
 
   // Entity routes
   const isDevicesRoute = location.pathname === '/dz/devices'
@@ -342,6 +348,20 @@ export function Sidebar({
           <AlertTriangle className="h-4 w-4" />
         </Link>
 
+        {/* Performance nav item */}
+        <Link
+          to="/performance"
+          className={cn(
+            'p-2 rounded transition-colors',
+            isPerformanceRoute
+              ? 'bg-[oklch(25%_.04_250)] text-white hover:bg-[oklch(30%_.05_250)]'
+              : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+          )}
+          title="Performance"
+        >
+          <Gauge className="h-4 w-4" />
+        </Link>
+
         {/* Search nav item */}
         <button
           onClick={() => window.dispatchEvent(new CustomEvent('open-search'))}
@@ -406,16 +426,16 @@ export function Sidebar({
               <Shield className="h-4 w-4" />
             </Link>
             <Link
-              to="/topology/metro-matrix"
+              to="/topology/metro-connectivity"
               className={cn(
                 'p-2 rounded transition-colors',
-                isTopologyMetroMatrix
+                isTopologyMetroConnectivity
                   ? 'bg-[oklch(25%_.04_250)] text-white hover:bg-[oklch(30%_.05_250)]'
                   : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
               )}
-              title="Metro Matrix"
+              title="Metro Connectivity"
             >
-              <Grid3X3 className="h-4 w-4" />
+              <Network className="h-4 w-4" />
             </Link>
             <Link
               to="/topology/maintenance"
@@ -623,6 +643,18 @@ export function Sidebar({
             <AlertTriangle className="h-4 w-4" />
             Outages
           </Link>
+          <Link
+            to="/performance"
+            className={cn(
+              'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',
+              isPerformanceRoute
+                ? 'bg-[var(--sidebar-active)] text-foreground font-medium'
+                : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+            )}
+          >
+            <Gauge className="h-4 w-4" />
+            Performance
+          </Link>
           <button
             onClick={() => window.dispatchEvent(new CustomEvent('open-search'))}
             className="w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]"
@@ -635,7 +667,7 @@ export function Sidebar({
       </div>
 
       {/* DoubleZero section - hidden on tool pages */}
-      {!isChatRoute && !isQueryRoute && !isTopologyRoute && (
+      {!isChatRoute && !isQueryRoute && !isTopologyRoute && !isPerformanceRoute && (
         <div className="px-3 pt-4">
           <div className="px-3 mb-2">
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">DoubleZero</span>
@@ -706,7 +738,7 @@ export function Sidebar({
       )}
 
       {/* Solana section - hidden on tool pages */}
-      {!isChatRoute && !isQueryRoute && !isTopologyRoute && (
+      {!isChatRoute && !isQueryRoute && !isTopologyRoute && !isPerformanceRoute && (
         <div className="px-3 pt-4">
           <div className="px-3 mb-2">
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Solana</span>
@@ -945,16 +977,16 @@ export function Sidebar({
               Redundancy
             </Link>
             <Link
-              to="/topology/metro-matrix"
+              to="/topology/metro-connectivity"
               className={cn(
                 'w-full flex items-center gap-2 px-3 py-2 text-sm rounded transition-colors',
-                isTopologyMetroMatrix
+                isTopologyMetroConnectivity
                   ? 'bg-[var(--sidebar-active)] text-foreground font-medium'
                   : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
               )}
             >
-              <Grid3X3 className="h-4 w-4" />
-              Metro Matrix
+              <Network className="h-4 w-4" />
+              Metro Connectivity
             </Link>
             <Link
               to="/topology/maintenance"
@@ -972,8 +1004,46 @@ export function Sidebar({
         </div>
       )}
 
+      {/* Performance sub-section */}
+      {isPerformanceRoute && (
+        <div className="flex-1 flex flex-col min-h-0 mt-6">
+          {/* Section title */}
+          <div className="px-3 mb-2">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Performance</span>
+          </div>
+
+          {/* Sub-nav */}
+          <div className="px-3 space-y-1">
+            <Link
+              to="/performance/dz-vs-internet"
+              className={cn(
+                'w-full flex items-center gap-2 px-3 py-2 text-sm rounded transition-colors',
+                isPerformanceDzVsInternet
+                  ? 'bg-[var(--sidebar-active)] text-foreground font-medium'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+              )}
+            >
+              <Zap className="h-4 w-4" />
+              DZ vs Internet
+            </Link>
+            <Link
+              to="/performance/path-latency"
+              className={cn(
+                'w-full flex items-center gap-2 px-3 py-2 text-sm rounded transition-colors',
+                isPerformancePathLatency
+                  ? 'bg-[var(--sidebar-active)] text-foreground font-medium'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+              )}
+            >
+              <Route className="h-4 w-4" />
+              Path Latency
+            </Link>
+          </div>
+        </div>
+      )}
+
       {/* Spacer when no section is active */}
-      {!isQueryRoute && !isChatRoute && !isTopologyRoute && <div className="flex-1" />}
+      {!isQueryRoute && !isChatRoute && !isTopologyRoute && !isPerformanceRoute && <div className="flex-1" />}
 
       {/* Footer */}
       <div className="mt-auto px-3 py-3 border-t border-border/50 space-y-2">

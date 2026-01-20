@@ -3,10 +3,12 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/malbeclabs/doublezero/lake/api/config"
 	"github.com/malbeclabs/doublezero/lake/api/handlers/dberror"
 	"github.com/malbeclabs/doublezero/lake/api/metrics"
@@ -596,6 +598,190 @@ func GetLatencyComparison(w http.ResponseWriter, r *http.Request) {
 	response.Summary.AvgImprovementPct = avgImprovement
 	response.Summary.MaxImprovementPct = maxImprovement
 	response.Summary.PairsWithData = pairsWithData
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// Latency history time series point
+type LatencyHistoryPoint struct {
+	Timestamp       time.Time `json:"timestamp"`
+	DzAvgRttMs      *float64  `json:"dz_avg_rtt_ms"`
+	DzAvgJitterMs   *float64  `json:"dz_avg_jitter_ms"`
+	DzSampleCount   uint64    `json:"dz_sample_count"`
+	InetAvgRttMs    *float64  `json:"inet_avg_rtt_ms"`
+	InetAvgJitterMs *float64  `json:"inet_avg_jitter_ms"`
+	InetSampleCount uint64    `json:"inet_sample_count"`
+}
+
+type LatencyHistoryResponse struct {
+	OriginMetroCode string                `json:"origin_metro_code"`
+	TargetMetroCode string                `json:"target_metro_code"`
+	Points          []LatencyHistoryPoint `json:"points"`
+}
+
+// GetLatencyHistory returns time-series latency data for a specific metro pair
+func GetLatencyHistory(w http.ResponseWriter, r *http.Request) {
+	originCode := chi.URLParam(r, "origin")
+	targetCode := chi.URLParam(r, "target")
+
+	if originCode == "" || targetCode == "" {
+		http.Error(w, "origin and target metro codes required", http.StatusBadRequest)
+		return
+	}
+
+	// Normalize the metro pair (alphabetical order to match the view)
+	metro1, metro2 := originCode, targetCode
+	if metro2 < metro1 {
+		metro1, metro2 = metro2, metro1
+	}
+
+	// Parse time range (default 24h)
+	timeRange := r.URL.Query().Get("range")
+	if timeRange == "" {
+		timeRange = "24h"
+	}
+
+	var intervalHours int
+	switch timeRange {
+	case "1h":
+		intervalHours = 1
+	case "6h":
+		intervalHours = 6
+	case "12h":
+		intervalHours = 12
+	case "3d":
+		intervalHours = 72
+	case "7d":
+		intervalHours = 168
+	default:
+		intervalHours = 24
+	}
+
+	// Calculate bucket size (aim for ~48 points)
+	bucketMinutes := (intervalHours * 60) / 48
+	if bucketMinutes < 5 {
+		bucketMinutes = 5
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	start := time.Now()
+
+	// Query to get time-bucketed latency data for both DZ and Internet
+	query := fmt.Sprintf(`
+		WITH
+		lookback AS (
+			SELECT now() - INTERVAL %d HOUR AS min_ts
+		),
+		time_buckets AS (
+			SELECT
+				toStartOfInterval(event_ts, INTERVAL %d MINUTE) AS bucket
+			FROM (
+				SELECT arrayJoin(
+					arrayMap(
+						x -> now() - INTERVAL x * %d MINUTE,
+						range(0, %d)
+					)
+				) AS event_ts
+			)
+		),
+		dz_data AS (
+			SELECT
+				toStartOfInterval(f.event_ts, INTERVAL %d MINUTE) AS bucket,
+				round(avg(f.rtt_us) / 1000.0, 2) AS avg_rtt_ms,
+				round(avg(f.ipdv_us) / 1000.0, 2) AS avg_jitter_ms,
+				count() AS sample_count
+			FROM fact_dz_device_link_latency f
+			CROSS JOIN lookback
+			JOIN dz_links_current l ON f.link_pk = l.pk
+			JOIN dz_devices_current da ON l.side_a_pk = da.pk
+			JOIN dz_devices_current dz ON l.side_z_pk = dz.pk
+			JOIN dz_metros_current ma ON da.metro_pk = ma.pk
+			JOIN dz_metros_current mz ON dz.metro_pk = mz.pk
+			WHERE f.event_ts >= lookback.min_ts
+				AND f.link_pk != ''
+				AND f.loss = false
+				AND least(ma.code, mz.code) = $1
+				AND greatest(ma.code, mz.code) = $2
+			GROUP BY bucket
+		),
+		inet_data AS (
+			SELECT
+				toStartOfInterval(f.event_ts, INTERVAL %d MINUTE) AS bucket,
+				round(avg(f.rtt_us) / 1000.0, 2) AS avg_rtt_ms,
+				round(avg(f.ipdv_us) / 1000.0, 2) AS avg_jitter_ms,
+				count() AS sample_count
+			FROM fact_dz_internet_metro_latency f
+			CROSS JOIN lookback
+			JOIN dz_metros_current ma ON f.origin_metro_pk = ma.pk
+			JOIN dz_metros_current mz ON f.target_metro_pk = mz.pk
+			WHERE f.event_ts >= lookback.min_ts
+				AND least(ma.code, mz.code) = $1
+				AND greatest(ma.code, mz.code) = $2
+			GROUP BY bucket
+		)
+		SELECT
+			tb.bucket AS timestamp,
+			dz.avg_rtt_ms AS dz_avg_rtt_ms,
+			dz.avg_jitter_ms AS dz_avg_jitter_ms,
+			COALESCE(dz.sample_count, 0) AS dz_sample_count,
+			inet.avg_rtt_ms AS inet_avg_rtt_ms,
+			inet.avg_jitter_ms AS inet_avg_jitter_ms,
+			COALESCE(inet.sample_count, 0) AS inet_sample_count
+		FROM time_buckets tb
+		LEFT JOIN dz_data dz ON tb.bucket = dz.bucket
+		LEFT JOIN inet_data inet ON tb.bucket = inet.bucket
+		WHERE tb.bucket >= now() - INTERVAL %d HOUR
+		ORDER BY tb.bucket ASC
+	`, intervalHours, bucketMinutes, bucketMinutes, 48, bucketMinutes, bucketMinutes, intervalHours)
+
+	rows, err := config.DB.Query(ctx, query, metro1, metro2)
+	duration := time.Since(start)
+	metrics.RecordClickHouseQuery(duration, err)
+
+	if err != nil {
+		log.Printf("Latency history query error: %v", err)
+		http.Error(w, dberror.UserMessage(err), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var points []LatencyHistoryPoint
+	for rows.Next() {
+		var p LatencyHistoryPoint
+		if err := rows.Scan(
+			&p.Timestamp,
+			&p.DzAvgRttMs,
+			&p.DzAvgJitterMs,
+			&p.DzSampleCount,
+			&p.InetAvgRttMs,
+			&p.InetAvgJitterMs,
+			&p.InetSampleCount,
+		); err != nil {
+			log.Printf("Latency history scan error: %v", err)
+			http.Error(w, dberror.UserMessage(err), http.StatusInternalServerError)
+			return
+		}
+		points = append(points, p)
+	}
+
+	if err := rows.Err(); err != nil {
+		log.Printf("Latency history rows error: %v", err)
+		http.Error(w, dberror.UserMessage(err), http.StatusInternalServerError)
+		return
+	}
+
+	if points == nil {
+		points = []LatencyHistoryPoint{}
+	}
+
+	response := LatencyHistoryResponse{
+		OriginMetroCode: originCode,
+		TargetMetroCode: targetCode,
+		Points:          points,
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)

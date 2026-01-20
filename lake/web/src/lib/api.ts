@@ -2613,6 +2613,36 @@ export async function fetchLatencyComparison(): Promise<LatencyComparisonRespons
   return res.json()
 }
 
+// Latency history time series types
+export interface LatencyHistoryPoint {
+  timestamp: string
+  dz_avg_rtt_ms: number | null
+  dz_avg_jitter_ms: number | null
+  dz_sample_count: number
+  inet_avg_rtt_ms: number | null
+  inet_avg_jitter_ms: number | null
+  inet_sample_count: number
+}
+
+export interface LatencyHistoryResponse {
+  origin_metro_code: string
+  target_metro_code: string
+  points: LatencyHistoryPoint[]
+}
+
+export async function fetchLatencyHistory(
+  originCode: string,
+  targetCode: string,
+  timeRange?: string
+): Promise<LatencyHistoryResponse> {
+  const params = timeRange ? `?range=${timeRange}` : ''
+  const res = await fetch(`/api/topology/latency-history/${originCode}/${targetCode}${params}`)
+  if (!res.ok) {
+    throw new Error('Failed to fetch latency history')
+  }
+  return res.json()
+}
+
 // Metro path latency types (path-based DZ vs Internet comparison)
 export type PathOptimizeMode = 'hops' | 'latency' | 'bandwidth'
 

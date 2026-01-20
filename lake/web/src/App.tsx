@@ -824,6 +824,8 @@ function ChatView() {
   // Check for initial question from landing page
   const initialQuestionSent = useRef<string | null>(null)
   useEffect(() => {
+    // Wait for server sync to complete - ChatSessionSync won't set currentChatSessionId until then
+    if (!chatServerSyncComplete) return
     // Wait for session to be ready
     if (!currentChatSession) return
     // Don't send twice for the same session
@@ -847,7 +849,7 @@ function ChatView() {
       // Send to API
       sendChatMessage(currentChatSessionId, initialQuestion, [])
     }
-  }, [currentChatSession, currentChatSessionId, chatMessages.length, isPending, setChatSessions, sendChatMessage])
+  }, [chatServerSyncComplete, currentChatSession, currentChatSessionId, chatMessages.length, isPending, setChatSessions, sendChatMessage])
 
   const handleSendMessage = useCallback(async (message: string) => {
     // Synchronous guard to prevent double-sends from rapid clicks

@@ -615,6 +615,7 @@ function QueryEditorView() {
 // Chat View
 function ChatView() {
   const navigate = useNavigate()
+  const { sessionId: urlSessionId } = useParams()
   const {
     sessions,
     setSessions,
@@ -632,11 +633,16 @@ function ChatView() {
     setExternalLocks,
   } = useAppContext()
 
-  // Show skeleton while loading (delayed to avoid flash for fast loads)
-  const isLoading = !chatSessionsLoaded || !chatServerSyncComplete
-  const showSkeleton = useDelayedLoading(isLoading)
-
   const currentChatSession = chatSessions.find(s => s.id === currentChatSessionId)
+
+  // Show skeleton while loading (delayed to avoid flash for fast loads)
+  // Also consider loading if:
+  // - Initial sync isn't complete
+  // - URL has a session ID but it hasn't been synced to state yet (ChatSessionSync is still processing)
+  // - Session ID is set but session hasn't been found/fetched yet
+  const sessionNotReady = urlSessionId && (urlSessionId !== currentChatSessionId || !currentChatSession)
+  const isLoading = !chatSessionsLoaded || !chatServerSyncComplete || sessionNotReady
+  const showSkeleton = useDelayedLoading(isLoading)
   const chatMessages = currentChatSession?.messages ?? []
   const pendingState = pendingChats.get(currentChatSessionId)
   const isPending = !!pendingState

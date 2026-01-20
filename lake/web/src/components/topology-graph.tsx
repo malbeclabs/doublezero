@@ -2122,6 +2122,17 @@ export function TopologyGraph({
             'z-index': 9999,
           },
         },
+        // Mode-specific overrides - must be after :selected to take priority
+        {
+          selector: 'node.impact-device',
+          style: {
+            'border-width': 5,
+            'border-color': '#ef4444',
+            'overlay-opacity': 0.2,
+            'overlay-color': '#ef4444',
+            'z-index': 9999,
+          },
+        },
       ], [isDark, getDeviceTypeColor, getNodeSize])
 
   // Initialize Cytoscape and sync data
@@ -2471,6 +2482,7 @@ export function TopologyGraph({
         }
       } else if (mode === 'impact') {
         // Analyze impact of this device failing
+        cy.elements().unselect()  // Clear selection to prevent :selected style override
         cy.nodes().removeClass('impact-device')
         node.addClass('impact-device')
         analyzeImpact(devicePK)

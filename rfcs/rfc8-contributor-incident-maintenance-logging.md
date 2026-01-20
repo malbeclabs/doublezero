@@ -6,7 +6,7 @@
 
 This RFC proposes a gateway-first mechanism for creating and updating incidents and planned maintenance across the DoubleZero network. Contributors use a single, versioned API to publish operational events while retaining their internal tools. The gateway validates identity (API key bound to contributor), enforces enumerations, normalizes payloads, stores them in a  datastore, and notifies coordination channels in Slack.
 
-Contributors can create incidents or maintenance via a shared form which submits through the API gateway, or directly through the API itself. Slack remains the primary interface for awareness, conversation, and history, all open and historical events appear in `#dz-contributor-incidents` and `#dz-contributor-maintenance`.
+Contributors can create incidents or maintenance via a shared form which submits through the API gateway, or directly through the API itself. Slack remains the primary interface for awareness, conversation, and history, all open and historical events appear in `#dz-contributor-incidents`* and `#dz-contributor-maintenance`*.
 
 Over time, minimal facts are anchored on the DoubleZero ledger so any party can verify contributor-reported status or build independent explorers without relying on centralized databases.
 
@@ -77,7 +77,7 @@ A **gateway-first** design achieves fast adoption and a clear path to progressiv
 
 - The gateway forces the contributor to fill in all required fields and authenticates via an API key that is bound to the contributor. This makes sure we capture all required information which we could also use to start developing the onchain registration of incidents/maintenance.
 - The webform displays human-readable device names and link codes in dropdowns for easy selection (contributors only see their own devices and links). The underlying pubkeys are stored but not shown to users.
-- The gateway posts a Slack message per ticket and maintenance item in `#dz-contributor-incidents` or `#dz-contributor-maintenance`
+- The gateway posts a Slack message per ticket and maintenance item in `#dz-contributor-incidents`* or `#dz-contributor-maintenance`*
 
 ## Identity Stages
 
@@ -143,7 +143,9 @@ If an issue involves the B-side of a DZX link (owned by another contributor):
 
 ## Slack Notifications
 
-Notifications are posted to `#dz-contributor-incidents` and `#dz-contributor-maintenance` channels. In the MVP, notifications do not include @mentions. Automated Slack user group tagging may be added in a future iteration.
+Notifications are posted to `#dz-contributor-incidents`* and `#dz-contributor-maintenance`* channels. In the MVP, notifications do not include @mentions. Automated Slack user group tagging may be added in a future iteration.
+
+*Slack channel names are illustrative. Actual channel names may vary by organization or deployment.
 
 ## Enumerations
 
@@ -156,13 +158,13 @@ Notifications are posted to `#dz-contributor-incidents` and `#dz-contributor-mai
 
 ## Severity Levels
 
-Severity reflects impact to the DoubleZero service, not total user impact (users may have fallbacks like public internet).
+Severity reflects impact to the DoubleZero network.
 
 | Severity | Description | Examples |
 | --- | --- | --- |
-| `sev1` | Critical. DoubleZero service fully unavailable for affected users. No working path through the DZ network. | DZD disconnected from network, contributor offline, no alternative DZ routes available, region unreachable via DZ. |
-| `sev2` | Degraded. DoubleZero service continues but with reduced performance or redundancy. Needs timely attention. | Primary link down with traffic rerouted, reduced redundancy, elevated latency on alternative DZ paths. |
-| `sev3` | Low impact. Minor issue or redundancy fully covers with acceptable performance. | Link down but alternatives perform within acceptable bounds, minor errors, informational. |
+| `sev1` | Full user impact or complete outage. Major control/data plane breakage with no fallback. | >10% traffic blackholed without fallback, >80% onboarding/connect/disconnect failures, >20% DZDs with interface errors, controller returning incorrect configs. |
+| `sev2` | Partial but substantial user impact. Degraded service where users have fallback but functionality is impaired, or control plane/observability significantly impaired. | 0–10% traffic blackholed without fallback, >20% users affected but failing back to public internet, 20–80% onboarding failures, controller inaccessible or returning invalid configs, observability loss. |
+| `sev3` | Limited or no user-visible impact. Small fraction of users affected with fallback available, or background system issues with potential to escalate. | 0–20% users affected with fallback, 0–20% DZD errors, minor bugs, alerting noise, isolated incidents not affecting user traffic. |
 
 ## Status Lifecycle
 
@@ -254,8 +256,8 @@ Root cause codes categorize the underlying cause of incidents. This field is onl
 
 ## Notifications
 
-- **Create incident**: Post to `#dz-contributor-incidents` with ticket id, status, severity, device and link pubkeys resolved to human readable device and link names, name of the contributor who created the incident, internal reference (if provided).
-- **Create maintenance**: Post to `#dz-contributor-maintenance` with ticket id, status, device and link pubkeys resolved to human readable device and link names, planned start time and planned end time, name of the contributor who created the maintenance, internal reference (if provided).
+- **Create incident**: Post to `#dz-contributor-incidents`* with ticket id, status, severity, device and link pubkeys resolved to human readable device and link names, name of the contributor who created the incident, internal reference (if provided).
+- **Create maintenance**: Post to `#dz-contributor-maintenance`* with ticket id, status, device and link pubkeys resolved to human readable device and link names, planned start time and planned end time, name of the contributor who created the maintenance, internal reference (if provided).
 - **Assign ticket**: Update the Slack message banner to show assignee. Post a thread reply with assignment update (e.g., "Assigned to Acme Networks").
 - **Status change**: Post update to Slack thread with status transition and who made the change.
 - **Close incident/maintenance**: Update the Slack message to reflect closed status. Post thread update with resolution details and root cause (for incidents).

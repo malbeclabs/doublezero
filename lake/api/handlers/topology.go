@@ -491,6 +491,17 @@ type LatencyComparisonResponse struct {
 }
 
 func GetLatencyComparison(w http.ResponseWriter, r *http.Request) {
+	// Try cache first
+	if statusCache != nil {
+		if cached := statusCache.GetLatencyComparison(); cached != nil {
+			w.Header().Set("X-Cache", "HIT")
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(cached)
+			return
+		}
+	}
+
+	// Cache miss - fetch fresh data
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
 
@@ -601,6 +612,110 @@ func GetLatencyComparison(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
+}
+
+// fetchLatencyComparisonData fetches DZ vs Internet latency comparison data.
+// Used by both the handler and the cache.
+func fetchLatencyComparisonData(ctx context.Context) (*LatencyComparisonResponse, error) {
+	start := time.Now()
+
+	query := `
+		SELECT
+			m1.pk AS origin_metro_pk,
+			c.origin_metro AS origin_metro_code,
+			c.origin_metro_name,
+			m2.pk AS target_metro_pk,
+			c.target_metro AS target_metro_code,
+			c.target_metro_name,
+			c.dz_avg_rtt_ms,
+			c.dz_p95_rtt_ms,
+			c.dz_avg_jitter_ms,
+			c.dz_loss_pct,
+			c.dz_sample_count,
+			c.internet_avg_rtt_ms,
+			c.internet_p95_rtt_ms,
+			c.internet_avg_jitter_ms,
+			c.internet_sample_count,
+			c.rtt_improvement_pct,
+			c.jitter_improvement_pct
+		FROM dz_vs_internet_latency_comparison c
+		JOIN dz_metros_current m1 ON c.origin_metro = m1.code
+		JOIN dz_metros_current m2 ON c.target_metro = m2.code
+		WHERE c.dz_sample_count > 0
+		ORDER BY c.origin_metro, c.target_metro
+	`
+
+	rows, err := config.DB.Query(ctx, query)
+	duration := time.Since(start)
+	metrics.RecordClickHouseQuery(duration, err)
+
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var comparisons []LatencyComparison
+	var totalImprovement float64
+	var maxImprovement float64
+	var pairsWithData int
+
+	for rows.Next() {
+		var lc LatencyComparison
+		if err := rows.Scan(
+			&lc.OriginMetroPK,
+			&lc.OriginMetroCode,
+			&lc.OriginMetroName,
+			&lc.TargetMetroPK,
+			&lc.TargetMetroCode,
+			&lc.TargetMetroName,
+			&lc.DzAvgRttMs,
+			&lc.DzP95RttMs,
+			&lc.DzAvgJitterMs,
+			&lc.DzLossPct,
+			&lc.DzSampleCount,
+			&lc.InternetAvgRttMs,
+			&lc.InternetP95RttMs,
+			&lc.InternetAvgJitterMs,
+			&lc.InternetSampleCount,
+			&lc.RttImprovementPct,
+			&lc.JitterImprovementPct,
+		); err != nil {
+			return nil, err
+		}
+
+		if lc.RttImprovementPct != nil {
+			pairsWithData++
+			totalImprovement += *lc.RttImprovementPct
+			if *lc.RttImprovementPct > maxImprovement {
+				maxImprovement = *lc.RttImprovementPct
+			}
+		}
+
+		comparisons = append(comparisons, lc)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	if comparisons == nil {
+		comparisons = []LatencyComparison{}
+	}
+
+	avgImprovement := 0.0
+	if pairsWithData > 0 {
+		avgImprovement = totalImprovement / float64(pairsWithData)
+	}
+
+	response := &LatencyComparisonResponse{
+		Comparisons: comparisons,
+	}
+	response.Summary.TotalPairs = len(comparisons)
+	response.Summary.AvgImprovementPct = avgImprovement
+	response.Summary.MaxImprovementPct = maxImprovement
+	response.Summary.PairsWithData = pairsWithData
+
+	return response, nil
 }
 
 // Latency history time series point

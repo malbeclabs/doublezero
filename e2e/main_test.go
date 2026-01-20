@@ -301,6 +301,20 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 		dn.log.Info("--> Device telemetry verified in InfluxDB")
 	}
 
+	// Verify device has getconfig metrics in Prometheus.
+	if dn.Prometheus != nil && dn.Prometheus.InternalURL != "" {
+		dn.log.Info("==> Verifying device metrics in Prometheus", "device", device.Spec.Code, "pubkey", device.ID)
+		require.Eventually(t, func() bool {
+			hasMetrics, err := dn.Prometheus.HasDeviceMetrics(ctx, device.ID)
+			if err != nil {
+				dn.log.Debug("Failed to query Prometheus for device metrics", "error", err)
+				return false
+			}
+			return hasMetrics
+		}, 60*time.Second, 5*time.Second, "device %s did not have getconfig metrics in Prometheus", device.Spec.Code)
+		dn.log.Info("--> Device metrics verified in Prometheus")
+	}
+
 	return device, client
 }
 

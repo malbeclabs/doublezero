@@ -109,6 +109,14 @@ func (c *Controller) StartIfNotRunning(ctx context.Context) (bool, error) {
 func (c *Controller) Start(ctx context.Context) error {
 	c.log.Info("==> Starting controller", "image", c.dn.Spec.Controller.ContainerImage)
 
+	env := map[string]string{
+		"DZ_LEDGER_URL":                c.dn.Ledger.InternalRPCURL,
+		"DZ_SERVICEABILITY_PROGRAM_ID": c.dn.Manager.ServiceabilityProgramID,
+	}
+	if c.dn.Prometheus != nil && c.dn.Prometheus.InternalURL != "" {
+		env["ALLOY_PROMETHEUS_URL"] = c.dn.Prometheus.RemoteWriteURL()
+	}
+
 	req := testcontainers.ContainerRequest{
 		Image: c.dn.Spec.Controller.ContainerImage,
 		Name:  c.dockerContainerName(),
@@ -117,11 +125,8 @@ func (c *Controller) Start(ctx context.Context) error {
 		},
 		ExposedPorts: []string{fmt.Sprintf("%d/tcp", internalControllerPort)},
 		WaitingFor:   wait.ForExposedPort(),
-		Env: map[string]string{
-			"DZ_LEDGER_URL":                c.dn.Ledger.InternalRPCURL,
-			"DZ_SERVICEABILITY_PROGRAM_ID": c.dn.Manager.ServiceabilityProgramID,
-		},
-		Networks: []string{c.dn.DefaultNetwork.Name},
+		Env:          env,
+		Networks:     []string{c.dn.DefaultNetwork.Name},
 		NetworkAliases: map[string][]string{
 			c.dn.DefaultNetwork.Name: {"controller"},
 		},

@@ -530,6 +530,12 @@ func StreamWorkflow(w http.ResponseWriter, r *http.Request) {
 					errorMsg = *run.Error
 				}
 				sendEvent("error", map[string]string{"error": errorMsg})
+			} else {
+				// Workflow is still "running" in DB but not in memory - it's orphaned
+				// Mark it as failed and notify client
+				slog.Warn("Orphaned workflow detected - marking as failed", "workflow_id", id)
+				_ = FailWorkflowRun(context.Background(), id, "Workflow was orphaned after server restart")
+				sendEvent("error", map[string]string{"error": "Workflow was interrupted and could not be resumed"})
 			}
 			return
 		}

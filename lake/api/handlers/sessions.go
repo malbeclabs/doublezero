@@ -60,6 +60,16 @@ type UpdateSessionRequest struct {
 	Content json.RawMessage `json:"content"`
 }
 
+// BatchGetSessionsRequest is the request body for batch fetching sessions
+type BatchGetSessionsRequest struct {
+	IDs []uuid.UUID `json:"ids"`
+}
+
+// BatchGetSessionsResponse is the response for batch fetching sessions
+type BatchGetSessionsResponse struct {
+	Sessions []Session `json:"sessions"`
+}
+
 // ListSessions returns a paginated list of sessions
 func ListSessions(w http.ResponseWriter, r *http.Request) {
 	sessionType := r.URL.Query().Get("type")
@@ -168,6 +178,58 @@ func ListSessions(w http.ResponseWriter, r *http.Request) {
 		HasMore:  offset+len(sessions) < total,
 	}
 	json.NewEncoder(w).Encode(response)
+}
+
+// BatchGetSessions returns multiple sessions by their IDs
+func BatchGetSessions(w http.ResponseWriter, r *http.Request) {
+	var req BatchGetSessionsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if len(req.IDs) == 0 {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(BatchGetSessionsResponse{Sessions: []Session{}})
+		return
+	}
+
+	// Cap at 50 IDs to prevent abuse
+	if len(req.IDs) > 50 {
+		req.IDs = req.IDs[:50]
+	}
+
+	ctx := r.Context()
+
+	rows, err := config.PgPool.Query(ctx, `
+		SELECT id, type, name, content, created_at, updated_at
+		FROM sessions
+		WHERE id = ANY($1)
+		ORDER BY updated_at DESC, id ASC
+	`, req.IDs)
+	if err != nil {
+		http.Error(w, internalError("Failed to fetch sessions", err), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	sessions := []Session{}
+	for rows.Next() {
+		var s Session
+		if err := rows.Scan(&s.ID, &s.Type, &s.Name, &s.Content, &s.CreatedAt, &s.UpdatedAt); err != nil {
+			http.Error(w, internalError("Failed to scan session", err), http.StatusInternalServerError)
+			return
+		}
+		sessions = append(sessions, s)
+	}
+
+	if err := rows.Err(); err != nil {
+		http.Error(w, internalError("Failed to iterate sessions", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(BatchGetSessionsResponse{Sessions: sessions})
 }
 
 // GetSession returns a single session by ID

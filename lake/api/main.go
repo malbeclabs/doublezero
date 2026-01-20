@@ -248,6 +248,7 @@ func main() {
 	// Session persistence routes
 	r.Get("/api/sessions", handlers.ListSessions)
 	r.Post("/api/sessions", handlers.CreateSession)
+	r.Post("/api/sessions/batch", handlers.BatchGetSessions)
 	r.Get("/api/sessions/{id}", handlers.GetSession)
 	r.Put("/api/sessions/{id}", handlers.UpdateSession)
 	r.Delete("/api/sessions/{id}", handlers.DeleteSession)

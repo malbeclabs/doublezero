@@ -82,7 +82,12 @@ function mergeSessions<T extends { id: string; updatedAt: Date }>(
     const serverSession = serverMap.get(id)
     const localSession = localMap.get(id)
 
-    if (serverSession && localSession) {
+    // Only include sessions that exist locally - server is for backup, not discovery
+    if (!localSession) {
+      continue
+    }
+
+    if (serverSession) {
       // Both exist - check various conditions for which to use
       const localHasStreaming = hasStreamingMessage(localSession)
       const localMsgCount = getMessageCount(localSession)
@@ -99,9 +104,8 @@ function mergeSessions<T extends { id: string; updatedAt: Date }>(
       } else {
         merged.push(serverSession)
       }
-    } else if (serverSession) {
-      merged.push(serverSession)
-    } else if (localSession) {
+    } else {
+      // Local only - keep it (will sync to server)
       merged.push(localSession)
     }
   }
@@ -175,18 +179,26 @@ export function useQuerySessionSync(
     if (!enabled || initialLoadDone.current) return
     initialLoadDone.current = true // Set immediately to prevent race conditions
 
-    const loadFromServer = async () => {
+    const loadFromServer = async (localSessions: QuerySession[]) => {
       try {
-        // Use include_content=true to get all sessions with content in ONE request
-        // instead of N+1 queries (list + N individual fetches)
-        const response = await api.listSessionsWithContent<GenerationRecord[]>('query', 100, 0)
+        // Only fetch sessions that exist locally (max 30 most recent)
+        const localIds = localSessions
+          .slice(0, 30)
+          .map(s => s.id)
+
+        if (localIds.length === 0) {
+          setServerSyncComplete(true)
+          return
+        }
+
+        const response = await api.batchGetSessions<GenerationRecord[]>(localIds)
         if (response.sessions.length === 0) {
           setServerSyncComplete(true)
           return
         }
 
         const serverSessions = response.sessions.map(serverToQuerySession)
-        // Use callback form to get latest sessions state
+        // Merge server data with local - local sessions are already in state
         onSessionsUpdated(prev => mergeSessions(prev, serverSessions))
         setServerSyncComplete(true)
       } catch (err) {
@@ -195,7 +207,11 @@ export function useQuerySessionSync(
       }
     }
 
-    loadFromServer()
+    // Get current local sessions and pass to loader
+    onSessionsUpdated(prev => {
+      loadFromServer(prev)
+      return prev // Don't modify state
+    })
   }, [enabled]) // Only depend on enabled
 
   // Return sync function and server sync status
@@ -266,18 +282,26 @@ export function useChatSessionSync(
     if (!enabled || initialLoadDone.current) return
     initialLoadDone.current = true // Set immediately to prevent race conditions
 
-    const loadFromServer = async () => {
+    const loadFromServer = async (localSessions: ChatSession[]) => {
       try {
-        // Use include_content=true to get all sessions with content in ONE request
-        // instead of N+1 queries (list + N individual fetches)
-        const response = await api.listSessionsWithContent<ChatMessage[]>('chat', 100, 0)
+        // Only fetch sessions that exist locally (max 30 most recent)
+        const localIds = localSessions
+          .slice(0, 30)
+          .map(s => s.id)
+
+        if (localIds.length === 0) {
+          setServerSyncComplete(true)
+          return
+        }
+
+        const response = await api.batchGetSessions<ChatMessage[]>(localIds)
         if (response.sessions.length === 0) {
           setServerSyncComplete(true)
           return
         }
 
         const serverSessions = response.sessions.map(serverToChatSession)
-        // Use callback form to get latest sessions state
+        // Merge server data with local - local sessions are already in state
         onSessionsUpdated(prev => mergeSessions(prev, serverSessions))
         setServerSyncComplete(true)
       } catch (err) {
@@ -286,7 +310,11 @@ export function useChatSessionSync(
       }
     }
 
-    loadFromServer()
+    // Get current local sessions and pass to loader
+    onSessionsUpdated(prev => {
+      loadFromServer(prev)
+      return prev // Don't modify state
+    })
   }, [enabled]) // Only depend on enabled
 
   // Return sync functions and server sync status

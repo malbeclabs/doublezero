@@ -1693,6 +1693,23 @@ export async function getSession<T>(id: string): Promise<ServerSession<T>> {
   return res.json()
 }
 
+export async function batchGetSessions<T>(
+  ids: string[]
+): Promise<{ sessions: ServerSession<T>[] }> {
+  if (ids.length === 0) {
+    return { sessions: [] }
+  }
+  const res = await fetchWithRetry('/api/sessions/batch', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids }),
+  })
+  if (!res.ok) {
+    throw new Error('Failed to batch fetch sessions')
+  }
+  return res.json()
+}
+
 export async function createSession<T>(
   id: string,
   type: 'chat' | 'query',

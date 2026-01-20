@@ -158,6 +158,14 @@ func main() {
 			w.Write([]byte("database connection failed: " + err.Error()))
 			return
 		}
+
+		// Check status cache is populated
+		if !handlers.IsStatusCacheReady() {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte("status cache not ready"))
+			return
+		}
+
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok"))
 	})

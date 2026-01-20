@@ -139,6 +139,13 @@ func (c *StatusCache) Stop() {
 	}
 }
 
+// IsReady returns true if the cache has been populated with initial data.
+func (c *StatusCache) IsReady() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.status != nil && c.timeline != nil && c.outages != nil
+}
+
 // GetStatus returns the cached status response.
 // Returns nil if cache is empty (should not happen after Start() completes).
 func (c *StatusCache) GetStatus() *StatusResponse {
@@ -491,4 +498,9 @@ func StopStatusCache() {
 	if statusCache != nil {
 		statusCache.Stop()
 	}
+}
+
+// IsStatusCacheReady returns true if the status cache is initialized and populated.
+func IsStatusCacheReady() bool {
+	return statusCache != nil && statusCache.IsReady()
 }

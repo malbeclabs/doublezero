@@ -1,7 +1,7 @@
 use crate::{
     commands::{
-        accesspass::get::GetAccessPassCommand, globalstate::get::GetGlobalStateCommand,
-        user::get::GetUserCommand,
+        accesspass::get::GetAccessPassCommand, device::get::GetDeviceCommand,
+        globalstate::get::GetGlobalStateCommand, user::get::GetUserCommand,
     },
     DoubleZeroClient,
 };
@@ -59,6 +59,15 @@ impl ActivateUserCommand {
         ];
 
         if self.use_onchain_allocation {
+            // Fetch device to get dz_prefixes count
+            let (_, device) = GetDeviceCommand {
+                pubkey_or_code: user.device_pk.to_string(),
+            }
+            .execute(client)
+            .map_err(|_| eyre::eyre!("Device not found"))?;
+
+            let dz_prefix_count = device.dz_prefixes.len();
+
             // Global UserTunnelBlock
             let (global_resource_ext, _, _) =
                 get_resource_extension_pda(&client.get_program_id(), ResourceType::UserTunnelBlock);
@@ -69,15 +78,17 @@ impl ActivateUserCommand {
                 ResourceType::TunnelIds(user.device_pk, 0),
             );
 
-            // Device DzPrefixBlock (scoped to user's device)
-            let (device_dz_prefix_ext, _, _) = get_resource_extension_pda(
-                &client.get_program_id(),
-                ResourceType::DzPrefixBlock(user.device_pk, 0),
-            );
-
             accounts.push(AccountMeta::new(global_resource_ext, false));
             accounts.push(AccountMeta::new(device_tunnel_ids_ext, false));
-            accounts.push(AccountMeta::new(device_dz_prefix_ext, false));
+
+            // Add all N DzPrefixBlock accounts (devices can have multiple dz_prefixes)
+            for idx in 0..dz_prefix_count {
+                let (device_dz_prefix_ext, _, _) = get_resource_extension_pda(
+                    &client.get_program_id(),
+                    ResourceType::DzPrefixBlock(user.device_pk, idx),
+                );
+                accounts.push(AccountMeta::new(device_dz_prefix_ext, false));
+            }
         }
 
         client.execute_transaction(
@@ -107,6 +118,7 @@ mod tests {
             accesspass::{AccessPass, AccessPassStatus, AccessPassType},
             accountdata::AccountData,
             accounttype::AccountType,
+            device::Device,
             user::{User, UserCYOA, UserStatus, UserType},
         },
     };
@@ -276,6 +288,17 @@ mod tests {
             .expect_get()
             .with(predicate::eq(accesspass_pubkey))
             .returning(move |_| Ok(AccountData::AccessPass(accesspass.clone())));
+
+        // Mock Device fetch (for dz_prefixes.len())
+        let device = Device {
+            account_type: AccountType::Device,
+            dz_prefixes: "10.0.0.0/24".parse().unwrap(),
+            ..Default::default()
+        };
+        client
+            .expect_get()
+            .with(predicate::eq(device_pk))
+            .returning(move |_| Ok(AccountData::Device(device.clone())));
 
         client
             .expect_execute_transaction()

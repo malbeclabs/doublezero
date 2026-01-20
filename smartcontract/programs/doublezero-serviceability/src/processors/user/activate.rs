@@ -1,7 +1,7 @@
 use crate::{
     error::DoubleZeroError,
     pda::get_resource_extension_pda,
-    resource::{IdOrIp, ResourceType},
+    resource::ResourceType,
     serializer::try_acc_write,
     state::{
         accesspass::AccessPass,
@@ -52,15 +52,28 @@ pub fn process_activate_user(
     let globalstate_account = next_account_info(accounts_iter)?;
 
     // Optional: ResourceExtension accounts for on-chain allocation (before payer)
-    // Account layout WITH ResourceExtension (8 accounts):
-    //   [user, accesspass, globalstate, global_resource_ext, device_tunnel_ids_ext, device_dz_prefix_ext, payer, system]
+    // Account layout WITH ResourceExtension (7+ accounts):
+    //   [user, accesspass, globalstate, global_resource_ext, device_tunnel_ids_ext, dz_prefix_ext_0..N, payer, system]
+    //   Minimum 7 accounts (5 base + 2 resource accounts with at least 1 DzPrefixBlock)
     // Account layout WITHOUT (legacy, 5 accounts):
     //   [user, accesspass, globalstate, payer, system]
-    let resource_extension_accounts = if accounts.len() == 8 {
+    let resource_extension_accounts = if accounts.len() >= 7 {
+        let global_resource_ext = next_account_info(accounts_iter)?; // UserTunnelBlock
+        let device_tunnel_ids_ext = next_account_info(accounts_iter)?; // TunnelIds
+
+        // Collect all remaining DzPrefixBlock accounts (N = accounts.len() - 7)
+        // accounts.len() - 5 (base) - 2 (payer, system) = number of resource accounts
+        // resource accounts - 2 (global, tunnel_ids) = number of DzPrefixBlock accounts
+        let dz_prefix_count = accounts.len() - 7;
+        let mut dz_prefix_accounts = Vec::with_capacity(dz_prefix_count);
+        for _ in 0..dz_prefix_count {
+            dz_prefix_accounts.push(next_account_info(accounts_iter)?);
+        }
+
         Some((
-            next_account_info(accounts_iter)?, // global_resource_ext (UserTunnelBlock)
-            next_account_info(accounts_iter)?, // device_tunnel_ids_ext (TunnelIds)
-            next_account_info(accounts_iter)?, // device_dz_prefix_ext (DzPrefixBlock)
+            global_resource_ext,
+            device_tunnel_ids_ext,
+            dz_prefix_accounts,
         ))
     } else {
         None
@@ -122,7 +135,7 @@ pub fn process_activate_user(
     }
 
     // Allocate resources from ResourceExtension or use provided values
-    if let Some((global_resource_ext, device_tunnel_ids_ext, device_dz_prefix_ext)) =
+    if let Some((global_resource_ext, device_tunnel_ids_ext, dz_prefix_accounts)) =
         resource_extension_accounts
     {
         // Validate global_resource_ext (UserTunnelBlock)
@@ -135,7 +148,7 @@ pub fn process_activate_user(
             "ResourceExtension Account is not writable"
         );
         assert!(
-            !global_resource_ext.data.borrow().is_empty(),
+            !global_resource_ext.data_is_empty(),
             "ResourceExtension Account is empty"
         );
 
@@ -156,7 +169,7 @@ pub fn process_activate_user(
             "ResourceExtension Account for TunnelIds is not writable"
         );
         assert!(
-            !device_tunnel_ids_ext.data.borrow().is_empty(),
+            !device_tunnel_ids_ext.data_is_empty(),
             "ResourceExtension Account for TunnelIds is empty"
         );
 
@@ -167,57 +180,53 @@ pub fn process_activate_user(
             "Invalid ResourceExtension PDA for TunnelIds"
         );
 
-        // Validate device_dz_prefix_ext (DzPrefixBlock)
-        assert_eq!(
-            device_dz_prefix_ext.owner, program_id,
-            "Invalid ResourceExtension Account Owner for DzPrefixBlock"
-        );
-        assert!(
-            device_dz_prefix_ext.is_writable,
-            "ResourceExtension Account for DzPrefixBlock is not writable"
-        );
-        assert!(
-            !device_dz_prefix_ext.data.borrow().is_empty(),
-            "ResourceExtension Account for DzPrefixBlock is empty"
-        );
+        // Validate all DzPrefixBlock accounts
+        for (idx, dz_prefix_account) in dz_prefix_accounts.iter().enumerate() {
+            assert_eq!(
+                dz_prefix_account.owner, program_id,
+                "Invalid ResourceExtension Account Owner for DzPrefixBlock[{}]",
+                idx
+            );
+            assert!(
+                dz_prefix_account.is_writable,
+                "ResourceExtension Account for DzPrefixBlock[{}] is not writable",
+                idx
+            );
+            assert!(
+                !dz_prefix_account.data_is_empty(),
+                "ResourceExtension Account for DzPrefixBlock[{}] is empty",
+                idx
+            );
 
-        let (expected_dz_prefix_pda, _, _) =
-            get_resource_extension_pda(program_id, ResourceType::DzPrefixBlock(user.device_pk, 0));
-        assert_eq!(
-            device_dz_prefix_ext.key, &expected_dz_prefix_pda,
-            "Invalid ResourceExtension PDA for DzPrefixBlock"
-        );
+            let (expected_dz_prefix_pda, _, _) = get_resource_extension_pda(
+                program_id,
+                ResourceType::DzPrefixBlock(user.device_pk, idx),
+            );
+            assert_eq!(
+                dz_prefix_account.key, &expected_dz_prefix_pda,
+                "Invalid ResourceExtension PDA for DzPrefixBlock[{}]",
+                idx
+            );
+        }
 
         // Allocate tunnel_net from global UserTunnelBlock
         {
             let mut buffer = global_resource_ext.data.borrow_mut();
             let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
-            let allocated = resource.allocate()?;
-
-            match allocated {
-                IdOrIp::Ip(network) => {
-                    user.tunnel_net = network;
-                }
-                IdOrIp::Id(_) => {
-                    return Err(DoubleZeroError::InvalidArgument.into());
-                }
-            }
+            user.tunnel_net = resource
+                .allocate()?
+                .get_ip()
+                .ok_or(DoubleZeroError::InvalidArgument)?;
         }
 
         // Allocate tunnel_id from device TunnelIds
         {
             let mut buffer = device_tunnel_ids_ext.data.borrow_mut();
             let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
-            let allocated = resource.allocate()?;
-
-            match allocated {
-                IdOrIp::Id(id) => {
-                    user.tunnel_id = id;
-                }
-                IdOrIp::Ip(_) => {
-                    return Err(DoubleZeroError::InvalidArgument.into());
-                }
-            }
+            user.tunnel_id = resource
+                .allocate()?
+                .get_id()
+                .ok_or(DoubleZeroError::InvalidArgument)?;
         }
 
         // Conditionally allocate dz_ip based on user_type (matching activator behavior)
@@ -228,19 +237,22 @@ pub fn process_activate_user(
         };
 
         if need_dz_ip {
-            // Allocate from DzPrefixBlock ResourceExtension
-            let mut buffer = device_dz_prefix_ext.data.borrow_mut();
-            let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
-            let allocated = resource.allocate()?;
+            // Try to allocate from each DzPrefixBlock until one succeeds
+            let mut allocated_dz_ip = None;
+            for dz_prefix_account in dz_prefix_accounts.iter() {
+                let mut buffer = dz_prefix_account.data.borrow_mut();
+                let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
 
-            match allocated {
-                IdOrIp::Ip(network) => {
-                    user.dz_ip = network.ip();
-                }
-                IdOrIp::Id(_) => {
-                    return Err(DoubleZeroError::InvalidArgument.into());
+                if let Ok(ip) = resource
+                    .allocate()
+                    .and_then(|v| v.get_ip().ok_or(DoubleZeroError::InvalidArgument))
+                {
+                    allocated_dz_ip = Some(ip.ip());
+                    break;
                 }
             }
+
+            user.dz_ip = allocated_dz_ip.ok_or(DoubleZeroError::AllocationFailed)?;
         } else {
             // Use client_ip, no allocation needed
             user.dz_ip = user.client_ip;

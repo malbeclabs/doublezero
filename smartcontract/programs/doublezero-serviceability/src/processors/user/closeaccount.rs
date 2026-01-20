@@ -43,15 +43,28 @@ pub fn process_closeaccount_user(
     let globalstate_account = next_account_info(accounts_iter)?;
 
     // Optional: ResourceExtension accounts for on-chain deallocation (before payer)
-    // Account layout WITH ResourceExtension (9 accounts):
-    //   [user, owner, device, globalstate, global_resource_ext, device_tunnel_ids_ext, device_dz_prefix_ext, payer, system]
+    // Account layout WITH ResourceExtension (8+ accounts):
+    //   [user, owner, device, globalstate, global_resource_ext, device_tunnel_ids_ext, dz_prefix_ext_0..N, payer, system]
+    //   Minimum 8 accounts (6 base + 2 resource accounts with at least 1 DzPrefixBlock)
     // Account layout WITHOUT (legacy, 6 accounts):
     //   [user, owner, device, globalstate, payer, system]
-    let resource_extension_accounts = if accounts.len() == 9 {
+    let resource_extension_accounts = if accounts.len() >= 8 {
+        let global_resource_ext = next_account_info(accounts_iter)?; // UserTunnelBlock
+        let device_tunnel_ids_ext = next_account_info(accounts_iter)?; // TunnelIds
+
+        // Collect all remaining DzPrefixBlock accounts (N = accounts.len() - 8)
+        // accounts.len() - 6 (base) - 2 (payer, system) = number of resource accounts
+        // resource accounts - 2 (global, tunnel_ids) = number of DzPrefixBlock accounts
+        let dz_prefix_count = accounts.len() - 8;
+        let mut dz_prefix_accounts = Vec::with_capacity(dz_prefix_count);
+        for _ in 0..dz_prefix_count {
+            dz_prefix_accounts.push(next_account_info(accounts_iter)?);
+        }
+
         Some((
-            next_account_info(accounts_iter)?, // global_resource_ext (UserTunnelBlock)
-            next_account_info(accounts_iter)?, // device_tunnel_ids_ext (TunnelIds)
-            next_account_info(accounts_iter)?, // device_dz_prefix_ext (DzPrefixBlock)
+            global_resource_ext,
+            device_tunnel_ids_ext,
+            dz_prefix_accounts,
         ))
     } else {
         None
@@ -113,111 +126,123 @@ pub fn process_closeaccount_user(
     }
 
     // Deallocate resources from ResourceExtension if accounts provided
-    // Only deallocate if resources were actually allocated (tunnel_net is link-local when activated)
-    let resources_were_allocated = user.tunnel_net.ip().is_link_local();
-
-    if let Some((global_resource_ext, device_tunnel_ids_ext, device_dz_prefix_ext)) =
+    // Deallocation is idempotent - safe to call even if resources weren't allocated
+    if let Some((global_resource_ext, device_tunnel_ids_ext, dz_prefix_accounts)) =
         resource_extension_accounts
     {
-        if resources_were_allocated {
-            // Validate global_resource_ext (UserTunnelBlock)
-            assert_eq!(
-                global_resource_ext.owner, program_id,
-                "Invalid ResourceExtension Account Owner"
-            );
-            assert!(
-                global_resource_ext.is_writable,
-                "ResourceExtension Account is not writable"
-            );
-            assert!(
-                !global_resource_ext.data.borrow().is_empty(),
-                "ResourceExtension Account is empty"
-            );
+        // Validate global_resource_ext (UserTunnelBlock)
+        assert_eq!(
+            global_resource_ext.owner, program_id,
+            "Invalid ResourceExtension Account Owner"
+        );
+        assert!(
+            global_resource_ext.is_writable,
+            "ResourceExtension Account is not writable"
+        );
+        assert!(
+            !global_resource_ext.data_is_empty(),
+            "ResourceExtension Account is empty"
+        );
 
-            let (expected_user_tunnel_pda, _, _) =
-                get_resource_extension_pda(program_id, ResourceType::UserTunnelBlock);
-            assert_eq!(
-                global_resource_ext.key, &expected_user_tunnel_pda,
-                "Invalid ResourceExtension PDA for UserTunnelBlock"
-            );
+        let (expected_user_tunnel_pda, _, _) =
+            get_resource_extension_pda(program_id, ResourceType::UserTunnelBlock);
+        assert_eq!(
+            global_resource_ext.key, &expected_user_tunnel_pda,
+            "Invalid ResourceExtension PDA for UserTunnelBlock"
+        );
 
-            // Validate device_tunnel_ids_ext (TunnelIds)
-            assert_eq!(
-                device_tunnel_ids_ext.owner, program_id,
-                "Invalid ResourceExtension Account Owner for TunnelIds"
-            );
-            assert!(
-                device_tunnel_ids_ext.is_writable,
-                "ResourceExtension Account for TunnelIds is not writable"
-            );
-            assert!(
-                !device_tunnel_ids_ext.data.borrow().is_empty(),
-                "ResourceExtension Account for TunnelIds is empty"
-            );
+        // Validate device_tunnel_ids_ext (TunnelIds)
+        assert_eq!(
+            device_tunnel_ids_ext.owner, program_id,
+            "Invalid ResourceExtension Account Owner for TunnelIds"
+        );
+        assert!(
+            device_tunnel_ids_ext.is_writable,
+            "ResourceExtension Account for TunnelIds is not writable"
+        );
+        assert!(
+            !device_tunnel_ids_ext.data_is_empty(),
+            "ResourceExtension Account for TunnelIds is empty"
+        );
 
-            let (expected_tunnel_ids_pda, _, _) =
-                get_resource_extension_pda(program_id, ResourceType::TunnelIds(user.device_pk, 0));
-            assert_eq!(
-                device_tunnel_ids_ext.key, &expected_tunnel_ids_pda,
-                "Invalid ResourceExtension PDA for TunnelIds"
-            );
+        let (expected_tunnel_ids_pda, _, _) =
+            get_resource_extension_pda(program_id, ResourceType::TunnelIds(user.device_pk, 0));
+        assert_eq!(
+            device_tunnel_ids_ext.key, &expected_tunnel_ids_pda,
+            "Invalid ResourceExtension PDA for TunnelIds"
+        );
 
-            // Validate device_dz_prefix_ext (DzPrefixBlock)
+        // Validate all DzPrefixBlock accounts
+        for (idx, dz_prefix_account) in dz_prefix_accounts.iter().enumerate() {
             assert_eq!(
-                device_dz_prefix_ext.owner, program_id,
-                "Invalid ResourceExtension Account Owner for DzPrefixBlock"
+                dz_prefix_account.owner, program_id,
+                "Invalid ResourceExtension Account Owner for DzPrefixBlock[{}]",
+                idx
             );
             assert!(
-                device_dz_prefix_ext.is_writable,
-                "ResourceExtension Account for DzPrefixBlock is not writable"
+                dz_prefix_account.is_writable,
+                "ResourceExtension Account for DzPrefixBlock[{}] is not writable",
+                idx
             );
             assert!(
-                !device_dz_prefix_ext.data.borrow().is_empty(),
-                "ResourceExtension Account for DzPrefixBlock is empty"
+                !dz_prefix_account.data_is_empty(),
+                "ResourceExtension Account for DzPrefixBlock[{}] is empty",
+                idx
             );
 
             let (expected_dz_prefix_pda, _, _) = get_resource_extension_pda(
                 program_id,
-                ResourceType::DzPrefixBlock(user.device_pk, 0),
+                ResourceType::DzPrefixBlock(user.device_pk, idx),
             );
             assert_eq!(
-                device_dz_prefix_ext.key, &expected_dz_prefix_pda,
-                "Invalid ResourceExtension PDA for DzPrefixBlock"
+                dz_prefix_account.key, &expected_dz_prefix_pda,
+                "Invalid ResourceExtension PDA for DzPrefixBlock[{}]",
+                idx
             );
+        }
 
-            // Deallocate tunnel_net from global UserTunnelBlock
-            {
-                let mut buffer = global_resource_ext.data.borrow_mut();
-                let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
-                // Deallocate returns false if not allocated; we proceed regardless (idempotent)
-                let _deallocated = resource.deallocate(&IdOrIp::Ip(user.tunnel_net));
-                #[cfg(test)]
-                msg!(
-                    "Deallocated tunnel_net {}: {}",
-                    user.tunnel_net,
-                    _deallocated
-                );
-            }
+        // Deallocate tunnel_net from global UserTunnelBlock
+        {
+            let mut buffer = global_resource_ext.data.borrow_mut();
+            let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
+            // Deallocate returns false if not allocated; we proceed regardless (idempotent)
+            let _deallocated = resource.deallocate(&IdOrIp::Ip(user.tunnel_net));
+            #[cfg(test)]
+            msg!(
+                "Deallocated tunnel_net {}: {}",
+                user.tunnel_net,
+                _deallocated
+            );
+        }
 
-            // Deallocate tunnel_id from device TunnelIds
-            {
-                let mut buffer = device_tunnel_ids_ext.data.borrow_mut();
-                let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
-                let _deallocated = resource.deallocate(&IdOrIp::Id(user.tunnel_id));
-                #[cfg(test)]
-                msg!("Deallocated tunnel_id {}: {}", user.tunnel_id, _deallocated);
-            }
+        // Deallocate tunnel_id from device TunnelIds
+        {
+            let mut buffer = device_tunnel_ids_ext.data.borrow_mut();
+            let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
+            let _deallocated = resource.deallocate(&IdOrIp::Id(user.tunnel_id));
+            #[cfg(test)]
+            msg!("Deallocated tunnel_id {}: {}", user.tunnel_id, _deallocated);
+        }
 
-            // Deallocate dz_ip from device DzPrefixBlock (only if allocated, not client_ip)
-            // dz_ip is allocated when != client_ip and is a valid global unicast address
-            if user.dz_ip != user.client_ip && user.dz_ip != Ipv4Addr::UNSPECIFIED {
-                let mut buffer = device_dz_prefix_ext.data.borrow_mut();
-                let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
-                // Convert dz_ip to NetworkV4 with /32 prefix for deallocation
-                if let Ok(dz_ip_net) = NetworkV4::new(user.dz_ip, 32) {
-                    let _deallocated = resource.deallocate(&IdOrIp::Ip(dz_ip_net));
+        // Deallocate dz_ip from device DzPrefixBlock (only if allocated, not client_ip)
+        // Try to deallocate from each DzPrefixBlock until one succeeds
+        // dz_ip is allocated when != client_ip and is a valid global unicast address
+        if user.dz_ip != user.client_ip && user.dz_ip != Ipv4Addr::UNSPECIFIED {
+            if let Ok(dz_ip_net) = NetworkV4::new(user.dz_ip, 32) {
+                for dz_prefix_account in dz_prefix_accounts.iter() {
+                    let mut buffer = dz_prefix_account.data.borrow_mut();
+                    let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
+                    let deallocated = resource.deallocate(&IdOrIp::Ip(dz_ip_net));
                     #[cfg(test)]
-                    msg!("Deallocated dz_ip {}: {}", dz_ip_net, _deallocated);
+                    msg!(
+                        "Deallocated dz_ip {} from {:?}: {}",
+                        dz_ip_net,
+                        dz_prefix_account.key,
+                        deallocated
+                    );
+                    if deallocated {
+                        break; // Successfully deallocated
+                    }
                 }
             }
         }

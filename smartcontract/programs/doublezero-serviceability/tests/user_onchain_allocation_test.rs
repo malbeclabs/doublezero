@@ -179,6 +179,7 @@ async fn setup_user_onchain_allocation_test(
             dz_prefixes: "110.1.0.0/24".parse().unwrap(), // /24 block for dz_ip allocation
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
+            desired_status: None,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),

@@ -417,10 +417,13 @@ func fetchStatusData(ctx context.Context) *StatusResponse {
 
 	g.Go(func() error {
 		query := `
-			SELECT COALESCE(SUM(in_octets_delta) * 8.0 / NULLIF(SUM(delta_duration), 0), 0)
-			FROM fact_dz_device_interface_counters
-			WHERE event_ts > now() - INTERVAL 1 HOUR
-			  AND user_tunnel_id IS NOT NULL
+			SELECT COALESCE(SUM(interface_rate), 0) FROM (
+				SELECT SUM(in_octets_delta) * 8.0 / NULLIF(SUM(delta_duration), 0) AS interface_rate
+				FROM fact_dz_device_interface_counters
+				WHERE event_ts > now() - INTERVAL 1 HOUR
+				  AND user_tunnel_id IS NOT NULL
+				GROUP BY device_pk, intf
+			)
 		`
 		row := config.DB.QueryRow(ctx, query)
 		return row.Scan(&resp.Network.UserInboundBps)
@@ -674,15 +677,21 @@ func fetchStatusData(ctx context.Context) *StatusResponse {
 		)
 	})
 
-	// Total throughput
+	// Total throughput (sum of per-interface rates)
 	g.Go(func() error {
 		query := `
 			SELECT
-				COALESCE(SUM(in_octets_delta) * 8.0 / NULLIF(SUM(delta_duration), 0), 0) as total_in_bps,
-				COALESCE(SUM(out_octets_delta) * 8.0 / NULLIF(SUM(delta_duration), 0), 0) as total_out_bps
-			FROM fact_dz_device_interface_counters
-			WHERE event_ts > now() - INTERVAL 5 MINUTE
-			  AND link_pk != ''
+				COALESCE(SUM(in_rate), 0) as total_in_bps,
+				COALESCE(SUM(out_rate), 0) as total_out_bps
+			FROM (
+				SELECT
+					SUM(in_octets_delta) * 8.0 / NULLIF(SUM(delta_duration), 0) AS in_rate,
+					SUM(out_octets_delta) * 8.0 / NULLIF(SUM(delta_duration), 0) AS out_rate
+				FROM fact_dz_device_interface_counters
+				WHERE event_ts > now() - INTERVAL 5 MINUTE
+				  AND link_pk != ''
+				GROUP BY device_pk, intf
+			)
 		`
 		row := config.DB.QueryRow(ctx, query)
 		return row.Scan(&resp.Performance.TotalInBps, &resp.Performance.TotalOutBps)

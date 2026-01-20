@@ -321,10 +321,36 @@ ORDER BY in_errors + out_errors DESC;
 
 **Bandwidth rate calculation:**
 ```sql
--- Convert bytes/time to bits per second rate
+-- Per-interface rate (when grouping by a specific entity)
 SELECT
-    SUM(in_octets_delta) * 8.0 / SUM(delta_duration) AS in_rate_bps,
-    SUM(out_octets_delta) * 8.0 / SUM(delta_duration) AS out_rate_bps
+    entity_id,
+    SUM(in_octets_delta) * 8.0 / NULLIF(SUM(delta_duration), 0) AS in_rate_bps,
+    SUM(out_octets_delta) * 8.0 / NULLIF(SUM(delta_duration), 0) AS out_rate_bps
+FROM fact_dz_device_interface_counters
+WHERE event_ts > now() - INTERVAL 1 HOUR
+GROUP BY entity_id  -- e.g., link_pk, user_tunnel_id, device_pk
+```
+
+**Aggregating rates across multiple interfaces:**
+When computing total/aggregate bandwidth across multiple interfaces:
+1. First compute per-interface rates (GROUP BY device_pk, intf)
+2. Then SUM those rates
+
+```sql
+-- CORRECT: Total bandwidth across all interfaces
+SELECT SUM(in_rate) AS total_in_bps, SUM(out_rate) AS total_out_bps
+FROM (
+    SELECT
+        SUM(in_octets_delta) * 8.0 / NULLIF(SUM(delta_duration), 0) AS in_rate,
+        SUM(out_octets_delta) * 8.0 / NULLIF(SUM(delta_duration), 0) AS out_rate
+    FROM fact_dz_device_interface_counters
+    WHERE event_ts > now() - INTERVAL 1 HOUR
+    GROUP BY device_pk, intf
+)
+
+-- WRONG: This divides by sum of all durations, undercounting by N interfaces
+SELECT
+    SUM(in_octets_delta) * 8.0 / SUM(delta_duration) AS in_rate_bps  -- WRONG!
 FROM fact_dz_device_interface_counters
 WHERE event_ts > now() - INTERVAL 1 HOUR
 ```

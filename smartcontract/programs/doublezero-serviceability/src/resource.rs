@@ -24,24 +24,6 @@ pub enum IdOrIp {
     Id(u16),
 }
 
-impl IdOrIp {
-    /// Returns the IP network if this is an `Ip` variant, otherwise `None`.
-    pub fn get_ip(&self) -> Option<NetworkV4> {
-        match self {
-            IdOrIp::Ip(network) => Some(*network),
-            IdOrIp::Id(_) => None,
-        }
-    }
-
-    /// Returns the ID if this is an `Id` variant, otherwise `None`.
-    pub fn get_id(&self) -> Option<u16> {
-        match self {
-            IdOrIp::Id(id) => Some(*id),
-            IdOrIp::Ip(_) => None,
-        }
-    }
-}
-
 impl fmt::Display for IdOrIp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

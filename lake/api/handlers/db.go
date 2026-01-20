@@ -69,6 +69,9 @@ func (q *DBQuerier) Query(ctx context.Context, sql string) (workflow.QueryResult
 
 	metrics.RecordClickHouseQuery(duration, nil)
 
+	// Sanitize rows to replace NaN/Inf values with nil (JSON-safe)
+	workflow.SanitizeRows(resultRows)
+
 	result := workflow.QueryResult{
 		SQL:     sql,
 		Columns: columns,

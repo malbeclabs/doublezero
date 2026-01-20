@@ -70,7 +70,7 @@ func (q *HTTPQuerier) Query(ctx context.Context, sql string) (QueryResult, error
 	}
 
 	// Sanitize rows to replace NaN/Inf values with nil (JSON-safe)
-	sanitizeRows(chResp.Data)
+	SanitizeRows(chResp.Data)
 
 	result := QueryResult{
 		SQL:     sql,
@@ -159,9 +159,9 @@ func formatResult(result QueryResult) string {
 	return sb.String()
 }
 
-// sanitizeRows replaces NaN and Inf float values with nil to ensure JSON serialization works.
+// SanitizeRows replaces NaN and Inf float values with nil to ensure JSON serialization works.
 // ClickHouse can return NaN for operations like division by zero, but JSON doesn't support NaN.
-func sanitizeRows(rows []map[string]any) {
+func SanitizeRows(rows []map[string]any) {
 	for _, row := range rows {
 		for key, val := range row {
 			if f, ok := val.(float64); ok {

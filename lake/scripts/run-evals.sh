@@ -321,10 +321,18 @@ if ls "$OUTPUT_DIR"/Test*.log &>/dev/null; then
     TOKEN_DATA=$(grep -h "Anthropic API call completed" "$OUTPUT_DIR"/Test*.log 2>/dev/null | \
         sed -n 's/.*phase=\([^ ]*\).*inputTokens=\([0-9]*\).*outputTokens=\([0-9]*\).*cacheCreationInputTokens=\([0-9]*\).*cacheReadInputTokens=\([0-9]*\).*/\1 \2 \3 \4 \5/p' || true)
 
+    # Count tests that had API calls (for per-question cost calculation)
+    TESTS_WITH_CALLS=0
+    for logfile in "$OUTPUT_DIR"/Test*.log; do
+        if [[ -f "$logfile" ]] && grep -q "Anthropic API call completed" "$logfile" 2>/dev/null; then
+            TESTS_WITH_CALLS=$((TESTS_WITH_CALLS + 1))
+        fi
+    done
+
     if [[ -n "$TOKEN_DATA" ]]; then
         # Calculate stats using awk
         # Haiku 4.5 pricing: $1/M input, $5/M output, $1.25/M cache write, $0.10/M cache read
-        echo "$TOKEN_DATA" | awk '
+        echo "$TOKEN_DATA" | awk -v tests_with_calls="$TESTS_WITH_CALLS" '
         {
             phase = $1
             input = $2
@@ -377,6 +385,9 @@ if ls "$OUTPUT_DIR"/Test*.log &>/dev/null; then
             }
             printf "  ---\n"
             printf "  total: $%.2f\n", total_cost
+            if (tests_with_calls > 0) {
+                printf "  per question: $%.4f (avg of %d questions)\n", total_cost / tests_with_calls, tests_with_calls
+            }
         }
         ' | tee -a "$SUMMARY_FILE"
 

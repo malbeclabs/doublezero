@@ -9,7 +9,7 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
-	"github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/epoch"
+	"github.com/malbeclabs/doublezero/tools/solana/pkg/epoch"
 	"github.com/stretchr/testify/require"
 )
 

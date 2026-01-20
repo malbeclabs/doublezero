@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -342,6 +344,12 @@ func (p *Workflow) executeTool(ctx context.Context, call workflow.ToolCallInfo, 
 			p.logInfo("workflow: execute_cypher failed", "error", err, "params", call.Parameters)
 		}
 		return result, err
+	case "read_docs":
+		result, err := p.readDocs(ctx, call.Parameters, onProgress)
+		if err != nil {
+			p.logInfo("workflow: read_docs failed", "error", err, "params", call.Parameters)
+		}
+		return result, err
 	default:
 		p.logInfo("workflow: unknown tool called", "name", call.Name)
 		return "", fmt.Errorf("unknown tool: %s", call.Name)
@@ -663,6 +671,61 @@ func formatCypherQueryResults(queries []CypherQueryInput, results []workflow.Exe
 		sb.WriteString("\n")
 	}
 	return sb.String()
+}
+
+// docsBaseURL is the base URL for fetching raw documentation from GitHub.
+const docsBaseURL = "https://raw.githubusercontent.com/malbeclabs/docs/main/docs/"
+
+// readDocs handles the read_docs tool - fetches documentation from GitHub.
+func (p *Workflow) readDocs(ctx context.Context, params map[string]any, onProgress workflow.ProgressCallback) (string, error) {
+	input, err := ParseReadDocsInput(params)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse read_docs input: %w", err)
+	}
+
+	p.logInfo("workflow: reading docs", "page", input.Page)
+
+	// Emit progress event
+	if onProgress != nil {
+		onProgress(workflow.Progress{
+			Stage:           workflow.StageThinking,
+			ThinkingContent: fmt.Sprintf("Reading documentation: %s", input.Page),
+		})
+	}
+
+	// Build URL and fetch
+	url := docsBaseURL + input.Page + ".md"
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch docs: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("docs page not found: %s (status %d)", input.Page, resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response: %w", err)
+	}
+
+	content := string(body)
+
+	// Truncate if too long (docs shouldn't be huge, but just in case)
+	if len(content) > 10000 {
+		content = content[:10000] + "\n\n... (truncated)"
+	}
+
+	p.logInfo("workflow: docs fetched", "page", input.Page, "length", len(content))
+
+	return fmt.Sprintf("# Documentation: %s\n\n%s", input.Page, content), nil
 }
 
 // RunWithCheckpoint executes the workflow with checkpoint callbacks for durability.

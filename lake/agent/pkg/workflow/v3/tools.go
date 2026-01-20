@@ -68,16 +68,47 @@ var (
 			"required": ["queries"]
 		}`),
 	}
+
+	// ReadDocsTool allows the model to read DoubleZero documentation.
+	ReadDocsTool = Tool{
+		Name:        "read_docs",
+		Description: "Read DoubleZero documentation to answer questions about concepts, architecture, setup, troubleshooting, or how the network works. Use this when users ask 'what is DZ', 'how do I set up', 'why isn't X working', or similar conceptual/procedural questions.",
+		InputSchema: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"page": {
+					"type": "string",
+					"enum": ["index", "architecture", "setup", "troubleshooting", "connect", "connect-multicast", "contribute", "contribute-overview", "contribute-operations", "contribute-provisioning", "users-overview", "paying-fees", "paying-fees2z", "Swapping-sol-to-2z", "DZ RPC-Connection", "DZ Testnet Connection", "DZ Mainnet-beta Connection", "mainnet-beta-migration", "multicast-admin"],
+					"description": "The documentation page to read"
+				}
+			},
+			"required": ["page"]
+		}`),
+	}
 )
 
 // DefaultTools returns the default set of tools for the v3 workflow.
 func DefaultTools() []Tool {
-	return []Tool{ExecuteSQLTool}
+	return []Tool{ExecuteSQLTool, ReadDocsTool}
 }
 
 // DefaultToolsWithGraph returns tools including graph database support.
 func DefaultToolsWithGraph() []Tool {
-	return []Tool{ExecuteSQLTool, ExecuteCypherTool}
+	return []Tool{ExecuteSQLTool, ExecuteCypherTool, ReadDocsTool}
+}
+
+// ReadDocsInput represents the input for the read_docs tool.
+type ReadDocsInput struct {
+	Page string `json:"page"`
+}
+
+// ParseReadDocsInput extracts ReadDocsInput from read_docs parameters.
+func ParseReadDocsInput(params map[string]any) (*ReadDocsInput, error) {
+	page, ok := params["page"].(string)
+	if !ok || page == "" {
+		return nil, fmt.Errorf("missing or invalid 'page' parameter")
+	}
+	return &ReadDocsInput{Page: page}, nil
 }
 
 // ParseQueries extracts QueryInput from execute_sql parameters.

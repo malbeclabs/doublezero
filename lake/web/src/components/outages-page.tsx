@@ -391,7 +391,7 @@ export function OutagesPage() {
                         {outage.link_code}
                         <ExternalLink className="h-3 w-3" />
                       </Link>
-                      <div className="text-xs text-muted-foreground">{outage.link_type}</div>
+                      <div className="text-xs text-muted-foreground">{outage.contributor_code} · {outage.link_type}</div>
                     </td>
                     <td className="px-4 py-3">
                       <span className="font-mono">

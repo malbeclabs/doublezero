@@ -5,6 +5,7 @@ import { Loader2, Route, Download, ArrowRight, ChevronDown } from 'lucide-react'
 import { fetchMetroConnectivity, fetchMetroPathLatency, fetchMetroPathDetail } from '@/lib/api'
 import type { MetroPathLatency, MetroPathDetailResponse, PathOptimizeMode } from '@/lib/api'
 import { ErrorState } from '@/components/ui/error-state'
+import { useDelayedLoading } from '@/hooks/use-delayed-loading'
 
 // Color classes for improvement
 const STRENGTH_COLORS = {
@@ -184,6 +185,9 @@ export function PathLatencyPage() {
     retry: 2,
   })
 
+  // Delay showing loading spinner to avoid flash on fast loads
+  const showLoading = useDelayedLoading(connectivityLoading)
+
   // Fetch path latency data
   const { data: pathLatencyData, isLoading: pathLatencyLoading } = useQuery({
     queryKey: ['metro-path-latency', optimizeMode],
@@ -247,7 +251,7 @@ export function PathLatencyPage() {
     URL.revokeObjectURL(url)
   }
 
-  if (connectivityLoading) {
+  if (showLoading) {
     return (
       <div className="flex-1 flex items-center justify-center bg-background">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -270,6 +274,10 @@ export function PathLatencyPage() {
   }
 
   if (!connectivityData || connectivityData.metros.length === 0) {
+    // Don't show "no data" message while still loading (before delay threshold)
+    if (connectivityLoading) {
+      return <div className="flex-1 bg-background" />
+    }
     return (
       <div className="flex-1 flex items-center justify-center bg-background">
         <div className="text-muted-foreground">No metros found</div>

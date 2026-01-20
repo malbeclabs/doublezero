@@ -8,6 +8,7 @@ import type { LatencyComparison } from '@/lib/api'
 import { ErrorState } from '@/components/ui/error-state'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/hooks/use-theme'
+import { useDelayedLoading } from '@/hooks/use-delayed-loading'
 
 // Parse metro filters from URL
 function parseMetroFilters(searchParam: string): string[] {
@@ -46,6 +47,9 @@ export function DzVsInternetPage() {
     staleTime: 60000,
     retry: 2,
   })
+
+  // Delay showing loading spinner to avoid flash on fast loads
+  const showLoading = useDelayedLoading(latencyLoading)
 
   // Get selected route from URL
   const selectedRoute = searchParams.get('route')
@@ -220,7 +224,7 @@ export function DzVsInternetPage() {
     URL.revokeObjectURL(url)
   }
 
-  if (latencyLoading) {
+  if (showLoading) {
     return (
       <div className="flex-1 flex items-center justify-center bg-background">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -243,6 +247,10 @@ export function DzVsInternetPage() {
   }
 
   if (!latencyData || comparisons.length === 0) {
+    // Don't show "no data" message while still loading (before delay threshold)
+    if (latencyLoading) {
+      return <div className="flex-1 bg-background" />
+    }
     return (
       <div className="flex-1 flex items-center justify-center bg-background">
         <div className="text-muted-foreground">No latency comparison data available</div>

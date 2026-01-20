@@ -640,7 +640,7 @@ function ChatView() {
   // - Initial sync isn't complete
   // - URL has a session ID but it hasn't been synced to state yet (ChatSessionSync is still processing)
   // - Session ID is set but session hasn't been found/fetched yet
-  const sessionNotReady = urlSessionId && (urlSessionId !== currentChatSessionId || !currentChatSession)
+  const sessionNotReady = !!(urlSessionId && (urlSessionId !== currentChatSessionId || !currentChatSession))
   const isLoading = !chatSessionsLoaded || !chatServerSyncComplete || sessionNotReady
   const showSkeleton = useDelayedLoading(isLoading)
   const chatMessages = currentChatSession?.messages ?? []

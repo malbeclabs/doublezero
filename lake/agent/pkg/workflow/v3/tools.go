@@ -97,6 +97,9 @@ func ParseQueries(params map[string]any) ([]QueryInput, error) {
 			// Clean up JavaScript-style string concatenation that models sometimes use
 			// (e.g., "SELECT " + "* FROM" instead of "SELECT * FROM")
 			cleanStr = cleanJSStringConcat(cleanStr)
+			// Escape literal newlines inside JSON string values
+			// (models sometimes format SQL with literal newlines which breaks JSON)
+			cleanStr = escapeNewlinesInStrings(cleanStr)
 			suffixStart := len(cleanStr) - 50
 			if suffixStart < 0 {
 				suffixStart = 0
@@ -156,6 +159,47 @@ func cleanJSStringConcat(s string) string {
 	return jsStringConcatRegex.ReplaceAllString(s, "")
 }
 
+// escapeNewlinesInStrings escapes literal newlines inside JSON string values.
+// JSON strings cannot contain literal newlines; they must be escaped as \n.
+// This handles cases where models format SQL queries with literal newlines.
+func escapeNewlinesInStrings(s string) string {
+	var result strings.Builder
+	result.Grow(len(s))
+	inString := false
+	escaped := false
+
+	for i := 0; i < len(s); i++ {
+		ch := s[i]
+
+		if escaped {
+			result.WriteByte(ch)
+			escaped = false
+			continue
+		}
+
+		if ch == '\\' && inString {
+			result.WriteByte(ch)
+			escaped = true
+			continue
+		}
+
+		if ch == '"' {
+			inString = !inString
+			result.WriteByte(ch)
+			continue
+		}
+
+		if ch == '\n' && inString {
+			result.WriteString("\\n")
+			continue
+		}
+
+		result.WriteByte(ch)
+	}
+
+	return result.String()
+}
+
 // cleanXMLTags removes XML-style invocation tags that models sometimes include.
 // This handles cases like: [...]}]</invoke><invoke name="execute_cypher">...
 func cleanXMLTags(s string) string {
@@ -210,6 +254,8 @@ func ParseCypherQueries(params map[string]any) ([]CypherQueryInput, error) {
 			cleanStr := cleanXMLTags(queriesStr)
 			// Clean up JavaScript-style string concatenation
 			cleanStr = cleanJSStringConcat(cleanStr)
+			// Escape literal newlines inside JSON string values
+			cleanStr = escapeNewlinesInStrings(cleanStr)
 
 			var arr []any
 			if json.Unmarshal([]byte(cleanStr), &arr) == nil {

@@ -331,7 +331,7 @@ export function DzVsInternetPage() {
       </div>
 
       {/* Table */}
-      <div>
+      <div className="px-6">
         <div className="flex">
           <table className="w-full">
             <thead className="sticky top-0 bg-muted z-10">

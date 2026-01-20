@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 	"time"
+
+	solanarpc "github.com/gagliardetto/solana-go/rpc"
 )
 
 type Worker struct {
@@ -34,7 +36,39 @@ func (w *Worker) Run(ctx context.Context) error {
 			w.log.Info("Shutting down worker")
 			return nil
 		case <-ticker.C:
-			w.log.Info("Device health oracle tick")
+			w.tick(ctx)
 		}
 	}
+}
+
+func (w *Worker) tick(ctx context.Context) {
+	currentSlot, err := w.cfg.LedgerRPCClient.GetSlot(ctx, solanarpc.CommitmentFinalized)
+	if err != nil {
+		w.log.Error("Failed to get current slot", "error", err)
+		return
+	}
+
+	provisioningSlot := currentSlot - w.cfg.ProvisioningSlotCount
+	drainedSlot := currentSlot - w.cfg.DrainedSlotCount
+
+	provisioningTime, err := w.cfg.LedgerRPCClient.GetBlockTime(ctx, provisioningSlot)
+	if err != nil {
+		w.log.Error("Failed to get block time for provisioning slot", "slot", provisioningSlot, "error", err)
+		return
+	}
+
+	drainedTime, err := w.cfg.LedgerRPCClient.GetBlockTime(ctx, drainedSlot)
+	if err != nil {
+		w.log.Error("Failed to get block time for drained slot", "slot", drainedSlot, "error", err)
+		return
+	}
+
+	w.log.Info("Device health oracle tick",
+		"currentSlot", currentSlot,
+		"provisioningSlotCount", w.cfg.ProvisioningSlotCount,
+		"provisioningSlot", provisioningSlot,
+		"provisioningTime", provisioningTime.Time(),
+		"drainedSlotCount", w.cfg.DrainedSlotCount,
+		"drainedSlot", drainedSlot,
+		"drainedTime", drainedTime.Time())
 }

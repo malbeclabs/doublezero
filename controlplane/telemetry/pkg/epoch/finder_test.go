@@ -7,14 +7,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/epoch"
 	"github.com/stretchr/testify/require"
 )
 
 type mockSolanaRPCClient struct {
-	GetSlotFunc          func(ctx context.Context, commitment solanarpc.CommitmentType) (uint64, error)
-	GetEpochScheduleFunc func(ctx context.Context) (out *solanarpc.GetEpochScheduleResult, err error)
+	GetSlotFunc                         func(ctx context.Context, commitment solanarpc.CommitmentType) (uint64, error)
+	GetEpochScheduleFunc                func(ctx context.Context) (out *solanarpc.GetEpochScheduleResult, err error)
+	GetSignaturesForAddressWithOptsFunc func(ctx context.Context, account solana.PublicKey, opts *solanarpc.GetSignaturesForAddressOpts) ([]*solanarpc.TransactionSignature, error)
 }
 
 func (m *mockSolanaRPCClient) GetSlot(ctx context.Context, commitment solanarpc.CommitmentType) (uint64, error) {
@@ -23,6 +25,13 @@ func (m *mockSolanaRPCClient) GetSlot(ctx context.Context, commitment solanarpc.
 
 func (m *mockSolanaRPCClient) GetEpochSchedule(ctx context.Context) (out *solanarpc.GetEpochScheduleResult, err error) {
 	return m.GetEpochScheduleFunc(ctx)
+}
+
+func (m *mockSolanaRPCClient) GetSignaturesForAddressWithOpts(ctx context.Context, account solana.PublicKey, opts *solanarpc.GetSignaturesForAddressOpts) ([]*solanarpc.TransactionSignature, error) {
+	if m.GetSignaturesForAddressWithOptsFunc != nil {
+		return m.GetSignaturesForAddressWithOptsFunc(ctx, account, opts)
+	}
+	return nil, nil
 }
 
 func TestEpochFinder(t *testing.T) {
@@ -253,4 +262,155 @@ func TestEpochFinder(t *testing.T) {
 		require.Equal(t, epochVal, got)
 	})
 
+}
+
+func TestSlotTimeFinder(t *testing.T) {
+	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
+
+	t.Run("IsAccountOlderThanBurnInPeriod returns true when transaction older than burn-in exists", func(t *testing.T) {
+		t.Parallel()
+
+		currentSlot := uint64(300_000)
+		burnInSlots := uint64(200_000)
+		// targetSlot = currentSlot - burnInSlots = 100_000
+
+		client := &mockSolanaRPCClient{
+			GetSlotFunc: func(ctx context.Context, _ solanarpc.CommitmentType) (uint64, error) {
+				return currentSlot, nil
+			},
+			GetSignaturesForAddressWithOptsFunc: func(ctx context.Context, account solana.PublicKey, opts *solanarpc.GetSignaturesForAddressOpts) ([]*solanarpc.TransactionSignature, error) {
+				return []*solanarpc.TransactionSignature{
+					{Slot: 250_000}, // newer than target
+					{Slot: 150_000}, // newer than target
+					{Slot: 50_000},  // older than target - should trigger return
+				}, nil
+			},
+		}
+
+		f, err := epoch.NewSlotTimeFinder(log, client)
+		require.NoError(t, err)
+
+		pubkey := solana.NewWallet().PublicKey()
+		pastBurnIn, err := f.IsAccountOlderThanBurnInPeriod(context.Background(), pubkey, burnInSlots)
+		require.NoError(t, err)
+		require.True(t, pastBurnIn)
+	})
+
+	t.Run("IsAccountOlderThanBurnInPeriod returns false when all transactions are newer than burn-in", func(t *testing.T) {
+		t.Parallel()
+
+		currentSlot := uint64(300_000)
+		burnInSlots := uint64(200_000)
+
+		client := &mockSolanaRPCClient{
+			GetSlotFunc: func(ctx context.Context, _ solanarpc.CommitmentType) (uint64, error) {
+				return currentSlot, nil
+			},
+			GetSignaturesForAddressWithOptsFunc: func(ctx context.Context, account solana.PublicKey, opts *solanarpc.GetSignaturesForAddressOpts) ([]*solanarpc.TransactionSignature, error) {
+				if opts.Before.IsZero() {
+					return []*solanarpc.TransactionSignature{
+						{Slot: 250_000, Signature: solana.MustSignatureFromBase58("5VERv8NMvzbJMEkV8xnrLkEaWRtSz9CosKDYjCJjBRnbJLgp8uirBgmQpjKhoR4tjF3ZpRzrFmBV6UjKdiSZkQUW")},
+						{Slot: 200_000, Signature: solana.MustSignatureFromBase58("4oCEqwGbMcbTYHZ8ZVjLu6Z8HZMyvCpWJoLtxV3j3EGPKA5V6RFZT7y4rjDwKkD6gxmD4dL7RJXFvU7LzuXNexT3")},
+					}, nil
+				}
+				return []*solanarpc.TransactionSignature{}, nil
+			},
+		}
+
+		f, err := epoch.NewSlotTimeFinder(log, client)
+		require.NoError(t, err)
+
+		pubkey := solana.NewWallet().PublicKey()
+		pastBurnIn, err := f.IsAccountOlderThanBurnInPeriod(context.Background(), pubkey, burnInSlots)
+		require.NoError(t, err)
+		require.False(t, pastBurnIn)
+	})
+
+	t.Run("IsAccountOlderThanBurnInPeriod returns false when no transactions exist", func(t *testing.T) {
+		t.Parallel()
+
+		currentSlot := uint64(300_000)
+		burnInSlots := uint64(200_000)
+
+		client := &mockSolanaRPCClient{
+			GetSlotFunc: func(ctx context.Context, _ solanarpc.CommitmentType) (uint64, error) {
+				return currentSlot, nil
+			},
+			GetSignaturesForAddressWithOptsFunc: func(ctx context.Context, account solana.PublicKey, opts *solanarpc.GetSignaturesForAddressOpts) ([]*solanarpc.TransactionSignature, error) {
+				return []*solanarpc.TransactionSignature{}, nil
+			},
+		}
+
+		f, err := epoch.NewSlotTimeFinder(log, client)
+		require.NoError(t, err)
+
+		pubkey := solana.NewWallet().PublicKey()
+		pastBurnIn, err := f.IsAccountOlderThanBurnInPeriod(context.Background(), pubkey, burnInSlots)
+		require.NoError(t, err)
+		require.False(t, pastBurnIn)
+	})
+
+	t.Run("IsAccountOlderThanBurnInPeriod returns false when the ledger has fewer slots than the burn-in period", func(t *testing.T) {
+		t.Parallel()
+
+		currentSlot := uint64(100_000)
+		burnInSlots := uint64(200_000)
+
+		client := &mockSolanaRPCClient{
+			GetSlotFunc: func(ctx context.Context, _ solanarpc.CommitmentType) (uint64, error) {
+				return currentSlot, nil
+			},
+		}
+
+		f, err := epoch.NewSlotTimeFinder(log, client)
+		require.NoError(t, err)
+
+		pubkey := solana.NewWallet().PublicKey()
+		pastBurnIn, err := f.IsAccountOlderThanBurnInPeriod(context.Background(), pubkey, burnInSlots)
+		require.NoError(t, err)
+		require.False(t, pastBurnIn)
+	})
+
+	t.Run("IsAccountOlderThanBurnInPeriod paginates through results", func(t *testing.T) {
+		t.Parallel()
+
+		currentSlot := uint64(500_000)
+		burnInSlots := uint64(200_000)
+		calls := 0
+
+		sig1 := solana.MustSignatureFromBase58("5VERv8NMvzbJMEkV8xnrLkEaWRtSz9CosKDYjCJjBRnbJLgp8uirBgmQpjKhoR4tjF3ZpRzrFmBV6UjKdiSZkQUW")
+		sig2 := solana.MustSignatureFromBase58("4oCEqwGbMcbTYHZ8ZVjLu6Z8HZMyvCpWJoLtxV3j3EGPKA5V6RFZT7y4rjDwKkD6gxmD4dL7RJXFvU7LzuXNexT3")
+
+		client := &mockSolanaRPCClient{
+			GetSlotFunc: func(ctx context.Context, _ solanarpc.CommitmentType) (uint64, error) {
+				return currentSlot, nil
+			},
+			GetSignaturesForAddressWithOptsFunc: func(ctx context.Context, account solana.PublicKey, opts *solanarpc.GetSignaturesForAddressOpts) ([]*solanarpc.TransactionSignature, error) {
+				calls++
+				switch calls {
+				case 1:
+					return []*solanarpc.TransactionSignature{
+						{Slot: 450_000, Signature: sig1},
+						{Slot: 400_000, Signature: sig2},
+					}, nil
+				case 2:
+					return []*solanarpc.TransactionSignature{
+						{Slot: 350_000, Signature: sig1},
+						{Slot: 310_000, Signature: sig2},
+					}, nil
+				default:
+					return []*solanarpc.TransactionSignature{}, nil
+				}
+			},
+		}
+
+		f, err := epoch.NewSlotTimeFinder(log, client)
+		require.NoError(t, err)
+
+		pubkey := solana.NewWallet().PublicKey()
+		pastBurnIn, err := f.IsAccountOlderThanBurnInPeriod(context.Background(), pubkey, burnInSlots)
+		require.NoError(t, err)
+		require.False(t, pastBurnIn)
+		require.Equal(t, 3, calls)
+	})
 }

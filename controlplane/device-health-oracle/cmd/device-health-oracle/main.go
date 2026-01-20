@@ -23,6 +23,12 @@ import (
 
 const (
 	defaultInterval = 1 * time.Minute
+
+	// Default burn-in slot counts for devices/links.
+	// Provisioning: ~20 hours (200,000 slots * 400ms per slot)
+	// Drained: ~30 minutes (5,000 slots * 400ms per slot)
+	defaultProvisioningSlotCount = 200_000
+	defaultDrainedSlotCount      = 5_000
 )
 
 var (
@@ -35,6 +41,8 @@ var (
 	serviceabilityProgramID = flag.String("serviceability-program-id", "", "the id of the serviceability program")
 	telemetryProgramID      = flag.String("telemetry-program-id", "", "the id of the telemetry program")
 	slackWebhookURL         = flag.String("slack-webhook-url", "", "The Slack webhook URL to send alerts")
+	provisioningSlotCount   = flag.Uint64("provisioning-slot-count", defaultProvisioningSlotCount, "Burn-in slot count for new devices/links (~20 hours at 200000)")
+	drainedSlotCount        = flag.Uint64("drained-slot-count", defaultDrainedSlotCount, "Burn-in slot count for reactivated devices/links (~30 min at 5000)")
 	version                 = "dev"
 	commit                  = "none"
 	date                    = "unknown"
@@ -121,13 +129,15 @@ func main() {
 	}()
 
 	w, err := worker.New(&worker.Config{
-		Logger:          log,
-		LedgerRPCClient: rpcClient,
-		Serviceability:  serviceabilityClient,
-		Telemetry:       telemetryClient,
-		Interval:        *interval,
-		SlackWebhookURL: *slackWebhookURL,
-		Env:             *env,
+		Logger:                log,
+		LedgerRPCClient:       rpcClient,
+		Serviceability:        serviceabilityClient,
+		Telemetry:             telemetryClient,
+		Interval:              *interval,
+		SlackWebhookURL:       *slackWebhookURL,
+		Env:                   *env,
+		ProvisioningSlotCount: *provisioningSlotCount,
+		DrainedSlotCount:      *drainedSlotCount,
 	})
 	if err != nil {
 		log.Error("Failed to create worker", "error", err)

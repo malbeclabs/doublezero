@@ -57,14 +57,16 @@ type DevnetSpec struct {
 	CYOANetwork CYOANetworkSpec
 
 	// Override the default device tunnel network onchain.
-	DeviceTunnelNet string
-	Ledger          LedgerSpec
-	Manager         ManagerSpec
-	Funder          FunderSpec
-	Controller      ControllerSpec
-	Activator       ActivatorSpec
-	Devices         map[string]DeviceSpec
-	Clients         map[string]ClientSpec
+	DeviceTunnelNet    string
+	Ledger             LedgerSpec
+	Manager            ManagerSpec
+	Funder             FunderSpec
+	Controller         ControllerSpec
+	Activator          ActivatorSpec
+	DeviceHealthOracle DeviceHealthOracleSpec
+	InfluxDB           InfluxDBSpec
+	Devices            map[string]DeviceSpec
+	Clients            map[string]ClientSpec
 }
 
 type Devnet struct {
@@ -83,13 +85,15 @@ type Devnet struct {
 	DefaultNetwork *DefaultNetwork
 	CYOANetwork    *CYOANetwork
 
-	Ledger     *Ledger
-	Manager    *Manager
-	Funder     *Funder
-	Controller *Controller
-	Activator  *Activator
-	Devices    map[string]*Device
-	Clients    map[string]*Client
+	Ledger             *Ledger
+	Manager            *Manager
+	Funder             *Funder
+	Controller         *Controller
+	Activator          *Activator
+	DeviceHealthOracle *DeviceHealthOracle
+	InfluxDB           *InfluxDB
+	Devices            map[string]*Device
+	Clients            map[string]*Client
 }
 
 func (s *DevnetSpec) Validate() error {
@@ -128,6 +132,14 @@ func (s *DevnetSpec) Validate() error {
 
 	if err := s.Activator.Validate(); err != nil {
 		return fmt.Errorf("activator: %w", err)
+	}
+
+	if err := s.DeviceHealthOracle.Validate(); err != nil {
+		return fmt.Errorf("device-health-oracle: %w", err)
+	}
+
+	if err := s.InfluxDB.Validate(); err != nil {
+		return fmt.Errorf("influxdb: %w", err)
 	}
 
 	if s.Devices == nil {
@@ -287,6 +299,14 @@ func New(spec DevnetSpec, log *slog.Logger, dockerClient *client.Client, subnetA
 		dn:  dn,
 		log: log.With("component", "activator"),
 	}
+	dn.DeviceHealthOracle = &DeviceHealthOracle{
+		dn:  dn,
+		log: log.With("component", "device-health-oracle"),
+	}
+	dn.InfluxDB = &InfluxDB{
+		dn:  dn,
+		log: log.With("component", "influxdb"),
+	}
 	dn.Devices = make(map[string]*Device)
 	dn.Clients = make(map[string]*Client)
 
@@ -389,6 +409,11 @@ func (d *Devnet) Start(ctx context.Context, buildConfig *BuildConfig) error {
 		}
 	}
 
+	// Start the influxdb if it's not already running.
+	if _, err := d.InfluxDB.StartIfNotRunning(ctx); err != nil {
+		return fmt.Errorf("failed to start influxdb: %w", err)
+	}
+
 	// Start the controller if it's not already running.
 	if _, err := d.Controller.StartIfNotRunning(ctx); err != nil {
 		return fmt.Errorf("failed to start controller: %w", err)
@@ -397,6 +422,11 @@ func (d *Devnet) Start(ctx context.Context, buildConfig *BuildConfig) error {
 	// Start the activator if it's not already running.
 	if _, err := d.Activator.StartIfNotRunning(ctx); err != nil {
 		return fmt.Errorf("failed to start activator: %w", err)
+	}
+
+	// Start the device-health-oracle if it's not already running.
+	if _, err := d.DeviceHealthOracle.StartIfNotRunning(ctx); err != nil {
+		return fmt.Errorf("failed to start device-health-oracle: %w", err)
 	}
 
 	// Create the CYOA network if it doesn't exist.

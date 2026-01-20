@@ -10,10 +10,12 @@
 //! - Idempotency (double activation)
 
 use doublezero_serviceability::{
+    entrypoint::process_instruction,
     instructions::DoubleZeroInstruction,
     pda::{
         get_accesspass_pda, get_contributor_pda, get_device_pda, get_exchange_pda,
-        get_globalconfig_pda, get_location_pda, get_resource_extension_pda, get_user_pda,
+        get_globalconfig_pda, get_globalstate_pda, get_location_pda, get_program_config_pda,
+        get_resource_extension_pda, get_user_pda,
     },
     processors::{
         accesspass::set::SetAccessPassArgs,
@@ -24,7 +26,6 @@ use doublezero_serviceability::{
         exchange::create::ExchangeCreateArgs,
         globalconfig::set::SetGlobalConfigArgs,
         location::create::LocationCreateArgs,
-        resource::create::ResourceCreateArgs,
         user::{
             activate::UserActivateArgs, closeaccount::UserCloseAccountArgs, create::UserCreateArgs,
             delete::UserDeleteArgs,
@@ -48,7 +49,7 @@ use test_helpers::*;
 // ============================================================================
 
 /// Setup a complete test environment with:
-/// - GlobalState, GlobalConfig
+/// - GlobalState, GlobalConfig (with link-local user_tunnel_block)
 /// - Location, Exchange, Contributor
 /// - Activated Device
 /// - ResourceExtension accounts (UserTunnelBlock, TunnelIds, DzPrefixBlock)
@@ -68,14 +69,46 @@ async fn setup_user_onchain_allocation_test(
     Pubkey,                   // accesspass_pubkey
     (Pubkey, Pubkey, Pubkey), // (user_tunnel_block, tunnel_ids, dz_prefix_block)
 ) {
-    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
-        setup_program_with_globalconfig().await;
+    // Initialize program with link-local user_tunnel_block from the start
+    // (user_tunnel_block is immutable once set, so we can't override it later)
+    let program_id = Pubkey::new_unique();
 
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let (mut banks_client, payer, recent_blockhash) = ProgramTest::new(
+        "doublezero_serviceability",
+        program_id,
+        processor!(process_instruction),
+    )
+    .start()
+    .await;
 
-    // Override globalconfig with link-local user_tunnel_block for user on-chain allocation
+    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
     let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
+    let (device_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
+    let (user_tunnel_block_pubkey, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
+    let (multicastgroup_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock);
+    let (link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
+    let (segment_routing_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
 
+    // Initialize global state
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::InitGlobalState(),
+        vec![
+            AccountMeta::new(program_config_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Set global config with LINK-LOCAL user_tunnel_block for user on-chain allocation
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -91,6 +124,11 @@ async fn setup_user_onchain_allocation_test(
         vec![
             AccountMeta::new(globalconfig_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_tunnel_block_pda, false),
+            AccountMeta::new(user_tunnel_block_pubkey, false),
+            AccountMeta::new(multicastgroup_block_pda, false),
+            AccountMeta::new(link_ids_pda, false),
+            AccountMeta::new(segment_routing_ids_pda, false),
         ],
         &payer,
     )
@@ -212,80 +250,25 @@ async fn setup_user_onchain_allocation_test(
     )
     .await;
 
-    // Activate Device
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {}),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Create ResourceExtension accounts
-    let (user_tunnel_block_pubkey, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateResource(ResourceCreateArgs {
-            resource_type: ResourceType::UserTunnelBlock,
-        }),
-        vec![
-            AccountMeta::new(user_tunnel_block_pubkey, false),
-            AccountMeta::new(Pubkey::default(), false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(globalconfig_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
-
+    // Compute resource PDAs for device activation
+    // ActivateDevice now creates TunnelIds and DzPrefixBlock resources
     let (tunnel_ids_pubkey, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pubkey, 0));
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateResource(ResourceCreateArgs {
-            resource_type: ResourceType::TunnelIds(device_pubkey, 0),
-        }),
-        vec![
-            AccountMeta::new(tunnel_ids_pubkey, false),
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(globalconfig_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
-
     let (dz_prefix_block_pubkey, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 0));
 
+    // Activate Device with resource_count: 2 (TunnelIds + 1 DzPrefixBlock)
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateResource(ResourceCreateArgs {
-            resource_type: ResourceType::DzPrefixBlock(device_pubkey, 0),
-        }),
+        DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs { resource_count: 2 }),
         vec![
-            AccountMeta::new(dz_prefix_block_pubkey, false),
             AccountMeta::new(device_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(globalconfig_pubkey, false),
+            AccountMeta::new(tunnel_ids_pubkey, false),
+            AccountMeta::new(dz_prefix_block_pubkey, false),
         ],
         &payer,
     )

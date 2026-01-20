@@ -373,7 +373,7 @@ export function PathCalculatorPage() {
           {sourceDevice && targetDevice && (
             <div className="mt-4 pt-4 border-t border-border">
               <Link
-                to={`/topology/graph?mode=path&from=${sourceDevice.pk}&to=${targetDevice.pk}`}
+                to={`/topology/graph?path_source=${sourceDevice.pk}&path_target=${targetDevice.pk}`}
                 className="text-sm text-primary hover:underline flex items-center gap-1"
               >
                 View in graph

@@ -1,13 +1,19 @@
 import { useState, useMemo, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Loader2, Zap, Download, ArrowRight, ChevronUp, ChevronDown } from 'lucide-react'
+import { Loader2, Zap, Download, ArrowRight, ChevronUp, ChevronDown, Search, X, MapPin } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip as RechartsTooltip, CartesianGrid } from 'recharts'
 import { fetchLatencyComparison, fetchLatencyHistory } from '@/lib/api'
 import type { LatencyComparison } from '@/lib/api'
 import { ErrorState } from '@/components/ui/error-state'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/hooks/use-theme'
+
+// Parse metro filters from URL
+function parseMetroFilters(searchParam: string): string[] {
+  if (!searchParam) return []
+  return searchParam.split(',').map(f => f.trim()).filter(Boolean)
+}
 
 type SortField = 'route' | 'dz' | 'internet' | 'improvement' | 'dzJitter' | 'internetJitter'
 type SortDirection = 'asc' | 'desc'
@@ -44,6 +50,11 @@ export function DzVsInternetPage() {
   // Get selected route from URL
   const selectedRoute = searchParams.get('route')
 
+  // Get metro filters from URL
+  const metroFilters = useMemo(() => {
+    return parseMetroFilters(searchParams.get('metros') || '')
+  }, [searchParams])
+
   // Find the selected comparison from the data based on URL param
   const selectedComparison = useMemo(() => {
     if (!selectedRoute || !latencyData) return null
@@ -53,14 +64,44 @@ export function DzVsInternetPage() {
     ) ?? null
   }, [selectedRoute, latencyData])
 
-  // Update URL when selection changes
+  // Update URL when selection changes (preserve metros filter)
   const setSelectedComparison = useCallback((comp: LatencyComparison | null) => {
-    if (comp) {
-      setSearchParams({ route: `${comp.origin_metro_code}-${comp.target_metro_code}` })
-    } else {
-      setSearchParams({})
-    }
+    setSearchParams(prev => {
+      if (comp) {
+        prev.set('route', `${comp.origin_metro_code}-${comp.target_metro_code}`)
+      } else {
+        prev.delete('route')
+      }
+      return prev
+    })
   }, [setSearchParams])
+
+  // Remove a metro filter
+  const removeMetroFilter = useCallback((metro: string) => {
+    setSearchParams(prev => {
+      const current = parseMetroFilters(prev.get('metros') || '')
+      const newFilters = current.filter(m => m !== metro)
+      if (newFilters.length === 0) {
+        prev.delete('metros')
+      } else {
+        prev.set('metros', newFilters.join(','))
+      }
+      return prev
+    })
+  }, [setSearchParams])
+
+  // Clear all metro filters
+  const clearAllFilters = useCallback(() => {
+    setSearchParams(prev => {
+      prev.delete('metros')
+      return prev
+    })
+  }, [setSearchParams])
+
+  // Open the search spotlight
+  const openSearch = useCallback(() => {
+    window.dispatchEvent(new CustomEvent('open-search'))
+  }, [])
 
   // Fetch latency history for selected comparison
   const { data: historyData, isLoading: historyLoading } = useQuery({
@@ -89,11 +130,21 @@ export function DzVsInternetPage() {
   const dzColor = isDark ? '#22c55e' : '#16a34a'
   const inetColor = isDark ? '#94a3b8' : '#64748b'
 
-  // Filter to only comparisons with internet data and sort
+  // Filter to only comparisons with internet data, apply metro filters, and sort
   const comparisons = useMemo(() => {
     if (!latencyData) return []
 
-    const filtered = latencyData.comparisons.filter(c => c.internet_sample_count > 0)
+    let filtered = latencyData.comparisons.filter(c => c.internet_sample_count > 0)
+
+    // Apply metro filters - show routes where origin OR target matches any filter
+    if (metroFilters.length > 0) {
+      filtered = filtered.filter(c =>
+        metroFilters.some(m =>
+          c.origin_metro_code.toLowerCase() === m.toLowerCase() ||
+          c.target_metro_code.toLowerCase() === m.toLowerCase()
+        )
+      )
+    }
 
     return filtered.sort((a, b) => {
       let cmp = 0
@@ -121,7 +172,7 @@ export function DzVsInternetPage() {
       }
       return sortDirection === 'asc' ? cmp : -cmp
     })
-  }, [latencyData, sortField, sortDirection])
+  }, [latencyData, sortField, sortDirection, metroFilters])
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -239,6 +290,43 @@ export function DzVsInternetPage() {
               {latencyData.summary.max_improvement_pct.toFixed(1)}%
             </span>
           </div>
+        </div>
+
+        {/* Filter bar */}
+        <div className="flex items-center gap-2 flex-wrap mt-4">
+          {/* Search button */}
+          <button
+            onClick={openSearch}
+            className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground border border-border rounded-md bg-background hover:bg-muted transition-colors"
+            title="Filter by metro (Cmd+K)"
+          >
+            <Search className="h-3 w-3" />
+            <span>Filter</span>
+            <kbd className="ml-0.5 font-mono text-[10px] text-muted-foreground/70">⌘K</kbd>
+          </button>
+
+          {/* Filter tags */}
+          {metroFilters.map((metro) => (
+            <button
+              key={metro}
+              onClick={() => removeMetroFilter(metro)}
+              className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 transition-colors"
+            >
+              <MapPin className="h-3 w-3" />
+              {metro}
+              <X className="h-3 w-3" />
+            </button>
+          ))}
+
+          {/* Clear all */}
+          {metroFilters.length > 1 && (
+            <button
+              onClick={clearAllFilters}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Clear all
+            </button>
+          )}
         </div>
       </div>
 

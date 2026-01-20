@@ -69,6 +69,7 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
   const isTimelinePage = location.pathname === '/timeline'
   const isStatusPage = location.pathname.startsWith('/status')
   const isOutagesPage = location.pathname === '/outages'
+  const isPerformancePage = location.pathname.startsWith('/performance')
 
   // Helper to add a filter to the timeline search (accumulating)
   const addTimelineFilter = useCallback((filterValue: string) => {
@@ -94,6 +95,21 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
     })
   }, [searchParams, setSearchParams])
 
+  // Helper to add a metro filter to the performance page (accumulating)
+  const addPerformanceFilter = useCallback((metroCode: string) => {
+    const currentFilter = searchParams.get('metros') || ''
+    const filters = currentFilter ? currentFilter.split(',').map(f => f.trim()).filter(Boolean) : []
+    if (!filters.includes(metroCode)) {
+      filters.push(metroCode)
+    }
+    setSearchParams(prev => {
+      prev.set('metros', filters.join(','))
+      // Clear route selection when filtering
+      prev.delete('route')
+      return prev
+    })
+  }, [searchParams, setSearchParams])
+
   // Focus input when opened
   useEffect(() => {
     if (isOpen) {
@@ -115,12 +131,20 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
 
   // Determine what to show
   const showRecentSearches = query.length === 0 && recentSearches.length > 0
-  const suggestions = data?.suggestions || []
+  // Filter suggestions to only metros when on performance page
+  const suggestions = isPerformancePage
+    ? (data?.suggestions || []).filter(s => s.type === 'metro')
+    : (data?.suggestions || [])
 
-  // Check if query matches any field prefix
-  const matchingPrefixes = query.length > 0 && !query.includes(':')
+  // Check if query matches any field prefix (skip on performance page - only metros)
+  const matchingPrefixes = query.length > 0 && !query.includes(':') && !isPerformancePage
     ? fieldPrefixes.filter(p => p.prefix.toLowerCase().startsWith(query.toLowerCase()))
     : []
+
+  // Filter recent searches to only metros on performance page
+  const filteredRecentSearches = isPerformancePage
+    ? recentSearches.filter(s => s.type === 'metro')
+    : recentSearches
 
   // Build items list
   const items: (SearchSuggestion | { type: 'prefix'; prefix: string; description: string } | { type: 'recent'; item: SearchSuggestion } | { type: 'ask-ai' } | { type: 'filter-timeline' })[] = []
@@ -135,15 +159,15 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
   }
 
   if (showRecentSearches) {
-    items.push(...recentSearches.map(item => ({ type: 'recent' as const, item })))
+    items.push(...filteredRecentSearches.map(item => ({ type: 'recent' as const, item })))
   }
 
   if (!showRecentSearches) {
     items.push(...suggestions)
   }
 
-  // Add "Ask AI" option when there's a query
-  if (query.length >= 2) {
+  // Add "Ask AI" option when there's a query (not on performance page)
+  if (query.length >= 2 && !isPerformancePage) {
     items.push({ type: 'ask-ai' as const })
   }
 
@@ -205,13 +229,24 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
       return
     }
 
+    // On performance page, add metro filter (only metros are shown)
+    if (isPerformancePage && item.type === 'metro') {
+      if (e && (e.metaKey || e.ctrlKey)) {
+        // Open new tab with just this filter
+        window.open(`${location.pathname}?metros=${encodeURIComponent(item.label)}`, '_blank')
+      } else {
+        addPerformanceFilter(item.label)
+      }
+      return
+    }
+
     // Default: navigate to entity detail page
     if (e) {
       handleRowClick(e, item.url, navigate)
     } else {
       navigate(item.url)
     }
-  }, [navigate, addRecentSearch, onClose, isTopologyPage, isTimelinePage, addTimelineFilter, isStatusPage, isOutagesPage, addStatusFilter, location.pathname])
+  }, [navigate, addRecentSearch, onClose, isTopologyPage, isTimelinePage, addTimelineFilter, isStatusPage, isOutagesPage, addStatusFilter, isPerformancePage, addPerformanceFilter, location.pathname])
 
   const handleAskAI = useCallback((e?: React.MouseEvent) => {
     if (!query.trim()) return
@@ -302,7 +337,7 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={isTopologyPage ? "Search entities (opens in map)..." : isTimelinePage ? "Filter timeline events..." : isStatusPage ? "Filter status by entity..." : isOutagesPage ? "Filter outages by entity..." : "Search entities..."}
+            placeholder={isTopologyPage ? "Search entities (opens in map)..." : isTimelinePage ? "Filter timeline events..." : isStatusPage ? "Filter status by entity..." : isOutagesPage ? "Filter outages by entity..." : isPerformancePage ? "Filter by metro..." : "Search entities..."}
             className="flex-1 h-14 px-3 text-lg bg-transparent border-0 focus:outline-none placeholder:text-muted-foreground"
           />
           {isLoading && query.length >= 2 && (
@@ -461,6 +496,11 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
                     Filter outages
                   </span>
                 )}
+                {isPerformancePage && (
+                  <span className="text-xs text-muted-foreground flex-shrink-0">
+                    Filter by metro
+                  </span>
+                )}
               </button>
             )
           })}
@@ -484,6 +524,9 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
           )}
           {isOutagesPage && (
             <span className="text-blue-500">On outages</span>
+          )}
+          {isPerformancePage && (
+            <span className="text-blue-500">On performance</span>
           )}
         </div>
       </div>

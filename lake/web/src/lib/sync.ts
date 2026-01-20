@@ -90,11 +90,16 @@ function mergeSessions<T extends { id: string; updatedAt: Date }>(
     if (serverSession) {
       // Both exist - check various conditions for which to use
       const localHasStreaming = hasStreamingMessage(localSession)
+      const serverHasStreaming = hasStreamingMessage(serverSession)
       const localMsgCount = getMessageCount(localSession)
       const serverMsgCount = getMessageCount(serverSession)
 
       if (localHasStreaming) {
         // Local has streaming - ALWAYS use local (critical for resume)
+        merged.push(localSession)
+      } else if (serverHasStreaming) {
+        // Server has streaming but local doesn't - local is more complete
+        // This happens when completion wasn't synced before page close
         merged.push(localSession)
       } else if (localMsgCount > serverMsgCount) {
         // Local has more messages - use local (server is stale)

@@ -271,10 +271,37 @@ func GetRunningWorkflowForSession(ctx context.Context, sessionID uuid.UUID) (*Wo
 	return &run, nil
 }
 
+// GetLatestWorkflowForSession returns the most recent workflow for a session, regardless of status.
+func GetLatestWorkflowForSession(ctx context.Context, sessionID uuid.UUID) (*WorkflowRun, error) {
+	var run WorkflowRun
+	err := config.PgPool.QueryRow(ctx, `
+		SELECT id, session_id, status, user_question, iteration, messages, thinking_steps,
+		       executed_queries, steps, final_answer, llm_calls, input_tokens, output_tokens,
+		       started_at, updated_at, completed_at, error
+		FROM workflow_runs
+		WHERE session_id = $1
+		ORDER BY started_at DESC
+		LIMIT 1
+	`, sessionID).Scan(
+		&run.ID, &run.SessionID, &run.Status, &run.UserQuestion,
+		&run.Iteration, &run.Messages, &run.ThinkingSteps, &run.ExecutedQueries, &run.Steps,
+		&run.FinalAnswer, &run.LLMCalls, &run.InputTokens, &run.OutputTokens,
+		&run.StartedAt, &run.UpdatedAt, &run.CompletedAt, &run.Error,
+	)
+	if err != nil {
+		if err.Error() == "no rows in result set" {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to get latest workflow: %w", err)
+	}
+	return &run, nil
+}
+
 // HTTP Handlers
 
 // GetWorkflowForSession handles GET /api/sessions/{id}/workflow
-// Returns the currently running workflow for a session, if any.
+// Returns the most recent workflow for a session (running, completed, or failed).
+// Use ?status=running to get only running workflows (legacy behavior).
 func GetWorkflowForSession(w http.ResponseWriter, r *http.Request) {
 	sessionIDStr := chi.URLParam(r, "id")
 	sessionID, err := uuid.Parse(sessionIDStr)
@@ -283,13 +310,21 @@ func GetWorkflowForSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	run, err := GetRunningWorkflowForSession(r.Context(), sessionID)
+	var run *WorkflowRun
+
+	// Check for legacy behavior (only running workflows)
+	if r.URL.Query().Get("status") == "running" {
+		run, err = GetRunningWorkflowForSession(r.Context(), sessionID)
+	} else {
+		run, err = GetLatestWorkflowForSession(r.Context(), sessionID)
+	}
+
 	if err != nil {
 		http.Error(w, internalError("Failed to get workflow", err), http.StatusInternalServerError)
 		return
 	}
 	if run == nil {
-		// No running workflow - return 204 No Content
+		// No workflow - return 204 No Content
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}

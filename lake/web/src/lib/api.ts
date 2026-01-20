@@ -1883,12 +1883,25 @@ export function watchSessionLock(
 }
 
 // Workflow types for durable workflow persistence
+export interface WorkflowStep {
+  type: 'thinking' | 'query'
+  content?: string
+  question?: string
+  sql?: string
+  status?: string
+  columns?: string[]
+  rows?: unknown[][]
+  count?: number
+  error?: string
+}
+
 export interface WorkflowRun {
   id: string
   session_id: string
   status: 'running' | 'completed' | 'failed' | 'cancelled'
   user_question: string
   iteration: number
+  steps?: WorkflowStep[]
   final_answer?: string
   llm_calls: number
   input_tokens: number
@@ -1911,17 +1924,20 @@ export async function getWorkflow(workflowId: string): Promise<WorkflowRun | nul
   return res.json()
 }
 
-// Get the running workflow for a session (if any)
-export async function getRunningWorkflowForSession(sessionId: string): Promise<WorkflowRun | null> {
+// Get the latest workflow for a session (running, completed, or failed)
+export async function getLatestWorkflowForSession(sessionId: string): Promise<WorkflowRun | null> {
   const res = await fetch(`/api/sessions/${sessionId}/workflow`)
   if (res.status === 204 || res.status === 404) {
-    return null // No running workflow
+    return null // No workflow
   }
   if (!res.ok) {
-    throw new Error('Failed to get running workflow')
+    throw new Error('Failed to get workflow')
   }
   return res.json()
 }
+
+// Legacy alias for backwards compatibility
+export const getRunningWorkflowForSession = getLatestWorkflowForSession
 
 // Workflow reconnection callbacks
 export interface WorkflowReconnectCallbacks {

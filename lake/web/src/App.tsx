@@ -40,7 +40,7 @@ import { ValidatorDetailPage } from '@/components/validator-detail-page'
 import { GossipNodeDetailPage } from '@/components/gossip-node-detail-page'
 import { StakePage } from '@/components/stake-page'
 import { SettingsPage } from '@/components/settings-page'
-import { generateSessionTitle, generateChatSessionTitle, sendChatMessageStream, recommendVisualization, fetchCatalog, acquireSessionLock, releaseSessionLock, getSessionLock, watchSessionLock, getSession, generateMessageId, getRunningWorkflowForSession, reconnectToWorkflow, type SessionQueryInfo, type SessionLock } from '@/lib/api'
+import { generateSessionTitle, generateChatSessionTitle, sendChatMessageStream, recommendVisualization, fetchCatalog, acquireSessionLock, releaseSessionLock, watchSessionLock, getSession, generateMessageId, getRunningWorkflowForSession, reconnectToWorkflow, type SessionQueryInfo, type SessionLock } from '@/lib/api'
 import type { TableInfo, QueryResponse, HistoryMessage, ChatMessage, QueryMode } from '@/lib/api'
 import {
   type QuerySession,
@@ -673,148 +673,191 @@ function ChatView() {
       resumeAttempted.current = currentChatSessionId
       console.log('[Chat] Resuming incomplete streaming message for session:', currentChatSessionId)
 
-      // Query the server for a running workflow for this session
-      getRunningWorkflowForSession(currentChatSessionId).then(runningWorkflow => {
-        if (runningWorkflow) {
-          console.log('[Chat] Found running workflow on server:', runningWorkflow.id)
-
-          // Set up pending state for the reconnection
-          const abortController = new AbortController()
-          setPendingChats(prev => {
-            const next = new Map(prev)
-            next.set(currentChatSessionId, {
-              processingSteps: [],
-              abortController,
-              workflowId: runningWorkflow.id,
-            })
-            return next
-          })
-
-          // Reconnect to the workflow stream
-          reconnectToWorkflow(
-            runningWorkflow.id,
-            {
-              onThinking: (data) => {
-                const step: ProcessingStep = { type: 'thinking', content: data.content }
-                setPendingChats(prev => {
-                  const existing = prev.get(currentChatSessionId)
-                  if (!existing) return prev
-                  const next = new Map(prev)
-                  next.set(currentChatSessionId, {
-                    ...existing,
-                    processingSteps: [...existing.processingSteps, step],
-                  })
-                  return next
-                })
-              },
-              onQueryDone: (data) => {
-                const step: ProcessingStep = {
-                  type: 'query',
-                  question: data.question,
-                  sql: data.sql,
-                  status: data.error ? 'error' : 'completed',
-                  rows: data.rows,
-                  error: data.error || undefined,
-                }
-                setPendingChats(prev => {
-                  const existing = prev.get(currentChatSessionId)
-                  if (!existing) return prev
-                  const next = new Map(prev)
-                  next.set(currentChatSessionId, {
-                    ...existing,
-                    processingSteps: [...existing.processingSteps, step],
-                  })
-                  return next
-                })
-              },
-              onDone: (data) => {
-                console.log('[Chat] Workflow reconnect onDone', { workflowId: runningWorkflow.id })
-                // Build processing steps from server data (source of truth)
-                const processingSteps = buildProcessingSteps(data)
-                console.log('[Chat] Workflow reconnect processingSteps from server:', processingSteps.length)
-
-                // Replace streaming message with complete message
-                setChatSessions(prev => prev.map(s => {
-                  if (s.id !== currentChatSessionId) return s
-                  const newMessages = s.messages.filter(m => m.status !== 'streaming')
-                  newMessages.push({
-                    id: generateMessageId(),
-                    role: 'assistant',
-                    content: data.answer,
-                    workflowData: {
-                      dataQuestions: data.dataQuestions ?? [],
-                      generatedQueries: data.generatedQueries ?? [],
-                      executedQueries: data.executedQueries ?? [],
-                      followUpQuestions: data.followUpQuestions,
-                      processingSteps,
-                    },
-                    executedQueries: data.executedQueries?.map(q => q.sql) ?? [],
-                    status: 'complete',
-                  })
-                  return { ...s, messages: newMessages, updatedAt: new Date() }
-                }))
-                setPendingChats(prev => {
-                  const next = new Map(prev)
-                  next.delete(currentChatSessionId)
-                  return next
-                })
-              },
-              onError: (error) => {
-                console.log('[Chat] Workflow reconnect error:', error)
-                // Replace streaming message with error
-                setChatSessions(prev => prev.map(s => {
-                  if (s.id !== currentChatSessionId) return s
-                  const newMessages = s.messages.filter(m => m.status !== 'streaming')
-                  newMessages.push({
-                    id: generateMessageId(),
-                    role: 'assistant',
-                    content: error,
-                    status: 'error',
-                  })
-                  return { ...s, messages: newMessages, updatedAt: new Date() }
-                }))
-                setPendingChats(prev => {
-                  const next = new Map(prev)
-                  next.delete(currentChatSessionId)
-                  return next
-                })
-              },
-            },
-            abortController.signal
-          )
+      // Query the server for the latest workflow for this session
+      getRunningWorkflowForSession(currentChatSessionId).then(workflow => {
+        if (!workflow) {
+          // No workflow found at all - this shouldn't happen normally
+          // Fall back to re-sending (legacy behavior)
+          console.log('[Chat] No workflow found for session, falling back to re-send')
+          const historyUpToIncomplete = chatMessages.slice(0, chatMessages.indexOf(incomplete.userMessage))
+          sendChatMessage(currentChatSessionId, incomplete.userMessage.content, historyUpToIncomplete)
           return
         }
 
-        // No running workflow found - fall back to re-sending the message (legacy behavior)
-        // First check if another browser has a lock on this session
-        getSessionLock(currentChatSessionId).then(existingLock => {
-          if (existingLock && existingLock.lock_id !== BROWSER_ID) {
-            // Another browser is processing - show external lock indicator
-            console.log('[Chat] Session locked by another browser, not resuming:', existingLock)
-            setExternalLocks(prev => {
-              const next = new Map(prev)
-              next.set(currentChatSessionId, existingLock)
-              return next
-            })
-            return
+        console.log('[Chat] Found workflow on server:', workflow.id, 'status:', workflow.status)
+
+        // Handle based on workflow status
+        if (workflow.status === 'completed') {
+          // Workflow already completed - use the result directly
+          console.log('[Chat] Workflow already completed, using stored result')
+
+          // Build processing steps from workflow data
+          const processingSteps: ProcessingStep[] = []
+          if (workflow.steps) {
+            for (const step of workflow.steps as Array<{ type: string; content?: string; question?: string; sql?: string; error?: string; count?: number }>) {
+              if (step.type === 'thinking' && step.content) {
+                processingSteps.push({ type: 'thinking', content: step.content })
+              } else if (step.type === 'query') {
+                processingSteps.push({
+                  type: 'query',
+                  question: step.question || '',
+                  sql: step.sql || '',
+                  status: step.error ? 'error' : 'completed',
+                  rows: step.count,
+                  error: step.error || undefined,
+                })
+              }
+            }
           }
 
-          // Get history up to (but not including) the incomplete user message
-          const historyUpToIncomplete = chatMessages.slice(0, chatMessages.indexOf(incomplete.userMessage))
+          // Replace streaming message with complete message
+          setChatSessions(prev => prev.map(s => {
+            if (s.id !== currentChatSessionId) return s
+            const newMessages = s.messages.filter(m => m.status !== 'streaming')
+            newMessages.push({
+              id: generateMessageId(),
+              role: 'assistant',
+              content: workflow.final_answer || '',
+              workflowData: {
+                dataQuestions: [],
+                generatedQueries: [],
+                executedQueries: [],
+                followUpQuestions: undefined,
+                processingSteps,
+              },
+              executedQueries: [],
+              status: 'complete',
+            })
+            return { ...s, messages: newMessages, updatedAt: new Date() }
+          }))
+          return
+        }
 
-          // Don't remove the streaming message - keep it so if user reloads again, we can resume again
-          // The completion handler will replace it with the complete message when done
-          console.log('[Chat] Auto-resume: calling sendChatMessage (no running workflow)')
-          sendChatMessage(currentChatSessionId, incomplete.userMessage.content, historyUpToIncomplete)
-        }).catch((err) => {
-          // If lock check fails, try to resume anyway
-          console.log('[Chat] Auto-resume: lock check failed, calling sendChatMessage anyway', err)
-          const historyUpToIncomplete = chatMessages.slice(0, chatMessages.indexOf(incomplete.userMessage))
-          sendChatMessage(currentChatSessionId, incomplete.userMessage.content, historyUpToIncomplete)
+        if (workflow.status === 'failed' || workflow.status === 'cancelled') {
+          // Workflow failed or was cancelled - show error
+          console.log('[Chat] Workflow failed/cancelled:', workflow.error)
+          setChatSessions(prev => prev.map(s => {
+            if (s.id !== currentChatSessionId) return s
+            const newMessages = s.messages.filter(m => m.status !== 'streaming')
+            newMessages.push({
+              id: generateMessageId(),
+              role: 'assistant',
+              content: workflow.error || 'Workflow failed',
+              status: 'error',
+            })
+            return { ...s, messages: newMessages, updatedAt: new Date() }
+          }))
+          return
+        }
+
+        // Workflow is still running - reconnect to the stream
+        console.log('[Chat] Workflow is running, reconnecting to stream')
+        const abortController = new AbortController()
+        setPendingChats(prev => {
+          const next = new Map(prev)
+          next.set(currentChatSessionId, {
+            processingSteps: [],
+            abortController,
+            workflowId: workflow.id,
+          })
+          return next
         })
+
+        // Reconnect to the workflow stream
+        reconnectToWorkflow(
+          workflow.id,
+          {
+            onThinking: (data) => {
+              const step: ProcessingStep = { type: 'thinking', content: data.content }
+              setPendingChats(prev => {
+                const existing = prev.get(currentChatSessionId)
+                if (!existing) return prev
+                const next = new Map(prev)
+                next.set(currentChatSessionId, {
+                  ...existing,
+                  processingSteps: [...existing.processingSteps, step],
+                })
+                return next
+              })
+            },
+            onQueryDone: (data) => {
+              const step: ProcessingStep = {
+                type: 'query',
+                question: data.question,
+                sql: data.sql,
+                status: data.error ? 'error' : 'completed',
+                rows: data.rows,
+                error: data.error || undefined,
+              }
+              setPendingChats(prev => {
+                const existing = prev.get(currentChatSessionId)
+                if (!existing) return prev
+                const next = new Map(prev)
+                next.set(currentChatSessionId, {
+                  ...existing,
+                  processingSteps: [...existing.processingSteps, step],
+                })
+                return next
+              })
+            },
+            onDone: (data) => {
+              console.log('[Chat] Workflow reconnect onDone', { workflowId: workflow.id })
+              // Build processing steps from server data (source of truth)
+              const processingSteps = buildProcessingSteps(data)
+              console.log('[Chat] Workflow reconnect processingSteps from server:', processingSteps.length)
+
+              // Replace streaming message with complete message
+              setChatSessions(prev => prev.map(s => {
+                if (s.id !== currentChatSessionId) return s
+                const newMessages = s.messages.filter(m => m.status !== 'streaming')
+                newMessages.push({
+                  id: generateMessageId(),
+                  role: 'assistant',
+                  content: data.answer,
+                  workflowData: {
+                    dataQuestions: data.dataQuestions ?? [],
+                    generatedQueries: data.generatedQueries ?? [],
+                    executedQueries: data.executedQueries ?? [],
+                    followUpQuestions: data.followUpQuestions,
+                    processingSteps,
+                  },
+                  executedQueries: data.executedQueries?.map(q => q.sql) ?? [],
+                  status: 'complete',
+                })
+                return { ...s, messages: newMessages, updatedAt: new Date() }
+              }))
+              setPendingChats(prev => {
+                const next = new Map(prev)
+                next.delete(currentChatSessionId)
+                return next
+              })
+            },
+            onError: (error) => {
+              console.log('[Chat] Workflow reconnect error:', error)
+              // Replace streaming message with error
+              setChatSessions(prev => prev.map(s => {
+                if (s.id !== currentChatSessionId) return s
+                const newMessages = s.messages.filter(m => m.status !== 'streaming')
+                newMessages.push({
+                  id: generateMessageId(),
+                  role: 'assistant',
+                  content: error,
+                  status: 'error',
+                })
+                return { ...s, messages: newMessages, updatedAt: new Date() }
+              }))
+              setPendingChats(prev => {
+                const next = new Map(prev)
+                next.delete(currentChatSessionId)
+                return next
+              })
+            },
+          },
+          abortController.signal
+        )
       }).catch((err) => {
-        console.log('[Chat] Auto-resume: failed to check for running workflow', err)
-        // Fall back to lock-based approach
+        console.log('[Chat] Auto-resume: failed to check for workflow', err)
+        // Fall back to re-sending
         const historyUpToIncomplete = chatMessages.slice(0, chatMessages.indexOf(incomplete.userMessage))
         sendChatMessage(currentChatSessionId, incomplete.userMessage.content, historyUpToIncomplete)
       })

@@ -203,6 +203,7 @@ type TimelineParams struct {
 	Severities      []string
 	Actions         []string // "added", "removed", "changed", "alerting", "resolved"
 	DZFilter        string   // "on_dz", "off_dz", or "" for all
+	Search          []string // Search terms to filter by (entity codes, device codes, etc.)
 	Limit           int
 	Offset          int
 	IncludeInternal bool // Whether to include internal users (default: false)
@@ -345,6 +346,17 @@ func parseTimelineParams(r *http.Request) TimelineParams {
 	// Parse DZ filter for Solana events (on_dz, off_dz, or empty for all)
 	dzFilter := r.URL.Query().Get("dz_filter")
 
+	// Parse search filter (comma-separated search terms)
+	var search []string
+	if searchStr := r.URL.Query().Get("search"); searchStr != "" {
+		for _, s := range strings.Split(searchStr, ",") {
+			s = strings.TrimSpace(s)
+			if s != "" {
+				search = append(search, strings.ToLower(s))
+			}
+		}
+	}
+
 	return TimelineParams{
 		StartTime:       startTime,
 		EndTime:         endTime,
@@ -353,6 +365,7 @@ func parseTimelineParams(r *http.Request) TimelineParams {
 		Severities:      severities,
 		Actions:         actions,
 		DZFilter:        dzFilter,
+		Search:          search,
 		Limit:           pagination.Limit,
 		Offset:          pagination.Offset,
 		IncludeInternal: includeInternal,
@@ -363,6 +376,95 @@ func generateEventID(entityID string, timestamp time.Time, eventType string) str
 	h := sha256.New()
 	h.Write([]byte(fmt.Sprintf("%s:%s:%s", entityID, timestamp.Format(time.RFC3339Nano), eventType)))
 	return hex.EncodeToString(h.Sum(nil))[:16]
+}
+
+// eventMatchesSearch checks if an event matches any of the search terms (OR logic)
+// Search terms are already lowercased
+func eventMatchesSearch(event TimelineEvent, searchTerms []string) bool {
+	// Helper to check if a string contains any search term
+	containsAny := func(s string) bool {
+		if s == "" {
+			return false
+		}
+		lower := strings.ToLower(s)
+		for _, term := range searchTerms {
+			if strings.Contains(lower, term) {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Check entity_code (always present)
+	if containsAny(event.EntityCode) {
+		return true
+	}
+
+	// Check title
+	if containsAny(event.Title) {
+		return true
+	}
+
+	// Check details based on type
+	switch details := event.Details.(type) {
+	case EntityChangeDetails:
+		if details.Entity != nil {
+			// Use reflection-free approach: check known fields
+			if entity, ok := details.Entity.(LinkEntity); ok {
+				if containsAny(entity.Code) || containsAny(entity.SideACode) || containsAny(entity.SideZCode) ||
+					containsAny(entity.SideAMetroCode) || containsAny(entity.SideZMetroCode) ||
+					containsAny(entity.ContributorCode) {
+					return true
+				}
+			}
+			if entity, ok := details.Entity.(DeviceEntity); ok {
+				if containsAny(entity.Code) || containsAny(entity.MetroCode) || containsAny(entity.ContributorCode) ||
+					containsAny(entity.PublicIP) {
+					return true
+				}
+			}
+			if entity, ok := details.Entity.(MetroEntity); ok {
+				if containsAny(entity.Code) || containsAny(entity.Name) {
+					return true
+				}
+			}
+			if entity, ok := details.Entity.(ContributorEntity); ok {
+				if containsAny(entity.Code) || containsAny(entity.Name) {
+					return true
+				}
+			}
+			if entity, ok := details.Entity.(UserEntity); ok {
+				if containsAny(entity.OwnerPubkey) || containsAny(entity.DeviceCode) ||
+					containsAny(entity.MetroCode) || containsAny(entity.ClientIP) || containsAny(entity.DZIP) {
+					return true
+				}
+			}
+		}
+	case PacketLossEventDetails:
+		if containsAny(details.LinkCode) || containsAny(details.SideAMetro) || containsAny(details.SideZMetro) {
+			return true
+		}
+	case InterfaceEventDetails:
+		if containsAny(details.DeviceCode) || containsAny(details.LinkCode) || containsAny(details.InterfaceName) {
+			return true
+		}
+	case GroupedInterfaceDetails:
+		if containsAny(details.DeviceCode) {
+			return true
+		}
+		for _, intf := range details.Interfaces {
+			if containsAny(intf.LinkCode) || containsAny(intf.InterfaceName) {
+				return true
+			}
+		}
+	case ValidatorEventDetails:
+		if containsAny(details.OwnerPubkey) || containsAny(details.DeviceCode) ||
+			containsAny(details.MetroCode) || containsAny(details.VotePubkey) || containsAny(details.NodePubkey) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // isDefaultTimelineRequest checks if the request matches the default cached parameters
@@ -416,6 +518,11 @@ func isDefaultTimelineRequest(r *http.Request) bool {
 
 	// Must not have pagination offset
 	if q.Get("offset") != "" && q.Get("offset") != "0" {
+		return false
+	}
+
+	// Must not have search filter
+	if q.Get("search") != "" {
 		return false
 	}
 
@@ -749,6 +856,17 @@ func GetTimeline(w http.ResponseWriter, r *http.Request) {
 				}
 			} else {
 				// Non-Solana events pass through
+				filtered = append(filtered, e)
+			}
+		}
+		allEvents = filtered
+	}
+
+	// Filter by search terms if specified
+	if len(params.Search) > 0 {
+		filtered := make([]TimelineEvent, 0)
+		for _, e := range allEvents {
+			if eventMatchesSearch(e, params.Search) {
 				filtered = append(filtered, e)
 			}
 		}

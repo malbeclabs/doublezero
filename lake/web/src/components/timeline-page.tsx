@@ -935,7 +935,7 @@ export function TimelinePage() {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ['timeline', timeRange, customStart, customEnd, categoryFilter, entityTypeFilter, actionFilter, dzFilterParam, includeInternal],
+    queryKey: ['timeline', timeRange, customStart, customEnd, categoryFilter, entityTypeFilter, actionFilter, dzFilterParam, includeInternal, searchParam],
     queryFn: ({ pageParam = 0 }) => fetchTimeline({
       range: timeRange !== 'custom' ? timeRange : undefined,
       start: timeRange === 'custom' && customStart ? customStart : undefined,
@@ -944,6 +944,7 @@ export function TimelinePage() {
       entity_type: entityTypeFilter,
       action: actionFilter,
       dz_filter: dzFilterParam,
+      search: searchParam || undefined,
       include_internal: includeInternal,
       limit,
       offset: pageParam,
@@ -1072,6 +1073,11 @@ export function TimelinePage() {
         if (matchesSearch(entity.client_ip, lowerSearch)) return true
         if (matchesSearch(entity.dz_ip, lowerSearch)) return true
         if (matchesSearch(entity.owner_pubkey, lowerSearch)) return true
+        // LinkEntity - check side_a/side_z device and metro codes
+        if (matchesSearch(entity.side_a_code, lowerSearch)) return true
+        if (matchesSearch(entity.side_z_code, lowerSearch)) return true
+        if (matchesSearch(entity.side_a_metro_code, lowerSearch)) return true
+        if (matchesSearch(entity.side_z_metro_code, lowerSearch)) return true
       }
 
       // ValidatorEventDetails - device, metro, pubkeys

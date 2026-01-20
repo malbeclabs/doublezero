@@ -646,7 +646,7 @@ func fetchStatusData(ctx context.Context) *StatusResponse {
 		resp.Links.HighUtilLinks = highUtil
 		resp.Links.TopUtilLinks = allUtilLinks
 
-		// Populate issue start times
+		// Populate issue start times - find when the CURRENT continuous issue started
 		if len(issues) > 0 {
 			// Build list of link codes to query
 			linkCodes := make([]string, len(issues))
@@ -654,33 +654,50 @@ func fetchStatusData(ctx context.Context) *StatusResponse {
 				linkCodes[i] = issue.Code
 			}
 
-			// Query hourly loss data for the last 7 days to find when issues started
+			// Query to find when the current continuous issue started:
+			// Find the most recent healthy hour, then the issue started the hour after.
+			// If no healthy hour exists in the last 7 days, use the earliest data we have.
 			issueStartQuery := `
+				WITH hourly AS (
+					SELECT
+						l.code,
+						toStartOfHour(event_ts) as hour,
+						countIf(loss OR rtt_us = 0) * 100.0 / count(*) as loss_pct
+					FROM fact_dz_device_link_latency lat
+					JOIN dz_links_current l ON lat.link_pk = l.pk
+					WHERE lat.event_ts > now() - INTERVAL 7 DAY
+					  AND l.code IN (?)
+					GROUP BY l.code, hour
+				),
+				last_healthy AS (
+					SELECT code, max(hour) as last_good_hour
+					FROM hourly
+					WHERE loss_pct < ?
+					GROUP BY code
+				),
+				earliest_issue AS (
+					SELECT code, min(hour) as first_issue_hour
+					FROM hourly
+					WHERE loss_pct >= ?
+					GROUP BY code
+				)
 				SELECT
-					l.code,
-					toStartOfHour(event_ts) as hour,
-					countIf(loss OR rtt_us = 0) * 100.0 / count(*) as loss_pct
-				FROM fact_dz_device_link_latency lat
-				JOIN dz_links_current l ON lat.link_pk = l.pk
-				WHERE lat.event_ts > now() - INTERVAL 7 DAY
-				  AND l.code IN (?)
-				GROUP BY l.code, hour
-				HAVING loss_pct >= ?
-				ORDER BY l.code, hour ASC
+					ei.code,
+					if(lh.code != '',
+					   lh.last_good_hour + INTERVAL 1 HOUR,
+					   ei.first_issue_hour) as issue_start
+				FROM earliest_issue ei
+				LEFT JOIN last_healthy lh ON ei.code = lh.code
 			`
-			issueRows, err := config.DB.Query(ctx, issueStartQuery, linkCodes, LossWarningPct)
+			issueRows, err := config.DB.Query(ctx, issueStartQuery, linkCodes, LossWarningPct, LossWarningPct)
 			if err == nil {
 				defer issueRows.Close()
-				// Map of link code -> earliest issue hour
 				issueSince := make(map[string]time.Time)
 				for issueRows.Next() {
 					var code string
-					var hour time.Time
-					var lossPct float64
-					if err := issueRows.Scan(&code, &hour, &lossPct); err == nil {
-						if _, exists := issueSince[code]; !exists {
-							issueSince[code] = hour
-						}
+					var issueStart time.Time
+					if err := issueRows.Scan(&code, &issueStart); err == nil {
+						issueSince[code] = issueStart
 					}
 				}
 				// Populate Since field for each issue

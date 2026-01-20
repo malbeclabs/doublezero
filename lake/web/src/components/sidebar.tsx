@@ -226,7 +226,7 @@ export function Sidebar({
     return (
       <div className="w-12 border-r bg-[var(--sidebar)] flex flex-col items-center relative z-10">
         {/* Logo icon - matches expanded header height */}
-        <div className="w-full h-12 flex items-center justify-center border-b border-border/50">
+        <div className="w-full h-12 flex items-center justify-center border-b border-border/50 shrink-0">
           <button
             onClick={() => handleSetCollapsed(false)}
             className="group relative"
@@ -237,7 +237,7 @@ export function Sidebar({
           </button>
         </div>
 
-        <div className="flex flex-col items-center gap-1 pt-4">
+        <div className="flex-1 flex flex-col items-center gap-1 pt-4 overflow-y-auto min-h-0">
         {/* Home nav item */}
         <Link
           to="/"
@@ -484,8 +484,7 @@ export function Sidebar({
         </div>
 
         {/* Theme toggle and collapse toggle at bottom */}
-        <div className="flex-1" />
-        <div className="flex flex-col items-center gap-1 mb-3">
+        <div className="flex flex-col items-center gap-1 mb-3 shrink-0">
           {updateAvailable && (
             <button
               onClick={reload}
@@ -524,7 +523,7 @@ export function Sidebar({
   return (
     <div className="w-64 border-r bg-[var(--sidebar)] flex flex-col relative z-10">
       {/* Header with logo and collapse */}
-      <div className="px-3 h-12 flex items-center justify-between border-b border-border/50">
+      <div className="px-3 h-12 flex items-center justify-between border-b border-border/50 shrink-0">
         <Link
           to="/"
           className="flex items-center gap-2 hover:opacity-80 transition-opacity"
@@ -541,6 +540,8 @@ export function Sidebar({
         </button>
       </div>
 
+      {/* Scrollable content area */}
+      <div className="flex-1 flex flex-col overflow-y-auto min-h-0">
       {/* Tools section */}
       <div className="px-3 pt-4">
         <div className="px-3 mb-2">
@@ -1044,9 +1045,10 @@ export function Sidebar({
 
       {/* Spacer when no section is active */}
       {!isQueryRoute && !isChatRoute && !isTopologyRoute && !isPerformanceRoute && <div className="flex-1" />}
+      </div>
 
       {/* Footer */}
-      <div className="mt-auto px-3 py-3 border-t border-border/50 space-y-2">
+      <div className="px-3 py-3 border-t border-border/50 space-y-2 shrink-0">
         {updateAvailable && (
           <button
             onClick={reload}

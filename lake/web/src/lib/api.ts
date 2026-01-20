@@ -1466,6 +1466,15 @@ export interface FailureImpactPath {
   hasAlternate: boolean
 }
 
+export interface MetroImpact {
+  pk: string
+  code: string
+  name: string
+  totalDevices: number
+  remainingDevices: number
+  isolatedDevices: number
+}
+
 export interface FailureImpactResponse {
   devicePK: string
   deviceCode: string
@@ -1473,6 +1482,7 @@ export interface FailureImpactResponse {
   unreachableCount: number
   affectedPaths: FailureImpactPath[]
   affectedPathCount: number
+  metroImpact: MetroImpact[]
   error?: string
 }
 

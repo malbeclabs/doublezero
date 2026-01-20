@@ -599,6 +599,16 @@ type ImpactDevice struct {
 	DeviceType string `json:"deviceType"`
 }
 
+// MetroImpact represents the impact of a device failure on a metro
+type MetroImpact struct {
+	PK               string `json:"pk"`
+	Code             string `json:"code"`
+	Name             string `json:"name"`
+	TotalDevices     int    `json:"totalDevices"`     // Total ISIS devices in this metro
+	RemainingDevices int    `json:"remainingDevices"` // Devices still reachable after failure
+	IsolatedDevices  int    `json:"isolatedDevices"`  // Devices that become unreachable
+}
+
 // FailureImpactPath represents a path affected by device failure
 type FailureImpactPath struct {
 	FromPK       string `json:"fromPK"`
@@ -620,6 +630,7 @@ type FailureImpactResponse struct {
 	UnreachableCount   int                 `json:"unreachableCount"`
 	AffectedPaths      []FailureImpactPath `json:"affectedPaths"`
 	AffectedPathCount  int                 `json:"affectedPathCount"`
+	MetroImpact        []MetroImpact       `json:"metroImpact"`
 	Error              string              `json:"error,omitempty"`
 }
 
@@ -644,6 +655,7 @@ func GetFailureImpact(w http.ResponseWriter, r *http.Request) {
 		DevicePK:           devicePK,
 		UnreachableDevices: []ImpactDevice{},
 		AffectedPaths:      []FailureImpactPath{},
+		MetroImpact:        []MetroImpact{},
 	}
 
 	// First get the device code
@@ -726,6 +738,67 @@ func GetFailureImpact(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.UnreachableCount = len(response.UnreachableDevices)
+
+	// Calculate metro-level impact
+	// Build a set of unreachable device PKs for quick lookup
+	unreachablePKs := make(map[string]bool)
+	for _, device := range response.UnreachableDevices {
+		unreachablePKs[device.PK] = true
+	}
+	// The failing device itself also counts as unavailable
+	unreachablePKs[devicePK] = true
+
+	// Query all metros with ISIS devices and their device counts
+	metroCypher := `
+		MATCH (m:Metro)<-[:LOCATED_IN]-(d:Device)
+		WHERE d.isis_system_id IS NOT NULL
+		RETURN m.pk AS metro_pk,
+		       m.code AS metro_code,
+		       m.name AS metro_name,
+		       collect(d.pk) AS device_pks
+	`
+	metroResult, err := session.Run(ctx, metroCypher, map[string]any{})
+	if err != nil {
+		log.Printf("Failure impact metro query error: %v", err)
+		// Don't fail the whole response, just log the error
+	} else {
+		metroRecords, err := metroResult.Collect(ctx)
+		if err != nil {
+			log.Printf("Failure impact metro collect error: %v", err)
+		} else {
+			for _, record := range metroRecords {
+				metroPK, _ := record.Get("metro_pk")
+				metroCode, _ := record.Get("metro_code")
+				metroName, _ := record.Get("metro_name")
+				devicePKsRaw, _ := record.Get("device_pks")
+
+				devicePKsList, ok := devicePKsRaw.([]any)
+				if !ok {
+					continue
+				}
+
+				totalDevices := len(devicePKsList)
+				isolatedCount := 0
+				for _, pk := range devicePKsList {
+					if unreachablePKs[asString(pk)] {
+						isolatedCount++
+					}
+				}
+
+				// Only include metros where at least one device is affected
+				if isolatedCount > 0 {
+					response.MetroImpact = append(response.MetroImpact, MetroImpact{
+						PK:               asString(metroPK),
+						Code:             asString(metroCode),
+						Name:             asString(metroName),
+						TotalDevices:     totalDevices,
+						RemainingDevices: totalDevices - isolatedCount,
+						IsolatedDevices:  isolatedCount,
+					})
+				}
+			}
+		}
+	}
 
 	// Find affected paths - paths that currently use this device as an intermediate hop
 	// For each affected path, calculate before (through device) and after (rerouted) metrics
@@ -813,8 +886,8 @@ func GetFailureImpact(w http.ResponseWriter, r *http.Request) {
 	duration := time.Since(start)
 	metrics.RecordClickHouseQuery(duration, nil)
 
-	log.Printf("Failure impact: %s, unreachable=%d, affectedPaths=%d in %v",
-		response.DeviceCode, response.UnreachableCount, response.AffectedPathCount, duration)
+	log.Printf("Failure impact: %s, unreachable=%d, affectedPaths=%d, metrosImpacted=%d in %v",
+		response.DeviceCode, response.UnreachableCount, response.AffectedPathCount, len(response.MetroImpact), duration)
 
 	writeJSON(w, response)
 }

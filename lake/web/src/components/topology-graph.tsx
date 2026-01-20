@@ -2330,7 +2330,7 @@ export function TopologyGraph({
       const result = await fetchFailureImpact(devicePK)
       setImpactResult(result)
     } catch {
-      setImpactResult({ devicePK, deviceCode: '', unreachableDevices: [], unreachableCount: 0, affectedPaths: [], affectedPathCount: 0, error: 'Failed to analyze impact' })
+      setImpactResult({ devicePK, deviceCode: '', unreachableDevices: [], unreachableCount: 0, affectedPaths: [], affectedPathCount: 0, metroImpact: [], error: 'Failed to analyze impact' })
     } finally {
       setImpactLoading(false)
     }

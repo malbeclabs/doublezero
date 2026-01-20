@@ -1,4 +1,4 @@
-import { Zap, X, ArrowRight, AlertTriangle } from 'lucide-react'
+import { Zap, X, ArrowRight, AlertTriangle, MapPin } from 'lucide-react'
 import type { FailureImpactResponse } from '@/lib/api'
 
 interface ImpactPanelProps {
@@ -73,6 +73,76 @@ export function ImpactPanel({ devicePK, result, isLoading, onClose }: ImpactPane
               </div>
             )}
           </div>
+
+          {/* Metro Impact Section */}
+          {result.metroImpact && result.metroImpact.length > 0 && (
+            <div className="space-y-2">
+              <div className="font-medium text-muted-foreground uppercase tracking-wider text-[10px]">
+                Metro Impact
+              </div>
+              <div className="space-y-2">
+                {/* Metros that would lose all connectivity */}
+                {result.metroImpact.filter(m => m.remainingDevices === 0).length > 0 && (
+                  <div className="space-y-1">
+                    <div className="text-red-500 font-medium flex items-center gap-1.5">
+                      <AlertTriangle className="h-3.5 w-3.5" />
+                      {result.metroImpact.filter(m => m.remainingDevices === 0).length} metro{result.metroImpact.filter(m => m.remainingDevices === 0).length !== 1 ? 's' : ''} would lose all connectivity
+                    </div>
+                    <div className="space-y-0.5">
+                      {result.metroImpact.filter(m => m.remainingDevices === 0).map(metro => (
+                        <div key={metro.pk} className="flex items-center gap-1.5 pl-1">
+                          <MapPin className="h-3 w-3 text-red-500" />
+                          <span className="font-medium">{metro.code}</span>
+                          <span className="text-muted-foreground">
+                            ({metro.isolatedDevices} device{metro.isolatedDevices !== 1 ? 's' : ''})
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {/* Metros down to 1 device - critical warning */}
+                {result.metroImpact.filter(m => m.remainingDevices === 1).length > 0 && (
+                  <div className="space-y-1">
+                    <div className="text-yellow-500 font-medium flex items-center gap-1.5">
+                      <AlertTriangle className="h-3.5 w-3.5" />
+                      {result.metroImpact.filter(m => m.remainingDevices === 1).length} metro{result.metroImpact.filter(m => m.remainingDevices === 1).length !== 1 ? 's' : ''} would have only 1 device
+                    </div>
+                    <div className="space-y-0.5">
+                      {result.metroImpact.filter(m => m.remainingDevices === 1).map(metro => (
+                        <div key={metro.pk} className="flex items-center gap-1.5 pl-1">
+                          <MapPin className="h-3 w-3 text-yellow-500" />
+                          <span className="font-medium">{metro.code}</span>
+                          <span className="text-muted-foreground">
+                            (1/{metro.totalDevices} devices remaining)
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {/* Metros with reduced but adequate connectivity - informational only */}
+                {result.metroImpact.filter(m => m.remainingDevices > 1).length > 0 && (
+                  <div className="space-y-1">
+                    <div className="text-muted-foreground">
+                      {result.metroImpact.filter(m => m.remainingDevices > 1).length} metro{result.metroImpact.filter(m => m.remainingDevices > 1).length !== 1 ? 's' : ''} with reduced devices:
+                    </div>
+                    <div className="space-y-0.5">
+                      {result.metroImpact.filter(m => m.remainingDevices > 1).map(metro => (
+                        <div key={metro.pk} className="flex items-center gap-1.5 pl-1">
+                          <MapPin className="h-3 w-3 text-muted-foreground" />
+                          <span>{metro.code}</span>
+                          <span className="text-muted-foreground">
+                            ({metro.remainingDevices}/{metro.totalDevices} remaining)
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Affected Paths Section */}
           <div className="space-y-2">

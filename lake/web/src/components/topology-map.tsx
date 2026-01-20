@@ -1000,6 +1000,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           unreachableCount: 0,
           affectedPaths: [],
           affectedPathCount: 0,
+          metroImpact: [],
           error: err.message,
         })
       })

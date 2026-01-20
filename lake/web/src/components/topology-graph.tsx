@@ -805,8 +805,14 @@ export function TopologyGraph({
   const whatifAdditionMode = mode === 'whatif-addition'
   const impactMode = mode === 'impact'
 
+  // Track whether mode params have been restored from URL (used to prevent sync from clearing params on load)
+  const modeParamsRestoredRef = useRef(false)
+
   // Sync state TO URL (for sharing URLs)
   useEffect(() => {
+    // Don't sync until restoration is complete, otherwise we clear params before they're read
+    if (!modeParamsRestoredRef.current) return
+
     const params = new URLSearchParams(searchParams)
     let changed = false
 
@@ -852,7 +858,6 @@ export function TopologyGraph({
 
   // Restore mode selections from URL params on initial load only
   // TODO: Add proper back/forward navigation support
-  const modeParamsRestoredRef = useRef(false)
   useEffect(() => {
     if (modeParamsRestoredRef.current) return
     if (!topologyData?.devices?.length) return
@@ -868,10 +873,17 @@ export function TopologyGraph({
 
     // Restore path mode
     if (pathSourceParam || pathTargetParam) {
-      if (pathSourceParam && devicePKs.has(pathSourceParam)) {
+      // Check if all referenced devices are available
+      const sourceFound = !pathSourceParam || devicePKs.has(pathSourceParam)
+      const targetFound = !pathTargetParam || devicePKs.has(pathTargetParam)
+      if (!sourceFound || !targetFound) {
+        // Devices not found yet, wait for more data
+        return
+      }
+      if (pathSourceParam) {
         setPathSource(pathSourceParam)
       }
-      if (pathTargetParam && devicePKs.has(pathTargetParam)) {
+      if (pathTargetParam) {
         setPathTarget(pathTargetParam)
       }
       if (mode !== 'path') {
@@ -885,23 +897,32 @@ export function TopologyGraph({
     // Restore what-if removal mode
     if (removalEdgeParam) {
       const [sourcePK, targetPK] = removalEdgeParam.split('->')
-      if (sourcePK && targetPK && devicePKs.has(sourcePK) && devicePKs.has(targetPK)) {
-        setRemovalLink({ sourcePK, targetPK })
-        if (mode !== 'whatif-removal') {
-          setMode('whatif-removal')
-          openPanel('mode')
-        }
-        modeParamsRestoredRef.current = true
+      if (!sourcePK || !targetPK || !devicePKs.has(sourcePK) || !devicePKs.has(targetPK)) {
+        // Devices not found yet, wait for more data
         return
       }
+      setRemovalLink({ sourcePK, targetPK })
+      if (mode !== 'whatif-removal') {
+        setMode('whatif-removal')
+        openPanel('mode')
+      }
+      modeParamsRestoredRef.current = true
+      return
     }
 
     // Restore what-if addition mode
     if (additionSourceParam || additionTargetParam) {
-      if (additionSourceParam && devicePKs.has(additionSourceParam)) {
+      // Check if all referenced devices are available
+      const sourceFound = !additionSourceParam || devicePKs.has(additionSourceParam)
+      const targetFound = !additionTargetParam || devicePKs.has(additionTargetParam)
+      if (!sourceFound || !targetFound) {
+        // Devices not found yet, wait for more data
+        return
+      }
+      if (additionSourceParam) {
         setAdditionSource(additionSourceParam)
       }
-      if (additionTargetParam && devicePKs.has(additionTargetParam)) {
+      if (additionTargetParam) {
         setAdditionTarget(additionTargetParam)
       }
       if (mode !== 'whatif-addition') {
@@ -1731,6 +1752,15 @@ export function TopologyGraph({
           },
         },
         {
+          selector: 'node.impact-device',
+          style: {
+            'border-width': 5,
+            'border-color': '#ef4444',
+            'overlay-opacity': 0.2,
+            'overlay-color': '#ef4444',
+          },
+        },
+        {
           selector: 'node.path-node',
           style: {
             'border-width': 4,
@@ -2344,6 +2374,37 @@ export function TopologyGraph({
     setImpactResult(null)
   }, [])
 
+  // Fetch impact analysis when impactDevice changes (including from URL restoration)
+  useEffect(() => {
+    if (!impactDevice) {
+      return
+    }
+    // Only fetch if we don't already have results for this device
+    if (impactResult?.devicePK === impactDevice) {
+      return
+    }
+    setImpactLoading(true)
+    fetchFailureImpact(impactDevice)
+      .then(result => {
+        setImpactResult(result)
+      })
+      .catch(() => {
+        setImpactResult({
+          devicePK: impactDevice,
+          deviceCode: '',
+          unreachableDevices: [],
+          unreachableCount: 0,
+          affectedPaths: [],
+          affectedPathCount: 0,
+          metroImpact: [],
+          error: 'Failed to analyze impact',
+        })
+      })
+      .finally(() => {
+        setImpactLoading(false)
+      })
+  }, [impactDevice, impactResult?.devicePK])
+
   // Handle node clicks based on mode
   useEffect(() => {
     if (!cyRef.current) return
@@ -2410,6 +2471,8 @@ export function TopologyGraph({
         }
       } else if (mode === 'impact') {
         // Analyze impact of this device failing
+        cy.nodes().removeClass('impact-device')
+        node.addClass('impact-device')
         analyzeImpact(devicePK)
       }
     }
@@ -2684,6 +2747,20 @@ export function TopologyGraph({
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [mode, impactDevice, selectedDevicePK])
+
+  // Apply impact-device class when impactDevice changes (including from URL restoration)
+  useEffect(() => {
+    if (!cyRef.current) return
+    const cy = cyRef.current
+
+    cy.nodes().removeClass('impact-device')
+    if (impactDevice) {
+      const node = cy.getElementById(impactDevice)
+      if (node.length) {
+        node.addClass('impact-device')
+      }
+    }
+  }, [impactDevice, cyGeneration])
 
   if (isLoading) {
     return (

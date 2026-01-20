@@ -857,8 +857,15 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     }
   }, [impactMode])
 
+  // Track whether mode params have been restored from URL (used to prevent sync from clearing params on load)
+  // Using state instead of ref ensures sync effect re-runs with correct values after restoration
+  const [modeParamsRestored, setModeParamsRestored] = useState(false)
+
   // Sync mode selections to URL for sharing
   useEffect(() => {
+    // Don't sync until restoration is complete, otherwise we clear params before they're read
+    if (!modeParamsRestored) return
+
     const params = new URLSearchParams(searchParams)
     let changed = false
 
@@ -899,7 +906,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     if (changed) {
       setSearchParams(params, { replace: true })
     }
-  }, [searchParams, setSearchParams, pathModeEnabled, pathSource, pathTarget, whatifRemovalMode, removalLink, whatifAdditionMode, additionSource, additionTarget, impactMode, impactDevice])
+  }, [modeParamsRestored, searchParams, setSearchParams, pathModeEnabled, pathSource, pathTarget, whatifRemovalMode, removalLink, whatifAdditionMode, additionSource, additionTarget, impactMode, impactDevice])
 
   // When entering analysis modes with a device already selected, use it as source
   const prevMapModeRef = useRef<string>(mode)
@@ -1453,10 +1460,9 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
   }, [])
 
   // Restore mode selections from URL params on initial load
-  const modeParamsRestoredRef = useRef(false)
   useEffect(() => {
     // Only run once when data is available
-    if (modeParamsRestoredRef.current) return
+    if (modeParamsRestored) return
     if (deviceMap.size === 0 || linkMap.size === 0) return
 
     const pathSourceParam = searchParams.get('path_source')
@@ -1468,17 +1474,24 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
 
     // Restore path mode
     if (pathSourceParam || pathTargetParam) {
-      if (pathSourceParam && deviceMap.has(pathSourceParam)) {
+      // Check if all referenced devices are available
+      const sourceFound = !pathSourceParam || deviceMap.has(pathSourceParam)
+      const targetFound = !pathTargetParam || deviceMap.has(pathTargetParam)
+      if (!sourceFound || !targetFound) {
+        // Devices not found yet, wait for more data
+        return
+      }
+      if (pathSourceParam) {
         setPathSource(pathSourceParam)
       }
-      if (pathTargetParam && deviceMap.has(pathTargetParam)) {
+      if (pathTargetParam) {
         setPathTarget(pathTargetParam)
       }
       if (mode !== 'path') {
         setMode('path')
         openPanel('mode')
       }
-      modeParamsRestoredRef.current = true
+      setModeParamsRestored(true)
       return
     }
 
@@ -1491,24 +1504,33 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           setMode('whatif-removal')
           openPanel('mode')
         }
-        modeParamsRestoredRef.current = true
+        setModeParamsRestored(true)
         return
       }
+      // Link not found yet, wait for more data
+      return
     }
 
     // Restore what-if addition mode
     if (additionSourceParam || additionTargetParam) {
-      if (additionSourceParam && deviceMap.has(additionSourceParam)) {
+      // Check if all referenced devices are available
+      const sourceFound = !additionSourceParam || deviceMap.has(additionSourceParam)
+      const targetFound = !additionTargetParam || deviceMap.has(additionTargetParam)
+      if (!sourceFound || !targetFound) {
+        // Devices not found yet, wait for more data
+        return
+      }
+      if (additionSourceParam) {
         setAdditionSource(additionSourceParam)
       }
-      if (additionTargetParam && deviceMap.has(additionTargetParam)) {
+      if (additionTargetParam) {
         setAdditionTarget(additionTargetParam)
       }
       if (mode !== 'whatif-addition') {
         setMode('whatif-addition')
         openPanel('mode')
       }
-      modeParamsRestoredRef.current = true
+      setModeParamsRestored(true)
       return
     }
 
@@ -1520,14 +1542,16 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           setMode('impact')
           openPanel('mode')
         }
-        modeParamsRestoredRef.current = true
+        setModeParamsRestored(true)
         return
       }
+      // Device not found yet, wait for more data
+      return
     }
 
     // No mode params to restore
-    modeParamsRestoredRef.current = true
-  }, [searchParams, deviceMap, linkMap, mode, setMode, openPanel])
+    setModeParamsRestored(true)
+  }, [modeParamsRestored, searchParams, deviceMap, linkMap, mode, setMode, openPanel])
 
   // Restore selected item from URL params when they change
   // Track last processed params to avoid re-processing the same selection

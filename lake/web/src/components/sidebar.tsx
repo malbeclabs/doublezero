@@ -526,7 +526,7 @@ export function Sidebar({
       <div className="px-3 h-12 flex items-center justify-between border-b border-border/50 shrink-0">
         <Link
           to="/"
-          className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+          className="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer"
         >
           <img src={resolvedTheme === 'dark' ? '/logoDark.svg' : '/logoLight.svg'} alt="DoubleZero" className="h-6" />
           <span className="wordmark text-lg">Data</span>

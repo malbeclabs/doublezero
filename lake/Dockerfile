@@ -79,7 +79,8 @@ RUN apt update -qq && \
     gnupg \
     build-essential \
     pkg-config \
-    iproute2 iputils-ping net-tools tcpdump && \
+    iproute2 iputils-ping net-tools tcpdump \
+    postgresql-client && \
     # Install ClickHouse client
     curl -fsSL https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml.key | gpg --dearmor -o /usr/share/keyrings/clickhouse-keyring.gpg && \
     echo "deb [signed-by=/usr/share/keyrings/clickhouse-keyring.gpg] https://packages.clickhouse.com/deb stable main" > /etc/apt/sources.list.d/clickhouse.list && \

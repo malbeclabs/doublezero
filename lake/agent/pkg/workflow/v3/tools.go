@@ -267,6 +267,12 @@ func ParseCypherQueries(params map[string]any) ([]CypherQueryInput, error) {
 			if params == nil {
 				return nil, fmt.Errorf("params is nil")
 			}
+			// Fallback: model sent {question, cypher} directly without queries wrapper
+			if question, qOk := params["question"].(string); qOk {
+				if cypher, cOk := params["cypher"].(string); cOk && question != "" && cypher != "" {
+					return []CypherQueryInput{{Question: question, Cypher: cypher}}, nil
+				}
+			}
 			if _, exists := params["queries"]; !exists {
 				keys := make([]string, 0, len(params))
 				for k := range params {

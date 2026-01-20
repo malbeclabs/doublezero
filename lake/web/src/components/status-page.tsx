@@ -3,11 +3,12 @@ import { useState, useEffect, useMemo } from 'react'
 import { useDelayedLoading } from '@/hooks/use-delayed-loading'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { CheckCircle2, AlertTriangle, XCircle, ArrowUpDown, Cpu } from 'lucide-react'
-import { fetchStatus, fetchLinkHistory, fetchDeviceHistory, fetchInterfaceIssues, type StatusResponse, type InterfaceIssue, type NonActivatedLink, type LinkHistory, type DeviceHistory, type LinkMetric, type DeviceUtilization } from '@/lib/api'
+import { fetchStatus, fetchLinkHistory, fetchDeviceHistory, fetchInterfaceIssues, fetchCriticalLinks, fetchMetros, type StatusResponse, type InterfaceIssue, type NonActivatedLink, type LinkHistory, type DeviceHistory, type LinkMetric, type DeviceUtilization, type CriticalLinksResponse } from '@/lib/api'
 import { StatusFilters, useStatusFilters, type StatusFilter } from '@/components/status-search-bar'
 import { StatCard } from '@/components/stat-card'
 import { LinkStatusTimelines } from '@/components/link-status-timelines'
 import { DeviceStatusTimelines } from '@/components/device-status-timelines'
+import { MetroStatusTimelines, type MetroHealthFilter, type MetroIssueFilter } from '@/components/metro-status-timelines'
 
 type TimeRange = '3h' | '6h' | '12h' | '24h' | '3d' | '7d'
 type IssueFilter = 'packet_loss' | 'high_latency' | 'extended_loss' | 'drained' | 'no_data' | 'no_issues'
@@ -169,7 +170,7 @@ function StatusIndicator({ statusData }: { statusData: StatusResponse }) {
   )
 }
 
-function TabNavigation({ activeTab }: { activeTab: 'links' | 'devices' }) {
+function TabNavigation({ activeTab }: { activeTab: 'links' | 'devices' | 'metros' }) {
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -200,6 +201,16 @@ function TabNavigation({ activeTab }: { activeTab: 'links' | 'devices' }) {
           }`}
         >
           Devices
+        </button>
+        <button
+          onClick={() => navigateWithParams('/status/metros')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            activeTab === 'metros'
+              ? 'border-primary text-foreground'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          Metros
         </button>
       </div>
       <StatusFilters className="pb-2" />
@@ -979,7 +990,7 @@ function useBucketCount() {
 }
 
 // Links tab content
-function LinksContent({ status, linkHistory }: { status: StatusResponse; linkHistory: any }) {
+function LinksContent({ status, linkHistory, criticalLinks }: { status: StatusResponse; linkHistory: any; criticalLinks: CriticalLinksResponse | undefined }) {
   const [timeRange, setTimeRange] = useState<TimeRange>('24h')
   const [issueFilters, setIssueFilters] = useState<IssueFilter[]>(['packet_loss', 'high_latency', 'extended_loss', 'drained'])
   const [healthFilters, setHealthFilters] = useState<HealthFilter[]>(['healthy', 'degraded', 'unhealthy', 'disabled'])
@@ -1201,6 +1212,36 @@ function LinksContent({ status, linkHistory }: { status: StatusResponse; linkHis
     return map
   }, [filteredLinkHistory])
 
+  // Build criticality map from critical links data
+  // Maps link code -> criticality by matching device codes
+  const criticalityMap = useMemo(() => {
+    const map = new Map<string, 'critical' | 'important' | 'redundant'>()
+    if (!criticalLinks?.links || !filteredLinkHistory?.links) return map
+
+    // Build a map from device pair -> criticality
+    const devicePairMap = new Map<string, 'critical' | 'important' | 'redundant'>()
+    for (const critLink of criticalLinks.links) {
+      // Create keys for both directions
+      const key1 = `${critLink.sourceCode}::${critLink.targetCode}`
+      const key2 = `${critLink.targetCode}::${critLink.sourceCode}`
+      devicePairMap.set(key1, critLink.criticality)
+      devicePairMap.set(key2, critLink.criticality)
+    }
+
+    // Match link history entries to criticality by device codes
+    for (const link of filteredLinkHistory.links) {
+      if (link.side_a_device && link.side_z_device) {
+        const key = `${link.side_a_device}::${link.side_z_device}`
+        const criticality = devicePairMap.get(key)
+        if (criticality) {
+          map.set(link.code, criticality)
+        }
+      }
+    }
+
+    return map
+  }, [criticalLinks, filteredLinkHistory])
+
   const packetLossDisabledLinks = useMemo((): DisabledLinkRow[] => {
     if (!linkHistory?.links || !status) return []
 
@@ -1252,7 +1293,7 @@ function LinksContent({ status, linkHistory }: { status: StatusResponse; linkHis
 
       {/* Link Status History */}
       <div className="mb-8">
-        <LinkStatusTimelines timeRange={timeRange} onTimeRangeChange={setTimeRange} issueFilters={issueFilters} healthFilters={healthFilters} linksWithIssues={linksWithIssues} linksWithHealth={linksWithHealth} />
+        <LinkStatusTimelines timeRange={timeRange} onTimeRangeChange={setTimeRange} issueFilters={issueFilters} healthFilters={healthFilters} linksWithIssues={linksWithIssues} linksWithHealth={linksWithHealth} criticalityMap={criticalityMap} />
       </div>
 
       {/* Disabled Links */}
@@ -1897,13 +1938,352 @@ function DevicesContent({ status }: { status: StatusResponse }) {
   )
 }
 
+// Metro health filter card
+function MetroHealthFilterCard({
+  metros,
+  selected,
+  onChange,
+  timeRange,
+}: {
+  metros: { healthy: number; degraded: number; unhealthy: number; total: number }
+  selected: MetroHealthFilter[]
+  onChange: (filters: MetroHealthFilter[]) => void
+  timeRange: TimeRange
+}) {
+  const toggleFilter = (filter: MetroHealthFilter) => {
+    if (selected.includes(filter)) {
+      if (selected.length > 1) {
+        onChange(selected.filter(f => f !== filter))
+      }
+    } else {
+      onChange([...selected, filter])
+    }
+  }
+
+  const allSelected = selected.length === 3
+
+  const healthyPct = metros.total > 0 ? (metros.healthy / metros.total) * 100 : 100
+  const degradedPct = metros.total > 0 ? (metros.degraded / metros.total) * 100 : 0
+  const unhealthyPct = metros.total > 0 ? (metros.unhealthy / metros.total) * 100 : 0
+
+  return (
+    <div className="border border-border rounded-lg p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+        <h3 className="font-medium">Metro Health</h3>
+        <span className="text-xs text-muted-foreground">({timeRangeLabels[timeRange]})</span>
+        <button
+          onClick={() => onChange(['healthy', 'degraded', 'unhealthy'])}
+          className={`text-xs ml-auto px-1.5 py-0.5 rounded transition-colors ${
+            allSelected ? 'text-muted-foreground' : 'text-primary hover:underline'
+          }`}
+        >
+          {allSelected ? 'All selected' : 'Select all'}
+        </button>
+      </div>
+
+      <div className="h-2 rounded-full overflow-hidden flex mb-3 bg-muted">
+        {healthyPct > 0 && (
+          <div
+            className={`bg-green-500 h-full transition-all ${!selected.includes('healthy') ? 'opacity-30' : ''}`}
+            style={{ width: `${healthyPct}%` }}
+          />
+        )}
+        {degradedPct > 0 && (
+          <div
+            className={`bg-amber-500 h-full transition-all ${!selected.includes('degraded') ? 'opacity-30' : ''}`}
+            style={{ width: `${degradedPct}%` }}
+          />
+        )}
+        {unhealthyPct > 0 && (
+          <div
+            className={`bg-red-500 h-full transition-all ${!selected.includes('unhealthy') ? 'opacity-30' : ''}`}
+            style={{ width: `${unhealthyPct}%` }}
+          />
+        )}
+      </div>
+
+      <div className="space-y-0.5 text-sm">
+        <HealthFilterItem
+          color="bg-green-500"
+          label="Operational"
+          count={metros.healthy}
+          description="All links operational, no issues detected."
+          selected={selected.includes('healthy')}
+          onClick={() => toggleFilter('healthy')}
+        />
+        <HealthFilterItem
+          color="bg-amber-500"
+          label="Some Issues"
+          count={metros.degraded}
+          description="Some links down but metro still connected."
+          selected={selected.includes('degraded')}
+          onClick={() => toggleFilter('degraded')}
+        />
+        <HealthFilterItem
+          color="bg-red-500"
+          label="Significant Issues"
+          count={metros.unhealthy}
+          description="Most links down, major connectivity impact."
+          selected={selected.includes('unhealthy')}
+          onClick={() => toggleFilter('unhealthy')}
+        />
+      </div>
+    </div>
+  )
+}
+
+// Metro issues filter card
+function MetroIssuesFilterCard({
+  counts,
+  selected,
+  onChange,
+  timeRange,
+}: {
+  counts: { has_issues: number; has_spof: number; no_issues: number; total: number }
+  selected: MetroIssueFilter[]
+  onChange: (filters: MetroIssueFilter[]) => void
+  timeRange: TimeRange
+}) {
+  const allFilters: MetroIssueFilter[] = ['has_issues', 'has_spof', 'no_issues']
+
+  const toggleFilter = (filter: MetroIssueFilter) => {
+    if (selected.includes(filter)) {
+      if (selected.length > 1) {
+        onChange(selected.filter(f => f !== filter))
+      }
+    } else {
+      onChange([...selected, filter])
+    }
+  }
+
+  const allSelected = selected.length === allFilters.length
+
+  const grandTotal = counts.total || 1
+  const hasIssuesPct = (counts.has_issues / grandTotal) * 100
+  const hasSpofPct = (counts.has_spof / grandTotal) * 100
+  const noIssuesPct = (counts.no_issues / grandTotal) * 100
+
+  return (
+    <div className="border border-border rounded-lg p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+        <h3 className="font-medium">Metro Issues</h3>
+        <span className="text-xs text-muted-foreground">({timeRangeLabels[timeRange]})</span>
+        <button
+          onClick={() => onChange(allFilters)}
+          className={`text-xs ml-auto px-1.5 py-0.5 rounded transition-colors ${
+            allSelected ? 'text-muted-foreground' : 'text-primary hover:underline'
+          }`}
+        >
+          {allSelected ? 'All selected' : 'Select all'}
+        </button>
+      </div>
+
+      <div className="h-2 rounded-full overflow-hidden flex mb-3 bg-muted">
+        {noIssuesPct > 0 && (
+          <div
+            className={`bg-cyan-500 h-full transition-all ${!selected.includes('no_issues') ? 'opacity-30' : ''}`}
+            style={{ width: `${noIssuesPct}%` }}
+          />
+        )}
+        {hasIssuesPct > 0 && (
+          <div
+            className={`bg-purple-500 h-full transition-all ${!selected.includes('has_issues') ? 'opacity-30' : ''}`}
+            style={{ width: `${hasIssuesPct}%` }}
+          />
+        )}
+        {hasSpofPct > 0 && (
+          <div
+            className={`bg-red-500 h-full transition-all ${!selected.includes('has_spof') ? 'opacity-30' : ''}`}
+            style={{ width: `${hasSpofPct}%` }}
+          />
+        )}
+      </div>
+
+      <div className="space-y-0.5 text-sm">
+        <HealthFilterItem
+          color="bg-purple-500"
+          label="Has Issues"
+          count={counts.has_issues}
+          description="Metro has links with health issues in the time range."
+          selected={selected.includes('has_issues')}
+          onClick={() => toggleFilter('has_issues')}
+        />
+        <HealthFilterItem
+          color="bg-red-500"
+          label="Has SPOF"
+          count={counts.has_spof}
+          description="Metro has single points of failure (critical links)."
+          selected={selected.includes('has_spof')}
+          onClick={() => toggleFilter('has_spof')}
+        />
+        <HealthFilterItem
+          color="bg-cyan-500"
+          label="No Issues"
+          count={counts.no_issues}
+          description="Metro with no issues and no critical links."
+          selected={selected.includes('no_issues')}
+          onClick={() => toggleFilter('no_issues')}
+        />
+      </div>
+    </div>
+  )
+}
+
+// Metros tab content
+function MetrosContent({
+  linkHistory,
+  criticalLinks,
+  isLoading,
+  metroNames,
+}: {
+  linkHistory: any
+  criticalLinks: CriticalLinksResponse | undefined
+  isLoading: boolean
+  metroNames: Map<string, string>
+}) {
+  const [timeRange, setTimeRange] = useState<TimeRange>('24h')
+  const [healthFilters, setHealthFilters] = useState<MetroHealthFilter[]>(['healthy', 'degraded', 'unhealthy'])
+  const [issueFilters, setIssueFilters] = useState<MetroIssueFilter[]>(['has_issues', 'has_spof', 'no_issues'])
+
+  // Build critical link set
+  const criticalLinkSet = useMemo(() => {
+    if (!criticalLinks?.links) return new Set<string>()
+    const linkSet = new Set<string>()
+    for (const link of criticalLinks.links) {
+      if (link.criticality === 'critical') {
+        linkSet.add(`${link.sourceCode}--${link.targetCode}`)
+        linkSet.add(`${link.targetCode}--${link.sourceCode}`)
+      }
+    }
+    return linkSet
+  }, [criticalLinks])
+
+  // Calculate metro counts for filter cards using proportional logic
+  // Metro health is based on % of working links, not worst-case single link
+  const metroCounts = useMemo(() => {
+    if (!linkHistory?.links) {
+      return {
+        health: { healthy: 0, degraded: 0, unhealthy: 0, total: 0 },
+        issues: { has_issues: 0, has_spof: 0, no_issues: 0, total: 0 },
+      }
+    }
+
+    // Track link counts per metro for current status (last bucket)
+    const metroMap = new Map<string, {
+      workingLinks: number  // healthy or degraded
+      downLinks: number     // unhealthy, disabled, no_data
+      totalLinks: number
+      hasIssues: boolean    // had any non-healthy status in time range
+      hasSpof: boolean
+    }>()
+
+    for (const link of linkHistory.links) {
+      if (!link.hours || link.hours.length === 0) continue
+
+      const deviceKey = `${link.side_a_device}--${link.side_z_device}`
+      const isSpof = criticalLinkSet.has(deviceKey)
+
+      // Get current status from last bucket
+      // If last bucket is no_data (still collecting), use the previous bucket
+      const lastBucket = link.hours[link.hours.length - 1]
+      const prevBucket = link.hours.length > 1 ? link.hours[link.hours.length - 2] : null
+      const currentStatus = (lastBucket?.status === 'no_data' && prevBucket)
+        ? (prevBucket.status || 'healthy')
+        : (lastBucket?.status || 'healthy')
+      const isWorking = currentStatus === 'healthy' || currentStatus === 'degraded'
+
+      // Check if link had any issues in time range (no_data is also an issue)
+      const hadIssues = link.hours.some((h: { status: string }) =>
+        h.status === 'unhealthy' || h.status === 'degraded' || h.status === 'disabled' || h.status === 'no_data'
+      )
+
+      for (const metroCode of [link.side_a_metro, link.side_z_metro]) {
+        if (!metroCode) continue
+        if (!metroMap.has(metroCode)) {
+          metroMap.set(metroCode, { workingLinks: 0, downLinks: 0, totalLinks: 0, hasIssues: false, hasSpof: false })
+        }
+        const metro = metroMap.get(metroCode)!
+        metro.totalLinks++
+        if (isWorking) metro.workingLinks++
+        else metro.downLinks++
+        if (hadIssues) metro.hasIssues = true
+        if (isSpof) metro.hasSpof = true
+      }
+    }
+
+    const health = { healthy: 0, degraded: 0, unhealthy: 0, total: 0 }
+    const issues = { has_issues: 0, has_spof: 0, no_issues: 0, total: 0 }
+
+    for (const [, data] of metroMap) {
+      health.total++
+      issues.total++
+
+      // Proportional health: >= 80% working = healthy, 20-80% = degraded, < 20% = unhealthy
+      const workingPct = data.totalLinks > 0 ? (data.workingLinks / data.totalLinks) * 100 : 100
+      if (workingPct >= 80) health.healthy++
+      else if (workingPct >= 20) health.degraded++
+      else health.unhealthy++
+
+      if (data.hasSpof) issues.has_spof++
+      if (data.hasIssues) issues.has_issues++
+      if (!data.hasIssues && !data.hasSpof) issues.no_issues++
+    }
+
+    return { health, issues }
+  }, [linkHistory, criticalLinkSet])
+
+  return (
+    <>
+      {/* Metro Health & Issues Filter Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <MetroHealthFilterCard
+          metros={metroCounts.health}
+          selected={healthFilters}
+          onChange={setHealthFilters}
+          timeRange={timeRange}
+        />
+        <MetroIssuesFilterCard
+          counts={metroCounts.issues}
+          selected={issueFilters}
+          onChange={setIssueFilters}
+          timeRange={timeRange}
+        />
+      </div>
+
+      {/* Metro Status History */}
+      <div className="mb-8">
+        <MetroStatusTimelines
+          linkHistory={linkHistory}
+          criticalLinks={criticalLinks}
+          isLoading={isLoading}
+          timeRange={timeRange}
+          onTimeRangeChange={setTimeRange}
+          healthFilters={healthFilters}
+          issueFilters={issueFilters}
+          metroNames={metroNames}
+        />
+      </div>
+
+      {/* Methodology link */}
+      <div className="text-center text-sm text-muted-foreground pb-4">
+        <Link to="/status/methodology" className="hover:text-foreground hover:underline">
+          How is status calculated?
+        </Link>
+      </div>
+    </>
+  )
+}
+
 export function StatusPage() {
   const location = useLocation()
   const navigate = useNavigate()
   const buckets = useBucketCount()
 
   // Determine active tab from URL
-  const activeTab = location.pathname.includes('/devices') ? 'devices' : 'links'
+  const activeTab = location.pathname.includes('/devices') ? 'devices' :
+                    location.pathname.includes('/metros') ? 'metros' : 'links'
 
   // Redirect /status to /status/links (preserving query params)
   useEffect(() => {
@@ -1925,6 +2305,29 @@ export function StatusPage() {
     refetchInterval: 60_000,
     staleTime: 30_000,
   })
+
+  const { data: criticalLinks, isLoading: criticalLinksLoading } = useQuery({
+    queryKey: ['critical-links'],
+    queryFn: fetchCriticalLinks,
+    staleTime: 5 * 60_000, // 5 minutes - topology changes less frequently
+  })
+
+  const { data: metrosData } = useQuery({
+    queryKey: ['metros'],
+    queryFn: () => fetchMetros(500, 0), // Fetch all metros
+    staleTime: 5 * 60_000,
+  })
+
+  // Build metro code -> name lookup
+  const metroNames = useMemo(() => {
+    const map = new Map<string, string>()
+    if (metrosData?.items) {
+      for (const metro of metrosData.items) {
+        map.set(metro.code, metro.name)
+      }
+    }
+    return map
+  }, [metrosData])
 
   const showSkeleton = useDelayedLoading(isLoading)
 
@@ -2000,9 +2403,11 @@ export function StatusPage() {
 
         {/* Tab Content */}
         {activeTab === 'links' ? (
-          <LinksContent status={status} linkHistory={linkHistory} />
-        ) : (
+          <LinksContent status={status} linkHistory={linkHistory} criticalLinks={criticalLinks} />
+        ) : activeTab === 'devices' ? (
           <DevicesContent status={status} />
+        ) : (
+          <MetrosContent linkHistory={linkHistory} criticalLinks={criticalLinks} isLoading={!linkHistory || criticalLinksLoading} metroNames={metroNames} />
         )}
       </div>
     </div>
@@ -2015,5 +2420,9 @@ export function StatusLinksPage() {
 }
 
 export function StatusDevicesPage() {
+  return <StatusPage />
+}
+
+export function StatusMetrosPage() {
   return <StatusPage />
 }

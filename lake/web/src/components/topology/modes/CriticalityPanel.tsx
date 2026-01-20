@@ -26,19 +26,28 @@ export function CriticalityPanel({ data, isLoading }: CriticalityPanelProps) {
               <span className="text-muted-foreground">Total Links</span>
               <span className="font-medium">{data.links.length}</span>
             </div>
-            <div className="flex justify-between">
+            <div
+              className="flex justify-between cursor-help"
+              title="Links where at least one endpoint has only this connection (single point of failure)"
+            >
               <span className="text-red-500">Critical</span>
               <span className="font-medium text-red-500">
                 {data.links.filter(l => l.criticality === 'critical').length}
               </span>
             </div>
-            <div className="flex justify-between">
+            <div
+              className="flex justify-between cursor-help"
+              title="Links where both endpoints have exactly 2 connections (limited redundancy)"
+            >
               <span className="text-amber-500">Important</span>
               <span className="font-medium text-amber-500">
                 {data.links.filter(l => l.criticality === 'important').length}
               </span>
             </div>
-            <div className="flex justify-between">
+            <div
+              className="flex justify-between cursor-help"
+              title="Links where both endpoints have 3+ connections (traffic can reroute)"
+            >
               <span className="text-green-500">Redundant</span>
               <span className="font-medium text-green-500">
                 {data.links.filter(l => l.criticality === 'redundant').length}
@@ -72,15 +81,24 @@ export function CriticalityPanel({ data, isLoading }: CriticalityPanelProps) {
           <div className="pt-2 border-t border-[var(--border)]">
             <div className="text-muted-foreground mb-1.5">Edge Colors</div>
             <div className="space-y-1">
-              <div className="flex items-center gap-1.5">
+              <div
+                className="flex items-center gap-1.5 cursor-help"
+                title="Single point of failure: at least one endpoint has only this connection. If this link fails, a device loses all connectivity."
+              >
                 <div className="w-4 h-1 bg-red-500 rounded" />
                 <span>Critical (no redundancy)</span>
               </div>
-              <div className="flex items-center gap-1.5">
+              <div
+                className="flex items-center gap-1.5 cursor-help"
+                title="Limited redundancy: both endpoints have exactly 2 connections. Losing this link significantly reduces resilience."
+              >
                 <div className="w-4 h-0.5 bg-amber-500 rounded" />
                 <span>Important (limited)</span>
               </div>
-              <div className="flex items-center gap-1.5">
+              <div
+                className="flex items-center gap-1.5 cursor-help"
+                title="Well-connected: both endpoints have 3+ connections. Traffic can reroute if this link fails."
+              >
                 <div className="w-4 h-0.5 bg-green-500 rounded opacity-60" />
                 <span>Redundant (safe)</span>
               </div>

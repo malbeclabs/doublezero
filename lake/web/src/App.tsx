@@ -1878,6 +1878,7 @@ function AppContent() {
             <Route path="/status" element={<StatusPage />} />
             <Route path="/status/links" element={<StatusPage />} />
             <Route path="/status/devices" element={<StatusPage />} />
+            <Route path="/status/metros" element={<StatusPage />} />
             <Route path="/status/methodology" element={<StatusAppendix />} />
 
             {/* Timeline route */}

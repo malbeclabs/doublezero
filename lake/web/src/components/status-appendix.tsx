@@ -286,6 +286,52 @@ export function StatusAppendix() {
           </p>
           </div>
 
+          {/* Link Criticality */}
+          <div className="mb-8">
+            <h3 className="text-lg font-semibold mb-4">Link Criticality (Redundancy)</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              Links are classified by their redundancy level based on how many connections each endpoint device has:
+            </p>
+
+            <div className="space-y-4">
+              <div className="border border-border rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-red-500/15 text-red-600 dark:text-red-400">
+                    SPOF
+                  </span>
+                  <h4 className="font-medium">Single Point of Failure</h4>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  At least one endpoint device has only this connection. If this link fails, a device loses all connectivity.
+                </p>
+              </div>
+
+              <div className="border border-border rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                    Limited
+                  </span>
+                  <h4 className="font-medium">Limited Redundancy</h4>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Both endpoint devices have exactly 2 connections each. Losing this link leaves each device with only 1 remaining connection.
+                </p>
+              </div>
+
+              <div className="border border-border rounded-lg p-4">
+                <h4 className="font-medium mb-2">Well Connected (No Badge)</h4>
+                <p className="text-sm text-muted-foreground">
+                  Both endpoint devices have 3+ connections. Traffic can reroute if this link fails.
+                </p>
+              </div>
+            </div>
+
+            <p className="text-sm text-muted-foreground mt-4">
+              Criticality badges appear next to the link code in the status timeline. Click the info icon to see
+              more details about the link's redundancy in the popover.
+            </p>
+          </div>
+
           {/* Issue Reasons */}
           <div className="mb-8">
             <h3 className="text-lg font-semibold mb-4">Issue Reason Tags</h3>
@@ -399,6 +445,125 @@ export function StatusAppendix() {
                 </p>
               </div>
             </div>
+          </div>
+        </section>
+
+        {/* Metros Section */}
+        <section className="mb-12">
+          <h2 className="text-xl font-semibold mb-6 pb-2 border-b-2 border-border">Metros</h2>
+
+          {/* Metro Health Calculation */}
+          <div className="mb-8">
+            <h3 className="text-lg font-semibold mb-4">Health Calculation</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              Metro health is calculated based on the proportion of working links touching that metro.
+              A link "touches" a metro if either endpoint (side A or side Z) is in that metro.
+            </p>
+
+            <div className="space-y-4">
+              <div className="border border-border rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-3 h-3 rounded-full bg-green-500" />
+                  <h4 className="font-medium">Operational</h4>
+                </div>
+                <p className="text-sm text-muted-foreground ml-5">
+                  ≥ 80% of active links are working (healthy or degraded)
+                </p>
+              </div>
+
+              <div className="border border-border rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-3 h-3 rounded-full bg-amber-500" />
+                  <h4 className="font-medium">Some Issues</h4>
+                </div>
+                <p className="text-sm text-muted-foreground ml-5">
+                  20% - 80% of active links are working
+                </p>
+              </div>
+
+              <div className="border border-border rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-3 h-3 rounded-full bg-red-500" />
+                  <h4 className="font-medium">Significant Issues</h4>
+                </div>
+                <p className="text-sm text-muted-foreground ml-5">
+                  &lt; 20% of active links are working
+                </p>
+              </div>
+            </div>
+
+            <p className="text-sm text-muted-foreground mt-4">
+              <strong>Note:</strong> Disabled links (drained) and links with no data are excluded from the calculation.
+              Only active links (healthy, degraded, or unhealthy) are considered.
+            </p>
+          </div>
+
+          {/* SPOF Links */}
+          <div className="mb-8">
+            <h3 className="text-lg font-semibold mb-4">Single Points of Failure (SPOF)</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              A SPOF link is a link where at least one endpoint device has only that single connection.
+              If the link fails, that device loses all network connectivity.
+            </p>
+
+            <div className="space-y-4">
+              <div className="border border-border rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                    2 SPOF
+                  </span>
+                  <h4 className="font-medium">SPOF Badge (Normal)</h4>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Amber badge indicates the metro has SPOF links, but all are currently healthy.
+                  The number shows how many SPOF links exist.
+                </p>
+              </div>
+
+              <div className="border border-border rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-red-500/20 text-red-600 dark:text-red-400 inline-flex items-center gap-1">
+                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    2 SPOF
+                  </span>
+                  <h4 className="font-medium">SPOF Badge (At Risk)</h4>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Red badge with warning icon indicates at least one SPOF link is degraded or unhealthy.
+                  This is a critical situation requiring immediate attention.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* SPOF Impact on Health */}
+          <div className="mb-8">
+            <h3 className="text-lg font-semibold mb-4">SPOF Impact on Metro Health</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              SPOF link status directly affects metro health classification:
+            </p>
+            <ul className="text-sm text-muted-foreground space-y-2 ml-5 list-disc">
+              <li><strong>Any SPOF link unhealthy</strong> → Metro becomes <span className="text-red-500 font-medium">Significant Issues</span> (regardless of other links)</li>
+              <li><strong>Any SPOF link degraded</strong> → Metro becomes at least <span className="text-amber-500 font-medium">Some Issues</span></li>
+            </ul>
+            <p className="text-sm text-muted-foreground mt-4">
+              This ensures SPOF issues are always surfaced prominently, even if the metro has many other healthy links.
+            </p>
+          </div>
+
+          {/* Metro Info Popover */}
+          <div className="mb-8">
+            <h3 className="text-lg font-semibold mb-4">Metro Details</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              Click the info icon next to a metro name to see details including:
+            </p>
+            <ul className="text-sm text-muted-foreground space-y-2 ml-5 list-disc">
+              <li><strong>Links</strong> — Total number of links touching this metro</li>
+              <li><strong>Single Points of Failure</strong> — List of SPOF links with their current status (click to view link details)</li>
+              <li><strong>Current Status</strong> — Overall metro health</li>
+            </ul>
           </div>
         </section>
 

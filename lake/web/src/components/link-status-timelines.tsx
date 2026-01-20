@@ -5,6 +5,7 @@ import { Loader2, CheckCircle2, AlertTriangle, History, Info } from 'lucide-reac
 import { fetchLinkHistory } from '@/lib/api'
 import type { LinkHistory } from '@/lib/api'
 import { StatusTimeline } from './status-timeline'
+import { CriticalityBadge } from './criticality-badge'
 
 type TimeRange = '3h' | '6h' | '12h' | '24h' | '3d' | '7d'
 
@@ -15,6 +16,7 @@ interface LinkStatusTimelinesProps {
   healthFilters?: string[]
   linksWithIssues?: Map<string, string[]>  // Map of link code -> issue reasons (from filter time range)
   linksWithHealth?: Map<string, string>    // Map of link code -> health status (from filter time range)
+  criticalityMap?: Map<string, 'critical' | 'important' | 'redundant'>  // Map of link code -> criticality level
 }
 
 function formatBandwidth(bps: number): string {
@@ -28,8 +30,26 @@ function formatBandwidth(bps: number): string {
   return `${bps} bps`
 }
 
-function LinkInfoPopover({ link }: { link: LinkHistory }) {
+function LinkInfoPopover({ link, criticality }: { link: LinkHistory; criticality?: 'critical' | 'important' | 'redundant' }) {
   const [isOpen, setIsOpen] = useState(false)
+
+  const criticalityInfo = {
+    critical: {
+      label: 'Single Point of Failure',
+      description: 'One endpoint has no other connections.',
+      className: 'text-red-500',
+    },
+    important: {
+      label: 'Limited Redundancy',
+      description: 'Each endpoint has only 2 connections.',
+      className: 'text-amber-500',
+    },
+    redundant: {
+      label: 'Well Connected',
+      description: 'Both endpoints have 3+ connections.',
+      className: 'text-green-500',
+    },
+  }
 
   return (
     <div className="relative inline-block">
@@ -43,7 +63,7 @@ function LinkInfoPopover({ link }: { link: LinkHistory }) {
       </button>
       {isOpen && (
         <div
-          className="absolute left-0 top-full mt-1 z-50 bg-popover border border-border rounded-lg shadow-lg p-3 min-w-[200px]"
+          className="absolute left-0 top-full mt-1 z-50 bg-popover border border-border rounded-lg shadow-lg p-3 min-w-[220px]"
           onMouseEnter={() => setIsOpen(true)}
           onMouseLeave={() => setIsOpen(false)}
         >
@@ -75,6 +95,17 @@ function LinkInfoPopover({ link }: { link: LinkHistory }) {
               <div>
                 <div className="text-muted-foreground">Committed RTT</div>
                 <div className="font-medium">{(link.committed_rtt_us / 1000).toFixed(2)} ms</div>
+              </div>
+            )}
+            {criticality && (
+              <div className="pt-2 mt-2 border-t border-border">
+                <div className="text-muted-foreground">Redundancy</div>
+                <div className={`font-medium ${criticalityInfo[criticality].className}`}>
+                  {criticalityInfo[criticality].label}
+                </div>
+                <div className="text-muted-foreground mt-1">
+                  {criticalityInfo[criticality].description}
+                </div>
               </div>
             )}
           </div>
@@ -114,6 +145,7 @@ export function LinkStatusTimelines({
   healthFilters = ['healthy', 'degraded', 'unhealthy', 'disabled'],
   linksWithIssues,
   linksWithHealth,
+  criticalityMap,
 }: LinkStatusTimelinesProps) {
   const timeRangeOptions: { value: TimeRange; label: string }[] = [
     { value: '3h', label: '3h' },
@@ -309,7 +341,10 @@ export function LinkStatusTimelines({
                   <Link to={`/dz/links/${link.pk}`} className="font-mono text-sm truncate hover:underline" title={link.code}>
                     {link.code}
                   </Link>
-                  <LinkInfoPopover link={link} />
+                  <LinkInfoPopover link={link} criticality={criticalityMap?.get(link.code)} />
+                  {criticalityMap?.get(link.code) && criticalityMap.get(link.code) !== 'redundant' && (
+                    <CriticalityBadge criticality={criticalityMap.get(link.code)!} />
+                  )}
                 </div>
                 {link.contributor && (
                   <div className="text-xs text-muted-foreground">{link.contributor}</div>

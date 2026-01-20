@@ -38,7 +38,7 @@ impl CloseAccountUserCommand {
             AccountMeta::new(globalstate_pubkey, false),
         ];
 
-        if self.use_onchain_deallocation {
+        let dz_prefix_count: u8 = if self.use_onchain_deallocation {
             // Fetch device to get dz_prefixes count
             let (_, device) = GetDeviceCommand {
                 pubkey_or_code: user.device_pk.to_string(),
@@ -46,7 +46,7 @@ impl CloseAccountUserCommand {
             .execute(client)
             .map_err(|_| eyre::eyre!("Device not found"))?;
 
-            let dz_prefix_count = device.dz_prefixes.len();
+            let count = device.dz_prefixes.len();
 
             // Global UserTunnelBlock
             let (global_resource_ext, _, _) =
@@ -62,17 +62,21 @@ impl CloseAccountUserCommand {
             accounts.push(AccountMeta::new(device_tunnel_ids_ext, false));
 
             // Add all N DzPrefixBlock accounts (devices can have multiple dz_prefixes)
-            for idx in 0..dz_prefix_count {
+            for idx in 0..count {
                 let (device_dz_prefix_ext, _, _) = get_resource_extension_pda(
                     &client.get_program_id(),
                     ResourceType::DzPrefixBlock(user.device_pk, idx),
                 );
                 accounts.push(AccountMeta::new(device_dz_prefix_ext, false));
             }
-        }
+
+            count as u8
+        } else {
+            0
+        };
 
         client.execute_transaction(
-            DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {}),
+            DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs { dz_prefix_count }),
             accounts,
         )
     }
@@ -138,7 +142,7 @@ mod tests {
             .expect_execute_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CloseAccountUser(
-                    UserCloseAccountArgs {},
+                    UserCloseAccountArgs { dz_prefix_count: 0 },
                 )),
                 predicate::eq(vec![
                     AccountMeta::new(user_pubkey, false),
@@ -219,7 +223,7 @@ mod tests {
             .expect_execute_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CloseAccountUser(
-                    UserCloseAccountArgs {},
+                    UserCloseAccountArgs { dz_prefix_count: 1 }, // 1 dz_prefix from device.dz_prefixes
                 )),
                 predicate::eq(vec![
                     AccountMeta::new(user_pubkey, false),

@@ -58,7 +58,7 @@ impl ActivateUserCommand {
             AccountMeta::new(globalstate_pubkey, false),
         ];
 
-        if self.use_onchain_allocation {
+        let dz_prefix_count: u8 = if self.use_onchain_allocation {
             // Fetch device to get dz_prefixes count
             let (_, device) = GetDeviceCommand {
                 pubkey_or_code: user.device_pk.to_string(),
@@ -66,7 +66,7 @@ impl ActivateUserCommand {
             .execute(client)
             .map_err(|_| eyre::eyre!("Device not found"))?;
 
-            let dz_prefix_count = device.dz_prefixes.len();
+            let count = device.dz_prefixes.len();
 
             // Global UserTunnelBlock
             let (global_resource_ext, _, _) =
@@ -82,20 +82,25 @@ impl ActivateUserCommand {
             accounts.push(AccountMeta::new(device_tunnel_ids_ext, false));
 
             // Add all N DzPrefixBlock accounts (devices can have multiple dz_prefixes)
-            for idx in 0..dz_prefix_count {
+            for idx in 0..count {
                 let (device_dz_prefix_ext, _, _) = get_resource_extension_pda(
                     &client.get_program_id(),
                     ResourceType::DzPrefixBlock(user.device_pk, idx),
                 );
                 accounts.push(AccountMeta::new(device_dz_prefix_ext, false));
             }
-        }
+
+            count as u8
+        } else {
+            0
+        };
 
         client.execute_transaction(
             DoubleZeroInstruction::ActivateUser(UserActivateArgs {
                 tunnel_id: self.tunnel_id,
                 tunnel_net: self.tunnel_net,
                 dz_ip: self.dz_ip,
+                dz_prefix_count,
             }),
             accounts,
         )
@@ -196,6 +201,7 @@ mod tests {
                     tunnel_id,
                     tunnel_net,
                     dz_ip,
+                    dz_prefix_count: 0,
                 })),
                 predicate::eq(vec![
                     AccountMeta::new(user_pubkey, false),
@@ -307,6 +313,7 @@ mod tests {
                     tunnel_id: 0,
                     tunnel_net: NetworkV4::default(),
                     dz_ip: Ipv4Addr::UNSPECIFIED,
+                    dz_prefix_count: 1, // 1 dz_prefix from device.dz_prefixes
                 })),
                 predicate::eq(vec![
                     AccountMeta::new(user_pubkey, false),

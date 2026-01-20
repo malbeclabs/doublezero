@@ -537,6 +537,7 @@ mod tests {
                         tunnel_id: 500,
                         tunnel_net: "10.0.0.0/31".parse().unwrap(),
                         dz_ip: expected_dz_ip.unwrap_or(Ipv4Addr::UNSPECIFIED),
+                        dz_prefix_count: 0, // legacy path
                     })),
                     predicate::always(),
                 )
@@ -731,6 +732,7 @@ mod tests {
                         tunnel_id: 500,
                         tunnel_net: "10.0.0.1/29".parse().unwrap(),
                         dz_ip: [10, 0, 0, 1].into(),
+                        dz_prefix_count: 0, // legacy path
                     })),
                     predicate::always(),
                 )
@@ -1217,7 +1219,9 @@ mod tests {
                     .in_sequence(seq)
                     .with(
                         predicate::eq(DoubleZeroInstruction::CloseAccountUser(
-                            UserCloseAccountArgs {},
+                            UserCloseAccountArgs {
+                                dz_prefix_count: 0, // legacy path
+                            },
                         )),
                         predicate::always(),
                     )

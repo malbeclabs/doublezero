@@ -383,6 +383,7 @@ async fn test_activate_user_with_onchain_allocation() {
             tunnel_id: 0,                             // ignored when ResourceExtension provided
             tunnel_net: "0.0.0.0/0".parse().unwrap(), // ignored when ResourceExtension provided
             dz_ip: [0, 0, 0, 0].into(),               // ignored when ResourceExtension provided
+            dz_prefix_count: 1,                       // 1 DzPrefixBlock account provided
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -477,6 +478,7 @@ async fn test_activate_user_legacy_path() {
             tunnel_id: 501,
             tunnel_net: "169.254.0.0/25".parse().unwrap(),
             dz_ip: [200, 0, 0, 1].into(),
+            dz_prefix_count: 0, // legacy path - no ResourceExtension accounts
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -534,6 +536,7 @@ async fn test_closeaccount_user_with_deallocation() {
             tunnel_id: 0,
             tunnel_net: "0.0.0.0/0".parse().unwrap(),
             dz_ip: [0, 0, 0, 0].into(),
+            dz_prefix_count: 1, // 1 DzPrefixBlock account provided
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -597,7 +600,9 @@ async fn test_closeaccount_user_with_deallocation() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {}),
+        DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {
+            dz_prefix_count: 1, // 1 DzPrefixBlock account provided
+        }),
         vec![
             AccountMeta::new(user_pubkey, false),
             AccountMeta::new(user_owner, false),
@@ -680,6 +685,7 @@ async fn test_activate_user_foundation_allowlist() {
             tunnel_id: 0,
             tunnel_net: "0.0.0.0/0".parse().unwrap(),
             dz_ip: [0, 0, 0, 0].into(),
+            dz_prefix_count: 1, // 1 DzPrefixBlock account provided
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -739,6 +745,7 @@ async fn test_activate_user_ibrl_uses_client_ip() {
             tunnel_id: 0,
             tunnel_net: "0.0.0.0/0".parse().unwrap(),
             dz_ip: [0, 0, 0, 0].into(),
+            dz_prefix_count: 1, // 1 DzPrefixBlock account provided
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -803,6 +810,7 @@ async fn test_activate_user_ibrl_with_allocated_ip() {
             tunnel_id: 0,
             tunnel_net: "0.0.0.0/0".parse().unwrap(),
             dz_ip: [0, 0, 0, 0].into(),
+            dz_prefix_count: 1, // 1 DzPrefixBlock account provided
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -874,6 +882,7 @@ async fn test_activate_user_edge_filtering() {
             tunnel_id: 0,
             tunnel_net: "0.0.0.0/0".parse().unwrap(),
             dz_ip: [0, 0, 0, 0].into(),
+            dz_prefix_count: 1, // 1 DzPrefixBlock account provided
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -946,6 +955,7 @@ async fn test_activate_user_already_activated_fails() {
             tunnel_id: 0,
             tunnel_net: "0.0.0.0/0".parse().unwrap(),
             dz_ip: [0, 0, 0, 0].into(),
+            dz_prefix_count: 1, // 1 DzPrefixBlock account provided
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -970,6 +980,7 @@ async fn test_activate_user_already_activated_fails() {
             tunnel_id: 0,
             tunnel_net: "0.0.0.0/0".parse().unwrap(),
             dz_ip: [0, 0, 0, 0].into(),
+            dz_prefix_count: 1, // 1 DzPrefixBlock account provided
         }),
         vec![
             AccountMeta::new(user_pubkey, false),

@@ -22,18 +22,23 @@ use solana_program::{
 use std::net::Ipv4Addr;
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
-pub struct UserCloseAccountArgs {}
+pub struct UserCloseAccountArgs {
+    /// Number of DzPrefixBlock accounts passed for on-chain deallocation.
+    /// When 0, legacy behavior is used (no deallocation). When > 0, on-chain deallocation is used.
+    #[incremental(default = 0)]
+    pub dz_prefix_count: u8,
+}
 
 impl fmt::Debug for UserCloseAccountArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "")
+        write!(f, "dz_prefix_count: {}", self.dz_prefix_count)
     }
 }
 
 pub fn process_closeaccount_user(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    _value: &UserCloseAccountArgs,
+    value: &UserCloseAccountArgs,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
@@ -43,21 +48,17 @@ pub fn process_closeaccount_user(
     let globalstate_account = next_account_info(accounts_iter)?;
 
     // Optional: ResourceExtension accounts for on-chain deallocation (before payer)
-    // Account layout WITH ResourceExtension (8+ accounts):
+    // Account layout WITH ResourceExtension (dz_prefix_count > 0):
     //   [user, owner, device, globalstate, global_resource_ext, device_tunnel_ids_ext, dz_prefix_ext_0..N, payer, system]
-    //   Minimum 8 accounts (6 base + 2 resource accounts with at least 1 DzPrefixBlock)
-    // Account layout WITHOUT (legacy, 6 accounts):
+    // Account layout WITHOUT (legacy, dz_prefix_count == 0):
     //   [user, owner, device, globalstate, payer, system]
-    let resource_extension_accounts = if accounts.len() >= 8 {
+    let resource_extension_accounts = if value.dz_prefix_count > 0 {
         let global_resource_ext = next_account_info(accounts_iter)?; // UserTunnelBlock
         let device_tunnel_ids_ext = next_account_info(accounts_iter)?; // TunnelIds
 
-        // Collect all remaining DzPrefixBlock accounts (N = accounts.len() - 8)
-        // accounts.len() - 6 (base) - 2 (payer, system) = number of resource accounts
-        // resource accounts - 2 (global, tunnel_ids) = number of DzPrefixBlock accounts
-        let dz_prefix_count = accounts.len() - 8;
-        let mut dz_prefix_accounts = Vec::with_capacity(dz_prefix_count);
-        for _ in 0..dz_prefix_count {
+        // Collect DzPrefixBlock accounts based on dz_prefix_count from args
+        let mut dz_prefix_accounts = Vec::with_capacity(value.dz_prefix_count as usize);
+        for _ in 0..value.dz_prefix_count {
             dz_prefix_accounts.push(next_account_info(accounts_iter)?);
         }
 
@@ -74,7 +75,7 @@ pub fn process_closeaccount_user(
     let system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
-    msg!("process_delete_user({:?})", _value);
+    msg!("process_delete_user({:?})", value);
 
     // Check if the payer is a signer
     assert!(payer_account.is_signer, "Payer must be a signer");
@@ -402,7 +403,13 @@ mod tests {
             system_program_account,
         ];
 
-        let result = process_closeaccount_user(&program_id, &accounts, &UserCloseAccountArgs {});
+        let result = process_closeaccount_user(
+            &program_id,
+            &accounts,
+            &UserCloseAccountArgs {
+                dz_prefix_count: 0, // legacy path - no ResourceExtension accounts
+            },
+        );
 
         assert!(result.is_err());
         let err = result.err().unwrap();

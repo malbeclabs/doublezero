@@ -362,6 +362,7 @@ async fn test_old_user() {
             tunnel_id: 500,
             tunnel_net: "169.254.0.0/25".parse().unwrap(),
             dz_ip: [200, 0, 0, 1].into(),
+            dz_prefix_count: 0, // legacy path - no ResourceExtension accounts
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -485,7 +486,9 @@ async fn test_old_user() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {}),
+        DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {
+            dz_prefix_count: 0, // legacy path - no ResourceExtension accounts
+        }),
         vec![
             AccountMeta::new(user_pubkey, false),
             AccountMeta::new(user.owner, false),

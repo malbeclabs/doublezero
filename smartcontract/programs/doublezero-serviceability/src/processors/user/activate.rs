@@ -28,14 +28,18 @@ pub struct UserActivateArgs {
     pub tunnel_net: NetworkV4,
     #[incremental(default = Ipv4Addr::UNSPECIFIED)]
     pub dz_ip: Ipv4Addr,
+    /// Number of DzPrefixBlock accounts passed for on-chain allocation.
+    /// When 0, legacy behavior is used (values from args). When > 0, on-chain allocation is used.
+    #[incremental(default = 0)]
+    pub dz_prefix_count: u8,
 }
 
 impl fmt::Debug for UserActivateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "tunnel_id: {}, tunnel_net: {}, dz_ip: {}",
-            self.tunnel_id, &self.tunnel_net, &self.dz_ip,
+            "tunnel_id: {}, tunnel_net: {}, dz_ip: {}, dz_prefix_count: {}",
+            self.tunnel_id, &self.tunnel_net, &self.dz_ip, self.dz_prefix_count,
         )
     }
 }
@@ -52,21 +56,17 @@ pub fn process_activate_user(
     let globalstate_account = next_account_info(accounts_iter)?;
 
     // Optional: ResourceExtension accounts for on-chain allocation (before payer)
-    // Account layout WITH ResourceExtension (7+ accounts):
+    // Account layout WITH ResourceExtension (dz_prefix_count > 0):
     //   [user, accesspass, globalstate, global_resource_ext, device_tunnel_ids_ext, dz_prefix_ext_0..N, payer, system]
-    //   Minimum 7 accounts (5 base + 2 resource accounts with at least 1 DzPrefixBlock)
-    // Account layout WITHOUT (legacy, 5 accounts):
+    // Account layout WITHOUT (legacy, dz_prefix_count == 0):
     //   [user, accesspass, globalstate, payer, system]
-    let resource_extension_accounts = if accounts.len() >= 7 {
+    let resource_extension_accounts = if value.dz_prefix_count > 0 {
         let global_resource_ext = next_account_info(accounts_iter)?; // UserTunnelBlock
         let device_tunnel_ids_ext = next_account_info(accounts_iter)?; // TunnelIds
 
-        // Collect all remaining DzPrefixBlock accounts (N = accounts.len() - 7)
-        // accounts.len() - 5 (base) - 2 (payer, system) = number of resource accounts
-        // resource accounts - 2 (global, tunnel_ids) = number of DzPrefixBlock accounts
-        let dz_prefix_count = accounts.len() - 7;
-        let mut dz_prefix_accounts = Vec::with_capacity(dz_prefix_count);
-        for _ in 0..dz_prefix_count {
+        // Collect DzPrefixBlock accounts based on dz_prefix_count from args
+        let mut dz_prefix_accounts = Vec::with_capacity(value.dz_prefix_count as usize);
+        for _ in 0..value.dz_prefix_count {
             dz_prefix_accounts.push(next_account_info(accounts_iter)?);
         }
 

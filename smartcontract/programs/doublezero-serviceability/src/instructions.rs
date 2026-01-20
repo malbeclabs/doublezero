@@ -65,8 +65,8 @@ use crate::processors::{
         update::MulticastGroupUpdateArgs,
     },
     resource::{
-        allocate::ResourceAllocateArgs, create::ResourceCreateArgs,
-        deallocate::ResourceDeallocateArgs,
+        allocate::ResourceAllocateArgs, closeaccount::ResourceExtensionCloseAccountArgs,
+        create::ResourceCreateArgs, deallocate::ResourceDeallocateArgs,
     },
     user::{
         activate::UserActivateArgs, ban::UserBanArgs, check_access_pass::CheckUserAccessPassArgs,
@@ -182,6 +182,8 @@ pub enum DoubleZeroInstruction {
 
     SetDeviceHealth(DeviceSetHealthArgs), // variant 83
     SetLinkHealth(LinkSetHealthArgs),     // variant 84
+
+    CloseResource(ResourceExtensionCloseAccountArgs), // variant 85
 }
 
 impl DoubleZeroInstruction {
@@ -294,6 +296,7 @@ impl DoubleZeroInstruction {
             82 => Ok(Self::DeallocateResource(ResourceDeallocateArgs::try_from(rest).unwrap())),
             83 => Ok(Self::SetDeviceHealth(DeviceSetHealthArgs::try_from(rest).unwrap())),
             84 => Ok(Self::SetLinkHealth(LinkSetHealthArgs::try_from(rest).unwrap())),
+            85 => Ok(Self::CloseResource(ResourceExtensionCloseAccountArgs::try_from(rest).unwrap())),
 
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -404,6 +407,7 @@ impl DoubleZeroInstruction {
             Self::DeallocateResource(_) => "DeallocateResource".to_string(), // variant 82
             Self::SetDeviceHealth(_) => "SetDeviceHealth".to_string(), // variant 83
             Self::SetLinkHealth(_) => "SetLinkHealth".to_string(), // variant 84
+            Self::CloseResource(_) => "CloseResource".to_string(), // variant 85
         }
     }
 
@@ -506,6 +510,7 @@ impl DoubleZeroInstruction {
             Self::DeallocateResource(args) => format!("{args:?}"), // variant 82
             Self::SetDeviceHealth(args) => format!("{args:?}"), // variant 83
             Self::SetLinkHealth(args) => format!("{args:?}"), // variant 84
+            Self::CloseResource(args) => format!("{args:?}"), // variant 85
         }
     }
 }
@@ -630,7 +635,7 @@ mod tests {
             "CreateDevice",
         );
         test_instruction(
-            DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {}),
+            DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs { resource_count: 0 }),
             "ActivateDevice",
         );
         test_instruction(
@@ -646,6 +651,7 @@ mod tests {
                 users_count: None,
                 status: None,
                 desired_status: None,
+                resource_count: 0,
             }),
             "UpdateDevice",
         );
@@ -731,7 +737,7 @@ mod tests {
             "DeleteUser",
         );
         test_instruction(
-            DoubleZeroInstruction::CloseAccountDevice(DeviceCloseAccountArgs {}),
+            DoubleZeroInstruction::CloseAccountDevice(DeviceCloseAccountArgs { resource_count: 0 }),
             "CloseAccountDevice",
         );
         test_instruction(
@@ -1062,6 +1068,10 @@ mod tests {
                 value: IdOrIp::Id(1),
             }),
             "DeallocateResource",
+        );
+        test_instruction(
+            DoubleZeroInstruction::CloseResource(ResourceExtensionCloseAccountArgs {}),
+            "CloseResource",
         );
         test_instruction(
             DoubleZeroInstruction::SetDeviceHealth(DeviceSetHealthArgs {

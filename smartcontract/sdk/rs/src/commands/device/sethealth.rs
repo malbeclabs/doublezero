@@ -37,12 +37,13 @@ mod tests {
     };
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
-        pda::get_contributor_pda,
+        pda::{get_contributor_pda, get_globalconfig_pda},
         processors::device::update::DeviceUpdateArgs,
         state::{
             accountdata::AccountData,
             accounttype::AccountType,
             device::{Device, DeviceDesiredStatus, DeviceHealth, DeviceStatus, DeviceType},
+            globalconfig::GlobalConfig,
         },
     };
     use mockall::predicate;
@@ -82,6 +83,25 @@ mod tests {
             .expect_get()
             .with(predicate::eq(device_pubkey))
             .returning(move |_| Ok(AccountData::Device(device.clone())));
+
+        let (globalconfig_pubkey, _) = get_globalconfig_pda(&client.get_program_id());
+        client
+            .expect_get()
+            .with(predicate::eq(globalconfig_pubkey))
+            .returning(move |_| {
+                Ok(AccountData::GlobalConfig(GlobalConfig {
+                    account_type: AccountType::GlobalConfig,
+                    owner: Pubkey::new_unique(),
+                    bump_seed: 1,
+                    local_asn: 65000,
+                    remote_asn: 65001,
+                    device_tunnel_block: "10.0.0.0/24".parse().unwrap(),
+                    user_tunnel_block: "10.1.0.0/24".parse().unwrap(),
+                    multicastgroup_block: "224.0.0.0/24".parse().unwrap(),
+                    next_bgp_community: 1,
+                }))
+            });
+
         client
             .expect_execute_transaction()
             .with(
@@ -97,6 +117,7 @@ mod tests {
                     users_count: None,
                     status: None,
                     desired_status: None,
+                    resource_count: 2,
                 })),
                 predicate::always(),
             )

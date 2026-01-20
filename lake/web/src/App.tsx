@@ -1281,6 +1281,8 @@ function AppContent() {
   }, [])
 
   // Helper to update a query step (e.g., mark as completed)
+  // Only updates the first matching query with status 'running' to avoid
+  // overwriting already-completed or errored queries with the same question text
   const updateQueryStep = useCallback((
     sessionId: string,
     question: string,
@@ -1290,8 +1292,13 @@ function AppContent() {
       const existing = prev.get(sessionId)
       if (!existing) return prev
       const next = new Map(prev)
-      const updatedSteps = existing.processingSteps.map(step => {
-        if (step.type === 'query' && step.question === question) {
+      // Find the index of the first running query with matching question
+      const targetIndex = existing.processingSteps.findIndex(
+        step => step.type === 'query' && step.question === question && step.status === 'running'
+      )
+      if (targetIndex === -1) return prev // No running query found with this question
+      const updatedSteps = existing.processingSteps.map((step, index) => {
+        if (index === targetIndex) {
           return { ...step, ...update }
         }
         return step

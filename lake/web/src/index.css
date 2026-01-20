@@ -316,7 +316,8 @@ table {
 
 .prose th {
   background: var(--muted);
-  font-weight: 500;
+  color: var(--foreground);
+  font-weight: 600;
 }
 
 .prose tr:nth-child(even) {

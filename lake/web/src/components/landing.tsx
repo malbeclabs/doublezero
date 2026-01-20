@@ -54,9 +54,10 @@ export function Landing() {
   const handleStartChat = (question?: string) => {
     const q = question || input.trim()
     if (q) {
-      sessionStorage.setItem('initialChatQuestion', q)
+      navigate(`/chat?q=${encodeURIComponent(q)}`)
+    } else {
+      navigate('/chat')
     }
-    navigate('/chat')
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -181,8 +182,7 @@ export function Landing() {
             key={question}
             onClick={(e) => {
               if (e.metaKey || e.ctrlKey) {
-                sessionStorage.setItem('initialChatQuestion', question)
-                window.open('/chat', '_blank')
+                window.open(`/chat?q=${encodeURIComponent(question)}`, '_blank')
               } else {
                 handleStartChat(question)
               }

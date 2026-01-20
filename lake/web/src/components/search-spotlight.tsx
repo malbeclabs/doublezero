@@ -250,14 +250,14 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
 
   const handleAskAI = useCallback((e?: React.MouseEvent) => {
     if (!query.trim()) return
-    sessionStorage.setItem('initialChatQuestion', query.trim())
+    const q = query.trim()
     setQuery('')
     onClose()
     if (e && (e.metaKey || e.ctrlKey)) {
-      window.open('/chat', '_blank')
+      window.open(`/chat?q=${encodeURIComponent(q)}`, '_blank')
     } else {
-      // Dispatch event to create new chat session (handled by App.tsx)
-      window.dispatchEvent(new CustomEvent('new-chat-session'))
+      // Dispatch event to create new chat session with question (handled by App.tsx)
+      window.dispatchEvent(new CustomEvent('new-chat-session', { detail: { question: q } }))
     }
   }, [query, onClose])
 

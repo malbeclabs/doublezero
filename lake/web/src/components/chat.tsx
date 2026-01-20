@@ -685,8 +685,7 @@ export function Chat({ messages, isPending, processingSteps, externalLock, onSen
                       key={question}
                       onClick={(e) => {
                         if (e.metaKey || e.ctrlKey) {
-                          sessionStorage.setItem('initialChatQuestion', question)
-                          window.open('/chat', '_blank')
+                          window.open(`/chat?q=${encodeURIComponent(question)}`, '_blank')
                         } else {
                           onSendMessage(question)
                         }
@@ -867,8 +866,7 @@ export function Chat({ messages, isPending, processingSteps, externalLock, onSen
                               key={i}
                               onClick={(e) => {
                                 if (e.metaKey || e.ctrlKey) {
-                                  sessionStorage.setItem('initialChatQuestion', question)
-                                  window.open('/chat', '_blank')
+                                  window.open(`/chat?q=${encodeURIComponent(question)}`, '_blank')
                                 } else {
                                   onSendMessage(question)
                                 }

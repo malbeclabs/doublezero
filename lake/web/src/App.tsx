@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, createContext, useContext } from 'react'
-import { Routes, Route, Navigate, useNavigate, useParams } from 'react-router-dom'
+import { Routes, Route, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
 import { format as formatSQL } from 'sql-formatter'
 import { Catalog } from '@/components/catalog'
@@ -325,6 +325,7 @@ function QueryRedirect() {
 
 function ChatRedirect() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { setChatSessions, chatSessionsLoaded } = useAppContext()
 
   useEffect(() => {
@@ -333,8 +334,10 @@ function ChatRedirect() {
     // Always create a new chat session
     const newSession = createChatSession()
     setChatSessions(prev => [...prev, newSession])
-    navigate(`/chat/${newSession.id}`, { replace: true })
-  }, [chatSessionsLoaded, setChatSessions, navigate])
+    // Pass through any query params (e.g., ?q=... for initial question)
+    const queryString = searchParams.toString()
+    navigate(`/chat/${newSession.id}${queryString ? `?${queryString}` : ''}`, { replace: true })
+  }, [chatSessionsLoaded, setChatSessions, navigate, searchParams])
 
   return null
 }
@@ -618,6 +621,7 @@ function QueryEditorView() {
 function ChatView() {
   const navigate = useNavigate()
   const { sessionId: urlSessionId } = useParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const {
     sessions,
     setSessions,
@@ -929,7 +933,7 @@ function ChatView() {
     }
   }, [chatServerSyncComplete, currentChatSession, currentChatSessionId, chatMessages, isPending, sendChatMessage, setExternalLocks, setChatSessions, setPendingChats])
 
-  // Check for initial question from landing page
+  // Check for initial question from URL query param (e.g., ?q=...)
   const initialQuestionSent = useRef<string | null>(null)
   useEffect(() => {
     // Wait for server sync to complete - ChatSessionSync won't set currentChatSessionId until then
@@ -939,9 +943,10 @@ function ChatView() {
     // Don't send twice for the same session
     if (initialQuestionSent.current === currentChatSessionId) return
 
-    const initialQuestion = sessionStorage.getItem('initialChatQuestion')
+    const initialQuestion = searchParams.get('q')
     if (initialQuestion && chatMessages.length === 0 && !isPending) {
-      sessionStorage.removeItem('initialChatQuestion')
+      // Clear the query param from URL to avoid re-sending on refresh
+      setSearchParams({}, { replace: true })
       initialQuestionSent.current = currentChatSessionId
       // Add user message immediately
       setChatSessions(prev => prev.map(session => {
@@ -957,7 +962,7 @@ function ChatView() {
       // Send to API
       sendChatMessage(currentChatSessionId, initialQuestion, [])
     }
-  }, [chatServerSyncComplete, currentChatSession, currentChatSessionId, chatMessages.length, isPending, setChatSessions, sendChatMessage])
+  }, [chatServerSyncComplete, currentChatSession, currentChatSessionId, chatMessages.length, isPending, setChatSessions, sendChatMessage, searchParams, setSearchParams])
 
   const handleSendMessage = useCallback(async (message: string) => {
     // Synchronous guard to prevent double-sends from rapid clicks
@@ -1722,10 +1727,11 @@ function AppContent() {
     }
   }
 
-  const handleNewChatSession = () => {
+  const handleNewChatSession = (question?: string) => {
     const newSession = createChatSession()
     setChatSessions(prev => [...prev, newSession])
-    navigate(`/chat/${newSession.id}`)
+    const queryString = question ? `?q=${encodeURIComponent(question)}` : ''
+    navigate(`/chat/${newSession.id}${queryString}`)
   }
 
   const handleSelectChatSession = (session: ChatSession) => {
@@ -1804,7 +1810,10 @@ function AppContent() {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
     }
     const handleOpenSearch = () => setIsSearchOpen(true)
-    const handleNewChat = () => handleNewChatSession()
+    const handleNewChat = (e: Event) => {
+      const question = (e as CustomEvent<{ question?: string }>).detail?.question
+      handleNewChatSession(question)
+    }
     window.addEventListener('keydown', handleKeyDown)
     window.addEventListener('open-search', handleOpenSearch)
     window.addEventListener('new-chat-session', handleNewChat)

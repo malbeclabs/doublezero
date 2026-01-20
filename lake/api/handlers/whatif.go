@@ -175,18 +175,23 @@ func GetSimulateLinkRemoval(w http.ResponseWriter, r *http.Request) {
 		WHERE srcData IS NOT NULL AND tgtData IS NOT NULL
 		  AND srcData.device.pk <> tgtData.device.pk
 
-		WITH srcData.device AS fromDevice, tgtData.device AS toDevice,
+		WITH srcData.device AS fromDevice, tgtData.device AS toDevice, src, tgt,
 		     3 AS beforeHops,
 		     coalesce(srcData.metric, 0) + coalesce(linkMetric, 0) + coalesce(tgtData.metric, 0) AS beforeMetric
 
-		// Check if there's an alternate path not using this link
+		// Check if there's an alternate path not using the link being removed
 		OPTIONAL MATCH altPath = shortestPath((fromDevice)-[:ISIS_ADJACENT*]-(toDevice))
+		WHERE NONE(r IN relationships(altPath) WHERE
+		      (startNode(r).pk = src.pk AND endNode(r).pk = tgt.pk) OR
+		      (startNode(r).pk = tgt.pk AND endNode(r).pk = src.pk))
 		WITH fromDevice, toDevice, beforeHops, beforeMetric, altPath,
 		     CASE WHEN altPath IS NOT NULL THEN length(altPath) ELSE 0 END AS afterHops,
 		     CASE WHEN altPath IS NOT NULL
 		          THEN reduce(total = 0, r IN relationships(altPath) | total + coalesce(r.metric, 0))
 		          ELSE 0 END AS afterMetric
-		WHERE afterHops > 0
+
+		// Only include paths where the path through the link is actually preferred
+		WHERE afterHops = 0 OR (afterHops > 0 AND beforeMetric < afterMetric)
 
 		RETURN fromDevice.pk AS from_pk,
 		       fromDevice.code AS from_code,

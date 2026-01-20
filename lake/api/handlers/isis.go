@@ -830,8 +830,10 @@ func GetFailureImpact(w http.ResponseWriter, r *http.Request) {
 		          THEN reduce(total = 0, rel IN relationships(altPath) | total + coalesce(rel.metric, 0))
 		          ELSE 0 END AS altMetric
 
-		// Only include paths where alternate exists and is worse or doesn't exist
-		WHERE altHops > 0 OR altMetric = 0
+		// Only include paths where the path through target is actually the current best path:
+		// 1. No alternate exists (altHops = 0), so removing target disconnects these devices, OR
+		// 2. Path through target has lower metric than alternate, so it's currently preferred
+		WHERE altHops = 0 OR (altHops > 0 AND throughTargetMetric < altMetric)
 		RETURN neighbor1.pk AS from_pk,
 		       neighbor1.code AS from_code,
 		       neighbor2.pk AS to_pk,

@@ -247,7 +247,7 @@ func (p *Workflow) RunWithProgress(ctx context.Context, userQuestion string, his
 	// Synthesis phase: generate the final user-facing answer
 	if len(state.ExecutedQueries) > 0 {
 		// Data analysis: run synthesis to produce clean answer from query results
-		state.FinalAnswer, err = p.synthesizeAnswer(ctx, toolLLM, systemPrompt, messages, state)
+		state.FinalAnswer, err = p.synthesizeAnswer(ctx, toolLLM, systemPrompt, messages, state, userQuestion)
 		if err != nil {
 			p.logInfo("workflow: synthesis failed, using last response", "error", err)
 			state.FinalAnswer = lastTextResponse
@@ -841,7 +841,7 @@ func (p *Workflow) RunWithCheckpoint(
 	// Synthesis phase: generate the final user-facing answer
 	if len(state.ExecutedQueries) > 0 {
 		// Data analysis: run synthesis to produce clean answer from query results
-		state.FinalAnswer, err = p.synthesizeAnswer(ctx, toolLLM, systemPrompt, messages, state)
+		state.FinalAnswer, err = p.synthesizeAnswer(ctx, toolLLM, systemPrompt, messages, state, userQuestion)
 		if err != nil {
 			p.logInfo("workflow: synthesis failed, using last response", "error", err)
 			state.FinalAnswer = lastTextResponse
@@ -1075,7 +1075,7 @@ func (p *Workflow) ResumeFromCheckpoint(
 	// Synthesis phase: generate the final user-facing answer
 	if len(state.ExecutedQueries) > 0 {
 		// Data analysis: run synthesis to produce clean answer from query results
-		state.FinalAnswer, err = p.synthesizeAnswer(ctx, toolLLM, systemPrompt, messages, state)
+		state.FinalAnswer, err = p.synthesizeAnswer(ctx, toolLLM, systemPrompt, messages, state, userQuestion)
 		if err != nil {
 			p.logInfo("workflow: synthesis failed, using last response", "error", err)
 			state.FinalAnswer = lastTextResponse
@@ -1125,7 +1125,8 @@ func GetFinalCheckpoint(
 
 // baseSynthesisPrompt is the base prompt for the synthesis phase.
 // It asks the model to produce a clean, user-facing answer from the data gathered.
-const baseSynthesisPrompt = `You have finished gathering data. Now produce your final answer for the user.
+// The %s placeholder is for the user's original question.
+const baseSynthesisPrompt = `You have finished gathering data. Now answer the user's question: %q
 
 CRITICAL RULES:
 1. Start directly with the answer - no preamble like "Based on the data..." or "Here's what I found..."
@@ -1140,11 +1141,11 @@ BE HONEST ABOUT FAILURES:
 
 // synthesizeAnswer makes a final LLM call to produce a clean user-facing answer.
 // This is the "synthesis phase" that separates working notes from the final response.
-func (p *Workflow) synthesizeAnswer(ctx context.Context, llm workflow.ToolLLMClient, systemPrompt string, messages []workflow.ToolMessage, state *LoopState) (string, error) {
+func (p *Workflow) synthesizeAnswer(ctx context.Context, llm workflow.ToolLLMClient, systemPrompt string, messages []workflow.ToolMessage, state *LoopState, userQuestion string) (string, error) {
 	p.logInfo("workflow: starting synthesis phase", "queries", len(state.ExecutedQueries))
 
 	// Build synthesis prompt, appending format context if configured
-	synthesisPrompt := baseSynthesisPrompt
+	synthesisPrompt := fmt.Sprintf(baseSynthesisPrompt, userQuestion)
 	if p.cfg.FormatContext != "" {
 		synthesisPrompt += "\n\n# Output Formatting\n\n" + p.cfg.FormatContext
 	}

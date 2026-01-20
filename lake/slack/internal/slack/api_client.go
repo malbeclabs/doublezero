@@ -8,12 +8,14 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/malbeclabs/doublezero/lake/agent/pkg/workflow"
+	"github.com/malbeclabs/doublezero/lake/utils/pkg/retry"
 )
 
 // APIClient is an HTTP client for the Lake API.
@@ -25,10 +27,24 @@ type APIClient struct {
 
 // NewAPIClient creates a new API client.
 func NewAPIClient(baseURL string, log *slog.Logger) *APIClient {
+	// Custom transport with dial timeout for fast failure on connection issues
+	transport := &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout:   10 * time.Second, // Connection timeout
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ResponseHeaderTimeout: 30 * time.Second, // Time to wait for response headers after connection
+		IdleConnTimeout:       90 * time.Second,
+		MaxIdleConns:          10,
+		MaxIdleConnsPerHost:   5,
+	}
+
 	return &APIClient{
 		baseURL: strings.TrimSuffix(baseURL, "/"),
 		httpClient: &http.Client{
-			Timeout: 5 * time.Minute, // Long timeout for streaming responses
+			Transport: transport,
+			Timeout:   5 * time.Minute, // Overall timeout for streaming responses
 		},
 		log: log,
 	}
@@ -97,6 +113,7 @@ type queryDoneEventData struct {
 // ChatStream sends a message to the API and streams the response.
 // It calls onProgress for each progress update and returns the final result.
 // If sessionID is empty, a new one will be generated.
+// The initial connection is retried on transient errors (connection refused, timeouts, 5xx).
 func (c *APIClient) ChatStream(
 	ctx context.Context,
 	message string,
@@ -130,25 +147,63 @@ func (c *APIClient) ChatStream(
 		return ChatStreamResult{}, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	// Create HTTP request
-	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/api/chat/stream", bytes.NewReader(bodyBytes))
-	if err != nil {
-		return ChatStreamResult{}, fmt.Errorf("failed to create request: %w", err)
+	// Use retry for initial connection to handle API restarts/deploys
+	// Retry on: connection refused, timeouts, 5xx status codes
+	// Don't retry on: 4xx client errors, context cancellation
+	var resp *http.Response
+	retryCfg := retry.Config{
+		MaxAttempts: 3,
+		BaseBackoff: 1 * time.Second,
+		MaxBackoff:  5 * time.Second,
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "text/event-stream")
 
-	// Send request
-	resp, err := c.httpClient.Do(req)
+	err = retry.Do(ctx, retryCfg, func() error {
+		// Create fresh request for each attempt (body reader needs to be reset)
+		req, reqErr := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/api/chat/stream", bytes.NewReader(bodyBytes))
+		if reqErr != nil {
+			return fmt.Errorf("failed to create request: %w", reqErr)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "text/event-stream")
+
+		// Send request
+		var doErr error
+		resp, doErr = c.httpClient.Do(req)
+		if doErr != nil {
+			c.log.Warn("API request failed, will retry if retryable",
+				"error", doErr,
+				"url", c.baseURL+"/api/chat/stream",
+			)
+			return fmt.Errorf("failed to send request: %w", doErr)
+		}
+
+		// Check status code - retry on 5xx, fail fast on 4xx
+		if resp.StatusCode >= 500 {
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			return &apiError{
+				statusCode: resp.StatusCode,
+				message:    string(body),
+			}
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			// 4xx errors are not retryable - return directly without wrapping
+			return fmt.Errorf("API error: %s (status %d)", string(body), resp.StatusCode)
+		}
+
+		return nil
+	})
+
 	if err != nil {
-		return ChatStreamResult{}, fmt.Errorf("failed to send request: %w", err)
+		return ChatStreamResult{}, err
 	}
+
+	// At this point we have a successful connection - stream parsing begins
+	// Note: We don't retry mid-stream failures as that would duplicate work
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return ChatStreamResult{}, fmt.Errorf("API error: %s (status %d)", string(body), resp.StatusCode)
-	}
 
 	// Parse SSE stream
 	result, err := c.parseSSEStream(ctx, resp.Body, onProgress)
@@ -157,6 +212,21 @@ func (c *APIClient) ChatStream(
 	}
 	result.SessionID = sessionID
 	return result, nil
+}
+
+// apiError represents an HTTP API error with a status code.
+// Implements the StatusCode() interface for retry.IsRetryable() detection.
+type apiError struct {
+	statusCode int
+	message    string
+}
+
+func (e *apiError) Error() string {
+	return fmt.Sprintf("API error: %s (status %d)", e.message, e.statusCode)
+}
+
+func (e *apiError) StatusCode() int {
+	return e.statusCode
 }
 
 // parseSSEStream reads the SSE stream and returns the result.

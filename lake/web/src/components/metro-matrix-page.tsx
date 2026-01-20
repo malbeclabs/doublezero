@@ -182,7 +182,9 @@ function ConnectivityDetail({
 
       <div className="flex gap-2 text-sm">
         <Link
-          to={`/topology/graph?highlight-metro=${connectivity.fromMetroPK}`}
+          to={pathsData?.paths[0]?.hops[0]?.devicePK
+            ? `/topology/graph?type=device&id=${pathsData.paths[0].hops[0].devicePK}`
+            : '/topology/graph'}
           className="text-accent hover:underline flex items-center gap-1"
         >
           View {connectivity.fromMetroCode} in Graph

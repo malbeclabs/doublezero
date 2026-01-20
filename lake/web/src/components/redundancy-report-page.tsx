@@ -176,7 +176,7 @@ function IssueRow({
             {issue.entityType === 'device' && (
               <div className="pt-2 flex gap-2">
                 <Link
-                  to={`/topology/graph?highlight=${issue.entityPK}`}
+                  to={`/topology/graph?type=device&id=${issue.entityPK}`}
                   className="text-xs px-2 py-1 bg-muted rounded hover:bg-muted/80 transition-colors"
                 >
                   Show in Graph
@@ -306,13 +306,13 @@ function DegradedLinkRow({
 
             <div className="pt-2 flex gap-2">
               <Link
-                to={`/topology/graph?highlight=${link.side_a_pk}`}
+                to={`/topology/graph?type=link&id=${link.link_pk}`}
                 className="text-xs px-2 py-1 bg-muted rounded hover:bg-muted/80 transition-colors"
               >
                 Show in Graph
               </Link>
               <Link
-                to={`/topology/map?type=link&sideA=${link.side_a_pk}&sideZ=${link.side_z_pk}`}
+                to={`/topology/map?type=link&id=${link.link_pk}`}
                 className="text-xs px-2 py-1 bg-muted rounded hover:bg-muted/80 transition-colors"
               >
                 Show in Map

@@ -2,8 +2,8 @@ import { useQuery } from '@tanstack/react-query'
 import { useState, useEffect, useMemo } from 'react'
 import { useDelayedLoading } from '@/hooks/use-delayed-loading'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { CheckCircle2, AlertTriangle, XCircle, ArrowUpDown, Cpu } from 'lucide-react'
-import { fetchStatus, fetchLinkHistory, fetchDeviceHistory, fetchInterfaceIssues, fetchCriticalLinks, fetchMetros, type StatusResponse, type InterfaceIssue, type NonActivatedLink, type LinkHistory, type DeviceHistory, type LinkMetric, type DeviceUtilization, type CriticalLinksResponse } from '@/lib/api'
+import { CheckCircle2, AlertTriangle, XCircle, ArrowUpDown, Cpu, ChevronDown, ChevronUp } from 'lucide-react'
+import { fetchStatus, fetchLinkHistory, fetchDeviceHistory, fetchInterfaceIssues, fetchCriticalLinks, fetchMetros, type StatusResponse, type InterfaceIssue, type NonActivatedLink, type LinkHistory, type DeviceHistory, type LinkMetric, type DeviceUtilization, type CriticalLinksResponse, type LinkIssue } from '@/lib/api'
 import { StatusFilters, useStatusFilters, type StatusFilter } from '@/components/status-search-bar'
 import { StatCard } from '@/components/stat-card'
 import { LinkStatusTimelines } from '@/components/link-status-timelines'
@@ -78,6 +78,9 @@ function formatTimeAgo(isoString: string): string {
 function getStatusReasons(status: StatusResponse): string[] {
   const reasons: string[] = []
 
+  if (status.links.disabled > 0) {
+    reasons.push(`${status.links.disabled} link${status.links.disabled > 1 ? 's' : ''} down`)
+  }
   if (status.links.unhealthy > 0) {
     reasons.push(`${status.links.unhealthy} link${status.links.unhealthy > 1 ? 's' : ''} with critical issues`)
   }
@@ -121,15 +124,130 @@ function formatRelativeTime(timestamp: string): string {
   return `${hours}h ago`
 }
 
+type IssueSeverity = 'down' | 'critical' | 'degraded'
+
+function classifyIssueSeverity(issue: LinkIssue): IssueSeverity {
+  if (issue.issue === 'packet_loss') {
+    if (issue.value >= 95) return 'down'
+    if (issue.value >= 10) return 'critical'
+    return 'degraded'
+  } else {
+    // high_latency
+    if (issue.value >= 50) return 'critical'
+    return 'degraded'
+  }
+}
+
+function formatDuration(since: string): string {
+  if (!since) return ''
+  const start = new Date(since).getTime()
+  const now = Date.now()
+  const diffMs = now - start
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMins / 60)
+  const diffDays = Math.floor(diffHours / 24)
+
+  if (diffDays > 0) {
+    const remainingHours = diffHours % 24
+    return remainingHours > 0 ? `${diffDays}d ${remainingHours}h` : `${diffDays}d`
+  }
+  if (diffHours > 0) {
+    const remainingMins = diffMins % 60
+    return remainingMins > 0 ? `${diffHours}h ${remainingMins}m` : `${diffHours}h`
+  }
+  return `${diffMins}m`
+}
+
+function IssueDetails({ issues, onIssueClick }: { issues: LinkIssue[]; onIssueClick: () => void }) {
+  const grouped = issues.reduce(
+    (acc, issue) => {
+      const severity = classifyIssueSeverity(issue)
+      acc[severity].push(issue)
+      return acc
+    },
+    { down: [] as LinkIssue[], critical: [] as LinkIssue[], degraded: [] as LinkIssue[] }
+  )
+
+  const sections: { key: IssueSeverity; label: string; icon: typeof XCircle; iconColor: string; valueColor: string }[] = [
+    { key: 'down', label: 'Links Down', icon: XCircle, iconColor: 'text-gray-500', valueColor: 'text-gray-600 dark:text-gray-400' },
+    { key: 'critical', label: 'Critical Issues', icon: XCircle, iconColor: 'text-red-500', valueColor: 'text-red-500' },
+    { key: 'degraded', label: 'Degraded Performance', icon: AlertTriangle, iconColor: 'text-orange-500', valueColor: 'text-orange-500' },
+  ]
+
+  return (
+    <div className="border-t border-border px-6 py-4 space-y-4">
+      {sections.map(({ key, label, icon: Icon, iconColor, valueColor }) => {
+        const sectionIssues = grouped[key]
+        if (sectionIssues.length === 0) return null
+        return (
+          <div key={key}>
+            <div className="text-sm font-medium text-muted-foreground mb-2">{label}</div>
+            <div className="space-y-2">
+              {sectionIssues.map((issue, idx) => (
+                <button
+                  key={idx}
+                  onClick={onIssueClick}
+                  className="flex items-center justify-between w-full py-2 px-3 rounded-md bg-muted/50 hover:bg-muted transition-colors text-left"
+                >
+                  <div className="flex items-center gap-3">
+                    <Icon className={`h-4 w-4 ${iconColor}`} />
+                    <div>
+                      <div className="font-medium text-sm">{issue.code}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {issue.side_a_metro} → {issue.side_z_metro} · {issue.link_type}{issue.contributor && ` · ${issue.contributor}`}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className={`text-sm font-medium ${valueColor}`}>
+                      {issue.issue === 'packet_loss'
+                        ? `${issue.value.toFixed(1)}% loss`
+                        : `${issue.value.toFixed(0)}% over SLA`}
+                    </div>
+                    {issue.since && (
+                      <div
+                        className="text-xs text-muted-foreground"
+                        title={new Date(issue.since).toLocaleString()}
+                      >
+                        for {formatDuration(issue.since)}
+                      </div>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function StatusIndicator({ statusData }: { statusData: StatusResponse }) {
   const status = statusData.status
   const reasons = getStatusReasons(statusData)
   const [, forceUpdate] = useState(0)
+  const [expanded, setExpanded] = useState(false)
+  const navigate = useNavigate()
+  const location = useLocation()
 
   useEffect(() => {
     const interval = setInterval(() => forceUpdate(n => n + 1), 10000)
     return () => clearInterval(interval)
   }, [])
+
+  const scrollToLinkHistory = () => {
+    // If not on links tab, navigate there first
+    if (!location.pathname.includes('/status/links')) {
+      navigate('/status/links')
+      // Wait for navigation then scroll
+      setTimeout(() => {
+        document.getElementById('link-status-history')?.scrollIntoView({ behavior: 'smooth' })
+      }, 100)
+    } else {
+      document.getElementById('link-status-history')?.scrollIntoView({ behavior: 'smooth' })
+    }
+  }
 
   const config = {
     healthy: {
@@ -154,18 +272,37 @@ function StatusIndicator({ statusData }: { statusData: StatusResponse }) {
 
   const { icon: Icon, label, className, borderClassName } = config[status]
 
+  // Check if there are link issues to show
+  const linkIssues = statusData.links.issues || []
+  const hasExpandableContent = linkIssues.length > 0
+
   return (
-    <div className={`flex items-center gap-3 px-6 py-4 rounded-lg bg-card border border-border border-l-4 ${borderClassName}`}>
-      <Icon className={`h-8 w-8 ${className}`} />
-      <div className="flex-1">
-        <div className={`text-lg font-medium ${className}`}>{label}</div>
-        {reasons.length > 0 && (
-          <div className="text-sm text-muted-foreground">{reasons.slice(0, 2).join(' · ')}</div>
-        )}
+    <div className={`rounded-lg bg-card border border-border border-l-4 ${borderClassName}`}>
+      <div
+        className={`flex items-center gap-3 px-6 py-4 ${hasExpandableContent ? 'cursor-pointer hover:bg-muted/30 transition-colors' : ''}`}
+        onClick={hasExpandableContent ? () => setExpanded(!expanded) : undefined}
+      >
+        <Icon className={`h-8 w-8 ${className}`} />
+        <div className="flex-1">
+          <div className={`text-lg font-medium ${className}`}>{label}</div>
+          {reasons.length > 0 && (
+            <div className="text-sm text-muted-foreground">{reasons.slice(0, 2).join(' · ')}</div>
+          )}
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="text-xs text-muted-foreground/60">
+            Updated {formatRelativeTime(statusData.timestamp)}
+          </div>
+          {hasExpandableContent && (
+            <div className="text-muted-foreground">
+              {expanded ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+            </div>
+          )}
+        </div>
       </div>
-      <div className="text-xs text-muted-foreground/60">
-        Updated {formatRelativeTime(statusData.timestamp)}
-      </div>
+      {expanded && linkIssues.length > 0 && (
+        <IssueDetails issues={linkIssues} onIssueClick={scrollToLinkHistory} />
+      )}
     </div>
   )
 }
@@ -1292,7 +1429,7 @@ function LinksContent({ status, linkHistory, criticalLinks }: { status: StatusRe
       </div>
 
       {/* Link Status History */}
-      <div className="mb-8">
+      <div id="link-status-history" className="mb-8 scroll-mt-8">
         <LinkStatusTimelines timeRange={timeRange} onTimeRangeChange={setTimeRange} issueFilters={issueFilters} healthFilters={healthFilters} linksWithIssues={linksWithIssues} linksWithHealth={linksWithHealth} criticalityMap={criticalityMap} />
       </div>
 

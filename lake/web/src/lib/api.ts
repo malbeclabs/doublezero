@@ -952,6 +952,7 @@ export interface LinkIssue {
   threshold: number
   side_a_metro: string
   side_z_metro: string
+  since: string
 }
 
 export interface LinkMetric {

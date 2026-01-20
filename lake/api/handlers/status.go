@@ -90,6 +90,7 @@ type LinkIssue struct {
 	Threshold   float64 `json:"threshold"`   // The threshold exceeded
 	SideAMetro  string  `json:"side_a_metro"`
 	SideZMetro  string  `json:"side_z_metro"`
+	Since       string  `json:"since"`       // ISO timestamp when issue started
 }
 
 type LinkMetric struct {
@@ -642,9 +643,55 @@ func fetchStatusData(ctx context.Context) *StatusResponse {
 		resp.Links.Degraded = degraded
 		resp.Links.Unhealthy = unhealthy
 		resp.Links.Disabled = disabled
-		resp.Links.Issues = issues
 		resp.Links.HighUtilLinks = highUtil
 		resp.Links.TopUtilLinks = allUtilLinks
+
+		// Populate issue start times
+		if len(issues) > 0 {
+			// Build list of link codes to query
+			linkCodes := make([]string, len(issues))
+			for i, issue := range issues {
+				linkCodes[i] = issue.Code
+			}
+
+			// Query hourly loss data for the last 7 days to find when issues started
+			issueStartQuery := `
+				SELECT
+					l.code,
+					toStartOfHour(event_ts) as hour,
+					countIf(loss OR rtt_us = 0) * 100.0 / count(*) as loss_pct
+				FROM fact_dz_device_link_latency lat
+				JOIN dz_links_current l ON lat.link_pk = l.pk
+				WHERE lat.event_ts > now() - INTERVAL 7 DAY
+				  AND l.code IN (?)
+				GROUP BY l.code, hour
+				HAVING loss_pct >= ?
+				ORDER BY l.code, hour ASC
+			`
+			issueRows, err := config.DB.Query(ctx, issueStartQuery, linkCodes, LossWarningPct)
+			if err == nil {
+				defer issueRows.Close()
+				// Map of link code -> earliest issue hour
+				issueSince := make(map[string]time.Time)
+				for issueRows.Next() {
+					var code string
+					var hour time.Time
+					var lossPct float64
+					if err := issueRows.Scan(&code, &hour, &lossPct); err == nil {
+						if _, exists := issueSince[code]; !exists {
+							issueSince[code] = hour
+						}
+					}
+				}
+				// Populate Since field for each issue
+				for i := range issues {
+					if since, ok := issueSince[issues[i].Code]; ok {
+						issues[i].Since = since.UTC().Format(time.RFC3339)
+					}
+				}
+			}
+		}
+		resp.Links.Issues = issues
 
 		return rows.Err()
 	})

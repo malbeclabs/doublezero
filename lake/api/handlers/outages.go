@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"sort"
 	"strconv"
@@ -106,8 +107,50 @@ func parseOutageFilters(filterStr string) []OutageFilter {
 	return filters
 }
 
+// isDefaultOutagesRequest checks if the request matches the default cached parameters
+func isDefaultOutagesRequest(r *http.Request) bool {
+	q := r.URL.Query()
+
+	// Must be 24h range (default) or no range specified
+	rangeParam := q.Get("range")
+	if rangeParam != "" && rangeParam != "24h" {
+		return false
+	}
+
+	// Must be threshold=1 (default) or no threshold specified
+	threshold := q.Get("threshold")
+	if threshold != "" && threshold != "1" {
+		return false
+	}
+
+	// Must be type=all (default) or no type specified
+	outageType := q.Get("type")
+	if outageType != "" && outageType != "all" {
+		return false
+	}
+
+	// Must not have any filters
+	if q.Get("filter") != "" {
+		return false
+	}
+
+	return true
+}
+
 // GetLinkOutages returns discrete outage events for links
 func GetLinkOutages(w http.ResponseWriter, r *http.Request) {
+	// Check if this is a default request that can be served from cache
+	if isDefaultOutagesRequest(r) && statusCache != nil {
+		if cached := statusCache.GetOutages(); cached != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("X-Cache", "HIT")
+			if err := json.NewEncoder(w).Encode(cached); err != nil {
+				log.Printf("Error encoding cached outages response: %v", err)
+			}
+			return
+		}
+	}
+
 	// Parse query parameters
 	timeRange := r.URL.Query().Get("range")
 	if timeRange == "" {
@@ -1320,4 +1363,62 @@ func floatVal(f *float64) float64 {
 		return 0
 	}
 	return *f
+}
+
+// fetchDefaultOutagesData fetches outages data with default parameters for caching.
+// This returns the same data as GetLinkOutages with default params:
+// range=24h, threshold=1, type=all, no filters.
+func fetchDefaultOutagesData(ctx context.Context) *LinkOutagesResponse {
+	duration := 24 * time.Hour
+	threshold := 1.0
+	var filters []OutageFilter // empty = no filters
+
+	var outages []LinkOutage
+
+	// Fetch status-based outages (drained states)
+	statusOutages, err := fetchStatusOutages(ctx, config.DB, duration, filters)
+	if err != nil {
+		log.Printf("Cache: Failed to fetch status outages: %v", err)
+	} else {
+		outages = append(outages, statusOutages...)
+	}
+
+	// Fetch packet loss outages
+	lossOutages, err := fetchPacketLossOutages(ctx, config.DB, duration, threshold, filters)
+	if err != nil {
+		log.Printf("Cache: Failed to fetch packet loss outages: %v", err)
+	} else {
+		outages = append(outages, lossOutages...)
+	}
+
+	// Fetch no-data outages
+	noDataOutages, err := fetchNoDataOutages(ctx, config.DB, duration, filters)
+	if err != nil {
+		log.Printf("Cache: Failed to fetch no-data outages: %v", err)
+	} else {
+		outages = append(outages, noDataOutages...)
+	}
+
+	// Sort by start time (most recent first)
+	sort.Slice(outages, func(i, j int) bool {
+		return outages[i].StartedAt > outages[j].StartedAt
+	})
+
+	// Build summary
+	summary := LinkOutagesSummary{
+		Total:   len(outages),
+		Ongoing: 0,
+		ByType:  map[string]int{"status": 0, "packet_loss": 0, "no_data": 0},
+	}
+	for _, o := range outages {
+		if o.IsOngoing {
+			summary.Ongoing++
+		}
+		summary.ByType[o.OutageType]++
+	}
+
+	return &LinkOutagesResponse{
+		Outages: outages,
+		Summary: summary,
+	}
 }

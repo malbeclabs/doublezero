@@ -19,15 +19,21 @@ type StatusCache struct {
 	status        *StatusResponse
 	linkHistory   map[string]*LinkHistoryResponse   // keyed by "range:buckets" e.g. "24h:72"
 	deviceHistory map[string]*DeviceHistoryResponse // keyed by "range:buckets" e.g. "24h:72"
+	timeline      *TimelineResponse                 // default 24h timeline
+	outages       *LinkOutagesResponse              // default 24h outages
 
 	// Refresh intervals
 	statusInterval      time.Duration
 	linkHistoryInterval time.Duration
+	timelineInterval    time.Duration
+	outagesInterval     time.Duration
 
 	// Last refresh times (for observability)
 	statusLastRefresh        time.Time
 	linkHistoryLastRefresh   time.Time
 	deviceHistoryLastRefresh time.Time
+	timelineLastRefresh      time.Time
+	outagesLastRefresh       time.Time
 
 	// Context for cancellation
 	ctx    context.Context
@@ -66,13 +72,15 @@ var deviceHistoryConfigs = []struct {
 }
 
 // NewStatusCache creates a new cache with the specified refresh intervals.
-func NewStatusCache(statusInterval, linkHistoryInterval time.Duration) *StatusCache {
+func NewStatusCache(statusInterval, linkHistoryInterval, timelineInterval, outagesInterval time.Duration) *StatusCache {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &StatusCache{
 		linkHistory:         make(map[string]*LinkHistoryResponse),
 		deviceHistory:       make(map[string]*DeviceHistoryResponse),
 		statusInterval:      statusInterval,
 		linkHistoryInterval: linkHistoryInterval,
+		timelineInterval:    timelineInterval,
+		outagesInterval:     outagesInterval,
 		ctx:                 ctx,
 		cancel:              cancel,
 	}
@@ -81,19 +89,23 @@ func NewStatusCache(statusInterval, linkHistoryInterval time.Duration) *StatusCa
 // Start begins background refresh goroutines.
 // It performs an initial refresh synchronously to ensure cache is warm before returning.
 func (c *StatusCache) Start() {
-	log.Printf("Starting status cache with intervals: status=%v, linkHistory=%v",
-		c.statusInterval, c.linkHistoryInterval)
+	log.Printf("Starting status cache with intervals: status=%v, linkHistory=%v, timeline=%v, outages=%v",
+		c.statusInterval, c.linkHistoryInterval, c.timelineInterval, c.outagesInterval)
 
 	// Initial refresh (synchronous to ensure cache is warm)
 	c.refreshStatus()
 	c.refreshLinkHistory()
 	c.refreshDeviceHistory()
+	c.refreshTimeline()
+	c.refreshOutages()
 
 	// Start background refresh goroutines
-	c.wg.Add(3)
+	c.wg.Add(5)
 	go c.statusRefreshLoop()
 	go c.linkHistoryRefreshLoop()
 	go c.deviceHistoryRefreshLoop()
+	go c.timelineRefreshLoop()
+	go c.outagesRefreshLoop()
 }
 
 // Stop cancels the background refresh goroutines and waits for them to exit.
@@ -140,6 +152,22 @@ func (c *StatusCache) GetDeviceHistory(timeRange string, buckets int) *DeviceHis
 	defer c.mu.RUnlock()
 	key := deviceHistoryCacheKey(timeRange, buckets)
 	return c.deviceHistory[key]
+}
+
+// GetTimeline returns the cached default timeline response.
+// Returns nil if cache is empty (should not happen after Start() completes).
+func (c *StatusCache) GetTimeline() *TimelineResponse {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.timeline
+}
+
+// GetOutages returns the cached default outages response.
+// Returns nil if cache is empty (should not happen after Start() completes).
+func (c *StatusCache) GetOutages() *LinkOutagesResponse {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.outages
 }
 
 // statusRefreshLoop runs the status refresh on a ticker.
@@ -262,6 +290,70 @@ func (c *StatusCache) refreshDeviceHistory() {
 		time.Since(start), len(deviceHistoryConfigs))
 }
 
+// timelineRefreshLoop runs the timeline refresh on a ticker.
+func (c *StatusCache) timelineRefreshLoop() {
+	defer c.wg.Done()
+	ticker := time.NewTicker(c.timelineInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			c.refreshTimeline()
+		case <-c.ctx.Done():
+			return
+		}
+	}
+}
+
+// outagesRefreshLoop runs the outages refresh on a ticker.
+func (c *StatusCache) outagesRefreshLoop() {
+	defer c.wg.Done()
+	ticker := time.NewTicker(c.outagesInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			c.refreshOutages()
+		case <-c.ctx.Done():
+			return
+		}
+	}
+}
+
+// refreshTimeline fetches fresh timeline data for the default 24h view.
+func (c *StatusCache) refreshTimeline() {
+	start := time.Now()
+	ctx, cancel := context.WithTimeout(c.ctx, 30*time.Second)
+	defer cancel()
+
+	resp := fetchDefaultTimelineData(ctx)
+
+	c.mu.Lock()
+	c.timeline = resp
+	c.timelineLastRefresh = time.Now()
+	c.mu.Unlock()
+
+	log.Printf("Timeline cache refreshed in %v (%d events)", time.Since(start), len(resp.Events))
+}
+
+// refreshOutages fetches fresh outages data for the default 24h view.
+func (c *StatusCache) refreshOutages() {
+	start := time.Now()
+	ctx, cancel := context.WithTimeout(c.ctx, 30*time.Second)
+	defer cancel()
+
+	resp := fetchDefaultOutagesData(ctx)
+
+	c.mu.Lock()
+	c.outages = resp
+	c.outagesLastRefresh = time.Now()
+	c.mu.Unlock()
+
+	log.Printf("Outages cache refreshed in %v (%d outages)", time.Since(start), len(resp.Outages))
+}
+
 func linkHistoryCacheKey(timeRange string, buckets int) string {
 	return timeRange + ":" + strconv.Itoa(buckets)
 }
@@ -279,6 +371,8 @@ func InitStatusCache() {
 	statusCache = NewStatusCache(
 		30*time.Second, // Status refresh every 30s
 		60*time.Second, // Link history refresh every 60s
+		30*time.Second, // Timeline refresh every 30s
+		60*time.Second, // Outages refresh every 60s
 	)
 	statusCache.Start()
 }

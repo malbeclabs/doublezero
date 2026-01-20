@@ -365,8 +365,83 @@ func generateEventID(entityID string, timestamp time.Time, eventType string) str
 	return hex.EncodeToString(h.Sum(nil))[:16]
 }
 
+// isDefaultTimelineRequest checks if the request matches the default cached parameters
+func isDefaultTimelineRequest(r *http.Request) bool {
+	q := r.URL.Query()
+
+	// Must be 24h range (default) or no range specified
+	rangeParam := q.Get("range")
+	if rangeParam != "" && rangeParam != "24h" {
+		return false
+	}
+
+	// Must not have custom start/end
+	if q.Get("start") != "" || q.Get("end") != "" {
+		return false
+	}
+
+	// Must not have category filter
+	if q.Get("category") != "" {
+		return false
+	}
+
+	// Entity type filter must be empty OR match the default (all except gossip_node)
+	// The frontend sends "device,link,metro,contributor,user,validator" by default
+	entityType := q.Get("entity_type")
+	defaultEntityTypes := "device,link,metro,contributor,user,validator"
+	if entityType != "" && entityType != defaultEntityTypes {
+		return false
+	}
+
+	// Must not have severity filter
+	if q.Get("severity") != "" {
+		return false
+	}
+
+	// Must not have action filter
+	if q.Get("action") != "" {
+		return false
+	}
+
+	// Must be dz_filter=on_dz or no filter (defaults to on_dz)
+	dzFilter := q.Get("dz_filter")
+	if dzFilter != "" && dzFilter != "on_dz" {
+		return false
+	}
+
+	// Must not include internal users
+	if q.Get("include_internal") == "true" {
+		return false
+	}
+
+	// Must not have pagination offset
+	if q.Get("offset") != "" && q.Get("offset") != "0" {
+		return false
+	}
+
+	// Limit must be default (50) or not specified
+	limit := q.Get("limit")
+	if limit != "" && limit != "50" {
+		return false
+	}
+
+	return true
+}
+
 // GetTimeline returns timeline events across the network
 func GetTimeline(w http.ResponseWriter, r *http.Request) {
+	// Check if this is a default request that can be served from cache
+	if isDefaultTimelineRequest(r) && statusCache != nil {
+		if cached := statusCache.GetTimeline(); cached != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("X-Cache", "HIT")
+			if err := json.NewEncoder(w).Encode(cached); err != nil {
+				log.Printf("Error encoding cached timeline response: %v", err)
+			}
+			return
+		}
+	}
+
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
 
@@ -2881,4 +2956,273 @@ func groupInterfaceEvents(events []TimelineEvent) []TimelineEvent {
 func mustParseTime(s string) time.Time {
 	t, _ := time.Parse(time.RFC3339, s)
 	return t
+}
+
+// fetchDefaultTimelineData fetches timeline data with default parameters for caching.
+// This returns the same data as GetTimeline with default params: 24h range, all categories,
+// all entity types except gossip_node, dz_filter="on_dz", limit=50, offset=0.
+func fetchDefaultTimelineData(ctx context.Context) *TimelineResponse {
+	now := time.Now().UTC()
+	startTime := now.Add(-24 * time.Hour)
+	endTime := now
+
+	// Default entity types (all except gossip_node)
+	defaultEntityTypes := []string{"device", "link", "metro", "contributor", "user", "validator"}
+	dzFilter := "on_dz"
+	limit := 50
+	offset := 0
+
+	g, ctx := errgroup.WithContext(ctx)
+	var (
+		deviceEvents        []TimelineEvent
+		linkEvents          []TimelineEvent
+		metroEvents         []TimelineEvent
+		contributorEvents   []TimelineEvent
+		userEvents          []TimelineEvent
+		packetLossEvents    []TimelineEvent
+		interfaceEvents     []TimelineEvent
+		validatorEvents     []TimelineEvent
+		gossipNetworkEvents []TimelineEvent
+		voteAccountEvents   []TimelineEvent
+		stakeChangeEvents   []TimelineEvent
+		mu                  sync.Mutex
+	)
+
+	// Query all event types (all categories included by default)
+
+	// Device changes
+	g.Go(func() error {
+		events, err := queryDeviceChanges(ctx, startTime, endTime)
+		if err != nil {
+			log.Printf("Cache: Error querying device changes: %v", err)
+			return nil
+		}
+		mu.Lock()
+		deviceEvents = events
+		mu.Unlock()
+		return nil
+	})
+
+	// Link changes
+	g.Go(func() error {
+		events, err := queryLinkChanges(ctx, startTime, endTime)
+		if err != nil {
+			log.Printf("Cache: Error querying link changes: %v", err)
+			return nil
+		}
+		mu.Lock()
+		linkEvents = events
+		mu.Unlock()
+		return nil
+	})
+
+	// Metro changes
+	g.Go(func() error {
+		events, err := queryMetroChanges(ctx, startTime, endTime)
+		if err != nil {
+			log.Printf("Cache: Error querying metro changes: %v", err)
+			return nil
+		}
+		mu.Lock()
+		metroEvents = events
+		mu.Unlock()
+		return nil
+	})
+
+	// Contributor changes
+	g.Go(func() error {
+		events, err := queryContributorChanges(ctx, startTime, endTime)
+		if err != nil {
+			log.Printf("Cache: Error querying contributor changes: %v", err)
+			return nil
+		}
+		mu.Lock()
+		contributorEvents = events
+		mu.Unlock()
+		return nil
+	})
+
+	// User changes (exclude internal users by default)
+	g.Go(func() error {
+		events, err := queryUserChanges(ctx, startTime, endTime, false)
+		if err != nil {
+			log.Printf("Cache: Error querying user changes: %v", err)
+			return nil
+		}
+		mu.Lock()
+		userEvents = events
+		mu.Unlock()
+		return nil
+	})
+
+	// Packet loss events
+	g.Go(func() error {
+		events, err := queryPacketLossEvents(ctx, startTime, endTime)
+		if err != nil {
+			log.Printf("Cache: Error querying packet loss events: %v", err)
+			return nil
+		}
+		mu.Lock()
+		packetLossEvents = events
+		mu.Unlock()
+		return nil
+	})
+
+	// Interface events
+	g.Go(func() error {
+		events, err := queryInterfaceEvents(ctx, startTime, endTime)
+		if err != nil {
+			log.Printf("Cache: Error querying interface events: %v", err)
+			return nil
+		}
+		mu.Lock()
+		interfaceEvents = events
+		mu.Unlock()
+		return nil
+	})
+
+	// Validator events (exclude internal users by default)
+	g.Go(func() error {
+		events, err := queryValidatorEvents(ctx, startTime, endTime, false)
+		if err != nil {
+			log.Printf("Cache: Error querying validator events: %v", err)
+			return nil
+		}
+		mu.Lock()
+		validatorEvents = events
+		mu.Unlock()
+		return nil
+	})
+
+	// Gossip network changes
+	g.Go(func() error {
+		events, err := queryGossipNetworkChanges(ctx, startTime, endTime)
+		if err != nil {
+			log.Printf("Cache: Error querying gossip network changes: %v", err)
+			return nil
+		}
+		mu.Lock()
+		gossipNetworkEvents = events
+		mu.Unlock()
+		return nil
+	})
+
+	// Vote account changes
+	g.Go(func() error {
+		events, err := queryVoteAccountChanges(ctx, startTime, endTime)
+		if err != nil {
+			log.Printf("Cache: Error querying vote account changes: %v", err)
+			return nil
+		}
+		mu.Lock()
+		voteAccountEvents = events
+		mu.Unlock()
+		return nil
+	})
+
+	// Stake changes
+	g.Go(func() error {
+		events, err := queryStakeChanges(ctx, startTime, endTime)
+		if err != nil {
+			log.Printf("Cache: Error querying stake changes: %v", err)
+			return nil
+		}
+		mu.Lock()
+		stakeChangeEvents = events
+		mu.Unlock()
+		return nil
+	})
+
+	if err := g.Wait(); err != nil {
+		log.Printf("Cache: Error in timeline queries: %v", err)
+	}
+
+	// Merge all events
+	allEvents := make([]TimelineEvent, 0)
+	allEvents = append(allEvents, deviceEvents...)
+	allEvents = append(allEvents, linkEvents...)
+	allEvents = append(allEvents, metroEvents...)
+	allEvents = append(allEvents, contributorEvents...)
+	allEvents = append(allEvents, userEvents...)
+	allEvents = append(allEvents, packetLossEvents...)
+	allEvents = append(allEvents, interfaceEvents...)
+	allEvents = append(allEvents, validatorEvents...)
+	allEvents = append(allEvents, gossipNetworkEvents...)
+	allEvents = append(allEvents, voteAccountEvents...)
+	allEvents = append(allEvents, stakeChangeEvents...)
+
+	// Group interface events
+	allEvents = groupInterfaceEvents(allEvents)
+
+	// Filter by default entity types (exclude gossip_node)
+	filtered := make([]TimelineEvent, 0)
+	entityTypeSet := make(map[string]bool)
+	for _, et := range defaultEntityTypes {
+		entityTypeSet[et] = true
+	}
+	for _, e := range allEvents {
+		if entityTypeSet[e.EntityType] {
+			filtered = append(filtered, e)
+		}
+	}
+	allEvents = filtered
+
+	// Filter Solana events by DZ connection status (on_dz by default)
+	if dzFilter == "on_dz" {
+		filtered := make([]TimelineEvent, 0)
+		for _, e := range allEvents {
+			if e.EntityType == "validator" || e.EntityType == "gossip_node" {
+				if details, ok := e.Details.(ValidatorEventDetails); ok {
+					isOnDZ := details.OwnerPubkey != "" || details.DevicePK != ""
+					if isOnDZ {
+						filtered = append(filtered, e)
+					}
+				} else {
+					isOnDZ := strings.HasPrefix(e.Title, "DZ ")
+					if isOnDZ {
+						filtered = append(filtered, e)
+					}
+				}
+			} else {
+				filtered = append(filtered, e)
+			}
+		}
+		allEvents = filtered
+	}
+
+	// Sort by timestamp descending
+	sort.Slice(allEvents, func(i, j int) bool {
+		if allEvents[i].Timestamp != allEvents[j].Timestamp {
+			return allEvents[i].Timestamp > allEvents[j].Timestamp
+		}
+		return allEvents[i].ID > allEvents[j].ID
+	})
+
+	total := len(allEvents)
+
+	// Apply pagination
+	startIdx := offset
+	endIdx := offset + limit
+	if startIdx > len(allEvents) {
+		startIdx = len(allEvents)
+	}
+	if endIdx > len(allEvents) {
+		endIdx = len(allEvents)
+	}
+	paginatedEvents := allEvents[startIdx:endIdx]
+
+	// Compute histogram
+	histogram := computeHistogram(allEvents, startTime, endTime)
+
+	return &TimelineResponse{
+		Events: paginatedEvents,
+		Total:  total,
+		Limit:  limit,
+		Offset: offset,
+		TimeRange: TimeRange{
+			Start: startTime.Format(time.RFC3339),
+			End:   endTime.Format(time.RFC3339),
+		},
+		Histogram: histogram,
+	}
 }

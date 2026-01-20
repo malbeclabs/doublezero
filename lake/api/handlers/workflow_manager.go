@@ -78,15 +78,17 @@ func (rw *runningWorkflow) closeAll() {
 
 // WorkflowManager manages background workflow execution.
 type WorkflowManager struct {
-	mu       sync.RWMutex
-	running  map[uuid.UUID]*runningWorkflow // workflowID -> running workflow
-	bySession map[uuid.UUID]uuid.UUID       // sessionID -> workflowID
+	mu        sync.RWMutex
+	running   map[uuid.UUID]*runningWorkflow // workflowID -> running workflow
+	bySession map[uuid.UUID]uuid.UUID        // sessionID -> workflowID
+	serverID  string                         // Unique identifier for this server instance
 }
 
 // Global workflow manager instance
 var Manager = &WorkflowManager{
 	running:   make(map[uuid.UUID]*runningWorkflow),
 	bySession: make(map[uuid.UUID]uuid.UUID),
+	serverID:  uuid.NewString(), // Generate unique ID on startup
 }
 
 // SessionChatMessage represents a message in session content, matching the web's ChatMessage format.
@@ -791,31 +793,48 @@ func (m *WorkflowManager) resumeWorkflow(
 
 // ResumeIncompleteWorkflows checks for and resumes any workflows that were
 // interrupted (e.g., by a server restart).
+// Uses distributed locking to ensure only one replica claims each workflow.
 func (m *WorkflowManager) ResumeIncompleteWorkflows() {
 	// Wait for services to stabilize
 	time.Sleep(5 * time.Second)
 
 	ctx := context.Background()
 
-	workflows, err := GetIncompleteWorkflows(ctx)
-	if err != nil {
-		slog.Error("Failed to get incomplete workflows", "error", err)
-		return
-	}
+	// Stale timeout: if a workflow was claimed but no progress for 5 minutes, consider it abandoned
+	staleTimeout := 5 * time.Minute
 
-	if len(workflows) == 0 {
-		slog.Info("No incomplete workflows to resume")
-		return
-	}
+	slog.Info("Checking for incomplete workflows to resume", "server_id", m.serverID)
 
-	slog.Info("Found incomplete workflows to resume", "count", len(workflows))
-
-	for _, wf := range workflows {
-		if err := m.ResumeWorkflowBackground(&wf); err != nil {
-			slog.Error("Failed to resume workflow", "workflow_id", wf.ID, "error", err)
-			// Mark as failed so we don't keep trying
-			_ = FailWorkflowRun(ctx, wf.ID, fmt.Sprintf("Failed to resume: %v", err))
+	claimedCount := 0
+	for {
+		// Atomically claim one workflow at a time
+		run, err := ClaimIncompleteWorkflow(ctx, m.serverID, staleTimeout)
+		if err != nil {
+			slog.Error("Failed to claim workflow", "error", err)
+			break
 		}
+		if run == nil {
+			// No more workflows to claim
+			break
+		}
+
+		claimedCount++
+		slog.Info("Claimed workflow for resumption",
+			"workflow_id", run.ID,
+			"server_id", m.serverID,
+			"iteration", run.Iteration)
+
+		if err := m.ResumeWorkflowBackground(run); err != nil {
+			slog.Error("Failed to resume workflow", "workflow_id", run.ID, "error", err)
+			// Mark as failed so we don't keep trying
+			_ = FailWorkflowRun(ctx, run.ID, fmt.Sprintf("Failed to resume: %v", err))
+		}
+	}
+
+	if claimedCount == 0 {
+		slog.Info("No incomplete workflows to resume")
+	} else {
+		slog.Info("Resumed incomplete workflows", "count", claimedCount, "server_id", m.serverID)
 	}
 }
 

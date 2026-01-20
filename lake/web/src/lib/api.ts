@@ -1946,6 +1946,7 @@ export interface WorkflowReconnectCallbacks {
   onDone: (response: ChatResponse) => void
   onError: (error: string) => void
   onStatus?: (data: { status: string; iteration: number }) => void
+  onRetry?: () => void
 }
 
 // Reconnect to a running or completed workflow stream
@@ -2006,6 +2007,11 @@ export async function reconnectToWorkflow(
             case 'live':
               // Workflow is still running - keep connection open
               console.log('[Workflow] Connected to live workflow')
+              break
+            case 'retry':
+              // Workflow is running but not on this server - client should retry
+              console.log('[Workflow] Server says retry')
+              callbacks.onRetry?.()
               break
           }
         } catch (e) {

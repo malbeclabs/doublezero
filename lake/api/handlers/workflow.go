@@ -57,6 +57,10 @@ type WorkflowRun struct {
 	UpdatedAt   time.Time  `json:"updated_at"`
 	CompletedAt *time.Time `json:"completed_at,omitempty"`
 
+	// Distributed claiming (for multi-replica resumption)
+	ClaimedBy *string    `json:"claimed_by,omitempty"`
+	ClaimedAt *time.Time `json:"claimed_at,omitempty"`
+
 	// Error tracking
 	Error *string `json:"error,omitempty"`
 }
@@ -83,12 +87,12 @@ func CreateWorkflowRun(ctx context.Context, sessionID uuid.UUID, question string
 		VALUES ($1, $2)
 		RETURNING id, session_id, status, user_question, iteration, messages, thinking_steps,
 		          executed_queries, steps, final_answer, llm_calls, input_tokens, output_tokens,
-		          started_at, updated_at, completed_at, error
+		          started_at, updated_at, completed_at, claimed_by, claimed_at, error
 	`, sessionID, question).Scan(
 		&run.ID, &run.SessionID, &run.Status, &run.UserQuestion,
 		&run.Iteration, &run.Messages, &run.ThinkingSteps, &run.ExecutedQueries, &run.Steps,
 		&run.FinalAnswer, &run.LLMCalls, &run.InputTokens, &run.OutputTokens,
-		&run.StartedAt, &run.UpdatedAt, &run.CompletedAt, &run.Error,
+		&run.StartedAt, &run.UpdatedAt, &run.CompletedAt, &run.ClaimedBy, &run.ClaimedAt, &run.Error,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create workflow run: %w", err)
@@ -193,14 +197,14 @@ func GetWorkflowRun(ctx context.Context, id uuid.UUID) (*WorkflowRun, error) {
 	err := config.PgPool.QueryRow(ctx, `
 		SELECT id, session_id, status, user_question, iteration, messages, thinking_steps,
 		       executed_queries, steps, final_answer, llm_calls, input_tokens, output_tokens,
-		       started_at, updated_at, completed_at, error
+		       started_at, updated_at, completed_at, claimed_by, claimed_at, error
 		FROM workflow_runs
 		WHERE id = $1
 	`, id).Scan(
 		&run.ID, &run.SessionID, &run.Status, &run.UserQuestion,
 		&run.Iteration, &run.Messages, &run.ThinkingSteps, &run.ExecutedQueries, &run.Steps,
 		&run.FinalAnswer, &run.LLMCalls, &run.InputTokens, &run.OutputTokens,
-		&run.StartedAt, &run.UpdatedAt, &run.CompletedAt, &run.Error,
+		&run.StartedAt, &run.UpdatedAt, &run.CompletedAt, &run.ClaimedBy, &run.ClaimedAt, &run.Error,
 	)
 	if err != nil {
 		if err.Error() == "no rows in result set" {
@@ -211,12 +215,56 @@ func GetWorkflowRun(ctx context.Context, id uuid.UUID) (*WorkflowRun, error) {
 	return &run, nil
 }
 
+// ClaimIncompleteWorkflow atomically claims a single incomplete workflow for resumption.
+// This uses UPDATE ... RETURNING to ensure only one replica can claim a workflow.
+// A workflow is claimable if:
+// - status = 'running'
+// - not claimed (claimed_at IS NULL), OR
+// - claim is stale (claimed_at < NOW() - staleTimeout AND updated_at < NOW() - staleTimeout)
+//
+// The stale check uses updated_at to detect if the claiming server is still making progress.
+// Returns nil if no workflow is available to claim.
+func ClaimIncompleteWorkflow(ctx context.Context, serverID string, staleTimeout time.Duration) (*WorkflowRun, error) {
+	var run WorkflowRun
+	err := config.PgPool.QueryRow(ctx, `
+		UPDATE workflow_runs
+		SET claimed_by = $1, claimed_at = NOW(), updated_at = NOW()
+		WHERE id = (
+			SELECT id FROM workflow_runs
+			WHERE status = 'running'
+			  AND (
+			    claimed_at IS NULL
+			    OR (claimed_at < NOW() - $2::interval AND updated_at < NOW() - $2::interval)
+			  )
+			ORDER BY started_at ASC
+			LIMIT 1
+			FOR UPDATE SKIP LOCKED
+		)
+		RETURNING id, session_id, status, user_question, iteration, messages, thinking_steps,
+		          executed_queries, steps, final_answer, llm_calls, input_tokens, output_tokens,
+		          started_at, updated_at, completed_at, claimed_by, claimed_at, error
+	`, serverID, staleTimeout).Scan(
+		&run.ID, &run.SessionID, &run.Status, &run.UserQuestion,
+		&run.Iteration, &run.Messages, &run.ThinkingSteps, &run.ExecutedQueries, &run.Steps,
+		&run.FinalAnswer, &run.LLMCalls, &run.InputTokens, &run.OutputTokens,
+		&run.StartedAt, &run.UpdatedAt, &run.CompletedAt, &run.ClaimedBy, &run.ClaimedAt, &run.Error,
+	)
+	if err != nil {
+		if err.Error() == "no rows in result set" {
+			return nil, nil // No workflow available to claim
+		}
+		return nil, fmt.Errorf("failed to claim workflow: %w", err)
+	}
+	return &run, nil
+}
+
 // GetIncompleteWorkflows returns all workflows with status='running'.
+// Note: For distributed resumption, use ClaimIncompleteWorkflow instead.
 func GetIncompleteWorkflows(ctx context.Context) ([]WorkflowRun, error) {
 	rows, err := config.PgPool.Query(ctx, `
 		SELECT id, session_id, status, user_question, iteration, messages, thinking_steps,
 		       executed_queries, steps, final_answer, llm_calls, input_tokens, output_tokens,
-		       started_at, updated_at, completed_at, error
+		       started_at, updated_at, completed_at, claimed_by, claimed_at, error
 		FROM workflow_runs
 		WHERE status = 'running'
 		ORDER BY started_at ASC
@@ -233,7 +281,7 @@ func GetIncompleteWorkflows(ctx context.Context) ([]WorkflowRun, error) {
 			&run.ID, &run.SessionID, &run.Status, &run.UserQuestion,
 			&run.Iteration, &run.Messages, &run.ThinkingSteps, &run.ExecutedQueries, &run.Steps,
 			&run.FinalAnswer, &run.LLMCalls, &run.InputTokens, &run.OutputTokens,
-			&run.StartedAt, &run.UpdatedAt, &run.CompletedAt, &run.Error,
+			&run.StartedAt, &run.UpdatedAt, &run.CompletedAt, &run.ClaimedBy, &run.ClaimedAt, &run.Error,
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan workflow run: %w", err)
 		}
@@ -251,7 +299,7 @@ func GetRunningWorkflowForSession(ctx context.Context, sessionID uuid.UUID) (*Wo
 	err := config.PgPool.QueryRow(ctx, `
 		SELECT id, session_id, status, user_question, iteration, messages, thinking_steps,
 		       executed_queries, steps, final_answer, llm_calls, input_tokens, output_tokens,
-		       started_at, updated_at, completed_at, error
+		       started_at, updated_at, completed_at, claimed_by, claimed_at, error
 		FROM workflow_runs
 		WHERE session_id = $1 AND status = 'running'
 		ORDER BY started_at DESC
@@ -260,7 +308,7 @@ func GetRunningWorkflowForSession(ctx context.Context, sessionID uuid.UUID) (*Wo
 		&run.ID, &run.SessionID, &run.Status, &run.UserQuestion,
 		&run.Iteration, &run.Messages, &run.ThinkingSteps, &run.ExecutedQueries, &run.Steps,
 		&run.FinalAnswer, &run.LLMCalls, &run.InputTokens, &run.OutputTokens,
-		&run.StartedAt, &run.UpdatedAt, &run.CompletedAt, &run.Error,
+		&run.StartedAt, &run.UpdatedAt, &run.CompletedAt, &run.ClaimedBy, &run.ClaimedAt, &run.Error,
 	)
 	if err != nil {
 		if err.Error() == "no rows in result set" {
@@ -277,7 +325,7 @@ func GetLatestWorkflowForSession(ctx context.Context, sessionID uuid.UUID) (*Wor
 	err := config.PgPool.QueryRow(ctx, `
 		SELECT id, session_id, status, user_question, iteration, messages, thinking_steps,
 		       executed_queries, steps, final_answer, llm_calls, input_tokens, output_tokens,
-		       started_at, updated_at, completed_at, error
+		       started_at, updated_at, completed_at, claimed_by, claimed_at, error
 		FROM workflow_runs
 		WHERE session_id = $1
 		ORDER BY started_at DESC
@@ -286,7 +334,7 @@ func GetLatestWorkflowForSession(ctx context.Context, sessionID uuid.UUID) (*Wor
 		&run.ID, &run.SessionID, &run.Status, &run.UserQuestion,
 		&run.Iteration, &run.Messages, &run.ThinkingSteps, &run.ExecutedQueries, &run.Steps,
 		&run.FinalAnswer, &run.LLMCalls, &run.InputTokens, &run.OutputTokens,
-		&run.StartedAt, &run.UpdatedAt, &run.CompletedAt, &run.Error,
+		&run.StartedAt, &run.UpdatedAt, &run.CompletedAt, &run.ClaimedBy, &run.ClaimedAt, &run.Error,
 	)
 	if err != nil {
 		if err.Error() == "no rows in result set" {
@@ -531,11 +579,11 @@ func StreamWorkflow(w http.ResponseWriter, r *http.Request) {
 				}
 				sendEvent("error", map[string]string{"error": errorMsg})
 			} else {
-				// Workflow is still "running" in DB but not in memory - it's orphaned
-				// Mark it as failed and notify client
-				slog.Warn("Orphaned workflow detected - marking as failed", "workflow_id", id)
-				_ = FailWorkflowRun(context.Background(), id, "Workflow was orphaned after server restart")
-				sendEvent("error", map[string]string{"error": "Workflow was interrupted and could not be resumed"})
+				// Workflow is "running" in DB but not in this server's memory
+				// Could be: running on another pod, or orphaned after restart
+				// Don't mark as failed - just tell client to retry
+				slog.Info("Workflow running in DB but not in memory, client should retry", "workflow_id", id)
+				sendEvent("retry", map[string]string{"message": "Workflow is running, please retry"})
 			}
 			return
 		}

@@ -852,6 +852,63 @@ function ChatView() {
                 return next
               })
             },
+            onRetry: () => {
+              // Workflow is running on another server - poll for completion
+              console.log('[Chat] Workflow running on another server, polling for completion')
+              const pollForCompletion = async () => {
+                for (let i = 0; i < 60; i++) { // Poll for up to 2 minutes
+                  await new Promise(r => setTimeout(r, 2000))
+                  try {
+                    const updatedWorkflow = await getRunningWorkflowForSession(currentChatSessionId)
+                    if (!updatedWorkflow) continue
+                    if (updatedWorkflow.status === 'completed' && updatedWorkflow.final_answer) {
+                      console.log('[Chat] Workflow completed, updating UI')
+                      setChatSessions(prev => prev.map(s => {
+                        if (s.id !== currentChatSessionId) return s
+                        const newMessages = s.messages.filter(m => m.status !== 'streaming')
+                        newMessages.push({
+                          id: generateMessageId(),
+                          role: 'assistant',
+                          content: updatedWorkflow.final_answer || '',
+                          status: 'complete',
+                        })
+                        return { ...s, messages: newMessages, updatedAt: new Date() }
+                      }))
+                      setPendingChats(prev => {
+                        const next = new Map(prev)
+                        next.delete(currentChatSessionId)
+                        return next
+                      })
+                      return
+                    }
+                    if (updatedWorkflow.status === 'failed') {
+                      console.log('[Chat] Workflow failed')
+                      setChatSessions(prev => prev.map(s => {
+                        if (s.id !== currentChatSessionId) return s
+                        const newMessages = s.messages.filter(m => m.status !== 'streaming')
+                        newMessages.push({
+                          id: generateMessageId(),
+                          role: 'assistant',
+                          content: updatedWorkflow.error || 'Workflow failed',
+                          status: 'error',
+                        })
+                        return { ...s, messages: newMessages, updatedAt: new Date() }
+                      }))
+                      setPendingChats(prev => {
+                        const next = new Map(prev)
+                        next.delete(currentChatSessionId)
+                        return next
+                      })
+                      return
+                    }
+                  } catch (e) {
+                    console.log('[Chat] Poll error, continuing', e)
+                  }
+                }
+                console.log('[Chat] Polling timed out')
+              }
+              pollForCompletion()
+            },
           },
           abortController.signal
         )

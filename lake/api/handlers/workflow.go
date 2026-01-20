@@ -118,7 +118,7 @@ func UpdateWorkflowCheckpoint(ctx context.Context, id uuid.UUID, checkpoint *Wor
 	_, err = config.PgPool.Exec(ctx, `
 		UPDATE workflow_runs
 		SET iteration = $2, messages = $3, thinking_steps = $4, executed_queries = $5, steps = $6,
-		    llm_calls = $7, input_tokens = $8, output_tokens = $9
+		    llm_calls = $7, input_tokens = $8, output_tokens = $9, updated_at = NOW()
 		WHERE id = $1
 	`, id, checkpoint.Iteration, messagesJSON, thinkingJSON, queriesJSON, stepsJSON,
 		checkpoint.LLMCalls, checkpoint.InputTokens, checkpoint.OutputTokens)
@@ -149,7 +149,7 @@ func CompleteWorkflowRun(ctx context.Context, id uuid.UUID, answer string, final
 
 	_, err = config.PgPool.Exec(ctx, `
 		UPDATE workflow_runs
-		SET status = 'completed', final_answer = $2, completed_at = NOW(),
+		SET status = 'completed', final_answer = $2, completed_at = NOW(), updated_at = NOW(),
 		    iteration = $3, messages = $4, thinking_steps = $5, executed_queries = $6, steps = $7,
 		    llm_calls = $8, input_tokens = $9, output_tokens = $10
 		WHERE id = $1
@@ -165,7 +165,7 @@ func CompleteWorkflowRun(ctx context.Context, id uuid.UUID, answer string, final
 func FailWorkflowRun(ctx context.Context, id uuid.UUID, errMsg string) error {
 	_, err := config.PgPool.Exec(ctx, `
 		UPDATE workflow_runs
-		SET status = 'failed', error = $2, completed_at = NOW()
+		SET status = 'failed', error = $2, completed_at = NOW(), updated_at = NOW()
 		WHERE id = $1
 	`, id, errMsg)
 	if err != nil {
@@ -178,7 +178,7 @@ func FailWorkflowRun(ctx context.Context, id uuid.UUID, errMsg string) error {
 func CancelWorkflowRun(ctx context.Context, id uuid.UUID) error {
 	_, err := config.PgPool.Exec(ctx, `
 		UPDATE workflow_runs
-		SET status = 'cancelled', completed_at = NOW()
+		SET status = 'cancelled', completed_at = NOW(), updated_at = NOW()
 		WHERE id = $1
 	`, id)
 	if err != nil {

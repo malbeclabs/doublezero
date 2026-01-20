@@ -1,8 +1,15 @@
 -- +goose Up
--- Create a separate trigger function for workflow_runs that doesn't reference session-specific columns
+-- Remove all updated_at triggers - timestamps are now set explicitly in application code
+-- This avoids the bug where the sessions trigger referenced columns that don't exist in workflow_runs
 
+DROP TRIGGER IF EXISTS update_workflow_runs_updated_at ON workflow_runs;
+DROP TRIGGER IF EXISTS update_sessions_updated_at ON sessions;
+DROP FUNCTION IF EXISTS update_updated_at_column();
+
+-- +goose Down
+-- Recreate the original simple trigger (not the "smart" one that caused issues)
 -- +goose StatementBegin
-CREATE OR REPLACE FUNCTION update_workflow_updated_at_column()
+CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
     NEW.updated_at = NOW();
@@ -11,19 +18,12 @@ END;
 $$ language 'plpgsql';
 -- +goose StatementEnd
 
--- Update workflow_runs to use its own trigger function
-DROP TRIGGER IF EXISTS update_workflow_runs_updated_at ON workflow_runs;
-CREATE TRIGGER update_workflow_runs_updated_at
-    BEFORE UPDATE ON workflow_runs
+CREATE TRIGGER update_sessions_updated_at
+    BEFORE UPDATE ON sessions
     FOR EACH ROW
-    EXECUTE FUNCTION update_workflow_updated_at_column();
+    EXECUTE FUNCTION update_updated_at_column();
 
--- +goose Down
--- Revert to using the shared trigger function
-DROP TRIGGER IF EXISTS update_workflow_runs_updated_at ON workflow_runs;
 CREATE TRIGGER update_workflow_runs_updated_at
     BEFORE UPDATE ON workflow_runs
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
-
-DROP FUNCTION IF EXISTS update_workflow_updated_at_column();

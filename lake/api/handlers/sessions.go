@@ -332,7 +332,7 @@ func UpdateSession(w http.ResponseWriter, r *http.Request) {
 	var session Session
 	err = config.PgPool.QueryRow(ctx, `
 		UPDATE sessions
-		SET name = $2, content = $3
+		SET name = $2, content = $3, updated_at = NOW()
 		WHERE id = $1
 		RETURNING id, type, name, content, created_at, updated_at
 	`, id, req.Name, req.Content).Scan(

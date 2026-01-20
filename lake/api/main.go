@@ -214,6 +214,7 @@ func main() {
 
 	r.Get("/api/topology", handlers.GetTopology)
 	r.Get("/api/topology/traffic", handlers.GetTopologyTraffic)
+	r.Get("/api/topology/link-latency", handlers.GetLinkLatencyHistory)
 	r.Get("/api/topology/isis", handlers.GetISISTopology)
 	r.Get("/api/topology/path", handlers.GetISISPath)
 	r.Get("/api/topology/paths", handlers.GetISISPaths)

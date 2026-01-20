@@ -459,6 +459,94 @@ func GetTopologyTraffic(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(TrafficResponse{Points: points})
 }
 
+// Link latency data point for charts
+type LinkLatencyDataPoint struct {
+	Time      string  `json:"time"`
+	AvgRttMs  float64 `json:"avgRttMs"`
+	P95RttMs  float64 `json:"p95RttMs"`
+	AvgJitter float64 `json:"avgJitter"`
+	LossPct   float64 `json:"lossPct"`
+}
+
+type LinkLatencyResponse struct {
+	Points []LinkLatencyDataPoint `json:"points"`
+	Error  string                 `json:"error,omitempty"`
+}
+
+func GetLinkLatencyHistory(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	pk := r.URL.Query().Get("pk")
+
+	if pk == "" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(LinkLatencyResponse{Points: []LinkLatencyDataPoint{}})
+		return
+	}
+
+	start := time.Now()
+
+	// Get hourly latency stats for a link over the last 24 hours
+	query := `
+		SELECT
+			formatDateTime(toStartOfHour(event_ts), '%H:%M') as time_bucket,
+			avg(rtt_us) / 1000.0 as avg_rtt_ms,
+			quantile(0.95)(rtt_us) / 1000.0 as p95_rtt_ms,
+			avg(abs(ipdv_us)) / 1000.0 as avg_jitter_ms,
+			countIf(loss) * 100.0 / count(*) as loss_pct
+		FROM fact_dz_device_link_latency
+		WHERE event_ts > now() - INTERVAL 24 HOUR
+			AND link_pk = $1
+		GROUP BY time_bucket
+		ORDER BY min(event_ts)
+	`
+
+	rows, err := config.DB.Query(ctx, query, pk)
+	if err != nil {
+		log.Printf("Latency query error: %v", err)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(LinkLatencyResponse{Error: dberror.UserMessage(err)})
+		return
+	}
+	defer rows.Close()
+
+	var points []LinkLatencyDataPoint
+	for rows.Next() {
+		var p LinkLatencyDataPoint
+		var avgRtt, p95Rtt, avgJitter, lossPct *float64
+		if err := rows.Scan(&p.Time, &avgRtt, &p95Rtt, &avgJitter, &lossPct); err != nil {
+			log.Printf("Latency scan error: %v", err)
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(LinkLatencyResponse{Error: dberror.UserMessage(err)})
+			return
+		}
+		if avgRtt != nil {
+			p.AvgRttMs = *avgRtt
+		}
+		if p95Rtt != nil {
+			p.P95RttMs = *p95Rtt
+		}
+		if avgJitter != nil {
+			p.AvgJitter = *avgJitter
+		}
+		if lossPct != nil {
+			p.LossPct = *lossPct
+		}
+		points = append(points, p)
+	}
+
+	duration := time.Since(start)
+	metrics.RecordClickHouseQuery(duration, rows.Err())
+
+	if points == nil {
+		points = []LinkLatencyDataPoint{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(LinkLatencyResponse{Points: points})
+}
+
 // DZ vs Internet latency comparison types
 type LatencyComparison struct {
 	OriginMetroPK      string   `json:"origin_metro_pk"`

@@ -67,7 +67,7 @@ export function ContributorsOverlayPanel({
           {/* Contributor list with colors */}
           <div className="pt-2 border-t border-[var(--border)]">
             <div className="text-muted-foreground mb-1.5">By device count</div>
-            <div className="space-y-0.5 max-h-48 overflow-y-auto">
+            <div className="space-y-0.5">
               {sortedContributors.map((contributor) => (
                 <div
                   key={contributor.pk}

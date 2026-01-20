@@ -1,6 +1,7 @@
 import type { LinkInfo } from '../types'
 import { EntityLink } from '../EntityLink'
 import { TrafficCharts } from '../TrafficCharts'
+import { LatencyCharts } from '../LatencyCharts'
 
 interface LinkDetailsProps {
   link: LinkInfo
@@ -8,18 +9,18 @@ interface LinkDetailsProps {
 
 export function LinkDetails({ link }: LinkDetailsProps) {
   const stats = [
+    { label: 'Latency', value: link.latencyMs },
+    { label: 'Jitter', value: link.jitterMs },
+    { label: 'Packet Loss', value: link.lossPercent },
+    { label: 'Bandwidth', value: link.bandwidth },
+    { label: 'Current In', value: link.inRate },
+    { label: 'Current Out', value: link.outRate },
     {
       label: 'Contributor',
       value: link.contributorPk
         ? <EntityLink to={`/dz/contributors/${link.contributorPk}`}>{link.contributorCode}</EntityLink>
         : link.contributorCode || '—',
     },
-    { label: 'Bandwidth', value: link.bandwidth },
-    { label: 'Latency', value: link.latencyMs },
-    { label: 'Jitter', value: link.jitterMs },
-    { label: 'Loss', value: link.lossPercent },
-    { label: 'Current In', value: link.inRate },
-    { label: 'Current Out', value: link.outRate },
   ]
 
   return (
@@ -38,6 +39,9 @@ export function LinkDetails({ link }: LinkDetailsProps) {
 
       {/* Traffic charts */}
       <TrafficCharts entityType="link" entityPk={link.pk} />
+
+      {/* Latency charts */}
+      <LatencyCharts linkPk={link.pk} />
     </div>
   )
 }

@@ -128,7 +128,7 @@ function LinkHoverContent({ link }: { link: LinkInfo }) {
           <span>Latency:</span>
           <span className="text-foreground">{link.latencyMs}</span>
         </div>
-        {link.lossPercent && link.lossPercent !== 'N/A' && link.lossPercent !== '0.00%' && (
+        {link.lossPercent && link.lossPercent !== 'N/A' && !link.lossPercent.match(/^0(\.0+)?%?$/) && (
           <div className="flex justify-between gap-4">
             <span>Loss:</span>
             <span className="text-amber-500">{link.lossPercent}</span>

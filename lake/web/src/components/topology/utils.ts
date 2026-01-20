@@ -63,3 +63,20 @@ export async function fetchTrafficHistory(
   const data = await res.json()
   return data.points || []
 }
+
+// Latency data point for charts
+export interface LatencyDataPoint {
+  time: string
+  avgRttMs: number
+  p95RttMs: number
+  avgJitter: number
+  lossPct: number
+}
+
+// Fetch latency history for a link
+export async function fetchLatencyHistory(pk: string): Promise<LatencyDataPoint[]> {
+  const res = await fetch(`/api/topology/link-latency?pk=${encodeURIComponent(pk)}`)
+  if (!res.ok) return []
+  const data = await res.json()
+  return data.points || []
+}

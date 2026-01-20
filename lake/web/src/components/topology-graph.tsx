@@ -1704,16 +1704,6 @@ export function TopologyGraph({
           },
         },
         {
-          selector: 'node:selected',
-          style: {
-            'border-width': 4,
-            'border-color': '#3b82f6',
-            'overlay-opacity': 0.25,
-            'overlay-color': '#3b82f6',
-            'overlay-padding': 6,
-          },
-        },
-        {
           selector: 'node.highlighted',
           style: {
             'border-width': 4,
@@ -1762,18 +1752,6 @@ export function TopologyGraph({
             'target-arrow-color': isDark ? '#4b5563' : '#9ca3af',
             'arrow-scale': 0.6,
             'opacity': 0.7,
-          },
-        },
-        {
-          selector: 'edge:selected',
-          style: {
-            'line-color': '#3b82f6',
-            'target-arrow-color': '#3b82f6',
-            'width': 3,
-            'opacity': 1,
-            'overlay-color': '#3b82f6',
-            'overlay-padding': 4,
-            'overlay-opacity': 0.25,
           },
         },
         {
@@ -2087,6 +2065,31 @@ export function TopologyGraph({
             'target-arrow-color': isDark ? '#6b7280' : '#9ca3af',
             'width': 1,
             'opacity': 0.4,
+          },
+        },
+        // Selection overrides - must be last to take priority over all overlays
+        {
+          selector: 'node:selected',
+          style: {
+            'border-width': 4,
+            'border-color': '#3b82f6',
+            'overlay-opacity': 0.3,
+            'overlay-color': '#3b82f6',
+            'overlay-padding': 8,
+            'z-index': 9999,
+          },
+        },
+        {
+          selector: 'edge:selected',
+          style: {
+            'line-color': '#3b82f6',
+            'target-arrow-color': '#3b82f6',
+            'width': 5,
+            'opacity': 1,
+            'overlay-color': '#3b82f6',
+            'overlay-padding': 6,
+            'overlay-opacity': 0.3,
+            'z-index': 9999,
           },
         },
       ], [isDark, getDeviceTypeColor, getNodeSize])

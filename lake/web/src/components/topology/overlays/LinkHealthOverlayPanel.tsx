@@ -64,20 +64,31 @@ export function LinkHealthOverlayPanel({
             <div className="pt-2 border-t border-[var(--border)]">
               <div className="flex items-center gap-1.5 mb-2">
                 <AlertTriangle className="h-3.5 w-3.5 text-red-500" />
-                <span className="font-medium text-red-500">SLA Violations</span>
+                <span className="font-medium text-red-500">Critical Issues</span>
               </div>
-              <div className="space-y-1 max-h-24 overflow-y-auto">
+              <div className="space-y-1.5">
                 {linkHealthData.links
                   .filter(l => l.sla_status === 'critical')
                   .slice(0, 5)
-                  .map(link => (
-                    <div key={link.link_pk} className="text-red-400 truncate text-[10px]">
-                      {link.side_a_code} — {link.side_z_code}
-                      <span className="text-muted-foreground ml-1">
-                        ({(link.avg_rtt_us / 1000).toFixed(1)}ms vs {(link.committed_rtt_ns / 1_000_000).toFixed(1)}ms SLA)
-                      </span>
-                    </div>
-                  ))}
+                  .map(link => {
+                    const hasLatencyIssue = link.sla_ratio >= 2.0
+                    const hasLossIssue = link.loss_pct > 10.0
+                    return (
+                      <div key={link.link_pk} className="text-[10px]">
+                        <div className="text-red-400 truncate">
+                          {link.side_a_code} — {link.side_z_code}
+                        </div>
+                        <div className="text-muted-foreground pl-2">
+                          {hasLatencyIssue && (
+                            <div>{(link.avg_rtt_us / 1000).toFixed(1)}ms vs {(link.committed_rtt_ns / 1_000_000).toFixed(1)}ms SLA ({(link.sla_ratio * 100).toFixed(0)}%)</div>
+                          )}
+                          {hasLossIssue && (
+                            <div>{link.loss_pct.toFixed(1)}% packet loss</div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
                 {linkHealthData.critical_count > 5 && (
                   <div className="text-muted-foreground">+{linkHealthData.critical_count - 5} more</div>
                 )}
@@ -85,27 +96,11 @@ export function LinkHealthOverlayPanel({
             </div>
           )}
 
-          {/* Legend */}
-          <div className="pt-2 border-t border-[var(--border)]">
-            <div className="text-muted-foreground mb-1.5">Link Colors</div>
-            <div className="space-y-1">
-              <div className="flex items-center gap-1.5">
-                <div className="w-4 h-0.5 bg-green-500 rounded" />
-                <span>Healthy (&lt;80% of SLA)</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <div className="w-4 h-0.5 bg-yellow-500 rounded" />
-                <span>Warning (80-100% of SLA)</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <div className="w-4 h-1 bg-red-500 rounded" />
-                <span>Critical (exceeds SLA)</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <div className="w-4 h-0.5 bg-gray-400 rounded opacity-50" />
-                <span>Unknown (no data)</span>
-              </div>
-            </div>
+          {/* Thresholds */}
+          <div className="pt-2 border-t border-[var(--border)] text-muted-foreground space-y-1">
+            <div className="text-[10px] uppercase tracking-wider mb-1">Thresholds</div>
+            <div><span className="text-foreground">Latency:</span> warning at 150% of SLA, critical at 200%</div>
+            <div><span className="text-foreground">Packet loss:</span> warning at 0.1%, critical at 10%</div>
           </div>
         </div>
       )}

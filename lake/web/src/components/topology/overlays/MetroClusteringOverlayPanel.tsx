@@ -68,7 +68,7 @@ export function MetroClusteringOverlayPanel({
           {/* Metro list with colors - clickable to collapse/expand */}
           <div className="pt-2 border-t border-[var(--border)]">
             <div className="text-muted-foreground mb-1.5">Metros (click to collapse)</div>
-            <div className="space-y-0.5 max-h-40 overflow-y-auto">
+            <div className="space-y-0.5">
               {Array.from(metroInfoMap.entries())
                 .sort((a, b) => a[1].code.localeCompare(b[1].code))
                 .map(([pk, info]) => {

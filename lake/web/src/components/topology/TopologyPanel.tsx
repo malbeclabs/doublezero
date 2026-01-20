@@ -109,8 +109,8 @@ export function TopologyPanel({ children, title, subtitle }: TopologyPanelProps)
         </button>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto">
+      {/* Content - add borders between multiple children */}
+      <div className="flex-1 overflow-y-auto [&>*+*]:border-t [&>*+*]:border-[var(--border)]">
         {children}
       </div>
     </div>

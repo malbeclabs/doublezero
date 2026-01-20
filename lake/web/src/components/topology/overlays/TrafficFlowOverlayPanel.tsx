@@ -107,7 +107,7 @@ export function TrafficFlowOverlayPanel({
                   <AlertTriangle className="h-3.5 w-3.5 text-yellow-500" />
                   <span className="font-medium text-yellow-500">High Utilization</span>
                 </div>
-                <div className="space-y-1 max-h-24 overflow-y-auto">
+                <div className="space-y-1">
                   {highUtilLinks.map(link => {
                     const totalBps = (link.in_bps ?? 0) + (link.out_bps ?? 0)
                     const util = link.bandwidth_bps > 0 ? (totalBps / link.bandwidth_bps) * 100 : 0

@@ -380,35 +380,6 @@ export function TopologyControlBar({
           />
 
           <NavItem
-            icon={<GitCompare className="h-3.5 w-3.5" />}
-            label="ISIS"
-            onClick={() => handleToggleOverlay('isisHealth')}
-            active={overlays.isisHealth}
-            activeColor="green"
-            collapsed={collapsed}
-          />
-
-          <NavItem
-            icon={<Activity className="h-3.5 w-3.5" />}
-            label="Health"
-            shortcut="h"
-            onClick={() => handleToggleOverlay('linkHealth')}
-            active={overlays.linkHealth}
-            activeColor="green"
-            collapsed={collapsed}
-          />
-
-          <NavItem
-            icon={<BarChart3 className="h-3.5 w-3.5" />}
-            label="Traffic"
-            shortcut="t"
-            onClick={() => handleToggleOverlay('trafficFlow')}
-            active={overlays.trafficFlow}
-            activeColor="cyan"
-            collapsed={collapsed}
-          />
-
-          <NavItem
             icon={<Building2 className="h-3.5 w-3.5" />}
             label="Contributors"
             onClick={() => handleToggleOverlay('contributorLinks')}
@@ -424,6 +395,35 @@ export function TopologyControlBar({
             onClick={() => handleToggleOverlay('criticality')}
             active={overlays.criticality}
             activeColor="red"
+            collapsed={collapsed}
+          />
+
+          <NavItem
+            icon={<Activity className="h-3.5 w-3.5" />}
+            label="Health"
+            shortcut="h"
+            onClick={() => handleToggleOverlay('linkHealth')}
+            active={overlays.linkHealth}
+            activeColor="green"
+            collapsed={collapsed}
+          />
+
+          <NavItem
+            icon={<GitCompare className="h-3.5 w-3.5" />}
+            label="ISIS"
+            onClick={() => handleToggleOverlay('isisHealth')}
+            active={overlays.isisHealth}
+            activeColor="green"
+            collapsed={collapsed}
+          />
+
+          <NavItem
+            icon={<BarChart3 className="h-3.5 w-3.5" />}
+            label="Traffic"
+            shortcut="t"
+            onClick={() => handleToggleOverlay('trafficFlow')}
+            active={overlays.trafficFlow}
+            activeColor="cyan"
             collapsed={collapsed}
           />
         </div>

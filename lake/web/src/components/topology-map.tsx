@@ -1529,18 +1529,21 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     modeParamsRestoredRef.current = true
   }, [searchParams, deviceMap, linkMap, mode, setMode, openPanel])
 
-  // Restore selected item from URL params on initial load only
-  // TODO: Add proper back/forward navigation support
-  const itemParamsRestoredRef = useRef(false)
+  // Restore selected item from URL params when they change
+  // Track last processed params to avoid re-processing the same selection
+  const lastProcessedParamsRef = useRef<string | null>(null)
   useEffect(() => {
-    if (itemParamsRestoredRef.current) return
-
     const type = searchParams.get('type')
     const id = searchParams.get('id')
 
     // No params to restore
     if (!type || !id) {
-      itemParamsRestoredRef.current = true
+      return
+    }
+
+    // Skip if we already processed these exact params
+    const paramsKey = `${type}:${id}`
+    if (lastProcessedParamsRef.current === paramsKey) {
       return
     }
 
@@ -1706,9 +1709,9 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       openPanel('details')
     }
 
-    // Mark as restored once we've processed (even if item not found)
+    // Mark as processed once we've successfully found and selected the item
     if (itemFound) {
-      itemParamsRestoredRef.current = true
+      lastProcessedParamsRef.current = paramsKey
     }
   }, [searchParams, validatorMap, deviceMap, linkMap, metroMap, devicesByMetro, showValidators, toggleOverlay, mode, openPanel, impactMode, pathModeEnabled, whatifAdditionMode, whatifRemovalMode, pathSource, pathTarget, additionSource, additionTarget])
 
@@ -1917,6 +1920,8 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           const isAdditionSource = additionSource === device.pk
           const isAdditionTarget = additionTarget === device.pk
           const isDisconnected = disconnectedDevicePKs.has(device.pk)
+          // Impact mode state
+          const isImpactDevice = impactMode && impactDevice === device.pk
           const deviceInfo: HoveredDeviceInfo = {
             pk: device.pk,
             code: device.code,
@@ -2029,6 +2034,13 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             markerSize = 14
             borderWidth = 1
             opacity = 0.5
+          } else if (isImpactDevice) {
+            // Impact device being analyzed for failure
+            markerColor = '#ef4444' // red
+            borderColor = '#ef4444'
+            markerSize = 18
+            borderWidth = 3
+            opacity = 1
           } else if (isThisSelected) {
             // Selected: blue border with halo
             borderColor = selectionColor
@@ -2043,12 +2055,14 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             opacity = 1
           }
 
-          // Selection halo effect
-          const boxShadow = isThisSelected
-            ? `0 0 0 4px ${selectionColor}40, 0 0 12px ${selectionColor}60`
-            : isThisHovered
-              ? `0 0 0 2px ${hoverHighlight}40`
-              : undefined
+          // Selection/impact halo effect
+          const boxShadow = isImpactDevice
+            ? `0 0 0 4px #ef444440, 0 0 12px #ef444460`
+            : isThisSelected
+              ? `0 0 0 4px ${selectionColor}40, 0 0 12px ${selectionColor}60`
+              : isThisHovered
+                ? `0 0 0 2px ${hoverHighlight}40`
+                : undefined
 
           return (
             <Marker

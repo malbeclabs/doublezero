@@ -1035,7 +1035,14 @@ export function Chat({ messages, isPending, processingSteps, onSendMessage, onAb
               ? (isAuthenticated
                   ? "Check back tomorrow for more questions"
                   : <><button onClick={() => setShowLoginModal(true)} className="underline hover:text-foreground">Sign in</button> for more questions</>)
-              : "Enter to send, Shift+Enter for new line"}
+              : (
+                <>
+                  Enter to send, Shift+Enter for new line
+                  {!isUnlimited && quota && (
+                    <span className="ml-2 text-muted-foreground/70">· {remaining}/{quota.limit} today</span>
+                  )}
+                </>
+              )}
           </p>
         </div>
       </div>

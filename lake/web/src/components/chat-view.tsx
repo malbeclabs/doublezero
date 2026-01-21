@@ -3,20 +3,16 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { Chat, ChatSkeleton } from './chat'
 import {
   useChatSession,
-  useChatSessions,
   useChatStream,
   useWorkflowReconnect,
   chatKeys,
   type ChatStreamState,
 } from '@/hooks/use-chat'
+import type { ChatSession } from '@/lib/sessions'
 import { useQueryClient } from '@tanstack/react-query'
 import { createSession } from '@/lib/api'
 
-interface ChatViewProps {
-  onOpenInQueryEditor?: (sql: string) => void
-}
-
-export function SimplifiedChatView({ onOpenInQueryEditor }: ChatViewProps) {
+export function SimplifiedChatView() {
   const { sessionId } = useParams()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -24,7 +20,6 @@ export function SimplifiedChatView({ onOpenInQueryEditor }: ChatViewProps) {
 
   // Fetch session data
   const { data: session, isLoading: sessionLoading, error: sessionError } = useChatSession(sessionId)
-  const { data: sessions } = useChatSessions()
 
   // Streaming state
   const { sendMessage, abort, isStreaming, processingSteps } = useChatStream(sessionId)
@@ -73,25 +68,26 @@ export function SimplifiedChatView({ onOpenInQueryEditor }: ChatViewProps) {
 
   // Create new session when navigating to /chat without ID
   useEffect(() => {
-    if (!sessionId && sessions !== undefined) {
-      // Find empty session or create new one
-      const emptySession = sessions.find(s => s.messages.length === 0)
-      if (emptySession) {
-        navigate(`/chat/${emptySession.id}`, { replace: true })
-      } else {
-        // Create new session on server
-        const newId = crypto.randomUUID()
-        createSession(newId, 'chat', []).then(() => {
-          // Invalidate list and navigate
-          queryClient.invalidateQueries({ queryKey: chatKeys.list() })
-          navigate(`/chat/${newId}`, { replace: true })
-        }).catch(() => {
-          // If creation fails, just navigate and let the stream create it
-          navigate(`/chat/${newId}`, { replace: true })
+    if (!sessionId) {
+      // Always create a new session - don't try to reuse empty ones
+      // as the cached sessions list may be stale
+      const newId = crypto.randomUUID()
+      createSession(newId, 'chat', []).then(() => {
+        // Pre-populate cache so we don't have to fetch
+        queryClient.setQueryData<ChatSession>(chatKeys.detail(newId), {
+          id: newId,
+          messages: [],
+          createdAt: new Date(),
+          updatedAt: new Date(),
         })
-      }
+        queryClient.invalidateQueries({ queryKey: chatKeys.list() })
+        navigate(`/chat/${newId}`, { replace: true })
+      }).catch(() => {
+        // If creation fails, just navigate and let the stream create it
+        navigate(`/chat/${newId}`, { replace: true })
+      })
     }
-  }, [sessionId, sessions, navigate, queryClient])
+  }, [sessionId, navigate, queryClient])
 
   // Handle send message
   const handleSendMessage = useCallback((message: string) => {
@@ -113,6 +109,13 @@ export function SimplifiedChatView({ onOpenInQueryEditor }: ChatViewProps) {
     abort()
   }, [abort])
 
+  // Handle opening SQL in query editor
+  const handleOpenInQueryEditor = useCallback((sql: string) => {
+    // Navigate to query editor with SQL in URL param
+    const newSessionId = crypto.randomUUID()
+    navigate(`/query/${newSessionId}?sql=${encodeURIComponent(sql)}`)
+  }, [navigate])
+
   // Show loading state
   if (sessionLoading || !session) {
     return <ChatSkeleton />
@@ -126,7 +129,7 @@ export function SimplifiedChatView({ onOpenInQueryEditor }: ChatViewProps) {
       onSendMessage={handleSendMessage}
       onAbort={handleAbort}
       onRetry={handleRetry}
-      onOpenInQueryEditor={onOpenInQueryEditor}
+      onOpenInQueryEditor={handleOpenInQueryEditor}
     />
   )
 }

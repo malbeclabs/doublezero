@@ -145,6 +145,9 @@ export function useChatStream(sessionId: string | undefined) {
     const abortController = new AbortController()
     abortControllerRef.current = abortController
 
+    // Cancel any outgoing refetches so they don't overwrite our optimistic update
+    await queryClient.cancelQueries({ queryKey: chatKeys.detail(sessionId) })
+
     // Get current messages from cache
     const cachedSession = queryClient.getQueryData<ChatSession>(chatKeys.detail(sessionId))
     const currentMessages = cachedSession?.messages ?? []
@@ -166,10 +169,18 @@ export function useChatStream(sessionId: string | undefined) {
 
     // Optimistically update cache with user message + streaming placeholder
     queryClient.setQueryData<ChatSession>(chatKeys.detail(sessionId), (old) => {
-      if (!old) return old
+      if (!old) {
+        // Create new session in cache if it doesn't exist yet
+        return {
+          id: sessionId,
+          messages: [userMessage, streamingMessage],
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }
+      }
       return {
         ...old,
-        messages: [...currentMessages, userMessage, streamingMessage],
+        messages: [...old.messages, userMessage, streamingMessage],
         updatedAt: new Date(),
       }
     })

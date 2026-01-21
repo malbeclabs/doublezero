@@ -42,6 +42,15 @@ const (
 // spaHandler serves static files and falls back to index.html for SPA routing
 func spaHandler(staticDir string) http.HandlerFunc {
 	fileServer := http.FileServer(http.Dir(staticDir))
+
+	// Static asset extensions that should 404 if missing (not fallback to index.html)
+	staticExtensions := map[string]bool{
+		".js": true, ".mjs": true, ".css": true, ".map": true,
+		".woff": true, ".woff2": true, ".ttf": true, ".eot": true,
+		".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".svg": true, ".ico": true, ".webp": true,
+		".json": true, ".wasm": true,
+	}
+
 	return func(w http.ResponseWriter, r *http.Request) {
 		path := filepath.Join(staticDir, strings.TrimPrefix(r.URL.Path, "/"))
 
@@ -56,6 +65,15 @@ func spaHandler(staticDir string) http.HandlerFunc {
 					return
 				}
 			}
+
+			// For static assets, return 404 instead of falling back to index.html
+			// This prevents MIME type errors when old cached HTML requests stale JS/CSS chunks
+			ext := strings.ToLower(filepath.Ext(r.URL.Path))
+			if staticExtensions[ext] {
+				http.NotFound(w, r)
+				return
+			}
+
 			// Fallback to root index.html for SPA routing
 			http.ServeFile(w, r, filepath.Join(staticDir, "index.html"))
 			return

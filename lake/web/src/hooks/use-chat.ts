@@ -332,13 +332,16 @@ export function useChatStream(sessionId: string | undefined) {
 
               // Update cache and clear streaming state together
               // React will batch these updates into one render
+              // Note: We don't clear processingSteps here - they're kept around so the UI
+              // can show them until the message's own workflowData takes over. This prevents
+              // a flash when transitioning from streaming to complete state.
               queryClient.setQueryData<ChatSession>(chatKeys.detail(sessionId), converted)
-              setStreamState({
+              setStreamState(prev => ({
                 isStreaming: false,
                 workflowId: null,
-                processingSteps: [],
+                processingSteps: prev.processingSteps, // Keep steps for smooth transition
                 error: null,
-              })
+              }))
 
               queryClient.invalidateQueries({ queryKey: chatKeys.list() })
 

@@ -68,7 +68,9 @@ export function SimplifiedChatView() {
 
   // Combined streaming state (from active send or reconnect)
   const isPending = isStreaming || reconnectState.isStreaming || false
-  const activeProcessingSteps = isStreaming
+  // Prefer active streaming steps, then kept steps from completed stream, then reconnect steps
+  // This allows steps to persist briefly after streaming ends for smooth transition
+  const activeProcessingSteps = processingSteps.length > 0
     ? processingSteps
     : reconnectState.processingSteps ?? []
 
@@ -77,20 +79,23 @@ export function SimplifiedChatView() {
   const handledQueriesRef = useRef<Set<string>>(new Set())
   useEffect(() => {
     const initialQuestion = searchParams.get('q')
-    if (!initialQuestion || !sessionId || !session) return
+    if (!initialQuestion || !sessionId) return
 
     const key = `${sessionId}:${initialQuestion}`
     if (handledQueriesRef.current.has(key)) return
 
-    // Only send if session is empty and we're not already streaming
-    if (session.messages.length === 0 && !isStreaming) {
+    // Send immediately if not already streaming
+    // Don't wait for session to load - sendMessage will cancel any in-flight queries
+    // and create the cache entry if needed. This prevents the race condition where
+    // a server fetch overwrites our optimistic update.
+    if (!isStreaming) {
       handledQueriesRef.current.add(key)
       // Clear the query param
       setSearchParams({}, { replace: true })
       // Send the message
       sendMessage(initialQuestion)
     }
-  }, [searchParams, session, sessionId, isStreaming, setSearchParams, sendMessage])
+  }, [searchParams, sessionId, isStreaming, setSearchParams, sendMessage])
 
   // Handle initial question from URL param (when on /chat without sessionId)
   const initialQuestionHandledForNewRef = useRef(false)

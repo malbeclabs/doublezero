@@ -414,8 +414,6 @@ function ProcessingTimeline({
                     )}
                   </div>
                   <span className="text-sm truncate flex-1">
-                    {step.type === 'sql_query' && <span className="text-muted-foreground">[SQL] </span>}
-                    {step.type === 'cypher_query' && <span className="text-muted-foreground">[Cypher] </span>}
                     {step.question}
                   </span>
                   {step.status !== 'running' && (
@@ -932,16 +930,25 @@ export function Chat({ messages, isPending, processingSteps, onSendMessage, onAb
               )
             })}
             {/* Streaming progress - shows ProcessingTimeline during streaming */}
-            {isPending && (
-              <div className="px-1 mt-3">
-                <ProcessingTimeline
-                  steps={processingSteps || []}
-                  isStreaming={true}
-                  onOpenInQueryEditor={onOpenInQueryEditor}
-                  isDark={isDark}
-                />
-              </div>
-            )}
+            {/* Also show while waiting for the last message to get its workflow data */}
+            {(() => {
+              const lastMsg = messages[messages.length - 1]
+              const lastMsgHasWorkflowData = lastMsg?.role === 'assistant' &&
+                (lastMsg?.workflowData?.processingSteps?.length ?? 0) > 0
+              const showTimeline = isPending ||
+                ((processingSteps?.length ?? 0) > 0 && !lastMsgHasWorkflowData)
+
+              return showTimeline ? (
+                <div className="px-1 mt-3">
+                  <ProcessingTimeline
+                    steps={processingSteps || []}
+                    isStreaming={isPending}
+                    onOpenInQueryEditor={onOpenInQueryEditor}
+                    isDark={isDark}
+                  />
+                </div>
+              ) : null
+            })()}
             <div ref={messagesEndRef} />
           </div>
         </div>

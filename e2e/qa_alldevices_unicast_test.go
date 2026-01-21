@@ -304,7 +304,7 @@ func connectClientsAndWaitForRoutes(
 			continue
 		}
 		statuses[c.Host] = status.SessionStatus
-		if status.SessionStatus != qa.UserStatusUp {
+		if !qa.IsStatusUp(status.SessionStatus) {
 			log.Warn("Client not up", "client", c.Host, "status", status.SessionStatus)
 		}
 	}

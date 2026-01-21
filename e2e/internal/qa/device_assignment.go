@@ -60,7 +60,7 @@ func DetermineClientsToConnect(
 
 		// Same device as previous batch - check if client is still connected
 		status, err := getStatus(client.Host)
-		if err != nil || status != UserStatusUp {
+		if err != nil || !IsStatusUp(status) {
 			clientsToConnect = append(clientsToConnect, client)
 		}
 	}
@@ -76,7 +76,7 @@ func FilterStatusUpClients(clients []*Client, batch map[string]*BatchResult, sta
 		if _, inBatch := batch[c.Host]; !inBatch {
 			continue
 		}
-		if statuses[c.Host] != UserStatusUp {
+		if !IsStatusUp(statuses[c.Host]) {
 			continue
 		}
 		connected = append(connected, c)

@@ -1580,12 +1580,24 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     }
 
     // Helper to fly to location (gentle zoom - just enough to see the item)
-    const flyToLocation = (lng: number, lat: number, zoom = 3) => {
+    const getPanelOffsetX = () => {
+      if (!panel.isOpen || panel.content !== 'details') return 0
+      const sidebarCollapsed = typeof window === 'undefined'
+        ? true
+        : window.localStorage.getItem('sidebar-collapsed') !== 'false'
+      const sidebarWidth = sidebarCollapsed ? 48 : 256
+      const leftPad = sidebarWidth + panel.width + 16
+      const rightPad = 176 + 16 // Controls panel max width + margin
+      return Math.round((leftPad - rightPad) / 2)
+    }
+
+    const flyToLocation = (lng: number, lat: number, zoom = 3, usePanelOffset = false) => {
       if (mapRef.current) {
         mapRef.current.flyTo({
           center: [lng, lat],
           zoom,
           duration: 1000,
+          offset: usePanelOffset ? [getPanelOffsetX(), 0] : [0, 0],
         })
       }
     }
@@ -1703,11 +1715,19 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           const metroA = deviceA ? metroMap.get(deviceA.metro_pk) : undefined
           const metroZ = deviceZ ? metroMap.get(deviceZ.metro_pk) : undefined
           if (metroA && metroZ) {
-            const midLng = (metroA.longitude + metroZ.longitude) / 2
+            let aLng = metroA.longitude
+            let zLng = metroZ.longitude
+            const lngDelta = zLng - aLng
+            if (Math.abs(lngDelta) > 180) {
+              zLng = lngDelta > 0 ? zLng - 360 : zLng + 360
+            }
+            let midLng = (aLng + zLng) / 2
+            if (midLng > 180) midLng -= 360
+            if (midLng < -180) midLng += 360
             const midLat = (metroA.latitude + metroZ.latitude) / 2
-            flyToLocation(midLng, midLat, 3)
+            flyToLocation(midLng, midLat, 3, true)
           } else if (metroA) {
-            flyToLocation(metroA.longitude, metroA.latitude, 3)
+            flyToLocation(metroA.longitude, metroA.latitude, 3, true)
           }
         }
         itemFound = true

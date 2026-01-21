@@ -352,57 +352,86 @@ func TestLake_Retry_IsRetryable_NilError(t *testing.T) {
 func TestLake_Retry_CalculateBackoff(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name     string
-		base     time.Duration
-		max      time.Duration
-		attempt  int
-		expected time.Duration
+		name    string
+		base    time.Duration
+		max     time.Duration
+		attempt int
+		minExp  time.Duration // minimum expected (base * 2^attempt * 0.5)
+		maxExp  time.Duration // maximum expected (base * 2^attempt * 1.0)
 	}{
 		{
-			name:     "first retry (attempt 1)",
-			base:     500 * time.Millisecond,
-			max:      5 * time.Second,
-			attempt:  1,
-			expected: 1 * time.Second, // 500ms * 2^1
+			name:    "first retry (attempt 1)",
+			base:    500 * time.Millisecond,
+			max:     5 * time.Second,
+			attempt: 1,
+			minExp:  500 * time.Millisecond, // 1s * 0.5
+			maxExp:  1 * time.Second,        // 1s * 1.0
 		},
 		{
-			name:     "second retry (attempt 2)",
-			base:     500 * time.Millisecond,
-			max:      5 * time.Second,
-			attempt:  2,
-			expected: 2 * time.Second, // 500ms * 2^2
+			name:    "second retry (attempt 2)",
+			base:    500 * time.Millisecond,
+			max:     5 * time.Second,
+			attempt: 2,
+			minExp:  1 * time.Second, // 2s * 0.5
+			maxExp:  2 * time.Second, // 2s * 1.0
 		},
 		{
-			name:     "third retry (attempt 3)",
-			base:     500 * time.Millisecond,
-			max:      5 * time.Second,
-			attempt:  3,
-			expected: 4 * time.Second, // 500ms * 2^3
+			name:    "third retry (attempt 3)",
+			base:    500 * time.Millisecond,
+			max:     5 * time.Second,
+			attempt: 3,
+			minExp:  2 * time.Second, // 4s * 0.5
+			maxExp:  4 * time.Second, // 4s * 1.0
 		},
 		{
-			name:     "exceeds max",
-			base:     500 * time.Millisecond,
-			max:      5 * time.Second,
-			attempt:  4,
-			expected: 5 * time.Second, // capped at max
+			name:    "exceeds max - capped before jitter",
+			base:    500 * time.Millisecond,
+			max:     5 * time.Second,
+			attempt: 4,
+			minExp:  2500 * time.Millisecond, // 5s * 0.5 (capped at max then jittered)
+			maxExp:  5 * time.Second,         // 5s * 1.0
 		},
 		{
-			name:     "small base",
-			base:     100 * time.Millisecond,
-			max:      1 * time.Second,
-			attempt:  1,
-			expected: 200 * time.Millisecond, // 100ms * 2^1
+			name:    "small base",
+			base:    100 * time.Millisecond,
+			max:     1 * time.Second,
+			attempt: 1,
+			minExp:  100 * time.Millisecond, // 200ms * 0.5
+			maxExp:  200 * time.Millisecond, // 200ms * 1.0
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := calculateBackoff(tt.base, tt.max, tt.attempt)
-			if got != tt.expected {
-				t.Errorf("calculateBackoff(%v, %v, %d) = %v, want %v", tt.base, tt.max, tt.attempt, got, tt.expected)
+			// Run multiple times to verify jitter produces values in expected range
+			for i := 0; i < 10; i++ {
+				got := calculateBackoff(tt.base, tt.max, tt.attempt)
+				if got < tt.minExp || got > tt.maxExp {
+					t.Errorf("calculateBackoff(%v, %v, %d) = %v, want between %v and %v",
+						tt.base, tt.max, tt.attempt, got, tt.minExp, tt.maxExp)
+				}
 			}
 		})
+	}
+}
+
+func TestLake_Retry_CalculateBackoff_JitterVariance(t *testing.T) {
+	t.Parallel()
+	// Verify that jitter actually produces different values
+	base := 500 * time.Millisecond
+	max := 5 * time.Second
+	attempt := 2
+
+	results := make(map[time.Duration]bool)
+	for i := 0; i < 100; i++ {
+		got := calculateBackoff(base, max, attempt)
+		results[got] = true
+	}
+
+	// With jitter, we should get multiple different values
+	if len(results) < 5 {
+		t.Errorf("expected jitter to produce variance, but only got %d unique values", len(results))
 	}
 }
 
@@ -433,17 +462,18 @@ func TestLake_Retry_Do_BackoffTiming(t *testing.T) {
 		t.Errorf("expected 3 attempts, got %d", attempts)
 	}
 
-	// Should have waited for backoff between attempts
+	// Should have waited for backoff between attempts (with jitter factor 0.5-1.0)
 	// Attempt 1: immediate
-	// Attempt 2: wait ~100ms (50ms * 2^1)
-	// Attempt 3: wait ~200ms (50ms * 2^2)
-	// Total: ~300ms minimum
-	minExpected := 250 * time.Millisecond
+	// Attempt 2: wait 50-100ms (100ms base * 0.5-1.0 jitter)
+	// Attempt 3: wait 100-200ms (200ms base * 0.5-1.0 jitter)
+	// Total minimum: ~150ms (with jitter at 0.5)
+	minExpected := 100 * time.Millisecond
 	if duration < minExpected {
 		t.Errorf("expected duration >= %v, got %v", minExpected, duration)
 	}
 
 	// Should not wait too long (with some buffer for test execution)
+	// Maximum: 100ms + 200ms + buffer = ~400ms
 	maxExpected := 500 * time.Millisecond
 	if duration > maxExpected {
 		t.Errorf("expected duration <= %v, got %v", maxExpected, duration)

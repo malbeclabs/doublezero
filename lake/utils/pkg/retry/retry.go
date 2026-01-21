@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"net"
 	"net/http"
 	"strings"
@@ -122,13 +123,17 @@ func IsRetryable(err error) bool {
 	return false
 }
 
-// calculateBackoff calculates exponential backoff.
-// Formula: base * 2^attempt
+// calculateBackoff calculates exponential backoff with jitter.
+// Formula: base * 2^attempt * (0.5 + rand(0, 0.5))
+// Jitter prevents thundering herd when multiple clients retry simultaneously.
 func calculateBackoff(base, max time.Duration, attempt int) time.Duration {
 	// Exponential backoff: base * 2^attempt
 	backoff := base * time.Duration(1<<uint(attempt))
 	if backoff > max {
 		backoff = max
 	}
-	return backoff
+	// Add jitter: multiply by 0.5 to 1.0 (random factor)
+	// This spreads out retries to prevent thundering herd
+	jitter := 0.5 + rand.Float64()*0.5
+	return time.Duration(float64(backoff) * jitter)
 }

@@ -9,6 +9,7 @@ import (
 
 	"github.com/cenkalti/backoff/v5"
 	"github.com/dgraph-io/ristretto"
+	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 )
 
@@ -19,6 +20,7 @@ const (
 type SolanaRPCClient interface {
 	GetSlot(ctx context.Context, commitment solanarpc.CommitmentType) (out uint64, err error)
 	GetEpochSchedule(ctx context.Context) (out *solanarpc.GetEpochScheduleResult, err error)
+	GetSignaturesForAddressWithOpts(ctx context.Context, account solana.PublicKey, opts *solanarpc.GetSignaturesForAddressOpts) ([]*solanarpc.TransactionSignature, error)
 }
 
 type Finder interface {
@@ -158,4 +160,101 @@ func (e *epochFinder) getEpochScheduleWithRetry(ctx context.Context) (*solanarpc
 		return nil, fmt.Errorf("failed to get epoch schedule: %w", err)
 	}
 	return sched, nil
+}
+
+// SlotTimeFinder provides methods for checking burn-in periods based on account transaction history.
+type SlotTimeFinder interface {
+	// IsAccountOlderThanBurnInPeriod checks if an account has a transaction older than the burn-in period.
+	// It traverses transaction history in reverse chronological order and returns true as soon as
+	// it finds a transaction in a slot older than (currentSlot - burnInSlots).
+	IsAccountOlderThanBurnInPeriod(ctx context.Context, pubkey solana.PublicKey, burnInSlots uint64) (bool, error)
+}
+
+type slotTimeFinder struct {
+	log    *slog.Logger
+	client SolanaRPCClient
+}
+
+// NewSlotTimeFinder creates a new SlotTimeFinder for checking burn-in periods.
+func NewSlotTimeFinder(log *slog.Logger, client SolanaRPCClient) (SlotTimeFinder, error) {
+	return &slotTimeFinder{
+		log:    log,
+		client: client,
+	}, nil
+}
+
+func (s *slotTimeFinder) getCurrentSlot(ctx context.Context) (uint64, error) {
+	attempt := 0
+	slot, err := backoff.Retry(ctx, func() (uint64, error) {
+		if attempt > 1 {
+			s.log.Warn("Failed to get current slot, retrying", "attempt", attempt)
+		}
+		attempt++
+		return s.client.GetSlot(ctx, solanarpc.CommitmentFinalized)
+	}, backoff.WithBackOff(backoff.NewExponentialBackOff()))
+	if err != nil {
+		return 0, fmt.Errorf("failed to get current slot: %w", err)
+	}
+	return slot, nil
+}
+
+// IsAccountOlderThanBurnInPeriod determines whether the given device or link record has been onchain for longer than the burn-in timestamp.
+// It will be expensive if there are an unexpectedly large number of transactions for the account. If it turns out to be too expensive, we
+// don't necessarily need this check at all, because we will be adding metrics checks anyway, and (for example) the device needs to be
+// onchain for the controller to emit metrics for it.it
+func (s *slotTimeFinder) IsAccountOlderThanBurnInPeriod(ctx context.Context, pubkey solana.PublicKey, burnInSlots uint64) (bool, error) {
+	currentSlot, err := s.getCurrentSlot(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	if currentSlot < burnInSlots {
+		return false, nil
+	}
+	targetSlot := currentSlot - burnInSlots
+
+	var before solana.Signature
+	limit := 100
+
+	for {
+		opts := &solanarpc.GetSignaturesForAddressOpts{
+			Limit:      &limit,
+			Commitment: solanarpc.CommitmentFinalized,
+		}
+		if !before.IsZero() {
+			opts.Before = before
+		}
+
+		sigs, err := s.getSignaturesWithRetry(ctx, pubkey, opts)
+		if err != nil {
+			return false, fmt.Errorf("failed to get signatures for %s: %w", pubkey, err)
+		}
+
+		if len(sigs) == 0 {
+			return false, nil
+		}
+
+		for _, sig := range sigs {
+			if sig.Slot <= targetSlot {
+				return true, nil
+			}
+		}
+
+		before = sigs[len(sigs)-1].Signature
+	}
+}
+
+func (s *slotTimeFinder) getSignaturesWithRetry(ctx context.Context, pubkey solana.PublicKey, opts *solanarpc.GetSignaturesForAddressOpts) ([]*solanarpc.TransactionSignature, error) {
+	attempt := 0
+	sigs, err := backoff.Retry(ctx, func() ([]*solanarpc.TransactionSignature, error) {
+		if attempt > 1 {
+			s.log.Warn("Failed to get signatures, retrying", "attempt", attempt, "pubkey", pubkey)
+		}
+		attempt++
+		return s.client.GetSignaturesForAddressWithOpts(ctx, pubkey, opts)
+	}, backoff.WithBackOff(backoff.NewExponentialBackOff()))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get signatures: %w", err)
+	}
+	return sigs, nil
 }

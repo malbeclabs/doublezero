@@ -35,6 +35,34 @@ func GetGlobalDailyLimit() int {
 	return limit
 }
 
+// GetMinSOLThreshold returns the minimum SOL balance for premium tier (in lamports)
+func GetMinSOLThreshold() int64 {
+	thresholdStr := os.Getenv("MIN_SOL_THRESHOLD")
+	if thresholdStr == "" {
+		return 1_000_000_000 // default: 1 SOL
+	}
+	threshold, err := strconv.ParseFloat(thresholdStr, 64)
+	if err != nil {
+		slog.Warn("Invalid MIN_SOL_THRESHOLD, using default 1.0 SOL", "value", thresholdStr, "error", err)
+		return 1_000_000_000
+	}
+	return int64(threshold * 1_000_000_000) // convert SOL to lamports
+}
+
+// GetWalletPremiumLimit returns the daily question limit for premium wallet users
+func GetWalletPremiumLimit() int {
+	limitStr := os.Getenv("WALLET_PREMIUM_LIMIT")
+	if limitStr == "" {
+		return 25 // default
+	}
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil {
+		slog.Warn("Invalid WALLET_PREMIUM_LIMIT, using default 25", "value", limitStr, "error", err)
+		return 25
+	}
+	return limit
+}
+
 // IsKillSwitchEnabled returns true if the kill switch is active (blocks all users)
 func IsKillSwitchEnabled() bool {
 	val := os.Getenv("USAGE_KILL_SWITCH")
@@ -54,6 +82,17 @@ type UsageRecord struct {
 	OutputTokens  int64
 }
 
+// IsPremiumWalletUser checks if an account is a wallet user with SOL balance >= threshold
+func IsPremiumWalletUser(account *Account) bool {
+	if account == nil || account.AccountType != AccountTypeWallet {
+		return false
+	}
+	if account.SolBalance == nil {
+		return false
+	}
+	return *account.SolBalance >= GetMinSOLThreshold()
+}
+
 // CheckQuota checks if the user/IP has remaining quota
 // Returns remaining questions (nil = unlimited), and any error
 func CheckQuota(ctx context.Context, account *Account, ip string) (*int, error) {
@@ -66,11 +105,13 @@ func CheckQuota(ctx context.Context, account *Account, ip string) (*int, error) 
 	var accountType *string
 	var accountID *uuid.UUID
 	isDomainUser := false
+	isPremiumWallet := false
 	if account != nil {
 		accountType = &account.AccountType
 		accountID = &account.ID
 		isDomainUser = account.AccountType == AccountTypeDomain
-		slog.Info("CheckQuota: authenticated user", "account_id", accountID, "account_type", account.AccountType, "is_domain", isDomainUser)
+		isPremiumWallet = IsPremiumWalletUser(account)
+		slog.Info("CheckQuota: authenticated user", "account_id", accountID, "account_type", account.AccountType, "is_domain", isDomainUser, "is_premium_wallet", isPremiumWallet)
 	} else {
 		slog.Info("CheckQuota: anonymous user", "ip", ip)
 	}
@@ -95,19 +136,28 @@ func CheckQuota(ctx context.Context, account *Account, ip string) (*int, error) 
 
 	// Get the limit for this account type
 	var limit *int
-	err := config.PgPool.QueryRow(ctx, `
-		SELECT daily_question_limit FROM usage_limits
-		WHERE account_type IS NOT DISTINCT FROM $1
-	`, accountType).Scan(&limit)
-	if err != nil {
-		// If no limit found, default to anonymous limit
-		slog.Warn("CheckQuota: no limit found for account type, using default", "accountType", accountType, "error", err)
-		limit = intPtr(5)
+	var err error
+
+	// Premium wallet users get a special limit
+	if isPremiumWallet {
+		premiumLimit := GetWalletPremiumLimit()
+		limit = &premiumLimit
+		slog.Info("CheckQuota: premium wallet user", "limit", premiumLimit)
 	} else {
-		if limit == nil {
-			slog.Info("CheckQuota: unlimited quota for account type", "accountType", accountType)
+		err = config.PgPool.QueryRow(ctx, `
+			SELECT daily_question_limit FROM usage_limits
+			WHERE account_type IS NOT DISTINCT FROM $1
+		`, accountType).Scan(&limit)
+		if err != nil {
+			// If no limit found, default to anonymous limit
+			slog.Warn("CheckQuota: no limit found for account type, using default", "accountType", accountType, "error", err)
+			limit = intPtr(5)
 		} else {
-			slog.Info("CheckQuota: limit found", "accountType", accountType, "limit", *limit)
+			if limit == nil {
+				slog.Info("CheckQuota: unlimited quota for account type", "accountType", accountType)
+			} else {
+				slog.Info("CheckQuota: limit found", "accountType", accountType, "limit", *limit)
+			}
 		}
 	}
 

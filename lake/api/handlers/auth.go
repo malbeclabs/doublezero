@@ -16,6 +16,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/malbeclabs/doublezero/lake/api/config"
+	"github.com/malbeclabs/doublezero/lake/api/solana"
 )
 
 // Account types
@@ -26,17 +27,19 @@ const (
 
 // Account represents a user account
 type Account struct {
-	ID            uuid.UUID  `json:"id"`
-	AccountType   string     `json:"account_type"`
-	WalletAddress *string    `json:"wallet_address,omitempty"`
-	Email         *string    `json:"email,omitempty"`
-	EmailDomain   *string    `json:"email_domain,omitempty"`
-	GoogleID      *string    `json:"google_id,omitempty"`
-	DisplayName   *string    `json:"display_name,omitempty"`
-	IsActive      bool       `json:"is_active"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
-	LastLoginAt   *time.Time `json:"last_login_at,omitempty"`
+	ID                  uuid.UUID  `json:"id"`
+	AccountType         string     `json:"account_type"`
+	WalletAddress       *string    `json:"wallet_address,omitempty"`
+	Email               *string    `json:"email,omitempty"`
+	EmailDomain         *string    `json:"email_domain,omitempty"`
+	GoogleID            *string    `json:"google_id,omitempty"`
+	DisplayName         *string    `json:"display_name,omitempty"`
+	SolBalance          *int64     `json:"sol_balance,omitempty"`
+	SolBalanceUpdatedAt *time.Time `json:"sol_balance_updated_at,omitempty"`
+	IsActive            bool       `json:"is_active"`
+	CreatedAt           time.Time  `json:"created_at"`
+	UpdatedAt           time.Time  `json:"updated_at"`
+	LastLoginAt         *time.Time `json:"last_login_at,omitempty"`
 }
 
 // AuthSession represents an authentication session
@@ -177,17 +180,20 @@ func GetAccountByToken(ctx context.Context, token string) (*Account, error) {
 
 	var account Account
 	var walletAddress, email, emailDomain, googleID, displayName *string
-	var lastLoginAt *time.Time
+	var solBalance *int64
+	var solBalanceUpdatedAt, lastLoginAt *time.Time
 
 	err := config.PgPool.QueryRow(ctx, `
 		SELECT a.id, a.account_type, a.wallet_address, a.email, a.email_domain,
-		       a.google_id, a.display_name, a.is_active, a.created_at, a.updated_at, a.last_login_at
+		       a.google_id, a.display_name, a.sol_balance, a.sol_balance_updated_at,
+		       a.is_active, a.created_at, a.updated_at, a.last_login_at
 		FROM accounts a
 		INNER JOIN auth_sessions s ON s.account_id = a.id
 		WHERE s.token_hash = $1 AND s.expires_at > NOW() AND a.is_active = true
 	`, tokenHash).Scan(
 		&account.ID, &account.AccountType, &walletAddress, &email, &emailDomain,
-		&googleID, &displayName, &account.IsActive, &account.CreatedAt, &account.UpdatedAt, &lastLoginAt,
+		&googleID, &displayName, &solBalance, &solBalanceUpdatedAt,
+		&account.IsActive, &account.CreatedAt, &account.UpdatedAt, &lastLoginAt,
 	)
 	if err != nil {
 		return nil, err
@@ -198,6 +204,8 @@ func GetAccountByToken(ctx context.Context, token string) (*Account, error) {
 	account.EmailDomain = emailDomain
 	account.GoogleID = googleID
 	account.DisplayName = displayName
+	account.SolBalance = solBalance
+	account.SolBalanceUpdatedAt = solBalanceUpdatedAt
 	account.LastLoginAt = lastLoginAt
 
 	return &account, nil
@@ -214,13 +222,21 @@ func GetQuotaForAccount(ctx context.Context, account *Account, ip string) (*Quot
 
 	// Get the limit for this account type
 	var limit *int
-	err := config.PgPool.QueryRow(ctx, `
-		SELECT daily_question_limit FROM usage_limits
-		WHERE account_type IS NOT DISTINCT FROM $1
-	`, accountType).Scan(&limit)
-	if err != nil {
-		// If no limit found, default to anonymous limit
-		limit = intPtr(5)
+	var err error
+
+	// Premium wallet users get a special limit
+	if IsPremiumWalletUser(account) {
+		premiumLimit := GetWalletPremiumLimit()
+		limit = &premiumLimit
+	} else {
+		err = config.PgPool.QueryRow(ctx, `
+			SELECT daily_question_limit FROM usage_limits
+			WHERE account_type IS NOT DISTINCT FROM $1
+		`, accountType).Scan(&limit)
+		if err != nil {
+			// If no limit found, default to anonymous limit
+			limit = intPtr(5)
+		}
 	}
 
 	// Get current usage
@@ -443,6 +459,26 @@ func PostAuthWallet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	account.DisplayName = displayName
+
+	// Fetch and store SOL balance
+	balance, err := solana.GetBalance(ctx, req.PublicKey)
+	if err != nil {
+		slog.Warn("Failed to fetch SOL balance", "wallet", req.PublicKey, "error", err)
+		// Don't fail auth, just skip balance update
+	} else {
+		now := time.Now()
+		_, err = config.PgPool.Exec(ctx, `
+			UPDATE accounts SET sol_balance = $1, sol_balance_updated_at = $2 WHERE id = $3
+		`, balance, now, account.ID)
+		if err != nil {
+			slog.Error("Failed to store SOL balance", "wallet", req.PublicKey, "error", err)
+			// Don't fail auth, just log
+		} else {
+			account.SolBalance = &balance
+			account.SolBalanceUpdatedAt = &now
+			slog.Info("Updated SOL balance", "wallet", req.PublicKey, "balance_lamports", balance, "balance_sol", solana.LamportsToSOL(balance))
+		}
+	}
 
 	// Migrate anonymous sessions to this account
 	if req.AnonymousID != nil && *req.AnonymousID != "" {

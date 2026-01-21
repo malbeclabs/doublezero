@@ -75,6 +75,32 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
 
         {/* Auth options */}
         <div className="space-y-3">
+          {/* Wallet Sign-In */}
+          {showWalletConnect ? (
+            <div className="flex justify-center">
+              <WalletMultiButton />
+            </div>
+          ) : (
+            <button
+              onClick={handleWalletClick}
+              disabled={isLoading}
+              className="flex w-full items-center justify-center gap-3 rounded-md border border-neutral-600 bg-neutral-800 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-neutral-700 disabled:opacity-50"
+            >
+              <Wallet size={20} />
+              Sign in with Wallet
+            </button>
+          )}
+
+          {/* Divider */}
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-neutral-700" />
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="bg-neutral-900 px-2 text-neutral-500">or</span>
+            </div>
+          </div>
+
           {/* Google Sign-In */}
           <button
             onClick={loginWithGoogle}
@@ -101,32 +127,6 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
             </svg>
             Sign in with Google
           </button>
-
-          {/* Divider */}
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-neutral-700" />
-            </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="bg-neutral-900 px-2 text-neutral-500">or</span>
-            </div>
-          </div>
-
-          {/* Wallet Sign-In */}
-          {showWalletConnect ? (
-            <div className="flex justify-center">
-              <WalletMultiButton />
-            </div>
-          ) : (
-            <button
-              onClick={handleWalletClick}
-              disabled={isLoading}
-              className="flex w-full items-center justify-center gap-3 rounded-md border border-neutral-600 bg-neutral-800 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-neutral-700 disabled:opacity-50"
-            >
-              <Wallet size={20} />
-              Sign in with Wallet
-            </button>
-          )}
         </div>
 
       </div>

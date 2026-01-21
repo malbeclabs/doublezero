@@ -17,6 +17,13 @@ import {
 // Retry configuration for connection errors
 const CONNECTION_RETRY_INTERVAL = 3000 // 3 seconds
 
+interface GooglePromptNotification {
+  isNotDisplayed: () => boolean
+  isSkippedMoment: () => boolean
+  getNotDisplayedReason: () => string
+  getSkippedReason: () => string
+}
+
 declare global {
   interface Window {
     google?: {
@@ -27,7 +34,7 @@ declare global {
             callback: (response: { credential: string }) => void
             auto_select?: boolean
           }) => void
-          prompt: () => void
+          prompt: (callback?: (notification: GooglePromptNotification) => void) => void
           cancel: () => void
           renderButton: (element: HTMLElement, options: object) => void
         }
@@ -223,11 +230,29 @@ export function AuthProvider({ children, googleClientId, onLoginSuccess, onLogou
   }
 
   const loginWithGoogle = useCallback(() => {
-    if (window.google) {
-      window.google.accounts.id.prompt()
-    } else {
-      setError('Google Sign-In not available')
+    if (!window.google?.accounts?.id) {
+      setError('Google Sign-In not available. Please refresh the page.')
+      return
     }
+
+    // Use notification callback to detect when prompt fails
+    window.google.accounts.id.prompt((notification) => {
+      if (notification.isNotDisplayed()) {
+        const reason = notification.getNotDisplayedReason()
+        console.log('Google One Tap not displayed:', reason)
+        // Common reasons: browser_not_supported, invalid_client, opt_out_or_no_session, suppressed_by_user
+        if (reason === 'opt_out_or_no_session') {
+          setError('Please sign in to Google in your browser first, then try again.')
+        } else if (reason === 'suppressed_by_user') {
+          setError('Google sign-in was recently dismissed. Please wait a moment and try again.')
+        } else {
+          setError('Google Sign-In unavailable. Please try again later.')
+        }
+      } else if (notification.isSkippedMoment()) {
+        // User closed the prompt or clicked elsewhere - not an error, just cancelled
+        console.log('Google One Tap skipped:', notification.getSkippedReason())
+      }
+    })
   }, [])
 
   const loginWithWallet = useCallback(async () => {

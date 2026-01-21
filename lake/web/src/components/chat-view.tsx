@@ -66,8 +66,12 @@ export function SimplifiedChatView() {
     handleReconnectUpdate
   )
 
+  // Check if we have a pending message in URL that hasn't been sent yet
+  const pendingUrlMessage = searchParams.get('q')
+
   // Combined streaming state (from active send or reconnect)
-  const isPending = isStreaming || reconnectState.isStreaming || false
+  // Also treat having a ?q= param as pending (message about to be sent)
+  const isPending = isStreaming || reconnectState.isStreaming || !!pendingUrlMessage || false
   // Prefer active streaming steps, then kept steps from completed stream, then reconnect steps
   // This allows steps to persist briefly after streaming ends for smooth transition
   const activeProcessingSteps = processingSteps.length > 0

@@ -43,8 +43,14 @@ const (
 	grpcDialMaxRetries = 5
 
 	UserStatusUp           = "BGP Session Up"
+	UserStatusUpLegacy     = "up" // TODO: remove after all QA hosts are upgraded past v0.8.2
 	UserStatusDisconnected = "disconnected"
 )
+
+// IsStatusUp checks if the session status indicates the session is up.
+func IsStatusUp(status string) bool {
+	return status == UserStatusUp || status == UserStatusUpLegacy
+}
 
 type Device struct {
 	PubKey       string
@@ -304,7 +310,7 @@ func (c *Client) getConnectedDevice(ctx context.Context) (*Device, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user status on host %s: %w", c.Host, err)
 	}
-	if status.SessionStatus != UserStatusUp {
+	if !IsStatusUp(status.SessionStatus) {
 		return nil, fmt.Errorf("user status is not up on host %s: %s", c.Host, status.SessionStatus)
 	}
 	device, ok := c.devices[status.CurrentDevice]
@@ -322,7 +328,11 @@ func (c *Client) waitForStatus(ctx context.Context, wantStatus string, timeout t
 			return false, err
 		}
 		for _, s := range resp.Status {
-			if s.SessionStatus != wantStatus {
+			if wantStatus == UserStatusUp {
+				if !IsStatusUp(s.SessionStatus) {
+					return false, nil
+				}
+			} else if s.SessionStatus != wantStatus {
 				return false, nil
 			}
 		}

@@ -13,9 +13,6 @@ import {
   MoreHorizontal,
   Pencil,
   RefreshCw,
-  Sun,
-  Moon,
-  Settings,
   ArrowUpCircle,
   Server,
   Link2,
@@ -44,8 +41,7 @@ import {
   getChatSessionPreview,
 } from '@/lib/sessions'
 import { ConfirmDialog } from './confirm-dialog'
-import { UserMenu } from './auth/UserMenu'
-import { QuotaIndicator } from './auth/QuotaIndicator'
+import { UserPopover } from './auth/UserPopover'
 
 // Sidebar no longer needs props - it fetches sessions via React Query
 export function Sidebar() {
@@ -69,7 +65,7 @@ export function Sidebar() {
   const currentQuerySessionId = queryMatch?.[1] ?? ''
   const chatMatch = location.pathname.match(/^\/chat\/([^/]+)/)
   const currentChatSessionId = chatMatch?.[1] ?? ''
-  const { resolvedTheme, setTheme } = useTheme()
+  const { resolvedTheme } = useTheme()
   const { updateAvailable, reload } = useVersionCheck()
   const isLandingPage = location.pathname === '/'
   const isTopologyRoute = location.pathname === '/topology' || location.pathname.startsWith('/topology/')
@@ -152,15 +148,6 @@ export function Sidebar() {
     setIsCollapsed(collapsed)
     setUserCollapsed(collapsed)
     localStorage.setItem('sidebar-user-collapsed', String(collapsed))
-  }
-
-  // Toggle between light and dark (respects current resolved theme)
-  const toggleTheme = () => {
-    setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')
-  }
-
-  const currentThemeIcon = () => {
-    return resolvedTheme === 'dark' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />
   }
 
   const isQueryRoute = location.pathname.startsWith('/query')
@@ -471,7 +458,7 @@ export function Sidebar() {
         )}
         </div>
 
-        {/* Theme toggle and collapse toggle at bottom */}
+        {/* User popover and collapse toggle at bottom */}
         <div className="flex flex-col items-center gap-1 mb-3 shrink-0">
           {updateAvailable && (
             <button
@@ -482,20 +469,7 @@ export function Sidebar() {
               <ArrowUpCircle className="h-4 w-4" />
             </button>
           )}
-          <button
-            onClick={toggleTheme}
-            className="p-2 text-muted-foreground hover:text-foreground transition-colors"
-            title={`Switch to ${resolvedTheme === 'dark' ? 'light' : 'dark'} mode`}
-          >
-            {currentThemeIcon()}
-          </button>
-          <Link
-            to="/settings"
-            className="p-2 text-muted-foreground hover:text-foreground transition-colors"
-            title="Settings"
-          >
-            <Settings className="h-4 w-4" />
-          </Link>
+          <UserPopover collapsed />
           <button
             onClick={() => handleSetCollapsed(false)}
             className="p-2 text-muted-foreground hover:text-foreground transition-colors"
@@ -1047,27 +1021,7 @@ export function Sidebar() {
             Update available
           </button>
         )}
-        <div className="flex items-center gap-1">
-          <button
-            onClick={toggleTheme}
-            className="flex-1 flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)] rounded transition-colors"
-            title={`Switch to ${resolvedTheme === 'dark' ? 'light' : 'dark'} mode`}
-          >
-            {currentThemeIcon()}
-            {resolvedTheme === 'dark' ? 'Dark' : 'Light'}
-          </button>
-          <Link
-            to="/settings"
-            className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)] rounded transition-colors"
-            title="Settings"
-          >
-            <Settings className="h-4 w-4" />
-          </Link>
-        </div>
-        {/* User menu */}
-        <UserMenu />
-        {/* Quota indicator */}
-        <QuotaIndicator />
+        <UserPopover />
       </div>
 
       <ConfirmDialog

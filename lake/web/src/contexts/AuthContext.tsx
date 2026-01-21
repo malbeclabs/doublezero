@@ -33,6 +33,7 @@ declare global {
             client_id: string
             callback: (response: { credential: string }) => void
             auto_select?: boolean
+            use_fedcm_for_prompt?: boolean
           }) => void
           prompt: (callback?: (notification: GooglePromptNotification) => void) => void
           cancel: () => void
@@ -204,6 +205,7 @@ export function AuthProvider({ children, googleClientId, onLoginSuccess, onLogou
         window.google.accounts.id.initialize({
           client_id: googleClientId,
           callback: handleGoogleCallback,
+          use_fedcm_for_prompt: false,
         })
       }
     }

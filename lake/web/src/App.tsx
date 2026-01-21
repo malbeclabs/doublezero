@@ -655,19 +655,28 @@ const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undef
 // Wrapper that provides auth callbacks with access to navigation and query client
 function AuthWrapper({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate()
+  const location = useLocation()
   const qc = useQueryClient()
 
   const handleLoginSuccess = useCallback(() => {
     // Invalidate all queries to refetch with new user's credentials
     qc.invalidateQueries()
-  }, [qc])
+    // If on a session page, navigate away (user may have been on an anonymous session)
+    if (/^\/(chat|query)\/[^/]+/.test(location.pathname)) {
+      const base = location.pathname.startsWith('/query') ? '/query' : '/chat'
+      navigate(base, { replace: true })
+    }
+  }, [qc, navigate, location.pathname])
 
   const handleLogoutSuccess = useCallback(() => {
     // Clear all cached data (chat sessions, query sessions, etc.)
     qc.clear()
-    // Navigate to fresh chat page
-    navigate('/chat', { replace: true })
-  }, [navigate, qc])
+    // If on a session page, navigate away
+    if (/^\/(chat|query)\/[^/]+/.test(location.pathname)) {
+      const base = location.pathname.startsWith('/query') ? '/query' : '/chat'
+      navigate(base, { replace: true })
+    }
+  }, [navigate, qc, location.pathname])
 
   return (
     <AuthProvider

@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useState, useEffect, useMemo } from 'react'
 import { useDelayedLoading } from '@/hooks/use-delayed-loading'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { CheckCircle2, AlertTriangle, XCircle, ArrowUpDown, Cpu, ChevronDown, ChevronUp } from 'lucide-react'
+import { CheckCircle2, AlertTriangle, XCircle, ArrowUpDown, Cpu, ChevronDown, ChevronUp, Info } from 'lucide-react'
 import { fetchStatus, fetchLinkHistory, fetchDeviceHistory, fetchInterfaceIssues, fetchCriticalLinks, fetchMetros, type StatusResponse, type InterfaceIssue, type NonActivatedLink, type LinkHistory, type DeviceHistory, type LinkMetric, type DeviceUtilization, type CriticalLinksResponse, type LinkIssue } from '@/lib/api'
 import { StatusFilters, useStatusFilters, type StatusFilter } from '@/components/status-search-bar'
 import { StatCard } from '@/components/stat-card'
@@ -105,7 +105,7 @@ function getStatusReasons(status: StatusResponse): string[] {
     reasons.push(`${nonActivatedDevices} device${nonActivatedDevices > 1 ? 's' : ''} not activated`)
   }
   if (nonActivatedLinks > 0) {
-    reasons.push(`${nonActivatedLinks} link${nonActivatedLinks > 1 ? 's' : ''} not activated`)
+    reasons.push(`${nonActivatedLinks} Link${nonActivatedLinks > 1 ? 's' : ''} Not Active`)
   }
 
   return reasons
@@ -158,7 +158,17 @@ function formatDuration(since: string): string {
   return `${diffMins}m`
 }
 
-function IssueDetails({ issues, onIssueClick }: { issues: LinkIssue[]; onIssueClick: () => void }) {
+function IssueDetails({
+  issues,
+  nonActivatedLinks,
+  onIssueClick,
+  onNonActivatedClick,
+}: {
+  issues: LinkIssue[]
+  nonActivatedLinks: NonActivatedLink[]
+  onIssueClick: () => void
+  onNonActivatedClick: () => void
+}) {
   const grouped = issues.reduce(
     (acc, issue) => {
       const severity = classifyIssueSeverity(issue)
@@ -219,6 +229,43 @@ function IssueDetails({ issues, onIssueClick }: { issues: LinkIssue[]; onIssueCl
           </div>
         )
       })}
+      {nonActivatedLinks.length > 0 && (
+        <div>
+          <div className="text-sm font-medium text-muted-foreground mb-2">Links Not Active</div>
+          <div className="space-y-2">
+            {nonActivatedLinks.map((link, idx) => (
+              <button
+                key={`${link.code}-${idx}`}
+                onClick={onNonActivatedClick}
+                className="flex items-center justify-between w-full py-2 px-3 rounded-md bg-muted/50 hover:bg-muted transition-colors text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <Info className="h-4 w-4 text-slate-500" />
+                  <div>
+                    <div className="font-medium text-sm">{link.code}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {link.side_a_metro} → {link.side_z_metro} · {link.link_type}
+                    </div>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-sm font-medium text-slate-600 dark:text-slate-400 capitalize">
+                    {link.status.replace(/-/g, ' ')}
+                  </div>
+                  {link.since && (
+                    <div
+                      className="text-xs text-muted-foreground"
+                      title={new Date(link.since).toLocaleString()}
+                    >
+                      for {formatDuration(link.since)}
+                    </div>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -248,6 +295,16 @@ function StatusIndicator({ statusData }: { statusData: StatusResponse }) {
       document.getElementById('link-status-history')?.scrollIntoView({ behavior: 'smooth' })
     }
   }
+  const scrollToDisabledLinks = () => {
+    if (!location.pathname.includes('/status/links')) {
+      navigate('/status/links')
+      setTimeout(() => {
+        document.getElementById('disabled-links')?.scrollIntoView({ behavior: 'smooth' })
+      }, 100)
+    } else {
+      document.getElementById('disabled-links')?.scrollIntoView({ behavior: 'smooth' })
+    }
+  }
 
   const config = {
     healthy: {
@@ -274,7 +331,8 @@ function StatusIndicator({ statusData }: { statusData: StatusResponse }) {
 
   // Check if there are link issues to show
   const linkIssues = statusData.links.issues || []
-  const hasExpandableContent = linkIssues.length > 0
+  const nonActivatedLinks = statusData.alerts?.links || []
+  const hasExpandableContent = linkIssues.length > 0 || nonActivatedLinks.length > 0
 
   return (
     <div className={`rounded-lg bg-card border border-border border-l-4 ${borderClassName}`}>
@@ -300,8 +358,13 @@ function StatusIndicator({ statusData }: { statusData: StatusResponse }) {
           )}
         </div>
       </div>
-      {expanded && linkIssues.length > 0 && (
-        <IssueDetails issues={linkIssues} onIssueClick={scrollToLinkHistory} />
+      {expanded && hasExpandableContent && (
+        <IssueDetails
+          issues={linkIssues}
+          nonActivatedLinks={nonActivatedLinks}
+          onIssueClick={scrollToLinkHistory}
+          onNonActivatedClick={scrollToDisabledLinks}
+        />
       )}
     </div>
   )

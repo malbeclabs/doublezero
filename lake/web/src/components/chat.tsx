@@ -4,7 +4,7 @@ import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import type { ChatMessage, ProcessingStep } from '@/lib/api'
 import { formatQuery } from '@/lib/format-query'
-import { ArrowUp, Square, Loader2, Copy, Check, ChevronDown, ChevronRight, ExternalLink, MessageCircle, CheckCircle2, XCircle, Brain, RotateCcw, AlertCircle } from 'lucide-react'
+import { ArrowUp, Square, Loader2, Copy, Check, ChevronDown, ChevronRight, ExternalLink, MessageCircle, CheckCircle2, XCircle, Brain, RotateCcw } from 'lucide-react'
 import { useTheme } from '@/hooks/use-theme'
 import { useAuth } from '@/contexts/AuthContext'
 import { formatNeo4jValue, isNeo4jValue } from '@/lib/neo4j-utils'
@@ -722,44 +722,44 @@ export function Chat({ messages, isPending, processingSteps, onSendMessage, onAb
               <div className="text-muted-foreground py-24 text-center">
                 <p className="text-lg mb-2">What would you like to know?</p>
                 <p className="text-sm mb-8">Ask questions about your data. I can run queries to find answers.</p>
-                {!isQuotaDepleted && (
-                  <div className="flex flex-wrap justify-center gap-2 max-w-xl mx-auto">
-                    {exampleQuestions.map((question) => (
-                      <button
-                        key={question}
-                        onClick={(e) => {
-                          if (e.metaKey || e.ctrlKey) {
-                            window.open(`/chat?q=${encodeURIComponent(question)}`, '_blank')
-                          } else {
-                            onSendMessage(question)
-                          }
-                        }}
-                        className="px-3 py-1.5 text-sm border border-border rounded-full hover:bg-secondary hover:border-muted-foreground/30 transition-colors"
-                      >
-                        {question}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                <div className="flex flex-wrap justify-center gap-2 max-w-xl mx-auto">
+                  {exampleQuestions.map((question) => (
+                    <button
+                      key={question}
+                      disabled={isQuotaDepleted}
+                      onClick={(e) => {
+                        if (isQuotaDepleted) return
+                        if (e.metaKey || e.ctrlKey) {
+                          window.open(`/chat?q=${encodeURIComponent(question)}`, '_blank')
+                        } else {
+                          onSendMessage(question)
+                        }
+                      }}
+                      className={`px-3 py-1.5 text-sm border rounded-full transition-colors ${
+                        isQuotaDepleted
+                          ? 'border-border/50 text-muted-foreground/50 cursor-not-allowed'
+                          : 'border-border hover:bg-secondary hover:border-muted-foreground/30'
+                      }`}
+                    >
+                      {question}
+                    </button>
+                  ))}
+                </div>
                 {/* Quota info for new chat */}
                 {(isQuotaDepleted || isQuotaLow) && (
-                  <div className="mt-8 max-w-md mx-auto">
+                  <p className="mt-6 text-sm text-muted-foreground">
                     {isQuotaDepleted ? (
-                      <div className="flex items-center justify-center gap-2 px-4 py-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-600 dark:text-red-400">
-                        <AlertCircle className="h-4 w-4 shrink-0" />
-                        <span className="text-sm">
-                          {isAuthenticated
-                            ? "You've used all your questions for today. Check back tomorrow!"
-                            : "You've used all your questions for today. Sign in for more."}
-                        </span>
-                      </div>
-                    ) : isQuotaLow && (
-                      <p className="text-xs text-muted-foreground">
+                      <>
+                        You've used all your questions for today.
+                        {isAuthenticated ? ' Check back tomorrow!' : ' Sign in for more.'}
+                      </>
+                    ) : (
+                      <>
                         {remaining} {remaining === 1 ? 'question' : 'questions'} remaining today
                         {!isAuthenticated && ' · Sign in for more'}
-                      </p>
+                      </>
                     )}
-                  </div>
+                  </p>
                 )}
               </div>
             )}
@@ -987,13 +987,13 @@ export function Chat({ messages, isPending, processingSteps, onSendMessage, onAb
       {/* Input area */}
       <div className="pb-6 pt-2">
         <div className="max-w-3xl mx-auto px-4">
-          <div className={`relative rounded-[24px] border bg-secondary overflow-hidden ${isQuotaDepleted ? 'border-red-500/30' : 'border-border'}`}>
+          <div className="relative rounded-[24px] border border-border bg-secondary overflow-hidden">
             <textarea
               ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={isQuotaDepleted ? "Daily question limit reached" : "Ask about your data..."}
+              placeholder={isQuotaDepleted ? "Daily limit reached" : "Ask about your data..."}
               autoFocus
               disabled={isDisabled}
               rows={1}
@@ -1022,15 +1022,11 @@ export function Chat({ messages, isPending, processingSteps, onSendMessage, onAb
               </button>
             )}
           </div>
-          {isQuotaDepleted ? (
-            <p className="text-xs text-red-500/70 text-center mt-2">
-              {isAuthenticated ? "Check back tomorrow for more questions" : "Sign in for more questions"}
-            </p>
-          ) : (
-            <p className="text-xs text-muted-foreground text-center mt-2">
-              Enter to send, Shift+Enter for new line
-            </p>
-          )}
+          <p className="text-xs text-muted-foreground text-center mt-2">
+            {isQuotaDepleted
+              ? (isAuthenticated ? "Check back tomorrow for more questions" : "Sign in for more questions")
+              : "Enter to send, Shift+Enter for new line"}
+          </p>
         </div>
       </div>
     </div>

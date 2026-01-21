@@ -329,7 +329,17 @@ export function useChatStream(sessionId: string | undefined) {
             try {
               const freshSession = await getSession<ChatMessage[]>(sessionId)
               const converted = serverToChatSession(freshSession)
+
+              // Update cache and clear streaming state together
+              // React will batch these updates into one render
               queryClient.setQueryData<ChatSession>(chatKeys.detail(sessionId), converted)
+              setStreamState({
+                isStreaming: false,
+                workflowId: null,
+                processingSteps: [],
+                error: null,
+              })
+
               queryClient.invalidateQueries({ queryKey: chatKeys.list() })
 
               // Generate title for new sessions
@@ -345,17 +355,13 @@ export function useChatStream(sessionId: string | undefined) {
               // If fetch fails, just invalidate to trigger a refetch
               queryClient.invalidateQueries({ queryKey: chatKeys.detail(sessionId) })
               queryClient.invalidateQueries({ queryKey: chatKeys.list() })
+              setStreamState({
+                isStreaming: false,
+                workflowId: null,
+                processingSteps: [],
+                error: null,
+              })
             }
-
-            // Only clear isStreaming - keep processingSteps until the message renders
-            // with its own workflowData.processingSteps. This prevents a flash where
-            // the streaming timeline disappears before the message's timeline appears.
-            setStreamState(prev => ({
-              ...prev,
-              isStreaming: false,
-              workflowId: null,
-              error: null,
-            }))
           },
           onError: (error) => {
             setStreamState(prev => ({

@@ -932,23 +932,16 @@ export function Chat({ messages, isPending, processingSteps, onSendMessage, onAb
               )
             })}
             {/* Streaming progress - shows ProcessingTimeline during streaming */}
-            {/* Also show when last message is still 'streaming' to prevent flash during transition */}
-            {(() => {
-              const lastMessage = messages[messages.length - 1]
-              const showStreamingTimeline = isPending ||
-                (lastMessage?.status === 'streaming' && processingSteps && processingSteps.length > 0)
-              if (!showStreamingTimeline) return null
-              return (
-                <div className="px-1 mt-3">
-                  <ProcessingTimeline
-                    steps={processingSteps || []}
-                    isStreaming={isPending}
-                    onOpenInQueryEditor={onOpenInQueryEditor}
-                    isDark={isDark}
-                  />
-                </div>
-              )
-            })()}
+            {isPending && (
+              <div className="px-1 mt-3">
+                <ProcessingTimeline
+                  steps={processingSteps || []}
+                  isStreaming={true}
+                  onOpenInQueryEditor={onOpenInQueryEditor}
+                  isDark={isDark}
+                />
+              </div>
+            )}
             <div ref={messagesEndRef} />
           </div>
         </div>

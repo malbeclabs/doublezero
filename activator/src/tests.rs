@@ -34,6 +34,7 @@ pub mod utils {
             contributor_airdrop_lamports: 1_000_000_000,
             user_airdrop_lamports: 40_000,
             health_oracle_pk: payer,
+            qa_allowlist: vec![],
         };
 
         let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);

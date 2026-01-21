@@ -61,6 +61,10 @@ WORKDIR /doublezero
 COPY . .
 RUN mkdir -p bin/
 
+# Set build arguments for Vite environment variables
+ARG VITE_GOOGLE_CLIENT_ID
+ENV VITE_GOOGLE_CLIENT_ID=${VITE_GOOGLE_CLIENT_ID}
+
 # Build the lake-web UI (NodeJS)
 RUN cd lake/web && \
     bun install && \

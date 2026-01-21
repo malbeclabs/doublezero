@@ -21,6 +21,20 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
     }
   }, [isAuthenticated, onClose])
 
+  // Close modal on Escape key
+  useEffect(() => {
+    if (!isOpen) return
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose()
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, onClose])
+
   // Auto-authenticate when wallet connects
   useEffect(() => {
     if (wallet.connected && wallet.publicKey && showWalletConnect) {

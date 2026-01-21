@@ -27,10 +27,11 @@ type ChatMessage struct {
 
 // ChatRequest is the incoming request for a chat message.
 type ChatRequest struct {
-	Message   string        `json:"message"`
-	History   []ChatMessage `json:"history"`
-	SessionID string        `json:"session_id,omitempty"` // Optional session ID for workflow persistence
-	Format    string        `json:"format,omitempty"`     // Output format: "slack" for Slack-specific formatting
+	Message     string        `json:"message"`
+	History     []ChatMessage `json:"history"`
+	SessionID   string        `json:"session_id,omitempty"`   // Optional session ID for workflow persistence
+	Format      string        `json:"format,omitempty"`       // Output format: "slack" for Slack-specific formatting
+	AnonymousID string        `json:"anonymous_id,omitempty"` // For anonymous users to prove session ownership
 }
 
 // DataQuestionResponse represents a decomposed data question.
@@ -223,6 +224,13 @@ func sanitizeValue(v any) any {
 	return v
 }
 
+// QuotaExceededError represents a quota exceeded error response
+type QuotaExceededError struct {
+	Error     string `json:"error"`
+	Remaining int    `json:"remaining"`
+	ResetsAt  string `json:"resets_at"`
+}
+
 // ChatStream handles streaming chat requests with SSE progress updates.
 func ChatStream(w http.ResponseWriter, r *http.Request) {
 	var req ChatRequest
@@ -236,11 +244,105 @@ func ChatStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get account and IP for quota checking
+	ctx := r.Context()
+	account := GetAccountFromContext(ctx)
+	ip := GetIPFromRequest(r)
+
+	// Check quota before processing
+	remaining, err := CheckQuota(ctx, account, ip)
+	if err != nil {
+		// Handle specific errors
+		if err == ErrKillSwitch {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			json.NewEncoder(w).Encode(QuotaExceededError{
+				Error:     "Service temporarily unavailable. Please try again later.",
+				Remaining: 0,
+				ResetsAt:  nextMidnightUTC().Format(time.RFC3339),
+			})
+			return
+		}
+		if err == ErrGlobalLimitExceeded {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusTooManyRequests)
+			json.NewEncoder(w).Encode(QuotaExceededError{
+				Error:     "Service is currently at capacity. Please try again tomorrow.",
+				Remaining: 0,
+				ResetsAt:  nextMidnightUTC().Format(time.RFC3339),
+			})
+			return
+		}
+		slog.Error("Failed to check quota", "error", err)
+		// Continue without quota check on other errors
+	} else if remaining != nil && *remaining <= 0 {
+		// Quota exceeded - return error before setting SSE headers
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusTooManyRequests)
+		json.NewEncoder(w).Encode(QuotaExceededError{
+			Error:     "Daily question limit exceeded. Please sign in or try again tomorrow.",
+			Remaining: 0,
+			ResetsAt:  nextMidnightUTC().Format(time.RFC3339),
+		})
+		return
+	}
+
+	// Validate session ownership if session_id is provided
+	if req.SessionID != "" {
+		sessionUUID, err := uuid.Parse(req.SessionID)
+		if err != nil {
+			http.Error(w, "Invalid session_id", http.StatusBadRequest)
+			return
+		}
+
+		// Check if the session exists and if caller owns it
+		var accountID *uuid.UUID
+		var anonymousID *string
+		err = config.PgPool.QueryRow(ctx, `
+			SELECT account_id, anonymous_id FROM sessions WHERE id = $1
+		`, sessionUUID).Scan(&accountID, &anonymousID)
+
+		if err != nil && err.Error() != "no rows in result set" {
+			slog.Error("Failed to check session ownership", "session_id", req.SessionID, "error", err)
+			http.Error(w, "Failed to verify session ownership", http.StatusInternalServerError)
+			return
+		}
+
+		// If session exists, verify ownership
+		if err == nil {
+			owned := false
+			if account != nil {
+				// Authenticated user - must own via account_id or session must be orphaned
+				owned = (accountID != nil && *accountID == account.ID) ||
+					(accountID == nil && anonymousID == nil)
+			} else if req.AnonymousID != "" {
+				// Anonymous user - must own via anonymous_id or session must be orphaned
+				owned = (anonymousID != nil && *anonymousID == req.AnonymousID) ||
+					(accountID == nil && anonymousID == nil)
+			} else {
+				// No credentials - only orphaned sessions allowed
+				owned = (accountID == nil && anonymousID == nil)
+			}
+
+			if !owned {
+				http.Error(w, "Session not found", http.StatusNotFound)
+				return
+			}
+		}
+		// If session doesn't exist, allow (it will be created on sync)
+	}
+
 	// Set SSE headers
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	// Add quota headers
+	if remaining != nil {
+		quota, _ := GetQuotaForAccount(ctx, account, ip)
+		SetQuotaHeaders(w, quota)
+	}
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -270,6 +372,12 @@ func ChatStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Record usage immediately (before starting workflow to prevent gaming)
+	if err := IncrementQuestionCount(ctx, account, ip); err != nil {
+		slog.Error("Failed to record usage", "error", err)
+		// Continue even on error - don't block the user
+	}
+
 	// Convert history to workflow format
 	var history []workflow.ConversationMessage
 	for _, msg := range req.History {
@@ -279,8 +387,6 @@ func ChatStream(w http.ResponseWriter, r *http.Request) {
 			ExecutedQueries: msg.ExecutedQueries,
 		})
 	}
-
-	ctx := r.Context()
 
 	// Use v3 workflow
 	chatStreamV3(ctx, req, history, sendEvent)

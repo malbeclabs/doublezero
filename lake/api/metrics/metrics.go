@@ -126,6 +126,44 @@ var (
 			Help: "Total number of SQL errors across all workflow runs",
 		},
 	)
+
+	// Usage metrics
+	UsageQuestionsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "doublezero_lake_api_usage_questions_total",
+			Help: "Total number of questions asked",
+		},
+		[]string{"account_type"}, // "domain", "wallet", "anonymous"
+	)
+
+	UsageQuestionsDailyGauge = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "doublezero_lake_api_usage_questions_daily",
+			Help: "Number of questions asked today (resets at midnight UTC)",
+		},
+	)
+
+	UsageTokensTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "doublezero_lake_api_usage_tokens_total",
+			Help: "Total number of tokens used for questions",
+		},
+		[]string{"type", "account_type"}, // type: "input"/"output", account_type: "domain"/"wallet"/"anonymous"
+	)
+
+	UsageGlobalLimitGauge = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "doublezero_lake_api_usage_global_limit",
+			Help: "Configured global daily question limit (0 = unlimited)",
+		},
+	)
+
+	UsageGlobalUtilization = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "doublezero_lake_api_usage_global_utilization",
+			Help: "Current utilization of global daily limit (0-1, or 0 if unlimited)",
+		},
+	)
 )
 
 // Middleware returns a chi middleware that records HTTP metrics.
@@ -199,4 +237,35 @@ func RecordWorkflowRun(classification string, llmCalls, sqlQueries, sqlErrors in
 	if sqlErrors > 0 {
 		WorkflowSQLErrorsTotal.Add(float64(sqlErrors))
 	}
+}
+
+// RecordUsageQuestion records a question for usage metrics.
+func RecordUsageQuestion(accountType string) {
+	UsageQuestionsTotal.WithLabelValues(accountType).Inc()
+	UsageQuestionsDailyGauge.Inc()
+}
+
+// RecordUsageTokens records token usage by account type.
+func RecordUsageTokens(accountType string, inputTokens, outputTokens int64) {
+	if inputTokens > 0 {
+		UsageTokensTotal.WithLabelValues("input", accountType).Add(float64(inputTokens))
+	}
+	if outputTokens > 0 {
+		UsageTokensTotal.WithLabelValues("output", accountType).Add(float64(outputTokens))
+	}
+}
+
+// SetUsageGlobalLimit sets the global limit gauge for monitoring.
+func SetUsageGlobalLimit(limit int) {
+	UsageGlobalLimitGauge.Set(float64(limit))
+}
+
+// SetUsageGlobalUtilization sets the current utilization (0-1).
+func SetUsageGlobalUtilization(utilization float64) {
+	UsageGlobalUtilization.Set(utilization)
+}
+
+// ResetDailyGauge resets the daily question gauge (call at midnight UTC).
+func ResetDailyGauge() {
+	UsageQuestionsDailyGauge.Set(0)
 }

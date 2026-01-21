@@ -131,10 +131,14 @@ func main() {
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   corsOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Content-Type"},
+		AllowedHeaders:   []string{"Content-Type", "Authorization"},
+		ExposedHeaders:   []string{"X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset"},
 		AllowCredentials: false,
 		MaxAge:           300,
 	}))
+
+	// Apply optional auth middleware globally to attach user context
+	r.Use(handlers.OptionalAuth)
 
 	// Health check endpoints
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -263,18 +267,20 @@ func main() {
 	r.Put("/api/sessions/{id}", handlers.UpdateSession)
 	r.Delete("/api/sessions/{id}", handlers.DeleteSession)
 
-	// Session lock routes (for cross-browser coordination)
-	r.Get("/api/sessions/{id}/lock", handlers.GetSessionLock)
-	r.Post("/api/sessions/{id}/lock", handlers.AcquireSessionLock)
-	r.Delete("/api/sessions/{id}/lock", handlers.ReleaseSessionLock)
-	r.Get("/api/sessions/{id}/lock/watch", handlers.WatchSessionLock)
-
 	// Session workflow route (get running workflow for a session)
 	r.Get("/api/sessions/{id}/workflow", handlers.GetWorkflowForSession)
 
 	// Workflow routes (for durable workflow persistence)
 	r.Get("/api/workflows/{id}", handlers.GetWorkflow)
 	r.Get("/api/workflows/{id}/stream", handlers.StreamWorkflow)
+
+	// Auth routes
+	r.Get("/api/auth/me", handlers.GetAuthMe)
+	r.Post("/api/auth/logout", handlers.PostAuthLogout)
+	r.Get("/api/auth/nonce", handlers.GetAuthNonce)
+	r.Post("/api/auth/wallet", handlers.PostAuthWallet)
+	r.Post("/api/auth/google", handlers.PostAuthGoogle)
+	r.Get("/api/usage/quota", handlers.GetUsageQuota)
 
 	// Serve static files from the web dist directory
 	webDir := os.Getenv("WEB_DIST_DIR")
@@ -321,6 +327,13 @@ func main() {
 
 	// Start auto-resume of incomplete workflows in background
 	go handlers.Manager.ResumeIncompleteWorkflows()
+
+	// Start cleanup worker for expired sessions/nonces
+	handlers.StartCleanupWorker(serverCtx)
+
+	// Initialize usage metrics and start daily reset worker
+	handlers.InitUsageMetrics(serverCtx)
+	handlers.StartDailyResetWorker(serverCtx)
 
 	// Wait for shutdown signal
 	sig := <-shutdown

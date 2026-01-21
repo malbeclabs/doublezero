@@ -100,3 +100,81 @@ Key dependencies:
 - **Anthropic API** - LLM for natural language features
 - **InfluxDB** (optional) - Device usage metrics source
 - **MaxMind GeoIP** - IP geolocation databases
+
+## Authentication
+
+Lake supports user authentication with usage limits to control API costs.
+
+### User Tiers
+
+| Tier | Auth Method | Daily Limit |
+|------|-------------|-------------|
+| Domain users | Google OAuth (allowed domains) | Unlimited |
+| Wallet users | Solana wallet (SIWS) | 50 questions |
+| Anonymous | IP-based | 5 questions |
+
+Limits reset daily at midnight UTC.
+
+### Configuration
+
+**Backend (API):**
+
+```bash
+# Google OAuth - Client ID for verifying ID tokens
+GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+
+# Email domains that get unlimited access (comma-separated)
+AUTH_ALLOWED_DOMAINS=doublezero.xyz,malbeclabs.com
+```
+
+**Frontend (Web):**
+
+```bash
+# Google OAuth - Client ID for Sign-In button (not sensitive, safe to commit)
+VITE_GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+```
+
+### Setup
+
+1. Create a Google OAuth 2.0 Client ID in [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
+2. Add authorized JavaScript origins (e.g., `http://localhost:5173`, `http://localhost`, `https://your-domain.com`)
+3. Set the same Client ID in both `GOOGLE_CLIENT_ID` (backend) and `VITE_GOOGLE_CLIENT_ID` (frontend)
+4. Configure `AUTH_ALLOWED_DOMAINS` for unlimited access domains
+
+### Global Usage Limits
+
+To set a global daily limit across all users (safety cap for cost control):
+
+```bash
+# Optional: Maximum questions per day across all users (0 or unset = unlimited)
+# When hit, anonymous and wallet users are blocked; domain users can continue
+USAGE_GLOBAL_DAILY_LIMIT=10000
+
+# Optional: Kill switch to block ALL users (for emergencies)
+# Set to "1", "true", or "on" to enable
+USAGE_KILL_SWITCH=0
+```
+
+**Behavior when limits are hit:**
+
+| Scenario | Domain Users | Wallet/Anonymous Users |
+|----------|--------------|------------------------|
+| Global limit reached | Can continue | Blocked: "Service is currently at capacity" |
+| Kill switch enabled | Blocked | Blocked: "Service temporarily unavailable" |
+
+Log warnings are emitted at 50%, 80%, and 100% of the global limit:
+```
+WARN Global usage threshold crossed threshold_percent=50 current_usage=5000 daily_limit=10000
+```
+
+### Prometheus Metrics
+
+Usage metrics are exposed at `/metrics`:
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `doublezero_lake_api_usage_questions_total` | Counter | Total questions by account type |
+| `doublezero_lake_api_usage_questions_daily` | Gauge | Questions today (resets at midnight UTC) |
+| `doublezero_lake_api_usage_tokens_total` | Counter | Tokens used by type and account |
+| `doublezero_lake_api_usage_global_limit` | Gauge | Configured global daily limit |
+| `doublezero_lake_api_usage_global_utilization` | Gauge | Current utilization (0-1) |

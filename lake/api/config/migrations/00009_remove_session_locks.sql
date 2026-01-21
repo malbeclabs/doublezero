@@ -1,0 +1,9 @@
+-- +goose Up
+ALTER TABLE sessions DROP COLUMN IF EXISTS lock_id;
+ALTER TABLE sessions DROP COLUMN IF EXISTS lock_until;
+ALTER TABLE sessions DROP COLUMN IF EXISTS lock_question;
+
+-- +goose Down
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS lock_id VARCHAR(36);
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS lock_until TIMESTAMPTZ;
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS lock_question TEXT;

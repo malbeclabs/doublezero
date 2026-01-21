@@ -25,6 +25,8 @@ All notable changes to this project will be documented in this file.
   - feat(smartcontract): RFC 11 activation for User entity
 - Device Health Oracle
   - Calculate burn-in timestamp based from slot numbers (current minus 200_000 slots for provisioning, current minus 5_000 slots for maintenance)
+- Data
+  - Add indexer that syncs serviceability and telemetry data to ClickHouse and Neo4J
 
 ### Breaking
 

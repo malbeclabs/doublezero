@@ -1,5 +1,6 @@
 mod initialize_distribution;
 mod pause_gate;
+mod slack_report;
 
 //
 
@@ -552,11 +553,14 @@ pub async fn post_debt_collection_summary_to_slack(
         return Ok(());
     };
 
+    let total_outstanding = total_debt.saturating_sub(total_paid);
+    let percentage_paid = total_paid as f64 / total_debt as f64;
+
     let table_values = vec![
         format!("{:.9} SOL", total_paid as f64 * 1e-9),
         format!("{:.9} SOL", total_debt as f64 * 1e-9),
-        format!("{:.9} SOL", (total_debt - total_paid) as f64 * 1e-9),
-        format!("{:.2}%", (total_paid as f64 / total_debt as f64) * 100.0),
+        format!("{:.9} SOL", total_outstanding as f64 * 1e-9),
+        format!("{:.2}%", percentage_paid * 100.0),
         insufficient_funds_count.to_string(),
     ];
     slack_notifier::validator_debt::post_to_slack(None, client, header, table_header, table_values)
@@ -565,7 +569,7 @@ pub async fn post_debt_collection_summary_to_slack(
 }
 
 pub async fn post_debt_collections_to_slack(
-    debt_collection_results: &Vec<DebtCollectionResults>,
+    debt_collection_results: &[DebtCollectionResults],
     dry_run: bool,
     client: &Client,
 ) -> Result<()> {
@@ -587,22 +591,12 @@ pub async fn post_debt_collections_to_slack(
         "Already Paid".to_string(),
     ];
 
-    let mut table_values: Vec<Vec<String>> = Vec::with_capacity(debt_collection_results.len());
+    let visible = slack_report::visible_rows(debt_collection_results);
+    let mut table_values: Vec<Vec<String>> = Vec::with_capacity(visible.len());
 
-    for dcr in debt_collection_results {
+    for dcr in visible {
         let total_attempted_transactions_count: u64 = dcr.total_validators as u64;
-
-        // skip overlapping DZ epochs since we don't collect fees
-        if total_attempted_transactions_count == 0 {
-            continue;
-        };
         let successful_transactions_count: u64 = dcr.successful_transactions_count as u64;
-
-        // if we don't collect debt then skip this record
-        if successful_transactions_count == 0 {
-            continue;
-        }
-
         let already_paid_count: u64 = dcr.already_paid_count as u64;
 
         let percentage_paid = (already_paid_count + successful_transactions_count) as f64

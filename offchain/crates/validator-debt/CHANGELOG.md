@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Make “Total Debt Collection” Slack summary a global (unfiltered) total while keeping the per-epoch “Debt Collected” table filtered ([#252](https://github.com/doublezerofoundation/doublezero-offchain/pull/252))
 - use vote key from past ([#250](https://github.com/doublezerofoundation/doublezero-offchain/pull/250))
 - bail early when Revenue Distribution program is paused ([#244](https://github.com/doublezerofoundation/doublezero-offchain/pull/244))
 - finalize zero debt ([#248](https://github.com/doublezerofoundation/doublezero-offchain/pull/248))

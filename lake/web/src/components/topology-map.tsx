@@ -239,11 +239,19 @@ function calculateCurvedPath(
   end: [number, number],
   curveOffset: number = 0.15
 ): [number, number][] {
-  const midLng = (start[0] + end[0]) / 2
+  let startLng = start[0]
+  let endLng = end[0]
+  const lngDelta = endLng - startLng
+  if (Math.abs(lngDelta) > 180) {
+    // Cross the antimeridian in the shorter direction (fixes eastward long routes).
+    endLng = lngDelta > 0 ? endLng - 360 : endLng + 360
+  }
+
+  const midLng = (startLng + endLng) / 2
   const midLat = (start[1] + end[1]) / 2
 
   // Calculate perpendicular offset for curve
-  const dx = end[0] - start[0]
+  const dx = endLng - startLng
   const dy = end[1] - start[1]
   const length = Math.sqrt(dx * dx + dy * dy)
 
@@ -257,7 +265,7 @@ function calculateCurvedPath(
   const segments = 20
   for (let i = 0; i <= segments; i++) {
     const t = i / segments
-    const lng = (1 - t) * (1 - t) * start[0] + 2 * (1 - t) * t * controlLng + t * t * end[0]
+    const lng = (1 - t) * (1 - t) * startLng + 2 * (1 - t) * t * controlLng + t * t * endLng
     const lat = (1 - t) * (1 - t) * start[1] + 2 * (1 - t) * t * controlLat + t * t * end[1]
     points.push([lng, lat])
   }
@@ -2529,4 +2537,3 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     </>
   )
 }
-

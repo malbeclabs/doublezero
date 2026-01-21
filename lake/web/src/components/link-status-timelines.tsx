@@ -336,7 +336,7 @@ export function LinkStatusTimelines({
           <div key={link.code} className="px-4 py-3 hover:bg-muted/30 transition-colors">
             <div className="flex items-start gap-4">
               {/* Link info */}
-              <div className="flex-shrink-0 w-48">
+              <div className="flex-shrink-0 w-56 sm:w-64 lg:w-72">
                 <div className="flex items-center gap-1.5">
                   <Link to={`/dz/links/${link.pk}`} className="font-mono text-sm truncate hover:underline" title={link.code}>
                     {link.code}

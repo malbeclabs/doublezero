@@ -216,19 +216,23 @@ function PopoverContent({
         </p>
       </div>
 
-      {/* Quota - only show for limited users */}
-      {quota && !isUnlimited && (
-        <div className="px-3 py-2 border-b border-border">
+      {/* Quota - clickable to go to settings */}
+      {quota && (
+        <Link
+          to="/settings"
+          onClick={onClose}
+          className="block px-3 py-2 border-b border-border hover:bg-muted transition-colors"
+        >
           <div className="flex items-center justify-between text-xs">
             <span className="flex items-center gap-1.5 text-muted-foreground">
               <MessageSquare size={12} />
               Questions today
             </span>
             <span className={quotaColorClass}>
-              {remaining} / {limit}
+              {isUnlimited ? 'Unlimited' : `${remaining} / ${limit}`}
             </span>
           </div>
-        </div>
+        </Link>
       )}
 
       {/* Settings link */}

@@ -3142,6 +3142,8 @@ export interface Account {
   email?: string
   email_domain?: string
   display_name?: string
+  sol_balance?: number
+  sol_balance_updated_at?: string
   is_active: boolean
   created_at: string
   updated_at: string

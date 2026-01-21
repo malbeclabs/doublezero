@@ -125,6 +125,25 @@ export function useChatStream(sessionId: string | undefined) {
     error: null,
   })
 
+  // Reset stream state when sessionId changes (e.g., navigating to new chat)
+  const prevSessionIdRef = useRef(sessionId)
+  useEffect(() => {
+    if (prevSessionIdRef.current !== sessionId) {
+      prevSessionIdRef.current = sessionId
+      // Abort any in-progress stream from previous session
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+        abortControllerRef.current = null
+      }
+      setStreamState({
+        isStreaming: false,
+        workflowId: null,
+        processingSteps: [],
+        error: null,
+      })
+    }
+  }, [sessionId])
+
   // Abort any in-progress stream
   const abort = useCallback(() => {
     if (abortControllerRef.current) {
@@ -146,7 +165,10 @@ export function useChatStream(sessionId: string | undefined) {
     abortControllerRef.current = abortController
 
     // Cancel any outgoing refetches so they don't overwrite our optimistic update
-    await queryClient.cancelQueries({ queryKey: chatKeys.detail(sessionId) })
+    await Promise.all([
+      queryClient.cancelQueries({ queryKey: chatKeys.detail(sessionId) }),
+      queryClient.cancelQueries({ queryKey: chatKeys.list() }),
+    ])
 
     // Get current messages from cache
     const cachedSession = queryClient.getQueryData<ChatSession>(chatKeys.detail(sessionId))
@@ -168,7 +190,7 @@ export function useChatStream(sessionId: string | undefined) {
     }
 
     // Optimistically update cache with user message + streaming placeholder
-    queryClient.setQueryData<ChatSession>(chatKeys.detail(sessionId), (old) => {
+    const updatedSession = queryClient.setQueryData<ChatSession>(chatKeys.detail(sessionId), (old) => {
       if (!old) {
         // Create new session in cache if it doesn't exist yet
         return {
@@ -184,6 +206,22 @@ export function useChatStream(sessionId: string | undefined) {
         updatedAt: new Date(),
       }
     })
+
+    // Also update the sessions list cache so the sidebar shows this session immediately
+    if (updatedSession) {
+      queryClient.setQueryData<ChatSession[]>(chatKeys.list(), (oldList) => {
+        if (!oldList) return [updatedSession]
+        const existingIndex = oldList.findIndex(s => s.id === sessionId)
+        if (existingIndex >= 0) {
+          // Update existing session in list
+          const newList = [...oldList]
+          newList[existingIndex] = updatedSession
+          return newList
+        }
+        // Add new session to list
+        return [updatedSession, ...oldList]
+      })
+    }
 
     // Reset stream state
     setStreamState({

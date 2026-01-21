@@ -819,6 +819,7 @@ async fn test_doublezero_program() {
         tunnel_id: 1,
         tunnel_net,
         dz_ip,
+        dz_prefix_count: 0, // legacy path - no ResourceExtension accounts
     };
 
     println!("Testing User1 activation...");

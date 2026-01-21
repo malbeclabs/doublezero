@@ -716,6 +716,7 @@ mod tests {
                 tunnel_id: 1,
                 tunnel_net: "1.2.3.4/1".parse().unwrap(),
                 dz_ip: [1, 2, 3, 4].into(),
+                dz_prefix_count: 0,
             }),
             "ActivateUser",
         );
@@ -745,7 +746,7 @@ mod tests {
             "CloseAccountLink",
         );
         test_instruction(
-            DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {}),
+            DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs { dz_prefix_count: 0 }),
             "CloseAccountUser",
         );
         test_instruction(

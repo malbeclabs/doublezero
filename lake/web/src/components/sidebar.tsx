@@ -78,13 +78,19 @@ export function Sidebar() {
   const isSolanaRoute = location.pathname.startsWith('/solana/')
 
   const [isCollapsed, setIsCollapsed] = useState(() => {
-    // Check localStorage for saved preference
-    const saved = localStorage.getItem('sidebar-collapsed')
-    if (saved !== null) return saved === 'true'
-    // Default to collapsed on small screens, landing page, or topology page
+    // Always collapse on topology map/graph views
+    const path = window.location.pathname
+    if (path === '/topology/map' || path === '/topology/graph') return true
+
+    // Check localStorage for user's explicit preference (not auto-collapse state)
+    const userPref = localStorage.getItem('sidebar-user-collapsed')
+    if (userPref !== null) return userPref === 'true'
+
+    // Default to collapsed on small screens
     if (typeof window !== 'undefined' && window.innerWidth < 1024) return true
-    // On landing page, topology page, status page, outages page, or entity pages, default to collapsed
-    return window.location.pathname === '/' || window.location.pathname === '/topology' || window.location.pathname === '/status' || window.location.pathname === '/outages' || window.location.pathname.startsWith('/dz/') || window.location.pathname.startsWith('/solana/')
+
+    // Route-based defaults: landing, status, outages, and entity pages default to collapsed
+    return path === '/' || path === '/topology' || path === '/status' || path === '/outages' || path.startsWith('/dz/') || path.startsWith('/solana/')
   })
   const [userCollapsed, setUserCollapsed] = useState<boolean | null>(() => {
     const saved = localStorage.getItem('sidebar-user-collapsed')

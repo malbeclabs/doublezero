@@ -48,7 +48,10 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
       />
 
       {/* Modal */}
-      <div className="relative z-10 w-full max-w-md rounded-lg border border-neutral-700 bg-neutral-900 p-6 shadow-xl">
+      <div
+        className="relative z-10 w-full max-w-md rounded-lg border border-neutral-700 bg-neutral-900 p-6 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Close button */}
         <button
           onClick={onClose}
@@ -77,7 +80,10 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
         <div className="space-y-3">
           {/* Google Sign-In */}
           <button
-            onClick={loginWithGoogle}
+            onClick={(e) => {
+              e.stopPropagation()
+              loginWithGoogle()
+            }}
             disabled={isLoading}
             className="flex w-full items-center justify-center gap-3 rounded-md border border-neutral-600 bg-white px-4 py-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
           >

@@ -24,17 +24,6 @@ export function SimplifiedChatView() {
   // Fetch session data (only when we have a sessionId)
   const { data: session, isLoading: sessionLoading } = useChatSession(sessionId)
 
-  // Delay showing skeleton to avoid flash for quick loads
-  const [showSkeleton, setShowSkeleton] = useState(false)
-  const isLoadingState = (sessionLoading && !session) || isCreatingSession
-  useEffect(() => {
-    if (isLoadingState) {
-      const timer = setTimeout(() => setShowSkeleton(true), 150)
-      return () => clearTimeout(timer)
-    } else {
-      setShowSkeleton(false)
-    }
-  }, [isLoadingState])
 
   // Streaming state (only when we have a sessionId)
   const { sendMessage, abort, isStreaming, processingSteps } = useChatStream(sessionId)
@@ -78,12 +67,22 @@ export function SimplifiedChatView() {
     handleReconnectUpdate
   )
 
+  // Track if we've initiated sending a message (to bridge the gap between URL clear and streaming start)
+  const [isSendingMessage, setIsSendingMessage] = useState(false)
+
   // Check if we have a pending message in URL that hasn't been sent yet
   const pendingUrlMessage = searchParams.get('q')
 
   // Combined streaming state (from active send or reconnect)
-  // Also treat having a ?q= param as pending (message about to be sent)
-  const isPending = isStreaming || reconnectState.isStreaming || !!pendingUrlMessage || false
+  // Also treat having a ?q= param or initiated send as pending
+  const isPending = isStreaming || reconnectState.isStreaming || !!pendingUrlMessage || isSendingMessage || false
+
+  // Reset isSendingMessage when streaming actually starts
+  useEffect(() => {
+    if (isStreaming) {
+      setIsSendingMessage(false)
+    }
+  }, [isStreaming])
   // Prefer active streaming steps, then kept steps from completed stream, then reconnect steps
   // This allows steps to persist briefly after streaming ends for smooth transition
   const activeProcessingSteps = processingSteps.length > 0
@@ -106,6 +105,8 @@ export function SimplifiedChatView() {
     // a server fetch overwrites our optimistic update.
     if (!isStreaming) {
       handledQueriesRef.current.add(key)
+      // Mark as sending before clearing URL to prevent flash
+      setIsSendingMessage(true)
       // Clear the query param
       setSearchParams({}, { replace: true })
       // Send the message
@@ -119,6 +120,7 @@ export function SimplifiedChatView() {
     const initialQuestion = searchParams.get('q')
     if (initialQuestion && !sessionId && !isCreatingSession && !initialQuestionHandledForNewRef.current) {
       initialQuestionHandledForNewRef.current = true
+      setIsSendingMessage(true)
       setSearchParams({}, { replace: true })
       handleSendMessageForNewChat(initialQuestion)
     }
@@ -193,12 +195,12 @@ export function SimplifiedChatView() {
     navigate(`/query/${newSessionId}?${type}=${encodeURIComponent(query)}`)
   }, [navigate])
 
-  // New chat (no sessionId) - show empty chat
-  if (!sessionId) {
+  // New chat (no sessionId) or creating session - show Chat with pending state
+  if (!sessionId || isCreatingSession) {
     return (
       <Chat
         messages={[]}
-        isPending={isCreatingSession || !!pendingUrlMessage}
+        isPending={isCreatingSession || !!pendingUrlMessage || isSendingMessage}
         processingSteps={[]}
         onSendMessage={handleSendMessage}
         onAbort={handleAbort}
@@ -207,14 +209,9 @@ export function SimplifiedChatView() {
     )
   }
 
-  // Loading existing session or creating new session
-  // Show skeleton after delay, but render nothing during the delay to avoid flash
-  if (isLoadingState) {
-    if (showSkeleton) {
-      return <ChatSkeleton />
-    }
-    // During delay, render empty container to avoid flash
-    return <div className="flex-1" />
+  // Loading existing session - show skeleton
+  if (sessionLoading && !session) {
+    return <ChatSkeleton />
   }
 
   // Show Chat with session data

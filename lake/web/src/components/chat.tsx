@@ -610,10 +610,18 @@ export function Chat({ messages, isPending, processingSteps, onSendMessage, onAb
   const [input, setInput] = useState('')
   const [highlightedQueries, setHighlightedQueries] = useState<Map<number, number | null>>(new Map()) // messageIndex -> queryIndex
   const [showLoginModal, setShowLoginModal] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false) // Local state to hide empty state immediately on send
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
   const { quota, isAuthenticated } = useAuth()
+
+  // Reset isSubmitting when isPending becomes true (parent caught up) or messages arrive
+  useEffect(() => {
+    if (isPending || messages.length > 0) {
+      setIsSubmitting(false)
+    }
+  }, [isPending, messages.length])
 
   // Quota state
   const isUnlimited = quota?.remaining === null
@@ -704,6 +712,7 @@ export function Chat({ messages, isPending, processingSteps, onSendMessage, onAb
 
     const userMessage = input.trim()
     setInput('')
+    setIsSubmitting(true)
     onSendMessage(userMessage)
   }
 
@@ -720,7 +729,7 @@ export function Chat({ messages, isPending, processingSteps, onSendMessage, onAb
       <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-auto">
         <div className="max-w-3xl mx-auto min-h-full">
           <div className="px-4 py-8 space-y-6">
-            {messages.length === 0 && !isPending && (
+            {messages.length === 0 && !isPending && !isSubmitting && (
               <div className="text-muted-foreground py-24 text-center">
                 <p className="text-lg mb-2">What would you like to know?</p>
                 <p className="text-sm mb-8">Ask questions about your data. I can run queries to find answers.</p>
@@ -734,6 +743,7 @@ export function Chat({ messages, isPending, processingSteps, onSendMessage, onAb
                         if (e.metaKey || e.ctrlKey) {
                           window.open(`/chat?q=${encodeURIComponent(question)}`, '_blank')
                         } else {
+                          setIsSubmitting(true)
                           onSendMessage(question)
                         }
                       }}
@@ -973,7 +983,7 @@ export function Chat({ messages, isPending, processingSteps, onSendMessage, onAb
               const lastMsg = messages[messages.length - 1]
               const lastMsgHasWorkflowData = lastMsg?.role === 'assistant' &&
                 (lastMsg?.workflowData?.processingSteps?.length ?? 0) > 0
-              const showTimeline = isPending ||
+              const showTimeline = isPending || isSubmitting ||
                 ((processingSteps?.length ?? 0) > 0 && !lastMsgHasWorkflowData)
 
               return showTimeline ? (

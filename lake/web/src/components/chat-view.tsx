@@ -20,7 +20,6 @@ export function SimplifiedChatView() {
 
   // Track if we're creating a session (for new chat flow)
   const [isCreatingSession, setIsCreatingSession] = useState(false)
-  const pendingMessageRef = useRef<string | null>(null)
 
   // Fetch session data (only when we have a sessionId)
   const { data: session, isLoading: sessionLoading } = useChatSession(sessionId)
@@ -31,7 +30,31 @@ export function SimplifiedChatView() {
   // Handle workflow reconnection for incomplete messages
   const [reconnectState, setReconnectState] = useState<Partial<ChatStreamState>>({})
   const handleReconnectUpdate = useCallback((state: Partial<ChatStreamState>) => {
-    setReconnectState(prev => ({ ...prev, ...state }))
+    setReconnectState(prev => {
+      // Accumulate processing steps instead of replacing, but deduplicate
+      if (state.processingSteps && state.processingSteps.length > 0) {
+        const existingSteps = prev.processingSteps ?? []
+        // Deduplicate: for queries use question as key, for thinking use content
+        const newSteps = state.processingSteps.filter(newStep => {
+          if (newStep.type === 'query') {
+            return !existingSteps.some(s => s.type === 'query' && s.question === newStep.question)
+          }
+          if (newStep.type === 'thinking') {
+            return !existingSteps.some(s => s.type === 'thinking' && s.content === newStep.content)
+          }
+          return true
+        })
+        if (newSteps.length === 0) {
+          return { ...prev, ...state, processingSteps: existingSteps }
+        }
+        return {
+          ...prev,
+          ...state,
+          processingSteps: [...existingSteps, ...newSteps],
+        }
+      }
+      return { ...prev, ...state }
+    })
   }, [])
 
   // Reset reconnect state when sessionId changes (e.g., navigating to new chat)
@@ -56,20 +79,24 @@ export function SimplifiedChatView() {
     : reconnectState.processingSteps ?? []
 
   // Handle initial question from URL param (when we have a sessionId)
-  const [initialQuestionHandled, setInitialQuestionHandled] = useState<string | null>(null)
+  // Use a ref to track which session+question combos we've handled
+  const handledQueriesRef = useRef<Set<string>>(new Set())
   useEffect(() => {
     const initialQuestion = searchParams.get('q')
-    if (initialQuestion && sessionId && session && !sessionLoading && !isPending && initialQuestionHandled !== sessionId) {
-      // Only send if session is empty
-      if (session.messages.length === 0) {
-        setInitialQuestionHandled(sessionId)
-        // Clear the query param
-        setSearchParams({}, { replace: true })
-        // Send the message
-        sendMessage(initialQuestion)
-      }
+    if (!initialQuestion || !sessionId || !session) return
+
+    const key = `${sessionId}:${initialQuestion}`
+    if (handledQueriesRef.current.has(key)) return
+
+    // Only send if session is empty and we're not already streaming
+    if (session.messages.length === 0 && !isStreaming) {
+      handledQueriesRef.current.add(key)
+      // Clear the query param
+      setSearchParams({}, { replace: true })
+      // Send the message
+      sendMessage(initialQuestion)
     }
-  }, [searchParams, session, sessionLoading, isPending, sessionId, initialQuestionHandled, setSearchParams, sendMessage])
+  }, [searchParams, session, sessionId, isStreaming, setSearchParams, sendMessage])
 
   // Handle initial question from URL param (when on /chat without sessionId)
   const initialQuestionHandledForNewRef = useRef(false)
@@ -77,23 +104,23 @@ export function SimplifiedChatView() {
     const initialQuestion = searchParams.get('q')
     if (initialQuestion && !sessionId && !isCreatingSession && !initialQuestionHandledForNewRef.current) {
       initialQuestionHandledForNewRef.current = true
-      // Clear the query param and create session with this message
       setSearchParams({}, { replace: true })
       handleSendMessageForNewChat(initialQuestion)
     }
   }, [searchParams, sessionId, isCreatingSession, setSearchParams])
 
-  // Create session and send first message (for /chat route)
+  // Create session and navigate (for /chat route)
   const handleSendMessageForNewChat = useCallback(async (message: string) => {
     if (isCreatingSession) return
 
     setIsCreatingSession(true)
-    pendingMessageRef.current = message
-
     const newId = crypto.randomUUID()
+
     try {
+      // Create session on server
       await createSession(newId, 'chat', [])
-      // Pre-populate detail cache
+
+      // Pre-populate caches
       const newSession: ChatSession = {
         id: newId,
         messages: [],
@@ -101,19 +128,19 @@ export function SimplifiedChatView() {
         updatedAt: new Date(),
       }
       queryClient.setQueryData<ChatSession>(chatKeys.detail(newId), newSession)
-      // Add to list cache directly (don't invalidate - that causes race conditions)
       queryClient.setQueryData<ChatSession[]>(chatKeys.list(), (oldList) => {
         if (!oldList) return [newSession]
         return [newSession, ...oldList]
       })
-      // Navigate to new session with the message as query param so it gets sent
+
+      // Navigate to new session with message in URL param
+      // The effect above will handle sending the message
       navigate(`/chat/${newId}?q=${encodeURIComponent(message)}`, { replace: true })
     } catch {
       // If creation fails, still try to navigate - the stream will create it
       navigate(`/chat/${newId}?q=${encodeURIComponent(message)}`, { replace: true })
     } finally {
       setIsCreatingSession(false)
-      pendingMessageRef.current = null
     }
   }, [isCreatingSession, navigate, queryClient])
 
@@ -151,7 +178,7 @@ export function SimplifiedChatView() {
     navigate(`/query/${newSessionId}?sql=${encodeURIComponent(sql)}`)
   }, [navigate])
 
-  // New chat (no sessionId) - show empty chat immediately
+  // New chat (no sessionId) - show empty chat
   if (!sessionId) {
     return (
       <Chat

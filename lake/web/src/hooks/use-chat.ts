@@ -276,11 +276,29 @@ export function useChatStream(sessionId: string | undefined) {
               }
             })
           },
-          onDone: () => {
-            // Invalidate to refetch fresh data from server
-            // The server has already saved the complete message
-            queryClient.invalidateQueries({ queryKey: chatKeys.detail(sessionId) })
-            queryClient.invalidateQueries({ queryKey: chatKeys.list() })
+          onDone: async () => {
+            // Fetch fresh data from server and update cache before clearing streaming state
+            // This ensures the complete message is in the cache before we hide the streaming UI
+            try {
+              const freshSession = await getSession<ChatMessage[]>(sessionId)
+              const converted = serverToChatSession(freshSession)
+              queryClient.setQueryData<ChatSession>(chatKeys.detail(sessionId), converted)
+              queryClient.invalidateQueries({ queryKey: chatKeys.list() })
+
+              // Generate title for new sessions
+              if (!converted.name && converted.messages.length <= 3) {
+                generateChatSessionTitle(converted.messages).then(result => {
+                  if (result.title) {
+                    queryClient.invalidateQueries({ queryKey: chatKeys.detail(sessionId) })
+                    queryClient.invalidateQueries({ queryKey: chatKeys.list() })
+                  }
+                }).catch(() => {})
+              }
+            } catch {
+              // If fetch fails, just invalidate to trigger a refetch
+              queryClient.invalidateQueries({ queryKey: chatKeys.detail(sessionId) })
+              queryClient.invalidateQueries({ queryKey: chatKeys.list() })
+            }
 
             setStreamState({
               isStreaming: false,
@@ -288,17 +306,6 @@ export function useChatStream(sessionId: string | undefined) {
               processingSteps: [],
               error: null,
             })
-
-            // Generate title for new sessions
-            const session = queryClient.getQueryData<ChatSession>(chatKeys.detail(sessionId))
-            if (session && !session.name && session.messages.length <= 3) {
-              generateChatSessionTitle(session.messages).then(result => {
-                if (result.title) {
-                  queryClient.invalidateQueries({ queryKey: chatKeys.detail(sessionId) })
-                  queryClient.invalidateQueries({ queryKey: chatKeys.list() })
-                }
-              }).catch(() => {})
-            }
           },
           onError: (error) => {
             setStreamState(prev => ({
@@ -384,7 +391,9 @@ export function useWorkflowReconnect(
       }
 
       // Workflow is running, reconnect to stream
-      onStreamUpdate({ isStreaming: true, workflowId: workflow.id })
+      // Initialize with existing steps from the message (if any were saved before disconnect)
+      const existingSteps = streamingMsg.workflowData?.processingSteps ?? []
+      onStreamUpdate({ isStreaming: true, workflowId: workflow.id, processingSteps: existingSteps })
 
       const abortController = new AbortController()
       abortControllerRef.current = abortController
@@ -409,10 +418,14 @@ export function useWorkflowReconnect(
               }],
             })
           },
-          onDone: () => {
+          onDone: async () => {
+            // Refetch session data first, then clear streaming state
+            // This prevents a flash of empty content between stream end and refetch
+            await Promise.all([
+              queryClient.refetchQueries({ queryKey: chatKeys.detail(sessionId) }),
+              queryClient.invalidateQueries({ queryKey: chatKeys.list() }),
+            ])
             onStreamUpdate({ isStreaming: false, workflowId: null, processingSteps: [] })
-            queryClient.invalidateQueries({ queryKey: chatKeys.detail(sessionId) })
-            queryClient.invalidateQueries({ queryKey: chatKeys.list() })
           },
           onError: (error) => {
             onStreamUpdate({ isStreaming: false, error })

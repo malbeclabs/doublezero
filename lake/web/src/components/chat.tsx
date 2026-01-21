@@ -9,6 +9,40 @@ import { useTheme } from '@/hooks/use-theme'
 import { formatNeo4jValue, isNeo4jValue } from '@/lib/neo4j-utils'
 import { isCypherQuery, formatCypher } from '@/lib/format-cypher'
 
+// Format error message for display
+function formatErrorMessage(content: string): { message: string; isQuotaError: boolean; resetsAt?: Date } {
+  try {
+    const parsed = JSON.parse(content)
+    if (parsed.error && typeof parsed.error === 'string') {
+      const isQuotaError = parsed.error.toLowerCase().includes('limit exceeded') ||
+                          parsed.error.toLowerCase().includes('quota')
+      return {
+        message: parsed.error,
+        isQuotaError,
+        resetsAt: parsed.resets_at ? new Date(parsed.resets_at) : undefined
+      }
+    }
+  } catch {
+    // Not JSON, return as-is
+  }
+  return { message: content, isQuotaError: false }
+}
+
+// Format reset time for display
+function formatResetTime(date: Date): string {
+  const now = new Date()
+  const diffMs = date.getTime() - now.getTime()
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
+  const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
+
+  if (diffHours > 0) {
+    return `${diffHours}h ${diffMins}m`
+  } else if (diffMins > 0) {
+    return `${diffMins}m`
+  }
+  return 'soon'
+}
+
 // Format SQL for display
 function formatSQLForDisplay(sql: string): string {
   try {
@@ -503,10 +537,6 @@ function CitationText({ text, onCitationClick }: { text: string; onCitationClick
   return <>{parts}</>
 }
 
-interface ExternalLockInfo {
-  question?: string
-}
-
 // Skeleton component for loading state
 function Skeleton({ className }: { className?: string }) {
   return <div className={`animate-pulse bg-muted rounded ${className || ''}`} />
@@ -555,14 +585,13 @@ interface ChatProps {
   messages: ChatMessage[]
   isPending: boolean
   processingSteps?: ProcessingStep[]
-  externalLock?: ExternalLockInfo | null
   onSendMessage: (message: string) => void
   onAbort: () => void
   onRetry?: () => void
   onOpenInQueryEditor?: (sql: string) => void
 }
 
-export function Chat({ messages, isPending, processingSteps, externalLock, onSendMessage, onAbort, onRetry, onOpenInQueryEditor }: ChatProps) {
+export function Chat({ messages, isPending, processingSteps, onSendMessage, onAbort, onRetry, onOpenInQueryEditor }: ChatProps) {
   const [input, setInput] = useState('')
   const [highlightedQueries, setHighlightedQueries] = useState<Map<number, number | null>>(new Map()) // messageIndex -> queryIndex
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -635,13 +664,6 @@ export function Chat({ messages, isPending, processingSteps, externalLock, onSen
     }
   }, [isPending, processingSteps])
 
-  // Scroll when external lock appears if user is at bottom
-  useEffect(() => {
-    if (externalLock) {
-      scrollToBottomIfNeeded()
-    }
-  }, [externalLock])
-
   // Focus input when response arrives (isPending goes from true to false)
   const prevIsPendingRef = useRef(isPending)
   useEffect(() => {
@@ -651,8 +673,8 @@ export function Chat({ messages, isPending, processingSteps, externalLock, onSen
     prevIsPendingRef.current = isPending
   }, [isPending])
 
-  // Disable input when pending or when another browser is processing
-  const isDisabled = isPending || !!externalLock
+  // Disable input when pending
+  const isDisabled = isPending
 
   const handleSend = () => {
     if (!input.trim() || isDisabled) return
@@ -675,7 +697,7 @@ export function Chat({ messages, isPending, processingSteps, externalLock, onSen
       <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-auto">
         <div className="max-w-3xl mx-auto min-h-full">
           <div className="px-4 py-8 space-y-6">
-            {messages.length === 0 && (
+            {messages.length === 0 && !isPending && (
               <div className="text-muted-foreground py-24 text-center">
                 <p className="text-lg mb-2">What would you like to know?</p>
                 <p className="text-sm mb-8">Ask questions about your data. I can run queries to find answers.</p>
@@ -721,28 +743,39 @@ export function Chat({ messages, isPending, processingSteps, externalLock, onSen
                     </div>
                   ) : msg.status === 'error' ? (
                     // Error message with retry button
-                    <div className="px-1">
-                      <div className="flex items-start gap-3 px-4 py-3 bg-red-500/10 border border-red-500/20 rounded-lg">
-                        <XCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm text-red-600 dark:text-red-400">{msg.content}</p>
-                          {onRetry && (
-                            <button
-                              onClick={onRetry}
-                              disabled={isPending}
-                              className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 dark:text-red-400 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              <RotateCcw className="w-3.5 h-3.5" />
-                              Retry
-                            </button>
-                          )}
+                    (() => {
+                      const errorInfo = formatErrorMessage(msg.content)
+                      return (
+                        <div className="px-1">
+                          <div className="flex items-start gap-3 px-4 py-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+                            <XCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm text-red-600 dark:text-red-400">{errorInfo.message}</p>
+                              {errorInfo.isQuotaError && errorInfo.resetsAt && (
+                                <p className="text-xs text-red-500/70 mt-1">
+                                  Resets in {formatResetTime(errorInfo.resetsAt)}
+                                </p>
+                              )}
+                              {onRetry && !errorInfo.isQuotaError && (
+                                <button
+                                  onClick={onRetry}
+                                  disabled={isPending}
+                                  className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 dark:text-red-400 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  <RotateCcw className="w-3.5 h-3.5" />
+                                  Retry
+                                </button>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
+                      )
+                    })()
                   ) : (
                     <div className="px-1">
                       {/* Processing timeline - shows for completed messages with processing steps */}
-                      {msg.workflowData?.processingSteps && msg.workflowData.processingSteps.length > 0 && (
+                      {/* Skip for streaming messages - the streaming timeline at the bottom handles those */}
+                      {msg.status !== 'streaming' && msg.workflowData?.processingSteps && msg.workflowData.processingSteps.length > 0 && (
                         <div className="mb-3">
                           <ProcessingTimeline
                             steps={msg.workflowData.processingSteps}
@@ -894,21 +927,6 @@ export function Chat({ messages, isPending, processingSteps, externalLock, onSen
                 />
               </div>
             )}
-            {externalLock && !isPending && (
-              <div className="px-1">
-                <div className="flex items-center gap-2 text-muted-foreground bg-muted/50 rounded-lg p-3">
-                  <Loader2 className="w-4 h-4 animate-spin text-accent" />
-                  <div className="flex flex-col">
-                    <span className="text-sm font-medium">Processing in another window</span>
-                    {externalLock.question && (
-                      <span className="text-xs text-muted-foreground/70 mt-0.5">
-                        "{externalLock.question.slice(0, 60)}{externalLock.question.length > 60 ? '...' : ''}"
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
             <div ref={messagesEndRef} />
           </div>
         </div>
@@ -923,7 +941,7 @@ export function Chat({ messages, isPending, processingSteps, externalLock, onSen
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={externalLock ? "Waiting for other window to finish..." : "Ask about your data..."}
+              placeholder="Ask about your data..."
               autoFocus
               disabled={isDisabled}
               rows={1}

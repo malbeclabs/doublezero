@@ -163,13 +163,6 @@ func main() {
 			return
 		}
 
-		// Check status cache is populated
-		if !handlers.IsStatusCacheReady() {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			w.Write([]byte("status cache not ready"))
-			return
-		}
-
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok"))
 	})

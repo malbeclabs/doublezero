@@ -1153,7 +1153,7 @@ function LinksContent({ status, linkHistory, criticalLinks }: { status: StatusRe
     queryKey: ['link-history', timeRange, buckets],
     queryFn: () => fetchLinkHistory(timeRange, buckets),
     refetchInterval: 60_000,
-    staleTime: 30_000,
+    staleTime: timeRange === '24h' ? 30_000 : 0,
   })
 
   // Apply search filters to link history
@@ -1826,7 +1826,7 @@ function DevicesContent({ status }: { status: StatusResponse }) {
     queryKey: ['device-history', timeRange, buckets],
     queryFn: () => fetchDeviceHistory(timeRange, buckets),
     refetchInterval: 60_000,
-    staleTime: 30_000,
+    staleTime: timeRange === '24h' ? 30_000 : 0,
   })
 
   // Fetch interface issues for the selected time range
@@ -1834,7 +1834,7 @@ function DevicesContent({ status }: { status: StatusResponse }) {
     queryKey: ['interface-issues', timeRange],
     queryFn: () => fetchInterfaceIssues(timeRange),
     refetchInterval: 60_000,
-    staleTime: 30_000,
+    staleTime: timeRange === '24h' ? 30_000 : 0,
   })
 
   // Apply search filters to device history

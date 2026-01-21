@@ -44,7 +44,7 @@ export function DzVsInternetPage() {
   const { data: latencyData, isLoading: latencyLoading, error: latencyError, isFetching: latencyFetching } = useQuery({
     queryKey: ['latency-comparison'],
     queryFn: fetchLatencyComparison,
-    staleTime: 60000,
+    staleTime: 0,
     retry: 2,
   })
 
@@ -115,7 +115,7 @@ export function DzVsInternetPage() {
       selectedComparison!.target_metro_code
     ),
     enabled: !!selectedComparison,
-    staleTime: 60000,
+    staleTime: 0,
   })
 
   // Prepare chart data from history

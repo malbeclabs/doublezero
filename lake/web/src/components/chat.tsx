@@ -7,6 +7,7 @@ import { formatQuery } from '@/lib/format-query'
 import { ArrowUp, Square, Loader2, Copy, Check, ChevronDown, ChevronRight, ExternalLink, MessageCircle, CheckCircle2, XCircle, Brain, RotateCcw } from 'lucide-react'
 import { useTheme } from '@/hooks/use-theme'
 import { useAuth } from '@/contexts/AuthContext'
+import { LoginModal } from '@/components/auth/LoginModal'
 import { formatNeo4jValue, isNeo4jValue } from '@/lib/neo4j-utils'
 
 // Format error message for display
@@ -608,6 +609,7 @@ interface ChatProps {
 export function Chat({ messages, isPending, processingSteps, onSendMessage, onAbort, onRetry, onOpenInQueryEditor }: ChatProps) {
   const [input, setInput] = useState('')
   const [highlightedQueries, setHighlightedQueries] = useState<Map<number, number | null>>(new Map()) // messageIndex -> queryIndex
+  const [showLoginModal, setShowLoginModal] = useState(false)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
@@ -751,12 +753,18 @@ export function Chat({ messages, isPending, processingSteps, onSendMessage, onAb
                     {isQuotaDepleted ? (
                       <>
                         You've used all your questions for today.
-                        {isAuthenticated ? ' Check back tomorrow!' : ' Sign in for more.'}
+                        {isAuthenticated ? (
+                          ' Check back tomorrow!'
+                        ) : (
+                          <> <button onClick={() => setShowLoginModal(true)} className="underline hover:text-foreground">Sign in</button> for more.</>
+                        )}
                       </>
                     ) : (
                       <>
                         {remaining} {remaining === 1 ? 'question' : 'questions'} remaining today
-                        {!isAuthenticated && ' · Sign in for more'}
+                        {!isAuthenticated && (
+                          <> · <button onClick={() => setShowLoginModal(true)} className="underline hover:text-foreground">Sign in</button> for more</>
+                        )}
                       </>
                     )}
                   </p>
@@ -1024,11 +1032,15 @@ export function Chat({ messages, isPending, processingSteps, onSendMessage, onAb
           </div>
           <p className="text-xs text-muted-foreground text-center mt-2">
             {isQuotaDepleted
-              ? (isAuthenticated ? "Check back tomorrow for more questions" : "Sign in for more questions")
+              ? (isAuthenticated
+                  ? "Check back tomorrow for more questions"
+                  : <><button onClick={() => setShowLoginModal(true)} className="underline hover:text-foreground">Sign in</button> for more questions</>)
               : "Enter to send, Shift+Enter for new line"}
           </p>
         </div>
       </div>
+
+      <LoginModal isOpen={showLoginModal} onClose={() => setShowLoginModal(false)} />
     </div>
   )
 }

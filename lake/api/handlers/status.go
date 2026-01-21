@@ -1780,10 +1780,10 @@ func fetchDeviceHistoryData(ctx context.Context, timeRange string, requestedBuck
 		for _, b := range buckets {
 			totalErrors := b.inErrors + b.outErrors
 			totalDiscards := b.inDiscards + b.outDiscards
-			if totalErrors >= ErrorWarningThreshold {
+			if totalErrors > 0 {
 				issueReasons["interface_errors"] = true
 			}
-			if totalDiscards >= ErrorWarningThreshold {
+			if totalDiscards > 0 {
 				issueReasons["discards"] = true
 			}
 			if b.carrierTransitions > 0 {

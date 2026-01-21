@@ -104,6 +104,7 @@ All notable changes to this project will be documented in this file.
   - Add histogram metric for GetConfig request duration
   - Add gRPC middleware for prometheus metrics
   - Add device status label to controller_grpc_getconfig_requests_total metric
+  - Add logic to shutdown user BGP, IBGP sessions, MSDP neighbors, and ISIS when device.status is drained
 - Device agents
   - Increase default controller request timeout in config agent
   - Initial state collect in telemetry agent

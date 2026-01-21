@@ -8,8 +8,8 @@ logging buffered 128000
 no logging console
 logging facility local7
 !
-ip name-server vrf test-mgmt-vrf 1.1.1.1
-ip name-server vrf test-mgmt-vrf 9.9.9.9
+ip name-server vrf default 1.1.1.1
+ip name-server vrf default 9.9.9.9
 clock timezone UTC
 !
 ip multicast-routing
@@ -22,9 +22,9 @@ vrf instance vrf1
 ip routing
 ip routing vrf vrf1
 !
-ntp server vrf test-mgmt-vrf 0.pool.ntp.org
-ntp server vrf test-mgmt-vrf 1.pool.ntp.org
-ntp server vrf test-mgmt-vrf 2.pool.ntp.org
+ntp server 0.pool.ntp.org
+ntp server 1.pool.ntp.org
+ntp server 2.pool.ntp.org
 !
 hardware access-list update default-result permit
 !
@@ -63,6 +63,30 @@ ip access-list MAIN-CONTROL-PLANE-ACL
 !
 system control-plane
    ip access-group MAIN-CONTROL-PLANE-ACL in
+!
+interface Loopback255
+   ip address 14.14.14.14/32
+   node-segment ipv4 index 15
+   isis enable 1
+!
+interface Ethernet1/1
+   mtu 2048
+   no switchport
+   ip address 172.16.0.2/31
+   pim ipv4 sparse-mode
+   isis enable 1
+   isis circuit-type level-2
+   isis hello-interval 1
+   isis metric 40000
+   no isis passive
+   isis hello padding
+   isis network point-to-point
+!
+interface Ethernet1/2
+   mtu 2048
+   no switchport
+   ip address 172.16.0.4/31
+   pim ipv4 sparse-mode
 !
 interface Loopback1000
    description RP Address
@@ -113,7 +137,7 @@ router isis 1
    !
    segment-routing mpls
       no shutdown
-   no set-overload-bit
+   set-overload-bit
 !
 ip community-list COMM-ALL_USERS permit 21682:1200
 ip community-list COMM-ALL_MCAST_USERS permit 21682:1300

@@ -127,13 +127,11 @@ export function Landing() {
           label="SOL Connected"
           value={stats?.total_stake_sol}
           format="stake"
-          href="/stake"
         />
         <StatCard
           label="Stake Share"
           value={stats?.stake_share_pct}
           format="percent"
-          href="/stake"
         />
         <StatCard
           label="WAN Capacity"

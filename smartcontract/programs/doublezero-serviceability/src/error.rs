@@ -143,6 +143,8 @@ pub enum DoubleZeroError {
     ImmutableField, // variant 68
     #[error("CYOA can only be set on physical interfaces")]
     CyoaRequiresPhysical, // variant 69
+    #[error("Device can only be removed if it has no interfaces")]
+    DeviceHasInterfaces, // variant 70
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -218,6 +220,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::Deprecated => ProgramError::Custom(67),
             DoubleZeroError::ImmutableField => ProgramError::Custom(68),
             DoubleZeroError::CyoaRequiresPhysical => ProgramError::Custom(69),
+            DoubleZeroError::DeviceHasInterfaces => ProgramError::Custom(70),
         }
     }
 }
@@ -293,6 +296,8 @@ impl From<u32> for DoubleZeroError {
             66 => DoubleZeroError::InvalidFoundationAllowlist,
             67 => DoubleZeroError::Deprecated,
             68 => DoubleZeroError::ImmutableField,
+            69 => DoubleZeroError::CyoaRequiresPhysical,
+            70 => DoubleZeroError::DeviceHasInterfaces,
             _ => DoubleZeroError::Custom(e),
         }
     }
@@ -388,6 +393,8 @@ mod tests {
             InvalidFoundationAllowlist,
             Deprecated,
             ImmutableField,
+            CyoaRequiresPhysical,
+            DeviceHasInterfaces,
         ];
         for err in variants {
             let pe: ProgramError = err.clone().into();

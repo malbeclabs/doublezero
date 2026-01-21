@@ -16,6 +16,7 @@ pub struct InterfaceMgr<'a> {
     // Optional because it's not required for process_link_event
     segment_routing_ids: Option<&'a mut IDAllocator>,
     link_ips: &'a mut IPBlockAllocator,
+    use_onchain_allocation: bool,
 }
 
 impl<'a> InterfaceMgr<'a> {
@@ -23,11 +24,13 @@ impl<'a> InterfaceMgr<'a> {
         client: &'a dyn DoubleZeroClient,
         segment_routing_ids: Option<&'a mut IDAllocator>,
         link_ips: &'a mut IPBlockAllocator,
+        use_onchain_allocation: bool,
     ) -> Self {
         Self {
             client,
             segment_routing_ids,
             link_ips,
+            use_onchain_allocation,
         }
     }
 
@@ -167,6 +170,7 @@ impl<'a> InterfaceMgr<'a> {
             name: name.to_string(),
             ip_net: *ip_net,
             node_segment_idx,
+            use_onchain_allocation: self.use_onchain_allocation,
         };
 
         if let Err(e) = cmd.execute(self.client) {
@@ -210,6 +214,7 @@ impl<'a> InterfaceMgr<'a> {
         let cmd = RemoveDeviceInterfaceCommand {
             pubkey: *pubkey,
             name: name.to_string(),
+            use_onchain_allocation: self.use_onchain_allocation,
         };
 
         match cmd.execute(self.client) {

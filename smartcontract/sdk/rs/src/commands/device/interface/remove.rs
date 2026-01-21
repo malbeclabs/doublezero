@@ -1,6 +1,7 @@
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, processors::device::interface::DeviceInterfaceRemoveArgs,
+    instructions::DoubleZeroInstruction, pda::get_resource_extension_pda,
+    processors::device::interface::DeviceInterfaceRemoveArgs, resource::ResourceType,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
@@ -8,6 +9,7 @@ use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature}
 pub struct RemoveDeviceInterfaceCommand {
     pub pubkey: Pubkey,
     pub name: String,
+    pub use_onchain_allocation: bool,
 }
 
 impl RemoveDeviceInterfaceCommand {
@@ -16,14 +18,29 @@ impl RemoveDeviceInterfaceCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
+        let mut accounts = vec![
+            AccountMeta::new(self.pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ];
+
+        if self.use_onchain_allocation {
+            let (link_ips_pda, _, _) = get_resource_extension_pda(
+                &client.get_program_id(),
+                ResourceType::DeviceTunnelBlock,
+            );
+            let (segment_routing_id_pda, _, _) = get_resource_extension_pda(
+                &client.get_program_id(),
+                ResourceType::SegmentRoutingIds,
+            );
+            accounts.push(AccountMeta::new(link_ips_pda, false));
+            accounts.push(AccountMeta::new(segment_routing_id_pda, false));
+        }
+
         client.execute_transaction(
             DoubleZeroInstruction::RemoveDeviceInterface(DeviceInterfaceRemoveArgs {
                 name: self.name.clone(),
             }),
-            vec![
-                AccountMeta::new(self.pubkey, false),
-                AccountMeta::new(globalstate_pubkey, false),
-            ],
+            accounts,
         )
     }
 }
@@ -96,6 +113,45 @@ mod tests {
         let res = RemoveDeviceInterfaceCommand {
             pubkey: device_pubkey,
             name: "Ethernet0".to_string(),
+            use_onchain_allocation: false,
+        }
+        .execute(&client);
+        assert!(res.is_ok());
+    }
+
+    #[test]
+    fn test_commands_device_interface_remove_command_onchain() {
+        let mut client = create_test_client();
+
+        let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
+        let (link_ips_pda, _, _) =
+            get_resource_extension_pda(&client.get_program_id(), ResourceType::DeviceTunnelBlock);
+        let (segment_routing_id_pda, _, _) =
+            get_resource_extension_pda(&client.get_program_id(), ResourceType::SegmentRoutingIds);
+
+        let device_pubkey = Pubkey::new_unique();
+
+        client
+            .expect_execute_transaction()
+            .with(
+                predicate::eq(DoubleZeroInstruction::RemoveDeviceInterface(
+                    DeviceInterfaceRemoveArgs {
+                        name: "Ethernet0".to_string(),
+                    },
+                )),
+                predicate::eq(vec![
+                    AccountMeta::new(device_pubkey, false),
+                    AccountMeta::new(globalstate_pubkey, false),
+                    AccountMeta::new(link_ips_pda, false),
+                    AccountMeta::new(segment_routing_id_pda, false),
+                ]),
+            )
+            .returning(|_, _| Ok(Signature::new_unique()));
+
+        let res = RemoveDeviceInterfaceCommand {
+            pubkey: device_pubkey,
+            name: "Ethernet0".to_string(),
+            use_onchain_allocation: true,
         }
         .execute(&client);
         assert!(res.is_ok());

@@ -383,7 +383,7 @@ impl ProvisioningCliCommand {
                     pubkey
                 ))?;
 
-                if user_type == UserType::IBRLWithAllocatedIP {
+                if user_type == UserType::IBRL || user_type == UserType::IBRLWithAllocatedIP {
                     tunnel_src = resolve_tunnel_src(controller, device).await?;
                 }
 
@@ -399,7 +399,7 @@ impl ProvisioningCliCommand {
                 spinner.println(format!("    Device selected: {} ", device.code));
                 spinner.inc(1);
 
-                if user_type == UserType::IBRLWithAllocatedIP {
+                if user_type == UserType::IBRL || user_type == UserType::IBRLWithAllocatedIP {
                     tunnel_src = resolve_tunnel_src(controller, &device).await?;
                 }
 

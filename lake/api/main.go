@@ -143,10 +143,10 @@ func main() {
 			// Content Security Policy for Google Sign-In and app resources
 			csp := strings.Join([]string{
 				"default-src 'self'",
-				"script-src 'self' https://accounts.google.com",
+				"script-src 'self' 'unsafe-inline' https://accounts.google.com https://static.cloudflareinsights.com",
 				"frame-src https://accounts.google.com https://accounts.googleusercontent.com",
-				"connect-src 'self' https://accounts.google.com",
-				"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+				"connect-src 'self' https://accounts.google.com https://cloudflareinsights.com",
+				"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com",
 				"font-src 'self' https://fonts.gstatic.com",
 				"img-src 'self' data: https://lh3.googleusercontent.com",
 			}, "; ")

@@ -6,6 +6,25 @@ import { isCypherQuery, formatCypher } from './format-cypher'
 export function formatSqlQuery(sql: string): string {
   if (!sql.trim()) return sql
   try {
+    // Try formatting with different SQL dialects if the default fails
+    // ClickHouse has some non-standard syntax that may not parse correctly
+    const dialects = ['sql', 'mysql', 'postgresql'] as const
+    for (const dialect of dialects) {
+      try {
+        const formatted = formatSQL(sql, {
+          language: dialect,
+          tabWidth: 2,
+          keywordCase: 'upper',
+        })
+        // Check if formatting actually added newlines (sign of successful parse)
+        if (formatted.includes('\n')) {
+          return formatted
+        }
+      } catch {
+        // Try next dialect
+      }
+    }
+    // If no dialect worked well, use the default result
     return formatSQL(sql, {
       language: 'sql',
       tabWidth: 2,

@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useRef, useState, useEffect } from 'react'
 import type { ChatMessage, ProcessingStep } from '@/lib/api'
+import { useAuth } from '@/contexts/AuthContext'
 import {
   listSessionsWithContent,
   getSession,
@@ -117,6 +118,7 @@ export interface ChatStreamState {
 // Hook to send a message with streaming support
 export function useChatStream(sessionId: string | undefined) {
   const queryClient = useQueryClient()
+  const { refreshAuth } = useAuth()
   const abortControllerRef = useRef<AbortController | null>(null)
   const [streamState, setStreamState] = useState<ChatStreamState>({
     isStreaming: false,
@@ -231,6 +233,9 @@ export function useChatStream(sessionId: string | undefined) {
       error: null,
     })
 
+    // Refresh auth to update quota immediately (don't await - fire and forget)
+    refreshAuth()
+
     try {
       await sendChatMessageStream(
         message,
@@ -344,6 +349,7 @@ export function useChatStream(sessionId: string | undefined) {
               }))
 
               queryClient.invalidateQueries({ queryKey: chatKeys.list() })
+              refreshAuth()
 
               // Generate title for new sessions
               if (!converted.name && converted.messages.length <= 3) {

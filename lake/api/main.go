@@ -162,6 +162,7 @@ func main() {
 			csp := strings.Join([]string{
 				"default-src 'self'",
 				"script-src 'self' 'unsafe-inline' https://accounts.google.com https://static.cloudflareinsights.com",
+				"worker-src 'self' blob:",
 				"frame-src https://accounts.google.com https://accounts.googleusercontent.com",
 				"connect-src 'self' https://accounts.google.com https://cloudflareinsights.com https://*.basemaps.cartocdn.com",
 				"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com",

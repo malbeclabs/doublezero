@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { useLocation, Link } from 'react-router-dom'
+import { useLocation, Link, useNavigate } from 'react-router-dom'
+import { useChatSessions, useDeleteChatSession, useRenameChatSession, useGenerateChatTitle } from '@/hooks/use-chat'
 import {
   PanelLeftClose,
   PanelLeftOpen,
@@ -39,11 +40,12 @@ import { useTheme } from '@/hooks/use-theme'
 import { useVersionCheck } from '@/hooks/use-version-check'
 import {
   type QuerySession,
-  type ChatSession,
   getSessionPreview,
   getChatSessionPreview,
 } from '@/lib/sessions'
 import { ConfirmDialog } from './confirm-dialog'
+import { UserMenu } from './auth/UserMenu'
+import { QuotaIndicator } from './auth/QuotaIndicator'
 
 interface SidebarProps {
   // Query sessions
@@ -54,14 +56,6 @@ interface SidebarProps {
   onDeleteQuerySession: (sessionId: string) => void
   onRenameQuerySession: (sessionId: string, name: string) => void
   onGenerateTitleQuerySession?: (sessionId: string) => Promise<void>
-  // Chat sessions
-  chatSessions: ChatSession[]
-  currentChatSessionId: string
-  onNewChatSession: () => void
-  onSelectChatSession: (session: ChatSession) => void
-  onDeleteChatSession: (sessionId: string) => void
-  onRenameChatSession: (sessionId: string, name: string) => void
-  onGenerateTitleChatSession?: (sessionId: string) => Promise<void>
 }
 
 export function Sidebar({
@@ -72,15 +66,19 @@ export function Sidebar({
   onDeleteQuerySession,
   onRenameQuerySession,
   onGenerateTitleQuerySession,
-  chatSessions,
-  currentChatSessionId,
-  onNewChatSession,
-  onSelectChatSession,
-  onDeleteChatSession,
-  onRenameChatSession,
-  onGenerateTitleChatSession,
 }: SidebarProps) {
   const location = useLocation()
+  const navigate = useNavigate()
+
+  // Chat sessions from React Query
+  const { data: chatSessions = [] } = useChatSessions()
+  const deleteChatSession = useDeleteChatSession()
+  const renameChatSession = useRenameChatSession()
+  const generateChatTitle = useGenerateChatTitle()
+
+  // Extract current chat session ID from URL
+  const chatMatch = location.pathname.match(/^\/chat\/([^/]+)/)
+  const currentChatSessionId = chatMatch?.[1] ?? ''
   const { resolvedTheme, setTheme } = useTheme()
   const { updateAvailable, reload } = useVersionCheck()
   const isLandingPage = location.pathname === '/'
@@ -286,7 +284,7 @@ export function Sidebar({
             if (e.metaKey || e.ctrlKey) {
               window.open('/chat', '_blank')
             } else {
-              onNewChatSession()
+              navigate('/chat')
             }
           }}
           className={cn(
@@ -589,7 +587,7 @@ export function Sidebar({
               if (e.metaKey || e.ctrlKey) {
                 window.open('/chat', '_blank')
               } else {
-                onNewChatSession()
+                navigate('/chat')
               }
             }}
             className={cn(
@@ -865,7 +863,7 @@ export function Sidebar({
                     if (e.metaKey || e.ctrlKey) {
                       window.open('/chat', '_blank')
                     } else {
-                      onNewChatSession()
+                      navigate('/chat')
                     }
                   }}
                   className={cn(
@@ -904,14 +902,14 @@ export function Sidebar({
                   title={session.name || getChatSessionPreview(session)}
                   isActive={session.id === currentChatSessionId && !isChatSessions}
                   url={`/chat/${session.id}`}
-                  onClick={() => onSelectChatSession(session)}
+                  onClick={() => navigate(`/chat/${session.id}`)}
                   onDelete={() => setDeleteSession({
                     id: session.id,
                     type: 'chat',
                     title: session.name || getChatSessionPreview(session),
                   })}
-                  onRename={(name) => onRenameChatSession(session.id, name)}
-                  onGenerateTitle={onGenerateTitleChatSession ? () => onGenerateTitleChatSession(session.id) : undefined}
+                  onRename={(name) => renameChatSession.mutate({ sessionId: session.id, name })}
+                  onGenerateTitle={() => generateChatTitle.mutateAsync(session.id).then(() => {})}
                 />
               ))}
             </div>
@@ -1076,9 +1074,10 @@ export function Sidebar({
             <Settings className="h-4 w-4" />
           </Link>
         </div>
-        <p className="text-xs text-grey-40 leading-snug">
-          Early preview. Chat and query history is stored locally in your browser and may be cleared.
-        </p>
+        {/* User menu */}
+        <UserMenu />
+        {/* Quota indicator */}
+        <QuotaIndicator />
       </div>
 
       <ConfirmDialog
@@ -1088,7 +1087,7 @@ export function Sidebar({
         onConfirm={() => {
           if (deleteSession) {
             if (deleteSession.type === 'chat') {
-              onDeleteChatSession(deleteSession.id)
+              deleteChatSession.mutate(deleteSession.id)
             } else {
               onDeleteQuerySession(deleteSession.id)
             }

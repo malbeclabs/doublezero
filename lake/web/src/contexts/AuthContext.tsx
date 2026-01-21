@@ -223,7 +223,16 @@ export function AuthProvider({ children, googleClientId, onLoginSuccess, onLogou
       onLoginSuccess?.()
     } catch (err) {
       console.error('Google auth failed:', err)
-      setError(err instanceof Error ? err.message : 'Google authentication failed')
+      // Provide user-friendly error messages
+      let errorMessage = 'Google authentication failed'
+      if (err instanceof Error) {
+        if (err.message.includes('domain not authorized') || err.message.includes('403')) {
+          errorMessage = 'This email isn\'t authorized. Try a different email or sign in with a wallet.'
+        } else {
+          errorMessage = err.message
+        }
+      }
+      setError(errorMessage)
     } finally {
       setIsLoading(false)
     }

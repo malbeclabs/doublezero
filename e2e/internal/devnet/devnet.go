@@ -65,6 +65,7 @@ type DevnetSpec struct {
 	Activator          ActivatorSpec
 	DeviceHealthOracle DeviceHealthOracleSpec
 	InfluxDB           InfluxDBSpec
+	Prometheus         PrometheusSpec
 	Devices            map[string]DeviceSpec
 	Clients            map[string]ClientSpec
 }
@@ -92,6 +93,7 @@ type Devnet struct {
 	Activator          *Activator
 	DeviceHealthOracle *DeviceHealthOracle
 	InfluxDB           *InfluxDB
+	Prometheus         *Prometheus
 	Devices            map[string]*Device
 	Clients            map[string]*Client
 }
@@ -140,6 +142,10 @@ func (s *DevnetSpec) Validate() error {
 
 	if err := s.InfluxDB.Validate(); err != nil {
 		return fmt.Errorf("influxdb: %w", err)
+	}
+
+	if err := s.Prometheus.Validate(); err != nil {
+		return fmt.Errorf("prometheus: %w", err)
 	}
 
 	if s.Devices == nil {
@@ -307,6 +313,10 @@ func New(spec DevnetSpec, log *slog.Logger, dockerClient *client.Client, subnetA
 		dn:  dn,
 		log: log.With("component", "influxdb"),
 	}
+	dn.Prometheus = &Prometheus{
+		dn:  dn,
+		log: log.With("component", "prometheus"),
+	}
 	dn.Devices = make(map[string]*Device)
 	dn.Clients = make(map[string]*Client)
 
@@ -412,6 +422,11 @@ func (d *Devnet) Start(ctx context.Context, buildConfig *BuildConfig) error {
 	// Start the influxdb if it's not already running.
 	if _, err := d.InfluxDB.StartIfNotRunning(ctx); err != nil {
 		return fmt.Errorf("failed to start influxdb: %w", err)
+	}
+
+	// Start the prometheus if it's not already running.
+	if _, err := d.Prometheus.StartIfNotRunning(ctx); err != nil {
+		return fmt.Errorf("failed to start prometheus: %w", err)
 	}
 
 	// Start the controller if it's not already running.

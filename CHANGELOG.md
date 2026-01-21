@@ -18,7 +18,7 @@ All notable changes to this project will be documented in this file.
 - Activator
   - fix(activator): ip_to_index fn honors ip range #2658
 - E2E tests
-  - Add influxdb and device-health-oracle containers
+  - Add influxdb, prometheus, and device-health-oracle containers
 - SDK
   - Commands for setting global config, activating devices, updating devices, and closing device accounts now manage resource accounts.
 

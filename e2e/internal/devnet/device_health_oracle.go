@@ -108,6 +108,9 @@ func (d *DeviceHealthOracle) Start(ctx context.Context) error {
 		"DZ_TELEMETRY_PROGRAM_ID":      d.dn.Manager.TelemetryProgramID,
 		"DZ_INTERVAL":                  d.dn.Spec.DeviceHealthOracle.Interval.String(),
 	}
+	if d.dn.Prometheus != nil && d.dn.Prometheus.InternalURL != "" {
+		env["ALLOY_PROMETHEUS_URL"] = d.dn.Prometheus.RemoteWriteURL()
+	}
 
 	req := testcontainers.ContainerRequest{
 		Image: d.dn.Spec.DeviceHealthOracle.ContainerImage,

@@ -955,7 +955,7 @@ export function TimelinePage() {
     },
     initialPageParam: 0,
     refetchInterval: timeRange !== 'custom' ? 15_000 : undefined, // Only poll for relative ranges
-    staleTime: 10_000,
+    staleTime: timeRange === '24h' ? 10_000 : 0,
   })
 
   // Flatten all pages into a single list of events

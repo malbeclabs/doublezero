@@ -201,10 +201,10 @@ export function OutagesPage() {
   // Sort state
   const [sortField, setSortField] = useState<'started_at' | 'duration'>('started_at')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  const [pinOngoing, setPinOngoing] = useState(true)
 
   const sortedOutages = useMemo(() => {
-    const sorted = [...outages]
-    sorted.sort((a, b) => {
+    const compareOutages = (a: LinkOutage, b: LinkOutage) => {
       if (sortField === 'started_at') {
         const aTime = new Date(a.started_at).getTime()
         const bTime = new Date(b.started_at).getTime()
@@ -214,9 +214,16 @@ export function OutagesPage() {
         const bDur = b.is_ongoing ? Infinity : (b.duration_seconds || 0)
         return sortDir === 'asc' ? aDur - bDur : bDur - aDur
       }
-    })
-    return sorted
-  }, [outages, sortField, sortDir])
+    }
+
+    if (!pinOngoing) {
+      return [...outages].sort(compareOutages)
+    }
+
+    const ongoing = outages.filter(outage => outage.is_ongoing).sort(compareOutages)
+    const notOngoing = outages.filter(outage => !outage.is_ongoing).sort(compareOutages)
+    return [...ongoing, ...notOngoing]
+  }, [outages, sortField, sortDir, pinOngoing])
 
   const toggleSort = (field: 'started_at' | 'duration') => {
     if (sortField === field) {
@@ -352,7 +359,30 @@ export function OutagesPage() {
             </p>
           </div>
         ) : (
-          <div className="border border-border rounded-lg overflow-hidden">
+          <>
+            <div className="flex items-center justify-between mb-3">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={pinOngoing}
+                onClick={() => setPinOngoing(!pinOngoing)}
+                className="flex items-center gap-2 text-sm text-muted-foreground"
+              >
+                <span
+                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                    pinOngoing ? 'bg-primary' : 'bg-muted-foreground/30'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-background shadow transition-transform ${
+                      pinOngoing ? 'translate-x-4' : 'translate-x-0.5'
+                    }`}
+                  />
+                </span>
+                Pin ongoing outages to top
+              </button>
+            </div>
+            <div className="border border-border rounded-lg overflow-hidden">
             <table className="w-full text-sm">
               <thead className="bg-muted/50">
                 <tr>
@@ -421,7 +451,8 @@ export function OutagesPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+            </div>
+          </>
         )}
       </div>
     </div>

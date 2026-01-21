@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useLocation, Link, useNavigate } from 'react-router-dom'
 import { useChatSessions, useDeleteChatSession, useRenameChatSession, useGenerateChatTitle } from '@/hooks/use-chat'
+import { useQuerySessions, useDeleteQuerySession, useRenameQuerySession, useGenerateQueryTitle } from '@/hooks/use-query-sessions'
 import {
   PanelLeftClose,
   PanelLeftOpen,
@@ -39,7 +40,6 @@ import { cn } from '@/lib/utils'
 import { useTheme } from '@/hooks/use-theme'
 import { useVersionCheck } from '@/hooks/use-version-check'
 import {
-  type QuerySession,
   getSessionPreview,
   getChatSessionPreview,
 } from '@/lib/sessions'
@@ -47,28 +47,16 @@ import { ConfirmDialog } from './confirm-dialog'
 import { UserMenu } from './auth/UserMenu'
 import { QuotaIndicator } from './auth/QuotaIndicator'
 
-interface SidebarProps {
-  // Query sessions
-  querySessions: QuerySession[]
-  currentQuerySessionId: string
-  onNewQuerySession: () => void
-  onSelectQuerySession: (session: QuerySession) => void
-  onDeleteQuerySession: (sessionId: string) => void
-  onRenameQuerySession: (sessionId: string, name: string) => void
-  onGenerateTitleQuerySession?: (sessionId: string) => Promise<void>
-}
-
-export function Sidebar({
-  querySessions,
-  currentQuerySessionId,
-  onNewQuerySession,
-  onSelectQuerySession,
-  onDeleteQuerySession,
-  onRenameQuerySession,
-  onGenerateTitleQuerySession,
-}: SidebarProps) {
+// Sidebar no longer needs props - it fetches sessions via React Query
+export function Sidebar() {
   const location = useLocation()
   const navigate = useNavigate()
+
+  // Query sessions from React Query
+  const { data: querySessions = [] } = useQuerySessions()
+  const deleteQuerySession = useDeleteQuerySession()
+  const renameQuerySession = useRenameQuerySession()
+  const generateQueryTitle = useGenerateQueryTitle()
 
   // Chat sessions from React Query
   const { data: chatSessions = [] } = useChatSessions()
@@ -76,7 +64,9 @@ export function Sidebar({
   const renameChatSession = useRenameChatSession()
   const generateChatTitle = useGenerateChatTitle()
 
-  // Extract current chat session ID from URL
+  // Extract current session IDs from URL
+  const queryMatch = location.pathname.match(/^\/query\/([^/]+)/)
+  const currentQuerySessionId = queryMatch?.[1] ?? ''
   const chatMatch = location.pathname.match(/^\/chat\/([^/]+)/)
   const currentChatSessionId = chatMatch?.[1] ?? ''
   const { resolvedTheme, setTheme } = useTheme()
@@ -304,7 +294,7 @@ export function Sidebar({
             if (e.metaKey || e.ctrlKey) {
               window.open('/query', '_blank')
             } else {
-              onNewQuerySession()
+              navigate('/query')
             }
           }}
           className={cn(
@@ -605,7 +595,7 @@ export function Sidebar({
               if (e.metaKey || e.ctrlKey) {
                 window.open('/query', '_blank')
               } else {
-                onNewQuerySession()
+                navigate('/query')
               }
             }}
             className={cn(
@@ -790,7 +780,7 @@ export function Sidebar({
                     if (e.metaKey || e.ctrlKey) {
                       window.open('/query', '_blank')
                     } else {
-                      onNewQuerySession()
+                      navigate('/query')
                     }
                   }}
                   className={cn(
@@ -829,14 +819,14 @@ export function Sidebar({
                   title={session.name || getSessionPreview(session)}
                   isActive={session.id === currentQuerySessionId && !isQuerySessions}
                   url={`/query/${session.id}`}
-                  onClick={() => onSelectQuerySession(session)}
+                  onClick={() => navigate(`/query/${session.id}`)}
                   onDelete={() => setDeleteSession({
                     id: session.id,
                     type: 'query',
                     title: session.name || getSessionPreview(session),
                   })}
-                  onRename={(name) => onRenameQuerySession(session.id, name)}
-                  onGenerateTitle={onGenerateTitleQuerySession ? () => onGenerateTitleQuerySession(session.id) : undefined}
+                  onRename={(name) => renameQuerySession.mutate({ sessionId: session.id, name })}
+                  onGenerateTitle={() => generateQueryTitle.mutateAsync(session.id).then(() => {})}
                 />
               ))}
             </div>
@@ -1089,7 +1079,7 @@ export function Sidebar({
             if (deleteSession.type === 'chat') {
               deleteChatSession.mutate(deleteSession.id)
             } else {
-              onDeleteQuerySession(deleteSession.id)
+              deleteQuerySession.mutate(deleteSession.id)
             }
           }
           setDeleteSession(null)

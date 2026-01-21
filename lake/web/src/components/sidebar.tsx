@@ -71,16 +71,13 @@ export function Sidebar() {
   const { updateAvailable, reload } = useVersionCheck()
   const isLandingPage = location.pathname === '/'
   const isTopologyRoute = location.pathname === '/topology' || location.pathname.startsWith('/topology/')
-  const isTopologyMapOrGraph = location.pathname === '/topology/map' || location.pathname === '/topology/graph'
   const isStatusPage = location.pathname.startsWith('/status')
   const isOutagesPage = location.pathname === '/outages'
   const isDZRoute = location.pathname.startsWith('/dz/')
   const isSolanaRoute = location.pathname.startsWith('/solana/')
 
   const [isCollapsed, setIsCollapsed] = useState(() => {
-    // Always collapse on topology map/graph views
     const path = window.location.pathname
-    if (path === '/topology/map' || path === '/topology/graph') return true
 
     // Check localStorage for user's explicit preference (not auto-collapse state)
     const userPref = localStorage.getItem('sidebar-user-collapsed')
@@ -100,12 +97,6 @@ export function Sidebar() {
 
   // Auto-collapse/expand based on route and user preference
   useEffect(() => {
-    // Always collapse on topology map/graph views (ignores user preference)
-    if (isTopologyMapOrGraph) {
-      setIsCollapsed(true)
-      return
-    }
-
     // If user has explicit preference, respect it
     if (userCollapsed !== null) {
       setIsCollapsed(userCollapsed)
@@ -119,17 +110,11 @@ export function Sidebar() {
       // Landing page, status page, and entity pages default to collapsed
       setIsCollapsed(isLandingPage || isStatusPage || isOutagesPage || isDZRoute || isSolanaRoute)
     }
-  }, [isLandingPage, isTopologyMapOrGraph, isStatusPage, isOutagesPage, isDZRoute, isSolanaRoute, userCollapsed])
+  }, [isLandingPage, isStatusPage, isOutagesPage, isDZRoute, isSolanaRoute, userCollapsed])
 
   // Auto-collapse/expand on resize based on user preference
   useEffect(() => {
     const checkWidth = () => {
-      // Always collapse on topology map/graph views
-      if (isTopologyMapOrGraph) {
-        setIsCollapsed(true)
-        return
-      }
-
       const isSmall = window.innerWidth < 1024
       if (isSmall) {
         // Always collapse on small screens
@@ -145,7 +130,7 @@ export function Sidebar() {
 
     window.addEventListener('resize', checkWidth)
     return () => window.removeEventListener('resize', checkWidth)
-  }, [userCollapsed, isLandingPage, isTopologyMapOrGraph, isStatusPage, isOutagesPage, isDZRoute, isSolanaRoute])
+  }, [userCollapsed, isLandingPage, isStatusPage, isOutagesPage, isDZRoute, isSolanaRoute])
 
   // Save collapsed state to localStorage
   useEffect(() => {

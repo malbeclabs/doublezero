@@ -245,7 +245,7 @@ function CodeBlock({ language, children, isDark }: { language: string; children:
 interface ProcessingTimelineProps {
   steps: ProcessingStep[]
   isStreaming?: boolean
-  onOpenInQueryEditor?: (sql: string) => void
+  onOpenInQueryEditor?: (query: string, type: 'sql' | 'cypher') => void
   onAskAboutQuery?: (question: string, sql: string, rowCount: number) => void
   highlightedQuery?: number | null
   onHighlightClear?: () => void
@@ -290,9 +290,14 @@ function ProcessingTimeline({
 
   if (steps.length === 0 && !isStreaming) return null
 
-  const querySteps = steps.filter((s): s is Extract<ProcessingStep, { type: 'query' }> => s.type === 'query')
+  // Filter steps by type
+  const querySteps = steps.filter((s): s is Extract<ProcessingStep, { type: 'sql_query' | 'cypher_query' }> =>
+    s.type === 'sql_query' || s.type === 'cypher_query'
+  )
   const completedQueries = querySteps.filter(q => q.status === 'completed').length
   const totalQueries = querySteps.length
+  const docsSteps = steps.filter((s): s is Extract<ProcessingStep, { type: 'read_docs' }> => s.type === 'read_docs')
+  const thinkingSteps = steps.filter(s => s.type === 'thinking')
 
   const toggleQuery = (index: number) => {
     setExpandedQueries(prev => {
@@ -313,18 +318,19 @@ function ProcessingTimeline({
   }
 
   // Build summary text
-  const thinkingSteps = steps.filter(s => s.type === 'thinking')
   const getSummary = () => {
     if (isStreaming && steps.length === 0) return 'Processing...'
     if (isStreaming) {
       if (totalQueries === 0 && thinkingSteps.length > 0) return 'Thinking...'
       if (totalQueries > 0) return `Running ${totalQueries} ${totalQueries === 1 ? 'query' : 'queries'}...`
+      if (docsSteps.length > 0) return 'Reading documentation...'
       return 'Processing...'
     }
     // Completed state - show what was done
     const parts: string[] = []
     if (thinkingSteps.length > 0) parts.push(`${thinkingSteps.length} ${thinkingSteps.length === 1 ? 'thought' : 'thoughts'}`)
     if (totalQueries > 0) parts.push(`${completedQueries} ${completedQueries === 1 ? 'query' : 'queries'}`)
+    if (docsSteps.length > 0) parts.push(`${docsSteps.length} doc ${docsSteps.length === 1 ? 'lookup' : 'lookups'}`)
     if (parts.length === 0) return 'Processing complete'
     return parts.join(', ')
   }
@@ -377,9 +383,36 @@ function ProcessingTimeline({
               )
             }
 
-            // Query step - find its index among query steps for highlighting
+            if (step.type === 'read_docs') {
+              return (
+                <div key={i} className="px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <div className="flex-shrink-0">
+                      {step.status === 'running' && (
+                        <Loader2 className="w-4 h-4 text-accent animate-spin" />
+                      )}
+                      {step.status === 'completed' && (
+                        <CheckCircle2 className="w-4 h-4 text-green-500" />
+                      )}
+                      {step.status === 'error' && (
+                        <XCircle className="w-4 h-4 text-red-500" />
+                      )}
+                    </div>
+                    <span className="text-sm text-muted-foreground">
+                      Reading docs: <span className="text-foreground">{step.page}</span>
+                    </span>
+                  </div>
+                  {step.error && (
+                    <div className="text-sm text-red-500 mt-1 ml-6">{step.error}</div>
+                  )}
+                </div>
+              )
+            }
+
+            // Query step (sql_query or cypher_query) - find its index among query steps for highlighting
             const queryIndex = querySteps.findIndex(q => q === step)
             const isHighlighted = highlightedQuery === queryIndex
+            const queryCode = step.type === 'sql_query' ? step.sql : step.cypher
 
             return (
               <div
@@ -402,7 +435,11 @@ function ProcessingTimeline({
                       <XCircle className="w-4 h-4 text-red-500" />
                     )}
                   </div>
-                  <span className="text-sm truncate flex-1">{step.question}</span>
+                  <span className="text-sm truncate flex-1">
+                    {step.type === 'sql_query' && <span className="text-muted-foreground">[SQL] </span>}
+                    {step.type === 'cypher_query' && <span className="text-muted-foreground">[Cypher] </span>}
+                    {step.question}
+                  </span>
                   {step.status !== 'running' && (
                     <span className={`text-xs ${step.error ? 'text-red-500' : 'text-green-600'}`}>
                       {step.error ? 'error' : `${step.rows ?? 0} rows`}
@@ -414,11 +451,11 @@ function ProcessingTimeline({
                   <div className="mt-2 ml-6">
                     <div className="relative">
                       {(() => {
-                        const { formatted, language } = formatQueryForDisplay(step.sql)
+                        const { formatted, language } = formatQueryForDisplay(queryCode)
                         return <CodeBlock language={language} isDark={isDark}>{formatted}</CodeBlock>
                       })()}
                       <div className="absolute right-10 top-2 flex items-center gap-1 z-10">
-                        {onAskAboutQuery && step.status === 'completed' && !step.error && (
+                        {onAskAboutQuery && step.status === 'completed' && !step.error && step.type === 'sql_query' && (
                           <button
                             onClick={() => onAskAboutQuery(step.question, step.sql, step.rows ?? 0)}
                             className="p-1.5 rounded border border-border bg-card/80 text-accent hover:bg-accent-orange-20 transition-colors flex items-center gap-1 text-xs"
@@ -430,7 +467,7 @@ function ProcessingTimeline({
                         )}
                         {onOpenInQueryEditor && (
                           <button
-                            onClick={() => onOpenInQueryEditor(step.sql)}
+                            onClick={() => onOpenInQueryEditor(queryCode, step.type === 'sql_query' ? 'sql' : 'cypher')}
                             className="p-1.5 rounded border border-border bg-card/80 text-muted-foreground hover:text-foreground hover:bg-accent-orange-20 transition-colors flex items-center gap-1 text-xs"
                             title="Open in Query Editor"
                           >
@@ -588,7 +625,7 @@ interface ChatProps {
   onSendMessage: (message: string) => void
   onAbort: () => void
   onRetry?: () => void
-  onOpenInQueryEditor?: (sql: string) => void
+  onOpenInQueryEditor?: (query: string, type: 'sql' | 'cypher') => void
 }
 
 export function Chat({ messages, isPending, processingSteps, onSendMessage, onAbort, onRetry, onOpenInQueryEditor }: ChatProps) {

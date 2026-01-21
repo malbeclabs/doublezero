@@ -31,18 +31,12 @@ export function SimplifiedChatView() {
   const [reconnectState, setReconnectState] = useState<Partial<ChatStreamState>>({})
   const handleReconnectUpdate = useCallback((state: Partial<ChatStreamState>) => {
     setReconnectState(prev => {
-      // Accumulate processing steps instead of replacing, but deduplicate
+      // Accumulate processing steps instead of replacing, but deduplicate by ID
       if (state.processingSteps && state.processingSteps.length > 0) {
         const existingSteps = prev.processingSteps ?? []
-        // Deduplicate: for queries use question as key, for thinking use content
+        // Deduplicate by step ID
         const newSteps = state.processingSteps.filter(newStep => {
-          if (newStep.type === 'query') {
-            return !existingSteps.some(s => s.type === 'query' && s.question === newStep.question)
-          }
-          if (newStep.type === 'thinking') {
-            return !existingSteps.some(s => s.type === 'thinking' && s.content === newStep.content)
-          }
-          return true
+          return !existingSteps.some(s => s.id === newStep.id)
         })
         if (newSteps.length === 0) {
           return { ...prev, ...state, processingSteps: existingSteps }
@@ -171,11 +165,11 @@ export function SimplifiedChatView() {
     abort()
   }, [abort])
 
-  // Handle opening SQL in query editor
-  const handleOpenInQueryEditor = useCallback((sql: string) => {
-    // Navigate to query editor with SQL in URL param
+  // Handle opening query in query editor
+  const handleOpenInQueryEditor = useCallback((query: string, type: 'sql' | 'cypher') => {
+    // Navigate to query editor with query in URL param
     const newSessionId = crypto.randomUUID()
-    navigate(`/query/${newSessionId}?sql=${encodeURIComponent(sql)}`)
+    navigate(`/query/${newSessionId}?${type}=${encodeURIComponent(query)}`)
   }, [navigate])
 
   // New chat (no sessionId) - show empty chat

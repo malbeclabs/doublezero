@@ -149,33 +149,93 @@ function QueryEditorView() {
     }
   }, [sessionId, session, sessionLoading, createSessionMutation])
 
-  // Initialize editor from URL param or session history
-  const initialLoadRef = useRef<string | null>(null)
+  // Track pending query to run (from URL param or session history)
+  const [pendingRun, setPendingRun] = useState<string | null>(null)
+
+  // Handle URL param immediately on mount/navigation (don't wait for session)
+  const urlParamHandledRef = useRef<string | null>(null)
   useEffect(() => {
-    if (!sessionId || sessionLoading || initialLoadRef.current === sessionId) return
-    initialLoadRef.current = sessionId
+    if (!sessionId || urlParamHandledRef.current === sessionId) return
+    const pendingSql = searchParams.get('sql')
+    const pendingCypher = searchParams.get('cypher')
+    if (pendingSql) {
+      urlParamHandledRef.current = sessionId
+      setQuery(pendingSql)
+      setResults(null)
+      setPendingRun(pendingSql)
+      setMode('sql')
+      setActiveMode('sql')
+      setSearchParams({}, { replace: true })
+    } else if (pendingCypher) {
+      urlParamHandledRef.current = sessionId
+      setQuery(pendingCypher)
+      setResults(null)
+      setPendingRun(pendingCypher)
+      setMode('cypher')
+      setActiveMode('cypher')
+      setSearchParams({}, { replace: true })
+    }
+  }, [sessionId, searchParams, setSearchParams])
+
+  // Initialize editor from session history (only if no URL param)
+  const historyLoadedRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!sessionId || sessionLoading || historyLoadedRef.current === sessionId) return
+    // Skip if we already handled a URL param for this session
+    if (urlParamHandledRef.current === sessionId) return
+    historyLoadedRef.current = sessionId
     setResults(null)
 
-    // Check for pending SQL from URL param (e.g., from chat "Edit" button)
-    const pendingSql = searchParams.get('sql')
-    if (pendingSql) {
-      setQuery(pendingSql)
-      setSearchParams({}, { replace: true })
-      setTimeout(() => queryEditorRef.current?.run(pendingSql), 100)
-    } else if (session?.history.length) {
+    if (session?.history.length) {
       const latestQuery = session.history[0].sql
       setQuery(latestQuery)
-      setTimeout(() => queryEditorRef.current?.run(latestQuery), 100)
+      setPendingRun(latestQuery)
     } else {
       setQuery('')
     }
-  }, [sessionId, session, sessionLoading, searchParams, setSearchParams])
+  }, [sessionId, session, sessionLoading])
+
+  // Run pending query once editor ref is available
+  // Use a small interval to check for ref availability since refs don't trigger re-renders
+  useEffect(() => {
+    if (!pendingRun) return
+
+    const tryRun = () => {
+      if (queryEditorRef.current) {
+        queryEditorRef.current.run(pendingRun)
+        setPendingRun(null)
+        return true
+      }
+      return false
+    }
+
+    // Try immediately
+    if (tryRun()) return
+
+    // If ref not ready, poll briefly
+    const interval = setInterval(() => {
+      if (tryRun()) {
+        clearInterval(interval)
+      }
+    }, 50)
+
+    // Clean up after 1 second (editor should definitely be mounted by then)
+    const timeout = setTimeout(() => clearInterval(interval), 1000)
+
+    return () => {
+      clearInterval(interval)
+      clearTimeout(timeout)
+    }
+  }, [pendingRun])
 
   const generationHistory = session?.history ?? []
 
   // Detect mode from session's most recent query on mount/session change
   const latestHistoryEntry = generationHistory[0]
   useEffect(() => {
+    // Skip if we already handled a URL param for this session
+    if (urlParamHandledRef.current === sessionId) return
+
     if (!latestHistoryEntry) {
       // New session with no history - default to auto
       setMode('auto')

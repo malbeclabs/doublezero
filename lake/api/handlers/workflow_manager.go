@@ -29,13 +29,14 @@ type WorkflowSubscriber struct {
 
 // runningWorkflow tracks a workflow executing in the background.
 type runningWorkflow struct {
-	ID          uuid.UUID
-	SessionID   uuid.UUID
-	Question    string
-	Format      string // Output format: "slack" for Slack-specific formatting
-	Cancel      context.CancelFunc
-	subscribers map[*WorkflowSubscriber]struct{}
-	mu          sync.RWMutex
+	ID               uuid.UUID
+	SessionID        uuid.UUID
+	Question         string
+	Format           string // Output format: "slack" for Slack-specific formatting
+	Cancel           context.CancelFunc
+	ExistingMessages []SessionChatMessage // Messages that existed before this workflow started
+	subscribers      map[*WorkflowSubscriber]struct{}
+	mu               sync.RWMutex
 }
 
 func (rw *runningWorkflow) addSubscriber(sub *WorkflowSubscriber) {
@@ -111,23 +112,41 @@ type SessionWorkflowData struct {
 	ProcessingSteps   []ClientProcessingStep     `json:"processingSteps,omitempty"`
 }
 
-// ClientProcessingStep matches the web's ProcessingStep format (different field names than WorkflowStep).
+// ClientProcessingStep matches the web's ProcessingStep format.
+// Type determines which fields are populated:
+//   - "thinking": Content
+//   - "sql_query": Question, SQL, Status, Rows (count), Columns, Data, Error
+//   - "cypher_query": Question, Cypher, Status, Rows (count), Nodes, Edges, Error
+//   - "read_docs": Page, Status, Content, Error
 type ClientProcessingStep struct {
-	Type    string   `json:"type"` // "thinking" or "query"
-	Content string   `json:"content,omitempty"`
-	// Query fields - note: "rows" is count, "data" is row data (matches web format)
+	ID   string `json:"id"`   // Unique identifier for this step
+	Type string `json:"type"` // "thinking", "sql_query", "cypher_query", "read_docs"
+
+	// For thinking steps
+	Content string `json:"content,omitempty"`
+
+	// For sql_query steps
 	Question string   `json:"question,omitempty"`
 	SQL      string   `json:"sql,omitempty"`
 	Status   string   `json:"status,omitempty"`
-	Rows     int      `json:"rows,omitempty"`     // Row count (web expects this as number)
+	Rows     int      `json:"rows,omitempty"`     // Row count
 	Columns  []string `json:"columns,omitempty"`
 	Data     [][]any  `json:"data,omitempty"`     // Actual row data
 	Error    string   `json:"error,omitempty"`
+
+	// For cypher_query steps
+	Cypher string `json:"cypher,omitempty"`
+	Nodes  []any  `json:"nodes,omitempty"`
+	Edges  []any  `json:"edges,omitempty"`
+
+	// For read_docs steps
+	Page string `json:"page,omitempty"`
 }
 
 // toClientFormat converts a WorkflowStep to ClientProcessingStep format.
 func (s WorkflowStep) toClientFormat() ClientProcessingStep {
 	return ClientProcessingStep{
+		ID:       s.ID,
 		Type:     s.Type,
 		Content:  s.Content,
 		Question: s.Question,
@@ -137,6 +156,10 @@ func (s WorkflowStep) toClientFormat() ClientProcessingStep {
 		Columns:  s.Columns,
 		Data:     s.Rows,    // Server's "Rows" -> Client's "data"
 		Error:    s.Error,
+		Cypher:   s.Cypher,
+		Nodes:    s.Nodes,
+		Edges:    s.Edges,
+		Page:     s.Page,
 	}
 }
 
@@ -157,21 +180,64 @@ func updateSessionContent(ctx context.Context, sessionID uuid.UUID, messages []S
 	return nil
 }
 
+// getSessionMessages fetches existing messages from a session.
+func getSessionMessages(ctx context.Context, sessionID uuid.UUID) ([]SessionChatMessage, error) {
+	var contentJSON json.RawMessage
+	err := config.PgPool.QueryRow(ctx, `
+		SELECT content FROM sessions WHERE id = $1
+	`, sessionID).Scan(&contentJSON)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch session content: %w", err)
+	}
+
+	var messages []SessionChatMessage
+	if err := json.Unmarshal(contentJSON, &messages); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal session content: %w", err)
+	}
+	return messages, nil
+}
+
 // buildSessionMessages builds the session content messages from workflow state.
+// It appends the new user question and assistant response to existing messages.
+// If existingMessages contains a streaming message for this workflow, it will be replaced.
 func buildSessionMessages(
+	existingMessages []SessionChatMessage,
 	workflowID uuid.UUID,
 	question string,
 	answer string,
 	status string,
 	steps []WorkflowStep,
 	executedQueries []workflow.ExecutedQuery,
+	followUpQuestions []string,
 ) []SessionChatMessage {
-	messages := []SessionChatMessage{
-		{
+	// Start with existing messages, filtering out any streaming message for this workflow
+	// (in case we're updating from streaming -> complete)
+	workflowIDStr := workflowID.String()
+	messages := make([]SessionChatMessage, 0, len(existingMessages)+2)
+	for _, msg := range existingMessages {
+		// Keep all messages except the streaming placeholder for this workflow
+		if msg.Status == "streaming" && msg.WorkflowID == workflowIDStr {
+			continue
+		}
+		messages = append(messages, msg)
+	}
+
+	// Check if we need to add the user message (only if not already present)
+	// The user message might already be in existingMessages if this is an update
+	needsUserMsg := true
+	for _, msg := range messages {
+		if msg.Role == "user" && msg.Content == question {
+			needsUserMsg = false
+			break
+		}
+	}
+
+	if needsUserMsg {
+		messages = append(messages, SessionChatMessage{
 			ID:      uuid.NewString(),
 			Role:    "user",
 			Content: question,
-		},
+		})
 	}
 
 	// Build assistant message
@@ -180,7 +246,7 @@ func buildSessionMessages(
 		Role:       "assistant",
 		Content:    answer,
 		Status:     status,
-		WorkflowID: workflowID.String(),
+		WorkflowID: workflowIDStr,
 	}
 
 	// Add workflow data if we have steps or queries
@@ -192,7 +258,8 @@ func buildSessionMessages(
 		}
 
 		workflowData := &SessionWorkflowData{
-			ProcessingSteps: clientSteps,
+			ProcessingSteps:   clientSteps,
+			FollowUpQuestions: followUpQuestions,
 		}
 
 		// Convert executed queries
@@ -233,6 +300,14 @@ func (m *WorkflowManager) StartWorkflow(
 		return uuid.Nil, fmt.Errorf("failed to ensure session exists: %w", err)
 	}
 
+	// Fetch existing messages from the session to preserve history
+	existingMessages, err := getSessionMessages(ctx, sessionID)
+	if err != nil {
+		// If we can't fetch messages, start with empty (new session)
+		slog.Warn("Failed to fetch existing session messages, starting fresh", "session_id", sessionID, "error", err)
+		existingMessages = nil
+	}
+
 	// Create workflow run in database
 	run, err := CreateWorkflowRun(ctx, sessionID, question)
 	if err != nil {
@@ -240,7 +315,8 @@ func (m *WorkflowManager) StartWorkflow(
 	}
 
 	// Initialize session content with user message and streaming assistant message
-	initialMessages := buildSessionMessages(run.ID, question, "", "streaming", nil, nil)
+	// Appends to existing messages to preserve conversation history
+	initialMessages := buildSessionMessages(existingMessages, run.ID, question, "", "streaming", nil, nil, nil)
 	if err := updateSessionContent(ctx, sessionID, initialMessages); err != nil {
 		slog.Warn("Failed to initialize session content", "session_id", sessionID, "error", err)
 	}
@@ -250,12 +326,13 @@ func (m *WorkflowManager) StartWorkflow(
 
 	// Track the running workflow
 	rw := &runningWorkflow{
-		ID:          run.ID,
-		SessionID:   sessionID,
-		Question:    question,
-		Format:      format,
-		Cancel:      cancel,
-		subscribers: make(map[*WorkflowSubscriber]struct{}),
+		ID:               run.ID,
+		SessionID:        sessionID,
+		Question:         question,
+		Format:           format,
+		Cancel:           cancel,
+		ExistingMessages: existingMessages,
+		subscribers:      make(map[*WorkflowSubscriber]struct{}),
 	}
 
 	m.mu.Lock()
@@ -397,6 +474,11 @@ func (m *WorkflowManager) runWorkflow(
 	// Track steps in execution order for unified timeline
 	var steps []WorkflowStep
 
+	// Track current step IDs (set on *_started, used on *_done)
+	var currentSQLStepID string
+	var currentCypherStepID string
+	var currentDocsStepID string
+
 	// Track metrics from the last checkpoint (for final persistence)
 	var lastLLMCalls, lastInputTokens, lastOutputTokens int
 
@@ -405,39 +487,151 @@ func (m *WorkflowManager) runWorkflow(
 		switch progress.Stage {
 		case workflow.StageThinking:
 			// Track thinking step
+			stepID := uuid.New().String()
 			steps = append(steps, WorkflowStep{
+				ID:      stepID,
 				Type:    "thinking",
 				Content: progress.ThinkingContent,
 			})
 			rw.broadcast(WorkflowEvent{
 				Type: "thinking",
-				Data: map[string]string{"content": progress.ThinkingContent},
+				Data: map[string]string{"id": stepID, "content": progress.ThinkingContent},
 			})
-		case workflow.StageQueryStarted:
+
+		// SQL query stages
+		case workflow.StageSQLStarted:
+			currentSQLStepID = uuid.New().String()
 			rw.broadcast(WorkflowEvent{
-				Type: "query_started",
+				Type: "sql_started",
 				Data: map[string]string{
+					"id":       currentSQLStepID,
+					"question": progress.SQLQuestion,
+					"sql":      progress.SQL,
+				},
+			})
+		case workflow.StageSQLComplete:
+			status := "completed"
+			if progress.SQLError != "" {
+				status = "error"
+			}
+			steps = append(steps, WorkflowStep{
+				ID:       currentSQLStepID,
+				Type:     "sql_query",
+				Question: progress.SQLQuestion,
+				SQL:      progress.SQL,
+				Status:   status,
+				Count:    progress.SQLRows,
+				Error:    progress.SQLError,
+			})
+			rw.broadcast(WorkflowEvent{
+				Type: "sql_done",
+				Data: map[string]any{
+					"id":       currentSQLStepID,
+					"question": progress.SQLQuestion,
+					"sql":      progress.SQL,
+					"rows":     progress.SQLRows,
+					"error":    progress.SQLError,
+				},
+			})
+
+		// Cypher query stages
+		case workflow.StageCypherStarted:
+			currentCypherStepID = uuid.New().String()
+			rw.broadcast(WorkflowEvent{
+				Type: "cypher_started",
+				Data: map[string]string{
+					"id":       currentCypherStepID,
+					"question": progress.CypherQuestion,
+					"cypher":   progress.Cypher,
+				},
+			})
+		case workflow.StageCypherComplete:
+			status := "completed"
+			if progress.CypherError != "" {
+				status = "error"
+			}
+			steps = append(steps, WorkflowStep{
+				ID:       currentCypherStepID,
+				Type:     "cypher_query",
+				Question: progress.CypherQuestion,
+				Cypher:   progress.Cypher,
+				Status:   status,
+				Count:    progress.CypherRows,
+				Error:    progress.CypherError,
+			})
+			rw.broadcast(WorkflowEvent{
+				Type: "cypher_done",
+				Data: map[string]any{
+					"id":       currentCypherStepID,
+					"question": progress.CypherQuestion,
+					"cypher":   progress.Cypher,
+					"rows":     progress.CypherRows,
+					"error":    progress.CypherError,
+				},
+			})
+
+		// ReadDocs stages
+		case workflow.StageReadDocsStarted:
+			currentDocsStepID = uuid.New().String()
+			rw.broadcast(WorkflowEvent{
+				Type: "read_docs_started",
+				Data: map[string]string{
+					"id":   currentDocsStepID,
+					"page": progress.DocsPage,
+				},
+			})
+		case workflow.StageReadDocsComplete:
+			status := "completed"
+			if progress.DocsError != "" {
+				status = "error"
+			}
+			steps = append(steps, WorkflowStep{
+				ID:      currentDocsStepID,
+				Type:    "read_docs",
+				Page:    progress.DocsPage,
+				Status:  status,
+				Content: progress.DocsContent,
+				Error:   progress.DocsError,
+			})
+			rw.broadcast(WorkflowEvent{
+				Type: "read_docs_done",
+				Data: map[string]any{
+					"id":      currentDocsStepID,
+					"page":    progress.DocsPage,
+					"content": progress.DocsContent,
+					"error":   progress.DocsError,
+				},
+			})
+
+		// Legacy stages (for backwards compatibility during transition)
+		case workflow.StageQueryStarted:
+			currentSQLStepID = uuid.New().String()
+			rw.broadcast(WorkflowEvent{
+				Type: "sql_started",
+				Data: map[string]string{
+					"id":       currentSQLStepID,
 					"question": progress.QueryQuestion,
 					"sql":      progress.QuerySQL,
 				},
 			})
 		case workflow.StageQueryComplete:
-			// Track query step with results
 			status := "completed"
 			if progress.QueryError != "" {
 				status = "error"
 			}
 			steps = append(steps, WorkflowStep{
-				Type:     "query",
+				ID:       currentSQLStepID,
+				Type:     "sql_query",
 				Question: progress.QueryQuestion,
 				SQL:      progress.QuerySQL,
 				Status:   status,
-				Count:    progress.QueryRows, // Row count available during progress
+				Count:    progress.QueryRows,
 				Error:    progress.QueryError,
 			})
 			rw.broadcast(WorkflowEvent{
-				Type: "query_done",
+				Type: "sql_done",
 				Data: map[string]any{
+					"id":       currentSQLStepID,
 					"question": progress.QueryQuestion,
 					"sql":      progress.QuerySQL,
 					"rows":     progress.QueryRows,
@@ -468,8 +662,8 @@ func (m *WorkflowManager) runWorkflow(
 			return err
 		}
 
-		// Also update session content with current progress
-		sessionMessages := buildSessionMessages(rw.ID, question, "", "streaming", steps, state.ExecutedQueries)
+		// Also update session content with current progress (preserving existing messages)
+		sessionMessages := buildSessionMessages(rw.ExistingMessages, rw.ID, question, "", "streaming", steps, state.ExecutedQueries, nil)
 		if err := updateSessionContent(ctx, rw.SessionID, sessionMessages); err != nil {
 			slog.Warn("Failed to update session content at checkpoint", "session_id", rw.SessionID, "error", err)
 		}
@@ -522,8 +716,8 @@ func (m *WorkflowManager) runWorkflow(
 		slog.Warn("Failed to mark workflow as completed", "workflow_id", rw.ID, "error", err)
 	}
 
-	// Update session content with final answer and status 'complete'
-	finalMessages := buildSessionMessages(rw.ID, question, result.Answer, "complete", finalSteps, result.ExecutedQueries)
+	// Update session content with final answer and status 'complete' (preserving existing messages)
+	finalMessages := buildSessionMessages(rw.ExistingMessages, rw.ID, question, result.Answer, "complete", finalSteps, result.ExecutedQueries, result.FollowUpQuestions)
 	if err := updateSessionContent(context.Background(), rw.SessionID, finalMessages); err != nil {
 		slog.Warn("Failed to update session content on completion", "session_id", rw.SessionID, "error", err)
 	}
@@ -573,16 +767,26 @@ func (m *WorkflowManager) ResumeWorkflowBackground(run *WorkflowRun) error {
 		},
 	}
 
+	// Fetch existing session messages to preserve history
+	ctx := context.Background()
+	existingMessages, err := getSessionMessages(ctx, run.SessionID)
+	if err != nil {
+		// If we can't fetch messages, start with empty
+		slog.Warn("Failed to fetch existing session messages for resume, starting fresh", "session_id", run.SessionID, "error", err)
+		existingMessages = nil
+	}
+
 	// Create cancellable context
 	workflowCtx, cancel := context.WithCancel(context.Background())
 
 	// Track the running workflow
 	rw := &runningWorkflow{
-		ID:          run.ID,
-		SessionID:   run.SessionID,
-		Question:    run.UserQuestion,
-		Cancel:      cancel,
-		subscribers: make(map[*WorkflowSubscriber]struct{}),
+		ID:               run.ID,
+		SessionID:        run.SessionID,
+		Question:         run.UserQuestion,
+		Cancel:           cancel,
+		ExistingMessages: existingMessages,
+		subscribers:      make(map[*WorkflowSubscriber]struct{}),
 	}
 
 	m.mu.Lock()
@@ -659,6 +863,11 @@ func (m *WorkflowManager) resumeWorkflow(
 	// Track steps in execution order for unified timeline
 	var steps []WorkflowStep
 
+	// Track current step IDs (set on *_started, used on *_done)
+	var currentSQLStepID string
+	var currentCypherStepID string
+	var currentDocsStepID string
+
 	// Track metrics from the last checkpoint (for final persistence)
 	var lastLLMCalls, lastInputTokens, lastOutputTokens int
 
@@ -667,30 +876,141 @@ func (m *WorkflowManager) resumeWorkflow(
 		switch progress.Stage {
 		case workflow.StageThinking:
 			// Track thinking step
+			stepID := uuid.New().String()
 			steps = append(steps, WorkflowStep{
+				ID:      stepID,
 				Type:    "thinking",
 				Content: progress.ThinkingContent,
 			})
 			rw.broadcast(WorkflowEvent{
 				Type: "thinking",
-				Data: map[string]string{"content": progress.ThinkingContent},
+				Data: map[string]string{"id": stepID, "content": progress.ThinkingContent},
 			})
-		case workflow.StageQueryStarted:
+
+		// SQL query stages
+		case workflow.StageSQLStarted:
+			currentSQLStepID = uuid.New().String()
 			rw.broadcast(WorkflowEvent{
-				Type: "query_started",
+				Type: "sql_started",
 				Data: map[string]string{
+					"id":       currentSQLStepID,
+					"question": progress.SQLQuestion,
+					"sql":      progress.SQL,
+				},
+			})
+		case workflow.StageSQLComplete:
+			status := "completed"
+			if progress.SQLError != "" {
+				status = "error"
+			}
+			steps = append(steps, WorkflowStep{
+				ID:       currentSQLStepID,
+				Type:     "sql_query",
+				Question: progress.SQLQuestion,
+				SQL:      progress.SQL,
+				Status:   status,
+				Count:    progress.SQLRows,
+				Error:    progress.SQLError,
+			})
+			rw.broadcast(WorkflowEvent{
+				Type: "sql_done",
+				Data: map[string]any{
+					"id":       currentSQLStepID,
+					"question": progress.SQLQuestion,
+					"sql":      progress.SQL,
+					"rows":     progress.SQLRows,
+					"error":    progress.SQLError,
+				},
+			})
+
+		// Cypher query stages
+		case workflow.StageCypherStarted:
+			currentCypherStepID = uuid.New().String()
+			rw.broadcast(WorkflowEvent{
+				Type: "cypher_started",
+				Data: map[string]string{
+					"id":       currentCypherStepID,
+					"question": progress.CypherQuestion,
+					"cypher":   progress.Cypher,
+				},
+			})
+		case workflow.StageCypherComplete:
+			status := "completed"
+			if progress.CypherError != "" {
+				status = "error"
+			}
+			steps = append(steps, WorkflowStep{
+				ID:       currentCypherStepID,
+				Type:     "cypher_query",
+				Question: progress.CypherQuestion,
+				Cypher:   progress.Cypher,
+				Status:   status,
+				Count:    progress.CypherRows,
+				Error:    progress.CypherError,
+			})
+			rw.broadcast(WorkflowEvent{
+				Type: "cypher_done",
+				Data: map[string]any{
+					"id":       currentCypherStepID,
+					"question": progress.CypherQuestion,
+					"cypher":   progress.Cypher,
+					"rows":     progress.CypherRows,
+					"error":    progress.CypherError,
+				},
+			})
+
+		// ReadDocs stages
+		case workflow.StageReadDocsStarted:
+			currentDocsStepID = uuid.New().String()
+			rw.broadcast(WorkflowEvent{
+				Type: "read_docs_started",
+				Data: map[string]string{
+					"id":   currentDocsStepID,
+					"page": progress.DocsPage,
+				},
+			})
+		case workflow.StageReadDocsComplete:
+			status := "completed"
+			if progress.DocsError != "" {
+				status = "error"
+			}
+			steps = append(steps, WorkflowStep{
+				ID:      currentDocsStepID,
+				Type:    "read_docs",
+				Page:    progress.DocsPage,
+				Status:  status,
+				Content: progress.DocsContent,
+				Error:   progress.DocsError,
+			})
+			rw.broadcast(WorkflowEvent{
+				Type: "read_docs_done",
+				Data: map[string]any{
+					"id":      currentDocsStepID,
+					"page":    progress.DocsPage,
+					"content": progress.DocsContent,
+					"error":   progress.DocsError,
+				},
+			})
+
+		// Legacy stages (for backwards compatibility during transition)
+		case workflow.StageQueryStarted:
+			currentSQLStepID = uuid.New().String()
+			rw.broadcast(WorkflowEvent{
+				Type: "sql_started",
+				Data: map[string]string{
+					"id":       currentSQLStepID,
 					"question": progress.QueryQuestion,
 					"sql":      progress.QuerySQL,
 				},
 			})
 		case workflow.StageQueryComplete:
-			// Track query step with results
 			status := "completed"
 			if progress.QueryError != "" {
 				status = "error"
 			}
 			steps = append(steps, WorkflowStep{
-				Type:     "query",
+				ID:       currentSQLStepID,
+				Type:     "sql_query",
 				Question: progress.QueryQuestion,
 				SQL:      progress.QuerySQL,
 				Status:   status,
@@ -698,8 +1018,9 @@ func (m *WorkflowManager) resumeWorkflow(
 				Error:    progress.QueryError,
 			})
 			rw.broadcast(WorkflowEvent{
-				Type: "query_done",
+				Type: "sql_done",
 				Data: map[string]any{
+					"id":       currentSQLStepID,
 					"question": progress.QueryQuestion,
 					"sql":      progress.QuerySQL,
 					"rows":     progress.QueryRows,
@@ -730,8 +1051,8 @@ func (m *WorkflowManager) resumeWorkflow(
 			return err
 		}
 
-		// Also update session content with current progress
-		sessionMessages := buildSessionMessages(rw.ID, rw.Question, "", "streaming", steps, state.ExecutedQueries)
+		// Also update session content with current progress (preserving existing messages)
+		sessionMessages := buildSessionMessages(rw.ExistingMessages, rw.ID, rw.Question, "", "streaming", steps, state.ExecutedQueries, nil)
 		if err := updateSessionContent(ctx, rw.SessionID, sessionMessages); err != nil {
 			slog.Warn("Failed to update session content at checkpoint", "session_id", rw.SessionID, "error", err)
 		}
@@ -779,8 +1100,8 @@ func (m *WorkflowManager) resumeWorkflow(
 		slog.Warn("Failed to mark resumed workflow as completed", "workflow_id", rw.ID, "error", err)
 	}
 
-	// Update session content with final answer and status 'complete'
-	finalMessages := buildSessionMessages(rw.ID, rw.Question, result.Answer, "complete", finalSteps, result.ExecutedQueries)
+	// Update session content with final answer and status 'complete' (preserving existing messages)
+	finalMessages := buildSessionMessages(rw.ExistingMessages, rw.ID, rw.Question, result.Answer, "complete", finalSteps, result.ExecutedQueries, result.FollowUpQuestions)
 	if err := updateSessionContent(context.Background(), rw.SessionID, finalMessages); err != nil {
 		slog.Warn("Failed to update session content on completion", "session_id", rw.SessionID, "error", err)
 	}
@@ -867,18 +1188,20 @@ func ensureSessionExists(ctx context.Context, sessionID uuid.UUID) error {
 // buildFinalSteps enriches the tracked steps with full row data from the result.
 // During progress tracking, we only have row counts. At completion, we can add full data.
 func buildFinalSteps(steps []WorkflowStep, result *workflow.WorkflowResult) []WorkflowStep {
-	// Build a map of executed queries by SQL for quick lookup
-	queryBySQL := make(map[string]*workflow.ExecutedQuery)
+	// Build a map of executed queries by query text for quick lookup
+	// Both SQL and Cypher queries use Result.SQL to store the query text
+	queryByText := make(map[string]*workflow.ExecutedQuery)
 	for i := range result.ExecutedQueries {
 		eq := &result.ExecutedQueries[i]
-		queryBySQL[eq.Result.SQL] = eq
+		queryByText[eq.Result.SQL] = eq
 	}
 
 	// Enrich query steps with full row data
 	finalSteps := make([]WorkflowStep, len(steps))
 	for i, step := range steps {
-		if step.Type == "query" {
-			if eq, ok := queryBySQL[step.SQL]; ok {
+		switch step.Type {
+		case "sql_query", "query": // "query" for backwards compatibility
+			if eq, ok := queryByText[step.SQL]; ok {
 				// Convert rows from map format to array format
 				var rows [][]any
 				for _, row := range eq.Result.Rows {
@@ -889,7 +1212,8 @@ func buildFinalSteps(steps []WorkflowStep, result *workflow.WorkflowResult) []Wo
 					rows = append(rows, rowData)
 				}
 				finalSteps[i] = WorkflowStep{
-					Type:     "query",
+					ID:       step.ID,
+					Type:     step.Type,
 					Question: step.Question,
 					SQL:      step.SQL,
 					Status:   step.Status,
@@ -901,7 +1225,32 @@ func buildFinalSteps(steps []WorkflowStep, result *workflow.WorkflowResult) []Wo
 			} else {
 				finalSteps[i] = step
 			}
-		} else {
+		case "cypher_query":
+			if eq, ok := queryByText[step.Cypher]; ok {
+				// Convert rows from map format to array format
+				var rows [][]any
+				for _, row := range eq.Result.Rows {
+					rowData := make([]any, 0, len(eq.Result.Columns))
+					for _, col := range eq.Result.Columns {
+						rowData = append(rowData, sanitizeValue(row[col]))
+					}
+					rows = append(rows, rowData)
+				}
+				finalSteps[i] = WorkflowStep{
+					ID:       step.ID,
+					Type:     step.Type,
+					Question: step.Question,
+					Cypher:   step.Cypher,
+					Status:   step.Status,
+					Columns:  eq.Result.Columns,
+					Rows:     rows,
+					Count:    eq.Result.Count,
+					Error:    step.Error,
+				}
+			} else {
+				finalSteps[i] = step
+			}
+		default:
 			finalSteps[i] = step
 		}
 	}

@@ -15,14 +15,21 @@ import (
 )
 
 // WorkflowStep represents a single step in the workflow execution timeline.
-// Steps are stored in execution order to preserve the interleaving of thinking and queries.
+// Steps are stored in execution order to preserve the interleaving of thinking and tool calls.
+//
+// Step types:
+//   - "thinking": Model reasoning (Content field)
+//   - "sql_query": SQL query execution (Question, SQL, Status, Columns, Rows, Count, Error)
+//   - "cypher_query": Cypher query execution (Question, Cypher, Status, Nodes, Edges, Count, Error)
+//   - "read_docs": Documentation lookup (Page, Status, Content, Error)
 type WorkflowStep struct {
-	Type string `json:"type"` // "thinking" or "query"
+	ID   string `json:"id"`   // Unique identifier for this step
+	Type string `json:"type"` // "thinking", "sql_query", "cypher_query", "read_docs"
 
 	// For thinking steps
 	Content string `json:"content,omitempty"`
 
-	// For query steps
+	// For sql_query steps
 	Question string   `json:"question,omitempty"`
 	SQL      string   `json:"sql,omitempty"`
 	Status   string   `json:"status,omitempty"` // "running", "completed", "error"
@@ -30,6 +37,14 @@ type WorkflowStep struct {
 	Rows     [][]any  `json:"rows,omitempty"`
 	Count    int      `json:"count,omitempty"`
 	Error    string   `json:"error,omitempty"`
+
+	// For cypher_query steps
+	Cypher string  `json:"cypher,omitempty"`
+	Nodes  []any   `json:"nodes,omitempty"`
+	Edges  []any   `json:"edges,omitempty"`
+
+	// For read_docs steps
+	Page string `json:"page,omitempty"`
 }
 
 // WorkflowRun represents a persistent workflow execution.
@@ -469,10 +484,41 @@ func StreamWorkflow(w http.ResponseWriter, r *http.Request) {
 	var steps []WorkflowStep
 	if err := json.Unmarshal(run.Steps, &steps); err == nil && len(steps) > 0 {
 		for _, step := range steps {
-			if step.Type == "thinking" {
-				sendEvent("thinking", map[string]string{"content": step.Content})
-			} else if step.Type == "query" {
-				sendEvent("query_done", map[string]any{
+			// Use stored ID if available, otherwise generate one for backwards compatibility
+			stepID := step.ID
+			if stepID == "" {
+				stepID = uuid.New().String()
+			}
+			switch step.Type {
+			case "thinking":
+				sendEvent("thinking", map[string]string{"id": stepID, "content": step.Content})
+			case "sql_query":
+				sendEvent("sql_done", map[string]any{
+					"id":       stepID,
+					"question": step.Question,
+					"sql":      step.SQL,
+					"rows":     step.Count,
+					"error":    step.Error,
+				})
+			case "cypher_query":
+				sendEvent("cypher_done", map[string]any{
+					"id":       stepID,
+					"question": step.Question,
+					"cypher":   step.Cypher,
+					"rows":     step.Count,
+					"error":    step.Error,
+				})
+			case "read_docs":
+				sendEvent("read_docs_done", map[string]any{
+					"id":      stepID,
+					"page":    step.Page,
+					"content": step.Content,
+					"error":   step.Error,
+				})
+			case "query":
+				// Legacy type - treat as SQL
+				sendEvent("sql_done", map[string]any{
+					"id":       stepID,
 					"question": step.Question,
 					"sql":      step.SQL,
 					"rows":     step.Count,
@@ -485,14 +531,18 @@ func StreamWorkflow(w http.ResponseWriter, r *http.Request) {
 		var thinkingSteps []string
 		if err := json.Unmarshal(run.ThinkingSteps, &thinkingSteps); err == nil {
 			for _, step := range thinkingSteps {
-				sendEvent("thinking", map[string]string{"content": step})
+				stepID := uuid.New().String()
+				sendEvent("thinking", map[string]string{"id": stepID, "content": step})
 			}
 		}
 
 		var executedQueries []workflow.ExecutedQuery
 		if err := json.Unmarshal(run.ExecutedQueries, &executedQueries); err == nil {
 			for _, eq := range executedQueries {
-				sendEvent("query_done", map[string]any{
+				stepID := uuid.New().String()
+				// Legacy queries are SQL queries
+				sendEvent("sql_done", map[string]any{
+					"id":       stepID,
 					"question": eq.GeneratedQuery.DataQuestion.Question,
 					"sql":      eq.Result.SQL,
 					"rows":     eq.Result.Count,

@@ -376,13 +376,13 @@ func (p *Workflow) executeSQL(ctx context.Context, params map[string]any, state 
 			"sql", truncate(q.SQL, 200))
 	}
 
-	// Emit query started events for all queries
+	// Emit SQL started events for all queries
 	if onProgress != nil {
 		for _, q := range queries {
 			onProgress(workflow.Progress{
-				Stage:         workflow.StageQueryStarted,
-				QueryQuestion: q.Question,
-				QuerySQL:      q.SQL,
+				Stage:       workflow.StageSQLStarted,
+				SQLQuestion: q.Question,
+				SQL:         q.SQL,
 			})
 		}
 	}
@@ -417,13 +417,13 @@ func (p *Workflow) executeSQL(ctx context.Context, params map[string]any, state 
 						Error: err.Error(),
 					},
 				}
-				// Emit query complete with error
+				// Emit SQL complete with error
 				if onProgress != nil {
 					onProgress(workflow.Progress{
-						Stage:         workflow.StageQueryComplete,
-						QueryQuestion: query.Question,
-						QuerySQL:      sql,
-						QueryError:    err.Error(),
+						Stage:       workflow.StageSQLComplete,
+						SQLQuestion: query.Question,
+						SQL:         sql,
+						SQLError:    err.Error(),
 					})
 				}
 				return
@@ -439,14 +439,14 @@ func (p *Workflow) executeSQL(ctx context.Context, params map[string]any, state 
 				Result: queryResult,
 			}
 
-			// Emit query complete (includes error if query failed)
+			// Emit SQL complete (includes error if query failed)
 			if onProgress != nil {
 				onProgress(workflow.Progress{
-					Stage:         workflow.StageQueryComplete,
-					QueryQuestion: query.Question,
-					QuerySQL:      sql,
-					QueryRows:     queryResult.Count,
-					QueryError:    queryResult.Error,
+					Stage:       workflow.StageSQLComplete,
+					SQLQuestion: query.Question,
+					SQL:         sql,
+					SQLRows:     queryResult.Count,
+					SQLError:    queryResult.Error,
 				})
 			}
 		}(i, q)
@@ -542,13 +542,13 @@ func (p *Workflow) executeCypher(ctx context.Context, params map[string]any, sta
 			"cypher", truncate(q.Cypher, 200))
 	}
 
-	// Emit query started events for all queries
+	// Emit Cypher started events for all queries
 	if onProgress != nil {
 		for _, q := range queries {
 			onProgress(workflow.Progress{
-				Stage:         workflow.StageQueryStarted,
-				QueryQuestion: q.Question,
-				QuerySQL:      q.Cypher,
+				Stage:          workflow.StageCypherStarted,
+				CypherQuestion: q.Question,
+				Cypher:         q.Cypher,
 			})
 		}
 	}
@@ -582,13 +582,13 @@ func (p *Workflow) executeCypher(ctx context.Context, params map[string]any, sta
 						Error: err.Error(),
 					},
 				}
-				// Emit query complete with error
+				// Emit Cypher complete with error
 				if onProgress != nil {
 					onProgress(workflow.Progress{
-						Stage:         workflow.StageQueryComplete,
-						QueryQuestion: query.Question,
-						QuerySQL:      cypher,
-						QueryError:    err.Error(),
+						Stage:          workflow.StageCypherComplete,
+						CypherQuestion: query.Question,
+						Cypher:         cypher,
+						CypherError:    err.Error(),
 					})
 				}
 				return
@@ -604,14 +604,14 @@ func (p *Workflow) executeCypher(ctx context.Context, params map[string]any, sta
 				Result: queryResult,
 			}
 
-			// Emit query complete
+			// Emit Cypher complete
 			if onProgress != nil {
 				onProgress(workflow.Progress{
-					Stage:         workflow.StageQueryComplete,
-					QueryQuestion: query.Question,
-					QuerySQL:      cypher,
-					QueryRows:     queryResult.Count,
-					QueryError:    queryResult.Error,
+					Stage:          workflow.StageCypherComplete,
+					CypherQuestion: query.Question,
+					Cypher:         cypher,
+					CypherRows:     queryResult.Count,
+					CypherError:    queryResult.Error,
 				})
 			}
 		}(i, q)
@@ -685,11 +685,11 @@ func (p *Workflow) readDocs(ctx context.Context, params map[string]any, onProgre
 
 	p.logInfo("workflow: reading docs", "page", input.Page)
 
-	// Emit progress event
+	// Emit read_docs started event
 	if onProgress != nil {
 		onProgress(workflow.Progress{
-			Stage:           workflow.StageThinking,
-			ThinkingContent: fmt.Sprintf("Reading documentation: %s", input.Page),
+			Stage:    workflow.StageReadDocsStarted,
+			DocsPage: input.Page,
 		})
 	}
 
@@ -698,21 +698,54 @@ func (p *Workflow) readDocs(ctx context.Context, params map[string]any, onProgre
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
+		// Emit read_docs complete with error
+		if onProgress != nil {
+			onProgress(workflow.Progress{
+				Stage:     workflow.StageReadDocsComplete,
+				DocsPage:  input.Page,
+				DocsError: err.Error(),
+			})
+		}
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
+		// Emit read_docs complete with error
+		if onProgress != nil {
+			onProgress(workflow.Progress{
+				Stage:     workflow.StageReadDocsComplete,
+				DocsPage:  input.Page,
+				DocsError: err.Error(),
+			})
+		}
 		return "", fmt.Errorf("failed to fetch docs: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("docs page not found: %s (status %d)", input.Page, resp.StatusCode)
+		errMsg := fmt.Sprintf("docs page not found: %s (status %d)", input.Page, resp.StatusCode)
+		// Emit read_docs complete with error
+		if onProgress != nil {
+			onProgress(workflow.Progress{
+				Stage:     workflow.StageReadDocsComplete,
+				DocsPage:  input.Page,
+				DocsError: errMsg,
+			})
+		}
+		return "", fmt.Errorf(errMsg)
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		// Emit read_docs complete with error
+		if onProgress != nil {
+			onProgress(workflow.Progress{
+				Stage:     workflow.StageReadDocsComplete,
+				DocsPage:  input.Page,
+				DocsError: err.Error(),
+			})
+		}
 		return "", fmt.Errorf("failed to read response: %w", err)
 	}
 
@@ -724,6 +757,20 @@ func (p *Workflow) readDocs(ctx context.Context, params map[string]any, onProgre
 	}
 
 	p.logInfo("workflow: docs fetched", "page", input.Page, "length", len(content))
+
+	// Emit read_docs complete
+	if onProgress != nil {
+		// Truncate content for progress (just first 200 chars)
+		progressContent := content
+		if len(progressContent) > 200 {
+			progressContent = progressContent[:200] + "..."
+		}
+		onProgress(workflow.Progress{
+			Stage:       workflow.StageReadDocsComplete,
+			DocsPage:    input.Page,
+			DocsContent: progressContent,
+		})
+	}
 
 	return fmt.Sprintf("# Documentation: %s\n\n%s", input.Page, content), nil
 }
@@ -1025,14 +1072,15 @@ func (p *Workflow) ResumeFromCheckpoint(
 		"queries", len(checkpoint.ExecutedQueries))
 
 	// Emit catch-up progress events for already-executed queries
+	// Note: Legacy checkpoints only have SQL queries, so we emit StageSQLComplete
 	if onProgress != nil {
 		for _, eq := range checkpoint.ExecutedQueries {
 			onProgress(workflow.Progress{
-				Stage:         workflow.StageQueryComplete,
-				QueryQuestion: eq.GeneratedQuery.DataQuestion.Question,
-				QuerySQL:      eq.Result.SQL,
-				QueryRows:     eq.Result.Count,
-				QueryError:    eq.Result.Error,
+				Stage:       workflow.StageSQLComplete,
+				SQLQuestion: eq.GeneratedQuery.DataQuestion.Question,
+				SQL:         eq.Result.SQL,
+				SQLRows:     eq.Result.Count,
+				SQLError:    eq.Result.Error,
 			})
 		}
 	}

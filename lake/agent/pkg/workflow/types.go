@@ -230,7 +230,21 @@ const (
 	StageInspecting   ProgressStage = "inspecting"
 
 	// v3 stages
-	StageThinking      ProgressStage = "thinking"      // Model is reasoning
+	StageThinking ProgressStage = "thinking" // Model is reasoning
+
+	// Tool call stages - SQL
+	StageSQLStarted  ProgressStage = "sql_started" // SQL query started
+	StageSQLComplete ProgressStage = "sql_done"    // SQL query completed
+
+	// Tool call stages - Cypher
+	StageCypherStarted  ProgressStage = "cypher_started" // Cypher query started
+	StageCypherComplete ProgressStage = "cypher_done"    // Cypher query completed
+
+	// Tool call stages - ReadDocs
+	StageReadDocsStarted  ProgressStage = "read_docs_started" // Reading docs started
+	StageReadDocsComplete ProgressStage = "read_docs_done"    // Reading docs completed
+
+	// Legacy v3 stages (for backwards compatibility during transition)
 	StageQueryStarted  ProgressStage = "query_started" // Individual query started
 	StageQueryComplete ProgressStage = "query_done"    // Individual query completed
 )
@@ -246,10 +260,29 @@ type Progress struct {
 
 	// v3 fields
 	ThinkingContent string // For StageThinking: the thinking content
-	QueryQuestion   string // For StageQueryStarted/StageQueryComplete: the query question
-	QuerySQL        string // For StageQueryStarted/StageQueryComplete: the SQL
-	QueryRows       int    // For StageQueryComplete: row count
-	QueryError      string // For StageQueryComplete: error if failed
+
+	// SQL tool call fields
+	SQLQuestion string // For StageSQLStarted/StageSQLComplete: the data question
+	SQL         string // For StageSQLStarted/StageSQLComplete: the SQL query
+	SQLRows     int    // For StageSQLComplete: row count
+	SQLError    string // For StageSQLComplete: error if failed
+
+	// Cypher tool call fields
+	CypherQuestion string // For StageCypherStarted/StageCypherComplete: the data question
+	Cypher         string // For StageCypherStarted/StageCypherComplete: the Cypher query
+	CypherRows     int    // For StageCypherComplete: row count
+	CypherError    string // For StageCypherComplete: error if failed
+
+	// ReadDocs tool call fields
+	DocsPage    string // For StageReadDocsStarted/StageReadDocsComplete: page name
+	DocsContent string // For StageReadDocsComplete: content (truncated for progress)
+	DocsError   string // For StageReadDocsComplete: error if failed
+
+	// Legacy fields (for backwards compatibility)
+	QueryQuestion string // For StageQueryStarted/StageQueryComplete: the query question
+	QuerySQL      string // For StageQueryStarted/StageQueryComplete: the SQL
+	QueryRows     int    // For StageQueryComplete: row count
+	QueryError    string // For StageQueryComplete: error if failed
 }
 
 // ProgressCallback is called at each stage of workflow execution.

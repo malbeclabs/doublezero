@@ -239,26 +239,73 @@ export function useChatStream(sessionId: string | undefined) {
           onThinking: (data) => {
             setStreamState(prev => ({
               ...prev,
-              processingSteps: [...prev.processingSteps, { type: 'thinking', content: data.content }],
+              processingSteps: [...prev.processingSteps, { type: 'thinking', id: data.id, content: data.content }],
             }))
           },
-          onQueryStarted: (data) => {
+          // SQL query events
+          onSqlStarted: (data) => {
             setStreamState(prev => ({
               ...prev,
               processingSteps: [...prev.processingSteps, {
-                type: 'query',
+                type: 'sql_query',
+                id: data.id,
                 question: data.question,
                 sql: data.sql,
                 status: 'running',
               }],
             }))
           },
-          onQueryDone: (data) => {
+          onSqlDone: (data) => {
             setStreamState(prev => ({
               ...prev,
               processingSteps: prev.processingSteps.map(step =>
-                step.type === 'query' && step.question === data.question
+                step.type === 'sql_query' && step.id === data.id
                   ? { ...step, status: data.error ? 'error' : 'completed', rows: data.rows, error: data.error || undefined }
+                  : step
+              ),
+            }))
+          },
+          // Cypher query events
+          onCypherStarted: (data) => {
+            setStreamState(prev => ({
+              ...prev,
+              processingSteps: [...prev.processingSteps, {
+                type: 'cypher_query',
+                id: data.id,
+                question: data.question,
+                cypher: data.cypher,
+                status: 'running',
+              }],
+            }))
+          },
+          onCypherDone: (data) => {
+            setStreamState(prev => ({
+              ...prev,
+              processingSteps: prev.processingSteps.map(step =>
+                step.type === 'cypher_query' && step.id === data.id
+                  ? { ...step, status: data.error ? 'error' : 'completed', rows: data.rows, error: data.error || undefined }
+                  : step
+              ),
+            }))
+          },
+          // ReadDocs events
+          onReadDocsStarted: (data) => {
+            setStreamState(prev => ({
+              ...prev,
+              processingSteps: [...prev.processingSteps, {
+                type: 'read_docs',
+                id: data.id,
+                page: data.page,
+                status: 'running',
+              }],
+            }))
+          },
+          onReadDocsDone: (data) => {
+            setStreamState(prev => ({
+              ...prev,
+              processingSteps: prev.processingSteps.map(step =>
+                step.type === 'read_docs' && step.id === data.id
+                  ? { ...step, status: data.error ? 'error' : 'completed', content: data.content, error: data.error || undefined }
                   : step
               ),
             }))
@@ -403,17 +450,43 @@ export function useWorkflowReconnect(
         {
           onThinking: (data) => {
             onStreamUpdate({
-              processingSteps: [{ type: 'thinking', content: data.content }],
+              processingSteps: [{ type: 'thinking', id: data.id, content: data.content }],
             })
           },
-          onQueryDone: (data) => {
+          onSqlDone: (data) => {
             onStreamUpdate({
               processingSteps: [{
-                type: 'query',
+                type: 'sql_query',
+                id: data.id,
                 question: data.question,
                 sql: data.sql,
                 status: data.error ? 'error' : 'completed',
                 rows: data.rows,
+                error: data.error || undefined,
+              }],
+            })
+          },
+          onCypherDone: (data) => {
+            onStreamUpdate({
+              processingSteps: [{
+                type: 'cypher_query',
+                id: data.id,
+                question: data.question,
+                cypher: data.cypher,
+                status: data.error ? 'error' : 'completed',
+                rows: data.rows,
+                error: data.error || undefined,
+              }],
+            })
+          },
+          onReadDocsDone: (data) => {
+            onStreamUpdate({
+              processingSteps: [{
+                type: 'read_docs',
+                id: data.id,
+                page: data.page,
+                status: data.error ? 'error' : 'completed',
+                content: data.content,
                 error: data.error || undefined,
               }],
             })

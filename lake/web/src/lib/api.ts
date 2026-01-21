@@ -29,6 +29,44 @@ export interface CypherQueryResponse {
 
 export type QueryMode = 'sql' | 'cypher' | 'auto'
 
+// Auth token storage key
+const AUTH_TOKEN_KEY = 'lake_auth_token'
+const ANONYMOUS_ID_KEY = 'lake_anonymous_id'
+
+// Get the auth token from localStorage
+export function getAuthToken(): string | null {
+  return localStorage.getItem(AUTH_TOKEN_KEY)
+}
+
+// Set the auth token in localStorage
+export function setAuthToken(token: string): void {
+  localStorage.setItem(AUTH_TOKEN_KEY, token)
+}
+
+// Clear the auth token from localStorage
+export function clearAuthToken(): void {
+  localStorage.removeItem(AUTH_TOKEN_KEY)
+}
+
+// Get or generate an anonymous ID for unauthenticated users
+export function getAnonymousId(): string {
+  let id = localStorage.getItem(ANONYMOUS_ID_KEY)
+  if (!id) {
+    id = crypto.randomUUID()
+    localStorage.setItem(ANONYMOUS_ID_KEY, id)
+  }
+  return id
+}
+
+// Get auth headers if token is present
+function getAuthHeaders(): Record<string, string> {
+  const token = getAuthToken()
+  if (token) {
+    return { Authorization: `Bearer ${token}` }
+  }
+  return {}
+}
+
 // Retry configuration
 const RETRY_CONFIG = {
   maxRetries: 3,
@@ -52,7 +90,7 @@ function isRetryableError(error: unknown, status?: number): boolean {
 // Sleep helper
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
-// Retry wrapper for fetch calls
+// Retry wrapper for fetch calls with automatic auth headers
 async function fetchWithRetry(
   url: string,
   options?: RequestInit,
@@ -61,9 +99,19 @@ async function fetchWithRetry(
   let lastError: unknown
   let lastStatus: number | undefined
 
+  // Add auth headers to all requests
+  const authHeaders = getAuthHeaders()
+  const mergedOptions: RequestInit = {
+    ...options,
+    headers: {
+      ...authHeaders,
+      ...options?.headers,
+    },
+  }
+
   for (let attempt = 0; attempt <= config.maxRetries; attempt++) {
     try {
-      const res = await fetch(url, options)
+      const res = await fetch(url, mergedOptions)
 
       // Don't retry on successful responses or client errors (4xx)
       if (res.ok || (res.status >= 400 && res.status < 500)) {
@@ -478,11 +526,13 @@ export interface ExecutedQuery {
 // Processing step types for unified timeline
 export interface ThinkingStep {
   type: 'thinking'
+  id: string
   content: string
 }
 
-export interface QueryStep {
-  type: 'query'
+export interface SqlQueryStep {
+  type: 'sql_query'
+  id: string
   question: string
   sql: string
   status: 'running' | 'completed' | 'error'
@@ -492,7 +542,30 @@ export interface QueryStep {
   error?: string
 }
 
-export type ProcessingStep = ThinkingStep | QueryStep
+export interface CypherQueryStep {
+  type: 'cypher_query'
+  id: string
+  question: string
+  cypher: string
+  status: 'running' | 'completed' | 'error'
+  rows?: number
+  columns?: string[]
+  data?: unknown[][]
+  nodes?: unknown[]
+  edges?: unknown[]
+  error?: string
+}
+
+export interface ReadDocsStep {
+  type: 'read_docs'
+  id: string
+  page: string
+  status: 'running' | 'completed' | 'error'
+  content?: string
+  error?: string
+}
+
+export type ProcessingStep = ThinkingStep | SqlQueryStep | CypherQueryStep | ReadDocsStep
 
 export interface ChatWorkflowData {
   dataQuestions: DataQuestion[]
@@ -505,10 +578,11 @@ export interface ChatWorkflowData {
 
 // Server-side workflow step (matches WorkflowStep in Go)
 export interface ServerWorkflowStep {
-  type: 'thinking' | 'query'
+  id: string
+  type: 'thinking' | 'sql_query' | 'cypher_query' | 'read_docs'
   // For thinking steps
   content?: string
-  // For query steps
+  // For sql_query steps
   question?: string
   sql?: string
   status?: 'running' | 'completed' | 'error'
@@ -516,6 +590,12 @@ export interface ServerWorkflowStep {
   rows?: unknown[][]
   count?: number
   error?: string
+  // For cypher_query steps
+  cypher?: string
+  nodes?: unknown[]
+  edges?: unknown[]
+  // For read_docs steps
+  page?: string
 }
 
 export interface ChatResponse {
@@ -549,9 +629,16 @@ export async function sendChatMessage(
 
 export interface ChatStreamCallbacks {
   // Processing events
-  onThinking: (data: { content: string }) => void
-  onQueryStarted: (data: { question: string; sql: string }) => void
-  onQueryDone: (data: { question: string; sql: string; rows: number; error: string }) => void
+  onThinking: (data: { id: string; content: string }) => void
+  // SQL query events
+  onSqlStarted: (data: { id: string; question: string; sql: string }) => void
+  onSqlDone: (data: { id: string; question: string; sql: string; rows: number; error: string }) => void
+  // Cypher query events
+  onCypherStarted?: (data: { id: string; question: string; cypher: string }) => void
+  onCypherDone?: (data: { id: string; question: string; cypher: string; rows: number; error: string }) => void
+  // ReadDocs events
+  onReadDocsStarted?: (data: { id: string; page: string }) => void
+  onReadDocsDone?: (data: { id: string; page: string; content: string; error: string }) => void
   // Workflow events
   onWorkflowStarted?: (data: { workflow_id: string }) => void
   // Completion events
@@ -571,8 +658,8 @@ export async function sendChatMessageStream(
   message: string,
   history: ChatMessage[],
   callbacks: ChatStreamCallbacks,
-  signal?: AbortSignal,
-  sessionId?: string
+  signal: AbortSignal | undefined,
+  sessionId: string
 ): Promise<void> {
   // Outer retry loop for mid-stream failures (e.g., deploy, pod restart)
   for (let streamAttempt = 0; streamAttempt <= STREAM_RETRY_CONFIG.maxRetries; streamAttempt++) {
@@ -595,10 +682,19 @@ export async function sendChatMessageStream(
       if (signal?.aborted) return
 
       try {
+        const chatBody: {
+          message: string
+          history: typeof history
+          session_id: string
+          anonymous_id?: string
+        } = { message, history, session_id: sessionId }
+        if (!getAuthToken()) {
+          chatBody.anonymous_id = getAnonymousId()
+        }
         res = await fetch('/api/chat/stream', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message, history, session_id: sessionId }),
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+          body: JSON.stringify(chatBody),
           signal,
         })
 
@@ -671,11 +767,26 @@ export async function sendChatMessageStream(
               case 'thinking':
                 callbacks.onThinking(parsed)
                 break
-              case 'query_started':
-                callbacks.onQueryStarted(parsed)
+              // SQL query events
+              case 'sql_started':
+                callbacks.onSqlStarted(parsed)
                 break
-              case 'query_done':
-                callbacks.onQueryDone(parsed)
+              case 'sql_done':
+                callbacks.onSqlDone(parsed)
+                break
+              // Cypher query events
+              case 'cypher_started':
+                callbacks.onCypherStarted?.(parsed)
+                break
+              case 'cypher_done':
+                callbacks.onCypherDone?.(parsed)
+                break
+              // ReadDocs events
+              case 'read_docs_started':
+                callbacks.onReadDocsStarted?.(parsed)
+                break
+              case 'read_docs_done':
+                callbacks.onReadDocsDone?.(parsed)
                 break
               case 'workflow_started':
                 callbacks.onWorkflowStarted?.(parsed)
@@ -1663,15 +1774,25 @@ export interface SessionListWithContentResponse<T> {
   has_more: boolean
 }
 
+// Get anonymous_id query param for unauthenticated requests
+function getAnonymousIdParam(): string {
+  if (getAuthToken()) {
+    return '' // Authenticated users don't need anonymous_id
+  }
+  return `anonymous_id=${encodeURIComponent(getAnonymousId())}`
+}
+
 // Session API functions
 export async function listSessions(
   type: 'chat' | 'query',
   limit = 50,
   offset = 0
 ): Promise<SessionListResponse> {
-  const res = await fetchWithRetry(
-    `/api/sessions?type=${type}&limit=${limit}&offset=${offset}`
-  )
+  const anonParam = getAnonymousIdParam()
+  const params = [`type=${type}`, `limit=${limit}`, `offset=${offset}`]
+  if (anonParam) params.push(anonParam)
+
+  const res = await fetchWithRetry(`/api/sessions?${params.join('&')}`)
   if (!res.ok) {
     throw new Error('Failed to list sessions')
   }
@@ -1684,9 +1805,11 @@ export async function listSessionsWithContent<T>(
   limit = 50,
   offset = 0
 ): Promise<SessionListWithContentResponse<T>> {
-  const res = await fetchWithRetry(
-    `/api/sessions?type=${type}&limit=${limit}&offset=${offset}&include_content=true`
-  )
+  const anonParam = getAnonymousIdParam()
+  const params = [`type=${type}`, `limit=${limit}`, `offset=${offset}`, 'include_content=true']
+  if (anonParam) params.push(anonParam)
+
+  const res = await fetchWithRetry(`/api/sessions?${params.join('&')}`)
   if (!res.ok) {
     throw new Error('Failed to list sessions')
   }
@@ -1694,7 +1817,10 @@ export async function listSessionsWithContent<T>(
 }
 
 export async function getSession<T>(id: string): Promise<ServerSession<T>> {
-  const res = await fetchWithRetry(`/api/sessions/${id}`)
+  const anonParam = getAnonymousIdParam()
+  const url = anonParam ? `/api/sessions/${id}?${anonParam}` : `/api/sessions/${id}`
+
+  const res = await fetchWithRetry(url)
   if (!res.ok) {
     if (res.status === 404) {
       throw new Error('Session not found')
@@ -1710,10 +1836,15 @@ export async function batchGetSessions<T>(
   if (ids.length === 0) {
     return { sessions: [] }
   }
+  const body: { ids: string[]; anonymous_id?: string } = { ids }
+  if (!getAuthToken()) {
+    body.anonymous_id = getAnonymousId()
+  }
+
   const res = await fetchWithRetry('/api/sessions/batch', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ids }),
+    body: JSON.stringify(body),
   })
   if (!res.ok) {
     throw new Error('Failed to batch fetch sessions')
@@ -1727,10 +1858,20 @@ export async function createSession<T>(
   content: T,
   name?: string
 ): Promise<ServerSession<T>> {
+  const body: { id: string; type: string; name: string | null; content: T; anonymous_id?: string } = {
+    id,
+    type,
+    name: name ?? null,
+    content,
+  }
+  if (!getAuthToken()) {
+    body.anonymous_id = getAnonymousId()
+  }
+
   const res = await fetchWithRetry('/api/sessions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id, type, name: name ?? null, content }),
+    body: JSON.stringify(body),
   })
   if (!res.ok) {
     if (res.status === 409) {
@@ -1746,10 +1887,18 @@ export async function updateSession<T>(
   content: T,
   name?: string
 ): Promise<ServerSession<T>> {
+  const body: { content: T; name: string | null; anonymous_id?: string } = {
+    content,
+    name: name ?? null,
+  }
+  if (!getAuthToken()) {
+    body.anonymous_id = getAnonymousId()
+  }
+
   const res = await fetchWithRetry(`/api/sessions/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content, name: name ?? null }),
+    body: JSON.stringify(body),
   })
   if (!res.ok) {
     if (res.status === 404) {
@@ -1761,7 +1910,10 @@ export async function updateSession<T>(
 }
 
 export async function deleteSession(id: string): Promise<void> {
-  const res = await fetchWithRetry(`/api/sessions/${id}`, {
+  const anonParam = getAnonymousIdParam()
+  const url = anonParam ? `/api/sessions/${id}?${anonParam}` : `/api/sessions/${id}`
+
+  const res = await fetchWithRetry(url, {
     method: 'DELETE',
   })
   if (!res.ok && res.status !== 404) {
@@ -1783,113 +1935,6 @@ export async function upsertSession<T>(
       return await createSession(id, type, content, name)
     }
     throw err
-  }
-}
-
-// Session lock types and functions
-export interface SessionLock {
-  session_id: string
-  lock_id: string
-  until: string // ISO date string
-  question?: string
-}
-
-// Get the current lock status for a session
-// Returns null if no active lock
-export async function getSessionLock(sessionId: string): Promise<SessionLock | null> {
-  const res = await fetch(`/api/sessions/${sessionId}/lock`)
-  if (res.status === 204) {
-    return null // No active lock
-  }
-  if (res.status === 404) {
-    return null // Session not found
-  }
-  if (!res.ok) {
-    throw new Error('Failed to get session lock')
-  }
-  return res.json()
-}
-
-// Acquire a lock on a session
-// Returns { acquired: true, lock } if successful
-// Returns { acquired: false, lock } if another browser holds the lock
-export async function acquireSessionLock(
-  sessionId: string,
-  lockId: string,
-  durationSeconds = 60,
-  question?: string
-): Promise<{ acquired: boolean; lock: SessionLock | null }> {
-  const res = await fetch(`/api/sessions/${sessionId}/lock`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      lock_id: lockId,
-      duration_seconds: durationSeconds,
-      question,
-    }),
-  })
-
-  if (res.status === 409) {
-    // Lock held by another client
-    const lock = await res.json() as SessionLock
-    return { acquired: false, lock }
-  }
-
-  if (!res.ok) {
-    throw new Error('Failed to acquire session lock')
-  }
-
-  const lock = await res.json() as SessionLock
-  return { acquired: true, lock }
-}
-
-// Release a lock on a session
-export async function releaseSessionLock(sessionId: string, lockId: string): Promise<void> {
-  const res = await fetch(`/api/sessions/${sessionId}/lock?lock_id=${encodeURIComponent(lockId)}`, {
-    method: 'DELETE',
-  })
-  // Ignore 404 - lock might have already expired or been released
-  if (!res.ok && res.status !== 404) {
-    throw new Error('Failed to release session lock')
-  }
-}
-
-// Watch for lock status changes via SSE
-export interface LockWatchCallbacks {
-  onLocked: (lock: SessionLock) => void
-  onUnlocked: () => void
-  onError?: (error: Error) => void
-}
-
-export function watchSessionLock(
-  sessionId: string,
-  lockId: string,
-  callbacks: LockWatchCallbacks
-): () => void {
-  const url = `/api/sessions/${sessionId}/lock/watch?lock_id=${encodeURIComponent(lockId)}`
-  const eventSource = new EventSource(url)
-
-  eventSource.addEventListener('locked', (event) => {
-    try {
-      const lock = JSON.parse(event.data) as SessionLock
-      callbacks.onLocked(lock)
-    } catch (err) {
-      callbacks.onError?.(err instanceof Error ? err : new Error('Failed to parse lock event'))
-    }
-  })
-
-  eventSource.addEventListener('unlocked', () => {
-    callbacks.onUnlocked()
-  })
-
-  eventSource.onerror = () => {
-    // EventSource will automatically reconnect, but we can notify the caller
-    callbacks.onError?.(new Error('Lock watch connection error'))
-  }
-
-  // Return cleanup function
-  return () => {
-    eventSource.close()
   }
 }
 
@@ -1952,8 +1997,13 @@ export const getRunningWorkflowForSession = getLatestWorkflowForSession
 
 // Workflow reconnection callbacks
 export interface WorkflowReconnectCallbacks {
-  onThinking: (data: { content: string }) => void
-  onQueryDone: (data: { question: string; sql: string; rows: number; error: string }) => void
+  onThinking: (data: { id: string; content: string }) => void
+  // SQL query events
+  onSqlDone: (data: { id: string; question: string; sql: string; rows: number; error: string }) => void
+  // Cypher query events
+  onCypherDone?: (data: { id: string; question: string; cypher: string; rows: number; error: string }) => void
+  // ReadDocs events
+  onReadDocsDone?: (data: { id: string; page: string; content: string; error: string }) => void
   onDone: (response: ChatResponse) => void
   onError: (error: string) => void
   onStatus?: (data: { status: string; iteration: number }) => void
@@ -2006,8 +2056,17 @@ export async function reconnectToWorkflow(
             case 'thinking':
               callbacks.onThinking(parsed)
               break
-            case 'query_done':
-              callbacks.onQueryDone(parsed)
+            // SQL query events
+            case 'sql_done':
+              callbacks.onSqlDone(parsed)
+              break
+            // Cypher query events
+            case 'cypher_done':
+              callbacks.onCypherDone?.(parsed)
+              break
+            // ReadDocs events
+            case 'read_docs_done':
+              callbacks.onReadDocsDone?.(parsed)
               break
             case 'done':
               callbacks.onDone(parsed)
@@ -3071,4 +3130,146 @@ export async function fetchLinkOutages(params: FetchLinkOutagesParams = {}): Pro
     throw new Error('Failed to fetch link outages')
   }
   return res.json()
+}
+
+// Auth types and functions
+export type AccountType = 'domain' | 'wallet'
+
+export interface Account {
+  id: string
+  account_type: AccountType
+  wallet_address?: string
+  email?: string
+  email_domain?: string
+  display_name?: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
+  last_login_at?: string
+}
+
+export interface QuotaInfo {
+  remaining: number | null  // null = unlimited
+  limit: number | null      // null = unlimited
+  resets_at: string         // ISO timestamp
+}
+
+export interface AuthMeResponse {
+  account: Account | null
+  quota: QuotaInfo | null
+}
+
+export interface WalletNonceResponse {
+  nonce: string
+}
+
+export interface WalletAuthResponse {
+  token: string
+  account: Account
+}
+
+export interface GoogleAuthResponse {
+  token: string
+  account: Account
+}
+
+// Get current user and quota
+export class AuthError extends Error {
+  status: number
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = 'AuthError'
+    this.status = status
+  }
+}
+
+export async function fetchAuthMe(): Promise<AuthMeResponse> {
+  const res = await fetchWithRetry('/api/auth/me')
+  if (!res.ok) {
+    throw new AuthError('Failed to get auth status', res.status)
+  }
+  return res.json()
+}
+
+// Logout
+export async function logout(): Promise<void> {
+  try {
+    await fetchWithRetry('/api/auth/logout', { method: 'POST' })
+  } finally {
+    clearAuthToken()
+  }
+}
+
+// Get nonce for wallet signing
+export async function getWalletNonce(): Promise<string> {
+  const res = await fetch('/api/auth/nonce')
+  if (!res.ok) {
+    throw new Error('Failed to get nonce')
+  }
+  const data: WalletNonceResponse = await res.json()
+  return data.nonce
+}
+
+// Authenticate with wallet signature
+export async function authenticateWallet(
+  publicKey: string,
+  signature: string,
+  message: string
+): Promise<WalletAuthResponse> {
+  // Include anonymous_id for session migration
+  const anonymousId = localStorage.getItem(ANONYMOUS_ID_KEY)
+
+  const res = await fetch('/api/auth/wallet', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      public_key: publicKey,
+      signature,
+      message,
+      anonymous_id: anonymousId,
+    }),
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(text || 'Wallet authentication failed')
+  }
+  const data: WalletAuthResponse = await res.json()
+  setAuthToken(data.token)
+  return data
+}
+
+// Authenticate with Google ID token
+export async function authenticateGoogle(idToken: string): Promise<GoogleAuthResponse> {
+  // Include anonymous_id for session migration
+  const anonymousId = localStorage.getItem(ANONYMOUS_ID_KEY)
+
+  const res = await fetch('/api/auth/google', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      id_token: idToken,
+      anonymous_id: anonymousId,
+    }),
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(text || 'Google authentication failed')
+  }
+  const data: GoogleAuthResponse = await res.json()
+  setAuthToken(data.token)
+  return data
+}
+
+// Get current quota
+export async function fetchQuota(): Promise<QuotaInfo> {
+  const res = await fetchWithRetry('/api/usage/quota')
+  if (!res.ok) {
+    throw new Error('Failed to get quota')
+  }
+  return res.json()
+}
+
+// Build SIWS message for signing
+export function buildSIWSMessage(nonce: string): string {
+  return `Sign this message to authenticate with Lake.\n\nNonce: ${nonce}`
 }

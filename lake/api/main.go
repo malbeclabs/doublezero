@@ -137,6 +137,30 @@ func main() {
 		MaxAge:           300,
 	}))
 
+	// Security headers middleware
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Content Security Policy for Google Sign-In and app resources
+			csp := strings.Join([]string{
+				"default-src 'self'",
+				"script-src 'self' https://accounts.google.com",
+				"frame-src https://accounts.google.com https://accounts.googleusercontent.com",
+				"connect-src 'self' https://accounts.google.com",
+				"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+				"font-src 'self' https://fonts.gstatic.com",
+				"img-src 'self' data: https://lh3.googleusercontent.com",
+			}, "; ")
+			w.Header().Set("Content-Security-Policy", csp)
+
+			// Additional security headers
+			w.Header().Set("X-Content-Type-Options", "nosniff")
+			w.Header().Set("X-Frame-Options", "DENY")
+			w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+
+			next.ServeHTTP(w, r)
+		})
+	})
+
 	// Apply optional auth middleware globally to attach user context
 	r.Use(handlers.OptionalAuth)
 

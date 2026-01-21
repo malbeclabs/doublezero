@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { LoginModal } from './LoginModal'
-import { User, LogOut, LogIn, Wallet, Settings, MessageSquare } from 'lucide-react'
+import { User, LogOut, LogIn, Wallet, Settings, MessageSquare, ChevronUp } from 'lucide-react'
 
 interface UserPopoverProps {
   collapsed?: boolean
@@ -147,14 +147,15 @@ export function UserPopover({ collapsed = false }: UserPopoverProps) {
       <button
         ref={triggerRef}
         onClick={() => setShowPopover(!showPopover)}
-        className="flex w-full items-center gap-2 rounded-md bg-muted/50 px-3 py-2 text-sm text-foreground transition-colors hover:bg-muted"
+        className="flex w-full items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground transition-colors hover:bg-muted"
       >
         {user?.account_type === 'wallet' ? (
           <Wallet size={16} className="shrink-0 text-muted-foreground" />
         ) : (
           <User size={16} className="shrink-0 text-muted-foreground" />
         )}
-        <span className="truncate">{displayName}</span>
+        <span className="flex-1 truncate text-left">{displayName}</span>
+        <ChevronUp size={14} className={`shrink-0 text-muted-foreground transition-transform ${showPopover ? '' : 'rotate-180'}`} />
       </button>
 
       {showPopover && (

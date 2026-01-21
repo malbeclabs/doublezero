@@ -24,6 +24,18 @@ export function SimplifiedChatView() {
   // Fetch session data (only when we have a sessionId)
   const { data: session, isLoading: sessionLoading } = useChatSession(sessionId)
 
+  // Delay showing skeleton to avoid flash for quick loads
+  const [showSkeleton, setShowSkeleton] = useState(false)
+  const isLoadingState = (sessionLoading && !session) || isCreatingSession
+  useEffect(() => {
+    if (isLoadingState) {
+      const timer = setTimeout(() => setShowSkeleton(true), 150)
+      return () => clearTimeout(timer)
+    } else {
+      setShowSkeleton(false)
+    }
+  }, [isLoadingState])
+
   // Streaming state (only when we have a sessionId)
   const { sendMessage, abort, isStreaming, processingSteps } = useChatStream(sessionId)
 
@@ -186,7 +198,7 @@ export function SimplifiedChatView() {
     return (
       <Chat
         messages={[]}
-        isPending={isCreatingSession}
+        isPending={isCreatingSession || !!pendingUrlMessage}
         processingSteps={[]}
         onSendMessage={handleSendMessage}
         onAbort={handleAbort}
@@ -195,9 +207,14 @@ export function SimplifiedChatView() {
     )
   }
 
-  // Loading existing session - show skeleton
-  if (sessionLoading && !session) {
-    return <ChatSkeleton />
+  // Loading existing session or creating new session
+  // Show skeleton after delay, but render nothing during the delay to avoid flash
+  if (isLoadingState) {
+    if (showSkeleton) {
+      return <ChatSkeleton />
+    }
+    // During delay, render empty container to avoid flash
+    return <div className="flex-1" />
   }
 
   // Show Chat with session data

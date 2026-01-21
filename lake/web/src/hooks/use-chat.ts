@@ -233,9 +233,6 @@ export function useChatStream(sessionId: string | undefined) {
       error: null,
     })
 
-    // Refresh auth to update quota immediately (don't await - fire and forget)
-    refreshAuth()
-
     try {
       await sendChatMessageStream(
         message,
@@ -327,6 +324,8 @@ export function useChatStream(sessionId: string | undefined) {
                 ),
               }
             })
+            // Refresh auth to update quota now that server has accepted the request
+            refreshAuth()
           },
           onDone: async () => {
             // Fetch fresh data from server and update cache before clearing streaming state

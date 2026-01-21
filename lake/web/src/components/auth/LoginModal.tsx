@@ -63,9 +63,6 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
         {/* Header */}
         <div className="mb-6 text-center">
           <h2 className="text-xl font-semibold text-white">Sign In</h2>
-          <p className="mt-2 text-sm text-neutral-400">
-            Sign in to get more questions per day
-          </p>
         </div>
 
         {/* Error message */}

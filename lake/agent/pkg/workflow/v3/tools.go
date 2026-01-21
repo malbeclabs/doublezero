@@ -131,11 +131,14 @@ func ParseQueries(params map[string]any) ([]QueryInput, error) {
 			// Escape literal newlines inside JSON string values
 			// (models sometimes format SQL with literal newlines which breaks JSON)
 			cleanStr = escapeNewlinesInStrings(cleanStr)
+			// Fix trailing brace that models sometimes add (must be after newline escaping
+			// so json.Unmarshal can validate the result)
+			cleanStr = fixTrailingBrace(cleanStr)
 			suffixStart := len(cleanStr) - 50
 			if suffixStart < 0 {
 				suffixStart = 0
 			}
-			fmt.Printf("DEBUG cleanXMLTags: input_len=%d output_len=%d output_suffix=%q\n",
+			fmt.Printf("DEBUG cleanJSON: input_len=%d output_len=%d output_suffix=%q\n",
 				len(queriesStr), len(cleanStr), cleanStr[suffixStart:])
 
 			var arr []any
@@ -245,10 +248,13 @@ func cleanXMLTags(s string) string {
 	if idx := strings.Index(s, "</parameter>"); idx > 0 {
 		s = s[:idx]
 	}
-	s = strings.TrimSpace(s)
+	return strings.TrimSpace(s)
+}
 
-	// The model sometimes outputs ]} after the array (extra closing brace)
-	// Try to fix by finding a valid JSON array ending
+// fixTrailingBrace repairs JSON when the model outputs an extra closing brace.
+// e.g., "[{...}]}" -> "[{...}]"
+// This must be called AFTER escapeNewlinesInStrings so json.Unmarshal can validate.
+func fixTrailingBrace(s string) string {
 	if strings.HasSuffix(s, "]}") {
 		// Check if removing the extra } makes it valid JSON
 		trimmed := s[:len(s)-1] // Remove trailing }
@@ -257,7 +263,6 @@ func cleanXMLTags(s string) string {
 			return trimmed
 		}
 	}
-
 	return s
 }
 
@@ -287,6 +292,8 @@ func ParseCypherQueries(params map[string]any) ([]CypherQueryInput, error) {
 			cleanStr = cleanJSStringConcat(cleanStr)
 			// Escape literal newlines inside JSON string values
 			cleanStr = escapeNewlinesInStrings(cleanStr)
+			// Fix trailing brace that models sometimes add
+			cleanStr = fixTrailingBrace(cleanStr)
 
 			var arr []any
 			if json.Unmarshal([]byte(cleanStr), &arr) == nil {

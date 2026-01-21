@@ -285,7 +285,7 @@ export function AuthProvider({ children, googleClientId, onLoginSuccess, onLogou
 
       // Sign the message
       const signature = await wallet.signMessage(messageBytes)
-      const signatureBase64 = Buffer.from(signature).toString('base64')
+      const signatureBase64 = btoa(String.fromCharCode(...signature))
 
       // Authenticate with backend
       const authResponse = await authenticateWallet(

@@ -3271,5 +3271,5 @@ export async function fetchQuota(): Promise<QuotaInfo> {
 
 // Build SIWS message for signing
 export function buildSIWSMessage(nonce: string): string {
-  return `Sign this message to authenticate with Lake.\n\nNonce: ${nonce}`
+  return `Sign this message to authenticate with DoubleZero Data.\n\nNonce: ${nonce}`
 }

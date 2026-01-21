@@ -750,7 +750,7 @@ export function Chat({ messages, isPending, processingSteps, onSendMessage, onAb
                         <span className="text-sm">
                           {isAuthenticated
                             ? "You've used all your questions for today. Check back tomorrow!"
-                            : "You've used all your questions. Sign in for more."}
+                            : "You've used all your questions for today. Sign in for more."}
                         </span>
                       </div>
                     ) : isQuotaLow && (

@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
-import { useTheme } from '../../hooks/use-theme'
 import { LoginModal } from './LoginModal'
-import { User, LogOut, LogIn, Wallet, Settings, Sun, Moon, Infinity, MessageSquare } from 'lucide-react'
+import { User, LogOut, LogIn, Wallet, Settings, Infinity, MessageSquare } from 'lucide-react'
 
 interface UserPopoverProps {
   collapsed?: boolean
@@ -11,7 +10,6 @@ interface UserPopoverProps {
 
 export function UserPopover({ collapsed = false }: UserPopoverProps) {
   const { user, isAuthenticated, logout, isLoading, quota } = useAuth()
-  const { resolvedTheme, setTheme } = useTheme()
   const [showLoginModal, setShowLoginModal] = useState(false)
   const [showPopover, setShowPopover] = useState(false)
   const popoverRef = useRef<HTMLDivElement>(null)
@@ -50,7 +48,7 @@ export function UserPopover({ collapsed = false }: UserPopoverProps) {
     )
   }
 
-  // Unauthenticated: show sign in button
+  // Unauthenticated: simple sign in button
   if (!isAuthenticated) {
     if (collapsed) {
       return (
@@ -87,7 +85,7 @@ export function UserPopover({ collapsed = false }: UserPopoverProps) {
     )
   }
 
-  // Authenticated: show user popover trigger
+  // Authenticated: show user popover
   const displayName = user?.display_name || user?.email || truncateWallet(user?.wallet_address)
 
   // Quota info
@@ -129,14 +127,11 @@ export function UserPopover({ collapsed = false }: UserPopoverProps) {
           >
             <PopoverContent
               user={user}
-              displayName={displayName}
               quota={quota}
               isUnlimited={isUnlimited}
               remaining={remaining}
               limit={limit}
               quotaColorClass={quotaColorClass}
-              resolvedTheme={resolvedTheme}
-              setTheme={setTheme}
               logout={logout}
               onClose={() => setShowPopover(false)}
             />
@@ -181,14 +176,11 @@ export function UserPopover({ collapsed = false }: UserPopoverProps) {
         >
           <PopoverContent
             user={user}
-            displayName={displayName}
             quota={quota}
             isUnlimited={isUnlimited}
             remaining={remaining}
             limit={limit}
             quotaColorClass={quotaColorClass}
-            resolvedTheme={resolvedTheme}
-            setTheme={setTheme}
             logout={logout}
             onClose={() => setShowPopover(false)}
           />
@@ -198,8 +190,6 @@ export function UserPopover({ collapsed = false }: UserPopoverProps) {
   )
 }
 
-type Theme = 'light' | 'dark' | 'system'
-
 interface PopoverContentProps {
   user: {
     account_type?: string
@@ -207,14 +197,11 @@ interface PopoverContentProps {
     wallet_address?: string
     display_name?: string
   } | null
-  displayName: string
   quota: { remaining: number | null; limit: number | null } | null
   isUnlimited: boolean
   remaining: number
   limit: number
   quotaColorClass: string
-  resolvedTheme: string
-  setTheme: (theme: Theme) => void
   logout: () => void
   onClose: () => void
 }
@@ -226,8 +213,6 @@ function PopoverContent({
   remaining,
   limit,
   quotaColorClass,
-  resolvedTheme,
-  setTheme,
   logout,
   onClose,
 }: PopoverContentProps) {
@@ -263,34 +248,6 @@ function PopoverContent({
           </div>
         </div>
       )}
-
-      {/* Theme toggle */}
-      <div className="px-3 py-2 border-b border-border">
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => setTheme('light')}
-            className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs rounded transition-colors ${
-              resolvedTheme === 'light'
-                ? 'bg-muted text-foreground'
-                : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-            }`}
-          >
-            <Sun size={14} />
-            Light
-          </button>
-          <button
-            onClick={() => setTheme('dark')}
-            className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs rounded transition-colors ${
-              resolvedTheme === 'dark'
-                ? 'bg-muted text-foreground'
-                : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-            }`}
-          >
-            <Moon size={14} />
-            Dark
-          </button>
-        </div>
-      </div>
 
       {/* Settings link */}
       <Link

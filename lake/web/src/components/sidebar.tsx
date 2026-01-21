@@ -32,6 +32,8 @@ import {
   AlertTriangle,
   Gauge,
   Zap,
+  Sun,
+  Moon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/hooks/use-theme'
@@ -65,7 +67,7 @@ export function Sidebar() {
   const currentQuerySessionId = queryMatch?.[1] ?? ''
   const chatMatch = location.pathname.match(/^\/chat\/([^/]+)/)
   const currentChatSessionId = chatMatch?.[1] ?? ''
-  const { resolvedTheme } = useTheme()
+  const { resolvedTheme, setTheme } = useTheme()
   const { updateAvailable, reload } = useVersionCheck()
   const isLandingPage = location.pathname === '/'
   const isTopologyRoute = location.pathname === '/topology' || location.pathname.startsWith('/topology/')
@@ -458,7 +460,7 @@ export function Sidebar() {
         )}
         </div>
 
-        {/* User popover and collapse toggle at bottom */}
+        {/* Footer: theme, user, expand */}
         <div className="flex flex-col items-center gap-1 mb-3 shrink-0">
           {updateAvailable && (
             <button
@@ -469,6 +471,13 @@ export function Sidebar() {
               <ArrowUpCircle className="h-4 w-4" />
             </button>
           )}
+          <button
+            onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
+            className="p-2 text-muted-foreground hover:text-foreground transition-colors"
+            title={`Switch to ${resolvedTheme === 'dark' ? 'light' : 'dark'} mode`}
+          >
+            {resolvedTheme === 'dark' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+          </button>
           <UserPopover collapsed />
           <button
             onClick={() => handleSetCollapsed(false)}
@@ -1021,6 +1030,14 @@ export function Sidebar() {
             Update available
           </button>
         )}
+        <button
+          onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
+          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)] rounded transition-colors"
+          title={`Switch to ${resolvedTheme === 'dark' ? 'light' : 'dark'} mode`}
+        >
+          {resolvedTheme === 'dark' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+          {resolvedTheme === 'dark' ? 'Dark' : 'Light'}
+        </button>
         <UserPopover />
       </div>
 

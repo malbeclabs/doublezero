@@ -2,12 +2,11 @@ import { useRef, useEffect, useState, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { format as formatSQL } from 'sql-formatter'
 import type { ChatMessage, ProcessingStep } from '@/lib/api'
+import { formatQuery } from '@/lib/format-query'
 import { ArrowUp, Square, Loader2, Copy, Check, ChevronDown, ChevronRight, ExternalLink, MessageCircle, CheckCircle2, XCircle, Brain, RotateCcw } from 'lucide-react'
 import { useTheme } from '@/hooks/use-theme'
 import { formatNeo4jValue, isNeo4jValue } from '@/lib/neo4j-utils'
-import { isCypherQuery, formatCypher } from '@/lib/format-cypher'
 
 // Format error message for display
 function formatErrorMessage(content: string): { message: string; isQuotaError: boolean; resetsAt?: Date } {
@@ -43,27 +42,6 @@ function formatResetTime(date: Date): string {
   return 'soon'
 }
 
-// Format SQL for display
-function formatSQLForDisplay(sql: string): string {
-  try {
-    return formatSQL(sql, {
-      language: 'sql',
-      tabWidth: 2,
-      keywordCase: 'upper',
-    })
-  } catch {
-    // If formatting fails, return original
-    return sql
-  }
-}
-
-// Format a query (SQL or Cypher) for display, returning both formatted text and language
-function formatQueryForDisplay(query: string): { formatted: string; language: 'sql' | 'cypher' } {
-  if (isCypherQuery(query)) {
-    return { formatted: formatCypher(query), language: 'cypher' }
-  }
-  return { formatted: formatSQLForDisplay(query), language: 'sql' }
-}
 
 // Light theme for syntax highlighting
 const lightCodeTheme: { [key: string]: React.CSSProperties } = {
@@ -451,7 +429,7 @@ function ProcessingTimeline({
                   <div className="mt-2 ml-6">
                     <div className="relative">
                       {(() => {
-                        const { formatted, language } = formatQueryForDisplay(queryCode)
+                        const { formatted, language } = formatQuery(queryCode)
                         return <CodeBlock language={language} isDark={isDark}>{formatted}</CodeBlock>
                       })()}
                       <div className="absolute right-10 top-2 flex items-center gap-1 z-10">
@@ -954,16 +932,23 @@ export function Chat({ messages, isPending, processingSteps, onSendMessage, onAb
               )
             })}
             {/* Streaming progress - shows ProcessingTimeline during streaming */}
-            {isPending && (
-              <div className="px-1 mt-3">
-                <ProcessingTimeline
-                  steps={processingSteps || []}
-                  isStreaming={true}
-                  onOpenInQueryEditor={onOpenInQueryEditor}
-                  isDark={isDark}
-                />
-              </div>
-            )}
+            {/* Also show when last message is still 'streaming' to prevent flash during transition */}
+            {(() => {
+              const lastMessage = messages[messages.length - 1]
+              const showStreamingTimeline = isPending ||
+                (lastMessage?.status === 'streaming' && processingSteps && processingSteps.length > 0)
+              if (!showStreamingTimeline) return null
+              return (
+                <div className="px-1 mt-3">
+                  <ProcessingTimeline
+                    steps={processingSteps || []}
+                    isStreaming={isPending}
+                    onOpenInQueryEditor={onOpenInQueryEditor}
+                    isDark={isDark}
+                  />
+                </div>
+              )
+            })()}
             <div ref={messagesEndRef} />
           </div>
         </div>

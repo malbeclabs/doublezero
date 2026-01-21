@@ -56,6 +56,7 @@ import { ConnectionError } from '@/components/ConnectionError'
 import { generateSessionTitle, recommendVisualization, fetchCatalog } from '@/lib/api'
 import type { TableInfo, QueryResponse, HistoryMessage, QueryMode } from '@/lib/api'
 import { type QuerySession, type ChatSession } from '@/lib/sessions'
+import { formatQueryByType, formatQuery } from '@/lib/format-query'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -160,17 +161,19 @@ function QueryEditorView() {
     const pendingCypher = searchParams.get('cypher')
     if (pendingSql) {
       urlParamHandledRef.current = sessionId
-      setQuery(pendingSql)
+      const formatted = formatQueryByType(pendingSql, 'sql')
+      setQuery(formatted)
       setResults(null)
-      setPendingRun(pendingSql)
+      setPendingRun(formatted)
       setMode('sql')
       setActiveMode('sql')
       setSearchParams({}, { replace: true })
     } else if (pendingCypher) {
       urlParamHandledRef.current = sessionId
-      setQuery(pendingCypher)
+      const formatted = formatQueryByType(pendingCypher, 'cypher')
+      setQuery(formatted)
       setResults(null)
-      setPendingRun(pendingCypher)
+      setPendingRun(formatted)
       setMode('cypher')
       setActiveMode('cypher')
       setSearchParams({}, { replace: true })
@@ -187,9 +190,11 @@ function QueryEditorView() {
     setResults(null)
 
     if (session?.history.length) {
-      const latestQuery = session.history[0].sql
-      setQuery(latestQuery)
-      setPendingRun(latestQuery)
+      const latestEntry = session.history[0]
+      const queryType = latestEntry.queryType ?? 'sql'
+      const formatted = formatQueryByType(latestEntry.sql, queryType)
+      setQuery(formatted)
+      setPendingRun(formatted)
     } else {
       setQuery('')
     }
@@ -352,20 +357,17 @@ function QueryEditorView() {
   }
 
   const handleRestoreQuery = (sql: string, queryType?: 'sql' | 'cypher') => {
-    setQuery(sql)
-    // Restore the query type/mode if provided, otherwise detect from content
-    let detectedType = queryType
-    if (!detectedType) {
-      // Heuristic: Cypher uses MATCH, SQL uses SELECT
-      const upper = sql.toUpperCase().trim()
-      if (upper.startsWith('MATCH') || upper.includes('MATCH (') || upper.includes('MATCH(')) {
-        detectedType = 'cypher'
-      } else {
-        detectedType = 'sql'
-      }
+    // Format the query and detect type if not provided
+    if (queryType) {
+      setQuery(formatQueryByType(sql, queryType))
+      setMode(queryType)
+      setActiveMode(queryType)
+    } else {
+      const { formatted, language } = formatQuery(sql)
+      setQuery(formatted)
+      setMode(language)
+      setActiveMode(language)
     }
-    setMode(detectedType)
-    setActiveMode(detectedType)
   }
 
   const handleAskAboutResults = useCallback(() => {

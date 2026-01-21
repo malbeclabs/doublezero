@@ -347,12 +347,15 @@ export function useChatStream(sessionId: string | undefined) {
               queryClient.invalidateQueries({ queryKey: chatKeys.list() })
             }
 
-            setStreamState({
+            // Only clear isStreaming - keep processingSteps until the message renders
+            // with its own workflowData.processingSteps. This prevents a flash where
+            // the streaming timeline disappears before the message's timeline appears.
+            setStreamState(prev => ({
+              ...prev,
               isStreaming: false,
               workflowId: null,
-              processingSteps: [],
               error: null,
-            })
+            }))
           },
           onError: (error) => {
             setStreamState(prev => ({

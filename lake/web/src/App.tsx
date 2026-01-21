@@ -11,7 +11,7 @@ import {
   useAddQueryHistory,
   useUpdateQueryTitle,
 } from '@/hooks/use-query-sessions'
-import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query'
 import { WalletProviderWrapper } from '@/components/auth/WalletProviderWrapper'
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
 import { Catalog } from '@/components/catalog'
@@ -652,13 +652,41 @@ function AppContent() {
 // Google Client ID from environment
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined
 
+// Wrapper that provides auth callbacks with access to navigation and query client
+function AuthWrapper({ children }: { children: React.ReactNode }) {
+  const navigate = useNavigate()
+  const qc = useQueryClient()
+
+  const handleLoginSuccess = useCallback(() => {
+    // Invalidate all queries to refetch with new user's credentials
+    qc.invalidateQueries()
+  }, [qc])
+
+  const handleLogoutSuccess = useCallback(() => {
+    // Clear all cached data (chat sessions, query sessions, etc.)
+    qc.clear()
+    // Navigate to fresh chat page
+    navigate('/chat', { replace: true })
+  }, [navigate, qc])
+
+  return (
+    <AuthProvider
+      googleClientId={GOOGLE_CLIENT_ID}
+      onLoginSuccess={handleLoginSuccess}
+      onLogoutSuccess={handleLogoutSuccess}
+    >
+      {children}
+    </AuthProvider>
+  )
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <WalletProviderWrapper>
-        <AuthProvider googleClientId={GOOGLE_CLIENT_ID}>
+        <AuthWrapper>
           <AppContent />
-        </AuthProvider>
+        </AuthWrapper>
       </WalletProviderWrapper>
     </QueryClientProvider>
   )

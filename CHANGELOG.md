@@ -12,6 +12,8 @@ All notable changes to this project will be documented in this file.
 
 ## [v0.8.3](https://github.com/malbeclabs/doublezero/compare/client/v0.8.2...client/v0.8.3) – 2026-01-22
 
+- Data
+  - Add indexer that syncs serviceability and telemetry data to ClickHouse and Neo4J
 
 ### Breaking
 

@@ -5,7 +5,7 @@ use doublezero_solana_client_tools::{
     payer::{SolanaPayerOptions, SolanaSignerOptions, Wallet, try_load_keypair},
     rpc::{DoubleZeroLedgerConnection, SolanaConnectionOptions},
 };
-use doublezero_solana_sdk::revenue_distribution::fetch::try_fetch_config;
+use doublezero_solana_sdk::{NetworkEnvironment, revenue_distribution::fetch::try_fetch_config};
 use doublezero_solana_validator_debt::{
     rpc::SolanaValidatorDebtConnectionOptions,
     solana_debt_calculator::SolanaDebtCalculator,
@@ -57,7 +57,6 @@ pub fn initialize_tracing_subscriber() -> Result<(), NifError> {
 #[rustler::nif(schedule = "DirtyIo")]
 pub fn collect_epoch_debt(
     dz_epoch: u64,
-    ledger_rpc_url: String,
     solana_rpc_url: String,
 ) -> Result<DebtCollection, NifError> {
     // Block the current thread and wait for the async operation to complete.
@@ -68,7 +67,8 @@ pub fn collect_epoch_debt(
                 solana_rpc_url, //
                 None,           // with_compute_unit_price
             )?;
-            let dz_connection = DoubleZeroLedgerConnection::new(ledger_rpc_url);
+
+            let dz_connection = get_dz_ledger(&wallet, None).await?;
             let (_, config) = try_fetch_config(&wallet.connection).await?;
 
             let tx_results =
@@ -117,9 +117,7 @@ pub fn initialize_distribution(solana_rpc_url: String) -> Result<(), NifError> {
 }
 
 #[rustler::nif(schedule = "DirtyIo")]
-pub fn collect_all_debt(ledger_rpc_url: String, solana_rpc_url: String) -> Result<(), NifError> {
-    let dz_connection = DoubleZeroLedgerConnection::new(ledger_rpc_url);
-
+pub fn collect_all_debt(solana_rpc_url: String) -> Result<(), NifError> {
     Runtime::new()
         .map_err(display_to_nif_error)?
         .block_on(async {
@@ -128,42 +126,29 @@ pub fn collect_all_debt(ledger_rpc_url: String, solana_rpc_url: String) -> Resul
                 None,           // with_compute_unit_price
             )?;
 
+            let dz_connection = get_dz_ledger(&wallet, None).await?;
+
             worker::pay_all_solana_validator_debt(wallet, dz_connection).await
         })
         .map_err(display_to_nif_error)?;
     Ok(())
 }
 
-#[rustler::nif]
-pub fn current_dz_epoch(ledger_rpc_url: String) -> Result<u64, NifError> {
-    let dz_epoch = Runtime::new()
-        .map_err(display_to_nif_error)?
-        .block_on(async {
-            let dz_connection = DoubleZeroLedgerConnection::new(ledger_rpc_url);
-
-            dz_connection
-                .get_epoch_info()
-                .await
-                .map(|epoch_info| epoch_info.epoch)
-        })
-        .map_err(display_to_nif_error)?;
-
-    Ok(dz_epoch)
-}
-
 #[rustler::nif(schedule = "DirtyIo")]
-pub fn calculate_distribution(
-    dz_epoch: u64,
-    ledger_rpc_url: String,
-    solana_rpc_url: String,
-    post_to_slack: bool,
-) -> Result<(), NifError> {
+pub fn calculate_distribution(solana_rpc_url: String, post_to_slack: bool) -> Result<(), NifError> {
     Runtime::new()
         .map_err(display_to_nif_error)?
         .block_on(async {
+            let wallet = try_initialize_wallet(
+                solana_rpc_url, //
+                None,           // with_compute_unit_price
+            )?;
+
+            let dz_connection = get_dz_ledger(&wallet, None).await?;
+
             let connection_options = SolanaValidatorDebtConnectionOptions {
-                solana_url_or_moniker: Some(solana_rpc_url),
-                dz_ledger_url: ledger_rpc_url,
+                solana_url_or_moniker: Some(wallet.connection.url()),
+                dz_ledger_url: dz_connection.url(),
             };
             let solana_debt_calculator: SolanaDebtCalculator =
                 SolanaDebtCalculator::try_from(connection_options)?;
@@ -171,13 +156,8 @@ pub fn calculate_distribution(
             let arc_keypair = Arc::new(keypair);
             let transaction = Transaction::new(arc_keypair, false, false);
 
-            let write_summary = worker::calculate_distribution(
-                &solana_debt_calculator,
-                transaction,
-                dz_epoch,
-                false,
-            )
-            .await?;
+            let write_summary =
+                worker::calculate_distribution(&solana_debt_calculator, transaction, false).await?;
             if post_to_slack {
                 slack_notifier::validator_debt::post_distribution_to_slack(
                     None,
@@ -199,17 +179,20 @@ pub fn calculate_distribution(
 }
 
 #[rustler::nif(schedule = "DirtyIo")]
-pub fn finalize_distribution(
-    dz_epoch: u64,
-    ledger_rpc_url: String,
-    solana_rpc_url: String,
-) -> Result<(), NifError> {
+pub fn finalize_distribution(dz_epoch: u64, solana_rpc_url: String) -> Result<(), NifError> {
     Runtime::new()
         .map_err(display_to_nif_error)?
         .block_on(async {
+            let wallet = try_initialize_wallet(
+                solana_rpc_url, //
+                None,           // with_compute_unit_price
+            )?;
+
+            let dz_connection = get_dz_ledger(&wallet, None).await?;
+
             let connection_options = SolanaValidatorDebtConnectionOptions {
-                solana_url_or_moniker: Some(solana_rpc_url),
-                dz_ledger_url: ledger_rpc_url,
+                solana_url_or_moniker: Some(wallet.connection.url()),
+                dz_ledger_url: dz_connection.url(),
             };
             let solana_debt_calculator: SolanaDebtCalculator =
                 SolanaDebtCalculator::try_from(connection_options)?;
@@ -246,6 +229,17 @@ fn try_initialize_wallet(
     };
 
     Wallet::try_from(payer_options)
+}
+
+async fn get_dz_ledger(
+    wallet: &Wallet,
+    dz_env_override: Option<NetworkEnvironment>,
+) -> Result<DoubleZeroLedgerConnection> {
+    let network_env = wallet.connection.try_network_environment().await?;
+
+    // Allow an override to the DoubleZero Ledger environment.
+    let dz_env = dz_env_override.unwrap_or(network_env);
+    Ok(DoubleZeroLedgerConnection::from(dz_env))
 }
 
 rustler::init!("Elixir.Scheduler.DoubleZero");

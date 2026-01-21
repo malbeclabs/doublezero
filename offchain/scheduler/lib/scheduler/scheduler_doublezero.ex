@@ -7,18 +7,16 @@ defmodule Scheduler.DoubleZero do
 
   def initialize_tracing_subscriber, do: :erlang.nif_error(:nif_not_loaded)
 
-  def collect_all_debt(_ledger_rpc, _solana_rpc), do: :erlang.nif_error(:nif_not_loaded)
+  def collect_all_debt(_solana_rpc), do: :erlang.nif_error(:nif_not_loaded)
 
-  def collect_epoch_debt(_dz_epoch, _ledger_rpc, _solana_rpc),
+  def collect_epoch_debt(_dz_epoch, _solana_rpc),
     do: :erlang.nif_error(:nif_not_loaded)
 
   def initialize_distribution(_solana_rpc), do: :erlang.nif_error(:nif_not_loaded)
 
-  def calculate_distribution(_dz_epoch, _ledger_rpc, _solana_rpc, _post_to_slack),
+  def calculate_distribution(_solana_rpc, _post_to_slack),
     do: :erlang.nif_error(:nif_not_loaded)
 
-  def finalize_distribution(_dz_epoch, _ledger_rpc, _solana_rpc),
+  def finalize_distribution(_dz_epoch, _solana_rpc),
     do: :erlang.nif_error(:nif_not_loaded)
-
-  def current_dz_epoch(_ledger_rpc), do: :erlang.nif_error(:nif_not_loaded)
 end

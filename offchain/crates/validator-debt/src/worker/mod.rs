@@ -145,10 +145,10 @@ pub async fn verify_validator_debt(
 pub async fn calculate_distribution(
     solana_debt_calculator: &impl ValidatorRewards,
     transaction: Transaction,
-    dz_epoch: u64,
     post_to_ledger_only: bool,
 ) -> Result<WriteSummary> {
     let config = fetch_config_from_rpc(solana_debt_calculator.solana_rpc_client()).await?;
+    let dz_epoch = config.last_completed_epoch().unwrap_or_default().value();
     if is_config_paused(&config) {
         // Return an empty summary when paused (skip work).
         return Ok(WriteSummary {

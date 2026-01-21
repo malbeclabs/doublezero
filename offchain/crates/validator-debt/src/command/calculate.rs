@@ -26,9 +26,6 @@ pub enum ExportFormat {
 #[derive(Debug, Args, Clone)]
 pub struct CalculateValidatorDebtCommand {
     #[arg(long)]
-    epoch: Option<u64>,
-
-    #[arg(long)]
     force: bool,
 
     #[command(flatten)]
@@ -49,24 +46,12 @@ pub struct CalculateValidatorDebtCommand {
 impl CalculateValidatorDebtCommand {
     pub async fn try_into_execute(self) -> Result<()> {
         let Self {
-            epoch,
             force,
             solana_payer_options,
             dz_ledger_connection_options,
             post_to_ledger_only,
             export,
         } = self;
-
-        let epoch = match epoch {
-            Some(epoch) => epoch,
-            None => {
-                latest_distribution_epoch(
-                    &solana_payer_options.connection_options,
-                    &dz_ledger_connection_options,
-                )
-                .await?
-            }
-        };
 
         let connection_options = SolanaValidatorDebtConnectionOptions {
             solana_url_or_moniker: solana_payer_options
@@ -87,7 +72,6 @@ impl CalculateValidatorDebtCommand {
         let write_summary = crate::worker::calculate_distribution(
             &solana_debt_calculator,
             transaction,
-            epoch,
             post_to_ledger_only,
         )
         .await?;

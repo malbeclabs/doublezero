@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- remove dz_ledger as argument ([#255](https://github.com/doublezerofoundation/doublezero-offchain/pull/255))
 - add check and filter for 0 total debt messages posted to slack ([#247](https://github.com/doublezerofoundation/doublezero-offchain/pull/247))
 
 ## [v0.1.6] - 2026-01-12
@@ -32,4 +33,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - add GenServer and Rust NIF to automatically calculate a distribution on a configurable interval ([#199](https://github.com/doublezerofoundation/doublezero-offchain/pull/199))
 - add GenServer and Rust NIF to automatically initialize a distribution on a configurable interval ([#197](https://github.com/doublezerofoundation/doublezero-offchain/pull/197))
 - add GenServer and Rust NIF to automatically collect debt on a configurable interval ([#183](https://github.com/doublezerofoundation/doublezero-offchain/pull/183))
-- add Elixir app that manages scheduling and executing Rust processes for debt collection and payment  ([#183](https://github.com/doublezerofoundation/doublezero-offchain/pull/183))
+- add Elixir app that manages scheduling and executing Rust processes for debt collection and payment ([#183](https://github.com/doublezerofoundation/doublezero-offchain/pull/183))

@@ -1,4 +1,5 @@
 mod config;
+mod contributor_rewards;
 mod distribution;
 mod sol_conversion;
 mod validator_debts;
@@ -24,6 +25,10 @@ pub enum FetchSubcommand {
     /// Show program config and parameters.
     Config(config::ConfigCommand),
 
+    /// Show contributor rewards accounts with optional filters. Use --view
+    /// recipients to see recipient details (requires --service-key).
+    ContributorRewards(contributor_rewards::ContributorRewardsCommand),
+
     /// Show distribution account with optional epoch filter. Default is to show
     /// the distribution account for the current epoch.
     Distribution(distribution::DistributionCommand),
@@ -46,6 +51,7 @@ impl FetchCommand {
     pub async fn try_into_execute(self) -> Result<()> {
         match self.cmd {
             FetchSubcommand::Config(command) => command.try_into_execute().await,
+            FetchSubcommand::ContributorRewards(command) => command.try_into_execute().await,
             FetchSubcommand::Distribution(command) => command.try_into_execute().await,
             FetchSubcommand::SolConversion(command) => command.try_into_execute().await,
             FetchSubcommand::ValidatorDebts(command) => command.try_into_execute().await,

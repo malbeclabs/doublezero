@@ -142,7 +142,7 @@ function formatDuration(since: string): string {
   if (!since) return ''
   const start = new Date(since).getTime()
   const now = Date.now()
-  const diffMs = now - start
+  const diffMs = Math.max(0, now - start)
   const diffMins = Math.floor(diffMs / 60000)
   const diffHours = Math.floor(diffMins / 60)
   const diffDays = Math.floor(diffHours / 24)

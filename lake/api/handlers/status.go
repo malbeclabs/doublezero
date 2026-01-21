@@ -700,12 +700,22 @@ func fetchStatusData(ctx context.Context) *StatusResponse {
 						issueSince[code] = issueStart
 					}
 				}
-				// Populate Since field for each issue
+				// Populate Since field and filter out resolved issues
+				// An issue is considered resolved if its calculated start time is in the future,
+				// which happens when the current hour is healthy (last_good_hour + 1h > now)
+				now := time.Now()
+				filtered := issues[:0]
 				for i := range issues {
 					if since, ok := issueSince[issues[i].Code]; ok {
+						if since.After(now) {
+							// Issue has ended - the current hour is healthy
+							continue
+						}
 						issues[i].Since = since.UTC().Format(time.RFC3339)
 					}
+					filtered = append(filtered, issues[i])
 				}
+				issues = filtered
 			}
 		}
 		resp.Links.Issues = issues

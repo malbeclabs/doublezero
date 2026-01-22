@@ -81,9 +81,7 @@ mod tests {
             allocator: doublezero_serviceability::state::resource_extension::Allocator::Ip(
                 doublezero_serviceability::ip_allocator::IpAllocator::new(
                     "10.0.0.0/24".parse().unwrap(),
-                    1,
-                )
-                .unwrap(),
+                ),
             ),
             storage: vec![0x0; 8],
         };

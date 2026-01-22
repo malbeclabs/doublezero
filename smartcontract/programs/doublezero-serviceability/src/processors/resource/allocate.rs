@@ -101,7 +101,7 @@ pub fn process_allocate_resource(
     if let Some(ref requested) = &value.requested {
         resource.allocate_specific(requested)?;
     } else {
-        resource.allocate()?;
+        resource.allocate(1)?;
     }
 
     Ok(())

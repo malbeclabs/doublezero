@@ -333,9 +333,7 @@ mod tests {
                 owner: Pubkey::default(),
                 bump_seed: 0,
                 associated_with: device_pubkey,
-                allocator: Allocator::Ip(
-                    IpAllocator::new("0.0.0.0/0".parse().unwrap(), 1).unwrap(),
-                ),
+                allocator: Allocator::Ip(IpAllocator::new("0.0.0.0/0".parse().unwrap())),
                 storage: vec![],
             };
 
@@ -348,9 +346,7 @@ mod tests {
                 owner: Pubkey::default(),
                 bump_seed: 0,
                 associated_with: device_pubkey,
-                allocator: Allocator::Ip(
-                    IpAllocator::new("0.0.0.0/0".parse().unwrap(), 1).unwrap(),
-                ),
+                allocator: Allocator::Ip(IpAllocator::new("0.0.0.0/0".parse().unwrap())),
                 storage: vec![],
             };
 

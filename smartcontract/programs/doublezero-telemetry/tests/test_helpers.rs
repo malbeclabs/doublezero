@@ -1173,6 +1173,7 @@ impl ServiceabilityProgramHelper {
             DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
                 tunnel_id,
                 tunnel_net,
+                use_onchain_allocation: false,
             }),
             vec![
                 AccountMeta::new(link_pk, false),

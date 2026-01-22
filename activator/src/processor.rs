@@ -180,6 +180,7 @@ impl<T: DoubleZeroClient> Processor<T> {
                     &mut self.link_ips,
                     &mut self.link_ids,
                     link,
+                    self.use_onchain_allocation,
                 );
             }
             AccountData::User(user) => {

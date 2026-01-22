@@ -692,6 +692,7 @@ mod tests {
             DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
                 tunnel_id: 1,
                 tunnel_net: "1.2.3.4/1".parse().unwrap(),
+                use_onchain_allocation: false,
             }),
             "ActivateLink",
         );
@@ -755,7 +756,9 @@ mod tests {
             "CloseAccountDevice",
         );
         test_instruction(
-            DoubleZeroInstruction::CloseAccountLink(LinkCloseAccountArgs {}),
+            DoubleZeroInstruction::CloseAccountLink(LinkCloseAccountArgs {
+                use_onchain_deallocation: false,
+            }),
             "CloseAccountLink",
         );
         test_instruction(

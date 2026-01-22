@@ -678,6 +678,7 @@ async fn test_doublezero_program() {
     let tunnel_activate: LinkActivateArgs = LinkActivateArgs {
         tunnel_id: 1,
         tunnel_net,
+        use_onchain_allocation: false,
     };
 
     execute_transaction(

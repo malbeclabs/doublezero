@@ -606,6 +606,7 @@ async fn test_dzx_link() {
         DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
             tunnel_id: 500,
             tunnel_net: "10.0.0.0/21".parse().unwrap(),
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(link_dzx_pubkey, false),
@@ -628,6 +629,7 @@ async fn test_dzx_link() {
         DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
             tunnel_id: 500,
             tunnel_net: "10.0.0.0/21".parse().unwrap(),
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(link_dzx_pubkey, false),
@@ -857,7 +859,9 @@ async fn test_dzx_link() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CloseAccountLink(LinkCloseAccountArgs {}),
+        DoubleZeroInstruction::CloseAccountLink(LinkCloseAccountArgs {
+            use_onchain_deallocation: false,
+        }),
         vec![
             AccountMeta::new(link_dzx_pubkey, false),
             // Intentionally pass wrong owner while keeping contributor and devices correct
@@ -878,7 +882,9 @@ async fn test_dzx_link() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CloseAccountLink(LinkCloseAccountArgs {}),
+        DoubleZeroInstruction::CloseAccountLink(LinkCloseAccountArgs {
+            use_onchain_deallocation: false,
+        }),
         vec![
             AccountMeta::new(link_dzx_pubkey, false),
             AccountMeta::new(tunnel_la.owner, false),

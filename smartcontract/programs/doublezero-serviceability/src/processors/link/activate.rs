@@ -185,7 +185,7 @@ pub fn process_activate_link(
             let mut buffer = device_tunnel_block_ext.data.borrow_mut();
             let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
             link.tunnel_net = resource
-                .allocate()?
+                .allocate(2)?
                 .as_ip()
                 .ok_or(DoubleZeroError::InvalidArgument)?;
         }
@@ -195,7 +195,7 @@ pub fn process_activate_link(
             let mut buffer = link_ids_ext.data.borrow_mut();
             let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
             link.tunnel_id = resource
-                .allocate()?
+                .allocate(1)?
                 .as_id()
                 .ok_or(DoubleZeroError::InvalidArgument)?;
         }

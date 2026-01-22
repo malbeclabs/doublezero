@@ -1,6 +1,7 @@
 package bgp
 
 import (
+	"context"
 	"log/slog"
 	"net"
 	"net/netip"
@@ -24,7 +25,19 @@ type Plugin struct {
 	// These fields are used to track the initial establishment of the BGP session.
 	startedAt              time.Time
 	initialallyEstablished atomic.Bool
+	currentlyEstablished   atomic.Bool // for timeout, reset on close
+
+	// peerAddr is stored so the timeout goroutine can emit events
+	peerAddr net.IP
+
+	cancelTimeout context.CancelFunc
+
+	tcpConnected atomic.Bool // set when GetCapabilities is called
 }
+
+const (
+	BGPSessionTimeout = 30 * time.Second
+)
 
 func NewBgpPlugin(
 	advertised []NLRI,
@@ -45,13 +58,55 @@ func NewBgpPlugin(
 }
 
 func (p *Plugin) GetCapabilities(peer corebgp.PeerConfig) []corebgp.Capability {
+	p.tcpConnected.Store(true)
 	caps := make([]corebgp.Capability, 0)
 	caps = append(caps, corebgp.NewMPExtensionsCapability(corebgp.AFI_IPV4, corebgp.SAFI_UNICAST))
+	p.peerAddr = net.ParseIP(peer.RemoteAddress.String())
 	p.PeerStatusChan <- SessionEvent{
 		PeerAddr: net.ParseIP(peer.RemoteAddress.String()),
 		Session:  Session{SessionStatus: SessionStatusPending, LastSessionUpdate: time.Now().Unix()},
 	}
 	return caps
+}
+
+func (p *Plugin) startSessionTimeout() {
+	if p.cancelTimeout != nil {
+		p.cancelTimeout()
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	p.cancelTimeout = cancel
+	go func() {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(BGPSessionTimeout):
+			p.emitTimeoutStatus()
+		}
+	}()
+}
+
+// emitTimeoutStatus checks the current session state and emits the appropriate
+// timeout status (Failed or Unreachable)
+func (p *Plugin) emitTimeoutStatus() bool {
+	if p.currentlyEstablished.Load() {
+		return false
+	}
+
+	var status SessionStatus
+	if !p.tcpConnected.Load() {
+		status = SessionStatusUnreachable
+		slog.Warn("bgp: network unreachable - TCP connection never established", "peer", p.peerAddr)
+	} else {
+		status = SessionStatusFailed
+		slog.Warn("bgp: session failed - BGP handshake incomplete", "peer", p.peerAddr)
+	}
+
+	p.PeerStatusChan <- SessionEvent{
+		PeerAddr: p.peerAddr,
+		Session:  Session{SessionStatus: status, LastSessionUpdate: time.Now().Unix()},
+	}
+	MetricSessionStatus.Set(0)
+	return true
 }
 
 func (p *Plugin) OnOpenMessage(peer corebgp.PeerConfig, routerID netip.Addr, capabilities []corebgp.Capability) *corebgp.Notification {
@@ -65,6 +120,12 @@ func (p *Plugin) OnOpenMessage(peer corebgp.PeerConfig, routerID netip.Addr, cap
 }
 
 func (p *Plugin) OnEstablished(peer corebgp.PeerConfig, writer corebgp.UpdateMessageWriter) corebgp.UpdateMessageHandler {
+	if p.cancelTimeout != nil {
+		p.cancelTimeout()
+	}
+
+	p.currentlyEstablished.Store(true)
+
 	if p.initialallyEstablished.CompareAndSwap(false, true) {
 		// If this is the first time we've established the session, record the duration.
 		// If the session is closed and then re-established within the lifetime of the same BGP plugin,
@@ -95,6 +156,12 @@ func (p *Plugin) OnEstablished(peer corebgp.PeerConfig, writer corebgp.UpdateMes
 }
 
 func (p *Plugin) OnClose(peer corebgp.PeerConfig) {
+	if p.cancelTimeout != nil {
+		p.cancelTimeout()
+	}
+
+	p.currentlyEstablished.Store(false)
+
 	slog.Info("bgp: peer closed", "peer", peer.RemoteAddress)
 	p.PeerStatusChan <- SessionEvent{
 		PeerAddr: net.ParseIP(peer.RemoteAddress.String()),
@@ -115,6 +182,7 @@ func (p *Plugin) OnClose(peer corebgp.PeerConfig) {
 	}
 
 	MetricSessionStatus.Set(0)
+	p.startSessionTimeout() // start a new timeout for the next session
 }
 
 func (p *Plugin) handleUpdate(peer corebgp.PeerConfig, u []byte) *corebgp.Notification {

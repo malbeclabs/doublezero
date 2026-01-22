@@ -163,3 +163,12 @@ func (a *Activator) setState(containerID string) error {
 	a.ContainerID = shortContainerID(containerID)
 	return nil
 }
+
+// GetContainerState returns the current state of the activator container.
+func (a *Activator) GetContainerState(ctx context.Context) (*dockercontainer.State, error) {
+	container, err := a.dn.dockerClient.ContainerInspect(ctx, a.dockerContainerName())
+	if err != nil {
+		return nil, fmt.Errorf("failed to inspect activator container: %w", err)
+	}
+	return container.State, nil
+}

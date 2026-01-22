@@ -1,7 +1,9 @@
 use doublezero_program_common::{types::NetworkV4List, validate_account_code};
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_device_pda,
-    processors::device::create::DeviceCreateArgs, state::device::DeviceType,
+    instructions::DoubleZeroInstruction,
+    pda::get_device_pda,
+    processors::device::create::DeviceCreateArgs,
+    state::device::{DeviceDesiredStatus, DeviceType},
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 use std::net::Ipv4Addr;
@@ -19,6 +21,7 @@ pub struct CreateDeviceCommand {
     pub dz_prefixes: NetworkV4List,
     pub metrics_publisher: Pubkey,
     pub mgmt_vrf: String,
+    pub desired_status: Option<DeviceDesiredStatus>,
 }
 
 impl CreateDeviceCommand {
@@ -41,6 +44,7 @@ impl CreateDeviceCommand {
                     dz_prefixes: self.dz_prefixes.clone(),
                     metrics_publisher_pk: self.metrics_publisher,
                     mgmt_vrf: self.mgmt_vrf.clone(),
+                    desired_status: self.desired_status,
                 }),
                 vec![
                     AccountMeta::new(pda_pubkey, false),
@@ -139,6 +143,7 @@ mod tests {
                     dz_prefixes: "10.0.0.0/8".parse().unwrap(),
                     metrics_publisher_pk: pubmetrics_publisher,
                     mgmt_vrf: "mgmt".to_string(),
+                    desired_status: None,
                 })),
                 predicate::eq(vec![
                     AccountMeta::new(device_pubkey, false),
@@ -160,6 +165,7 @@ mod tests {
             dz_prefixes: "10.0.0.0/8".parse().unwrap(),
             metrics_publisher: pubmetrics_publisher,
             mgmt_vrf: "mgmt".to_string(),
+            desired_status: None,
         };
 
         let invalid_command = CreateDeviceCommand {

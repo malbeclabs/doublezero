@@ -167,17 +167,18 @@ pub fn process_create_user(
 
     let mut device = Device::try_from(device_account)?;
 
-    if device.status == DeviceStatus::Suspended {
-        if !globalstate.foundation_allowlist.contains(payer_account.key) {
-            msg!("{:?}", device);
-            return Err(DoubleZeroError::InvalidStatus.into());
-        }
-    } else if device.status != DeviceStatus::Activated {
+    let is_qa = globalstate.qa_allowlist.contains(payer_account.key);
+
+    // Only activated devices can have users, or if in foundation allowlist
+    if device.status != DeviceStatus::Activated
+        && !globalstate.foundation_allowlist.contains(payer_account.key)
+        && !is_qa
+    {
         msg!("{:?}", device);
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
-    if device.users_count >= device.max_users {
+    if device.users_count >= device.max_users && !is_qa {
         msg!("{:?}", device);
         return Err(DoubleZeroError::MaxUsersExceeded.into());
     }

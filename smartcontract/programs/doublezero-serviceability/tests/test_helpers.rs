@@ -2,11 +2,15 @@ use borsh::to_vec;
 use doublezero_serviceability::{
     entrypoint::process_instruction,
     instructions::*,
-    pda::{get_globalconfig_pda, get_globalstate_pda, get_program_config_pda},
+    pda::{
+        get_globalconfig_pda, get_globalstate_pda, get_program_config_pda,
+        get_resource_extension_pda,
+    },
     processors::globalconfig::set::SetGlobalConfigArgs,
+    resource::ResourceType,
     state::{
-        accountdata::AccountData, accounttype::AccountType, globalstate::GlobalState,
-        resource_extension::ResourceExtensionOwned,
+        accountdata::AccountData, accounttype::AccountType, device::Device,
+        globalstate::GlobalState, resource_extension::ResourceExtensionOwned,
     },
 };
 use solana_program_test::*;
@@ -290,6 +294,31 @@ pub async fn get_resource_extension_data(
     }
 }
 
+#[allow(dead_code)]
+pub async fn get_device(banks_client: &mut BanksClient, pubkey: Pubkey) -> Option<Device> {
+    print!("Read Device: ");
+
+    match banks_client.get_account(pubkey).await {
+        Ok(account) => match account {
+            Some(account_data) => match Device::try_from(&account_data.data[..]) {
+                Ok(device) => {
+                    println!("{device}");
+                    Some(device)
+                }
+                Err(err) => {
+                    println!("Failed to deserialize Device: {err:?}");
+                    None
+                }
+            },
+            None => {
+                println!("Account not found");
+                None
+            }
+        },
+        Err(err) => panic!("Failed to get account: {err:?}"),
+    }
+}
+
 /// Wait for a new blockhash to avoid transaction deduplication
 #[allow(dead_code)]
 pub async fn wait_for_new_blockhash(banks_client: &mut BanksClient) -> solana_program::hash::Hash {
@@ -319,6 +348,15 @@ pub async fn setup_program_with_globalconfig() -> (BanksClient, Keypair, Pubkey,
     let (program_config_pubkey, _) = get_program_config_pda(&program_id);
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
     let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
+    let (device_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
+    let (user_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
+    let (multicastgroup_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock);
+    let (link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
+    let (segment_routing_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
 
     // Initialize global state
     execute_transaction(
@@ -350,6 +388,11 @@ pub async fn setup_program_with_globalconfig() -> (BanksClient, Keypair, Pubkey,
         vec![
             AccountMeta::new(globalconfig_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_tunnel_block_pda, false),
+            AccountMeta::new(user_tunnel_block_pda, false),
+            AccountMeta::new(multicastgroup_block_pda, false),
+            AccountMeta::new(link_ids_pda, false),
+            AccountMeta::new(segment_routing_ids_pda, false),
         ],
         &payer,
     )

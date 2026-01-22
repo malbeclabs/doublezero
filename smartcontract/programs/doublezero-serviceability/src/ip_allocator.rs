@@ -17,7 +17,7 @@ pub struct IpAllocator {
 impl IpAllocator {
     pub fn bitmap_required_size(prefix_len: u8, allocation_size: u32) -> usize {
         let total_allocations = 2_usize.pow(32 - prefix_len as u32) / allocation_size as usize;
-        total_allocations.div_ceil(8)
+        total_allocations.div_ceil(64) * 8 // must be a multiple of 64bits
     }
 
     pub fn check_bitmap_require_size(bitmap: &[u8], prefix_len: u8, allocation_size: u32) -> bool {

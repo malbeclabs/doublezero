@@ -9,7 +9,7 @@ use tabled::{Table, Tabled};
 pub struct GetResourceCliCommand {
     // Type of resource extension to allocate
     #[arg(long)]
-    pub resource_extension_type: ResourceType,
+    pub resource_type: ResourceType,
     // Associated public key (only for DzPrefixBlock)
     #[arg(long)]
     pub associated_pubkey: Option<String>,
@@ -21,7 +21,7 @@ pub struct GetResourceCliCommand {
 impl From<GetResourceCliCommand> for GetResourceCommand {
     fn from(cmd: GetResourceCliCommand) -> Self {
         let resource_type = super::resource_type_from(
-            cmd.resource_extension_type,
+            cmd.resource_type,
             cmd.associated_pubkey.as_ref().and_then(|s| s.parse().ok()),
             cmd.index,
         );
@@ -70,7 +70,7 @@ mod tests {
     fn test_from_cli_to_command() {
         let pk = Pubkey::new_unique();
         let cli_cmd = GetResourceCliCommand {
-            resource_extension_type: ResourceType::DzPrefixBlock,
+            resource_type: ResourceType::DzPrefixBlock,
             associated_pubkey: Some(pk.to_string()),
             index: Some(1),
         };
@@ -81,7 +81,7 @@ mod tests {
     #[test]
     fn test_execute_prints_table() {
         let cli_cmd = GetResourceCliCommand {
-            resource_extension_type: ResourceType::LinkIds,
+            resource_type: ResourceType::LinkIds,
             associated_pubkey: None,
             index: None,
         };

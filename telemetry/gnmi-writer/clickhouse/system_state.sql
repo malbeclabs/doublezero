@@ -3,7 +3,7 @@
 
 CREATE TABLE IF NOT EXISTS system_state (
     timestamp DateTime64(9) CODEC(DoubleDelta, ZSTD(1)),
-    device_code LowCardinality(String),
+    device_pubkey LowCardinality(String),
     hostname String,
     mem_total UInt64,
     mem_used UInt64,
@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS system_state (
 )
 ENGINE = MergeTree()
 PARTITION BY toYYYYMM(timestamp)
-ORDER BY (device_code, timestamp)
+ORDER BY (device_pubkey, timestamp)
 TTL toDateTime(timestamp) + INTERVAL 30 DAY
 SETTINGS index_granularity = 8192;
 
@@ -22,8 +22,8 @@ SETTINGS index_granularity = 8192;
 CREATE VIEW IF NOT EXISTS system_state_latest AS
 SELECT *
 FROM system_state
-WHERE (device_code, timestamp) IN (
-    SELECT device_code, max(timestamp)
+WHERE (device_pubkey, timestamp) IN (
+    SELECT device_pubkey, max(timestamp)
     FROM system_state
-    GROUP BY device_code
+    GROUP BY device_pubkey
 );

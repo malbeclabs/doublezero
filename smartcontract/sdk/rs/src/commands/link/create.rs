@@ -1,8 +1,10 @@
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 use doublezero_program_common::validate_account_code;
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_link_pda,
-    processors::link::create::LinkCreateArgs, state::link::LinkLinkType,
+    instructions::DoubleZeroInstruction,
+    pda::get_link_pda,
+    processors::link::create::LinkCreateArgs,
+    state::link::{LinkDesiredStatus, LinkLinkType},
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
@@ -10,6 +12,7 @@ use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature}
 pub struct CreateLinkCommand {
     pub code: String,
     pub contributor_pk: Pubkey,
+    pub desired_status: Option<LinkDesiredStatus>,
     pub side_a_pk: Pubkey,
     pub side_z_pk: Pubkey,
     pub link_type: LinkLinkType,
@@ -36,6 +39,7 @@ impl CreateLinkCommand {
                 DoubleZeroInstruction::CreateLink(LinkCreateArgs {
                     code,
                     link_type: self.link_type,
+                    desired_status: self.desired_status,
                     bandwidth: self.bandwidth,
                     mtu: self.mtu,
                     delay_ns: self.delay_ns,

@@ -5,7 +5,7 @@ use crate::{
     validators::{
         validate_code, validate_parse_bandwidth, validate_parse_delay_ms,
         validate_parse_delay_override_ms, validate_parse_jitter_ms, validate_parse_mtu,
-        validate_pubkey,
+        validate_pubkey, validate_pubkey_or_code,
     },
 };
 use clap::Args;
@@ -20,7 +20,7 @@ use std::io::Write;
 #[derive(Args, Debug)]
 pub struct UpdateLinkCliCommand {
     /// Link Pubkey or code to update
-    #[arg(long, value_parser = validate_pubkey)]
+    #[arg(long, value_parser = validate_pubkey_or_code)]
     pub pubkey: String,
     /// Contributor (pubkey or code) associated with the device
     #[arg(long, value_parser = validate_pubkey)]

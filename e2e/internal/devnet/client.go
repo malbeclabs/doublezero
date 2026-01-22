@@ -336,8 +336,8 @@ type ClientSession struct {
 }
 
 const (
-	ClientSessionStatusUp           ClientSessionStatus = "up"
-	ClientSessionStatusDown         ClientSessionStatus = "down"
+	ClientSessionStatusUp           ClientSessionStatus = "BGP Session Up"
+	ClientSessionStatusDown         ClientSessionStatus = "BGP Session Down"
 	ClientSessionStatusDisconnected ClientSessionStatus = "disconnected"
 )
 

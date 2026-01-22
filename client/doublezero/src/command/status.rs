@@ -77,7 +77,9 @@ impl StatusCliCommand {
                         let is_current = user
                             .map(|u| best.device_pk == u.device_pk.to_string())
                             .unwrap_or(false);
-                        if self.json || response.doublezero_status.session_status != "up" {
+                        if self.json
+                            || response.doublezero_status.session_status != "BGP Session Up"
+                        {
                             best.device_code
                         } else if is_current || current_device.is_none() {
                             format!("✅ {}", best.device_code)
@@ -128,7 +130,7 @@ mod tests {
         let mut exchanges = std::collections::HashMap::<Pubkey, Exchange>::new();
         let status_responses = vec![StatusResponse {
             doublezero_status: DoubleZeroStatus {
-                session_status: "up".to_string(),
+                session_status: "BGP Session Up".to_string(),
                 last_session_update: Some(1625247600),
             },
             tunnel_name: Some("tunnel_name".to_string()),
@@ -301,7 +303,10 @@ mod tests {
         let result = result.unwrap();
         assert_eq!(result.len(), 1);
         let status_response = &result[0].response;
-        assert_eq!(status_response.doublezero_status.session_status, "up");
+        assert_eq!(
+            status_response.doublezero_status.session_status,
+            "BGP Session Up"
+        );
         assert_eq!(status_response.tunnel_name.as_deref(), Some("tunnel_name"));
         assert_eq!(status_response.tunnel_src.as_deref(), Some("1.2.3.4"));
         assert_eq!(status_response.tunnel_dst.as_deref(), Some("42.42.42.42"));
@@ -323,7 +328,7 @@ mod tests {
         let mut exchanges = std::collections::HashMap::<Pubkey, Exchange>::new();
         let status_responses = vec![StatusResponse {
             doublezero_status: DoubleZeroStatus {
-                session_status: "down".to_string(),
+                session_status: "BGP Session Down".to_string(),
                 last_session_update: None,
             },
             tunnel_name: None,
@@ -473,7 +478,10 @@ mod tests {
         let result = result.unwrap();
         assert_eq!(result.len(), 1);
         let status_response = &result[0].response;
-        assert_eq!(status_response.doublezero_status.session_status, "down");
+        assert_eq!(
+            status_response.doublezero_status.session_status,
+            "BGP Session Down"
+        );
         assert_eq!(status_response.tunnel_name.as_deref(), None);
         assert_eq!(status_response.tunnel_src.as_deref(), None);
         assert_eq!(status_response.tunnel_dst.as_deref(), None);
@@ -495,7 +503,7 @@ mod tests {
         let mut exchanges = std::collections::HashMap::<Pubkey, Exchange>::new();
         let status_responses = vec![StatusResponse {
             doublezero_status: DoubleZeroStatus {
-                session_status: "up".to_string(),
+                session_status: "BGP Session Up".to_string(),
                 last_session_update: Some(1625247600),
             },
             tunnel_name: Some("tunnel_name".to_string()),

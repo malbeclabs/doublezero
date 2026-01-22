@@ -4,6 +4,8 @@
 //   - openconfig-network-instance (includes ISIS, BGP, routing protocols)
 //   - openconfig-interfaces
 //   - openconfig-system
+//   - openconfig-platform (components)
+//   - openconfig-platform-transceiver (optical transceiver state)
 //
 // # Regenerating
 //

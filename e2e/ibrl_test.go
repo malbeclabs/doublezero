@@ -49,6 +49,18 @@ func TestE2E_IBRL(t *testing.T) {
 	}) {
 		t.Fail()
 	}
+
+	if !t.Run("drain_device", func(t *testing.T) {
+		checkDeviceDrain(t, dn, device)
+	}) {
+		t.Fail()
+	}
+
+	if !t.Run("undrain_device", func(t *testing.T) {
+		checkDeviceUndrain(t, dn, device)
+	}) {
+		t.Fail()
+	}
 }
 
 func checkIbgpMsdpPeerRemoved(t *testing.T, dn *TestDevnet, device *devnet.Device) {
@@ -70,6 +82,62 @@ func checkIbgpMsdpPeerRemoved(t *testing.T, dn *TestDevnet, device *devnet.Devic
 	}
 
 	dn.log.Info("--> IBRL iBGP/MSDP peer removal requirements checked")
+}
+
+func checkDeviceDrain(t *testing.T, dn *TestDevnet, device *devnet.Device) {
+	dn.log.Info("==> Checking that device is drained")
+
+	if !t.Run("set_device_status_to_drained", func(t *testing.T) {
+		_, err := dn.Manager.Exec(t.Context(), []string{"doublezero", "device", "update", "--pubkey", device.Spec.Code, "--desired-status", "drained"})
+		require.NoError(t, err)
+	}) {
+		t.Fail()
+		return
+	}
+
+	if !t.Run("wait_for_drained_config", func(t *testing.T) {
+		config, err := fixtures.Render("fixtures/ibrl/doublezero_agent_config_drained.tmpl", map[string]any{
+			"DeviceIP":    device.CYOANetworkIP,
+			"StartTunnel": controllerconfig.StartUserTunnelNum,
+			"EndTunnel":   controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
+		})
+		require.NoError(t, err, "error reading drained config fixture")
+		err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
+		require.NoError(t, err, "error waiting for drained config")
+	}) {
+		t.Fail()
+	}
+
+	dn.log.Info("--> Device drain requirements checked")
+}
+
+func checkDeviceUndrain(t *testing.T, dn *TestDevnet, device *devnet.Device) {
+	dn.log.Info("==> Checking that device is undrained (returned to activated)")
+
+	if !t.Run("set_device_status_to_activated", func(t *testing.T) {
+		_, err := dn.Manager.Exec(t.Context(), []string{"doublezero", "device", "update", "--pubkey", device.Spec.Code, "--desired-status", "activated"})
+		require.NoError(t, err)
+	}) {
+		t.Fail()
+		return
+	}
+
+	if !t.Run("wait_for_undrained_config", func(t *testing.T) {
+		// After undrain, the config should return to the state before draining
+		// which is after peer removal (pit-dzd01 removed), with no shutdown commands
+		config, err := fixtures.Render("fixtures/ibrl/doublezero_agent_config_peer_removed.tmpl", map[string]any{
+			"DeviceIP":    device.CYOANetworkIP,
+			"StartTunnel": controllerconfig.StartUserTunnelNum,
+			"EndTunnel":   controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
+		})
+		require.NoError(t, err, "error reading undrained config fixture")
+		err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
+		require.NoError(t, err, "error waiting for undrained config")
+	}) {
+		t.Fail()
+	}
+
+	dn.log.Info("--> Device undrain requirements checked")
 }
 
 // checkIBRLPostConnect checks requirements after connecting a user tunnel.

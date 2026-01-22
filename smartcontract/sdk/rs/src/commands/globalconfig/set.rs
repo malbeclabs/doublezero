@@ -1,8 +1,11 @@
 use crate::{DoubleZeroClient, GetGlobalConfigCommand, GetGlobalStateCommand};
 use doublezero_program_common::types::NetworkV4;
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_globalconfig_pda,
-    processors::globalconfig::set::SetGlobalConfigArgs, state::globalconfig::GlobalConfig,
+    instructions::DoubleZeroInstruction,
+    pda::{get_globalconfig_pda, get_resource_extension_pda},
+    processors::globalconfig::set::SetGlobalConfigArgs,
+    resource::ResourceType,
+    state::globalconfig::GlobalConfig,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
@@ -26,11 +29,27 @@ impl SetGlobalConfigCommand {
         let set_config_args = self.merge_config_updates(global_config)?;
 
         let (pda_pubkey, _) = get_globalconfig_pda(&client.get_program_id());
+        let (device_tunnel_block_pda, _, _) =
+            get_resource_extension_pda(&client.get_program_id(), ResourceType::DeviceTunnelBlock);
+        let (user_tunnel_block_pda, _, _) =
+            get_resource_extension_pda(&client.get_program_id(), ResourceType::UserTunnelBlock);
+        let (multicastgroup_block_pda, _, _) =
+            get_resource_extension_pda(&client.get_program_id(), ResourceType::MulticastGroupBlock);
+        let (link_ids_pda, _, _) =
+            get_resource_extension_pda(&client.get_program_id(), ResourceType::LinkIds);
+        let (segment_routing_ids_pda, _, _) =
+            get_resource_extension_pda(&client.get_program_id(), ResourceType::SegmentRoutingIds);
+
         client.execute_transaction(
             DoubleZeroInstruction::SetGlobalConfig(set_config_args),
             vec![
                 AccountMeta::new(pda_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
+                AccountMeta::new(device_tunnel_block_pda, false),
+                AccountMeta::new(user_tunnel_block_pda, false),
+                AccountMeta::new(multicastgroup_block_pda, false),
+                AccountMeta::new(link_ids_pda, false),
+                AccountMeta::new(segment_routing_ids_pda, false),
             ],
         )
     }

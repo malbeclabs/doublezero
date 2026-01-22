@@ -16,6 +16,7 @@ use doublezero_sdk::{
     },
     *,
 };
+use doublezero_serviceability::state::device::DeviceDesiredStatus;
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, net::Ipv4Addr, str::FromStr};
 
@@ -48,6 +49,9 @@ pub struct CreateDeviceCliCommand {
     /// Management VRF name (optional)
     #[arg(long, default_value = "default")]
     pub mgmt_vrf: String,
+    /// Desired status for the device (optional)
+    #[arg(long)]
+    pub desired_status: Option<DeviceDesiredStatus>,
     /// Wait for the device to be activated
     #[arg(short, long, default_value_t = false)]
     pub wait: bool,
@@ -153,6 +157,7 @@ impl CreateDeviceCliCommand {
             dz_prefixes: self.dz_prefixes,
             metrics_publisher,
             mgmt_vrf: self.mgmt_vrf.clone(),
+            desired_status: self.desired_status,
         })?;
         writeln!(out, "Signature: {signature}")?;
 
@@ -283,6 +288,7 @@ mod tests {
                 dz_prefixes: "10.1.0.0/16".parse().unwrap(),
                 metrics_publisher: Pubkey::default(),
                 mgmt_vrf: "default".to_string(),
+                desired_status: None,
             }))
             .returning(move |_| Ok((signature, pda_pubkey)));
 
@@ -297,6 +303,7 @@ mod tests {
             dz_prefixes: "10.1.0.0/16".parse().unwrap(),
             metrics_publisher: Some(Pubkey::default().to_string()),
             mgmt_vrf: "default".to_string(),
+            desired_status: None,
             wait: false,
         }
         .execute(&client, &mut output);
@@ -369,6 +376,7 @@ mod tests {
             dz_prefixes: "192.168.0.0/16".parse().unwrap(),
             metrics_publisher: Some(Pubkey::default().to_string()),
             mgmt_vrf: String::default(),
+            desired_status: None,
             wait: false,
         }
         .execute(&client, &mut output);
@@ -407,6 +415,7 @@ mod tests {
             dz_prefixes: "10.1.0.0/16".parse().unwrap(), // Own prefix contains public_ip
             metrics_publisher: Some(Pubkey::default().to_string()),
             mgmt_vrf: String::default(),
+            desired_status: None,
             wait: false,
         }
         .execute(&client, &mut output);

@@ -1,5 +1,8 @@
 use crate::{
     error::DoubleZeroError,
+    pda::get_resource_extension_pda,
+    processors::resource::create_resource,
+    resource::ResourceType,
     serializer::try_acc_write,
     state::{
         accounttype::AccountType, contributor::Contributor, device::*, globalstate::GlobalState,
@@ -30,6 +33,7 @@ pub struct DeviceUpdateArgs {
     pub users_count: Option<u16>,
     pub status: Option<DeviceStatus>,
     pub desired_status: Option<DeviceDesiredStatus>,
+    pub resource_count: usize,
 }
 
 impl fmt::Debug for DeviceUpdateArgs {
@@ -67,6 +71,7 @@ impl fmt::Debug for DeviceUpdateArgs {
         if self.desired_status.is_some() {
             write!(f, "desired_status: {:?}, ", self.desired_status)?;
         }
+        write!(f, "resource_count: {:?}, ", self.resource_count)?;
         Ok(())
     }
 }
@@ -82,7 +87,7 @@ pub fn process_update_device(
     let contributor_account = next_account_info(accounts_iter)?;
     // Update location accounts (old and new)
 
-    let (location_old_account, location_new_account) = if accounts.len() == 7 {
+    let (location_old_account, location_new_account) = if accounts.len() > 5 {
         (
             Some(next_account_info(accounts_iter)?),
             Some(next_account_info(accounts_iter)?),
@@ -92,6 +97,38 @@ pub fn process_update_device(
     };
 
     let globalstate_account = next_account_info(accounts_iter)?;
+    let globalconfig_account = if value.resource_count > 0 {
+        assert!(
+            value.resource_count >= 2,
+            "Resource count must be at least 2 (TunnelIds and at least one DzPrefixBlock)"
+        );
+        let account = next_account_info(accounts_iter)?;
+        assert_eq!(
+            account.owner, program_id,
+            "Invalid GlobalConfig Account Owner"
+        );
+        Some(account)
+    } else {
+        None
+    };
+    let mut resource_accounts = vec![];
+    for idx in 0..value.resource_count {
+        // first resource account is the TunnelIds resource, followed by DzPrefixBlock resources
+        let resource_account = next_account_info(accounts_iter)?;
+        assert!(
+            resource_account.data_is_empty() || resource_account.owner == program_id,
+            "Invalid Resource Account Owner"
+        );
+        resource_accounts.push(resource_account);
+        let (pda, _, _) = get_resource_extension_pda(
+            program_id,
+            match idx {
+                0 => ResourceType::TunnelIds(*device_account.key, 0),
+                _ => ResourceType::DzPrefixBlock(*device_account.key, idx - 1),
+            },
+        );
+        assert_eq!(pda, *resource_account.key, "Invalid Resource Account PDA");
+    }
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
@@ -160,8 +197,23 @@ pub fn process_update_device(
     if let Some(public_ip) = value.public_ip {
         device.public_ip = public_ip;
     }
+
+    let mut create_dz_prefixes_resources = false;
     if let Some(dz_prefixes) = &value.dz_prefixes {
+        assert_eq!(
+            device.users_count, 0,
+            "Cannot update dz_prefixes when users are present"
+        );
+        assert!(
+            globalconfig_account.is_some(),
+            "GlobalConfig account is required when updating dz_prefixes"
+        );
+        assert!(
+            resource_accounts.len() == dz_prefixes.len() + 1,
+            "Wrong number of resource accounts provided"
+        );
         device.dz_prefixes = dz_prefixes.clone();
+        create_dz_prefixes_resources = true;
     }
     if let Some(metrics_publisher_pk) = &value.metrics_publisher_pk {
         device.metrics_publisher_pk = *metrics_publisher_pk;
@@ -216,8 +268,29 @@ pub fn process_update_device(
             }
         }
     }
+    if let Some(desired_status) = value.desired_status {
+        device.desired_status = desired_status;
+    }
+
+    device.check_status_transition();
 
     try_acc_write(&device, device_account, payer_account, accounts)?;
+
+    // this has to occur after the device change is serialized because create_resource
+    // needs to be able to read dz_prefixes from the device_account
+    if create_dz_prefixes_resources {
+        for (i, resource_account) in resource_accounts.iter().enumerate().skip(1) {
+            create_resource(
+                program_id,
+                resource_account,
+                Some(device_account),
+                globalconfig_account.unwrap(),
+                payer_account,
+                accounts,
+                ResourceType::DzPrefixBlock(*device_account.key, i - 1),
+            )?;
+        }
+    }
 
     #[cfg(test)]
     msg!("Updated: {:?}", device);

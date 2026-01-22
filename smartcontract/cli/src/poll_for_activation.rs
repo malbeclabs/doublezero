@@ -38,7 +38,8 @@ pub fn poll_for_device_activated(
             pubkey_or_code: device_pubkey.to_string(),
         }) {
             Ok((_, device)) => {
-                if device.status == DeviceStatus::Activated
+                if device.status == DeviceStatus::DeviceProvisioning
+                    || device.status == DeviceStatus::Activated
                     || device.status == DeviceStatus::Rejected
                 {
                     return Ok(device);
@@ -140,7 +141,10 @@ pub fn poll_for_link_activated(
             pubkey_or_code: link_pubkey.to_string(),
         }) {
             Ok((_, link)) => {
-                if link.status == LinkStatus::Activated || link.status == LinkStatus::Rejected {
+                if link.status == LinkStatus::Provisioning
+                    || link.status == LinkStatus::Activated
+                    || link.status == LinkStatus::Rejected
+                {
                     return Ok(link);
                 }
             }

@@ -327,3 +327,63 @@ func TestClient_BGPPlugin_BuildUpdateRoundTrip(t *testing.T) {
 		require.Equal(t, nlri.AsPath[i], gotAsPath[i], "unexpected AS at index %d", i)
 	}
 }
+
+func TestEmitTimeoutStatus_Unreachable(t *testing.T) {
+	// When tcpConnected is false and session is not established,
+	// emitTimeoutStatus should emit SessionStatusUnreachable
+	statusChan := make(chan SessionEvent, 1)
+	plugin := &Plugin{
+		PeerStatusChan: statusChan,
+		peerAddr:       net.ParseIP("10.0.0.1"),
+	}
+
+	// Neither tcpConnected nor currentlyEstablished are set (both default to false)
+	emitted := plugin.emitTimeoutStatus()
+
+	require.True(t, emitted, "expected status to be emitted")
+	event := <-statusChan
+	require.Equal(t, SessionStatusUnreachable, event.Session.SessionStatus)
+	require.True(t, event.PeerAddr.Equal(net.ParseIP("10.0.0.1")))
+}
+
+func TestEmitTimeoutStatus_Failed(t *testing.T) {
+	// When tcpConnected is true but session is not established,
+	// emitTimeoutStatus should emit SessionStatusFailed
+	statusChan := make(chan SessionEvent, 1)
+	plugin := &Plugin{
+		PeerStatusChan: statusChan,
+		peerAddr:       net.ParseIP("10.0.0.1"),
+	}
+
+	// TCP connected but BGP handshake didn't complete
+	plugin.tcpConnected.Store(true)
+
+	emitted := plugin.emitTimeoutStatus()
+
+	require.True(t, emitted, "expected status to be emitted")
+	event := <-statusChan
+	require.Equal(t, SessionStatusFailed, event.Session.SessionStatus)
+	require.True(t, event.PeerAddr.Equal(net.ParseIP("10.0.0.1")))
+}
+
+func TestEmitTimeoutStatus_NoEmitWhenEstablished(t *testing.T) {
+	// When session is already established, emitTimeoutStatus should not emit
+	statusChan := make(chan SessionEvent, 1)
+	plugin := &Plugin{
+		PeerStatusChan: statusChan,
+		peerAddr:       net.ParseIP("10.0.0.1"),
+	}
+
+	// Session is established
+	plugin.currentlyEstablished.Store(true)
+
+	emitted := plugin.emitTimeoutStatus()
+
+	require.False(t, emitted, "expected no status to be emitted when established")
+	select {
+	case <-statusChan:
+		t.Fatal("unexpected event in status channel")
+	default:
+		// Expected: channel should be empty
+	}
+}

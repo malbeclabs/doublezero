@@ -143,6 +143,7 @@ pub fn process_user_event(
                 tunnel_id,
                 tunnel_net: tunnel_net.into(),
                 dz_ip,
+                use_onchain_allocation: false,
             }
             .execute(client);
 
@@ -233,6 +234,7 @@ pub fn process_user_event(
                 tunnel_id: user.tunnel_id,
                 tunnel_net: user.tunnel_net,
                 dz_ip,
+                use_onchain_allocation: false,
             }
             .execute(client);
             match res {
@@ -274,7 +276,11 @@ pub fn process_user_event(
                 .unwrap();
 
                 if user.status == UserStatus::Deleting {
-                    let res = CloseAccountUserCommand { pubkey: *pubkey }.execute(client);
+                    let res = CloseAccountUserCommand {
+                        pubkey: *pubkey,
+                        use_onchain_deallocation: false,
+                    }
+                    .execute(client);
 
                     match res {
                         Ok(signature) => {
@@ -531,6 +537,7 @@ mod tests {
                         tunnel_id: 500,
                         tunnel_net: "10.0.0.0/31".parse().unwrap(),
                         dz_ip: expected_dz_ip.unwrap_or(Ipv4Addr::UNSPECIFIED),
+                        dz_prefix_count: 0, // legacy path
                     })),
                     predicate::always(),
                 )
@@ -725,6 +732,7 @@ mod tests {
                         tunnel_id: 500,
                         tunnel_net: "10.0.0.1/29".parse().unwrap(),
                         dz_ip: [10, 0, 0, 1].into(),
+                        dz_prefix_count: 0, // legacy path
                     })),
                     predicate::always(),
                 )
@@ -1211,7 +1219,9 @@ mod tests {
                     .in_sequence(seq)
                     .with(
                         predicate::eq(DoubleZeroInstruction::CloseAccountUser(
-                            UserCloseAccountArgs {},
+                            UserCloseAccountArgs {
+                                dz_prefix_count: 0, // legacy path
+                            },
                         )),
                         predicate::always(),
                     )

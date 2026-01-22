@@ -92,6 +92,12 @@ func BuildContainerImages(ctx context.Context, log *slog.Logger, workspaceDir st
 			dockerfile: filepath.Join(dockerfilesDir, "funder", "Dockerfile"),
 			args:       append([]string{"--build-arg", baseImageArg, "--build-arg", "DOCKERFILE_DIR=" + filepath.Join(dockerfilesDirRelativeToWorkspace, "funder")}, extraArgs...),
 		},
+		{
+			name:       "device-health-oracle",
+			image:      os.Getenv("DZ_DEVICE_HEALTH_ORACLE_IMAGE"),
+			dockerfile: filepath.Join(dockerfilesDir, "device-health-oracle", "Dockerfile"),
+			args:       append([]string{"--build-arg", baseImageArg, "--build-arg", "DOCKERFILE_DIR=" + filepath.Join(dockerfilesDirRelativeToWorkspace, "device-health-oracle")}, extraArgs...),
+		},
 	}
 
 	if verbose {

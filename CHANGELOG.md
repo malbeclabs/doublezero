@@ -6,9 +6,27 @@ All notable changes to this project will be documented in this file.
 
 - CLI
   - Remove log noise on resolve route
+  - Add `global-config qa-allowlist` commands to manage QA identity allowlist to bypass status and max_users checks in QA
 - Onchain programs
-   - Removed device and user allowlist functionality, updating the global state, initialization flow, tests, and processors accordingly, and cleaning up unused account checks.
-   - Deprecated the user suspend status, as it is no longer used.
+  - Enforce Activated status check before suspending contributor, exchange, location, and multicastgroup accounts
+  - Removed device and user allowlist functionality, updating the global state, initialization flow, tests, and processors accordingly, and cleaning up unused account checks.
+  - Serviceability: require DeactivateMulticastGroup to only close multicast group accounts when both `publisher_count` and `subscriber_count` are zero, preventing deletion of groups that still have active publishers or subscribers.
+  - Deprecated the user suspend status, as it is no longer used.
+  - Serviceability: enforce that CloseAccountUser instructions verify the target user has no multicast publishers or subscribers (both `publishers` and `subscribers` are empty) before closing, and add regression coverage for this behavior.
+  - Removed device and user allowlist functionality, updating the global state, initialization flow, tests, and processors accordingly, and cleaning up unused account checks.
+  - SetGlobalConfig, ActivateDevice, UpdateDevice and CloseAccountDevice instructions updated to manage resource accounts.
+- Telemetry
+  - Add gNMI tunnel client for state collection
+- Activator
+  - fix(activator): ip_to_index fn honors ip range #2658
+- E2E tests
+  - Add influxdb, prometheus, and device-health-oracle containers
+- SDK
+  - Commands for setting global config, activating devices, updating devices, and closing device accounts now manage resource accounts.
+- Smartcontract
+  - feat(smartcontract): RFC 11 activation for User entity
+- Device Health Oracle
+  - Calculate burn-in timestamp based from slot numbers (current minus 200_000 slots for provisioning, current minus 5_000 slots for maintenance)
 
 ### Breaking
 
@@ -18,8 +36,9 @@ All notable changes to this project will be documented in this file.
 
 - CLI
   - Remove log noise on resolve route
+  - Remove "unknown" status from doublezero status command and implement "failed" and "unreachable" statuses
 - Onchain programs
-   - Removed device and user allowlist functionality, updating the global state, initialization flow, tests, and processors accordingly, and cleaning up unused account checks.
+  - Removed device and user allowlist functionality, updating the global state, initialization flow, tests, and processors accordingly, and cleaning up unused account checks.
 - Device Health Oracle
   - Add new device-health-oracle component. See rfcs/rfc12-network-provisioning.md for details.
 - Client
@@ -37,6 +56,7 @@ All notable changes to this project will be documented in this file.
   - Always delegate RouteAdd regardless of noUninstall flag
 - Telemetry
   - Include solana vote pubkey in global monitor metrics
+  - Run telemetry agent on pending and drained links
 
 ## [v0.8.1](https://github.com/malbeclabs/doublezero/compare/client/v0.8.0...client/v0.8.1) – 2025-01-12
 
@@ -71,17 +91,22 @@ All notable changes to this project will be documented in this file.
   - Introduced health management for Devices and Links, adding explicit health states, authorized health updates, and related state, processor, and test enhancements.
   - Require that BanUser can only be executed when the target user's status is PendingBan, enforcing the expected user ban workflow (request-ban -> ban).
   - Introduce desired status to Link and Devices
+  - Introduced health management for Devices and Links, adding explicit health states, authorized health updates, and related state, processor, and test enhancements.
   - Restrict DeleteDeviceInterface to interfaces in Activated or Unlinked status; attempting to delete interfaces in other statuses now fails with InvalidStatus.
   - Updated validation to allow public IP prefixes for CYOA/DIA, removing the restriction imposed by type-based checks.
   - Transit devices can now be provisioned without a public IP, aligning the requirements with their actual networking model and avoiding unnecessary configuration constraints.
   - Enforce that ActivateDeviceInterface only activates interfaces in Pending or Unlinked status, returning InvalidStatus for all other interface states
+  - Introduce desired status to Link and Devices
 - Internet Latency Telemetry
   - Fixed a bug that prevented unresponsive ripeatlas probes from being replaced
   - Fixed a bug that caused ripeatlas samples to be dropped when they were delayed to the next collection cycle
+- Link & device Latency Telemetry
+  - Telemetry data can now be received while entities are in provisioning and draining states.
 - Device controller
   - Add histogram metric for GetConfig request duration
   - Add gRPC middleware for prometheus metrics
   - Add device status label to controller_grpc_getconfig_requests_total metric
+  - Add logic to shutdown user BGP, IBGP sessions, MSDP neighbors, and ISIS when device.status is drained
 - Device agents
   - Increase default controller request timeout in config agent
   - Initial state collect in telemetry agent
@@ -122,6 +147,9 @@ All notable changes to this project will be documented in this file.
   - The QA alldevices test now considers device location and connects hosts to nearby devices
   - QA agent and tests now support doublezero connect ibrl's --allocate-addr flag
   - The QA alldevices test now publishes success/failure metrics to InfluxDB in support of rfc12
+- Onchain programs
+  - Fix CreateMulticastGroup to use incremented globalstate.account_index for PDA derivation instead of client-provided index, to ensure the contract is the authoritative source for account indices
+  - ReactivateMulticastGroup now enforces that the multicast group status must be Suspended before reactivation, returning InvalidStatus otherwise; negative-path regression tests were added.
 
 ## [v0.8.0](https://github.com/malbeclabs/doublezero/compare/client/v0.7.1...client/v0.8.0) – 2025-12-02
 

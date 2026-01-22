@@ -66,6 +66,11 @@ pub fn process_reactivate_multicastgroup(
     }
 
     let mut multicastgroup: MulticastGroup = MulticastGroup::try_from(multicastgroup_account)?;
+
+    if multicastgroup.status != MulticastGroupStatus::Suspended {
+        return Err(DoubleZeroError::InvalidStatus.into());
+    }
+
     multicastgroup.status = MulticastGroupStatus::Activated;
 
     try_acc_write(

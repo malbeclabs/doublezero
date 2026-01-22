@@ -27,6 +27,7 @@ pub struct GlobalState {
     pub contributor_airdrop_lamports: u64, // 8
     pub user_airdrop_lamports: u64,        // 8
     pub health_oracle_pk: Pubkey,          // 32
+    pub qa_allowlist: Vec<Pubkey>,         // 4 + 32 * len
 }
 
 impl Default for GlobalState {
@@ -43,6 +44,7 @@ impl Default for GlobalState {
             contributor_airdrop_lamports: 0,
             user_airdrop_lamports: 0,
             health_oracle_pk: Pubkey::default(),
+            qa_allowlist: Vec::new(),
         }
     }
 }
@@ -92,6 +94,7 @@ impl TryFrom<&[u8]> for GlobalState {
                 .unwrap_or_default(),
             user_airdrop_lamports: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             health_oracle_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            qa_allowlist: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::GlobalState {
@@ -180,6 +183,7 @@ mod tests {
             contributor_airdrop_lamports: 1_000_000_000,
             user_airdrop_lamports: 40_000,
             health_oracle_pk: Pubkey::new_unique(),
+            qa_allowlist: vec![Pubkey::new_unique(), Pubkey::new_unique()],
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -224,6 +228,7 @@ mod tests {
             contributor_airdrop_lamports: 1_000_000_000,
             user_airdrop_lamports: 40_000,
             health_oracle_pk: Pubkey::new_unique(),
+            qa_allowlist: vec![Pubkey::new_unique(), Pubkey::new_unique()],
         };
         let err = val.validate();
         assert!(err.is_err());

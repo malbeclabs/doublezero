@@ -585,6 +585,34 @@ func (d *Device) Start(ctx context.Context) error {
 	}
 	d.log.Info("--> Device container is healthy", "container", shortContainerID(containerID), "cyoaNetworkIP", cyoaNetworkIP, "defaultNetworkIP", defaultNetworkIP, "name", container.Name, "duration", time.Since(start))
 
+	// Configure InfluxDB telemetry via EOS `monitor telemetry influx` command.
+	if d.dn.InfluxDB != nil && d.dn.InfluxDB.InternalURL != "" {
+		d.log.Info("--> Configuring InfluxDB telemetry", "url", d.dn.InfluxDB.InternalURL)
+
+		// Configure EOS monitor telemetry influx destination.
+		// Note: Not using vrf management - the default VRF should have connectivity
+		// to the docker network where InfluxDB runs.
+		influxConfig := fmt.Sprintf(`enable
+configure
+monitor telemetry influx
+   destination influxdb DZ_INFLUX
+      url %s
+      database name %s
+      retention policy autogen
+   tag global dzd_pubkey %s
+   tag global location %s
+exit
+exit
+write memory
+`, d.dn.InfluxDB.InternalURL, d.dn.InfluxDB.Database(), devicePK, spec.Exchange)
+
+		_, err = docker.Exec(ctx, d.dn.dockerClient, containerID, []string{"Cli", "-c", influxConfig})
+		if err != nil {
+			return fmt.Errorf("failed to configure InfluxDB telemetry: %w", err)
+		}
+		d.log.Info("--> InfluxDB telemetry configured")
+	}
+
 	// Set the component's state.
 	err = d.setState(ctx, container.GetContainerID())
 	if err != nil {

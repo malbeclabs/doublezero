@@ -15,7 +15,7 @@ use std::{io::Write, path::PathBuf};
         .multiple(true)
 ))]
 pub struct SetConfigCliCommand {
-    /// DZ env shorthand to set the config to (testnet, devnet, or mainnet)
+    /// DZ env shorthand to set the config to (testnet [t], devnet [d], or mainnet-beta [m])
     #[arg(long, value_name = "ENV")]
     pub env: Option<String>,
     /// URL of the JSON RPC endpoint (devnet, testnet, mainnet, localhost)

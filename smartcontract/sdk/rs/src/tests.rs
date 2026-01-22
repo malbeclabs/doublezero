@@ -37,6 +37,7 @@ pub mod utils {
             contributor_airdrop_lamports: 1_000_000_000,
             user_airdrop_lamports: 40_000,
             health_oracle_pk: Pubkey::new_unique(),
+            qa_allowlist: vec![],
         };
         client
             .expect_get()

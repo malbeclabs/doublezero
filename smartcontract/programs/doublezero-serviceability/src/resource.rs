@@ -32,3 +32,42 @@ impl fmt::Display for IdOrIp {
         }
     }
 }
+
+impl IdOrIp {
+    pub fn as_ip(&self) -> Option<NetworkV4> {
+        match self {
+            IdOrIp::Ip(ip) => Some(*ip),
+            IdOrIp::Id(_) => None,
+        }
+    }
+
+    pub fn as_id(&self) -> Option<u16> {
+        match self {
+            IdOrIp::Ip(_) => None,
+            IdOrIp::Id(id) => Some(*id),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_as_ip() {
+        let ip = "192.168.1.1/32".parse::<NetworkV4>().unwrap();
+        let id_or_ip = IdOrIp::Ip(ip);
+        assert_eq!(id_or_ip.as_ip(), Some(ip));
+        let id_or_ip = IdOrIp::Id(42);
+        assert_eq!(id_or_ip.as_ip(), None);
+    }
+
+    #[test]
+    fn test_as_id() {
+        let id_or_ip = IdOrIp::Id(1234);
+        assert_eq!(id_or_ip.as_id(), Some(1234));
+        let ip = "192.168.1.1/32".parse::<NetworkV4>().unwrap();
+        let id_or_ip = IdOrIp::Ip(ip);
+        assert_eq!(id_or_ip.as_id(), None);
+    }
+}

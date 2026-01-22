@@ -21,8 +21,9 @@ import (
 )
 
 var (
-	devicesFlag       = flag.String("devices", "", "comma separated list of devices to run tests against")
-	allocateAddrHosts = flag.String("allocate-addr-hosts", "", "comma separated list of hosts that will have `--allocate-addr` passed to `doublezero connect ibrl`")
+	devicesFlag           = flag.String("devices", "", "comma separated list of devices to run tests against")
+	allocateAddrHosts     = flag.String("allocate-addr-hosts", "", "comma separated list of hosts that will have `--allocate-addr` passed to `doublezero connect ibrl`")
+	skipCapacityCheckFlag = flag.Bool("skip-capacity-check", false, "skip device capacity checks (use when running with QA identity that bypasses on-chain max_users)")
 )
 
 func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
@@ -49,7 +50,8 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 	require.GreaterOrEqual(t, len(clients), 2, "At least 2 clients are required for connectivity testing")
 
 	// Filter devices to only include those with sufficient capacity and skip test devices
-	devices := test.ValidDevices(2)
+	// When using a QA identity (--skip-capacity-check), all devices are included regardless of capacity
+	devices := test.ValidDevices(2, *skipCapacityCheckFlag)
 	if len(devices) == 0 {
 		t.Skip("No valid devices found with sufficient capacity")
 	}
@@ -304,7 +306,7 @@ func connectClientsAndWaitForRoutes(
 			continue
 		}
 		statuses[c.Host] = status.SessionStatus
-		if status.SessionStatus != qa.UserStatusUp {
+		if !qa.IsStatusUp(status.SessionStatus) {
 			log.Warn("Client not up", "client", c.Host, "status", status.SessionStatus)
 		}
 	}

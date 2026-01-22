@@ -25,7 +25,8 @@ RUN git clone --depth 1 https://github.com/openconfig/yang.git /yang/third_party
 WORKDIR /out
 
 # Generate Go structs from OpenConfig models
-# We generate from network-instance (includes ISIS), interfaces, and system
+# We generate from network-instance (includes ISIS), interfaces, system,
+# platform, and platform-transceiver (optical transceiver state)
 # The -compress_paths flag enables OpenConfig path compression
 # The -generate_fakeroot creates a root "Device" struct
 #
@@ -54,5 +55,7 @@ CMD ["sh", "-c", "\
     /yang/public/release/models/network-instance/openconfig-network-instance.yang \
     /yang/public/release/models/interfaces/openconfig-interfaces.yang \
     /yang/public/release/models/system/openconfig-system.yang \
+    /yang/public/release/models/platform/openconfig-platform.yang \
+    /yang/public/release/models/platform/openconfig-platform-transceiver.yang \
     && echo 'Generated oc.go successfully' \
 "]

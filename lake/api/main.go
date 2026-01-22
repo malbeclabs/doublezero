@@ -3,13 +3,16 @@ package main
 import (
 	"context"
 	"flag"
+	"io"
 	"log"
+	"mime"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -39,8 +42,9 @@ const (
 	defaultMetricsAddr = "0.0.0.0:0"
 )
 
-// spaHandler serves static files and falls back to index.html for SPA routing
-func spaHandler(staticDir string) http.HandlerFunc {
+// spaHandler serves static files and falls back to index.html for SPA routing.
+// If assetBucketURL is set, missing assets are fetched from the bucket and cached locally.
+func spaHandler(staticDir, assetBucketURL string) http.HandlerFunc {
 	fileServer := http.FileServer(http.Dir(staticDir))
 
 	// Static asset extensions that should 404 if missing (not fallback to index.html)
@@ -58,10 +62,98 @@ func spaHandler(staticDir string) http.HandlerFunc {
 		w.Header().Set("Expires", "0")
 	}
 
+	// setLongCacheHeaders allows browsers to cache content-hashed assets indefinitely
+	setLongCacheHeaders := func(w http.ResponseWriter) {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	}
+
+	// Asset cache directory for assets fetched from S3
+	cacheDir := filepath.Join(os.TempDir(), "lake-asset-cache")
+	if assetBucketURL != "" {
+		if err := os.MkdirAll(cacheDir, 0755); err != nil {
+			log.Printf("Warning: failed to create asset cache dir: %v", err)
+		}
+	}
+
+	// Track in-flight fetches to avoid duplicate requests for the same asset
+	var fetchMu sync.Mutex
+	fetching := make(map[string]chan struct{})
+
+	// fetchFromBucket fetches an asset from S3 and caches it locally.
+	// Returns the local cache path on success, empty string on failure.
+	fetchFromBucket := func(assetName string) string {
+		if assetBucketURL == "" {
+			return ""
+		}
+
+		cachePath := filepath.Join(cacheDir, assetName)
+
+		// Check if already cached
+		if _, err := os.Stat(cachePath); err == nil {
+			return cachePath
+		}
+
+		// Coordinate concurrent fetches for the same asset
+		fetchMu.Lock()
+		if ch, ok := fetching[assetName]; ok {
+			fetchMu.Unlock()
+			<-ch // Wait for in-flight fetch
+			if _, err := os.Stat(cachePath); err == nil {
+				return cachePath
+			}
+			return ""
+		}
+		ch := make(chan struct{})
+		fetching[assetName] = ch
+		fetchMu.Unlock()
+
+		defer func() {
+			fetchMu.Lock()
+			delete(fetching, assetName)
+			close(ch)
+			fetchMu.Unlock()
+		}()
+
+		// Fetch from S3
+		url := strings.TrimSuffix(assetBucketURL, "/") + "/" + assetName
+		resp, err := http.Get(url)
+		if err != nil {
+			log.Printf("Failed to fetch asset from bucket: %v", err)
+			return ""
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return ""
+		}
+
+		// Write to cache
+		if err := os.MkdirAll(filepath.Dir(cachePath), 0755); err != nil {
+			log.Printf("Failed to create cache subdir: %v", err)
+			return ""
+		}
+
+		f, err := os.Create(cachePath)
+		if err != nil {
+			log.Printf("Failed to create cache file: %v", err)
+			return ""
+		}
+		defer f.Close()
+
+		if _, err := io.Copy(f, resp.Body); err != nil {
+			log.Printf("Failed to write cache file: %v", err)
+			os.Remove(cachePath)
+			return ""
+		}
+
+		log.Printf("Cached asset from bucket: %s", assetName)
+		return cachePath
+	}
+
 	return func(w http.ResponseWriter, r *http.Request) {
 		path := filepath.Join(staticDir, strings.TrimPrefix(r.URL.Path, "/"))
 
-		// Check if file exists
+		// Check if file exists locally
 		_, err := os.Stat(path)
 		if os.IsNotExist(err) || err != nil {
 			// Check if it's a directory (and serve index.html from it or fallback)
@@ -74,10 +166,23 @@ func spaHandler(staticDir string) http.HandlerFunc {
 				}
 			}
 
-			// For static assets, return 404 instead of falling back to index.html
-			// This prevents MIME type errors when old cached HTML requests stale JS/CSS chunks
+			// For static assets, try fetching from S3 bucket if configured
 			ext := strings.ToLower(filepath.Ext(r.URL.Path))
 			if staticExtensions[ext] {
+				// Extract asset name (e.g., "assets/index-abc123.js" from "/assets/index-abc123.js")
+				assetName := strings.TrimPrefix(r.URL.Path, "/assets/")
+				if cachePath := fetchFromBucket(assetName); cachePath != "" {
+					// Serve from cache with appropriate content type and long cache headers
+					setLongCacheHeaders(w)
+					contentType := mime.TypeByExtension(ext)
+					if contentType != "" {
+						w.Header().Set("Content-Type", contentType)
+					}
+					http.ServeFile(w, r, cachePath)
+					return
+				}
+
+				// Not in bucket either, return 404
 				setNoCacheHeaders(w)
 				http.NotFound(w, r)
 				return
@@ -338,9 +443,15 @@ func main() {
 	if webDir == "" {
 		webDir = "/doublezero/web/dist"
 	}
+	// Optional S3 bucket URL for fetching assets not in the local dist
+	// (allows serving old assets after deploys while users still have old index.html cached)
+	assetBucketURL := os.Getenv("ASSET_BUCKET_URL")
 	if _, err := os.Stat(webDir); err == nil {
 		log.Printf("Serving static files from %s", webDir)
-		r.Get("/*", spaHandler(webDir))
+		if assetBucketURL != "" {
+			log.Printf("Asset bucket fallback enabled: %s", assetBucketURL)
+		}
+		r.Get("/*", spaHandler(webDir, assetBucketURL))
 	}
 
 	port := os.Getenv("PORT")

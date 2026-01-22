@@ -53,24 +53,6 @@ RUN echo "$CACHE_BUSTER" > ${BIN_DIR}/.cache-buster && \
     find ${BIN_DIR} -type f -exec touch {} +
 
 # ----------------------------------------------------------------------------
-# NodeJS builder
-# ----------------------------------------------------------------------------
-FROM oven/bun:latest AS builder-bun
-
-WORKDIR /doublezero
-COPY . .
-RUN mkdir -p bin/
-
-# Set build arguments for Vite environment variables
-ARG VITE_GOOGLE_CLIENT_ID
-ENV VITE_GOOGLE_CLIENT_ID=${VITE_GOOGLE_CLIENT_ID}
-
-# Build the lake-web UI (NodeJS)
-RUN cd lake/web && \
-    bun install && \
-    bun run build
-
-# ----------------------------------------------------------------------------
 # Main stage with only the binaries.
 # ----------------------------------------------------------------------------
 FROM ubuntu:24.04
@@ -97,7 +79,8 @@ ENV PATH="/doublezero/bin:${PATH}"
 # Copy binaries from the builder stage.
 COPY --from=builder-go /doublezero/bin/. /doublezero/bin/.
 
-# Copy web assets from the bun builder stage.
-COPY --from=builder-bun /doublezero/lake/web/dist /doublezero/web/dist
+# Copy pre-built web assets (built by deploy script, uploaded to S3)
+COPY lake/web/dist /doublezero/web/dist
+RUN test -f /doublezero/web/dist/index.html || (echo "Error: web assets not built. Run 'cd lake/web && bun run build' first." && exit 1)
 
 CMD ["/bin/bash"]

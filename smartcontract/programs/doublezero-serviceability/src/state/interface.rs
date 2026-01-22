@@ -432,12 +432,27 @@ impl Validate for Interface {
             msg!("Invalid VLAN ID: {}", interface.vlan_id);
             return Err(DoubleZeroError::InvalidVlanId);
         }
-        // Only allow private and link-local IPs for non-CYOA and non-DIA interfaces.
+
+        // CYOA can only be set on physical interfaces
+        if interface.interface_cyoa != InterfaceCYOA::None
+            && interface.interface_type != InterfaceType::Physical
+        {
+            msg!(
+                "CYOA can only be set on physical interfaces, not {:?}",
+                interface.interface_type
+            );
+            return Err(DoubleZeroError::CyoaRequiresPhysical);
+        }
+
+        // Only allow private and link-local IPs for non-CYOA and non-DIA interfaces,
+        // unless it's a loopback interface with user_tunnel_endpoint set to true.
         if interface.ip_net != NetworkV4::default()
             && interface.interface_cyoa == InterfaceCYOA::None
             && interface.interface_dia == InterfaceDIA::None
             && !interface.ip_net.ip().is_private()
             && !interface.ip_net.ip().is_link_local()
+            && !(interface.interface_type == InterfaceType::Loopback
+                && interface.user_tunnel_endpoint)
         {
             msg!("Invalid interface IP: {}", interface.ip_net);
             return Err(DoubleZeroError::InvalidInterfaceIp);
@@ -569,5 +584,196 @@ mod test_interface_validate {
         iface.ip_net = "8.8.8.8/24".parse().unwrap();
         let err = Interface::V2(iface).validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidInterfaceIp);
+    }
+
+    #[test]
+    fn test_cyoa_on_loopback_invalid() {
+        let mut iface = base_interface();
+        iface.name = "Loopback100".to_string();
+        iface.interface_type = InterfaceType::Loopback;
+        iface.interface_cyoa = InterfaceCYOA::GREOverDIA;
+        let err = Interface::V2(iface).validate();
+        assert_eq!(err.unwrap_err(), DoubleZeroError::CyoaRequiresPhysical);
+    }
+
+    #[test]
+    fn test_cyoa_on_physical_valid() {
+        let mut iface = base_interface();
+        iface.interface_type = InterfaceType::Physical;
+        iface.interface_cyoa = InterfaceCYOA::GREOverDIA;
+        assert!(Interface::V2(iface).validate().is_ok());
+    }
+
+    #[test]
+    fn test_public_ip_on_loopback_with_user_tunnel_endpoint() {
+        let mut iface = base_interface();
+        iface.name = "Loopback100".to_string();
+        iface.interface_type = InterfaceType::Loopback;
+        iface.ip_net = "195.219.138.96/32".parse().unwrap();
+        iface.user_tunnel_endpoint = true;
+
+        assert!(Interface::V2(iface).validate().is_ok());
+    }
+
+    #[test]
+    fn test_public_ip_on_loopback_without_user_tunnel_endpoint() {
+        let mut iface = base_interface();
+        iface.name = "Loopback100".to_string();
+        iface.interface_type = InterfaceType::Loopback;
+        iface.ip_net = "195.219.138.96/32".parse().unwrap();
+        iface.user_tunnel_endpoint = false;
+
+        let err = Interface::V2(iface).validate();
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidInterfaceIp);
+    }
+
+    /// Test that prints serialized bytes of InterfaceV2 for cross-language debugging.
+    /// Run with: cargo test test_interface_v2_serialization_bytes -- --nocapture
+    #[test]
+    fn test_interface_v2_serialization_bytes() {
+        // Create an interface similar to what the e2e test creates after update
+        let iface = InterfaceV2 {
+            status: InterfaceStatus::Activated,
+            name: "Loopback106".to_string(),
+            interface_type: InterfaceType::Loopback,
+            interface_cyoa: InterfaceCYOA::None,
+            interface_dia: InterfaceDIA::None,
+            loopback_type: LoopbackType::Ipv4, // Updated value
+            bandwidth: 0,
+            cir: 0,
+            mtu: 9000, // Updated value
+            routing_mode: RoutingMode::Static,
+            vlan_id: 0,
+            ip_net: "203.0.113.40/32".parse().unwrap(),
+            node_segment_idx: 0,
+            user_tunnel_endpoint: true,
+        };
+
+        // Serialize as Interface::V2 (with enum discriminant)
+        let interface_enum = Interface::V2(iface.clone());
+        let bytes = borsh::to_vec(&interface_enum).unwrap();
+
+        println!("\n=== InterfaceV2 Serialization Debug ===");
+        println!("Total bytes: {}", bytes.len());
+        println!("Hex: {:02x?}", bytes);
+        println!("\nField breakdown:");
+        println!("  [0] enum discriminant (V2=1): {:02x}", bytes[0]);
+
+        let mut offset = 1;
+        println!("  [{}] status (Activated=1): {:02x}", offset, bytes[offset]);
+        offset += 1;
+
+        // String: 4 bytes length + chars
+        let name_len = u32::from_le_bytes([
+            bytes[offset],
+            bytes[offset + 1],
+            bytes[offset + 2],
+            bytes[offset + 3],
+        ]);
+        println!(
+            "  [{}-{}] name length: {} (0x{:08x})",
+            offset,
+            offset + 3,
+            name_len,
+            name_len
+        );
+        offset += 4;
+        let name_bytes = &bytes[offset..offset + name_len as usize];
+        println!(
+            "  [{}-{}] name: {:?}",
+            offset,
+            offset + name_len as usize - 1,
+            String::from_utf8_lossy(name_bytes)
+        );
+        offset += name_len as usize;
+
+        println!(
+            "  [{}] interface_type (Loopback=2): {:02x}",
+            offset, bytes[offset]
+        );
+        offset += 1;
+        println!(
+            "  [{}] interface_cyoa (None=0): {:02x}",
+            offset, bytes[offset]
+        );
+        offset += 1;
+        println!(
+            "  [{}] interface_dia (None=0): {:02x}",
+            offset, bytes[offset]
+        );
+        offset += 1;
+        println!(
+            "  [{}] loopback_type (Ipv4=1): {:02x}",
+            offset, bytes[offset]
+        );
+        offset += 1;
+
+        let bandwidth = u64::from_le_bytes(bytes[offset..offset + 8].try_into().unwrap());
+        println!(
+            "  [{}-{}] bandwidth: {} (0x{:016x})",
+            offset,
+            offset + 7,
+            bandwidth,
+            bandwidth
+        );
+        offset += 8;
+
+        let cir = u64::from_le_bytes(bytes[offset..offset + 8].try_into().unwrap());
+        println!(
+            "  [{}-{}] cir: {} (0x{:016x})",
+            offset,
+            offset + 7,
+            cir,
+            cir
+        );
+        offset += 8;
+
+        let mtu = u16::from_le_bytes(bytes[offset..offset + 2].try_into().unwrap());
+        println!("  [{}-{}] mtu: {} (0x{:04x})", offset, offset + 1, mtu, mtu);
+        offset += 2;
+
+        println!(
+            "  [{}] routing_mode (Static=0): {:02x}",
+            offset, bytes[offset]
+        );
+        offset += 1;
+
+        let vlan_id = u16::from_le_bytes(bytes[offset..offset + 2].try_into().unwrap());
+        println!(
+            "  [{}-{}] vlan_id: {} (0x{:04x})",
+            offset,
+            offset + 1,
+            vlan_id,
+            vlan_id
+        );
+        offset += 2;
+
+        println!(
+            "  [{}-{}] ip_net: {:02x?}",
+            offset,
+            offset + 4,
+            &bytes[offset..offset + 5]
+        );
+        offset += 5;
+
+        let node_segment_idx = u16::from_le_bytes(bytes[offset..offset + 2].try_into().unwrap());
+        println!(
+            "  [{}-{}] node_segment_idx: {} (0x{:04x})",
+            offset,
+            offset + 1,
+            node_segment_idx,
+            node_segment_idx
+        );
+        offset += 2;
+
+        println!("  [{}] user_tunnel_endpoint: {:02x}", offset, bytes[offset]);
+        offset += 1;
+
+        println!("  Total parsed: {} bytes", offset);
+        println!("=====================================\n");
+
+        // Verify the serialization
+        assert_eq!(mtu, 9000);
+        assert_eq!(bytes[0], 1); // V2 discriminant
     }
 }

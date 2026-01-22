@@ -1,5 +1,5 @@
 use crate::{
-    error::DoubleZeroError,
+    error::{DoubleZeroError, Validate},
     serializer::try_acc_write,
     state::{
         accounttype::AccountType,
@@ -145,7 +145,11 @@ pub fn process_update_device_interface(
         iface.node_segment_idx = node_segment_idx;
     }
     // until we have release V2 version for interfaces, always convert to v1
-    device.interfaces[idx] = iface.to_interface();
+    let updated_interface = iface.to_interface();
+
+    updated_interface.validate()?;
+
+    device.interfaces[idx] = updated_interface;
 
     try_acc_write(&device, device_account, payer_account, accounts)?;
 

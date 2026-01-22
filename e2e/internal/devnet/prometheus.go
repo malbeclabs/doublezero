@@ -40,6 +40,7 @@ type Prometheus struct {
 	ContainerID      string
 	DefaultNetworkIP string
 	InternalURL      string
+	ExternalPort     int
 }
 
 func (p *Prometheus) dockerContainerName() string {
@@ -161,14 +162,20 @@ func (p *Prometheus) setState(ctx context.Context, containerID string) error {
 		return fmt.Errorf("prometheus not connected to default network")
 	}
 
+	port, err := p.dn.waitForContainerPortExposed(ctx, containerID, prometheusInternalPort, 10*time.Second)
+	if err != nil {
+		return fmt.Errorf("failed to wait for prometheus port to be exposed: %w", err)
+	}
+
 	p.ContainerID = shortContainerID(containerID)
 	p.DefaultNetworkIP = networkSettings.IPAddress
 	p.InternalURL = fmt.Sprintf("http://%s:%d", p.DefaultNetworkIP, prometheusInternalPort)
+	p.ExternalPort = port
 
 	return nil
 }
 
-func (p *Prometheus) RemoteWriteURL() string {
+func (p *Prometheus) InternalRemoteWriteURL() string {
 	return fmt.Sprintf("http://%s:%d/api/v1/write", p.DefaultNetworkIP, prometheusInternalPort)
 }
 
@@ -177,7 +184,10 @@ func (p *Prometheus) RemoteWriteURL() string {
 // TODO: this can be removed once rfc12 has been fully implemented
 func (p *Prometheus) HasDeviceMetrics(ctx context.Context, devicePubkey string) (bool, error) {
 	query := fmt.Sprintf(`controller_grpc_getconfig_requests_total{pubkey="%s"}`, devicePubkey)
-	queryURL := fmt.Sprintf("%s/api/v1/query?query=%s", p.InternalURL, url.QueryEscape(query))
+	queryURL := fmt.Sprintf("http://%s:%d/api/v1/query?query=%s", p.dn.ExternalHost, p.ExternalPort, url.QueryEscape(query))
+
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, queryURL, nil)
 	if err != nil {

@@ -82,12 +82,15 @@ export function WhatIfRemovalPanel({ removalLink, result, isLoading, onClear }: 
                     <div className="ml-2 text-[10px]">
                       {path.hasAlternate ? (
                         <span className="text-amber-500">
-                          {path.beforeHops} → {path.afterHops} hops (+{path.afterHops - path.beforeHops})
                           {path.beforeMetric > 0 && path.afterMetric > 0 && (
-                            <span className="ml-1 text-muted-foreground">
-                              | {(path.afterMetric / 1000).toFixed(1)}ms (+{((path.afterMetric - path.beforeMetric) / 1000).toFixed(1)}ms)
-                            </span>
+                            <>
+                              {((path.afterMetric - path.beforeMetric) / 1000).toFixed(1)}ms slower
+                              <span className="mx-1 text-muted-foreground">·</span>
+                            </>
                           )}
+                          <span className="text-muted-foreground">
+                            {path.beforeHops} → {path.afterHops} hops
+                          </span>
                         </span>
                       ) : (
                         <span className="text-red-500">No alternate path</span>

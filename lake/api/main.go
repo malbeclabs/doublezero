@@ -51,6 +51,13 @@ func spaHandler(staticDir string) http.HandlerFunc {
 		".json": true, ".wasm": true,
 	}
 
+	// setNoCacheHeaders prevents browsers from caching the response
+	setNoCacheHeaders := func(w http.ResponseWriter) {
+		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("Expires", "0")
+	}
+
 	return func(w http.ResponseWriter, r *http.Request) {
 		path := filepath.Join(staticDir, strings.TrimPrefix(r.URL.Path, "/"))
 
@@ -61,6 +68,7 @@ func spaHandler(staticDir string) http.HandlerFunc {
 			if fi, statErr := os.Stat(path); statErr == nil && fi.IsDir() {
 				indexPath := filepath.Join(path, "index.html")
 				if _, indexErr := os.Stat(indexPath); indexErr == nil {
+					setNoCacheHeaders(w)
 					http.ServeFile(w, r, indexPath)
 					return
 				}
@@ -70,13 +78,20 @@ func spaHandler(staticDir string) http.HandlerFunc {
 			// This prevents MIME type errors when old cached HTML requests stale JS/CSS chunks
 			ext := strings.ToLower(filepath.Ext(r.URL.Path))
 			if staticExtensions[ext] {
+				setNoCacheHeaders(w)
 				http.NotFound(w, r)
 				return
 			}
 
 			// Fallback to root index.html for SPA routing
+			setNoCacheHeaders(w)
 			http.ServeFile(w, r, filepath.Join(staticDir, "index.html"))
 			return
+		}
+
+		// Direct request to index.html - never cache
+		if strings.HasSuffix(r.URL.Path, "index.html") {
+			setNoCacheHeaders(w)
 		}
 
 		fileServer.ServeHTTP(w, r)

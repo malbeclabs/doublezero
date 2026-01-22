@@ -311,6 +311,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
   const [mousePos, setMousePos] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const [selectedItem, setSelectedItemState] = useState<SelectedItem | null>(null)
   const mapRef = useRef<MapRef>(null)
+  const [mapReady, setMapReady] = useState(false)
   const markerClickedRef = useRef(false)
 
   // Get unified topology context
@@ -1469,9 +1470,10 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
 
   // Restore mode selections from URL params on initial load
   useEffect(() => {
-    // Only run once when data is available
+    // Only run once when data and map are available
     if (modeParamsRestored) return
     if (deviceMap.size === 0 || linkMap.size === 0) return
+    if (!mapReady) return
 
     const pathSourceParam = searchParams.get('path_source')
     const pathTargetParam = searchParams.get('path_target')
@@ -1499,6 +1501,29 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
         setMode('path')
         openPanel('mode')
       }
+      // Fly to show selected device(s)
+      const sourceDevice = pathSourceParam ? deviceMap.get(pathSourceParam) : undefined
+      const targetDevice = pathTargetParam ? deviceMap.get(pathTargetParam) : undefined
+      const sourceMetro = sourceDevice ? metroMap.get(sourceDevice.metro_pk) : undefined
+      const targetMetro = targetDevice ? metroMap.get(targetDevice.metro_pk) : undefined
+      if (sourceMetro && targetMetro && mapRef.current) {
+        // Two devices - fly to midpoint
+        let aLng = sourceMetro.longitude
+        let zLng = targetMetro.longitude
+        const lngDelta = zLng - aLng
+        if (Math.abs(lngDelta) > 180) {
+          zLng = lngDelta > 0 ? zLng - 360 : zLng + 360
+        }
+        let midLng = (aLng + zLng) / 2
+        if (midLng > 180) midLng -= 360
+        if (midLng < -180) midLng += 360
+        const midLat = (sourceMetro.latitude + targetMetro.latitude) / 2
+        mapRef.current.flyTo({ center: [midLng, midLat], zoom: 3, duration: 1000 })
+      } else if (sourceMetro && mapRef.current) {
+        mapRef.current.flyTo({ center: [sourceMetro.longitude, sourceMetro.latitude], zoom: 4, duration: 1000 })
+      } else if (targetMetro && mapRef.current) {
+        mapRef.current.flyTo({ center: [targetMetro.longitude, targetMetro.latitude], zoom: 4, duration: 1000 })
+      }
       setModeParamsRestored(true)
       return
     }
@@ -1511,6 +1536,24 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
         if (mode !== 'whatif-removal') {
           setMode('whatif-removal')
           openPanel('mode')
+        }
+        // Fly to the link's midpoint
+        const deviceA = deviceMap.get(link.side_a_pk)
+        const deviceZ = deviceMap.get(link.side_z_pk)
+        const metroA = deviceA ? metroMap.get(deviceA.metro_pk) : undefined
+        const metroZ = deviceZ ? metroMap.get(deviceZ.metro_pk) : undefined
+        if (metroA && metroZ && mapRef.current) {
+          let aLng = metroA.longitude
+          let zLng = metroZ.longitude
+          const lngDelta = zLng - aLng
+          if (Math.abs(lngDelta) > 180) {
+            zLng = lngDelta > 0 ? zLng - 360 : zLng + 360
+          }
+          let midLng = (aLng + zLng) / 2
+          if (midLng > 180) midLng -= 360
+          if (midLng < -180) midLng += 360
+          const midLat = (metroA.latitude + metroZ.latitude) / 2
+          mapRef.current.flyTo({ center: [midLng, midLat], zoom: 3, duration: 1000 })
         }
         setModeParamsRestored(true)
         return
@@ -1538,6 +1581,29 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
         setMode('whatif-addition')
         openPanel('mode')
       }
+      // Fly to show selected device(s)
+      const sourceDevice = additionSourceParam ? deviceMap.get(additionSourceParam) : undefined
+      const targetDevice = additionTargetParam ? deviceMap.get(additionTargetParam) : undefined
+      const sourceMetro = sourceDevice ? metroMap.get(sourceDevice.metro_pk) : undefined
+      const targetMetro = targetDevice ? metroMap.get(targetDevice.metro_pk) : undefined
+      if (sourceMetro && targetMetro && mapRef.current) {
+        // Two devices - fly to midpoint
+        let aLng = sourceMetro.longitude
+        let zLng = targetMetro.longitude
+        const lngDelta = zLng - aLng
+        if (Math.abs(lngDelta) > 180) {
+          zLng = lngDelta > 0 ? zLng - 360 : zLng + 360
+        }
+        let midLng = (aLng + zLng) / 2
+        if (midLng > 180) midLng -= 360
+        if (midLng < -180) midLng += 360
+        const midLat = (sourceMetro.latitude + targetMetro.latitude) / 2
+        mapRef.current.flyTo({ center: [midLng, midLat], zoom: 3, duration: 1000 })
+      } else if (sourceMetro && mapRef.current) {
+        mapRef.current.flyTo({ center: [sourceMetro.longitude, sourceMetro.latitude], zoom: 4, duration: 1000 })
+      } else if (targetMetro && mapRef.current) {
+        mapRef.current.flyTo({ center: [targetMetro.longitude, targetMetro.latitude], zoom: 4, duration: 1000 })
+      }
       setModeParamsRestored(true)
       return
     }
@@ -1550,6 +1616,12 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           setMode('impact')
           openPanel('mode')
         }
+        // Fly to the impact device
+        const device = deviceMap.get(impactDeviceParam)
+        const metro = device ? metroMap.get(device.metro_pk) : undefined
+        if (metro && mapRef.current) {
+          mapRef.current.flyTo({ center: [metro.longitude, metro.latitude], zoom: 4, duration: 1000 })
+        }
         setModeParamsRestored(true)
         return
       }
@@ -1559,7 +1631,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
 
     // No mode params to restore
     setModeParamsRestored(true)
-  }, [modeParamsRestored, searchParams, deviceMap, linkMap, mode, setMode, openPanel])
+  }, [modeParamsRestored, searchParams, deviceMap, linkMap, metroMap, mapReady, mode, setMode, openPanel])
 
   // Restore selected item from URL params when they change
   // Track last processed params to avoid re-processing the same selection
@@ -1570,6 +1642,11 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
 
     // No params to restore
     if (!type || !id) {
+      return
+    }
+
+    // Wait for map to be ready before restoring selection (need map for flyTo)
+    if (!mapReady) {
       return
     }
 
@@ -1765,7 +1842,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     if (itemFound) {
       lastProcessedParamsRef.current = paramsKey
     }
-  }, [searchParams, validatorMap, deviceMap, linkMap, metroMap, devicesByMetro, showValidators, toggleOverlay, mode, openPanel, impactMode, pathModeEnabled, whatifAdditionMode, whatifRemovalMode, pathSource, pathTarget, additionSource, additionTarget])
+  }, [searchParams, mapReady, validatorMap, deviceMap, linkMap, metroMap, devicesByMetro, showValidators, toggleOverlay, mode, openPanel, impactMode, pathModeEnabled, whatifAdditionMode, whatifRemovalMode, pathSource, pathTarget, additionSource, additionTarget])
 
   // Handle link layer hover
   const handleLinkMouseEnter = useCallback((e: MapLayerMouseEvent) => {
@@ -1833,6 +1910,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
         onMouseEnter={handleLinkMouseEnter}
         onMouseLeave={handleLinkMouseLeave}
         onMouseMove={handleMouseMove}
+        onLoad={() => setMapReady(true)}
         cursor={hoveredLink ? 'pointer' : undefined}
       >
         <TopologyControlBar

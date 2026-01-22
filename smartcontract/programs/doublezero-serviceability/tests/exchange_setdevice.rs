@@ -4,7 +4,7 @@ use doublezero_serviceability::{
     pda::*,
     processors::{
         contributor::create::ContributorCreateArgs,
-        device::{create::*, update::DeviceUpdateArgs},
+        device::{create::*, sethealth::DeviceSetHealthArgs, update::DeviceUpdateArgs},
         exchange::setdevice::SetDeviceOption,
         *,
     },
@@ -289,6 +289,30 @@ async fn exchange_setdevice() {
         .get_device()
         .unwrap();
     assert_eq!(device.account_type, AccountType::Device);
+    assert_eq!(device.status, DeviceStatus::DeviceProvisioning);
+
+    /*****************************************************************************************************************************************************/
+    println!("🟢 7a. Set Device Health to ReadyForUsers...");
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetDeviceHealth(DeviceSetHealthArgs {
+            health: DeviceHealth::ReadyForUsers,
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let device = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_device()
+        .unwrap();
     assert_eq!(device.status, DeviceStatus::Activated);
 
     /*****************************************************************************************************************************************************/

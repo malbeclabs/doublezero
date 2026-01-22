@@ -641,19 +641,7 @@ async fn test_dzx_link() {
     )
     .await;
 
-    let tunnel_la = get_account_data(&mut banks_client, link_dzx_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_tunnel()
-        .unwrap();
-    assert_eq!(tunnel_la.account_type, AccountType::Link);
-    assert_eq!(tunnel_la.tunnel_id, 500);
-    assert_eq!(tunnel_la.tunnel_net.to_string(), "10.0.0.0/21");
-    assert_eq!(tunnel_la.status, LinkStatus::Activated);
-
-    println!("✅ Link activated");
-    /*****************************************************************************************************************************************************/
-    println!("🟢 14. Update Link...");
+    // Set link health to transition from Provisioning to Activated
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -674,9 +662,11 @@ async fn test_dzx_link() {
         .expect("Unable to get Account")
         .get_tunnel()
         .unwrap();
-    assert_eq!(tunnel_la.link_health, LinkHealth::ReadyForService);
-    assert_eq!(tunnel_la.desired_status, LinkDesiredStatus::Activated);
+    assert_eq!(tunnel_la.account_type, AccountType::Link);
+    assert_eq!(tunnel_la.tunnel_id, 500);
+    assert_eq!(tunnel_la.tunnel_net.to_string(), "10.0.0.0/21");
     assert_eq!(tunnel_la.status, LinkStatus::Activated);
+    assert_eq!(tunnel_la.link_health, LinkHealth::ReadyForService);
 
     println!("✅ Link activated");
     /*****************************************************************************************************************************************************/

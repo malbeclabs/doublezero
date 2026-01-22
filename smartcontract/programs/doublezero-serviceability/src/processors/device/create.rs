@@ -156,9 +156,7 @@ pub fn process_create_device(
         interfaces: vec![],
         users_count: 0,
         max_users: 0, // Initially, the Device is locked and must be activated by modifying the maximum number of users.
-        // TODO: This line show be change when the health oracle is implemented
-        // device_health: DeviceHealth::Pending,
-        device_health: DeviceHealth::ReadyForUsers, // Force the device to be ready for users until the health oracle is implemented
+        device_health: DeviceHealth::Pending,
         desired_status: value.desired_status.unwrap_or(DeviceDesiredStatus::Pending),
     };
 

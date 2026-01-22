@@ -9,11 +9,12 @@ use doublezero_serviceability::{
             activate::DeviceActivateArgs,
             create::*,
             interface::{DeviceInterfaceCreateArgs, DeviceInterfaceUnlinkArgs},
+            sethealth::DeviceSetHealthArgs,
             update::DeviceUpdateArgs,
         },
         exchange::create::*,
         globalconfig::set::SetGlobalConfigArgs,
-        link::{activate::*, create::*, update::LinkUpdateArgs},
+        link::{activate::*, create::*, sethealth::LinkSetHealthArgs, update::LinkUpdateArgs},
         location::create::*,
         user::{activate::*, create::*},
     },
@@ -527,6 +528,21 @@ async fn test_doublezero_program() {
     )
     .await;
 
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetDeviceHealth(DeviceSetHealthArgs {
+            health: DeviceHealth::ReadyForUsers,
+        }),
+        vec![
+            AccountMeta::new(device_ny_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
     let device_ny = get_account_data(&mut banks_client, device_ny_pubkey)
         .await
         .expect("Unable to get Device")
@@ -556,6 +572,21 @@ async fn test_doublezero_program() {
             AccountMeta::new(globalconfig_pubkey, false),
             AccountMeta::new(tunnel_ids_la_pda, false),
             AccountMeta::new(dz_prefix_la_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetDeviceHealth(DeviceSetHealthArgs {
+            health: DeviceHealth::ReadyForUsers,
+        }),
+        vec![
+            AccountMeta::new(device_la_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )
@@ -690,6 +721,22 @@ async fn test_doublezero_program() {
             AccountMeta::new(tunnel_la_ny_pubkey, false),
             AccountMeta::new(device_la_pubkey, false),
             AccountMeta::new(device_ny_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Set link health to transition from Provisioning to Activated
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetLinkHealth(LinkSetHealthArgs {
+            health: LinkHealth::ReadyForService,
+        }),
+        vec![
+            AccountMeta::new(tunnel_la_ny_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,

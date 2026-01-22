@@ -16,11 +16,12 @@ All notable changes to this project will be documented in this file.
   - Support simultaneous unicast and multicast tunnels in doublezerod
 - SDK
   - Go SDK can now perform batch writes to device.health and link.health as per rfc12
-
-## [v0.8.3](https://github.com/malbeclabs/doublezero/compare/client/v0.8.2...client/v0.8.3) – 2026-01-22
-
 - Data
   - Add indexer that syncs serviceability and telemetry data to ClickHouse and Neo4J
+- Device Health Oracle
+  - Add device-health-oracle to provisioning workflow, matching currenct behavior by promoting link and device health to ready without actually performing any health checks
+
+## [v0.8.3](https://github.com/malbeclabs/doublezero/compare/client/v0.8.2...client/v0.8.3) – 2026-01-22
 
 ### Breaking
 

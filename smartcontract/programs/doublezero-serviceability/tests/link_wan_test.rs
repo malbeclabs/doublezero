@@ -564,6 +564,22 @@ async fn test_wan_link() {
     )
     .await;
 
+    // Set link health to transition from Provisioning to Activated
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetLinkHealth(LinkSetHealthArgs {
+            health: LinkHealth::ReadyForService,
+        }),
+        vec![
+            AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
     let tunnel_la = get_account_data(&mut banks_client, tunnel_pubkey)
         .await
         .expect("Unable to get Account")

@@ -865,7 +865,7 @@ function TopDeviceUtilization({ devices }: { devices: StatusResponse['top_device
           <div key={device.pk} className="flex items-center gap-3">
             <div className="flex-1 min-w-0">
               <Link to={`/dz/devices/${device.pk}`} className="font-mono text-xs truncate hover:underline" title={device.code}>{device.code}</Link>
-              <div className="text-[10px] text-muted-foreground">{device.current_users}/{device.max_users} users</div>
+              <div className="text-[10px] text-muted-foreground">{device.current_users}/{device.max_users} users • {device.metro} • {device.contributor}</div>
             </div>
             <div className="w-24 flex items-center gap-2">
               <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">

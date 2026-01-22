@@ -79,27 +79,36 @@ const queryClient = new QueryClient({
 // Redirect to latest or new query session
 function QueryRedirect() {
   const navigate = useNavigate()
-  const { data: sessions, isLoading } = useQuerySessions()
-  const createSession = useCreateQuerySession()
+  const { data: sessions, isLoading, isError } = useQuerySessions()
+  const hasNavigatedRef = useRef(false)
 
   useEffect(() => {
+    if (hasNavigatedRef.current) return
+
+    // On error or after loading completes, navigate to appropriate session
+    if (isError) {
+      // If we can't load sessions, just create a new one
+      hasNavigatedRef.current = true
+      navigate(`/query/${crypto.randomUUID()}`, { replace: true })
+      return
+    }
+
     if (isLoading || !sessions) return
+    hasNavigatedRef.current = true
 
     // Find the most recent session
     const mostRecent = [...sessions].sort(
       (a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()
     )[0]
 
-    // If most recent session is empty, use it; otherwise create a new one
+    // If most recent session is empty, use it; otherwise navigate to a new session ID.
+    // QueryEditorView will create the session if it doesn't exist.
     if (mostRecent && mostRecent.history.length === 0) {
       navigate(`/query/${mostRecent.id}`, { replace: true })
     } else {
-      const newId = crypto.randomUUID()
-      createSession.mutate(newId, {
-        onSuccess: () => navigate(`/query/${newId}`, { replace: true }),
-      })
+      navigate(`/query/${crypto.randomUUID()}`, { replace: true })
     }
-  }, [isLoading, sessions, navigate, createSession])
+  }, [isLoading, isError, sessions, navigate])
 
   return null
 }

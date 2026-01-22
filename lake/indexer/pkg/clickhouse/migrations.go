@@ -5,8 +5,8 @@ import (
 	"crypto/tls"
 	"database/sql"
 	"fmt"
+	"io/fs"
 	"log/slog"
-	"strings"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/pressly/goose/v3"
@@ -28,22 +28,25 @@ type MigrationConfig struct {
 	Secure   bool
 }
 
-// slogGooseLogger adapts slog.Logger to goose.Logger interface
-type slogGooseLogger struct {
-	log *slog.Logger
-}
-
-func (l *slogGooseLogger) Fatalf(format string, v ...any) {
-	l.log.Error(strings.TrimSpace(fmt.Sprintf(format, v...)))
-}
-
-func (l *slogGooseLogger) Printf(format string, v ...any) {
-	l.log.Info(strings.TrimSpace(fmt.Sprintf(format, v...)))
-}
-
 // RunMigrations executes all SQL migration files using goose (alias for Up)
 func RunMigrations(ctx context.Context, log *slog.Logger, cfg MigrationConfig) error {
 	return Up(ctx, log, cfg)
+}
+
+// newProvider creates a new goose provider with the given configuration.
+// Using the Provider API avoids global state and is concurrent-safe.
+func newProvider(db *sql.DB) (*goose.Provider, error) {
+	migrationsFS, err := fs.Sub(indexer.ClickHouseMigrationsFS, "db/clickhouse/migrations")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create migrations sub-filesystem: %w", err)
+	}
+
+	provider, err := goose.NewProvider(goose.DialectClickHouse, db, migrationsFS)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create goose provider: %w", err)
+	}
+
+	return provider, nil
 }
 
 // Up runs all pending migrations
@@ -56,14 +59,12 @@ func Up(ctx context.Context, log *slog.Logger, cfg MigrationConfig) error {
 	}
 	defer db.Close()
 
-	goose.SetLogger(&slogGooseLogger{log: log})
-	goose.SetBaseFS(indexer.ClickHouseMigrationsFS)
-
-	if err := goose.SetDialect("clickhouse"); err != nil {
-		return fmt.Errorf("failed to set goose dialect: %w", err)
+	provider, err := newProvider(db)
+	if err != nil {
+		return err
 	}
 
-	if err := goose.UpContext(ctx, db, "db/clickhouse/migrations"); err != nil {
+	if _, err := provider.Up(ctx); err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
 	}
 
@@ -81,14 +82,12 @@ func UpTo(ctx context.Context, log *slog.Logger, cfg MigrationConfig, version in
 	}
 	defer db.Close()
 
-	goose.SetLogger(&slogGooseLogger{log: log})
-	goose.SetBaseFS(indexer.ClickHouseMigrationsFS)
-
-	if err := goose.SetDialect("clickhouse"); err != nil {
-		return fmt.Errorf("failed to set goose dialect: %w", err)
+	provider, err := newProvider(db)
+	if err != nil {
+		return err
 	}
 
-	if err := goose.UpToContext(ctx, db, "db/clickhouse/migrations", version); err != nil {
+	if _, err := provider.UpTo(ctx, version); err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
 	}
 
@@ -106,14 +105,12 @@ func Down(ctx context.Context, log *slog.Logger, cfg MigrationConfig) error {
 	}
 	defer db.Close()
 
-	goose.SetLogger(&slogGooseLogger{log: log})
-	goose.SetBaseFS(indexer.ClickHouseMigrationsFS)
-
-	if err := goose.SetDialect("clickhouse"); err != nil {
-		return fmt.Errorf("failed to set goose dialect: %w", err)
+	provider, err := newProvider(db)
+	if err != nil {
+		return err
 	}
 
-	if err := goose.DownContext(ctx, db, "db/clickhouse/migrations"); err != nil {
+	if _, err := provider.Down(ctx); err != nil {
 		return fmt.Errorf("failed to roll back migration: %w", err)
 	}
 
@@ -131,14 +128,12 @@ func DownTo(ctx context.Context, log *slog.Logger, cfg MigrationConfig, version 
 	}
 	defer db.Close()
 
-	goose.SetLogger(&slogGooseLogger{log: log})
-	goose.SetBaseFS(indexer.ClickHouseMigrationsFS)
-
-	if err := goose.SetDialect("clickhouse"); err != nil {
-		return fmt.Errorf("failed to set goose dialect: %w", err)
+	provider, err := newProvider(db)
+	if err != nil {
+		return err
 	}
 
-	if err := goose.DownToContext(ctx, db, "db/clickhouse/migrations", version); err != nil {
+	if _, err := provider.DownTo(ctx, version); err != nil {
 		return fmt.Errorf("failed to roll back migrations: %w", err)
 	}
 
@@ -156,15 +151,18 @@ func Redo(ctx context.Context, log *slog.Logger, cfg MigrationConfig) error {
 	}
 	defer db.Close()
 
-	goose.SetLogger(&slogGooseLogger{log: log})
-	goose.SetBaseFS(indexer.ClickHouseMigrationsFS)
-
-	if err := goose.SetDialect("clickhouse"); err != nil {
-		return fmt.Errorf("failed to set goose dialect: %w", err)
+	provider, err := newProvider(db)
+	if err != nil {
+		return err
 	}
 
-	if err := goose.RedoContext(ctx, db, "db/clickhouse/migrations"); err != nil {
-		return fmt.Errorf("failed to redo migration: %w", err)
+	// Provider doesn't have Redo, so we do Down then Up
+	if _, err := provider.Down(ctx); err != nil {
+		return fmt.Errorf("failed to roll back migration: %w", err)
+	}
+
+	if _, err := provider.Up(ctx); err != nil {
+		return fmt.Errorf("failed to re-apply migration: %w", err)
 	}
 
 	log.Info("ClickHouse migration redone successfully")
@@ -181,14 +179,13 @@ func Reset(ctx context.Context, log *slog.Logger, cfg MigrationConfig) error {
 	}
 	defer db.Close()
 
-	goose.SetLogger(&slogGooseLogger{log: log})
-	goose.SetBaseFS(indexer.ClickHouseMigrationsFS)
-
-	if err := goose.SetDialect("clickhouse"); err != nil {
-		return fmt.Errorf("failed to set goose dialect: %w", err)
+	provider, err := newProvider(db)
+	if err != nil {
+		return err
 	}
 
-	if err := goose.ResetContext(ctx, db, "db/clickhouse/migrations"); err != nil {
+	// Roll back to version 0 (all migrations)
+	if _, err := provider.DownTo(ctx, 0); err != nil {
 		return fmt.Errorf("failed to reset migrations: %w", err)
 	}
 
@@ -196,7 +193,7 @@ func Reset(ctx context.Context, log *slog.Logger, cfg MigrationConfig) error {
 	return nil
 }
 
-// Version prints the current migration version
+// Version returns the current migration version
 func Version(ctx context.Context, log *slog.Logger, cfg MigrationConfig) error {
 	db, err := newSQLDB(cfg)
 	if err != nil {
@@ -204,17 +201,17 @@ func Version(ctx context.Context, log *slog.Logger, cfg MigrationConfig) error {
 	}
 	defer db.Close()
 
-	goose.SetLogger(&slogGooseLogger{log: log})
-	goose.SetBaseFS(indexer.ClickHouseMigrationsFS)
-
-	if err := goose.SetDialect("clickhouse"); err != nil {
-		return fmt.Errorf("failed to set goose dialect: %w", err)
+	provider, err := newProvider(db)
+	if err != nil {
+		return err
 	}
 
-	if err := goose.VersionContext(ctx, db, "db/clickhouse/migrations"); err != nil {
+	version, err := provider.GetDBVersion(ctx)
+	if err != nil {
 		return fmt.Errorf("failed to get version: %w", err)
 	}
 
+	log.Info("current migration version", "version", version)
 	return nil
 }
 
@@ -228,15 +225,25 @@ func MigrationStatus(ctx context.Context, log *slog.Logger, cfg MigrationConfig)
 	}
 	defer db.Close()
 
-	// Set up goose with our logger
-	goose.SetLogger(&slogGooseLogger{log: log})
-	goose.SetBaseFS(indexer.ClickHouseMigrationsFS)
-
-	if err := goose.SetDialect("clickhouse"); err != nil {
-		return fmt.Errorf("failed to set goose dialect: %w", err)
+	provider, err := newProvider(db)
+	if err != nil {
+		return err
 	}
 
-	return goose.StatusContext(ctx, db, "db/clickhouse/migrations")
+	statuses, err := provider.Status(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get migration status: %w", err)
+	}
+
+	for _, s := range statuses {
+		state := "pending"
+		if s.State == goose.StateApplied {
+			state = "applied"
+		}
+		log.Info("migration", "version", s.Source.Version, "state", state, "path", s.Source.Path)
+	}
+
+	return nil
 }
 
 // newSQLDB creates a database/sql compatible connection for goose

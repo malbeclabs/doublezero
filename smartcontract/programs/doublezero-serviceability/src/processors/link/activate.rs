@@ -180,8 +180,8 @@ pub fn process_activate_link(
             "Invalid ResourceExtension PDA for LinkIds"
         );
 
-        // Allocate tunnel_net from global DeviceTunnelBlock
-        {
+        // Allocate tunnel_net from global DeviceTunnelBlock (skip if already allocated)
+        if link.tunnel_net == NetworkV4::default() {
             let mut buffer = device_tunnel_block_ext.data.borrow_mut();
             let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
             link.tunnel_net = resource
@@ -190,8 +190,8 @@ pub fn process_activate_link(
                 .ok_or(DoubleZeroError::InvalidArgument)?;
         }
 
-        // Allocate tunnel_id from global LinkIds
-        {
+        // Allocate tunnel_id from global LinkIds (skip if already allocated)
+        if link.tunnel_id == 0 {
             let mut buffer = link_ids_ext.data.borrow_mut();
             let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
             link.tunnel_id = resource

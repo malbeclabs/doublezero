@@ -6,9 +6,15 @@ use crate::{
             check_status::process_check_status_access_pass, close::process_close_access_pass,
             set::process_set_access_pass,
         },
-        allowlist::foundation::{
-            add::process_add_foundation_allowlist_globalconfig,
-            remove::process_remove_foundation_allowlist_globalconfig,
+        allowlist::{
+            foundation::{
+                add::process_add_foundation_allowlist_globalconfig,
+                remove::process_remove_foundation_allowlist_globalconfig,
+            },
+            qa::{
+                add::process_add_qa_allowlist_globalconfig,
+                remove::process_remove_qa_allowlist_globalconfig,
+            },
         },
         contributor::{
             create::process_create_contributor, delete::process_delete_contributor,
@@ -351,6 +357,12 @@ pub fn process_instruction(
         }
         DoubleZeroInstruction::SetLinkHealth(value) => {
             process_set_health_link(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::AddQaAllowlist(value) => {
+            process_add_qa_allowlist_globalconfig(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::RemoveQaAllowlist(value) => {
+            process_remove_qa_allowlist_globalconfig(program_id, accounts, &value)?
         }
     };
     Ok(())

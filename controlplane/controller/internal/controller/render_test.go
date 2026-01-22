@@ -548,6 +548,61 @@ func TestRenderConfig(t *testing.T) {
 			},
 			Want: "fixtures/base.config.txt",
 		},
+		{
+			Name:        "render_drained_device_config_successfully",
+			Description: "render config for a drained device with BGP, MSDP, and ISIS shutdown",
+			Data: templateData{
+				Strings:                  StringsHelper{},
+				MulticastGroupBlock:      "239.0.0.0/24",
+				TelemetryTWAMPListenPort: 862,
+				LocalASN:                 65342,
+				Device: &Device{
+					PublicIP:        net.IP{7, 7, 7, 7},
+					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
+					IsisNet:         "49.0000.0e0e.0e0e.0000.00",
+					Ipv4LoopbackIP:  net.IP{13, 13, 13, 13},
+					ExchangeCode:    "tst",
+					BgpCommunity:    10050,
+					Status:          serviceability.DeviceStatusDrained,
+					Interfaces: []Interface{
+						{
+							Name:           "Loopback255",
+							InterfaceType:  InterfaceTypeLoopback,
+							LoopbackType:   LoopbackTypeVpnv4,
+							Ip:             netip.MustParsePrefix("14.14.14.14/32"),
+							NodeSegmentIdx: 15,
+						},
+						{
+							Name:          "Ethernet1/1",
+							InterfaceType: InterfaceTypePhysical,
+							Ip:            netip.MustParsePrefix("172.16.0.2/31"),
+							Metric:        40000,
+							IsLink:        true,
+						},
+						{
+							Name:          "Ethernet1/2",
+							InterfaceType: InterfaceTypePhysical,
+							Ip:            netip.MustParsePrefix("172.16.0.4/31"),
+						},
+					},
+					Vpn4vLoopbackIntfName: "Loopback255",
+					Ipv4LoopbackIntfName:  "Loopback256",
+				},
+				Vpnv4BgpPeers: []BgpPeer{
+					{
+						PeerIP:   net.IP{15, 15, 15, 15},
+						PeerName: "remote-dzd",
+					},
+				},
+				Ipv4BgpPeers: []BgpPeer{
+					{
+						PeerIP:   net.IP{12, 12, 12, 12},
+						PeerName: "remote-dzd",
+					},
+				},
+			},
+			Want: "fixtures/base.config.drained.txt",
+		},
 	}
 
 	for _, test := range tests {

@@ -4,9 +4,30 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Breaking
+
+- None for this release
+
+### Changes
+
+## [v0.8.3](https://github.com/malbeclabs/doublezero/compare/client/v0.8.2...client/v0.8.3) – 2026-01-22
+
+
+### Breaking
+
+- None for this release
+
+### Changes
+
 - CLI
   - Remove log noise on resolve route
+  - Add `global-config qa-allowlist` commands to manage QA identity allowlist to bypass status and max_users checks in QA
+  - Remove "unknown" status from doublezero status command and implement "failed" and "unreachable" statuses
+- Client
+  - Enable route liveness passive-mode by default
+  - Add `make install` make target. To build and deploy from source, users can now run `cd client && make build && make install` to install the doublezero and doublezerod binaries and the doublezerod systemd unit.
 - Onchain programs
+  - Enforce Activated status check before suspending contributor, exchange, location, and multicastgroup accounts
   - Removed device and user allowlist functionality, updating the global state, initialization flow, tests, and processors accordingly, and cleaning up unused account checks.
   - Serviceability: require DeactivateMulticastGroup to only close multicast group accounts when both `publisher_count` and `subscriber_count` are zero, preventing deletion of groups that still have active publishers or subscribers.
   - Deprecated the user suspend status, as it is no longer used.
@@ -23,24 +44,12 @@ All notable changes to this project will be documented in this file.
   - Commands for setting global config, activating devices, updating devices, and closing device accounts now manage resource accounts.
 - Smartcontract
   - feat(smartcontract): RFC 11 activation for User entity
-- Device Health Oracle
-  - Calculate burn-in timestamp based from slot numbers (current minus 200_000 slots for provisioning, current minus 5_000 slots for maintenance)
-
-### Breaking
-
-- None for this release
-
-### Changes
-
-- CLI
-  - Remove log noise on resolve route
-  - Remove "unknown" status from doublezero status command and implement "failed" and "unreachable" statuses
-- Onchain programs
-  - Removed device and user allowlist functionality, updating the global state, initialization flow, tests, and processors accordingly, and cleaning up unused account checks.
+  - feat(smartcontract): RFC 11 add on-chain resource allocation for Link
 - Device Health Oracle
   - Add new device-health-oracle component. See rfcs/rfc12-network-provisioning.md for details.
-- Client
-  - Add `make install` make target. To build and deploy from source, users can now run `cd client && make build && make install` to install the doublezero and doublezerod binaries and the doublezerod systemd unit.
+  - Calculate burn-in timestamp based from slot numbers (current minus 200_000 slots for provisioning, current minus 5_000 slots for maintenance)
+- CI
+  - Add separate apt repo for doublezero-testnet
 
 ## [v0.8.2](https://github.com/malbeclabs/doublezero/compare/client/v0.8.1...client/v0.8.2) – 2025-01-13
 
@@ -104,6 +113,7 @@ All notable changes to this project will be documented in this file.
   - Add histogram metric for GetConfig request duration
   - Add gRPC middleware for prometheus metrics
   - Add device status label to controller_grpc_getconfig_requests_total metric
+  - Add logic to shutdown user BGP, IBGP sessions, MSDP neighbors, and ISIS when device.status is drained
 - Device agents
   - Increase default controller request timeout in config agent
   - Initial state collect in telemetry agent

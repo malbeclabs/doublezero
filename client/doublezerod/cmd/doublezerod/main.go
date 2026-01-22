@@ -49,7 +49,7 @@ var (
 	// TODO(snormore): These flags are temporary for initial rollout testing.
 	// They will be superceded by a single `route-liveness-enable` flag, where false means
 	// passive-mode and true means active-mode.
-	routeLivenessEnablePassive = flag.Bool("route-liveness-enable-passive", false, "enables route liveness in passive mode (experimental)")
+	routeLivenessEnablePassive = flag.Bool("route-liveness-enable-passive", true, "enables route liveness in passive mode")
 	routeLivenessEnableActive  = flag.Bool("route-liveness-enable-active", false, "enables route liveness in active mode (experimental)")
 
 	// set by LDFLAGS

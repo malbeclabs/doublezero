@@ -109,7 +109,7 @@ func (d *DeviceHealthOracle) Start(ctx context.Context) error {
 		"DZ_INTERVAL":                  d.dn.Spec.DeviceHealthOracle.Interval.String(),
 	}
 	if d.dn.Prometheus != nil && d.dn.Prometheus.InternalURL != "" {
-		env["ALLOY_PROMETHEUS_URL"] = d.dn.Prometheus.RemoteWriteURL()
+		env["ALLOY_PROMETHEUS_URL"] = d.dn.Prometheus.InternalRemoteWriteURL()
 	}
 
 	req := testcontainers.ContainerRequest{

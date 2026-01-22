@@ -72,6 +72,13 @@ pub fn process_suspend_contributor(
     }
 
     let mut contributor: Contributor = Contributor::try_from(contributor_account)?;
+
+    if contributor.status != ContributorStatus::Activated {
+        #[cfg(test)]
+        msg!("{:?}", contributor);
+        return Err(DoubleZeroError::InvalidStatus.into());
+    }
+
     contributor.status = ContributorStatus::Suspended;
 
     try_acc_write(&contributor, contributor_account, payer_account, accounts)?;

@@ -1,8 +1,11 @@
 use clap::{Args, Subcommand};
 use doublezero_cli::{
-    allowlist::foundation::{
-        add::AddFoundationAllowlistCliCommand, list::ListFoundationAllowlistCliCommand,
-        remove::RemoveFoundationAllowlistCliCommand,
+    allowlist::{
+        foundation::{
+            add::AddFoundationAllowlistCliCommand, list::ListFoundationAllowlistCliCommand,
+            remove::RemoveFoundationAllowlistCliCommand,
+        },
+        qa::{add::AddQaCliCommand, list::ListQaCliCommand, remove::RemoveQaCliCommand},
     },
     globalconfig::{
         airdrop::{get::GetAirdropCliCommand, set::SetAirdropCliCommand},
@@ -36,6 +39,9 @@ pub enum GlobalConfigCommands {
     /// Manage the foundation allowlist
     #[clap()]
     Allowlist(FoundationAllowlistCliCommand),
+    /// Manage the QA allowlist
+    #[clap()]
+    QaAllowlist(QaAllowlistCliCommand),
     /// Set the minimum compatible client version
     #[clap(hide = true)]
     SetVersion(SetVersionCliCommand),
@@ -90,4 +96,23 @@ pub enum FoundationAllowlistCommands {
     /// Remove a foundation from the allowlist
     #[clap()]
     Remove(RemoveFoundationAllowlistCliCommand),
+}
+
+#[derive(Args, Debug)]
+pub struct QaAllowlistCliCommand {
+    #[command(subcommand)]
+    pub command: QaAllowlistCommands,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum QaAllowlistCommands {
+    /// List QA allowlist
+    #[clap()]
+    List(ListQaCliCommand),
+    /// Add a pubkey to the QA allowlist
+    #[clap()]
+    Add(AddQaCliCommand),
+    /// Remove a pubkey from the QA allowlist
+    #[clap()]
+    Remove(RemoveQaCliCommand),
 }

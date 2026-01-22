@@ -29,6 +29,8 @@ All notable changes to this project will be documented in this file.
   - feat(smartcontract): RFC 11 activation for User entity
 - Device Health Oracle
   - Calculate burn-in timestamp based from slot numbers (current minus 200_000 slots for provisioning, current minus 5_000 slots for maintenance)
+- CI
+  - Add separate apt repo for doublezero-testnet
 
 ### Breaking
 

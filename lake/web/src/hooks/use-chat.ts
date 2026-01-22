@@ -258,14 +258,36 @@ export function useChatStream(sessionId: string | undefined) {
             }))
           },
           onSqlDone: (data) => {
-            setStreamState(prev => ({
-              ...prev,
-              processingSteps: prev.processingSteps.map(step =>
-                step.type === 'sql_query' && step.id === data.id
-                  ? { ...step, status: data.error ? 'error' : 'completed', rows: data.rows, error: data.error || undefined }
-                  : step
-              ),
-            }))
+            setStreamState(prev => {
+              const existingIndex = prev.processingSteps.findIndex(
+                step => step.type === 'sql_query' && step.id === data.id
+              )
+              if (existingIndex >= 0) {
+                // Update existing step
+                return {
+                  ...prev,
+                  processingSteps: prev.processingSteps.map((step, i) =>
+                    i === existingIndex
+                      ? { ...step, status: data.error ? 'error' : 'completed', rows: data.rows, error: data.error || undefined }
+                      : step
+                  ),
+                }
+              } else {
+                // Step not found (race condition) - add it as completed
+                return {
+                  ...prev,
+                  processingSteps: [...prev.processingSteps, {
+                    type: 'sql_query' as const,
+                    id: data.id,
+                    question: data.question,
+                    sql: data.sql,
+                    status: data.error ? 'error' : 'completed',
+                    rows: data.rows,
+                    error: data.error || undefined,
+                  }],
+                }
+              }
+            })
           },
           // Cypher query events
           onCypherStarted: (data) => {
@@ -281,14 +303,36 @@ export function useChatStream(sessionId: string | undefined) {
             }))
           },
           onCypherDone: (data) => {
-            setStreamState(prev => ({
-              ...prev,
-              processingSteps: prev.processingSteps.map(step =>
-                step.type === 'cypher_query' && step.id === data.id
-                  ? { ...step, status: data.error ? 'error' : 'completed', rows: data.rows, error: data.error || undefined }
-                  : step
-              ),
-            }))
+            setStreamState(prev => {
+              const existingIndex = prev.processingSteps.findIndex(
+                step => step.type === 'cypher_query' && step.id === data.id
+              )
+              if (existingIndex >= 0) {
+                // Update existing step
+                return {
+                  ...prev,
+                  processingSteps: prev.processingSteps.map((step, i) =>
+                    i === existingIndex
+                      ? { ...step, status: data.error ? 'error' : 'completed', rows: data.rows, error: data.error || undefined }
+                      : step
+                  ),
+                }
+              } else {
+                // Step not found (race condition) - add it as completed
+                return {
+                  ...prev,
+                  processingSteps: [...prev.processingSteps, {
+                    type: 'cypher_query' as const,
+                    id: data.id,
+                    question: data.question,
+                    cypher: data.cypher,
+                    status: data.error ? 'error' : 'completed',
+                    rows: data.rows,
+                    error: data.error || undefined,
+                  }],
+                }
+              }
+            })
           },
           // ReadDocs events
           onReadDocsStarted: (data) => {
@@ -303,14 +347,35 @@ export function useChatStream(sessionId: string | undefined) {
             }))
           },
           onReadDocsDone: (data) => {
-            setStreamState(prev => ({
-              ...prev,
-              processingSteps: prev.processingSteps.map(step =>
-                step.type === 'read_docs' && step.id === data.id
-                  ? { ...step, status: data.error ? 'error' : 'completed', content: data.content, error: data.error || undefined }
-                  : step
-              ),
-            }))
+            setStreamState(prev => {
+              const existingIndex = prev.processingSteps.findIndex(
+                step => step.type === 'read_docs' && step.id === data.id
+              )
+              if (existingIndex >= 0) {
+                // Update existing step
+                return {
+                  ...prev,
+                  processingSteps: prev.processingSteps.map((step, i) =>
+                    i === existingIndex
+                      ? { ...step, status: data.error ? 'error' : 'completed', content: data.content, error: data.error || undefined }
+                      : step
+                  ),
+                }
+              } else {
+                // Step not found (race condition) - add it as completed
+                return {
+                  ...prev,
+                  processingSteps: [...prev.processingSteps, {
+                    type: 'read_docs' as const,
+                    id: data.id,
+                    page: data.page,
+                    status: data.error ? 'error' : 'completed',
+                    content: data.content,
+                    error: data.error || undefined,
+                  }],
+                }
+              }
+            })
           },
           onWorkflowStarted: (data) => {
             setStreamState(prev => ({ ...prev, workflowId: data.workflow_id }))

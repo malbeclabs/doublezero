@@ -80,6 +80,38 @@ MaxMind     ───────────────►    │
 
 ## Development
 
+### Local Setup
+
+Run the setup script to get started:
+
+```bash
+./scripts/dev-setup.sh
+```
+
+This will:
+- Start Docker services (ClickHouse, PostgreSQL, Neo4j)
+- Create `.env` from `.env.example`
+- Download GeoIP databases
+
+Then start the services in separate terminals:
+
+```bash
+# Terminal 1: Run the indexer (imports data into ClickHouse)
+set -a; . ./.env; set +a
+go run indexer/cmd/indexer/main.go --verbose --migrations-enable
+
+# Terminal 2: Run the API server
+set -a; . ./.env; set +a
+go run ./api/main.go
+
+# Terminal 3: Run the web dev server
+cd web
+bun install
+bun dev
+```
+
+The web app will be at http://localhost:5173, API at http://localhost:8080.
+
 ### Running Agent Evals
 
 The agent has evaluation tests that validate the natural language to SQL workflow. Run them with:
@@ -92,6 +124,52 @@ The agent has evaluation tests that validate the natural language to SQL workflo
 ```
 
 Output goes to `eval-runs/<timestamp>/` - check `failures.log` for any failures.
+
+## Deployment
+
+Deploy to Kubernetes using the deploy script:
+
+```bash
+ASSET_BUCKET=my-lake-assets GOOGLE_CLIENT_ID=xxx ./scripts/deploy-app.sh
+```
+
+This will:
+1. Build web assets and upload to S3
+2. Build Docker image with pre-built assets
+3. Push to Docker registry
+4. Update Kubernetes deployment and wait for rollout
+
+### Options
+
+```bash
+./scripts/deploy-app.sh --dry-run      # Preview without making changes
+./scripts/deploy-app.sh --skip-assets  # Skip S3 upload (assets already uploaded)
+./scripts/deploy-app.sh --skip-build   # Skip Docker build (use existing image)
+./scripts/deploy-app.sh --skip-push    # Skip Docker push
+./scripts/deploy-app.sh --skip-deploy  # Skip Kubernetes rollout
+```
+
+### Configuration
+
+Environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ASSET_BUCKET` | (required) | S3 bucket for web assets |
+| `GOOGLE_CLIENT_ID` | (required) | Google OAuth client ID |
+| `DOCKER_REGISTRY` | `snormore` | Docker registry |
+| `DOCKER_IMAGE` | `doublezero-lake` | Docker image name |
+| `K8S_NAMESPACE` | `doublezero-data` | Kubernetes namespace |
+| `K8S_DEPLOYMENT` | `lake-api` | Deployment name |
+
+### Static Asset Fallback
+
+The API server fetches missing static assets from S3 to handle rolling deployments gracefully. When users have cached HTML referencing old JS/CSS bundles, the API fetches those assets from S3 instead of returning 404s.
+
+Configure with:
+```bash
+ASSET_BUCKET_URL=https://my-bucket.s3.amazonaws.com/assets
+```
 
 ## Environment
 

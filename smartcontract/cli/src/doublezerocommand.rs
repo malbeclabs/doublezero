@@ -5,9 +5,15 @@ use doublezero_sdk::{
             close::CloseAccessPassCommand, get::GetAccessPassCommand, list::ListAccessPassCommand,
             set::SetAccessPassCommand,
         },
-        allowlist::foundation::{
-            add::AddFoundationAllowlistCommand, list::ListFoundationAllowlistCommand,
-            remove::RemoveFoundationAllowlistCommand,
+        allowlist::{
+            foundation::{
+                add::AddFoundationAllowlistCommand, list::ListFoundationAllowlistCommand,
+                remove::RemoveFoundationAllowlistCommand,
+            },
+            qa::{
+                add::AddQaAllowlistCommand, list::ListQaAllowlistCommand,
+                remove::RemoveQaAllowlistCommand,
+            },
         },
         contributor::{
             create::CreateContributorCommand, delete::DeleteContributorCommand,
@@ -218,6 +224,9 @@ pub trait CliCommand {
         &self,
         cmd: RemoveFoundationAllowlistCommand,
     ) -> eyre::Result<Signature>;
+    fn list_qa_allowlist(&self, cmd: ListQaAllowlistCommand) -> eyre::Result<Vec<Pubkey>>;
+    fn add_qa_allowlist(&self, cmd: AddQaAllowlistCommand) -> eyre::Result<Signature>;
+    fn remove_qa_allowlist(&self, cmd: RemoveQaAllowlistCommand) -> eyre::Result<Signature>;
     fn create_multicastgroup(
         &self,
         cmd: CreateMulticastGroupCommand,
@@ -549,6 +558,15 @@ impl CliCommand for CliCommandImpl<'_> {
         &self,
         cmd: RemoveFoundationAllowlistCommand,
     ) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn list_qa_allowlist(&self, cmd: ListQaAllowlistCommand) -> eyre::Result<Vec<Pubkey>> {
+        cmd.execute(self.client)
+    }
+    fn add_qa_allowlist(&self, cmd: AddQaAllowlistCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn remove_qa_allowlist(&self, cmd: RemoveQaAllowlistCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
     fn create_multicastgroup(

@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 - CLI
   - Remove log noise on resolve route
+  - Add `global-config qa-allowlist` commands to manage QA identity allowlist to bypass status and max_users checks in QA
 - Onchain programs
   - Enforce Activated status check before suspending contributor, exchange, location, and multicastgroup accounts
   - Removed device and user allowlist functionality, updating the global state, initialization flow, tests, and processors accordingly, and cleaning up unused account checks.

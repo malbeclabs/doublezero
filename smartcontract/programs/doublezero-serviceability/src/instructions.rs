@@ -2,8 +2,9 @@ use crate::processors::{
     accesspass::{
         check_status::CheckStatusAccessPassArgs, close::CloseAccessPassArgs, set::SetAccessPassArgs,
     },
-    allowlist::foundation::{
-        add::AddFoundationAllowlistArgs, remove::RemoveFoundationAllowlistArgs,
+    allowlist::{
+        foundation::{add::AddFoundationAllowlistArgs, remove::RemoveFoundationAllowlistArgs},
+        qa::{add::AddQaAllowlistArgs, remove::RemoveQaAllowlistArgs},
     },
     contributor::{
         create::ContributorCreateArgs, delete::ContributorDeleteArgs,
@@ -184,6 +185,9 @@ pub enum DoubleZeroInstruction {
     SetLinkHealth(LinkSetHealthArgs),     // variant 84
 
     CloseResource(ResourceExtensionCloseAccountArgs), // variant 85
+
+    AddQaAllowlist(AddQaAllowlistArgs),       // variant 86
+    RemoveQaAllowlist(RemoveQaAllowlistArgs), // variant 87
 }
 
 impl DoubleZeroInstruction {
@@ -298,6 +302,9 @@ impl DoubleZeroInstruction {
             84 => Ok(Self::SetLinkHealth(LinkSetHealthArgs::try_from(rest).unwrap())),
             85 => Ok(Self::CloseResource(ResourceExtensionCloseAccountArgs::try_from(rest).unwrap())),
 
+            86 => Ok(Self::AddQaAllowlist(AddQaAllowlistArgs::try_from(rest).unwrap())),
+            87 => Ok(Self::RemoveQaAllowlist(RemoveQaAllowlistArgs::try_from(rest).unwrap())),
+
             _ => Err(ProgramError::InvalidInstructionData),
         }
     }
@@ -408,6 +415,9 @@ impl DoubleZeroInstruction {
             Self::SetDeviceHealth(_) => "SetDeviceHealth".to_string(), // variant 83
             Self::SetLinkHealth(_) => "SetLinkHealth".to_string(), // variant 84
             Self::CloseResource(_) => "CloseResource".to_string(), // variant 85
+
+            Self::AddQaAllowlist(_) => "AddQaAllowlist".to_string(), // variant 86
+            Self::RemoveQaAllowlist(_) => "RemoveQaAllowlist".to_string(), // variant 87
         }
     }
 
@@ -511,6 +521,9 @@ impl DoubleZeroInstruction {
             Self::SetDeviceHealth(args) => format!("{args:?}"), // variant 83
             Self::SetLinkHealth(args) => format!("{args:?}"), // variant 84
             Self::CloseResource(args) => format!("{args:?}"), // variant 85
+
+            Self::AddQaAllowlist(args) => format!("{args:?}"), // variant 86
+            Self::RemoveQaAllowlist(args) => format!("{args:?}"), // variant 87
         }
     }
 }
@@ -778,6 +791,18 @@ mod tests {
                 pubkey: Pubkey::new_unique(),
             }),
             "RemoveFoundationAllowlist",
+        );
+        test_instruction(
+            DoubleZeroInstruction::AddQaAllowlist(AddQaAllowlistArgs {
+                pubkey: Pubkey::new_unique(),
+            }),
+            "AddQaAllowlist",
+        );
+        test_instruction(
+            DoubleZeroInstruction::RemoveQaAllowlist(RemoveQaAllowlistArgs {
+                pubkey: Pubkey::new_unique(),
+            }),
+            "RemoveQaAllowlist",
         );
         test_instruction(
             DoubleZeroInstruction::AddDeviceAllowlist(),

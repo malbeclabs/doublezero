@@ -1679,6 +1679,12 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       }
     }
 
+    const linkFitsInView = (aLng: number, aLat: number, zLng: number, zLat: number) => {
+      if (!mapRef.current) return false
+      const bounds = mapRef.current.getMap().getBounds()
+      return bounds.contains([aLng, aLat]) && bounds.contains([zLng, zLat])
+    }
+
     let itemFound = false
 
     if (type === 'validator') {
@@ -1792,6 +1798,9 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           const metroA = deviceA ? metroMap.get(deviceA.metro_pk) : undefined
           const metroZ = deviceZ ? metroMap.get(deviceZ.metro_pk) : undefined
           if (metroA && metroZ) {
+            if (linkFitsInView(metroA.longitude, metroA.latitude, metroZ.longitude, metroZ.latitude)) {
+              itemFound = true
+            } else {
             let aLng = metroA.longitude
             let zLng = metroZ.longitude
             const lngDelta = zLng - aLng
@@ -1803,6 +1812,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             if (midLng < -180) midLng += 360
             const midLat = (metroA.latitude + metroZ.latitude) / 2
             flyToLocation(midLng, midLat, 3, true)
+            }
           } else if (metroA) {
             flyToLocation(metroA.longitude, metroA.latitude, 3, true)
           }

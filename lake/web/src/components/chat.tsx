@@ -629,8 +629,18 @@ export function Chat({ messages, isPending, processingSteps, onSendMessage, onAb
   const isQuotaDepleted = !isUnlimited && remaining === 0
   const isQuotaLow = !isUnlimited && remaining > 0 && remaining <= 3
 
-  // Randomly select example questions on mount (changes per session)
-  const exampleQuestions = useMemo(() => selectRandom(EXAMPLE_QUESTIONS, 4), [])
+  // Key to trigger re-randomization of example questions
+  const [suggestionsKey, setSuggestionsKey] = useState(0)
+
+  // Listen for refresh event (triggered when clicking Chat nav while already on /chat)
+  useEffect(() => {
+    const handleRefresh = () => setSuggestionsKey(k => k + 1)
+    window.addEventListener('refresh-chat-suggestions', handleRefresh)
+    return () => window.removeEventListener('refresh-chat-suggestions', handleRefresh)
+  }, [])
+
+  // Randomly select example questions (changes on mount or when suggestionsKey changes)
+  const exampleQuestions = useMemo(() => selectRandom(EXAMPLE_QUESTIONS, 4), [suggestionsKey])
 
   const handleAskAboutQuery = (question: string, _sql: string, rowCount: number) => {
     const prompt = `Tell me more about the "${question}" result (${rowCount} rows). What insights can you draw from this data?`

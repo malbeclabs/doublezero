@@ -253,6 +253,8 @@ export function Sidebar() {
           onClick={(e) => {
             if (e.metaKey || e.ctrlKey) {
               window.open('/chat', '_blank')
+            } else if (location.pathname === '/chat') {
+              window.dispatchEvent(new CustomEvent('refresh-chat-suggestions'))
             } else {
               navigate('/chat')
             }
@@ -550,6 +552,8 @@ export function Sidebar() {
             onClick={(e) => {
               if (e.metaKey || e.ctrlKey) {
                 window.open('/chat', '_blank')
+              } else if (location.pathname === '/chat') {
+                window.dispatchEvent(new CustomEvent('refresh-chat-suggestions'))
               } else {
                 navigate('/chat')
               }

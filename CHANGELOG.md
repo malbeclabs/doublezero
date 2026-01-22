@@ -4,11 +4,28 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Breaking
+
+- None for this release
+
+### Changes
+
+## [v0.8.3](https://github.com/malbeclabs/doublezero/compare/client/v0.8.2...client/v0.8.3) – 2026-01-22
+
+
+### Breaking
+
+- None for this release
+
+### Changes
+
 - CLI
   - Remove log noise on resolve route
   - Add `global-config qa-allowlist` commands to manage QA identity allowlist to bypass status and max_users checks in QA
+  - Remove "unknown" status from doublezero status command and implement "failed" and "unreachable" statuses
 - Client
   - Enable route liveness passive-mode by default
+  - Add `make install` make target. To build and deploy from source, users can now run `cd client && make build && make install` to install the doublezero and doublezerod binaries and the doublezerod systemd unit.
 - Onchain programs
   - Enforce Activated status check before suspending contributor, exchange, location, and multicastgroup accounts
   - Removed device and user allowlist functionality, updating the global state, initialization flow, tests, and processors accordingly, and cleaning up unused account checks.
@@ -28,25 +45,10 @@ All notable changes to this project will be documented in this file.
 - Smartcontract
   - feat(smartcontract): RFC 11 activation for User entity
 - Device Health Oracle
+  - Add new device-health-oracle component. See rfcs/rfc12-network-provisioning.md for details.
   - Calculate burn-in timestamp based from slot numbers (current minus 200_000 slots for provisioning, current minus 5_000 slots for maintenance)
 - CI
   - Add separate apt repo for doublezero-testnet
-
-### Breaking
-
-- None for this release
-
-### Changes
-
-- CLI
-  - Remove log noise on resolve route
-  - Remove "unknown" status from doublezero status command and implement "failed" and "unreachable" statuses
-- Onchain programs
-  - Removed device and user allowlist functionality, updating the global state, initialization flow, tests, and processors accordingly, and cleaning up unused account checks.
-- Device Health Oracle
-  - Add new device-health-oracle component. See rfcs/rfc12-network-provisioning.md for details.
-- Client
-  - Add `make install` make target. To build and deploy from source, users can now run `cd client && make build && make install` to install the doublezero and doublezerod binaries and the doublezerod systemd unit.
 
 ## [v0.8.2](https://github.com/malbeclabs/doublezero/compare/client/v0.8.1...client/v0.8.2) – 2025-01-13
 

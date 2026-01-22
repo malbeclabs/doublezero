@@ -2124,6 +2124,34 @@ export interface PaginatedResponse<T> {
   offset: number
 }
 
+export async function fetchAllPaginated<T>(
+  fetchPage: (limit: number, offset: number) => Promise<PaginatedResponse<T>>,
+  pageSize = 100
+): Promise<PaginatedResponse<T>> {
+  const items: T[] = []
+  let offset = 0
+  let total = 0
+
+  while (true) {
+    const response = await fetchPage(pageSize, offset)
+    if (offset === 0) {
+      total = response.total
+    }
+    items.push(...response.items)
+    offset += response.limit
+    if (items.length >= total || response.items.length === 0) {
+      break
+    }
+  }
+
+  return {
+    items,
+    total: total || items.length,
+    limit: pageSize,
+    offset: 0,
+  }
+}
+
 // Entity types - DoubleZero
 export interface Device {
   pk: string

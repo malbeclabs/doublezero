@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { Loader2, Users, AlertCircle } from 'lucide-react'
-import { fetchUsers } from '@/lib/api'
+import { Loader2, Users, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react'
+import { fetchAllPaginated, fetchUsers } from '@/lib/api'
 import { handleRowClick } from '@/lib/utils'
 import { Pagination } from './pagination'
 
@@ -31,16 +31,92 @@ function truncatePubkey(pubkey: string): string {
   return `${pubkey.slice(0, 6)}...${pubkey.slice(-4)}`
 }
 
+type SortField =
+  | 'owner'
+  | 'kind'
+  | 'dzIp'
+  | 'device'
+  | 'metro'
+  | 'status'
+  | 'in'
+  | 'out'
+
+type SortDirection = 'asc' | 'desc'
+
 export function UsersPage() {
   const navigate = useNavigate()
   const [offset, setOffset] = useState(0)
+  const [sortField, setSortField] = useState<SortField>('owner')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
 
   const { data: response, isLoading, error } = useQuery({
-    queryKey: ['users', offset],
-    queryFn: () => fetchUsers(PAGE_SIZE, offset),
+    queryKey: ['users', 'all'],
+    queryFn: () => fetchAllPaginated(fetchUsers, PAGE_SIZE),
     refetchInterval: 30000,
   })
   const users = response?.items
+  const sortedUsers = useMemo(() => {
+    if (!users) return []
+    const sorted = [...users].sort((a, b) => {
+      let cmp = 0
+      switch (sortField) {
+        case 'owner':
+          cmp = (a.owner_pubkey || '').localeCompare(b.owner_pubkey || '')
+          break
+        case 'kind':
+          cmp = (a.kind || '').localeCompare(b.kind || '')
+          break
+        case 'dzIp':
+          cmp = (a.dz_ip || '').localeCompare(b.dz_ip || '')
+          break
+        case 'device':
+          cmp = (a.device_code || '').localeCompare(b.device_code || '')
+          break
+        case 'metro': {
+          const aMetro = a.metro_name || a.metro_code || ''
+          const bMetro = b.metro_name || b.metro_code || ''
+          cmp = aMetro.localeCompare(bMetro)
+          break
+        }
+        case 'status':
+          cmp = a.status.localeCompare(b.status)
+          break
+        case 'in':
+          cmp = a.in_bps - b.in_bps
+          break
+        case 'out':
+          cmp = a.out_bps - b.out_bps
+          break
+      }
+      return sortDirection === 'asc' ? cmp : -cmp
+    })
+    return sorted
+  }, [users, sortField, sortDirection])
+  const pagedUsers = useMemo(
+    () => sortedUsers.slice(offset, offset + PAGE_SIZE),
+    [sortedUsers, offset]
+  )
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(current => current === 'asc' ? 'desc' : 'asc')
+      return
+    }
+    setSortField(field)
+    setSortDirection('asc')
+  }
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) return null
+    return sortDirection === 'asc'
+      ? <ChevronUp className="h-3 w-3" />
+      : <ChevronDown className="h-3 w-3" />
+  }
+
+  const sortAria = (field: SortField) => {
+    if (sortField !== field) return 'none'
+    return sortDirection === 'asc' ? 'ascending' : 'descending'
+  }
 
   if (isLoading) {
     return (
@@ -78,18 +154,58 @@ export function UsersPage() {
             <table className="w-full">
               <thead>
                 <tr className="text-sm text-left text-muted-foreground border-b border-border">
-                  <th className="px-4 py-3 font-medium">Owner</th>
-                  <th className="px-4 py-3 font-medium">Kind</th>
-                  <th className="px-4 py-3 font-medium">DZ IP</th>
-                  <th className="px-4 py-3 font-medium">Device</th>
-                  <th className="px-4 py-3 font-medium">Metro</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium text-right">In</th>
-                  <th className="px-4 py-3 font-medium text-right">Out</th>
+                  <th className="px-4 py-3 font-medium" aria-sort={sortAria('owner')}>
+                    <button className="inline-flex items-center gap-1" type="button" onClick={() => handleSort('owner')}>
+                      Owner
+                      <SortIcon field="owner" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium" aria-sort={sortAria('kind')}>
+                    <button className="inline-flex items-center gap-1" type="button" onClick={() => handleSort('kind')}>
+                      Kind
+                      <SortIcon field="kind" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium" aria-sort={sortAria('dzIp')}>
+                    <button className="inline-flex items-center gap-1" type="button" onClick={() => handleSort('dzIp')}>
+                      DZ IP
+                      <SortIcon field="dzIp" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium" aria-sort={sortAria('device')}>
+                    <button className="inline-flex items-center gap-1" type="button" onClick={() => handleSort('device')}>
+                      Device
+                      <SortIcon field="device" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium" aria-sort={sortAria('metro')}>
+                    <button className="inline-flex items-center gap-1" type="button" onClick={() => handleSort('metro')}>
+                      Metro
+                      <SortIcon field="metro" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium" aria-sort={sortAria('status')}>
+                    <button className="inline-flex items-center gap-1" type="button" onClick={() => handleSort('status')}>
+                      Status
+                      <SortIcon field="status" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium text-right" aria-sort={sortAria('in')}>
+                    <button className="inline-flex items-center gap-1 justify-end w-full" type="button" onClick={() => handleSort('in')}>
+                      In
+                      <SortIcon field="in" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium text-right" aria-sort={sortAria('out')}>
+                    <button className="inline-flex items-center gap-1 justify-end w-full" type="button" onClick={() => handleSort('out')}>
+                      Out
+                      <SortIcon field="out" />
+                    </button>
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {users?.map((user) => (
+                {pagedUsers.map((user) => (
                   <tr
                     key={user.pk}
                     className="border-b border-border last:border-b-0 hover:bg-muted/50 cursor-pointer transition-colors"
@@ -123,7 +239,7 @@ export function UsersPage() {
                     </td>
                   </tr>
                 ))}
-                {(!users || users.length === 0) && (
+                {sortedUsers.length === 0 && (
                   <tr>
                     <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
                       No users found
@@ -136,8 +252,8 @@ export function UsersPage() {
           {response && (
             <Pagination
               total={response.total}
-              limit={response.limit}
-              offset={response.offset}
+              limit={PAGE_SIZE}
+              offset={offset}
               onOffsetChange={setOffset}
             />
           )}

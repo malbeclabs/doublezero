@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { Loader2, Server, AlertCircle } from 'lucide-react'
-import { fetchDevices } from '@/lib/api'
+import { Loader2, Server, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react'
+import { fetchAllPaginated, fetchDevices } from '@/lib/api'
 import { handleRowClick } from '@/lib/utils'
 import { Pagination } from './pagination'
 
@@ -26,16 +26,97 @@ function formatBps(bps: number): string {
   return `${bps.toFixed(0)} bps`
 }
 
+type SortField =
+  | 'code'
+  | 'type'
+  | 'contributor'
+  | 'metro'
+  | 'status'
+  | 'users'
+  | 'in'
+  | 'out'
+  | 'peakIn'
+  | 'peakOut'
+
+type SortDirection = 'asc' | 'desc'
+
 export function DevicesPage() {
   const navigate = useNavigate()
   const [offset, setOffset] = useState(0)
+  const [sortField, setSortField] = useState<SortField>('code')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
 
   const { data: response, isLoading, error } = useQuery({
-    queryKey: ['devices', offset],
-    queryFn: () => fetchDevices(PAGE_SIZE, offset),
+    queryKey: ['devices', 'all'],
+    queryFn: () => fetchAllPaginated(fetchDevices, PAGE_SIZE),
     refetchInterval: 30000,
   })
   const devices = response?.items
+  const sortedDevices = useMemo(() => {
+    if (!devices) return []
+    const sorted = [...devices].sort((a, b) => {
+      let cmp = 0
+      switch (sortField) {
+        case 'code':
+          cmp = a.code.localeCompare(b.code)
+          break
+        case 'type':
+          cmp = (a.device_type || '').localeCompare(b.device_type || '')
+          break
+        case 'contributor':
+          cmp = (a.contributor_code || '').localeCompare(b.contributor_code || '')
+          break
+        case 'metro':
+          cmp = (a.metro_code || '').localeCompare(b.metro_code || '')
+          break
+        case 'status':
+          cmp = a.status.localeCompare(b.status)
+          break
+        case 'users':
+          cmp = a.current_users - b.current_users
+          break
+        case 'in':
+          cmp = a.in_bps - b.in_bps
+          break
+        case 'out':
+          cmp = a.out_bps - b.out_bps
+          break
+        case 'peakIn':
+          cmp = a.peak_in_bps - b.peak_in_bps
+          break
+        case 'peakOut':
+          cmp = a.peak_out_bps - b.peak_out_bps
+          break
+      }
+      return sortDirection === 'asc' ? cmp : -cmp
+    })
+    return sorted
+  }, [devices, sortField, sortDirection])
+  const pagedDevices = useMemo(
+    () => sortedDevices.slice(offset, offset + PAGE_SIZE),
+    [sortedDevices, offset]
+  )
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(current => current === 'asc' ? 'desc' : 'asc')
+      return
+    }
+    setSortField(field)
+    setSortDirection('asc')
+  }
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) return null
+    return sortDirection === 'asc'
+      ? <ChevronUp className="h-3 w-3" />
+      : <ChevronDown className="h-3 w-3" />
+  }
+
+  const sortAria = (field: SortField) => {
+    if (sortField !== field) return 'none'
+    return sortDirection === 'asc' ? 'ascending' : 'descending'
+  }
 
   if (isLoading) {
     return (
@@ -73,20 +154,70 @@ export function DevicesPage() {
             <table className="w-full">
               <thead>
                 <tr className="text-sm text-left text-muted-foreground border-b border-border">
-                  <th className="px-4 py-3 font-medium">Code</th>
-                  <th className="px-4 py-3 font-medium">Type</th>
-                  <th className="px-4 py-3 font-medium">Contributor</th>
-                  <th className="px-4 py-3 font-medium">Metro</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium text-right">Users</th>
-                  <th className="px-4 py-3 font-medium text-right">In</th>
-                  <th className="px-4 py-3 font-medium text-right">Out</th>
-                  <th className="px-4 py-3 font-medium text-right">Peak In</th>
-                  <th className="px-4 py-3 font-medium text-right">Peak Out</th>
+                  <th className="px-4 py-3 font-medium" aria-sort={sortAria('code')}>
+                    <button className="inline-flex items-center gap-1" type="button" onClick={() => handleSort('code')}>
+                      Code
+                      <SortIcon field="code" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium" aria-sort={sortAria('type')}>
+                    <button className="inline-flex items-center gap-1" type="button" onClick={() => handleSort('type')}>
+                      Type
+                      <SortIcon field="type" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium" aria-sort={sortAria('contributor')}>
+                    <button className="inline-flex items-center gap-1" type="button" onClick={() => handleSort('contributor')}>
+                      Contributor
+                      <SortIcon field="contributor" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium" aria-sort={sortAria('metro')}>
+                    <button className="inline-flex items-center gap-1" type="button" onClick={() => handleSort('metro')}>
+                      Metro
+                      <SortIcon field="metro" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium" aria-sort={sortAria('status')}>
+                    <button className="inline-flex items-center gap-1" type="button" onClick={() => handleSort('status')}>
+                      Status
+                      <SortIcon field="status" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium text-right" aria-sort={sortAria('users')}>
+                    <button className="inline-flex items-center gap-1 justify-end w-full" type="button" onClick={() => handleSort('users')}>
+                      Users
+                      <SortIcon field="users" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium text-right" aria-sort={sortAria('in')}>
+                    <button className="inline-flex items-center gap-1 justify-end w-full" type="button" onClick={() => handleSort('in')}>
+                      In
+                      <SortIcon field="in" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium text-right" aria-sort={sortAria('out')}>
+                    <button className="inline-flex items-center gap-1 justify-end w-full" type="button" onClick={() => handleSort('out')}>
+                      Out
+                      <SortIcon field="out" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium text-right" aria-sort={sortAria('peakIn')}>
+                    <button className="inline-flex items-center gap-1 justify-end w-full" type="button" onClick={() => handleSort('peakIn')}>
+                      Peak In
+                      <SortIcon field="peakIn" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium text-right" aria-sort={sortAria('peakOut')}>
+                    <button className="inline-flex items-center gap-1 justify-end w-full" type="button" onClick={() => handleSort('peakOut')}>
+                      Peak Out
+                      <SortIcon field="peakOut" />
+                    </button>
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {devices?.map((device) => (
+                {pagedDevices.map((device) => (
                   <tr
                     key={device.pk}
                     className="border-b border-border last:border-b-0 hover:bg-muted/50 cursor-pointer transition-colors"
@@ -133,7 +264,7 @@ export function DevicesPage() {
                     </td>
                   </tr>
                 ))}
-                {(!devices || devices.length === 0) && (
+                {sortedDevices.length === 0 && (
                   <tr>
                     <td colSpan={10} className="px-4 py-8 text-center text-muted-foreground">
                       No devices found
@@ -146,8 +277,8 @@ export function DevicesPage() {
           {response && (
             <Pagination
               total={response.total}
-              limit={response.limit}
-              offset={response.offset}
+              limit={PAGE_SIZE}
+              offset={offset}
               onOffsetChange={setOffset}
             />
           )}

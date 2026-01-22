@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { Loader2, Radio, AlertCircle, Check } from 'lucide-react'
-import { fetchGossipNodes } from '@/lib/api'
+import { Loader2, Radio, AlertCircle, Check, ChevronDown, ChevronUp } from 'lucide-react'
+import { fetchAllPaginated, fetchGossipNodes } from '@/lib/api'
 import { handleRowClick } from '@/lib/utils'
 import { Pagination } from './pagination'
 
@@ -20,18 +20,97 @@ function truncatePubkey(pubkey: string): string {
   return `${pubkey.slice(0, 6)}...${pubkey.slice(-4)}`
 }
 
+type SortField =
+  | 'pubkey'
+  | 'ip'
+  | 'version'
+  | 'location'
+  | 'validator'
+  | 'stake'
+  | 'dz'
+  | 'device'
+
+type SortDirection = 'asc' | 'desc'
+
 export function GossipNodesPage() {
   const navigate = useNavigate()
   const [offset, setOffset] = useState(0)
+  const [sortField, setSortField] = useState<SortField>('pubkey')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
 
   const { data: response, isLoading, error } = useQuery({
-    queryKey: ['gossip-nodes', offset],
-    queryFn: () => fetchGossipNodes(PAGE_SIZE, offset),
+    queryKey: ['gossip-nodes', 'all'],
+    queryFn: () => fetchAllPaginated(fetchGossipNodes, PAGE_SIZE),
     refetchInterval: 60000,
   })
   const nodes = response?.items
   const onDZCount = response?.on_dz_count ?? 0
   const validatorCount = response?.validator_count ?? 0
+  const sortedNodes = useMemo(() => {
+    if (!nodes) return []
+    const sorted = [...nodes].sort((a, b) => {
+      let cmp = 0
+      switch (sortField) {
+        case 'pubkey':
+          cmp = a.pubkey.localeCompare(b.pubkey)
+          break
+        case 'ip': {
+          const aIp = a.gossip_ip ? `${a.gossip_ip}:${a.gossip_port}` : ''
+          const bIp = b.gossip_ip ? `${b.gossip_ip}:${b.gossip_port}` : ''
+          cmp = aIp.localeCompare(bIp)
+          break
+        }
+        case 'version':
+          cmp = (a.version || '').localeCompare(b.version || '')
+          break
+        case 'location': {
+          const aLoc = `${a.city || ''} ${a.country || ''}`.trim()
+          const bLoc = `${b.city || ''} ${b.country || ''}`.trim()
+          cmp = aLoc.localeCompare(bLoc)
+          break
+        }
+        case 'validator':
+          cmp = Number(a.is_validator) - Number(b.is_validator)
+          break
+        case 'stake':
+          cmp = a.stake_sol - b.stake_sol
+          break
+        case 'dz':
+          cmp = Number(a.on_dz) - Number(b.on_dz)
+          break
+        case 'device':
+          cmp = (a.device_code || '').localeCompare(b.device_code || '')
+          break
+      }
+      return sortDirection === 'asc' ? cmp : -cmp
+    })
+    return sorted
+  }, [nodes, sortField, sortDirection])
+  const pagedNodes = useMemo(
+    () => sortedNodes.slice(offset, offset + PAGE_SIZE),
+    [sortedNodes, offset]
+  )
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(current => current === 'asc' ? 'desc' : 'asc')
+      return
+    }
+    setSortField(field)
+    setSortDirection('asc')
+  }
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) return null
+    return sortDirection === 'asc'
+      ? <ChevronUp className="h-3 w-3" />
+      : <ChevronDown className="h-3 w-3" />
+  }
+
+  const sortAria = (field: SortField) => {
+    if (sortField !== field) return 'none'
+    return sortDirection === 'asc' ? 'ascending' : 'descending'
+  }
 
   if (isLoading) {
     return (
@@ -79,18 +158,58 @@ export function GossipNodesPage() {
             <table className="w-full">
               <thead>
                 <tr className="text-sm text-left text-muted-foreground border-b border-border">
-                  <th className="px-4 py-3 font-medium">Pubkey</th>
-                  <th className="px-4 py-3 font-medium">IP</th>
-                  <th className="px-4 py-3 font-medium">Version</th>
-                  <th className="px-4 py-3 font-medium">Location</th>
-                  <th className="px-4 py-3 font-medium text-center">Validator</th>
-                  <th className="px-4 py-3 font-medium text-right">Stake</th>
-                  <th className="px-4 py-3 font-medium text-center">DZ</th>
-                  <th className="px-4 py-3 font-medium">Device</th>
+                  <th className="px-4 py-3 font-medium" aria-sort={sortAria('pubkey')}>
+                    <button className="inline-flex items-center gap-1" type="button" onClick={() => handleSort('pubkey')}>
+                      Pubkey
+                      <SortIcon field="pubkey" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium" aria-sort={sortAria('ip')}>
+                    <button className="inline-flex items-center gap-1" type="button" onClick={() => handleSort('ip')}>
+                      IP
+                      <SortIcon field="ip" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium" aria-sort={sortAria('version')}>
+                    <button className="inline-flex items-center gap-1" type="button" onClick={() => handleSort('version')}>
+                      Version
+                      <SortIcon field="version" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium" aria-sort={sortAria('location')}>
+                    <button className="inline-flex items-center gap-1" type="button" onClick={() => handleSort('location')}>
+                      Location
+                      <SortIcon field="location" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium text-center" aria-sort={sortAria('validator')}>
+                    <button className="inline-flex items-center gap-1 justify-center w-full" type="button" onClick={() => handleSort('validator')}>
+                      Validator
+                      <SortIcon field="validator" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium text-right" aria-sort={sortAria('stake')}>
+                    <button className="inline-flex items-center gap-1 justify-end w-full" type="button" onClick={() => handleSort('stake')}>
+                      Stake
+                      <SortIcon field="stake" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium text-center" aria-sort={sortAria('dz')}>
+                    <button className="inline-flex items-center gap-1 justify-center w-full" type="button" onClick={() => handleSort('dz')}>
+                      DZ
+                      <SortIcon field="dz" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium" aria-sort={sortAria('device')}>
+                    <button className="inline-flex items-center gap-1" type="button" onClick={() => handleSort('device')}>
+                      Device
+                      <SortIcon field="device" />
+                    </button>
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {nodes?.map((node) => (
+                {pagedNodes.map((node) => (
                   <tr
                     key={node.pubkey}
                     className="border-b border-border last:border-b-0 hover:bg-muted/50 cursor-pointer transition-colors"
@@ -147,7 +266,7 @@ export function GossipNodesPage() {
                     </td>
                   </tr>
                 ))}
-                {(!nodes || nodes.length === 0) && (
+                {sortedNodes.length === 0 && (
                   <tr>
                     <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
                       No gossip nodes found
@@ -160,8 +279,8 @@ export function GossipNodesPage() {
           {response && (
             <Pagination
               total={response.total}
-              limit={response.limit}
-              offset={response.offset}
+              limit={PAGE_SIZE}
+              offset={offset}
               onOffsetChange={setOffset}
             />
           )}

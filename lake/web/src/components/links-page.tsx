@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { Loader2, Link2, AlertCircle } from 'lucide-react'
-import { fetchLinks } from '@/lib/api'
+import { Loader2, Link2, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react'
+import { fetchAllPaginated, fetchLinks } from '@/lib/api'
 import { handleRowClick } from '@/lib/utils'
 import { Pagination } from './pagination'
 
@@ -44,16 +44,116 @@ function getUtilizationColor(pct: number): string {
   return 'text-muted-foreground'
 }
 
+type SortField =
+  | 'code'
+  | 'type'
+  | 'contributor'
+  | 'sideA'
+  | 'sideZ'
+  | 'status'
+  | 'bandwidth'
+  | 'in'
+  | 'out'
+  | 'utilIn'
+  | 'utilOut'
+  | 'latency'
+  | 'jitter'
+  | 'loss'
+
+type SortDirection = 'asc' | 'desc'
+
 export function LinksPage() {
   const navigate = useNavigate()
   const [offset, setOffset] = useState(0)
+  const [sortField, setSortField] = useState<SortField>('code')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
 
   const { data: response, isLoading, error } = useQuery({
-    queryKey: ['links', offset],
-    queryFn: () => fetchLinks(PAGE_SIZE, offset),
+    queryKey: ['links', 'all'],
+    queryFn: () => fetchAllPaginated(fetchLinks, PAGE_SIZE),
     refetchInterval: 30000,
   })
   const links = response?.items
+  const sortedLinks = useMemo(() => {
+    if (!links) return []
+    if (!sortField) return links
+
+    const sorted = [...links].sort((a, b) => {
+      let cmp = 0
+      switch (sortField) {
+        case 'code':
+          cmp = a.code.localeCompare(b.code)
+          break
+        case 'type':
+          cmp = a.link_type.localeCompare(b.link_type)
+          break
+        case 'contributor':
+          cmp = (a.contributor_code || '').localeCompare(b.contributor_code || '')
+          break
+        case 'sideA':
+          cmp = (a.side_a_code || '').localeCompare(b.side_a_code || '')
+          break
+        case 'sideZ':
+          cmp = (a.side_z_code || '').localeCompare(b.side_z_code || '')
+          break
+        case 'status':
+          cmp = a.status.localeCompare(b.status)
+          break
+        case 'bandwidth':
+          cmp = a.bandwidth_bps - b.bandwidth_bps
+          break
+        case 'in':
+          cmp = a.in_bps - b.in_bps
+          break
+        case 'out':
+          cmp = a.out_bps - b.out_bps
+          break
+        case 'utilIn':
+          cmp = a.utilization_in - b.utilization_in
+          break
+        case 'utilOut':
+          cmp = a.utilization_out - b.utilization_out
+          break
+        case 'latency':
+          cmp = a.latency_us - b.latency_us
+          break
+        case 'jitter':
+          cmp = a.jitter_us - b.jitter_us
+          break
+        case 'loss':
+          cmp = a.loss_percent - b.loss_percent
+          break
+      }
+      return sortDirection === 'asc' ? cmp : -cmp
+    })
+
+    return sorted
+  }, [links, sortField, sortDirection])
+  const pagedLinks = useMemo(
+    () => sortedLinks.slice(offset, offset + PAGE_SIZE),
+    [sortedLinks, offset]
+  )
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(current => current === 'asc' ? 'desc' : 'asc')
+      return
+    }
+    setSortField(field)
+    setSortDirection('asc')
+  }
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) return null
+    return sortDirection === 'asc'
+      ? <ChevronUp className="h-3 w-3" />
+      : <ChevronDown className="h-3 w-3" />
+  }
+
+  const sortAria = (field: SortField) => {
+    if (sortField !== field) return 'none'
+    return sortDirection === 'asc' ? 'ascending' : 'descending'
+  }
 
   if (isLoading) {
     return (
@@ -91,24 +191,94 @@ export function LinksPage() {
             <table className="w-full">
               <thead>
                 <tr className="text-sm text-left text-muted-foreground border-b border-border">
-                  <th className="px-4 py-3 font-medium">Code</th>
-                  <th className="px-4 py-3 font-medium">Type</th>
-                  <th className="px-4 py-3 font-medium">Contributor</th>
-                  <th className="px-4 py-3 font-medium">Side A</th>
-                  <th className="px-4 py-3 font-medium">Side Z</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium text-right">Bandwidth</th>
-                  <th className="px-4 py-3 font-medium text-right">In</th>
-                  <th className="px-4 py-3 font-medium text-right">Out</th>
-                  <th className="px-4 py-3 font-medium text-right">Util In</th>
-                  <th className="px-4 py-3 font-medium text-right">Util Out</th>
-                  <th className="px-4 py-3 font-medium text-right">Latency</th>
-                  <th className="px-4 py-3 font-medium text-right">Jitter</th>
-                  <th className="px-4 py-3 font-medium text-right">Loss</th>
+                  <th className="px-4 py-3 font-medium" aria-sort={sortAria('code')}>
+                    <button className="inline-flex items-center gap-1" type="button" onClick={() => handleSort('code')}>
+                      Code
+                      <SortIcon field="code" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium" aria-sort={sortAria('type')}>
+                    <button className="inline-flex items-center gap-1" type="button" onClick={() => handleSort('type')}>
+                      Type
+                      <SortIcon field="type" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium" aria-sort={sortAria('contributor')}>
+                    <button className="inline-flex items-center gap-1" type="button" onClick={() => handleSort('contributor')}>
+                      Contributor
+                      <SortIcon field="contributor" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium" aria-sort={sortAria('sideA')}>
+                    <button className="inline-flex items-center gap-1" type="button" onClick={() => handleSort('sideA')}>
+                      Side A
+                      <SortIcon field="sideA" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium" aria-sort={sortAria('sideZ')}>
+                    <button className="inline-flex items-center gap-1" type="button" onClick={() => handleSort('sideZ')}>
+                      Side Z
+                      <SortIcon field="sideZ" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium" aria-sort={sortAria('status')}>
+                    <button className="inline-flex items-center gap-1" type="button" onClick={() => handleSort('status')}>
+                      Status
+                      <SortIcon field="status" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium text-right" aria-sort={sortAria('bandwidth')}>
+                    <button className="inline-flex items-center gap-1 justify-end w-full" type="button" onClick={() => handleSort('bandwidth')}>
+                      Bandwidth
+                      <SortIcon field="bandwidth" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium text-right" aria-sort={sortAria('in')}>
+                    <button className="inline-flex items-center gap-1 justify-end w-full" type="button" onClick={() => handleSort('in')}>
+                      In
+                      <SortIcon field="in" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium text-right" aria-sort={sortAria('out')}>
+                    <button className="inline-flex items-center gap-1 justify-end w-full" type="button" onClick={() => handleSort('out')}>
+                      Out
+                      <SortIcon field="out" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium text-right" aria-sort={sortAria('utilIn')}>
+                    <button className="inline-flex items-center gap-1 justify-end w-full" type="button" onClick={() => handleSort('utilIn')}>
+                      Util In
+                      <SortIcon field="utilIn" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium text-right" aria-sort={sortAria('utilOut')}>
+                    <button className="inline-flex items-center gap-1 justify-end w-full" type="button" onClick={() => handleSort('utilOut')}>
+                      Util Out
+                      <SortIcon field="utilOut" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium text-right" aria-sort={sortAria('latency')}>
+                    <button className="inline-flex items-center gap-1 justify-end w-full" type="button" onClick={() => handleSort('latency')}>
+                      Latency
+                      <SortIcon field="latency" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium text-right" aria-sort={sortAria('jitter')}>
+                    <button className="inline-flex items-center gap-1 justify-end w-full" type="button" onClick={() => handleSort('jitter')}>
+                      Jitter
+                      <SortIcon field="jitter" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium text-right" aria-sort={sortAria('loss')}>
+                    <button className="inline-flex items-center gap-1 justify-end w-full" type="button" onClick={() => handleSort('loss')}>
+                      Loss
+                      <SortIcon field="loss" />
+                    </button>
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {links?.map((link) => (
+                {pagedLinks.map((link) => (
                   <tr
                     key={link.pk}
                     className="border-b border-border last:border-b-0 hover:bg-muted/50 cursor-pointer transition-colors"
@@ -164,7 +334,7 @@ export function LinksPage() {
                     </td>
                   </tr>
                 ))}
-                {(!links || links.length === 0) && (
+                {sortedLinks.length === 0 && (
                   <tr>
                     <td colSpan={14} className="px-4 py-8 text-center text-muted-foreground">
                       No links found
@@ -177,8 +347,8 @@ export function LinksPage() {
           {response && (
             <Pagination
               total={response.total}
-              limit={response.limit}
-              offset={response.offset}
+              limit={PAGE_SIZE}
+              offset={offset}
               onOffsetChange={setOffset}
             />
           )}

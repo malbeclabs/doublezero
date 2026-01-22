@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { Loader2, Landmark, AlertCircle, Check } from 'lucide-react'
-import { fetchValidators } from '@/lib/api'
+import { Loader2, Landmark, AlertCircle, Check, ChevronDown, ChevronUp } from 'lucide-react'
+import { fetchAllPaginated, fetchValidators } from '@/lib/api'
 import { handleRowClick } from '@/lib/utils'
 import { Pagination } from './pagination'
 
@@ -35,17 +35,109 @@ function getSkipRateColor(rate: number): string {
   return 'text-muted-foreground'
 }
 
+type SortField =
+  | 'vote'
+  | 'node'
+  | 'stake'
+  | 'share'
+  | 'commission'
+  | 'dz'
+  | 'device'
+  | 'location'
+  | 'in'
+  | 'out'
+  | 'skip'
+  | 'version'
+
+type SortDirection = 'asc' | 'desc'
+
 export function ValidatorsPage() {
   const navigate = useNavigate()
   const [offset, setOffset] = useState(0)
+  const [sortField, setSortField] = useState<SortField>('vote')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
 
   const { data: response, isLoading, error } = useQuery({
-    queryKey: ['validators', offset],
-    queryFn: () => fetchValidators(PAGE_SIZE, offset),
+    queryKey: ['validators', 'all'],
+    queryFn: () => fetchAllPaginated(fetchValidators, PAGE_SIZE),
     refetchInterval: 60000,
   })
   const validators = response?.items
   const onDZCount = response?.on_dz_count ?? 0
+  const sortedValidators = useMemo(() => {
+    if (!validators) return []
+    const sorted = [...validators].sort((a, b) => {
+      let cmp = 0
+      switch (sortField) {
+        case 'vote':
+          cmp = a.vote_pubkey.localeCompare(b.vote_pubkey)
+          break
+        case 'node':
+          cmp = (a.node_pubkey || '').localeCompare(b.node_pubkey || '')
+          break
+        case 'stake':
+          cmp = a.stake_sol - b.stake_sol
+          break
+        case 'share':
+          cmp = a.stake_share - b.stake_share
+          break
+        case 'commission':
+          cmp = a.commission - b.commission
+          break
+        case 'dz':
+          cmp = Number(a.on_dz) - Number(b.on_dz)
+          break
+        case 'device':
+          cmp = (a.device_code || '').localeCompare(b.device_code || '')
+          break
+        case 'location': {
+          const aLoc = `${a.city || ''} ${a.country || ''}`.trim()
+          const bLoc = `${b.city || ''} ${b.country || ''}`.trim()
+          cmp = aLoc.localeCompare(bLoc)
+          break
+        }
+        case 'in':
+          cmp = a.in_bps - b.in_bps
+          break
+        case 'out':
+          cmp = a.out_bps - b.out_bps
+          break
+        case 'skip':
+          cmp = a.skip_rate - b.skip_rate
+          break
+        case 'version':
+          cmp = (a.version || '').localeCompare(b.version || '')
+          break
+      }
+      return sortDirection === 'asc' ? cmp : -cmp
+    })
+    return sorted
+  }, [validators, sortField, sortDirection])
+  const pagedValidators = useMemo(
+    () => sortedValidators.slice(offset, offset + PAGE_SIZE),
+    [sortedValidators, offset]
+  )
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(current => current === 'asc' ? 'desc' : 'asc')
+      return
+    }
+    setSortField(field)
+    setSortDirection('asc')
+  }
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) return null
+    return sortDirection === 'asc'
+      ? <ChevronUp className="h-3 w-3" />
+      : <ChevronDown className="h-3 w-3" />
+  }
+
+  const sortAria = (field: SortField) => {
+    if (sortField !== field) return 'none'
+    return sortDirection === 'asc' ? 'ascending' : 'descending'
+  }
 
   if (isLoading) {
     return (
@@ -90,22 +182,82 @@ export function ValidatorsPage() {
             <table className="w-full">
               <thead>
                 <tr className="text-sm text-left text-muted-foreground border-b border-border">
-                  <th className="px-4 py-3 font-medium">Vote Account</th>
-                  <th className="px-4 py-3 font-medium">Node</th>
-                  <th className="px-4 py-3 font-medium text-right">Stake</th>
-                  <th className="px-4 py-3 font-medium text-right">Share</th>
-                  <th className="px-4 py-3 font-medium text-right">Comm.</th>
-                  <th className="px-4 py-3 font-medium text-center">DZ</th>
-                  <th className="px-4 py-3 font-medium">Device</th>
-                  <th className="px-4 py-3 font-medium">Location</th>
-                  <th className="px-4 py-3 font-medium text-right">In</th>
-                  <th className="px-4 py-3 font-medium text-right">Out</th>
-                  <th className="px-4 py-3 font-medium text-right">Skip</th>
-                  <th className="px-4 py-3 font-medium">Version</th>
+                  <th className="px-4 py-3 font-medium" aria-sort={sortAria('vote')}>
+                    <button className="inline-flex items-center gap-1" type="button" onClick={() => handleSort('vote')}>
+                      Vote Account
+                      <SortIcon field="vote" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium" aria-sort={sortAria('node')}>
+                    <button className="inline-flex items-center gap-1" type="button" onClick={() => handleSort('node')}>
+                      Node
+                      <SortIcon field="node" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium text-right" aria-sort={sortAria('stake')}>
+                    <button className="inline-flex items-center gap-1 justify-end w-full" type="button" onClick={() => handleSort('stake')}>
+                      Stake
+                      <SortIcon field="stake" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium text-right" aria-sort={sortAria('share')}>
+                    <button className="inline-flex items-center gap-1 justify-end w-full" type="button" onClick={() => handleSort('share')}>
+                      Share
+                      <SortIcon field="share" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium text-right" aria-sort={sortAria('commission')}>
+                    <button className="inline-flex items-center gap-1 justify-end w-full" type="button" onClick={() => handleSort('commission')}>
+                      Comm.
+                      <SortIcon field="commission" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium text-center" aria-sort={sortAria('dz')}>
+                    <button className="inline-flex items-center gap-1 justify-center w-full" type="button" onClick={() => handleSort('dz')}>
+                      DZ
+                      <SortIcon field="dz" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium" aria-sort={sortAria('device')}>
+                    <button className="inline-flex items-center gap-1" type="button" onClick={() => handleSort('device')}>
+                      Device
+                      <SortIcon field="device" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium" aria-sort={sortAria('location')}>
+                    <button className="inline-flex items-center gap-1" type="button" onClick={() => handleSort('location')}>
+                      Location
+                      <SortIcon field="location" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium text-right" aria-sort={sortAria('in')}>
+                    <button className="inline-flex items-center gap-1 justify-end w-full" type="button" onClick={() => handleSort('in')}>
+                      In
+                      <SortIcon field="in" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium text-right" aria-sort={sortAria('out')}>
+                    <button className="inline-flex items-center gap-1 justify-end w-full" type="button" onClick={() => handleSort('out')}>
+                      Out
+                      <SortIcon field="out" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium text-right" aria-sort={sortAria('skip')}>
+                    <button className="inline-flex items-center gap-1 justify-end w-full" type="button" onClick={() => handleSort('skip')}>
+                      Skip
+                      <SortIcon field="skip" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium" aria-sort={sortAria('version')}>
+                    <button className="inline-flex items-center gap-1" type="button" onClick={() => handleSort('version')}>
+                      Version
+                      <SortIcon field="version" />
+                    </button>
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {validators?.map((validator) => (
+                {pagedValidators.map((validator) => (
                   <tr
                     key={validator.vote_pubkey}
                     className="border-b border-border last:border-b-0 hover:bg-muted/50 cursor-pointer transition-colors"
@@ -172,7 +324,7 @@ export function ValidatorsPage() {
                     </td>
                   </tr>
                 ))}
-                {(!validators || validators.length === 0) && (
+                {sortedValidators.length === 0 && (
                   <tr>
                     <td colSpan={12} className="px-4 py-8 text-center text-muted-foreground">
                       No validators found
@@ -185,8 +337,8 @@ export function ValidatorsPage() {
           {response && (
             <Pagination
               total={response.total}
-              limit={response.limit}
-              offset={response.offset}
+              limit={PAGE_SIZE}
+              offset={offset}
               onOffsetChange={setOffset}
             />
           )}

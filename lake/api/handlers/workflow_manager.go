@@ -474,10 +474,10 @@ func (m *WorkflowManager) runWorkflow(
 	// Track steps in execution order for unified timeline
 	var steps []WorkflowStep
 
-	// Track current step IDs (set on *_started, used on *_done)
-	var currentSQLStepID string
-	var currentCypherStepID string
-	var currentDocsStepID string
+	// Track step IDs by query/page text (handles parallel execution)
+	sqlStepIDs := make(map[string]string)
+	cypherStepIDs := make(map[string]string)
+	docsStepIDs := make(map[string]string)
 
 	// Track metrics from the last checkpoint (for final persistence)
 	var lastLLMCalls, lastInputTokens, lastOutputTokens int
@@ -500,22 +500,24 @@ func (m *WorkflowManager) runWorkflow(
 
 		// SQL query stages
 		case workflow.StageSQLStarted:
-			currentSQLStepID = uuid.New().String()
+			stepID := uuid.New().String()
+			sqlStepIDs[progress.SQL] = stepID
 			rw.broadcast(WorkflowEvent{
 				Type: "sql_started",
 				Data: map[string]string{
-					"id":       currentSQLStepID,
+					"id":       stepID,
 					"question": progress.SQLQuestion,
 					"sql":      progress.SQL,
 				},
 			})
 		case workflow.StageSQLComplete:
+			stepID := sqlStepIDs[progress.SQL]
 			status := "completed"
 			if progress.SQLError != "" {
 				status = "error"
 			}
 			steps = append(steps, WorkflowStep{
-				ID:       currentSQLStepID,
+				ID:       stepID,
 				Type:     "sql_query",
 				Question: progress.SQLQuestion,
 				SQL:      progress.SQL,
@@ -526,7 +528,7 @@ func (m *WorkflowManager) runWorkflow(
 			rw.broadcast(WorkflowEvent{
 				Type: "sql_done",
 				Data: map[string]any{
-					"id":       currentSQLStepID,
+					"id":       stepID,
 					"question": progress.SQLQuestion,
 					"sql":      progress.SQL,
 					"rows":     progress.SQLRows,
@@ -536,22 +538,24 @@ func (m *WorkflowManager) runWorkflow(
 
 		// Cypher query stages
 		case workflow.StageCypherStarted:
-			currentCypherStepID = uuid.New().String()
+			stepID := uuid.New().String()
+			cypherStepIDs[progress.Cypher] = stepID
 			rw.broadcast(WorkflowEvent{
 				Type: "cypher_started",
 				Data: map[string]string{
-					"id":       currentCypherStepID,
+					"id":       stepID,
 					"question": progress.CypherQuestion,
 					"cypher":   progress.Cypher,
 				},
 			})
 		case workflow.StageCypherComplete:
+			stepID := cypherStepIDs[progress.Cypher]
 			status := "completed"
 			if progress.CypherError != "" {
 				status = "error"
 			}
 			steps = append(steps, WorkflowStep{
-				ID:       currentCypherStepID,
+				ID:       stepID,
 				Type:     "cypher_query",
 				Question: progress.CypherQuestion,
 				Cypher:   progress.Cypher,
@@ -562,7 +566,7 @@ func (m *WorkflowManager) runWorkflow(
 			rw.broadcast(WorkflowEvent{
 				Type: "cypher_done",
 				Data: map[string]any{
-					"id":       currentCypherStepID,
+					"id":       stepID,
 					"question": progress.CypherQuestion,
 					"cypher":   progress.Cypher,
 					"rows":     progress.CypherRows,
@@ -572,21 +576,23 @@ func (m *WorkflowManager) runWorkflow(
 
 		// ReadDocs stages
 		case workflow.StageReadDocsStarted:
-			currentDocsStepID = uuid.New().String()
+			stepID := uuid.New().String()
+			docsStepIDs[progress.DocsPage] = stepID
 			rw.broadcast(WorkflowEvent{
 				Type: "read_docs_started",
 				Data: map[string]string{
-					"id":   currentDocsStepID,
+					"id":   stepID,
 					"page": progress.DocsPage,
 				},
 			})
 		case workflow.StageReadDocsComplete:
+			stepID := docsStepIDs[progress.DocsPage]
 			status := "completed"
 			if progress.DocsError != "" {
 				status = "error"
 			}
 			steps = append(steps, WorkflowStep{
-				ID:      currentDocsStepID,
+				ID:      stepID,
 				Type:    "read_docs",
 				Page:    progress.DocsPage,
 				Status:  status,
@@ -596,7 +602,7 @@ func (m *WorkflowManager) runWorkflow(
 			rw.broadcast(WorkflowEvent{
 				Type: "read_docs_done",
 				Data: map[string]any{
-					"id":      currentDocsStepID,
+					"id":      stepID,
 					"page":    progress.DocsPage,
 					"content": progress.DocsContent,
 					"error":   progress.DocsError,
@@ -605,22 +611,24 @@ func (m *WorkflowManager) runWorkflow(
 
 		// Legacy stages (for backwards compatibility during transition)
 		case workflow.StageQueryStarted:
-			currentSQLStepID = uuid.New().String()
+			stepID := uuid.New().String()
+			sqlStepIDs[progress.QuerySQL] = stepID
 			rw.broadcast(WorkflowEvent{
 				Type: "sql_started",
 				Data: map[string]string{
-					"id":       currentSQLStepID,
+					"id":       stepID,
 					"question": progress.QueryQuestion,
 					"sql":      progress.QuerySQL,
 				},
 			})
 		case workflow.StageQueryComplete:
+			stepID := sqlStepIDs[progress.QuerySQL]
 			status := "completed"
 			if progress.QueryError != "" {
 				status = "error"
 			}
 			steps = append(steps, WorkflowStep{
-				ID:       currentSQLStepID,
+				ID:       stepID,
 				Type:     "sql_query",
 				Question: progress.QueryQuestion,
 				SQL:      progress.QuerySQL,
@@ -631,7 +639,7 @@ func (m *WorkflowManager) runWorkflow(
 			rw.broadcast(WorkflowEvent{
 				Type: "sql_done",
 				Data: map[string]any{
-					"id":       currentSQLStepID,
+					"id":       stepID,
 					"question": progress.QueryQuestion,
 					"sql":      progress.QuerySQL,
 					"rows":     progress.QueryRows,
@@ -863,10 +871,10 @@ func (m *WorkflowManager) resumeWorkflow(
 	// Track steps in execution order for unified timeline
 	var steps []WorkflowStep
 
-	// Track current step IDs (set on *_started, used on *_done)
-	var currentSQLStepID string
-	var currentCypherStepID string
-	var currentDocsStepID string
+	// Track step IDs by query/page text (handles parallel execution)
+	sqlStepIDs := make(map[string]string)
+	cypherStepIDs := make(map[string]string)
+	docsStepIDs := make(map[string]string)
 
 	// Track metrics from the last checkpoint (for final persistence)
 	var lastLLMCalls, lastInputTokens, lastOutputTokens int
@@ -889,22 +897,24 @@ func (m *WorkflowManager) resumeWorkflow(
 
 		// SQL query stages
 		case workflow.StageSQLStarted:
-			currentSQLStepID = uuid.New().String()
+			stepID := uuid.New().String()
+			sqlStepIDs[progress.SQL] = stepID
 			rw.broadcast(WorkflowEvent{
 				Type: "sql_started",
 				Data: map[string]string{
-					"id":       currentSQLStepID,
+					"id":       stepID,
 					"question": progress.SQLQuestion,
 					"sql":      progress.SQL,
 				},
 			})
 		case workflow.StageSQLComplete:
+			stepID := sqlStepIDs[progress.SQL]
 			status := "completed"
 			if progress.SQLError != "" {
 				status = "error"
 			}
 			steps = append(steps, WorkflowStep{
-				ID:       currentSQLStepID,
+				ID:       stepID,
 				Type:     "sql_query",
 				Question: progress.SQLQuestion,
 				SQL:      progress.SQL,
@@ -915,7 +925,7 @@ func (m *WorkflowManager) resumeWorkflow(
 			rw.broadcast(WorkflowEvent{
 				Type: "sql_done",
 				Data: map[string]any{
-					"id":       currentSQLStepID,
+					"id":       stepID,
 					"question": progress.SQLQuestion,
 					"sql":      progress.SQL,
 					"rows":     progress.SQLRows,
@@ -925,22 +935,24 @@ func (m *WorkflowManager) resumeWorkflow(
 
 		// Cypher query stages
 		case workflow.StageCypherStarted:
-			currentCypherStepID = uuid.New().String()
+			stepID := uuid.New().String()
+			cypherStepIDs[progress.Cypher] = stepID
 			rw.broadcast(WorkflowEvent{
 				Type: "cypher_started",
 				Data: map[string]string{
-					"id":       currentCypherStepID,
+					"id":       stepID,
 					"question": progress.CypherQuestion,
 					"cypher":   progress.Cypher,
 				},
 			})
 		case workflow.StageCypherComplete:
+			stepID := cypherStepIDs[progress.Cypher]
 			status := "completed"
 			if progress.CypherError != "" {
 				status = "error"
 			}
 			steps = append(steps, WorkflowStep{
-				ID:       currentCypherStepID,
+				ID:       stepID,
 				Type:     "cypher_query",
 				Question: progress.CypherQuestion,
 				Cypher:   progress.Cypher,
@@ -951,7 +963,7 @@ func (m *WorkflowManager) resumeWorkflow(
 			rw.broadcast(WorkflowEvent{
 				Type: "cypher_done",
 				Data: map[string]any{
-					"id":       currentCypherStepID,
+					"id":       stepID,
 					"question": progress.CypherQuestion,
 					"cypher":   progress.Cypher,
 					"rows":     progress.CypherRows,
@@ -961,21 +973,23 @@ func (m *WorkflowManager) resumeWorkflow(
 
 		// ReadDocs stages
 		case workflow.StageReadDocsStarted:
-			currentDocsStepID = uuid.New().String()
+			stepID := uuid.New().String()
+			docsStepIDs[progress.DocsPage] = stepID
 			rw.broadcast(WorkflowEvent{
 				Type: "read_docs_started",
 				Data: map[string]string{
-					"id":   currentDocsStepID,
+					"id":   stepID,
 					"page": progress.DocsPage,
 				},
 			})
 		case workflow.StageReadDocsComplete:
+			stepID := docsStepIDs[progress.DocsPage]
 			status := "completed"
 			if progress.DocsError != "" {
 				status = "error"
 			}
 			steps = append(steps, WorkflowStep{
-				ID:      currentDocsStepID,
+				ID:      stepID,
 				Type:    "read_docs",
 				Page:    progress.DocsPage,
 				Status:  status,
@@ -985,7 +999,7 @@ func (m *WorkflowManager) resumeWorkflow(
 			rw.broadcast(WorkflowEvent{
 				Type: "read_docs_done",
 				Data: map[string]any{
-					"id":      currentDocsStepID,
+					"id":      stepID,
 					"page":    progress.DocsPage,
 					"content": progress.DocsContent,
 					"error":   progress.DocsError,
@@ -994,22 +1008,24 @@ func (m *WorkflowManager) resumeWorkflow(
 
 		// Legacy stages (for backwards compatibility during transition)
 		case workflow.StageQueryStarted:
-			currentSQLStepID = uuid.New().String()
+			stepID := uuid.New().String()
+			sqlStepIDs[progress.QuerySQL] = stepID
 			rw.broadcast(WorkflowEvent{
 				Type: "sql_started",
 				Data: map[string]string{
-					"id":       currentSQLStepID,
+					"id":       stepID,
 					"question": progress.QueryQuestion,
 					"sql":      progress.QuerySQL,
 				},
 			})
 		case workflow.StageQueryComplete:
+			stepID := sqlStepIDs[progress.QuerySQL]
 			status := "completed"
 			if progress.QueryError != "" {
 				status = "error"
 			}
 			steps = append(steps, WorkflowStep{
-				ID:       currentSQLStepID,
+				ID:       stepID,
 				Type:     "sql_query",
 				Question: progress.QueryQuestion,
 				SQL:      progress.QuerySQL,
@@ -1020,7 +1036,7 @@ func (m *WorkflowManager) resumeWorkflow(
 			rw.broadcast(WorkflowEvent{
 				Type: "sql_done",
 				Data: map[string]any{
-					"id":       currentSQLStepID,
+					"id":       stepID,
 					"question": progress.QueryQuestion,
 					"sql":      progress.QuerySQL,
 					"rows":     progress.QueryRows,

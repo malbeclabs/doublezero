@@ -52,6 +52,7 @@ import { ValidatorDetailPage } from '@/components/validator-detail-page'
 import { GossipNodeDetailPage } from '@/components/gossip-node-detail-page'
 import { StakePage } from '@/components/stake-page'
 import { SettingsPage } from '@/components/settings-page'
+import { ChangelogPage } from '@/components/changelog-page'
 import { ConnectionError } from '@/components/ConnectionError'
 import { generateSessionTitle, recommendVisualization, fetchCatalog } from '@/lib/api'
 import type { TableInfo, QueryResponse, HistoryMessage, QueryMode } from '@/lib/api'
@@ -628,6 +629,9 @@ function AppContent() {
 
             {/* Settings */}
             <Route path="/settings" element={<SettingsPage />} />
+
+            {/* Changelog */}
+            <Route path="/changelog" element={<ChangelogPage />} />
 
             {/* DZ entity routes */}
             <Route path="/dz/devices" element={<DevicesPage />} />

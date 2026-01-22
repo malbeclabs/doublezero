@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { LoginModal } from './LoginModal'
-import { User, LogOut, LogIn, Wallet, Settings, MessageSquare, ChevronUp } from 'lucide-react'
+import { User, LogOut, LogIn, Wallet, Settings, MessageSquare, ChevronUp, FileText } from 'lucide-react'
 
 interface UserPopoverProps {
   collapsed?: boolean
@@ -244,6 +244,16 @@ function PopoverContent({
       >
         <Settings size={16} />
         Settings
+      </Link>
+
+      {/* Changelog link */}
+      <Link
+        to="/changelog"
+        onClick={onClose}
+        className="flex w-full items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+      >
+        <FileText size={16} />
+        Changelog
       </Link>
 
       {/* Sign out */}

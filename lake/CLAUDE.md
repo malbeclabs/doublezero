@@ -2,7 +2,9 @@
 
 ## Project Overview
 
-Lake is a data analytics platform for the DoubleZero (DZ) network. It ingests network telemetry and Solana validator data into ClickHouse, and provides an AI agent that answers natural language questions by generating and executing SQL queries.
+This is the **DoubleZero Data** platform (internal project name: "lake"). It's a data analytics platform for the DoubleZero (DZ) network. It ingests network telemetry and Solana validator data into ClickHouse, and provides an AI agent that answers natural language questions by generating and executing SQL queries.
+
+**Important:** The user-facing name is "DoubleZero Data", not "Lake". Use "DoubleZero Data" in UI text and user-facing content.
 
 The agent is the core feature - it lets users ask questions like "which validators are on DZ?" or "show network health" and get data-driven answers.
 

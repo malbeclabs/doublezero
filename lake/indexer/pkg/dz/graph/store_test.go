@@ -387,7 +387,8 @@ func TestStore_Sync_AddsNewNodes(t *testing.T) {
 func TestStore_Sync_RemovesDeletedNodes(t *testing.T) {
 	// Use dedicated containers for this test to avoid shared state issues
 	log := laketesting.NewLogger()
-	ctx := t.Context()
+	// Use sync context to ensure writes are visible before reading
+	ctx := clickhouse.ContextWithSyncInsert(t.Context())
 
 	dedicatedClickHouse, err := clickhousetesting.NewDB(ctx, log, nil)
 	require.NoError(t, err)
@@ -503,6 +504,11 @@ func TestStore_Sync_RemovesDeletedNodes(t *testing.T) {
 	}
 	err = store.ReplaceUsers(ctx, remainingUsers)
 	require.NoError(t, err)
+
+	// Verify ClickHouse data visibility before Sync - helps diagnose flaky test failures
+	currentDevices, err := dzsvc.QueryCurrentDevices(ctx, log, chClient)
+	require.NoError(t, err)
+	require.Len(t, currentDevices, 2, "ClickHouse should show 2 devices after ReplaceDevices")
 
 	// Sync again
 	err = graphStore.Sync(ctx)

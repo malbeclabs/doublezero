@@ -114,7 +114,7 @@ func (c *Controller) Start(ctx context.Context) error {
 		"DZ_SERVICEABILITY_PROGRAM_ID": c.dn.Manager.ServiceabilityProgramID,
 	}
 	if c.dn.Prometheus != nil && c.dn.Prometheus.InternalURL != "" {
-		env["ALLOY_PROMETHEUS_URL"] = c.dn.Prometheus.RemoteWriteURL()
+		env["ALLOY_PROMETHEUS_URL"] = c.dn.Prometheus.InternalRemoteWriteURL()
 	}
 
 	req := testcontainers.ContainerRequest{

@@ -1210,6 +1210,7 @@ func queryLinkChanges(ctx context.Context, startTime, endTime time.Time) ([]Time
 				lag(committed_rtt_ns) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_committed_rtt_ns,
 				lag(committed_jitter_ns) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_committed_jitter_ns,
 				lag(bandwidth_bps) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_bandwidth_bps,
+				lag(isis_delay_override_ns) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_isis_delay_override_ns,
 				lag(attrs_hash) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_attrs_hash,
 				lag(is_deleted) OVER (PARTITION BY entity_id ORDER BY snapshot_ts, ingested_at, op_id) as prev_is_deleted
 			FROM dim_dz_links_history
@@ -1241,6 +1242,7 @@ func queryLinkChanges(ctx context.Context, startTime, endTime time.Time) ([]Time
 			h.prev_committed_rtt_ns,
 			h.prev_committed_jitter_ns,
 			h.prev_bandwidth_bps,
+			h.prev_isis_delay_override_ns,
 			h.prev_is_deleted,
 			CASE
 				WHEN h.row_num = 1 THEN 'created'
@@ -1303,10 +1305,11 @@ func queryLinkChanges(ctx context.Context, startTime, endTime time.Time) ([]Time
 			prevContributorPK   *string
 			prevSideAPK         *string
 			prevSideZPK         *string
-			prevCommittedRttNs  *int64
-			prevCommittedJitter *int64
-			prevBandwidthBps    *int64
-			prevIsDeleted       *uint8
+			prevCommittedRttNs    *int64
+			prevCommittedJitter   *int64
+			prevBandwidthBps      *int64
+			prevISISDelayOverride *int64
+			prevIsDeleted         *uint8
 			changeType          string
 			contributorCode     string
 			sideACode           string
@@ -1323,7 +1326,7 @@ func queryLinkChanges(ctx context.Context, startTime, endTime time.Time) ([]Time
 			&committedRttNs, &committedJitterNs, &bandwidthBps, &isisDelayOverride, &isDeleted,
 			&prevStatus, &prevLinkType, &prevTunnelNet, &prevContributorPK,
 			&prevSideAPK, &prevSideZPK, &prevCommittedRttNs, &prevCommittedJitter,
-			&prevBandwidthBps, &prevIsDeleted, &changeType,
+			&prevBandwidthBps, &prevISISDelayOverride, &prevIsDeleted, &changeType,
 			&contributorCode, &sideACode, &sideZCode, &sideAMetroCode, &sideZMetroCode,
 			&sideAMetroPK, &sideZMetroPK,
 		); err != nil {
@@ -1360,6 +1363,9 @@ func queryLinkChanges(ctx context.Context, startTime, endTime time.Time) ([]Time
 			if prevBandwidthBps != nil && *prevBandwidthBps != bandwidthBps {
 				changes = append(changes, FieldChange{Field: "bandwidth", OldValue: *prevBandwidthBps, NewValue: bandwidthBps})
 			}
+			if prevISISDelayOverride != nil && *prevISISDelayOverride != isisDelayOverride {
+				changes = append(changes, FieldChange{Field: "isis_delay_override", OldValue: *prevISISDelayOverride, NewValue: isisDelayOverride})
+			}
 		}
 
 		var title string
@@ -1392,6 +1398,8 @@ func queryLinkChanges(ctx context.Context, startTime, endTime time.Time) ([]Time
 					title = fmt.Sprintf("Link %s bandwidth changed", code)
 				case "committed_rtt":
 					title = fmt.Sprintf("Link %s committed RTT changed", code)
+				case "isis_delay_override":
+					title = fmt.Sprintf("Link %s ISIS delay override changed", code)
 				default:
 					title = fmt.Sprintf("Link %s %s changed", code, c.Field)
 				}

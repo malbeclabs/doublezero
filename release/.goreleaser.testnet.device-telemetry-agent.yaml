@@ -7,7 +7,7 @@ includes:
 
 cloudsmiths:
   - organization: malbeclabs
-    repository: doublezero
+    repository: doublezero-testnet
     distributions:
       deb: "any-distro/any-version"
       rpm: "any-distro/any-version"

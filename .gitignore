@@ -27,3 +27,6 @@ dev/.deploy/
 
 # Ignore the directory used for checking out the monitor tool in CI
 /doublezero_monitor/
+
+# Ignore migration binary
+/rfc11-resource-migration

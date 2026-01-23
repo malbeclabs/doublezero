@@ -138,3 +138,9 @@ func SetQuotaHeaders(w http.ResponseWriter, quota *QuotaInfo) {
 func itoa(i int) string {
 	return fmt.Sprintf("%d", i)
 }
+
+// SetAccountInContext is a test helper that adds an account to the context.
+// This is used for testing handlers without going through the auth middleware.
+func SetAccountInContext(ctx context.Context, account *Account) context.Context {
+	return context.WithValue(ctx, accountContextKey, account)
+}

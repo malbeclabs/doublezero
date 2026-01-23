@@ -13,7 +13,7 @@ import (
 )
 
 func TestClaimIncompleteWorkflow_SingleWorkflow(t *testing.T) {
-	apitesting.SetupTestDB(t, testDB)
+	apitesting.SetupTestDB(t, testPgDB)
 	ctx := t.Context()
 
 	// Create a session first (required for foreign key)
@@ -40,7 +40,7 @@ func TestClaimIncompleteWorkflow_SingleWorkflow(t *testing.T) {
 }
 
 func TestClaimIncompleteWorkflow_AlreadyClaimed(t *testing.T) {
-	apitesting.SetupTestDB(t, testDB)
+	apitesting.SetupTestDB(t, testPgDB)
 	ctx := t.Context()
 
 	// Create a session
@@ -70,7 +70,7 @@ func TestClaimIncompleteWorkflow_AlreadyClaimed(t *testing.T) {
 }
 
 func TestClaimIncompleteWorkflow_StaleClaim(t *testing.T) {
-	apitesting.SetupTestDB(t, testDB)
+	apitesting.SetupTestDB(t, testPgDB)
 	ctx := t.Context()
 
 	// Create a session
@@ -110,7 +110,7 @@ func TestClaimIncompleteWorkflow_StaleClaim(t *testing.T) {
 }
 
 func TestClaimIncompleteWorkflow_ActiveClaimWithProgress(t *testing.T) {
-	apitesting.SetupTestDB(t, testDB)
+	apitesting.SetupTestDB(t, testPgDB)
 	ctx := t.Context()
 
 	// Create a session
@@ -148,7 +148,7 @@ func TestClaimIncompleteWorkflow_ActiveClaimWithProgress(t *testing.T) {
 }
 
 func TestClaimIncompleteWorkflow_CompletedNotClaimable(t *testing.T) {
-	apitesting.SetupTestDB(t, testDB)
+	apitesting.SetupTestDB(t, testPgDB)
 	ctx := t.Context()
 
 	// Create a session
@@ -174,7 +174,7 @@ func TestClaimIncompleteWorkflow_CompletedNotClaimable(t *testing.T) {
 }
 
 func TestClaimIncompleteWorkflow_FailedNotClaimable(t *testing.T) {
-	apitesting.SetupTestDB(t, testDB)
+	apitesting.SetupTestDB(t, testPgDB)
 	ctx := t.Context()
 
 	// Create a session
@@ -200,7 +200,7 @@ func TestClaimIncompleteWorkflow_FailedNotClaimable(t *testing.T) {
 }
 
 func TestClaimIncompleteWorkflow_MultipleWorkflows(t *testing.T) {
-	apitesting.SetupTestDB(t, testDB)
+	apitesting.SetupTestDB(t, testPgDB)
 	ctx := t.Context()
 
 	// Create sessions and workflows
@@ -240,7 +240,7 @@ func TestClaimIncompleteWorkflow_MultipleWorkflows(t *testing.T) {
 }
 
 func TestClaimIncompleteWorkflow_ConcurrentClaims(t *testing.T) {
-	apitesting.SetupTestDB(t, testDB)
+	apitesting.SetupTestDB(t, testPgDB)
 	ctx := t.Context()
 
 	// Create a session and workflow

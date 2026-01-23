@@ -31,6 +31,11 @@ func Database() string {
 	return cfg.Database
 }
 
+// SetDatabase sets the configured database name (for testing)
+func SetDatabase(db string) {
+	cfg.Database = db
+}
+
 // Load initializes configuration from environment variables and creates the connection pool
 func Load() error {
 	cfg.Addr = os.Getenv("CLICKHOUSE_ADDR_TCP")

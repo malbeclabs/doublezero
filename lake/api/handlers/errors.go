@@ -16,10 +16,10 @@ func internalError(operation string, err error) string {
 	return operation
 }
 
-// sanitizeError removes sensitive information from error messages.
+// SanitizeError removes sensitive information from error messages.
 // Use this when you need to include some error context but want to
 // strip credentials and internal details.
-func sanitizeError(err error) string {
+func SanitizeError(err error) string {
 	if err == nil {
 		return ""
 	}

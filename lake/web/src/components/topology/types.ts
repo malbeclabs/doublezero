@@ -13,8 +13,10 @@ export interface LinkInfo {
   outRate: string
   deviceAPk: string
   deviceACode: string
+  interfaceAName: string
   deviceZPk: string
   deviceZCode: string
+  interfaceZName: string
   contributorPk: string
   contributorCode: string
   health?: {

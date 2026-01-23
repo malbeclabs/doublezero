@@ -1315,7 +1315,11 @@ export interface TopologyLink {
   link_type: string
   bandwidth_bps: number
   side_a_pk: string
+  side_a_code: string
+  side_a_iface_name: string
   side_z_pk: string
+  side_z_code: string
+  side_z_iface_name: string
   contributor_pk: string
   contributor_code: string
   latency_us: number

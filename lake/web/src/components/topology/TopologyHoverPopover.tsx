@@ -117,7 +117,9 @@ function LinkHoverContent({ link }: { link: LinkInfo }) {
     <div className="space-y-1">
       <div className="font-medium">{link.code}</div>
       <div className="text-[10px] text-muted-foreground">
-        {link.deviceACode} ↔ {link.deviceZCode}
+        {link.deviceACode}{link.interfaceAName && <span className="font-mono"> ({link.interfaceAName})</span>}
+        {' ↔ '}
+        {link.deviceZCode}{link.interfaceZName && <span className="font-mono"> ({link.interfaceZName})</span>}
       </div>
       <div className="text-muted-foreground space-y-0.5">
         <div className="flex justify-between gap-4">

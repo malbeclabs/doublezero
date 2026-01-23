@@ -25,6 +25,28 @@ export function LinkDetails({ link }: LinkDetailsProps) {
 
   return (
     <div className="p-4 space-y-4">
+      {/* Endpoints */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="p-2 bg-[var(--muted)]/30 rounded-lg">
+          <div className="text-xs text-muted-foreground mb-1">A-Side</div>
+          <div className="text-sm font-medium">
+            <EntityLink to={`/dz/devices/${link.deviceAPk}`}>{link.deviceACode}</EntityLink>
+          </div>
+          {link.interfaceAName && (
+            <div className="text-xs text-muted-foreground font-mono mt-0.5">{link.interfaceAName}</div>
+          )}
+        </div>
+        <div className="p-2 bg-[var(--muted)]/30 rounded-lg">
+          <div className="text-xs text-muted-foreground mb-1">Z-Side</div>
+          <div className="text-sm font-medium">
+            <EntityLink to={`/dz/devices/${link.deviceZPk}`}>{link.deviceZCode}</EntityLink>
+          </div>
+          {link.interfaceZName && (
+            <div className="text-xs text-muted-foreground font-mono mt-0.5">{link.interfaceZName}</div>
+          )}
+        </div>
+      </div>
+
       {/* Stats grid */}
       <div className="grid grid-cols-2 gap-2">
         {stats.map((stat, i) => (

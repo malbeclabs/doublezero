@@ -163,6 +163,10 @@ export function TopologyGraph({
     contributorCode?: string
     bandwidth?: string
     latencyMs?: string
+    deviceACode?: string
+    interfaceAName?: string
+    deviceZCode?: string
+    interfaceZName?: string
     x: number
     y: number
     health?: {
@@ -302,11 +306,9 @@ export function TopologyGraph({
     const map = new Map<string, LinkInfo>()
     if (!topologyData?.links) return map
     for (const link of topologyData.links) {
-      const deviceA = topologyData.devices?.find(d => d.pk === link.side_a_pk)
-      const deviceZ = topologyData.devices?.find(d => d.pk === link.side_z_pk)
       map.set(link.pk, {
         pk: link.pk,
-        code: link.code || `${deviceA?.code || 'Unknown'} — ${deviceZ?.code || 'Unknown'}`,
+        code: link.code || `${link.side_a_code || 'Unknown'} — ${link.side_z_code || 'Unknown'}`,
         linkType: link.link_type || 'unknown',
         bandwidth: link.bandwidth_bps ? formatBps(link.bandwidth_bps) : 'N/A',
         latencyMs: link.latency_us ? `${(link.latency_us / 1000).toFixed(2)}ms` : 'N/A',
@@ -315,9 +317,11 @@ export function TopologyGraph({
         inRate: link.in_bps ? formatBps(link.in_bps) : 'N/A',
         outRate: link.out_bps ? formatBps(link.out_bps) : 'N/A',
         deviceAPk: link.side_a_pk || '',
-        deviceACode: deviceA?.code || 'Unknown',
+        deviceACode: link.side_a_code || 'Unknown',
+        interfaceAName: link.side_a_iface_name || '',
         deviceZPk: link.side_z_pk || '',
-        deviceZCode: deviceZ?.code || 'Unknown',
+        deviceZCode: link.side_z_code || 'Unknown',
+        interfaceZName: link.side_z_iface_name || '',
         contributorPk: link.contributor_pk || '',
         contributorCode: link.contributor_code || '',
       })
@@ -2230,6 +2234,10 @@ export function TopologyGraph({
           contributorCode: linkInfo?.contributorCode,
           bandwidth: linkInfo?.bandwidth,
           latencyMs: linkInfo?.latencyMs,
+          deviceACode: linkInfo?.deviceACode,
+          interfaceAName: linkInfo?.interfaceAName,
+          deviceZCode: linkInfo?.deviceZCode,
+          interfaceZName: linkInfo?.interfaceZName,
           x: midpoint.x * zoom + pan.x,
           y: midpoint.y * zoom + pan.y,
           health: healthInfo,
@@ -3076,6 +3084,12 @@ export function TopologyGraph({
             <div className="space-y-1">
               <div className="text-sm font-medium">{hoveredEdge.code || `${hoveredEdge.source.substring(0, 8)}...→${hoveredEdge.target.substring(0, 8)}...`}</div>
               <div className="text-xs text-muted-foreground space-y-0.5">
+                {hoveredEdge.deviceACode && (
+                  <div>A-Side: <span className="text-foreground">{hoveredEdge.deviceACode}</span>{hoveredEdge.interfaceAName && <span className="text-foreground font-mono"> ({hoveredEdge.interfaceAName})</span>}</div>
+                )}
+                {hoveredEdge.deviceZCode && (
+                  <div>Z-Side: <span className="text-foreground">{hoveredEdge.deviceZCode}</span>{hoveredEdge.interfaceZName && <span className="text-foreground font-mono"> ({hoveredEdge.interfaceZName})</span>}</div>
+                )}
                 <div>Type: <span className="text-foreground">{hoveredEdge.linkType || 'unknown'}</span></div>
                 {hoveredEdge.contributorCode && (
                   <div>Contributor: <span className="text-foreground">{hoveredEdge.contributorCode}</span></div>

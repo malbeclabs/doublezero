@@ -44,7 +44,11 @@ type Link struct {
 	LinkType        string  `json:"link_type"`
 	BandwidthBps    int64   `json:"bandwidth_bps"`
 	SideAPK         string  `json:"side_a_pk"`
+	SideACode       string  `json:"side_a_code"`
+	SideAIfaceName  string  `json:"side_a_iface_name"`
 	SideZPK         string  `json:"side_z_pk"`
+	SideZCode       string  `json:"side_z_code"`
+	SideZIfaceName  string  `json:"side_z_iface_name"`
 	ContributorPK   string  `json:"contributor_pk"`
 	ContributorCode string  `json:"contributor_code"`
 	LatencyUs       float64 `json:"latency_us"`
@@ -178,8 +182,10 @@ func GetTopology(w http.ResponseWriter, r *http.Request) {
 	g.Go(func() error {
 		query := `
 			SELECT
-				l.pk, l.code, l.status, l.link_type, l.bandwidth_bps, l.side_a_pk, l.side_z_pk,
-				l.contributor_pk, c.code as contributor_code,
+				l.pk, l.code, l.status, l.link_type, l.bandwidth_bps,
+				l.side_a_pk, COALESCE(da.code, '') as side_a_code, COALESCE(l.side_a_iface_name, '') as side_a_iface_name,
+				l.side_z_pk, COALESCE(dz.code, '') as side_z_code, COALESCE(l.side_z_iface_name, '') as side_z_iface_name,
+				l.contributor_pk, COALESCE(c.code, '') as contributor_code,
 				COALESCE(lat.avg_rtt_us, 0) as latency_us,
 				COALESCE(lat.avg_ipdv_us, 0) as jitter_us,
 				COALESCE(lat.loss_percent, 0) as loss_percent,
@@ -187,6 +193,8 @@ func GetTopology(w http.ResponseWriter, r *http.Request) {
 				COALESCE(traffic.in_bps, 0) as in_bps,
 				COALESCE(traffic.out_bps, 0) as out_bps
 			FROM dz_links_current l
+			LEFT JOIN dz_devices_current da ON l.side_a_pk = da.pk
+			LEFT JOIN dz_devices_current dz ON l.side_z_pk = dz.pk
 			LEFT JOIN dz_contributors_current c ON l.contributor_pk = c.pk
 			LEFT JOIN (
 				SELECT link_pk,
@@ -217,7 +225,7 @@ func GetTopology(w http.ResponseWriter, r *http.Request) {
 
 		for rows.Next() {
 			var l Link
-			if err := rows.Scan(&l.PK, &l.Code, &l.Status, &l.LinkType, &l.BandwidthBps, &l.SideAPK, &l.SideZPK, &l.ContributorPK, &l.ContributorCode, &l.LatencyUs, &l.JitterUs, &l.LossPercent, &l.SampleCount, &l.InBps, &l.OutBps); err != nil {
+			if err := rows.Scan(&l.PK, &l.Code, &l.Status, &l.LinkType, &l.BandwidthBps, &l.SideAPK, &l.SideACode, &l.SideAIfaceName, &l.SideZPK, &l.SideZCode, &l.SideZIfaceName, &l.ContributorPK, &l.ContributorCode, &l.LatencyUs, &l.JitterUs, &l.LossPercent, &l.SampleCount, &l.InBps, &l.OutBps); err != nil {
 				return err
 			}
 			links = append(links, l)

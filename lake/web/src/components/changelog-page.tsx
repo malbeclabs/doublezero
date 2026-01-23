@@ -13,6 +13,7 @@ const changelog: ChangelogEntry[] = [
     date: 'January 23, 2026',
     changes: [
       { type: 'feature', description: 'Telemetry stopped indicator in status page summary' },
+      { type: 'feature', description: 'Device and interface info shown on link info panel and hover tooltip' },
       { type: 'improvement', description: 'Unified what-if removal analysis for maintenance planner' },
     ],
   },

@@ -142,8 +142,10 @@ interface HoveredLinkInfo {
   outRate: string
   deviceAPk: string
   deviceACode: string
+  interfaceAName: string
   deviceZPk: string
   deviceZCode: string
+  interfaceZName: string
   contributorPk: string
   contributorCode: string
   health?: {
@@ -1398,8 +1400,6 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
 
   // Build hover info for links
   const buildLinkInfo = useCallback((link: TopologyLink): HoveredLinkInfo => {
-    const deviceA = deviceMap.get(link.side_a_pk)
-    const deviceZ = deviceMap.get(link.side_z_pk)
     const hasLatencyData = (link.sample_count ?? 0) > 0
     const healthInfo = linkSlaStatus.get(link.pk)
     return {
@@ -1413,9 +1413,11 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       inRate: formatTrafficRate(link.in_bps),
       outRate: formatTrafficRate(link.out_bps),
       deviceAPk: link.side_a_pk,
-      deviceACode: deviceA?.code || 'Unknown',
+      deviceACode: link.side_a_code || 'Unknown',
+      interfaceAName: link.side_a_iface_name || '',
       deviceZPk: link.side_z_pk,
-      deviceZCode: deviceZ?.code || 'Unknown',
+      deviceZCode: link.side_z_code || 'Unknown',
+      interfaceZName: link.side_z_iface_name || '',
       contributorPk: link.contributor_pk,
       contributorCode: link.contributor_code,
       health: healthInfo ? {
@@ -1425,7 +1427,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
         lossPct: healthInfo.lossPct,
       } : undefined,
     }
-  }, [deviceMap, linkSlaStatus])
+  }, [linkSlaStatus])
 
   // Handle map click to deselect or select links
   const handleMapClick = useCallback((e: MapLayerMouseEvent) => {
@@ -1818,9 +1820,11 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             inRate: formatTrafficRate(link.in_bps),
             outRate: formatTrafficRate(link.out_bps),
             deviceAPk: link.side_a_pk,
-            deviceACode: deviceA?.code || 'Unknown',
+            deviceACode: link.side_a_code || 'Unknown',
+            interfaceAName: link.side_a_iface_name || '',
             deviceZPk: link.side_z_pk,
-            deviceZCode: deviceZ?.code || 'Unknown',
+            deviceZCode: link.side_z_code || 'Unknown',
+            interfaceZName: link.side_z_iface_name || '',
             contributorPk: link.contributor_pk,
             contributorCode: link.contributor_code,
           },
@@ -1906,8 +1910,10 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           outRate: '',
           deviceAPk: '',
           deviceACode: '',
+          interfaceAName: '',
           deviceZPk: '',
           deviceZCode: '',
+          interfaceZName: '',
           contributorPk: '',
           contributorCode: '',
           isInterMetro: true,
@@ -2405,6 +2411,12 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             <div className="space-y-1">
               <div className="text-sm font-medium">{hoveredLink.code}</div>
               <div className="text-xs text-muted-foreground space-y-0.5">
+                {!hoveredLink.isInterMetro && hoveredLink.deviceACode && (
+                  <div>A-Side: <span className="text-foreground">{hoveredLink.deviceACode}</span>{hoveredLink.interfaceAName && <span className="text-foreground font-mono"> ({hoveredLink.interfaceAName})</span>}</div>
+                )}
+                {!hoveredLink.isInterMetro && hoveredLink.deviceZCode && (
+                  <div>Z-Side: <span className="text-foreground">{hoveredLink.deviceZCode}</span>{hoveredLink.interfaceZName && <span className="text-foreground font-mono"> ({hoveredLink.interfaceZName})</span>}</div>
+                )}
                 <div>Type: <span className="text-foreground">{hoveredLink.isInterMetro ? 'Inter-Metro' : hoveredLink.linkType}</span></div>
                 {hoveredLink.contributorCode && (
                   <div>Contributor: <span className="text-foreground">{hoveredLink.contributorCode}</span></div>

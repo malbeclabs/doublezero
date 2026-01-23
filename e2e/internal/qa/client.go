@@ -58,6 +58,7 @@ type Device struct {
 	ExchangeCode string
 	MaxUsers     int
 	UsersCount   int
+	Status       serviceability.DeviceStatus
 }
 
 type Client struct {

@@ -149,6 +149,7 @@ func getDevices(ctx context.Context, serviceabilityClient *serviceability.Client
 			ExchangeCode: exchangeCode,
 			MaxUsers:     int(device.MaxUsers),
 			UsersCount:   int(device.UsersCount),
+			Status:       device.Status,
 		}
 	}
 	return devices, nil

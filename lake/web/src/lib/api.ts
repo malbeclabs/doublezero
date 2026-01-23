@@ -2368,11 +2368,17 @@ export async function fetchValidators(
   limit = 100,
   offset = 0,
   sortBy?: string,
-  sortDir?: 'asc' | 'desc'
+  sortDir?: 'asc' | 'desc',
+  filterField?: string,
+  filterValue?: string
 ): Promise<ValidatorsResponse> {
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset) })
   if (sortBy) params.set('sort_by', sortBy)
   if (sortDir) params.set('sort_dir', sortDir)
+  if (filterField && filterValue) {
+    params.set('filter_field', filterField)
+    params.set('filter_value', filterValue)
+  }
   const res = await fetchWithRetry(`/api/solana/validators?${params}`)
   if (!res.ok) {
     throw new Error('Failed to fetch validators')
@@ -2418,11 +2424,17 @@ export async function fetchGossipNodes(
   limit = 100,
   offset = 0,
   sortBy?: string,
-  sortDir?: 'asc' | 'desc'
+  sortDir?: 'asc' | 'desc',
+  filterField?: string,
+  filterValue?: string
 ): Promise<GossipNodesResponse> {
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset) })
   if (sortBy) params.set('sort_by', sortBy)
   if (sortDir) params.set('sort_dir', sortDir)
+  if (filterField && filterValue) {
+    params.set('filter_field', filterField)
+    params.set('filter_value', filterValue)
+  }
   const res = await fetchWithRetry(`/api/solana/gossip-nodes?${params}`)
   if (!res.ok) {
     throw new Error('Failed to fetch gossip nodes')

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Loader2, Radio, AlertCircle, Check, ChevronDown, ChevronUp } from 'lucide-react'
@@ -32,50 +32,21 @@ type SortField =
 
 type SortDirection = 'asc' | 'desc'
 
-type NumericFilter = {
-  op: '>' | '>=' | '<' | '<=' | '='
-  value: number
-}
+// Hook for debounced value
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value)
 
-type UnitMap = Record<string, number>
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value)
+    }, delay)
 
-const numericSearchFields: SortField[] = ['stake']
+    return () => {
+      clearTimeout(handler)
+    }
+  }, [value, delay])
 
-function parseNumericFilter(input: string): NumericFilter | null {
-  const match = input.trim().match(/^(>=|<=|>|<|==|=)\s*(-?\d+(?:\.\d+)?)$/)
-  if (!match) return null
-  const op = match[1] === '==' ? '=' : (match[1] as NumericFilter['op'])
-  return { op, value: Number(match[2]) }
-}
-
-function parseNumericFilterWithUnits(
-  input: string,
-  unitMap: UnitMap,
-  defaultUnit: string
-): NumericFilter | null {
-  const match = input.trim().match(/^(>=|<=|>|<|==|=)\s*(-?\d+(?:\.\d+)?)([a-zA-Z]+)?$/)
-  if (!match) return null
-  const op = match[1] === '==' ? '=' : (match[1] as NumericFilter['op'])
-  const unitRaw = match[3]?.toLowerCase()
-  const unit = unitRaw ?? defaultUnit
-  const multiplier = unitMap[unit]
-  if (!multiplier) return null
-  return { op, value: Number(match[2]) * multiplier }
-}
-
-function matchesNumericFilter(value: number, filter: NumericFilter): boolean {
-  switch (filter.op) {
-    case '>':
-      return value > filter.value
-    case '>=':
-      return value >= filter.value
-    case '<':
-      return value < filter.value
-    case '<=':
-      return value <= filter.value
-    case '=':
-      return value === filter.value
-  }
+  return debouncedValue
 }
 
 export function GossipNodesPage() {
@@ -86,63 +57,25 @@ export function GossipNodesPage() {
   const [searchField, setSearchField] = useState<SortField>('pubkey')
   const [searchText, setSearchText] = useState('')
 
+  // Debounce filter value to avoid too many requests
+  const debouncedSearchText = useDebounce(searchText, 300)
+
   const { data: response, isLoading, isFetching, error } = useQuery({
-    queryKey: ['gossip-nodes', offset, sortField, sortDirection],
-    queryFn: () => fetchGossipNodes(PAGE_SIZE, offset, sortField, sortDirection),
+    queryKey: ['gossip-nodes', offset, sortField, sortDirection, searchField, debouncedSearchText],
+    queryFn: () => fetchGossipNodes(
+      PAGE_SIZE,
+      offset,
+      sortField,
+      sortDirection,
+      debouncedSearchText ? searchField : undefined,
+      debouncedSearchText || undefined
+    ),
     refetchInterval: 60000,
     placeholderData: keepPreviousData,
   })
   const nodes = response?.items ?? []
   const onDZCount = response?.on_dz_count ?? 0
   const validatorCount = response?.validator_count ?? 0
-
-  // Client-side filtering on the current page
-  const filteredNodes = useMemo(() => {
-    if (!nodes.length) return []
-    const needle = searchText.trim().toLowerCase()
-    if (!needle) return nodes
-    const numericFilter = parseNumericFilter(searchText)
-    if (numericSearchFields.includes(searchField)) {
-      const unitFilter =
-        searchField === 'stake'
-          ? parseNumericFilterWithUnits(searchText, { '': 1, k: 1e3, m: 1e6 }, '')
-          : null
-      const effectiveFilter = unitFilter ?? numericFilter
-      if (!effectiveFilter) {
-        return nodes
-      }
-      const getNumericValue = (node: typeof nodes[number]) => {
-        switch (searchField) {
-          case 'stake':
-            return node.stake_sol
-          default:
-            return 0
-        }
-      }
-      return nodes.filter(node => matchesNumericFilter(getNumericValue(node), effectiveFilter))
-    }
-    const getSearchValue = (node: typeof nodes[number]) => {
-      switch (searchField) {
-        case 'pubkey':
-          return node.pubkey
-        case 'ip':
-          return node.gossip_ip ? `${node.gossip_ip}:${node.gossip_port}` : ''
-        case 'version':
-          return node.version || ''
-        case 'location':
-          return `${node.city || ''} ${node.country || ''}`.trim()
-        case 'validator':
-          return node.is_validator ? 'yes' : 'no'
-        case 'stake':
-          return String(node.stake_sol)
-        case 'dz':
-          return node.on_dz ? 'yes' : 'no'
-        case 'device':
-          return `${node.device_code || ''} ${node.metro_code || ''}`.trim()
-      }
-    }
-    return nodes.filter(node => getSearchValue(node).toLowerCase().includes(needle))
-  }, [nodes, searchField, searchText])
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -166,9 +99,10 @@ export function GossipNodesPage() {
     return sortDirection === 'asc' ? 'ascending' : 'descending'
   }
 
+  // Reset to first page when filter changes
   useEffect(() => {
     setOffset(0)
-  }, [searchField, searchText])
+  }, [searchField, debouncedSearchText])
 
   if (isLoading) {
     return (
@@ -230,7 +164,7 @@ export function GossipNodesPage() {
                 className="h-9 w-48 sm:w-64 rounded-md border border-border bg-background px-3 pr-8 text-sm"
                 value={searchText}
                 onChange={(e) => setSearchText(e.target.value)}
-                placeholder="Filter (current page)"
+                placeholder="Filter"
                 aria-label="Filter"
               />
               {searchText && (
@@ -304,7 +238,7 @@ export function GossipNodesPage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredNodes.map((node) => (
+                {nodes.map((node) => (
                   <tr
                     key={node.pubkey}
                     className="border-b border-border last:border-b-0 hover:bg-muted/50 cursor-pointer transition-colors"
@@ -361,7 +295,7 @@ export function GossipNodesPage() {
                     </td>
                   </tr>
                 ))}
-                {filteredNodes.length === 0 && (
+                {nodes.length === 0 && (
                   <tr>
                     <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
                       No gossip nodes found

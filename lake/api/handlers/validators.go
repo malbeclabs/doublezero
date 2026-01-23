@@ -52,43 +52,39 @@ var validatorSortFields = map[string]string{
 	"version":    "version",
 }
 
+var validatorFilterFields = map[string]FilterFieldConfig{
+	"vote":       {Column: "v.vote_pubkey", Type: FieldTypeText},
+	"node":       {Column: "v.node_pubkey", Type: FieldTypeText},
+	"stake":      {Column: "stake_sol", Type: FieldTypeStake},
+	"share":      {Column: "stake_share", Type: FieldTypeNumeric},
+	"commission": {Column: "commission", Type: FieldTypeNumeric},
+	"dz":         {Column: "on_dz", Type: FieldTypeBoolean},
+	"device":     {Column: "device_code", Type: FieldTypeText},
+	"location":   {Column: "city", Type: FieldTypeText},
+	"in":         {Column: "in_bps", Type: FieldTypeBandwidth},
+	"out":        {Column: "out_bps", Type: FieldTypeBandwidth},
+	"skip":       {Column: "skip_rate", Type: FieldTypeNumeric},
+	"version":    {Column: "version", Type: FieldTypeText},
+}
+
 func GetValidators(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
 
 	pagination := ParsePagination(r, 100)
 	sort := ParseSort(r, "stake", validatorSortFields)
+	filter := ParseFilter(r)
 	start := time.Now()
 
-	// Get total count
-	countQuery := `SELECT count(*) FROM solana_vote_accounts_current WHERE epoch_vote_account = 'true'`
-	var total uint64
-	if err := config.DB.QueryRow(ctx, countQuery).Scan(&total); err != nil {
-		log.Printf("Validators count error: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+	// Build filter clause
+	filterClause, filterArgs := filter.BuildFilterClause(validatorFilterFields)
+	whereFilter := ""
+	if filterClause != "" {
+		whereFilter = " AND " + filterClause
 	}
 
-	// Get on_dz count
-	onDZCountQuery := `
-		SELECT count(DISTINCT v.vote_pubkey)
-		FROM solana_vote_accounts_current v
-		JOIN solana_gossip_nodes_current g ON v.node_pubkey = g.pubkey
-		JOIN dz_users_current u ON g.gossip_ip = u.dz_ip
-		WHERE v.epoch_vote_account = 'true'
-			AND u.status = 'activated'
-			AND u.dz_ip IS NOT NULL
-			AND u.dz_ip != ''
-	`
-	var onDZCount uint64
-	if err := config.DB.QueryRow(ctx, onDZCountQuery).Scan(&onDZCount); err != nil {
-		log.Printf("Validators on_dz count error: %v", err)
-		// Non-fatal, continue with 0
-		onDZCount = 0
-	}
-
-	orderBy := sort.OrderByClause(validatorSortFields)
-	query := `
+	// Base CTE query for validators data
+	baseQuery := `
 		WITH total_stake AS (
 			SELECT sum(activated_stake_lamports) as total
 			FROM solana_vote_accounts_current
@@ -146,38 +142,84 @@ func GetValidators(w http.ResponseWriter, r *http.Request) {
 				FROM fact_solana_block_production
 				GROUP BY leader_identity_pubkey
 			)
+		),
+		validators_data AS (
+			SELECT
+				v.vote_pubkey,
+				v.node_pubkey,
+				v.activated_stake_lamports,
+				v.activated_stake_lamports / 1e9 as stake_sol,
+				CASE WHEN ts.total > 0
+					THEN v.activated_stake_lamports * 100.0 / ts.total
+					ELSE 0
+				END as stake_share,
+				COALESCE(v.commission_percentage, 0) as commission,
+				dz.node_pubkey != '' as on_dz,
+				COALESCE(dz.device_code, '') as device_code,
+				COALESCE(dz.metro_code, '') as metro_code,
+				COALESCE(geo.city, '') as city,
+				COALESCE(geo.country, '') as country,
+				COALESCE(tr.in_bps, 0) as in_bps,
+				COALESCE(tr.out_bps, 0) as out_bps,
+				COALESCE(sr.skip_rate, 0) as skip_rate,
+				COALESCE(g.version, '') as version
+			FROM solana_vote_accounts_current v
+			CROSS JOIN total_stake ts
+			LEFT JOIN solana_gossip_nodes_current g ON v.node_pubkey = g.pubkey
+			LEFT JOIN dz_validators dz ON v.node_pubkey = dz.node_pubkey
+			LEFT JOIN traffic_rates tr ON dz.tunnel_id = tr.user_tunnel_id
+			LEFT JOIN geoip geo ON v.node_pubkey = geo.pubkey
+			LEFT JOIN skip_rates sr ON v.node_pubkey = sr.leader_identity_pubkey
+			WHERE v.epoch_vote_account = 'true'
 		)
-		SELECT
-			v.vote_pubkey,
-			v.node_pubkey,
-			v.activated_stake_lamports / 1e9 as stake_sol,
-			CASE WHEN ts.total > 0
-				THEN v.activated_stake_lamports * 100.0 / ts.total
-				ELSE 0
-			END as stake_share,
-			COALESCE(v.commission_percentage, 0) as commission,
-			dz.node_pubkey != '' as on_dz,
-			COALESCE(dz.device_code, '') as device_code,
-			COALESCE(dz.metro_code, '') as metro_code,
-			COALESCE(geo.city, '') as city,
-			COALESCE(geo.country, '') as country,
-			COALESCE(tr.in_bps, 0) as in_bps,
-			COALESCE(tr.out_bps, 0) as out_bps,
-			COALESCE(sr.skip_rate, 0) as skip_rate,
-			COALESCE(g.version, '') as version
-		FROM solana_vote_accounts_current v
-		CROSS JOIN total_stake ts
-		LEFT JOIN solana_gossip_nodes_current g ON v.node_pubkey = g.pubkey
-		LEFT JOIN dz_validators dz ON v.node_pubkey = dz.node_pubkey
-		LEFT JOIN traffic_rates tr ON dz.tunnel_id = tr.user_tunnel_id
-		LEFT JOIN geoip geo ON v.node_pubkey = geo.pubkey
-		LEFT JOIN skip_rates sr ON v.node_pubkey = sr.leader_identity_pubkey
-		WHERE v.epoch_vote_account = 'true'
+	`
+
+	// Get total count (with filter)
+	countQuery := baseQuery + `SELECT count(*) FROM validators_data WHERE 1=1` + whereFilter
+	var total uint64
+	if err := config.DB.QueryRow(ctx, countQuery, filterArgs...).Scan(&total); err != nil {
+		log.Printf("Validators count error: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Get on_dz count (with filter)
+	onDZCountQuery := baseQuery + `SELECT count(*) FROM validators_data WHERE on_dz = true` + whereFilter
+	var onDZCount uint64
+	if err := config.DB.QueryRow(ctx, onDZCountQuery, filterArgs...).Scan(&onDZCount); err != nil {
+		log.Printf("Validators on_dz count error: %v", err)
+		onDZCount = 0
+	}
+
+	// Build sort clause using output column names
+	sortFieldsForQuery := map[string]string{
+		"vote":       "vote_pubkey",
+		"node":       "node_pubkey",
+		"stake":      "activated_stake_lamports",
+		"share":      "activated_stake_lamports",
+		"commission": "commission",
+		"dz":         "on_dz",
+		"device":     "device_code",
+		"location":   "city",
+		"in":         "in_bps",
+		"out":        "out_bps",
+		"skip":       "skip_rate",
+		"version":    "version",
+	}
+	orderBy := sort.OrderByClause(sortFieldsForQuery)
+
+	// Main query
+	query := baseQuery + `
+		SELECT vote_pubkey, node_pubkey, stake_sol, stake_share, commission,
+			on_dz, device_code, metro_code, city, country, in_bps, out_bps, skip_rate, version
+		FROM validators_data
+		WHERE 1=1` + whereFilter + `
 		` + orderBy + `
 		LIMIT ? OFFSET ?
 	`
 
-	rows, err := config.DB.Query(ctx, query, pagination.Limit, pagination.Offset)
+	queryArgs := append(filterArgs, pagination.Limit, pagination.Offset)
+	rows, err := config.DB.Query(ctx, query, queryArgs...)
 	duration := time.Since(start)
 	metrics.RecordClickHouseQuery(duration, err)
 

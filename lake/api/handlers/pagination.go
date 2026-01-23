@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"net/http"
+	"regexp"
 	"strconv"
+	"strings"
 )
 
 const (
@@ -82,4 +84,151 @@ func (s SortParams) OrderByClause(fieldMapping map[string]string) string {
 		dir = "ASC"
 	}
 	return "ORDER BY " + column + " " + dir
+}
+
+// FilterParams holds parsed filter parameters
+type FilterParams struct {
+	Field string
+	Value string
+}
+
+// ParseFilter extracts filter parameters from the request
+func ParseFilter(r *http.Request) FilterParams {
+	return FilterParams{
+		Field: r.URL.Query().Get("filter_field"),
+		Value: r.URL.Query().Get("filter_value"),
+	}
+}
+
+// IsEmpty returns true if no filter is set
+func (f FilterParams) IsEmpty() bool {
+	return f.Value == ""
+}
+
+// FieldType indicates how to filter the field
+type FieldType int
+
+const (
+	FieldTypeText FieldType = iota
+	FieldTypeNumeric
+	FieldTypeBoolean
+	FieldTypeBandwidth // numeric with gbps/mbps units
+	FieldTypeStake     // numeric with k/m units
+)
+
+// FilterFieldConfig describes how to filter a field
+type FilterFieldConfig struct {
+	Column    string
+	Type      FieldType
+}
+
+// NumericOp represents a numeric comparison operator
+type NumericOp struct {
+	Op    string
+	Value float64
+}
+
+var numericOpRegex = regexp.MustCompile(`^(>=|<=|>|<|==|=)\s*(-?\d+(?:\.\d+)?)([a-zA-Z]*)$`)
+
+// ParseNumericFilter parses a string like ">100" or ">=10k" into operator and value
+func ParseNumericFilter(input string, fieldType FieldType) *NumericOp {
+	input = strings.TrimSpace(input)
+	matches := numericOpRegex.FindStringSubmatch(input)
+	if matches == nil {
+		return nil
+	}
+
+	op := matches[1]
+	if op == "==" {
+		op = "="
+	}
+
+	value, err := strconv.ParseFloat(matches[2], 64)
+	if err != nil {
+		return nil
+	}
+
+	unit := strings.ToLower(matches[3])
+
+	// Apply unit multiplier based on field type
+	switch fieldType {
+	case FieldTypeStake:
+		switch unit {
+		case "k":
+			value *= 1e3
+		case "m":
+			value *= 1e6
+		case "":
+			// no unit, use raw value
+		default:
+			return nil // unknown unit
+		}
+	case FieldTypeBandwidth:
+		switch unit {
+		case "gbps":
+			value *= 1e9
+		case "mbps":
+			value *= 1e6
+		case "kbps":
+			value *= 1e3
+		case "bps", "":
+			// default to gbps if no unit for bandwidth
+			if unit == "" {
+				value *= 1e9
+			}
+		default:
+			return nil
+		}
+	case FieldTypeNumeric:
+		// For plain numeric fields, k and m suffixes work
+		switch unit {
+		case "k":
+			value *= 1e3
+		case "m":
+			value *= 1e6
+		case "":
+			// no unit
+		default:
+			return nil
+		}
+	}
+
+	return &NumericOp{Op: op, Value: value}
+}
+
+// BuildFilterClause builds a WHERE clause fragment for the given filter
+// Returns the clause (without WHERE keyword) and any query parameters
+func (f FilterParams) BuildFilterClause(fields map[string]FilterFieldConfig) (string, []interface{}) {
+	if f.IsEmpty() {
+		return "", nil
+	}
+
+	config, ok := fields[f.Field]
+	if !ok {
+		return "", nil
+	}
+
+	switch config.Type {
+	case FieldTypeText:
+		// Case-insensitive substring match
+		return config.Column + " ILIKE ?", []interface{}{"%" + f.Value + "%"}
+
+	case FieldTypeBoolean:
+		val := strings.ToLower(strings.TrimSpace(f.Value))
+		if val == "yes" || val == "true" || val == "1" {
+			return config.Column + " = true", nil
+		} else if val == "no" || val == "false" || val == "0" {
+			return config.Column + " = false", nil
+		}
+		return "", nil
+
+	case FieldTypeNumeric, FieldTypeStake, FieldTypeBandwidth:
+		numOp := ParseNumericFilter(f.Value, config.Type)
+		if numOp == nil {
+			return "", nil
+		}
+		return config.Column + " " + numOp.Op + " ?", []interface{}{numOp.Value}
+	}
+
+	return "", nil
 }

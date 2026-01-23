@@ -36,7 +36,7 @@ type GossipNodeListResponse struct {
 }
 
 var gossipNodeSortFields = map[string]string{
-	"pubkey":    "g.pubkey",
+	"pubkey":    "pubkey",
 	"ip":        "gossip_ip",
 	"version":   "version",
 	"location":  "city",
@@ -46,53 +46,35 @@ var gossipNodeSortFields = map[string]string{
 	"device":    "device_code",
 }
 
+var gossipNodeFilterFields = map[string]FilterFieldConfig{
+	"pubkey":    {Column: "pubkey", Type: FieldTypeText},
+	"ip":        {Column: "gossip_ip", Type: FieldTypeText},
+	"version":   {Column: "version", Type: FieldTypeText},
+	"location":  {Column: "city", Type: FieldTypeText},
+	"validator": {Column: "is_validator", Type: FieldTypeBoolean},
+	"stake":     {Column: "stake_sol", Type: FieldTypeStake},
+	"dz":        {Column: "on_dz", Type: FieldTypeBoolean},
+	"device":    {Column: "device_code", Type: FieldTypeText},
+}
+
 func GetGossipNodes(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
 
 	pagination := ParsePagination(r, 100)
 	sort := ParseSort(r, "stake", gossipNodeSortFields)
+	filter := ParseFilter(r)
 	start := time.Now()
 
-	// Get total count
-	countQuery := `SELECT count(*) FROM solana_gossip_nodes_current`
-	var total uint64
-	if err := config.DB.QueryRow(ctx, countQuery).Scan(&total); err != nil {
-		log.Printf("GossipNodes count error: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+	// Build filter clause
+	filterClause, filterArgs := filter.BuildFilterClause(gossipNodeFilterFields)
+	whereFilter := ""
+	if filterClause != "" {
+		whereFilter = " AND " + filterClause
 	}
 
-	// Get on_dz count
-	onDZCountQuery := `
-		SELECT count(DISTINCT g.pubkey)
-		FROM solana_gossip_nodes_current g
-		JOIN dz_users_current u ON g.gossip_ip = u.dz_ip
-		WHERE u.status = 'activated'
-			AND u.dz_ip IS NOT NULL
-			AND u.dz_ip != ''
-	`
-	var onDZCount uint64
-	if err := config.DB.QueryRow(ctx, onDZCountQuery).Scan(&onDZCount); err != nil {
-		log.Printf("GossipNodes on_dz count error: %v", err)
-		onDZCount = 0
-	}
-
-	// Get validator count
-	validatorCountQuery := `
-		SELECT count(DISTINCT g.pubkey)
-		FROM solana_gossip_nodes_current g
-		JOIN solana_vote_accounts_current v ON g.pubkey = v.node_pubkey
-		WHERE v.epoch_vote_account = 'true'
-	`
-	var validatorCount uint64
-	if err := config.DB.QueryRow(ctx, validatorCountQuery).Scan(&validatorCount); err != nil {
-		log.Printf("GossipNodes validator count error: %v", err)
-		validatorCount = 0
-	}
-
-	orderBy := sort.OrderByClause(gossipNodeSortFields)
-	query := `
+	// Base CTE query for gossip nodes data
+	baseQuery := `
 		WITH dz_nodes AS (
 			SELECT
 				u.dz_ip,
@@ -111,28 +93,64 @@ func GetGossipNodes(w http.ResponseWriter, r *http.Request) {
 				activated_stake_lamports / 1e9 as stake_sol
 			FROM solana_vote_accounts_current
 			WHERE epoch_vote_account = 'true'
+		),
+		gossip_data AS (
+			SELECT
+				g.pubkey,
+				COALESCE(g.gossip_ip, '') as gossip_ip,
+				COALESCE(g.gossip_port, 0) as gossip_port,
+				COALESCE(g.version, '') as version,
+				COALESCE(geo.city, '') as city,
+				COALESCE(geo.country, '') as country,
+				dz.dz_ip != '' as on_dz,
+				COALESCE(dz.device_code, '') as device_code,
+				COALESCE(dz.metro_code, '') as metro_code,
+				COALESCE(vs.stake_sol, 0) as stake_sol,
+				vs.node_pubkey IS NOT NULL as is_validator
+			FROM solana_gossip_nodes_current g
+			LEFT JOIN geoip_records_current geo ON g.gossip_ip = geo.ip
+			LEFT JOIN dz_nodes dz ON g.gossip_ip = dz.dz_ip
+			LEFT JOIN validator_stake vs ON g.pubkey = vs.node_pubkey
 		)
-		SELECT
-			g.pubkey,
-			COALESCE(g.gossip_ip, '') as gossip_ip,
-			COALESCE(g.gossip_port, 0) as gossip_port,
-			COALESCE(g.version, '') as version,
-			COALESCE(geo.city, '') as city,
-			COALESCE(geo.country, '') as country,
-			dz.dz_ip != '' as on_dz,
-			COALESCE(dz.device_code, '') as device_code,
-			COALESCE(dz.metro_code, '') as metro_code,
-			COALESCE(vs.stake_sol, 0) as stake_sol,
-			vs.node_pubkey IS NOT NULL as is_validator
-		FROM solana_gossip_nodes_current g
-		LEFT JOIN geoip_records_current geo ON g.gossip_ip = geo.ip
-		LEFT JOIN dz_nodes dz ON g.gossip_ip = dz.dz_ip
-		LEFT JOIN validator_stake vs ON g.pubkey = vs.node_pubkey
+	`
+
+	// Get total count (with filter)
+	countQuery := baseQuery + `SELECT count(*) FROM gossip_data WHERE 1=1` + whereFilter
+	var total uint64
+	if err := config.DB.QueryRow(ctx, countQuery, filterArgs...).Scan(&total); err != nil {
+		log.Printf("GossipNodes count error: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Get on_dz count (with filter)
+	onDZCountQuery := baseQuery + `SELECT count(*) FROM gossip_data WHERE on_dz = true` + whereFilter
+	var onDZCount uint64
+	if err := config.DB.QueryRow(ctx, onDZCountQuery, filterArgs...).Scan(&onDZCount); err != nil {
+		log.Printf("GossipNodes on_dz count error: %v", err)
+		onDZCount = 0
+	}
+
+	// Get validator count (with filter)
+	validatorCountQuery := baseQuery + `SELECT count(*) FROM gossip_data WHERE is_validator = true` + whereFilter
+	var validatorCount uint64
+	if err := config.DB.QueryRow(ctx, validatorCountQuery, filterArgs...).Scan(&validatorCount); err != nil {
+		log.Printf("GossipNodes validator count error: %v", err)
+		validatorCount = 0
+	}
+
+	orderBy := sort.OrderByClause(gossipNodeSortFields)
+	query := baseQuery + `
+		SELECT pubkey, gossip_ip, gossip_port, version, city, country,
+			on_dz, device_code, metro_code, stake_sol, is_validator
+		FROM gossip_data
+		WHERE 1=1` + whereFilter + `
 		` + orderBy + `
 		LIMIT ? OFFSET ?
 	`
 
-	rows, err := config.DB.Query(ctx, query, pagination.Limit, pagination.Offset)
+	queryArgs := append(filterArgs, pagination.Limit, pagination.Offset)
+	rows, err := config.DB.Query(ctx, query, queryArgs...)
 	duration := time.Since(start)
 	metrics.RecordClickHouseQuery(duration, err)
 

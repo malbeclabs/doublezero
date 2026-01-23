@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Loader2, Landmark, AlertCircle, Check, ChevronDown, ChevronUp } from 'lucide-react'
@@ -51,57 +51,21 @@ type SortField =
 
 type SortDirection = 'asc' | 'desc'
 
-type NumericFilter = {
-  op: '>' | '>=' | '<' | '<=' | '='
-  value: number
-}
+// Hook for debounced value
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value)
 
-type UnitMap = Record<string, number>
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value)
+    }, delay)
 
-const numericSearchFields: SortField[] = [
-  'stake',
-  'share',
-  'commission',
-  'in',
-  'out',
-  'skip',
-]
+    return () => {
+      clearTimeout(handler)
+    }
+  }, [value, delay])
 
-function parseNumericFilter(input: string): NumericFilter | null {
-  const match = input.trim().match(/^(>=|<=|>|<|==|=)\s*(-?\d+(?:\.\d+)?)$/)
-  if (!match) return null
-  const op = match[1] === '==' ? '=' : (match[1] as NumericFilter['op'])
-  return { op, value: Number(match[2]) }
-}
-
-function parseNumericFilterWithUnits(
-  input: string,
-  unitMap: UnitMap,
-  defaultUnit: string
-): NumericFilter | null {
-  const match = input.trim().match(/^(>=|<=|>|<|==|=)\s*(-?\d+(?:\.\d+)?)([a-zA-Z]+)?$/)
-  if (!match) return null
-  const op = match[1] === '==' ? '=' : (match[1] as NumericFilter['op'])
-  const unitRaw = match[3]?.toLowerCase()
-  const unit = unitRaw ?? defaultUnit
-  const multiplier = unitMap[unit]
-  if (!multiplier) return null
-  return { op, value: Number(match[2]) * multiplier }
-}
-
-function matchesNumericFilter(value: number, filter: NumericFilter): boolean {
-  switch (filter.op) {
-    case '>':
-      return value > filter.value
-    case '>=':
-      return value >= filter.value
-    case '<':
-      return value < filter.value
-    case '<=':
-      return value <= filter.value
-    case '=':
-      return value === filter.value
-  }
+  return debouncedValue
 }
 
 export function ValidatorsPage() {
@@ -112,86 +76,24 @@ export function ValidatorsPage() {
   const [searchField, setSearchField] = useState<SortField>('vote')
   const [searchText, setSearchText] = useState('')
 
+  // Debounce filter value to avoid too many requests
+  const debouncedSearchText = useDebounce(searchText, 300)
+
   const { data: response, isLoading, isFetching, error } = useQuery({
-    queryKey: ['validators', offset, sortField, sortDirection],
-    queryFn: () => fetchValidators(PAGE_SIZE, offset, sortField, sortDirection),
+    queryKey: ['validators', offset, sortField, sortDirection, searchField, debouncedSearchText],
+    queryFn: () => fetchValidators(
+      PAGE_SIZE,
+      offset,
+      sortField,
+      sortDirection,
+      debouncedSearchText ? searchField : undefined,
+      debouncedSearchText || undefined
+    ),
     refetchInterval: 60000,
     placeholderData: keepPreviousData,
   })
   const validators = response?.items ?? []
   const onDZCount = response?.on_dz_count ?? 0
-
-  // Client-side filtering on the current page
-  const filteredValidators = useMemo(() => {
-    if (!validators.length) return []
-    const needle = searchText.trim().toLowerCase()
-    if (!needle) return validators
-    const numericFilter = parseNumericFilter(searchText)
-    if (numericSearchFields.includes(searchField)) {
-      const unitFilter =
-        searchField === 'stake'
-          ? parseNumericFilterWithUnits(searchText, { '': 1, k: 1e3, m: 1e6 }, '')
-          : (searchField === 'in' || searchField === 'out')
-              ? parseNumericFilterWithUnits(
-                  searchText,
-                  { gbps: 1e9, mbps: 1e6, bps: 1 },
-                  'gbps'
-                )
-              : null
-      const effectiveFilter = unitFilter ?? numericFilter
-      if (!effectiveFilter) {
-        return validators
-      }
-      const getNumericValue = (validator: typeof validators[number]) => {
-        switch (searchField) {
-          case 'stake':
-            return validator.stake_sol
-          case 'share':
-            return validator.stake_share
-          case 'commission':
-            return validator.commission
-          case 'in':
-            return validator.in_bps
-          case 'out':
-            return validator.out_bps
-          case 'skip':
-            return validator.skip_rate
-          default:
-            return 0
-        }
-      }
-      return validators.filter(validator => matchesNumericFilter(getNumericValue(validator), effectiveFilter))
-    }
-    const getSearchValue = (validator: typeof validators[number]) => {
-      switch (searchField) {
-        case 'vote':
-          return validator.vote_pubkey
-        case 'node':
-          return validator.node_pubkey || ''
-        case 'stake':
-          return String(validator.stake_sol)
-        case 'share':
-          return String(validator.stake_share)
-        case 'commission':
-          return String(validator.commission)
-        case 'dz':
-          return validator.on_dz ? 'yes' : 'no'
-        case 'device':
-          return `${validator.device_code || ''} ${validator.metro_code || ''}`.trim()
-        case 'location':
-          return `${validator.city || ''} ${validator.country || ''}`.trim()
-        case 'in':
-          return String(validator.in_bps)
-        case 'out':
-          return String(validator.out_bps)
-        case 'skip':
-          return String(validator.skip_rate)
-        case 'version':
-          return validator.version || ''
-      }
-    }
-    return validators.filter(validator => getSearchValue(validator).toLowerCase().includes(needle))
-  }, [validators, searchField, searchText])
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -215,9 +117,10 @@ export function ValidatorsPage() {
     return sortDirection === 'asc' ? 'ascending' : 'descending'
   }
 
+  // Reset to first page when filter changes
   useEffect(() => {
     setOffset(0)
-  }, [searchField, searchText])
+  }, [searchField, debouncedSearchText])
 
   if (isLoading) {
     return (
@@ -280,7 +183,7 @@ export function ValidatorsPage() {
                 className="h-9 w-48 sm:w-64 rounded-md border border-border bg-background px-3 pr-8 text-sm"
                 value={searchText}
                 onChange={(e) => setSearchText(e.target.value)}
-                placeholder="Filter (current page)"
+                placeholder="Filter"
                 aria-label="Filter"
               />
               {searchText && (
@@ -378,7 +281,7 @@ export function ValidatorsPage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredValidators.map((validator) => (
+                {validators.map((validator) => (
                   <tr
                     key={validator.vote_pubkey}
                     className="border-b border-border last:border-b-0 hover:bg-muted/50 cursor-pointer transition-colors"
@@ -445,7 +348,7 @@ export function ValidatorsPage() {
                     </td>
                   </tr>
                 ))}
-                {filteredValidators.length === 0 && (
+                {validators.length === 0 && (
                   <tr>
                     <td colSpan={12} className="px-4 py-8 text-center text-muted-foreground">
                       No validators found

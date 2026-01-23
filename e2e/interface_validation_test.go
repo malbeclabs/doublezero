@@ -242,16 +242,6 @@ func TestE2E_InterfaceValidation(t *testing.T) {
 		dn.log.Info("==> Update command output", "output", string(updateOutput))
 		require.NoError(t, err, "failed to update loopback interface")
 
-		// Step 4: Verify update
-		time.Sleep(2 * time.Second)
-
-		// Debug: Get interface via CLI to compare
-		getOutput, getErr := dn.Manager.Exec(t.Context(), []string{
-			"doublezero", "device", "interface", "get",
-			testDeviceCode, testInterfaceName,
-		})
-		dn.log.Info("==> CLI get interface output", "output", string(getOutput), "err", getErr)
-
 		// Poll until the Go SDK sees the updated values
 		iface, err := waitForInterfaceUpdate(t.Context(), dn.Devnet, testDeviceCode, testInterfaceName, serviceability.LoopbackTypeIpv4, 9000, 30*time.Second)
 		if err != nil {

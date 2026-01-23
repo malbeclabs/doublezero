@@ -70,7 +70,8 @@ export function Landing() {
   }
 
   return (
-    <div className="flex-1 flex flex-col items-center justify-center px-8 py-12">
+    <div className="flex-1 flex flex-col items-center justify-start px-8 py-12 overflow-auto">
+      <div className="flex-1 flex flex-col items-center justify-center w-full">
       {/* Header */}
       <div className="text-center mb-16">
         <img
@@ -190,6 +191,7 @@ export function Landing() {
             {question}
           </button>
         ))}
+      </div>
       </div>
     </div>
   )

@@ -1783,7 +1783,9 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
 
         // Handle mode-specific actions for device selection via search
         if (impactMode) {
-          setImpactDevice(id)
+          if (!impactDevices.includes(id)) {
+            toggleImpactDevice(id)
+          }
         } else if (pathModeEnabled) {
           if (!pathSource) {
             setPathSource(id)

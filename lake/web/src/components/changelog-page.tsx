@@ -12,6 +12,7 @@ const changelog: ChangelogEntry[] = [
   {
     date: 'January 22, 2026',
     changes: [
+      { type: 'feature', description: 'Sortable, filterable tables on all entity pages with autocomplete' },
       { type: 'feature', description: 'IS-IS delay override tracking in link timeline' },
       { type: 'improvement', description: 'Zoom and pan to selected items when loading topology from URL' },
       { type: 'improvement', description: 'Suggested questions refresh when clicking Chat in navigation' },

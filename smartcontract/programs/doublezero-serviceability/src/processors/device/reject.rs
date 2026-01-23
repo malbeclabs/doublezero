@@ -81,7 +81,7 @@ pub fn process_reject_device(
     try_acc_write(&device, device_account, payer_account, accounts)?;
 
     #[cfg(test)]
-    msg!("Rejectd: {:?}", device);
+    msg!("Rejected: {:?}", device);
 
     Ok(())
 }

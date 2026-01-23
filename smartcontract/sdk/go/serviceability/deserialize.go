@@ -96,7 +96,6 @@ func DeserializeInterfaceV2(reader *ByteReader, iface *Interface) {
 	iface.Bandwidth = reader.ReadU64()
 	iface.Cir = reader.ReadU64()
 	iface.Mtu = reader.ReadU16()
-	log.Printf("DEBUG DeserializeInterfaceV2: name=%s, loopbackTypeByte=%d, loopbackType=%d, mtu=%d, remaining=%d", iface.Name, loopbackTypeByte, iface.LoopbackType, iface.Mtu, reader.Remaining())
 	iface.RoutingMode = RoutingMode(reader.ReadU8())
 	iface.VlanId = reader.ReadU16()
 	iface.IpNet = reader.ReadNetworkV4()

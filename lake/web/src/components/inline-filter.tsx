@@ -254,7 +254,7 @@ export function InlineFilter({
 
       {/* Dropdown */}
       {showDropdown && (
-        <div className="absolute top-full left-0 mt-1 w-64 max-h-64 overflow-y-auto bg-card border border-border rounded-lg shadow-lg z-40">
+        <div className="absolute top-full right-0 mt-1 w-64 max-h-64 overflow-y-auto bg-card border border-border rounded-lg shadow-lg z-40">
           {showAllPrefixes && (
             <div className="px-3 py-1.5 text-xs text-muted-foreground border-b border-border flex items-center gap-1">
               <Filter className="h-3 w-3" />

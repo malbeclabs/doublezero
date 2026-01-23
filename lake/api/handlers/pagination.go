@@ -47,3 +47,39 @@ func ParsePagination(r *http.Request, defaultLimit int) PaginationParams {
 
 	return PaginationParams{Limit: limit, Offset: offset}
 }
+
+type SortParams struct {
+	Field     string
+	Direction string
+}
+
+func ParseSort(r *http.Request, defaultField string, allowedFields map[string]string) SortParams {
+	field := r.URL.Query().Get("sort_by")
+	if field == "" {
+		field = defaultField
+	}
+
+	// Validate field against allowlist
+	if _, ok := allowedFields[field]; !ok {
+		field = defaultField
+	}
+
+	direction := r.URL.Query().Get("sort_dir")
+	if direction != "asc" && direction != "desc" {
+		direction = "desc"
+	}
+
+	return SortParams{Field: field, Direction: direction}
+}
+
+func (s SortParams) OrderByClause(fieldMapping map[string]string) string {
+	column := fieldMapping[s.Field]
+	if column == "" {
+		return ""
+	}
+	dir := "DESC"
+	if s.Direction == "asc" {
+		dir = "ASC"
+	}
+	return "ORDER BY " + column + " " + dir
+}

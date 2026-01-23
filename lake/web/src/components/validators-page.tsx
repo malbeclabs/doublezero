@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Loader2, Landmark, AlertCircle, Check, ChevronDown, ChevronUp } from 'lucide-react'
-import { fetchAllPaginated, fetchValidators } from '@/lib/api'
+import { fetchValidators } from '@/lib/api'
 import { handleRowClick } from '@/lib/utils'
 import { Pagination } from './pagination'
 
@@ -107,20 +107,23 @@ function matchesNumericFilter(value: number, filter: NumericFilter): boolean {
 export function ValidatorsPage() {
   const navigate = useNavigate()
   const [offset, setOffset] = useState(0)
-  const [sortField, setSortField] = useState<SortField>('vote')
-  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+  const [sortField, setSortField] = useState<SortField>('stake')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   const [searchField, setSearchField] = useState<SortField>('vote')
   const [searchText, setSearchText] = useState('')
 
-  const { data: response, isLoading, error } = useQuery({
-    queryKey: ['validators', 'all'],
-    queryFn: () => fetchAllPaginated(fetchValidators, PAGE_SIZE),
+  const { data: response, isLoading, isFetching, error } = useQuery({
+    queryKey: ['validators', offset, sortField, sortDirection],
+    queryFn: () => fetchValidators(PAGE_SIZE, offset, sortField, sortDirection),
     refetchInterval: 60000,
+    placeholderData: keepPreviousData,
   })
-  const validators = response?.items
+  const validators = response?.items ?? []
   const onDZCount = response?.on_dz_count ?? 0
+
+  // Client-side filtering on the current page
   const filteredValidators = useMemo(() => {
-    if (!validators) return []
+    if (!validators.length) return []
     const needle = searchText.trim().toLowerCase()
     if (!needle) return validators
     const numericFilter = parseNumericFilter(searchText)
@@ -189,59 +192,6 @@ export function ValidatorsPage() {
     }
     return validators.filter(validator => getSearchValue(validator).toLowerCase().includes(needle))
   }, [validators, searchField, searchText])
-  const sortedValidators = useMemo(() => {
-    if (!filteredValidators) return []
-    const sorted = [...filteredValidators].sort((a, b) => {
-      let cmp = 0
-      switch (sortField) {
-        case 'vote':
-          cmp = a.vote_pubkey.localeCompare(b.vote_pubkey)
-          break
-        case 'node':
-          cmp = (a.node_pubkey || '').localeCompare(b.node_pubkey || '')
-          break
-        case 'stake':
-          cmp = a.stake_sol - b.stake_sol
-          break
-        case 'share':
-          cmp = a.stake_share - b.stake_share
-          break
-        case 'commission':
-          cmp = a.commission - b.commission
-          break
-        case 'dz':
-          cmp = Number(a.on_dz) - Number(b.on_dz)
-          break
-        case 'device':
-          cmp = (a.device_code || '').localeCompare(b.device_code || '')
-          break
-        case 'location': {
-          const aLoc = `${a.city || ''} ${a.country || ''}`.trim()
-          const bLoc = `${b.city || ''} ${b.country || ''}`.trim()
-          cmp = aLoc.localeCompare(bLoc)
-          break
-        }
-        case 'in':
-          cmp = a.in_bps - b.in_bps
-          break
-        case 'out':
-          cmp = a.out_bps - b.out_bps
-          break
-        case 'skip':
-          cmp = a.skip_rate - b.skip_rate
-          break
-        case 'version':
-          cmp = (a.version || '').localeCompare(b.version || '')
-          break
-      }
-      return sortDirection === 'asc' ? cmp : -cmp
-    })
-    return sorted
-  }, [filteredValidators, sortField, sortDirection])
-  const pagedValidators = useMemo(
-    () => sortedValidators.slice(offset, offset + PAGE_SIZE),
-    [sortedValidators, offset]
-  )
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -249,7 +199,8 @@ export function ValidatorsPage() {
       return
     }
     setSortField(field)
-    setSortDirection('asc')
+    setSortDirection('desc')
+    setOffset(0)
   }
 
   const SortIcon = ({ field }: { field: SortField }) => {
@@ -329,7 +280,7 @@ export function ValidatorsPage() {
                 className="h-9 w-48 sm:w-64 rounded-md border border-border bg-background px-3 pr-8 text-sm"
                 value={searchText}
                 onChange={(e) => setSearchText(e.target.value)}
-                placeholder="Filter"
+                placeholder="Filter (current page)"
                 aria-label="Filter"
               />
               {searchText && (
@@ -347,7 +298,7 @@ export function ValidatorsPage() {
         </div>
 
         {/* Table */}
-        <div className="border border-border rounded-lg overflow-hidden bg-card">
+        <div className={`border border-border rounded-lg overflow-hidden bg-card transition-opacity ${isFetching ? 'opacity-60' : ''}`}>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
@@ -427,7 +378,7 @@ export function ValidatorsPage() {
                 </tr>
               </thead>
               <tbody>
-                {pagedValidators.map((validator) => (
+                {filteredValidators.map((validator) => (
                   <tr
                     key={validator.vote_pubkey}
                     className="border-b border-border last:border-b-0 hover:bg-muted/50 cursor-pointer transition-colors"
@@ -494,7 +445,7 @@ export function ValidatorsPage() {
                     </td>
                   </tr>
                 ))}
-                {sortedValidators.length === 0 && (
+                {filteredValidators.length === 0 && (
                   <tr>
                     <td colSpan={12} className="px-4 py-8 text-center text-muted-foreground">
                       No validators found
@@ -506,7 +457,7 @@ export function ValidatorsPage() {
           </div>
           {response && (
             <Pagination
-              total={sortedValidators.length}
+              total={response.total}
               limit={PAGE_SIZE}
               offset={offset}
               onOffsetChange={setOffset}

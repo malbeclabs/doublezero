@@ -2124,29 +2124,30 @@ export interface PaginatedResponse<T> {
   offset: number
 }
 
-export async function fetchAllPaginated<T>(
-  fetchPage: (limit: number, offset: number) => Promise<PaginatedResponse<T>>,
+export async function fetchAllPaginated<T, R extends PaginatedResponse<T> = PaginatedResponse<T>>(
+  fetchPage: (limit: number, offset: number) => Promise<R>,
   pageSize = 100
-): Promise<PaginatedResponse<T>> {
+): Promise<R> {
   const items: T[] = []
   let offset = 0
-  let total = 0
+  let firstResponse: R | null = null
 
   while (true) {
     const response = await fetchPage(pageSize, offset)
     if (offset === 0) {
-      total = response.total
+      firstResponse = response
     }
     items.push(...response.items)
     offset += response.limit
-    if (items.length >= total || response.items.length === 0) {
+    if (items.length >= firstResponse!.total || response.items.length === 0) {
       break
     }
   }
 
   return {
+    ...firstResponse!,
     items,
-    total: total || items.length,
+    total: firstResponse!.total,
     limit: pageSize,
     offset: 0,
   }
@@ -2363,8 +2364,16 @@ export interface ValidatorsResponse extends PaginatedResponse<Validator> {
   on_dz_count: number
 }
 
-export async function fetchValidators(limit = 100, offset = 0): Promise<ValidatorsResponse> {
-  const res = await fetchWithRetry(`/api/solana/validators?limit=${limit}&offset=${offset}`)
+export async function fetchValidators(
+  limit = 100,
+  offset = 0,
+  sortBy?: string,
+  sortDir?: 'asc' | 'desc'
+): Promise<ValidatorsResponse> {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) })
+  if (sortBy) params.set('sort_by', sortBy)
+  if (sortDir) params.set('sort_dir', sortDir)
+  const res = await fetchWithRetry(`/api/solana/validators?${params}`)
   if (!res.ok) {
     throw new Error('Failed to fetch validators')
   }
@@ -2405,8 +2414,16 @@ export interface GossipNodesResponse extends PaginatedResponse<GossipNode> {
   validator_count: number
 }
 
-export async function fetchGossipNodes(limit = 100, offset = 0): Promise<GossipNodesResponse> {
-  const res = await fetchWithRetry(`/api/solana/gossip-nodes?limit=${limit}&offset=${offset}`)
+export async function fetchGossipNodes(
+  limit = 100,
+  offset = 0,
+  sortBy?: string,
+  sortDir?: 'asc' | 'desc'
+): Promise<GossipNodesResponse> {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) })
+  if (sortBy) params.set('sort_by', sortBy)
+  if (sortDir) params.set('sort_dir', sortDir)
+  const res = await fetchWithRetry(`/api/solana/gossip-nodes?${params}`)
   if (!res.ok) {
     throw new Error('Failed to fetch gossip nodes')
   }

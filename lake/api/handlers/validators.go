@@ -37,11 +37,27 @@ type ValidatorListResponse struct {
 	Offset    int                 `json:"offset"`
 }
 
+var validatorSortFields = map[string]string{
+	"vote":       "v.vote_pubkey",
+	"node":       "v.node_pubkey",
+	"stake":      "v.activated_stake_lamports",
+	"share":      "v.activated_stake_lamports",
+	"commission": "COALESCE(v.commission_percentage, 0)",
+	"dz":         "on_dz",
+	"device":     "device_code",
+	"location":   "city",
+	"in":         "in_bps",
+	"out":        "out_bps",
+	"skip":       "skip_rate",
+	"version":    "version",
+}
+
 func GetValidators(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
 
 	pagination := ParsePagination(r, 100)
+	sort := ParseSort(r, "stake", validatorSortFields)
 	start := time.Now()
 
 	// Get total count
@@ -71,6 +87,7 @@ func GetValidators(w http.ResponseWriter, r *http.Request) {
 		onDZCount = 0
 	}
 
+	orderBy := sort.OrderByClause(validatorSortFields)
 	query := `
 		WITH total_stake AS (
 			SELECT sum(activated_stake_lamports) as total
@@ -156,7 +173,7 @@ func GetValidators(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN geoip geo ON v.node_pubkey = geo.pubkey
 		LEFT JOIN skip_rates sr ON v.node_pubkey = sr.leader_identity_pubkey
 		WHERE v.epoch_vote_account = 'true'
-		ORDER BY v.activated_stake_lamports DESC
+		` + orderBy + `
 		LIMIT ? OFFSET ?
 	`
 

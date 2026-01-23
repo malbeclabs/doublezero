@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Loader2, Radio, AlertCircle, Check, ChevronDown, ChevronUp } from 'lucide-react'
-import { fetchAllPaginated, fetchGossipNodes } from '@/lib/api'
+import { fetchGossipNodes } from '@/lib/api'
 import { handleRowClick } from '@/lib/utils'
 import { Pagination } from './pagination'
 
@@ -81,21 +81,24 @@ function matchesNumericFilter(value: number, filter: NumericFilter): boolean {
 export function GossipNodesPage() {
   const navigate = useNavigate()
   const [offset, setOffset] = useState(0)
-  const [sortField, setSortField] = useState<SortField>('pubkey')
-  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+  const [sortField, setSortField] = useState<SortField>('stake')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   const [searchField, setSearchField] = useState<SortField>('pubkey')
   const [searchText, setSearchText] = useState('')
 
-  const { data: response, isLoading, error } = useQuery({
-    queryKey: ['gossip-nodes', 'all'],
-    queryFn: () => fetchAllPaginated(fetchGossipNodes, PAGE_SIZE),
+  const { data: response, isLoading, isFetching, error } = useQuery({
+    queryKey: ['gossip-nodes', offset, sortField, sortDirection],
+    queryFn: () => fetchGossipNodes(PAGE_SIZE, offset, sortField, sortDirection),
     refetchInterval: 60000,
+    placeholderData: keepPreviousData,
   })
-  const nodes = response?.items
+  const nodes = response?.items ?? []
   const onDZCount = response?.on_dz_count ?? 0
   const validatorCount = response?.validator_count ?? 0
+
+  // Client-side filtering on the current page
   const filteredNodes = useMemo(() => {
-    if (!nodes) return []
+    if (!nodes.length) return []
     const needle = searchText.trim().toLowerCase()
     if (!needle) return nodes
     const numericFilter = parseNumericFilter(searchText)
@@ -140,50 +143,6 @@ export function GossipNodesPage() {
     }
     return nodes.filter(node => getSearchValue(node).toLowerCase().includes(needle))
   }, [nodes, searchField, searchText])
-  const sortedNodes = useMemo(() => {
-    if (!filteredNodes) return []
-    const sorted = [...filteredNodes].sort((a, b) => {
-      let cmp = 0
-      switch (sortField) {
-        case 'pubkey':
-          cmp = a.pubkey.localeCompare(b.pubkey)
-          break
-        case 'ip': {
-          const aIp = a.gossip_ip ? `${a.gossip_ip}:${a.gossip_port}` : ''
-          const bIp = b.gossip_ip ? `${b.gossip_ip}:${b.gossip_port}` : ''
-          cmp = aIp.localeCompare(bIp)
-          break
-        }
-        case 'version':
-          cmp = (a.version || '').localeCompare(b.version || '')
-          break
-        case 'location': {
-          const aLoc = `${a.city || ''} ${a.country || ''}`.trim()
-          const bLoc = `${b.city || ''} ${b.country || ''}`.trim()
-          cmp = aLoc.localeCompare(bLoc)
-          break
-        }
-        case 'validator':
-          cmp = Number(a.is_validator) - Number(b.is_validator)
-          break
-        case 'stake':
-          cmp = a.stake_sol - b.stake_sol
-          break
-        case 'dz':
-          cmp = Number(a.on_dz) - Number(b.on_dz)
-          break
-        case 'device':
-          cmp = (a.device_code || '').localeCompare(b.device_code || '')
-          break
-      }
-      return sortDirection === 'asc' ? cmp : -cmp
-    })
-    return sorted
-  }, [filteredNodes, sortField, sortDirection])
-  const pagedNodes = useMemo(
-    () => sortedNodes.slice(offset, offset + PAGE_SIZE),
-    [sortedNodes, offset]
-  )
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -191,7 +150,8 @@ export function GossipNodesPage() {
       return
     }
     setSortField(field)
-    setSortDirection('asc')
+    setSortDirection('desc')
+    setOffset(0)
   }
 
   const SortIcon = ({ field }: { field: SortField }) => {
@@ -270,7 +230,7 @@ export function GossipNodesPage() {
                 className="h-9 w-48 sm:w-64 rounded-md border border-border bg-background px-3 pr-8 text-sm"
                 value={searchText}
                 onChange={(e) => setSearchText(e.target.value)}
-                placeholder="Filter"
+                placeholder="Filter (current page)"
                 aria-label="Filter"
               />
               {searchText && (
@@ -288,7 +248,7 @@ export function GossipNodesPage() {
         </div>
 
         {/* Table */}
-        <div className="border border-border rounded-lg overflow-hidden bg-card">
+        <div className={`border border-border rounded-lg overflow-hidden bg-card transition-opacity ${isFetching ? 'opacity-60' : ''}`}>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
@@ -344,7 +304,7 @@ export function GossipNodesPage() {
                 </tr>
               </thead>
               <tbody>
-                {pagedNodes.map((node) => (
+                {filteredNodes.map((node) => (
                   <tr
                     key={node.pubkey}
                     className="border-b border-border last:border-b-0 hover:bg-muted/50 cursor-pointer transition-colors"
@@ -401,7 +361,7 @@ export function GossipNodesPage() {
                     </td>
                   </tr>
                 ))}
-                {sortedNodes.length === 0 && (
+                {filteredNodes.length === 0 && (
                   <tr>
                     <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
                       No gossip nodes found
@@ -413,7 +373,7 @@ export function GossipNodesPage() {
           </div>
           {response && (
             <Pagination
-              total={sortedNodes.length}
+              total={response.total}
               limit={PAGE_SIZE}
               offset={offset}
               onOffsetChange={setOffset}

@@ -35,11 +35,23 @@ type GossipNodeListResponse struct {
 	Offset         int                  `json:"offset"`
 }
 
+var gossipNodeSortFields = map[string]string{
+	"pubkey":    "g.pubkey",
+	"ip":        "gossip_ip",
+	"version":   "version",
+	"location":  "city",
+	"validator": "is_validator",
+	"stake":     "stake_sol",
+	"dz":        "on_dz",
+	"device":    "device_code",
+}
+
 func GetGossipNodes(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
 
 	pagination := ParsePagination(r, 100)
+	sort := ParseSort(r, "stake", gossipNodeSortFields)
 	start := time.Now()
 
 	// Get total count
@@ -79,6 +91,7 @@ func GetGossipNodes(w http.ResponseWriter, r *http.Request) {
 		validatorCount = 0
 	}
 
+	orderBy := sort.OrderByClause(gossipNodeSortFields)
 	query := `
 		WITH dz_nodes AS (
 			SELECT
@@ -115,7 +128,7 @@ func GetGossipNodes(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN geoip_records_current geo ON g.gossip_ip = geo.ip
 		LEFT JOIN dz_nodes dz ON g.gossip_ip = dz.dz_ip
 		LEFT JOIN validator_stake vs ON g.pubkey = vs.node_pubkey
-		ORDER BY vs.stake_sol DESC, g.pubkey
+		` + orderBy + `
 		LIMIT ? OFFSET ?
 	`
 

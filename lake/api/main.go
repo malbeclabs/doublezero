@@ -359,6 +359,7 @@ func main() {
 	r.Get("/api/dz/contributors/{pk}", handlers.GetContributor)
 	r.Get("/api/dz/users", handlers.GetUsers)
 	r.Get("/api/dz/users/{pk}", handlers.GetUser)
+	r.Get("/api/dz/field-values", handlers.GetFieldValues)
 
 	// Solana entity routes
 	r.Get("/api/solana/validators", handlers.GetValidators)

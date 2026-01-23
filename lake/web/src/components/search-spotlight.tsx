@@ -1,9 +1,11 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { Search, X, Clock, Server, Link2, MapPin, Building2, Users, Landmark, Radio, Loader2, MessageSquare, Filter } from 'lucide-react'
 import { cn, handleRowClick } from '@/lib/utils'
 import { useSearchAutocomplete, useRecentSearches } from '@/hooks/use-search'
 import type { SearchSuggestion, SearchEntityType } from '@/lib/api'
+import { fetchFieldValues } from '@/lib/api'
 
 const DEBOUNCE_MS = 150
 
@@ -120,6 +122,29 @@ const userFieldPrefixes = [
   { prefix: 'in:', description: 'Filter by inbound traffic (e.g., >1gbps)' },
   { prefix: 'out:', description: 'Filter by outbound traffic (e.g., >1gbps)' },
 ]
+
+// Map page paths to API entity names for field values
+const pageToEntity: Record<string, string> = {
+  '/dz/devices': 'devices',
+  '/dz/links': 'links',
+  '/dz/metros': 'metros',
+  '/dz/contributors': 'contributors',
+  '/dz/users': 'users',
+  '/solana/validators': 'validators',
+  '/solana/gossip-nodes': 'gossip',
+}
+
+// Fields that support autocomplete for each entity
+// These should match the backend field_values.go configuration
+const autocompleteFields: Record<string, string[]> = {
+  devices: ['status', 'type', 'metro', 'contributor'],
+  links: ['status', 'type', 'contributor', 'sidea', 'sidez'],
+  metros: [],
+  contributors: [],
+  users: ['status', 'kind', 'metro', 'device'],
+  validators: ['dz', 'version', 'device', 'city', 'country'],
+  gossip: ['dz', 'validator', 'version', 'city', 'country', 'device'],
+}
 
 // Map search entity types to topology URL type param
 const topologyTypeMap: Record<SearchEntityType, string | null> = {
@@ -241,6 +266,36 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
 
   const { data, isLoading } = useSearchAutocomplete(debouncedQuery, isOpen && query.length >= 2)
 
+  // Parse field:value from query for autocomplete
+  const fieldValueMatch = useMemo(() => {
+    if (!useTableFilterMode) return null
+    const colonIndex = query.indexOf(':')
+    if (colonIndex <= 0) return null
+    const field = query.slice(0, colonIndex).toLowerCase()
+    const value = query.slice(colonIndex + 1).toLowerCase()
+    const entity = pageToEntity[location.pathname]
+    if (!entity) return null
+    const supportedFields = autocompleteFields[entity] || []
+    if (!supportedFields.includes(field)) return null
+    return { entity, field, value }
+  }, [query, useTableFilterMode, location.pathname])
+
+  // Fetch field values when a valid field prefix is detected
+  const { data: fieldValuesData, isLoading: fieldValuesLoading } = useQuery({
+    queryKey: ['field-values', fieldValueMatch?.entity, fieldValueMatch?.field],
+    queryFn: () => fetchFieldValues(fieldValueMatch!.entity, fieldValueMatch!.field),
+    enabled: isOpen && fieldValueMatch !== null,
+    staleTime: 60000, // Cache for 1 minute
+  })
+
+  // Filter field values based on what user has typed after the colon
+  const filteredFieldValues = useMemo(() => {
+    if (!fieldValueMatch || !fieldValuesData) return []
+    const needle = fieldValueMatch.value
+    if (!needle) return fieldValuesData // Show all if nothing typed after colon
+    return fieldValuesData.filter(v => v.toLowerCase().includes(needle))
+  }, [fieldValueMatch, fieldValuesData])
+
   // Determine what to show
   const showRecentSearches = query.length === 0 && recentSearches.length > 0
   // Filter suggestions to only metros when on performance page
@@ -277,7 +332,7 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
     : recentSearches
 
   // Build items list
-  const items: (SearchSuggestion | { type: 'prefix'; prefix: string; description: string } | { type: 'recent'; item: SearchSuggestion } | { type: 'ask-ai' } | { type: 'filter-timeline' } | { type: 'filter-table' })[] = []
+  const items: (SearchSuggestion | { type: 'prefix'; prefix: string; description: string } | { type: 'recent'; item: SearchSuggestion } | { type: 'ask-ai' } | { type: 'filter-timeline' } | { type: 'filter-table' } | { type: 'field-value'; field: string; value: string })[] = []
 
   // Add "Filter timeline" option at the top when on timeline page with a query
   if (isTimelinePage && query.length >= 1) {
@@ -285,14 +340,24 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
   }
 
   // Add "Filter table" option when on table pages with a query (only in filter mode)
-  if (useTableFilterMode && query.length >= 1) {
+  // But not when we're showing field value autocomplete
+  if (useTableFilterMode && query.length >= 1 && filteredFieldValues.length === 0) {
     items.push({ type: 'filter-table' as const })
+  }
+
+  // Show field value autocomplete when user has typed a field prefix
+  if (filteredFieldValues.length > 0 && fieldValueMatch) {
+    items.push(...filteredFieldValues.map(v => ({
+      type: 'field-value' as const,
+      field: fieldValueMatch.field,
+      value: v
+    })))
   }
 
   // Show field hints when empty on validators/gossip pages
   if (showFieldHints) {
     items.push(...getFieldPrefixes().map(p => ({ type: 'prefix' as const, prefix: p.prefix, description: p.description })))
-  } else if (matchingPrefixes.length > 0) {
+  } else if (matchingPrefixes.length > 0 && filteredFieldValues.length === 0) {
     items.push(...matchingPrefixes.map(p => ({ type: 'prefix' as const, prefix: p.prefix, description: p.description })))
   }
 
@@ -300,12 +365,12 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
     items.push(...filteredRecentSearches.map(item => ({ type: 'recent' as const, item })))
   }
 
-  if (!showRecentSearches) {
+  if (!showRecentSearches && filteredFieldValues.length === 0) {
     items.push(...suggestions)
   }
 
   // Add "Ask AI" option when there's a query (not on performance page)
-  if (query.length >= 2 && !isPerformancePage) {
+  if (query.length >= 2 && !isPerformancePage && filteredFieldValues.length === 0) {
     items.push({ type: 'ask-ai' as const })
   }
 
@@ -432,6 +497,17 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
     }
   }, [query, onClose, addTableFilter, location.pathname])
 
+  const handleSelectFieldValue = useCallback((field: string, value: string, e?: React.MouseEvent) => {
+    const filterValue = `${field}:${value}`
+    setQuery('')
+    onClose()
+    if (e && (e.metaKey || e.ctrlKey)) {
+      window.open(`${location.pathname}?search=${encodeURIComponent(filterValue)}`, '_blank')
+    } else {
+      addTableFilter(filterValue)
+    }
+  }, [onClose, addTableFilter, location.pathname])
+
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     switch (e.key) {
       case 'ArrowDown':
@@ -459,6 +535,8 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
             handleFilterTimeline()
           } else if (item.type === 'filter-table') {
             handleFilterTable()
+          } else if (item.type === 'field-value') {
+            handleSelectFieldValue(item.field, item.value)
           } else if ('url' in item) {
             handleSelect(item as SearchSuggestion)
           }
@@ -478,7 +556,7 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
         onClose()
         break
     }
-  }, [items, selectedIndex, handleSelect, handleAskAI, handleFilterTimeline, handleFilterTable, onClose])
+  }, [items, selectedIndex, handleSelect, handleAskAI, handleFilterTimeline, handleFilterTable, handleSelectFieldValue, onClose])
 
   if (!isOpen) return null
 
@@ -504,7 +582,7 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
             placeholder={globalSearchMode ? "Search entities..." : isTopologyPage ? "Search entities (opens in map)..." : isTimelinePage ? "Filter timeline events..." : isStatusPage ? "Filter status by entity..." : isOutagesPage ? "Filter outages by entity..." : isPerformancePage ? "Filter by metro..." : isValidatorsPage ? "Filter validators..." : isGossipNodesPage ? "Filter gossip nodes..." : isDevicesPage ? "Filter devices..." : isLinksPage ? "Filter links..." : isMetrosPage ? "Filter metros..." : isContributorsPage ? "Filter contributors..." : isUsersPage ? "Filter users..." : "Search entities..."}
             className="flex-1 h-14 px-3 text-lg bg-transparent border-0 focus:outline-none placeholder:text-muted-foreground"
           />
-          {isLoading && query.length >= 2 && (
+          {(isLoading || fieldValuesLoading) && query.length >= 2 && (
             <Loader2 className="h-5 w-5 text-muted-foreground animate-spin mr-2" />
           )}
           {query && (
@@ -604,6 +682,29 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
               )
             }
 
+            if (item.type === 'field-value') {
+              return (
+                <button
+                  key={`field-value-${item.value}`}
+                  onClick={(e) => handleSelectFieldValue(item.field, item.value, e)}
+                  className={cn(
+                    'w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted transition-colors',
+                    index === selectedIndex && 'bg-muted'
+                  )}
+                >
+                  <Filter className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium truncate">{item.value}</span>
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground flex-shrink-0">
+                        {item.field}
+                      </span>
+                    </div>
+                  </div>
+                </button>
+              )
+            }
+
             if ('prefix' in item && item.type === 'prefix') {
               return (
                 <button
@@ -617,9 +718,16 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
                     index === selectedIndex && 'bg-muted'
                   )}
                 >
-                  <Search className="h-4 w-4 text-muted-foreground" />
-                  <code className="text-sm bg-muted px-2 py-0.5 rounded font-mono">{item.prefix}</code>
-                  <span className="text-sm text-muted-foreground">{item.description}</span>
+                  <Filter className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium truncate">{item.prefix.slice(0, -1)}</span>
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground flex-shrink-0">
+                        filter
+                      </span>
+                    </div>
+                    <div className="text-sm text-muted-foreground truncate">{item.description}</div>
+                  </div>
                 </button>
               )
             }

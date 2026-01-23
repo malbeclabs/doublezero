@@ -3334,3 +3334,17 @@ export async function fetchQuota(): Promise<QuotaInfo> {
 export function buildSIWSMessage(nonce: string): string {
   return `Sign this message to authenticate with DoubleZero Data.\n\nNonce: ${nonce}`
 }
+
+// Field values for autocomplete
+export interface FieldValuesResponse {
+  values: string[]
+}
+
+export async function fetchFieldValues(entity: string, field: string): Promise<string[]> {
+  const res = await fetchWithRetry(`/api/dz/field-values?entity=${encodeURIComponent(entity)}&field=${encodeURIComponent(field)}`)
+  if (!res.ok) {
+    return []
+  }
+  const data: FieldValuesResponse = await res.json()
+  return data.values
+}

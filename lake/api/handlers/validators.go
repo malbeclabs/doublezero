@@ -94,7 +94,7 @@ func GetValidators(w http.ResponseWriter, r *http.Request) {
 		),
 		dz_validators AS (
 			SELECT
-				g.pubkey as node_pubkey,
+				g.pubkey as dz_node_pk,
 				u.tunnel_id,
 				u.device_pk,
 				d.code as device_code,
@@ -156,7 +156,7 @@ func GetValidators(w http.ResponseWriter, r *http.Request) {
 					ELSE 0
 				END as stake_share,
 				COALESCE(v.commission_percentage, 0) as commission,
-				dz.node_pubkey IS NOT NULL as on_dz,
+				dz.dz_node_pk IS NOT NULL as on_dz,
 				COALESCE(dz.device_code, '') as device_code,
 				COALESCE(dz.metro_code, '') as metro_code,
 				COALESCE(geo.city, '') as city,
@@ -168,7 +168,7 @@ func GetValidators(w http.ResponseWriter, r *http.Request) {
 			FROM solana_vote_accounts_current v
 			CROSS JOIN total_stake ts
 			LEFT JOIN solana_gossip_nodes_current g ON v.node_pubkey = g.pubkey
-			LEFT JOIN dz_validators dz ON v.node_pubkey = dz.node_pubkey
+			LEFT JOIN dz_validators dz ON v.node_pubkey = dz.dz_node_pk
 			LEFT JOIN traffic_rates tr ON dz.tunnel_id = tr.user_tunnel_id
 			LEFT JOIN geoip geo ON v.node_pubkey = geo.pubkey
 			LEFT JOIN skip_rates sr ON v.node_pubkey = sr.leader_identity_pubkey
@@ -324,7 +324,7 @@ func GetValidator(w http.ResponseWriter, r *http.Request) {
 		),
 		dz_info AS (
 			SELECT
-				g.pubkey as node_pubkey,
+				g.pubkey as dz_node_pk,
 				u.tunnel_id,
 				u.device_pk,
 				d.code as device_code,
@@ -377,7 +377,7 @@ func GetValidator(w http.ResponseWriter, r *http.Request) {
 				ELSE 0
 			END as stake_share,
 			COALESCE(v.commission_percentage, 0) as commission,
-			dz.node_pubkey IS NOT NULL as on_dz,
+			dz.dz_node_pk IS NOT NULL as on_dz,
 			COALESCE(dz.device_pk, '') as device_pk,
 			COALESCE(dz.device_code, '') as device_code,
 			COALESCE(dz.metro_pk, '') as metro_pk,
@@ -394,7 +394,7 @@ func GetValidator(w http.ResponseWriter, r *http.Request) {
 		CROSS JOIN total_stake ts
 		LEFT JOIN solana_gossip_nodes_current g ON v.node_pubkey = g.pubkey
 		LEFT JOIN geoip_records_current geo ON g.gossip_ip = geo.ip
-		LEFT JOIN dz_info dz ON v.node_pubkey = dz.node_pubkey
+		LEFT JOIN dz_info dz ON v.node_pubkey = dz.dz_node_pk
 		LEFT JOIN traffic_rates tr ON dz.tunnel_id = tr.user_tunnel_id
 		LEFT JOIN skip_rates sr ON v.node_pubkey = sr.leader_identity_pubkey
 		WHERE v.vote_pubkey = ?

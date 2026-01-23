@@ -42,7 +42,6 @@ func TestE2E_ActivatorInterfaceDeleteOutOfPoolIP(t *testing.T) {
 			"doublezero", "device", "interface", "create",
 			testDeviceCode, testInterfaceName,
 			"--ip-net", outOfPoolIP,
-			"--interface-cyoa", "gre-over-dia",
 			"--user-tunnel-endpoint", "true",
 		})
 		require.NoError(t, err, "failed to create loopback interface with out-of-pool IP")

@@ -6,7 +6,9 @@ use doublezero_serviceability::{
         contributor::create::ContributorCreateArgs,
         device::{
             create::*,
-            interface::{activate::*, create::*, delete::*, reject::*, remove::*, unlink::*},
+            interface::{
+                activate::*, create::*, delete::*, reject::*, remove::*, unlink::*, update::*,
+            },
             update::*,
         },
         *,
@@ -486,6 +488,86 @@ async fn test_device_interfaces() {
     assert_eq!(iface3.status, InterfaceStatus::Pending);
 
     println!("✅ Device interfaces created");
+
+    /*****************************************************************************************************************************************************/
+    println!("🟢 8b. Update loopback interface - change loopback_type from Ipv4 to Vpnv4...");
+
+    // First, create a loopback interface with LoopbackType::None (default)
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
+            name: "Loopback99".to_string(),
+            interface_dia: InterfaceDIA::None,
+            loopback_type: LoopbackType::None,
+            interface_cyoa: InterfaceCYOA::None,
+            bandwidth: 0,
+            cir: 0,
+            ip_net: None,
+            mtu: 1500,
+            routing_mode: RoutingMode::Static,
+            vlan_id: 0,
+            user_tunnel_endpoint: false,
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Verify it was created with LoopbackType::None
+    let device = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_device()
+        .unwrap();
+    let loopback99 = device.find_interface("Loopback99").unwrap().1;
+    assert_eq!(loopback99.loopback_type, LoopbackType::None);
+
+    // Now update the loopback_type to Ipv4
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDeviceInterface(DeviceInterfaceUpdateArgs {
+            name: "Loopback99".to_string(),
+            loopback_type: Some(LoopbackType::Ipv4),
+            interface_cyoa: None,
+            interface_dia: None,
+            bandwidth: None,
+            cir: None,
+            mtu: None,
+            routing_mode: None,
+            vlan_id: None,
+            user_tunnel_endpoint: None,
+            status: None,
+            ip_net: None,
+            node_segment_idx: None,
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Verify the loopback_type was updated
+    let device = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_device()
+        .unwrap();
+    let loopback99 = device.find_interface("Loopback99").unwrap().1;
+    assert_eq!(loopback99.loopback_type, LoopbackType::Ipv4);
+
+    println!("✅ Loopback interface updated - loopback_type changed from None to Ipv4");
+
     /*****************************************************************************************************************************************************/
     println!("🟢 9. Activate device interfaces...");
     execute_transaction(

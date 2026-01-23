@@ -27,6 +27,7 @@ All notable changes to this project will be documented in this file.
   - Enable route liveness passive-mode by default
   - Add `make install` make target. To build and deploy from source, users can now run `cd client && make build && make install` to install the doublezero and doublezerod binaries and the doublezerod systemd unit.
 - Onchain programs
+  - Serviceability: interface-cyoa only on physical interfaces, don't require interfaces to be tagged, add same validation logic to update interface ([#2700](https://github.com/malbeclabs/doublezero/pull/2700))
   - Enforce Activated status check before suspending contributor, exchange, location, and multicastgroup accounts
   - Removed device and user allowlist functionality, updating the global state, initialization flow, tests, and processors accordingly, and cleaning up unused account checks.
   - Serviceability: require DeactivateMulticastGroup to only close multicast group accounts when both `publisher_count` and `subscriber_count` are zero, preventing deletion of groups that still have active publishers or subscribers.
@@ -40,6 +41,7 @@ All notable changes to this project will be documented in this file.
   - fix(activator): ip_to_index fn honors ip range #2658
 - E2E tests
   - Add influxdb, prometheus, and device-health-oracle containers
+  - Add interface lifecycle tests ([#2700](https://github.com/malbeclabs/doublezero/pull/2700))
 - SDK
   - Commands for setting global config, activating devices, updating devices, and closing device accounts now manage resource accounts.
 - Smartcontract

@@ -141,6 +141,8 @@ pub enum DoubleZeroError {
     Deprecated, // variant 67
     #[error("Immutable Field")]
     ImmutableField, // variant 68
+    #[error("CYOA can only be set on physical interfaces")]
+    CyoaRequiresPhysical, // variant 69
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -215,6 +217,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::InvalidFoundationAllowlist => ProgramError::Custom(66),
             DoubleZeroError::Deprecated => ProgramError::Custom(67),
             DoubleZeroError::ImmutableField => ProgramError::Custom(68),
+            DoubleZeroError::CyoaRequiresPhysical => ProgramError::Custom(69),
         }
     }
 }

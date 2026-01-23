@@ -46,6 +46,7 @@ All notable changes to this project will be documented in this file.
   - Only fail QA alldevices test run if device status is "Activated" and max users > 0
 - SDK
   - Commands for setting global config, activating devices, updating devices, and closing device accounts now manage resource accounts.
+  - Serviceability: return error when GetProgramAccounts returns empty result instead of silently returning empty data
 - Smartcontract
   - feat(smartcontract): RFC 11 activation for User entity
   - feat(smartcontract): RFC 11 add on-chain resource allocation for Link

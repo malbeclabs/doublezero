@@ -85,7 +85,7 @@ func (dn *Devnet) InitSmartContract(ctx context.Context) error {
 		doublezero --version
 		doublezero init
 		echo
-		
+
 		doublezero global-config authority set --activator-authority me --sentinel-authority me
 		echo
 
@@ -97,7 +97,7 @@ func (dn *Devnet) InitSmartContract(ctx context.Context) error {
 		doublezero global-config get
 		echo
 
-		doublezero global-config authority set --activator-authority me --sentinel-authority me		
+		doublezero global-config authority set --activator-authority me --sentinel-authority me
 
 		# Populate location information onchain.
 		echo "==> Populating location information onchain"
@@ -144,6 +144,12 @@ func (dn *Devnet) InitSmartContract(ctx context.Context) error {
 	err = poll.Until(ctx, func() (bool, error) {
 		data, err := client.GetProgramData(ctx)
 		if err != nil {
+			// GetProgramData returns an error when the program has no accounts yet,
+			// which is expected before initialization completes. Continue polling.
+			if strings.Contains(err.Error(), "GetProgramAccounts returned empty result") {
+				dn.log.Debug("--> Waiting for program accounts to be created")
+				return false, nil
+			}
 			return false, fmt.Errorf("failed to load serviceability program client: %w", err)
 		}
 		config := data.Config

@@ -75,7 +75,6 @@ export function MetrosPage() {
 
   // Use first filter for filtering (single filter supported currently)
   const activeFilterRaw = searchFilters[0] || ''
-  const activeFilter = activeFilterRaw ? parseFilter(activeFilterRaw) : null
 
   const removeFilter = useCallback((filterToRemove: string) => {
     const newFilters = searchFilters.filter(f => f !== filterToRemove)
@@ -108,13 +107,15 @@ export function MetrosPage() {
   const metros = response?.items
   const filteredMetros = useMemo(() => {
     if (!metros) return []
-    if (!activeFilter) return metros
+    if (!activeFilterRaw) return metros
 
-    const searchField = activeFilter.field as SortField | 'all'
-    const needle = activeFilter.value.trim().toLowerCase()
+    // Parse filter inside memo to ensure fresh parsing on each recompute
+    const filter = parseFilter(activeFilterRaw)
+    const searchField = filter.field as SortField | 'all'
+    const needle = filter.value.trim().toLowerCase()
     if (!needle) return metros
 
-    const numericFilter = parseNumericFilter(activeFilter.value)
+    const numericFilter = parseNumericFilter(filter.value)
     if (searchField !== 'all' && numericFilter && numericSearchFields.includes(searchField as SortField)) {
       const getNumericValue = (metro: typeof metros[number]) => {
         switch (searchField) {
@@ -154,10 +155,17 @@ export function MetrosPage() {
     }
 
     return metros.filter(metro => getSearchValue(metro, searchField).toLowerCase().includes(needle))
-  }, [metros, activeFilter])
+  }, [metros, activeFilterRaw])
   const sortedMetros = useMemo(() => {
     if (!filteredMetros) return []
-    const sorted = [...filteredMetros].sort((a, b) => {
+    // Deduplicate by pk to prevent any possible duplicate rows
+    const seen = new Set<string>()
+    const unique = filteredMetros.filter(m => {
+      if (seen.has(m.pk)) return false
+      seen.add(m.pk)
+      return true
+    })
+    const sorted = [...unique].sort((a, b) => {
       let cmp = 0
       switch (sortField) {
         case 'code':

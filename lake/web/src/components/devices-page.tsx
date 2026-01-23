@@ -127,7 +127,6 @@ export function DevicesPage() {
 
   // Use first filter for filtering (single filter supported currently)
   const activeFilterRaw = searchFilters[0] || ''
-  const activeFilter = activeFilterRaw ? parseFilter(activeFilterRaw) : null
 
   const removeFilter = useCallback((filterToRemove: string) => {
     const newFilters = searchFilters.filter(f => f !== filterToRemove)
@@ -160,18 +159,20 @@ export function DevicesPage() {
   const devices = response?.items
   const filteredDevices = useMemo(() => {
     if (!devices) return []
-    if (!activeFilter) return devices
+    if (!activeFilterRaw) return devices
 
-    const searchField = activeFilter.field as SortField | 'all'
-    const needle = activeFilter.value.trim().toLowerCase()
+    // Parse filter inside memo to ensure fresh parsing on each recompute
+    const filter = parseFilter(activeFilterRaw)
+    const searchField = filter.field as SortField | 'all'
+    const needle = filter.value.trim().toLowerCase()
     if (!needle) return devices
 
-    const numericFilter = parseNumericFilter(activeFilter.value)
+    const numericFilter = parseNumericFilter(filter.value)
     if (searchField !== 'all' && numericSearchFields.includes(searchField as SortField)) {
       const unitFilter =
         (searchField === 'in' || searchField === 'out' || searchField === 'peakIn' || searchField === 'peakOut')
           ? parseNumericFilterWithUnits(
-              activeFilter.value,
+              filter.value,
               { gbps: 1e9, mbps: 1e6, bps: 1 },
               'gbps'
             )
@@ -230,10 +231,17 @@ export function DevicesPage() {
     }
 
     return devices.filter(device => getSearchValue(device, searchField).toLowerCase().includes(needle))
-  }, [devices, activeFilter])
+  }, [devices, activeFilterRaw])
   const sortedDevices = useMemo(() => {
     if (!filteredDevices) return []
-    const sorted = [...filteredDevices].sort((a, b) => {
+    // Deduplicate by pk to prevent any possible duplicate rows
+    const seen = new Set<string>()
+    const unique = filteredDevices.filter(d => {
+      if (seen.has(d.pk)) return false
+      seen.add(d.pk)
+      return true
+    })
+    const sorted = [...unique].sort((a, b) => {
       let cmp = 0
       switch (sortField) {
         case 'code':

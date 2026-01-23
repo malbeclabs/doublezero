@@ -77,7 +77,6 @@ export function ContributorsPage() {
 
   // Use first filter for filtering (single filter supported currently)
   const activeFilterRaw = searchFilters[0] || ''
-  const activeFilter = activeFilterRaw ? parseFilter(activeFilterRaw) : null
 
   const removeFilter = useCallback((filterToRemove: string) => {
     const newFilters = searchFilters.filter(f => f !== filterToRemove)
@@ -110,13 +109,15 @@ export function ContributorsPage() {
   const contributors = response?.items
   const filteredContributors = useMemo(() => {
     if (!contributors) return []
-    if (!activeFilter) return contributors
+    if (!activeFilterRaw) return contributors
 
-    const searchField = activeFilter.field as SortField | 'all'
-    const needle = activeFilter.value.trim().toLowerCase()
+    // Parse filter inside memo to ensure fresh parsing on each recompute
+    const filter = parseFilter(activeFilterRaw)
+    const searchField = filter.field as SortField | 'all'
+    const needle = filter.value.trim().toLowerCase()
     if (!needle) return contributors
 
-    const numericFilter = parseNumericFilter(activeFilter.value)
+    const numericFilter = parseNumericFilter(filter.value)
     if (searchField !== 'all' && numericFilter && numericSearchFields.includes(searchField as SortField)) {
       const getNumericValue = (contributor: typeof contributors[number]) => {
         switch (searchField) {
@@ -156,10 +157,17 @@ export function ContributorsPage() {
     }
 
     return contributors.filter(contributor => getSearchValue(contributor, searchField).toLowerCase().includes(needle))
-  }, [contributors, activeFilter])
+  }, [contributors, activeFilterRaw])
   const sortedContributors = useMemo(() => {
     if (!filteredContributors) return []
-    const sorted = [...filteredContributors].sort((a, b) => {
+    // Deduplicate by pk to prevent any possible duplicate rows
+    const seen = new Set<string>()
+    const unique = filteredContributors.filter(c => {
+      if (seen.has(c.pk)) return false
+      seen.add(c.pk)
+      return true
+    })
+    const sorted = [...unique].sort((a, b) => {
       let cmp = 0
       switch (sortField) {
         case 'code':

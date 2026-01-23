@@ -154,7 +154,6 @@ export function LinksPage() {
 
   // Use first filter for filtering (single filter supported currently)
   const activeFilterRaw = searchFilters[0] || ''
-  const activeFilter = activeFilterRaw ? parseFilter(activeFilterRaw) : null
 
   const removeFilter = useCallback((filterToRemove: string) => {
     const newFilters = searchFilters.filter(f => f !== filterToRemove)
@@ -187,23 +186,25 @@ export function LinksPage() {
   const links = response?.items
   const filteredLinks = useMemo(() => {
     if (!links) return []
-    if (!activeFilter) return links
+    if (!activeFilterRaw) return links
 
-    const searchField = activeFilter.field as SortField | 'all'
-    const needle = activeFilter.value.trim().toLowerCase()
+    // Parse filter inside memo to ensure fresh parsing on each recompute
+    const filter = parseFilter(activeFilterRaw)
+    const searchField = filter.field as SortField | 'all'
+    const needle = filter.value.trim().toLowerCase()
     if (!needle) return links
 
-    const numericFilter = parseNumericFilter(activeFilter.value)
+    const numericFilter = parseNumericFilter(filter.value)
     if (searchField !== 'all' && numericSearchFields.includes(searchField as SortField)) {
       const unitFilter =
         (searchField === 'bandwidth' || searchField === 'in' || searchField === 'out')
           ? parseNumericFilterWithUnits(
-              activeFilter.value,
+              filter.value,
               { gbps: 1e9, mbps: 1e6, bps: 1 },
               'gbps'
             )
           : (searchField === 'latency' || searchField === 'jitter')
-              ? parseNumericFilterWithUnits(activeFilter.value, { ms: 1000, us: 1 }, 'ms')
+              ? parseNumericFilterWithUnits(filter.value, { ms: 1000, us: 1 }, 'ms')
               : null
       const effectiveFilter = unitFilter ?? numericFilter
       if (!effectiveFilter) {
@@ -263,11 +264,17 @@ export function LinksPage() {
     }
 
     return links.filter(link => getSearchValue(link, searchField).toLowerCase().includes(needle))
-  }, [links, activeFilter])
+  }, [links, activeFilterRaw])
   const sortedLinks = useMemo(() => {
     if (!filteredLinks) return []
-
-    const sorted = [...filteredLinks].sort((a, b) => {
+    // Deduplicate by pk to prevent any possible duplicate rows
+    const seen = new Set<string>()
+    const unique = filteredLinks.filter(l => {
+      if (seen.has(l.pk)) return false
+      seen.add(l.pk)
+      return true
+    })
+    const sorted = [...unique].sort((a, b) => {
       let cmp = 0
       switch (sortField) {
         case 'code':

@@ -61,8 +61,10 @@ export function GossipNodesPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [offset, setOffset] = useState(0)
-  const [sortField, setSortField] = useState<SortField>('stake')
-  const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
+
+  // Get sort config from URL (default: stake desc)
+  const sortField = (searchParams.get('sort') || 'stake') as SortField
+  const sortDirection = (searchParams.get('dir') || 'desc') as SortDirection
 
   // Get search filters from URL
   const searchParam = searchParams.get('search') || ''
@@ -113,12 +115,15 @@ export function GossipNodesPage() {
   }, [])
 
   const handleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortDirection(current => current === 'asc' ? 'desc' : 'asc')
-      return
-    }
-    setSortField(field)
-    setSortDirection('desc')
+    setSearchParams(prev => {
+      if (sortField === field) {
+        prev.set('dir', sortDirection === 'asc' ? 'desc' : 'asc')
+      } else {
+        prev.set('sort', field)
+        prev.set('dir', 'desc')
+      }
+      return prev
+    })
     setOffset(0)
   }
 

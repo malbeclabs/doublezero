@@ -66,8 +66,10 @@ export function MetrosPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [offset, setOffset] = useState(0)
-  const [sortField, setSortField] = useState<SortField>('code')
-  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+
+  // Get sort config from URL (default: code asc)
+  const sortField = (searchParams.get('sort') || 'code') as SortField
+  const sortDirection = (searchParams.get('dir') || 'asc') as SortDirection
 
   // Get search filters from URL
   const searchParam = searchParams.get('search') || ''
@@ -197,12 +199,15 @@ export function MetrosPage() {
   )
 
   const handleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortDirection(current => current === 'asc' ? 'desc' : 'asc')
-      return
-    }
-    setSortField(field)
-    setSortDirection('asc')
+    setSearchParams(prev => {
+      if (sortField === field) {
+        prev.set('dir', sortDirection === 'asc' ? 'desc' : 'asc')
+      } else {
+        prev.set('sort', field)
+        prev.set('dir', 'asc')
+      }
+      return prev
+    })
   }
 
   const SortIcon = ({ field }: { field: SortField }) => {

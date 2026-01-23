@@ -43,7 +43,8 @@ type SortField =
   | 'commission'
   | 'dz'
   | 'device'
-  | 'location'
+  | 'city'
+  | 'country'
   | 'in'
   | 'out'
   | 'skip'
@@ -172,7 +173,8 @@ export function ValidatorsPage() {
               <option value="commission">Comm.</option>
               <option value="dz">DZ</option>
               <option value="device">Device</option>
-              <option value="location">Location</option>
+              <option value="city">City</option>
+              <option value="country">Country</option>
               <option value="in">In</option>
               <option value="out">Out</option>
               <option value="skip">Skip</option>
@@ -248,10 +250,16 @@ export function ValidatorsPage() {
                       <SortIcon field="device" />
                     </button>
                   </th>
-                  <th className="px-4 py-3 font-medium" aria-sort={sortAria('location')}>
-                    <button className="inline-flex items-center gap-1" type="button" onClick={() => handleSort('location')}>
-                      Location
-                      <SortIcon field="location" />
+                  <th className="px-4 py-3 font-medium" aria-sort={sortAria('city')}>
+                    <button className="inline-flex items-center gap-1" type="button" onClick={() => handleSort('city')}>
+                      City
+                      <SortIcon field="city" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium" aria-sort={sortAria('country')}>
+                    <button className="inline-flex items-center gap-1" type="button" onClick={() => handleSort('country')}>
+                      Country
+                      <SortIcon field="country" />
                     </button>
                   </th>
                   <th className="px-4 py-3 font-medium text-right" aria-sort={sortAria('in')}>
@@ -324,15 +332,10 @@ export function ValidatorsPage() {
                       )}
                     </td>
                     <td className="px-4 py-3 text-sm text-muted-foreground">
-                      {validator.city || validator.country ? (
-                        <>
-                          {validator.city && <span>{validator.city}</span>}
-                          {validator.city && validator.country && <span>, </span>}
-                          {validator.country && <span>{validator.country}</span>}
-                        </>
-                      ) : (
-                        '—'
-                      )}
+                      {validator.city || '—'}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-muted-foreground">
+                      {validator.country || '—'}
                     </td>
                     <td className="px-4 py-3 text-sm tabular-nums text-right text-muted-foreground">
                       {formatBps(validator.in_bps)}
@@ -350,7 +353,7 @@ export function ValidatorsPage() {
                 ))}
                 {validators.length === 0 && (
                   <tr>
-                    <td colSpan={12} className="px-4 py-8 text-center text-muted-foreground">
+                    <td colSpan={13} className="px-4 py-8 text-center text-muted-foreground">
                       No validators found
                     </td>
                   </tr>

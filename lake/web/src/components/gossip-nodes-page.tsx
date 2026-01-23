@@ -24,7 +24,8 @@ type SortField =
   | 'pubkey'
   | 'ip'
   | 'version'
-  | 'location'
+  | 'city'
+  | 'country'
   | 'validator'
   | 'stake'
   | 'dz'
@@ -153,7 +154,8 @@ export function GossipNodesPage() {
               <option value="pubkey">Pubkey</option>
               <option value="ip">IP</option>
               <option value="version">Version</option>
-              <option value="location">Location</option>
+              <option value="city">City</option>
+              <option value="country">Country</option>
               <option value="validator">Validator</option>
               <option value="stake">Stake</option>
               <option value="dz">DZ</option>
@@ -205,10 +207,16 @@ export function GossipNodesPage() {
                       <SortIcon field="version" />
                     </button>
                   </th>
-                  <th className="px-4 py-3 font-medium" aria-sort={sortAria('location')}>
-                    <button className="inline-flex items-center gap-1" type="button" onClick={() => handleSort('location')}>
-                      Location
-                      <SortIcon field="location" />
+                  <th className="px-4 py-3 font-medium" aria-sort={sortAria('city')}>
+                    <button className="inline-flex items-center gap-1" type="button" onClick={() => handleSort('city')}>
+                      City
+                      <SortIcon field="city" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-medium" aria-sort={sortAria('country')}>
+                    <button className="inline-flex items-center gap-1" type="button" onClick={() => handleSort('country')}>
+                      Country
+                      <SortIcon field="country" />
                     </button>
                   </th>
                   <th className="px-4 py-3 font-medium text-center" aria-sort={sortAria('validator')}>
@@ -256,15 +264,10 @@ export function GossipNodesPage() {
                       {node.version || '—'}
                     </td>
                     <td className="px-4 py-3 text-sm text-muted-foreground">
-                      {node.city || node.country ? (
-                        <>
-                          {node.city && <span>{node.city}</span>}
-                          {node.city && node.country && <span>, </span>}
-                          {node.country && <span>{node.country}</span>}
-                        </>
-                      ) : (
-                        '—'
-                      )}
+                      {node.city || '—'}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-muted-foreground">
+                      {node.country || '—'}
                     </td>
                     <td className="px-4 py-3 text-center">
                       {node.is_validator ? (
@@ -297,7 +300,7 @@ export function GossipNodesPage() {
                 ))}
                 {nodes.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
+                    <td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">
                       No gossip nodes found
                     </td>
                   </tr>

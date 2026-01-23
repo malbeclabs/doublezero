@@ -210,8 +210,8 @@ func (f FilterParams) BuildFilterClause(fields map[string]FilterFieldConfig) (st
 
 	switch config.Type {
 	case FieldTypeText:
-		// Case-insensitive substring match
-		return config.Column + " ILIKE ?", []interface{}{"%" + f.Value + "%"}
+		// Case-insensitive substring match using ClickHouse's positionCaseInsensitive
+		return "positionCaseInsensitive(" + config.Column + ", ?) > 0", []interface{}{f.Value}
 
 	case FieldTypeBoolean:
 		val := strings.ToLower(strings.TrimSpace(f.Value))

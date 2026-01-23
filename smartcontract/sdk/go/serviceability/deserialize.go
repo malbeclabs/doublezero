@@ -59,9 +59,6 @@ func DeserializeContributor(reader *ByteReader, contributor *Contributor) {
 }
 
 func DeserializeInterface(reader *ByteReader, iface *Interface) {
-	// Dump raw bytes before reading interface (50 bytes should cover most interface data)
-	log.Printf("DEBUG DeserializeInterface: before read: %s", reader.DumpBytes(50))
-
 	iface.Version = reader.ReadU8()
 
 	if iface.Version > (CurrentInterfaceVersion - 1) { // subtract 1 because the discriminant starts from 0

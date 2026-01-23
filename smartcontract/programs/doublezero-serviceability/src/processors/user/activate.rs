@@ -214,7 +214,7 @@ pub fn process_activate_user(
             let mut buffer = global_resource_ext.data.borrow_mut();
             let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
             user.tunnel_net = resource
-                .allocate()?
+                .allocate(2)?
                 .as_ip()
                 .ok_or(DoubleZeroError::InvalidArgument)?;
         }
@@ -224,7 +224,7 @@ pub fn process_activate_user(
             let mut buffer = device_tunnel_ids_ext.data.borrow_mut();
             let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
             user.tunnel_id = resource
-                .allocate()?
+                .allocate(1)?
                 .as_id()
                 .ok_or(DoubleZeroError::InvalidArgument)?;
         }
@@ -244,7 +244,7 @@ pub fn process_activate_user(
                 let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
 
                 if let Ok(ip) = resource
-                    .allocate()
+                    .allocate(1)
                     .and_then(|v| v.as_ip().ok_or(DoubleZeroError::InvalidArgument))
                 {
                     allocated_dz_ip = Some(ip.ip());

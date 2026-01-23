@@ -280,7 +280,7 @@ async fn test_allocate_from_device_tunnel_block() {
     let allocated = resource.iter_allocated();
     assert_eq!(allocated.len(), 1);
     // First allocation should be 10.100.0.0/31 (from device_tunnel_block: 10.100.0.0/24)
-    assert_eq!(allocated[0].to_string(), "10.100.0.0/31");
+    assert_eq!(allocated[0].to_string(), "10.100.0.0/32");
 
     // Wait for new blockhash
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
@@ -309,8 +309,8 @@ async fn test_allocate_from_device_tunnel_block() {
 
     let allocated = resource.iter_allocated();
     assert_eq!(allocated.len(), 2);
-    assert_eq!(allocated[0].to_string(), "10.100.0.0/31");
-    assert_eq!(allocated[1].to_string(), "10.100.0.2/31");
+    assert_eq!(allocated[0].to_string(), "10.100.0.0/32");
+    assert_eq!(allocated[1].to_string(), "10.100.0.1/32");
 
     println!("[PASS] test_allocate_from_device_tunnel_block");
 }
@@ -351,8 +351,9 @@ async fn test_allocate_specific_ip() {
         .expect("Resource extension should exist");
 
     let allocated = resource.iter_allocated();
-    assert_eq!(allocated.len(), 1);
-    assert_eq!(allocated[0].to_string(), "10.100.0.10/31");
+    assert_eq!(allocated.len(), 2);
+    assert_eq!(allocated[0].to_string(), "10.100.0.10/32");
+    assert_eq!(allocated[1].to_string(), "10.100.0.11/32");
 
     println!("[PASS] test_allocate_specific_ip");
 }
@@ -393,7 +394,7 @@ async fn test_deallocate_ip() {
     assert_eq!(resource.iter_allocated().len(), 1);
 
     // Deallocate
-    let network_to_deallocate = "10.100.0.0/31".parse().unwrap();
+    let network_to_deallocate = "10.100.0.0/32".parse().unwrap();
     execute_transaction(
         &mut banks_client,
         recent_blockhash,

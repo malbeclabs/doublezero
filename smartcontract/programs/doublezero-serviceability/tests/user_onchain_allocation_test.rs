@@ -547,7 +547,7 @@ async fn test_closeaccount_user_with_deallocation() {
             .await
             .expect("DzPrefixBlock should exist");
 
-    assert_eq!(user_tunnel_resource_before.iter_allocated().len(), 1);
+    assert_eq!(user_tunnel_resource_before.iter_allocated().len(), 2);
     assert_eq!(tunnel_ids_resource_before.iter_allocated().len(), 1);
     assert_eq!(dz_prefix_resource_before.iter_allocated().len(), 1);
 

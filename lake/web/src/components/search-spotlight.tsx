@@ -51,8 +51,8 @@ const validatorFieldPrefixes = [
   { prefix: 'device:', description: 'Filter by device code' },
   { prefix: 'version:', description: 'Filter by version' },
   { prefix: 'dz:', description: 'Filter by DZ status (yes/no)' },
-  { prefix: 'commission:', description: 'Filter by commission %' },
-  { prefix: 'skip:', description: 'Filter by skip rate' },
+  { prefix: 'commission:', description: 'Filter by commission % (e.g., >5)' },
+  { prefix: 'skip:', description: 'Filter by skip rate % (e.g., >1)' },
 ]
 
 // Field prefixes for gossip nodes page filtering
@@ -89,8 +89,8 @@ const linkFieldPrefixes = [
   { prefix: 'sideZ:', description: 'Filter by side Z device' },
   { prefix: 'status:', description: 'Filter by status' },
   { prefix: 'bandwidth:', description: 'Filter by bandwidth (e.g., >10gbps)' },
-  { prefix: 'in:', description: 'Filter by inbound traffic' },
-  { prefix: 'out:', description: 'Filter by outbound traffic' },
+  { prefix: 'in:', description: 'Filter by inbound traffic (e.g., >1gbps)' },
+  { prefix: 'out:', description: 'Filter by outbound traffic (e.g., >1gbps)' },
   { prefix: 'utilIn:', description: 'Filter by inbound utilization % (e.g., >50)' },
   { prefix: 'utilOut:', description: 'Filter by outbound utilization % (e.g., >50)' },
 ]

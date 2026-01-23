@@ -22,6 +22,7 @@ All notable changes to this project will be documented in this file.
 - CLI
   - Remove log noise on resolve route
   - Add `global-config qa-allowlist` commands to manage QA identity allowlist to bypass status and max_users checks in QA
+  - Add "-skip-capacity-check" flag to bypass status and max_users checks in QA to test devices that are still being provisioned
   - Remove "unknown" status from doublezero status command and implement "failed" and "unreachable" statuses
 - Client
   - Enable route liveness passive-mode by default

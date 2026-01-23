@@ -13,4 +13,4 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - run: go test -tags=qa -v ./e2e -run TestQA_AllDevices_UnicastConnectivity --args -hosts=chi-dn-bm2,chi-dn-bm3 -env devnet
+      - run: go test -tags=qa -v ./e2e -run TestQA_AllDevices_UnicastConnectivity --args -hosts=chi-dn-bm2,chi-dn-bm3 -env devnet -skip-capacity-check

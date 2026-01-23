@@ -37,6 +37,7 @@ All notable changes to this project will be documented in this file.
   - Serviceability: enforce that CloseAccountUser instructions verify the target user has no multicast publishers or subscribers (both `publishers` and `subscribers` are empty) before closing, and add regression coverage for this behavior.
   - Removed device and user allowlist functionality, updating the global state, initialization flow, tests, and processors accordingly, and cleaning up unused account checks.
   - SetGlobalConfig, ActivateDevice, UpdateDevice and CloseAccountDevice instructions updated to manage resource accounts.
+  - Add option for Contributor B to reject a link created by Contributor A just as Contributor A can cancel its own created link
 - Telemetry
   - Add gNMI tunnel client for state collection
 - Activator

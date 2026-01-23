@@ -5,7 +5,7 @@ use doublezero_serviceability::{
         contributor::create::ContributorCreateArgs,
         device::interface::DeviceInterfaceUnlinkArgs,
         link::{
-            accept::LinkAcceptArgs, activate::*, create::*, delete::*,
+            accept::LinkAcceptArgs, activate::*, create::*, delete::*, reject::LinkRejectArgs,
             sethealth::LinkSetHealthArgs, update::*,
         },
         *,
@@ -923,5 +923,149 @@ async fn test_dzx_link() {
     assert_eq!(device_z.reference_count, 0);
 
     println!("✅ Link deleted successfully");
+
+    /*****************************************************************************************************************************************************/
+    println!("🟢 22. Create Link for Reject test...");
+
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (link_reject_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateLink(LinkCreateArgs {
+            code: "rj".to_string(),
+            link_type: LinkLinkType::DZX,
+            bandwidth: 15_000_000_000,
+            mtu: 9000,
+            delay_ns: 1000000,
+            jitter_ns: 100000,
+            side_a_iface_name: "Ethernet0".to_string(),
+            side_z_iface_name: None,
+            desired_status: Some(LinkDesiredStatus::Activated),
+        }),
+        vec![
+            AccountMeta::new(link_reject_pubkey, false),
+            AccountMeta::new(contributor1_pubkey, false),
+            AccountMeta::new(device_a_pubkey, false),
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let link_reject = get_account_data(&mut banks_client, link_reject_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_tunnel()
+        .unwrap();
+    assert_eq!(link_reject.status, LinkStatus::Requested);
+
+    println!("✅ Link created in Requested status");
+    /*****************************************************************************************************************************************************/
+    println!("🟢 23. Try to Reject Link by Contributor A (should fail)...");
+
+    let res = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::RejectLink(LinkRejectArgs {
+            reason: "test rejection".to_string(),
+        }),
+        vec![
+            AccountMeta::new(link_reject_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(contributor1_pubkey, false),
+            AccountMeta::new(device_z_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    assert!(res.is_err());
+
+    let link_reject = get_account_data(&mut banks_client, link_reject_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_tunnel()
+        .unwrap();
+    assert_eq!(link_reject.status, LinkStatus::Requested);
+
+    println!("✅ Contributor A rejected as expected");
+    /*****************************************************************************************************************************************************/
+    println!("🟢 23a. Try to Reject Link with invalid contributor account owner (should fail)...");
+
+    let res = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::RejectLink(LinkRejectArgs {
+            reason: "test rejection".to_string(),
+        }),
+        vec![
+            AccountMeta::new(link_reject_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(payer2.pubkey(), false), // Not owned by program_id
+            AccountMeta::new(device_z_pubkey, false),
+        ],
+        &payer2,
+    )
+    .await;
+
+    assert!(res.is_err());
+    println!("✅ Invalid contributor account owner rejected as expected");
+    /*****************************************************************************************************************************************************/
+    println!("🟢 23b. Try to Reject Link with invalid device account owner (should fail)...");
+
+    let res = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::RejectLink(LinkRejectArgs {
+            reason: "test rejection".to_string(),
+        }),
+        vec![
+            AccountMeta::new(link_reject_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(contributor2_pubkey, false),
+            AccountMeta::new(payer2.pubkey(), false), // Not owned by program_id
+        ],
+        &payer2,
+    )
+    .await;
+
+    assert!(res.is_err());
+    println!("✅ Invalid device account owner rejected as expected");
+    /*****************************************************************************************************************************************************/
+    println!("🟢 24. Reject Link by Contributor B (should succeed)...");
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::RejectLink(LinkRejectArgs {
+            reason: "test rejection by contributor B".to_string(),
+        }),
+        vec![
+            AccountMeta::new(link_reject_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(contributor2_pubkey, false),
+            AccountMeta::new(device_z_pubkey, false),
+        ],
+        &payer2,
+    )
+    .await;
+
+    let link_reject = get_account_data(&mut banks_client, link_reject_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_tunnel()
+        .unwrap();
+    assert_eq!(link_reject.status, LinkStatus::Rejected);
+
+    println!("✅ Contributor B successfully rejected the link");
+
     println!("🟢🟢🟢  End test_link  🟢🟢🟢");
 }

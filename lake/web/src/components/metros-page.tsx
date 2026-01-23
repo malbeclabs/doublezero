@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Loader2, MapPin, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react'
@@ -11,11 +11,42 @@ const PAGE_SIZE = 100
 type SortField = 'code' | 'name' | 'latitude' | 'longitude' | 'devices' | 'users'
 type SortDirection = 'asc' | 'desc'
 
+type NumericFilter = {
+  op: '>' | '>=' | '<' | '<=' | '='
+  value: number
+}
+
+const numericSearchFields: SortField[] = ['latitude', 'longitude', 'devices', 'users']
+
+function parseNumericFilter(input: string): NumericFilter | null {
+  const match = input.trim().match(/^(>=|<=|>|<|==|=)\s*(-?\d+(?:\.\d+)?)$/)
+  if (!match) return null
+  const op = match[1] === '==' ? '=' : (match[1] as NumericFilter['op'])
+  return { op, value: Number(match[2]) }
+}
+
+function matchesNumericFilter(value: number, filter: NumericFilter): boolean {
+  switch (filter.op) {
+    case '>':
+      return value > filter.value
+    case '>=':
+      return value >= filter.value
+    case '<':
+      return value < filter.value
+    case '<=':
+      return value <= filter.value
+    case '=':
+      return value === filter.value
+  }
+}
+
 export function MetrosPage() {
   const navigate = useNavigate()
   const [offset, setOffset] = useState(0)
   const [sortField, setSortField] = useState<SortField>('code')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+  const [searchField, setSearchField] = useState<SortField>('code')
+  const [searchText, setSearchText] = useState('')
 
   const { data: response, isLoading, error } = useQuery({
     queryKey: ['metros', 'all'],
@@ -23,9 +54,49 @@ export function MetrosPage() {
     refetchInterval: 30000,
   })
   const metros = response?.items
-  const sortedMetros = useMemo(() => {
+  const filteredMetros = useMemo(() => {
     if (!metros) return []
-    const sorted = [...metros].sort((a, b) => {
+    const needle = searchText.trim().toLowerCase()
+    if (!needle) return metros
+    const numericFilter = parseNumericFilter(searchText)
+    if (numericFilter && numericSearchFields.includes(searchField)) {
+      const getNumericValue = (metro: typeof metros[number]) => {
+        switch (searchField) {
+          case 'latitude':
+            return metro.latitude
+          case 'longitude':
+            return metro.longitude
+          case 'devices':
+            return metro.device_count
+          case 'users':
+            return metro.user_count
+          default:
+            return 0
+        }
+      }
+      return metros.filter(metro => matchesNumericFilter(getNumericValue(metro), numericFilter))
+    }
+    const getSearchValue = (metro: typeof metros[number]) => {
+      switch (searchField) {
+        case 'code':
+          return metro.code
+        case 'name':
+          return metro.name || ''
+        case 'latitude':
+          return String(metro.latitude)
+        case 'longitude':
+          return String(metro.longitude)
+        case 'devices':
+          return String(metro.device_count)
+        case 'users':
+          return String(metro.user_count)
+      }
+    }
+    return metros.filter(metro => getSearchValue(metro).toLowerCase().includes(needle))
+  }, [metros, searchField, searchText])
+  const sortedMetros = useMemo(() => {
+    if (!filteredMetros) return []
+    const sorted = [...filteredMetros].sort((a, b) => {
       let cmp = 0
       switch (sortField) {
         case 'code':
@@ -50,7 +121,7 @@ export function MetrosPage() {
       return sortDirection === 'asc' ? cmp : -cmp
     })
     return sorted
-  }, [metros, sortField, sortDirection])
+  }, [filteredMetros, sortField, sortDirection])
   const pagedMetros = useMemo(
     () => sortedMetros.slice(offset, offset + PAGE_SIZE),
     [sortedMetros, offset]
@@ -77,6 +148,10 @@ export function MetrosPage() {
     return sortDirection === 'asc' ? 'ascending' : 'descending'
   }
 
+  useEffect(() => {
+    setOffset(0)
+  }, [searchField, searchText])
+
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -101,10 +176,45 @@ export function MetrosPage() {
     <div className="flex-1 overflow-auto">
       <div className="max-w-7xl mx-auto px-4 sm:px-8 py-8">
         {/* Header */}
-        <div className="flex items-center gap-3 mb-6">
-          <MapPin className="h-6 w-6 text-muted-foreground" />
-          <h1 className="text-2xl font-medium">Metros</h1>
-          <span className="text-muted-foreground">({response?.total || 0})</span>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+          <div className="flex items-center gap-3">
+            <MapPin className="h-6 w-6 text-muted-foreground" />
+            <h1 className="text-2xl font-medium">Metros</h1>
+            <span className="text-muted-foreground">({response?.total || 0})</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <select
+              className="h-9 rounded-md border border-border bg-background px-2 text-sm"
+              value={searchField}
+              onChange={(e) => setSearchField(e.target.value as SortField)}
+            >
+              <option value="code">Code</option>
+              <option value="name">Name</option>
+              <option value="latitude">Latitude</option>
+              <option value="longitude">Longitude</option>
+              <option value="devices">Devices</option>
+              <option value="users">Users</option>
+            </select>
+            <div className="relative">
+              <input
+                className="h-9 w-48 sm:w-64 rounded-md border border-border bg-background px-3 pr-8 text-sm"
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                placeholder="Filter"
+                aria-label="Filter"
+              />
+              {searchText && (
+                <button
+                  type="button"
+                  className="absolute inset-y-0 right-2 text-muted-foreground hover:text-foreground"
+                  onClick={() => setSearchText('')}
+                  aria-label="Clear filter"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Table */}
@@ -190,7 +300,7 @@ export function MetrosPage() {
           </div>
           {response && (
             <Pagination
-              total={response.total}
+              total={sortedMetros.length}
               limit={PAGE_SIZE}
               offset={offset}
               onOffsetChange={setOffset}

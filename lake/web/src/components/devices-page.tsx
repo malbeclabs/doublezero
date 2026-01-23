@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Loader2, Server, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react'
@@ -40,11 +40,65 @@ type SortField =
 
 type SortDirection = 'asc' | 'desc'
 
+type NumericFilter = {
+  op: '>' | '>=' | '<' | '<=' | '='
+  value: number
+}
+
+type UnitMap = Record<string, number>
+
+const numericSearchFields: SortField[] = [
+  'users',
+  'in',
+  'out',
+  'peakIn',
+  'peakOut',
+]
+
+function parseNumericFilter(input: string): NumericFilter | null {
+  const match = input.trim().match(/^(>=|<=|>|<|==|=)\s*(-?\d+(?:\.\d+)?)$/)
+  if (!match) return null
+  const op = match[1] === '==' ? '=' : (match[1] as NumericFilter['op'])
+  return { op, value: Number(match[2]) }
+}
+
+function parseNumericFilterWithUnits(
+  input: string,
+  unitMap: UnitMap,
+  defaultUnit: string
+): NumericFilter | null {
+  const match = input.trim().match(/^(>=|<=|>|<|==|=)\s*(-?\d+(?:\.\d+)?)([a-zA-Z]+)?$/)
+  if (!match) return null
+  const op = match[1] === '==' ? '=' : (match[1] as NumericFilter['op'])
+  const unitRaw = match[3]?.toLowerCase()
+  const unit = unitRaw ?? defaultUnit
+  const multiplier = unitMap[unit]
+  if (!multiplier) return null
+  return { op, value: Number(match[2]) * multiplier }
+}
+
+function matchesNumericFilter(value: number, filter: NumericFilter): boolean {
+  switch (filter.op) {
+    case '>':
+      return value > filter.value
+    case '>=':
+      return value >= filter.value
+    case '<':
+      return value < filter.value
+    case '<=':
+      return value <= filter.value
+    case '=':
+      return value === filter.value
+  }
+}
+
 export function DevicesPage() {
   const navigate = useNavigate()
   const [offset, setOffset] = useState(0)
   const [sortField, setSortField] = useState<SortField>('code')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+  const [searchField, setSearchField] = useState<SortField>('code')
+  const [searchText, setSearchText] = useState('')
 
   const { data: response, isLoading, error } = useQuery({
     queryKey: ['devices', 'all'],
@@ -52,9 +106,73 @@ export function DevicesPage() {
     refetchInterval: 30000,
   })
   const devices = response?.items
-  const sortedDevices = useMemo(() => {
+  const filteredDevices = useMemo(() => {
     if (!devices) return []
-    const sorted = [...devices].sort((a, b) => {
+    const needle = searchText.trim().toLowerCase()
+    if (!needle) return devices
+    const numericFilter = parseNumericFilter(searchText)
+    if (numericSearchFields.includes(searchField)) {
+      const unitFilter =
+        (searchField === 'in' || searchField === 'out' || searchField === 'peakIn' || searchField === 'peakOut')
+          ? parseNumericFilterWithUnits(
+              searchText,
+              { gbps: 1e9, mbps: 1e6, bps: 1 },
+              'gbps'
+            )
+          : null
+      const effectiveFilter = unitFilter ?? numericFilter
+      if (!effectiveFilter) {
+        return devices
+      }
+      const getNumericValue = (device: typeof devices[number]) => {
+        switch (searchField) {
+          case 'users':
+            return device.current_users
+          case 'in':
+            return device.in_bps
+          case 'out':
+            return device.out_bps
+          case 'peakIn':
+            return device.peak_in_bps
+          case 'peakOut':
+            return device.peak_out_bps
+          default:
+            return 0
+        }
+      }
+      return devices.filter(device => matchesNumericFilter(getNumericValue(device), effectiveFilter))
+    }
+    const getSearchValue = (device: typeof devices[number]) => {
+      switch (searchField) {
+        case 'code':
+          return device.code
+        case 'type': {
+          const type = device.device_type || ''
+          return `${type} ${type.replace(/_/g, ' ')}`.trim()
+        }
+        case 'contributor':
+          return device.contributor_code || ''
+        case 'metro':
+          return device.metro_code || ''
+        case 'status':
+          return device.status
+        case 'users':
+          return `${device.current_users} ${device.max_users}`
+        case 'in':
+          return String(device.in_bps)
+        case 'out':
+          return String(device.out_bps)
+        case 'peakIn':
+          return String(device.peak_in_bps)
+        case 'peakOut':
+          return String(device.peak_out_bps)
+      }
+    }
+    return devices.filter(device => getSearchValue(device).toLowerCase().includes(needle))
+  }, [devices, searchField, searchText])
+  const sortedDevices = useMemo(() => {
+    if (!filteredDevices) return []
+    const sorted = [...filteredDevices].sort((a, b) => {
       let cmp = 0
       switch (sortField) {
         case 'code':
@@ -91,7 +209,7 @@ export function DevicesPage() {
       return sortDirection === 'asc' ? cmp : -cmp
     })
     return sorted
-  }, [devices, sortField, sortDirection])
+  }, [filteredDevices, sortField, sortDirection])
   const pagedDevices = useMemo(
     () => sortedDevices.slice(offset, offset + PAGE_SIZE),
     [sortedDevices, offset]
@@ -118,6 +236,10 @@ export function DevicesPage() {
     return sortDirection === 'asc' ? 'ascending' : 'descending'
   }
 
+  useEffect(() => {
+    setOffset(0)
+  }, [searchField, searchText])
+
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -142,10 +264,49 @@ export function DevicesPage() {
     <div className="flex-1 overflow-auto">
       <div className="max-w-[1600px] mx-auto px-4 sm:px-8 py-8">
         {/* Header */}
-        <div className="flex items-center gap-3 mb-6">
-          <Server className="h-6 w-6 text-muted-foreground" />
-          <h1 className="text-2xl font-medium">Devices</h1>
-          <span className="text-muted-foreground">({response?.total || 0})</span>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+          <div className="flex items-center gap-3">
+            <Server className="h-6 w-6 text-muted-foreground" />
+            <h1 className="text-2xl font-medium">Devices</h1>
+            <span className="text-muted-foreground">({response?.total || 0})</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <select
+              className="h-9 rounded-md border border-border bg-background px-2 text-sm"
+              value={searchField}
+              onChange={(e) => setSearchField(e.target.value as SortField)}
+            >
+              <option value="code">Code</option>
+              <option value="type">Type</option>
+              <option value="contributor">Contributor</option>
+              <option value="metro">Metro</option>
+              <option value="status">Status</option>
+              <option value="users">Users</option>
+              <option value="in">In</option>
+              <option value="out">Out</option>
+              <option value="peakIn">Peak In</option>
+              <option value="peakOut">Peak Out</option>
+            </select>
+            <div className="relative">
+              <input
+                className="h-9 w-48 sm:w-64 rounded-md border border-border bg-background px-3 pr-8 text-sm"
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                placeholder="Filter"
+                aria-label="Filter"
+              />
+              {searchText && (
+                <button
+                  type="button"
+                  className="absolute inset-y-0 right-2 text-muted-foreground hover:text-foreground"
+                  onClick={() => setSearchText('')}
+                  aria-label="Clear filter"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Table */}
@@ -276,7 +437,7 @@ export function DevicesPage() {
           </div>
           {response && (
             <Pagination
-              total={response.total}
+              total={sortedDevices.length}
               limit={PAGE_SIZE}
               offset={offset}
               onOffsetChange={setOffset}

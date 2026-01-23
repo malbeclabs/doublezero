@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Loader2, Building2, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react'
@@ -11,11 +11,42 @@ const PAGE_SIZE = 100
 type SortField = 'code' | 'name' | 'devices' | 'sideA' | 'sideZ' | 'links'
 type SortDirection = 'asc' | 'desc'
 
+type NumericFilter = {
+  op: '>' | '>=' | '<' | '<=' | '='
+  value: number
+}
+
+const numericSearchFields: SortField[] = ['devices', 'sideA', 'sideZ', 'links']
+
+function parseNumericFilter(input: string): NumericFilter | null {
+  const match = input.trim().match(/^(>=|<=|>|<|==|=)\s*(-?\d+(?:\.\d+)?)$/)
+  if (!match) return null
+  const op = match[1] === '==' ? '=' : (match[1] as NumericFilter['op'])
+  return { op, value: Number(match[2]) }
+}
+
+function matchesNumericFilter(value: number, filter: NumericFilter): boolean {
+  switch (filter.op) {
+    case '>':
+      return value > filter.value
+    case '>=':
+      return value >= filter.value
+    case '<':
+      return value < filter.value
+    case '<=':
+      return value <= filter.value
+    case '=':
+      return value === filter.value
+  }
+}
+
 export function ContributorsPage() {
   const navigate = useNavigate()
   const [offset, setOffset] = useState(0)
   const [sortField, setSortField] = useState<SortField>('code')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+  const [searchField, setSearchField] = useState<SortField>('code')
+  const [searchText, setSearchText] = useState('')
 
   const { data: response, isLoading, error } = useQuery({
     queryKey: ['contributors', 'all'],
@@ -23,9 +54,49 @@ export function ContributorsPage() {
     refetchInterval: 30000,
   })
   const contributors = response?.items
-  const sortedContributors = useMemo(() => {
+  const filteredContributors = useMemo(() => {
     if (!contributors) return []
-    const sorted = [...contributors].sort((a, b) => {
+    const needle = searchText.trim().toLowerCase()
+    if (!needle) return contributors
+    const numericFilter = parseNumericFilter(searchText)
+    if (numericFilter && numericSearchFields.includes(searchField)) {
+      const getNumericValue = (contributor: typeof contributors[number]) => {
+        switch (searchField) {
+          case 'devices':
+            return contributor.device_count
+          case 'sideA':
+            return contributor.side_a_devices
+          case 'sideZ':
+            return contributor.side_z_devices
+          case 'links':
+            return contributor.link_count
+          default:
+            return 0
+        }
+      }
+      return contributors.filter(contributor => matchesNumericFilter(getNumericValue(contributor), numericFilter))
+    }
+    const getSearchValue = (contributor: typeof contributors[number]) => {
+      switch (searchField) {
+        case 'code':
+          return contributor.code
+        case 'name':
+          return contributor.name || ''
+        case 'devices':
+          return String(contributor.device_count)
+        case 'sideA':
+          return String(contributor.side_a_devices)
+        case 'sideZ':
+          return String(contributor.side_z_devices)
+        case 'links':
+          return String(contributor.link_count)
+      }
+    }
+    return contributors.filter(contributor => getSearchValue(contributor).toLowerCase().includes(needle))
+  }, [contributors, searchField, searchText])
+  const sortedContributors = useMemo(() => {
+    if (!filteredContributors) return []
+    const sorted = [...filteredContributors].sort((a, b) => {
       let cmp = 0
       switch (sortField) {
         case 'code':
@@ -50,7 +121,7 @@ export function ContributorsPage() {
       return sortDirection === 'asc' ? cmp : -cmp
     })
     return sorted
-  }, [contributors, sortField, sortDirection])
+  }, [filteredContributors, sortField, sortDirection])
   const pagedContributors = useMemo(
     () => sortedContributors.slice(offset, offset + PAGE_SIZE),
     [sortedContributors, offset]
@@ -77,6 +148,10 @@ export function ContributorsPage() {
     return sortDirection === 'asc' ? 'ascending' : 'descending'
   }
 
+  useEffect(() => {
+    setOffset(0)
+  }, [searchField, searchText])
+
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -101,10 +176,45 @@ export function ContributorsPage() {
     <div className="flex-1 overflow-auto">
       <div className="max-w-7xl mx-auto px-4 sm:px-8 py-8">
         {/* Header */}
-        <div className="flex items-center gap-3 mb-6">
-          <Building2 className="h-6 w-6 text-muted-foreground" />
-          <h1 className="text-2xl font-medium">Contributors</h1>
-          <span className="text-muted-foreground">({response?.total || 0})</span>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+          <div className="flex items-center gap-3">
+            <Building2 className="h-6 w-6 text-muted-foreground" />
+            <h1 className="text-2xl font-medium">Contributors</h1>
+            <span className="text-muted-foreground">({response?.total || 0})</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <select
+              className="h-9 rounded-md border border-border bg-background px-2 text-sm"
+              value={searchField}
+              onChange={(e) => setSearchField(e.target.value as SortField)}
+            >
+              <option value="code">Code</option>
+              <option value="name">Name</option>
+              <option value="devices">Devices</option>
+              <option value="sideA">Side A</option>
+              <option value="sideZ">Side Z</option>
+              <option value="links">Links</option>
+            </select>
+            <div className="relative">
+              <input
+                className="h-9 w-48 sm:w-64 rounded-md border border-border bg-background px-3 pr-8 text-sm"
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                placeholder="Filter"
+                aria-label="Filter"
+              />
+              {searchText && (
+                <button
+                  type="button"
+                  className="absolute inset-y-0 right-2 text-muted-foreground hover:text-foreground"
+                  onClick={() => setSearchText('')}
+                  aria-label="Clear filter"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Table */}
@@ -190,7 +300,7 @@ export function ContributorsPage() {
           </div>
           {response && (
             <Pagination
-              total={response.total}
+              total={sortedContributors.length}
               limit={PAGE_SIZE}
               offset={offset}
               onOffsetChange={setOffset}

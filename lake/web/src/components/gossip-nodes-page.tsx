@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Loader2, Radio, AlertCircle, Check, ChevronDown, ChevronUp } from 'lucide-react'
@@ -32,11 +32,59 @@ type SortField =
 
 type SortDirection = 'asc' | 'desc'
 
+type NumericFilter = {
+  op: '>' | '>=' | '<' | '<=' | '='
+  value: number
+}
+
+type UnitMap = Record<string, number>
+
+const numericSearchFields: SortField[] = ['stake']
+
+function parseNumericFilter(input: string): NumericFilter | null {
+  const match = input.trim().match(/^(>=|<=|>|<|==|=)\s*(-?\d+(?:\.\d+)?)$/)
+  if (!match) return null
+  const op = match[1] === '==' ? '=' : (match[1] as NumericFilter['op'])
+  return { op, value: Number(match[2]) }
+}
+
+function parseNumericFilterWithUnits(
+  input: string,
+  unitMap: UnitMap,
+  defaultUnit: string
+): NumericFilter | null {
+  const match = input.trim().match(/^(>=|<=|>|<|==|=)\s*(-?\d+(?:\.\d+)?)([a-zA-Z]+)?$/)
+  if (!match) return null
+  const op = match[1] === '==' ? '=' : (match[1] as NumericFilter['op'])
+  const unitRaw = match[3]?.toLowerCase()
+  const unit = unitRaw ?? defaultUnit
+  const multiplier = unitMap[unit]
+  if (!multiplier) return null
+  return { op, value: Number(match[2]) * multiplier }
+}
+
+function matchesNumericFilter(value: number, filter: NumericFilter): boolean {
+  switch (filter.op) {
+    case '>':
+      return value > filter.value
+    case '>=':
+      return value >= filter.value
+    case '<':
+      return value < filter.value
+    case '<=':
+      return value <= filter.value
+    case '=':
+      return value === filter.value
+  }
+}
+
 export function GossipNodesPage() {
   const navigate = useNavigate()
   const [offset, setOffset] = useState(0)
   const [sortField, setSortField] = useState<SortField>('pubkey')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+  const [searchField, setSearchField] = useState<SortField>('pubkey')
+  const [searchText, setSearchText] = useState('')
 
   const { data: response, isLoading, error } = useQuery({
     queryKey: ['gossip-nodes', 'all'],
@@ -46,9 +94,55 @@ export function GossipNodesPage() {
   const nodes = response?.items
   const onDZCount = response?.on_dz_count ?? 0
   const validatorCount = response?.validator_count ?? 0
-  const sortedNodes = useMemo(() => {
+  const filteredNodes = useMemo(() => {
     if (!nodes) return []
-    const sorted = [...nodes].sort((a, b) => {
+    const needle = searchText.trim().toLowerCase()
+    if (!needle) return nodes
+    const numericFilter = parseNumericFilter(searchText)
+    if (numericSearchFields.includes(searchField)) {
+      const unitFilter =
+        searchField === 'stake'
+          ? parseNumericFilterWithUnits(searchText, { '': 1, k: 1e3, m: 1e6 }, '')
+          : null
+      const effectiveFilter = unitFilter ?? numericFilter
+      if (!effectiveFilter) {
+        return nodes
+      }
+      const getNumericValue = (node: typeof nodes[number]) => {
+        switch (searchField) {
+          case 'stake':
+            return node.stake_sol
+          default:
+            return 0
+        }
+      }
+      return nodes.filter(node => matchesNumericFilter(getNumericValue(node), effectiveFilter))
+    }
+    const getSearchValue = (node: typeof nodes[number]) => {
+      switch (searchField) {
+        case 'pubkey':
+          return node.pubkey
+        case 'ip':
+          return node.gossip_ip ? `${node.gossip_ip}:${node.gossip_port}` : ''
+        case 'version':
+          return node.version || ''
+        case 'location':
+          return `${node.city || ''} ${node.country || ''}`.trim()
+        case 'validator':
+          return node.is_validator ? 'yes' : 'no'
+        case 'stake':
+          return String(node.stake_sol)
+        case 'dz':
+          return node.on_dz ? 'yes' : 'no'
+        case 'device':
+          return `${node.device_code || ''} ${node.metro_code || ''}`.trim()
+      }
+    }
+    return nodes.filter(node => getSearchValue(node).toLowerCase().includes(needle))
+  }, [nodes, searchField, searchText])
+  const sortedNodes = useMemo(() => {
+    if (!filteredNodes) return []
+    const sorted = [...filteredNodes].sort((a, b) => {
       let cmp = 0
       switch (sortField) {
         case 'pubkey':
@@ -85,7 +179,7 @@ export function GossipNodesPage() {
       return sortDirection === 'asc' ? cmp : -cmp
     })
     return sorted
-  }, [nodes, sortField, sortDirection])
+  }, [filteredNodes, sortField, sortDirection])
   const pagedNodes = useMemo(
     () => sortedNodes.slice(offset, offset + PAGE_SIZE),
     [sortedNodes, offset]
@@ -112,6 +206,10 @@ export function GossipNodesPage() {
     return sortDirection === 'asc' ? 'ascending' : 'descending'
   }
 
+  useEffect(() => {
+    setOffset(0)
+  }, [searchField, searchText])
+
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -136,20 +234,57 @@ export function GossipNodesPage() {
     <div className="flex-1 overflow-auto">
       <div className="max-w-[1600px] mx-auto px-4 sm:px-8 py-8">
         {/* Header */}
-        <div className="flex items-center gap-3 mb-6">
-          <Radio className="h-6 w-6 text-muted-foreground" />
-          <h1 className="text-2xl font-medium">Gossip Nodes</h1>
-          <span className="text-muted-foreground">
-            ({response?.total || 0})
-            {validatorCount > 0 && (
-              <span className="ml-2">{validatorCount} validators</span>
-            )}
-            {onDZCount > 0 && (
-              <span className="ml-2 text-green-600 dark:text-green-400">
-                {onDZCount} on DZ
-              </span>
-            )}
-          </span>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+          <div className="flex items-center gap-3">
+            <Radio className="h-6 w-6 text-muted-foreground" />
+            <h1 className="text-2xl font-medium">Gossip Nodes</h1>
+            <span className="text-muted-foreground">
+              ({response?.total || 0})
+              {validatorCount > 0 && (
+                <span className="ml-2">{validatorCount} validators</span>
+              )}
+              {onDZCount > 0 && (
+                <span className="ml-2 text-green-600 dark:text-green-400">
+                  {onDZCount} on DZ
+                </span>
+              )}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <select
+              className="h-9 rounded-md border border-border bg-background px-2 text-sm"
+              value={searchField}
+              onChange={(e) => setSearchField(e.target.value as SortField)}
+            >
+              <option value="pubkey">Pubkey</option>
+              <option value="ip">IP</option>
+              <option value="version">Version</option>
+              <option value="location">Location</option>
+              <option value="validator">Validator</option>
+              <option value="stake">Stake</option>
+              <option value="dz">DZ</option>
+              <option value="device">Device</option>
+            </select>
+            <div className="relative">
+              <input
+                className="h-9 w-48 sm:w-64 rounded-md border border-border bg-background px-3 pr-8 text-sm"
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                placeholder="Filter"
+                aria-label="Filter"
+              />
+              {searchText && (
+                <button
+                  type="button"
+                  className="absolute inset-y-0 right-2 text-muted-foreground hover:text-foreground"
+                  onClick={() => setSearchText('')}
+                  aria-label="Clear filter"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Table */}
@@ -278,7 +413,7 @@ export function GossipNodesPage() {
           </div>
           {response && (
             <Pagination
-              total={response.total}
+              total={sortedNodes.length}
               limit={PAGE_SIZE}
               offset={offset}
               onOffsetChange={setOffset}

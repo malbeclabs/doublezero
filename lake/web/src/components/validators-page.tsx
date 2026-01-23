@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Loader2, Landmark, AlertCircle, Check, ChevronDown, ChevronUp } from 'lucide-react'
@@ -51,11 +51,66 @@ type SortField =
 
 type SortDirection = 'asc' | 'desc'
 
+type NumericFilter = {
+  op: '>' | '>=' | '<' | '<=' | '='
+  value: number
+}
+
+type UnitMap = Record<string, number>
+
+const numericSearchFields: SortField[] = [
+  'stake',
+  'share',
+  'commission',
+  'in',
+  'out',
+  'skip',
+]
+
+function parseNumericFilter(input: string): NumericFilter | null {
+  const match = input.trim().match(/^(>=|<=|>|<|==|=)\s*(-?\d+(?:\.\d+)?)$/)
+  if (!match) return null
+  const op = match[1] === '==' ? '=' : (match[1] as NumericFilter['op'])
+  return { op, value: Number(match[2]) }
+}
+
+function parseNumericFilterWithUnits(
+  input: string,
+  unitMap: UnitMap,
+  defaultUnit: string
+): NumericFilter | null {
+  const match = input.trim().match(/^(>=|<=|>|<|==|=)\s*(-?\d+(?:\.\d+)?)([a-zA-Z]+)?$/)
+  if (!match) return null
+  const op = match[1] === '==' ? '=' : (match[1] as NumericFilter['op'])
+  const unitRaw = match[3]?.toLowerCase()
+  const unit = unitRaw ?? defaultUnit
+  const multiplier = unitMap[unit]
+  if (!multiplier) return null
+  return { op, value: Number(match[2]) * multiplier }
+}
+
+function matchesNumericFilter(value: number, filter: NumericFilter): boolean {
+  switch (filter.op) {
+    case '>':
+      return value > filter.value
+    case '>=':
+      return value >= filter.value
+    case '<':
+      return value < filter.value
+    case '<=':
+      return value <= filter.value
+    case '=':
+      return value === filter.value
+  }
+}
+
 export function ValidatorsPage() {
   const navigate = useNavigate()
   const [offset, setOffset] = useState(0)
   const [sortField, setSortField] = useState<SortField>('vote')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+  const [searchField, setSearchField] = useState<SortField>('vote')
+  const [searchText, setSearchText] = useState('')
 
   const { data: response, isLoading, error } = useQuery({
     queryKey: ['validators', 'all'],
@@ -64,9 +119,79 @@ export function ValidatorsPage() {
   })
   const validators = response?.items
   const onDZCount = response?.on_dz_count ?? 0
-  const sortedValidators = useMemo(() => {
+  const filteredValidators = useMemo(() => {
     if (!validators) return []
-    const sorted = [...validators].sort((a, b) => {
+    const needle = searchText.trim().toLowerCase()
+    if (!needle) return validators
+    const numericFilter = parseNumericFilter(searchText)
+    if (numericSearchFields.includes(searchField)) {
+      const unitFilter =
+        searchField === 'stake'
+          ? parseNumericFilterWithUnits(searchText, { '': 1, k: 1e3, m: 1e6 }, '')
+          : (searchField === 'in' || searchField === 'out')
+              ? parseNumericFilterWithUnits(
+                  searchText,
+                  { gbps: 1e9, mbps: 1e6, bps: 1 },
+                  'gbps'
+                )
+              : null
+      const effectiveFilter = unitFilter ?? numericFilter
+      if (!effectiveFilter) {
+        return validators
+      }
+      const getNumericValue = (validator: typeof validators[number]) => {
+        switch (searchField) {
+          case 'stake':
+            return validator.stake_sol
+          case 'share':
+            return validator.stake_share
+          case 'commission':
+            return validator.commission
+          case 'in':
+            return validator.in_bps
+          case 'out':
+            return validator.out_bps
+          case 'skip':
+            return validator.skip_rate
+          default:
+            return 0
+        }
+      }
+      return validators.filter(validator => matchesNumericFilter(getNumericValue(validator), effectiveFilter))
+    }
+    const getSearchValue = (validator: typeof validators[number]) => {
+      switch (searchField) {
+        case 'vote':
+          return validator.vote_pubkey
+        case 'node':
+          return validator.node_pubkey || ''
+        case 'stake':
+          return String(validator.stake_sol)
+        case 'share':
+          return String(validator.stake_share)
+        case 'commission':
+          return String(validator.commission)
+        case 'dz':
+          return validator.on_dz ? 'yes' : 'no'
+        case 'device':
+          return `${validator.device_code || ''} ${validator.metro_code || ''}`.trim()
+        case 'location':
+          return `${validator.city || ''} ${validator.country || ''}`.trim()
+        case 'in':
+          return String(validator.in_bps)
+        case 'out':
+          return String(validator.out_bps)
+        case 'skip':
+          return String(validator.skip_rate)
+        case 'version':
+          return validator.version || ''
+      }
+    }
+    return validators.filter(validator => getSearchValue(validator).toLowerCase().includes(needle))
+  }, [validators, searchField, searchText])
+  const sortedValidators = useMemo(() => {
+    if (!filteredValidators) return []
+    const sorted = [...filteredValidators].sort((a, b) => {
       let cmp = 0
       switch (sortField) {
         case 'vote':
@@ -112,7 +237,7 @@ export function ValidatorsPage() {
       return sortDirection === 'asc' ? cmp : -cmp
     })
     return sorted
-  }, [validators, sortField, sortDirection])
+  }, [filteredValidators, sortField, sortDirection])
   const pagedValidators = useMemo(
     () => sortedValidators.slice(offset, offset + PAGE_SIZE),
     [sortedValidators, offset]
@@ -139,6 +264,10 @@ export function ValidatorsPage() {
     return sortDirection === 'asc' ? 'ascending' : 'descending'
   }
 
+  useEffect(() => {
+    setOffset(0)
+  }, [searchField, searchText])
+
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -163,17 +292,58 @@ export function ValidatorsPage() {
     <div className="flex-1 overflow-auto">
       <div className="max-w-[1800px] mx-auto px-4 sm:px-8 py-8">
         {/* Header */}
-        <div className="flex items-center gap-3 mb-6">
-          <Landmark className="h-6 w-6 text-muted-foreground" />
-          <h1 className="text-2xl font-medium">Validators</h1>
-          <span className="text-muted-foreground">
-            ({response?.total || 0})
-            {onDZCount > 0 && (
-              <span className="ml-2 text-green-600 dark:text-green-400">
-                {onDZCount} on DZ
-              </span>
-            )}
-          </span>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+          <div className="flex items-center gap-3">
+            <Landmark className="h-6 w-6 text-muted-foreground" />
+            <h1 className="text-2xl font-medium">Validators</h1>
+            <span className="text-muted-foreground">
+              ({response?.total || 0})
+              {onDZCount > 0 && (
+                <span className="ml-2 text-green-600 dark:text-green-400">
+                  {onDZCount} on DZ
+                </span>
+              )}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <select
+              className="h-9 rounded-md border border-border bg-background px-2 text-sm"
+              value={searchField}
+              onChange={(e) => setSearchField(e.target.value as SortField)}
+            >
+              <option value="vote">Vote Account</option>
+              <option value="node">Node</option>
+              <option value="stake">Stake</option>
+              <option value="share">Share</option>
+              <option value="commission">Comm.</option>
+              <option value="dz">DZ</option>
+              <option value="device">Device</option>
+              <option value="location">Location</option>
+              <option value="in">In</option>
+              <option value="out">Out</option>
+              <option value="skip">Skip</option>
+              <option value="version">Version</option>
+            </select>
+            <div className="relative">
+              <input
+                className="h-9 w-48 sm:w-64 rounded-md border border-border bg-background px-3 pr-8 text-sm"
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                placeholder="Filter"
+                aria-label="Filter"
+              />
+              {searchText && (
+                <button
+                  type="button"
+                  className="absolute inset-y-0 right-2 text-muted-foreground hover:text-foreground"
+                  onClick={() => setSearchText('')}
+                  aria-label="Clear filter"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Table */}
@@ -336,7 +506,7 @@ export function ValidatorsPage() {
           </div>
           {response && (
             <Pagination
-              total={response.total}
+              total={sortedValidators.length}
               limit={PAGE_SIZE}
               offset={offset}
               onOffsetChange={setOffset}

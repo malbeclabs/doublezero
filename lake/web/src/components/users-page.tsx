@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Loader2, Users, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react'
@@ -43,11 +43,59 @@ type SortField =
 
 type SortDirection = 'asc' | 'desc'
 
+type NumericFilter = {
+  op: '>' | '>=' | '<' | '<=' | '='
+  value: number
+}
+
+type UnitMap = Record<string, number>
+
+const numericSearchFields: SortField[] = ['in', 'out']
+
+function parseNumericFilter(input: string): NumericFilter | null {
+  const match = input.trim().match(/^(>=|<=|>|<|==|=)\s*(-?\d+(?:\.\d+)?)$/)
+  if (!match) return null
+  const op = match[1] === '==' ? '=' : (match[1] as NumericFilter['op'])
+  return { op, value: Number(match[2]) }
+}
+
+function parseNumericFilterWithUnits(
+  input: string,
+  unitMap: UnitMap,
+  defaultUnit: string
+): NumericFilter | null {
+  const match = input.trim().match(/^(>=|<=|>|<|==|=)\s*(-?\d+(?:\.\d+)?)([a-zA-Z]+)?$/)
+  if (!match) return null
+  const op = match[1] === '==' ? '=' : (match[1] as NumericFilter['op'])
+  const unitRaw = match[3]?.toLowerCase()
+  const unit = unitRaw ?? defaultUnit
+  const multiplier = unitMap[unit]
+  if (!multiplier) return null
+  return { op, value: Number(match[2]) * multiplier }
+}
+
+function matchesNumericFilter(value: number, filter: NumericFilter): boolean {
+  switch (filter.op) {
+    case '>':
+      return value > filter.value
+    case '>=':
+      return value >= filter.value
+    case '<':
+      return value < filter.value
+    case '<=':
+      return value <= filter.value
+    case '=':
+      return value === filter.value
+  }
+}
+
 export function UsersPage() {
   const navigate = useNavigate()
   const [offset, setOffset] = useState(0)
   const [sortField, setSortField] = useState<SortField>('owner')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+  const [searchField, setSearchField] = useState<SortField>('owner')
+  const [searchText, setSearchText] = useState('')
 
   const { data: response, isLoading, error } = useQuery({
     queryKey: ['users', 'all'],
@@ -55,9 +103,58 @@ export function UsersPage() {
     refetchInterval: 30000,
   })
   const users = response?.items
-  const sortedUsers = useMemo(() => {
+  const filteredUsers = useMemo(() => {
     if (!users) return []
-    const sorted = [...users].sort((a, b) => {
+    const needle = searchText.trim().toLowerCase()
+    if (!needle) return users
+    const numericFilter = parseNumericFilter(searchText)
+    if (numericSearchFields.includes(searchField)) {
+      const unitFilter = parseNumericFilterWithUnits(
+        searchText,
+        { gbps: 1e9, mbps: 1e6, bps: 1 },
+        'gbps'
+      )
+      const effectiveFilter = unitFilter ?? numericFilter
+      if (!effectiveFilter) {
+        return users
+      }
+      const getNumericValue = (user: typeof users[number]) => {
+        switch (searchField) {
+          case 'in':
+            return user.in_bps
+          case 'out':
+            return user.out_bps
+          default:
+            return 0
+        }
+      }
+      return users.filter(user => matchesNumericFilter(getNumericValue(user), effectiveFilter))
+    }
+    const getSearchValue = (user: typeof users[number]) => {
+      switch (searchField) {
+        case 'owner':
+          return user.owner_pubkey || ''
+        case 'kind':
+          return user.kind || ''
+        case 'dzIp':
+          return user.dz_ip || ''
+        case 'device':
+          return user.device_code || ''
+        case 'metro':
+          return `${user.metro_name || ''} ${user.metro_code || ''}`.trim()
+        case 'status':
+          return user.status
+        case 'in':
+          return String(user.in_bps)
+        case 'out':
+          return String(user.out_bps)
+      }
+    }
+    return users.filter(user => getSearchValue(user).toLowerCase().includes(needle))
+  }, [users, searchField, searchText])
+  const sortedUsers = useMemo(() => {
+    if (!filteredUsers) return []
+    const sorted = [...filteredUsers].sort((a, b) => {
       let cmp = 0
       switch (sortField) {
         case 'owner':
@@ -91,7 +188,7 @@ export function UsersPage() {
       return sortDirection === 'asc' ? cmp : -cmp
     })
     return sorted
-  }, [users, sortField, sortDirection])
+  }, [filteredUsers, sortField, sortDirection])
   const pagedUsers = useMemo(
     () => sortedUsers.slice(offset, offset + PAGE_SIZE),
     [sortedUsers, offset]
@@ -118,6 +215,10 @@ export function UsersPage() {
     return sortDirection === 'asc' ? 'ascending' : 'descending'
   }
 
+  useEffect(() => {
+    setOffset(0)
+  }, [searchField, searchText])
+
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -142,10 +243,47 @@ export function UsersPage() {
     <div className="flex-1 overflow-auto">
       <div className="max-w-[1400px] mx-auto px-4 sm:px-8 py-8">
         {/* Header */}
-        <div className="flex items-center gap-3 mb-6">
-          <Users className="h-6 w-6 text-muted-foreground" />
-          <h1 className="text-2xl font-medium">Users</h1>
-          <span className="text-muted-foreground">({response?.total || 0})</span>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+          <div className="flex items-center gap-3">
+            <Users className="h-6 w-6 text-muted-foreground" />
+            <h1 className="text-2xl font-medium">Users</h1>
+            <span className="text-muted-foreground">({response?.total || 0})</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <select
+              className="h-9 rounded-md border border-border bg-background px-2 text-sm"
+              value={searchField}
+              onChange={(e) => setSearchField(e.target.value as SortField)}
+            >
+              <option value="owner">Owner</option>
+              <option value="kind">Kind</option>
+              <option value="dzIp">DZ IP</option>
+              <option value="device">Device</option>
+              <option value="metro">Metro</option>
+              <option value="status">Status</option>
+              <option value="in">In</option>
+              <option value="out">Out</option>
+            </select>
+            <div className="relative">
+              <input
+                className="h-9 w-48 sm:w-64 rounded-md border border-border bg-background px-3 pr-8 text-sm"
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                placeholder="Filter"
+                aria-label="Filter"
+              />
+              {searchText && (
+                <button
+                  type="button"
+                  className="absolute inset-y-0 right-2 text-muted-foreground hover:text-foreground"
+                  onClick={() => setSearchText('')}
+                  aria-label="Clear filter"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Table */}
@@ -251,7 +389,7 @@ export function UsersPage() {
           </div>
           {response && (
             <Pagination
-              total={response.total}
+              total={sortedUsers.length}
               limit={PAGE_SIZE}
               offset={offset}
               onOffsetChange={setOffset}

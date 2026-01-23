@@ -43,6 +43,7 @@ All notable changes to this project will be documented in this file.
 - E2E tests
   - Add influxdb, prometheus, and device-health-oracle containers
   - Add interface lifecycle tests ([#2700](https://github.com/malbeclabs/doublezero/pull/2700))
+  - Only fail QA alldevices test run if device status is "Activated" and max users > 0
 - SDK
   - Commands for setting global config, activating devices, updating devices, and closing device accounts now manage resource accounts.
 - Smartcontract

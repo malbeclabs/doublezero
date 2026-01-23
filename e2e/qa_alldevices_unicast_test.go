@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/malbeclabs/doublezero/e2e/internal/qa"
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -279,18 +280,27 @@ func connectClientsAndWaitForRoutes(
 		err := c.ConnectUserUnicast_NoWait(ctx, device.Code)
 		if err != nil {
 			log.Error("Failed to start connection", "client", c.Host, "device", device.Code, "error", err)
-			t.Errorf("failed to connect client %s to device %s: %v", c.Host, device.Code, err)
 			batch[c.Host].FailedTests++
+			if device.Status == serviceability.DeviceStatusActivated && device.MaxUsers > 0 {
+				t.Errorf("failed to connect client %s to device %s: %v", c.Host, device.Code, err)
+			} else {
+				log.Warn("Ignoring connection failure for device not ready for users", "device", device.Code, "status", device.Status, "maxUsers", device.MaxUsers)
+			}
 		}
 	}
 
 	// Wait for status up for clients that reconnected
 	for _, c := range clientsToConnect {
+		device := batch[c.Host].Device
 		err := c.WaitForStatusUp(ctx)
 		if err != nil {
 			log.Error("Client failed to reach status up", "client", c.Host, "error", err)
-			t.Errorf("failed to wait for status for client %s: %v", c.Host, err)
 			batch[c.Host].FailedTests++
+			if device.Status == serviceability.DeviceStatusActivated && device.MaxUsers > 0 {
+				t.Errorf("failed to wait for status for client %s: %v", c.Host, err)
+			} else {
+				log.Warn("Ignoring status failure for device not ready for users", "device", device.Code, "status", device.Status, "maxUsers", device.MaxUsers)
+			}
 		}
 	}
 
@@ -314,13 +324,18 @@ func connectClientsAndWaitForRoutes(
 
 	// Wait for routes between all connected clients
 	for _, c := range connectedClients {
+		device := batch[c.Host].Device
 		targets := qa.ComputeRouteTargets(c, connectedClients, batch, func(client *qa.Client) net.IP {
 			return client.DoublezeroOrPublicIP()
 		})
 		if err := c.WaitForRoutes(ctx, targets); err != nil {
 			log.Error("Failed to wait for routes", "client", c.Host, "error", err)
-			t.Errorf("failed to wait for routes on client %s: %v", c.Host, err)
 			batch[c.Host].FailedTests++
+			if device.Status == serviceability.DeviceStatusActivated && device.MaxUsers > 0 {
+				t.Errorf("failed to wait for routes on client %s: %v", c.Host, err)
+			} else {
+				log.Warn("Ignoring route failure for device not ready for users", "device", device.Code, "status", device.Status, "maxUsers", device.MaxUsers)
+			}
 		}
 	}
 
@@ -362,10 +377,19 @@ func runConnectivitySubtests(
 					result, err := src.TestUnicastConnectivity(t, subCtx, target, srcDevice, dstDevice)
 					if err != nil {
 						log.Error("Connectivity test failed", "error", err, "source", src.Host, "target", target.Host, "sourceDevice", srcDevice.Code, "targetDevice", dstDevice.Code)
-						assert.NoError(t, err, "failed to test connectivity")
 						mu.Lock()
 						failedTests++
 						mu.Unlock()
+						// Only fail test if both devices are activated with max_users > 0
+						srcReady := srcDevice.Status == serviceability.DeviceStatusActivated && srcDevice.MaxUsers > 0
+						dstReady := dstDevice.Status == serviceability.DeviceStatusActivated && dstDevice.MaxUsers > 0
+						if srcReady && dstReady {
+							assert.NoError(t, err, "failed to test connectivity")
+						} else {
+							log.Warn("Ignoring connectivity failure involving device not ready for users",
+								"sourceDevice", srcDevice.Code, "sourceStatus", srcDevice.Status, "sourceMaxUsers", srcDevice.MaxUsers,
+								"targetDevice", dstDevice.Code, "targetStatus", dstDevice.Status, "targetMaxUsers", dstDevice.MaxUsers)
+						}
 					}
 					if result != nil {
 						mu.Lock()

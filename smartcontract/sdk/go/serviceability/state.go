@@ -123,6 +123,8 @@ const (
 	DeviceStatusDeleted
 	DeviceStatusRejected
 	DeviceStatusDrained
+	DeviceStatusDeviceProvisioning
+	DeviceStatusLinkProvisioning
 )
 
 func (d DeviceStatus) String() string {
@@ -133,10 +135,11 @@ func (d DeviceStatus) String() string {
 		"deleted",
 		"rejected",
 		"drained",
+		"device-provisioning",
+		"link-provisioning",
 	}[d]
 }
 
-// IsDrained returns true if the device status is drained
 func (d DeviceStatus) IsDrained() bool {
 	return d == DeviceStatusDrained
 }

@@ -145,10 +145,16 @@ export function TopologyControlBar({
     }
   }
 
-  // Enter path mode with specific path type
-  const enterPathMode = (pathType: PathMode) => {
-    setPathMode(pathType)
-    if (mode !== 'path') {
+  // Toggle path mode with specific path type
+  const togglePathMode = (pathType: PathMode) => {
+    // If already in this exact path mode, toggle off
+    if (mode === 'path' && pathMode === pathType) {
+      setMode('explore')
+      if (panel.content === 'mode') {
+        closePanel()
+      }
+    } else {
+      setPathMode(pathType)
       setMode('path')
       openPanel('mode')
     }
@@ -254,7 +260,7 @@ export function TopologyControlBar({
             icon={<Route className="h-3.5 w-3.5" />}
             label="Fewest hops"
             shortcut="p"
-            onClick={() => enterPathMode('hops')}
+            onClick={() => togglePathMode('hops')}
             active={mode === 'path' && pathMode === 'hops'}
             activeColor="amber"
             collapsed={collapsed}
@@ -264,7 +270,7 @@ export function TopologyControlBar({
             icon={<Route className="h-3.5 w-3.5" />}
             label="Lowest latency"
             shortcut="l"
-            onClick={() => enterPathMode('latency')}
+            onClick={() => togglePathMode('latency')}
             active={mode === 'path' && pathMode === 'latency'}
             activeColor="amber"
             collapsed={collapsed}

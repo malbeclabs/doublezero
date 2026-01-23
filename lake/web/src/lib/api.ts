@@ -1017,7 +1017,7 @@ export interface StatsResponse {
   links: number
   contributors: number
   metros: number
-  wan_bandwidth_bps: number
+  bandwidth_bps: number
   user_inbound_bps: number
   fetched_at: string
   error?: string
@@ -1048,7 +1048,7 @@ export interface NetworkSummary {
   links: number
   contributors: number
   metros: number
-  wan_bandwidth_bps: number
+  bandwidth_bps: number
   user_inbound_bps: number
   devices_by_status: Record<string, number>
   links_by_status: Record<string, number>

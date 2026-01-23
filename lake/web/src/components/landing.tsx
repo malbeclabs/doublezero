@@ -135,8 +135,8 @@ export function Landing() {
           format="percent"
         />
         <StatCard
-          label="WAN Capacity"
-          value={stats?.wan_bandwidth_bps}
+          label="Capacity"
+          value={stats?.bandwidth_bps}
           format="bandwidth"
         />
         <StatCard

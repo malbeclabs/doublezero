@@ -103,11 +103,12 @@ func TestGetStats_WithData(t *testing.T) {
 	err = config.DB.Exec(ctx, `INSERT INTO dz_devices_current (pk) VALUES ('device1'), ('device2'), ('device3')`)
 	require.NoError(t, err)
 
-	// Insert test data for links
+	// Insert test data for links (WAN and PNI types)
 	err = config.DB.Exec(ctx, `INSERT INTO dz_links_current (pk, status, link_type, bandwidth_bps) VALUES
 		('link1', 'activated', 'WAN', 1000000000),
 		('link2', 'activated', 'WAN', 2000000000),
-		('link3', 'inactive', 'WAN', 500000000)`)
+		('link3', 'inactive', 'WAN', 500000000),
+		('link4', 'activated', 'PNI', 10000000000)`)
 	require.NoError(t, err)
 
 	// Insert test data for contributors
@@ -131,10 +132,10 @@ func TestGetStats_WithData(t *testing.T) {
 
 	assert.Equal(t, uint64(2), response.Users)
 	assert.Equal(t, uint64(3), response.Devices)
-	assert.Equal(t, uint64(3), response.Links) // All links, not just activated
+	assert.Equal(t, uint64(4), response.Links) // All links, not just activated
 	assert.Equal(t, uint64(2), response.Contributors)
 	assert.Equal(t, uint64(3), response.Metros)
-	assert.Equal(t, int64(3000000000), response.WANBandwidthBps) // Only activated WAN links
+	assert.Equal(t, int64(13000000000), response.BandwidthBps) // All activated links (WAN + PNI)
 	assert.NotEmpty(t, response.FetchedAt)
 }
 

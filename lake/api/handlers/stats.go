@@ -21,7 +21,7 @@ type StatsResponse struct {
 	Links           uint64  `json:"links"`
 	Contributors    uint64  `json:"contributors"`
 	Metros          uint64  `json:"metros"`
-	WANBandwidthBps int64   `json:"wan_bandwidth_bps"`
+	BandwidthBps    int64   `json:"bandwidth_bps"`
 	UserInboundBps  float64 `json:"user_inbound_bps"`
 	FetchedAt       string  `json:"fetched_at"`
 	Error           string  `json:"error,omitempty"`
@@ -40,7 +40,7 @@ func GetStats(w http.ResponseWriter, r *http.Request) {
 				Links:           cached.Network.Links,
 				Contributors:    cached.Network.Contributors,
 				Metros:          cached.Network.Metros,
-				WANBandwidthBps: cached.Network.WANBandwidthBps,
+				BandwidthBps:    cached.Network.BandwidthBps,
 				UserInboundBps:  cached.Network.UserInboundBps,
 				FetchedAt:       cached.Timestamp,
 			}
@@ -147,16 +147,15 @@ func GetStats(w http.ResponseWriter, r *http.Request) {
 		return row.Scan(&stats.Metros)
 	})
 
-	// Sum total bandwidth for activated WAN links
+	// Sum total bandwidth for activated links
 	g.Go(func() error {
 		query := `
 			SELECT COALESCE(SUM(bandwidth_bps), 0)
 			FROM dz_links_current
 			WHERE status = 'activated'
-			  AND link_type = 'WAN'
 		`
 		row := config.DB.QueryRow(ctx, query)
-		return row.Scan(&stats.WANBandwidthBps)
+		return row.Scan(&stats.BandwidthBps)
 	})
 
 	// Calculate total user inbound traffic rate (bps) over last hour

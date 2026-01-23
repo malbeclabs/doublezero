@@ -62,7 +62,7 @@ type NetworkSummary struct {
 	Links            uint64  `json:"links"`
 	Contributors     uint64  `json:"contributors"`
 	Metros           uint64  `json:"metros"`
-	WANBandwidthBps  int64   `json:"wan_bandwidth_bps"`
+	BandwidthBps     int64   `json:"bandwidth_bps"`
 	UserInboundBps   float64 `json:"user_inbound_bps"`
 
 	// Status breakdown
@@ -404,16 +404,15 @@ func fetchStatusData(ctx context.Context) *StatusResponse {
 		return row.Scan(&resp.Network.Metros)
 	})
 
-	// Sum total bandwidth for activated WAN links
+	// Sum total bandwidth for activated links
 	g.Go(func() error {
 		query := `
 			SELECT COALESCE(SUM(bandwidth_bps), 0)
 			FROM dz_links_current
 			WHERE status = 'activated'
-			  AND link_type = 'WAN'
 		`
 		row := config.DB.QueryRow(ctx, query)
-		return row.Scan(&resp.Network.WANBandwidthBps)
+		return row.Scan(&resp.Network.BandwidthBps)
 	})
 
 	g.Go(func() error {

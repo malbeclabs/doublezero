@@ -27,6 +27,7 @@ All notable changes to this project will be documented in this file.
   - Enable route liveness passive-mode by default
   - Add `make install` make target. To build and deploy from source, users can now run `cd client && make build && make install` to install the doublezero and doublezerod binaries and the doublezerod systemd unit.
 - Onchain programs
+  - Serviceability: remove validation check for interface delete ([#2707](https://github.com/malbeclabs/doublezero/pull/2707))
   - Serviceability: interface-cyoa only on physical interfaces, don't require interfaces to be tagged, add same validation logic to update interface ([#2700](https://github.com/malbeclabs/doublezero/pull/2700))
   - Enforce Activated status check before suspending contributor, exchange, location, and multicastgroup accounts
   - Removed device and user allowlist functionality, updating the global state, initialization flow, tests, and processors accordingly, and cleaning up unused account checks.

@@ -423,6 +423,10 @@ impl Validate for Interface {
         // Validate each interface
         let interface = self.into_current_version();
 
+        if interface.status == InterfaceStatus::Deleting {
+            return Ok(());
+        }
+
         // Name must be valid
         validate_iface(interface.name.as_str())
             .map_err(|_| DoubleZeroError::InvalidInterfaceName)?;
@@ -594,6 +598,16 @@ mod test_interface_validate {
         iface.interface_cyoa = InterfaceCYOA::GREOverDIA;
         let err = Interface::V2(iface).validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::CyoaRequiresPhysical);
+    }
+
+    #[test]
+    fn test_invalid_interface_can_be_deleted() {
+        let mut iface = base_interface();
+        iface.name = "Loopback100".to_string();
+        iface.interface_type = InterfaceType::Loopback;
+        iface.interface_cyoa = InterfaceCYOA::GREOverDIA; // this can't happen through validation but should be delete-able
+        iface.status = InterfaceStatus::Deleting;
+        assert!(Interface::V2(iface).validate().is_ok());
     }
 
     #[test]

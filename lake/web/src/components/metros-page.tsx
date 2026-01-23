@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
-import { Loader2, MapPin, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Loader2, MapPin, AlertCircle, ChevronDown, ChevronUp, Search, X } from 'lucide-react'
 import { fetchAllPaginated, fetchMetros } from '@/lib/api'
 import { handleRowClick } from '@/lib/utils'
 import { Pagination } from './pagination'
@@ -40,13 +40,65 @@ function matchesNumericFilter(value: number, filter: NumericFilter): boolean {
   }
 }
 
+// Parse search filters from URL param
+function parseSearchFilters(searchParam: string): string[] {
+  if (!searchParam) return []
+  return searchParam.split(',').map(f => f.trim()).filter(Boolean)
+}
+
+// Valid filter fields for metros
+const validFilterFields = ['code', 'name', 'latitude', 'longitude', 'devices', 'users']
+
+// Parse a filter string into field and value
+function parseFilter(filter: string): { field: string; value: string } {
+  const colonIndex = filter.indexOf(':')
+  if (colonIndex > 0) {
+    const field = filter.slice(0, colonIndex).toLowerCase()
+    const value = filter.slice(colonIndex + 1)
+    if (validFilterFields.includes(field) && value) {
+      return { field, value }
+    }
+  }
+  return { field: 'all', value: filter }
+}
+
 export function MetrosPage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [offset, setOffset] = useState(0)
   const [sortField, setSortField] = useState<SortField>('code')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
-  const [searchField, setSearchField] = useState<SortField>('code')
-  const [searchText, setSearchText] = useState('')
+
+  // Get search filters from URL
+  const searchParam = searchParams.get('search') || ''
+  const searchFilters = parseSearchFilters(searchParam)
+
+  // Use first filter for filtering (single filter supported currently)
+  const activeFilterRaw = searchFilters[0] || ''
+  const activeFilter = activeFilterRaw ? parseFilter(activeFilterRaw) : null
+
+  const removeFilter = useCallback((filterToRemove: string) => {
+    const newFilters = searchFilters.filter(f => f !== filterToRemove)
+    setSearchParams(prev => {
+      if (newFilters.length === 0) {
+        prev.delete('search')
+      } else {
+        prev.set('search', newFilters.join(','))
+      }
+      return prev
+    })
+  }, [searchFilters, setSearchParams])
+
+  const clearAllFilters = useCallback(() => {
+    setSearchParams(prev => {
+      prev.delete('search')
+      return prev
+    })
+  }, [setSearchParams])
+
+  const openSearch = useCallback(() => {
+    window.dispatchEvent(new CustomEvent('open-search'))
+  }, [])
 
   const { data: response, isLoading, error } = useQuery({
     queryKey: ['metros', 'all'],
@@ -56,10 +108,14 @@ export function MetrosPage() {
   const metros = response?.items
   const filteredMetros = useMemo(() => {
     if (!metros) return []
-    const needle = searchText.trim().toLowerCase()
+    if (!activeFilter) return metros
+
+    const searchField = activeFilter.field as SortField | 'all'
+    const needle = activeFilter.value.trim().toLowerCase()
     if (!needle) return metros
-    const numericFilter = parseNumericFilter(searchText)
-    if (numericFilter && numericSearchFields.includes(searchField)) {
+
+    const numericFilter = parseNumericFilter(activeFilter.value)
+    if (searchField !== 'all' && numericFilter && numericSearchFields.includes(searchField as SortField)) {
       const getNumericValue = (metro: typeof metros[number]) => {
         switch (searchField) {
           case 'latitude':
@@ -76,24 +132,29 @@ export function MetrosPage() {
       }
       return metros.filter(metro => matchesNumericFilter(getNumericValue(metro), numericFilter))
     }
-    const getSearchValue = (metro: typeof metros[number]) => {
-      switch (searchField) {
+
+    // Text search
+    const getSearchValue = (metro: typeof metros[number], field: string) => {
+      switch (field) {
         case 'code':
           return metro.code
         case 'name':
           return metro.name || ''
-        case 'latitude':
-          return String(metro.latitude)
-        case 'longitude':
-          return String(metro.longitude)
-        case 'devices':
-          return String(metro.device_count)
-        case 'users':
-          return String(metro.user_count)
+        default:
+          return ''
       }
     }
-    return metros.filter(metro => getSearchValue(metro).toLowerCase().includes(needle))
-  }, [metros, searchField, searchText])
+
+    if (searchField === 'all') {
+      // Search across all text fields
+      return metros.filter(metro => {
+        const textFields = ['code', 'name']
+        return textFields.some(field => getSearchValue(metro, field).toLowerCase().includes(needle))
+      })
+    }
+
+    return metros.filter(metro => getSearchValue(metro, searchField).toLowerCase().includes(needle))
+  }, [metros, activeFilter])
   const sortedMetros = useMemo(() => {
     if (!filteredMetros) return []
     const sorted = [...filteredMetros].sort((a, b) => {
@@ -150,7 +211,7 @@ export function MetrosPage() {
 
   useEffect(() => {
     setOffset(0)
-  }, [searchField, searchText])
+  }, [activeFilterRaw])
 
   if (isLoading) {
     return (
@@ -182,38 +243,39 @@ export function MetrosPage() {
             <h1 className="text-2xl font-medium">Metros</h1>
             <span className="text-muted-foreground">({response?.total || 0})</span>
           </div>
-          <div className="flex items-center gap-2">
-            <select
-              className="h-9 rounded-md border border-border bg-background px-2 text-sm"
-              value={searchField}
-              onChange={(e) => setSearchField(e.target.value as SortField)}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Filter tags */}
+            {searchFilters.map((filter, idx) => (
+              <button
+                key={`${filter}-${idx}`}
+                onClick={() => removeFilter(filter)}
+                className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 transition-colors"
+              >
+                {filter}
+                <X className="h-3 w-3" />
+              </button>
+            ))}
+
+            {/* Clear all */}
+            {searchFilters.length > 1 && (
+              <button
+                onClick={clearAllFilters}
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Clear all
+              </button>
+            )}
+
+            {/* Search button */}
+            <button
+              onClick={openSearch}
+              className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground border border-border rounded-md bg-background hover:bg-muted transition-colors"
+              title="Search (Cmd+K)"
             >
-              <option value="code">Code</option>
-              <option value="name">Name</option>
-              <option value="latitude">Latitude</option>
-              <option value="longitude">Longitude</option>
-              <option value="devices">Devices</option>
-              <option value="users">Users</option>
-            </select>
-            <div className="relative">
-              <input
-                className="h-9 w-48 sm:w-64 rounded-md border border-border bg-background px-3 pr-8 text-sm"
-                value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
-                placeholder="Filter"
-                aria-label="Filter"
-              />
-              {searchText && (
-                <button
-                  type="button"
-                  className="absolute inset-y-0 right-2 text-muted-foreground hover:text-foreground"
-                  onClick={() => setSearchText('')}
-                  aria-label="Clear filter"
-                >
-                  ×
-                </button>
-              )}
-            </div>
+              <Search className="h-3 w-3" />
+              <span>Filter</span>
+              <kbd className="ml-0.5 font-mono text-[10px] text-muted-foreground/70">⌘K</kbd>
+            </button>
           </div>
         </div>
 

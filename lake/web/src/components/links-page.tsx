@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
-import { Loader2, Link2, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Loader2, Link2, AlertCircle, ChevronDown, ChevronUp, Search, X } from 'lucide-react'
 import { fetchAllPaginated, fetchLinks } from '@/lib/api'
 import { handleRowClick } from '@/lib/utils'
 import { Pagination } from './pagination'
@@ -117,13 +117,67 @@ function matchesNumericFilter(value: number, filter: NumericFilter): boolean {
   }
 }
 
+// Parse search filters from URL param
+function parseSearchFilters(searchParam: string): string[] {
+  if (!searchParam) return []
+  return searchParam.split(',').map(f => f.trim()).filter(Boolean)
+}
+
+// Valid filter fields for links
+const validFilterFields = ['code', 'type', 'contributor', 'sideA', 'sideZ', 'status', 'bandwidth', 'in', 'out', 'utilIn', 'utilOut', 'latency', 'jitter', 'loss']
+
+// Parse a filter string into field and value
+function parseFilter(filter: string): { field: string; value: string } {
+  const colonIndex = filter.indexOf(':')
+  if (colonIndex > 0) {
+    const field = filter.slice(0, colonIndex).toLowerCase()
+    const value = filter.slice(colonIndex + 1)
+    // Handle camelCase fields
+    const normalizedField = field === 'sidea' ? 'sideA' : field === 'sidez' ? 'sideZ' : field === 'utilin' ? 'utilIn' : field === 'utilout' ? 'utilOut' : field
+    if (validFilterFields.includes(normalizedField) && value) {
+      return { field: normalizedField, value }
+    }
+  }
+  return { field: 'all', value: filter }
+}
+
 export function LinksPage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [offset, setOffset] = useState(0)
   const [sortField, setSortField] = useState<SortField>('code')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
-  const [searchField, setSearchField] = useState<SortField>('code')
-  const [searchText, setSearchText] = useState('')
+
+  // Get search filters from URL
+  const searchParam = searchParams.get('search') || ''
+  const searchFilters = parseSearchFilters(searchParam)
+
+  // Use first filter for filtering (single filter supported currently)
+  const activeFilterRaw = searchFilters[0] || ''
+  const activeFilter = activeFilterRaw ? parseFilter(activeFilterRaw) : null
+
+  const removeFilter = useCallback((filterToRemove: string) => {
+    const newFilters = searchFilters.filter(f => f !== filterToRemove)
+    setSearchParams(prev => {
+      if (newFilters.length === 0) {
+        prev.delete('search')
+      } else {
+        prev.set('search', newFilters.join(','))
+      }
+      return prev
+    })
+  }, [searchFilters, setSearchParams])
+
+  const clearAllFilters = useCallback(() => {
+    setSearchParams(prev => {
+      prev.delete('search')
+      return prev
+    })
+  }, [setSearchParams])
+
+  const openSearch = useCallback(() => {
+    window.dispatchEvent(new CustomEvent('open-search'))
+  }, [])
 
   const { data: response, isLoading, error } = useQuery({
     queryKey: ['links', 'all'],
@@ -133,19 +187,23 @@ export function LinksPage() {
   const links = response?.items
   const filteredLinks = useMemo(() => {
     if (!links) return []
-    const needle = searchText.trim().toLowerCase()
+    if (!activeFilter) return links
+
+    const searchField = activeFilter.field as SortField | 'all'
+    const needle = activeFilter.value.trim().toLowerCase()
     if (!needle) return links
-    const numericFilter = parseNumericFilter(searchText)
-    if (numericSearchFields.includes(searchField)) {
+
+    const numericFilter = parseNumericFilter(activeFilter.value)
+    if (searchField !== 'all' && numericSearchFields.includes(searchField as SortField)) {
       const unitFilter =
         (searchField === 'bandwidth' || searchField === 'in' || searchField === 'out')
           ? parseNumericFilterWithUnits(
-              searchText,
+              activeFilter.value,
               { gbps: 1e9, mbps: 1e6, bps: 1 },
               'gbps'
             )
           : (searchField === 'latency' || searchField === 'jitter')
-              ? parseNumericFilterWithUnits(searchText, { ms: 1000, us: 1 }, 'ms')
+              ? parseNumericFilterWithUnits(activeFilter.value, { ms: 1000, us: 1 }, 'ms')
               : null
       const effectiveFilter = unitFilter ?? numericFilter
       if (!effectiveFilter) {
@@ -175,8 +233,10 @@ export function LinksPage() {
       }
       return links.filter(link => matchesNumericFilter(getNumericValue(link), effectiveFilter))
     }
-    const getSearchValue = (link: typeof links[number]) => {
-      switch (searchField) {
+
+    // Text search
+    const getSearchValue = (link: typeof links[number], field: string) => {
+      switch (field) {
         case 'code':
           return link.code
         case 'type':
@@ -189,26 +249,21 @@ export function LinksPage() {
           return `${link.side_z_code || ''} ${link.side_z_metro || ''}`.trim()
         case 'status':
           return link.status
-        case 'bandwidth':
-          return String(link.bandwidth_bps)
-        case 'in':
-          return String(link.in_bps)
-        case 'out':
-          return String(link.out_bps)
-        case 'utilIn':
-          return String(link.utilization_in)
-        case 'utilOut':
-          return String(link.utilization_out)
-        case 'latency':
-          return String(link.latency_us)
-        case 'jitter':
-          return String(link.jitter_us)
-        case 'loss':
-          return String(link.loss_percent)
+        default:
+          return ''
       }
     }
-    return links.filter(link => getSearchValue(link).toLowerCase().includes(needle))
-  }, [links, searchField, searchText])
+
+    if (searchField === 'all') {
+      // Search across all text fields
+      return links.filter(link => {
+        const textFields = ['code', 'type', 'contributor', 'sideA', 'sideZ', 'status']
+        return textFields.some(field => getSearchValue(link, field).toLowerCase().includes(needle))
+      })
+    }
+
+    return links.filter(link => getSearchValue(link, searchField).toLowerCase().includes(needle))
+  }, [links, activeFilter])
   const sortedLinks = useMemo(() => {
     if (!filteredLinks) return []
 
@@ -291,7 +346,7 @@ export function LinksPage() {
 
   useEffect(() => {
     setOffset(0)
-  }, [searchField, searchText])
+  }, [activeFilterRaw])
 
   if (isLoading) {
     return (
@@ -323,46 +378,39 @@ export function LinksPage() {
             <h1 className="text-2xl font-medium">Links</h1>
             <span className="text-muted-foreground">({response?.total || 0})</span>
           </div>
-          <div className="flex items-center gap-2">
-            <select
-              className="h-9 rounded-md border border-border bg-background px-2 text-sm"
-              value={searchField}
-              onChange={(e) => setSearchField(e.target.value as SortField)}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Filter tags */}
+            {searchFilters.map((filter, idx) => (
+              <button
+                key={`${filter}-${idx}`}
+                onClick={() => removeFilter(filter)}
+                className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 transition-colors"
+              >
+                {filter}
+                <X className="h-3 w-3" />
+              </button>
+            ))}
+
+            {/* Clear all */}
+            {searchFilters.length > 1 && (
+              <button
+                onClick={clearAllFilters}
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Clear all
+              </button>
+            )}
+
+            {/* Search button */}
+            <button
+              onClick={openSearch}
+              className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground border border-border rounded-md bg-background hover:bg-muted transition-colors"
+              title="Search (Cmd+K)"
             >
-              <option value="code">Code</option>
-              <option value="type">Type</option>
-              <option value="contributor">Contributor</option>
-              <option value="sideA">Side A</option>
-              <option value="sideZ">Side Z</option>
-              <option value="status">Status</option>
-              <option value="bandwidth">Bandwidth</option>
-              <option value="in">In</option>
-              <option value="out">Out</option>
-              <option value="utilIn">Util In</option>
-              <option value="utilOut">Util Out</option>
-              <option value="latency">Latency</option>
-              <option value="jitter">Jitter</option>
-              <option value="loss">Loss</option>
-            </select>
-            <div className="relative">
-              <input
-                className="h-9 w-48 sm:w-64 rounded-md border border-border bg-background px-3 pr-8 text-sm"
-                value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
-                placeholder="Filter"
-                aria-label="Filter"
-              />
-              {searchText && (
-                <button
-                  type="button"
-                  className="absolute inset-y-0 right-2 text-muted-foreground hover:text-foreground"
-                  onClick={() => setSearchText('')}
-                  aria-label="Clear filter"
-                >
-                  ×
-                </button>
-              )}
-            </div>
+              <Search className="h-3 w-3" />
+              <span>Filter</span>
+              <kbd className="ml-0.5 font-mono text-[10px] text-muted-foreground/70">⌘K</kbd>
+            </button>
           </div>
         </div>
 

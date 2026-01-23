@@ -203,6 +203,22 @@ func (f FilterParams) BuildFilterClause(fields map[string]FilterFieldConfig) (st
 		return "", nil
 	}
 
+	// Handle "all" field - search across all text fields
+	if f.Field == "all" {
+		var textClauses []string
+		var args []interface{}
+		for _, config := range fields {
+			if config.Type == FieldTypeText {
+				textClauses = append(textClauses, "positionCaseInsensitive("+config.Column+", ?) > 0")
+				args = append(args, f.Value)
+			}
+		}
+		if len(textClauses) == 0 {
+			return "", nil
+		}
+		return "(" + strings.Join(textClauses, " OR ") + ")", args
+	}
+
 	config, ok := fields[f.Field]
 	if !ok {
 		return "", nil

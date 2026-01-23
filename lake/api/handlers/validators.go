@@ -156,7 +156,7 @@ func GetValidators(w http.ResponseWriter, r *http.Request) {
 					ELSE 0
 				END as stake_share,
 				COALESCE(v.commission_percentage, 0) as commission,
-				dz.node_pubkey != '' as on_dz,
+				dz.node_pubkey IS NOT NULL as on_dz,
 				COALESCE(dz.device_code, '') as device_code,
 				COALESCE(dz.metro_code, '') as metro_code,
 				COALESCE(geo.city, '') as city,
@@ -377,7 +377,7 @@ func GetValidator(w http.ResponseWriter, r *http.Request) {
 				ELSE 0
 			END as stake_share,
 			COALESCE(v.commission_percentage, 0) as commission,
-			dz.node_pubkey != '' as on_dz,
+			dz.node_pubkey IS NOT NULL as on_dz,
 			COALESCE(dz.device_pk, '') as device_pk,
 			COALESCE(dz.device_code, '') as device_code,
 			COALESCE(dz.metro_pk, '') as metro_pk,

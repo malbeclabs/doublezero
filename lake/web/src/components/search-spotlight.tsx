@@ -39,6 +39,88 @@ const fieldPrefixes = [
   { prefix: 'pubkey:', description: 'Search by pubkey across entities' },
 ]
 
+// Field prefixes for validators page filtering
+const validatorFieldPrefixes = [
+  { prefix: 'vote:', description: 'Filter by vote account pubkey' },
+  { prefix: 'node:', description: 'Filter by node pubkey' },
+  { prefix: 'stake:', description: 'Filter by stake (e.g., >500k, >1m)' },
+  { prefix: 'city:', description: 'Filter by city' },
+  { prefix: 'country:', description: 'Filter by country' },
+  { prefix: 'device:', description: 'Filter by device code' },
+  { prefix: 'version:', description: 'Filter by version' },
+  { prefix: 'dz:', description: 'Filter by DZ status (yes/no)' },
+  { prefix: 'commission:', description: 'Filter by commission %' },
+  { prefix: 'skip:', description: 'Filter by skip rate' },
+]
+
+// Field prefixes for gossip nodes page filtering
+const gossipNodeFieldPrefixes = [
+  { prefix: 'pubkey:', description: 'Filter by node pubkey' },
+  { prefix: 'ip:', description: 'Filter by IP address' },
+  { prefix: 'city:', description: 'Filter by city' },
+  { prefix: 'country:', description: 'Filter by country' },
+  { prefix: 'device:', description: 'Filter by device code' },
+  { prefix: 'version:', description: 'Filter by version' },
+  { prefix: 'dz:', description: 'Filter by DZ status (yes/no)' },
+  { prefix: 'validator:', description: 'Filter by validator status (yes/no)' },
+  { prefix: 'stake:', description: 'Filter by stake (e.g., >500k)' },
+]
+
+// Field prefixes for devices page filtering
+const deviceFieldPrefixes = [
+  { prefix: 'code:', description: 'Filter by device code' },
+  { prefix: 'type:', description: 'Filter by device type' },
+  { prefix: 'contributor:', description: 'Filter by contributor' },
+  { prefix: 'metro:', description: 'Filter by metro' },
+  { prefix: 'status:', description: 'Filter by status' },
+  { prefix: 'users:', description: 'Filter by user count (e.g., >10)' },
+  { prefix: 'in:', description: 'Filter by inbound traffic (e.g., >1gbps)' },
+  { prefix: 'out:', description: 'Filter by outbound traffic (e.g., >1gbps)' },
+]
+
+// Field prefixes for links page filtering
+const linkFieldPrefixes = [
+  { prefix: 'code:', description: 'Filter by link code' },
+  { prefix: 'type:', description: 'Filter by link type' },
+  { prefix: 'contributor:', description: 'Filter by contributor' },
+  { prefix: 'sideA:', description: 'Filter by side A device' },
+  { prefix: 'sideZ:', description: 'Filter by side Z device' },
+  { prefix: 'status:', description: 'Filter by status' },
+  { prefix: 'bandwidth:', description: 'Filter by bandwidth (e.g., >10gbps)' },
+  { prefix: 'in:', description: 'Filter by inbound traffic' },
+  { prefix: 'out:', description: 'Filter by outbound traffic' },
+  { prefix: 'utilIn:', description: 'Filter by inbound utilization % (e.g., >50)' },
+  { prefix: 'utilOut:', description: 'Filter by outbound utilization % (e.g., >50)' },
+]
+
+// Field prefixes for metros page filtering
+const metroFieldPrefixes = [
+  { prefix: 'code:', description: 'Filter by metro code' },
+  { prefix: 'name:', description: 'Filter by metro name' },
+  { prefix: 'devices:', description: 'Filter by device count (e.g., >5)' },
+  { prefix: 'users:', description: 'Filter by user count (e.g., >10)' },
+]
+
+// Field prefixes for contributors page filtering
+const contributorFieldPrefixes = [
+  { prefix: 'code:', description: 'Filter by contributor code' },
+  { prefix: 'name:', description: 'Filter by contributor name' },
+  { prefix: 'devices:', description: 'Filter by device count (e.g., >5)' },
+  { prefix: 'links:', description: 'Filter by link count (e.g., >10)' },
+]
+
+// Field prefixes for users page filtering
+const userFieldPrefixes = [
+  { prefix: 'owner:', description: 'Filter by owner pubkey' },
+  { prefix: 'kind:', description: 'Filter by user kind' },
+  { prefix: 'ip:', description: 'Filter by DZ IP address' },
+  { prefix: 'device:', description: 'Filter by device code' },
+  { prefix: 'metro:', description: 'Filter by metro' },
+  { prefix: 'status:', description: 'Filter by status' },
+  { prefix: 'in:', description: 'Filter by inbound traffic (e.g., >1gbps)' },
+  { prefix: 'out:', description: 'Filter by outbound traffic (e.g., >1gbps)' },
+]
+
 // Map search entity types to topology URL type param
 const topologyTypeMap: Record<SearchEntityType, string | null> = {
   device: 'device',
@@ -62,6 +144,7 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(-1)
+  const [globalSearchMode, setGlobalSearchMode] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const { recentSearches, addRecentSearch, clearRecentSearches } = useRecentSearches()
 
@@ -70,6 +153,19 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
   const isStatusPage = location.pathname.startsWith('/status')
   const isOutagesPage = location.pathname === '/outages'
   const isPerformancePage = location.pathname.startsWith('/performance')
+  const isValidatorsPage = location.pathname === '/solana/validators'
+  const isGossipNodesPage = location.pathname === '/solana/gossip-nodes'
+  const isDevicesPage = location.pathname === '/dz/devices'
+  const isLinksPage = location.pathname === '/dz/links'
+  const isMetrosPage = location.pathname === '/dz/metros'
+  const isContributorsPage = location.pathname === '/dz/contributors'
+  const isUsersPage = location.pathname === '/dz/users'
+  const isDZTablePage = isDevicesPage || isLinksPage || isMetrosPage || isContributorsPage || isUsersPage
+
+  // Check if we're on a page that supports table filtering
+  const isTableFilterPage = isValidatorsPage || isGossipNodesPage || isDZTablePage
+  // Use table filter mode only if on a table page and not in global search mode
+  const useTableFilterMode = isTableFilterPage && !globalSearchMode
 
   // Helper to add a filter to the timeline search (accumulating)
   const addTimelineFilter = useCallback((filterValue: string) => {
@@ -110,11 +206,27 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
     })
   }, [searchParams, setSearchParams])
 
+  // Helper to add a filter to validators/gossip pages (accumulating)
+  const addTableFilter = useCallback((filterValue: string) => {
+    const currentSearch = searchParams.get('search') || ''
+    const currentFilters = currentSearch ? currentSearch.split(',').map(f => f.trim()).filter(Boolean) : []
+    if (!currentFilters.includes(filterValue)) {
+      currentFilters.push(filterValue)
+    }
+    setSearchParams(prev => {
+      prev.set('search', currentFilters.join(','))
+      // Reset to first page when filter changes
+      prev.delete('offset')
+      return prev
+    })
+  }, [searchParams, setSearchParams])
+
   // Focus input when opened
   useEffect(() => {
     if (isOpen) {
       setQuery('')
       setSelectedIndex(-1)
+      setGlobalSearchMode(false)
       setTimeout(() => inputRef.current?.focus(), 0)
     }
   }, [isOpen])
@@ -136,10 +248,28 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
     ? (data?.suggestions || []).filter(s => s.type === 'metro')
     : (data?.suggestions || [])
 
-  // Check if query matches any field prefix (skip on performance page - only metros)
-  const matchingPrefixes = query.length > 0 && !query.includes(':') && !isPerformancePage
-    ? fieldPrefixes.filter(p => p.prefix.toLowerCase().startsWith(query.toLowerCase()))
+  // Get the appropriate field prefixes based on current page
+  const getFieldPrefixes = () => {
+    // In global search mode, use the global field prefixes
+    if (globalSearchMode) return fieldPrefixes
+    if (isValidatorsPage) return validatorFieldPrefixes
+    if (isGossipNodesPage) return gossipNodeFieldPrefixes
+    if (isDevicesPage) return deviceFieldPrefixes
+    if (isLinksPage) return linkFieldPrefixes
+    if (isMetrosPage) return metroFieldPrefixes
+    if (isContributorsPage) return contributorFieldPrefixes
+    if (isUsersPage) return userFieldPrefixes
+    if (isPerformancePage) return [] // Only metros on performance page
+    return fieldPrefixes
+  }
+
+  // Check if query matches any field prefix
+  const matchingPrefixes = query.length > 0 && !query.includes(':')
+    ? getFieldPrefixes().filter(p => p.prefix.toLowerCase().startsWith(query.toLowerCase()))
     : []
+
+  // Show all field prefixes when query is empty on table pages (only in filter mode)
+  const showFieldHints = query.length === 0 && useTableFilterMode
 
   // Filter recent searches to only metros on performance page
   const filteredRecentSearches = isPerformancePage
@@ -147,14 +277,22 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
     : recentSearches
 
   // Build items list
-  const items: (SearchSuggestion | { type: 'prefix'; prefix: string; description: string } | { type: 'recent'; item: SearchSuggestion } | { type: 'ask-ai' } | { type: 'filter-timeline' })[] = []
+  const items: (SearchSuggestion | { type: 'prefix'; prefix: string; description: string } | { type: 'recent'; item: SearchSuggestion } | { type: 'ask-ai' } | { type: 'filter-timeline' } | { type: 'filter-table' })[] = []
 
   // Add "Filter timeline" option at the top when on timeline page with a query
   if (isTimelinePage && query.length >= 1) {
     items.push({ type: 'filter-timeline' as const })
   }
 
-  if (matchingPrefixes.length > 0) {
+  // Add "Filter table" option when on table pages with a query (only in filter mode)
+  if (useTableFilterMode && query.length >= 1) {
+    items.push({ type: 'filter-table' as const })
+  }
+
+  // Show field hints when empty on validators/gossip pages
+  if (showFieldHints) {
+    items.push(...getFieldPrefixes().map(p => ({ type: 'prefix' as const, prefix: p.prefix, description: p.description })))
+  } else if (matchingPrefixes.length > 0) {
     items.push(...matchingPrefixes.map(p => ({ type: 'prefix' as const, prefix: p.prefix, description: p.description })))
   }
 
@@ -240,6 +378,17 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
       return
     }
 
+    // On validators/gossip/DZ table pages, add filter to accumulated filters instead of navigating away
+    if (useTableFilterMode) {
+      if (e && (e.metaKey || e.ctrlKey)) {
+        // Open new tab with just this filter
+        window.open(`${location.pathname}?search=${encodeURIComponent(item.label)}`, '_blank')
+      } else {
+        addTableFilter(item.label)
+      }
+      return
+    }
+
     // Default: navigate to entity detail page
     if (e) {
       handleRowClick(e, item.url, navigate)
@@ -272,6 +421,17 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
     }
   }, [query, onClose, addTimelineFilter])
 
+  const handleFilterTable = useCallback((e?: React.MouseEvent) => {
+    if (!query.trim()) return
+    setQuery('')
+    onClose()
+    if (e && (e.metaKey || e.ctrlKey)) {
+      window.open(`${location.pathname}?search=${encodeURIComponent(query.trim())}`, '_blank')
+    } else {
+      addTableFilter(query.trim())
+    }
+  }, [query, onClose, addTableFilter, location.pathname])
+
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     switch (e.key) {
       case 'ArrowDown':
@@ -284,8 +444,10 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
         break
       case 'Enter':
         e.preventDefault()
-        if (selectedIndex >= 0 && selectedIndex < items.length) {
-          const item = items[selectedIndex]
+        // Use selected index, or default to first item if nothing selected
+        const indexToUse = selectedIndex >= 0 ? selectedIndex : 0
+        if (indexToUse < items.length) {
+          const item = items[indexToUse]
           if ('prefix' in item && item.type === 'prefix') {
             setQuery(item.prefix)
             inputRef.current?.focus()
@@ -295,6 +457,8 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
             handleAskAI()
           } else if (item.type === 'filter-timeline') {
             handleFilterTimeline()
+          } else if (item.type === 'filter-table') {
+            handleFilterTable()
           } else if ('url' in item) {
             handleSelect(item as SearchSuggestion)
           }
@@ -314,7 +478,7 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
         onClose()
         break
     }
-  }, [items, selectedIndex, handleSelect, handleAskAI, onClose])
+  }, [items, selectedIndex, handleSelect, handleAskAI, handleFilterTimeline, handleFilterTable, onClose])
 
   if (!isOpen) return null
 
@@ -337,7 +501,7 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={isTopologyPage ? "Search entities (opens in map)..." : isTimelinePage ? "Filter timeline events..." : isStatusPage ? "Filter status by entity..." : isOutagesPage ? "Filter outages by entity..." : isPerformancePage ? "Filter by metro..." : "Search entities..."}
+            placeholder={globalSearchMode ? "Search entities..." : isTopologyPage ? "Search entities (opens in map)..." : isTimelinePage ? "Filter timeline events..." : isStatusPage ? "Filter status by entity..." : isOutagesPage ? "Filter outages by entity..." : isPerformancePage ? "Filter by metro..." : isValidatorsPage ? "Filter validators..." : isGossipNodesPage ? "Filter gossip nodes..." : isDevicesPage ? "Filter devices..." : isLinksPage ? "Filter links..." : isMetrosPage ? "Filter metros..." : isContributorsPage ? "Filter contributors..." : isUsersPage ? "Filter users..." : "Search entities..."}
             className="flex-1 h-14 px-3 text-lg bg-transparent border-0 focus:outline-none placeholder:text-muted-foreground"
           />
           {isLoading && query.length >= 2 && (
@@ -358,6 +522,15 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
 
         {/* Results */}
         <div className="max-h-80 overflow-y-auto">
+          {showFieldHints && (
+            <div className="px-4 py-2 text-xs text-muted-foreground border-b border-border">
+              <span className="flex items-center gap-1">
+                <Filter className="h-3 w-3" />
+                Filter by field (or type to search all)
+              </span>
+            </div>
+          )}
+
           {showRecentSearches && (
             <div className="px-4 py-2 text-xs text-muted-foreground border-b border-border flex items-center justify-between">
               <span className="flex items-center gap-1">
@@ -382,7 +555,7 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
             </div>
           )}
 
-          {items.length === 0 && query.length < 2 && !showRecentSearches && (
+          {items.length === 0 && query.length < 2 && !showRecentSearches && !showFieldHints && (
             <div className="px-4 py-8 text-sm text-muted-foreground text-center">
               Type to search entities...
             </div>
@@ -405,6 +578,27 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
                       <span className="font-medium">Filter timeline by "{query}"</span>
                     </div>
                     <div className="text-sm text-muted-foreground">Show events matching this search</div>
+                  </div>
+                </button>
+              )
+            }
+
+            if (item.type === 'filter-table') {
+              return (
+                <button
+                  key="filter-table"
+                  onClick={(e) => handleFilterTable(e)}
+                  className={cn(
+                    'w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted transition-colors',
+                    index === selectedIndex && 'bg-muted'
+                  )}
+                >
+                  <Filter className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">Filter by "{query}"</span>
+                    </div>
+                    <div className="text-sm text-muted-foreground">Show rows matching this search</div>
                   </div>
                 </button>
               )
@@ -501,6 +695,11 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
                     Filter by metro
                   </span>
                 )}
+                {useTableFilterMode && (
+                  <span className="text-xs text-muted-foreground flex-shrink-0">
+                    Filter
+                  </span>
+                )}
               </button>
             )
           })}
@@ -513,21 +712,55 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
             <span><kbd className="px-1.5 py-0.5 rounded bg-muted font-mono text-xs">↵</kbd> Select</span>
             <span><kbd className="px-1.5 py-0.5 rounded bg-muted font-mono text-xs">esc</kbd> Close</span>
           </div>
-          {isTopologyPage && (
-            <span className="text-blue-500">On topology map</span>
-          )}
-          {isTimelinePage && (
-            <span className="text-blue-500">On timeline</span>
-          )}
-          {isStatusPage && (
-            <span className="text-blue-500">On status</span>
-          )}
-          {isOutagesPage && (
-            <span className="text-blue-500">On outages</span>
-          )}
-          {isPerformancePage && (
-            <span className="text-blue-500">On performance</span>
-          )}
+          <div className="flex items-center gap-2">
+            {isTableFilterPage && (
+              <button
+                onClick={() => setGlobalSearchMode(!globalSearchMode)}
+                className="text-blue-500 hover:text-blue-400 hover:underline"
+              >
+                {globalSearchMode ? 'Filter this page' : 'Search all'}
+              </button>
+            )}
+            {isTableFilterPage && !globalSearchMode && (
+              <span className="text-muted-foreground">·</span>
+            )}
+            {isTopologyPage && (
+              <span className="text-blue-500">On topology map</span>
+            )}
+            {isTimelinePage && (
+              <span className="text-blue-500">On timeline</span>
+            )}
+            {isStatusPage && (
+              <span className="text-blue-500">On status</span>
+            )}
+            {isOutagesPage && (
+              <span className="text-blue-500">On outages</span>
+            )}
+            {isPerformancePage && (
+              <span className="text-blue-500">On performance</span>
+            )}
+            {isValidatorsPage && !globalSearchMode && (
+              <span className="text-blue-500">Filtering validators</span>
+            )}
+            {isGossipNodesPage && !globalSearchMode && (
+              <span className="text-blue-500">Filtering gossip nodes</span>
+            )}
+            {isDevicesPage && !globalSearchMode && (
+              <span className="text-blue-500">Filtering devices</span>
+            )}
+            {isLinksPage && !globalSearchMode && (
+              <span className="text-blue-500">Filtering links</span>
+            )}
+            {isMetrosPage && !globalSearchMode && (
+              <span className="text-blue-500">Filtering metros</span>
+            )}
+            {isContributorsPage && !globalSearchMode && (
+              <span className="text-blue-500">Filtering contributors</span>
+            )}
+            {isUsersPage && !globalSearchMode && (
+              <span className="text-blue-500">Filtering users</span>
+            )}
+          </div>
         </div>
       </div>
     </div>

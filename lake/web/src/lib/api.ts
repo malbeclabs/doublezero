@@ -2375,8 +2375,9 @@ export async function fetchValidators(
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset) })
   if (sortBy) params.set('sort_by', sortBy)
   if (sortDir) params.set('sort_dir', sortDir)
-  if (filterField && filterValue) {
-    params.set('filter_field', filterField)
+  if (filterValue) {
+    // If field is specified, use it; otherwise use 'all' to search across all text fields
+    params.set('filter_field', filterField || 'all')
     params.set('filter_value', filterValue)
   }
   const res = await fetchWithRetry(`/api/solana/validators?${params}`)
@@ -2431,8 +2432,9 @@ export async function fetchGossipNodes(
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset) })
   if (sortBy) params.set('sort_by', sortBy)
   if (sortDir) params.set('sort_dir', sortDir)
-  if (filterField && filterValue) {
-    params.set('filter_field', filterField)
+  if (filterValue) {
+    // If field is specified, use it; otherwise use 'all' to search across all text fields
+    params.set('filter_field', filterField || 'all')
     params.set('filter_value', filterValue)
   }
   const res = await fetchWithRetry(`/api/solana/gossip-nodes?${params}`)

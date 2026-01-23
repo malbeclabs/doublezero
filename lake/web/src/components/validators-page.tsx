@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
-import { Loader2, Landmark, AlertCircle, Check, ChevronDown, ChevronUp } from 'lucide-react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Loader2, Landmark, AlertCircle, Check, ChevronDown, ChevronUp, Search, X } from 'lucide-react'
 import { fetchValidators } from '@/lib/api'
 import { handleRowClick } from '@/lib/utils'
 import { Pagination } from './pagination'
@@ -52,49 +52,83 @@ type SortField =
 
 type SortDirection = 'asc' | 'desc'
 
-// Hook for debounced value
-function useDebounce<T>(value: T, delay: number): T {
-  const [debouncedValue, setDebouncedValue] = useState<T>(value)
+// Parse search filters from URL param
+function parseSearchFilters(searchParam: string): string[] {
+  if (!searchParam) return []
+  return searchParam.split(',').map(f => f.trim()).filter(Boolean)
+}
 
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedValue(value)
-    }, delay)
+// Valid filter fields for validators
+const validFilterFields = ['vote', 'node', 'stake', 'share', 'commission', 'dz', 'device', 'city', 'country', 'in', 'out', 'skip', 'version']
 
-    return () => {
-      clearTimeout(handler)
+// Parse a filter string into field and value
+// Supports "field:value" syntax or plain "value" for keyword search
+function parseFilter(filter: string): { field: string; value: string } {
+  const colonIndex = filter.indexOf(':')
+  if (colonIndex > 0) {
+    const field = filter.slice(0, colonIndex).toLowerCase()
+    const value = filter.slice(colonIndex + 1)
+    if (validFilterFields.includes(field) && value) {
+      return { field, value }
     }
-  }, [value, delay])
-
-  return debouncedValue
+  }
+  // Plain keyword search
+  return { field: 'all', value: filter }
 }
 
 export function ValidatorsPage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [offset, setOffset] = useState(0)
   const [sortField, setSortField] = useState<SortField>('stake')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
-  const [searchField, setSearchField] = useState<SortField>('vote')
-  const [searchText, setSearchText] = useState('')
 
-  // Debounce filter value to avoid too many requests
-  const debouncedSearchText = useDebounce(searchText, 300)
+  // Get search filters from URL
+  const searchParam = searchParams.get('search') || ''
+  const searchFilters = parseSearchFilters(searchParam)
+
+  // Use first filter for API (single filter supported currently)
+  const activeFilterRaw = searchFilters[0] || ''
+  const activeFilter = activeFilterRaw ? parseFilter(activeFilterRaw) : null
 
   const { data: response, isLoading, isFetching, error } = useQuery({
-    queryKey: ['validators', offset, sortField, sortDirection, searchField, debouncedSearchText],
+    queryKey: ['validators', offset, sortField, sortDirection, activeFilterRaw],
     queryFn: () => fetchValidators(
       PAGE_SIZE,
       offset,
       sortField,
       sortDirection,
-      debouncedSearchText ? searchField : undefined,
-      debouncedSearchText || undefined
+      activeFilter?.field,
+      activeFilter?.value
     ),
     refetchInterval: 60000,
     placeholderData: keepPreviousData,
   })
   const validators = response?.items ?? []
   const onDZCount = response?.on_dz_count ?? 0
+
+  const removeFilter = useCallback((filterToRemove: string) => {
+    const newFilters = searchFilters.filter(f => f !== filterToRemove)
+    setSearchParams(prev => {
+      if (newFilters.length === 0) {
+        prev.delete('search')
+      } else {
+        prev.set('search', newFilters.join(','))
+      }
+      return prev
+    })
+  }, [searchFilters, setSearchParams])
+
+  const clearAllFilters = useCallback(() => {
+    setSearchParams(prev => {
+      prev.delete('search')
+      return prev
+    })
+  }, [setSearchParams])
+
+  const openSearch = useCallback(() => {
+    window.dispatchEvent(new CustomEvent('open-search'))
+  }, [])
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -121,7 +155,7 @@ export function ValidatorsPage() {
   // Reset to first page when filter changes
   useEffect(() => {
     setOffset(0)
-  }, [searchField, debouncedSearchText])
+  }, [activeFilterRaw])
 
   if (isLoading) {
     return (
@@ -160,45 +194,39 @@ export function ValidatorsPage() {
               )}
             </span>
           </div>
-          <div className="flex items-center gap-2">
-            <select
-              className="h-9 rounded-md border border-border bg-background px-2 text-sm"
-              value={searchField}
-              onChange={(e) => setSearchField(e.target.value as SortField)}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Filter tags */}
+            {searchFilters.map((filter, idx) => (
+              <button
+                key={`${filter}-${idx}`}
+                onClick={() => removeFilter(filter)}
+                className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 transition-colors"
+              >
+                {filter}
+                <X className="h-3 w-3" />
+              </button>
+            ))}
+
+            {/* Clear all */}
+            {searchFilters.length > 1 && (
+              <button
+                onClick={clearAllFilters}
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Clear all
+              </button>
+            )}
+
+            {/* Search button */}
+            <button
+              onClick={openSearch}
+              className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground border border-border rounded-md bg-background hover:bg-muted transition-colors"
+              title="Search (Cmd+K)"
             >
-              <option value="vote">Vote Account</option>
-              <option value="node">Node</option>
-              <option value="stake">Stake</option>
-              <option value="share">Share</option>
-              <option value="commission">Comm.</option>
-              <option value="dz">DZ</option>
-              <option value="device">Device</option>
-              <option value="city">City</option>
-              <option value="country">Country</option>
-              <option value="in">In</option>
-              <option value="out">Out</option>
-              <option value="skip">Skip</option>
-              <option value="version">Version</option>
-            </select>
-            <div className="relative">
-              <input
-                className="h-9 w-48 sm:w-64 rounded-md border border-border bg-background px-3 pr-8 text-sm"
-                value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
-                placeholder="Filter"
-                aria-label="Filter"
-              />
-              {searchText && (
-                <button
-                  type="button"
-                  className="absolute inset-y-0 right-2 text-muted-foreground hover:text-foreground"
-                  onClick={() => setSearchText('')}
-                  aria-label="Clear filter"
-                >
-                  ×
-                </button>
-              )}
-            </div>
+              <Search className="h-3 w-3" />
+              <span>Filter</span>
+              <kbd className="ml-0.5 font-mono text-[10px] text-muted-foreground/70">⌘K</kbd>
+            </button>
           </div>
         </div>
 

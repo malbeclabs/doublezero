@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useState, useEffect, useMemo } from 'react'
 import { useDelayedLoading } from '@/hooks/use-delayed-loading'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { CheckCircle2, AlertTriangle, XCircle, ArrowUpDown, Cpu, ChevronDown, ChevronUp, Info } from 'lucide-react'
+import { CheckCircle2, AlertTriangle, XCircle, ArrowUpDown, Cpu, ChevronDown, ChevronUp, Info, WifiOff } from 'lucide-react'
 import { fetchStatus, fetchLinkHistory, fetchDeviceHistory, fetchInterfaceIssues, fetchCriticalLinks, fetchMetros, type StatusResponse, type InterfaceIssue, type NonActivatedLink, type LinkHistory, type DeviceHistory, type LinkMetric, type DeviceUtilization, type CriticalLinksResponse, type LinkIssue } from '@/lib/api'
 import { StatusFilters, useStatusFilters, type StatusFilter } from '@/components/status-search-bar'
 import { StatCard } from '@/components/stat-card'
@@ -88,6 +88,12 @@ function getStatusReasons(status: StatusResponse): string[] {
     reasons.push(`${status.links.degraded} link${status.links.degraded > 1 ? 's' : ''} with degraded performance`)
   }
 
+  // Count telemetry stopped issues
+  const noDataCount = (status.links.issues || []).filter(i => i.issue === 'no_data').length
+  if (noDataCount > 0) {
+    reasons.push(`${noDataCount} link${noDataCount > 1 ? 's' : ''} with telemetry stopped`)
+  }
+
   if (status.performance.avg_loss_percent >= 1.0) {
     reasons.push(`${status.performance.avg_loss_percent.toFixed(1)}% average packet loss`)
   } else if (status.performance.avg_loss_percent >= 0.1) {
@@ -124,13 +130,15 @@ function formatRelativeTime(timestamp: string): string {
   return `${hours}h ago`
 }
 
-type IssueSeverity = 'down' | 'critical' | 'degraded'
+type IssueSeverity = 'down' | 'critical' | 'degraded' | 'no_data'
 
 function classifyIssueSeverity(issue: LinkIssue): IssueSeverity {
   if (issue.issue === 'packet_loss') {
     if (issue.value >= 95) return 'down'
     if (issue.value >= 10) return 'critical'
     return 'degraded'
+  } else if (issue.issue === 'no_data') {
+    return 'no_data'
   } else {
     // high_latency
     if (issue.value >= 50) return 'critical'
@@ -175,13 +183,14 @@ function IssueDetails({
       acc[severity].push(issue)
       return acc
     },
-    { down: [] as LinkIssue[], critical: [] as LinkIssue[], degraded: [] as LinkIssue[] }
+    { down: [] as LinkIssue[], critical: [] as LinkIssue[], degraded: [] as LinkIssue[], no_data: [] as LinkIssue[] }
   )
 
   const sections: { key: IssueSeverity; label: string; icon: typeof XCircle; iconColor: string; valueColor: string }[] = [
     { key: 'down', label: 'Links Down', icon: XCircle, iconColor: 'text-gray-500', valueColor: 'text-gray-600 dark:text-gray-400' },
     { key: 'critical', label: 'Critical Issues', icon: XCircle, iconColor: 'text-red-500', valueColor: 'text-red-500' },
     { key: 'degraded', label: 'Degraded Performance', icon: AlertTriangle, iconColor: 'text-orange-500', valueColor: 'text-orange-500' },
+    { key: 'no_data', label: 'Telemetry Stopped', icon: WifiOff, iconColor: 'text-amber-500', valueColor: 'text-amber-500' },
   ]
 
   return (
@@ -209,11 +218,13 @@ function IssueDetails({
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className={`text-sm font-medium ${valueColor}`}>
-                      {issue.issue === 'packet_loss'
-                        ? `${issue.value.toFixed(1)}% loss`
-                        : `${issue.value.toFixed(0)}% over SLA`}
-                    </div>
+                    {issue.issue !== 'no_data' && (
+                      <div className={`text-sm font-medium ${valueColor}`}>
+                        {issue.issue === 'packet_loss'
+                          ? `${issue.value.toFixed(1)}% loss`
+                          : `${issue.value.toFixed(0)}% over SLA`}
+                      </div>
+                    )}
                     {issue.since && (
                       <div
                         className="text-xs text-muted-foreground"

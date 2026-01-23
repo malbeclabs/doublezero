@@ -718,6 +718,63 @@ func fetchStatusData(ctx context.Context) *StatusResponse {
 				issues = filtered
 			}
 		}
+
+		// Add "no_data" issues for links that stopped reporting latency data
+		// These are links with historical data (30 days) but no recent data (15 minutes)
+		noDataQuery := `
+			WITH link_last_seen AS (
+				SELECT
+					link_pk,
+					max(event_ts) as last_seen
+				FROM fact_dz_device_link_latency
+				WHERE event_ts >= now() - INTERVAL 30 DAY
+				  AND link_pk != ''
+				GROUP BY link_pk
+			)
+			SELECT
+				l.code,
+				l.link_type,
+				COALESCE(c.code, '') as contributor,
+				COALESCE(ma.code, '') as side_a_metro,
+				COALESCE(mz.code, '') as side_z_metro,
+				lls.last_seen
+			FROM link_last_seen lls
+			JOIN dz_links_current l ON lls.link_pk = l.pk
+			LEFT JOIN dz_contributors_current c ON l.contributor_pk = c.pk
+			LEFT JOIN dz_devices_current da ON l.side_a_pk = da.pk
+			LEFT JOIN dz_metros_current ma ON da.metro_pk = ma.pk
+			LEFT JOIN dz_devices_current dz ON l.side_z_pk = dz.pk
+			LEFT JOIN dz_metros_current mz ON dz.metro_pk = mz.pk
+			WHERE lls.last_seen < now() - INTERVAL 15 MINUTE
+			  AND lls.last_seen >= now() - INTERVAL 30 DAY
+			  AND l.status NOT IN ('soft-drained', 'hard-drained')
+			ORDER BY lls.last_seen DESC
+			LIMIT 10
+		`
+		noDataRows, err := config.DB.Query(ctx, noDataQuery)
+		if err == nil {
+			defer noDataRows.Close()
+			for noDataRows.Next() {
+				var code, linkType, contributor, sideAMetro, sideZMetro string
+				var lastSeen time.Time
+				if err := noDataRows.Scan(&code, &linkType, &contributor, &sideAMetro, &sideZMetro, &lastSeen); err == nil {
+					// The outage started when we last saw data (plus 5 min buffer for expected interval)
+					since := lastSeen.Add(5 * time.Minute)
+					issues = append(issues, LinkIssue{
+						Code:        code,
+						LinkType:    linkType,
+						Contributor: contributor,
+						Issue:       "no_data",
+						Value:       0,
+						Threshold:   0,
+						SideAMetro:  sideAMetro,
+						SideZMetro:  sideZMetro,
+						Since:       since.UTC().Format(time.RFC3339),
+					})
+				}
+			}
+		}
+
 		resp.Links.Issues = issues
 
 		return rows.Err()

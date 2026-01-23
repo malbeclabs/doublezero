@@ -438,7 +438,11 @@ function FilterButton({ children, value, className }: { children: React.ReactNod
     if (!currentFilters.includes(value)) {
       currentFilters.push(value)
     }
-    setSearchParams({ search: currentFilters.join(',') })
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      next.set('search', currentFilters.join(','))
+      return next
+    })
   }
 
   return (
@@ -859,42 +863,160 @@ function TimelineEventCard({ event, isNew }: { event: TimelineEvent; isNew?: boo
 
 const ALL_CATEGORIES: Category[] = ['state_change', 'packet_loss', 'interface_carrier', 'interface_errors', 'interface_discards']
 
+// Helper to parse a comma-separated URL param into a Set, with validation
+function parseSetParam<T extends string>(param: string | null, allValues: T[], defaultValues: T[]): Set<T> {
+  if (!param) return new Set(defaultValues)
+  const values = param.split(',').filter((v): v is T => allValues.includes(v as T))
+  return values.length > 0 ? new Set(values) : new Set(defaultValues)
+}
+
+// Helper to serialize a Set to comma-separated string, returning undefined if it matches default
+function serializeSetParam<T extends string>(set: Set<T>, defaultValues: T[]): string | undefined {
+  const defaultSet = new Set(defaultValues)
+  const isDefault = set.size === defaultSet.size && [...set].every(v => defaultSet.has(v))
+  if (isDefault) return undefined
+  return Array.from(set).join(',')
+}
+
 export function TimelinePage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const searchParam = searchParams.get('search') || ''
   // Parse comma-separated filters
   const searchFilters = searchParam ? searchParam.split(',').map(f => f.trim()).filter(Boolean) : []
 
-  const [timeRange, setTimeRange] = useState<TimeRange | 'custom'>('24h')
-  const [selectedCategories, setSelectedCategories] = useState<Set<Category>>(new Set(ALL_CATEGORIES))
-  const [selectedEntityTypes, setSelectedEntityTypes] = useState<Set<EntityType>>(new Set(DEFAULT_ENTITY_TYPES))
-  const [selectedActions, setSelectedActions] = useState<Set<ActionFilter>>(new Set(ALL_ACTIONS))
-  const [dzFilter, setDzFilter] = useState<DZFilter>('on_dz')
-  const [includeInternal, setIncludeInternal] = useState(false)
+  // Initialize state from URL params
+  const initialTimeRange = (searchParams.get('range') || '24h') as TimeRange | 'custom'
+  const initialCategories = parseSetParam(searchParams.get('categories'), ALL_CATEGORIES, ALL_CATEGORIES)
+  const initialEntityTypes = parseSetParam(searchParams.get('entities'), ALL_ENTITY_TYPES, DEFAULT_ENTITY_TYPES)
+  const initialActions = parseSetParam(searchParams.get('actions'), ALL_ACTIONS, ALL_ACTIONS)
+  const initialDzFilter = (searchParams.get('dz') || 'on_dz') as DZFilter
+  const initialIncludeInternal = searchParams.get('internal') === 'true'
+  const initialCustomStart = searchParams.get('start') || ''
+  const initialCustomEnd = searchParams.get('end') || ''
+
+  const [timeRange, setTimeRange] = useState<TimeRange | 'custom'>(initialTimeRange)
+  const [selectedCategories, setSelectedCategories] = useState<Set<Category>>(initialCategories)
+  const [selectedEntityTypes, setSelectedEntityTypes] = useState<Set<EntityType>>(initialEntityTypes)
+  const [selectedActions, setSelectedActions] = useState<Set<ActionFilter>>(initialActions)
+  const [dzFilter, setDzFilter] = useState<DZFilter>(initialDzFilter)
+  const [includeInternal, setIncludeInternal] = useState(initialIncludeInternal)
   const limit = 50
 
   // Ref for infinite scroll sentinel
   const loadMoreRef = useRef<HTMLDivElement>(null)
 
   // Custom date range state
-  const [customStart, setCustomStart] = useState<string>('')
-  const [customEnd, setCustomEnd] = useState<string>('')
+  const [customStart, setCustomStart] = useState<string>(initialCustomStart)
+  const [customEnd, setCustomEnd] = useState<string>(initialCustomEnd)
 
-  const clearSearchFilter = () => {
+  // Sync filter state to URL params
+  const updateUrlParams = (updates: {
+    range?: TimeRange | 'custom'
+    categories?: Set<Category>
+    entities?: Set<EntityType>
+    actions?: Set<ActionFilter>
+    dz?: DZFilter
+    internal?: boolean
+    start?: string
+    end?: string
+    search?: string | null
+  }) => {
     setSearchParams(prev => {
       const next = new URLSearchParams(prev)
-      next.delete('search')
+
+      // Time range
+      if (updates.range !== undefined) {
+        if (updates.range === '24h') {
+          next.delete('range')
+        } else {
+          next.set('range', updates.range)
+        }
+      }
+
+      // Categories
+      if (updates.categories !== undefined) {
+        const serialized = serializeSetParam(updates.categories, ALL_CATEGORIES)
+        if (serialized) {
+          next.set('categories', serialized)
+        } else {
+          next.delete('categories')
+        }
+      }
+
+      // Entity types
+      if (updates.entities !== undefined) {
+        const serialized = serializeSetParam(updates.entities, DEFAULT_ENTITY_TYPES)
+        if (serialized) {
+          next.set('entities', serialized)
+        } else {
+          next.delete('entities')
+        }
+      }
+
+      // Actions
+      if (updates.actions !== undefined) {
+        const serialized = serializeSetParam(updates.actions, ALL_ACTIONS)
+        if (serialized) {
+          next.set('actions', serialized)
+        } else {
+          next.delete('actions')
+        }
+      }
+
+      // DZ filter
+      if (updates.dz !== undefined) {
+        if (updates.dz === 'on_dz') {
+          next.delete('dz')
+        } else {
+          next.set('dz', updates.dz)
+        }
+      }
+
+      // Include internal
+      if (updates.internal !== undefined) {
+        if (updates.internal) {
+          next.set('internal', 'true')
+        } else {
+          next.delete('internal')
+        }
+      }
+
+      // Custom date range
+      if (updates.start !== undefined) {
+        if (updates.start) {
+          next.set('start', updates.start)
+        } else {
+          next.delete('start')
+        }
+      }
+      if (updates.end !== undefined) {
+        if (updates.end) {
+          next.set('end', updates.end)
+        } else {
+          next.delete('end')
+        }
+      }
+
+      // Search
+      if (updates.search !== undefined) {
+        if (updates.search) {
+          next.set('search', updates.search)
+        } else {
+          next.delete('search')
+        }
+      }
+
       return next
     })
   }
 
+  const clearSearchFilter = () => {
+    updateUrlParams({ search: null })
+  }
+
   const removeSearchFilter = (filterToRemove: string) => {
     const newFilters = searchFilters.filter(f => f !== filterToRemove)
-    if (newFilters.length === 0) {
-      clearSearchFilter()
-    } else {
-      setSearchParams({ search: newFilters.join(',') })
-    }
+    updateUrlParams({ search: newFilters.length > 0 ? newFilters.join(',') : null })
   }
 
   // Fetch timeline data bounds
@@ -1031,9 +1153,11 @@ export function TimelinePage() {
     setIncludeInternal(false)
     setCustomStart('')
     setCustomEnd('')
-    
+
     resetSeenEvents()
-    clearSearchFilter()
+
+    // Clear all filter URL params
+    setSearchParams(new URLSearchParams())
   }
 
   // Filter events by search queries (client-side)
@@ -1139,52 +1263,48 @@ export function TimelinePage() {
         end = new Date(start.getTime() + 30 * 60 * 1000) // Default 30 min
       }
     }
+    const startStr = start.toISOString().slice(0, 16)
+    const endStr = end.toISOString().slice(0, 16)
     setTimeRange('custom')
-    setCustomStart(start.toISOString().slice(0, 16))
-    setCustomEnd(end.toISOString().slice(0, 16))
-    
+    setCustomStart(startStr)
+    setCustomEnd(endStr)
+    updateUrlParams({ range: 'custom', start: startStr, end: endStr })
     resetSeenEvents()
   }
 
   const toggleCategory = (category: Category) => {
-    setSelectedCategories(prev => {
-      const next = new Set(prev)
-      if (next.has(category)) {
-        next.delete(category)
-      } else {
-        next.add(category)
-      }
-      return next
-    })
-    
+    const next = new Set(selectedCategories)
+    if (next.has(category)) {
+      next.delete(category)
+    } else {
+      next.add(category)
+    }
+    setSelectedCategories(next)
+    updateUrlParams({ categories: next })
     resetSeenEvents()
   }
 
   const toggleEntityType = (entityType: EntityType) => {
-    setSelectedEntityTypes(prev => {
-      const next = new Set(prev)
-      if (next.has(entityType)) {
-        next.delete(entityType)
-      } else {
-        next.add(entityType)
-      }
-      return next
-    })
-    
+    const next = new Set(selectedEntityTypes)
+    if (next.has(entityType)) {
+      next.delete(entityType)
+    } else {
+      next.add(entityType)
+    }
+    setSelectedEntityTypes(next)
+    updateUrlParams({ entities: next })
     resetSeenEvents()
   }
 
   const toggleAction = (action: ActionFilter) => {
-    setSelectedActions(prev => {
-      const next = new Set(prev)
-      if (next.has(action)) {
-        next.delete(action)
-      } else {
-        next.add(action)
-      }
-      return next
-    })
-    
+    const next = new Set(selectedActions)
+    if (next.has(action)) {
+      next.delete(action)
+    } else {
+      next.add(action)
+    }
+    setSelectedActions(next)
+    updateUrlParams({ actions: next })
     resetSeenEvents()
   }
 
@@ -1198,10 +1318,15 @@ export function TimelinePage() {
       if (start < earliest) {
         start.setTime(earliest.getTime())
       }
-      setCustomStart(start.toISOString().slice(0, 16))
-      setCustomEnd(end.toISOString().slice(0, 16))
+      const startStr = start.toISOString().slice(0, 16)
+      const endStr = end.toISOString().slice(0, 16)
+      setCustomStart(startStr)
+      setCustomEnd(endStr)
+      updateUrlParams({ range, start: startStr, end: endStr })
+    } else {
+      // Clear custom range params when switching to relative range
+      updateUrlParams({ range, start: '', end: '' })
     }
-    
     resetSeenEvents()
   }
 
@@ -1304,7 +1429,7 @@ export function TimelinePage() {
                     max={customEnd || maxDate}
                     onChange={(e) => {
                       setCustomStart(e.target.value)
-                      
+                      updateUrlParams({ start: e.target.value })
                       resetSeenEvents()
                     }}
                     className="px-2 py-1 text-sm border border-border rounded-md bg-background"
@@ -1317,7 +1442,7 @@ export function TimelinePage() {
                     max={maxDate}
                     onChange={(e) => {
                       setCustomEnd(e.target.value)
-                      
+                      updateUrlParams({ end: e.target.value })
                       resetSeenEvents()
                     }}
                     className="px-2 py-1 text-sm border border-border rounded-md bg-background"
@@ -1384,7 +1509,7 @@ export function TimelinePage() {
                     key={option.value}
                     onClick={() => {
                       setDzFilter(option.value)
-                      
+                      updateUrlParams({ dz: option.value })
                       resetSeenEvents()
                     }}
                     className={cn(
@@ -1406,8 +1531,10 @@ export function TimelinePage() {
             {/* Internal users toggle */}
             <button
               onClick={() => {
-                setIncludeInternal(!includeInternal)
-                
+                const newValue = !includeInternal
+                setIncludeInternal(newValue)
+                updateUrlParams({ internal: newValue })
+                resetSeenEvents()
               }}
               className="inline-flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
             >

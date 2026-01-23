@@ -14,6 +14,7 @@ const changelog: ChangelogEntry[] = [
     changes: [
       { type: 'feature', description: 'Sortable, filterable tables on all entity pages with autocomplete' },
       { type: 'feature', description: 'IS-IS delay override tracking in link timeline' },
+      { type: 'improvement', description: 'Timeline filter state persisted in URL for shareable links' },
       { type: 'improvement', description: 'Zoom and pan to selected items when loading topology from URL' },
       { type: 'improvement', description: 'Suggested questions refresh when clicking Chat in navigation' },
       { type: 'improvement', description: 'Grace period before showing update notifications' },

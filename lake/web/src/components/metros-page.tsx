@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Loader2, MapPin, AlertCircle, ChevronDown, ChevronUp, Search, X } from 'lucide-react'
+import { Loader2, MapPin, AlertCircle, ChevronDown, ChevronUp, X } from 'lucide-react'
 import { fetchAllPaginated, fetchMetros } from '@/lib/api'
 import { handleRowClick } from '@/lib/utils'
 import { Pagination } from './pagination'
+import { InlineFilter } from './inline-filter'
 
 const PAGE_SIZE = 100
 
@@ -49,6 +50,17 @@ function parseSearchFilters(searchParam: string): string[] {
 // Valid filter fields for metros
 const validFilterFields = ['code', 'name', 'latitude', 'longitude', 'devices', 'users']
 
+// Field prefixes for inline filter
+const metroFieldPrefixes = [
+  { prefix: 'code:', description: 'Filter by metro code' },
+  { prefix: 'name:', description: 'Filter by metro name' },
+  { prefix: 'devices:', description: 'Filter by device count (e.g., >5)' },
+  { prefix: 'users:', description: 'Filter by user count (e.g., >10)' },
+]
+
+// Fields that support autocomplete (none for metros)
+const metroAutocompleteFields: string[] = []
+
 // Parse a filter string into field and value
 function parseFilter(filter: string): { field: string; value: string } {
   const colonIndex = filter.indexOf(':')
@@ -66,6 +78,7 @@ export function MetrosPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [offset, setOffset] = useState(0)
+  const [liveFilter, setLiveFilter] = useState('')
 
   // Get sort config from URL (default: code asc)
   const sortField = (searchParams.get('sort') || 'code') as SortField
@@ -75,8 +88,8 @@ export function MetrosPage() {
   const searchParam = searchParams.get('search') || ''
   const searchFilters = parseSearchFilters(searchParam)
 
-  // Use first filter for filtering (single filter supported currently)
-  const activeFilterRaw = searchFilters[0] || ''
+  // Combine committed filters with live filter
+  const activeFilterRaw = liveFilter || searchFilters[0] || ''
 
   const removeFilter = useCallback((filterToRemove: string) => {
     const newFilters = searchFilters.filter(f => f !== filterToRemove)
@@ -96,10 +109,6 @@ export function MetrosPage() {
       return prev
     })
   }, [setSearchParams])
-
-  const openSearch = useCallback(() => {
-    window.dispatchEvent(new CustomEvent('open-search'))
-  }, [])
 
   const { data: response, isLoading, error } = useQuery({
     queryKey: ['metros', 'all'],
@@ -279,16 +288,14 @@ export function MetrosPage() {
               </button>
             )}
 
-            {/* Search button */}
-            <button
-              onClick={openSearch}
-              className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground border border-border rounded-md bg-background hover:bg-muted transition-colors"
-              title="Search (Cmd+K)"
-            >
-              <Search className="h-3 w-3" />
-              <span>Filter</span>
-              <kbd className="ml-0.5 font-mono text-[10px] text-muted-foreground/70">⌘K</kbd>
-            </button>
+            {/* Inline filter */}
+            <InlineFilter
+              fieldPrefixes={metroFieldPrefixes}
+              entity="metros"
+              autocompleteFields={metroAutocompleteFields}
+              placeholder="Filter metros..."
+              onLiveFilterChange={setLiveFilter}
+            />
           </div>
         </div>
 

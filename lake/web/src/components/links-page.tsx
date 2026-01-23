@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Loader2, Link2, AlertCircle, ChevronDown, ChevronUp, Search, X } from 'lucide-react'
+import { Loader2, Link2, AlertCircle, ChevronDown, ChevronUp, X } from 'lucide-react'
 import { fetchAllPaginated, fetchLinks } from '@/lib/api'
 import { handleRowClick } from '@/lib/utils'
 import { Pagination } from './pagination'
+import { InlineFilter } from './inline-filter'
 
 const PAGE_SIZE = 100
 
@@ -126,6 +127,24 @@ function parseSearchFilters(searchParam: string): string[] {
 // Valid filter fields for links
 const validFilterFields = ['code', 'type', 'contributor', 'sideA', 'sideZ', 'status', 'bandwidth', 'in', 'out', 'utilIn', 'utilOut', 'latency', 'jitter', 'loss']
 
+// Field prefixes for inline filter
+const linkFieldPrefixes = [
+  { prefix: 'code:', description: 'Filter by link code' },
+  { prefix: 'type:', description: 'Filter by link type' },
+  { prefix: 'contributor:', description: 'Filter by contributor' },
+  { prefix: 'sideA:', description: 'Filter by side A device' },
+  { prefix: 'sideZ:', description: 'Filter by side Z device' },
+  { prefix: 'status:', description: 'Filter by status' },
+  { prefix: 'bandwidth:', description: 'Filter by bandwidth (e.g., >10gbps)' },
+  { prefix: 'in:', description: 'Filter by inbound traffic (e.g., >1gbps)' },
+  { prefix: 'out:', description: 'Filter by outbound traffic (e.g., >1gbps)' },
+  { prefix: 'utilIn:', description: 'Filter by inbound utilization % (e.g., >50)' },
+  { prefix: 'utilOut:', description: 'Filter by outbound utilization % (e.g., >50)' },
+]
+
+// Fields that support autocomplete
+const linkAutocompleteFields = ['status', 'type', 'contributor', 'sidea', 'sidez']
+
 // Parse a filter string into field and value
 function parseFilter(filter: string): { field: string; value: string } {
   const colonIndex = filter.indexOf(':')
@@ -145,6 +164,7 @@ export function LinksPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [offset, setOffset] = useState(0)
+  const [liveFilter, setLiveFilter] = useState('')
 
   // Get sort config from URL (default: code asc)
   const sortField = (searchParams.get('sort') || 'code') as SortField
@@ -154,8 +174,8 @@ export function LinksPage() {
   const searchParam = searchParams.get('search') || ''
   const searchFilters = parseSearchFilters(searchParam)
 
-  // Use first filter for filtering (single filter supported currently)
-  const activeFilterRaw = searchFilters[0] || ''
+  // Combine committed filters with live filter
+  const activeFilterRaw = liveFilter || searchFilters[0] || ''
 
   const removeFilter = useCallback((filterToRemove: string) => {
     const newFilters = searchFilters.filter(f => f !== filterToRemove)
@@ -175,10 +195,6 @@ export function LinksPage() {
       return prev
     })
   }, [setSearchParams])
-
-  const openSearch = useCallback(() => {
-    window.dispatchEvent(new CustomEvent('open-search'))
-  }, [])
 
   const { data: response, isLoading, error } = useQuery({
     queryKey: ['links', 'all'],
@@ -413,16 +429,14 @@ export function LinksPage() {
               </button>
             )}
 
-            {/* Search button */}
-            <button
-              onClick={openSearch}
-              className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground border border-border rounded-md bg-background hover:bg-muted transition-colors"
-              title="Search (Cmd+K)"
-            >
-              <Search className="h-3 w-3" />
-              <span>Filter</span>
-              <kbd className="ml-0.5 font-mono text-[10px] text-muted-foreground/70">⌘K</kbd>
-            </button>
+            {/* Inline filter */}
+            <InlineFilter
+              fieldPrefixes={linkFieldPrefixes}
+              entity="links"
+              autocompleteFields={linkAutocompleteFields}
+              placeholder="Filter links..."
+              onLiveFilterChange={setLiveFilter}
+            />
           </div>
         </div>
 

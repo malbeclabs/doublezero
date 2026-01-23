@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Loader2, Radio, AlertCircle, Check, ChevronDown, ChevronUp, Search, X } from 'lucide-react'
+import { Loader2, Radio, AlertCircle, Check, ChevronDown, ChevronUp, X } from 'lucide-react'
 import { fetchGossipNodes } from '@/lib/api'
 import { handleRowClick } from '@/lib/utils'
 import { Pagination } from './pagination'
+import { InlineFilter } from './inline-filter'
 
 const PAGE_SIZE = 100
 
@@ -42,6 +43,22 @@ function parseSearchFilters(searchParam: string): string[] {
 // Valid filter fields for gossip nodes
 const validFilterFields = ['pubkey', 'ip', 'version', 'city', 'country', 'validator', 'stake', 'dz', 'device']
 
+// Field prefixes for inline filter
+const gossipNodeFieldPrefixes = [
+  { prefix: 'pubkey:', description: 'Filter by node pubkey' },
+  { prefix: 'ip:', description: 'Filter by IP address' },
+  { prefix: 'city:', description: 'Filter by city' },
+  { prefix: 'country:', description: 'Filter by country' },
+  { prefix: 'device:', description: 'Filter by device code' },
+  { prefix: 'version:', description: 'Filter by version' },
+  { prefix: 'dz:', description: 'Filter by DZ status (yes/no)' },
+  { prefix: 'validator:', description: 'Filter by validator status (yes/no)' },
+  { prefix: 'stake:', description: 'Filter by stake (e.g., >500k)' },
+]
+
+// Fields that support autocomplete
+const gossipNodeAutocompleteFields = ['dz', 'validator', 'version', 'city', 'country', 'device']
+
 // Parse a filter string into field and value
 // Supports "field:value" syntax or plain "value" for keyword search
 function parseFilter(filter: string): { field: string; value: string } {
@@ -61,6 +78,7 @@ export function GossipNodesPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [offset, setOffset] = useState(0)
+  const [liveFilter, setLiveFilter] = useState('')
 
   // Get sort config from URL (default: stake desc)
   const sortField = (searchParams.get('sort') || 'stake') as SortField
@@ -70,8 +88,8 @@ export function GossipNodesPage() {
   const searchParam = searchParams.get('search') || ''
   const searchFilters = parseSearchFilters(searchParam)
 
-  // Use first filter for API (single filter supported currently)
-  const activeFilterRaw = searchFilters[0] || ''
+  // Combine committed filters with live filter
+  const activeFilterRaw = liveFilter || searchFilters[0] || ''
   const activeFilter = activeFilterRaw ? parseFilter(activeFilterRaw) : null
 
   const { data: response, isLoading, isFetching, error } = useQuery({
@@ -109,10 +127,6 @@ export function GossipNodesPage() {
       return prev
     })
   }, [setSearchParams])
-
-  const openSearch = useCallback(() => {
-    window.dispatchEvent(new CustomEvent('open-search'))
-  }, [])
 
   const handleSort = (field: SortField) => {
     setSearchParams(prev => {
@@ -207,16 +221,14 @@ export function GossipNodesPage() {
               </button>
             )}
 
-            {/* Search button */}
-            <button
-              onClick={openSearch}
-              className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground border border-border rounded-md bg-background hover:bg-muted transition-colors"
-              title="Search (Cmd+K)"
-            >
-              <Search className="h-3 w-3" />
-              <span>Filter</span>
-              <kbd className="ml-0.5 font-mono text-[10px] text-muted-foreground/70">⌘K</kbd>
-            </button>
+            {/* Inline filter */}
+            <InlineFilter
+              fieldPrefixes={gossipNodeFieldPrefixes}
+              entity="gossip"
+              autocompleteFields={gossipNodeAutocompleteFields}
+              placeholder="Filter gossip nodes..."
+              onLiveFilterChange={setLiveFilter}
+            />
           </div>
         </div>
 

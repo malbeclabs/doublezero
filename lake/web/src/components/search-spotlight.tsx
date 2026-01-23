@@ -361,16 +361,18 @@ export function SearchSpotlight({ isOpen, onClose }: SearchSpotlightProps) {
     items.push(...matchingPrefixes.map(p => ({ type: 'prefix' as const, prefix: p.prefix, description: p.description })))
   }
 
-  if (showRecentSearches) {
+  // Show recent searches only when NOT in table filter mode (they're for navigation, not filtering)
+  if (showRecentSearches && !useTableFilterMode) {
     items.push(...filteredRecentSearches.map(item => ({ type: 'recent' as const, item })))
   }
 
-  if (!showRecentSearches && filteredFieldValues.length === 0) {
+  // Only show global suggestions when NOT in table filter mode
+  if (!showRecentSearches && filteredFieldValues.length === 0 && !useTableFilterMode) {
     items.push(...suggestions)
   }
 
-  // Add "Ask AI" option when there's a query (not on performance page)
-  if (query.length >= 2 && !isPerformancePage && filteredFieldValues.length === 0) {
+  // Add "Ask AI" option when there's a query (not on performance page or table filter mode)
+  if (query.length >= 2 && !isPerformancePage && !useTableFilterMode && filteredFieldValues.length === 0) {
     items.push({ type: 'ask-ai' as const })
   }
 

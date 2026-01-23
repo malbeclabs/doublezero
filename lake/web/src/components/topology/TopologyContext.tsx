@@ -60,6 +60,11 @@ export interface TopologyContextValue {
   selection: Selection | null
   setSelection: (selection: Selection | null) => void
 
+  // Impact mode multi-select (devices selected for failure analysis)
+  impactDevices: string[]
+  toggleImpactDevice: (devicePK: string) => void
+  clearImpactDevices: () => void
+
   // Panel state
   panel: PanelState
   openPanel: (content: 'details' | 'mode' | 'overlay') => void
@@ -165,6 +170,9 @@ export function TopologyProvider({ children, view }: TopologyProviderProps) {
   // Hover state
   const [hoveredEntity, setHoveredEntity] = useState<{ type: SelectionType; id: string; x: number; y: number } | null>(null)
 
+  // Impact mode multi-select state
+  const [impactDevices, setImpactDevices] = useState<string[]>([])
+
   // Get selection from URL params
   const selection: Selection | null = (() => {
     const type = searchParams.get('type') as SelectionType | null
@@ -196,7 +204,13 @@ export function TopologyProvider({ children, view }: TopologyProviderProps) {
 
   // Set mode with side effects
   const setMode = useCallback((newMode: TopologyMode) => {
+    const prevMode = mode
     setModeInternal(newMode)
+
+    // Clear impact devices when exiting impact mode
+    if (prevMode === 'impact' && newMode !== 'impact') {
+      setImpactDevices([])
+    }
 
     // When entering a mode, open the panel with mode content
     if (newMode !== 'explore') {
@@ -226,7 +240,7 @@ export function TopologyProvider({ children, view }: TopologyProviderProps) {
       // When returning to explore, close panel if showing mode content
       setPanel(prev => prev.content === 'mode' ? { ...prev, isOpen: false } : prev)
     }
-  }, [setSearchParams])
+  }, [setSearchParams, mode])
 
   // Panel controls
   const openPanel = useCallback((content: 'details' | 'mode' | 'overlay') => {
@@ -300,6 +314,21 @@ export function TopologyProvider({ children, view }: TopologyProviderProps) {
     })
   }, [setSearchParams, mode])
 
+  // Impact device multi-select controls
+  const toggleImpactDevice = useCallback((devicePK: string) => {
+    setImpactDevices(prev => {
+      if (prev.includes(devicePK)) {
+        return prev.filter(pk => pk !== devicePK)
+      } else {
+        return [...prev, devicePK]
+      }
+    })
+  }, [])
+
+  const clearImpactDevices = useCallback(() => {
+    setImpactDevices([])
+  }, [])
+
   const value: TopologyContextValue = {
     mode,
     setMode,
@@ -307,6 +336,9 @@ export function TopologyProvider({ children, view }: TopologyProviderProps) {
     setPathMode,
     selection,
     setSelection,
+    impactDevices,
+    toggleImpactDevice,
+    clearImpactDevices,
     panel,
     openPanel,
     closePanel,

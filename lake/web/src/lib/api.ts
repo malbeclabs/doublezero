@@ -2880,16 +2880,6 @@ export async function fetchMetroPaths(
 }
 
 // Maintenance planner types
-export interface MaintenanceItem {
-  type: 'device' | 'link'
-  pk: string
-  code: string
-  impact: number
-  disconnected: number
-  causesPartition: boolean
-  disconnectedDevices?: string[]
-}
-
 export interface MaintenanceAffectedPath {
   source: string
   target: string
@@ -2900,6 +2890,17 @@ export interface MaintenanceAffectedPath {
   metricBefore: number
   metricAfter: number
   status: 'rerouted' | 'degraded' | 'disconnected'
+}
+
+export interface MaintenanceItem {
+  type: 'device' | 'link'
+  pk: string
+  code: string
+  impact: number
+  disconnected: number
+  causesPartition: boolean
+  disconnectedDevices?: string[]
+  affectedPaths?: MaintenanceAffectedPath[]
 }
 
 export interface AffectedLink {

@@ -6,8 +6,8 @@ import type { StyleSpecification } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { useQuery } from '@tanstack/react-query'
 import { useTheme } from '@/hooks/use-theme'
-import type { TopologyMetro, TopologyDevice, TopologyLink, TopologyValidator, MultiPathResponse, SimulateLinkRemovalResponse, SimulateLinkAdditionResponse, FailureImpactResponse } from '@/lib/api'
-import { fetchISISPaths, fetchISISTopology, fetchCriticalLinks, fetchSimulateLinkRemoval, fetchSimulateLinkAddition, fetchFailureImpact, fetchLinkHealth, fetchTopologyCompare } from '@/lib/api'
+import type { TopologyMetro, TopologyDevice, TopologyLink, TopologyValidator, MultiPathResponse, SimulateLinkRemovalResponse, SimulateLinkAdditionResponse, MaintenanceImpactResponse } from '@/lib/api'
+import { fetchISISPaths, fetchISISTopology, fetchCriticalLinks, fetchSimulateLinkRemoval, fetchSimulateLinkAddition, fetchMaintenanceImpact, fetchLinkHealth, fetchTopologyCompare } from '@/lib/api'
 import { useTopology, TopologyControlBar, TopologyPanel, DeviceDetails, LinkDetails, MetroDetails, ValidatorDetails, EntityLink as TopologyEntityLink, PathModePanel, CriticalityPanel, WhatIfRemovalPanel, WhatIfAdditionPanel, ImpactPanel, ComparePanel, StakeOverlayPanel, LinkHealthOverlayPanel, TrafficFlowOverlayPanel, MetroClusteringOverlayPanel, ContributorsOverlayPanel, ValidatorsOverlayPanel, BandwidthOverlayPanel, DeviceTypeOverlayPanel, LinkTypeOverlayPanel, LINK_TYPE_COLORS } from '@/components/topology'
 
 // Path colors for multi-path visualization
@@ -315,7 +315,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
   const markerClickedRef = useRef(false)
 
   // Get unified topology context
-  const { mode, setMode, pathMode, setPathMode, overlays, toggleOverlay, panel, openPanel, closePanel, selection } = useTopology()
+  const { mode, setMode, pathMode, setPathMode, overlays, toggleOverlay, panel, openPanel, closePanel, selection, impactDevices, toggleImpactDevice, clearImpactDevices } = useTopology()
 
   // Derive mode states from context
   const pathModeEnabled = mode === 'path'
@@ -356,9 +356,8 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
   const [additionResult, setAdditionResult] = useState<SimulateLinkAdditionResponse | null>(null)
   const [additionLoading, setAdditionLoading] = useState(false)
 
-  // Failure Impact operational state (local)
-  const [impactDevice, setImpactDevice] = useState<string | null>(null)
-  const [impactResult, setImpactResult] = useState<FailureImpactResponse | null>(null)
+  // Failure Impact operational state (local) - impactDevices comes from context
+  const [impactResult, setImpactResult] = useState<MaintenanceImpactResponse | null>(null)
   const [impactLoading, setImpactLoading] = useState(false)
 
   // Metro Clustering operational state (local)
@@ -631,6 +630,15 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     return map
   }, [devices])
 
+  // Build device code lookup map (pk -> code) for impact panel
+  const deviceCodeMap = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const device of devices) {
+      map.set(device.pk, device.code)
+    }
+    return map
+  }, [devices])
+
   // Build link lookup map
   const linkMap = useMemo(() => {
     const map = new Map<string, TopologyLink>()
@@ -858,10 +866,9 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     }
   }, [whatifAdditionMode])
 
-  // Clear impact state when exiting mode
+  // Clear impact result when exiting mode (impactDevices is cleared by context)
   useEffect(() => {
     if (!impactMode) {
-      setImpactDevice(null)
       setImpactResult(null)
     }
   }, [impactMode])
@@ -909,13 +916,13 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     setParam('addition_source', whatifAdditionMode ? additionSource : null)
     setParam('addition_target', whatifAdditionMode ? additionTarget : null)
 
-    // Impact mode params
-    setParam('impact_device', impactMode ? impactDevice : null)
+    // Impact mode params (comma-separated list of device PKs)
+    setParam('impact_devices', impactMode && impactDevices.length > 0 ? impactDevices.join(',') : null)
 
     if (changed) {
       setSearchParams(params, { replace: true })
     }
-  }, [modeParamsRestored, searchParams, setSearchParams, pathModeEnabled, pathSource, pathTarget, whatifRemovalMode, removalLink, whatifAdditionMode, additionSource, additionTarget, impactMode, impactDevice])
+  }, [modeParamsRestored, searchParams, setSearchParams, pathModeEnabled, pathSource, pathTarget, whatifRemovalMode, removalLink, whatifAdditionMode, additionSource, additionTarget, impactMode, impactDevices])
 
   // When entering analysis modes with a device already selected, use it as source
   const prevMapModeRef = useRef<string>(mode)
@@ -932,9 +939,9 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       setPathSource(selectedDevicePK)
     }
 
-    // impact mode: use selected device for failure analysis
-    if (impactMode && prevMapModeRef.current !== 'impact' && selectedDevicePK) {
-      setImpactDevice(selectedDevicePK)
+    // impact mode: use selected device for failure analysis (add to impact devices list)
+    if (impactMode && prevMapModeRef.current !== 'impact' && selectedDevicePK && !impactDevices.includes(selectedDevicePK)) {
+      toggleImpactDevice(selectedDevicePK)
     }
 
     prevMapModeRef.current = mode
@@ -996,34 +1003,31 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       })
   }, [additionSource, additionTarget, additionMetric])
 
-  // Analyze failure impact when impactDevice changes
+  // Analyze failure impact when impactDevices changes
   useEffect(() => {
-    if (!impactDevice) {
+    if (impactDevices.length === 0) {
       setImpactResult(null)
       return
     }
 
     setImpactLoading(true)
-    fetchFailureImpact(impactDevice)
+    fetchMaintenanceImpact(impactDevices, [])
       .then(result => {
         setImpactResult(result)
       })
       .catch(err => {
         setImpactResult({
-          devicePK: impactDevice,
-          deviceCode: '',
-          unreachableDevices: [],
-          unreachableCount: 0,
-          affectedPaths: [],
-          affectedPathCount: 0,
-          metroImpact: [],
+          items: [],
+          totalImpact: 0,
+          totalDisconnected: 0,
+          recommendedOrder: [],
           error: err.message,
         })
       })
       .finally(() => {
         setImpactLoading(false)
       })
-  }, [impactDevice])
+  }, [impactDevices])
 
   // Build map of device PKs to path indices for all paths
   const devicePathMap = useMemo(() => {
@@ -1480,7 +1484,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     const removalLinkParam = searchParams.get('removal_link')
     const additionSourceParam = searchParams.get('addition_source')
     const additionTargetParam = searchParams.get('addition_target')
-    const impactDeviceParam = searchParams.get('impact_device')
+    const impactDevicesParam = searchParams.get('impact_devices')
 
     // Restore path mode
     if (pathSourceParam || pathTargetParam) {
@@ -1608,30 +1612,57 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       return
     }
 
-    // Restore impact mode
-    if (impactDeviceParam) {
-      if (deviceMap.has(impactDeviceParam)) {
-        setImpactDevice(impactDeviceParam)
-        if (mode !== 'impact') {
-          setMode('impact')
-          openPanel('mode')
-        }
-        // Fly to the impact device
-        const device = deviceMap.get(impactDeviceParam)
-        const metro = device ? metroMap.get(device.metro_pk) : undefined
-        if (metro && mapRef.current) {
-          mapRef.current.flyTo({ center: [metro.longitude, metro.latitude], zoom: 4, duration: 1000 })
-        }
-        setModeParamsRestored(true)
+    // Restore impact mode (comma-separated device PKs)
+    if (impactDevicesParam) {
+      const devicePKs = impactDevicesParam.split(',').filter(Boolean)
+      // Check if all devices are available
+      const allFound = devicePKs.every(pk => deviceMap.has(pk))
+      if (!allFound) {
+        // Some devices not found yet, wait for more data
         return
       }
-      // Device not found yet, wait for more data
+      // Add each device to the impact list
+      for (const pk of devicePKs) {
+        if (!impactDevices.includes(pk)) {
+          toggleImpactDevice(pk)
+        }
+      }
+      if (mode !== 'impact') {
+        setMode('impact')
+        openPanel('mode')
+      }
+      // Fly to fit all impact devices
+      if (devicePKs.length > 0 && mapRef.current) {
+        // Collect all metro locations for the selected devices
+        const locations: { lng: number; lat: number }[] = []
+        for (const pk of devicePKs) {
+          const device = deviceMap.get(pk)
+          const metro = device ? metroMap.get(device.metro_pk) : undefined
+          if (metro) {
+            locations.push({ lng: metro.longitude, lat: metro.latitude })
+          }
+        }
+        if (locations.length === 1) {
+          // Single device - fly to it
+          mapRef.current.flyTo({ center: [locations[0].lng, locations[0].lat], zoom: 4, duration: 1000 })
+        } else if (locations.length > 1) {
+          // Multiple devices - fit bounds to show all
+          const lngs = locations.map(l => l.lng)
+          const lats = locations.map(l => l.lat)
+          const bounds: [[number, number], [number, number]] = [
+            [Math.min(...lngs), Math.min(...lats)],
+            [Math.max(...lngs), Math.max(...lats)],
+          ]
+          mapRef.current.fitBounds(bounds, { padding: 100, duration: 1000 })
+        }
+      }
+      setModeParamsRestored(true)
       return
     }
 
     // No mode params to restore
     setModeParamsRestored(true)
-  }, [modeParamsRestored, searchParams, deviceMap, linkMap, metroMap, mapReady, mode, setMode, openPanel])
+  }, [modeParamsRestored, searchParams, deviceMap, linkMap, metroMap, mapReady, mode, setMode, openPanel, impactDevices, toggleImpactDevice])
 
   // Restore selected item from URL params when they change
   // Track last processed params to avoid re-processing the same selection
@@ -2061,7 +2092,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           const isAdditionTarget = additionTarget === device.pk
           const isDisconnected = disconnectedDevicePKs.has(device.pk)
           // Impact mode state
-          const isImpactDevice = impactMode && impactDevice === device.pk
+          const isImpactDevice = impactMode && impactDevices.includes(device.pk)
           const deviceInfo: HoveredDeviceInfo = {
             pk: device.pk,
             code: device.code,
@@ -2248,8 +2279,8 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
                       setAdditionResult(null)
                     }
                   } else if (impactMode) {
-                    // Handle impact mode device clicks - analyze failure impact
-                    setImpactDevice(device.pk)
+                    // Handle impact mode device clicks - toggle device in/out of selection
+                    toggleImpactDevice(device.pk)
                   } else {
                     handleMarkerClick({ type: 'device', data: deviceInfo })
                   }
@@ -2510,11 +2541,13 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           )}
           {mode === 'impact' && (
             <ImpactPanel
-              devicePK={impactDevice}
+              devicePKs={impactDevices}
+              deviceCodes={deviceCodeMap}
               result={impactResult}
               isLoading={impactLoading}
-              onClose={() => {
-                setImpactDevice(null)
+              onRemoveDevice={toggleImpactDevice}
+              onClear={() => {
+                clearImpactDevices()
                 setImpactResult(null)
               }}
             />

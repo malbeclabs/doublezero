@@ -3,8 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import cytoscape from 'cytoscape'
 import type { Core, NodeSingular, EdgeSingular } from 'cytoscape'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchISISTopology, fetchISISPaths, fetchTopologyCompare, fetchFailureImpact, fetchCriticalLinks, fetchSimulateLinkRemoval, fetchSimulateLinkAddition, fetchTopology, fetchLinkHealth } from '@/lib/api'
-import type { FailureImpactResponse, MultiPathResponse, SimulateLinkRemovalResponse, SimulateLinkAdditionResponse } from '@/lib/api'
+import { fetchISISTopology, fetchISISPaths, fetchTopologyCompare, fetchMaintenanceImpact, fetchCriticalLinks, fetchSimulateLinkRemoval, fetchSimulateLinkAddition, fetchTopology, fetchLinkHealth } from '@/lib/api'
+import type { MaintenanceImpactResponse, MultiPathResponse, SimulateLinkRemovalResponse, SimulateLinkAdditionResponse } from '@/lib/api'
 import { useTheme } from '@/hooks/use-theme'
 import { useTopology, TopologyPanel, TopologyControlBar, DeviceDetails, LinkDetails, PathModePanel, CriticalityPanel, WhatIfRemovalPanel, WhatIfAdditionPanel, ImpactPanel, ComparePanel, StakeOverlayPanel, LinkHealthOverlayPanel, TrafficFlowOverlayPanel, MetroClusteringOverlayPanel, ContributorsOverlayPanel, BandwidthOverlayPanel, DeviceTypeOverlayPanel, LinkTypeOverlayPanel, LINK_TYPE_COLORS, type DeviceInfo, type LinkInfo } from '@/components/topology'
 import { ErrorState } from '@/components/ui/error-state'
@@ -98,7 +98,7 @@ export function TopologyGraph({
   const setSelectedLinkRef = useRef<(link: LinkInfo | null) => void>(() => {})
 
   // Get unified topology context
-  const { mode, setMode, pathMode, setPathMode, overlays, toggleOverlay, panel, openPanel, closePanel } = useTopology()
+  const { mode, setMode, pathMode, setPathMode, overlays, toggleOverlay, panel, openPanel, closePanel, impactDevices, toggleImpactDevice, clearImpactDevices } = useTopology()
 
   // Get URL params for link selection (device selection comes via props, but links need direct access)
   const [searchParams, setSearchParams] = useSearchParams()
@@ -122,9 +122,8 @@ export function TopologyGraph({
   const [selectedPathIndex, setSelectedPathIndex] = useState<number>(0)
   const [pathLoading, setPathLoading] = useState(false)
 
-  // Failure impact state
-  const [impactDevice, setImpactDevice] = useState<string | null>(null)
-  const [impactResult, setImpactResult] = useState<FailureImpactResponse | null>(null)
+  // Failure impact state - impactDevices comes from context
+  const [impactResult, setImpactResult] = useState<MaintenanceImpactResponse | null>(null)
   const [impactLoading, setImpactLoading] = useState(false)
 
   // What-If Link Removal state
@@ -336,6 +335,16 @@ export function TopologyGraph({
     })
     return map
   }, [linkInfoMap])
+
+  // Build device code lookup map (pk -> code) for impact panel
+  const deviceCodeMap = useMemo(() => {
+    const map = new Map<string, string>()
+    deviceInfoMap.forEach((info, pk) => {
+      map.set(pk, info.code)
+    })
+    return map
+  }, [deviceInfoMap])
+
   const linkByDevicePairMapRef = useRef<Map<string, LinkInfo>>(new Map())
   const previousPathEdgeIdsRef = useRef<Set<string>>(new Set())
 
@@ -848,13 +857,13 @@ export function TopologyGraph({
     setParam('addition_source', whatifAdditionMode ? additionSource : null)
     setParam('addition_target', whatifAdditionMode ? additionTarget : null)
 
-    // Impact mode params
-    setParam('impact_device', impactMode ? impactDevice : null)
+    // Impact mode params (comma-separated list of device PKs)
+    setParam('impact_devices', impactMode && impactDevices.length > 0 ? impactDevices.join(',') : null)
 
     if (changed) {
       setSearchParams(params, { replace: true })
     }
-  }, [searchParams, setSearchParams, pathModeEnabled, pathSource, pathTarget, whatifRemovalMode, removalLink, whatifAdditionMode, additionSource, additionTarget, impactMode, impactDevice])
+  }, [searchParams, setSearchParams, pathModeEnabled, pathSource, pathTarget, whatifRemovalMode, removalLink, whatifAdditionMode, additionSource, additionTarget, impactMode, impactDevices])
 
   // Restore mode selections from URL params on initial load only
   // TODO: Add proper back/forward navigation support
@@ -867,7 +876,7 @@ export function TopologyGraph({
     const removalEdgeParam = searchParams.get('removal_edge')
     const additionSourceParam = searchParams.get('addition_source')
     const additionTargetParam = searchParams.get('addition_target')
-    const impactDeviceParam = searchParams.get('impact_device')
+    const impactDevicesParam = searchParams.get('impact_devices')
 
     const devicePKs = new Set(topologyData.devices.map(d => d.pk))
 
@@ -933,21 +942,42 @@ export function TopologyGraph({
       return
     }
 
-    // Restore impact mode
-    if (impactDeviceParam) {
-      if (devicePKs.has(impactDeviceParam)) {
-        setImpactDevice(impactDeviceParam)
-        if (mode !== 'impact') {
-          setMode('impact')
-          openPanel('mode')
-        }
-        modeParamsRestoredRef.current = true
+    // Restore impact mode (comma-separated device PKs)
+    if (impactDevicesParam) {
+      const devicePKsList = impactDevicesParam.split(',').filter(Boolean)
+      // Check if all devices are available
+      const allFound = devicePKsList.every(pk => devicePKs.has(pk))
+      if (!allFound) {
+        // Some devices not found yet, wait for more data
         return
       }
+      // Add each device to the impact list
+      for (const pk of devicePKsList) {
+        if (!impactDevices.includes(pk)) {
+          toggleImpactDevice(pk)
+        }
+      }
+      if (mode !== 'impact') {
+        setMode('impact')
+        openPanel('mode')
+      }
+      // Animate to fit all impact devices in view
+      const cy = cyRef.current
+      if (cy && devicePKsList.length > 0) {
+        const nodes = cy.nodes().filter(n => devicePKsList.includes(n.id()))
+        if (nodes.length > 0) {
+          cy.animate({
+            fit: { eles: nodes, padding: 100 },
+            duration: 500,
+          })
+        }
+      }
+      modeParamsRestoredRef.current = true
+      return
     }
 
     modeParamsRestoredRef.current = true
-  }, [searchParams, topologyData, mode, setMode, openPanel])
+  }, [searchParams, topologyData, mode, setMode, openPanel, impactDevices, toggleImpactDevice])
 
   // When entering analysis modes with a device already selected, use it appropriately
   const prevModeRef = useRef<string>(mode)
@@ -983,13 +1013,13 @@ export function TopologyGraph({
       }
     }
 
-    // impact mode: use selected device for failure analysis
-    if (mode === 'impact' && prevModeRef.current !== 'impact' && selectedDevicePK) {
-      setImpactDevice(selectedDevicePK)
+    // impact mode: use selected device for failure analysis (add to impact devices list)
+    if (mode === 'impact' && prevModeRef.current !== 'impact' && selectedDevicePK && !impactDevices.includes(selectedDevicePK)) {
+      toggleImpactDevice(selectedDevicePK)
     }
 
     prevModeRef.current = mode
-  }, [mode, selectedDevicePK])
+  }, [mode, selectedDevicePK, impactDevices, toggleImpactDevice])
 
   // Reset edge styles when link overlay changes (before specific overlay applies its styling)
   // This ensures clean transitions between overlays
@@ -2366,55 +2396,31 @@ export function TopologyGraph({
     }
   }, [])
 
-  const analyzeImpact = useCallback(async (devicePK: string) => {
-    setImpactDevice(devicePK)
-    setImpactLoading(true)
-    setImpactResult(null)
-    try {
-      const result = await fetchFailureImpact(devicePK)
-      setImpactResult(result)
-    } catch {
-      setImpactResult({ devicePK, deviceCode: '', unreachableDevices: [], unreachableCount: 0, affectedPaths: [], affectedPathCount: 0, metroImpact: [], error: 'Failed to analyze impact' })
-    } finally {
-      setImpactLoading(false)
-    }
-  }, [])
-
-  const clearImpact = useCallback(() => {
-    setImpactDevice(null)
-    setImpactResult(null)
-  }, [])
-
-  // Fetch impact analysis when impactDevice changes (including from URL restoration)
+  // Fetch impact analysis when impactDevices changes
   useEffect(() => {
-    if (!impactDevice) {
+    if (impactDevices.length === 0) {
+      setImpactResult(null)
       return
     }
-    // Only fetch if we don't already have results for this device
-    if (impactResult?.devicePK === impactDevice) {
-      return
-    }
+
     setImpactLoading(true)
-    fetchFailureImpact(impactDevice)
+    fetchMaintenanceImpact(impactDevices, [])
       .then(result => {
         setImpactResult(result)
       })
-      .catch(() => {
+      .catch(err => {
         setImpactResult({
-          devicePK: impactDevice,
-          deviceCode: '',
-          unreachableDevices: [],
-          unreachableCount: 0,
-          affectedPaths: [],
-          affectedPathCount: 0,
-          metroImpact: [],
-          error: 'Failed to analyze impact',
+          items: [],
+          totalImpact: 0,
+          totalDisconnected: 0,
+          recommendedOrder: [],
+          error: err.message,
         })
       })
       .finally(() => {
         setImpactLoading(false)
       })
-  }, [impactDevice, impactResult?.devicePK])
+  }, [impactDevices])
 
   // Handle node clicks based on mode
   useEffect(() => {
@@ -2442,10 +2448,6 @@ export function TopologyGraph({
           setSelectedDeviceRef.current(deviceInfo)
           setSelectedLinkRef.current(null)
           openPanelRef.current('details')
-        }
-        // If impact panel is open, update to show new device's impact
-        if (impactDevice) {
-          setImpactDevice(devicePK)
         }
       } else if (mode === 'path') {
         if (!pathSource) {
@@ -2481,11 +2483,15 @@ export function TopologyGraph({
           node.addClass('whatif-addition-source')
         }
       } else if (mode === 'impact') {
-        // Analyze impact of this device failing
+        // Toggle device in/out of impact selection
         cy.elements().unselect()  // Clear selection to prevent :selected style override
-        cy.nodes().removeClass('impact-device')
-        node.addClass('impact-device')
-        analyzeImpact(devicePK)
+        toggleImpactDevice(devicePK)
+        // Toggle the class on the node
+        if (node.hasClass('impact-device')) {
+          node.removeClass('impact-device')
+        } else {
+          node.addClass('impact-device')
+        }
       }
     }
 
@@ -2505,7 +2511,7 @@ export function TopologyGraph({
       cy.off('tap', 'node', handleNodeTap)
       cy.off('dbltap', 'node', handleNodeDblTap)
     }
-  }, [mode, pathSource, pathTarget, additionSource, additionTarget, impactDevice, cyGeneration, analyzeImpact])
+  }, [mode, pathSource, pathTarget, additionSource, additionTarget, toggleImpactDevice, cyGeneration])
 
   // Handle edge clicks for explore mode (link selection) and whatif-removal mode
   useEffect(() => {
@@ -2563,7 +2569,12 @@ export function TopologyGraph({
     // Handle mode-specific actions for device selection via search
     if (selectedDevicePK) {
       if (mode === 'impact') {
-        analyzeImpact(selectedDevicePK)
+        // Add device to impact selection if not already there
+        if (!impactDevices.includes(selectedDevicePK)) {
+          toggleImpactDevice(selectedDevicePK)
+          const node = cy.getElementById(selectedDevicePK)
+          if (node.length) node.addClass('impact-device')
+        }
       } else if (mode === 'path') {
         if (!pathSource) {
           setPathSource(selectedDevicePK)
@@ -2638,7 +2649,7 @@ export function TopologyGraph({
       setSelectedDevice(null)
       setSelectedLink(null)
     }
-  }, [selectedDevicePK, selectedLinkPK, mode, cyGeneration, openPanel, deviceInfoMap, linkInfoMap, pathSource, pathTarget, additionSource, additionTarget, analyzeImpact])
+  }, [selectedDevicePK, selectedLinkPK, mode, cyGeneration, openPanel, deviceInfoMap, linkInfoMap, pathSource, pathTarget, additionSource, additionTarget, impactDevices, toggleImpactDevice])
 
   const handleZoomIn = () => cyRef.current?.zoom(cyRef.current.zoom() * 1.3)
   const handleZoomOut = () => cyRef.current?.zoom(cyRef.current.zoom() / 1.3)
@@ -2698,8 +2709,9 @@ export function TopologyGraph({
             if (panel.content === 'mode') {
               closePanel()
             }
-          } else if (impactDevice) {
-            clearImpact()
+          } else if (impactDevices.length > 0) {
+            clearImpactDevices()
+            setImpactResult(null)
           } else if (selectedDevicePK) {
             onDeviceSelectRef.current?.(null)
           }
@@ -2758,21 +2770,21 @@ export function TopologyGraph({
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [mode, impactDevice, selectedDevicePK])
+  }, [mode, impactDevices, clearImpactDevices, selectedDevicePK])
 
-  // Apply impact-device class when impactDevice changes (including from URL restoration)
+  // Apply impact-device class when impactDevices changes (including from URL restoration)
   useEffect(() => {
     if (!cyRef.current) return
     const cy = cyRef.current
 
     cy.nodes().removeClass('impact-device')
-    if (impactDevice) {
-      const node = cy.getElementById(impactDevice)
+    for (const devicePK of impactDevices) {
+      const node = cy.getElementById(devicePK)
       if (node.length) {
         node.addClass('impact-device')
       }
     }
-  }, [impactDevice, cyGeneration])
+  }, [impactDevices, cyGeneration])
 
   if (isLoading) {
     return (
@@ -2860,10 +2872,15 @@ export function TopologyGraph({
           )}
           {mode === 'impact' && (
             <ImpactPanel
-              devicePK={impactDevice}
+              devicePKs={impactDevices}
+              deviceCodes={deviceCodeMap}
               result={impactResult}
               isLoading={impactLoading}
-              onClose={clearImpact}
+              onRemoveDevice={toggleImpactDevice}
+              onClear={() => {
+                clearImpactDevices()
+                setImpactResult(null)
+              }}
             />
           )}
         </TopologyPanel>

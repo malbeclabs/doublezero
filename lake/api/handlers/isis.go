@@ -2649,13 +2649,14 @@ type MaintenanceImpactRequest struct {
 
 // MaintenanceItem represents a device or link being taken offline
 type MaintenanceItem struct {
-	Type            string   `json:"type"`            // "device" or "link"
-	PK              string   `json:"pk"`              // Device PK or link PK
-	Code            string   `json:"code"`            // Device code or "sourceCode - targetCode"
-	Impact          int      `json:"impact"`          // Number of affected paths/devices
-	Disconnected    int      `json:"disconnected"`    // Devices that would lose connectivity
-	CausesPartition bool     `json:"causesPartition"` // Would this cause a network partition?
-	DisconnectedDevices []string `json:"disconnectedDevices,omitempty"` // Device codes that would be disconnected
+	Type                string                    `json:"type"`                          // "device" or "link"
+	PK                  string                    `json:"pk"`                            // Device PK or link PK
+	Code                string                    `json:"code"`                          // Device code or "sourceCode - targetCode"
+	Impact              int                       `json:"impact"`                        // Number of affected paths/devices
+	Disconnected        int                       `json:"disconnected"`                  // Devices that would lose connectivity
+	CausesPartition     bool                      `json:"causesPartition"`               // Would this cause a network partition?
+	DisconnectedDevices []string                  `json:"disconnectedDevices,omitempty"` // Device codes that would be disconnected
+	AffectedPaths       []MaintenanceAffectedPath `json:"affectedPaths,omitempty"`       // Paths affected by this item
 }
 
 // MaintenanceAffectedPath represents a path that would be impacted by maintenance
@@ -3056,6 +3057,17 @@ func analyzeDevicesImpactBatch(ctx context.Context, session neo4j.Session, devic
 			DisconnectedDevices: disconnectedList,
 		}
 		resultMap[asString(pk)] = item
+	}
+
+	// Compute affected paths for each device (limit to 10 per device for performance)
+	for pk, item := range resultMap {
+		if item.Impact > 0 {
+			offlineSet := map[string]bool{pk: true}
+			paths := computeAffectedPathsFast(ctx, session, offlineSet, 10)
+			item.AffectedPaths = paths
+			item.Impact = len(paths) // Use actual count instead of estimate
+			resultMap[pk] = item
+		}
 	}
 
 	// Return items in the same order as input

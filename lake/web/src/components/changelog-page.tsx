@@ -12,12 +12,15 @@ const changelog: ChangelogEntry[] = [
   {
     date: 'January 22, 2026',
     changes: [
+      { type: 'feature', description: 'Multi-device failure analysis with combined impact view' },
       { type: 'feature', description: 'Sortable, filterable tables on all entity pages with autocomplete' },
       { type: 'feature', description: 'IS-IS delay override tracking in link timeline' },
+      { type: 'improvement', description: 'Expandable per-device breakdown showing affected paths and disconnected devices' },
       { type: 'improvement', description: 'Timeline filter state persisted in URL for shareable links' },
       { type: 'improvement', description: 'Zoom and pan to selected items when loading topology from URL' },
       { type: 'improvement', description: 'Suggested questions refresh when clicking Chat in navigation' },
       { type: 'improvement', description: 'Grace period before showing update notifications' },
+      { type: 'fix', description: 'Path finding mode now toggles off when clicking active control' },
       { type: 'fix', description: 'Link removal panel now shows latency impact first' },
       { type: 'fix', description: 'Blank page when navigating to new query sessions' },
       { type: 'fix', description: 'Query progress spinner not updating to completed state' },

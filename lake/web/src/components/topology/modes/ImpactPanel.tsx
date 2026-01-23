@@ -1,19 +1,33 @@
-import { Zap, X, ArrowRight, AlertTriangle, MapPin } from 'lucide-react'
-import type { FailureImpactResponse } from '@/lib/api'
+import { useState } from 'react'
+import { Zap, X, AlertTriangle, MapPin, ChevronDown, ChevronRight, ArrowRight } from 'lucide-react'
+import type { MaintenanceImpactResponse } from '@/lib/api'
 
 interface ImpactPanelProps {
-  devicePK: string | null
-  result: FailureImpactResponse | null
+  devicePKs: string[]
+  deviceCodes: Map<string, string>  // PK -> code mapping for display
+  result: MaintenanceImpactResponse | null
   isLoading: boolean
-  onClose: () => void
+  onRemoveDevice: (pk: string) => void
+  onClear: () => void
 }
 
-// Convert ISIS metric (microseconds) to milliseconds for display
-function metricToMs(metric: number): string {
-  return (metric / 1000).toFixed(2)
-}
+export function ImpactPanel({ devicePKs, deviceCodes, result, isLoading, onRemoveDevice, onClear }: ImpactPanelProps) {
+  const hasDevices = devicePKs.length > 0
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set())
+  const [showAffectedPaths, setShowAffectedPaths] = useState(false)
 
-export function ImpactPanel({ devicePK, result, isLoading, onClose }: ImpactPanelProps) {
+  const toggleExpanded = (pk: string) => {
+    setExpandedItems(prev => {
+      const next = new Set(prev)
+      if (next.has(pk)) {
+        next.delete(pk)
+      } else {
+        next.add(pk)
+      }
+      return next
+    })
+  }
+
   return (
     <div className="p-3 text-xs">
       <div className="flex items-center justify-between mb-2">
@@ -21,17 +35,43 @@ export function ImpactPanel({ devicePK, result, isLoading, onClose }: ImpactPane
           <Zap className="h-3.5 w-3.5 text-purple-500" />
           Device Failure
         </span>
-        {devicePK && (
-          <button onClick={onClose} className="p-1 hover:bg-[var(--muted)] rounded" title="Clear">
+        {hasDevices && (
+          <button onClick={onClear} className="p-1 hover:bg-[var(--muted)] rounded" title="Clear all">
             <X className="h-3 w-3" />
           </button>
         )}
       </div>
 
       {/* Show prompt when no device selected */}
-      {!devicePK && !isLoading && (
+      {!hasDevices && !isLoading && (
         <div className="text-muted-foreground">
-          Click a device to analyze what happens if it fails.
+          Click devices to analyze what happens if they fail. You can select multiple devices.
+        </div>
+      )}
+
+      {/* Selected devices list */}
+      {hasDevices && (
+        <div className="mb-3 space-y-1">
+          <div className="text-muted-foreground text-[10px] uppercase tracking-wider">
+            Selected Devices ({devicePKs.length})
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {devicePKs.map(pk => (
+              <span
+                key={pk}
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-purple-500/20 text-purple-500 rounded text-[11px]"
+              >
+                {deviceCodes.get(pk) || pk}
+                <button
+                  onClick={() => onRemoveDevice(pk)}
+                  className="hover:bg-purple-500/30 rounded p-0.5"
+                  title="Remove"
+                >
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              </span>
+            ))}
+          </div>
         </div>
       )}
 
@@ -39,179 +79,257 @@ export function ImpactPanel({ devicePK, result, isLoading, onClose }: ImpactPane
         <div className="text-muted-foreground">Analyzing impact...</div>
       )}
 
-      {result && !result.error && (
+      {result && !result.error && hasDevices && (
         <div className="space-y-4">
           <div className="text-muted-foreground">
-            If <span className="font-medium text-foreground">{result.deviceCode}</span> goes down:
-          </div>
-
-          {/* Unreachable Devices Section */}
-          <div className="space-y-2">
-            <div className="font-medium text-muted-foreground uppercase tracking-wider text-[10px]">
-              Unreachable Devices
-            </div>
-            {result.unreachableCount === 0 ? (
-              <div className="text-green-500 flex items-center gap-1.5">
-                <div className="w-2 h-2 rounded-full bg-green-500" />
-                None - all devices remain reachable
-              </div>
+            If {devicePKs.length === 1 ? (
+              <span className="font-medium text-foreground">{deviceCodes.get(devicePKs[0]) || devicePKs[0]}</span>
             ) : (
-              <div className="space-y-2">
-                <div className="text-red-500 font-medium flex items-center gap-1.5">
-                  <AlertTriangle className="h-3.5 w-3.5" />
-                  {result.unreachableCount} device{result.unreachableCount !== 1 ? 's' : ''} would be isolated
-                </div>
-                <div className="space-y-0.5">
-                  {result.unreachableDevices.map(device => (
-                    <div key={device.pk} className="flex items-center gap-1.5 pl-1">
-                      <div className={`w-2 h-2 rounded-full ${device.status === 'active' ? 'bg-green-500' : 'bg-red-500'}`} />
-                      <span>{device.code}</span>
-                      <span className="text-muted-foreground">({device.deviceType})</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+              <span className="font-medium text-foreground">{devicePKs.length} devices</span>
+            )} go{devicePKs.length === 1 ? 'es' : ''} down:
           </div>
 
-          {/* Metro Impact Section */}
-          {result.metroImpact && result.metroImpact.length > 0 && (
+          {/* Summary stats */}
+          <div className="grid grid-cols-2 gap-2">
+            <div className="border border-border rounded p-2">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Disconnected</div>
+              <div className={`text-lg font-medium ${result.totalDisconnected > 0 ? 'text-red-500' : 'text-green-500'}`}>
+                {result.totalDisconnected}
+              </div>
+            </div>
+            <div className="border border-border rounded p-2">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Affected Paths</div>
+              <div className={`text-lg font-medium ${result.totalImpact > 0 ? 'text-yellow-500' : 'text-green-500'}`}>
+                {result.totalImpact}
+              </div>
+            </div>
+          </div>
+
+          {/* Per-device breakdown */}
+          {result.items.length > 0 && (
             <div className="space-y-2">
               <div className="font-medium text-muted-foreground uppercase tracking-wider text-[10px]">
-                Metro Impact
+                Per-Device Impact
               </div>
-              <div className="space-y-2">
-                {/* Metros that would lose all connectivity */}
-                {result.metroImpact.filter(m => m.remainingDevices === 0).length > 0 && (
-                  <div className="space-y-1">
-                    <div className="text-red-500 font-medium flex items-center gap-1.5">
-                      <AlertTriangle className="h-3.5 w-3.5" />
-                      {result.metroImpact.filter(m => m.remainingDevices === 0).length} metro{result.metroImpact.filter(m => m.remainingDevices === 0).length !== 1 ? 's' : ''} would lose all connectivity
-                    </div>
-                    <div className="space-y-0.5">
-                      {result.metroImpact.filter(m => m.remainingDevices === 0).map(metro => (
-                        <div key={metro.pk} className="flex items-center gap-1.5 pl-1">
-                          <MapPin className="h-3 w-3 text-red-500" />
-                          <span className="font-medium">{metro.code}</span>
-                          <span className="text-muted-foreground">
-                            ({metro.isolatedDevices} device{metro.isolatedDevices !== 1 ? 's' : ''})
-                          </span>
+              <div className="space-y-1">
+                {result.items.map(item => {
+                  const hasDisconnected = item.disconnectedDevices && item.disconnectedDevices.length > 0
+                  const hasImpact = item.impact > 0 || item.disconnected > 0
+                  const isExpanded = expandedItems.has(item.pk)
+
+                  return (
+                    <div key={item.pk} className="border border-border rounded overflow-hidden">
+                      <button
+                        onClick={() => hasImpact && toggleExpanded(item.pk)}
+                        className={`w-full flex items-center justify-between text-[11px] px-2 py-1.5 ${hasImpact ? 'hover:bg-[var(--muted)] cursor-pointer' : 'cursor-default'}`}
+                        disabled={!hasImpact}
+                      >
+                        <span className="flex items-center gap-1">
+                          {hasImpact ? (
+                            isExpanded ? (
+                              <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                            ) : (
+                              <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                            )
+                          ) : (
+                            <span className="w-3" />
+                          )}
+                          <span className="font-medium">{item.code}</span>
+                        </span>
+                        <span className="text-muted-foreground">
+                          {item.disconnected > 0 && (
+                            <span className="text-red-500">{item.disconnected} disconnected</span>
+                          )}
+                          {item.disconnected > 0 && item.impact > 0 && ' · '}
+                          {item.impact > 0 && (
+                            <span className="text-yellow-500">{item.impact} paths</span>
+                          )}
+                          {item.disconnected === 0 && item.impact === 0 && (
+                            <span className="text-green-500">No impact</span>
+                          )}
+                        </span>
+                      </button>
+                      {isExpanded && hasImpact && (
+                        <div className="border-t border-border bg-[var(--muted)]/30 px-2 py-1.5 space-y-2">
+                          {hasDisconnected && (
+                            <div>
+                              <div className="text-[10px] text-muted-foreground mb-1">Disconnected devices:</div>
+                              <div className="space-y-0.5 max-h-24 overflow-y-auto">
+                                {item.disconnectedDevices!.map(deviceCode => (
+                                  <div key={deviceCode} className="flex items-center gap-1.5 text-[11px]">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                                    <span>{deviceCode}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {item.affectedPaths && item.affectedPaths.length > 0 && (
+                            <div>
+                              <div className="text-[10px] text-muted-foreground mb-1">Affected paths:</div>
+                              <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                                {item.affectedPaths.map((path, idx) => (
+                                  <div key={idx} className="text-[11px]">
+                                    <div className="flex items-center gap-1.5">
+                                      <span>{path.source}</span>
+                                      <ArrowRight className="h-2.5 w-2.5 text-muted-foreground flex-shrink-0" />
+                                      <span>{path.target}</span>
+                                      <span className={`text-[10px] px-1 rounded flex-shrink-0 ${
+                                        path.status === 'disconnected' ? 'bg-red-500/20 text-red-500' :
+                                        path.status === 'degraded' ? 'bg-yellow-500/20 text-yellow-500' :
+                                        'bg-blue-500/20 text-blue-500'
+                                      }`}>
+                                        {path.status}
+                                      </span>
+                                    </div>
+                                    {path.status !== 'disconnected' && (path.hopsAfter !== path.hopsBefore || path.metricAfter !== path.metricBefore) && (
+                                      <div className="text-[10px] text-muted-foreground pl-1 mt-0.5">
+                                        {path.hopsAfter !== path.hopsBefore && (
+                                          <span>+{path.hopsAfter - path.hopsBefore} hop{Math.abs(path.hopsAfter - path.hopsBefore) !== 1 ? 's' : ''}</span>
+                                        )}
+                                        {path.hopsAfter !== path.hopsBefore && path.metricAfter !== path.metricBefore && ', '}
+                                        {path.metricAfter !== path.metricBefore && (
+                                          <span>
+                                            {path.metricAfter > path.metricBefore ? '+' : ''}
+                                            {((path.metricAfter - path.metricBefore) / 1000).toFixed(1)}ms
+                                          </span>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                              {item.affectedPaths.length >= 10 && (
+                                <div className="text-[10px] text-muted-foreground mt-1 italic">
+                                  Showing first 10 paths
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          {item.impact > 0 && (!item.affectedPaths || item.affectedPaths.length === 0) && (
+                            <div className="text-[11px] text-yellow-600">
+                              {item.impact} path{item.impact !== 1 ? 's' : ''} would need to be rerouted
+                            </div>
+                          )}
                         </div>
-                      ))}
+                      )}
                     </div>
-                  </div>
-                )}
-                {/* Metros down to 1 device - critical warning */}
-                {result.metroImpact.filter(m => m.remainingDevices === 1).length > 0 && (
-                  <div className="space-y-1">
-                    <div className="text-yellow-500 font-medium flex items-center gap-1.5">
-                      <AlertTriangle className="h-3.5 w-3.5" />
-                      {result.metroImpact.filter(m => m.remainingDevices === 1).length} metro{result.metroImpact.filter(m => m.remainingDevices === 1).length !== 1 ? 's' : ''} would have only 1 device
-                    </div>
-                    <div className="space-y-0.5">
-                      {result.metroImpact.filter(m => m.remainingDevices === 1).map(metro => (
-                        <div key={metro.pk} className="flex items-center gap-1.5 pl-1">
-                          <MapPin className="h-3 w-3 text-yellow-500" />
-                          <span className="font-medium">{metro.code}</span>
-                          <span className="text-muted-foreground">
-                            (1/{metro.totalDevices} devices remaining)
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {/* Metros with reduced but adequate connectivity - informational only */}
-                {result.metroImpact.filter(m => m.remainingDevices > 1).length > 0 && (
-                  <div className="space-y-1">
-                    <div className="text-muted-foreground">
-                      {result.metroImpact.filter(m => m.remainingDevices > 1).length} metro{result.metroImpact.filter(m => m.remainingDevices > 1).length !== 1 ? 's' : ''} with reduced devices:
-                    </div>
-                    <div className="space-y-0.5">
-                      {result.metroImpact.filter(m => m.remainingDevices > 1).map(metro => (
-                        <div key={metro.pk} className="flex items-center gap-1.5 pl-1">
-                          <MapPin className="h-3 w-3 text-muted-foreground" />
-                          <span>{metro.code}</span>
-                          <span className="text-muted-foreground">
-                            ({metro.remainingDevices}/{metro.totalDevices} remaining)
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                  )
+                })}
               </div>
             </div>
           )}
 
-          {/* Affected Paths Section */}
-          <div className="space-y-2">
-            <div className="font-medium text-muted-foreground uppercase tracking-wider text-[10px]">
-              Affected Paths
-            </div>
-            {result.affectedPathCount === 0 ? (
-              <div className="text-green-500 flex items-center gap-1.5">
-                <div className="w-2 h-2 rounded-full bg-green-500" />
-                No paths would need to reroute
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <div className="text-yellow-500 font-medium">
-                  {result.affectedPathCount} path{result.affectedPathCount !== 1 ? 's' : ''} would reroute
-                </div>
-                <div className="space-y-2">
-                  {result.affectedPaths.map((path, idx) => {
-                    const hopDelta = path.hasAlternate ? path.afterHops - path.beforeHops : 0
-                    const metricDelta = path.hasAlternate ? path.afterMetric - path.beforeMetric : 0
-
-                    return (
-                      <div key={idx} className="border border-border rounded p-2 space-y-1">
-                        {/* Path endpoints */}
-                        <div className="flex items-center gap-1 font-medium">
-                          <span>{path.fromCode}</span>
+          {/* Affected paths (collapsible) - show if totalImpact > 0 */}
+          {result.totalImpact > 0 && (
+            <div className="space-y-2">
+              <button
+                onClick={() => setShowAffectedPaths(!showAffectedPaths)}
+                className="w-full flex items-center gap-1 font-medium text-muted-foreground uppercase tracking-wider text-[10px] hover:text-foreground"
+              >
+                {showAffectedPaths ? (
+                  <ChevronDown className="h-3 w-3" />
+                ) : (
+                  <ChevronRight className="h-3 w-3" />
+                )}
+                Affected Paths ({result.affectedPaths?.length || result.totalImpact})
+              </button>
+              {showAffectedPaths && (
+                <div className="space-y-1 max-h-48 overflow-y-auto">
+                  {result.affectedPaths && result.affectedPaths.length > 0 ? (
+                    result.affectedPaths.map((path, idx) => (
+                      <div key={idx} className="border border-border rounded p-2 text-[11px]">
+                        <div className="flex items-center gap-1 font-medium mb-1">
+                          <span>{path.source}</span>
                           <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                          <span>{path.toCode}</span>
+                          <span>{path.target}</span>
                         </div>
-
-                        {/* Before/After comparison */}
-                        <div className="grid grid-cols-2 gap-2 text-muted-foreground">
-                          <div>
-                            <span className="text-[10px] uppercase tracking-wider">Before</span>
-                            <div className="text-foreground">
-                              {path.beforeHops} hop{path.beforeHops !== 1 ? 's' : ''}, {metricToMs(path.beforeMetric)}ms
-                            </div>
-                          </div>
-                          <div>
-                            <span className="text-[10px] uppercase tracking-wider">After</span>
-                            {path.hasAlternate ? (
-                              <div className="text-foreground">
-                                {path.afterHops} hop{path.afterHops !== 1 ? 's' : ''}, {metricToMs(path.afterMetric)}ms
-                              </div>
-                            ) : (
-                              <div className="text-red-500">No alternate</div>
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <span className="text-[10px]">{path.sourceMetro} → {path.targetMetro}</span>
+                          <span className={`text-[10px] px-1 rounded ${
+                            path.status === 'disconnected' ? 'bg-red-500/20 text-red-500' :
+                            path.status === 'degraded' ? 'bg-yellow-500/20 text-yellow-500' :
+                            'bg-blue-500/20 text-blue-500'
+                          }`}>
+                            {path.status}
+                          </span>
+                        </div>
+                        {path.status !== 'disconnected' && (
+                          <div className="text-[10px] text-muted-foreground mt-1">
+                            {path.hopsBefore} → {path.hopsAfter} hops
+                            {path.metricBefore !== path.metricAfter && (
+                              <span className="ml-2">
+                                {(path.metricBefore / 1000).toFixed(1)} → {(path.metricAfter / 1000).toFixed(1)}ms
+                              </span>
                             )}
-                          </div>
-                        </div>
-
-                        {/* Impact summary */}
-                        {path.hasAlternate && (
-                          <div className={`text-[10px] ${hopDelta > 0 || metricDelta > 0 ? 'text-yellow-500' : 'text-green-500'}`}>
-                            {hopDelta > 0 ? '+' : ''}{hopDelta} hop{hopDelta !== 1 && hopDelta !== -1 ? 's' : ''}, {metricDelta > 0 ? '+' : ''}{metricToMs(metricDelta)}ms latency
-                          </div>
-                        )}
-                        {!path.hasAlternate && (
-                          <div className="text-red-500 text-[10px] flex items-center gap-1">
-                            <AlertTriangle className="h-3 w-3" />
-                            Connection would be lost
                           </div>
                         )}
                       </div>
-                    )
-                  })}
+                    ))
+                  ) : (
+                    <div className="text-muted-foreground text-[11px] italic">
+                      {result.totalImpact} path{result.totalImpact !== 1 ? 's' : ''} would need to be rerouted
+                    </div>
+                  )}
                 </div>
+              )}
+            </div>
+          )}
+
+          {/* Disconnected devices list */}
+          {result.disconnectedList && result.disconnectedList.length > 0 && (
+            <div className="space-y-2">
+              <div className="font-medium text-muted-foreground uppercase tracking-wider text-[10px]">
+                Unreachable Devices
               </div>
-            )}
-          </div>
+              <div className="text-red-500 flex items-center gap-1.5">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                {result.disconnectedList.length} device{result.disconnectedList.length !== 1 ? 's' : ''} would be isolated
+              </div>
+              <div className="space-y-0.5 max-h-32 overflow-y-auto">
+                {result.disconnectedList.map(code => (
+                  <div key={code} className="flex items-center gap-1.5 pl-1 text-[11px]">
+                    <div className="w-2 h-2 rounded-full bg-red-500" />
+                    <span>{code}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Affected metros */}
+          {result.affectedMetros && result.affectedMetros.length > 0 && (
+            <div className="space-y-2">
+              <div className="font-medium text-muted-foreground uppercase tracking-wider text-[10px]">
+                Affected Metro Pairs
+              </div>
+              <div className="space-y-1 max-h-32 overflow-y-auto">
+                {result.affectedMetros.map((metro, idx) => (
+                  <div key={idx} className="flex items-center gap-1.5 pl-1 text-[11px]">
+                    <MapPin className={`h-3 w-3 ${
+                      metro.status === 'disconnected' ? 'text-red-500' :
+                      metro.status === 'degraded' ? 'text-yellow-500' : 'text-muted-foreground'
+                    }`} />
+                    <span>{metro.sourceMetro} ↔ {metro.targetMetro}</span>
+                    <span className={`text-[10px] ${
+                      metro.status === 'disconnected' ? 'text-red-500' :
+                      metro.status === 'degraded' ? 'text-yellow-500' : 'text-muted-foreground'
+                    }`}>
+                      ({metro.status})
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* No impact message */}
+          {result.totalDisconnected === 0 && result.totalImpact === 0 && (
+            <div className="text-green-500 flex items-center gap-1.5">
+              <div className="w-2 h-2 rounded-full bg-green-500" />
+              No significant impact - network remains fully connected
+            </div>
+          )}
         </div>
       )}
 

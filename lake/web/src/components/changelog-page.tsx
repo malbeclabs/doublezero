@@ -10,6 +10,13 @@ interface ChangelogEntry {
 
 const changelog: ChangelogEntry[] = [
   {
+    date: 'January 23, 2026',
+    changes: [
+      { type: 'feature', description: 'Telemetry stopped indicator in status page summary' },
+      { type: 'improvement', description: 'Unified what-if removal analysis for maintenance planner' },
+    ],
+  },
+  {
     date: 'January 22, 2026',
     changes: [
       { type: 'feature', description: 'Multi-device failure analysis with combined impact view' },

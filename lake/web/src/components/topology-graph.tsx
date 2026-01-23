@@ -3,8 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import cytoscape from 'cytoscape'
 import type { Core, NodeSingular, EdgeSingular } from 'cytoscape'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchISISTopology, fetchISISPaths, fetchTopologyCompare, fetchMaintenanceImpact, fetchCriticalLinks, fetchSimulateLinkRemoval, fetchSimulateLinkAddition, fetchTopology, fetchLinkHealth } from '@/lib/api'
-import type { MaintenanceImpactResponse, MultiPathResponse, SimulateLinkRemovalResponse, SimulateLinkAdditionResponse } from '@/lib/api'
+import { fetchISISTopology, fetchISISPaths, fetchTopologyCompare, fetchWhatIfRemoval, fetchCriticalLinks, fetchSimulateLinkRemoval, fetchSimulateLinkAddition, fetchTopology, fetchLinkHealth } from '@/lib/api'
+import type { WhatIfRemovalResponse, MultiPathResponse, SimulateLinkRemovalResponse, SimulateLinkAdditionResponse } from '@/lib/api'
 import { useTheme } from '@/hooks/use-theme'
 import { useTopology, TopologyPanel, TopologyControlBar, DeviceDetails, LinkDetails, PathModePanel, CriticalityPanel, WhatIfRemovalPanel, WhatIfAdditionPanel, ImpactPanel, ComparePanel, StakeOverlayPanel, LinkHealthOverlayPanel, TrafficFlowOverlayPanel, MetroClusteringOverlayPanel, ContributorsOverlayPanel, BandwidthOverlayPanel, DeviceTypeOverlayPanel, LinkTypeOverlayPanel, LINK_TYPE_COLORS, type DeviceInfo, type LinkInfo } from '@/components/topology'
 import { ErrorState } from '@/components/ui/error-state'
@@ -123,7 +123,7 @@ export function TopologyGraph({
   const [pathLoading, setPathLoading] = useState(false)
 
   // Failure impact state - impactDevices comes from context
-  const [impactResult, setImpactResult] = useState<MaintenanceImpactResponse | null>(null)
+  const [impactResult, setImpactResult] = useState<WhatIfRemovalResponse | null>(null)
   const [impactLoading, setImpactLoading] = useState(false)
 
   // What-If Link Removal state
@@ -2404,16 +2404,15 @@ export function TopologyGraph({
     }
 
     setImpactLoading(true)
-    fetchMaintenanceImpact(impactDevices, [])
+    fetchWhatIfRemoval(impactDevices, [])
       .then(result => {
         setImpactResult(result)
       })
       .catch(err => {
         setImpactResult({
           items: [],
-          totalImpact: 0,
+          totalAffectedPaths: 0,
           totalDisconnected: 0,
-          recommendedOrder: [],
           error: err.message,
         })
       })

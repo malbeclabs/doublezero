@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"net/http"
 	"strconv"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/malbeclabs/doublezero/lake/api/config"
 	"github.com/malbeclabs/doublezero/lake/api/metrics"
+	"github.com/malbeclabs/doublezero/lake/indexer/pkg/neo4j"
 )
 
 // SimulateLinkRemovalResponse is the response for simulating link removal
@@ -537,4 +539,549 @@ func GetSimulateLinkAddition(w http.ResponseWriter, r *http.Request) {
 		response.SourceCode, response.TargetCode, metric, response.ImprovedPathCount, response.RedundancyCount, duration)
 
 	writeJSON(w, response)
+}
+
+// WhatIfRemovalRequest is the request body for unified what-if removal analysis
+type WhatIfRemovalRequest struct {
+	Devices []string `json:"devices"` // Device PKs
+	Links   []string `json:"links"`   // Link PKs
+}
+
+// WhatIfRemovalResponse is the response for unified what-if removal analysis
+type WhatIfRemovalResponse struct {
+	Items              []WhatIfRemovalItem   `json:"items"`
+	TotalAffectedPaths int                   `json:"totalAffectedPaths"`
+	TotalDisconnected  int                   `json:"totalDisconnected"`
+	AffectedPaths      []WhatIfAffectedPath  `json:"affectedPaths,omitempty"`
+	DisconnectedList   []string              `json:"disconnectedList,omitempty"`
+	Error              string                `json:"error,omitempty"`
+}
+
+// WhatIfRemovalItem represents impact of a single device or link removal
+type WhatIfRemovalItem struct {
+	Type                string               `json:"type"` // "device" or "link"
+	PK                  string               `json:"pk"`   // Device PK or Link PK
+	Code                string               `json:"code"` // Display name
+	AffectedPaths       []WhatIfAffectedPath `json:"affectedPaths"`
+	AffectedPathCount   int                  `json:"affectedPathCount"`
+	DisconnectedDevices []string             `json:"disconnectedDevices"`
+	DisconnectedCount   int                  `json:"disconnectedCount"`
+	CausesPartition     bool                 `json:"causesPartition"`
+}
+
+// WhatIfAffectedPath represents a path affected by removal
+type WhatIfAffectedPath struct {
+	Source       string `json:"source"`
+	Target       string `json:"target"`
+	SourceMetro  string `json:"sourceMetro,omitempty"`
+	TargetMetro  string `json:"targetMetro,omitempty"`
+	HopsBefore   int    `json:"hopsBefore"`
+	MetricBefore int    `json:"metricBefore"`
+	HopsAfter    int    `json:"hopsAfter"`   // -1 if disconnected
+	MetricAfter  int    `json:"metricAfter"` // -1 if disconnected
+	Status       string `json:"status"`      // "rerouted", "degraded", "disconnected"
+}
+
+// PostWhatIfRemoval analyzes the impact of removing devices and/or links
+func PostWhatIfRemoval(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+
+	start := time.Now()
+
+	// Parse request body
+	var req WhatIfRemovalRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, WhatIfRemovalResponse{Error: "Invalid request body: " + err.Error()})
+		return
+	}
+
+	if len(req.Devices) == 0 && len(req.Links) == 0 {
+		writeJSON(w, WhatIfRemovalResponse{Error: "No devices or links specified"})
+		return
+	}
+
+	session := config.Neo4jSession(ctx)
+	defer session.Close(ctx)
+
+	response := WhatIfRemovalResponse{
+		Items:            []WhatIfRemovalItem{},
+		AffectedPaths:    []WhatIfAffectedPath{},
+		DisconnectedList: []string{},
+	}
+
+	// Analyze each device
+	for _, devicePK := range req.Devices {
+		item := analyzeDeviceRemoval(ctx, session, devicePK, 10)
+		response.Items = append(response.Items, item)
+		response.TotalAffectedPaths += item.AffectedPathCount
+		response.TotalDisconnected += item.DisconnectedCount
+		response.AffectedPaths = append(response.AffectedPaths, item.AffectedPaths...)
+		response.DisconnectedList = append(response.DisconnectedList, item.DisconnectedDevices...)
+	}
+
+	// Analyze each link
+	for _, linkPK := range req.Links {
+		item := analyzeLinkRemoval(ctx, session, linkPK, 10)
+		response.Items = append(response.Items, item)
+		response.TotalAffectedPaths += item.AffectedPathCount
+		response.TotalDisconnected += item.DisconnectedCount
+		response.AffectedPaths = append(response.AffectedPaths, item.AffectedPaths...)
+		response.DisconnectedList = append(response.DisconnectedList, item.DisconnectedDevices...)
+	}
+
+	// Limit total affected paths in response
+	if len(response.AffectedPaths) > 50 {
+		response.AffectedPaths = response.AffectedPaths[:50]
+	}
+
+	duration := time.Since(start)
+	metrics.RecordClickHouseQuery(duration, nil)
+
+	log.Printf("What-if removal: %d devices, %d links, totalPaths=%d, totalDisconnected=%d in %v",
+		len(req.Devices), len(req.Links), response.TotalAffectedPaths, response.TotalDisconnected, duration)
+
+	writeJSON(w, response)
+}
+
+// analyzeDeviceRemoval computes the impact of removing a single device
+func analyzeDeviceRemoval(ctx context.Context, session neo4j.Session, devicePK string, pathLimit int) WhatIfRemovalItem {
+	item := WhatIfRemovalItem{
+		Type:                "device",
+		PK:                  devicePK,
+		AffectedPaths:       []WhatIfAffectedPath{},
+		DisconnectedDevices: []string{},
+	}
+
+	// Get device code and neighbor info
+	infoCypher := `
+		MATCH (d:Device {pk: $devicePK})
+		WHERE d.isis_system_id IS NOT NULL
+
+		// Get device code
+		WITH d
+
+		// Find all neighbors
+		OPTIONAL MATCH (d)-[:ISIS_ADJACENT]-(neighbor:Device)
+		WHERE neighbor.isis_system_id IS NOT NULL
+		WITH d, collect(DISTINCT neighbor) AS neighbors
+
+		// Find leaf neighbors (degree 1) that would be disconnected
+		UNWIND neighbors AS neighbor
+		OPTIONAL MATCH (neighbor)-[:ISIS_ADJACENT]-(neighborOfNeighbor:Device)
+		WHERE neighborOfNeighbor.isis_system_id IS NOT NULL
+		WITH d, neighbor, count(DISTINCT neighborOfNeighbor) AS neighborDegree
+		WITH d,
+		     collect(CASE WHEN neighborDegree = 1 THEN neighbor.code ELSE null END) AS leafCodes
+
+		RETURN d.code AS code,
+		       [x IN leafCodes WHERE x IS NOT NULL] AS disconnectedDevices
+	`
+
+	result, err := session.Run(ctx, infoCypher, map[string]any{"devicePK": devicePK})
+	if err != nil {
+		log.Printf("Device removal info query error: %v", err)
+		item.Code = devicePK
+		return item
+	}
+
+	if result.Next(ctx) {
+		record := result.Record()
+		code, _ := record.Get("code")
+		disconnected, _ := record.Get("disconnectedDevices")
+
+		item.Code = asString(code)
+		if arr, ok := disconnected.([]any); ok {
+			for _, v := range arr {
+				if s := asString(v); s != "" {
+					item.DisconnectedDevices = append(item.DisconnectedDevices, s)
+				}
+			}
+		}
+	}
+
+	item.DisconnectedCount = len(item.DisconnectedDevices)
+	item.CausesPartition = item.DisconnectedCount > 0
+
+	// Find affected paths through this device
+	pathsCypher := `
+		MATCH (offline:Device {pk: $devicePK})
+		WHERE offline.isis_system_id IS NOT NULL
+
+		// Find neighbors of the offline device
+		MATCH (offline)-[:ISIS_ADJACENT]-(neighbor:Device)
+		WHERE neighbor.isis_system_id IS NOT NULL
+
+		WITH offline, collect(DISTINCT neighbor) AS neighbors
+
+		// For each pair of neighbors, check if shortest path goes through offline device
+		UNWIND neighbors AS n1
+		UNWIND neighbors AS n2
+		WITH offline, n1, n2
+		WHERE n1.pk < n2.pk
+
+		// Get current shortest path
+		MATCH currentPath = shortestPath((n1)-[:ISIS_ADJACENT*]-(n2))
+		WITH offline, n1, n2, currentPath,
+		     length(currentPath) AS currentHops,
+		     reduce(m = 0, r IN relationships(currentPath) | m + coalesce(r.metric, 10)) AS currentMetric,
+		     any(node IN nodes(currentPath) WHERE node.pk = offline.pk) AS goesThruOffline
+
+		WHERE goesThruOffline = true
+
+		// Get metro info
+		OPTIONAL MATCH (n1)-[:LOCATED_IN]->(m1:Metro)
+		OPTIONAL MATCH (n2)-[:LOCATED_IN]->(m2:Metro)
+
+		RETURN n1.pk AS sourcePK, n1.code AS sourceCode,
+		       n2.pk AS targetPK, n2.code AS targetCode,
+		       COALESCE(m1.code, '') AS sourceMetro,
+		       COALESCE(m2.code, '') AS targetMetro,
+		       currentHops, currentMetric
+		LIMIT $limit
+	`
+
+	pathsResult, err := session.Run(ctx, pathsCypher, map[string]any{
+		"devicePK": devicePK,
+		"limit":    pathLimit * 2, // Get more for filtering
+	})
+	if err != nil {
+		log.Printf("Device removal paths query error: %v", err)
+		return item
+	}
+
+	type pathCandidate struct {
+		sourcePK      string
+		sourceCode    string
+		targetPK      string
+		targetCode    string
+		sourceMetro   string
+		targetMetro   string
+		currentHops   int
+		currentMetric int
+	}
+	candidates := []pathCandidate{}
+
+	for pathsResult.Next(ctx) {
+		record := pathsResult.Record()
+		sourcePK, _ := record.Get("sourcePK")
+		sourceCode, _ := record.Get("sourceCode")
+		targetPK, _ := record.Get("targetPK")
+		targetCode, _ := record.Get("targetCode")
+		sourceMetro, _ := record.Get("sourceMetro")
+		targetMetro, _ := record.Get("targetMetro")
+		currentHops, _ := record.Get("currentHops")
+		currentMetric, _ := record.Get("currentMetric")
+
+		candidates = append(candidates, pathCandidate{
+			sourcePK:      asString(sourcePK),
+			sourceCode:    asString(sourceCode),
+			targetPK:      asString(targetPK),
+			targetCode:    asString(targetCode),
+			sourceMetro:   asString(sourceMetro),
+			targetMetro:   asString(targetMetro),
+			currentHops:   int(asInt64(currentHops)),
+			currentMetric: int(asInt64(currentMetric)),
+		})
+	}
+
+	// Find alternate paths avoiding the offline device
+	for _, c := range candidates {
+		if len(item.AffectedPaths) >= pathLimit {
+			break
+		}
+
+		path := WhatIfAffectedPath{
+			Source:       c.sourceCode,
+			Target:       c.targetCode,
+			SourceMetro:  c.sourceMetro,
+			TargetMetro:  c.targetMetro,
+			HopsBefore:   c.currentHops,
+			MetricBefore: c.currentMetric,
+			HopsAfter:    -1,
+			MetricAfter:  -1,
+			Status:       "disconnected",
+		}
+
+		altCypher := `
+			MATCH (source:Device {pk: $sourcePK}), (target:Device {pk: $targetPK})
+			MATCH altPath = shortestPath((source)-[:ISIS_ADJACENT*]-(target))
+			WHERE none(n IN nodes(altPath) WHERE n.pk = $devicePK)
+			WITH altPath, length(altPath) AS altHops,
+			     reduce(m = 0, r IN relationships(altPath) | m + coalesce(r.metric, 10)) AS altMetric
+			RETURN altHops, altMetric
+			LIMIT 1
+		`
+
+		altResult, err := session.Run(ctx, altCypher, map[string]any{
+			"sourcePK": c.sourcePK,
+			"targetPK": c.targetPK,
+			"devicePK": devicePK,
+		})
+		if err == nil && altResult.Next(ctx) {
+			record := altResult.Record()
+			altHops, _ := record.Get("altHops")
+			altMetric, _ := record.Get("altMetric")
+
+			path.HopsAfter = int(asInt64(altHops))
+			path.MetricAfter = int(asInt64(altMetric))
+
+			hopIncrease := path.HopsAfter - path.HopsBefore
+			metricIncrease := path.MetricAfter - path.MetricBefore
+			if hopIncrease > 2 || metricIncrease > 50 {
+				path.Status = "degraded"
+			} else {
+				path.Status = "rerouted"
+			}
+		}
+
+		item.AffectedPaths = append(item.AffectedPaths, path)
+	}
+
+	item.AffectedPathCount = len(item.AffectedPaths)
+	return item
+}
+
+// analyzeLinkRemoval computes the impact of removing a single link
+func analyzeLinkRemoval(ctx context.Context, session neo4j.Session, linkPK string, pathLimit int) WhatIfRemovalItem {
+	item := WhatIfRemovalItem{
+		Type:                "link",
+		PK:                  linkPK,
+		AffectedPaths:       []WhatIfAffectedPath{},
+		DisconnectedDevices: []string{},
+	}
+
+	// First, resolve link PK to device endpoints via ClickHouse
+	linkQuery := `
+		SELECT
+			COALESCE(l.side_a_pk, '') as side_a_pk,
+			COALESCE(l.side_z_pk, '') as side_z_pk,
+			COALESCE(da.code, '') as side_a_code,
+			COALESCE(dz.code, '') as side_z_code
+		FROM dz_links_current l
+		LEFT JOIN dz_devices_current da ON l.side_a_pk = da.pk
+		LEFT JOIN dz_devices_current dz ON l.side_z_pk = dz.pk
+		WHERE l.pk = $1
+	`
+
+	var sideAPK, sideZPK, sideACode, sideZCode string
+	if err := config.DB.QueryRow(ctx, linkQuery, linkPK).Scan(&sideAPK, &sideZPK, &sideACode, &sideZCode); err != nil {
+		log.Printf("Link lookup error for %s: %v", linkPK, err)
+		item.Code = "Link not found"
+		return item
+	}
+
+	if sideAPK == "" || sideZPK == "" {
+		item.Code = "Link missing endpoints"
+		return item
+	}
+
+	item.Code = sideACode + " - " + sideZCode
+
+	// Check if either endpoint is a leaf (would be disconnected)
+	disconnectCypher := `
+		MATCH (s:Device {pk: $sourcePK}), (t:Device {pk: $targetPK})
+		WHERE s.isis_system_id IS NOT NULL AND t.isis_system_id IS NOT NULL
+
+		// Count neighbors of each endpoint
+		OPTIONAL MATCH (s)-[:ISIS_ADJACENT]-(sn:Device)
+		WHERE sn.isis_system_id IS NOT NULL
+		WITH s, t, count(DISTINCT sn) AS sourceDegree
+		OPTIONAL MATCH (t)-[:ISIS_ADJACENT]-(tn:Device)
+		WHERE tn.isis_system_id IS NOT NULL
+		WITH s, t, sourceDegree, count(DISTINCT tn) AS targetDegree
+
+		RETURN sourceDegree, targetDegree, s.code AS sourceCode, t.code AS targetCode
+	`
+
+	degResult, err := session.Run(ctx, disconnectCypher, map[string]any{
+		"sourcePK": sideAPK,
+		"targetPK": sideZPK,
+	})
+	if err != nil {
+		log.Printf("Link disconnect check error: %v", err)
+	} else if degResult.Next(ctx) {
+		record := degResult.Record()
+		sourceDegree, _ := record.Get("sourceDegree")
+		targetDegree, _ := record.Get("targetDegree")
+		sourceCode, _ := record.Get("sourceCode")
+		targetCode, _ := record.Get("targetCode")
+
+		if asInt64(sourceDegree) == 1 {
+			item.DisconnectedDevices = append(item.DisconnectedDevices, asString(sourceCode))
+		}
+		if asInt64(targetDegree) == 1 {
+			item.DisconnectedDevices = append(item.DisconnectedDevices, asString(targetCode))
+		}
+	}
+
+	item.DisconnectedCount = len(item.DisconnectedDevices)
+	item.CausesPartition = item.DisconnectedCount > 0
+
+	// Find affected paths - paths that currently use this link
+	affectedCypher := `
+		MATCH (src:Device {pk: $sourcePK}), (tgt:Device {pk: $targetPK})
+		WHERE src.isis_system_id IS NOT NULL AND tgt.isis_system_id IS NOT NULL
+
+		// Get the metric of the link being removed
+		OPTIONAL MATCH (src)-[linkRel:ISIS_ADJACENT]-(tgt)
+		WITH src, tgt, min(linkRel.metric) AS linkMetric
+
+		// Get immediate neighbors of source with their link metrics
+		OPTIONAL MATCH (src)-[srcRel:ISIS_ADJACENT]-(srcNeighbor:Device)
+		WHERE srcNeighbor.isis_system_id IS NOT NULL AND srcNeighbor.pk <> tgt.pk
+		WITH src, tgt, linkMetric, collect(DISTINCT {device: srcNeighbor, metric: srcRel.metric}) AS srcNeighborsData
+
+		// Get immediate neighbors of target with their link metrics
+		OPTIONAL MATCH (tgt)-[tgtRel:ISIS_ADJACENT]-(tgtNeighbor:Device)
+		WHERE tgtNeighbor.isis_system_id IS NOT NULL AND tgtNeighbor.pk <> src.pk
+		WITH src, tgt, linkMetric, srcNeighborsData, collect(DISTINCT {device: tgtNeighbor, metric: tgtRel.metric}) AS tgtNeighborsData
+
+		// For each source neighbor, check path to target neighbors via this link
+		UNWIND CASE WHEN size(srcNeighborsData) > 0 THEN srcNeighborsData ELSE [null] END AS srcData
+		UNWIND CASE WHEN size(tgtNeighborsData) > 0 THEN tgtNeighborsData ELSE [null] END AS tgtData
+		WITH src, tgt, linkMetric, srcData, tgtData
+		WHERE srcData IS NOT NULL AND tgtData IS NOT NULL
+		  AND srcData.device.pk <> tgtData.device.pk
+
+		WITH srcData.device AS fromDevice, tgtData.device AS toDevice, src, tgt,
+		     3 AS beforeHops,
+		     coalesce(srcData.metric, 0) + coalesce(linkMetric, 0) + coalesce(tgtData.metric, 0) AS beforeMetric
+
+		// Get metro info
+		OPTIONAL MATCH (fromDevice)-[:LOCATED_IN]->(fm:Metro)
+		OPTIONAL MATCH (toDevice)-[:LOCATED_IN]->(tm:Metro)
+
+		RETURN fromDevice.pk AS fromPK, fromDevice.code AS fromCode,
+		       toDevice.pk AS toPK, toDevice.code AS toCode,
+		       COALESCE(fm.code, '') AS fromMetro,
+		       COALESCE(tm.code, '') AS toMetro,
+		       beforeHops, beforeMetric,
+		       src.pk AS srcPK, tgt.pk AS tgtPK
+		LIMIT $limit
+	`
+
+	affectedResult, err := session.Run(ctx, affectedCypher, map[string]any{
+		"sourcePK": sideAPK,
+		"targetPK": sideZPK,
+		"limit":    pathLimit * 2,
+	})
+	if err != nil {
+		log.Printf("Link affected paths query error: %v", err)
+		return item
+	}
+
+	type pathCandidate struct {
+		fromPK       string
+		fromCode     string
+		toPK         string
+		toCode       string
+		fromMetro    string
+		toMetro      string
+		beforeHops   int
+		beforeMetric int
+		srcPK        string
+		tgtPK        string
+	}
+	candidates := []pathCandidate{}
+
+	for affectedResult.Next(ctx) {
+		record := affectedResult.Record()
+		fromPK, _ := record.Get("fromPK")
+		fromCode, _ := record.Get("fromCode")
+		toPK, _ := record.Get("toPK")
+		toCode, _ := record.Get("toCode")
+		fromMetro, _ := record.Get("fromMetro")
+		toMetro, _ := record.Get("toMetro")
+		beforeHops, _ := record.Get("beforeHops")
+		beforeMetric, _ := record.Get("beforeMetric")
+		srcPK, _ := record.Get("srcPK")
+		tgtPK, _ := record.Get("tgtPK")
+
+		candidates = append(candidates, pathCandidate{
+			fromPK:       asString(fromPK),
+			fromCode:     asString(fromCode),
+			toPK:         asString(toPK),
+			toCode:       asString(toCode),
+			fromMetro:    asString(fromMetro),
+			toMetro:      asString(toMetro),
+			beforeHops:   int(asInt64(beforeHops)),
+			beforeMetric: int(asInt64(beforeMetric)),
+			srcPK:        asString(srcPK),
+			tgtPK:        asString(tgtPK),
+		})
+	}
+
+	// Find alternate paths avoiding this link
+	for _, c := range candidates {
+		if len(item.AffectedPaths) >= pathLimit {
+			break
+		}
+
+		path := WhatIfAffectedPath{
+			Source:       c.fromCode,
+			Target:       c.toCode,
+			SourceMetro:  c.fromMetro,
+			TargetMetro:  c.toMetro,
+			HopsBefore:   c.beforeHops,
+			MetricBefore: c.beforeMetric,
+			HopsAfter:    -1,
+			MetricAfter:  -1,
+			Status:       "disconnected",
+		}
+
+		// Find alternate path not using this specific link
+		altCypher := `
+			MATCH (from:Device {pk: $fromPK}), (to:Device {pk: $toPK})
+			OPTIONAL MATCH altPath = shortestPath((from)-[:ISIS_ADJACENT*]-(to))
+			WHERE NONE(r IN relationships(altPath) WHERE
+			      (startNode(r).pk = $srcPK AND endNode(r).pk = $tgtPK) OR
+			      (startNode(r).pk = $tgtPK AND endNode(r).pk = $srcPK))
+			WITH altPath,
+			     CASE WHEN altPath IS NOT NULL THEN length(altPath) ELSE 0 END AS altHops,
+			     CASE WHEN altPath IS NOT NULL
+			          THEN reduce(m = 0, r IN relationships(altPath) | m + coalesce(r.metric, 10))
+			          ELSE 0 END AS altMetric
+			WHERE altPath IS NOT NULL
+			RETURN altHops, altMetric
+			LIMIT 1
+		`
+
+		altResult, err := session.Run(ctx, altCypher, map[string]any{
+			"fromPK": c.fromPK,
+			"toPK":   c.toPK,
+			"srcPK":  c.srcPK,
+			"tgtPK":  c.tgtPK,
+		})
+		if err == nil && altResult.Next(ctx) {
+			record := altResult.Record()
+			altHops, _ := record.Get("altHops")
+			altMetric, _ := record.Get("altMetric")
+
+			path.HopsAfter = int(asInt64(altHops))
+			path.MetricAfter = int(asInt64(altMetric))
+
+			// Only include if the path through the link was actually preferred
+			if path.MetricBefore < path.MetricAfter || path.HopsAfter == 0 {
+				hopIncrease := path.HopsAfter - path.HopsBefore
+				metricIncrease := path.MetricAfter - path.MetricBefore
+				if path.HopsAfter == 0 {
+					path.Status = "disconnected"
+					path.HopsAfter = -1
+					path.MetricAfter = -1
+				} else if hopIncrease > 2 || metricIncrease > 50 {
+					path.Status = "degraded"
+				} else {
+					path.Status = "rerouted"
+				}
+				item.AffectedPaths = append(item.AffectedPaths, path)
+			}
+		} else {
+			// No alternate path found
+			item.AffectedPaths = append(item.AffectedPaths, path)
+		}
+	}
+
+	item.AffectedPathCount = len(item.AffectedPaths)
+	return item
 }

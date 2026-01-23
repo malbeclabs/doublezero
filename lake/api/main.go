@@ -392,6 +392,7 @@ func main() {
 	r.Get("/api/topology/metro-path-detail", handlers.GetMetroPathDetail)
 	r.Get("/api/topology/metro-paths", handlers.GetMetroPaths)
 	r.Post("/api/topology/maintenance-impact", handlers.PostMaintenanceImpact)
+	r.Post("/api/topology/whatif-removal", handlers.PostWhatIfRemoval)
 
 	// SQL endpoints
 	r.Post("/api/sql/query", handlers.ExecuteQuery)

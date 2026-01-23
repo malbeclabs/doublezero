@@ -6,8 +6,8 @@ import type { StyleSpecification } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { useQuery } from '@tanstack/react-query'
 import { useTheme } from '@/hooks/use-theme'
-import type { TopologyMetro, TopologyDevice, TopologyLink, TopologyValidator, MultiPathResponse, SimulateLinkRemovalResponse, SimulateLinkAdditionResponse, MaintenanceImpactResponse } from '@/lib/api'
-import { fetchISISPaths, fetchISISTopology, fetchCriticalLinks, fetchSimulateLinkRemoval, fetchSimulateLinkAddition, fetchMaintenanceImpact, fetchLinkHealth, fetchTopologyCompare } from '@/lib/api'
+import type { TopologyMetro, TopologyDevice, TopologyLink, TopologyValidator, MultiPathResponse, SimulateLinkRemovalResponse, SimulateLinkAdditionResponse, WhatIfRemovalResponse } from '@/lib/api'
+import { fetchISISPaths, fetchISISTopology, fetchCriticalLinks, fetchSimulateLinkRemoval, fetchSimulateLinkAddition, fetchWhatIfRemoval, fetchLinkHealth, fetchTopologyCompare } from '@/lib/api'
 import { useTopology, TopologyControlBar, TopologyPanel, DeviceDetails, LinkDetails, MetroDetails, ValidatorDetails, EntityLink as TopologyEntityLink, PathModePanel, CriticalityPanel, WhatIfRemovalPanel, WhatIfAdditionPanel, ImpactPanel, ComparePanel, StakeOverlayPanel, LinkHealthOverlayPanel, TrafficFlowOverlayPanel, MetroClusteringOverlayPanel, ContributorsOverlayPanel, ValidatorsOverlayPanel, BandwidthOverlayPanel, DeviceTypeOverlayPanel, LinkTypeOverlayPanel, LINK_TYPE_COLORS } from '@/components/topology'
 
 // Path colors for multi-path visualization
@@ -357,7 +357,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
   const [additionLoading, setAdditionLoading] = useState(false)
 
   // Failure Impact operational state (local) - impactDevices comes from context
-  const [impactResult, setImpactResult] = useState<MaintenanceImpactResponse | null>(null)
+  const [impactResult, setImpactResult] = useState<WhatIfRemovalResponse | null>(null)
   const [impactLoading, setImpactLoading] = useState(false)
 
   // Metro Clustering operational state (local)
@@ -1011,16 +1011,15 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     }
 
     setImpactLoading(true)
-    fetchMaintenanceImpact(impactDevices, [])
+    fetchWhatIfRemoval(impactDevices, [])
       .then(result => {
         setImpactResult(result)
       })
       .catch(err => {
         setImpactResult({
           items: [],
-          totalImpact: 0,
+          totalAffectedPaths: 0,
           totalDisconnected: 0,
-          recommendedOrder: [],
           error: err.message,
         })
       })

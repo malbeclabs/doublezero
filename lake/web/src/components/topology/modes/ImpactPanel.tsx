@@ -1,11 +1,11 @@
 import { useState } from 'react'
-import { Zap, X, AlertTriangle, MapPin, ChevronDown, ChevronRight, ArrowRight } from 'lucide-react'
-import type { MaintenanceImpactResponse } from '@/lib/api'
+import { Zap, X, AlertTriangle, ChevronDown, ChevronRight, ArrowRight } from 'lucide-react'
+import type { WhatIfRemovalResponse } from '@/lib/api'
 
 interface ImpactPanelProps {
   devicePKs: string[]
   deviceCodes: Map<string, string>  // PK -> code mapping for display
-  result: MaintenanceImpactResponse | null
+  result: WhatIfRemovalResponse | null
   isLoading: boolean
   onRemoveDevice: (pk: string) => void
   onClear: () => void
@@ -99,8 +99,8 @@ export function ImpactPanel({ devicePKs, deviceCodes, result, isLoading, onRemov
             </div>
             <div className="border border-border rounded p-2">
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Affected Paths</div>
-              <div className={`text-lg font-medium ${result.totalImpact > 0 ? 'text-yellow-500' : 'text-green-500'}`}>
-                {result.totalImpact}
+              <div className={`text-lg font-medium ${result.totalAffectedPaths > 0 ? 'text-yellow-500' : 'text-green-500'}`}>
+                {result.totalAffectedPaths}
               </div>
             </div>
           </div>
@@ -114,7 +114,7 @@ export function ImpactPanel({ devicePKs, deviceCodes, result, isLoading, onRemov
               <div className="space-y-1">
                 {result.items.map(item => {
                   const hasDisconnected = item.disconnectedDevices && item.disconnectedDevices.length > 0
-                  const hasImpact = item.impact > 0 || item.disconnected > 0
+                  const hasImpact = item.affectedPathCount > 0 || item.disconnectedCount > 0
                   const isExpanded = expandedItems.has(item.pk)
 
                   return (
@@ -137,14 +137,14 @@ export function ImpactPanel({ devicePKs, deviceCodes, result, isLoading, onRemov
                           <span className="font-medium">{item.code}</span>
                         </span>
                         <span className="text-muted-foreground">
-                          {item.disconnected > 0 && (
-                            <span className="text-red-500">{item.disconnected} disconnected</span>
+                          {item.disconnectedCount > 0 && (
+                            <span className="text-red-500">{item.disconnectedCount} disconnected</span>
                           )}
-                          {item.disconnected > 0 && item.impact > 0 && ' · '}
-                          {item.impact > 0 && (
-                            <span className="text-yellow-500">{item.impact} paths</span>
+                          {item.disconnectedCount > 0 && item.affectedPathCount > 0 && ' · '}
+                          {item.affectedPathCount > 0 && (
+                            <span className="text-yellow-500">{item.affectedPathCount} paths</span>
                           )}
-                          {item.disconnected === 0 && item.impact === 0 && (
+                          {item.disconnectedCount === 0 && item.affectedPathCount === 0 && (
                             <span className="text-green-500">No impact</span>
                           )}
                         </span>
@@ -206,9 +206,9 @@ export function ImpactPanel({ devicePKs, deviceCodes, result, isLoading, onRemov
                               )}
                             </div>
                           )}
-                          {item.impact > 0 && (!item.affectedPaths || item.affectedPaths.length === 0) && (
+                          {item.affectedPathCount > 0 && (!item.affectedPaths || item.affectedPaths.length === 0) && (
                             <div className="text-[11px] text-yellow-600">
-                              {item.impact} path{item.impact !== 1 ? 's' : ''} would need to be rerouted
+                              {item.affectedPathCount} path{item.affectedPathCount !== 1 ? 's' : ''} would need to be rerouted
                             </div>
                           )}
                         </div>
@@ -221,7 +221,7 @@ export function ImpactPanel({ devicePKs, deviceCodes, result, isLoading, onRemov
           )}
 
           {/* Affected paths (collapsible) - show if totalImpact > 0 */}
-          {result.totalImpact > 0 && (
+          {result.totalAffectedPaths > 0 && (
             <div className="space-y-2">
               <button
                 onClick={() => setShowAffectedPaths(!showAffectedPaths)}
@@ -232,7 +232,7 @@ export function ImpactPanel({ devicePKs, deviceCodes, result, isLoading, onRemov
                 ) : (
                   <ChevronRight className="h-3 w-3" />
                 )}
-                Affected Paths ({result.affectedPaths?.length || result.totalImpact})
+                Affected Paths ({result.affectedPaths?.length || result.totalAffectedPaths})
               </button>
               {showAffectedPaths && (
                 <div className="space-y-1 max-h-48 overflow-y-auto">
@@ -268,7 +268,7 @@ export function ImpactPanel({ devicePKs, deviceCodes, result, isLoading, onRemov
                     ))
                   ) : (
                     <div className="text-muted-foreground text-[11px] italic">
-                      {result.totalImpact} path{result.totalImpact !== 1 ? 's' : ''} would need to be rerouted
+                      {result.totalAffectedPaths} path{result.totalAffectedPaths !== 1 ? 's' : ''} would need to be rerouted
                     </div>
                   )}
                 </div>
@@ -297,34 +297,8 @@ export function ImpactPanel({ devicePKs, deviceCodes, result, isLoading, onRemov
             </div>
           )}
 
-          {/* Affected metros */}
-          {result.affectedMetros && result.affectedMetros.length > 0 && (
-            <div className="space-y-2">
-              <div className="font-medium text-muted-foreground uppercase tracking-wider text-[10px]">
-                Affected Metro Pairs
-              </div>
-              <div className="space-y-1 max-h-32 overflow-y-auto">
-                {result.affectedMetros.map((metro, idx) => (
-                  <div key={idx} className="flex items-center gap-1.5 pl-1 text-[11px]">
-                    <MapPin className={`h-3 w-3 ${
-                      metro.status === 'disconnected' ? 'text-red-500' :
-                      metro.status === 'degraded' ? 'text-yellow-500' : 'text-muted-foreground'
-                    }`} />
-                    <span>{metro.sourceMetro} ↔ {metro.targetMetro}</span>
-                    <span className={`text-[10px] ${
-                      metro.status === 'disconnected' ? 'text-red-500' :
-                      metro.status === 'degraded' ? 'text-yellow-500' : 'text-muted-foreground'
-                    }`}>
-                      ({metro.status})
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
           {/* No impact message */}
-          {result.totalDisconnected === 0 && result.totalImpact === 0 && (
+          {result.totalDisconnected === 0 && result.totalAffectedPaths === 0 && (
             <div className="text-green-500 flex items-center gap-1.5">
               <div className="w-2 h-2 rounded-full bg-green-500" />
               No significant impact - network remains fully connected

@@ -1,8 +1,8 @@
 import { useState, useMemo, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Loader2, Wrench, X, AlertTriangle, Trash2, Download, Server, Link2 } from 'lucide-react'
-import { fetchMaintenanceImpact, fetchAutocomplete } from '@/lib/api'
-import type { MaintenanceItem, MaintenanceImpactResponse, SearchSuggestion } from '@/lib/api'
+import { fetchWhatIfRemoval, fetchAutocomplete } from '@/lib/api'
+import type { WhatIfRemovalItem, WhatIfRemovalResponse, SearchSuggestion } from '@/lib/api'
 
 // Selected item type for the maintenance list
 interface SelectedMaintenanceItem {
@@ -88,7 +88,7 @@ function SearchInput({
 }
 
 // Impact indicator component
-function ImpactBadge({ impact, disconnected, causesPartition }: MaintenanceItem) {
+function ImpactBadge({ affectedPathCount, disconnectedCount, causesPartition }: WhatIfRemovalItem) {
   if (causesPartition) {
     return (
       <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400 rounded">
@@ -97,17 +97,17 @@ function ImpactBadge({ impact, disconnected, causesPartition }: MaintenanceItem)
       </span>
     )
   }
-  if (disconnected > 0) {
+  if (disconnectedCount > 0) {
     return (
       <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-400 rounded">
-        {disconnected} disconnected
+        {disconnectedCount} disconnected
       </span>
     )
   }
-  if (impact > 10) {
+  if (affectedPathCount > 10) {
     return (
       <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-400 rounded">
-        {impact} paths
+        {affectedPathCount} paths
       </span>
     )
   }
@@ -120,7 +120,7 @@ function ImpactBadge({ impact, disconnected, causesPartition }: MaintenanceItem)
 
 export function MaintenancePlannerPage() {
   const [selectedItems, setSelectedItems] = useState<SelectedMaintenanceItem[]>([])
-  const [analysisResult, setAnalysisResult] = useState<MaintenanceImpactResponse | null>(null)
+  const [analysisResult, setAnalysisResult] = useState<WhatIfRemovalResponse | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
 
   // Add an item to the maintenance list
@@ -156,15 +156,14 @@ export function MaintenancePlannerPage() {
     try {
       const devices = selectedItems.filter(i => i.type === 'device').map(i => i.pk)
       const links = selectedItems.filter(i => i.type === 'link').map(i => i.pk)
-      const result = await fetchMaintenanceImpact(devices, links)
+      const result = await fetchWhatIfRemoval(devices, links)
       setAnalysisResult(result)
     } catch (err) {
       console.error('Failed to analyze maintenance impact:', err)
       setAnalysisResult({
         items: [],
-        totalImpact: 0,
+        totalAffectedPaths: 0,
         totalDisconnected: 0,
-        recommendedOrder: [],
         error: err instanceof Error ? err.message : 'Failed to analyze impact',
       })
     } finally {
@@ -185,7 +184,7 @@ export function MaintenancePlannerPage() {
       'Summary',
       '-------',
       `Total items: ${selectedItems.length}`,
-      `Total affected paths: ${analysisResult.totalImpact}`,
+      `Total affected paths: ${analysisResult.totalAffectedPaths}`,
       `Total disconnected devices: ${analysisResult.totalDisconnected}`,
       '',
     ]
@@ -197,21 +196,6 @@ export function MaintenancePlannerPage() {
         lines.push(`    - ${device}`)
       }
       lines.push('')
-    }
-
-    // Affected links by metro
-    if (analysisResult.affectedMetros && analysisResult.affectedMetros.length > 0) {
-      lines.push('Affected Links by Metro')
-      lines.push('-----------------------')
-      lines.push('ISIS adjacencies that will go down:')
-      lines.push('')
-      for (const pair of analysisResult.affectedMetros) {
-        lines.push(`  ${pair.sourceMetro} ↔ ${pair.targetMetro} (${pair.affectedLinks.length} link${pair.affectedLinks.length !== 1 ? 's' : ''} down)`)
-        for (const link of pair.affectedLinks) {
-          lines.push(`    ✕ ${link.sourceDevice} → ${link.targetDevice}`)
-        }
-        lines.push('')
-      }
     }
 
     // Routing impact
@@ -237,26 +221,24 @@ export function MaintenancePlannerPage() {
       }
     }
 
-    // Recommended order
+    // Recommended order (sorted by impact, least impactful first)
     lines.push('Recommended Maintenance Order')
     lines.push('-----------------------------')
     lines.push('(Items ordered from least impactful to most impactful)')
     lines.push('')
 
-    for (let i = 0; i < analysisResult.recommendedOrder.length; i++) {
-      const pk = analysisResult.recommendedOrder[i]
-      const item = analysisResult.items.find(it => it.pk === pk)
-      if (item) {
-        lines.push(`${i + 1}. [${item.type.toUpperCase()}] ${item.code}`)
-        lines.push(`   Impact: ${item.impact} paths affected`)
-        if (item.disconnectedDevices && item.disconnectedDevices.length > 0) {
-          lines.push(`   Disconnects: ${item.disconnectedDevices.join(', ')}`)
-        }
-        if (item.causesPartition) {
-          lines.push('   ⚠️  WARNING: Causes network partition!')
-        }
-        lines.push('')
+    const sortedItems = [...analysisResult.items].sort((a, b) => a.affectedPathCount - b.affectedPathCount)
+    for (let i = 0; i < sortedItems.length; i++) {
+      const item = sortedItems[i]
+      lines.push(`${i + 1}. [${item.type.toUpperCase()}] ${item.code}`)
+      lines.push(`   Impact: ${item.affectedPathCount} paths affected`)
+      if (item.disconnectedDevices && item.disconnectedDevices.length > 0) {
+        lines.push(`   Disconnects: ${item.disconnectedDevices.join(', ')}`)
       }
+      if (item.causesPartition) {
+        lines.push('   ⚠️  WARNING: Causes network partition!')
+      }
+      lines.push('')
     }
 
     const text = lines.join('\n')
@@ -271,7 +253,7 @@ export function MaintenancePlannerPage() {
 
   // Build item lookup from analysis result
   const itemLookup = useMemo(() => {
-    const map = new Map<string, MaintenanceItem>()
+    const map = new Map<string, WhatIfRemovalItem>()
     if (analysisResult) {
       for (const item of analysisResult.items) {
         map.set(item.pk, item)
@@ -417,9 +399,6 @@ export function MaintenancePlannerPage() {
                   {/* Summary */}
                   {(() => {
                     // Compute real stats from affected paths
-                    const adjacenciesDown = analysisResult.affectedMetros?.reduce(
-                      (sum, m) => sum + (m.affectedLinks?.length || 0), 0
-                    ) || 0
                     const rerouted = analysisResult.affectedPaths?.filter(p => p.status === 'rerouted' || p.status === 'degraded') || []
                     const disconnected = analysisResult.affectedPaths?.filter(p => p.status === 'disconnected') || []
                     const avgHopIncrease = rerouted.length > 0
@@ -431,11 +410,7 @@ export function MaintenancePlannerPage() {
                       : 0
 
                     return (
-                      <div className="grid grid-cols-4 gap-3 mb-6">
-                        <div className="bg-muted rounded-lg p-3">
-                          <div className="text-xs text-muted-foreground mb-1">ISIS Adjacencies Down</div>
-                          <div className="text-xl font-bold">{adjacenciesDown}</div>
-                        </div>
+                      <div className="grid grid-cols-3 gap-3 mb-6">
                         <div className={`rounded-lg p-3 ${rerouted.length > 0 ? 'bg-yellow-100 dark:bg-yellow-900/40' : 'bg-muted'}`}>
                           <div className="text-xs text-muted-foreground mb-1">Paths Rerouted</div>
                           <div className={`text-xl font-bold ${rerouted.length > 0 ? 'text-yellow-700 dark:text-yellow-400' : ''}`}>
@@ -489,44 +464,6 @@ export function MaintenancePlannerPage() {
                           <span key={idx} className="px-2 py-1 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400 rounded text-xs font-medium">
                             {code}
                           </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Affected metro pairs */}
-                  {analysisResult.affectedMetros && analysisResult.affectedMetros.length > 0 && (
-                    <div className="mb-4">
-                      <h3 className="text-sm font-medium mb-2">Affected Links by Metro</h3>
-                      <p className="text-xs text-muted-foreground mb-2">
-                        ISIS adjacencies that will go down when maintenance targets are taken offline.
-                      </p>
-                      <div className="space-y-3">
-                        {analysisResult.affectedMetros.map((pair, idx) => (
-                          <div key={idx} className="p-3 bg-muted rounded">
-                            <div className="flex items-center gap-2 mb-2">
-                              <span className="font-medium text-sm">{pair.sourceMetro}</span>
-                              <span className="text-muted-foreground">↔</span>
-                              <span className="font-medium text-sm">{pair.targetMetro}</span>
-                              <span className={`ml-auto text-xs px-2 py-0.5 rounded ${
-                                pair.status === 'disconnected'
-                                  ? 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400'
-                                  : 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-400'
-                              }`}>
-                                {pair.affectedLinks.length} link{pair.affectedLinks.length !== 1 ? 's' : ''} down
-                              </span>
-                            </div>
-                            <div className="space-y-1">
-                              {pair.affectedLinks.map((link, linkIdx) => (
-                                <div key={linkIdx} className="flex items-center gap-2 text-xs text-muted-foreground pl-2">
-                                  <span className="text-red-500">✕</span>
-                                  <span className="font-mono">{link.sourceDevice}</span>
-                                  <span>→</span>
-                                  <span className="font-mono">{link.targetDevice}</span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
                         ))}
                       </div>
                     </div>
@@ -612,35 +549,31 @@ export function MaintenancePlannerPage() {
                       Items ordered from least impactful to most impactful. Take down items in this order to minimize disruption.
                     </p>
                     <div className="space-y-2">
-                      {analysisResult.recommendedOrder.map((pk, index) => {
-                        const item = itemLookup.get(pk)
-                        if (!item) return null
-                        return (
-                          <div
-                            key={pk}
-                            className="flex items-center gap-3 p-3 bg-muted rounded-md"
-                          >
-                            <span className="w-6 h-6 flex items-center justify-center bg-accent text-accent-foreground rounded-full text-xs font-bold">
-                              {index + 1}
-                            </span>
-                            <div className="flex items-center gap-2 flex-1">
-                              {item.type === 'device' ? (
-                                <Server className="h-4 w-4 text-muted-foreground" />
-                              ) : (
-                                <Link2 className="h-4 w-4 text-muted-foreground" />
-                              )}
-                              <span className="font-medium">{item.code}</span>
-                              <span className="text-xs text-muted-foreground">({item.type})</span>
-                            </div>
-                            <div className="flex items-center gap-4 text-sm">
-                              <span className="text-muted-foreground">
-                                {item.impact} paths
-                              </span>
-                              <ImpactBadge {...item} />
-                            </div>
+                      {[...analysisResult.items].sort((a, b) => a.affectedPathCount - b.affectedPathCount).map((item, index) => (
+                        <div
+                          key={item.pk}
+                          className="flex items-center gap-3 p-3 bg-muted rounded-md"
+                        >
+                          <span className="w-6 h-6 flex items-center justify-center bg-accent text-accent-foreground rounded-full text-xs font-bold">
+                            {index + 1}
+                          </span>
+                          <div className="flex items-center gap-2 flex-1">
+                            {item.type === 'device' ? (
+                              <Server className="h-4 w-4 text-muted-foreground" />
+                            ) : (
+                              <Link2 className="h-4 w-4 text-muted-foreground" />
+                            )}
+                            <span className="font-medium">{item.code}</span>
+                            <span className="text-xs text-muted-foreground">({item.type})</span>
                           </div>
-                        )
-                      })}
+                          <div className="flex items-center gap-4 text-sm">
+                            <span className="text-muted-foreground">
+                              {item.affectedPathCount} paths
+                            </span>
+                            <ImpactBadge {...item} />
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </>

@@ -2947,6 +2947,54 @@ export async function fetchMaintenanceImpact(
   return res.json()
 }
 
+// What-if removal types (unified API for devices and links)
+export interface WhatIfAffectedPath {
+  source: string
+  target: string
+  sourceMetro?: string
+  targetMetro?: string
+  hopsBefore: number
+  metricBefore: number
+  hopsAfter: number
+  metricAfter: number
+  status: 'rerouted' | 'degraded' | 'disconnected'
+}
+
+export interface WhatIfRemovalItem {
+  type: 'device' | 'link'
+  pk: string
+  code: string
+  affectedPaths: WhatIfAffectedPath[]
+  affectedPathCount: number
+  disconnectedDevices: string[]
+  disconnectedCount: number
+  causesPartition: boolean
+}
+
+export interface WhatIfRemovalResponse {
+  items: WhatIfRemovalItem[]
+  totalAffectedPaths: number
+  totalDisconnected: number
+  affectedPaths?: WhatIfAffectedPath[]
+  disconnectedList?: string[]
+  error?: string
+}
+
+export async function fetchWhatIfRemoval(
+  devices: string[],
+  links: string[]
+): Promise<WhatIfRemovalResponse> {
+  const res = await fetch('/api/topology/whatif-removal', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ devices, links }),
+  })
+  if (!res.ok) {
+    throw new Error('Failed to analyze what-if removal impact')
+  }
+  return res.json()
+}
+
 // Stake analytics types
 export interface StakeOverview {
   dz_stake_sol: number

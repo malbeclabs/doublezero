@@ -8,6 +8,10 @@ export interface LinkInfo {
   bandwidth: string
   latencyMs: string
   jitterMs: string
+  latencyAtoZMs: string
+  jitterAtoZMs: string
+  latencyZtoAMs: string
+  jitterZtoAMs: string
   lossPercent: string
   inRate: string
   outRate: string

@@ -1333,6 +1333,10 @@ export interface TopologyLink {
   contributor_code: string
   latency_us: number
   jitter_us: number
+  latency_a_to_z_us: number
+  jitter_a_to_z_us: number
+  latency_z_to_a_us: number
+  jitter_z_to_a_us: number
   loss_percent: number
   sample_count: number
   in_bps: number

@@ -71,11 +71,40 @@ export interface LatencyDataPoint {
   p95RttMs: number
   avgJitter: number
   lossPct: number
+  avgRttAtoZMs?: number
+  p95RttAtoZMs?: number
+  avgRttZtoAMs?: number
+  p95RttZtoAMs?: number
+  jitterAtoZMs?: number
+  jitterZtoAMs?: number
 }
 
-// Fetch latency history for a link
-export async function fetchLatencyHistory(pk: string): Promise<LatencyDataPoint[]> {
-  const res = await fetch(`/api/topology/link-latency?pk=${encodeURIComponent(pk)}`)
+// Time range options for latency charts
+export type TimeRangePreset = '15m' | '30m' | '1h' | '3h' | '6h' | '12h' | '24h' | '2d' | '7d' | 'custom'
+
+export interface TimeRange {
+  preset: TimeRangePreset
+  from?: string // yyyy-mm-dd-hh:mm:ss
+  to?: string   // yyyy-mm-dd-hh:mm:ss
+}
+
+// Fetch latency history for a link with optional time range
+export async function fetchLatencyHistory(
+  pk: string,
+  timeRange?: TimeRange
+): Promise<LatencyDataPoint[]> {
+  const params = new URLSearchParams({ pk })
+
+  if (timeRange) {
+    if (timeRange.preset === 'custom' && timeRange.from && timeRange.to) {
+      params.set('from', timeRange.from)
+      params.set('to', timeRange.to)
+    } else if (timeRange.preset !== 'custom') {
+      params.set('range', timeRange.preset)
+    }
+  }
+
+  const res = await fetch(`/api/topology/link-latency?${params.toString()}`)
   if (!res.ok) return []
   const data = await res.json()
   return data.points || []

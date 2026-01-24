@@ -62,6 +62,10 @@ type Link struct {
 	ContributorCode string  `json:"contributor_code"`
 	LatencyUs       float64 `json:"latency_us"`
 	JitterUs        float64 `json:"jitter_us"`
+	LatencyAtoZUs   float64 `json:"latency_a_to_z_us"`
+	JitterAtoZUs    float64 `json:"jitter_a_to_z_us"`
+	LatencyZtoAUs   float64 `json:"latency_z_to_a_us"`
+	JitterZtoAUs    float64 `json:"jitter_z_to_a_us"`
 	LossPercent     float64 `json:"loss_percent"`
 	SampleCount     uint64  `json:"sample_count"`
 	InBps           float64 `json:"in_bps"`
@@ -203,6 +207,10 @@ func GetTopology(w http.ResponseWriter, r *http.Request) {
 				l.contributor_pk, COALESCE(c.code, '') as contributor_code,
 				COALESCE(lat.avg_rtt_us, 0) as latency_us,
 				COALESCE(lat.avg_ipdv_us, 0) as jitter_us,
+				COALESCE(lat_a.avg_rtt_us, 0) as latency_a_to_z_us,
+				COALESCE(lat_a.avg_ipdv_us, 0) as jitter_a_to_z_us,
+				COALESCE(lat_z.avg_rtt_us, 0) as latency_z_to_a_us,
+				COALESCE(lat_z.avg_ipdv_us, 0) as jitter_z_to_a_us,
 				COALESCE(lat.loss_percent, 0) as loss_percent,
 				COALESCE(lat.sample_count, 0) as sample_count,
 				COALESCE(traffic.in_bps, 0) as in_bps,
@@ -222,6 +230,22 @@ func GetTopology(w http.ResponseWriter, r *http.Request) {
 				GROUP BY link_pk
 			) lat ON l.pk = lat.link_pk
 			LEFT JOIN (
+				SELECT link_pk, origin_device_pk,
+					avg(rtt_us) as avg_rtt_us,
+					avg(abs(ipdv_us)) as avg_ipdv_us
+				FROM fact_dz_device_link_latency
+				WHERE event_ts > now() - INTERVAL 3 HOUR
+				GROUP BY link_pk, origin_device_pk
+			) lat_a ON l.pk = lat_a.link_pk AND l.side_a_pk = lat_a.origin_device_pk
+			LEFT JOIN (
+				SELECT link_pk, origin_device_pk,
+					avg(rtt_us) as avg_rtt_us,
+					avg(abs(ipdv_us)) as avg_ipdv_us
+				FROM fact_dz_device_link_latency
+				WHERE event_ts > now() - INTERVAL 3 HOUR
+				GROUP BY link_pk, origin_device_pk
+			) lat_z ON l.pk = lat_z.link_pk AND l.side_z_pk = lat_z.origin_device_pk
+			LEFT JOIN (
 				SELECT link_pk,
 					CASE WHEN SUM(delta_duration) > 0 THEN SUM(in_octets_delta) * 8 / SUM(delta_duration) ELSE 0 END as in_bps,
 					CASE WHEN SUM(delta_duration) > 0 THEN SUM(out_octets_delta) * 8 / SUM(delta_duration) ELSE 0 END as out_bps
@@ -240,7 +264,7 @@ func GetTopology(w http.ResponseWriter, r *http.Request) {
 
 		for rows.Next() {
 			var l Link
-			if err := rows.Scan(&l.PK, &l.Code, &l.Status, &l.LinkType, &l.BandwidthBps, &l.SideAPK, &l.SideACode, &l.SideAIfaceName, &l.SideAIP, &l.SideZPK, &l.SideZCode, &l.SideZIfaceName, &l.SideZIP, &l.ContributorPK, &l.ContributorCode, &l.LatencyUs, &l.JitterUs, &l.LossPercent, &l.SampleCount, &l.InBps, &l.OutBps); err != nil {
+			if err := rows.Scan(&l.PK, &l.Code, &l.Status, &l.LinkType, &l.BandwidthBps, &l.SideAPK, &l.SideACode, &l.SideAIfaceName, &l.SideAIP, &l.SideZPK, &l.SideZCode, &l.SideZIfaceName, &l.SideZIP, &l.ContributorPK, &l.ContributorCode, &l.LatencyUs, &l.JitterUs, &l.LatencyAtoZUs, &l.JitterAtoZUs, &l.LatencyZtoAUs, &l.JitterZtoAUs, &l.LossPercent, &l.SampleCount, &l.InBps, &l.OutBps); err != nil {
 				return err
 			}
 			links = append(links, l)
@@ -484,16 +508,63 @@ func GetTopologyTraffic(w http.ResponseWriter, r *http.Request) {
 
 // Link latency data point for charts
 type LinkLatencyDataPoint struct {
-	Time      string  `json:"time"`
-	AvgRttMs  float64 `json:"avgRttMs"`
-	P95RttMs  float64 `json:"p95RttMs"`
-	AvgJitter float64 `json:"avgJitter"`
-	LossPct   float64 `json:"lossPct"`
+	Time         string  `json:"time"`
+	AvgRttMs     float64 `json:"avgRttMs"`
+	P95RttMs     float64 `json:"p95RttMs"`
+	AvgJitter    float64 `json:"avgJitter"`
+	LossPct      float64 `json:"lossPct"`
+	AvgRttAtoZMs float64 `json:"avgRttAtoZMs"`
+	P95RttAtoZMs float64 `json:"p95RttAtoZMs"`
+	AvgRttZtoAMs float64 `json:"avgRttZtoAMs"`
+	P95RttZtoAMs float64 `json:"p95RttZtoAMs"`
+	JitterAtoZMs float64 `json:"jitterAtoZMs"`
+	JitterZtoAMs float64 `json:"jitterZtoAMs"`
 }
 
 type LinkLatencyResponse struct {
 	Points []LinkLatencyDataPoint `json:"points"`
 	Error  string                 `json:"error,omitempty"`
+}
+
+// calculateBucketSize returns an appropriate bucket size in seconds for the given duration
+// to produce approximately 15-30 data points
+func calculateBucketSize(d time.Duration) int {
+	minutes := int(d.Minutes())
+	switch {
+	case minutes <= 15:
+		return 60 // 1 minute buckets (15 points for 15min)
+	case minutes <= 30:
+		return 120 // 2 minute buckets (15 points for 30min)
+	case minutes <= 60:
+		return 300 // 5 minute buckets (12 points for 1h)
+	case minutes <= 180:
+		return 600 // 10 minute buckets (18 points for 3h)
+	case minutes <= 360:
+		return 900 // 15 minute buckets (24 points for 6h)
+	case minutes <= 720:
+		return 1800 // 30 minute buckets (24 points for 12h)
+	case minutes <= 1440:
+		return 3600 // 1 hour buckets (24 points for 24h)
+	case minutes <= 2880:
+		return 7200 // 2 hour buckets (24 points for 2d)
+	default:
+		return 14400 // 4 hour buckets (42 points for 7d)
+	}
+}
+
+// timeFormatForBucket returns the appropriate ClickHouse time format string for the bucket size
+// Note: ClickHouse uses %i for minutes (not %M which is month name)
+func timeFormatForBucket(bucketSeconds int) string {
+	switch {
+	case bucketSeconds >= 86400:
+		return "%b %d" // "Jan 23" for daily+ buckets
+	case bucketSeconds >= 3600:
+		return "%d %H:%i" // "23 14:30" for hourly+ buckets
+	case bucketSeconds >= 60:
+		return "%H:%i" // "14:30" for minute+ buckets
+	default:
+		return "%H:%i:%S" // "14:30:45" for sub-minute buckets
+	}
 }
 
 func GetLinkLatencyHistory(w http.ResponseWriter, r *http.Request) {
@@ -508,22 +579,88 @@ func GetLinkLatencyHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Parse time range parameters
+	rangeParam := r.URL.Query().Get("range")
+	fromParam := r.URL.Query().Get("from")
+	toParam := r.URL.Query().Get("to")
+
+	// Determine time filter and bucket size
+	var timeFilter string
+	var bucketSeconds int
+	var timeFormat string
+
+	if fromParam != "" && toParam != "" {
+		// Custom date range: from=2024-01-20-14:30:00 to=2024-01-21-14:30:00
+		fromTime, err := time.Parse("2006-01-02-15:04:05", fromParam)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(LinkLatencyResponse{Error: "invalid 'from' format, use yyyy-mm-dd-hh:mm:ss"})
+			return
+		}
+		toTime, err := time.Parse("2006-01-02-15:04:05", toParam)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(LinkLatencyResponse{Error: "invalid 'to' format, use yyyy-mm-dd-hh:mm:ss"})
+			return
+		}
+		duration := toTime.Sub(fromTime)
+		bucketSeconds = calculateBucketSize(duration)
+		timeFormat = timeFormatForBucket(bucketSeconds)
+		timeFilter = fmt.Sprintf("f.event_ts >= '%s' AND f.event_ts <= '%s'",
+			fromTime.UTC().Format("2006-01-02 15:04:05"),
+			toTime.UTC().Format("2006-01-02 15:04:05"))
+	} else {
+		// Preset range
+		var intervalMinutes int
+		switch rangeParam {
+		case "15m":
+			intervalMinutes = 15
+		case "30m":
+			intervalMinutes = 30
+		case "1h":
+			intervalMinutes = 60
+		case "3h":
+			intervalMinutes = 180
+		case "6h":
+			intervalMinutes = 360
+		case "12h":
+			intervalMinutes = 720
+		case "2d":
+			intervalMinutes = 2880
+		case "7d":
+			intervalMinutes = 10080
+		default: // 24h
+			intervalMinutes = 1440
+		}
+		bucketSeconds = calculateBucketSize(time.Duration(intervalMinutes) * time.Minute)
+		timeFormat = timeFormatForBucket(bucketSeconds)
+		timeFilter = fmt.Sprintf("f.event_ts > now() - INTERVAL %d MINUTE", intervalMinutes)
+	}
+
 	start := time.Now()
 
-	// Get hourly latency stats for a link over the last 24 hours
+	// Get latency stats for a link with per-direction breakdown
+	// Build query parts separately to avoid fmt.Sprintf interpreting % in timeFormat
+	intervalExpr := fmt.Sprintf("toStartOfInterval(f.event_ts, INTERVAL %d SECOND)", bucketSeconds)
 	query := `
 		SELECT
-			formatDateTime(toStartOfHour(event_ts), '%H:%M') as time_bucket,
-			avg(rtt_us) / 1000.0 as avg_rtt_ms,
-			quantile(0.95)(rtt_us) / 1000.0 as p95_rtt_ms,
-			avg(abs(ipdv_us)) / 1000.0 as avg_jitter_ms,
-			countIf(loss) * 100.0 / count(*) as loss_pct
-		FROM fact_dz_device_link_latency
-		WHERE event_ts > now() - INTERVAL 24 HOUR
-			AND link_pk = $1
-		GROUP BY time_bucket
-		ORDER BY min(event_ts)
-	`
+			formatDateTime(` + intervalExpr + `, '` + timeFormat + `') as time_bucket,
+			avg(f.rtt_us) / 1000.0 as avg_rtt_ms,
+			quantile(0.95)(f.rtt_us) / 1000.0 as p95_rtt_ms,
+			avg(abs(f.ipdv_us)) / 1000.0 as avg_jitter_ms,
+			countIf(f.loss) * 100.0 / count(*) as loss_pct,
+			avgIf(f.rtt_us, f.origin_device_pk = l.side_a_pk) / 1000.0 as avg_rtt_a_to_z_ms,
+			quantileIf(0.95)(f.rtt_us, f.origin_device_pk = l.side_a_pk) / 1000.0 as p95_rtt_a_to_z_ms,
+			avgIf(f.rtt_us, f.origin_device_pk = l.side_z_pk) / 1000.0 as avg_rtt_z_to_a_ms,
+			quantileIf(0.95)(f.rtt_us, f.origin_device_pk = l.side_z_pk) / 1000.0 as p95_rtt_z_to_a_ms,
+			avgIf(abs(f.ipdv_us), f.origin_device_pk = l.side_a_pk) / 1000.0 as jitter_a_to_z_ms,
+			avgIf(abs(f.ipdv_us), f.origin_device_pk = l.side_z_pk) / 1000.0 as jitter_z_to_a_ms
+		FROM fact_dz_device_link_latency f
+		JOIN dz_links_current l ON f.link_pk = l.pk
+		WHERE ` + timeFilter + `
+			AND f.link_pk = $1
+		GROUP BY ` + intervalExpr + `
+		ORDER BY ` + intervalExpr
 
 	rows, err := config.DB.Query(ctx, query, pk)
 	if err != nil {
@@ -537,8 +674,8 @@ func GetLinkLatencyHistory(w http.ResponseWriter, r *http.Request) {
 	var points []LinkLatencyDataPoint
 	for rows.Next() {
 		var p LinkLatencyDataPoint
-		var avgRtt, p95Rtt, avgJitter, lossPct *float64
-		if err := rows.Scan(&p.Time, &avgRtt, &p95Rtt, &avgJitter, &lossPct); err != nil {
+		var avgRtt, p95Rtt, avgJitter, lossPct, avgRttAtoZ, p95RttAtoZ, avgRttZtoA, p95RttZtoA, jitterAtoZ, jitterZtoA *float64
+		if err := rows.Scan(&p.Time, &avgRtt, &p95Rtt, &avgJitter, &lossPct, &avgRttAtoZ, &p95RttAtoZ, &avgRttZtoA, &p95RttZtoA, &jitterAtoZ, &jitterZtoA); err != nil {
 			log.Printf("Latency scan error: %v", err)
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(LinkLatencyResponse{Error: dberror.UserMessage(err)})
@@ -555,6 +692,24 @@ func GetLinkLatencyHistory(w http.ResponseWriter, r *http.Request) {
 		}
 		if lossPct != nil {
 			p.LossPct = *lossPct
+		}
+		if avgRttAtoZ != nil {
+			p.AvgRttAtoZMs = *avgRttAtoZ
+		}
+		if p95RttAtoZ != nil {
+			p.P95RttAtoZMs = *p95RttAtoZ
+		}
+		if avgRttZtoA != nil {
+			p.AvgRttZtoAMs = *avgRttZtoA
+		}
+		if p95RttZtoA != nil {
+			p.P95RttZtoAMs = *p95RttZtoA
+		}
+		if jitterAtoZ != nil {
+			p.JitterAtoZMs = *jitterAtoZ
+		}
+		if jitterZtoA != nil {
+			p.JitterZtoAMs = *jitterZtoA
 		}
 		points = append(points, p)
 	}

@@ -137,6 +137,10 @@ interface HoveredLinkInfo {
   bandwidth: string
   latencyMs: string
   jitterMs: string
+  latencyAtoZMs: string
+  jitterAtoZMs: string
+  latencyZtoAMs: string
+  jitterZtoAMs: string
   lossPercent: string
   inRate: string
   outRate: string
@@ -1412,6 +1416,10 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       bandwidth: formatBandwidth(link.bandwidth_bps),
       latencyMs: hasLatencyData ? (link.latency_us > 0 ? `${(link.latency_us / 1000).toFixed(2)}ms` : '0.00ms') : 'N/A',
       jitterMs: hasLatencyData ? ((link.jitter_us ?? 0) > 0 ? `${(link.jitter_us / 1000).toFixed(3)}ms` : '0.000ms') : 'N/A',
+      latencyAtoZMs: hasLatencyData ? (link.latency_a_to_z_us > 0 ? `${(link.latency_a_to_z_us / 1000).toFixed(2)}ms` : '0.00ms') : 'N/A',
+      jitterAtoZMs: hasLatencyData ? ((link.jitter_a_to_z_us ?? 0) > 0 ? `${(link.jitter_a_to_z_us / 1000).toFixed(3)}ms` : '0.000ms') : 'N/A',
+      latencyZtoAMs: hasLatencyData ? (link.latency_z_to_a_us > 0 ? `${(link.latency_z_to_a_us / 1000).toFixed(2)}ms` : '0.00ms') : 'N/A',
+      jitterZtoAMs: hasLatencyData ? ((link.jitter_z_to_a_us ?? 0) > 0 ? `${(link.jitter_z_to_a_us / 1000).toFixed(3)}ms` : '0.000ms') : 'N/A',
       lossPercent: hasLatencyData ? `${(link.loss_percent ?? 0).toFixed(2)}%` : 'N/A',
       inRate: formatTrafficRate(link.in_bps),
       outRate: formatTrafficRate(link.out_bps),
@@ -1822,6 +1830,10 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             bandwidth: formatBandwidth(link.bandwidth_bps),
             latencyMs: hasLatencyData ? (link.latency_us > 0 ? `${(link.latency_us / 1000).toFixed(2)}ms` : '0.00ms') : 'N/A',
             jitterMs: hasLatencyData ? ((link.jitter_us ?? 0) > 0 ? `${(link.jitter_us / 1000).toFixed(3)}ms` : '0.000ms') : 'N/A',
+            latencyAtoZMs: hasLatencyData ? (link.latency_a_to_z_us > 0 ? `${(link.latency_a_to_z_us / 1000).toFixed(2)}ms` : '0.00ms') : 'N/A',
+            jitterAtoZMs: hasLatencyData ? ((link.jitter_a_to_z_us ?? 0) > 0 ? `${(link.jitter_a_to_z_us / 1000).toFixed(3)}ms` : '0.000ms') : 'N/A',
+            latencyZtoAMs: hasLatencyData ? (link.latency_z_to_a_us > 0 ? `${(link.latency_z_to_a_us / 1000).toFixed(2)}ms` : '0.00ms') : 'N/A',
+            jitterZtoAMs: hasLatencyData ? ((link.jitter_z_to_a_us ?? 0) > 0 ? `${(link.jitter_z_to_a_us / 1000).toFixed(3)}ms` : '0.000ms') : 'N/A',
             lossPercent: hasLatencyData ? `${(link.loss_percent ?? 0).toFixed(2)}%` : 'N/A',
             inRate: formatTrafficRate(link.in_bps),
             outRate: formatTrafficRate(link.out_bps),
@@ -1913,6 +1925,10 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           bandwidth: '',
           latencyMs: props.avgLatencyMs || 'N/A',
           jitterMs: '',
+          latencyAtoZMs: '',
+          jitterAtoZMs: '',
+          latencyZtoAMs: '',
+          jitterZtoAMs: '',
           lossPercent: '',
           inRate: '',
           outRate: '',

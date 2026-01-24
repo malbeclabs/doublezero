@@ -19,10 +19,16 @@ permissions:
   contents: read
   packages: write
   pull-requests: read
+  id-token: write  # Required for AWS OIDC
 
 env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/doublezero-lake
   DOCKER_BUILDKIT: 1
+  AWS_REGION: us-east-1
+  # Preview assets go to preview bucket with branch prefix
+  # Production assets go to production bucket
+  PREVIEW_ASSET_BUCKET: malbeclabs-lake-app-web-assets-previews
+  PROD_ASSET_BUCKET: malbeclabs-lake-app-web-assets
 
 jobs:
   build-and-push:
@@ -61,6 +67,31 @@ jobs:
           cd lake/web
           bun install --frozen-lockfile
           bun run build
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::879381273509:role/github-actions-lake-web-assets
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Upload assets to S3
+        run: |
+          # Determine bucket and path based on branch
+          if [[ "${{ github.ref_name }}" == "main" ]]; then
+            BUCKET="${{ env.PROD_ASSET_BUCKET }}"
+            PREFIX="assets"
+          else
+            BUCKET="${{ env.PREVIEW_ASSET_BUCKET }}"
+            PREFIX="${{ steps.v.outputs.branch_name }}"
+          fi
+
+          echo "Uploading assets to s3://${BUCKET}/${PREFIX}/"
+          aws s3 sync lake/web/dist/assets/ "s3://${BUCKET}/${PREFIX}/" \
+            --cache-control "public, max-age=31536000, immutable"
+
+          echo "asset_bucket=${BUCKET}" >> $GITHUB_OUTPUT
+          echo "asset_prefix=${PREFIX}" >> $GITHUB_OUTPUT
+        id: assets
 
       - uses: docker/setup-buildx-action@v3
 

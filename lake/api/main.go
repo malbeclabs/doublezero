@@ -330,6 +330,7 @@ func main() {
 		w.Write([]byte("ok"))
 	})
 
+	r.Get("/api/config", handlers.GetConfig)
 	r.Get("/api/catalog", handlers.GetCatalog)
 	r.Get("/api/stats", handlers.GetStats)
 	r.Get("/api/status", handlers.GetStatus)

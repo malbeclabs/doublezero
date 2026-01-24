@@ -16,7 +16,6 @@ set -euo pipefail
 # Environment:
 #   ASSET_BUCKET - S3 bucket for web assets (required unless --skip-assets)
 #   ASSET_BUCKET_PREFIX - Prefix in bucket (default: "assets")
-#   GOOGLE_CLIENT_ID - Google OAuth client ID (or VITE_GOOGLE_CLIENT_ID)
 #   DOCKER_REGISTRY - Docker registry (default: "snormore")
 #   DOCKER_IMAGE - Image name (default: "doublezero-lake")
 #   K8S_NAMESPACE - Kubernetes namespace (default: "doublezero-data")
@@ -68,7 +67,6 @@ DOCKER_IMAGE="${DOCKER_IMAGE:-doublezero-lake}"
 K8S_NAMESPACE="${K8S_NAMESPACE:-doublezero-data}"
 K8S_DEPLOYMENT="${K8S_DEPLOYMENT:-lake-api}"
 K8S_CONTAINER="${K8S_CONTAINER:-lake-api}"
-export VITE_GOOGLE_CLIENT_ID="${VITE_GOOGLE_CLIENT_ID:-$GOOGLE_CLIENT_ID}"
 
 # Build metadata
 BUILD_COMMIT="$(git rev-parse --short HEAD)"
@@ -87,10 +85,6 @@ echo ""
 if [[ -z "$SKIP_ASSETS" ]]; then
     if [[ -z "${ASSET_BUCKET:-}" ]]; then
         echo "Error: ASSET_BUCKET is required (or use --skip-assets)"
-        exit 1
-    fi
-    if [[ -z "${VITE_GOOGLE_CLIENT_ID:-}" ]]; then
-        echo "Error: VITE_GOOGLE_CLIENT_ID is required (or use --skip-assets)"
         exit 1
     fi
     echo "=== Uploading web assets to S3 ==="

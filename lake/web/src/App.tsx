@@ -54,7 +54,7 @@ import { StakePage } from '@/components/stake-page'
 import { SettingsPage } from '@/components/settings-page'
 import { ChangelogPage } from '@/components/changelog-page'
 import { ConnectionError } from '@/components/ConnectionError'
-import { generateSessionTitle, recommendVisualization, fetchCatalog } from '@/lib/api'
+import { generateSessionTitle, recommendVisualization, fetchCatalog, fetchConfig, type AppConfig } from '@/lib/api'
 import type { TableInfo, QueryResponse, HistoryMessage, QueryMode } from '@/lib/api'
 import { type QuerySession, type ChatSession } from '@/lib/sessions'
 import { formatQueryByType, formatQuery } from '@/lib/format-query'
@@ -662,11 +662,8 @@ function AppContent() {
   )
 }
 
-// Google Client ID from environment
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined
-
 // Wrapper that provides auth callbacks with access to navigation and query client
-function AuthWrapper({ children }: { children: React.ReactNode }) {
+function AuthWrapper({ children, config }: { children: React.ReactNode; config: AppConfig }) {
   const navigate = useNavigate()
   const location = useLocation()
   const qc = useQueryClient()
@@ -693,7 +690,7 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthProvider
-      googleClientId={GOOGLE_CLIENT_ID}
+      googleClientId={config.googleClientId}
       onLoginSuccess={handleLoginSuccess}
       onLogoutSuccess={handleLogoutSuccess}
     >
@@ -703,10 +700,25 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  const [config, setConfig] = useState<AppConfig>({})
+  const [configLoaded, setConfigLoaded] = useState(false)
+
+  useEffect(() => {
+    fetchConfig().then((cfg) => {
+      setConfig(cfg)
+      setConfigLoaded(true)
+    })
+  }, [])
+
+  // Wait for config before rendering auth-dependent components
+  if (!configLoaded) {
+    return null
+  }
+
   return (
     <QueryClientProvider client={queryClient}>
       <WalletProviderWrapper>
-        <AuthWrapper>
+        <AuthWrapper config={config}>
           <AppContent />
         </AuthWrapper>
       </WalletProviderWrapper>

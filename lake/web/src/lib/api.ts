@@ -67,6 +67,30 @@ function getAuthHeaders(): Record<string, string> {
   return {}
 }
 
+// Public config from API
+export interface AppConfig {
+  googleClientId?: string
+}
+
+// Cached config (fetched once at startup)
+let cachedConfig: AppConfig | null = null
+
+// Fetch public config from API
+export async function fetchConfig(): Promise<AppConfig> {
+  if (cachedConfig) {
+    return cachedConfig
+  }
+
+  const response = await fetch('/api/config')
+  if (!response.ok) {
+    console.warn('Failed to fetch config, using defaults')
+    return {}
+  }
+
+  cachedConfig = await response.json()
+  return cachedConfig!
+}
+
 // Retry configuration
 const RETRY_CONFIG = {
   maxRetries: 3,

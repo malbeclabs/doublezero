@@ -392,6 +392,7 @@ func main() {
 	r.Get("/api/topology/metro-path-latency", handlers.GetMetroPathLatency)
 	r.Get("/api/topology/metro-path-detail", handlers.GetMetroPathDetail)
 	r.Get("/api/topology/metro-paths", handlers.GetMetroPaths)
+	r.Get("/api/topology/metro-device-paths", handlers.GetMetroDevicePaths)
 	r.Post("/api/topology/maintenance-impact", handlers.PostMaintenanceImpact)
 	r.Post("/api/topology/whatif-removal", handlers.PostWhatIfRemoval)
 

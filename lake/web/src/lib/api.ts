@@ -1507,6 +1507,51 @@ export async function fetchISISPaths(fromPK: string, toPK: string, k: number = 5
   return res.json()
 }
 
+// Metro device paths types
+export interface MetroDevicePairPath {
+  sourceDevicePK: string
+  sourceDeviceCode: string
+  targetDevicePK: string
+  targetDeviceCode: string
+  bestPath: SinglePath
+}
+
+export interface MetroDevicePathsResponse {
+  fromMetroPK: string
+  fromMetroCode: string
+  toMetroPK: string
+  toMetroCode: string
+
+  // Aggregate summary
+  sourceDeviceCount: number
+  targetDeviceCount: number
+  totalPairs: number
+  minHops: number
+  maxHops: number
+  minLatencyMs: number
+  maxLatencyMs: number
+  avgLatencyMs: number
+
+  // All device pairs with their best path
+  devicePairs: MetroDevicePairPath[]
+
+  error?: string
+}
+
+export async function fetchMetroDevicePaths(
+  fromMetroPK: string,
+  toMetroPK: string,
+  mode: PathMode = 'hops'
+): Promise<MetroDevicePathsResponse> {
+  const res = await fetch(
+    `/api/topology/metro-device-paths?from=${encodeURIComponent(fromMetroPK)}&to=${encodeURIComponent(toMetroPK)}&mode=${mode}`
+  )
+  if (!res.ok) {
+    throw new Error('Failed to fetch metro device paths')
+  }
+  return res.json()
+}
+
 // Critical links types
 export interface CriticalLink {
   sourcePK: string

@@ -5,6 +5,7 @@ import { useSearchParams } from 'react-router-dom'
 export type TopologyMode =
   | 'explore'      // Default mode - clicking entities selects them
   | 'path'         // Path finding mode - click source then target
+  | 'metro-path'   // Metro path finding mode - select source and target metros
   | 'whatif-removal'   // Simulate link removal
   | 'whatif-addition'  // Simulate link addition
   | 'impact'       // Device failure impact analysis
@@ -198,7 +199,7 @@ export function TopologyProvider({ children, view }: TopologyProviderProps) {
   }, [setSearchParams])
 
   // Path-related modes that style edges (mutually exclusive with link overlays)
-  const edgeStylingModes: TopologyMode[] = ['path', 'whatif-removal', 'whatif-addition']
+  const edgeStylingModes: TopologyMode[] = ['path', 'metro-path', 'whatif-removal', 'whatif-addition']
   // Link overlays (defined here for use in setMode)
   const linkOverlayKeys: (keyof OverlayState)[] = ['linkType', 'bandwidth', 'linkHealth', 'trafficFlow', 'contributorLinks', 'criticality', 'isisHealth']
 

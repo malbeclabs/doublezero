@@ -3688,3 +3688,374 @@ func analyzeLinkImpact(ctx context.Context, session neo4j.Session, linkPK string
 
 	return item
 }
+
+// MetroDevicePairPath represents the best path between a device pair across two metros
+type MetroDevicePairPath struct {
+	SourceDevicePK   string     `json:"sourceDevicePK"`
+	SourceDeviceCode string     `json:"sourceDeviceCode"`
+	TargetDevicePK   string     `json:"targetDevicePK"`
+	TargetDeviceCode string     `json:"targetDeviceCode"`
+	BestPath         SinglePath `json:"bestPath"`
+}
+
+// MetroDevicePathsResponse is the response for the metro device paths endpoint
+type MetroDevicePathsResponse struct {
+	FromMetroPK   string `json:"fromMetroPK"`
+	FromMetroCode string `json:"fromMetroCode"`
+	ToMetroPK     string `json:"toMetroPK"`
+	ToMetroCode   string `json:"toMetroCode"`
+
+	// Aggregate summary
+	SourceDeviceCount int     `json:"sourceDeviceCount"`
+	TargetDeviceCount int     `json:"targetDeviceCount"`
+	TotalPairs        int     `json:"totalPairs"`
+	MinHops           int     `json:"minHops"`
+	MaxHops           int     `json:"maxHops"`
+	MinLatencyMs      float64 `json:"minLatencyMs"`
+	MaxLatencyMs      float64 `json:"maxLatencyMs"`
+	AvgLatencyMs      float64 `json:"avgLatencyMs"`
+
+	// All device pairs with their best path
+	DevicePairs []MetroDevicePairPath `json:"devicePairs"`
+
+	Error string `json:"error,omitempty"`
+}
+
+// GetMetroDevicePaths returns all paths between devices in two metros
+// Query params: from (metro PK), to (metro PK), mode (hops|latency)
+func GetMetroDevicePaths(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+
+	fromMetroPK := r.URL.Query().Get("from")
+	toMetroPK := r.URL.Query().Get("to")
+	mode := r.URL.Query().Get("mode")
+
+	if fromMetroPK == "" || toMetroPK == "" {
+		writeJSON(w, MetroDevicePathsResponse{Error: "from and to parameters are required"})
+		return
+	}
+
+	if fromMetroPK == toMetroPK {
+		writeJSON(w, MetroDevicePathsResponse{Error: "from and to must be different metros"})
+		return
+	}
+
+	if mode == "" {
+		mode = "hops"
+	}
+
+	start := time.Now()
+
+	session := config.Neo4jSession(ctx)
+	defer session.Close(ctx)
+
+	response := MetroDevicePathsResponse{
+		FromMetroPK: fromMetroPK,
+		ToMetroPK:   toMetroPK,
+		DevicePairs: []MetroDevicePairPath{},
+	}
+
+	// Get metro codes and devices in each metro
+	metroCypher := `
+		MATCH (m1:Metro {pk: $fromPK}), (m2:Metro {pk: $toPK})
+		OPTIONAL MATCH (m1)<-[:LOCATED_IN]-(d1:Device)
+		WHERE d1.isis_system_id IS NOT NULL
+		WITH m1, m2, collect(d1) AS sourceDevices
+		OPTIONAL MATCH (m2)<-[:LOCATED_IN]-(d2:Device)
+		WHERE d2.isis_system_id IS NOT NULL
+		RETURN m1.code AS fromCode, m2.code AS toCode,
+		       [d IN sourceDevices | {pk: d.pk, code: d.code}] AS sourceDevices,
+		       collect({pk: d2.pk, code: d2.code}) AS targetDevices
+	`
+
+	result, err := session.Run(ctx, metroCypher, map[string]any{
+		"fromPK": fromMetroPK,
+		"toPK":   toMetroPK,
+	})
+	if err != nil {
+		log.Printf("Metro device paths metro query error: %v", err)
+		response.Error = err.Error()
+		writeJSON(w, response)
+		return
+	}
+
+	record, err := result.Single(ctx)
+	if err != nil {
+		log.Printf("Metro device paths metro query no result: %v", err)
+		response.Error = "One or both metros not found"
+		writeJSON(w, response)
+		return
+	}
+
+	response.FromMetroCode = asString(record.Values[0])
+	response.ToMetroCode = asString(record.Values[1])
+
+	// Parse source and target devices
+	type deviceInfo struct {
+		PK   string
+		Code string
+	}
+	var sourceDevices, targetDevices []deviceInfo
+
+	if sourceList, ok := record.Values[2].([]any); ok {
+		for _, item := range sourceList {
+			if m, ok := item.(map[string]any); ok {
+				sourceDevices = append(sourceDevices, deviceInfo{
+					PK:   asString(m["pk"]),
+					Code: asString(m["code"]),
+				})
+			}
+		}
+	}
+
+	if targetList, ok := record.Values[3].([]any); ok {
+		for _, item := range targetList {
+			if m, ok := item.(map[string]any); ok {
+				targetDevices = append(targetDevices, deviceInfo{
+					PK:   asString(m["pk"]),
+					Code: asString(m["code"]),
+				})
+			}
+		}
+	}
+
+	response.SourceDeviceCount = len(sourceDevices)
+	response.TargetDeviceCount = len(targetDevices)
+
+	if len(sourceDevices) == 0 || len(targetDevices) == 0 {
+		response.Error = "One or both metros have no ISIS-enabled devices"
+		writeJSON(w, response)
+		return
+	}
+
+	// Build list of all device pairs and find paths
+	type pathResult struct {
+		sourceIdx int
+		targetIdx int
+		path      SinglePath
+		err       error
+	}
+
+	// Use a channel to collect results from goroutines
+	resultChan := make(chan pathResult, len(sourceDevices)*len(targetDevices))
+
+	// Semaphore to limit concurrent goroutines
+	sem := make(chan struct{}, 10)
+
+	// Find shortest path for each device pair
+	for i, source := range sourceDevices {
+		for j, target := range targetDevices {
+			i, j := i, j
+			source, target := source, target
+
+			go func() {
+				sem <- struct{}{} // Acquire
+				defer func() { <-sem }() // Release
+
+				// Use a fresh context for each query
+				queryCtx, queryCancel := context.WithTimeout(ctx, 5*time.Second)
+				defer queryCancel()
+
+				querySession := config.Neo4jSession(queryCtx)
+				defer querySession.Close(queryCtx)
+
+				var cypher string
+				if mode == "latency" {
+					cypher = `
+						MATCH (a:Device {pk: $from_pk}), (b:Device {pk: $to_pk})
+						CALL apoc.algo.dijkstra(a, b, 'ISIS_ADJACENT>', 'metric') YIELD path, weight
+						WITH path, toInteger(weight) AS totalMetric
+						RETURN [n IN nodes(path) | {
+							pk: n.pk,
+							code: n.code,
+							status: n.status,
+							device_type: n.device_type
+						}] AS devices,
+						[r IN relationships(path) | r.metric] AS edgeMetrics,
+						totalMetric
+					`
+				} else {
+					cypher = `
+						MATCH (a:Device {pk: $from_pk}), (b:Device {pk: $to_pk})
+						MATCH path = shortestPath((a)-[:ISIS_ADJACENT*]->(b))
+						WITH path, reduce(total = 0, r IN relationships(path) | total + coalesce(r.metric, 0)) AS totalMetric
+						RETURN [n IN nodes(path) | {
+							pk: n.pk,
+							code: n.code,
+							status: n.status,
+							device_type: n.device_type
+						}] AS devices,
+						[r IN relationships(path) | r.metric] AS edgeMetrics,
+						totalMetric
+					`
+				}
+
+				pathRes, err := querySession.Run(queryCtx, cypher, map[string]any{
+					"from_pk": source.PK,
+					"to_pk":   target.PK,
+				})
+				if err != nil {
+					resultChan <- pathResult{sourceIdx: i, targetIdx: j, err: err}
+					return
+				}
+
+				pathRecord, err := pathRes.Single(queryCtx)
+				if err != nil {
+					resultChan <- pathResult{sourceIdx: i, targetIdx: j, err: err}
+					return
+				}
+
+				devicesVal, _ := pathRecord.Get("devices")
+				edgeMetricsVal, _ := pathRecord.Get("edgeMetrics")
+				totalMetric, _ := pathRecord.Get("totalMetric")
+
+				hops := parseNodeListWithMetrics(devicesVal, edgeMetricsVal)
+
+				resultChan <- pathResult{
+					sourceIdx: i,
+					targetIdx: j,
+					path: SinglePath{
+						Path:        hops,
+						TotalMetric: uint32(asInt64(totalMetric)),
+						HopCount:    len(hops) - 1,
+					},
+				}
+			}()
+		}
+	}
+
+	// Collect all results
+	expectedResults := len(sourceDevices) * len(targetDevices)
+	results := make([]pathResult, 0, expectedResults)
+	for k := 0; k < expectedResults; k++ {
+		results = append(results, <-resultChan)
+	}
+	close(resultChan)
+
+	// Build device pair paths from results
+	var totalLatencyMs float64
+	var pathCount int
+
+	for _, res := range results {
+		if res.err != nil {
+			// No path found, skip this pair
+			continue
+		}
+
+		source := sourceDevices[res.sourceIdx]
+		target := targetDevices[res.targetIdx]
+
+		response.DevicePairs = append(response.DevicePairs, MetroDevicePairPath{
+			SourceDevicePK:   source.PK,
+			SourceDeviceCode: source.Code,
+			TargetDevicePK:   target.PK,
+			TargetDeviceCode: target.Code,
+			BestPath:         res.path,
+		})
+
+		// Update aggregate stats
+		hops := res.path.HopCount
+		latencyMs := float64(res.path.TotalMetric) / 1000.0
+
+		if pathCount == 0 {
+			response.MinHops = hops
+			response.MaxHops = hops
+			response.MinLatencyMs = latencyMs
+			response.MaxLatencyMs = latencyMs
+		} else {
+			if hops < response.MinHops {
+				response.MinHops = hops
+			}
+			if hops > response.MaxHops {
+				response.MaxHops = hops
+			}
+			if latencyMs < response.MinLatencyMs {
+				response.MinLatencyMs = latencyMs
+			}
+			if latencyMs > response.MaxLatencyMs {
+				response.MaxLatencyMs = latencyMs
+			}
+		}
+
+		totalLatencyMs += latencyMs
+		pathCount++
+	}
+
+	response.TotalPairs = pathCount
+	if pathCount > 0 {
+		response.AvgLatencyMs = totalLatencyMs / float64(pathCount)
+	}
+
+	// Enrich paths with measured latency
+	if len(response.DevicePairs) > 0 {
+		multiPathResp := &MultiPathResponse{
+			Paths: make([]SinglePath, len(response.DevicePairs)),
+		}
+		for i, pair := range response.DevicePairs {
+			multiPathResp.Paths[i] = pair.BestPath
+		}
+		if err := enrichPathsWithMeasuredLatency(ctx, multiPathResp); err != nil {
+			log.Printf("enrichPathsWithMeasuredLatency error for metro paths: %v", err)
+		} else {
+			// Copy enriched paths back
+			for i := range response.DevicePairs {
+				response.DevicePairs[i].BestPath = multiPathResp.Paths[i]
+			}
+
+			// Recalculate latency stats using measured latency where available
+			if len(response.DevicePairs) > 0 {
+				var totalMeasured float64
+				var measuredCount int
+				response.MinLatencyMs = 0
+				response.MaxLatencyMs = 0
+
+				for i, pair := range response.DevicePairs {
+					latencyMs := pair.BestPath.MeasuredLatencyMs
+					if latencyMs == 0 {
+						latencyMs = float64(pair.BestPath.TotalMetric) / 1000.0
+					}
+					if i == 0 || latencyMs < response.MinLatencyMs {
+						response.MinLatencyMs = latencyMs
+					}
+					if latencyMs > response.MaxLatencyMs {
+						response.MaxLatencyMs = latencyMs
+					}
+					totalMeasured += latencyMs
+					measuredCount++
+				}
+
+				if measuredCount > 0 {
+					response.AvgLatencyMs = totalMeasured / float64(measuredCount)
+				}
+			}
+		}
+	}
+
+	// Sort device pairs by latency
+	slices.SortFunc(response.DevicePairs, func(a, b MetroDevicePairPath) int {
+		aLatency := a.BestPath.MeasuredLatencyMs
+		if aLatency == 0 {
+			aLatency = float64(a.BestPath.TotalMetric)
+		}
+		bLatency := b.BestPath.MeasuredLatencyMs
+		if bLatency == 0 {
+			bLatency = float64(b.BestPath.TotalMetric)
+		}
+		if aLatency < bLatency {
+			return -1
+		}
+		if aLatency > bLatency {
+			return 1
+		}
+		return 0
+	})
+
+	duration := time.Since(start)
+	metrics.RecordClickHouseQuery(duration, nil)
+
+	log.Printf("GetMetroDevicePaths %s->%s (%s mode): %d pairs in %v",
+		response.FromMetroCode, response.ToMetroCode, mode, response.TotalPairs, duration)
+
+	writeJSON(w, response)
+}

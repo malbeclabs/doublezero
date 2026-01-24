@@ -3,10 +3,10 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import cytoscape from 'cytoscape'
 import type { Core, NodeSingular, EdgeSingular } from 'cytoscape'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchISISTopology, fetchISISPaths, fetchTopologyCompare, fetchWhatIfRemoval, fetchCriticalLinks, fetchSimulateLinkRemoval, fetchSimulateLinkAddition, fetchTopology, fetchLinkHealth } from '@/lib/api'
-import type { WhatIfRemovalResponse, MultiPathResponse, SimulateLinkRemovalResponse, SimulateLinkAdditionResponse } from '@/lib/api'
+import { fetchISISTopology, fetchISISPaths, fetchTopologyCompare, fetchWhatIfRemoval, fetchCriticalLinks, fetchSimulateLinkRemoval, fetchSimulateLinkAddition, fetchTopology, fetchLinkHealth, fetchMetroDevicePaths } from '@/lib/api'
+import type { WhatIfRemovalResponse, MultiPathResponse, SimulateLinkRemovalResponse, SimulateLinkAdditionResponse, MetroDevicePathsResponse } from '@/lib/api'
 import { useTheme } from '@/hooks/use-theme'
-import { useTopology, TopologyPanel, TopologyControlBar, DeviceDetails, LinkDetails, PathModePanel, CriticalityPanel, WhatIfRemovalPanel, WhatIfAdditionPanel, ImpactPanel, ComparePanel, StakeOverlayPanel, LinkHealthOverlayPanel, TrafficFlowOverlayPanel, MetroClusteringOverlayPanel, ContributorsOverlayPanel, BandwidthOverlayPanel, DeviceTypeOverlayPanel, LinkTypeOverlayPanel, LINK_TYPE_COLORS, type DeviceInfo, type LinkInfo, type DeviceOption } from '@/components/topology'
+import { useTopology, TopologyPanel, TopologyControlBar, DeviceDetails, LinkDetails, PathModePanel, MetroPathModePanel, CriticalityPanel, WhatIfRemovalPanel, WhatIfAdditionPanel, ImpactPanel, ComparePanel, StakeOverlayPanel, LinkHealthOverlayPanel, TrafficFlowOverlayPanel, MetroClusteringOverlayPanel, ContributorsOverlayPanel, BandwidthOverlayPanel, DeviceTypeOverlayPanel, LinkTypeOverlayPanel, LINK_TYPE_COLORS, type DeviceInfo, type LinkInfo, type DeviceOption, type MetroOption } from '@/components/topology'
 import { ErrorState } from '@/components/ui/error-state'
 
 // Device type colors (types from serviceability smart contract: hybrid, transit, edge)
@@ -127,6 +127,25 @@ export function TopologyGraph({
   const [reversePathsResult, setReversePathsResult] = useState<MultiPathResponse | null>(null)
   const [selectedReversePathIndex, setSelectedReversePathIndex] = useState<number>(0)
   const [reversePathLoading, setReversePathLoading] = useState(false)
+
+  // Metro path finding state
+  const [metroPathSource, setMetroPathSource] = useState<string | null>(null)
+  const [metroPathTarget, setMetroPathTarget] = useState<string | null>(null)
+  const [metroPathsResult, setMetroPathsResult] = useState<MetroDevicePathsResponse | null>(null)
+  const [metroPathLoading, setMetroPathLoading] = useState(false)
+  const [metroPathViewMode, setMetroPathViewMode] = useState<'aggregate' | 'drilldown'>('aggregate')
+  const [metroPathSelectedPairs, setMetroPathSelectedPairs] = useState<number[]>([])
+
+  // Handler to toggle pair selection (up to 5 pairs)
+  const handleToggleMetroPathPair = useCallback((index: number) => {
+    setMetroPathSelectedPairs(prev => {
+      if (prev.includes(index)) {
+        return prev.filter(i => i !== index)
+      }
+      if (prev.length >= 5) return prev // Max 5 selections
+      return [...prev, index]
+    })
+  }, [])
 
   // Failure impact state - impactDevices comes from context
   const [impactResult, setImpactResult] = useState<WhatIfRemovalResponse | null>(null)
@@ -298,6 +317,18 @@ export function TopologyGraph({
           metro: metro?.code,
         }
       })
+      .sort((a, b) => a.code.localeCompare(b.code))
+  }, [topologyData])
+
+  // Build metro options for metro path finding selectors
+  const metroOptions: MetroOption[] = useMemo(() => {
+    if (!topologyData?.metros) return []
+    return topologyData.metros
+      .map(m => ({
+        pk: m.pk,
+        code: m.code,
+        name: m.name,
+      }))
       .sort((a, b) => a.code.localeCompare(b.code))
   }, [topologyData])
 
@@ -675,6 +706,47 @@ export function TopologyGraph({
       })
   }, [mode, pathSource, pathTarget, pathMode, showReverse])
 
+  // Fetch metro paths when source and target metros are set
+  useEffect(() => {
+    if (mode !== 'metro-path' || !metroPathSource || !metroPathTarget) {
+      return
+    }
+
+    setMetroPathLoading(true)
+    setMetroPathViewMode('aggregate')
+    setMetroPathSelectedPairs([])
+    fetchMetroDevicePaths(metroPathSource, metroPathTarget, pathMode)
+      .then(result => {
+        setMetroPathsResult(result)
+        // Turn off device/link type overlays when paths are found
+        if (result.devicePairs?.length > 0) {
+          if (overlays.deviceType) toggleOverlay('deviceType')
+          if (overlays.linkType) toggleOverlay('linkType')
+        }
+      })
+      .catch(err => {
+        setMetroPathsResult({
+          fromMetroPK: metroPathSource,
+          fromMetroCode: '',
+          toMetroPK: metroPathTarget,
+          toMetroCode: '',
+          sourceDeviceCount: 0,
+          targetDeviceCount: 0,
+          totalPairs: 0,
+          minHops: 0,
+          maxHops: 0,
+          minLatencyMs: 0,
+          maxLatencyMs: 0,
+          avgLatencyMs: 0,
+          devicePairs: [],
+          error: err.message,
+        })
+      })
+      .finally(() => {
+        setMetroPathLoading(false)
+      })
+  }, [mode, metroPathSource, metroPathTarget, pathMode])
+
   // Highlight paths on graph - show all paths with different colors, selected path is prominent
   // Uses direct .style() calls to override any other overlay styles (bandwidth, link type, etc.)
   useEffect(() => {
@@ -763,6 +835,117 @@ export function TopologyGraph({
     previousPathEdgeIdsRef.current = newPathEdgeIds
   }, [pathsResult, selectedPathIndex, isDark])
 
+  // Highlight metro paths on graph
+  useEffect(() => {
+    if (!cyRef.current || mode !== 'metro-path') return
+    const cy = cyRef.current
+
+    // Path colors
+    const PATH_COLORS = [
+      { light: '#16a34a', dark: '#22c55e' },  // Green (best)
+      { light: '#2563eb', dark: '#3b82f6' },  // Blue
+      { light: '#9333ea', dark: '#a855f7' },  // Purple
+      { light: '#ea580c', dark: '#f97316' },  // Orange
+      { light: '#0891b2', dark: '#06b6d4' },  // Cyan
+    ]
+
+    // Clear previous highlighting
+    const defaultColor = isDark ? '#6b7280' : '#9ca3af'
+    previousPathEdgeIdsRef.current.forEach(edgeId => {
+      const edge = cy.getElementById(edgeId)
+      if (edge.length) {
+        edge.removeStyle('line-color target-arrow-color width opacity z-index')
+        edge.style({
+          'line-color': defaultColor,
+          'target-arrow-color': defaultColor,
+          'width': 1,
+          'opacity': 0.7,
+        })
+      }
+    })
+    previousPathEdgeIdsRef.current.clear()
+    cy.elements().removeClass('path-node path-edge path-0 path-1 path-2 path-3 path-4 path-selected')
+
+    if (!metroPathsResult?.devicePairs?.length) return
+
+    const newPathEdgeIds = new Set<string>()
+
+    cy.batch(() => {
+      // In aggregate mode, show all paths faintly
+      // In drilldown mode, highlight selected pair prominently
+      if (metroPathViewMode === 'aggregate') {
+        // Show all paths with low opacity
+        metroPathsResult.devicePairs.forEach((pair, pairIndex) => {
+          const path = pair.bestPath
+          if (!path?.path?.length) return
+
+          const color = isDark ? PATH_COLORS[pairIndex % PATH_COLORS.length].dark : PATH_COLORS[pairIndex % PATH_COLORS.length].light
+
+          // Highlight path nodes
+          path.path.forEach(hop => {
+            const node = cy.getElementById(hop.devicePK)
+            if (node.length) {
+              node.addClass('path-node')
+            }
+          })
+
+          // Highlight edges
+          for (let i = 0; i < path.path.length - 1; i++) {
+            const from = path.path[i].devicePK
+            const to = path.path[i + 1].devicePK
+            const edge = cy.edges(`[source="${from}"][target="${to}"], [source="${to}"][target="${from}"]`)
+            edge.addClass('path-edge')
+            edge.forEach(e => { newPathEdgeIds.add(e.id()) })
+            edge.style({
+              'line-color': color,
+              'target-arrow-color': color,
+              'width': 2,
+              'opacity': 0.4,
+            })
+          }
+        })
+      } else if (metroPathSelectedPairs.length > 0) {
+        // Drilldown mode: highlight all selected pairs
+        metroPathSelectedPairs.forEach((pairIndex, colorIdx) => {
+          const pair = metroPathsResult.devicePairs[pairIndex]
+          if (!pair) return
+          const path = pair.bestPath
+          if (!path?.path?.length) return
+
+          const color = isDark ? PATH_COLORS[colorIdx % PATH_COLORS.length].dark : PATH_COLORS[colorIdx % PATH_COLORS.length].light
+
+          // Highlight path nodes
+          path.path.forEach((hop, i) => {
+            const node = cy.getElementById(hop.devicePK)
+            if (node.length) {
+              node.addClass('path-node path-selected')
+              if (i === 0) node.addClass('path-source')
+              if (i === path.path.length - 1) node.addClass('path-target')
+            }
+          })
+
+          // Highlight edges
+          for (let i = 0; i < path.path.length - 1; i++) {
+            const from = path.path[i].devicePK
+            const to = path.path[i + 1].devicePK
+            const edge = cy.edges(`[source="${from}"][target="${to}"], [source="${to}"][target="${from}"]`)
+            edge.addClass('path-edge path-selected')
+            edge.forEach(e => { newPathEdgeIds.add(e.id()) })
+            edge.style({
+              'line-color': color,
+              'target-arrow-color': color,
+              'width': 5,
+              'opacity': 1,
+              'z-index': 10,
+            })
+          }
+        })
+      }
+    })
+
+    previousPathEdgeIdsRef.current = newPathEdgeIds
+  }, [mode, metroPathsResult, metroPathViewMode, metroPathSelectedPairs, isDark])
+
   // Clear classes when mode changes
   useEffect(() => {
     const allClasses = 'path-node path-edge path-source path-target path-0 path-1 path-2 path-3 path-4 path-selected health-matched health-extra health-missing health-mismatch criticality-critical criticality-important criticality-redundant whatif-removal-candidate whatif-removed whatif-rerouted whatif-disconnected whatif-added whatif-addition-source whatif-addition-target whatif-improved whatif-redundancy-gained'
@@ -772,6 +955,11 @@ export function TopologyGraph({
       setPathTarget(null)
       setPathsResult(null)
       setSelectedPathIndex(0)
+      setMetroPathSource(null)
+      setMetroPathTarget(null)
+      setMetroPathsResult(null)
+      setMetroPathSelectedPairs([])
+      setMetroPathViewMode('aggregate')
       setRemovalLink(null)
       setRemovalResult(null)
       setAdditionSource(null)
@@ -798,6 +986,19 @@ export function TopologyGraph({
       }
     } else if (mode === 'path') {
       // Clear other mode classes
+      setMetroPathSource(null)
+      setMetroPathTarget(null)
+      setMetroPathsResult(null)
+      setRemovalLink(null)
+      setRemovalResult(null)
+      setAdditionSource(null)
+      setAdditionTarget(null)
+      setAdditionResult(null)
+    } else if (mode === 'metro-path') {
+      // Clear other mode classes
+      setPathSource(null)
+      setPathTarget(null)
+      setPathsResult(null)
       setRemovalLink(null)
       setRemovalResult(null)
       setAdditionSource(null)
@@ -811,6 +1012,9 @@ export function TopologyGraph({
       setPathSource(null)
       setPathTarget(null)
       setPathsResult(null)
+      setMetroPathSource(null)
+      setMetroPathTarget(null)
+      setMetroPathsResult(null)
       setAdditionSource(null)
       setAdditionTarget(null)
       setAdditionResult(null)
@@ -840,6 +1044,9 @@ export function TopologyGraph({
       setPathSource(null)
       setPathTarget(null)
       setPathsResult(null)
+      setMetroPathSource(null)
+      setMetroPathTarget(null)
+      setMetroPathsResult(null)
       setRemovalLink(null)
       setRemovalResult(null)
       if (cyRef.current) {
@@ -2889,6 +3096,7 @@ export function TopologyGraph({
         <TopologyPanel
           title={
             mode === 'path' ? 'Path Finding' :
+            mode === 'metro-path' ? 'Metro Path Finding' :
             mode === 'whatif-removal' ? 'Simulate Link Removal' :
             mode === 'whatif-addition' ? 'Simulate Link Addition' :
             mode === 'impact' ? 'Device Failure' :
@@ -2896,6 +3104,7 @@ export function TopologyGraph({
           }
           subtitle={
             mode === 'path' ? 'Find shortest paths between two devices by hop count or latency.' :
+            mode === 'metro-path' ? 'Find all paths between devices in two metros.' :
             mode === 'whatif-removal' ? 'Analyze what happens to network paths if a link is removed.' :
             mode === 'whatif-addition' ? 'See how adding a new link would improve connectivity.' :
             mode === 'impact' ? 'Analyze the impact of a device failure on network paths.' :
@@ -2922,6 +3131,31 @@ export function TopologyGraph({
               onSetSource={setPathSource}
               onSetTarget={setPathTarget}
               onToggleReverse={() => setShowReverse(prev => !prev)}
+            />
+          )}
+          {mode === 'metro-path' && (
+            <MetroPathModePanel
+              sourceMetro={metroPathSource}
+              targetMetro={metroPathTarget}
+              metros={metroOptions}
+              pathsResult={metroPathsResult}
+              loading={metroPathLoading}
+              pathMode={pathMode}
+              viewMode={metroPathViewMode}
+              selectedPairIndices={metroPathSelectedPairs}
+              onSetSourceMetro={setMetroPathSource}
+              onSetTargetMetro={setMetroPathTarget}
+              onPathModeChange={setPathMode}
+              onViewModeChange={setMetroPathViewMode}
+              onTogglePair={handleToggleMetroPathPair}
+              onClearSelection={() => setMetroPathSelectedPairs([])}
+              onClear={() => {
+                setMetroPathSource(null)
+                setMetroPathTarget(null)
+                setMetroPathsResult(null)
+                setMetroPathSelectedPairs([])
+                setMetroPathViewMode('aggregate')
+              }}
             />
           )}
           {mode === 'whatif-removal' && (

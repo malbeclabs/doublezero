@@ -6,9 +6,9 @@ import type { StyleSpecification } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { useQuery } from '@tanstack/react-query'
 import { useTheme } from '@/hooks/use-theme'
-import type { TopologyMetro, TopologyDevice, TopologyLink, TopologyValidator, MultiPathResponse, SimulateLinkRemovalResponse, SimulateLinkAdditionResponse, WhatIfRemovalResponse } from '@/lib/api'
-import { fetchISISPaths, fetchISISTopology, fetchCriticalLinks, fetchSimulateLinkRemoval, fetchSimulateLinkAddition, fetchWhatIfRemoval, fetchLinkHealth, fetchTopologyCompare } from '@/lib/api'
-import { useTopology, TopologyControlBar, TopologyPanel, DeviceDetails, LinkDetails, MetroDetails, ValidatorDetails, EntityLink as TopologyEntityLink, PathModePanel, CriticalityPanel, WhatIfRemovalPanel, WhatIfAdditionPanel, ImpactPanel, ComparePanel, StakeOverlayPanel, LinkHealthOverlayPanel, TrafficFlowOverlayPanel, MetroClusteringOverlayPanel, ContributorsOverlayPanel, ValidatorsOverlayPanel, BandwidthOverlayPanel, DeviceTypeOverlayPanel, LinkTypeOverlayPanel, LINK_TYPE_COLORS, type DeviceOption } from '@/components/topology'
+import type { TopologyMetro, TopologyDevice, TopologyLink, TopologyValidator, MultiPathResponse, SimulateLinkRemovalResponse, SimulateLinkAdditionResponse, WhatIfRemovalResponse, MetroDevicePathsResponse } from '@/lib/api'
+import { fetchISISPaths, fetchISISTopology, fetchCriticalLinks, fetchSimulateLinkRemoval, fetchSimulateLinkAddition, fetchWhatIfRemoval, fetchLinkHealth, fetchTopologyCompare, fetchMetroDevicePaths } from '@/lib/api'
+import { useTopology, TopologyControlBar, TopologyPanel, DeviceDetails, LinkDetails, MetroDetails, ValidatorDetails, EntityLink as TopologyEntityLink, PathModePanel, MetroPathModePanel, CriticalityPanel, WhatIfRemovalPanel, WhatIfAdditionPanel, ImpactPanel, ComparePanel, StakeOverlayPanel, LinkHealthOverlayPanel, TrafficFlowOverlayPanel, MetroClusteringOverlayPanel, ContributorsOverlayPanel, ValidatorsOverlayPanel, BandwidthOverlayPanel, DeviceTypeOverlayPanel, LinkTypeOverlayPanel, LINK_TYPE_COLORS, type DeviceOption, type MetroOption } from '@/components/topology'
 
 // Path colors for multi-path visualization
 const PATH_COLORS = [
@@ -359,6 +359,25 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
   const [selectedReversePathIndex, setSelectedReversePathIndex] = useState<number>(0)
   const [reversePathLoading, setReversePathLoading] = useState(false)
 
+  // Metro path finding state
+  const [metroPathSource, setMetroPathSource] = useState<string | null>(null)
+  const [metroPathTarget, setMetroPathTarget] = useState<string | null>(null)
+  const [metroPathsResult, setMetroPathsResult] = useState<MetroDevicePathsResponse | null>(null)
+  const [metroPathLoading, setMetroPathLoading] = useState(false)
+  const [metroPathViewMode, setMetroPathViewMode] = useState<'aggregate' | 'drilldown'>('aggregate')
+  const [metroPathSelectedPairs, setMetroPathSelectedPairs] = useState<number[]>([])
+
+  // Handler to toggle pair selection (up to 5 pairs)
+  const handleToggleMetroPathPair = useCallback((index: number) => {
+    setMetroPathSelectedPairs(prev => {
+      if (prev.includes(index)) {
+        return prev.filter(i => i !== index)
+      }
+      if (prev.length >= 5) return prev // Max 5 selections
+      return [...prev, index]
+    })
+  }, [])
+
   // What-If Link Removal operational state (local)
   const [removalLink, setRemovalLink] = useState<{ sourcePK: string; targetPK: string; linkPK: string } | null>(null)
   const [removalResult, setRemovalResult] = useState<SimulateLinkRemovalResponse | null>(null)
@@ -669,6 +688,17 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       .sort((a, b) => a.code.localeCompare(b.code))
   }, [devices, metros])
 
+  // Build metro options for metro path finding selectors
+  const metroOptions: MetroOption[] = useMemo(() => {
+    return metros
+      .map(m => ({
+        pk: m.pk,
+        code: m.code,
+        name: m.name,
+      }))
+      .sort((a, b) => a.code.localeCompare(b.code))
+  }, [metros])
+
   // Build link lookup map
   const linkMap = useMemo(() => {
     const map = new Map<string, TopologyLink>()
@@ -890,6 +920,49 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       })
   }, [pathModeEnabled, pathSource, pathTarget, pathMode, showReverse])
 
+  // Fetch metro paths when source and target metros are set
+  const metroPathModeEnabled = mode === 'metro-path'
+  useEffect(() => {
+    if (!metroPathModeEnabled || !metroPathSource || !metroPathTarget) {
+      return
+    }
+
+    setMetroPathLoading(true)
+    setMetroPathViewMode('aggregate')
+    setMetroPathSelectedPairs([])
+    fetchMetroDevicePaths(metroPathSource, metroPathTarget, pathMode)
+      .then(result => {
+        setMetroPathsResult(result)
+        // Turn off device/link type overlays when paths are found
+        if (result.devicePairs?.length > 0) {
+          if (overlays.deviceType) toggleOverlay('deviceType')
+          if (overlays.linkType) toggleOverlay('linkType')
+        }
+      })
+      .catch(err => {
+        setMetroPathsResult({
+          fromMetroPK: metroPathSource,
+          fromMetroCode: '',
+          toMetroPK: metroPathTarget,
+          toMetroCode: '',
+          sourceDeviceCount: 0,
+          targetDeviceCount: 0,
+          totalPairs: 0,
+          minHops: 0,
+          maxHops: 0,
+          minLatencyMs: 0,
+          maxLatencyMs: 0,
+          avgLatencyMs: 0,
+          devicePairs: [],
+          error: err.message,
+        })
+      })
+      .finally(() => {
+        setMetroPathLoading(false)
+      })
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- overlays/toggleOverlay are intentionally excluded
+  }, [metroPathModeEnabled, metroPathSource, metroPathTarget, pathMode])
+
   // Clear path when exiting path mode
   useEffect(() => {
     if (!pathModeEnabled) {
@@ -899,6 +972,17 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       setSelectedPathIndex(0)
     }
   }, [pathModeEnabled])
+
+  // Clear metro path state when exiting metro-path mode
+  useEffect(() => {
+    if (!metroPathModeEnabled) {
+      setMetroPathSource(null)
+      setMetroPathTarget(null)
+      setMetroPathsResult(null)
+      setMetroPathSelectedPairs([])
+      setMetroPathViewMode('aggregate')
+    }
+  }, [metroPathModeEnabled])
 
   // Clear whatif-removal state when exiting mode
   useEffect(() => {
@@ -1124,6 +1208,52 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     return map
   }, [pathsResult, links])
 
+  // Build map of device PKs to path indices for metro paths
+  const metroDevicePathMap = useMemo(() => {
+    const map = new Map<string, number[]>()
+    if (!metroPathsResult?.devicePairs?.length) return map
+
+    metroPathsResult.devicePairs.forEach((pair, pairIndex) => {
+      pair.bestPath?.path?.forEach(hop => {
+        const existing = map.get(hop.devicePK) || []
+        if (!existing.includes(pairIndex)) {
+          existing.push(pairIndex)
+        }
+        map.set(hop.devicePK, existing)
+      })
+    })
+    return map
+  }, [metroPathsResult])
+
+  // Build map of link PKs to path indices for metro paths
+  const metroLinkPathMap = useMemo(() => {
+    const map = new Map<string, number[]>()
+    if (!metroPathsResult?.devicePairs?.length) return map
+
+    metroPathsResult.devicePairs.forEach((pair, pairIndex) => {
+      const path = pair.bestPath?.path
+      if (!path?.length) return
+
+      for (let i = 0; i < path.length - 1; i++) {
+        const fromPK = path[i].devicePK
+        const toPK = path[i + 1].devicePK
+
+        for (const link of links) {
+          if ((link.side_a_pk === fromPK && link.side_z_pk === toPK) ||
+              (link.side_a_pk === toPK && link.side_z_pk === fromPK)) {
+            const existing = map.get(link.pk) || []
+            if (!existing.includes(pairIndex)) {
+              existing.push(pairIndex)
+            }
+            map.set(link.pk, existing)
+            break
+          }
+        }
+      }
+    })
+    return map
+  }, [metroPathsResult, links])
+
   // Handle device click for path finding
   const handlePathDeviceClick = useCallback((devicePK: string) => {
     if (!pathSource) {
@@ -1216,6 +1346,10 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       const linkPathIndices = linkPathMap.get(link.pk)
       const isInAnyPath = linkPathIndices && linkPathIndices.length > 0
       const isInSelectedPath = linkPathIndices?.includes(selectedPathIndex)
+      // Metro path mode
+      const metroLinkPathIndices = metroLinkPathMap.get(link.pk)
+      const isInAnyMetroPath = metroLinkPathIndices && metroLinkPathIndices.length > 0
+      const isInSelectedMetroPath = metroPathSelectedPairs.length > 0 && metroLinkPathIndices?.some(idx => metroPathSelectedPairs.includes(idx))
       const criticality = linkCriticalityMap.get(link.pk)
       const isRemovedLink = removalLink?.linkPK === link.pk
 
@@ -1335,6 +1469,17 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
         displayColor = PATH_COLORS[firstPathIndex % PATH_COLORS.length]
         displayWeight = defaultWeight + 1
         displayOpacity = 0.4
+      } else if (metroPathModeEnabled && isInSelectedMetroPath && metroLinkPathIndices) {
+        // Metro path: selected pair's path
+        displayColor = PATH_COLORS[0]
+        displayWeight = defaultWeight + 3
+        displayOpacity = 1
+      } else if (metroPathModeEnabled && isInAnyMetroPath && metroLinkPathIndices) {
+        // Metro path: in any path but not selected - show dimmed
+        const firstPairIndex = metroLinkPathIndices[0]
+        displayColor = PATH_COLORS[firstPairIndex % PATH_COLORS.length]
+        displayWeight = defaultWeight + 1
+        displayOpacity = 0.3
       } else if (isSelected) {
         displayColor = '#3b82f6' // blue - selection color
         displayWeight = defaultWeight + 3
@@ -1407,7 +1552,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       type: 'FeatureCollection' as const,
       features,
     }
-  }, [links, devicePositions, isDark, hoveredLink, selectedItem, hoverHighlight, linkPathMap, selectedPathIndex, criticalityOverlayEnabled, linkCriticalityMap, whatifRemovalMode, removalLink, linkHealthMode, linkSlaStatus, trafficFlowMode, getTrafficColor, metroClusteringMode, collapsedMetros, deviceMap, metroMap, contributorLinksMode, contributorIndexMap, bandwidthMode, isisHealthMode, edgeHealthStatus, linkTypeMode])
+  }, [links, devicePositions, isDark, hoveredLink, selectedItem, hoverHighlight, linkPathMap, selectedPathIndex, criticalityOverlayEnabled, linkCriticalityMap, whatifRemovalMode, removalLink, linkHealthMode, linkSlaStatus, trafficFlowMode, getTrafficColor, metroClusteringMode, collapsedMetros, deviceMap, metroMap, contributorLinksMode, contributorIndexMap, bandwidthMode, isisHealthMode, edgeHealthStatus, linkTypeMode, metroPathModeEnabled, metroLinkPathMap, metroPathSelectedPairs])
 
   // GeoJSON for validator links (connecting lines)
   const validatorLinksGeoJson = useMemo(() => {
@@ -2162,6 +2307,10 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           const devicePathIndices = devicePathMap.get(device.pk)
           const isInSelectedPath = devicePathIndices?.includes(selectedPathIndex)
           const isInAnyPath = devicePathIndices && devicePathIndices.length > 0
+          // Metro path mode
+          const metroDevicePathIndices = metroDevicePathMap.get(device.pk)
+          const isInSelectedMetroPath = metroPathSelectedPairs.length > 0 && metroDevicePathIndices?.some(idx => metroPathSelectedPairs.includes(idx))
+          const isInAnyMetroPath = metroDevicePathIndices && metroDevicePathIndices.length > 0
           // Check if device has ISIS data (can participate in path finding)
           const isISISEnabled = isisDevicePKs.size === 0 || isisDevicePKs.has(device.pk)
           const isDisabledInPathMode = pathModeEnabled && !isISISEnabled
@@ -2284,6 +2433,21 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             markerSize = 14
             borderWidth = 1
             opacity = 0.5
+          } else if (metroPathModeEnabled && isInSelectedMetroPath && metroDevicePathIndices) {
+            // Metro path: in selected pair's path
+            markerColor = PATH_COLORS[0]
+            borderColor = markerColor
+            markerSize = 16
+            borderWidth = 2
+            opacity = 1
+          } else if (metroPathModeEnabled && isInAnyMetroPath && metroDevicePathIndices) {
+            // Metro path: in any path but not selected - show dimmed
+            const firstPairIndex = metroDevicePathIndices[0]
+            markerColor = PATH_COLORS[firstPairIndex % PATH_COLORS.length]
+            borderColor = markerColor
+            markerSize = 14
+            borderWidth = 1
+            opacity = 0.4
           } else if (isImpactDevice) {
             // Impact device being analyzed for failure
             markerColor = '#ef4444' // red
@@ -2572,6 +2736,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
         <TopologyPanel
           title={
             mode === 'path' ? 'Path Finding' :
+            mode === 'metro-path' ? 'Metro Path Finding' :
             mode === 'whatif-removal' ? 'Simulate Link Removal' :
             mode === 'whatif-addition' ? 'Simulate Link Addition' :
             mode === 'impact' ? 'Device Failure' :
@@ -2579,6 +2744,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           }
           subtitle={
             mode === 'path' ? 'Find shortest paths between two devices by hop count or latency.' :
+            mode === 'metro-path' ? 'Find all paths between devices in two metros.' :
             mode === 'whatif-removal' ? 'Analyze what happens to network paths if a link is removed.' :
             mode === 'whatif-addition' ? 'See how adding a new link would improve connectivity.' :
             mode === 'impact' ? 'Analyze the impact of a device failure on network paths.' :
@@ -2605,6 +2771,31 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
               onSetSource={setPathSource}
               onSetTarget={setPathTarget}
               onToggleReverse={() => setShowReverse(prev => !prev)}
+            />
+          )}
+          {mode === 'metro-path' && (
+            <MetroPathModePanel
+              sourceMetro={metroPathSource}
+              targetMetro={metroPathTarget}
+              metros={metroOptions}
+              pathsResult={metroPathsResult}
+              loading={metroPathLoading}
+              pathMode={pathMode}
+              viewMode={metroPathViewMode}
+              selectedPairIndices={metroPathSelectedPairs}
+              onSetSourceMetro={setMetroPathSource}
+              onSetTargetMetro={setMetroPathTarget}
+              onPathModeChange={setPathMode}
+              onViewModeChange={setMetroPathViewMode}
+              onTogglePair={handleToggleMetroPathPair}
+              onClearSelection={() => setMetroPathSelectedPairs([])}
+              onClear={() => {
+                setMetroPathSource(null)
+                setMetroPathTarget(null)
+                setMetroPathsResult(null)
+                setMetroPathSelectedPairs([])
+                setMetroPathViewMode('aggregate')
+              }}
             />
           )}
           {mode === 'whatif-removal' && (

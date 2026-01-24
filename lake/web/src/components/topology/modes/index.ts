@@ -1,4 +1,5 @@
 export { PathModePanel } from './PathModePanel'
+export { MetroPathModePanel } from './MetroPathModePanel'
 export { CriticalityPanel } from './CriticalityPanel'
 export { ComparePanel } from './ComparePanel'
 export { WhatIfRemovalPanel } from './WhatIfRemovalPanel'

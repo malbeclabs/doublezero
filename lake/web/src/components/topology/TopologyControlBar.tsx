@@ -276,6 +276,15 @@ export function TopologyControlBar({
             collapsed={collapsed}
           />
 
+          <NavItem
+            icon={<Building2 className="h-3.5 w-3.5" />}
+            label="Metro paths"
+            onClick={() => toggleMode('metro-path')}
+            active={mode === 'metro-path'}
+            activeColor="cyan"
+            collapsed={collapsed}
+          />
+
           {/* What-if scenarios */}
           <SectionHeader title="What-if" collapsed={collapsed} />
 

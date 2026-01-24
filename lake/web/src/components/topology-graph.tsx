@@ -6,7 +6,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchISISTopology, fetchISISPaths, fetchTopologyCompare, fetchWhatIfRemoval, fetchCriticalLinks, fetchSimulateLinkRemoval, fetchSimulateLinkAddition, fetchTopology, fetchLinkHealth } from '@/lib/api'
 import type { WhatIfRemovalResponse, MultiPathResponse, SimulateLinkRemovalResponse, SimulateLinkAdditionResponse } from '@/lib/api'
 import { useTheme } from '@/hooks/use-theme'
-import { useTopology, TopologyPanel, TopologyControlBar, DeviceDetails, LinkDetails, PathModePanel, CriticalityPanel, WhatIfRemovalPanel, WhatIfAdditionPanel, ImpactPanel, ComparePanel, StakeOverlayPanel, LinkHealthOverlayPanel, TrafficFlowOverlayPanel, MetroClusteringOverlayPanel, ContributorsOverlayPanel, BandwidthOverlayPanel, DeviceTypeOverlayPanel, LinkTypeOverlayPanel, LINK_TYPE_COLORS, type DeviceInfo, type LinkInfo } from '@/components/topology'
+import { useTopology, TopologyPanel, TopologyControlBar, DeviceDetails, LinkDetails, PathModePanel, CriticalityPanel, WhatIfRemovalPanel, WhatIfAdditionPanel, ImpactPanel, ComparePanel, StakeOverlayPanel, LinkHealthOverlayPanel, TrafficFlowOverlayPanel, MetroClusteringOverlayPanel, ContributorsOverlayPanel, BandwidthOverlayPanel, DeviceTypeOverlayPanel, LinkTypeOverlayPanel, LINK_TYPE_COLORS, type DeviceInfo, type LinkInfo, type DeviceOption } from '@/components/topology'
 import { ErrorState } from '@/components/ui/error-state'
 
 // Device type colors (types from serviceability smart contract: hybrid, transit, edge)
@@ -121,6 +121,12 @@ export function TopologyGraph({
   const [pathsResult, setPathsResult] = useState<MultiPathResponse | null>(null)
   const [selectedPathIndex, setSelectedPathIndex] = useState<number>(0)
   const [pathLoading, setPathLoading] = useState(false)
+
+  // Reverse path state
+  const [showReverse, setShowReverse] = useState(true)
+  const [reversePathsResult, setReversePathsResult] = useState<MultiPathResponse | null>(null)
+  const [selectedReversePathIndex, setSelectedReversePathIndex] = useState<number>(0)
+  const [reversePathLoading, setReversePathLoading] = useState(false)
 
   // Failure impact state - impactDevices comes from context
   const [impactResult, setImpactResult] = useState<WhatIfRemovalResponse | null>(null)
@@ -277,6 +283,22 @@ export function TopologyGraph({
       })
     })
     return map
+  }, [topologyData])
+
+  // Build device options for path finding selectors
+  const deviceOptions: DeviceOption[] = useMemo(() => {
+    if (!topologyData?.devices) return []
+    return topologyData.devices
+      .map(d => {
+        const metro = topologyData.metros?.find(m => m.pk === d.metro_pk)
+        return {
+          pk: d.pk,
+          code: d.code,
+          deviceType: d.device_type,
+          metro: metro?.code,
+        }
+      })
+      .sort((a, b) => a.code.localeCompare(b.code))
   }, [topologyData])
 
   // Build device info map from topology data (maps device PK to DeviceInfo)
@@ -631,6 +653,27 @@ export function TopologyGraph({
         setPathLoading(false)
       })
   }, [mode, pathSource, pathTarget, pathMode])
+
+  // Fetch reverse paths when showReverse is enabled
+  useEffect(() => {
+    if (mode !== 'path' || !pathSource || !pathTarget || !showReverse) {
+      setReversePathsResult(null)
+      return
+    }
+
+    setReversePathLoading(true)
+    setSelectedReversePathIndex(0)
+    fetchISISPaths(pathTarget, pathSource, 5, pathMode)
+      .then(result => {
+        setReversePathsResult(result)
+      })
+      .catch(err => {
+        setReversePathsResult({ paths: [], from: pathTarget, to: pathSource, error: err.message })
+      })
+      .finally(() => {
+        setReversePathLoading(false)
+      })
+  }, [mode, pathSource, pathTarget, pathMode, showReverse])
 
   // Highlight paths on graph - show all paths with different colors, selected path is prominent
   // Uses direct .style() calls to override any other overlay styles (bandwidth, link type, etc.)
@@ -2678,6 +2721,9 @@ export function TopologyGraph({
     setPathTarget(null)
     setPathsResult(null)
     setSelectedPathIndex(0)
+    setShowReverse(false)
+    setReversePathsResult(null)
+    setSelectedReversePathIndex(0)
     if (cyRef.current) {
       cyRef.current.elements().removeClass('path-node path-edge path-source path-target path-0 path-1 path-2 path-3 path-4 path-selected')
     }
@@ -2864,9 +2910,18 @@ export function TopologyGraph({
               pathLoading={pathLoading}
               pathMode={pathMode}
               selectedPathIndex={selectedPathIndex}
+              devices={deviceOptions}
+              showReverse={showReverse}
+              reversePathsResult={reversePathsResult}
+              reversePathLoading={reversePathLoading}
+              selectedReversePathIndex={selectedReversePathIndex}
               onPathModeChange={setPathMode}
               onSelectPath={setSelectedPathIndex}
+              onSelectReversePath={setSelectedReversePathIndex}
               onClearPath={clearPath}
+              onSetSource={setPathSource}
+              onSetTarget={setPathTarget}
+              onToggleReverse={() => setShowReverse(prev => !prev)}
             />
           )}
           {mode === 'whatif-removal' && (

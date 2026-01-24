@@ -8,7 +8,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useTheme } from '@/hooks/use-theme'
 import type { TopologyMetro, TopologyDevice, TopologyLink, TopologyValidator, MultiPathResponse, SimulateLinkRemovalResponse, SimulateLinkAdditionResponse, WhatIfRemovalResponse } from '@/lib/api'
 import { fetchISISPaths, fetchISISTopology, fetchCriticalLinks, fetchSimulateLinkRemoval, fetchSimulateLinkAddition, fetchWhatIfRemoval, fetchLinkHealth, fetchTopologyCompare } from '@/lib/api'
-import { useTopology, TopologyControlBar, TopologyPanel, DeviceDetails, LinkDetails, MetroDetails, ValidatorDetails, EntityLink as TopologyEntityLink, PathModePanel, CriticalityPanel, WhatIfRemovalPanel, WhatIfAdditionPanel, ImpactPanel, ComparePanel, StakeOverlayPanel, LinkHealthOverlayPanel, TrafficFlowOverlayPanel, MetroClusteringOverlayPanel, ContributorsOverlayPanel, ValidatorsOverlayPanel, BandwidthOverlayPanel, DeviceTypeOverlayPanel, LinkTypeOverlayPanel, LINK_TYPE_COLORS } from '@/components/topology'
+import { useTopology, TopologyControlBar, TopologyPanel, DeviceDetails, LinkDetails, MetroDetails, ValidatorDetails, EntityLink as TopologyEntityLink, PathModePanel, CriticalityPanel, WhatIfRemovalPanel, WhatIfAdditionPanel, ImpactPanel, ComparePanel, StakeOverlayPanel, LinkHealthOverlayPanel, TrafficFlowOverlayPanel, MetroClusteringOverlayPanel, ContributorsOverlayPanel, ValidatorsOverlayPanel, BandwidthOverlayPanel, DeviceTypeOverlayPanel, LinkTypeOverlayPanel, LINK_TYPE_COLORS, type DeviceOption } from '@/components/topology'
 
 // Path colors for multi-path visualization
 const PATH_COLORS = [
@@ -353,6 +353,12 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
   const [pathLoading, setPathLoading] = useState(false)
   const [selectedPathIndex, setSelectedPathIndex] = useState(0)
 
+  // Reverse path state
+  const [showReverse, setShowReverse] = useState(true)
+  const [reversePathsResult, setReversePathsResult] = useState<MultiPathResponse | null>(null)
+  const [selectedReversePathIndex, setSelectedReversePathIndex] = useState<number>(0)
+  const [reversePathLoading, setReversePathLoading] = useState(false)
+
   // What-If Link Removal operational state (local)
   const [removalLink, setRemovalLink] = useState<{ sourcePK: string; targetPK: string; linkPK: string } | null>(null)
   const [removalResult, setRemovalResult] = useState<SimulateLinkRemovalResponse | null>(null)
@@ -648,6 +654,21 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     return map
   }, [devices])
 
+  // Build device options for path finding selectors
+  const deviceOptions: DeviceOption[] = useMemo(() => {
+    return devices
+      .map(d => {
+        const metro = metros.find(m => m.pk === d.metro_pk)
+        return {
+          pk: d.pk,
+          code: d.code,
+          deviceType: d.device_type,
+          metro: metro?.code,
+        }
+      })
+      .sort((a, b) => a.code.localeCompare(b.code))
+  }, [devices, metros])
+
   // Build link lookup map
   const linkMap = useMemo(() => {
     const map = new Map<string, TopologyLink>()
@@ -847,6 +868,27 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       })
   // eslint-disable-next-line react-hooks/exhaustive-deps -- overlays/toggleOverlay are intentionally excluded to avoid re-fetching when overlays change
   }, [pathModeEnabled, pathSource, pathTarget, pathMode])
+
+  // Fetch reverse paths when showReverse is enabled
+  useEffect(() => {
+    if (!pathModeEnabled || !pathSource || !pathTarget || !showReverse) {
+      setReversePathsResult(null)
+      return
+    }
+
+    setReversePathLoading(true)
+    setSelectedReversePathIndex(0)
+    fetchISISPaths(pathTarget, pathSource, 5, pathMode)
+      .then(result => {
+        setReversePathsResult(result)
+      })
+      .catch(err => {
+        setReversePathsResult({ paths: [], from: pathTarget, to: pathSource, error: err.message })
+      })
+      .finally(() => {
+        setReversePathLoading(false)
+      })
+  }, [pathModeEnabled, pathSource, pathTarget, pathMode, showReverse])
 
   // Clear path when exiting path mode
   useEffect(() => {
@@ -1102,6 +1144,9 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
     setPathTarget(null)
     setPathsResult(null)
     setSelectedPathIndex(0)
+    setShowReverse(false)
+    setReversePathsResult(null)
+    setSelectedReversePathIndex(0)
   }, [])
 
   // Criticality colors
@@ -2548,9 +2593,18 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
               pathLoading={pathLoading}
               pathMode={pathMode}
               selectedPathIndex={selectedPathIndex}
+              devices={deviceOptions}
+              showReverse={showReverse}
+              reversePathsResult={reversePathsResult}
+              reversePathLoading={reversePathLoading}
+              selectedReversePathIndex={selectedReversePathIndex}
               onPathModeChange={setPathMode}
               onSelectPath={setSelectedPathIndex}
+              onSelectReversePath={setSelectedReversePathIndex}
               onClearPath={clearPath}
+              onSetSource={setPathSource}
+              onSetTarget={setPathTarget}
+              onToggleReverse={() => setShowReverse(prev => !prev)}
             />
           )}
           {mode === 'whatif-removal' && (

@@ -13,6 +13,7 @@ import (
 	"github.com/openconfig/grpctunnel/tunnel"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 func TestNewClient(t *testing.T) {
@@ -151,6 +152,75 @@ func TestGrpcTarget(t *testing.T) {
 	for _, tt := range tests {
 		require.Equal(t, tt.want, grpcTarget(tt.in))
 	}
+}
+
+func TestDefaultGRPCClientConnFactory_IPv4Resolution(t *testing.T) {
+	t.Parallel()
+
+	t.Run("resolves localhost to ipv4", func(t *testing.T) {
+		cfg := &Config{
+			Logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
+			TargetID:         "test",
+			TargetType:       TargetTypeGNMIGNOI,
+			LocalDialAddr:    "/tmp/test.sock",
+			TunnelServerAddr: "localhost:443",
+			LocalDialer: func(ctx context.Context, network, address string) (net.Conn, error) {
+				return nil, errors.New("mock")
+			},
+			// Don't set GRPCClientConnFactory - use the default
+		}
+		cfg.setDefaults()
+
+		// The default factory should resolve and return a connection (or fail at dial, not resolution)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		conn, err := cfg.GRPCClientConnFactory(ctx, "localhost:443", grpc.WithTransportCredentials(insecure.NewCredentials()))
+		// Should succeed in creating the client (grpc.NewClient is lazy)
+		require.NoError(t, err)
+		require.NotNil(t, conn)
+		conn.Close()
+	})
+
+	t.Run("error on invalid target format", func(t *testing.T) {
+		cfg := &Config{
+			Logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
+			TargetID:         "test",
+			TargetType:       TargetTypeGNMIGNOI,
+			LocalDialAddr:    "/tmp/test.sock",
+			TunnelServerAddr: "localhost:443",
+			LocalDialer: func(ctx context.Context, network, address string) (net.Conn, error) {
+				return nil, errors.New("mock")
+			},
+		}
+		cfg.setDefaults()
+
+		ctx := context.Background()
+		_, err := cfg.GRPCClientConnFactory(ctx, "no-port-here", grpc.WithTransportCredentials(insecure.NewCredentials()))
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "missing port")
+	})
+
+	t.Run("error on unresolvable hostname", func(t *testing.T) {
+		cfg := &Config{
+			Logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
+			TargetID:         "test",
+			TargetType:       TargetTypeGNMIGNOI,
+			LocalDialAddr:    "/tmp/test.sock",
+			TunnelServerAddr: "localhost:443",
+			LocalDialer: func(ctx context.Context, network, address string) (net.Conn, error) {
+				return nil, errors.New("mock")
+			},
+		}
+		cfg.setDefaults()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+
+		_, err := cfg.GRPCClientConnFactory(ctx, "nonexistent.invalid.domain.test:443", grpc.WithTransportCredentials(insecure.NewCredentials()))
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "no ipv4")
+	})
 }
 
 func validConfig() *Config {

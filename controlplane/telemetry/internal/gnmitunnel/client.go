@@ -53,10 +53,9 @@ type Config struct {
 	TunnelServerAddr      string
 	LocalDialer           Dialer                // Optional, defaults to net.Dialer
 	GRPCClientConnFactory GRPCClientConnFactory // Optional, defaults to grpc.NewClient
-	GRPCDialOpts          []grpc.DialOption
-	TLS                   *TLSConfig    // Optional, defaults to TLS enabled
-	InitialBackoff        time.Duration // Optional, defaults to 1s
-	MaxBackoff            time.Duration // Optional, defaults to 1m
+	TLS                   *TLSConfig            // Optional, defaults to TLS enabled
+	InitialBackoff        time.Duration         // Optional, defaults to 1s
+	MaxBackoff            time.Duration         // Optional, defaults to 1m
 }
 
 func (c *Config) setDefaults() {
@@ -66,8 +65,38 @@ func (c *Config) setDefaults() {
 		}
 	}
 	if c.GRPCClientConnFactory == nil {
-		c.GRPCClientConnFactory = func(_ context.Context, target string, opts ...grpc.DialOption) (*grpc.ClientConn, error) {
-			return grpc.NewClient(grpcTarget(target), opts...)
+		c.GRPCClientConnFactory = func(ctx context.Context, target string, opts ...grpc.DialOption) (*grpc.ClientConn, error) {
+			host, port, err := net.SplitHostPort(target)
+			if err != nil {
+				return nil, err
+			}
+			ips, err := net.DefaultResolver.LookupIP(ctx, "ip4", host)
+			if err != nil || len(ips) == 0 {
+				return nil, fmt.Errorf("no ipv4 for %s: %w", host, err)
+			}
+			var ip4 net.IP
+			for _, ip := range ips {
+				if ip.To4() != nil {
+					ip4 = ip
+					break
+				}
+			}
+			if ip4 == nil {
+				return nil, fmt.Errorf("no ipv4 for %s", host)
+			}
+
+			// Use passthrough since we've already resolved
+			grpcTarget := "passthrough:///" + net.JoinHostPort(ip4.String(), port)
+
+			dialer := &net.Dialer{
+				Timeout:       30 * time.Second,
+				KeepAlive:     30 * time.Second,
+				FallbackDelay: -1, // Disable Happy Eyeballs fallback
+			}
+			opts = append(opts, grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) {
+				return dialer.DialContext(ctx, "tcp", addr)
+			}))
+			return grpc.NewClient(grpcTarget, opts...)
 		}
 	}
 	if c.TLS == nil {
@@ -232,7 +261,7 @@ func (c *Client) connect(ctx context.Context) error {
 		return fmt.Errorf("configure TLS: %w", err)
 	}
 
-	opts := append([]grpc.DialOption{grpc.WithTransportCredentials(creds)}, c.cfg.GRPCDialOpts...)
+	opts := []grpc.DialOption{grpc.WithTransportCredentials(creds)}
 	conn, err := c.cfg.GRPCClientConnFactory(ctx, c.cfg.TunnelServerAddr, opts...)
 	if err != nil {
 		return fmt.Errorf("grpc dial: %w", err)

@@ -57,6 +57,15 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 		t.Skip("No valid devices found with sufficient capacity")
 	}
 
+	// Filter out transit devices - they don't participate in unicast connectivity tests
+	devices = slices.DeleteFunc(devices, func(d *qa.Device) bool {
+		if d.DeviceType == serviceability.DeviceDeviceTypeTransit {
+			log.Info("Skipping transit device", "device", d.Code)
+			return true
+		}
+		return false
+	})
+
 	// If devices flag is provided, filter devices to only include those in the list.
 	if *devicesFlag != "" {
 		deviceCodes := make(map[string]struct{})

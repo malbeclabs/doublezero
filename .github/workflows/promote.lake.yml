@@ -11,9 +11,9 @@ on:
         required: true
         default: 'snor-lake-v3'
       target_tag:
-        description: 'Target image tag (e.g., snor-lake-prod)'
+        description: 'Target image tag (e.g., prod)'
         required: true
-        default: 'snor-lake-prod'
+        default: 'prod'
 
 permissions:
   packages: write

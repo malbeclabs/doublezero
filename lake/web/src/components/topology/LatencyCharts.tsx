@@ -238,7 +238,7 @@ export function LatencyCharts({ linkPk }: LatencyChartsProps) {
                   borderRadius: '6px',
                   fontSize: '11px',
                 }}
-                formatter={(value: number, name: string) => {
+                formatter={(value, name) => {
                   const labels: Record<string, string> = {
                     avgRttAtoZMs: 'Avg from A',
                     p95RttAtoZMs: 'P95 from A',
@@ -247,7 +247,7 @@ export function LatencyCharts({ linkPk }: LatencyChartsProps) {
                     avgRttMs: 'Avg',
                     p95RttMs: 'P95',
                   }
-                  return [`${value.toFixed(2)} ms`, labels[name] || name]
+                  return [`${Number(value ?? 0).toFixed(2)} ms`, labels[name ?? ''] || name || '']
                 }}
               />
               {hasDirectionalData ? (
@@ -403,9 +403,9 @@ export function LatencyCharts({ linkPk }: LatencyChartsProps) {
                   borderRadius: '6px',
                   fontSize: '11px',
                 }}
-                formatter={(value: number, name: string) => {
+                formatter={(value, name) => {
                   const label = name === 'jitterAtoZMs' ? 'From A' : name === 'jitterZtoAMs' ? 'From Z' : 'Jitter'
-                  return [`${value.toFixed(2)} ms`, label]
+                  return [`${Number(value ?? 0).toFixed(2)} ms`, label]
                 }}
               />
               {hasDirectionalData ? (

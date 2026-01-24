@@ -27,6 +27,13 @@ export function DeviceDetails({ device }: DeviceDetailsProps) {
     { label: 'Stake Share', value: device.stakeShare },
   ]
 
+  // Sort interfaces: activated first, then by name
+  const sortedInterfaces = [...(device.interfaces || [])].sort((a, b) => {
+    if (a.status === 'activated' && b.status !== 'activated') return -1
+    if (a.status !== 'activated' && b.status === 'activated') return 1
+    return a.name.localeCompare(b.name)
+  })
+
   return (
     <div className="p-4 space-y-4">
       {/* Stats grid */}
@@ -40,6 +47,30 @@ export function DeviceDetails({ device }: DeviceDetailsProps) {
           </div>
         ))}
       </div>
+
+      {/* Interfaces */}
+      {sortedInterfaces.length > 0 && (
+        <div>
+          <div className="text-xs text-muted-foreground uppercase tracking-wider mb-2">
+            Interfaces ({sortedInterfaces.length})
+          </div>
+          <div className="space-y-1 max-h-48 overflow-y-auto">
+            {sortedInterfaces.map((iface, i) => (
+              <div
+                key={i}
+                className="flex items-center justify-between p-2 bg-[var(--muted)]/30 rounded text-xs font-mono"
+              >
+                <span className="truncate flex-1 mr-2" title={iface.name}>
+                  {iface.name}
+                </span>
+                <span className="text-muted-foreground whitespace-nowrap">
+                  {iface.ip || '—'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Traffic charts */}
       <TrafficCharts entityType="device" entityPk={device.pk} />

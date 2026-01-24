@@ -37,6 +37,12 @@ var (
 	}
 )
 
+type Interface struct {
+	Name   string `json:"name"`
+	IP     string `json:"ip"`
+	Status string `json:"status"`
+}
+
 type Device struct {
 	PK            string
 	Status        string
@@ -46,6 +52,7 @@ type Device struct {
 	ContributorPK string
 	MetroPK       string
 	MaxUsers      uint16
+	Interfaces    []Interface
 }
 
 type Metro struct {
@@ -66,6 +73,8 @@ type Link struct {
 	SideZPK             string
 	SideAIfaceName      string
 	SideZIfaceName      string
+	SideAIP             string
+	SideZIP             string
 	LinkType            string
 	CommittedRTTNs      uint64
 	CommittedJitterNs   uint64
@@ -253,7 +262,7 @@ func (v *View) Refresh(ctx context.Context) error {
 	contributors := convertContributors(pd.Contributors)
 	devices := convertDevices(pd.Devices)
 	users := convertUsers(pd.Users)
-	links := convertLinks(pd.Links)
+	links := convertLinks(pd.Links, pd.Devices)
 	metros := convertMetros(pd.Exchanges)
 
 	fetchedAt := time.Now().UTC()
@@ -305,6 +314,20 @@ func convertContributors(onchain []serviceability.Contributor) []Contributor {
 func convertDevices(onchain []serviceability.Device) []Device {
 	result := make([]Device, len(onchain))
 	for i, device := range onchain {
+		// Convert interfaces
+		interfaces := make([]Interface, 0, len(device.Interfaces))
+		for _, iface := range device.Interfaces {
+			var ip string
+			if iface.IpNet[4] > 0 && iface.IpNet[4] <= 32 {
+				ip = fmt.Sprintf("%s/%d", net.IP(iface.IpNet[:4]).String(), iface.IpNet[4])
+			}
+			interfaces = append(interfaces, Interface{
+				Name:   iface.Name,
+				IP:     ip,
+				Status: iface.Status.String(),
+			})
+		}
+
 		result[i] = Device{
 			PK:            solana.PublicKeyFromBytes(device.PubKey[:]).String(),
 			Status:        device.Status.String(),
@@ -314,6 +337,7 @@ func convertDevices(onchain []serviceability.Device) []Device {
 			ContributorPK: solana.PublicKeyFromBytes(device.ContributorPubKey[:]).String(),
 			MetroPK:       solana.PublicKeyFromBytes(device.ExchangePubKey[:]).String(),
 			MaxUsers:      device.MaxUsers,
+			Interfaces:    interfaces,
 		}
 	}
 	return result
@@ -336,22 +360,50 @@ func convertUsers(onchain []serviceability.User) []User {
 	return result
 }
 
-func convertLinks(onchain []serviceability.Link) []Link {
+func convertLinks(onchain []serviceability.Link, devices []serviceability.Device) []Link {
+	// Build a map of device pubkey -> interface name -> IP for quick lookup
+	deviceIfaceIPs := make(map[string]map[string]string)
+	for _, device := range devices {
+		devicePK := solana.PublicKeyFromBytes(device.PubKey[:]).String()
+		ifaceMap := make(map[string]string)
+		for _, iface := range device.Interfaces {
+			if iface.IpNet[4] > 0 && iface.IpNet[4] <= 32 {
+				ip := net.IP(iface.IpNet[:4]).String()
+				ifaceMap[iface.Name] = ip
+			}
+		}
+		deviceIfaceIPs[devicePK] = ifaceMap
+	}
+
 	result := make([]Link, len(onchain))
 	for i, link := range onchain {
 		tunnelNet := net.IPNet{
 			IP:   net.IP(link.TunnelNet[:4]),
 			Mask: net.CIDRMask(int(link.TunnelNet[4]), 32),
 		}
+		sideAPK := solana.PublicKeyFromBytes(link.SideAPubKey[:]).String()
+		sideZPK := solana.PublicKeyFromBytes(link.SideZPubKey[:]).String()
+
+		// Look up interface IPs
+		var sideAIP, sideZIP string
+		if ifaceMap, ok := deviceIfaceIPs[sideAPK]; ok {
+			sideAIP = ifaceMap[link.SideAIfaceName]
+		}
+		if ifaceMap, ok := deviceIfaceIPs[sideZPK]; ok {
+			sideZIP = ifaceMap[link.SideZIfaceName]
+		}
+
 		result[i] = Link{
 			PK:                  solana.PublicKeyFromBytes(link.PubKey[:]).String(),
 			Status:              link.Status.String(),
 			Code:                link.Code,
-			SideAPK:             solana.PublicKeyFromBytes(link.SideAPubKey[:]).String(),
-			SideZPK:             solana.PublicKeyFromBytes(link.SideZPubKey[:]).String(),
+			SideAPK:             sideAPK,
+			SideZPK:             sideZPK,
 			ContributorPK:       solana.PublicKeyFromBytes(link.ContributorPubKey[:]).String(),
 			SideAIfaceName:      link.SideAIfaceName,
 			SideZIfaceName:      link.SideZIfaceName,
+			SideAIP:             sideAIP,
+			SideZIP:             sideZIP,
 			TunnelNet:           tunnelNet.String(),
 			LinkType:            link.LinkType.String(),
 			CommittedRTTNs:      link.DelayNs,

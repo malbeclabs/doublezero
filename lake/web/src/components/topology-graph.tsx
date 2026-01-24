@@ -165,8 +165,10 @@ export function TopologyGraph({
     latencyMs?: string
     deviceACode?: string
     interfaceAName?: string
+    interfaceAIP?: string
     deviceZCode?: string
     interfaceZName?: string
+    interfaceZIP?: string
     x: number
     y: number
     health?: {
@@ -296,6 +298,7 @@ export function TopologyGraph({
         validatorCount: device.validator_count ?? 0,
         stakeSol: device.stake_sol ? (device.stake_sol / 1_000_000_000).toLocaleString(undefined, { maximumFractionDigits: 0 }) : '0',
         stakeShare: device.stake_share ? `${(device.stake_share * 100).toFixed(2)}%` : '0%',
+        interfaces: device.interfaces || [],
       })
     }
     return map
@@ -319,9 +322,11 @@ export function TopologyGraph({
         deviceAPk: link.side_a_pk || '',
         deviceACode: link.side_a_code || 'Unknown',
         interfaceAName: link.side_a_iface_name || '',
+        interfaceAIP: link.side_a_ip || '',
         deviceZPk: link.side_z_pk || '',
         deviceZCode: link.side_z_code || 'Unknown',
         interfaceZName: link.side_z_iface_name || '',
+        interfaceZIP: link.side_z_ip || '',
         contributorPk: link.contributor_pk || '',
         contributorCode: link.contributor_code || '',
       })
@@ -2236,8 +2241,10 @@ export function TopologyGraph({
           latencyMs: linkInfo?.latencyMs,
           deviceACode: linkInfo?.deviceACode,
           interfaceAName: linkInfo?.interfaceAName,
+          interfaceAIP: linkInfo?.interfaceAIP,
           deviceZCode: linkInfo?.deviceZCode,
           interfaceZName: linkInfo?.interfaceZName,
+          interfaceZIP: linkInfo?.interfaceZIP,
           x: midpoint.x * zoom + pan.x,
           y: midpoint.y * zoom + pan.y,
           health: healthInfo,
@@ -3085,10 +3092,10 @@ export function TopologyGraph({
               <div className="text-sm font-medium">{hoveredEdge.code || `${hoveredEdge.source.substring(0, 8)}...→${hoveredEdge.target.substring(0, 8)}...`}</div>
               <div className="text-xs text-muted-foreground space-y-0.5">
                 {hoveredEdge.deviceACode && (
-                  <div>A-Side: <span className="text-foreground">{hoveredEdge.deviceACode}</span>{hoveredEdge.interfaceAName && <span className="text-foreground font-mono"> ({hoveredEdge.interfaceAName})</span>}</div>
+                  <div>A-Side: <span className="text-foreground">{hoveredEdge.deviceACode}</span>{hoveredEdge.interfaceAName && <span className="text-foreground font-mono"> ({hoveredEdge.interfaceAName}{hoveredEdge.interfaceAIP && ` ${hoveredEdge.interfaceAIP}`})</span>}</div>
                 )}
                 {hoveredEdge.deviceZCode && (
-                  <div>Z-Side: <span className="text-foreground">{hoveredEdge.deviceZCode}</span>{hoveredEdge.interfaceZName && <span className="text-foreground font-mono"> ({hoveredEdge.interfaceZName})</span>}</div>
+                  <div>Z-Side: <span className="text-foreground">{hoveredEdge.deviceZCode}</span>{hoveredEdge.interfaceZName && <span className="text-foreground font-mono"> ({hoveredEdge.interfaceZName}{hoveredEdge.interfaceZIP && ` ${hoveredEdge.interfaceZIP}`})</span>}</div>
                 )}
                 <div>Type: <span className="text-foreground">{hoveredEdge.linkType || 'unknown'}</span></div>
                 {hoveredEdge.contributorCode && (

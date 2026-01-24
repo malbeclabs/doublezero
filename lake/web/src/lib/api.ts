@@ -1294,6 +1294,12 @@ export interface TopologyMetro {
   longitude: number
 }
 
+export interface DeviceInterface {
+  name: string
+  ip: string
+  status: string
+}
+
 export interface TopologyDevice {
   pk: string
   code: string
@@ -1306,6 +1312,7 @@ export interface TopologyDevice {
   validator_count: number
   stake_sol: number
   stake_share: number
+  interfaces: DeviceInterface[]
 }
 
 export interface TopologyLink {
@@ -1317,9 +1324,11 @@ export interface TopologyLink {
   side_a_pk: string
   side_a_code: string
   side_a_iface_name: string
+  side_a_ip: string
   side_z_pk: string
   side_z_code: string
   side_z_iface_name: string
+  side_z_ip: string
   contributor_pk: string
   contributor_code: string
   latency_us: number

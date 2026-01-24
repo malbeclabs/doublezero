@@ -143,9 +143,11 @@ interface HoveredLinkInfo {
   deviceAPk: string
   deviceACode: string
   interfaceAName: string
+  interfaceAIP: string
   deviceZPk: string
   deviceZCode: string
   interfaceZName: string
+  interfaceZIP: string
   contributorPk: string
   contributorCode: string
   health?: {
@@ -174,6 +176,7 @@ interface HoveredDeviceInfo {
   validatorCount: number
   stakeSol: string
   stakeShare: string
+  interfaces: { name: string; ip: string; status: string }[]
 }
 
 // Hovered metro info type
@@ -1415,9 +1418,11 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       deviceAPk: link.side_a_pk,
       deviceACode: link.side_a_code || 'Unknown',
       interfaceAName: link.side_a_iface_name || '',
+      interfaceAIP: link.side_a_ip || '',
       deviceZPk: link.side_z_pk,
       deviceZCode: link.side_z_code || 'Unknown',
       interfaceZName: link.side_z_iface_name || '',
+      interfaceZIP: link.side_z_ip || '',
       contributorPk: link.contributor_pk,
       contributorCode: link.contributor_code,
       health: healthInfo ? {
@@ -1774,6 +1779,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             validatorCount: device.validator_count ?? 0,
             stakeSol: (device.stake_sol ?? 0) >= 1e6 ? `${(device.stake_sol / 1e6).toFixed(2)}M` : (device.stake_sol ?? 0) >= 1e3 ? `${(device.stake_sol / 1e3).toFixed(0)}k` : `${(device.stake_sol ?? 0).toFixed(0)}`,
             stakeShare: (device.stake_share ?? 0) > 0 ? `${device.stake_share.toFixed(2)}%` : '0%',
+            interfaces: device.interfaces || [],
           },
         })
         // Fly to device's metro location (skip in analysis modes)
@@ -1822,9 +1828,11 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             deviceAPk: link.side_a_pk,
             deviceACode: link.side_a_code || 'Unknown',
             interfaceAName: link.side_a_iface_name || '',
+            interfaceAIP: link.side_a_ip || '',
             deviceZPk: link.side_z_pk,
             deviceZCode: link.side_z_code || 'Unknown',
             interfaceZName: link.side_z_iface_name || '',
+            interfaceZIP: link.side_z_ip || '',
             contributorPk: link.contributor_pk,
             contributorCode: link.contributor_code,
           },
@@ -1911,9 +1919,11 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           deviceAPk: '',
           deviceACode: '',
           interfaceAName: '',
+          interfaceAIP: '',
           deviceZPk: '',
           deviceZCode: '',
           interfaceZName: '',
+          interfaceZIP: '',
           contributorPk: '',
           contributorCode: '',
           isInterMetro: true,
@@ -2113,6 +2123,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             validatorCount: device.validator_count ?? 0,
             stakeSol: (device.stake_sol ?? 0) >= 1e6 ? `${(device.stake_sol / 1e6).toFixed(2)}M` : (device.stake_sol ?? 0) >= 1e3 ? `${(device.stake_sol / 1e3).toFixed(0)}k` : `${(device.stake_sol ?? 0).toFixed(0)}`,
             stakeShare: (device.stake_share ?? 0) > 0 ? `${device.stake_share.toFixed(2)}%` : '0%',
+            interfaces: device.interfaces || [],
           }
 
           // Determine marker styling based on path state
@@ -2412,10 +2423,10 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
               <div className="text-sm font-medium">{hoveredLink.code}</div>
               <div className="text-xs text-muted-foreground space-y-0.5">
                 {!hoveredLink.isInterMetro && hoveredLink.deviceACode && (
-                  <div>A-Side: <span className="text-foreground">{hoveredLink.deviceACode}</span>{hoveredLink.interfaceAName && <span className="text-foreground font-mono"> ({hoveredLink.interfaceAName})</span>}</div>
+                  <div>A-Side: <span className="text-foreground">{hoveredLink.deviceACode}</span>{hoveredLink.interfaceAName && <span className="text-foreground font-mono"> ({hoveredLink.interfaceAName}{hoveredLink.interfaceAIP && ` ${hoveredLink.interfaceAIP}`})</span>}</div>
                 )}
                 {!hoveredLink.isInterMetro && hoveredLink.deviceZCode && (
-                  <div>Z-Side: <span className="text-foreground">{hoveredLink.deviceZCode}</span>{hoveredLink.interfaceZName && <span className="text-foreground font-mono"> ({hoveredLink.interfaceZName})</span>}</div>
+                  <div>Z-Side: <span className="text-foreground">{hoveredLink.deviceZCode}</span>{hoveredLink.interfaceZName && <span className="text-foreground font-mono"> ({hoveredLink.interfaceZName}{hoveredLink.interfaceZIP && ` ${hoveredLink.interfaceZIP}`})</span>}</div>
                 )}
                 <div>Type: <span className="text-foreground">{hoveredLink.isInterMetro ? 'Inter-Metro' : hoveredLink.linkType}</span></div>
                 {hoveredLink.contributorCode && (

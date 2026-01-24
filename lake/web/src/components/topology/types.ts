@@ -14,9 +14,11 @@ export interface LinkInfo {
   deviceAPk: string
   deviceACode: string
   interfaceAName: string
+  interfaceAIP: string
   deviceZPk: string
   deviceZCode: string
   interfaceZName: string
+  interfaceZIP: string
   contributorPk: string
   contributorCode: string
   health?: {
@@ -29,6 +31,13 @@ export interface LinkInfo {
   isInterMetro?: boolean
   linkCount?: number
   avgLatencyMs?: string
+}
+
+// Interface info
+export interface InterfaceInfo {
+  name: string
+  ip: string
+  status: string
 }
 
 // Device info (used in drawer/panel)
@@ -45,6 +54,7 @@ export interface DeviceInfo {
   validatorCount: number
   stakeSol: string
   stakeShare: string
+  interfaces: InterfaceInfo[]
 }
 
 // Metro info (used in drawer/panel)

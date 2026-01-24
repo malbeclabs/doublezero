@@ -35,6 +35,9 @@ export function LinkDetails({ link }: LinkDetailsProps) {
           {link.interfaceAName && (
             <div className="text-xs text-muted-foreground font-mono mt-0.5">{link.interfaceAName}</div>
           )}
+          {link.interfaceAIP && (
+            <div className="text-xs text-muted-foreground font-mono">{link.interfaceAIP}</div>
+          )}
         </div>
         <div className="p-2 bg-[var(--muted)]/30 rounded-lg">
           <div className="text-xs text-muted-foreground mb-1">Z-Side</div>
@@ -43,6 +46,9 @@ export function LinkDetails({ link }: LinkDetailsProps) {
           </div>
           {link.interfaceZName && (
             <div className="text-xs text-muted-foreground font-mono mt-0.5">{link.interfaceZName}</div>
+          )}
+          {link.interfaceZIP && (
+            <div className="text-xs text-muted-foreground font-mono">{link.interfaceZIP}</div>
           )}
         </div>
       </div>

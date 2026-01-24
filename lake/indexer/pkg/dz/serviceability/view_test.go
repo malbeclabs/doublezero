@@ -301,7 +301,7 @@ func TestLake_Serviceability_View_ConvertLinks(t *testing.T) {
 			},
 		}
 
-		result := convertLinks(onchain)
+		result := convertLinks(onchain, nil)
 
 		require.Len(t, result, 1)
 		require.Equal(t, solana.PublicKeyFromBytes(pk[:]).String(), result[0].PK)
@@ -323,8 +323,70 @@ func TestLake_Serviceability_View_ConvertLinks(t *testing.T) {
 	t.Run("handles empty slice", func(t *testing.T) {
 		t.Parallel()
 
-		result := convertLinks([]serviceability.Link{})
+		result := convertLinks([]serviceability.Link{}, nil)
 		require.Empty(t, result)
+	})
+
+	t.Run("extracts interface IPs from devices", func(t *testing.T) {
+		t.Parallel()
+
+		linkPK := [32]byte{1, 2, 3, 4}
+		deviceAPK := [32]byte{5, 6, 7, 8}
+		deviceZPK := [32]byte{9, 10, 11, 12}
+		contributorPK := [32]byte{13, 14, 15, 16}
+		tunnelNet := [5]uint8{192, 168, 1, 0, 24}
+
+		links := []serviceability.Link{
+			{
+				PubKey:            linkPK,
+				Status:            serviceability.LinkStatusActivated,
+				Code:              "LINK001",
+				TunnelNet:         tunnelNet,
+				SideAPubKey:       deviceAPK,
+				SideZPubKey:       deviceZPK,
+				ContributorPubKey: contributorPK,
+				SideAIfaceName:    "Port-Channel1000.2029",
+				SideZIfaceName:    "Ethernet10/1",
+				LinkType:          serviceability.LinkLinkTypeWAN,
+			},
+		}
+
+		devices := []serviceability.Device{
+			{
+				PubKey: deviceAPK,
+				Code:   "bom001-dz001",
+				Interfaces: []serviceability.Interface{
+					{
+						Name:  "Loopback255",
+						IpNet: [5]uint8{172, 16, 0, 79, 32}, // 172.16.0.79/32
+					},
+					{
+						Name:  "Port-Channel1000.2029",
+						IpNet: [5]uint8{172, 16, 0, 225, 31}, // 172.16.0.225/31
+					},
+				},
+			},
+			{
+				PubKey: deviceZPK,
+				Code:   "dz-slc-sw01",
+				Interfaces: []serviceability.Interface{
+					{
+						Name:  "Loopback255",
+						IpNet: [5]uint8{172, 16, 0, 245, 32}, // 172.16.0.245/32
+					},
+					{
+						Name:  "Ethernet10/1",
+						IpNet: [5]uint8{172, 16, 1, 32, 31}, // 172.16.1.32/31
+					},
+				},
+			},
+		}
+
+		result := convertLinks(links, devices)
+
+		require.Len(t, result, 1)
+		require.Equal(t, "172.16.0.225", result[0].SideAIP)
+		require.Equal(t, "172.16.1.32", result[0].SideZIP)
 	})
 }
 

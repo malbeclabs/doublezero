@@ -1,6 +1,7 @@
 package dzsvc
 
 import (
+	"encoding/json"
 	"log/slog"
 
 	"github.com/malbeclabs/doublezero/lake/indexer/pkg/clickhouse/dataset"
@@ -49,10 +50,12 @@ func (s *DeviceSchema) PayloadColumns() []string {
 		"contributor_pk:VARCHAR",
 		"metro_pk:VARCHAR",
 		"max_users:INTEGER",
+		"interfaces:VARCHAR",
 	}
 }
 
 func (s *DeviceSchema) ToRow(d Device) []any {
+	interfacesJSON, _ := json.Marshal(d.Interfaces)
 	return []any{
 		d.PK,
 		d.Status,
@@ -62,6 +65,7 @@ func (s *DeviceSchema) ToRow(d Device) []any {
 		d.ContributorPK,
 		d.MetroPK,
 		d.MaxUsers,
+		string(interfacesJSON),
 	}
 }
 
@@ -164,6 +168,8 @@ func (s *LinkSchema) PayloadColumns() []string {
 		"side_z_pk:VARCHAR",
 		"side_a_iface_name:VARCHAR",
 		"side_z_iface_name:VARCHAR",
+		"side_a_ip:VARCHAR",
+		"side_z_ip:VARCHAR",
 		"link_type:VARCHAR",
 		"committed_rtt_ns:BIGINT",
 		"committed_jitter_ns:BIGINT",
@@ -183,6 +189,8 @@ func (s *LinkSchema) ToRow(l Link) []any {
 		l.SideZPK,
 		l.SideAIfaceName,
 		l.SideZIfaceName,
+		l.SideAIP,
+		l.SideZIP,
 		l.LinkType,
 		l.CommittedRTTNs,
 		l.CommittedJitterNs,

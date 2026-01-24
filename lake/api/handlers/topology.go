@@ -23,18 +23,25 @@ type Metro struct {
 	Longitude float64 `json:"longitude"`
 }
 
+type DeviceInterface struct {
+	Name   string `json:"name"`
+	IP     string `json:"ip"`
+	Status string `json:"status"`
+}
+
 type Device struct {
-	PK              string  `json:"pk"`
-	Code            string  `json:"code"`
-	Status          string  `json:"status"`
-	DeviceType      string  `json:"device_type"`
-	MetroPK         string  `json:"metro_pk"`
-	ContributorPK   string  `json:"contributor_pk"`
-	ContributorCode string  `json:"contributor_code"`
-	UserCount       uint64  `json:"user_count"`
-	ValidatorCount  uint64  `json:"validator_count"`
-	StakeSol        float64 `json:"stake_sol"`
-	StakeShare      float64 `json:"stake_share"`
+	PK              string            `json:"pk"`
+	Code            string            `json:"code"`
+	Status          string            `json:"status"`
+	DeviceType      string            `json:"device_type"`
+	MetroPK         string            `json:"metro_pk"`
+	ContributorPK   string            `json:"contributor_pk"`
+	ContributorCode string            `json:"contributor_code"`
+	UserCount       uint64            `json:"user_count"`
+	ValidatorCount  uint64            `json:"validator_count"`
+	StakeSol        float64           `json:"stake_sol"`
+	StakeShare      float64           `json:"stake_share"`
+	Interfaces      []DeviceInterface `json:"interfaces"`
 }
 
 type Link struct {
@@ -46,9 +53,11 @@ type Link struct {
 	SideAPK         string  `json:"side_a_pk"`
 	SideACode       string  `json:"side_a_code"`
 	SideAIfaceName  string  `json:"side_a_iface_name"`
+	SideAIP         string  `json:"side_a_ip"`
 	SideZPK         string  `json:"side_z_pk"`
 	SideZCode       string  `json:"side_z_code"`
 	SideZIfaceName  string  `json:"side_z_iface_name"`
+	SideZIP         string  `json:"side_z_ip"`
 	ContributorPK   string  `json:"contributor_pk"`
 	ContributorCode string  `json:"contributor_code"`
 	LatencyUs       float64 `json:"latency_us"`
@@ -155,7 +164,8 @@ func GetTopology(w http.ResponseWriter, r *http.Request) {
 				CASE
 					WHEN ts.total_lamports > 0 THEN COALESCE(ds.stake_sol, 0) * 1e9 / ts.total_lamports * 100
 					ELSE 0
-				END as stake_share
+				END as stake_share,
+				COALESCE(d.interfaces, '[]') as interfaces
 			FROM dz_devices_current d
 			CROSS JOIN total_stake ts
 			LEFT JOIN device_stats ds ON d.pk = ds.device_pk
@@ -170,8 +180,13 @@ func GetTopology(w http.ResponseWriter, r *http.Request) {
 
 		for rows.Next() {
 			var d Device
-			if err := rows.Scan(&d.PK, &d.Code, &d.Status, &d.DeviceType, &d.MetroPK, &d.ContributorPK, &d.ContributorCode, &d.UserCount, &d.ValidatorCount, &d.StakeSol, &d.StakeShare); err != nil {
+			var interfacesJSON string
+			if err := rows.Scan(&d.PK, &d.Code, &d.Status, &d.DeviceType, &d.MetroPK, &d.ContributorPK, &d.ContributorCode, &d.UserCount, &d.ValidatorCount, &d.StakeSol, &d.StakeShare, &interfacesJSON); err != nil {
 				return err
+			}
+			if err := json.Unmarshal([]byte(interfacesJSON), &d.Interfaces); err != nil {
+				log.Printf("failed to parse interfaces JSON for device %s: %v", d.PK, err)
+				d.Interfaces = []DeviceInterface{}
 			}
 			devices = append(devices, d)
 		}
@@ -183,8 +198,8 @@ func GetTopology(w http.ResponseWriter, r *http.Request) {
 		query := `
 			SELECT
 				l.pk, l.code, l.status, l.link_type, l.bandwidth_bps,
-				l.side_a_pk, COALESCE(da.code, '') as side_a_code, COALESCE(l.side_a_iface_name, '') as side_a_iface_name,
-				l.side_z_pk, COALESCE(dz.code, '') as side_z_code, COALESCE(l.side_z_iface_name, '') as side_z_iface_name,
+				l.side_a_pk, COALESCE(da.code, '') as side_a_code, COALESCE(l.side_a_iface_name, '') as side_a_iface_name, COALESCE(l.side_a_ip, '') as side_a_ip,
+				l.side_z_pk, COALESCE(dz.code, '') as side_z_code, COALESCE(l.side_z_iface_name, '') as side_z_iface_name, COALESCE(l.side_z_ip, '') as side_z_ip,
 				l.contributor_pk, COALESCE(c.code, '') as contributor_code,
 				COALESCE(lat.avg_rtt_us, 0) as latency_us,
 				COALESCE(lat.avg_ipdv_us, 0) as jitter_us,
@@ -225,7 +240,7 @@ func GetTopology(w http.ResponseWriter, r *http.Request) {
 
 		for rows.Next() {
 			var l Link
-			if err := rows.Scan(&l.PK, &l.Code, &l.Status, &l.LinkType, &l.BandwidthBps, &l.SideAPK, &l.SideACode, &l.SideAIfaceName, &l.SideZPK, &l.SideZCode, &l.SideZIfaceName, &l.ContributorPK, &l.ContributorCode, &l.LatencyUs, &l.JitterUs, &l.LossPercent, &l.SampleCount, &l.InBps, &l.OutBps); err != nil {
+			if err := rows.Scan(&l.PK, &l.Code, &l.Status, &l.LinkType, &l.BandwidthBps, &l.SideAPK, &l.SideACode, &l.SideAIfaceName, &l.SideAIP, &l.SideZPK, &l.SideZCode, &l.SideZIfaceName, &l.SideZIP, &l.ContributorPK, &l.ContributorCode, &l.LatencyUs, &l.JitterUs, &l.LossPercent, &l.SampleCount, &l.InBps, &l.OutBps); err != nil {
 				return err
 			}
 			links = append(links, l)

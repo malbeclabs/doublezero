@@ -46,6 +46,8 @@ type linkRow struct {
 	SideZPK             string `ch:"side_z_pk"`
 	SideAIfaceName      string `ch:"side_a_iface_name"`
 	SideZIfaceName      string `ch:"side_z_iface_name"`
+	SideAIP             string `ch:"side_a_ip"`
+	SideZIP             string `ch:"side_z_ip"`
 	LinkType            string `ch:"link_type"`
 	CommittedRTTNs      int64  `ch:"committed_rtt_ns"`
 	CommittedJitterNs   int64  `ch:"committed_jitter_ns"`
@@ -167,6 +169,8 @@ func QueryCurrentLinks(ctx context.Context, log *slog.Logger, db clickhouse.Clie
 			SideZPK:             row.SideZPK,
 			SideAIfaceName:      row.SideAIfaceName,
 			SideZIfaceName:      row.SideZIfaceName,
+			SideAIP:             row.SideAIP,
+			SideZIP:             row.SideZIP,
 			LinkType:            row.LinkType,
 			CommittedRTTNs:      uint64(row.CommittedRTTNs),
 			CommittedJitterNs:   uint64(row.CommittedJitterNs),

@@ -102,6 +102,9 @@ func run() error {
 	isisS3RegionFlag := flag.String("isis-s3-region", "us-east-1", "AWS region for IS-IS S3 bucket (or set ISIS_S3_REGION env var)")
 	isisRefreshIntervalFlag := flag.Duration("isis-refresh-interval", 30*time.Second, "Refresh interval for IS-IS sync (or set ISIS_REFRESH_INTERVAL env var)")
 
+	// Readiness configuration
+	skipReadyWaitFlag := flag.Bool("skip-ready-wait", false, "Skip waiting for views to be ready (for preview/dev environments)")
+
 	flag.Parse()
 
 	// Override flags with environment variables if set
@@ -370,6 +373,9 @@ func run() error {
 			ISISS3Bucket:        *isisS3BucketFlag,
 			ISISS3Region:        *isisS3RegionFlag,
 			ISISRefreshInterval: *isisRefreshIntervalFlag,
+
+			// Readiness configuration
+			SkipReadyWait: *skipReadyWaitFlag,
 		},
 	})
 	if err != nil {

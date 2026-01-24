@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       source_tag:
-        description: 'Source image tag to promote (e.g., snor-lake-v3)'
+        description: 'Source image tag to promote (e.g., staging)'
         required: true
-        default: 'snor-lake-v3'
+        default: 'staging'
       target_tag:
         description: 'Target image tag (e.g., prod)'
         required: true

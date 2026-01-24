@@ -8,11 +8,17 @@ on:
     paths:
       - 'lake/**'
       - '.github/workflows/release.docker.lake.yml'
+  pull_request:
+    types: [opened, synchronize, labeled]
+    paths:
+      - 'lake/**'
+      - '.github/workflows/release.docker.lake.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
   packages: write
+  pull-requests: read
 
 env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/doublezero-lake
@@ -21,6 +27,11 @@ env:
 jobs:
   build-and-push:
     runs-on: ubuntu-24.04-16c-64gb
+    # Run on push, or on PR only if it has the preview-lake label
+    if: >
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'preview-lake'))
 
     steps:
       - uses: actions/checkout@v4
@@ -32,8 +43,14 @@ jobs:
           SHORT_SHA="${GITHUB_SHA::8}"
           echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
 
-          SAN_BRANCH="${{ github.ref_name }}"
-          SAN_BRANCH="${SAN_BRANCH//\//-}"
+          # Use head_ref for PRs, ref_name for pushes
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            BRANCH="${{ github.head_ref }}"
+          else
+            BRANCH="${{ github.ref_name }}"
+          fi
+
+          SAN_BRANCH="${BRANCH//\//-}"
           echo "branch_name=$SAN_BRANCH" >> $GITHUB_OUTPUT
           echo "version=${SAN_BRANCH}-${SHORT_SHA}" >> $GITHUB_OUTPUT
 

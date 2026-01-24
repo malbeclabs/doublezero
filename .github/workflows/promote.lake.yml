@@ -1,0 +1,40 @@
+name: promote.lake
+
+# Promotes a lake image from one tag to another (e.g., staging → prod)
+# This retags an existing image without rebuilding
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_tag:
+        description: 'Source image tag to promote (e.g., snor-lake-v3)'
+        required: true
+        default: 'snor-lake-v3'
+      target_tag:
+        description: 'Target image tag (e.g., snor-lake-prod)'
+        required: true
+        default: 'snor-lake-prod'
+
+permissions:
+  packages: write
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/doublezero-lake
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull, retag, and push
+        run: |
+          echo "Promoting ${{ env.IMAGE }}:${{ inputs.source_tag }} → ${{ env.IMAGE }}:${{ inputs.target_tag }}"
+          docker pull ${{ env.IMAGE }}:${{ inputs.source_tag }}
+          docker tag ${{ env.IMAGE }}:${{ inputs.source_tag }} ${{ env.IMAGE }}:${{ inputs.target_tag }}
+          docker push ${{ env.IMAGE }}:${{ inputs.target_tag }}
+          echo "✅ Promoted successfully"

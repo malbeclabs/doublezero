@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - snor/lake-v3
-      - snor/lake-prod
       # - main  # uncomment for prod
     paths:
       - 'lake/**'
@@ -78,7 +77,7 @@ jobs:
       - name: Upload assets to S3
         run: |
           # Determine bucket and path based on branch
-          if [[ "${{ github.ref_name }}" == "main" || "${{ github.ref_name }}" == "snor/lake-prod" ]]; then
+          if [[ "${{ github.ref_name }}" == "main" ]]; then
             BUCKET="${{ env.PROD_ASSET_BUCKET }}"
             PREFIX="assets"
           else

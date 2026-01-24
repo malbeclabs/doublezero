@@ -127,40 +127,38 @@ Output goes to `eval-runs/<timestamp>/` - check `failures.log` for any failures.
 
 ## Deployment
 
-Deploy to Kubernetes using the deploy script:
+Lake uses automated CI/CD via GitHub Actions and ArgoCD.
 
+### Automatic Staging Deploys
+
+Pushes to staging branches automatically build and deploy:
+- Build web assets and upload to S3
+- Build Docker image and push to `ghcr.io/malbeclabs/doublezero-lake`
+- Tag image as `staging` (ArgoCD picks up changes automatically)
+
+Current staging branches are configured in `.github/workflows/release.docker.lake.yml`.
+
+### PR Previews
+
+Add the `preview-lake` label to a PR to trigger a preview build. Assets go to a branch-prefixed location in the preview bucket.
+
+### Promoting to Production
+
+To promote a staging image to production:
+
+**Via GitHub Actions (recommended):**
+1. Go to Actions → "promote.lake" workflow
+2. Run workflow with source_tag=`staging` and target_tag=`prod`
+
+**Via CLI:**
 ```bash
-ASSET_BUCKET=my-lake-assets GOOGLE_CLIENT_ID=xxx ./scripts/deploy-app.sh
+./scripts/promote-to-prod.sh           # staging → prod (prompts for confirmation)
+./scripts/promote-to-prod.sh -n        # dry-run, show what would happen
+./scripts/promote-to-prod.sh -y        # skip confirmation
+./scripts/promote-to-prod.sh main prod # promote specific tag
 ```
 
-This will:
-1. Build web assets and upload to S3
-2. Build Docker image with pre-built assets
-3. Push to Docker registry
-4. Update Kubernetes deployment and wait for rollout
-
-### Options
-
-```bash
-./scripts/deploy-app.sh --dry-run      # Preview without making changes
-./scripts/deploy-app.sh --skip-assets  # Skip S3 upload (assets already uploaded)
-./scripts/deploy-app.sh --skip-build   # Skip Docker build (use existing image)
-./scripts/deploy-app.sh --skip-push    # Skip Docker push
-./scripts/deploy-app.sh --skip-deploy  # Skip Kubernetes rollout
-```
-
-### Configuration
-
-Environment variables:
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ASSET_BUCKET` | (required) | S3 bucket for web assets |
-| `GOOGLE_CLIENT_ID` | (required) | Google OAuth client ID |
-| `DOCKER_REGISTRY` | `snormore` | Docker registry |
-| `DOCKER_IMAGE` | `doublezero-lake` | Docker image name |
-| `K8S_NAMESPACE` | `doublezero-data` | Kubernetes namespace |
-| `K8S_DEPLOYMENT` | `lake-api` | Deployment name |
+ArgoCD will automatically sync the new image.
 
 ### Static Asset Fallback
 

@@ -95,6 +95,7 @@ func run() error {
 	maxConcurrencyFlag := flag.Int("max-concurrency", defaultMaxConcurrency, "maximum number of concurrent operations")
 	deviceUsageQueryWindowFlag := flag.Duration("device-usage-query-window", defaultDeviceUsageInfluxQueryWindow, "Query window for device usage (default: 1 hour)")
 	deviceUsageRefreshIntervalFlag := flag.Duration("device-usage-refresh-interval", defaultDeviceUsageRefreshInterval, "Refresh interval for device usage (default: 5 minutes)")
+	mockDeviceUsageFlag := flag.Bool("mock-device-usage", false, "Use mock data for device usage instead of InfluxDB (for testing/staging)")
 
 	// ISIS configuration (requires Neo4j, enabled by default when Neo4j is configured)
 	isisEnabledFlag := flag.Bool("isis-enabled", true, "Enable IS-IS sync from S3 (or set ISIS_ENABLED env var)")
@@ -155,6 +156,11 @@ func run() error {
 		if d, err := time.ParseDuration(envISISRefreshInterval); err == nil {
 			*isisRefreshIntervalFlag = d
 		}
+	}
+
+	// Override mock device usage flag with environment variable if set
+	if os.Getenv("MOCK_DEVICE_USAGE") == "true" {
+		*mockDeviceUsageFlag = true
 	}
 
 	networkConfig, err := config.NetworkConfigForEnv(*dzEnvFlag)
@@ -274,7 +280,14 @@ func run() error {
 	} else {
 		deviceUsageQueryWindow = *deviceUsageQueryWindowFlag
 	}
-	if influxURL != "" && influxToken != "" && influxBucket != "" {
+	if *mockDeviceUsageFlag {
+		log.Info("device usage: using mock data (--mock-device-usage enabled)")
+		influxDBClient = dztelemusage.NewMockInfluxDBClient(dztelemusage.MockInfluxDBClientConfig{
+			ClickHouse: clickhouseDB,
+			Logger:     log,
+		})
+		influxBucket = "mock-bucket"
+	} else if influxURL != "" && influxToken != "" && influxBucket != "" {
 		influxDBClient, err = dztelemusage.NewSDKInfluxDBClient(influxURL, influxToken, influxBucket)
 		if err != nil {
 			return fmt.Errorf("failed to create InfluxDB client: %w", err)

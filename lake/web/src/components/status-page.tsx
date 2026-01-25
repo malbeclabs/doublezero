@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useDelayedLoading } from '@/hooks/use-delayed-loading'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { CheckCircle2, AlertTriangle, XCircle, ArrowUpDown, Cpu, ChevronDown, ChevronUp, Info, WifiOff } from 'lucide-react'
-import { fetchStatus, fetchLinkHistory, fetchDeviceHistory, fetchInterfaceIssues, fetchCriticalLinks, fetchMetros, type StatusResponse, type InterfaceIssue, type NonActivatedLink, type LinkHistory, type DeviceHistory, type LinkMetric, type DeviceUtilization, type CriticalLinksResponse, type LinkIssue } from '@/lib/api'
+import { fetchStatus, fetchLinkHistory, fetchDeviceHistory, fetchInterfaceIssues, fetchCriticalLinks, fetchMetros, type StatusResponse, type InterfaceIssue, type NonActivatedLink, type NonActivatedDevice, type LinkHistory, type DeviceHistory, type LinkMetric, type DeviceUtilization, type CriticalLinksResponse, type LinkIssue } from '@/lib/api'
 import { StatusFilters, useStatusFilters, type StatusFilter } from '@/components/status-search-bar'
 import { StatCard } from '@/components/stat-card'
 import { LinkStatusTimelines } from '@/components/link-status-timelines'
@@ -94,6 +94,13 @@ function getStatusReasons(status: StatusResponse): string[] {
     reasons.push(`${noDataCount} link${noDataCount > 1 ? 's' : ''} with telemetry stopped`)
   }
 
+  // Count devices with interface issues
+  const deviceIssues = status.interfaces?.issues || []
+  const devicesWithIssues = new Set(deviceIssues.map(i => i.device_pk)).size
+  if (devicesWithIssues > 0) {
+    reasons.push(`${devicesWithIssues} device${devicesWithIssues > 1 ? 's' : ''} with interface issues`)
+  }
+
   if (status.performance.avg_loss_percent >= 1.0) {
     reasons.push(`${status.performance.avg_loss_percent.toFixed(1)}% average packet loss`)
   } else if (status.performance.avg_loss_percent >= 0.1) {
@@ -169,13 +176,19 @@ function formatDuration(since: string): string {
 function IssueDetails({
   issues,
   nonActivatedLinks,
+  deviceIssues,
+  nonActivatedDevices,
   onIssueClick,
   onNonActivatedClick,
+  onDeviceIssueClick,
 }: {
   issues: LinkIssue[]
   nonActivatedLinks: NonActivatedLink[]
+  deviceIssues: InterfaceIssue[]
+  nonActivatedDevices: NonActivatedDevice[]
   onIssueClick: () => void
   onNonActivatedClick: () => void
+  onDeviceIssueClick: () => void
 }) {
   const grouped = issues.reduce(
     (acc, issue) => {
@@ -192,6 +205,24 @@ function IssueDetails({
     { key: 'degraded', label: 'Degraded Performance', icon: AlertTriangle, iconColor: 'text-orange-500', valueColor: 'text-orange-500' },
     { key: 'no_data', label: 'Telemetry Stopped', icon: WifiOff, iconColor: 'text-amber-500', valueColor: 'text-amber-500' },
   ]
+
+  // Group device issues by device
+  const deviceIssuesByDevice = deviceIssues.reduce(
+    (acc, issue) => {
+      if (!acc[issue.device_pk]) {
+        acc[issue.device_pk] = {
+          device_code: issue.device_code,
+          device_type: issue.device_type,
+          contributor: issue.contributor,
+          metro: issue.metro,
+          issues: [],
+        }
+      }
+      acc[issue.device_pk].issues.push(issue)
+      return acc
+    },
+    {} as Record<string, { device_code: string; device_type: string; contributor: string; metro: string; issues: InterfaceIssue[] }>
+  )
 
   return (
     <div className="border-t border-border px-6 py-4 space-y-4">
@@ -240,6 +271,54 @@ function IssueDetails({
           </div>
         )
       })}
+      {Object.keys(deviceIssuesByDevice).length > 0 && (
+        <div>
+          <div className="text-sm font-medium text-muted-foreground mb-2">Device Interface Issues</div>
+          <div className="space-y-2">
+            {Object.entries(deviceIssuesByDevice).map(([devicePk, device]) => {
+              // Aggregate totals across all interfaces for this device
+              const totals = device.issues.reduce(
+                (acc, i) => ({
+                  errors: acc.errors + i.in_errors + i.out_errors,
+                  discards: acc.discards + i.in_discards + i.out_discards,
+                  carrierTransitions: acc.carrierTransitions + i.carrier_transitions,
+                }),
+                { errors: 0, discards: 0, carrierTransitions: 0 }
+              )
+              const detailParts: string[] = []
+              if (totals.errors > 0) detailParts.push(`${totals.errors.toLocaleString()} errors`)
+              if (totals.discards > 0) detailParts.push(`${totals.discards.toLocaleString()} discards`)
+              if (totals.carrierTransitions > 0) detailParts.push(`${totals.carrierTransitions} carrier transitions`)
+
+              return (
+                <button
+                  key={devicePk}
+                  onClick={onDeviceIssueClick}
+                  className="flex items-center justify-between w-full py-2 px-3 rounded-md bg-muted/50 hover:bg-muted transition-colors text-left"
+                >
+                  <div className="flex items-center gap-3">
+                    <Cpu className="h-4 w-4 text-amber-500" />
+                    <div>
+                      <div className="font-medium text-sm">{device.device_code}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {device.metro} · {device.device_type}{device.contributor && ` · ${device.contributor}`}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm font-medium text-amber-500">
+                      {detailParts.join(', ')}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {device.issues.length} interface{device.issues.length > 1 ? 's' : ''}
+                    </div>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
       {nonActivatedLinks.length > 0 && (
         <div>
           <div className="text-sm font-medium text-muted-foreground mb-2">Links Not Active</div>
@@ -269,6 +348,43 @@ function IssueDetails({
                       title={new Date(link.since).toLocaleString()}
                     >
                       for {formatDuration(link.since)}
+                    </div>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {nonActivatedDevices.length > 0 && (
+        <div>
+          <div className="text-sm font-medium text-muted-foreground mb-2">Devices Not Active</div>
+          <div className="space-y-2">
+            {nonActivatedDevices.map((device, idx) => (
+              <button
+                key={`${device.code}-${idx}`}
+                onClick={onDeviceIssueClick}
+                className="flex items-center justify-between w-full py-2 px-3 rounded-md bg-muted/50 hover:bg-muted transition-colors text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <Info className="h-4 w-4 text-slate-500" />
+                  <div>
+                    <div className="font-medium text-sm">{device.code}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {device.metro} · {device.device_type}
+                    </div>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-sm font-medium text-slate-600 dark:text-slate-400 capitalize">
+                    {device.status.replace(/-/g, ' ')}
+                  </div>
+                  {device.since && (
+                    <div
+                      className="text-xs text-muted-foreground"
+                      title={new Date(device.since).toLocaleString()}
+                    >
+                      for {formatDuration(device.since)}
                     </div>
                   )}
                 </div>
@@ -316,6 +432,16 @@ function StatusIndicator({ statusData }: { statusData: StatusResponse }) {
       document.getElementById('disabled-links')?.scrollIntoView({ behavior: 'smooth' })
     }
   }
+  const scrollToDeviceHistory = () => {
+    if (!location.pathname.includes('/status/devices')) {
+      navigate('/status/devices')
+      setTimeout(() => {
+        document.getElementById('device-status-history')?.scrollIntoView({ behavior: 'smooth' })
+      }, 100)
+    } else {
+      document.getElementById('device-status-history')?.scrollIntoView({ behavior: 'smooth' })
+    }
+  }
 
   const config = {
     healthy: {
@@ -340,10 +466,12 @@ function StatusIndicator({ statusData }: { statusData: StatusResponse }) {
 
   const { icon: Icon, label, className, borderClassName } = config[status]
 
-  // Check if there are link issues to show
+  // Check if there are issues to show
   const linkIssues = statusData.links.issues || []
   const nonActivatedLinks = statusData.alerts?.links || []
-  const hasExpandableContent = linkIssues.length > 0 || nonActivatedLinks.length > 0
+  const deviceIssues = statusData.interfaces?.issues || []
+  const nonActivatedDevices = statusData.alerts?.devices || []
+  const hasExpandableContent = linkIssues.length > 0 || nonActivatedLinks.length > 0 || deviceIssues.length > 0 || nonActivatedDevices.length > 0
 
   return (
     <div className={`rounded-lg bg-card border border-border border-l-4 ${borderClassName}`}>
@@ -373,8 +501,11 @@ function StatusIndicator({ statusData }: { statusData: StatusResponse }) {
         <IssueDetails
           issues={linkIssues}
           nonActivatedLinks={nonActivatedLinks}
+          deviceIssues={deviceIssues}
+          nonActivatedDevices={nonActivatedDevices}
           onIssueClick={scrollToLinkHistory}
           onNonActivatedClick={scrollToDisabledLinks}
+          onDeviceIssueClick={scrollToDeviceHistory}
         />
       )}
     </div>

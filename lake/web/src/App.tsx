@@ -121,7 +121,6 @@ function QueryEditorView() {
   const [searchParams, setSearchParams] = useSearchParams()
   const queryEditorRef = useRef<QueryEditorHandle>(null)
 
-  // Fetch session from React Query
   const { data: session, isLoading: sessionLoading } = useQuerySession(sessionId)
   const createSessionMutation = useCreateQuerySession()
   const addHistoryMutation = useAddQueryHistory()

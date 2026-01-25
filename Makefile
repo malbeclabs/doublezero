@@ -24,6 +24,29 @@ clean:
 
 
 # -----------------------------------------------------------------------------
+# Node.js / Web targets (lake/web)
+# -----------------------------------------------------------------------------
+.PHONY: web-install
+web-install:
+	cd lake/web && bun install --frozen-lockfile
+
+.PHONY: web-build
+web-build: web-install
+	cd lake/web && bun run build
+
+.PHONY: web-lint
+web-lint: web-install
+	cd lake/web && bun run lint
+
+.PHONY: web-test
+web-test: web-install
+	cd lake/web && bun run test:run
+
+.PHONY: web-ci
+web-ci: web-build web-lint web-test
+
+
+# -----------------------------------------------------------------------------
 # Go targets
 # -----------------------------------------------------------------------------
 .PHONY: go-build

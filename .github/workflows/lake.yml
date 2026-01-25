@@ -1,0 +1,40 @@
+name: lake
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'lake/web/**'
+      - 'lake/agent/**'
+      - 'lake/api/**'
+      - '.github/workflows/lake.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'lake/web/**'
+      - 'lake/agent/**'
+      - 'lake/api/**'
+      - '.github/workflows/lake.yml'
+
+jobs:
+  web-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: make web-build
+
+  web-lint:
+    runs-on: ubuntu-latest
+    needs: web-build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: make web-lint
+
+  web-test:
+    runs-on: ubuntu-latest
+    needs: web-build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: make web-test

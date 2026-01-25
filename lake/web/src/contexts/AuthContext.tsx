@@ -112,37 +112,25 @@ export function AuthProvider({ children, googleClientId, onLoginSuccess, onLogou
   // Load auth state with retry on connection errors
   const loadAuth = useCallback(async (): Promise<boolean> => {
     const token = getAuthToken()
-    console.log('[Auth] Loading auth state, hasToken:', !!token)
     try {
       const response = await fetchAuthMe()
-      console.log('[Auth] Auth loaded successfully')
       if (token) {
         setUser(response.account)
       }
       setQuota(response.quota)
       setConnectionError(false)
-      return true // success
+      return true
     } catch (err) {
-      console.error('[Auth] Failed to load auth:', err)
-      console.log('[Auth] Error type:', err?.constructor?.name)
-      if (err instanceof AuthError) {
-        console.log('[Auth] AuthError status:', err.status)
-      }
-      console.log('[Auth] isConnectionError:', isConnectionError(err))
-
       if (isConnectionError(err)) {
-        // Connection error - server is unreachable
-        console.log('[Auth] Setting connectionError to true')
         setConnectionError(true)
-        return false // will retry
+        return false
       }
 
-      // HTTP error - server is reachable but returned an error
       setConnectionError(false)
       if (token && err instanceof AuthError && err.status === 401) {
         clearAuthToken()
       }
-      return true // don't retry for HTTP errors
+      return true
     }
   }, [])
 

@@ -129,8 +129,8 @@ func seedSolanaValidatorsDisconnectedData(t *testing.T, ctx context.Context, con
 	deviceDS, err := serviceability.NewDeviceDataset(log)
 	require.NoError(t, err)
 	err = deviceDS.WriteBatch(ctx, conn, 1, func(i int) ([]any, error) {
-		// PK: pk, Payload: status, device_type, code, public_ip, contributor_pk, metro_pk, max_users
-		return []any{"device1", "activated", "DZD", "nyc-dzd1", "", "", "metro1", 100}, nil
+		// PK: pk, Payload: status, device_type, code, public_ip, contributor_pk, metro_pk, max_users, interfaces
+		return []any{"device1", "activated", "DZD", "nyc-dzd1", "", "", "metro1", 100, "[]"}, nil
 	}, &dataset.DimensionType2DatasetWriteConfig{
 		SnapshotTS: now,
 		OpID:       testOpID(),

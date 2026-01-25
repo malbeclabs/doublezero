@@ -139,7 +139,7 @@ func seedMulticastSubscriberBandwidthData(t *testing.T, ctx context.Context, con
 			{"device2", "lon-dzd1", "metro2"},
 		}
 		d := devices[i]
-		return []any{d.pk, "activated", "DZD", d.code, "", "", d.metroPK, 100}, nil
+		return []any{d.pk, "activated", "DZD", d.code, "", "", d.metroPK, 100, "[]"}, nil
 	}, &dataset.DimensionType2DatasetWriteConfig{
 		SnapshotTS: now,
 		OpID:       testOpID(),

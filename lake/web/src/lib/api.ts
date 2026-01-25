@@ -1311,6 +1311,44 @@ export async function fetchInterfaceIssues(timeRange?: string): Promise<Interfac
   return res.json()
 }
 
+// Device interface history types
+export interface InterfaceHourStatus {
+  hour: string
+  in_errors: number
+  out_errors: number
+  in_discards: number
+  out_discards: number
+  carrier_transitions: number
+}
+
+export interface InterfaceHistory {
+  interface_name: string
+  link_pk?: string
+  link_code?: string
+  link_type?: string
+  link_side?: string
+  hours: InterfaceHourStatus[]
+}
+
+export interface DeviceInterfaceHistoryResponse {
+  interfaces: InterfaceHistory[]
+  time_range: string
+  bucket_minutes: number
+  bucket_count: number
+}
+
+export async function fetchDeviceInterfaceHistory(devicePk: string, timeRange?: string, buckets?: number): Promise<DeviceInterfaceHistoryResponse> {
+  const params = new URLSearchParams()
+  if (timeRange) params.set('range', timeRange)
+  if (buckets) params.set('buckets', buckets.toString())
+  const url = `/api/status/devices/${devicePk}/interface-history${params.toString() ? '?' + params.toString() : ''}`
+  const res = await fetchWithRetry(url)
+  if (!res.ok) {
+    throw new Error('Failed to fetch device interface history')
+  }
+  return res.json()
+}
+
 // Topology types
 export interface TopologyMetro {
   pk: string

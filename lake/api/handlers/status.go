@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/malbeclabs/doublezero/lake/api/config"
 	"github.com/malbeclabs/doublezero/lake/api/metrics"
 	"golang.org/x/sync/errgroup"
@@ -2075,4 +2076,229 @@ func fetchInterfaceIssuesData(ctx context.Context, duration time.Duration) ([]In
 	}
 
 	return issues, rows.Err()
+}
+
+// DeviceInterfaceHistoryResponse is the response for device interface history endpoint
+type DeviceInterfaceHistoryResponse struct {
+	Interfaces    []InterfaceHistory `json:"interfaces"`
+	TimeRange     string             `json:"time_range"`
+	BucketMinutes int                `json:"bucket_minutes"`
+	BucketCount   int                `json:"bucket_count"`
+}
+
+// InterfaceHistory is the history of a single interface
+type InterfaceHistory struct {
+	InterfaceName string                   `json:"interface_name"`
+	LinkPK        string                   `json:"link_pk,omitempty"`
+	LinkCode      string                   `json:"link_code,omitempty"`
+	LinkType      string                   `json:"link_type,omitempty"`
+	LinkSide      string                   `json:"link_side,omitempty"`
+	Hours         []InterfaceHourStatus    `json:"hours"`
+}
+
+// InterfaceHourStatus is the status of an interface for a single time bucket
+type InterfaceHourStatus struct {
+	Hour               string `json:"hour"`
+	InErrors           uint64 `json:"in_errors"`
+	OutErrors          uint64 `json:"out_errors"`
+	InDiscards         uint64 `json:"in_discards"`
+	OutDiscards        uint64 `json:"out_discards"`
+	CarrierTransitions uint64 `json:"carrier_transitions"`
+}
+
+// GetDeviceInterfaceHistory returns interface-level history for a specific device
+func GetDeviceInterfaceHistory(w http.ResponseWriter, r *http.Request) {
+	devicePK := chi.URLParam(r, "pk")
+	if devicePK == "" {
+		http.Error(w, "Device PK is required", http.StatusBadRequest)
+		return
+	}
+
+	timeRange := r.URL.Query().Get("range")
+	if timeRange == "" {
+		timeRange = "24h"
+	}
+
+	bucketsStr := r.URL.Query().Get("buckets")
+	requestedBuckets := 72 // default
+	if bucketsStr != "" {
+		if b, err := strconv.Atoi(bucketsStr); err == nil && b > 0 && b <= 168 {
+			requestedBuckets = b
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	resp, err := fetchDeviceInterfaceHistoryData(ctx, devicePK, timeRange, requestedBuckets)
+	if err != nil {
+		log.Printf("Error fetching device interface history: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+func fetchDeviceInterfaceHistoryData(ctx context.Context, devicePK string, timeRange string, requestedBuckets int) (*DeviceInterfaceHistoryResponse, error) {
+	// Calculate bucket size based on time range and requested buckets
+	var totalHours int
+	switch timeRange {
+	case "3h":
+		totalHours = 3
+	case "6h":
+		totalHours = 6
+	case "12h":
+		totalHours = 12
+	case "24h":
+		totalHours = 24
+	case "3d":
+		totalHours = 72
+	case "7d":
+		totalHours = 168
+	default:
+		totalHours = 24
+		timeRange = "24h"
+	}
+
+	// Calculate bucket size in minutes
+	totalMinutes := totalHours * 60
+	bucketMinutes := totalMinutes / requestedBuckets
+	if bucketMinutes < 1 {
+		bucketMinutes = 1
+	}
+	bucketCount := totalMinutes / bucketMinutes
+
+	// Build interval expression for ClickHouse
+	bucketInterval := fmt.Sprintf("toStartOfInterval(event_ts, INTERVAL %d MINUTE, 'UTC')", bucketMinutes)
+
+	// Query interface stats per bucket for this device
+	query := `
+		SELECT
+			c.intf as interface_name,
+			COALESCE(l.pk, '') as link_pk,
+			COALESCE(l.code, '') as link_code,
+			COALESCE(l.link_type, '') as link_type,
+			COALESCE(c.link_side, '') as link_side,
+			` + bucketInterval + ` as bucket,
+			toUInt64(SUM(greatest(0, c.in_errors_delta))) as in_errors,
+			toUInt64(SUM(greatest(0, c.out_errors_delta))) as out_errors,
+			toUInt64(SUM(greatest(0, c.in_discards_delta))) as in_discards,
+			toUInt64(SUM(greatest(0, c.out_discards_delta))) as out_discards,
+			toUInt64(SUM(greatest(0, c.carrier_transitions_delta))) as carrier_transitions
+		FROM fact_dz_device_interface_counters c
+		LEFT JOIN dz_links_current l ON c.link_pk = l.pk
+		WHERE c.device_pk = ?
+		  AND c.event_ts > now() - INTERVAL ? HOUR
+		GROUP BY c.intf, l.pk, l.code, l.link_type, c.link_side, bucket
+		ORDER BY c.intf, bucket
+	`
+
+	rows, err := config.DB.Query(ctx, query, devicePK, totalHours)
+	if err != nil {
+		return nil, fmt.Errorf("interface history query error: %w", err)
+	}
+	defer rows.Close()
+
+	// Build interface history map
+	type interfaceMeta struct {
+		linkPK   string
+		linkCode string
+		linkType string
+		linkSide string
+	}
+	type bucketStats struct {
+		bucket             time.Time
+		inErrors           uint64
+		outErrors          uint64
+		inDiscards         uint64
+		outDiscards        uint64
+		carrierTransitions uint64
+	}
+
+	interfaceMetaMap := make(map[string]interfaceMeta)
+	interfaceBuckets := make(map[string][]bucketStats)
+
+	for rows.Next() {
+		var intfName string
+		var meta interfaceMeta
+		var stats bucketStats
+		if err := rows.Scan(
+			&intfName,
+			&meta.linkPK,
+			&meta.linkCode,
+			&meta.linkType,
+			&meta.linkSide,
+			&stats.bucket,
+			&stats.inErrors,
+			&stats.outErrors,
+			&stats.inDiscards,
+			&stats.outDiscards,
+			&stats.carrierTransitions,
+		); err != nil {
+			return nil, fmt.Errorf("interface history scan error: %w", err)
+		}
+		interfaceMetaMap[intfName] = meta
+		interfaceBuckets[intfName] = append(interfaceBuckets[intfName], stats)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("interface history rows iteration error: %w", err)
+	}
+
+	// Build response with all buckets for each interface
+	now := time.Now().UTC()
+	bucketDuration := time.Duration(bucketMinutes) * time.Minute
+	var interfaces []InterfaceHistory
+
+	for intfName, meta := range interfaceMetaMap {
+		buckets := interfaceBuckets[intfName]
+		bucketMap := make(map[string]bucketStats)
+		for _, b := range buckets {
+			key := b.bucket.UTC().Format(time.RFC3339)
+			bucketMap[key] = b
+		}
+
+		var hourStatuses []InterfaceHourStatus
+		for i := bucketCount - 1; i >= 0; i-- {
+			bucketStart := now.Truncate(bucketDuration).Add(-time.Duration(i) * bucketDuration)
+			key := bucketStart.UTC().Format(time.RFC3339)
+
+			if stats, ok := bucketMap[key]; ok {
+				hourStatuses = append(hourStatuses, InterfaceHourStatus{
+					Hour:               key,
+					InErrors:           stats.inErrors,
+					OutErrors:          stats.outErrors,
+					InDiscards:         stats.inDiscards,
+					OutDiscards:        stats.outDiscards,
+					CarrierTransitions: stats.carrierTransitions,
+				})
+			} else {
+				hourStatuses = append(hourStatuses, InterfaceHourStatus{
+					Hour: key,
+				})
+			}
+		}
+
+		interfaces = append(interfaces, InterfaceHistory{
+			InterfaceName: intfName,
+			LinkPK:        meta.linkPK,
+			LinkCode:      meta.linkCode,
+			LinkType:      meta.linkType,
+			LinkSide:      meta.linkSide,
+			Hours:         hourStatuses,
+		})
+	}
+
+	// Sort interfaces by name
+	sort.Slice(interfaces, func(i, j int) bool {
+		return interfaces[i].InterfaceName < interfaces[j].InterfaceName
+	})
+
+	return &DeviceInterfaceHistoryResponse{
+		Interfaces:    interfaces,
+		TimeRange:     timeRange,
+		BucketMinutes: bucketMinutes,
+		BucketCount:   bucketCount,
+	}, nil
 }

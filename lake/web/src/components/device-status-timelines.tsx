@@ -282,8 +282,8 @@ function InterfaceToggleButton({ intf, isEnabled, color, onToggle }: InterfaceTo
         onMouseLeave={() => setShowPopover(false)}
         className={`w-full px-2 py-1 text-xs rounded border transition-colors flex items-center gap-1.5 text-left ${
           isEnabled
-            ? 'border-current'
-            : 'border-border text-muted-foreground hover:bg-muted'
+            ? 'bg-background border-current shadow-sm'
+            : 'bg-muted/50 border-transparent text-muted-foreground hover:bg-muted'
         }`}
         style={isEnabled ? { borderColor: color, color } : undefined}
       >
@@ -583,8 +583,8 @@ function InterfaceIssueChart({ devicePk, timeRange, buckets, controlsWidth = 'w-
                   onClick={() => toggleMetric(metric)}
                   className={`px-2 py-1 text-xs rounded border transition-colors flex items-center gap-1.5 ${
                     isEnabled
-                      ? 'bg-primary/10 border-primary/50 text-foreground'
-                      : 'border-border text-muted-foreground hover:bg-muted'
+                      ? 'bg-background border-foreground/20 text-foreground shadow-sm'
+                      : 'bg-muted/50 border-transparent text-muted-foreground hover:bg-muted'
                   }`}
                 >
                   <svg width="12" height="2" style={{ opacity: isEnabled ? 1 : 0.3 }}>
@@ -740,34 +740,22 @@ function DeviceRow({ device, devicesWithIssues, bucketMinutes, dataTimeRange, bu
             {issueReasons.length > 0 && (
               <div className="flex flex-wrap gap-1 mt-1">
                 {issueReasons.includes('interface_errors') && (
-                  <span
-                    className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-                    style={{ backgroundColor: 'rgba(217, 70, 239, 0.15)', color: '#a21caf' }}
-                  >
+                  <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-fuchsia-500/15 text-fuchsia-600 dark:text-fuchsia-400">
                     Interface Errors
                   </span>
                 )}
                 {issueReasons.includes('discards') && (
-                  <span
-                    className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-                    style={{ backgroundColor: 'rgba(244, 63, 94, 0.15)', color: '#be123c' }}
-                  >
+                  <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-rose-500/15 text-rose-600 dark:text-rose-400">
                     Discards
                   </span>
                 )}
                 {issueReasons.includes('carrier_transitions') && (
-                  <span
-                    className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-                    style={{ backgroundColor: 'rgba(249, 115, 22, 0.15)', color: '#c2410c' }}
-                  >
+                  <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-orange-500/15 text-orange-600 dark:text-orange-400">
                     Link Flapping
                   </span>
                 )}
                 {issueReasons.includes('drained') && (
-                  <span
-                    className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-                    style={{ backgroundColor: 'rgba(100, 116, 139, 0.15)', color: '#475569' }}
-                  >
+                  <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-slate-500/15 text-slate-600 dark:text-slate-400">
                     Drained
                   </span>
                 )}

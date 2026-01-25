@@ -868,7 +868,7 @@ func fetchStatusData(ctx context.Context) *StatusResponse {
 		return rows.Err()
 	})
 
-	// Interface issues (errors, discards, carrier transitions in last 24 hours)
+	// Interface issues (errors, discards, carrier transitions in last 1 hour)
 	g.Go(func() error {
 		query := `
 			SELECT
@@ -894,7 +894,7 @@ func fetchStatusData(ctx context.Context) *StatusResponse {
 			JOIN dz_metros_current m ON d.metro_pk = m.pk
 			LEFT JOIN dz_contributors_current contrib ON d.contributor_pk = contrib.pk
 			LEFT JOIN dz_links_current l ON c.link_pk = l.pk
-			WHERE c.event_ts > now() - INTERVAL 24 HOUR
+			WHERE c.event_ts > now() - INTERVAL 1 HOUR
 			  AND d.status = 'activated'
 			  AND (c.in_errors_delta > 0 OR c.out_errors_delta > 0 OR c.in_discards_delta > 0 OR c.out_discards_delta > 0 OR c.carrier_transitions_delta > 0)
 			GROUP BY d.pk, d.code, d.device_type, contrib.code, m.code, c.intf, l.pk, l.code, l.link_type, c.link_side

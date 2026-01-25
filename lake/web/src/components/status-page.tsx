@@ -226,6 +226,9 @@ function IssueDetails({
 
   return (
     <div className="border-t border-border px-6 py-4 space-y-4">
+      <div className="text-xs text-muted-foreground">
+        Showing issues from the last hour
+      </div>
       {sections.map(({ key, label, icon: Icon, iconColor, valueColor }) => {
         const sectionIssues = grouped[key]
         if (sectionIssues.length === 0) return null
@@ -285,6 +288,12 @@ function IssueDetails({
                 }),
                 { errors: 0, discards: 0, carrierTransitions: 0 }
               )
+              // Find the most recent last_seen among all interfaces
+              const lastSeen = device.issues.reduce((latest, i) => {
+                if (!i.last_seen) return latest
+                if (!latest) return i.last_seen
+                return new Date(i.last_seen) > new Date(latest) ? i.last_seen : latest
+              }, '' as string)
               const detailParts: string[] = []
               if (totals.errors > 0) detailParts.push(`${totals.errors.toLocaleString()} errors`)
               if (totals.discards > 0) detailParts.push(`${totals.discards.toLocaleString()} discards`)
@@ -311,6 +320,11 @@ function IssueDetails({
                     </div>
                     <div className="text-xs text-muted-foreground">
                       {device.issues.length} interface{device.issues.length > 1 ? 's' : ''}
+                      {lastSeen && (
+                        <span title={new Date(lastSeen).toLocaleString()}>
+                          {' · '}last seen {formatDuration(lastSeen)} ago
+                        </span>
+                      )}
                     </div>
                   </div>
                 </button>

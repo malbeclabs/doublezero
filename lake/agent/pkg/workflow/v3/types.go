@@ -104,6 +104,7 @@ type WorkflowMetrics struct {
 	// Loop behavior
 	LoopIterations int  // LLM round-trips
 	Truncated      bool // Hit max iterations
+	Fabricated     bool // Response contained query markers without actual queries
 }
 
 // CheckpointState captures the state of the workflow at a point in time.

@@ -7,12 +7,17 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/malbeclabs/doublezero/lake/agent/pkg/workflow"
 )
+
+// queryMarkerPattern matches [Q1], [Q2], etc. - markers that should only appear
+// when queries have actually been executed.
+var queryMarkerPattern = regexp.MustCompile(`\[Q\d+\]`)
 
 const (
 	// DefaultMaxIterations is the maximum number of LLM round-trips before stopping.
@@ -265,6 +270,9 @@ func (p *Workflow) RunWithProgress(ctx context.Context, userQuestion string, his
 		state.FinalAnswer = "I was unable to complete the analysis within the allowed iterations."
 	}
 
+	// Detect and handle fabrication (query markers without actual queries)
+	p.handleFabricationDetection(ctx, toolLLM, systemPrompt, messages, state, userQuestion, onProgress)
+
 	state.Metrics.TotalDuration = time.Since(startTime)
 
 	// Generate follow-up questions (non-blocking, best-effort)
@@ -280,7 +288,8 @@ func (p *Workflow) RunWithProgress(ctx context.Context, userQuestion string, his
 		"classification", result.Classification,
 		"iterations", state.Metrics.LoopIterations,
 		"queries", len(state.ExecutedQueries),
-		"truncated", state.Metrics.Truncated)
+		"truncated", state.Metrics.Truncated,
+		"fabricated", state.Metrics.Fabricated)
 
 	return result, nil
 }
@@ -331,6 +340,77 @@ func (p *Workflow) responseToMessage(response *workflow.ToolLLMResponse) workflo
 	return workflow.ToolMessage{
 		Role:    "assistant",
 		Content: content,
+	}
+}
+
+// handleFabricationDetection checks if the response contains query markers without actual queries.
+// If fabrication is detected, it retries once with a correction message.
+func (p *Workflow) handleFabricationDetection(
+	ctx context.Context,
+	toolLLM workflow.ToolLLMClient,
+	systemPrompt string,
+	messages []workflow.ToolMessage,
+	state *LoopState,
+	userQuestion string,
+	onProgress workflow.ProgressCallback,
+) {
+	// Only check if no queries were executed but response references them
+	if len(state.ExecutedQueries) > 0 || !queryMarkerPattern.MatchString(state.FinalAnswer) {
+		return
+	}
+
+	p.logInfo("workflow: detected fabricated query references, retrying")
+
+	// Add correction message asking the model to try again properly
+	messages = append(messages, workflow.ToolMessage{
+		Role: "user",
+		Content: []workflow.ToolContentBlock{{
+			Type: "text",
+			Text: "[System: Your response referenced query results (e.g., [Q1]) but you did not actually execute any queries. Please use the execute_sql or execute_cypher tools to retrieve real data before answering. Do not fabricate data.]",
+		}},
+	})
+
+	// One more LLM call to give the model another chance
+	retryResponse, retryErr := toolLLM.CompleteWithTools(ctx, systemPrompt, messages, p.tools)
+	if retryErr == nil {
+		state.Metrics.LLMCalls++
+		state.Metrics.InputTokens += retryResponse.InputTokens
+		state.Metrics.OutputTokens += retryResponse.OutputTokens
+
+		// Process any tool calls from the retry
+		if retryResponse.HasToolCalls() {
+			messages = append(messages, p.responseToMessage(retryResponse))
+			for _, call := range retryResponse.ToolCalls() {
+				result, err := p.executeTool(ctx, call, state, onProgress)
+				toolResult := workflow.ToolContentBlock{
+					Type:      "tool_result",
+					ToolUseID: call.ID,
+					IsError:   err != nil,
+				}
+				if err != nil {
+					toolResult.Content = fmt.Sprintf("Error: %s", err.Error())
+				} else {
+					toolResult.Content = result
+				}
+				messages = append(messages, workflow.ToolMessage{
+					Role:    "user",
+					Content: []workflow.ToolContentBlock{toolResult},
+				})
+			}
+			// If we got queries, synthesize a new answer
+			if len(state.ExecutedQueries) > 0 {
+				state.FinalAnswer, _ = p.synthesizeAnswer(ctx, toolLLM, systemPrompt, messages, state, userQuestion)
+			}
+		} else if text := retryResponse.Text(); text != "" {
+			state.FinalAnswer = text
+		}
+	}
+
+	// If still fabricating after retry, mark it and show error
+	if len(state.ExecutedQueries) == 0 && queryMarkerPattern.MatchString(state.FinalAnswer) {
+		p.logInfo("workflow: fabrication persisted after retry")
+		state.FinalAnswer = "I was unable to retrieve the data needed to answer your question. Please try rephrasing your question."
+		state.Metrics.Fabricated = true
 	}
 }
 
@@ -971,6 +1051,9 @@ func (p *Workflow) RunWithCheckpoint(
 		state.FinalAnswer = "I was unable to complete the analysis within the allowed iterations."
 	}
 
+	// Detect and handle fabrication (query markers without actual queries)
+	p.handleFabricationDetection(ctx, toolLLM, systemPrompt, messages, state, userQuestion, onProgress)
+
 	state.Metrics.TotalDuration = time.Since(startTime)
 
 	// Generate follow-up questions (non-blocking, best-effort)
@@ -986,7 +1069,8 @@ func (p *Workflow) RunWithCheckpoint(
 		"classification", result.Classification,
 		"iterations", state.Metrics.LoopIterations,
 		"queries", len(state.ExecutedQueries),
-		"truncated", state.Metrics.Truncated)
+		"truncated", state.Metrics.Truncated,
+		"fabricated", state.Metrics.Fabricated)
 
 	return result, nil
 }
@@ -1206,6 +1290,9 @@ func (p *Workflow) ResumeFromCheckpoint(
 		state.FinalAnswer = "I was unable to complete the analysis within the allowed iterations."
 	}
 
+	// Detect and handle fabrication (query markers without actual queries)
+	p.handleFabricationDetection(ctx, toolLLM, systemPrompt, messages, state, userQuestion, onProgress)
+
 	state.Metrics.TotalDuration = time.Since(startTime)
 
 	// Generate follow-up questions (non-blocking, best-effort)
@@ -1219,7 +1306,8 @@ func (p *Workflow) ResumeFromCheckpoint(
 	p.logInfo("workflow: complete (resumed)",
 		"classification", result.Classification,
 		"iterations", state.Metrics.LoopIterations,
-		"queries", len(state.ExecutedQueries))
+		"queries", len(state.ExecutedQueries),
+		"fabricated", state.Metrics.Fabricated)
 
 	return result, nil
 }

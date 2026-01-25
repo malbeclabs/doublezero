@@ -165,9 +165,11 @@ Agent's Response:
 Evaluation criteria:
 1. Does the response address the question appropriately?
 2. Does the response contain all required information from the expectations?
-3. Is the information accurate and relevant?
 
-IMPORTANT: Including additional relevant context or details beyond the expectations is ACCEPTABLE and should NOT cause a "NO" verdict. A comprehensive answer is better than a minimal one.
+IMPORTANT:
+- The agent queries an internal database. The expectations above define what the CORRECT values are (based on the test data). Do NOT fact-check against external knowledge.
+- If the response contains the expected values, it is correct. Do not require additional sourcing or verification.
+- Including additional relevant context or details beyond the expectations is ACCEPTABLE and should NOT cause a "NO" verdict.
 
 Respond with only "YES" or "NO" followed by a brief explanation.`, currentDate, question, response, expectationsSection)
 

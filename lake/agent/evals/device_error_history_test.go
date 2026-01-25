@@ -57,8 +57,8 @@ func runTest_DeviceErrorHistory(t *testing.T, llmFactory LLMClientFactory) {
 	expectations := []Expectation{
 		{
 			Description:   "Response provides a timestamp or time reference for errors",
-			ExpectedValue: "A specific time, date, or relative time reference (e.g., '2 hours ago', 'yesterday', specific timestamp)",
-			Rationale:     "Test data has errors from 2 hours ago on Montreal device",
+			ExpectedValue: "A specific time, date, or relative time reference (e.g., 'January 24, 2026', 'yesterday', specific timestamp)",
+			Rationale:     "User asked when errors last occurred, so response must include when",
 		},
 		{
 			Description:   "Response identifies the Montreal device",

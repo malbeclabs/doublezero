@@ -10,6 +10,16 @@ interface ChangelogEntry {
 
 const changelog: ChangelogEntry[] = [
   {
+    date: 'January 25, 2026',
+    changes: [
+      { type: 'feature', description: 'Device health issues shown in status banner with expandable per-interface charts' },
+      { type: 'feature', description: 'Metro-to-metro path finding with multi-path comparison' },
+      { type: 'improvement', description: 'Searchable device selector and reverse path option for path finding' },
+      { type: 'improvement', description: 'Interface charts show in/out traffic separately on +/- axis' },
+      { type: 'improvement', description: 'Consistent device health thresholds with issue breakdown in popover' },
+    ],
+  },
+  {
     date: 'January 23, 2026',
     changes: [
       { type: 'feature', description: 'Telemetry stopped indicator in status page summary' },

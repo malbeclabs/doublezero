@@ -1940,12 +1940,12 @@ func fetchDeviceHistoryData(ctx context.Context, timeRange string, requestedBuck
 }
 
 func classifyDeviceStatus(totalErrors, totalDiscards uint64, carrierTransitions uint64) string {
-	// Thresholds for device health
-	const (
-		ErrorCriticalThreshold = 1000 // errors per bucket
-	)
+	// Thresholds for device health (per bucket)
+	// Unhealthy: >= 100 of any metric
+	// Degraded: > 0 and < 100 of any metric
+	const UnhealthyThreshold = 100
 
-	if totalErrors >= ErrorCriticalThreshold || carrierTransitions >= 10 {
+	if totalErrors >= UnhealthyThreshold || totalDiscards >= UnhealthyThreshold || carrierTransitions >= UnhealthyThreshold {
 		return "unhealthy"
 	}
 	if totalErrors > 0 || totalDiscards > 0 || carrierTransitions > 0 {

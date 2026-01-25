@@ -589,6 +589,13 @@ interface HealthIssueBreakdown {
   no_data: number
 }
 
+interface DeviceIssueBreakdown {
+  interface_errors: number
+  discards: number
+  carrier_transitions: number
+  drained: number
+}
+
 interface IssueHealthBreakdown {
   healthy: number
   degraded: number
@@ -604,6 +611,7 @@ function HealthFilterItem({
   selected,
   onClick,
   issueBreakdown,
+  deviceIssueBreakdown,
   healthBreakdown,
 }: {
   color: string
@@ -613,6 +621,7 @@ function HealthFilterItem({
   selected: boolean
   onClick: () => void
   issueBreakdown?: HealthIssueBreakdown
+  deviceIssueBreakdown?: DeviceIssueBreakdown
   healthBreakdown?: IssueHealthBreakdown
 }) {
   const [showTooltip, setShowTooltip] = useState(false)
@@ -625,6 +634,13 @@ function HealthFilterItem({
     { key: 'no_data', label: 'No Data', color: 'bg-pink-500' },
   ]
 
+  const deviceIssueLabels: { key: keyof DeviceIssueBreakdown; label: string; color: string }[] = [
+    { key: 'interface_errors', label: 'Interface Errors', color: 'bg-fuchsia-500' },
+    { key: 'discards', label: 'Discards', color: 'bg-rose-500' },
+    { key: 'carrier_transitions', label: 'Carrier Transitions', color: 'bg-orange-500' },
+    { key: 'drained', label: 'Drained', color: 'bg-slate-500' },
+  ]
+
   const healthLabels: { key: keyof IssueHealthBreakdown; label: string; color: string }[] = [
     { key: 'healthy', label: 'Healthy', color: 'bg-green-500' },
     { key: 'degraded', label: 'Degraded', color: 'bg-amber-500' },
@@ -633,6 +649,7 @@ function HealthFilterItem({
   ]
 
   const hasIssues = issueBreakdown && Object.values(issueBreakdown).some(v => v > 0)
+  const hasDeviceIssues = deviceIssueBreakdown && Object.values(deviceIssueBreakdown).some(v => v > 0)
   const hasHealth = healthBreakdown && Object.values(healthBreakdown).some(v => v > 0)
 
   return (
@@ -654,6 +671,23 @@ function HealthFilterItem({
               <div className="mt-2 pt-2 border-t border-border space-y-1">
                 {issueLabels.map(({ key, label, color }) => {
                   const issueCount = issueBreakdown[key]
+                  if (issueCount === 0) return null
+                  return (
+                    <div key={key} className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <div className={`h-2 w-2 rounded-full ${color}`} />
+                        <span className="text-muted-foreground">{label}</span>
+                      </div>
+                      <span className="font-medium tabular-nums">{issueCount}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+            {hasDeviceIssues && (
+              <div className="mt-2 pt-2 border-t border-border space-y-1">
+                {deviceIssueLabels.map(({ key, label, color }) => {
+                  const issueCount = deviceIssueBreakdown[key]
                   if (issueCount === 0) return null
                   return (
                     <div key={key} className="flex items-center justify-between">
@@ -1782,28 +1816,28 @@ function DeviceHealthFilterCard({
           color="bg-green-500"
           label="Healthy"
           count={devices.healthy}
-          description="No interface issues detected."
+          description="No errors, discards, or carrier transitions."
           selected={selected.includes('healthy')}
           onClick={() => toggleFilter('healthy')}
-          issueBreakdown={issuesByHealth?.healthy ? { ...issuesByHealth.healthy, high_latency: 0, extended_loss: 0, packet_loss: 0, no_data: 0 } : undefined}
+          deviceIssueBreakdown={issuesByHealth?.healthy}
         />
         <HealthFilterItem
           color="bg-amber-500"
           label="Degraded"
           count={devices.degraded}
-          description="Moderate interface errors or discards."
+          description="1-99 errors, discards, or carrier transitions per bucket."
           selected={selected.includes('degraded')}
           onClick={() => toggleFilter('degraded')}
-          issueBreakdown={issuesByHealth?.degraded ? { ...issuesByHealth.degraded, high_latency: 0, extended_loss: 0, packet_loss: 0, no_data: 0 } : undefined}
+          deviceIssueBreakdown={issuesByHealth?.degraded}
         />
         <HealthFilterItem
           color="bg-red-500"
           label="Unhealthy"
           count={devices.unhealthy}
-          description="Significant interface errors or carrier transitions."
+          description="100+ errors, discards, or carrier transitions per bucket."
           selected={selected.includes('unhealthy')}
           onClick={() => toggleFilter('unhealthy')}
-          issueBreakdown={issuesByHealth?.unhealthy ? { ...issuesByHealth.unhealthy, high_latency: 0, extended_loss: 0, packet_loss: 0, no_data: 0 } : undefined}
+          deviceIssueBreakdown={issuesByHealth?.unhealthy}
         />
         <HealthFilterItem
           color="bg-gray-500 dark:bg-gray-700"
@@ -1812,7 +1846,7 @@ function DeviceHealthFilterCard({
           description="Device is drained or suspended."
           selected={selected.includes('disabled')}
           onClick={() => toggleFilter('disabled')}
-          issueBreakdown={issuesByHealth?.disabled ? { ...issuesByHealth.disabled, high_latency: 0, extended_loss: 0, packet_loss: 0, no_data: 0 } : undefined}
+          deviceIssueBreakdown={issuesByHealth?.disabled}
         />
       </div>
     </div>

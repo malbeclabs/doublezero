@@ -346,7 +346,7 @@ func main() {
 				"script-src 'self' 'unsafe-inline' https://accounts.google.com https://static.cloudflareinsights.com",
 				"worker-src 'self' blob:",
 				"frame-src https://accounts.google.com https://accounts.googleusercontent.com",
-				"connect-src 'self' https://accounts.google.com https://cloudflareinsights.com https://*.basemaps.cartocdn.com https://*.ingest.sentry.io",
+				"connect-src 'self' https://accounts.google.com https://cloudflareinsights.com https://*.basemaps.cartocdn.com https://*.ingest.us.sentry.io",
 				"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com",
 				"font-src 'self' https://fonts.gstatic.com",
 				"img-src 'self' data: blob: https://lh3.googleusercontent.com https://*.basemaps.cartocdn.com",

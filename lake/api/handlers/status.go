@@ -1812,12 +1812,6 @@ func fetchDeviceHistoryData(ctx context.Context, timeRange string, requestedBuck
 	bucketDuration := time.Duration(bucketMinutes) * time.Minute
 	var devices []DeviceHistory
 
-	// Thresholds for device health
-	const (
-		ErrorWarningThreshold  = 100  // errors per bucket
-		ErrorCriticalThreshold = 1000 // errors per bucket
-	)
-
 	for pk, meta := range deviceMap {
 		// Check if device is currently drained
 		isCurrentlyDrained := meta.status == "soft-drained" || meta.status == "hard-drained" || meta.status == "suspended"
@@ -1947,14 +1941,13 @@ func fetchDeviceHistoryData(ctx context.Context, timeRange string, requestedBuck
 func classifyDeviceStatus(totalErrors, totalDiscards uint64, carrierTransitions uint64) string {
 	// Thresholds for device health
 	const (
-		ErrorWarningThreshold  = 100   // errors per bucket
-		ErrorCriticalThreshold = 1000  // errors per bucket
+		ErrorCriticalThreshold = 1000 // errors per bucket
 	)
 
 	if totalErrors >= ErrorCriticalThreshold || carrierTransitions >= 10 {
 		return "unhealthy"
 	}
-	if totalErrors >= ErrorWarningThreshold || totalDiscards >= ErrorWarningThreshold || carrierTransitions > 0 {
+	if totalErrors > 0 || totalDiscards > 0 || carrierTransitions > 0 {
 		return "degraded"
 	}
 	return "healthy"

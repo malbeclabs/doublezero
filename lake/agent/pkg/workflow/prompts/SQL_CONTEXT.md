@@ -254,6 +254,35 @@ WHERE side_a_metro = 'nyc' OR side_z_metro = 'lon'
 WHERE side_a_metro = 'NYC' OR side_z_metro = 'LON'
 ```
 
+### Resolving City Names to Metro Codes (IMPORTANT)
+
+Users often ask about cities by name (e.g., "Montreal", "São Paulo") but device/link codes use **metro codes** (e.g., "yul", "sao").
+
+**Common city-to-code mappings:**
+- Montreal → `yul`, São Paulo → `sao`, Chicago → `chi`, Los Angeles → `lax`
+- New York → `nyc`, London → `lon`, Tokyo → `tyo`, Singapore → `sin`
+
+**When you don't know the metro code, look it up first:**
+```sql
+-- Find metro code for a city name
+SELECT code, name FROM dz_metros_current WHERE lower(name) LIKE '%montreal%';
+-- Returns: yul, Montreal
+
+-- Then use the code in subsequent queries
+SELECT d.code, f.intf, SUM(f.in_errors_delta) AS errors
+FROM fact_dz_device_interface_counters f
+JOIN dz_devices_current d ON f.device_pk = d.pk
+JOIN dz_metros_current m ON d.metro_pk = m.pk
+WHERE m.code = 'yul'  -- Use metro code, not city name
+GROUP BY d.code, f.intf;
+```
+
+**WRONG patterns:**
+- `WHERE d.code LIKE '%montreal%'` - Device codes use airport codes, not city names
+- `WHERE d.code LIKE '%mtl%'` - Montreal's code is `yul`, not `mtl`
+
+**CORRECT:** Always join through `dz_metros_current` when searching by city name.
+
 ### Validator Performance Metrics
 **When asked to "compare validators on DZ vs off DZ"**, use `solana_validators_performance_current` view.
 This view includes vote lag, skip rate, and DZ status pre-calculated.
@@ -470,6 +499,31 @@ ORDER BY stake_sol DESC
 - `SELECT COUNT(*) FROM solana_vote_accounts_current` - counts ALL validators, not just those on DZ
 - Any query about "connected" validators without including `dz_users_current` in the join
 
+### Gossip Nodes vs Validators
+
+**Gossip nodes and validators are NOT the same thing:**
+- **Gossip nodes** = All Solana nodes in the gossip network (includes validators AND non-voting nodes like RPC nodes)
+- **Validators** = Gossip nodes that ALSO have vote accounts with activated stake
+
+**Relationship:** Validators ⊂ Gossip Nodes (validators are a subset of gossip nodes)
+
+**To count gossip nodes on DZ:**
+```sql
+-- Count ALL gossip nodes on DZ (not just validators)
+SELECT COUNT(DISTINCT gn.pubkey) AS gossip_node_count
+FROM dz_users_current u
+JOIN solana_gossip_nodes_current gn ON u.dz_ip = gn.gossip_ip
+WHERE u.status = 'activated';
+```
+
+**To count validators on DZ:**
+```sql
+-- Count only validators (gossip nodes WITH vote accounts)
+SELECT COUNT(*) AS validator_count FROM solana_validators_on_dz_current;
+```
+
+**WRONG:** Using `solana_validators_on_dz_current` to count gossip nodes - this only counts validators, missing non-voting nodes.
+
 ### Validators That Disconnected From DZ
 
 **"Which validators are no longer on DZ?"** (any time):
@@ -574,7 +628,35 @@ HAVING loss_pct >= 1
 ORDER BY date DESC;
 ```
 
-**IMPORTANT for "outage" questions**: Check BOTH status changes (`dz_link_status_changes`) AND historical packet loss (`fact_dz_device_link_latency`). A link can have an "outage" due to status change OR due to packet loss.
+### Link Outages (Multiple Data Sources)
+
+**"Outage" can mean multiple things - check ALL sources:**
+
+1. **Status-based outages** → `dz_link_status_changes` (soft-drained, hard-drained)
+2. **Packet loss outages** → `fact_dz_device_link_latency` (loss percentage)
+3. **Current health issues** → `dz_links_health_current` (combined view)
+
+**For questions about "outages", "issues", or "problems" on links, query BOTH:**
+
+```sql
+-- 1. Status changes (soft-drain, hard-drain events)
+SELECT link_code, previous_status, new_status, changed_ts
+FROM dz_link_status_changes
+WHERE (side_a_metro = 'sao' OR side_z_metro = 'sao')
+  AND changed_ts > now() - INTERVAL 30 DAY;
+
+-- 2. Packet loss events (may have no status change!)
+SELECT l.code AS link_code, toDate(f.event_ts) AS date,
+       round(countIf(f.loss = true) * 100.0 / count(*), 1) AS loss_pct
+FROM fact_dz_device_link_latency f
+JOIN dz_links_current l ON f.link_pk = l.pk
+WHERE (l.side_a_metro = 'sao' OR l.side_z_metro = 'sao')
+  AND f.event_ts > now() - INTERVAL 30 DAY
+GROUP BY l.code, date
+HAVING loss_pct >= 1;
+```
+
+**WRONG:** Only checking `dz_link_status_changes` - misses packet loss events that don't trigger status changes.
 
 ### Validators by Region/Metro
 The pre-built views include `device_code`, `device_metro_code`, and `device_metro_name` columns. Use these for regional analysis:

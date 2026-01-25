@@ -104,6 +104,30 @@ RETURN [n IN nodes(path) |
 - The `shortestPath()` function finds the shortest path between a single pair, but with multiple devices per metro you need to compare across all pairs
 - Use `length(path)` to get the number of relationships in the path
 
+### Find ALL Paths Between Metros
+
+When the user asks for "paths" (plural), "all paths", or "confirm the paths", use `allShortestPaths()` to find all paths of the same shortest length:
+
+```cypher
+// Find ALL shortest paths (same length) between metros
+MATCH (ma:Metro {code: 'sin'})<-[:LOCATED_IN]-(da:Device)
+MATCH (mz:Metro {code: 'tyo'})<-[:LOCATED_IN]-(dz:Device)
+MATCH path = allShortestPaths((da)-[:CONNECTS*]-(dz))
+RETURN DISTINCT [n IN nodes(path) |
+  CASE WHEN n:Device THEN {type: 'device', code: n.code}
+       WHEN n:Link THEN {type: 'link', code: n.code}
+  END
+] AS segments,
+length(path) AS hops
+ORDER BY hops
+```
+
+**When to use which:**
+- `shortestPath()` - Returns ONE arbitrary shortest path (use for "the path", "shortest path")
+- `allShortestPaths()` - Returns ALL paths of the shortest length (use for "paths", "all paths", "confirm paths")
+
+**WRONG:** Using `shortestPath()` when user asks for "paths" (plural) - only returns one path.
+
 ### Find Devices in a Metro
 ```cypher
 MATCH (m:Metro {code: 'nyc'})<-[:LOCATED_IN]-(d:Device)
@@ -214,3 +238,31 @@ RETURN l.code AS link_code, l.status, l.committed_rtt_ns / 1000000.0 AS rtt_ms
 5. **CONNECTS direction**: Links point TO devices (`(:Link)-[:CONNECTS]->(:Device)`). For traversal, use undirected: `(d1:Device)-[:CONNECTS]-(:Link)-[:CONNECTS]-(d2:Device)`
 6. **Do NOT use APOC**: APOC procedures are not available. Use built-in Cypher only.
 7. **ALL/ANY syntax**: Use `ALL(x IN list WHERE condition)` NOT `ALL(x IN list | condition)`
+8. **WITH clause variable scope**: Variables from before a WITH clause are NOT accessible after it unless explicitly passed through.
+
+**WRONG - loses `start` variable:**
+```cypher
+MATCH (start:Device {code: 'nyc-dzd1'})
+MATCH path = (start)-[:CONNECTS*1..4]-(other:Device)
+WITH DISTINCT other AS device
+WHERE device.code <> start.code  // ERROR: start not accessible!
+RETURN device.code
+```
+
+**CORRECT - carry variables through WITH:**
+```cypher
+MATCH (start:Device {code: 'nyc-dzd1'})
+MATCH path = (start)-[:CONNECTS*1..4]-(other:Device)
+WITH DISTINCT other AS device, start  // Carry start through
+WHERE device.code <> start.code
+RETURN device.code
+```
+
+**Alternative - filter before WITH:**
+```cypher
+MATCH (start:Device {code: 'nyc-dzd1'})
+MATCH path = (start)-[:CONNECTS*1..4]-(other:Device)
+WHERE other.code <> start.code  // Filter here instead
+WITH DISTINCT other AS device
+RETURN device.code
+```

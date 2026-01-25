@@ -17,6 +17,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/getsentry/sentry-go"
+	sentryhttp "github.com/getsentry/sentry-go/http"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
@@ -209,8 +211,35 @@ func main() {
 
 	log.Printf("Starting lake-api version=%s commit=%s date=%s", version, commit, date)
 
-	// Load .env file if it exists
-	_ = godotenv.Load()
+	// Load .env files if they exist
+	// godotenv doesn't override existing env vars, so later files don't overwrite earlier ones
+	_ = godotenv.Load()           // .env in current working directory
+	_ = godotenv.Load("api/.env") // api/.env when running from repo root
+
+	// Initialize Sentry for error tracking (optional - gracefully no-op if DSN not set)
+	sentryDSN := os.Getenv("SENTRY_DSN")
+	if sentryDSN != "" {
+		sentryEnv := os.Getenv("SENTRY_ENVIRONMENT")
+		if sentryEnv == "" {
+			sentryEnv = "development"
+		}
+		release := version
+		if commit != "none" {
+			release = version + "-" + commit
+		}
+		err := sentry.Init(sentry.ClientOptions{
+			Dsn:              sentryDSN,
+			Environment:      sentryEnv,
+			Release:          release,
+			TracesSampleRate: 0.1, // 10% of transactions for performance monitoring
+		})
+		if err != nil {
+			log.Printf("Warning: Sentry initialization failed: %v", err)
+		} else {
+			log.Printf("Sentry initialized (env=%s, release=%s)", sentryEnv, release)
+			defer sentry.Flush(2 * time.Second)
+		}
+	}
 
 	// Load configuration
 	if err := config.Load(); err != nil {
@@ -258,6 +287,15 @@ func main() {
 	r := chi.NewRouter()
 
 	r.Use(middleware.Logger)
+
+	// Sentry middleware for error and performance monitoring (before Recoverer to capture panics)
+	if sentryDSN != "" {
+		sentryHandler := sentryhttp.New(sentryhttp.Options{
+			Repanic: true, // Re-panic after capturing so Recoverer can handle it
+		})
+		r.Use(sentryHandler.Handle)
+	}
+
 	r.Use(middleware.Recoverer)
 	r.Use(metrics.Middleware)
 
@@ -284,7 +322,7 @@ func main() {
 				"script-src 'self' 'unsafe-inline' https://accounts.google.com https://static.cloudflareinsights.com",
 				"worker-src 'self' blob:",
 				"frame-src https://accounts.google.com https://accounts.googleusercontent.com",
-				"connect-src 'self' https://accounts.google.com https://cloudflareinsights.com https://*.basemaps.cartocdn.com",
+				"connect-src 'self' https://accounts.google.com https://cloudflareinsights.com https://*.basemaps.cartocdn.com https://*.ingest.sentry.io",
 				"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com",
 				"font-src 'self' https://fonts.gstatic.com",
 				"img-src 'self' data: blob: https://lh3.googleusercontent.com https://*.basemaps.cartocdn.com",

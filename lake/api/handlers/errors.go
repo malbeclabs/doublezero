@@ -3,6 +3,8 @@ package handlers
 import (
 	"log/slog"
 	"strings"
+
+	"github.com/getsentry/sentry-go"
 )
 
 // internalError logs the full error internally and returns a user-safe message.
@@ -11,6 +13,12 @@ import (
 func internalError(operation string, err error) string {
 	// Log full error for debugging
 	slog.Error(operation, "error", err)
+
+	// Capture to Sentry if configured
+	sentry.WithScope(func(scope *sentry.Scope) {
+		scope.SetTag("operation", operation)
+		sentry.CaptureException(err)
+	})
 
 	// Return sanitized message
 	return operation

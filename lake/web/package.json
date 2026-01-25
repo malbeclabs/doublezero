@@ -13,12 +13,13 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@codemirror/lang-sql": "^6.10.0",
+    "@sentry/react": "^10.36.0",
     "@solana/wallet-adapter-base": "^0.9.23",
     "@solana/wallet-adapter-react": "^0.15.35",
     "@solana/wallet-adapter-react-ui": "^0.9.35",
     "@solana/wallet-adapter-wallets": "^0.19.32",
     "@solana/web3.js": "^1.98.0",
-    "@codemirror/lang-sql": "^6.10.0",
     "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "^4.1.18",
     "@tanstack/react-query": "^5.90.16",

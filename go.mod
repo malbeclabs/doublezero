@@ -18,6 +18,7 @@ require (
 	github.com/docker/go-connections v0.6.0
 	github.com/gagliardetto/binary v0.8.0
 	github.com/gagliardetto/solana-go v1.14.0
+	github.com/getsentry/sentry-go v0.41.0
 	github.com/go-chi/chi/v5 v5.2.3
 	github.com/go-chi/cors v1.2.2
 	github.com/gogo/protobuf v1.3.2

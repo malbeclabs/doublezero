@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { useWallet } from '@solana/wallet-adapter-react'
+import * as Sentry from '@sentry/react'
 import type { Account, QuotaInfo } from '../lib/api'
 import {
   fetchAuthMe,
@@ -177,6 +178,19 @@ export function AuthProvider({ children, googleClientId, onLoginSuccess, onLogou
 
     attemptLoad()
   }, [loadAuth])
+
+  // Update Sentry user context when user changes
+  useEffect(() => {
+    if (user) {
+      Sentry.setUser({
+        id: user.id,
+        email: user.email || undefined,
+        username: user.wallet_address || undefined,
+      })
+    } else {
+      Sentry.setUser(null)
+    }
+  }, [user])
 
   // Initialize Google Sign-In
   useEffect(() => {

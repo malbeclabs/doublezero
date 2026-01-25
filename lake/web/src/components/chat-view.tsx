@@ -64,7 +64,8 @@ export function SimplifiedChatView() {
   useWorkflowReconnect(
     sessionId,
     session?.messages ?? [],
-    handleReconnectUpdate
+    handleReconnectUpdate,
+    isStreaming
   )
 
   // Track if we've initiated sending a message (to bridge the gap between URL clear and streaming start)

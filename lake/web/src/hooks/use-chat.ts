@@ -488,7 +488,8 @@ export function useChatStream(sessionId: string | undefined) {
 export function useWorkflowReconnect(
   sessionId: string | undefined,
   messages: ChatMessage[],
-  onStreamUpdate: (state: Partial<ChatStreamState>) => void
+  onStreamUpdate: (state: Partial<ChatStreamState>) => void,
+  isAlreadyStreaming?: boolean
 ) {
   const queryClient = useQueryClient()
   const reconnectAttempted = useRef<string | null>(null)
@@ -496,6 +497,9 @@ export function useWorkflowReconnect(
 
   useEffect(() => {
     if (!sessionId || reconnectAttempted.current === sessionId) return
+
+    // Don't attempt reconnection if we're already streaming (e.g., user just sent a message)
+    if (isAlreadyStreaming) return
 
     // Find incomplete streaming message
     const streamingMsg = messages.find(m => m.role === 'assistant' && m.status === 'streaming')
@@ -621,5 +625,5 @@ export function useWorkflowReconnect(
         abortControllerRef.current.abort()
       }
     }
-  }, [sessionId, messages, queryClient, onStreamUpdate])
+  }, [sessionId, messages, queryClient, onStreamUpdate, isAlreadyStreaming])
 }

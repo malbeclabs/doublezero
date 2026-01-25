@@ -321,8 +321,9 @@ func (m *WorkflowManager) StartWorkflow(
 		slog.Warn("Failed to initialize session content", "session_id", sessionID, "error", err)
 	}
 
-	// Create cancellable context for the workflow
+	// Create cancellable context for the workflow with session/workflow IDs for tracing
 	workflowCtx, cancel := context.WithCancel(context.Background())
+	workflowCtx = workflow.ContextWithWorkflowIDs(workflowCtx, sessionID.String(), run.ID.String())
 
 	// Track the running workflow
 	rw := &runningWorkflow{

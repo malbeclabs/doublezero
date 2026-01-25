@@ -178,7 +178,7 @@ func streamSQLGeneration(ctx context.Context, req AutoGenerateRequest, sendEvent
 		}
 
 		// Stream generation
-		err = streamWithAnthropic(schema, prompt, nil, func(text string) {
+		err = streamWithAnthropic(ctx, schema, prompt, nil, func(text string) {
 			fullResponse.WriteString(text)
 			sendEvent("token", escapeJSON(text))
 		})

@@ -5,6 +5,29 @@ import (
 	"log/slog"
 )
 
+// Context keys for workflow tracing
+type ctxKeySessionID struct{}
+type ctxKeyWorkflowID struct{}
+
+// ContextWithWorkflowIDs adds session and workflow IDs to a context for tracing.
+func ContextWithWorkflowIDs(ctx context.Context, sessionID, workflowID string) context.Context {
+	ctx = context.WithValue(ctx, ctxKeySessionID{}, sessionID)
+	ctx = context.WithValue(ctx, ctxKeyWorkflowID{}, workflowID)
+	return ctx
+}
+
+// SessionIDFromContext extracts the session ID from context, if present.
+func SessionIDFromContext(ctx context.Context) (string, bool) {
+	id, ok := ctx.Value(ctxKeySessionID{}).(string)
+	return id, ok
+}
+
+// WorkflowIDFromContext extracts the workflow ID from context, if present.
+func WorkflowIDFromContext(ctx context.Context) (string, bool) {
+	id, ok := ctx.Value(ctxKeyWorkflowID{}).(string)
+	return id, ok
+}
+
 // Config holds the configuration for the workflow.
 type Config struct {
 	Logger        *slog.Logger

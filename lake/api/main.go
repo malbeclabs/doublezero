@@ -227,11 +227,17 @@ func main() {
 		if commit != "none" {
 			release = version + "-" + commit
 		}
+		// TracesSampleRate: 1.0 for development, 0.1 (10%) otherwise
+		tracesSampleRate := 0.1
+		if sentryEnv == "development" {
+			tracesSampleRate = 1.0
+		}
 		err := sentry.Init(sentry.ClientOptions{
 			Dsn:              sentryDSN,
 			Environment:      sentryEnv,
 			Release:          release,
-			TracesSampleRate: 0.1, // 10% of transactions for performance monitoring
+			EnableTracing:    true,
+			TracesSampleRate: tracesSampleRate,
 		})
 		if err != nil {
 			log.Printf("Warning: Sentry initialization failed: %v", err)
@@ -294,6 +300,24 @@ func main() {
 			Repanic: true, // Re-panic after capturing so Recoverer can handle it
 		})
 		r.Use(sentryHandler.Handle)
+
+		// Set transaction name from Chi route pattern
+		r.Use(func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if txn := sentry.TransactionFromContext(r.Context()); txn != nil {
+					// Try to get route pattern - may or may not be available depending on timing
+					if rctx := chi.RouteContext(r.Context()); rctx != nil {
+						if pattern := rctx.RoutePattern(); pattern != "" {
+							txn.Name = r.Method + " " + pattern
+						} else {
+							// Fallback to URL path if route pattern not yet available
+							txn.Name = r.Method + " " + r.URL.Path
+						}
+					}
+				}
+				next.ServeHTTP(w, r)
+			})
+		})
 	}
 
 	r.Use(middleware.Recoverer)

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/getsentry/sentry-go"
 	"github.com/malbeclabs/doublezero/lake/agent/pkg/workflow/prompts"
 	"github.com/malbeclabs/doublezero/lake/api/config"
 	"github.com/malbeclabs/doublezero/lake/api/metrics"
@@ -119,7 +120,7 @@ func GenerateSQL(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Generate SQL
-		sql, err = generateWithAnthropic(schema, prompt, req.History)
+		sql, err = generateWithAnthropic(r.Context(), schema, prompt, req.History)
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(GenerateResponse{Error: internalError("Failed to generate SQL", err), Provider: "anthropic", Attempts: attempts})
@@ -222,7 +223,7 @@ func GenerateSQLStream(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Stream generation
-		err = streamWithAnthropic(schema, prompt, req.History, func(text string) {
+		err = streamWithAnthropic(r.Context(), schema, prompt, req.History, func(text string) {
 			fullResponse.WriteString(text)
 			sendEvent("token", escapeJSON(text))
 		})
@@ -260,16 +261,27 @@ func escapeJSON(s string) string {
 	return string(b[1 : len(b)-1])
 }
 
-func streamWithAnthropic(schema, prompt string, history []HistoryMessage, onToken func(string)) error {
+func streamWithAnthropic(ctx context.Context, schema, prompt string, history []HistoryMessage, onToken func(string)) error {
 	client := anthropic.NewClient()
 	systemPrompt := buildSystemPrompt(schema)
+
+	// Start Sentry span for AI monitoring
+	model := anthropic.ModelClaude3_5Haiku20241022
+	span := sentry.StartSpan(ctx, "gen_ai.chat", sentry.WithDescription(fmt.Sprintf("chat %s (stream)", model)))
+	span.SetData("gen_ai.operation.name", "chat")
+	span.SetData("gen_ai.request.model", string(model))
+	span.SetData("gen_ai.request.max_tokens", 1024)
+	span.SetData("gen_ai.system", "anthropic")
+	span.SetData("gen_ai.request.stream", true)
+	ctx = span.Context()
+	defer span.Finish()
 
 	// Build messages from history
 	messages := buildAnthropicMessages(history, prompt)
 
 	start := time.Now()
-	stream := client.Messages.NewStreaming(context.Background(), anthropic.MessageNewParams{
-		Model:     anthropic.ModelClaude3_5Haiku20241022,
+	stream := client.Messages.NewStreaming(ctx, anthropic.MessageNewParams{
+		Model:     model,
 		MaxTokens: 1024,
 		System: []anthropic.TextBlockParam{
 			{Type: "text", Text: systemPrompt},
@@ -290,6 +302,12 @@ func streamWithAnthropic(schema, prompt string, history []HistoryMessage, onToke
 	duration := time.Since(start)
 	err := stream.Err()
 	metrics.RecordAnthropicRequest("messages/stream", duration, err)
+
+	if err != nil {
+		span.Status = sentry.SpanStatusInternalError
+	} else {
+		span.Status = sentry.SpanStatusOK
+	}
 
 	return err
 }
@@ -346,8 +364,18 @@ func validateQuery(sql string) string {
 	return "" // Valid query
 }
 
-func generateWithAnthropic(schema, prompt string, history []HistoryMessage) (string, error) {
+func generateWithAnthropic(ctx context.Context, schema, prompt string, history []HistoryMessage) (string, error) {
 	client := anthropic.NewClient()
+
+	// Start Sentry span for AI monitoring
+	model := anthropic.ModelClaude3_5Haiku20241022
+	span := sentry.StartSpan(ctx, "gen_ai.chat", sentry.WithDescription(fmt.Sprintf("chat %s", model)))
+	span.SetData("gen_ai.operation.name", "chat")
+	span.SetData("gen_ai.request.model", string(model))
+	span.SetData("gen_ai.request.max_tokens", 1024)
+	span.SetData("gen_ai.system", "anthropic")
+	ctx = span.Context()
+	defer span.Finish()
 
 	systemPrompt := buildSystemPrompt(schema)
 
@@ -355,8 +383,8 @@ func generateWithAnthropic(schema, prompt string, history []HistoryMessage) (str
 	messages := buildAnthropicMessages(history, prompt)
 
 	start := time.Now()
-	msg, err := client.Messages.New(context.Background(), anthropic.MessageNewParams{
-		Model:     anthropic.ModelClaude3_5Haiku20241022,
+	msg, err := client.Messages.New(ctx, anthropic.MessageNewParams{
+		Model:     model,
 		MaxTokens: 1024,
 		System: []anthropic.TextBlockParam{
 			{Type: "text", Text: systemPrompt},
@@ -367,11 +395,18 @@ func generateWithAnthropic(schema, prompt string, history []HistoryMessage) (str
 	metrics.RecordAnthropicRequest("messages", duration, err)
 
 	if err != nil {
+		span.Status = sentry.SpanStatusInternalError
 		return "", err
 	}
 
 	// Record token usage
 	metrics.RecordAnthropicTokens(msg.Usage.InputTokens, msg.Usage.OutputTokens)
+
+	// Record Sentry AI metrics
+	span.SetData("gen_ai.usage.input_tokens", msg.Usage.InputTokens)
+	span.SetData("gen_ai.usage.output_tokens", msg.Usage.OutputTokens)
+	span.SetData("gen_ai.usage.total_tokens", msg.Usage.InputTokens+msg.Usage.OutputTokens)
+	span.Status = sentry.SpanStatusOK
 
 	for _, block := range msg.Content {
 		if block.Type == "text" {

@@ -61,6 +61,11 @@ type Config struct {
 	ISISS3Region        string        // AWS region (default: us-east-1)
 	ISISS3EndpointURL   string        // Custom S3 endpoint URL (for testing)
 	ISISRefreshInterval time.Duration // Refresh interval for IS-IS sync (default: 30s)
+
+	// SkipReadyWait makes the Ready() method return true immediately without waiting
+	// for views to be populated. Useful for preview/dev environments where fast startup
+	// is more important than having data immediately available.
+	SkipReadyWait bool
 }
 
 func (c *Config) Validate() error {

@@ -17,11 +17,11 @@ const DefaultDatabase = "default"
 // Use this when you need to read data immediately after inserting.
 func ContextWithSyncInsert(ctx context.Context) context.Context {
 	return clickhouse.Context(ctx, clickhouse.WithSettings(clickhouse.Settings{
-		"async_insert":                           0,
-		"wait_for_async_insert":                  1, // Wait for insert to complete even if async
+		"async_insert":                        0,
+		"wait_for_async_insert":               1, // Wait for insert to complete even if async
 		"async_insert_use_adaptive_busy_timeout": 0, // Disable adaptive timeout that can override async settings (24.3+)
-		"insert_deduplicate":                     0, // Disable deduplication to avoid silent drops
-		"select_sequential_consistency":          1, // Ensure reads see latest writes in replicated setups
+		"insert_deduplicate":                  0, // Disable deduplication to avoid silent drops
+		"select_sequential_consistency":       1, // Ensure reads see latest writes in replicated setups
 	}))
 }
 

@@ -105,11 +105,11 @@ type ISISDevice struct {
 
 // ISISLink represents a link with ISIS properties.
 type ISISLink struct {
-	PK         string
-	Code       string
-	Status     string
-	SideAPK    string
-	SideZPK    string
+	PK        string
+	Code      string
+	Status    string
+	SideAPK   string
+	SideZPK   string
 	ISISMetric uint32
 	AdjSIDs    []uint32
 }

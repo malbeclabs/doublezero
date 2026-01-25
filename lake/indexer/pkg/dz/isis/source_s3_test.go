@@ -157,9 +157,9 @@ func TestS3SourceClose(t *testing.T) {
 
 // Helper function for creating test data
 func createTestISISDump(t *testing.T, devices []struct {
-	hostname  string
-	systemID  string
-	routerID  string
+	hostname string
+	systemID string
+	routerID string
 	neighbors []struct {
 		systemID     string
 		metric       uint32
@@ -219,9 +219,9 @@ func createTestISISDump(t *testing.T, devices []struct {
 
 func TestCreateTestISISDump(t *testing.T) {
 	data := createTestISISDump(t, []struct {
-		hostname  string
-		systemID  string
-		routerID  string
+		hostname string
+		systemID string
+		routerID string
 		neighbors []struct {
 			systemID     string
 			metric       uint32

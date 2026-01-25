@@ -810,3 +810,4 @@ func TestStore_Sync_UserDeviceAssignment(t *testing.T) {
 	relCount, _ := record.Get("count")
 	require.Equal(t, int64(1), relCount, "expected only one ASSIGNED_TO relationship")
 }
+

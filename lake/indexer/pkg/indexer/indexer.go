@@ -180,6 +180,10 @@ func New(ctx context.Context, cfg Config) (*Indexer, error) {
 }
 
 func (i *Indexer) Ready() bool {
+	// In preview/dev environments, skip waiting for views to be ready for faster startup.
+	if i.cfg.SkipReadyWait {
+		return true
+	}
 	svcReady := i.svc.Ready()
 	telemLatencyReady := i.telemLatency.Ready()
 	solReady := i.sol.Ready()

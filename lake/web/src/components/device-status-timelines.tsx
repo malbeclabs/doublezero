@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { Loader2, CheckCircle2, AlertTriangle, History, Info, ChevronDown, ChevronUp } from 'lucide-react'
-import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip as RechartsTooltip, CartesianGrid } from 'recharts'
+import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip as RechartsTooltip, CartesianGrid, ReferenceLine } from 'recharts'
 import { fetchDeviceHistory, fetchDeviceInterfaceHistory } from '@/lib/api'
 import type { DeviceHistory, DeviceHourStatus } from '@/lib/api'
 import { useTheme } from '@/hooks/use-theme'
@@ -453,6 +453,7 @@ function InterfaceIssueChart({ devicePk, timeRange, buckets, controlsWidth = 'w-
   }
 
   // Transform data for the chart - each data point has values for all interfaces
+  // In values are positive (above x-axis), out values are negative (below x-axis)
   const chartData = data.interfaces[0].hours.map((hour, idx) => {
     const date = new Date(hour.hour)
     const point: Record<string, any> = {
@@ -460,13 +461,15 @@ function InterfaceIssueChart({ devicePk, timeRange, buckets, controlsWidth = 'w-
       fullTime: hour.hour,
     }
 
-    // Add data for each interface
+    // Add data for each interface - in is positive, out is negative
     for (const intf of interfacesWithIssues) {
       const h = intf.hours[idx]
       if (h) {
-        point[`${intf.interface_name}_errors`] = h.in_errors + h.out_errors
-        point[`${intf.interface_name}_discards`] = h.in_discards + h.out_discards
-        point[`${intf.interface_name}_carrier`] = h.carrier_transitions
+        point[`${intf.interface_name}_errors_in`] = h.in_errors || 0
+        point[`${intf.interface_name}_errors_out`] = h.out_errors ? -h.out_errors : 0
+        point[`${intf.interface_name}_discards_in`] = h.in_discards || 0
+        point[`${intf.interface_name}_discards_out`] = h.out_discards ? -h.out_discards : 0
+        point[`${intf.interface_name}_carrier`] = h.carrier_transitions || 0
       }
     }
 
@@ -480,16 +483,20 @@ function InterfaceIssueChart({ devicePk, timeRange, buckets, controlsWidth = 'w-
     if (!data) return null
 
     // Group by interface
-    const interfaceData: Record<string, { errors: number; discards: number; carrier: number; color: string }> = {}
+    const interfaceData: Record<string, { errorsIn: number; errorsOut: number; discardsIn: number; discardsOut: number; carrier: number; color: string }> = {}
     for (const intf of interfacesWithIssues) {
       if (!enabledInterfaces.has(intf.interface_name)) continue
-      const errors = data[`${intf.interface_name}_errors`] || 0
-      const discards = data[`${intf.interface_name}_discards`] || 0
+      const errorsIn = data[`${intf.interface_name}_errors_in`] || 0
+      const errorsOut = Math.abs(data[`${intf.interface_name}_errors_out`] || 0)
+      const discardsIn = data[`${intf.interface_name}_discards_in`] || 0
+      const discardsOut = Math.abs(data[`${intf.interface_name}_discards_out`] || 0)
       const carrier = data[`${intf.interface_name}_carrier`] || 0
-      if (errors > 0 || discards > 0 || carrier > 0) {
+      if (errorsIn > 0 || errorsOut > 0 || discardsIn > 0 || discardsOut > 0 || carrier > 0) {
         interfaceData[intf.interface_name] = {
-          errors,
-          discards,
+          errorsIn,
+          errorsOut,
+          discardsIn,
+          discardsOut,
           carrier,
           color: interfaceColorMap[intf.interface_name],
         }
@@ -514,11 +521,11 @@ function InterfaceIssueChart({ devicePk, timeRange, buckets, controlsWidth = 'w-
                   <span className="truncate">{name}</span>
                 </div>
                 <div className="pl-3.5 text-xs text-muted-foreground space-y-0.5">
-                  {enabledMetrics.has('errors') && values.errors > 0 && (
-                    <div>Errors: {values.errors.toLocaleString()}</div>
+                  {enabledMetrics.has('errors') && (values.errorsIn > 0 || values.errorsOut > 0) && (
+                    <div>Errors: {values.errorsIn.toLocaleString()} in / {values.errorsOut.toLocaleString()} out</div>
                   )}
-                  {enabledMetrics.has('discards') && values.discards > 0 && (
-                    <div>Discards: {values.discards.toLocaleString()}</div>
+                  {enabledMetrics.has('discards') && (values.discardsIn > 0 || values.discardsOut > 0) && (
+                    <div>Discards: {values.discardsIn.toLocaleString()} in / {values.discardsOut.toLocaleString()} out</div>
                   )}
                   {enabledMetrics.has('carrier') && values.carrier > 0 && (
                     <div>Carrier: {values.carrier.toLocaleString()}</div>
@@ -538,16 +545,19 @@ function InterfaceIssueChart({ devicePk, timeRange, buckets, controlsWidth = 'w-
   const textColor = isDarkMode ? '#a1a1aa' : '#71717a'
 
   // Generate lines for each enabled interface + metric combination
+  // In values are positive (above axis), out values are negative (below axis)
   const lines: { dataKey: string; color: string; strokeDasharray?: string }[] = []
   for (const intf of interfacesWithIssues) {
     if (!enabledInterfaces.has(intf.interface_name)) continue
     const color = interfaceColorMap[intf.interface_name]
 
     if (enabledMetrics.has('errors') && availableMetrics.has('errors')) {
-      lines.push({ dataKey: `${intf.interface_name}_errors`, color, strokeDasharray: undefined })
+      lines.push({ dataKey: `${intf.interface_name}_errors_in`, color, strokeDasharray: undefined })
+      lines.push({ dataKey: `${intf.interface_name}_errors_out`, color, strokeDasharray: undefined })
     }
     if (enabledMetrics.has('discards') && availableMetrics.has('discards')) {
-      lines.push({ dataKey: `${intf.interface_name}_discards`, color, strokeDasharray: '5 5' })
+      lines.push({ dataKey: `${intf.interface_name}_discards_in`, color, strokeDasharray: '5 5' })
+      lines.push({ dataKey: `${intf.interface_name}_discards_out`, color, strokeDasharray: '5 5' })
     }
     if (enabledMetrics.has('carrier') && availableMetrics.has('carrier')) {
       lines.push({ dataKey: `${intf.interface_name}_carrier`, color, strokeDasharray: '2 2' })
@@ -635,8 +645,14 @@ function InterfaceIssueChart({ devicePk, timeRange, buckets, controlsWidth = 'w-
                 tickLine={false}
                 axisLine={false}
                 width={40}
-                tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v}
+                domain={[(dataMin: number) => Math.min(dataMin, 0), (dataMax: number) => Math.max(dataMax, 0)]}
+                tickFormatter={(v) => {
+                  const abs = Math.abs(v)
+                  if (abs === 0) return '0'
+                  return abs >= 1000 ? `${(abs/1000).toFixed(0)}k` : abs.toString()
+                }}
               />
+              <ReferenceLine y={0} stroke={isDarkMode ? '#666' : '#999'} strokeWidth={1.5} label={{ value: 'in ↑ / out ↓', position: 'right', fontSize: 9, fill: textColor }} />
               <RechartsTooltip content={<CustomTooltip />} />
               {lines.map(line => (
                 <Line

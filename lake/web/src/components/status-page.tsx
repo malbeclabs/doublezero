@@ -188,7 +188,7 @@ function IssueDetails({
   nonActivatedDevices: NonActivatedDevice[]
   onIssueClick: () => void
   onNonActivatedClick: () => void
-  onDeviceIssueClick: () => void
+  onDeviceIssueClick: (devicePk: string) => void
 }) {
   const grouped = issues.reduce(
     (acc, issue) => {
@@ -293,7 +293,7 @@ function IssueDetails({
               return (
                 <button
                   key={devicePk}
-                  onClick={onDeviceIssueClick}
+                  onClick={() => onDeviceIssueClick(devicePk)}
                   className="flex items-center justify-between w-full py-2 px-3 rounded-md bg-muted/50 hover:bg-muted transition-colors text-left"
                 >
                   <div className="flex items-center gap-3">
@@ -363,7 +363,7 @@ function IssueDetails({
             {nonActivatedDevices.map((device, idx) => (
               <button
                 key={`${device.code}-${idx}`}
-                onClick={onDeviceIssueClick}
+                onClick={() => onDeviceIssueClick(device.pk)}
                 className="flex items-center justify-between w-full py-2 px-3 rounded-md bg-muted/50 hover:bg-muted transition-colors text-left"
               >
                 <div className="flex items-center gap-3">
@@ -432,14 +432,21 @@ function StatusIndicator({ statusData }: { statusData: StatusResponse }) {
       document.getElementById('disabled-links')?.scrollIntoView({ behavior: 'smooth' })
     }
   }
-  const scrollToDeviceHistory = () => {
-    if (!location.pathname.includes('/status/devices')) {
-      navigate('/status/devices')
-      setTimeout(() => {
+  const scrollToDeviceHistory = (devicePk: string) => {
+    const scrollToDevice = () => {
+      const deviceRow = document.getElementById(`device-row-${devicePk}`)
+      if (deviceRow) {
+        deviceRow.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      } else {
         document.getElementById('device-status-history')?.scrollIntoView({ behavior: 'smooth' })
-      }, 100)
+      }
+    }
+    if (!location.pathname.includes('/status/devices')) {
+      navigate('/status/devices', { state: { expandDevice: devicePk } })
+      setTimeout(scrollToDevice, 200)
     } else {
-      document.getElementById('device-status-history')?.scrollIntoView({ behavior: 'smooth' })
+      navigate(location.pathname + location.search, { state: { expandDevice: devicePk }, replace: true })
+      setTimeout(scrollToDevice, 50)
     }
   }
 
@@ -2009,6 +2016,10 @@ function DevicesContent({ status }: { status: StatusResponse }) {
   const [timeRange, setTimeRange] = useState<TimeRange>('24h')
   const [issueFilters, setIssueFilters] = useState<DeviceIssueFilter[]>(['interface_errors', 'discards', 'carrier_transitions', 'drained'])
   const [healthFilters, setHealthFilters] = useState<HealthFilter[]>(['healthy', 'degraded', 'unhealthy', 'disabled'])
+  const location = useLocation()
+
+  // Get expanded device from navigation state
+  const expandedDevicePk = (location.state as { expandDevice?: string } | null)?.expandDevice
 
   // Get search filters from URL
   const searchFilters = useStatusFilters()
@@ -2252,6 +2263,7 @@ function DevicesContent({ status }: { status: StatusResponse }) {
           healthFilters={healthFilters}
           devicesWithIssues={devicesWithIssues}
           devicesWithHealth={devicesWithHealth}
+          expandedDevicePk={expandedDevicePk}
         />
       </div>
 

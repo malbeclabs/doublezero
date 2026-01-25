@@ -16,6 +16,7 @@ interface DeviceStatusTimelinesProps {
   healthFilters?: string[]
   devicesWithIssues?: Map<string, string[]>  // Map of device code -> issue reasons (from filter time range)
   devicesWithHealth?: Map<string, string>    // Map of device code -> health status (from filter time range)
+  expandedDevicePk?: string                  // Device PK to auto-expand (from URL param)
 }
 
 function DeviceInfoPopover({ device }: { device: DeviceHistory }) {
@@ -665,10 +666,18 @@ interface DeviceRowProps {
   dataTimeRange?: string
   buckets: number
   timeRange: string
+  initiallyExpanded?: boolean
 }
 
-function DeviceRow({ device, devicesWithIssues, bucketMinutes, dataTimeRange, buckets, timeRange }: DeviceRowProps) {
-  const [expanded, setExpanded] = useState(false)
+function DeviceRow({ device, devicesWithIssues, bucketMinutes, dataTimeRange, buckets, timeRange, initiallyExpanded = false }: DeviceRowProps) {
+  const [expanded, setExpanded] = useState(initiallyExpanded)
+
+  // Expand when initiallyExpanded prop changes to true
+  useEffect(() => {
+    if (initiallyExpanded) {
+      setExpanded(true)
+    }
+  }, [initiallyExpanded])
 
   const issueReasons = devicesWithIssues
     ? (devicesWithIssues.get(device.code) ?? [])
@@ -677,7 +686,7 @@ function DeviceRow({ device, devicesWithIssues, bucketMinutes, dataTimeRange, bu
   const hasIssues = issueReasons.length > 0
 
   return (
-    <div className="border-b border-border last:border-b-0">
+    <div id={`device-row-${device.pk}`} className="border-b border-border last:border-b-0">
       <div
         className={`px-4 py-3 transition-colors ${hasIssues ? 'cursor-pointer hover:bg-muted/30' : ''}`}
         onClick={hasIssues ? () => setExpanded(!expanded) : undefined}
@@ -788,6 +797,7 @@ export function DeviceStatusTimelines({
   healthFilters = ['healthy', 'degraded', 'unhealthy', 'disabled'],
   devicesWithIssues,
   devicesWithHealth,
+  expandedDevicePk,
 }: DeviceStatusTimelinesProps) {
   const timeRangeOptions: { value: TimeRange; label: string }[] = [
     { value: '3h', label: '3h' },
@@ -908,7 +918,7 @@ export function DeviceStatusTimelines({
   }
 
   return (
-    <div className="border border-border rounded-lg">
+    <div id="device-status-history" className="border border-border rounded-lg">
       <div className="px-4 py-2.5 bg-muted/50 border-b border-border flex items-center gap-2 rounded-t-lg">
         <History className="h-4 w-4 text-muted-foreground" />
         <h3 className="font-medium">
@@ -970,6 +980,7 @@ export function DeviceStatusTimelines({
             dataTimeRange={data?.time_range}
             buckets={buckets}
             timeRange={timeRange}
+            initiallyExpanded={device.pk === expandedDevicePk}
           />
         ))}
       </div>

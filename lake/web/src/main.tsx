@@ -54,6 +54,7 @@ async function init() {
     if (config.sentryDsn) {
       Sentry.init({
         dsn: config.sentryDsn,
+        environment: config.sentryEnvironment || 'development',
         integrations: [
           Sentry.browserTracingIntegration(),
           Sentry.replayIntegration(),

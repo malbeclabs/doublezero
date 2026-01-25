@@ -71,6 +71,7 @@ function getAuthHeaders(): Record<string, string> {
 export interface AppConfig {
   googleClientId?: string
   sentryDsn?: string
+  sentryEnvironment?: string
 }
 
 // Cached config (fetched once at startup)

@@ -3,6 +3,7 @@ package graph
 import (
 	"net"
 	"testing"
+	"time"
 
 	"github.com/malbeclabs/doublezero/lake/indexer/pkg/clickhouse"
 	clickhousetesting "github.com/malbeclabs/doublezero/lake/indexer/pkg/clickhouse/testing"
@@ -505,10 +506,25 @@ func TestStore_Sync_RemovesDeletedNodes(t *testing.T) {
 	err = store.ReplaceUsers(ctx, remainingUsers)
 	require.NoError(t, err)
 
-	// Verify ClickHouse data visibility before Sync - helps diagnose flaky test failures
-	currentDevices, err := dzsvc.QueryCurrentDevices(ctx, log, chClient)
-	require.NoError(t, err)
-	require.Len(t, currentDevices, 2, "ClickHouse should show 2 devices after ReplaceDevices")
+	// Wait for ClickHouse to reflect the deletions (tombstones to be visible as "latest" rows)
+	// The delta logic uses argMax(tuple(snapshot_ts, ingested_at, op_id)) and when timestamps
+	// are identical, op_id (a random UUID) determines the "latest" row. Using Eventually
+	// handles both data visibility timing and potential timestamp collisions.
+	require.Eventually(t, func() bool {
+		currentDevices, err := dzsvc.QueryCurrentDevices(ctx, log, chClient)
+		if err != nil || len(currentDevices) != 2 {
+			return false
+		}
+		currentLinks, err := dzsvc.QueryCurrentLinks(ctx, log, chClient)
+		if err != nil || len(currentLinks) != 1 {
+			return false
+		}
+		currentUsers, err := dzsvc.QueryCurrentUsers(ctx, log, chClient)
+		if err != nil || len(currentUsers) != 1 {
+			return false
+		}
+		return true
+	}, 5*time.Second, 50*time.Millisecond, "ClickHouse should show 2 devices, 1 link, 1 user after Replace operations")
 
 	// Sync again
 	err = graphStore.Sync(ctx)

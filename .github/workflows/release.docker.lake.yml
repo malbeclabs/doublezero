@@ -96,17 +96,13 @@ jobs:
       - name: Upload assets to S3
         run: |
           # Determine bucket and path based on branch
-          if [[ "${{ github.ref_name }}" == "main" ]]; then
-            # Main branch: sync to both prod and staging locations
+          if [[ "${{ steps.v.outputs.is_staging }}" == "true" ]]; then
+            # Staging branches (including main): sync to both prod and staging
+            # This ensures assets are ready when promoting to prod
             echo "Uploading assets to prod bucket..."
             aws s3 sync lake/web/dist/assets/ "s3://${{ env.PROD_ASSET_BUCKET }}/assets/" \
               --cache-control "public, max-age=31536000, immutable"
 
-            echo "Uploading assets to staging location..."
-            aws s3 sync lake/web/dist/assets/ "s3://${{ env.PREVIEW_ASSET_BUCKET }}/staging/" \
-              --cache-control "public, max-age=31536000, immutable"
-          elif [[ "${{ steps.v.outputs.is_staging }}" == "true" ]]; then
-            # Staging branch: sync only to staging location
             echo "Uploading assets to staging location..."
             aws s3 sync lake/web/dist/assets/ "s3://${{ env.PREVIEW_ASSET_BUCKET }}/staging/" \
               --cache-control "public, max-age=31536000, immutable"

@@ -3,6 +3,7 @@ package v3
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -733,7 +734,7 @@ func (p *Workflow) readDocs(ctx context.Context, params map[string]any, onProgre
 				DocsError: errMsg,
 			})
 		}
-		return "", fmt.Errorf(errMsg)
+		return "", errors.New(errMsg)
 	}
 
 	body, err := io.ReadAll(resp.Body)

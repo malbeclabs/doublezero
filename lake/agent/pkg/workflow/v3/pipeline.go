@@ -289,8 +289,12 @@ func (p *Workflow) RunWithProgress(ctx context.Context, userQuestion string, his
 func (p *Workflow) buildMessages(userQuestion string, history []workflow.ConversationMessage) []workflow.ToolMessage {
 	messages := make([]workflow.ToolMessage, 0, len(history)+1)
 
-	// Add conversation history
+	// Add conversation history, skipping messages with empty content
+	// (e.g., streaming placeholders that were persisted but never completed)
 	for _, msg := range history {
+		if msg.Content == "" {
+			continue
+		}
 		messages = append(messages, workflow.ToolMessage{
 			Role: msg.Role,
 			Content: []workflow.ToolContentBlock{

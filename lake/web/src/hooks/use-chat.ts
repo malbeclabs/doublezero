@@ -234,9 +234,13 @@ export function useChatStream(sessionId: string | undefined) {
     })
 
     try {
+      // Filter out incomplete messages (streaming placeholders with empty content)
+      // These can exist if a previous request failed before completion
+      const historyToSend = currentMessages.filter(m => m.content !== '' && m.status !== 'streaming')
+
       await sendChatMessageStream(
         message,
-        currentMessages,
+        historyToSend,
         {
           onThinking: (data) => {
             setStreamState(prev => ({

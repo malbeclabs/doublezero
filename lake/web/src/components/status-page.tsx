@@ -2854,7 +2854,8 @@ export function StatusPage() {
           <StatCard label="SOL Connected" value={status.network.total_stake_sol} format="stake" />
           <StatCard label="Stake Share" value={status.network.stake_share_pct} format="percent" delta={status.network.stake_share_delta} />
           <StatCard label="Capacity" value={status.network.bandwidth_bps} format="bandwidth" />
-          <StatCard label="User Inbound" value={status.network.user_inbound_bps} format="bandwidth" />
+          {/* TODO: temporarily hardcoded, restore status.network.user_inbound_bps when fixed */}
+          <StatCard label="User Inbound" value={19_000_000_000} format="bandwidth" />
         </div>
 
         {/* Utilization Charts */}

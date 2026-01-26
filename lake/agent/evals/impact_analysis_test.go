@@ -105,12 +105,14 @@ func seedImpactAnalysisData(t *testing.T, ctx context.Context, conn clickhouse.C
 	}
 	seedMetros(t, ctx, conn, metros, now, now)
 
+	// Device codes are intentionally non-predictable (not all -dzd1) to ensure
+	// the agent looks up device codes rather than guessing them from metro codes
 	devices := []serviceability.Device{
 		{PK: "device1", Code: "sin-dzd1", Status: "activated", MetroPK: "metro1", DeviceType: "DZD"},
-		{PK: "device2", Code: "hkg-dzd1", Status: "activated", MetroPK: "metro2", DeviceType: "DZD"},
+		{PK: "device2", Code: "hkg-dzd2", Status: "activated", MetroPK: "metro2", DeviceType: "DZD"},
 		{PK: "device3", Code: "sel-dzd1", Status: "activated", MetroPK: "metro3", DeviceType: "DZD"},
-		{PK: "device4", Code: "tyo-dzd1", Status: "activated", MetroPK: "metro4", DeviceType: "DZD"},
-		{PK: "device5", Code: "lax-dzd1", Status: "activated", MetroPK: "metro5", DeviceType: "DZD"},
+		{PK: "device4", Code: "tyo-dzd3", Status: "activated", MetroPK: "metro4", DeviceType: "DZD"},
+		{PK: "device5", Code: "lax-dzd2", Status: "activated", MetroPK: "metro5", DeviceType: "DZD"},
 	}
 	seedDevices(t, ctx, conn, devices, now, now)
 
@@ -145,12 +147,14 @@ func seedImpactAnalysisGraphData(t *testing.T, ctx context.Context, client neo4j
 		{PK: "metro4", Code: "tyo", Name: "Tokyo"},
 		{PK: "metro5", Code: "lax", Name: "Los Angeles"},
 	}
+	// Device codes are intentionally non-predictable (not all -dzd1) to ensure
+	// the agent looks up device codes rather than guessing them from metro codes
 	devices := []graphDevice{
 		{PK: "device1", Code: "sin-dzd1", Status: "activated", MetroPK: "metro1", MetroCode: "sin"},
-		{PK: "device2", Code: "hkg-dzd1", Status: "activated", MetroPK: "metro2", MetroCode: "hkg"},
+		{PK: "device2", Code: "hkg-dzd2", Status: "activated", MetroPK: "metro2", MetroCode: "hkg"},
 		{PK: "device3", Code: "sel-dzd1", Status: "activated", MetroPK: "metro3", MetroCode: "sel"},
-		{PK: "device4", Code: "tyo-dzd1", Status: "activated", MetroPK: "metro4", MetroCode: "tyo"},
-		{PK: "device5", Code: "lax-dzd1", Status: "activated", MetroPK: "metro5", MetroCode: "lax"},
+		{PK: "device4", Code: "tyo-dzd3", Status: "activated", MetroPK: "metro4", MetroCode: "tyo"},
+		{PK: "device5", Code: "lax-dzd2", Status: "activated", MetroPK: "metro5", MetroCode: "lax"},
 	}
 	links := []graphLink{
 		{PK: "link1", Code: "sin-hkg-1", Status: "activated", SideAPK: "device1", SideZPK: "device2"},

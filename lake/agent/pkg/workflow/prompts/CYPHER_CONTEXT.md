@@ -68,6 +68,40 @@ Example: "What's the latency on the path from NYC to LON?"
   - `neighbor_addr` (string): Neighbor address
   - `adj_sids` (list): Adjacency SIDs
 
+## CRITICAL: Always Look Up Device Codes First
+
+**Device codes are NOT predictable.** You cannot construct a device code from a metro code. There is no guaranteed pattern like `{metro}-dzd1`.
+
+When a user asks about "the Hong Kong device" or "devices in Tokyo":
+1. **First query for devices in that metro** to get actual device codes
+2. **Then use those real codes** in subsequent queries
+
+**WRONG - guessing device codes:**
+```cypher
+// User asks: "What's connected to the Hong Kong device?"
+// WRONG: Guessing that hkg-dzd1 exists
+MATCH (d:Device {code: 'hkg-dzd1'})-[:CONNECTS]-(:Link)-[:CONNECTS]-(neighbor:Device)
+RETURN neighbor.code
+```
+
+**CORRECT - look up devices first:**
+```cypher
+// Step 1: Find devices in Hong Kong
+MATCH (m:Metro {code: 'hkg'})<-[:LOCATED_IN]-(d:Device)
+RETURN d.code AS device_code, d.status
+// Results might show: hkg-dzd2, hkg-dzd3 (NOT hkg-dzd1!)
+
+// Step 2: Use actual device codes from step 1
+MATCH (d:Device {code: 'hkg-dzd2'})-[:CONNECTS]-(:Link)-[:CONNECTS]-(neighbor:Device)
+RETURN neighbor.code
+```
+
+**Key rules:**
+- A metro may have zero, one, or multiple devices
+- Device codes do not follow a predictable numbering scheme
+- NEVER assume a device exists - always verify with a lookup query first
+- If a lookup returns no devices, report "no devices found in that metro"
+
 ## Common Cypher Patterns
 
 ### Find Shortest Path Between Devices

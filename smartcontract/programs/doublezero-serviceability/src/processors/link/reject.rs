@@ -75,7 +75,7 @@ pub fn process_reject_link(
     try_acc_write(&link, link_account, payer_account, accounts)?;
 
     #[cfg(test)]
-    msg!("Rejectd: {:?}", link);
+    msg!("Rejected: {:?}", link);
 
     Ok(())
 }

@@ -6,9 +6,15 @@ use crate::{
             check_status::process_check_status_access_pass, close::process_close_access_pass,
             set::process_set_access_pass,
         },
-        allowlist::foundation::{
-            add::process_add_foundation_allowlist_globalconfig,
-            remove::process_remove_foundation_allowlist_globalconfig,
+        allowlist::{
+            foundation::{
+                add::process_add_foundation_allowlist_globalconfig,
+                remove::process_remove_foundation_allowlist_globalconfig,
+            },
+            qa::{
+                add::process_add_qa_allowlist_globalconfig,
+                remove::process_remove_qa_allowlist_globalconfig,
+            },
         },
         contributor::{
             create::process_create_contributor, delete::process_delete_contributor,
@@ -74,7 +80,8 @@ use crate::{
             update::process_update_multicastgroup,
         },
         resource::{
-            allocate::process_allocate_resource, create::process_create_resource,
+            allocate::process_allocate_resource,
+            closeaccount::process_closeaccount_resource_extension, create::process_create_resource,
             deallocate::process_deallocate_resource,
         },
         user::{
@@ -137,7 +144,9 @@ pub fn process_instruction(
         DoubleZeroInstruction::ActivateLink(value) => {
             process_activate_link(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::ActivateDevice(_) => process_activate_device(program_id, accounts)?,
+        DoubleZeroInstruction::ActivateDevice(value) => {
+            process_activate_device(program_id, accounts, &value)?
+        }
         DoubleZeroInstruction::ActivateUser(value) => {
             process_activate_user(program_id, accounts, &value)?
         }
@@ -340,11 +349,20 @@ pub fn process_instruction(
         DoubleZeroInstruction::DeallocateResource(value) => {
             process_deallocate_resource(program_id, accounts, &value)?
         }
+        DoubleZeroInstruction::CloseResource(value) => {
+            process_closeaccount_resource_extension(program_id, accounts, &value)?
+        }
         DoubleZeroInstruction::SetDeviceHealth(value) => {
             process_set_health_device(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::SetLinkHealth(value) => {
             process_set_health_link(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::AddQaAllowlist(value) => {
+            process_add_qa_allowlist_globalconfig(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::RemoveQaAllowlist(value) => {
+            process_remove_qa_allowlist_globalconfig(program_id, accounts, &value)?
         }
     };
     Ok(())

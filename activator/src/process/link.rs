@@ -35,6 +35,7 @@ pub fn process_link_event(
     link_ips: &mut IPBlockAllocator,
     link_ids: &mut IDAllocator,
     link: &Link,
+    use_onchain_allocation: bool,
 ) {
     match link.status {
         LinkStatus::Pending => {
@@ -46,54 +47,83 @@ pub fn process_link_event(
             )
             .unwrap();
 
-            match get_ip_block(link, link_ips) {
-                Some(link_net) => {
-                    let link_id = get_link_id(link, link_ids);
-
-                    let res = ActivateLinkCommand {
-                        link_pubkey: *pubkey,
-                        side_a_pk: link.side_a_pk,
-                        side_z_pk: link.side_z_pk,
-                        tunnel_id: link_id,
-                        tunnel_net: link_net.into(),
-                    }
-                    .execute(client);
-
-                    match res {
-                        Ok(signature) => {
-                            write!(&mut log_msg, " ReadyForService {signature}").unwrap();
-
-                            metrics::counter!(
-                                "doublezero_activator_state_transition",
-                                "state_transition" => "link-pending-to-activated",
-                                "link-pubkey" => pubkey.to_string(),
-                            )
-                            .increment(1);
-                        }
-                        Err(e) => write!(&mut log_msg, " Error {e}").unwrap(),
-                    }
+            if use_onchain_allocation {
+                // On-chain allocation: pass zeros, smart contract allocates from ResourceExtension
+                let res = ActivateLinkCommand {
+                    link_pubkey: *pubkey,
+                    side_a_pk: link.side_a_pk,
+                    side_z_pk: link.side_z_pk,
+                    tunnel_id: 0,
+                    tunnel_net: NetworkV4::default(),
+                    use_onchain_allocation: true,
                 }
-                None => {
-                    write!(&mut log_msg, " Error: No available tunnel block").unwrap();
+                .execute(client);
 
-                    let res = RejectLinkCommand {
-                        pubkey: *pubkey,
-                        reason: "Error: No available tunnel block".to_string(),
+                match res {
+                    Ok(signature) => {
+                        write!(&mut log_msg, " ReadyForService (on-chain) {signature}").unwrap();
+
+                        metrics::counter!(
+                            "doublezero_activator_state_transition",
+                            "state_transition" => "link-pending-to-activated",
+                            "link-pubkey" => pubkey.to_string(),
+                        )
+                        .increment(1);
                     }
-                    .execute(client);
+                    Err(e) => write!(&mut log_msg, " Error {e}").unwrap(),
+                }
+            } else {
+                // Legacy off-chain allocation: allocator assigns tunnel_id and tunnel_net
+                match get_ip_block(link, link_ips) {
+                    Some(link_net) => {
+                        let link_id = get_link_id(link, link_ids);
 
-                    match res {
-                        Ok(signature) => {
-                            write!(&mut log_msg, " Rejected {signature}").unwrap();
-
-                            metrics::counter!(
-                                "doublezero_activator_state_transition",
-                                "state_transition" => "link-pending-to-rejected",
-                                "link-pubkey" => pubkey.to_string(),
-                            )
-                            .increment(1);
+                        let res = ActivateLinkCommand {
+                            link_pubkey: *pubkey,
+                            side_a_pk: link.side_a_pk,
+                            side_z_pk: link.side_z_pk,
+                            tunnel_id: link_id,
+                            tunnel_net: link_net.into(),
+                            use_onchain_allocation: false,
                         }
-                        Err(e) => write!(&mut log_msg, " Error {e}").unwrap(),
+                        .execute(client);
+
+                        match res {
+                            Ok(signature) => {
+                                write!(&mut log_msg, " ReadyForService {signature}").unwrap();
+
+                                metrics::counter!(
+                                    "doublezero_activator_state_transition",
+                                    "state_transition" => "link-pending-to-activated",
+                                    "link-pubkey" => pubkey.to_string(),
+                                )
+                                .increment(1);
+                            }
+                            Err(e) => write!(&mut log_msg, " Error {e}").unwrap(),
+                        }
+                    }
+                    None => {
+                        write!(&mut log_msg, " Error: No available tunnel block").unwrap();
+
+                        let res = RejectLinkCommand {
+                            pubkey: *pubkey,
+                            reason: "Error: No available tunnel block".to_string(),
+                        }
+                        .execute(client);
+
+                        match res {
+                            Ok(signature) => {
+                                write!(&mut log_msg, " Rejected {signature}").unwrap();
+
+                                metrics::counter!(
+                                    "doublezero_activator_state_transition",
+                                    "state_transition" => "link-pending-to-rejected",
+                                    "link-pubkey" => pubkey.to_string(),
+                                )
+                                .increment(1);
+                            }
+                            Err(e) => write!(&mut log_msg, " Error {e}").unwrap(),
+                        }
                     }
                 }
             }
@@ -111,15 +141,21 @@ pub fn process_link_event(
             let res = CloseAccountLinkCommand {
                 pubkey: *pubkey,
                 owner: link.owner,
+                use_onchain_deallocation: use_onchain_allocation,
             }
             .execute(client);
 
             match res {
                 Ok(signature) => {
-                    write!(&mut log_msg, " Deactivated {signature}").unwrap();
-
-                    link_ids.unassign(link.tunnel_id);
-                    link_ips.unassign_block(link.tunnel_net.into());
+                    if use_onchain_allocation {
+                        write!(&mut log_msg, " Deactivated (on-chain) {signature}").unwrap();
+                        // On-chain deallocation: smart contract handles releasing resources
+                    } else {
+                        write!(&mut log_msg, " Deactivated {signature}").unwrap();
+                        // Off-chain: activator tracks local allocations
+                        link_ids.unassign(link.tunnel_id);
+                        link_ips.unassign_block(link.tunnel_net.into());
+                    }
 
                     metrics::counter!(
                         "doublezero_activator_state_transition",
@@ -208,6 +244,7 @@ mod tests {
                     predicate::eq(DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
                         tunnel_id: 502,
                         tunnel_net: "10.0.0.0/31".parse().unwrap(),
+                        use_onchain_allocation: false,
                     })),
                     predicate::always(),
                 )
@@ -220,6 +257,7 @@ mod tests {
                 &mut link_ips,
                 &mut link_ids,
                 &tunnel,
+                false, // use_onchain_allocation
             );
 
             assert!(link_ids.assigned.contains(&502_u16));
@@ -241,7 +279,9 @@ mod tests {
                 .expect_execute_transaction()
                 .with(
                     predicate::eq(DoubleZeroInstruction::CloseAccountLink(
-                        LinkCloseAccountArgs {},
+                        LinkCloseAccountArgs {
+                            use_onchain_deallocation: false,
+                        },
                     )),
                     predicate::always(),
                 )
@@ -256,6 +296,7 @@ mod tests {
                 &mut link_ips,
                 &mut link_ids,
                 &tunnel,
+                false, // use_onchain_allocation
             );
 
             assert!(!link_ids.assigned.contains(&502_u16));
@@ -331,13 +372,21 @@ mod tests {
                 predicate::eq(DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
                     tunnel_id: 1,
                     tunnel_net: "10.1.2.0/31".parse().unwrap(),
+                    use_onchain_allocation: false,
                 })),
                 predicate::always(),
             )
             .times(1)
             .returning(|_, _| Ok(Signature::new_unique()));
 
-        process_link_event(&client, &link_pubkey, &mut link_ips, &mut link_ids, &link);
+        process_link_event(
+            &client,
+            &link_pubkey,
+            &mut link_ips,
+            &mut link_ids,
+            &link,
+            false,
+        );
     }
 
     #[test]
@@ -397,6 +446,7 @@ mod tests {
                 &mut link_ips,
                 &mut link_ids,
                 &tunnel,
+                false, // use_onchain_allocation
             );
 
             let mut snapshot = crate::test_helpers::MetricsSnapshot::new(snapshotter.snapshot());

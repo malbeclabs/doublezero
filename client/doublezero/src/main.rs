@@ -15,6 +15,7 @@ use crate::cli::{
     exchange::ExchangeCommands,
     globalconfig::{
         AirdropCommands, AuthorityCommands, FoundationAllowlistCommands, GlobalConfigCommands,
+        QaAllowlistCommands,
     },
     link::LinkCommands,
     location::LocationCommands,
@@ -131,6 +132,11 @@ async fn main() -> eyre::Result<()> {
                 FoundationAllowlistCommands::List(args) => args.execute(&client, &mut handle),
                 FoundationAllowlistCommands::Add(args) => args.execute(&client, &mut handle),
                 FoundationAllowlistCommands::Remove(args) => args.execute(&client, &mut handle),
+            },
+            GlobalConfigCommands::QaAllowlist(command) => match command.command {
+                QaAllowlistCommands::List(args) => args.execute(&client, &mut handle),
+                QaAllowlistCommands::Add(args) => args.execute(&client, &mut handle),
+                QaAllowlistCommands::Remove(args) => args.execute(&client, &mut handle),
             },
             GlobalConfigCommands::SetVersion(args) => args.execute(&client, &mut handle),
         },
@@ -262,6 +268,7 @@ async fn main() -> eyre::Result<()> {
             cli::resource::ResourceCommands::Create(args) => args.execute(&client, &mut handle),
             cli::resource::ResourceCommands::Deallocate(args) => args.execute(&client, &mut handle),
             cli::resource::ResourceCommands::Get(args) => args.execute(&client, &mut handle),
+            cli::resource::ResourceCommands::Close(args) => args.execute(&client, &mut handle),
         },
 
         Command::Export(args) => args.execute(&client, &mut handle),

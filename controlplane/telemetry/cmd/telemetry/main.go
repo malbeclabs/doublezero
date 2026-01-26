@@ -443,13 +443,8 @@ func startGNMITunnelClient(ctx context.Context, cancel context.CancelFunc, log *
 			})
 		}
 		cfg.GRPCClientConnFactory = func(ctx context.Context, target string, opts ...grpc.DialOption) (*grpc.ClientConn, error) {
-			// Add insecure credentials by default for the tunnel server connection.
-			// TODO: Support TLS configuration for production deployments.
-			allOpts := append([]grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}, opts...)
-			return netns.NewNamespacedGRPCConn(ctx, *managementNamespace, target, allOpts...)
+			return netns.NewNamespacedGRPCConn(ctx, *managementNamespace, target, opts...)
 		}
-	} else {
-		cfg.GRPCDialOpts = []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
 	}
 
 	gnmiTunnelClient, err := gnmitunnel.NewClient(cfg)

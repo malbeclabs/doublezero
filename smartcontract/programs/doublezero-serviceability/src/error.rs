@@ -139,6 +139,10 @@ pub enum DoubleZeroError {
     InvalidFoundationAllowlist, // variant 66
     #[error("Deprecated error")]
     Deprecated, // variant 67
+    #[error("Immutable Field")]
+    ImmutableField, // variant 68
+    #[error("CYOA can only be set on physical interfaces")]
+    CyoaRequiresPhysical, // variant 69
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -212,6 +216,8 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::InvalidArgument => ProgramError::Custom(65),
             DoubleZeroError::InvalidFoundationAllowlist => ProgramError::Custom(66),
             DoubleZeroError::Deprecated => ProgramError::Custom(67),
+            DoubleZeroError::ImmutableField => ProgramError::Custom(68),
+            DoubleZeroError::CyoaRequiresPhysical => ProgramError::Custom(69),
         }
     }
 }
@@ -286,6 +292,7 @@ impl From<u32> for DoubleZeroError {
             65 => DoubleZeroError::InvalidArgument,
             66 => DoubleZeroError::InvalidFoundationAllowlist,
             67 => DoubleZeroError::Deprecated,
+            68 => DoubleZeroError::ImmutableField,
             _ => DoubleZeroError::Custom(e),
         }
     }
@@ -380,6 +387,7 @@ mod tests {
             InvalidArgument,
             InvalidFoundationAllowlist,
             Deprecated,
+            ImmutableField,
         ];
         for err in variants {
             let pe: ProgramError = err.clone().into();

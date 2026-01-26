@@ -221,6 +221,12 @@ func (p *Processor) processNotifications(ctx context.Context, notifications []*g
 		}
 	}
 
+	// Aggregate records that need deduplication.
+	// gNMI sends individual updates for each leaf value, so records with the same
+	// key need to be merged into a single row.
+	records = AggregateTransceiverState(records)
+	records = AggregateTransceiverThresholds(records)
+
 	return records
 }
 

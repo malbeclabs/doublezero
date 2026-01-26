@@ -5,7 +5,7 @@ mod test_check_status_transition {
     #[test]
     fn test_activation_transition() {
         let mut link = Link {
-            status: LinkStatus::ReadyForService,
+            status: LinkStatus::Provisioning,
             desired_status: LinkDesiredStatus::Activated,
             link_health: LinkHealth::ReadyForService,
             ..Link::default()
@@ -121,7 +121,7 @@ pub enum LinkStatus {
     Requested = 5,
     HardDrained = 6,
     SoftDrained = 7,
-    ReadyForService = 8,
+    Provisioning = 8,
 }
 
 impl From<u8> for LinkStatus {
@@ -134,7 +134,7 @@ impl From<u8> for LinkStatus {
             5 => LinkStatus::Requested,
             6 => LinkStatus::HardDrained,
             7 => LinkStatus::SoftDrained,
-            8 => LinkStatus::ReadyForService,
+            8 => LinkStatus::Provisioning,
             _ => LinkStatus::Pending,
         }
     }
@@ -152,7 +152,7 @@ impl FromStr for LinkStatus {
             "requested" => Ok(LinkStatus::Requested),
             "hard-drained" => Ok(LinkStatus::HardDrained),
             "soft-drained" => Ok(LinkStatus::SoftDrained),
-            "ready-for-service" => Ok(LinkStatus::ReadyForService),
+            "provisioning" => Ok(LinkStatus::Provisioning),
             _ => Err(format!("Invalid LinkStatus: {s}")),
         }
     }
@@ -168,7 +168,7 @@ impl fmt::Display for LinkStatus {
             LinkStatus::Requested => write!(f, "requested"),
             LinkStatus::HardDrained => write!(f, "hard-drained"),
             LinkStatus::SoftDrained => write!(f, "soft-drained"),
-            LinkStatus::ReadyForService => write!(f, "ready-for-service"),
+            LinkStatus::Provisioning => write!(f, "provisioning"),
         }
     }
 }
@@ -470,7 +470,7 @@ impl Link {
     ///
     /// | Current Status   | Desired Status   | Link Health         | New Status      | Condition                                                                 |
     /// |------------------|------------------|---------------------|-----------------|---------------------------------------------------------------------------|
-    /// | ReadyForService  | Activated        | ReadyForService     | Activated       | If the link is ready and healthy, activate it.                            |
+    /// | Provisioning     | Activated        | ReadyForService     | Activated       | If the link is ready and healthy, activate it.                            |
     /// | Activated        | SoftDrained      | Any                 | SoftDrained     | If activated and soft drain is desired, transition to soft drained.       |
     /// | Activated        | HardDrained      | Any                 | HardDrained     | If activated and hard drain is desired, transition to hard drained.       |
     /// | SoftDrained      | HardDrained      | Any                 | HardDrained     | If soft drained and hard drain is desired, transition to hard drained.    |
@@ -485,7 +485,7 @@ impl Link {
         match (self.status, self.desired_status, self.link_health) {
             // Activation transition
             (
-                LinkStatus::ReadyForService,
+                LinkStatus::Provisioning,
                 LinkDesiredStatus::Activated,
                 LinkHealth::ReadyForService,
             ) => {
@@ -504,7 +504,7 @@ impl Link {
             (LinkStatus::HardDrained, LinkDesiredStatus::SoftDrained, _) => {
                 self.status = LinkStatus::SoftDrained;
             }
-            // ReadyForService recovery from drains
+            // Recovery from drains when healthy
             (
                 LinkStatus::SoftDrained,
                 LinkDesiredStatus::Activated,
@@ -530,7 +530,7 @@ impl Link {
             LinkStatus::Activated
                 | LinkStatus::SoftDrained
                 | LinkStatus::HardDrained
-                | LinkStatus::ReadyForService
+                | LinkStatus::Provisioning
         )
     }
 }

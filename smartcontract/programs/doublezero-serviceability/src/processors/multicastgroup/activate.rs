@@ -111,7 +111,7 @@ pub fn process_activate_multicastgroup(
         let mut buffer = resource_ext.data.borrow_mut();
         let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
 
-        let allocated = resource.allocate()?;
+        let allocated = resource.allocate(1)?;
 
         match allocated {
             IdOrIp::Ip(network) => {

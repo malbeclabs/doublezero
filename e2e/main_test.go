@@ -241,7 +241,7 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 
 		# For testing link.status=soft-drained:
 		doublezero link create wan --code "ny5-dz01_e5:la2-dz01_e5" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet5 --side-z la2-dz01 --side-z-interface Ethernet5 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3 --desired-status activated -w
-		
+
 		# For testing link.status=hard-drained:
 		doublezero link create wan --code "ny5-dz01_e6:la2-dz01_e6" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet6 --side-z la2-dz01 --side-z-interface Ethernet6 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 8 --jitter-ms 3 --desired-status activated -w
 
@@ -286,6 +286,34 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 	// Wait for latency results.
 	err = client.WaitForLatencyResults(t.Context(), device.ID, 75*time.Second)
 	require.NoError(t, err)
+
+	// Verify device has published telemetry to InfluxDB.
+	if dn.InfluxDB != nil && dn.InfluxDB.InternalURL != "" {
+		dn.log.Info("==> Verifying device telemetry in InfluxDB", "device", device.Spec.Code, "pubkey", device.ID)
+		require.Eventually(t, func() bool {
+			hasData, err := dn.InfluxDB.HasDeviceData(ctx, device.ID)
+			if err != nil {
+				dn.log.Debug("Failed to query InfluxDB for device data", "error", err)
+				return false
+			}
+			return hasData
+		}, 60*time.Second, 3*time.Second, "device %s did not publish telemetry to InfluxDB", device.Spec.Code)
+		dn.log.Info("--> Device telemetry verified in InfluxDB")
+	}
+
+	// Verify device has getconfig metrics in Prometheus.
+	if dn.Prometheus != nil && dn.Prometheus.InternalURL != "" {
+		dn.log.Info("==> Verifying device metrics in Prometheus", "device", device.Spec.Code, "pubkey", device.ID)
+		require.Eventually(t, func() bool {
+			hasMetrics, err := dn.Prometheus.HasDeviceMetrics(ctx, device.ID)
+			if err != nil {
+				dn.log.Debug("Failed to query Prometheus for device metrics", "error", err)
+				return false
+			}
+			return hasMetrics
+		}, 60*time.Second, 5*time.Second, "device %s did not have getconfig metrics in Prometheus", device.Spec.Code)
+		dn.log.Info("--> Device metrics verified in Prometheus")
+	}
 
 	return device, client
 }

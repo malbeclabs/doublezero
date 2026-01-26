@@ -77,29 +77,17 @@ impl UpdateDeviceInterfaceCliCommand {
                 )
             })?;
 
-        let (_, mut interface) = device
+        let (_, interface) = device
             .find_interface(&self.name)
             .map_err(|e| eyre::eyre!(e.to_string()))?;
 
-        if let Some(loopback_type) = self.loopback_type.clone() {
-            interface.loopback_type = (loopback_type as u8).into();
-        }
-
-        if interface.interface_type == doublezero_sdk::InterfaceType::Loopback
-            && interface.loopback_type == doublezero_sdk::LoopbackType::None
-        {
-            return Err(eyre::eyre!(
-                "Loopback type must be specified for Loopback interface type"
-            ));
-        }
-
+        // Prevent setting a loopback type on physical interfaces
         if interface.interface_type
             == doublezero_serviceability::state::interface::InterfaceType::Physical
-            && interface.loopback_type
-                != doublezero_serviceability::state::interface::LoopbackType::None
+            && self.loopback_type.is_some()
         {
             return Err(eyre::eyre!(
-                "Loopback type must be None for Physical interface type"
+                "Loopback type cannot be set on Physical interface type"
             ));
         }
 

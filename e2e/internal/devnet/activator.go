@@ -13,7 +13,8 @@ import (
 )
 
 type ActivatorSpec struct {
-	ContainerImage string
+	ContainerImage    string
+	OnchainAllocation bool // When true, activator uses on-chain resource allocation
 }
 
 func (s *ActivatorSpec) Validate() error {
@@ -106,17 +107,22 @@ func (a *Activator) StartIfNotRunning(ctx context.Context) (bool, error) {
 func (a *Activator) Start(ctx context.Context) error {
 	a.log.Info("==> Starting activator", "image", a.dn.Spec.Activator.ContainerImage)
 
+	env := map[string]string{
+		"DZ_LEDGER_URL":                a.dn.Ledger.InternalRPCURL,
+		"DZ_LEDGER_WS":                 a.dn.Ledger.InternalRPCWSURL,
+		"DZ_SERVICEABILITY_PROGRAM_ID": a.dn.Manager.ServiceabilityProgramID,
+	}
+	if a.dn.Spec.Activator.OnchainAllocation {
+		env["DZ_ONCHAIN_ALLOCATION"] = "true"
+	}
+
 	req := testcontainers.ContainerRequest{
 		Image: a.dn.Spec.Activator.ContainerImage,
 		Name:  a.dockerContainerName(),
 		ConfigModifier: func(cfg *dockercontainer.Config) {
 			cfg.Hostname = a.dockerContainerHostname()
 		},
-		Env: map[string]string{
-			"DZ_LEDGER_URL":                a.dn.Ledger.InternalRPCURL,
-			"DZ_LEDGER_WS":                 a.dn.Ledger.InternalRPCWSURL,
-			"DZ_SERVICEABILITY_PROGRAM_ID": a.dn.Manager.ServiceabilityProgramID,
-		},
+		Env: env,
 		Files: []testcontainers.ContainerFile{
 			{
 				HostFilePath:      a.dn.Spec.Manager.ManagerKeypairPath,
@@ -162,4 +168,13 @@ func (a *Activator) Start(ctx context.Context) error {
 func (a *Activator) setState(containerID string) error {
 	a.ContainerID = shortContainerID(containerID)
 	return nil
+}
+
+// GetContainerState returns the current state of the activator container.
+func (a *Activator) GetContainerState(ctx context.Context) (*dockercontainer.State, error) {
+	container, err := a.dn.dockerClient.ContainerInspect(ctx, a.dockerContainerName())
+	if err != nil {
+		return nil, fmt.Errorf("failed to inspect activator container: %w", err)
+	}
+	return container.State, nil
 }

@@ -14,6 +14,8 @@ import (
 
 type LedgerRPCClient interface {
 	GetEpochInfo(ctx context.Context, commitment solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error)
+	GetBlockTime(ctx context.Context, slot uint64) (*solana.UnixTimeSeconds, error)
+	GetSlot(ctx context.Context, commitment solanarpc.CommitmentType) (uint64, error)
 }
 
 type ServiceabilityClient interface {
@@ -32,6 +34,12 @@ type Config struct {
 	Interval        time.Duration
 	SlackWebhookURL string
 	Env             string
+
+	// Burn-in slot counts for devices/links.
+	// ProvisioningSlotCount is used for new devices/links (status = Provisioning, DeviceProvisioning, LinkProvisioning).
+	// DrainedSlotCount is used for reactivated devices/links (status = Drained, HardDrained, SoftDrained).
+	ProvisioningSlotCount uint64
+	DrainedSlotCount      uint64
 }
 
 func (c *Config) Validate() error {

@@ -404,7 +404,9 @@ async fn test_contributor_delete_from_suspended() {
 
     let (program_config_pubkey, _) = get_program_config_pda(&program_id);
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+    let owner = Pubkey::new_unique();
 
+    // Initialize global state
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -428,17 +430,18 @@ async fn test_contributor_delete_from_suspended() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
-            code: "la".to_string(),
+            code: "test".to_string(),
         }),
         vec![
             AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new(payer.pubkey(), false),
+            AccountMeta::new(owner, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )
     .await;
 
+    // First suspend (should succeed)
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -452,18 +455,20 @@ async fn test_contributor_delete_from_suspended() {
     )
     .await;
 
-    let contributor_la = get_account_data(&mut banks_client, contributor_pubkey)
+    // Verify contributor is suspended
+    let contributor = get_account_data(&mut banks_client, contributor_pubkey)
         .await
         .expect("Unable to get Account")
         .get_contributor()
         .unwrap();
-    assert_eq!(contributor_la.status, ContributorStatus::Suspended);
+    assert_eq!(contributor.status, ContributorStatus::Suspended);
 
-    execute_transaction(
+    // Second suspend (should fail with InvalidStatus)
+    let result = try_execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::DeleteContributor(ContributorDeleteArgs {}),
+        DoubleZeroInstruction::SuspendContributor(ContributorSuspendArgs {}),
         vec![
             AccountMeta::new(contributor_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
@@ -472,6 +477,12 @@ async fn test_contributor_delete_from_suspended() {
     )
     .await;
 
-    let contributor_la = get_account_data(&mut banks_client, contributor_pubkey).await;
-    assert_eq!(contributor_la, None);
+    assert!(result.is_err());
+    let error_string = format!("{:?}", result.unwrap_err());
+    assert!(
+        error_string.contains("Custom(7)"),
+        "Expected InvalidStatus error (Custom(7)), got: {}",
+        error_string
+    );
+    println!("✅ Suspending already-suspended contributor correctly fails with InvalidStatus");
 }

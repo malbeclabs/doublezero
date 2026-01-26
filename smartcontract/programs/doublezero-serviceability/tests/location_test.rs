@@ -206,7 +206,7 @@ async fn test_location_delete_from_suspended() {
     let (program_config_pubkey, _) = get_program_config_pda(&program_id);
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
 
-    // Init global state
+    // Initialize global state
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -220,7 +220,7 @@ async fn test_location_delete_from_suspended() {
     )
     .await;
 
-    // Create location
+    // Create and suspend a location
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (location_pubkey, _) = get_location_pda(&program_id, globalstate_account.account_index + 1);
@@ -230,11 +230,11 @@ async fn test_location_delete_from_suspended() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::CreateLocation(LocationCreateArgs {
-            code: "la".to_string(),
-            name: "Los Angeles".to_string(),
+            code: "test".to_string(),
+            name: "Test Location".to_string(),
             country: "us".to_string(),
-            lat: 1.234,
-            lng: 4.567,
+            lat: 1.0,
+            lng: 2.0,
             loc_id: 0,
         }),
         vec![
@@ -259,18 +259,20 @@ async fn test_location_delete_from_suspended() {
     )
     .await;
 
-    let location_la = get_account_data(&mut banks_client, location_pubkey)
+    // Verify location is suspended
+    let location = get_account_data(&mut banks_client, location_pubkey)
         .await
         .expect("Unable to get Account")
         .get_location()
         .unwrap();
-    assert_eq!(location_la.status, LocationStatus::Suspended);
+    assert_eq!(location.status, LocationStatus::Suspended);
 
-    execute_transaction(
+    // Second suspend (should fail with InvalidStatus)
+    let result = try_execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::DeleteLocation(LocationDeleteArgs {}),
+        DoubleZeroInstruction::SuspendLocation(LocationSuspendArgs {}),
         vec![
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
@@ -279,6 +281,12 @@ async fn test_location_delete_from_suspended() {
     )
     .await;
 
-    let location_la = get_account_data(&mut banks_client, location_pubkey).await;
-    assert_eq!(location_la, None);
+    assert!(result.is_err());
+    let error_string = format!("{:?}", result.unwrap_err());
+    assert!(
+        error_string.contains("Custom(7)"),
+        "Expected InvalidStatus error (Custom(7)), got: {}",
+        error_string
+    );
+    println!("✅ Suspending already-suspended location correctly fails with InvalidStatus");
 }

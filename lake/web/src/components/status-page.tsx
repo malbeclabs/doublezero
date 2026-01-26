@@ -905,16 +905,13 @@ function LinkIssuesFilterCard({
   const [expanded, setExpanded] = useState(false)
 
   // Sort items by count (highest first), alphabetically if same, with no_issues always last
-  // Only include items with count > 0 (always include no_issues)
-  const items = [...itemDefs]
-    .filter(item => item.filter === 'no_issues' || (counts[item.filter] ?? 0) > 0)
-    .sort((a, b) => {
-      if (a.filter === 'no_issues') return 1
-      if (b.filter === 'no_issues') return -1
-      const countDiff = (counts[b.filter] ?? 0) - (counts[a.filter] ?? 0)
-      if (countDiff !== 0) return countDiff
-      return a.label.localeCompare(b.label)
-    })
+  const items = [...itemDefs].sort((a, b) => {
+    if (a.filter === 'no_issues') return 1
+    if (b.filter === 'no_issues') return -1
+    const countDiff = (counts[b.filter] ?? 0) - (counts[a.filter] ?? 0)
+    if (countDiff !== 0) return countDiff
+    return a.label.localeCompare(b.label)
+  })
 
   // Collapse if more than 4 items
   const shouldCollapse = items.length > 4

@@ -377,23 +377,23 @@ func (c *MockInfluxDBClient) generateCounterRow(device *mockDevice, iface mockIn
 	outBroadcastPkts := outPkts * broadcastPct / 100
 
 	row := map[string]any{
-		"time":                t.UTC().Format("2006-01-02 15:04:05.999999999 +0000 UTC"),
-		"dzd_pubkey":          device.pk,
-		"host":                device.code,
-		"intf":                iface.name,
-		"model_name":          "MockModel",
-		"serial_number":       fmt.Sprintf("MOCK%s", truncateString(device.pk, 8)),
-		"carrier-transitions": int64(0),
-		"in-broadcast-pkts":   inBroadcastPkts,
-		"in-multicast-pkts":   inMulticastPkts,
-		"in-octets":           inOctets,
-		"in-pkts":             inPkts,
-		"in-unicast-pkts":     inUnicastPkts,
-		"out-broadcast-pkts":  outBroadcastPkts,
-		"out-multicast-pkts":  outMulticastPkts,
-		"out-octets":          outOctets,
-		"out-pkts":            outPkts,
-		"out-unicast-pkts":    outUnicastPkts,
+		"time":                 t.UTC().Format("2006-01-02 15:04:05.999999999 +0000 UTC"),
+		"dzd_pubkey":           device.pk,
+		"host":                 device.code,
+		"intf":                 iface.name,
+		"model_name":           "MockModel",
+		"serial_number":        fmt.Sprintf("MOCK%s", truncateString(device.pk, 8)),
+		"carrier-transitions":  int64(0),
+		"in-broadcast-pkts":    inBroadcastPkts,
+		"in-multicast-pkts":    inMulticastPkts,
+		"in-octets":            inOctets,
+		"in-pkts":              inPkts,
+		"in-unicast-pkts":      inUnicastPkts,
+		"out-broadcast-pkts":   outBroadcastPkts,
+		"out-multicast-pkts":   outMulticastPkts,
+		"out-octets":           outOctets,
+		"out-pkts":             outPkts,
+		"out-unicast-pkts":     outUnicastPkts,
 	}
 
 	// Sparse counters (errors/discards): mostly null, occasionally small values
@@ -433,7 +433,7 @@ func (c *MockInfluxDBClient) getInterfaceCapacity(ifaceName string, seed uint64)
 	switch {
 	case strings.HasPrefix(ifaceName, "Tunnel"):
 		// Tunnel interfaces: capacity varies (100 Mbps - 1 Gbps)
-		return float64(100_000_000 + (seed % 900_000_000))
+		return float64(100_000_000 + (seed%900_000_000))
 	case strings.HasPrefix(ifaceName, "Loopback"):
 		// Loopback: typically just control plane traffic
 		return float64(100_000_000) // 100 Mbps nominal
@@ -482,6 +482,7 @@ func (c *MockInfluxDBClient) getAvgPacketSize(ifaceName string) int64 {
 		return 800
 	}
 }
+
 
 // parseTimeRange extracts start and end times from an InfluxDB SQL query
 func parseTimeRange(sqlQuery string) (time.Time, time.Time, error) {

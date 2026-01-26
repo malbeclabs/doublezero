@@ -140,6 +140,146 @@ func TestLake_TelemetryUsage_Store_GetMaxTimestamp(t *testing.T) {
 	})
 }
 
+func TestLake_TelemetryUsage_Store_GetMaxTimestampsByKey(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns empty map for empty table", func(t *testing.T) {
+		t.Parallel()
+
+		db := testClient(t)
+
+		store, err := NewStore(StoreConfig{
+			Logger:     laketesting.NewLogger(),
+			ClickHouse: db,
+		})
+		require.NoError(t, err)
+
+		startTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+		result, err := store.GetMaxTimestampsByKey(context.Background(), startTime)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.Empty(t, result)
+	})
+
+	t.Run("returns max timestamps by device/interface key", func(t *testing.T) {
+		t.Parallel()
+
+		db := testClient(t)
+
+		store, err := NewStore(StoreConfig{
+			Logger:     laketesting.NewLogger(),
+			ClickHouse: db,
+		})
+		require.NoError(t, err)
+
+		// Insert test data with different timestamps for different device/interface combinations
+		t1 := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
+		t2 := time.Date(2024, 1, 1, 11, 0, 0, 0, time.UTC)
+		t3 := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+		usage := []InterfaceUsage{
+			{
+				Time:     t1,
+				DevicePK: stringPtr("device1"),
+				Intf:     stringPtr("eth0"),
+			},
+			{
+				Time:     t2,
+				DevicePK: stringPtr("device1"),
+				Intf:     stringPtr("eth0"),
+			},
+			{
+				Time:     t3,
+				DevicePK: stringPtr("device1"),
+				Intf:     stringPtr("eth0"),
+			},
+			{
+				Time:     t1,
+				DevicePK: stringPtr("device2"),
+				Intf:     stringPtr("eth1"),
+			},
+			{
+				Time:     t2,
+				DevicePK: stringPtr("device2"),
+				Intf:     stringPtr("eth1"),
+			},
+		}
+
+		err = store.InsertInterfaceUsage(context.Background(), usage)
+		require.NoError(t, err)
+
+		// Query max timestamps starting from before all data
+		startTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+		result, err := store.GetMaxTimestampsByKey(context.Background(), startTime)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+
+		// device1:eth0 should have max of t3
+		maxForDevice1, ok := result["device1:eth0"]
+		require.True(t, ok)
+		require.True(t, maxForDevice1.Equal(t3), "expected max timestamp %v for device1:eth0, got %v", t3, maxForDevice1)
+
+		// device2:eth1 should have max of t2
+		maxForDevice2, ok := result["device2:eth1"]
+		require.True(t, ok)
+		require.True(t, maxForDevice2.Equal(t2), "expected max timestamp %v for device2:eth1, got %v", t2, maxForDevice2)
+	})
+
+	t.Run("respects startTime filter", func(t *testing.T) {
+		t.Parallel()
+
+		db := testClient(t)
+
+		store, err := NewStore(StoreConfig{
+			Logger:     laketesting.NewLogger(),
+			ClickHouse: db,
+		})
+		require.NoError(t, err)
+
+		// Insert test data spanning different times
+		t1 := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
+		t2 := time.Date(2024, 1, 1, 11, 0, 0, 0, time.UTC)
+		t3 := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+		usage := []InterfaceUsage{
+			{
+				Time:     t1,
+				DevicePK: stringPtr("device1"),
+				Intf:     stringPtr("eth0"),
+			},
+			{
+				Time:     t2,
+				DevicePK: stringPtr("device1"),
+				Intf:     stringPtr("eth0"),
+			},
+			{
+				Time:     t3,
+				DevicePK: stringPtr("device1"),
+				Intf:     stringPtr("eth0"),
+			},
+		}
+
+		err = store.InsertInterfaceUsage(context.Background(), usage)
+		require.NoError(t, err)
+
+		// Query max timestamps starting from t2 (should exclude t1)
+		result, err := store.GetMaxTimestampsByKey(context.Background(), t2)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+
+		// Should have max of t3 (since t2 and t3 are >= t2)
+		maxForDevice1, ok := result["device1:eth0"]
+		require.True(t, ok)
+		require.True(t, maxForDevice1.Equal(t3), "expected max timestamp %v for device1:eth0, got %v", t3, maxForDevice1)
+
+		// Query with startTime after all data should return empty
+		futureStart := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
+		result2, err := store.GetMaxTimestampsByKey(context.Background(), futureStart)
+		require.NoError(t, err)
+		require.Empty(t, result2)
+	})
+}
+
 func TestLake_TelemetryUsage_Store_InsertInterfaceUsage(t *testing.T) {
 	t.Parallel()
 

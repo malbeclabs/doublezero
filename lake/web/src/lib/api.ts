@@ -3271,6 +3271,48 @@ export async function fetchStakeValidators(
   return res.json()
 }
 
+// Traffic analytics types and functions
+export interface TrafficPoint {
+  time: string
+  device_pk: string
+  device: string
+  intf: string
+  in_bps: number
+  out_bps: number
+}
+
+export interface SeriesInfo {
+  key: string
+  device: string
+  intf: string
+  direction: string
+  mean: number
+}
+
+export interface TrafficDataResponse {
+  points: TrafficPoint[]
+  series: SeriesInfo[]
+}
+
+export async function fetchTrafficData(
+  timeRange: string = '12h',
+  tunnelOnly: boolean = true,
+  bucket: string = 'auto',
+  agg: string = 'max'
+): Promise<TrafficDataResponse> {
+  const params = new URLSearchParams({
+    time_range: timeRange,
+    tunnel_only: String(tunnelOnly),
+    bucket: bucket,
+    agg: agg
+  })
+  const res = await fetchWithRetry(`/api/traffic/data?${params}`)
+  if (!res.ok) {
+    throw new Error('Failed to fetch traffic data')
+  }
+  return res.json()
+}
+
 // Search types and functions
 export type SearchEntityType = 'device' | 'link' | 'metro' | 'contributor' | 'user' | 'validator' | 'gossip'
 

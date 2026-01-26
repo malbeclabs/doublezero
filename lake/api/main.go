@@ -437,6 +437,9 @@ func main() {
 	r.Get("/api/stake/changes", handlers.GetStakeChanges)
 	r.Get("/api/stake/validators", handlers.GetStakeValidators)
 
+	// Traffic analytics routes
+	r.Get("/api/traffic/data", handlers.GetTrafficData)
+
 	r.Get("/api/topology", handlers.GetTopology)
 	r.Get("/api/topology/traffic", handlers.GetTopologyTraffic)
 	r.Get("/api/topology/link-latency", handlers.GetLinkLatencyHistory)

@@ -17,9 +17,9 @@ pub struct SubscribeUserCliCommand {
     /// User Pubkey to subscribe
     #[arg(long, value_parser = validate_pubkey)]
     pub user: String,
-    /// Multicast group Pubkey or code to subscribe to
-    #[arg(long, value_parser = validate_pubkey_or_code)]
-    pub group: String,
+    /// Multicast group Pubkey or code to subscribe to (can be specified multiple times)
+    #[arg(long = "group", value_parser = validate_pubkey_or_code, num_args = 1..)]
+    pub groups: Vec<String>,
     /// Subscribe as a publisher
     #[arg(long)]
     pub publisher: bool,
@@ -40,36 +40,42 @@ impl SubscribeUserCliCommand {
             pubkey: parse_pubkey(&self.user).ok_or_else(|| eyre::eyre!("Invalid user pubkey"))?,
         })?;
 
-        let group_pk = match parse_pubkey(&self.group) {
-            Some(pk) => Some(pk),
-            None => {
-                let (pubkey, _) = client
-                    .get_multicastgroup(GetMulticastGroupCommand {
-                        pubkey_or_code: self.group.to_string(),
-                    })
-                    .map_err(|_| eyre::eyre!("MulticastGroup not found ({})", self.group))?;
-                Some(pubkey)
-            }
+        // Resolve all group pubkeys
+        let mut group_pks = Vec::new();
+        for group in &self.groups {
+            let group_pk = match parse_pubkey(group) {
+                Some(pk) => pk,
+                None => {
+                    let (pubkey, _) = client
+                        .get_multicastgroup(GetMulticastGroupCommand {
+                            pubkey_or_code: group.to_string(),
+                        })
+                        .map_err(|_| eyre::eyre!("MulticastGroup not found ({})", group))?;
+                    pubkey
+                }
+            };
+            group_pks.push(group_pk);
         }
-        .ok_or_else(|| eyre::eyre!("Invalid group: {}", self.group))?;
 
-        let signature = client.subscribe_multicastgroup(SubscribeMulticastGroupCommand {
-            user_pk,
-            group_pk,
-            client_ip: user.client_ip,
-            publisher: self.publisher,
-            subscriber: self.subscriber,
-        })?;
-        writeln!(out, "Signature: {signature}",)?;
+        // Subscribe to each group
+        for group_pk in &group_pks {
+            let signature = client.subscribe_multicastgroup(SubscribeMulticastGroupCommand {
+                user_pk,
+                group_pk: *group_pk,
+                client_ip: user.client_ip,
+                publisher: self.publisher,
+                subscriber: self.subscriber,
+            })?;
+            writeln!(out, "Subscribed to {group_pk}: {signature}")?;
+        }
 
         if self.wait {
             let user = poll_for_user_activated(client, &user_pk)?;
-            let mgroup = poll_for_multicastgroup_activated(client, &group_pk)?;
-            writeln!(
-                out,
-                "Status: User: {0} Multicast Group: {1}",
-                user.status, mgroup.status
-            )?;
+            writeln!(out, "User status: {}", user.status)?;
+            for group_pk in &group_pks {
+                let mgroup = poll_for_multicastgroup_activated(client, group_pk)?;
+                writeln!(out, "Multicast group {group_pk} status: {}", mgroup.status)?;
+            }
         }
 
         Ok(())
@@ -176,7 +182,7 @@ mod tests {
         let mut output = Vec::new();
         let res = SubscribeUserCliCommand {
             user: user_pubkey.to_string(),
-            group: mgroup_pubkey.to_string(),
+            groups: vec![mgroup_pubkey.to_string()],
             publisher: false,
             subscriber: true,
             wait: false,
@@ -185,7 +191,8 @@ mod tests {
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
-            output_str,"Signature: 3QnHBSdd4doEF6FgpLCejqEw42UQjfvNhQJwoYDSpoBszpCCqVft4cGoneDCnZ6Ez3ujzavzUu85u6F79WtLhcsv\n"
+            output_str,
+            format!("Subscribed to {mgroup_pubkey}: 3QnHBSdd4doEF6FgpLCejqEw42UQjfvNhQJwoYDSpoBszpCCqVft4cGoneDCnZ6Ez3ujzavzUu85u6F79WtLhcsv\n")
         );
     }
 }

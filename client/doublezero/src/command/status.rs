@@ -72,7 +72,7 @@ impl StatusCliCommand {
                 }
             }
             let lowest_latency_device =
-                match best_latency(controller, &devices, true, None, current_device).await {
+                match best_latency(controller, &devices, true, None, current_device, &[]).await {
                     Ok(best) => {
                         let is_current = user
                             .map(|u| best.device_pk == u.device_pk.to_string())
@@ -119,6 +119,7 @@ mod tests {
     use doublezero_serviceability::state::device::{DeviceDesiredStatus, DeviceHealth};
     use mockall::predicate::*;
     use solana_sdk::pubkey::Pubkey;
+    use std::net::Ipv4Addr;
 
     #[tokio::test]
     async fn test_status_command_tunnel_up() {
@@ -239,6 +240,7 @@ mod tests {
                 publishers: vec![],
                 subscribers: vec![],
                 validator_pubkey: Pubkey::default(),
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             },
         );
 
@@ -247,9 +249,9 @@ mod tests {
                 device_pk: device1_pk.to_string(),
                 device_code: "device1".to_string(),
                 device_ip: "5.6.7.8".to_string(),
-                min_latency_ns: 5000000,
-                max_latency_ns: 5000000,
-                avg_latency_ns: 5000000,
+                min_latency_ns: 10000000,
+                max_latency_ns: 10000000,
+                avg_latency_ns: 10000000,
                 reachable: true,
             },
             LatencyRecord {
@@ -581,6 +583,7 @@ mod tests {
                 publishers: vec![],
                 subscribers: vec![],
                 validator_pubkey: Pubkey::default(),
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             },
         );
 

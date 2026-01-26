@@ -916,7 +916,6 @@ function LinkIssuesFilterCard({
   // Collapse if more than 4 items
   const shouldCollapse = items.length > 4
   const visibleItems = shouldCollapse && !expanded ? items.slice(0, 4) : items
-  const hiddenCount = items.length - 4
 
   const grandTotal = (counts.total + counts.no_issues) || 1
   const packetLossPct = (counts.packet_loss / grandTotal) * 100
@@ -997,9 +996,9 @@ function LinkIssuesFilterCard({
         {shouldCollapse && (
           <button
             onClick={() => setExpanded(!expanded)}
-            className="text-xs text-muted-foreground hover:text-foreground transition-colors pt-1"
+            className="w-full flex justify-center pt-1 text-muted-foreground hover:text-foreground transition-colors"
           >
-            {expanded ? 'Show less' : `+${hiddenCount} more`}
+            {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
           </button>
         )}
       </div>

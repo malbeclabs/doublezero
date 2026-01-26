@@ -519,6 +519,7 @@ func (d *DimensionType2Dataset) loadSnapshotIntoStaging(
 	if err != nil {
 		return fmt.Errorf("failed to prepare staging batch: %w", err)
 	}
+	defer batch.Close() // Always release the connection back to the pool
 
 	for i := range count {
 		select {
@@ -570,14 +571,9 @@ func (d *DimensionType2Dataset) loadSnapshotIntoStaging(
 
 	d.log.Debug("sending staging batch", "dataset", d.schema.Name(), "rows", count, "op_id", opID)
 	if err := batch.Send(); err != nil {
-		_ = batch.Close()
 		return fmt.Errorf("failed to send staging batch: %w", err)
 	}
 	d.log.Debug("staging batch sent successfully", "dataset", d.schema.Name(), "rows", count, "op_id", opID)
-
-	if err := batch.Close(); err != nil {
-		return fmt.Errorf("failed to close staging batch: %w", err)
-	}
 
 	// Note: attrs_hash is stored as placeholder (0) in staging but is recomputed
 	// in the staging CTE from aggregated values, so no UPDATE mutation is needed.

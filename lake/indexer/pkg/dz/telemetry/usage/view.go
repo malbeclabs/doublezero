@@ -157,12 +157,8 @@ func (v *View) Start(ctx context.Context) {
 	go func() {
 		v.log.Info("telemetry/usage: starting refresh loop", "interval", v.cfg.RefreshInterval)
 
-		if err := v.Refresh(ctx); err != nil {
-			if errors.Is(err, context.Canceled) {
-				return
-			}
-			v.log.Error("telemetry/usage: initial refresh failed", "error", err)
-		}
+		v.safeRefresh(ctx)
+
 		ticker := v.cfg.Clock.NewTicker(v.cfg.RefreshInterval)
 		defer ticker.Stop()
 		for {
@@ -170,15 +166,27 @@ func (v *View) Start(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-ticker.Chan():
-				if err := v.Refresh(ctx); err != nil {
-					if errors.Is(err, context.Canceled) {
-						return
-					}
-					v.log.Error("telemetry/usage: refresh failed", "error", err)
-				}
+				v.safeRefresh(ctx)
 			}
 		}
 	}()
+}
+
+// safeRefresh wraps Refresh with panic recovery to prevent the refresh loop from dying
+func (v *View) safeRefresh(ctx context.Context) {
+	defer func() {
+		if r := recover(); r != nil {
+			v.log.Error("telemetry/usage: refresh panicked", "panic", r)
+			metrics.ViewRefreshTotal.WithLabelValues("telemetry-usage", "panic").Inc()
+		}
+	}()
+
+	if err := v.Refresh(ctx); err != nil {
+		if errors.Is(err, context.Canceled) {
+			return
+		}
+		v.log.Error("telemetry/usage: refresh failed", "error", err)
+	}
 }
 
 func (v *View) Refresh(ctx context.Context) error {
@@ -191,10 +199,6 @@ func (v *View) Refresh(ctx context.Context) error {
 		duration := time.Since(refreshStart)
 		v.log.Info("telemetry/usage: refresh completed", "duration", duration.String())
 		metrics.ViewRefreshDuration.WithLabelValues("telemetry-usage").Observe(duration.Seconds())
-		if err := recover(); err != nil {
-			metrics.ViewRefreshTotal.WithLabelValues("telemetry-usage", "error").Inc()
-			panic(err)
-		}
 	}()
 
 	maxTime, err := v.store.GetMaxTimestamp(ctx)
@@ -795,6 +799,7 @@ func (v *View) queryBaselineCountersFromClickHouse(ctx context.Context, windowSt
 	if err != nil {
 		return nil, fmt.Errorf("failed to get ClickHouse connection: %w", err)
 	}
+	defer conn.Close()
 
 	for _, cf := range counterFields {
 		// Use argMax to get the latest row per device/interface
@@ -808,13 +813,11 @@ func (v *View) queryBaselineCountersFromClickHouse(ctx context.Context, windowSt
 			GROUP BY device_pk, intf
 		`, cf.field, cf.field)
 
-		ctx := context.Background()
 		rows, err := conn.Query(ctx, sqlQuery, lookbackStart, windowStart)
 		if err != nil {
 			v.log.Warn("telemetry/usage: failed to query baseline for counter from clickhouse", "counter", cf.field, "error", err)
 			continue
 		}
-		defer rows.Close()
 
 		for rows.Next() {
 			var devicePK, intf *string
@@ -832,6 +835,11 @@ func (v *View) queryBaselineCountersFromClickHouse(ctx context.Context, windowSt
 			if val != nil {
 				cf.baseline[key] = val
 			}
+		}
+		rows.Close()
+
+		if err := rows.Err(); err != nil {
+			v.log.Warn("telemetry/usage: error iterating baseline rows", "counter", cf.field, "error", err)
 		}
 	}
 

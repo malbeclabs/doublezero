@@ -114,12 +114,8 @@ func (v *View) Start(ctx context.Context) {
 	go func() {
 		v.log.Info("telemetry/latency: starting refresh loop", "interval", v.cfg.RefreshInterval)
 
-		if err := v.Refresh(ctx); err != nil {
-			if errors.Is(err, context.Canceled) {
-				return
-			}
-			v.log.Error("telemetry/latency: initial refresh failed", "error", err)
-		}
+		v.safeRefresh(ctx)
+
 		ticker := v.cfg.Clock.NewTicker(v.cfg.RefreshInterval)
 		defer ticker.Stop()
 		for {
@@ -127,15 +123,27 @@ func (v *View) Start(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-ticker.Chan():
-				if err := v.Refresh(ctx); err != nil {
-					if errors.Is(err, context.Canceled) {
-						return
-					}
-					v.log.Error("telemetry/latency: refresh failed", "error", err)
-				}
+				v.safeRefresh(ctx)
 			}
 		}
 	}()
+}
+
+// safeRefresh wraps Refresh with panic recovery to prevent the refresh loop from dying
+func (v *View) safeRefresh(ctx context.Context) {
+	defer func() {
+		if r := recover(); r != nil {
+			v.log.Error("telemetry/latency: refresh panicked", "panic", r)
+			metrics.ViewRefreshTotal.WithLabelValues("telemetry", "panic").Inc()
+		}
+	}()
+
+	if err := v.Refresh(ctx); err != nil {
+		if errors.Is(err, context.Canceled) {
+			return
+		}
+		v.log.Error("telemetry/latency: refresh failed", "error", err)
+	}
 }
 
 func (v *View) Refresh(ctx context.Context) error {
@@ -148,10 +156,6 @@ func (v *View) Refresh(ctx context.Context) error {
 		duration := time.Since(refreshStart)
 		v.log.Info("telemetry/latency: refresh completed", "duration", duration.String())
 		metrics.ViewRefreshDuration.WithLabelValues("telemetry").Observe(duration.Seconds())
-		if err := recover(); err != nil {
-			metrics.ViewRefreshTotal.WithLabelValues("telemetry", "error").Inc()
-			panic(err)
-		}
 	}()
 
 	if !v.cfg.Serviceability.Ready() {

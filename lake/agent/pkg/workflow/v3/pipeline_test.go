@@ -44,7 +44,7 @@ func TestBuildMessages_SkipsEmptyContent(t *testing.T) {
 			name:         "history with empty user content",
 			userQuestion: "Follow-up question",
 			history: []workflow.ConversationMessage{
-				{Role: "user", Content: ""},          // shouldn't happen but defensive
+				{Role: "user", Content: ""}, // shouldn't happen but defensive
 				{Role: "assistant", Content: "Answer"},
 			},
 			wantMsgCount: 2, // 1 assistant history + 1 user question (empty user skipped)

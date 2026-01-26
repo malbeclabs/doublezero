@@ -93,8 +93,8 @@ type WorkflowMetrics struct {
 	OutputTokens int // Total output tokens
 
 	// Tool usage
-	Queries      int // Total queries executed (SQL + Cypher)
-	QueryErrors  int // Queries that returned errors
+	Queries     int // Total queries executed (SQL + Cypher)
+	QueryErrors int // Queries that returned errors
 
 	// Timing
 	TotalDuration time.Duration // End-to-end time
@@ -138,12 +138,12 @@ type Message struct {
 type ContentBlock struct {
 	Type      string         `json:"type"` // "text", "tool_use", "tool_result"
 	Text      string         `json:"text,omitempty"`
-	ID        string         `json:"id,omitempty"`           // For tool_use
-	Name      string         `json:"name,omitempty"`         // For tool_use
-	Input     map[string]any `json:"input,omitempty"`        // For tool_use
-	ToolUseID string         `json:"tool_use_id,omitempty"`  // For tool_result
-	Content   string         `json:"content,omitempty"`      // For tool_result (when Type is tool_result)
-	IsError   bool           `json:"is_error,omitempty"`     // For tool_result
+	ID        string         `json:"id,omitempty"`          // For tool_use
+	Name      string         `json:"name,omitempty"`        // For tool_use
+	Input     map[string]any `json:"input,omitempty"`       // For tool_use
+	ToolUseID string         `json:"tool_use_id,omitempty"` // For tool_result
+	Content   string         `json:"content,omitempty"`     // For tool_result (when Type is tool_result)
+	IsError   bool           `json:"is_error,omitempty"`    // For tool_result
 }
 
 // NewTextBlock creates a text content block.

@@ -1,0 +1,369 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+/* Use class-based dark mode instead of prefers-color-scheme */
+@variant dark (&:where(.dark, .dark *));
+
+/* Light theme variables - matching parent site */
+:root {
+  --radius: 0px;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.141 0.005 285.823);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.141 0.005 285.823);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.141 0.005 285.823);
+  --primary: oklch(0.2103 0.0059 285.89);
+  --primary-foreground: oklch(0.9851 0 0);
+  --secondary: oklch(0.967 0.001 286.375);
+  --secondary-foreground: oklch(0.141 0.005 285.823);
+  --muted: oklch(0.967 0.001 286.375);
+  --muted-foreground: oklch(0 0.016 196.88 / 85%);
+  --accent: oklch(0.598 0.244 28.36);
+  --accent-foreground: oklch(1 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.2686 0 0 / 14.9%);
+  --input: oklch(0.9288 0.0126 255.51);
+  --ring: oklch(0.5115 0.1532 253.87);
+
+  /* Sidebar colors - neutral greys */
+  --sidebar: oklch(0.97 0 0);
+  --sidebar-active: oklch(0.93 0 0);
+  --sidebar-foreground: var(--foreground);
+
+  /* Additional accent colors */
+  --accent-orange-10: oklch(0.988 0.011 68.09);
+  --accent-orange-20: oklch(0.975 0.019 68.09);
+  --accent-orange-50: oklch(0.8502 0.0978 57.42);
+  --accent-orange-100: oklch(0.606 0.2251 31.82);
+
+  /* Greys */
+  --grey-10: oklch(0.9702 0 0);
+  --grey-40: oklch(0.5103 0 0);
+  --grey-50: oklch(0.867 0.003 285.82);
+
+  /* Font variables with fallbacks */
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'SF Mono', 'Menlo', 'Monaco', ui-monospace, monospace;
+  --font-heading: 'Source Serif 4', Georgia, serif;
+  --font-wordmark: 'Playfair Display', Georgia, serif;
+}
+
+/* Dark theme variables */
+.dark {
+  --background: oklch(0.15 0.005 285.823);
+  --foreground: oklch(0.95 0.005 285.823);
+  --card: oklch(0.18 0.005 285.823);
+  --card-foreground: oklch(0.95 0.005 285.823);
+  --popover: oklch(0.18 0.005 285.823);
+  --popover-foreground: oklch(0.95 0.005 285.823);
+  --primary: oklch(0.85 0.005 285.89);
+  --primary-foreground: oklch(0.15 0 0);
+  --secondary: oklch(0.22 0.001 286.375);
+  --secondary-foreground: oklch(0.95 0.005 285.823);
+  --muted: oklch(0.22 0.001 286.375);
+  --muted-foreground: oklch(0.7 0.01 285.823);
+  --accent: oklch(0.598 0.244 28.36);
+  --accent-foreground: oklch(1 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.8 0 0 / 20%);
+  --input: oklch(0.25 0.01 255.51);
+  --ring: oklch(0.5115 0.1532 253.87);
+
+  /* Sidebar colors - dark */
+  --sidebar: oklch(0.13 0 0);
+  --sidebar-active: oklch(0.18 0 0);
+  --sidebar-foreground: var(--foreground);
+
+  /* Additional accent colors - neutral for dark mode */
+  --accent-orange-10: oklch(0.22 0 0);
+  --accent-orange-20: oklch(0.30 0 0);
+  --accent-orange-50: oklch(0.8502 0.0978 57.42);
+  --accent-orange-100: oklch(0.65 0.18 31.82);
+
+  /* Greys - inverted */
+  --grey-10: oklch(0.2 0 0);
+  --grey-40: oklch(0.55 0 0);
+  --grey-50: oklch(0.25 0.003 285.82);
+}
+
+@theme {
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --font-serif: var(--font-heading);
+  --font-wordmark: var(--font-wordmark);
+
+  /* Colors for Tailwind utilities */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-active: var(--sidebar-active);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-accent-orange-10: var(--accent-orange-10);
+  --color-accent-orange-20: var(--accent-orange-20);
+  --color-accent-orange-50: var(--accent-orange-50);
+  --color-accent-orange-100: var(--accent-orange-100);
+  --color-grey-10: var(--grey-10);
+  --color-grey-40: var(--grey-40);
+  --color-grey-50: var(--grey-50);
+
+  /* Radius */
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans;
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  button:not(:disabled) {
+    @apply cursor-pointer;
+  }
+  button:disabled {
+    @apply cursor-not-allowed;
+  }
+}
+
+#root {
+  min-height: 100vh;
+  min-height: 100dvh; /* Dynamic viewport height for mobile browsers */
+}
+
+/* Serif for headlines */
+h1, h2, h3, .headline {
+  font-family: var(--font-heading);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+}
+
+/* Wordmark typography - Playfair Display */
+.wordmark {
+  font-family: var(--font-wordmark);
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  line-height: 1.0;
+}
+
+/* CodeMirror - de-emphasized, content-focused */
+.cm-editor {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  background: transparent !important;
+}
+
+.cm-editor .cm-content {
+  padding: 16px 0;
+}
+
+.cm-editor .cm-line {
+  padding: 0 16px;
+}
+
+.cm-editor.cm-focused {
+  outline: none !important;
+}
+
+.cm-editor .cm-placeholder {
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+
+.cm-editor .cm-cursor {
+  border-left-color: var(--foreground);
+}
+
+/* CodeMirror selection - needs higher contrast for readability */
+.cm-editor .cm-selectionBackground {
+  background-color: oklch(0.5 0.15 250 / 40%) !important;
+}
+
+.cm-editor.cm-focused .cm-selectionBackground {
+  background-color: oklch(0.5 0.15 250 / 50%) !important;
+}
+
+/* CodeMirror autocomplete dropdown */
+.cm-tooltip-autocomplete {
+  background: var(--popover) !important;
+  border: 1px solid var(--border) !important;
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.cm-tooltip-autocomplete ul {
+  background: transparent !important;
+}
+
+.cm-tooltip-autocomplete ul li {
+  color: var(--foreground) !important;
+  padding: 4px 8px !important;
+}
+
+.cm-tooltip-autocomplete ul li[aria-selected="true"],
+.cm-tooltip-autocomplete ul li:hover {
+  background: var(--muted) !important;
+  color: var(--foreground) !important;
+}
+
+.cm-completionLabel {
+  color: var(--foreground) !important;
+}
+
+.cm-completionMatchedText {
+  color: var(--accent) !important;
+  text-decoration: none !important;
+}
+
+.cm-completionDetail {
+  color: var(--muted-foreground) !important;
+  font-style: italic;
+  margin-left: 8px;
+}
+
+/* Subtle selection */
+::selection {
+  background-color: var(--accent-orange-20);
+}
+
+/* Tables - minimal, data-forward */
+table {
+  border-collapse: collapse;
+}
+
+/* Prose for markdown - editorial style */
+.prose {
+  font-family: var(--font-sans);
+  color: var(--foreground);
+  line-height: 1.7;
+}
+
+.prose h1, .prose h2, .prose h3, .prose h4 {
+  font-family: var(--font-sans);
+  font-weight: 500;
+  color: var(--foreground);
+}
+
+.prose strong {
+  color: var(--foreground);
+}
+
+.prose a {
+  color: var(--accent);
+}
+
+.prose a:hover {
+  color: var(--accent-orange-100);
+}
+
+.prose code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: var(--muted);
+  padding: 0.15em 0.35em;
+  color: var(--foreground);
+}
+
+.prose pre {
+  background: var(--muted);
+  padding: 1em;
+  overflow-x: auto;
+}
+
+.prose pre code {
+  background: none;
+  padding: 0;
+}
+
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875em;
+}
+
+.prose th, .prose td {
+  border: 1px solid var(--border);
+  padding: 0.5em 0.75em;
+  text-align: left;
+}
+
+.prose th {
+  background: var(--muted);
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.prose tr:nth-child(even) {
+  background: oklch(from var(--muted) l c h / 50%);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--grey-40);
+}
+
+/* Animated flowing dashes for topology links */
+@keyframes flowingDash {
+  from {
+    stroke-dashoffset: 24;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Timeline new event slide-in animation */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-in {
+  animation: slideIn 0.4s ease-out;
+}

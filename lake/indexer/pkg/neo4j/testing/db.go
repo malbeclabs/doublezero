@@ -166,7 +166,7 @@ func NewDB(ctx context.Context, log *slog.Logger, cfg *DBConfig) (*DB, error) {
 
 	boltURL, err := container.BoltUrl(ctx)
 	if err != nil {
-		_ = container.Terminate(ctx)
+		container.Terminate(ctx)
 		return nil, fmt.Errorf("failed to get Neo4j bolt URL: %w", err)
 	}
 

@@ -522,7 +522,7 @@ func TestLake_TelemetryUsage_View_convertRowsToUsage(t *testing.T) {
 			"device1:Tunnel501": {LinkPK: "link1", LinkSide: "A"},
 		}
 
-		usage, err := view.convertRowsToUsage(rows, baselines, linkLookup)
+		usage, err := view.convertRowsToUsage(rows, baselines, linkLookup, nil)
 		require.NoError(t, err)
 		require.Len(t, usage, 2)
 
@@ -577,7 +577,7 @@ func TestLake_TelemetryUsage_View_convertRowsToUsage(t *testing.T) {
 			OutErrors:   make(map[string]*int64),
 		}
 
-		usage, err := view.convertRowsToUsage(rows, baselines, make(map[string]LinkInfo))
+		usage, err := view.convertRowsToUsage(rows, baselines, make(map[string]LinkInfo), nil)
 		require.NoError(t, err)
 		// First row should be skipped (used as baseline), so only second row should be stored
 		require.Len(t, usage, 1)
@@ -619,7 +619,7 @@ func TestLake_TelemetryUsage_View_convertRowsToUsage(t *testing.T) {
 			InErrors: make(map[string]*int64),
 		}
 
-		usage, err := view.convertRowsToUsage(rows, baselines, make(map[string]LinkInfo))
+		usage, err := view.convertRowsToUsage(rows, baselines, make(map[string]LinkInfo), nil)
 		require.NoError(t, err)
 		require.Len(t, usage, 2)
 
@@ -629,5 +629,114 @@ func TestLake_TelemetryUsage_View_convertRowsToUsage(t *testing.T) {
 		// Second row should have delta_duration of 60 seconds
 		require.NotNil(t, usage[1].DeltaDuration)
 		require.InDelta(t, 60.0, *usage[1].DeltaDuration, 0.01)
+	})
+
+	t.Run("skips already-written rows", func(t *testing.T) {
+		t.Parallel()
+		mockDB := testClient(t)
+
+		view, err := NewView(ViewConfig{
+			Logger:          laketesting.NewLogger(),
+			ClickHouse:      mockDB,
+			InfluxDB:        &mockInfluxDBClient{},
+			Bucket:          "test-bucket",
+			RefreshInterval: time.Second,
+			QueryWindow:     time.Hour,
+		})
+		require.NoError(t, err)
+
+		now := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+		rows := []map[string]any{
+			{
+				"time":       now.Format(time.RFC3339Nano),
+				"dzd_pubkey": "device1",
+				"intf":       "eth0",
+				"in-errors":  int64(1),
+			},
+			{
+				"time":       now.Add(time.Minute).Format(time.RFC3339Nano),
+				"dzd_pubkey": "device1",
+				"intf":       "eth0",
+				"in-errors":  int64(2),
+			},
+			{
+				"time":       now.Add(2 * time.Minute).Format(time.RFC3339Nano),
+				"dzd_pubkey": "device1",
+				"intf":       "eth0",
+				"in-errors":  int64(3),
+			},
+		}
+
+		baselines := &CounterBaselines{
+			InErrors: make(map[string]*int64),
+		}
+
+		// Mark the first row's timestamp as already written
+		alreadyWritten := MaxTimestampsByKey{
+			"device1:eth0": now,
+		}
+
+		usage, err := view.convertRowsToUsage(rows, baselines, make(map[string]LinkInfo), alreadyWritten)
+		require.NoError(t, err)
+		// First row should be skipped (already written), so only rows 2 and 3 should be stored
+		require.Len(t, usage, 2)
+
+		// Verify we got the second and third rows (timestamps after the already-written max)
+		require.Equal(t, now.Add(time.Minute), usage[0].Time)
+		require.Equal(t, now.Add(2*time.Minute), usage[1].Time)
+	})
+
+	t.Run("skips all rows up to and including already-written timestamp", func(t *testing.T) {
+		t.Parallel()
+		mockDB := testClient(t)
+
+		view, err := NewView(ViewConfig{
+			Logger:          laketesting.NewLogger(),
+			ClickHouse:      mockDB,
+			InfluxDB:        &mockInfluxDBClient{},
+			Bucket:          "test-bucket",
+			RefreshInterval: time.Second,
+			QueryWindow:     time.Hour,
+		})
+		require.NoError(t, err)
+
+		now := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+		rows := []map[string]any{
+			{
+				"time":       now.Format(time.RFC3339Nano),
+				"dzd_pubkey": "device1",
+				"intf":       "eth0",
+				"in-errors":  int64(1),
+			},
+			{
+				"time":       now.Add(time.Minute).Format(time.RFC3339Nano),
+				"dzd_pubkey": "device1",
+				"intf":       "eth0",
+				"in-errors":  int64(2),
+			},
+			{
+				"time":       now.Add(2 * time.Minute).Format(time.RFC3339Nano),
+				"dzd_pubkey": "device1",
+				"intf":       "eth0",
+				"in-errors":  int64(3),
+			},
+		}
+
+		baselines := &CounterBaselines{
+			InErrors: make(map[string]*int64),
+		}
+
+		// Mark up to the second row's timestamp as already written
+		alreadyWritten := MaxTimestampsByKey{
+			"device1:eth0": now.Add(time.Minute),
+		}
+
+		usage, err := view.convertRowsToUsage(rows, baselines, make(map[string]LinkInfo), alreadyWritten)
+		require.NoError(t, err)
+		// First two rows should be skipped (at or before already-written timestamp), only third row stored
+		require.Len(t, usage, 1)
+
+		// Verify we got only the third row
+		require.Equal(t, now.Add(2*time.Minute), usage[0].Time)
 	})
 }

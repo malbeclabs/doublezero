@@ -53,20 +53,6 @@ RUN echo "$CACHE_BUSTER" > ${BIN_DIR}/.cache-buster && \
     find ${BIN_DIR} -type f -exec touch {} +
 
 # ----------------------------------------------------------------------------
-# NodeJS builder
-# ----------------------------------------------------------------------------
-FROM oven/bun:latest AS builder-bun
-
-WORKDIR /doublezero
-COPY . .
-RUN mkdir -p bin/
-
-# Build the lake-web UI (NodeJS)
-RUN cd lake/web && \
-    bun install && \
-    bun run build
-
-# ----------------------------------------------------------------------------
 # Main stage with only the binaries.
 # ----------------------------------------------------------------------------
 FROM ubuntu:24.04
@@ -79,7 +65,8 @@ RUN apt update -qq && \
     gnupg \
     build-essential \
     pkg-config \
-    iproute2 iputils-ping net-tools tcpdump && \
+    iproute2 iputils-ping net-tools tcpdump \
+    postgresql-client && \
     # Install ClickHouse client
     curl -fsSL https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml.key | gpg --dearmor -o /usr/share/keyrings/clickhouse-keyring.gpg && \
     echo "deb [signed-by=/usr/share/keyrings/clickhouse-keyring.gpg] https://packages.clickhouse.com/deb stable main" > /etc/apt/sources.list.d/clickhouse.list && \
@@ -92,7 +79,8 @@ ENV PATH="/doublezero/bin:${PATH}"
 # Copy binaries from the builder stage.
 COPY --from=builder-go /doublezero/bin/. /doublezero/bin/.
 
-# Copy web assets from the bun builder stage.
-COPY --from=builder-bun /doublezero/lake/web/dist /doublezero/web/dist
+# Copy pre-built web assets (built by deploy script, uploaded to S3)
+COPY lake/web/dist /doublezero/web/dist
+RUN test -f /doublezero/web/dist/index.html || (echo "Error: web assets not built. Run 'cd lake/web && bun run build' first." && exit 1)
 
 CMD ["/bin/bash"]

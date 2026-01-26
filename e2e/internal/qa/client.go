@@ -59,6 +59,7 @@ type Device struct {
 	MaxUsers     int
 	UsersCount   int
 	Status       serviceability.DeviceStatus
+	DeviceType   serviceability.DeviceDeviceType
 }
 
 type Client struct {

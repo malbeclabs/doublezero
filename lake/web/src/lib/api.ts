@@ -1220,6 +1220,13 @@ export interface LinkHourStatus {
   avg_latency_us: number
   avg_loss_pct: number
   samples: number
+  // Per-side metrics (direction: A→Z vs Z→A)
+  side_a_latency_us?: number
+  side_a_loss_pct?: number
+  side_a_samples?: number
+  side_z_latency_us?: number
+  side_z_loss_pct?: number
+  side_z_samples?: number
 }
 
 export interface LinkHistory {

@@ -1036,6 +1036,13 @@ type LinkHourStatus struct {
 	AvgLatencyUs float64 `json:"avg_latency_us"`
 	AvgLossPct   float64 `json:"avg_loss_pct"`
 	Samples      uint64  `json:"samples"`
+	// Per-side metrics (direction: A→Z vs Z→A)
+	SideALatencyUs float64 `json:"side_a_latency_us,omitempty"`
+	SideALossPct   float64 `json:"side_a_loss_pct,omitempty"`
+	SideASamples   uint64  `json:"side_a_samples,omitempty"`
+	SideZLatencyUs float64 `json:"side_z_latency_us,omitempty"`
+	SideZLossPct   float64 `json:"side_z_loss_pct,omitempty"`
+	SideZSamples   uint64  `json:"side_z_samples,omitempty"`
 }
 
 type LinkHistory struct {
@@ -1205,18 +1212,21 @@ func fetchLinkHistoryData(ctx context.Context, timeRange string, requestedBucket
 		return nil, fmt.Errorf("link rows iteration error: %w", err)
 	}
 
-	// Get stats for the configured time range
+	// Get stats for the configured time range, grouped by direction (A→Z vs Z→A)
+	// direction = 'A' means origin is side_a (A→Z), direction = 'Z' means origin is side_z (Z→A)
 	historyQuery := `
 		SELECT
-			link_pk,
+			f.link_pk,
 			` + bucketInterval + ` as bucket,
-			avg(rtt_us) as avg_latency,
-			countIf(loss OR rtt_us = 0) * 100.0 / count(*) as loss_pct,
+			if(f.origin_device_pk = l.side_a_pk, 'A', 'Z') as direction,
+			avg(f.rtt_us) as avg_latency,
+			countIf(f.loss OR f.rtt_us = 0) * 100.0 / count(*) as loss_pct,
 			count(*) as samples
-		FROM fact_dz_device_link_latency
-		WHERE event_ts > now() - INTERVAL ? HOUR
-		GROUP BY link_pk, bucket
-		ORDER BY link_pk, bucket
+		FROM fact_dz_device_link_latency f
+		JOIN dz_links_current l ON f.link_pk = l.pk
+		WHERE f.event_ts > now() - INTERVAL ? HOUR
+		GROUP BY f.link_pk, bucket, direction
+		ORDER BY f.link_pk, bucket, direction
 	`
 
 	historyRows, err := config.DB.Query(ctx, historyQuery, totalHours)
@@ -1225,25 +1235,83 @@ func fetchLinkHistoryData(ctx context.Context, timeRange string, requestedBucket
 	}
 	defer historyRows.Close()
 
-	// Build bucket stats per link
+	// Build bucket stats per link with per-side breakdown
+	type sideStats struct {
+		avgLatency float64
+		lossPct    float64
+		samples    uint64
+	}
 	type bucketStats struct {
 		bucket     time.Time
 		avgLatency float64
 		lossPct    float64
 		samples    uint64
+		sideA      *sideStats
+		sideZ      *sideStats
 	}
-	linkBuckets := make(map[string][]bucketStats)
+	// Use a nested map: linkPK -> bucket time string -> bucketStats
+	linkBucketMap := make(map[string]map[string]*bucketStats)
 
 	for historyRows.Next() {
-		var linkPK string
-		var stats bucketStats
-		if err := historyRows.Scan(&linkPK, &stats.bucket, &stats.avgLatency, &stats.lossPct, &stats.samples); err != nil {
+		var linkPK, direction string
+		var bucket time.Time
+		var avgLatency, lossPct float64
+		var samples uint64
+		if err := historyRows.Scan(&linkPK, &bucket, &direction, &avgLatency, &lossPct, &samples); err != nil {
 			return nil, fmt.Errorf("history scan error: %w", err)
 		}
-		linkBuckets[linkPK] = append(linkBuckets[linkPK], stats)
+
+		bucketKey := bucket.UTC().Format(time.RFC3339)
+		if linkBucketMap[linkPK] == nil {
+			linkBucketMap[linkPK] = make(map[string]*bucketStats)
+		}
+		if linkBucketMap[linkPK][bucketKey] == nil {
+			linkBucketMap[linkPK][bucketKey] = &bucketStats{bucket: bucket}
+		}
+		stats := linkBucketMap[linkPK][bucketKey]
+
+		// Store per-side stats
+		if direction == "A" {
+			stats.sideA = &sideStats{avgLatency: avgLatency, lossPct: lossPct, samples: samples}
+		} else {
+			stats.sideZ = &sideStats{avgLatency: avgLatency, lossPct: lossPct, samples: samples}
+		}
 	}
 	if err := historyRows.Err(); err != nil {
 		return nil, fmt.Errorf("history rows iteration error: %w", err)
+	}
+
+	// Compute aggregate stats for each bucket (combining both directions)
+	linkBuckets := make(map[string][]bucketStats)
+	for linkPK, bucketMap := range linkBucketMap {
+		var buckets []bucketStats
+		for _, stats := range bucketMap {
+			// Combine stats from both directions
+			var totalLatency, totalLoss float64
+			var totalSamples uint64
+			var count int
+
+			if stats.sideA != nil {
+				totalLatency += stats.sideA.avgLatency * float64(stats.sideA.samples)
+				totalLoss += stats.sideA.lossPct * float64(stats.sideA.samples)
+				totalSamples += stats.sideA.samples
+				count++
+			}
+			if stats.sideZ != nil {
+				totalLatency += stats.sideZ.avgLatency * float64(stats.sideZ.samples)
+				totalLoss += stats.sideZ.lossPct * float64(stats.sideZ.samples)
+				totalSamples += stats.sideZ.samples
+				count++
+			}
+
+			if totalSamples > 0 {
+				stats.avgLatency = totalLatency / float64(totalSamples)
+				stats.lossPct = totalLoss / float64(totalSamples)
+				stats.samples = totalSamples
+			}
+			buckets = append(buckets, *stats)
+		}
+		linkBuckets[linkPK] = buckets
 	}
 
 	// Get historical link status per bucket from dim_dz_links_history
@@ -1390,13 +1458,25 @@ func fetchLinkHistoryData(ctx context.Context, timeRange string, requestedBucket
 					committedRtt = 0
 				}
 				status := classifyLinkStatus(stats.avgLatency, stats.lossPct, committedRtt)
-				hourStatuses = append(hourStatuses, LinkHourStatus{
+				hourStatus := LinkHourStatus{
 					Hour:         key,
 					Status:       status,
 					AvgLatencyUs: stats.avgLatency,
 					AvgLossPct:   stats.lossPct,
 					Samples:      stats.samples,
-				})
+				}
+				// Add per-side metrics if available
+				if stats.sideA != nil {
+					hourStatus.SideALatencyUs = stats.sideA.avgLatency
+					hourStatus.SideALossPct = stats.sideA.lossPct
+					hourStatus.SideASamples = stats.sideA.samples
+				}
+				if stats.sideZ != nil {
+					hourStatus.SideZLatencyUs = stats.sideZ.avgLatency
+					hourStatus.SideZLossPct = stats.sideZ.lossPct
+					hourStatus.SideZSamples = stats.sideZ.samples
+				}
+				hourStatuses = append(hourStatuses, hourStatus)
 			} else {
 				hourStatuses = append(hourStatuses, LinkHourStatus{
 					Hour:   key,

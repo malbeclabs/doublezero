@@ -142,17 +142,20 @@ export function StatusTimeline({ hours, committedRttUs, bucketMinutes = 60, time
                   })()}
                   {hour.status !== 'no_data' && (
                     <div className="space-y-1 text-muted-foreground">
-                      <div className="flex justify-between gap-4">
-                        <span>Latency:</span>
-                        <span className="font-mono">
-                          {formatLatency(hour.avg_latency_us)}
-                          {committedRttUs && committedRttUs > 0 && (
-                            <span className="text-xs ml-1">
-                              ({((hour.avg_latency_us - committedRttUs) / committedRttUs * 100).toFixed(0)}% vs SLA)
-                            </span>
-                          )}
-                        </span>
-                      </div>
+                      {/* Only show latency when loss is < 95% (otherwise latency is meaningless) */}
+                      {hour.avg_loss_pct < LOSS_EXTENDED_PCT && (
+                        <div className="flex justify-between gap-4">
+                          <span>Latency:</span>
+                          <span className="font-mono">
+                            {formatLatency(hour.avg_latency_us)}
+                            {committedRttUs && committedRttUs > 0 && (
+                              <span className="text-xs ml-1">
+                                ({((hour.avg_latency_us - committedRttUs) / committedRttUs * 100).toFixed(0)}% vs SLA)
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                      )}
                       <div className="flex justify-between gap-4">
                         <span>Loss:</span>
                         <span className="font-mono">{hour.avg_loss_pct.toFixed(2)}%</span>
@@ -161,6 +164,50 @@ export function StatusTimeline({ hours, committedRttUs, bucketMinutes = 60, time
                         <span>Samples:</span>
                         <span className="font-mono">{hour.samples.toLocaleString()}</span>
                       </div>
+                      {/* Per-side breakdown */}
+                      {(hour.side_a_samples || hour.side_z_samples) && (
+                        <div className="pt-2 mt-2 border-t border-border space-y-1.5">
+                          <div className="text-[11px] font-medium text-foreground">By Direction</div>
+                          {hour.side_a_samples != null && hour.side_a_samples > 0 && (
+                            <div className="text-[11px]">
+                              <div className="flex justify-between gap-3">
+                                <span className="text-muted-foreground">A-Side:</span>
+                                <span className="font-mono">
+                                  {/* Only show latency when loss < 95% */}
+                                  {(hour.side_a_loss_pct ?? 0) < LOSS_EXTENDED_PCT && (
+                                    <>
+                                      {formatLatency(hour.side_a_latency_us ?? 0)}
+                                      {' · '}
+                                    </>
+                                  )}
+                                  <span className={hour.side_a_loss_pct != null && hour.side_a_loss_pct >= LOSS_MINOR_PCT ? 'text-amber-500' : ''}>
+                                    {(hour.side_a_loss_pct ?? 0).toFixed(2)}% loss
+                                  </span>
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                          {hour.side_z_samples != null && hour.side_z_samples > 0 && (
+                            <div className="text-[11px]">
+                              <div className="flex justify-between gap-3">
+                                <span className="text-muted-foreground">Z-Side:</span>
+                                <span className="font-mono">
+                                  {/* Only show latency when loss < 95% */}
+                                  {(hour.side_z_loss_pct ?? 0) < LOSS_EXTENDED_PCT && (
+                                    <>
+                                      {formatLatency(hour.side_z_latency_us ?? 0)}
+                                      {' · '}
+                                    </>
+                                  )}
+                                  <span className={hour.side_z_loss_pct != null && hour.side_z_loss_pct >= LOSS_MINOR_PCT ? 'text-amber-500' : ''}>
+                                    {(hour.side_z_loss_pct ?? 0).toFixed(2)}% loss
+                                  </span>
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

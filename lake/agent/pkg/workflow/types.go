@@ -32,7 +32,7 @@ func WorkflowIDFromContext(ctx context.Context) (string, bool) {
 type Config struct {
 	Logger        *slog.Logger
 	LLM           LLMClient
-	FollowUpLLM   LLMClient     // Optional LLM for generating follow-up questions (defaults to LLM if nil)
+	FollowUpLLM   LLMClient // Optional LLM for generating follow-up questions (defaults to LLM if nil)
 	Querier       Querier
 	SchemaFetcher SchemaFetcher
 	Prompts       PromptsProvider
@@ -212,7 +212,7 @@ type ExecutedQuery struct {
 
 // ConversationMessage represents a message in conversation history.
 type ConversationMessage struct {
-	Role            string   // "user" or "assistant"
+	Role            string // "user" or "assistant"
 	Content         string
 	ExecutedQueries []string // SQL queries executed in this turn (assistant only)
 }

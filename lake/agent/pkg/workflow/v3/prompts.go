@@ -11,10 +11,10 @@ import (
 
 // Prompts contains all the v3 workflow prompts loaded from embedded files.
 type Prompts struct {
-	System       string // Main system prompt with workflow guidance and domain knowledge
-	SQLContext   string // Shared SQL/domain context
+	System        string // Main system prompt with workflow guidance and domain knowledge
+	SQLContext    string // Shared SQL/domain context
 	CypherContext string // Graph/Cypher domain context (optional)
-	Slack        string // Slack-specific formatting guidelines
+	Slack         string // Slack-specific formatting guidelines
 }
 
 // GetPrompt returns the prompt content for the given name.

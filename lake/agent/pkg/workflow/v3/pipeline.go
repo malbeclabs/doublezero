@@ -28,7 +28,6 @@ const (
 type Workflow struct {
 	cfg           *workflow.Config
 	prompts       *Prompts
-	systemPrompt  string // Cached system prompt with schema
 	tools         []workflow.ToolDefinition
 	maxIterations int
 }

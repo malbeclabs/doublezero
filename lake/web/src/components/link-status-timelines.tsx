@@ -511,7 +511,7 @@ function LinkPacketLossChart({ hours, bucketMinutes, controlsWidth = 'w-32' }: L
           <LineChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
             <XAxis dataKey="time" tick={{ fontSize: 10, fill: textColor }} tickLine={false} axisLine={{ stroke: gridColor }} interval="preserveStartEnd" minTickGap={50} />
-            <YAxis tick={{ fontSize: 10, fill: textColor }} tickLine={false} axisLine={false} width={40} domain={[0, 'auto']} tickFormatter={(v) => `${v}%`} />
+            <YAxis tick={{ fontSize: 10, fill: textColor }} tickLine={false} axisLine={false} width={40} domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
             <RechartsTooltip content={<CustomTooltip />} />
             {enabledSeries.has('total') && <Line type="monotone" dataKey="total" stroke={SERIES_CONFIG.total.color} strokeWidth={2} dot={false} connectNulls />}
             {enabledSeries.has('A') && availableSeries.has('A') && <Line type="monotone" dataKey="A" stroke={SERIES_CONFIG.A.color} strokeWidth={1.5} strokeDasharray="5 5" dot={false} connectNulls />}

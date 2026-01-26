@@ -1668,10 +1668,13 @@ func fetchLinkHistoryData(ctx context.Context, timeRange string, requestedBucket
 						if meta.bandwidthBps > 0 {
 							hourStatus.UtilizationInPct = (utilStats.inBps / float64(meta.bandwidthBps)) * 100
 							hourStatus.UtilizationOutPct = (utilStats.outBps / float64(meta.bandwidthBps)) * 100
-							// Track high utilization (>80%) as an issue
+							// Track high utilization (>80%) as an issue - marks as degraded
 							const HighUtilizationThreshold = 80.0
 							if hourStatus.UtilizationInPct > HighUtilizationThreshold || hourStatus.UtilizationOutPct > HighUtilizationThreshold {
 								issueReasons["high_utilization"] = true
+								if hourStatus.Status == "healthy" {
+									hourStatus.Status = "degraded"
+								}
 							}
 						}
 					}

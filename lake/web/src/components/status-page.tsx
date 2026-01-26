@@ -635,7 +635,7 @@ function HealthFilterItem({
   const issueLabels: { key: keyof HealthIssueBreakdown; label: string; color: string }[] = [
     { key: 'packet_loss', label: 'Packet Loss', color: 'bg-purple-500' },
     { key: 'high_latency', label: 'High Latency', color: 'bg-blue-500' },
-    { key: 'carrier_transitions', label: 'Carrier', color: 'bg-yellow-500' },
+    { key: 'carrier_transitions', label: 'Carrier Transitions', color: 'bg-yellow-500' },
     { key: 'discards', label: 'Discards', color: 'bg-teal-500' },
     { key: 'interface_errors', label: 'Errors', color: 'bg-red-500' },
     { key: 'extended_loss', label: 'Extended Loss', color: 'bg-orange-500' },
@@ -899,7 +899,7 @@ function LinkIssuesFilterCard({
   const itemDefs: { filter: IssueFilter; label: string; color: string; description: string }[] = [
     { filter: 'packet_loss', label: 'Packet Loss', color: 'bg-purple-500', description: 'Link experiencing measurable packet loss (>= 1%).' },
     { filter: 'high_latency', label: 'High Latency', color: 'bg-blue-500', description: 'Link latency exceeds committed RTT.' },
-    { filter: 'carrier_transitions', label: 'Carrier', color: 'bg-yellow-500', description: 'Carrier transitions (interface up/down) on link endpoints.' },
+    { filter: 'carrier_transitions', label: 'Carrier Transitions', color: 'bg-yellow-500', description: 'Carrier transitions (interface up/down) on link endpoints.' },
     { filter: 'discards', label: 'Discards', color: 'bg-teal-500', description: 'Interface discards detected on link endpoints.' },
     { filter: 'interface_errors', label: 'Errors', color: 'bg-red-500', description: 'Interface errors detected on link endpoints.' },
     { filter: 'extended_loss', label: 'Extended Loss', color: 'bg-orange-500', description: 'Link has 100% packet loss for 2+ hours.' },
@@ -1348,7 +1348,7 @@ function InterfaceIssuesTable({
               <th className="px-4 py-2 font-medium">Link</th>
               <th className="px-4 py-2 font-medium text-right">Errors</th>
               <th className="px-4 py-2 font-medium text-right">Discards</th>
-              <th className="px-4 py-2 font-medium text-right">Carrier</th>
+              <th className="px-4 py-2 font-medium text-right">Carrier Transitions</th>
               <th className="px-4 py-2 font-medium text-right">First Seen</th>
               <th className="px-4 py-2 font-medium text-right">Last Seen</th>
             </tr>

@@ -91,7 +91,7 @@ const ALL_ACTIONS: ActionFilter[] = ['added', 'removed', 'changed', 'alerting', 
 const categoryOptions: { value: Category; label: string; icon: typeof Server }[] = [
   { value: 'state_change', label: 'State Changes', icon: GitCommit },
   { value: 'packet_loss', label: 'Packet Loss', icon: Wifi },
-  { value: 'interface_carrier', label: 'Carrier', icon: WifiOff },
+  { value: 'interface_carrier', label: 'Carrier Transitions', icon: WifiOff },
   { value: 'interface_errors', label: 'Errors', icon: AlertOctagon },
   { value: 'interface_discards', label: 'Discards', icon: AlertTriangle },
 ]

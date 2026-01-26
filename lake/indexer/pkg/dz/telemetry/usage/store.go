@@ -147,6 +147,51 @@ func (s *Store) InsertInterfaceUsage(ctx context.Context, usage []InterfaceUsage
 	return nil
 }
 
+// MaxTimestampsByKey maps "device_pk:intf" to the max event_ts already written for that key
+type MaxTimestampsByKey map[string]time.Time
+
+// GetMaxTimestampsByKey returns the max event_ts per (device_pk, intf) for rows at or after startTime
+// This is used to skip re-writing duplicate rows during refresh with overlap
+func (s *Store) GetMaxTimestampsByKey(ctx context.Context, startTime time.Time) (MaxTimestampsByKey, error) {
+	conn, err := s.cfg.ClickHouse.Conn(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get ClickHouse connection: %w", err)
+	}
+
+	query := `
+		SELECT
+			device_pk,
+			intf,
+			max(event_ts) as max_ts
+		FROM fact_dz_device_interface_counters
+		WHERE event_ts >= ?
+		GROUP BY device_pk, intf
+	`
+
+	rows, err := conn.Query(ctx, query, startTime)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query max timestamps by key: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(MaxTimestampsByKey)
+	for rows.Next() {
+		var devicePK, intf string
+		var maxTS time.Time
+		if err := rows.Scan(&devicePK, &intf, &maxTS); err != nil {
+			return nil, fmt.Errorf("failed to scan max timestamp row: %w", err)
+		}
+		key := fmt.Sprintf("%s:%s", devicePK, intf)
+		result[key] = maxTS
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating max timestamp rows: %w", err)
+	}
+
+	return result, nil
+}
+
 // DataBoundaries contains min/max timestamps for a fact table
 type DataBoundaries struct {
 	MinTime  *time.Time

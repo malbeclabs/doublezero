@@ -300,11 +300,26 @@ func (v *View) Refresh(ctx context.Context) error {
 		}
 	}
 
+	// Query max timestamps per device/interface to skip already-written rows
+	// This is needed because we use an overlap window to catch late-arriving data,
+	// but we don't want to re-insert rows that were already written
+	alreadyWrittenStart := time.Now()
+	alreadyWritten, err := v.store.GetMaxTimestampsByKey(ctx, queryStart)
+	alreadyWrittenDuration := time.Since(alreadyWrittenStart)
+	if err != nil {
+		v.log.Warn("telemetry/usage: failed to query already-written timestamps, proceeding without dedup",
+			"error", err, "duration", alreadyWrittenDuration.String())
+		alreadyWritten = nil
+	} else {
+		v.log.Debug("telemetry/usage: queried already-written timestamps",
+			"keys", len(alreadyWritten), "duration", alreadyWrittenDuration.String())
+	}
+
 	// Query InfluxDB for interface usage data
 	// Convert times to UTC for InfluxDB query (InfluxDB stores times in UTC)
 	queryStartUTC := queryStart.UTC()
 	nowUTC := now.UTC()
-	usage, err := v.queryInfluxDB(ctx, queryStartUTC, nowUTC, baselines)
+	usage, err := v.queryInfluxDB(ctx, queryStartUTC, nowUTC, baselines, alreadyWritten)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			return err
@@ -359,7 +374,7 @@ type CounterBaselines struct {
 	OutErrors   map[string]*int64
 }
 
-func (v *View) queryInfluxDB(ctx context.Context, startTime, endTime time.Time, baselines *CounterBaselines) ([]InterfaceUsage, error) {
+func (v *View) queryInfluxDB(ctx context.Context, startTime, endTime time.Time, baselines *CounterBaselines, alreadyWritten MaxTimestampsByKey) ([]InterfaceUsage, error) {
 	// InfluxDB uses dzd_pubkey as a tag, which we extract and map to device_pk.
 	v.log.Debug("telemetry/usage: executing main influxdb query", "from", startTime.UTC(), "to", endTime.UTC())
 	queryStart := time.Now()
@@ -436,7 +451,7 @@ func (v *View) queryInfluxDB(ctx context.Context, startTime, endTime time.Time, 
 	// Convert rows to InterfaceUsage, tracking last known values per device/interface
 	// We need to process in time order to properly forward-fill nulls
 	convertStart := time.Now()
-	usage, err := v.convertRowsToUsage(rows, baselines, linkLookup)
+	usage, err := v.convertRowsToUsage(rows, baselines, linkLookup, alreadyWritten)
 	convertDuration := time.Since(convertStart)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert rows: %w", err)
@@ -510,7 +525,8 @@ func (v *View) buildLinkLookup(ctx context.Context) (map[string]LinkInfo, error)
 // convertRowsToUsage converts rows to InterfaceUsage, using baselines only for the first null
 // and forward-filling with the last known value for subsequent nulls
 // For non-sparse counters, the first row per device/interface is used as baseline and not stored
-func (v *View) convertRowsToUsage(rows []map[string]any, baselines *CounterBaselines, linkLookup map[string]LinkInfo) ([]InterfaceUsage, error) {
+// If alreadyWritten is provided, rows with timestamps <= the max already written for that key are skipped
+func (v *View) convertRowsToUsage(rows []map[string]any, baselines *CounterBaselines, linkLookup map[string]LinkInfo, alreadyWritten MaxTimestampsByKey) ([]InterfaceUsage, error) {
 	// Track last known values per device/interface for each counter
 	// Key: "device_pk:intf", Value: map of counter name to last value
 	lastKnownValues := make(map[string]map[string]*int64)
@@ -594,6 +610,18 @@ func (v *View) convertRowsToUsage(rows []map[string]any, baselines *CounterBasel
 		} else {
 			// Can't track without key, just extract what we can
 			key = ""
+		}
+
+		// Skip rows that have already been written to avoid duplicates
+		// This is important because we use an overlap window when refreshing
+		if key != "" && alreadyWritten != nil {
+			if maxTS, exists := alreadyWritten[key]; exists {
+				if !t.After(maxTS) {
+					// This row has already been written, skip it
+					// But still update lastKnownValues for delta calculations of subsequent rows
+					continue
+				}
+			}
 		}
 
 		if key != "" {

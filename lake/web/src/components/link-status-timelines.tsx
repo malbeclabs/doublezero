@@ -336,7 +336,7 @@ function LinkInterfaceChart({ hours, bucketMinutes, controlsWidth = 'w-32' }: Li
       <div className={`flex-shrink-0 ${controlsWidth} space-y-3`}>
         <div className="space-y-1.5">
           <span className="text-xs text-muted-foreground">Metrics</span>
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-wrap gap-1">
             {(['errors', 'discards', 'carrier'] as MetricType[]).map(metric => {
               if (!availableMetrics.has(metric)) return null
               const config = METRIC_CONFIG[metric]
@@ -362,7 +362,7 @@ function LinkInterfaceChart({ hours, bucketMinutes, controlsWidth = 'w-32' }: Li
         </div>
         <div className="space-y-1.5">
           <span className="text-xs text-muted-foreground">Sides</span>
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-wrap gap-1">
             {(['A', 'Z'] as const).map(side => {
               if (!availableSides.has(side)) return null
               const isEnabled = enabledSides.has(side)
@@ -481,7 +481,7 @@ function LinkPacketLossChart({ hours, bucketMinutes, controlsWidth = 'w-32' }: L
       {/* Controls */}
       <div className={`flex-shrink-0 ${controlsWidth} space-y-1.5`}>
         <span className="text-xs text-muted-foreground">Series</span>
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-wrap gap-1">
           {(['total', 'A', 'Z'] as const).map(series => {
             if (series !== 'total' && !availableSeries.has(series)) return null
             const config = SERIES_CONFIG[series]

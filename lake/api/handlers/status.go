@@ -1598,11 +1598,17 @@ func fetchLinkHistoryData(ctx context.Context, timeRange string, requestedBucket
 					}
 				}
 				// Upgrade status based on interface issues
-				// Carrier transitions (interface up/down) -> unhealthy
-				// Errors or discards -> degraded (if currently healthy)
-				if hasCarrier && hourStatus.Status == "healthy" {
-					hourStatus.Status = "unhealthy"
-				} else if (hasErrors || hasDiscards) && hourStatus.Status == "healthy" {
+				// Use same thresholds as device health: >= 100 = unhealthy, > 0 = degraded
+				const InterfaceUnhealthyThreshold = uint64(100)
+				totalErrors := hourStatus.SideAInErrors + hourStatus.SideAOutErrors + hourStatus.SideZInErrors + hourStatus.SideZOutErrors
+				totalDiscards := hourStatus.SideAInDiscards + hourStatus.SideAOutDiscards + hourStatus.SideZInDiscards + hourStatus.SideZOutDiscards
+				totalCarrier := hourStatus.SideACarrierTransitions + hourStatus.SideZCarrierTransitions
+
+				if totalErrors >= InterfaceUnhealthyThreshold || totalDiscards >= InterfaceUnhealthyThreshold || totalCarrier >= InterfaceUnhealthyThreshold {
+					if hourStatus.Status == "healthy" || hourStatus.Status == "degraded" {
+						hourStatus.Status = "unhealthy"
+					}
+				} else if (hasErrors || hasDiscards || hasCarrier) && hourStatus.Status == "healthy" {
 					hourStatus.Status = "degraded"
 				}
 				hourStatuses = append(hourStatuses, hourStatus)

@@ -159,6 +159,7 @@ func TestGlobalMonitor_SolanaValidatorICMPPlanner_Record_WritesExpectedInfluxPoi
 
 	val := mkValidator(pk(1), "203.0.113.10")
 	val.LeaderRatio = 0.42
+	val.VoteAccount.VotePubkey = pk(100)
 	val.GeoIP = &geoip.Record{
 		Country:     "Canada",
 		CountryCode: "CA",
@@ -203,6 +204,7 @@ func TestGlobalMonitor_SolanaValidatorICMPPlanner_Record_WritesExpectedInfluxPoi
 
 		requireTag(t, tags, "probe_type", string(ProbeTypeICMP))
 		requireTag(t, tags, "validator_pubkey", val.Node.Pubkey.String())
+		requireTag(t, tags, "validator_vote_pubkey", val.VoteAccount.VotePubkey.String())
 		requireTag(t, tags, "probe_path", string(ProbePathDoubleZero))
 		requireTag(t, tags, "source_iface", "dz0")
 		requireTag(t, tags, "source_ip", src.User.DZIP.String())
@@ -270,5 +272,31 @@ func TestGlobalMonitor_SolanaValidatorICMPPlanner_Record_WritesExpectedInfluxPoi
 		p.influxAPI = nil
 		res := &ProbeResult{Timestamp: ts, OK: false, FailReason: ProbeFailReasonTimeout}
 		p.recordResult(src, val, pubT, &uTarget, res)
+	})
+
+	t.Run("zero vote pubkey is not included in tags", func(t *testing.T) {
+		influx = newFakeWriteAPI()
+		p.influxAPI = influx
+
+		valNoVote := mkValidator(pk(2), "203.0.113.20")
+		valNoVote.VoteAccount.VotePubkey = solana.PublicKey{} // zero pubkey
+		pubTNoVote, err := NewICMPProbeTarget(log, "eth0", valNoVote.Node.GossipIP, &ICMPProbeTargetConfig{})
+		require.NoError(t, err)
+
+		res := &ProbeResult{
+			Timestamp: ts,
+			OK:        true,
+			Stats: &ProbeStats{
+				PacketsSent: 10, PacketsRecv: 9, PacketsLost: 1, LossRatio: 0.1,
+				RTTMin: 10 * time.Millisecond, RTTAvg: 15 * time.Millisecond, RTTStdDev: 2 * time.Millisecond,
+			},
+		}
+		p.recordResult(src, valNoVote, pubTNoVote, nil, res)
+
+		pts := influx.Points()
+		require.Len(t, pts, 1)
+		tags := pointTags(pts[0])
+		requireTag(t, tags, "validator_pubkey", valNoVote.Node.Pubkey.String())
+		require.NotContains(t, tags, "validator_vote_pubkey")
 	})
 }

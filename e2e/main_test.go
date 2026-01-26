@@ -166,12 +166,13 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 		set -euo pipefail
 
 		echo "==> Populate device information onchain"
-		doublezero device create --code ld4-dz01 --contributor co01 --location lhr --exchange xlhr --public-ip "195.219.120.72" --dz-prefixes "195.219.120.80/29" --mgmt-vrf mgmt
-		doublezero device create --code frk-dz01 --contributor co01 --location fra --exchange xfra --public-ip "195.219.220.88" --dz-prefixes "195.219.220.96/29" --mgmt-vrf mgmt
-		doublezero device create --code sg1-dz01 --contributor co01 --location sin --exchange xsin --public-ip "180.87.102.104" --dz-prefixes "180.87.102.112/29" --mgmt-vrf mgmt
-		doublezero device create --code ty2-dz01 --contributor co01 --location tyo --exchange xtyo --public-ip "180.87.154.112" --dz-prefixes "180.87.154.120/29" --mgmt-vrf mgmt
-		doublezero device create --code pit-dzd01 --contributor co01 --location pit --exchange xpit --public-ip "204.16.241.243" --dz-prefixes "204.16.243.243/32" --mgmt-vrf mgmt
-		doublezero device create --code ams-dz001 --contributor co01 --location ams --exchange xams --public-ip "195.219.138.50" --dz-prefixes "195.219.138.56/29" --mgmt-vrf mgmt
+		doublezero device create --code ld4-dz01 --contributor co01 --location lhr --exchange xlhr --public-ip "195.219.120.72" --dz-prefixes "195.219.120.80/29" --mgmt-vrf mgmt --desired-status activated
+		doublezero device create --code frk-dz01 --contributor co01 --location fra --exchange xfra --public-ip "195.219.220.88" --dz-prefixes "195.219.220.96/29" --mgmt-vrf mgmt --desired-status activated
+		doublezero device create --code sg1-dz01 --contributor co01 --location sin --exchange xsin --public-ip "180.87.102.104" --dz-prefixes "180.87.102.112/29" --mgmt-vrf mgmt --desired-status activated
+		doublezero device create --code ty2-dz01 --contributor co01 --location tyo --exchange xtyo --public-ip "180.87.154.112" --dz-prefixes "180.87.154.120/29" --mgmt-vrf mgmt --desired-status activated
+		doublezero device create --code pit-dzd01 --contributor co01 --location pit --exchange xpit --public-ip "204.16.241.243" --dz-prefixes "204.16.243.243/32" --mgmt-vrf mgmt --desired-status activated
+		doublezero device create --code ams-dz001 --contributor co01 --location ams --exchange xams --public-ip "195.219.138.50" --dz-prefixes "195.219.138.56/29" --mgmt-vrf mgmt --desired-status activated
+
 		echo "--> Device information onchain:"
 		doublezero device list
 
@@ -228,27 +229,30 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 
 
 		echo "==> Populate link information onchain"
-		doublezero link create wan --code "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Ethernet2 --side-z ny5-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3 -w
-		doublezero link create wan --code "ny5-dz01:ld4-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Vlan4001 --side-z ld4-dz01 --side-z-interface Vlan4001 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3
-		doublezero link create wan --code "ld4-dz01:frk-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet3 --side-z frk-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 25 --jitter-ms 10
-		doublezero link create wan --code "ld4-dz01:sg1-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet4 --side-z sg1-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 120 --jitter-ms 9
-		doublezero link create wan --code "sg1-dz01:ty2-dz01" --contributor co01 --side-a sg1-dz01 --side-a-interface Ethernet3 --side-z ty2-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 7
-		doublezero link create wan --code "ty2-dz01:la2-dz01" --contributor co01 --side-a ty2-dz01 --side-a-interface Ethernet3 --side-z la2-dz01 --side-z-interface Ethernet3 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 10
+		doublezero link create wan --code "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Ethernet2 --side-z ny5-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3 --desired-status activated -w
+		doublezero link create wan --code "ny5-dz01:ld4-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Vlan4001 --side-z ld4-dz01 --side-z-interface Vlan4001 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3 --desired-status activated -w
+		doublezero link create wan --code "ld4-dz01:frk-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet3 --side-z frk-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 25 --jitter-ms 10 --desired-status activated -w
+		doublezero link create wan --code "ld4-dz01:sg1-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet4 --side-z sg1-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 120 --jitter-ms 9 --desired-status activated -w
+		doublezero link create wan --code "sg1-dz01:ty2-dz01" --contributor co01 --side-a sg1-dz01 --side-a-interface Ethernet3 --side-z ty2-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 7 --desired-status activated -w
+		doublezero link create wan --code "ty2-dz01:la2-dz01" --contributor co01 --side-a ty2-dz01 --side-a-interface Ethernet3 --side-z la2-dz01 --side-z-interface Ethernet3 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 10 --desired-status activated -w
+
 		# For testing link.delay_override_ms:
-		doublezero link create wan --code "ny5-dz01:la2-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet4 --side-z la2-dz01 --side-z-interface Ethernet4 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3
+		doublezero link create wan --code "ny5-dz01:la2-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet4 --side-z la2-dz01 --side-z-interface Ethernet4 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3 --desired-status activated -w
+
 		# For testing link.status=soft-drained:
-		doublezero link create wan --code "ny5-dz01_e5:la2-dz01_e5" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet5 --side-z la2-dz01 --side-z-interface Ethernet5 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3
+		doublezero link create wan --code "ny5-dz01_e5:la2-dz01_e5" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet5 --side-z la2-dz01 --side-z-interface Ethernet5 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3 --desired-status activated -w
+
 		# For testing link.status=hard-drained:
-		doublezero link create wan --code "ny5-dz01_e6:la2-dz01_e6" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet6 --side-z la2-dz01 --side-z-interface Ethernet6 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 8 --jitter-ms 3
+		doublezero link create wan --code "ny5-dz01_e6:la2-dz01_e6" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet6 --side-z la2-dz01 --side-z-interface Ethernet6 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 8 --jitter-ms 3 --desired-status activated -w
 
 		echo "===> Set delay override for ny5-dz01:la2-dz01 link"
-		doublezero link update --pubkey HjiDwnhwzZFwm9yBmPsBThEah7w6kJDuutjCktoF7m1 --delay-override-ms 500
+		doublezero link update --pubkey "ny5-dz01:la2-dz01" --delay-override-ms 500
 
 		echo "===> Set link status=soft-drained for ny5-dz01_e5:la2-dz01_e5 link"
-		doublezero link update --pubkey 87xRjay41FiEzQX8mCWxY36fwkqumGbYaxHiymrUKNrB --status=soft-drained
+		doublezero link update --pubkey "ny5-dz01_e5:la2-dz01_e5" --status=soft-drained
 
 		echo "===> Set link status=hard-drained for ny5-dz01_e6:la2-dz01_e6 link"
-		doublezero link update --pubkey 3ag6VgtT5UHNyDQZeKGyK8jK9fMLDu9PRLNqSW5GByuF --status=hard-drained
+		doublezero link update --pubkey "ny5-dz01_e6:la2-dz01_e6" --status=hard-drained
 
 		echo "--> Tunnel information onchain:"
 		doublezero link list
@@ -282,6 +286,34 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 	// Wait for latency results.
 	err = client.WaitForLatencyResults(t.Context(), device.ID, 75*time.Second)
 	require.NoError(t, err)
+
+	// Verify device has published telemetry to InfluxDB.
+	if dn.InfluxDB != nil && dn.InfluxDB.InternalURL != "" {
+		dn.log.Info("==> Verifying device telemetry in InfluxDB", "device", device.Spec.Code, "pubkey", device.ID)
+		require.Eventually(t, func() bool {
+			hasData, err := dn.InfluxDB.HasDeviceData(ctx, device.ID)
+			if err != nil {
+				dn.log.Debug("Failed to query InfluxDB for device data", "error", err)
+				return false
+			}
+			return hasData
+		}, 60*time.Second, 3*time.Second, "device %s did not publish telemetry to InfluxDB", device.Spec.Code)
+		dn.log.Info("--> Device telemetry verified in InfluxDB")
+	}
+
+	// Verify device has getconfig metrics in Prometheus.
+	if dn.Prometheus != nil && dn.Prometheus.InternalURL != "" {
+		dn.log.Info("==> Verifying device metrics in Prometheus", "device", device.Spec.Code, "pubkey", device.ID)
+		require.Eventually(t, func() bool {
+			hasMetrics, err := dn.Prometheus.HasDeviceMetrics(ctx, device.ID)
+			if err != nil {
+				dn.log.Debug("Failed to query Prometheus for device metrics", "error", err)
+				return false
+			}
+			return hasMetrics
+		}, 60*time.Second, 5*time.Second, "device %s did not have getconfig metrics in Prometheus", device.Spec.Code)
+		dn.log.Info("--> Device metrics verified in Prometheus")
+	}
 
 	return device, client
 }

@@ -65,16 +65,28 @@ func TestE2E_Funder(t *testing.T) {
 	require.NoError(t, err)
 	funderPK := funderPrivateKey.PublicKey()
 
-	// Check that the errors metric only contains "funder_account_balance_below_minimum" errors,
-	// which occur on startup while waiting for the manager/funder account to be funded.
+	// Check that the errors metric only contains expected startup errors:
+	// - "get_recipients": occurs when the serviceability program isn't ready yet
+	// - "funder_account_balance_below_minimum": occurs while waiting for the manager/funder account to be funded
 	metricsClient := dn.Funder.GetMetricsClient()
 	require.NoError(t, metricsClient.WaitForReady(ctx, 3*time.Second))
 	require.NoError(t, metricsClient.Fetch(ctx))
 	errors := metricsClient.GetCounterValues("doublezero_funder_errors_total")
 	require.NotNil(t, errors)
-	require.Len(t, errors, 1)
-	require.Equal(t, "funder_account_balance_below_minimum", errors[0].Labels["error_type"])
-	prevFunderAccountBalanceBelowMinimumCount := int(errors[0].Value)
+	allowedStartupErrors := map[string]bool{
+		"get_recipients":                       true,
+		"funder_account_balance_below_minimum": true,
+	}
+	for _, e := range errors {
+		require.True(t, allowedStartupErrors[e.Labels["error_type"]], "unexpected error type during startup: %s", e.Labels["error_type"])
+	}
+	var prevFunderAccountBalanceBelowMinimumCount int
+	for _, e := range errors {
+		if e.Labels["error_type"] == "funder_account_balance_below_minimum" {
+			prevFunderAccountBalanceBelowMinimumCount = int(e.Value)
+			break
+		}
+	}
 
 	// Check the funder account balance metric.
 	require.NoError(t, metricsClient.Fetch(ctx))
@@ -146,12 +158,16 @@ func TestE2E_Funder(t *testing.T) {
 		require.NoError(t, metricsClient.Fetch(ctx))
 		errors = metricsClient.GetCounterValues("doublezero_funder_errors_total")
 		require.NotNil(t, errors)
-		require.Len(t, errors, 1)
-		require.Equal(t, "funder_account_balance_below_minimum", errors[0].Labels["error_type"])
-		if int(errors[0].Value) > prevFunderAccountBalanceBelowMinimumCount {
-			return true
+		for _, e := range errors {
+			if e.Labels["error_type"] == "funder_account_balance_below_minimum" {
+				if int(e.Value) > prevFunderAccountBalanceBelowMinimumCount {
+					return true
+				}
+				log.Debug("--> Waiting for funder account balance below minimum error to increase", "account", funderPK, "prevCount", prevFunderAccountBalanceBelowMinimumCount, "currentCount", int(e.Value))
+				return false
+			}
 		}
-		log.Debug("--> Waiting for funder account balance below minimum error to increase", "account", funderPK, "prevCount", prevFunderAccountBalanceBelowMinimumCount, "currentCount", int(errors[0].Value))
+		log.Debug("--> Waiting for funder account balance below minimum error to appear", "account", funderPK)
 		return false
 	}, 60*time.Second, 5*time.Second)
 

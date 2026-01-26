@@ -173,9 +173,13 @@ func (c *Client) Start(ctx context.Context) error {
 	extraArgs := []string{}
 	if c.Spec.RouteLivenessEnablePassive {
 		extraArgs = append(extraArgs, "-route-liveness-enable-passive")
+	} else {
+		extraArgs = append(extraArgs, "-route-liveness-enable-passive=false")
 	}
 	if c.Spec.RouteLivenessEnableActive {
 		extraArgs = append(extraArgs, "-route-liveness-enable-active")
+	} else {
+		extraArgs = append(extraArgs, "-route-liveness-enable-active=false")
 	}
 	if c.Spec.RouteLivenessPeerMetrics {
 		extraArgs = append(extraArgs, "-route-liveness-peer-metrics")
@@ -336,8 +340,8 @@ type ClientSession struct {
 }
 
 const (
-	ClientSessionStatusUp           ClientSessionStatus = "up"
-	ClientSessionStatusDown         ClientSessionStatus = "down"
+	ClientSessionStatusUp           ClientSessionStatus = "BGP Session Up"
+	ClientSessionStatusDown         ClientSessionStatus = "BGP Session Down"
 	ClientSessionStatusDisconnected ClientSessionStatus = "disconnected"
 )
 

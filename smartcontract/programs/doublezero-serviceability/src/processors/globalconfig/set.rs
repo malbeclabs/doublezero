@@ -1,6 +1,8 @@
 use crate::{
     error::DoubleZeroError,
     pda::*,
+    processors::resource::create_resource,
+    resource::ResourceType,
     seeds::{SEED_CONFIG, SEED_PREFIX},
     serializer::{try_acc_create, try_acc_write},
     state::{
@@ -54,6 +56,11 @@ pub fn process_set_globalconfig(
 
     let pda_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
+    let device_tunnel_block_account = next_account_info(accounts_iter)?;
+    let user_tunnel_block_account = next_account_info(accounts_iter)?;
+    let multicastgroup_block_account = next_account_info(accounts_iter)?;
+    let link_ids_account = next_account_info(accounts_iter)?;
+    let segment_routing_ids_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
@@ -85,6 +92,28 @@ pub fn process_set_globalconfig(
         "Invalid GlobalConfig PubKey"
     );
 
+    let (device_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(program_id, ResourceType::DeviceTunnelBlock);
+    let (user_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(program_id, ResourceType::UserTunnelBlock);
+    let (multicastgroup_block_pda, _, _) =
+        get_resource_extension_pda(program_id, ResourceType::MulticastGroupBlock);
+
+    assert_eq!(
+        device_tunnel_block_account.key, &device_tunnel_block_pda,
+        "Invalid Device Tunnel Block PubKey"
+    );
+
+    assert_eq!(
+        user_tunnel_block_account.key, &user_tunnel_block_pda,
+        "Invalid User Tunnel Block PubKey"
+    );
+
+    assert_eq!(
+        multicastgroup_block_account.key, &multicastgroup_block_pda,
+        "Invalid Multicast Group Block PubKey"
+    );
+
     let next_bgp_community = if let Some(val) = value.next_bgp_community {
         val
     } else if pda_account.try_borrow_data()?.is_empty() {
@@ -114,7 +143,72 @@ pub fn process_set_globalconfig(
             program_id,
             &[SEED_PREFIX, SEED_CONFIG, &[bump_seed]],
         )?;
+
+        {
+            let mut account_data = &mut pda_account.data.borrow_mut()[..];
+            data.serialize(&mut account_data).unwrap();
+        }
+
+        create_resource(
+            program_id,
+            device_tunnel_block_account,
+            None,
+            pda_account,
+            payer_account,
+            accounts,
+            ResourceType::DeviceTunnelBlock,
+        )?;
+
+        create_resource(
+            program_id,
+            user_tunnel_block_account,
+            None,
+            pda_account,
+            payer_account,
+            accounts,
+            ResourceType::UserTunnelBlock,
+        )?;
+
+        create_resource(
+            program_id,
+            multicastgroup_block_account,
+            None,
+            pda_account,
+            payer_account,
+            accounts,
+            ResourceType::MulticastGroupBlock,
+        )?;
+
+        create_resource(
+            program_id,
+            link_ids_account,
+            None,
+            pda_account,
+            payer_account,
+            accounts,
+            ResourceType::LinkIds,
+        )?;
+
+        create_resource(
+            program_id,
+            segment_routing_ids_account,
+            None,
+            pda_account,
+            payer_account,
+            accounts,
+            ResourceType::SegmentRoutingIds,
+        )?;
     } else {
+        let old_data = GlobalConfig::try_from(pda_account)?;
+        if old_data.device_tunnel_block != data.device_tunnel_block {
+            return Err(DoubleZeroError::ImmutableField.into());
+        }
+        if old_data.user_tunnel_block != data.user_tunnel_block {
+            return Err(DoubleZeroError::ImmutableField.into());
+        }
+        if old_data.multicastgroup_block != data.multicastgroup_block {
+            return Err(DoubleZeroError::ImmutableField.into());
+        }
         try_acc_write(&data, pda_account, payer_account, accounts)?;
     }
 

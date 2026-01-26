@@ -4,13 +4,14 @@ use doublezero_serviceability::{
     processors::{
         contributor::create::ContributorCreateArgs,
         device::interface::DeviceInterfaceUnlinkArgs,
-        link::{activate::*, create::*, delete::*, resume::*, suspend::*, update::*},
+        link::{activate::*, create::*, delete::*, sethealth::LinkSetHealthArgs, update::*},
         *,
     },
+    resource::ResourceType,
     state::{
         accounttype::AccountType,
         contributor::ContributorStatus,
-        device::{DeviceStatus, DeviceType},
+        device::{DeviceDesiredStatus, DeviceStatus, DeviceType},
         interface::{
             InterfaceCYOA, InterfaceDIA, InterfaceStatus, InterfaceType, LoopbackType, RoutingMode,
         },
@@ -50,6 +51,15 @@ async fn test_wan_link() {
     .await;
 
     let (config_pubkey, _) = get_globalconfig_pda(&program_id);
+    let (device_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
+    let (user_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
+    let (multicastgroup_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock);
+    let (link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
+    let (segment_routing_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
 
     execute_transaction(
         &mut banks_client,
@@ -66,6 +76,11 @@ async fn test_wan_link() {
         vec![
             AccountMeta::new(config_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_tunnel_block_pda, false),
+            AccountMeta::new(user_tunnel_block_pda, false),
+            AccountMeta::new(multicastgroup_block_pda, false),
+            AccountMeta::new(link_ids_pda, false),
+            AccountMeta::new(segment_routing_ids_pda, false),
         ],
         &payer,
     )
@@ -180,6 +195,7 @@ async fn test_wan_link() {
             dz_prefixes: "100.1.0.0/24".parse().unwrap(),
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
+            desired_status: Some(DeviceDesiredStatus::Activated),
         }),
         vec![
             AccountMeta::new(device_a_pubkey, false),
@@ -308,6 +324,7 @@ async fn test_wan_link() {
             dz_prefixes: "11.1.0.0/23".parse().unwrap(),
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
+            desired_status: Some(DeviceDesiredStatus::Activated),
         }),
         vec![
             AccountMeta::new(device_z_pubkey, false),
@@ -518,6 +535,7 @@ async fn test_wan_link() {
             jitter_ns: 100000,
             side_a_iface_name: "Ethernet0".to_string(),
             side_z_iface_name: Some("Ethernet1".to_string()),
+            desired_status: Some(LinkDesiredStatus::Activated),
         }),
         vec![
             AccountMeta::new(tunnel_pubkey, false),
@@ -572,6 +590,7 @@ async fn test_wan_link() {
         DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
             tunnel_id: 500,
             tunnel_net: "10.0.0.0/21".parse().unwrap(),
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(tunnel_pubkey, false),
@@ -595,57 +614,7 @@ async fn test_wan_link() {
 
     println!("✅ Link activated");
     /*****************************************************************************************************************************************************/
-    println!("🟢 9. Suspend Link...");
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::SuspendLink(LinkSuspendArgs {}),
-        vec![
-            AccountMeta::new(tunnel_pubkey, false),
-            AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let tunnel_la = get_account_data(&mut banks_client, tunnel_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_tunnel()
-        .unwrap();
-    assert_eq!(tunnel_la.account_type, AccountType::Link);
-    assert_eq!(tunnel_la.status, LinkStatus::Suspended);
-
-    println!("✅ Link suspended");
-    /*****************************************************************************************************************************************************/
-    println!("🟢 10. Resume Link...");
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ResumeLink(LinkResumeArgs {}),
-        vec![
-            AccountMeta::new(tunnel_pubkey, false),
-            AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let link = get_account_data(&mut banks_client, tunnel_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_tunnel()
-        .unwrap();
-    assert_eq!(link.account_type, AccountType::Link);
-    assert_eq!(link.status, LinkStatus::Activated);
-
-    println!("✅ Link resumed");
-    /*****************************************************************************************************************************************************/
-    println!("🟢 11. Update Link...");
+    println!("🟢 9. Update Link...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -660,7 +629,7 @@ async fn test_wan_link() {
             jitter_ns: Some(100000),
             delay_override_ns: Some(0),
             status: None,
-            desired_status: None,
+            desired_status: Some(LinkDesiredStatus::Activated),
         }),
         vec![
             AccountMeta::new(tunnel_pubkey, false),
@@ -682,16 +651,45 @@ async fn test_wan_link() {
     assert_eq!(tunnel_la.mtu, 8900);
     assert_eq!(tunnel_la.delay_ns, 1000000);
     assert_eq!(tunnel_la.status, LinkStatus::Activated);
+    assert_eq!(tunnel_la.desired_status, LinkDesiredStatus::Activated);
 
     println!("✅ Link updated");
     /*****************************************************************************************************************************************************/
-    println!("🟢 12. Update Link to HardDrained...");
+    println!("🟢 10. Set Health Link...");
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetLinkHealth(LinkSetHealthArgs {
+            health: LinkHealth::ReadyForService,
+        }),
+        vec![
+            AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let tunnel_la = get_account_data(&mut banks_client, tunnel_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_tunnel()
+        .unwrap();
+    assert_eq!(tunnel_la.link_health, LinkHealth::ReadyForService);
+    assert_eq!(tunnel_la.desired_status, LinkDesiredStatus::Activated);
+    assert_eq!(tunnel_la.status, LinkStatus::Activated);
+
+    println!("✅ Link activated");
+    /*****************************************************************************************************************************************************/
+    println!("🟢 11. Update Link to HardDrained...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
-            status: Some(LinkStatus::HardDrained),
+            desired_status: Some(LinkDesiredStatus::HardDrained),
             ..Default::default()
         }),
         vec![
@@ -709,17 +707,18 @@ async fn test_wan_link() {
         .get_tunnel()
         .unwrap();
     assert_eq!(tunnel_la.account_type, AccountType::Link);
+    assert_eq!(tunnel_la.desired_status, LinkDesiredStatus::HardDrained);
     assert_eq!(tunnel_la.status, LinkStatus::HardDrained);
 
     println!("✅ Link updated to HardDrained");
     /*****************************************************************************************************************************************************/
-    println!("🟢 13. Update Link to SoftDrained...");
+    println!("🟢 12. Update Link to SoftDrained...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
-            status: Some(LinkStatus::SoftDrained),
+            desired_status: Some(LinkDesiredStatus::SoftDrained),
             ..Default::default()
         }),
         vec![
@@ -737,17 +736,18 @@ async fn test_wan_link() {
         .get_tunnel()
         .unwrap();
     assert_eq!(tunnel_la.account_type, AccountType::Link);
+    assert_eq!(tunnel_la.desired_status, LinkDesiredStatus::SoftDrained);
     assert_eq!(tunnel_la.status, LinkStatus::SoftDrained);
 
     println!("✅ Link updated to SoftDrained");
     /*****************************************************************************************************************************************************/
-    println!("🟢 14. Update Link to activated...");
+    println!("🟢 13. Update Link to activated...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
-            status: Some(LinkStatus::Activated),
+            desired_status: Some(LinkDesiredStatus::Activated),
             ..Default::default()
         }),
         vec![
@@ -765,11 +765,12 @@ async fn test_wan_link() {
         .get_tunnel()
         .unwrap();
     assert_eq!(tunnel_la.account_type, AccountType::Link);
+    assert_eq!(tunnel_la.desired_status, LinkDesiredStatus::Activated);
     assert_eq!(tunnel_la.status, LinkStatus::Activated);
 
     println!("✅ Link updated to activated");
     /*****************************************************************************************************************************************************/
-    println!("🟢 15. Deleting Link...");
+    println!("🟢 14. Deleting Link...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -799,18 +800,20 @@ async fn test_wan_link() {
     println!("✅ Link deleting");
 
     /*****************************************************************************************************************************************************/
-    println!("🟢 16. CloseAccount Link...");
+    println!("🟢 15. CloseAccount Link...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CloseAccountLink(LinkCloseAccountArgs {}),
+        DoubleZeroInstruction::CloseAccountLink(LinkCloseAccountArgs {
+            use_onchain_deallocation: false,
+        }),
         vec![
             AccountMeta::new(tunnel_pubkey, false),
-            AccountMeta::new(link.owner, false),
-            AccountMeta::new(link.contributor_pk, false),
-            AccountMeta::new(link.side_a_pk, false),
-            AccountMeta::new(link.side_z_pk, false),
+            AccountMeta::new(tunnel_la.owner, false),
+            AccountMeta::new(tunnel_la.contributor_pk, false),
+            AccountMeta::new(tunnel_la.side_a_pk, false),
+            AccountMeta::new(tunnel_la.side_z_pk, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,

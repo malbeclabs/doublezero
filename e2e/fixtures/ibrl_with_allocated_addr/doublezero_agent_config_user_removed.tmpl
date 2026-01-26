@@ -91,7 +91,7 @@ interface Ethernet5
    isis enable 1
    isis circuit-type level-2
    isis hello-interval 1
-   isis metric 1000000
+   isis metric 30000
    no isis passive
    isis hello padding
    isis network point-to-point
@@ -105,7 +105,7 @@ interface Ethernet6
    isis circuit-type level-2
    isis hello-interval 1
    isis metric 8000
-   isis passive
+   no isis passive
    isis hello padding
    isis network point-to-point
 !
@@ -284,6 +284,7 @@ router isis 1
    !
    segment-routing mpls
       no shutdown
+   no set-overload-bit
 !
 ip community-list COMM-ALL_USERS permit 21682:1200
 ip community-list COMM-ALL_MCAST_USERS permit 21682:1300

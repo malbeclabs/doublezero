@@ -122,6 +122,9 @@ const (
 	DeviceStatusSuspended
 	DeviceStatusDeleted
 	DeviceStatusRejected
+	DeviceStatusDrained
+	DeviceStatusDeviceProvisioning
+	DeviceStatusLinkProvisioning
 )
 
 func (d DeviceStatus) String() string {
@@ -131,10 +134,64 @@ func (d DeviceStatus) String() string {
 		"suspended",
 		"deleted",
 		"rejected",
+		"drained",
+		"device-provisioning",
+		"link-provisioning",
 	}[d]
 }
 
+func (d DeviceStatus) IsDrained() bool {
+	return d == DeviceStatusDrained
+}
+
 func (d DeviceStatus) MarshalJSON() ([]byte, error) {
+	return json.Marshal(d.String())
+}
+
+type DeviceHealth uint8
+
+const (
+	DeviceHealthPending DeviceHealth = iota
+	DeviceHealthReadyForLinks
+	DeviceHealthReadyForUsers
+	DeviceHealthImpaired
+)
+
+func (d DeviceHealth) String() string {
+	return [...]string{
+		"pending",
+		"ready_for_links",
+		"ready_for_users",
+		"impaired",
+	}[d]
+}
+
+func (d DeviceHealth) MarshalJSON() ([]byte, error) {
+	return json.Marshal(d.String())
+}
+
+type DeviceDesiredStatus uint8
+
+const (
+	DeviceDesiredStatusPending   DeviceDesiredStatus = iota
+	DeviceDesiredStatusActivated                     = 1
+	DeviceDesiredStatusDrained                       = 6
+)
+
+func (d DeviceDesiredStatus) String() string {
+	switch d {
+	case DeviceDesiredStatusPending:
+		return "pending"
+	case DeviceDesiredStatusActivated:
+		return "activated"
+	case DeviceDesiredStatusDrained:
+		return "drained"
+	default:
+		return "unknown"
+	}
+}
+
+func (d DeviceDesiredStatus) MarshalJSON() ([]byte, error) {
 	return json.Marshal(d.String())
 }
 
@@ -316,24 +373,26 @@ const CurrentInterfaceVersion = 2
 
 type Device struct {
 	AccountType            AccountType
-	Owner                  [32]uint8        `influx:"tag,owner,pubkey"`
-	Index                  Uint128          `influx:"-"`
-	Bump_seed              uint8            `influx:"-"`
-	LocationPubKey         [32]uint8        `influx:"tag,location_pubkey,pubkey"`
-	ExchangePubKey         [32]uint8        `influx:"tag,exchange_pubkey,pubkey"`
-	DeviceType             DeviceDeviceType `influx:"tag,device_type"`
-	PublicIp               [4]uint8         `influx:"tag,public_ip,ip"`
-	Status                 DeviceStatus     `influx:"tag,status"`
-	Code                   string           `influx:"tag,code"`
-	DzPrefixes             [][5]uint8       `influx:"field,dz_prefixes,cidr"`
-	MetricsPublisherPubKey [32]uint8        `influx:"tag,metrics_publisher_pubkey,pubkey"`
-	ContributorPubKey      [32]byte         `influx:"tag,contributor_pubkey,pubkey"`
-	MgmtVrf                string           `influx:"field,mgmt_vrf"`
-	Interfaces             []Interface      `influx:"-"`
-	ReferenceCount         uint32           `influx:"field,reference_count"`
-	UsersCount             uint16           `influx:"field,users_count"`
-	MaxUsers               uint16           `influx:"field,max_users"`
-	PubKey                 [32]byte         `influx:"tag,pubkey,pubkey"`
+	Owner                  [32]uint8           `influx:"tag,owner,pubkey"`
+	Index                  Uint128             `influx:"-"`
+	Bump_seed              uint8               `influx:"-"`
+	LocationPubKey         [32]uint8           `influx:"tag,location_pubkey,pubkey"`
+	ExchangePubKey         [32]uint8           `influx:"tag,exchange_pubkey,pubkey"`
+	DeviceType             DeviceDeviceType    `influx:"tag,device_type"`
+	PublicIp               [4]uint8            `influx:"tag,public_ip,ip"`
+	Status                 DeviceStatus        `influx:"tag,status"`
+	Code                   string              `influx:"tag,code"`
+	DzPrefixes             [][5]uint8          `influx:"field,dz_prefixes,cidr"`
+	MetricsPublisherPubKey [32]uint8           `influx:"tag,metrics_publisher_pubkey,pubkey"`
+	ContributorPubKey      [32]byte            `influx:"tag,contributor_pubkey,pubkey"`
+	MgmtVrf                string              `influx:"field,mgmt_vrf"`
+	Interfaces             []Interface         `influx:"-"`
+	ReferenceCount         uint32              `influx:"field,reference_count"`
+	UsersCount             uint16              `influx:"field,users_count"`
+	MaxUsers               uint16              `influx:"field,max_users"`
+	DeviceHealth           DeviceHealth        `influx:"field,device_health"`
+	DeviceDesiredStatus    DeviceDesiredStatus `influx:"tag,device_desired_status"`
+	PubKey                 [32]byte            `influx:"tag,pubkey,pubkey"`
 }
 
 func (d Device) MarshalJSON() ([]byte, error) {
@@ -350,6 +409,8 @@ func (d Device) MarshalJSON() ([]byte, error) {
 		ContributorPubKey      string   `json:"ContributorPubKey"`
 		PubKey                 string   `json:"PubKey"`
 		Status                 string   `json:"Status"`
+		DeviceHealth           string   `json:"DeviceHealth"`
+		DeviceDesiredStatus    string   `json:"DeviceDesiredStatus"`
 	}{
 		DeviceAlias: DeviceAlias(d),
 	}
@@ -369,6 +430,8 @@ func (d Device) MarshalJSON() ([]byte, error) {
 	}
 	jsonDevice.DzPrefixes = prefixes
 	jsonDevice.Status = d.Status.String()
+	jsonDevice.DeviceHealth = d.DeviceHealth.String()
+	jsonDevice.DeviceDesiredStatus = d.DeviceDesiredStatus.String()
 
 	return json.Marshal(jsonDevice)
 }
@@ -404,8 +467,9 @@ const (
 	LinkStatusDeleted
 	LinkStatusRejected
 	LinkStatusRequested
-	LinkStatusHardDrained
 	LinkStatusSoftDrained
+	LinkStatusHardDrained
+	LinkStatusProvisioning
 )
 
 func (l LinkStatus) String() string {
@@ -416,36 +480,86 @@ func (l LinkStatus) String() string {
 		"deleted",
 		"rejected",
 		"requested",
-		"hard-drained",
 		"soft-drained",
+		"hard-drained",
+		"provisioning",
 	}[l]
+}
+
+// IsHardDrained returns true if the link status is hard-drained
+func (l LinkStatus) IsHardDrained() bool {
+	return l == LinkStatusHardDrained
 }
 
 func (l LinkStatus) MarshalJSON() ([]byte, error) {
 	return json.Marshal(l.String())
 }
 
+type LinkHealth uint8
+
+const (
+	LinkHealthPending LinkHealth = iota
+	LinkHealthReadyForService
+	LinkHealthImpaired
+)
+
+func (l LinkHealth) String() string {
+	return [...]string{
+		"pending",
+		"ready_for_service",
+		"impaired",
+	}[l]
+}
+
+func (l LinkHealth) MarshalJSON() ([]byte, error) {
+	return json.Marshal(l.String())
+}
+
+type LinkDesiredStatus uint8
+
+const (
+	LinkDesiredStatusPending LinkDesiredStatus = iota
+	LinkDesiredStatusActivated
+	LinkDesiredStatusHardDrained
+	LinkDesiredStatusSoftDrained
+)
+
+func (l LinkDesiredStatus) String() string {
+	return [...]string{
+		"pending",
+		"activated",
+		"hard-drained",
+		"soft-drained",
+	}[l]
+}
+
+func (l LinkDesiredStatus) MarshalJSON() ([]byte, error) {
+	return json.Marshal(l.String())
+}
+
 type Link struct {
 	AccountType       AccountType
-	Owner             [32]uint8    `influx:"tag,owner,pubkey"`
-	Index             Uint128      `influx:"-"`
-	Bump_seed         uint8        `influx:"-"`
-	SideAPubKey       [32]uint8    `influx:"tag,side_a_pubkey,pubkey"`
-	SideZPubKey       [32]uint8    `influx:"tag,side_z_pubkey,pubkey"`
-	LinkType          LinkLinkType `influx:"tag,link_type"`
-	Bandwidth         uint64       `influx:"field,bandwidth"`
-	Mtu               uint32       `influx:"field,mtu"`
-	DelayNs           uint64       `influx:"field,delay_ns"`
-	JitterNs          uint64       `influx:"field,jitter_ns"`
-	TunnelId          uint16       `influx:"tag,tunnel_id"`
-	TunnelNet         [5]uint8     `influx:"tag,tunnel_net,cidr"`
-	Status            LinkStatus   `influx:"tag,status"`
-	Code              string       `influx:"tag,code"`
-	ContributorPubKey [32]uint8    `influx:"tag,contributor_pubkey,pubkey"`
-	SideAIfaceName    string       `influx:"tag,side_a_iface_name"`
-	SideZIfaceName    string       `influx:"tag,side_z_iface_name"`
-	DelayOverrideNs   uint64       `influx:"field,delay_override_ns"`
-	PubKey            [32]byte     `influx:"tag,pubkey,pubkey"`
+	Owner             [32]uint8         `influx:"tag,owner,pubkey"`
+	Index             Uint128           `influx:"-"`
+	Bump_seed         uint8             `influx:"-"`
+	SideAPubKey       [32]uint8         `influx:"tag,side_a_pubkey,pubkey"`
+	SideZPubKey       [32]uint8         `influx:"tag,side_z_pubkey,pubkey"`
+	LinkType          LinkLinkType      `influx:"tag,link_type"`
+	Bandwidth         uint64            `influx:"field,bandwidth"`
+	Mtu               uint32            `influx:"field,mtu"`
+	DelayNs           uint64            `influx:"field,delay_ns"`
+	JitterNs          uint64            `influx:"field,jitter_ns"`
+	TunnelId          uint16            `influx:"tag,tunnel_id"`
+	TunnelNet         [5]uint8          `influx:"tag,tunnel_net,cidr"`
+	Status            LinkStatus        `influx:"tag,status"`
+	Code              string            `influx:"tag,code"`
+	ContributorPubKey [32]uint8         `influx:"tag,contributor_pubkey,pubkey"`
+	SideAIfaceName    string            `influx:"tag,side_a_iface_name"`
+	SideZIfaceName    string            `influx:"tag,side_z_iface_name"`
+	DelayOverrideNs   uint64            `influx:"field,delay_override_ns"`
+	LinkHealth        LinkHealth        `influx:"field,link_health"`
+	LinkDesiredStatus LinkDesiredStatus `influx:"tag,link_desired_status"`
+	PubKey            [32]byte          `influx:"tag,pubkey,pubkey"`
 }
 
 func (l Link) MarshalJSON() ([]byte, error) {
@@ -460,6 +574,8 @@ func (l Link) MarshalJSON() ([]byte, error) {
 		ContributorPubKey string `json:"ContributorPubKey"`
 		PubKey            string `json:"PubKey"`
 		Status            string `json:"Status"`
+		LinkHealth        string `json:"LinkHealth"`
+		LinkDesiredStatus string `json:"LinkDesiredStatus"`
 	}{
 		LinkAlias: LinkAlias(l),
 	}
@@ -470,6 +586,8 @@ func (l Link) MarshalJSON() ([]byte, error) {
 	jsonLink.ContributorPubKey = base58.Encode(l.ContributorPubKey[:])
 	jsonLink.PubKey = base58.Encode(l.PubKey[:])
 	jsonLink.Status = l.Status.String()
+	jsonLink.LinkHealth = l.LinkHealth.String()
+	jsonLink.LinkDesiredStatus = l.LinkDesiredStatus.String()
 
 	jsonLink.TunnelNet = onChainNetToString(l.TunnelNet)
 
@@ -581,7 +699,7 @@ type UserStatus uint8
 const (
 	UserStatusPending UserStatus = iota
 	UserStatusActivated
-	UserStatusSuspended
+	UserStatusSuspendedDeprecated
 	UserStatusDeleted
 	UserStatusRejected
 	UserStatusPendingBan

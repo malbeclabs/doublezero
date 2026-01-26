@@ -407,8 +407,6 @@ impl ServiceController for ServiceControllerImpl {
             .body(Full::new(Bytes::from(body_bytes)))?;
         let res = client.request(req).await?;
 
-        println!("resolve-route: res: {:?}", res);
-
         // If route not found (404) or API error, return src=None instead of error
         if res.status() == StatusCode::NOT_FOUND || !res.status().is_success() {
             return Ok(ResolveRouteResponse { src: None });
@@ -416,7 +414,6 @@ impl ServiceController for ServiceControllerImpl {
 
         let data = res.into_body().collect().await?.to_bytes();
         let response = serde_json::from_slice::<ResolveRouteResponse>(&data)?;
-        println!("resolve-route: response: {:?}", response);
         Ok(response)
     }
 }

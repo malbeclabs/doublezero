@@ -106,8 +106,8 @@ async fn test_initialize_global_state_resizes_programconfig_and_tops_up_rent() {
 
     // authority / allowlists derived from payer in initialize_global_state()
     assert_eq!(global_state.foundation_allowlist, vec![payer.pubkey()]);
-    assert_eq!(global_state.device_allowlist, vec![payer.pubkey()]);
-    assert!(global_state.user_allowlist.is_empty());
+    assert_eq!(global_state._device_allowlist, vec![payer.pubkey()]);
+    assert!(global_state._user_allowlist.is_empty());
     assert_eq!(global_state.activator_authority_pk, payer.pubkey());
     assert_eq!(global_state.sentinel_authority_pk, payer.pubkey());
 

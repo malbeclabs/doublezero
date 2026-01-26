@@ -11,6 +11,8 @@
 # - openconfig-network-instance (includes ISIS, BGP, routing)
 # - openconfig-interfaces
 # - openconfig-system
+# - openconfig-platform (components)
+# - openconfig-platform-transceiver (optical transceiver state)
 
 set -e
 
@@ -27,7 +29,7 @@ docker run --rm ygot-generator sh -c "generator \
   -package_name=oc \
   -generate_fakeroot \
   -fakeroot_name=Device \
-  -compress_paths=true \
+  -compress_paths=false \
   -shorten_enum_leaf_names \
   -typedef_enum_with_defmod \
   -trim_enum_openconfig_prefix \
@@ -38,6 +40,8 @@ docker run --rm ygot-generator sh -c "generator \
   /yang/public/release/models/network-instance/openconfig-network-instance.yang \
   /yang/public/release/models/interfaces/openconfig-interfaces.yang \
   /yang/public/release/models/system/openconfig-system.yang \
+  /yang/public/release/models/platform/openconfig-platform.yang \
+  /yang/public/release/models/platform/openconfig-platform-transceiver.yang \
   && cat /out/oc.go" > "$OUT_DIR/oc.go"
 
 echo "Adding generated file header..."

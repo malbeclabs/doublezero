@@ -150,7 +150,10 @@ func (p *ledgerPeerDiscovery) refresh(ctx context.Context) error {
 	peers := make([]*Peer, 0)
 	for _, link := range links {
 		// Ignore links that are not yet activated.
-		if link.Status != serviceability.LinkStatusActivated {
+		if link.Status != serviceability.LinkStatusActivated &&
+			link.Status != serviceability.LinkStatusSoftDrained &&
+			link.Status != serviceability.LinkStatusHardDrained &&
+			link.Status != serviceability.LinkStatusProvisioning {
 			continue
 		}
 		// Ignore links that don't have a valid tunnel net.

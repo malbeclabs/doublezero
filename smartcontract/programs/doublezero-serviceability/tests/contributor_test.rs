@@ -131,6 +131,27 @@ async fn test_contributor() {
     assert_eq!(contributor.status, ContributorStatus::Activated);
 
     println!("✅ Contributor resumed");
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ResumeContributor(ContributorResumeArgs {}),
+        vec![
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    assert!(result.is_err());
+    let error = result.unwrap_err();
+    let error_string = format!("{:?}", error);
+    assert!(
+        error_string.contains("Custom(7)"),
+        "Expected error to contain 'Custom(7)' (InvalidStatus), but got: {}",
+        error_string
+    );
     /*****************************************************************************************************************************************************/
     println!("Testing Contributor update...");
     let ops_manager_pk = Pubkey::new_unique();
@@ -375,4 +396,93 @@ async fn test_contributor() {
 
     println!("✅ Contributor deleted successfully");
     println!("🟢  End test_contributor");
+}
+
+#[tokio::test]
+async fn test_suspend_contributor_from_suspended_fails() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+
+    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+    let owner = Pubkey::new_unique();
+
+    // Initialize global state
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::InitGlobalState(),
+        vec![
+            AccountMeta::new(program_config_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Create a contributor
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (contributor_pubkey, _) =
+        get_contributor_pda(&program_id, globalstate_account.account_index + 1);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
+            code: "test".to_string(),
+        }),
+        vec![
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(owner, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // First suspend (should succeed)
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SuspendContributor(ContributorSuspendArgs {}),
+        vec![
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Verify contributor is suspended
+    let contributor = get_account_data(&mut banks_client, contributor_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_contributor()
+        .unwrap();
+    assert_eq!(contributor.status, ContributorStatus::Suspended);
+
+    // Second suspend (should fail with InvalidStatus)
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SuspendContributor(ContributorSuspendArgs {}),
+        vec![
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    assert!(result.is_err());
+    let error_string = format!("{:?}", result.unwrap_err());
+    assert!(
+        error_string.contains("Custom(7)"),
+        "Expected InvalidStatus error (Custom(7)), got: {}",
+        error_string
+    );
+    println!("✅ Suspending already-suspended contributor correctly fails with InvalidStatus");
 }

@@ -30,13 +30,14 @@ pub mod utils {
             bump_seed,
             account_index: 0,
             foundation_allowlist: vec![],
-            device_allowlist: vec![],
-            user_allowlist: vec![],
+            _device_allowlist: vec![],
+            _user_allowlist: vec![],
             activator_authority_pk: Pubkey::new_unique(),
             sentinel_authority_pk: Pubkey::new_unique(),
             contributor_airdrop_lamports: 1_000_000_000,
             user_airdrop_lamports: 40_000,
             health_oracle_pk: Pubkey::new_unique(),
+            qa_allowlist: vec![],
         };
         client
             .expect_get()

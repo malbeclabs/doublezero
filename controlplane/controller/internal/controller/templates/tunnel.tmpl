@@ -108,7 +108,7 @@ interface {{ .Name }}
    isis circuit-type level-2
    isis hello-interval 1
    isis metric {{ .Metric }}
-   {{- if eq .LinkStatus.String "hard-drained" }}
+   {{- if .LinkStatus.IsHardDrained }}
    isis passive
    {{- else }}
    no isis passive
@@ -205,6 +205,9 @@ router bgp 65342
    neighbor {{ .OverlayDstIP }} route-map RM-USER-{{ .Id }}-OUT out
    neighbor {{ .OverlayDstIP }} maximum-routes 1
    neighbor {{ .OverlayDstIP }} maximum-accepted-routes 1
+   {{- if $.Device.Status.IsDrained }}
+   neighbor {{ .OverlayDstIP }} shutdown
+   {{- end }}
    {{- end }}
    {{- end }}
    address-family ipv4
@@ -254,6 +257,9 @@ router bgp 65342
       neighbor {{ .OverlayDstIP }} route-map RM-USER-{{ .Id }}-OUT out
       neighbor {{ .OverlayDstIP }} maximum-routes 1
       neighbor {{ .OverlayDstIP }} maximum-accepted-routes 1
+      {{- if $.Device.Status.IsDrained }}
+      neighbor {{ .OverlayDstIP }} shutdown
+      {{- end }}
       {{- end }}
       {{- end }}
       {{- end }}
@@ -270,6 +276,11 @@ router isis 1
    !
    segment-routing mpls
       no shutdown
+{{- if $.Device.Status.IsDrained }}
+   set-overload-bit
+{{- else }}
+   no set-overload-bit
+{{- end }}
 !
 ip community-list COMM-ALL_USERS permit 21682:1200
 ip community-list COMM-ALL_MCAST_USERS permit 21682:1300

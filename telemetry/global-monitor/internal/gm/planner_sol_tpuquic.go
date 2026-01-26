@@ -205,6 +205,9 @@ func (p *SolanaValidatorTPUQUICPlanner) recordResult(source *Source, val *sol.Va
 		"source_metro_name": source.MetroName,
 		"source_host":       source.Host,
 	}
+	if !val.VoteAccount.VotePubkey.IsZero() {
+		tags["validator_vote_pubkey"] = val.VoteAccount.VotePubkey.String()
+	}
 	fields := map[string]any{
 		"validator_leader_ratio":   val.LeaderRatio,
 		"validator_stake_lamports": val.VoteAccount.ActivatedStake,

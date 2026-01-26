@@ -97,13 +97,14 @@ pub fn initialize_global_state(program_id: &Pubkey, accounts: &[AccountInfo]) ->
         bump_seed,
         account_index: 0,
         foundation_allowlist: vec![*payer_account.key],
-        device_allowlist: vec![*payer_account.key],
-        user_allowlist: vec![],
+        _device_allowlist: vec![*payer_account.key],
+        _user_allowlist: vec![],
         activator_authority_pk: *payer_account.key,
         sentinel_authority_pk: *payer_account.key,
         contributor_airdrop_lamports: 1_000_000_000,
         user_airdrop_lamports: 40_000,
         health_oracle_pk: *payer_account.key,
+        qa_allowlist: vec![*payer_account.key],
     };
 
     try_acc_create(

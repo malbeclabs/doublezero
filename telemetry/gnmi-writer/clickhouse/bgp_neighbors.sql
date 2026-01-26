@@ -3,15 +3,22 @@
 
 CREATE TABLE IF NOT EXISTS bgp_neighbors (
     timestamp DateTime64(9) CODEC(DoubleDelta, ZSTD(1)),
-    device_code LowCardinality(String),
+    device_pubkey LowCardinality(String),
+    network_instance LowCardinality(String),
     neighbor_address String,
+    description String,
     peer_as UInt32,
+    local_as UInt32,
+    peer_type LowCardinality(String),
     session_state LowCardinality(String),
-    enabled Bool
+    established_transitions UInt64,
+    last_established Int64,
+    messages_received_update UInt64,
+    messages_sent_update UInt64
 )
 ENGINE = MergeTree()
 PARTITION BY toYYYYMM(timestamp)
-ORDER BY (device_code, neighbor_address, timestamp)
+ORDER BY (device_pubkey, network_instance, neighbor_address, timestamp)
 TTL toDateTime(timestamp) + INTERVAL 30 DAY
 SETTINGS index_granularity = 8192;
 
@@ -19,8 +26,8 @@ SETTINGS index_granularity = 8192;
 CREATE VIEW IF NOT EXISTS bgp_neighbors_latest AS
 SELECT *
 FROM bgp_neighbors
-WHERE (device_code, timestamp) IN (
-    SELECT device_code, max(timestamp)
+WHERE (device_pubkey, timestamp) IN (
+    SELECT device_pubkey, max(timestamp)
     FROM bgp_neighbors
-    GROUP BY device_code
+    GROUP BY device_pubkey
 );

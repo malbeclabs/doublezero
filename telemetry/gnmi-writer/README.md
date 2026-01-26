@@ -14,9 +14,12 @@ The processor uses registered extractors that pattern-match against gNMI paths. 
 
 **Supported Collections:**
 - ISIS adjacencies (neighbor relationships, state)
-- BGP neighbors (session state, peer AS)
+- BGP neighbors (session state, peer AS, local AS, peer type, description, established transitions, session timing, UPDATE message counts)
 - System state (CPU, memory, hostname)
 - Interface mappings (name to ifindex)
+- Transceiver state (optical power metrics: input power, output power, laser bias current per channel)
+- Transceiver thresholds (alarm thresholds per severity: input/output power, laser bias current, module temperature, supply voltage)
+- Interface state (admin/oper status, counters: in/out octets, packets, errors, discards)
 
 ## Developer Guide
 
@@ -32,7 +35,7 @@ Add a struct in `/workspaces/doublezero/telemetry/gnmi-writer/internal/gnmi/reco
 // LldpNeighborRecord represents an LLDP neighbor for storage in ClickHouse.
 type LldpNeighborRecord struct {
     Timestamp     time.Time `json:"timestamp" ch:"timestamp"`
-    DeviceCode    string    `json:"device_code" ch:"device_code"`
+    DevicePubkey  string    `json:"device_pubkey" ch:"device_pubkey"`
     InterfaceName string    `json:"interface_name" ch:"interface_name"`
     ChassisID     string    `json:"chassis_id" ch:"chassis_id"`
     PortID        string    `json:"port_id" ch:"port_id"`
@@ -46,7 +49,7 @@ func (r LldpNeighborRecord) TableName() string {
 ```
 
 **Requirements:**
-- Embed `Timestamp time.Time` and `DeviceCode string` (populated from notification metadata)
+- Embed `Timestamp time.Time` and `DevicePubkey string` (populated from notification metadata)
 - Use `ch` struct tags matching ClickHouse column names
 - Implement `TableName() string` to return the destination table
 - Use `omitempty` for optional fields
@@ -60,24 +63,30 @@ Add an extractor in `/workspaces/doublezero/telemetry/gnmi-writer/internal/gnmi/
 func extractLldpNeighbors(device *oc.Device, meta Metadata) []Record {
     var records []Record
 
-    for ifName, iface := range device.Interface {
-        if iface.Lldp == nil {
+    if device.Lldp == nil || device.Lldp.Interfaces == nil {
+        return nil
+    }
+
+    for ifName, iface := range device.Lldp.Interfaces.Interface {
+        if iface.Neighbors == nil {
             continue
         }
-        for chassisID, neighbor := range iface.Lldp.Neighbor {
+        for neighborID, neighbor := range iface.Neighbors.Neighbor {
             record := LldpNeighborRecord{
                 Timestamp:     meta.Timestamp,
-                DeviceCode:    meta.DeviceCode,
+                DevicePubkey:  meta.DevicePubkey,
                 InterfaceName: ifName,
-                ChassisID:     chassisID,
+                ChassisID:     neighborID,
             }
 
-            // Extract fields safely (OpenConfig uses pointers)
-            if neighbor.PortId != nil {
-                record.PortID = *neighbor.PortId
-            }
-            if neighbor.SystemName != nil {
-                record.SystemName = *neighbor.SystemName
+            // All OpenConfig state fields are accessed through explicit State containers
+            if neighbor.State != nil {
+                if neighbor.State.PortId != nil {
+                    record.PortID = *neighbor.State.PortId
+                }
+                if neighbor.State.SystemName != nil {
+                    record.SystemName = *neighbor.State.SystemName
+                }
             }
 
             records = append(records, record)
@@ -90,9 +99,18 @@ func extractLldpNeighbors(device *oc.Device, meta Metadata) []Record {
 
 **Pattern:**
 - Iterate through the `oc.Device` structure to find your data
-- Handle nil pointers (OpenConfig uses pointer fields for optional data)
-- Populate `Timestamp` and `DeviceCode` from `meta` parameter
+- Access OpenConfig state data through explicit `.State` containers (due to uncompressed path generation)
+- Handle nil pointers at both the container level (e.g., `neighbor.State`) and field level (e.g., `neighbor.State.PortId`)
+- Populate `Timestamp` and `DevicePubkey` from `meta` parameter
 - Return nil if no meaningful data is found
+
+**State Container Access:**
+OpenConfig uses uncompressed paths, meaning all operational state fields are accessed through explicit `.State` containers. For example:
+- BGP neighbor peer AS: `neighbor.State.PeerAs` (not `neighbor.PeerAs`)
+- Interface ifindex: `iface.State.Ifindex` (not `iface.Ifindex`)
+- System hostname: `device.System.State.Hostname` (not `device.System.Hostname`)
+
+Always check if the `.State` container exists before accessing its fields to avoid nil pointer panics.
 
 #### 3. Register the Extractor
 
@@ -104,9 +122,20 @@ var DefaultExtractors = []ExtractorDef{
     {Name: "system_state", Match: PathContains("system", "state"), Extract: extractSystemState},
     {Name: "bgp_neighbors", Match: PathContains("bgp", "neighbors"), Extract: extractBgpNeighbors},
     {Name: "interface_ifindex", Match: PathContains("interfaces", "ifindex"), Extract: extractInterfaceIfindex},
+    {Name: "transceiver_state", Match: PathContains("transceiver", "physical-channels"), Extract: extractTransceiverState},
+    {Name: "transceiver_thresholds", Match: PathContains("transceiver", "thresholds"), Extract: extractTransceiverThresholds},
+    {Name: "interface_state", Match: PathContains("interfaces", "interface", "state"), Extract: extractInterfaceState},
     {Name: "lldp_neighbors", Match: PathContains("lldp", "neighbors"), Extract: extractLldpNeighbors},
 }
 ```
+
+**Extractor Ordering:**
+
+Order matters in `DefaultExtractors`. When multiple extractors match a path, only the first one executes. Place more specific matchers before less specific ones to avoid collisions.
+
+For example, `interface_ifindex` matches paths containing `["interfaces", "ifindex"]`, but ifindex paths also contain `"interface"` and `"state"`. If `interface_state` (which matches `["interfaces", "interface", "state"]`) were registered first, it would capture ifindex updates and `interface_ifindex` would never run.
+
+When adding a new collection, consider whether your path matcher overlaps with existing ones and place it appropriately in the list.
 
 **Path Matchers:**
 - `PathContains("isis", "adjacencies")` - Matches paths containing both "isis" AND "adjacencies" elements
@@ -132,7 +161,7 @@ Add a schema file in `/workspaces/doublezero/telemetry/gnmi-writer/clickhouse/ll
 
 CREATE TABLE IF NOT EXISTS lldp_neighbors (
     timestamp DateTime64(9) CODEC(DoubleDelta, ZSTD(1)),
-    device_code LowCardinality(String),
+    device_pubkey LowCardinality(String),
     interface_name String,
     chassis_id String,
     port_id String,
@@ -140,7 +169,7 @@ CREATE TABLE IF NOT EXISTS lldp_neighbors (
 )
 ENGINE = MergeTree()
 PARTITION BY toYYYYMM(timestamp)
-ORDER BY (device_code, interface_name, chassis_id, timestamp)
+ORDER BY (device_pubkey, interface_name, chassis_id, timestamp)
 TTL toDateTime(timestamp) + INTERVAL 30 DAY
 SETTINGS index_granularity = 8192;
 
@@ -148,10 +177,10 @@ SETTINGS index_granularity = 8192;
 CREATE VIEW IF NOT EXISTS lldp_neighbors_latest AS
 SELECT *
 FROM lldp_neighbors
-WHERE (device_code, timestamp) IN (
-    SELECT device_code, max(timestamp)
+WHERE (device_pubkey, timestamp) IN (
+    SELECT device_pubkey, max(timestamp)
     FROM lldp_neighbors
-    GROUP BY device_code
+    GROUP BY device_pubkey
 );
 ```
 
@@ -171,7 +200,7 @@ Create a prototext file in `/workspaces/doublezero/telemetry/gnmi-writer/interna
 update: {
   timestamp: 1767996400924668639
   prefix: {
-    target: "router1"
+    target: "RTR011111111111111111111111111111111111111111"
   }
   update: {
     path: {
@@ -220,7 +249,7 @@ var integrationTests = []integrationTestCase{
 
 func verifyLldpNeighbors(t *testing.T, h *testHarness) {
     type lldpRow struct {
-        DeviceCode    string
+        DevicePubkey  string
         InterfaceName string
         ChassisID     string
         PortID        string
@@ -228,11 +257,11 @@ func verifyLldpNeighbors(t *testing.T, h *testHarness) {
     }
 
     rows := queryRows(h, fmt.Sprintf(`
-        SELECT device_code, interface_name, chassis_id, port_id, system_name
+        SELECT device_pubkey, interface_name, chassis_id, port_id, system_name
         FROM %s.lldp_neighbors
     `, chDbname), func(r *sql.Rows) (lldpRow, error) {
         var row lldpRow
-        err := r.Scan(&row.DeviceCode, &row.InterfaceName, &row.ChassisID,
+        err := r.Scan(&row.DevicePubkey, &row.InterfaceName, &row.ChassisID,
             &row.PortID, &row.SystemName)
         return row, err
     })
@@ -240,7 +269,7 @@ func verifyLldpNeighbors(t *testing.T, h *testHarness) {
     t.Logf("found %d LLDP neighbor records", len(rows))
     require.GreaterOrEqual(t, len(rows), 1)
 
-    require.Equal(t, "router1", rows[0].DeviceCode)
+    require.Equal(t, "RTR011111111111111111111111111111111111111111", rows[0].DevicePubkey)
     require.Equal(t, "Ethernet1", rows[0].InterfaceName)
     require.Equal(t, "00:11:22:33:44:55", rows[0].ChassisID)
     require.Equal(t, "Ethernet1", rows[0].PortID)
@@ -292,6 +321,12 @@ Integration tests use table-driven design. Each test case:
 
 OpenConfig provides vendor-neutral models for network state. Devices stream telemetry as gNMI Subscribe notifications containing OpenConfig JSON. The processor uses ygot (YANG Go tools) to unmarshal this JSON into type-safe Go structs, making extraction straightforward and resilient to schema evolution.
 
+### Uncompressed Path Structure
+
+The ygot code generation uses uncompressed paths (`-compress_paths=false`). This means the Go struct hierarchy matches gNMI paths exactly, including explicit `/state` containers. For example, a BGP neighbor's peer AS is accessed as `neighbor.State.PeerAs` rather than `neighbor.PeerAs`.
+
+While this produces larger generated code (177K vs 110K lines), it eliminates unmarshalling ambiguity. With compressed paths, ygot's SetNode silently failed when gNMI paths ended at `/state` containers, requiring custom workarounds. Uncompressed paths ensure the path structure in notifications matches the struct hierarchy precisely, making unmarshalling reliable and extraction code straightforward.
+
 ### Why ClickHouse Views?
 
 Each table has a `_latest` view that returns the most recent snapshot per device. This is useful for dashboards showing current state without time-range queries. The view uses subquery filtering to find the latest timestamp per device, then returns all records at that timestamp.
@@ -302,11 +337,57 @@ Only one extractor processes each update. When multiple extractors match a path,
 
 ### Metrics
 
-The processor exposes Prometheus metrics:
-- `gnmi_processor_records_processed_total` - Records successfully written
-- `gnmi_processor_processing_duration_seconds` - Time spent processing batches
-- `gnmi_processor_processing_errors_total` - Unmarshal/extraction failures
-- `gnmi_processor_write_errors_total` - ClickHouse write failures
+The service exposes Prometheus metrics for monitoring pipeline health:
+
+**Consumer Metrics:**
+- `gnmi_writer_notifications_consumed_total` - gNMI notifications consumed from Kafka
+- `gnmi_writer_fetch_errors_total` - Kafka fetch errors
+- `gnmi_writer_unmarshal_errors_total` - Protobuf unmarshal errors
+
+**Processor Metrics:**
+- `gnmi_writer_records_processed_total` - Records successfully extracted and processed
+- `gnmi_writer_processing_duration_seconds` - Time spent processing notification batches
+- `gnmi_writer_processing_errors_total` - Notification processing failures (unmarshal/extraction errors)
+- `gnmi_writer_write_errors_total` - Record write failures
+- `gnmi_writer_commit_errors_total` - Kafka offset commit errors
+
+**ClickHouse Metrics:**
+- `gnmi_writer_clickhouse_insert_duration_seconds` - Time spent inserting batches into ClickHouse
+- `gnmi_writer_clickhouse_insert_errors_total` - ClickHouse insert errors
+- `gnmi_writer_clickhouse_records_written_total` - Records successfully written to ClickHouse
+
+## Tools
+
+### gnmi-prototext-convert
+
+Converts raw gNMI GET responses into SubscribeResponse format for testdata files.
+
+Raw gNMI GET responses return Notification messages directly, but gnmi-writer tests expect SubscribeResponse wrappers. This tool handles the conversion and adds the required `prefix.target` field.
+
+**Usage:**
+
+```bash
+# From file
+go run ./tools/gnmi-prototext-convert --target DEVICE_PUBKEY --input raw.prototext > formatted.prototext
+
+# From stdin
+cat raw.prototext | go run ./tools/gnmi-prototext-convert --target DEVICE_PUBKEY > formatted.prototext
+```
+
+**Supported Input Formats:**
+- Raw Notification prototext (starts with `timestamp:`, `prefix:`, etc.)
+- Non-standard `notification: { ... }` wrapper format (common from some gNMI tools)
+- Already-formatted SubscribeResponse (updates target only)
+
+**Example:**
+
+```bash
+# Convert raw gNMI GET output for interface ifindex data
+go run ./tools/gnmi-prototext-convert \
+  --target "DZd011111111111111111111111111111111111111111" \
+  --input raw_ifindexes.prototext \
+  > internal/gnmi/testdata/interfaces_ifindex.prototext
+```
 
 ## File Reference
 
@@ -319,3 +400,4 @@ The processor exposes Prometheus metrics:
 | `internal/gnmi/processor_integration_test.go` | End-to-end tests with containers |
 | `clickhouse/*.sql` | ClickHouse table schemas and views |
 | `internal/gnmi/testdata/*.prototext` | Test gNMI notifications in prototext format |
+| `tools/gnmi-prototext-convert/` | Tool to convert raw gNMI GET responses to testdata format |

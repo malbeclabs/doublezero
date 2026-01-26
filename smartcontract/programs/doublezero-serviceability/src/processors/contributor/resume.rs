@@ -72,6 +72,12 @@ pub fn process_resume_contributor(
     }
 
     let mut contributor: Contributor = Contributor::try_from(contributor_account)?;
+
+    // Only resume contributors that are currently Suspended
+    if contributor.status != ContributorStatus::Suspended {
+        return Err(DoubleZeroError::InvalidStatus.into());
+    }
+
     contributor.status = ContributorStatus::Activated;
 
     try_acc_write(&contributor, contributor_account, payer_account, accounts)?;

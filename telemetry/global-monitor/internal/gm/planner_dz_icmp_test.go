@@ -136,7 +136,11 @@ func TestGlobalMonitor_DoubleZeroUserICMPPlanner_BuildPlans_DedupAndPaths(t *tes
 		u.ValidatorPK: {GossipIP: u.ClientIP, TPUQUICIP: u.DZIP},
 	}
 	validators := map[solana.PublicKey]*sol.Validator{
-		u.ValidatorPK: {},
+		u.ValidatorPK: {
+			VoteAccount: sol.VoteAccount{
+				VotePubkey: pk(100),
+			},
+		},
 	}
 
 	byUser, plans, dedup, err := p.BuildPlans(svc, src, routes, gossip, validators)
@@ -179,11 +183,16 @@ func TestGlobalMonitor_DoubleZeroUserICMPPlanner_Record_WritesExpectedInfluxPoin
 	src := mkSource("eth0", "198.51.100.2", "dz0", &sourceUser)
 
 	u := mkUser(pk(1), "203.0.113.10", "10.0.0.10", "nyc", dz.UserTypeIBRL, pk(42))
+	votePK := pk(100)
 	gossip := map[solana.PublicKey]*sol.GossipNode{
 		u.ValidatorPK: {GossipIP: u.ClientIP, TPUQUICIP: u.DZIP},
 	}
 	validators := map[solana.PublicKey]*sol.Validator{
-		u.ValidatorPK: {},
+		u.ValidatorPK: {
+			VoteAccount: sol.VoteAccount{
+				VotePubkey: votePK,
+			},
+		},
 	}
 
 	dzT, err := NewICMPProbeTarget(log, "dz0", u.DZIP, &ICMPProbeTargetConfig{})
@@ -227,6 +236,7 @@ func TestGlobalMonitor_DoubleZeroUserICMPPlanner_Record_WritesExpectedInfluxPoin
 		require.Contains(t, fields, "probe_loss_ratio")
 
 		require.Contains(t, tags, "user_validator_pubkey")
+		requireTag(t, tags, "validator_vote_pubkey", votePK.String())
 		require.Contains(t, fields, "user_validator_pubkey_in_solana_vote_accounts")
 		require.Contains(t, fields, "user_validator_pubkey_in_solana_gossip")
 
@@ -283,5 +293,41 @@ func TestGlobalMonitor_DoubleZeroUserICMPPlanner_Record_WritesExpectedInfluxPoin
 		p.influxAPI = nil
 		res := &ProbeResult{Timestamp: ts, OK: false, FailReason: ProbeFailReasonTimeout}
 		p.recordResult(src, &u, pubT, res, gossip, validators)
+	})
+
+	t.Run("validator without vote pubkey does not include validator_vote_pubkey tag", func(t *testing.T) {
+		influx = newFakeWriteAPI()
+		p.influxAPI = influx
+
+		uNoVote := mkUser(pk(2), "203.0.113.11", "10.0.0.11", "nyc", dz.UserTypeIBRL, pk(43))
+		validatorsNoVote := map[solana.PublicKey]*sol.Validator{
+			uNoVote.ValidatorPK: {
+				VoteAccount: sol.VoteAccount{
+					VotePubkey: solana.PublicKey{}, // zero pubkey
+				},
+			},
+		}
+		gossipNoVote := map[solana.PublicKey]*sol.GossipNode{
+			uNoVote.ValidatorPK: {GossipIP: uNoVote.ClientIP},
+		}
+
+		pubTNoVote, err := NewICMPProbeTarget(log, "eth0", uNoVote.ClientIP, &ICMPProbeTargetConfig{})
+		require.NoError(t, err)
+
+		res := &ProbeResult{
+			Timestamp: ts,
+			OK:        true,
+			Stats: &ProbeStats{
+				PacketsSent: 10, PacketsRecv: 9, PacketsLost: 1, LossRatio: 0.1,
+				RTTMin: 10 * time.Millisecond, RTTAvg: 15 * time.Millisecond, RTTStdDev: 2 * time.Millisecond,
+			},
+		}
+		p.recordResult(src, &uNoVote, pubTNoVote, res, gossipNoVote, validatorsNoVote)
+
+		pts := influx.Points()
+		require.Len(t, pts, 1)
+		tags := pointTags(pts[0])
+		require.Contains(t, tags, "user_validator_pubkey")
+		require.NotContains(t, tags, "validator_vote_pubkey")
 	})
 }

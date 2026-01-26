@@ -27,6 +27,7 @@ func (f *FactDataset) WriteBatch(
 	if err != nil {
 		return fmt.Errorf("failed to prepare batch: %w", err)
 	}
+	defer batch.Close() // Always release the connection back to the pool
 
 	for i := range count {
 		select {

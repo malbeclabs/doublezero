@@ -141,7 +141,7 @@ function useBucketCount() {
 export function LinkStatusTimelines({
   timeRange = '24h',
   onTimeRangeChange,
-  issueFilters = ['packet_loss', 'high_latency', 'extended_loss', 'drained'],
+  issueFilters = ['packet_loss', 'high_latency', 'extended_loss', 'drained', 'interface_errors', 'discards', 'carrier_transitions'],
   healthFilters = ['healthy', 'degraded', 'unhealthy', 'disabled'],
   linksWithIssues,
   linksWithHealth,
@@ -393,6 +393,30 @@ export function LinkStatusTimelines({
                           style={{ backgroundColor: 'rgba(236, 72, 153, 0.15)', color: '#db2777' }}
                         >
                           No Data
+                        </span>
+                      )}
+                      {issueReasons.includes('interface_errors') && (
+                        <span
+                          className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                          style={{ backgroundColor: 'rgba(239, 68, 68, 0.15)', color: '#dc2626' }}
+                        >
+                          Errors
+                        </span>
+                      )}
+                      {issueReasons.includes('discards') && (
+                        <span
+                          className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                          style={{ backgroundColor: 'rgba(245, 158, 11, 0.15)', color: '#d97706' }}
+                        >
+                          Discards
+                        </span>
+                      )}
+                      {issueReasons.includes('carrier_transitions') && (
+                        <span
+                          className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                          style={{ backgroundColor: 'rgba(147, 51, 234, 0.15)', color: '#7c3aed' }}
+                        >
+                          Carrier
                         </span>
                       )}
                     </div>

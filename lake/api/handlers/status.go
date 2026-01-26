@@ -1036,13 +1036,24 @@ type LinkHourStatus struct {
 	AvgLatencyUs float64 `json:"avg_latency_us"`
 	AvgLossPct   float64 `json:"avg_loss_pct"`
 	Samples      uint64  `json:"samples"`
-	// Per-side metrics (direction: A→Z vs Z→A)
+	// Per-side latency/loss metrics (direction: A→Z vs Z→A)
 	SideALatencyUs float64 `json:"side_a_latency_us,omitempty"`
 	SideALossPct   float64 `json:"side_a_loss_pct,omitempty"`
 	SideASamples   uint64  `json:"side_a_samples,omitempty"`
 	SideZLatencyUs float64 `json:"side_z_latency_us,omitempty"`
 	SideZLossPct   float64 `json:"side_z_loss_pct,omitempty"`
 	SideZSamples   uint64  `json:"side_z_samples,omitempty"`
+	// Per-side interface issues (errors, discards, carrier transitions)
+	SideAInErrors           uint64 `json:"side_a_in_errors,omitempty"`
+	SideAOutErrors          uint64 `json:"side_a_out_errors,omitempty"`
+	SideAInDiscards         uint64 `json:"side_a_in_discards,omitempty"`
+	SideAOutDiscards        uint64 `json:"side_a_out_discards,omitempty"`
+	SideACarrierTransitions uint64 `json:"side_a_carrier_transitions,omitempty"`
+	SideZInErrors           uint64 `json:"side_z_in_errors,omitempty"`
+	SideZOutErrors          uint64 `json:"side_z_out_errors,omitempty"`
+	SideZInDiscards         uint64 `json:"side_z_in_discards,omitempty"`
+	SideZOutDiscards        uint64 `json:"side_z_out_discards,omitempty"`
+	SideZCarrierTransitions uint64 `json:"side_z_carrier_transitions,omitempty"`
 }
 
 type LinkHistory struct {
@@ -1057,7 +1068,7 @@ type LinkHistory struct {
 	BandwidthBps   int64            `json:"bandwidth_bps"`
 	CommittedRttUs float64          `json:"committed_rtt_us"`
 	Hours          []LinkHourStatus `json:"hours"`
-	IssueReasons   []string         `json:"issue_reasons"` // "packet_loss", "high_latency", "drained", "no_data"
+	IssueReasons   []string         `json:"issue_reasons"` // "packet_loss", "high_latency", "drained", "no_data", "interface_errors", "discards", "carrier_transitions"
 }
 
 type LinkHistoryResponse struct {
@@ -1314,6 +1325,69 @@ func fetchLinkHistoryData(ctx context.Context, timeRange string, requestedBucket
 		linkBuckets[linkPK] = buckets
 	}
 
+	// Get interface issues per link per bucket (grouped by side)
+	// Use greatest(0, delta) to ignore negative deltas (counter resets from device restarts)
+	interfaceQuery := `
+		SELECT
+			link_pk,
+			link_side,
+			` + bucketInterval + ` as bucket,
+			toUInt64(SUM(greatest(0, in_errors_delta))) as in_errors,
+			toUInt64(SUM(greatest(0, out_errors_delta))) as out_errors,
+			toUInt64(SUM(greatest(0, in_discards_delta))) as in_discards,
+			toUInt64(SUM(greatest(0, out_discards_delta))) as out_discards,
+			toUInt64(SUM(greatest(0, carrier_transitions_delta))) as carrier_transitions
+		FROM fact_dz_device_interface_counters
+		WHERE event_ts > now() - INTERVAL ? HOUR
+		  AND link_pk != ''
+		GROUP BY link_pk, link_side, bucket
+		ORDER BY link_pk, link_side, bucket
+	`
+
+	interfaceRows, err := config.DB.Query(ctx, interfaceQuery, totalHours)
+	if err != nil {
+		return nil, fmt.Errorf("link interface query error: %w", err)
+	}
+	defer interfaceRows.Close()
+
+	// Build interface stats per link per bucket per side
+	type interfaceStats struct {
+		inErrors           uint64
+		outErrors          uint64
+		inDiscards         uint64
+		outDiscards        uint64
+		carrierTransitions uint64
+	}
+	type linkInterfaceBucketKey struct {
+		linkPK string
+		bucket string
+	}
+	linkInterfaceBuckets := make(map[linkInterfaceBucketKey]map[string]*interfaceStats) // key -> side -> stats
+
+	for interfaceRows.Next() {
+		var linkPK, linkSide string
+		var bucket time.Time
+		var inErrors, outErrors, inDiscards, outDiscards, carrierTransitions uint64
+		if err := interfaceRows.Scan(&linkPK, &linkSide, &bucket, &inErrors, &outErrors, &inDiscards, &outDiscards, &carrierTransitions); err != nil {
+			return nil, fmt.Errorf("interface scan error: %w", err)
+		}
+		bucketKey := bucket.UTC().Format(time.RFC3339)
+		key := linkInterfaceBucketKey{linkPK: linkPK, bucket: bucketKey}
+		if linkInterfaceBuckets[key] == nil {
+			linkInterfaceBuckets[key] = make(map[string]*interfaceStats)
+		}
+		linkInterfaceBuckets[key][linkSide] = &interfaceStats{
+			inErrors:           inErrors,
+			outErrors:          outErrors,
+			inDiscards:         inDiscards,
+			outDiscards:        outDiscards,
+			carrierTransitions: carrierTransitions,
+		}
+	}
+	if err := interfaceRows.Err(); err != nil {
+		return nil, fmt.Errorf("interface rows iteration error: %w", err)
+	}
+
 	// Get historical link status per bucket from dim_dz_links_history
 	// This tells us if a link was drained at each point in time
 	// Build bucket interval for snapshot_ts (history table uses snapshot_ts, not event_ts)
@@ -1465,7 +1539,7 @@ func fetchLinkHistoryData(ctx context.Context, timeRange string, requestedBucket
 					AvgLossPct:   stats.lossPct,
 					Samples:      stats.samples,
 				}
-				// Add per-side metrics if available
+				// Add per-side latency/loss metrics if available
 				if stats.sideA != nil {
 					hourStatus.SideALatencyUs = stats.sideA.avgLatency
 					hourStatus.SideALossPct = stats.sideA.lossPct
@@ -1475,6 +1549,44 @@ func fetchLinkHistoryData(ctx context.Context, timeRange string, requestedBucket
 					hourStatus.SideZLatencyUs = stats.sideZ.avgLatency
 					hourStatus.SideZLossPct = stats.sideZ.lossPct
 					hourStatus.SideZSamples = stats.sideZ.samples
+				}
+				// Add per-side interface issues if available
+				intfKey := linkInterfaceBucketKey{linkPK: pk, bucket: key}
+				if intfBucket, ok := linkInterfaceBuckets[intfKey]; ok {
+					if sideA, ok := intfBucket["A"]; ok {
+						hourStatus.SideAInErrors = sideA.inErrors
+						hourStatus.SideAOutErrors = sideA.outErrors
+						hourStatus.SideAInDiscards = sideA.inDiscards
+						hourStatus.SideAOutDiscards = sideA.outDiscards
+						hourStatus.SideACarrierTransitions = sideA.carrierTransitions
+						// Track issue reasons
+						if sideA.inErrors > 0 || sideA.outErrors > 0 {
+							issueReasons["interface_errors"] = true
+						}
+						if sideA.inDiscards > 0 || sideA.outDiscards > 0 {
+							issueReasons["discards"] = true
+						}
+						if sideA.carrierTransitions > 0 {
+							issueReasons["carrier_transitions"] = true
+						}
+					}
+					if sideZ, ok := intfBucket["Z"]; ok {
+						hourStatus.SideZInErrors = sideZ.inErrors
+						hourStatus.SideZOutErrors = sideZ.outErrors
+						hourStatus.SideZInDiscards = sideZ.inDiscards
+						hourStatus.SideZOutDiscards = sideZ.outDiscards
+						hourStatus.SideZCarrierTransitions = sideZ.carrierTransitions
+						// Track issue reasons
+						if sideZ.inErrors > 0 || sideZ.outErrors > 0 {
+							issueReasons["interface_errors"] = true
+						}
+						if sideZ.inDiscards > 0 || sideZ.outDiscards > 0 {
+							issueReasons["discards"] = true
+						}
+						if sideZ.carrierTransitions > 0 {
+							issueReasons["carrier_transitions"] = true
+						}
+					}
 				}
 				hourStatuses = append(hourStatuses, hourStatus)
 			} else {

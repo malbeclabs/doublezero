@@ -208,6 +208,51 @@ export function StatusTimeline({ hours, committedRttUs, bucketMinutes = 60, time
                           )}
                         </div>
                       )}
+                      {/* Interface issues */}
+                      {(() => {
+                        const sideAErrors = (hour.side_a_in_errors ?? 0) + (hour.side_a_out_errors ?? 0)
+                        const sideADiscards = (hour.side_a_in_discards ?? 0) + (hour.side_a_out_discards ?? 0)
+                        const sideACarrier = hour.side_a_carrier_transitions ?? 0
+                        const sideZErrors = (hour.side_z_in_errors ?? 0) + (hour.side_z_out_errors ?? 0)
+                        const sideZDiscards = (hour.side_z_in_discards ?? 0) + (hour.side_z_out_discards ?? 0)
+                        const sideZCarrier = hour.side_z_carrier_transitions ?? 0
+                        const hasInterfaceIssues = sideAErrors > 0 || sideADiscards > 0 || sideACarrier > 0 ||
+                                                   sideZErrors > 0 || sideZDiscards > 0 || sideZCarrier > 0
+                        if (!hasInterfaceIssues) return null
+                        return (
+                          <div className="pt-2 mt-2 border-t border-border space-y-1.5">
+                            <div className="text-[11px] font-medium text-foreground">Interface Issues</div>
+                            {(sideAErrors > 0 || sideADiscards > 0 || sideACarrier > 0) && (
+                              <div className="text-[11px]">
+                                <span className="text-muted-foreground">A-Side: </span>
+                                <span className="font-mono">
+                                  {[
+                                    sideAErrors > 0 && <span key="err" className="text-red-500">{sideAErrors} errors</span>,
+                                    sideADiscards > 0 && <span key="disc" className="text-amber-500">{sideADiscards} discards</span>,
+                                    sideACarrier > 0 && <span key="carr" className="text-purple-500">{sideACarrier} carrier</span>,
+                                  ].filter(Boolean).map((el, i, arr) => (
+                                    <span key={i}>{el}{i < arr.length - 1 && ' · '}</span>
+                                  ))}
+                                </span>
+                              </div>
+                            )}
+                            {(sideZErrors > 0 || sideZDiscards > 0 || sideZCarrier > 0) && (
+                              <div className="text-[11px]">
+                                <span className="text-muted-foreground">Z-Side: </span>
+                                <span className="font-mono">
+                                  {[
+                                    sideZErrors > 0 && <span key="err" className="text-red-500">{sideZErrors} errors</span>,
+                                    sideZDiscards > 0 && <span key="disc" className="text-amber-500">{sideZDiscards} discards</span>,
+                                    sideZCarrier > 0 && <span key="carr" className="text-purple-500">{sideZCarrier} carrier</span>,
+                                  ].filter(Boolean).map((el, i, arr) => (
+                                    <span key={i}>{el}{i < arr.length - 1 && ' · '}</span>
+                                  ))}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })()}
                     </div>
                   )}
                 </div>

@@ -1220,13 +1220,24 @@ export interface LinkHourStatus {
   avg_latency_us: number
   avg_loss_pct: number
   samples: number
-  // Per-side metrics (direction: A→Z vs Z→A)
+  // Per-side latency/loss metrics (direction: A→Z vs Z→A)
   side_a_latency_us?: number
   side_a_loss_pct?: number
   side_a_samples?: number
   side_z_latency_us?: number
   side_z_loss_pct?: number
   side_z_samples?: number
+  // Per-side interface issues (errors, discards, carrier transitions)
+  side_a_in_errors?: number
+  side_a_out_errors?: number
+  side_a_in_discards?: number
+  side_a_out_discards?: number
+  side_a_carrier_transitions?: number
+  side_z_in_errors?: number
+  side_z_out_errors?: number
+  side_z_in_discards?: number
+  side_z_out_discards?: number
+  side_z_carrier_transitions?: number
 }
 
 export interface LinkHistory {
@@ -1241,7 +1252,7 @@ export interface LinkHistory {
   bandwidth_bps: number
   committed_rtt_us: number
   hours: LinkHourStatus[]
-  issue_reasons: string[] // "packet_loss", "high_latency", "disabled"
+  issue_reasons: string[] // "packet_loss", "high_latency", "drained", "no_data", "interface_errors", "discards", "carrier_transitions"
 }
 
 export interface LinkHistoryResponse {

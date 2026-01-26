@@ -141,8 +141,7 @@ export function Landing() {
         />
         <StatCard
           label="User Inbound"
-          // TODO: temporarily hardcoded, restore stats?.user_inbound_bps when fixed
-          value={19_000_000_000}
+          value={stats?.user_inbound_bps}
           format="bandwidth"
         />
       </div>

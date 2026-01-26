@@ -346,6 +346,7 @@ mod tests {
             publishers: vec![Pubkey::new_unique()],
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         };
 
         let device = Device {

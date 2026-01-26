@@ -211,6 +211,7 @@ pub fn process_create_user(
         publishers: vec![],
         subscribers: vec![],
         validator_pubkey,
+        tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
     };
 
     if pda_ver == PDAVersion::V1 {

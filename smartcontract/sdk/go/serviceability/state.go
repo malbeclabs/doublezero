@@ -777,7 +777,9 @@ type User struct {
 	Publishers      [][32]uint8
 	Subscribers     [][32]uint8
 	ValidatorPubKey [32]uint8
-	PubKey          [32]byte
+	// Tunnel endpoint IP (device-side GRE endpoint). 0.0.0.0 means use device.public_ip for backwards compatibility.
+	TunnelEndpoint [4]uint8
+	PubKey         [32]byte
 }
 
 func (u User) MarshalJSON() ([]byte, error) {
@@ -804,6 +806,7 @@ func (u User) MarshalJSON() ([]byte, error) {
 		Publishers      []string `json:"Publishers"`
 		Subscribers     []string `json:"Subscribers"`
 		ValidatorPubKey string   `json:"ValidatorPubKey"`
+		TunnelEndpoint  string   `json:"TunnelEndpoint"`
 		Status          string   `json:"Status"`
 		CyoaType        string   `json:"CyoaType"`
 		UserType        string   `json:"UserType"`
@@ -819,6 +822,7 @@ func (u User) MarshalJSON() ([]byte, error) {
 		Publishers:      publishers,
 		Subscribers:     subscribers,
 		ValidatorPubKey: base58.Encode(u.ValidatorPubKey[:]),
+		TunnelEndpoint:  net.IP(u.TunnelEndpoint[:]).String(),
 		Status:          u.Status.String(),
 		CyoaType:        u.CyoaType.String(),
 		UserType:        u.UserType.String(),

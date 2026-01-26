@@ -306,7 +306,11 @@ func checkIBRLPostConnect(t *testing.T, dn *TestDevnet, device *devnet.Device, c
 			t.Fail()
 		}
 
+<<<<<<< HEAD
 		dn.log.Debug("--> IBRL post-connect requirements checked")
+=======
+		dn.log.Info("--> IBRL post-connect requirements checked")
+>>>>>>> 42711d2f (DNM: feat(cli): remove multiple tunnel restriction (#2725))
 	})
 }
 

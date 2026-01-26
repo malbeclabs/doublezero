@@ -188,6 +188,7 @@ func DeserializeUser(reader *ByteReader, user *User) {
 	user.Subscribers = reader.ReadPubkeySlice()
 	user.ValidatorPubKey = reader.ReadPubkey()
 	user.PubKey = reader.ReadPubkey()
+	user.TunnelEndpoint = reader.ReadIPv4()
 }
 
 func DeserializeMulticastGroup(reader *ByteReader, multicastgroup *MulticastGroup) {

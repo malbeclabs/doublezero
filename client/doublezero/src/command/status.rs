@@ -88,6 +88,7 @@ impl StatusCliCommand {
                 if let Some(dev) = devices.get(&user.device_pk) {
                     metro = exchanges.get(&dev.exchange_pk).map(|e| e.name.clone());
                 }
+<<<<<<< HEAD
             } else if let Some(ref tunnel_dst) = response.tunnel_dst {
                 // Fallback: match by tunnel_dst (device public IP) for users without dz_ip
                 // This is needed for multicast subscribers who don't have a doublezero_ip
@@ -97,6 +98,24 @@ impl StatusCliCommand {
                     {
                         current_device = Some(*device_pk);
                         metro = exchanges.get(&dev.exchange_pk).map(|e| e.name.clone());
+=======
+            }
+            let lowest_latency_device =
+                match best_latency(controller, &devices, true, None, current_device, &[]).await {
+                    Ok(best) => {
+                        let is_current = user
+                            .map(|u| best.device_pk == u.device_pk.to_string())
+                            .unwrap_or(false);
+                        if self.json
+                            || response.doublezero_status.session_status != "BGP Session Up"
+                        {
+                            best.device_code
+                        } else if is_current || current_device.is_none() {
+                            format!("✅ {}", best.device_code)
+                        } else {
+                            format!("⚠️ {}", best.device_code)
+                        }
+>>>>>>> 42711d2f (DNM: feat(cli): remove multiple tunnel restriction (#2725))
                     }
                 }
             }
@@ -157,6 +176,7 @@ mod tests {
     use doublezero_serviceability::state::device::{DeviceDesiredStatus, DeviceHealth};
     use mockall::predicate::*;
     use solana_sdk::pubkey::Pubkey;
+    use std::net::Ipv4Addr;
 
     #[tokio::test]
     async fn test_status_command_tunnel_up() {
@@ -277,6 +297,7 @@ mod tests {
                 publishers: vec![],
                 subscribers: vec![],
                 validator_pubkey: Pubkey::default(),
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             },
         );
 
@@ -619,6 +640,7 @@ mod tests {
                 publishers: vec![],
                 subscribers: vec![],
                 validator_pubkey: Pubkey::default(),
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             },
         );
 

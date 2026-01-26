@@ -11,7 +11,7 @@ use doublezero_sdk::{
             closeaccount::CloseAccountUserCommand, reject::RejectUserCommand,
         },
     },
-    DoubleZeroClient, Exchange, Location, User, UserStatus, UserType,
+    DoubleZeroClient, Exchange, Location, User, UserStatus,
 };
 use doublezero_serviceability::error::DoubleZeroError;
 use log::{info, warn};
@@ -99,11 +99,10 @@ pub fn process_user_event(
 
             let tunnel_id = device_state.get_next_tunnel_id();
 
-            let need_dz_ip = match user.user_type {
-                UserType::IBRLWithAllocatedIP | UserType::EdgeFiltering => true,
-                UserType::IBRL => false,
-                UserType::Multicast => !user.publishers.is_empty(),
-            };
+            // Use device public_ip as tunnel_endpoint
+            let tunnel_endpoint = device_state.device.public_ip;
+
+            let need_dz_ip = user.needs_allocated_dz_ip();
 
             let dz_ip = if need_dz_ip {
                 match device_state.get_next_dz_ip() {
@@ -149,6 +148,7 @@ pub fn process_user_event(
                 },
                 dz_ip,
                 use_onchain_allocation,
+                tunnel_endpoint,
             }
             .execute(client);
 
@@ -197,11 +197,7 @@ pub fn process_user_event(
             )
             .unwrap();
 
-            let need_dz_ip = match user.user_type {
-                UserType::IBRLWithAllocatedIP | UserType::EdgeFiltering => true,
-                UserType::IBRL => false,
-                UserType::Multicast => !user.publishers.is_empty(),
-            };
+            let need_dz_ip = user.needs_allocated_dz_ip();
 
             let dz_ip = if need_dz_ip && user.dz_ip == user.client_ip {
                 match device_state.get_next_dz_ip() {
@@ -238,6 +234,13 @@ pub fn process_user_event(
             )
             .unwrap();
 
+            // Use device public_ip as tunnel_endpoint (preserve existing if set)
+            let tunnel_endpoint = if user.has_tunnel_endpoint() {
+                user.tunnel_endpoint
+            } else {
+                device_state.device.public_ip
+            };
+
             // Activate the user
             let res = ActivateUserCommand {
                 user_pubkey: *pubkey,
@@ -245,6 +248,7 @@ pub fn process_user_event(
                 tunnel_net: user.tunnel_net,
                 dz_ip,
                 use_onchain_allocation,
+                tunnel_endpoint,
             }
             .execute(client);
             match res {
@@ -306,23 +310,21 @@ pub fn process_user_event(
                             } else {
                                 write!(&mut log_msg, " Deactivated {signature}").unwrap();
                                 // Off-chain: activator tracks local allocations
-                                if user.tunnel_id != 0 {
+                                if user.has_unicast_tunnel() {
                                     link_ids.unassign(user.tunnel_id);
-                                }
-                                if user.tunnel_net != NetworkV4::default() {
                                     user_tunnel_ips.unassign_block(user.tunnel_net.into());
                                 }
-                            }
-                            if user.dz_ip != Ipv4Addr::UNSPECIFIED {
-                                device_state.release(user.dz_ip, user.tunnel_id).unwrap();
-                            }
+                                if user.dz_ip != Ipv4Addr::UNSPECIFIED {
+                                    device_state.release(user.dz_ip, user.tunnel_id).unwrap();
+                                }
 
-                            metrics::counter!(
-                                "doublezero_activator_state_transition",
-                                "state_transition" => "user-deleting-to-deactivated",
-                                "user-pubkey" => pubkey.to_string(),
-                            )
-                            .increment(1);
+                                metrics::counter!(
+                                    "doublezero_activator_state_transition",
+                                    "state_transition" => "user-deleting-to-deactivated",
+                                    "user-pubkey" => pubkey.to_string(),
+                                )
+                                .increment(1);
+                            }
                         }
                         Err(e) => warn!("Error: {e}"),
                     }
@@ -333,10 +335,8 @@ pub fn process_user_event(
                         Ok(signature) => {
                             write!(&mut log_msg, " Banned {signature}").unwrap();
 
-                            if user.tunnel_id != 0 {
+                            if user.has_unicast_tunnel() {
                                 link_ids.unassign(user.tunnel_id);
-                            }
-                            if user.tunnel_net != NetworkV4::default() {
                                 user_tunnel_ips.unassign_block(user.tunnel_net.into());
                             }
                             if user.dz_ip != Ipv4Addr::UNSPECIFIED {
@@ -430,8 +430,10 @@ fn get_or_insert_device_state<'a>(
 mod tests {
     use super::*;
     use crate::tests::utils::{create_test_client, get_device_bump_seed, get_user_bump_seed};
+    use doublezero_program_common::types::NetworkV4;
     use doublezero_sdk::{
         AccountData, AccountType, Device, DeviceStatus, DeviceType, MockDoubleZeroClient, UserCYOA,
+        UserType,
     };
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
@@ -503,6 +505,7 @@ mod tests {
                 publishers: vec![],
                 subscribers: vec![],
                 validator_pubkey: Pubkey::default(),
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             };
 
             let (accesspass_pk_unspecified, _) = get_accesspass_pda(
@@ -560,6 +563,7 @@ mod tests {
                         tunnel_net: "10.0.0.0/31".parse().unwrap(),
                         dz_ip: expected_dz_ip.unwrap_or(Ipv4Addr::UNSPECIFIED),
                         dz_prefix_count: 0, // legacy path
+                        tunnel_endpoint: Ipv4Addr::new(192, 168, 1, 2),
                     })),
                     predicate::always(),
                 )
@@ -700,6 +704,7 @@ mod tests {
                 publishers: vec![Pubkey::default()],
                 subscribers: vec![Pubkey::default()],
                 validator_pubkey: Pubkey::default(),
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             };
 
             let (accesspass_pk_unspecified, _) = get_accesspass_pda(
@@ -757,6 +762,7 @@ mod tests {
                         tunnel_net: "10.0.0.1/29".parse().unwrap(),
                         dz_ip: [10, 0, 0, 1].into(),
                         dz_prefix_count: 0, // legacy path
+                        tunnel_endpoint: Ipv4Addr::new(192, 168, 1, 2),
                     })),
                     predicate::always(),
                 )
@@ -846,6 +852,7 @@ mod tests {
                 publishers: vec![],
                 subscribers: vec![],
                 validator_pubkey: Pubkey::default(),
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             };
 
             client
@@ -953,6 +960,7 @@ mod tests {
                 publishers: vec![],
                 subscribers: vec![],
                 validator_pubkey: Pubkey::default(),
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             };
 
             client
@@ -1064,6 +1072,7 @@ mod tests {
                 publishers: vec![],
                 subscribers: vec![],
                 validator_pubkey: Pubkey::default(),
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             };
 
             client
@@ -1149,6 +1158,7 @@ mod tests {
                 publishers: vec![],
                 subscribers: vec![],
                 validator_pubkey: Pubkey::default(),
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             };
 
             let user2 = user.clone();

@@ -22,6 +22,8 @@ pub struct ActivateUserCommand {
     /// When true, SDK computes ResourceExtension PDAs and includes them for on-chain allocation.
     /// When false, uses legacy behavior with caller-provided tunnel_id, tunnel_net, and dz_ip.
     pub use_onchain_allocation: bool,
+    /// Tunnel endpoint IP (device-side GRE endpoint). 0.0.0.0 means use device.public_ip for backwards compatibility.
+    pub tunnel_endpoint: Ipv4Addr,
 }
 
 impl ActivateUserCommand {
@@ -101,6 +103,7 @@ impl ActivateUserCommand {
                 tunnel_net: self.tunnel_net,
                 dz_ip: self.dz_ip,
                 dz_prefix_count,
+                tunnel_endpoint: self.tunnel_endpoint,
             }),
             accounts,
         )
@@ -160,6 +163,7 @@ mod tests {
             publishers: vec![],
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         };
 
         let (accesspass_pubkey, _) = get_accesspass_pda(
@@ -203,6 +207,7 @@ mod tests {
                     tunnel_net,
                     dz_ip,
                     dz_prefix_count: 0,
+                    tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
                 })),
                 predicate::eq(vec![
                     AccountMeta::new(user_pubkey, false),
@@ -218,6 +223,7 @@ mod tests {
             tunnel_net,
             dz_ip,
             use_onchain_allocation: false,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         }
         .execute(&client);
 
@@ -250,6 +256,7 @@ mod tests {
             publishers: vec![],
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         };
 
         let (accesspass_pubkey, _) = get_accesspass_pda(
@@ -316,6 +323,7 @@ mod tests {
                     tunnel_net: NetworkV4::default(),
                     dz_ip: Ipv4Addr::UNSPECIFIED,
                     dz_prefix_count: 1, // 1 dz_prefix from device.dz_prefixes
+                    tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
                 })),
                 predicate::eq(vec![
                     AccountMeta::new(user_pubkey, false),
@@ -334,6 +342,7 @@ mod tests {
             tunnel_net: NetworkV4::default(),
             dz_ip: Ipv4Addr::UNSPECIFIED,
             use_onchain_allocation: true,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         }
         .execute(&client);
 

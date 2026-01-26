@@ -824,6 +824,7 @@ async fn test_doublezero_program() {
         tunnel_net,
         dz_ip,
         dz_prefix_count: 0, // legacy path - no ResourceExtension accounts
+        tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
     };
 
     println!("Testing User1 activation...");

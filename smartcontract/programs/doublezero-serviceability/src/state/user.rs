@@ -201,13 +201,15 @@ pub struct User {
         )
     )]
     pub validator_pubkey: Pubkey, // 32
+    /// Tunnel endpoint IP (device-side GRE endpoint). 0.0.0.0 means use device.public_ip for backwards compatibility.
+    pub tunnel_endpoint: Ipv4Addr, // 4
 }
 
 impl fmt::Display for User {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, index: {}, user_type: {}, device_pk: {}, cyoa_type: {}, client_ip: {}, dz_ip: {}, tunnel_id: {}, tunnel_net: {}, status: {}",
+            "account_type: {}, owner: {}, index: {}, user_type: {}, device_pk: {}, cyoa_type: {}, client_ip: {}, dz_ip: {}, tunnel_id: {}, tunnel_net: {}, status: {}, tunnel_endpoint: {}",
             self.account_type,
             self.owner,
             self.index,
@@ -219,6 +221,10 @@ impl fmt::Display for User {
             self.tunnel_id,
             &self.tunnel_net,
             self.status,
+<<<<<<< HEAD
+=======
+            &self.tunnel_endpoint
+>>>>>>> 42711d2f (DNM: feat(cli): remove multiple tunnel restriction (#2725))
         )
     }
 }
@@ -244,6 +250,9 @@ impl TryFrom<&[u8]> for User {
             publishers: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
             subscribers: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
             validator_pubkey: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            // Tunnel endpoint - defaults to 0.0.0.0 for backwards compatibility (use device.public_ip)
+            tunnel_endpoint: BorshDeserialize::deserialize(&mut data)
+                .unwrap_or([0, 0, 0, 0].into()),
         };
 
         if out.account_type != AccountType::User {
@@ -299,6 +308,12 @@ impl Validate for User {
             msg!("tunnel_id: {}", self.tunnel_id);
             return Err(DoubleZeroError::InvalidTunnelId);
         }
+        // tunnel_endpoint must be global unicast if set (non-zero)
+        // Validation against device interfaces is done at the instruction level
+        if self.tunnel_endpoint != Ipv4Addr::UNSPECIFIED && !is_global(self.tunnel_endpoint) {
+            msg!("tunnel_endpoint: {}", self.tunnel_endpoint);
+            return Err(DoubleZeroError::InvalidTunnelEndpoint);
+        }
 
         Ok(())
     }
@@ -316,6 +331,13 @@ impl User {
         self.tunnel_id != 0
     }
 
+<<<<<<< HEAD
+=======
+    pub fn has_tunnel_endpoint(&self) -> bool {
+        self.tunnel_endpoint != Ipv4Addr::UNSPECIFIED
+    }
+
+>>>>>>> 42711d2f (DNM: feat(cli): remove multiple tunnel restriction (#2725))
     pub fn has_allocated_dz_ip(&self) -> bool {
         self.dz_ip != Ipv4Addr::UNSPECIFIED && self.dz_ip != self.client_ip
     }
@@ -348,7 +370,11 @@ impl User {
         let mut groups: Vec<Pubkey> = vec![];
 
         groups.extend(self.publishers.iter().cloned());
+<<<<<<< HEAD
         // Add subscribers that aren't already in the list
+=======
+
+>>>>>>> 42711d2f (DNM: feat(cli): remove multiple tunnel restriction (#2725))
         for sub in &self.subscribers {
             if !groups.contains(sub) {
                 groups.push(*sub);
@@ -436,6 +462,7 @@ mod tests {
             publishers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -482,6 +509,7 @@ mod tests {
             publishers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         };
 
         let err = val.validate();
@@ -508,6 +536,7 @@ mod tests {
             publishers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -533,6 +562,7 @@ mod tests {
             publishers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -558,6 +588,7 @@ mod tests {
             publishers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -583,6 +614,7 @@ mod tests {
             publishers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -608,6 +640,7 @@ mod tests {
             publishers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -637,6 +670,10 @@ mod tests {
             publishers: vec![],
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
+<<<<<<< HEAD
+=======
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+>>>>>>> 42711d2f (DNM: feat(cli): remove multiple tunnel restriction (#2725))
         }
     }
 
@@ -651,6 +688,19 @@ mod tests {
     }
 
     #[test]
+<<<<<<< HEAD
+=======
+    fn test_has_tunnel_endpoint() {
+        let mut user = create_test_user();
+        user.tunnel_endpoint = Ipv4Addr::UNSPECIFIED;
+        assert!(!user.has_tunnel_endpoint());
+
+        user.tunnel_endpoint = Ipv4Addr::new(10, 0, 0, 1);
+        assert!(user.has_tunnel_endpoint());
+    }
+
+    #[test]
+>>>>>>> 42711d2f (DNM: feat(cli): remove multiple tunnel restriction (#2725))
     fn test_has_allocated_dz_ip() {
         let mut user = create_test_user();
         user.client_ip = [192, 168, 1, 1].into();
@@ -758,6 +808,7 @@ mod tests {
         user.subscribers.push(mcast_group);
         assert!(user.is_multicast_participant());
     }
+<<<<<<< HEAD
 
     #[test]
     fn test_needs_multicast_publishers_do_not_trigger() {
@@ -814,4 +865,6 @@ mod tests {
         user.dz_ip = Ipv4Addr::new(10, 0, 0, 1);
         assert!(user.has_allocated_dz_ip());
     }
+=======
+>>>>>>> 42711d2f (DNM: feat(cli): remove multiple tunnel restriction (#2725))
 }

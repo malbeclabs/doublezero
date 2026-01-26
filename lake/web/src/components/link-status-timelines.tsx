@@ -346,9 +346,9 @@ export function LinkStatusTimelines({
                     <CriticalityBadge criticality={criticalityMap.get(link.code)!} />
                   )}
                 </div>
-                {link.contributor && (
-                  <div className="text-xs text-muted-foreground">{link.contributor}</div>
-                )}
+                <div className="text-xs text-muted-foreground">
+                  {link.link_type}{link.contributor && ` · ${link.contributor}`}
+                </div>
                 {(() => {
                   const issueReasons = linksWithIssues
                     ? (linksWithIssues.get(link.code) ?? [])

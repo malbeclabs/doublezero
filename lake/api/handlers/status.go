@@ -1054,6 +1054,9 @@ type LinkHourStatus struct {
 	SideZInDiscards         uint64 `json:"side_z_in_discards,omitempty"`
 	SideZOutDiscards        uint64 `json:"side_z_out_discards,omitempty"`
 	SideZCarrierTransitions uint64 `json:"side_z_carrier_transitions,omitempty"`
+	// Utilization (traffic rate / capacity)
+	UtilizationInPct  float64 `json:"utilization_in_pct,omitempty"`
+	UtilizationOutPct float64 `json:"utilization_out_pct,omitempty"`
 }
 
 type LinkHistory struct {
@@ -1068,7 +1071,7 @@ type LinkHistory struct {
 	BandwidthBps   int64            `json:"bandwidth_bps"`
 	CommittedRttUs float64          `json:"committed_rtt_us"`
 	Hours          []LinkHourStatus `json:"hours"`
-	IssueReasons   []string         `json:"issue_reasons"` // "packet_loss", "high_latency", "drained", "no_data", "interface_errors", "discards", "carrier_transitions"
+	IssueReasons   []string         `json:"issue_reasons"` // "packet_loss", "high_latency", "drained", "no_data", "interface_errors", "discards", "carrier_transitions", "high_utilization"
 }
 
 type LinkHistoryResponse struct {
@@ -1388,6 +1391,53 @@ func fetchLinkHistoryData(ctx context.Context, timeRange string, requestedBucket
 		return nil, fmt.Errorf("interface rows iteration error: %w", err)
 	}
 
+	// Get utilization per link per bucket (traffic rate / capacity)
+	utilizationQuery := `
+		SELECT
+			link_pk,
+			` + bucketInterval + ` as bucket,
+			quantile(0.95)(CASE WHEN delta_duration > 0 THEN in_octets_delta * 8 / delta_duration ELSE 0 END) as in_bps,
+			quantile(0.95)(CASE WHEN delta_duration > 0 THEN out_octets_delta * 8 / delta_duration ELSE 0 END) as out_bps
+		FROM fact_dz_device_interface_counters
+		WHERE event_ts > now() - INTERVAL ? HOUR
+		  AND link_pk != ''
+		GROUP BY link_pk, bucket
+		ORDER BY link_pk, bucket
+	`
+
+	utilizationRows, err := config.DB.Query(ctx, utilizationQuery, totalHours)
+	if err != nil {
+		return nil, fmt.Errorf("link utilization query error: %w", err)
+	}
+	defer utilizationRows.Close()
+
+	// Build utilization stats per link per bucket
+	type utilizationStats struct {
+		inBps  float64
+		outBps float64
+	}
+	linkUtilizationBuckets := make(map[string]map[string]*utilizationStats) // linkPK -> bucket -> stats
+
+	for utilizationRows.Next() {
+		var linkPK string
+		var bucket time.Time
+		var inBps, outBps float64
+		if err := utilizationRows.Scan(&linkPK, &bucket, &inBps, &outBps); err != nil {
+			return nil, fmt.Errorf("utilization scan error: %w", err)
+		}
+		bucketKey := bucket.UTC().Format(time.RFC3339)
+		if linkUtilizationBuckets[linkPK] == nil {
+			linkUtilizationBuckets[linkPK] = make(map[string]*utilizationStats)
+		}
+		linkUtilizationBuckets[linkPK][bucketKey] = &utilizationStats{
+			inBps:  inBps,
+			outBps: outBps,
+		}
+	}
+	if err := utilizationRows.Err(); err != nil {
+		return nil, fmt.Errorf("utilization rows iteration error: %w", err)
+	}
+
 	// Get historical link status per bucket from dim_dz_links_history
 	// This tells us if a link was drained at each point in time
 	// Build bucket interval for snapshot_ts (history table uses snapshot_ts, not event_ts)
@@ -1611,6 +1661,22 @@ func fetchLinkHistoryData(ctx context.Context, timeRange string, requestedBucket
 				} else if (hasErrors || hasDiscards || hasCarrier) && hourStatus.Status == "healthy" {
 					hourStatus.Status = "degraded"
 				}
+
+				// Add utilization data if available
+				if utilBuckets, ok := linkUtilizationBuckets[pk]; ok {
+					if utilStats, ok := utilBuckets[key]; ok {
+						if meta.bandwidthBps > 0 {
+							hourStatus.UtilizationInPct = (utilStats.inBps / float64(meta.bandwidthBps)) * 100
+							hourStatus.UtilizationOutPct = (utilStats.outBps / float64(meta.bandwidthBps)) * 100
+							// Track high utilization (>80%) as an issue
+							const HighUtilizationThreshold = 80.0
+							if hourStatus.UtilizationInPct > HighUtilizationThreshold || hourStatus.UtilizationOutPct > HighUtilizationThreshold {
+								issueReasons["high_utilization"] = true
+							}
+						}
+					}
+				}
+
 				hourStatuses = append(hourStatuses, hourStatus)
 			} else {
 				hourStatuses = append(hourStatuses, LinkHourStatus{

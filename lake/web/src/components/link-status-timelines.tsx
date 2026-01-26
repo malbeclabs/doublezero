@@ -580,6 +580,9 @@ function LinkRow({ link, linksWithIssues, criticalityMap, bucketMinutes = 60, da
                 {issueReasons.includes('high_latency') && (
                   <span className="text-[10px] px-1.5 py-0.5 rounded font-medium" style={{ backgroundColor: 'rgba(59, 130, 246, 0.15)', color: '#2563eb' }}>High Latency</span>
                 )}
+                {issueReasons.includes('high_utilization') && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded font-medium" style={{ backgroundColor: 'rgba(99, 102, 241, 0.15)', color: '#4f46e5' }}>High Utilization</span>
+                )}
                 {issueReasons.includes('extended_loss') && (
                   <span className="text-[10px] px-1.5 py-0.5 rounded font-medium" style={{ backgroundColor: 'rgba(249, 115, 22, 0.15)', color: '#ea580c' }}>Extended Loss</span>
                 )}
@@ -650,7 +653,7 @@ function LinkRow({ link, linksWithIssues, criticalityMap, bucketMinutes = 60, da
 export function LinkStatusTimelines({
   timeRange = '24h',
   onTimeRangeChange,
-  issueFilters = ['packet_loss', 'high_latency', 'extended_loss', 'drained', 'interface_errors', 'discards', 'carrier_transitions'],
+  issueFilters = ['packet_loss', 'high_latency', 'high_utilization', 'extended_loss', 'drained', 'interface_errors', 'discards', 'carrier_transitions'],
   healthFilters = ['healthy', 'degraded', 'unhealthy', 'disabled'],
   linksWithIssues,
   linksWithHealth,

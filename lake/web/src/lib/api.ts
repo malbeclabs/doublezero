@@ -1238,6 +1238,9 @@ export interface LinkHourStatus {
   side_z_in_discards?: number
   side_z_out_discards?: number
   side_z_carrier_transitions?: number
+  // Utilization (traffic rate / capacity)
+  utilization_in_pct?: number
+  utilization_out_pct?: number
 }
 
 export interface LinkHistory {

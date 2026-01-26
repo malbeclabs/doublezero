@@ -68,6 +68,9 @@ func GetDevices(w http.ResponseWriter, r *http.Request) {
 			WHERE event_ts > now() - INTERVAL 5 MINUTE
 				AND user_tunnel_id IS NULL
 				AND link_pk = ''
+				AND delta_duration > 0
+				AND in_octets_delta >= 0
+				AND out_octets_delta >= 0
 			GROUP BY device_pk
 		),
 		peak_rates AS (
@@ -80,6 +83,8 @@ func GetDevices(w http.ResponseWriter, r *http.Request) {
 				AND user_tunnel_id IS NULL
 				AND link_pk = ''
 				AND delta_duration > 0
+				AND in_octets_delta >= 0
+				AND out_octets_delta >= 0
 			GROUP BY device_pk
 		)
 		SELECT
@@ -224,6 +229,9 @@ func GetDevice(w http.ResponseWriter, r *http.Request) {
 			WHERE event_ts > now() - INTERVAL 5 MINUTE
 				AND user_tunnel_id IS NULL
 				AND link_pk = ''
+				AND delta_duration > 0
+				AND in_octets_delta >= 0
+				AND out_octets_delta >= 0
 			GROUP BY device_pk
 		),
 		peak_rates AS (
@@ -236,6 +244,8 @@ func GetDevice(w http.ResponseWriter, r *http.Request) {
 				AND user_tunnel_id IS NULL
 				AND link_pk = ''
 				AND delta_duration > 0
+				AND in_octets_delta >= 0
+				AND out_octets_delta >= 0
 			GROUP BY device_pk
 		),
 		validator_stats AS (

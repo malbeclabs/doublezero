@@ -2111,11 +2111,11 @@ func queryInterfaceEvents(ctx context.Context, startTime, endTime time.Time) ([]
 				ic.device_pk,
 				ic.intf,
 				any(ic.link_pk) as link_pk,
-				sum(COALESCE(ic.in_errors_delta, 0)) as in_errors,
-				sum(COALESCE(ic.out_errors_delta, 0)) as out_errors,
-				sum(COALESCE(ic.in_discards_delta, 0)) as in_discards,
-				sum(COALESCE(ic.out_discards_delta, 0)) as out_discards,
-				sum(COALESCE(ic.carrier_transitions_delta, 0)) as carrier_transitions
+				sum(greatest(0, COALESCE(ic.in_errors_delta, 0))) as in_errors,
+				sum(greatest(0, COALESCE(ic.out_errors_delta, 0))) as out_errors,
+				sum(greatest(0, COALESCE(ic.in_discards_delta, 0))) as in_discards,
+				sum(greatest(0, COALESCE(ic.out_discards_delta, 0))) as out_discards,
+				sum(greatest(0, COALESCE(ic.carrier_transitions_delta, 0))) as carrier_transitions
 			FROM fact_dz_device_interface_counters ic
 			WHERE ic.event_ts >= ? AND ic.event_ts <= ?
 			GROUP BY hour, ic.device_pk, ic.intf

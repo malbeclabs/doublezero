@@ -205,6 +205,9 @@ func GetContributor(w http.ResponseWriter, r *http.Request) {
 				AND f.user_tunnel_id IS NULL
 				AND f.link_pk = ''
 				AND d.contributor_pk IS NOT NULL
+				AND f.delta_duration > 0
+				AND f.in_octets_delta >= 0
+				AND f.out_octets_delta >= 0
 			GROUP BY d.contributor_pk
 		)
 		SELECT

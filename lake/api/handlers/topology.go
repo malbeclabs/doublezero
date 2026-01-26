@@ -252,6 +252,9 @@ func GetTopology(w http.ResponseWriter, r *http.Request) {
 				FROM fact_dz_device_interface_counters
 				WHERE event_ts > now() - INTERVAL 5 MINUTE
 					AND link_pk != ''
+					AND delta_duration > 0
+					AND in_octets_delta >= 0
+					AND out_octets_delta >= 0
 				GROUP BY link_pk
 			) traffic ON l.pk = traffic.link_pk
 			WHERE l.status = 'activated'
@@ -292,6 +295,9 @@ func GetTopology(w http.ResponseWriter, r *http.Request) {
 				FROM fact_dz_device_interface_counters
 				WHERE event_ts > now() - INTERVAL 5 MINUTE
 					AND user_tunnel_id IS NOT NULL
+					AND delta_duration > 0
+					AND in_octets_delta >= 0
+					AND out_octets_delta >= 0
 				GROUP BY user_tunnel_id
 			)
 			SELECT
@@ -425,6 +431,8 @@ func GetTopologyTraffic(w http.ResponseWriter, r *http.Request) {
 			WHERE event_ts > now() - INTERVAL 24 HOUR
 				AND link_pk = $1
 				AND delta_duration > 0
+				AND in_octets_delta >= 0
+				AND out_octets_delta >= 0
 			GROUP BY time_bucket
 			ORDER BY min(event_ts)
 		`
@@ -441,6 +449,8 @@ func GetTopologyTraffic(w http.ResponseWriter, r *http.Request) {
 			WHERE event_ts > now() - INTERVAL 24 HOUR
 				AND user_tunnel_id = $1
 				AND delta_duration > 0
+				AND in_octets_delta >= 0
+				AND out_octets_delta >= 0
 			GROUP BY time_bucket
 			ORDER BY min(event_ts)
 		`
@@ -457,6 +467,8 @@ func GetTopologyTraffic(w http.ResponseWriter, r *http.Request) {
 			WHERE event_ts > now() - INTERVAL 24 HOUR
 				AND device_pk = $1
 				AND delta_duration > 0
+				AND in_octets_delta >= 0
+				AND out_octets_delta >= 0
 			GROUP BY time_bucket
 			ORDER BY min(event_ts)
 		`

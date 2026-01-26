@@ -423,6 +423,8 @@ func fetchStatusData(ctx context.Context) *StatusResponse {
 				FROM fact_dz_device_interface_counters
 				WHERE event_ts > now() - INTERVAL 1 HOUR
 				  AND user_tunnel_id IS NOT NULL
+				  AND delta_duration > 0
+				  AND in_octets_delta >= 0
 				GROUP BY device_pk, intf
 			)
 		`
@@ -507,6 +509,9 @@ func fetchStatusData(ctx context.Context) *StatusResponse {
 				FROM fact_dz_device_interface_counters
 				WHERE event_ts > now() - INTERVAL 24 HOUR
 					AND link_pk != ''
+					AND delta_duration > 0
+					AND in_octets_delta >= 0
+					AND out_octets_delta >= 0
 				GROUP BY link_pk
 			) traffic_direct ON l.pk = traffic_direct.link_pk
 			-- Parent interface traffic (for sub-interfaces like PortChannel2000.10023)
@@ -516,6 +521,9 @@ func fetchStatusData(ctx context.Context) *StatusResponse {
 					quantile(0.95)(CASE WHEN delta_duration > 0 THEN out_octets_delta * 8 / delta_duration ELSE 0 END) as out_bps
 				FROM fact_dz_device_interface_counters
 				WHERE event_ts > now() - INTERVAL 24 HOUR
+					AND delta_duration > 0
+					AND in_octets_delta >= 0
+					AND out_octets_delta >= 0
 				GROUP BY device_pk, intf
 			) traffic_parent ON traffic_parent.device_pk = l.side_a_pk
 				AND traffic_parent.intf = splitByChar('.', l.side_a_iface_name)[1]
@@ -821,6 +829,9 @@ func fetchStatusData(ctx context.Context) *StatusResponse {
 				FROM fact_dz_device_interface_counters
 				WHERE event_ts > now() - INTERVAL 5 MINUTE
 				  AND link_pk != ''
+				  AND delta_duration > 0
+				  AND in_octets_delta >= 0
+				  AND out_octets_delta >= 0
 				GROUP BY device_pk, intf
 			)
 		`
@@ -882,11 +893,11 @@ func fetchStatusData(ctx context.Context) *StatusResponse {
 				COALESCE(l.code, '') as link_code,
 				COALESCE(l.link_type, '') as link_type,
 				COALESCE(c.link_side, '') as link_side,
-				toUInt64(SUM(c.in_errors_delta)) as in_errors,
-				toUInt64(SUM(c.out_errors_delta)) as out_errors,
-				toUInt64(SUM(c.in_discards_delta)) as in_discards,
-				toUInt64(SUM(c.out_discards_delta)) as out_discards,
-				toUInt64(SUM(c.carrier_transitions_delta)) as carrier_transitions,
+				toUInt64(SUM(greatest(0, c.in_errors_delta))) as in_errors,
+				toUInt64(SUM(greatest(0, c.out_errors_delta))) as out_errors,
+				toUInt64(SUM(greatest(0, c.in_discards_delta))) as in_discards,
+				toUInt64(SUM(greatest(0, c.out_discards_delta))) as out_discards,
+				toUInt64(SUM(greatest(0, c.carrier_transitions_delta))) as carrier_transitions,
 				formatDateTime(min(c.event_ts), '%Y-%m-%dT%H:%i:%sZ', 'UTC') as first_seen,
 				formatDateTime(max(c.event_ts), '%Y-%m-%dT%H:%i:%sZ', 'UTC') as last_seen
 			FROM fact_dz_device_interface_counters c
@@ -1401,6 +1412,9 @@ func fetchLinkHistoryData(ctx context.Context, timeRange string, requestedBucket
 		FROM fact_dz_device_interface_counters
 		WHERE event_ts > now() - INTERVAL ? HOUR
 		  AND link_pk != ''
+		  AND delta_duration > 0
+		  AND in_octets_delta >= 0
+		  AND out_octets_delta >= 0
 		GROUP BY link_pk, bucket
 		ORDER BY link_pk, bucket
 	`
@@ -2306,11 +2320,11 @@ func fetchInterfaceIssuesData(ctx context.Context, duration time.Duration) ([]In
 			COALESCE(l.code, '') as link_code,
 			COALESCE(l.link_type, '') as link_type,
 			COALESCE(c.link_side, '') as link_side,
-			toUInt64(SUM(c.in_errors_delta)) as in_errors,
-			toUInt64(SUM(c.out_errors_delta)) as out_errors,
-			toUInt64(SUM(c.in_discards_delta)) as in_discards,
-			toUInt64(SUM(c.out_discards_delta)) as out_discards,
-			toUInt64(SUM(c.carrier_transitions_delta)) as carrier_transitions,
+			toUInt64(SUM(greatest(0, c.in_errors_delta))) as in_errors,
+			toUInt64(SUM(greatest(0, c.out_errors_delta))) as out_errors,
+			toUInt64(SUM(greatest(0, c.in_discards_delta))) as in_discards,
+			toUInt64(SUM(greatest(0, c.out_discards_delta))) as out_discards,
+			toUInt64(SUM(greatest(0, c.carrier_transitions_delta))) as carrier_transitions,
 			formatDateTime(min(c.event_ts), '%%Y-%%m-%%dT%%H:%%i:%%sZ', 'UTC') as first_seen,
 			formatDateTime(max(c.event_ts), '%%Y-%%m-%%dT%%H:%%i:%%sZ', 'UTC') as last_seen
 		FROM fact_dz_device_interface_counters c

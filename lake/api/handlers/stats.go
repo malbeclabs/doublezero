@@ -166,6 +166,8 @@ func GetStats(w http.ResponseWriter, r *http.Request) {
 				FROM fact_dz_device_interface_counters
 				WHERE event_ts > now() - INTERVAL 1 HOUR
 				  AND user_tunnel_id IS NOT NULL
+				  AND delta_duration > 0
+				  AND in_octets_delta >= 0
 				GROUP BY device_pk, intf
 			)
 		`

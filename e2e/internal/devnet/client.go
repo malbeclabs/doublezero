@@ -42,7 +42,16 @@ type ClientSpec struct {
 	RouteLivenessDebug bool
 
 	// CYOANetworkIPHostID is the offset into the host portion of the subnet (must be < 2^(32 - prefixLen)).
+	// This is ignored if BehindNATGateway is set.
 	CYOANetworkIPHostID uint32
+
+	// BehindNATGateway is an optional reference to a NAT gateway. If set, the client will connect
+	// to the NAT gateway's private network instead of the CYOA network directly.
+	BehindNATGateway *NATGateway
+
+	// BehindNATNetworkIPHostID is the host ID for the client's IP on the private (behind-NAT) network.
+	// Only used if BehindNATGateway is set.
+	BehindNATNetworkIPHostID uint32
 }
 
 func (s *ClientSpec) Validate(cyoaNetworkSpec CYOANetworkSpec) error {
@@ -57,6 +66,15 @@ func (s *ClientSpec) Validate(cyoaNetworkSpec CYOANetworkSpec) error {
 	}
 	if _, err := os.Stat(s.KeypairPath); os.IsNotExist(err) {
 		return fmt.Errorf("keypair path %s does not exist", s.KeypairPath)
+	}
+
+	// Clients behind NAT get their public IP from the NAT gateway, so they don't need CYOANetworkIPHostID.
+	// Instead, validate the BehindNATNetworkIPHostID.
+	if s.BehindNATGateway != nil {
+		if s.BehindNATNetworkIPHostID <= 0 || s.BehindNATNetworkIPHostID >= 255 {
+			return fmt.Errorf("BehindNATNetworkIPHostID %d is out of valid range (1 to 254)", s.BehindNATNetworkIPHostID)
+		}
+		return nil
 	}
 
 	// Validate that hostID does not select the network (0) or broadcast (max) address.
@@ -77,6 +95,11 @@ type Client struct {
 	ContainerID   string
 	Pubkey        string
 	CYOANetworkIP string
+
+	// PrivateIP is the client's actual IP on its connected network.
+	// For clients behind NAT, this is the private IP on the BehindNATNetwork.
+	// For direct clients, this equals CYOANetworkIP.
+	PrivateIP string
 }
 
 func (c *Client) dockerContainerHostname() string {
@@ -150,11 +173,39 @@ func (c *Client) StartIfNotRunning(ctx context.Context) (bool, error) {
 func (c *Client) Start(ctx context.Context) error {
 	c.log.Info("==> Starting client", "image", c.Spec.ContainerImage, "cyoaNetworkIPHostID", c.Spec.CYOANetworkIPHostID)
 
-	cyoaIP, err := netutil.DeriveIPFromCIDR(c.dn.CYOANetwork.SubnetCIDR, uint32(c.Spec.CYOANetworkIPHostID))
-	if err != nil {
-		return fmt.Errorf("failed to derive CYOA network IP: %w", err)
+	// Determine network configuration based on whether client is behind NAT.
+	var clientNetworkName string
+	var clientNetworkIP string
+	var publicIP string // The IP the client will register as (CYOANetworkIP)
+	var networks []string
+
+	if c.Spec.BehindNATGateway != nil {
+		// Client is behind NAT. External traffic to the CYOA network goes through the NAT gateway.
+		natGW := c.Spec.BehindNATGateway
+		clientNetworkName = natGW.BehindNATNetwork.Name
+
+		privateIP, err := netutil.DeriveIPFromCIDR(natGW.BehindNATNetwork.SubnetCIDR, c.Spec.BehindNATNetworkIPHostID)
+		if err != nil {
+			return fmt.Errorf("failed to derive behind-NAT network IP: %w", err)
+		}
+		clientNetworkIP = privateIP.To4().String()
+		publicIP = natGW.CYOANetworkIP
+
+		c.log.Info("--> Client behind NAT", "privateIP", clientNetworkIP, "publicIP", publicIP)
+	} else {
+		// Client connects directly to CYOA network.
+		clientNetworkName = c.dn.CYOANetwork.Name
+
+		cyoaIP, err := netutil.DeriveIPFromCIDR(c.dn.CYOANetwork.SubnetCIDR, uint32(c.Spec.CYOANetworkIPHostID))
+		if err != nil {
+			return fmt.Errorf("failed to derive CYOA network IP: %w", err)
+		}
+		clientNetworkIP = cyoaIP.To4().String()
+		publicIP = clientNetworkIP
 	}
-	clientCYOAIP := cyoaIP.To4().String()
+
+	// All clients connect to DefaultNetwork (for Docker DNS) and their specific network.
+	networks = []string{c.dn.DefaultNetwork.Name, clientNetworkName}
 
 	// Read the client keypair.
 	keypairJSON, err := os.ReadFile(c.Spec.KeypairPath)
@@ -211,22 +262,22 @@ func (c *Client) Start(ctx context.Context) error {
 				ContainerFilePath: containerSolanaKeypairPath,
 			},
 		},
-		Networks: []string{
-			c.dn.DefaultNetwork.Name,
-			c.dn.CYOANetwork.Name,
-		},
+		Networks: networks,
 		EndpointSettingsModifier: func(m map[string]*network.EndpointSettings) {
-			if m[c.dn.CYOANetwork.Name] == nil {
-				m[c.dn.CYOANetwork.Name] = &network.EndpointSettings{}
+			if m[clientNetworkName] == nil {
+				m[clientNetworkName] = &network.EndpointSettings{}
 			}
-			m[c.dn.CYOANetwork.Name].IPAddress = clientCYOAIP
-			m[c.dn.CYOANetwork.Name].IPAMConfig = &network.EndpointIPAMConfig{
-				IPv4Address: clientCYOAIP,
+			m[clientNetworkName].IPAddress = clientNetworkIP
+			m[clientNetworkName].IPAMConfig = &network.EndpointIPAMConfig{
+				IPv4Address: clientNetworkIP,
 			}
 		},
 		Privileged: true,
 		Labels:     c.dn.labels,
 	}
+
+	c.CYOANetworkIP = publicIP
+	c.PrivateIP = clientNetworkIP
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req,
 		Started:          true,
@@ -239,6 +290,20 @@ func (c *Client) Start(ctx context.Context) error {
 	err = c.setState(ctx, container.GetContainerID())
 	if err != nil {
 		return fmt.Errorf("failed to set client state: %w", err)
+	}
+
+	// For NAT clients, configure routing to send CYOA network traffic through the NAT gateway.
+	if c.Spec.BehindNATGateway != nil {
+		natGW := c.Spec.BehindNATGateway
+		c.log.Info("--> Configuring NAT client routing", "natGatewayIP", natGW.BehindNATNetworkIP)
+
+		// Add route to CYOA network via NAT gateway.
+		// This ensures GRE tunnel outer packets reach the devices through NAT.
+		_, err = c.Exec(ctx, []string{"ip", "route", "add", c.dn.CYOANetwork.SubnetCIDR, "via", natGW.BehindNATNetworkIP})
+		if err != nil {
+			return fmt.Errorf("failed to add route to CYOA network via NAT gateway: %w", err)
+		}
+		c.log.Info("--> NAT client routing configured", "cyoaNetwork", c.dn.CYOANetwork.SubnetCIDR, "via", natGW.BehindNATNetworkIP)
 	}
 
 	// Fund the client account via airdrop.
@@ -265,7 +330,7 @@ func (c *Client) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to fund client account after 3 attempts")
 	}
 
-	c.log.Info("--> Client started", "container", c.ContainerID, "pubkey", c.Pubkey, "cyoaIP", clientCYOAIP)
+	c.log.Info("--> Client started", "container", c.ContainerID, "pubkey", c.Pubkey, "publicIP", c.CYOANetworkIP, "privateIP", c.PrivateIP)
 	return nil
 }
 
@@ -279,7 +344,15 @@ func (c *Client) setState(ctx context.Context, containerID string) error {
 	}
 	c.Pubkey = strings.TrimSpace(string(output))
 
-	// Wait for the client's CYOA network IP address to be assigned.
+	// Determine which network the client is connected to.
+	var clientNetworkName string
+	if c.Spec.BehindNATGateway != nil {
+		clientNetworkName = c.Spec.BehindNATGateway.BehindNATNetwork.Name
+	} else {
+		clientNetworkName = c.dn.CYOANetwork.Name
+	}
+
+	// Wait for the client's network IP address to be assigned.
 	var loggedWait bool
 	var attempts int
 	timeout := 10 * time.Second
@@ -291,9 +364,9 @@ func (c *Client) setState(ctx context.Context, containerID string) error {
 		if err != nil {
 			return false, fmt.Errorf("failed to inspect container: %w", err)
 		}
-		if container.NetworkSettings.Networks[c.dn.CYOANetwork.Name] == nil {
+		if container.NetworkSettings.Networks[clientNetworkName] == nil {
 			if !loggedWait && attempts > 1 {
-				c.log.Debug("--> Waiting for client CYOA network IP to be assigned", "container", shortContainerID(container.ID), "timeout", timeout)
+				c.log.Debug("--> Waiting for client network IP to be assigned", "container", shortContainerID(container.ID), "network", clientNetworkName, "timeout", timeout)
 				loggedWait = true
 			}
 			return false, nil
@@ -301,14 +374,23 @@ func (c *Client) setState(ctx context.Context, containerID string) error {
 		return true, nil
 	}, timeout, 500*time.Millisecond)
 	if err != nil {
-		return fmt.Errorf("failed to get client CYOA network IP: %w", err)
+		return fmt.Errorf("failed to get client network IP: %w", err)
 	}
 
-	// Get the client's CYOA network IP address.
-	if container.NetworkSettings.Networks[c.dn.CYOANetwork.Name] == nil {
-		return fmt.Errorf("failed to get client CYOA network IP")
+	// Get the client's network IP address.
+	if container.NetworkSettings.Networks[clientNetworkName] == nil {
+		return fmt.Errorf("failed to get client network IP")
 	}
-	c.CYOANetworkIP = container.NetworkSettings.Networks[c.dn.CYOANetwork.Name].IPAddress
+	c.PrivateIP = container.NetworkSettings.Networks[clientNetworkName].IPAddress
+
+	// Set the public IP (CYOANetworkIP).
+	if c.Spec.BehindNATGateway != nil {
+		// For NAT clients, the public IP is the NAT gateway's CYOA IP.
+		c.CYOANetworkIP = c.Spec.BehindNATGateway.CYOANetworkIP
+	} else {
+		// For direct clients, the public IP equals the private IP.
+		c.CYOANetworkIP = c.PrivateIP
+	}
 
 	return nil
 }

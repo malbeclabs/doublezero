@@ -31,6 +31,7 @@ import { RedundancyReportPage } from '@/components/redundancy-report-page'
 import { MetroConnectivityPage } from '@/components/metro-connectivity-page'
 import { DzVsInternetPage } from '@/components/dz-vs-internet-page'
 import { PathLatencyPage } from '@/components/path-latency-page'
+import { TrafficPage } from '@/pages/traffic-page'
 import { MaintenancePlannerPage } from '@/components/maintenance-planner-page'
 import { StatusPage } from '@/components/status-page'
 import { TimelinePage } from '@/components/timeline-page'
@@ -609,6 +610,9 @@ function AppContent() {
             <Route path="/performance" element={<Navigate to="/performance/dz-vs-internet" replace />} />
             <Route path="/performance/dz-vs-internet" element={<DzVsInternetPage />} />
             <Route path="/performance/path-latency" element={<PathLatencyPage />} />
+
+            {/* Traffic route */}
+            <Route path="/traffic" element={<TrafficPage />} />
 
             {/* Status routes */}
             <Route path="/status" element={<StatusPage />} />

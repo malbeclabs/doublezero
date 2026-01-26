@@ -149,6 +149,7 @@ export function Sidebar() {
   const isTimelineRoute = location.pathname === '/timeline'
   const isOutagesRoute = location.pathname === '/outages'
   const isPerformanceRoute = location.pathname.startsWith('/performance')
+  const isTrafficRoute = location.pathname === '/traffic'
   const isQuerySessions = location.pathname === '/query/sessions'
   const isChatSessions = location.pathname === '/chat/sessions'
 
@@ -330,6 +331,20 @@ export function Sidebar() {
           title="Performance"
         >
           <Gauge className="h-4 w-4" />
+        </Link>
+
+        {/* Traffic nav item */}
+        <Link
+          to="/traffic"
+          className={cn(
+            'p-2 rounded transition-colors',
+            isTrafficRoute
+              ? 'bg-[oklch(25%_.04_250)] text-white hover:bg-[oklch(30%_.05_250)]'
+              : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+          )}
+          title="Traffic"
+        >
+          <Network className="h-4 w-4" />
         </Link>
 
         {/* Search nav item */}
@@ -621,6 +636,18 @@ export function Sidebar() {
           >
             <Gauge className="h-4 w-4" />
             Performance
+          </Link>
+          <Link
+            to="/traffic"
+            className={cn(
+              'w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors',
+              isTrafficRoute
+                ? 'bg-[var(--sidebar-active)] text-foreground font-medium'
+                : 'text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-active)]'
+            )}
+          >
+            <Network className="h-4 w-4" />
+            Traffic
           </Link>
           <button
             onClick={() => window.dispatchEvent(new CustomEvent('open-search'))}

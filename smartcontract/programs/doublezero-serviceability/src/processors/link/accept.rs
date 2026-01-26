@@ -73,7 +73,6 @@ pub fn process_accept_link(
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
-    // Validate that the stored side_z_pk matches the provided side_z_account
     if link.side_z_pk != *side_z_account.key {
         return Err(DoubleZeroError::InvalidAccountOwner.into());
     }

@@ -78,6 +78,14 @@ pub fn process_closeaccount_multicastgroup(
         msg!("{:?}", multicastgroup);
         return Err(solana_program::program_error::ProgramError::Custom(1));
     }
+    if multicastgroup.publisher_count != 0 || multicastgroup.subscriber_count != 0 {
+        #[cfg(test)]
+        msg!(
+            "MulticastGroup has active publishers or subscribers: {:?}",
+            multicastgroup
+        );
+        return Err(solana_program::program_error::ProgramError::Custom(2));
+    }
 
     try_acc_close(multicastgroup_account, owner_account)?;
 

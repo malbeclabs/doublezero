@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
-	"math"
 	"net"
 	"slices"
 	"strings"
@@ -17,31 +16,16 @@ import (
 	"time"
 
 	"github.com/malbeclabs/doublezero/e2e/internal/qa"
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 var (
-	devicesFlag       = flag.String("devices", "", "comma separated list of devices to run tests against")
-	allocateAddrHosts = flag.String("allocate-addr-hosts", "", "comma separated list of hosts that will have `--allocate-addr` passed to `doublezero connect ibrl`")
+	devicesFlag           = flag.String("devices", "", "comma separated list of devices to run tests against")
+	allocateAddrHosts     = flag.String("allocate-addr-hosts", "", "comma separated list of hosts that will have `--allocate-addr` passed to `doublezero connect ibrl`")
+	skipCapacityCheckFlag = flag.Bool("skip-capacity-check", false, "skip device capacity checks (use when running with QA identity that bypasses on-chain max_users)")
 )
-
-const latencyThresholdMs = 50
-
-type ClientLatencies map[string]map[string]float64
-
-type BatchResult struct {
-	Device          *qa.Device
-	PacketsSent     uint32
-	PacketsReceived uint32
-	FailedTests     uint32
-}
-
-func (b *BatchResult) Success() bool {
-	return b.FailedTests == 0 && b.PacketsSent > 0 && b.PacketsReceived > 0
-}
-
-type BatchData map[int]map[string]*BatchResult
 
 func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 	if testing.Short() {
@@ -67,7 +51,8 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 	require.GreaterOrEqual(t, len(clients), 2, "At least 2 clients are required for connectivity testing")
 
 	// Filter devices to only include those with sufficient capacity and skip test devices
-	devices := test.ValidDevices(2)
+	// When using a QA identity (--skip-capacity-check), all devices are included regardless of capacity
+	devices := test.ValidDevices(2, *skipCapacityCheckFlag)
 	if len(devices) == 0 {
 		t.Skip("No valid devices found with sufficient capacity")
 	}
@@ -85,7 +70,7 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 	}
 
 	log.Info("Collect `doublezero latency` for each client")
-	clientLatencies := make(ClientLatencies)
+	clientLatencies := make(qa.ClientLatencies)
 	for _, client := range clients {
 		latencies, err := client.GetLatency(ctx)
 		require.NoError(t, err, "failed to get latency from client %s", client.Host)
@@ -99,11 +84,11 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 	}
 
 	log.Info("Create a list of devices for each client.")
-	log.Info(fmt.Sprintf("    (If there are multiple clients with <%dms latency for that device, assign the device to the client with the fewest devices", latencyThresholdMs))
+	log.Info(fmt.Sprintf("    (If there are multiple clients with <%dms latency for that device, assign the device to the client with the fewest devices", qa.LatencyThresholdMs))
 	log.Info("    Otherwise, associate each device with the client with the lowest latency)")
 
 	log.Info("Assign devices to clients based on latency")
-	batchData := assignDevicesToClients(devices, clients, clientLatencies, allocateAddrHostsSet, test.ShuffleDevices)
+	batchData := qa.AssignDevicesToClients(devices, clients, clientLatencies, allocateAddrHostsSet, test.ShuffleDevices)
 
 	batchCount := len(batchData)
 	if batchCount == 0 {
@@ -137,23 +122,22 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 	for batchNum := 0; batchNum < batchCount; batchNum++ {
 		batch := batchData[batchNum]
 
-		var clientsToConnect []*qa.Client
-		for _, client := range clients {
-			if assignment, ok := batch[client.Host]; ok {
-				// Connect if: first batch, device changed, or client is not currently up
-				if batchNum == 0 {
-					clientsToConnect = append(clientsToConnect, client)
-				} else if prev, ok := batchData[batchNum-1][client.Host]; !ok || prev.Device.Code != assignment.Device.Code {
-					clientsToConnect = append(clientsToConnect, client)
-				} else {
-					// Same device as previous batch - check if client is still connected
-					status, err := client.GetUserStatus(ctx)
-					if err != nil || status.SessionStatus != qa.UserStatusUp {
-						clientsToConnect = append(clientsToConnect, client)
+		// DetermineClientsToConnect identifies clients that need to reconnect for this batch.
+		// Clients keep their connection if assigned to the same device as the previous batch
+		// and still have status "up". This avoids unnecessary reconnection overhead.
+		getStatus := func(hostname string) (string, error) {
+			for _, c := range clients {
+				if c.Host == hostname {
+					status, err := c.GetUserStatus(ctx)
+					if err != nil {
+						return "", err
 					}
+					return status.SessionStatus, nil
 				}
 			}
+			return "", fmt.Errorf("client %s not found", hostname)
 		}
+		clientsToConnect := qa.DetermineClientsToConnect(batchNum, batchData, clients, getStatus)
 
 		t.Run(fmt.Sprintf("batch_%d", batchNum+1), func(t *testing.T) {
 			connectedClients := connectClientsAndWaitForRoutes(t, ctx, log, clientsToConnect, clients, batch)
@@ -163,7 +147,7 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 			runConnectivitySubtests(t, log, connectedClients, batch, &resultsMu)
 		})
 
-		printTestReportTable(log, BatchData{batchNum: batch}, clientLatencies, true)
+		printTestReportTable(log, qa.BatchData{batchNum: batch}, clientLatencies, true)
 	}
 
 	log.Info("Test results:")
@@ -203,115 +187,8 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 	}
 }
 
-// assignDevicesToClients() considers latency between each client and device to assign devices to clients:
-// If multiple clients have < latencyThresholdMs latency, the device goes to the client with fewest devices.
-// Otherwise, the device goes to the client with the lowest latency.
-// Allocate-addr clients have no intra-exchange routing, so they must not share exchanges with any other client.
-// After assignment, shuffles each client's list, then pads all lists to match the longest so every client has an entry for every batch.
-func assignDevicesToClients(devices []*qa.Device, clients []*qa.Client, clientLatencies ClientLatencies, allocateAddrHosts map[string]struct{}, shuffle func([]*qa.Device)) BatchData {
-	clientDevices := make(map[string][]*qa.Device)
-	// Track exchange usage to enforce allocate-addr isolation
-	allocateAddrExchanges := make(map[string]string)    // exchange -> allocate-addr client hostname
-	nonAllocateAddrExchanges := make(map[string]string) // exchange -> non-allocate-addr client hostname
-
-	for _, device := range devices {
-		var lowLatencyClients []string
-		var bestClientHostname string
-		bestLatency := math.MaxFloat64
-
-		for _, client := range clients {
-			_, isAllocateAddr := allocateAddrHosts[client.Host]
-
-			// Enforce device.exchange isolation for allocate-addr clients
-			if isAllocateAddr {
-				// Don't connect an allocate-addr client to an exchange already used by another client
-				if existingClient, exists := allocateAddrExchanges[device.ExchangeCode]; exists && existingClient != client.Host {
-					continue
-				}
-				if _, exists := nonAllocateAddrExchanges[device.ExchangeCode]; exists {
-					continue
-				}
-			} else {
-				// Don't connect a non-allocate-addr client to an exchange already used by another client
-				if _, exists := allocateAddrExchanges[device.ExchangeCode]; exists {
-					continue
-				}
-			}
-
-			latencyMs, ok := clientLatencies[client.Host][device.Code]
-			if !ok {
-				continue
-			}
-
-			if latencyMs < latencyThresholdMs {
-				lowLatencyClients = append(lowLatencyClients, client.Host)
-			}
-
-			if latencyMs < bestLatency {
-				bestLatency = latencyMs
-				bestClientHostname = client.Host
-			}
-		}
-
-		var assignedClientHostname string
-		if len(lowLatencyClients) > 1 {
-			// Multiple clients qualify - assign to client with fewest devices.
-			assignedClientHostname = lowLatencyClients[0]
-			minDevices := len(clientDevices[assignedClientHostname])
-			for _, clientName := range lowLatencyClients[1:] {
-				if len(clientDevices[clientName]) < minDevices {
-					assignedClientHostname = clientName
-					minDevices = len(clientDevices[clientName])
-				}
-			}
-		} else if bestClientHostname != "" {
-			assignedClientHostname = bestClientHostname
-		}
-
-		if assignedClientHostname != "" {
-			clientDevices[assignedClientHostname] = append(clientDevices[assignedClientHostname], device)
-			// Track exchange usage
-			if _, isAllocateAddr := allocateAddrHosts[assignedClientHostname]; isAllocateAddr {
-				allocateAddrExchanges[device.ExchangeCode] = assignedClientHostname
-			} else {
-				nonAllocateAddrExchanges[device.ExchangeCode] = assignedClientHostname
-			}
-		}
-	}
-
-	// Shuffle each client's device list for randomized test order.
-	for clientHost := range clientDevices {
-		shuffle(clientDevices[clientHost])
-	}
-
-	// Pad all lists to match the longest so every client has an entry for every batch.
-	maxBatches := 0
-	for _, assigned := range clientDevices {
-		maxBatches = max(maxBatches, len(assigned))
-	}
-	for clientHost := range clientDevices {
-		assigned := clientDevices[clientHost]
-		if len(assigned) > 0 && len(assigned) < maxBatches {
-			lastDevice := assigned[len(assigned)-1]
-			for len(clientDevices[clientHost]) < maxBatches {
-				clientDevices[clientHost] = append(clientDevices[clientHost], lastDevice)
-			}
-		}
-	}
-
-	// Convert to BatchData
-	batchData := make(BatchData)
-	for batchNum := 0; batchNum < maxBatches; batchNum++ {
-		batchData[batchNum] = make(map[string]*BatchResult)
-		for clientHost, devices := range clientDevices {
-			batchData[batchNum][clientHost] = &BatchResult{Device: devices[batchNum]}
-		}
-	}
-	return batchData
-}
-
 // Print a table of each client's device assignments and latencies, plus test results if showResults is true.
-func printTestReportTable(log *slog.Logger, batchData BatchData, clientLatencies ClientLatencies, showResults bool) {
+func printTestReportTable(log *slog.Logger, batchData qa.BatchData, clientLatencies qa.ClientLatencies, showResults bool) {
 	batchNums := slices.Sorted(maps.Keys(batchData))
 	if len(batchNums) == 0 {
 		return
@@ -394,29 +271,41 @@ func connectClientsAndWaitForRoutes(
 	log *slog.Logger,
 	clientsToConnect []*qa.Client,
 	allClients []*qa.Client,
-	batch map[string]*BatchResult,
+	batch map[string]*qa.BatchResult,
 ) []*qa.Client {
 	// Connect only clients whose device changed from previous batch
+	// Note: errors here must increment FailedTests so Success() returns false
 	for _, c := range clientsToConnect {
 		device := batch[c.Host].Device
 		err := c.ConnectUserUnicast_NoWait(ctx, device.Code)
 		if err != nil {
 			log.Error("Failed to start connection", "client", c.Host, "device", device.Code, "error", err)
-			t.Errorf("failed to connect client %s to device %s: %v", c.Host, device.Code, err)
+			batch[c.Host].FailedTests++
+			if device.Status == serviceability.DeviceStatusActivated && device.MaxUsers > 0 {
+				t.Errorf("failed to connect client %s to device %s: %v", c.Host, device.Code, err)
+			} else {
+				log.Warn("Ignoring connection failure for device not ready for users", "device", device.Code, "status", device.Status, "maxUsers", device.MaxUsers)
+			}
 		}
 	}
 
 	// Wait for status up for clients that reconnected
 	for _, c := range clientsToConnect {
+		device := batch[c.Host].Device
 		err := c.WaitForStatusUp(ctx)
 		if err != nil {
 			log.Error("Client failed to reach status up", "client", c.Host, "error", err)
-			t.Errorf("failed to wait for status for client %s: %v", c.Host, err)
+			batch[c.Host].FailedTests++
+			if device.Status == serviceability.DeviceStatusActivated && device.MaxUsers > 0 {
+				t.Errorf("failed to wait for status for client %s: %v", c.Host, err)
+			} else {
+				log.Warn("Ignoring status failure for device not ready for users", "device", device.Code, "status", device.Status, "maxUsers", device.MaxUsers)
+			}
 		}
 	}
 
-	// Build list of all clients that are connected (both newly connected and previously connected)
-	var connectedClients []*qa.Client
+	// Build list of clients with status "up" (both newly connected and previously connected)
+	statuses := make(map[string]string)
 	for _, c := range allClients {
 		if _, ok := batch[c.Host]; !ok {
 			continue
@@ -426,24 +315,27 @@ func connectClientsAndWaitForRoutes(
 			log.Error("Failed to get user status", "client", c.Host, "error", err)
 			continue
 		}
-		if status.SessionStatus != qa.UserStatusUp {
-			log.Warn("Client not connected", "client", c.Host, "status", status.SessionStatus)
-			continue
+		statuses[c.Host] = status.SessionStatus
+		if !qa.IsStatusUp(status.SessionStatus) {
+			log.Warn("Client not up", "client", c.Host, "status", status.SessionStatus)
 		}
-		connectedClients = append(connectedClients, c)
 	}
+	connectedClients := qa.FilterStatusUpClients(allClients, batch, statuses)
 
 	// Wait for routes between all connected clients
 	for _, c := range connectedClients {
-		err := c.WaitForRoutes(ctx, qa.MapFilter(connectedClients, func(other *qa.Client) (net.IP, bool) {
-			if other.Host == c.Host || batch[other.Host].Device.ExchangeCode == batch[c.Host].Device.ExchangeCode {
-				return nil, false
-			}
-			return other.DoublezeroOrPublicIP(), true
-		}))
-		if err != nil {
+		device := batch[c.Host].Device
+		targets := qa.ComputeRouteTargets(c, connectedClients, batch, func(client *qa.Client) net.IP {
+			return client.DoublezeroOrPublicIP()
+		})
+		if err := c.WaitForRoutes(ctx, targets); err != nil {
 			log.Error("Failed to wait for routes", "client", c.Host, "error", err)
-			t.Errorf("failed to wait for routes on client %s: %v", c.Host, err)
+			batch[c.Host].FailedTests++
+			if device.Status == serviceability.DeviceStatusActivated && device.MaxUsers > 0 {
+				t.Errorf("failed to wait for routes on client %s: %v", c.Host, err)
+			} else {
+				log.Warn("Ignoring route failure for device not ready for users", "device", device.Code, "status", device.Status, "maxUsers", device.MaxUsers)
+			}
 		}
 	}
 
@@ -454,7 +346,7 @@ func runConnectivitySubtests(
 	t *testing.T,
 	outerLog *slog.Logger,
 	clients []*qa.Client,
-	batch map[string]*BatchResult,
+	batch map[string]*qa.BatchResult,
 	resultsMu *sync.Mutex,
 ) {
 	for _, client := range clients {
@@ -485,10 +377,19 @@ func runConnectivitySubtests(
 					result, err := src.TestUnicastConnectivity(t, subCtx, target, srcDevice, dstDevice)
 					if err != nil {
 						log.Error("Connectivity test failed", "error", err, "source", src.Host, "target", target.Host, "sourceDevice", srcDevice.Code, "targetDevice", dstDevice.Code)
-						assert.NoError(t, err, "failed to test connectivity")
 						mu.Lock()
 						failedTests++
 						mu.Unlock()
+						// Only fail test if both devices are activated with max_users > 0
+						srcReady := srcDevice.Status == serviceability.DeviceStatusActivated && srcDevice.MaxUsers > 0
+						dstReady := dstDevice.Status == serviceability.DeviceStatusActivated && dstDevice.MaxUsers > 0
+						if srcReady && dstReady {
+							assert.NoError(t, err, "failed to test connectivity")
+						} else {
+							log.Warn("Ignoring connectivity failure involving device not ready for users",
+								"sourceDevice", srcDevice.Code, "sourceStatus", srcDevice.Status, "sourceMaxUsers", srcDevice.MaxUsers,
+								"targetDevice", dstDevice.Code, "targetStatus", dstDevice.Status, "targetMaxUsers", dstDevice.MaxUsers)
+						}
 					}
 					if result != nil {
 						mu.Lock()

@@ -7,6 +7,4 @@ pub mod create_subscribe;
 pub mod delete;
 pub mod reject;
 pub mod requestban;
-pub mod resume;
-pub mod suspend;
 pub mod update;

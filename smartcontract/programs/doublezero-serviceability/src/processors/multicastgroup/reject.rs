@@ -84,7 +84,7 @@ pub fn process_reject_multicastgroup(
     )?;
 
     #[cfg(test)]
-    msg!("Rejectd: {:?}", multicastgroup);
+    msg!("Rejected: {:?}", multicastgroup);
 
     Ok(())
 }

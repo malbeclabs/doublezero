@@ -1,23 +1,16 @@
 use clap::{Args, Subcommand};
-use doublezero_cli::{
-    allowlist::device::{
-        add::AddDeviceAllowlistCliCommand, list::ListDeviceAllowlistCliCommand,
-        remove::RemoveDeviceAllowlistCliCommand,
+use doublezero_cli::device::{
+    create::CreateDeviceCliCommand,
+    delete::DeleteDeviceCliCommand,
+    get::GetDeviceCliCommand,
+    interface::{
+        create::CreateDeviceInterfaceCliCommand, delete::DeleteDeviceInterfaceCliCommand,
+        get::GetDeviceInterfaceCliCommand, list::ListDeviceInterfaceCliCommand,
+        update::UpdateDeviceInterfaceCliCommand,
     },
-    device::{
-        create::CreateDeviceCliCommand,
-        delete::DeleteDeviceCliCommand,
-        get::GetDeviceCliCommand,
-        interface::{
-            create::CreateDeviceInterfaceCliCommand, delete::DeleteDeviceInterfaceCliCommand,
-            get::GetDeviceInterfaceCliCommand, list::ListDeviceInterfaceCliCommand,
-            update::UpdateDeviceInterfaceCliCommand,
-        },
-        list::ListDeviceCliCommand,
-        resume::ResumeDeviceCliCommand,
-        suspend::SuspendDeviceCliCommand,
-        update::UpdateDeviceCliCommand,
-    },
+    list::ListDeviceCliCommand,
+    sethealth::SetDeviceHealthCliCommand,
+    update::UpdateDeviceCliCommand,
 };
 
 #[derive(Debug, Subcommand)]
@@ -65,38 +58,14 @@ pub enum DeviceCommands {
     /// Get details for a specific device
     #[clap()]
     Get(GetDeviceCliCommand),
-    /// Suspend a device
-    #[clap()]
-    Suspend(SuspendDeviceCliCommand),
-    /// Resume a suspended device
-    #[clap()]
-    Resume(ResumeDeviceCliCommand),
     /// Delete a device
     #[clap()]
     Delete(DeleteDeviceCliCommand),
-    /// Manage device allowlist
-    #[clap()]
-    Allowlist(DeviceAllowlistCliCommand),
     /// Interface commands
     #[clap()]
     Interface(InterfaceCliCommand),
-}
-
-#[derive(Args, Debug)]
-pub struct DeviceAllowlistCliCommand {
-    #[command(subcommand)]
-    pub command: DeviceAllowlistCommands,
-}
-
-#[derive(Debug, Subcommand)]
-pub enum DeviceAllowlistCommands {
-    /// List device allowlist
-    #[clap()]
-    List(ListDeviceAllowlistCliCommand),
-    /// Add a device to the allowlist
-    #[clap()]
-    Add(AddDeviceAllowlistCliCommand),
-    /// Remove a device from the allowlist
-    #[clap()]
-    Remove(RemoveDeviceAllowlistCliCommand),
+    /// Set the health status of a device interface
+    // Hidden because this is an internal/testing command and not part of the public CLI surface.
+    #[clap(hide = true)]
+    SetHealth(SetDeviceHealthCliCommand),
 }

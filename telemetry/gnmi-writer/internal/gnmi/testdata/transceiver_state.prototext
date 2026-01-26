@@ -1,0 +1,1722 @@
+update: {
+  timestamp: 1768519583719688941
+  prefix: {
+    target: "DZt011111111111111111111111111111111111111111"
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet1"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:index\":0,\"openconfig-platform-transceiver:input-power\":{\"instant\":\"-1.89\"},\"openconfig-platform-transceiver:laser-bias-current\":{\"instant\":\"6.19\"},\"openconfig-platform-transceiver:output-power\":{\"instant\":\"-2.39\"}}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet16"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:index\":0,\"openconfig-platform-transceiver:input-power\":{\"instant\":\"-2.52\"},\"openconfig-platform-transceiver:laser-bias-current\":{\"instant\":\"6.24\"},\"openconfig-platform-transceiver:output-power\":{\"instant\":\"-2.37\"}}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet18"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:index\":0,\"openconfig-platform-transceiver:input-power\":{\"instant\":\"-1.83\"},\"openconfig-platform-transceiver:laser-bias-current\":{\"instant\":\"6.25\"},\"openconfig-platform-transceiver:output-power\":{\"instant\":\"-2.57\"}}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet42"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:index\":0,\"openconfig-platform-transceiver:input-power\":{\"instant\":\"-2.09\"},\"openconfig-platform-transceiver:laser-bias-current\":{\"instant\":\"6.25\"},\"openconfig-platform-transceiver:output-power\":{\"instant\":\"-2.22\"}}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet43"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:index\":0,\"openconfig-platform-transceiver:input-power\":{\"instant\":\"-1.87\"},\"openconfig-platform-transceiver:laser-bias-current\":{\"instant\":\"6.3\"},\"openconfig-platform-transceiver:output-power\":{\"instant\":\"-2.16\"}}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet44"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:index\":0,\"openconfig-platform-transceiver:input-power\":{\"instant\":\"-1.85\"},\"openconfig-platform-transceiver:laser-bias-current\":{\"instant\":\"6.25\"},\"openconfig-platform-transceiver:output-power\":{\"instant\":\"-2.33\"}}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet45"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:index\":0,\"openconfig-platform-transceiver:input-power\":{\"instant\":\"-1.75\"},\"openconfig-platform-transceiver:laser-bias-current\":{\"instant\":\"6.28\"},\"openconfig-platform-transceiver:output-power\":{\"instant\":\"-2.37\"}}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet46"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:index\":0,\"openconfig-platform-transceiver:input-power\":{\"instant\":\"-1.8\"},\"openconfig-platform-transceiver:laser-bias-current\":{\"instant\":\"6.31\"},\"openconfig-platform-transceiver:output-power\":{\"instant\":\"-2.24\"}}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet47"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:index\":0,\"openconfig-platform-transceiver:input-power\":{\"instant\":\"-1.74\"},\"openconfig-platform-transceiver:laser-bias-current\":{\"instant\":\"6.24\"},\"openconfig-platform-transceiver:output-power\":{\"instant\":\"-2.41\"}}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet48"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:index\":0,\"openconfig-platform-transceiver:input-power\":{\"instant\":\"-2.87\"},\"openconfig-platform-transceiver:laser-bias-current\":{\"instant\":\"6.3\"},\"openconfig-platform-transceiver:output-power\":{\"instant\":\"-2.12\"}}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet49"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:index\":0,\"openconfig-platform-transceiver:input-power\":{\"instant\":\"-1.55\"},\"openconfig-platform-transceiver:laser-bias-current\":{\"instant\":\"6.21\"},\"openconfig-platform-transceiver:output-power\":{\"instant\":\"-1.38\"}}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet49"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "1"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:index\":1,\"openconfig-platform-transceiver:input-power\":{\"instant\":\"-1.75\"},\"openconfig-platform-transceiver:laser-bias-current\":{\"instant\":\"6.08\"},\"openconfig-platform-transceiver:output-power\":{\"instant\":\"-2.41\"}}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet49"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "2"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:index\":2,\"openconfig-platform-transceiver:input-power\":{\"instant\":\"-1.32\"},\"openconfig-platform-transceiver:laser-bias-current\":{\"instant\":\"6.08\"},\"openconfig-platform-transceiver:output-power\":{\"instant\":\"-1.22\"}}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet49"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "3"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:index\":3,\"openconfig-platform-transceiver:input-power\":{\"instant\":\"-1.34\"},\"openconfig-platform-transceiver:laser-bias-current\":{\"instant\":\"5.95\"},\"openconfig-platform-transceiver:output-power\":{\"instant\":\"-1.6\"}}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet50"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:index\":0,\"openconfig-platform-transceiver:input-power\":{\"instant\":\"-1.83\"},\"openconfig-platform-transceiver:laser-bias-current\":{\"instant\":\"6.08\"},\"openconfig-platform-transceiver:output-power\":{\"instant\":\"-1.78\"}}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet50"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "1"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:index\":1,\"openconfig-platform-transceiver:input-power\":{\"instant\":\"-1.75\"},\"openconfig-platform-transceiver:laser-bias-current\":{\"instant\":\"6.08\"},\"openconfig-platform-transceiver:output-power\":{\"instant\":\"-1.6\"}}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet50"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "2"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:index\":2,\"openconfig-platform-transceiver:input-power\":{\"instant\":\"-1.64\"},\"openconfig-platform-transceiver:laser-bias-current\":{\"instant\":\"6.21\"},\"openconfig-platform-transceiver:output-power\":{\"instant\":\"-2.1\"}}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet50"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "3"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:index\":3,\"openconfig-platform-transceiver:input-power\":{\"instant\":\"-1.41\"},\"openconfig-platform-transceiver:laser-bias-current\":{\"instant\":\"5.95\"},\"openconfig-platform-transceiver:output-power\":{\"instant\":\"-1.99\"}}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet51"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:index\":0,\"openconfig-platform-transceiver:input-power\":{\"instant\":\"-2.65\"},\"openconfig-platform-transceiver:laser-bias-current\":{\"instant\":\"6.08\"},\"openconfig-platform-transceiver:output-power\":{\"instant\":\"-3.32\"}}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet51"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "1"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:index\":1,\"openconfig-platform-transceiver:input-power\":{\"instant\":\"-2.16\"},\"openconfig-platform-transceiver:laser-bias-current\":{\"instant\":\"6.08\"},\"openconfig-platform-transceiver:output-power\":{\"instant\":\"-3.37\"}}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet51"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "2"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:index\":2,\"openconfig-platform-transceiver:input-power\":{\"instant\":\"-1.97\"},\"openconfig-platform-transceiver:laser-bias-current\":{\"instant\":\"6.02\"},\"openconfig-platform-transceiver:output-power\":{\"instant\":\"-3.22\"}}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet51"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "3"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:index\":3,\"openconfig-platform-transceiver:input-power\":{\"instant\":\"-1.49\"},\"openconfig-platform-transceiver:laser-bias-current\":{\"instant\":\"6.14\"},\"openconfig-platform-transceiver:output-power\":{\"instant\":\"-3.29\"}}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet52"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:index\":0,\"openconfig-platform-transceiver:input-power\":{\"instant\":\"-1.7\"},\"openconfig-platform-transceiver:laser-bias-current\":{\"instant\":\"6.14\"},\"openconfig-platform-transceiver:output-power\":{\"instant\":\"-1.5\"}}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet52"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "1"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:index\":1,\"openconfig-platform-transceiver:input-power\":{\"instant\":\"-1.83\"},\"openconfig-platform-transceiver:laser-bias-current\":{\"instant\":\"6.02\"},\"openconfig-platform-transceiver:output-power\":{\"instant\":\"-1.81\"}}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet52"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "2"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:index\":2,\"openconfig-platform-transceiver:input-power\":{\"instant\":\"-2.0\"},\"openconfig-platform-transceiver:laser-bias-current\":{\"instant\":\"6.21\"},\"openconfig-platform-transceiver:output-power\":{\"instant\":\"-1.89\"}}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet52"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "3"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:index\":3,\"openconfig-platform-transceiver:input-power\":{\"instant\":\"-1.13\"},\"openconfig-platform-transceiver:laser-bias-current\":{\"instant\":\"6.14\"},\"openconfig-platform-transceiver:output-power\":{\"instant\":\"-1.66\"}}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet49"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "1"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:description\":\"Ethernet49-lane-1\"}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet44"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:description\":\"Ethernet44-lane-0\"}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet50"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "2"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:description\":\"Ethernet50-lane-2\"}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet49"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "2"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:description\":\"Ethernet49-lane-2\"}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet16"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:description\":\"Ethernet16-lane-0\"}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet49"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:description\":\"Ethernet49-lane-0\"}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet47"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:description\":\"Ethernet47-lane-0\"}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet50"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:description\":\"Ethernet50-lane-0\"}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet51"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "1"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:description\":\"Ethernet51-lane-1\"}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet52"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "3"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:description\":\"Ethernet52-lane-3\"}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet51"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "2"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:description\":\"Ethernet51-lane-2\"}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet49"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "3"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:description\":\"Ethernet49-lane-3\"}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet50"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "3"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:description\":\"Ethernet50-lane-3\"}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet52"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:description\":\"Ethernet52-lane-0\"}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet51"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:description\":\"Ethernet51-lane-0\"}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet51"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "3"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:description\":\"Ethernet51-lane-3\"}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet1"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:description\":\"Ethernet1-lane-0\"}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet45"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:description\":\"Ethernet45-lane-0\"}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet43"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:description\":\"Ethernet43-lane-0\"}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet46"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:description\":\"Ethernet46-lane-0\"}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet48"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:description\":\"Ethernet48-lane-0\"}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet42"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:description\":\"Ethernet42-lane-0\"}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet50"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "1"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:description\":\"Ethernet50-lane-1\"}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet52"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "1"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:description\":\"Ethernet52-lane-1\"}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet18"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "0"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:description\":\"Ethernet18-lane-0\"}"
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "components"
+      }
+      elem: {
+        name: "component"
+        key: {
+          key: "name"
+          value: "Ethernet52"
+        }
+      }
+      elem: {
+        name: "transceiver"
+      }
+      elem: {
+        name: "physical-channels"
+      }
+      elem: {
+        name: "channel"
+        key: {
+          key: "index"
+          value: "2"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-platform-transceiver:description\":\"Ethernet52-lane-2\"}"
+    }
+  }
+}

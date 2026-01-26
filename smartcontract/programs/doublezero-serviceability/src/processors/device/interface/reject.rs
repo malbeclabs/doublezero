@@ -62,6 +62,10 @@ pub fn process_reject_device_interface(
         .find_interface(&value.name)
         .map_err(|_| DoubleZeroError::InterfaceNotFound)?;
 
+    if iface.status != InterfaceStatus::Pending {
+        return Err(DoubleZeroError::InvalidStatus.into());
+    }
+
     iface.status = InterfaceStatus::Rejected;
     device.interfaces[idx] = iface.to_interface();
 

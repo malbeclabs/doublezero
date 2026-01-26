@@ -31,14 +31,15 @@ pub struct LinkCreateArgs {
     pub jitter_ns: u64,
     pub side_a_iface_name: String,
     pub side_z_iface_name: Option<String>,
+    pub desired_status: Option<LinkDesiredStatus>,
 }
 
 impl fmt::Debug for LinkCreateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "code: {}, link_type: {:?}, bandwidth: {}, mtu: {}, delay_ns: {}, jitter_ns: {}, side_a_iface_name: {}, side_z_iface_name: {:?}",
-            self.code, self.link_type, self.bandwidth, self.mtu, self.delay_ns, self.jitter_ns, self.side_a_iface_name, self.side_z_iface_name
+            "code: {}, link_type: {:?}, bandwidth: {}, mtu: {}, delay_ns: {}, jitter_ns: {}, side_a_iface_name: {}, side_z_iface_name: {:?}, desired_status: {:?}",
+            self.code, self.link_type, self.bandwidth, self.mtu, self.delay_ns, self.jitter_ns, self.side_a_iface_name, self.side_z_iface_name, self.desired_status
         )
     }
 }
@@ -160,7 +161,7 @@ pub fn process_create_link(
     side_a_dev.reference_count += 1;
     side_z_dev.reference_count += 1;
 
-    let tunnel: Link = Link {
+    let mut link = Link {
         account_type: AccountType::Link,
         owner: *payer_account.key,
         index: globalstate.account_index,
@@ -180,12 +181,16 @@ pub fn process_create_link(
         side_a_iface_name: value.side_a_iface_name.clone(),
         side_z_iface_name,
         delay_override_ns: 0,
-        link_health: LinkHealth::Pending,
-        desired_status: LinkDesiredStatus::Pending,
+        // TODO: This line show be change when the health oracle is implemented
+        // link_health: LinkHealth::Pending,
+        link_health: LinkHealth::ReadyForService, // Force the link to be ready for service until the health oracle is implemented,
+        desired_status: value.desired_status.unwrap_or(LinkDesiredStatus::Pending),
     };
 
+    link.check_status_transition();
+
     try_acc_create(
-        &tunnel,
+        &link,
         link_account,
         payer_account,
         system_program,

@@ -1,0 +1,22 @@
+update: {
+  timestamp: 1767993502302069090
+  prefix: {
+    target: "DZd011111111111111111111111111111111111111111"
+  }
+  update: {
+    path: {
+      elem: {
+        name: "system"
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "hostname"
+      }
+    }
+    val: {
+      string_val: "e76554a34f51"
+    }
+  }
+}

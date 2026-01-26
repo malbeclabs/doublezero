@@ -89,6 +89,11 @@ pub fn process_delete_device_interface(
         .find_interface(&value.name)
         .map_err(|_| DoubleZeroError::InterfaceNotFound)?;
     let mut iface = device.interfaces[idx].into_current_version();
+
+    if iface.status != InterfaceStatus::Activated && iface.status != InterfaceStatus::Unlinked {
+        return Err(DoubleZeroError::InvalidStatus.into());
+    }
+
     iface.status = InterfaceStatus::Deleting;
     device.interfaces[idx] = iface.to_interface();
 

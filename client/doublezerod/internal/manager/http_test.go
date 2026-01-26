@@ -207,7 +207,7 @@ func TestHttpStatus(t *testing.T) {
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("wanted 200 response; got %d", resp.StatusCode)
 		}
-		want := `[{"tunnel_name":"doublezero0","tunnel_src":"1.1.1.1","tunnel_dst":"2.2.2.2","doublezero_ip":"3.3.3.3","doublezero_status":{"session_status":"unknown","last_session_update":0},"user_type":"IBRL"}]` + "\n"
+		want := `[{"tunnel_name":"doublezero0","tunnel_src":"1.1.1.1","tunnel_dst":"2.2.2.2","doublezero_ip":"3.3.3.3","doublezero_status":{"session_status":"Pending BGP Session","last_session_update":0},"user_type":"IBRL"}]` + "\n"
 		got, _ := io.ReadAll(resp.Body)
 		if diff := cmp.Diff(want, string(got), cmpopts.IgnoreFields(bgp.Session{}, "LastSessionUpdate")); diff != "" {
 			t.Fatalf("Response body mismatch (-want +got): %s\n", diff)

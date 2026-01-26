@@ -38,6 +38,10 @@ require (
 	github.com/near/borsh-go v0.3.1
 	github.com/netsampler/goflow2/v2 v2.2.3
 	github.com/olekukonko/tablewriter v0.0.5
+	github.com/openconfig/gnmi v0.14.1
+	github.com/openconfig/goyang v1.6.0
+	github.com/openconfig/grpctunnel v0.1.0
+	github.com/openconfig/ygot v0.34.0
 	github.com/oschwald/geoip2-golang v1.13.0
 	github.com/osrg/gobgp v2.0.0+incompatible
 	github.com/prometheus-community/pro-bing v0.7.0
@@ -112,6 +116,7 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
+	github.com/golang/glog v1.2.5 // indirect
 	github.com/google/flatbuffers v25.2.10+incompatible // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.1.0 // indirect

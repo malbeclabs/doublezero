@@ -1,4 +1,5 @@
 use crate::{
+    error::DoubleZeroError,
     instructions::*,
     processors::{
         accesspass::{
@@ -6,15 +7,14 @@ use crate::{
             set::process_set_access_pass,
         },
         allowlist::{
-            device::{
-                add::process_add_device_allowlist_globalconfig,
-                remove::process_remove_device_allowlist_globalconfig,
-            },
             foundation::{
                 add::process_add_foundation_allowlist_globalconfig,
                 remove::process_remove_foundation_allowlist_globalconfig,
             },
-            user::{add::process_add_user_allowlist, remove::process_remove_user_allowlist},
+            qa::{
+                add::process_add_qa_allowlist_globalconfig,
+                remove::process_remove_qa_allowlist_globalconfig,
+            },
         },
         contributor::{
             create::process_create_contributor, delete::process_delete_contributor,
@@ -33,8 +33,7 @@ use crate::{
                 unlink::process_unlink_device_interface, update::process_update_device_interface,
             },
             reject::process_reject_device,
-            resume::process_resume_device,
-            suspend::process_suspend_device,
+            sethealth::process_set_health_device,
             update::process_update_device,
         },
         exchange::{
@@ -50,8 +49,8 @@ use crate::{
         link::{
             accept::process_accept_link, activate::process_activate_link,
             closeaccount::process_closeaccount_link, create::process_create_link,
-            delete::process_delete_link, reject::process_reject_link, resume::process_resume_link,
-            suspend::process_suspend_link, update::process_update_link,
+            delete::process_delete_link, reject::process_reject_link,
+            sethealth::process_set_health_link, update::process_update_link,
         },
         location::{
             create::process_create_location, delete::process_delete_location,
@@ -81,7 +80,8 @@ use crate::{
             update::process_update_multicastgroup,
         },
         resource::{
-            allocate::process_allocate_resource, create::process_create_resource,
+            allocate::process_allocate_resource,
+            closeaccount::process_closeaccount_resource_extension, create::process_create_resource,
             deallocate::process_deallocate_resource,
         },
         user::{
@@ -90,7 +90,6 @@ use crate::{
             closeaccount::process_closeaccount_user, create::process_create_user,
             create_subscribe::process_create_subscribe_user, delete::process_delete_user,
             reject::process_reject_user, requestban::process_request_ban_user,
-            resume::process_resume_user, suspend::process_suspend_user,
             update::process_update_user,
         },
     },
@@ -145,7 +144,9 @@ pub fn process_instruction(
         DoubleZeroInstruction::ActivateLink(value) => {
             process_activate_link(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::ActivateDevice(_) => process_activate_device(program_id, accounts)?,
+        DoubleZeroInstruction::ActivateDevice(value) => {
+            process_activate_device(program_id, accounts, &value)?
+        }
         DoubleZeroInstruction::ActivateUser(value) => {
             process_activate_user(program_id, accounts, &value)?
         }
@@ -182,14 +183,10 @@ pub fn process_instruction(
         DoubleZeroInstruction::SuspendExchange(value) => {
             process_suspend_exchange(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::SuspendDevice(value) => {
-            process_suspend_device(program_id, accounts, &value)?
-        }
-        DoubleZeroInstruction::SuspendLink(value) => {
-            process_suspend_link(program_id, accounts, &value)?
-        }
-        DoubleZeroInstruction::SuspendUser(value) => {
-            process_suspend_user(program_id, accounts, &value)?
+        DoubleZeroInstruction::SuspendDevice() => return Err(DoubleZeroError::Deprecated.into()),
+        DoubleZeroInstruction::SuspendLink() => return Err(DoubleZeroError::Deprecated.into()),
+        DoubleZeroInstruction::SuspendUser() => {
+            return Err(DoubleZeroError::Deprecated.into());
         }
         DoubleZeroInstruction::ResumeLocation(value) => {
             process_resume_location(program_id, accounts, &value)?
@@ -197,14 +194,10 @@ pub fn process_instruction(
         DoubleZeroInstruction::ResumeExchange(value) => {
             process_resume_exchange(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::ResumeDevice(value) => {
-            process_resume_device(program_id, accounts, &value)?
-        }
-        DoubleZeroInstruction::ResumeLink(value) => {
-            process_resume_link(program_id, accounts, &value)?
-        }
-        DoubleZeroInstruction::ResumeUser(value) => {
-            process_resume_user(program_id, accounts, &value)?
+        DoubleZeroInstruction::ResumeDevice() => return Err(DoubleZeroError::Deprecated.into()),
+        DoubleZeroInstruction::ResumeLink() => return Err(DoubleZeroError::Deprecated.into()),
+        DoubleZeroInstruction::ResumeUser() => {
+            return Err(DoubleZeroError::Deprecated.into());
         }
         DoubleZeroInstruction::CloseAccountDevice(value) => {
             process_closeaccount_device(program_id, accounts, &value)?
@@ -231,17 +224,17 @@ pub fn process_instruction(
         DoubleZeroInstruction::RemoveFoundationAllowlist(value) => {
             process_remove_foundation_allowlist_globalconfig(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::AddDeviceAllowlist(value) => {
-            process_add_device_allowlist_globalconfig(program_id, accounts, &value)?
+        DoubleZeroInstruction::AddDeviceAllowlist() => {
+            return Err(DoubleZeroError::Deprecated.into());
         }
-        DoubleZeroInstruction::RemoveDeviceAllowlist(value) => {
-            process_remove_device_allowlist_globalconfig(program_id, accounts, &value)?
+        DoubleZeroInstruction::RemoveDeviceAllowlist() => {
+            return Err(DoubleZeroError::Deprecated.into());
         }
-        DoubleZeroInstruction::AddUserAllowlist(value) => {
-            process_add_user_allowlist(program_id, accounts, &value)?
+        DoubleZeroInstruction::AddUserAllowlist() => {
+            return Err(DoubleZeroError::Deprecated.into());
         }
-        DoubleZeroInstruction::RemoveUserAllowlist(value) => {
-            process_remove_user_allowlist(program_id, accounts, &value)?
+        DoubleZeroInstruction::RemoveUserAllowlist() => {
+            return Err(DoubleZeroError::Deprecated.into());
         }
         DoubleZeroInstruction::RequestBanUser(value) => {
             process_request_ban_user(program_id, accounts, &value)?
@@ -355,6 +348,21 @@ pub fn process_instruction(
         }
         DoubleZeroInstruction::DeallocateResource(value) => {
             process_deallocate_resource(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::CloseResource(value) => {
+            process_closeaccount_resource_extension(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::SetDeviceHealth(value) => {
+            process_set_health_device(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::SetLinkHealth(value) => {
+            process_set_health_link(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::AddQaAllowlist(value) => {
+            process_add_qa_allowlist_globalconfig(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::RemoveQaAllowlist(value) => {
+            process_remove_qa_allowlist_globalconfig(program_id, accounts, &value)?
         }
     };
     Ok(())

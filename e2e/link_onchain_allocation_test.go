@@ -1,0 +1,303 @@
+//go:build e2e
+
+package e2e_test
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
+	"github.com/malbeclabs/doublezero/e2e/internal/random"
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	"github.com/mr-tron/base58"
+	"github.com/stretchr/testify/require"
+)
+
+// TestE2E_Link_OnchainAllocation tests that links are activated with on-chain resource allocation.
+// When the activator runs with --onchain-allocation flag, it should allocate tunnel_id and tunnel_net
+// from the ResourceExtension bitmaps on-chain, rather than from local allocators.
+func TestE2E_Link_OnchainAllocation(t *testing.T) {
+	t.Parallel()
+
+	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
+	log := logger.With("test", t.Name(), "deployID", deployID)
+
+	log.Info("==> Starting test devnet with on-chain allocation enabled")
+
+	currentDir, err := os.Getwd()
+	require.NoError(t, err)
+	serviceabilityProgramKeypairPath := filepath.Join(currentDir, "data", "serviceability-program-keypair.json")
+
+	// Create devnet with on-chain allocation enabled for the activator
+	dn, err := devnet.New(devnet.DevnetSpec{
+		DeployID:  deployID,
+		DeployDir: t.TempDir(),
+
+		CYOANetwork: devnet.CYOANetworkSpec{
+			CIDRPrefix: subnetCIDRPrefix,
+		},
+		Manager: devnet.ManagerSpec{
+			ServiceabilityProgramKeypairPath: serviceabilityProgramKeypairPath,
+		},
+		Activator: devnet.ActivatorSpec{
+			OnchainAllocation: true, // Enable on-chain resource allocation
+		},
+	}, log, dockerClient, subnetAllocator)
+	require.NoError(t, err)
+
+	ctx := t.Context()
+
+	err = dn.Start(ctx, nil)
+	require.NoError(t, err)
+
+	// Create two devices for the link endpoints
+	// Note: Must use globally routable IPs - smart contract rejects private, documentation, and other reserved IPs
+	log.Info("==> Creating devices for link test")
+	output, err := dn.Manager.Exec(ctx, []string{"bash", "-c", `
+		set -euo pipefail
+		echo "==> Creating device test-dz01"
+		doublezero device create --code test-dz01 --contributor co01 --location lax --exchange xlax --public-ip "45.33.100.1" --dz-prefixes "45.33.100.8/29" --mgmt-vrf mgmt --desired-status activated 2>&1
+		echo "==> Creating device test-dz02"
+		doublezero device create --code test-dz02 --contributor co01 --location ewr --exchange xewr --public-ip "45.33.100.2" --dz-prefixes "45.33.100.16/29" --mgmt-vrf mgmt --desired-status activated 2>&1
+		echo "==> Updating devices with max-users"
+		doublezero device update --pubkey test-dz01 --max-users 128 2>&1
+		doublezero device update --pubkey test-dz02 --max-users 128 2>&1
+	`})
+	log.Info("Device creation output", "output", string(output))
+	require.NoError(t, err, "Device creation failed with output: %s", string(output))
+
+	// Create interfaces on the devices
+	log.Info("==> Creating device interfaces")
+	output, err = dn.Manager.Exec(ctx, []string{"bash", "-c", `
+		set -euo pipefail
+		doublezero device interface create test-dz01 "Ethernet1" 2>&1
+		doublezero device interface create test-dz02 "Ethernet1" 2>&1
+	`})
+	log.Info("Interface creation output", "output", string(output))
+	require.NoError(t, err)
+
+	// Wait for the activator to unlink the interfaces (physical interfaces start as Pending,
+	// activator transitions them to Unlinked so they can be used for links)
+	log.Info("==> Waiting for interfaces to be unlinked by activator")
+	require.Eventually(t, func() bool {
+		client, err := dn.Ledger.GetServiceabilityClient()
+		if err != nil {
+			log.Debug("Failed to get serviceability client", "error", err)
+			return false
+		}
+		data, err := client.GetProgramData(ctx)
+		if err != nil {
+			log.Debug("Failed to get program data", "error", err)
+			return false
+		}
+
+		// Track whether we found both devices with their interfaces
+		dz01Found := false
+		dz02Found := false
+
+		for _, device := range data.Devices {
+			if device.Code == "test-dz01" {
+				for _, iface := range device.Interfaces {
+					if iface.Name == "Ethernet1" {
+						if iface.Status == serviceability.InterfaceStatusUnlinked {
+							dz01Found = true
+						} else {
+							log.Debug("Interface not yet unlinked", "device", device.Code, "interface", iface.Name, "status", iface.Status)
+							return false
+						}
+					}
+				}
+			}
+			if device.Code == "test-dz02" {
+				for _, iface := range device.Interfaces {
+					if iface.Name == "Ethernet1" {
+						if iface.Status == serviceability.InterfaceStatusUnlinked {
+							dz02Found = true
+						} else {
+							log.Debug("Interface not yet unlinked", "device", device.Code, "interface", iface.Name, "status", iface.Status)
+							return false
+						}
+					}
+				}
+			}
+		}
+
+		if !dz01Found || !dz02Found {
+			log.Debug("Waiting for interfaces to appear", "dz01Found", dz01Found, "dz02Found", dz02Found)
+			return false
+		}
+
+		return true
+	}, 60*time.Second, 2*time.Second, "interfaces were not unlinked within timeout")
+
+	// Create a link between the two devices with desired-status activated
+	// The activator should pick this up and activate it with on-chain allocation
+	log.Info("==> Creating link with on-chain allocation")
+	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", `
+		set -euo pipefail
+		doublezero link create wan \
+			--code "test-dz01:test-dz02" \
+			--contributor co01 \
+			--side-a test-dz01 \
+			--side-a-interface Ethernet1 \
+			--side-z test-dz02 \
+			--side-z-interface Ethernet1 \
+			--bandwidth "10 Gbps" \
+			--mtu 9000 \
+			--delay-ms 10 \
+			--jitter-ms 1 \
+			--desired-status activated \
+			-w
+	`})
+	require.NoError(t, err)
+
+	// Wait for the link to be activated
+	log.Info("==> Waiting for link activation")
+	var activatedLink *serviceability.Link
+	require.Eventually(t, func() bool {
+		client, err := dn.Ledger.GetServiceabilityClient()
+		if err != nil {
+			log.Debug("Failed to get serviceability client", "error", err)
+			return false
+		}
+
+		data, err := client.GetProgramData(ctx)
+		if err != nil {
+			log.Debug("Failed to get program data", "error", err)
+			return false
+		}
+
+		for _, link := range data.Links {
+			if link.Code == "test-dz01:test-dz02" {
+				if link.Status == serviceability.LinkStatusActivated {
+					activatedLink = &link
+					return true
+				}
+				log.Debug("Link found but not yet activated", "status", link.Status)
+				return false
+			}
+		}
+		log.Debug("Link not found yet")
+		return false
+	}, 60*time.Second, 2*time.Second, "link was not activated within timeout")
+
+	// Verify the link has allocated resources from on-chain
+	// Note: tunnel_id=0 is valid (first allocation from LinkIds range 0-65535)
+	// We verify tunnel_net is not default, which confirms on-chain allocation worked
+	log.Info("==> Verifying link has allocated resources", "tunnel_id", activatedLink.TunnelId, "tunnel_net", activatedLink.TunnelNet)
+	require.NotEmpty(t, activatedLink.TunnelNet, "tunnel_net should be allocated (non-empty)")
+	require.NotEqual(t, [5]uint8{0, 0, 0, 0, 0}, activatedLink.TunnelNet, "tunnel_net should not be default/zero")
+
+	// Verify link details via CLI
+	log.Info("==> Verifying link details via CLI")
+	output, err = dn.Manager.Exec(ctx, []string{"bash", "-c", "doublezero link get --code test-dz01:test-dz02"})
+	require.NoError(t, err)
+	outputStr := string(output)
+	require.Contains(t, outputStr, "status: activated", "link should show activated status")
+
+	// === Part 2: Test on-chain deallocation ===
+	// The closeaccount handler should deallocate tunnel_id and tunnel_net back to ResourceExtension
+
+	// Log allocated resources before deletion (for debugging/audit purposes)
+	log.Info("==> Allocated resources before deletion", "tunnel_id", activatedLink.TunnelId, "tunnel_net", activatedLink.TunnelNet)
+
+	// Delete link to trigger transition to Deleting status
+	// Must use actual pubkey (base58 encoded), not the code
+	linkPubkey := base58.Encode(activatedLink.PubKey[:])
+	log.Info("==> Deleting link to trigger deallocation", "pubkey", linkPubkey)
+	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", fmt.Sprintf(`
+		set -euo pipefail
+		doublezero link delete --pubkey "%s"
+	`, linkPubkey)})
+	require.NoError(t, err)
+
+	// Wait for link to transition to Deleting status
+	// Note: Go SDK uses LinkStatusDeleted (value 3) which corresponds to Rust's Deleting status
+	log.Info("==> Waiting for link to transition to Deleting")
+	require.Eventually(t, func() bool {
+		client, err := dn.Ledger.GetServiceabilityClient()
+		if err != nil {
+			return false
+		}
+		data, err := client.GetProgramData(ctx)
+		if err != nil {
+			return false
+		}
+		for _, link := range data.Links {
+			if link.Code == "test-dz01:test-dz02" {
+				// LinkStatusDeleted in Go SDK = Deleting in Rust (value 3)
+				if link.Status == serviceability.LinkStatusDeleted {
+					return true
+				}
+				log.Debug("Link not yet in Deleting status", "status", link.Status)
+				return false
+			}
+		}
+		// Link not found means it was already closed
+		return true
+	}, 60*time.Second, 2*time.Second, "link did not transition to Deleting within timeout")
+
+	// Wait for link to be closed (removed from program data)
+	log.Info("==> Waiting for link to be closed by activator")
+	require.Eventually(t, func() bool {
+		client, err := dn.Ledger.GetServiceabilityClient()
+		if err != nil {
+			return false
+		}
+		data, err := client.GetProgramData(ctx)
+		if err != nil {
+			return false
+		}
+		for _, link := range data.Links {
+			if link.Code == "test-dz01:test-dz02" {
+				log.Debug("Link still exists", "status", link.Status)
+				return false
+			}
+		}
+		return true
+	}, 60*time.Second, 2*time.Second, "link was not closed within timeout")
+
+	// Verify interfaces are back to Unlinked status after link closure
+	log.Info("==> Verifying interfaces returned to Unlinked status")
+	require.Eventually(t, func() bool {
+		client, err := dn.Ledger.GetServiceabilityClient()
+		if err != nil {
+			return false
+		}
+		data, err := client.GetProgramData(ctx)
+		if err != nil {
+			return false
+		}
+
+		dz01Unlinked := false
+		dz02Unlinked := false
+
+		for _, device := range data.Devices {
+			if device.Code == "test-dz01" {
+				for _, iface := range device.Interfaces {
+					if iface.Name == "Ethernet1" && iface.Status == serviceability.InterfaceStatusUnlinked {
+						dz01Unlinked = true
+					}
+				}
+			}
+			if device.Code == "test-dz02" {
+				for _, iface := range device.Interfaces {
+					if iface.Name == "Ethernet1" && iface.Status == serviceability.InterfaceStatusUnlinked {
+						dz02Unlinked = true
+					}
+				}
+			}
+		}
+
+		if !dz01Unlinked || !dz02Unlinked {
+			log.Debug("Interfaces not yet unlinked", "dz01", dz01Unlinked, "dz02", dz02Unlinked)
+			return false
+		}
+		return true
+	}, 30*time.Second, 2*time.Second, "interfaces did not return to Unlinked status")
+
+	log.Info("==> Link on-chain allocation and deallocation test completed successfully")
+}

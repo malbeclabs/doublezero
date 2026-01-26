@@ -15,9 +15,6 @@ func newRouteReaderWriterWithNoUninstall(routeReaderWriter RouteReaderWriter, no
 }
 
 func (r *routeReaderWriterWithNoUninstall) RouteAdd(route *routing.Route) error {
-	if r.noUninstall {
-		return nil
-	}
 	return r.routeReaderWriter.RouteAdd(route)
 }
 

@@ -1,0 +1,1731 @@
+update: {
+  timestamp: 1768513139679215657
+  prefix: {
+    target: "DZd011111111111111111111111111111111111111111"
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet1"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 1
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet2"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 2
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet3"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 3
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet4"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 4
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet5"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 5
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet6"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 6
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet7"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 7
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet8"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 8
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet9"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 9
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet10"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 10
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet11"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 11
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet12"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 12
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet13"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 13
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet14"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 14
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet15"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 15
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet16"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 16
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet17"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 17
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet18"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 18
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet19"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 19
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet20"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 20
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet21"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 21
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet22"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 22
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet23"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 23
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet24"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 24
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet25"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 25
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet26"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 26
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet27"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 27
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet28"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 28
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet29"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 29
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet30"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 30
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet31"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 31
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet32"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 32
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet33"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 33
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet34"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 34
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet35"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 35
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet36"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 36
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet37"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 37
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet38"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 38
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet39"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 39
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet40"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 40
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet41"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 41
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet42"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 42
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet43"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 43
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet44"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 44
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet45"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 45
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet46"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 46
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet47"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 47
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet48"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 48
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet49/1"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 49001
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet49/2"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 49002
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet49/3"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 49003
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet49/4"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 49004
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet50/1"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 50001
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet50/2"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 50002
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet50/3"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 50003
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet50/4"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 50004
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet51/1"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 51001
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet51/2"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 51002
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet51/3"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 51003
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet51/4"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 51004
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet52/1"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 52001
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet52/2"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 52002
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet52/3"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 52003
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet52/4"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 52004
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet53/1"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 53001
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet53/5"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 53005
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet54/1"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 54001
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet54/5"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 54005
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet54/6"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 54006
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet54/7"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 54007
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Ethernet54/8"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 54008
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Management1"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 999001
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Port-Channel10"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 1000010
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Tunnel500"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 0
+    }
+  }
+  update: {
+    path: {
+      elem: {
+        name: "interfaces"
+      }
+      elem: {
+        name: "interface"
+        key: {
+          key: "name"
+          value: "Tunnel501"
+        }
+      }
+      elem: {
+        name: "state"
+      }
+      elem: {
+        name: "ifindex"
+      }
+    }
+    val: {
+      uint_val: 0
+    }
+  }
+}

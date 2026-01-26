@@ -78,7 +78,10 @@ func (t *Test) Devices() map[string]*Device {
 	return t.devices
 }
 
-func (t *Test) ValidDevices(minCapacity int) []*Device {
+// ValidDevices returns devices that pass filtering criteria.
+// If skipCapacityCheck is true (e.g., when using a QA identity that bypasses on-chain capacity checks),
+// devices are not filtered by available capacity.
+func (t *Test) ValidDevices(minCapacity int, skipCapacityCheck bool) []*Device {
 	devices := make([]*Device, 0, len(t.devices))
 
 	for _, device := range t.Devices() {
@@ -88,11 +91,14 @@ func (t *Test) ValidDevices(minCapacity int) []*Device {
 			continue
 		}
 
-		// Check if device has capacity for at least 2 users
-		availableSlots := device.MaxUsers - device.UsersCount
-		if availableSlots < minCapacity {
-			t.log.Info("Skipping device with insufficient capacity", "device", device.Code, "users", device.UsersCount, "maxUsers", device.MaxUsers)
-			continue
+		// Skip capacity check if using QA identity (bypasses on-chain max_users check)
+		if !skipCapacityCheck {
+			// Check if device has capacity for at least minCapacity users
+			availableSlots := device.MaxUsers - device.UsersCount
+			if availableSlots < minCapacity {
+				t.log.Info("Skipping device with insufficient capacity", "device", device.Code, "users", device.UsersCount, "maxUsers", device.MaxUsers)
+				continue
+			}
 		}
 		devices = append(devices, device)
 	}
@@ -143,6 +149,7 @@ func getDevices(ctx context.Context, serviceabilityClient *serviceability.Client
 			ExchangeCode: exchangeCode,
 			MaxUsers:     int(device.MaxUsers),
 			UsersCount:   int(device.UsersCount),
+			Status:       device.Status,
 		}
 	}
 	return devices, nil

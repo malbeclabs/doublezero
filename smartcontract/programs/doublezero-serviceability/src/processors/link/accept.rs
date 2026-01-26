@@ -32,10 +32,13 @@ pub fn process_accept_link(
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
+    /*  Accounts prefixed with an underscore are not currently used.
+        They are kept for backward compatibility and may be removed in future releases.
+    */
     let link_account = next_account_info(accounts_iter)?;
     let contributor_account = next_account_info(accounts_iter)?;
     let side_z_account = next_account_info(accounts_iter)?;
-    let globalstate_account = next_account_info(accounts_iter)?;
+    let _globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let _system_program = next_account_info(accounts_iter)?;
 
@@ -55,10 +58,6 @@ pub fn process_accept_link(
         side_z_account.owner, program_id,
         "Invalid Side Z Account Owner"
     );
-    assert_eq!(
-        globalstate_account.owner, program_id,
-        "Invalid GlobalState Account Owner"
-    );
     // Check if the account is writable
     assert!(link_account.is_writable, "PDA Account is not writable");
 
@@ -72,6 +71,10 @@ pub fn process_accept_link(
     let mut link: Link = Link::try_from(link_account)?;
     if link.status != LinkStatus::Requested {
         return Err(DoubleZeroError::InvalidStatus.into());
+    }
+
+    if link.side_z_pk != *side_z_account.key {
+        return Err(DoubleZeroError::InvalidAccountOwner.into());
     }
 
     // Validate Side Z Device

@@ -98,7 +98,7 @@ pub enum UserStatus {
     #[default]
     Pending = 0,
     Activated = 1,
-    Suspended = 2,
+    SuspendedDeprecated = 2, // deprecated
     Deleting = 3,
     Rejected = 4,
     PendingBan = 5,
@@ -112,7 +112,7 @@ impl From<u8> for UserStatus {
         match value {
             0 => UserStatus::Pending,
             1 => UserStatus::Activated,
-            2 => UserStatus::Suspended,
+            2 => UserStatus::SuspendedDeprecated,
             3 => UserStatus::Deleting,
             4 => UserStatus::Rejected,
             5 => UserStatus::PendingBan,
@@ -129,7 +129,7 @@ impl fmt::Display for UserStatus {
         match self {
             UserStatus::Pending => write!(f, "pending"),
             UserStatus::Activated => write!(f, "activated"),
-            UserStatus::Suspended => write!(f, "suspended"),
+            UserStatus::SuspendedDeprecated => write!(f, "suspended"),
             UserStatus::Deleting => write!(f, "deleting"),
             UserStatus::Rejected => write!(f, "rejected"),
             UserStatus::PendingBan => write!(f, "pending ban"),

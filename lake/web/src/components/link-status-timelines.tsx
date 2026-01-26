@@ -406,7 +406,7 @@ export function LinkStatusTimelines({
                       {issueReasons.includes('discards') && (
                         <span
                           className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-                          style={{ backgroundColor: 'rgba(245, 158, 11, 0.15)', color: '#d97706' }}
+                          style={{ backgroundColor: 'rgba(20, 184, 166, 0.15)', color: '#0d9488' }}
                         >
                           Discards
                         </span>
@@ -414,7 +414,7 @@ export function LinkStatusTimelines({
                       {issueReasons.includes('carrier_transitions') && (
                         <span
                           className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-                          style={{ backgroundColor: 'rgba(147, 51, 234, 0.15)', color: '#7c3aed' }}
+                          style={{ backgroundColor: 'rgba(244, 63, 94, 0.15)', color: '#e11d48' }}
                         >
                           Carrier
                         </span>

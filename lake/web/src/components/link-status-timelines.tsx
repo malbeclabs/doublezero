@@ -173,9 +173,10 @@ const SIDE_COLORS = {
 interface LinkInterfaceChartProps {
   hours: LinkHourStatus[]
   bucketMinutes: number
+  controlsWidth?: string
 }
 
-function LinkInterfaceChart({ hours, bucketMinutes }: LinkInterfaceChartProps) {
+function LinkInterfaceChart({ hours, bucketMinutes, controlsWidth = 'w-32' }: LinkInterfaceChartProps) {
   const { resolvedTheme } = useTheme()
   const isDarkMode = resolvedTheme === 'dark'
   const [enabledMetrics, setEnabledMetrics] = useState<Set<MetricType>>(new Set(['errors', 'discards', 'carrier']))
@@ -330,9 +331,9 @@ function LinkInterfaceChart({ hours, bucketMinutes }: LinkInterfaceChartProps) {
   }
 
   return (
-    <div className="flex gap-4">
+    <>
       {/* Controls */}
-      <div className="flex-shrink-0 w-32 space-y-3">
+      <div className={`flex-shrink-0 ${controlsWidth} space-y-3`}>
         <div className="space-y-1.5">
           <span className="text-xs text-muted-foreground">Metrics</span>
           <div className="flex flex-col gap-1">
@@ -400,16 +401,17 @@ function LinkInterfaceChart({ hours, bucketMinutes }: LinkInterfaceChartProps) {
           </LineChart>
         </ResponsiveContainer>
       </div>
-    </div>
+    </>
   )
 }
 
 interface LinkPacketLossChartProps {
   hours: LinkHourStatus[]
   bucketMinutes: number
+  controlsWidth?: string
 }
 
-function LinkPacketLossChart({ hours, bucketMinutes }: LinkPacketLossChartProps) {
+function LinkPacketLossChart({ hours, bucketMinutes, controlsWidth = 'w-32' }: LinkPacketLossChartProps) {
   const { resolvedTheme } = useTheme()
   const isDarkMode = resolvedTheme === 'dark'
   const [enabledSeries, setEnabledSeries] = useState<Set<'total' | 'A' | 'Z'>>(new Set(['total', 'A', 'Z']))
@@ -475,9 +477,9 @@ function LinkPacketLossChart({ hours, bucketMinutes }: LinkPacketLossChartProps)
   }
 
   return (
-    <div className="flex gap-4">
+    <>
       {/* Controls */}
-      <div className="flex-shrink-0 w-32 space-y-1.5">
+      <div className={`flex-shrink-0 ${controlsWidth} space-y-1.5`}>
         <span className="text-xs text-muted-foreground">Series</span>
         <div className="flex flex-col gap-1">
           {(['total', 'A', 'Z'] as const).map(series => {
@@ -517,7 +519,7 @@ function LinkPacketLossChart({ hours, bucketMinutes }: LinkPacketLossChartProps)
           </LineChart>
         </ResponsiveContainer>
       </div>
-    </div>
+    </>
   )
 }
 
@@ -615,25 +617,30 @@ function LinkRow({ link, linksWithIssues, criticalityMap, bucketMinutes = 60, da
       {/* Expanded charts */}
       {expanded && hasExpandableContent && (
         <div className="px-4 pb-4 pt-0 space-y-4">
-          {/* Spacer for chevron + link info alignment */}
-          <div className="flex gap-4">
-            <div className="flex-shrink-0 w-5" />
-            <div className="flex-shrink-0 w-52 sm:w-60 lg:w-68" />
-            <div className="flex-1 min-w-0 space-y-4">
-              {showPacketLossChart && (
-                <div>
-                  <div className="text-xs font-medium text-muted-foreground mb-2">Packet Loss</div>
-                  <LinkPacketLossChart hours={link.hours} bucketMinutes={bucketMinutes} />
-                </div>
-              )}
-              {showInterfaceChart && (
-                <div>
-                  <div className="text-xs font-medium text-muted-foreground mb-2">Interface Issues</div>
-                  <LinkInterfaceChart hours={link.hours} bucketMinutes={bucketMinutes} />
-                </div>
-              )}
+          {showPacketLossChart && (
+            <div>
+              <div className="flex items-start gap-4 mb-2">
+                <div className="flex-shrink-0 w-5" />
+                <div className="text-xs font-medium text-muted-foreground">Packet Loss</div>
+              </div>
+              <div className="flex items-start gap-4">
+                <div className="flex-shrink-0 w-5" />
+                <LinkPacketLossChart hours={link.hours} bucketMinutes={bucketMinutes} controlsWidth="w-52 sm:w-60 lg:w-68" />
+              </div>
             </div>
-          </div>
+          )}
+          {showInterfaceChart && (
+            <div>
+              <div className="flex items-start gap-4 mb-2">
+                <div className="flex-shrink-0 w-5" />
+                <div className="text-xs font-medium text-muted-foreground">Interface Issues</div>
+              </div>
+              <div className="flex items-start gap-4">
+                <div className="flex-shrink-0 w-5" />
+                <LinkInterfaceChart hours={link.hours} bucketMinutes={bucketMinutes} controlsWidth="w-52 sm:w-60 lg:w-68" />
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -4,7 +4,11 @@ An LLM-powered agent for answering natural language questions about DoubleZero n
 
 ## Overview
 
-The agent transforms natural language questions into SQL queries, executes them against ClickHouse, and synthesizes the results into comprehensive answers. It uses a tool-calling workflow where the LLM iteratively reasons about the question and executes queries until it has enough data to answer.
+The agent transforms natural language questions into database queries, executes them, and synthesizes the results into comprehensive answers. It uses a tool-calling workflow where the LLM iteratively reasons about the question and executes queries until it has enough data to answer.
+
+**Data sources:**
+- **ClickHouse** (SQL): Network telemetry, metrics, time-series data, and Solana validator statistics
+- **Neo4j** (Cypher): Network topology, device relationships, path finding, and connectivity analysis
 
 ## Architecture
 
@@ -20,16 +24,16 @@ The agent transforms natural language questions into SQL queries, executes them 
 │   ┌─────────────────────────────────────────────────────────────────────┐   │
 │   │  LLM with System Prompt + Schema + Conversation History             │   │
 │   └─────────────────────────────────────────────────────────────────────┘   │
-│                          │                    │                             │
-│                          ▼                    ▼                             │
-│                    ┌──────────┐        ┌─────────────┐                      │
-│                    │  think   │        │ execute_sql │                      │
-│                    │          │        │             │                      │
-│                    │ Record   │        │ Run queries │                      │
-│                    │ reasoning│        │ against DB  │                      │
-│                    └──────────┘        └─────────────┘                      │
-│                          │                    │                             │
-│                          └────────────────────┘                             │
+│                    │                │                │                      │
+│                    ▼                ▼                ▼                      │
+│             ┌────────────┐   ┌─────────────┐   ┌───────────┐               │
+│             │execute_sql │   │execute_cypher│   │ read_docs │               │
+│             │            │   │             │   │           │               │
+│             │ClickHouse  │   │   Neo4j     │   │   Docs    │               │
+│             │  queries   │   │  queries    │   │  lookup   │               │
+│             └────────────┘   └─────────────┘   └───────────┘               │
+│                    │                │                │                      │
+│                    └────────────────┴────────────────┘                      │
 │                                   │                                         │
 │                                   ▼                                         │
 │                          [Loop until done]                                  │
@@ -43,91 +47,95 @@ The agent transforms natural language questions into SQL queries, executes them 
 │  Natural language response with:                                            │
 │  • Direct answer to the question                                            │
 │  • Citations [Q1], [Q2] referencing specific queries                        │
+│  • Tables for multi-attribute data                                          │
 │  • Caveats and limitations                                                  │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-## Workflow
-
-The agent follows an iterative workflow guided by the system prompt:
-
-### 1. Interpret
-Understand what is actually being asked:
-- What type of question? (descriptive, comparative, diagnostic)
-- What entities and time windows are implied?
-- What would a wrong answer look like?
-
-### 2. Map to Data
-Translate to concrete data terms:
-- Which tables/views are relevant?
-- What is the unit of analysis?
-- Are there known caveats or gaps?
-
-### 3. Plan Queries
-Outline the query approach:
-- Start with small validation queries (row counts, time coverage)
-- Separate exploration from answer-producing queries
-- Batch independent queries for parallel execution
-
-### 4. Execute
-Run queries and assess results:
-- Check row counts against intuition
-- Look for outliers or suspiciously clean results
-- Investigate if results contradict expectations
-
-### 5. Iterate
-Refine as needed:
-- Adjust filters after seeing real distributions
-- Validate that metrics mean what the question assumes
-- Only proceed when the pattern is robust
-
-### 6. Synthesize
-Turn data into an answer:
-- State what the data shows, not what it implies
-- Tie each claim to an observed metric
-- Quantify uncertainty and blind spots
-
 ## Tools
 
-The agent has access to two tools:
+The agent has access to three tools:
 
-| Tool | Purpose |
-|------|---------|
-| `think` | Record reasoning process (shown to users for transparency) |
-| `execute_sql` | Run SQL queries against ClickHouse and get results |
+| Tool | Database | Purpose |
+|------|----------|---------|
+| `execute_sql` | ClickHouse | Time-series data, metrics, aggregations, validator stats, historical analysis |
+| `execute_cypher` | Neo4j | Topology, path finding, reachability, connectivity, impact analysis |
+| `read_docs` | - | DoubleZero documentation for conceptual and setup questions |
+
+### When to Use Each Tool
+
+**execute_sql** - Listing, metrics, status:
+- "Show all devices" / "List links" / "What metros exist"
+- "What's the average latency?" / "Show bandwidth utilization"
+- "How many validators are on DZ?" / "Show validator stakes"
+- Historical trends and aggregations
+
+**execute_cypher** - Paths, reachability, impact:
+- "What's the path from NYC to LON?"
+- "What devices are reachable from Tokyo?"
+- "What's affected if chi-dzd1 goes down?"
+- Multi-hop connectivity analysis
+
+**read_docs** - Conceptual and procedural:
+- "What is DoubleZero?"
+- "How do I connect to DZ?"
+- "Why isn't my tunnel working?"
+
+## Workflow
+
+The agent follows an iterative workflow:
+
+### 1. Understand the Question
+- What type of question? (descriptive, comparative, diagnostic)
+- What entities and time windows are implied?
+- Which data source is appropriate? (ClickHouse, Neo4j, or both)
+
+### 2. Execute Queries
+- Call `execute_sql` and/or `execute_cypher` with actual queries
+- Batch independent queries for parallel execution
+- Query for specific entity identifiers, not just aggregates
+
+### 3. Iterate if Needed
+- Adjust filters after seeing real distributions
+- Query for specific identifiers if only aggregates returned
+- Investigate if results contradict expectations
+
+### 4. Synthesize
+- State what the data shows, not what it implies
+- Tie each claim to an observed metric with [Q1], [Q2] references
+- Use tables for multi-attribute lists
 
 ## Question Types
 
 | Type | Handling |
 |------|----------|
-| **Data Analysis** | Questions requiring SQL queries (e.g., "How many validators are on DZ?") - uses full workflow |
-| **Conversational** | Clarifications, capabilities, follow-ups - direct response without queries |
+| **Data Analysis** | Questions requiring SQL/Cypher queries - uses full workflow |
+| **Documentation** | Conceptual questions about DZ - uses `read_docs` tool |
+| **Conversational** | Clarifications, follow-ups - direct response without queries |
 | **Out of Scope** | Unrelated questions - polite redirect |
 
-## Domain Knowledge
+## Claim Attribution
 
-The system prompt includes domain context for:
+Every factual claim references its source query (e.g., `[Q1]`):
+- Users can trace any claim back to the data
+- Builds trust through transparency
+- Makes it easy to verify specific numbers
 
-- **Network**: Devices, links (WAN/DZX), metros, contributors
-- **Users**: Multicast (`kind = 'multicast'`), unicast (`kind = 'ibrl'`), edge filtering
-- **Solana**: Validators joined via `dz_users.dz_ip = solana_gossip_nodes.gossip_ip`
-- **Status values**: `pending`, `activated`, `suspended`, `deleted`, `rejected`, `drained`
-- **ClickHouse specifics**: NULL vs empty string, quantile syntax, date functions
+Example:
+> There are 150 validators on DZ [Q1], with total stake of ~12M SOL [Q2].
 
-## Pre-built Views
+## Running Evals
 
-The schema includes pre-built views that the agent is instructed to prefer:
+The agent has an evaluation suite to verify behavior:
 
-| View | Use For |
-|------|---------|
-| `solana_validators_on_dz_current` | Validators currently on DZ |
-| `solana_validators_off_dz_current` | Validators NOT on DZ with GeoIP |
-| `solana_validators_on_dz_connections` | All connection events |
-| `solana_validators_disconnections` | Validators that left DZ |
-| `solana_validators_new_connections` | Recently connected validators |
-| `dz_links_health_current` | Current link health state |
-| `dz_link_status_changes` | Link status history |
-| `dz_vs_internet_latency_comparison` | DZ vs public internet latency |
+```bash
+./scripts/run-evals.sh                 # Run all evals
+./scripts/run-evals.sh -f 'TestName'   # Run specific test
+./scripts/run-evals.sh -s              # Short mode (no API calls)
+./scripts/run-evals.sh --show-failures # Show failure logs at end
+```
+
+Output goes to `eval-runs/<timestamp>/` with individual test logs and summary files.
 
 ## Design Decisions
 
@@ -135,18 +143,17 @@ The schema includes pre-built views that the agent is instructed to prefer:
 
 1. **Flexibility**: The agent can execute as many queries as needed
 2. **Iteration**: Results inform the next step, allowing refinement
-3. **Transparency**: The `think` tool makes reasoning visible to users
+3. **Transparency**: Query history is visible to users
 4. **Natural flow**: Mirrors how a human analyst would work
+
+### Why Two Databases?
+
+- **ClickHouse**: Optimized for time-series analytics and aggregations
+- **Neo4j**: Optimized for graph traversal and relationship queries
+- Some questions benefit from both (e.g., "latency on the path from NYC to LON")
 
 ### Why Dynamic Schema?
 
 - Schemas evolve; static schema would require redeployment
 - Sample values help the LLM use correct enum values
 - View definitions provide query hints
-
-### Why Claim Attribution?
-
-Every factual claim references its source query (e.g., `[Q1]`):
-- Users can trace any claim back to the data
-- Builds trust through transparency
-- Makes it easy to verify specific numbers

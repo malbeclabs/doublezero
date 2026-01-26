@@ -10,13 +10,13 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Data
+  - Add indexer that syncs serviceability and telemetry data to ClickHouse and Neo4J
+  - Add tool-calling AI agent for natural language data queries
 - Telemetry
   - Force IPv4-only connections for gNMI tunnel client and fix TLS credential handling
 
 ## [v0.8.3](https://github.com/malbeclabs/doublezero/compare/client/v0.8.2...client/v0.8.3) – 2026-01-22
-
-- Data
-  - Add indexer that syncs serviceability and telemetry data to ClickHouse and Neo4J
 
 ### Breaking
 

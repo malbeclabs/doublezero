@@ -42,7 +42,7 @@ func (s *IBRLService) Setup(p *api.ProvisionRequest) error {
 	var noUninstall bool
 	switch p.UserType {
 	case api.UserTypeIBRL:
-		err = createBaseTunnel(s.nl, tun)
+		err = createTunnelWithIP(s.nl, tun, p.DoubleZeroIP)
 	case api.UserTypeIBRLWithAllocatedIP:
 		err = createTunnelWithIP(s.nl, tun, p.DoubleZeroIP)
 		noUninstall = true

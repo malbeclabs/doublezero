@@ -383,7 +383,7 @@ impl ProvisioningCliCommand {
                     pubkey
                 ))?;
 
-                if user_type == UserType::IBRLWithAllocatedIP {
+                if user_type == UserType::IBRL || user_type == UserType::IBRLWithAllocatedIP {
                     tunnel_src = resolve_tunnel_src(controller, device).await?;
                 }
 
@@ -399,7 +399,7 @@ impl ProvisioningCliCommand {
                 spinner.println(format!("    Device selected: {} ", device.code));
                 spinner.inc(1);
 
-                if user_type == UserType::IBRLWithAllocatedIP {
+                if user_type == UserType::IBRL || user_type == UserType::IBRLWithAllocatedIP {
                     tunnel_src = resolve_tunnel_src(controller, &device).await?;
                 }
 
@@ -1157,9 +1157,14 @@ mod tests {
         let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
         let user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
         fixture.expect_create_user(Pubkey::new_unique(), &user);
-        fixture.expected_provisioning_request(
+
+        let resolved_src = Ipv4Addr::new(192, 168, 1, 100);
+        fixture.expect_resolve_route(device1.public_ip, resolved_src);
+
+        fixture.expected_provisioning_request_with_tunnel_src(
             UserType::IBRL,
             user.client_ip.to_string().as_str(),
+            resolved_src.to_string().as_str(),
             device1.public_ip.to_string().as_str(),
             None,
             None,
@@ -1213,9 +1218,14 @@ mod tests {
         let (device1_pk, device1) = fixture.add_device(DeviceType::Edge, 100, true);
         let user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
         fixture.expect_create_user(Pubkey::new_unique(), &user);
-        fixture.expected_provisioning_request(
+
+        let resolved_src = Ipv4Addr::new(192, 168, 1, 101);
+        fixture.expect_resolve_route(device1.public_ip, resolved_src);
+
+        fixture.expected_provisioning_request_with_tunnel_src(
             UserType::IBRL,
             user.client_ip.to_string().as_str(),
+            resolved_src.to_string().as_str(),
             device1.public_ip.to_string().as_str(),
             None,
             None,

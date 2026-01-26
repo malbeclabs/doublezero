@@ -166,7 +166,7 @@ func TestServices(t *testing.T) {
 				RemoteOverlay:  net.IPv4(169, 254, 0, 0),
 				MTU:            routing.GREMTU,
 			},
-			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31"}},
+			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31"}, {IP: "192.168.1.1/32"}},
 			wantTunUp:        true,
 			wantRulesAdded:   nil,
 			wantRoutesAdded:  nil,

@@ -2,6 +2,7 @@ package indexer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -283,10 +284,15 @@ func (i *Indexer) fetchISISData(ctx context.Context) ([]isis.LSP, error) {
 }
 
 func (i *Indexer) Close() error {
+	var errs []error
 	if i.isisSource != nil {
 		if err := i.isisSource.Close(); err != nil {
 			i.log.Warn("failed to close ISIS source", "error", err)
+			errs = append(errs, fmt.Errorf("failed to close ISIS source: %w", err))
 		}
+	}
+	if len(errs) > 0 {
+		return errors.Join(errs...)
 	}
 	return nil
 }

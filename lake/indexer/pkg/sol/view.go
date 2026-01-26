@@ -116,12 +116,8 @@ func (v *View) Start(ctx context.Context) {
 	go func() {
 		v.log.Info("solana: starting refresh loop", "interval", v.cfg.RefreshInterval)
 
-		if err := v.Refresh(ctx); err != nil {
-			if errors.Is(err, context.Canceled) {
-				return
-			}
-			v.log.Error("solana: initial refresh failed", "error", err)
-		}
+		v.safeRefresh(ctx)
+
 		ticker := v.cfg.Clock.NewTicker(v.cfg.RefreshInterval)
 		defer ticker.Stop()
 		for {
@@ -129,12 +125,7 @@ func (v *View) Start(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-ticker.Chan():
-				if err := v.Refresh(ctx); err != nil {
-					if errors.Is(err, context.Canceled) {
-						return
-					}
-					v.log.Error("solana: refresh failed", "error", err)
-				}
+				v.safeRefresh(ctx)
 			}
 		}
 	}()
@@ -143,13 +134,7 @@ func (v *View) Start(ctx context.Context) {
 	go func() {
 		v.log.Info("solana: starting hourly block production collection")
 
-		// Run immediately on start
-		if err := v.RefreshBlockProduction(ctx); err != nil {
-			if errors.Is(err, context.Canceled) {
-				return
-			}
-			v.log.Error("solana: initial block production refresh failed", "error", err)
-		}
+		v.safeRefreshBlockProduction(ctx)
 
 		// Then run every hour
 		hourlyTicker := v.cfg.Clock.NewTicker(1 * time.Hour)
@@ -159,15 +144,44 @@ func (v *View) Start(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-hourlyTicker.Chan():
-				if err := v.RefreshBlockProduction(ctx); err != nil {
-					if errors.Is(err, context.Canceled) {
-						return
-					}
-					v.log.Error("solana: block production refresh failed", "error", err)
-				}
+				v.safeRefreshBlockProduction(ctx)
 			}
 		}
 	}()
+}
+
+// safeRefresh wraps Refresh with panic recovery to prevent the refresh loop from dying
+func (v *View) safeRefresh(ctx context.Context) {
+	defer func() {
+		if r := recover(); r != nil {
+			v.log.Error("solana: refresh panicked", "panic", r)
+			metrics.ViewRefreshTotal.WithLabelValues("solana", "panic").Inc()
+		}
+	}()
+
+	if err := v.Refresh(ctx); err != nil {
+		if errors.Is(err, context.Canceled) {
+			return
+		}
+		v.log.Error("solana: refresh failed", "error", err)
+	}
+}
+
+// safeRefreshBlockProduction wraps RefreshBlockProduction with panic recovery
+func (v *View) safeRefreshBlockProduction(ctx context.Context) {
+	defer func() {
+		if r := recover(); r != nil {
+			v.log.Error("solana: block production refresh panicked", "panic", r)
+			metrics.ViewRefreshTotal.WithLabelValues("solana-block-production", "panic").Inc()
+		}
+	}()
+
+	if err := v.RefreshBlockProduction(ctx); err != nil {
+		if errors.Is(err, context.Canceled) {
+			return
+		}
+		v.log.Error("solana: block production refresh failed", "error", err)
+	}
 }
 
 func (v *View) Refresh(ctx context.Context) error {
@@ -177,10 +191,6 @@ func (v *View) Refresh(ctx context.Context) error {
 		duration := time.Since(refreshStart)
 		v.log.Info("solana: refresh completed", "duration", duration.String())
 		metrics.ViewRefreshDuration.WithLabelValues("solana").Observe(duration.Seconds())
-		if err := recover(); err != nil {
-			metrics.ViewRefreshTotal.WithLabelValues("solana", "error").Inc()
-			panic(err)
-		}
 	}()
 
 	v.log.Debug("solana: starting refresh")

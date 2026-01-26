@@ -902,14 +902,24 @@ function LinkIssuesFilterCard({
     { filter: 'no_issues', label: 'No Issues', color: 'bg-cyan-500', description: 'Link with no detected issues in the time range.' },
   ]
 
+  const [expanded, setExpanded] = useState(false)
+
   // Sort items by count (highest first), alphabetically if same, with no_issues always last
-  const items = [...itemDefs].sort((a, b) => {
-    if (a.filter === 'no_issues') return 1
-    if (b.filter === 'no_issues') return -1
-    const countDiff = (counts[b.filter] ?? 0) - (counts[a.filter] ?? 0)
-    if (countDiff !== 0) return countDiff
-    return a.label.localeCompare(b.label)
-  })
+  // Only include items with count > 0 (always include no_issues)
+  const items = [...itemDefs]
+    .filter(item => item.filter === 'no_issues' || (counts[item.filter] ?? 0) > 0)
+    .sort((a, b) => {
+      if (a.filter === 'no_issues') return 1
+      if (b.filter === 'no_issues') return -1
+      const countDiff = (counts[b.filter] ?? 0) - (counts[a.filter] ?? 0)
+      if (countDiff !== 0) return countDiff
+      return a.label.localeCompare(b.label)
+    })
+
+  // Collapse if more than 4 items
+  const shouldCollapse = items.length > 4
+  const visibleItems = shouldCollapse && !expanded ? items.slice(0, 4) : items
+  const hiddenCount = items.length - 4
 
   const grandTotal = (counts.total + counts.no_issues) || 1
   const packetLossPct = (counts.packet_loss / grandTotal) * 100
@@ -975,7 +985,7 @@ function LinkIssuesFilterCard({
       </div>
 
       <div className="space-y-0.5 text-sm">
-        {items.map(({ filter, label, color, description }) => (
+        {visibleItems.map(({ filter, label, color, description }) => (
           <HealthFilterItem
             key={filter}
             color={color}
@@ -987,6 +997,14 @@ function LinkIssuesFilterCard({
             healthBreakdown={healthByIssue?.[filter]}
           />
         ))}
+        {shouldCollapse && (
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors pt-1"
+          >
+            {expanded ? 'Show less' : `+${hiddenCount} more`}
+          </button>
+        )}
       </div>
     </div>
   )

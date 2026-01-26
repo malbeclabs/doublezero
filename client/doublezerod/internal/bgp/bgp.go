@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/netip"
 	"sync"
+	"time"
 
 	"github.com/jwhited/corebgp"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/liveness"
@@ -156,6 +157,13 @@ func (b *BgpServer) AddPeer(p *PeerConfig, advertised []NLRI) error {
 	}
 	plugin := NewBgpPlugin(advertised, p.RouteSrc, p.RouteTable, b.peerStatusChan, p.NoInstall, rrw)
 	plugin.peerAddr = p.RemoteAddress
+
+	// Emit Pending status immediately to clear any stale status from previous connections.
+	b.peerStatusChan <- SessionEvent{
+		PeerAddr: p.RemoteAddress,
+		Session:  Session{SessionStatus: SessionStatusPending, LastSessionUpdate: time.Now().Unix()},
+	}
+
 	plugin.startSessionTimeout()
 	err := b.server.AddPeer(corebgp.PeerConfig{
 		RemoteAddress: netip.MustParseAddr(p.RemoteAddress.String()),

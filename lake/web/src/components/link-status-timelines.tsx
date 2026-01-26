@@ -161,7 +161,7 @@ type MetricType = 'errors' | 'discards' | 'carrier'
 const METRIC_CONFIG: Record<MetricType, { label: string; dashArray?: string }> = {
   errors: { label: 'Errors', dashArray: undefined },
   discards: { label: 'Discards', dashArray: '5 5' },
-  carrier: { label: 'Carrier', dashArray: '2 2' },
+  carrier: { label: 'Carrier Transitions', dashArray: '2 2' },
 }
 
 // Colors for side A and side Z

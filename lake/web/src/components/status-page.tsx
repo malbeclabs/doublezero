@@ -1432,7 +1432,7 @@ function useBucketCount() {
 // Links tab content
 function LinksContent({ status, linkHistory, criticalLinks }: { status: StatusResponse; linkHistory: any; criticalLinks: CriticalLinksResponse | undefined }) {
   const [timeRange, setTimeRange] = useState<TimeRange>('24h')
-  const [issueFilters, setIssueFilters] = useState<IssueFilter[]>(['packet_loss', 'high_latency', 'extended_loss', 'drained', 'interface_errors', 'discards', 'carrier_transitions'])
+  const [issueFilters, setIssueFilters] = useState<IssueFilter[]>(['packet_loss', 'high_latency', 'high_utilization', 'extended_loss', 'drained', 'interface_errors', 'discards', 'carrier_transitions'])
   const [healthFilters, setHealthFilters] = useState<HealthFilter[]>(['healthy', 'degraded', 'unhealthy', 'disabled'])
 
   // Get search filters from URL

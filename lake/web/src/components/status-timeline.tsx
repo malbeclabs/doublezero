@@ -229,7 +229,7 @@ export function StatusTimeline({ hours, committedRttUs, bucketMinutes = 60, time
                                   {[
                                     sideAErrors > 0 && <span key="err" className="text-red-500">{sideAErrors} errors</span>,
                                     sideADiscards > 0 && <span key="disc" className="text-teal-500">{sideADiscards} discards</span>,
-                                    sideACarrier > 0 && <span key="carr" className="text-rose-500">{sideACarrier} carrier</span>,
+                                    sideACarrier > 0 && <span key="carr" className="text-yellow-600">{sideACarrier} carrier</span>,
                                   ].filter(Boolean).map((el, i, arr) => (
                                     <span key={i}>{el}{i < arr.length - 1 && ' · '}</span>
                                   ))}
@@ -243,7 +243,7 @@ export function StatusTimeline({ hours, committedRttUs, bucketMinutes = 60, time
                                   {[
                                     sideZErrors > 0 && <span key="err" className="text-red-500">{sideZErrors} errors</span>,
                                     sideZDiscards > 0 && <span key="disc" className="text-teal-500">{sideZDiscards} discards</span>,
-                                    sideZCarrier > 0 && <span key="carr" className="text-rose-500">{sideZCarrier} carrier</span>,
+                                    sideZCarrier > 0 && <span key="carr" className="text-yellow-600">{sideZCarrier} carrier</span>,
                                   ].filter(Boolean).map((el, i, arr) => (
                                     <span key={i}>{el}{i < arr.length - 1 && ' · '}</span>
                                   ))}

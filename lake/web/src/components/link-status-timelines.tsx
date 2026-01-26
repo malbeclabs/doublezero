@@ -414,7 +414,7 @@ export function LinkStatusTimelines({
                       {issueReasons.includes('carrier_transitions') && (
                         <span
                           className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-                          style={{ backgroundColor: 'rgba(244, 63, 94, 0.15)', color: '#e11d48' }}
+                          style={{ backgroundColor: 'rgba(234, 179, 8, 0.15)', color: '#ca8a04' }}
                         >
                           Carrier
                         </span>

@@ -898,7 +898,7 @@ function LinkIssuesFilterCard({
     { filter: 'no_data', label: 'No Data', color: 'bg-pink-500', description: 'No telemetry received for this link.' },
     { filter: 'interface_errors', label: 'Errors', color: 'bg-red-500', description: 'Interface errors detected on link endpoints.' },
     { filter: 'discards', label: 'Discards', color: 'bg-teal-500', description: 'Interface discards detected on link endpoints.' },
-    { filter: 'carrier_transitions', label: 'Carrier', color: 'bg-rose-500', description: 'Carrier transitions (interface up/down) on link endpoints.' },
+    { filter: 'carrier_transitions', label: 'Carrier', color: 'bg-yellow-500', description: 'Carrier transitions (interface up/down) on link endpoints.' },
     { filter: 'no_issues', label: 'No Issues', color: 'bg-cyan-500', description: 'Link with no detected issues in the time range.' },
   ]
 

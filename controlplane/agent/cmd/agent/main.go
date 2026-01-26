@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"log"
@@ -37,35 +39,33 @@ var (
 	date    = "unknown"
 )
 
-func pollControllerAndConfigureDevice(ctx context.Context, dzclient pb.ControllerClient, eapiClient *arista.EAPIClient, pubkey string, verbose *bool, maxLockAge int, agentVersion string, agentCommit string, agentDate string) error {
-	var err error
+func computeChecksum(data string) string {
+	hash := sha256.Sum256([]byte(data))
+	return hex.EncodeToString(hash[:])
+}
 
-	// The dz controller needs to know what BGP sessions we have configured locally
-	var neighborIpMap map[string][]string
-	neighborIpMap, err = eapiClient.GetBgpNeighbors(ctx)
+func fetchConfigFromController(ctx context.Context, dzclient pb.ControllerClient, pubkey string, neighborIpMap map[string][]string, verbose *bool, agentVersion string, agentCommit string, agentDate string) (string, string, error) {
+	configText, err := agent.GetConfigFromServer(ctx, dzclient, pubkey, neighborIpMap, controllerTimeoutInSeconds, agentVersion, agentCommit, agentDate)
 	if err != nil {
-		log.Println("pollControllerAndConfigureDevice: eapiClient.GetBgpNeighbors returned error:", err)
-		agent.ErrorsBgpNeighbors.Inc()
-	}
-
-	var configText string
-	configText, err = agent.GetConfigFromServer(ctx, dzclient, pubkey, neighborIpMap, controllerTimeoutInSeconds, agentVersion, agentCommit, agentDate)
-	if err != nil {
-		log.Printf("pollControllerAndConfigureDevice failed to call agent.GetConfigFromServer: %q", err)
+		log.Printf("fetchConfigFromController failed to call agent.GetConfigFromServer: %q", err)
 		agent.ErrorsGetConfig.Inc()
-		return err
+		return "", "", err
 	}
 
 	if *verbose {
 		log.Printf("controller returned the following config: '%s'", configText)
 	}
 
+	checksum := computeChecksum(configText)
+	return configText, checksum, nil
+}
+
+func applyConfig(ctx context.Context, eapiClient *arista.EAPIClient, configText string, maxLockAge int) error {
 	if configText == "" {
-		// Controller returned empty config
 		return nil
 	}
 
-	_, err = eapiClient.AddConfigToDevice(ctx, configText, nil, maxLockAge) // 3rd arg (diffCmd) is only used for testing
+	_, err := eapiClient.AddConfigToDevice(ctx, configText, nil, maxLockAge)
 	if err != nil {
 		agent.ErrorsApplyConfig.Inc()
 		return err
@@ -121,15 +121,55 @@ func main() {
 	client := aristapb.NewEapiMgrServiceClient(clientConn)
 	eapiClient = arista.NewEAPIClient(slog.Default(), client)
 
+	var lastChecksum string
+	var lastApplyTime time.Time
+	const forceApplyInterval = 300 * time.Second
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			err := pollControllerAndConfigureDevice(ctx, dzclient, eapiClient, *localDevicePubkey, verbose, *maxLockAge, version, commit, date)
+			neighborIpMap, err := eapiClient.GetBgpNeighbors(ctx)
 			if err != nil {
-				log.Println("ERROR: pollAndConfigureDevice returned", err)
+				log.Println("ERROR: eapiClient.GetBgpNeighbors returned", err)
+				agent.ErrorsBgpNeighbors.Inc()
 			}
+
+			shouldFetchAndApply := false
+
+			if lastChecksum == "" {
+				shouldFetchAndApply = true
+			} else if time.Since(lastApplyTime) >= forceApplyInterval {
+				shouldFetchAndApply = true
+			} else {
+				hash, err := agent.GetConfigHashFromServer(ctx, dzclient, *localDevicePubkey, neighborIpMap, controllerTimeoutInSeconds, version, commit, date)
+				if err != nil {
+					log.Println("ERROR: GetConfigHashFromServer returned", err)
+					continue
+				}
+				if hash != lastChecksum {
+					shouldFetchAndApply = true
+				}
+			}
+
+			if !shouldFetchAndApply {
+				continue
+			}
+
+			configText, checksum, err := fetchConfigFromController(ctx, dzclient, *localDevicePubkey, neighborIpMap, verbose, version, commit, date)
+			if err != nil {
+				log.Println("ERROR: fetchConfigFromController returned", err)
+				continue
+			}
+
+			err = applyConfig(ctx, eapiClient, configText, *maxLockAge)
+			if err != nil {
+				log.Println("ERROR: applyConfig returned", err)
+				continue
+			}
+			lastChecksum = checksum
+			lastApplyTime = time.Now()
 		}
 	}
 }

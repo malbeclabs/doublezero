@@ -4,7 +4,7 @@ An LLM-powered agent for answering natural language questions about DoubleZero n
 
 ## Overview
 
-The agent transforms natural language questions into database queries, executes them, and synthesizes the results into comprehensive answers. It uses a tool-calling workflow where the LLM iteratively reasons about the question and executes queries until it has enough data to answer.
+The agent transforms natural language questions into database queries, executes them, and synthesizes the results into answers. It uses a tool-calling workflow where the LLM iteratively queries until it has enough data to answer.
 
 **Data sources:**
 - **ClickHouse** (SQL): Network telemetry, metrics, time-series data, and Solana validator statistics

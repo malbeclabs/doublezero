@@ -462,6 +462,58 @@ async fn test_device_interfaces() {
     println!("✅ Device interfaces created");
     /*****************************************************************************************************************************************************/
     println!("🟢 9. Activate device interfaces...");
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateDeviceInterface(DeviceInterfaceActivateArgs {
+            name: "ethernet1/1".to_string(),
+            ip_net: "10.1.2.0/31".parse().unwrap(),
+            node_segment_idx: 1,
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateDeviceInterface(DeviceInterfaceActivateArgs {
+            name: "ethernet2/1".to_string(),
+            ip_net: "10.1.2.2/31".parse().unwrap(),
+            node_segment_idx: 2,
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateDeviceInterface(DeviceInterfaceActivateArgs {
+            name: "ethernet3/1".to_string(),
+            ip_net: "10.1.2.4/31".parse().unwrap(),
+            node_segment_idx: 3,
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
     execute_transaction(
         &mut banks_client,
         recent_blockhash,

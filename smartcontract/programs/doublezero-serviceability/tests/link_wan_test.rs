@@ -429,6 +429,25 @@ async fn test_wan_link() {
         &mut banks_client,
         recent_blockhash,
         program_id,
+        DoubleZeroInstruction::ActivateDeviceInterface(
+            device::interface::activate::DeviceInterfaceActivateArgs {
+                name: "Ethernet0".to_string(),
+                ip_net: "10.0.0.0/31".parse().unwrap(),
+                node_segment_idx: 0,
+            },
+        ),
+        vec![
+            AccountMeta::new(device_a_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
         DoubleZeroInstruction::UnlinkDeviceInterface(unlink_device_interface_la),
         vec![
             AccountMeta::new(device_a_pubkey, false),
@@ -442,6 +461,25 @@ async fn test_wan_link() {
     let unlink_device_interface_ny = DeviceInterfaceUnlinkArgs {
         name: "Ethernet1".to_string(),
     };
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateDeviceInterface(
+            device::interface::activate::DeviceInterfaceActivateArgs {
+                name: "Ethernet1".to_string(),
+                ip_net: "10.0.0.1/31".parse().unwrap(),
+                node_segment_idx: 0,
+            },
+        ),
+        vec![
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
 
     execute_transaction(
         &mut banks_client,

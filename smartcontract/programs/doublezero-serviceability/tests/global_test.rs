@@ -8,7 +8,9 @@ use doublezero_serviceability::{
         device::{
             activate::DeviceActivateArgs,
             create::*,
-            interface::{DeviceInterfaceCreateArgs, DeviceInterfaceUnlinkArgs},
+            interface::{
+                DeviceInterfaceActivateArgs, DeviceInterfaceCreateArgs, DeviceInterfaceUnlinkArgs,
+            },
             update::DeviceUpdateArgs,
         },
         exchange::create::*,
@@ -400,6 +402,24 @@ async fn test_doublezero_program() {
     .await;
 
     println!("Activating(->Unlinked) LA Device Interfaces...");
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateDeviceInterface(DeviceInterfaceActivateArgs {
+            name: "Ethernet0".to_string(),
+            ip_net: "10.10.0.0/31".parse().unwrap(),
+            node_segment_idx: 0,
+        }),
+        vec![
+            AccountMeta::new(device_la_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
     let unlink_device_interface_la = DeviceInterfaceUnlinkArgs {
         name: "Ethernet0".to_string(),
     };
@@ -566,6 +586,24 @@ async fn test_doublezero_program() {
     .await;
 
     println!("Activating(->Unlinked) NY Device Interfaces...");
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateDeviceInterface(DeviceInterfaceActivateArgs {
+            name: "Ethernet1".to_string(),
+            ip_net: "10.10.0.2/31".parse().unwrap(),
+            node_segment_idx: 1,
+        }),
+        vec![
+            AccountMeta::new(device_ny_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
     let unlink_device_interface_ny = DeviceInterfaceUnlinkArgs {
         name: "Ethernet1".to_string(),
     };

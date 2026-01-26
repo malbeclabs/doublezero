@@ -11,7 +11,10 @@ use doublezero_serviceability::{
         device::{
             activate::DeviceActivateArgs,
             create::DeviceCreateArgs,
-            interface::{create::DeviceInterfaceCreateArgs, unlink::DeviceInterfaceUnlinkArgs},
+            interface::{
+                activate::DeviceInterfaceActivateArgs, create::DeviceInterfaceCreateArgs,
+                unlink::DeviceInterfaceUnlinkArgs,
+            },
             suspend::DeviceSuspendArgs,
         },
         exchange::{create::ExchangeCreateArgs, suspend::ExchangeSuspendArgs},
@@ -987,6 +990,22 @@ impl ServiceabilityProgramHelper {
             ],
         )
         .await?;
+
+        // Serviceability requires interfaces to be Activated before they can be Unlinked.
+        // We activate with a dummy /31 and reset back to default in the unlink step.
+        self.execute_transaction(
+            DoubleZeroInstruction::ActivateDeviceInterface(DeviceInterfaceActivateArgs {
+                name: name.clone(),
+                ip_net: "10.255.0.0/31".parse().unwrap(),
+                node_segment_idx: 0,
+            }),
+            vec![
+                AccountMeta::new(device_pk, false),
+                AccountMeta::new(self.global_state_pubkey, false),
+            ],
+        )
+        .await?;
+
         self.execute_transaction(
             DoubleZeroInstruction::UnlinkDeviceInterface(DeviceInterfaceUnlinkArgs { name }),
             vec![

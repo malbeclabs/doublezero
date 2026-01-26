@@ -590,6 +590,9 @@ interface HealthIssueBreakdown {
   extended_loss: number
   drained: number
   no_data: number
+  interface_errors: number
+  discards: number
+  carrier_transitions: number
 }
 
 interface DeviceIssueBreakdown {
@@ -632,6 +635,9 @@ function HealthFilterItem({
   const issueLabels: { key: keyof HealthIssueBreakdown; label: string; color: string }[] = [
     { key: 'packet_loss', label: 'Packet Loss', color: 'bg-purple-500' },
     { key: 'high_latency', label: 'High Latency', color: 'bg-blue-500' },
+    { key: 'carrier_transitions', label: 'Carrier', color: 'bg-yellow-500' },
+    { key: 'discards', label: 'Discards', color: 'bg-teal-500' },
+    { key: 'interface_errors', label: 'Errors', color: 'bg-red-500' },
     { key: 'extended_loss', label: 'Extended Loss', color: 'bg-orange-500' },
     { key: 'drained', label: 'Drained', color: 'bg-slate-500' },
     { key: 'no_data', label: 'No Data', color: 'bg-pink-500' },
@@ -1522,6 +1528,9 @@ function LinksContent({ status, linkHistory, criticalLinks }: { status: StatusRe
       extended_loss: 0,
       drained: 0,
       no_data: 0,
+      interface_errors: 0,
+      discards: 0,
+      carrier_transitions: 0,
     })
 
     const result: IssuesByHealth = {
@@ -1547,6 +1556,9 @@ function LinksContent({ status, linkHistory, criticalLinks }: { status: StatusRe
       if (issues.includes('extended_loss')) breakdown.extended_loss++
       if (issues.includes('drained')) breakdown.drained++
       if (issues.includes('no_data')) breakdown.no_data++
+      if (issues.includes('interface_errors')) breakdown.interface_errors++
+      if (issues.includes('discards')) breakdown.discards++
+      if (issues.includes('carrier_transitions')) breakdown.carrier_transitions++
     }
 
     return result

@@ -1552,6 +1552,9 @@ func fetchLinkHistoryData(ctx context.Context, timeRange string, requestedBucket
 				}
 				// Add per-side interface issues if available
 				intfKey := linkInterfaceBucketKey{linkPK: pk, bucket: key}
+				hasErrors := false
+				hasDiscards := false
+				hasCarrier := false
 				if intfBucket, ok := linkInterfaceBuckets[intfKey]; ok {
 					if sideA, ok := intfBucket["A"]; ok {
 						hourStatus.SideAInErrors = sideA.inErrors
@@ -1562,12 +1565,15 @@ func fetchLinkHistoryData(ctx context.Context, timeRange string, requestedBucket
 						// Track issue reasons
 						if sideA.inErrors > 0 || sideA.outErrors > 0 {
 							issueReasons["interface_errors"] = true
+							hasErrors = true
 						}
 						if sideA.inDiscards > 0 || sideA.outDiscards > 0 {
 							issueReasons["discards"] = true
+							hasDiscards = true
 						}
 						if sideA.carrierTransitions > 0 {
 							issueReasons["carrier_transitions"] = true
+							hasCarrier = true
 						}
 					}
 					if sideZ, ok := intfBucket["Z"]; ok {
@@ -1579,14 +1585,25 @@ func fetchLinkHistoryData(ctx context.Context, timeRange string, requestedBucket
 						// Track issue reasons
 						if sideZ.inErrors > 0 || sideZ.outErrors > 0 {
 							issueReasons["interface_errors"] = true
+							hasErrors = true
 						}
 						if sideZ.inDiscards > 0 || sideZ.outDiscards > 0 {
 							issueReasons["discards"] = true
+							hasDiscards = true
 						}
 						if sideZ.carrierTransitions > 0 {
 							issueReasons["carrier_transitions"] = true
+							hasCarrier = true
 						}
 					}
+				}
+				// Upgrade status based on interface issues
+				// Carrier transitions (interface up/down) -> unhealthy
+				// Errors or discards -> degraded (if currently healthy)
+				if hasCarrier && hourStatus.Status == "healthy" {
+					hourStatus.Status = "unhealthy"
+				} else if (hasErrors || hasDiscards) && hourStatus.Status == "healthy" {
+					hourStatus.Status = "degraded"
 				}
 				hourStatuses = append(hourStatuses, hourStatus)
 			} else {

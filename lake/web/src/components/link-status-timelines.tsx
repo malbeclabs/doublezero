@@ -1,11 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { Loader2, CheckCircle2, AlertTriangle, History, Info } from 'lucide-react'
+import { Loader2, CheckCircle2, AlertTriangle, History, Info, ChevronDown, ChevronUp } from 'lucide-react'
+import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip as RechartsTooltip, CartesianGrid, ReferenceLine } from 'recharts'
 import { fetchLinkHistory } from '@/lib/api'
-import type { LinkHistory } from '@/lib/api'
+import type { LinkHistory, LinkHourStatus } from '@/lib/api'
 import { StatusTimeline } from './status-timeline'
 import { CriticalityBadge } from './criticality-badge'
+import { useTheme } from '@/hooks/use-theme'
 
 type TimeRange = '3h' | '6h' | '12h' | '24h' | '3d' | '7d'
 
@@ -136,6 +138,506 @@ function useBucketCount() {
   }, [])
 
   return buckets
+}
+
+// Check if link has interface issues in any bucket
+function hasInterfaceIssues(hours: LinkHourStatus[]): boolean {
+  return hours.some(h =>
+    (h.side_a_in_errors ?? 0) > 0 || (h.side_a_out_errors ?? 0) > 0 ||
+    (h.side_z_in_errors ?? 0) > 0 || (h.side_z_out_errors ?? 0) > 0 ||
+    (h.side_a_in_discards ?? 0) > 0 || (h.side_a_out_discards ?? 0) > 0 ||
+    (h.side_z_in_discards ?? 0) > 0 || (h.side_z_out_discards ?? 0) > 0 ||
+    (h.side_a_carrier_transitions ?? 0) > 0 || (h.side_z_carrier_transitions ?? 0) > 0
+  )
+}
+
+// Check if link has packet loss in any bucket
+function hasPacketLoss(hours: LinkHourStatus[]): boolean {
+  return hours.some(h => h.avg_loss_pct > 0)
+}
+
+type MetricType = 'errors' | 'discards' | 'carrier'
+
+const METRIC_CONFIG: Record<MetricType, { label: string; dashArray?: string }> = {
+  errors: { label: 'Errors', dashArray: undefined },
+  discards: { label: 'Discards', dashArray: '5 5' },
+  carrier: { label: 'Carrier', dashArray: '2 2' },
+}
+
+// Colors for side A and side Z
+const SIDE_COLORS = {
+  A: '#3b82f6', // blue
+  Z: '#10b981', // emerald
+}
+
+interface LinkInterfaceChartProps {
+  hours: LinkHourStatus[]
+  bucketMinutes: number
+}
+
+function LinkInterfaceChart({ hours, bucketMinutes }: LinkInterfaceChartProps) {
+  const { resolvedTheme } = useTheme()
+  const isDarkMode = resolvedTheme === 'dark'
+  const [enabledMetrics, setEnabledMetrics] = useState<Set<MetricType>>(new Set(['errors', 'discards', 'carrier']))
+  const [enabledSides, setEnabledSides] = useState<Set<'A' | 'Z'>>(new Set(['A', 'Z']))
+
+  // Determine which metrics have data
+  const availableMetrics = useMemo(() => {
+    const metrics: Set<MetricType> = new Set()
+    for (const h of hours) {
+      if ((h.side_a_in_errors ?? 0) > 0 || (h.side_a_out_errors ?? 0) > 0 ||
+          (h.side_z_in_errors ?? 0) > 0 || (h.side_z_out_errors ?? 0) > 0) {
+        metrics.add('errors')
+      }
+      if ((h.side_a_in_discards ?? 0) > 0 || (h.side_a_out_discards ?? 0) > 0 ||
+          (h.side_z_in_discards ?? 0) > 0 || (h.side_z_out_discards ?? 0) > 0) {
+        metrics.add('discards')
+      }
+      if ((h.side_a_carrier_transitions ?? 0) > 0 || (h.side_z_carrier_transitions ?? 0) > 0) {
+        metrics.add('carrier')
+      }
+    }
+    return metrics
+  }, [hours])
+
+  // Determine which sides have data
+  const availableSides = useMemo(() => {
+    const sides: Set<'A' | 'Z'> = new Set()
+    for (const h of hours) {
+      if ((h.side_a_in_errors ?? 0) > 0 || (h.side_a_out_errors ?? 0) > 0 ||
+          (h.side_a_in_discards ?? 0) > 0 || (h.side_a_out_discards ?? 0) > 0 ||
+          (h.side_a_carrier_transitions ?? 0) > 0) {
+        sides.add('A')
+      }
+      if ((h.side_z_in_errors ?? 0) > 0 || (h.side_z_out_errors ?? 0) > 0 ||
+          (h.side_z_in_discards ?? 0) > 0 || (h.side_z_out_discards ?? 0) > 0 ||
+          (h.side_z_carrier_transitions ?? 0) > 0) {
+        sides.add('Z')
+      }
+    }
+    return sides
+  }, [hours])
+
+  const toggleMetric = (metric: MetricType) => {
+    setEnabledMetrics(prev => {
+      const next = new Set(prev)
+      if (next.has(metric)) next.delete(metric)
+      else next.add(metric)
+      return next
+    })
+  }
+
+  const toggleSide = (side: 'A' | 'Z') => {
+    setEnabledSides(prev => {
+      const next = new Set(prev)
+      if (next.has(side)) next.delete(side)
+      else next.add(side)
+      return next
+    })
+  }
+
+  // Transform data for chart - in values positive, out values negative
+  const chartData = hours.map(h => {
+    const date = new Date(h.hour)
+    return {
+      time: date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      fullTime: h.hour,
+      // Side A
+      A_errors_in: h.side_a_in_errors ?? 0,
+      A_errors_out: -(h.side_a_out_errors ?? 0),
+      A_discards_in: h.side_a_in_discards ?? 0,
+      A_discards_out: -(h.side_a_out_discards ?? 0),
+      A_carrier: h.side_a_carrier_transitions ?? 0,
+      // Side Z
+      Z_errors_in: h.side_z_in_errors ?? 0,
+      Z_errors_out: -(h.side_z_out_errors ?? 0),
+      Z_discards_in: h.side_z_in_discards ?? 0,
+      Z_discards_out: -(h.side_z_out_discards ?? 0),
+      Z_carrier: h.side_z_carrier_transitions ?? 0,
+    }
+  })
+
+  const CustomTooltip = ({ active, payload }: any) => {
+    if (!active || !payload || payload.length === 0) return null
+    const data = payload[0]?.payload
+    if (!data) return null
+
+    const formatTime = (isoString: string) => {
+      const start = new Date(isoString)
+      const end = new Date(start.getTime() + bucketMinutes * 60 * 1000)
+      return `${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+    }
+
+    return (
+      <div className="bg-popover border border-border rounded-lg shadow-lg p-3 text-sm">
+        <div className="font-medium mb-2">{formatTime(data.fullTime)}</div>
+        <div className="space-y-1.5">
+          {(['A', 'Z'] as const).map(side => {
+            if (!enabledSides.has(side)) return null
+            const errorsIn = data[`${side}_errors_in`] || 0
+            const errorsOut = Math.abs(data[`${side}_errors_out`] || 0)
+            const discardsIn = data[`${side}_discards_in`] || 0
+            const discardsOut = Math.abs(data[`${side}_discards_out`] || 0)
+            const carrier = data[`${side}_carrier`] || 0
+            const hasData = (enabledMetrics.has('errors') && (errorsIn > 0 || errorsOut > 0)) ||
+                           (enabledMetrics.has('discards') && (discardsIn > 0 || discardsOut > 0)) ||
+                           (enabledMetrics.has('carrier') && carrier > 0)
+            if (!hasData) return null
+            return (
+              <div key={side}>
+                <div className="flex items-center gap-1.5 font-medium">
+                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: SIDE_COLORS[side] }} />
+                  <span>Side {side}</span>
+                </div>
+                <div className="pl-3.5 text-xs text-muted-foreground space-y-0.5">
+                  {enabledMetrics.has('errors') && (errorsIn > 0 || errorsOut > 0) && (
+                    <div>Errors: {errorsIn.toLocaleString()} in / {errorsOut.toLocaleString()} out</div>
+                  )}
+                  {enabledMetrics.has('discards') && (discardsIn > 0 || discardsOut > 0) && (
+                    <div>Discards: {discardsIn.toLocaleString()} in / {discardsOut.toLocaleString()} out</div>
+                  )}
+                  {enabledMetrics.has('carrier') && carrier > 0 && (
+                    <div>Carrier: {carrier.toLocaleString()}</div>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
+  const gridColor = isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'
+  const textColor = isDarkMode ? '#a1a1aa' : '#71717a'
+
+  // Generate lines for each enabled side + metric
+  const lines: { dataKey: string; color: string; strokeDasharray?: string }[] = []
+  for (const side of ['A', 'Z'] as const) {
+    if (!enabledSides.has(side)) continue
+    const color = SIDE_COLORS[side]
+    if (enabledMetrics.has('errors') && availableMetrics.has('errors')) {
+      lines.push({ dataKey: `${side}_errors_in`, color })
+      lines.push({ dataKey: `${side}_errors_out`, color })
+    }
+    if (enabledMetrics.has('discards') && availableMetrics.has('discards')) {
+      lines.push({ dataKey: `${side}_discards_in`, color, strokeDasharray: '5 5' })
+      lines.push({ dataKey: `${side}_discards_out`, color, strokeDasharray: '5 5' })
+    }
+    if (enabledMetrics.has('carrier') && availableMetrics.has('carrier')) {
+      lines.push({ dataKey: `${side}_carrier`, color, strokeDasharray: '2 2' })
+    }
+  }
+
+  return (
+    <div className="flex gap-4">
+      {/* Controls */}
+      <div className="flex-shrink-0 w-32 space-y-3">
+        <div className="space-y-1.5">
+          <span className="text-xs text-muted-foreground">Metrics</span>
+          <div className="flex flex-col gap-1">
+            {(['errors', 'discards', 'carrier'] as MetricType[]).map(metric => {
+              if (!availableMetrics.has(metric)) return null
+              const config = METRIC_CONFIG[metric]
+              const isEnabled = enabledMetrics.has(metric)
+              return (
+                <button
+                  key={metric}
+                  onClick={() => toggleMetric(metric)}
+                  className={`px-2 py-1 text-xs rounded border transition-colors flex items-center gap-1.5 ${
+                    isEnabled
+                      ? 'bg-background border-foreground/20 text-foreground shadow-sm'
+                      : 'bg-muted/50 border-transparent text-muted-foreground hover:bg-muted'
+                  }`}
+                >
+                  <svg width="12" height="2" style={{ opacity: isEnabled ? 1 : 0.3 }}>
+                    <line x1="0" y1="1" x2="12" y2="1" stroke="currentColor" strokeWidth="2" strokeDasharray={config.dashArray} />
+                  </svg>
+                  {config.label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <span className="text-xs text-muted-foreground">Sides</span>
+          <div className="flex flex-col gap-1">
+            {(['A', 'Z'] as const).map(side => {
+              if (!availableSides.has(side)) return null
+              const isEnabled = enabledSides.has(side)
+              return (
+                <button
+                  key={side}
+                  onClick={() => toggleSide(side)}
+                  className={`px-2 py-1 text-xs rounded border transition-colors flex items-center gap-1.5 ${
+                    isEnabled
+                      ? 'bg-background border-current shadow-sm'
+                      : 'bg-muted/50 border-transparent text-muted-foreground hover:bg-muted'
+                  }`}
+                  style={isEnabled ? { borderColor: SIDE_COLORS[side], color: SIDE_COLORS[side] } : undefined}
+                >
+                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: isEnabled ? SIDE_COLORS[side] : 'currentColor', opacity: isEnabled ? 1 : 0.3 }} />
+                  Side {side}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Chart */}
+      <div className="flex-1 min-w-0 h-32">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
+            <XAxis dataKey="time" tick={{ fontSize: 10, fill: textColor }} tickLine={false} axisLine={{ stroke: gridColor }} interval="preserveStartEnd" minTickGap={50} />
+            <YAxis tick={{ fontSize: 10, fill: textColor }} tickLine={false} axisLine={false} width={40} domain={[(dataMin: number) => Math.min(dataMin, 0), (dataMax: number) => Math.max(dataMax, 0)]} tickFormatter={(v) => Math.abs(v) >= 1000 ? `${(Math.abs(v)/1000).toFixed(0)}k` : Math.abs(v).toString()} />
+            <ReferenceLine y={0} stroke={isDarkMode ? '#666' : '#999'} strokeWidth={1.5} label={{ value: 'in ↑ / out ↓', position: 'right', fontSize: 9, fill: textColor }} />
+            <RechartsTooltip content={<CustomTooltip />} />
+            {lines.map(line => (
+              <Line key={line.dataKey} type="monotone" dataKey={line.dataKey} stroke={line.color} strokeWidth={1.5} strokeDasharray={line.strokeDasharray} dot={false} connectNulls />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  )
+}
+
+interface LinkPacketLossChartProps {
+  hours: LinkHourStatus[]
+  bucketMinutes: number
+}
+
+function LinkPacketLossChart({ hours, bucketMinutes }: LinkPacketLossChartProps) {
+  const { resolvedTheme } = useTheme()
+  const isDarkMode = resolvedTheme === 'dark'
+  const [enabledSeries, setEnabledSeries] = useState<Set<'total' | 'A' | 'Z'>>(new Set(['total', 'A', 'Z']))
+
+  // Check which series have data
+  const availableSeries = useMemo(() => {
+    const series: Set<'total' | 'A' | 'Z'> = new Set()
+    for (const h of hours) {
+      if (h.avg_loss_pct > 0) series.add('total')
+      if ((h.side_a_loss_pct ?? 0) > 0) series.add('A')
+      if ((h.side_z_loss_pct ?? 0) > 0) series.add('Z')
+    }
+    return series
+  }, [hours])
+
+  const toggleSeries = (series: 'total' | 'A' | 'Z') => {
+    setEnabledSeries(prev => {
+      const next = new Set(prev)
+      if (next.has(series)) next.delete(series)
+      else next.add(series)
+      return next
+    })
+  }
+
+  const chartData = hours.map(h => ({
+    time: new Date(h.hour).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    fullTime: h.hour,
+    total: h.avg_loss_pct,
+    A: h.side_a_loss_pct ?? 0,
+    Z: h.side_z_loss_pct ?? 0,
+  }))
+
+  const CustomTooltip = ({ active, payload }: any) => {
+    if (!active || !payload || payload.length === 0) return null
+    const data = payload[0]?.payload
+    if (!data) return null
+
+    const formatTime = (isoString: string) => {
+      const start = new Date(isoString)
+      const end = new Date(start.getTime() + bucketMinutes * 60 * 1000)
+      return `${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+    }
+
+    return (
+      <div className="bg-popover border border-border rounded-lg shadow-lg p-3 text-sm">
+        <div className="font-medium mb-2">{formatTime(data.fullTime)}</div>
+        <div className="space-y-1 text-xs">
+          {enabledSeries.has('total') && <div>Total: {data.total.toFixed(2)}%</div>}
+          {enabledSeries.has('A') && availableSeries.has('A') && <div style={{ color: SIDE_COLORS.A }}>Side A: {data.A.toFixed(2)}%</div>}
+          {enabledSeries.has('Z') && availableSeries.has('Z') && <div style={{ color: SIDE_COLORS.Z }}>Side Z: {data.Z.toFixed(2)}%</div>}
+        </div>
+      </div>
+    )
+  }
+
+  const gridColor = isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'
+  const textColor = isDarkMode ? '#a1a1aa' : '#71717a'
+
+  const SERIES_CONFIG = {
+    total: { color: '#a855f7', label: 'Total' }, // purple
+    A: { color: SIDE_COLORS.A, label: 'Side A' },
+    Z: { color: SIDE_COLORS.Z, label: 'Side Z' },
+  }
+
+  return (
+    <div className="flex gap-4">
+      {/* Controls */}
+      <div className="flex-shrink-0 w-32 space-y-1.5">
+        <span className="text-xs text-muted-foreground">Series</span>
+        <div className="flex flex-col gap-1">
+          {(['total', 'A', 'Z'] as const).map(series => {
+            if (series !== 'total' && !availableSeries.has(series)) return null
+            const config = SERIES_CONFIG[series]
+            const isEnabled = enabledSeries.has(series)
+            return (
+              <button
+                key={series}
+                onClick={() => toggleSeries(series)}
+                className={`px-2 py-1 text-xs rounded border transition-colors flex items-center gap-1.5 ${
+                  isEnabled
+                    ? 'bg-background border-current shadow-sm'
+                    : 'bg-muted/50 border-transparent text-muted-foreground hover:bg-muted'
+                }`}
+                style={isEnabled ? { borderColor: config.color, color: config.color } : undefined}
+              >
+                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: isEnabled ? config.color : 'currentColor', opacity: isEnabled ? 1 : 0.3 }} />
+                {config.label}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Chart */}
+      <div className="flex-1 min-w-0 h-32">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
+            <XAxis dataKey="time" tick={{ fontSize: 10, fill: textColor }} tickLine={false} axisLine={{ stroke: gridColor }} interval="preserveStartEnd" minTickGap={50} />
+            <YAxis tick={{ fontSize: 10, fill: textColor }} tickLine={false} axisLine={false} width={40} domain={[0, 'auto']} tickFormatter={(v) => `${v}%`} />
+            <RechartsTooltip content={<CustomTooltip />} />
+            {enabledSeries.has('total') && <Line type="monotone" dataKey="total" stroke={SERIES_CONFIG.total.color} strokeWidth={2} dot={false} connectNulls />}
+            {enabledSeries.has('A') && availableSeries.has('A') && <Line type="monotone" dataKey="A" stroke={SERIES_CONFIG.A.color} strokeWidth={1.5} strokeDasharray="5 5" dot={false} connectNulls />}
+            {enabledSeries.has('Z') && availableSeries.has('Z') && <Line type="monotone" dataKey="Z" stroke={SERIES_CONFIG.Z.color} strokeWidth={1.5} strokeDasharray="5 5" dot={false} connectNulls />}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  )
+}
+
+interface LinkRowProps {
+  link: LinkHistory
+  linksWithIssues?: Map<string, string[]>
+  criticalityMap?: Map<string, 'critical' | 'important' | 'redundant'>
+  bucketMinutes?: number
+  dataTimeRange?: string
+}
+
+function LinkRow({ link, linksWithIssues, criticalityMap, bucketMinutes = 60, dataTimeRange }: LinkRowProps) {
+  const [expanded, setExpanded] = useState(false)
+
+  const issueReasons = linksWithIssues
+    ? (linksWithIssues.get(link.code) ?? [])
+    : (link.issue_reasons ?? [])
+
+  const showInterfaceChart = hasInterfaceIssues(link.hours)
+  const showPacketLossChart = hasPacketLoss(link.hours)
+  const hasExpandableContent = showInterfaceChart || showPacketLossChart
+
+  return (
+    <div className="border-b border-border last:border-b-0">
+      <div
+        className={`px-4 py-3 transition-colors ${hasExpandableContent ? 'cursor-pointer hover:bg-muted/30' : ''}`}
+        onClick={hasExpandableContent ? () => setExpanded(!expanded) : undefined}
+      >
+        <div className="flex items-start gap-4">
+          {/* Expand/collapse indicator */}
+          <div className="flex-shrink-0 w-5 pt-0.5">
+            {hasExpandableContent ? (
+              expanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            ) : (
+              <div className="w-4" />
+            )}
+          </div>
+
+          {/* Link info */}
+          <div className="flex-shrink-0 w-52 sm:w-60 lg:w-68">
+            <div className="flex items-center gap-1.5">
+              <Link to={`/dz/links/${link.pk}`} className="font-mono text-sm truncate hover:underline" title={link.code} onClick={(e) => e.stopPropagation()}>
+                {link.code}
+              </Link>
+              <LinkInfoPopover link={link} criticality={criticalityMap?.get(link.code)} />
+              {criticalityMap?.get(link.code) && criticalityMap.get(link.code) !== 'redundant' && (
+                <CriticalityBadge criticality={criticalityMap.get(link.code)!} />
+              )}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {link.link_type}{link.contributor && ` · ${link.contributor}`}
+            </div>
+            {issueReasons.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1">
+                {issueReasons.includes('packet_loss') && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded font-medium" style={{ backgroundColor: 'rgba(168, 85, 247, 0.15)', color: '#9333ea' }}>Loss</span>
+                )}
+                {issueReasons.includes('high_latency') && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded font-medium" style={{ backgroundColor: 'rgba(59, 130, 246, 0.15)', color: '#2563eb' }}>High Latency</span>
+                )}
+                {issueReasons.includes('extended_loss') && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded font-medium" style={{ backgroundColor: 'rgba(249, 115, 22, 0.15)', color: '#ea580c' }}>Extended Loss</span>
+                )}
+                {issueReasons.includes('drained') && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded font-medium" style={{ backgroundColor: 'rgba(100, 116, 139, 0.15)', color: '#475569' }}>Drained</span>
+                )}
+                {issueReasons.includes('no_data') && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded font-medium" style={{ backgroundColor: 'rgba(236, 72, 153, 0.15)', color: '#db2777' }}>No Data</span>
+                )}
+                {issueReasons.includes('interface_errors') && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded font-medium" style={{ backgroundColor: 'rgba(239, 68, 68, 0.15)', color: '#dc2626' }}>Errors</span>
+                )}
+                {issueReasons.includes('discards') && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded font-medium" style={{ backgroundColor: 'rgba(20, 184, 166, 0.15)', color: '#0d9488' }}>Discards</span>
+                )}
+                {issueReasons.includes('carrier_transitions') && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded font-medium" style={{ backgroundColor: 'rgba(234, 179, 8, 0.15)', color: '#ca8a04' }}>Carrier</span>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Timeline */}
+          <div className="flex-1 min-w-0">
+            <StatusTimeline
+              hours={link.hours}
+              committedRttUs={link.committed_rtt_us}
+              bucketMinutes={bucketMinutes}
+              timeRange={dataTimeRange}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Expanded charts */}
+      {expanded && hasExpandableContent && (
+        <div className="px-4 pb-4 pt-0 space-y-4">
+          {/* Spacer for chevron + link info alignment */}
+          <div className="flex gap-4">
+            <div className="flex-shrink-0 w-5" />
+            <div className="flex-shrink-0 w-52 sm:w-60 lg:w-68" />
+            <div className="flex-1 min-w-0 space-y-4">
+              {showPacketLossChart && (
+                <div>
+                  <div className="text-xs font-medium text-muted-foreground mb-2">Packet Loss</div>
+                  <LinkPacketLossChart hours={link.hours} bucketMinutes={bucketMinutes} />
+                </div>
+              )}
+              {showInterfaceChart && (
+                <div>
+                  <div className="text-xs font-medium text-muted-foreground mb-2">Interface Issues</div>
+                  <LinkInterfaceChart hours={link.hours} bucketMinutes={bucketMinutes} />
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 export function LinkStatusTimelines({
@@ -331,110 +833,16 @@ export function LinkStatusTimelines({
         </div>
       </div>
 
-      <div className="divide-y divide-border">
+      <div>
         {filteredLinks.map((link) => (
-          <div key={link.code} className="px-4 py-3 hover:bg-muted/30 transition-colors">
-            <div className="flex items-start gap-4">
-              {/* Link info */}
-              <div className="flex-shrink-0 w-56 sm:w-64 lg:w-72">
-                <div className="flex items-center gap-1.5">
-                  <Link to={`/dz/links/${link.pk}`} className="font-mono text-sm truncate hover:underline" title={link.code}>
-                    {link.code}
-                  </Link>
-                  <LinkInfoPopover link={link} criticality={criticalityMap?.get(link.code)} />
-                  {criticalityMap?.get(link.code) && criticalityMap.get(link.code) !== 'redundant' && (
-                    <CriticalityBadge criticality={criticalityMap.get(link.code)!} />
-                  )}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  {link.link_type}{link.contributor && ` · ${link.contributor}`}
-                </div>
-                {(() => {
-                  const issueReasons = linksWithIssues
-                    ? (linksWithIssues.get(link.code) ?? [])
-                    : (link.issue_reasons ?? [])
-                  return issueReasons.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {issueReasons.includes('packet_loss') && (
-                        <span
-                          className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-                          style={{ backgroundColor: 'rgba(168, 85, 247, 0.15)', color: '#9333ea' }}
-                        >
-                          Loss
-                        </span>
-                      )}
-                      {issueReasons.includes('high_latency') && (
-                        <span
-                          className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-                          style={{ backgroundColor: 'rgba(59, 130, 246, 0.15)', color: '#2563eb' }}
-                        >
-                          High Latency
-                        </span>
-                      )}
-                      {issueReasons.includes('extended_loss') && (
-                        <span
-                          className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-                          style={{ backgroundColor: 'rgba(249, 115, 22, 0.15)', color: '#ea580c' }}
-                        >
-                          Extended Loss
-                        </span>
-                      )}
-                      {issueReasons.includes('drained') && (
-                        <span
-                          className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-                          style={{ backgroundColor: 'rgba(100, 116, 139, 0.15)', color: '#475569' }}
-                        >
-                          Drained
-                        </span>
-                      )}
-                      {issueReasons.includes('no_data') && (
-                        <span
-                          className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-                          style={{ backgroundColor: 'rgba(236, 72, 153, 0.15)', color: '#db2777' }}
-                        >
-                          No Data
-                        </span>
-                      )}
-                      {issueReasons.includes('interface_errors') && (
-                        <span
-                          className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-                          style={{ backgroundColor: 'rgba(239, 68, 68, 0.15)', color: '#dc2626' }}
-                        >
-                          Errors
-                        </span>
-                      )}
-                      {issueReasons.includes('discards') && (
-                        <span
-                          className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-                          style={{ backgroundColor: 'rgba(20, 184, 166, 0.15)', color: '#0d9488' }}
-                        >
-                          Discards
-                        </span>
-                      )}
-                      {issueReasons.includes('carrier_transitions') && (
-                        <span
-                          className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-                          style={{ backgroundColor: 'rgba(234, 179, 8, 0.15)', color: '#ca8a04' }}
-                        >
-                          Carrier
-                        </span>
-                      )}
-                    </div>
-                  )
-                })()}
-              </div>
-
-              {/* Timeline */}
-              <div className="flex-1 min-w-0">
-                <StatusTimeline
-                  hours={link.hours}
-                  committedRttUs={link.committed_rtt_us}
-                  bucketMinutes={data?.bucket_minutes}
-                  timeRange={data?.time_range}
-                />
-              </div>
-            </div>
-          </div>
+          <LinkRow
+            key={link.code}
+            link={link}
+            linksWithIssues={linksWithIssues}
+            criticalityMap={criticalityMap}
+            bucketMinutes={data?.bucket_minutes}
+            dataTimeRange={data?.time_range}
+          />
         ))}
       </div>
     </div>

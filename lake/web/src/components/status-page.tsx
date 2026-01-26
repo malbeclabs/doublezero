@@ -893,12 +893,12 @@ function LinkIssuesFilterCard({
   const items: { filter: IssueFilter; label: string; color: string; description: string }[] = [
     { filter: 'packet_loss', label: 'Packet Loss', color: 'bg-purple-500', description: 'Link experiencing measurable packet loss (>= 1%).' },
     { filter: 'high_latency', label: 'High Latency', color: 'bg-blue-500', description: 'Link latency exceeds committed RTT.' },
+    { filter: 'carrier_transitions', label: 'Carrier', color: 'bg-yellow-500', description: 'Carrier transitions (interface up/down) on link endpoints.' },
+    { filter: 'discards', label: 'Discards', color: 'bg-teal-500', description: 'Interface discards detected on link endpoints.' },
+    { filter: 'interface_errors', label: 'Errors', color: 'bg-red-500', description: 'Interface errors detected on link endpoints.' },
     { filter: 'extended_loss', label: 'Extended Loss', color: 'bg-orange-500', description: 'Link has 100% packet loss for 2+ hours.' },
     { filter: 'drained', label: 'Drained', color: 'bg-slate-500 dark:bg-slate-600', description: 'Link is soft-drained, hard-drained, or has ISIS delay override.' },
     { filter: 'no_data', label: 'No Data', color: 'bg-pink-500', description: 'No telemetry received for this link.' },
-    { filter: 'interface_errors', label: 'Errors', color: 'bg-red-500', description: 'Interface errors detected on link endpoints.' },
-    { filter: 'discards', label: 'Discards', color: 'bg-teal-500', description: 'Interface discards detected on link endpoints.' },
-    { filter: 'carrier_transitions', label: 'Carrier', color: 'bg-yellow-500', description: 'Carrier transitions (interface up/down) on link endpoints.' },
     { filter: 'no_issues', label: 'No Issues', color: 'bg-cyan-500', description: 'Link with no detected issues in the time range.' },
   ]
 

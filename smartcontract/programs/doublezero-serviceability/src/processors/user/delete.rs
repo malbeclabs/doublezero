@@ -124,7 +124,7 @@ pub fn process_delete_user(
         try_acc_write(&accesspass, accesspass_account, payer_account, accounts)?;
     }
 
-    if user.status != UserStatus::Activated && user.status != UserStatus::Suspended {
+    if user.status != UserStatus::Activated && user.status != UserStatus::SuspendedDeprecated {
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 

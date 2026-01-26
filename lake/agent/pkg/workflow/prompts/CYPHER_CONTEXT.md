@@ -162,6 +162,27 @@ ORDER BY hops
 
 **WRONG:** Using `shortestPath()` when user asks for "paths" (plural) - only returns one path.
 
+### Compare Shortest Paths Across Multiple Metro Pairs
+
+When analyzing shortest paths between many metros (e.g., "which metros are closest/farthest?"):
+
+```cypher
+// Find shortest path length between each metro pair
+MATCH (ma:Metro)<-[:LOCATED_IN]-(da:Device)
+MATCH (mz:Metro)<-[:LOCATED_IN]-(dz:Device)
+WHERE ma <> mz
+MATCH path = shortestPath((da)-[:CONNECTS*]-(dz))
+WITH ma.code AS from_metro, mz.code AS to_metro, min(length(path)) AS min_hops
+RETURN from_metro, to_metro, min_hops
+ORDER BY min_hops DESC
+LIMIT 10
+```
+
+**Key points:**
+- Match metro→device relationships BEFORE the shortestPath
+- Use `min(length(path))` to get the shortest among all device pairs between two metros
+- The `shortestPath()` pattern contains ONLY the `CONNECTS` relationship
+
 ### Find Devices in a Metro
 ```cypher
 MATCH (m:Metro {code: 'nyc'})<-[:LOCATED_IN]-(d:Device)
@@ -272,7 +293,22 @@ RETURN l.code AS link_code, l.status, l.committed_rtt_ns / 1000000.0 AS rtt_ms
 5. **CONNECTS direction**: Links point TO devices (`(:Link)-[:CONNECTS]->(:Device)`). For traversal, use undirected: `(d1:Device)-[:CONNECTS]-(:Link)-[:CONNECTS]-(d2:Device)`
 6. **Do NOT use APOC**: APOC procedures are not available. Use built-in Cypher only.
 7. **ALL/ANY syntax**: Use `ALL(x IN list WHERE condition)` NOT `ALL(x IN list | condition)`
-8. **WITH clause variable scope**: Variables from before a WITH clause are NOT accessible after it unless explicitly passed through.
+8. **shortestPath() single relationship**: `shortestPath()` and `allShortestPaths()` require a pattern with ONE relationship type only. You CANNOT mix relationship types in the path pattern.
+
+**WRONG - multiple relationship types in shortestPath:**
+```cypher
+// This will FAIL with "shortestPath requires a pattern containing a single relationship"
+MATCH path = shortestPath((ma:Metro)<-[:LOCATED_IN]-(d1:Device)-[:CONNECTS*]-(d2:Device)-[:LOCATED_IN]->(mz:Metro))
+```
+
+**CORRECT - match metros separately, use single relationship in shortestPath:**
+```cypher
+MATCH (ma:Metro {code: 'nyc'})<-[:LOCATED_IN]-(da:Device)
+MATCH (mz:Metro {code: 'lon'})<-[:LOCATED_IN]-(dz:Device)
+MATCH path = shortestPath((da)-[:CONNECTS*]-(dz))
+```
+
+9. **WITH clause variable scope**: Variables from before a WITH clause are NOT accessible after it unless explicitly passed through.
 
 **WRONG - loses `start` variable:**
 ```cypher

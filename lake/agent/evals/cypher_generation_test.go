@@ -452,6 +452,12 @@ func TestLake_Agent_Evals_Anthropic_CypherExecutionIntegration(t *testing.T) {
 			expectRows:     -1, // Path query returns structured data
 			expectNonEmpty: true,
 		},
+		{
+			name:           "compare shortest paths across metro pairs",
+			prompt:         "analyze shortest paths between all metros and show which pairs are farthest apart",
+			expectRows:     -1, // Variable based on metro pairs
+			expectNonEmpty: true,
+		},
 	}
 
 	for _, tc := range testCases {

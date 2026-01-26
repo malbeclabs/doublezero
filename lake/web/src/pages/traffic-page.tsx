@@ -370,22 +370,6 @@ export function TrafficPage() {
     }
   }, [])
 
-  // Load bucket size from localStorage
-  useEffect(() => {
-    const saved = localStorage.getItem('traffic-bucket-size')
-    if (saved && saved in bucketLabels) {
-      setBucketSize(saved as BucketSize)
-    }
-  }, [])
-
-  // Load aggregation method from localStorage
-  useEffect(() => {
-    const saved = localStorage.getItem('traffic-agg-method')
-    if (saved && saved in aggLabels) {
-      setAggMethod(saved as AggMethod)
-    }
-  }, [])
-
   // Load chart sections order from localStorage
   useEffect(() => {
     const saved = localStorage.getItem('traffic-chart-sections')
@@ -426,16 +410,14 @@ export function TrafficPage() {
     localStorage.setItem('traffic-time-range', range)
   }
 
-  // Save bucket size to localStorage
+  // Update bucket size (not persisted)
   const handleBucketSizeChange = (bucket: BucketSize) => {
     setBucketSize(bucket)
-    localStorage.setItem('traffic-bucket-size', bucket)
   }
 
-  // Save aggregation method to localStorage
+  // Update aggregation method (not persisted)
   const handleAggMethodChange = (agg: AggMethod) => {
     setAggMethod(agg)
-    localStorage.setItem('traffic-agg-method', agg)
   }
 
   // Save chart sections order to localStorage

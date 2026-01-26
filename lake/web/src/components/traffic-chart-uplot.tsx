@@ -1,6 +1,7 @@
 import { useState, useMemo, memo, useRef, useEffect } from 'react'
 import uPlot from 'uplot'
 import 'uplot/dist/uPlot.min.css'
+import { X } from 'lucide-react'
 import type { TrafficPoint, SeriesInfo } from '@/lib/api'
 
 // Color palette matching the app
@@ -39,6 +40,7 @@ function TrafficChartImpl({ title, data, series, stacked = false }: TrafficChart
   const plotRef = useRef<uPlot | null>(null)
   const [selectedSeries, setSelectedSeries] = useState<Set<string>>(new Set())
   const [lastClickedIndex, setLastClickedIndex] = useState<number | null>(null)
+  const [searchText, setSearchText] = useState('')
   const [tooltip, setTooltip] = useState<{
     visible: boolean
     x: number
@@ -68,6 +70,41 @@ function TrafficChartImpl({ title, data, series, stacked = false }: TrafficChart
   const visibleSeriesList = useMemo(() => {
     return series.filter(s => visibleSeries.has(s.key))
   }, [series, visibleSeries])
+
+  // Filter series list based on search text with wildcard support
+  const filteredSeries = useMemo(() => {
+    if (!searchText.trim()) {
+      return series
+    }
+    const searchPattern = searchText.toLowerCase()
+
+    // Convert * to regex wildcard
+    if (searchPattern.includes('*')) {
+      try {
+        const regexPattern = searchPattern.replace(/\*/g, '.*')
+        const regex = new RegExp(regexPattern)
+        return series.filter(s =>
+          regex.test(s.key.toLowerCase()) ||
+          regex.test(s.device.toLowerCase()) ||
+          regex.test(s.intf.toLowerCase())
+        )
+      } catch {
+        // If regex fails, fall back to simple includes
+        return series.filter(s =>
+          s.key.toLowerCase().includes(searchPattern) ||
+          s.device.toLowerCase().includes(searchPattern) ||
+          s.intf.toLowerCase().includes(searchPattern)
+        )
+      }
+    }
+
+    // Simple substring search
+    return series.filter(s =>
+      s.key.toLowerCase().includes(searchPattern) ||
+      s.device.toLowerCase().includes(searchPattern) ||
+      s.intf.toLowerCase().includes(searchPattern)
+    )
+  }, [series, searchText])
 
   // Transform data for uPlot
   const { uplotData, uplotSeries } = useMemo(() => {
@@ -433,13 +470,13 @@ function TrafficChartImpl({ title, data, series, stacked = false }: TrafficChart
   }
 
   // Handle series selection
-  const handleSeriesClick = (seriesKey: string, index: number, event: React.MouseEvent) => {
+  const handleSeriesClick = (seriesKey: string, filteredIndex: number, event: React.MouseEvent) => {
     if (event.shiftKey && lastClickedIndex !== null) {
-      const start = Math.min(lastClickedIndex, index)
-      const end = Math.max(lastClickedIndex, index)
+      const start = Math.min(lastClickedIndex, filteredIndex)
+      const end = Math.max(lastClickedIndex, filteredIndex)
       const newSelection = new Set(selectedSeries)
       for (let i = start; i <= end; i++) {
-        newSelection.add(series[i].key)
+        newSelection.add(filteredSeries[i].key)
       }
       setSelectedSeries(newSelection)
     } else if (event.ctrlKey || event.metaKey) {
@@ -461,7 +498,7 @@ function TrafficChartImpl({ title, data, series, stacked = false }: TrafficChart
         setSelectedSeries(new Set([seriesKey]))
       }
     }
-    setLastClickedIndex(index)
+    setLastClickedIndex(filteredIndex)
   }
 
   if (!data.length || !series.length) {
@@ -503,11 +540,29 @@ function TrafficChartImpl({ title, data, series, stacked = false }: TrafficChart
       {/* Series selection list */}
       <div ref={listContainerRef} className="border border-border rounded-lg relative">
         <div className="p-3 overflow-y-auto" style={{ height: `${listHeight}px` }}>
-          <div className="flex items-center justify-between mb-2">
-          <div className="text-sm font-medium">
-            Series ({visibleSeriesList.length}/{series.length})
-          </div>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="text-sm font-medium whitespace-nowrap">
+              Series ({visibleSeriesList.length}/{filteredSeries.length})
+            </div>
+            {/* Search box */}
+            <div className="relative flex-1">
+              <input
+                type="text"
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                placeholder="Filter"
+                className="w-full px-2 py-1 pr-7 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+              {searchText && (
+                <button
+                  onClick={() => setSearchText('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground z-10"
+                  aria-label="Clear search"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
             <button
               onClick={() => {
                 const top10 = [...series]
@@ -516,35 +571,35 @@ function TrafficChartImpl({ title, data, series, stacked = false }: TrafficChart
                   .map(s => s.key)
                 setSelectedSeries(new Set(top10))
               }}
-              className="text-xs text-muted-foreground hover:text-foreground"
+              className="text-xs text-muted-foreground hover:text-foreground whitespace-nowrap"
             >
               Top 10
             </button>
             <button
-              onClick={() => setSelectedSeries(new Set(series.map(s => s.key)))}
-              className="text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => setSelectedSeries(new Set(filteredSeries.map(s => s.key)))}
+              className="text-xs text-muted-foreground hover:text-foreground whitespace-nowrap"
             >
               All
             </button>
             <button
               onClick={() => setSelectedSeries(new Set(['__none__']))}
-              className="text-xs text-muted-foreground hover:text-foreground"
+              className="text-xs text-muted-foreground hover:text-foreground whitespace-nowrap"
             >
               None
             </button>
           </div>
-        </div>
-        <div className="space-y-1">
-          {series.map((s, i) => {
+          <div className="space-y-1">
+            {filteredSeries.map((s, filteredIndex) => {
+            const originalIndex = series.indexOf(s)
             const isSelected = visibleSeries.has(s.key)
-            const color = COLORS[i % COLORS.length]
+            const color = COLORS[originalIndex % COLORS.length]
             return (
               <div
                 key={s.key}
                 className={`flex items-center justify-between px-2 py-1 rounded cursor-pointer hover:bg-muted transition-colors ${
                   isSelected ? 'bg-muted' : ''
                 }`}
-                onClick={(e) => handleSeriesClick(s.key, i, e)}
+                onClick={(e) => handleSeriesClick(s.key, filteredIndex, e)}
               >
                 <div className="flex items-center space-x-2">
                   <div

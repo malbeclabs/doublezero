@@ -459,7 +459,7 @@ function LinkPacketLossChart({ hours, bucketMinutes, controlsWidth = 'w-32' }: L
       <div className="bg-popover border border-border rounded-lg shadow-lg p-3 text-sm">
         <div className="font-medium mb-2">{formatTime(data.fullTime)}</div>
         <div className="space-y-1 text-xs">
-          {enabledSeries.has('total') && <div>Total: {data.total.toFixed(2)}%</div>}
+          {enabledSeries.has('total') && <div>Average: {data.total.toFixed(2)}%</div>}
           {enabledSeries.has('A') && availableSeries.has('A') && <div style={{ color: SIDE_COLORS.A }}>Side A: {data.A.toFixed(2)}%</div>}
           {enabledSeries.has('Z') && availableSeries.has('Z') && <div style={{ color: SIDE_COLORS.Z }}>Side Z: {data.Z.toFixed(2)}%</div>}
         </div>
@@ -471,7 +471,7 @@ function LinkPacketLossChart({ hours, bucketMinutes, controlsWidth = 'w-32' }: L
   const textColor = isDarkMode ? '#a1a1aa' : '#71717a'
 
   const SERIES_CONFIG = {
-    total: { color: '#a855f7', label: 'Total' }, // purple
+    total: { color: '#a855f7', label: 'Average' }, // purple
     A: { color: SIDE_COLORS.A, label: 'Side A' },
     Z: { color: SIDE_COLORS.Z, label: 'Side Z' },
   }

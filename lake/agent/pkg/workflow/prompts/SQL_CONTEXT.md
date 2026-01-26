@@ -269,7 +269,7 @@ SELECT code, name FROM dz_metros_current WHERE lower(name) LIKE '%montreal%';
 -- Returns: yul, Montreal
 
 -- Then use the code in subsequent queries
-SELECT d.code, f.intf, SUM(f.in_errors_delta) AS errors
+SELECT d.code, f.intf, SUM(greatest(0, f.in_errors_delta)) AS errors
 FROM fact_dz_device_interface_counters f
 JOIN dz_devices_current d ON f.device_pk = d.pk
 JOIN dz_metros_current m ON d.metro_pk = m.pk
@@ -332,11 +332,11 @@ Use `fact_dz_device_interface_counters` for interface-level issues:
 ```sql
 -- Find devices with interface errors (past 24h)
 SELECT d.code AS device_code, f.intf,
-       SUM(f.in_errors_delta) AS in_errors,
-       SUM(f.out_errors_delta) AS out_errors,
-       SUM(f.in_discards_delta) AS in_discards,
-       SUM(f.out_discards_delta) AS out_discards,
-       SUM(f.carrier_transitions_delta) AS carrier_transitions
+       SUM(greatest(0, f.in_errors_delta)) AS in_errors,
+       SUM(greatest(0, f.out_errors_delta)) AS out_errors,
+       SUM(greatest(0, f.in_discards_delta)) AS in_discards,
+       SUM(greatest(0, f.out_discards_delta)) AS out_discards,
+       SUM(greatest(0, f.carrier_transitions_delta)) AS carrier_transitions
 FROM fact_dz_device_interface_counters f
 JOIN dz_devices_current d ON f.device_pk = d.pk
 WHERE f.event_ts > now() - INTERVAL 24 HOUR
@@ -357,6 +357,9 @@ SELECT
     SUM(out_octets_delta) * 8.0 / NULLIF(SUM(delta_duration), 0) AS out_rate_bps
 FROM fact_dz_device_interface_counters
 WHERE event_ts > now() - INTERVAL 1 HOUR
+  AND delta_duration > 0
+  AND in_octets_delta >= 0
+  AND out_octets_delta >= 0
 GROUP BY entity_id  -- e.g., link_pk, user_tunnel_id, device_pk
 ```
 
@@ -374,6 +377,9 @@ FROM (
         SUM(out_octets_delta) * 8.0 / NULLIF(SUM(delta_duration), 0) AS out_rate
     FROM fact_dz_device_interface_counters
     WHERE event_ts > now() - INTERVAL 1 HOUR
+      AND delta_duration > 0
+      AND in_octets_delta >= 0
+      AND out_octets_delta >= 0
     GROUP BY device_pk, intf
 )
 
@@ -400,6 +406,9 @@ SELECT
 FROM fact_dz_device_interface_counters f
 JOIN dz_links_current l ON f.link_pk = l.pk
 WHERE event_ts > now() - INTERVAL 1 HOUR
+  AND delta_duration > 0
+  AND in_octets_delta >= 0
+  AND out_octets_delta >= 0
 GROUP BY l.pk, l.code, l.bandwidth_bps
 ```
 
@@ -423,6 +432,9 @@ JOIN fact_dz_device_interface_counters f
   AND f.user_tunnel_id = u.tunnel_id
 WHERE f.intf LIKE 'tunnel%'
   AND f.event_ts > now() - INTERVAL 24 HOUR
+  AND f.delta_duration > 0
+  AND f.in_octets_delta >= 0
+  AND f.out_octets_delta >= 0
 GROUP BY u.owner_pubkey, u.dz_ip
 ORDER BY total_bytes DESC
 ```

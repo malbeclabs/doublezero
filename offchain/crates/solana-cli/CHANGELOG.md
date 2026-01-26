@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- solana-cli: show validator debt write-off activation epoch in `revenue-distribution fetch config` ([#258](https://github.com/doublezerofoundation/doublezero-offchain/pull/258))
 - solana-cli: add `revenue-distribution fetch contributor-rewards` ([#254](https://github.com/doublezerofoundation/doublezero-offchain/pull/254))
 - move fetch methods to SDK ([#243](https://github.com/doublezerofoundation/doublezero-offchain/pull/243))
 - migrate `harvest-2z` Jupiter integration to authenticated `api.jup.ag` with optional `--jupiter-api-key` (falls back to `lite-api.jup.ag` without a key) ([#242](https://github.com/doublezerofoundation/doublezero-offchain/pull/242))

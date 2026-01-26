@@ -206,6 +206,16 @@ impl ConfigCommand {
         ];
         value_rows.extend(validator_fee_rows);
 
+        let (write_off_value, write_off_note) = format_write_off_activation_epoch(
+            config.debt_write_off_feature_activation_epoch.value(),
+            config.is_debt_write_off_feature_activated(),
+        );
+        value_rows.push(ConfigTableRow {
+            field: "Solana validator debt write-off activation",
+            value: write_off_value,
+            note: write_off_note,
+        });
+
         super::print_table(
             value_rows,
             super::TableOptions {
@@ -214,6 +224,19 @@ impl ConfigCommand {
         );
 
         Ok(())
+    }
+}
+
+fn format_write_off_activation_epoch(
+    activation_epoch: u64,
+    is_activated: bool,
+) -> (String, String) {
+    if activation_epoch == 0 {
+        ("disabled".to_string(), String::new())
+    } else if is_activated {
+        (format!("epoch {activation_epoch}"), "Active".to_string())
+    } else {
+        (format!("epoch {activation_epoch}"), "Pending".to_string())
     }
 }
 
@@ -287,5 +310,31 @@ impl ValidatorFeesCommand {
         super::print_table(value_rows, Default::default());
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_write_off_activation_epoch_disabled() {
+        let (value, note) = format_write_off_activation_epoch(0, false);
+        assert_eq!(value, "disabled");
+        assert_eq!(note, "");
+    }
+
+    #[test]
+    fn test_format_write_off_activation_epoch_pending() {
+        let (value, note) = format_write_off_activation_epoch(42, false);
+        assert_eq!(value, "epoch 42");
+        assert_eq!(note, "Pending");
+    }
+
+    #[test]
+    fn test_format_write_off_activation_epoch_active() {
+        let (value, note) = format_write_off_activation_epoch(42, true);
+        assert_eq!(value, "epoch 42");
+        assert_eq!(note, "Active");
     }
 }

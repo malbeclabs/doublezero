@@ -1,0 +1,11 @@
+DROP INDEX user_status_idx IF EXISTS;
+DROP INDEX metro_code_idx IF EXISTS;
+DROP INDEX link_code_idx IF EXISTS;
+DROP INDEX link_status_idx IF EXISTS;
+DROP INDEX device_code_idx IF EXISTS;
+DROP INDEX device_status_idx IF EXISTS;
+DROP CONSTRAINT user_pk_unique IF EXISTS;
+DROP CONSTRAINT link_pk_unique IF EXISTS;
+DROP CONSTRAINT metro_pk_unique IF EXISTS;
+DROP CONSTRAINT device_pk_unique IF EXISTS;
+DROP CONSTRAINT contributor_pk_unique IF EXISTS;

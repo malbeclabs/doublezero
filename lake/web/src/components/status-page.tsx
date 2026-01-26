@@ -890,7 +890,7 @@ function LinkIssuesFilterCard({
 
   const allSelected = selected.length === allFilters.length
 
-  const items: { filter: IssueFilter; label: string; color: string; description: string }[] = [
+  const itemDefs: { filter: IssueFilter; label: string; color: string; description: string }[] = [
     { filter: 'packet_loss', label: 'Packet Loss', color: 'bg-purple-500', description: 'Link experiencing measurable packet loss (>= 1%).' },
     { filter: 'high_latency', label: 'High Latency', color: 'bg-blue-500', description: 'Link latency exceeds committed RTT.' },
     { filter: 'carrier_transitions', label: 'Carrier', color: 'bg-yellow-500', description: 'Carrier transitions (interface up/down) on link endpoints.' },
@@ -901,6 +901,15 @@ function LinkIssuesFilterCard({
     { filter: 'no_data', label: 'No Data', color: 'bg-pink-500', description: 'No telemetry received for this link.' },
     { filter: 'no_issues', label: 'No Issues', color: 'bg-cyan-500', description: 'Link with no detected issues in the time range.' },
   ]
+
+  // Sort items by count (highest first), alphabetically if same, with no_issues always last
+  const items = [...itemDefs].sort((a, b) => {
+    if (a.filter === 'no_issues') return 1
+    if (b.filter === 'no_issues') return -1
+    const countDiff = (counts[b.filter] ?? 0) - (counts[a.filter] ?? 0)
+    if (countDiff !== 0) return countDiff
+    return a.label.localeCompare(b.label)
+  })
 
   const grandTotal = (counts.total + counts.no_issues) || 1
   const packetLossPct = (counts.packet_loss / grandTotal) * 100

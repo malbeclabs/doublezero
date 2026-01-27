@@ -23,24 +23,21 @@ func TestE2E_Multicast_Publisher(t *testing.T) {
 	dn, device, client := NewSingleDeviceSingleClientTestDevnet(t)
 
 	if !t.Run("connect", func(t *testing.T) {
+		// Set access pass first, before creating groups (so allowlist additions are preserved)
+		_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey})
+		require.NoError(t, err)
+
+		// Create both multicast groups before connecting
 		dn.CreateMulticastGroupOnchain(t, client, "mg01")
+		dn.CreateMulticastGroupOnchain(t, client, "mg02")
 
-		dn.ConnectMulticastPublisher(t, client, "mg01")
+		// Connect to both groups at once (skip access-pass set since we did it above)
+		dn.ConnectMulticastPublisherSkipAccessPass(t, client, "mg01", "mg02")
 
-		err := client.WaitForTunnelUp(t.Context(), 90*time.Second)
+		err = client.WaitForTunnelUp(t.Context(), 90*time.Second)
 		require.NoError(t, err)
 
 		checkMulticastPublisherPostConnect(t, dn, device, client)
-
-		dn.CreateMulticastGroupOnchain(t, client, "mg02")
-
-		// Set access pass for the client.
-		_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey})
-		require.NoError(t, err)
-
-		output, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast publisher mg02 --client-ip " + client.CYOANetworkIP})
-		require.Error(t, err)
-		require.Contains(t, string(output), "Multicast supports only one subscription at this time")
 	}) {
 		t.Fail()
 		return
@@ -172,18 +169,42 @@ func checkMulticastPublisherPostConnect(t *testing.T, dn *TestDevnet, device *de
 			routes, err := client.ExecReturnJSONList(t.Context(), []string{"bash", "-c", "ip -j route show table main"})
 			require.NoError(t, err)
 
-			// Look for multicast route (233.84.178.0/32 for example)
-			foundMcastRoute := false
-			for _, route := range routes {
-				dst, _ := route["dst"].(string)
-				if dst == "233.84.178.0" {
-					foundMcastRoute = true
-					break
+			// Check for both multicast group addresses
+			expectedAddrs := []string{"233.84.178.0", "233.84.178.1"}
+			for _, expectedAddr := range expectedAddrs {
+				found := false
+				for _, route := range routes {
+					if dst, ok := route["dst"].(string); ok && dst == expectedAddr {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Fatalf("multicast route %s/32 not found for publisher: %+v", expectedAddr, routes)
 				}
 			}
-			if !foundMcastRoute {
-				t.Fatalf("multicast route 233.84.178.0/32 not found for publisher: %+v", routes)
+		}) {
+			t.Fail()
+		}
+
+		if !t.Run("check_pim_neighbor_formed", func(t *testing.T) {
+			t.Parallel()
+
+			deadline := time.Now().Add(30 * time.Second)
+			for time.Now().Before(deadline) {
+				pim, err := devnet.DeviceExecAristaCliJSON[*arista.ShowPIMNeighbors](t.Context(), device, arista.ShowPIMNeighborsCmd())
+				require.NoError(t, err, "error fetching pim neighbors from doublezero device")
+
+				neighbor, ok := pim.Neighbors[expectedLinkLocalAddr]
+				if !ok {
+					return
+				}
+				if neighbor.Interface == "Tunnel500" {
+					return
+				}
+				time.Sleep(1 * time.Second)
 			}
+			t.Fatalf("PIM neighbor not established on Tunnel500")
 		}) {
 			t.Fail()
 		}
@@ -191,27 +212,30 @@ func checkMulticastPublisherPostConnect(t *testing.T, dn *TestDevnet, device *de
 		if !t.Run("check_s_comma_g_is_created", func(t *testing.T) {
 			t.Parallel()
 
-			// Send single ping to simulate multicast traffic
-			// We ignore the expected error from this because it's happening just to build the mroute
+			// Send single ping to each multicast group to simulate multicast traffic
+			// We ignore the expected errors because these are just to build the mroute
 			// state on the switch, so we can check the mroute state later.
 			_, _ = client.Exec(t.Context(), []string{"bash", "-c", "ping -c 1 -w 1 233.84.178.0"}, docker.NoPrintOnError())
+			_, _ = client.Exec(t.Context(), []string{"bash", "-c", "ping -c 1 -w 1 233.84.178.1"}, docker.NoPrintOnError())
 
-			mGroup := "233.84.178.0"
-			require.Eventually(t, func() bool {
-				mroutes, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIPMroute](t.Context(), device, arista.ShowIPMrouteCmd())
-				require.NoError(t, err, "error fetching mroutes from doublezero device")
+			expectedGroups := []string{"233.84.178.0", "233.84.178.1"}
+			for _, mGroup := range expectedGroups {
+				require.Eventually(t, func() bool {
+					mroutes, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIPMroute](t.Context(), device, arista.ShowIPMrouteCmd())
+					require.NoError(t, err, "error fetching mroutes from doublezero device")
 
-				groups, ok := mroutes.Groups[mGroup]
-				if !ok {
-					dn.log.Debug("Waiting for multicast group to be created", "mGroup", mGroup, "mroutes", mroutes)
-					return false
-				}
+					groups, ok := mroutes.Groups[mGroup]
+					if !ok {
+						dn.log.Debug("Waiting for multicast group to be created", "mGroup", mGroup, "mroutes", mroutes)
+						return false
+					}
 
-				_, ok = groups.GroupSources[expectedAllocatedClientIP]
-				require.True(t, ok, "source %s not found in multicast group %s", expectedAllocatedClientIP, mGroup)
+					_, ok = groups.GroupSources[expectedAllocatedClientIP]
+					require.True(t, ok, "source %s not found in multicast group %s", expectedAllocatedClientIP, mGroup)
 
-				return true
-			}, 5*time.Second, 1*time.Second, "multicast group %s not found in mroutes", mGroup)
+					return true
+				}, 5*time.Second, 1*time.Second, "multicast group %s not found in mroutes", mGroup)
+			}
 		}) {
 			t.Fail()
 		}
@@ -302,10 +326,13 @@ func checkMulticastPublisherPostDisconnect(t *testing.T, dn *TestDevnet, device 
 			routes, err := client.ExecReturnJSONList(t.Context(), []string{"bash", "-c", "ip -j route show table main"})
 			require.NoError(t, err)
 
-			// Verify multicast routes are removed
-			for _, route := range routes {
-				if dst, ok := route["dst"].(string); ok && dst == "233.84.178.0" {
-					t.Fatalf("multicast route 233.84.178.0/32 should be removed after disconnect: found in %+v", routes)
+			// Verify multicast routes are removed for both groups
+			removedAddrs := []string{"233.84.178.0", "233.84.178.1"}
+			for _, addr := range removedAddrs {
+				for _, route := range routes {
+					if dst, ok := route["dst"].(string); ok && dst == addr {
+						t.Fatalf("multicast route %s/32 should be removed after disconnect: found in %+v", addr, routes)
+					}
 				}
 			}
 		}) {

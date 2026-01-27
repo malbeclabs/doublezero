@@ -471,8 +471,8 @@ func (q *QAAgent) DeleteMulticastGroup(ctx context.Context, req *pb.DeleteMultic
 // the DoubleZero status output or return an error if the tunnel is not up within 60 seconds.
 func (q *QAAgent) ConnectMulticast(ctx context.Context, req *pb.ConnectMulticastRequest) (*pb.Result, error) {
 	start := time.Now()
-	if req.GetCode() == "" {
-		return nil, fmt.Errorf("code is required")
+	if len(req.GetCodes()) == 0 {
+		return nil, fmt.Errorf("at least one code is required")
 	}
 	if req.GetMode() == pb.ConnectMulticastRequest_UNSPECIFIED {
 		return nil, fmt.Errorf("mode is required")
@@ -484,8 +484,10 @@ func (q *QAAgent) ConnectMulticast(ctx context.Context, req *pb.ConnectMulticast
 	if req.GetMode() == pb.ConnectMulticastRequest_SUBSCRIBER {
 		mode = "subscriber"
 	}
-	q.log.Info("Received ConnectMulticast request", "code", req.GetCode(), "mode", mode)
-	cmd := exec.Command("doublezero", "connect", "multicast", mode, req.Code)
+	q.log.Info("Received ConnectMulticast request", "codes", req.GetCodes(), "mode", mode)
+	args := []string{"connect", "multicast", mode}
+	args = append(args, req.GetCodes()...)
+	cmd := exec.Command("doublezero", args...)
 	result, err := runCmd(cmd)
 	if err != nil {
 		q.log.Error("Failed to connect multicast", "error", err, "output", result.Output)

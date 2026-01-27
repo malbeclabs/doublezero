@@ -141,6 +141,9 @@ go test -tags e2e -run TestE2E_Multicast_Subscriber -v -count=1 ./e2e/...
 
 # Run all tests (requires high-memory machine)
 dev/e2e-test.sh
+
+# Keep containers after test completion/failure for debugging
+TESTCONTAINERS_RYUK_DISABLED=true go test -tags e2e -run TestE2E_Multicast_Publisher -v -count=1 ./e2e/...
 ```
 
 ## E2E Documentation

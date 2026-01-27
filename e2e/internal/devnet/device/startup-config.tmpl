@@ -114,7 +114,8 @@ agent ArfaAegis shutdown
 agent ArfaState shutdown
 agent Bfd shutdown
 agent BessMgr shutdown
-agent CapiApp shutdown
+! Do NOT disable CapiApp - it is required for EAPI HTTP server.
+! agent CapiApp shutdown
 agent Dot1x shutdown
 agent IgmpSnooping shutdown
 agent L1OpenConfig shutdown
@@ -125,7 +126,8 @@ agent Lldp shutdown
 agent Mpls shutdown
 agent MplsEtba shutdown
 agent MplsUtilLsp shutdown
-agent Octa shutdown
+! Do NOT disable Octa - it is required for EAPI HTTP server.
+! agent Octa shutdown
 agent PortSec shutdown
 agent Qos shutdown
 agent RecoveryPolicy shutdown

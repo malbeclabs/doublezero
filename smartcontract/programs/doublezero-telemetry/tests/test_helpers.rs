@@ -16,7 +16,6 @@ use doublezero_serviceability::{
                 activate::DeviceInterfaceActivateArgs, create::DeviceInterfaceCreateArgs,
                 unlink::DeviceInterfaceUnlinkArgs,
             },
-            suspend::DeviceSuspendArgs,
             sethealth::DeviceSetHealthArgs,
             update::DeviceUpdateArgs,
         },

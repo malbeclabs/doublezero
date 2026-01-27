@@ -9,9 +9,9 @@ use doublezero_serviceability::{
             interface::{activate::*, create::*, unlink::*},
         },
         exchange::create::*,
-        globalconfig::set::SetGlobalConfigArgs,
         location::create::*,
     },
+    resource::ResourceType,
     state::{
         accounttype::AccountType,
         contributor::ContributorStatus,
@@ -27,44 +27,10 @@ use test_helpers::*;
 
 #[tokio::test]
 async fn test_unlink_device_interface_requires_activated() {
-    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let (mut banks_client, payer, program_id, globalstate_pubkey, config_pubkey) =
+        setup_program_with_globalconfig().await;
 
-    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
-    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::InitGlobalState(),
-        vec![
-            AccountMeta::new(program_config_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let (config_pubkey, _) = get_globalconfig_pda(&program_id);
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::SetGlobalConfig(SetGlobalConfigArgs {
-            local_asn: 65000,
-            remote_asn: 65001,
-            device_tunnel_block: "10.0.0.0/24".parse().unwrap(),
-            user_tunnel_block: "10.0.0.0/24".parse().unwrap(),
-            multicastgroup_block: "224.0.0.0/4".parse().unwrap(),
-            next_bgp_community: None,
-        }),
-        vec![
-            AccountMeta::new(config_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     assert_eq!(globalstate_account.account_index, 0);
@@ -155,6 +121,7 @@ async fn test_unlink_device_interface_requires_activated() {
             dz_prefixes: "110.1.0.0/23".parse().unwrap(),
             metrics_publisher_pk: Default::default(),
             mgmt_vrf: "mgmt".to_string(),
+            desired_status: None,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -167,14 +134,22 @@ async fn test_unlink_device_interface_requires_activated() {
     )
     .await;
 
+    let (tunnel_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pubkey, 0));
+    let (dz_prefix_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 0));
+
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {}),
+        DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs { resource_count: 2 }),
         vec![
             AccountMeta::new(device_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(config_pubkey, false),
+            AccountMeta::new(tunnel_ids_pda, false),
+            AccountMeta::new(dz_prefix_pda, false),
         ],
         &payer,
     )
@@ -185,7 +160,7 @@ async fn test_unlink_device_interface_requires_activated() {
         .unwrap()
         .get_device()
         .unwrap();
-    assert_eq!(device.status, DeviceStatus::Activated);
+    assert_eq!(device.status, DeviceStatus::DeviceProvisioning);
 
     execute_transaction(
         &mut banks_client,
@@ -201,6 +176,7 @@ async fn test_unlink_device_interface_requires_activated() {
             mtu: 1500,
             routing_mode: RoutingMode::Static,
             vlan_id: 0,
+            ip_net: None,
             user_tunnel_endpoint: false,
         }),
         vec![

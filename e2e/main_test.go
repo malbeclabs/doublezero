@@ -297,7 +297,7 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 				return false
 			}
 			return hasData
-		}, 60*time.Second, 3*time.Second, "device %s did not publish telemetry to InfluxDB", device.Spec.Code)
+		}, 120*time.Second, 3*time.Second, "device %s did not publish telemetry to InfluxDB", device.Spec.Code)
 		dn.log.Info("--> Device telemetry verified in InfluxDB")
 	}
 

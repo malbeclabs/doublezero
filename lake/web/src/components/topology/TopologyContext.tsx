@@ -45,6 +45,8 @@ export interface OverlayState {
   contributorLinks: boolean    // Color links by contributor
   criticality: boolean         // Link criticality analysis
   isisHealth: boolean          // ISIS overlay - color by health, thickness by metric
+  // Independent overlays
+  multicastTrees: boolean      // Multicast tree visualization
 }
 
 // Context value type
@@ -109,6 +111,7 @@ function parseOverlaysFromUrl(param: string | null, view: 'map' | 'graph'): Over
     contributorLinks: false,
     criticality: false,
     isisHealth: false,
+    multicastTrees: false,
   }
   // Suppress unused variable warning
   void view
@@ -128,6 +131,7 @@ function parseOverlaysFromUrl(param: string | null, view: 'map' | 'graph'): Over
     contributorLinks: false,
     criticality: false,
     isisHealth: false,
+    multicastTrees: false,
   }
   const activeOverlays = param.split(',').filter(Boolean)
   for (const overlay of activeOverlays) {

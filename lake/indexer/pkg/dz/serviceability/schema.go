@@ -93,10 +93,14 @@ func (s *UserSchema) PayloadColumns() []string {
 		"dz_ip:VARCHAR",
 		"device_pk:VARCHAR",
 		"tunnel_id:INTEGER",
+		"publishers:VARCHAR",
+		"subscribers:VARCHAR",
 	}
 }
 
 func (s *UserSchema) ToRow(u User) []any {
+	publishersJSON, _ := json.Marshal(u.Publishers)
+	subscribersJSON, _ := json.Marshal(u.Subscribers)
 	return []any{
 		u.PK,
 		u.OwnerPubkey,
@@ -106,6 +110,8 @@ func (s *UserSchema) ToRow(u User) []any {
 		u.DZIP.String(),
 		u.DevicePK,
 		u.TunnelID,
+		string(publishersJSON),
+		string(subscribersJSON),
 	}
 }
 
@@ -203,12 +209,53 @@ func (s *LinkSchema) GetPrimaryKey(l Link) string {
 	return l.PK
 }
 
+// MulticastGroupSchema defines the schema for multicast groups
+type MulticastGroupSchema struct{}
+
+func (s *MulticastGroupSchema) Name() string {
+	return "dz_multicast_groups"
+}
+
+func (s *MulticastGroupSchema) PrimaryKeyColumns() []string {
+	return []string{"pk:VARCHAR"}
+}
+
+func (s *MulticastGroupSchema) PayloadColumns() []string {
+	return []string{
+		"owner_pubkey:VARCHAR",
+		"code:VARCHAR",
+		"multicast_ip:VARCHAR",
+		"max_bandwidth:BIGINT",
+		"status:VARCHAR",
+		"publisher_count:INTEGER",
+		"subscriber_count:INTEGER",
+	}
+}
+
+func (s *MulticastGroupSchema) ToRow(m MulticastGroup) []any {
+	return []any{
+		m.PK,
+		m.OwnerPubkey,
+		m.Code,
+		m.MulticastIP.String(),
+		m.MaxBandwidth,
+		m.Status,
+		m.PublisherCount,
+		m.SubscriberCount,
+	}
+}
+
+func (s *MulticastGroupSchema) GetPrimaryKey(m MulticastGroup) string {
+	return m.PK
+}
+
 var (
-	contributorSchema = &ContributorSchema{}
-	deviceSchema      = &DeviceSchema{}
-	userSchema        = &UserSchema{}
-	metroSchema       = &MetroSchema{}
-	linkSchema        = &LinkSchema{}
+	contributorSchema    = &ContributorSchema{}
+	deviceSchema         = &DeviceSchema{}
+	userSchema           = &UserSchema{}
+	metroSchema          = &MetroSchema{}
+	linkSchema           = &LinkSchema{}
+	multicastGroupSchema = &MulticastGroupSchema{}
 )
 
 func NewContributorDataset(log *slog.Logger) (*dataset.DimensionType2Dataset, error) {
@@ -229,4 +276,8 @@ func NewMetroDataset(log *slog.Logger) (*dataset.DimensionType2Dataset, error) {
 
 func NewLinkDataset(log *slog.Logger) (*dataset.DimensionType2Dataset, error) {
 	return dataset.NewDimensionType2Dataset(log, linkSchema)
+}
+
+func NewMulticastGroupDataset(log *slog.Logger) (*dataset.DimensionType2Dataset, error) {
+	return dataset.NewDimensionType2Dataset(log, multicastGroupSchema)
 }

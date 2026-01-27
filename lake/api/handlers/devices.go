@@ -176,24 +176,26 @@ func GetDevices(w http.ResponseWriter, r *http.Request) {
 }
 
 type DeviceDetail struct {
-	PK              string  `json:"pk"`
-	Code            string  `json:"code"`
-	Status          string  `json:"status"`
-	DeviceType      string  `json:"device_type"`
-	ContributorPK   string  `json:"contributor_pk"`
-	ContributorCode string  `json:"contributor_code"`
-	MetroPK         string  `json:"metro_pk"`
-	MetroCode       string  `json:"metro_code"`
-	MetroName       string  `json:"metro_name"`
-	PublicIP        string  `json:"public_ip"`
-	MaxUsers        int32   `json:"max_users"`
-	CurrentUsers    uint64  `json:"current_users"`
-	InBps           float64 `json:"in_bps"`
-	OutBps          float64 `json:"out_bps"`
-	PeakInBps       float64 `json:"peak_in_bps"`
-	PeakOutBps      float64 `json:"peak_out_bps"`
-	ValidatorCount  uint64  `json:"validator_count"`
-	StakeSol        float64 `json:"stake_sol"`
+	PK              string            `json:"pk"`
+	Code            string            `json:"code"`
+	Status          string            `json:"status"`
+	DeviceType      string            `json:"device_type"`
+	ContributorPK   string            `json:"contributor_pk"`
+	ContributorCode string            `json:"contributor_code"`
+	MetroPK         string            `json:"metro_pk"`
+	MetroCode       string            `json:"metro_code"`
+	MetroName       string            `json:"metro_name"`
+	PublicIP        string            `json:"public_ip"`
+	MaxUsers        int32             `json:"max_users"`
+	CurrentUsers    uint64            `json:"current_users"`
+	InBps           float64           `json:"in_bps"`
+	OutBps          float64           `json:"out_bps"`
+	PeakInBps       float64           `json:"peak_in_bps"`
+	PeakOutBps      float64           `json:"peak_out_bps"`
+	ValidatorCount  uint64            `json:"validator_count"`
+	StakeSol        float64           `json:"stake_sol"`
+	StakeShare      float64           `json:"stake_share"`
+	Interfaces      []DeviceInterface `json:"interfaces"`
 }
 
 func GetDevice(w http.ResponseWriter, r *http.Request) {
@@ -258,6 +260,11 @@ func GetDevice(w http.ResponseWriter, r *http.Request) {
 			JOIN solana_vote_accounts_current v ON g.pubkey = v.node_pubkey
 			WHERE u.status = 'activated' AND v.epoch_vote_account = 'true'
 			GROUP BY u.device_pk
+		),
+		total_stake AS (
+			SELECT COALESCE(SUM(activated_stake_lamports), 0) as total_lamports
+			FROM solana_vote_accounts_current
+			WHERE epoch_vote_account = 'true' AND activated_stake_lamports > 0
 		)
 		SELECT
 			d.pk,
@@ -277,8 +284,14 @@ func GetDevice(w http.ResponseWriter, r *http.Request) {
 			COALESCE(pr.peak_in_bps, 0) as peak_in_bps,
 			COALESCE(pr.peak_out_bps, 0) as peak_out_bps,
 			COALESCE(vs.validator_count, 0) as validator_count,
-			COALESCE(vs.stake_sol, 0) as stake_sol
+			COALESCE(vs.stake_sol, 0) as stake_sol,
+			CASE
+				WHEN ts.total_lamports > 0 THEN COALESCE(vs.stake_sol, 0) * 1e9 / ts.total_lamports * 100
+				ELSE 0
+			END as stake_share,
+			COALESCE(d.interfaces, '[]') as interfaces
 		FROM dz_devices_current d
+		CROSS JOIN total_stake ts
 		LEFT JOIN dz_contributors_current c ON d.contributor_pk = c.pk
 		LEFT JOIN dz_metros_current m ON d.metro_pk = m.pk
 		LEFT JOIN user_counts uc ON d.pk = uc.device_pk
@@ -289,6 +302,7 @@ func GetDevice(w http.ResponseWriter, r *http.Request) {
 	`
 
 	var device DeviceDetail
+	var interfacesJSON string
 	err := config.DB.QueryRow(ctx, query, pk).Scan(
 		&device.PK,
 		&device.Code,
@@ -308,6 +322,8 @@ func GetDevice(w http.ResponseWriter, r *http.Request) {
 		&device.PeakOutBps,
 		&device.ValidatorCount,
 		&device.StakeSol,
+		&device.StakeShare,
+		&interfacesJSON,
 	)
 	duration := time.Since(start)
 	metrics.RecordClickHouseQuery(duration, err)
@@ -316,6 +332,12 @@ func GetDevice(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Device query error: %v", err)
 		http.Error(w, "device not found", http.StatusNotFound)
 		return
+	}
+
+	// Parse interfaces JSON
+	if err := json.Unmarshal([]byte(interfacesJSON), &device.Interfaces); err != nil {
+		log.Printf("failed to parse interfaces JSON for device %s: %v", device.PK, err)
+		device.Interfaces = []DeviceInterface{}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

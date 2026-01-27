@@ -56,8 +56,8 @@ export interface DeviceInfo {
   contributorCode: string
   userCount: number
   validatorCount: number
-  stakeSol: string
-  stakeShare: string
+  stakeSol: number
+  stakeShare: number
   interfaces: InterfaceInfo[]
 }
 

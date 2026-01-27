@@ -178,8 +178,8 @@ interface HoveredDeviceInfo {
   contributorCode: string
   userCount: number
   validatorCount: number
-  stakeSol: string
-  stakeShare: string
+  stakeSol: number
+  stakeShare: number
   interfaces: { name: string; ip: string; status: string }[]
 }
 
@@ -1975,8 +1975,8 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             contributorCode: device.contributor_code,
             userCount: device.user_count ?? 0,
             validatorCount: device.validator_count ?? 0,
-            stakeSol: (device.stake_sol ?? 0) >= 1e6 ? `${(device.stake_sol / 1e6).toFixed(2)}M` : (device.stake_sol ?? 0) >= 1e3 ? `${(device.stake_sol / 1e3).toFixed(0)}k` : `${(device.stake_sol ?? 0).toFixed(0)}`,
-            stakeShare: (device.stake_share ?? 0) > 0 ? `${device.stake_share.toFixed(2)}%` : '0%',
+            stakeSol: device.stake_sol ?? 0,
+            stakeShare: device.stake_share ?? 0,
             interfaces: device.interfaces || [],
           },
         })
@@ -2331,8 +2331,8 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
             contributorCode: device.contributor_code,
             userCount: device.user_count ?? 0,
             validatorCount: device.validator_count ?? 0,
-            stakeSol: (device.stake_sol ?? 0) >= 1e6 ? `${(device.stake_sol / 1e6).toFixed(2)}M` : (device.stake_sol ?? 0) >= 1e3 ? `${(device.stake_sol / 1e3).toFixed(0)}k` : `${(device.stake_sol ?? 0).toFixed(0)}`,
-            stakeShare: (device.stake_share ?? 0) > 0 ? `${device.stake_share.toFixed(2)}%` : '0%',
+            stakeSol: device.stake_sol ?? 0,
+            stakeShare: device.stake_share ?? 0,
             interfaces: device.interfaces || [],
           }
 

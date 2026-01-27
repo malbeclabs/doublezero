@@ -2331,6 +2331,8 @@ export interface DeviceDetail extends Device {
   metro_name: string
   validator_count: number
   stake_sol: number
+  stake_share: number
+  interfaces: DeviceInterface[]
 }
 
 export async function fetchDevice(pk: string): Promise<DeviceDetail> {

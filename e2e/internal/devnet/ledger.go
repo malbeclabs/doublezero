@@ -28,7 +28,8 @@ import (
 
 const (
 	// Ledger container is more memory intensive than the others.
-	ledgerContainerMemory = 4 * 1024 * 1024 * 1024 // 4GB
+	// The solana-test-validator runtime uses ~1.4GB baseline.
+	ledgerContainerMemory = 2 * 1024 * 1024 * 1024 // 2GB
 
 	internalLedgerRPCPort   = 8899
 	internalLedgerRPCWSPort = 8900

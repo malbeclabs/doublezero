@@ -1587,129 +1587,7 @@ func TestMulticastSubscriber(t *testing.T) {
 	})
 }
 
-func TestServiceNoCoExistence(t *testing.T) {
-	teardown, err := setupTest(t)
-	rootPath := os.Getenv("XDG_STATE_HOME")
-	t.Cleanup(teardown)
-	defer os.RemoveAll(rootPath)
-	if err != nil {
-		t.Fatalf("error setting up test: %v", err)
-	}
-
-	srv, _ := corebgp.NewServer(netip.MustParseAddr("2.2.2.2"))
-	go func() {
-		rt.LockOSThread()
-		defer rt.UnlockOSThread()
-
-		peerNS, err := netns.GetFromName("doublezero-peer")
-		if err != nil {
-			t.Logf("error creating namespace: %v", err)
-		}
-		if err = netns.Set(peerNS); err != nil {
-			t.Logf("error setting namespace: %v", err)
-		}
-
-		// start bgp instance in network namespace
-		d := &dummyPlugin{}
-
-		// add IBRL peer
-		err = srv.AddPeer(corebgp.PeerConfig{
-			RemoteAddress: netip.MustParseAddr("169.254.0.1"),
-			LocalAS:       65342,
-			RemoteAS:      65000,
-		}, d, corebgp.WithPassive())
-		if err != nil {
-			log.Fatalf("error creating dummy bgp server: %v", err)
-		}
-		// add multicast subscriber peer
-		err = srv.AddPeer(corebgp.PeerConfig{
-			RemoteAddress: netip.MustParseAddr("169.254.1.1"),
-			LocalAS:       65342,
-			RemoteAS:      65000,
-		}, d, corebgp.WithPassive())
-		if err != nil {
-			log.Fatalf("error creating dummy bgp server: %v", err)
-		}
-
-		dlc := &net.ListenConfig{}
-		dlis, err := dlc.Listen(context.Background(), "tcp", ":179")
-		if err != nil {
-			log.Fatalf("error constructing listener: %v", err)
-		}
-
-		t.Log("starting bgp server")
-		if err := srv.Serve([]net.Listener{dlis}); err != nil {
-			t.Logf("error on remote peer bgp server: %v", err)
-		}
-	}()
-
-	errChan := make(chan error, 1)
-
-	sockFile := filepath.Join(rootPath, "doublezerod.sock")
-	go func() {
-		err := runtime.Run(t.Context(), sockFile, "", false, false, newTestNetworkConfig(t), 30, 30, newTestLivenessManagerConfig())
-		errChan <- err
-	}()
-
-	httpClient := http.Client{
-		Transport: &http.Transport{
-			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
-				return net.Dial("unix", sockFile)
-			},
-		},
-	}
-
-	t.Run("start_runtime", func(t *testing.T) {
-		select {
-		case err := <-errChan:
-			if err != nil {
-				t.Fatalf("error starting runtime: %v", err)
-			}
-		case <-time.After(5 * time.Second):
-		}
-	})
-
-	t.Run("provision_ibrl_tunnel", func(t *testing.T) {
-		req := `{
-					"tunnel_src":     "192.168.1.0",
-					"tunnel_dst":     "192.168.1.1",
-					"tunnel_net":     "169.254.0.0/31",
-					"doublezero_ip": "192.168.1.0",
-					"doublezero_prefixes": [],
-					"user_type": "IBRL",
-					"mcast_sub_groups": [],
-					"mcast_pub_groups": [],
-					"bgp_local_asn":  65000,
-					"bgp_remote_asn": 65342
-				}`
-		if err := sendClientRequest(httpClient, "provision", req); err != nil {
-			t.Fatalf("error sending provision request: %v", err)
-		}
-	})
-
-	t.Run("provision_multicast_subscriber_tunnel", func(t *testing.T) {
-		req := `{
-					"tunnel_src":     "192.168.2.0",
-					"tunnel_dst":     "192.168.2.1",
-					"tunnel_net":     "169.254.1.0/31",
-					"doublezero_ip": "",
-					"doublezero_prefixes": [],
-					"user_type": "Multicast",
-					"mcast_sub_groups": ["239.0.0.1"],
-					"mcast_pub_groups": [],
-					"bgp_local_asn":  65000,
-					"bgp_remote_asn": 65342
-				}`
-		if err := sendClientRequest(httpClient, "provision", req); err == nil || !strings.Contains(err.Error(), "cannot provision multiple tunnels at the same time") {
-			t.Fatalf("expected provisioning request to fail with error containing 'cannot provision multiple tunnels at the same time' but got: %v", err)
-		}
-	})
-
-}
-
 func TestServiceCoexistence(t *testing.T) {
-	t.Skip("only one tunnel at a time is support currently; `TestServiceNoCoExistence` is a placeholder test")
-
 	teardown, err := setupTest(t)
 	rootPath := os.Getenv("XDG_STATE_HOME")
 	t.Cleanup(teardown)
@@ -1869,7 +1747,7 @@ func TestServiceCoexistence(t *testing.T) {
 
 	t.Run("provision_multicast_subscriber_tunnel", func(t *testing.T) {
 		req := `{
-					"tunnel_src":     "192.168.2.0",
+					"tunnel_src":     "192.168.1.0",
 					"tunnel_dst":     "192.168.2.1",
 					"tunnel_net":     "169.254.1.0/31",
 					"doublezero_ip": "",
@@ -2187,7 +2065,7 @@ func setupTest(t *testing.T) (func(), error) {
 		{"ip", "link", "set", "dev", "veth2", "up"},
 		{"ip", "netns", "exec", "doublezero-peer", "ip", "addr", "add", "192.168.2.1/31", "dev", "veth3"},
 		{"ip", "netns", "exec", "doublezero-peer", "ip", "link", "set", "dev", "veth3", "up"},
-		{"ip", "netns", "exec", "doublezero-peer", "ip", "tunnel", "add", "doublezero1", "mode", "gre", "local", "192.168.2.1", "remote", "192.168.2.0", "ttl", "64"},
+		{"ip", "netns", "exec", "doublezero-peer", "ip", "tunnel", "add", "doublezero1", "mode", "gre", "local", "192.168.2.1", "remote", "192.168.1.0", "ttl", "64"},
 		{"ip", "netns", "exec", "doublezero-peer", "ip", "addr", "add", "169.254.1.0/31", "dev", "doublezero1"},
 		{"ip", "netns", "exec", "doublezero-peer", "ip", "link", "set", "dev", "doublezero1", "up"},
 		{"ip", "addr", "list"},
@@ -2254,7 +2132,6 @@ func waitForPeerStatus(httpClient http.Client, userType api.UserType, status bgp
 			return false, fmt.Errorf("error unmarshalling status response: %v", err)
 		}
 		for _, statusResponse := range statusResponses {
-			log.Printf("statusResponse: %+v", statusResponse)
 			if statusResponse.UserType != userType {
 				continue
 			}

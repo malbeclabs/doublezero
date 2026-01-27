@@ -107,7 +107,8 @@ agent StandbyCpld shutdown
 agent LicenseManager shutdown
 ! Unused agents disabled to reduce memory (~1.4GB savings per device).
 ! NOTE: Do NOT disable PhyEthtool - it breaks the management namespace.
-agent AirStream shutdown
+! Do NOT disable AirStream - it is required for monitor telemetry influx.
+! agent AirStream shutdown
 agent AleOpenConfig shutdown
 agent AleVirtualL3Uni shutdown
 agent ArfaAegis shutdown

@@ -86,21 +86,19 @@ func GetValidators(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Base CTE query for validators data
+	// NOTE: We avoid JOINing _current views (which use window functions) with each other
+	// directly, as ClickHouse incorrectly correlates the window functions across views
+	// in the same JOIN chain. Instead, we use IN for the on_dz boolean check and join
+	// the DZ metadata (dz_ip_info) separately via gossip_ip after the gossip join.
 	baseQuery := `
 		WITH total_stake AS (
 			SELECT sum(activated_stake_lamports) as total
 			FROM solana_vote_accounts_current
 			WHERE epoch_vote_account = 'true'
 		),
-		dz_validators AS (
-			SELECT
-				g.pubkey as dz_node_pk,
-				u.tunnel_id,
-				u.device_pk,
-				d.code as device_code,
-				m.code as metro_code
-			FROM solana_gossip_nodes_current g
-			JOIN dz_users_current u ON g.gossip_ip = u.dz_ip
+		dz_ip_info AS (
+			SELECT u.dz_ip, u.tunnel_id, d.code as device_code, m.code as metro_code
+			FROM dz_users_current u
 			JOIN dz_devices_current d ON u.device_pk = d.pk
 			LEFT JOIN dz_metros_current m ON d.metro_pk = m.pk
 			WHERE u.status = 'activated'
@@ -126,14 +124,6 @@ func GetValidators(w http.ResponseWriter, r *http.Request) {
 				AND out_octets_delta >= 0
 			GROUP BY user_tunnel_id
 		),
-		geoip AS (
-			SELECT
-				g.pubkey,
-				geo.city,
-				geo.country
-			FROM solana_gossip_nodes_current g
-			LEFT JOIN geoip_records_current geo ON g.gossip_ip = geo.ip
-		),
 		skip_rates AS (
 			SELECT
 				leader_identity_pubkey,
@@ -148,7 +138,7 @@ func GetValidators(w http.ResponseWriter, r *http.Request) {
 				GROUP BY leader_identity_pubkey
 			)
 		),
-		validators_data AS (
+		validators_with_gossip AS (
 			SELECT
 				v.vote_pubkey,
 				v.node_pubkey,
@@ -159,23 +149,39 @@ func GetValidators(w http.ResponseWriter, r *http.Request) {
 					ELSE 0
 				END as stake_share,
 				COALESCE(v.commission_percentage, 0) as commission,
-				dz.dz_node_pk IS NOT NULL as on_dz,
-				COALESCE(dz.device_code, '') as device_code,
-				COALESCE(dz.metro_code, '') as metro_code,
+				g.gossip_ip,
+				g.gossip_ip IN (SELECT dz_ip FROM dz_ip_info) as on_dz,
 				COALESCE(geo.city, '') as city,
 				COALESCE(geo.country, '') as country,
-				COALESCE(tr.in_bps, 0) as in_bps,
-				COALESCE(tr.out_bps, 0) as out_bps,
 				COALESCE(sr.skip_rate, 0) as skip_rate,
 				COALESCE(g.version, '') as version
 			FROM solana_vote_accounts_current v
 			CROSS JOIN total_stake ts
 			LEFT JOIN solana_gossip_nodes_current g ON v.node_pubkey = g.pubkey
-			LEFT JOIN dz_validators dz ON v.node_pubkey = dz.dz_node_pk
-			LEFT JOIN traffic_rates tr ON dz.tunnel_id = tr.user_tunnel_id
-			LEFT JOIN geoip geo ON v.node_pubkey = geo.pubkey
+			LEFT JOIN geoip_records_current geo ON g.gossip_ip = geo.ip
 			LEFT JOIN skip_rates sr ON v.node_pubkey = sr.leader_identity_pubkey
 			WHERE v.epoch_vote_account = 'true'
+		),
+		validators_data AS (
+			SELECT
+				vg.vote_pubkey,
+				vg.node_pubkey,
+				vg.activated_stake_lamports,
+				vg.stake_sol,
+				vg.stake_share,
+				vg.commission,
+				vg.on_dz,
+				COALESCE(di.device_code, '') as device_code,
+				COALESCE(di.metro_code, '') as metro_code,
+				vg.city,
+				vg.country,
+				COALESCE(tr.in_bps, 0) as in_bps,
+				COALESCE(tr.out_bps, 0) as out_bps,
+				vg.skip_rate,
+				vg.version
+			FROM validators_with_gossip vg
+			LEFT JOIN dz_ip_info di ON vg.gossip_ip = di.dz_ip
+			LEFT JOIN traffic_rates tr ON di.tunnel_id = tr.user_tunnel_id
 		)
 	`
 
@@ -325,16 +331,10 @@ func GetValidator(w http.ResponseWriter, r *http.Request) {
 			FROM solana_vote_accounts_current
 			WHERE epoch_vote_account = 'true'
 		),
-		dz_info AS (
-			SELECT
-				g.pubkey as dz_node_pk,
-				u.tunnel_id,
-				u.device_pk,
-				d.code as device_code,
-				d.metro_pk,
-				m.code as metro_code
-			FROM solana_gossip_nodes_current g
-			JOIN dz_users_current u ON g.gossip_ip = u.dz_ip
+		dz_ip_info AS (
+			SELECT u.dz_ip, u.tunnel_id, u.device_pk, d.code as device_code,
+				d.metro_pk, m.code as metro_code
+			FROM dz_users_current u
 			JOIN dz_devices_current d ON u.device_pk = d.pk
 			LEFT JOIN dz_metros_current m ON d.metro_pk = m.pk
 			WHERE u.status = 'activated'
@@ -383,11 +383,11 @@ func GetValidator(w http.ResponseWriter, r *http.Request) {
 				ELSE 0
 			END as stake_share,
 			COALESCE(v.commission_percentage, 0) as commission,
-			dz.dz_node_pk IS NOT NULL as on_dz,
-			COALESCE(dz.device_pk, '') as device_pk,
-			COALESCE(dz.device_code, '') as device_code,
-			COALESCE(dz.metro_pk, '') as metro_pk,
-			COALESCE(dz.metro_code, '') as metro_code,
+			g.gossip_ip IN (SELECT dz_ip FROM dz_ip_info) as on_dz,
+			COALESCE(di.device_pk, '') as device_pk,
+			COALESCE(di.device_code, '') as device_code,
+			COALESCE(di.metro_pk, '') as metro_pk,
+			COALESCE(di.metro_code, '') as metro_code,
 			COALESCE(geo.city, '') as city,
 			COALESCE(geo.country, '') as country,
 			COALESCE(g.gossip_ip, '') as gossip_ip,
@@ -400,8 +400,8 @@ func GetValidator(w http.ResponseWriter, r *http.Request) {
 		CROSS JOIN total_stake ts
 		LEFT JOIN solana_gossip_nodes_current g ON v.node_pubkey = g.pubkey
 		LEFT JOIN geoip_records_current geo ON g.gossip_ip = geo.ip
-		LEFT JOIN dz_info dz ON v.node_pubkey = dz.dz_node_pk
-		LEFT JOIN traffic_rates tr ON dz.tunnel_id = tr.user_tunnel_id
+		LEFT JOIN dz_ip_info di ON g.gossip_ip = di.dz_ip
+		LEFT JOIN traffic_rates tr ON di.tunnel_id = tr.user_tunnel_id
 		LEFT JOIN skip_rates sr ON v.node_pubkey = sr.leader_identity_pubkey
 		WHERE v.vote_pubkey = ?
 	`

@@ -15,7 +15,7 @@
         "tunnel_net": "169.254.1.0/31",
         "doublezero_prefixes": [],
         "user_type": "Multicast",
-        "tunnel_src": "192.168.2.0",
+        "tunnel_src": "192.168.1.0",
         "tunnel_dst": "192.168.2.1",
         "doublezero_ip": "",
         "mcast_sub_groups": [

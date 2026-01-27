@@ -83,7 +83,6 @@ pub fn process_close_access_pass(
             return Err(DoubleZeroError::InvalidAccountType.into());
         }
 
-        // Use the existing TryFrom<&AccountInfo> implementation for AccessPass
         let accesspass = AccessPass::try_from(accesspass_account)?;
 
         if accesspass.connection_count != 0 {

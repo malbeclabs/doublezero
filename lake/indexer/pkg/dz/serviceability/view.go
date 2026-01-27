@@ -91,6 +91,19 @@ type User struct {
 	DZIP        net.IP
 	DevicePK    string
 	TunnelID    uint16
+	Publishers  []string // multicast group PKs this user publishes to
+	Subscribers []string // multicast group PKs this user subscribes to
+}
+
+type MulticastGroup struct {
+	PK              string
+	OwnerPubkey     string
+	Code            string
+	MulticastIP     net.IP
+	MaxBandwidth    uint64
+	Status          string
+	PublisherCount  uint32
+	SubscriberCount uint32
 }
 
 type ServiceabilityRPC interface {
@@ -246,7 +259,8 @@ func (v *View) Refresh(ctx context.Context) error {
 		"devices", len(pd.Devices),
 		"users", len(pd.Users),
 		"links", len(pd.Links),
-		"metros", len(pd.Exchanges))
+		"metros", len(pd.Exchanges),
+		"multicast_groups", len(pd.MulticastGroups))
 
 	// Validate that we received data for each entity type - empty responses would tombstone all existing entities.
 	// Check each independently since they're written separately with MissingMeansDeleted=true.
@@ -268,6 +282,7 @@ func (v *View) Refresh(ctx context.Context) error {
 	users := convertUsers(pd.Users)
 	links := convertLinks(pd.Links, pd.Devices)
 	metros := convertMetros(pd.Exchanges)
+	multicastGroups := convertMulticastGroups(pd.MulticastGroups)
 
 	fetchedAt := time.Now().UTC()
 
@@ -289,6 +304,10 @@ func (v *View) Refresh(ctx context.Context) error {
 
 	if err := v.store.ReplaceLinks(ctx, links); err != nil {
 		return fmt.Errorf("failed to replace links: %w", err)
+	}
+
+	if err := v.store.ReplaceMulticastGroups(ctx, multicastGroups); err != nil {
+		return fmt.Errorf("failed to replace multicast groups: %w", err)
 	}
 
 	v.fetchedAt = fetchedAt
@@ -350,6 +369,17 @@ func convertDevices(onchain []serviceability.Device) []Device {
 func convertUsers(onchain []serviceability.User) []User {
 	result := make([]User, len(onchain))
 	for i, user := range onchain {
+		// Convert publisher group PKs
+		publishers := make([]string, len(user.Publishers))
+		for j, pub := range user.Publishers {
+			publishers[j] = solana.PublicKeyFromBytes(pub[:]).String()
+		}
+		// Convert subscriber group PKs
+		subscribers := make([]string, len(user.Subscribers))
+		for j, sub := range user.Subscribers {
+			subscribers[j] = solana.PublicKeyFromBytes(sub[:]).String()
+		}
+
 		result[i] = User{
 			PK:          solana.PublicKeyFromBytes(user.PubKey[:]).String(),
 			OwnerPubkey: solana.PublicKeyFromBytes(user.Owner[:]).String(),
@@ -359,6 +389,8 @@ func convertUsers(onchain []serviceability.User) []User {
 			DZIP:        net.IP(user.DzIp[:]),
 			DevicePK:    solana.PublicKeyFromBytes(user.DevicePubKey[:]).String(),
 			TunnelID:    user.TunnelId,
+			Publishers:  publishers,
+			Subscribers: subscribers,
 		}
 	}
 	return result
@@ -428,6 +460,36 @@ func convertMetros(onchain []serviceability.Exchange) []Metro {
 			Name:      exchange.Name,
 			Longitude: float64(exchange.Lng),
 			Latitude:  float64(exchange.Lat),
+		}
+	}
+	return result
+}
+
+func convertMulticastGroups(onchain []serviceability.MulticastGroup) []MulticastGroup {
+	result := make([]MulticastGroup, len(onchain))
+	for i, group := range onchain {
+		var status string
+		switch group.Status {
+		case 0:
+			status = "pending"
+		case 1:
+			status = "activated"
+		case 2:
+			status = "suspended"
+		case 3:
+			status = "deleted"
+		default:
+			status = "unknown"
+		}
+		result[i] = MulticastGroup{
+			PK:              solana.PublicKeyFromBytes(group.PubKey[:]).String(),
+			OwnerPubkey:     solana.PublicKeyFromBytes(group.Owner[:]).String(),
+			Code:            group.Code,
+			MulticastIP:     net.IP(group.MulticastIp[:]),
+			MaxBandwidth:    group.MaxBandwidth,
+			Status:          status,
+			PublisherCount:  group.PublisherCount,
+			SubscriberCount: group.SubscriberCount,
 		}
 	}
 	return result

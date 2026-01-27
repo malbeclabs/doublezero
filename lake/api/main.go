@@ -424,6 +424,9 @@ func main() {
 	r.Get("/api/dz/contributors/{pk}", handlers.GetContributor)
 	r.Get("/api/dz/users", handlers.GetUsers)
 	r.Get("/api/dz/users/{pk}", handlers.GetUser)
+	r.Get("/api/dz/multicast-groups", handlers.GetMulticastGroups)
+	r.Get("/api/dz/multicast-groups/{code}", handlers.GetMulticastGroup)
+	r.Get("/api/dz/multicast-groups/{code}/tree-paths", handlers.GetMulticastTreePaths)
 	r.Get("/api/dz/field-values", handlers.GetFieldValues)
 
 	// Solana entity routes

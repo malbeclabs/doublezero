@@ -23,6 +23,7 @@ import {
   Building2,
   Server,
   Link2,
+  Radio,
 } from 'lucide-react'
 import { useTopology, type TopologyMode, type PathMode } from './TopologyContext'
 
@@ -439,6 +440,18 @@ export function TopologyControlBar({
             onClick={() => handleToggleOverlay('trafficFlow')}
             active={overlays.trafficFlow}
             activeColor="cyan"
+            collapsed={collapsed}
+          />
+
+          {/* Multicast Trees */}
+          <SectionHeader title="Multicast Trees" collapsed={collapsed} />
+
+          <NavItem
+            icon={<Radio className="h-3.5 w-3.5" />}
+            label="Multicast"
+            onClick={() => handleToggleOverlay('multicastTrees')}
+            active={overlays.multicastTrees}
+            activeColor="purple"
             collapsed={collapsed}
           />
         </div>

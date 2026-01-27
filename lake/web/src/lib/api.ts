@@ -1635,6 +1635,86 @@ export async function fetchMetroDevicePaths(
   return res.json()
 }
 
+// Multicast group types
+export interface MulticastGroupListItem {
+  pk: string
+  code: string
+  multicast_ip: string
+  max_bandwidth: number
+  status: string
+  publisher_count: number
+  subscriber_count: number
+}
+
+export interface MulticastMember {
+  user_pk: string
+  mode: 'P' | 'S' | 'P+S'
+  device_pk: string
+  device_code: string
+  metro_pk: string
+  metro_code: string
+  metro_name: string
+  client_ip: string
+  dz_ip: string
+  status: string
+  owner_pubkey: string
+}
+
+export interface MulticastGroupDetail extends MulticastGroupListItem {
+  members: MulticastMember[]
+}
+
+export async function fetchMulticastGroups(): Promise<MulticastGroupListItem[]> {
+  const res = await fetch('/api/dz/multicast-groups')
+  if (!res.ok) {
+    throw new Error('Failed to fetch multicast groups')
+  }
+  return res.json()
+}
+
+export async function fetchMulticastGroup(code: string): Promise<MulticastGroupDetail> {
+  const res = await fetch(`/api/dz/multicast-groups/${encodeURIComponent(code)}`)
+  if (!res.ok) {
+    throw new Error('Failed to fetch multicast group')
+  }
+  return res.json()
+}
+
+// Multicast tree path types
+export interface MulticastTreeHop {
+  devicePK: string
+  deviceCode: string
+  deviceType: string
+  edgeMetric?: number
+}
+
+export interface MulticastTreePath {
+  publisherDevicePK: string
+  publisherDeviceCode: string
+  subscriberDevicePK: string
+  subscriberDeviceCode: string
+  path: MulticastTreeHop[]
+  totalMetric: number
+  hopCount: number
+}
+
+export interface MulticastTreeResponse {
+  groupCode: string
+  groupPK: string
+  publisherCount: number
+  subscriberCount: number
+  paths: MulticastTreePath[]
+  error?: string
+}
+
+export async function fetchMulticastTreePaths(code: string): Promise<MulticastTreeResponse> {
+  const res = await fetch(`/api/dz/multicast-groups/${encodeURIComponent(code)}/tree-paths`)
+  if (!res.ok) {
+    throw new Error('Failed to fetch multicast tree paths')
+  }
+  return res.json()
+}
+
 // Critical links types
 export interface CriticalLink {
   sourcePK: string

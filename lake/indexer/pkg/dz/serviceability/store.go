@@ -174,3 +174,29 @@ func (s *Store) ReplaceLinks(ctx context.Context, links []Link) error {
 
 	return nil
 }
+
+func (s *Store) ReplaceMulticastGroups(ctx context.Context, groups []MulticastGroup) error {
+	s.log.Debug("serviceability/store: replacing multicast groups", "count", len(groups))
+
+	d, err := NewMulticastGroupDataset(s.log)
+	if err != nil {
+		return fmt.Errorf("failed to create dimension dataset: %w", err)
+	}
+
+	conn, err := s.cfg.ClickHouse.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get ClickHouse connection: %w", err)
+	}
+	defer conn.Close()
+
+	// Write to ClickHouse using new dataset API
+	if err := d.WriteBatch(ctx, conn, len(groups), func(i int) ([]any, error) {
+		return multicastGroupSchema.ToRow(groups[i]), nil
+	}, &dataset.DimensionType2DatasetWriteConfig{
+		MissingMeansDeleted: true,
+	}); err != nil {
+		return fmt.Errorf("failed to write multicast groups to ClickHouse: %w", err)
+	}
+
+	return nil
+}

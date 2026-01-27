@@ -20,6 +20,9 @@ All notable changes to this project will be documented in this file.
   - Force IPv4-only connections for gNMI tunnel client and fix TLS credential handling
 - Client
   - Support simultaneous unicast and multicast tunnels in doublezerod
+  - Support subscribing to multiple multicast groups simultaneously
+- CLI
+  - Support subscribing a user to multiple multicast groups via `--group` flag
 - SDK
   - Go SDK can now perform batch writes to device.health and link.health as per rfc12
 - Activator

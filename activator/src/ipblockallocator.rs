@@ -131,7 +131,7 @@ mod tests {
 
     #[test]
     fn test_ipallocation() {
-        let block1 = IPBlockAllocator::new("10.0.0.1/24".parse().unwrap())
+        let block1 = IPBlockAllocator::new("10.0.0.0/24".parse().unwrap())
             .next_available_block(1, 1)
             .unwrap();
         assert_eq!(block1, "10.0.0.1/32".parse().unwrap());

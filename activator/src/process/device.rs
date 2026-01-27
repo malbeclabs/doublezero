@@ -18,6 +18,7 @@ pub fn process_device_event(
     device: &Device,
     segment_routing_ids: &mut IDAllocator,
     link_ips: &mut IPBlockAllocator,
+    use_onchain_allocation: bool,
 ) {
     match device.status {
         DeviceStatus::Pending => {
@@ -51,7 +52,12 @@ pub fn process_device_event(
             info!("{log_msg}");
         }
         DeviceStatus::DeviceProvisioning | DeviceStatus::LinkProvisioning => {
-            let mut mgr = InterfaceMgr::new(client, Some(segment_routing_ids), link_ips);
+            let mut mgr = InterfaceMgr::new(
+                client,
+                Some(segment_routing_ids),
+                link_ips,
+                use_onchain_allocation,
+            );
             mgr.process_device_interfaces(pubkey, device);
 
             match devices.entry(*pubkey) {
@@ -66,7 +72,12 @@ pub fn process_device_event(
             }
         }
         DeviceStatus::Activated => {
-            let mut mgr = InterfaceMgr::new(client, Some(segment_routing_ids), link_ips);
+            let mut mgr = InterfaceMgr::new(
+                client,
+                Some(segment_routing_ids),
+                link_ips,
+                use_onchain_allocation,
+            );
             mgr.process_device_interfaces(pubkey, device);
 
             match devices.entry(*pubkey) {
@@ -240,6 +251,7 @@ mod tests {
                 &device,
                 &mut segment_ids,
                 &mut ip_block_allocator,
+                false,
             );
 
             assert!(devices.contains_key(&device_pubkey));
@@ -285,6 +297,7 @@ mod tests {
                 &device,
                 &mut segment_ids,
                 &mut ip_block_allocator,
+                false,
             );
 
             device.status = DeviceStatus::Deleting;
@@ -376,6 +389,7 @@ mod tests {
                 &device,
                 &mut segment_ids,
                 &mut ip_block_allocator,
+                false,
             );
             assert!(!devices.contains_key(&device_pubkey));
 
@@ -494,6 +508,7 @@ mod tests {
             &device,
             &mut segment_ids,
             &mut ip_block_allocator,
+            false,
         );
 
         assert!(devices.contains_key(&pubkey));
@@ -522,6 +537,7 @@ mod tests {
             &device,
             &mut segment_ids,
             &mut ip_block_allocator,
+            false,
         );
 
         assert!(devices.contains_key(&pubkey));

@@ -348,6 +348,7 @@ no ip access-list standard SEC-USER-MCAST-BOUNDARY-500-OUT
 ip access-list standard SEC-USER-MCAST-BOUNDARY-500-OUT
    counters per-entry
    permit host 233.84.178.0
+   permit host 233.84.178.1
    deny 224.0.0.0/4
 !
 {{- range $i := seq (add .StartTunnel 1) .EndTunnel}}

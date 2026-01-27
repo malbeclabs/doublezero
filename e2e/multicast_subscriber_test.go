@@ -23,24 +23,21 @@ func TestE2E_Multicast_Subscriber(t *testing.T) {
 	dn, device, client := NewSingleDeviceSingleClientTestDevnet(t)
 
 	if !t.Run("connect", func(t *testing.T) {
+		// Set access pass first, before creating groups (so allowlist additions are preserved)
+		_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey})
+		require.NoError(t, err)
+
+		// Create both multicast groups before connecting
 		dn.CreateMulticastGroupOnchain(t, client, "mg01")
+		dn.CreateMulticastGroupOnchain(t, client, "mg02")
 
-		dn.ConnectMulticastSubscriber(t, client, "mg01")
+		// Connect to both groups at once (skip access-pass set since we did it above)
+		dn.ConnectMulticastSubscriberSkipAccessPass(t, client, "mg01", "mg02")
 
-		err := client.WaitForTunnelUp(t.Context(), 90*time.Second)
+		err = client.WaitForTunnelUp(t.Context(), 90*time.Second)
 		require.NoError(t, err)
 
 		checkMulticastSubscriberPostConnect(t, dn, device, client)
-
-		dn.CreateMulticastGroupOnchain(t, client, "mg02")
-
-		// Set access pass for the client.
-		_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey})
-		require.NoError(t, err)
-
-		output, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast subscriber mg02 --client-ip " + client.CYOANetworkIP})
-		require.Error(t, err)
-		require.Contains(t, string(output), "Multicast supports only one subscription at this time")
 	}) {
 		t.Fail()
 		return
@@ -158,16 +155,19 @@ func checkMulticastSubscriberPostConnect(t *testing.T, dn *TestDevnet, device *d
 			routes, err := client.ExecReturnJSONList(t.Context(), []string{"bash", "-c", "ip -j route show table main"})
 			require.NoError(t, err)
 
-			found := false
-			for _, route := range routes {
-				if dst, ok := route["dst"].(string); ok && dst == "233.84.178.0" {
-					found = true
-					break
+			// Check for both multicast group addresses
+			expectedAddrs := []string{"233.84.178.0", "233.84.178.1"}
+			for _, expectedAddr := range expectedAddrs {
+				found := false
+				for _, route := range routes {
+					if dst, ok := route["dst"].(string); ok && dst == expectedAddr {
+						found = true
+						break
+					}
 				}
-			}
-
-			if !found {
-				t.Fatalf("multicast group address 233.84.178.0 not found on tunnel for subscriber: %+v", routes)
+				if !found {
+					t.Fatalf("multicast group address %s not found on tunnel for subscriber: %+v", expectedAddr, routes)
+				}
 			}
 		}) {
 			t.Fail()
@@ -198,25 +198,29 @@ func checkMulticastSubscriberPostConnect(t *testing.T, dn *TestDevnet, device *d
 		if !t.Run("check_pim_join_received", func(t *testing.T) {
 			t.Parallel()
 
-			deadline := time.Now().Add(30 * time.Second)
-			for time.Now().Before(deadline) {
-				mroutes, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIPMroute](t.Context(), device, arista.ShowIPMrouteCmd())
-				require.NoError(t, err, "error fetching mroutes from doublezero device")
+			// Check PIM joins for both multicast groups
+			expectedGroups := []string{"233.84.178.0", "233.84.178.1"}
+			for _, expectedGroup := range expectedGroups {
+				deadline := time.Now().Add(30 * time.Second)
+				found := false
+				for time.Now().Before(deadline) {
+					mroutes, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIPMroute](t.Context(), device, arista.ShowIPMrouteCmd())
+					require.NoError(t, err, "error fetching mroutes from doublezero device")
 
-				groups, ok := mroutes.Groups["233.84.178.0"]
-				if !ok {
-					return
+					groups, ok := mroutes.Groups[expectedGroup]
+					if ok {
+						groupDetails, ok := groups.GroupSources["0.0.0.0"]
+						if ok && slices.Contains(groupDetails.OIFList, "Tunnel500") {
+							found = true
+							break
+						}
+					}
+					time.Sleep(1 * time.Second)
 				}
-				groupDetails, ok := groups.GroupSources["0.0.0.0"]
-				if !ok {
-					return
+				if !found {
+					t.Fatalf("PIM join not received for %s", expectedGroup)
 				}
-				if slices.Contains(groupDetails.OIFList, "Tunnel500") {
-					return
-				}
-				time.Sleep(1 * time.Second)
 			}
-			t.Fatalf("PIM join not received for 233.84.178.0")
 		}) {
 			t.Fail()
 		}

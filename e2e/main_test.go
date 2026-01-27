@@ -456,14 +456,25 @@ func (dn *TestDevnet) DisconnectMulticastPublisher(t *testing.T, client *devnet.
 	dn.log.Info("--> Multicast publisher disconnected")
 }
 
-func (dn *TestDevnet) ConnectMulticastSubscriber(t *testing.T, client *devnet.Client, multicastGroupCode string) {
-	dn.log.Info("==> Connecting multicast subscriber", "clientIP", client.CYOANetworkIP)
+func (dn *TestDevnet) ConnectMulticastSubscriber(t *testing.T, client *devnet.Client, multicastGroupCodes ...string) {
+	dn.log.Info("==> Connecting multicast subscriber", "clientIP", client.CYOANetworkIP, "groups", multicastGroupCodes)
 
 	// Set access pass for the client.
 	_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey})
 	require.NoError(t, err)
 
-	_, err = client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast subscriber " + multicastGroupCode + " --client-ip " + client.CYOANetworkIP})
+	groupArgs := strings.Join(multicastGroupCodes, " ")
+	_, err = client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast subscriber " + groupArgs + " --client-ip " + client.CYOANetworkIP})
+	require.NoError(t, err)
+
+	dn.log.Info("--> Multicast subscriber connected")
+}
+
+func (dn *TestDevnet) ConnectMulticastSubscriberSkipAccessPass(t *testing.T, client *devnet.Client, multicastGroupCodes ...string) {
+	dn.log.Info("==> Connecting multicast subscriber", "clientIP", client.CYOANetworkIP, "groups", multicastGroupCodes)
+
+	groupArgs := strings.Join(multicastGroupCodes, " ")
+	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast subscriber " + groupArgs + " --client-ip " + client.CYOANetworkIP})
 	require.NoError(t, err)
 
 	dn.log.Info("--> Multicast subscriber connected")

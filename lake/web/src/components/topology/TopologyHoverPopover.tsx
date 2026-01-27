@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { SelectionType } from './TopologyContext'
 import type { DeviceInfo, LinkInfo, MetroInfo, ValidatorInfo } from './types'
+import { formatBandwidth, formatStake } from './utils'
 
 // Hover popover data (simplified for quick display)
 export interface HoverData {
@@ -77,6 +78,7 @@ export function TopologyHoverPopover({
 }
 
 function DeviceHoverContent({ device }: { device: DeviceInfo }) {
+  const stakeDisplay = device.stakeSol > 0 ? formatStake(device.stakeSol) : null
   return (
     <div className="space-y-1">
       <div className="font-medium">{device.code}</div>
@@ -101,10 +103,10 @@ function DeviceHoverContent({ device }: { device: DeviceInfo }) {
             <span className="text-foreground">{device.validatorCount}</span>
           </div>
         )}
-        {device.stakeSol !== '0' && device.stakeSol !== '0.00' && (
+        {stakeDisplay && (
           <div className="flex justify-between gap-4">
             <span>Stake:</span>
-            <span className="text-amber-500">{device.stakeSol} SOL</span>
+            <span className="text-amber-500">{stakeDisplay}</span>
           </div>
         )}
       </div>
@@ -113,6 +115,10 @@ function DeviceHoverContent({ device }: { device: DeviceInfo }) {
 }
 
 function LinkHoverContent({ link }: { link: LinkInfo }) {
+  const bandwidthDisplay = link.bandwidthBps > 0 ? formatBandwidth(link.bandwidthBps) : 'N/A'
+  const latencyDisplay = link.latencyUs > 0 ? `${(link.latencyUs / 1000).toFixed(2)}ms` : 'N/A'
+  const lossDisplay = link.lossPercent > 0 ? `${link.lossPercent.toFixed(2)}%` : null
+
   return (
     <div className="space-y-1">
       <div className="font-medium">{link.code}</div>
@@ -124,16 +130,16 @@ function LinkHoverContent({ link }: { link: LinkInfo }) {
       <div className="text-muted-foreground space-y-0.5">
         <div className="flex justify-between gap-4">
           <span>Bandwidth:</span>
-          <span className="text-foreground">{link.bandwidth}</span>
+          <span className="text-foreground">{bandwidthDisplay}</span>
         </div>
         <div className="flex justify-between gap-4">
           <span>Latency:</span>
-          <span className="text-foreground">{link.latencyMs}</span>
+          <span className="text-foreground">{latencyDisplay}</span>
         </div>
-        {link.lossPercent && link.lossPercent !== 'N/A' && !link.lossPercent.match(/^0(\.0+)?%?$/) && (
+        {lossDisplay && (
           <div className="flex justify-between gap-4">
             <span>Loss:</span>
-            <span className="text-amber-500">{link.lossPercent}</span>
+            <span className="text-amber-500">{lossDisplay}</span>
           </div>
         )}
         {link.health && (

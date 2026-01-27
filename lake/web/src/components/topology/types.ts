@@ -5,16 +5,16 @@ export interface LinkInfo {
   pk: string
   code: string
   linkType: string
-  bandwidth: string
-  latencyMs: string
-  jitterMs: string
-  latencyAtoZMs: string
-  jitterAtoZMs: string
-  latencyZtoAMs: string
-  jitterZtoAMs: string
-  lossPercent: string
-  inRate: string
-  outRate: string
+  bandwidthBps: number
+  latencyUs: number
+  jitterUs: number
+  latencyAtoZUs: number
+  jitterAtoZUs: number
+  latencyZtoAUs: number
+  jitterZtoAUs: number
+  lossPercent: number
+  inBps: number
+  outBps: number
   deviceAPk: string
   deviceACode: string
   interfaceAName: string
@@ -25,6 +25,7 @@ export interface LinkInfo {
   interfaceZIP: string
   contributorPk: string
   contributorCode: string
+  sampleCount: number
   health?: {
     status: string
     committedRttNs: number
@@ -34,7 +35,7 @@ export interface LinkInfo {
   // Inter-metro link properties
   isInterMetro?: boolean
   linkCount?: number
-  avgLatencyMs?: string
+  avgLatencyUs?: number
 }
 
 // Interface info

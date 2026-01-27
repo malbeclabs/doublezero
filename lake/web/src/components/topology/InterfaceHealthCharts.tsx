@@ -140,13 +140,15 @@ export function InterfaceHealthCharts({ devicePk }: InterfaceHealthChartsProps) 
                 borderRadius: '6px',
                 fontSize: '11px',
               }}
-              formatter={(value: number, name: string) => {
+              formatter={(value: number | string | undefined, name?: string) => {
                 const labels: Record<string, string> = {
                   errors: 'Errors',
                   discards: 'Discards',
                   carrierTransitions: 'Carrier Transitions',
                 }
-                return [value.toLocaleString(), labels[name] || name]
+                const numericValue = typeof value === 'number' ? value : Number(value ?? 0)
+                const label = name ? (labels[name] || name) : ''
+                return [numericValue.toLocaleString(), label]
               }}
             />
             <Bar

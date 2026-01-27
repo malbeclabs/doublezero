@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useDelayedLoading } from '@/hooks/use-delayed-loading'
 import { ChevronDown, GripVertical, Check, RefreshCw } from 'lucide-react'
-import { fetchTrafficData, fetchTopology, type TopologyLink } from '@/lib/api'
+import { fetchTrafficData, fetchTopology } from '@/lib/api'
 import { TrafficChart } from '@/components/traffic-chart-uplot'
 import { LoadingSplash } from '@/components/loading-splash'
 

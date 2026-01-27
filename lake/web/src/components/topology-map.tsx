@@ -134,16 +134,16 @@ interface HoveredLinkInfo {
   pk: string
   code: string
   linkType: string
-  bandwidth: string
-  latencyMs: string
-  jitterMs: string
-  latencyAtoZMs: string
-  jitterAtoZMs: string
-  latencyZtoAMs: string
-  jitterZtoAMs: string
-  lossPercent: string
-  inRate: string
-  outRate: string
+  bandwidthBps: number
+  latencyUs: number
+  jitterUs: number
+  latencyAtoZUs: number
+  jitterAtoZUs: number
+  latencyZtoAUs: number
+  jitterZtoAUs: number
+  lossPercent: number
+  inBps: number
+  outBps: number
   deviceAPk: string
   deviceACode: string
   interfaceAName: string
@@ -154,6 +154,7 @@ interface HoveredLinkInfo {
   interfaceZIP: string
   contributorPk: string
   contributorCode: string
+  sampleCount: number
   health?: {
     status: string
     committedRttNs: number
@@ -163,7 +164,7 @@ interface HoveredLinkInfo {
   // Inter-metro link properties
   isInterMetro?: boolean
   linkCount?: number
-  avgLatencyMs?: string
+  avgLatencyUs?: number
 }
 
 // Hovered device info type
@@ -1597,22 +1598,21 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
 
   // Build hover info for links
   const buildLinkInfo = useCallback((link: TopologyLink): HoveredLinkInfo => {
-    const hasLatencyData = (link.sample_count ?? 0) > 0
     const healthInfo = linkSlaStatus.get(link.pk)
     return {
       pk: link.pk,
       code: link.code,
       linkType: link.link_type,
-      bandwidth: formatBandwidth(link.bandwidth_bps),
-      latencyMs: hasLatencyData ? (link.latency_us > 0 ? `${(link.latency_us / 1000).toFixed(2)}ms` : '0.00ms') : 'N/A',
-      jitterMs: hasLatencyData ? ((link.jitter_us ?? 0) > 0 ? `${(link.jitter_us / 1000).toFixed(3)}ms` : '0.000ms') : 'N/A',
-      latencyAtoZMs: hasLatencyData ? (link.latency_a_to_z_us > 0 ? `${(link.latency_a_to_z_us / 1000).toFixed(2)}ms` : '0.00ms') : 'N/A',
-      jitterAtoZMs: hasLatencyData ? ((link.jitter_a_to_z_us ?? 0) > 0 ? `${(link.jitter_a_to_z_us / 1000).toFixed(3)}ms` : '0.000ms') : 'N/A',
-      latencyZtoAMs: hasLatencyData ? (link.latency_z_to_a_us > 0 ? `${(link.latency_z_to_a_us / 1000).toFixed(2)}ms` : '0.00ms') : 'N/A',
-      jitterZtoAMs: hasLatencyData ? ((link.jitter_z_to_a_us ?? 0) > 0 ? `${(link.jitter_z_to_a_us / 1000).toFixed(3)}ms` : '0.000ms') : 'N/A',
-      lossPercent: hasLatencyData ? `${(link.loss_percent ?? 0).toFixed(2)}%` : 'N/A',
-      inRate: formatTrafficRate(link.in_bps),
-      outRate: formatTrafficRate(link.out_bps),
+      bandwidthBps: link.bandwidth_bps,
+      latencyUs: link.latency_us,
+      jitterUs: link.jitter_us ?? 0,
+      latencyAtoZUs: link.latency_a_to_z_us,
+      jitterAtoZUs: link.jitter_a_to_z_us ?? 0,
+      latencyZtoAUs: link.latency_z_to_a_us,
+      jitterZtoAUs: link.jitter_z_to_a_us ?? 0,
+      lossPercent: link.loss_percent ?? 0,
+      inBps: link.in_bps,
+      outBps: link.out_bps,
       deviceAPk: link.side_a_pk,
       deviceACode: link.side_a_code || 'Unknown',
       interfaceAName: link.side_a_iface_name || '',
@@ -1623,6 +1623,7 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       interfaceZIP: link.side_z_ip || '',
       contributorPk: link.contributor_pk,
       contributorCode: link.contributor_code,
+      sampleCount: link.sample_count ?? 0,
       health: healthInfo ? {
         status: healthInfo.status,
         committedRttNs: healthInfo.committedRttNs,
@@ -2010,34 +2011,9 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
       if (link) {
         const deviceA = deviceMap.get(link.side_a_pk)
         const deviceZ = deviceMap.get(link.side_z_pk)
-        const hasLatencyData = (link.sample_count ?? 0) > 0
         setSelectedItemState({
           type: 'link',
-          data: {
-            pk: link.pk,
-            code: link.code,
-            linkType: link.link_type,
-            bandwidth: formatBandwidth(link.bandwidth_bps),
-            latencyMs: hasLatencyData ? (link.latency_us > 0 ? `${(link.latency_us / 1000).toFixed(2)}ms` : '0.00ms') : 'N/A',
-            jitterMs: hasLatencyData ? ((link.jitter_us ?? 0) > 0 ? `${(link.jitter_us / 1000).toFixed(3)}ms` : '0.000ms') : 'N/A',
-            latencyAtoZMs: hasLatencyData ? (link.latency_a_to_z_us > 0 ? `${(link.latency_a_to_z_us / 1000).toFixed(2)}ms` : '0.00ms') : 'N/A',
-            jitterAtoZMs: hasLatencyData ? ((link.jitter_a_to_z_us ?? 0) > 0 ? `${(link.jitter_a_to_z_us / 1000).toFixed(3)}ms` : '0.000ms') : 'N/A',
-            latencyZtoAMs: hasLatencyData ? (link.latency_z_to_a_us > 0 ? `${(link.latency_z_to_a_us / 1000).toFixed(2)}ms` : '0.00ms') : 'N/A',
-            jitterZtoAMs: hasLatencyData ? ((link.jitter_z_to_a_us ?? 0) > 0 ? `${(link.jitter_z_to_a_us / 1000).toFixed(3)}ms` : '0.000ms') : 'N/A',
-            lossPercent: hasLatencyData ? `${(link.loss_percent ?? 0).toFixed(2)}%` : 'N/A',
-            inRate: formatTrafficRate(link.in_bps),
-            outRate: formatTrafficRate(link.out_bps),
-            deviceAPk: link.side_a_pk,
-            deviceACode: link.side_a_code || 'Unknown',
-            interfaceAName: link.side_a_iface_name || '',
-            interfaceAIP: link.side_a_ip || '',
-            deviceZPk: link.side_z_pk,
-            deviceZCode: link.side_z_code || 'Unknown',
-            interfaceZName: link.side_z_iface_name || '',
-            interfaceZIP: link.side_z_ip || '',
-            contributorPk: link.contributor_pk,
-            contributorCode: link.contributor_code,
-          },
+          data: buildLinkInfo(link),
         })
         // Fly to the midpoint of the link (skip in analysis modes)
         if (!pathModeEnabled && !impactMode && !whatifRemovalMode) {
@@ -2112,16 +2088,16 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           pk,
           code: props.code || '',
           linkType: 'Inter-Metro',
-          bandwidth: '',
-          latencyMs: props.avgLatencyMs || 'N/A',
-          jitterMs: '',
-          latencyAtoZMs: '',
-          jitterAtoZMs: '',
-          latencyZtoAMs: '',
-          jitterZtoAMs: '',
-          lossPercent: '',
-          inRate: '',
-          outRate: '',
+          bandwidthBps: 0,
+          latencyUs: props.avgLatencyUs || 0,
+          jitterUs: 0,
+          latencyAtoZUs: 0,
+          jitterAtoZUs: 0,
+          latencyZtoAUs: 0,
+          jitterZtoAUs: 0,
+          lossPercent: 0,
+          inBps: 0,
+          outBps: 0,
           deviceAPk: '',
           deviceACode: '',
           interfaceAName: '',
@@ -2132,9 +2108,10 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
           interfaceZIP: '',
           contributorPk: '',
           contributorCode: '',
+          sampleCount: 0,
           isInterMetro: true,
           linkCount: props.linkCount || 0,
-          avgLatencyMs: props.avgLatencyMs || 'N/A',
+          avgLatencyUs: props.avgLatencyUs || 0,
         })
         return
       }
@@ -2660,12 +2637,12 @@ export function TopologyMap({ metros, devices, links, validators }: TopologyMapP
                 {hoveredLink.isInterMetro ? (
                   <>
                     <div>Links: <span className="text-foreground">{hoveredLink.linkCount}</span></div>
-                    <div>Avg Latency: <span className="text-foreground">{hoveredLink.avgLatencyMs}</span></div>
+                    <div>Avg Latency: <span className="text-foreground">{hoveredLink.avgLatencyUs ? `${(hoveredLink.avgLatencyUs / 1000).toFixed(2)} ms` : 'N/A'}</span></div>
                   </>
                 ) : (
                   <>
-                    <div>Latency: <span className="text-foreground">{hoveredLink.latencyMs}</span></div>
-                    <div>Bandwidth: <span className="text-foreground">{hoveredLink.bandwidth}</span></div>
+                    <div>Latency: <span className="text-foreground">{hoveredLink.sampleCount > 0 ? `${(hoveredLink.latencyUs / 1000).toFixed(2)} ms` : 'N/A'}</span></div>
+                    <div>Bandwidth: <span className="text-foreground">{formatBandwidth(hoveredLink.bandwidthBps)}</span></div>
                   </>
                 )}
               </div>

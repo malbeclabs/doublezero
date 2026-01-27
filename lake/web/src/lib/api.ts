@@ -1277,6 +1277,28 @@ export async function fetchLinkHistory(timeRange?: string, buckets?: number): Pr
   return res.json()
 }
 
+// Single link history response
+export interface SingleLinkHistoryResponse {
+  pk: string
+  code: string
+  hours: LinkHourStatus[]
+  time_range: string
+  bucket_minutes: number
+  bucket_count: number
+}
+
+export async function fetchSingleLinkHistory(linkPk: string, timeRange?: string, buckets?: number): Promise<SingleLinkHistoryResponse> {
+  const params = new URLSearchParams()
+  if (timeRange) params.set('range', timeRange)
+  if (buckets) params.set('buckets', buckets.toString())
+  const url = `/api/status/links/${encodeURIComponent(linkPk)}/history${params.toString() ? '?' + params.toString() : ''}`
+  const res = await fetchWithRetry(url)
+  if (!res.ok) {
+    throw new Error('Failed to fetch link history')
+  }
+  return res.json()
+}
+
 // Device history types for status timeline
 export interface DeviceHourStatus {
   hour: string
@@ -2352,9 +2374,13 @@ export interface Link {
   side_a_pk: string
   side_a_code: string
   side_a_metro: string
+  side_a_iface_name: string
+  side_a_ip: string
   side_z_pk: string
   side_z_code: string
   side_z_metro: string
+  side_z_iface_name: string
+  side_z_ip: string
   contributor_pk: string
   contributor_code: string
   in_bps: number
@@ -2363,6 +2389,10 @@ export interface Link {
   utilization_out: number
   latency_us: number
   jitter_us: number
+  latency_a_to_z_us: number
+  jitter_a_to_z_us: number
+  latency_z_to_a_us: number
+  jitter_z_to_a_us: number
   loss_percent: number
 }
 

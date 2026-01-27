@@ -2,10 +2,14 @@ package handlers
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log"
 	"math"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -191,9 +195,13 @@ type LinkDetail struct {
 	SideAPK         string  `json:"side_a_pk"`
 	SideACode       string  `json:"side_a_code"`
 	SideAMetro      string  `json:"side_a_metro"`
+	SideAIfaceName  string  `json:"side_a_iface_name"`
+	SideAIP         string  `json:"side_a_ip"`
 	SideZPK         string  `json:"side_z_pk"`
 	SideZCode       string  `json:"side_z_code"`
 	SideZMetro      string  `json:"side_z_metro"`
+	SideZIfaceName  string  `json:"side_z_iface_name"`
+	SideZIP         string  `json:"side_z_ip"`
 	ContributorPK   string  `json:"contributor_pk"`
 	ContributorCode string  `json:"contributor_code"`
 	InBps           float64 `json:"in_bps"`
@@ -202,6 +210,10 @@ type LinkDetail struct {
 	UtilizationOut  float64 `json:"utilization_out"`
 	LatencyUs       float64 `json:"latency_us"`
 	JitterUs        float64 `json:"jitter_us"`
+	LatencyAtoZUs   float64 `json:"latency_a_to_z_us"`
+	JitterAtoZUs    float64 `json:"jitter_a_to_z_us"`
+	LatencyZtoAUs   float64 `json:"latency_z_to_a_us"`
+	JitterZtoAUs    float64 `json:"jitter_z_to_a_us"`
 	LossPercent     float64 `json:"loss_percent"`
 	PeakInBps       float64 `json:"peak_in_bps"`
 	PeakOutBps      float64 `json:"peak_out_bps"`
@@ -209,29 +221,29 @@ type LinkDetail struct {
 
 // TopologyLinkHealth represents the SLA health status of a link for topology overlay
 type TopologyLinkHealth struct {
-	LinkPK          string  `json:"link_pk"`
-	SideAPK         string  `json:"side_a_pk"`
-	SideACode       string  `json:"side_a_code"`
-	SideZPK         string  `json:"side_z_pk"`
-	SideZCode       string  `json:"side_z_code"`
-	AvgRttUs        float64 `json:"avg_rtt_us"`
-	P95RttUs        float64 `json:"p95_rtt_us"`
-	CommittedRttNs  int64   `json:"committed_rtt_ns"`
-	LossPct         float64 `json:"loss_pct"`
-	ExceedsCommit   bool    `json:"exceeds_commit"`
-	HasPacketLoss   bool    `json:"has_packet_loss"`
-	IsDark          bool    `json:"is_dark"`
-	SlaStatus       string  `json:"sla_status"` // "healthy", "warning", "critical", "unknown"
-	SlaRatio        float64 `json:"sla_ratio"`  // measured / committed (0 if no commitment)
+	LinkPK         string  `json:"link_pk"`
+	SideAPK        string  `json:"side_a_pk"`
+	SideACode      string  `json:"side_a_code"`
+	SideZPK        string  `json:"side_z_pk"`
+	SideZCode      string  `json:"side_z_code"`
+	AvgRttUs       float64 `json:"avg_rtt_us"`
+	P95RttUs       float64 `json:"p95_rtt_us"`
+	CommittedRttNs int64   `json:"committed_rtt_ns"`
+	LossPct        float64 `json:"loss_pct"`
+	ExceedsCommit  bool    `json:"exceeds_commit"`
+	HasPacketLoss  bool    `json:"has_packet_loss"`
+	IsDark         bool    `json:"is_dark"`
+	SlaStatus      string  `json:"sla_status"` // "healthy", "warning", "critical", "unknown"
+	SlaRatio       float64 `json:"sla_ratio"`  // measured / committed (0 if no commitment)
 }
 
 type TopologyLinkHealthResponse struct {
 	Links         []TopologyLinkHealth `json:"links"`
-	TotalLinks    int          `json:"total_links"`
-	HealthyCount  int          `json:"healthy_count"`
-	WarningCount  int          `json:"warning_count"`
-	CriticalCount int          `json:"critical_count"`
-	UnknownCount  int          `json:"unknown_count"`
+	TotalLinks    int                  `json:"total_links"`
+	HealthyCount  int                  `json:"healthy_count"`
+	WarningCount  int                  `json:"warning_count"`
+	CriticalCount int                  `json:"critical_count"`
+	UnknownCount  int                  `json:"unknown_count"`
 }
 
 func GetLinkHealth(w http.ResponseWriter, r *http.Request) {
@@ -377,8 +389,169 @@ func GetLink(w http.ResponseWriter, r *http.Request) {
 	}
 
 	start := time.Now()
-	query := `
-		WITH traffic_rates AS (
+	query := linkDetailQuery(linkDetailSelectsDefault, true)
+
+	var link LinkDetail
+	err := config.DB.QueryRow(ctx, query, pk).Scan(
+		&link.PK,
+		&link.Code,
+		&link.Status,
+		&link.LinkType,
+		&link.BandwidthBps,
+		&link.SideAPK,
+		&link.SideACode,
+		&link.SideAMetro,
+		&link.SideAIfaceName,
+		&link.SideAIP,
+		&link.SideZPK,
+		&link.SideZCode,
+		&link.SideZMetro,
+		&link.SideZIfaceName,
+		&link.SideZIP,
+		&link.ContributorPK,
+		&link.ContributorCode,
+		&link.InBps,
+		&link.OutBps,
+		&link.UtilizationIn,
+		&link.UtilizationOut,
+		&link.LatencyUs,
+		&link.JitterUs,
+		&link.LatencyAtoZUs,
+		&link.JitterAtoZUs,
+		&link.LatencyZtoAUs,
+		&link.JitterZtoAUs,
+		&link.LossPercent,
+		&link.PeakInBps,
+		&link.PeakOutBps,
+	)
+	duration := time.Since(start)
+	metrics.RecordClickHouseQuery(duration, err)
+
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		missingIP, missingIface, missingDirection := detectMissingLinkColumns(err)
+		if missingIP || missingIface || missingDirection {
+			fallbackSelects := linkDetailSelectsNoIP
+			if missingIface {
+				fallbackSelects = linkDetailSelectsNoIfaceOrIP
+			}
+			log.Printf("Link query missing columns (pk=%s). Retrying with fallback.", pk)
+			start = time.Now()
+			fallbackQuery := linkDetailQuery(fallbackSelects, !missingDirection)
+			err = config.DB.QueryRow(ctx, fallbackQuery, pk).Scan(
+				&link.PK,
+				&link.Code,
+				&link.Status,
+				&link.LinkType,
+				&link.BandwidthBps,
+				&link.SideAPK,
+				&link.SideACode,
+				&link.SideAMetro,
+				&link.SideAIfaceName,
+				&link.SideAIP,
+				&link.SideZPK,
+				&link.SideZCode,
+				&link.SideZMetro,
+				&link.SideZIfaceName,
+				&link.SideZIP,
+				&link.ContributorPK,
+				&link.ContributorCode,
+				&link.InBps,
+				&link.OutBps,
+				&link.UtilizationIn,
+				&link.UtilizationOut,
+				&link.LatencyUs,
+				&link.JitterUs,
+				&link.LatencyAtoZUs,
+				&link.JitterAtoZUs,
+				&link.LatencyZtoAUs,
+				&link.JitterZtoAUs,
+				&link.LossPercent,
+				&link.PeakInBps,
+				&link.PeakOutBps,
+			)
+			duration = time.Since(start)
+			metrics.RecordClickHouseQuery(duration, err)
+		}
+	}
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			log.Printf("Link query error: %v", err)
+			http.Error(w, "link not found", http.StatusNotFound)
+			return
+		}
+		log.Printf("Link query error: %v", err)
+		http.Error(w, "failed to fetch link", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(link); err != nil {
+		log.Printf("JSON encoding error: %v", err)
+	}
+}
+
+type linkDetailSelects struct {
+	SideAIfaceName string
+	SideAIP        string
+	SideZIfaceName string
+	SideZIP        string
+}
+
+var linkDetailSelectsDefault = linkDetailSelects{
+	SideAIfaceName: "COALESCE(l.side_a_iface_name, '')",
+	SideAIP:        "COALESCE(l.side_a_ip, '')",
+	SideZIfaceName: "COALESCE(l.side_z_iface_name, '')",
+	SideZIP:        "COALESCE(l.side_z_ip, '')",
+}
+
+var linkDetailSelectsNoIP = linkDetailSelects{
+	SideAIfaceName: "COALESCE(l.side_a_iface_name, '')",
+	SideAIP:        "''",
+	SideZIfaceName: "COALESCE(l.side_z_iface_name, '')",
+	SideZIP:        "''",
+}
+
+var linkDetailSelectsNoIfaceOrIP = linkDetailSelects{
+	SideAIfaceName: "''",
+	SideAIP:        "''",
+	SideZIfaceName: "''",
+	SideZIP:        "''",
+}
+
+func linkDetailQuery(selects linkDetailSelects, includeDirectional bool) string {
+	latencyPerDirectionSelect := `
+		latency_per_direction AS (
+			SELECT
+				link_pk,
+				avgIf(rtt_us, direction = 'a_to_z') as avg_rtt_a_to_z,
+				avgIf(abs(ipdv_us), direction = 'a_to_z') as avg_jitter_a_to_z,
+				avgIf(rtt_us, direction = 'z_to_a') as avg_rtt_z_to_a,
+				avgIf(abs(ipdv_us), direction = 'z_to_a') as avg_jitter_z_to_a
+			FROM fact_dz_device_link_latency
+			WHERE event_ts > now() - INTERVAL 3 HOUR
+			GROUP BY link_pk
+		)`
+	latencyPerDirectionJoin := `
+		LEFT JOIN latency_per_direction lpd ON l.pk = lpd.link_pk`
+	latencyPerDirectionFields := `
+			COALESCE(lpd.avg_rtt_a_to_z, 0) as latency_a_to_z_us,
+			COALESCE(lpd.avg_jitter_a_to_z, 0) as jitter_a_to_z_us,
+			COALESCE(lpd.avg_rtt_z_to_a, 0) as latency_z_to_a_us,
+			COALESCE(lpd.avg_jitter_z_to_a, 0) as jitter_z_to_a_us,`
+
+	if !includeDirectional {
+		latencyPerDirectionJoin = ""
+		latencyPerDirectionFields = `
+			toFloat64(0) as latency_a_to_z_us,
+			toFloat64(0) as jitter_a_to_z_us,
+			toFloat64(0) as latency_z_to_a_us,
+			toFloat64(0) as jitter_z_to_a_us,`
+	}
+
+	ctes := []string{
+		`
+		traffic_rates AS (
 			SELECT
 				link_pk,
 				CASE WHEN SUM(delta_duration) > 0
@@ -396,7 +569,8 @@ func GetLink(w http.ResponseWriter, r *http.Request) {
 				AND in_octets_delta >= 0
 				AND out_octets_delta >= 0
 			GROUP BY link_pk
-		),
+		)`,
+		`
 		peak_rates AS (
 			SELECT
 				link_pk,
@@ -409,7 +583,8 @@ func GetLink(w http.ResponseWriter, r *http.Request) {
 				AND in_octets_delta >= 0
 				AND out_octets_delta >= 0
 			GROUP BY link_pk
-		),
+		)`,
+		`
 		latency_stats AS (
 			SELECT
 				link_pk,
@@ -419,7 +594,17 @@ func GetLink(w http.ResponseWriter, r *http.Request) {
 			FROM fact_dz_device_link_latency
 			WHERE event_ts > now() - INTERVAL 3 HOUR
 			GROUP BY link_pk
-		)
+		)`,
+	}
+
+	if includeDirectional {
+		ctes = append(ctes, latencyPerDirectionSelect)
+	}
+
+	withClause := fmt.Sprintf("WITH %s", strings.Join(ctes, ","))
+
+	return fmt.Sprintf(`
+		%s
 		SELECT
 			l.pk,
 			l.code,
@@ -429,9 +614,13 @@ func GetLink(w http.ResponseWriter, r *http.Request) {
 			COALESCE(l.side_a_pk, '') as side_a_pk,
 			COALESCE(da.code, '') as side_a_code,
 			COALESCE(ma.code, '') as side_a_metro,
+			%s as side_a_iface_name,
+			%s as side_a_ip,
 			COALESCE(l.side_z_pk, '') as side_z_pk,
 			COALESCE(dz.code, '') as side_z_code,
 			COALESCE(mz.code, '') as side_z_metro,
+			%s as side_z_iface_name,
+			%s as side_z_ip,
 			COALESCE(l.contributor_pk, '') as contributor_pk,
 			COALESCE(c.code, '') as contributor_code,
 			COALESCE(tr.in_bps, 0) as in_bps,
@@ -440,6 +629,7 @@ func GetLink(w http.ResponseWriter, r *http.Request) {
 			CASE WHEN l.bandwidth_bps > 0 THEN COALESCE(tr.out_bps, 0) * 100.0 / l.bandwidth_bps ELSE 0 END as utilization_out,
 			COALESCE(ls.avg_rtt_us, 0) as latency_us,
 			COALESCE(ls.avg_jitter_us, 0) as jitter_us,
+			%s
 			COALESCE(ls.loss_percent, 0) as loss_percent,
 			COALESCE(pr.peak_in_bps, 0) as peak_in_bps,
 			COALESCE(pr.peak_out_bps, 0) as peak_out_bps
@@ -452,45 +642,29 @@ func GetLink(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN traffic_rates tr ON l.pk = tr.link_pk
 		LEFT JOIN peak_rates pr ON l.pk = pr.link_pk
 		LEFT JOIN latency_stats ls ON l.pk = ls.link_pk
+		%s
 		WHERE l.pk = ?
-	`
-
-	var link LinkDetail
-	err := config.DB.QueryRow(ctx, query, pk).Scan(
-		&link.PK,
-		&link.Code,
-		&link.Status,
-		&link.LinkType,
-		&link.BandwidthBps,
-		&link.SideAPK,
-		&link.SideACode,
-		&link.SideAMetro,
-		&link.SideZPK,
-		&link.SideZCode,
-		&link.SideZMetro,
-		&link.ContributorPK,
-		&link.ContributorCode,
-		&link.InBps,
-		&link.OutBps,
-		&link.UtilizationIn,
-		&link.UtilizationOut,
-		&link.LatencyUs,
-		&link.JitterUs,
-		&link.LossPercent,
-		&link.PeakInBps,
-		&link.PeakOutBps,
+	`,
+		withClause,
+		selects.SideAIfaceName,
+		selects.SideAIP,
+		selects.SideZIfaceName,
+		selects.SideZIP,
+		latencyPerDirectionFields,
+		latencyPerDirectionJoin,
 	)
-	duration := time.Since(start)
-	metrics.RecordClickHouseQuery(duration, err)
+}
 
-	if err != nil {
-		log.Printf("Link query error: %v", err)
-		http.Error(w, "link not found", http.StatusNotFound)
-		return
+func detectMissingLinkColumns(err error) (missingIP bool, missingIface bool, missingDirection bool) {
+	if err == nil {
+		return false, false, false
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(link); err != nil {
-		log.Printf("JSON encoding error: %v", err)
+	msg := err.Error()
+	if !strings.Contains(msg, "Unknown") && !strings.Contains(msg, "Missing") && !strings.Contains(msg, "identifier") {
+		return false, false, false
 	}
+	missingIP = strings.Contains(msg, "side_a_ip") || strings.Contains(msg, "side_z_ip")
+	missingIface = strings.Contains(msg, "side_a_iface_name") || strings.Contains(msg, "side_z_iface_name")
+	missingDirection = strings.Contains(msg, "direction")
+	return missingIP, missingIface, missingDirection
 }

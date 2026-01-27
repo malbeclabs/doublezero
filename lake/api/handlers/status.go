@@ -54,17 +54,17 @@ type SystemHealth struct {
 
 type NetworkSummary struct {
 	// Counts
-	ValidatorsOnDZ   uint64  `json:"validators_on_dz"`
-	TotalStakeSol    float64 `json:"total_stake_sol"`
-	StakeSharePct    float64 `json:"stake_share_pct"`
-	StakeShareDelta  float64 `json:"stake_share_delta"` // Change from 24h ago (percentage points)
-	Users            uint64  `json:"users"`
-	Devices          uint64  `json:"devices"`
-	Links            uint64  `json:"links"`
-	Contributors     uint64  `json:"contributors"`
-	Metros           uint64  `json:"metros"`
-	BandwidthBps     int64   `json:"bandwidth_bps"`
-	UserInboundBps   float64 `json:"user_inbound_bps"`
+	ValidatorsOnDZ  uint64  `json:"validators_on_dz"`
+	TotalStakeSol   float64 `json:"total_stake_sol"`
+	StakeSharePct   float64 `json:"stake_share_pct"`
+	StakeShareDelta float64 `json:"stake_share_delta"` // Change from 24h ago (percentage points)
+	Users           uint64  `json:"users"`
+	Devices         uint64  `json:"devices"`
+	Links           uint64  `json:"links"`
+	Contributors    uint64  `json:"contributors"`
+	Metros          uint64  `json:"metros"`
+	BandwidthBps    int64   `json:"bandwidth_bps"`
+	UserInboundBps  float64 `json:"user_inbound_bps"`
 
 	// Status breakdown
 	DevicesByStatus map[string]uint64 `json:"devices_by_status"`
@@ -72,26 +72,26 @@ type NetworkSummary struct {
 }
 
 type LinkHealth struct {
-	Total          uint64       `json:"total"`
-	Healthy        uint64       `json:"healthy"`
-	Degraded       uint64       `json:"degraded"`  // High latency or some loss
-	Unhealthy      uint64       `json:"unhealthy"` // Significant loss or down
-	Disabled       uint64       `json:"disabled"`  // Extended packet loss (100% for 2+ hours)
-	Issues         []LinkIssue  `json:"issues"`    // Top issues
-	HighUtilLinks  []LinkMetric `json:"high_util_links"` // Links with high utilization
-	TopUtilLinks   []LinkMetric `json:"top_util_links"`  // Top 10 links by max utilization
+	Total         uint64       `json:"total"`
+	Healthy       uint64       `json:"healthy"`
+	Degraded      uint64       `json:"degraded"`        // High latency or some loss
+	Unhealthy     uint64       `json:"unhealthy"`       // Significant loss or down
+	Disabled      uint64       `json:"disabled"`        // Extended packet loss (100% for 2+ hours)
+	Issues        []LinkIssue  `json:"issues"`          // Top issues
+	HighUtilLinks []LinkMetric `json:"high_util_links"` // Links with high utilization
+	TopUtilLinks  []LinkMetric `json:"top_util_links"`  // Top 10 links by max utilization
 }
 
 type LinkIssue struct {
 	Code        string  `json:"code"`
 	LinkType    string  `json:"link_type"`
 	Contributor string  `json:"contributor"`
-	Issue       string  `json:"issue"`       // "packet_loss", "high_latency", "down"
-	Value       float64 `json:"value"`       // The problematic value
-	Threshold   float64 `json:"threshold"`   // The threshold exceeded
+	Issue       string  `json:"issue"`     // "packet_loss", "high_latency", "down"
+	Value       float64 `json:"value"`     // The problematic value
+	Threshold   float64 `json:"threshold"` // The threshold exceeded
 	SideAMetro  string  `json:"side_a_metro"`
 	SideZMetro  string  `json:"side_z_metro"`
-	Since       string  `json:"since"`       // ISO timestamp when issue started
+	Since       string  `json:"since"` // ISO timestamp when issue started
 }
 
 type LinkMetric struct {
@@ -148,10 +148,10 @@ type InterfaceIssue struct {
 	Contributor        string `json:"contributor"`
 	Metro              string `json:"metro"`
 	InterfaceName      string `json:"interface_name"`
-	LinkPK             string `json:"link_pk,omitempty"`      // Empty if not a link interface
-	LinkCode           string `json:"link_code,omitempty"`    // Empty if not a link interface
-	LinkType           string `json:"link_type,omitempty"`    // WAN, DZX, etc.
-	LinkSide           string `json:"link_side,omitempty"`    // A or Z
+	LinkPK             string `json:"link_pk,omitempty"`   // Empty if not a link interface
+	LinkCode           string `json:"link_code,omitempty"` // Empty if not a link interface
+	LinkType           string `json:"link_type,omitempty"` // WAN, DZX, etc.
+	LinkSide           string `json:"link_side,omitempty"` // A or Z
 	InErrors           uint64 `json:"in_errors"`
 	OutErrors          uint64 `json:"out_errors"`
 	InDiscards         uint64 `json:"in_discards"`
@@ -188,12 +188,12 @@ type InfrastructureAlerts struct {
 // Thresholds for health classification (matching methodology)
 // Packet loss severity: Minor (<1%), Moderate (1-10%), Severe (≥10%)
 const (
-	LatencyWarningPct  = 20.0  // 20% over committed RTT
-	LatencyCriticalPct = 50.0  // 50% over committed RTT
-	LossWarningPct     = 1.0   // 1% - Moderate (degraded)
-	LossCriticalPct    = 10.0  // 10% - Severe (unhealthy)
-	UtilWarningPct     = 70.0  // 70%
-	UtilCriticalPct    = 90.0  // 90%
+	LatencyWarningPct  = 20.0 // 20% over committed RTT
+	LatencyCriticalPct = 50.0 // 50% over committed RTT
+	LossWarningPct     = 1.0  // 1% - Moderate (degraded)
+	LossCriticalPct    = 10.0 // 10% - Severe (unhealthy)
+	UtilWarningPct     = 70.0 // 70%
+	UtilCriticalPct    = 90.0 // 90%
 )
 
 func GetStatus(w http.ResponseWriter, r *http.Request) {
@@ -1086,11 +1086,11 @@ type LinkHistory struct {
 }
 
 type LinkHistoryResponse struct {
-	Links          []LinkHistory `json:"links"`
-	TimeRange      string        `json:"time_range"`       // "24h", "3d", "7d"
-	BucketMinutes  int           `json:"bucket_minutes"`   // Size of each bucket in minutes
-	BucketCount    int           `json:"bucket_count"`     // Number of buckets
-	Error          string        `json:"error,omitempty"`
+	Links         []LinkHistory `json:"links"`
+	TimeRange     string        `json:"time_range"`     // "24h", "3d", "7d"
+	BucketMinutes int           `json:"bucket_minutes"` // Size of each bucket in minutes
+	BucketCount   int           `json:"bucket_count"`   // Number of buckets
+	Error         string        `json:"error,omitempty"`
 }
 
 func GetLinkHistory(w http.ResponseWriter, r *http.Request) {
@@ -1211,17 +1211,17 @@ func fetchLinkHistoryData(ctx context.Context, timeRange string, requestedBucket
 
 	// Build map of link metadata
 	type linkMeta struct {
-		code              string
-		linkType          string
-		contributor       string
-		sideAMetro        string
-		sideZMetro        string
-		sideADevice       string
-		sideZDevice       string
-		bandwidthBps      int64
-		committedRttUs    float64
-		delayOverrideNs   int64
-		status            string
+		code            string
+		linkType        string
+		contributor     string
+		sideAMetro      string
+		sideZMetro      string
+		sideADevice     string
+		sideZDevice     string
+		bandwidthBps    int64
+		committedRttUs  float64
+		delayOverrideNs int64
+		status          string
 	}
 	linkMap := make(map[string]linkMeta)
 
@@ -2386,12 +2386,12 @@ type DeviceInterfaceHistoryResponse struct {
 
 // InterfaceHistory is the history of a single interface
 type InterfaceHistory struct {
-	InterfaceName string                   `json:"interface_name"`
-	LinkPK        string                   `json:"link_pk,omitempty"`
-	LinkCode      string                   `json:"link_code,omitempty"`
-	LinkType      string                   `json:"link_type,omitempty"`
-	LinkSide      string                   `json:"link_side,omitempty"`
-	Hours         []InterfaceHourStatus    `json:"hours"`
+	InterfaceName string                `json:"interface_name"`
+	LinkPK        string                `json:"link_pk,omitempty"`
+	LinkCode      string                `json:"link_code,omitempty"`
+	LinkType      string                `json:"link_type,omitempty"`
+	LinkSide      string                `json:"link_side,omitempty"`
+	Hours         []InterfaceHourStatus `json:"hours"`
 }
 
 // InterfaceHourStatus is the status of an interface for a single time bucket
@@ -2595,6 +2595,309 @@ func fetchDeviceInterfaceHistoryData(ctx context.Context, devicePK string, timeR
 
 	return &DeviceInterfaceHistoryResponse{
 		Interfaces:    interfaces,
+		TimeRange:     timeRange,
+		BucketMinutes: bucketMinutes,
+		BucketCount:   bucketCount,
+	}, nil
+}
+
+// SingleLinkHistoryResponse is the response for a single link's status history
+type SingleLinkHistoryResponse struct {
+	PK            string           `json:"pk"`
+	Code          string           `json:"code"`
+	Hours         []LinkHourStatus `json:"hours"`
+	TimeRange     string           `json:"time_range"`
+	BucketMinutes int              `json:"bucket_minutes"`
+	BucketCount   int              `json:"bucket_count"`
+}
+
+// GetSingleLinkHistory returns the status history for a single link
+func GetSingleLinkHistory(w http.ResponseWriter, r *http.Request) {
+	linkPK := chi.URLParam(r, "pk")
+	if linkPK == "" {
+		http.Error(w, "missing link pk", http.StatusBadRequest)
+		return
+	}
+
+	// Parse time range parameter
+	timeRange := r.URL.Query().Get("range")
+	if timeRange == "" {
+		timeRange = "24h"
+	}
+
+	// Parse optional bucket count
+	requestedBuckets := 24 // default
+	if b := r.URL.Query().Get("buckets"); b != "" {
+		if n, err := strconv.Atoi(b); err == nil && n >= 12 && n <= 168 {
+			requestedBuckets = n
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	resp, err := fetchSingleLinkHistoryData(ctx, linkPK, timeRange, requestedBuckets)
+	if err != nil {
+		log.Printf("Error fetching single link history: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if resp == nil {
+		http.Error(w, "Link not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+func fetchSingleLinkHistoryData(ctx context.Context, linkPK string, timeRange string, requestedBuckets int) (*SingleLinkHistoryResponse, error) {
+	// Calculate bucket size based on time range and requested buckets
+	var totalMinutes int
+	switch timeRange {
+	case "1h":
+		totalMinutes = 60
+	case "3h":
+		totalMinutes = 3 * 60
+	case "6h":
+		totalMinutes = 6 * 60
+	case "12h":
+		totalMinutes = 12 * 60
+	case "3d":
+		totalMinutes = 3 * 24 * 60
+	case "7d":
+		totalMinutes = 7 * 24 * 60
+	default: // "24h"
+		timeRange = "24h"
+		totalMinutes = 24 * 60
+	}
+
+	bucketMinutes := totalMinutes / requestedBuckets
+	if bucketMinutes < 5 {
+		bucketMinutes = 5
+	}
+	bucketCount := totalMinutes / bucketMinutes
+	totalHours := totalMinutes / 60
+	bucketDuration := time.Duration(bucketMinutes) * time.Minute
+	now := time.Now().UTC()
+
+	// Build the bucket interval expression
+	var bucketInterval string
+	if bucketMinutes >= 60 && bucketMinutes%60 == 0 {
+		bucketInterval = fmt.Sprintf("toStartOfInterval(event_ts, INTERVAL %d HOUR)", bucketMinutes/60)
+	} else {
+		bucketInterval = fmt.Sprintf("toStartOfInterval(event_ts, INTERVAL %d MINUTE)", bucketMinutes)
+	}
+
+	// Get link metadata
+	linkQuery := `
+		SELECT l.code, l.bandwidth_bps, l.committed_rtt_ns / 1000.0 as committed_rtt_us,
+			   l.side_a_pk, l.side_z_pk, l.side_a_iface_name, l.side_z_iface_name
+		FROM dz_links_current l
+		WHERE l.pk = ?
+	`
+	var code string
+	var bandwidthBps int64
+	var committedRttUs float64
+	var sideAPK, sideZPK, sideAIface, sideZIface string
+	err := config.DB.QueryRow(ctx, linkQuery, linkPK).Scan(&code, &bandwidthBps, &committedRttUs, &sideAPK, &sideZPK, &sideAIface, &sideZIface)
+	if err != nil {
+		return nil, nil // Link not found
+	}
+
+	// Get latency/loss stats per direction
+	latencyQuery := `
+		SELECT
+			` + bucketInterval + ` as bucket,
+			if(origin_device_pk = ?, 'A', 'Z') as direction,
+			avg(rtt_us) as avg_latency,
+			countIf(loss OR rtt_us = 0) * 100.0 / count(*) as loss_pct,
+			count(*) as samples
+		FROM fact_dz_device_link_latency
+		WHERE link_pk = ? AND event_ts > now() - INTERVAL ? HOUR
+		GROUP BY bucket, direction
+		ORDER BY bucket, direction
+	`
+	latencyRows, err := config.DB.Query(ctx, latencyQuery, sideAPK, linkPK, totalHours)
+	if err != nil {
+		return nil, fmt.Errorf("latency query error: %w", err)
+	}
+	defer latencyRows.Close()
+
+	type sideStats struct {
+		avgLatency float64
+		lossPct    float64
+		samples    uint64
+	}
+	type bucketStats struct {
+		sideA *sideStats
+		sideZ *sideStats
+	}
+	bucketMap := make(map[string]*bucketStats)
+
+	for latencyRows.Next() {
+		var bucket time.Time
+		var direction string
+		var avgLatency, lossPct float64
+		var samples uint64
+		if err := latencyRows.Scan(&bucket, &direction, &avgLatency, &lossPct, &samples); err != nil {
+			return nil, fmt.Errorf("latency scan error: %w", err)
+		}
+
+		key := bucket.UTC().Format(time.RFC3339)
+		if bucketMap[key] == nil {
+			bucketMap[key] = &bucketStats{}
+		}
+		stats := &sideStats{avgLatency: avgLatency, lossPct: lossPct, samples: samples}
+		if direction == "A" {
+			bucketMap[key].sideA = stats
+		} else {
+			bucketMap[key].sideZ = stats
+		}
+	}
+
+	// Get interface counters for both sides
+	interfaceQuery := `
+		SELECT
+			` + bucketInterval + ` as bucket,
+			if(device_pk = ?, 'A', 'Z') as side,
+			toUInt64(sum(greatest(0, in_errors_delta))) as in_errors,
+			toUInt64(sum(greatest(0, out_errors_delta))) as out_errors,
+			toUInt64(sum(greatest(0, in_discards_delta))) as in_discards,
+			toUInt64(sum(greatest(0, out_discards_delta))) as out_discards,
+			toUInt64(sum(greatest(0, carrier_transitions_delta))) as carrier_transitions,
+			toUInt64(sum(greatest(0, in_octets_delta))) as in_octets,
+			toUInt64(sum(greatest(0, out_octets_delta))) as out_octets,
+			sum(delta_duration) as duration
+		FROM fact_dz_device_interface_counters
+		WHERE link_pk = ? AND event_ts > now() - INTERVAL ? HOUR
+		GROUP BY bucket, side
+		ORDER BY bucket, side
+	`
+	ifaceRows, err := config.DB.Query(ctx, interfaceQuery, sideAPK, linkPK, totalHours)
+	if err != nil {
+		return nil, fmt.Errorf("interface query error: %w", err)
+	}
+	defer ifaceRows.Close()
+
+	type ifaceStats struct {
+		inErrors           uint64
+		outErrors          uint64
+		inDiscards         uint64
+		outDiscards        uint64
+		carrierTransitions uint64
+		inOctets           uint64
+		outOctets          uint64
+		duration           float64
+	}
+	type ifaceBucketStats struct {
+		sideA *ifaceStats
+		sideZ *ifaceStats
+	}
+	ifaceBucketMap := make(map[string]*ifaceBucketStats)
+
+	for ifaceRows.Next() {
+		var bucket time.Time
+		var side string
+		var stats ifaceStats
+		if err := ifaceRows.Scan(&bucket, &side, &stats.inErrors, &stats.outErrors, &stats.inDiscards, &stats.outDiscards, &stats.carrierTransitions, &stats.inOctets, &stats.outOctets, &stats.duration); err != nil {
+			return nil, fmt.Errorf("interface scan error: %w", err)
+		}
+
+		key := bucket.UTC().Format(time.RFC3339)
+		if ifaceBucketMap[key] == nil {
+			ifaceBucketMap[key] = &ifaceBucketStats{}
+		}
+		if side == "A" {
+			ifaceBucketMap[key].sideA = &stats
+		} else {
+			ifaceBucketMap[key].sideZ = &stats
+		}
+	}
+
+	// Build hour statuses
+	var hourStatuses []LinkHourStatus
+	for i := bucketCount - 1; i >= 0; i-- {
+		bucketStart := now.Truncate(bucketDuration).Add(-time.Duration(i) * bucketDuration)
+		key := bucketStart.UTC().Format(time.RFC3339)
+
+		var hs LinkHourStatus
+		hs.Hour = key
+
+		// Latency/loss stats
+		if bs := bucketMap[key]; bs != nil {
+			var totalLatency, totalLoss float64
+			var totalSamples uint64
+			if bs.sideA != nil {
+				hs.SideALatencyUs = bs.sideA.avgLatency
+				hs.SideALossPct = bs.sideA.lossPct
+				hs.SideASamples = bs.sideA.samples
+				totalLatency += bs.sideA.avgLatency * float64(bs.sideA.samples)
+				totalLoss += bs.sideA.lossPct * float64(bs.sideA.samples)
+				totalSamples += bs.sideA.samples
+			}
+			if bs.sideZ != nil {
+				hs.SideZLatencyUs = bs.sideZ.avgLatency
+				hs.SideZLossPct = bs.sideZ.lossPct
+				hs.SideZSamples = bs.sideZ.samples
+				totalLatency += bs.sideZ.avgLatency * float64(bs.sideZ.samples)
+				totalLoss += bs.sideZ.lossPct * float64(bs.sideZ.samples)
+				totalSamples += bs.sideZ.samples
+			}
+			if totalSamples > 0 {
+				hs.AvgLatencyUs = totalLatency / float64(totalSamples)
+				hs.AvgLossPct = totalLoss / float64(totalSamples)
+				hs.Samples = totalSamples
+			}
+		}
+
+		// Interface stats
+		if ibs := ifaceBucketMap[key]; ibs != nil {
+			if ibs.sideA != nil {
+				hs.SideAInErrors = ibs.sideA.inErrors
+				hs.SideAOutErrors = ibs.sideA.outErrors
+				hs.SideAInDiscards = ibs.sideA.inDiscards
+				hs.SideAOutDiscards = ibs.sideA.outDiscards
+				hs.SideACarrierTransitions = ibs.sideA.carrierTransitions
+				if ibs.sideA.duration > 0 && bandwidthBps > 0 {
+					inRate := float64(ibs.sideA.inOctets) * 8 / ibs.sideA.duration
+					outRate := float64(ibs.sideA.outOctets) * 8 / ibs.sideA.duration
+					hs.UtilizationInPct = inRate * 100 / float64(bandwidthBps)
+					hs.UtilizationOutPct = outRate * 100 / float64(bandwidthBps)
+				}
+			}
+			if ibs.sideZ != nil {
+				hs.SideZInErrors = ibs.sideZ.inErrors
+				hs.SideZOutErrors = ibs.sideZ.outErrors
+				hs.SideZInDiscards = ibs.sideZ.inDiscards
+				hs.SideZOutDiscards = ibs.sideZ.outDiscards
+				hs.SideZCarrierTransitions = ibs.sideZ.carrierTransitions
+			}
+		}
+
+		// Determine status
+		if hs.Samples == 0 {
+			hs.Status = "no_data"
+		} else if hs.AvgLossPct >= LossCriticalPct {
+			hs.Status = "unhealthy"
+		} else if hs.AvgLossPct >= LossWarningPct {
+			hs.Status = "degraded"
+		} else if committedRttUs > 0 && hs.AvgLatencyUs > committedRttUs*2 {
+			hs.Status = "unhealthy"
+		} else if committedRttUs > 0 && hs.AvgLatencyUs > committedRttUs*1.5 {
+			hs.Status = "degraded"
+		} else {
+			hs.Status = "healthy"
+		}
+
+		hourStatuses = append(hourStatuses, hs)
+	}
+
+	return &SingleLinkHistoryResponse{
+		PK:            linkPK,
+		Code:          code,
+		Hours:         hourStatuses,
 		TimeRange:     timeRange,
 		BucketMinutes: bucketMinutes,
 		BucketCount:   bucketCount,

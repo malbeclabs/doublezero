@@ -98,12 +98,41 @@ transceiver qsfp default-mode 4x10G
 !
 service routing protocols model multi-agent
 !
+! Hardware agents (not present in cEOS)
 agent PowerManager shutdown
 agent LedPolicy shutdown
 agent Thermostat shutdown
 agent PowerFuse shutdown
 agent StandbyCpld shutdown
 agent LicenseManager shutdown
+! Unused agents disabled to reduce memory (~1.4GB savings per device).
+! NOTE: Do NOT disable PhyEthtool - it breaks the management namespace.
+agent AirStream shutdown
+agent AleOpenConfig shutdown
+agent AleVirtualL3Uni shutdown
+agent ArfaAegis shutdown
+agent ArfaState shutdown
+agent Bfd shutdown
+agent BessMgr shutdown
+agent CapiApp shutdown
+agent Dot1x shutdown
+agent IgmpSnooping shutdown
+agent L1OpenConfig shutdown
+agent L2Rib shutdown
+agent LacpTxAgent shutdown
+agent Lag shutdown
+agent Lldp shutdown
+agent Mpls shutdown
+agent MplsEtba shutdown
+agent MplsUtilLsp shutdown
+agent Octa shutdown
+agent PortSec shutdown
+agent Qos shutdown
+agent RecoveryPolicy shutdown
+agent SharedSecretPro shutdown
+agent Stp shutdown
+agent StpTopology shutdown
+agent StpTxRx shutdown
 !
 hostname {{.Hostname}}
 !

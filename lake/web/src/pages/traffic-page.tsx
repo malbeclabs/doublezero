@@ -4,6 +4,7 @@ import { useDelayedLoading } from '@/hooks/use-delayed-loading'
 import { ChevronDown, GripVertical, Check } from 'lucide-react'
 import { fetchTrafficData } from '@/lib/api'
 import { TrafficChart } from '@/components/traffic-chart-uplot'
+import { LoadingSplash } from '@/components/loading-splash'
 
 // Lazy chart wrapper that only renders when in viewport
 function LazyChart({ children, height = 600 }: { children: React.ReactNode; height?: number }) {
@@ -87,27 +88,6 @@ const layoutLabels: Record<Layout, string> = {
   '2x2': '2',
 }
 
-function Skeleton({ className }: { className?: string }) {
-  return <div className={`animate-pulse bg-muted rounded ${className || ''}`} />
-}
-
-function TrafficPageSkeleton() {
-  return (
-    <div className="flex-1 overflow-auto">
-      <div className="max-w-7xl mx-auto px-4 sm:px-8 py-8">
-        <div className="flex items-center justify-between mb-6">
-          <Skeleton className="h-8 w-32" />
-          <Skeleton className="h-9 w-40" />
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-[600px]" />
-          ))}
-        </div>
-      </div>
-    </div>
-  )
-}
 
 function TimeRangeSelector({
   value,
@@ -491,7 +471,7 @@ export function TrafficPage() {
   const showLoading = useDelayedLoading(tunnelLoading || nonTunnelLoading)
 
   if (showLoading) {
-    return <TrafficPageSkeleton />
+    return <LoadingSplash />
   }
 
   if (tunnelError || nonTunnelError) {

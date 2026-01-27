@@ -429,14 +429,25 @@ func (dn *TestDevnet) ConnectUserTunnelWithAllocatedIP(t *testing.T, client *dev
 	dn.log.Info("--> User tunnel with allocated IP connected")
 }
 
-func (dn *TestDevnet) ConnectMulticastPublisher(t *testing.T, client *devnet.Client, multicastGroupCode string) {
-	dn.log.Info("==> Connecting multicast publisher", "clientIP", client.CYOANetworkIP)
+func (dn *TestDevnet) ConnectMulticastPublisher(t *testing.T, client *devnet.Client, multicastGroupCodes ...string) {
+	dn.log.Info("==> Connecting multicast publisher", "clientIP", client.CYOANetworkIP, "groups", multicastGroupCodes)
 
 	// Set access pass for the client.
 	_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey})
 	require.NoError(t, err)
 
-	_, err = client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast publisher " + multicastGroupCode + " --client-ip " + client.CYOANetworkIP})
+	groupArgs := strings.Join(multicastGroupCodes, " ")
+	_, err = client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast publisher " + groupArgs + " --client-ip " + client.CYOANetworkIP})
+	require.NoError(t, err, "failed to connect multicast publisher")
+
+	dn.log.Info("--> Multicast publisher connected")
+}
+
+func (dn *TestDevnet) ConnectMulticastPublisherSkipAccessPass(t *testing.T, client *devnet.Client, multicastGroupCodes ...string) {
+	dn.log.Info("==> Connecting multicast publisher", "clientIP", client.CYOANetworkIP, "groups", multicastGroupCodes)
+
+	groupArgs := strings.Join(multicastGroupCodes, " ")
+	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast publisher " + groupArgs + " --client-ip " + client.CYOANetworkIP})
 	require.NoError(t, err, "failed to connect multicast publisher")
 
 	dn.log.Info("--> Multicast publisher connected")

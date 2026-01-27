@@ -1,10 +1,20 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useDelayedLoading } from '@/hooks/use-delayed-loading'
-import { ChevronDown, GripVertical, Check } from 'lucide-react'
-import { fetchTrafficData } from '@/lib/api'
+import { ChevronDown, GripVertical, Check, RefreshCw } from 'lucide-react'
+import { fetchTrafficData, fetchTopology, type TopologyLink } from '@/lib/api'
 import { TrafficChart } from '@/components/traffic-chart-uplot'
 import { LoadingSplash } from '@/components/loading-splash'
+
+export interface LinkLookupInfo {
+  pk: string
+  code: string
+  bandwidth_bps: number
+  side_a_pk: string
+  side_a_code: string
+  side_z_pk: string
+  side_z_code: string
+}
 
 // Lazy chart wrapper that only renders when in viewport
 function LazyChart({ children, height = 600 }: { children: React.ReactNode; height?: number }) {
@@ -86,6 +96,24 @@ type Layout = '1x4' | '2x2'
 const layoutLabels: Record<Layout, string> = {
   '1x4': '1',
   '2x2': '2',
+}
+
+type RefreshInterval = 'never' | '30s' | '1m' | '10m' | '30m'
+
+const refreshIntervalLabels: Record<RefreshInterval, string> = {
+  'never': 'Never',
+  '30s': '30 seconds',
+  '1m': '1 minute',
+  '10m': '10 minutes',
+  '30m': '30 minutes',
+}
+
+const refreshIntervalMs: Record<RefreshInterval, number | false> = {
+  'never': false,
+  '30s': 30000,
+  '1m': 60000,
+  '10m': 600000,
+  '30m': 1800000,
 }
 
 
@@ -327,6 +355,51 @@ function LayoutSelector({
   )
 }
 
+function RefreshIntervalSelector({
+  value,
+  onChange,
+}: {
+  value: RefreshInterval
+  onChange: (value: RefreshInterval) => void
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+
+  return (
+    <div className="relative inline-block">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="px-3 py-1.5 text-sm border border-border rounded-md hover:bg-muted transition-colors inline-flex items-center gap-1.5"
+      >
+        Auto-refresh: {refreshIntervalLabels[value]}
+        <ChevronDown className="h-4 w-4" />
+      </button>
+      {isOpen && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
+          <div className="absolute right-0 top-full mt-1 z-50 bg-popover border border-border rounded-md shadow-lg py-1 min-w-[180px]">
+            {(['never', '30s', '1m', '10m', '30m'] as RefreshInterval[]).map((interval) => (
+              <button
+                key={interval}
+                onClick={() => {
+                  onChange(interval)
+                  setIsOpen(false)
+                }}
+                className={`w-full px-3 py-1.5 text-left text-sm transition-colors ${
+                  value === interval
+                    ? 'bg-muted text-foreground'
+                    : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                }`}
+              >
+                {refreshIntervalLabels[interval]}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 export function TrafficPage() {
   const [timeRange, setTimeRange] = useState<TimeRange>('6h')
   const [bucketSize, setBucketSize] = useState<BucketSize>('auto')
@@ -341,6 +414,7 @@ export function TrafficPage() {
     new Set(['non-tunnel-stacked', 'non-tunnel', 'tunnel-stacked', 'tunnel'])
   )
   const [layout, setLayout] = useState<Layout>('1x4')
+  const [refreshInterval, setRefreshInterval] = useState<RefreshInterval>('never')
 
   // Load time range from localStorage
   useEffect(() => {
@@ -384,6 +458,14 @@ export function TrafficPage() {
     }
   }, [])
 
+  // Load refresh interval from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem('traffic-refresh-interval')
+    if (saved && saved in refreshIntervalLabels) {
+      setRefreshInterval(saved as RefreshInterval)
+    }
+  }, [])
+
   // Save time range to localStorage
   const handleTimeRangeChange = (range: TimeRange) => {
     setTimeRange(range)
@@ -424,6 +506,12 @@ export function TrafficPage() {
     localStorage.setItem('traffic-layout', newLayout)
   }
 
+  // Save refresh interval to localStorage
+  const handleRefreshIntervalChange = (interval: RefreshInterval) => {
+    setRefreshInterval(interval)
+    localStorage.setItem('traffic-refresh-interval', interval)
+  }
+
   // Compute actual bucket size to send to API
   const actualBucketSize = useMemo(() => {
     if (bucketSize === 'auto') {
@@ -446,15 +534,22 @@ export function TrafficPage() {
     return bucketSize
   }, [bucketSize, timeRange])
 
+  // Get refetch interval based on selected refresh interval
+  const refetchIntervalValue = useMemo(() => {
+    return refreshIntervalMs[refreshInterval]
+  }, [refreshInterval])
+
   // Fetch tunnel data
   const {
     data: tunnelData,
     isLoading: tunnelLoading,
     error: tunnelError,
+    refetch: refetchTunnel,
   } = useQuery({
     queryKey: ['traffic', timeRange, true, actualBucketSize, aggMethod],
     queryFn: () => fetchTrafficData(timeRange, true, actualBucketSize, aggMethod),
     staleTime: 30000, // 30 seconds
+    refetchInterval: refetchIntervalValue,
   })
 
   // Fetch non-tunnel data
@@ -462,13 +557,59 @@ export function TrafficPage() {
     data: nonTunnelData,
     isLoading: nonTunnelLoading,
     error: nonTunnelError,
+    refetch: refetchNonTunnel,
   } = useQuery({
     queryKey: ['traffic', timeRange, false, actualBucketSize, aggMethod],
     queryFn: () => fetchTrafficData(timeRange, false, actualBucketSize, aggMethod),
     staleTime: 30000, // 30 seconds
+    refetchInterval: refetchIntervalValue,
   })
 
-  const showLoading = useDelayedLoading(tunnelLoading || nonTunnelLoading)
+  // Fetch topology data for link metadata
+  const {
+    data: topologyData,
+    isLoading: topologyLoading,
+    refetch: refetchTopology,
+  } = useQuery({
+    queryKey: ['topology'],
+    queryFn: () => fetchTopology(),
+    staleTime: 60000, // 1 minute
+    refetchInterval: refetchIntervalValue,
+  })
+
+  // Manual refresh handler
+  const handleManualRefresh = () => {
+    refetchTunnel()
+    refetchNonTunnel()
+    refetchTopology()
+  }
+
+  // Build link lookup: device_pk + interface -> link info
+  const linkLookup = useMemo(() => {
+    if (!topologyData?.links) return new Map<string, LinkLookupInfo>()
+
+    const map = new Map<string, LinkLookupInfo>()
+    for (const link of topologyData.links) {
+      const linkInfo: LinkLookupInfo = {
+        pk: link.pk,
+        code: link.code,
+        bandwidth_bps: link.bandwidth_bps,
+        side_a_pk: link.side_a_pk,
+        side_a_code: link.side_a_code,
+        side_z_pk: link.side_z_pk,
+        side_z_code: link.side_z_code,
+      }
+
+      // Map side A device+interface to link
+      map.set(`${link.side_a_pk}:${link.side_a_iface_name}`, linkInfo)
+      // Map side Z device+interface to link
+      map.set(`${link.side_z_pk}:${link.side_z_iface_name}`, linkInfo)
+    }
+
+    return map
+  }, [topologyData])
+
+  const showLoading = useDelayedLoading(tunnelLoading || nonTunnelLoading || topologyLoading)
 
   if (showLoading) {
     return <LoadingSplash />
@@ -539,6 +680,7 @@ export function TrafficPage() {
             data={data.points}
             series={data.series}
             stacked={stacked}
+            linkLookup={linkLookup}
           />
         </LazyChart>
       </div>
@@ -551,9 +693,9 @@ export function TrafficPage() {
     <div className="flex-1 overflow-auto">
       <div className="max-w-7xl mx-auto px-4 sm:px-8 py-8">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
           <h1 className="text-2xl font-bold">Traffic</h1>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <ShowGraphsSelector
               sections={chartSections}
               visibleSections={visibleSections}
@@ -568,6 +710,14 @@ export function TrafficPage() {
               onAggChange={handleAggMethodChange}
             />
             <TimeRangeSelector value={timeRange} onChange={handleTimeRangeChange} />
+            <RefreshIntervalSelector value={refreshInterval} onChange={handleRefreshIntervalChange} />
+            <button
+              onClick={handleManualRefresh}
+              className="px-3 py-1.5 text-sm border border-border rounded-md hover:bg-muted transition-colors inline-flex items-center gap-1.5"
+              title="Refresh now"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </button>
           </div>
         </div>
 

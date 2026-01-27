@@ -3,6 +3,7 @@ import uPlot from 'uplot'
 import 'uplot/dist/uPlot.min.css'
 import { X } from 'lucide-react'
 import type { TrafficPoint, SeriesInfo } from '@/lib/api'
+import type { LinkLookupInfo } from '@/pages/traffic-page'
 
 // Color palette matching the app
 const COLORS = [
@@ -21,6 +22,7 @@ interface TrafficChartProps {
   data: TrafficPoint[]
   series: SeriesInfo[]
   stacked?: boolean
+  linkLookup?: Map<string, LinkLookupInfo>
 }
 
 // Format bandwidth for display
@@ -35,7 +37,7 @@ function formatBandwidth(bps: number): string {
   return `${bps.toFixed(2)} b/s`
 }
 
-function TrafficChartImpl({ title, data, series, stacked = false }: TrafficChartProps) {
+function TrafficChartImpl({ title, data, series, stacked = false, linkLookup }: TrafficChartProps) {
   const chartRef = useRef<HTMLDivElement>(null)
   const plotRef = useRef<uPlot | null>(null)
   const [selectedSeries, setSelectedSeries] = useState<Set<string>>(new Set())
@@ -48,6 +50,12 @@ function TrafficChartImpl({ title, data, series, stacked = false }: TrafficChart
     time: string
     label: string
     value: string
+    valueBps: number
+    devicePk: string
+    device: string
+    intf: string
+    direction: string
+    linkInfo?: LinkLookupInfo
   } | null>(null)
   const [isPinned, setIsPinned] = useState(false)
   const isPinnedRef = useRef(false)
@@ -105,6 +113,24 @@ function TrafficChartImpl({ title, data, series, stacked = false }: TrafficChart
       s.intf.toLowerCase().includes(searchPattern)
     )
   }, [series, searchText])
+
+  // Build series metadata map (device_pk for each series)
+  const seriesMetadata = useMemo(() => {
+    const map = new Map<string, { devicePk: string; device: string; intf: string; direction: string }>()
+    for (const s of series) {
+      // Find a data point for this series to get device_pk
+      const point = data.find(p => p.device === s.device && p.intf === s.intf)
+      if (point) {
+        map.set(s.key, {
+          devicePk: point.device_pk,
+          device: s.device,
+          intf: s.intf,
+          direction: s.direction,
+        })
+      }
+    }
+    return map
+  }, [data, series])
 
   // Transform data for uPlot
   const { uplotData, uplotSeries } = useMemo(() => {
@@ -337,13 +363,29 @@ function TrafficChartImpl({ title, data, series, stacked = false }: TrafficChart
                   hour12: false,
                 })
 
+                // Get series metadata
+                const metadata = seriesMetadata.get(seriesLabel)
+                let linkInfo: LinkLookupInfo | undefined
+                if (metadata && linkLookup) {
+                  const lookupKey = `${metadata.devicePk}:${metadata.intf}`
+                  linkInfo = linkLookup.get(lookupKey)
+                }
+
+                const valueBps = value as number
+
                 setTooltip({
                   visible: true,
                   x: left,
                   y: top ?? 0,
                   time: timeStr,
                   label: seriesLabel,
-                  value: formatBandwidth(value as number),
+                  value: formatBandwidth(valueBps),
+                  valueBps,
+                  devicePk: metadata?.devicePk || '',
+                  device: metadata?.device || '',
+                  intf: metadata?.intf || '',
+                  direction: metadata?.direction || '',
+                  linkInfo,
                 })
                 return
               }
@@ -522,7 +564,7 @@ function TrafficChartImpl({ title, data, series, stacked = false }: TrafficChart
         {tooltip && tooltip.visible && (
           <div
             ref={tooltipRef}
-            className={`absolute bg-background border border-border rounded-md px-2 py-1.5 text-xs shadow-lg z-10 whitespace-nowrap ${
+            className={`absolute bg-background border border-border rounded-md px-3 py-2 text-xs shadow-lg z-10 whitespace-nowrap ${
               isPinned ? 'pointer-events-auto cursor-text' : 'pointer-events-none'
             }`}
             style={{
@@ -530,9 +572,64 @@ function TrafficChartImpl({ title, data, series, stacked = false }: TrafficChart
               bottom: `${400 - tooltip.y + 8}px`,
             }}
           >
-            <div className="font-medium mb-0.5">{tooltip.time}</div>
-            <div className="text-muted-foreground text-[10px]">{tooltip.label}</div>
-            <div className="font-semibold mt-0.5">{tooltip.value}</div>
+            <div className="font-medium mb-1 text-[11px]">{tooltip.time}</div>
+
+            {/* Device link */}
+            {tooltip.devicePk && (
+              <div className="mb-0.5">
+                <a
+                  href={`/dz/devices/${tooltip.devicePk}`}
+                  className="text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 font-medium"
+                  onClick={(e) => {
+                    if (!isPinned) e.preventDefault()
+                  }}
+                >
+                  {tooltip.device}
+                </a>
+                <span className="text-muted-foreground ml-1">/ {tooltip.intf}</span>
+              </div>
+            )}
+
+            {/* Link info */}
+            {tooltip.linkInfo && (
+              <div className="mb-1 text-[10px]">
+                <a
+                  href={`/dz/links/${tooltip.linkInfo.pk}`}
+                  className="text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300"
+                  onClick={(e) => {
+                    if (!isPinned) e.preventDefault()
+                  }}
+                >
+                  {tooltip.linkInfo.code}
+                </a>
+              </div>
+            )}
+
+            {/* Current value */}
+            <div className="font-semibold mt-1 mb-0.5">
+              {tooltip.direction === 'in' ? '↓' : '↑'} {tooltip.value}
+            </div>
+
+            {/* Link capacity and utilization */}
+            {tooltip.linkInfo && (
+              <div className="text-[10px] text-muted-foreground space-y-0.5 mt-1 pt-1 border-t border-border">
+                <div>Capacity: {formatBandwidth(tooltip.linkInfo.bandwidth_bps)}</div>
+                {(() => {
+                  const capacity = tooltip.linkInfo.bandwidth_bps
+                  let utilizationPct = 0
+
+                  if (capacity > 0) {
+                    utilizationPct = (tooltip.valueBps / capacity) * 100
+                  }
+
+                  return (
+                    <div>
+                      Utilization: <span className={utilizationPct > 80 ? 'text-red-500 font-medium' : ''}>{utilizationPct.toFixed(1)}%</span>
+                    </div>
+                  )
+                })()}
+              </div>
+            )}
           </div>
         )}
       </div>

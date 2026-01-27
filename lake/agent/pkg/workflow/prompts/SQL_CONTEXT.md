@@ -40,6 +40,30 @@ WHERE d.pk = ''  -- Empty string means no match (NOT "IS NULL"!)
 - Intervals: `INTERVAL 24 HOUR`, `INTERVAL 7 DAY`
 - Count non-empty: `countIf(column != '')` or `sum(column != '')`
 
+### JOINing `_current` Views
+The `_current` views (e.g. `solana_gossip_nodes_current`, `dz_users_current`, `dz_devices_current`) use `row_number() OVER (PARTITION BY entity_id ...)` internally. ClickHouse has a bug where directly JOINing two or more of these views produces **silently incorrect results** — the window functions interfere across views and inflate matches.
+
+**WRONG — DO NOT directly JOIN `_current` views with each other:**
+```sql
+-- This returns wrong results: every gossip node matches every user
+SELECT g.pubkey, u.dz_ip
+FROM solana_gossip_nodes_current g
+JOIN dz_users_current u ON g.gossip_ip = u.dz_ip
+```
+
+**CORRECT — Use `IN` subqueries instead of JOINs between `_current` views:**
+```sql
+-- Use IN to check membership
+SELECT g.pubkey
+FROM solana_gossip_nodes_current g
+WHERE g.gossip_ip IN (
+    SELECT dz_ip FROM dz_users_current
+    WHERE status = 'activated' AND dz_ip != ''
+)
+```
+
+**If you need columns from both views**, join one `_current` view to a non-view CTE/subquery, or use the pre-built views (`solana_validators_on_dz_current`, `solana_validators_off_dz_current`) which already handle this correctly.
+
 ### Ambiguous Column References (CRITICAL)
 When joining tables/views that share column names (like `epoch`), ClickHouse may report "ambiguous identifier" errors.
 

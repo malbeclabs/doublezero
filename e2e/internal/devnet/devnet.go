@@ -820,15 +820,22 @@ func (d *Devnet) waitContainerHealthy(ctx context.Context, containerID string, t
 	defer cancel()
 	ticker := time.NewTicker(delay)
 	defer ticker.Stop()
+	var lastInspectErr error
 	for {
 		select {
 		case <-waitCtx.Done():
+			if lastInspectErr != nil {
+				return fmt.Errorf("timeout waiting for container to be healthy (last inspect error: %w)", lastInspectErr)
+			}
 			return fmt.Errorf("timeout waiting for container to be healthy")
 		case <-ticker.C:
 			inspect, err := d.dockerClient.ContainerInspect(waitCtx, containerID)
 			if err != nil {
-				return fmt.Errorf("failed to inspect container: %w", err)
+				lastInspectErr = err
+				d.log.Debug("--> Retrying container inspect after error", "container", shortContainerID(containerID), "error", err)
+				continue
 			}
+			lastInspectErr = nil
 			if inspect.State.Health.Status == "healthy" {
 				return nil
 			}

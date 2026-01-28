@@ -4,6 +4,7 @@ package e2e_test
 
 import (
 	"bytes"
+	"fmt"
 	"log/slog"
 	"net"
 	"os"
@@ -12,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/malbeclabs/doublezero/e2e/internal/arista"
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
@@ -212,24 +212,25 @@ func runUserBanIBRLWorkflowTest(t *testing.T, log *slog.Logger, client1 *devnet.
 	require.NoError(t, err)
 	log.Info("--> Client3 connected in IBRL mode to device1")
 
-	// Wait for BGP routes to converge on both devices.
-	log.Info("==> Waiting for BGP routes to converge")
-	for _, dc := range []string{deviceCode1, deviceCode2} {
-		device := dn.Devices[dc]
-		require.Eventually(t, func() bool {
-			neighbors, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIPBGPSummary](t.Context(), device, arista.ShowIPBGPSummaryCmd("vrf1"))
-			if err != nil {
-				return false
-			}
-			for _, peer := range neighbors.VRFs["vrf1"].Peers {
-				if peer.PeerState == "Established" && peer.PrefixReceived > 0 {
-					return true
-				}
-			}
+	// Wait for cross-exchange routes to propagate via iBGP between devices.
+	// Device1 (xlax) should have client2's route (from device2 via iBGP),
+	// and device2 (xewr) should have client1's route (from device1 via iBGP).
+	log.Info("==> Waiting for cross-exchange routes to propagate via iBGP")
+	require.Eventually(t, func() bool {
+		output, err := dn.Devices[deviceCode1].Exec(t.Context(), []string{"bash", "-c", fmt.Sprintf("Cli -c \"show ip route vrf vrf1 %s/32\"", client2.CYOANetworkIP)})
+		if err != nil {
 			return false
-		}, 60*time.Second, 1*time.Second, "BGP peers should be established with prefixes received on %s", dc)
-	}
-	log.Info("--> BGP routes have converged")
+		}
+		return strings.Contains(string(output), client2.CYOANetworkIP)
+	}, 90*time.Second, 1*time.Second, "device1 should have route to client2 via iBGP")
+	require.Eventually(t, func() bool {
+		output, err := dn.Devices[deviceCode2].Exec(t.Context(), []string{"bash", "-c", fmt.Sprintf("Cli -c \"show ip route vrf vrf1 %s/32\"", client1.CYOANetworkIP)})
+		if err != nil {
+			return false
+		}
+		return strings.Contains(string(output), client1.CYOANetworkIP)
+	}, 90*time.Second, 1*time.Second, "device2 should have route to client1 via iBGP")
+	log.Info("--> Cross-exchange routes have propagated via iBGP")
 
 	// Check that the clients have a DZ IP equal to their client IP when not configured to use an allocated IP.
 	log.Info("==> Checking that the clients have a DZ IP as public IP when not configured to use an allocated IP")
@@ -269,6 +270,7 @@ func runUserBanIBRLWorkflowTest(t *testing.T, log *slog.Logger, client1 *devnet.
 	log.Info("--> Confirmed client1 and client3 do not have routes to each other (intra-exchange routing policy working)")
 
 	// Check that client1 and client2 have routes to each other (cross-exchange).
+	// The iBGP propagation is already confirmed above, so these should converge quickly.
 	log.Info("==> Checking that client1 and client2 have routes to each other (cross-exchange)")
 	require.Eventually(t, func() bool {
 		output, err := client1.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})

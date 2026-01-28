@@ -186,7 +186,8 @@ Examples:
 type migration struct {
 	globalCreates     []createCommand
 	perDeviceCreates  []createCommand
-	deviceAllocations []allocateCommand // Device loopback IPs
+	deviceAllocations []allocateCommand // Device loopback IPs -> DzPrefixBlock
+	segRoutingAllocs  []allocateCommand // Interface segment routing IDs -> SegmentRoutingIds
 	linkAllocations   []allocateCommand
 	userAllocations   []allocateCommand
 	mcgroupAllocs     []allocateCommand
@@ -293,8 +294,22 @@ func generateMigration(data *serviceability.ProgramData, verbose bool) *migratio
 		}
 	}
 
+	// 3b. Interface segment routing ID allocations (NodeSegmentIdx -> SegmentRoutingIds)
+	for _, d := range activatedDevices {
+		for _, iface := range d.Interfaces {
+			// Only process interfaces with non-zero segment routing IDs
+			if iface.NodeSegmentIdx == 0 {
+				continue
+			}
+			m.segRoutingAllocs = append(m.segRoutingAllocs, allocateCommand{
+				resourceType: "segment-routing-ids",
+				allocation:   fmt.Sprintf("%d", iface.NodeSegmentIdx),
+				comment:      fmt.Sprintf("Device %s interface %s node_segment_idx=%d", d.Code, iface.Name, iface.NodeSegmentIdx),
+			})
+		}
+	}
+
 	// 4. Link allocations (tunnel_net -> DeviceTunnelBlock, tunnel_id -> LinkIds)
-	// Note: Renumbered from 3 after adding device loopback allocations
 	// Sort links by code for consistent output
 	links := make([]serviceability.Link, len(data.Links))
 	copy(links, data.Links)
@@ -480,6 +495,14 @@ func printDryRun(w io.Writer, cfg cliConfig, m *migration) {
 		}
 	}
 
+	fmt.Fprintf(w, "\n--- Segment Routing ID Allocations (%d interfaces) ---\n", len(m.segRoutingAllocs))
+	for _, a := range m.segRoutingAllocs {
+		fmt.Fprintf(w, "[ALLOCATE] %s: %s\n", a.resourceType, a.allocation)
+		if cfg.verbose {
+			fmt.Fprintf(w, "           %s\n", a.comment)
+		}
+	}
+
 	fmt.Fprintf(w, "\n--- Link Allocations (%d links) ---\n", len(m.linkAllocations)/2)
 	for _, a := range m.linkAllocations {
 		fmt.Fprintf(w, "[ALLOCATE] %s: %s\n", a.resourceType, a.allocation)
@@ -511,7 +534,7 @@ func printDryRun(w io.Writer, cfg cliConfig, m *migration) {
 
 	// Summary
 	totalCreates := len(m.globalCreates) + len(m.perDeviceCreates)
-	totalAllocs := len(m.deviceAllocations) + len(m.linkAllocations) + len(m.userAllocations) + len(m.mcgroupAllocs)
+	totalAllocs := len(m.deviceAllocations) + len(m.segRoutingAllocs) + len(m.linkAllocations) + len(m.userAllocations) + len(m.mcgroupAllocs)
 
 	fmt.Fprintf(w, "\n=== Summary ===\n")
 	fmt.Fprintf(w, "ResourceExtension accounts to create: %d\n", totalCreates)
@@ -603,6 +626,25 @@ func writeScript(w io.Writer, m *migration, parallelism int) {
 				fmt.Fprintf(w, "# %s\n", a.comment)
 				fmt.Fprintf(w, "run_cmd 'doublezero resource allocate --resource-type %s --associated-pubkey %s --index %d --requested-allocation %s'\n",
 					a.resourceType, a.associatedPK, a.index, a.allocation)
+			}
+		}
+		fmt.Fprintf(w, "\n")
+	}
+
+	// Phase 3b: Segment routing ID allocations (parallel)
+	if len(m.segRoutingAllocs) > 0 {
+		fmt.Fprintf(w, "# ============================================\n")
+		fmt.Fprintf(w, "# Phase 3b: Allocate Segment Routing IDs\n")
+		fmt.Fprintf(w, "# ============================================\n")
+		fmt.Fprintf(w, "echo \"[Phase 3b/%d] Allocating Segment Routing IDs (%d commands)...\"\n", numPhases(m), len(m.segRoutingAllocs))
+
+		if parallelism > 0 {
+			writeParallelAllocates(w, m.segRoutingAllocs, parallelism)
+		} else {
+			for _, a := range m.segRoutingAllocs {
+				fmt.Fprintf(w, "# %s\n", a.comment)
+				fmt.Fprintf(w, "run_cmd 'doublezero resource allocate --resource-type %s --requested-allocation %s'\n",
+					a.resourceType, a.allocation)
 			}
 		}
 		fmt.Fprintf(w, "\n")

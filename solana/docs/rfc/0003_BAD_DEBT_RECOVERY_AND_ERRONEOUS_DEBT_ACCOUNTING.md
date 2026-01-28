@@ -53,11 +53,16 @@ debt for that distribution and the recovered debt from a past distribution.
 
 ## New Terminology
 
-Debt recovery is a new term introduced to the protocol.  This new term defines
-the mechanism of providing a windfall for a future distribution based on paying
-back past bad debt. The term also captures the ability to improve a Solana
-validator’s standing in the protocol by showing how reliable he is paying off
-his debts.
+Two new terms are introduced to the protocol: debt recovery and erroneous debt.
+
+Debt recovery defines the mechanism of providing a windfall for a future
+distribution based on paying back past bad debt. The term also captures the
+ability to improve a Solana validator’s standing in the protocol by showing how
+reliable he is paying off his debts.
+
+Erroneous debt is a classification of written-off debt, which can be toggled on
+or off. When debt for a given epoch and Solana validator is erroneous, debt will
+not be recovered.
 
 ## Alternatives Considered
 
@@ -80,8 +85,8 @@ their dues.
 
 ### Onchain
 
-There should be another field introduced to the distribution account schema,
-which tracks the amount of recovered SOL debt.
+There should be additional fields introduced to the distribution account schema,
+which tracks the amount of recovered SOL debt and erroneous merkle leaves.
 
 ```rust
 pub struct Distribution {
@@ -89,10 +94,17 @@ pub struct Distribution {
     /// The amount of SOL that was accrued from a past distribution, but was
     /// written off. This amount is added to the total debt for this
     /// distribution and acts as a windfall for network contributors.
-    recovered_sol_debt: u64,
+    pub recovered_sol_debt: u64,
+
+    pub erroneous_solana_validator_debt_start_index: u32,
+    pub erroneous_solana_validator_debt_end_index: u32,
     ..
 }
 ```
+
+The recovered SOL debt tracking will be modified for the distribution that will
+be receiving the windfall. And the distribution who owns the bad debt, the
+erroneous bitmap will be modified.
 
 The following method will change to incorporate this recovered SOL debt.
 
@@ -106,9 +118,8 @@ The following method will change to incorporate this recovered SOL debt.
 
 Instead of tracking with the existing `written_off_sol_debt`, where the recovery
 process can reduce this value, there should also be another field introduced to
-the Solana validator deposit account schema, which tracks the amount of
-recovered SOL debt separately. Additionally, a field to track erroneous debt
-should be added.
+the Solana validator deposit account schema to track the amount of recovered SOL
+debt separately. Additionally, a field to track erroneous debt should be added.
 
 ```rust
 pub struct SolanaValidatorDeposit {
@@ -138,72 +149,84 @@ Two instructions should be introduced.
 ```rust
 pub enum RevenueDistributionInstructionData {
     ..
-    RecoverBadSolanaValidatorDebt {
+    ResolveBadSolanaValidatorDebt {
         amount: u64,
         proof: MerkleProof,
+        resolution: BadSolanaValidatorDebtResolution
     },
-    ConfigureSolanaValidatorDeposit(SolanaValidatorDepositConfiguration),
+    EnableErroneousSolanaValidatorDebt,
     ..
 }
 
-pub enum SolanaValidatorDepositConfiguration {
-    ErroneousSolDebt(u64),
+pub enum BadSolanaValidatorDebtResolution {
+    #[default]
+    Recover,
+    ReclassifyUnpaid,
+    ReclassifyErroneous,
 }
 ```
 
-The recover-bad-solana-validator-debt instruction arguments are similar to the
-pay-solana-validator-debt instruction. This instruction can only be called by
-the debt accountant because he will determine which distributions to prioritize
-for debt recovery. It may be possible to make this instruction permissionless in
-the future. This instruction requires the following accounts:
+The resolve-bad-solana-validator-debt instruction arguments are similar to the
+pay-solana-validator-debt instruction, but will have an additional enumeration
+of values determining the type of resolution. This instruction can only be
+called by the debt accountant because he will determine which distributions to
+prioritize for debt recovery. This instruction requires the following accounts:
 
 1. Program config. The instruction will check whether the program is paused. If
-it is, force the instruction to revert.
+   it is, force the instruction to revert.
+
 2. Debt accountant. This account’s key will be checked against the debt
-accountant key encoded in the program config. This account must be a signer,
-which enforces that the debt accountant is calling this instruction. If the
-instruction becomes permissionless, this account will not be checked.
+   accountant key encoded in the program config. This account must be a signer,
+   which enforces that the debt accountant is calling this instruction. If the
+   instruction becomes permissionless, this account will not be checked.
+
 3. Distribution with bad debt. This account will have the debt write-off bitmap
-to validate whether the Solana validator has debt written off for this
-distribution. The bitmap’s value at this Solana validator’s index will be set to
-false by the time the instruction succeeds. The distribution account must have
-already had rewards finalized or the instruction will revert.
-4. Solana validator deposit account. This account will have its
-`recovered_sol_debt` increase by the amount of debt recovered. Its node ID along
-with the instruction data will be used to construct the leaf to compute the
-merkle root, which will be verified against the debt merkle root in the
-distribution with bad debt. If the roots do not agree, the instruction will
-revert. The instruction should also revert if the recoverable debt calculated
-using this deposit account is not at least as much as the amount passed into
-this instruction.
-5. Journal. This account will receive the SOL from the Solana validator deposit
-account for the recovered debt amount. This SOL transfer is consistent with the
-pay-solana-validator-debt instruction.
-6. Distribution for windfall. This account will have its `recovered_sol_debt`
-increase by the amount of debt recovered. This distribution’s debt merkle root
-must be finalized and rewards root must not be finalized (otherwise the
-instruction will revert). This distribution does not have to have any debt
-computed for it; recovered debt is additive, so the total collected debt would
-then result in swept 2Z for rewards.
+   to validate whether the Solana validator has debt written off for this
+   distribution. The write-off bitmap value must be true or the instruction will
+   revert.
 
-The configure-solana-validator-deposit instruction will have only one possible
-value associated with this proposal: erroneous SOL debt. There may be more ways
-to configure a Solana validator deposit account in the future, where additional
-configuration options can be added to the above enum. This instruction requires
-the following accounts:
+   Depending on the resolution type, different bitmaps will be referenced. For
+   the recover type, the write-off bitmap’s value at this Solana validator’s
+   index will be set to false by the time the instruction succeeds. For both
+   reclassify types, the erroneous bitmap’s value will be set to true if
+   erroneous and false if unpaid.
 
-1. Program config. The instruction will check whether the program is paused. If
-it is, force the instruction to revert.
-2. Debt accountant. This account’s key will be checked against the debt
-accountant key encoded in the program config. This account must be a signer,
-which enforces that the debt accountant is calling this instruction.
-3. Solana validator deposit account. The erroneous SOL debt will be updated
-based on the value passed into the instruction. If the configured erroneous
-amount exceeds the difference between written-off and recovered debt, the
-instruction should revert.
+   The distribution account must have already had rewards finalized or the
+   instruction will revert.
 
-Ensure program logs write enough information consistent with other instruction
-processors.
+4. Solana validator deposit account. Depending on the resolution type, this
+   account will have its debt tracking variables modified. For the recover type,
+   `recovered_sol_debt` increases by the amount of debt. For the reclassify
+   unpaid type, `erroneous_sol_debt` decreases by the amount of debt. For the
+   reclassify erroneous type, `erroneous_sol_debt` increases by the amount of
+   debt.
+
+   Its node ID along with the instruction data will be used to construct the
+   leaf to compute the merkle root, which will be verified against the debt
+   merkle root in the distribution with bad debt. If the roots do not agree, the
+   instruction will revert. The instruction should also revert if the debt
+   calculated using this deposit account is not at least as much as the amount
+   passed into this instruction when attempting to recover.
+
+5. Journal. This account will only be used with the recover resolution type. It
+   will receive the SOL from the Solana validator deposit account for the
+   recovered debt amount. This SOL transfer is consistent with the
+   pay-solana-validator-debt instruction.
+
+6. Distribution for windfall. This account will only be used with the recover
+  resolution type. It will have its `recovered_sol_debt` increase by the amount
+  of debt recovered. This distribution’s debt merkle root must be finalized and
+  rewards root must not be finalized (otherwise the instruction will revert).
+  This distribution does not have to have any debt computed for it; recovered
+  debt is additive, so the total collected debt would then result in swept 2Z
+  for rewards.
+
+The enable-erroneous-solana-validator-debt instruction will work similarly to
+how the enable-solana-validator-debt-write-off. It will reallocate data to the
+disetribution account based on the number of Solana validators who have debt.
+This isntruction can be permissionless. The new instruction will check if the
+erroneous debt indices have been set yet. If not, set them and reallocate the
+account.
 
 ### Offchain
 
@@ -217,7 +240,8 @@ epoch. This debt recovery will apply to the next distribution whose rewards will
 be distributed at the turn of the next epoch.
 
 The debt accountant should also add a command to specify erroneous debt
-attributed to a Solana validator’s node ID. This command simply invokes the configure-solana-validator-deposit instruction while specifying an amount for
+attributed to a Solana validator’s node ID. This command simply invokes the
+configure-solana-validator-deposit instruction while specifying an amount for
 erroneous SOL debt.
 
 ## Impact
@@ -260,7 +284,9 @@ or a patch version bump if zero-versioned.
 ## Open Questions
 
 - Can debt recovery be introduced as a permissionless instruction? How can the
-Revenue Distribution program ensure that the recover-bad-solana-validator-debt
-instruction is called at the right time if anyone can call it?
-- Should erroneous debt be flagged at the distribution level using a bitmap
-similar to tracking processed and written-off debt?
+  Revenue Distribution program ensure that a recover-bad-solana-validator-debt
+  instruction is called at the right time if anyone can call it?
+- Should debt be allowed to be classified as erroneous before it was written
+  off? There is nothing precluding the accountant from writing off debt and then
+  setting as erroneous. But there may be an advantage to having this toggle
+  apply to either written off or unprocessed debt.

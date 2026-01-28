@@ -184,12 +184,13 @@ Examples:
 
 // migration holds all the commands to execute
 type migration struct {
-	globalCreates    []createCommand
-	perDeviceCreates []createCommand
-	linkAllocations  []allocateCommand
-	userAllocations  []allocateCommand
-	mcgroupAllocs    []allocateCommand
-	deviceInfo       map[string]deviceInfo // pubkey -> deviceInfo for display
+	globalCreates     []createCommand
+	perDeviceCreates  []createCommand
+	deviceAllocations []allocateCommand // Device loopback IPs
+	linkAllocations   []allocateCommand
+	userAllocations   []allocateCommand
+	mcgroupAllocs     []allocateCommand
+	deviceInfo        map[string]deviceInfo // pubkey -> deviceInfo for display
 }
 
 type deviceInfo struct {
@@ -268,7 +269,32 @@ func generateMigration(data *serviceability.ProgramData, verbose bool) *migratio
 		}
 	}
 
-	// 3. Link allocations (tunnel_net -> DeviceTunnelBlock, tunnel_id -> LinkIds)
+	// 3. Device loopback interface allocations (loopback IPs -> DzPrefixBlock)
+	for _, d := range activatedDevices {
+		pk := base58.Encode(d.PubKey[:])
+		for _, iface := range d.Interfaces {
+			// Only process loopback interfaces with allocated IPs
+			if iface.LoopbackType == serviceability.LoopbackTypeNone {
+				continue
+			}
+			loopbackIP := onChainNetToIP(iface.IpNet)
+			if loopbackIP == "" || loopbackIP == "0.0.0.0" {
+				continue
+			}
+			// Find which DzPrefixBlock index this IP belongs to
+			prefixIndex := findDzPrefixIndex(d.DzPrefixes, [4]uint8{iface.IpNet[0], iface.IpNet[1], iface.IpNet[2], iface.IpNet[3]})
+			m.deviceAllocations = append(m.deviceAllocations, allocateCommand{
+				resourceType: "device-tunnel-block",
+				associatedPK: pk,
+				index:        prefixIndex,
+				allocation:   loopbackIP,
+				comment:      fmt.Sprintf("Device %s loopback %s (%s) ip=%s", d.Code, iface.Name, iface.LoopbackType, loopbackIP),
+			})
+		}
+	}
+
+	// 4. Link allocations (tunnel_net -> DeviceTunnelBlock, tunnel_id -> LinkIds)
+	// Note: Renumbered from 3 after adding device loopback allocations
 	// Sort links by code for consistent output
 	links := make([]serviceability.Link, len(data.Links))
 	copy(links, data.Links)
@@ -298,7 +324,7 @@ func generateMigration(data *serviceability.ProgramData, verbose bool) *migratio
 		})
 	}
 
-	// 4. User allocations (tunnel_net -> UserTunnelBlock, tunnel_id -> TunnelIds(device), dz_ip -> DzPrefixBlock(device))
+	// 5. User allocations (tunnel_net -> UserTunnelBlock, tunnel_id -> TunnelIds(device), dz_ip -> DzPrefixBlock(device))
 	// Create a map of device pubkey -> code for user comments
 	deviceCodeMap := make(map[string]string)
 	deviceDzPrefixMap := make(map[string][][5]uint8)
@@ -364,7 +390,7 @@ func generateMigration(data *serviceability.ProgramData, verbose bool) *migratio
 		}
 	}
 
-	// 5. MulticastGroup allocations (multicast_ip -> MulticastGroupBlock)
+	// 6. MulticastGroup allocations (multicast_ip -> MulticastGroupBlock)
 	// Sort multicast groups by code for consistent output
 	mcgroups := make([]serviceability.MulticastGroup, len(data.MulticastGroups))
 	copy(mcgroups, data.MulticastGroups)
@@ -445,6 +471,15 @@ func printDryRun(w io.Writer, cfg cliConfig, m *migration) {
 		fmt.Fprintf(w, "  [CREATE] %s index=%d\n", c.resourceType, c.index)
 	}
 
+	fmt.Fprintf(w, "\n--- Device Loopback Allocations (%d interfaces) ---\n", len(m.deviceAllocations))
+	for _, a := range m.deviceAllocations {
+		info := m.deviceInfo[a.associatedPK]
+		fmt.Fprintf(w, "[ALLOCATE] %s(%s, %d): %s\n", a.resourceType, info.code, a.index, a.allocation)
+		if cfg.verbose {
+			fmt.Fprintf(w, "           %s\n", a.comment)
+		}
+	}
+
 	fmt.Fprintf(w, "\n--- Link Allocations (%d links) ---\n", len(m.linkAllocations)/2)
 	for _, a := range m.linkAllocations {
 		fmt.Fprintf(w, "[ALLOCATE] %s: %s\n", a.resourceType, a.allocation)
@@ -476,7 +511,7 @@ func printDryRun(w io.Writer, cfg cliConfig, m *migration) {
 
 	// Summary
 	totalCreates := len(m.globalCreates) + len(m.perDeviceCreates)
-	totalAllocs := len(m.linkAllocations) + len(m.userAllocations) + len(m.mcgroupAllocs)
+	totalAllocs := len(m.deviceAllocations) + len(m.linkAllocations) + len(m.userAllocations) + len(m.mcgroupAllocs)
 
 	fmt.Fprintf(w, "\n=== Summary ===\n")
 	fmt.Fprintf(w, "ResourceExtension accounts to create: %d\n", totalCreates)
@@ -554,11 +589,30 @@ func writeScript(w io.Writer, m *migration, parallelism int) {
 	}
 	fmt.Fprintf(w, "\n")
 
-	// Phase 3: Link allocations (parallel)
+	// Phase 3: Device loopback allocations (parallel)
+	if len(m.deviceAllocations) > 0 {
+		fmt.Fprintf(w, "# ============================================\n")
+		fmt.Fprintf(w, "# Phase 3: Allocate Device Loopback IPs\n")
+		fmt.Fprintf(w, "# ============================================\n")
+		fmt.Fprintf(w, "echo \"[Phase 3/%d] Allocating Device Loopback IPs (%d commands)...\"\n", numPhases(m), len(m.deviceAllocations))
+
+		if parallelism > 0 {
+			writeParallelAllocates(w, m.deviceAllocations, parallelism)
+		} else {
+			for _, a := range m.deviceAllocations {
+				fmt.Fprintf(w, "# %s\n", a.comment)
+				fmt.Fprintf(w, "run_cmd 'doublezero resource allocate --resource-type %s --associated-pubkey %s --index %d --requested-allocation %s'\n",
+					a.resourceType, a.associatedPK, a.index, a.allocation)
+			}
+		}
+		fmt.Fprintf(w, "\n")
+	}
+
+	// Phase 4: Link allocations (parallel)
 	fmt.Fprintf(w, "# ============================================\n")
-	fmt.Fprintf(w, "# Phase 3: Allocate Link Resources\n")
+	fmt.Fprintf(w, "# Phase 4: Allocate Link Resources\n")
 	fmt.Fprintf(w, "# ============================================\n")
-	fmt.Fprintf(w, "echo \"[Phase 3/%d] Allocating Link Resources (%d commands)...\"\n", numPhases(m), len(m.linkAllocations))
+	fmt.Fprintf(w, "echo \"[Phase 4/%d] Allocating Link Resources (%d commands)...\"\n", numPhases(m), len(m.linkAllocations))
 
 	if parallelism > 0 && len(m.linkAllocations) > 0 {
 		writeParallelAllocates(w, m.linkAllocations, parallelism)
@@ -571,12 +625,12 @@ func writeScript(w io.Writer, m *migration, parallelism int) {
 	}
 	fmt.Fprintf(w, "\n")
 
-	// Phase 4: User allocations (parallel - largest phase)
+	// Phase 5: User allocations (parallel - largest phase)
 	fmt.Fprintf(w, "# ============================================\n")
-	fmt.Fprintf(w, "# Phase 4: Allocate User Resources\n")
+	fmt.Fprintf(w, "# Phase 5: Allocate User Resources\n")
 	fmt.Fprintf(w, "# This is the largest phase - parallelism helps significantly here\n")
 	fmt.Fprintf(w, "# ============================================\n")
-	fmt.Fprintf(w, "echo \"[Phase 4/%d] Allocating User Resources (%d commands)...\"\n", numPhases(m), len(m.userAllocations))
+	fmt.Fprintf(w, "echo \"[Phase 5/%d] Allocating User Resources (%d commands)...\"\n", numPhases(m), len(m.userAllocations))
 
 	if parallelism > 0 && len(m.userAllocations) > 0 {
 		writeParallelAllocates(w, m.userAllocations, parallelism)
@@ -594,12 +648,12 @@ func writeScript(w io.Writer, m *migration, parallelism int) {
 	}
 	fmt.Fprintf(w, "\n")
 
-	// Phase 5: Multicast group allocations (parallel)
+	// Phase 6: Multicast group allocations (parallel)
 	if len(m.mcgroupAllocs) > 0 {
 		fmt.Fprintf(w, "# ============================================\n")
-		fmt.Fprintf(w, "# Phase 5: Allocate MulticastGroup Resources\n")
+		fmt.Fprintf(w, "# Phase 6: Allocate MulticastGroup Resources\n")
 		fmt.Fprintf(w, "# ============================================\n")
-		fmt.Fprintf(w, "echo \"[Phase 5/%d] Allocating MulticastGroup Resources (%d commands)...\"\n", numPhases(m), len(m.mcgroupAllocs))
+		fmt.Fprintf(w, "echo \"[Phase 6/%d] Allocating MulticastGroup Resources (%d commands)...\"\n", numPhases(m), len(m.mcgroupAllocs))
 
 		if parallelism > 0 {
 			writeParallelAllocates(w, m.mcgroupAllocs, parallelism)
@@ -628,13 +682,14 @@ func writeScript(w io.Writer, m *migration, parallelism int) {
 	fmt.Fprintf(w, "fi\n")
 }
 
-// numPhases returns the number of phases in the migration
+// numPhases returns the maximum phase number in the migration
+// Phases: 1=global creates, 2=per-device creates, 3=device loopbacks (optional),
+// 4=links, 5=users, 6=multicast (optional)
 func numPhases(m *migration) int {
-	phases := 4 // Always have phases 1-4
 	if len(m.mcgroupAllocs) > 0 {
-		phases = 5
+		return 6
 	}
-	return phases
+	return 5
 }
 
 // writeParallelCreates writes create commands for GNU parallel execution
@@ -678,4 +733,10 @@ func onChainNetToString(n [5]uint8) string {
 		return fmt.Sprintf("%s/%d", ip.String(), prefixLen)
 	}
 	return ""
+}
+
+// onChainNetToIP extracts just the IP address from on-chain network format (without CIDR)
+func onChainNetToIP(n [5]uint8) string {
+	ip := net.IP(n[:4])
+	return ip.String()
 }

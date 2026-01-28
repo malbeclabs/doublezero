@@ -272,11 +272,9 @@ func generateMigration(data *serviceability.ProgramData, verbose bool) *migratio
 
 		tunnelNet := onChainNetToString(link.TunnelNet)
 		if tunnelNet != "" {
-			// Extract just the IP part (without prefix) for allocation
-			ip := onChainIPToString(link.TunnelNet)
 			m.linkAllocations = append(m.linkAllocations, allocateCommand{
 				resourceType: "device-tunnel-block",
-				allocation:   ip,
+				allocation:   tunnelNet,
 				comment:      fmt.Sprintf("Link %s tunnel_net=%s", link.Code, tunnelNet),
 			})
 		}
@@ -321,10 +319,9 @@ func generateMigration(data *serviceability.ProgramData, verbose bool) *migratio
 		// tunnel_net -> UserTunnelBlock
 		tunnelNet := onChainNetToString(user.TunnelNet)
 		if tunnelNet != "" {
-			ip := onChainIPToString(user.TunnelNet)
 			m.userAllocations = append(m.userAllocations, allocateCommand{
 				resourceType: "user-tunnel-block",
-				allocation:   ip,
+				allocation:   tunnelNet,
 				comment:      fmt.Sprintf("User %s on %s tunnel_net=%s", clientIP, deviceCode, tunnelNet),
 			})
 		}
@@ -536,9 +533,4 @@ func onChainNetToString(n [5]uint8) string {
 		return fmt.Sprintf("%s/%d", ip.String(), prefixLen)
 	}
 	return ""
-}
-
-// onChainIPToString extracts just the IP without prefix
-func onChainIPToString(n [5]uint8) string {
-	return net.IP(n[:4]).String()
 }

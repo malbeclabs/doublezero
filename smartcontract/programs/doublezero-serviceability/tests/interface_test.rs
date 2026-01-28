@@ -9,6 +9,7 @@ use doublezero_serviceability::{
             interface::{
                 activate::*, create::*, delete::*, reject::*, remove::*, unlink::*, update::*,
             },
+            sethealth::DeviceSetHealthArgs,
             update::*,
         },
         *,
@@ -266,6 +267,21 @@ async fn test_device_interfaces() {
             AccountMeta::new(config_pubkey, false),
             AccountMeta::new(tunnel_ids_pda, false),
             AccountMeta::new(dz_prefix_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetDeviceHealth(DeviceSetHealthArgs {
+            health: DeviceHealth::ReadyForUsers,
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )

@@ -11,6 +11,7 @@ import (
 
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/stretchr/testify/require"
 )
 
@@ -89,6 +90,21 @@ func TestE2E_DeviceMaxusersRollover(t *testing.T) {
 		return len(data.Devices) == 2
 	}, 30*time.Second, 1*time.Second)
 	log.Info("--> Device exists onchain", "deviceCode1", deviceCode1, "devicePK1", devicePK1, "deviceCode2", deviceCode2, "devicePK2", devicePK2)
+
+	// Wait for devices to be activated by the device-health-oracle
+	log.Info("==> Waiting for devices to be activated")
+	require.Eventually(t, func() bool {
+		data, err := serviceabilityClient.GetProgramData(t.Context())
+		require.NoError(t, err)
+		for _, device := range data.Devices {
+			if device.Status != serviceability.DeviceStatusActivated {
+				log.Debug("Device not activated", "code", device.Code, "status", device.Status.String())
+				return false
+			}
+		}
+		return true
+	}, 3*time.Minute, 5*time.Second)
+	log.Info("--> All devices activated")
 
 	// Add a client.
 	log.Info("==> Adding client")

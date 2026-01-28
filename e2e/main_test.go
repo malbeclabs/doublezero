@@ -259,6 +259,10 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 	`})
 	require.NoError(t, err)
 
+	// Wait for all devices and links to be activated by the device-health-oracle
+	err = dn.WaitForAllDevicesAndLinksActivated(t, 3*time.Minute)
+	require.NoError(t, err, "timed out waiting for all devices and links to be activated")
+
 	// Add a client to the devnet.
 	client, err := dn.AddClient(ctx, devnet.ClientSpec{
 		CYOANetworkIPHostID: 100,
@@ -400,6 +404,43 @@ func (dn *TestDevnet) WaitForUserActivation(t *testing.T) error {
 		return true, nil
 	}
 	return poll.Until(t.Context(), condition, 90*time.Second, 5*time.Second)
+}
+
+func (dn *TestDevnet) WaitForAllDevicesAndLinksActivated(t *testing.T, timeout time.Duration) error {
+	dn.log.Info("==> Waiting for all devices and links to be activated", "timeout", timeout)
+
+	client, err := dn.Ledger.GetServiceabilityClient()
+	require.NoError(t, err, "error getting serviceability client")
+
+	condition := func() (bool, error) {
+		data, err := client.GetProgramData(t.Context())
+		if err != nil {
+			return false, err
+		}
+
+		for _, device := range data.Devices {
+			if device.Status != serviceability.DeviceStatusActivated {
+				dn.log.Debug("Device not activated", "code", device.Code, "status", device.Status.String())
+				return false, nil
+			}
+		}
+
+		for _, link := range data.Links {
+			// Links can be in drained states which are valid final states
+			if link.Status != serviceability.LinkStatusActivated &&
+				link.Status != serviceability.LinkStatusHardDrained &&
+				link.Status != serviceability.LinkStatusSoftDrained {
+				dn.log.Debug("Link not activated", "code", link.Code, "status", link.Status.String())
+				return false, nil
+			}
+		}
+
+		dn.log.Info("--> All devices and links are activated",
+			"devices", len(data.Devices),
+			"links", len(data.Links))
+		return true, nil
+	}
+	return poll.Until(t.Context(), condition, timeout, 5*time.Second)
 }
 
 func (dn *TestDevnet) ConnectIBRLUserTunnel(t *testing.T, client *devnet.Client) {

@@ -11,7 +11,8 @@ use doublezero_serviceability::{
         device::interface::DeviceInterfaceUnlinkArgs,
         link::{
             accept::LinkAcceptArgs, activate::LinkActivateArgs, closeaccount::LinkCloseAccountArgs,
-            create::LinkCreateArgs, delete::LinkDeleteArgs, update::LinkUpdateArgs,
+            create::LinkCreateArgs, delete::LinkDeleteArgs, sethealth::LinkSetHealthArgs,
+            update::LinkUpdateArgs,
         },
         *,
     },
@@ -387,6 +388,22 @@ async fn test_activate_link_with_onchain_allocation() {
     )
     .await;
 
+    // Set link health to transition from Provisioning to Activated
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetLinkHealth(LinkSetHealthArgs {
+            health: LinkHealth::ReadyForService,
+        }),
+        vec![
+            AccountMeta::new(link_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
     // Verify link is activated with allocated resources
     let link = get_account_data(&mut banks_client, link_pubkey)
         .await
@@ -722,6 +739,22 @@ async fn test_activate_link_legacy_path() {
     )
     .await;
 
+    // Set link health to transition from Provisioning to Activated
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetLinkHealth(LinkSetHealthArgs {
+            health: LinkHealth::ReadyForService,
+        }),
+        vec![
+            AccountMeta::new(link_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
     // Verify link is activated with provided resources
     let link = get_account_data(&mut banks_client, link_pubkey)
         .await
@@ -1025,6 +1058,22 @@ async fn test_closeaccount_link_with_deallocation() {
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(device_tunnel_block_pda, false),
             AccountMeta::new(link_ids_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Set link health to transition from Provisioning to Activated
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetLinkHealth(LinkSetHealthArgs {
+            health: LinkHealth::ReadyForService,
+        }),
+        vec![
+            AccountMeta::new(link_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )

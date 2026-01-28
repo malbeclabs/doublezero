@@ -307,6 +307,30 @@ async fn test_device() {
         .unwrap();
     assert_eq!(device.account_type, AccountType::Device);
     assert_eq!(device.code, "la".to_string());
+    assert_eq!(device.status, DeviceStatus::DeviceProvisioning);
+
+    /*****************************************************************************************************************************************************/
+    println!("🟢 7a. Set Device Health to ReadyForUsers...");
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetDeviceHealth(DeviceSetHealthArgs {
+            health: DeviceHealth::ReadyForUsers,
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let device = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_device()
+        .unwrap();
     assert_eq!(device.status, DeviceStatus::Activated);
 
     println!("✅ Device activated");
@@ -945,6 +969,22 @@ async fn test_delete_device_fails_with_reference_count_not_zero() {
             AccountMeta::new(config_pubkey, false),
             AccountMeta::new(tunnel_ids_pda, false),
             AccountMeta::new(dz_prefix_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Set device health to ReadyForUsers so it transitions to Activated
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetDeviceHealth(DeviceSetHealthArgs {
+            health: DeviceHealth::ReadyForUsers,
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )

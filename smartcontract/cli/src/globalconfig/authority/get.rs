@@ -15,7 +15,9 @@ pub struct AuthorityDisplay {
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub activator_authority: Pubkey,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
-    pub access_authority: Pubkey,
+    pub sentinel_authority: Pubkey,
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
+    pub health_oracle: Pubkey,
 }
 
 impl GetAuthorityCliCommand {
@@ -24,7 +26,8 @@ impl GetAuthorityCliCommand {
 
         let config_display = AuthorityDisplay {
             activator_authority: gstate.activator_authority_pk,
-            access_authority: gstate.sentinel_authority_pk,
+            sentinel_authority: gstate.sentinel_authority_pk,
+            health_oracle: gstate.health_oracle_pk,
         };
         let config_displays = vec![config_display];
         let table = Table::new(config_displays)

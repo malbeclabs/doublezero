@@ -107,9 +107,17 @@ func (d *DeviceHealthOracle) Start(ctx context.Context) error {
 		"DZ_SERVICEABILITY_PROGRAM_ID": d.dn.Manager.ServiceabilityProgramID,
 		"DZ_TELEMETRY_PROGRAM_ID":      d.dn.Manager.TelemetryProgramID,
 		"DZ_INTERVAL":                  d.dn.Spec.DeviceHealthOracle.Interval.String(),
+		"DZ_SIGNER_KEYPAIR":            containerSolanaKeypairPath,
 	}
 	if d.dn.Prometheus != nil && d.dn.Prometheus.InternalURL != "" {
 		env["ALLOY_PROMETHEUS_URL"] = d.dn.Prometheus.InternalRemoteWriteURL()
+	}
+
+	containerFiles := []testcontainers.ContainerFile{
+		{
+			HostFilePath:      d.dn.Spec.Manager.ManagerKeypairPath,
+			ContainerFilePath: containerSolanaKeypairPath,
+		},
 	}
 
 	req := testcontainers.ContainerRequest{
@@ -128,6 +136,7 @@ func (d *DeviceHealthOracle) Start(ctx context.Context) error {
 			Memory:   defaultContainerMemory,
 		},
 		Labels: d.dn.labels,
+		Files:  containerFiles,
 	}
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req,

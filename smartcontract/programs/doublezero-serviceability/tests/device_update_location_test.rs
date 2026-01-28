@@ -5,7 +5,9 @@ use doublezero_serviceability::{
     pda::*,
     processors::{
         contributor::create::ContributorCreateArgs,
-        device::{closeaccount::*, create::*, delete::*, update::*},
+        device::{
+            closeaccount::*, create::*, delete::*, sethealth::DeviceSetHealthArgs, update::*,
+        },
         *,
     },
     resource::ResourceType,
@@ -340,9 +342,33 @@ async fn device_update_location_test() {
         .unwrap();
     assert_eq!(device.account_type, AccountType::Device);
     assert_eq!(device.code, "la".to_string());
+    assert_eq!(device.status, DeviceStatus::DeviceProvisioning);
+
+    /*****************************************************************************************************************************************************/
+    println!("🟢 9a. Set Device Health to ReadyForUsers...");
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetDeviceHealth(DeviceSetHealthArgs {
+            health: DeviceHealth::ReadyForUsers,
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let device = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_device()
+        .unwrap();
     assert_eq!(device.status, DeviceStatus::Activated);
 
-    println!("✅ Device updated");
+    println!("✅ Device activated");
     /*****************************************************************************************************************************************************/
     println!("🟢 10. Update Device...");
     execute_transaction(

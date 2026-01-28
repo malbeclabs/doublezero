@@ -4,7 +4,7 @@ use doublezero_serviceability::{
     processors::{
         accesspass::set::SetAccessPassArgs,
         contributor::create::ContributorCreateArgs,
-        device::update::DeviceUpdateArgs,
+        device::{sethealth::DeviceSetHealthArgs, update::DeviceUpdateArgs},
         user::{activate::*, ban::*, create::*, delete::*, requestban::*, update::*},
         *,
     },
@@ -265,6 +265,21 @@ async fn test_user() {
             AccountMeta::new(config_pubkey, false),
             AccountMeta::new(tunnel_ids_pda, false),
             AccountMeta::new(dz_prefix_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetDeviceHealth(DeviceSetHealthArgs {
+            health: DeviceHealth::ReadyForUsers,
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )

@@ -256,6 +256,24 @@ async fn test_accesspass_allow_multiple_ip() {
 
     println!("✅ Device initialized successfully",);
     /*****************************************************************************************************************************************************/
+    println!("🟢 4b. Setting Device Health to ReadyForUsers...");
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetDeviceHealth(device::sethealth::DeviceSetHealthArgs {
+            health: DeviceHealth::ReadyForUsers,
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    println!("✅ Device health set to ReadyForUsers");
+    /*****************************************************************************************************************************************************/
     println!("🟢 5. Testing Activate Device...");
     execute_transaction(
         &mut banks_client,

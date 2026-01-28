@@ -181,10 +181,8 @@ pub fn process_create_link(
         side_a_iface_name: value.side_a_iface_name.clone(),
         side_z_iface_name,
         delay_override_ns: 0,
-        // TODO: This line show be change when the health oracle is implemented
-        // link_health: LinkHealth::Pending,
-        link_health: LinkHealth::ReadyForService, // Force the link to be ready for service until the health oracle is implemented,
-        desired_status: value.desired_status.unwrap_or(LinkDesiredStatus::Pending),
+        link_health: LinkHealth::Pending,
+        desired_status: value.desired_status.unwrap_or(LinkDesiredStatus::Activated),
     };
 
     link.check_status_transition();

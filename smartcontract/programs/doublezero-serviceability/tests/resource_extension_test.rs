@@ -18,8 +18,15 @@ use doublezero_serviceability::{
     processors::{
         contributor::create::ContributorCreateArgs,
         device::{
-            activate::DeviceActivateArgs, closeaccount::DeviceCloseAccountArgs,
-            create::DeviceCreateArgs, delete::DeviceDeleteArgs, update::DeviceUpdateArgs,
+            activate::DeviceActivateArgs,
+            closeaccount::DeviceCloseAccountArgs,
+            create::DeviceCreateArgs,
+            delete::DeviceDeleteArgs,
+            interface::{
+                activate::DeviceInterfaceActivateArgs, create::DeviceInterfaceCreateArgs,
+                delete::DeviceInterfaceDeleteArgs, remove::DeviceInterfaceRemoveArgs,
+            },
+            update::DeviceUpdateArgs,
         },
         exchange::create::ExchangeCreateArgs,
         location::create::LocationCreateArgs,
@@ -32,6 +39,7 @@ use doublezero_serviceability::{
     state::{
         accounttype::AccountType,
         device::{DeviceDesiredStatus, DeviceType},
+        interface::{InterfaceCYOA, InterfaceDIA, InterfaceStatus, LoopbackType, RoutingMode},
     },
 };
 use solana_program_test::*;
@@ -1385,4 +1393,522 @@ async fn test_device_create_update_close_manages_resources() {
     );
 
     println!("[PASS] test_device_create_update_close_manages_resources");
+}
+
+// ============================================================================
+// Loopback Interface On-Chain Allocation Tests
+// ============================================================================
+
+/// Helper to create a loopback interface on a device
+#[allow(clippy::too_many_arguments)]
+async fn create_loopback_interface(
+    banks_client: &mut BanksClient,
+    payer: &solana_sdk::signature::Keypair,
+    program_id: Pubkey,
+    globalstate_pubkey: Pubkey,
+    device_pubkey: Pubkey,
+    contributor_pubkey: Pubkey,
+    name: &str,
+    loopback_type: doublezero_serviceability::state::interface::LoopbackType,
+) {
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
+            name: name.to_string(),
+            loopback_type,
+            vlan_id: 0,
+            ip_net: None,
+            user_tunnel_endpoint: false,
+            interface_cyoa: InterfaceCYOA::None,
+            interface_dia: InterfaceDIA::None,
+            bandwidth: 0,
+            cir: 0,
+            mtu: 1500,
+            routing_mode: RoutingMode::Static,
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        payer,
+    )
+    .await;
+}
+
+/// Helper to activate a loopback interface with on-chain allocation
+#[allow(clippy::too_many_arguments)]
+async fn activate_loopback_interface_onchain(
+    banks_client: &mut BanksClient,
+    payer: &solana_sdk::signature::Keypair,
+    program_id: Pubkey,
+    globalstate_pubkey: Pubkey,
+    device_pubkey: Pubkey,
+    name: &str,
+) {
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    let (device_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
+    let (segment_routing_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateDeviceInterface(DeviceInterfaceActivateArgs {
+            name: name.to_string(),
+            ip_net: Default::default(), // Ignored for on-chain allocation
+            node_segment_idx: 0,        // Ignored for on-chain allocation
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+            // Providing these two accounts enables on-chain allocation
+            AccountMeta::new(device_tunnel_block_pda, false),
+            AccountMeta::new(segment_routing_ids_pda, false),
+        ],
+        payer,
+    )
+    .await;
+}
+
+/// Helper to delete (mark for deletion) a device interface
+#[allow(clippy::too_many_arguments)]
+async fn delete_device_interface(
+    banks_client: &mut BanksClient,
+    payer: &solana_sdk::signature::Keypair,
+    program_id: Pubkey,
+    globalstate_pubkey: Pubkey,
+    device_pubkey: Pubkey,
+    contributor_pubkey: Pubkey,
+    name: &str,
+) {
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::DeleteDeviceInterface(DeviceInterfaceDeleteArgs {
+            name: name.to_string(),
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        payer,
+    )
+    .await;
+}
+
+/// Helper to remove a device interface with on-chain deallocation
+#[allow(clippy::too_many_arguments)]
+async fn remove_loopback_interface_onchain(
+    banks_client: &mut BanksClient,
+    payer: &solana_sdk::signature::Keypair,
+    program_id: Pubkey,
+    globalstate_pubkey: Pubkey,
+    device_pubkey: Pubkey,
+    name: &str,
+) {
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    let (device_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
+    let (segment_routing_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::RemoveDeviceInterface(DeviceInterfaceRemoveArgs {
+            name: name.to_string(),
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+            // Providing these two accounts enables on-chain deallocation
+            AccountMeta::new(device_tunnel_block_pda, false),
+            AccountMeta::new(segment_routing_ids_pda, false),
+        ],
+        payer,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn test_loopback_interface_onchain_allocation_vpnv4() {
+    println!("[TEST] test_loopback_interface_onchain_allocation_vpnv4");
+
+    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    // Setup device
+    let (device_pubkey, _, _, contributor_pubkey) = setup_device_for_dz_prefix_tests(
+        &mut banks_client,
+        &payer,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+    )
+    .await;
+
+    // Activate device first (required before activating interfaces)
+    activate_device(
+        &mut banks_client,
+        &payer,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        device_pubkey,
+        2, // resource_count
+    )
+    .await;
+
+    // Create a Vpnv4 loopback interface
+    create_loopback_interface(
+        &mut banks_client,
+        &payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        contributor_pubkey,
+        "Loopback0",
+        LoopbackType::Vpnv4,
+    )
+    .await;
+
+    // Verify interface was created with Pending status
+    let device = get_device(&mut banks_client, device_pubkey)
+        .await
+        .expect("Device should exist");
+    let (_, iface) = device
+        .find_interface("Loopback0")
+        .expect("Interface should exist");
+    assert_eq!(iface.status, InterfaceStatus::Pending);
+    assert_eq!(
+        iface.ip_net,
+        doublezero_program_common::types::NetworkV4::default()
+    );
+    assert_eq!(iface.node_segment_idx, 0);
+
+    // Get resource state before activation
+    let (device_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
+    let (segment_routing_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+
+    let resource_before = get_resource_extension_data(&mut banks_client, device_tunnel_block_pda)
+        .await
+        .expect("DeviceTunnelBlock resource should exist");
+    let allocated_ips_before = resource_before.iter_allocated().len();
+
+    let sr_resource_before =
+        get_resource_extension_data(&mut banks_client, segment_routing_ids_pda)
+            .await
+            .expect("SegmentRoutingIds resource should exist");
+    let allocated_sids_before = sr_resource_before.iter_allocated().len();
+
+    // Activate interface with on-chain allocation
+    activate_loopback_interface_onchain(
+        &mut banks_client,
+        &payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        "Loopback0",
+    )
+    .await;
+
+    // Verify interface has allocated IP and segment ID
+    let device = get_device(&mut banks_client, device_pubkey)
+        .await
+        .expect("Device should exist");
+    let (_, iface) = device
+        .find_interface("Loopback0")
+        .expect("Interface should exist");
+    assert_eq!(iface.status, InterfaceStatus::Activated);
+    assert_ne!(
+        iface.ip_net,
+        doublezero_program_common::types::NetworkV4::default(),
+        "ip_net should be allocated"
+    );
+    assert_ne!(
+        iface.node_segment_idx, 0,
+        "node_segment_idx should be allocated for Vpnv4"
+    );
+
+    // Verify resources were allocated
+    let resource_after = get_resource_extension_data(&mut banks_client, device_tunnel_block_pda)
+        .await
+        .expect("DeviceTunnelBlock resource should exist");
+    assert_eq!(
+        resource_after.iter_allocated().len(),
+        allocated_ips_before + 1,
+        "One IP should be allocated"
+    );
+
+    let sr_resource_after = get_resource_extension_data(&mut banks_client, segment_routing_ids_pda)
+        .await
+        .expect("SegmentRoutingIds resource should exist");
+    assert_eq!(
+        sr_resource_after.iter_allocated().len(),
+        allocated_sids_before + 1,
+        "One segment ID should be allocated"
+    );
+
+    println!("[PASS] test_loopback_interface_onchain_allocation_vpnv4");
+}
+
+#[tokio::test]
+async fn test_loopback_interface_onchain_allocation_ipv4() {
+    println!("[TEST] test_loopback_interface_onchain_allocation_ipv4");
+
+    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    // Setup device
+    let (device_pubkey, _, _, contributor_pubkey) = setup_device_for_dz_prefix_tests(
+        &mut banks_client,
+        &payer,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+    )
+    .await;
+
+    // Activate device first
+    activate_device(
+        &mut banks_client,
+        &payer,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        device_pubkey,
+        2,
+    )
+    .await;
+
+    // Create an Ipv4 loopback interface (should only allocate IP, not segment ID)
+    create_loopback_interface(
+        &mut banks_client,
+        &payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        contributor_pubkey,
+        "Loopback1",
+        LoopbackType::Ipv4,
+    )
+    .await;
+
+    // Get resource state before activation
+    let (device_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
+    let (segment_routing_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+
+    let resource_before = get_resource_extension_data(&mut banks_client, device_tunnel_block_pda)
+        .await
+        .expect("DeviceTunnelBlock resource should exist");
+    let allocated_ips_before = resource_before.iter_allocated().len();
+
+    let sr_resource_before =
+        get_resource_extension_data(&mut banks_client, segment_routing_ids_pda)
+            .await
+            .expect("SegmentRoutingIds resource should exist");
+    let allocated_sids_before = sr_resource_before.iter_allocated().len();
+
+    // Activate interface with on-chain allocation
+    activate_loopback_interface_onchain(
+        &mut banks_client,
+        &payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        "Loopback1",
+    )
+    .await;
+
+    // Verify interface has allocated IP but NOT segment ID (Ipv4 type doesn't need it)
+    let device = get_device(&mut banks_client, device_pubkey)
+        .await
+        .expect("Device should exist");
+    let (_, iface) = device
+        .find_interface("Loopback1")
+        .expect("Interface should exist");
+    assert_eq!(iface.status, InterfaceStatus::Activated);
+    assert_ne!(
+        iface.ip_net,
+        doublezero_program_common::types::NetworkV4::default(),
+        "ip_net should be allocated"
+    );
+    assert_eq!(
+        iface.node_segment_idx, 0,
+        "node_segment_idx should NOT be allocated for Ipv4 type"
+    );
+
+    // Verify only IP was allocated, not segment ID
+    let resource_after = get_resource_extension_data(&mut banks_client, device_tunnel_block_pda)
+        .await
+        .expect("DeviceTunnelBlock resource should exist");
+    assert_eq!(
+        resource_after.iter_allocated().len(),
+        allocated_ips_before + 1,
+        "One IP should be allocated"
+    );
+
+    let sr_resource_after = get_resource_extension_data(&mut banks_client, segment_routing_ids_pda)
+        .await
+        .expect("SegmentRoutingIds resource should exist");
+    assert_eq!(
+        sr_resource_after.iter_allocated().len(),
+        allocated_sids_before,
+        "No segment ID should be allocated for Ipv4 type"
+    );
+
+    println!("[PASS] test_loopback_interface_onchain_allocation_ipv4");
+}
+
+#[tokio::test]
+async fn test_loopback_interface_onchain_deallocation() {
+    println!("[TEST] test_loopback_interface_onchain_deallocation");
+
+    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    // Setup device
+    let (device_pubkey, _, _, contributor_pubkey) = setup_device_for_dz_prefix_tests(
+        &mut banks_client,
+        &payer,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+    )
+    .await;
+
+    // Activate device first
+    activate_device(
+        &mut banks_client,
+        &payer,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        device_pubkey,
+        2,
+    )
+    .await;
+
+    // Create and activate a Vpnv4 loopback interface
+    create_loopback_interface(
+        &mut banks_client,
+        &payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        contributor_pubkey,
+        "Loopback0",
+        LoopbackType::Vpnv4,
+    )
+    .await;
+
+    activate_loopback_interface_onchain(
+        &mut banks_client,
+        &payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        "Loopback0",
+    )
+    .await;
+
+    // Get resource state after activation
+    let (device_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
+    let (segment_routing_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+
+    let resource_after_activate =
+        get_resource_extension_data(&mut banks_client, device_tunnel_block_pda)
+            .await
+            .expect("DeviceTunnelBlock resource should exist");
+    let allocated_ips_after_activate = resource_after_activate.iter_allocated().len();
+
+    let sr_resource_after_activate =
+        get_resource_extension_data(&mut banks_client, segment_routing_ids_pda)
+            .await
+            .expect("SegmentRoutingIds resource should exist");
+    let allocated_sids_after_activate = sr_resource_after_activate.iter_allocated().len();
+
+    // Mark interface for deletion
+    delete_device_interface(
+        &mut banks_client,
+        &payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        contributor_pubkey,
+        "Loopback0",
+    )
+    .await;
+
+    // Verify interface is in Deleting status
+    let device = get_device(&mut banks_client, device_pubkey)
+        .await
+        .expect("Device should exist");
+    let (_, iface) = device
+        .find_interface("Loopback0")
+        .expect("Interface should exist");
+    assert_eq!(iface.status, InterfaceStatus::Deleting);
+
+    // Remove interface with on-chain deallocation
+    remove_loopback_interface_onchain(
+        &mut banks_client,
+        &payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        "Loopback0",
+    )
+    .await;
+
+    // Verify interface was removed
+    let device = get_device(&mut banks_client, device_pubkey)
+        .await
+        .expect("Device should exist");
+    assert!(
+        device.find_interface("Loopback0").is_err(),
+        "Interface should be removed"
+    );
+
+    // Verify resources were deallocated
+    let resource_after_remove =
+        get_resource_extension_data(&mut banks_client, device_tunnel_block_pda)
+            .await
+            .expect("DeviceTunnelBlock resource should exist");
+    assert_eq!(
+        resource_after_remove.iter_allocated().len(),
+        allocated_ips_after_activate - 1,
+        "IP should be deallocated"
+    );
+
+    let sr_resource_after_remove =
+        get_resource_extension_data(&mut banks_client, segment_routing_ids_pda)
+            .await
+            .expect("SegmentRoutingIds resource should exist");
+    assert_eq!(
+        sr_resource_after_remove.iter_allocated().len(),
+        allocated_sids_after_activate - 1,
+        "Segment ID should be deallocated"
+    );
+
+    println!("[PASS] test_loopback_interface_onchain_deallocation");
 }

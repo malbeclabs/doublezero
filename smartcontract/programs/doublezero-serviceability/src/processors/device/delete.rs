@@ -86,6 +86,10 @@ pub fn process_delete_device(
         return Err(DoubleZeroError::ReferenceCountNotZero.into());
     }
 
+    if !device.interfaces.is_empty() {
+        return Err(DoubleZeroError::DeviceHasInterfaces.into());
+    }
+
     device.status = DeviceStatus::Deleting;
 
     try_acc_write(&device, device_account, payer_account, accounts)?;

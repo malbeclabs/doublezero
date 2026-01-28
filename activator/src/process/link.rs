@@ -426,6 +426,16 @@ mod tests {
                     doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
             };
 
+            let tunnel_clone = tunnel.clone();
+            client
+                .expect_get()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(predicate::eq(tunnel_pubkey))
+                .returning(move |_| Ok(AccountData::Link(tunnel_clone.clone())));
+
+            // Note: device_z is not fetched for Pending status links (only for Requested)
+
             let _ = link_ips.next_available_block(0, 2);
 
             client

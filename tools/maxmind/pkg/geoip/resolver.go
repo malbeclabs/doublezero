@@ -10,17 +10,23 @@ import (
 )
 
 type Record struct {
-	IP          net.IP
-	CountryCode string
-	Country     string
-	Region      string
-	City        string
-	CityID      int
-	Metro       string
-	Latitude    float64
-	Longitude   float64
-	ASN         uint
-	ASNOrg      string
+	IP                  net.IP
+	CountryCode         string
+	Country             string
+	Region              string
+	City                string
+	CityID              int
+	MetroName           string
+	Latitude            float64
+	Longitude           float64
+	PostalCode          string
+	TimeZone            string
+	AccuracyRadius      int
+	ASN                 uint
+	ASNOrg              string
+	IsAnycast           bool
+	IsAnonymousProxy    bool
+	IsSatelliteProvider bool
 }
 
 type Resolver interface {
@@ -66,11 +72,12 @@ func (r *resolver) Resolve(ip net.IP) *Record {
 	}
 
 	var (
-		countryCode, country, region, city string
-		cityID                             int
-		lat, lon                           float64
-		asnNum                             uint
-		asnOrg                             string
+		countryCode, country, region, city, postalCode, timeZone string
+		cityID, accuracyRadius                                   int
+		lat, lon                                                 float64
+		asnNum                                                   uint
+		asnOrg                                                   string
+		isAnycast, isAnonymousProxy, isSatelliteProvider         bool
 	)
 
 	if r.cityDB != nil {
@@ -95,6 +102,12 @@ func (r *resolver) Resolve(ip net.IP) *Record {
 			}
 			lat = rec.Location.Latitude
 			lon = rec.Location.Longitude
+			postalCode = rec.Postal.Code
+			timeZone = rec.Location.TimeZone
+			accuracyRadius = int(rec.Location.AccuracyRadius)
+			isAnycast = rec.Traits.IsAnycast
+			isAnonymousProxy = rec.Traits.IsAnonymousProxy
+			isSatelliteProvider = rec.Traits.IsSatelliteProvider
 		}
 	}
 
@@ -108,12 +121,12 @@ func (r *resolver) Resolve(ip net.IP) *Record {
 		}
 	}
 
-	var metro string
+	var metroName string
 	if r.metroDB != nil {
-		metro, _ = r.metroDB.Lookup(city, countryCode)
+		metroName, _ = r.metroDB.Lookup(city, countryCode)
 	}
-	if metro == "" {
-		metro = "Unknown"
+	if metroName == "" {
+		metroName = "Unknown"
 	}
 
 	if country == "" && asnNum == 0 {
@@ -121,16 +134,22 @@ func (r *resolver) Resolve(ip net.IP) *Record {
 	}
 
 	return &Record{
-		IP:          ip,
-		CountryCode: countryCode,
-		Country:     country,
-		Region:      region,
-		City:        city,
-		CityID:      cityID,
-		Metro:       metro,
-		Latitude:    lat,
-		Longitude:   lon,
-		ASN:         asnNum,
-		ASNOrg:      asnOrg,
+		IP:                  ip,
+		CountryCode:         countryCode,
+		Country:             country,
+		Region:              region,
+		City:                city,
+		CityID:              cityID,
+		MetroName:           metroName,
+		Latitude:            lat,
+		Longitude:           lon,
+		PostalCode:          postalCode,
+		TimeZone:            timeZone,
+		AccuracyRadius:      accuracyRadius,
+		ASN:                 asnNum,
+		ASNOrg:              asnOrg,
+		IsAnycast:           isAnycast,
+		IsAnonymousProxy:    isAnonymousProxy,
+		IsSatelliteProvider: isSatelliteProvider,
 	}
 }

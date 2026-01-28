@@ -18,6 +18,8 @@ All notable changes to this project will be documented in this file.
   - Go SDK can now perform batch writes to device.health and link.health as per rfc12
 - Activator
   - fix(activator): add on-chain allocation support for users ([#2744](https://github.com/malbeclabs/doublezero/pull/2744))
+- Smartcontract
+  - feat(smartcontract): add use_onchain_deallocation flag to MulticastGroup ([#2748](https://github.com/malbeclabs/doublezero/pull/2748))
 
 ## [v0.8.3](https://github.com/malbeclabs/doublezero/compare/client/v0.8.2...client/v0.8.3) – 2026-01-22
 

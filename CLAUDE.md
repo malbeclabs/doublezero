@@ -155,23 +155,3 @@ dev/e2e-test.sh
 TESTCONTAINERS_RYUK_DISABLED=true go test -tags e2e -run TestE2E_Multicast_Publisher -v -count=1 ./e2e/...
 ```
 
-## E2E Documentation
-
-Detailed documentation for E2E testing is in `e2e/docs/`:
-
-### Multicast Test Plan
-See `e2e/docs/MULTICAST_TEST_PLAN.md` for:
-- Step-by-step devnet setup with multicast configuration
-- Devnet lifecycle commands (destroy, build, start, add devices/clients)
-- Onchain setup (access passes, links, multicast groups, allowlists)
-- Control plane verification (tunnels, PIM, MSDP, mroutes)
-- Troubleshooting guide
-
-### cEOS Multicast Limitation
-See `e2e/docs/CEOS_MULTICAST_LIMITATION.md` for:
-- Technical analysis of why multicast data plane doesn't work in cEOS
-- Root cause (userspace forwarding agent bypasses kernel multicast routing)
-- All attempted workarounds and why they failed
-- Recommendations for the team
-
-**TL;DR:** cEOS control plane works (PIM, MSDP, mroutes), but data plane doesn't forward multicast traffic. This is a fundamental architectural limitation that cannot be worked around.

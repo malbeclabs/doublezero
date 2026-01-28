@@ -142,6 +142,35 @@ mpls icmp ip source-interface Loopback255
 {{- range $i := seq .StartTunnel .EndTunnel}}
 default interface Tunnel{{$i}}
 {{- end}}
+interface Tunnel500
+   description USER-MCAST-500
+   multicast ipv4 boundary SEC-USER-MCAST-BOUNDARY-500-OUT out
+   pim ipv4 sparse-mode
+   pim ipv4 border-router
+   pim ipv4 dr-priority 4294967295
+   mtu 9216
+   ip address 169.254.0.0/31
+   tunnel mode gre
+   tunnel source {{.DeviceIP}}
+   tunnel destination {{.PublisherClientIP}}
+   tunnel path-mtu-discovery
+   tunnel ttl 32
+   no shutdown
+!
+interface Tunnel501
+   description USER-MCAST-501
+   multicast ipv4 boundary SEC-USER-MCAST-BOUNDARY-501-OUT out
+   pim ipv4 sparse-mode
+   pim ipv4 dr-priority 4294967295
+   mtu 9216
+   ip address 169.254.0.2/31
+   tunnel mode gre
+   tunnel source {{.DeviceIP}}
+   tunnel destination {{.SubscriberClientIP}}
+   tunnel path-mtu-discovery
+   tunnel ttl 32
+   no shutdown
+!
 router bgp 65342
    router-id 172.16.0.0
    timers bgp 1 3
@@ -244,7 +273,27 @@ router bgp 65342
    neighbor 172.16.0.6 description pit-dzd01-vpnv4
    neighbor 172.16.0.6 timers 3 9
    neighbor 172.16.0.6 send-community
+   no neighbor 169.254.0.1
+   neighbor 169.254.0.1 remote-as 65000
+   neighbor 169.254.0.1 local-as 65342 no-prepend replace-as
+   neighbor 169.254.0.1 passive
+   neighbor 169.254.0.1 description USER-500
+   neighbor 169.254.0.1 route-map RM-USER-500-IN in
+   neighbor 169.254.0.1 route-map RM-USER-500-OUT out
+   neighbor 169.254.0.1 maximum-routes 1
+   neighbor 169.254.0.1 maximum-accepted-routes 1
+   no neighbor 169.254.0.3
+   neighbor 169.254.0.3 remote-as 65000
+   neighbor 169.254.0.3 local-as 65342 no-prepend replace-as
+   neighbor 169.254.0.3 passive
+   neighbor 169.254.0.3 description USER-501
+   neighbor 169.254.0.3 route-map RM-USER-501-IN in
+   neighbor 169.254.0.3 route-map RM-USER-501-OUT out
+   neighbor 169.254.0.3 maximum-routes 1
+   neighbor 169.254.0.3 maximum-accepted-routes 1
    address-family ipv4
+      neighbor 169.254.0.1 activate
+      neighbor 169.254.0.3 activate
       neighbor 172.16.0.13 activate
       neighbor 172.16.0.10 activate
       neighbor 172.16.0.9 activate
@@ -290,22 +339,66 @@ ip community-list COMM-ALL_USERS permit 21682:1200
 ip community-list COMM-ALL_MCAST_USERS permit 21682:1300
 ip community-list COMM-XEWR_USERS permit 21682:10001
 !
-{{- range $i := seq .StartTunnel .EndTunnel}}
+no route-map RM-USER-500-OUT
+route-map RM-USER-500-OUT deny 10
+   match community COMM-XEWR_USERS
+route-map RM-USER-500-OUT permit 20
+   match community COMM-ALL_MCAST_USERS
+!
+no route-map RM-USER-501-OUT
+route-map RM-USER-501-OUT deny 10
+   match community COMM-XEWR_USERS
+route-map RM-USER-501-OUT permit 20
+   match community COMM-ALL_MCAST_USERS
+!
+{{- range $i := seq (add .StartTunnel 2) .EndTunnel}}
 no route-map RM-USER-{{$i}}-OUT
 !
 {{- end}}
-{{- range $i := seq .StartTunnel .EndTunnel}}
+no route-map RM-USER-500-IN
+route-map RM-USER-500-IN permit 10
+   match ip address prefix-list PL-USER-500
+   match as-path length = 1
+   set community 21682:1300 21682:10001
+!
+no route-map RM-USER-501-IN
+route-map RM-USER-501-IN permit 10
+   match ip address prefix-list PL-USER-501
+   match as-path length = 1
+   set community 21682:1300 21682:10001
+!
+{{- range $i := seq (add .StartTunnel 2) .EndTunnel}}
 no route-map RM-USER-{{$i}}-IN
 !
 {{- end}}
-{{- range $i := seq .StartTunnel .EndTunnel}}
+no ip prefix-list PL-USER-500
+ip prefix-list PL-USER-500 seq 10 permit {{.ExpectedAllocatedPublisherIP}}/32
+!
+no ip prefix-list PL-USER-501
+ip prefix-list PL-USER-501 seq 10 deny 0.0.0.0/0 le 32
+!
+{{- range $i := seq (add .StartTunnel 2) .EndTunnel}}
 no ip prefix-list PL-USER-{{$i}}
 !
 {{- end}}
 {{- range $i := seq .StartTunnel .EndTunnel}}
 no ip access-list SEC-USER-{{$i}}-IN
 {{- end}}
-{{- range $i := seq .StartTunnel .EndTunnel}}
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-500-OUT
+ip access-list standard SEC-USER-MCAST-BOUNDARY-500-OUT
+   counters per-entry
+   permit host 233.84.178.0
+   permit host 233.84.178.1
+   deny 224.0.0.0/4
+!
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-501-OUT
+ip access-list standard SEC-USER-MCAST-BOUNDARY-501-OUT
+   counters per-entry
+   permit host 233.84.178.0
+   permit host 233.84.178.1
+   deny 224.0.0.0/4
+!
+{{- range $i := seq (add .StartTunnel 2) .EndTunnel}}
 no ip access-list standard SEC-USER-MCAST-BOUNDARY-{{$i}}-OUT
 {{- end}}
 no ip access-list SEC-USER-PUB-MCAST-IN

@@ -25,7 +25,7 @@ const (
 	updateInstalledRoutesGaugeInterval = 10 * time.Second
 )
 
-func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLatencyProbing, enableLatencyMetrics bool, networkConfig *config.NetworkConfig, probeInterval, cacheUpdateInterval int, lmc *liveness.ManagerConfig) error {
+func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLatencyProbing, enableLatencyMetrics, latencyProbeTunnelEndpoints bool, networkConfig *config.NetworkConfig, probeInterval, cacheUpdateInterval int, lmc *liveness.ManagerConfig) error {
 	nlr := routing.Netlink{}
 	var crw bgp.RouteReaderWriter
 	var cr *routing.ConfiguredRoutes
@@ -93,6 +93,7 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 			latency.WithProbeInterval(time.Duration(probeInterval)*time.Second),
 			latency.WithCacheUpdateInterval(time.Duration(cacheUpdateInterval)*time.Second),
 			latency.WithMetricsEnabled(enableLatencyMetrics),
+			latency.WithProbeTunnelEndpoints(latencyProbeTunnelEndpoints),
 		)
 		go func() {
 			err := latencyManager.Start(ctx)

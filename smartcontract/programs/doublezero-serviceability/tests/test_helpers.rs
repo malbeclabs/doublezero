@@ -141,7 +141,7 @@ pub async fn execute_transaction(
     accounts: Vec<AccountMeta>,
     payer: &Keypair,
 ) {
-    print!("➡️  Transaction {instruction:?} ");
+    println!("➡️  Transaction {instruction:?}");
 
     // Test with a diferent signer
     execute_transaction_tester(
@@ -161,9 +161,11 @@ pub async fn execute_transaction(
         .expect("Failed to get latest blockhash");
     let mut transaction = create_transaction(program_id, &instruction, &accounts, payer);
     transaction.try_sign(&[&payer], recent_blockhash).unwrap();
-    banks_client.process_transaction(transaction).await.unwrap();
+    if let Err(e) = banks_client.process_transaction(transaction).await {
+        panic!("Transaction failed for {instruction:?}: {e:?}");
+    }
 
-    println!("✅")
+    println!("✅");
 }
 
 async fn execute_transaction_tester(

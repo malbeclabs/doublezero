@@ -113,6 +113,7 @@ All notable changes to this project will be documented in this file.
   - Add on-chain validation to reject CloseAccountDevice when device has active references (reference_count > 0)
   - Allow contributor owner to update ops manager key
   - Add new arguments on create interface cli command
+  - Serviceability: require device interfaces to be in `Activated` status before processing `UnlinkDeviceInterface`, returning `InvalidStatus` otherwise
   - Serviceability: enforce that resume instructions for locations, exchanges, contributors, devices, links, and users only succeed when the account status is `Suspended`, returning `InvalidStatus` otherwise, and add tests to cover the new behavior.
   - RequestBanUser: only allow requests when user.status is Activated or Suspended; otherwise return InvalidStatus
   - Serviceability: require device interfaces to be in `Pending` status before they can be rejected, and add tests to cover the new status check
@@ -130,6 +131,7 @@ All notable changes to this project will be documented in this file.
   - Updated validation to allow public IP prefixes for CYOA/DIA, removing the restriction imposed by type-based checks.
   - Transit devices can now be provisioned without a public IP, aligning the requirements with their actual networking model and avoiding unnecessary configuration constraints.
   - Enforce that ActivateDeviceInterface only activates interfaces in Pending or Unlinked status, returning InvalidStatus for all other interface states
+  - Serviceability: add integration test coverage for the `UnlinkDeviceInterface` `Activated`-status precondition
   - Introduce desired status to Link and Devices
 - Internet Latency Telemetry
   - Fixed a bug that prevented unresponsive ripeatlas probes from being replaced

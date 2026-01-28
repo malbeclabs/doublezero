@@ -32,6 +32,7 @@ type cliConfig struct {
 	programID string
 	output    string
 	verbose   bool
+	parallel  int
 }
 
 // networkConfig holds RPC URL and program ID for a network
@@ -68,6 +69,7 @@ func run() error {
 	flag.StringVar(&cfg.programID, "program-id", "", "Override program ID (optional)")
 	flag.StringVar(&cfg.output, "output", "", "Output file for migration script (default: dry-run to stdout)")
 	flag.BoolVar(&cfg.verbose, "verbose", false, "Show detailed information during dry-run")
+	flag.IntVar(&cfg.parallel, "parallel", 8, "Number of parallel jobs for migration script (0 for sequential)")
 	help := flag.Bool("help", false, "Show help")
 
 	flag.Parse()
@@ -128,8 +130,11 @@ func run() error {
 		}
 		defer f.Close()
 
-		writeScript(f, migration)
+		writeScript(f, migration, cfg.parallel)
 		fmt.Fprintf(os.Stderr, "Migration script written to %s\n", cfg.output)
+		if cfg.parallel > 0 {
+			fmt.Fprintf(os.Stderr, "Parallelism: %d jobs (requires GNU parallel)\n", cfg.parallel)
+		}
 	}
 
 	return nil
@@ -150,6 +155,7 @@ Options:
   --program-id <ID>   Override program ID (optional)
   --output <file>     Output file for migration script (default: dry-run to stdout)
   --verbose           Show detailed information during dry-run
+  --parallel <n>      Number of parallel jobs (default: 8, 0 for sequential)
   --help              Show this help message
 
 Examples:
@@ -159,8 +165,14 @@ Examples:
   # Dry-run on devnet
   rfc11-resource-migration --network devnet
 
-  # Generate executable script for mainnet
+  # Generate parallel migration script (default: 8 jobs)
   rfc11-resource-migration --output migration.sh
+
+  # Generate script with custom parallelism
+  rfc11-resource-migration --output migration.sh --parallel 16
+
+  # Generate sequential script (no parallel)
+  rfc11-resource-migration --output migration.sh --parallel 0
 
   # Verbose dry-run with details
   rfc11-resource-migration --verbose
@@ -338,7 +350,8 @@ func generateMigration(data *serviceability.ProgramData, verbose bool) *migratio
 		// dz_ip -> DzPrefixBlock(device, index)
 		// Skip IBRL users - they use their client IP directly, not an allocated DZ IP
 		dzIP := net.IP(user.DzIp[:]).String()
-		if dzIP != "0.0.0.0" && user.UserType != serviceability.UserTypeIBRL {
+		isIBRL := user.UserType == serviceability.UserTypeIBRL
+		if dzIP != "0.0.0.0" && !isIBRL {
 			// Find which DzPrefixBlock index this IP belongs to
 			prefixIndex := findDzPrefixIndex(deviceDzPrefixMap[devicePK], user.DzIp)
 			m.userAllocations = append(m.userAllocations, allocateCommand{
@@ -346,7 +359,7 @@ func generateMigration(data *serviceability.ProgramData, verbose bool) *migratio
 				associatedPK: devicePK,
 				index:        prefixIndex,
 				allocation:   dzIP,
-				comment:      fmt.Sprintf("User %s on %s dz_ip=%s", clientIP, deviceCode, dzIP),
+				comment:      fmt.Sprintf("User %s on %s dz_ip=%s, ut=%s", clientIP, deviceCode, dzIP, user.UserType),
 			})
 		}
 	}
@@ -470,42 +483,178 @@ func printDryRun(w io.Writer, cfg cliConfig, m *migration) {
 	fmt.Fprintf(w, "Resources to allocate: %d\n", totalAllocs)
 }
 
-func writeScript(w io.Writer, m *migration) {
+func writeScript(w io.Writer, m *migration, parallelism int) {
 	fmt.Fprintf(w, "#!/bin/bash\n")
 	fmt.Fprintf(w, "set -euo pipefail\n\n")
 	fmt.Fprintf(w, "# ============================================\n")
 	fmt.Fprintf(w, "# RFC11 Resource Migration Script\n")
 	fmt.Fprintf(w, "# Generated: %s\n", time.Now().Format(time.RFC3339))
+	if parallelism > 0 {
+		fmt.Fprintf(w, "# Parallelism: %d jobs\n", parallelism)
+	} else {
+		fmt.Fprintf(w, "# Mode: Sequential\n")
+	}
 	fmt.Fprintf(w, "# ============================================\n\n")
 
-	fmt.Fprintf(w, "echo \"=== Creating Global ResourceExtension Accounts ===\"\n")
-	for _, c := range m.globalCreates {
-		fmt.Fprintf(w, "# %s\n", c.comment)
-		fmt.Fprintf(w, "doublezero resource create --resource-type %s\n", c.resourceType)
+	// Check for GNU parallel if parallel mode
+	if parallelism > 0 {
+		fmt.Fprintf(w, "# Check for GNU parallel\n")
+		fmt.Fprintf(w, "if ! command -v parallel &> /dev/null; then\n")
+		fmt.Fprintf(w, "    echo \"ERROR: GNU parallel is required but not installed.\"\n")
+		fmt.Fprintf(w, "    echo \"Install with: brew install parallel (macOS) or apt install parallel (Linux)\"\n")
+		fmt.Fprintf(w, "    exit 1\n")
+		fmt.Fprintf(w, "fi\n\n")
 	}
 
-	fmt.Fprintf(w, "\necho \"=== Creating Per-Device ResourceExtension Accounts ===\"\n")
-	currentDevice := ""
-	for _, c := range m.perDeviceCreates {
-		if c.associatedPK != currentDevice {
-			currentDevice = c.associatedPK
-			fmt.Fprintf(w, "\n# Device: %s\n", currentDevice)
-		}
+	// Track failed commands for retry
+	fmt.Fprintf(w, "# Track failures\n")
+	fmt.Fprintf(w, "FAILED_COMMANDS=\"\"\n")
+	fmt.Fprintf(w, "TOTAL_COMMANDS=0\n")
+	fmt.Fprintf(w, "SUCCESSFUL_COMMANDS=0\n\n")
+
+	// Helper function for running commands with error tracking
+	fmt.Fprintf(w, "# Run command and track result\n")
+	fmt.Fprintf(w, "run_cmd() {\n")
+	fmt.Fprintf(w, "    if eval \"$1\"; then\n")
+	fmt.Fprintf(w, "        ((SUCCESSFUL_COMMANDS++)) || true\n")
+	fmt.Fprintf(w, "    else\n")
+	fmt.Fprintf(w, "        echo \"FAILED: $1\"\n")
+	fmt.Fprintf(w, "        FAILED_COMMANDS=\"$FAILED_COMMANDS$1\\n\"\n")
+	fmt.Fprintf(w, "    fi\n")
+	fmt.Fprintf(w, "    ((TOTAL_COMMANDS++)) || true\n")
+	fmt.Fprintf(w, "}\n\n")
+
+	// Phase 1: Global creates (sequential - must happen first)
+	fmt.Fprintf(w, "# ============================================\n")
+	fmt.Fprintf(w, "# Phase 1: Create Global ResourceExtension Accounts\n")
+	fmt.Fprintf(w, "# These must complete before any allocations can happen\n")
+	fmt.Fprintf(w, "# ============================================\n")
+	fmt.Fprintf(w, "echo \"[Phase 1/%d] Creating Global ResourceExtension Accounts (%d commands)...\"\n", numPhases(m), len(m.globalCreates))
+	for _, c := range m.globalCreates {
 		fmt.Fprintf(w, "# %s\n", c.comment)
+		fmt.Fprintf(w, "run_cmd 'doublezero resource create --resource-type %s'\n", c.resourceType)
+	}
+	fmt.Fprintf(w, "\n")
+
+	// Phase 2: Per-device creates (parallel - can run concurrently)
+	fmt.Fprintf(w, "# ============================================\n")
+	fmt.Fprintf(w, "# Phase 2: Create Per-Device ResourceExtension Accounts\n")
+	fmt.Fprintf(w, "# These can run in parallel as they don't depend on each other\n")
+	fmt.Fprintf(w, "# ============================================\n")
+	fmt.Fprintf(w, "echo \"[Phase 2/%d] Creating Per-Device ResourceExtension Accounts (%d commands)...\"\n", numPhases(m), len(m.perDeviceCreates))
+
+	if parallelism > 0 && len(m.perDeviceCreates) > 0 {
+		writeParallelCreates(w, m.perDeviceCreates, parallelism)
+	} else {
+		for _, c := range m.perDeviceCreates {
+			fmt.Fprintf(w, "# %s\n", c.comment)
+			fmt.Fprintf(w, "run_cmd 'doublezero resource create --resource-type %s --associated-pubkey %s --index %d'\n",
+				c.resourceType, c.associatedPK, c.index)
+		}
+	}
+	fmt.Fprintf(w, "\n")
+
+	// Phase 3: Link allocations (parallel)
+	fmt.Fprintf(w, "# ============================================\n")
+	fmt.Fprintf(w, "# Phase 3: Allocate Link Resources\n")
+	fmt.Fprintf(w, "# ============================================\n")
+	fmt.Fprintf(w, "echo \"[Phase 3/%d] Allocating Link Resources (%d commands)...\"\n", numPhases(m), len(m.linkAllocations))
+
+	if parallelism > 0 && len(m.linkAllocations) > 0 {
+		writeParallelAllocates(w, m.linkAllocations, parallelism)
+	} else {
+		for _, a := range m.linkAllocations {
+			fmt.Fprintf(w, "# %s\n", a.comment)
+			fmt.Fprintf(w, "run_cmd 'doublezero resource allocate --resource-type %s --requested-allocation %s'\n",
+				a.resourceType, a.allocation)
+		}
+	}
+	fmt.Fprintf(w, "\n")
+
+	// Phase 4: User allocations (parallel - largest phase)
+	fmt.Fprintf(w, "# ============================================\n")
+	fmt.Fprintf(w, "# Phase 4: Allocate User Resources\n")
+	fmt.Fprintf(w, "# This is the largest phase - parallelism helps significantly here\n")
+	fmt.Fprintf(w, "# ============================================\n")
+	fmt.Fprintf(w, "echo \"[Phase 4/%d] Allocating User Resources (%d commands)...\"\n", numPhases(m), len(m.userAllocations))
+
+	if parallelism > 0 && len(m.userAllocations) > 0 {
+		writeParallelAllocates(w, m.userAllocations, parallelism)
+	} else {
+		for _, a := range m.userAllocations {
+			fmt.Fprintf(w, "# %s\n", a.comment)
+			if a.associatedPK != "" {
+				fmt.Fprintf(w, "run_cmd 'doublezero resource allocate --resource-type %s --associated-pubkey %s --index %d --requested-allocation %s'\n",
+					a.resourceType, a.associatedPK, a.index, a.allocation)
+			} else {
+				fmt.Fprintf(w, "run_cmd 'doublezero resource allocate --resource-type %s --requested-allocation %s'\n",
+					a.resourceType, a.allocation)
+			}
+		}
+	}
+	fmt.Fprintf(w, "\n")
+
+	// Phase 5: Multicast group allocations (parallel)
+	if len(m.mcgroupAllocs) > 0 {
+		fmt.Fprintf(w, "# ============================================\n")
+		fmt.Fprintf(w, "# Phase 5: Allocate MulticastGroup Resources\n")
+		fmt.Fprintf(w, "# ============================================\n")
+		fmt.Fprintf(w, "echo \"[Phase 5/%d] Allocating MulticastGroup Resources (%d commands)...\"\n", numPhases(m), len(m.mcgroupAllocs))
+
+		if parallelism > 0 {
+			writeParallelAllocates(w, m.mcgroupAllocs, parallelism)
+		} else {
+			for _, a := range m.mcgroupAllocs {
+				fmt.Fprintf(w, "# %s\n", a.comment)
+				fmt.Fprintf(w, "run_cmd 'doublezero resource allocate --resource-type %s --requested-allocation %s'\n",
+					a.resourceType, a.allocation)
+			}
+		}
+		fmt.Fprintf(w, "\n")
+	}
+
+	// Summary
+	fmt.Fprintf(w, "# ============================================\n")
+	fmt.Fprintf(w, "# Migration Summary\n")
+	fmt.Fprintf(w, "# ============================================\n")
+	fmt.Fprintf(w, "echo \"\"\n")
+	fmt.Fprintf(w, "echo \"=== Migration Complete ===\"\n")
+	fmt.Fprintf(w, "echo \"Total commands: $TOTAL_COMMANDS\"\n")
+	fmt.Fprintf(w, "echo \"Successful: $SUCCESSFUL_COMMANDS\"\n")
+	fmt.Fprintf(w, "if [ -n \"$FAILED_COMMANDS\" ]; then\n")
+	fmt.Fprintf(w, "    echo \"Failed commands:\"\n")
+	fmt.Fprintf(w, "    echo -e \"$FAILED_COMMANDS\"\n")
+	fmt.Fprintf(w, "    exit 1\n")
+	fmt.Fprintf(w, "fi\n")
+}
+
+// numPhases returns the number of phases in the migration
+func numPhases(m *migration) int {
+	phases := 4 // Always have phases 1-4
+	if len(m.mcgroupAllocs) > 0 {
+		phases = 5
+	}
+	return phases
+}
+
+// writeParallelCreates writes create commands for GNU parallel execution
+func writeParallelCreates(w io.Writer, cmds []createCommand, parallelism int) {
+	fmt.Fprintf(w, "parallel --halt soon,fail=10%% --retries 3 -j %d :::: <<'PARALLEL_EOF'\n", parallelism)
+	for _, c := range cmds {
 		fmt.Fprintf(w, "doublezero resource create --resource-type %s --associated-pubkey %s --index %d\n",
 			c.resourceType, c.associatedPK, c.index)
 	}
+	fmt.Fprintf(w, "PARALLEL_EOF\n")
+	fmt.Fprintf(w, "PARALLEL_EXIT=$?\n")
+	fmt.Fprintf(w, "if [ $PARALLEL_EXIT -ne 0 ]; then\n")
+	fmt.Fprintf(w, "    echo \"WARNING: Some parallel create commands failed (exit code: $PARALLEL_EXIT)\"\n")
+	fmt.Fprintf(w, "fi\n")
+}
 
-	fmt.Fprintf(w, "\necho \"=== Allocating Link Resources ===\"\n")
-	for _, a := range m.linkAllocations {
-		fmt.Fprintf(w, "# %s\n", a.comment)
-		fmt.Fprintf(w, "doublezero resource allocate --resource-type %s --requested-allocation %s\n",
-			a.resourceType, a.allocation)
-	}
-
-	fmt.Fprintf(w, "\necho \"=== Allocating User Resources ===\"\n")
-	for _, a := range m.userAllocations {
-		fmt.Fprintf(w, "# %s\n", a.comment)
+// writeParallelAllocates writes allocate commands for GNU parallel execution
+func writeParallelAllocates(w io.Writer, cmds []allocateCommand, parallelism int) {
+	fmt.Fprintf(w, "parallel --halt soon,fail=10%% --retries 3 -j %d :::: <<'PARALLEL_EOF'\n", parallelism)
+	for _, a := range cmds {
 		if a.associatedPK != "" {
 			fmt.Fprintf(w, "doublezero resource allocate --resource-type %s --associated-pubkey %s --index %d --requested-allocation %s\n",
 				a.resourceType, a.associatedPK, a.index, a.allocation)
@@ -514,15 +663,11 @@ func writeScript(w io.Writer, m *migration) {
 				a.resourceType, a.allocation)
 		}
 	}
-
-	fmt.Fprintf(w, "\necho \"=== Allocating MulticastGroup Resources ===\"\n")
-	for _, a := range m.mcgroupAllocs {
-		fmt.Fprintf(w, "# %s\n", a.comment)
-		fmt.Fprintf(w, "doublezero resource allocate --resource-type %s --requested-allocation %s\n",
-			a.resourceType, a.allocation)
-	}
-
-	fmt.Fprintf(w, "\necho \"Migration complete!\"\n")
+	fmt.Fprintf(w, "PARALLEL_EOF\n")
+	fmt.Fprintf(w, "PARALLEL_EXIT=$?\n")
+	fmt.Fprintf(w, "if [ $PARALLEL_EXIT -ne 0 ]; then\n")
+	fmt.Fprintf(w, "    echo \"WARNING: Some parallel allocate commands failed (exit code: $PARALLEL_EXIT)\"\n")
+	fmt.Fprintf(w, "fi\n")
 }
 
 // onChainNetToString converts on-chain network format to string (e.g., "10.0.0.1/31")

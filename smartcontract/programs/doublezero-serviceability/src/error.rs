@@ -222,8 +222,8 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::Deprecated => ProgramError::Custom(67),
             DoubleZeroError::ImmutableField => ProgramError::Custom(68),
             DoubleZeroError::CyoaRequiresPhysical => ProgramError::Custom(69),
-            DoubleZeroError::AccessPassInUse => ProgramError::Custom(71),
             DoubleZeroError::DeviceHasInterfaces => ProgramError::Custom(70),
+            DoubleZeroError::AccessPassInUse => ProgramError::Custom(71),
         }
     }
 }
@@ -300,8 +300,8 @@ impl From<u32> for DoubleZeroError {
             67 => DoubleZeroError::Deprecated,
             68 => DoubleZeroError::ImmutableField,
             69 => DoubleZeroError::CyoaRequiresPhysical,
-            71 => DoubleZeroError::AccessPassInUse,
             70 => DoubleZeroError::DeviceHasInterfaces,
+            71 => DoubleZeroError::AccessPassInUse,
             _ => DoubleZeroError::Custom(e),
         }
     }

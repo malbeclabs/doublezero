@@ -177,10 +177,10 @@ func checkMulticastSubscriberPostConnect(t *testing.T, dn *TestDevnet, device *d
 
 			deadline := time.Now().Add(90 * time.Second)
 			for time.Now().Before(deadline) {
-				neighbors, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIPBGPSummary](t.Context(), device, arista.ShowIPBGPSummaryCmd(""))
+				neighbors, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIPBGPSummary](t.Context(), device, arista.ShowIPBGPSummaryCmd("vrf1"))
 				require.NoError(t, err, "error fetching bgp summary from doublezero device")
 
-				peer, ok := neighbors.VRFs["default"].Peers[expectedLinkLocalAddr]
+				peer, ok := neighbors.VRFs["vrf1"].Peers[expectedLinkLocalAddr]
 				if ok && peer.PeerState == "Established" {
 					return
 				}
@@ -213,9 +213,35 @@ func checkMulticastSubscriberPostConnect(t *testing.T, dn *TestDevnet, device *d
 			t.Fail()
 		}
 
-		// NOTE: PIM join and mroute checks are skipped because PIM interfaces don't populate
-		// in the single-device cEOS e2e environment (no PIM peer on the client side),
-		// so mroutes are never created. This would need a two-device setup to test.
+		if !t.Run("check_s_comma_g_is_created", func(t *testing.T) {
+			t.Parallel()
+
+			mGroups := []string{"233.84.178.0", "233.84.178.1"}
+
+			// Send single ping per group to simulate multicast traffic.
+			// We ignore the expected error because this is just to build mroute
+			// state on the switch so we can check it later.
+			for _, mGroup := range mGroups {
+				_, _ = client.Exec(t.Context(), []string{"bash", "-c", "ping -c 1 -w 1 " + mGroup}, docker.NoPrintOnError())
+			}
+
+			for _, mGroup := range mGroups {
+				require.Eventually(t, func() bool {
+					mroutes, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIPMroute](t.Context(), device, arista.ShowIPMrouteCmd())
+					require.NoError(t, err, "error fetching mroutes from doublezero device")
+
+					_, ok := mroutes.Groups[mGroup]
+					if !ok {
+						dn.log.Debug("Waiting for multicast group to be created", "mGroup", mGroup, "mroutes", mroutes)
+						return false
+					}
+
+					return true
+				}, 5*time.Second, 1*time.Second, "multicast group %s not found in mroutes", mGroup)
+			}
+		}) {
+			t.Fail()
+		}
 
 		if !t.Run("only_one_tunnel_allowed", func(t *testing.T) {
 			// Set access pass for the client.
@@ -341,10 +367,10 @@ func checkMulticastSubscriberPostDisconnect(t *testing.T, dn *TestDevnet, device
 
 			deadline := time.Now().Add(90 * time.Second)
 			for time.Now().Before(deadline) {
-				neighbors, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIPBGPSummary](t.Context(), device, arista.ShowIPBGPSummaryCmd(""))
+				neighbors, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIPBGPSummary](t.Context(), device, arista.ShowIPBGPSummaryCmd("vrf1"))
 				require.NoError(t, err, "error fetching neighbors from doublezero device")
 
-				_, ok := neighbors.VRFs["default"].Peers[expectedLinkLocalAddr]
+				_, ok := neighbors.VRFs["vrf1"].Peers[expectedLinkLocalAddr]
 				if !ok {
 					return
 				}

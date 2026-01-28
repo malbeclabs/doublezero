@@ -190,9 +190,10 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
+        let sig_str = signature.to_string();
         assert_eq!(
             output_str,
-            format!("Subscribed to {mgroup_pubkey}: 3QnHBSdd4doEF6FgpLCejqEw42UQjfvNhQJwoYDSpoBszpCCqVft4cGoneDCnZ6Ez3ujzavzUu85u6F79WtLhcsv\n")
+            format!("Subscribed to {mgroup_pubkey}: {sig_str}\n")
         );
     }
 
@@ -297,7 +298,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        let sig_str = "3QnHBSdd4doEF6FgpLCejqEw42UQjfvNhQJwoYDSpoBszpCCqVft4cGoneDCnZ6Ez3ujzavzUu85u6F79WtLhcsv";
+        let sig_str = signature.to_string();
         assert_eq!(
             output_str,
             format!("Subscribed to {mgroup_pubkey1}: {sig_str}\nSubscribed to {mgroup_pubkey2}: {sig_str}\n")

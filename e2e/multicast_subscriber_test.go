@@ -4,6 +4,7 @@ package e2e_test
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -194,31 +195,56 @@ func checkMulticastSubscriberPostConnect(t *testing.T, dn *TestDevnet, device *d
 			t.Fail()
 		}
 
-		if !t.Run("check_s_comma_g_is_created", func(t *testing.T) {
+		if !t.Run("check_pim_neighbor_formed", func(t *testing.T) {
+			t.Parallel()
+
+			deadline := time.Now().Add(30 * time.Second)
+			for time.Now().Before(deadline) {
+				pim, err := devnet.DeviceExecAristaCliJSON[*arista.ShowPIMNeighbors](t.Context(), device, arista.ShowPIMNeighborsCmd())
+				require.NoError(t, err, "error fetching pim neighbors from doublezero device")
+
+				neighbor, ok := pim.Neighbors[expectedLinkLocalAddr]
+				if ok && neighbor.Interface == "Tunnel500" {
+					return
+				}
+				time.Sleep(1 * time.Second)
+			}
+			t.Fatalf("PIM neighbor not established on Tunnel500")
+		}) {
+			t.Fail()
+		}
+
+		if !t.Run("check_pim_join_received", func(t *testing.T) {
 			t.Parallel()
 
 			mGroups := []string{"233.84.178.0", "233.84.178.1"}
-
-			// Send single ping per group to simulate multicast traffic.
-			// We ignore the expected error because this is just to build mroute
-			// state on the switch so we can check it later.
-			for _, mGroup := range mGroups {
-				_, _ = client.Exec(t.Context(), []string{"bash", "-c", "ping -c 1 -w 1 " + mGroup}, docker.NoPrintOnError())
-			}
 
 			for _, mGroup := range mGroups {
 				require.Eventually(t, func() bool {
 					mroutes, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIPMroute](t.Context(), device, arista.ShowIPMrouteCmd())
 					require.NoError(t, err, "error fetching mroutes from doublezero device")
 
-					_, ok := mroutes.Groups[mGroup]
+					groups, ok := mroutes.Groups[mGroup]
 					if !ok {
-						dn.log.Debug("Waiting for multicast group to be created", "mGroup", mGroup, "mroutes", mroutes)
+						dn.log.Debug("Waiting for multicast group to appear in mroutes", "mGroup", mGroup)
+						return false
+					}
+
+					// Check for (*, G) entry - subscribers join with source 0.0.0.0
+					groupDetails, ok := groups.GroupSources["0.0.0.0"]
+					if !ok {
+						dn.log.Debug("Waiting for (*, G) entry", "mGroup", mGroup)
+						return false
+					}
+
+					// Verify Tunnel500 is in the outgoing interface list
+					if !slices.Contains(groupDetails.OIFList, "Tunnel500") {
+						dn.log.Debug("Waiting for Tunnel500 in OIFList", "mGroup", mGroup, "oifList", groupDetails.OIFList)
 						return false
 					}
 
 					return true
-				}, 5*time.Second, 1*time.Second, "multicast group %s not found in mroutes", mGroup)
+				}, 30*time.Second, 1*time.Second, "PIM join not received for %s", mGroup)
 			}
 		}) {
 			t.Fail()

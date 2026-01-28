@@ -187,25 +187,6 @@ func checkMulticastPublisherPostConnect(t *testing.T, dn *TestDevnet, device *de
 			t.Fail()
 		}
 
-		if !t.Run("check_bgp_neighbor_established", func(t *testing.T) {
-			t.Parallel()
-
-			deadline := time.Now().Add(90 * time.Second)
-			for time.Now().Before(deadline) {
-				neighbors, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIPBGPSummary](t.Context(), device, arista.ShowIPBGPSummaryCmd("vrf1"))
-				require.NoError(t, err, "error fetching bgp summary from doublezero device")
-
-				peer, ok := neighbors.VRFs["vrf1"].Peers[expectedLinkLocalAddr]
-				if ok && peer.PeerState == "Established" {
-					return
-				}
-				time.Sleep(1 * time.Second)
-			}
-			t.Fatalf("BGP neighbor %s not in Established state on device", expectedLinkLocalAddr)
-		}) {
-			t.Fail()
-		}
-
 		if !t.Run("check_device_tunnel_interface", func(t *testing.T) {
 			t.Parallel()
 

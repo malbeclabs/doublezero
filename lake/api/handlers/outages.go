@@ -576,6 +576,15 @@ func fetchPacketLossOutages(ctx context.Context, conn driver.Conn, duration time
 		ongoingLossLinks[o.LinkCode] = true
 	}
 
+	// Collect link PKs to scope the query
+	linkPKs := make([]string, 0, len(linkMeta))
+	for pk := range linkMeta {
+		linkPKs = append(linkPKs, pk)
+	}
+	if len(linkPKs) == 0 {
+		return currentLossOutages, nil
+	}
+
 	// Query for packet loss buckets within time range (for completed outages)
 	query := `
 		WITH buckets AS (
@@ -586,7 +595,7 @@ func fetchPacketLossOutages(ctx context.Context, conn driver.Conn, duration time
 				count(*) as sample_count
 			FROM fact_dz_device_link_latency lat
 			WHERE lat.event_ts >= now() - INTERVAL $1 SECOND
-			  AND lat.link_pk != ''
+			  AND lat.link_pk IN ($2)
 			GROUP BY lat.link_pk, bucket
 			HAVING count(*) >= 3
 		)
@@ -599,7 +608,7 @@ func fetchPacketLossOutages(ctx context.Context, conn driver.Conn, duration time
 		ORDER BY b.link_pk, b.bucket
 	`
 
-	rows, err := conn.Query(ctx, query, int64(duration.Seconds()))
+	rows, err := conn.Query(ctx, query, int64(duration.Seconds()), linkPKs)
 	if err != nil {
 		return nil, fmt.Errorf("query failed: %w", err)
 	}
@@ -624,6 +633,15 @@ func fetchPacketLossOutages(ctx context.Context, conn driver.Conn, duration time
 
 // fetchCurrentHighLossLinks finds all links currently experiencing packet loss above threshold
 func fetchCurrentHighLossLinks(ctx context.Context, conn driver.Conn, threshold float64, linkMeta map[string]linkMetadata) ([]LinkOutage, error) {
+	// Collect link PKs to scope the query
+	linkPKs := make([]string, 0, len(linkMeta))
+	for pk := range linkMeta {
+		linkPKs = append(linkPKs, pk)
+	}
+	if len(linkPKs) == 0 {
+		return nil, nil
+	}
+
 	// Get the most recent 10 minutes of data to determine current state
 	query := `
 		WITH recent_loss AS (
@@ -634,7 +652,7 @@ func fetchCurrentHighLossLinks(ctx context.Context, conn driver.Conn, threshold 
 				max(lat.event_ts) as last_seen
 			FROM fact_dz_device_link_latency lat
 			WHERE lat.event_ts >= now() - INTERVAL 10 MINUTE
-			  AND lat.link_pk != ''
+			  AND lat.link_pk IN ($2)
 			GROUP BY lat.link_pk
 			HAVING count(*) >= 3
 		)
@@ -643,7 +661,7 @@ func fetchCurrentHighLossLinks(ctx context.Context, conn driver.Conn, threshold 
 		WHERE loss_pct >= $1
 	`
 
-	rows, err := conn.Query(ctx, query, threshold)
+	rows, err := conn.Query(ctx, query, threshold, linkPKs)
 	if err != nil {
 		return nil, fmt.Errorf("query failed: %w", err)
 	}
@@ -1000,6 +1018,15 @@ func fetchNoDataOutages(ctx context.Context, conn driver.Conn, duration time.Dur
 
 // fetchCurrentNoDataLinks finds links that have historical data but stopped reporting recently
 func fetchCurrentNoDataLinks(ctx context.Context, conn driver.Conn, linkMeta map[string]linkMetadata) ([]LinkOutage, error) {
+	// Collect link PKs to scope the query
+	linkPKs := make([]string, 0, len(linkMeta))
+	for pk := range linkMeta {
+		linkPKs = append(linkPKs, pk)
+	}
+	if len(linkPKs) == 0 {
+		return nil, nil
+	}
+
 	// Find links that have data in the last 30 days but no data in the last 15 minutes
 	// Exclude links that are currently drained (those show as status outages instead)
 	query := `
@@ -1009,7 +1036,7 @@ func fetchCurrentNoDataLinks(ctx context.Context, conn driver.Conn, linkMeta map
 				max(event_ts) as last_seen
 			FROM fact_dz_device_link_latency
 			WHERE event_ts >= now() - INTERVAL 30 DAY
-			  AND link_pk != ''
+			  AND link_pk IN ($1)
 			GROUP BY link_pk
 		)
 		SELECT lls.link_pk, lls.last_seen
@@ -1020,7 +1047,7 @@ func fetchCurrentNoDataLinks(ctx context.Context, conn driver.Conn, linkMeta map
 		  AND l.status NOT IN ('soft-drained', 'hard-drained')
 	`
 
-	rows, err := conn.Query(ctx, query)
+	rows, err := conn.Query(ctx, query, linkPKs)
 	if err != nil {
 		return nil, fmt.Errorf("query failed: %w", err)
 	}
@@ -1171,6 +1198,15 @@ func findCompletedNoDataOutages(ctx context.Context, conn driver.Conn, duration 
 		return nil, fmt.Errorf("failed to fetch drained periods: %w", err)
 	}
 
+	// Collect link PKs to scope the query
+	linkPKs := make([]string, 0, len(linkMeta))
+	for pk := range linkMeta {
+		linkPKs = append(linkPKs, pk)
+	}
+	if len(linkPKs) == 0 {
+		return nil, nil
+	}
+
 	// Get the timestamps of data buckets for each link within the time range
 	query := `
 		SELECT
@@ -1178,12 +1214,12 @@ func findCompletedNoDataOutages(ctx context.Context, conn driver.Conn, duration 
 			toStartOfInterval(event_ts, INTERVAL 5 MINUTE) as bucket
 		FROM fact_dz_device_link_latency
 		WHERE event_ts >= now() - INTERVAL $1 SECOND
-		  AND link_pk != ''
+		  AND link_pk IN ($2)
 		GROUP BY link_pk, bucket
 		ORDER BY link_pk, bucket
 	`
 
-	rows, err := conn.Query(ctx, query, int64(duration.Seconds()))
+	rows, err := conn.Query(ctx, query, int64(duration.Seconds()), linkPKs)
 	if err != nil {
 		return nil, fmt.Errorf("query failed: %w", err)
 	}

@@ -182,7 +182,7 @@ pub fn process_create_link(
         side_z_iface_name,
         delay_override_ns: 0,
         link_health: LinkHealth::Pending,
-        desired_status: value.desired_status.unwrap_or(LinkDesiredStatus::Pending),
+        desired_status: value.desired_status.unwrap_or(LinkDesiredStatus::Activated),
     };
 
     link.check_status_transition();

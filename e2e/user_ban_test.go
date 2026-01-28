@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/malbeclabs/doublezero/e2e/internal/arista"
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
@@ -211,10 +212,24 @@ func runUserBanIBRLWorkflowTest(t *testing.T, log *slog.Logger, client1 *devnet.
 	require.NoError(t, err)
 	log.Info("--> Client3 connected in IBRL mode to device1")
 
-	// Wait for BGP routes to converge after all clients have connected
+	// Wait for BGP routes to converge on both devices.
 	log.Info("==> Waiting for BGP routes to converge")
-	time.Sleep(20 * time.Second)
-	log.Info("--> BGP routes should have converged")
+	for _, dc := range []string{deviceCode1, deviceCode2} {
+		device := dn.Devices[dc]
+		require.Eventually(t, func() bool {
+			neighbors, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIPBGPSummary](t.Context(), device, arista.ShowIPBGPSummaryCmd("vrf1"))
+			if err != nil {
+				return false
+			}
+			for _, peer := range neighbors.VRFs["vrf1"].Peers {
+				if peer.PeerState == "Established" && peer.PrefixReceived > 0 {
+					return true
+				}
+			}
+			return false
+		}, 60*time.Second, 1*time.Second, "BGP peers should be established with prefixes received on %s", dc)
+	}
+	log.Info("--> BGP routes have converged")
 
 	// Check that the clients have a DZ IP equal to their client IP when not configured to use an allocated IP.
 	log.Info("==> Checking that the clients have a DZ IP as public IP when not configured to use an allocated IP")
@@ -261,14 +276,14 @@ func runUserBanIBRLWorkflowTest(t *testing.T, log *slog.Logger, client1 *devnet.
 			return false
 		}
 		return strings.Contains(string(output), client2.CYOANetworkIP)
-	}, 30*time.Second, 1*time.Second, "client1 should have route to client2 (different exchanges)")
+	}, 60*time.Second, 1*time.Second, "client1 should have route to client2 (different exchanges)")
 	require.Eventually(t, func() bool {
 		output, err := client2.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
 		if err != nil {
 			return false
 		}
 		return strings.Contains(string(output), client1.CYOANetworkIP)
-	}, 30*time.Second, 1*time.Second, "client2 should have route to client1 (different exchanges)")
+	}, 60*time.Second, 1*time.Second, "client2 should have route to client1 (different exchanges)")
 	log.Info("--> Confirmed client1 and client2 have routes to each other (cross-exchange)")
 
 	// Ban client1.

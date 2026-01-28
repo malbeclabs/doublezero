@@ -39,9 +39,11 @@ type ProbeTarget struct {
 	IP            net.IP
 }
 
-// GetProbeTargets returns all probe targets for a device.
-// Includes Device.PublicIp plus any interfaces with UserTunnelEndpoint=true.
-func GetProbeTargets(d serviceability.Device) []ProbeTarget {
+// GetProbeTargets returns probe targets for a device.
+// When PublicIp is valid (non-unspecified), it is always included.
+// When probeTunnelEndpoints is true, also includes any interfaces with UserTunnelEndpoint=true.
+// Returns empty slice if device has no valid probe targets.
+func GetProbeTargets(d serviceability.Device, probeTunnelEndpoints bool) []ProbeTarget {
 	var targets []ProbeTarget
 
 	// Extract minimal device info to avoid storing full Device struct
@@ -51,7 +53,7 @@ func GetProbeTargets(d serviceability.Device) []ProbeTarget {
 		PublicIp: d.PublicIp,
 	}
 
-	// Probe the device's PublicIp if it's a valid (non-unspecified) address
+	// Always probe the device's PublicIp if it's a valid (non-unspecified) address
 	publicIP := net.IP(d.PublicIp[:])
 	if !publicIP.IsUnspecified() {
 		targets = append(targets, ProbeTarget{
@@ -59,6 +61,11 @@ func GetProbeTargets(d serviceability.Device) []ProbeTarget {
 			InterfaceName: "", // Empty indicates device PublicIp
 			IP:            publicIP,
 		})
+	}
+
+	// Only probe UserTunnelEndpoint interfaces when the feature flag is enabled
+	if !probeTunnelEndpoints {
+		return targets
 	}
 
 	// Additionally probe any user tunnel endpoint interfaces
@@ -145,15 +152,13 @@ type LatencyResult struct {
 func (l *LatencyResult) MarshalJSON() ([]byte, error) {
 	type Alias LatencyResult
 
-	deviceIP := l.IP
-
 	return json.Marshal(&struct {
 		DevicePk   string `json:"device_pk"`
 		DeviceIP   string `json:"device_ip"`
 		DeviceCode string `json:"device_code"`
 		*Alias
 	}{
-		DeviceIP:   deviceIP.String(),
+		DeviceIP:   l.IP.String(),
 		DevicePk:   base58.Encode(l.Device.PubKey[:]),
 		DeviceCode: l.Device.Code,
 		Alias:      (*Alias)(l),
@@ -172,15 +177,16 @@ func (l *LatencyResults) MarshalJSON() ([]byte, error) {
 }
 
 type LatencyManager struct {
-	SmartContractFunc   SmartContractorFunc
-	proberFunc          ProberFunc
-	DeviceCache         *DeviceCache
-	ResultsCache        *LatencyResults
-	programId           string
-	rpcEndpoint         string
-	probeInterval       time.Duration
-	cacheUpdateInterval time.Duration
-	metricsEnabled      bool
+	SmartContractFunc    SmartContractorFunc
+	proberFunc           ProberFunc
+	DeviceCache          *DeviceCache
+	ResultsCache         *LatencyResults
+	programId            string
+	rpcEndpoint          string
+	probeInterval        time.Duration
+	cacheUpdateInterval  time.Duration
+	metricsEnabled       bool
+	probeTunnelEndpoints bool // when true, also probe UserTunnelEndpoint interfaces
 }
 
 type Option func(*LatencyManager)
@@ -244,6 +250,12 @@ func WithMetricsEnabled(enabled bool) Option {
 	}
 }
 
+func WithProbeTunnelEndpoints(enabled bool) Option {
+	return func(l *LatencyManager) {
+		l.probeTunnelEndpoints = enabled
+	}
+}
+
 func (l *LatencyManager) Start(ctx context.Context) error {
 
 	// start goroutine for fetching smartcontract devices
@@ -294,7 +306,7 @@ func (l *LatencyManager) Start(ctx context.Context) error {
 			// Build list of all targets across all devices
 			var targets []ProbeTarget
 			for _, device := range devices {
-				targets = append(targets, GetProbeTargets(device)...)
+				targets = append(targets, GetProbeTargets(device, l.probeTunnelEndpoints)...)
 			}
 
 			// Probe each target

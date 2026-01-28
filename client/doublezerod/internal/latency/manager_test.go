@@ -308,12 +308,13 @@ func TestLatencyUdpPing(t *testing.T) {
 
 func TestGetProbeTargets(t *testing.T) {
 	tests := []struct {
-		name   string
-		device serviceability.Device
-		want   []latency.ProbeTarget
+		name                 string
+		device               serviceability.Device
+		probeTunnelEndpoints bool
+		want                 []latency.ProbeTarget
 	}{
 		{
-			name: "device_with_only_public_ip",
+			name: "device_with_only_public_ip_flag_disabled",
 			device: serviceability.Device{
 				AccountType: serviceability.DeviceType,
 				PublicIp:    [4]uint8{192, 168, 1, 1},
@@ -321,6 +322,7 @@ func TestGetProbeTargets(t *testing.T) {
 				Code:        "dev01",
 				Interfaces:  []serviceability.Interface{},
 			},
+			probeTunnelEndpoints: false,
 			want: []latency.ProbeTarget{
 				{
 					Device: latency.DeviceInfo{
@@ -334,7 +336,29 @@ func TestGetProbeTargets(t *testing.T) {
 			},
 		},
 		{
-			name: "device_with_user_tunnel_endpoint_interface",
+			name: "device_with_only_public_ip_flag_enabled",
+			device: serviceability.Device{
+				AccountType: serviceability.DeviceType,
+				PublicIp:    [4]uint8{192, 168, 1, 1},
+				PubKey:      [32]byte{1},
+				Code:        "dev01",
+				Interfaces:  []serviceability.Interface{},
+			},
+			probeTunnelEndpoints: true,
+			want: []latency.ProbeTarget{
+				{
+					Device: latency.DeviceInfo{
+						PublicIp: [4]uint8{192, 168, 1, 1},
+						PubKey:   [32]byte{1},
+						Code:     "dev01",
+					},
+					InterfaceName: "",
+					IP:            net.IP{192, 168, 1, 1},
+				},
+			},
+		},
+		{
+			name: "flag_disabled_ignores_tunnel_endpoints",
 			device: serviceability.Device{
 				AccountType: serviceability.DeviceType,
 				PublicIp:    [4]uint8{192, 168, 1, 1},
@@ -348,6 +372,35 @@ func TestGetProbeTargets(t *testing.T) {
 					},
 				},
 			},
+			probeTunnelEndpoints: false,
+			want: []latency.ProbeTarget{
+				{
+					Device: latency.DeviceInfo{
+						PublicIp: [4]uint8{192, 168, 1, 1},
+						PubKey:   [32]byte{2},
+						Code:     "dev02",
+					},
+					InterfaceName: "",
+					IP:            net.IP{192, 168, 1, 1},
+				},
+			},
+		},
+		{
+			name: "flag_enabled_includes_tunnel_endpoints",
+			device: serviceability.Device{
+				AccountType: serviceability.DeviceType,
+				PublicIp:    [4]uint8{192, 168, 1, 1},
+				PubKey:      [32]byte{2},
+				Code:        "dev02",
+				Interfaces: []serviceability.Interface{
+					{
+						Name:               "Loopback1",
+						UserTunnelEndpoint: true,
+						IpNet:              [5]uint8{10, 2, 3, 5, 32}, // 10.2.3.5/32
+					},
+				},
+			},
+			probeTunnelEndpoints: true,
 			want: []latency.ProbeTarget{
 				{
 					Device: latency.DeviceInfo{
@@ -384,6 +437,7 @@ func TestGetProbeTargets(t *testing.T) {
 					},
 				},
 			},
+			probeTunnelEndpoints: true,
 			want: []latency.ProbeTarget{
 				{
 					Device: latency.DeviceInfo{
@@ -411,6 +465,7 @@ func TestGetProbeTargets(t *testing.T) {
 					},
 				},
 			},
+			probeTunnelEndpoints: true,
 			want: []latency.ProbeTarget{
 				{
 					Device: latency.DeviceInfo{
@@ -443,6 +498,7 @@ func TestGetProbeTargets(t *testing.T) {
 					},
 				},
 			},
+			probeTunnelEndpoints: true,
 			want: []latency.ProbeTarget{
 				{
 					Device: latency.DeviceInfo{
@@ -480,6 +536,7 @@ func TestGetProbeTargets(t *testing.T) {
 					},
 				},
 			},
+			probeTunnelEndpoints: true,
 			want: []latency.ProbeTarget{
 				{
 					Device: latency.DeviceInfo{
@@ -511,7 +568,7 @@ func TestGetProbeTargets(t *testing.T) {
 			},
 		},
 		{
-			name: "device_with_unspecified_public_ip_but_valid_interface",
+			name: "device_with_unspecified_public_ip_flag_disabled",
 			device: serviceability.Device{
 				AccountType: serviceability.DeviceType,
 				PublicIp:    [4]uint8{0, 0, 0, 0}, // Unspecified
@@ -525,6 +582,25 @@ func TestGetProbeTargets(t *testing.T) {
 					},
 				},
 			},
+			probeTunnelEndpoints: false,
+			want:                 nil, // No targets when PublicIp unspecified and flag disabled
+		},
+		{
+			name: "device_with_unspecified_public_ip_flag_enabled",
+			device: serviceability.Device{
+				AccountType: serviceability.DeviceType,
+				PublicIp:    [4]uint8{0, 0, 0, 0}, // Unspecified
+				PubKey:      [32]byte{7},
+				Code:        "dev07",
+				Interfaces: []serviceability.Interface{
+					{
+						Name:               "Loopback1",
+						UserTunnelEndpoint: true,
+						IpNet:              [5]uint8{10, 2, 3, 7, 32},
+					},
+				},
+			},
+			probeTunnelEndpoints: true,
 			want: []latency.ProbeTarget{
 				{
 					Device: latency.DeviceInfo{
@@ -557,6 +633,7 @@ func TestGetProbeTargets(t *testing.T) {
 					},
 				},
 			},
+			probeTunnelEndpoints: true,
 			want: []latency.ProbeTarget{
 				{
 					Device: latency.DeviceInfo{
@@ -582,7 +659,7 @@ func TestGetProbeTargets(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := latency.GetProbeTargets(tt.device)
+			got := latency.GetProbeTargets(tt.device, tt.probeTunnelEndpoints)
 			if diff := cmp.Diff(tt.want, got, cmp.Comparer(func(a, b net.IP) bool { return a.Equal(b) })); diff != "" {
 				t.Errorf("GetProbeTargets() mismatch (-want +got):\n%s", diff)
 			}
@@ -607,10 +684,10 @@ func BenchmarkLatencyManagerMemoryStability(b *testing.B) {
 	// 200 devices, each with 1 tunnel endpoint interface = 400 probe targets
 	devices := generateTestDevices(200, 1)
 
-	// Count total probe targets for reporting
+	// Count total probe targets for reporting (with tunnel endpoints enabled)
 	totalTargets := 0
 	for _, d := range devices {
-		totalTargets += len(latency.GetProbeTargets(d))
+		totalTargets += len(latency.GetProbeTargets(d, true))
 	}
 
 	var probeCount int64
@@ -647,7 +724,8 @@ func BenchmarkLatencyManagerMemoryStability(b *testing.B) {
 		latency.WithProgramID("test-memory-stability"),
 		latency.WithProbeInterval(probeInterval),
 		latency.WithCacheUpdateInterval(cacheUpdateInterval),
-		latency.WithMetricsEnabled(false), // Disable metrics to isolate manager memory behavior
+		latency.WithMetricsEnabled(false),      // Disable metrics to isolate manager memory behavior
+		latency.WithProbeTunnelEndpoints(true), // Enable tunnel endpoint probing for this test
 	)
 
 	// Run for several seconds to allow multiple probe cycles
@@ -812,6 +890,7 @@ func TestLatencyManagerWithMultipleInterfaces(t *testing.T) {
 		latency.WithProgramID("test-program"),
 		latency.WithProbeInterval(30*time.Second),
 		latency.WithCacheUpdateInterval(30*time.Second),
+		latency.WithProbeTunnelEndpoints(true), // Enable tunnel endpoint probing
 	)
 	// Pre-populate the device cache to avoid race conditions
 	manager.DeviceCache = &latency.DeviceCache{Devices: []serviceability.Device{device}, Lock: sync.Mutex{}}
@@ -1111,6 +1190,117 @@ func TestLatencyManagerWithEmptyDeviceList(t *testing.T) {
 	}
 }
 
+func TestLatencyManagerWithTunnelEndpointsDisabled(t *testing.T) {
+	// Test that when probeTunnelEndpoints is false, only PublicIp is probed
+	device := serviceability.Device{
+		AccountType: serviceability.DeviceType,
+		PublicIp:    [4]uint8{192, 168, 1, 1},
+		PubKey:      [32]byte{1},
+		Code:        "dev01",
+		Interfaces: []serviceability.Interface{
+			{
+				Name:               "Loopback1",
+				UserTunnelEndpoint: true,
+				IpNet:              [5]uint8{10, 2, 3, 5, 32},
+			},
+		},
+	}
+
+	probeCount := 0
+	var mu sync.Mutex
+
+	smartContractChan := make(chan struct{}, 1)
+	mockSmartContractFunc := func(context.Context, string, string) (*latency.ContractData, error) {
+		smartContractChan <- struct{}{}
+		return &latency.ContractData{Devices: []serviceability.Device{device}}, nil
+	}
+
+	resultChan := make(chan struct{}, 2)
+	mockProberFunc := func(ctx context.Context, target latency.ProbeTarget) latency.LatencyResult {
+		mu.Lock()
+		probeCount++
+		mu.Unlock()
+		resultChan <- struct{}{}
+		return latency.LatencyResult{
+			Min:           1,
+			Max:           10,
+			Avg:           5,
+			Loss:          0,
+			Device:        target.Device,
+			InterfaceName: target.InterfaceName,
+			IP:            target.IP,
+			Reachable:     true,
+		}
+	}
+
+	manager := latency.NewLatencyManager(
+		latency.WithSmartContractFunc(mockSmartContractFunc),
+		latency.WithProberFunc(mockProberFunc),
+		latency.WithProgramID("test-flag-disabled"),
+		latency.WithProbeInterval(30*time.Second),
+		latency.WithCacheUpdateInterval(30*time.Second),
+		latency.WithProbeTunnelEndpoints(false), // Flag disabled - only probe PublicIp
+	)
+	manager.DeviceCache = &latency.DeviceCache{Devices: []serviceability.Device{device}, Lock: sync.Mutex{}}
+	manager.ResultsCache = &latency.LatencyResults{Results: []latency.LatencyResult{}, Lock: sync.RWMutex{}}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	go func() {
+		_ = manager.Start(ctx)
+	}()
+
+	// Wait for smart contract fetch
+	select {
+	case <-smartContractChan:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for smart contract fetch")
+	}
+
+	// Wait for one probe to complete
+	select {
+	case <-resultChan:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for probe")
+	}
+
+	// Poll for results cache to be populated
+	var results []latency.LatencyResult
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		results = manager.GetResultsCache()
+		if len(results) == 1 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	mu.Lock()
+	gotProbeCount := probeCount
+	mu.Unlock()
+
+	// Verify we probed only 1 target (PublicIp only, not Loopback1)
+	if gotProbeCount != 1 {
+		t.Errorf("expected 1 probe (PublicIp only), got %d", gotProbeCount)
+	}
+
+	// Verify results cache has 1 entry
+	if len(results) != 1 {
+		t.Errorf("expected 1 result, got %d", len(results))
+	}
+
+	// Check that the result is for PublicIp (empty interface name)
+	if len(results) > 0 {
+		if results[0].InterfaceName != "" {
+			t.Errorf("expected empty interface name for PublicIp probe, got %q", results[0].InterfaceName)
+		}
+		if !results[0].IP.Equal(net.IP{192, 168, 1, 1}) {
+			t.Errorf("expected IP 192.168.1.1, got %s", results[0].IP)
+		}
+	}
+}
+
 func TestLatencyManagerWithMetrics(t *testing.T) {
 	// Test that metrics are recorded with correct labels for multiple IPs
 	device := serviceability.Device{
@@ -1154,7 +1344,8 @@ func TestLatencyManagerWithMetrics(t *testing.T) {
 		latency.WithProgramID("test-metrics"),
 		latency.WithProbeInterval(30*time.Second),
 		latency.WithCacheUpdateInterval(30*time.Second),
-		latency.WithMetricsEnabled(true), // Enable metrics
+		latency.WithMetricsEnabled(true),       // Enable metrics
+		latency.WithProbeTunnelEndpoints(true), // Enable tunnel endpoint probing
 	)
 	manager.DeviceCache = &latency.DeviceCache{Devices: []serviceability.Device{device}, Lock: sync.Mutex{}}
 	manager.ResultsCache = &latency.LatencyResults{Results: []latency.LatencyResult{}, Lock: sync.RWMutex{}}

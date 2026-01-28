@@ -210,9 +210,10 @@ impl ProvisioningCliCommand {
                 .iter()
                 .find(|(_, g)| g.code == *group_code)
                 .ok_or_else(|| eyre::eyre!("Multicast group not found: {}", group_code))?;
-            if !mcast_group_pks.contains(pk) {
-                mcast_group_pks.push(*pk);
+            if mcast_group_pks.contains(pk) {
+                eyre::bail!("Duplicate multicast group: {}", group_code);
             }
+            mcast_group_pks.push(*pk);
         }
 
         // Look for user and subscribe to all groups
@@ -1608,34 +1609,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_connect_command_multicast_publisher_deduplicates_groups() {
+    async fn test_connect_command_multicast_publisher_rejects_duplicate_groups() {
         let mut fixture = TestFixture::new();
 
-        let (mcast_group_pk, mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
-        let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        fixture.add_multicast_group("test-group", "239.0.0.1");
+        let (device1_pk, _) = fixture.add_device(DeviceType::Hybrid, 100, true);
         let user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
-        // Expect exactly one create_subscribe_user call despite duplicate input
-        fixture.expect_create_subscribe_user(
-            Pubkey::new_unique(),
-            &user,
-            mcast_group_pk,
-            true,
-            false,
-        );
-        fixture.expected_provisioning_request(
-            UserType::Multicast,
-            user.client_ip.to_string().as_str(),
-            device1.public_ip.to_string().as_str(),
-            Some(vec![mcast_group.multicast_ip.to_string()]),
-            Some(vec![]),
-        );
 
         println!();
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::Multicast {
                 mode: MulticastMode::Publisher,
-                // Pass the same group twice — should be deduplicated
+                // Pass the same group twice — should error
                 multicast_groups: vec!["test-group".to_string(), "test-group".to_string()],
             },
             client_ip: Some(user.client_ip.to_string()),
@@ -1646,7 +1632,11 @@ mod tests {
         let result = command
             .execute_with_service_controller(&fixture.client, &fixture.controller)
             .await;
-        assert!(result.is_ok());
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Duplicate multicast group"));
     }
 
     #[tokio::test]

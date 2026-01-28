@@ -114,7 +114,8 @@ agent AleVirtualL3Uni shutdown
 agent ArfaAegis shutdown
 agent ArfaState shutdown
 agent Bfd shutdown
-agent BessMgr shutdown
+! Do NOT disable BessMgr - it is required for PIM multicast routing (software-forwarding sfe).
+! agent BessMgr shutdown
 ! Do NOT disable CapiApp - it is required for EAPI HTTP server.
 ! agent CapiApp shutdown
 agent Dot1x shutdown

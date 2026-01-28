@@ -19,7 +19,9 @@ use doublezero_sdk::{
     commands::{
         device::{get::GetDeviceCommand, list::ListDeviceCommand},
         globalconfig::get::GetGlobalConfigCommand,
-        multicastgroup::{list::ListMulticastGroupCommand, subscribe::SubscribeMulticastGroupCommand},
+        multicastgroup::{
+            list::ListMulticastGroupCommand, subscribe::SubscribeMulticastGroupCommand,
+        },
         user::{
             create::CreateUserCommand, create_subscribe::CreateSubscribeUserCommand,
             get::GetUserCommand, list::ListUserCommand,
@@ -519,7 +521,8 @@ impl ProvisioningCliCommand {
                 spinner.inc(1);
 
                 // Create user with first group
-                let first_group_pk = mcast_group_pks.first()
+                let first_group_pk = mcast_group_pks
+                    .first()
                     .ok_or_else(|| eyre::eyre!("At least one multicast group is required"))?;
 
                 let res = client.create_subscribe_user(CreateSubscribeUserCommand {
@@ -1556,10 +1559,23 @@ mod tests {
         );
 
         // After subscribing, user will have both groups
-        let (expect_publishers, expect_subscribers) = if multicast_mode == MulticastMode::Subscriber {
-            (Some(vec![]), Some(vec![mcast_group.multicast_ip.to_string(), mcast_group2.multicast_ip.to_string()]))
+        let (expect_publishers, expect_subscribers) = if multicast_mode == MulticastMode::Subscriber
+        {
+            (
+                Some(vec![]),
+                Some(vec![
+                    mcast_group.multicast_ip.to_string(),
+                    mcast_group2.multicast_ip.to_string(),
+                ]),
+            )
         } else {
-            (Some(vec![mcast_group.multicast_ip.to_string(), mcast_group2.multicast_ip.to_string()]), Some(vec![]))
+            (
+                Some(vec![
+                    mcast_group.multicast_ip.to_string(),
+                    mcast_group2.multicast_ip.to_string(),
+                ]),
+                Some(vec![]),
+            )
         };
 
         fixture.expected_provisioning_request(

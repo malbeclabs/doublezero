@@ -339,8 +339,9 @@ func generateMigration(data *serviceability.ProgramData, verbose bool) *migratio
 		})
 
 		// dz_ip -> DzPrefixBlock(device, index)
+		// Skip IBRL users - they use their client IP directly, not an allocated DZ IP
 		dzIP := net.IP(user.DzIp[:]).String()
-		if dzIP != "0.0.0.0" {
+		if dzIP != "0.0.0.0" && user.UserType != serviceability.UserTypeIBRL {
 			// Find which DzPrefixBlock index this IP belongs to
 			prefixIndex := findDzPrefixIndex(deviceDzPrefixMap[devicePK], user.DzIp)
 			m.userAllocations = append(m.userAllocations, allocateCommand{

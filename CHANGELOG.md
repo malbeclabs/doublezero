@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Activator: enable onchain allocation
 - Telemetry
   - Force IPv4-only connections for gNMI tunnel client and fix TLS credential handling
 - Client

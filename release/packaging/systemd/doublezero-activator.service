@@ -11,7 +11,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/doublezero-activator
+ExecStart=/usr/local/bin/doublezero-activator --onchain-allocation
 Restart=on-failure
 
 [Install]

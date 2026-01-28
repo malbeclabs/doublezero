@@ -1,10 +1,11 @@
 Generate a PR description for the current branch.
 
-Analyze the **net changes** between the current branch and main by examining:
-1. The diff summary: `git diff main...HEAD --stat`
-2. The actual changes: `git diff main...HEAD` (focus on key changes, not every line)
+Analyze the **net changes** between the current branch and origin/main by examining:
+1. First, run `git fetch origin` to ensure remote tracking is up to date
+2. The diff summary: `git diff origin/main...HEAD --stat`
+3. The actual changes: `git diff origin/main...HEAD` (focus on key changes, not every line)
 
-IMPORTANT: Focus on what the branch adds/changes compared to main as a whole. Do NOT describe individual commits or intermediate work. The reviewer only sees the final diff - they don't care about bugs introduced and fixed within the same branch.
+IMPORTANT: Focus on what the branch adds/changes compared to origin/main as a whole. Do NOT describe individual commits or intermediate work. The reviewer only sees the final diff - they don't care about bugs introduced and fixed within the same branch.
 
 Then generate a PR title and description. Output as a markdown code block on its own line (no text before the opening ```) so the user can easily copy it:
 
@@ -27,7 +28,7 @@ PR Title guidelines:
 - Keep the description short and lowercase (except proper nouns)
 
 Guidelines:
-- Summary should describe the net result: what does this branch add or change compared to main?
+- Summary should describe the net result: what does this branch add or change compared to origin/main?
 - Ignore commit history - only describe what the final diff shows
 - Testing Verification should describe how the changes were tested (e.g., unit tests added/passing, manual testing performed, build verified)
 - Focus on the "what" and "why", not the "how"

@@ -14,6 +14,7 @@ import (
 )
 
 type DeviceHealthOracleSpec struct {
+	Enabled        bool
 	ContainerImage string
 	Interval       time.Duration
 }

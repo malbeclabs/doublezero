@@ -58,6 +58,9 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 			TopUpSOL:      topUpSOL,
 			Interval:      3 * time.Second,
 		},
+		InfluxDB:           devnet.InfluxDBSpec{Enabled: true},
+		Prometheus:         devnet.PrometheusSpec{Enabled: true},
+		DeviceHealthOracle: devnet.DeviceHealthOracleSpec{Enabled: true},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
 

@@ -493,7 +493,7 @@ func nextAllocatableIP(ip string, allocatablePrefix int, allocated map[string]bo
 	}
 
 	networkInt := binary.BigEndian.Uint32(network)
-	start := networkInt + 1                          // first usable
+	start := networkInt                              // first usable
 	end := networkInt + (1 << allocatablePrefix) - 2 // last usable
 
 	for ipInt := start; ipInt <= end; ipInt++ {

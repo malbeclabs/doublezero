@@ -194,6 +194,7 @@ impl<T: DoubleZeroClient> Processor<T> {
                     user,
                     &self.locations,
                     &self.exchanges,
+                    self.use_onchain_allocation,
                 );
             }
             AccountData::Location(location) => {

@@ -229,7 +229,9 @@ async fn test_multicastgroup() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::DeactivateMulticastGroup(MulticastGroupDeactivateArgs {}),
+        DoubleZeroInstruction::DeactivateMulticastGroup(MulticastGroupDeactivateArgs {
+            use_onchain_deallocation: false,
+        }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(multicastgroup.owner, false),
@@ -357,7 +359,9 @@ async fn test_multicastgroup_deactivate_fails_when_counts_nonzero() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::DeactivateMulticastGroup(MulticastGroupDeactivateArgs {}),
+        DoubleZeroInstruction::DeactivateMulticastGroup(MulticastGroupDeactivateArgs {
+            use_onchain_deallocation: false,
+        }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(multicastgroup.owner, false),

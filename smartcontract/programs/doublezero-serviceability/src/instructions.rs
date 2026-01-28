@@ -879,7 +879,9 @@ mod tests {
         );
 
         test_instruction(
-            DoubleZeroInstruction::DeactivateMulticastGroup(MulticastGroupDeactivateArgs {}),
+            DoubleZeroInstruction::DeactivateMulticastGroup(MulticastGroupDeactivateArgs {
+                use_onchain_deallocation: false,
+            }),
             "DeactivateMulticastGroup",
         );
 

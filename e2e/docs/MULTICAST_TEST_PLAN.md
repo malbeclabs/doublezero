@@ -25,6 +25,12 @@ Actual multicast traffic will NOT flow between publisher and subscriber in this 
 | RP Address | 10.0.0.0 (Anycast on both devices) |
 | Inter-device Link | Ethernet2 (dz1) <-> Ethernet2 (dz2) |
 
+**Note on client pubkeys:** The `add-client` command generates a random keypair when `--keypair-path` is not provided. Throughout this document, `$CLIENT1` and `$CLIENT2` refer to the generated pubkeys. After adding clients, discover them with:
+```bash
+export CLIENT1=$(docker ps --format '{{.Names}}' | grep dz-local-client | sort | head -1 | sed 's/dz-local-client-//')
+export CLIENT2=$(docker ps --format '{{.Names}}' | grep dz-local-client | sort | tail -1 | sed 's/dz-local-client-//')
+```
+
 ---
 
 ## Phase 1: Environment Setup
@@ -69,10 +75,10 @@ dev/dzctl add-device --code dz1 --exchange xams --location ams --cyoa-network-ho
 dev/dzctl add-device --code dz2 --exchange xlax --location lax --cyoa-network-host-id 16 --additional-networks dz1:dz2
 ```
 ```bash
-dev/dzctl add-client --cyoa-network-host-id 100 --keypair-path dev/.deploy/dz-local/client-FposHWrkvPP3VErBAWCd4ELWGuh2mgx2Wx6cuNEA4X2S/keypair.json
+dev/dzctl add-client --cyoa-network-host-id 100
 ```
 ```bash
-dev/dzctl add-client --cyoa-network-host-id 110 --keypair-path dev/.deploy/dz-local/client-6gRC1rfTDJP2KzKnBjbcG3LijaVs56fSAsCLyZBU6qa5/keypair.json
+dev/dzctl add-client --cyoa-network-host-id 110
 ```
 
 **Verify:** Device containers healthy and client containers running
@@ -88,9 +94,9 @@ docker ps --format "table {{.Names}}\t{{.Status}}" | grep -E "device|client"
 
 ### 2.1 Set Access Passes
 ```bash
-docker exec dz-local-manager doublezero access-pass set --accesspass-type prepaid --client-ip 9.169.90.100 --user-payer FposHWrkvPP3VErBAWCd4ELWGuh2mgx2Wx6cuNEA4X2S
+docker exec dz-local-manager doublezero access-pass set --accesspass-type prepaid --client-ip 9.169.90.100 --user-payer $CLIENT1
 
-docker exec dz-local-manager doublezero access-pass set --accesspass-type prepaid --client-ip 9.169.90.110 --user-payer 6gRC1rfTDJP2KzKnBjbcG3LijaVs56fSAsCLyZBU6qa5
+docker exec dz-local-manager doublezero access-pass set --accesspass-type prepaid --client-ip 9.169.90.110 --user-payer $CLIENT2
 ```
 
 **Verify:** Each command returns a signature
@@ -123,16 +129,16 @@ docker exec dz-local-manager doublezero multicast group list
 
 **Client 1 (subscriber):**
 ```bash
-docker exec dz-local-manager doublezero multicast group allowlist subscriber add --code mcast-a --client-ip 9.169.90.100 --user-payer FposHWrkvPP3VErBAWCd4ELWGuh2mgx2Wx6cuNEA4X2S
+docker exec dz-local-manager doublezero multicast group allowlist subscriber add --code mcast-a --client-ip 9.169.90.100 --user-payer $CLIENT1
 
-docker exec dz-local-manager doublezero multicast group allowlist subscriber add --code mcast-b --client-ip 9.169.90.100 --user-payer FposHWrkvPP3VErBAWCd4ELWGuh2mgx2Wx6cuNEA4X2S
+docker exec dz-local-manager doublezero multicast group allowlist subscriber add --code mcast-b --client-ip 9.169.90.100 --user-payer $CLIENT1
 ```
 
 **Client 2 (publisher):**
 ```bash
-docker exec dz-local-manager doublezero multicast group allowlist publisher add --code mcast-a --client-ip 9.169.90.110 --user-payer 6gRC1rfTDJP2KzKnBjbcG3LijaVs56fSAsCLyZBU6qa5
+docker exec dz-local-manager doublezero multicast group allowlist publisher add --code mcast-a --client-ip 9.169.90.110 --user-payer $CLIENT2
 
-docker exec dz-local-manager doublezero multicast group allowlist publisher add --code mcast-b --client-ip 9.169.90.110 --user-payer 6gRC1rfTDJP2KzKnBjbcG3LijaVs56fSAsCLyZBU6qa5
+docker exec dz-local-manager doublezero multicast group allowlist publisher add --code mcast-b --client-ip 9.169.90.110 --user-payer $CLIENT2
 ```
 
 ---
@@ -185,7 +191,7 @@ docker exec dz-local-device-dz1 Cli -p 15 -c "ping 172.16.0.3 repeat 2"
 
 ### 4.1 Connect Subscriber (Client 1 to dz1)
 ```bash
-docker exec dz-local-client-FposHWrkvPP3VErBAWCd4ELWGuh2mgx2Wx6cuNEA4X2S doublezero connect multicast subscriber mcast-a mcast-b --client-ip 9.169.90.100 --device dz1 --verbose
+docker exec dz-local-client-$CLIENT1 doublezero connect multicast subscriber mcast-a mcast-b --client-ip 9.169.90.100 --device dz1 --verbose
 ```
 
 **Verify:** Command completes without error
@@ -194,7 +200,7 @@ docker exec dz-local-client-FposHWrkvPP3VErBAWCd4ELWGuh2mgx2Wx6cuNEA4X2S doublez
 
 Connect the publisher to both multicast groups at once:
 ```bash
-docker exec dz-local-client-6gRC1rfTDJP2KzKnBjbcG3LijaVs56fSAsCLyZBU6qa5 doublezero connect multicast publisher mcast-a mcast-b --client-ip 9.169.90.110 --device dz2 --verbose
+docker exec dz-local-client-$CLIENT2 doublezero connect multicast publisher mcast-a mcast-b --client-ip 9.169.90.110 --device dz2 --verbose
 ```
 
 **Verify:** Command completes without error
@@ -311,14 +317,14 @@ docker exec dz-local-device-dz1 Cli -p 15 -c "show running-config | section SEC-
 
 **Subscriber:**
 ```bash
-docker exec dz-local-client-FposHWrkvPP3VErBAWCd4ELWGuh2mgx2Wx6cuNEA4X2S ip link show doublezero1
+docker exec dz-local-client-$CLIENT1 ip link show doublezero1
 ```
 
 **Expected:** Interface exists, UP, LOWER_UP
 
 **Publisher:**
 ```bash
-docker exec dz-local-client-6gRC1rfTDJP2KzKnBjbcG3LijaVs56fSAsCLyZBU6qa5 ip link show doublezero1
+docker exec dz-local-client-$CLIENT2 ip link show doublezero1
 ```
 
 **Expected:** Interface exists, UP, LOWER_UP
@@ -327,14 +333,14 @@ docker exec dz-local-client-6gRC1rfTDJP2KzKnBjbcG3LijaVs56fSAsCLyZBU6qa5 ip link
 
 **Subscriber:**
 ```bash
-docker exec dz-local-client-FposHWrkvPP3VErBAWCd4ELWGuh2mgx2Wx6cuNEA4X2S doublezero status
+docker exec dz-local-client-$CLIENT1 doublezero status
 ```
 
 **Expected:** Shows connected status with tunnel info
 
 **Publisher:**
 ```bash
-docker exec dz-local-client-6gRC1rfTDJP2KzKnBjbcG3LijaVs56fSAsCLyZBU6qa5 doublezero status
+docker exec dz-local-client-$CLIENT2 doublezero status
 ```
 
 **Expected:** Shows connected status with tunnel info
@@ -342,7 +348,7 @@ docker exec dz-local-client-6gRC1rfTDJP2KzKnBjbcG3LijaVs56fSAsCLyZBU6qa5 doublez
 ### 6.3 Check Multicast Routes on Subscriber
 
 ```bash
-docker exec dz-local-client-FposHWrkvPP3VErBAWCd4ELWGuh2mgx2Wx6cuNEA4X2S ip route show
+docker exec dz-local-client-$CLIENT1 ip route show
 ```
 
 **Expected:** Routes for 233.84.178.0 and 233.84.178.1 via doublezero1
@@ -402,13 +408,13 @@ This test documents the expected failure due to cEOS limitations.
 
 ### 9.1 Start Capture on Subscriber
 ```bash
-docker exec dz-local-client-FposHWrkvPP3VErBAWCd4ELWGuh2mgx2Wx6cuNEA4X2S timeout 10 tcpdump -i doublezero1 host 233.84.178.0 -c 5
+docker exec dz-local-client-$CLIENT1 timeout 10 tcpdump -i doublezero1 host 233.84.178.0 -c 5
 ```
 
 ### 9.2 Send Multicast from Publisher
 In another terminal:
 ```bash
-docker exec dz-local-client-6gRC1rfTDJP2KzKnBjbcG3LijaVs56fSAsCLyZBU6qa5 bash -c 'for i in 1 2 3 4 5; do echo "test$i" > /dev/udp/233.84.178.0/5000; done'
+docker exec dz-local-client-$CLIENT2 bash -c 'for i in 1 2 3 4 5; do echo "test$i" > /dev/udp/233.84.178.0/5000; done'
 ```
 
 ### 9.3 Verify Traffic Reaches Device
@@ -428,7 +434,7 @@ docker exec dz-local-device-dz2 timeout 5 tcpdump -i tu500 host 233.84.178.0 -c 
 
 ### 10.1 Disconnect Subscriber
 ```bash
-docker exec dz-local-client-FposHWrkvPP3VErBAWCd4ELWGuh2mgx2Wx6cuNEA4X2S doublezero disconnect
+docker exec dz-local-client-$CLIENT1 doublezero disconnect
 ```
 
 ### 10.2 Verify Tunnel Removed from Device
@@ -441,7 +447,7 @@ docker exec dz-local-device-dz1 Cli -c "show interfaces Tunnel500"
 
 ### 10.3 Verify Client Tunnel Removed
 ```bash
-docker exec dz-local-client-FposHWrkvPP3VErBAWCd4ELWGuh2mgx2Wx6cuNEA4X2S ip link show doublezero1
+docker exec dz-local-client-$CLIENT1 ip link show doublezero1
 ```
 
 **Expected:** Device "doublezero1" does not exist
@@ -465,25 +471,30 @@ echo "=== Phase 1: Environment Setup ==="
 dev/dzctl destroy -y
 dev/dzctl build
 dev/dzctl start -v
-dev/dzctl add-device --code dz1 --exchange xams --location ams --cyoa-network-host-id 8 --additional-networks dz1:dz2 &
-dev/dzctl add-device --code dz2 --exchange xlax --location lax --cyoa-network-host-id 16 --additional-networks dz1:dz2 &
-dev/dzctl add-client --cyoa-network-host-id 100 --keypair-path dev/.deploy/dz-local/client-FposHWrkvPP3VErBAWCd4ELWGuh2mgx2Wx6cuNEA4X2S/keypair.json &
-dev/dzctl add-client --cyoa-network-host-id 110 --keypair-path dev/.deploy/dz-local/client-6gRC1rfTDJP2KzKnBjbcG3LijaVs56fSAsCLyZBU6qa5/keypair.json &
-wait
+dev/dzctl add-device --code dz1 --exchange xams --location ams --cyoa-network-host-id 8 --additional-networks dz1:dz2
+dev/dzctl add-device --code dz2 --exchange xlax --location lax --cyoa-network-host-id 16 --additional-networks dz1:dz2
+dev/dzctl add-client --cyoa-network-host-id 100
+dev/dzctl add-client --cyoa-network-host-id 110
+
+# Discover client pubkeys from container names
+CLIENT1=$(docker ps --format '{{.Names}}' | grep dz-local-client | sort | head -1 | sed 's/dz-local-client-//')
+CLIENT2=$(docker ps --format '{{.Names}}' | grep dz-local-client | sort | tail -1 | sed 's/dz-local-client-//')
+echo "Client 1: $CLIENT1"
+echo "Client 2: $CLIENT2"
 
 echo "=== Phase 2: Onchain Setup ==="
-docker exec dz-local-manager doublezero access-pass set --accesspass-type prepaid --client-ip 9.169.90.100 --user-payer FposHWrkvPP3VErBAWCd4ELWGuh2mgx2Wx6cuNEA4X2S
-docker exec dz-local-manager doublezero access-pass set --accesspass-type prepaid --client-ip 9.169.90.110 --user-payer 6gRC1rfTDJP2KzKnBjbcG3LijaVs56fSAsCLyZBU6qa5
+docker exec dz-local-manager doublezero access-pass set --accesspass-type prepaid --client-ip 9.169.90.100 --user-payer $CLIENT1
+docker exec dz-local-manager doublezero access-pass set --accesspass-type prepaid --client-ip 9.169.90.110 --user-payer $CLIENT2
 
 docker exec dz-local-manager doublezero link create wan --code dz1:dz2 --contributor co01 --side-a dz1 --side-a-interface Ethernet2 --side-z dz2 --side-z-interface Ethernet2 --bandwidth 10Gbps --mtu 2048 --delay-ms 40 --jitter-ms 3
 
 docker exec dz-local-manager doublezero multicast group create --code mcast-a --max-bandwidth 1Gbps --owner me
 docker exec dz-local-manager doublezero multicast group create --code mcast-b --max-bandwidth 1Gbps --owner me
 
-docker exec dz-local-manager doublezero multicast group allowlist subscriber add --code mcast-a --client-ip 9.169.90.100 --user-payer FposHWrkvPP3VErBAWCd4ELWGuh2mgx2Wx6cuNEA4X2S
-docker exec dz-local-manager doublezero multicast group allowlist subscriber add --code mcast-b --client-ip 9.169.90.100 --user-payer FposHWrkvPP3VErBAWCd4ELWGuh2mgx2Wx6cuNEA4X2S
-docker exec dz-local-manager doublezero multicast group allowlist publisher add --code mcast-a --client-ip 9.169.90.110 --user-payer 6gRC1rfTDJP2KzKnBjbcG3LijaVs56fSAsCLyZBU6qa5
-docker exec dz-local-manager doublezero multicast group allowlist publisher add --code mcast-b --client-ip 9.169.90.110 --user-payer 6gRC1rfTDJP2KzKnBjbcG3LijaVs56fSAsCLyZBU6qa5
+docker exec dz-local-manager doublezero multicast group allowlist subscriber add --code mcast-a --client-ip 9.169.90.100 --user-payer $CLIENT1
+docker exec dz-local-manager doublezero multicast group allowlist subscriber add --code mcast-b --client-ip 9.169.90.100 --user-payer $CLIENT1
+docker exec dz-local-manager doublezero multicast group allowlist publisher add --code mcast-a --client-ip 9.169.90.110 --user-payer $CLIENT2
+docker exec dz-local-manager doublezero multicast group allowlist publisher add --code mcast-b --client-ip 9.169.90.110 --user-payer $CLIENT2
 
 echo "=== Phase 3: Activate Link and Verify Underlay ==="
 # Activate link to trigger ISIS configuration (in production, device-health-oracle does this)
@@ -498,8 +509,8 @@ echo "--- MSDP ---"
 docker exec dz-local-device-dz1 Cli -c "show ip msdp peer"
 
 echo "=== Phase 4: Connect Clients ==="
-docker exec dz-local-client-FposHWrkvPP3VErBAWCd4ELWGuh2mgx2Wx6cuNEA4X2S doublezero connect multicast subscriber mcast-a mcast-b --client-ip 9.169.90.100 --device dz1 --verbose
-docker exec dz-local-client-6gRC1rfTDJP2KzKnBjbcG3LijaVs56fSAsCLyZBU6qa5 doublezero connect multicast publisher mcast-a mcast-b --client-ip 9.169.90.110 --device dz2 --verbose
+docker exec dz-local-client-$CLIENT1 doublezero connect multicast subscriber mcast-a mcast-b --client-ip 9.169.90.100 --device dz1 --verbose
+docker exec dz-local-client-$CLIENT2 doublezero connect multicast publisher mcast-a mcast-b --client-ip 9.169.90.110 --device dz2 --verbose
 
 echo "=== Waiting for tunnels ==="
 sleep 30
@@ -533,9 +544,9 @@ dev/dzctl build
 dev/dzctl add-device --code dz1 --exchange xams --location ams --cyoa-network-host-id 8 --additional-networks dz1:dz2
 
 # Example: restart a client
-docker rm -f dz-local-client-FposHWrkvPP3VErBAWCd4ELWGuh2mgx2Wx6cuNEA4X2S
+docker rm -f dz-local-client-$CLIENT1
 dev/dzctl build
-dev/dzctl add-client --cyoa-network-host-id 100 --keypair-path dev/.deploy/dz-local/client-FposHWrkvPP3VErBAWCd4ELWGuh2mgx2Wx6cuNEA4X2S/keypair.json
+dev/dzctl add-client --cyoa-network-host-id 100
 ```
 
 Core services (manager, controller, etc.) can be restarted with `docker restart dz-local-controller`. Only use `dev/dzctl destroy -y` when you need a completely clean slate (e.g., ledger state is corrupted).

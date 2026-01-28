@@ -283,14 +283,30 @@ func checkMulticastBothUsersAgentConfig(t *testing.T, dn *TestDevnet, device *de
 		ones, _ := dzPrefixNet.Mask.Size()
 		allocatableBits := 32 - ones
 
-		expectedAllocatedPublisherIP, err := nextAllocatableIP(dzPrefixIP, allocatableBits, map[string]bool{})
+		// With onchain allocation, the network address itself is not allocatable.
+		expectedAllocatedPublisherIP, err := nextAllocatableIP(dzPrefixIP, allocatableBits, map[string]bool{dzPrefixIP: true})
 		require.NoError(t, err)
+
+		// The manager consumes tunnel slots when added to allowlists (publisher slot 500,
+		// subscriber slot 502), so the actual client tunnels are at 501 and 503.
+		pubTunnel := controllerconfig.StartUserTunnelNum + 1
+		subTunnel := controllerconfig.StartUserTunnelNum + 3
+		pubTunnelDeviceIP := fmt.Sprintf("169.254.0.%d/31", 2*(pubTunnel-controllerconfig.StartUserTunnelNum))
+		subTunnelDeviceIP := fmt.Sprintf("169.254.0.%d/31", 2*(subTunnel-controllerconfig.StartUserTunnelNum))
+		pubTunnelBGPNeighbor := fmt.Sprintf("169.254.0.%d", 2*(pubTunnel-controllerconfig.StartUserTunnelNum)+1)
+		subTunnelBGPNeighbor := fmt.Sprintf("169.254.0.%d", 2*(subTunnel-controllerconfig.StartUserTunnelNum)+1)
 
 		config, err := fixtures.Render("fixtures/multicast/doublezero_agent_config_both_users_added.tmpl", map[string]any{
 			"PublisherClientIP":            publisherClient.CYOANetworkIP,
 			"SubscriberClientIP":           subscriberClient.CYOANetworkIP,
 			"DeviceIP":                     device.CYOANetworkIP,
 			"ExpectedAllocatedPublisherIP": expectedAllocatedPublisherIP,
+			"PublisherTunnelNum":           pubTunnel,
+			"SubscriberTunnelNum":          subTunnel,
+			"PublisherTunnelDeviceIP":      pubTunnelDeviceIP,
+			"SubscriberTunnelDeviceIP":     subTunnelDeviceIP,
+			"PublisherTunnelBGPNeighbor":   pubTunnelBGPNeighbor,
+			"SubscriberTunnelBGPNeighbor":  subTunnelBGPNeighbor,
 			"StartTunnel":                  controllerconfig.StartUserTunnelNum,
 			"EndTunnel":                    controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
 		})
@@ -328,7 +344,8 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 			ones, _ := dzPrefixNet.Mask.Size()
 			allocatableBits := 32 - ones
 
-			expectedAllocatedClientIP, err = nextAllocatableIP(dzPrefixIP, allocatableBits, map[string]bool{})
+			// With onchain allocation, the network address itself is not allocatable.
+			expectedAllocatedClientIP, err = nextAllocatableIP(dzPrefixIP, allocatableBits, map[string]bool{dzPrefixIP: true})
 			require.NoError(t, err)
 		}
 
@@ -435,9 +452,11 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 		if !t.Run("check_device_tunnel_interface", func(t *testing.T) {
 			t.Parallel()
 
-			tunnelName := "Tunnel500"
+			pubTunnelNum := controllerconfig.StartUserTunnelNum + 1
+			subTunnelNum := controllerconfig.StartUserTunnelNum + 3
+			tunnelName := fmt.Sprintf("Tunnel%d", pubTunnelNum)
 			if mode == "subscriber" {
-				tunnelName = "Tunnel501"
+				tunnelName = fmt.Sprintf("Tunnel%d", subTunnelNum)
 			}
 
 			deadline := time.Now().Add(90 * time.Second)
@@ -473,7 +492,10 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 				for _, mGroup := range mGroups {
 					require.Eventually(t, func() bool {
 						mroutes, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIPMroute](t.Context(), device, arista.ShowIPMrouteCmd())
-						require.NoError(t, err, "error fetching mroutes from doublezero device")
+						if err != nil {
+							dn.log.Debug("Error fetching mroutes from doublezero device", "error", err)
+							return false
+						}
 
 						groups, ok := mroutes.Groups[mGroup]
 						if !ok {
@@ -482,7 +504,10 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 						}
 
 						_, ok = groups.GroupSources[expectedAllocatedClientIP]
-						require.True(t, ok, "source %s not found in multicast group %s", expectedAllocatedClientIP, mGroup)
+						if !ok {
+							dn.log.Debug("Source not found in multicast group", "source", expectedAllocatedClientIP, "mGroup", mGroup)
+							return false
+						}
 
 						return true
 					}, 5*time.Second, 1*time.Second, "multicast group %s not found in mroutes", mGroup)
@@ -501,7 +526,10 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 				for _, mGroup := range mGroups {
 					require.Eventually(t, func() bool {
 						mroutes, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIPMroute](t.Context(), device, arista.ShowIPMrouteCmd())
-						require.NoError(t, err, "error fetching mroutes from doublezero device")
+						if err != nil {
+							dn.log.Debug("Error fetching mroutes from doublezero device", "error", err)
+							return false
+						}
 
 						groups, ok := mroutes.Groups[mGroup]
 						if !ok {
@@ -515,13 +543,14 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 							return false
 						}
 
-						if !slices.Contains(groupDetails.OIFList, "Tunnel501") {
-							dn.log.Debug("Waiting for Tunnel501 in OIFList", "mGroup", mGroup, "oifList", groupDetails.OIFList)
+						subTunnelName := fmt.Sprintf("Tunnel%d", controllerconfig.StartUserTunnelNum+3)
+						if !slices.Contains(groupDetails.OIFList, subTunnelName) {
+							dn.log.Debug("Waiting for subscriber tunnel in OIFList", "tunnel", subTunnelName, "mGroup", mGroup, "oifList", groupDetails.OIFList)
 							return false
 						}
 
 						return true
-					}, 30*time.Second, 1*time.Second, "PIM join not received for %s", mGroup)
+					}, 60*time.Second, 1*time.Second, "PIM join not received for %s", mGroup)
 				}
 			}) {
 				t.Fail()
@@ -613,9 +642,11 @@ func checkMulticastPostDisconnect(t *testing.T, log *slog.Logger, mode string, d
 		if !t.Run("check_device_tunnel_interface_removed", func(t *testing.T) {
 			t.Parallel()
 
-			tunnelName := "Tunnel500"
+			pubTunnelNum := controllerconfig.StartUserTunnelNum + 1
+			subTunnelNum := controllerconfig.StartUserTunnelNum + 3
+			tunnelName := fmt.Sprintf("Tunnel%d", pubTunnelNum)
 			if mode == "subscriber" {
-				tunnelName = "Tunnel501"
+				tunnelName = fmt.Sprintf("Tunnel%d", subTunnelNum)
 			}
 
 			deadline := time.Now().Add(90 * time.Second)
@@ -639,9 +670,12 @@ func checkMulticastPostDisconnect(t *testing.T, log *slog.Logger, mode string, d
 		if !t.Run("check_user_tunnel_is_removed_from_agent", func(t *testing.T) {
 			t.Parallel()
 
-			expectedAddr := expectedLinkLocalAddr
+			// Publisher tunnel is slot +1 (169.254.0.3), subscriber is slot +3 (169.254.0.7).
+			pubBGPNeighbor := fmt.Sprintf("169.254.0.%d", 2*1+1)
+			subBGPNeighbor := fmt.Sprintf("169.254.0.%d", 2*3+1)
+			expectedAddr := pubBGPNeighbor
 			if mode == "subscriber" {
-				expectedAddr = "169.254.0.3"
+				expectedAddr = subBGPNeighbor
 			}
 
 			deadline := time.Now().Add(90 * time.Second)

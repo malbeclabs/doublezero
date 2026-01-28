@@ -6,6 +6,15 @@
 - Use the format `component: short description` (e.g., `lake/indexer: fix flaky staging test`, `telemetry: use CLICKHOUSE_PASS env var`)
 - Keep the description lowercase (except proper nouns) and concise
 
+## Rust Development
+
+- `make rust-fmt` — format all Rust code (uses nightly rustfmt with `imports_granularity=Crate`)
+- `make rust-lint` — run `rust-fmt-check` + clippy on the workspace
+- `make rust-build` — build the workspace and on-chain programs
+- `make rust-test` — run Rust tests
+
+Always run `make rust-fmt` before committing Rust changes.
+
 ## Local Devnet / E2E Environment
 
 The local devnet runs in Docker containers with the naming convention `dz-local-*`.

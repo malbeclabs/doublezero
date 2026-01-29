@@ -469,7 +469,8 @@ func verifyMulticastPublisherMrouteState(t *testing.T, log *slog.Logger, device 
 	require.NoError(t, err)
 	ones, _ := dzPrefixNet.Mask.Size()
 	allocatableBits := 32 - ones
-	expectedAllocatedIP, err := nextAllocatableIP(dzPrefixIP, allocatableBits, map[string]bool{})
+	// First IP is reserved for device tunnel endpoint (Loopback100 interface)
+	expectedAllocatedIP, err := nextAllocatableIP(dzPrefixIP, allocatableBits, map[string]bool{dzPrefixIP: true})
 	require.NoError(t, err)
 
 	// Trigger S,G creation with ping to multicast group

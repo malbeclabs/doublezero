@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- change default leader schedule lookahead from 2 epochs to 1 for `prepare-validator-access` and `request-validator-access` commands ([#259](https://github.com/doublezerofoundation/doublezero-offchain/pull/259))
 - solana-cli: show validator debt write-off activation epoch in `revenue-distribution fetch config` ([#258](https://github.com/doublezerofoundation/doublezero-offchain/pull/258))
 - solana-cli: add `revenue-distribution fetch contributor-rewards` ([#254](https://github.com/doublezerofoundation/doublezero-offchain/pull/254))
 - move fetch methods to SDK ([#243](https://github.com/doublezerofoundation/doublezero-offchain/pull/243))

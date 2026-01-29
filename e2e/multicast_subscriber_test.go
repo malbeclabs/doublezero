@@ -181,12 +181,15 @@ func checkMulticastSubscriberPostConnect(t *testing.T, dn *TestDevnet, device *d
 				pim, err := devnet.DeviceExecAristaCliJSON[*arista.ShowPIMNeighbors](t.Context(), device, arista.ShowPIMNeighborsCmd())
 				require.NoError(t, err, "error fetching pim neighbors from doublezero device")
 
-				neighbor, ok := pim.Neighbors[expectedLinkLocalAddr]
-				if !ok {
-					return
-				}
-				if neighbor.Interface == "Tunnel500" {
-					return
+				// Check for PIM neighbor on Tunnel500 (the default interface for first multicast user)
+				// The JSON structure is: vrfs -> vrf_name -> interfaces -> interface_name -> neighbors -> address -> details
+				if defaultVRF, ok := pim.VRFs["default"]; ok {
+					if tunnel500, ok := defaultVRF.Interfaces["Tunnel500"]; ok {
+						if neighbor, ok := tunnel500.Neighbors[expectedLinkLocalAddr]; ok {
+							_ = neighbor // neighbor found
+							return
+						}
+					}
 				}
 				time.Sleep(1 * time.Second)
 			}

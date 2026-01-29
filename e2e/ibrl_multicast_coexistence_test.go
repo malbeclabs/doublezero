@@ -22,8 +22,6 @@ import (
 // can coexist on the same device. Since a single client cannot have both modes
 // simultaneously, we test with multiple clients on the same device.
 func TestE2E_IBRL_Multicast_Coexistence(t *testing.T) {
-	// Skip test for now pending CLI changes
-	t.Skip()
 	t.Parallel()
 
 	dn, device, ibrlClient, mcastClient := setupCoexistenceTestDevnet(t)
@@ -39,8 +37,6 @@ func TestE2E_IBRL_Multicast_Coexistence(t *testing.T) {
 // TestE2E_IBRL_Multicast_Publisher_Coexistence tests IBRL and multicast publisher coexistence.
 // This is a separate test from the subscriber test to avoid devnet lifecycle issues.
 func TestE2E_IBRL_Multicast_Publisher_Coexistence(t *testing.T) {
-	// Skip test for now pending CLI changes
-	t.Skip()
 	t.Parallel()
 
 	dn, device, ibrlClient, mcastClient := setupCoexistenceTestDevnet(t)
@@ -56,8 +52,6 @@ func TestE2E_IBRL_Multicast_Publisher_Coexistence(t *testing.T) {
 // TestE2E_IBRL_AllocatedAddr_Multicast_Coexistence verifies that IBRL mode with allocated address
 // and multicast subscriber can coexist on the same device.
 func TestE2E_IBRL_AllocatedAddr_Multicast_Coexistence(t *testing.T) {
-	// Skip test for now pending CLI changes
-	t.Skip()
 	t.Parallel()
 
 	dn, device, ibrlClient, mcastClient := setupCoexistenceTestDevnet(t)
@@ -73,8 +67,7 @@ func TestE2E_IBRL_AllocatedAddr_Multicast_Coexistence(t *testing.T) {
 // TestE2E_IBRL_AllocatedAddr_Multicast_Publisher_Coexistence tests IBRL with allocated address
 // and multicast publisher coexistence.
 func TestE2E_IBRL_AllocatedAddr_Multicast_Publisher_Coexistence(t *testing.T) {
-	// Skip test for now pending CLI changes
-	t.Skip()
+	t.Skip("Known issue: mroute state not created for allocated addr + multicast publisher combination")
 	t.Parallel()
 
 	dn, device, ibrlClient, mcastClient := setupCoexistenceTestDevnet(t)
@@ -91,7 +84,7 @@ func TestE2E_IBRL_AllocatedAddr_Multicast_Publisher_Coexistence(t *testing.T) {
 // both IBRL (unicast) and multicast tunnels simultaneously by first connecting
 // with IBRL mode and then adding a multicast subscription.
 func TestE2E_SingleClient_IBRL_Then_Multicast(t *testing.T) {
-	t.Skip()
+	t.Skip("Requires CLI changes to support simultaneous tunnels for same user - see simultaneous_tunnels_cli branch")
 	t.Parallel()
 
 	dn, device, client := setupSingleClientTestDevnet(t)
@@ -107,8 +100,7 @@ func TestE2E_SingleClient_IBRL_Then_Multicast(t *testing.T) {
 // TestE2E_SingleClient_IBRL_AllocatedAddr_Then_Multicast tests a single client with
 // allocated address connecting to IBRL first, then adding multicast.
 func TestE2E_SingleClient_IBRL_AllocatedAddr_Then_Multicast(t *testing.T) {
-	// Skip test for now pending CLI changes
-	t.Skip()
+	t.Skip("Requires CLI changes to support simultaneous tunnels for same user - see simultaneous_tunnels_cli branch")
 	t.Parallel()
 
 	dn, device, client := setupSingleClientTestDevnet(t)
@@ -124,8 +116,7 @@ func TestE2E_SingleClient_IBRL_AllocatedAddr_Then_Multicast(t *testing.T) {
 // TestE2E_SingleClient_IBRL_Then_Multicast_Publisher tests a single client connecting
 // to IBRL first, then adding multicast publisher capability.
 func TestE2E_SingleClient_IBRL_Then_Multicast_Publisher(t *testing.T) {
-	// Skip test for now pending CLI changes
-	t.Skip()
+	t.Skip("Requires CLI changes to support simultaneous tunnels for same user - see simultaneous_tunnels_cli branch")
 	t.Parallel()
 
 	dn, device, client := setupSingleClientTestDevnet(t)
@@ -318,6 +309,10 @@ func runSingleClientIBRLThenMulticastTest(t *testing.T, log *slog.Logger, dn *de
 	// Verify multicast is working
 	log.Info("==> Waiting for agent config to include multicast")
 	waitForAgentConfigWithClient(t, log, dn, device, client)
+
+	// Give extra time for agent config to be applied to device before verification
+	log.Info("==> Waiting for agent config to be applied to device")
+	time.Sleep(15 * time.Second)
 
 	if asPublisher {
 		verifyConcurrentMulticastPublisherMrouteState(t, log, device, client)
@@ -519,6 +514,10 @@ func runIBRLWithMulticastSubscriberTest(t *testing.T, log *slog.Logger, dn *devn
 	log.Info("==> Waiting for agent config to include multicast subscriber")
 	waitForAgentConfigWithClient(t, log, dn, device, mcastClient)
 
+	// Give extra time for agent config to be applied to device before verification
+	log.Info("==> Waiting for agent config to be applied to device")
+	time.Sleep(15 * time.Second)
+
 	verifyIBRLClient(t, log, device, ibrlClient, useAllocatedAddr)
 	verifyMulticastSubscriberPIMAdjacency(t, log, device)
 
@@ -699,54 +698,69 @@ func verifyIBRLClientBGPEstablished(t *testing.T, log *slog.Logger, device *devn
 }
 
 // verifyMulticastSubscriberPIMAdjacency verifies PIM adjacency is formed on the device for subscriber.
+// This function looks for any PIM neighbor on a Tunnel interface in the 169.254.0.x range.
+// In coexistence tests with multiple clients, the multicast client may not get 169.254.0.1
+// (e.g., if IBRL client connected first and got 169.254.0.1, multicast client gets 169.254.0.3).
 func verifyMulticastSubscriberPIMAdjacency(t *testing.T, log *slog.Logger, device *devnet.Device) {
 	log.Info("==> Verifying multicast subscriber PIM adjacency")
-
-	deadline := time.Now().Add(30 * time.Second)
-	for time.Now().Before(deadline) {
-		pim, err := devnet.DeviceExecAristaCliJSON[*arista.ShowPIMNeighbors](t.Context(), device, arista.ShowPIMNeighborsCmd())
-		require.NoError(t, err, "error fetching pim neighbors from doublezero device")
-
-		neighbor, ok := pim.Neighbors[expectedLinkLocalAddr]
-		if !ok {
-			log.Debug("PIM neighbor not found yet", "expectedAddr", expectedLinkLocalAddr)
-			time.Sleep(1 * time.Second)
-			continue
-		}
-		if len(neighbor.Interface) >= 6 && neighbor.Interface[:6] == "Tunnel" {
-			log.Info("--> PIM adjacency verified", "interface", neighbor.Interface, "address", expectedLinkLocalAddr)
-			return
-		}
-		time.Sleep(1 * time.Second)
-	}
-	t.Fatalf("PIM neighbor not established on Tunnel interface within timeout")
-}
-
-// verifyConcurrentMulticastPIMAdjacency verifies PIM adjacency for concurrent IBRL+multicast tunnels.
-// When a user has both IBRL and multicast, the multicast tunnel uses a separate link-local block
-// (169.254.128.0/17) instead of the standard 169.254.0.0/17 block used by standalone tunnels.
-func verifyConcurrentMulticastPIMAdjacency(t *testing.T, log *slog.Logger, device *devnet.Device) {
-	log.Info("==> Verifying concurrent multicast PIM adjacency (mcast tunnel in 169.254.128.x range)")
 
 	deadline := time.Now().Add(60 * time.Second)
 	for time.Now().Before(deadline) {
 		pim, err := devnet.DeviceExecAristaCliJSON[*arista.ShowPIMNeighbors](t.Context(), device, arista.ShowPIMNeighborsCmd())
 		require.NoError(t, err, "error fetching pim neighbors from doublezero device")
 
-		// Look for any PIM neighbor in the 169.254.128.x range (mcast tunnel block)
-		for addr, neighbor := range pim.Neighbors {
-			if strings.HasPrefix(addr, "169.254.128.") || strings.HasPrefix(addr, "169.254.129.") {
-				if len(neighbor.Interface) >= 6 && neighbor.Interface[:6] == "Tunnel" {
-					log.Info("--> Concurrent mcast PIM adjacency verified", "interface", neighbor.Interface, "address", addr)
-					return
+		// Look for any PIM neighbor in the 169.254.0.x range on a Tunnel interface
+		// The JSON structure is: vrfs -> vrf_name -> interfaces -> interface_name -> neighbors -> address -> details
+		for _, vrf := range pim.VRFs {
+			for intfName, intf := range vrf.Interfaces {
+				for addr, neighbor := range intf.Neighbors {
+					if strings.HasPrefix(addr, "169.254.0.") {
+						if len(intfName) >= 6 && intfName[:6] == "Tunnel" {
+							log.Info("--> PIM adjacency verified", "interface", intfName, "address", addr, "neighbor", neighbor)
+							return
+						}
+					}
 				}
 			}
 		}
 
-		log.Debug("Concurrent mcast PIM neighbor not found yet, checking all neighbors", "neighbors", pim.Neighbors)
+		log.Debug("PIM neighbor not found yet in 169.254.0.x range", "vrfs", pim.VRFs)
+		time.Sleep(1 * time.Second)
+	}
+
+	t.Fatalf("PIM neighbor not established on Tunnel interface within timeout")
+}
+
+// verifyConcurrentMulticastPIMAdjacency verifies PIM adjacency for concurrent IBRL+multicast tunnels.
+// For single-client scenarios where the same user has both IBRL and multicast, both tunnels
+// use sequential addresses in the 169.254.0.x range (e.g., IBRL on .0/.1, multicast on .2/.3).
+func verifyConcurrentMulticastPIMAdjacency(t *testing.T, log *slog.Logger, device *devnet.Device) {
+	log.Info("==> Verifying concurrent multicast PIM adjacency")
+
+	deadline := time.Now().Add(60 * time.Second)
+	for time.Now().Before(deadline) {
+		pim, err := devnet.DeviceExecAristaCliJSON[*arista.ShowPIMNeighbors](t.Context(), device, arista.ShowPIMNeighborsCmd())
+		require.NoError(t, err, "error fetching pim neighbors from doublezero device")
+
+		// Look for any PIM neighbor in the 169.254.x.x range on a Tunnel interface
+		// The JSON structure is: vrfs -> vrf_name -> interfaces -> interface_name -> neighbors -> address -> details
+		for _, vrf := range pim.VRFs {
+			for intfName, intf := range vrf.Interfaces {
+				for addr := range intf.Neighbors {
+					if strings.HasPrefix(addr, "169.254.") {
+						if len(intfName) >= 6 && intfName[:6] == "Tunnel" {
+							log.Info("--> Concurrent mcast PIM adjacency verified", "interface", intfName, "address", addr)
+							return
+						}
+					}
+				}
+			}
+		}
+
+		log.Debug("Concurrent mcast PIM neighbor not found yet, checking all VRFs", "vrfs", pim.VRFs)
 		time.Sleep(2 * time.Second)
 	}
-	t.Fatalf("Concurrent multicast PIM neighbor not established on Tunnel interface within timeout (expected in 169.254.128.x range)")
+	t.Fatalf("Concurrent multicast PIM neighbor not established on Tunnel interface within timeout")
 }
 
 // verifyConcurrentMulticastPublisherMrouteState verifies mroute state for concurrent IBRL+multicast publisher.

@@ -62,7 +62,7 @@ pub async fn retrieve_latencies<T: ServiceController>(
     Ok(latencies)
 }
 
-const LATENCY_TOLERANCE_NS: i32 = 1_500_000; // 1.5 ms
+const LATENCY_TOLERANCE_NS: i32 = 5_000_000; // 5 ms
 
 /// Find the best device based on latency.
 ///

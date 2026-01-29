@@ -91,8 +91,13 @@ func (v *Verifier) CaptureSnapshot(ctx context.Context) (*ResourceSnapshot, erro
 			}
 		} else if ext.Allocator.Type == serviceability.AllocatorTypeId {
 			if isGlobal {
-				// Global ID allocator = LinkIds
-				snapshot.LinkIds = state
+				// Distinguish between global ID allocators by their range start:
+				// - LinkIds: RangeStart=0, RangeEnd=65535
+				// - SegmentRoutingIds: RangeStart=1, RangeEnd=65535
+				if ext.Allocator.IdAllocator != nil && ext.Allocator.IdAllocator.RangeStart == 0 {
+					snapshot.LinkIds = state
+				}
+				// SegmentRoutingIds (RangeStart=1) is ignored for now
 			} else {
 				// Device-specific TunnelIds
 				deviceKey := base58.Encode(ext.AssociatedWith[:])

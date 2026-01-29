@@ -34,7 +34,7 @@ pub async fn post_distribution_to_slack(
     let table_values = vec![
         solana_epoch.to_string(),
         dz_epoch.to_string(),
-        total_amount.to_string(),
+        format!("{:.9} SOL", total_amount as f64 * 1e-9),
         total_validators.to_string(),
         transaction.unwrap_or("No transaction details".to_string()),
     ];

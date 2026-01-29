@@ -181,12 +181,15 @@ func checkMulticastSubscriberPostConnect(t *testing.T, dn *TestDevnet, device *d
 				pim, err := devnet.DeviceExecAristaCliJSON[*arista.ShowPIMNeighbors](t.Context(), device, arista.ShowPIMNeighborsCmd())
 				require.NoError(t, err, "error fetching pim neighbors from doublezero device")
 
-				neighbor, ok := pim.Neighbors[expectedLinkLocalAddr]
-				if !ok {
-					return
-				}
-				if neighbor.Interface == "Tunnel500" {
-					return
+				// Check for PIM neighbor on Tunnel500 (the default interface for first multicast user)
+				// The JSON structure is: vrfs -> vrf_name -> interfaces -> interface_name -> neighbors -> address -> details
+				if defaultVRF, ok := pim.VRFs["default"]; ok {
+					if tunnel500, ok := defaultVRF.Interfaces["Tunnel500"]; ok {
+						if neighbor, ok := tunnel500.Neighbors[expectedLinkLocalAddr]; ok {
+							_ = neighbor // neighbor found
+							return
+						}
+					}
 				}
 				time.Sleep(1 * time.Second)
 			}
@@ -217,17 +220,6 @@ func checkMulticastSubscriberPostConnect(t *testing.T, dn *TestDevnet, device *d
 				time.Sleep(1 * time.Second)
 			}
 			t.Fatalf("PIM join not received for 233.84.178.0")
-		}) {
-			t.Fail()
-		}
-
-		if !t.Run("only_one_tunnel_allowed", func(t *testing.T) {
-			// Set access pass for the client.
-			_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey})
-			require.NoError(t, err)
-
-			_, err = client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect ibrl --client-ip " + client.CYOANetworkIP})
-			require.Error(t, err, "User with different type already exists. Only one tunnel currently supported")
 		}) {
 			t.Fail()
 		}

@@ -243,6 +243,7 @@ pub fn process_create_subscribe_user(
             false => vec![],
         },
         validator_pubkey,
+        tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
     };
 
     // Update multicastgroup counts

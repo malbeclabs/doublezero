@@ -1003,7 +1003,11 @@ async fn test_create_dz_prefix_block_resource() {
     // First IP is automatically reserved for device tunnel endpoint
     let allocated = resource.iter_allocated();
     assert_eq!(allocated.len(), 1, "First IP should be reserved");
-    assert_eq!(allocated[0].to_string(), "110.1.0.0/32", "Reserved IP should be base network address");
+    assert_eq!(
+        allocated[0].to_string(),
+        "110.1.0.0/32",
+        "Reserved IP should be base network address"
+    );
 
     println!("[PASS] test_create_dz_prefix_block_resource");
 }
@@ -1222,8 +1226,16 @@ async fn test_allocate_dz_prefix_block_with_device_pubkey() {
     let allocated = resource.iter_allocated();
     // First IP is reserved (110.1.0.0/32), then user allocation gets second IP (110.1.0.1/32)
     assert_eq!(allocated.len(), 2);
-    assert_eq!(allocated[0].to_string(), "110.1.0.0/32", "First IP reserved for device");
-    assert_eq!(allocated[1].to_string(), "110.1.0.1/32", "User allocation gets second IP");
+    assert_eq!(
+        allocated[0].to_string(),
+        "110.1.0.0/32",
+        "First IP reserved for device"
+    );
+    assert_eq!(
+        allocated[1].to_string(),
+        "110.1.0.1/32",
+        "User allocation gets second IP"
+    );
 
     println!("[PASS] test_allocate_dz_prefix_block_with_device_pubkey");
 }

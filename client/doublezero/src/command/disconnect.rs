@@ -92,11 +92,16 @@ impl DecommissioningCliCommand {
             }
 
             spinner.inc(1);
-            let _ = controller
+            if let Err(e) = controller
                 .remove(RemoveTunnelCliCommand {
                     user_type: user.user_type.to_string(),
                 })
-                .await;
+                .await
+            {
+                spinner.println(format!(
+                    "⚠️  Warning: Failed to remove tunnel from daemon: {e}"
+                ));
+            }
 
             self.poll_for_user_closed(client, pubkey, &spinner)?;
         }

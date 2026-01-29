@@ -188,6 +188,11 @@ func (b *BgpServer) DeletePeer(ip net.IP) error {
 	if errors.Is(err, corebgp.ErrPeerNotExist) {
 		return ErrBgpPeerNotExists
 	}
+	if err == nil {
+		b.peerStatusLock.Lock()
+		delete(b.peerStatus, ip.String())
+		b.peerStatusLock.Unlock()
+	}
 	return err
 }
 

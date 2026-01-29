@@ -1000,7 +1000,10 @@ async fn test_create_dz_prefix_block_resource() {
 
     assert_eq!(resource.account_type, AccountType::ResourceExtension);
     assert_eq!(resource.associated_with, device_pubkey);
-    assert!(resource.iter_allocated().is_empty());
+    // First IP is automatically reserved for device tunnel endpoint
+    let allocated = resource.iter_allocated();
+    assert_eq!(allocated.len(), 1, "First IP should be reserved");
+    assert_eq!(allocated[0].to_string(), "110.1.0.0/32", "Reserved IP should be base network address");
 
     println!("[PASS] test_create_dz_prefix_block_resource");
 }
@@ -1217,9 +1220,10 @@ async fn test_allocate_dz_prefix_block_with_device_pubkey() {
         .expect("Resource extension should exist");
 
     let allocated = resource.iter_allocated();
-    assert_eq!(allocated.len(), 1);
-    // Should allocate from device's dz_prefixes (110.1.0.0/24) with allocation_size=1 (/32)
-    assert_eq!(allocated[0].to_string(), "110.1.0.0/32");
+    // First IP is reserved (110.1.0.0/32), then user allocation gets second IP (110.1.0.1/32)
+    assert_eq!(allocated.len(), 2);
+    assert_eq!(allocated[0].to_string(), "110.1.0.0/32", "First IP reserved for device");
+    assert_eq!(allocated[1].to_string(), "110.1.0.1/32", "User allocation gets second IP");
 
     println!("[PASS] test_allocate_dz_prefix_block_with_device_pubkey");
 }
@@ -1911,4 +1915,137 @@ async fn test_loopback_interface_onchain_deallocation() {
     );
 
     println!("[PASS] test_loopback_interface_onchain_deallocation");
+}
+
+// ============================================================================
+// DzPrefixBlock First IP Reservation Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_dz_prefix_block_reserves_first_ip_on_creation() {
+    println!("[TEST] test_dz_prefix_block_reserves_first_ip_on_creation");
+
+    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    // Setup device
+    let (device_pubkey, _, _, _) = setup_device_for_dz_prefix_tests(
+        &mut banks_client,
+        &payer,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+    )
+    .await;
+
+    // Activate device - this creates the DzPrefixBlock resource
+    activate_device(
+        &mut banks_client,
+        &payer,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        device_pubkey,
+        2, // resource_count: TunnelIds + 1 DzPrefixBlock
+    )
+    .await;
+
+    // Get DzPrefixBlock resource
+    let (dz_prefix_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 0));
+
+    let resource = get_resource_extension_data(&mut banks_client, dz_prefix_pda)
+        .await
+        .expect("DzPrefixBlock resource should exist");
+
+    // Verify first IP (index 0) is already allocated
+    let allocated = resource.iter_allocated();
+    assert_eq!(
+        allocated.len(),
+        1,
+        "DzPrefixBlock should have exactly one allocation (the first IP)"
+    );
+    // Device was created with dz_prefixes: "110.1.0.0/24", so first IP is 110.1.0.0/32
+    assert_eq!(
+        allocated[0].to_string(),
+        "110.1.0.0/32",
+        "First IP should be the base network address"
+    );
+
+    println!("[PASS] test_dz_prefix_block_reserves_first_ip_on_creation");
+}
+
+#[tokio::test]
+async fn test_user_allocation_from_dz_prefix_block_skips_first_ip() {
+    println!("[TEST] test_user_allocation_from_dz_prefix_block_skips_first_ip");
+
+    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    // Setup device
+    let (device_pubkey, _, _, _) = setup_device_for_dz_prefix_tests(
+        &mut banks_client,
+        &payer,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+    )
+    .await;
+
+    // Activate device - this creates DzPrefixBlock with first IP reserved
+    activate_device(
+        &mut banks_client,
+        &payer,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        device_pubkey,
+        2,
+    )
+    .await;
+
+    // Get DzPrefixBlock resource
+    let (dz_prefix_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 0));
+
+    // Now allocate another IP (simulating a user allocation)
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::AllocateResource(ResourceAllocateArgs {
+            resource_type: ResourceType::DzPrefixBlock(device_pubkey, 0),
+            requested: None,
+        }),
+        vec![
+            AccountMeta::new(dz_prefix_pda, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Verify allocations
+    let resource = get_resource_extension_data(&mut banks_client, dz_prefix_pda)
+        .await
+        .expect("DzPrefixBlock resource should exist");
+
+    let allocated = resource.iter_allocated();
+    assert_eq!(
+        allocated.len(),
+        2,
+        "Should have two allocations: reserved first IP + user allocation"
+    );
+    // First IP is reserved (110.1.0.0/32)
+    assert_eq!(allocated[0].to_string(), "110.1.0.0/32");
+    // User allocation should be the second IP (110.1.0.1/32), not the first
+    assert_eq!(
+        allocated[1].to_string(),
+        "110.1.0.1/32",
+        "User allocation should get the second IP, not the first"
+    );
+
+    println!("[PASS] test_user_allocation_from_dz_prefix_block_skips_first_ip");
 }

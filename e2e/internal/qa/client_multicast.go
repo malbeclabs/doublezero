@@ -33,34 +33,34 @@ type MulticastGroup struct {
 	Status  serviceability.MulticastGroupStatus
 }
 
-func (c *Client) ConnectUserMulticast_Publisher_Wait(ctx context.Context, multicastGroupCode string) error {
-	return c.ConnectUserMulticast(ctx, multicastGroupCode, pb.ConnectMulticastRequest_PUBLISHER, true)
+func (c *Client) ConnectUserMulticast_Publisher_Wait(ctx context.Context, multicastGroupCodes ...string) error {
+	return c.ConnectUserMulticast(ctx, multicastGroupCodes, pb.ConnectMulticastRequest_PUBLISHER, true)
 }
 
-func (c *Client) ConnectUserMulticast_Publisher_NoWait(ctx context.Context, multicastGroupCode string) error {
-	return c.ConnectUserMulticast(ctx, multicastGroupCode, pb.ConnectMulticastRequest_PUBLISHER, false)
+func (c *Client) ConnectUserMulticast_Publisher_NoWait(ctx context.Context, multicastGroupCodes ...string) error {
+	return c.ConnectUserMulticast(ctx, multicastGroupCodes, pb.ConnectMulticastRequest_PUBLISHER, false)
 }
 
-func (c *Client) ConnectUserMulticast_Subscriber_Wait(ctx context.Context, multicastGroupCode string) error {
-	return c.ConnectUserMulticast(ctx, multicastGroupCode, pb.ConnectMulticastRequest_SUBSCRIBER, true)
+func (c *Client) ConnectUserMulticast_Subscriber_Wait(ctx context.Context, multicastGroupCodes ...string) error {
+	return c.ConnectUserMulticast(ctx, multicastGroupCodes, pb.ConnectMulticastRequest_SUBSCRIBER, true)
 }
 
-func (c *Client) ConnectUserMulticast_Subscriber_NoWait(ctx context.Context, multicastGroupCode string) error {
-	return c.ConnectUserMulticast(ctx, multicastGroupCode, pb.ConnectMulticastRequest_SUBSCRIBER, false)
+func (c *Client) ConnectUserMulticast_Subscriber_NoWait(ctx context.Context, multicastGroupCodes ...string) error {
+	return c.ConnectUserMulticast(ctx, multicastGroupCodes, pb.ConnectMulticastRequest_SUBSCRIBER, false)
 }
 
-func (c *Client) ConnectUserMulticast(ctx context.Context, multicastGroupCode string, mode pb.ConnectMulticastRequest_MulticastMode, waitForStatus bool) error {
+func (c *Client) ConnectUserMulticast(ctx context.Context, multicastGroupCodes []string, mode pb.ConnectMulticastRequest_MulticastMode, waitForStatus bool) error {
 	err := c.DisconnectUser(ctx, true, true)
 	if err != nil {
 		return fmt.Errorf("failed to ensure disconnected on host %s: %w", c.Host, err)
 	}
 
-	c.log.Info("Connecting multicast publisher", "host", c.Host, "multicastGroupCode", multicastGroupCode)
+	c.log.Info("Connecting multicast", "host", c.Host, "multicastGroupCodes", multicastGroupCodes, "mode", mode)
 	ctx, cancel := context.WithTimeout(ctx, connectMulticastTimeout)
 	defer cancel()
 	resp, err := c.grpcClient.ConnectMulticast(ctx, &pb.ConnectMulticastRequest{
-		Mode: mode,
-		Code: multicastGroupCode,
+		Mode:  mode,
+		Codes: multicastGroupCodes,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to connect on host %s: %w", c.Host, err)
@@ -68,7 +68,7 @@ func (c *Client) ConnectUserMulticast(ctx context.Context, multicastGroupCode st
 	if !resp.GetSuccess() {
 		return fmt.Errorf("connection failed on host %s: %s", c.Host, resp.GetOutput())
 	}
-	c.log.Info("Multicast publisher connected", "host", c.Host, "multicastGroupCode", multicastGroupCode)
+	c.log.Info("Multicast connected", "host", c.Host, "multicastGroupCodes", multicastGroupCodes)
 
 	return nil
 }
@@ -172,36 +172,53 @@ func (c *Client) MulticastSend(ctx context.Context, group *MulticastGroup, durat
 	return nil
 }
 
-func (c *Client) MulticastJoin(ctx context.Context, group *MulticastGroup) error {
-	c.log.Info("Joining multicast group", "host", c.Host, "code", group.Code, "groupIP", group.IP)
+func (c *Client) MulticastJoin(ctx context.Context, groups ...*MulticastGroup) error {
+	codes := make([]string, len(groups))
+	pbGroups := make([]*pb.MulticastGroup, len(groups))
+	for i, group := range groups {
+		codes[i] = group.Code
+		pbGroups[i] = &pb.MulticastGroup{
+			Group: group.IP.String(),
+			Port:  multicastConnectivityPort,
+			Iface: multicastInterfaceName,
+		}
+	}
+	c.log.Info("Joining multicast groups", "host", c.Host, "codes", codes)
 	_, err := c.grpcClient.MulticastJoin(ctx, &pb.MulticastJoinRequest{
-		Groups: []*pb.MulticastGroup{
-			{
-				Group: group.IP.String(),
-				Port:  multicastConnectivityPort,
-				Iface: multicastInterfaceName,
-			},
-		},
+		Groups: pbGroups,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to join multicast groups on host %s: %w", c.Host, err)
 	}
-	c.log.Debug("Joined multicast group", "host", c.Host, "code", group.Code, "groupIP", group.IP)
+	c.log.Debug("Joined multicast groups", "host", c.Host, "codes", codes)
 	return nil
 }
 
 func (c *Client) WaitForMulticastReport(ctx context.Context, group *MulticastGroup) (*pb.MulticastReport, error) {
-	c.log.Info("Waiting for multicast report", "host", c.Host, "code", group.Code, "groupIP", group.IP)
-	var report *pb.MulticastReport
+	reports, err := c.WaitForMulticastReports(ctx, []*MulticastGroup{group})
+	if err != nil {
+		return nil, err
+	}
+	return reports[group.IP.String()], nil
+}
+
+func (c *Client) WaitForMulticastReports(ctx context.Context, groups []*MulticastGroup) (map[string]*pb.MulticastReport, error) {
+	codes := make([]string, len(groups))
+	pbGroups := make([]*pb.MulticastGroup, len(groups))
+	for i, group := range groups {
+		codes[i] = group.Code
+		pbGroups[i] = &pb.MulticastGroup{
+			Group: group.IP.String(),
+			Port:  multicastConnectivityPort,
+			Iface: multicastInterfaceName,
+		}
+	}
+	c.log.Info("Waiting for multicast reports", "host", c.Host, "codes", codes)
+
+	var reports map[string]*pb.MulticastReport
 	err := poll.Until(ctx, func() (bool, error) {
 		resp, err := c.grpcClient.MulticastReport(ctx, &pb.MulticastReportRequest{
-			Groups: []*pb.MulticastGroup{
-				{
-					Group: group.IP.String(),
-					Port:  multicastConnectivityPort,
-					Iface: multicastInterfaceName,
-				},
-			},
+			Groups: pbGroups,
 		})
 		if err != nil {
 			return false, fmt.Errorf("failed to get multicast report on host %s: %w", c.Host, err)
@@ -209,18 +226,27 @@ func (c *Client) WaitForMulticastReport(ctx context.Context, group *MulticastGro
 		if len(resp.Reports) == 0 {
 			return false, nil
 		}
-		report = resp.Reports[group.IP.String()]
-		if report == nil {
-			return false, nil
+		// Check all groups have received packets
+		allReceived := true
+		for _, group := range groups {
+			report := resp.Reports[group.IP.String()]
+			if report == nil || report.PacketCount == 0 {
+				c.log.Debug("Waiting for multicast report", "host", c.Host, "code", group.Code, "groupIP", group.IP, "packetCount", 0)
+				allReceived = false
+			} else {
+				c.log.Debug("Got multicast report", "host", c.Host, "code", group.Code, "groupIP", group.IP, "packetCount", report.PacketCount)
+			}
 		}
-		c.log.Debug("Waiting for multicast report", "host", c.Host, "code", group.Code, "groupIP", group.IP, "packetCount", report.PacketCount)
-		return report.PacketCount > 0, nil
+		if allReceived {
+			reports = resp.Reports
+		}
+		return allReceived, nil
 	}, waitForMulticastReportTimeout, waitInterval)
 	if err != nil {
-		return nil, fmt.Errorf("failed to wait for multicast report on host %s: %w", c.Host, err)
+		return nil, fmt.Errorf("failed to wait for multicast reports on host %s: %w", c.Host, err)
 	}
-	c.log.Debug("Confirmed multicast report", "host", c.Host, "code", group.Code, "groupIP", group.IP)
-	return report, nil
+	c.log.Debug("Confirmed multicast reports", "host", c.Host, "codes", codes)
+	return reports, nil
 }
 
 func (c *Client) AddPublisherToMulticastGroupAllowlist(ctx context.Context, code string, pubkey solana.PublicKey, clientIP string) error {

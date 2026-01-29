@@ -55,7 +55,7 @@ message ConnectMulticastRequest {
   }
 
   MulticastMode mode = 1;
-  string code = 2;
+  repeated string codes = 2;
 }
 
 message MulticastAllowListAddRequest {

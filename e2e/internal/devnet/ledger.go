@@ -28,7 +28,8 @@ import (
 
 const (
 	// Ledger container is more memory intensive than the others.
-	ledgerContainerMemory = 4 * 1024 * 1024 * 1024 // 4GB
+	// The solana-test-validator runtime uses ~1.4GB baseline.
+	ledgerContainerMemory = 2 * 1024 * 1024 * 1024 // 2GB
 
 	internalLedgerRPCPort   = 8899
 	internalLedgerRPCWSPort = 8900
@@ -174,7 +175,7 @@ func (l *Ledger) Start(ctx context.Context) error {
 		},
 		WaitingFor: wait.ForAll(
 			wait.ForExec([]string{"solana", "cluster-version"}).WithExitCodeMatcher(func(code int) bool { return code == 0 }),
-		).WithDeadline(20 * time.Second),
+		).WithDeadline(60 * time.Second),
 		Networks: []string{l.dn.DefaultNetwork.Name},
 		NetworkAliases: map[string][]string{
 			l.dn.DefaultNetwork.Name: {"ledger"},
@@ -222,7 +223,7 @@ func (l *Ledger) Start(ctx context.Context) error {
 
 func (l *Ledger) setState(ctx context.Context, containerID string) error {
 	// Wait for RPC port to be exposed.
-	port, err := l.dn.waitForContainerPortExposed(ctx, containerID, internalLedgerRPCPort, 10*time.Second)
+	port, err := l.dn.waitForContainerPortExposed(ctx, containerID, internalLedgerRPCPort, 30*time.Second)
 	if err != nil {
 		return fmt.Errorf("failed to wait for ledger RPC port to be exposed: %w", err)
 	}
@@ -243,7 +244,7 @@ func (l *Ledger) setState(ctx context.Context, containerID string) error {
 
 func waitForSolanaReady(ctx context.Context, log *slog.Logger, rpcHost string, rpcPort int) error {
 	var loggedWait bool
-	timeout := 20 * time.Second
+	timeout := 60 * time.Second
 	var attempts int
 	err := poll.Until(ctx, func() (bool, error) {
 		attempts++

@@ -23,6 +23,7 @@ const (
 )
 
 type PrometheusSpec struct {
+	Enabled        bool
 	ContainerImage string
 }
 

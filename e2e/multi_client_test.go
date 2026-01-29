@@ -292,6 +292,24 @@ func runMultiClientIBRLWorkflowTest(t *testing.T, log *slog.Logger, dn *devnet.D
 	require.Equal(t, client4.CYOANetworkIP, client4DZIP)
 	log.Info("--> Clients have a DZ IP as public IP when not configured to use an allocated IP")
 
+	// Wait for cross-exchange routes to propagate via iBGP between devices.
+	log.Info("==> Waiting for cross-exchange routes to propagate via iBGP")
+	require.Eventually(t, func() bool {
+		output, err := dn.Devices[deviceCode1].Exec(t.Context(), []string{"bash", "-c", fmt.Sprintf("Cli -c \"show ip route vrf vrf1 %s/32\"", client2DZIP)})
+		if err != nil {
+			return false
+		}
+		return strings.Contains(string(output), client2DZIP)
+	}, 90*time.Second, 1*time.Second, "device1 should have route to client2 via iBGP")
+	require.Eventually(t, func() bool {
+		output, err := dn.Devices[deviceCode2].Exec(t.Context(), []string{"bash", "-c", fmt.Sprintf("Cli -c \"show ip route vrf vrf1 %s/32\"", client1DZIP)})
+		if err != nil {
+			return false
+		}
+		return strings.Contains(string(output), client1DZIP)
+	}, 90*time.Second, 1*time.Second, "device2 should have route to client1 via iBGP")
+	log.Info("--> Cross-exchange routes have propagated via iBGP")
+
 	// Check that the clients have routes to each other.
 	log.Info("==> Checking that the clients have routes to each other")
 
@@ -299,15 +317,19 @@ func runMultiClientIBRLWorkflowTest(t *testing.T, log *slog.Logger, dn *devnet.D
 	log.Info("--> Client1 (on DZD1) should have routes to client2 (on DZD2) and client3 (on DZD2)")
 	require.Eventually(t, func() bool {
 		output, err := client1.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
-		require.NoError(t, err)
+		if err != nil {
+			return false
+		}
 		return strings.Contains(string(output), client2DZIP) && strings.Contains(string(output), client3DZIP)
-	}, 120*time.Second, 5*time.Second, "client1 should have route to client2")
+	}, 60*time.Second, 1*time.Second, "client1 should have route to client2")
 
 	// Client2 (on DZD2) should have routes to client1 (on DZD1) only.
 	log.Info("--> Client2 (on DZD2) should have routes to client1 (on DZD1) only")
 	require.Eventually(t, func() bool {
 		output, err := client2.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
-		require.NoError(t, err)
+		if err != nil {
+			return false
+		}
 		return strings.Contains(string(output), client1DZIP)
 	}, 120*time.Second, 5*time.Second, "client2 should have route to client1")
 
@@ -315,7 +337,9 @@ func runMultiClientIBRLWorkflowTest(t *testing.T, log *slog.Logger, dn *devnet.D
 	log.Info("--> Client3 (on DZD2) should have routes to client1 (on DZD1) only")
 	require.Eventually(t, func() bool {
 		output, err := client3.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
-		require.NoError(t, err)
+		if err != nil {
+			return false
+		}
 		return strings.Contains(string(output), client1DZIP)
 	}, 120*time.Second, 5*time.Second, "client3 should have route to client1")
 
@@ -323,7 +347,10 @@ func runMultiClientIBRLWorkflowTest(t *testing.T, log *slog.Logger, dn *devnet.D
 	log.Info("--> Client2 (on DZD2) should not have routes to client3 (on DZD2)")
 	require.Never(t, func() bool {
 		output, err := client2.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
-		require.NoError(t, err)
+		if err != nil {
+			t.Logf("error listing routes on client2: %v", err)
+			return false
+		}
 		return strings.Contains(string(output), client3DZIP)
 	}, 1*time.Second, 100*time.Millisecond, "client2 should not have route to client3")
 
@@ -331,7 +358,10 @@ func runMultiClientIBRLWorkflowTest(t *testing.T, log *slog.Logger, dn *devnet.D
 	log.Info("--> Client3 (on DZD2) should not have routes to client2 (on DZD2)")
 	require.Never(t, func() bool {
 		output, err := client3.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
-		require.NoError(t, err)
+		if err != nil {
+			t.Logf("error listing routes on client3: %v", err)
+			return false
+		}
 		return strings.Contains(string(output), client2DZIP)
 	}, 1*time.Second, 100*time.Millisecond, "client3 should not have route to client2")
 
@@ -339,7 +369,9 @@ func runMultiClientIBRLWorkflowTest(t *testing.T, log *slog.Logger, dn *devnet.D
 	log.Info("--> Client4 (on DZD2) should have route to client1 (on DZD1)")
 	require.Eventually(t, func() bool {
 		output, err := client4.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
-		require.NoError(t, err)
+		if err != nil {
+			return false
+		}
 		return strings.Contains(string(output), client1DZIP)
 	}, 120*time.Second, 5*time.Second, "client4 should have routes to client1")
 
@@ -654,6 +686,24 @@ func runMultiClientIBRLWithAllocatedIPWorkflowTest(t *testing.T, log *slog.Logge
 	require.NotEqual(t, client2.CYOANetworkIP, client2DZIP)
 	log.Info("--> Clients have a DZ IP different from their client IP when configured to use an allocated IP")
 
+	// Wait for cross-exchange routes to propagate via iBGP between devices.
+	log.Info("==> Waiting for cross-exchange routes to propagate via iBGP")
+	require.Eventually(t, func() bool {
+		output, err := dn.Devices[deviceCode1].Exec(t.Context(), []string{"bash", "-c", fmt.Sprintf("Cli -c \"show ip route vrf vrf1 %s/32\"", client2DZIP)})
+		if err != nil {
+			return false
+		}
+		return strings.Contains(string(output), client2DZIP)
+	}, 90*time.Second, 1*time.Second, "device1 should have route to client2 via iBGP")
+	require.Eventually(t, func() bool {
+		output, err := dn.Devices[deviceCode2].Exec(t.Context(), []string{"bash", "-c", fmt.Sprintf("Cli -c \"show ip route vrf vrf1 %s/32\"", client1DZIP)})
+		if err != nil {
+			return false
+		}
+		return strings.Contains(string(output), client1DZIP)
+	}, 90*time.Second, 1*time.Second, "device2 should have route to client1 via iBGP")
+	log.Info("--> Cross-exchange routes have propagated via iBGP")
+
 	// Check that the clients have routes to each other.
 	log.Info("==> Checking that the clients have routes to each other")
 	require.Eventually(t, func() bool {
@@ -662,14 +712,14 @@ func runMultiClientIBRLWithAllocatedIPWorkflowTest(t *testing.T, log *slog.Logge
 			return false
 		}
 		return strings.Contains(string(output), client2DZIP)
-	}, 120*time.Second, 5*time.Second, "client1 should have route to client2")
+	}, 60*time.Second, 1*time.Second, "client1 should have route to client2")
 	require.Eventually(t, func() bool {
 		output, err := client2.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
 		if err != nil {
 			return false
 		}
 		return strings.Contains(string(output), client1DZIP)
-	}, 120*time.Second, 5*time.Second, "client2 should have route to client1")
+	}, 60*time.Second, 1*time.Second, "client2 should have route to client1")
 	log.Info("--> Clients have routes to each other")
 
 	// Disconnect client1.

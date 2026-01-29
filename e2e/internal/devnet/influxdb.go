@@ -23,6 +23,7 @@ const (
 )
 
 type InfluxDBSpec struct {
+	Enabled        bool
 	ContainerImage string
 }
 

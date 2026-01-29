@@ -58,6 +58,9 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 			TopUpSOL:      topUpSOL,
 			Interval:      3 * time.Second,
 		},
+		InfluxDB:           devnet.InfluxDBSpec{Enabled: true},
+		Prometheus:         devnet.PrometheusSpec{Enabled: true},
+		DeviceHealthOracle: devnet.DeviceHealthOracleSpec{Enabled: true},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
 
@@ -345,8 +348,16 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 		_, err := reflector.Exec(t.Context(), []string{"bash", "-c", fmt.Sprintf("ss -uln '( dport = :%d )' | grep -q .", port)})
 		return err == nil
 	}, 3*time.Second, 100*time.Millisecond)
-	output, err := sender.Exec(t.Context(), []string{"twamp-sender", "-q", "-local-addr", fmt.Sprintf("%s:%d", la2ToNY5LinkTunnelNY5IP, 0), "-remote-addr", fmt.Sprintf("%s:%d", la2ToNY5LinkTunnelLA2IP, port)})
-	require.NoError(t, err)
+	var output []byte
+	require.Eventually(t, func() bool {
+		var sendErr error
+		output, sendErr = sender.Exec(t.Context(), []string{"twamp-sender", "-q", "-local-addr", fmt.Sprintf("%s:%d", la2ToNY5LinkTunnelNY5IP, 0), "-remote-addr", fmt.Sprintf("%s:%d", la2ToNY5LinkTunnelLA2IP, port)})
+		if sendErr != nil {
+			log.Debug("Waiting for TWAMP sender to succeed", "error", sendErr)
+			return false
+		}
+		return true
+	}, 30*time.Second, 1*time.Second, "TWAMP sender should succeed")
 	log.Info("TWAMP sender output", "output", string(output))
 	require.Contains(t, string(output), "RTT:")
 	rtt, err := time.ParseDuration(strings.TrimSpace(strings.TrimPrefix(string(output), "RTT: ")))

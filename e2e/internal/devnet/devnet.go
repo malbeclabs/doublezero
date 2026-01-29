@@ -305,17 +305,23 @@ func New(spec DevnetSpec, log *slog.Logger, dockerClient *client.Client, subnetA
 		dn:  dn,
 		log: log.With("component", "activator"),
 	}
-	dn.DeviceHealthOracle = &DeviceHealthOracle{
-		dn:  dn,
-		log: log.With("component", "device-health-oracle"),
+	if spec.DeviceHealthOracle.Enabled {
+		dn.DeviceHealthOracle = &DeviceHealthOracle{
+			dn:  dn,
+			log: log.With("component", "device-health-oracle"),
+		}
 	}
-	dn.InfluxDB = &InfluxDB{
-		dn:  dn,
-		log: log.With("component", "influxdb"),
+	if spec.InfluxDB.Enabled {
+		dn.InfluxDB = &InfluxDB{
+			dn:  dn,
+			log: log.With("component", "influxdb"),
+		}
 	}
-	dn.Prometheus = &Prometheus{
-		dn:  dn,
-		log: log.With("component", "prometheus"),
+	if spec.Prometheus.Enabled {
+		dn.Prometheus = &Prometheus{
+			dn:  dn,
+			log: log.With("component", "prometheus"),
+		}
 	}
 	dn.Devices = make(map[string]*Device)
 	dn.Clients = make(map[string]*Client)
@@ -420,13 +426,17 @@ func (d *Devnet) Start(ctx context.Context, buildConfig *BuildConfig) error {
 	}
 
 	// Start the influxdb if it's not already running.
-	if _, err := d.InfluxDB.StartIfNotRunning(ctx); err != nil {
-		return fmt.Errorf("failed to start influxdb: %w", err)
+	if d.InfluxDB != nil {
+		if _, err := d.InfluxDB.StartIfNotRunning(ctx); err != nil {
+			return fmt.Errorf("failed to start influxdb: %w", err)
+		}
 	}
 
 	// Start the prometheus if it's not already running.
-	if _, err := d.Prometheus.StartIfNotRunning(ctx); err != nil {
-		return fmt.Errorf("failed to start prometheus: %w", err)
+	if d.Prometheus != nil {
+		if _, err := d.Prometheus.StartIfNotRunning(ctx); err != nil {
+			return fmt.Errorf("failed to start prometheus: %w", err)
+		}
 	}
 
 	// Start the controller if it's not already running.
@@ -440,8 +450,10 @@ func (d *Devnet) Start(ctx context.Context, buildConfig *BuildConfig) error {
 	}
 
 	// Start the device-health-oracle if it's not already running.
-	if _, err := d.DeviceHealthOracle.StartIfNotRunning(ctx); err != nil {
-		return fmt.Errorf("failed to start device-health-oracle: %w", err)
+	if d.DeviceHealthOracle != nil {
+		if _, err := d.DeviceHealthOracle.StartIfNotRunning(ctx); err != nil {
+			return fmt.Errorf("failed to start device-health-oracle: %w", err)
+		}
 	}
 
 	// Create the CYOA network if it doesn't exist.
@@ -820,15 +832,22 @@ func (d *Devnet) waitContainerHealthy(ctx context.Context, containerID string, t
 	defer cancel()
 	ticker := time.NewTicker(delay)
 	defer ticker.Stop()
+	var lastInspectErr error
 	for {
 		select {
 		case <-waitCtx.Done():
+			if lastInspectErr != nil {
+				return fmt.Errorf("timeout waiting for container to be healthy (last inspect error: %w)", lastInspectErr)
+			}
 			return fmt.Errorf("timeout waiting for container to be healthy")
 		case <-ticker.C:
 			inspect, err := d.dockerClient.ContainerInspect(waitCtx, containerID)
 			if err != nil {
-				return fmt.Errorf("failed to inspect container: %w", err)
+				lastInspectErr = err
+				d.log.Debug("--> Retrying container inspect after error", "container", shortContainerID(containerID), "error", err)
+				continue
 			}
+			lastInspectErr = nil
 			if inspect.State.Health.Status == "healthy" {
 				return nil
 			}

@@ -27,6 +27,9 @@ type BGPNeighborSummary struct {
 }
 
 func ShowIPBGPSummaryCmd(vrf string) string {
+	if vrf == "" {
+		return "show ip bgp summary"
+	}
 	return "show ip bgp summary vrf " + vrf
 }
 
@@ -139,4 +142,31 @@ type PIMNeighborMode struct {
 
 func ShowPIMNeighborsCmd() string {
 	return "show ip pim neighbor"
+}
+
+// show interfaces <name>
+//
+// {
+//   "interfaces": {
+//     "Tunnel500": {
+//       "name": "Tunnel500",
+//       "lineProtocolStatus": "up",
+//       "interfaceStatus": "connected",
+//       ...
+//     }
+//   }
+// }
+
+type ShowInterfaces struct {
+	Interfaces map[string]InterfaceDetail `json:"interfaces"`
+}
+
+type InterfaceDetail struct {
+	Name               string `json:"name"`
+	LineProtocolStatus string `json:"lineProtocolStatus"`
+	InterfaceStatus    string `json:"interfaceStatus"`
+}
+
+func ShowInterfacesCmd(name string) string {
+	return "show interfaces " + name
 }

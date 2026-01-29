@@ -26,9 +26,15 @@ func add(a, b int) int {
 	return a + b
 }
 
+// sub returns the difference of two integers
+func sub(a, b int) int {
+	return a - b
+}
+
 var templateFuncs = template.FuncMap{
 	"seq": seq,
 	"add": add,
+	"sub": sub,
 }
 
 // RenderTemplate renders a template string with the given data

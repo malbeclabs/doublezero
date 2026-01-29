@@ -467,52 +467,62 @@ impl ProvisioningCliCommand {
             .copied();
 
         let user_pubkey = match (ibrl_user, mcast_user) {
-            (Some((user_pk, user)), _) => {
-                let already_subscribed = match multicast_mode {
-                    MulticastMode::Publisher => user.publishers.contains(mcast_group_pk),
-                    MulticastMode::Subscriber => user.subscribers.contains(mcast_group_pk),
+            // IBRL user exists but no Multicast user - create a separate Multicast user
+            // This allows concurrent unicast (IBRL) and multicast tunnels for the same client IP
+            (Some((ibrl_user_pk, ibrl_user)), None) => {
+                spinner.println(format!(
+                    "    Creating separate Multicast user for concurrent tunnels (IBRL user: {})",
+                    ibrl_user_pk
+                ));
+
+                // Select a separate device from the IBRL user to allow independent tunnels
+                // Exclude the IBRL user's tunnel endpoint to ensure we get a different device
+                let exclude_ips: Vec<Ipv4Addr> = users
+                    .iter()
+                    .filter(|(_, u)| u.client_ip == *client_ip && u.has_tunnel_endpoint())
+                    .map(|(_, u)| u.tunnel_endpoint)
+                    .collect();
+
+                let (device_pk, device) = self
+                    .find_or_create_device(client, controller, &devices, spinner, &exclude_ips)
+                    .await?;
+
+                spinner.println(format!(
+                    "    The Device has been selected: {} ",
+                    device.code
+                ));
+
+                let (publisher, subscriber) = match multicast_mode {
+                    MulticastMode::Publisher => (true, false),
+                    MulticastMode::Subscriber => (false, true),
                 };
 
-                if !already_subscribed {
-                    spinner.println(format!(
-                        "    Adding multicast subscription to existing {} user: {}",
-                        user.user_type, user_pk
-                    ));
+                let res = client.create_subscribe_user(CreateSubscribeUserCommand {
+                    user_type: UserType::Multicast,
+                    device_pk,
+                    cyoa_type: ibrl_user.cyoa_type,
+                    client_ip: *client_ip,
+                    mgroup_pk: *mcast_group_pk,
+                    publisher,
+                    subscriber,
+                });
 
-                    let (publisher, subscriber) = match multicast_mode {
-                        MulticastMode::Publisher => (true, false),
-                        MulticastMode::Subscriber => (false, true),
-                    };
-
-                    let res = client.subscribe_multicastgroup(SubscribeMulticastGroupCommand {
-                        group_pk: *mcast_group_pk,
-                        client_ip: *client_ip,
-                        user_pk: *user_pk,
-                        publisher,
-                        subscriber,
-                    });
-
-                    match res {
-                        Ok(_) => {
-                            spinner
-                                .set_message("Subscription added to IBRL user (concurrent tunnel)");
-                        }
-                        Err(e) => {
-                            spinner.println("❌ Error adding subscription");
-                            spinner.println(format!("\n{}: {:?}\n", "Error", e));
-                            eyre::bail!("Error adding subscription to existing user");
-                        }
+                match res {
+                    Ok((_, user_pk)) => {
+                        spinner.set_message("Multicast user created, waiting for activation...");
+                        return self
+                            .poll_for_user_activated(client, &user_pk, spinner)
+                            .map(|user| (user_pk, user));
                     }
-
-                    spinner.set_message("Waiting for user activation...");
-                    return self
-                        .poll_for_user_activated(client, user_pk, spinner)
-                        .map(|user| (*user_pk, user));
+                    Err(e) => {
+                        spinner.println("❌ Error creating Multicast user");
+                        spinner.println(format!("\n{}: {:?}\n", "Error", e));
+                        eyre::bail!("Error creating Multicast user: {:?}", e);
+                    }
                 }
-
-                *user_pk
             }
-            (None, Some((user_pk, user))) => {
+            // Both IBRL and Multicast users exist - add subscription to existing Multicast user
+            (Some(_), Some((user_pk, user))) | (None, Some((user_pk, user))) => {
                 let already_subscribed = match multicast_mode {
                     MulticastMode::Publisher => user.publishers.contains(mcast_group_pk),
                     MulticastMode::Subscriber => user.subscribers.contains(mcast_group_pk),
@@ -1159,6 +1169,7 @@ mod tests {
                 });
         }
 
+        #[allow(dead_code)]
         pub fn expect_subscribe_multicastgroup(
             &mut self,
             user_pk: Pubkey,
@@ -1310,18 +1321,20 @@ mod tests {
             .await;
         assert!(result.is_ok());
 
-        println!("Test that adding a multicast tunnel with an existing IBRL succeeds");
+        println!("Test that adding a multicast tunnel with an existing IBRL creates a separate Multicast user");
         let (mcast_group_pk, mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
 
-        fixture.expect_subscribe_multicastgroup(
-            user_pk,
+        // When IBRL user exists, a separate Multicast user should be created (not subscription on IBRL)
+        let mcast_user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
+        fixture.expect_create_subscribe_user(
+            Pubkey::new_unique(),
+            &mcast_user,
             mcast_group_pk,
-            user.client_ip,
             true,  // publisher
             false, // subscriber
         );
         fixture.expected_provisioning_request(
-            UserType::IBRL,
+            UserType::Multicast,
             user.client_ip.to_string().as_str(),
             device1.public_ip.to_string().as_str(),
             Some(vec![mcast_group.multicast_ip.to_string()]),
@@ -1377,18 +1390,20 @@ mod tests {
             .await;
         assert!(result.is_ok());
 
-        println!("Test that adding a multicast tunnel with an existing IBRL succeeds");
+        println!("Test that adding a multicast tunnel with an existing IBRL creates a separate Multicast user");
         let (mcast_group_pk, mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
 
-        fixture.expect_subscribe_multicastgroup(
-            user_pk,
+        // When IBRL user exists, a separate Multicast user should be created (not subscription on IBRL)
+        let mcast_user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
+        fixture.expect_create_subscribe_user(
+            Pubkey::new_unique(),
+            &mcast_user,
             mcast_group_pk,
-            user.client_ip,
             true,  // publisher
             false, // subscriber
         );
         fixture.expected_provisioning_request(
-            UserType::IBRL,
+            UserType::Multicast,
             user.client_ip.to_string().as_str(),
             device1.public_ip.to_string().as_str(),
             Some(vec![mcast_group.multicast_ip.to_string()]),
@@ -2139,50 +2154,37 @@ mod tests {
         );
     }
 
-    /// Test that adding multicast to an existing IBRL user uses the IBRL user (not creating new Multicast user)
+    /// Test that adding multicast to an existing IBRL user creates a separate Multicast user
     ///
     /// This test verifies that when multicast is added to an IP that already has an IBRL user,
-    /// the system adds the subscription to the existing IBRL user rather than creating a new Multicast user.
+    /// the system creates a new Multicast user (enabling concurrent unicast + multicast tunnels).
     #[tokio::test]
     async fn test_add_multicast_to_existing_ibrl_user() {
         let mut fixture = TestFixture::new();
 
-        let (mcast_group_pk, _mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
-        let (device1_pk, _device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        let (mcast_group_pk, mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
+        let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
 
         let ibrl_user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
-        let ibrl_user_pk = fixture.add_user(&ibrl_user);
+        let _ibrl_user_pk = fixture.add_user(&ibrl_user);
 
-        // Expect subscribe_multicastgroup to be called on the existing IBRL user (not create_subscribe_user)
-        fixture
-            .client
-            .expect_subscribe_multicastgroup()
-            .times(1)
-            .withf(move |cmd| cmd.user_pk == ibrl_user_pk)
-            .returning_st(move |_| Ok(Signature::default()));
+        // Expect create_subscribe_user to be called to create a NEW Multicast user (not subscribe_multicastgroup)
+        let mcast_user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
+        fixture.expect_create_subscribe_user(
+            Pubkey::new_unique(),
+            &mcast_user,
+            mcast_group_pk,
+            false, // publisher
+            true,  // subscriber
+        );
 
-        let users = fixture.users.clone();
-        let mcast_group_pk_clone = mcast_group_pk;
-        fixture.client.expect_get_user().returning_st(move |cmd| {
-            let users = users.lock().unwrap();
-            if let Some(user) = users.get(&cmd.pubkey) {
-                let mut updated_user = user.clone();
-                updated_user.subscribers.push(mcast_group_pk_clone);
-                Ok((cmd.pubkey, updated_user))
-            } else {
-                Err(eyre::eyre!("User not found"))
-            }
-        });
-
-        fixture
-            .controller
-            .expect_provisioning()
-            .returning_st(move |_| {
-                Ok(ProvisioningResponse {
-                    status: "success".to_string(),
-                    description: None,
-                })
-            });
+        fixture.expected_provisioning_request(
+            UserType::Multicast,
+            mcast_user.client_ip.to_string().as_str(),
+            device1.public_ip.to_string().as_str(),
+            Some(vec![]),
+            Some(vec![mcast_group.multicast_ip.to_string()]),
+        );
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::Multicast {
@@ -2199,7 +2201,7 @@ mod tests {
             .await;
         assert!(
             result.is_ok(),
-            "Adding multicast to existing IBRL user should succeed: {:?}",
+            "Adding multicast to existing IBRL user should succeed by creating separate Multicast user: {:?}",
             result.err()
         );
     }

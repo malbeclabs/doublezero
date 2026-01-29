@@ -19,14 +19,89 @@ const (
 	serviceabilityProgramDataFetchTimeout = 20 * time.Second
 )
 
-type ProberFunc func(context.Context, serviceability.Device) LatencyResult
+// DeviceInfo contains the minimal device information needed for latency probing and reporting.
+// This is a memory-optimized subset of serviceability.Device, storing only the fields
+// required for metrics labels, JSON output, and IP fallback.
+type DeviceInfo struct {
+	PubKey [32]byte
+	Code   string
+	// PublicIp uses [4]uint8 (matching serviceability.Device) rather than net.IP for two reasons:
+	// 1. Memory efficiency: [4]uint8 is 4 bytes inline vs net.IP which is a slice (24 byte header + heap allocation)
+	// 2. Direct assignment: allows zero-copy from serviceability.Device.PublicIp without conversion
+	// Convert to net.IP when needed via: net.IP(PublicIp[:])
+	PublicIp [4]uint8
+}
 
-func UdpPing(ctx context.Context, d serviceability.Device) LatencyResult {
-	addr := net.IP(d.PublicIp[:])
-	pinger, err := probing.NewPinger(addr.String())
+// ProbeTarget represents a single IP to probe, associated with a device and interface.
+type ProbeTarget struct {
+	Device        DeviceInfo
+	InterfaceName string // Empty string indicates device PublicIp
+	IP            net.IP
+}
+
+// GetProbeTargets returns probe targets for a device.
+// When PublicIp is valid (non-unspecified), it is always included.
+// When probeTunnelEndpoints is true, also includes any interfaces with UserTunnelEndpoint=true.
+// Returns empty slice if device has no valid probe targets.
+func GetProbeTargets(d serviceability.Device, probeTunnelEndpoints bool) []ProbeTarget {
+	var targets []ProbeTarget
+
+	// Extract minimal device info to avoid storing full Device struct
+	deviceInfo := DeviceInfo{
+		PubKey:   d.PubKey,
+		Code:     d.Code,
+		PublicIp: d.PublicIp,
+	}
+
+	// Always probe the device's PublicIp if it's a valid (non-unspecified) address
+	publicIP := net.IP(d.PublicIp[:])
+	if !publicIP.IsUnspecified() {
+		targets = append(targets, ProbeTarget{
+			Device:        deviceInfo,
+			InterfaceName: "", // Empty indicates device PublicIp
+			IP:            publicIP,
+		})
+	}
+
+	// Only probe UserTunnelEndpoint interfaces when the feature flag is enabled
+	if !probeTunnelEndpoints {
+		return targets
+	}
+
+	// Additionally probe any user tunnel endpoint interfaces
+	for _, iface := range d.Interfaces {
+		if !iface.UserTunnelEndpoint {
+			continue
+		}
+		// IpNet: first 4 bytes are IP, 5th is prefix length
+		if iface.IpNet[4] == 0 || iface.IpNet[4] > 32 {
+			continue
+		}
+		ip := net.IP(iface.IpNet[:4])
+		if ip.IsUnspecified() {
+			continue
+		}
+		// Skip if same as PublicIp (avoid duplicate probes)
+		if ip.Equal(publicIP) {
+			continue
+		}
+		targets = append(targets, ProbeTarget{
+			Device:        deviceInfo,
+			InterfaceName: iface.Name,
+			IP:            ip,
+		})
+	}
+
+	return targets
+}
+
+type ProberFunc func(context.Context, ProbeTarget) LatencyResult
+
+func UdpPing(ctx context.Context, target ProbeTarget) LatencyResult {
+	pinger, err := probing.NewPinger(target.IP.String())
 	if err != nil {
-		slog.Error("latency: error creating pinger for device", "device address", addr, "error", err)
-		return LatencyResult{Device: d, Reachable: false}
+		slog.Error("latency: error creating pinger for device", "device address", target.IP, "interface", target.InterfaceName, "error", err)
+		return LatencyResult{Device: target.Device, InterfaceName: target.InterfaceName, IP: target.IP, Reachable: false}
 	}
 
 	pinger.Count = 3
@@ -35,11 +110,15 @@ func UdpPing(ctx context.Context, d serviceability.Device) LatencyResult {
 	pinger.SetPrivileged(true)
 
 	if err := pinger.Run(); err != nil {
-		slog.Error("latency: error while probing", "address", addr, "error", err)
-		return LatencyResult{Device: d, Reachable: false}
+		slog.Error("latency: error while probing", "address", target.IP, "interface", target.InterfaceName, "error", err)
+		return LatencyResult{Device: target.Device, InterfaceName: target.InterfaceName, IP: target.IP, Reachable: false}
 	}
 	stats := pinger.Statistics()
-	results := LatencyResult{Device: d}
+	results := LatencyResult{
+		Device:        target.Device,
+		InterfaceName: target.InterfaceName,
+		IP:            target.IP,
+	}
 
 	results.Reachable = true
 	if stats.PacketLoss == 100 {
@@ -60,23 +139,26 @@ type DeviceCache struct {
 }
 
 type LatencyResult struct {
-	Min       int64                 `json:"min_latency_ns"`
-	Max       int64                 `json:"max_latency_ns"`
-	Avg       int64                 `json:"avg_latency_ns"`
-	Loss      float64               `json:"loss_percentage"`
-	Device    serviceability.Device `json:"-"`
-	Reachable bool                  `json:"reachable"`
+	Min           int64      `json:"min_latency_ns"`
+	Max           int64      `json:"max_latency_ns"`
+	Avg           int64      `json:"avg_latency_ns"`
+	Loss          float64    `json:"loss_percentage"`
+	Device        DeviceInfo `json:"-"`
+	InterfaceName string     `json:"interface_name,omitempty"`
+	IP            net.IP     `json:"-"` // Probed IP (from interface or PublicIp)
+	Reachable     bool       `json:"reachable"`
 }
 
 func (l *LatencyResult) MarshalJSON() ([]byte, error) {
 	type Alias LatencyResult
+
 	return json.Marshal(&struct {
 		DevicePk   string `json:"device_pk"`
 		DeviceIP   string `json:"device_ip"`
 		DeviceCode string `json:"device_code"`
 		*Alias
 	}{
-		DeviceIP:   net.IP(l.Device.PublicIp[:]).String(),
+		DeviceIP:   l.IP.String(),
 		DevicePk:   base58.Encode(l.Device.PubKey[:]),
 		DeviceCode: l.Device.Code,
 		Alias:      (*Alias)(l),
@@ -95,15 +177,16 @@ func (l *LatencyResults) MarshalJSON() ([]byte, error) {
 }
 
 type LatencyManager struct {
-	SmartContractFunc   SmartContractorFunc
-	proberFunc          ProberFunc
-	DeviceCache         *DeviceCache
-	ResultsCache        *LatencyResults
-	programId           string
-	rpcEndpoint         string
-	probeInterval       time.Duration
-	cacheUpdateInterval time.Duration
-	metricsEnabled      bool
+	SmartContractFunc    SmartContractorFunc
+	proberFunc           ProberFunc
+	DeviceCache          *DeviceCache
+	ResultsCache         *LatencyResults
+	programId            string
+	rpcEndpoint          string
+	probeInterval        time.Duration
+	cacheUpdateInterval  time.Duration
+	metricsEnabled       bool
+	probeTunnelEndpoints bool // when true, also probe UserTunnelEndpoint interfaces
 }
 
 type Option func(*LatencyManager)
@@ -167,6 +250,12 @@ func WithMetricsEnabled(enabled bool) Option {
 	}
 }
 
+func WithProbeTunnelEndpoints(enabled bool) Option {
+	return func(l *LatencyManager) {
+		l.probeTunnelEndpoints = enabled
+	}
+}
+
 func (l *LatencyManager) Start(ctx context.Context) error {
 
 	// start goroutine for fetching smartcontract devices
@@ -214,12 +303,17 @@ func (l *LatencyManager) Start(ctx context.Context) error {
 			devices := l.DeviceCache.Devices
 			l.DeviceCache.Lock.Unlock()
 
+			// Build list of all targets across all devices
+			var targets []ProbeTarget
 			for _, device := range devices {
-				wg.Add(1)
-				go func() {
-					resultsChan <- l.proberFunc(ctx, device)
-					wg.Done()
-				}()
+				targets = append(targets, GetProbeTargets(device, l.probeTunnelEndpoints)...)
+			}
+
+			// Probe each target
+			for _, target := range targets {
+				wg.Go(func() {
+					resultsChan <- l.proberFunc(ctx, target)
+				})
 			}
 			go func() {
 				wg.Wait()
@@ -231,19 +325,19 @@ func (l *LatencyManager) Start(ctx context.Context) error {
 
 				if l.metricsEnabled {
 					devicePk := base58.Encode(result.Device.PubKey[:])
-					deviceIp := net.IP(result.Device.PublicIp[:]).String()
+					deviceIp := result.IP
 
-					MetricLatencyRttMin.WithLabelValues(devicePk, result.Device.Code, deviceIp).Set(float64(result.Min))
-					MetricLatencyRttAvg.WithLabelValues(devicePk, result.Device.Code, deviceIp).Set(float64(result.Avg))
-					MetricLatencyRttMax.WithLabelValues(devicePk, result.Device.Code, deviceIp).Set(float64(result.Max))
+					MetricLatencyRttMin.WithLabelValues(devicePk, result.Device.Code, deviceIp.String()).Set(float64(result.Min))
+					MetricLatencyRttAvg.WithLabelValues(devicePk, result.Device.Code, deviceIp.String()).Set(float64(result.Avg))
+					MetricLatencyRttMax.WithLabelValues(devicePk, result.Device.Code, deviceIp.String()).Set(float64(result.Max))
 
-					MetricLatencyLoss.WithLabelValues(devicePk, result.Device.Code, deviceIp).Set(result.Loss)
+					MetricLatencyLoss.WithLabelValues(devicePk, result.Device.Code, deviceIp.String()).Set(result.Loss)
 
 					reachableValue := 0
 					if result.Reachable {
 						reachableValue = 1
 					}
-					MetricLatencyReachable.WithLabelValues(devicePk, result.Device.Code, deviceIp).Set(float64(reachableValue))
+					MetricLatencyReachable.WithLabelValues(devicePk, result.Device.Code, deviceIp.String()).Set(float64(reachableValue))
 				}
 			}
 
@@ -275,7 +369,7 @@ func (l *LatencyManager) ServeLatency(w http.ResponseWriter, r *http.Request) {
 	data, err := json.Marshal(l.ResultsCache)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte(fmt.Sprintf("error generating latency: %v", err)))
+		_, _ = fmt.Fprintf(w, "error generating latency: %v", err)
 		return
 	}
 	_, _ = w.Write(data)

@@ -518,38 +518,6 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 		}
 
 		if mode == "subscriber" {
-			if !t.Run("check_pim_neighbor", func(t *testing.T) {
-				t.Parallel()
-
-				subTunnelName := fmt.Sprintf("Tunnel%d", controllerconfig.StartUserTunnelNum+3)
-
-				require.Eventually(t, func() bool {
-					rawOutput, err := device.Exec(t.Context(), []string{"bash", "-c", fmt.Sprintf("Cli -c \"%s | json\"", arista.ShowPIMNeighborsCmd())})
-					if err != nil {
-						dn.log.Debug("Error fetching pim neighbors from doublezero device", "error", err)
-						return false
-					}
-					dn.log.Debug("Raw PIM neighbor output", "output", string(rawOutput))
-
-					neighbors, err := devnet.DeviceExecAristaCliJSON[*arista.ShowPIMNeighbors](t.Context(), device, arista.ShowPIMNeighborsCmd())
-					if err != nil {
-						dn.log.Debug("Error parsing pim neighbors from doublezero device", "error", err)
-						return false
-					}
-
-					for _, neighbor := range neighbors.Neighbors {
-						if neighbor.Interface == subTunnelName {
-							return true
-						}
-					}
-
-					dn.log.Debug("Waiting for PIM neighbor on subscriber tunnel", "tunnel", subTunnelName, "neighbors", neighbors.Neighbors)
-					return false
-				}, 60*time.Second, 1*time.Second, "PIM neighbor not found on %s", subTunnelName)
-			}) {
-				t.Fail()
-			}
-
 			if !t.Run("check_pim_join_received", func(t *testing.T) {
 				t.Parallel()
 

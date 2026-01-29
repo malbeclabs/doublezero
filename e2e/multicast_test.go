@@ -524,9 +524,16 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 				subTunnelName := fmt.Sprintf("Tunnel%d", controllerconfig.StartUserTunnelNum+3)
 
 				require.Eventually(t, func() bool {
-					neighbors, err := devnet.DeviceExecAristaCliJSON[*arista.ShowPIMNeighbors](t.Context(), device, arista.ShowPIMNeighborsCmd())
+					rawOutput, err := device.Exec(t.Context(), []string{"bash", "-c", fmt.Sprintf("Cli -c \"%s | json\"", arista.ShowPIMNeighborsCmd())})
 					if err != nil {
 						dn.log.Debug("Error fetching pim neighbors from doublezero device", "error", err)
+						return false
+					}
+					dn.log.Debug("Raw PIM neighbor output", "output", string(rawOutput))
+
+					neighbors, err := devnet.DeviceExecAristaCliJSON[*arista.ShowPIMNeighbors](t.Context(), device, arista.ShowPIMNeighborsCmd())
+					if err != nil {
+						dn.log.Debug("Error parsing pim neighbors from doublezero device", "error", err)
 						return false
 					}
 

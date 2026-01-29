@@ -44,10 +44,21 @@ func (n *MiscNetwork) CreateIfNotExists(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("failed to check if misc network exists: %w", err)
 	}
 	if exists {
-		n.log.Info("--> Default network already exists", "network", n.Name)
+		n.log.Info("--> Misc network already exists", "network", n.Name)
 		return true, nil
 	}
-	return false, n.Create(ctx)
+	err = n.Create(ctx)
+	if err != nil {
+		// Handle race condition: another process may have created the network
+		// between our Exists() check and Create() call.
+		exists, existsErr := n.Exists(ctx)
+		if existsErr == nil && exists {
+			n.log.Info("--> Misc network already exists", "network", n.Name)
+			return true, nil
+		}
+		return false, err
+	}
+	return false, nil
 }
 
 func (n *MiscNetwork) Create(ctx context.Context) error {

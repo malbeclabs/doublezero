@@ -438,16 +438,23 @@ func verifyMulticastSubscriberPIMAdjacency(t *testing.T, log *slog.Logger, devic
 		pim, err := devnet.DeviceExecAristaCliJSON[*arista.ShowPIMNeighbors](t.Context(), device, arista.ShowPIMNeighborsCmd())
 		require.NoError(t, err, "error fetching pim neighbors from doublezero device")
 
-		neighbor, ok := pim.Neighbors[expectedLinkLocalAddr]
+		defaultVRF, ok := pim.VRFs["default"]
 		if !ok {
-			log.Debug("PIM neighbor not found yet", "expectedAddr", expectedLinkLocalAddr)
+			log.Debug("No default VRF in PIM neighbors")
 			time.Sleep(1 * time.Second)
 			continue
 		}
-		if len(neighbor.Interface) >= 6 && neighbor.Interface[:6] == "Tunnel" {
-			log.Info("--> PIM adjacency verified", "interface", neighbor.Interface, "address", expectedLinkLocalAddr)
-			return
+
+		for ifName, iface := range defaultVRF.Interfaces {
+			if strings.HasPrefix(ifName, "Tunnel") {
+				if _, ok := iface.Neighbors[expectedLinkLocalAddr]; ok {
+					log.Info("--> PIM adjacency verified", "interface", ifName, "address", expectedLinkLocalAddr)
+					return
+				}
+			}
 		}
+
+		log.Debug("PIM neighbor not found yet", "expectedAddr", expectedLinkLocalAddr)
 		time.Sleep(1 * time.Second)
 	}
 	t.Fatalf("PIM neighbor not established on Tunnel interface within timeout")

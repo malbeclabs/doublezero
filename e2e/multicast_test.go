@@ -518,6 +518,38 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 		}
 
 		if mode == "subscriber" {
+			if !t.Run("check_pim_neighbor", func(t *testing.T) {
+				t.Parallel()
+
+				subTunnelName := fmt.Sprintf("Tunnel%d", controllerconfig.StartUserTunnelNum+3)
+
+				require.Eventually(t, func() bool {
+					pim, err := devnet.DeviceExecAristaCliJSON[*arista.ShowPIMNeighbors](t.Context(), device, arista.ShowPIMNeighborsCmd())
+					if err != nil {
+						log.Debug("Error fetching PIM neighbors", "error", err)
+						return false
+					}
+
+					defaultVRF, ok := pim.VRFs["default"]
+					if !ok {
+						log.Debug("No default VRF in PIM neighbors")
+						return false
+					}
+
+					for ifName, iface := range defaultVRF.Interfaces {
+						if ifName == subTunnelName && len(iface.Neighbors) > 0 {
+							log.Info("PIM neighbor found on subscriber tunnel", "interface", ifName)
+							return true
+						}
+					}
+
+					log.Debug("PIM neighbor not yet on subscriber tunnel", "tunnel", subTunnelName)
+					return false
+				}, 60*time.Second, 1*time.Second, "PIM neighbor not established on %s", subTunnelName)
+			}) {
+				t.Fail()
+			}
+
 			if !t.Run("check_pim_join_received", func(t *testing.T) {
 				t.Parallel()
 

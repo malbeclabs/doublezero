@@ -67,7 +67,6 @@ func TestE2E_IBRL_AllocatedAddr_Multicast_Coexistence(t *testing.T) {
 // TestE2E_IBRL_AllocatedAddr_Multicast_Publisher_Coexistence tests IBRL with allocated address
 // and multicast publisher coexistence.
 func TestE2E_IBRL_AllocatedAddr_Multicast_Publisher_Coexistence(t *testing.T) {
-	t.Skip("Known issue: mroute state not created for allocated addr + multicast publisher combination")
 	t.Parallel()
 
 	dn, device, ibrlClient, mcastClient := setupCoexistenceTestDevnet(t)
@@ -84,14 +83,13 @@ func TestE2E_IBRL_AllocatedAddr_Multicast_Publisher_Coexistence(t *testing.T) {
 // both IBRL (unicast) and multicast tunnels simultaneously by first connecting
 // with IBRL mode and then adding a multicast subscription.
 func TestE2E_SingleClient_IBRL_Then_Multicast(t *testing.T) {
-	t.Skip("Requires CLI changes to support simultaneous tunnels for same user - see simultaneous_tunnels_cli branch")
 	t.Parallel()
 
-	dn, device, client := setupSingleClientTestDevnet(t)
+	dn, device, mcastDevice, client := setupSingleClientTestDevnet(t)
 	log := logger.With("test", t.Name())
 
 	if !t.Run("single_client_ibrl_then_multicast_subscriber", func(t *testing.T) {
-		runSingleClientIBRLThenMulticastTest(t, log, dn, device, client, false, false)
+		runSingleClientIBRLThenMulticastTest(t, log, dn, device, mcastDevice, client, false, false)
 	}) {
 		t.Fail()
 	}
@@ -100,14 +98,13 @@ func TestE2E_SingleClient_IBRL_Then_Multicast(t *testing.T) {
 // TestE2E_SingleClient_IBRL_AllocatedAddr_Then_Multicast tests a single client with
 // allocated address connecting to IBRL first, then adding multicast.
 func TestE2E_SingleClient_IBRL_AllocatedAddr_Then_Multicast(t *testing.T) {
-	t.Skip("Requires CLI changes to support simultaneous tunnels for same user - see simultaneous_tunnels_cli branch")
 	t.Parallel()
 
-	dn, device, client := setupSingleClientTestDevnet(t)
+	dn, device, mcastDevice, client := setupSingleClientTestDevnet(t)
 	log := logger.With("test", t.Name())
 
 	if !t.Run("single_client_ibrl_allocated_then_multicast_subscriber", func(t *testing.T) {
-		runSingleClientIBRLThenMulticastTest(t, log, dn, device, client, true, false)
+		runSingleClientIBRLThenMulticastTest(t, log, dn, device, mcastDevice, client, true, false)
 	}) {
 		t.Fail()
 	}
@@ -116,14 +113,13 @@ func TestE2E_SingleClient_IBRL_AllocatedAddr_Then_Multicast(t *testing.T) {
 // TestE2E_SingleClient_IBRL_Then_Multicast_Publisher tests a single client connecting
 // to IBRL first, then adding multicast publisher capability.
 func TestE2E_SingleClient_IBRL_Then_Multicast_Publisher(t *testing.T) {
-	t.Skip("Requires CLI changes to support simultaneous tunnels for same user - see simultaneous_tunnels_cli branch")
 	t.Parallel()
 
-	dn, device, client := setupSingleClientTestDevnet(t)
+	dn, device, mcastDevice, client := setupSingleClientTestDevnet(t)
 	log := logger.With("test", t.Name())
 
 	if !t.Run("single_client_ibrl_then_multicast_publisher", func(t *testing.T) {
-		runSingleClientIBRLThenMulticastTest(t, log, dn, device, client, false, true)
+		runSingleClientIBRLThenMulticastTest(t, log, dn, device, mcastDevice, client, false, true)
 	}) {
 		t.Fail()
 	}
@@ -131,7 +127,7 @@ func TestE2E_SingleClient_IBRL_Then_Multicast_Publisher(t *testing.T) {
 
 // setupSingleClientTestDevnet sets up a devnet with a single client for testing
 // concurrent IBRL+multicast on the same user account.
-func setupSingleClientTestDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device, *devnet.Client) {
+func setupSingleClientTestDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device, *devnet.Device, *devnet.Client) {
 	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
 	log := logger.With("test", t.Name(), "deployID", deployID)
 
@@ -159,7 +155,7 @@ func setupSingleClientTestDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device, 
 	require.NoError(t, err)
 	log.Info("--> Devnet started")
 
-	// Add the main device for testing
+	// Add the main device for IBRL testing
 	log.Info("==> Adding device ny5-dz01")
 	device, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
 		Code:                         "ny5-dz01",
@@ -171,23 +167,30 @@ func setupSingleClientTestDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device, 
 	require.NoError(t, err)
 	log.Info("--> Device added", "deviceID", device.ID)
 
+	// Add second device for multicast (separate device required for concurrent tunnels)
+	log.Info("==> Adding device pit-dz01")
+	mcastDevice, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
+		Code:                         "pit-dz01",
+		Location:                     "pit",
+		Exchange:                     "xpit",
+		CYOANetworkIPHostID:          16,
+		CYOANetworkAllocatablePrefix: 29,
+	})
+	require.NoError(t, err)
+	log.Info("--> Multicast device added", "deviceID", mcastDevice.ID)
+
 	// Add additional devices for iBGP/MSDP peering
 	log.Info("==> Creating additional devices onchain")
 	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
 		set -euo pipefail
 
-		echo "==> Populate device information onchain"
-		doublezero device create --code pit-dzd01 --contributor co01 --location pit --exchange xpit --public-ip "204.16.241.243" --dz-prefixes "204.16.243.243/32" --mgmt-vrf mgmt --desired-status activated
-
 		echo "==> Populate device interface information onchain"
 		doublezero device interface create ny5-dz01 "Ethernet2" -w
 		doublezero device interface create ny5-dz01 "Loopback255" --loopback-type vpnv4 -w
 		doublezero device interface create ny5-dz01 "Loopback256" --loopback-type ipv4 -w
-		doublezero device interface create pit-dzd01 "Ethernet2" -w
-		doublezero device interface create pit-dzd01 "Loopback255" --loopback-type vpnv4 -w
-		doublezero device interface create pit-dzd01 "Loopback256" --loopback-type ipv4 -w
-
-		doublezero device update --pubkey pit-dzd01 --max-users 128
+		doublezero device interface create pit-dz01 "Ethernet2" -w
+		doublezero device interface create pit-dz01 "Loopback255" --loopback-type vpnv4 -w
+		doublezero device interface create pit-dz01 "Loopback256" --loopback-type ipv4 -w
 
 		echo "--> Device information onchain:"
 		doublezero device list
@@ -224,22 +227,23 @@ func setupSingleClientTestDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device, 
 	`})
 	require.NoError(t, err)
 
-	// Wait for latency results
+	// Wait for latency results from both devices
 	log.Info("==> Waiting for latency results")
 	err = client.WaitForLatencyResults(t.Context(), device.ID, 75*time.Second)
 	require.NoError(t, err)
-	log.Info("--> Latency results received")
+	err = client.WaitForLatencyResults(t.Context(), mcastDevice.ID, 75*time.Second)
+	require.NoError(t, err)
+	log.Info("--> Latency results received from both devices")
 
 	log.Info("--> Single client test devnet setup complete")
 
-	return dn, device, client
+	return dn, device, mcastDevice, client
 }
 
 // runSingleClientIBRLThenMulticastTest tests a single client connecting with IBRL first,
-// then adding multicast capability to the same user account. This exercises the concurrent
-// unicast+multicast feature where both BGP and PIM run on the same GRE tunnel.
+// then adding multicast capability. The IBRL tunnel goes to device and multicast goes to mcastDevice.
 func runSingleClientIBRLThenMulticastTest(t *testing.T, log *slog.Logger, dn *devnet.Devnet, device *devnet.Device,
-	client *devnet.Client, useAllocatedAddr bool, asPublisher bool,
+	mcastDevice *devnet.Device, client *devnet.Client, useAllocatedAddr bool, asPublisher bool,
 ) {
 	mode := "standard"
 	if useAllocatedAddr {
@@ -306,18 +310,18 @@ func runSingleClientIBRLThenMulticastTest(t *testing.T, log *slog.Logger, dn *de
 	verifyIBRLClientBGPEstablished(t, log, device)
 	log.Info("--> IBRL BGP still established")
 
-	// Verify multicast is working
+	// Verify multicast is working on the multicast device
 	log.Info("==> Waiting for agent config to include multicast")
-	waitForAgentConfigWithClient(t, log, dn, device, client)
+	waitForAgentConfigWithClient(t, log, dn, mcastDevice, client)
 
 	// Give extra time for agent config to be applied to device before verification
 	log.Info("==> Waiting for agent config to be applied to device")
 	time.Sleep(15 * time.Second)
 
 	if asPublisher {
-		verifyConcurrentMulticastPublisherMrouteState(t, log, device, client)
+		verifyConcurrentMulticastPublisherMrouteState(t, log, mcastDevice, client)
 	} else {
-		verifyConcurrentMulticastPIMAdjacency(t, log, device)
+		verifyConcurrentMulticastPIMAdjacency(t, log, mcastDevice)
 	}
 
 	log.Info("--> Both IBRL and multicast verified as working on same client")

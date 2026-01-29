@@ -13,15 +13,16 @@ type Client struct {
 }
 
 type ProgramData struct {
-	Config          Config
-	Locations       []Location
-	Exchanges       []Exchange
-	Contributors    []Contributor
-	Devices         []Device
-	Links           []Link
-	Users           []User
-	MulticastGroups []MulticastGroup
-	ProgramConfig   ProgramConfig
+	Config             Config
+	Locations          []Location
+	Exchanges          []Exchange
+	Contributors       []Contributor
+	Devices            []Device
+	Links              []Link
+	Users              []User
+	MulticastGroups    []MulticastGroup
+	ProgramConfig      ProgramConfig
+	ResourceExtensions []ResourceExtension
 }
 
 func New(rpc RPCClient, programID solana.PublicKey) *Client {
@@ -53,6 +54,7 @@ func (c *Client) GetProgramData(ctx context.Context) (*ProgramData, error) {
 	users := []User{}
 	multicastGroups := []MulticastGroup{}
 	programConfig := ProgramConfig{}
+	resourceExtensions := []ResourceExtension{}
 
 	var errs error
 	for _, element := range out {
@@ -104,19 +106,25 @@ func (c *Client) GetProgramData(ctx context.Context) (*ProgramData, error) {
 			multicastGroups = append(multicastGroups, multicastgroup)
 		case byte(ProgramConfigType):
 			DeserializeProgramConfig(reader, &programConfig)
+		case byte(ResourceExtensionType):
+			var resourceExtension ResourceExtension
+			DeserializeResourceExtension(reader, &resourceExtension)
+			resourceExtension.PubKey = element.Pubkey
+			resourceExtensions = append(resourceExtensions, resourceExtension)
 		}
 	}
 
 	return &ProgramData{
-		Config:          config,
-		Locations:       locations,
-		Exchanges:       exchanges,
-		Contributors:    contributors,
-		Devices:         devices,
-		Links:           links,
-		Users:           users,
-		MulticastGroups: multicastGroups,
-		ProgramConfig:   programConfig,
+		Config:             config,
+		Locations:          locations,
+		Exchanges:          exchanges,
+		Contributors:       contributors,
+		Devices:            devices,
+		Links:              links,
+		Users:              users,
+		MulticastGroups:    multicastGroups,
+		ProgramConfig:      programConfig,
+		ResourceExtensions: resourceExtensions,
 	}, errs
 }
 

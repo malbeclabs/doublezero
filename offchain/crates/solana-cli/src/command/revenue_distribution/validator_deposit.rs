@@ -305,12 +305,20 @@ async fn try_compute_outstanding_debt(
             let processed_range = distribution.processed_solana_validator_debt_bitmap_range();
             let processed_leaf_data = &distribution.remaining_data[processed_range];
 
-            if try_is_processed_leaf(processed_leaf_data, index).unwrap() {
-                continue;
-            }
+            let is_written_off = if distribution.is_solana_validator_debt_write_off_enabled() {
+                let write_off_range =
+                    distribution.processed_solana_validator_debt_write_off_bitmap_range();
+                let written_off_leaf_data = &distribution.remaining_data[write_off_range];
+                try_is_processed_leaf(written_off_leaf_data, index).unwrap_or_default()
+            } else {
+                false
+            };
 
-            total_debt += debt_record.data.debts[index].amount;
-            last_solana_epoch = debt_record.data.last_solana_epoch;
+            // Include debt if not processed or if processed but written off (delinquent).
+            if !try_is_processed_leaf(processed_leaf_data, index).unwrap() || is_written_off {
+                total_debt += debt_record.data.debts[index].amount;
+                last_solana_epoch = debt_record.data.last_solana_epoch;
+            }
         }
     }
 

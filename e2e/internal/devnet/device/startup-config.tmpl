@@ -125,9 +125,10 @@ agent L2Rib shutdown
 agent LacpTxAgent shutdown
 agent Lag shutdown
 agent Lldp shutdown
-agent Mpls shutdown
-agent MplsEtba shutdown
-agent MplsUtilLsp shutdown
+! Do NOT disable Mpls agents - they are required for VPNv4 iBGP route import/export into VRF.
+! agent Mpls shutdown
+! agent MplsEtba shutdown
+! agent MplsUtilLsp shutdown
 ! Do NOT disable Octa - it is required for EAPI HTTP server.
 ! agent Octa shutdown
 agent PortSec shutdown

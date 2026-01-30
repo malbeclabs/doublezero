@@ -6,6 +6,15 @@
 - Use the format `component: short description` (e.g., `lake/indexer: fix flaky staging test`, `telemetry: use CLICKHOUSE_PASS env var`)
 - Keep the description lowercase (except proper nouns) and concise
 
+## Pull Requests
+
+- Use the `/pr-text` skill to generate PR descriptions, then use `gh pr create`
+- Do not include "Generated with Claude Code" or similar footers
+- PR title format: `component: short description` (same as commit messages)
+- Summary bullets should be concise, ordered by importance/significance
+- Focus on "what" and "why", not implementation details
+- Include a "Testing Verification" section
+
 ## Rust Development
 
 - `make rust-fmt` — format all Rust code (uses nightly rustfmt with `imports_granularity=Crate`)

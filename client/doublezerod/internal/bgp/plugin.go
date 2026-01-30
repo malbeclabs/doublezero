@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net"
 	"net/netip"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -30,9 +31,17 @@ type Plugin struct {
 	// peerAddr is stored so the timeout goroutine can emit events
 	peerAddr net.IP
 
+	// mu protects the critical section between OnEstablished and emitTimeoutStatus
+	// to prevent a TOCTOU race where the timeout fires just as the session establishes.
+	mu sync.Mutex
+
 	cancelTimeout context.CancelFunc
 
 	tcpConnected atomic.Bool // set when GetCapabilities is called
+
+	// deleted is set when the peer is intentionally deleted via DeletePeer().
+	// This distinguishes intentional deletion from network connectivity issues.
+	deleted atomic.Bool
 }
 
 const (
@@ -88,6 +97,13 @@ func (p *Plugin) startSessionTimeout() {
 // emitTimeoutStatus checks the current session state and emits the appropriate
 // timeout status (Failed or Unreachable)
 func (p *Plugin) emitTimeoutStatus() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	// Don't emit status for deleted peers
+	if p.deleted.Load() {
+		return false
+	}
 	if p.currentlyEstablished.Load() {
 		return false
 	}
@@ -120,11 +136,16 @@ func (p *Plugin) OnOpenMessage(peer corebgp.PeerConfig, routerID netip.Addr, cap
 }
 
 func (p *Plugin) OnEstablished(peer corebgp.PeerConfig, writer corebgp.UpdateMessageWriter) corebgp.UpdateMessageHandler {
+	// Set established flag under lock BEFORE canceling timeout to prevent race
+	// with emitTimeoutStatus. This ensures that if the timeout goroutine has
+	// already escaped the select and is about to emit, it will see the flag.
+	p.mu.Lock()
+	p.currentlyEstablished.Store(true)
+	p.mu.Unlock()
+
 	if p.cancelTimeout != nil {
 		p.cancelTimeout()
 	}
-
-	p.currentlyEstablished.Store(true)
 
 	if p.initialallyEstablished.CompareAndSwap(false, true) {
 		// If this is the first time we've established the session, record the duration.
@@ -182,7 +203,23 @@ func (p *Plugin) OnClose(peer corebgp.PeerConfig) {
 	}
 
 	MetricSessionStatus.Set(0)
-	p.startSessionTimeout() // start a new timeout for the next session
+
+	// Only start a new timeout if the peer was not intentionally deleted.
+	// If deleted, corebgp won't retry and we don't need timeout tracking.
+	if !p.deleted.Load() {
+		p.startSessionTimeout()
+	}
+}
+
+// MarkDeleted marks the plugin as intentionally deleted. This prevents
+// OnClose from starting a new session timeout for a peer that won't reconnect.
+// It also cancels any in-flight timeout that may have been started from a
+// prior network disconnect.
+func (p *Plugin) MarkDeleted() {
+	p.deleted.Store(true)
+	if p.cancelTimeout != nil {
+		p.cancelTimeout()
+	}
 }
 
 func (p *Plugin) handleUpdate(peer corebgp.PeerConfig, u []byte) *corebgp.Notification {

@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 - Smartcontract
   - fix(smartcontract): reserve first IP of DzPrefixBlock for device ([#2753](https://github.com/malbeclabs/doublezero/pull/2753))
+- Client
+  - Fix race in bgp status handling on peer deletion
 
 ### Breaking
 

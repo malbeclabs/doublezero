@@ -1,8 +1,8 @@
 package devnet
 
 import (
-	"context"
 	"bytes"
+	"context"
 	"fmt"
 	"log/slog"
 	"net"
@@ -11,9 +11,9 @@ import (
 	"time"
 
 	dockercontainer "github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/pkg/stdcopy"
 	dockerfilters "github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/network"
+	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
 	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
 	"github.com/malbeclabs/doublezero/e2e/internal/poll"

@@ -376,3 +376,88 @@ func TestCustomJSONMarshal(t *testing.T) {
 		})
 	}
 }
+
+// TestUserDeserializationOrder verifies that TunnelEndpoint is read just before PubKey.
+//
+// CRITICAL: The Rust User struct serializes fields in order via Borsh, with tunnel_endpoint
+// as the LAST Borsh field. After deserialization, we append the account's public key (PubKey).
+//
+// The deserialization order in deserialize.go MUST be:
+//  1. ... all other fields ...
+//  2. ValidatorPubKey (32 bytes)
+//  3. TunnelEndpoint (4 bytes) <- MUST be last Borsh field
+//  4. PubKey (32 bytes) <- appended from account address, not part of Borsh
+//
+// If this test fails, either:
+//   - Someone reordered fields in deserialize.go (fix the order)
+//   - Someone added a field after tunnel_endpoint in Rust (add it BEFORE tunnel_endpoint instead)
+func TestUserDeserializationOrder(t *testing.T) {
+	// Create a minimal User payload with known values for TunnelEndpoint and PubKey
+	// This is a hand-crafted byte sequence to verify deserialization order
+
+	// Known values we'll verify after deserialization
+	expectedTunnelEndpoint := [4]byte{0xDE, 0xAD, 0xBE, 0xEF}
+	expectedPubKey := [32]byte{
+		0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+		0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10,
+		0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
+		0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20,
+	}
+
+	// Build the serialized User bytes
+	// This matches the Rust struct field order exactly
+	var buf []byte
+
+	// account_type: u8 = 7 (UserType)
+	buf = append(buf, 0x07)
+	// owner: Pubkey (32 bytes)
+	buf = append(buf, make([]byte, 32)...)
+	// index: u128 (16 bytes)
+	buf = append(buf, make([]byte, 16)...)
+	// bump_seed: u8
+	buf = append(buf, 0x01)
+	// user_type: u8
+	buf = append(buf, 0x00) // IBRL
+	// tenant_pk: Pubkey (32 bytes)
+	buf = append(buf, make([]byte, 32)...)
+	// device_pk: Pubkey (32 bytes)
+	buf = append(buf, make([]byte, 32)...)
+	// cyoa_type: u8
+	buf = append(buf, 0x01) // GREOverDIA
+	// client_ip: [4]u8
+	buf = append(buf, 0x0A, 0x00, 0x00, 0x01)
+	// dz_ip: [4]u8
+	buf = append(buf, 0x0A, 0x00, 0x00, 0x02)
+	// tunnel_id: u16
+	buf = append(buf, 0xF4, 0x01) // 500 in little-endian
+	// tunnel_net: NetworkV4 (5 bytes: 4 for IP + 1 for prefix)
+	buf = append(buf, 0xA9, 0xFE, 0x00, 0x00, 0x1F) // 169.254.0.0/31
+	// status: u8
+	buf = append(buf, 0x01) // Activated
+	// publishers: Vec<Pubkey> (4 bytes length + data)
+	buf = append(buf, 0x00, 0x00, 0x00, 0x00) // empty vec
+	// subscribers: Vec<Pubkey> (4 bytes length + data)
+	buf = append(buf, 0x00, 0x00, 0x00, 0x00) // empty vec
+	// validator_pubkey: Pubkey (32 bytes)
+	buf = append(buf, make([]byte, 32)...)
+	// tunnel_endpoint: [4]u8 - THIS MUST BE THE LAST BORSH FIELD
+	buf = append(buf, expectedTunnelEndpoint[:]...)
+	// PubKey: [32]u8 - appended AFTER all Borsh fields
+	buf = append(buf, expectedPubKey[:]...)
+
+	// Deserialize
+	reader := serviceability.NewByteReader(buf)
+	var user serviceability.User
+	serviceability.DeserializeUser(reader, &user)
+
+	// Verify TunnelEndpoint was deserialized correctly
+	assert.Equal(t, expectedTunnelEndpoint, user.TunnelEndpoint,
+		"TunnelEndpoint should be deserialized from the 4 bytes before PubKey. "+
+			"If this fails, check that tunnel_endpoint is the last Borsh field in Rust "+
+			"and TunnelEndpoint is read just before PubKey in deserialize.go")
+
+	// Verify PubKey was deserialized correctly (it should be the last 32 bytes)
+	assert.Equal(t, expectedPubKey, user.PubKey,
+		"PubKey should be the last 32 bytes after all Borsh fields. "+
+			"If this fails, a field may have been added after tunnel_endpoint in Rust.")
+}

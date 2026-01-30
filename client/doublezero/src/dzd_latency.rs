@@ -62,7 +62,6 @@ pub async fn retrieve_latencies<T: ServiceController>(
     Ok(latencies)
 }
 
-<<<<<<< HEAD
 // Latency tolerance when preferring the current device or avoiding IP collisions.
 //
 // NOTE: This was previously 1_500_000 ns (1.5 ms). It was increased to 5_000_000 ns

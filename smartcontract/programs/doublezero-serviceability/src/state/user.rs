@@ -637,6 +637,65 @@ mod tests {
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidTunnelId);
     }
 
+    #[test]
+    fn test_state_user_validate_error_invalid_tunnel_endpoint() {
+        // Test with private IP (should fail validation)
+        let val = User {
+            account_type: AccountType::User,
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            tenant_pk: Pubkey::default(),
+            user_type: UserType::IBRL,
+            device_pk: Pubkey::new_unique(),
+            cyoa_type: UserCYOA::GREOverDIA,
+            dz_ip: [3, 2, 4, 2].into(),
+            client_ip: [1, 2, 3, 4].into(),
+            tunnel_id: 500,
+            tunnel_net: "169.254.0.0/31".parse().unwrap(),
+            status: UserStatus::Activated,
+            publishers: vec![],
+            subscribers: vec![],
+            validator_pubkey: Pubkey::new_unique(),
+            tunnel_endpoint: Ipv4Addr::new(192, 168, 1, 1), // Private IP - invalid
+        };
+        let err = val.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidTunnelEndpoint);
+
+        // Test with loopback IP (should fail validation)
+        let val_loopback = User {
+            tunnel_endpoint: Ipv4Addr::new(127, 0, 0, 1), // Loopback - invalid
+            ..val.clone()
+        };
+        let err = val_loopback.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidTunnelEndpoint);
+
+        // Test with link-local IP (should fail validation)
+        let val_link_local = User {
+            tunnel_endpoint: Ipv4Addr::new(169, 254, 1, 1), // Link-local - invalid
+            ..val.clone()
+        };
+        let err = val_link_local.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidTunnelEndpoint);
+
+        // Test with UNSPECIFIED (0.0.0.0) - should pass (backwards compat)
+        let val_unspecified = User {
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            ..val.clone()
+        };
+        assert!(val_unspecified.validate().is_ok());
+
+        // Test with global IP - should pass
+        let val_global = User {
+            tunnel_endpoint: Ipv4Addr::new(8, 8, 8, 8), // Global IP - valid
+            ..val
+        };
+        assert!(val_global.validate().is_ok());
+    }
+
     // ============================================================
     // Capability helper method tests
     // ============================================================
@@ -791,5 +850,61 @@ mod tests {
         user.publishers = vec![];
         user.subscribers.push(mcast_group);
         assert!(user.is_multicast_participant());
+    }
+
+    #[test]
+    fn test_needs_multicast_publishers_do_not_trigger() {
+        // Verify that publishers alone do NOT trigger needs_multicast()
+        // This is intentional: needs_multicast() only checks subscribers because
+        // publishers send traffic TO multicast groups but don't need to receive
+        // multicast traffic themselves (unless they're also subscribers)
+        let mut user = create_test_user();
+        user.publishers = vec![Pubkey::new_unique()];
+        user.subscribers = vec![];
+
+        // Publisher without subscribers does NOT need multicast
+        assert!(!user.needs_multicast());
+
+        // This applies regardless of user type
+        user.user_type = UserType::Multicast;
+        assert!(!user.needs_multicast());
+
+        user.user_type = UserType::IBRL;
+        assert!(!user.needs_multicast());
+
+        // But if they're also a subscriber, they DO need multicast
+        user.subscribers.push(Pubkey::new_unique());
+        assert!(user.needs_multicast());
+    }
+
+    #[test]
+    fn test_has_allocated_dz_ip_edge_cases() {
+        let mut user = create_test_user();
+
+        // Edge case 1: dz_ip is explicitly UNSPECIFIED (0.0.0.0)
+        user.client_ip = Ipv4Addr::new(1, 2, 3, 4);
+        user.dz_ip = Ipv4Addr::UNSPECIFIED;
+        assert!(!user.has_allocated_dz_ip());
+
+        // Edge case 2: both client_ip and dz_ip are UNSPECIFIED
+        user.client_ip = Ipv4Addr::UNSPECIFIED;
+        user.dz_ip = Ipv4Addr::UNSPECIFIED;
+        assert!(!user.has_allocated_dz_ip());
+
+        // Edge case 3: client_ip is UNSPECIFIED but dz_ip is set
+        // This is an unusual state but should return true (dz_ip != client_ip)
+        user.client_ip = Ipv4Addr::UNSPECIFIED;
+        user.dz_ip = Ipv4Addr::new(10, 0, 0, 1);
+        assert!(user.has_allocated_dz_ip());
+
+        // Edge case 4: both are the same non-UNSPECIFIED IP (no allocation)
+        user.client_ip = Ipv4Addr::new(8, 8, 8, 8);
+        user.dz_ip = Ipv4Addr::new(8, 8, 8, 8);
+        assert!(!user.has_allocated_dz_ip());
+
+        // Edge case 5: different IPs, both non-UNSPECIFIED (allocated)
+        user.client_ip = Ipv4Addr::new(8, 8, 8, 8);
+        user.dz_ip = Ipv4Addr::new(10, 0, 0, 1);
+        assert!(user.has_allocated_dz_ip());
     }
 }

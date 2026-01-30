@@ -17,6 +17,12 @@ const (
 	eventTypeDetect eventType = 2 // detect timeout check
 )
 
+// peerKey identifies a unique interface+localIP combination for per-peer event counting.
+type peerKey struct {
+	iface   string
+	localIP string
+}
+
 // event represents a single scheduled action tied to a session.
 // Each event is timestamped and sequence-numbered to ensure stable ordering in the heap.
 type event struct {
@@ -24,30 +30,36 @@ type event struct {
 	eventType eventType // type of event (TX or Detect)
 	session   *Session  // owning session
 	seq       uint64    // sequence number for deterministic ordering
+	pk        peerKey   // cached peer key for O(1) count tracking
 }
 
 // EventQueue is a thread-safe priority queue of scheduled events.
 // It supports pushing events and popping those whose time has come (or is nearest).
 type EventQueue struct {
-	mu  sync.Mutex
-	pq  eventHeap // min-heap of events ordered by time then seq
-	seq uint64    // global sequence counter for tie-breaking
+	mu     sync.Mutex
+	pq     eventHeap          // min-heap of events ordered by time then seq
+	seq    uint64             // global sequence counter for tie-breaking
+	counts map[peerKey]int    // per-peer event count for O(1) CountFor
 }
 
 // NewEventQueue constructs an initialized empty heap-based event queue.
 func NewEventQueue() *EventQueue {
 	h := eventHeap{}
 	heap.Init(&h)
-	return &EventQueue{pq: h}
+	return &EventQueue{pq: h, counts: make(map[peerKey]int)}
 }
 
 // Push inserts a new event into the queue and assigns it a sequence number.
 // Later events with identical timestamps are ordered by insertion.
 func (q *EventQueue) Push(e *event) {
+	if e.session != nil && e.session.peer != nil {
+		e.pk = peerKey{iface: e.session.peer.Interface, localIP: e.session.peer.LocalIP}
+	}
 	q.mu.Lock()
 	q.seq++
 	e.seq = q.seq
 	heap.Push(&q.pq, e)
+	q.counts[e.pk]++
 	q.mu.Unlock()
 }
 
@@ -59,12 +71,13 @@ func (q *EventQueue) Pop() *event {
 		return nil
 	}
 	ev := heap.Pop(&q.pq).(*event)
+	q.decrLocked(ev.pk)
 	q.mu.Unlock()
 	return ev
 }
 
 // PopIfDue returns the next event if its scheduled time is due (<= now).
-// Otherwise, it returns nil and the duration until the next event’s time,
+// Otherwise, it returns nil and the duration until the next event's time,
 // allowing the caller to sleep until that deadline.
 func (q *EventQueue) PopIfDue(now time.Time) (*event, time.Duration) {
 	q.mu.Lock()
@@ -78,23 +91,25 @@ func (q *EventQueue) PopIfDue(now time.Time) (*event, time.Duration) {
 		return nil, d
 	}
 	ev = heap.Pop(&q.pq).(*event)
+	q.decrLocked(ev.pk)
 	q.mu.Unlock()
 	return ev, 0
+}
+
+// decrLocked decrements the per-peer count. Must be called with q.mu held.
+func (q *EventQueue) decrLocked(pk peerKey) {
+	if n := q.counts[pk] - 1; n <= 0 {
+		delete(q.counts, pk)
+	} else {
+		q.counts[pk] = n
+	}
 }
 
 // CountFor returns the number of events in the queue for a given interface and local IP.
 func (q *EventQueue) CountFor(iface, localIP string) int {
 	q.mu.Lock()
-	defer q.mu.Unlock()
-	c := 0
-	for _, ev := range q.pq {
-		if ev != nil && ev.session != nil && ev.session.peer != nil {
-			p := ev.session.peer
-			if p.Interface == iface && p.LocalIP == localIP {
-				c++
-			}
-		}
-	}
+	c := q.counts[peerKey{iface: iface, localIP: localIP}]
+	q.mu.Unlock()
 	return c
 }
 

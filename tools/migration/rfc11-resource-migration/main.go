@@ -192,11 +192,67 @@ type migration struct {
 	userAllocations   []allocateCommand
 	mcgroupAllocs     []allocateCommand
 	deviceInfo        map[string]deviceInfo // pubkey -> deviceInfo for display
+	duplicateCount    int                   // number of duplicate allocations skipped
 }
 
 type deviceInfo struct {
 	code       string
 	dzPrefixes []string
+}
+
+// allocationTracker tracks allocated values to detect duplicates
+type allocationTracker struct {
+	// For global resources: map[resourceType]map[allocation]sourceComment
+	globalAllocs map[string]map[string]string
+	// For per-device resources: map[resourceType]map[pubkey:index]map[allocation]sourceComment
+	perDeviceAllocs map[string]map[string]map[string]string
+	// Count of duplicates found
+	duplicateCount int
+}
+
+func newAllocationTracker() *allocationTracker {
+	return &allocationTracker{
+		globalAllocs:    make(map[string]map[string]string),
+		perDeviceAllocs: make(map[string]map[string]map[string]string),
+	}
+}
+
+// trackGlobalAllocation returns true if this is a new allocation, false if duplicate
+func (t *allocationTracker) trackGlobalAllocation(resourceType, allocation, comment string) bool {
+	if t.globalAllocs[resourceType] == nil {
+		t.globalAllocs[resourceType] = make(map[string]string)
+	}
+	if existingComment, exists := t.globalAllocs[resourceType][allocation]; exists {
+		t.duplicateCount++
+		fmt.Printf("DUPLICATE DETECTED: %s allocation %q\n", resourceType, allocation)
+		fmt.Printf("  Original: %s\n", existingComment)
+		fmt.Printf("  Duplicate: %s\n", comment)
+		fmt.Println()
+		return false
+	}
+	t.globalAllocs[resourceType][allocation] = comment
+	return true
+}
+
+// trackPerDeviceAllocation returns true if this is a new allocation, false if duplicate
+func (t *allocationTracker) trackPerDeviceAllocation(resourceType, pubkey string, index int, allocation, comment string) bool {
+	if t.perDeviceAllocs[resourceType] == nil {
+		t.perDeviceAllocs[resourceType] = make(map[string]map[string]string)
+	}
+	key := fmt.Sprintf("%s:%d", pubkey, index)
+	if t.perDeviceAllocs[resourceType][key] == nil {
+		t.perDeviceAllocs[resourceType][key] = make(map[string]string)
+	}
+	if existingComment, exists := t.perDeviceAllocs[resourceType][key][allocation]; exists {
+		t.duplicateCount++
+		fmt.Printf("DUPLICATE DETECTED: %s allocation %q for pubkey=%s index=%d\n", resourceType, allocation, pubkey[:12]+"...", index)
+		fmt.Printf("  Original: %s\n", existingComment)
+		fmt.Printf("  Duplicate: %s\n", comment)
+		fmt.Println()
+		return false
+	}
+	t.perDeviceAllocs[resourceType][key][allocation] = comment
+	return true
 }
 
 type createCommand struct {
@@ -218,6 +274,7 @@ func generateMigration(data *serviceability.ProgramData, verbose bool) *migratio
 	m := &migration{
 		deviceInfo: make(map[string]deviceInfo),
 	}
+	tracker := newAllocationTracker()
 
 	// Collect device info for display
 	activatedDevices := []serviceability.Device{}
@@ -284,12 +341,17 @@ func generateMigration(data *serviceability.ProgramData, verbose bool) *migratio
 			}
 			// Find which DzPrefixBlock index this IP belongs to
 			prefixIndex := findDzPrefixIndex(d.DzPrefixes, [4]uint8{iface.IpNet[0], iface.IpNet[1], iface.IpNet[2], iface.IpNet[3]})
+			comment := fmt.Sprintf("Device %s loopback %s (%s) ip=%s", d.Code, iface.Name, iface.LoopbackType, loopbackIP)
+			// Track and skip duplicates
+			if !tracker.trackPerDeviceAllocation("device-tunnel-block", pk, prefixIndex, loopbackIP, comment) {
+				continue
+			}
 			m.deviceAllocations = append(m.deviceAllocations, allocateCommand{
 				resourceType: "device-tunnel-block",
 				associatedPK: pk,
 				index:        prefixIndex,
 				allocation:   loopbackIP,
-				comment:      fmt.Sprintf("Device %s loopback %s (%s) ip=%s", d.Code, iface.Name, iface.LoopbackType, loopbackIP),
+				comment:      comment,
 			})
 		}
 	}
@@ -301,10 +363,16 @@ func generateMigration(data *serviceability.ProgramData, verbose bool) *migratio
 			if iface.NodeSegmentIdx == 0 {
 				continue
 			}
+			allocation := fmt.Sprintf("%d", iface.NodeSegmentIdx)
+			comment := fmt.Sprintf("Device %s interface %s node_segment_idx=%d", d.Code, iface.Name, iface.NodeSegmentIdx)
+			// Track and skip duplicates
+			if !tracker.trackGlobalAllocation("segment-routing-ids", allocation, comment) {
+				continue
+			}
 			m.segRoutingAllocs = append(m.segRoutingAllocs, allocateCommand{
 				resourceType: "segment-routing-ids",
-				allocation:   fmt.Sprintf("%d", iface.NodeSegmentIdx),
-				comment:      fmt.Sprintf("Device %s interface %s node_segment_idx=%d", d.Code, iface.Name, iface.NodeSegmentIdx),
+				allocation:   allocation,
+				comment:      comment,
 			})
 		}
 	}
@@ -325,18 +393,27 @@ func generateMigration(data *serviceability.ProgramData, verbose bool) *migratio
 
 		tunnelNet := onChainNetToString(link.TunnelNet)
 		if tunnelNet != "" {
-			m.linkAllocations = append(m.linkAllocations, allocateCommand{
-				resourceType: "device-tunnel-block",
-				allocation:   tunnelNet,
-				comment:      fmt.Sprintf("Link %s tunnel_net=%s", link.Code, tunnelNet),
-			})
+			comment := fmt.Sprintf("Link %s tunnel_net=%s", link.Code, tunnelNet)
+			// Track and skip duplicates
+			if tracker.trackGlobalAllocation("device-tunnel-block", tunnelNet, comment) {
+				m.linkAllocations = append(m.linkAllocations, allocateCommand{
+					resourceType: "device-tunnel-block",
+					allocation:   tunnelNet,
+					comment:      comment,
+				})
+			}
 		}
 
-		m.linkAllocations = append(m.linkAllocations, allocateCommand{
-			resourceType: "link-ids",
-			allocation:   fmt.Sprintf("%d", link.TunnelId),
-			comment:      fmt.Sprintf("Link %s tunnel_id=%d", link.Code, link.TunnelId),
-		})
+		tunnelIDAlloc := fmt.Sprintf("%d", link.TunnelId)
+		tunnelIDComment := fmt.Sprintf("Link %s tunnel_id=%d", link.Code, link.TunnelId)
+		// Track and skip duplicates
+		if tracker.trackGlobalAllocation("link-ids", tunnelIDAlloc, tunnelIDComment) {
+			m.linkAllocations = append(m.linkAllocations, allocateCommand{
+				resourceType: "link-ids",
+				allocation:   tunnelIDAlloc,
+				comment:      tunnelIDComment,
+			})
+		}
 	}
 
 	// 5. User allocations (tunnel_net -> UserTunnelBlock, tunnel_id -> TunnelIds(device), dz_ip -> DzPrefixBlock(device))
@@ -369,39 +446,52 @@ func generateMigration(data *serviceability.ProgramData, verbose bool) *migratio
 			deviceCode = "unknown"
 		}
 
-		// tunnel_net -> UserTunnelBlock
+		// tunnel_net -> UserTunnelBlock (global)
 		tunnelNet := onChainNetToString(user.TunnelNet)
 		if tunnelNet != "" {
+			comment := fmt.Sprintf("User %s on %s tunnel_net=%s", clientIP, deviceCode, tunnelNet)
+			// Track and skip duplicates
+			if tracker.trackGlobalAllocation("user-tunnel-block", tunnelNet, comment) {
+				m.userAllocations = append(m.userAllocations, allocateCommand{
+					resourceType: "user-tunnel-block",
+					allocation:   tunnelNet,
+					comment:      comment,
+				})
+			}
+		}
+
+		// tunnel_id -> TunnelIds(device, 0) (per-device)
+		tunnelIDAlloc := fmt.Sprintf("%d", user.TunnelId)
+		tunnelIDComment := fmt.Sprintf("User %s on %s tunnel_id=%d", clientIP, deviceCode, user.TunnelId)
+		// Track and skip duplicates
+		if tracker.trackPerDeviceAllocation("tunnel-ids", devicePK, 0, tunnelIDAlloc, tunnelIDComment) {
 			m.userAllocations = append(m.userAllocations, allocateCommand{
-				resourceType: "user-tunnel-block",
-				allocation:   tunnelNet,
-				comment:      fmt.Sprintf("User %s on %s tunnel_net=%s", clientIP, deviceCode, tunnelNet),
+				resourceType: "tunnel-ids",
+				associatedPK: devicePK,
+				index:        0,
+				allocation:   tunnelIDAlloc,
+				comment:      tunnelIDComment,
 			})
 		}
 
-		// tunnel_id -> TunnelIds(device, 0)
-		m.userAllocations = append(m.userAllocations, allocateCommand{
-			resourceType: "tunnel-ids",
-			associatedPK: devicePK,
-			index:        0,
-			allocation:   fmt.Sprintf("%d", user.TunnelId),
-			comment:      fmt.Sprintf("User %s on %s tunnel_id=%d", clientIP, deviceCode, user.TunnelId),
-		})
-
-		// dz_ip -> DzPrefixBlock(device, index)
+		// dz_ip -> DzPrefixBlock(device, index) (per-device)
 		// Skip IBRL users - they use their client IP directly, not an allocated DZ IP
 		dzIP := net.IP(user.DzIp[:]).String()
 		isIBRL := user.UserType == serviceability.UserTypeIBRL
 		if dzIP != "0.0.0.0" && !isIBRL {
 			// Find which DzPrefixBlock index this IP belongs to
 			prefixIndex := findDzPrefixIndex(deviceDzPrefixMap[devicePK], user.DzIp)
-			m.userAllocations = append(m.userAllocations, allocateCommand{
-				resourceType: "dz-prefix-block",
-				associatedPK: devicePK,
-				index:        prefixIndex,
-				allocation:   dzIP,
-				comment:      fmt.Sprintf("User %s on %s dz_ip=%s, ut=%s", clientIP, deviceCode, dzIP, user.UserType),
-			})
+			comment := fmt.Sprintf("User %s on %s dz_ip=%s, ut=%s", clientIP, deviceCode, dzIP, user.UserType)
+			// Track and skip duplicates
+			if tracker.trackPerDeviceAllocation("dz-prefix-block", devicePK, prefixIndex, dzIP, comment) {
+				m.userAllocations = append(m.userAllocations, allocateCommand{
+					resourceType: "dz-prefix-block",
+					associatedPK: devicePK,
+					index:        prefixIndex,
+					allocation:   dzIP,
+					comment:      comment,
+				})
+			}
 		}
 	}
 
@@ -421,14 +511,19 @@ func generateMigration(data *serviceability.ProgramData, verbose bool) *migratio
 
 		multicastIP := net.IP(mcg.MulticastIp[:]).String()
 		if multicastIP != "0.0.0.0" {
-			m.mcgroupAllocs = append(m.mcgroupAllocs, allocateCommand{
-				resourceType: "multicast-group-block",
-				allocation:   multicastIP,
-				comment:      fmt.Sprintf("MulticastGroup %s multicast_ip=%s", mcg.Code, multicastIP),
-			})
+			comment := fmt.Sprintf("MulticastGroup %s multicast_ip=%s", mcg.Code, multicastIP)
+			// Track and skip duplicates
+			if tracker.trackGlobalAllocation("multicast-group-block", multicastIP, comment) {
+				m.mcgroupAllocs = append(m.mcgroupAllocs, allocateCommand{
+					resourceType: "multicast-group-block",
+					allocation:   multicastIP,
+					comment:      comment,
+				})
+			}
 		}
 	}
 
+	m.duplicateCount = tracker.duplicateCount
 	return m
 }
 
@@ -539,6 +634,9 @@ func printDryRun(w io.Writer, cfg cliConfig, m *migration) {
 	fmt.Fprintf(w, "\n=== Summary ===\n")
 	fmt.Fprintf(w, "ResourceExtension accounts to create: %d\n", totalCreates)
 	fmt.Fprintf(w, "Resources to allocate: %d\n", totalAllocs)
+	if m.duplicateCount > 0 {
+		fmt.Fprintf(w, "Duplicate allocations skipped: %d\n", m.duplicateCount)
+	}
 }
 
 func writeScript(w io.Writer, m *migration, parallelism int) {

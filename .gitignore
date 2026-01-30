@@ -19,6 +19,7 @@ controlplane/funder/cmd/funder/funder
 .zed
 .tmp
 .env
+.claude/plans/
 
 dist/
 

@@ -18,6 +18,7 @@ type LinuxSender struct {
 	epfd       int
 	seq        uint32
 	remote     *unix.SockaddrInet4
+	cancel     context.CancelFunc
 	buf        []byte
 	oob        []byte
 	mu         sync.Mutex
@@ -77,10 +78,12 @@ func NewLinuxSender(ctx context.Context, iface string, local *net.UDPAddr, remot
 	raddr := &unix.SockaddrInet4{Port: remote.Port}
 	copy(raddr.Addr[:], ip4)
 
+	ctx, cancel := context.WithCancel(ctx)
 	s := &LinuxSender{
 		fd:       fd,
 		epfd:     epfd,
 		remote:   raddr,
+		cancel:   cancel,
 		buf:      make([]byte, 1500),
 		oob:      make([]byte, 512),
 		received: make(map[Packet]struct{}),
@@ -212,6 +215,7 @@ func (s *LinuxSender) Probe(ctx context.Context) (time.Duration, error) {
 }
 
 func (s *LinuxSender) Close() error {
+	s.cancel()
 	unix.Close(s.fd)
 	unix.Close(s.epfd)
 	return nil

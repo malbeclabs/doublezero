@@ -311,6 +311,28 @@ func runSenderTests(t *testing.T, newSender func(iface string, localAddr, remote
 		require.Greater(t, nonZeroCount, 0, "expected at least some non-zero RTTs")
 	})
 
+	t.Run("Close stops cleanUpReceived goroutine", func(t *testing.T) {
+		t.Parallel()
+
+		before := runtime.NumGoroutine()
+		const N = 10
+
+		for range N {
+			addr := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1234}
+			sender, err := newSender("", nil, addr)
+			require.NoError(t, err)
+			sender.Close()
+		}
+
+		time.Sleep(200 * time.Millisecond)
+		runtime.GC()
+		after := runtime.NumGoroutine()
+
+		require.Less(t, after-before, N/2,
+			"goroutine count grew by %d after creating and closing %d senders — likely leaking cleanUpReceived goroutines",
+			after-before, N)
+	})
+
 	t.Run("duplicate packets are ignored", func(t *testing.T) {
 		t.Parallel()
 

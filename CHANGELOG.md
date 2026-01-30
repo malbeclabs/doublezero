@@ -78,6 +78,7 @@ All notable changes to this project will be documented in this file.
   - Support publishing and subscribing to multiple multicast groups simultaneously
 - CLI
   - Support publishing and subscribing a user to multiple multicast groups via `--group` flag
+  - Remove single tunnel constraint 
 - SDK
   - Go SDK can now perform batch writes to device.health and link.health as per rfc12
 - Activator

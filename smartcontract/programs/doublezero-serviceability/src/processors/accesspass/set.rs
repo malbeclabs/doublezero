@@ -226,3 +226,115 @@ pub fn process_set_access_pass(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::AIRDROP_USER_RENT_LAMPORTS_BYTES;
+    use crate::state::{accounttype::AccountType, user::User};
+    use doublezero_program_common::types::NetworkV4;
+    use solana_program::pubkey::Pubkey;
+    use std::net::Ipv4Addr;
+
+    /// Validates that AIRDROP_USER_RENT_LAMPORTS_BYTES is sufficient to cover
+    /// the rent for User accounts with various configurations.
+    ///
+    /// The constant is sized for 3 User accounts, each with 1 publisher AND 1 subscriber.
+    /// This ensures sufficient rent even when supporting simultaneous pub/sub in the future.
+    #[test]
+    fn test_airdrop_user_rent_lamports_bytes_covers_user_sizes() {
+        // User with 1 publisher only (subscriber use case)
+        let user_with_publisher = User {
+            account_type: AccountType::User,
+            owner: Pubkey::new_unique(),
+            index: 1,
+            bump_seed: 1,
+            tenant_pk: Pubkey::new_unique(),
+            user_type: crate::state::user::UserType::Multicast,
+            device_pk: Pubkey::new_unique(),
+            cyoa_type: crate::state::user::UserCYOA::GREOverDIA,
+            client_ip: Ipv4Addr::new(192, 168, 1, 1),
+            dz_ip: Ipv4Addr::new(10, 0, 0, 1),
+            tunnel_id: 100,
+            tunnel_net: NetworkV4::new(Ipv4Addr::new(169, 254, 0, 0), 30).unwrap(),
+            status: crate::state::user::UserStatus::Activated,
+            publishers: vec![Pubkey::new_unique()],
+            subscribers: vec![],
+            validator_pubkey: Pubkey::new_unique(),
+        };
+
+        // User with 1 subscriber only (publisher use case)
+        let user_with_subscriber = User {
+            account_type: AccountType::User,
+            owner: Pubkey::new_unique(),
+            index: 1,
+            bump_seed: 1,
+            tenant_pk: Pubkey::new_unique(),
+            user_type: crate::state::user::UserType::Multicast,
+            device_pk: Pubkey::new_unique(),
+            cyoa_type: crate::state::user::UserCYOA::GREOverDIA,
+            client_ip: Ipv4Addr::new(192, 168, 1, 1),
+            dz_ip: Ipv4Addr::new(10, 0, 0, 1),
+            tunnel_id: 100,
+            tunnel_net: NetworkV4::new(Ipv4Addr::new(169, 254, 0, 0), 30).unwrap(),
+            status: crate::state::user::UserStatus::Activated,
+            publishers: vec![],
+            subscribers: vec![Pubkey::new_unique()],
+            validator_pubkey: Pubkey::new_unique(),
+        };
+
+        // User with both 1 publisher and 1 subscriber (future simultaneous pub/sub)
+        let user_with_both = User {
+            account_type: AccountType::User,
+            owner: Pubkey::new_unique(),
+            index: 1,
+            bump_seed: 1,
+            tenant_pk: Pubkey::new_unique(),
+            user_type: crate::state::user::UserType::Multicast,
+            device_pk: Pubkey::new_unique(),
+            cyoa_type: crate::state::user::UserCYOA::GREOverDIA,
+            client_ip: Ipv4Addr::new(192, 168, 1, 1),
+            dz_ip: Ipv4Addr::new(10, 0, 0, 1),
+            tunnel_id: 100,
+            tunnel_net: NetworkV4::new(Ipv4Addr::new(169, 254, 0, 0), 30).unwrap(),
+            status: crate::state::user::UserStatus::Activated,
+            publishers: vec![Pubkey::new_unique()],
+            subscribers: vec![Pubkey::new_unique()],
+            validator_pubkey: Pubkey::new_unique(),
+        };
+
+        let size_with_publisher = borsh::object_length(&user_with_publisher).unwrap();
+        let size_with_subscriber = borsh::object_length(&user_with_subscriber).unwrap();
+        let size_with_both = borsh::object_length(&user_with_both).unwrap();
+
+        // Verify our understanding of the sizes
+        // Base User size (empty vecs) = 172 bytes
+        // Each Pubkey in publishers/subscribers adds 32 bytes
+        assert_eq!(
+            size_with_publisher, 204,
+            "User with 1 publisher should be 204 bytes"
+        );
+        assert_eq!(
+            size_with_subscriber, 204,
+            "User with 1 subscriber should be 204 bytes"
+        );
+        assert_eq!(
+            size_with_both, 236,
+            "User with 1 publisher + 1 subscriber should be 236 bytes"
+        );
+
+        // The constant should be sized for 3 accounts with both pub+sub (236 * 3 = 708)
+        assert_eq!(
+            AIRDROP_USER_RENT_LAMPORTS_BYTES,
+            236 * 3,
+            "AIRDROP_USER_RENT_LAMPORTS_BYTES should be sized for 3 User accounts with pub+sub"
+        );
+
+        // Verify the constant covers at least 3 accounts of the largest expected size
+        assert!(
+            AIRDROP_USER_RENT_LAMPORTS_BYTES >= size_with_both * 3,
+            "AIRDROP_USER_RENT_LAMPORTS_BYTES ({}) must cover 3 User accounts with pub+sub ({})",
+            AIRDROP_USER_RENT_LAMPORTS_BYTES,
+            size_with_both * 3
+        );
+    }
+}

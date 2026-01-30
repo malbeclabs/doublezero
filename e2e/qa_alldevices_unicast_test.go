@@ -66,6 +66,25 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 		return false
 	})
 
+	// Filter out devices that are not actively calling the controller
+	if grafanaCfg := qa.GrafanaConfigFromEnv(); grafanaCfg != nil {
+		activeDevices, err := qa.GetDevicesWithActiveConfigAgents(ctx, grafanaCfg)
+		if err != nil {
+			log.Warn("Failed to query Grafana for active devices, proceeding with all devices", "error", err)
+		} else {
+			log.Info("Filtering devices by controller activity", "activeDeviceCount", len(activeDevices))
+			devices = slices.DeleteFunc(devices, func(d *qa.Device) bool {
+				if !activeDevices[d.Code] {
+					log.Info("Skipping device not calling controller", "device", d.Code)
+					return true
+				}
+				return false
+			})
+		}
+	} else {
+		log.Info("No Grafana config found, including all devices regardless of controller activity")
+	}
+
 	// If devices flag is provided, filter devices to only include those in the list.
 	if *devicesFlag != "" {
 		deviceCodes := make(map[string]struct{})

@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 - Smartcontract
   - fix(smartcontract): reserve first IP of DzPrefixBlock for device ([#2753](https://github.com/malbeclabs/doublezero/pull/2753))
+- QA
+  - Skip devices that are not calling the controller  
 
 ### Breaking
 

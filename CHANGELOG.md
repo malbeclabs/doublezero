@@ -11,6 +11,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Telemetry
+  - Fix goroutine leak in TWAMP sender — `cleanUpReceived` goroutines now exit on `Close()` instead of living until process shutdown
+
 ## [v0.8.4](https://github.com/malbeclabs/doublezero/compare/client/v0.8.3...client/v0.8.4) – 2026-01-28
 
 ### Breaking

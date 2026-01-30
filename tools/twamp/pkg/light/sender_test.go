@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -309,6 +310,33 @@ func runSenderTests(t *testing.T, newSender func(iface string, localAddr, remote
 		// Clamped RTTs (i.e. rtt == 0) should be rare
 		require.Less(t, clampedCount, samples/20, "expected clamping to occur in <5%% of cases")
 		require.Greater(t, nonZeroCount, 0, "expected at least some non-zero RTTs")
+	})
+
+	t.Run("Close stops cleanUpReceived goroutine", func(t *testing.T) {
+		const N = 10
+
+		for range N {
+			addr := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1234}
+			sender, err := newSender("", nil, addr)
+			require.NoError(t, err)
+			sender.Close()
+		}
+
+		// Poll for cleanUpReceived goroutines to exit, up to a bounded timeout.
+		var count int
+		deadline := time.Now().Add(2 * time.Second)
+		for {
+			runtime.GC()
+			buf := make([]byte, 1<<20)
+			n := runtime.Stack(buf, true)
+			count = strings.Count(string(buf[:n]), "cleanUpReceived")
+			if count == 0 || time.Now().After(deadline) {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		require.Equal(t, 0, count,
+			"found %d cleanUpReceived goroutines after creating and closing %d senders", count, N)
 	})
 
 	t.Run("duplicate packets are ignored", func(t *testing.T) {

@@ -20,6 +20,7 @@ controlplane/funder/cmd/funder/funder
 .claude/plans
 .tmp
 .env
+.claude/plans/
 
 dist/
 

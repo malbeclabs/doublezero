@@ -462,7 +462,7 @@ func (c *Client) dumpDiagnostics() {
 			command []string
 		}{
 			{"show running-config section Tunnel", []string{"Cli", "-p", "15", "-c", "show running-config section Tunnel"}},
-			{"show ip bgp summary", []string{"Cli", "-c", "show ip bgp summary"}},
+			{"show ip bgp summary vrf vrf1", []string{"Cli", "-c", "show ip bgp summary vrf vrf1"}},
 			{"doublezero-agent log (last 100 lines)", []string{"tail", "-100", "/var/log/agents-latest/doublezero-agent"}},
 			{"disk space /var/tmp", []string{"df", "-h", "/var/tmp"}},
 		}

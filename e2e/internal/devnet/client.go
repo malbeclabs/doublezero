@@ -349,6 +349,13 @@ const (
 
 type ClientUserType string
 
+const (
+	ClientUserTypeIBRL              ClientUserType = "IBRL"
+	ClientUserTypeIBRLWithAllocated ClientUserType = "IBRLWithAllocatedIP"
+	ClientUserTypeEdgeFiltering     ClientUserType = "EdgeFiltering"
+	ClientUserTypeMulticast         ClientUserType = "Multicast"
+)
+
 type ClientStatusResponse struct {
 	TunnelName       string         `json:"tunnel_name"`
 	TunnelSrc        net.IP         `json:"tunnel_src"`
@@ -369,6 +376,44 @@ func (c *Client) GetTunnelStatus(ctx context.Context) ([]ClientStatusResponse, e
 
 func (c *Client) WaitForTunnelUp(ctx context.Context, timeout time.Duration) error {
 	return c.WaitForTunnelStatus(ctx, ClientSessionStatusUp, timeout)
+}
+
+// WaitForNTunnelsUp waits for N tunnels to be in the "up" state.
+func (c *Client) WaitForNTunnelsUp(ctx context.Context, n int, timeout time.Duration) error {
+	c.log.Info("==> Waiting for N tunnels to be up", "n", n, "timeout", timeout)
+
+	attempts := 0
+	start := time.Now()
+	err := poll.Until(ctx, func() (bool, error) {
+		resp, err := c.GetTunnelStatus(ctx)
+		if err != nil {
+			return false, fmt.Errorf("failed to get client status: %w", err)
+		}
+
+		upCount := 0
+		for _, s := range resp {
+			if s.DoubleZeroStatus.SessionStatus == ClientSessionStatusUp {
+				upCount++
+			}
+		}
+
+		if upCount >= n {
+			c.log.Info("✅ Got expected number of tunnels up", "n", n, "upCount", upCount, "duration", time.Since(start))
+			return true, nil
+		}
+
+		if attempts == 1 || attempts%5 == 0 {
+			c.log.Debug("--> Waiting for N tunnels up", "n", n, "upCount", upCount, "response", resp, "attempts", attempts)
+		}
+		attempts++
+
+		return false, nil
+	}, timeout, 1*time.Second)
+	if err != nil {
+		return fmt.Errorf("failed to wait for %d tunnels to be up: %w", n, err)
+	}
+
+	return nil
 }
 
 func (c *Client) WaitForTunnelDisconnected(ctx context.Context, timeout time.Duration) error {

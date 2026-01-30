@@ -274,6 +274,7 @@ mod tests {
             status: UserStatus::Activated,
             owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1"),
             validator_pubkey: Pubkey::default(),
+            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
         };
 
         let multicastgroup = MulticastGroup {

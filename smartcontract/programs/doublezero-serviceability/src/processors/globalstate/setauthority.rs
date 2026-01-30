@@ -23,8 +23,8 @@ impl fmt::Debug for SetAuthorityArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "activator_authority_pk: {:?}, sentinel_authority_pk: {:?}",
-            self.activator_authority_pk, self.sentinel_authority_pk
+            "activator_authority_pk: {:?}, sentinel_authority_pk: {:?}, health_oracle_pk: {:?}",
+            self.activator_authority_pk, self.sentinel_authority_pk, self.health_oracle_pk
         )
     }
 }

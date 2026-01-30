@@ -38,13 +38,14 @@ impl fmt::Debug for DeviceCreateArgs {
         write!(
             f,
             "code: {}, device_type: {:?}, public_ip: {}, dz_prefixes: {}, \
-metrics_publisher_pk: {}, mgmt_vrf: {}",
+metrics_publisher_pk: {}, mgmt_vrf: {}, desired_status: {:?}",
             self.code,
             self.device_type,
             self.public_ip,
             self.dz_prefixes,
             self.metrics_publisher_pk,
             self.mgmt_vrf,
+            self.desired_status,
         )
     }
 }

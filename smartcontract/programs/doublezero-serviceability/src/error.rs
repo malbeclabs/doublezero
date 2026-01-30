@@ -137,6 +137,8 @@ pub enum DoubleZeroError {
     InvalidArgument, // variant 65
     #[error("Invalid Foundation Allowlist: cannot be empty")]
     InvalidFoundationAllowlist, // variant 66
+    #[error("Access Pass is in use (non-zero connection_count)")]
+    AccessPassInUse, // variant 70
     #[error("Deprecated error")]
     Deprecated, // variant 67
     #[error("Immutable Field")]
@@ -221,6 +223,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::ImmutableField => ProgramError::Custom(68),
             DoubleZeroError::CyoaRequiresPhysical => ProgramError::Custom(69),
             DoubleZeroError::DeviceHasInterfaces => ProgramError::Custom(70),
+            DoubleZeroError::AccessPassInUse => ProgramError::Custom(71),
         }
     }
 }
@@ -298,6 +301,7 @@ impl From<u32> for DoubleZeroError {
             68 => DoubleZeroError::ImmutableField,
             69 => DoubleZeroError::CyoaRequiresPhysical,
             70 => DoubleZeroError::DeviceHasInterfaces,
+            71 => DoubleZeroError::AccessPassInUse,
             _ => DoubleZeroError::Custom(e),
         }
     }
@@ -391,6 +395,7 @@ mod tests {
             SerializationFailure,
             InvalidArgument,
             InvalidFoundationAllowlist,
+            AccessPassInUse,
             Deprecated,
             ImmutableField,
             CyoaRequiresPhysical,

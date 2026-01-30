@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 
 - Client
   - Cache network interface index/name lookups in liveness UDP service to fix high CPU usage caused by per-packet RTM_GETLINK netlink dumps
+  - Use incremental per-peer counts in liveness event queue to avoid O(n) heap scan on every event
 
 ## [v0.8.4](https://github.com/malbeclabs/doublezero/compare/client/v0.8.3...client/v0.8.4) – 2026-01-28
 

@@ -322,14 +322,20 @@ func runSenderTests(t *testing.T, newSender func(iface string, localAddr, remote
 			sender.Close()
 		}
 
-		time.Sleep(200 * time.Millisecond)
-		runtime.GC()
-
-		buf := make([]byte, 1<<20)
-		n := runtime.Stack(buf, true)
-		stacks := string(buf[:n])
-		count := strings.Count(stacks, "cleanUpReceived")
-		require.Less(t, count, N/2,
+		// Poll for cleanUpReceived goroutines to exit, up to a bounded timeout.
+		var count int
+		deadline := time.Now().Add(2 * time.Second)
+		for {
+			runtime.GC()
+			buf := make([]byte, 1<<20)
+			n := runtime.Stack(buf, true)
+			count = strings.Count(string(buf[:n]), "cleanUpReceived")
+			if count == 0 || time.Now().After(deadline) {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		require.Equal(t, 0, count,
 			"found %d cleanUpReceived goroutines after creating and closing %d senders", count, N)
 	})
 

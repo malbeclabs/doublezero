@@ -1,6 +1,4 @@
  account | user_type | groups | device   | location    | cyoa_type  | client_ip | dz_ip   | accesspass     | tunnel_id | tunnel_net      | status      | owner
- IGNORED | IBRL      |        | la2-dz01 | Los Angeles | GREOverDIA | 1.2.3.4   | 1.2.3.4 | Prepaid: (MAX) | 500       | 169.254.0.2/31  | activated   | {{.ClientPubkeyAddress}}
- IGNORED | IBRL      |        | la2-dz01 | Los Angeles | GREOverDIA | 2.3.4.5   | 2.3.4.5 | Prepaid: (MAX) | 501       | 169.254.0.4/31  | activated   | {{.ClientPubkeyAddress}}
- IGNORED | IBRL      |        | la2-dz01 | Los Angeles | GREOverDIA | 3.4.5.6   | 3.4.5.6 | Prepaid: (MAX) | 502       | 169.254.0.6/31  | banned      | {{.ClientPubkeyAddress}}
- IGNORED | IBRL      |        | la2-dz01 | Los Angeles | GREOverDIA | 4.5.6.7   | 4.5.6.7 | Prepaid: (MAX) | 503       | 169.254.0.8/31  | activated   | {{.ClientPubkeyAddress}}
- IGNORED | IBRL      |        | la2-dz01 | Los Angeles | GREOverDIA | 5.6.7.8   | 5.6.7.8 | Prepaid: (MAX) | 504       | 169.254.0.10/31 | activated   | {{.ClientPubkeyAddress}}
+{{- range .IBRLUsers}}
+ IGNORED | IBRL      |        | la2-dz01 | Los Angeles | GREOverDIA | {{.ClientIP}} | {{.ClientIP}} | Prepaid: (MAX) | {{.TunnelID}} | {{.TunnelNet}} | {{if eq .ClientIP "3.4.5.6"}}banned{{else}}activated{{end}} | {{$.ClientPubkeyAddress}}
+{{- end}}

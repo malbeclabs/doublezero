@@ -2,7 +2,7 @@ use crate::servicecontroller::{LatencyRecord, ServiceController};
 use backon::{ExponentialBuilder, Retryable};
 use doublezero_sdk::{Device, DeviceStatus};
 use solana_sdk::pubkey::Pubkey;
-use std::{collections::HashMap, str::FromStr, time::Duration};
+use std::{collections::HashMap, net::Ipv4Addr, str::FromStr, time::Duration};
 
 pub async fn retrieve_latencies<T: ServiceController>(
     controller: &T,
@@ -62,16 +62,55 @@ pub async fn retrieve_latencies<T: ServiceController>(
     Ok(latencies)
 }
 
-const LATENCY_TOLERANCE_NS: i32 = 1_500_000; // 1.5 ms
+// Latency tolerance when preferring the current device or avoiding IP collisions.
+//
+// NOTE: This was previously 1_500_000 ns (1.5 ms). It was increased to 5_000_000 ns
+// (5 ms) to better support scenarios with multiple concurrent tunnels and a larger
+// device pool:
+//   * With multiple tunnels, we sometimes need to pick a different device (e.g.,
+//     to avoid reusing the same endpoint IP) even if its latency is slightly worse.
+//   * A stricter tolerance (1.5 ms) caused the current/closest device to be
+//     "sticky" in many real-world network conditions, preventing effective load
+//     distribution across devices for additional tunnels.
+//   * A 5 ms window still keeps selections within a "nearby" latency band for
+//     typical internet connections while giving the selector enough freedom to
+//     choose alternate devices when needed.
+//
+// The value is expressed in nanoseconds to match avg_latency_ns.
+const LATENCY_TOLERANCE_NS: i32 = 5_000_000; // 5 ms
 
+/// Find the best device based on latency.
+///
+/// # Arguments
+/// * `controller` - Service controller for fetching latency data
+/// * `devices` - Map of device pubkeys to devices
+/// * `ignore_unprovisionable` - If true, skip devices that can't accept new users
+/// * `spinner` - Optional progress spinner for UI feedback
+/// * `current_device` - Optional current device pubkey (preferred within tolerance)
+/// * `exclude_ips` - IPs to exclude (e.g., user's existing tunnel endpoints to ensure
+///   multiple tunnels go to different devices)
 pub async fn best_latency<T: ServiceController>(
     controller: &T,
     devices: &HashMap<Pubkey, Device>,
     ignore_unprovisionable: bool,
     spinner: Option<&indicatif::ProgressBar>,
     current_device: Option<&Pubkey>,
+    exclude_ips: &[Ipv4Addr],
 ) -> eyre::Result<LatencyRecord> {
-    let latencies = retrieve_latencies(controller, devices, true, spinner).await?;
+    let mut latencies = retrieve_latencies(controller, devices, true, spinner).await?;
+
+    if !exclude_ips.is_empty() {
+        latencies.retain(|l| {
+            l.device_ip
+                .parse::<Ipv4Addr>()
+                .map(|ip| !exclude_ips.contains(&ip))
+                .unwrap_or(true)
+        });
+    }
+
+    if latencies.is_empty() {
+        return Err(eyre::eyre!("No suitable device found after filtering"));
+    }
     let mut best: Option<&LatencyRecord> = None;
     let mut best_latency = i32::MAX;
 
@@ -218,7 +257,7 @@ mod tests {
             .expect_latency()
             .returning(move || Ok(latencies.clone()));
 
-        let result = best_latency(&controller, &devices, true, None, Some(&pk2))
+        let result = best_latency(&controller, &devices, true, None, Some(&pk2), &[])
             .await
             .unwrap();
 
@@ -247,7 +286,7 @@ mod tests {
             .expect_latency()
             .returning(move || Ok(latencies.clone()));
 
-        let result = best_latency(&controller, &devices, true, None, None)
+        let result = best_latency(&controller, &devices, true, None, None, &[])
             .await
             .unwrap();
 
@@ -276,7 +315,7 @@ mod tests {
             .expect_latency()
             .returning(move || Ok(latencies.clone()));
 
-        let result = best_latency(&controller, &devices, true, None, None)
+        let result = best_latency(&controller, &devices, true, None, None, &[])
             .await
             .unwrap();
 
@@ -302,7 +341,7 @@ mod tests {
             .expect_latency()
             .returning(move || Ok(latencies.clone()));
 
-        let result = best_latency(&controller, &devices, true, None, Some(&pk2))
+        let result = best_latency(&controller, &devices, true, None, Some(&pk2), &[])
             .await
             .unwrap();
 
@@ -328,10 +367,87 @@ mod tests {
             .expect_latency()
             .returning(move || Ok(latencies.clone()));
 
-        let result = best_latency(&controller, &devices, true, None, Some(&pk2))
+        let result = best_latency(&controller, &devices, true, None, Some(&pk2), &[])
             .await
             .unwrap();
 
         assert_eq!(result.device_pk, pk2.to_string());
+    }
+
+    #[tokio::test]
+    async fn test_best_latency_excludes_ips() {
+        let (pk1, dev1) = make_device(DeviceStatus::Activated, 0);
+        let (pk2, dev2) = make_device(DeviceStatus::Activated, 0);
+        let (pk3, dev3) = make_device(DeviceStatus::Activated, 0);
+
+        let mut devices = HashMap::new();
+        devices.insert(pk1, dev1);
+        devices.insert(pk2, dev2);
+        devices.insert(pk3, dev3);
+
+        // pk2 has the lowest latency but its IP will be excluded
+        let latencies = vec![
+            make_latency(&pk1.to_string(), 12000000, true),
+            make_latency(&pk2.to_string(), 5000000, true), // lowest but excluded
+            make_latency(&pk3.to_string(), 15000000, true),
+        ];
+
+        let mut controller = MockServiceController::new();
+        controller
+            .expect_latency()
+            .returning(move || Ok(latencies.clone()));
+
+        // Exclude the IP "0.0.0.0" which is used by make_latency
+        let excluded_ip: Ipv4Addr = "0.0.0.0".parse().unwrap();
+        let result = best_latency(&controller, &devices, true, None, None, &[excluded_ip]).await;
+
+        // All devices have IP 0.0.0.0, so all should be excluded
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_best_latency_excludes_specific_ip() {
+        let (pk1, dev1) = make_device(DeviceStatus::Activated, 0);
+        let (pk2, dev2) = make_device(DeviceStatus::Activated, 0);
+
+        let mut devices = HashMap::new();
+        devices.insert(pk1, dev1);
+        devices.insert(pk2, dev2);
+
+        // Create latencies with different IPs
+        let latencies = vec![
+            LatencyRecord {
+                device_pk: pk1.to_string(),
+                device_code: "device1".to_string(),
+                device_ip: "10.0.0.1".to_string(),
+                min_latency_ns: 5000000,
+                max_latency_ns: 5000000,
+                avg_latency_ns: 5000000, // lowest latency
+                reachable: true,
+            },
+            LatencyRecord {
+                device_pk: pk2.to_string(),
+                device_code: "device2".to_string(),
+                device_ip: "10.0.0.2".to_string(),
+                min_latency_ns: 10000000,
+                max_latency_ns: 10000000,
+                avg_latency_ns: 10000000,
+                reachable: true,
+            },
+        ];
+
+        let mut controller = MockServiceController::new();
+        controller
+            .expect_latency()
+            .returning(move || Ok(latencies.clone()));
+
+        // Exclude 10.0.0.1 (pk1's IP), so pk2 should be selected even though it's slower
+        let excluded_ip: Ipv4Addr = "10.0.0.1".parse().unwrap();
+        let result = best_latency(&controller, &devices, true, None, None, &[excluded_ip])
+            .await
+            .unwrap();
+
+        assert_eq!(result.device_pk, pk2.to_string());
+        assert_eq!(result.device_ip, "10.0.0.2");
     }
 }

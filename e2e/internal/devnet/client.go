@@ -476,6 +476,21 @@ func (c *Client) dumpDiagnostics() {
 		}
 	}
 
+	// Controller-side diagnostics: query the config the controller would send to each device.
+	for code, device := range c.dn.Devices {
+		output, err := docker.Exec(ctx, c.dn.dockerClient, c.dn.Controller.ContainerID, []string{
+			"doublezero-controller", "agent",
+			"-device-pubkey", device.ID,
+			"-controller-addr", "localhost",
+			"-controller-port", "7000",
+		})
+		if err != nil {
+			fmt.Fprintf(&buf, "\n--- Controller config for device %s (ERROR: %v)\n", code, err)
+		} else {
+			fmt.Fprintf(&buf, "\n--- Controller config for device %s\n%s", code, string(output))
+		}
+	}
+
 	fmt.Fprintf(&buf, "\n=== DIAGNOSTIC DUMP END ===\n")
 	fmt.Fprint(os.Stderr, buf.String())
 }

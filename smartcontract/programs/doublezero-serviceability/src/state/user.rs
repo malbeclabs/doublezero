@@ -221,10 +221,7 @@ impl fmt::Display for User {
             self.tunnel_id,
             &self.tunnel_net,
             self.status,
-<<<<<<< HEAD
-=======
             &self.tunnel_endpoint
->>>>>>> 42711d2f (DNM: feat(cli): remove multiple tunnel restriction (#2725))
         )
     }
 }
@@ -331,13 +328,10 @@ impl User {
         self.tunnel_id != 0
     }
 
-<<<<<<< HEAD
-=======
     pub fn has_tunnel_endpoint(&self) -> bool {
         self.tunnel_endpoint != Ipv4Addr::UNSPECIFIED
     }
 
->>>>>>> 42711d2f (DNM: feat(cli): remove multiple tunnel restriction (#2725))
     pub fn has_allocated_dz_ip(&self) -> bool {
         self.dz_ip != Ipv4Addr::UNSPECIFIED && self.dz_ip != self.client_ip
     }
@@ -370,11 +364,7 @@ impl User {
         let mut groups: Vec<Pubkey> = vec![];
 
         groups.extend(self.publishers.iter().cloned());
-<<<<<<< HEAD
         // Add subscribers that aren't already in the list
-=======
-
->>>>>>> 42711d2f (DNM: feat(cli): remove multiple tunnel restriction (#2725))
         for sub in &self.subscribers {
             if !groups.contains(sub) {
                 groups.push(*sub);
@@ -670,10 +660,7 @@ mod tests {
             publishers: vec![],
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
-<<<<<<< HEAD
-=======
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
->>>>>>> 42711d2f (DNM: feat(cli): remove multiple tunnel restriction (#2725))
         }
     }
 
@@ -688,8 +675,6 @@ mod tests {
     }
 
     #[test]
-<<<<<<< HEAD
-=======
     fn test_has_tunnel_endpoint() {
         let mut user = create_test_user();
         user.tunnel_endpoint = Ipv4Addr::UNSPECIFIED;
@@ -700,7 +685,6 @@ mod tests {
     }
 
     #[test]
->>>>>>> 42711d2f (DNM: feat(cli): remove multiple tunnel restriction (#2725))
     fn test_has_allocated_dz_ip() {
         let mut user = create_test_user();
         user.client_ip = [192, 168, 1, 1].into();
@@ -808,7 +792,6 @@ mod tests {
         user.subscribers.push(mcast_group);
         assert!(user.is_multicast_participant());
     }
-<<<<<<< HEAD
 
     #[test]
     fn test_needs_multicast_publishers_do_not_trigger() {
@@ -865,6 +848,4 @@ mod tests {
         user.dz_ip = Ipv4Addr::new(10, 0, 0, 1);
         assert!(user.has_allocated_dz_ip());
     }
-=======
->>>>>>> 42711d2f (DNM: feat(cli): remove multiple tunnel restriction (#2725))
 }

@@ -337,6 +337,8 @@ pub fn process_user_event(
 
                             if user.has_unicast_tunnel() {
                                 link_ids.unassign(user.tunnel_id);
+                            }
+                            if user.tunnel_net != NetworkV4::default() {
                                 user_tunnel_ips.unassign_block(user.tunnel_net.into());
                             }
                             if user.dz_ip != Ipv4Addr::UNSPECIFIED {

@@ -313,8 +313,6 @@ func runSenderTests(t *testing.T, newSender func(iface string, localAddr, remote
 	})
 
 	t.Run("Close stops cleanUpReceived goroutine", func(t *testing.T) {
-		t.Parallel()
-
 		const N = 10
 
 		for range N {

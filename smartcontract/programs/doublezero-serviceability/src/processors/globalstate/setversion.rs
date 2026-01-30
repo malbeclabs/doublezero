@@ -44,7 +44,7 @@ pub fn process_set_version(
     let system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
-    msg!("process_set_authority({:?})", value);
+    msg!("process_set_version({:?})", value);
 
     // Check if the payer is a signer
     assert!(payer_account.is_signer, "Payer must be a signer");

@@ -31,12 +31,13 @@ impl fmt::Debug for UserUpdateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "user_type: {}, cyoa_type: {}, dz_ip: {}, tunnel_id: {}, tunnel_net: {}",
+            "user_type: {}, cyoa_type: {}, dz_ip: {}, tunnel_id: {}, tunnel_net: {}, validator_pubkey: {}",
             format_option!(self.user_type),
             format_option!(self.cyoa_type),
             format_option!(self.dz_ip),
             format_option!(self.tunnel_id),
             format_option!(self.tunnel_net),
+            format_option!(self.validator_pubkey),
         )
     }
 }

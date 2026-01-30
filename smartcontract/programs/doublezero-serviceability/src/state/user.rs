@@ -364,7 +364,7 @@ impl User {
         let mut groups: Vec<Pubkey> = vec![];
 
         groups.extend(self.publishers.iter().cloned());
-
+        // Add subscribers that aren't already in the list
         for sub in &self.subscribers {
             if !groups.contains(sub) {
                 groups.push(*sub);

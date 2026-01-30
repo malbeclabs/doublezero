@@ -787,9 +787,6 @@ func verifyMulticastSubscriberPIMAdjacency(t *testing.T, log *slog.Logger, devic
 // For single-client scenarios where the same user has both IBRL and multicast, both tunnels
 // use sequential addresses in the 169.254.0.x range (e.g., IBRL on .0/.1, multicast on .2/.3).
 func verifyConcurrentMulticastPIMAdjacency(t *testing.T, log *slog.Logger, device *devnet.Device) {
-	// log.Info("==> Verifying concurrent multicast PIM adjacency", "deviceCode", device.Code)
-
-	// Diagnostic: Check device tunnel interfaces
 	tunnelOut, _ := devnet.DeviceExecAristaCliJSON[any](t.Context(), device, "show interfaces Tunnel1-100")
 	log.Info("Device tunnel interfaces", "output", tunnelOut)
 
@@ -895,13 +892,6 @@ func verifyConcurrentMulticastPublisherMrouteState(t *testing.T, log *slog.Logge
 func verifyMulticastPublisherMrouteState(t *testing.T, log *slog.Logger, device *devnet.Device, client *devnet.Client) {
 	log.Info("==> Verifying multicast publisher mroute state")
 
-	// 	// Calculate expected allocated IP from device's dz_prefix
-	// 	dzPrefixIP, dzPrefixNet, err := netutil.ParseCIDR(device.DZPrefix)
-	// 	require.NoError(t, err)
-	// 	ones, _ := dzPrefixNet.Mask.Size()
-	// 	allocatableBits := 32 - ones
-	// 	// First IP is reserved for device tunnel endpoint (Loopback100 interface)
-	// 	expectedAllocatedIP, err := nextAllocatableIP(dzPrefixIP, allocatableBits, map[string]bool{dzPrefixIP: true})
 	// Get the actual allocated IP from the client's tunnel status
 	// This is more reliable than calculating it, especially when multiple clients
 	// have allocated IPs from the same prefix

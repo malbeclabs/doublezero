@@ -62,6 +62,22 @@ pub async fn retrieve_latencies<T: ServiceController>(
     Ok(latencies)
 }
 
+
+// Latency tolerance when preferring the current device or avoiding IP collisions.
+//
+// NOTE: This was previously 1_500_000 ns (1.5 ms). It was increased to 5_000_000 ns
+// (5 ms) to better support scenarios with multiple concurrent tunnels and a larger
+// device pool:
+//   * With multiple tunnels, we sometimes need to pick a different device (e.g.,
+//     to avoid reusing the same endpoint IP) even if its latency is slightly worse.
+//   * A stricter tolerance (1.5 ms) caused the current/closest device to be
+//     "sticky" in many real-world network conditions, preventing effective load
+//     distribution across devices for additional tunnels.
+//   * A 5 ms window still keeps selections within a "nearby" latency band for
+//     typical internet connections while giving the selector enough freedom to
+//     choose alternate devices when needed.
+//
+// The value is expressed in nanoseconds to match avg_latency_ns.
 const LATENCY_TOLERANCE_NS: i32 = 5_000_000; // 5 ms
 
 /// Find the best device based on latency.

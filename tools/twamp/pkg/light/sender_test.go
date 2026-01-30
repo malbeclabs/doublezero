@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -314,7 +315,6 @@ func runSenderTests(t *testing.T, newSender func(iface string, localAddr, remote
 	t.Run("Close stops cleanUpReceived goroutine", func(t *testing.T) {
 		t.Parallel()
 
-		before := runtime.NumGoroutine()
 		const N = 10
 
 		for range N {
@@ -326,11 +326,13 @@ func runSenderTests(t *testing.T, newSender func(iface string, localAddr, remote
 
 		time.Sleep(200 * time.Millisecond)
 		runtime.GC()
-		after := runtime.NumGoroutine()
 
-		require.Less(t, after-before, N/2,
-			"goroutine count grew by %d after creating and closing %d senders — likely leaking cleanUpReceived goroutines",
-			after-before, N)
+		buf := make([]byte, 1<<20)
+		n := runtime.Stack(buf, true)
+		stacks := string(buf[:n])
+		count := strings.Count(stacks, "cleanUpReceived")
+		require.Less(t, count, N/2,
+			"found %d cleanUpReceived goroutines after creating and closing %d senders", count, N)
 	})
 
 	t.Run("duplicate packets are ignored", func(t *testing.T) {

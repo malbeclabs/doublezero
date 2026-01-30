@@ -9,6 +9,8 @@ import (
 	"golang.org/x/net/ipv4"
 )
 
+const ifCacheTTL = 30 * time.Second
+
 type UDPService interface {
 	ReadFrom(buf []byte) (n int, remoteAddr *net.UDPAddr, localIP net.IP, ifname string, err error)
 	WriteTo(pkt []byte, dst *net.UDPAddr, iface string, src net.IP) (int, error)
@@ -23,8 +25,9 @@ type UDPService interface {
 // each received packet includes metadata about which interface and destination IP
 // it arrived on, and outgoing packets can explicitly set source IP and interface.
 type udpService struct {
-	raw *net.UDPConn     // the underlying UDP socket
-	pc4 *ipv4.PacketConn // ipv4-layer wrapper for control message access
+	raw     *net.UDPConn     // the underlying UDP socket
+	pc4     *ipv4.PacketConn // ipv4-layer wrapper for control message access
+	ifcache *ifCache         // cached interface index<->name mappings
 }
 
 // ListenUDP binds an IPv4 UDP socket to bindIP:port and returns a configured UDPService.
@@ -49,7 +52,7 @@ func ListenUDP(bindIP string, port int) (*udpService, error) {
 // NewUDPService wraps an existing *net.UDPConn and enables IPv4 control messages (IP_PKTINFO-like).
 // On RX we obtain the destination IP and interface index; on TX we can set source IP and interface.
 func NewUDPService(raw *net.UDPConn) (*udpService, error) {
-	u := &udpService{raw: raw, pc4: ipv4.NewPacketConn(raw)}
+	u := &udpService{raw: raw, pc4: ipv4.NewPacketConn(raw), ifcache: newIfCache(ifCacheTTL)}
 	// Enable both RX and TX control messages: destination IP, source IP, and interface index.
 	if err := u.pc4.SetControlMessage(ipv4.FlagInterface|ipv4.FlagDst|ipv4.FlagSrc, true); err != nil {
 		return nil, err
@@ -81,10 +84,7 @@ func (u *udpService) ReadFrom(buf []byte) (n int, remoteAddr *net.UDPAddr, local
 			localIP = cm4.Dst
 		}
 		if cm4.IfIndex != 0 {
-			ifi, _ := net.InterfaceByIndex(cm4.IfIndex)
-			if ifi != nil {
-				ifname = ifi.Name
-			}
+			ifname = u.ifcache.NameByIndex(cm4.IfIndex)
 		}
 	}
 	return n, remoteAddr, localIP, ifname, nil
@@ -108,11 +108,11 @@ func (u *udpService) WriteTo(pkt []byte, dst *net.UDPAddr, iface string, src net
 
 	var ifidx int
 	if iface != "" {
-		ifi, err := net.InterfaceByName(iface)
-		if err != nil {
-			return 0, err
+		idx, ok := u.ifcache.IndexByName(iface)
+		if !ok {
+			return 0, fmt.Errorf("interface %q not found", iface)
 		}
-		ifidx = ifi.Index
+		ifidx = idx
 	}
 
 	var cm ipv4.ControlMessage

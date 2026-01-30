@@ -637,6 +637,65 @@ mod tests {
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidTunnelId);
     }
 
+    #[test]
+    fn test_state_user_validate_error_invalid_tunnel_endpoint() {
+        // Test with private IP (should fail validation)
+        let val = User {
+            account_type: AccountType::User,
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            tenant_pk: Pubkey::default(),
+            user_type: UserType::IBRL,
+            device_pk: Pubkey::new_unique(),
+            cyoa_type: UserCYOA::GREOverDIA,
+            dz_ip: [3, 2, 4, 2].into(),
+            client_ip: [1, 2, 3, 4].into(),
+            tunnel_id: 500,
+            tunnel_net: "169.254.0.0/31".parse().unwrap(),
+            status: UserStatus::Activated,
+            publishers: vec![],
+            subscribers: vec![],
+            validator_pubkey: Pubkey::new_unique(),
+            tunnel_endpoint: Ipv4Addr::new(192, 168, 1, 1), // Private IP - invalid
+        };
+        let err = val.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidTunnelEndpoint);
+
+        // Test with loopback IP (should fail validation)
+        let val_loopback = User {
+            tunnel_endpoint: Ipv4Addr::new(127, 0, 0, 1), // Loopback - invalid
+            ..val.clone()
+        };
+        let err = val_loopback.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidTunnelEndpoint);
+
+        // Test with link-local IP (should fail validation)
+        let val_link_local = User {
+            tunnel_endpoint: Ipv4Addr::new(169, 254, 1, 1), // Link-local - invalid
+            ..val.clone()
+        };
+        let err = val_link_local.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidTunnelEndpoint);
+
+        // Test with UNSPECIFIED (0.0.0.0) - should pass (backwards compat)
+        let val_unspecified = User {
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            ..val.clone()
+        };
+        assert!(val_unspecified.validate().is_ok());
+
+        // Test with global IP - should pass
+        let val_global = User {
+            tunnel_endpoint: Ipv4Addr::new(8, 8, 8, 8), // Global IP - valid
+            ..val
+        };
+        assert!(val_global.validate().is_ok());
+    }
+
     // ============================================================
     // Capability helper method tests
     // ============================================================

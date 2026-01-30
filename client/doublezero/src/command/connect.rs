@@ -606,6 +606,22 @@ impl ProvisioningCliCommand {
             }
             // Both IBRL and Multicast users exist - add subscription to existing Multicast user
             (Some(_), Some((user_pk, user))) | (None, Some((user_pk, user))) => {
+                // A user can only be a publisher OR a subscriber, not both
+                // Check if user is trying to add a subscription with a different mode
+                match (multicast_mode, user.is_publisher(), user.is_subscriber()) {
+                    (MulticastMode::Publisher, false, true) => {
+                        let err_msg = "❌ User is already a subscriber. A user cannot be both a publisher and subscriber.";
+                        spinner.println(err_msg);
+                        eyre::bail!(err_msg);
+                    }
+                    (MulticastMode::Subscriber, true, false) => {
+                        let err_msg = "❌ User is already a publisher. A user cannot be both a publisher and subscriber.";
+                        spinner.println(err_msg);
+                        eyre::bail!(err_msg);
+                    }
+                    _ => {}
+                }
+
                 let existing_groups = match multicast_mode {
                     MulticastMode::Publisher => &user.publishers,
                     MulticastMode::Subscriber => &user.subscribers,

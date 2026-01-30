@@ -1044,7 +1044,10 @@ func runIBRLWithMulticastSubscriberTest(t *testing.T, log *slog.Logger, dn *devn
 =======
 	// Give extra time for agent config to be applied to device before verification
 	log.Info("==> Waiting for agent config to be applied to device")
-	time.Sleep(15 * time.Second)
+	require.Eventually(t, func() bool {
+		return checkIBRLClientReady(t, log, device, ibrlClient, useAllocatedAddr) &&
+			checkMulticastSubscriberPIMAdjacency(t, log, device)
+	}, 60*time.Second, 2*time.Second, "agent config not applied within timeout")
 
 >>>>>>> 42711d2f (DNM: feat(cli): remove multiple tunnel restriction (#2725))
 	verifyIBRLClient(t, log, device, ibrlClient, useAllocatedAddr)

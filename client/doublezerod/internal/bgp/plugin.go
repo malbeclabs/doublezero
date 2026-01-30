@@ -186,6 +186,11 @@ func (p *Plugin) OnClose(peer corebgp.PeerConfig) {
 }
 
 func (p *Plugin) handleUpdate(peer corebgp.PeerConfig, u []byte) *corebgp.Notification {
+	startTime := time.Now()
+	defer func() {
+		MetricHandleUpdateDuration.Observe(time.Since(startTime).Seconds())
+	}()
+
 	if p.NoInstall {
 		return nil
 	}
@@ -196,6 +201,7 @@ func (p *Plugin) handleUpdate(peer corebgp.PeerConfig, u []byte) *corebgp.Notifi
 		return nil
 	}
 	var nexthop net.IP
+	slog.Info("bgp: processing update", "peer", peer.RemoteAddress, "withdrawals", len(update.WithdrawnRoutes), "nlri", len(update.NLRI))
 	for _, route := range update.WithdrawnRoutes {
 		slog.Info("bgp: got withdraw for prefix", "route", route.String(), "next_hop", peer.RemoteAddress.String())
 		// Nexthop is not included on a withdraw so we need to use the peer address upstream when writing to netlink.

@@ -566,10 +566,14 @@ func runIBRLWithMulticastSubscriberTest(t *testing.T, log *slog.Logger, dn *devn
 	log.Info("==> Waiting for agent config to include multicast subscriber")
 	waitForAgentConfigWithClient(t, log, dn, device, mcastClient)
 
-	// Give extra time for agent config to be applied to device before verification
+	// Wait for agent config to be applied and verifications to pass
 	log.Info("==> Waiting for agent config to be applied to device")
-	time.Sleep(15 * time.Second)
+	require.Eventually(t, func() bool {
+		return checkIBRLClientReady(t, log, device, ibrlClient, useAllocatedAddr) &&
+			checkMulticastSubscriberPIMAdjacency(t, log, device)
+	}, 60*time.Second, 2*time.Second, "agent config not applied within timeout")
 
+	log.Info("--> Agent config applied, running final verification")
 	verifyIBRLClient(t, log, device, ibrlClient, useAllocatedAddr)
 	verifyMulticastSubscriberPIMAdjacency(t, log, device)
 
@@ -747,6 +751,49 @@ func verifyIBRLClientBGPEstablished(t *testing.T, log *slog.Logger, device *devn
 		time.Sleep(1 * time.Second)
 	}
 	t.Fatalf("BGP session not established within timeout")
+}
+
+// checkIBRLClientReady checks if the IBRL client is ready (non-fatal version for polling).
+func checkIBRLClientReady(t *testing.T, log *slog.Logger, device *devnet.Device, client *devnet.Client, allocatedAddr bool) bool {
+	// Check doublezero0 interface exists
+	links, err := client.ExecReturnJSONList(t.Context(), []string{"bash", "-c", "ip -j link show dev doublezero0"})
+	if err != nil || len(links) != 1 {
+		return false
+	}
+
+	// Check BGP session is Established
+	neighbors, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIPBGPSummary](t.Context(), device, arista.ShowIPBGPSummaryCmd("vrf1"))
+	if err != nil {
+		return false
+	}
+
+	peer, ok := neighbors.VRFs["vrf1"].Peers[expectedLinkLocalAddr]
+	if !ok || peer.PeerState != "Established" {
+		return false
+	}
+
+	return true
+}
+
+// checkMulticastSubscriberPIMAdjacency checks if PIM adjacency is formed (non-fatal version for polling).
+func checkMulticastSubscriberPIMAdjacency(t *testing.T, log *slog.Logger, device *devnet.Device) bool {
+	pim, err := devnet.DeviceExecAristaCliJSON[*arista.ShowPIMNeighbors](t.Context(), device, arista.ShowPIMNeighborsCmd())
+	if err != nil {
+		return false
+	}
+
+	for _, vrf := range pim.VRFs {
+		for intfName, intf := range vrf.Interfaces {
+			for addr := range intf.Neighbors {
+				if strings.HasPrefix(addr, "169.254.0.") {
+					if len(intfName) >= 6 && intfName[:6] == "Tunnel" {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
 }
 
 // verifyMulticastSubscriberPIMAdjacency verifies PIM adjacency is formed on the device for subscriber.

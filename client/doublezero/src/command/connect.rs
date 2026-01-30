@@ -555,6 +555,22 @@ impl ProvisioningCliCommand {
             }
             // Both IBRL and Multicast users exist - add subscription to existing Multicast user
             (Some(_), Some((user_pk, user))) | (None, Some((user_pk, user))) => {
+                // A user can only be a publisher OR a subscriber, not both
+                // Check if user is trying to add a subscription with a different mode
+                match (multicast_mode, user.is_publisher(), user.is_subscriber()) {
+                    (MulticastMode::Publisher, false, true) => {
+                        let err_msg = "❌ User is already a subscriber. A user cannot be both a publisher and subscriber.";
+                        spinner.println(err_msg);
+                        eyre::bail!(err_msg);
+                    }
+                    (MulticastMode::Subscriber, true, false) => {
+                        let err_msg = "❌ User is already a publisher. A user cannot be both a publisher and subscriber.";
+                        spinner.println(err_msg);
+                        eyre::bail!(err_msg);
+                    }
+                    _ => {}
+                }
+
                 let existing_groups = match multicast_mode {
                     MulticastMode::Publisher => &user.publishers,
                     MulticastMode::Subscriber => &user.subscribers,
@@ -1765,6 +1781,78 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("Duplicate multicast group"));
+    }
+
+    #[tokio::test]
+    async fn test_connect_command_multicast_publisher_cannot_become_subscriber() {
+        let mut fixture = TestFixture::new();
+
+        let (mcast_group_pk, _) = fixture.add_multicast_group("test-group", "239.0.0.1");
+        let (_, _) = fixture.add_multicast_group("test-group2", "239.0.0.2");
+        let (device1_pk, _) = fixture.add_device(DeviceType::Hybrid, 100, true);
+
+        // Create a user who is already a publisher
+        let mut user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
+        user.publishers.push(mcast_group_pk);
+        fixture.add_user(&user);
+
+        println!();
+
+        // Try to add as subscriber - should fail
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::Multicast {
+                mode: MulticastMode::Subscriber,
+                multicast_groups: vec!["test-group2".to_string()],
+            },
+            client_ip: Some(user.client_ip.to_string()),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("User is already a publisher"));
+    }
+
+    #[tokio::test]
+    async fn test_connect_command_multicast_subscriber_cannot_become_publisher() {
+        let mut fixture = TestFixture::new();
+
+        let (mcast_group_pk, _) = fixture.add_multicast_group("test-group", "239.0.0.1");
+        let (_, _) = fixture.add_multicast_group("test-group2", "239.0.0.2");
+        let (device1_pk, _) = fixture.add_device(DeviceType::Hybrid, 100, true);
+
+        // Create a user who is already a subscriber
+        let mut user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
+        user.subscribers.push(mcast_group_pk);
+        fixture.add_user(&user);
+
+        println!();
+
+        // Try to add as publisher - should fail
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::Multicast {
+                mode: MulticastMode::Publisher,
+                multicast_groups: vec!["test-group2".to_string()],
+            },
+            client_ip: Some(user.client_ip.to_string()),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("User is already a subscriber"));
     }
 
     #[tokio::test]

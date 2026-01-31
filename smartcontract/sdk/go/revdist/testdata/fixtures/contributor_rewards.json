@@ -1,0 +1,22 @@
+{
+  "name": "ContributorRewards",
+  "struct_size": 600,
+  "discriminator_hex": "711ed92800b9e2cb",
+  "fields": [
+    {
+      "name": "RewardsManagerKey",
+      "value": "g35TxFqwMx95vCk63fTxGTHb6ei4W24qg5t2x6xD3cT",
+      "typ": "pubkey"
+    },
+    {
+      "name": "ServiceKey",
+      "value": "jwV7SyvqCSrVcKibYvurCCWr7DUmT7yRYPmY9QwvrGo",
+      "typ": "pubkey"
+    },
+    {
+      "name": "Flags",
+      "value": "1",
+      "typ": "u64"
+    }
+  ]
+}

@@ -1,0 +1,112 @@
+{
+  "name": "ProgramConfig",
+  "struct_size": 600,
+  "discriminator_hex": "cfb485ec3027f11b",
+  "fields": [
+    {
+      "name": "Flags",
+      "value": "1",
+      "typ": "u64"
+    },
+    {
+      "name": "NextCompletedDZEpoch",
+      "value": "42",
+      "typ": "u64"
+    },
+    {
+      "name": "BumpSeed",
+      "value": "253",
+      "typ": "u8"
+    },
+    {
+      "name": "AdminKey",
+      "value": "4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM",
+      "typ": "pubkey"
+    },
+    {
+      "name": "DebtAccountantKey",
+      "value": "8opHzTAnfzRpPEx21XtnrVTX28YQuCpAjcn1PczScKh",
+      "typ": "pubkey"
+    },
+    {
+      "name": "RewardsAccountantKey",
+      "value": "CiDwVBFgWV9E5MvXWoLgnEgn2hK7rJikbvfWavzAQz3",
+      "typ": "pubkey"
+    },
+    {
+      "name": "ContributorManagerKey",
+      "value": "GcdayuLaLyrdmUu324nahyv33G5poQdLUEZ1nEytDeP",
+      "typ": "pubkey"
+    },
+    {
+      "name": "SOL2ZSwapProgramID",
+      "value": "QRSsyMWN1yHT9ir42bgNZUNZ4PdEhcSWCrL2AryKpy5",
+      "typ": "pubkey"
+    },
+    {
+      "name": "CalculationGracePeriodMinutes",
+      "value": "120",
+      "typ": "u16"
+    },
+    {
+      "name": "InitializationGracePeriodMinutes",
+      "value": "60",
+      "typ": "u16"
+    },
+    {
+      "name": "MinimumEpochDurationToFinalizeRewards",
+      "value": "3",
+      "typ": "u8"
+    },
+    {
+      "name": "BurnRateLimit",
+      "value": "500000000",
+      "typ": "u32"
+    },
+    {
+      "name": "BurnRateDZEpochsToIncreasing",
+      "value": "10",
+      "typ": "u32"
+    },
+    {
+      "name": "BurnRateDZEpochsToLimit",
+      "value": "100",
+      "typ": "u32"
+    },
+    {
+      "name": "BaseBlockRewardsPct",
+      "value": "500",
+      "typ": "u16"
+    },
+    {
+      "name": "PriorityBlockRewardsPct",
+      "value": "1000",
+      "typ": "u16"
+    },
+    {
+      "name": "InflationRewardsPct",
+      "value": "200",
+      "typ": "u16"
+    },
+    {
+      "name": "JitoTipsPct",
+      "value": "300",
+      "typ": "u16"
+    },
+    {
+      "name": "FixedSOLAmount",
+      "value": "50000",
+      "typ": "u32"
+    },
+    {
+      "name": "DistributeRewardsLamports",
+      "value": "10000",
+      "typ": "u32"
+    },
+    {
+      "name": "DebtWriteOffFeatureActivationEpoch",
+      "value": "91",
+      "typ": "u64"
+    }
+  ]
+}

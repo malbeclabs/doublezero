@@ -12,7 +12,9 @@ members = [
     "smartcontract/programs/common",
 ]
 default-members = []
-exclude = []
+exclude = [
+    "smartcontract/sdk/go/revdist/testdata/generate-fixtures",
+]
 resolver = "2"
 
 [workspace.package]

@@ -11,6 +11,7 @@ test-ledger/
 **/bin/*
 smartcontract/cli/config/*
 controlplane/funder/cmd/funder/funder
+revdist-cli
 
 .idea
 .private

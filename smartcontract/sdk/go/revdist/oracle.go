@@ -13,9 +13,14 @@ type OracleClient struct {
 	http    *http.Client
 }
 
-// SwapRate contains the current SOL to 2Z swap rate.
+// SwapRate contains the current SOL to 2Z swap rate and price data.
 type SwapRate struct {
-	Rate float64 `json:"swap_rate"`
+	Rate         float64 `json:"swapRate"`
+	Timestamp    int64   `json:"timestamp"`
+	Signature    string  `json:"signature"`
+	SOLPriceUSD  string  `json:"solPriceUsd"`
+	TwoZPriceUSD string  `json:"twozPriceUsd"`
+	CacheHit     bool    `json:"cacheHit"`
 }
 
 // NewOracleClient creates a new oracle client with the given base URL.

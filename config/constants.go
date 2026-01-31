@@ -13,7 +13,7 @@ const (
 	MainnetTelemetryStateIngestURL       = "http://telemetry-state-in.mainnet-beta.doublezero.xyz"
 	MainnetTelemetryGNMITunnelServerAddr = "gnmic-mainnet-beta.doublezero.xyz:443"
 
-	MainnetRevenueDistributionProgramID  = "dzrevZC94tBLwuHw1dyynZxaXTWyp7yocsinyEVPtt4"
+	MainnetRevenueDistributionProgramID = "dzrevZC94tBLwuHw1dyynZxaXTWyp7yocsinyEVPtt4"
 
 	// Testnet constants.
 	TestnetLedgerPublicRPCURL            = "https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16"

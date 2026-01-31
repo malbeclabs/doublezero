@@ -19,11 +19,11 @@ type Client struct {
 }
 
 type Config struct {
-	Endpoint                       string
-	Signer                         *solana.PrivateKey
-	ServiceabilityProgramID        solana.PublicKey
-	TelemetryProgramID             solana.PublicKey
-	RevenueDistributionProgramID   solana.PublicKey
+	Endpoint                     string
+	Signer                       *solana.PrivateKey
+	ServiceabilityProgramID      solana.PublicKey
+	TelemetryProgramID           solana.PublicKey
+	RevenueDistributionProgramID solana.PublicKey
 }
 
 type Option func(*Config)

@@ -4,7 +4,7 @@ Read-only Go SDK for the DoubleZero revenue distribution Solana program (`dzrevZ
 
 ## Overview
 
-The revenue distribution program manages epoch-based revenue collection from network participants and reward distribution to contributors. Each epoch:
+The revenue distribution program manages epoch-based revenue collection from Solana validators and reward distribution to contributors. Each epoch:
 
 1. Validator debts are calculated off-chain and committed as a Merkle root
 2. Validators pay their debts (SOL transferred to distribution accounts)
@@ -74,6 +74,3 @@ oracle := revdist.NewOracleClient("https://sol-2z-oracle-api-v1.mainnet-beta.dou
 rate, err := oracle.FetchSwapRate(ctx)
 ```
 
-## Multi-Tenancy
-
-While current revenue sources are Solana validators, the program is designed to accommodate future revenue sources. The naming uses generic terms (e.g., "distribution" rather than "validator distribution") where applicable.

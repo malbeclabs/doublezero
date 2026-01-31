@@ -130,11 +130,16 @@ pub fn process_subscribe_multicastgroup(
     match value.publisher {
         true => {
             if !user.publishers.contains(mgroup_account.key) {
+                let was_empty = user.publishers.is_empty();
                 // Increment publisher count
                 mgroup.publisher_count = mgroup.publisher_count.saturating_add(1);
                 // Add multicast group to user's publisher list
                 user.publishers.push(*mgroup_account.key);
-                user.status = UserStatus::Updating;
+                // Only trigger activator reprocessing when gaining first publisher
+                // (activator needs to allocate dz_ip)
+                if was_empty {
+                    user.status = UserStatus::Updating;
+                }
             }
         }
         false => {
@@ -143,6 +148,11 @@ pub fn process_subscribe_multicastgroup(
                 mgroup.publisher_count = mgroup.publisher_count.saturating_sub(1);
                 // Remove multicast group from user's publisher list
                 user.publishers.retain(|&x| x != *mgroup_account.key);
+                // Trigger activator reprocessing when losing last publisher
+                // (dz_ip no longer needed)
+                if user.publishers.is_empty() {
+                    user.status = UserStatus::Updating;
+                }
             }
         }
     }
@@ -155,7 +165,8 @@ pub fn process_subscribe_multicastgroup(
                 mgroup.subscriber_count = mgroup.subscriber_count.saturating_add(1);
                 // Add multicast group to user's subscriber list
                 user.subscribers.push(*mgroup_account.key);
-                user.status = UserStatus::Updating;
+                // No activator reprocessing needed for subscriber changes
+                // (subscriber groups don't affect tunnel or dz_ip config)
             }
         }
         false => {

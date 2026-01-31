@@ -22,9 +22,7 @@ use doublezero_serviceability::{
     resource::ResourceType,
     state::{
         accesspass::AccessPassType,
-        accounttype::AccountType,
         device::DeviceType,
-        multicastgroup::MulticastGroupStatus,
         user::{UserCYOA, UserStatus, UserType},
     },
 };
@@ -42,12 +40,12 @@ struct TestFixture {
     payer: solana_sdk::signature::Keypair,
     program_id: Pubkey,
     globalstate_pubkey: Pubkey,
-    device_pubkey: Pubkey,
+    _device_pubkey: Pubkey,
     accesspass_pubkey: Pubkey,
     user_pubkey: Pubkey,
     mgroup1_pubkey: Pubkey,
     mgroup2_pubkey: Pubkey,
-    user_ip: Ipv4Addr,
+    _user_ip: Ipv4Addr,
     recent_blockhash: solana_program::hash::Hash,
 }
 
@@ -434,12 +432,12 @@ async fn setup_fixture() -> TestFixture {
         payer,
         program_id,
         globalstate_pubkey,
-        device_pubkey,
+        _device_pubkey: device_pubkey,
         accesspass_pubkey,
         user_pubkey,
         mgroup1_pubkey,
         mgroup2_pubkey,
-        user_ip,
+        _user_ip: user_ip,
         recent_blockhash,
     }
 }

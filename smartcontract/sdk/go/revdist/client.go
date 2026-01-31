@@ -14,8 +14,8 @@ import (
 )
 
 var (
-	ErrAccountNotFound  = errors.New("account not found")
-	ErrLedgerClientNil  = errors.New("ledger record client not configured")
+	ErrAccountNotFound = errors.New("account not found")
+	ErrLedgerClientNil = errors.New("ledger record client not configured")
 )
 
 // deserializeAccount validates the discriminator and deserializes the account

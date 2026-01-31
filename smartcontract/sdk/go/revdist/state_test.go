@@ -42,8 +42,8 @@ func TestStructSizes(t *testing.T) {
 func TestJournalDeserialization(t *testing.T) {
 	// Build a known Journal byte sequence.
 	data := make([]byte, 64)
-	data[0] = 1   // BumpSeed
-	data[1] = 2   // Token2ZPDABumpSeed
+	data[0] = 1                                    // BumpSeed
+	data[1] = 2                                    // Token2ZPDABumpSeed
 	binary.LittleEndian.PutUint64(data[8:], 1000)  // TotalSOLBalance
 	binary.LittleEndian.PutUint64(data[16:], 2000) // Total2ZBalance
 	binary.LittleEndian.PutUint64(data[24:], 3000) // Swap2ZDestinationBalance

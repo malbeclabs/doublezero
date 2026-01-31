@@ -7,25 +7,25 @@ import (
 // ProgramConfig represents the on-chain program configuration account.
 // On-chain size: 8 (discriminator) + 600 = 608 bytes.
 type ProgramConfig struct {
-	Flags                               uint64           // 8 bytes
-	NextCompletedDZEpoch                uint64           // 8 bytes
-	BumpSeed                            uint8            // 1 byte
-	Reserve2ZBumpSeed                   uint8            // 1 byte
-	SwapAuthorityBumpSeed               uint8            // 1 byte
-	SwapDestination2ZBumpSeed           uint8            // 1 byte
-	WithdrawSOLAuthorityBumpSeed        uint8            // 1 byte
-	Reserved0                           [3]uint8         // 3 bytes padding
-	AdminKey                            solana.PublicKey  // 32 bytes
-	DebtAccountantKey                   solana.PublicKey  // 32 bytes
-	RewardsAccountantKey                solana.PublicKey  // 32 bytes
-	ContributorManagerKey               solana.PublicKey  // 32 bytes
-	PlaceholderKey                      solana.PublicKey  // 32 bytes
-	SOL2ZSwapProgramID                  solana.PublicKey  // 32 bytes
-	DistributionParameters              DistributionParameters
-	RelayParameters                     RelayParameters
-	LastInitializedDistributionTimestamp uint32           // 4 bytes
-	Reserved1                           [4]byte          // 4 bytes padding
-	DebtWriteOffFeatureActivationEpoch  uint64           // 8 bytes
+	Flags                                uint64           // 8 bytes
+	NextCompletedDZEpoch                 uint64           // 8 bytes
+	BumpSeed                             uint8            // 1 byte
+	Reserve2ZBumpSeed                    uint8            // 1 byte
+	SwapAuthorityBumpSeed                uint8            // 1 byte
+	SwapDestination2ZBumpSeed            uint8            // 1 byte
+	WithdrawSOLAuthorityBumpSeed         uint8            // 1 byte
+	Reserved0                            [3]uint8         // 3 bytes padding
+	AdminKey                             solana.PublicKey // 32 bytes
+	DebtAccountantKey                    solana.PublicKey // 32 bytes
+	RewardsAccountantKey                 solana.PublicKey // 32 bytes
+	ContributorManagerKey                solana.PublicKey // 32 bytes
+	PlaceholderKey                       solana.PublicKey // 32 bytes
+	SOL2ZSwapProgramID                   solana.PublicKey // 32 bytes
+	DistributionParameters               DistributionParameters
+	RelayParameters                      RelayParameters
+	LastInitializedDistributionTimestamp uint32  // 4 bytes
+	Reserved1                            [4]byte // 4 bytes padding
+	DebtWriteOffFeatureActivationEpoch   uint64  // 8 bytes
 }
 
 // DistributionParameters contains epoch distribution configuration.
@@ -110,9 +110,9 @@ type Distribution struct {
 // On-chain size: 8 (discriminator) + 96 = 104 bytes.
 type SolanaValidatorDeposit struct {
 	NodeID            solana.PublicKey // 32 bytes
-	WrittenOffSOLDebt uint64          // 8 bytes
-	Reserved0         [24]byte        // 24 bytes padding
-	Reserved1         [32]byte        // 32 bytes storage gap
+	WrittenOffSOLDebt uint64           // 8 bytes
+	Reserved0         [24]byte         // 24 bytes padding
+	Reserved1         [32]byte         // 32 bytes storage gap
 }
 
 // ContributorRewards represents a contributor's reward configuration.
@@ -120,16 +120,16 @@ type SolanaValidatorDeposit struct {
 type ContributorRewards struct {
 	RewardsManagerKey solana.PublicKey // 32 bytes
 	ServiceKey        solana.PublicKey // 32 bytes
-	Flags             uint64          // 8 bytes
-	RecipientShares   RecipientShares // 272 bytes
-	Reserved0         [8][32]byte     // 256 bytes storage gap
+	Flags             uint64           // 8 bytes
+	RecipientShares   RecipientShares  // 272 bytes
+	Reserved0         [8][32]byte      // 256 bytes storage gap
 }
 
 // RecipientShare represents a single reward recipient and their share.
 // 34 bytes total.
 type RecipientShare struct {
 	RecipientKey solana.PublicKey // 32 bytes
-	Share        uint16          // UnitShare16, max 10_000 (100%)
+	Share        uint16           // UnitShare16, max 10_000 (100%)
 }
 
 // RecipientShares is a fixed array of 8 RecipientShare entries.
@@ -162,7 +162,7 @@ type ComputedSolanaValidatorDebts struct {
 // ComputedSolanaValidatorDebt represents a single validator's calculated debt.
 type ComputedSolanaValidatorDebt struct {
 	NodeID solana.PublicKey // 32 bytes
-	Amount uint64          // 8 bytes
+	Amount uint64           // 8 bytes
 }
 
 // ShapleyOutputStorage is a Borsh-serialized off-chain record
@@ -176,6 +176,6 @@ type ShapleyOutputStorage struct {
 // RewardShare represents a contributor's calculated reward share.
 type RewardShare struct {
 	ContributorKey solana.PublicKey // 32 bytes
-	UnitShare      uint32          // 4 bytes (UnitShare32)
-	RemainingBytes [4]byte         // 4 bytes (bit 31 = is_blocked, bits 0-29 = economic_burn_rate)
+	UnitShare      uint32           // 4 bytes (UnitShare32)
+	RemainingBytes [4]byte          // 4 bytes (bit 31 = is_blocked, bits 0-29 = economic_burn_rate)
 }

@@ -14,6 +14,7 @@
 - Summary bullets should be concise, ordered by importance/significance
 - Focus on "what" and "why", not implementation details
 - Include a "Testing Verification" section
+- Don't mention table-stakes items like "compiles cleanly" in testing verification
 
 ## Rust Development
 

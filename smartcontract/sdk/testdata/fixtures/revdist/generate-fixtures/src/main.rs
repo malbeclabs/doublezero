@@ -65,7 +65,7 @@ fn write_fixture(
 }
 
 fn main() {
-    let fixtures_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../fixtures");
+    let fixtures_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
     fs::create_dir_all(&fixtures_dir).unwrap();
 
     generate_program_config(&fixtures_dir);

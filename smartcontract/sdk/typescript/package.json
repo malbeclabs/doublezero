@@ -1,0 +1,13 @@
+{
+  "name": "doublezero-revenue-distribution",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@solana/web3.js": "^1.98"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5"
+  }
+}

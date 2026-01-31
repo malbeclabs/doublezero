@@ -36,9 +36,17 @@ func main() {
 
 	rpcURL := netCfg.SolanaRPCURL
 
-	pid := solana.MustPublicKeyFromBase58(config.MainnetRevenueDistributionProgramID)
+	pid, err := solana.PublicKeyFromBase58(config.MainnetRevenueDistributionProgramID)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: invalid default program ID: %v\n", err)
+		os.Exit(1)
+	}
 	if *programID != "" {
-		pid = solana.MustPublicKeyFromBase58(*programID)
+		pid, err = solana.PublicKeyFromBase58(*programID)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: invalid --program-id %q: %v\n", *programID, err)
+			os.Exit(1)
+		}
 	}
 
 	rpcClient := solanarpc.New(rpcURL)
@@ -151,8 +159,14 @@ func cmdJournal(ctx context.Context, client *revdist.Client) error {
 	fmt.Printf("%-45s %d\n", "Swap 2Z Destination Balance:", journal.Swap2ZDestinationBalance)
 	fmt.Printf("%-45s %s\n", "Swapped SOL Amount:", formatSOL(journal.SwappedSOLAmount))
 	fmt.Printf("%-45s %d\n", "Next DZ Epoch to Sweep Tokens:", journal.NextDZEpochToSweepTokens)
+	// Display lower 64 bits of the u128 value (sufficient for practical amounts).
 	lifetime := binary.LittleEndian.Uint64(journal.LifetimeSwapped2ZAmount[:8])
-	fmt.Printf("%-45s %d\n", "Lifetime Swapped 2Z Amount:", lifetime)
+	high := binary.LittleEndian.Uint64(journal.LifetimeSwapped2ZAmount[8:])
+	if high > 0 {
+		fmt.Printf("%-45s %d (high bits: %d)\n", "Lifetime Swapped 2Z Amount:", lifetime, high)
+	} else {
+		fmt.Printf("%-45s %d\n", "Lifetime Swapped 2Z Amount:", lifetime)
+	}
 
 	return nil
 }
@@ -220,7 +234,10 @@ func cmdDistribution(ctx context.Context, client *revdist.Client, args []string)
 
 func cmdDeposits(ctx context.Context, client *revdist.Client, args []string) error {
 	if len(args) > 0 {
-		nodeID := solana.MustPublicKeyFromBase58(args[0])
+		nodeID, err := solana.PublicKeyFromBase58(args[0])
+		if err != nil {
+			return fmt.Errorf("invalid node ID %q: %w", args[0], err)
+		}
 		deposit, err := client.FetchValidatorDeposit(ctx, nodeID)
 		if err != nil {
 			return err
@@ -255,7 +272,10 @@ func cmdDeposits(ctx context.Context, client *revdist.Client, args []string) err
 
 func cmdContributors(ctx context.Context, client *revdist.Client, args []string) error {
 	if len(args) > 0 {
-		serviceKey := solana.MustPublicKeyFromBase58(args[0])
+		serviceKey, err := solana.PublicKeyFromBase58(args[0])
+		if err != nil {
+			return fmt.Errorf("invalid service key %q: %w", args[0], err)
+		}
 		rewards, err := client.FetchContributorRewards(ctx, serviceKey)
 		if err != nil {
 			return err

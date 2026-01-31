@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 )
 
 // OracleClient fetches SOL/2Z swap rates from the oracle API.
@@ -27,7 +28,7 @@ type SwapRate struct {
 func NewOracleClient(baseURL string) *OracleClient {
 	return &OracleClient{
 		baseURL: baseURL,
-		http:    &http.Client{},
+		http:    &http.Client{Timeout: 30 * time.Second},
 	}
 }
 

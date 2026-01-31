@@ -6,8 +6,8 @@ publish = false
 
 [dependencies]
 bytemuck = { version = "1", features = ["derive"] }
-doublezero-program-tools = { git = "ssh://git@github.com/doublezerofoundation/doublezero-solana.git" }
-doublezero-revenue-distribution = { git = "ssh://git@github.com/doublezerofoundation/doublezero-solana.git" }
+doublezero-program-tools = { git = "https://github.com/doublezerofoundation/doublezero-solana.git" }
+doublezero-revenue-distribution = { git = "https://github.com/doublezerofoundation/doublezero-solana.git" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 ruint = "1"

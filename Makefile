@@ -116,6 +116,27 @@ rust-program-accounts-compat:
 	cargo run -p doublezero -- accounts -em --no-output
 
 # -----------------------------------------------------------------------------
+# SDK targets (revenue distribution)
+# -----------------------------------------------------------------------------
+.PHONY: sdk-test
+sdk-test:
+	go test ./sdk/revdist/go/...
+	$(MAKE) python-test-revdist
+	$(MAKE) typescript-test-revdist
+
+.PHONY: python-test-revdist
+python-test-revdist:
+	cd sdk/revdist/python && uv run pytest
+
+.PHONY: typescript-test-revdist
+typescript-test-revdist:
+	cd sdk/revdist/typescript && bun test
+
+.PHONY: generate-fixtures
+generate-fixtures:
+	cd sdk/revdist/testdata/fixtures/generate-fixtures && cargo run
+
+# -----------------------------------------------------------------------------
 # E2E targets
 # -----------------------------------------------------------------------------
 .PHONY: e2e-test

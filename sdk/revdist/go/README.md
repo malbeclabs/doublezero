@@ -29,7 +29,7 @@ The revenue distribution program manages epoch-based revenue collection from Sol
 import (
     "github.com/gagliardetto/solana-go"
     solanarpc "github.com/gagliardetto/solana-go/rpc"
-    "github.com/malbeclabs/doublezero/smartcontract/sdk/go/revdist"
+    "github.com/malbeclabs/doublezero/sdk/revdist/go"
 )
 
 programID := solana.MustPublicKeyFromBase58("dzrevZC94tBLwuHw1dyynZxaXTWyp7yocsinyEVPtt4")

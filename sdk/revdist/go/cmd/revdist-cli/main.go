@@ -13,7 +13,7 @@ import (
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/config"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/revdist"
+	"github.com/malbeclabs/doublezero/sdk/revdist/go"
 )
 
 func main() {

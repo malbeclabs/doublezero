@@ -37,17 +37,6 @@ jobs:
           sh -c "$(curl -sSfL https://release.anza.xyz/v2.3.13/install)"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
       - run: make rust-test
-  sdk-test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-      - uses: astral-sh/setup-uv@v6
-      - uses: oven-sh/setup-bun@v2
-      - run: cd smartcontract && make sdk-test
   rust-validator-test:
     runs-on: ubuntu-24.04-16c-64gb
     steps:

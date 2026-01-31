@@ -13,7 +13,7 @@ members = [
 ]
 default-members = []
 exclude = [
-    "smartcontract/sdk/go/revdist/testdata/generate-fixtures",
+    "sdk/revdist/testdata/fixtures/generate-fixtures",
 ]
 resolver = "2"
 

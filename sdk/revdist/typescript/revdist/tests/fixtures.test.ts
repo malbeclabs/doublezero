@@ -6,7 +6,7 @@
  * the expected values from the JSON sidecar files.
  *
  * Regenerate fixtures:
- *   cd ../../../testdata/fixtures/revdist/generate-fixtures && cargo run
+ *   cd ../../../testdata/fixtures/generate-fixtures && cargo run
  */
 
 import { describe, expect, test } from "bun:test";
@@ -40,7 +40,6 @@ const FIXTURES_DIR = join(
   "..",
   "testdata",
   "fixtures",
-  "revdist",
 );
 
 interface FieldValue {

@@ -46,24 +46,6 @@ lint-programs:
 		-p doublezero-serviceability \
 		$(CLIPPY_FLAGS)
 
-.PHONY: generate-fixtures
-generate-fixtures:
-	cd sdk/testdata/fixtures/revdist/generate-fixtures && cargo run
-
-.PHONY: python-test-revdist
-python-test-revdist:
-	cd sdk/python && uv run pytest
-
-.PHONY: typescript-test-revdist
-typescript-test-revdist:
-	cd sdk/typescript && bun test
-
-.PHONY: sdk-test
-sdk-test:
-	go test ./sdk/go/...
-	$(MAKE) python-test-revdist
-	$(MAKE) typescript-test-revdist
-
 .PHONY: build
 build: build-programs
 	cargo build $(LDFLAGS) --manifest-path ./sdk/rs/Cargo.toml

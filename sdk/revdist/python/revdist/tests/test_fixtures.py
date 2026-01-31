@@ -5,7 +5,7 @@ generator and verify that Python's deserialized field values match the
 expected values from the JSON sidecar files.
 
 Regenerate fixtures:
-    cd ../../../testdata/fixtures/revdist/generate-fixtures && cargo run
+    cd ../../../testdata/fixtures/generate-fixtures && cargo run
 """
 
 import json
@@ -29,7 +29,7 @@ from revdist.state import (
     SolanaValidatorDeposit,
 )
 
-FIXTURES_DIR = Path(__file__).resolve().parent.parent.parent.parent / "testdata" / "fixtures" / "revdist"
+FIXTURES_DIR = Path(__file__).resolve().parent.parent.parent.parent / "testdata" / "fixtures"
 
 # Field name mapping: JSON (Go-style PascalCase) -> Python attribute path
 # Each entry is (json_name, accessor_callable)

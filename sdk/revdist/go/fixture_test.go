@@ -23,7 +23,7 @@ import (
 // #[repr(C)] layout, not from hand-coded offsets.
 //
 // Regenerate fixtures:
-//   cd ../../testdata/fixtures/revdist/generate-fixtures && cargo run
+//   cd ../testdata/fixtures/generate-fixtures && cargo run
 
 type fixtureMeta struct {
 	Name             string       `json:"name"`
@@ -40,7 +40,7 @@ type fieldValue struct {
 
 func fixturesDir() string {
 	_, filename, _, _ := runtime.Caller(0)
-	return filepath.Join(filepath.Dir(filename), "..", "..", "testdata", "fixtures", "revdist")
+	return filepath.Join(filepath.Dir(filename), "..", "testdata", "fixtures")
 }
 
 func loadFixture(t *testing.T, name string) ([]byte, fixtureMeta) {

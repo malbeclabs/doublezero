@@ -13,7 +13,7 @@ import (
 // These tests fetch live mainnet data and verify that our struct deserialization
 // matches raw byte reads at known offsets. Run with:
 //
-//	go test -tags compat -run TestCompat -v ./smartcontract/sdk/go/revdist/
+//	go test -tags compat -run TestCompat -v ./sdk/revdist/go/
 //
 // Requires network access to Solana mainnet RPC.
 

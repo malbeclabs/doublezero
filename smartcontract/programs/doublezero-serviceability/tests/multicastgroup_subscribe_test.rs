@@ -4,7 +4,9 @@ use doublezero_serviceability::{
     processors::{
         accesspass::set::SetAccessPassArgs,
         contributor::create::ContributorCreateArgs,
-        device::{activate::DeviceActivateArgs, create::DeviceCreateArgs, update::DeviceUpdateArgs},
+        device::{
+            activate::DeviceActivateArgs, create::DeviceCreateArgs, update::DeviceUpdateArgs,
+        },
         globalconfig::set::SetGlobalConfigArgs,
         multicastgroup::{
             activate::MulticastGroupActivateArgs,
@@ -19,7 +21,9 @@ use doublezero_serviceability::{
     },
     resource::ResourceType,
     state::{
-        accesspass::AccessPassType, accounttype::AccountType, device::DeviceType,
+        accesspass::AccessPassType,
+        accounttype::AccountType,
+        device::DeviceType,
         multicastgroup::MulticastGroupStatus,
         user::{UserCYOA, UserStatus, UserType},
     },

@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"unsafe"
 
 	ag_binary "github.com/gagliardetto/binary"
 	"github.com/gagliardetto/solana-go"
@@ -16,6 +17,26 @@ var (
 	ErrAccountNotFound  = errors.New("account not found")
 	ErrLedgerClientNil  = errors.New("ledger record client not configured")
 )
+
+// deserializeAccount validates the discriminator and deserializes the account
+// data into the given struct. It requires at least discriminator + sizeof(T)
+// bytes but tolerates extra trailing bytes for forward compatibility.
+func deserializeAccount[T any](data []byte, disc [8]byte) (*T, error) {
+	if err := validateDiscriminator(data, disc); err != nil {
+		return nil, err
+	}
+	body := data[discriminatorSize:]
+	var zero T
+	need := int(unsafe.Sizeof(zero))
+	if len(body) < need {
+		return nil, fmt.Errorf("account data too short: have %d bytes, need at least %d", len(body), need)
+	}
+	var item T
+	if err := binary.Read(bytes.NewReader(body[:need]), binary.LittleEndian, &item); err != nil {
+		return nil, fmt.Errorf("deserializing account: %w", err)
+	}
+	return &item, nil
+}
 
 // RPCClient is the minimal RPC interface needed by the client.
 type RPCClient interface {
@@ -63,14 +84,7 @@ func (c *Client) FetchConfig(ctx context.Context) (*ProgramConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := validateDiscriminator(data, DiscriminatorProgramConfig); err != nil {
-		return nil, err
-	}
-	var config ProgramConfig
-	if err := binary.Read(bytes.NewReader(data[discriminatorSize:]), binary.LittleEndian, &config); err != nil {
-		return nil, fmt.Errorf("deserializing program config: %w", err)
-	}
-	return &config, nil
+	return deserializeAccount[ProgramConfig](data, DiscriminatorProgramConfig)
 }
 
 func (c *Client) FetchDistribution(ctx context.Context, epoch uint64) (*Distribution, error) {
@@ -82,14 +96,7 @@ func (c *Client) FetchDistribution(ctx context.Context, epoch uint64) (*Distribu
 	if err != nil {
 		return nil, err
 	}
-	if err := validateDiscriminator(data, DiscriminatorDistribution); err != nil {
-		return nil, err
-	}
-	var dist Distribution
-	if err := binary.Read(bytes.NewReader(data[discriminatorSize:]), binary.LittleEndian, &dist); err != nil {
-		return nil, fmt.Errorf("deserializing distribution: %w", err)
-	}
-	return &dist, nil
+	return deserializeAccount[Distribution](data, DiscriminatorDistribution)
 }
 
 func (c *Client) FetchJournal(ctx context.Context) (*Journal, error) {
@@ -101,14 +108,7 @@ func (c *Client) FetchJournal(ctx context.Context) (*Journal, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := validateDiscriminator(data, DiscriminatorJournal); err != nil {
-		return nil, err
-	}
-	var journal Journal
-	if err := binary.Read(bytes.NewReader(data[discriminatorSize:]), binary.LittleEndian, &journal); err != nil {
-		return nil, fmt.Errorf("deserializing journal: %w", err)
-	}
-	return &journal, nil
+	return deserializeAccount[Journal](data, DiscriminatorJournal)
 }
 
 func (c *Client) FetchValidatorDeposit(ctx context.Context, nodeID solana.PublicKey) (*SolanaValidatorDeposit, error) {
@@ -120,14 +120,7 @@ func (c *Client) FetchValidatorDeposit(ctx context.Context, nodeID solana.Public
 	if err != nil {
 		return nil, err
 	}
-	if err := validateDiscriminator(data, DiscriminatorSolanaValidatorDeposit); err != nil {
-		return nil, err
-	}
-	var deposit SolanaValidatorDeposit
-	if err := binary.Read(bytes.NewReader(data[discriminatorSize:]), binary.LittleEndian, &deposit); err != nil {
-		return nil, fmt.Errorf("deserializing validator deposit: %w", err)
-	}
-	return &deposit, nil
+	return deserializeAccount[SolanaValidatorDeposit](data, DiscriminatorSolanaValidatorDeposit)
 }
 
 func (c *Client) FetchAllValidatorDeposits(ctx context.Context) ([]SolanaValidatorDeposit, error) {
@@ -143,14 +136,7 @@ func (c *Client) FetchContributorRewards(ctx context.Context, serviceKey solana.
 	if err != nil {
 		return nil, err
 	}
-	if err := validateDiscriminator(data, DiscriminatorContributorRewards); err != nil {
-		return nil, err
-	}
-	var rewards ContributorRewards
-	if err := binary.Read(bytes.NewReader(data[discriminatorSize:]), binary.LittleEndian, &rewards); err != nil {
-		return nil, fmt.Errorf("deserializing contributor rewards: %w", err)
-	}
-	return &rewards, nil
+	return deserializeAccount[ContributorRewards](data, DiscriminatorContributorRewards)
 }
 
 func (c *Client) FetchAllContributorRewards(ctx context.Context) ([]ContributorRewards, error) {
@@ -265,11 +251,11 @@ func fetchAllByDiscriminator[T any](ctx context.Context, c *Client, disc [8]byte
 	results := make([]T, 0, len(accounts))
 	for _, acct := range accounts {
 		data := acct.Account.Data.GetBinary()
-		var item T
-		if err := binary.Read(bytes.NewReader(data[discriminatorSize:]), binary.LittleEndian, &item); err != nil {
+		item, err := deserializeAccount[T](data, disc)
+		if err != nil {
 			return nil, fmt.Errorf("deserializing account %s: %w", acct.Pubkey, err)
 		}
-		results = append(results, item)
+		results = append(results, *item)
 	}
 	return results, nil
 }

@@ -26,11 +26,10 @@ type ProgramConfig struct {
 	LastInitializedDistributionTimestamp uint32           // 4 bytes
 	Reserved1                           [4]byte          // 4 bytes padding
 	DebtWriteOffFeatureActivationEpoch  uint64           // 8 bytes
-	Reserved2                           [208]byte        // storage gap
 }
 
 // DistributionParameters contains epoch distribution configuration.
-// 120 bytes total.
+// 328 bytes total.
 type DistributionParameters struct {
 	CalculationGracePeriodMinutes         uint16 // 2 bytes
 	InitializationGracePeriodMinutes      uint16 // 2 bytes
@@ -38,7 +37,7 @@ type DistributionParameters struct {
 	Reserved0                             [3]uint8
 	CommunityBurnRateParameters           CommunityBurnRateParameters
 	SolanaValidatorFeeParameters          SolanaValidatorFeeParameters
-	Reserved1                             [48]byte // remaining bytes to 120
+	Reserved1                             [8][32]byte // StorageGap<8> = 256 bytes
 }
 
 // CommunityBurnRateParameters configures the community burn rate schedule.

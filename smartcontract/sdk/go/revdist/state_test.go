@@ -25,7 +25,7 @@ func TestStructSizes(t *testing.T) {
 		{"Journal", unsafe.Sizeof(Journal{}), 64},
 		{"RecipientShare", unsafe.Sizeof(RecipientShare{}), 34},
 		{"RecipientShares", unsafe.Sizeof(RecipientShares{}), 272},
-		{"DistributionParameters", unsafe.Sizeof(DistributionParameters{}), 120},
+		{"DistributionParameters", unsafe.Sizeof(DistributionParameters{}), 328},
 		{"CommunityBurnRateParameters", unsafe.Sizeof(CommunityBurnRateParameters{}), 24},
 		{"SolanaValidatorFeeParameters", unsafe.Sizeof(SolanaValidatorFeeParameters{}), 40},
 		{"RelayParameters", unsafe.Sizeof(RelayParameters{}), 40},

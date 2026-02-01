@@ -18,7 +18,7 @@ import (
 	devicedata "github.com/malbeclabs/doublezero/controlplane/telemetry/internal/data/device"
 	inetdata "github.com/malbeclabs/doublezero/controlplane/telemetry/internal/data/internet"
 	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
+	telemetry "github.com/malbeclabs/doublezero/sdk/telemetry/go"
 	"github.com/malbeclabs/doublezero/tools/solana/pkg/epoch"
 )
 
@@ -124,7 +124,7 @@ func newDeviceProvider(log *slog.Logger, env string) (devicedata.Provider, error
 	return devicedata.NewProvider(&devicedata.ProviderConfig{
 		Logger:               log,
 		ServiceabilityClient: serviceability.New(rpcClient, networkConfig.ServiceabilityProgramID),
-		TelemetryClient:      telemetry.New(log, rpcClient, nil, networkConfig.TelemetryProgramID),
+		TelemetryClient:      telemetry.New(rpcClient, networkConfig.TelemetryProgramID),
 		EpochFinder:          epochFinder,
 	})
 }
@@ -145,7 +145,7 @@ func newInternetProvider(log *slog.Logger, env string) (inetdata.Provider, error
 	return inetdata.NewProvider(&inetdata.ProviderConfig{
 		Logger:               log,
 		ServiceabilityClient: serviceability.New(rpcClient, networkConfig.ServiceabilityProgramID),
-		TelemetryClient:      telemetry.New(log, rpcClient, nil, networkConfig.TelemetryProgramID),
+		TelemetryClient:      telemetry.New(rpcClient, networkConfig.TelemetryProgramID),
 		EpochFinder:          epochFinder,
 		AgentPK:              networkConfig.InternetLatencyCollectorPK,
 	})

@@ -11,7 +11,7 @@ import (
 	"github.com/gagliardetto/solana-go"
 	data "github.com/malbeclabs/doublezero/controlplane/telemetry/internal/data/device"
 	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
+	telemetry "github.com/malbeclabs/doublezero/sdk/telemetry/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -27,11 +27,9 @@ func TestTelemetry_Data_Device_SummaryForCircuits(t *testing.T) {
 		sampleTime := time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC)
 		p := newTestProvider(t, func(uint64) (*telemetry.DeviceLatencySamples, error) {
 			return &telemetry.DeviceLatencySamples{
-				DeviceLatencySamplesHeader: telemetry.DeviceLatencySamplesHeader{
-					StartTimestampMicroseconds:   uint64(sampleTime.UnixMicro()),
-					SamplingIntervalMicroseconds: 1_000_000,
-				},
-				Samples: []uint32{100},
+				StartTimestampMicroseconds:   uint64(sampleTime.UnixMicro()),
+				SamplingIntervalMicroseconds: 1_000_000,
+				Samples:                      []uint32{100},
 			}, nil
 		}, c)
 
@@ -63,11 +61,9 @@ func TestTelemetry_Data_Device_SummaryForCircuits(t *testing.T) {
 		start := time.Date(2024, 2, 1, 0, 0, 0, 0, time.UTC)
 		p := newTestProvider(t, func(uint64) (*telemetry.DeviceLatencySamples, error) {
 			return &telemetry.DeviceLatencySamples{
-				DeviceLatencySamplesHeader: telemetry.DeviceLatencySamplesHeader{
-					StartTimestampMicroseconds:   uint64(start.UnixMicro()),
-					SamplingIntervalMicroseconds: 1_000_000,
-				},
-				Samples: []uint32{10_000, 50_000},
+				StartTimestampMicroseconds:   uint64(start.UnixMicro()),
+				SamplingIntervalMicroseconds: 1_000_000,
+				Samples:                      []uint32{10_000, 50_000},
 			}, nil
 		}, c)
 
@@ -100,11 +96,9 @@ func TestTelemetry_Data_Device_SummaryForCircuits(t *testing.T) {
 			case c1.Link.PK:
 				base := time.Date(2024, 3, 10, 12, 0, 0, 0, time.UTC)
 				return &telemetry.DeviceLatencySamples{
-					DeviceLatencySamplesHeader: telemetry.DeviceLatencySamplesHeader{
-						StartTimestampMicroseconds:   uint64(base.UnixMicro()),
-						SamplingIntervalMicroseconds: 60 * 1_000_000,
-					},
-					Samples: []uint32{25_000}, // 25ms
+					StartTimestampMicroseconds:   uint64(base.UnixMicro()),
+					SamplingIntervalMicroseconds: 60 * 1_000_000,
+					Samples:                      []uint32{25_000}, // 25ms
 				}, nil
 			case c2.Link.PK:
 				return nil, assert.AnError
@@ -132,11 +126,9 @@ func TestTelemetry_Data_Device_SummaryForCircuits(t *testing.T) {
 		c := defaultCircuit()
 		p := newTestProvider(t, func(uint64) (*telemetry.DeviceLatencySamples, error) {
 			return &telemetry.DeviceLatencySamples{
-				DeviceLatencySamplesHeader: telemetry.DeviceLatencySamplesHeader{
-					StartTimestampMicroseconds:   uint64(time.Now().UTC().UnixMicro()),
-					SamplingIntervalMicroseconds: 1_000_000,
-				},
-				Samples: []uint32{1},
+				StartTimestampMicroseconds:   uint64(time.Now().UTC().UnixMicro()),
+				SamplingIntervalMicroseconds: 1_000_000,
+				Samples:                      []uint32{1},
 			}, nil
 		}, c)
 
@@ -156,11 +148,9 @@ func TestTelemetry_Data_Device_SummaryForCircuits(t *testing.T) {
 		p := newTestProvider(t, func(uint64) (*telemetry.DeviceLatencySamples, error) {
 			// No samples in the requested window → Aggregate returns no series.
 			return &telemetry.DeviceLatencySamples{
-				DeviceLatencySamplesHeader: telemetry.DeviceLatencySamplesHeader{
-					StartTimestampMicroseconds:   uint64(time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC).UnixMicro()),
-					SamplingIntervalMicroseconds: 60 * 1_000_000,
-				},
-				Samples: []uint32{},
+				StartTimestampMicroseconds:   uint64(time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC).UnixMicro()),
+				SamplingIntervalMicroseconds: 60 * 1_000_000,
+				Samples:                      []uint32{},
 			}, nil
 		}, c)
 

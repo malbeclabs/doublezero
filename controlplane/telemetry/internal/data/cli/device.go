@@ -17,7 +17,7 @@ import (
 	"github.com/malbeclabs/doublezero/config"
 	devicedata "github.com/malbeclabs/doublezero/controlplane/telemetry/internal/data/device"
 	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
+	telemetry "github.com/malbeclabs/doublezero/sdk/telemetry/go"
 	"github.com/malbeclabs/doublezero/tools/solana/pkg/epoch"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
@@ -273,7 +273,7 @@ func newDeviceProvider(log *slog.Logger, env string) (devicedata.Provider, *sola
 	provider, err := devicedata.NewProvider(&devicedata.ProviderConfig{
 		Logger:               log,
 		ServiceabilityClient: serviceability.New(rpcClient, networkConfig.ServiceabilityProgramID),
-		TelemetryClient:      telemetry.New(log, rpcClient, nil, networkConfig.TelemetryProgramID),
+		TelemetryClient:      telemetry.New(rpcClient, networkConfig.TelemetryProgramID),
 		EpochFinder:          epochFinder,
 	})
 	if err != nil {

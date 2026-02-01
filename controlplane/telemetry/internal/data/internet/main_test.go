@@ -14,7 +14,7 @@ import (
 	data "github.com/malbeclabs/doublezero/controlplane/telemetry/internal/data/internet"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/data/stats"
 	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
+	telemetry "github.com/malbeclabs/doublezero/sdk/telemetry/go"
 )
 
 var (
@@ -49,11 +49,11 @@ func (m *mockServiceabilityClient) GetProgramData(ctx context.Context) (*service
 }
 
 type mockTelemetryClient struct {
-	GetInternetLatencySamplesFunc func(ctx context.Context, dataProvider string, originExchangePK, targetExchangePK, collectorPK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error)
+	GetInternetLatencySamplesFunc func(ctx context.Context, collectorOraclePK solana.PublicKey, dataProvider string, originExchangePK, targetExchangePK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error)
 }
 
-func (m *mockTelemetryClient) GetInternetLatencySamples(ctx context.Context, dataProvider string, originExchangePK, targetExchangePK, collectorPK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error) {
-	return m.GetInternetLatencySamplesFunc(ctx, dataProvider, originExchangePK, targetExchangePK, collectorPK, epoch)
+func (m *mockTelemetryClient) GetInternetLatencySamples(ctx context.Context, collectorOraclePK solana.PublicKey, dataProvider string, originExchangePK, targetExchangePK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error) {
+	return m.GetInternetLatencySamplesFunc(ctx, collectorOraclePK, dataProvider, originExchangePK, targetExchangePK, epoch)
 }
 
 type mockProvider struct {

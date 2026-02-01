@@ -7,11 +7,10 @@ import (
 	"time"
 
 	datastats "github.com/malbeclabs/doublezero/controlplane/telemetry/internal/data/stats"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
+	telemetry "github.com/malbeclabs/doublezero/sdk/telemetry/go"
 )
 
 type CircuitLatenciesWithHeader struct {
-	Header  *telemetry.DeviceLatencySamplesHeader
 	Samples []datastats.CircuitLatencySample
 }
 
@@ -108,12 +107,10 @@ func (p *provider) GetCircuitLatenciesForEpoch(ctx context.Context, circuitCode 
 		ttl = p.cfg.HistoricEpochLatenciesCacheTTL
 	}
 	p.SetCachedCircuitLatencies(ctx, circuitCode, epoch, &CircuitLatenciesWithHeader{
-		Header:  &account.DeviceLatencySamplesHeader,
 		Samples: samples,
 	}, ttl)
 
 	return &CircuitLatenciesWithHeader{
-		Header:  &account.DeviceLatencySamplesHeader,
 		Samples: samples,
 	}, nil
 }

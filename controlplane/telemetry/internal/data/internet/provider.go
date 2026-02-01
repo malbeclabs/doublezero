@@ -12,7 +12,7 @@ import (
 	"github.com/jellydator/ttlcache/v3"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/data/stats"
 	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
+	telemetry "github.com/malbeclabs/doublezero/sdk/telemetry/go"
 	"github.com/malbeclabs/doublezero/tools/solana/pkg/epoch"
 )
 
@@ -135,5 +135,5 @@ type ServiceabilityClient interface {
 }
 
 type TelemetryClient interface {
-	GetInternetLatencySamples(ctx context.Context, dataProvider string, originExchangePK, targetExchangePK solana.PublicKey, agentPK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error)
+	GetInternetLatencySamples(ctx context.Context, collectorOraclePK solana.PublicKey, dataProvider string, originExchangePK, targetExchangePK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error)
 }

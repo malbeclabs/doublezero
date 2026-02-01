@@ -12,7 +12,7 @@ import (
 	"github.com/gagliardetto/solana-go"
 	data "github.com/malbeclabs/doublezero/controlplane/telemetry/internal/data/internet"
 	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
+	telemetry "github.com/malbeclabs/doublezero/sdk/telemetry/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -44,11 +44,9 @@ func TestInternetProvider_GetCircuitLatencies(t *testing.T) {
 		p := newInternetTestProvider(t, func(provider string, _ uint64) (*telemetry.InternetLatencySamples, error) {
 			atomic.AddInt32(&calls, 1)
 			return &telemetry.InternetLatencySamples{
-				InternetLatencySamplesHeader: telemetry.InternetLatencySamplesHeader{
-					StartTimestampMicroseconds:   1_700_000_000_000_000,
-					SamplingIntervalMicroseconds: 1_000_000,
-				},
-				Samples: []uint32{10, 20},
+				StartTimestampMicroseconds:   1_700_000_000_000_000,
+				SamplingIntervalMicroseconds: 1_000_000,
+				Samples:                      []uint32{10, 20},
 			}, nil
 		}, c)
 
@@ -75,11 +73,9 @@ func TestInternetProvider_GetCircuitLatencies(t *testing.T) {
 		p := newInternetTestProvider(t, func(provider string, _ uint64) (*telemetry.InternetLatencySamples, error) {
 			atomic.AddInt32(&calls, 1)
 			return &telemetry.InternetLatencySamples{
-				InternetLatencySamplesHeader: telemetry.InternetLatencySamplesHeader{
-					StartTimestampMicroseconds:   1_700_000_000_000_000,
-					SamplingIntervalMicroseconds: 1_000_000,
-				},
-				Samples: []uint32{11, 22},
+				StartTimestampMicroseconds:   1_700_000_000_000_000,
+				SamplingIntervalMicroseconds: 1_000_000,
+				Samples:                      []uint32{11, 22},
 			}, nil
 		}, c)
 
@@ -131,11 +127,9 @@ func TestInternetProvider_GetCircuitLatencies(t *testing.T) {
 		p := newInternetTestProviderWithEpochFinder(t,
 			func(string, uint64) (*telemetry.InternetLatencySamples, error) {
 				return &telemetry.InternetLatencySamples{
-					InternetLatencySamplesHeader: telemetry.InternetLatencySamplesHeader{
-						StartTimestampMicroseconds:   uint64(sample.UnixMicro()),
-						SamplingIntervalMicroseconds: 1_000_000,
-					},
-					Samples: []uint32{42},
+					StartTimestampMicroseconds:   uint64(sample.UnixMicro()),
+					SamplingIntervalMicroseconds: 1_000_000,
+					Samples:                      []uint32{42},
 				}, nil
 			},
 			c,
@@ -162,11 +156,9 @@ func TestInternetProvider_GetCircuitLatencies(t *testing.T) {
 		p := newInternetTestProviderWithEpochFinder(t,
 			func(string, uint64) (*telemetry.InternetLatencySamples, error) {
 				return &telemetry.InternetLatencySamples{
-					InternetLatencySamplesHeader: telemetry.InternetLatencySamplesHeader{
-						StartTimestampMicroseconds:   uint64(start.UnixMicro()),
-						SamplingIntervalMicroseconds: 60 * 1_000_000, // 1 min
-					},
-					Samples: []uint32{10, 20, 30, 40, 50},
+					StartTimestampMicroseconds:   uint64(start.UnixMicro()),
+					SamplingIntervalMicroseconds: 60 * 1_000_000, // 1 min
+					Samples:                      []uint32{10, 20, 30, 40, 50},
 				}, nil
 			},
 			c,
@@ -193,11 +185,9 @@ func TestInternetProvider_GetCircuitLatencies(t *testing.T) {
 		p := newInternetTestProvider(t, func(_ string, epoch uint64) (*telemetry.InternetLatencySamples, error) {
 			base := time.Date(2024, 1, 1, 0, 0, int(epoch), 0, time.UTC)
 			return &telemetry.InternetLatencySamples{
-				InternetLatencySamplesHeader: telemetry.InternetLatencySamplesHeader{
-					StartTimestampMicroseconds:   uint64(base.UnixMicro()),
-					SamplingIntervalMicroseconds: 1_000_000,
-				},
-				Samples: []uint32{10, 20, 30},
+				StartTimestampMicroseconds:   uint64(base.UnixMicro()),
+				SamplingIntervalMicroseconds: 1_000_000,
+				Samples:                      []uint32{10, 20, 30},
 			}, nil
 		}, c)
 
@@ -232,11 +222,9 @@ func TestInternetProvider_GetCircuitLatencies(t *testing.T) {
 		start := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 		p := newInternetTestProvider(t, func(string, uint64) (*telemetry.InternetLatencySamples, error) {
 			return &telemetry.InternetLatencySamples{
-				InternetLatencySamplesHeader: telemetry.InternetLatencySamplesHeader{
-					StartTimestampMicroseconds:   uint64(start.UnixMicro()),
-					SamplingIntervalMicroseconds: 1_000_000,
-				},
-				Samples: []uint32{10_000, 20_000, 30_000}, // µs
+				StartTimestampMicroseconds:   uint64(start.UnixMicro()),
+				SamplingIntervalMicroseconds: 1_000_000,
+				Samples:                      []uint32{10_000, 20_000, 30_000}, // µs
 			}, nil
 		}, c)
 
@@ -295,11 +283,9 @@ func TestInternetProvider_GetCircuitLatencies(t *testing.T) {
 		p := newInternetTestProviderWithEpochFinder(t,
 			func(_ string, _ uint64) (*telemetry.InternetLatencySamples, error) {
 				return &telemetry.InternetLatencySamples{
-					InternetLatencySamplesHeader: telemetry.InternetLatencySamplesHeader{
-						StartTimestampMicroseconds:   uint64(start.UnixMicro()),
-						SamplingIntervalMicroseconds: 60 * 1_000_000, // 1 min
-					},
-					Samples: []uint32{10_000, 20_000, 30_000, 40_000, 50_000}, // µs
+					StartTimestampMicroseconds:   uint64(start.UnixMicro()),
+					SamplingIntervalMicroseconds: 60 * 1_000_000, // 1 min
+					Samples:                      []uint32{10_000, 20_000, 30_000, 40_000, 50_000}, // µs
 				}, nil
 			},
 			c,
@@ -328,11 +314,9 @@ func TestInternetProvider_GetCircuitLatencies(t *testing.T) {
 		p := newInternetTestProviderWithEpochFinder(t,
 			func(_ string, _ uint64) (*telemetry.InternetLatencySamples, error) {
 				return &telemetry.InternetLatencySamples{
-					InternetLatencySamplesHeader: telemetry.InternetLatencySamplesHeader{
-						StartTimestampMicroseconds:   uint64(start.UnixMicro()),
-						SamplingIntervalMicroseconds: 60 * 1_000_000,
-					},
-					Samples: []uint32{10_000, 20_000, 30_000, 40_000, 50_000}, // µs
+					StartTimestampMicroseconds:   uint64(start.UnixMicro()),
+					SamplingIntervalMicroseconds: 60 * 1_000_000,
+					Samples:                      []uint32{10_000, 20_000, 30_000, 40_000, 50_000}, // µs
 				}, nil
 			},
 			c,
@@ -366,11 +350,9 @@ func TestInternetProvider_GetCircuitLatencies(t *testing.T) {
 		p := newInternetTestProviderWithEpochFinder(t,
 			func(_ string, _ uint64) (*telemetry.InternetLatencySamples, error) {
 				return &telemetry.InternetLatencySamples{
-					InternetLatencySamplesHeader: telemetry.InternetLatencySamplesHeader{
-						StartTimestampMicroseconds:   uint64(start.UnixMicro()),
-						SamplingIntervalMicroseconds: 60 * 1_000_000,
-					},
-					Samples: []uint32{1_000, 2_000, 3_000}, // µs
+					StartTimestampMicroseconds:   uint64(start.UnixMicro()),
+					SamplingIntervalMicroseconds: 60 * 1_000_000,
+					Samples:                      []uint32{1_000, 2_000, 3_000}, // µs
 				}, nil
 			},
 			c,
@@ -440,7 +422,7 @@ func newInternetTestProviderWithEpochFinder(
 			},
 		},
 		TelemetryClient: &mockTelemetryClient{
-			GetInternetLatencySamplesFunc: func(ctx context.Context, dataProvider string, origin, target, agent solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error) {
+			GetInternetLatencySamplesFunc: func(ctx context.Context, _ solana.PublicKey, dataProvider string, origin, target solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error) {
 				return getFunc(dataProvider, epoch)
 			},
 		},

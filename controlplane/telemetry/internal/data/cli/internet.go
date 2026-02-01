@@ -16,7 +16,7 @@ import (
 	internetdata "github.com/malbeclabs/doublezero/controlplane/telemetry/internal/data/internet"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/data/stats"
 	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
+	telemetry "github.com/malbeclabs/doublezero/sdk/telemetry/go"
 	"github.com/malbeclabs/doublezero/tools/solana/pkg/epoch"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
@@ -277,7 +277,7 @@ func newInternetProvider(log *slog.Logger, env string) (internetdata.Provider, *
 	provider, err := internetdata.NewProvider(&internetdata.ProviderConfig{
 		Logger:               log,
 		ServiceabilityClient: serviceability.New(rpcClient, networkConfig.ServiceabilityProgramID),
-		TelemetryClient:      telemetry.New(log, rpcClient, nil, networkConfig.TelemetryProgramID),
+		TelemetryClient:      telemetry.New(rpcClient, networkConfig.TelemetryProgramID),
 		EpochFinder:          epochFinder,
 		AgentPK:              networkConfig.InternetLatencyCollectorPK,
 	})

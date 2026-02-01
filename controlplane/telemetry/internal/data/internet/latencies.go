@@ -7,7 +7,7 @@ import (
 	"time"
 
 	datastats "github.com/malbeclabs/doublezero/controlplane/telemetry/internal/data/stats"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
+	telemetry "github.com/malbeclabs/doublezero/sdk/telemetry/go"
 )
 
 const (
@@ -16,7 +16,6 @@ const (
 )
 
 type CircuitLatenciesWithHeader struct {
-	Header  *telemetry.InternetLatencySamplesHeader
 	Samples []datastats.CircuitLatencySample
 }
 
@@ -95,7 +94,7 @@ func (p *provider) GetCircuitLatenciesForEpoch(ctx context.Context, circuitCode 
 		return nil, fmt.Errorf("circuit not found: %s", circuitCode)
 	}
 
-	account, err := p.cfg.TelemetryClient.GetInternetLatencySamples(ctx, dataProvider, circuit.OriginExchange.PK, circuit.TargetExchange.PK, p.cfg.AgentPK, epoch)
+	account, err := p.cfg.TelemetryClient.GetInternetLatencySamples(ctx, p.cfg.AgentPK, dataProvider, circuit.OriginExchange.PK, circuit.TargetExchange.PK, epoch)
 	if err != nil {
 		if errors.Is(err, telemetry.ErrAccountNotFound) {
 			// If the account is not found, cache an empty array for the epoch for a short time.
@@ -117,12 +116,10 @@ func (p *provider) GetCircuitLatenciesForEpoch(ctx context.Context, circuitCode 
 		ttl = p.cfg.HistoricEpochLatenciesCacheTTL
 	}
 	p.SetCachedCircuitLatencies(ctx, circuitCode, epoch, dataProvider, &CircuitLatenciesWithHeader{
-		Header:  &account.InternetLatencySamplesHeader,
 		Samples: samples,
 	}, ttl)
 
 	return &CircuitLatenciesWithHeader{
-		Header:  &account.InternetLatencySamplesHeader,
 		Samples: samples,
 	}, nil
 }

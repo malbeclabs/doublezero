@@ -14,7 +14,7 @@ import (
 	data "github.com/malbeclabs/doublezero/controlplane/telemetry/internal/data/device"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/data/stats"
 	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
+	telemetry "github.com/malbeclabs/doublezero/sdk/telemetry/go"
 )
 
 var (

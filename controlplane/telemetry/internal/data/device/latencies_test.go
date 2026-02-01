@@ -12,7 +12,7 @@ import (
 	"github.com/gagliardetto/solana-go"
 	data "github.com/malbeclabs/doublezero/controlplane/telemetry/internal/data/device"
 	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
+	telemetry "github.com/malbeclabs/doublezero/sdk/telemetry/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -27,11 +27,9 @@ func TestTelemetry_Data_Device_Latencies(t *testing.T) {
 		p := newTestProvider(t, func(uint64) (*telemetry.DeviceLatencySamples, error) {
 			atomic.AddInt32(&calls, 1)
 			return &telemetry.DeviceLatencySamples{
-				DeviceLatencySamplesHeader: telemetry.DeviceLatencySamplesHeader{
-					StartTimestampMicroseconds:   1_600_000_000_000_000,
-					SamplingIntervalMicroseconds: 1_000_000,
-				},
-				Samples: []uint32{10, 20},
+				StartTimestampMicroseconds:   1_600_000_000_000_000,
+				SamplingIntervalMicroseconds: 1_000_000,
+				Samples:                      []uint32{10, 20},
 			}, nil
 		}, c)
 
@@ -85,11 +83,9 @@ func TestTelemetry_Data_Device_Latencies(t *testing.T) {
 		sampleTime := time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)
 		p := newTestProvider(t, func(uint64) (*telemetry.DeviceLatencySamples, error) {
 			return &telemetry.DeviceLatencySamples{
-				DeviceLatencySamplesHeader: telemetry.DeviceLatencySamplesHeader{
-					StartTimestampMicroseconds:   uint64(sampleTime.UnixMicro()),
-					SamplingIntervalMicroseconds: 1_000_000,
-				},
-				Samples: []uint32{42},
+				StartTimestampMicroseconds:   uint64(sampleTime.UnixMicro()),
+				SamplingIntervalMicroseconds: 1_000_000,
+				Samples:                      []uint32{42},
 			}, nil
 		}, c)
 
@@ -113,11 +109,9 @@ func TestTelemetry_Data_Device_Latencies(t *testing.T) {
 		start := time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)
 		p := newTestProvider(t, func(uint64) (*telemetry.DeviceLatencySamples, error) {
 			return &telemetry.DeviceLatencySamples{
-				DeviceLatencySamplesHeader: telemetry.DeviceLatencySamplesHeader{
-					StartTimestampMicroseconds:   uint64(start.UnixMicro()),
-					SamplingIntervalMicroseconds: 60 * 1_000_000, // 1 minute
-				},
-				Samples: []uint32{10, 20, 30, 40, 50},
+				StartTimestampMicroseconds:   uint64(start.UnixMicro()),
+				SamplingIntervalMicroseconds: 60 * 1_000_000, // 1 minute
+				Samples:                      []uint32{10, 20, 30, 40, 50},
 			}, nil
 		}, c)
 
@@ -137,11 +131,9 @@ func TestTelemetry_Data_Device_Latencies(t *testing.T) {
 		p := newTestProvider(t, func(epoch uint64) (*telemetry.DeviceLatencySamples, error) {
 			base := time.Date(2023, 1, 1, 0, 0, int(epoch), 0, time.UTC)
 			return &telemetry.DeviceLatencySamples{
-				DeviceLatencySamplesHeader: telemetry.DeviceLatencySamplesHeader{
-					StartTimestampMicroseconds:   uint64(base.UnixMicro()),
-					SamplingIntervalMicroseconds: 1_000_000,
-				},
-				Samples: []uint32{10, 20, 30},
+				StartTimestampMicroseconds:   uint64(base.UnixMicro()),
+				SamplingIntervalMicroseconds: 1_000_000,
+				Samples:                      []uint32{10, 20, 30},
 			}, nil
 		}, c)
 
@@ -178,11 +170,9 @@ func TestTelemetry_Data_Device_Latencies(t *testing.T) {
 		start := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
 		p := newTestProvider(t, func(uint64) (*telemetry.DeviceLatencySamples, error) {
 			return &telemetry.DeviceLatencySamples{
-				DeviceLatencySamplesHeader: telemetry.DeviceLatencySamplesHeader{
-					StartTimestampMicroseconds:   uint64(start.UnixMicro()),
-					SamplingIntervalMicroseconds: 1_000_000,
-				},
-				Samples: []uint32{10_000, 20_000, 30_000}, // µs
+				StartTimestampMicroseconds:   uint64(start.UnixMicro()),
+				SamplingIntervalMicroseconds: 1_000_000,
+				Samples:                      []uint32{10_000, 20_000, 30_000}, // µs
 			}, nil
 		}, c)
 
@@ -241,11 +231,9 @@ func TestTelemetry_Data_Device_Latencies(t *testing.T) {
 		start := time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)
 		p := newTestProvider(t, func(uint64) (*telemetry.DeviceLatencySamples, error) {
 			return &telemetry.DeviceLatencySamples{
-				DeviceLatencySamplesHeader: telemetry.DeviceLatencySamplesHeader{
-					StartTimestampMicroseconds:   uint64(start.UnixMicro()),
-					SamplingIntervalMicroseconds: 60 * 1_000_000,
-				},
-				Samples: []uint32{10_000, 20_000, 30_000, 40_000, 50_000},
+				StartTimestampMicroseconds:   uint64(start.UnixMicro()),
+				SamplingIntervalMicroseconds: 60 * 1_000_000,
+				Samples:                      []uint32{10_000, 20_000, 30_000, 40_000, 50_000},
 			}, nil
 		}, c)
 
@@ -268,11 +256,9 @@ func TestTelemetry_Data_Device_Latencies(t *testing.T) {
 		start := time.Date(2023, 1, 1, 13, 0, 0, 0, time.UTC)
 		p := newTestProvider(t, func(uint64) (*telemetry.DeviceLatencySamples, error) {
 			return &telemetry.DeviceLatencySamples{
-				DeviceLatencySamplesHeader: telemetry.DeviceLatencySamplesHeader{
-					StartTimestampMicroseconds:   uint64(start.UnixMicro()),
-					SamplingIntervalMicroseconds: 60 * 1_000_000,
-				},
-				Samples: []uint32{10_000, 20_000, 30_000, 40_000, 50_000},
+				StartTimestampMicroseconds:   uint64(start.UnixMicro()),
+				SamplingIntervalMicroseconds: 60 * 1_000_000,
+				Samples:                      []uint32{10_000, 20_000, 30_000, 40_000, 50_000},
 			}, nil
 		}, c)
 
@@ -302,11 +288,9 @@ func TestTelemetry_Data_Device_Latencies(t *testing.T) {
 		start := time.Date(2023, 1, 1, 14, 0, 0, 0, time.UTC)
 		p := newTestProvider(t, func(uint64) (*telemetry.DeviceLatencySamples, error) {
 			return &telemetry.DeviceLatencySamples{
-				DeviceLatencySamplesHeader: telemetry.DeviceLatencySamplesHeader{
-					StartTimestampMicroseconds:   uint64(start.UnixMicro()),
-					SamplingIntervalMicroseconds: 60 * 1_000_000,
-				},
-				Samples: []uint32{1_000, 2_000, 3_000}, // µs
+				StartTimestampMicroseconds:   uint64(start.UnixMicro()),
+				SamplingIntervalMicroseconds: 60 * 1_000_000,
+				Samples:                      []uint32{1_000, 2_000, 3_000}, // µs
 			}, nil
 		}, c)
 

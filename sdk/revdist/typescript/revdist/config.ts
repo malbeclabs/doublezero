@@ -9,6 +9,12 @@ export const SOLANA_RPC_URLS: Record<string, string> = {
   localnet: "http://localhost:8899",
 };
 
+export const ORACLE_URLS: Record<string, string> = {
+  "mainnet-beta":
+    "https://sol-2z-oracle-api-v1.mainnet-beta.doublezero.xyz",
+  testnet: "https://sol-2z-oracle-api-v1.testnet.doublezero.xyz",
+};
+
 export const LEDGER_RPC_URLS: Record<string, string> = {
   "mainnet-beta":
     "https://doublezero-mainnet-beta.rpcpool.com/db336024-e7a8-46b1-80e5-352dd77060ab",

@@ -23,7 +23,7 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/malbeclabs/doublezero/controlplane/controller/config"
 	pb "github.com/malbeclabs/doublezero/controlplane/proto/controller/gen/pb-go"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 )
 
 // helper that creates a slice of Tunnel structs with sequential IDs. We can use this to populate
@@ -89,7 +89,7 @@ func TestGetConfig(t *testing.T) {
 			Name:        "render_unicast_config_successfully",
 			Description: "render configuration for a set of unicast devices successfully",
 			StateCache: stateCache{
-				Config: serviceability.Config{
+				GlobalConfig: serviceability.GlobalConfig{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
 				UnicastVrfs: []uint16{1},
@@ -148,7 +148,7 @@ func TestGetConfig(t *testing.T) {
 			Name:        "render_multicast_config_successfully",
 			Description: "render configuration for a set of multicast devices successfully",
 			StateCache: stateCache{
-				Config: serviceability.Config{
+				GlobalConfig: serviceability.GlobalConfig{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
 				UnicastVrfs: []uint16{1},
@@ -234,7 +234,7 @@ func TestGetConfig(t *testing.T) {
 			Name:        "get_config_mixed_tunnels_successfully",
 			Description: "get config for a mix of unicast and multicast tunnels",
 			StateCache: stateCache{
-				Config: serviceability.Config{
+				GlobalConfig: serviceability.GlobalConfig{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
 				UnicastVrfs: []uint16{1},
@@ -333,7 +333,7 @@ func TestGetConfig(t *testing.T) {
 			Description: "get config for a mix of unicast and multicast tunnels with no hardware option",
 			NoHardware:  true,
 			StateCache: stateCache{
-				Config: serviceability.Config{
+				GlobalConfig: serviceability.GlobalConfig{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
 				UnicastVrfs: []uint16{1},
@@ -431,7 +431,7 @@ func TestGetConfig(t *testing.T) {
 			Name:        "render_base_config_successfully",
 			Description: "render base configuration with BGP peers",
 			StateCache: stateCache{
-				Config: serviceability.Config{
+				GlobalConfig: serviceability.GlobalConfig{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
 				UnicastVrfs: []uint16{1},
@@ -493,7 +493,7 @@ func TestGetConfig(t *testing.T) {
 			Name:        "render_base_config_with_mgmt_vrf_successfully",
 			Description: "render base configuration with BGP peers",
 			StateCache: stateCache{
-				Config: serviceability.Config{
+				GlobalConfig: serviceability.GlobalConfig{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
 				UnicastVrfs: []uint16{1},
@@ -611,7 +611,7 @@ func TestGetConfigWithPathologies(t *testing.T) {
 			Name:        "device_with_pathologies_returns_failed_precondition",
 			Description: "GetConfig should return FailedPrecondition error for device with pathologies",
 			StateCache: stateCache{
-				Config: serviceability.Config{
+				GlobalConfig: serviceability.GlobalConfig{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
 				UnicastVrfs: []uint16{1},
@@ -704,7 +704,7 @@ func TestStateCache(t *testing.T) {
 	tests := []struct {
 		Name            string
 		Description     string
-		Config          serviceability.Config
+		GlobalConfig    serviceability.GlobalConfig
 		Users           []serviceability.User
 		Devices         []serviceability.Device
 		Links           []serviceability.Link
@@ -715,7 +715,7 @@ func TestStateCache(t *testing.T) {
 	}{
 		{
 			Name: "populate_device_cache_successfully",
-			Config: serviceability.Config{
+			GlobalConfig: serviceability.GlobalConfig{
 				MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 			},
 			MulticastGroups: []serviceability.MulticastGroup{
@@ -907,7 +907,7 @@ func TestStateCache(t *testing.T) {
 				},
 			},
 			StateCache: stateCache{
-				Config: serviceability.Config{
+				GlobalConfig: serviceability.GlobalConfig{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
 				MulticastGroups: map[string]serviceability.MulticastGroup{
@@ -1022,7 +1022,7 @@ func TestStateCache(t *testing.T) {
 		},
 		{
 			Name: "device_with_pathologies_added_to_cache",
-			Config: serviceability.Config{
+			GlobalConfig: serviceability.GlobalConfig{
 				MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 			},
 			Exchanges: []serviceability.Exchange{
@@ -1061,7 +1061,7 @@ func TestStateCache(t *testing.T) {
 				},
 			},
 			StateCache: stateCache{
-				Config: serviceability.Config{
+				GlobalConfig: serviceability.GlobalConfig{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
 				MulticastGroups: map[string]serviceability.MulticastGroup{},
@@ -1104,7 +1104,7 @@ func TestStateCache(t *testing.T) {
 		},
 		{
 			Name: "device_with_out_of_range_exchange_bgp_community_pathology",
-			Config: serviceability.Config{
+			GlobalConfig: serviceability.GlobalConfig{
 				MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 			},
 			Exchanges: []serviceability.Exchange{
@@ -1157,7 +1157,7 @@ func TestStateCache(t *testing.T) {
 			},
 			Links: []serviceability.Link{},
 			StateCache: stateCache{
-				Config: serviceability.Config{
+				GlobalConfig: serviceability.GlobalConfig{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
 				MulticastGroups: map[string]serviceability.MulticastGroup{},
@@ -1565,7 +1565,7 @@ func TestStateCache(t *testing.T) {
 			m := &mockServiceabilityProgramClient{
 				GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
 					return &serviceability.ProgramData{
-						Config:          test.Config,
+						GlobalConfig:    &test.GlobalConfig,
 						Users:           test.Users,
 						Devices:         test.Devices,
 						Links:           test.Links,
@@ -1640,7 +1640,7 @@ func TestServiceabilityProgramClientArg(t *testing.T) {
 func TestEndToEnd(t *testing.T) {
 	tests := []struct {
 		Name            string
-		Config          serviceability.Config
+		GlobalConfig    serviceability.GlobalConfig
 		Users           []serviceability.User
 		Devices         []serviceability.Device
 		Links           []serviceability.Link
@@ -1653,7 +1653,7 @@ func TestEndToEnd(t *testing.T) {
 	}{
 		{
 			Name: "fetch_accounts_and_render_config_successfully",
-			Config: serviceability.Config{
+			GlobalConfig: serviceability.GlobalConfig{
 				MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 			},
 			MulticastGroups: []serviceability.MulticastGroup{
@@ -1783,9 +1783,9 @@ func TestEndToEnd(t *testing.T) {
 		},
 		{
 			Name: "remove_unknown_peers_successfully",
-			Config: serviceability.Config{
+			GlobalConfig: serviceability.GlobalConfig{
 				MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
-				TunnelTunnelBlock:   [5]uint8{172, 16, 0, 0, 16},
+				DeviceTunnelBlock:   [5]uint8{172, 16, 0, 0, 16},
 				UserTunnelBlock:     [5]uint8{169, 254, 0, 0, 16},
 			},
 			MulticastGroups: []serviceability.MulticastGroup{
@@ -1901,7 +1901,7 @@ func TestEndToEnd(t *testing.T) {
 				BgpPeers: []string{
 					"10.0.0.1",    // Not in any DZ block - should not be flagged for removal
 					"172.17.0.1",  // Not in any DZ block - should not be flagged for removal
-					"172.16.0.1",  // In TunnelTunnelBlock - should be flagged for removal
+					"172.16.0.1",  // In DeviceTunnelBlock - should be flagged for removal
 					"169.254.0.7", // In UserTunnelBlock - should be flagged for removal
 					"169.254.0.3", // In UserTunnelBlock, but associated with a user - should not be flagged for removal
 				},
@@ -1910,9 +1910,9 @@ func TestEndToEnd(t *testing.T) {
 		},
 		{
 			Name: "remove_last_user_from_device",
-			Config: serviceability.Config{
+			GlobalConfig: serviceability.GlobalConfig{
 				MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
-				TunnelTunnelBlock:   [5]uint8{172, 16, 0, 0, 16},
+				DeviceTunnelBlock:   [5]uint8{172, 16, 0, 0, 16},
 				UserTunnelBlock:     [5]uint8{169, 254, 0, 0, 16},
 			},
 			Exchanges: []serviceability.Exchange{
@@ -2060,7 +2060,7 @@ func TestEndToEnd(t *testing.T) {
 			m := &mockServiceabilityProgramClient{
 				GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
 					return &serviceability.ProgramData{
-						Config:          test.Config,
+						GlobalConfig:    &test.GlobalConfig,
 						Users:           test.Users,
 						Devices:         test.Devices,
 						Links:           test.Links,

@@ -126,6 +126,10 @@ func (d DeviceStatus) MarshalJSON() ([]byte, error) {
 	return json.Marshal(d.String())
 }
 
+func (d DeviceStatus) IsDrained() bool {
+	return d == DeviceStatusDrained
+}
+
 type DeviceHealth uint8
 
 const (
@@ -514,6 +518,10 @@ func (l LinkStatus) String() string {
 
 func (l LinkStatus) MarshalJSON() ([]byte, error) {
 	return json.Marshal(l.String())
+}
+
+func (l LinkStatus) IsHardDrained() bool {
+	return l == LinkStatusHardDrained
 }
 
 type LinkHealth uint8

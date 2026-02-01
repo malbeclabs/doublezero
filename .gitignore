@@ -23,6 +23,10 @@ revdist-cli
 .env
 
 dist/
+node_modules/
+__pycache__/
+.pytest_cache/
+.venv/
 
 # Local devnet deployment artifacts.
 dev/.deploy/

@@ -116,27 +116,52 @@ rust-program-accounts-compat:
 	cargo run -p doublezero -- accounts -em --no-output
 
 # -----------------------------------------------------------------------------
-# SDK targets (revenue distribution)
+# SDK targets
 # -----------------------------------------------------------------------------
 .PHONY: sdk-test
 sdk-test:
 	go test ./sdk/revdist/go/...
+	go test ./sdk/serviceability/go/...
+	go test ./sdk/telemetry/go/...
 	$(MAKE) python-test-revdist
+	$(MAKE) python-test-serviceability
+	$(MAKE) python-test-telemetry
 	$(MAKE) typescript-test-revdist
+	$(MAKE) typescript-test-serviceability
+	$(MAKE) typescript-test-telemetry
 
 .PHONY: python-test-revdist
 python-test-revdist:
 	cd sdk/revdist/python && uv run pytest
 
+.PHONY: python-test-serviceability
+python-test-serviceability:
+	cd sdk/serviceability/python && uv run pytest
+
+.PHONY: python-test-telemetry
+python-test-telemetry:
+	cd sdk/telemetry/python && uv run pytest
+
 .PHONY: typescript-test-revdist
 typescript-test-revdist:
 	cd sdk/revdist/typescript && bun install && npx tsc --noEmit && bun test
+
+.PHONY: typescript-test-serviceability
+typescript-test-serviceability:
+	cd sdk/serviceability/typescript && bun install && bun test
+
+.PHONY: typescript-test-telemetry
+typescript-test-telemetry:
+	cd sdk/telemetry/typescript && bun install && bun test
 
 .PHONY: sdk-compat-test
 sdk-compat-test:
 	REVDIST_COMPAT_TEST=1 go test -run TestCompat -v ./sdk/revdist/go/...
 	$(MAKE) python-compat-test-revdist
 	$(MAKE) typescript-compat-test-revdist
+	SERVICEABILITY_COMPAT_TEST=1 go test -run TestCompat -v ./sdk/serviceability/go/...
+	$(MAKE) python-compat-test-serviceability
+	$(MAKE) typescript-compat-test-serviceability
 
 .PHONY: python-compat-test-revdist
 python-compat-test-revdist:
@@ -146,9 +171,19 @@ python-compat-test-revdist:
 typescript-compat-test-revdist:
 	cd sdk/revdist/typescript && bun install && REVDIST_COMPAT_TEST=1 bun test --grep compat
 
+.PHONY: python-compat-test-serviceability
+python-compat-test-serviceability:
+	cd sdk/serviceability/python && SERVICEABILITY_COMPAT_TEST=1 uv run pytest -k compat -v
+
+.PHONY: typescript-compat-test-serviceability
+typescript-compat-test-serviceability:
+	cd sdk/serviceability/typescript && bun install && SERVICEABILITY_COMPAT_TEST=1 bun test --grep compat
+
 .PHONY: generate-fixtures
 generate-fixtures:
 	cd sdk/revdist/testdata/fixtures/generate-fixtures && cargo run
+	cd sdk/serviceability/testdata/fixtures/generate-fixtures && cargo run
+	cd sdk/telemetry/testdata/fixtures/generate-fixtures && cargo run
 
 # -----------------------------------------------------------------------------
 # E2E targets

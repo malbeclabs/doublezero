@@ -144,15 +144,15 @@ python-test-telemetry:
 
 .PHONY: typescript-test-revdist
 typescript-test-revdist:
-	cd sdk/revdist/typescript && bun install && npx tsc --noEmit && bun test
+	cd sdk/revdist/typescript && bun install && bun tsc --noEmit && bun test
 
 .PHONY: typescript-test-serviceability
 typescript-test-serviceability:
-	cd sdk/serviceability/typescript && bun install && bun test
+	cd sdk/serviceability/typescript && bun install && bun tsc --noEmit && bun test
 
 .PHONY: typescript-test-telemetry
 typescript-test-telemetry:
-	cd sdk/telemetry/typescript && bun install && bun test
+	cd sdk/telemetry/typescript && bun install && bun tsc --noEmit && bun test
 
 .PHONY: sdk-compat-test
 sdk-compat-test:

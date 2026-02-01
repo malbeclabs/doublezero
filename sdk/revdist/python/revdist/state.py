@@ -359,3 +359,84 @@ class Journal:
             next_dz_epoch_to_sweep_tokens=next_epoch,
             lifetime_swapped_2z_amount=lifetime,
         )
+
+
+# ---------------------------------------------------------------------------
+# DZ Ledger record types (Borsh-serialized)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class ComputedSolanaValidatorDebt:
+    node_id: Pubkey  # 32 bytes
+    amount: int  # u64
+
+
+@dataclass
+class ComputedSolanaValidatorDebts:
+    blockhash: bytes  # 32 bytes
+    first_solana_epoch: int  # u64
+    last_solana_epoch: int  # u64
+    debts: list[ComputedSolanaValidatorDebt]
+
+    @classmethod
+    def from_bytes(cls, data: bytes) -> ComputedSolanaValidatorDebts:
+        blockhash = data[0:32]
+        first_epoch, last_epoch = struct.unpack_from("<2Q", data, 32)
+        count = struct.unpack_from("<I", data, 48)[0]
+        debts = []
+        off = 52
+        for _ in range(count):
+            node_id = _pubkey(data, off)
+            amount = struct.unpack_from("<Q", data, off + 32)[0]
+            debts.append(ComputedSolanaValidatorDebt(node_id=node_id, amount=amount))
+            off += 40
+        return cls(
+            blockhash=blockhash,
+            first_solana_epoch=first_epoch,
+            last_solana_epoch=last_epoch,
+            debts=debts,
+        )
+
+
+@dataclass
+class RewardShare:
+    contributor_key: Pubkey  # 32 bytes
+    unit_share: int  # u32
+    remaining_bytes: bytes  # 4 bytes
+
+    @property
+    def is_blocked(self) -> bool:
+        val = struct.unpack_from("<I", self.remaining_bytes, 0)[0]
+        return bool(val & (1 << 31))
+
+    @property
+    def economic_burn_rate(self) -> int:
+        val = struct.unpack_from("<I", self.remaining_bytes, 0)[0]
+        return val & 0x3FFFFFFF
+
+
+@dataclass
+class ShapleyOutputStorage:
+    epoch: int  # u64
+    rewards: list[RewardShare]
+    total_unit_shares: int  # u32
+
+    @classmethod
+    def from_bytes(cls, data: bytes) -> ShapleyOutputStorage:
+        epoch = struct.unpack_from("<Q", data, 0)[0]
+        count = struct.unpack_from("<I", data, 8)[0]
+        rewards = []
+        off = 12
+        for _ in range(count):
+            key = _pubkey(data, off)
+            unit_share = struct.unpack_from("<I", data, off + 32)[0]
+            remaining = data[off + 36 : off + 40]
+            rewards.append(RewardShare(
+                contributor_key=key,
+                unit_share=unit_share,
+                remaining_bytes=remaining,
+            ))
+            off += 40
+        total_unit_shares = struct.unpack_from("<I", data, off)[0]
+        return cls(epoch=epoch, rewards=rewards, total_unit_shares=total_unit_shares)

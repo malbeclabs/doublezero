@@ -13,7 +13,11 @@ The revenue distribution program manages epoch-based revenue collection from Sol
 5. 2Z rewards are distributed to contributors based on their shares
 6. A community burn rate determines what portion of 2Z is burned
 
-## Account Types
+## Data Sources
+
+The SDK reads from two RPC endpoints:
+
+**Solana RPC** — on-chain program accounts:
 
 | Account | PDA Seeds | Description |
 |---------|-----------|-------------|
@@ -22,6 +26,13 @@ The revenue distribution program manages epoch-based revenue collection from Sol
 | `SolanaValidatorDeposit` | `["solana_validator_deposit", node_id]` | Per-validator deposit account; balance = lamports - rent exempt minimum |
 | `ContributorRewards` | `["contributor_rewards", service_key]` | Per-contributor reward split configuration (up to 8 recipients) |
 | `Journal` | `["journal"]` | Aggregate balance tracking across the program |
+
+**DZ Ledger RPC** — ledger records (Borsh-serialized):
+
+| Record | PDA Seeds | Description |
+|--------|-----------|-------------|
+| `ComputedSolanaValidatorDebts` | `["solana_validator_debt", epoch_le_bytes]` | Per-epoch validator debt calculations |
+| `ShapleyOutputStorage` | `["reward_share", epoch_le_bytes]` | Per-epoch Shapley value reward shares |
 
 ## Languages
 

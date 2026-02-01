@@ -8,3 +8,13 @@ export const SOLANA_RPC_URLS: Record<string, string> = {
   devnet: "https://api.devnet.solana.com",
   localnet: "http://localhost:8899",
 };
+
+export const LEDGER_RPC_URLS: Record<string, string> = {
+  "mainnet-beta":
+    "https://doublezero-mainnet-beta.rpcpool.com/db336024-e7a8-46b1-80e5-352dd77060ab",
+  testnet:
+    "https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16",
+  devnet:
+    "https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16",
+  localnet: "http://localhost:8899",
+};

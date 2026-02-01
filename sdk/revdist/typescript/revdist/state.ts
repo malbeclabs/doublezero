@@ -449,3 +449,69 @@ export function deserializeJournal(
     lifetimeSwapped2zAmount,
   };
 }
+
+// ---------------------------------------------------------------------------
+// DZ Ledger record types (Borsh-serialized)
+// ---------------------------------------------------------------------------
+
+export interface ComputedSolanaValidatorDebt {
+  nodeId: PublicKey;
+  amount: bigint;
+}
+
+export interface ComputedSolanaValidatorDebts {
+  blockhash: Uint8Array;
+  firstSolanaEpoch: bigint;
+  lastSolanaEpoch: bigint;
+  debts: ComputedSolanaValidatorDebt[];
+}
+
+export function deserializeComputedSolanaValidatorDebts(
+  data: Uint8Array,
+): ComputedSolanaValidatorDebts {
+  const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const blockhash = data.slice(0, 32);
+  const firstSolanaEpoch = dv.getBigUint64(32, true);
+  const lastSolanaEpoch = dv.getBigUint64(40, true);
+  const count = dv.getUint32(48, true);
+  const debts: ComputedSolanaValidatorDebt[] = [];
+  let off = 52;
+  for (let i = 0; i < count; i++) {
+    const nodeId = new PublicKey(data.slice(off, off + 32));
+    const amount = dv.getBigUint64(off + 32, true);
+    debts.push({ nodeId, amount });
+    off += 40;
+  }
+  return { blockhash, firstSolanaEpoch, lastSolanaEpoch, debts };
+}
+
+export interface RewardShare {
+  contributorKey: PublicKey;
+  unitShare: number;
+  remainingBytes: Uint8Array;
+}
+
+export interface ShapleyOutputStorage {
+  epoch: bigint;
+  rewards: RewardShare[];
+  totalUnitShares: number;
+}
+
+export function deserializeShapleyOutputStorage(
+  data: Uint8Array,
+): ShapleyOutputStorage {
+  const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const epoch = dv.getBigUint64(0, true);
+  const count = dv.getUint32(8, true);
+  const rewards: RewardShare[] = [];
+  let off = 12;
+  for (let i = 0; i < count; i++) {
+    const contributorKey = new PublicKey(data.slice(off, off + 32));
+    const unitShare = dv.getUint32(off + 32, true);
+    const remainingBytes = data.slice(off + 36, off + 40);
+    rewards.push({ contributorKey, unitShare, remainingBytes });
+    off += 40;
+  }
+  const totalUnitShares = dv.getUint32(off, true);
+  return { epoch, rewards, totalUnitShares };
+}

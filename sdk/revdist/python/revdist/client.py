@@ -9,7 +9,7 @@ from solana.rpc.api import Client as SolanaHTTPClient  # type: ignore[import-unt
 from solders.pubkey import Pubkey  # type: ignore[import-untyped]
 from solders.rpc.responses import GetAccountInfoResp  # type: ignore[import-untyped]
 
-from revdist.config import PROGRAM_ID, SOLANA_RPC_URLS
+from revdist.config import LEDGER_RPC_URLS, PROGRAM_ID, SOLANA_RPC_URLS
 from revdist.discriminator import (
     DISCRIMINATOR_CONTRIBUTOR_REWARDS,
     DISCRIMINATOR_DISTRIBUTION,
@@ -22,13 +22,17 @@ from revdist.pda import (
     derive_contributor_rewards_pda,
     derive_distribution_pda,
     derive_journal_pda,
+    derive_reward_share_pda,
+    derive_validator_debt_pda,
     derive_validator_deposit_pda,
 )
 from revdist.state import (
+    ComputedSolanaValidatorDebts,
     ContributorRewards,
     Distribution,
     Journal,
     ProgramConfig,
+    ShapleyOutputStorage,
     SolanaValidatorDeposit,
 )
 
@@ -40,8 +44,14 @@ class SolanaClient(Protocol):
 class Client:
     """Read-only client for revenue distribution program accounts."""
 
-    def __init__(self, rpc: SolanaClient, program_id: Pubkey) -> None:
-        self._rpc = rpc
+    def __init__(
+        self,
+        solana_rpc: SolanaClient,
+        ledger_rpc: SolanaClient,
+        program_id: Pubkey,
+    ) -> None:
+        self._solana_rpc = solana_rpc
+        self._ledger_rpc = ledger_rpc
         self._program_id = program_id
 
     @classmethod
@@ -49,6 +59,7 @@ class Client:
         """Create a client configured for mainnet-beta."""
         return cls(
             SolanaHTTPClient(SOLANA_RPC_URLS["mainnet-beta"]),
+            SolanaHTTPClient(LEDGER_RPC_URLS["mainnet-beta"]),
             Pubkey.from_string(PROGRAM_ID),
         )
 
@@ -57,6 +68,7 @@ class Client:
         """Create a client configured for testnet."""
         return cls(
             SolanaHTTPClient(SOLANA_RPC_URLS["testnet"]),
+            SolanaHTTPClient(LEDGER_RPC_URLS["testnet"]),
             Pubkey.from_string(PROGRAM_ID),
         )
 
@@ -65,6 +77,7 @@ class Client:
         """Create a client configured for devnet."""
         return cls(
             SolanaHTTPClient(SOLANA_RPC_URLS["devnet"]),
+            SolanaHTTPClient(LEDGER_RPC_URLS["devnet"]),
             Pubkey.from_string(PROGRAM_ID),
         )
 
@@ -73,29 +86,32 @@ class Client:
         """Create a client configured for localnet."""
         return cls(
             SolanaHTTPClient(SOLANA_RPC_URLS["localnet"]),
+            SolanaHTTPClient(LEDGER_RPC_URLS["localnet"]),
             Pubkey.from_string(PROGRAM_ID),
         )
 
+    # -- Solana RPC (on-chain accounts) --
+
     def fetch_config(self) -> ProgramConfig:
         addr, _ = derive_config_pda(self._program_id)
-        data = self._fetch_account_data(addr)
+        data = self._fetch_solana_account_data(addr)
         return ProgramConfig.from_bytes(data, DISCRIMINATOR_PROGRAM_CONFIG)
 
     def fetch_distribution(self, epoch: int) -> Distribution:
         addr, _ = derive_distribution_pda(self._program_id, epoch)
-        data = self._fetch_account_data(addr)
+        data = self._fetch_solana_account_data(addr)
         return Distribution.from_bytes(data, DISCRIMINATOR_DISTRIBUTION)
 
     def fetch_journal(self) -> Journal:
         addr, _ = derive_journal_pda(self._program_id)
-        data = self._fetch_account_data(addr)
+        data = self._fetch_solana_account_data(addr)
         return Journal.from_bytes(data, DISCRIMINATOR_JOURNAL)
 
     def fetch_validator_deposit(
         self, node_id: Pubkey
     ) -> SolanaValidatorDeposit:
         addr, _ = derive_validator_deposit_pda(self._program_id, node_id)
-        data = self._fetch_account_data(addr)
+        data = self._fetch_solana_account_data(addr)
         return SolanaValidatorDeposit.from_bytes(
             data, DISCRIMINATOR_SOLANA_VALIDATOR_DEPOSIT
         )
@@ -104,13 +120,35 @@ class Client:
         self, service_key: Pubkey
     ) -> ContributorRewards:
         addr, _ = derive_contributor_rewards_pda(self._program_id, service_key)
-        data = self._fetch_account_data(addr)
+        data = self._fetch_solana_account_data(addr)
         return ContributorRewards.from_bytes(
             data, DISCRIMINATOR_CONTRIBUTOR_REWARDS
         )
 
-    def _fetch_account_data(self, addr: Pubkey) -> bytes:
-        resp = self._rpc.get_account_info(addr)
+    # -- DZ Ledger RPC (ledger records) --
+
+    def fetch_validator_debts(
+        self, epoch: int
+    ) -> ComputedSolanaValidatorDebts:
+        addr, _ = derive_validator_debt_pda(self._program_id, epoch)
+        data = self._fetch_ledger_record_data(addr)
+        return ComputedSolanaValidatorDebts.from_bytes(data)
+
+    def fetch_reward_shares(self, epoch: int) -> ShapleyOutputStorage:
+        addr, _ = derive_reward_share_pda(self._program_id, epoch)
+        data = self._fetch_ledger_record_data(addr)
+        return ShapleyOutputStorage.from_bytes(data)
+
+    # -- Internal helpers --
+
+    def _fetch_solana_account_data(self, addr: Pubkey) -> bytes:
+        resp = self._solana_rpc.get_account_info(addr)
         if resp.value is None:
             raise ValueError(f"account not found: {addr}")
+        return bytes(resp.value.data)
+
+    def _fetch_ledger_record_data(self, addr: Pubkey) -> bytes:
+        resp = self._ledger_rpc.get_account_info(addr)
+        if resp.value is None:
+            raise ValueError(f"ledger record not found: {addr}")
         return bytes(resp.value.data)

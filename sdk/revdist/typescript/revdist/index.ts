@@ -1,4 +1,4 @@
-export { PROGRAM_ID, SOLANA_RPC_URLS } from "./config.js";
+export { PROGRAM_ID, SOLANA_RPC_URLS, LEDGER_RPC_URLS } from "./config.js";
 export { Client } from "./client.js";
 
 export {
@@ -21,6 +21,10 @@ export type {
   CommunityBurnRateParameters,
   RelayParameters,
   RecipientShare,
+  ComputedSolanaValidatorDebt,
+  ComputedSolanaValidatorDebts,
+  RewardShare,
+  ShapleyOutputStorage,
 } from "./state.js";
 
 export {
@@ -29,6 +33,8 @@ export {
   deserializeSolanaValidatorDeposit,
   deserializeContributorRewards,
   deserializeJournal,
+  deserializeComputedSolanaValidatorDebts,
+  deserializeShapleyOutputStorage,
   PROGRAM_CONFIG_STRUCT_SIZE,
   DISTRIBUTION_STRUCT_SIZE,
   SOLANA_VALIDATOR_DEPOSIT_STRUCT_SIZE,
@@ -42,4 +48,6 @@ export {
   deriveJournalPda,
   deriveValidatorDepositPda,
   deriveContributorRewardsPda,
+  deriveValidatorDebtPda,
+  deriveRewardSharePda,
 } from "./pda.js";

@@ -842,4 +842,3 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 	})
 
 }
-

@@ -200,7 +200,7 @@ describe("compat: ValidatorDebts", () => {
 
     const client = compatClient();
     const config = await client.fetchConfig();
-    const epoch = config.nextCompletedDzEpoch - 1n;
+    const epoch = config.nextCompletedDzEpoch - 5n;
 
     const debts = await client.fetchValidatorDebts(epoch);
 
@@ -220,7 +220,7 @@ describe("compat: RewardShares", () => {
 
     const client = compatClient();
     const config = await client.fetchConfig();
-    const epoch = config.nextCompletedDzEpoch - 1n;
+    const epoch = config.nextCompletedDzEpoch - 5n;
 
     const shares = await client.fetchRewardShares(epoch);
 

@@ -194,7 +194,7 @@ class TestCompatValidatorDebts:
         client = compat_client()
 
         config = client.fetch_config()
-        epoch = config.next_completed_dz_epoch - 1
+        epoch = config.next_completed_dz_epoch - 5
 
         debts = client.fetch_validator_debts(epoch)
 
@@ -211,7 +211,7 @@ class TestCompatRewardShares:
         client = compat_client()
 
         config = client.fetch_config()
-        epoch = config.next_completed_dz_epoch - 1
+        epoch = config.next_completed_dz_epoch - 5
 
         shares = client.fetch_reward_shares(epoch)
 

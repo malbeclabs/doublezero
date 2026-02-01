@@ -281,12 +281,12 @@ func TestCompatValidatorDebts(t *testing.T) {
 	client, _ := compatClient(t)
 	ctx := context.Background()
 
-	// Fetch config to get a completed epoch.
+	// Fetch config and use an older epoch that is more likely to have ledger records.
 	progConfig, err := client.FetchConfig(ctx)
 	if err != nil {
 		t.Fatalf("FetchConfig: %v", err)
 	}
-	epoch := progConfig.NextCompletedDZEpoch - 1
+	epoch := progConfig.NextCompletedDZEpoch - 5
 
 	debts, err := client.FetchValidatorDebts(ctx, epoch)
 	if err != nil {
@@ -309,12 +309,12 @@ func TestCompatRewardShares(t *testing.T) {
 	client, _ := compatClient(t)
 	ctx := context.Background()
 
-	// Fetch config to get a completed epoch.
+	// Fetch config and use an older epoch that is more likely to have ledger records.
 	progConfig, err := client.FetchConfig(ctx)
 	if err != nil {
 		t.Fatalf("FetchConfig: %v", err)
 	}
-	epoch := progConfig.NextCompletedDZEpoch - 1
+	epoch := progConfig.NextCompletedDZEpoch - 5
 
 	shares, err := client.FetchRewardShares(ctx, epoch)
 	if err != nil {

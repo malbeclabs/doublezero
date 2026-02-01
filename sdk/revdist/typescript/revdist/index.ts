@@ -1,4 +1,5 @@
 export { PROGRAM_ID, SOLANA_RPC_URLS } from "./config.js";
+export { Client } from "./client.js";
 
 export {
   DISCRIMINATOR_PROGRAM_CONFIG,

@@ -5,9 +5,11 @@ from __future__ import annotations
 import struct
 from typing import Protocol
 
+from solana.rpc.api import Client as SolanaHTTPClient  # type: ignore[import-untyped]
 from solders.pubkey import Pubkey  # type: ignore[import-untyped]
 from solders.rpc.responses import GetAccountInfoResp  # type: ignore[import-untyped]
 
+from revdist.config import PROGRAM_ID, SOLANA_RPC_URLS
 from revdist.discriminator import (
     DISCRIMINATOR_CONTRIBUTOR_REWARDS,
     DISCRIMINATOR_DISTRIBUTION,
@@ -41,6 +43,38 @@ class Client:
     def __init__(self, rpc: SolanaClient, program_id: Pubkey) -> None:
         self._rpc = rpc
         self._program_id = program_id
+
+    @classmethod
+    def mainnet_beta(cls) -> Client:
+        """Create a client configured for mainnet-beta."""
+        return cls(
+            SolanaHTTPClient(SOLANA_RPC_URLS["mainnet-beta"]),
+            Pubkey.from_string(PROGRAM_ID),
+        )
+
+    @classmethod
+    def testnet(cls) -> Client:
+        """Create a client configured for testnet."""
+        return cls(
+            SolanaHTTPClient(SOLANA_RPC_URLS["testnet"]),
+            Pubkey.from_string(PROGRAM_ID),
+        )
+
+    @classmethod
+    def devnet(cls) -> Client:
+        """Create a client configured for devnet."""
+        return cls(
+            SolanaHTTPClient(SOLANA_RPC_URLS["devnet"]),
+            Pubkey.from_string(PROGRAM_ID),
+        )
+
+    @classmethod
+    def localnet(cls) -> Client:
+        """Create a client configured for localnet."""
+        return cls(
+            SolanaHTTPClient(SOLANA_RPC_URLS["localnet"]),
+            Pubkey.from_string(PROGRAM_ID),
+        )
 
     def fetch_config(self) -> ProgramConfig:
         addr, _ = derive_config_pda(self._program_id)

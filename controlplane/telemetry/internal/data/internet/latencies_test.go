@@ -284,7 +284,7 @@ func TestInternetProvider_GetCircuitLatencies(t *testing.T) {
 			func(_ string, _ uint64) (*telemetry.InternetLatencySamples, error) {
 				return &telemetry.InternetLatencySamples{
 					StartTimestampMicroseconds:   uint64(start.UnixMicro()),
-					SamplingIntervalMicroseconds: 60 * 1_000_000, // 1 min
+					SamplingIntervalMicroseconds: 60 * 1_000_000,                                   // 1 min
 					Samples:                      []uint32{10_000, 20_000, 30_000, 40_000, 50_000}, // µs
 				}, nil
 			},

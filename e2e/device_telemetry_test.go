@@ -22,7 +22,7 @@ import (
 	"github.com/malbeclabs/doublezero/e2e/internal/prometheus"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
 	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
-	telemetrysdk "github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
+	telemetrysdk "github.com/malbeclabs/doublezero/sdk/telemetry/go"
 	"github.com/stretchr/testify/require"
 )
 
@@ -523,7 +523,7 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 }
 
 func waitForDeviceLatencySamples(t *testing.T, dn *devnet.Devnet, originDevicePK, targetDevicePK, linkPK solana.PublicKey, epoch uint64, waitForMinSamples int, timeout time.Duration) (*telemetrysdk.DeviceLatencySamples, time.Duration) {
-	client, err := dn.Ledger.GetTelemetryClient(nil)
+	client, err := dn.Ledger.GetTelemetryReadClient()
 	require.NoError(t, err)
 
 	start := time.Now()

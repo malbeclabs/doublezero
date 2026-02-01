@@ -21,7 +21,8 @@ import (
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
 	"github.com/malbeclabs/doublezero/e2e/internal/poll"
 	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
+	telemetry "github.com/malbeclabs/doublezero/sdk/telemetry/go"
+	oldtelemetry "github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
@@ -302,13 +303,24 @@ func (l *Ledger) GetRPCClient() *rpc.Client {
 	return rpc.New(endpoint)
 }
 
-func (l *Ledger) GetTelemetryClient(signer *solana.PrivateKey) (*telemetry.Client, error) {
+func (l *Ledger) GetTelemetryClient(signer *solana.PrivateKey) (*oldtelemetry.Client, error) {
 	endpoint := "http://" + net.JoinHostPort(l.dn.ExternalHost, strconv.Itoa(l.ExternalRPCPort))
 	rpcClient := rpc.New(endpoint)
 	programID, err := solana.PublicKeyFromBase58(l.dn.Manager.TelemetryProgramID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse program ID: %w", err)
 	}
-	client := telemetry.New(l.log, rpcClient, signer, programID)
+	client := oldtelemetry.New(l.log, rpcClient, signer, programID)
+	return client, nil
+}
+
+func (l *Ledger) GetTelemetryReadClient() (*telemetry.Client, error) {
+	endpoint := "http://" + net.JoinHostPort(l.dn.ExternalHost, strconv.Itoa(l.ExternalRPCPort))
+	rpcClient := rpc.New(endpoint)
+	programID, err := solana.PublicKeyFromBase58(l.dn.Manager.TelemetryProgramID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse program ID: %w", err)
+	}
+	client := telemetry.New(rpcClient, programID)
 	return client, nil
 }

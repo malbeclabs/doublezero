@@ -1,0 +1,56 @@
+{
+  "name": "internet_latency_samples",
+  "account_type": 4,
+  "fields": [
+    {
+      "name": "AccountType",
+      "value": "4",
+      "typ": "u8"
+    },
+    {
+      "name": "Epoch",
+      "value": "19800",
+      "typ": "u64"
+    },
+    {
+      "name": "DataProviderName",
+      "value": "RIPE Atlas",
+      "typ": "string"
+    },
+    {
+      "name": "OracleAgentPK",
+      "value": "29MvzRLSCDR8wm3ZeaXbDkftQAc719jQvkF6ZKGvFgEs",
+      "typ": "pubkey"
+    },
+    {
+      "name": "OriginExchangePK",
+      "value": "2DGLdv4X63urMTAYA5o37gR7fBAsi6qKWcYz4WauyUuD",
+      "typ": "pubkey"
+    },
+    {
+      "name": "TargetExchangePK",
+      "value": "2HAkHQnbytQZm9HWfb4V1cALvBjeR3wE6UrsZhtuhHZZ",
+      "typ": "pubkey"
+    },
+    {
+      "name": "SamplingIntervalMicroseconds",
+      "value": "60000000",
+      "typ": "u64"
+    },
+    {
+      "name": "StartTimestampMicroseconds",
+      "value": "1700000000000000",
+      "typ": "u64"
+    },
+    {
+      "name": "NextSampleIndex",
+      "value": "5",
+      "typ": "u32"
+    },
+    {
+      "name": "SamplesCount",
+      "value": "5",
+      "typ": "u32"
+    }
+  ]
+}

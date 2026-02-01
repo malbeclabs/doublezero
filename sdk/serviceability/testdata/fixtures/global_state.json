@@ -1,0 +1,76 @@
+{
+  "name": "GlobalState",
+  "account_type": 1,
+  "fields": [
+    {
+      "name": "AccountType",
+      "value": "1",
+      "typ": "u8"
+    },
+    {
+      "name": "BumpSeed",
+      "value": "254",
+      "typ": "u8"
+    },
+    {
+      "name": "AccountIndex",
+      "value": "42",
+      "typ": "u128"
+    },
+    {
+      "name": "FoundationAllowlistLen",
+      "value": "1",
+      "typ": "u32"
+    },
+    {
+      "name": "FoundationAllowlist0",
+      "value": "4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM",
+      "typ": "pubkey"
+    },
+    {
+      "name": "DeviceAllowlistLen",
+      "value": "0",
+      "typ": "u32"
+    },
+    {
+      "name": "UserAllowlistLen",
+      "value": "0",
+      "typ": "u32"
+    },
+    {
+      "name": "ActivatorAuthorityPk",
+      "value": "8opHzTAnfzRpPEx21XtnrVTX28YQuCpAjcn1PczScKh",
+      "typ": "pubkey"
+    },
+    {
+      "name": "SentinelAuthorityPk",
+      "value": "CiDwVBFgWV9E5MvXWoLgnEgn2hK7rJikbvfWavzAQz3",
+      "typ": "pubkey"
+    },
+    {
+      "name": "ContributorAirdropLamports",
+      "value": "1000000000",
+      "typ": "u64"
+    },
+    {
+      "name": "UserAirdropLamports",
+      "value": "50000",
+      "typ": "u64"
+    },
+    {
+      "name": "HealthOraclePk",
+      "value": "GcdayuLaLyrdmUu324nahyv33G5poQdLUEZ1nEytDeP",
+      "typ": "pubkey"
+    },
+    {
+      "name": "QaAllowlistLen",
+      "value": "1",
+      "typ": "u32"
+    },
+    {
+      "name": "QaAllowlist0",
+      "value": "LX3EUdRUBUa3TbsYXLEUdj9J3prXkWXvLYSWyYyc2Jj",
+      "typ": "pubkey"
+    }
+  ]
+}

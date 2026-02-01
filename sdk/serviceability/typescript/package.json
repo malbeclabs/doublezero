@@ -1,0 +1,21 @@
+{
+  "name": "@doublezero/serviceability",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "dist/serviceability/index.js",
+  "types": "dist/serviceability/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "tsc"
+  },
+  "dependencies": {
+    "@solana/web3.js": "^1.98"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5"
+  }
+}

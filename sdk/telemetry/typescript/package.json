@@ -1,0 +1,21 @@
+{
+  "name": "@doublezero/telemetry",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "dist/telemetry/index.js",
+  "types": "dist/telemetry/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "tsc"
+  },
+  "dependencies": {
+    "@solana/web3.js": "^1.98"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5"
+  }
+}

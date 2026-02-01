@@ -1,0 +1,76 @@
+{
+  "name": "Exchange",
+  "account_type": 4,
+  "fields": [
+    {
+      "name": "AccountType",
+      "value": "4",
+      "typ": "u8"
+    },
+    {
+      "name": "Owner",
+      "value": "4ENa2mq3u8mGcCmmRDnRyUmyRU7ztbtX2dodAMtmbcjZ",
+      "typ": "pubkey"
+    },
+    {
+      "name": "Index",
+      "value": "12",
+      "typ": "u128"
+    },
+    {
+      "name": "BumpSeed",
+      "value": "251",
+      "typ": "u8"
+    },
+    {
+      "name": "Lat",
+      "value": "52.3676",
+      "typ": "f64"
+    },
+    {
+      "name": "Lng",
+      "value": "4.9041",
+      "typ": "f64"
+    },
+    {
+      "name": "BgpCommunity",
+      "value": "10100",
+      "typ": "u16"
+    },
+    {
+      "name": "Unused",
+      "value": "0",
+      "typ": "u16"
+    },
+    {
+      "name": "Status",
+      "value": "1",
+      "typ": "u8"
+    },
+    {
+      "name": "Code",
+      "value": "xams",
+      "typ": "string"
+    },
+    {
+      "name": "Name",
+      "value": "Amsterdam IX",
+      "typ": "string"
+    },
+    {
+      "name": "ReferenceCount",
+      "value": "5",
+      "typ": "u32"
+    },
+    {
+      "name": "Device1Pk",
+      "value": "4JGygGZ8nyFz1ttjvj3ssQXCgUgmbYzRcW7WfZCmKRPu",
+      "typ": "pubkey"
+    },
+    {
+      "name": "Device2Pk",
+      "value": "4NBPKmHDgokhRb1iSEKKmLGRwVFYJW6LCNRQAkWm3E4F",
+      "typ": "pubkey"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+[package]
+name = "generate-telemetry-fixtures"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+doublezero-telemetry = { path = "../../../../../smartcontract/programs/doublezero-telemetry", features = ["no-entrypoint"] }
+borsh = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+solana-program = "2"

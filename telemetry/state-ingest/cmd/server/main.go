@@ -17,7 +17,7 @@ import (
 	"github.com/jonboulle/clockwork"
 	"github.com/lmittmann/tint"
 	"github.com/malbeclabs/doublezero/config"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 	"github.com/malbeclabs/doublezero/telemetry/state-ingest/pkg/server"
 	"github.com/malbeclabs/doublezero/tools/solana/pkg/rpc"
 	"github.com/prometheus/client_golang/prometheus/promhttp"

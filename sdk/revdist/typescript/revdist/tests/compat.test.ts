@@ -190,6 +190,46 @@ describe("compat: Journal", () => {
   });
 });
 
+describe("compat: ValidatorDebts", () => {
+  test("fetch and validate", async () => {
+    try {
+      skipUnlessCompat();
+    } catch {
+      return;
+    }
+
+    const client = compatClient();
+    const config = await client.fetchConfig();
+    const epoch = config.nextCompletedDzEpoch - 1n;
+
+    const debts = await client.fetchValidatorDebts(epoch);
+
+    expect(debts.lastSolanaEpoch > 0n).toBe(true);
+    expect(debts.firstSolanaEpoch <= debts.lastSolanaEpoch).toBe(true);
+    expect(debts.debts.length).toBeGreaterThan(0);
+  });
+});
+
+describe("compat: RewardShares", () => {
+  test("fetch and validate", async () => {
+    try {
+      skipUnlessCompat();
+    } catch {
+      return;
+    }
+
+    const client = compatClient();
+    const config = await client.fetchConfig();
+    const epoch = config.nextCompletedDzEpoch - 1n;
+
+    const shares = await client.fetchRewardShares(epoch);
+
+    expect(shares.epoch).toBe(epoch);
+    expect(shares.rewards.length).toBeGreaterThan(0);
+    expect(shares.totalUnitShares).toBeGreaterThan(0);
+  });
+});
+
 describe("compat: ValidatorDeposits", () => {
   test("fetch all and spot-check", async () => {
     try {

@@ -8,6 +8,7 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
+	"github.com/malbeclabs/doublezero/config"
 )
 
 // These tests fetch live mainnet data and verify that our struct deserialization
@@ -18,20 +19,43 @@ import (
 // Requires network access to Solana mainnet RPC.
 
 func skipUnlessCompat(t *testing.T) {
+	t.Helper()
 	if os.Getenv("REVDIST_COMPAT_TEST") == "" {
 		t.Skip("set REVDIST_COMPAT_TEST=1 to run compatibility tests against mainnet")
 	}
 }
 
+// rpcLedgerClient implements LedgerRecordClient using a Solana RPC endpoint.
+type rpcLedgerClient struct {
+	rpc *solanarpc.Client
+}
+
+func (c *rpcLedgerClient) GetRecordData(ctx context.Context, account solana.PublicKey) ([]byte, error) {
+	result, err := c.rpc.GetAccountInfo(ctx, account)
+	if err != nil {
+		return nil, err
+	}
+	if result == nil || result.Value == nil {
+		return nil, ErrAccountNotFound
+	}
+	return result.Value.Data.GetBinary(), nil
+}
+
+func compatNetworkConfig(t *testing.T) *config.NetworkConfig {
+	t.Helper()
+	cfg, err := config.NetworkConfigForEnv(config.EnvMainnetBeta)
+	if err != nil {
+		t.Fatalf("NetworkConfigForEnv: %v", err)
+	}
+	return cfg
+}
+
 func compatClient(t *testing.T) (*Client, solana.PublicKey) {
 	t.Helper()
-	rpcURL := os.Getenv("SOLANA_RPC_URL")
-	if rpcURL == "" {
-		rpcURL = "https://api.mainnet-beta.solana.com"
-	}
-	programID := solana.MustPublicKeyFromBase58("dzrevZC94tBLwuHw1dyynZxaXTWyp7yocsinyEVPtt4")
-	rpcClient := solanarpc.New(rpcURL)
-	return New(rpcClient, programID), programID
+	cfg := compatNetworkConfig(t)
+	rpcClient := solanarpc.New(cfg.SolanaRPCURL)
+	ledger := &rpcLedgerClient{rpc: solanarpc.New(cfg.LedgerPublicRPCURL)}
+	return NewWithLedger(rpcClient, cfg.RevenueDistributionProgramID, ledger), cfg.RevenueDistributionProgramID
 }
 
 func fetchRawAccount(t *testing.T, rpcClient *solanarpc.Client, addr solana.PublicKey) []byte {
@@ -51,18 +75,15 @@ func TestCompatProgramConfig(t *testing.T) {
 	client, programID := compatClient(t)
 	ctx := context.Background()
 
-	config, err := client.FetchConfig(ctx)
+	progConfig, err := client.FetchConfig(ctx)
 	if err != nil {
 		t.Fatalf("FetchConfig: %v", err)
 	}
 
 	// Fetch raw bytes for independent verification.
-	rpcURL := os.Getenv("SOLANA_RPC_URL")
-	if rpcURL == "" {
-		rpcURL = "https://api.mainnet-beta.solana.com"
-	}
+	cfg := compatNetworkConfig(t)
 	addr, _, _ := DeriveConfigPDA(programID)
-	raw := fetchRawAccount(t, solanarpc.New(rpcURL), addr)
+	raw := fetchRawAccount(t, solanarpc.New(cfg.SolanaRPCURL), addr)
 
 	// Verify discriminator.
 	if err := validateDiscriminator(raw, DiscriminatorProgramConfig); err != nil {
@@ -70,17 +91,17 @@ func TestCompatProgramConfig(t *testing.T) {
 	}
 
 	// Verify fields at known raw byte offsets (offset = struct_offset + 8 for discriminator).
-	assertU64(t, raw, 8, config.Flags, "Flags")
-	assertU64(t, raw, 16, config.NextCompletedDZEpoch, "NextCompletedDZEpoch")
-	assertU8(t, raw, 24, config.BumpSeed, "BumpSeed")
-	assertPubkey(t, raw, 32, config.AdminKey, "AdminKey")
-	assertPubkey(t, raw, 64, config.DebtAccountantKey, "DebtAccountantKey")
-	assertPubkey(t, raw, 96, config.RewardsAccountantKey, "RewardsAccountantKey")
-	assertPubkey(t, raw, 128, config.ContributorManagerKey, "ContributorManagerKey")
-	assertPubkey(t, raw, 192, config.SOL2ZSwapProgramID, "SOL2ZSwapProgramID")
+	assertU64(t, raw, 8, progConfig.Flags, "Flags")
+	assertU64(t, raw, 16, progConfig.NextCompletedDZEpoch, "NextCompletedDZEpoch")
+	assertU8(t, raw, 24, progConfig.BumpSeed, "BumpSeed")
+	assertPubkey(t, raw, 32, progConfig.AdminKey, "AdminKey")
+	assertPubkey(t, raw, 64, progConfig.DebtAccountantKey, "DebtAccountantKey")
+	assertPubkey(t, raw, 96, progConfig.RewardsAccountantKey, "RewardsAccountantKey")
+	assertPubkey(t, raw, 128, progConfig.ContributorManagerKey, "ContributorManagerKey")
+	assertPubkey(t, raw, 192, progConfig.SOL2ZSwapProgramID, "SOL2ZSwapProgramID")
 
 	// DistributionParameters starts at raw offset 224.
-	dp := config.DistributionParameters
+	dp := progConfig.DistributionParameters
 	assertU16(t, raw, 224, dp.CalculationGracePeriodMinutes, "CalculationGracePeriodMinutes")
 	assertU16(t, raw, 226, dp.InitializationGracePeriodMinutes, "InitializationGracePeriodMinutes")
 	assertU8(t, raw, 228, dp.MinimumEpochDurationToFinalizeRewards, "MinEpochDuration")
@@ -100,15 +121,15 @@ func TestCompatProgramConfig(t *testing.T) {
 	assertU32(t, raw, 264, vf.FixedSOLAmount, "FixedSOLAmount")
 
 	// RelayParameters at raw offset 552 (224 + 328).
-	rp := config.RelayParameters
+	rp := progConfig.RelayParameters
 	assertU32(t, raw, 552, rp.PlaceholderLamports, "PlaceholderLamports")
 	assertU32(t, raw, 556, rp.DistributeRewardsLamports, "DistributeRewardsLamports")
 
 	// DebtWriteOffFeatureActivationEpoch at raw offset 600 (552 + 40 + 4 + 4).
-	assertU64(t, raw, 600, config.DebtWriteOffFeatureActivationEpoch, "DebtWriteOffEpoch")
+	assertU64(t, raw, 600, progConfig.DebtWriteOffFeatureActivationEpoch, "DebtWriteOffEpoch")
 
 	// Sanity: epoch should be > 0 on mainnet.
-	if config.NextCompletedDZEpoch == 0 {
+	if progConfig.NextCompletedDZEpoch == 0 {
 		t.Error("NextCompletedDZEpoch is 0, expected > 0 on mainnet")
 	}
 }
@@ -119,23 +140,20 @@ func TestCompatDistribution(t *testing.T) {
 	ctx := context.Background()
 
 	// Fetch config to get the latest epoch.
-	config, err := client.FetchConfig(ctx)
+	progConfig, err := client.FetchConfig(ctx)
 	if err != nil {
 		t.Fatalf("FetchConfig: %v", err)
 	}
-	epoch := config.NextCompletedDZEpoch - 1
+	epoch := progConfig.NextCompletedDZEpoch - 1
 
 	dist, err := client.FetchDistribution(ctx, epoch)
 	if err != nil {
 		t.Fatalf("FetchDistribution(%d): %v", epoch, err)
 	}
 
-	rpcURL := os.Getenv("SOLANA_RPC_URL")
-	if rpcURL == "" {
-		rpcURL = "https://api.mainnet-beta.solana.com"
-	}
+	cfg := compatNetworkConfig(t)
 	addr, _, _ := DeriveDistributionPDA(programID, epoch)
-	raw := fetchRawAccount(t, solanarpc.New(rpcURL), addr)
+	raw := fetchRawAccount(t, solanarpc.New(cfg.SolanaRPCURL), addr)
 
 	if err := validateDiscriminator(raw, DiscriminatorDistribution); err != nil {
 		t.Fatalf("discriminator: %v", err)
@@ -181,12 +199,9 @@ func TestCompatJournal(t *testing.T) {
 		t.Fatalf("FetchJournal: %v", err)
 	}
 
-	rpcURL := os.Getenv("SOLANA_RPC_URL")
-	if rpcURL == "" {
-		rpcURL = "https://api.mainnet-beta.solana.com"
-	}
+	cfg := compatNetworkConfig(t)
 	addr, _, _ := DeriveJournalPDA(programID)
-	raw := fetchRawAccount(t, solanarpc.New(rpcURL), addr)
+	raw := fetchRawAccount(t, solanarpc.New(cfg.SolanaRPCURL), addr)
 
 	if err := validateDiscriminator(raw, DiscriminatorJournal); err != nil {
 		t.Fatalf("discriminator: %v", err)
@@ -259,6 +274,65 @@ func TestCompatContributorRewards(t *testing.T) {
 	}
 
 	t.Logf("validated %d contributors, spot-checked %s", len(rewards), first.ServiceKey)
+}
+
+func TestCompatValidatorDebts(t *testing.T) {
+	skipUnlessCompat(t)
+	client, _ := compatClient(t)
+	ctx := context.Background()
+
+	// Fetch config to get a completed epoch.
+	progConfig, err := client.FetchConfig(ctx)
+	if err != nil {
+		t.Fatalf("FetchConfig: %v", err)
+	}
+	epoch := progConfig.NextCompletedDZEpoch - 1
+
+	debts, err := client.FetchValidatorDebts(ctx, epoch)
+	if err != nil {
+		t.Fatalf("FetchValidatorDebts(%d): %v", epoch, err)
+	}
+
+	if debts.LastSolanaEpoch == 0 {
+		t.Error("LastSolanaEpoch is 0, expected > 0 on mainnet")
+	}
+	if debts.FirstSolanaEpoch > debts.LastSolanaEpoch {
+		t.Errorf("FirstSolanaEpoch (%d) > LastSolanaEpoch (%d)", debts.FirstSolanaEpoch, debts.LastSolanaEpoch)
+	}
+
+	t.Logf("epoch %d: %d validator debts, solana epochs %d-%d",
+		epoch, len(debts.Debts), debts.FirstSolanaEpoch, debts.LastSolanaEpoch)
+}
+
+func TestCompatRewardShares(t *testing.T) {
+	skipUnlessCompat(t)
+	client, _ := compatClient(t)
+	ctx := context.Background()
+
+	// Fetch config to get a completed epoch.
+	progConfig, err := client.FetchConfig(ctx)
+	if err != nil {
+		t.Fatalf("FetchConfig: %v", err)
+	}
+	epoch := progConfig.NextCompletedDZEpoch - 1
+
+	shares, err := client.FetchRewardShares(ctx, epoch)
+	if err != nil {
+		t.Fatalf("FetchRewardShares(%d): %v", epoch, err)
+	}
+
+	if shares.Epoch != epoch {
+		t.Errorf("Epoch = %d, want %d", shares.Epoch, epoch)
+	}
+	if len(shares.Rewards) == 0 {
+		t.Error("no reward shares found on mainnet")
+	}
+	if shares.TotalUnitShares == 0 {
+		t.Error("TotalUnitShares is 0, expected > 0")
+	}
+
+	t.Logf("epoch %d: %d reward shares, total unit shares %d",
+		epoch, len(shares.Rewards), shares.TotalUnitShares)
 }
 
 // Helpers to compare deserialized values against raw byte reads.

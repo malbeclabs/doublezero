@@ -19,7 +19,7 @@ import (
 	twozoracle "github.com/malbeclabs/doublezero/controlplane/monitor/internal/2z-oracle"
 	"github.com/malbeclabs/doublezero/controlplane/monitor/internal/worker"
 	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
+	telemetry "github.com/malbeclabs/doublezero/sdk/telemetry/go"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -124,7 +124,7 @@ func main() {
 	// Initialize ledger clients.
 	rpcClient := solanarpc.New(networkConfig.LedgerPublicRPCURL)
 	serviceabilityClient := serviceability.New(rpcClient, networkConfig.ServiceabilityProgramID)
-	telemetryClient := telemetry.New(log, rpcClient, nil, networkConfig.TelemetryProgramID)
+	telemetryClient := telemetry.New(rpcClient, networkConfig.TelemetryProgramID)
 
 	var solanaRPCClient *solanarpc.Client
 	if networkConfig.SolanaRPCURL != "" {

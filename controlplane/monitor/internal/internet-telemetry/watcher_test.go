@@ -13,7 +13,7 @@ import (
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
+	telemetry "github.com/malbeclabs/doublezero/sdk/telemetry/go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
@@ -30,7 +30,7 @@ func TestMonitor_InternetTelemetry_Watcher_NewAndName(t *testing.T) {
 	cfg.Serviceability = &mockServiceabilityClient{
 		GetProgramDataFunc: func(context.Context) (*serviceability.ProgramData, error) { return &serviceability.ProgramData{}, nil }}
 	cfg.Telemetry = &mockTelemetryProgramClient{
-		GetInternetLatencySamplesFunc: func(context.Context, string, solana.PublicKey, solana.PublicKey, solana.PublicKey, uint64) (*telemetry.InternetLatencySamples, error) {
+		GetInternetLatencySamplesFunc: func(context.Context, solana.PublicKey, string, solana.PublicKey, solana.PublicKey, uint64) (*telemetry.InternetLatencySamples, error) {
 			return &telemetry.InternetLatencySamples{Samples: []uint32{}}, nil
 		}}
 
@@ -51,7 +51,7 @@ func TestMonitor_InternetTelemetry_Watcher_RunStopsOnCancel(t *testing.T) {
 	cfg.Serviceability = &mockServiceabilityClient{
 		GetProgramDataFunc: func(context.Context) (*serviceability.ProgramData, error) { return &serviceability.ProgramData{}, nil }}
 	cfg.Telemetry = &mockTelemetryProgramClient{
-		GetInternetLatencySamplesFunc: func(context.Context, string, solana.PublicKey, solana.PublicKey, solana.PublicKey, uint64) (*telemetry.InternetLatencySamples, error) {
+		GetInternetLatencySamplesFunc: func(context.Context, solana.PublicKey, string, solana.PublicKey, solana.PublicKey, uint64) (*telemetry.InternetLatencySamples, error) {
 			return &telemetry.InternetLatencySamples{Samples: []uint32{}}, nil
 		}}
 
@@ -81,7 +81,7 @@ func TestMonitor_InternetTelemetry_Watcher_Tick_NoCircuits(t *testing.T) {
 	cfg.Serviceability = &mockServiceabilityClient{
 		GetProgramDataFunc: func(context.Context) (*serviceability.ProgramData, error) { return &serviceability.ProgramData{}, nil }}
 	cfg.Telemetry = &mockTelemetryProgramClient{
-		GetInternetLatencySamplesFunc: func(context.Context, string, solana.PublicKey, solana.PublicKey, solana.PublicKey, uint64) (*telemetry.InternetLatencySamples, error) {
+		GetInternetLatencySamplesFunc: func(context.Context, solana.PublicKey, string, solana.PublicKey, solana.PublicKey, uint64) (*telemetry.InternetLatencySamples, error) {
 			return &telemetry.InternetLatencySamples{Samples: []uint32{}}, nil
 		}}
 
@@ -107,7 +107,7 @@ func TestMonitor_InternetTelemetry_Watcher_Tick_ErrorFromGetProgramData(t *testi
 	cfg.Serviceability = &mockServiceabilityClient{
 		GetProgramDataFunc: func(context.Context) (*serviceability.ProgramData, error) { return nil, errors.New("boom") }}
 	cfg.Telemetry = &mockTelemetryProgramClient{
-		GetInternetLatencySamplesFunc: func(context.Context, string, solana.PublicKey, solana.PublicKey, solana.PublicKey, uint64) (*telemetry.InternetLatencySamples, error) {
+		GetInternetLatencySamplesFunc: func(context.Context, solana.PublicKey, string, solana.PublicKey, solana.PublicKey, uint64) (*telemetry.InternetLatencySamples, error) {
 			return &telemetry.InternetLatencySamples{Samples: []uint32{}}, nil
 		}}
 
@@ -134,7 +134,7 @@ func TestMonitor_InternetTelemetry_Watcher_Tick_ErrorFromGetEpochInfo(t *testing
 			return makeProgramData("OR-A", "TG-A", origin, target), nil
 		}}
 	cfg.Telemetry = &mockTelemetryProgramClient{
-		GetInternetLatencySamplesFunc: func(context.Context, string, solana.PublicKey, solana.PublicKey, solana.PublicKey, uint64) (*telemetry.InternetLatencySamples, error) {
+		GetInternetLatencySamplesFunc: func(context.Context, solana.PublicKey, string, solana.PublicKey, solana.PublicKey, uint64) (*telemetry.InternetLatencySamples, error) {
 			return &telemetry.InternetLatencySamples{Samples: []uint32{1}}, nil
 		}}
 
@@ -163,7 +163,7 @@ func TestMonitor_InternetTelemetry_Watcher_Tick_ErrorFromGetInternetLatencySampl
 		}}
 	// Fail only one provider/direction to make the expected count 1.
 	cfg.Telemetry = &mockTelemetryProgramClient{
-		GetInternetLatencySamplesFunc: func(_ context.Context, provider string, o, t, _ solana.PublicKey, _ uint64) (*telemetry.InternetLatencySamples, error) {
+		GetInternetLatencySamplesFunc: func(_ context.Context, _ solana.PublicKey, provider string, o, t solana.PublicKey, _ uint64) (*telemetry.InternetLatencySamples, error) {
 			if provider == "ripeatlas" && o == origin && t == target {
 				return nil, errors.New("telemetry fail")
 			}
@@ -233,7 +233,7 @@ func TestMonitor_InternetTelemetry_Watcher_Tick_EpochRollover_NoMetricDeltas(t *
 			return makeProgramData(originCode, targetCode, origin, target), nil
 		}}
 	cfg.Telemetry = &mockTelemetryProgramClient{
-		GetInternetLatencySamplesFunc: func(_ context.Context, provider string, o, t, _ solana.PublicKey, e uint64) (*telemetry.InternetLatencySamples, error) {
+		GetInternetLatencySamplesFunc: func(_ context.Context, _ solana.PublicKey, provider string, o, t solana.PublicKey, e uint64) (*telemetry.InternetLatencySamples, error) {
 			if e == 10 {
 				if provider == "ripeatlas" {
 					return &telemetry.InternetLatencySamples{Samples: []uint32{1, 2, 0, 5}}, nil // 3/1
@@ -282,7 +282,7 @@ func TestMonitor_InternetTelemetry_Watcher_Tick_MixedCircuits_ErrorBubbles(t *te
 		}}
 	cfg.Telemetry = &mockTelemetryProgramClient{
 		// succeed for one provider, fail for the other
-		GetInternetLatencySamplesFunc: func(_ context.Context, provider string, _, _, _ solana.PublicKey, _ uint64) (*telemetry.InternetLatencySamples, error) {
+		GetInternetLatencySamplesFunc: func(_ context.Context, _ solana.PublicKey, provider string, _, _ solana.PublicKey, _ uint64) (*telemetry.InternetLatencySamples, error) {
 			if provider == "ripeatlas" {
 				return &telemetry.InternetLatencySamples{Samples: []uint32{1, 2, 3}}, nil
 			}
@@ -312,7 +312,7 @@ func TestMonitor_InternetTelemetry_Watcher_Run_ContinuesAfterTickError(t *testin
 			return &serviceability.ProgramData{}, nil
 		}}
 	cfg.Telemetry = &mockTelemetryProgramClient{
-		GetInternetLatencySamplesFunc: func(context.Context, string, solana.PublicKey, solana.PublicKey, solana.PublicKey, uint64) (*telemetry.InternetLatencySamples, error) {
+		GetInternetLatencySamplesFunc: func(context.Context, solana.PublicKey, string, solana.PublicKey, solana.PublicKey, uint64) (*telemetry.InternetLatencySamples, error) {
 			return &telemetry.InternetLatencySamples{Samples: []uint32{}}, nil
 		}}
 
@@ -357,7 +357,7 @@ func TestMonitor_InternetTelemetry_Watcher_Tick_EmptySamples_WritesZeroStatsAndS
 			return makeProgramData(originCode, targetCode, origin, target), nil
 		}}
 	cfg.Telemetry = &mockTelemetryProgramClient{
-		GetInternetLatencySamplesFunc: func(context.Context, string, solana.PublicKey, solana.PublicKey, solana.PublicKey, uint64) (*telemetry.InternetLatencySamples, error) {
+		GetInternetLatencySamplesFunc: func(context.Context, solana.PublicKey, string, solana.PublicKey, solana.PublicKey, uint64) (*telemetry.InternetLatencySamples, error) {
 			return &telemetry.InternetLatencySamples{Samples: []uint32{}}, nil
 		}}
 
@@ -395,7 +395,7 @@ func TestWatcher_Tick_AccountNotFound_IncrementsAccountNotFoundMetric(t *testing
 			return makeProgramData("A", "B", a, b), nil
 		}}
 	cfg.Telemetry = &mockTelemetryProgramClient{
-		GetInternetLatencySamplesFunc: func(ctx context.Context, provider string, _, _, _ solana.PublicKey, _ uint64) (*telemetry.InternetLatencySamples, error) {
+		GetInternetLatencySamplesFunc: func(ctx context.Context, _ solana.PublicKey, provider string, _, _ solana.PublicKey, _ uint64) (*telemetry.InternetLatencySamples, error) {
 			return nil, telemetry.ErrAccountNotFound
 		}}
 
@@ -515,11 +515,11 @@ func (m *mockServiceabilityClient) GetProgramData(ctx context.Context) (*service
 }
 
 type mockTelemetryProgramClient struct {
-	GetInternetLatencySamplesFunc func(ctx context.Context, dataProviderName string, originExchangePK, targetExchangePK, agentPK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error)
+	GetInternetLatencySamplesFunc func(ctx context.Context, collectorOraclePK solana.PublicKey, dataProviderName string, originLocationPK, targetLocationPK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error)
 }
 
-func (m *mockTelemetryProgramClient) GetInternetLatencySamples(ctx context.Context, dataProviderName string, originExchangePK, targetExchangePK, agentPK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error) {
-	return m.GetInternetLatencySamplesFunc(ctx, dataProviderName, originExchangePK, targetExchangePK, agentPK, epoch)
+func (m *mockTelemetryProgramClient) GetInternetLatencySamples(ctx context.Context, collectorOraclePK solana.PublicKey, dataProviderName string, originLocationPK, targetLocationPK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error) {
+	return m.GetInternetLatencySamplesFunc(ctx, collectorOraclePK, dataProviderName, originLocationPK, targetLocationPK, epoch)
 }
 
 func newTestLogger(t *testing.T) *slog.Logger {
@@ -570,7 +570,7 @@ func baseCfg(t *testing.T) (*Config, *prometheus.Registry) {
 // - wheresitup forward: +1 success and +1 loss
 func providerStepTelemetryMock(origin, target solana.PublicKey, step *int32) *mockTelemetryProgramClient {
 	return &mockTelemetryProgramClient{
-		GetInternetLatencySamplesFunc: func(_ context.Context, provider string, o, t, _ solana.PublicKey, _ uint64) (*telemetry.InternetLatencySamples, error) {
+		GetInternetLatencySamplesFunc: func(_ context.Context, _ solana.PublicKey, provider string, o, t solana.PublicKey, _ uint64) (*telemetry.InternetLatencySamples, error) {
 			// Only the forward circuit is exercised by the watcher.
 			if o != origin || t != target {
 				return &telemetry.InternetLatencySamples{Samples: nil}, nil

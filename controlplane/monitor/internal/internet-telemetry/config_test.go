@@ -8,7 +8,7 @@ import (
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
+	telemetry "github.com/malbeclabs/doublezero/sdk/telemetry/go"
 	"github.com/stretchr/testify/require"
 )
 
@@ -27,7 +27,7 @@ func TestMonitor_DeviceTelemetry_Config(t *testing.T) {
 				return &serviceability.ProgramData{}, nil
 			}},
 		Telemetry: &mockTelemetryProgramClient{
-			GetInternetLatencySamplesFunc: func(ctx context.Context, _ string, _, _, _ solana.PublicKey, _ uint64) (*telemetry.InternetLatencySamples, error) {
+			GetInternetLatencySamplesFunc: func(ctx context.Context, _ solana.PublicKey, _ string, _, _ solana.PublicKey, _ uint64) (*telemetry.InternetLatencySamples, error) {
 				return &telemetry.InternetLatencySamples{}, nil
 			}},
 		InternetLatencyCollectorPK: solana.NewWallet().PublicKey(),

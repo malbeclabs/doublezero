@@ -14,7 +14,7 @@ import (
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
+	telemetry "github.com/malbeclabs/doublezero/sdk/telemetry/go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"

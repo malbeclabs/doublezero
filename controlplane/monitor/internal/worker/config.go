@@ -10,7 +10,7 @@ import (
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	twozoracle "github.com/malbeclabs/doublezero/controlplane/monitor/internal/2z-oracle"
 	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
+	telemetry "github.com/malbeclabs/doublezero/sdk/telemetry/go"
 )
 
 type LedgerRPCClient interface {
@@ -23,7 +23,7 @@ type ServiceabilityClient interface {
 
 type TelemetryProgramClient interface {
 	GetDeviceLatencySamples(ctx context.Context, originDevicePubKey, targetDevicePubKey, linkPubKey solana.PublicKey, epoch uint64) (*telemetry.DeviceLatencySamples, error)
-	GetInternetLatencySamples(ctx context.Context, dataProviderName string, originExchangePubKey, targetExchangePubKey, linkPubKey solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error)
+	GetInternetLatencySamples(ctx context.Context, collectorOraclePK solana.PublicKey, dataProviderName string, originLocationPK, targetLocationPK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error)
 }
 
 type InfluxWriter interface {

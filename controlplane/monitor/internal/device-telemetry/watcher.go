@@ -12,7 +12,7 @@ import (
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	telemetrycircuits "github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/circuits"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
+	telemetry "github.com/malbeclabs/doublezero/sdk/telemetry/go"
 )
 
 const (

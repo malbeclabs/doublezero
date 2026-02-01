@@ -11,7 +11,7 @@ import (
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	twozoracle "github.com/malbeclabs/doublezero/controlplane/monitor/internal/2z-oracle"
 	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
+	telemetry "github.com/malbeclabs/doublezero/sdk/telemetry/go"
 	"github.com/stretchr/testify/require"
 )
 
@@ -34,7 +34,7 @@ func TestMonitor_Worker_Config(t *testing.T) {
 			GetDeviceLatencySamplesFunc: func(ctx context.Context, o, t, l solana.PublicKey, e uint64) (*telemetry.DeviceLatencySamples, error) {
 				return &telemetry.DeviceLatencySamples{}, nil
 			},
-			GetInternetLatencySamplesFunc: func(ctx context.Context, d string, o, t, l solana.PublicKey, e uint64) (*telemetry.InternetLatencySamples, error) {
+			GetInternetLatencySamplesFunc: func(ctx context.Context, _ solana.PublicKey, d string, o, t solana.PublicKey, e uint64) (*telemetry.InternetLatencySamples, error) {
 				return &telemetry.InternetLatencySamples{}, nil
 			},
 		},
@@ -137,15 +137,15 @@ func (m *mockServiceabilityClient) GetProgramData(ctx context.Context) (*service
 
 type mockTelemetryProgramClient struct {
 	GetDeviceLatencySamplesFunc   func(context.Context, solana.PublicKey, solana.PublicKey, solana.PublicKey, uint64) (*telemetry.DeviceLatencySamples, error)
-	GetInternetLatencySamplesFunc func(context.Context, string, solana.PublicKey, solana.PublicKey, solana.PublicKey, uint64) (*telemetry.InternetLatencySamples, error)
+	GetInternetLatencySamplesFunc func(context.Context, solana.PublicKey, string, solana.PublicKey, solana.PublicKey, uint64) (*telemetry.InternetLatencySamples, error)
 }
 
 func (m *mockTelemetryProgramClient) GetDeviceLatencySamples(ctx context.Context, o, t, l solana.PublicKey, e uint64) (*telemetry.DeviceLatencySamples, error) {
 	return m.GetDeviceLatencySamplesFunc(ctx, o, t, l, e)
 }
 
-func (m *mockTelemetryProgramClient) GetInternetLatencySamples(ctx context.Context, d string, o, t, l solana.PublicKey, e uint64) (*telemetry.InternetLatencySamples, error) {
-	return m.GetInternetLatencySamplesFunc(ctx, d, o, t, l, e)
+func (m *mockTelemetryProgramClient) GetInternetLatencySamples(ctx context.Context, c solana.PublicKey, d string, o, t solana.PublicKey, e uint64) (*telemetry.InternetLatencySamples, error) {
+	return m.GetInternetLatencySamplesFunc(ctx, c, d, o, t, e)
 }
 
 type mockTwoZOracleClient struct {

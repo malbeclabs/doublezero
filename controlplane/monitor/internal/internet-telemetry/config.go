@@ -9,7 +9,7 @@ import (
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
+	telemetry "github.com/malbeclabs/doublezero/sdk/telemetry/go"
 )
 
 const (
@@ -25,7 +25,7 @@ type ServiceabilityClient interface {
 }
 
 type TelemetryProgramClient interface {
-	GetInternetLatencySamples(ctx context.Context, dataProviderName string, originExchangePK, targetExchangePK, agentPK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error)
+	GetInternetLatencySamples(ctx context.Context, collectorOraclePK solana.PublicKey, dataProviderName string, originLocationPK, targetLocationPK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error)
 }
 
 type Config struct {

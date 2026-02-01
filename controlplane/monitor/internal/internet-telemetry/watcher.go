@@ -13,7 +13,7 @@ import (
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	telemetrycircuits "github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/circuits"
 	telemetryconfig "github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/config"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
+	telemetry "github.com/malbeclabs/doublezero/sdk/telemetry/go"
 )
 
 const (
@@ -155,7 +155,7 @@ func (w *InternetTelemetryWatcher) Tick(ctx context.Context) error {
 				originPK := solana.PublicKeyFromBytes(circuit.OriginExchange.PubKey[:])
 				targetPK := solana.PublicKeyFromBytes(circuit.TargetExchange.PubKey[:])
 
-				account, err := w.cfg.Telemetry.GetInternetLatencySamples(ctx, dataProvider, originPK, targetPK, w.cfg.InternetLatencyCollectorPK, epoch)
+				account, err := w.cfg.Telemetry.GetInternetLatencySamples(ctx, w.cfg.InternetLatencyCollectorPK, dataProvider, originPK, targetPK, epoch)
 				if err != nil {
 					if errors.Is(err, telemetry.ErrAccountNotFound) {
 						w.log.Debug("internet latency samples account not found", "error", err, "circuit_code", circuit.Code, "data_provider", dataProvider)

@@ -2,10 +2,13 @@ package telemetry
 
 import (
 	"context"
+	"errors"
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/rpc"
 )
+
+var ErrAccountNotFound = errors.New("account not found")
 
 type Client struct {
 	rpcClient *rpc.Client
@@ -48,6 +51,9 @@ func (c *Client) GetDeviceLatencySamples(
 	if err != nil {
 		return nil, err
 	}
+	if info == nil || info.Value == nil {
+		return nil, ErrAccountNotFound
+	}
 
 	return DeserializeDeviceLatencySamples(info.Value.Data.GetBinary())
 }
@@ -68,6 +74,9 @@ func (c *Client) GetInternetLatencySamples(
 	info, err := c.rpcClient.GetAccountInfo(ctx, addr)
 	if err != nil {
 		return nil, err
+	}
+	if info == nil || info.Value == nil {
+		return nil, ErrAccountNotFound
 	}
 
 	return DeserializeInternetLatencySamples(info.Value.Data.GetBinary())

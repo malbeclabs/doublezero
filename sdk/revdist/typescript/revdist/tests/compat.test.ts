@@ -11,9 +11,10 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { Connection, PublicKey } from "@solana/web3.js";
+import { PublicKey } from "@solana/web3.js";
 import { Client } from "../client.js";
 import { SOLANA_RPC_URLS, LEDGER_RPC_URLS, PROGRAM_ID } from "../config.js";
+import { newConnection } from "../rpc.js";
 import {
   deriveConfigPda,
   deriveDistributionPda,
@@ -52,14 +53,14 @@ function rpcUrl(): string {
 
 function compatClient(): Client {
   return new Client(
-    new Connection(rpcUrl()),
-    new Connection(LEDGER_RPC_URLS["mainnet-beta"]),
+    newConnection(rpcUrl()),
+    newConnection(LEDGER_RPC_URLS["mainnet-beta"]),
     new PublicKey(PROGRAM_ID),
   );
 }
 
 async function fetchRawAccount(addr: PublicKey): Promise<Buffer> {
-  const conn = new Connection(rpcUrl());
+  const conn = newConnection(rpcUrl());
   const info = await conn.getAccountInfo(addr);
   if (info === null) throw new Error(`account not found: ${addr.toBase58()}`);
   return info.data;

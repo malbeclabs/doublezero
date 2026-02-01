@@ -4,6 +4,7 @@ import { Connection, PublicKey } from "@solana/web3.js";
 // @ts-ignore - no type declarations available
 import bs58 from "bs58";
 import { PROGRAM_ID, SOLANA_RPC_URLS, LEDGER_RPC_URLS } from "./config.js";
+import { newConnection } from "./rpc.js";
 import {
   DISCRIMINATOR_PROGRAM_CONFIG,
   DISCRIMINATOR_DISTRIBUTION,
@@ -57,32 +58,32 @@ export class Client {
 
   static mainnetBeta(): Client {
     return new Client(
-      new Connection(SOLANA_RPC_URLS["mainnet-beta"]),
-      new Connection(LEDGER_RPC_URLS["mainnet-beta"]),
+      newConnection(SOLANA_RPC_URLS["mainnet-beta"]),
+      newConnection(LEDGER_RPC_URLS["mainnet-beta"]),
       new PublicKey(PROGRAM_ID),
     );
   }
 
   static testnet(): Client {
     return new Client(
-      new Connection(SOLANA_RPC_URLS["testnet"]),
-      new Connection(LEDGER_RPC_URLS["testnet"]),
+      newConnection(SOLANA_RPC_URLS["testnet"]),
+      newConnection(LEDGER_RPC_URLS["testnet"]),
       new PublicKey(PROGRAM_ID),
     );
   }
 
   static devnet(): Client {
     return new Client(
-      new Connection(SOLANA_RPC_URLS["devnet"]),
-      new Connection(LEDGER_RPC_URLS["devnet"]),
+      newConnection(SOLANA_RPC_URLS["devnet"]),
+      newConnection(LEDGER_RPC_URLS["devnet"]),
       new PublicKey(PROGRAM_ID),
     );
   }
 
   static localnet(): Client {
     return new Client(
-      new Connection(SOLANA_RPC_URLS["localnet"]),
-      new Connection(LEDGER_RPC_URLS["localnet"]),
+      newConnection(SOLANA_RPC_URLS["localnet"]),
+      newConnection(LEDGER_RPC_URLS["localnet"]),
       new PublicKey(PROGRAM_ID),
     );
   }

@@ -1,5 +1,6 @@
 export { PROGRAM_ID, SOLANA_RPC_URLS, LEDGER_RPC_URLS, ORACLE_URLS } from "./config.js";
 export { Client } from "./client.js";
+export { newConnection } from "./rpc.js";
 export { OracleClient } from "./oracle.js";
 export type { SwapRate } from "./oracle.js";
 

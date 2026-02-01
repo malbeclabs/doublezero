@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 )
 
 type ServiceabilityAnnotator struct {

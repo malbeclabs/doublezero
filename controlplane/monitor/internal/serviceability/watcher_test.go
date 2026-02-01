@@ -9,7 +9,7 @@ import (
 
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -74,7 +74,7 @@ func TestMonitor_Serviceability_Watcher(t *testing.T) {
 	t.Run("tick_success_sets_build_info", func(t *testing.T) {
 		t.Parallel()
 		version := serviceability.ProgramVersion{Major: 1, Minor: 2, Patch: 3}
-		got := &serviceability.ProgramData{ProgramConfig: serviceability.ProgramConfig{Version: version}}
+		got := &serviceability.ProgramData{ProgramConfig: &serviceability.ProgramConfig{Version: version}}
 		cfg := &Config{
 			Logger:          newTestLogger(t),
 			Serviceability:  &mockServiceabilityClient{GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) { return got, nil }},
@@ -132,10 +132,11 @@ func TestMonitor_Serviceability_Watcher(t *testing.T) {
 			{Code: "link2"},
 		}
 		programData := &serviceability.ProgramData{
-			Devices:      devices,
-			Contributors: contributors,
-			Exchanges:    exchanges,
-			Links:        links,
+			ProgramConfig: &serviceability.ProgramConfig{},
+			Devices:       devices,
+			Contributors:  contributors,
+			Exchanges:     exchanges,
+			Links:         links,
 		}
 
 		cfg := &Config{
@@ -156,7 +157,7 @@ func TestMonitor_Serviceability_Watcher(t *testing.T) {
 
 	t.Run("run_stops_on_context_cancel", func(t *testing.T) {
 		t.Parallel()
-		got := &serviceability.ProgramData{ProgramConfig: serviceability.ProgramConfig{Version: serviceability.ProgramVersion{Major: 9, Minor: 9, Patch: 9}}}
+		got := &serviceability.ProgramData{ProgramConfig: &serviceability.ProgramConfig{Version: serviceability.ProgramVersion{Major: 9, Minor: 9, Patch: 9}}}
 		cfg := &Config{
 			Logger:          newTestLogger(t),
 			Serviceability:  &mockServiceabilityClient{GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) { return got, nil }},
@@ -211,7 +212,7 @@ func TestWatcher_EpochChangeDetection(t *testing.T) {
 		Logger: newTestLogger(t),
 		Serviceability: &mockServiceabilityClient{GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
 			return &serviceability.ProgramData{
-				ProgramConfig: serviceability.ProgramConfig{Version: serviceability.ProgramVersion{Major: 1, Minor: 0, Patch: 0}},
+				ProgramConfig: &serviceability.ProgramConfig{Version: serviceability.ProgramVersion{Major: 1, Minor: 0, Patch: 0}},
 			}, nil
 		}},
 		Interval:        10 * time.Millisecond,
@@ -242,7 +243,7 @@ func TestWatcher_BuildEpochChangeSlackMessage(t *testing.T) {
 		Logger: newTestLogger(t),
 		Serviceability: &mockServiceabilityClient{GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
 			return &serviceability.ProgramData{
-				ProgramConfig: serviceability.ProgramConfig{Version: serviceability.ProgramVersion{Major: 1, Minor: 0, Patch: 0}},
+				ProgramConfig: &serviceability.ProgramConfig{Version: serviceability.ProgramVersion{Major: 1, Minor: 0, Patch: 0}},
 			}, nil
 		}},
 		Interval: 10 * time.Millisecond,
@@ -318,7 +319,7 @@ func TestWatcher_EpochChangeSlackNotification(t *testing.T) {
 				Logger: newTestLogger(t),
 				Serviceability: &mockServiceabilityClient{GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
 					return &serviceability.ProgramData{
-						ProgramConfig: serviceability.ProgramConfig{Version: serviceability.ProgramVersion{Major: 1, Minor: 0, Patch: 0}},
+						ProgramConfig: &serviceability.ProgramConfig{Version: serviceability.ProgramVersion{Major: 1, Minor: 0, Patch: 0}},
 					}, nil
 				}},
 				Interval:        10 * time.Millisecond,

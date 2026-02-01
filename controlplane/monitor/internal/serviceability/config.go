@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 )

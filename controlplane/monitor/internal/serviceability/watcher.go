@@ -13,7 +13,7 @@ import (
 
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/config"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 	"github.com/mr-tron/base58"
 )
 
@@ -171,7 +171,7 @@ func (w *ServiceabilityWatcher) exportDevicesToInflux(devices []serviceability.D
 	}
 	// write each device as a separate line protocol entry
 	for _, device := range devices {
-		line, err := serviceability.ToLineProtocol("devices", device, time.Now(), additionalTags)
+		line, err := ToLineProtocol("devices", device, time.Now(), additionalTags)
 		if err != nil {
 			w.log.Error("failed to create influx line protocol for device", "device_code", device.Code, "error", err)
 			continue
@@ -191,7 +191,7 @@ func (w *ServiceabilityWatcher) exportLinksToInflux(links []serviceability.Link)
 	}
 	// write each link as a separate line protocol entry
 	for _, link := range links {
-		line, err := serviceability.ToLineProtocol("links", link, time.Now(), additionalTags)
+		line, err := ToLineProtocol("links", link, time.Now(), additionalTags)
 		if err != nil {
 			w.log.Error("failed to create influx line protocol for link", "link_code", link.Code, "error", err)
 			continue
@@ -211,7 +211,7 @@ func (w *ServiceabilityWatcher) exportContributorsToInflux(contributors []servic
 	}
 	// write each contributor as a separate line protocol entry
 	for _, contributor := range contributors {
-		line, err := serviceability.ToLineProtocol("contributors", contributor, time.Now(), additionalTags)
+		line, err := ToLineProtocol("contributors", contributor, time.Now(), additionalTags)
 		if err != nil {
 			w.log.Error("failed to create influx line protocol for contributor", "contributor_code", contributor.Code, "error", err)
 			continue
@@ -231,7 +231,7 @@ func (w *ServiceabilityWatcher) exportExchangesToInflux(exchanges []serviceabili
 	}
 	// write each exchange as a separate line protocol entry
 	for _, exchange := range exchanges {
-		line, err := serviceability.ToLineProtocol("exchanges", exchange, time.Now(), additionalTags)
+		line, err := ToLineProtocol("exchanges", exchange, time.Now(), additionalTags)
 		if err != nil {
 			w.log.Error("failed to create influx line protocol for exchange", "exchange_code", exchange.Code, "error", err)
 			continue

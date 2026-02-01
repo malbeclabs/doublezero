@@ -45,11 +45,14 @@ export {
 } from "./state.js";
 
 export {
+  RECORD_HEADER_SIZE,
+  RECORD_PROGRAM_ID,
   deriveConfigPda,
   deriveDistributionPda,
   deriveJournalPda,
   deriveValidatorDepositPda,
   deriveContributorRewardsPda,
-  deriveValidatorDebtPda,
-  deriveRewardSharePda,
+  deriveRecordKey,
+  deriveValidatorDebtRecordKey,
+  deriveRewardShareRecordKey,
 } from "./pda.js";

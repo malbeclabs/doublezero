@@ -18,8 +18,9 @@ from revdist.pda import (
     derive_contributor_rewards_pda,
     derive_distribution_pda,
     derive_journal_pda,
-    derive_reward_share_pda,
-    derive_validator_debt_pda,
+    derive_record_key,
+    derive_reward_share_record_key,
+    derive_validator_debt_record_key,
     derive_validator_deposit_pda,
 )
 from revdist.state import (
@@ -60,7 +61,8 @@ __all__ = [
     "derive_contributor_rewards_pda",
     "derive_distribution_pda",
     "derive_journal_pda",
-    "derive_reward_share_pda",
-    "derive_validator_debt_pda",
+    "derive_record_key",
+    "derive_reward_share_record_key",
+    "derive_validator_debt_record_key",
     "derive_validator_deposit_pda",
 ]

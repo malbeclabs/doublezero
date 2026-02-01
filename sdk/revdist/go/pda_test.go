@@ -75,3 +75,32 @@ func TestDeriveJournalPDA(t *testing.T) {
 		t.Error("derived zero address")
 	}
 }
+
+func TestCreateRecordSeedString(t *testing.T) {
+	// Test vector from Rust: create_record_seed_string(&[b"test_create_record_seed_string"])
+	// Expected: "8YGyrUprn2DwKkq3hR2DaqGPYDD5WE1D"
+	got := createRecordSeedString([][]byte{[]byte("test_create_record_seed_string")})
+	want := "8YGyrUprn2DwKkq3hR2DaqGPYDD5WE1D"
+	if got != want {
+		t.Errorf("createRecordSeedString = %q, want %q", got, want)
+	}
+	if len(got) != 32 {
+		t.Errorf("seed string length = %d, want 32", len(got))
+	}
+}
+
+func TestDeriveRecordKey(t *testing.T) {
+	// Test vector from Rust: create_record_key(
+	//   "84s5hmJUjfRhsQ443M1iWnCfNNmLbQLHmWTRyHtxbQzw",
+	//   &[b"test_create_record_key"],
+	// ) == "9eP3pWoN5uFfUsHBb63wgWnMPjbvGSzQgQe6EDRCdpKJ"
+	payerKey := solana.MustPublicKeyFromBase58("84s5hmJUjfRhsQ443M1iWnCfNNmLbQLHmWTRyHtxbQzw")
+	got, err := DeriveRecordKey(payerKey, [][]byte{[]byte("test_create_record_key")})
+	if err != nil {
+		t.Fatalf("DeriveRecordKey: %v", err)
+	}
+	want := solana.MustPublicKeyFromBase58("9eP3pWoN5uFfUsHBb63wgWnMPjbvGSzQgQe6EDRCdpKJ")
+	if got != want {
+		t.Errorf("DeriveRecordKey = %s, want %s", got, want)
+	}
+}

@@ -18,12 +18,13 @@ from revdist.discriminator import (
     DISCRIMINATOR_SOLANA_VALIDATOR_DEPOSIT,
 )
 from revdist.pda import (
+    RECORD_HEADER_SIZE,
     derive_config_pda,
     derive_contributor_rewards_pda,
     derive_distribution_pda,
     derive_journal_pda,
-    derive_reward_share_pda,
-    derive_validator_debt_pda,
+    derive_reward_share_record_key,
+    derive_validator_debt_record_key,
     derive_validator_deposit_pda,
 )
 from revdist.state import (
@@ -142,14 +143,16 @@ class Client:
     def fetch_validator_debts(
         self, epoch: int
     ) -> ComputedSolanaValidatorDebts:
-        addr, _ = derive_validator_debt_pda(self._program_id, epoch)
+        config = self.fetch_config()
+        addr = derive_validator_debt_record_key(config.debt_accountant_key, epoch)
         data = self._fetch_ledger_record_data(addr)
-        return ComputedSolanaValidatorDebts.from_bytes(data)
+        return ComputedSolanaValidatorDebts.from_bytes(data[RECORD_HEADER_SIZE:])
 
     def fetch_reward_shares(self, epoch: int) -> ShapleyOutputStorage:
-        addr, _ = derive_reward_share_pda(self._program_id, epoch)
+        config = self.fetch_config()
+        addr = derive_reward_share_record_key(config.rewards_accountant_key, epoch)
         data = self._fetch_ledger_record_data(addr)
-        return ShapleyOutputStorage.from_bytes(data)
+        return ShapleyOutputStorage.from_bytes(data[RECORD_HEADER_SIZE:])
 
     # -- Internal helpers --
 

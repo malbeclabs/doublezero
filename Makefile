@@ -130,7 +130,7 @@ python-test-revdist:
 
 .PHONY: typescript-test-revdist
 typescript-test-revdist:
-	cd sdk/revdist/typescript && bun install && bun test
+	cd sdk/revdist/typescript && bun install && npx tsc --noEmit && bun test
 
 .PHONY: sdk-compat-test
 sdk-compat-test:

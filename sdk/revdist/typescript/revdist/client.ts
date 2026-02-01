@@ -1,6 +1,8 @@
 /** Read-only client for revenue distribution program accounts. */
 
 import { Connection, PublicKey } from "@solana/web3.js";
+// @ts-ignore - no type declarations available
+import bs58 from "bs58";
 import { PROGRAM_ID, SOLANA_RPC_URLS, LEDGER_RPC_URLS } from "./config.js";
 import {
   DISCRIMINATOR_PROGRAM_CONFIG,
@@ -28,13 +30,14 @@ import type {
   ShapleyOutputStorage,
 } from "./state.js";
 import {
+  RECORD_HEADER_SIZE,
   deriveConfigPda,
   deriveDistributionPda,
   deriveJournalPda,
   deriveValidatorDepositPda,
   deriveContributorRewardsPda,
-  deriveValidatorDebtPda,
-  deriveRewardSharePda,
+  deriveValidatorDebtRecordKey,
+  deriveRewardShareRecordKey,
 } from "./pda.js";
 
 export class Client {
@@ -145,15 +148,27 @@ export class Client {
   async fetchValidatorDebts(
     epoch: bigint,
   ): Promise<ComputedSolanaValidatorDebts> {
-    const [addr] = deriveValidatorDebtPda(this.programId, epoch);
+    const config = await this.fetchConfig();
+    const addr = await deriveValidatorDebtRecordKey(
+      config.debtAccountantKey,
+      epoch,
+    );
     const data = await this.fetchLedgerRecordData(addr);
-    return deserializeComputedSolanaValidatorDebts(data);
+    return deserializeComputedSolanaValidatorDebts(
+      data.subarray(RECORD_HEADER_SIZE),
+    );
   }
 
   async fetchRewardShares(epoch: bigint): Promise<ShapleyOutputStorage> {
-    const [addr] = deriveRewardSharePda(this.programId, epoch);
+    const config = await this.fetchConfig();
+    const addr = await deriveRewardShareRecordKey(
+      config.rewardsAccountantKey,
+      epoch,
+    );
     const data = await this.fetchLedgerRecordData(addr);
-    return deserializeShapleyOutputStorage(data);
+    return deserializeShapleyOutputStorage(
+      data.subarray(RECORD_HEADER_SIZE),
+    );
   }
 
   // -- Internal helpers --
@@ -174,7 +189,7 @@ export class Client {
       this.programId,
       {
         filters: [
-          { memcmp: { offset: 0, bytes: Buffer.from(disc).toString("base58") } },
+          { memcmp: { offset: 0, bytes: bs58.encode(Buffer.from(disc)) } },
         ],
       },
     );

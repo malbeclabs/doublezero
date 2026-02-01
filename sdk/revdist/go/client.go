@@ -174,21 +174,28 @@ func (c *Client) FetchValidatorDebts(ctx context.Context, epoch uint64) (*Comput
 	if c.ledgerClient == nil {
 		return nil, ErrLedgerClientNil
 	}
+	config, err := c.FetchConfig(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("fetching config for debt accountant key: %w", err)
+	}
 	epochBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(epochBytes, epoch)
-	addr, _, err := solana.FindProgramAddress([][]byte{
-		[]byte("solana_validator_debt"),
+	addr, err := DeriveRecordKey(config.DebtAccountantKey, [][]byte{
+		seedSolanaValidatorDebt,
 		epochBytes,
-	}, c.programID)
+	})
 	if err != nil {
-		return nil, fmt.Errorf("deriving validator debt record PDA: %w", err)
+		return nil, fmt.Errorf("deriving validator debt record key: %w", err)
 	}
 	data, err := c.ledgerClient.GetRecordData(ctx, addr)
 	if err != nil {
 		return nil, fmt.Errorf("fetching validator debt record: %w", err)
 	}
+	if len(data) <= recordHeaderSize {
+		return nil, fmt.Errorf("validator debt record data too short: %d bytes", len(data))
+	}
 	var debts ComputedSolanaValidatorDebts
-	decoder := ag_binary.NewBorshDecoder(data)
+	decoder := ag_binary.NewBorshDecoder(data[recordHeaderSize:])
 	if err := decoder.Decode(&debts); err != nil {
 		return nil, fmt.Errorf("deserializing validator debts: %w", err)
 	}
@@ -201,21 +208,29 @@ func (c *Client) FetchRewardShares(ctx context.Context, epoch uint64) (*ShapleyO
 	if c.ledgerClient == nil {
 		return nil, ErrLedgerClientNil
 	}
+	config, err := c.FetchConfig(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("fetching config for rewards accountant key: %w", err)
+	}
 	epochBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(epochBytes, epoch)
-	addr, _, err := solana.FindProgramAddress([][]byte{
-		[]byte("reward_share"),
+	addr, err := DeriveRecordKey(config.RewardsAccountantKey, [][]byte{
+		seedDZContributorRewards,
 		epochBytes,
-	}, c.programID)
+		seedShapleyOutput,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("deriving reward shares record PDA: %w", err)
+		return nil, fmt.Errorf("deriving reward shares record key: %w", err)
 	}
 	data, err := c.ledgerClient.GetRecordData(ctx, addr)
 	if err != nil {
 		return nil, fmt.Errorf("fetching reward shares record: %w", err)
 	}
+	if len(data) <= recordHeaderSize {
+		return nil, fmt.Errorf("reward shares record data too short: %d bytes", len(data))
+	}
 	var output ShapleyOutputStorage
-	decoder := ag_binary.NewBorshDecoder(data)
+	decoder := ag_binary.NewBorshDecoder(data[recordHeaderSize:])
 	if err := decoder.Decode(&output); err != nil {
 		return nil, fmt.Errorf("deserializing reward shares: %w", err)
 	}

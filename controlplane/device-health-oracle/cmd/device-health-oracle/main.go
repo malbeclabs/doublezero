@@ -17,7 +17,7 @@ import (
 	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/controlplane/device-health-oracle/internal/worker"
 	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
+	telemetry "github.com/malbeclabs/doublezero/sdk/telemetry/go"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -112,7 +112,7 @@ func main() {
 	// Initialize ledger clients.
 	rpcClient := solanarpc.New(networkConfig.LedgerPublicRPCURL)
 	serviceabilityClient := serviceability.New(rpcClient, networkConfig.ServiceabilityProgramID)
-	telemetryClient := telemetry.New(log, rpcClient, nil, networkConfig.TelemetryProgramID)
+	telemetryClient := telemetry.New(rpcClient, networkConfig.TelemetryProgramID)
 
 	worker.MetricBuildInfo.WithLabelValues(version, commit, date).Set(1)
 	go func() {

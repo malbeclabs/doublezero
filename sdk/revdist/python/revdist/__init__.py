@@ -12,6 +12,10 @@ from revdist.discriminator import (
     DISCRIMINATOR_CONTRIBUTOR_REWARDS,
     DISCRIMINATOR_JOURNAL,
 )
+from revdist.config import (
+    PROGRAM_ID,
+    SOLANA_RPC_URLS,
+)
 from revdist.pda import (
     derive_config_pda,
     derive_distribution_pda,
@@ -21,6 +25,8 @@ from revdist.pda import (
 )
 
 __all__ = [
+    "PROGRAM_ID",
+    "SOLANA_RPC_URLS",
     "ProgramConfig",
     "Distribution",
     "Journal",

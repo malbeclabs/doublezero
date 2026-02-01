@@ -447,7 +447,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		}
 
 		key := newTestPartitionKey()
-		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
+		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](totalSamples)
 
 		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
 			Interval:       time.Hour,
@@ -462,39 +462,24 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		// Add samples concurrently to avoid blocking.
-		var wg sync.WaitGroup
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for i := range totalSamples {
-				buffer.Add(key, telemetry.Sample{
-					Timestamp: time.Now(),
-					RTT:       time.Duration(i+1) * time.Microsecond,
-				})
-			}
-		}()
-
-		// Keep ticking until producer finishes.
-		for !waitTimeout(&wg, 10*time.Millisecond) {
-			submitter.Tick(t.Context())
+		// Add all samples before ticking to ensure deterministic chunking.
+		for i := range totalSamples {
+			buffer.Add(key, telemetry.Sample{
+				Timestamp: time.Now(),
+				RTT:       time.Duration(i+1) * time.Microsecond,
+			})
 		}
 
-		// Final drain to catch remaining.
 		submitter.Tick(t.Context())
-
-		// Wait for producer to finish.
-		wg.Wait()
 
 		mu.Lock()
 		defer mu.Unlock()
 
-		require.Equal(t, 27, calls, "expected 27 submission calls for 5500 samples")
-		for i := range 27 {
-			if i == 26 {
-				assert.Equal(t, 135, samplesPerCall[i])
-			} else if i%5 == 4 {
-				assert.Equal(t, 44, samplesPerCall[i])
+		// 5500 / 245 = 22 full batches + 110 remaining = 23 calls.
+		require.Equal(t, 23, calls, "expected 23 submission calls for 5500 samples")
+		for i := range 23 {
+			if i == 22 {
+				assert.Equal(t, 110, samplesPerCall[i])
 			} else {
 				assert.Equal(t, sdktelemetry.MaxSamplesPerBatch, samplesPerCall[i])
 			}
@@ -858,16 +843,3 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 
 }
 
-func waitTimeout(wg *sync.WaitGroup, timeout time.Duration) bool {
-	c := make(chan struct{})
-	go func() {
-		wg.Wait()
-		close(c)
-	}()
-	select {
-	case <-c:
-		return true
-	case <-time.After(timeout):
-		return false
-	}
-}

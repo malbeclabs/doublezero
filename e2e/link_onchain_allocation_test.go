@@ -11,7 +11,7 @@ import (
 
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 	"github.com/mr-tron/base58"
 	"github.com/stretchr/testify/require"
 )
@@ -215,7 +215,7 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait for link to transition to Deleting status
-	// Note: Go SDK uses LinkStatusDeleted (value 3) which corresponds to Rust's Deleting status
+	// Note: Go SDK uses LinkStatusDeleting (value 3) which corresponds to Rust's Deleting status
 	log.Info("==> Waiting for link to transition to Deleting")
 	require.Eventually(t, func() bool {
 		client, err := dn.Ledger.GetServiceabilityClient()
@@ -228,8 +228,8 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 		}
 		for _, link := range data.Links {
 			if link.Code == "test-dz01:test-dz02" {
-				// LinkStatusDeleted in Go SDK = Deleting in Rust (value 3)
-				if link.Status == serviceability.LinkStatusDeleted {
+				// LinkStatusDeleting in Go SDK = Deleting in Rust (value 3)
+				if link.Status == serviceability.LinkStatusDeleting {
 					return true
 				}
 				log.Debug("Link not yet in Deleting status", "status", link.Status)

@@ -133,24 +133,24 @@ func TestFixtureDevice(t *testing.T) {
 	DeserializeDevice(reader, &dev)
 
 	assertFields(t, meta.Fields, map[string]any{
-		"AccountType":            uint8(dev.AccountType),
-		"Owner":                  solana.PublicKey(dev.Owner),
-		"Index":                  dev.Index,
-		"BumpSeed":               dev.BumpSeed,
-		"LocationPk":             solana.PublicKey(dev.LocationPubKey),
-		"ExchangePk":             solana.PublicKey(dev.ExchangePubKey),
-		"DeviceType":             uint8(dev.DeviceType),
-		"PublicIp":               dev.PublicIp,
-		"Status":                 uint8(dev.Status),
-		"Code":                   dev.Code,
-		"MetricsPublisherPk":     solana.PublicKey(dev.MetricsPublisherPubKey),
-		"ContributorPk":          solana.PublicKey(dev.ContributorPubKey),
-		"MgmtVrf":                dev.MgmtVrf,
-		"ReferenceCount":         dev.ReferenceCount,
-		"UsersCount":             dev.UsersCount,
-		"MaxUsers":               dev.MaxUsers,
-		"DeviceHealth":           uint8(dev.DeviceHealth),
-		"DesiredStatus":          uint8(dev.DeviceDesiredStatus),
+		"AccountType":        uint8(dev.AccountType),
+		"Owner":              solana.PublicKey(dev.Owner),
+		"Index":              dev.Index,
+		"BumpSeed":           dev.BumpSeed,
+		"LocationPk":         solana.PublicKey(dev.LocationPubKey),
+		"ExchangePk":         solana.PublicKey(dev.ExchangePubKey),
+		"DeviceType":         uint8(dev.DeviceType),
+		"PublicIp":           dev.PublicIp,
+		"Status":             uint8(dev.Status),
+		"Code":               dev.Code,
+		"MetricsPublisherPk": solana.PublicKey(dev.MetricsPublisherPubKey),
+		"ContributorPk":      solana.PublicKey(dev.ContributorPubKey),
+		"MgmtVrf":            dev.MgmtVrf,
+		"ReferenceCount":     dev.ReferenceCount,
+		"UsersCount":         dev.UsersCount,
+		"MaxUsers":           dev.MaxUsers,
+		"DeviceHealth":       uint8(dev.DeviceHealth),
+		"DesiredStatus":      uint8(dev.DeviceDesiredStatus),
 	})
 
 	// Verify DzPrefixes
@@ -314,17 +314,17 @@ func TestFixtureAccessPassValidator(t *testing.T) {
 	DeserializeAccessPass(reader, &ap)
 
 	assertFields(t, meta.Fields, map[string]any{
-		"AccountType":                  uint8(ap.AccountType),
-		"Owner":                        solana.PublicKey(ap.Owner),
-		"BumpSeed":                     ap.BumpSeed,
-		"AccessPassType":               uint8(ap.AccessPassTypeTag),
+		"AccountType":                   uint8(ap.AccountType),
+		"Owner":                         solana.PublicKey(ap.Owner),
+		"BumpSeed":                      ap.BumpSeed,
+		"AccessPassType":                uint8(ap.AccessPassTypeTag),
 		"AccessPassTypeValidatorPubkey": solana.PublicKey(ap.ValidatorPubKey),
-		"ClientIp":                     ap.ClientIp,
-		"UserPayer":                    solana.PublicKey(ap.UserPayer),
-		"LastAccessEpoch":              ap.LastAccessEpoch,
-		"ConnectionCount":              ap.ConnectionCount,
-		"Status":                       uint8(ap.Status),
-		"Flags":                        ap.Flags,
+		"ClientIp":                      ap.ClientIp,
+		"UserPayer":                     solana.PublicKey(ap.UserPayer),
+		"LastAccessEpoch":               ap.LastAccessEpoch,
+		"ConnectionCount":               ap.ConnectionCount,
+		"Status":                        uint8(ap.Status),
+		"Flags":                         ap.Flags,
 	})
 
 	// Verify MGroupPubAllowlist

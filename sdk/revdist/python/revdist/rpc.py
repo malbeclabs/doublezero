@@ -6,7 +6,7 @@ import httpx
 from solana.rpc.api import Client as SolanaHTTPClient  # type: ignore[import-untyped]
 from solana.rpc.providers.http import HTTPProvider  # type: ignore[import-untyped]
 
-_DEFAULT_MAX_RETRIES = 3
+_DEFAULT_MAX_RETRIES = 5
 
 
 class _RetryTransport(httpx.BaseTransport):

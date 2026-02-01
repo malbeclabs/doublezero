@@ -9,7 +9,7 @@ import (
 	"github.com/gagliardetto/solana-go/rpc/jsonrpc"
 )
 
-const defaultMaxRetries = 3
+const defaultMaxRetries = 5
 
 // retryHTTPClient wraps an http.Client and retries on 429 Too Many Requests.
 type retryHTTPClient struct {
@@ -26,7 +26,7 @@ func (c *retryHTTPClient) Do(req *http.Request) (*http.Response, error) {
 		if resp.StatusCode != http.StatusTooManyRequests || attempt >= c.maxRetries {
 			return resp, nil
 		}
-		io.Copy(io.Discard, resp.Body)
+		_, _ = io.Copy(io.Discard, resp.Body)
 		resp.Body.Close()
 		backoff := time.Duration(attempt+1) * 2 * time.Second
 		time.Sleep(backoff)

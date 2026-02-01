@@ -1,8 +1,16 @@
 {
-  "name": "doublezero-revenue-distribution",
+  "name": "@doublezero/revenue-distribution",
   "version": "0.0.1",
-  "private": true,
   "type": "module",
+  "main": "dist/revdist/index.js",
+  "types": "dist/revdist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "tsc"
+  },
   "dependencies": {
     "@solana/web3.js": "^1.98"
   },

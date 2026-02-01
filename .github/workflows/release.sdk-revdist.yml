@@ -1,0 +1,86 @@
+name: Release SDK revdist
+
+on:
+  push:
+    tags:
+      - "sdk-revdist/v*.*.*"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish-pypi:
+    runs-on: ubuntu-latest
+    environment: pypi
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#sdk-revdist/v}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify version matches pyproject.toml
+        working-directory: sdk/revdist/python
+        run: |
+          pkg_version=$(python3 -c "
+          import tomllib
+          with open('pyproject.toml', 'rb') as f:
+              print(tomllib.load(f)['project']['version'])
+          ")
+          if [ "$pkg_version" != "${{ steps.version.outputs.version }}" ]; then
+            echo "Tag version (${{ steps.version.outputs.version }}) does not match pyproject.toml version ($pkg_version)"
+            exit 1
+          fi
+
+      - uses: astral-sh/setup-uv@v4
+
+      - name: Build package
+        working-directory: sdk/revdist/python
+        run: uv build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: sdk/revdist/python/dist/
+
+  publish-npm:
+    runs-on: ubuntu-latest
+    environment: npm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#sdk-revdist/v}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify version matches package.json
+        working-directory: sdk/revdist/typescript
+        run: |
+          pkg_version=$(node -p "require('./package.json').version")
+          if [ "$pkg_version" != "${{ steps.version.outputs.version }}" ]; then
+            echo "Tag version (${{ steps.version.outputs.version }}) does not match package.json version ($pkg_version)"
+            exit 1
+          fi
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Upgrade npm for OIDC trusted publishing
+        run: npm install -g npm@latest
+
+      - name: Install dependencies
+        working-directory: sdk/revdist/typescript
+        run: bun install
+
+      - name: Build
+        working-directory: sdk/revdist/typescript
+        run: bun run build
+
+      - name: Publish to npm
+        working-directory: sdk/revdist/typescript
+        run: npm publish --access public

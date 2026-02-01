@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/jonboulle/clockwork"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 	"github.com/mr-tron/base58"
 )
 

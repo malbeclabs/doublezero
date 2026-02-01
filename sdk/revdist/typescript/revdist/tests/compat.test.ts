@@ -10,7 +10,10 @@
  * Requires network access to Solana mainnet RPC.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test, setDefaultTimeout } from "bun:test";
+
+// Compat tests hit public RPC endpoints which may be slow or rate-limited.
+setDefaultTimeout(30_000);
 import { PublicKey } from "@solana/web3.js";
 import { Client } from "../client.js";
 import { SOLANA_RPC_URLS, LEDGER_RPC_URLS, PROGRAM_ID } from "../config.js";

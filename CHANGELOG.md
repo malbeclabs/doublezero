@@ -122,6 +122,7 @@ All notable changes to this project will be documented in this file.
   - Add shared `borsh-incremental` library (Go, Python, TypeScript) for cursor-based Borsh deserialization with backward-compatible trailing field defaults
   - Add npm and PyPI publish workflows for serviceability and telemetry SDKs
   - DeleteUserCommand updated to wait for activator to process multicast user unsubscribe before deleting the user
+  - Migrate all Go consumers to the new read-only serviceability SDK and remove the old one (`smartcontract/sdk/go/serviceability`)
 - Device controller
   - Record successful GetConfig gRPC calls to ClickHouse for device telemetry tracking
   - Multi-tenancy vrf support added

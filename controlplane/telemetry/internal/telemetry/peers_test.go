@@ -11,7 +11,7 @@ import (
 	"github.com/gagliardetto/solana-go"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/netutil"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/telemetry"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -379,7 +379,7 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 					Links: []serviceability.Link{
 						{
 							PubKey:      stringToPubkey("suspended_link"),
-							Status:      serviceability.LinkStatusSuspended,
+							Status:      serviceability.LinkStatusDeleting,
 							SideAPubKey: localDevicePK,
 							SideZPubKey: stringToPubkey("device2"),
 							TunnelNet:   [5]uint8{10, 1, 5, 0, 31},

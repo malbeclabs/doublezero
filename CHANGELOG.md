@@ -21,6 +21,7 @@ All notable changes to this project will be documented in this file.
   - Add Python and TypeScript SDKs for serviceability, telemetry, and revdist programs with typed deserialization, RPC clients, PDA derivation, enum string types, and cross-language fixture tests
   - Add shared `borsh-incremental` library (Go, Python, TypeScript) for cursor-based Borsh deserialization with backward-compatible trailing field defaults
   - Add npm and PyPI publish workflows for serviceability and telemetry SDKs
+  - Migrate all Go consumers to the new read-only serviceability SDK and remove the old one (`smartcontract/sdk/go/serviceability`)
 - Client
   - Cache network interface index/name lookups in liveness UDP service to fix high CPU usage caused by per-packet RTM_GETLINK netlink dumps
   - Add observability to BGP handleUpdate: log withdrawal/NLRI counts per batch and track processing duration via `doublezero_bgp_handle_update_duration_seconds` histogram

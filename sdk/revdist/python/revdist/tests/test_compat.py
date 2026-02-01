@@ -24,13 +24,13 @@ def skip_unless_compat() -> None:
 
 
 def compat_client() -> Client:
-    from solana.rpc.api import Client as SolanaHTTPClient  # type: ignore[import-untyped]
     from revdist.config import PROGRAM_ID, LEDGER_RPC_URLS
+    from revdist.rpc import new_rpc_client
 
     rpc_url = os.environ.get("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
     return Client(
-        SolanaHTTPClient(rpc_url),
-        SolanaHTTPClient(LEDGER_RPC_URLS["mainnet-beta"]),
+        new_rpc_client(rpc_url),
+        new_rpc_client(LEDGER_RPC_URLS["mainnet-beta"]),
         Pubkey.from_string(PROGRAM_ID),
     )
 
@@ -40,9 +40,9 @@ def _rpc_url() -> str:
 
 
 def fetch_raw_account(addr: Pubkey) -> bytes:
-    from solana.rpc.api import Client as SolanaHTTPClient  # type: ignore[import-untyped]
+    from revdist.rpc import new_rpc_client
 
-    rpc = SolanaHTTPClient(_rpc_url())
+    rpc = new_rpc_client(_rpc_url())
     resp = rpc.get_account_info(addr)
     assert resp.value is not None, f"account not found: {addr}"
     return bytes(resp.value.data)

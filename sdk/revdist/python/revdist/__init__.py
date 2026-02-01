@@ -6,6 +6,7 @@ from revdist.config import (
     SOLANA_RPC_URLS,
 )
 from revdist.oracle import OracleClient, SwapRate
+from revdist.rpc import new_rpc_client
 from revdist.discriminator import (
     DISCRIMINATOR_CONTRIBUTOR_REWARDS,
     DISCRIMINATOR_DISTRIBUTION,
@@ -65,4 +66,5 @@ __all__ = [
     "derive_reward_share_record_key",
     "derive_validator_debt_record_key",
     "derive_validator_deposit_pda",
+    "new_rpc_client",
 ]

@@ -6,6 +6,8 @@ import struct
 from typing import Protocol
 
 from solana.rpc.api import Client as SolanaHTTPClient  # type: ignore[import-untyped]
+
+from revdist.rpc import new_rpc_client
 from solders.pubkey import Pubkey  # type: ignore[import-untyped]
 from solders.rpc.responses import GetAccountInfoResp  # type: ignore[import-untyped]
 
@@ -59,8 +61,8 @@ class Client:
     def mainnet_beta(cls) -> Client:
         """Create a client configured for mainnet-beta."""
         return cls(
-            SolanaHTTPClient(SOLANA_RPC_URLS["mainnet-beta"]),
-            SolanaHTTPClient(LEDGER_RPC_URLS["mainnet-beta"]),
+            new_rpc_client(SOLANA_RPC_URLS["mainnet-beta"]),
+            new_rpc_client(LEDGER_RPC_URLS["mainnet-beta"]),
             Pubkey.from_string(PROGRAM_ID),
         )
 
@@ -68,8 +70,8 @@ class Client:
     def testnet(cls) -> Client:
         """Create a client configured for testnet."""
         return cls(
-            SolanaHTTPClient(SOLANA_RPC_URLS["testnet"]),
-            SolanaHTTPClient(LEDGER_RPC_URLS["testnet"]),
+            new_rpc_client(SOLANA_RPC_URLS["testnet"]),
+            new_rpc_client(LEDGER_RPC_URLS["testnet"]),
             Pubkey.from_string(PROGRAM_ID),
         )
 
@@ -77,8 +79,8 @@ class Client:
     def devnet(cls) -> Client:
         """Create a client configured for devnet."""
         return cls(
-            SolanaHTTPClient(SOLANA_RPC_URLS["devnet"]),
-            SolanaHTTPClient(LEDGER_RPC_URLS["devnet"]),
+            new_rpc_client(SOLANA_RPC_URLS["devnet"]),
+            new_rpc_client(LEDGER_RPC_URLS["devnet"]),
             Pubkey.from_string(PROGRAM_ID),
         )
 
@@ -86,8 +88,8 @@ class Client:
     def localnet(cls) -> Client:
         """Create a client configured for localnet."""
         return cls(
-            SolanaHTTPClient(SOLANA_RPC_URLS["localnet"]),
-            SolanaHTTPClient(LEDGER_RPC_URLS["localnet"]),
+            new_rpc_client(SOLANA_RPC_URLS["localnet"]),
+            new_rpc_client(LEDGER_RPC_URLS["localnet"]),
             Pubkey.from_string(PROGRAM_ID),
         )
 

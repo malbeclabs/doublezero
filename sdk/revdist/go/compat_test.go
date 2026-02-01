@@ -53,9 +53,15 @@ func compatNetworkConfig(t *testing.T) *config.NetworkConfig {
 func compatClient(t *testing.T) (*Client, solana.PublicKey) {
 	t.Helper()
 	cfg := compatNetworkConfig(t)
-	rpcClient := solanarpc.New(cfg.SolanaRPCURL)
-	ledger := &rpcLedgerClient{rpc: solanarpc.New(cfg.LedgerPublicRPCURL)}
+	rpcClient := NewRPCClient(cfg.SolanaRPCURL)
+	ledger := &rpcLedgerClient{rpc: NewRPCClient(cfg.LedgerPublicRPCURL)}
 	return NewWithLedger(rpcClient, cfg.RevenueDistributionProgramID, ledger), cfg.RevenueDistributionProgramID
+}
+
+func compatRPCClient(t *testing.T) *solanarpc.Client {
+	t.Helper()
+	cfg := compatNetworkConfig(t)
+	return NewRPCClient(cfg.SolanaRPCURL)
 }
 
 func fetchRawAccount(t *testing.T, rpcClient *solanarpc.Client, addr solana.PublicKey) []byte {
@@ -81,9 +87,8 @@ func TestCompatProgramConfig(t *testing.T) {
 	}
 
 	// Fetch raw bytes for independent verification.
-	cfg := compatNetworkConfig(t)
 	addr, _, _ := DeriveConfigPDA(programID)
-	raw := fetchRawAccount(t, solanarpc.New(cfg.SolanaRPCURL), addr)
+	raw := fetchRawAccount(t, compatRPCClient(t), addr)
 
 	// Verify discriminator.
 	if err := validateDiscriminator(raw, DiscriminatorProgramConfig); err != nil {
@@ -151,9 +156,8 @@ func TestCompatDistribution(t *testing.T) {
 		t.Fatalf("FetchDistribution(%d): %v", epoch, err)
 	}
 
-	cfg := compatNetworkConfig(t)
 	addr, _, _ := DeriveDistributionPDA(programID, epoch)
-	raw := fetchRawAccount(t, solanarpc.New(cfg.SolanaRPCURL), addr)
+	raw := fetchRawAccount(t, compatRPCClient(t), addr)
 
 	if err := validateDiscriminator(raw, DiscriminatorDistribution); err != nil {
 		t.Fatalf("discriminator: %v", err)
@@ -199,9 +203,8 @@ func TestCompatJournal(t *testing.T) {
 		t.Fatalf("FetchJournal: %v", err)
 	}
 
-	cfg := compatNetworkConfig(t)
 	addr, _, _ := DeriveJournalPDA(programID)
-	raw := fetchRawAccount(t, solanarpc.New(cfg.SolanaRPCURL), addr)
+	raw := fetchRawAccount(t, compatRPCClient(t), addr)
 
 	if err := validateDiscriminator(raw, DiscriminatorJournal); err != nil {
 		t.Fatalf("discriminator: %v", err)

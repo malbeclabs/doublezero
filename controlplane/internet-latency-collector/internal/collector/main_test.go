@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/lmittmann/tint"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 )
 
 var (

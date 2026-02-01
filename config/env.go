@@ -20,6 +20,7 @@ type NetworkConfig struct {
 	LedgerPublicRPCURL            string
 	ServiceabilityProgramID       solana.PublicKey
 	TelemetryProgramID            solana.PublicKey
+	RevenueDistributionProgramID  solana.PublicKey
 	InternetLatencyCollectorPK    solana.PublicKey
 	DeviceLocalASN                uint32
 	TwoZOracleURL                 string
@@ -45,11 +46,16 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse internet latency collector oracle agent PK: %w", err)
 		}
+		revenueDistributionProgramID, err := solana.PublicKeyFromBase58(MainnetRevenueDistributionProgramID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse revenue distribution program ID: %w", err)
+		}
 		config = &NetworkConfig{
 			Moniker:                       EnvMainnetBeta,
 			LedgerPublicRPCURL:            MainnetLedgerPublicRPCURL,
 			ServiceabilityProgramID:       serviceabilityProgramID,
 			TelemetryProgramID:            telemetryProgramID,
+			RevenueDistributionProgramID:  revenueDistributionProgramID,
 			InternetLatencyCollectorPK:    internetLatencyCollectorPK,
 			DeviceLocalASN:                MainnetDeviceLocalASN,
 			TwoZOracleURL:                 MainnetTwoZOracleURL,

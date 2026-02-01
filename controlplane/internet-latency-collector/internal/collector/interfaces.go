@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 )
 
 // HTTPClient defines the interface for HTTP operations

@@ -10,7 +10,7 @@ import (
 	"sort"
 
 	"github.com/malbeclabs/doublezero/controlplane/internet-latency-collector/internal/metrics"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 )
 
 const MaxDistanceKM = 60.0

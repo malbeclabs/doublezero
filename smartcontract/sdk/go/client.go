@@ -6,8 +6,9 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
+
 	"github.com/malbeclabs/doublezero/config"
-	"github.com/malbeclabs/doublezero/sdk/revdist/go"
+	revdist "github.com/malbeclabs/doublezero/sdk/revdist/go"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 )

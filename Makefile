@@ -132,6 +132,20 @@ python-test-revdist:
 typescript-test-revdist:
 	cd sdk/revdist/typescript && bun install && bun test
 
+.PHONY: sdk-compat-test
+sdk-compat-test:
+	REVDIST_COMPAT_TEST=1 go test -run TestCompat -v ./sdk/revdist/go/...
+	$(MAKE) python-compat-test-revdist
+	$(MAKE) typescript-compat-test-revdist
+
+.PHONY: python-compat-test-revdist
+python-compat-test-revdist:
+	cd sdk/revdist/python && REVDIST_COMPAT_TEST=1 uv run pytest -k compat -v
+
+.PHONY: typescript-compat-test-revdist
+typescript-compat-test-revdist:
+	cd sdk/revdist/typescript && bun install && REVDIST_COMPAT_TEST=1 bun test --grep compat
+
 .PHONY: generate-fixtures
 generate-fixtures:
 	cd sdk/revdist/testdata/fixtures/generate-fixtures && cargo run

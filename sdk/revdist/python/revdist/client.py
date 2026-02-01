@@ -125,6 +125,18 @@ class Client:
             data, DISCRIMINATOR_CONTRIBUTOR_REWARDS
         )
 
+    def fetch_all_validator_deposits(self) -> list[SolanaValidatorDeposit]:
+        return self._fetch_all_by_discriminator(
+            DISCRIMINATOR_SOLANA_VALIDATOR_DEPOSIT,
+            SolanaValidatorDeposit,
+        )
+
+    def fetch_all_contributor_rewards(self) -> list[ContributorRewards]:
+        return self._fetch_all_by_discriminator(
+            DISCRIMINATOR_CONTRIBUTOR_REWARDS,
+            ContributorRewards,
+        )
+
     # -- DZ Ledger RPC (ledger records) --
 
     def fetch_validator_debts(
@@ -152,3 +164,24 @@ class Client:
         if resp.value is None:
             raise ValueError(f"ledger record not found: {addr}")
         return bytes(resp.value.data)
+
+    def _fetch_all_by_discriminator(
+        self,
+        disc: bytes,
+        cls: type,
+    ) -> list:
+        from solana.rpc.types import MemcmpOpts  # type: ignore[import-untyped]
+
+        import base58  # type: ignore[import-untyped]
+
+        filters = [MemcmpOpts(offset=0, bytes=base58.b58encode(disc).decode())]
+        resp = self._solana_rpc.get_program_accounts(
+            self._program_id,
+            encoding="base64",
+            filters=filters,
+        )
+        results = []
+        for acct in resp.value:
+            data = bytes(acct.account.data)
+            results.append(cls.from_bytes(data, disc))
+        return results

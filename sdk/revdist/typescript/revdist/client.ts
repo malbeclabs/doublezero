@@ -126,6 +126,20 @@ export class Client {
     );
   }
 
+  async fetchAllValidatorDeposits(): Promise<SolanaValidatorDeposit[]> {
+    return this.fetchAllByDiscriminator(
+      DISCRIMINATOR_SOLANA_VALIDATOR_DEPOSIT,
+      deserializeSolanaValidatorDeposit,
+    );
+  }
+
+  async fetchAllContributorRewards(): Promise<ContributorRewards[]> {
+    return this.fetchAllByDiscriminator(
+      DISCRIMINATOR_CONTRIBUTOR_REWARDS,
+      deserializeContributorRewards,
+    );
+  }
+
   // -- DZ Ledger RPC (ledger records) --
 
   async fetchValidatorDebts(
@@ -150,6 +164,23 @@ export class Client {
       throw new Error(`account not found: ${addr.toBase58()}`);
     }
     return info.data;
+  }
+
+  private async fetchAllByDiscriminator<T>(
+    disc: Uint8Array,
+    deserialize: (data: Uint8Array, disc: Uint8Array) => T,
+  ): Promise<T[]> {
+    const accounts = await this.solanaConnection.getProgramAccounts(
+      this.programId,
+      {
+        filters: [
+          { memcmp: { offset: 0, bytes: Buffer.from(disc).toString("base58") } },
+        ],
+      },
+    );
+    return accounts.map(({ account }) =>
+      deserialize(account.data, disc),
+    );
   }
 
   private async fetchLedgerRecordData(addr: PublicKey): Promise<Buffer> {

@@ -17,7 +17,7 @@ import (
 	"github.com/jonboulle/clockwork"
 	"github.com/lmittmann/tint"
 	"github.com/malbeclabs/doublezero/config"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 	"github.com/malbeclabs/doublezero/telemetry/global-monitor/internal/dz"
 	"github.com/malbeclabs/doublezero/telemetry/global-monitor/internal/gm"
 	"github.com/malbeclabs/doublezero/telemetry/global-monitor/internal/metrics"

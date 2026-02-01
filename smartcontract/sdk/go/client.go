@@ -6,21 +6,25 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
+
 	"github.com/malbeclabs/doublezero/config"
+	revdist "github.com/malbeclabs/doublezero/sdk/revdist/go"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 )
 
 type Client struct {
-	Serviceability *serviceability.Client
-	Telemetry      *telemetry.Client
+	Serviceability      *serviceability.Client
+	Telemetry           *telemetry.Client
+	RevenueDistribution *revdist.Client
 }
 
 type Config struct {
-	Endpoint                string
-	Signer                  *solana.PrivateKey
-	ServiceabilityProgramID solana.PublicKey
-	TelemetryProgramID      solana.PublicKey
+	Endpoint                     string
+	Signer                       *solana.PrivateKey
+	ServiceabilityProgramID      solana.PublicKey
+	TelemetryProgramID           solana.PublicKey
+	RevenueDistributionProgramID solana.PublicKey
 }
 
 type Option func(*Config)
@@ -51,6 +55,11 @@ func New(log *slog.Logger, endpoint string, opts ...Option) (*Client, error) {
 		Serviceability: serviceability.New(rpcClient, cfg.ServiceabilityProgramID),
 		Telemetry:      telemetry.New(log, rpcClient, cfg.Signer, cfg.TelemetryProgramID),
 	}
+
+	if !cfg.RevenueDistributionProgramID.IsZero() {
+		c.RevenueDistribution = revdist.New(rpcClient, cfg.RevenueDistributionProgramID)
+	}
+
 	return c, nil
 }
 
@@ -72,5 +81,12 @@ func WithSigner(signer *solana.PrivateKey) Option {
 func WithTelemetryProgramID(programID string) Option {
 	return func(c *Config) {
 		c.TelemetryProgramID = solana.MustPublicKeyFromBase58(programID)
+	}
+}
+
+// Configure the revenue distribution program ID.
+func WithRevenueDistributionProgramID(programID string) Option {
+	return func(c *Config) {
+		c.RevenueDistributionProgramID = solana.MustPublicKeyFromBase58(programID)
 	}
 }

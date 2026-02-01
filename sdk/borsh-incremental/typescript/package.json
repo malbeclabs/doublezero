@@ -1,0 +1,19 @@
+{
+  "name": "@doublezero/borsh-incremental",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "dist/borsh-incremental/index.js",
+  "types": "dist/borsh-incremental/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "tsc"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5"
+  }
+}

@@ -9,7 +9,7 @@ import (
 
 	"github.com/malbeclabs/doublezero/config"
 	revdist "github.com/malbeclabs/doublezero/sdk/revdist/go"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 )
 

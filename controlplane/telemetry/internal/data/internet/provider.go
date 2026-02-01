@@ -11,7 +11,7 @@ import (
 	"github.com/gagliardetto/solana-go"
 	"github.com/jellydator/ttlcache/v3"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/data/stats"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 	"github.com/malbeclabs/doublezero/tools/solana/pkg/epoch"
 )

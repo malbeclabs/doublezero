@@ -17,6 +17,10 @@ class BorshReader {
     this.offset = 0;
   }
 
+  get remaining(): number {
+    return this.raw.byteLength - this.offset;
+  }
+
   readU8(): number {
     const v = this.data.getUint8(this.offset);
     this.offset += 1;
@@ -144,7 +148,7 @@ export function deserializeGlobalState(data: Uint8Array): GlobalState {
   const contributorAirdropLamports = r.readU64();
   const userAirdropLamports = r.readU64();
   const healthOraclePk = r.readPubkey();
-  const qaAllowlist = r.readPubkeyVec();
+  const qaAllowlist = r.remaining >= 4 ? r.readPubkeyVec() : [];
   return {
     accountType,
     bumpSeed,

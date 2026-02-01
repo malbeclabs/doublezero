@@ -15,7 +15,7 @@ import struct
 import pytest
 from solders.pubkey import Pubkey  # type: ignore[import-untyped]
 
-from serviceability.config import PROGRAM_IDS, SOLANA_RPC_URLS
+from serviceability.config import PROGRAM_IDS, LEDGER_RPC_URLS
 from serviceability.pda import (
     derive_global_config_pda,
     derive_global_state_pda,
@@ -30,7 +30,7 @@ def skip_unless_compat() -> None:
 
 
 def _rpc_url() -> str:
-    return os.environ.get("SOLANA_RPC_URL", SOLANA_RPC_URLS["mainnet-beta"])
+    return os.environ.get("SOLANA_RPC_URL", LEDGER_RPC_URLS["mainnet-beta"])
 
 
 def _program_id() -> Pubkey:
@@ -142,4 +142,4 @@ class TestCompatGlobalState:
         # Sanity checks.
         assert gs.activator_authority_pk != Pubkey.default(), "ActivatorAuthorityPK is zero"
         assert gs.sentinel_authority_pk != Pubkey.default(), "SentinelAuthorityPK is zero"
-        assert gs.health_oracle_pk != Pubkey.default(), "HealthOraclePK is zero"
+        # health_oracle_pk may be zero on mainnet

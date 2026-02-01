@@ -5,19 +5,20 @@ import (
 )
 
 var (
-	seedGlobalState   = []byte("global_state")
-	seedGlobalConfig  = []byte("global_config")
-	seedProgramConfig = []byte("program_config")
+	seedPrefix        = []byte("doublezero")
+	seedGlobalState   = []byte("globalstate")
+	seedGlobalConfig  = []byte("config")
+	seedProgramConfig = []byte("programconfig")
 )
 
 func DeriveGlobalStatePDA(programID solana.PublicKey) (solana.PublicKey, uint8, error) {
-	return solana.FindProgramAddress([][]byte{seedGlobalState}, programID)
+	return solana.FindProgramAddress([][]byte{seedPrefix, seedGlobalState}, programID)
 }
 
 func DeriveGlobalConfigPDA(programID solana.PublicKey) (solana.PublicKey, uint8, error) {
-	return solana.FindProgramAddress([][]byte{seedGlobalConfig}, programID)
+	return solana.FindProgramAddress([][]byte{seedPrefix, seedGlobalConfig}, programID)
 }
 
 func DeriveProgramConfigPDA(programID solana.PublicKey) (solana.PublicKey, uint8, error) {
-	return solana.FindProgramAddress([][]byte{seedProgramConfig}, programID)
+	return solana.FindProgramAddress([][]byte{seedPrefix, seedProgramConfig}, programID)
 }

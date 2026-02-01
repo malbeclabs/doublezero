@@ -17,19 +17,19 @@ func New(rpcClient *rpc.Client, programID solana.PublicKey) *Client {
 }
 
 func NewMainnetBeta() *Client {
-	return New(rpc.New(SolanaRPCURLs["mainnet-beta"]), ProgramIDs["mainnet-beta"])
+	return New(rpc.New(LedgerRPCURLs["mainnet-beta"]), ProgramIDs["mainnet-beta"])
 }
 
 func NewTestnet() *Client {
-	return New(rpc.New(SolanaRPCURLs["testnet"]), ProgramIDs["testnet"])
+	return New(rpc.New(LedgerRPCURLs["testnet"]), ProgramIDs["testnet"])
 }
 
 func NewDevnet() *Client {
-	return New(rpc.New(SolanaRPCURLs["devnet"]), ProgramIDs["devnet"])
+	return New(rpc.New(LedgerRPCURLs["devnet"]), ProgramIDs["devnet"])
 }
 
 func NewLocalnet() *Client {
-	return New(rpc.New(SolanaRPCURLs["localnet"]), ProgramIDs["localnet"])
+	return New(rpc.New(LedgerRPCURLs["localnet"]), ProgramIDs["localnet"])
 }
 
 func (c *Client) GetDeviceLatencySamples(

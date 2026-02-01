@@ -1,4 +1,4 @@
-export { PROGRAM_IDS, SOLANA_RPC_URLS } from "./config.js";
+export { PROGRAM_IDS, LEDGER_RPC_URLS } from "./config.js";
 export {
   type DeviceLatencySamples,
   type InternetLatencySamples,

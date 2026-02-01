@@ -197,7 +197,8 @@ class GlobalState:
         gs.contributor_airdrop_lamports = r.read_u64()
         gs.user_airdrop_lamports = r.read_u64()
         gs.health_oracle_pk = r.read_pubkey()
-        gs.qa_allowlist = r.read_pubkey_vec()
+        if r.remaining >= 4:
+            gs.qa_allowlist = r.read_pubkey_vec()
         return gs
 
 

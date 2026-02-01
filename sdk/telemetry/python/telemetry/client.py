@@ -8,7 +8,7 @@ from solana.rpc.api import Client as SolanaHTTPClient  # type: ignore[import-unt
 from solders.pubkey import Pubkey  # type: ignore[import-untyped]
 from solders.rpc.responses import GetAccountInfoResp  # type: ignore[import-untyped]
 
-from telemetry.config import PROGRAM_IDS, SOLANA_RPC_URLS
+from telemetry.config import PROGRAM_IDS, LEDGER_RPC_URLS
 from telemetry.pda import (
     derive_device_latency_samples_pda,
     derive_internet_latency_samples_pda,
@@ -34,28 +34,28 @@ class Client:
     @classmethod
     def mainnet_beta(cls) -> Client:
         return cls(
-            SolanaHTTPClient(SOLANA_RPC_URLS["mainnet-beta"]),
+            SolanaHTTPClient(LEDGER_RPC_URLS["mainnet-beta"]),
             Pubkey.from_string(PROGRAM_IDS["mainnet-beta"]),
         )
 
     @classmethod
     def testnet(cls) -> Client:
         return cls(
-            SolanaHTTPClient(SOLANA_RPC_URLS["testnet"]),
+            SolanaHTTPClient(LEDGER_RPC_URLS["testnet"]),
             Pubkey.from_string(PROGRAM_IDS["testnet"]),
         )
 
     @classmethod
     def devnet(cls) -> Client:
         return cls(
-            SolanaHTTPClient(SOLANA_RPC_URLS["devnet"]),
+            SolanaHTTPClient(LEDGER_RPC_URLS["devnet"]),
             Pubkey.from_string(PROGRAM_IDS["devnet"]),
         )
 
     @classmethod
     def localnet(cls) -> Client:
         return cls(
-            SolanaHTTPClient(SOLANA_RPC_URLS["localnet"]),
+            SolanaHTTPClient(LEDGER_RPC_URLS["localnet"]),
             Pubkey.from_string(PROGRAM_IDS["localnet"]),
         )
 

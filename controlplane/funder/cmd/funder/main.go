@@ -17,7 +17,7 @@ import (
 	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/controlplane/funder/internal/funder"
 	"github.com/malbeclabs/doublezero/controlplane/funder/internal/metrics"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 

@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to promote (e.g., 0.8.2-1)'
+        description: 'Version to promote (e.g., 0.8.2)'
         required: true
         type: string
       dry_run:
@@ -16,19 +16,19 @@ on:
 env:
   SOURCE_REPO: malbeclabs/doublezero-testnet
   DEST_REPO: doublezero
-  EXPECTED_PACKAGES: >-
-    doublezero-funder
-    #    TODO: uncomment the remaining components after testing with funder
-    #    doublezero-activator
-    #    doublezero-admin
-    #    doublezero-agent
-    #    doublezero-client
-    #    doublezero-controller
-    #    doublezero-device-telemetry-agent
-    #    doublezero-funder
-    #    doublezero-global-monitor
-    #    doublezero-internet-latency-collector
-    #    doublezero-monitor
+  # TODO: uncomment the remaining components after testing with funder
+  # EXPECTED_PACKAGES: >-
+  #   doublezero-activator
+  #   doublezero-admin
+  #   doublezero-agent
+  #   doublezero-client
+  #   doublezero-controller
+  #   doublezero-device-telemetry-agent
+  #   doublezero-funder
+  #   doublezero-global-monitor
+  #   doublezero-internet-latency-collector
+  #   doublezero-monitor
+  EXPECTED_PACKAGES: doublezero-funder
 
 jobs:
   validate:
@@ -45,22 +45,30 @@ jobs:
         env:
           CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_TOKEN }}
         run: |
-          echo "Searching for packages with version ${{ inputs.version }} in $SOURCE_REPO..."
+          # Strip trailing -1 if provided, so users can enter either "0.8.4" or "0.8.4-1"
+          VERSION="${{ inputs.version }}"
+          VERSION="${VERSION%-1}"
+          echo "Searching for packages with version $VERSION in $SOURCE_REPO..."
 
-          # Get all packages matching the version
-          PACKAGES=$(cloudsmith ls pkg $SOURCE_REPO -q "version:^${{ inputs.version }}$" -F json -l 100)
+          # Query exact version (rpm) and version with -1 suffix (deb) separately, then merge
+          RPM=$(cloudsmith ls pkg $SOURCE_REPO -q "version:^${VERSION}$" -F json -l 100)
+          DEB=$(cloudsmith ls pkg $SOURCE_REPO -q "version:^${VERSION}-1$" -F json -l 100)
+          PACKAGES=$(jq -s '{data: (.[0].data + .[1].data)}' <(echo "$RPM") <(echo "$DEB"))
 
           # Extract package names and slugs
           echo "$PACKAGES" | jq -r '.data[] | "\(.name) (\(.slug))"' | sort
 
-          # Get count
           COUNT=$(echo "$PACKAGES" | jq '.data | length')
-          echo "Found $COUNT packages"
+          echo "Found $COUNT total packages for this version"
 
-          # Save slugs for later
-          SLUGS=$(echo "$PACKAGES" | jq -r '.data[].slug' | tr '\n' ' ')
+          # Filter to only expected packages
+          FILTER=$(echo $EXPECTED_PACKAGES | tr ' ' '\n' | jq -R . | jq -s '.')
+          SLUGS=$(echo "$PACKAGES" | jq -r --argjson names "$FILTER" '.data[] | select(.name as $n | $names | index($n)) | .slug' | tr '\n' ' ')
+          FILTERED_COUNT=$(echo "$PACKAGES" | jq --argjson names "$FILTER" '[.data[] | select(.name as $n | $names | index($n))] | length')
+
+          echo "Filtered to $FILTERED_COUNT packages matching expected list"
           echo "packages=$SLUGS" >> $GITHUB_OUTPUT
-          echo "count=$COUNT" >> $GITHUB_OUTPUT
+          echo "count=$FILTERED_COUNT" >> $GITHUB_OUTPUT
 
       - name: Validate all expected packages exist
         env:
@@ -69,9 +77,13 @@ jobs:
           echo "Validating expected packages..."
           MISSING=""
 
+          VERSION="${{ inputs.version }}"
+          VERSION="${VERSION%-1}"
+
           for pkg in $EXPECTED_PACKAGES; do
-            # Check if package exists with this version
-            RESULT=$(cloudsmith ls pkg $SOURCE_REPO -q "name:^${pkg}$ AND version:^${{ inputs.version }}$" -F json)
+            RPM=$(cloudsmith ls pkg $SOURCE_REPO -q "name:^${pkg}$ AND version:^${VERSION}$" -F json)
+            DEB=$(cloudsmith ls pkg $SOURCE_REPO -q "name:^${pkg}$ AND version:^${VERSION}-1$" -F json)
+            RESULT=$(jq -s '{data: (.[0].data + .[1].data)}' <(echo "$RPM") <(echo "$DEB"))
             COUNT=$(echo "$RESULT" | jq '.data | length')
 
             if [ "$COUNT" -eq 0 ]; then

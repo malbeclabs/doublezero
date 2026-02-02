@@ -7,13 +7,39 @@ Read-only SDKs for deserializing DoubleZero onchain program accounts in Go, Pyth
 - **revdist** -- Revenue distribution program (epochs, claim tickets, etc.)
 - **borsh-incremental** -- Shared Borsh deserialization library used by all three SDKs, implemented in each language
 
+## Running Tests
+
+```
+make sdk-test          # Run all SDK tests (unit + fixture) across Go, Python, TypeScript
+make sdk-compat-test   # Run compat tests against live RPC (requires network)
+```
+
+Per-SDK test commands:
+
+| SDK | Go | Python | TypeScript |
+|-----|----|----|------------|
+| serviceability | `go test ./sdk/serviceability/go/...` | `cd sdk/serviceability/python && uv run pytest` | `cd sdk/serviceability/typescript && bun test` |
+| telemetry | `go test ./sdk/telemetry/go/...` | `cd sdk/telemetry/python && uv run pytest` | `cd sdk/telemetry/typescript && bun test` |
+| revdist | `go test ./sdk/revdist/go/...` | `cd sdk/revdist/python && uv run pytest` | `cd sdk/revdist/typescript && bun test` |
+
+## Regenerating Fixtures
+
+Each SDK has a Rust fixture generator at `testdata/fixtures/generate-fixtures/` that constructs account data using the actual onchain Rust types, Borsh-serializes them to `.bin` files, and writes expected field values to `.json` files. These fixtures are the source of truth -- they guarantee the binary data matches the real onchain serialization format.
+
+**When to regenerate:** After modifying onchain Rust structs (adding/removing fields, changing enum variants, etc.), you must regenerate fixtures so the SDK tests reflect the updated serialization format.
+
+**How to regenerate:**
+
+```bash
+# Regenerate fixtures for a specific SDK
+cd sdk/serviceability/testdata/fixtures/generate-fixtures && cargo run
+cd sdk/telemetry/testdata/fixtures/generate-fixtures && cargo run
+cd sdk/revdist/testdata/fixtures/generate-fixtures && cargo run
+```
+
+After regenerating, update the deserialization logic in Go, Python, and TypeScript to handle any new or changed fields, then run `make sdk-test` to verify consistency across all three languages.
+
 ## Testing Strategy
-
-Tests are layered to ensure correctness and cross-language consistency.
-
-### Rust fixture generators
-
-Each SDK has a Rust program at `testdata/fixtures/generate-fixtures/` that constructs account data using the actual onchain Rust types, Borsh-serializes them to `.bin` files, and writes expected field values to `.json` files. These fixtures are the source of truth -- they guarantee the binary data matches the real onchain serialization format.
 
 ### Cross-language fixture tests
 
@@ -34,13 +60,6 @@ A shared `enum_strings.json` file is verified by all three languages to ensure s
 ### PDA derivation tests
 
 Verify that program-derived addresses match known values across all three languages.
-
-## Running Tests
-
-```
-make sdk-test          # Run all SDK tests (unit + fixture) across Go, Python, TypeScript
-make sdk-compat-test   # Run compat tests against live RPC (requires network)
-```
 
 ## Adding a New Field or Enum Variant
 

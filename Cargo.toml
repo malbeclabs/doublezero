@@ -16,7 +16,7 @@ exclude = []
 resolver = "2"
 
 [workspace.package]
-version = "0.8.4"
+version = "0.8.5"
 authors = ["Malbec Labs <dev@malbeclabs.com>"]
 readme = "README.md"
 edition = "2021"

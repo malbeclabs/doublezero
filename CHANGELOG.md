@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Breaking
+
+### Changes
+
+## [v0.8.5](https://github.com/malbeclabs/doublezero/compare/client/v0.8.4...client/v0.8.5) – 2026-02-02
+
 - Smartcontract
   - fix(smartcontract): reserve first IP of DzPrefixBlock for device ([#2753](https://github.com/malbeclabs/doublezero/pull/2753))
 - Client

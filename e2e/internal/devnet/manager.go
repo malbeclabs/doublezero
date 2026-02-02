@@ -27,6 +27,12 @@ type ManagerSpec struct {
 	ManagerKeypairPath               string
 	ServiceabilityProgramKeypairPath string
 	TelemetryProgramKeypairPath      string
+
+	// ServiceabilityProgramID, when set, overrides the program ID that would
+	// normally be derived from the ServiceabilityProgramKeypairPath. This is
+	// used when testing against a cloned mainnet program where the program ID
+	// differs from the local keypair.
+	ServiceabilityProgramID string
 }
 
 func (s *ManagerSpec) Validate() error {
@@ -233,12 +239,17 @@ func (m *Manager) setState(ctx context.Context, containerID string) error {
 	}
 	m.Pubkey = strings.TrimSpace(string(output))
 
-	// Get the serviceability program ID from the serviceability program keypair.
-	output, err = m.Exec(ctx, []string{"solana", "address", "-k", serviceabilityProgramContainerKeypairPath}, docker.NoPrintOnError())
-	if err != nil {
-		return fmt.Errorf("failed to get serviceability program pubkey: %v", err)
+	// Get the serviceability program ID. If an override is set in the spec, use that;
+	// otherwise derive it from the keypair inside the container.
+	if m.dn.Spec.Manager.ServiceabilityProgramID != "" {
+		m.ServiceabilityProgramID = m.dn.Spec.Manager.ServiceabilityProgramID
+	} else {
+		output, err = m.Exec(ctx, []string{"solana", "address", "-k", serviceabilityProgramContainerKeypairPath}, docker.NoPrintOnError())
+		if err != nil {
+			return fmt.Errorf("failed to get serviceability program pubkey: %v", err)
+		}
+		m.ServiceabilityProgramID = strings.TrimSpace(string(output))
 	}
-	m.ServiceabilityProgramID = strings.TrimSpace(string(output))
 
 	// Get the telemetry program ID from the telemetry program keypair.
 	output, err = m.Exec(ctx, []string{"solana", "address", "-k", telemetryProgramContainerKeypairPath}, docker.NoPrintOnError())

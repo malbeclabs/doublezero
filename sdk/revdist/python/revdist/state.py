@@ -11,6 +11,8 @@ import struct
 from dataclasses import dataclass
 
 from borsh_incremental import IncrementalReader
+
+from revdist.reserved import Reserved
 from solders.pubkey import Pubkey  # type: ignore[import-untyped]
 
 from revdist.discriminator import DISCRIMINATOR_SIZE, validate_discriminator
@@ -49,7 +51,7 @@ class SolanaValidatorFeeParameters:
     inflation_rewards_pct: int  # u16
     jito_tips_pct: int  # u16
     fixed_sol_amount: int  # u32
-    reserved0: bytes = b"\x00" * 28  # [7]u32 storage gap
+    reserved0: Reserved = Reserved(b"\x00" * 28)  # [7]u32 storage gap
 
     STRUCT_SIZE = 40  # 4*u16 + u32 + 7*u32 reserved
 
@@ -58,7 +60,7 @@ class SolanaValidatorFeeParameters:
         cls, data: bytes, offset: int = 0
     ) -> SolanaValidatorFeeParameters:
         vals = struct.unpack_from("<4HI", data, offset)
-        reserved0 = data[offset + 12 : offset + 40]
+        reserved0 = Reserved(data[offset + 12 : offset + 40])
         return cls(*vals, reserved0=reserved0)
 
 
@@ -67,10 +69,10 @@ class DistributionParameters:
     calculation_grace_period_minutes: int  # u16
     initialization_grace_period_minutes: int  # u16
     minimum_epoch_duration_to_finalize_rewards: int  # u8
-    reserved0: bytes  # [3]u8 padding
+    reserved0: Reserved  # [3]u8 padding
     community_burn_rate_parameters: CommunityBurnRateParameters
     solana_validator_fee_parameters: SolanaValidatorFeeParameters
-    reserved1: bytes  # [8][32]byte storage gap (256 bytes)
+    reserved1: Reserved  # [8][32]byte storage gap (256 bytes)
 
     STRUCT_SIZE = 328  # 2+2+1+3pad+24+40+256reserved
 
@@ -79,10 +81,10 @@ class DistributionParameters:
         off = offset
         calc_gp, init_gp = struct.unpack_from("<2H", data, off); off += 4
         min_epoch = struct.unpack_from("<B", data, off)[0]; off += 1
-        reserved0 = data[off : off + 3]; off += 3
+        reserved0 = Reserved(data[off : off + 3]); off += 3
         burn = CommunityBurnRateParameters.from_bytes(data, off); off += CommunityBurnRateParameters.STRUCT_SIZE
         vfee = SolanaValidatorFeeParameters.from_bytes(data, off); off += SolanaValidatorFeeParameters.STRUCT_SIZE
-        reserved1 = data[off : off + 256]
+        reserved1 = Reserved(data[off : off + 256])
         return cls(calc_gp, init_gp, min_epoch, reserved0, burn, vfee, reserved1)
 
 
@@ -90,14 +92,14 @@ class DistributionParameters:
 class RelayParameters:
     placeholder_lamports: int  # u32
     distribute_rewards_lamports: int  # u32
-    reserved0: bytes = b"\x00" * 32  # [32]byte storage gap
+    reserved0: Reserved = Reserved(b"\x00" * 32)  # [32]byte storage gap
 
     STRUCT_SIZE = 40  # 4+4+32reserved
 
     @classmethod
     def from_bytes(cls, data: bytes, offset: int = 0) -> RelayParameters:
         vals = struct.unpack_from("<2I", data, offset)
-        reserved0 = data[offset + 8 : offset + 40]
+        reserved0 = Reserved(data[offset + 8 : offset + 40])
         return cls(*vals, reserved0=reserved0)
 
 
@@ -143,7 +145,7 @@ class ProgramConfig:
     swap_authority_bump_seed: int  # u8
     swap_destination_2z_bump_seed: int  # u8
     withdraw_sol_authority_bump_seed: int  # u8
-    reserved0: bytes  # [3]u8 padding
+    reserved0: Reserved  # [3]u8 padding
     admin_key: Pubkey
     debt_accountant_key: Pubkey
     rewards_accountant_key: Pubkey
@@ -153,7 +155,7 @@ class ProgramConfig:
     distribution_parameters: DistributionParameters
     relay_parameters: RelayParameters
     last_initialized_distribution_timestamp: int  # u32
-    reserved1: bytes  # [4]byte padding
+    reserved1: Reserved  # [4]byte padding
     debt_write_off_feature_activation_epoch: int  # u64
 
     STRUCT_SIZE = 600
@@ -166,7 +168,7 @@ class ProgramConfig:
         off = 0
         flags, next_epoch = struct.unpack_from("<2Q", b, off); off += 16
         bump, r2z, swap_auth, swap_dest, withdraw = struct.unpack_from("<5B", b, off); off += 5
-        reserved0 = b[off : off + 3]; off += 3
+        reserved0 = Reserved(b[off : off + 3]); off += 3
         admin = _pubkey(b, off); off += 32
         debt = _pubkey(b, off); off += 32
         rewards = _pubkey(b, off); off += 32
@@ -176,7 +178,7 @@ class ProgramConfig:
         dist_params = DistributionParameters.from_bytes(b, off); off += DistributionParameters.STRUCT_SIZE
         relay = RelayParameters.from_bytes(b, off); off += RelayParameters.STRUCT_SIZE
         last_ts = struct.unpack_from("<I", b, off)[0]; off += 4
-        reserved1 = b[off : off + 4]; off += 4
+        reserved1 = Reserved(b[off : off + 4]); off += 4
         debt_wo_epoch = struct.unpack_from("<Q", b, off)[0]
         return cls(
             flags=flags,
@@ -208,7 +210,7 @@ class Distribution:
     community_burn_rate: int  # u32
     bump_seed: int  # u8
     token_2z_pda_bump_seed: int  # u8
-    reserved0: bytes  # [2]byte padding
+    reserved0: Reserved  # [2]byte padding
     solana_validator_fee_parameters: SolanaValidatorFeeParameters
     solana_validator_debt_merkle_root: bytes  # 32 bytes
     total_solana_validators: int  # u32
@@ -232,8 +234,8 @@ class Distribution:
     processed_sv_debt_wo_start_index: int  # u32
     processed_sv_debt_wo_end_index: int  # u32
     solana_validator_write_off_count: int  # u32
-    reserved1: bytes  # [20]byte padding
-    reserved2: bytes  # [6][32]byte storage gap (192 bytes)
+    reserved1: Reserved  # [20]byte padding
+    reserved2: Reserved  # [6][32]byte storage gap (192 bytes)
 
     STRUCT_SIZE = 448
 
@@ -244,7 +246,7 @@ class Distribution:
         dz_epoch, flags = struct.unpack_from("<2Q", b, off); off += 16
         burn_rate = struct.unpack_from("<I", b, off)[0]; off += 4
         bump, t2z_bump = struct.unpack_from("<2B", b, off); off += 2
-        reserved0 = b[off : off + 2]; off += 2
+        reserved0 = Reserved(b[off : off + 2]); off += 2
         vfee = SolanaValidatorFeeParameters.from_bytes(b, off); off += SolanaValidatorFeeParameters.STRUCT_SIZE
         sv_debt_root = b[off : off + 32]; off += 32
         total_sv, sv_pay_count = struct.unpack_from("<2I", b, off); off += 8
@@ -258,8 +260,8 @@ class Distribution:
         ) = struct.unpack_from("<6I", b, off); off += 24
         dist_2z, burned_2z = struct.unpack_from("<2Q", b, off); off += 16
         wo_start, wo_end, wo_count = struct.unpack_from("<3I", b, off); off += 12
-        reserved1 = b[off : off + 20]; off += 20
-        reserved2 = b[off : off + 192]
+        reserved1 = Reserved(b[off : off + 20]); off += 20
+        reserved2 = Reserved(b[off : off + 192])
         return cls(
             dz_epoch=dz_epoch,
             flags=flags,
@@ -299,8 +301,8 @@ class Distribution:
 class SolanaValidatorDeposit:
     node_id: Pubkey  # 32 bytes
     written_off_sol_debt: int  # u64
-    reserved0: bytes = b"\x00" * 24  # [24]byte padding
-    reserved1: bytes = b"\x00" * 32  # [32]byte storage gap
+    reserved0: Reserved = Reserved(b"\x00" * 24)  # [24]byte padding
+    reserved1: Reserved = Reserved(b"\x00" * 32)  # [32]byte storage gap
 
     STRUCT_SIZE = 96
 
@@ -312,8 +314,8 @@ class SolanaValidatorDeposit:
         off = 0
         node_id = _pubkey(b, off); off += 32
         debt = struct.unpack_from("<Q", b, off)[0]; off += 8
-        reserved0 = b[off : off + 24]; off += 24
-        reserved1 = b[off : off + 32]
+        reserved0 = Reserved(b[off : off + 24]); off += 24
+        reserved1 = Reserved(b[off : off + 32])
         return cls(node_id=node_id, written_off_sol_debt=debt, reserved0=reserved0, reserved1=reserved1)
 
 
@@ -323,7 +325,7 @@ class ContributorRewards:
     service_key: Pubkey  # 32 bytes
     flags: int  # u64
     recipient_shares: list[RecipientShare]  # 8 entries
-    reserved0: bytes = b"\x00" * 256  # [8][32]byte storage gap
+    reserved0: Reserved = Reserved(b"\x00" * 256)  # [8][32]byte storage gap
 
     STRUCT_SIZE = 600
 
@@ -340,7 +342,7 @@ class ContributorRewards:
         for _ in range(8):
             shares.append(RecipientShare.from_bytes(b, off))
             off += RecipientShare.STRUCT_SIZE
-        reserved0 = b[off : off + 256]
+        reserved0 = Reserved(b[off : off + 256])
         return cls(
             rewards_manager_key=mgr,
             service_key=svc,
@@ -354,7 +356,7 @@ class ContributorRewards:
 class Journal:
     bump_seed: int  # u8
     token_2z_pda_bump_seed: int  # u8
-    reserved0: bytes  # [6]byte padding
+    reserved0: Reserved  # [6]byte padding
     total_sol_balance: int  # u64
     total_2z_balance: int  # u64
     swap_2z_destination_balance: int  # u64
@@ -369,7 +371,7 @@ class Journal:
         b = _deserialize(data, discriminator, cls.STRUCT_SIZE)
         off = 0
         bump, t2z_bump = struct.unpack_from("<2B", b, off); off += 2
-        reserved0 = b[off : off + 6]; off += 6
+        reserved0 = Reserved(b[off : off + 6]); off += 6
         (
             total_sol, total_2z, swap_dest, swapped, next_epoch,
         ) = struct.unpack_from("<5Q", b, off); off += 40

@@ -16,19 +16,15 @@ on:
 env:
   SOURCE_REPO: malbeclabs/doublezero-testnet
   DEST_REPO: doublezero
-  # TODO: uncomment the remaining components after testing with funder
-  # EXPECTED_PACKAGES: >-
-  #   doublezero-activator
-  #   doublezero-admin
-  #   doublezero-agent
-  #   doublezero-client
-  #   doublezero-controller
-  #   doublezero-device-telemetry-agent
-  #   doublezero-funder
-  #   doublezero-global-monitor
-  #   doublezero-internet-latency-collector
-  #   doublezero-monitor
-  EXPECTED_PACKAGES: doublezero-funder
+  EXPECTED_PACKAGES: >-
+    doublezero
+    doublezero-activator
+    doublezero-agent
+    doublezero-controller
+    doublezero-device-telemetry-agent
+    doublezero-funder
+    doublezero-internet-latency-collector
+    doublezero-monitor
 
 jobs:
   validate:

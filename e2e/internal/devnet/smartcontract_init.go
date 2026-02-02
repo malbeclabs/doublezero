@@ -152,9 +152,9 @@ func (dn *Devnet) InitSmartContract(ctx context.Context) error {
 			}
 			return false, fmt.Errorf("failed to load serviceability program client: %w", err)
 		}
-		config := data.Config
+		config := data.GlobalConfig
 
-		if config.Local_asn != 0 {
+		if config.LocalASN != 0 {
 			return true, nil
 		}
 

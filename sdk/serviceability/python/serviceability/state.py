@@ -557,7 +557,7 @@ class Exchange:
         ex.lat = r.read_f64()
         ex.lng = r.read_f64()
         ex.bgp_community = r.read_u16()
-        r.read_u16()  # unused padding
+        r.read_u16()  # reserved padding
         ex.status = ExchangeStatus(r.read_u8())
         ex.code = r.read_string()
         ex.name = r.read_string()

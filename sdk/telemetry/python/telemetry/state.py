@@ -63,7 +63,7 @@ class DeviceLatencySamples:
         start_timestamp = r.read_u64()
         next_sample_index = r.read_u32()
 
-        r.read_bytes(128)  # _unused
+        r.read_bytes(128)  # reserved
 
         count = min(next_sample_index, MAX_DEVICE_LATENCY_SAMPLES_PER_ACCOUNT)
         samples: list[int] = []
@@ -118,7 +118,7 @@ class InternetLatencySamples:
         start_timestamp = r.read_u64()
         next_sample_index = r.read_u32()
 
-        r.read_bytes(128)  # _unused
+        r.read_bytes(128)  # reserved
 
         count = min(next_sample_index, MAX_INTERNET_LATENCY_SAMPLES_PER_ACCOUNT)
         samples: list[int] = []

@@ -163,12 +163,17 @@ func (c *Client) DisconnectUser(ctx context.Context, waitForStatus bool, waitFor
 		if err != nil {
 			return fmt.Errorf("failed to get program data for user on host %s: %w", c.Host, err)
 		}
+		userFound := false
 		for _, user := range data.Users {
 			userClientIP := net.IP(user.ClientIp[:]).String()
 			if userClientIP == publicIP {
-				c.log.Debug("User already deleted onchain", "ip", publicIP)
-				return nil
+				userFound = true
+				break
 			}
+		}
+		if !userFound {
+			c.log.Debug("User already deleted onchain", "ip", publicIP)
+			return nil
 		}
 
 		c.log.Debug("Waiting for user to be deleted onchain", "host", c.Host)

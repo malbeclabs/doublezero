@@ -489,6 +489,11 @@ impl ProvisioningCliCommand {
                     eyre::bail!("User with different type already exists. Only one tunnel currently supported.");
                 }
 
+                // Ensure user is activated before subscribing to new groups
+                if user.status != UserStatus::Activated {
+                    self.poll_for_user_activated(client, user_pk, spinner)?;
+                }
+
                 // Subscribe to any groups not already subscribed
                 let existing_groups = match multicast_mode {
                     MulticastMode::Publisher => &user.publishers,

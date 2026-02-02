@@ -4,12 +4,13 @@ FROM ${BASE_IMAGE} AS base
 FROM ubuntu:24.04
 
 RUN apt-get update && \
-    apt-get install -y curl vim iproute2 python3
+    apt-get install -y curl vim iproute2
 
 COPY --from=base /usr/local/bin/solana-test-validator /usr/local/bin/
 COPY --from=base /usr/local/bin/solana /usr/local/bin/
 COPY --from=base /usr/local/bin/solana-keygen /usr/local/bin/
 COPY --from=base /doublezero/bin/doublezero_serviceability.so /doublezero/bin/doublezero_serviceability.so
+COPY --from=base /doublezero/bin/fork-accounts /usr/local/bin/
 
 HEALTHCHECK --interval=3s --timeout=5s --start-period=3s --retries=10 \
     CMD ["solana", "cluster-version"]

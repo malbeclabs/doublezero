@@ -12,7 +12,7 @@ use solana_program::{
 use std::{fmt, net::Ipv4Addr};
 
 #[repr(u8)]
-#[derive(BorshSerialize, BorshDeserialize, Debug, Default, Copy, Clone, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Default, Clone, PartialEq)]
 #[borsh(use_discriminant = true)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum AccessPassType {
@@ -28,6 +28,37 @@ pub enum AccessPassType {
         )]
         Pubkey,
     ),
+    SolanaRPC(
+        #[cfg_attr(
+            feature = "serde",
+            serde(
+                serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
+                deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
+            )
+        )]
+        Pubkey,
+    ),
+    SolanaMulticastPublisher(
+        #[cfg_attr(
+            feature = "serde",
+            serde(
+                serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
+                deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
+            )
+        )]
+        Pubkey,
+    ),
+    SolanaMulticastSubscriber(
+        #[cfg_attr(
+            feature = "serde",
+            serde(
+                serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
+                deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
+            )
+        )]
+        Pubkey,
+    ),
+    Others(String, String), // (type_name, key)
 }
 
 impl AccessPassType {
@@ -35,6 +66,12 @@ impl AccessPassType {
         match self {
             AccessPassType::Prepaid => "prepaid".to_string(),
             AccessPassType::SolanaValidator(_) => "solana_validator".to_string(),
+            AccessPassType::SolanaRPC(_) => "solana_rpc".to_string(),
+            AccessPassType::SolanaMulticastPublisher(_) => "solana_multicast_publisher".to_string(),
+            AccessPassType::SolanaMulticastSubscriber(_) => {
+                "solana_multicast_subscriber".to_string()
+            }
+            AccessPassType::Others(type_name, _) => type_name.clone(),
         }
     }
 }
@@ -44,6 +81,16 @@ impl fmt::Display for AccessPassType {
         match self {
             AccessPassType::Prepaid => write!(f, "prepaid"),
             AccessPassType::SolanaValidator(node_id) => write!(f, "solana_validator: {node_id}"),
+            AccessPassType::SolanaRPC(node_id) => write!(f, "solana_rpc: {node_id}"),
+            AccessPassType::SolanaMulticastPublisher(node_id) => {
+                write!(f, "solana_multicast_publisher: {node_id}")
+            }
+            AccessPassType::SolanaMulticastSubscriber(node_id) => {
+                write!(f, "solana_multicast_subscriber: {node_id}")
+            }
+            AccessPassType::Others(type_name, key) => {
+                write!(f, "others: {} ({})", type_name, key)
+            }
         }
     }
 }
@@ -97,14 +144,41 @@ impl Validate for AccessPass {
 impl Validate for AccessPassType {
     fn validate(&self) -> Result<(), DoubleZeroError> {
         match self {
-            AccessPassType::Prepaid => Ok(()),
             AccessPassType::SolanaValidator(solana_identity) => {
                 if *solana_identity == Pubkey::default() {
                     msg!("Invalid Solana Validator Pubkey: {}", solana_identity);
-                    return Err(DoubleZeroError::InvalidSolanaValidatorPubkey);
+                    return Err(DoubleZeroError::InvalidSolanaPubkey);
                 }
                 Ok(())
             }
+            AccessPassType::SolanaRPC(solana_identity) => {
+                if *solana_identity == Pubkey::default() {
+                    msg!("Invalid Solana RPC Pubkey: {}", solana_identity);
+                    return Err(DoubleZeroError::InvalidSolanaPubkey);
+                }
+                Ok(())
+            }
+            AccessPassType::SolanaMulticastPublisher(solana_identity) => {
+                if *solana_identity == Pubkey::default() {
+                    msg!(
+                        "Invalid Solana Multicast Publisher Pubkey: {}",
+                        solana_identity
+                    );
+                    return Err(DoubleZeroError::InvalidSolanaPubkey);
+                }
+                Ok(())
+            }
+            AccessPassType::SolanaMulticastSubscriber(solana_identity) => {
+                if *solana_identity == Pubkey::default() {
+                    msg!(
+                        "Invalid Solana Multicast Subscriber Pubkey: {}",
+                        solana_identity
+                    );
+                    return Err(DoubleZeroError::InvalidSolanaPubkey);
+                }
+                Ok(())
+            }
+            _ => Ok(()),
         }
     }
 }
@@ -145,7 +219,7 @@ pub struct AccessPass {
 
 impl fmt::Display for AccessPass {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.accesspass_type {
+        match &self.accesspass_type {
             AccessPassType::Prepaid => {
                 if self.last_access_epoch == u64::MAX {
                     write!(f, "Prepaid: (MAX)")
@@ -155,6 +229,18 @@ impl fmt::Display for AccessPass {
             }
             AccessPassType::SolanaValidator(node_id) => {
                 write!(f, "SolanaValidator: ({node_id})")
+            }
+            AccessPassType::SolanaRPC(node_id) => {
+                write!(f, "SolanaRPC: ({node_id})")
+            }
+            AccessPassType::SolanaMulticastPublisher(node_id) => {
+                write!(f, "SolanaMulticastPublisher: ({node_id})")
+            }
+            AccessPassType::SolanaMulticastSubscriber(node_id) => {
+                write!(f, "SolanaMulticastSubscriber: ({node_id})")
+            }
+            AccessPassType::Others(type_name, details) => {
+                write!(f, "Others: {} ({})", type_name, details)
             }
         }
     }
@@ -442,9 +528,6 @@ mod tests {
         };
         let err = val.validate();
         assert!(err.is_err());
-        assert_eq!(
-            err.unwrap_err(),
-            DoubleZeroError::InvalidSolanaValidatorPubkey
-        );
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidSolanaPubkey);
     }
 }

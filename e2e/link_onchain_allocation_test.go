@@ -24,7 +24,7 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 	t.Parallel()
 
 	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
-	log := logger.With("test", t.Name(), "deployID", deployID)
+	log := newTestLoggerForTest(t).With("test", t.Name(), "deployID", deployID)
 
 	log.Info("==> Starting test devnet with on-chain allocation enabled")
 
@@ -59,11 +59,8 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 	log.Info("==> Creating devices for link test")
 	output, err := dn.Manager.Exec(ctx, []string{"bash", "-c", `
 		set -euo pipefail
-		echo "==> Creating device test-dz01"
 		doublezero device create --code test-dz01 --contributor co01 --location lax --exchange xlax --public-ip "45.33.100.1" --dz-prefixes "45.33.100.8/29" --mgmt-vrf mgmt --desired-status activated 2>&1
-		echo "==> Creating device test-dz02"
 		doublezero device create --code test-dz02 --contributor co01 --location ewr --exchange xewr --public-ip "45.33.100.2" --dz-prefixes "45.33.100.16/29" --mgmt-vrf mgmt --desired-status activated 2>&1
-		echo "==> Updating devices with max-users"
 		doublezero device update --pubkey test-dz01 --max-users 128 2>&1
 		doublezero device update --pubkey test-dz02 --max-users 128 2>&1
 	`})

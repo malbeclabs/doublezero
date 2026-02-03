@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -40,16 +41,30 @@ const (
 )
 
 var (
+	verbose         bool
 	logger          *slog.Logger
 	subnetAllocator *docker.SubnetAllocator
 	dockerClient    *client.Client
 )
 
+// testWriter wraps testing.T to implement io.Writer for slog output.
+// This ensures logs only appear on test failure (standard go test behavior).
+type testWriter struct {
+	t  *testing.T
+	mu sync.Mutex
+}
+
+func (w *testWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.t.Logf("%s", p)
+	return len(p), nil
+}
+
 // TestMain is the entry point for the test suite. It runs before all tests and is used to
 // initialize the logger and subnet allocator.
 func TestMain(m *testing.M) {
 	flag.Parse()
-	verbose := false
 	if vFlag := flag.Lookup("test.v"); vFlag != nil && vFlag.Value.String() == "true" {
 		verbose = true
 	}
@@ -104,7 +119,7 @@ type TestDevnet struct {
 
 func NewSingleDeviceSingleClientTestDevnet(t *testing.T) (*TestDevnet, *devnet.Device, *devnet.Client) {
 	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
-	log := logger.With("test", t.Name(), "deployID", deployID)
+	log := newTestLoggerForTest(t).With("test", t.Name(), "deployID", deployID)
 
 	log.Info("==> Starting test devnet with single device and client")
 
@@ -165,7 +180,6 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", `
 		set -euo pipefail
 
-		echo "==> Populate device information onchain"
 		doublezero device create --code ld4-dz01 --contributor co01 --location lhr --exchange xlhr --public-ip "195.219.120.72" --dz-prefixes "195.219.120.80/29" --mgmt-vrf mgmt --desired-status activated
 		doublezero device create --code frk-dz01 --contributor co01 --location fra --exchange xfra --public-ip "195.219.220.88" --dz-prefixes "195.219.220.96/29" --mgmt-vrf mgmt --desired-status activated
 		doublezero device create --code sg1-dz01 --contributor co01 --location sin --exchange xsin --public-ip "180.87.102.104" --dz-prefixes "180.87.102.112/29" --mgmt-vrf mgmt --desired-status activated
@@ -173,10 +187,6 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 		doublezero device create --code pit-dzd01 --contributor co01 --location pit --exchange xpit --public-ip "204.16.241.243" --dz-prefixes "204.16.243.243/32" --mgmt-vrf mgmt --desired-status activated
 		doublezero device create --code ams-dz001 --contributor co01 --location ams --exchange xams --public-ip "195.219.138.50" --dz-prefixes "195.219.138.56/29" --mgmt-vrf mgmt --desired-status activated
 
-		echo "--> Device information onchain:"
-		doublezero device list
-
-		echo "==> Populate device interface information onchain"
 		# TODO: When the controller supports dzd metadata, this will have to be updated to reflect actual interfaces
 		doublezero device interface create ny5-dz01 "Ethernet2" -w
 		doublezero device interface create ny5-dz01 "Vlan4001" -w
@@ -227,8 +237,6 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 		doublezero device update --pubkey pit-dzd01 --max-users 128
 		doublezero device update --pubkey ams-dz001 --max-users 128
 
-
-		echo "==> Populate link information onchain"
 		doublezero link create wan --code "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Ethernet2 --side-z ny5-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3 --desired-status activated -w
 		doublezero link create wan --code "ny5-dz01:ld4-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Vlan4001 --side-z ld4-dz01 --side-z-interface Vlan4001 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3 --desired-status activated -w
 		doublezero link create wan --code "ld4-dz01:frk-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet3 --side-z frk-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 25 --jitter-ms 10 --desired-status activated -w
@@ -245,17 +253,9 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 		# For testing link.status=hard-drained:
 		doublezero link create wan --code "ny5-dz01_e6:la2-dz01_e6" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet6 --side-z la2-dz01 --side-z-interface Ethernet6 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 8 --jitter-ms 3 --desired-status activated -w
 
-		echo "===> Set delay override for ny5-dz01:la2-dz01 link"
 		doublezero link update --pubkey "ny5-dz01:la2-dz01" --delay-override-ms 500
-
-		echo "===> Set link status=soft-drained for ny5-dz01_e5:la2-dz01_e5 link"
 		doublezero link update --pubkey "ny5-dz01_e5:la2-dz01_e5" --status=soft-drained
-
-		echo "===> Set link status=hard-drained for ny5-dz01_e6:la2-dz01_e6 link"
 		doublezero link update --pubkey "ny5-dz01_e6:la2-dz01_e6" --status=hard-drained
-
-		echo "--> Tunnel information onchain:"
-		doublezero link list
 	`})
 	require.NoError(t, err)
 
@@ -271,7 +271,6 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 
 	// Add null routes to test latency selection to ny5-dz01.
 	_, err = client.Exec(ctx, []string{"bash", "-c", `
-		echo "==> Adding null routes to test latency selection to ny5-dz01."
 		ip rule add priority 1 from ` + client.CYOANetworkIP + `/` + strconv.Itoa(dn.Spec.CYOANetwork.CIDRPrefix) + ` to all table main
 		ip route add 207.45.216.134/32 dev lo proto static scope host
 		ip route add 195.219.120.72/32 dev lo proto static scope host
@@ -345,18 +344,9 @@ func (dn *TestDevnet) CreateMulticastGroupOnchain(t *testing.T, client *devnet.C
 
 	_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
 		set -e
-
-		echo "==> Populate multicast group information onchain"
 		doublezero multicast group create --code ` + multicastGroupCode + ` --max-bandwidth 10Gbps --owner me -w
-
-		echo "--> Multicast group information onchain:"
-		doublezero multicast group list
-
-		echo "==> Add me to multicast group allowlist"
 		doublezero multicast group allowlist publisher add --code ` + multicastGroupCode + ` --user-payer me --client-ip ` + client.CYOANetworkIP + `
 		doublezero multicast group allowlist subscriber add --code ` + multicastGroupCode + ` --user-payer me --client-ip ` + client.CYOANetworkIP + `
-
-		echo "==> Add client pubkey to multicast group allowlist"
 		doublezero multicast group allowlist publisher add --code ` + multicastGroupCode + ` --user-payer ` + client.Pubkey + ` --client-ip ` + client.CYOANetworkIP + `
 		doublezero multicast group allowlist subscriber add --code ` + multicastGroupCode + ` --user-payer ` + client.Pubkey + ` --client-ip ` + client.CYOANetworkIP + `
 	`})
@@ -529,6 +519,8 @@ func nextAllocatableIP(ip string, allocatablePrefix int, allocated map[string]bo
 	return "", errors.New("no allocatable IPs remaining")
 }
 
+// newTestLogger creates a logger for TestMain setup (before any tests run).
+// This writes to stdout since there's no *testing.T available yet.
 func newTestLogger(verbose bool) *slog.Logger {
 	logWriter := os.Stdout
 	logLevel := slog.LevelDebug
@@ -611,4 +603,18 @@ func (dn *TestDevnet) GetDeviceLinkInterfaceIPs(t *testing.T, deviceCode string)
 	}
 
 	return result, nil
+}
+
+// newTestLoggerForTest creates a logger for individual test runs.
+// Logs are written to t.Log() so they only appear on test failure (unless -v is passed).
+func newTestLoggerForTest(t *testing.T) *slog.Logger {
+	w := &testWriter{t: t}
+	logLevel := slog.LevelInfo
+	if verbose {
+		logLevel = slog.LevelDebug
+	}
+	return slog.New(tint.NewHandler(w, &tint.Options{
+		Level:      logLevel,
+		TimeFormat: time.DateTime,
+	}))
 }

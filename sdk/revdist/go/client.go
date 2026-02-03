@@ -75,6 +75,38 @@ func NewWithLedger(rpc RPCClient, programID solana.PublicKey, ledgerClient Ledge
 	}
 }
 
+// NewForEnv creates a client configured for the given environment.
+// Valid environments: "mainnet-beta", "testnet", "devnet", "localnet".
+func NewForEnv(env string) *Client {
+	return New(NewRPCClient(SolanaRPCURLs[env]), ProgramID)
+}
+
+// NewForEnvWithLedger creates a client with ledger support for the given environment.
+// Valid environments: "mainnet-beta", "testnet", "devnet", "localnet".
+func NewForEnvWithLedger(env string, ledgerClient LedgerRecordClient) *Client {
+	return NewWithLedger(NewRPCClient(SolanaRPCURLs[env]), ProgramID, ledgerClient)
+}
+
+// NewMainnetBeta creates a client configured for mainnet-beta.
+func NewMainnetBeta() *Client {
+	return NewForEnv("mainnet-beta")
+}
+
+// NewTestnet creates a client configured for testnet.
+func NewTestnet() *Client {
+	return NewForEnv("testnet")
+}
+
+// NewDevnet creates a client configured for devnet.
+func NewDevnet() *Client {
+	return NewForEnv("devnet")
+}
+
+// NewLocalnet creates a client configured for localnet.
+func NewLocalnet() *Client {
+	return NewForEnv("localnet")
+}
+
 func (c *Client) FetchConfig(ctx context.Context) (*ProgramConfig, error) {
 	addr, _, err := DeriveConfigPDA(c.programID)
 	if err != nil {

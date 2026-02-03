@@ -16,20 +16,26 @@ func New(rpcClient *rpc.Client, programID solana.PublicKey) *Client {
 	return &Client{rpcClient: rpcClient, programID: programID}
 }
 
+// NewForEnv creates a client configured for the given environment.
+// Valid environments: "mainnet-beta", "testnet", "devnet", "localnet".
+func NewForEnv(env string) *Client {
+	return New(NewRPCClient(LedgerRPCURLs[env]), ProgramIDs[env])
+}
+
 func NewMainnetBeta() *Client {
-	return New(NewRPCClient(LedgerRPCURLs["mainnet-beta"]), ProgramIDs["mainnet-beta"])
+	return NewForEnv("mainnet-beta")
 }
 
 func NewTestnet() *Client {
-	return New(NewRPCClient(LedgerRPCURLs["testnet"]), ProgramIDs["testnet"])
+	return NewForEnv("testnet")
 }
 
 func NewDevnet() *Client {
-	return New(NewRPCClient(LedgerRPCURLs["devnet"]), ProgramIDs["devnet"])
+	return NewForEnv("devnet")
 }
 
 func NewLocalnet() *Client {
-	return New(NewRPCClient(LedgerRPCURLs["localnet"]), ProgramIDs["localnet"])
+	return NewForEnv("localnet")
 }
 
 func (c *Client) GetDeviceLatencySamples(

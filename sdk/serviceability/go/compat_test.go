@@ -177,8 +177,7 @@ func TestCompatGlobalState(t *testing.T) {
 func TestCompatGetProgramData(t *testing.T) {
 	skipUnlessCompat(t)
 
-	rpcClient := NewRPCClient(compatRPCURL())
-	client := NewMainnetBeta(rpcClient)
+	client := NewMainnetBeta()
 	ctx := context.Background()
 
 	pd, err := client.GetProgramData(ctx)

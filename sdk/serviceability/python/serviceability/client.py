@@ -57,29 +57,29 @@ class Client:
         self._program_id = program_id
 
     @classmethod
-    def mainnet_beta(cls) -> Client:
+    def from_env(cls, env: str) -> Client:
+        """Create a client configured for the given environment.
+
+        Args:
+            env: Environment name ("mainnet-beta", "testnet", "devnet", "localnet")
+        """
         return cls(
-            new_rpc_client(LEDGER_RPC_URLS["mainnet-beta"]),
-            Pubkey.from_string(PROGRAM_IDS["mainnet-beta"]),
+            new_rpc_client(LEDGER_RPC_URLS[env]),
+            Pubkey.from_string(PROGRAM_IDS[env]),
         )
+
+    @classmethod
+    def mainnet_beta(cls) -> Client:
+        return cls.from_env("mainnet-beta")
 
     @classmethod
     def testnet(cls) -> Client:
-        return cls(
-            new_rpc_client(LEDGER_RPC_URLS["testnet"]),
-            Pubkey.from_string(PROGRAM_IDS["testnet"]),
-        )
+        return cls.from_env("testnet")
 
     @classmethod
     def devnet(cls) -> Client:
-        return cls(
-            new_rpc_client(LEDGER_RPC_URLS["devnet"]),
-            Pubkey.from_string(PROGRAM_IDS["devnet"]),
-        )
+        return cls.from_env("devnet")
 
     @classmethod
     def localnet(cls) -> Client:
-        return cls(
-            new_rpc_client(LEDGER_RPC_URLS["localnet"]),
-            Pubkey.from_string(PROGRAM_IDS["localnet"]),
-        )
+        return cls.from_env("localnet")

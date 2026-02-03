@@ -56,36 +56,29 @@ export class Client {
     this.programId = programId;
   }
 
-  static mainnetBeta(): Client {
+  /** Create a client configured for the given environment. */
+  static forEnv(env: string): Client {
     return new Client(
-      newConnection(SOLANA_RPC_URLS["mainnet-beta"]),
-      newConnection(LEDGER_RPC_URLS["mainnet-beta"]),
+      newConnection(SOLANA_RPC_URLS[env]),
+      newConnection(LEDGER_RPC_URLS[env]),
       new PublicKey(PROGRAM_ID),
     );
+  }
+
+  static mainnetBeta(): Client {
+    return Client.forEnv("mainnet-beta");
   }
 
   static testnet(): Client {
-    return new Client(
-      newConnection(SOLANA_RPC_URLS["testnet"]),
-      newConnection(LEDGER_RPC_URLS["testnet"]),
-      new PublicKey(PROGRAM_ID),
-    );
+    return Client.forEnv("testnet");
   }
 
   static devnet(): Client {
-    return new Client(
-      newConnection(SOLANA_RPC_URLS["devnet"]),
-      newConnection(LEDGER_RPC_URLS["devnet"]),
-      new PublicKey(PROGRAM_ID),
-    );
+    return Client.forEnv("devnet");
   }
 
   static localnet(): Client {
-    return new Client(
-      newConnection(SOLANA_RPC_URLS["localnet"]),
-      newConnection(LEDGER_RPC_URLS["localnet"]),
-      new PublicKey(PROGRAM_ID),
-    );
+    return Client.forEnv("localnet");
   }
 
   // -- Solana RPC (on-chain accounts) --

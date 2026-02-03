@@ -20,32 +20,28 @@ export class Client {
     private programId: PublicKey,
   ) {}
 
-  static mainnetBeta(): Client {
+  /** Create a client configured for the given environment. */
+  static forEnv(env: string): Client {
     return new Client(
-      newConnection(LEDGER_RPC_URLS["mainnet-beta"]),
-      new PublicKey(PROGRAM_IDS["mainnet-beta"]),
+      newConnection(LEDGER_RPC_URLS[env]),
+      new PublicKey(PROGRAM_IDS[env]),
     );
+  }
+
+  static mainnetBeta(): Client {
+    return Client.forEnv("mainnet-beta");
   }
 
   static testnet(): Client {
-    return new Client(
-      newConnection(LEDGER_RPC_URLS["testnet"]),
-      new PublicKey(PROGRAM_IDS["testnet"]),
-    );
+    return Client.forEnv("testnet");
   }
 
   static devnet(): Client {
-    return new Client(
-      newConnection(LEDGER_RPC_URLS["devnet"]),
-      new PublicKey(PROGRAM_IDS["devnet"]),
-    );
+    return Client.forEnv("devnet");
   }
 
   static localnet(): Client {
-    return new Client(
-      newConnection(LEDGER_RPC_URLS["localnet"]),
-      new PublicKey(PROGRAM_IDS["localnet"]),
-    );
+    return Client.forEnv("localnet");
   }
 
   async getDeviceLatencySamples(

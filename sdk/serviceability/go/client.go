@@ -39,24 +39,30 @@ func New(rpc RPCClient, programID solana.PublicKey) *Client {
 	return &Client{rpc: rpc, programID: programID}
 }
 
+// NewForEnv creates a client configured for the given environment.
+// Valid environments: "mainnet-beta", "testnet", "devnet", "localnet".
+func NewForEnv(env string) *Client {
+	return New(NewRPCClient(LedgerRPCURLs[env]), solana.MustPublicKeyFromBase58(ProgramIDs[env]))
+}
+
 // NewMainnetBeta creates a client configured for mainnet-beta.
-func NewMainnetBeta(rpc RPCClient) *Client {
-	return New(rpc, solana.MustPublicKeyFromBase58(ProgramIDs["mainnet-beta"]))
+func NewMainnetBeta() *Client {
+	return NewForEnv("mainnet-beta")
 }
 
 // NewTestnet creates a client configured for testnet.
-func NewTestnet(rpc RPCClient) *Client {
-	return New(rpc, solana.MustPublicKeyFromBase58(ProgramIDs["testnet"]))
+func NewTestnet() *Client {
+	return NewForEnv("testnet")
 }
 
 // NewDevnet creates a client configured for devnet.
-func NewDevnet(rpc RPCClient) *Client {
-	return New(rpc, solana.MustPublicKeyFromBase58(ProgramIDs["devnet"]))
+func NewDevnet() *Client {
+	return NewForEnv("devnet")
 }
 
 // NewLocalnet creates a client configured for localnet.
-func NewLocalnet(rpc RPCClient) *Client {
-	return New(rpc, solana.MustPublicKeyFromBase58(ProgramIDs["localnet"]))
+func NewLocalnet() *Client {
+	return NewForEnv("localnet")
 }
 
 // ProgramID returns the program ID this client is configured with.

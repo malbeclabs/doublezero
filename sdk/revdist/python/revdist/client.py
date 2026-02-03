@@ -58,40 +58,37 @@ class Client:
         self._program_id = program_id
 
     @classmethod
-    def mainnet_beta(cls) -> Client:
-        """Create a client configured for mainnet-beta."""
+    def from_env(cls, env: str) -> Client:
+        """Create a client configured for the given environment.
+
+        Args:
+            env: Environment name ("mainnet-beta", "testnet", "devnet", "localnet")
+        """
         return cls(
-            new_rpc_client(SOLANA_RPC_URLS["mainnet-beta"]),
-            new_rpc_client(LEDGER_RPC_URLS["mainnet-beta"]),
+            new_rpc_client(SOLANA_RPC_URLS[env]),
+            new_rpc_client(LEDGER_RPC_URLS[env]),
             Pubkey.from_string(PROGRAM_ID),
         )
+
+    @classmethod
+    def mainnet_beta(cls) -> Client:
+        """Create a client configured for mainnet-beta."""
+        return cls.from_env("mainnet-beta")
 
     @classmethod
     def testnet(cls) -> Client:
         """Create a client configured for testnet."""
-        return cls(
-            new_rpc_client(SOLANA_RPC_URLS["testnet"]),
-            new_rpc_client(LEDGER_RPC_URLS["testnet"]),
-            Pubkey.from_string(PROGRAM_ID),
-        )
+        return cls.from_env("testnet")
 
     @classmethod
     def devnet(cls) -> Client:
         """Create a client configured for devnet."""
-        return cls(
-            new_rpc_client(SOLANA_RPC_URLS["devnet"]),
-            new_rpc_client(LEDGER_RPC_URLS["devnet"]),
-            Pubkey.from_string(PROGRAM_ID),
-        )
+        return cls.from_env("devnet")
 
     @classmethod
     def localnet(cls) -> Client:
         """Create a client configured for localnet."""
-        return cls(
-            new_rpc_client(SOLANA_RPC_URLS["localnet"]),
-            new_rpc_client(LEDGER_RPC_URLS["localnet"]),
-            Pubkey.from_string(PROGRAM_ID),
-        )
+        return cls.from_env("localnet")
 
     # -- Solana RPC (on-chain accounts) --
 

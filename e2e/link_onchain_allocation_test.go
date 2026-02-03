@@ -286,12 +286,10 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 		return true
 	}, 60*time.Second, 2*time.Second, "link did not transition to Deleting within timeout")
 
-	// Capture snapshot BEFORE deallocation (link is in Deleting state)
-	log.Info("==> Capturing ResourceExtension state before link closure")
-	beforeDealloc, err := verifier.CaptureSnapshot(ctx)
-	require.NoError(t, err, "failed to capture pre-deallocation snapshot")
-
 	// Wait for link to be closed (removed from program data)
+	// Note: We don't capture a snapshot here because the link may close very quickly,
+	// causing a race where we capture the snapshot after deallocation already happened.
+	// Instead, we use afterAlloc (captured after link creation) as the baseline.
 	log.Info("==> Waiting for link to be closed by activator")
 	require.Eventually(t, func() bool {
 		client, err := dn.Ledger.GetServiceabilityClient()
@@ -317,15 +315,16 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 	require.NoError(t, err, "failed to capture post-deallocation snapshot")
 
 	// Verify resources were deallocated back to the pools
-	if beforeDealloc.DeviceTunnelBlock != nil && afterDealloc.DeviceTunnelBlock != nil {
-		err = verifier.AssertDeallocated(beforeDealloc, afterDealloc, "DeviceTunnelBlock", 2)
+	// Use afterAlloc as baseline since beforeDealloc may miss the window due to fast link closure
+	if afterAlloc.DeviceTunnelBlock != nil && afterDealloc.DeviceTunnelBlock != nil {
+		err = verifier.AssertDeallocated(afterAlloc, afterDealloc, "DeviceTunnelBlock", 2)
 		require.NoError(t, err, "tunnel_net not properly deallocated from DeviceTunnelBlock")
 		log.Info("DeviceTunnelBlock after deallocation",
 			"allocated", afterDealloc.DeviceTunnelBlock.Allocated,
 			"available", afterDealloc.DeviceTunnelBlock.Available)
 	}
-	if beforeDealloc.LinkIds != nil && afterDealloc.LinkIds != nil {
-		err = verifier.AssertDeallocated(beforeDealloc, afterDealloc, "LinkIds", 1)
+	if afterAlloc.LinkIds != nil && afterDealloc.LinkIds != nil {
+		err = verifier.AssertDeallocated(afterAlloc, afterDealloc, "LinkIds", 1)
 		require.NoError(t, err, "tunnel_id not properly deallocated from LinkIds")
 		log.Info("LinkIds after deallocation",
 			"allocated", afterDealloc.LinkIds.Allocated,

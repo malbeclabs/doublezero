@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   validate_pipeline:
-    runs-on: ubuntu-24.04-16c-64gb
+    runs-on: doublezero-k8s-generic
     strategy:
       matrix:
         include:

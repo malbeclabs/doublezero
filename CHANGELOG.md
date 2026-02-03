@@ -4,25 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
-### Breaking
-
-### Changes
-
-## [v0.8.5](https://github.com/malbeclabs/doublezero/compare/client/v0.8.4...client/v0.8.5) – 2026-02-02
-
-- Smartcontract
-  - fix(smartcontract): reserve first IP of DzPrefixBlock for device ([#2753](https://github.com/malbeclabs/doublezero/pull/2753))
-- Client
-  - Fix race in bgp status handling on peer deletion
-
-### Breaking
-
-### Changes
-
+- CLI
+  - Remove log noise on resolve route
+- Onchain programs
+  - Removed device and user allowlist functionality, updating the global state, initialization flow, tests, and processors accordingly, and cleaning up unused account checks.
+  - Serviceability: require DeactivateMulticastGroup to only close multicast group accounts when both `publisher_count` and `subscriber_count` are zero, preventing deletion of groups that still have active publishers or subscribers.
+  - Deprecated the user suspend status, as it is no longer used.
+  - Serviceability: enforce that CloseAccountUser instructions verify the target user has no multicast publishers or subscribers (both `publishers` and `subscribers` are empty) before closing, and add regression coverage for this behavior.
+  - Enhance access pass functionality with new Solana-specific types
+  - fix(smartcontract): skip resource alloc in ActivateUser if already allocated ([#2800](https://github.com/malbeclabs/doublezero/pull/2800))
 - Telemetry
   - Fix goroutine leak in TWAMP sender — `cleanUpReceived` goroutines now exit on `Close()` instead of living until process shutdown
 - CLI
   - Enhance delete multicast group command to cascade into deleting AP entry (#2754)
+  - Added activation check for existing users before subscribing to new groups (#2782)
 - Client
   - Cache network interface index/name lookups in liveness UDP service to fix high CPU usage caused by per-packet RTM_GETLINK netlink dumps
   - Add observability to BGP handleUpdate: log withdrawal/NLRI counts per batch and track processing duration via `doublezero_bgp_handle_update_duration_seconds` histogram

@@ -42,6 +42,7 @@ const (
 
 var (
 	verbose         bool
+	debug           bool
 	logger          *slog.Logger
 	subnetAllocator *docker.SubnetAllocator
 	dockerClient    *client.Client
@@ -68,11 +69,14 @@ func TestMain(m *testing.M) {
 	if vFlag := flag.Lookup("test.v"); vFlag != nil && vFlag.Value.String() == "true" {
 		verbose = true
 	}
+	if os.Getenv("DZ_E2E_DEBUG") != "" {
+		debug = true
+	}
 
 	// Initialize a logger.
-	logger = newTestLogger(verbose)
-	if verbose {
-		logger.Debug("==> Running with verbose logging")
+	logger = newTestLogger(verbose, debug)
+	if debug {
+		logger.Debug("==> Running with debug logging")
 	}
 
 	// Set the default logger for testcontainers.
@@ -101,7 +105,7 @@ func TestMain(m *testing.M) {
 			logger.Error("failed to load env file", "error", err)
 			os.Exit(1)
 		}
-		err = devnet.BuildContainerImages(context.Background(), logger, workspaceDir, verbose)
+		err = devnet.BuildContainerImages(context.Background(), logger, workspaceDir, debug)
 		if err != nil {
 			logger.Error("failed to build container images", "error", err)
 			os.Exit(1)
@@ -521,11 +525,12 @@ func nextAllocatableIP(ip string, allocatablePrefix int, allocated map[string]bo
 
 // newTestLogger creates a logger for TestMain setup (before any tests run).
 // This writes to stdout since there's no *testing.T available yet.
-func newTestLogger(verbose bool) *slog.Logger {
+// With debug=true, shows DEBUG level logs; otherwise shows INFO level.
+func newTestLogger(verbose, debug bool) *slog.Logger {
 	logWriter := os.Stdout
-	logLevel := slog.LevelDebug
-	if !verbose {
-		logLevel = slog.LevelInfo
+	logLevel := slog.LevelInfo
+	if debug {
+		logLevel = slog.LevelDebug
 	}
 	logger := slog.New(tint.NewHandler(logWriter, &tint.Options{
 		Level:      logLevel,
@@ -607,10 +612,11 @@ func (dn *TestDevnet) GetDeviceLinkInterfaceIPs(t *testing.T, deviceCode string)
 
 // newTestLoggerForTest creates a logger for individual test runs.
 // Logs are written to t.Log() so they only appear on test failure (unless -v is passed).
+// With DZ_E2E_DEBUG=1, shows DEBUG level logs; otherwise shows INFO level.
 func newTestLoggerForTest(t *testing.T) *slog.Logger {
 	w := &testWriter{t: t}
 	logLevel := slog.LevelInfo
-	if verbose {
+	if debug {
 		logLevel = slog.LevelDebug
 	}
 	return slog.New(tint.NewHandler(w, &tint.Options{

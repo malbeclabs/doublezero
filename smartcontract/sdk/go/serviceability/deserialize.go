@@ -206,19 +206,21 @@ func DeserializeProgramVersion(reader *ByteReader, programversion *ProgramVersio
 
 // ResourceExtension binary layout (from Rust):
 // Header (84 bytes for IP allocator, 83 bytes for ID allocator):
-//   [0]       account_type (u8) = 12
-//   [1-32]    owner (Pubkey/[32]byte)
-//   [33]      bump_seed (u8)
-//   [34-65]   associated_with (Pubkey/[32]byte)
-//   [66]      allocator discriminant (u8): 0=Ip, 1=Id
-//   For Ip allocator (17 bytes):
-//     [67-71]   base_net IP (4 bytes)
-//     [72]      base_net prefix (1 byte)
-//     [73-80]   first_free_index (u64/usize)
-//   For Id allocator (12 bytes):
-//     [67-68]   range_start (u16)
-//     [69-70]   range_end (u16)
-//     [71-78]   first_free_index (u64/usize)
+//
+//	[0]       account_type (u8) = 12
+//	[1-32]    owner (Pubkey/[32]byte)
+//	[33]      bump_seed (u8)
+//	[34-65]   associated_with (Pubkey/[32]byte)
+//	[66]      allocator discriminant (u8): 0=Ip, 1=Id
+//	For Ip allocator (17 bytes):
+//	  [67-71]   base_net IP (4 bytes)
+//	  [72]      base_net prefix (1 byte)
+//	  [73-80]   first_free_index (u64/usize)
+//	For Id allocator (12 bytes):
+//	  [67-68]   range_start (u16)
+//	  [69-70]   range_end (u16)
+//	  [71-78]   first_free_index (u64/usize)
+//
 // Bitmap starts at offset 88 (aligned to 8 bytes)
 const resourceExtensionBitmapOffset = 88
 

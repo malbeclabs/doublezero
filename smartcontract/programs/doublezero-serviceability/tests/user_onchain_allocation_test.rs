@@ -29,8 +29,7 @@ use doublezero_serviceability::{
         multicastgroup::{
             activate::MulticastGroupActivateArgs,
             allowlist::publisher::add::AddMulticastGroupPubAllowlistArgs,
-            create::MulticastGroupCreateArgs,
-            subscribe::MulticastGroupSubscribeArgs,
+            create::MulticastGroupCreateArgs, subscribe::MulticastGroupSubscribeArgs,
         },
         user::{
             activate::UserActivateArgs, closeaccount::UserCloseAccountArgs, create::UserCreateArgs,
@@ -1027,7 +1026,8 @@ async fn test_multicast_subscribe_reactivation_preserves_allocations() {
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
 
     let globalstate = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (multicastgroup_pubkey, _) = get_multicastgroup_pda(&program_id, globalstate.account_index + 1);
+    let (multicastgroup_pubkey, _) =
+        get_multicastgroup_pda(&program_id, globalstate.account_index + 1);
 
     // Create multicast group (4 accounts: mgroup, globalstate, payer, system_program)
     execute_transaction(
@@ -1129,7 +1129,11 @@ async fn test_multicast_subscribe_reactivation_preserves_allocations() {
         1,
         "User should have 1 publisher after subscribe"
     );
-    println!("  After subscribe: status={:?}, publishers={}", user.status, user.publishers.len());
+    println!(
+        "  After subscribe: status={:?}, publishers={}",
+        user.status,
+        user.publishers.len()
+    );
 
     // =========================================================================
     // Step 5: Re-activate user (this is where the bug would cause resource leak)
@@ -1192,8 +1196,14 @@ async fn test_multicast_subscribe_reactivation_preserves_allocations() {
     );
     // Verify dz_ip is from DzPrefixBlock range (110.1.0.0/24)
     let dz_ip_octets = user.dz_ip.octets();
-    assert_eq!(dz_ip_octets[0], 110, "dz_ip should be from device's dz_prefix");
-    assert_eq!(dz_ip_octets[1], 1, "dz_ip should be from device's dz_prefix");
+    assert_eq!(
+        dz_ip_octets[0], 110,
+        "dz_ip should be from device's dz_prefix"
+    );
+    assert_eq!(
+        dz_ip_octets[1], 1,
+        "dz_ip should be from device's dz_prefix"
+    );
 
     println!("  After re-activation:");
     println!("    tunnel_net: {} (unchanged)", user.tunnel_net);
@@ -1217,9 +1227,18 @@ async fn test_multicast_subscribe_reactivation_preserves_allocations() {
     let dz_prefix_count_after = dz_prefix_after.iter_allocated().len();
 
     println!("  Resource counts after re-activation:");
-    println!("    UserTunnelBlock: {} (was {})", user_tunnel_count_after, user_tunnel_count_before);
-    println!("    TunnelIds: {} (was {})", tunnel_ids_count_after, tunnel_ids_count_before);
-    println!("    DzPrefixBlock: {} (was {})", dz_prefix_count_after, dz_prefix_count_before);
+    println!(
+        "    UserTunnelBlock: {} (was {})",
+        user_tunnel_count_after, user_tunnel_count_before
+    );
+    println!(
+        "    TunnelIds: {} (was {})",
+        tunnel_ids_count_after, tunnel_ids_count_before
+    );
+    println!(
+        "    DzPrefixBlock: {} (was {})",
+        dz_prefix_count_after, dz_prefix_count_before
+    );
 
     // UserTunnelBlock and TunnelIds should be unchanged (no leak)
     assert_eq!(
@@ -1238,7 +1257,8 @@ async fn test_multicast_subscribe_reactivation_preserves_allocations() {
         dz_prefix_count_after,
         dz_prefix_count_before + 1,
         "DzPrefixBlock should have 1 more allocation for dz_ip (was: {}, now: {})",
-        dz_prefix_count_before, dz_prefix_count_after
+        dz_prefix_count_before,
+        dz_prefix_count_after
     );
 
     println!("[PASS] test_multicast_subscribe_reactivation_preserves_allocations");

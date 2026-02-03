@@ -35,7 +35,9 @@ const (
 
 	// NOTE: This needs to be longer than 1m since BGP can sometimes throttle activity for that
 	// amount of time if too much is happening consecutively for the same peers.
-	waitForRoutesTimeout = 90 * time.Second
+	// Increased from 90s to 120s after investigation showed BGP propagation between distant
+	// exchanges (e.g., xfra↔xsin) can take 65-80s in cold-start scenarios.
+	waitForRoutesTimeout = 120 * time.Second
 
 	waitInterval = 1 * time.Second
 

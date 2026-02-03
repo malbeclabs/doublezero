@@ -990,7 +990,7 @@ async fn test_multicast_subscribe_reactivation_preserves_allocations() {
         "tunnel_net should be link-local"
     );
     assert!(
-        original_tunnel_id >= 500 && original_tunnel_id <= 4596,
+        (500..=4596).contains(&original_tunnel_id),
         "tunnel_id should be in valid range"
     );
 

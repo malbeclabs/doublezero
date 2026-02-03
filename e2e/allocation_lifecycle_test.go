@@ -3,11 +3,14 @@
 package e2e_test
 
 import (
+	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/gagliardetto/solana-go"
 	"github.com/malbeclabs/doublezero/e2e/internal/allocation"
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
@@ -68,8 +71,9 @@ func TestE2E_User_AllocationLifecycle(t *testing.T) {
 	log.Info("Device creation output", "output", string(output))
 	require.NoError(t, err, "Device creation failed")
 
-	// Wait for device to be activated
+	// Wait for device to be activated and capture device pubkey
 	log.Info("==> Waiting for device activation")
+	var devicePubkey solana.PublicKey
 	require.Eventually(t, func() bool {
 		client, err := dn.Ledger.GetServiceabilityClient()
 		if err != nil {
@@ -81,6 +85,7 @@ func TestE2E_User_AllocationLifecycle(t *testing.T) {
 		}
 		for _, device := range data.Devices {
 			if device.Code == "test-dz01" && device.Status == serviceability.DeviceStatusActivated {
+				devicePubkey = solana.PublicKeyFromBytes(device.PubKey[:])
 				return true
 			}
 		}
@@ -117,7 +122,7 @@ func TestE2E_User_AllocationLifecycle(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create user with allocated IP (IBRL with allocated IP allocates from DzPrefixBlock)
-	_, err = client.Exec(ctx, []string{"bash", "-c", "doublezero user create --device test-dz01 --client-ip " + client.CYOANetworkIP})
+	_, err = client.Exec(ctx, []string{"bash", "-c", "doublezero user create --device test-dz01 --client-ip " + client.CYOANetworkIP + " --allocate-addr"})
 	require.NoError(t, err)
 
 	// Wait for user to be activated
@@ -147,7 +152,7 @@ func TestE2E_User_AllocationLifecycle(t *testing.T) {
 	afterAlloc, err := verifier.CaptureSnapshot(ctx)
 	require.NoError(t, err, "failed to capture post-allocation snapshot")
 
-	// Verify resources were allocated
+	// Verify global resources were allocated
 	if beforeAlloc.UserTunnelBlock != nil && afterAlloc.UserTunnelBlock != nil {
 		err = verifier.AssertAllocated(beforeAlloc, afterAlloc, "UserTunnelBlock", 2) // /31 = 2 IPs
 		require.NoError(t, err, "UserTunnelBlock allocation verification failed")
@@ -155,6 +160,21 @@ func TestE2E_User_AllocationLifecycle(t *testing.T) {
 			"allocated", afterAlloc.UserTunnelBlock.Allocated,
 			"available", afterAlloc.UserTunnelBlock.Available)
 	}
+
+	// Verify device-specific resources were allocated (TunnelIds and DzPrefixBlock)
+	// For IBRL with allocated IP: 1 TunnelId + 1 DzPrefix IP
+	err = verifier.AssertDeviceResourcesAllocated(beforeAlloc, afterAlloc, devicePubkey, 1, 1)
+	require.NoError(t, err, "Device-specific resource allocation verification failed")
+
+	// Log device-specific resource state
+	beforeTunnelIds, _ := verifier.FindTunnelIdsForDevice(beforeAlloc, devicePubkey)
+	afterTunnelIds, _ := verifier.FindTunnelIdsForDevice(afterAlloc, devicePubkey)
+	beforeDzPrefix := verifier.GetTotalDzPrefixAllocatedForDevice(beforeAlloc, devicePubkey)
+	afterDzPrefix := verifier.GetTotalDzPrefixAllocatedForDevice(afterAlloc, devicePubkey)
+	log.Info("Device-specific resources after allocation",
+		"device", devicePubkey.String()[:8]+"...",
+		"TunnelIds_before", beforeTunnelIds.Allocated, "TunnelIds_after", afterTunnelIds.Allocated,
+		"DzPrefix_before", beforeDzPrefix, "DzPrefix_after", afterDzPrefix)
 
 	// Delete user to trigger deallocation
 	userPubkey := base58.Encode(activatedUser.PubKey[:])
@@ -183,7 +203,7 @@ func TestE2E_User_AllocationLifecycle(t *testing.T) {
 	afterDealloc, err := verifier.CaptureSnapshot(ctx)
 	require.NoError(t, err, "failed to capture post-deallocation snapshot")
 
-	// Verify resources were returned
+	// Verify global resources were returned
 	if afterAlloc.UserTunnelBlock != nil && afterDealloc.UserTunnelBlock != nil {
 		err = verifier.AssertDeallocated(afterAlloc, afterDealloc, "UserTunnelBlock", 2)
 		require.NoError(t, err, "tunnel_net not properly deallocated from UserTunnelBlock")
@@ -191,6 +211,18 @@ func TestE2E_User_AllocationLifecycle(t *testing.T) {
 			"allocated", afterDealloc.UserTunnelBlock.Allocated,
 			"available", afterDealloc.UserTunnelBlock.Available)
 	}
+
+	// Verify device-specific resources were deallocated (TunnelIds and DzPrefixBlock)
+	err = verifier.AssertDeviceResourcesDeallocated(afterAlloc, afterDealloc, devicePubkey, 1, 1)
+	require.NoError(t, err, "Device-specific resource deallocation verification failed")
+
+	// Log device-specific resource state after deallocation
+	afterDeallocTunnelIds, _ := verifier.FindTunnelIdsForDevice(afterDealloc, devicePubkey)
+	afterDeallocDzPrefix := verifier.GetTotalDzPrefixAllocatedForDevice(afterDealloc, devicePubkey)
+	log.Info("Device-specific resources after deallocation",
+		"device", devicePubkey.String()[:8]+"...",
+		"TunnelIds_after", afterDeallocTunnelIds.Allocated,
+		"DzPrefix_after", afterDeallocDzPrefix)
 
 	// Verify UserTunnelBlock returned to pre-allocation state
 	// Note: We only check UserTunnelBlock here because that's what the user test uses.
@@ -204,6 +236,17 @@ func TestE2E_User_AllocationLifecycle(t *testing.T) {
 		}
 	}
 
+	// Verify device-specific resources returned to pre-allocation state
+	log.Info("==> Verifying device-specific resources returned to pre-allocation state")
+	if beforeTunnelIds.Allocated != afterDeallocTunnelIds.Allocated {
+		t.Errorf("TunnelIds[%s]: allocated count mismatch (before=%d, after=%d) - resources were not properly returned",
+			devicePubkey.String()[:8]+"...", beforeTunnelIds.Allocated, afterDeallocTunnelIds.Allocated)
+	}
+	if beforeDzPrefix != afterDeallocDzPrefix {
+		t.Errorf("DzPrefixBlock[%s]: allocated count mismatch (before=%d, after=%d) - resources were not properly returned",
+			devicePubkey.String()[:8]+"...", beforeDzPrefix, afterDeallocDzPrefix)
+	}
+
 	log.Info("==> User allocation lifecycle test completed successfully")
 }
 
@@ -211,10 +254,6 @@ func TestE2E_User_AllocationLifecycle(t *testing.T) {
 // for multicast group resources. It verifies that when a multicast group is created and deleted:
 // - multicast_ip is allocated from and returned to MulticastGroupBlock
 func TestE2E_MulticastGroup_AllocationLifecycle(t *testing.T) {
-	// TODO: Investigate multicast group activation timeout with on-chain allocation.
-	// The activator may not be processing multicast groups correctly, or there's a
-	// timing issue with the activation transaction.
-	t.Skip("Skipping: multicast group on-chain allocation activation times out - needs investigation")
 
 	t.Parallel()
 
@@ -267,14 +306,19 @@ func TestE2E_MulticastGroup_AllocationLifecycle(t *testing.T) {
 	}
 
 	// Create multicast group
+	// Note: We don't use -w (wait for activation) here because there's a race condition
+	// between the activator's initial fetch and the multicast group creation. The activator
+	// polls every 60 seconds, which matches the CLI's -w timeout, causing failures.
+	// Instead, we let require.Eventually below handle the wait for activation.
 	log.Info("==> Creating multicast group")
 	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", `
 		set -euo pipefail
-		doublezero multicast group create --code test-mc01 --max-bandwidth 10Gbps --owner me -w
+		doublezero multicast group create --code test-mc01 --max-bandwidth 10Gbps --owner me
 	`})
 	require.NoError(t, err)
 
 	// Wait for multicast group to be activated
+	// Note: Activator polls every 60 seconds, so we need a timeout > 60s to be safe
 	log.Info("==> Waiting for multicast group activation")
 	var activatedMC *serviceability.MulticastGroup
 	require.Eventually(t, func() bool {
@@ -289,7 +333,7 @@ func TestE2E_MulticastGroup_AllocationLifecycle(t *testing.T) {
 			}
 		}
 		return false
-	}, 60*time.Second, 2*time.Second, "multicast group was not activated within timeout")
+	}, 90*time.Second, 2*time.Second, "multicast group was not activated within timeout")
 
 	log.Info("==> Multicast group activated", "multicast_ip", activatedMC.MulticastIp)
 
@@ -533,4 +577,347 @@ func TestE2E_MultipleLinks_AllocationLifecycle(t *testing.T) {
 	require.NoError(t, err, "resources were not properly returned to pre-allocation state")
 
 	log.Info("==> Multiple links allocation lifecycle test completed successfully")
+}
+
+// TestE2E_Multicast_ReactivationPreservesAllocations is a regression test for Bug #2798.
+// It verifies that when a Multicast user subscribes as a publisher and gets re-activated:
+// - tunnel_net and tunnel_id remain unchanged (no leak)
+// - dz_ip gets allocated from DzPrefixBlock (since publishers list is now non-empty)
+// - Resource bitmap allocation counts stay stable (no leaks)
+//
+// Bug scenario:
+// 1. User with Multicast type is activated → allocates tunnel_net, tunnel_id; dz_ip = client_ip
+// 2. User subscribes as publisher to multicast group → sets status to Updating
+// 3. Activator re-activates user → BUG: would allocate NEW resources instead of keeping existing
+//
+// The fix preserves existing tunnel_net/tunnel_id and only allocates dz_ip when needed.
+func TestE2E_Multicast_ReactivationPreservesAllocations(t *testing.T) {
+	t.Parallel()
+
+	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
+	log := logger.With("test", t.Name(), "deployID", deployID)
+
+	log.Info("==> Starting test devnet with on-chain allocation enabled")
+
+	currentDir, err := os.Getwd()
+	require.NoError(t, err)
+	serviceabilityProgramKeypairPath := filepath.Join(currentDir, "data", "serviceability-program-keypair.json")
+
+	// Create devnet with on-chain allocation enabled
+	dn, err := devnet.New(devnet.DevnetSpec{
+		DeployID:  deployID,
+		DeployDir: t.TempDir(),
+
+		CYOANetwork: devnet.CYOANetworkSpec{
+			CIDRPrefix: subnetCIDRPrefix,
+		},
+		Manager: devnet.ManagerSpec{
+			ServiceabilityProgramKeypairPath: serviceabilityProgramKeypairPath,
+		},
+		Activator: devnet.ActivatorSpec{
+			OnchainAllocation: true,
+		},
+	}, log, dockerClient, subnetAllocator)
+	require.NoError(t, err)
+
+	ctx := t.Context()
+
+	err = dn.Start(ctx, nil)
+	require.NoError(t, err)
+
+	// Add a real device to the devnet (required for multicast connect to discover devices)
+	log.Info("==> Adding device to devnet for multicast test")
+	device, err := dn.AddDevice(ctx, devnet.DeviceSpec{
+		Code:     "test-dz01",
+		Location: "lax",
+		Exchange: "xlax",
+		// .8/29 has network address .8, allocatable up to .14, and broadcast .15
+		CYOANetworkIPHostID:          8,
+		CYOANetworkAllocatablePrefix: 29,
+	})
+	require.NoError(t, err)
+
+	// Wait for device to be activated and capture device pubkey
+	log.Info("==> Waiting for device activation")
+	var devicePubkey solana.PublicKey
+	require.Eventually(t, func() bool {
+		client, err := dn.Ledger.GetServiceabilityClient()
+		if err != nil {
+			return false
+		}
+		data, err := client.GetProgramData(ctx)
+		if err != nil {
+			return false
+		}
+		for _, d := range data.Devices {
+			if d.Code == "test-dz01" && d.Status == serviceability.DeviceStatusActivated {
+				devicePubkey = solana.PublicKeyFromBytes(d.PubKey[:])
+				return true
+			}
+		}
+		return false
+	}, 120*time.Second, 2*time.Second, "device was not activated within timeout")
+
+	// Create multicast group
+	log.Info("==> Creating multicast group")
+	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", `
+		set -euo pipefail
+		doublezero multicast group create --code test-mc01 --max-bandwidth 10Gbps --owner me
+	`})
+	require.NoError(t, err)
+
+	// Wait for multicast group to be activated
+	log.Info("==> Waiting for multicast group activation")
+	require.Eventually(t, func() bool {
+		client, err := dn.Ledger.GetServiceabilityClient()
+		if err != nil {
+			return false
+		}
+		data, err := client.GetProgramData(ctx)
+		if err != nil {
+			return false
+		}
+		for _, mc := range data.MulticastGroups {
+			if mc.Code == "test-mc01" && mc.Status == serviceability.MulticastGroupStatusActivated {
+				return true
+			}
+		}
+		return false
+	}, 90*time.Second, 2*time.Second, "multicast group was not activated within timeout")
+
+	// Create allocation verifier
+	serviceabilityClient, err := dn.Ledger.GetServiceabilityClient()
+	require.NoError(t, err)
+	verifier := allocation.NewVerifier(serviceabilityClient)
+
+	// Add client
+	log.Info("==> Adding client for multicast publisher")
+	client, err := dn.AddClient(ctx, devnet.ClientSpec{
+		CYOANetworkIPHostID: 100,
+	})
+	require.NoError(t, err)
+
+	// Wait for client to get latency results from device
+	log.Info("==> Waiting for client to discover device via latency probing")
+	err = client.WaitForLatencyResults(ctx, device.ID, 90*time.Second)
+	require.NoError(t, err)
+
+	// Set access pass
+	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey})
+	require.NoError(t, err)
+
+	// Add client to multicast group allowlists (both subscriber and publisher)
+	// - subscriber allowlist: needed for initial connection as subscriber
+	// - publisher allowlist: needed for later subscription as publisher
+	log.Info("==> Adding client to multicast group subscriber and publisher allowlists")
+	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", `
+		doublezero multicast group allowlist subscriber add --code test-mc01 --user-payer ` + client.Pubkey + ` --client-ip ` + client.CYOANetworkIP + `
+		doublezero multicast group allowlist publisher add --code test-mc01 --user-payer ` + client.Pubkey + ` --client-ip ` + client.CYOANetworkIP + `
+	`})
+	require.NoError(t, err)
+
+	// Capture snapshot BEFORE user creation
+	log.Info("==> Capturing ResourceExtension state before user creation")
+	beforeAlloc, err := verifier.CaptureSnapshot(ctx)
+	require.NoError(t, err, "failed to capture pre-allocation snapshot")
+
+	// =========================================================================
+	// Phase 1: Initial activation as Multicast user (no publishers yet)
+	// =========================================================================
+	log.Info("==> Phase 1: Connecting as multicast subscriber (no publishers yet)")
+	_, err = client.Exec(ctx, []string{"bash", "-c", "doublezero connect multicast subscriber test-mc01 --client-ip " + client.CYOANetworkIP})
+	require.NoError(t, err, "failed to connect as multicast subscriber")
+
+	// Wait for user to be activated
+	log.Info("==> Waiting for initial user activation")
+	var activatedUser *serviceability.User
+	require.Eventually(t, func() bool {
+		data, err := serviceabilityClient.GetProgramData(ctx)
+		if err != nil {
+			return false
+		}
+		for _, user := range data.Users {
+			if user.Status == serviceability.UserStatusActivated && len(user.Subscribers) > 0 {
+				activatedUser = &user
+				return true
+			}
+		}
+		return false
+	}, 90*time.Second, 2*time.Second, "user was not activated within timeout")
+
+	// Capture original allocations
+	originalTunnelNet := activatedUser.TunnelNet
+	originalTunnelId := activatedUser.TunnelId
+	originalDzIp := net.IP(activatedUser.DzIp[:]).String()
+	clientIP := client.CYOANetworkIP
+
+	log.Info("==> Phase 1 complete: Initial activation",
+		"tunnel_id", originalTunnelId,
+		"tunnel_net", originalTunnelNet,
+		"dz_ip", originalDzIp,
+		"client_ip", clientIP)
+
+	// Verify dz_ip equals client_ip (no publishers yet, so no allocation from DzPrefixBlock)
+	require.Equal(t, clientIP, originalDzIp, "dz_ip should equal client_ip when no publishers")
+
+	// Capture snapshot AFTER initial activation
+	afterInitialAlloc, err := verifier.CaptureSnapshot(ctx)
+	require.NoError(t, err, "failed to capture post-initial-activation snapshot")
+
+	// Log initial resource state
+	userTunnelBefore := afterInitialAlloc.UserTunnelBlock.Allocated
+	tunnelIdsBefore, _ := verifier.FindTunnelIdsForDevice(afterInitialAlloc, devicePubkey)
+	dzPrefixBefore := verifier.GetTotalDzPrefixAllocatedForDevice(afterInitialAlloc, devicePubkey)
+
+	log.Info("==> Resource state after initial activation",
+		"UserTunnelBlock_allocated", userTunnelBefore,
+		"TunnelIds_allocated", tunnelIdsBefore.Allocated,
+		"DzPrefixBlock_allocated", dzPrefixBefore)
+
+	// =========================================================================
+	// Phase 2: Subscribe as publisher → triggers Updating status
+	// =========================================================================
+	log.Info("==> Phase 2: Subscribing as publisher to trigger re-activation")
+
+	// Subscribe as publisher using the CLI (adds to publishers list, triggers re-activation)
+	_, err = client.Exec(ctx, []string{"bash", "-c", "doublezero connect multicast publisher test-mc01 --client-ip " + client.CYOANetworkIP})
+	require.NoError(t, err, "failed to subscribe as publisher")
+
+	// =========================================================================
+	// Phase 3: Wait for re-activation with publishers
+	// Note: The Updating status is transient and may complete very quickly,
+	// so we wait directly for Activated status with publishers > 0
+	// =========================================================================
+	log.Info("==> Phase 3: Waiting for re-activation with publishers")
+	var reactivatedUser *serviceability.User
+	require.Eventually(t, func() bool {
+		data, err := serviceabilityClient.GetProgramData(ctx)
+		if err != nil {
+			return false
+		}
+		for _, user := range data.Users {
+			if len(user.Publishers) > 0 && user.Status == serviceability.UserStatusActivated {
+				reactivatedUser = &user
+				return true
+			}
+		}
+		return false
+	}, 120*time.Second, 2*time.Second, "user was not re-activated within timeout")
+
+	// =========================================================================
+	// Phase 4: Verify allocations are preserved (REGRESSION TEST)
+	// =========================================================================
+	log.Info("==> Phase 4: Verifying allocations are preserved after re-activation")
+
+	// Get re-activated user values
+	reactivatedTunnelNet := reactivatedUser.TunnelNet
+	reactivatedTunnelId := reactivatedUser.TunnelId
+	reactivatedDzIp := net.IP(reactivatedUser.DzIp[:]).String()
+
+	log.Info("==> Re-activated user state",
+		"tunnel_id", reactivatedTunnelId,
+		"tunnel_net", reactivatedTunnelNet,
+		"dz_ip", reactivatedDzIp,
+		"publishers", len(reactivatedUser.Publishers))
+
+	// CRITICAL: tunnel_net must be unchanged
+	require.Equal(t, originalTunnelNet, reactivatedTunnelNet,
+		"tunnel_net should be preserved after re-activation (was: %v, now: %v)",
+		originalTunnelNet, reactivatedTunnelNet)
+
+	// CRITICAL: tunnel_id must be unchanged
+	require.Equal(t, originalTunnelId, reactivatedTunnelId,
+		"tunnel_id should be preserved after re-activation (was: %d, now: %d)",
+		originalTunnelId, reactivatedTunnelId)
+
+	// dz_ip should now be allocated from DzPrefixBlock (since publishers is non-empty)
+	require.NotEqual(t, clientIP, reactivatedDzIp,
+		"dz_ip should be allocated from DzPrefixBlock after publisher subscription (was: %s, now: %s)",
+		clientIP, reactivatedDzIp)
+
+	// Verify dz_ip is from device's dz_prefix range
+	dzPrefixBase := strings.Split(device.DZPrefix, "/")[0]                           // e.g., "9.179.159.8" from "9.179.159.8/29"
+	dzPrefixParts := strings.Split(dzPrefixBase, ".")[:3]                            // e.g., ["9", "179", "159"]
+	expectedPrefix := strings.Join(dzPrefixParts, ".") + "."                         // e.g., "9.179.159."
+	require.True(t, strings.HasPrefix(reactivatedDzIp, expectedPrefix),
+		"dz_ip should be from device's dz_prefix (%s), got: %s", device.DZPrefix, reactivatedDzIp)
+
+	// Capture snapshot AFTER re-activation
+	afterReactivation, err := verifier.CaptureSnapshot(ctx)
+	require.NoError(t, err, "failed to capture post-reactivation snapshot")
+
+	// Verify resource bitmap counts
+	userTunnelAfter := afterReactivation.UserTunnelBlock.Allocated
+	tunnelIdsAfter, _ := verifier.FindTunnelIdsForDevice(afterReactivation, devicePubkey)
+	dzPrefixAfter := verifier.GetTotalDzPrefixAllocatedForDevice(afterReactivation, devicePubkey)
+
+	log.Info("==> Resource state after re-activation",
+		"UserTunnelBlock_allocated", userTunnelAfter,
+		"TunnelIds_allocated", tunnelIdsAfter.Allocated,
+		"DzPrefixBlock_allocated", dzPrefixAfter)
+
+	// UserTunnelBlock should be unchanged (no leak)
+	require.Equal(t, userTunnelBefore, userTunnelAfter,
+		"UserTunnelBlock allocation count should be unchanged (was: %d, now: %d) - potential leak!",
+		userTunnelBefore, userTunnelAfter)
+
+	// TunnelIds should be unchanged (no leak)
+	require.Equal(t, tunnelIdsBefore.Allocated, tunnelIdsAfter.Allocated,
+		"TunnelIds allocation count should be unchanged (was: %d, now: %d) - potential leak!",
+		tunnelIdsBefore.Allocated, tunnelIdsAfter.Allocated)
+
+	// DzPrefixBlock should increase by 1 (new dz_ip allocation)
+	require.Equal(t, dzPrefixBefore+1, dzPrefixAfter,
+		"DzPrefixBlock should have 1 more allocation for dz_ip (was: %d, now: %d)",
+		dzPrefixBefore, dzPrefixAfter)
+
+	// =========================================================================
+	// Phase 5: Cleanup - delete user and verify full deallocation
+	// =========================================================================
+	log.Info("==> Phase 5: Cleanup - deleting user")
+
+	userPubkey := base58.Encode(reactivatedUser.PubKey[:])
+	_, err = client.Exec(ctx, []string{"bash", "-c", "doublezero user delete --pubkey " + userPubkey})
+	require.NoError(t, err)
+
+	// Wait for user to be closed
+	require.Eventually(t, func() bool {
+		data, err := serviceabilityClient.GetProgramData(ctx)
+		if err != nil {
+			return false
+		}
+		for _, user := range data.Users {
+			if base58.Encode(user.PubKey[:]) == userPubkey {
+				return false
+			}
+		}
+		return true
+	}, 60*time.Second, 2*time.Second, "user was not closed within timeout")
+
+	// Capture snapshot AFTER deallocation
+	afterDealloc, err := verifier.CaptureSnapshot(ctx)
+	require.NoError(t, err, "failed to capture post-deallocation snapshot")
+
+	// Verify resources returned to pre-allocation state
+	log.Info("==> Verifying resources returned to pre-allocation state")
+
+	// Check global pools
+	require.Equal(t, beforeAlloc.UserTunnelBlock.Allocated, afterDealloc.UserTunnelBlock.Allocated,
+		"UserTunnelBlock not properly returned (before: %d, after: %d)",
+		beforeAlloc.UserTunnelBlock.Allocated, afterDealloc.UserTunnelBlock.Allocated)
+
+	// Check device-specific pools
+	beforeTunnelIds, _ := verifier.FindTunnelIdsForDevice(beforeAlloc, devicePubkey)
+	afterDeallocTunnelIds, _ := verifier.FindTunnelIdsForDevice(afterDealloc, devicePubkey)
+	require.Equal(t, beforeTunnelIds.Allocated, afterDeallocTunnelIds.Allocated,
+		"TunnelIds not properly returned (before: %d, after: %d)",
+		beforeTunnelIds.Allocated, afterDeallocTunnelIds.Allocated)
+
+	beforeDzPrefix := verifier.GetTotalDzPrefixAllocatedForDevice(beforeAlloc, devicePubkey)
+	afterDeallocDzPrefix := verifier.GetTotalDzPrefixAllocatedForDevice(afterDealloc, devicePubkey)
+	require.Equal(t, beforeDzPrefix, afterDeallocDzPrefix,
+		"DzPrefixBlock not properly returned (before: %d, after: %d)",
+		beforeDzPrefix, afterDeallocDzPrefix)
+
+	log.Info("==> Multicast re-activation test completed successfully - Bug #2798 regression verified")
 }

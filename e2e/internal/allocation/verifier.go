@@ -301,3 +301,71 @@ func (v *Verifier) FindDzPrefixBlocksForDevice(snapshot *ResourceSnapshot, devic
 	}
 	return results
 }
+
+// GetTotalDzPrefixAllocatedForDevice returns the total allocated count across all DzPrefixBlocks for a device
+func (v *Verifier) GetTotalDzPrefixAllocatedForDevice(snapshot *ResourceSnapshot, devicePubkey solana.PublicKey) int {
+	blocks := v.FindDzPrefixBlocksForDevice(snapshot, devicePubkey)
+	total := 0
+	for _, block := range blocks {
+		total += block.Allocated
+	}
+	return total
+}
+
+// AssertDeviceResourcesAllocated verifies that the expected device-specific resources were allocated
+func (v *Verifier) AssertDeviceResourcesAllocated(before, after *ResourceSnapshot, devicePubkey solana.PublicKey, expectedTunnelIds, expectedDzPrefix int) error {
+	// Check TunnelIds
+	beforeTunnelIds, err := v.FindTunnelIdsForDevice(before, devicePubkey)
+	if err != nil {
+		return fmt.Errorf("before snapshot: %w", err)
+	}
+	afterTunnelIds, err := v.FindTunnelIdsForDevice(after, devicePubkey)
+	if err != nil {
+		return fmt.Errorf("after snapshot: %w", err)
+	}
+	actualTunnelIds := afterTunnelIds.Allocated - beforeTunnelIds.Allocated
+	if actualTunnelIds != expectedTunnelIds {
+		return fmt.Errorf("TunnelIds[%s]: expected %d resources to be allocated, but %d were allocated (before=%d, after=%d)",
+			devicePubkey.String(), expectedTunnelIds, actualTunnelIds, beforeTunnelIds.Allocated, afterTunnelIds.Allocated)
+	}
+
+	// Check DzPrefixBlocks (sum across all blocks for the device)
+	beforeDzPrefix := v.GetTotalDzPrefixAllocatedForDevice(before, devicePubkey)
+	afterDzPrefix := v.GetTotalDzPrefixAllocatedForDevice(after, devicePubkey)
+	actualDzPrefix := afterDzPrefix - beforeDzPrefix
+	if actualDzPrefix != expectedDzPrefix {
+		return fmt.Errorf("DzPrefixBlocks[%s]: expected %d resources to be allocated, but %d were allocated (before=%d, after=%d)",
+			devicePubkey.String(), expectedDzPrefix, actualDzPrefix, beforeDzPrefix, afterDzPrefix)
+	}
+
+	return nil
+}
+
+// AssertDeviceResourcesDeallocated verifies that the expected device-specific resources were deallocated
+func (v *Verifier) AssertDeviceResourcesDeallocated(before, after *ResourceSnapshot, devicePubkey solana.PublicKey, expectedTunnelIds, expectedDzPrefix int) error {
+	// Check TunnelIds
+	beforeTunnelIds, err := v.FindTunnelIdsForDevice(before, devicePubkey)
+	if err != nil {
+		return fmt.Errorf("before snapshot: %w", err)
+	}
+	afterTunnelIds, err := v.FindTunnelIdsForDevice(after, devicePubkey)
+	if err != nil {
+		return fmt.Errorf("after snapshot: %w", err)
+	}
+	actualTunnelIds := beforeTunnelIds.Allocated - afterTunnelIds.Allocated
+	if actualTunnelIds != expectedTunnelIds {
+		return fmt.Errorf("TunnelIds[%s]: expected %d resources to be deallocated, but %d were deallocated (before=%d, after=%d)",
+			devicePubkey.String(), expectedTunnelIds, actualTunnelIds, beforeTunnelIds.Allocated, afterTunnelIds.Allocated)
+	}
+
+	// Check DzPrefixBlocks (sum across all blocks for the device)
+	beforeDzPrefix := v.GetTotalDzPrefixAllocatedForDevice(before, devicePubkey)
+	afterDzPrefix := v.GetTotalDzPrefixAllocatedForDevice(after, devicePubkey)
+	actualDzPrefix := beforeDzPrefix - afterDzPrefix
+	if actualDzPrefix != expectedDzPrefix {
+		return fmt.Errorf("DzPrefixBlocks[%s]: expected %d resources to be deallocated, but %d were deallocated (before=%d, after=%d)",
+			devicePubkey.String(), expectedDzPrefix, actualDzPrefix, beforeDzPrefix, afterDzPrefix)
+	}
+
+	return nil
+}

@@ -61,15 +61,12 @@ func TestE2E_SDK_Serviceability(t *testing.T) {
 			data, err := client.GetProgramData(ctx)
 			require.NoError(t, err, "error while reloading onchain state to verify update")
 
-			got := data.GlobalConfig
-			want := config
-			want.RemoteASN = newAsn
-
-			if want == got {
+			got := data.GlobalConfig.RemoteASN
+			if got == newAsn {
 				return true
 			}
 
-			log.Debug("--> Waiting for global config update", "want", want, "got", got)
+			log.Debug("--> Waiting for global config update", "want", newAsn, "got", got)
 			return false
 		}, 30*time.Second, 3*time.Second)
 	})

@@ -836,9 +836,9 @@ func TestE2E_Multicast_ReactivationPreservesAllocations(t *testing.T) {
 		clientIP, reactivatedDzIp)
 
 	// Verify dz_ip is from device's dz_prefix range
-	dzPrefixBase := strings.Split(device.DZPrefix, "/")[0]                           // e.g., "9.179.159.8" from "9.179.159.8/29"
-	dzPrefixParts := strings.Split(dzPrefixBase, ".")[:3]                            // e.g., ["9", "179", "159"]
-	expectedPrefix := strings.Join(dzPrefixParts, ".") + "."                         // e.g., "9.179.159."
+	dzPrefixBase := strings.Split(device.DZPrefix, "/")[0]   // e.g., "9.179.159.8" from "9.179.159.8/29"
+	dzPrefixParts := strings.Split(dzPrefixBase, ".")[:3]    // e.g., ["9", "179", "159"]
+	expectedPrefix := strings.Join(dzPrefixParts, ".") + "." // e.g., "9.179.159."
 	require.True(t, strings.HasPrefix(reactivatedDzIp, expectedPrefix),
 		"dz_ip should be from device's dz_prefix (%s), got: %s", device.DZPrefix, reactivatedDzIp)
 
@@ -920,4 +920,206 @@ func TestE2E_Multicast_ReactivationPreservesAllocations(t *testing.T) {
 		beforeDzPrefix, afterDeallocDzPrefix)
 
 	log.Info("==> Multicast re-activation test completed successfully - Bug #2798 regression verified")
+}
+
+// TestE2E_LoopbackInterface_AllocationLifecycle tests the full allocation/deallocation lifecycle
+// for loopback interface resources. It verifies that when a loopback interface is created and deleted:
+// - ip_net is allocated from and returned to DeviceTunnelBlock
+// - node_segment_idx is allocated from and returned to SegmentRoutingIds
+func TestE2E_LoopbackInterface_AllocationLifecycle(t *testing.T) {
+	t.Parallel()
+
+	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
+	log := logger.With("test", t.Name(), "deployID", deployID)
+
+	log.Info("==> Starting test devnet with on-chain allocation enabled")
+
+	currentDir, err := os.Getwd()
+	require.NoError(t, err)
+	serviceabilityProgramKeypairPath := filepath.Join(currentDir, "data", "serviceability-program-keypair.json")
+
+	// Create devnet with on-chain allocation enabled
+	dn, err := devnet.New(devnet.DevnetSpec{
+		DeployID:  deployID,
+		DeployDir: t.TempDir(),
+
+		CYOANetwork: devnet.CYOANetworkSpec{
+			CIDRPrefix: subnetCIDRPrefix,
+		},
+		Manager: devnet.ManagerSpec{
+			ServiceabilityProgramKeypairPath: serviceabilityProgramKeypairPath,
+		},
+		Activator: devnet.ActivatorSpec{
+			OnchainAllocation: true,
+		},
+	}, log, dockerClient, subnetAllocator)
+	require.NoError(t, err)
+
+	ctx := t.Context()
+
+	err = dn.Start(ctx, nil)
+	require.NoError(t, err)
+
+	// Create device (without loopback interfaces initially)
+	// Note: We don't wait for device activation here because devices may require
+	// loopback interfaces to be fully activated. We'll wait for the loopback
+	// interface itself to be activated, which implies sufficient device setup.
+	log.Info("==> Creating device without loopback interfaces")
+	output, err := dn.Manager.Exec(ctx, []string{"bash", "-c", `
+		set -euo pipefail
+		doublezero device create --code test-dz01 --contributor co01 --location lax --exchange xlax --public-ip "45.33.100.1" --dz-prefixes "45.33.100.8/29" --mgmt-vrf mgmt --desired-status activated 2>&1
+		doublezero device update --pubkey test-dz01 --max-users 128 2>&1
+	`})
+	log.Info("Device creation output", "output", string(output))
+	require.NoError(t, err, "Device creation failed")
+
+	// Create allocation verifier
+	serviceabilityClient, err := dn.Ledger.GetServiceabilityClient()
+	require.NoError(t, err)
+	verifier := allocation.NewVerifier(serviceabilityClient)
+
+	// Capture snapshot BEFORE loopback interface creation
+	log.Info("==> Capturing ResourceExtension state before loopback interface creation")
+	beforeAlloc, err := verifier.CaptureSnapshot(ctx)
+	require.NoError(t, err, "failed to capture pre-allocation snapshot")
+
+	// Log initial state
+	if beforeAlloc.DeviceTunnelBlock != nil {
+		log.Info("DeviceTunnelBlock before allocation",
+			"allocated", beforeAlloc.DeviceTunnelBlock.Allocated,
+			"available", beforeAlloc.DeviceTunnelBlock.Available,
+			"total", beforeAlloc.DeviceTunnelBlock.Total)
+	}
+	if beforeAlloc.SegmentRoutingIds != nil {
+		log.Info("SegmentRoutingIds before allocation",
+			"allocated", beforeAlloc.SegmentRoutingIds.Allocated,
+			"available", beforeAlloc.SegmentRoutingIds.Available,
+			"total", beforeAlloc.SegmentRoutingIds.Total)
+	}
+
+	// Create loopback interface with vpnv4 type (allocates ip_net and node_segment_idx)
+	log.Info("==> Creating loopback interface")
+	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", `
+		doublezero device interface create test-dz01 "Loopback255" --loopback-type vpnv4 -w
+	`})
+	require.NoError(t, err, "Loopback interface creation failed")
+
+	// Wait for interface to be activated and verify it has allocated resources
+	log.Info("==> Waiting for loopback interface activation")
+	var activatedInterface *serviceability.Interface
+	require.Eventually(t, func() bool {
+		data, err := serviceabilityClient.GetProgramData(ctx)
+		if err != nil {
+			return false
+		}
+		for _, device := range data.Devices {
+			if device.Code == "test-dz01" {
+				for i := range device.Interfaces {
+					iface := &device.Interfaces[i]
+					if iface.Name == "Loopback255" && iface.Status == serviceability.InterfaceStatusActivated {
+						activatedInterface = iface
+						return true
+					}
+				}
+			}
+		}
+		return false
+	}, 60*time.Second, 2*time.Second, "loopback interface was not activated within timeout")
+
+	log.Info("==> Loopback interface activated",
+		"ip_net", activatedInterface.IpNet,
+		"node_segment_idx", activatedInterface.NodeSegmentIdx)
+
+	// Verify interface has allocated resources
+	require.NotEqual(t, [5]uint8{0, 0, 0, 0, 0}, activatedInterface.IpNet, "ip_net should be allocated (non-zero)")
+	require.NotZero(t, activatedInterface.NodeSegmentIdx, "node_segment_idx should be allocated (non-zero)")
+
+	// Capture snapshot AFTER loopback interface creation
+	log.Info("==> Capturing ResourceExtension state after loopback interface creation")
+	afterAlloc, err := verifier.CaptureSnapshot(ctx)
+	require.NoError(t, err, "failed to capture post-allocation snapshot")
+
+	// Verify ip_net was allocated from DeviceTunnelBlock
+	// Loopback interface allocates a /32 (1 IP) from DeviceTunnelBlock
+	if beforeAlloc.DeviceTunnelBlock != nil && afterAlloc.DeviceTunnelBlock != nil {
+		err = verifier.AssertAllocated(beforeAlloc, afterAlloc, "DeviceTunnelBlock", 1)
+		require.NoError(t, err, "DeviceTunnelBlock allocation verification failed")
+		log.Info("DeviceTunnelBlock after allocation",
+			"allocated", afterAlloc.DeviceTunnelBlock.Allocated,
+			"available", afterAlloc.DeviceTunnelBlock.Available)
+	}
+
+	// Verify node_segment_idx was allocated from SegmentRoutingIds
+	if beforeAlloc.SegmentRoutingIds != nil && afterAlloc.SegmentRoutingIds != nil {
+		err = verifier.AssertAllocated(beforeAlloc, afterAlloc, "SegmentRoutingIds", 1)
+		require.NoError(t, err, "SegmentRoutingIds allocation verification failed")
+		log.Info("SegmentRoutingIds after allocation",
+			"allocated", afterAlloc.SegmentRoutingIds.Allocated,
+			"available", afterAlloc.SegmentRoutingIds.Available)
+	}
+
+	// Delete loopback interface to trigger deallocation
+	log.Info("==> Deleting loopback interface to trigger deallocation")
+	err = dn.DeleteDeviceLoopbackInterface(ctx, "test-dz01", "Loopback255")
+	require.NoError(t, err, "Loopback interface deletion failed")
+
+	// Wait for interface to be removed
+	log.Info("==> Waiting for loopback interface to be removed")
+	require.Eventually(t, func() bool {
+		data, err := serviceabilityClient.GetProgramData(ctx)
+		if err != nil {
+			return false
+		}
+		for _, device := range data.Devices {
+			if device.Code == "test-dz01" {
+				for _, iface := range device.Interfaces {
+					if iface.Name == "Loopback255" {
+						log.Debug("Loopback interface still exists", "status", iface.Status)
+						return false
+					}
+				}
+				// Interface not found - it has been removed
+				return true
+			}
+		}
+		return false
+	}, 60*time.Second, 2*time.Second, "loopback interface was not removed within timeout")
+
+	// Capture snapshot AFTER deallocation
+	log.Info("==> Capturing ResourceExtension state after loopback interface deletion")
+	afterDealloc, err := verifier.CaptureSnapshot(ctx)
+	require.NoError(t, err, "failed to capture post-deallocation snapshot")
+
+	// Verify ip_net was returned to DeviceTunnelBlock
+	if afterAlloc.DeviceTunnelBlock != nil && afterDealloc.DeviceTunnelBlock != nil {
+		err = verifier.AssertDeallocated(afterAlloc, afterDealloc, "DeviceTunnelBlock", 1)
+		require.NoError(t, err, "ip_net not properly deallocated from DeviceTunnelBlock")
+		log.Info("DeviceTunnelBlock after deallocation",
+			"allocated", afterDealloc.DeviceTunnelBlock.Allocated,
+			"available", afterDealloc.DeviceTunnelBlock.Available)
+	}
+
+	// Verify node_segment_idx was returned to SegmentRoutingIds
+	if afterAlloc.SegmentRoutingIds != nil && afterDealloc.SegmentRoutingIds != nil {
+		err = verifier.AssertDeallocated(afterAlloc, afterDealloc, "SegmentRoutingIds", 1)
+		require.NoError(t, err, "node_segment_idx not properly deallocated from SegmentRoutingIds")
+		log.Info("SegmentRoutingIds after deallocation",
+			"allocated", afterDealloc.SegmentRoutingIds.Allocated,
+			"available", afterDealloc.SegmentRoutingIds.Available)
+	}
+
+	// Verify resources returned to pre-allocation state
+	log.Info("==> Verifying resources returned to pre-allocation state")
+	if beforeAlloc.DeviceTunnelBlock != nil && afterDealloc.DeviceTunnelBlock != nil {
+		require.Equal(t, beforeAlloc.DeviceTunnelBlock.Allocated, afterDealloc.DeviceTunnelBlock.Allocated,
+			"DeviceTunnelBlock: allocated count mismatch (before=%d, after=%d) - resources were not properly returned",
+			beforeAlloc.DeviceTunnelBlock.Allocated, afterDealloc.DeviceTunnelBlock.Allocated)
+	}
+	if beforeAlloc.SegmentRoutingIds != nil && afterDealloc.SegmentRoutingIds != nil {
+		require.Equal(t, beforeAlloc.SegmentRoutingIds.Allocated, afterDealloc.SegmentRoutingIds.Allocated,
+			"SegmentRoutingIds: allocated count mismatch (before=%d, after=%d) - resources were not properly returned",
+			beforeAlloc.SegmentRoutingIds.Allocated, afterDealloc.SegmentRoutingIds.Allocated)
+	}
+
+	log.Info("==> Loopback interface allocation lifecycle test completed successfully")
 }

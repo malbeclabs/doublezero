@@ -22,6 +22,7 @@ type ResourceSnapshot struct {
 	UserTunnelBlock     *AllocationState
 	DeviceTunnelBlock   *AllocationState
 	LinkIds             *AllocationState
+	SegmentRoutingIds   *AllocationState // For loopback interface node_segment_idx
 	MulticastGroupBlock *AllocationState
 
 	// Device-specific resource pools (keyed by device pubkey base58)
@@ -94,10 +95,13 @@ func (v *Verifier) CaptureSnapshot(ctx context.Context) (*ResourceSnapshot, erro
 				// Distinguish between global ID allocators by their range start:
 				// - LinkIds: RangeStart=0, RangeEnd=65535
 				// - SegmentRoutingIds: RangeStart=1, RangeEnd=65535
-				if ext.Allocator.IdAllocator != nil && ext.Allocator.IdAllocator.RangeStart == 0 {
-					snapshot.LinkIds = state
+				if ext.Allocator.IdAllocator != nil {
+					if ext.Allocator.IdAllocator.RangeStart == 0 {
+						snapshot.LinkIds = state
+					} else if ext.Allocator.IdAllocator.RangeStart == 1 {
+						snapshot.SegmentRoutingIds = state
+					}
 				}
-				// SegmentRoutingIds (RangeStart=1) is ignored for now
 			} else {
 				// Device-specific TunnelIds
 				deviceKey := base58.Encode(ext.AssociatedWith[:])
@@ -153,6 +157,9 @@ func (v *Verifier) AssertResourcesReturned(beforeAlloc, afterDealloc *ResourceSn
 	if err := v.assertStateEqual(beforeAlloc.LinkIds, afterDealloc.LinkIds, "LinkIds"); err != nil {
 		return err
 	}
+	if err := v.assertStateEqual(beforeAlloc.SegmentRoutingIds, afterDealloc.SegmentRoutingIds, "SegmentRoutingIds"); err != nil {
+		return err
+	}
 	if err := v.assertStateEqual(beforeAlloc.MulticastGroupBlock, afterDealloc.MulticastGroupBlock, "MulticastGroupBlock"); err != nil {
 		return err
 	}
@@ -201,6 +208,11 @@ func (v *Verifier) GetState(snapshot *ResourceSnapshot, resourceType string) (*A
 			return nil, fmt.Errorf("LinkIds not found in snapshot")
 		}
 		return snapshot.LinkIds, nil
+	case "SegmentRoutingIds":
+		if snapshot.SegmentRoutingIds == nil {
+			return nil, fmt.Errorf("SegmentRoutingIds not found in snapshot")
+		}
+		return snapshot.SegmentRoutingIds, nil
 	case "MulticastGroupBlock":
 		if snapshot.MulticastGroupBlock == nil {
 			return nil, fmt.Errorf("MulticastGroupBlock not found in snapshot")

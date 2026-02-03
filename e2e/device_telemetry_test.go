@@ -30,7 +30,7 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	t.Parallel()
 
 	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
-	log := logger.With("test", t.Name(), "deployID", deployID)
+	log := newTestLoggerForTest(t).With("test", t.Name(), "deployID", deployID)
 
 	// Use the hardcoded serviceability program keypair for this test, since the telemetry program
 	// is built with it as an expectation, and the initialize instruction will fail if the owner

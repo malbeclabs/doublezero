@@ -18,7 +18,7 @@ func TestE2E_SDK_Serviceability(t *testing.T) {
 	t.Parallel()
 
 	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
-	log := logger.With("test", t.Name(), "deployID", deployID)
+	log := newTestLoggerForTest(t).With("test", t.Name(), "deployID", deployID)
 
 	currentDir, err := os.Getwd()
 	require.NoError(t, err)

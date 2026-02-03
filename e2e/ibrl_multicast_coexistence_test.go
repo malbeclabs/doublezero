@@ -24,7 +24,7 @@ func TestE2E_IBRL_Multicast_Coexistence(t *testing.T) {
 	t.Parallel()
 
 	dn, device, ibrlClient, mcastClient := setupCoexistenceTestDevnet(t)
-	log := logger.With("test", t.Name())
+	log := newTestLoggerForTest(t).With("test", t.Name())
 
 	if !t.Run("ibrl_with_multicast_subscriber", func(t *testing.T) {
 		runIBRLWithMulticastSubscriberTest(t, log, dn, device, ibrlClient, mcastClient, false)
@@ -39,7 +39,7 @@ func TestE2E_IBRL_Multicast_Publisher_Coexistence(t *testing.T) {
 	t.Parallel()
 
 	dn, device, ibrlClient, mcastClient := setupCoexistenceTestDevnet(t)
-	log := logger.With("test", t.Name())
+	log := newTestLoggerForTest(t).With("test", t.Name())
 
 	if !t.Run("ibrl_with_multicast_publisher", func(t *testing.T) {
 		runIBRLWithMulticastPublisherTest(t, log, dn, device, ibrlClient, mcastClient, false)
@@ -54,7 +54,7 @@ func TestE2E_IBRL_AllocatedAddr_Multicast_Coexistence(t *testing.T) {
 	t.Parallel()
 
 	dn, device, ibrlClient, mcastClient := setupCoexistenceTestDevnet(t)
-	log := logger.With("test", t.Name())
+	log := newTestLoggerForTest(t).With("test", t.Name())
 
 	if !t.Run("ibrl_allocated_addr_with_multicast_subscriber", func(t *testing.T) {
 		runIBRLWithMulticastSubscriberTest(t, log, dn, device, ibrlClient, mcastClient, true)
@@ -69,7 +69,7 @@ func TestE2E_IBRL_AllocatedAddr_Multicast_Publisher_Coexistence(t *testing.T) {
 	t.Parallel()
 
 	dn, device, ibrlClient, mcastClient := setupCoexistenceTestDevnet(t)
-	log := logger.With("test", t.Name())
+	log := newTestLoggerForTest(t).With("test", t.Name())
 
 	if !t.Run("ibrl_allocated_addr_with_multicast_publisher", func(t *testing.T) {
 		runIBRLWithMulticastPublisherTest(t, log, dn, device, ibrlClient, mcastClient, true)
@@ -526,7 +526,7 @@ func runSingleClientIBRLThenMulticastTest(t *testing.T, log *slog.Logger, dn *de
 
 func setupCoexistenceTestDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device, *devnet.Client, *devnet.Client) {
 	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
-	log := logger.With("test", t.Name(), "deployID", deployID)
+	log := newTestLoggerForTest(t).With("test", t.Name(), "deployID", deployID)
 
 	log.Info("==> Setting up coexistence test devnet")
 
@@ -569,22 +569,14 @@ func setupCoexistenceTestDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device, *
 	log.Info("==> Creating additional devices onchain")
 	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
 		set -euo pipefail
-
-		echo "==> Populate device information onchain"
 		doublezero device create --code pit-dzd01 --contributor co01 --location pit --exchange xpit --public-ip "204.16.241.243" --dz-prefixes "204.16.243.243/32" --mgmt-vrf mgmt --desired-status activated
-
-		echo "==> Populate device interface information onchain"
 		doublezero device interface create ny5-dz01 "Ethernet2" -w
 		doublezero device interface create ny5-dz01 "Loopback255" --loopback-type vpnv4 -w
 		doublezero device interface create ny5-dz01 "Loopback256" --loopback-type ipv4 -w
 		doublezero device interface create pit-dzd01 "Ethernet2" -w
 		doublezero device interface create pit-dzd01 "Loopback255" --loopback-type vpnv4 -w
 		doublezero device interface create pit-dzd01 "Loopback256" --loopback-type ipv4 -w
-
 		doublezero device update --pubkey pit-dzd01 --max-users 128
-
-		echo "--> Device information onchain:"
-		doublezero device list
 	`})
 	require.NoError(t, err)
 
@@ -608,12 +600,7 @@ func setupCoexistenceTestDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device, *
 	log.Info("==> Creating multicast group onchain")
 	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
 		set -euo pipefail
-
-		echo "==> Create multicast group"
 		doublezero multicast group create --code mg01 --max-bandwidth 10Gbps --owner me -w
-
-		echo "--> Multicast group created:"
-		doublezero multicast group list
 	`})
 	require.NoError(t, err)
 

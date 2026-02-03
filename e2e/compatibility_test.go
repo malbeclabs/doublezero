@@ -41,6 +41,7 @@ import (
 //   - DZ_COMPAT_CLONE_ENV: comma-separated environments to test (default: "testnet,mainnet-beta")
 //   - DZ_COMPAT_MIN_VERSION: override ProgramConfig.MinCompatVersion (e.g., "0.8.1")
 //   - DZ_COMPAT_MAX_NUM_VERSIONS: limit number of versions to test (0 = all, e.g., "2")
+//
 // compatStepResult tracks the result of a single step for a single version.
 type compatStepResult struct {
 	name   string
@@ -51,7 +52,7 @@ type compatStepResult struct {
 // compatEnvResults holds the compatibility matrix results for a single environment.
 type compatEnvResults struct {
 	env      string
-	versions []string                  // ordered list of versions tested
+	versions []string                      // ordered list of versions tested
 	matrix   map[string][]compatStepResult // version -> results
 	mu       sync.Mutex
 }
@@ -211,7 +212,7 @@ func TestE2E_BackwardCompatibility(t *testing.T) {
 
 func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *compatEnvResults) {
 	deployID := "dz-e2e-BackwardCompat-" + cloneEnv + "-" + random.ShortID()
-	log := logger.With("test", t.Name(), "deployID", deployID)
+	log := newTestLoggerForTest(t).With("test", t.Name(), "deployID", deployID)
 
 	currentDir, err := os.Getwd()
 	require.NoError(t, err)
@@ -240,7 +241,7 @@ func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *
 		},
 		// Use legacy allocation (not onchain) because the cloned state
 		// doesn't have ResourceExtension PDAs for newly created test entities.
-		Activator: devnet.ActivatorSpec{},
+		Activator:         devnet.ActivatorSpec{},
 		SkipProgramDeploy: true,
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)

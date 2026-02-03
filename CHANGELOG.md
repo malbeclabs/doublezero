@@ -24,6 +24,8 @@ All notable changes to this project will be documented in this file.
   - Record successful GetConfig gRPC calls to ClickHouse for device telemetry tracking
 - Onchain programs
   - Enforce that `CloseAccessPass` only closes AccessPass accounts when `connection_count == 0`, preventing closure while active connections are present.
+- E2E tests
+  - Add backward compatibility test that validates older CLI versions against the current onchain program by cloning live state from testnet and mainnet-beta
 
 ## [v0.8.6](https://github.com/malbeclabs/doublezero/compare/client/v0.8.5...client/v0.8.6) – 2026-02-04
 

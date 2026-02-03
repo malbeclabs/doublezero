@@ -22,6 +22,8 @@ All notable changes to this project will be documented in this file.
   - DeleteUserCommand updated to wait for activator to process multicast user unsubscribe before deleting the user
 - Device controller
   - Record successful GetConfig gRPC calls to ClickHouse for device telemetry tracking
+- Onchain programs
+  - Enforce that `CloseAccessPass` only closes AccessPass accounts when `connection_count == 0`, preventing closure while active connections are present.
 
 ## [v0.8.6](https://github.com/malbeclabs/doublezero/compare/client/v0.8.5...client/v0.8.6) – 2026-02-04
 

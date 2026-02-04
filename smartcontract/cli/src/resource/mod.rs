@@ -7,6 +7,7 @@ pub mod close;
 pub mod create;
 pub mod deallocate;
 pub mod get;
+pub mod verify;
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
 pub enum ResourceType {

@@ -161,3 +161,22 @@ func (br *ByteReader) ReadString() string {
 	br.offset += int(length)
 	return val
 }
+
+// ReadBytes reads n bytes from the reader
+func (br *ByteReader) ReadBytes(n int) []byte {
+	if br.offset+n > len(br.data) {
+		return nil
+	}
+	val := make([]byte, n)
+	copy(val, br.data[br.offset:br.offset+n])
+	br.offset += n
+	return val
+}
+
+// Skip advances the reader offset by n bytes
+func (br *ByteReader) Skip(n int) {
+	br.offset += n
+	if br.offset > len(br.data) {
+		br.offset = len(br.data)
+	}
+}

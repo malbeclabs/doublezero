@@ -244,19 +244,22 @@ func (c *Client) Start(ctx context.Context) error {
 	}
 
 	// Fund the client account via airdrop.
-	// Retry a couple times to avoid the observed intermittent failures, even on the first airdrop request.
+	// Retry a few times to avoid rate limit failures when running tests in parallel.
+	// We explicitly pass the RPC URL via -u flag to avoid a race condition where the solana CLI
+	// config may not be set up yet by the entrypoint script, which would cause it to default to mainnet.
 	funded := false
 	var output []byte
-	for range 3 {
-		c.log.Info("--> Funding client account", "clientPubkey", c.Pubkey)
-		output, err = c.Exec(ctx, []string{"solana", "airdrop", "10", c.Pubkey}, docker.NoPrintOnError())
+	for attempt := range 5 {
+		c.log.Info("--> Funding client account", "clientPubkey", c.Pubkey, "attempt", attempt+1)
+		output, err = c.Exec(ctx, []string{"solana", "airdrop", "-u", c.dn.Ledger.InternalRPCURL, "10", c.Pubkey}, docker.NoPrintOnError())
 		if err != nil {
-			if strings.Contains(string(output), "rate limit") {
-				c.log.Info("--> Solana airdrop request failed with rate limit message, retrying")
-				time.Sleep(1 * time.Second)
+			outputStr := string(output)
+			if strings.Contains(outputStr, "429") || strings.Contains(outputStr, "Too Many Requests") || strings.Contains(outputStr, "rate limit") {
+				c.log.Info("--> Solana airdrop request rate limited, retrying", "attempt", attempt+1)
+				time.Sleep(2 * time.Second)
 				continue
 			}
-			fmt.Println(string(output))
+			fmt.Println(outputStr)
 			return fmt.Errorf("failed to fund client account: %w", err)
 		}
 		funded = true
@@ -264,7 +267,7 @@ func (c *Client) Start(ctx context.Context) error {
 	}
 	if !funded {
 		fmt.Println(string(output))
-		return fmt.Errorf("failed to fund client account after 3 attempts")
+		return fmt.Errorf("failed to fund client account after 5 attempts")
 	}
 
 	c.log.Info("--> Client started", "container", c.ContainerID, "pubkey", c.Pubkey, "cyoaIP", clientCYOAIP)

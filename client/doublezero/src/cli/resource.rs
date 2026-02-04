@@ -2,7 +2,7 @@ use clap::{Args, Subcommand};
 use doublezero_cli::resource::{
     allocate::AllocateResourceCliCommand, close::CloseResourceCliCommand,
     create::CreateResourceCliCommand, deallocate::DeallocateResourceCliCommand,
-    get::GetResourceCliCommand,
+    get::GetResourceCliCommand, verify::VerifyResourceCliCommand,
 };
 
 #[derive(Args, Debug)]
@@ -28,4 +28,7 @@ pub enum ResourceCommands {
     /// Close a resource
     #[clap()]
     Close(CloseResourceCliCommand),
+    /// Verify resource allocations against onchain accounts
+    #[clap()]
+    Verify(VerifyResourceCliCommand),
 }

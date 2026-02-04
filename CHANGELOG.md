@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Breaking
+
+- None for this release
+
+### Changes
+
+## [v0.8.6](https://github.com/malbeclabs/doublezero/compare/client/v0.8.5...client/v0.8.6) – 2026-02-04
+
+### Breaking
+
+- None for this release
+
+### Changes
+
 - CLI
   - Remove log noise on resolve route
   - `doublezero resource verify` command added to verify onchain resources
@@ -23,6 +37,20 @@ All notable changes to this project will be documented in this file.
 - E2E tests
   - The QA alldevices test now skips devices that are not calling the controller
   - e2e: Expand RFC11 end-to-end testing ([#2801](https://github.com/malbeclabs/doublezero/pull/2801))
+
+## [v0.8.5](https://github.com/malbeclabs/doublezero/compare/client/v0.8.4...client/v0.8.5) – 2026-02-02
+
+### Breaking
+
+- None for this release
+
+### Changes
+
+- Smartcontract
+  - fix(smartcontract): reserve first IP of DzPrefixBlock for device ([#2753](https://github.com/malbeclabs/doublezero/pull/2753))
+- Client
+  - Fix race in bgp status handling on peer deletion
+
 
 ## [v0.8.4](https://github.com/malbeclabs/doublezero/compare/client/v0.8.3...client/v0.8.4) – 2026-01-28
 

@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- E2E
+  - Increase `waitForRoutesTimeout` from 90s to 120s to fix flaky QA tests caused by slow BGP route propagation between distant exchanges
 - CLI
   - Remove log noise on resolve route
 - Onchain programs

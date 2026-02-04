@@ -126,6 +126,7 @@ async fn setup_user_onchain_allocation_test(
             device_tunnel_block: "10.100.0.0/24".parse().unwrap(),
             user_tunnel_block: "169.254.0.0/24".parse().unwrap(), // Link-local for user tunnel_net
             multicastgroup_block: "239.0.0.0/24".parse().unwrap(),
+            multicast_publisher_block: "147.51.126.0/23".parse().unwrap(),
             next_bgp_community: None,
         }),
         vec![
@@ -598,7 +599,8 @@ async fn test_closeaccount_user_with_deallocation() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {
-            dz_prefix_count: 1, // 1 DzPrefixBlock account provided
+            dz_prefix_count: 1,
+            multicast_publisher_count: 0, // 1 DzPrefixBlock account provided
         }),
         vec![
             AccountMeta::new(user_pubkey, false),

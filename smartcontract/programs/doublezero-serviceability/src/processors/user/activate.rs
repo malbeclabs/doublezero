@@ -64,11 +64,12 @@ pub fn process_activate_user(
 
     // Optional: ResourceExtension accounts for on-chain allocation (before payer)
     // Account layout WITH ResourceExtension (dz_prefix_count > 0):
-    //   [user, accesspass, globalstate, global_resource_ext, device_tunnel_ids_ext, dz_prefix_ext_0..N, payer, system]
+    //   [user, accesspass, globalstate, global_resource_ext, multicast_publisher_block_ext, device_tunnel_ids_ext, dz_prefix_ext_0..N, payer, system]
     // Account layout WITHOUT (legacy, dz_prefix_count == 0):
     //   [user, accesspass, globalstate, payer, system]
     let resource_extension_accounts = if value.dz_prefix_count > 0 {
         let global_resource_ext = next_account_info(accounts_iter)?; // UserTunnelBlock
+        let multicast_publisher_block_ext = next_account_info(accounts_iter)?; // MulticastPublisherBlock
         let device_tunnel_ids_ext = next_account_info(accounts_iter)?; // TunnelIds
 
         // Collect DzPrefixBlock accounts based on dz_prefix_count from args
@@ -79,6 +80,7 @@ pub fn process_activate_user(
 
         Some((
             global_resource_ext,
+            multicast_publisher_block_ext,
             device_tunnel_ids_ext,
             dz_prefix_accounts,
         ))
@@ -142,8 +144,12 @@ pub fn process_activate_user(
     }
 
     // Allocate resources from ResourceExtension or use provided values
-    if let Some((global_resource_ext, device_tunnel_ids_ext, dz_prefix_accounts)) =
-        resource_extension_accounts
+    if let Some((
+        global_resource_ext,
+        multicast_publisher_block_ext,
+        device_tunnel_ids_ext,
+        dz_prefix_accounts,
+    )) = resource_extension_accounts
     {
         // Validate global_resource_ext (UserTunnelBlock)
         assert_eq!(
@@ -164,6 +170,27 @@ pub fn process_activate_user(
         assert_eq!(
             global_resource_ext.key, &expected_user_tunnel_pda,
             "Invalid ResourceExtension PDA for UserTunnelBlock"
+        );
+
+        // Validate multicast_publisher_block_ext (MulticastPublisherBlock)
+        assert_eq!(
+            multicast_publisher_block_ext.owner, program_id,
+            "Invalid ResourceExtension Account Owner for MulticastPublisherBlock"
+        );
+        assert!(
+            multicast_publisher_block_ext.is_writable,
+            "ResourceExtension Account for MulticastPublisherBlock is not writable"
+        );
+        assert!(
+            !multicast_publisher_block_ext.data_is_empty(),
+            "ResourceExtension Account for MulticastPublisherBlock is empty"
+        );
+
+        let (expected_multicast_publisher_pda, _, _) =
+            get_resource_extension_pda(program_id, ResourceType::MulticastPublisherBlock);
+        assert_eq!(
+            multicast_publisher_block_ext.key, &expected_multicast_publisher_pda,
+            "Invalid ResourceExtension PDA for MulticastPublisherBlock"
         );
 
         // Validate device_tunnel_ids_ext (TunnelIds)
@@ -249,22 +276,36 @@ pub fn process_activate_user(
         // - dz_ip == client_ip: Multicast user that didn't need dz_ip before (no publishers)
         // If dz_ip is already a dedicated IP (not UNSPECIFIED or client_ip), keep it
         if need_dz_ip && (user.dz_ip == Ipv4Addr::UNSPECIFIED || user.dz_ip == user.client_ip) {
-            // Try to allocate from each DzPrefixBlock until one succeeds
-            let mut allocated_dz_ip = None;
-            for dz_prefix_account in dz_prefix_accounts.iter() {
-                let mut buffer = dz_prefix_account.data.borrow_mut();
+            let allocated_dz_ip = if user.user_type == UserType::Multicast
+                && !user.publishers.is_empty()
+            {
+                // Multicast publishers: allocate from global MulticastPublisherBlock
+                let mut buffer = multicast_publisher_block_ext.data.borrow_mut();
                 let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
 
-                if let Ok(ip) = resource
+                resource
                     .allocate(1)
                     .and_then(|v| v.as_ip().ok_or(DoubleZeroError::InvalidArgument))
-                {
-                    allocated_dz_ip = Some(ip.ip());
-                    break;
-                }
-            }
+                    .map(|ip| ip.ip())?
+            } else {
+                // EdgeFiltering/IBRL: allocate from device DzPrefixBlock
+                let mut allocated_ip = None;
+                for dz_prefix_account in dz_prefix_accounts.iter() {
+                    let mut buffer = dz_prefix_account.data.borrow_mut();
+                    let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
 
-            user.dz_ip = allocated_dz_ip.ok_or(DoubleZeroError::AllocationFailed)?;
+                    if let Ok(ip) = resource
+                        .allocate(1)
+                        .and_then(|v| v.as_ip().ok_or(DoubleZeroError::InvalidArgument))
+                    {
+                        allocated_ip = Some(ip.ip());
+                        break;
+                    }
+                }
+                allocated_ip.ok_or(DoubleZeroError::AllocationFailed)?
+            };
+
+            user.dz_ip = allocated_dz_ip;
         } else if !need_dz_ip && user.dz_ip == Ipv4Addr::UNSPECIFIED {
             // First activation for user that doesn't need dz_ip: use client_ip
             user.dz_ip = user.client_ip;

@@ -30,19 +30,21 @@ pub struct SetGlobalConfigArgs {
     pub user_tunnel_block: NetworkV4,
     pub multicastgroup_block: NetworkV4,
     pub next_bgp_community: Option<u16>,
+    pub multicast_publisher_block: NetworkV4,
 }
 
 impl fmt::Debug for SetGlobalConfigArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "local_asn: {}, remote_asn: {}, tunnel_block: {}, user _block: {}, multicastgroup_block: {}, next_bgp_community: {:?}",
+            "local_asn: {}, remote_asn: {}, tunnel_block: {}, user _block: {}, multicastgroup_block: {}, next_bgp_community: {:?}, multicast_publisher_block: {}",
             self.local_asn,
             self.remote_asn,
             &self.device_tunnel_block,
             &self.user_tunnel_block,
             &self.multicastgroup_block,
             self.next_bgp_community,
+            &self.multicast_publisher_block,
         )
     }
 }
@@ -61,6 +63,7 @@ pub fn process_set_globalconfig(
     let multicastgroup_block_account = next_account_info(accounts_iter)?;
     let link_ids_account = next_account_info(accounts_iter)?;
     let segment_routing_ids_account = next_account_info(accounts_iter)?;
+    let multicast_publisher_block_account = next_account_info(accounts_iter)?;
     let vrf_ids_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
@@ -99,6 +102,8 @@ pub fn process_set_globalconfig(
         get_resource_extension_pda(program_id, ResourceType::UserTunnelBlock);
     let (multicastgroup_block_pda, _, _) =
         get_resource_extension_pda(program_id, ResourceType::MulticastGroupBlock);
+    let (multicast_publisher_block_pda, _, _) =
+        get_resource_extension_pda(program_id, ResourceType::MulticastPublisherBlock);
 
     assert_eq!(
         device_tunnel_block_account.key, &device_tunnel_block_pda,
@@ -113,6 +118,11 @@ pub fn process_set_globalconfig(
     assert_eq!(
         multicastgroup_block_account.key, &multicastgroup_block_pda,
         "Invalid Multicast Group Block PubKey"
+    );
+
+    assert_eq!(
+        multicast_publisher_block_account.key, &multicast_publisher_block_pda,
+        "Invalid Multicast Publisher Block PubKey"
     );
 
     let next_bgp_community = if let Some(val) = value.next_bgp_community {
@@ -133,6 +143,7 @@ pub fn process_set_globalconfig(
         user_tunnel_block: value.user_tunnel_block,
         multicastgroup_block: value.multicastgroup_block,
         next_bgp_community,
+        multicast_publisher_block: value.multicast_publisher_block,
     };
 
     if pda_account.data_is_empty() {
@@ -202,6 +213,16 @@ pub fn process_set_globalconfig(
 
         create_resource(
             program_id,
+            multicast_publisher_block_account,
+            None,
+            pda_account,
+            payer_account,
+            accounts,
+            ResourceType::MulticastPublisherBlock,
+        )?;
+
+        create_resource(
+            program_id,
             vrf_ids_account,
             None,
             pda_account,
@@ -218,6 +239,9 @@ pub fn process_set_globalconfig(
             return Err(DoubleZeroError::ImmutableField.into());
         }
         if old_data.multicastgroup_block != data.multicastgroup_block {
+            return Err(DoubleZeroError::ImmutableField.into());
+        }
+        if old_data.multicast_publisher_block != data.multicast_publisher_block {
             return Err(DoubleZeroError::ImmutableField.into());
         }
         try_acc_write(&data, pda_account, payer_account, accounts)?;

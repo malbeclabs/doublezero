@@ -1,7 +1,7 @@
 use crate::{
     commands::{
-        device::get::GetDeviceCommand, globalstate::get::GetGlobalStateCommand,
-        user::get::GetUserCommand,
+        device::get::GetDeviceCommand, globalconfig::get::GetGlobalConfigCommand,
+        globalstate::get::GetGlobalStateCommand, user::get::GetUserCommand,
     },
     DoubleZeroClient,
 };
@@ -10,6 +10,7 @@ use doublezero_serviceability::{
     processors::user::closeaccount::UserCloseAccountArgs, resource::ResourceType,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use std::net::Ipv4Addr;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct CloseAccountUserCommand {
@@ -38,7 +39,9 @@ impl CloseAccountUserCommand {
             AccountMeta::new(globalstate_pubkey, false),
         ];
 
-        let dz_prefix_count: u8 = if self.use_onchain_deallocation {
+        let (dz_prefix_count, multicast_publisher_count): (u8, u8) = if self
+            .use_onchain_deallocation
+        {
             // Fetch device to get dz_prefixes count
             let (_, device) = GetDeviceCommand {
                 pubkey_or_code: user.device_pk.to_string(),
@@ -52,13 +55,36 @@ impl CloseAccountUserCommand {
             let (global_resource_ext, _, _) =
                 get_resource_extension_pda(&client.get_program_id(), ResourceType::UserTunnelBlock);
 
+            accounts.push(AccountMeta::new(global_resource_ext, false));
+
+            // Determine if user has MulticastPublisherBlock allocation
+            // Check if dz_ip is allocated and could be from MulticastPublisherBlock
+            let needs_multicast_publisher_block =
+                user.dz_ip != user.client_ip && user.dz_ip != Ipv4Addr::UNSPECIFIED && {
+                    // Fetch GlobalConfig to check if dz_ip is in multicast_publisher_block range
+                    let (_, globalconfig) = GetGlobalConfigCommand
+                        .execute(client)
+                        .map_err(|_| eyre::eyre!("GlobalConfig not initialized"))?;
+                    globalconfig.multicast_publisher_block.contains(user.dz_ip)
+                };
+
+            let multicast_count = if needs_multicast_publisher_block {
+                let (multicast_publisher_block_ext, _, _) = get_resource_extension_pda(
+                    &client.get_program_id(),
+                    ResourceType::MulticastPublisherBlock,
+                );
+                accounts.push(AccountMeta::new(multicast_publisher_block_ext, false));
+                1
+            } else {
+                0
+            };
+
             // Device TunnelIds (scoped to user's device)
             let (device_tunnel_ids_ext, _, _) = get_resource_extension_pda(
                 &client.get_program_id(),
                 ResourceType::TunnelIds(user.device_pk, 0),
             );
 
-            accounts.push(AccountMeta::new(global_resource_ext, false));
             accounts.push(AccountMeta::new(device_tunnel_ids_ext, false));
 
             // Add all N DzPrefixBlock accounts (devices can have multiple dz_prefixes)
@@ -70,9 +96,9 @@ impl CloseAccountUserCommand {
                 accounts.push(AccountMeta::new(device_dz_prefix_ext, false));
             }
 
-            count as u8
+            (count as u8, multicast_count)
         } else {
-            0
+            (0, 0)
         };
 
         if user.tenant_pk != Pubkey::default() {
@@ -80,7 +106,10 @@ impl CloseAccountUserCommand {
         }
 
         client.execute_transaction(
-            DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs { dz_prefix_count }),
+            DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {
+                dz_prefix_count,
+                multicast_publisher_count,
+            }),
             accounts,
         )
     }
@@ -94,13 +123,14 @@ mod tests {
     };
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
-        pda::{get_globalstate_pda, get_resource_extension_pda},
+        pda::{get_globalconfig_pda, get_globalstate_pda, get_resource_extension_pda},
         processors::user::closeaccount::UserCloseAccountArgs,
         resource::ResourceType,
         state::{
             accountdata::AccountData,
             accounttype::AccountType,
             device::Device,
+            globalconfig::GlobalConfig,
             user::{User, UserCYOA, UserStatus, UserType},
         },
     };
@@ -147,7 +177,10 @@ mod tests {
             .expect_execute_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CloseAccountUser(
-                    UserCloseAccountArgs { dz_prefix_count: 0 },
+                    UserCloseAccountArgs {
+                        dz_prefix_count: 0,
+                        multicast_publisher_count: 0,
+                    },
                 )),
                 predicate::eq(vec![
                     AccountMeta::new(user_pubkey, false),
@@ -225,11 +258,33 @@ mod tests {
             .with(predicate::eq(device_pk))
             .returning(move |_| Ok(AccountData::Device(device.clone())));
 
+        // Mock GlobalConfig fetch (to check if dz_ip is in multicast_publisher_block)
+        let (globalconfig_pubkey, bump_seed) = get_globalconfig_pda(&client.get_program_id());
+        let globalconfig = GlobalConfig {
+            account_type: AccountType::GlobalConfig,
+            owner: Pubkey::default(),
+            bump_seed,
+            local_asn: 0,
+            remote_asn: 0,
+            device_tunnel_block: "1.0.0.0/24".parse().unwrap(),
+            user_tunnel_block: "2.0.0.0/24".parse().unwrap(),
+            multicastgroup_block: "224.0.0.0/24".parse().unwrap(),
+            multicast_publisher_block: "147.51.126.0/23".parse().unwrap(), // dz_ip 10.0.0.1 NOT in this range
+            next_bgp_community: 0,
+        };
+        client
+            .expect_get()
+            .with(predicate::eq(globalconfig_pubkey))
+            .returning(move |_| Ok(AccountData::GlobalConfig(globalconfig.clone())));
+
         client
             .expect_execute_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CloseAccountUser(
-                    UserCloseAccountArgs { dz_prefix_count: 1 }, // 1 dz_prefix from device.dz_prefixes
+                    UserCloseAccountArgs {
+                        dz_prefix_count: 1, // 1 dz_prefix from device.dz_prefixes
+                        multicast_publisher_count: 0,
+                    },
                 )),
                 predicate::eq(vec![
                     AccountMeta::new(user_pubkey, false),
@@ -291,7 +346,10 @@ mod tests {
             .expect_execute_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CloseAccountUser(
-                    UserCloseAccountArgs { dz_prefix_count: 0 },
+                    UserCloseAccountArgs {
+                        dz_prefix_count: 0,
+                        multicast_publisher_count: 0,
+                    },
                 )),
                 predicate::eq(vec![
                     AccountMeta::new(user_pubkey, false),
@@ -368,11 +426,33 @@ mod tests {
             .with(predicate::eq(device_pk))
             .returning(move |_| Ok(AccountData::Device(device.clone())));
 
+        // Mock GlobalConfig fetch (to check if dz_ip is in multicast_publisher_block)
+        let (globalconfig_pubkey, bump_seed) = get_globalconfig_pda(&client.get_program_id());
+        let globalconfig = GlobalConfig {
+            account_type: AccountType::GlobalConfig,
+            owner: Pubkey::default(),
+            bump_seed,
+            local_asn: 0,
+            remote_asn: 0,
+            device_tunnel_block: "1.0.0.0/24".parse().unwrap(),
+            user_tunnel_block: "2.0.0.0/24".parse().unwrap(),
+            multicastgroup_block: "224.0.0.0/24".parse().unwrap(),
+            multicast_publisher_block: "147.51.126.0/23".parse().unwrap(), // dz_ip 10.0.0.1 NOT in this range
+            next_bgp_community: 0,
+        };
+        client
+            .expect_get()
+            .with(predicate::eq(globalconfig_pubkey))
+            .returning(move |_| Ok(AccountData::GlobalConfig(globalconfig.clone())));
+
         client
             .expect_execute_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CloseAccountUser(
-                    UserCloseAccountArgs { dz_prefix_count: 1 },
+                    UserCloseAccountArgs {
+                        dz_prefix_count: 1,
+                        multicast_publisher_count: 0,
+                    },
                 )),
                 predicate::eq(vec![
                     AccountMeta::new(user_pubkey, false),

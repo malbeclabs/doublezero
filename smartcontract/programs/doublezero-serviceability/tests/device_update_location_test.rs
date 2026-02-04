@@ -72,6 +72,7 @@ async fn device_update_location_test() {
             device_tunnel_block: "10.0.0.0/24".parse().unwrap(), // Private tunnel block
             user_tunnel_block: "10.0.0.0/24".parse().unwrap(),   // Private tunnel block
             multicastgroup_block: "224.0.0.0/16".parse().unwrap(), // Multicast block
+            multicast_publisher_block: "147.51.126.0/23".parse().unwrap(),
             next_bgp_community: None,
         }),
         vec![

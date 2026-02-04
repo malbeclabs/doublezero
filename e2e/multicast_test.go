@@ -252,14 +252,20 @@ func createMulticastGroupForBothClients(t *testing.T, dn *TestDevnet, publisherC
 // and subscriber tunnels configured.
 func checkMulticastBothUsersAgentConfig(t *testing.T, dn *TestDevnet, device *devnet.Device, publisherClient, subscriberClient *devnet.Client) {
 	t.Run("wait_for_agent_config_both_users", func(t *testing.T) {
-		dzPrefixIP, dzPrefixNet, err := netutil.ParseCIDR(device.DZPrefix)
-		require.NoError(t, err)
-		ones, _ := dzPrefixNet.Mask.Size()
-		allocatableBits := 32 - ones
 
-		// With onchain allocation, the first IP is reserved for the device tunnel endpoint.
-		expectedAllocatedPublisherIP, err := nextAllocatableIP(dzPrefixIP, allocatableBits, map[string]bool{dzPrefixIP: true})
+		// Query the allocated publisher IP from user list
+		userListOutput, err := dn.Manager.Exec(t.Context(), []string{"doublezero", "user", "list"})
 		require.NoError(t, err)
+
+		rows := fixtures.ParseCLITable(userListOutput)
+		var expectedAllocatedPublisherIP string
+		for _, row := range rows {
+			if row["user_type"] == "Multicast" && row["client_ip"] == publisherClient.CYOANetworkIP {
+				expectedAllocatedPublisherIP = row["dz_ip"]
+				break
+			}
+		}
+		require.NotEmpty(t, expectedAllocatedPublisherIP, "publisher should have allocated dz_ip")
 
 		// Publisher gets the first tunnel slot, subscriber gets the second.
 		pubTunnel := controllerconfig.StartUserTunnelNum
@@ -330,14 +336,19 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 
 		var expectedAllocatedClientIP string
 		if mode == "publisher" {
-			dzPrefixIP, dzPrefixNet, err := netutil.ParseCIDR(device.DZPrefix)
+			// Query the allocated publisher IP from user list
+			userListOutput, err := dn.Manager.Exec(t.Context(), []string{"doublezero", "user", "list"})
 			require.NoError(t, err)
-			ones, _ := dzPrefixNet.Mask.Size()
-			allocatableBits := 32 - ones
 
-			// With onchain allocation, the first IP is reserved for the device tunnel endpoint.
-			expectedAllocatedClientIP, err = nextAllocatableIP(dzPrefixIP, allocatableBits, map[string]bool{dzPrefixIP: true})
-			require.NoError(t, err)
+			rows := fixtures.ParseCLITable(userListOutput)
+			for _, row := range rows {
+				if row["user_type"] == "Multicast" && row["client_ip"] == client.CYOANetworkIP {
+					expectedAllocatedClientIP = row["dz_ip"]
+					break
+				}
+			}
+			require.NotEmpty(t, expectedAllocatedClientIP, "publisher should have allocated dz_ip")
+			require.True(t, netutil.IPInRange(expectedAllocatedClientIP, "147.51.126.0/23"), "publisher dz_ip %s should be from global multicast_publisher_block", expectedAllocatedClientIP)
 		}
 
 		tests := []struct {

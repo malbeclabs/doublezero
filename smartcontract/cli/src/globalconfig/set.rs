@@ -29,6 +29,9 @@ pub struct SetGlobalConfigCliCommand {
     /// Next BGP community value to assign
     #[arg(long)]
     pub next_bgp_community: Option<u16>,
+    /// Multicast publisher block in CIDR format
+    #[arg(long)]
+    multicast_publisher_block: Option<NetworkV4>,
 }
 
 impl SetGlobalConfigCliCommand {
@@ -54,6 +57,7 @@ impl SetGlobalConfigCliCommand {
             user_tunnel_block: self.user_tunnel_block,
             multicastgroup_block: self.multicastgroup_block,
             next_bgp_community: self.next_bgp_community,
+            multicast_publisher_block: self.multicast_publisher_block,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -95,6 +99,7 @@ mod tests {
                 device_tunnel_block: "10.20.0.0/16".parse().ok(),
                 user_tunnel_block: "10.10.0.0/16".parse().ok(),
                 multicastgroup_block: "224.2.0.0/4".parse().ok(),
+                multicast_publisher_block: None,
                 next_bgp_community: None,
             }))
             .returning(move |_| Ok(signature));
@@ -108,6 +113,7 @@ mod tests {
             device_tunnel_block: "10.20.0.0/16".parse().ok(),
             user_tunnel_block: "10.10.0.0/16".parse().ok(),
             multicastgroup_block: "224.2.0.0/4".parse().ok(),
+            multicast_publisher_block: None,
             next_bgp_community: None,
         }
         .execute(&client, &mut output1);
@@ -126,6 +132,7 @@ mod tests {
                 device_tunnel_block: None,
                 user_tunnel_block: None,
                 multicastgroup_block: None,
+                multicast_publisher_block: None,
                 next_bgp_community: None,
             }))
             .returning(move |_| Ok(signature));
@@ -136,6 +143,7 @@ mod tests {
             device_tunnel_block: None,
             user_tunnel_block: None,
             multicastgroup_block: None,
+            multicast_publisher_block: None,
             next_bgp_community: None,
         }
         .execute(&client, &mut output2);
@@ -162,6 +170,7 @@ mod tests {
                 device_tunnel_block: None,
                 user_tunnel_block: None,
                 multicastgroup_block: None,
+                multicast_publisher_block: None,
                 next_bgp_community: None,
             }))
             .returning(move |_| {
@@ -177,6 +186,7 @@ mod tests {
             device_tunnel_block: None,
             user_tunnel_block: None,
             multicastgroup_block: None,
+            multicast_publisher_block: None,
             next_bgp_community: None,
         }
         .execute(&client, &mut output);

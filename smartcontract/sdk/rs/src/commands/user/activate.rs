@@ -74,6 +74,12 @@ impl ActivateUserCommand {
             let (global_resource_ext, _, _) =
                 get_resource_extension_pda(&client.get_program_id(), ResourceType::UserTunnelBlock);
 
+            // Global MulticastPublisherBlock (for publisher DZ IPs)
+            let (multicast_publisher_block_ext, _, _) = get_resource_extension_pda(
+                &client.get_program_id(),
+                ResourceType::MulticastPublisherBlock,
+            );
+
             // Device TunnelIds (scoped to user's device)
             let (device_tunnel_ids_ext, _, _) = get_resource_extension_pda(
                 &client.get_program_id(),
@@ -81,6 +87,7 @@ impl ActivateUserCommand {
             );
 
             accounts.push(AccountMeta::new(global_resource_ext, false));
+            accounts.push(AccountMeta::new(multicast_publisher_block_ext, false));
             accounts.push(AccountMeta::new(device_tunnel_ids_ext, false));
 
             // Add all N DzPrefixBlock accounts (devices can have multiple dz_prefixes)
@@ -283,6 +290,10 @@ mod tests {
         // Compute ResourceExtension PDAs
         let (global_resource_ext, _, _) =
             get_resource_extension_pda(&client.get_program_id(), ResourceType::UserTunnelBlock);
+        let (multicast_publisher_block_ext, _, _) = get_resource_extension_pda(
+            &client.get_program_id(),
+            ResourceType::MulticastPublisherBlock,
+        );
         let (device_tunnel_ids_ext, _, _) = get_resource_extension_pda(
             &client.get_program_id(),
             ResourceType::TunnelIds(device_pk, 0),
@@ -330,6 +341,7 @@ mod tests {
                     AccountMeta::new(accesspass_pubkey, false),
                     AccountMeta::new(globalstate_pubkey, false),
                     AccountMeta::new(global_resource_ext, false),
+                    AccountMeta::new(multicast_publisher_block_ext, false),
                     AccountMeta::new(device_tunnel_ids_ext, false),
                     AccountMeta::new(device_dz_prefix_ext, false),
                 ]),

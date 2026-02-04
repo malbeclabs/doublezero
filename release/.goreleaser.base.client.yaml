@@ -82,6 +82,41 @@ nfpms:
             postinstall: client/packaging/scripts/doublezerod/rpm/postinstall.sh
             preremove: client/packaging/scripts/doublezerod/rpm/preremove.sh
             postremove: client/packaging/scripts/doublezerod/rpm/postremove.sh
+  - id: doublezero-mainnet-beta
+    package_name: doublezero
+    file_name_template: "{{ .PackageName }}-mainnet-beta_{{ .Version }}_{{ .Arch }}"
+    ids: [doublezerod, doublezero-cli]
+    vendor: doublezero
+    homepage: doublezero.xyz
+    maintainer: steve <steve@malbeclabs.com>
+    description: |-
+      DoubleZero client and cli
+    license: Apache 2.0
+    formats:
+      - deb
+      - rpm
+    bindir: /usr/bin
+    release: 1
+    section: default
+    dependencies:
+      - doublezero-solana
+    contents:
+      - src: client/doublezerod/cmd/doublezerod/doublezerod.mainnet-beta.service
+        dst: /usr/lib/systemd/system/doublezerod.service
+    deb:
+      predepends:
+        - adduser
+    overrides:
+      deb:
+          scripts:
+            postinstall: client/packaging/scripts/doublezerod/deb/postinstall.sh
+            preremove: client/packaging/scripts/doublezerod/deb/preremove.sh
+            postremove: client/packaging/scripts/doublezerod/deb/postremove.sh
+      rpm:
+          scripts:
+            postinstall: client/packaging/scripts/doublezerod/rpm/postinstall.sh
+            preremove: client/packaging/scripts/doublezerod/rpm/preremove.sh
+            postremove: client/packaging/scripts/doublezerod/rpm/postremove.sh
 
 changelog:
   sort: asc

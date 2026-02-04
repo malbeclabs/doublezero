@@ -1,0 +1,17 @@
+[Unit]
+Description=DoubleZero client
+After=network.target
+
+[Service]
+User=doublezero
+Group=doublezero
+RuntimeDirectory=doublezerod
+RuntimeDirectoryMode=0775
+StateDirectory=doublezerod
+ExecStart=/usr/bin/doublezerod -sock-file /run/doublezerod/doublezerod.sock -env mainnet-beta
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

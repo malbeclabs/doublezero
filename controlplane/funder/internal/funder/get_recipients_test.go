@@ -19,6 +19,10 @@ func (m *MockServiceabilityClient) GetProgramData(ctx context.Context) (*service
 	return m.GetProgramDataFunc(ctx)
 }
 
+func (m *MockServiceabilityClient) ProgramID() solana.PublicKey {
+	return solana.PublicKey{}
+}
+
 func TestGetRecipients_Success(t *testing.T) {
 	mockData := &serviceability.ProgramData{
 		Devices: []serviceability.Device{

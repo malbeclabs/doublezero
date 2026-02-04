@@ -273,16 +273,6 @@ func isDefaultPubkey(pk [32]byte) bool {
 	return true
 }
 
-// onChainNetToString converts a NetworkV4 ([5]byte) to a CIDR string
-func onChainNetToString(n [5]uint8) string {
-	prefixLen := n[4]
-	if prefixLen > 0 && prefixLen <= 32 {
-		ipBytes := n[:4]
-		return fmt.Sprintf("%d.%d.%d.%d/%d", ipBytes[0], ipBytes[1], ipBytes[2], ipBytes[3], prefixLen)
-	}
-	return ""
-}
-
 // FindTunnelIdsForDevice finds the TunnelIds pool for a specific device
 func (v *Verifier) FindTunnelIdsForDevice(snapshot *ResourceSnapshot, devicePubkey solana.PublicKey) (*AllocationState, error) {
 	deviceKey := devicePubkey.String()

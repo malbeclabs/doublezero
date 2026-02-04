@@ -24,6 +24,8 @@ All notable changes to this project will be documented in this file.
   - Record successful GetConfig gRPC calls to ClickHouse for device telemetry tracking
 - Onchain programs
   - Enforce that `CloseAccessPass` only closes AccessPass accounts when `connection_count == 0`, preventing closure while active connections are present.
+- Monitor
+  - Add sol-balance watcher to track SOL balances for configured accounts and export Prometheus metrics for alerting
 
 ## [v0.8.6](https://github.com/malbeclabs/doublezero/compare/client/v0.8.5...client/v0.8.6) – 2026-02-04
 
@@ -32,7 +34,6 @@ All notable changes to this project will be documented in this file.
 - None for this release
 
 ### Changes
-
 - CLI
   - Remove log noise on resolve route
   - `doublezero resource verify` command added to verify onchain resources

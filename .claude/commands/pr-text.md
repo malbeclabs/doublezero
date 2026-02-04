@@ -13,6 +13,8 @@ Then generate a PR title and description. Output as a markdown code block on its
 # PR Title
 <component>: <short description>
 
+Resolves: #<issue number if known, otherwise omit this line>
+
 ## Summary of Changes
 -
 -

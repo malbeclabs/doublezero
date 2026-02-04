@@ -84,7 +84,8 @@ class DistributionParameters:
         reserved0 = Reserved(data[off : off + 3]); off += 3
         burn = CommunityBurnRateParameters.from_bytes(data, off); off += CommunityBurnRateParameters.STRUCT_SIZE
         vfee = SolanaValidatorFeeParameters.from_bytes(data, off); off += SolanaValidatorFeeParameters.STRUCT_SIZE
-        reserved1 = Reserved(data[off : off + 256])
+        reserved1 = Reserved(data[off : off + 256]); off += 256
+        assert off - offset == cls.STRUCT_SIZE, f"DistributionParameters byte coverage: {off - offset} != {cls.STRUCT_SIZE}"
         return cls(calc_gp, init_gp, min_epoch, reserved0, burn, vfee, reserved1)
 
 
@@ -179,7 +180,8 @@ class ProgramConfig:
         relay = RelayParameters.from_bytes(b, off); off += RelayParameters.STRUCT_SIZE
         last_ts = struct.unpack_from("<I", b, off)[0]; off += 4
         reserved1 = Reserved(b[off : off + 4]); off += 4
-        debt_wo_epoch = struct.unpack_from("<Q", b, off)[0]
+        debt_wo_epoch = struct.unpack_from("<Q", b, off)[0]; off += 8
+        assert off == cls.STRUCT_SIZE, f"ProgramConfig byte coverage: {off} != {cls.STRUCT_SIZE}"
         return cls(
             flags=flags,
             next_completed_dz_epoch=next_epoch,
@@ -261,7 +263,8 @@ class Distribution:
         dist_2z, burned_2z = struct.unpack_from("<2Q", b, off); off += 16
         wo_start, wo_end, wo_count = struct.unpack_from("<3I", b, off); off += 12
         reserved1 = Reserved(b[off : off + 20]); off += 20
-        reserved2 = Reserved(b[off : off + 192])
+        reserved2 = Reserved(b[off : off + 192]); off += 192
+        assert off == cls.STRUCT_SIZE, f"Distribution byte coverage: {off} != {cls.STRUCT_SIZE}"
         return cls(
             dz_epoch=dz_epoch,
             flags=flags,
@@ -315,7 +318,8 @@ class SolanaValidatorDeposit:
         node_id = _pubkey(b, off); off += 32
         debt = struct.unpack_from("<Q", b, off)[0]; off += 8
         reserved0 = Reserved(b[off : off + 24]); off += 24
-        reserved1 = Reserved(b[off : off + 32])
+        reserved1 = Reserved(b[off : off + 32]); off += 32
+        assert off == cls.STRUCT_SIZE, f"SolanaValidatorDeposit byte coverage: {off} != {cls.STRUCT_SIZE}"
         return cls(node_id=node_id, written_off_sol_debt=debt, reserved0=reserved0, reserved1=reserved1)
 
 
@@ -342,7 +346,8 @@ class ContributorRewards:
         for _ in range(8):
             shares.append(RecipientShare.from_bytes(b, off))
             off += RecipientShare.STRUCT_SIZE
-        reserved0 = Reserved(b[off : off + 256])
+        reserved0 = Reserved(b[off : off + 256]); off += 256
+        assert off == cls.STRUCT_SIZE, f"ContributorRewards byte coverage: {off} != {cls.STRUCT_SIZE}"
         return cls(
             rewards_manager_key=mgr,
             service_key=svc,
@@ -375,7 +380,8 @@ class Journal:
         (
             total_sol, total_2z, swap_dest, swapped, next_epoch,
         ) = struct.unpack_from("<5Q", b, off); off += 40
-        lifetime = b[off : off + 16]
+        lifetime = b[off : off + 16]; off += 16
+        assert off == cls.STRUCT_SIZE, f"Journal byte coverage: {off} != {cls.STRUCT_SIZE}"
         return cls(
             bump_seed=bump,
             token_2z_pda_bump_seed=t2z_bump,

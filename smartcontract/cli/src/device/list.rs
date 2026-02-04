@@ -89,7 +89,6 @@ pub struct DeviceDisplay {
     #[tabled(skip)]
     pub metrics_publisher_pk: Pubkey,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
-    #[tabled(skip)]
     pub owner: Pubkey,
 }
 
@@ -369,7 +368,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | code         | contributor       | location       | exchange       | device_type | public_ip | dz_prefixes | users | max_users | status    | health          | mgmt_vrf \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | device1_code | contributor1_code | location1_code | exchange1_code | hybrid      | 1.2.3.4   | 1.2.3.4/32  | 0     | 255       | activated | ready-for-users | default  \n");
+        assert_eq!(output_str, " account                                   | code         | contributor       | location       | exchange       | device_type | public_ip | dz_prefixes | users | max_users | status    | health          | mgmt_vrf | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | device1_code | contributor1_code | location1_code | exchange1_code | hybrid      | 1.2.3.4   | 1.2.3.4/32  | 0     | 255       | activated | ready-for-users | default  | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
 
         let mut output = Vec::new();
         let res = ListDeviceCliCommand {
@@ -988,5 +987,1414 @@ mod tests {
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("ams-device-001"));
         assert!(!output_str.contains("nyc-device-002"));
+    }
+
+    #[test]
+    fn test_cli_device_list_filter_by_contributor() {
+        let mut client = create_test_client();
+
+        let location1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR");
+        let location1 = Location {
+            account_type: AccountType::Location,
+            index: 1,
+            bump_seed: 2,
+            reference_count: 0,
+            code: "ams".to_string(),
+            name: "Amsterdam".to_string(),
+            country: "NL".to_string(),
+            lat: 1.0,
+            lng: 2.0,
+            loc_id: 3,
+            status: LocationStatus::Activated,
+            owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR"),
+        };
+
+        client.expect_list_location().returning(move |_| {
+            let mut locations = HashMap::new();
+            locations.insert(location1_pubkey, location1.clone());
+            Ok(locations)
+        });
+
+        let exchange1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA");
+        let exchange1 = Exchange {
+            account_type: AccountType::Exchange,
+            index: 1,
+            bump_seed: 2,
+            reference_count: 0,
+            code: "xams".to_string(),
+            name: "AMS-IX".to_string(),
+            device1_pk: Pubkey::default(),
+            device2_pk: Pubkey::default(),
+            lat: 1.0,
+            lng: 2.0,
+            bgp_community: 3,
+            unused: 0,
+            status: ExchangeStatus::Activated,
+            owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA"),
+        };
+
+        client.expect_list_exchange().returning(move |_| {
+            let mut exchanges = HashMap::new();
+            exchanges.insert(exchange1_pubkey, exchange1.clone());
+            Ok(exchanges)
+        });
+
+        let contributor1_pk =
+            Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
+        let contributor1 = Contributor {
+            account_type: AccountType::Contributor,
+            index: 1,
+            bump_seed: 2,
+            reference_count: 0,
+            code: "acme".to_string(),
+            status: ContributorStatus::Activated,
+            owner: contributor1_pk,
+            ops_manager_pk: Pubkey::default(),
+        };
+
+        let contributor2_pk =
+            Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcy");
+        let contributor2 = Contributor {
+            account_type: AccountType::Contributor,
+            index: 2,
+            bump_seed: 3,
+            reference_count: 0,
+            code: "globex".to_string(),
+            status: ContributorStatus::Activated,
+            owner: contributor2_pk,
+            ops_manager_pk: Pubkey::default(),
+        };
+
+        let contributor1_clone = contributor1.clone();
+        client.expect_list_contributor().returning(move |_| {
+            let mut contributors = HashMap::new();
+            contributors.insert(contributor1_pk, contributor1.clone());
+            contributors.insert(contributor2_pk, contributor2.clone());
+            Ok(contributors)
+        });
+
+        client
+            .expect_get_contributor()
+            .returning(move |cmd| match cmd.pubkey_or_code.as_str() {
+                "acme" => Ok((contributor1_pk, contributor1_clone.clone())),
+                _ => Err(eyre::eyre!("Contributor not found")),
+            });
+
+        let device1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
+        let device1 = Device {
+            account_type: AccountType::Device,
+            index: 1,
+            bump_seed: 2,
+            reference_count: 0,
+            code: "device1".to_string(),
+            contributor_pk: contributor1_pk,
+            location_pk: location1_pubkey,
+            exchange_pk: exchange1_pubkey,
+            device_type: DeviceType::Hybrid,
+            public_ip: [1, 2, 3, 4].into(),
+            dz_prefixes: "1.2.3.4/32".parse().unwrap(),
+            status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::default(),
+            owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"),
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![],
+            max_users: 255,
+            users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+            desired_status:
+                doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+        };
+
+        let device2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD");
+        let device2 = Device {
+            account_type: AccountType::Device,
+            index: 2,
+            bump_seed: 3,
+            reference_count: 0,
+            code: "device2".to_string(),
+            contributor_pk: contributor2_pk,
+            location_pk: location1_pubkey,
+            exchange_pk: exchange1_pubkey,
+            device_type: DeviceType::Hybrid,
+            public_ip: [5, 6, 7, 8].into(),
+            dz_prefixes: "5.6.7.8/32".parse().unwrap(),
+            status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::default(),
+            owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD"),
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![],
+            max_users: 255,
+            users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+            desired_status:
+                doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+        };
+
+        client.expect_list_device().returning(move |_| {
+            let mut devices = HashMap::new();
+            devices.insert(device1_pubkey, device1.clone());
+            devices.insert(device2_pubkey, device2.clone());
+            Ok(devices)
+        });
+
+        // Test filter by contributor=acme (should return only device1)
+        let mut output = Vec::new();
+        let res = ListDeviceCliCommand {
+            contributor: Some("acme".to_string()),
+            exchange: None,
+            location: None,
+            device_type: None,
+            status: None,
+            health: None,
+            desired_status: None,
+            code: None,
+            json: false,
+            json_compact: true,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        assert!(output_str.contains("device1"));
+        assert!(!output_str.contains("device2"));
+    }
+
+    #[test]
+    fn test_cli_device_list_filter_by_exchange() {
+        let mut client = create_test_client();
+
+        let location1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR");
+        let location1 = Location {
+            account_type: AccountType::Location,
+            index: 1,
+            bump_seed: 2,
+            reference_count: 0,
+            code: "ams".to_string(),
+            name: "Amsterdam".to_string(),
+            country: "NL".to_string(),
+            lat: 1.0,
+            lng: 2.0,
+            loc_id: 3,
+            status: LocationStatus::Activated,
+            owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR"),
+        };
+
+        client.expect_list_location().returning(move |_| {
+            let mut locations = HashMap::new();
+            locations.insert(location1_pubkey, location1.clone());
+            Ok(locations)
+        });
+
+        let exchange1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA");
+        let exchange1 = Exchange {
+            account_type: AccountType::Exchange,
+            index: 1,
+            bump_seed: 2,
+            reference_count: 0,
+            code: "xams".to_string(),
+            name: "AMS-IX".to_string(),
+            device1_pk: Pubkey::default(),
+            device2_pk: Pubkey::default(),
+            lat: 1.0,
+            lng: 2.0,
+            bgp_community: 3,
+            unused: 0,
+            status: ExchangeStatus::Activated,
+            owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA"),
+        };
+
+        let exchange2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPU");
+        let exchange2 = Exchange {
+            account_type: AccountType::Exchange,
+            index: 2,
+            bump_seed: 3,
+            reference_count: 0,
+            code: "xnyc".to_string(),
+            name: "NYIIX".to_string(),
+            device1_pk: Pubkey::default(),
+            device2_pk: Pubkey::default(),
+            lat: 1.0,
+            lng: 2.0,
+            bgp_community: 4,
+            unused: 0,
+            status: ExchangeStatus::Activated,
+            owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPU"),
+        };
+
+        client.expect_list_exchange().returning(move |_| {
+            let mut exchanges = HashMap::new();
+            exchanges.insert(exchange1_pubkey, exchange1.clone());
+            exchanges.insert(exchange2_pubkey, exchange2.clone());
+            Ok(exchanges)
+        });
+
+        let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
+        let contributor = Contributor {
+            account_type: AccountType::Contributor,
+            index: 1,
+            bump_seed: 2,
+            reference_count: 0,
+            code: "acme".to_string(),
+            status: ContributorStatus::Activated,
+            owner: contributor_pk,
+            ops_manager_pk: Pubkey::default(),
+        };
+
+        client.expect_list_contributor().returning(move |_| {
+            let mut contributors = HashMap::new();
+            contributors.insert(contributor_pk, contributor.clone());
+            Ok(contributors)
+        });
+
+        let device1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
+        let device1 = Device {
+            account_type: AccountType::Device,
+            index: 1,
+            bump_seed: 2,
+            reference_count: 0,
+            code: "device1".to_string(),
+            contributor_pk,
+            location_pk: location1_pubkey,
+            exchange_pk: exchange1_pubkey,
+            device_type: DeviceType::Hybrid,
+            public_ip: [1, 2, 3, 4].into(),
+            dz_prefixes: "1.2.3.4/32".parse().unwrap(),
+            status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::default(),
+            owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"),
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![],
+            max_users: 255,
+            users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+            desired_status:
+                doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+        };
+
+        let device2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD");
+        let device2 = Device {
+            account_type: AccountType::Device,
+            index: 2,
+            bump_seed: 3,
+            reference_count: 0,
+            code: "device2".to_string(),
+            contributor_pk,
+            location_pk: location1_pubkey,
+            exchange_pk: exchange2_pubkey,
+            device_type: DeviceType::Hybrid,
+            public_ip: [5, 6, 7, 8].into(),
+            dz_prefixes: "5.6.7.8/32".parse().unwrap(),
+            status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::default(),
+            owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD"),
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![],
+            max_users: 255,
+            users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+            desired_status:
+                doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+        };
+
+        client.expect_list_device().returning(move |_| {
+            let mut devices = HashMap::new();
+            devices.insert(device1_pubkey, device1.clone());
+            devices.insert(device2_pubkey, device2.clone());
+            Ok(devices)
+        });
+
+        // Test filter by exchange=xams (should return only device1)
+        let mut output = Vec::new();
+        let res = ListDeviceCliCommand {
+            contributor: None,
+            exchange: Some("xams".to_string()),
+            location: None,
+            device_type: None,
+            status: None,
+            health: None,
+            desired_status: None,
+            code: None,
+            json: false,
+            json_compact: true,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        assert!(output_str.contains("device1"));
+        assert!(!output_str.contains("device2"));
+    }
+
+    #[test]
+    fn test_cli_device_list_filter_by_location() {
+        let mut client = create_test_client();
+
+        let location1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR");
+        let location1 = Location {
+            account_type: AccountType::Location,
+            index: 1,
+            bump_seed: 2,
+            reference_count: 0,
+            code: "ams".to_string(),
+            name: "Amsterdam".to_string(),
+            country: "NL".to_string(),
+            lat: 1.0,
+            lng: 2.0,
+            loc_id: 3,
+            status: LocationStatus::Activated,
+            owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR"),
+        };
+
+        let location2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPT");
+        let location2 = Location {
+            account_type: AccountType::Location,
+            index: 2,
+            bump_seed: 3,
+            reference_count: 0,
+            code: "nyc".to_string(),
+            name: "New York".to_string(),
+            country: "US".to_string(),
+            lat: 1.0,
+            lng: 2.0,
+            loc_id: 4,
+            status: LocationStatus::Activated,
+            owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPT"),
+        };
+
+        client.expect_list_location().returning(move |_| {
+            let mut locations = HashMap::new();
+            locations.insert(location1_pubkey, location1.clone());
+            locations.insert(location2_pubkey, location2.clone());
+            Ok(locations)
+        });
+
+        let exchange1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA");
+        let exchange1 = Exchange {
+            account_type: AccountType::Exchange,
+            index: 1,
+            bump_seed: 2,
+            reference_count: 0,
+            code: "xams".to_string(),
+            name: "AMS-IX".to_string(),
+            device1_pk: Pubkey::default(),
+            device2_pk: Pubkey::default(),
+            lat: 1.0,
+            lng: 2.0,
+            bgp_community: 3,
+            unused: 0,
+            status: ExchangeStatus::Activated,
+            owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA"),
+        };
+
+        client.expect_list_exchange().returning(move |_| {
+            let mut exchanges = HashMap::new();
+            exchanges.insert(exchange1_pubkey, exchange1.clone());
+            Ok(exchanges)
+        });
+
+        let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
+        let contributor = Contributor {
+            account_type: AccountType::Contributor,
+            index: 1,
+            bump_seed: 2,
+            reference_count: 0,
+            code: "acme".to_string(),
+            status: ContributorStatus::Activated,
+            owner: contributor_pk,
+            ops_manager_pk: Pubkey::default(),
+        };
+
+        client.expect_list_contributor().returning(move |_| {
+            let mut contributors = HashMap::new();
+            contributors.insert(contributor_pk, contributor.clone());
+            Ok(contributors)
+        });
+
+        let device1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
+        let device1 = Device {
+            account_type: AccountType::Device,
+            index: 1,
+            bump_seed: 2,
+            reference_count: 0,
+            code: "device1".to_string(),
+            contributor_pk,
+            location_pk: location1_pubkey,
+            exchange_pk: exchange1_pubkey,
+            device_type: DeviceType::Hybrid,
+            public_ip: [1, 2, 3, 4].into(),
+            dz_prefixes: "1.2.3.4/32".parse().unwrap(),
+            status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::default(),
+            owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"),
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![],
+            max_users: 255,
+            users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+            desired_status:
+                doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+        };
+
+        let device2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD");
+        let device2 = Device {
+            account_type: AccountType::Device,
+            index: 2,
+            bump_seed: 3,
+            reference_count: 0,
+            code: "device2".to_string(),
+            contributor_pk,
+            location_pk: location2_pubkey,
+            exchange_pk: exchange1_pubkey,
+            device_type: DeviceType::Hybrid,
+            public_ip: [5, 6, 7, 8].into(),
+            dz_prefixes: "5.6.7.8/32".parse().unwrap(),
+            status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::default(),
+            owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD"),
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![],
+            max_users: 255,
+            users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+            desired_status:
+                doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+        };
+
+        client.expect_list_device().returning(move |_| {
+            let mut devices = HashMap::new();
+            devices.insert(device1_pubkey, device1.clone());
+            devices.insert(device2_pubkey, device2.clone());
+            Ok(devices)
+        });
+
+        // Test filter by location=ams (should return only device1)
+        let mut output = Vec::new();
+        let res = ListDeviceCliCommand {
+            contributor: None,
+            exchange: None,
+            location: Some("ams".to_string()),
+            device_type: None,
+            status: None,
+            health: None,
+            desired_status: None,
+            code: None,
+            json: false,
+            json_compact: true,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        assert!(output_str.contains("device1"));
+        assert!(!output_str.contains("device2"));
+    }
+
+    #[test]
+    fn test_cli_device_list_filter_by_health() {
+        let mut client = create_test_client();
+
+        let location1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR");
+        let location1 = Location {
+            account_type: AccountType::Location,
+            index: 1,
+            bump_seed: 2,
+            reference_count: 0,
+            code: "ams".to_string(),
+            name: "Amsterdam".to_string(),
+            country: "NL".to_string(),
+            lat: 1.0,
+            lng: 2.0,
+            loc_id: 3,
+            status: LocationStatus::Activated,
+            owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR"),
+        };
+
+        client.expect_list_location().returning(move |_| {
+            let mut locations = HashMap::new();
+            locations.insert(location1_pubkey, location1.clone());
+            Ok(locations)
+        });
+
+        let exchange1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA");
+        let exchange1 = Exchange {
+            account_type: AccountType::Exchange,
+            index: 1,
+            bump_seed: 2,
+            reference_count: 0,
+            code: "xams".to_string(),
+            name: "AMS-IX".to_string(),
+            device1_pk: Pubkey::default(),
+            device2_pk: Pubkey::default(),
+            lat: 1.0,
+            lng: 2.0,
+            bgp_community: 3,
+            unused: 0,
+            status: ExchangeStatus::Activated,
+            owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA"),
+        };
+
+        client.expect_list_exchange().returning(move |_| {
+            let mut exchanges = HashMap::new();
+            exchanges.insert(exchange1_pubkey, exchange1.clone());
+            Ok(exchanges)
+        });
+
+        let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
+        let contributor = Contributor {
+            account_type: AccountType::Contributor,
+            index: 1,
+            bump_seed: 2,
+            reference_count: 0,
+            code: "acme".to_string(),
+            status: ContributorStatus::Activated,
+            owner: contributor_pk,
+            ops_manager_pk: Pubkey::default(),
+        };
+
+        client.expect_list_contributor().returning(move |_| {
+            let mut contributors = HashMap::new();
+            contributors.insert(contributor_pk, contributor.clone());
+            Ok(contributors)
+        });
+
+        let device1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
+        let device1 = Device {
+            account_type: AccountType::Device,
+            index: 1,
+            bump_seed: 2,
+            reference_count: 0,
+            code: "device1".to_string(),
+            contributor_pk,
+            location_pk: location1_pubkey,
+            exchange_pk: exchange1_pubkey,
+            device_type: DeviceType::Hybrid,
+            public_ip: [1, 2, 3, 4].into(),
+            dz_prefixes: "1.2.3.4/32".parse().unwrap(),
+            status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::default(),
+            owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"),
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![],
+            max_users: 255,
+            users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+            desired_status:
+                doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+        };
+
+        let device2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD");
+        let device2 = Device {
+            account_type: AccountType::Device,
+            index: 2,
+            bump_seed: 3,
+            reference_count: 0,
+            code: "device2".to_string(),
+            contributor_pk,
+            location_pk: location1_pubkey,
+            exchange_pk: exchange1_pubkey,
+            device_type: DeviceType::Hybrid,
+            public_ip: [5, 6, 7, 8].into(),
+            dz_prefixes: "5.6.7.8/32".parse().unwrap(),
+            status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::default(),
+            owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD"),
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![],
+            max_users: 255,
+            users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::Impaired,
+            desired_status:
+                doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+        };
+
+        client.expect_list_device().returning(move |_| {
+            let mut devices = HashMap::new();
+            devices.insert(device1_pubkey, device1.clone());
+            devices.insert(device2_pubkey, device2.clone());
+            Ok(devices)
+        });
+
+        // Test filter by health=ready-for-users (should return only device1)
+        let mut output = Vec::new();
+        let res = ListDeviceCliCommand {
+            contributor: None,
+            exchange: None,
+            location: None,
+            device_type: None,
+            status: None,
+            health: Some("ready-for-users".to_string()),
+            desired_status: None,
+            code: None,
+            json: false,
+            json_compact: true,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        assert!(output_str.contains("device1"));
+        assert!(!output_str.contains("device2"));
+    }
+
+    #[test]
+    fn test_cli_device_list_filter_by_desired_status() {
+        let mut client = create_test_client();
+
+        let location1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR");
+        let location1 = Location {
+            account_type: AccountType::Location,
+            index: 1,
+            bump_seed: 2,
+            reference_count: 0,
+            code: "ams".to_string(),
+            name: "Amsterdam".to_string(),
+            country: "NL".to_string(),
+            lat: 1.0,
+            lng: 2.0,
+            loc_id: 3,
+            status: LocationStatus::Activated,
+            owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR"),
+        };
+
+        client.expect_list_location().returning(move |_| {
+            let mut locations = HashMap::new();
+            locations.insert(location1_pubkey, location1.clone());
+            Ok(locations)
+        });
+
+        let exchange1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA");
+        let exchange1 = Exchange {
+            account_type: AccountType::Exchange,
+            index: 1,
+            bump_seed: 2,
+            reference_count: 0,
+            code: "xams".to_string(),
+            name: "AMS-IX".to_string(),
+            device1_pk: Pubkey::default(),
+            device2_pk: Pubkey::default(),
+            lat: 1.0,
+            lng: 2.0,
+            bgp_community: 3,
+            unused: 0,
+            status: ExchangeStatus::Activated,
+            owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA"),
+        };
+
+        client.expect_list_exchange().returning(move |_| {
+            let mut exchanges = HashMap::new();
+            exchanges.insert(exchange1_pubkey, exchange1.clone());
+            Ok(exchanges)
+        });
+
+        let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
+        let contributor = Contributor {
+            account_type: AccountType::Contributor,
+            index: 1,
+            bump_seed: 2,
+            reference_count: 0,
+            code: "acme".to_string(),
+            status: ContributorStatus::Activated,
+            owner: contributor_pk,
+            ops_manager_pk: Pubkey::default(),
+        };
+
+        client.expect_list_contributor().returning(move |_| {
+            let mut contributors = HashMap::new();
+            contributors.insert(contributor_pk, contributor.clone());
+            Ok(contributors)
+        });
+
+        let device1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
+        let device1 = Device {
+            account_type: AccountType::Device,
+            index: 1,
+            bump_seed: 2,
+            reference_count: 0,
+            code: "device1".to_string(),
+            contributor_pk,
+            location_pk: location1_pubkey,
+            exchange_pk: exchange1_pubkey,
+            device_type: DeviceType::Hybrid,
+            public_ip: [1, 2, 3, 4].into(),
+            dz_prefixes: "1.2.3.4/32".parse().unwrap(),
+            status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::default(),
+            owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"),
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![],
+            max_users: 255,
+            users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+            desired_status:
+                doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+        };
+
+        let device2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD");
+        let device2 = Device {
+            account_type: AccountType::Device,
+            index: 2,
+            bump_seed: 3,
+            reference_count: 0,
+            code: "device2".to_string(),
+            contributor_pk,
+            location_pk: location1_pubkey,
+            exchange_pk: exchange1_pubkey,
+            device_type: DeviceType::Hybrid,
+            public_ip: [5, 6, 7, 8].into(),
+            dz_prefixes: "5.6.7.8/32".parse().unwrap(),
+            status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::default(),
+            owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD"),
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![],
+            max_users: 255,
+            users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+            desired_status: doublezero_serviceability::state::device::DeviceDesiredStatus::Drained,
+        };
+
+        client.expect_list_device().returning(move |_| {
+            let mut devices = HashMap::new();
+            devices.insert(device1_pubkey, device1.clone());
+            devices.insert(device2_pubkey, device2.clone());
+            Ok(devices)
+        });
+
+        // Test filter by desired_status=activated (should return only device1)
+        let mut output = Vec::new();
+        let res = ListDeviceCliCommand {
+            contributor: None,
+            exchange: None,
+            location: None,
+            device_type: None,
+            status: None,
+            health: None,
+            desired_status: Some("activated".to_string()),
+            code: None,
+            json: false,
+            json_compact: true,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        assert!(output_str.contains("device1"));
+        assert!(!output_str.contains("device2"));
+    }
+
+    #[test]
+    fn test_cli_device_list_json_pretty() {
+        let mut client = create_test_client();
+
+        let location1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR");
+        let location1 = Location {
+            account_type: AccountType::Location,
+            index: 1,
+            bump_seed: 2,
+            reference_count: 0,
+            code: "ams".to_string(),
+            name: "Amsterdam".to_string(),
+            country: "NL".to_string(),
+            lat: 1.0,
+            lng: 2.0,
+            loc_id: 3,
+            status: LocationStatus::Activated,
+            owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR"),
+        };
+
+        client.expect_list_location().returning(move |_| {
+            let mut locations = HashMap::new();
+            locations.insert(location1_pubkey, location1.clone());
+            Ok(locations)
+        });
+
+        let exchange1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA");
+        let exchange1 = Exchange {
+            account_type: AccountType::Exchange,
+            index: 1,
+            bump_seed: 2,
+            reference_count: 0,
+            code: "xams".to_string(),
+            name: "AMS-IX".to_string(),
+            device1_pk: Pubkey::default(),
+            device2_pk: Pubkey::default(),
+            lat: 1.0,
+            lng: 2.0,
+            bgp_community: 3,
+            unused: 0,
+            status: ExchangeStatus::Activated,
+            owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA"),
+        };
+
+        client.expect_list_exchange().returning(move |_| {
+            let mut exchanges = HashMap::new();
+            exchanges.insert(exchange1_pubkey, exchange1.clone());
+            Ok(exchanges)
+        });
+
+        let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
+        let contributor = Contributor {
+            account_type: AccountType::Contributor,
+            index: 1,
+            bump_seed: 2,
+            reference_count: 0,
+            code: "acme".to_string(),
+            status: ContributorStatus::Activated,
+            owner: contributor_pk,
+            ops_manager_pk: Pubkey::default(),
+        };
+
+        client.expect_list_contributor().returning(move |_| {
+            let mut contributors = HashMap::new();
+            contributors.insert(contributor_pk, contributor.clone());
+            Ok(contributors)
+        });
+
+        let device1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
+        let device1 = Device {
+            account_type: AccountType::Device,
+            index: 1,
+            bump_seed: 2,
+            reference_count: 0,
+            code: "device1".to_string(),
+            contributor_pk,
+            location_pk: location1_pubkey,
+            exchange_pk: exchange1_pubkey,
+            device_type: DeviceType::Hybrid,
+            public_ip: [1, 2, 3, 4].into(),
+            dz_prefixes: "1.2.3.4/32".parse().unwrap(),
+            status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::default(),
+            owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"),
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![],
+            max_users: 255,
+            users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+            desired_status:
+                doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+        };
+
+        client.expect_list_device().returning(move |_| {
+            let mut devices = HashMap::new();
+            devices.insert(device1_pubkey, device1.clone());
+            Ok(devices)
+        });
+
+        // Test JSON pretty output
+        let mut output = Vec::new();
+        let res = ListDeviceCliCommand {
+            contributor: None,
+            exchange: None,
+            location: None,
+            device_type: None,
+            status: None,
+            health: None,
+            desired_status: None,
+            code: None,
+            json: true,
+            json_compact: false,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        // Pretty JSON should have indentation (newlines and spaces)
+        assert!(output_str.contains("  \"code\":"));
+        assert!(output_str.contains("device1"));
+    }
+
+    #[test]
+    fn test_cli_device_list_empty() {
+        let mut client = create_test_client();
+
+        client
+            .expect_list_location()
+            .returning(|_| Ok(HashMap::new()));
+        client
+            .expect_list_exchange()
+            .returning(|_| Ok(HashMap::new()));
+        client
+            .expect_list_contributor()
+            .returning(|_| Ok(HashMap::new()));
+        client
+            .expect_list_device()
+            .returning(|_| Ok(HashMap::new()));
+
+        // Test with empty device list
+        let mut output = Vec::new();
+        let res = ListDeviceCliCommand {
+            contributor: None,
+            exchange: None,
+            location: None,
+            device_type: None,
+            status: None,
+            health: None,
+            desired_status: None,
+            code: None,
+            json: false,
+            json_compact: true,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        assert_eq!(output_str, "[]\n");
+    }
+
+    #[test]
+    fn test_cli_device_list_error_contributor_not_found() {
+        let mut client = create_test_client();
+
+        client
+            .expect_list_location()
+            .returning(|_| Ok(HashMap::new()));
+        client
+            .expect_list_exchange()
+            .returning(|_| Ok(HashMap::new()));
+        client
+            .expect_list_contributor()
+            .returning(|_| Ok(HashMap::new()));
+        client
+            .expect_list_device()
+            .returning(|_| Ok(HashMap::new()));
+        client
+            .expect_get_contributor()
+            .returning(|_| Err(eyre::eyre!("Not found")));
+
+        // Test with non-existent contributor
+        let mut output = Vec::new();
+        let res = ListDeviceCliCommand {
+            contributor: Some("nonexistent".to_string()),
+            exchange: None,
+            location: None,
+            device_type: None,
+            status: None,
+            health: None,
+            desired_status: None,
+            code: None,
+            json: false,
+            json_compact: true,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_err());
+        assert_eq!(
+            res.unwrap_err().to_string(),
+            "Contributor 'nonexistent' not found"
+        );
+    }
+
+    #[test]
+    fn test_cli_device_list_error_exchange_not_found() {
+        let mut client = create_test_client();
+
+        client
+            .expect_list_location()
+            .returning(|_| Ok(HashMap::new()));
+        client
+            .expect_list_exchange()
+            .returning(|_| Ok(HashMap::new()));
+        client
+            .expect_list_contributor()
+            .returning(|_| Ok(HashMap::new()));
+        client
+            .expect_list_device()
+            .returning(|_| Ok(HashMap::new()));
+
+        // Test with non-existent exchange
+        let mut output = Vec::new();
+        let res = ListDeviceCliCommand {
+            contributor: None,
+            exchange: Some("nonexistent".to_string()),
+            location: None,
+            device_type: None,
+            status: None,
+            health: None,
+            desired_status: None,
+            code: None,
+            json: false,
+            json_compact: true,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_err());
+        assert_eq!(
+            res.unwrap_err().to_string(),
+            "Exchange 'nonexistent' not found"
+        );
+    }
+
+    #[test]
+    fn test_cli_device_list_error_location_not_found() {
+        let mut client = create_test_client();
+
+        client
+            .expect_list_location()
+            .returning(|_| Ok(HashMap::new()));
+        client
+            .expect_list_exchange()
+            .returning(|_| Ok(HashMap::new()));
+        client
+            .expect_list_contributor()
+            .returning(|_| Ok(HashMap::new()));
+        client
+            .expect_list_device()
+            .returning(|_| Ok(HashMap::new()));
+
+        // Test with non-existent location
+        let mut output = Vec::new();
+        let res = ListDeviceCliCommand {
+            contributor: None,
+            exchange: None,
+            location: Some("nonexistent".to_string()),
+            device_type: None,
+            status: None,
+            health: None,
+            desired_status: None,
+            code: None,
+            json: false,
+            json_compact: true,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_err());
+        assert_eq!(
+            res.unwrap_err().to_string(),
+            "Location 'nonexistent' not found"
+        );
+    }
+
+    #[test]
+    fn test_cli_device_list_error_invalid_device_type() {
+        let mut client = create_test_client();
+
+        client
+            .expect_list_location()
+            .returning(|_| Ok(HashMap::new()));
+        client
+            .expect_list_exchange()
+            .returning(|_| Ok(HashMap::new()));
+        client
+            .expect_list_contributor()
+            .returning(|_| Ok(HashMap::new()));
+        client
+            .expect_list_device()
+            .returning(|_| Ok(HashMap::new()));
+
+        // Test with invalid device type
+        let mut output = Vec::new();
+        let res = ListDeviceCliCommand {
+            contributor: None,
+            exchange: None,
+            location: None,
+            device_type: Some("invalid".to_string()),
+            status: None,
+            health: None,
+            desired_status: None,
+            code: None,
+            json: false,
+            json_compact: true,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_err());
+        assert!(res.unwrap_err().to_string().contains("Invalid device type"));
+    }
+
+    #[test]
+    fn test_cli_device_list_error_invalid_status() {
+        let mut client = create_test_client();
+
+        client
+            .expect_list_location()
+            .returning(|_| Ok(HashMap::new()));
+        client
+            .expect_list_exchange()
+            .returning(|_| Ok(HashMap::new()));
+        client
+            .expect_list_contributor()
+            .returning(|_| Ok(HashMap::new()));
+        client
+            .expect_list_device()
+            .returning(|_| Ok(HashMap::new()));
+
+        // Test with invalid status
+        let mut output = Vec::new();
+        let res = ListDeviceCliCommand {
+            contributor: None,
+            exchange: None,
+            location: None,
+            device_type: None,
+            status: Some("invalid".to_string()),
+            health: None,
+            desired_status: None,
+            code: None,
+            json: false,
+            json_compact: true,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_err());
+        assert!(res.unwrap_err().to_string().contains("Invalid status"));
+    }
+
+    #[test]
+    fn test_cli_device_list_error_invalid_health() {
+        let mut client = create_test_client();
+
+        client
+            .expect_list_location()
+            .returning(|_| Ok(HashMap::new()));
+        client
+            .expect_list_exchange()
+            .returning(|_| Ok(HashMap::new()));
+        client
+            .expect_list_contributor()
+            .returning(|_| Ok(HashMap::new()));
+        client
+            .expect_list_device()
+            .returning(|_| Ok(HashMap::new()));
+
+        // Test with invalid health
+        let mut output = Vec::new();
+        let res = ListDeviceCliCommand {
+            contributor: None,
+            exchange: None,
+            location: None,
+            device_type: None,
+            status: None,
+            health: Some("invalid".to_string()),
+            desired_status: None,
+            code: None,
+            json: false,
+            json_compact: true,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_err());
+        assert!(res.unwrap_err().to_string().contains("Invalid health"));
+    }
+
+    #[test]
+    fn test_cli_device_list_error_invalid_desired_status() {
+        let mut client = create_test_client();
+
+        client
+            .expect_list_location()
+            .returning(|_| Ok(HashMap::new()));
+        client
+            .expect_list_exchange()
+            .returning(|_| Ok(HashMap::new()));
+        client
+            .expect_list_contributor()
+            .returning(|_| Ok(HashMap::new()));
+        client
+            .expect_list_device()
+            .returning(|_| Ok(HashMap::new()));
+
+        // Test with invalid desired status
+        let mut output = Vec::new();
+        let res = ListDeviceCliCommand {
+            contributor: None,
+            exchange: None,
+            location: None,
+            device_type: None,
+            status: None,
+            health: None,
+            desired_status: Some("invalid".to_string()),
+            code: None,
+            json: false,
+            json_compact: true,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_err());
+        assert!(res
+            .unwrap_err()
+            .to_string()
+            .contains("Invalid desired status"));
+    }
+
+    #[test]
+    fn test_cli_device_list_sorting() {
+        let mut client = create_test_client();
+
+        let location1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR");
+        let location1 = Location {
+            account_type: AccountType::Location,
+            index: 1,
+            bump_seed: 2,
+            reference_count: 0,
+            code: "ams".to_string(),
+            name: "Amsterdam".to_string(),
+            country: "NL".to_string(),
+            lat: 1.0,
+            lng: 2.0,
+            loc_id: 3,
+            status: LocationStatus::Activated,
+            owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR"),
+        };
+
+        client.expect_list_location().returning(move |_| {
+            let mut locations = HashMap::new();
+            locations.insert(location1_pubkey, location1.clone());
+            Ok(locations)
+        });
+
+        let exchange1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA");
+        let exchange1 = Exchange {
+            account_type: AccountType::Exchange,
+            index: 1,
+            bump_seed: 2,
+            reference_count: 0,
+            code: "xams".to_string(),
+            name: "AMS-IX".to_string(),
+            device1_pk: Pubkey::default(),
+            device2_pk: Pubkey::default(),
+            lat: 1.0,
+            lng: 2.0,
+            bgp_community: 3,
+            unused: 0,
+            status: ExchangeStatus::Activated,
+            owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA"),
+        };
+
+        let exchange2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPU");
+        let exchange2 = Exchange {
+            account_type: AccountType::Exchange,
+            index: 2,
+            bump_seed: 3,
+            reference_count: 0,
+            code: "xnyc".to_string(),
+            name: "NYIIX".to_string(),
+            device1_pk: Pubkey::default(),
+            device2_pk: Pubkey::default(),
+            lat: 1.0,
+            lng: 2.0,
+            bgp_community: 4,
+            unused: 0,
+            status: ExchangeStatus::Activated,
+            owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPU"),
+        };
+
+        client.expect_list_exchange().returning(move |_| {
+            let mut exchanges = HashMap::new();
+            exchanges.insert(exchange1_pubkey, exchange1.clone());
+            exchanges.insert(exchange2_pubkey, exchange2.clone());
+            Ok(exchanges)
+        });
+
+        let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
+        let contributor = Contributor {
+            account_type: AccountType::Contributor,
+            index: 1,
+            bump_seed: 2,
+            reference_count: 0,
+            code: "acme".to_string(),
+            status: ContributorStatus::Activated,
+            owner: contributor_pk,
+            ops_manager_pk: Pubkey::default(),
+        };
+
+        client.expect_list_contributor().returning(move |_| {
+            let mut contributors = HashMap::new();
+            contributors.insert(contributor_pk, contributor.clone());
+            Ok(contributors)
+        });
+
+        let device1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
+        let device1 = Device {
+            account_type: AccountType::Device,
+            index: 1,
+            bump_seed: 2,
+            reference_count: 0,
+            code: "zdevice".to_string(),
+            contributor_pk,
+            location_pk: location1_pubkey,
+            exchange_pk: exchange2_pubkey,
+            device_type: DeviceType::Hybrid,
+            public_ip: [1, 2, 3, 4].into(),
+            dz_prefixes: "1.2.3.4/32".parse().unwrap(),
+            status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::default(),
+            owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"),
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![],
+            max_users: 255,
+            users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+            desired_status:
+                doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+        };
+
+        let device2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD");
+        let device2 = Device {
+            account_type: AccountType::Device,
+            index: 2,
+            bump_seed: 3,
+            reference_count: 0,
+            code: "adevice".to_string(),
+            contributor_pk,
+            location_pk: location1_pubkey,
+            exchange_pk: exchange1_pubkey,
+            device_type: DeviceType::Hybrid,
+            public_ip: [5, 6, 7, 8].into(),
+            dz_prefixes: "5.6.7.8/32".parse().unwrap(),
+            status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::default(),
+            owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD"),
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![],
+            max_users: 255,
+            users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+            desired_status:
+                doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+        };
+
+        let device3_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPF");
+        let device3 = Device {
+            account_type: AccountType::Device,
+            index: 3,
+            bump_seed: 4,
+            reference_count: 0,
+            code: "bdevice".to_string(),
+            contributor_pk,
+            location_pk: location1_pubkey,
+            exchange_pk: exchange1_pubkey,
+            device_type: DeviceType::Hybrid,
+            public_ip: [9, 10, 11, 12].into(),
+            dz_prefixes: "9.10.11.12/32".parse().unwrap(),
+            status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::default(),
+            owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPF"),
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![],
+            max_users: 255,
+            users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+            desired_status:
+                doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+        };
+
+        client.expect_list_device().returning(move |_| {
+            let mut devices = HashMap::new();
+            devices.insert(device1_pubkey, device1.clone());
+            devices.insert(device2_pubkey, device2.clone());
+            devices.insert(device3_pubkey, device3.clone());
+            Ok(devices)
+        });
+
+        // Test that devices are sorted by exchange_name, then by code
+        let mut output = Vec::new();
+        let res = ListDeviceCliCommand {
+            contributor: None,
+            exchange: None,
+            location: None,
+            device_type: None,
+            status: None,
+            health: None,
+            desired_status: None,
+            code: None,
+            json: false,
+            json_compact: true,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        // Check that AMS-IX devices come before NYIIX devices
+        let ams_adevice_pos = output_str.find("adevice").unwrap();
+        let ams_bdevice_pos = output_str.find("bdevice").unwrap();
+        let nyiix_zdevice_pos = output_str.find("zdevice").unwrap();
+        // adevice < bdevice < zdevice in position
+        assert!(ams_adevice_pos < ams_bdevice_pos);
+        assert!(ams_bdevice_pos < nyiix_zdevice_pos);
     }
 }

@@ -245,11 +245,13 @@ func (c *Client) Start(ctx context.Context) error {
 
 	// Fund the client account via airdrop.
 	// Retry a couple times to avoid the observed intermittent failures, even on the first airdrop request.
+	// We explicitly pass the RPC URL via -u flag to avoid a race condition where the solana CLI
+	// config may not be set up yet by the entrypoint script, which would cause it to default to mainnet.
 	funded := false
 	var output []byte
 	for range 3 {
 		c.log.Info("--> Funding client account", "clientPubkey", c.Pubkey)
-		output, err = c.Exec(ctx, []string{"solana", "airdrop", "10", c.Pubkey}, docker.NoPrintOnError())
+		output, err = c.Exec(ctx, []string{"solana", "airdrop", "-u", c.dn.Ledger.InternalRPCURL, "10", c.Pubkey}, docker.NoPrintOnError())
 		if err != nil {
 			if strings.Contains(string(output), "rate limit") {
 				c.log.Info("--> Solana airdrop request failed with rate limit message, retrying")

@@ -5,10 +5,17 @@ use crate::{
     servicecontroller::{ServiceController, ServiceControllerImpl, StatusResponse},
 };
 use clap::Args;
-use doublezero_cli::{doublezerocommand::CliCommand, helpers::print_error};
-use doublezero_sdk::commands::{
-    device::list::ListDeviceCommand, exchange::list::ListExchangeCommand,
-    user::list::ListUserCommand,
+use doublezero_cli::{
+    checkversion::{get_version_status, VersionStatus},
+    doublezerocommand::CliCommand,
+    helpers::print_error,
+};
+use doublezero_sdk::{
+    commands::{
+        device::list::ListDeviceCommand, exchange::list::ListExchangeCommand,
+        user::list::ListUserCommand,
+    },
+    ProgramVersion,
 };
 use serde::{Deserialize, Serialize};
 use tabled::Tabled;
@@ -34,14 +41,52 @@ struct AppendedStatusResponse {
     network: String,
 }
 
+/// JSON response wrapper that includes version status information
+#[derive(Debug, Serialize, Deserialize)]
+struct StatusJsonResponse {
+    version: VersionStatus,
+    statuses: Vec<AppendedStatusResponse>,
+}
+
 impl StatusCliCommand {
     pub async fn execute(&self, client: &dyn CliCommand) -> eyre::Result<()> {
         let controller = ServiceControllerImpl::new(None);
         check_doublezero(&controller, client, None).await?;
+
+        // Get version status for JSON output
+        let version_status = get_version_status(client, ProgramVersion::current());
+
         match self.command_impl(client, &controller).await {
-            Ok(responses) => util::show_output(responses, self.json)?,
+            Ok(responses) => {
+                if self.json {
+                    // For JSON output, include version status in the response
+                    let json_response = StatusJsonResponse {
+                        version: version_status,
+                        statuses: responses,
+                    };
+                    let output = serde_json::to_string_pretty(&json_response)?;
+                    println!("{output}");
+                } else {
+                    // For table output, print version warning to stderr if needed
+                    if let Some(msg) = version_status.message() {
+                        eprintln!("{msg}");
+                    }
+                    util::show_output(responses, false)?;
+                }
+            }
             Err(e) => {
-                print_error(e);
+                if self.json {
+                    // For JSON output, include error in a structured format
+                    let error_response = serde_json::json!({
+                        "version": version_status,
+                        "error": e.to_string(),
+                        "statuses": []
+                    });
+                    let output = serde_json::to_string_pretty(&error_response)?;
+                    println!("{output}");
+                } else {
+                    print_error(e);
+                }
             }
         }
         Ok(())

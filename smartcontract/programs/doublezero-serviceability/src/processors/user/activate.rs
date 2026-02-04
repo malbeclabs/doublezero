@@ -209,9 +209,8 @@ pub fn process_activate_user(
             );
         }
 
-        // Allocate tunnel_net from global UserTunnelBlock (only if not already allocated)
-        // This check handles re-activation (Updating status) where resources are already assigned
-        if user.tunnel_net == NetworkV4::default() {
+        // Allocate tunnel_net from global UserTunnelBlock
+        {
             let mut buffer = global_resource_ext.data.borrow_mut();
             let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
             user.tunnel_net = resource
@@ -220,8 +219,8 @@ pub fn process_activate_user(
                 .ok_or(DoubleZeroError::InvalidArgument)?;
         }
 
-        // Allocate tunnel_id from device TunnelIds (only if not already allocated)
-        if user.tunnel_id == 0 {
+        // Allocate tunnel_id from device TunnelIds
+        {
             let mut buffer = device_tunnel_ids_ext.data.borrow_mut();
             let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
             user.tunnel_id = resource
@@ -237,11 +236,7 @@ pub fn process_activate_user(
             UserType::Multicast => !user.publishers.is_empty(),
         };
 
-        // Only allocate dz_ip if needed AND not already allocated
-        // - dz_ip == UNSPECIFIED: new user, never had dz_ip allocated
-        // - dz_ip == client_ip: Multicast user that didn't need dz_ip before (no publishers)
-        // If dz_ip is already a dedicated IP (not UNSPECIFIED or client_ip), keep it
-        if need_dz_ip && (user.dz_ip == Ipv4Addr::UNSPECIFIED || user.dz_ip == user.client_ip) {
+        if need_dz_ip {
             // Try to allocate from each DzPrefixBlock until one succeeds
             let mut allocated_dz_ip = None;
             for dz_prefix_account in dz_prefix_accounts.iter() {
@@ -258,11 +253,10 @@ pub fn process_activate_user(
             }
 
             user.dz_ip = allocated_dz_ip.ok_or(DoubleZeroError::AllocationFailed)?;
-        } else if !need_dz_ip && user.dz_ip == Ipv4Addr::UNSPECIFIED {
-            // First activation for user that doesn't need dz_ip: use client_ip
+        } else {
+            // Use client_ip, no allocation needed
             user.dz_ip = user.client_ip;
         }
-        // Otherwise keep existing dz_ip (already allocated or client_ip)
     } else {
         // Legacy behavior: use provided args
         user.tunnel_id = value.tunnel_id;

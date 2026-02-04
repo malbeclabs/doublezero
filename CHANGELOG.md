@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- Activator
+  - Assign multicast publisher IPs from global pool in serviceability GlobalConfig instead of per-device blocks
+- E2E tests
+  - Add daily devnet QA test for device provisioning lifecycle (RFC12) — deletes/recreates device and links, restarts daemons with new pubkey via Ansible
+
+## [v0.8.6](https://github.com/malbeclabs/doublezero/compare/client/v0.8.5...client/v0.8.6) – 2026-02-04
+
 ### Breaking
 
 - None for this release

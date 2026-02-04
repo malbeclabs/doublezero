@@ -36,6 +36,7 @@ impl From<DeallocateResourceCliCommand> for DeallocateResourceCommand {
             ResourceType::DeviceTunnelBlock
             | ResourceType::UserTunnelBlock
             | ResourceType::MulticastGroupBlock
+            | ResourceType::MulticastPublisherBlock
             | ResourceType::DzPrefixBlock => IdOrIp::Ip(
                 cmd.value
                     .parse::<NetworkV4>()

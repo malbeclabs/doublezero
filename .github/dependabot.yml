@@ -6,13 +6,44 @@
 
 version: 2
 updates:
-  - package-ecosystem: "gomod" # See documentation for possible values
-    directories: 
-    - "**/*"
+  - package-ecosystem: "gomod"
+    directories:
+      - "**/*"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      go-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+      go-testing:
+        patterns:
+          - "github.com/stretchr/testify"
+          - "github.com/golang/mock"
+          - "go.uber.org/mock"
+
   - package-ecosystem: "cargo"
     directories:
-    - "**/*"
+      - "**/*"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      rust-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+      solana:
+        patterns:
+          - "solana-*"
+          - "spl-*"
+      anchor:
+        patterns:
+          - "anchor-*"
+      tokio:
+        patterns:
+          - "tokio*"
+      serde:
+        patterns:
+          - "serde*"

@@ -206,6 +206,42 @@ func TestE2E_Multicast(t *testing.T) {
 	createMulticastGroupForBothClients(t, tdn, publisherClient, subscriberClient, "mg01")
 	createMulticastGroupForBothClients(t, tdn, publisherClient, subscriberClient, "mg02")
 
+	// Calculate the expected allocated publisher IP (used across all connect/disconnect cycles).
+	dzPrefixIP, dzPrefixNet, err := netutil.ParseCIDR(device.DZPrefix)
+	require.NoError(t, err)
+	ones, _ := dzPrefixNet.Mask.Size()
+	allocatableBits := 32 - ones
+	expectedAllocatedPublisherIP, err := nextAllocatableIP(dzPrefixIP, allocatableBits, map[string]bool{dzPrefixIP: true})
+	require.NoError(t, err)
+
+	// Test that tunnel IPs are properly released by the activator when a publisher disconnects.
+	// We connect and disconnect multiple times to verify the IP is always reused.
+	if !t.Run("publisher_ip_release", func(t *testing.T) {
+		for i := 1; i <= 5; i++ {
+			log.Info("==> Publisher connect/disconnect cycle", "iteration", i)
+
+			// Connect publisher.
+			tdn.ConnectMulticastPublisherSkipAccessPass(t, publisherClient, "mg01", "mg02")
+			err = publisherClient.WaitForTunnelUp(t.Context(), 90*time.Second)
+			require.NoError(t, err)
+
+			// Verify allocated IP matches expected (should be the same every time).
+			verifyPublisherAllocatedIP(t, log, publisherClient, expectedAllocatedPublisherIP, i)
+
+			// Disconnect publisher.
+			tdn.DisconnectMulticastPublisher(t, publisherClient)
+
+			// Wait for tunnel to go down and cleanup to complete.
+			err = publisherClient.WaitForTunnelDisconnected(t.Context(), 60*time.Second)
+			require.NoError(t, err)
+
+			log.Info("--> Publisher connect/disconnect cycle complete", "iteration", i)
+		}
+	}) {
+		t.Fail()
+		return
+	}
+
 	if !t.Run("connect", func(t *testing.T) {
 		// Connect publisher.
 		tdn.ConnectMulticastPublisherSkipAccessPass(t, publisherClient, "mg01", "mg02")
@@ -727,4 +763,44 @@ func checkMulticastPostDisconnect(t *testing.T, log *slog.Logger, mode string, d
 
 		log.Info("--> Multicast post-disconnect requirements checked", "mode", mode)
 	})
+}
+
+// verifyPublisherAllocatedIP checks that the publisher client was allocated the expected IP address.
+// This is used to verify that tunnel IPs are properly released when disconnecting.
+func verifyPublisherAllocatedIP(t *testing.T, log *slog.Logger, client *devnet.Client, expectedIP string, iteration int) {
+	t.Helper()
+
+	log.Info("==> Verifying publisher allocated IP", "expected", expectedIP, "iteration", iteration)
+
+	output, err := client.Exec(t.Context(), []string{"doublezero", "status"})
+	require.NoError(t, err, "error getting doublezero status")
+
+	// Parse the status output to extract the allocated IP.
+	// The output is a table with "Doublezero IP" column.
+	lines := strings.Split(string(output), "\n")
+	require.GreaterOrEqual(t, len(lines), 2, "expected at least 2 lines in status output")
+
+	// Find the "Doublezero IP" column index from header.
+	header := lines[0]
+	fields := strings.Split(header, "|")
+	ipColIdx := -1
+	for i, field := range fields {
+		if strings.TrimSpace(field) == "Doublezero IP" {
+			ipColIdx = i
+			break
+		}
+	}
+	require.NotEqual(t, -1, ipColIdx, "could not find 'Doublezero IP' column in status output: %s", header)
+
+	// Extract the IP from the data row.
+	dataRow := lines[1]
+	dataFields := strings.Split(dataRow, "|")
+	require.Greater(t, len(dataFields), ipColIdx, "data row has fewer fields than expected")
+
+	actualIP := strings.TrimSpace(dataFields[ipColIdx])
+	require.Equal(t, expectedIP, actualIP,
+		"iteration %d: expected allocated IP %s but got %s (IP not being released properly)",
+		iteration, expectedIP, actualIP)
+
+	log.Info("--> Publisher allocated IP verified", "ip", actualIP, "iteration", iteration)
 }

@@ -52,6 +52,14 @@ func (v *Verifier) CaptureSnapshot(ctx context.Context) (*ResourceSnapshot, erro
 		DzPrefixBlocks: make(map[string]*AllocationState),
 	}
 
+	// Pre-compute expected PDAs for global resource extensions
+	programID := v.client.ProgramID()
+	linkIdsPDA, _, _ := serviceability.GetLinkIdsPDA(programID)
+	segmentRoutingIdsPDA, _, _ := serviceability.GetSegmentRoutingIdsPDA(programID)
+	userTunnelBlockPDA, _, _ := serviceability.GetUserTunnelBlockPDA(programID)
+	deviceTunnelBlockPDA, _, _ := serviceability.GetDeviceTunnelBlockPDA(programID)
+	multicastGroupBlockPDA, _, _ := serviceability.GetMulticastGroupBlockPDA(programID)
+
 	for _, ext := range data.ResourceExtensions {
 		state := &AllocationState{
 			Allocated: ext.AllocatedCount(),
@@ -62,47 +70,31 @@ func (v *Verifier) CaptureSnapshot(ctx context.Context) (*ResourceSnapshot, erro
 		// Classify the resource extension based on its properties
 		// Global pools have associated_with set to default pubkey (all zeros)
 		isGlobal := isDefaultPubkey(ext.AssociatedWith)
+		extPubkey := solana.PublicKeyFromBytes(ext.PubKey[:])
 
-		if ext.Allocator.Type == serviceability.AllocatorTypeIp {
-			if isGlobal {
-				// Determine which global IP pool this is by checking the base network
-				// UserTunnelBlock, DeviceTunnelBlock, and MulticastGroupBlock are all IP allocators
-				// We'll need to check against the Config to identify them
-				baseNet := ext.BaseNetString()
-				if baseNet != "" {
-					// Check against config to identify the pool type
-					configUserTunnelBlock := onChainNetToString(data.Config.UserTunnelBlock)
-					configDeviceTunnelBlock := onChainNetToString(data.Config.TunnelTunnelBlock)
-					configMulticastBlock := onChainNetToString(data.Config.MulticastGroupBlock)
-
-					if baseNet == configUserTunnelBlock {
-						snapshot.UserTunnelBlock = state
-					} else if baseNet == configDeviceTunnelBlock {
-						snapshot.DeviceTunnelBlock = state
-					} else if baseNet == configMulticastBlock {
-						snapshot.MulticastGroupBlock = state
-					}
-				}
-			} else {
+		if isGlobal {
+			// Identify global resource extensions by their PDA
+			switch {
+			case extPubkey.Equals(linkIdsPDA):
+				snapshot.LinkIds = state
+			case extPubkey.Equals(segmentRoutingIdsPDA):
+				snapshot.SegmentRoutingIds = state
+			case extPubkey.Equals(userTunnelBlockPDA):
+				snapshot.UserTunnelBlock = state
+			case extPubkey.Equals(deviceTunnelBlockPDA):
+				snapshot.DeviceTunnelBlock = state
+			case extPubkey.Equals(multicastGroupBlockPDA):
+				snapshot.MulticastGroupBlock = state
+			}
+		} else {
+			// Device-specific pools: use AssociatedWith + AllocatorType
+			if ext.Allocator.Type == serviceability.AllocatorTypeIp {
 				// Device-specific DzPrefixBlock
 				deviceKey := base58.Encode(ext.AssociatedWith[:])
 				// Use the pubkey as the unique identifier since there can be multiple DzPrefixBlocks per device
 				extKey := fmt.Sprintf("%s:%s", deviceKey, base58.Encode(ext.PubKey[:]))
 				snapshot.DzPrefixBlocks[extKey] = state
-			}
-		} else if ext.Allocator.Type == serviceability.AllocatorTypeId {
-			if isGlobal {
-				// Distinguish between global ID allocators by their range start:
-				// - LinkIds: RangeStart=0, RangeEnd=65535
-				// - SegmentRoutingIds: RangeStart=1, RangeEnd=65535
-				if ext.Allocator.IdAllocator != nil {
-					if ext.Allocator.IdAllocator.RangeStart == 0 {
-						snapshot.LinkIds = state
-					} else if ext.Allocator.IdAllocator.RangeStart == 1 {
-						snapshot.SegmentRoutingIds = state
-					}
-				}
-			} else {
+			} else if ext.Allocator.Type == serviceability.AllocatorTypeId {
 				// Device-specific TunnelIds
 				deviceKey := base58.Encode(ext.AssociatedWith[:])
 				snapshot.TunnelIds[deviceKey] = state

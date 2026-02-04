@@ -130,4 +130,5 @@ func (c *Client) GetProgramData(ctx context.Context) (*ProgramData, error) {
 
 type ProgramDataProvider interface {
 	GetProgramData(ctx context.Context) (*ProgramData, error)
+	ProgramID() solana.PublicKey
 }

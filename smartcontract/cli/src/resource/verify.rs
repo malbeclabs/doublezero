@@ -19,7 +19,7 @@ use doublezero_serviceability::{
 };
 use solana_sdk::pubkey::Pubkey;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{hash_map::Entry, HashMap, HashSet},
     io::{BufRead, Write},
 };
 
@@ -40,6 +40,15 @@ pub enum ResourceDiscrepancy {
     },
     /// Resource extension account not found
     ExtensionNotFound { resource_type: ResourceType },
+    /// Resource is used by multiple accounts (duplicate usage)
+    DuplicateUsage {
+        resource_type: ResourceType,
+        value: IdOrIp,
+        first_account_pubkey: Pubkey,
+        first_account_type: String,
+        second_account_pubkey: Pubkey,
+        second_account_type: String,
+    },
 }
 
 /// Result of resource verification
@@ -117,6 +126,7 @@ impl VerifyResourceCliCommand {
             let mut allocated_not_used: Vec<&ResourceDiscrepancy> = Vec::new();
             let mut used_not_allocated: Vec<&ResourceDiscrepancy> = Vec::new();
             let mut extensions_not_found: Vec<&ResourceDiscrepancy> = Vec::new();
+            let mut duplicate_usages: Vec<&ResourceDiscrepancy> = Vec::new();
 
             for d in &result.discrepancies {
                 match d {
@@ -128,6 +138,9 @@ impl VerifyResourceCliCommand {
                     }
                     ResourceDiscrepancy::ExtensionNotFound { .. } => {
                         extensions_not_found.push(d);
+                    }
+                    ResourceDiscrepancy::DuplicateUsage { .. } => {
+                        duplicate_usages.push(d);
                     }
                 }
             }
@@ -191,11 +204,50 @@ impl VerifyResourceCliCommand {
                 writeln!(out)?;
             }
 
+            if !duplicate_usages.is_empty() {
+                writeln!(
+                    out,
+                    "Duplicate usage (same resource used by multiple accounts):"
+                )?;
+                writeln!(
+                    out,
+                    "-----------------------------------------------------------"
+                )?;
+                for d in &duplicate_usages {
+                    if let ResourceDiscrepancy::DuplicateUsage {
+                        resource_type,
+                        value,
+                        first_account_pubkey,
+                        first_account_type,
+                        second_account_pubkey,
+                        second_account_type,
+                    } = d
+                    {
+                        writeln!(
+                            out,
+                            "  {} = {} (used by {} {} AND {} {})",
+                            resource_type,
+                            value,
+                            first_account_type,
+                            first_account_pubkey,
+                            second_account_type,
+                            second_account_pubkey
+                        )?;
+                    }
+                }
+                writeln!(out)?;
+            }
+
             // Handle --fix flag
             if self.fix && !extensions_not_found.is_empty() {
                 writeln!(
                     out,
                     "Cannot fix: some resource extensions are missing. Create them first."
+                )?;
+            } else if self.fix && !duplicate_usages.is_empty() {
+                writeln!(
+                    out,
+                    "Cannot fix: duplicate usages must be resolved manually."
                 )?;
             } else if self.fix && (!allocated_not_used.is_empty() || !used_not_allocated.is_empty())
             {
@@ -400,6 +452,7 @@ fn verify_user_tunnel_block(
     let allocated: HashSet<IdOrIp> = extension.iter_allocated().into_iter().collect();
 
     // Build set of in-use IPs from users
+    let resource_type = ResourceType::UserTunnelBlock;
     let mut in_use: HashMap<IdOrIp, (Pubkey, String)> = HashMap::new();
     for (user_pk, user) in users {
         let tunnel_ip = user.tunnel_net.ip();
@@ -409,7 +462,14 @@ fn verify_user_tunnel_block(
                 if let Some(ip) = user.tunnel_net.nth(i) {
                     let ip_net = NetworkV4::new(ip, 32).unwrap();
                     let id_or_ip = IdOrIp::Ip(ip_net);
-                    in_use.insert(id_or_ip, (*user_pk, "User".to_string()));
+                    insert_usage(
+                        &mut in_use,
+                        resource_type,
+                        id_or_ip,
+                        *user_pk,
+                        "User".to_string(),
+                        result,
+                    );
                 }
             }
             result.user_tunnel_block_checked += 1;
@@ -417,7 +477,7 @@ fn verify_user_tunnel_block(
     }
 
     // Check for discrepancies
-    check_discrepancies(ResourceType::UserTunnelBlock, &allocated, &in_use, result);
+    check_discrepancies(resource_type, &allocated, &in_use, result);
 }
 
 fn verify_tunnel_ids(
@@ -460,7 +520,14 @@ fn verify_tunnel_ids(
             for (user_pk, user) in device_users {
                 if user.tunnel_id != 0 {
                     let id_or_ip = IdOrIp::Id(user.tunnel_id);
-                    in_use.insert(id_or_ip, (*user_pk, "User".to_string()));
+                    insert_usage(
+                        &mut in_use,
+                        resource_type,
+                        id_or_ip,
+                        *user_pk,
+                        "User".to_string(),
+                        result,
+                    );
                     result.tunnel_ids_checked += 1;
                 }
             }
@@ -498,9 +565,13 @@ fn verify_dz_prefix_block(
             // First IP is reserved for the device itself (Loopback100)
             let first_ip = prefix.ip();
             let first_ip_net = NetworkV4::new(first_ip, 32).unwrap();
-            in_use.insert(
+            insert_usage(
+                &mut in_use,
+                resource_type,
                 IdOrIp::Ip(first_ip_net),
-                (*device_pk, "Device (reserved)".to_string()),
+                *device_pk,
+                "Device (reserved)".to_string(),
+                result,
             );
 
             for (user_pk, user) in users {
@@ -518,7 +589,14 @@ fn verify_dz_prefix_block(
                 if prefix.contains(dz_ip) {
                     let ip_net = NetworkV4::new(dz_ip, 32).unwrap();
                     let id_or_ip = IdOrIp::Ip(ip_net);
-                    in_use.insert(id_or_ip, (*user_pk, "User".to_string()));
+                    insert_usage(
+                        &mut in_use,
+                        resource_type,
+                        id_or_ip,
+                        *user_pk,
+                        "User".to_string(),
+                        result,
+                    );
                     result.dz_prefix_block_checked += 1;
                 }
             }
@@ -564,9 +642,13 @@ fn verify_device_tunnel_block(
                         if let Some(ip) = iface.ip_net.nth(i) {
                             let ip_net = NetworkV4::new(ip, 32).unwrap();
                             let id_or_ip = IdOrIp::Ip(ip_net);
-                            in_use.insert(
+                            insert_usage(
+                                &mut in_use,
+                                resource_type,
                                 id_or_ip,
-                                (*device_pk, format!("Device interface {}", iface.name)),
+                                *device_pk,
+                                format!("Device interface {}", iface.name),
+                                result,
                             );
                         }
                     }
@@ -585,7 +667,14 @@ fn verify_device_tunnel_block(
                 if let Some(ip) = link.tunnel_net.nth(i) {
                     let ip_net = NetworkV4::new(ip, 32).unwrap();
                     let id_or_ip = IdOrIp::Ip(ip_net);
-                    in_use.insert(id_or_ip, (*link_pk, "Link".to_string()));
+                    insert_usage(
+                        &mut in_use,
+                        resource_type,
+                        id_or_ip,
+                        *link_pk,
+                        "Link".to_string(),
+                        result,
+                    );
                 }
             }
             result.device_tunnel_block_checked += 1;
@@ -625,9 +714,13 @@ fn verify_segment_routing_ids(
                 && iface.node_segment_idx != 0
             {
                 let id_or_ip = IdOrIp::Id(iface.node_segment_idx);
-                in_use.insert(
+                insert_usage(
+                    &mut in_use,
+                    resource_type,
                     id_or_ip,
-                    (*device_pk, format!("Device interface {}", iface.name)),
+                    *device_pk,
+                    format!("Device interface {}", iface.name),
+                    result,
                 );
                 result.segment_routing_ids_checked += 1;
             }
@@ -659,7 +752,14 @@ fn verify_link_ids(
 
     for (link_pk, link) in links {
         let id_or_ip = IdOrIp::Id(link.tunnel_id);
-        in_use.insert(id_or_ip, (*link_pk, "Link".to_string()));
+        insert_usage(
+            &mut in_use,
+            resource_type,
+            id_or_ip,
+            *link_pk,
+            "Link".to_string(),
+            result,
+        );
         result.link_ids_checked += 1;
     }
 
@@ -691,12 +791,48 @@ fn verify_multicast_group_block(
         if ip.is_multicast() {
             let ip_net = NetworkV4::new(ip, 32).unwrap();
             let id_or_ip = IdOrIp::Ip(ip_net);
-            in_use.insert(id_or_ip, (*group_pk, "MulticastGroup".to_string()));
+            insert_usage(
+                &mut in_use,
+                resource_type,
+                id_or_ip,
+                *group_pk,
+                "MulticastGroup".to_string(),
+                result,
+            );
             result.multicast_group_block_checked += 1;
         }
     }
 
     check_discrepancies(resource_type, &allocated, &in_use, result);
+}
+
+/// Insert a resource usage into the in_use map, detecting duplicates
+fn insert_usage(
+    in_use: &mut HashMap<IdOrIp, (Pubkey, String)>,
+    resource_type: ResourceType,
+    value: IdOrIp,
+    account_pubkey: Pubkey,
+    account_type: String,
+    result: &mut VerifyResourceResult,
+) {
+    match in_use.entry(value) {
+        Entry::Occupied(entry) => {
+            let (first_pk, first_type) = entry.get();
+            result
+                .discrepancies
+                .push(ResourceDiscrepancy::DuplicateUsage {
+                    resource_type,
+                    value: entry.key().clone(),
+                    first_account_pubkey: *first_pk,
+                    first_account_type: first_type.clone(),
+                    second_account_pubkey: account_pubkey,
+                    second_account_type: account_type,
+                });
+        }
+        Entry::Vacant(entry) => {
+            entry.insert((account_pubkey, account_type));
+        }
+    }
 }
 
 fn check_discrepancies(

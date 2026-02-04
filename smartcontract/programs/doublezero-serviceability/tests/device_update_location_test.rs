@@ -8,6 +8,7 @@ use doublezero_serviceability::{
         device::{closeaccount::*, create::*, delete::*, update::*},
         *,
     },
+    resource::ResourceType,
     state::{accounttype::AccountType, contributor::ContributorStatus, device::*},
 };
 use globalconfig::set::SetGlobalConfigArgs;
@@ -51,6 +52,15 @@ async fn device_update_location_test() {
     /***********************************************************************************************************************************/
     println!("🟢 2. Set GlobalConfig...");
     let (config_pubkey, _) = get_globalconfig_pda(&program_id);
+    let (device_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
+    let (user_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
+    let (multicastgroup_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock);
+    let (link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
+    let (segment_routing_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -60,12 +70,17 @@ async fn device_update_location_test() {
             remote_asn: 65001,
             device_tunnel_block: "10.0.0.0/24".parse().unwrap(), // Private tunnel block
             user_tunnel_block: "10.0.0.0/24".parse().unwrap(),   // Private tunnel block
-            multicastgroup_block: "224.0.0.0/4".parse().unwrap(), // Multicast block
+            multicastgroup_block: "224.0.0.0/16".parse().unwrap(), // Multicast block
             next_bgp_community: None,
         }),
         vec![
             AccountMeta::new(config_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_tunnel_block_pda, false),
+            AccountMeta::new(user_tunnel_block_pda, false),
+            AccountMeta::new(multicastgroup_block_pda, false),
+            AccountMeta::new(link_ids_pda, false),
+            AccountMeta::new(segment_routing_ids_pda, false),
         ],
         &payer,
     )
@@ -199,6 +214,11 @@ async fn device_update_location_test() {
 
     let (device_pubkey, _) = get_device_pda(&program_id, globalstate_account.account_index + 1);
 
+    let (tunnel_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pubkey, 0));
+    let (dz_prefix_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 0));
+
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -210,6 +230,7 @@ async fn device_update_location_test() {
             dz_prefixes: "110.1.0.0/23".parse().unwrap(), // Global prefix
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
+            desired_status: Some(DeviceDesiredStatus::Activated),
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -300,10 +321,13 @@ async fn device_update_location_test() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {}),
+        DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs { resource_count: 2 }),
         vec![
             AccountMeta::new(device_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(config_pubkey, false),
+            AccountMeta::new(tunnel_ids_pda, false),
+            AccountMeta::new(dz_prefix_pda, false),
         ],
         &payer,
     )
@@ -337,6 +361,7 @@ async fn device_update_location_test() {
             users_count: None,
             status: None,
             desired_status: None,
+            resource_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -378,6 +403,7 @@ async fn device_update_location_test() {
             users_count: None,
             status: None,
             desired_status: None,
+            resource_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -425,7 +451,7 @@ async fn device_update_location_test() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CloseAccountDevice(DeviceCloseAccountArgs {}),
+        DoubleZeroInstruction::CloseAccountDevice(DeviceCloseAccountArgs { resource_count: 2 }),
         vec![
             AccountMeta::new(device_pubkey, false),
             AccountMeta::new(device.owner, false),
@@ -433,6 +459,11 @@ async fn device_update_location_test() {
             AccountMeta::new(device.location_pk, false),
             AccountMeta::new(device.exchange_pk, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(config_pubkey, false),
+            AccountMeta::new(tunnel_ids_pda, false),
+            AccountMeta::new(dz_prefix_pda, false),
+            AccountMeta::new(payer.pubkey(), false),
+            AccountMeta::new(payer.pubkey(), false),
         ],
         &payer,
     )

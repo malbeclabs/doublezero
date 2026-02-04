@@ -58,6 +58,9 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 			TopUpSOL:      topUpSOL,
 			Interval:      3 * time.Second,
 		},
+		InfluxDB:           devnet.InfluxDBSpec{Enabled: true},
+		Prometheus:         devnet.PrometheusSpec{Enabled: true},
+		DeviceHealthOracle: devnet.DeviceHealthOracleSpec{Enabled: true},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
 
@@ -171,12 +174,13 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	log.Info("==> Adding dummy devices onchain")
 	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
 			set -euo pipefail
-			doublezero device create --code ld4-dz01 --contributor co01 --location lhr --exchange xlhr --public-ip "195.219.120.72" --dz-prefixes "195.219.120.80/29" --mgmt-vrf mgmt
-			doublezero device create --code frk-dz01 --contributor co01 --location fra --exchange xfra --public-ip "195.219.220.88" --dz-prefixes "195.219.220.96/29" --mgmt-vrf mgmt
-			doublezero device create --code sg1-dz01 --contributor co01 --location sin --exchange xsin --public-ip "180.87.102.104" --dz-prefixes "180.87.102.112/29" --mgmt-vrf mgmt
-			doublezero device create --code ty2-dz01 --contributor co01 --location tyo --exchange xtyo --public-ip "180.87.154.112" --dz-prefixes "180.87.154.120/29" --mgmt-vrf mgmt
-			doublezero device create --code pit-dzd01 --contributor co01 --location pit --exchange xpit --public-ip "204.16.241.243" --dz-prefixes "204.16.243.243/32" --mgmt-vrf mgmt
-			doublezero device create --code ams-dz001 --contributor co01 --location ams --exchange xams --public-ip "195.219.138.50" --dz-prefixes "195.219.138.56/29" --mgmt-vrf mgmt
+			doublezero device create --code ld4-dz01 --contributor co01 --location lhr --exchange xlhr --public-ip "195.219.120.72" --dz-prefixes "195.219.120.80/29" --mgmt-vrf mgmt --desired-status activated
+			doublezero device create --code frk-dz01 --contributor co01 --location fra --exchange xfra --public-ip "195.219.220.88" --dz-prefixes "195.219.220.96/29" --mgmt-vrf mgmt --desired-status activated
+			doublezero device create --code sg1-dz01 --contributor co01 --location sin --exchange xsin --public-ip "180.87.102.104" --dz-prefixes "180.87.102.112/29" --mgmt-vrf mgmt --desired-status activated
+			doublezero device create --code ty2-dz01 --contributor co01 --location tyo --exchange xtyo --public-ip "180.87.154.112" --dz-prefixes "180.87.154.120/29" --mgmt-vrf mgmt --desired-status activated
+			doublezero device create --code pit-dzd01 --contributor co01 --location pit --exchange xpit --public-ip "204.16.241.243" --dz-prefixes "204.16.243.243/32" --mgmt-vrf mgmt --desired-status activated
+			doublezero device create --code ams-dz001 --contributor co01 --location ams --exchange xams --public-ip "195.219.138.50" --dz-prefixes "195.219.138.56/29" --mgmt-vrf mgmt --desired-status activated
+			doublezero device update --pubkey ams-dz001 --desired-status activated		
 
 			doublezero device interface create ld4-dz01 "Ethernet2"
 			doublezero device interface create ld4-dz01 "Ethernet3"
@@ -216,11 +220,11 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
 			set -euo pipefail
 
-			doublezero link create wan --code "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Ethernet2 --side-z ny5-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3
-			doublezero link create wan --code "ny5-dz01:ld4-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet3 --side-z ld4-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3
-			doublezero link create wan --code "ld4-dz01:frk-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet3 --side-z frk-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 25 --jitter-ms 10
-			doublezero link create wan --code "ld4-dz01:sg1-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet4 --side-z sg1-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 120 --jitter-ms 9
-			doublezero link create wan --code "sg1-dz01:ty2-dz01" --contributor co01 --side-a sg1-dz01 --side-a-interface Ethernet3 --side-z ty2-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 7
+			doublezero link create wan --code "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Ethernet2 --side-z ny5-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3 --desired-status activated			
+			doublezero link create wan --code "ny5-dz01:ld4-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet3 --side-z ld4-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3 --desired-status activated			
+			doublezero link create wan --code "ld4-dz01:frk-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet3 --side-z frk-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 25 --jitter-ms 10 --desired-status activated			
+			doublezero link create wan --code "ld4-dz01:sg1-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet4 --side-z sg1-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 120 --jitter-ms 9 --desired-status activated			
+			doublezero link create wan --code "sg1-dz01:ty2-dz01" --contributor co01 --side-a sg1-dz01 --side-a-interface Ethernet3 --side-z ty2-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 7 --desired-status activated
 		`})
 	require.NoError(t, err)
 
@@ -344,8 +348,16 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 		_, err := reflector.Exec(t.Context(), []string{"bash", "-c", fmt.Sprintf("ss -uln '( dport = :%d )' | grep -q .", port)})
 		return err == nil
 	}, 3*time.Second, 100*time.Millisecond)
-	output, err := sender.Exec(t.Context(), []string{"twamp-sender", "-q", "-local-addr", fmt.Sprintf("%s:%d", la2ToNY5LinkTunnelNY5IP, 0), "-remote-addr", fmt.Sprintf("%s:%d", la2ToNY5LinkTunnelLA2IP, port)})
-	require.NoError(t, err)
+	var output []byte
+	require.Eventually(t, func() bool {
+		var sendErr error
+		output, sendErr = sender.Exec(t.Context(), []string{"twamp-sender", "-q", "-local-addr", fmt.Sprintf("%s:%d", la2ToNY5LinkTunnelNY5IP, 0), "-remote-addr", fmt.Sprintf("%s:%d", la2ToNY5LinkTunnelLA2IP, port)})
+		if sendErr != nil {
+			log.Debug("Waiting for TWAMP sender to succeed", "error", sendErr)
+			return false
+		}
+		return true
+	}, 30*time.Second, 1*time.Second, "TWAMP sender should succeed")
 	log.Info("TWAMP sender output", "output", string(output))
 	require.Contains(t, string(output), "RTT:")
 	rtt, err := time.ParseDuration(strings.TrimSpace(strings.TrimPrefix(string(output), "RTT: ")))

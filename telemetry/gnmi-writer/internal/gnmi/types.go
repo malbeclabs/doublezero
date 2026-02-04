@@ -18,8 +18,8 @@ type Record interface {
 
 // Metadata contains common fields extracted from gNMI notifications.
 type Metadata struct {
-	DeviceCode string
-	Timestamp  time.Time
+	DevicePubkey string
+	Timestamp    time.Time
 }
 
 // PathMatcher is a function that determines if a gNMI path should be processed.

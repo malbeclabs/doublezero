@@ -9,9 +9,10 @@ use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 use std::{fmt, io::Cursor};
 
 const _RESOURCE_EXTENSION_HEADER_SIZE_ID_ALLOCATOR: usize = 83;
-const RESOURCE_EXTENSION_HEADER_SIZE_IP_ALLOCATOR: usize = 88;
+const RESOURCE_EXTENSION_HEADER_SIZE_IP_ALLOCATOR: usize = 84;
 const RESOURCE_EXTENSION_HEADER_SIZE: usize = RESOURCE_EXTENSION_HEADER_SIZE_IP_ALLOCATOR;
 const RESOURCE_EXTENSION_BITMAP_OFFSET: usize = RESOURCE_EXTENSION_HEADER_SIZE.div_ceil(8) * 8; // Align to 8 bytes
+
 #[repr(u8)]
 #[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -42,6 +43,7 @@ impl ResourceExtensionOwned {
         match &self.allocator {
             Allocator::Ip(ip_allocator) => ip_allocator
                 .iter_allocated(&self.storage)
+                .map(|ip| NetworkV4::new(ip, 32).unwrap())
                 .map(IdOrIp::Ip)
                 .collect(),
             Allocator::Id(id_allocator) => id_allocator
@@ -114,9 +116,9 @@ pub struct ResourceExtensionBorrowed<'a> {
 impl<'a> ResourceExtensionBorrowed<'a> {
     pub fn size(range: &ResourceExtensionRange) -> usize {
         match range {
-            ResourceExtensionRange::IpBlock(base_net, allocation_size) => {
+            ResourceExtensionRange::IpBlock(base_net, _allocation_size) => {
                 RESOURCE_EXTENSION_BITMAP_OFFSET
-                    + IpAllocator::bitmap_required_size(base_net.prefix(), *allocation_size)
+                    + IpAllocator::bitmap_required_size(base_net.prefix())
             }
             ResourceExtensionRange::IdRange(start, end) => {
                 RESOURCE_EXTENSION_BITMAP_OFFSET + IdAllocator::bitmap_required_size((*start, *end))
@@ -147,10 +149,9 @@ impl<'a> ResourceExtensionBorrowed<'a> {
             .serialize(&mut cursor)
             .map_err(|_| DoubleZeroError::SerializationFailure)?;
         match range {
-            ResourceExtensionRange::IpBlock(base_net, allocation_size) => Allocator::Ip(
-                IpAllocator::new(*base_net, *allocation_size)
-                    .map_err(|_| DoubleZeroError::SerializationFailure)?,
-            ),
+            ResourceExtensionRange::IpBlock(base_net, _allocation_size) => {
+                Allocator::Ip(IpAllocator::new(*base_net))
+            }
             ResourceExtensionRange::IdRange(start, end) => Allocator::Id(
                 IdAllocator::new((*start, *end))
                     .map_err(|_| DoubleZeroError::SerializationFailure)?,
@@ -186,18 +187,27 @@ impl<'a> ResourceExtensionBorrowed<'a> {
         Ok(out)
     }
 
-    pub fn allocate(&mut self) -> Result<IdOrIp, DoubleZeroError> {
+    pub fn allocate(&mut self, count: usize) -> Result<IdOrIp, DoubleZeroError> {
         match &mut self.allocator {
-            Allocator::Ip(ip_allocator) => Ok(IdOrIp::Ip(
-                ip_allocator
-                    .allocate(self.storage)
-                    .ok_or(DoubleZeroError::AllocationFailed)?,
-            )),
-            Allocator::Id(id_allocator) => Ok(IdOrIp::Id(
-                id_allocator
-                    .allocate(self.storage)
-                    .ok_or(DoubleZeroError::AllocationFailed)?,
-            )),
+            Allocator::Ip(ip_allocator) => {
+                assert!(
+                    count.is_power_of_two(),
+                    "IP allocation count must be a power of two"
+                );
+                Ok(IdOrIp::Ip(
+                    ip_allocator
+                        .allocate(self.storage, count)
+                        .ok_or(DoubleZeroError::AllocationFailed)?,
+                ))
+            }
+            Allocator::Id(id_allocator) => {
+                assert_eq!(count, 1, "ID allocation count must be 1");
+                Ok(IdOrIp::Id(
+                    id_allocator
+                        .allocate(self.storage)
+                        .ok_or(DoubleZeroError::AllocationFailed)?,
+                ))
+            }
         }
     }
 
@@ -308,7 +318,7 @@ mod tests {
             owner: Pubkey::default(),
             bump_seed: 0,
             associated_with: Pubkey::default(),
-            allocator: Allocator::Ip(IpAllocator::new("1.1.1.1/24".parse().unwrap(), 1).unwrap()),
+            allocator: Allocator::Ip(IpAllocator::new("1.1.1.1/24".parse().unwrap())),
             storage: empty_vec.clone(),
         };
         assert_eq!(
@@ -381,8 +391,8 @@ mod tests {
             vec![0u8; ResourceExtensionBorrowed::size(&ResourceExtensionRange::IdRange(0, 64))];
         let (_, _) = construct_resource_extension(&mut buffer[..]);
         let mut resext = ResourceExtensionBorrowed::inplace_from(&mut buffer[..]).unwrap();
-        resext.allocate().unwrap();
-        resext.allocate().unwrap();
+        resext.allocate(1).unwrap();
+        resext.allocate(1).unwrap();
         resext.allocate_specific(&IdOrIp::Id(5)).unwrap();
         resext.deallocate(&IdOrIp::Id(0));
         let resext = ResourceExtensionOwned::try_from(&buffer[..]).unwrap();

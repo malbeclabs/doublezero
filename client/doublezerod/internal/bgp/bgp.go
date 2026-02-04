@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/netip"
 	"sync"
+	"time"
 
 	"github.com/jwhited/corebgp"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/liveness"
@@ -27,11 +28,12 @@ type SessionEvent struct {
 type SessionStatus int
 
 const (
-	SessionStatusunknown SessionStatus = iota
-	SessionStatusPending
+	SessionStatusPending SessionStatus = iota
 	SessionStatusInitializing
 	SessionStatusDown
 	SessionStatusUp
+	SessionStatusFailed
+	SessionStatusUnreachable
 )
 
 func (s *Session) MarshalJSON() ([]byte, error) {
@@ -51,22 +53,23 @@ type Session struct {
 
 func (s SessionStatus) String() string {
 	return [...]string{
-		"unknown",
-		"pending",
-		"initializing",
-		"down",
-		"up",
+		"Pending BGP Session",
+		"Initializing BGP Session",
+		"BGP Session Down",
+		"BGP Session Up",
+		"BGP Session Failed",
+		"Network Unreachable",
 	}[s]
-
 }
 
 func (s SessionStatus) FromString(sessionStatus string) SessionStatus {
 	return map[string]SessionStatus{
-		"unknown":      SessionStatusunknown,
-		"pending":      SessionStatusPending,
-		"initializing": SessionStatusInitializing,
-		"down":         SessionStatusDown,
-		"up":           SessionStatusUp,
+		"Pending BGP Session":      SessionStatusPending,
+		"Initializing BGP Session": SessionStatusInitializing,
+		"BGP Session Down":         SessionStatusDown,
+		"BGP Session Up":           SessionStatusUp,
+		"BGP Session Failed":       SessionStatusFailed,
+		"Network Unreachable":      SessionStatusUnreachable,
 	}[sessionStatus]
 }
 
@@ -109,6 +112,7 @@ type BgpServer struct {
 	server            *corebgp.Server
 	peerStatusChan    chan SessionEvent
 	peerStatus        map[string]Session
+	peerPlugins       map[string]*Plugin // track plugins to mark as deleted on DeletePeer
 	peerStatusLock    sync.Mutex
 	routeReaderWriter RouteReaderWriter
 	livenessManager   liveness.Manager
@@ -124,6 +128,7 @@ func NewBgpServer(routerID net.IP, rrw RouteReaderWriter, lm liveness.Manager) (
 		server:            srv,
 		peerStatusChan:    make(chan SessionEvent),
 		peerStatus:        make(map[string]Session),
+		peerPlugins:       make(map[string]*Plugin),
 		peerStatusLock:    sync.Mutex{},
 		routeReaderWriter: rrw,
 		livenessManager:   lm,
@@ -153,6 +158,15 @@ func (b *BgpServer) AddPeer(p *PeerConfig, advertised []NLRI) error {
 		rrw = liveness.NewRouteReaderWriter(b.livenessManager, b.routeReaderWriter, p.Interface, p.NoUninstall)
 	}
 	plugin := NewBgpPlugin(advertised, p.RouteSrc, p.RouteTable, b.peerStatusChan, p.NoInstall, rrw)
+	plugin.peerAddr = p.RemoteAddress
+
+	// Emit Pending status immediately to clear any stale status from previous connections.
+	b.peerStatusChan <- SessionEvent{
+		PeerAddr: p.RemoteAddress,
+		Session:  Session{SessionStatus: SessionStatusPending, LastSessionUpdate: time.Now().Unix()},
+	}
+
+	plugin.startSessionTimeout()
 	err := b.server.AddPeer(corebgp.PeerConfig{
 		RemoteAddress: netip.MustParseAddr(p.RemoteAddress.String()),
 		LocalAS:       p.LocalAs,
@@ -161,21 +175,39 @@ func (b *BgpServer) AddPeer(p *PeerConfig, advertised []NLRI) error {
 	if err != nil && errors.Is(err, corebgp.ErrPeerAlreadyExists) {
 		return ErrBgpPeerExists
 	}
+
+	// Store plugin reference so we can mark it as deleted later
+	b.peerStatusLock.Lock()
+	b.peerPlugins[p.RemoteAddress.String()] = plugin
+	b.peerStatusLock.Unlock()
+
 	return err
 }
 
 func (b *BgpServer) DeletePeer(ip net.IP) error {
 	if ip == nil {
-		return fmt.Errorf("no peeer ip provided")
+		return fmt.Errorf("no peer ip provided")
 	}
 	addr, ok := netip.AddrFromSlice(ip)
 	if !ok {
 		return fmt.Errorf("malformed peer address")
 	}
+
+	// Mark plugin as deleted before calling corebgp's DeletePeer.
+	// This prevents OnClose from starting a new timeout for a peer that won't reconnect.
+	b.peerStatusLock.Lock()
+	if plugin, ok := b.peerPlugins[ip.String()]; ok {
+		plugin.MarkDeleted()
+		delete(b.peerPlugins, ip.String())
+	}
+	delete(b.peerStatus, ip.String())
+	b.peerStatusLock.Unlock()
+
 	err := b.server.DeletePeer(addr)
 	if errors.Is(err, corebgp.ErrPeerNotExist) {
 		return ErrBgpPeerNotExists
 	}
+
 	return err
 }
 
@@ -189,5 +221,5 @@ func (b *BgpServer) GetPeerStatus(ip net.IP) Session {
 	if peerStatus, ok := b.peerStatus[ip.String()]; ok {
 		return peerStatus
 	}
-	return Session{SessionStatus: SessionStatusunknown}
+	return Session{SessionStatus: SessionStatusPending}
 }

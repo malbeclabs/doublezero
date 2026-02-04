@@ -4,6 +4,7 @@ import (
 	"net"
 	"net/netip"
 	"testing"
+	"time"
 
 	"github.com/jwhited/corebgp"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
@@ -325,5 +326,374 @@ func TestClient_BGPPlugin_BuildUpdateRoundTrip(t *testing.T) {
 	require.Len(t, gotAsPath, len(nlri.AsPath))
 	for i := range nlri.AsPath {
 		require.Equal(t, nlri.AsPath[i], gotAsPath[i], "unexpected AS at index %d", i)
+	}
+}
+
+func TestEmitTimeoutStatus_Unreachable(t *testing.T) {
+	// When tcpConnected is false and session is not established,
+	// emitTimeoutStatus should emit SessionStatusUnreachable
+	statusChan := make(chan SessionEvent, 1)
+	plugin := &Plugin{
+		PeerStatusChan: statusChan,
+		peerAddr:       net.ParseIP("10.0.0.1"),
+	}
+
+	// Neither tcpConnected nor currentlyEstablished are set (both default to false)
+	emitted := plugin.emitTimeoutStatus()
+
+	require.True(t, emitted, "expected status to be emitted")
+	event := <-statusChan
+	require.Equal(t, SessionStatusUnreachable, event.Session.SessionStatus)
+	require.True(t, event.PeerAddr.Equal(net.ParseIP("10.0.0.1")))
+}
+
+func TestEmitTimeoutStatus_Failed(t *testing.T) {
+	// When tcpConnected is true but session is not established,
+	// emitTimeoutStatus should emit SessionStatusFailed
+	statusChan := make(chan SessionEvent, 1)
+	plugin := &Plugin{
+		PeerStatusChan: statusChan,
+		peerAddr:       net.ParseIP("10.0.0.1"),
+	}
+
+	// TCP connected but BGP handshake didn't complete
+	plugin.tcpConnected.Store(true)
+
+	emitted := plugin.emitTimeoutStatus()
+
+	require.True(t, emitted, "expected status to be emitted")
+	event := <-statusChan
+	require.Equal(t, SessionStatusFailed, event.Session.SessionStatus)
+	require.True(t, event.PeerAddr.Equal(net.ParseIP("10.0.0.1")))
+}
+
+func TestEmitTimeoutStatus_NoEmitWhenEstablished(t *testing.T) {
+	// When session is already established, emitTimeoutStatus should not emit
+	statusChan := make(chan SessionEvent, 1)
+	plugin := &Plugin{
+		PeerStatusChan: statusChan,
+		peerAddr:       net.ParseIP("10.0.0.1"),
+	}
+
+	// Session is established
+	plugin.currentlyEstablished.Store(true)
+
+	emitted := plugin.emitTimeoutStatus()
+
+	require.False(t, emitted, "expected no status to be emitted when established")
+	select {
+	case <-statusChan:
+		t.Fatal("unexpected event in status channel")
+	default:
+		// Expected: channel should be empty
+	}
+}
+
+// TestPlugin_MarkDeleted_PreventsTimeoutEmission tests that marking a plugin as deleted
+// prevents timeout status emissions. This is critical for avoiding "BGP Session Failed"
+// status when a peer is intentionally deleted during device rollover.
+func TestPlugin_MarkDeleted_PreventsTimeoutEmission(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name              string
+		tcpConnected      bool
+		expectedEmitted   bool
+		markDeletedBefore bool
+	}{
+		{
+			name:              "deleted before timeout prevents emission",
+			tcpConnected:      false,
+			expectedEmitted:   false,
+			markDeletedBefore: true,
+		},
+		{
+			name:              "not deleted allows timeout emission for unreachable",
+			tcpConnected:      false,
+			expectedEmitted:   true,
+			markDeletedBefore: false,
+		},
+		{
+			name:              "not deleted allows timeout emission for failed",
+			tcpConnected:      true,
+			expectedEmitted:   true,
+			markDeletedBefore: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			statusChan := make(chan SessionEvent, 10)
+			mockRW := &MockRouteReaderWriter{
+				RouteByProtocolFunc: func(p int) ([]*routing.Route, error) {
+					return nil, nil
+				},
+			}
+			plugin := NewBgpPlugin(
+				[]NLRI{},
+				net.ParseIP("10.0.0.1"),
+				100,
+				statusChan,
+				true,
+				mockRW,
+			)
+			plugin.peerAddr = net.ParseIP("192.0.2.1")
+
+			if tt.tcpConnected {
+				plugin.tcpConnected.Store(true)
+			}
+
+			if tt.markDeletedBefore {
+				plugin.MarkDeleted()
+			}
+
+			// Directly call emitTimeoutStatus to test the logic
+			emitted := plugin.emitTimeoutStatus()
+
+			require.Equal(t, tt.expectedEmitted, emitted, "unexpected emission result")
+
+			if tt.expectedEmitted {
+				select {
+				case event := <-statusChan:
+					if tt.tcpConnected {
+						require.Equal(t, SessionStatusFailed, event.Session.SessionStatus)
+					} else {
+						require.Equal(t, SessionStatusUnreachable, event.Session.SessionStatus)
+					}
+				default:
+					t.Fatal("expected status event but got none")
+				}
+			} else {
+				select {
+				case <-statusChan:
+					t.Fatal("unexpected status event received")
+				default:
+					// Expected: no event
+				}
+			}
+		})
+	}
+}
+
+// TestPlugin_OnClose_NoTimeoutAfterMarkDeleted tests that OnClose does not start a new
+// timeout when the peer has been marked as deleted. This prevents spurious timeout events
+// for peers that won't reconnect during device rollover.
+func TestPlugin_OnClose_NoTimeoutAfterMarkDeleted(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name                   string
+		markDeletedBeforeClose bool
+		expectTimeoutStarted   bool
+	}{
+		{
+			name:                   "normal close starts timeout for reconnection",
+			markDeletedBeforeClose: false,
+			expectTimeoutStarted:   true,
+		},
+		{
+			name:                   "close after deletion does not start timeout",
+			markDeletedBeforeClose: true,
+			expectTimeoutStarted:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			statusChan := make(chan SessionEvent, 10)
+			mockRW := &MockRouteReaderWriter{
+				RouteByProtocolFunc: func(p int) ([]*routing.Route, error) {
+					return nil, nil
+				},
+			}
+			plugin := NewBgpPlugin(
+				[]NLRI{},
+				net.ParseIP("10.0.0.1"),
+				100,
+				statusChan,
+				true,
+				mockRW,
+			)
+			plugin.peerAddr = net.ParseIP("192.0.2.1")
+			plugin.currentlyEstablished.Store(true)
+
+			if tt.markDeletedBeforeClose {
+				plugin.MarkDeleted()
+			}
+
+			peerConfig := corebgp.PeerConfig{
+				RemoteAddress: netip.MustParseAddr("192.0.2.1"),
+			}
+			plugin.OnClose(peerConfig)
+
+			// Check if cancelTimeout was set (indicating timeout was started)
+			timeoutWasStarted := plugin.cancelTimeout != nil
+
+			require.Equal(t, tt.expectTimeoutStarted, timeoutWasStarted,
+				"timeout start state mismatch")
+		})
+	}
+}
+
+// TestPlugin_MarkDeleted_CancelsInFlightTimeout tests that MarkDeleted cancels any
+// in-flight timeout that may have been started from a prior network disconnect.
+func TestPlugin_MarkDeleted_CancelsInFlightTimeout(t *testing.T) {
+	t.Parallel()
+
+	statusChan := make(chan SessionEvent, 10)
+	mockRW := &MockRouteReaderWriter{
+		RouteByProtocolFunc: func(p int) ([]*routing.Route, error) {
+			return nil, nil
+		},
+	}
+	plugin := NewBgpPlugin(
+		[]NLRI{},
+		net.ParseIP("10.0.0.1"),
+		100,
+		statusChan,
+		true,
+		mockRW,
+	)
+	plugin.peerAddr = net.ParseIP("192.0.2.1")
+	plugin.tcpConnected.Store(true)
+
+	// Start a timeout
+	plugin.startSessionTimeout()
+	require.NotNil(t, plugin.cancelTimeout, "timeout should be started")
+
+	// Mark as deleted which should cancel the timeout
+	plugin.MarkDeleted()
+
+	// Wait for the original timeout period
+	// Note: Using a shorter wait for test speed
+	select {
+	case event := <-statusChan:
+		t.Fatalf("unexpected status event received after MarkDeleted: %v", event.Session.SessionStatus)
+	case <-time.After(50 * time.Millisecond):
+		// Expected: no event within reasonable time
+	}
+
+	// Verify deleted flag is set
+	require.True(t, plugin.deleted.Load(), "deleted flag should be set")
+}
+
+// TestPlugin_OnEstablished_TOCTOURace_MutexPreventsStatusOverwrite tests the fix for the
+// TOCTOU race where the timeout goroutine could emit a "Failed" status just as the session
+// establishes, overwriting the correct "Up" status. The mutex ensures the established flag
+// check in emitTimeoutStatus is atomic with the flag set in OnEstablished.
+func TestPlugin_OnEstablished_TOCTOURace_MutexPreventsStatusOverwrite(t *testing.T) {
+	t.Parallel()
+
+	// This test verifies that the mutex prevents the race condition.
+	// We simulate concurrent calls to OnEstablished and emitTimeoutStatus
+	// and verify that once established is set, timeout emission is blocked.
+
+	statusChan := make(chan SessionEvent, 10)
+	mockRW := &MockRouteReaderWriter{
+		RouteByProtocolFunc: func(p int) ([]*routing.Route, error) {
+			return nil, nil
+		},
+	}
+	plugin := NewBgpPlugin(
+		[]NLRI{},
+		net.ParseIP("10.0.0.1"),
+		100,
+		statusChan,
+		true,
+		mockRW,
+	)
+	plugin.peerAddr = net.ParseIP("192.0.2.1")
+	plugin.tcpConnected.Store(true)
+
+	// Spawn multiple goroutines that try to emit timeout concurrently with OnEstablished
+	done := make(chan bool)
+	var emitCount int
+
+	// Start goroutines trying to emit timeout
+	for i := 0; i < 5; i++ {
+		go func() {
+			time.Sleep(1 * time.Millisecond)
+			if plugin.emitTimeoutStatus() {
+				emitCount++
+			}
+			done <- true
+		}()
+	}
+
+	// Call OnEstablished which should set the flag under lock
+	peerConfig := corebgp.PeerConfig{
+		RemoteAddress: netip.MustParseAddr("192.0.2.1"),
+	}
+	plugin.OnEstablished(peerConfig, &mockUpdateWriter{})
+
+	// Wait for all goroutines
+	for i := 0; i < 5; i++ {
+		<-done
+	}
+
+	// Collect all events
+	var events []SessionEvent
+	for {
+		select {
+		case event := <-statusChan:
+			events = append(events, event)
+		default:
+			goto eventsDone
+		}
+	}
+eventsDone:
+
+	// Analyze the events: we should see only "Up" status from OnEstablished
+	// The mutex should prevent any emitTimeoutStatus calls from succeeding after established=true
+	var hasUp, hasFailed bool
+	for _, event := range events {
+		if event.Session.SessionStatus == SessionStatusUp {
+			hasUp = true
+		}
+		if event.Session.SessionStatus == SessionStatusFailed {
+			hasFailed = true
+		}
+	}
+
+	require.True(t, hasUp, "should have received SessionStatusUp from OnEstablished")
+	require.False(t, hasFailed, "should NOT have received SessionStatusFailed from timeout after establish due to mutex protection")
+}
+
+// TestPlugin_emitTimeoutStatus_RespectsEstablishedFlag tests that emitTimeoutStatus
+// returns false without emitting when the session is already established.
+func TestPlugin_emitTimeoutStatus_RespectsEstablishedFlag(t *testing.T) {
+	t.Parallel()
+
+	statusChan := make(chan SessionEvent, 10)
+	mockRW := &MockRouteReaderWriter{
+		RouteByProtocolFunc: func(p int) ([]*routing.Route, error) {
+			return nil, nil
+		},
+	}
+	plugin := NewBgpPlugin(
+		[]NLRI{},
+		net.ParseIP("10.0.0.1"),
+		100,
+		statusChan,
+		true,
+		mockRW,
+	)
+	plugin.peerAddr = net.ParseIP("192.0.2.1")
+	plugin.tcpConnected.Store(true)
+
+	// Mark as established
+	plugin.currentlyEstablished.Store(true)
+
+	// Try to emit timeout status
+	emitted := plugin.emitTimeoutStatus()
+
+	require.False(t, emitted, "should not emit when session is established")
+
+	// Verify no event was sent
+	select {
+	case <-statusChan:
+		t.Fatal("unexpected status event when session is established")
+	default:
+		// Expected: no event
 	}
 }

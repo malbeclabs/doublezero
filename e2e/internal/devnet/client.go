@@ -1,6 +1,7 @@
 package devnet
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log/slog"
@@ -12,6 +13,7 @@ import (
 	dockercontainer "github.com/docker/docker/api/types/container"
 	dockerfilters "github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/network"
+	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
 	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
 	"github.com/malbeclabs/doublezero/e2e/internal/poll"
@@ -173,9 +175,13 @@ func (c *Client) Start(ctx context.Context) error {
 	extraArgs := []string{}
 	if c.Spec.RouteLivenessEnablePassive {
 		extraArgs = append(extraArgs, "-route-liveness-enable-passive")
+	} else {
+		extraArgs = append(extraArgs, "-route-liveness-enable-passive=false")
 	}
 	if c.Spec.RouteLivenessEnableActive {
 		extraArgs = append(extraArgs, "-route-liveness-enable-active")
+	} else {
+		extraArgs = append(extraArgs, "-route-liveness-enable-active=false")
 	}
 	if c.Spec.RouteLivenessPeerMetrics {
 		extraArgs = append(extraArgs, "-route-liveness-peer-metrics")
@@ -336,8 +342,8 @@ type ClientSession struct {
 }
 
 const (
-	ClientSessionStatusUp           ClientSessionStatus = "up"
-	ClientSessionStatusDown         ClientSessionStatus = "down"
+	ClientSessionStatusUp           ClientSessionStatus = "BGP Session Up"
+	ClientSessionStatusDown         ClientSessionStatus = "BGP Session Down"
 	ClientSessionStatusDisconnected ClientSessionStatus = "disconnected"
 )
 
@@ -395,10 +401,99 @@ func (c *Client) WaitForTunnelStatus(ctx context.Context, wantStatus ClientSessi
 		return false, nil
 	}, timeout, 1*time.Second)
 	if err != nil {
+		c.dumpDiagnostics()
 		return fmt.Errorf("failed to wait for client tunnel status %s: %w", wantStatus, err)
 	}
 
 	return nil
+}
+
+// dumpDiagnostics prints client-side and device-side diagnostic information to help debug
+// tunnel status failures. It uses a fresh context since the test context may have expired.
+// Output is buffered and written in a single fmt.Fprint call so that parallel tests don't
+// interleave each other's diagnostics.
+func (c *Client) dumpDiagnostics() {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	var buf bytes.Buffer
+	fmt.Fprintf(&buf, "\n=== DIAGNOSTIC DUMP (deploy=%s client=%s) ===\n", c.dn.Spec.DeployID, c.Pubkey)
+
+	// Client-side diagnostics.
+	clientCommands := []struct {
+		label   string
+		command []string
+	}{
+		{"doublezero status", []string{"curl", "-s", "--unix-socket", "/var/run/doublezerod/doublezerod.sock", "http://doublezero/status"}},
+		{"ip addr show", []string{"ip", "addr", "show"}},
+		{"ip route show", []string{"ip", "route", "show"}},
+	}
+	for _, cmd := range clientCommands {
+		output, err := c.Exec(ctx, cmd.command, docker.NoPrintOnError())
+		if err != nil {
+			fmt.Fprintf(&buf, "\n--- Client: %s (ERROR: %v)\n", cmd.label, err)
+		} else {
+			fmt.Fprintf(&buf, "\n--- Client: %s\n%s", cmd.label, string(output))
+		}
+	}
+
+	// Dump doublezerod container logs (stdout/stderr).
+	logsReader, err := c.dn.dockerClient.ContainerLogs(ctx, c.ContainerID, dockercontainer.LogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+		Tail:       "100",
+	})
+	if err != nil {
+		fmt.Fprintf(&buf, "\n--- Client: doublezerod container logs (ERROR: %v)\n", err)
+	} else {
+		var stdout, stderr bytes.Buffer
+		_, _ = stdcopy.StdCopy(&stdout, &stderr, logsReader)
+		logsReader.Close()
+		fmt.Fprintf(&buf, "\n--- Client: doublezerod container logs (stdout)\n%s", stdout.String())
+		if stderr.Len() > 0 {
+			fmt.Fprintf(&buf, "\n--- Client: doublezerod container logs (stderr)\n%s", stderr.String())
+		}
+	}
+
+	// Device-side diagnostics.
+	for code, device := range c.dn.Devices {
+		deviceCommands := []struct {
+			label   string
+			command []string
+		}{
+			{"show running-config section Tunnel", []string{"Cli", "-p", "15", "-c", "show running-config section Tunnel"}},
+			{"show ip bgp summary", []string{"Cli", "-c", "show ip bgp summary"}},
+			{"show ip bgp summary vrf vrf1", []string{"Cli", "-c", "show ip bgp summary vrf vrf1"}},
+			{"doublezero-agent log (last 100 lines)", []string{"tail", "-100", "/var/log/agents-latest/doublezero-agent"}},
+			{"disk space /var/tmp", []string{"df", "-h", "/var/tmp"}},
+		}
+		for _, cmd := range deviceCommands {
+			output, err := device.Exec(ctx, cmd.command)
+			if err != nil {
+				fmt.Fprintf(&buf, "\n--- Device %s: %s (ERROR: %v)\n", code, cmd.label, err)
+			} else {
+				fmt.Fprintf(&buf, "\n--- Device %s: %s\n%s", code, cmd.label, string(output))
+			}
+		}
+	}
+
+	// Controller-side diagnostics: query the config the controller would send to each device.
+	for code, device := range c.dn.Devices {
+		output, err := docker.Exec(ctx, c.dn.dockerClient, c.dn.Controller.ContainerID, []string{
+			"doublezero-controller", "agent",
+			"-device-pubkey", device.ID,
+			"-controller-addr", "localhost",
+			"-controller-port", "7000",
+		})
+		if err != nil {
+			fmt.Fprintf(&buf, "\n--- Controller config for device %s (ERROR: %v)\n", code, err)
+		} else {
+			fmt.Fprintf(&buf, "\n--- Controller config for device %s\n%s", code, string(output))
+		}
+	}
+
+	fmt.Fprintf(&buf, "\n=== DIAGNOSTIC DUMP END ===\n")
+	fmt.Fprint(os.Stderr, buf.String())
 }
 
 func (c *Client) WaitForLatencyResults(ctx context.Context, wantDevicePK string, timeout time.Duration) error {

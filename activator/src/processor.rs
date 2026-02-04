@@ -171,6 +171,7 @@ impl<T: DoubleZeroClient> Processor<T> {
                     device,
                     &mut self.segment_routing_ids,
                     &mut self.link_ips,
+                    self.use_onchain_allocation,
                 );
             }
             AccountData::Link(link) => {
@@ -180,6 +181,7 @@ impl<T: DoubleZeroClient> Processor<T> {
                     &mut self.link_ips,
                     &mut self.link_ids,
                     link,
+                    self.use_onchain_allocation,
                 );
             }
             AccountData::User(user) => {
@@ -192,6 +194,7 @@ impl<T: DoubleZeroClient> Processor<T> {
                     user,
                     &self.locations,
                     &self.exchanges,
+                    self.use_onchain_allocation,
                 );
             }
             AccountData::Location(location) => {

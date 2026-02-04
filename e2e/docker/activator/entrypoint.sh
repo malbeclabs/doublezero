@@ -28,5 +28,8 @@ doublezero config set --url $DZ_LEDGER_URL
 doublezero config set --ws $DZ_LEDGER_WS
 doublezero config set --program-id $DZ_SERVICEABILITY_PROGRAM_ID
 
+# Build activator command with optional flags.
+ACTIVATOR_CMD="doublezero-activator --program-id ${DZ_SERVICEABILITY_PROGRAM_ID} --rpc ${DZ_LEDGER_URL} --ws ${DZ_LEDGER_WS} --keypair /root/.config/doublezero/id.json --onchain-allocation"
+
 # Start the activator.
-doublezero-activator --program-id ${DZ_SERVICEABILITY_PROGRAM_ID} --rpc ${DZ_LEDGER_URL} --ws ${DZ_LEDGER_WS} --keypair /root/.config/doublezero/id.json
+exec ${ACTIVATOR_CMD}

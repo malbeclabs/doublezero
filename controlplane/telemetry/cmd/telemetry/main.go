@@ -17,6 +17,7 @@ import (
 	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/controlplane/agent/pkg/arista"
 	aristapb "github.com/malbeclabs/doublezero/controlplane/proto/arista/gen/pb-go/arista/EosSdkRpc"
+	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/gnmitunnel"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/metrics"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/netns"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/netutil"
@@ -75,6 +76,10 @@ var (
 	showVersion             = flag.Bool("version", false, "Print the version of the doublezero-agent and exit.")
 	metricsEnable           = flag.Bool("metrics-enable", false, "Enable prometheus metrics.")
 	metricsAddr             = flag.String("metrics-addr", ":8080", "Address to listen on for prometheus metrics.")
+
+	// gNMI tunnel flags
+	gnmiTunnelEnable     = flag.Bool("gnmi-tunnel-enable", false, "Enable gNMI tunnel client for remote access.")
+	gnmiTunnelServerAddr = flag.String("gnmi-tunnel-server-addr", "", "Address of the gNMI tunnel server (defaults to env config, e.g., gnmic-devnet.doublezero.xyz:443).")
 
 	// Set by LDFLAGS
 	version = "dev"
@@ -137,6 +142,9 @@ func main() {
 		*serviceabilityProgramID = networkConfig.ServiceabilityProgramID.String()
 		*telemetryProgramID = networkConfig.TelemetryProgramID.String()
 		*stateIngestURL = networkConfig.TelemetryStateIngestURL
+		if *gnmiTunnelServerAddr == "" {
+			*gnmiTunnelServerAddr = networkConfig.TelemetryGNMITunnelServerAddr
+		}
 	}
 
 	if *localDevicePK == "" {
@@ -313,6 +321,12 @@ func main() {
 		stateCollectorErrCh = startStateCollector(ctx, cancel, log, keypair, localDevicePK, *bgpNamespace)
 	}
 
+	// Run gNMI tunnel client if enabled.
+	var gnmiTunnelClientErrCh <-chan error
+	if *gnmiTunnelEnable {
+		gnmiTunnelClientErrCh = startGNMITunnelClient(ctx, cancel, log, localDevicePK)
+	}
+
 	// Wait for the context to be done or an error to be returned.
 	select {
 	case <-ctx.Done():
@@ -323,6 +337,10 @@ func main() {
 		os.Exit(1)
 	case err := <-stateCollectorErrCh:
 		log.Error("state collector exited with error", "error", err)
+		cancel()
+		os.Exit(1)
+	case err := <-gnmiTunnelClientErrCh:
+		log.Error("gnmi tunnel client exited with error", "error", err)
 		cancel()
 		os.Exit(1)
 	}
@@ -361,7 +379,7 @@ func startStateCollector(ctx context.Context, cancel context.CancelFunc, log *sl
 	// Build EAPI client.
 	var clientConn *grpc.ClientConn
 	if *managementNamespace != "" {
-		clientConn, err = netns.NewNamespacedGRPCConnFromIP(ctx, *managementNamespace, *eapiAddr,
+		clientConn, err = netns.NewNamespacedGRPCConn(ctx, *managementNamespace, *eapiAddr,
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 		)
 		if err != nil {
@@ -396,4 +414,44 @@ func startStateCollector(ctx context.Context, cancel context.CancelFunc, log *sl
 	}
 
 	return stateCollector.Start(ctx, cancel)
+}
+
+func startGNMITunnelClient(ctx context.Context, cancel context.CancelFunc, log *slog.Logger, localDevicePK solana.PublicKey) <-chan error {
+	// Validate required config.
+	if *gnmiTunnelServerAddr == "" {
+		log.Error("gNMI tunnel server address not configured (set --env or --gnmi-tunnel-server-addr)")
+		os.Exit(1)
+	}
+
+	// Build gNMI tunnel configuration.
+	// - TargetID: uses device pubkey so the tunnel server can route to this device
+	// - TargetType: GNMI_GNOI for gNMI/gNOI services
+	// - LocalDialAddr: standard Arista gNMI socket path
+	cfg := &gnmitunnel.Config{
+		Logger:           log,
+		TargetID:         localDevicePK.String(),
+		TargetType:       gnmitunnel.TargetTypeGNMIGNOI,
+		LocalDialAddr:    "/var/run/gnmiServer.sock",
+		TunnelServerAddr: *gnmiTunnelServerAddr,
+	}
+
+	// If using a management namespace, configure namespace-aware dialers.
+	if *managementNamespace != "" {
+		cfg.LocalDialer = func(ctx context.Context, network, address string) (net.Conn, error) {
+			return netns.RunInNamespace(*managementNamespace, func() (net.Conn, error) {
+				return (&net.Dialer{}).DialContext(ctx, network, address)
+			})
+		}
+		cfg.GRPCClientConnFactory = func(ctx context.Context, target string, opts ...grpc.DialOption) (*grpc.ClientConn, error) {
+			return netns.NewNamespacedGRPCConn(ctx, *managementNamespace, target, opts...)
+		}
+	}
+
+	gnmiTunnelClient, err := gnmitunnel.NewClient(cfg)
+	if err != nil {
+		log.Error("failed to create gNMI tunnel client", "error", err)
+		os.Exit(1)
+	}
+
+	return gnmiTunnelClient.Start(ctx, cancel)
 }

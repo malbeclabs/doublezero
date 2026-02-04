@@ -142,6 +142,18 @@ func TestBgpServer(t *testing.T) {
 		log.Fatalf("error constructing listener: %v", err)
 	}
 
+	// Start Serve() before AddPeer() to match production order.
+	// The status reader goroutine must be running before AddPeer sends status events.
+	errChan := make(chan error)
+	go func() {
+		if err := b.Serve([]net.Listener{lis}); err != nil {
+			errChan <- err
+		}
+	}()
+
+	// Give the status reader goroutine time to start
+	time.Sleep(50 * time.Millisecond)
+
 	err = b.AddPeer(
 		&bgp.PeerConfig{
 			LocalAddress:  net.IP{127, 0, 0, 1},
@@ -160,13 +172,6 @@ func TestBgpServer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error adding peer: %v", err)
 	}
-
-	errChan := make(chan error)
-	go func() {
-		if err := b.Serve([]net.Listener{lis}); err != nil {
-			errChan <- err
-		}
-	}()
 
 	// start dummy bgp instance as peer
 	srv, _ := corebgp.NewServer(netip.MustParseAddr("2.2.2.2"))

@@ -107,18 +107,21 @@ pub fn process_activate_multicastgroup(
             "Invalid ResourceExtension PDA for MulticastGroupBlock"
         );
 
-        // Allocate from ResourceExtension bitmap
-        let mut buffer = resource_ext.data.borrow_mut();
-        let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
+        // Allocate from ResourceExtension bitmap (only if not already allocated)
+        // This check handles potential re-activation scenarios where resources may already be assigned
+        if multicastgroup.multicast_ip == std::net::Ipv4Addr::UNSPECIFIED {
+            let mut buffer = resource_ext.data.borrow_mut();
+            let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
 
-        let allocated = resource.allocate()?;
+            let allocated = resource.allocate(1)?;
 
-        match allocated {
-            IdOrIp::Ip(network) => {
-                multicastgroup.multicast_ip = network.ip();
-            }
-            IdOrIp::Id(_) => {
-                return Err(DoubleZeroError::InvalidArgument.into());
+            match allocated {
+                IdOrIp::Ip(network) => {
+                    multicastgroup.multicast_ip = network.ip();
+                }
+                IdOrIp::Id(_) => {
+                    return Err(DoubleZeroError::InvalidArgument.into());
+                }
             }
         }
     } else {

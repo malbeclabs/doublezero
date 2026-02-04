@@ -18,6 +18,7 @@ pub fn process_device_event(
     device: &Device,
     segment_routing_ids: &mut IDAllocator,
     link_ips: &mut IPBlockAllocator,
+    use_onchain_allocation: bool,
 ) {
     match device.status {
         DeviceStatus::Pending => {
@@ -36,7 +37,7 @@ pub fn process_device_event(
 
             match res {
                 Ok(signature) => {
-                    write!(&mut log_msg, " Activated {signature}").unwrap();
+                    write!(&mut log_msg, " DeviceProvisioning {signature}").unwrap();
 
                     devices.insert(*pubkey, DeviceState::new(device));
                     metrics::counter!(
@@ -50,8 +51,33 @@ pub fn process_device_event(
             }
             info!("{log_msg}");
         }
+        DeviceStatus::DeviceProvisioning | DeviceStatus::LinkProvisioning => {
+            let mut mgr = InterfaceMgr::new(
+                client,
+                Some(segment_routing_ids),
+                link_ips,
+                use_onchain_allocation,
+            );
+            mgr.process_device_interfaces(pubkey, device);
+
+            match devices.entry(*pubkey) {
+                Entry::Occupied(mut entry) => entry.get_mut().update(device),
+                Entry::Vacant(entry) => {
+                    info!(
+                        "Add Device: {} public_ip: {} dz_prefixes: {} ",
+                        device.code, &device.public_ip, &device.dz_prefixes,
+                    );
+                    entry.insert(DeviceState::new(device));
+                }
+            }
+        }
         DeviceStatus::Activated => {
-            let mut mgr = InterfaceMgr::new(client, Some(segment_routing_ids), link_ips);
+            let mut mgr = InterfaceMgr::new(
+                client,
+                Some(segment_routing_ids),
+                link_ips,
+                use_onchain_allocation,
+            );
             mgr.process_device_interfaces(pubkey, device);
 
             match devices.entry(*pubkey) {
@@ -107,15 +133,19 @@ mod tests {
     use doublezero_program_common::types::NetworkV4;
     use doublezero_sdk::{
         AccountData, AccountType, CurrentInterfaceVersion, DeviceType, InterfaceStatus,
-        InterfaceType, LoopbackType,
+        InterfaceType, LoopbackType, ResourceExtensionOwned, ResourceType,
     };
     use doublezero_serviceability::{
+        id_allocator::IdAllocator,
         instructions::DoubleZeroInstruction,
+        ip_allocator::IpAllocator,
+        pda::get_resource_extension_pda,
         processors::device::{
             activate::DeviceActivateArgs,
             closeaccount::DeviceCloseAccountArgs,
             interface::{activate::DeviceInterfaceActivateArgs, unlink::DeviceInterfaceUnlinkArgs},
         },
+        state::resource_extension::Allocator,
     };
     use metrics_util::debugging::DebuggingRecorder;
     use mockall::{predicate, Sequence};
@@ -192,12 +222,22 @@ mod tests {
             expected_interfaces[1].ip_net = "1.1.1.1/32".parse().unwrap();
             expected_interfaces[1].node_segment_idx = 1;
 
+            let device_clone = device.clone();
+            client
+                .expect_get()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(predicate::eq(device_pubkey))
+                .returning(move |_| Ok(AccountData::Device(device_clone.clone())));
+
             client
                 .expect_execute_transaction()
                 .times(1)
                 .in_sequence(&mut seq)
                 .with(
-                    predicate::eq(DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {})),
+                    predicate::eq(DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {
+                        resource_count: 3,
+                    })),
                     predicate::always(),
                 )
                 .returning(|_, _| Ok(Signature::new_unique()));
@@ -211,6 +251,7 @@ mod tests {
                 &device,
                 &mut segment_ids,
                 &mut ip_block_allocator,
+                false,
             );
 
             assert!(devices.contains_key(&device_pubkey));
@@ -256,6 +297,7 @@ mod tests {
                 &device,
                 &mut segment_ids,
                 &mut ip_block_allocator,
+                false,
             );
 
             device.status = DeviceStatus::Deleting;
@@ -276,11 +318,69 @@ mod tests {
                 .in_sequence(&mut seq)
                 .with(
                     predicate::eq(DoubleZeroInstruction::CloseAccountDevice(
-                        DeviceCloseAccountArgs {},
+                        DeviceCloseAccountArgs { resource_count: 3 },
                     )),
                     predicate::always(),
                 )
                 .returning(|_, _| Ok(Signature::new_unique()));
+
+            let (resource1_pk, _, _) = get_resource_extension_pda(
+                &client.get_program_id(),
+                ResourceType::TunnelIds(device_pubkey, 0),
+            );
+            let resource1 = ResourceExtensionOwned {
+                account_type: AccountType::ResourceExtension,
+                owner: Pubkey::default(),
+                bump_seed: 0,
+                associated_with: device_pubkey,
+                allocator: Allocator::Id(IdAllocator::new((1, 100)).unwrap()),
+                storage: vec![],
+            };
+
+            let (resource2_pk, _, _) = get_resource_extension_pda(
+                &client.get_program_id(),
+                ResourceType::DzPrefixBlock(device_pubkey, 0),
+            );
+            let resource2 = ResourceExtensionOwned {
+                account_type: AccountType::ResourceExtension,
+                owner: Pubkey::default(),
+                bump_seed: 0,
+                associated_with: device_pubkey,
+                allocator: Allocator::Ip(IpAllocator::new("0.0.0.0/0".parse().unwrap())),
+                storage: vec![],
+            };
+
+            let (resource3_pk, _, _) = get_resource_extension_pda(
+                &client.get_program_id(),
+                ResourceType::DzPrefixBlock(device_pubkey, 1),
+            );
+            let resource3 = ResourceExtensionOwned {
+                account_type: AccountType::ResourceExtension,
+                owner: Pubkey::default(),
+                bump_seed: 0,
+                associated_with: device_pubkey,
+                allocator: Allocator::Ip(IpAllocator::new("0.0.0.0/0".parse().unwrap())),
+                storage: vec![],
+            };
+
+            client
+                .expect_get()
+                .with(predicate::in_hash(vec![
+                    resource1_pk,
+                    resource2_pk,
+                    resource3_pk,
+                ]))
+                .returning(move |pk| {
+                    if pk == resource1_pk {
+                        Ok(AccountData::ResourceExtension(resource1.clone()))
+                    } else if pk == resource2_pk {
+                        Ok(AccountData::ResourceExtension(resource2.clone()))
+                    } else if pk == resource3_pk {
+                        Ok(AccountData::ResourceExtension(resource3.clone()))
+                    } else {
+                        Err(eyre::eyre!("Unexpected resource pk"))
+                    }
+                });
 
             process_device_event(
                 &client,
@@ -289,6 +389,7 @@ mod tests {
                 &device,
                 &mut segment_ids,
                 &mut ip_block_allocator,
+                false,
             );
             assert!(!devices.contains_key(&device_pubkey));
 
@@ -407,6 +508,7 @@ mod tests {
             &device,
             &mut segment_ids,
             &mut ip_block_allocator,
+            false,
         );
 
         assert!(devices.contains_key(&pubkey));
@@ -435,6 +537,7 @@ mod tests {
             &device,
             &mut segment_ids,
             &mut ip_block_allocator,
+            false,
         );
 
         assert!(devices.contains_key(&pubkey));

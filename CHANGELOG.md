@@ -8,7 +8,47 @@ All notable changes to this project will be documented in this file.
   - Remove log noise on resolve route
 - Onchain programs
    - Removed device and user allowlist functionality, updating the global state, initialization flow, tests, and processors accordingly, and cleaning up unused account checks.
+   - Serviceability: require DeactivateMulticastGroup to only close multicast group accounts when both `publisher_count` and `subscriber_count` are zero, preventing deletion of groups that still have active publishers or subscribers.
    - Deprecated the user suspend status, as it is no longer used.
+   - Serviceability: enforce that CloseAccountUser instructions verify the target user has no multicast publishers or subscribers (both `publishers` and `subscribers` are empty) before closing, and add regression coverage for this behavior.
+   - Enhance access pass functionality with new Solana-specific types
+- Telemetry
+  - Fix goroutine leak in TWAMP sender — `cleanUpReceived` goroutines now exit on `Close()` instead of living until process shutdown
+- CLI
+  - Enhance delete multicast group command to cascade into deleting AP entry (#2754)
+- Client
+  - Cache network interface index/name lookups in liveness UDP service to fix high CPU usage caused by per-packet RTM_GETLINK netlink dumps
+  - Add observability to BGP handleUpdate: log withdrawal/NLRI counts per batch and track processing duration via `doublezero_bgp_handle_update_duration_seconds` histogram
+- E2E tests
+  - The QA alldevices test now skips devices that are not calling the controller
+
+## [v0.8.4](https://github.com/malbeclabs/doublezero/compare/client/v0.8.3...client/v0.8.4) – 2026-01-28
+
+### Breaking
+
+- None for this release
+
+### Changes
+
+- Telemetry
+  - Force IPv4-only connections for gNMI tunnel client and fix TLS credential handling
+- Client
+  - Support simultaneous unicast and multicast tunnels in doublezerod
+  - Support publishing and subscribing to multiple multicast groups simultaneously
+- CLI
+  - Support publishing and subscribing a user to multiple multicast groups via `--group` flag
+- SDK
+  - Go SDK can now perform batch writes to device.health and link.health as per rfc12
+- Activator
+  - fix(activator): add on-chain allocation support for users ([#2744](https://github.com/malbeclabs/doublezero/pull/2744))
+  - On-chain allocation enabled
+- Smartcontract
+  - feat(smartcontract): add use_onchain_deallocation flag to MulticastGroup ([#2748](https://github.com/malbeclabs/doublezero/pull/2748))
+
+## [v0.8.3](https://github.com/malbeclabs/doublezero/compare/client/v0.8.2...client/v0.8.3) – 2026-01-22
+
+- Data
+  - Add indexer that syncs serviceability and telemetry data to ClickHouse and Neo4J
 
 ### Breaking
 
@@ -18,12 +58,42 @@ All notable changes to this project will be documented in this file.
 
 - CLI
   - Remove log noise on resolve route
+  - Add `global-config qa-allowlist` commands to manage QA identity allowlist to bypass status and max_users checks in QA
+  - Add "-skip-capacity-check" flag to bypass status and max_users checks in QA to test devices that are still being provisioned
+  - Remove "unknown" status from doublezero status command and implement "failed" and "unreachable" statuses
+- Client
+  - Enable route liveness passive-mode by default
+  - Add `make install` make target. To build and deploy from source, users can now run `cd client && make build && make install` to install the doublezero and doublezerod binaries and the doublezerod systemd unit.
 - Onchain programs
-   - Removed device and user allowlist functionality, updating the global state, initialization flow, tests, and processors accordingly, and cleaning up unused account checks.
+  - Serviceability: remove validation check for interface delete ([#2707](https://github.com/malbeclabs/doublezero/pull/2707))
+  - Serviceability: interface-cyoa only on physical interfaces, don't require interfaces to be tagged, add same validation logic to update interface ([#2700](https://github.com/malbeclabs/doublezero/pull/2700))
+  - Enforce Activated status check before suspending contributor, exchange, location, and multicastgroup accounts
+  - Removed device and user allowlist functionality, updating the global state, initialization flow, tests, and processors accordingly, and cleaning up unused account checks.
+  - Serviceability: require DeactivateMulticastGroup to only close multicast group accounts when both `publisher_count` and `subscriber_count` are zero, preventing deletion of groups that still have active publishers or subscribers.
+  - Deprecated the user suspend status, as it is no longer used.
+  - Serviceability: enforce that CloseAccountUser instructions verify the target user has no multicast publishers or subscribers (both `publishers` and `subscribers` are empty) before closing, and add regression coverage for this behavior.
+  - Removed device and user allowlist functionality, updating the global state, initialization flow, tests, and processors accordingly, and cleaning up unused account checks.
+  - SetGlobalConfig, ActivateDevice, UpdateDevice and CloseAccountDevice instructions updated to manage resource accounts.
+  - Add option for Contributor B to reject a link created by Contributor A just as Contributor A can cancel its own created link
+- Telemetry
+  - Add gNMI tunnel client for state collection
+- Activator
+  - fix(activator): ip_to_index fn honors ip range #2658
+- E2E tests
+  - Add influxdb, prometheus, and device-health-oracle containers
+  - Add interface lifecycle tests ([#2700](https://github.com/malbeclabs/doublezero/pull/2700))
+  - Only fail QA alldevices test run if device status is "Activated" and max users > 0
+- SDK
+  - Commands for setting global config, activating devices, updating devices, and closing device accounts now manage resource accounts.
+  - Serviceability: return error when GetProgramAccounts returns empty result instead of silently returning empty data
+- Smartcontract
+  - feat(smartcontract): RFC 11 activation for User entity
+  - feat(smartcontract): RFC 11 add on-chain resource allocation for Link
 - Device Health Oracle
   - Add new device-health-oracle component. See rfcs/rfc12-network-provisioning.md for details.
-- Client
-  - Add `make install` make target. To build and deploy from source, users can now run `cd client && make build && make install` to install the doublezero and doublezerod binaries and the doublezerod systemd unit.
+  - Calculate burn-in timestamp based from slot numbers (current minus 200_000 slots for provisioning, current minus 5_000 slots for maintenance)
+- CI
+  - Add separate apt repo for doublezero-testnet
 
 ## [v0.8.2](https://github.com/malbeclabs/doublezero/compare/client/v0.8.1...client/v0.8.2) – 2025-01-13
 
@@ -37,6 +107,7 @@ All notable changes to this project will be documented in this file.
   - Always delegate RouteAdd regardless of noUninstall flag
 - Telemetry
   - Include solana vote pubkey in global monitor metrics
+  - Run telemetry agent on pending and drained links
 
 ## [v0.8.1](https://github.com/malbeclabs/doublezero/compare/client/v0.8.0...client/v0.8.1) – 2025-01-12
 
@@ -71,17 +142,22 @@ All notable changes to this project will be documented in this file.
   - Introduced health management for Devices and Links, adding explicit health states, authorized health updates, and related state, processor, and test enhancements.
   - Require that BanUser can only be executed when the target user's status is PendingBan, enforcing the expected user ban workflow (request-ban -> ban).
   - Introduce desired status to Link and Devices
+  - Introduced health management for Devices and Links, adding explicit health states, authorized health updates, and related state, processor, and test enhancements.
   - Restrict DeleteDeviceInterface to interfaces in Activated or Unlinked status; attempting to delete interfaces in other statuses now fails with InvalidStatus.
   - Updated validation to allow public IP prefixes for CYOA/DIA, removing the restriction imposed by type-based checks.
   - Transit devices can now be provisioned without a public IP, aligning the requirements with their actual networking model and avoiding unnecessary configuration constraints.
   - Enforce that ActivateDeviceInterface only activates interfaces in Pending or Unlinked status, returning InvalidStatus for all other interface states
+  - Introduce desired status to Link and Devices
 - Internet Latency Telemetry
   - Fixed a bug that prevented unresponsive ripeatlas probes from being replaced
   - Fixed a bug that caused ripeatlas samples to be dropped when they were delayed to the next collection cycle
+- Link & device Latency Telemetry
+  - Telemetry data can now be received while entities are in provisioning and draining states.
 - Device controller
   - Add histogram metric for GetConfig request duration
   - Add gRPC middleware for prometheus metrics
   - Add device status label to controller_grpc_getconfig_requests_total metric
+  - Add logic to shutdown user BGP, IBGP sessions, MSDP neighbors, and ISIS when device.status is drained
 - Device agents
   - Increase default controller request timeout in config agent
   - Initial state collect in telemetry agent
@@ -122,6 +198,9 @@ All notable changes to this project will be documented in this file.
   - The QA alldevices test now considers device location and connects hosts to nearby devices
   - QA agent and tests now support doublezero connect ibrl's --allocate-addr flag
   - The QA alldevices test now publishes success/failure metrics to InfluxDB in support of rfc12
+- Onchain programs
+  - Fix CreateMulticastGroup to use incremented globalstate.account_index for PDA derivation instead of client-provided index, to ensure the contract is the authoritative source for account indices
+  - ReactivateMulticastGroup now enforces that the multicast group status must be Suspended before reactivation, returning InvalidStatus otherwise; negative-path regression tests were added.
 
 ## [v0.8.0](https://github.com/malbeclabs/doublezero/compare/client/v0.7.1...client/v0.8.0) – 2025-12-02
 

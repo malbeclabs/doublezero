@@ -18,6 +18,32 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// ibrlUserTunnelInfo holds tunnel assignment info for an IBRL user, parsed from user list output.
+type ibrlUserTunnelInfo struct {
+	ClientIP  string
+	TunnelID  string
+	TunnelNet string
+}
+
+// parseIBRLTunnelInfo parses user list output and returns tunnel info for IBRL and IBRLWithAllocatedIP users.
+func parseIBRLTunnelInfo(output []byte) (ibrlUsers []ibrlUserTunnelInfo, allocUserTunnelID, allocUserTunnelNet string) {
+	rows := fixtures.ParseCLITable(output)
+	for _, row := range rows {
+		switch row["user_type"] {
+		case "IBRL":
+			ibrlUsers = append(ibrlUsers, ibrlUserTunnelInfo{
+				ClientIP:  row["client_ip"],
+				TunnelID:  row["tunnel_id"],
+				TunnelNet: row["tunnel_net"],
+			})
+		case "IBRLWithAllocatedIP":
+			allocUserTunnelID = row["tunnel_id"]
+			allocUserTunnelNet = row["tunnel_net"]
+		}
+	}
+	return
+}
+
 func TestE2E_IBRL_WithAllocatedIP(t *testing.T) {
 	t.Parallel()
 
@@ -92,7 +118,8 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 		ones, _ := dzPrefixNet.Mask.Size()
 		allocatableBits := 32 - ones // number of host bits
 
-		expectedAllocatedClientIP, err := nextAllocatableIP(dzPrefixIP, allocatableBits, map[string]bool{})
+		// First IP is reserved for device tunnel endpoint (Loopback100 interface)
+		expectedAllocatedClientIP, err := nextAllocatableIP(dzPrefixIP, allocatableBits, map[string]bool{dzPrefixIP: true})
 		require.NoError(t, err)
 
 		dn.log.Info("--> Expected allocated client IP", "expectedAllocatedClientIP", expectedAllocatedClientIP, "deviceCYOAIP", device.CYOANetworkIP, "dzPrefix", device.DZPrefix)
@@ -119,6 +146,11 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 			t.Fail()
 		}
 
+		// Query actual tunnel assignments since tunnel IDs may not be allocated sequentially.
+		userListOutput, err := client.Exec(t.Context(), []string{"doublezero", "user", "list"})
+		require.NoError(t, err, "error querying user list for tunnel info")
+		ibrlUsers, allocatedUserTunnelID, allocatedUserTunnelNet := parseIBRLTunnelInfo(userListOutput)
+
 		tests := []struct {
 			name        string
 			fixturePath string
@@ -133,6 +165,9 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 					"ClientPubkeyAddress":       client.Pubkey,
 					"DeviceIP":                  device.CYOANetworkIP,
 					"ExpectedAllocatedClientIP": expectedAllocatedClientIP,
+					"IBRLUsers":                 ibrlUsers,
+					"AllocatedUserTunnelID":     allocatedUserTunnelID,
+					"AllocatedUserTunnelNet":    allocatedUserTunnelNet,
 				},
 				cmd: []string{"doublezero", "user", "list"},
 			},
@@ -245,14 +280,14 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 			t.Fail()
 		}
 
-		// User ban verified in the `doublezer_user_list_removed.txt` fixture.
+		// User ban verified in the `doublezero_user_list_user_removed.tmpl` fixture.
 		if !t.Run("ban_user", func(t *testing.T) {
 			t.Parallel()
 
-			// Find user with tunnel_net 169.254.0.6/31
-			output, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero user list | grep 169.254.0.6/31"})
+			// Find IBRL user with client_ip 3.4.5.6
+			output, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero user list | grep 3.4.5.6"})
 			require.NoError(t, err)
-			require.NotEmpty(t, strings.TrimSpace(string(output)), "no user found with tunnel_net 169.254.0.6/31")
+			require.NotEmpty(t, strings.TrimSpace(string(output)), "no user found with client_ip 3.4.5.6")
 			userID := strings.TrimSpace(strings.Split(string(output), "|")[0])
 
 			// TODO: This is brittle, come up with a better solution.
@@ -337,8 +372,12 @@ func checkIBRLWithAllocatedIPPostDisconnect(t *testing.T, dn *TestDevnet, device
 			got, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero user list"})
 			require.NoError(t, err)
 
+			// Parse actual tunnel assignments since tunnel IDs may not be allocated sequentially.
+			ibrlUsers, _, _ := parseIBRLTunnelInfo(got)
+
 			want, err := fixtures.Render("fixtures/ibrl_with_allocated_addr/doublezero_user_list_user_removed.tmpl", map[string]any{
 				"ClientPubkeyAddress": client.Pubkey,
+				"IBRLUsers":           ibrlUsers,
 			})
 			require.NoError(t, err, "error reading user list fixture")
 

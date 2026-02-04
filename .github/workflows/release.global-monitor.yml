@@ -19,7 +19,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: telemetry/global-monitor/go.mod
+          go-version-file: go.mod
           cache: true
       - name: Set env vars
         run: ./scripts/env.sh >> $GITHUB_ENV

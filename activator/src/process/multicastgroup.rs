@@ -93,15 +93,21 @@ pub fn process_multicastgroup_event(
             let res = DeactivateMulticastGroupCommand {
                 pubkey: *pubkey,
                 owner: multicastgroup.owner,
+                use_onchain_deallocation: use_onchain_allocation,
             }
             .execute(client);
 
             match res {
                 Ok(signature) => {
-                    write!(&mut log_msg, " Deactivated {signature}",).unwrap();
-
-                    multicastgroup_tunnel_ips
-                        .unassign_block(Ipv4Network::new(multicastgroup.multicast_ip, 32)?);
+                    if use_onchain_allocation {
+                        write!(&mut log_msg, " Deactivated (on-chain) {signature}").unwrap();
+                        // On-chain deallocation: smart contract handles releasing resources
+                    } else {
+                        write!(&mut log_msg, " Deactivated {signature}").unwrap();
+                        // Off-chain: activator tracks local allocations
+                        multicastgroup_tunnel_ips
+                            .unassign_block(Ipv4Network::new(multicastgroup.multicast_ip, 32)?);
+                    }
 
                     multicastgroups.remove(pubkey);
                     metrics::counter!("doublezero_activator_state_transition", "state_transition" => "multicastgroup-deleting-to-deactivated").increment(1);

@@ -5,15 +5,16 @@ use doublezero_serviceability::{
         contributor::create::ContributorCreateArgs,
         device::interface::DeviceInterfaceUnlinkArgs,
         link::{
-            accept::LinkAcceptArgs, activate::*, create::*, delete::*, resume::*, suspend::*,
-            update::*,
+            accept::LinkAcceptArgs, activate::*, create::*, delete::*, reject::LinkRejectArgs,
+            sethealth::LinkSetHealthArgs, update::*,
         },
         *,
     },
+    resource::ResourceType,
     state::{
         accounttype::AccountType,
         contributor::ContributorStatus,
-        device::{DeviceStatus, DeviceType},
+        device::{DeviceDesiredStatus, DeviceStatus, DeviceType},
         interface::{InterfaceCYOA, InterfaceDIA, LoopbackType, RoutingMode},
         link::*,
     },
@@ -51,6 +52,15 @@ async fn test_dzx_link() {
     .await;
 
     let (config_pubkey, _) = get_globalconfig_pda(&program_id);
+    let (device_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
+    let (user_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
+    let (multicastgroup_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock);
+    let (link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
+    let (segment_routing_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
 
     execute_transaction(
         &mut banks_client,
@@ -67,6 +77,11 @@ async fn test_dzx_link() {
         vec![
             AccountMeta::new(config_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_tunnel_block_pda, false),
+            AccountMeta::new(user_tunnel_block_pda, false),
+            AccountMeta::new(multicastgroup_block_pda, false),
+            AccountMeta::new(link_ids_pda, false),
+            AccountMeta::new(segment_routing_ids_pda, false),
         ],
         &payer,
     )
@@ -219,6 +234,7 @@ async fn test_dzx_link() {
             dz_prefixes: "110.1.0.0/24".parse().unwrap(),
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
+            desired_status: Some(DeviceDesiredStatus::Activated),
         }),
         vec![
             AccountMeta::new(device_a_pubkey, false),
@@ -289,7 +305,6 @@ async fn test_dzx_link() {
         .get_exchange()
         .unwrap();
     assert_eq!(exchange.reference_count, 1);
-
     /***********************************************************************************************************************************/
     println!("🟢 7. Create Device 2...");
 
@@ -309,6 +324,7 @@ async fn test_dzx_link() {
             dz_prefixes: "11.1.0.0/23".parse().unwrap(),
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
+            desired_status: Some(DeviceDesiredStatus::Activated),
         }),
         vec![
             AccountMeta::new(device_z_pubkey, false),
@@ -383,7 +399,7 @@ async fn test_dzx_link() {
     /***********************************************************************************************************************************/
     /***********************************************************************************************************************************/
     // Activate Interfaces
-    println!("Activating(->Unlinked) LA Device Interfaces...");
+    println!("🟢 8. Activating(->Unlinked) LA Device Interfaces...");
     let unlink_device_interface_la = DeviceInterfaceUnlinkArgs {
         name: "Ethernet0".to_string(),
     };
@@ -421,7 +437,7 @@ async fn test_dzx_link() {
     /***********************************************************************************************************************************/
     /***********************************************************************************************************************************/
     // Link _la
-    println!("🟢 8. Create DZX Link...");
+    println!("🟢 9. Create DZX Link...");
 
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
 
@@ -443,6 +459,7 @@ async fn test_dzx_link() {
             jitter_ns: 100000,
             side_a_iface_name: "Ethernet0".to_string(),
             side_z_iface_name: None,
+            desired_status: Some(LinkDesiredStatus::Activated),
         }),
         vec![
             AccountMeta::new(link_dzx_pubkey, false),
@@ -489,7 +506,7 @@ async fn test_dzx_link() {
 
     println!("✅ Link initialized successfully");
     /*****************************************************************************************************************************************************/
-    println!("🟢 9. Try to Accept Link by Cont1...");
+    println!("🟢 10. Try to Accept Link by Cont1...");
 
     let res = try_execute_transaction(
         &mut banks_client,
@@ -520,7 +537,7 @@ async fn test_dzx_link() {
 
     println!("✅ Instruction rejected");
     /*****************************************************************************************************************************************************/
-    println!("🟢 9. Accept Link...");
+    println!("🟢 11. Accept Link...");
 
     execute_transaction(
         &mut banks_client,
@@ -549,7 +566,37 @@ async fn test_dzx_link() {
 
     println!("✅ Link accepted");
     /*****************************************************************************************************************************************************/
-    println!("🟢 10. Activate Link...");
+    println!("🟢 12. Set Desired status to Activated...");
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+            desired_status: Some(LinkDesiredStatus::Activated),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(link_dzx_pubkey, false),
+            AccountMeta::new(contributor1_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let tunnel_la = get_account_data(&mut banks_client, link_dzx_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_tunnel()
+        .unwrap();
+    assert_eq!(tunnel_la.account_type, AccountType::Link);
+    assert_eq!(tunnel_la.status, LinkStatus::Pending);
+    assert_eq!(tunnel_la.desired_status, LinkDesiredStatus::Activated);
+
+    println!("✅ Link accepted");
+    /*****************************************************************************************************************************************************/
+    println!("🟢 13. Activate Link...");
 
     // Regression: activation must fail if side A/Z accounts do not match link.side_{a,z}_pk
     let res = try_execute_transaction(
@@ -559,6 +606,7 @@ async fn test_dzx_link() {
         DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
             tunnel_id: 500,
             tunnel_net: "10.0.0.0/21".parse().unwrap(),
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(link_dzx_pubkey, false),
@@ -581,6 +629,7 @@ async fn test_dzx_link() {
         DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
             tunnel_id: 500,
             tunnel_net: "10.0.0.0/21".parse().unwrap(),
+            use_onchain_allocation: false,
         }),
         vec![
             AccountMeta::new(link_dzx_pubkey, false),
@@ -604,98 +653,16 @@ async fn test_dzx_link() {
 
     println!("✅ Link activated");
     /*****************************************************************************************************************************************************/
-    println!("🟢 11. Suspend Link...");
+    println!("🟢 14. Update Link...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::SuspendLink(LinkSuspendArgs {}),
-        vec![
-            AccountMeta::new(link_dzx_pubkey, false),
-            AccountMeta::new(contributor1_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let tunnel_la = get_account_data(&mut banks_client, link_dzx_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_tunnel()
-        .unwrap();
-    assert_eq!(tunnel_la.account_type, AccountType::Link);
-    assert_eq!(tunnel_la.status, LinkStatus::Suspended);
-
-    println!("✅ Link suspended");
-    /*****************************************************************************************************************************************************/
-    println!("🟢 12. Resume Link...");
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ResumeLink(LinkResumeArgs {}),
-        vec![
-            AccountMeta::new(link_dzx_pubkey, false),
-            AccountMeta::new(contributor1_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let link = get_account_data(&mut banks_client, link_dzx_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_tunnel()
-        .unwrap();
-    assert_eq!(link.account_type, AccountType::Link);
-    assert_eq!(link.status, LinkStatus::Activated);
-
-    println!("✅ Link resumed");
-    let result = try_execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ResumeLink(LinkResumeArgs {}),
-        vec![
-            AccountMeta::new(link_dzx_pubkey, false),
-            AccountMeta::new(contributor1_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    assert!(result.is_err());
-    let error = result.unwrap_err();
-    let error_string = format!("{:?}", error);
-    assert!(
-        error_string.contains("Custom(7)"),
-        "Expected error to contain 'Custom(7)' (InvalidStatus), but got: {}",
-        error_string
-    );
-    /*****************************************************************************************************************************************************/
-    println!("🟢 13. Update Link...");
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
-            code: Some("la2".to_string()),
-            contributor_pk: Some(contributor1_pubkey),
-            tunnel_type: Some(LinkLinkType::WAN),
-            bandwidth: Some(20_000_000_000),
-            mtu: Some(8900),
-            delay_ns: Some(1000000),
-            jitter_ns: Some(100000),
-            delay_override_ns: Some(0),
-            status: None,
-            desired_status: None,
+        DoubleZeroInstruction::SetLinkHealth(LinkSetHealthArgs {
+            health: LinkHealth::ReadyForService,
         }),
         vec![
             AccountMeta::new(link_dzx_pubkey, false),
-            AccountMeta::new(contributor1_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
@@ -707,16 +674,13 @@ async fn test_dzx_link() {
         .expect("Unable to get Account")
         .get_tunnel()
         .unwrap();
-    assert_eq!(tunnel_la.account_type, AccountType::Link);
-    assert_eq!(tunnel_la.code, "la2".to_string());
-    assert_eq!(tunnel_la.bandwidth, 20000000000);
-    assert_eq!(tunnel_la.mtu, 8900);
-    assert_eq!(tunnel_la.delay_ns, 1000000);
+    assert_eq!(tunnel_la.link_health, LinkHealth::ReadyForService);
+    assert_eq!(tunnel_la.desired_status, LinkDesiredStatus::Activated);
     assert_eq!(tunnel_la.status, LinkStatus::Activated);
 
-    println!("✅ Link updated");
+    println!("✅ Link activated");
     /*****************************************************************************************************************************************************/
-    println!("🟢 14. Update Link by Contributor B...");
+    println!("🟢 15. Update Link by Contributor B...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -741,21 +705,18 @@ async fn test_dzx_link() {
         .get_tunnel()
         .unwrap();
     assert_eq!(link_dzx.account_type, AccountType::Link);
-    assert_eq!(link_dzx.code, "la2".to_string());
-    assert_eq!(link_dzx.bandwidth, 20000000000);
-    assert_eq!(link_dzx.mtu, 8900);
-    assert_eq!(link_dzx.delay_ns, 1000000);
+    assert_eq!(link_dzx.delay_override_ns, 500000);
     assert_eq!(link_dzx.status, LinkStatus::Activated);
 
     println!("✅ Link updated");
     /*****************************************************************************************************************************************************/
-    println!("🟢 15. Update Link by Contributor B to HardDrained...");
+    println!("🟢 16. Update Link by Contributor B to HardDrained...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
-            status: Some(LinkStatus::HardDrained),
+            desired_status: Some(LinkDesiredStatus::HardDrained),
             ..Default::default()
         }),
         vec![
@@ -773,17 +734,19 @@ async fn test_dzx_link() {
         .expect("Unable to get Account")
         .get_tunnel()
         .unwrap();
+    assert_eq!(link_dzx.desired_status, LinkDesiredStatus::HardDrained);
+    assert_eq!(link_dzx.link_health, LinkHealth::ReadyForService);
     assert_eq!(link_dzx.status, LinkStatus::HardDrained);
 
     println!("✅ Link updated to HardDrained");
     /*****************************************************************************************************************************************************/
-    println!("🟢 16. Update Link by Contributor B to SoftDrained...");
+    println!("🟢 17. Update Link by Contributor B to SoftDrained...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
-            status: Some(LinkStatus::SoftDrained),
+            desired_status: Some(LinkDesiredStatus::SoftDrained),
             ..Default::default()
         }),
         vec![
@@ -805,13 +768,13 @@ async fn test_dzx_link() {
 
     println!("✅ Link updated to SoftDrained");
     /*****************************************************************************************************************************************************/
-    println!("🟢 17. Update Link by Contributor B to Activated...");
+    println!("🟢 18. Update Link by Contributor B to Activated...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
-            status: Some(LinkStatus::Activated),
+            desired_status: Some(LinkDesiredStatus::Activated),
             ..Default::default()
         }),
         vec![
@@ -833,13 +796,13 @@ async fn test_dzx_link() {
 
     println!("✅ Link updated to Activated");
     /*****************************************************************************************************************************************************/
-    println!("🟢 18. Update Link by Contributor B to Suspended (should fail)...");
+    println!("🟢 19. Update Link by Contributor B to SoftDrained (should fail)...");
     let res = try_execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
-            status: Some(LinkStatus::Suspended),
+            status: Some(LinkStatus::SoftDrained),
             ..Default::default()
         }),
         vec![
@@ -863,7 +826,7 @@ async fn test_dzx_link() {
 
     println!("✅ Failed to update to Suspended as expected; link remained Activated");
     /*****************************************************************************************************************************************************/
-    println!("🟢 19. Deleting Link...");
+    println!("🟢 20. Deleting Link...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -884,30 +847,28 @@ async fn test_dzx_link() {
         .get_tunnel()
         .unwrap();
     assert_eq!(tunnel_la.account_type, AccountType::Link);
-    assert_eq!(tunnel_la.code, "la2".to_string());
-    assert_eq!(tunnel_la.bandwidth, 20000000000);
-    assert_eq!(tunnel_la.mtu, 8900);
-    assert_eq!(tunnel_la.delay_ns, 1000000);
     assert_eq!(tunnel_la.status, LinkStatus::Deleting);
 
     println!("✅ Link deleting");
 
     /*****************************************************************************************************************************************************/
-    println!("🟢 20. CloseAccount Link...");
+    println!("🟢 21. CloseAccount Link...");
 
     // Regression: closing must fail if owner/side A/Z accounts do not match link fields
     let res = try_execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CloseAccountLink(LinkCloseAccountArgs {}),
+        DoubleZeroInstruction::CloseAccountLink(LinkCloseAccountArgs {
+            use_onchain_deallocation: false,
+        }),
         vec![
             AccountMeta::new(link_dzx_pubkey, false),
             // Intentionally pass wrong owner while keeping contributor and devices correct
             AccountMeta::new(device_a_pubkey, false),
-            AccountMeta::new(link.contributor_pk, false),
-            AccountMeta::new(link.side_a_pk, false),
-            AccountMeta::new(link.side_z_pk, false),
+            AccountMeta::new(tunnel_la.contributor_pk, false),
+            AccountMeta::new(tunnel_la.side_a_pk, false),
+            AccountMeta::new(tunnel_la.side_z_pk, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
@@ -921,13 +882,15 @@ async fn test_dzx_link() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CloseAccountLink(LinkCloseAccountArgs {}),
+        DoubleZeroInstruction::CloseAccountLink(LinkCloseAccountArgs {
+            use_onchain_deallocation: false,
+        }),
         vec![
             AccountMeta::new(link_dzx_pubkey, false),
-            AccountMeta::new(link.owner, false),
-            AccountMeta::new(link.contributor_pk, false),
-            AccountMeta::new(link.side_a_pk, false),
-            AccountMeta::new(link.side_z_pk, false),
+            AccountMeta::new(tunnel_la.owner, false),
+            AccountMeta::new(tunnel_la.contributor_pk, false),
+            AccountMeta::new(tunnel_la.side_a_pk, false),
+            AccountMeta::new(tunnel_la.side_z_pk, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
@@ -960,5 +923,149 @@ async fn test_dzx_link() {
     assert_eq!(device_z.reference_count, 0);
 
     println!("✅ Link deleted successfully");
+
+    /*****************************************************************************************************************************************************/
+    println!("🟢 22. Create Link for Reject test...");
+
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (link_reject_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateLink(LinkCreateArgs {
+            code: "rj".to_string(),
+            link_type: LinkLinkType::DZX,
+            bandwidth: 15_000_000_000,
+            mtu: 9000,
+            delay_ns: 1000000,
+            jitter_ns: 100000,
+            side_a_iface_name: "Ethernet0".to_string(),
+            side_z_iface_name: None,
+            desired_status: Some(LinkDesiredStatus::Activated),
+        }),
+        vec![
+            AccountMeta::new(link_reject_pubkey, false),
+            AccountMeta::new(contributor1_pubkey, false),
+            AccountMeta::new(device_a_pubkey, false),
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let link_reject = get_account_data(&mut banks_client, link_reject_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_tunnel()
+        .unwrap();
+    assert_eq!(link_reject.status, LinkStatus::Requested);
+
+    println!("✅ Link created in Requested status");
+    /*****************************************************************************************************************************************************/
+    println!("🟢 23. Try to Reject Link by Contributor A (should fail)...");
+
+    let res = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::RejectLink(LinkRejectArgs {
+            reason: "test rejection".to_string(),
+        }),
+        vec![
+            AccountMeta::new(link_reject_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(contributor1_pubkey, false),
+            AccountMeta::new(device_z_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    assert!(res.is_err());
+
+    let link_reject = get_account_data(&mut banks_client, link_reject_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_tunnel()
+        .unwrap();
+    assert_eq!(link_reject.status, LinkStatus::Requested);
+
+    println!("✅ Contributor A rejected as expected");
+    /*****************************************************************************************************************************************************/
+    println!("🟢 23a. Try to Reject Link with invalid contributor account owner (should fail)...");
+
+    let res = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::RejectLink(LinkRejectArgs {
+            reason: "test rejection".to_string(),
+        }),
+        vec![
+            AccountMeta::new(link_reject_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(payer2.pubkey(), false), // Not owned by program_id
+            AccountMeta::new(device_z_pubkey, false),
+        ],
+        &payer2,
+    )
+    .await;
+
+    assert!(res.is_err());
+    println!("✅ Invalid contributor account owner rejected as expected");
+    /*****************************************************************************************************************************************************/
+    println!("🟢 23b. Try to Reject Link with invalid device account owner (should fail)...");
+
+    let res = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::RejectLink(LinkRejectArgs {
+            reason: "test rejection".to_string(),
+        }),
+        vec![
+            AccountMeta::new(link_reject_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(contributor2_pubkey, false),
+            AccountMeta::new(payer2.pubkey(), false), // Not owned by program_id
+        ],
+        &payer2,
+    )
+    .await;
+
+    assert!(res.is_err());
+    println!("✅ Invalid device account owner rejected as expected");
+    /*****************************************************************************************************************************************************/
+    println!("🟢 24. Reject Link by Contributor B (should succeed)...");
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::RejectLink(LinkRejectArgs {
+            reason: "test rejection by contributor B".to_string(),
+        }),
+        vec![
+            AccountMeta::new(link_reject_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(contributor2_pubkey, false),
+            AccountMeta::new(device_z_pubkey, false),
+        ],
+        &payer2,
+    )
+    .await;
+
+    let link_reject = get_account_data(&mut banks_client, link_reject_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_tunnel()
+        .unwrap();
+    assert_eq!(link_reject.status, LinkStatus::Rejected);
+
+    println!("✅ Contributor B successfully rejected the link");
+
     println!("🟢🟢🟢  End test_link  🟢🟢🟢");
 }

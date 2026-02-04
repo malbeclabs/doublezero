@@ -1,9 +1,11 @@
 package bgp
 
 import (
+	"context"
 	"log/slog"
 	"net"
 	"net/netip"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -24,7 +26,27 @@ type Plugin struct {
 	// These fields are used to track the initial establishment of the BGP session.
 	startedAt              time.Time
 	initialallyEstablished atomic.Bool
+	currentlyEstablished   atomic.Bool // for timeout, reset on close
+
+	// peerAddr is stored so the timeout goroutine can emit events
+	peerAddr net.IP
+
+	// mu protects the critical section between OnEstablished and emitTimeoutStatus
+	// to prevent a TOCTOU race where the timeout fires just as the session establishes.
+	mu sync.Mutex
+
+	cancelTimeout context.CancelFunc
+
+	tcpConnected atomic.Bool // set when GetCapabilities is called
+
+	// deleted is set when the peer is intentionally deleted via DeletePeer().
+	// This distinguishes intentional deletion from network connectivity issues.
+	deleted atomic.Bool
 }
+
+const (
+	BGPSessionTimeout = 30 * time.Second
+)
 
 func NewBgpPlugin(
 	advertised []NLRI,
@@ -45,13 +67,62 @@ func NewBgpPlugin(
 }
 
 func (p *Plugin) GetCapabilities(peer corebgp.PeerConfig) []corebgp.Capability {
+	p.tcpConnected.Store(true)
 	caps := make([]corebgp.Capability, 0)
 	caps = append(caps, corebgp.NewMPExtensionsCapability(corebgp.AFI_IPV4, corebgp.SAFI_UNICAST))
+	p.peerAddr = net.ParseIP(peer.RemoteAddress.String())
 	p.PeerStatusChan <- SessionEvent{
 		PeerAddr: net.ParseIP(peer.RemoteAddress.String()),
 		Session:  Session{SessionStatus: SessionStatusPending, LastSessionUpdate: time.Now().Unix()},
 	}
 	return caps
+}
+
+func (p *Plugin) startSessionTimeout() {
+	if p.cancelTimeout != nil {
+		p.cancelTimeout()
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	p.cancelTimeout = cancel
+	go func() {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(BGPSessionTimeout):
+			p.emitTimeoutStatus()
+		}
+	}()
+}
+
+// emitTimeoutStatus checks the current session state and emits the appropriate
+// timeout status (Failed or Unreachable)
+func (p *Plugin) emitTimeoutStatus() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	// Don't emit status for deleted peers
+	if p.deleted.Load() {
+		return false
+	}
+	if p.currentlyEstablished.Load() {
+		return false
+	}
+
+	var status SessionStatus
+	if !p.tcpConnected.Load() {
+		status = SessionStatusUnreachable
+		slog.Warn("bgp: network unreachable - TCP connection never established", "peer", p.peerAddr)
+	} else {
+		status = SessionStatusFailed
+		slog.Warn("bgp: session failed - BGP handshake incomplete", "peer", p.peerAddr)
+	}
+
+	p.PeerStatusChan <- SessionEvent{
+		PeerAddr: p.peerAddr,
+		Session:  Session{SessionStatus: status, LastSessionUpdate: time.Now().Unix()},
+	}
+	MetricSessionStatus.Set(0)
+	return true
 }
 
 func (p *Plugin) OnOpenMessage(peer corebgp.PeerConfig, routerID netip.Addr, capabilities []corebgp.Capability) *corebgp.Notification {
@@ -65,6 +136,17 @@ func (p *Plugin) OnOpenMessage(peer corebgp.PeerConfig, routerID netip.Addr, cap
 }
 
 func (p *Plugin) OnEstablished(peer corebgp.PeerConfig, writer corebgp.UpdateMessageWriter) corebgp.UpdateMessageHandler {
+	// Set established flag under lock BEFORE canceling timeout to prevent race
+	// with emitTimeoutStatus. This ensures that if the timeout goroutine has
+	// already escaped the select and is about to emit, it will see the flag.
+	p.mu.Lock()
+	p.currentlyEstablished.Store(true)
+	p.mu.Unlock()
+
+	if p.cancelTimeout != nil {
+		p.cancelTimeout()
+	}
+
 	if p.initialallyEstablished.CompareAndSwap(false, true) {
 		// If this is the first time we've established the session, record the duration.
 		// If the session is closed and then re-established within the lifetime of the same BGP plugin,
@@ -95,6 +177,12 @@ func (p *Plugin) OnEstablished(peer corebgp.PeerConfig, writer corebgp.UpdateMes
 }
 
 func (p *Plugin) OnClose(peer corebgp.PeerConfig) {
+	if p.cancelTimeout != nil {
+		p.cancelTimeout()
+	}
+
+	p.currentlyEstablished.Store(false)
+
 	slog.Info("bgp: peer closed", "peer", peer.RemoteAddress)
 	p.PeerStatusChan <- SessionEvent{
 		PeerAddr: net.ParseIP(peer.RemoteAddress.String()),
@@ -115,9 +203,31 @@ func (p *Plugin) OnClose(peer corebgp.PeerConfig) {
 	}
 
 	MetricSessionStatus.Set(0)
+
+	// Only start a new timeout if the peer was not intentionally deleted.
+	// If deleted, corebgp won't retry and we don't need timeout tracking.
+	if !p.deleted.Load() {
+		p.startSessionTimeout()
+	}
+}
+
+// MarkDeleted marks the plugin as intentionally deleted. This prevents
+// OnClose from starting a new session timeout for a peer that won't reconnect.
+// It also cancels any in-flight timeout that may have been started from a
+// prior network disconnect.
+func (p *Plugin) MarkDeleted() {
+	p.deleted.Store(true)
+	if p.cancelTimeout != nil {
+		p.cancelTimeout()
+	}
 }
 
 func (p *Plugin) handleUpdate(peer corebgp.PeerConfig, u []byte) *corebgp.Notification {
+	startTime := time.Now()
+	defer func() {
+		MetricHandleUpdateDuration.Observe(time.Since(startTime).Seconds())
+	}()
+
 	if p.NoInstall {
 		return nil
 	}
@@ -128,6 +238,7 @@ func (p *Plugin) handleUpdate(peer corebgp.PeerConfig, u []byte) *corebgp.Notifi
 		return nil
 	}
 	var nexthop net.IP
+	slog.Info("bgp: processing update", "peer", peer.RemoteAddress, "withdrawals", len(update.WithdrawnRoutes), "nlri", len(update.NLRI))
 	for _, route := range update.WithdrawnRoutes {
 		slog.Info("bgp: got withdraw for prefix", "route", route.String(), "next_hop", peer.RemoteAddress.String())
 		// Nexthop is not included on a withdraw so we need to use the peer address upstream when writing to netlink.

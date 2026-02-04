@@ -57,14 +57,17 @@ type DevnetSpec struct {
 	CYOANetwork CYOANetworkSpec
 
 	// Override the default device tunnel network onchain.
-	DeviceTunnelNet string
-	Ledger          LedgerSpec
-	Manager         ManagerSpec
-	Funder          FunderSpec
-	Controller      ControllerSpec
-	Activator       ActivatorSpec
-	Devices         map[string]DeviceSpec
-	Clients         map[string]ClientSpec
+	DeviceTunnelNet    string
+	Ledger             LedgerSpec
+	Manager            ManagerSpec
+	Funder             FunderSpec
+	Controller         ControllerSpec
+	Activator          ActivatorSpec
+	DeviceHealthOracle DeviceHealthOracleSpec
+	InfluxDB           InfluxDBSpec
+	Prometheus         PrometheusSpec
+	Devices            map[string]DeviceSpec
+	Clients            map[string]ClientSpec
 }
 
 type Devnet struct {
@@ -83,13 +86,16 @@ type Devnet struct {
 	DefaultNetwork *DefaultNetwork
 	CYOANetwork    *CYOANetwork
 
-	Ledger     *Ledger
-	Manager    *Manager
-	Funder     *Funder
-	Controller *Controller
-	Activator  *Activator
-	Devices    map[string]*Device
-	Clients    map[string]*Client
+	Ledger             *Ledger
+	Manager            *Manager
+	Funder             *Funder
+	Controller         *Controller
+	Activator          *Activator
+	DeviceHealthOracle *DeviceHealthOracle
+	InfluxDB           *InfluxDB
+	Prometheus         *Prometheus
+	Devices            map[string]*Device
+	Clients            map[string]*Client
 }
 
 func (s *DevnetSpec) Validate() error {
@@ -128,6 +134,18 @@ func (s *DevnetSpec) Validate() error {
 
 	if err := s.Activator.Validate(); err != nil {
 		return fmt.Errorf("activator: %w", err)
+	}
+
+	if err := s.DeviceHealthOracle.Validate(); err != nil {
+		return fmt.Errorf("device-health-oracle: %w", err)
+	}
+
+	if err := s.InfluxDB.Validate(); err != nil {
+		return fmt.Errorf("influxdb: %w", err)
+	}
+
+	if err := s.Prometheus.Validate(); err != nil {
+		return fmt.Errorf("prometheus: %w", err)
 	}
 
 	if s.Devices == nil {
@@ -287,6 +305,24 @@ func New(spec DevnetSpec, log *slog.Logger, dockerClient *client.Client, subnetA
 		dn:  dn,
 		log: log.With("component", "activator"),
 	}
+	if spec.DeviceHealthOracle.Enabled {
+		dn.DeviceHealthOracle = &DeviceHealthOracle{
+			dn:  dn,
+			log: log.With("component", "device-health-oracle"),
+		}
+	}
+	if spec.InfluxDB.Enabled {
+		dn.InfluxDB = &InfluxDB{
+			dn:  dn,
+			log: log.With("component", "influxdb"),
+		}
+	}
+	if spec.Prometheus.Enabled {
+		dn.Prometheus = &Prometheus{
+			dn:  dn,
+			log: log.With("component", "prometheus"),
+		}
+	}
 	dn.Devices = make(map[string]*Device)
 	dn.Clients = make(map[string]*Client)
 
@@ -389,6 +425,20 @@ func (d *Devnet) Start(ctx context.Context, buildConfig *BuildConfig) error {
 		}
 	}
 
+	// Start the influxdb if it's not already running.
+	if d.InfluxDB != nil {
+		if _, err := d.InfluxDB.StartIfNotRunning(ctx); err != nil {
+			return fmt.Errorf("failed to start influxdb: %w", err)
+		}
+	}
+
+	// Start the prometheus if it's not already running.
+	if d.Prometheus != nil {
+		if _, err := d.Prometheus.StartIfNotRunning(ctx); err != nil {
+			return fmt.Errorf("failed to start prometheus: %w", err)
+		}
+	}
+
 	// Start the controller if it's not already running.
 	if _, err := d.Controller.StartIfNotRunning(ctx); err != nil {
 		return fmt.Errorf("failed to start controller: %w", err)
@@ -397,6 +447,13 @@ func (d *Devnet) Start(ctx context.Context, buildConfig *BuildConfig) error {
 	// Start the activator if it's not already running.
 	if _, err := d.Activator.StartIfNotRunning(ctx); err != nil {
 		return fmt.Errorf("failed to start activator: %w", err)
+	}
+
+	// Start the device-health-oracle if it's not already running.
+	if d.DeviceHealthOracle != nil {
+		if _, err := d.DeviceHealthOracle.StartIfNotRunning(ctx); err != nil {
+			return fmt.Errorf("failed to start device-health-oracle: %w", err)
+		}
 	}
 
 	// Create the CYOA network if it doesn't exist.
@@ -720,7 +777,7 @@ func (d *Devnet) GetOrCreateDeviceOnchain(ctx context.Context, deviceCode string
 				return "", fmt.Errorf("failed to get device agent pubkey onchain for device %s: %w", deviceCode, err)
 			}
 
-			_, err = d.Manager.Exec(ctx, []string{"doublezero", "device", "update", "--pubkey", deviceAddress, "--max-users", "128"})
+			_, err = d.Manager.Exec(ctx, []string{"doublezero", "device", "update", "--pubkey", deviceAddress, "--max-users", "128", "--desired-status", "activated"})
 			if err != nil {
 				return "", fmt.Errorf("failed to update device onchain: %w", err)
 			}
@@ -743,7 +800,7 @@ func (d *Devnet) CreateDeviceOnchain(ctx context.Context, deviceCode string, loc
 		return fmt.Errorf("failed to create device onchain: %w", err)
 	}
 
-	_, err = d.Manager.Exec(ctx, []string{"doublezero", "device", "update", "--pubkey", deviceCode, "--max-users", "128"})
+	_, err = d.Manager.Exec(ctx, []string{"doublezero", "device", "update", "--pubkey", deviceCode, "--max-users", "128", "--desired-status", "activated"})
 	if err != nil {
 		return fmt.Errorf("failed to update device onchain: %w", err)
 	}
@@ -775,15 +832,22 @@ func (d *Devnet) waitContainerHealthy(ctx context.Context, containerID string, t
 	defer cancel()
 	ticker := time.NewTicker(delay)
 	defer ticker.Stop()
+	var lastInspectErr error
 	for {
 		select {
 		case <-waitCtx.Done():
+			if lastInspectErr != nil {
+				return fmt.Errorf("timeout waiting for container to be healthy (last inspect error: %w)", lastInspectErr)
+			}
 			return fmt.Errorf("timeout waiting for container to be healthy")
 		case <-ticker.C:
 			inspect, err := d.dockerClient.ContainerInspect(waitCtx, containerID)
 			if err != nil {
-				return fmt.Errorf("failed to inspect container: %w", err)
+				lastInspectErr = err
+				d.log.Debug("--> Retrying container inspect after error", "container", shortContainerID(containerID), "error", err)
+				continue
 			}
+			lastInspectErr = nil
 			if inspect.State.Health.Status == "healthy" {
 				return nil
 			}

@@ -54,7 +54,6 @@ func DeserializeContributor(reader *ByteReader, contributor *Contributor) {
 	contributor.BumpSeed = reader.ReadU8()
 	contributor.Status = ContributorStatus(reader.ReadU8())
 	contributor.Code = reader.ReadString()
-	contributor.Name = reader.ReadString()
 	contributor.PubKey = reader.ReadPubkey()
 }
 
@@ -91,7 +90,8 @@ func DeserializeInterfaceV2(reader *ByteReader, iface *Interface) {
 	iface.InterfaceType = InterfaceType(reader.ReadU8())
 	iface.InterfaceCYOA = InterfaceCYOA(reader.ReadU8())
 	iface.InterfaceDIA = InterfaceDIA(reader.ReadU8())
-	iface.LoopbackType = LoopbackType(reader.ReadU8())
+	loopbackTypeByte := reader.ReadU8()
+	iface.LoopbackType = LoopbackType(loopbackTypeByte)
 	iface.Bandwidth = reader.ReadU64()
 	iface.Cir = reader.ReadU64()
 	iface.Mtu = reader.ReadU16()
@@ -118,7 +118,7 @@ func DeserializeDevice(reader *ByteReader, dev *Device) {
 	dev.ContributorPubKey = reader.ReadPubkey()
 	dev.MgmtVrf = reader.ReadString()
 	dev.Interfaces = make([]Interface, 0)
-	var length = reader.ReadU32()
+	length := reader.ReadU32()
 	if (length * 18) > reader.Remaining() {
 		log.Println("DeserializeDevice: Not enough data for interfaces (# of interfaces = ", length, ")")
 		return
@@ -131,6 +131,8 @@ func DeserializeDevice(reader *ByteReader, dev *Device) {
 	dev.ReferenceCount = reader.ReadU32()
 	dev.UsersCount = reader.ReadU16()
 	dev.MaxUsers = reader.ReadU16()
+	dev.DeviceHealth = DeviceHealth(reader.ReadU8())
+	dev.DeviceDesiredStatus = DeviceDesiredStatus(reader.ReadU8())
 	// Note: dev.PubKey is set separately in client.go after deserialization
 }
 

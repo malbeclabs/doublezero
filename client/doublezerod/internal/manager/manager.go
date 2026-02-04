@@ -89,10 +89,6 @@ func (n *NetlinkManager) Provision(pr api.ProvisionRequest) error {
 		return fmt.Errorf("error creating service: %v", err)
 	}
 
-	if n.UnicastService != nil || n.MulticastService != nil {
-		return fmt.Errorf("cannot provision multiple tunnels at the same time")
-	}
-
 	if n.UnicastService != nil && svc.ServiceType() == services.ServiceTypeUnicast {
 		return fmt.Errorf("unicast service already provisioned")
 	}
@@ -132,24 +128,49 @@ func (n *NetlinkManager) Remove(u api.UserType) error {
 	}
 
 	if services.IsUnicastUser(u) && n.UnicastService != nil {
+		// Find actual provisioned unicast user type from state
+		actualUserType := n.findProvisionedUserType(services.IsUnicastUser)
+
 		if err := n.UnicastService.Teardown(); err != nil {
 			return fmt.Errorf("error tearing down unicast service: %v", err)
 		}
 		n.UnicastService = nil
+
+		if actualUserType != api.UserTypeUnknown {
+			if err := n.db.DeleteState(actualUserType); err != nil {
+				return fmt.Errorf("db: error deleting state file: %v", err)
+			}
+		}
 	}
 
 	if services.IsMulticastUser(u) && n.MulticastService != nil {
+		// Find actual provisioned multicast user type from state
+		actualUserType := n.findProvisionedUserType(services.IsMulticastUser)
+
 		if err := n.MulticastService.Teardown(); err != nil {
 			return fmt.Errorf("error tearing down multicast service: %v", err)
 		}
 		n.MulticastService = nil
+
+		if actualUserType != api.UserTypeUnknown {
+			if err := n.db.DeleteState(actualUserType); err != nil {
+				return fmt.Errorf("db: error deleting state file: %v", err)
+			}
+		}
 	}
 
-	// Delete state so we don't reprovision ourselves on restart
-	if err := n.db.DeleteState(u); err != nil {
-		return fmt.Errorf("db: error deleting state file: %v", err)
-	}
 	return nil
+}
+
+// findProvisionedUserType finds the actual user type from state matching the given predicate.
+func (n *NetlinkManager) findProvisionedUserType(matchFn func(api.UserType) bool) api.UserType {
+	state := n.db.GetState()
+	for _, s := range state {
+		if matchFn(s.UserType) {
+			return s.UserType
+		}
+	}
+	return api.UserTypeUnknown
 }
 
 // Close tears down any active services. This is typically called when

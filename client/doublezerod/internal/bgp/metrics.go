@@ -26,4 +26,12 @@ doublezero_session_is_up %d
 		},
 		[]string{"peer_ip"},
 	)
+
+	MetricHandleUpdateDuration = promauto.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "doublezero_bgp_handle_update_duration_seconds",
+			Help:    "Duration of processing a BGP update message batch",
+			Buckets: prometheus.ExponentialBuckets(0.0001, 2, 15), // 0.1ms to ~1.6s
+		},
+	)
 )

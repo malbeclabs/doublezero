@@ -108,11 +108,11 @@ impl IPBlockAllocator {
     }
 
     /// Converts an IP address to an index in the bit vector.
+    /// Returns an error if the IP is outside the base block range.
     fn ip_to_index(&self, ip: std::net::Ipv4Addr) -> Result<usize, &'static str> {
-        let base_ip = u32::from(self.base_block.network());
-        let ip_as_u32 = u32::from(ip);
-
-        if base_ip <= ip_as_u32 {
+        if self.contains(ip) {
+            let base_ip = u32::from(self.base_block.network());
+            let ip_as_u32 = u32::from(ip);
             Ok((ip_as_u32 - base_ip) as usize)
         } else {
             Err("IP address is not in the base block")
@@ -131,7 +131,7 @@ mod tests {
 
     #[test]
     fn test_ipallocation() {
-        let block1 = IPBlockAllocator::new("10.0.0.1/24".parse().unwrap())
+        let block1 = IPBlockAllocator::new("10.0.0.0/24".parse().unwrap())
             .next_available_block(1, 1)
             .unwrap();
         assert_eq!(block1, "10.0.0.1/32".parse().unwrap());
@@ -150,5 +150,47 @@ mod tests {
             .next_available_block(2, 4)
             .unwrap();
         assert_eq!(block1, "10.0.0.2/30".parse().unwrap());
+    }
+
+    #[test]
+    fn test_unassign_block_ip_outside_pool_does_not_panic() {
+        // Reproduces bug: activator panicked when deleting Loopback100 interface
+        // with public IP (195.219.121.96) outside the tunnel pool (172.16.0.0/16).
+        // The ip_to_index function only checked lower bound, causing bitvec panic.
+        let mut allocator = IPBlockAllocator::new("172.16.0.0/16".parse().unwrap());
+
+        // IP above pool (195.219.121.96 > 172.16.255.255) should not panic
+        let high_ip: Ipv4Network = "195.219.121.96/32".parse().unwrap();
+        allocator.unassign_block(high_ip); // Should log warning, not panic
+
+        // IP below pool (70.70.70.70 < 172.16.0.0) should not panic
+        let low_ip: Ipv4Network = "70.70.70.70/32".parse().unwrap();
+        allocator.unassign_block(low_ip); // Should log warning, not panic
+
+        // Verify pool is unchanged (no IPs were actually unassigned)
+        assert_eq!(allocator.assigned_ips.count_ones(), 0);
+    }
+
+    #[test]
+    fn test_ip_to_index_validates_upper_bound() {
+        let allocator = IPBlockAllocator::new("172.16.0.0/16".parse().unwrap());
+
+        // IP above pool should return error
+        let result = allocator.ip_to_index("195.219.121.96".parse().unwrap());
+        assert!(result.is_err());
+
+        // IP at upper boundary (172.17.0.0) should return error
+        let result = allocator.ip_to_index("172.17.0.0".parse().unwrap());
+        assert!(result.is_err());
+
+        // IP at max valid index (172.16.255.255) should succeed
+        let result = allocator.ip_to_index("172.16.255.255".parse().unwrap());
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 65535);
+
+        // IP at base should succeed
+        let result = allocator.ip_to_index("172.16.0.0".parse().unwrap());
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 0);
     }
 }

@@ -50,7 +50,7 @@ pub enum DoubleZeroError {
     #[error("Unauthorized")]
     Unauthorized, // variant 22
     #[error("Invalid Solana Validator Pubkey")]
-    InvalidSolanaValidatorPubkey, // variant 23
+    InvalidSolanaPubkey, // variant 23
     #[error("InterfaceNotFound")]
     InterfaceNotFound, // variant 24
     #[error("Invalid Access Pass")]
@@ -137,8 +137,14 @@ pub enum DoubleZeroError {
     InvalidArgument, // variant 65
     #[error("Invalid Foundation Allowlist: cannot be empty")]
     InvalidFoundationAllowlist, // variant 66
-    #[error("This feature has been deprecated")]
+    #[error("Deprecated error")]
     Deprecated, // variant 67
+    #[error("Immutable Field")]
+    ImmutableField, // variant 68
+    #[error("CYOA can only be set on physical interfaces")]
+    CyoaRequiresPhysical, // variant 69
+    #[error("Device can only be removed if it has no interfaces")]
+    DeviceHasInterfaces, // variant 70
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -167,7 +173,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::MaxUsersExceeded => ProgramError::Custom(20),
             DoubleZeroError::InvalidLastAccessEpoch => ProgramError::Custom(21),
             DoubleZeroError::Unauthorized => ProgramError::Custom(22),
-            DoubleZeroError::InvalidSolanaValidatorPubkey => ProgramError::Custom(23),
+            DoubleZeroError::InvalidSolanaPubkey => ProgramError::Custom(23),
             DoubleZeroError::InterfaceNotFound => ProgramError::Custom(24),
             DoubleZeroError::AccessPassUnauthorized => ProgramError::Custom(25),
             DoubleZeroError::InvalidClientIp => ProgramError::Custom(26),
@@ -212,6 +218,9 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::InvalidArgument => ProgramError::Custom(65),
             DoubleZeroError::InvalidFoundationAllowlist => ProgramError::Custom(66),
             DoubleZeroError::Deprecated => ProgramError::Custom(67),
+            DoubleZeroError::ImmutableField => ProgramError::Custom(68),
+            DoubleZeroError::CyoaRequiresPhysical => ProgramError::Custom(69),
+            DoubleZeroError::DeviceHasInterfaces => ProgramError::Custom(70),
         }
     }
 }
@@ -241,7 +250,7 @@ impl From<u32> for DoubleZeroError {
             20 => DoubleZeroError::MaxUsersExceeded,
             21 => DoubleZeroError::InvalidLastAccessEpoch,
             22 => DoubleZeroError::Unauthorized,
-            23 => DoubleZeroError::InvalidSolanaValidatorPubkey,
+            23 => DoubleZeroError::InvalidSolanaPubkey,
             24 => DoubleZeroError::InterfaceNotFound,
             25 => DoubleZeroError::AccessPassUnauthorized,
             26 => DoubleZeroError::InvalidClientIp,
@@ -286,6 +295,9 @@ impl From<u32> for DoubleZeroError {
             65 => DoubleZeroError::InvalidArgument,
             66 => DoubleZeroError::InvalidFoundationAllowlist,
             67 => DoubleZeroError::Deprecated,
+            68 => DoubleZeroError::ImmutableField,
+            69 => DoubleZeroError::CyoaRequiresPhysical,
+            70 => DoubleZeroError::DeviceHasInterfaces,
             _ => DoubleZeroError::Custom(e),
         }
     }
@@ -335,7 +347,7 @@ mod tests {
             MaxUsersExceeded,
             InvalidLastAccessEpoch,
             Unauthorized,
-            InvalidSolanaValidatorPubkey,
+            InvalidSolanaPubkey,
             InterfaceNotFound,
             AccessPassUnauthorized,
             InvalidClientIp,
@@ -380,6 +392,9 @@ mod tests {
             InvalidArgument,
             InvalidFoundationAllowlist,
             Deprecated,
+            ImmutableField,
+            CyoaRequiresPhysical,
+            DeviceHasInterfaces,
         ];
         for err in variants {
             let pe: ProgramError = err.clone().into();

@@ -32,6 +32,7 @@ pub fn process_user_event(
     user: &User,
     locations: &HashMap<Pubkey, Location>,
     exchanges: &HashMap<Pubkey, Exchange>,
+    use_onchain_allocation: bool,
 ) {
     match user.status {
         // Create User
@@ -140,15 +141,25 @@ pub fn process_user_event(
             // Activate the user
             let res = ActivateUserCommand {
                 user_pubkey: *pubkey,
-                tunnel_id,
-                tunnel_net: tunnel_net.into(),
+                tunnel_id: if use_onchain_allocation { 0 } else { tunnel_id },
+                tunnel_net: if use_onchain_allocation {
+                    NetworkV4::default()
+                } else {
+                    tunnel_net.into()
+                },
                 dz_ip,
+                use_onchain_allocation,
             }
             .execute(client);
 
             match res {
                 Ok(signature) => {
-                    write!(&mut log_msg, " Activated   {signature}").unwrap();
+                    let suffix = if use_onchain_allocation {
+                        " (on-chain)"
+                    } else {
+                        ""
+                    };
+                    write!(&mut log_msg, " Activated{suffix}   {signature}").unwrap();
                     metrics::counter!(
                         "doublezero_activator_state_transition",
                         "state_transition" => "user-pending-to-activated",
@@ -233,11 +244,17 @@ pub fn process_user_event(
                 tunnel_id: user.tunnel_id,
                 tunnel_net: user.tunnel_net,
                 dz_ip,
+                use_onchain_allocation,
             }
             .execute(client);
             match res {
                 Ok(signature) => {
-                    write!(&mut log_msg, "Reactivated   {signature}").unwrap();
+                    let suffix = if use_onchain_allocation {
+                        " (on-chain)"
+                    } else {
+                        ""
+                    };
+                    write!(&mut log_msg, "Reactivated{suffix}   {signature}").unwrap();
                     metrics::counter!(
                         "doublezero_activator_state_transition",
                         "state_transition" => "user-updating-to-activated",
@@ -274,17 +291,27 @@ pub fn process_user_event(
                 .unwrap();
 
                 if user.status == UserStatus::Deleting {
-                    let res = CloseAccountUserCommand { pubkey: *pubkey }.execute(client);
+                    let res = CloseAccountUserCommand {
+                        pubkey: *pubkey,
+                        use_onchain_deallocation: use_onchain_allocation,
+                    }
+                    .execute(client);
 
                     match res {
                         Ok(signature) => {
-                            write!(&mut log_msg, " Deactivated {signature}").unwrap();
-
-                            if user.tunnel_id != 0 {
-                                link_ids.unassign(user.tunnel_id);
-                            }
-                            if user.tunnel_net != NetworkV4::default() {
-                                user_tunnel_ips.unassign_block(user.tunnel_net.into());
+                            if use_onchain_allocation {
+                                write!(&mut log_msg, " Deactivated (on-chain) {signature}")
+                                    .unwrap();
+                                // On-chain deallocation: smart contract handles releasing resources
+                            } else {
+                                write!(&mut log_msg, " Deactivated {signature}").unwrap();
+                                // Off-chain: activator tracks local allocations
+                                if user.tunnel_id != 0 {
+                                    link_ids.unassign(user.tunnel_id);
+                                }
+                                if user.tunnel_net != NetworkV4::default() {
+                                    user_tunnel_ips.unassign_block(user.tunnel_net.into());
+                                }
                             }
                             if user.dz_ip != Ipv4Addr::UNSPECIFIED {
                                 device_state.release(user.dz_ip, user.tunnel_id).unwrap();
@@ -531,6 +558,7 @@ mod tests {
                         tunnel_id: 500,
                         tunnel_net: "10.0.0.0/31".parse().unwrap(),
                         dz_ip: expected_dz_ip.unwrap_or(Ipv4Addr::UNSPECIFIED),
+                        dz_prefix_count: 0, // legacy path
                     })),
                     predicate::always(),
                 )
@@ -551,6 +579,7 @@ mod tests {
                 &user,
                 &locations,
                 &exchanges,
+                false, // use_onchain_allocation
             );
 
             assert!(!user_tunnel_ips.assigned_ips.is_empty());
@@ -725,6 +754,7 @@ mod tests {
                         tunnel_id: 500,
                         tunnel_net: "10.0.0.1/29".parse().unwrap(),
                         dz_ip: [10, 0, 0, 1].into(),
+                        dz_prefix_count: 0, // legacy path
                     })),
                     predicate::always(),
                 )
@@ -745,6 +775,7 @@ mod tests {
                 &user,
                 &locations,
                 &exchanges,
+                false, // use_onchain_allocation
             );
 
             assert!(!user_tunnel_ips.assigned_ips.is_empty());
@@ -848,6 +879,7 @@ mod tests {
                 &user,
                 &locations,
                 &exchanges,
+                false, // use_onchain_allocation
             );
 
             let mut snapshot = crate::test_helpers::MetricsSnapshot::new(snapshotter.snapshot());
@@ -955,6 +987,7 @@ mod tests {
                 &user,
                 &locations,
                 &exchanges,
+                false, // use_onchain_allocation
             );
 
             let mut snapshot = crate::test_helpers::MetricsSnapshot::new(snapshotter.snapshot());
@@ -1059,6 +1092,7 @@ mod tests {
                 &user,
                 &locations,
                 &exchanges,
+                false, // use_onchain_allocation
             );
 
             let mut snapshot = crate::test_helpers::MetricsSnapshot::new(snapshotter.snapshot());
@@ -1164,6 +1198,7 @@ mod tests {
                 &user,
                 &locations,
                 &exchanges,
+                false, // use_onchain_allocation
             );
 
             assert!(!link_ids.assigned.contains(&102));
@@ -1211,7 +1246,9 @@ mod tests {
                     .in_sequence(seq)
                     .with(
                         predicate::eq(DoubleZeroInstruction::CloseAccountUser(
-                            UserCloseAccountArgs {},
+                            UserCloseAccountArgs {
+                                dz_prefix_count: 0, // legacy path
+                            },
                         )),
                         predicate::always(),
                     )

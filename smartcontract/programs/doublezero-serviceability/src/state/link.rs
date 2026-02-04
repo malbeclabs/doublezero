@@ -1,3 +1,62 @@
+#[cfg(test)]
+mod test_check_status_transition {
+    use super::*;
+
+    #[test]
+    fn test_activation_transition() {
+        let mut link = Link {
+            status: LinkStatus::Provisioning,
+            desired_status: LinkDesiredStatus::Activated,
+            link_health: LinkHealth::ReadyForService,
+            ..Link::default()
+        };
+        link.check_status_transition();
+        assert_eq!(link.status, LinkStatus::Activated);
+    }
+
+    #[test]
+    fn test_soft_drained_transition() {
+        let mut link = Link {
+            status: LinkStatus::Activated,
+            desired_status: LinkDesiredStatus::SoftDrained,
+            ..Link::default()
+        };
+        link.check_status_transition();
+        assert_eq!(link.status, LinkStatus::SoftDrained);
+    }
+
+    #[test]
+    fn test_hard_drained_transition() {
+        let mut link = Link {
+            status: LinkStatus::Activated,
+            desired_status: LinkDesiredStatus::HardDrained,
+            ..Link::default()
+        };
+        link.check_status_transition();
+        assert_eq!(link.status, LinkStatus::HardDrained);
+    }
+
+    #[test]
+    fn test_recovery_from_drains() {
+        let mut link = Link {
+            status: LinkStatus::SoftDrained,
+            desired_status: LinkDesiredStatus::Activated,
+            link_health: LinkHealth::ReadyForService,
+            ..Link::default()
+        };
+        link.check_status_transition();
+        assert_eq!(link.status, LinkStatus::Activated);
+
+        let mut link = Link {
+            status: LinkStatus::HardDrained,
+            desired_status: LinkDesiredStatus::Activated,
+            link_health: LinkHealth::ReadyForService,
+            ..Link::default()
+        };
+        link.check_status_transition();
+        assert_eq!(link.status, LinkStatus::Activated);
+    }
+}
 use crate::{
     error::{DoubleZeroError, Validate},
     state::accounttype::AccountType,
@@ -56,12 +115,13 @@ pub enum LinkStatus {
     #[default]
     Pending = 0,
     Activated = 1,
-    Suspended = 2,
+    //Suspended = 2, // The suspended status is no longer used
     Deleting = 3,
     Rejected = 4,
     Requested = 5,
     HardDrained = 6,
     SoftDrained = 7,
+    Provisioning = 8,
 }
 
 impl From<u8> for LinkStatus {
@@ -69,12 +129,12 @@ impl From<u8> for LinkStatus {
         match value {
             0 => LinkStatus::Pending,
             1 => LinkStatus::Activated,
-            2 => LinkStatus::Suspended,
             3 => LinkStatus::Deleting,
             4 => LinkStatus::Rejected,
             5 => LinkStatus::Requested,
             6 => LinkStatus::HardDrained,
             7 => LinkStatus::SoftDrained,
+            8 => LinkStatus::Provisioning,
             _ => LinkStatus::Pending,
         }
     }
@@ -87,12 +147,12 @@ impl FromStr for LinkStatus {
         match s.to_lowercase().as_str() {
             "pending" => Ok(LinkStatus::Pending),
             "activated" => Ok(LinkStatus::Activated),
-            "suspended" => Ok(LinkStatus::Suspended),
             "deleting" => Ok(LinkStatus::Deleting),
             "rejected" => Ok(LinkStatus::Rejected),
             "requested" => Ok(LinkStatus::Requested),
             "hard-drained" => Ok(LinkStatus::HardDrained),
             "soft-drained" => Ok(LinkStatus::SoftDrained),
+            "provisioning" => Ok(LinkStatus::Provisioning),
             _ => Err(format!("Invalid LinkStatus: {s}")),
         }
     }
@@ -103,12 +163,12 @@ impl fmt::Display for LinkStatus {
         match self {
             LinkStatus::Pending => write!(f, "pending"),
             LinkStatus::Activated => write!(f, "activated"),
-            LinkStatus::Suspended => write!(f, "suspended"),
             LinkStatus::Deleting => write!(f, "deleting"),
             LinkStatus::Rejected => write!(f, "rejected"),
             LinkStatus::Requested => write!(f, "requested"),
             LinkStatus::HardDrained => write!(f, "hard-drained"),
             LinkStatus::SoftDrained => write!(f, "soft-drained"),
+            LinkStatus::Provisioning => write!(f, "provisioning"),
         }
     }
 }
@@ -404,9 +464,74 @@ impl Validate for Link {
 }
 
 impl Link {
-    pub fn check_status_transition(&self) {
-        // Implement any necessary status transition checks here
-        // this will be added in future iterations
+    /// Checks and updates the `status` of the `Link` based on its current `status`, `desired_status`, and `link_health`.
+    ///
+    /// The transition logic is as follows:
+    ///
+    /// | Current Status   | Desired Status   | Link Health         | New Status      | Condition                                                                 |
+    /// |------------------|------------------|---------------------|-----------------|---------------------------------------------------------------------------|
+    /// | Provisioning     | Activated        | ReadyForService     | Activated       | If the link is ready and healthy, activate it.                            |
+    /// | Activated        | SoftDrained      | Any                 | SoftDrained     | If activated and soft drain is desired, transition to soft drained.       |
+    /// | Activated        | HardDrained      | Any                 | HardDrained     | If activated and hard drain is desired, transition to hard drained.       |
+    /// | SoftDrained      | HardDrained      | Any                 | HardDrained     | If soft drained and hard drain is desired, transition to hard drained.    |
+    /// | HardDrained      | SoftDrained      | Any                 | SoftDrained     | If hard drained and soft drain is desired, transition to soft drained.    |
+    /// | SoftDrained      | Activated        | ReadyForService     | Activated       | If soft drained, activation is desired, and healthy, activate.            |
+    /// | HardDrained      | Activated        | ReadyForService     | Activated       | If hard drained, activation is desired, and healthy, activate.            |
+    ///
+    /// This method mutates the `status` field of the `Link` in-place.
+    /// Where `_` means any value is valid for that field.
+    ///
+    pub fn check_status_transition(&mut self) {
+        match (self.status, self.desired_status, self.link_health) {
+            // Activation transition
+            (
+                LinkStatus::Provisioning,
+                LinkDesiredStatus::Activated,
+                LinkHealth::ReadyForService,
+            ) => {
+                self.status = LinkStatus::Activated;
+            }
+            // Drain transitions
+            (LinkStatus::Activated, LinkDesiredStatus::SoftDrained, _) => {
+                self.status = LinkStatus::SoftDrained;
+            }
+            (LinkStatus::Activated, LinkDesiredStatus::HardDrained, _) => {
+                self.status = LinkStatus::HardDrained;
+            }
+            (LinkStatus::SoftDrained, LinkDesiredStatus::HardDrained, _) => {
+                self.status = LinkStatus::HardDrained;
+            }
+            (LinkStatus::HardDrained, LinkDesiredStatus::SoftDrained, _) => {
+                self.status = LinkStatus::SoftDrained;
+            }
+            // Recovery from drains when healthy
+            (
+                LinkStatus::SoftDrained,
+                LinkDesiredStatus::Activated,
+                LinkHealth::ReadyForService,
+            ) => {
+                self.status = LinkStatus::Activated;
+            }
+            (
+                LinkStatus::HardDrained,
+                LinkDesiredStatus::Activated,
+                LinkHealth::ReadyForService,
+            ) => {
+                self.status = LinkStatus::Activated;
+            }
+
+            _ => {}
+        }
+    }
+
+    pub fn allow_latency(&self) -> bool {
+        matches!(
+            self.status,
+            LinkStatus::Activated
+                | LinkStatus::SoftDrained
+                | LinkStatus::HardDrained
+                | LinkStatus::Provisioning
+        )
     }
 }
 

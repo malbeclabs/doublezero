@@ -27,8 +27,8 @@ impl fmt::Debug for MulticastGroupUpdateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "code: {:?}, multicast_ip: {:?}",
-            self.code, self.multicast_ip
+            "code: {:?}, multicast_ip: {:?}, max_bandwidth: {:?}, publisher_count: {:?}, subscriber_count: {:?}",
+            self.code, self.multicast_ip, self.max_bandwidth, self.publisher_count, self.subscriber_count
         )
     }
 }

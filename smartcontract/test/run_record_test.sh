@@ -25,6 +25,17 @@ solana-test-validator -r \
     > /dev/null 2>&1 &
 VALIDATOR_PID=$!
 
+# Wait for Solana fork to start. Only try for 60 seconds.
+for i in {1..30}
+do
+    if solana cluster-version -u l > /dev/null 2>&1
+    then
+        echo "Solana fork is ready."
+        break
+    fi
+    sleep 2
+done
+
 cleanup() {
     if [ ! -z "$VALIDATOR_PID" ] && kill -0 $VALIDATOR_PID 2>/dev/null; then
         kill $VALIDATOR_PID

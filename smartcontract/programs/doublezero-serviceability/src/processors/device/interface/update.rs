@@ -1,5 +1,7 @@
 use crate::{
-    error::DoubleZeroError,
+    error::{DoubleZeroError, Validate},
+    format_option,
+    helper::format_option_displayable,
     serializer::try_acc_write,
     state::{
         accounttype::AccountType,
@@ -39,21 +41,25 @@ pub struct DeviceInterfaceUpdateArgs {
 
 impl fmt::Debug for DeviceInterfaceUpdateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "name: {}, ", self.name)?;
-        if self.loopback_type.is_some() {
-            write!(f, "loopback_type: {}, ", self.loopback_type.unwrap())?;
-        }
-        if self.vlan_id.is_some() {
-            write!(f, "vlan_id: {}, ", self.vlan_id.unwrap())?;
-        }
-        if self.user_tunnel_endpoint.is_some() {
-            write!(
-                f,
-                "user_tunnel_endpoint: {}, ",
-                self.user_tunnel_endpoint.unwrap()
-            )?;
-        }
-        Ok(())
+        write!(
+            f,
+            "name: {}, loopback_type: {}, vlan_id: {}, user_tunnel_endpoint: {}, status: {}, \
+ip_net: {}, node_segment_idx: {}, interface_cyoa: {}, interface_dia: {}, bandwidth: {}, \
+cir: {}, mtu: {}, routing_mode: {}",
+            self.name,
+            format_option!(self.loopback_type),
+            format_option!(self.vlan_id),
+            format_option!(self.user_tunnel_endpoint),
+            format_option!(self.status),
+            format_option!(self.ip_net),
+            format_option!(self.node_segment_idx),
+            format_option!(self.interface_cyoa),
+            format_option!(self.interface_dia),
+            format_option!(self.bandwidth),
+            format_option!(self.cir),
+            format_option!(self.mtu),
+            format_option!(self.routing_mode),
+        )
     }
 }
 
@@ -145,7 +151,11 @@ pub fn process_update_device_interface(
         iface.node_segment_idx = node_segment_idx;
     }
     // until we have release V2 version for interfaces, always convert to v1
-    device.interfaces[idx] = iface.to_interface();
+    let updated_interface = iface.to_interface();
+
+    updated_interface.validate()?;
+
+    device.interfaces[idx] = updated_interface;
 
     try_acc_write(&device, device_account, payer_account, accounts)?;
 

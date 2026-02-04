@@ -1,0 +1,45 @@
+#!/bin/bash
+
+# Pre-commit hook to ensure CHANGELOG.md in the root directory is updated
+#
+# To install this hook, run from the repo root:
+#   git config core.hooksPath .githooks
+#
+# Or to skip the check for a specific commit:
+#   git commit --no-verify
+
+set -e
+
+# Get list of staged files (excluding deleted files)
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=d)
+
+if [ -z "$STAGED_FILES" ]; then
+    exit 0
+fi
+
+# Check if any meaningful files are staged (excluding the changelog itself)
+has_changes=false
+changelog_updated=false
+
+for file in $STAGED_FILES; do
+    if [[ "$file" == "CHANGELOG.md" ]]; then
+        changelog_updated=true
+    else
+        has_changes=true
+    fi
+done
+
+# If there are changes but changelog wasn't updated, fail
+if [ "$has_changes" = true ] && [ "$changelog_updated" = false ]; then
+    echo ""
+    echo "❌ CHANGELOG.md not updated"
+    echo ""
+    echo "Please update CHANGELOG.md with your changes."
+    echo ""
+    echo "To skip this check (use sparingly):"
+    echo "   git commit --no-verify"
+    echo ""
+    exit 1
+fi
+
+exit 0

@@ -42,9 +42,15 @@ const (
 	grpcDialTimeout    = 10 * time.Second
 	grpcDialMaxRetries = 5
 
-	UserStatusUp           = "up"
+	UserStatusUp           = "BGP Session Up"
+	UserStatusUpLegacy     = "up" // TODO: remove after all QA hosts are upgraded past v0.8.2
 	UserStatusDisconnected = "disconnected"
 )
+
+// IsStatusUp checks if the session status indicates the session is up.
+func IsStatusUp(status string) bool {
+	return status == UserStatusUp || status == UserStatusUpLegacy
+}
 
 type Device struct {
 	PubKey       string
@@ -52,6 +58,8 @@ type Device struct {
 	ExchangeCode string
 	MaxUsers     int
 	UsersCount   int
+	Status       serviceability.DeviceStatus
+	DeviceType   serviceability.DeviceDeviceType
 }
 
 type Client struct {
@@ -155,12 +163,17 @@ func (c *Client) DisconnectUser(ctx context.Context, waitForStatus bool, waitFor
 		if err != nil {
 			return fmt.Errorf("failed to get program data for user on host %s: %w", c.Host, err)
 		}
+		userFound := false
 		for _, user := range data.Users {
 			userClientIP := net.IP(user.ClientIp[:]).String()
 			if userClientIP == publicIP {
-				c.log.Debug("User already deleted onchain", "ip", publicIP)
-				return nil
+				userFound = true
+				break
 			}
+		}
+		if !userFound {
+			c.log.Debug("User already deleted onchain", "ip", publicIP)
+			return nil
 		}
 
 		c.log.Debug("Waiting for user to be deleted onchain", "host", c.Host)
@@ -304,7 +317,7 @@ func (c *Client) getConnectedDevice(ctx context.Context) (*Device, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user status on host %s: %w", c.Host, err)
 	}
-	if status.SessionStatus != UserStatusUp {
+	if !IsStatusUp(status.SessionStatus) {
 		return nil, fmt.Errorf("user status is not up on host %s: %s", c.Host, status.SessionStatus)
 	}
 	device, ok := c.devices[status.CurrentDevice]
@@ -322,7 +335,11 @@ func (c *Client) waitForStatus(ctx context.Context, wantStatus string, timeout t
 			return false, err
 		}
 		for _, s := range resp.Status {
-			if s.SessionStatus != wantStatus {
+			if wantStatus == UserStatusUp {
+				if !IsStatusUp(s.SessionStatus) {
+					return false, nil
+				}
+			} else if s.SessionStatus != wantStatus {
 				return false, nil
 			}
 		}

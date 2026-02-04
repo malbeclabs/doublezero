@@ -1,5 +1,7 @@
 use crate::{
     error::DoubleZeroError,
+    processors::resource::create_resource,
+    resource::ResourceType,
     serializer::try_acc_write,
     state::{device::*, globalstate::GlobalState},
 };
@@ -16,24 +18,46 @@ use solana_program::{
 };
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
-pub struct DeviceActivateArgs {}
+pub struct DeviceActivateArgs {
+    pub resource_count: usize,
+}
 
 impl fmt::Debug for DeviceActivateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "")
+        write!(
+            f,
+            "DeviceActivateArgs {{ resource_count: {} }}",
+            self.resource_count
+        )
     }
 }
 
-pub fn process_activate_device(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
+pub fn process_activate_device(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    value: &DeviceActivateArgs,
+) -> ProgramResult {
+    assert!(
+        value.resource_count >= 2,
+        "Resource count must be at least 2 (TunnelIds and at least one DzPrefixBlock)"
+    );
+
     let accounts_iter = &mut accounts.iter();
 
     let device_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
+    let globalconfig_account = next_account_info(accounts_iter)?;
+    let mut resource_accounts = vec![];
+    for _ in 0..value.resource_count {
+        // first resource account is the TunnelIds resource, followed by DzPrefixBlock resources
+        let resource_account = next_account_info(accounts_iter)?;
+        resource_accounts.push(resource_account);
+    }
     let payer_account = next_account_info(accounts_iter)?;
     let _system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
-    msg!("process_activate_device()");
+    msg!("process_activate_device({:?})", value);
 
     // Check if the payer is a signer
     assert!(payer_account.is_signer, "Payer must be a signer");
@@ -56,7 +80,25 @@ pub fn process_activate_device(program_id: &Pubkey, accounts: &[AccountInfo]) ->
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
-    device.status = DeviceStatus::Activated;
+    // Start provisioning process for the device: DeviceProvisioning -> LinkProvisioning -> Activated
+    device.status = DeviceStatus::DeviceProvisioning;
+
+    device.check_status_transition();
+
+    for (idx, resource_account) in resource_accounts.iter().enumerate() {
+        create_resource(
+            program_id,
+            resource_account,
+            Some(device_account),
+            globalconfig_account,
+            payer_account,
+            accounts,
+            match idx {
+                0 => ResourceType::TunnelIds(*device_account.key, 0),
+                _ => ResourceType::DzPrefixBlock(*device_account.key, idx - 1),
+            },
+        )?;
+    }
 
     try_acc_write(&device, device_account, payer_account, accounts)?;
 

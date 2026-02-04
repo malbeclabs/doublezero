@@ -2,8 +2,9 @@ use crate::processors::{
     accesspass::{
         check_status::CheckStatusAccessPassArgs, close::CloseAccessPassArgs, set::SetAccessPassArgs,
     },
-    allowlist::foundation::{
-        add::AddFoundationAllowlistArgs, remove::RemoveFoundationAllowlistArgs,
+    allowlist::{
+        foundation::{add::AddFoundationAllowlistArgs, remove::RemoveFoundationAllowlistArgs},
+        qa::{add::AddQaAllowlistArgs, remove::RemoveQaAllowlistArgs},
     },
     contributor::{
         create::ContributorCreateArgs, delete::ContributorDeleteArgs,
@@ -22,8 +23,7 @@ use crate::processors::{
             update::DeviceInterfaceUpdateArgs,
         },
         reject::DeviceRejectArgs,
-        resume::DeviceResumeArgs,
-        suspend::DeviceSuspendArgs,
+        sethealth::DeviceSetHealthArgs,
         update::DeviceUpdateArgs,
     },
     exchange::{
@@ -37,7 +37,7 @@ use crate::processors::{
     link::{
         accept::LinkAcceptArgs, activate::LinkActivateArgs, closeaccount::LinkCloseAccountArgs,
         create::LinkCreateArgs, delete::LinkDeleteArgs, reject::LinkRejectArgs,
-        resume::LinkResumeArgs, suspend::LinkSuspendArgs, update::LinkUpdateArgs,
+        sethealth::LinkSetHealthArgs, update::LinkUpdateArgs,
     },
     location::{
         create::LocationCreateArgs, delete::LocationDeleteArgs, resume::LocationResumeArgs,
@@ -66,8 +66,8 @@ use crate::processors::{
         update::MulticastGroupUpdateArgs,
     },
     resource::{
-        allocate::ResourceAllocateArgs, create::ResourceCreateArgs,
-        deallocate::ResourceDeallocateArgs,
+        allocate::ResourceAllocateArgs, closeaccount::ResourceExtensionCloseAccountArgs,
+        create::ResourceCreateArgs, deallocate::ResourceDeallocateArgs,
     },
     user::{
         activate::UserActivateArgs, ban::UserBanArgs, check_access_pass::CheckUserAccessPassArgs,
@@ -111,8 +111,8 @@ pub enum DoubleZeroInstruction {
     ActivateDevice(DeviceActivateArgs),         // variant 21
     RejectDevice(DeviceRejectArgs),             // variant 22
     UpdateDevice(DeviceUpdateArgs),             // variant 23
-    SuspendDevice(DeviceSuspendArgs),           // variant 24
-    ResumeDevice(DeviceResumeArgs),             // variant 25
+    SuspendDevice(),                            // variant 24
+    ResumeDevice(),                             // variant 25
     DeleteDevice(DeviceDeleteArgs),             // variant 26
     CloseAccountDevice(DeviceCloseAccountArgs), // variant 27
 
@@ -120,8 +120,8 @@ pub enum DoubleZeroInstruction {
     ActivateLink(LinkActivateArgs),         // variant 29
     RejectLink(LinkRejectArgs),             // variant 30
     UpdateLink(LinkUpdateArgs),             // variant 31
-    SuspendLink(LinkSuspendArgs),           // variant 32
-    ResumeLink(LinkResumeArgs),             // variant 33
+    SuspendLink(),                          // variant 32
+    ResumeLink(),                           // variant 33
     DeleteLink(LinkDeleteArgs),             // variant 34
     CloseAccountLink(LinkCloseAccountArgs), // variant 35
 
@@ -180,6 +180,14 @@ pub enum DoubleZeroInstruction {
     AllocateResource(ResourceAllocateArgs),     // variant 80
     CreateResource(ResourceCreateArgs),         // variant 81
     DeallocateResource(ResourceDeallocateArgs), // variant 82
+
+    SetDeviceHealth(DeviceSetHealthArgs), // variant 83
+    SetLinkHealth(LinkSetHealthArgs),     // variant 84
+
+    CloseResource(ResourceExtensionCloseAccountArgs), // variant 85
+
+    AddQaAllowlist(AddQaAllowlistArgs),       // variant 86
+    RemoveQaAllowlist(RemoveQaAllowlistArgs), // variant 87
 }
 
 impl DoubleZeroInstruction {
@@ -221,8 +229,8 @@ impl DoubleZeroInstruction {
             21 => Ok(Self::ActivateDevice(DeviceActivateArgs::try_from(rest).unwrap())),
             22 => Ok(Self::RejectDevice(DeviceRejectArgs::try_from(rest).unwrap())),
             23 => Ok(Self::UpdateDevice(DeviceUpdateArgs::try_from(rest).unwrap())),
-            24 => Ok(Self::SuspendDevice(DeviceSuspendArgs::try_from(rest).unwrap())),
-            25 => Ok(Self::ResumeDevice(DeviceResumeArgs::try_from(rest).unwrap())),
+            24 => Ok(Self::SuspendDevice()),
+            25 => Ok(Self::ResumeDevice()),
             26 => Ok(Self::DeleteDevice(DeviceDeleteArgs::try_from(rest).unwrap())),
             27 => Ok(Self::CloseAccountDevice(DeviceCloseAccountArgs::try_from(rest).unwrap())),
 
@@ -230,8 +238,8 @@ impl DoubleZeroInstruction {
             29 => Ok(Self::ActivateLink(LinkActivateArgs::try_from(rest).unwrap())),
             30 => Ok(Self::RejectLink(LinkRejectArgs::try_from(rest).unwrap())),
             31 => Ok(Self::UpdateLink(LinkUpdateArgs::try_from(rest).unwrap())),
-            32 => Ok(Self::SuspendLink(LinkSuspendArgs::try_from(rest).unwrap())),
-            33 => Ok(Self::ResumeLink(LinkResumeArgs::try_from(rest).unwrap())),
+            32 => Ok(Self::SuspendLink()),
+            33 => Ok(Self::ResumeLink()),
             34 => Ok(Self::DeleteLink(LinkDeleteArgs::try_from(rest).unwrap())),
             35 => Ok(Self::CloseAccountLink(LinkCloseAccountArgs::try_from(rest).unwrap())),
 
@@ -287,10 +295,15 @@ impl DoubleZeroInstruction {
             78 => Ok(Self::RejectDeviceInterface(DeviceInterfaceRejectArgs::try_from(rest).unwrap())),
 
             79 => Ok(Self::SetMinVersion(SetVersionArgs::try_from(rest).unwrap())),
-
             80 => Ok(Self::AllocateResource(ResourceAllocateArgs::try_from(rest).unwrap())),
             81 => Ok(Self::CreateResource(ResourceCreateArgs::try_from(rest).unwrap())),
             82 => Ok(Self::DeallocateResource(ResourceDeallocateArgs::try_from(rest).unwrap())),
+            83 => Ok(Self::SetDeviceHealth(DeviceSetHealthArgs::try_from(rest).unwrap())),
+            84 => Ok(Self::SetLinkHealth(LinkSetHealthArgs::try_from(rest).unwrap())),
+            85 => Ok(Self::CloseResource(ResourceExtensionCloseAccountArgs::try_from(rest).unwrap())),
+
+            86 => Ok(Self::AddQaAllowlist(AddQaAllowlistArgs::try_from(rest).unwrap())),
+            87 => Ok(Self::RemoveQaAllowlist(RemoveQaAllowlistArgs::try_from(rest).unwrap())),
 
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -326,8 +339,8 @@ impl DoubleZeroInstruction {
             Self::ActivateDevice(_) => "ActivateDevice".to_string(), // variant 21
             Self::RejectDevice(_) => "RejectDevice".to_string(), // variant 22
             Self::UpdateDevice(_) => "UpdateDevice".to_string(), // variant 23
-            Self::SuspendDevice(_) => "SuspendDevice".to_string(), // variant 24
-            Self::ResumeDevice(_) => "ResumeDevice".to_string(), // variant 25
+            Self::SuspendDevice() => "SuspendDevice".to_string(), // variant 24
+            Self::ResumeDevice() => "ResumeDevice".to_string(),  // variant 25
             Self::DeleteDevice(_) => "DeleteDevice".to_string(), // variant 26
             Self::CloseAccountDevice(_) => "CloseAccountDevice".to_string(), // variant 27
 
@@ -335,8 +348,8 @@ impl DoubleZeroInstruction {
             Self::ActivateLink(_) => "ActivateLink".to_string(), // variant 29
             Self::RejectLink(_) => "RejectLink".to_string(), // variant 30
             Self::UpdateLink(_) => "UpdateLink".to_string(), // variant 31
-            Self::SuspendLink(_) => "SuspendLink".to_string(), // variant 32
-            Self::ResumeLink(_) => "ResumeLink".to_string(), // variant 33
+            Self::SuspendLink() => "SuspendLink".to_string(), // variant 32
+            Self::ResumeLink() => "ResumeLink".to_string(),  // variant 33
             Self::DeleteLink(_) => "DeleteLink".to_string(), // variant 34
             Self::CloseAccountLink(_) => "CloseAccountLink".to_string(), // variant 35
 
@@ -396,10 +409,15 @@ impl DoubleZeroInstruction {
             Self::RejectDeviceInterface(_) => "RejectDeviceInterface".to_string(),     // variant 78
 
             Self::SetMinVersion(_) => "SetMinVersion".to_string(), // variant 79
-
             Self::AllocateResource(_) => "AllocateResource".to_string(), // variant 80
-            Self::CreateResource(_) => "CreateResource".to_string(),     // variant 81
+            Self::CreateResource(_) => "CreateResource".to_string(), // variant 81
             Self::DeallocateResource(_) => "DeallocateResource".to_string(), // variant 82
+            Self::SetDeviceHealth(_) => "SetDeviceHealth".to_string(), // variant 83
+            Self::SetLinkHealth(_) => "SetLinkHealth".to_string(), // variant 84
+            Self::CloseResource(_) => "CloseResource".to_string(), // variant 85
+
+            Self::AddQaAllowlist(_) => "AddQaAllowlist".to_string(), // variant 86
+            Self::RemoveQaAllowlist(_) => "RemoveQaAllowlist".to_string(), // variant 87
         }
     }
 
@@ -433,8 +451,8 @@ impl DoubleZeroInstruction {
             Self::ActivateDevice(args) => format!("{args:?}"), // variant 21
             Self::RejectDevice(args) => format!("{args:?}"), // variant 22
             Self::UpdateDevice(args) => format!("{args:?}"), // variant 23
-            Self::SuspendDevice(args) => format!("{args:?}"), // variant 24
-            Self::ResumeDevice(args) => format!("{args:?}"), // variant 25
+            Self::SuspendDevice() => "".to_string(),         // variant 24
+            Self::ResumeDevice() => "".to_string(),          // variant 25
             Self::DeleteDevice(args) => format!("{args:?}"), // variant 26
             Self::CloseAccountDevice(args) => format!("{args:?}"), // variant 27
 
@@ -442,8 +460,8 @@ impl DoubleZeroInstruction {
             Self::ActivateLink(args) => format!("{args:?}"), // variant 29
             Self::RejectLink(args) => format!("{args:?}"), // variant 30
             Self::UpdateLink(args) => format!("{args:?}"), // variant 31
-            Self::SuspendLink(args) => format!("{args:?}"), // variant 32
-            Self::ResumeLink(args) => format!("{args:?}"), // variant 33
+            Self::SuspendLink() => "".to_string(),         // variant 32
+            Self::ResumeLink() => "".to_string(),          // variant 33
             Self::DeleteLink(args) => format!("{args:?}"), // variant 34
             Self::CloseAccountLink(args) => format!("{args:?}"), // variant 35
 
@@ -497,10 +515,15 @@ impl DoubleZeroInstruction {
             Self::RejectDeviceInterface(args) => format!("{args:?}"),   // variant 78
 
             Self::SetMinVersion(args) => format!("{args:?}"), // variant 79
-
             Self::AllocateResource(args) => format!("{args:?}"), // variant 80
-            Self::CreateResource(args) => format!("{args:?}"),   // variant 81
+            Self::CreateResource(args) => format!("{args:?}"), // variant 81
             Self::DeallocateResource(args) => format!("{args:?}"), // variant 82
+            Self::SetDeviceHealth(args) => format!("{args:?}"), // variant 83
+            Self::SetLinkHealth(args) => format!("{args:?}"), // variant 84
+            Self::CloseResource(args) => format!("{args:?}"), // variant 85
+
+            Self::AddQaAllowlist(args) => format!("{args:?}"), // variant 86
+            Self::RemoveQaAllowlist(args) => format!("{args:?}"), // variant 87
         }
     }
 }
@@ -509,10 +532,11 @@ impl DoubleZeroInstruction {
 mod tests {
     use crate::{
         processors::exchange::setdevice::SetDeviceOption,
+        resource::{IdOrIp, ResourceType},
         state::{
-            device::DeviceType,
+            device::{DeviceHealth, DeviceType},
             interface::{LoopbackType, RoutingMode},
-            link::LinkLinkType,
+            link::{LinkHealth, LinkLinkType},
             user::{UserCYOA, UserType},
         },
     };
@@ -619,11 +643,12 @@ mod tests {
                 dz_prefixes: "1.2.3.4/1".parse().unwrap(),
                 metrics_publisher_pk: Pubkey::new_unique(),
                 mgmt_vrf: "mgmt".to_string(),
+                desired_status: None,
             }),
             "CreateDevice",
         );
         test_instruction(
-            DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {}),
+            DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs { resource_count: 0 }),
             "ActivateDevice",
         );
         test_instruction(
@@ -639,17 +664,12 @@ mod tests {
                 users_count: None,
                 status: None,
                 desired_status: None,
+                resource_count: 0,
             }),
             "UpdateDevice",
         );
-        test_instruction(
-            DoubleZeroInstruction::SuspendDevice(DeviceSuspendArgs {}),
-            "SuspendDevice",
-        );
-        test_instruction(
-            DoubleZeroInstruction::ResumeDevice(DeviceResumeArgs {}),
-            "ResumeDevice",
-        );
+        test_instruction(DoubleZeroInstruction::SuspendDevice(), "SuspendDevice");
+        test_instruction(DoubleZeroInstruction::ResumeDevice(), "ResumeDevice");
         test_instruction(
             DoubleZeroInstruction::DeleteDevice(DeviceDeleteArgs {}),
             "DeleteDevice",
@@ -664,6 +684,7 @@ mod tests {
                 jitter_ns: 1_000_000,
                 side_a_iface_name: "eth0".to_string(),
                 side_z_iface_name: Some("eth1".to_string()),
+                desired_status: None,
             }),
             "CreateLink",
         );
@@ -671,6 +692,7 @@ mod tests {
             DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
                 tunnel_id: 1,
                 tunnel_net: "1.2.3.4/1".parse().unwrap(),
+                use_onchain_allocation: false,
             }),
             "ActivateLink",
         );
@@ -689,14 +711,8 @@ mod tests {
             }),
             "UpdateLink",
         );
-        test_instruction(
-            DoubleZeroInstruction::SuspendLink(LinkSuspendArgs {}),
-            "SuspendLink",
-        );
-        test_instruction(
-            DoubleZeroInstruction::ResumeLink(LinkResumeArgs {}),
-            "ResumeLink",
-        );
+        test_instruction(DoubleZeroInstruction::SuspendLink(), "SuspendLink");
+        test_instruction(DoubleZeroInstruction::ResumeLink(), "ResumeLink");
         test_instruction(
             DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {}),
             "DeleteLink",
@@ -714,6 +730,7 @@ mod tests {
                 tunnel_id: 1,
                 tunnel_net: "1.2.3.4/1".parse().unwrap(),
                 dz_ip: [1, 2, 3, 4].into(),
+                dz_prefix_count: 0,
             }),
             "ActivateUser",
         );
@@ -735,15 +752,17 @@ mod tests {
             "DeleteUser",
         );
         test_instruction(
-            DoubleZeroInstruction::CloseAccountDevice(DeviceCloseAccountArgs {}),
+            DoubleZeroInstruction::CloseAccountDevice(DeviceCloseAccountArgs { resource_count: 0 }),
             "CloseAccountDevice",
         );
         test_instruction(
-            DoubleZeroInstruction::CloseAccountLink(LinkCloseAccountArgs {}),
+            DoubleZeroInstruction::CloseAccountLink(LinkCloseAccountArgs {
+                use_onchain_deallocation: false,
+            }),
             "CloseAccountLink",
         );
         test_instruction(
-            DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {}),
+            DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs { dz_prefix_count: 0 }),
             "CloseAccountUser",
         );
         test_instruction(
@@ -775,6 +794,18 @@ mod tests {
                 pubkey: Pubkey::new_unique(),
             }),
             "RemoveFoundationAllowlist",
+        );
+        test_instruction(
+            DoubleZeroInstruction::AddQaAllowlist(AddQaAllowlistArgs {
+                pubkey: Pubkey::new_unique(),
+            }),
+            "AddQaAllowlist",
+        );
+        test_instruction(
+            DoubleZeroInstruction::RemoveQaAllowlist(RemoveQaAllowlistArgs {
+                pubkey: Pubkey::new_unique(),
+            }),
+            "RemoveQaAllowlist",
         );
         test_instruction(
             DoubleZeroInstruction::AddDeviceAllowlist(),
@@ -848,7 +879,9 @@ mod tests {
         );
 
         test_instruction(
-            DoubleZeroInstruction::DeactivateMulticastGroup(MulticastGroupDeactivateArgs {}),
+            DoubleZeroInstruction::DeactivateMulticastGroup(MulticastGroupDeactivateArgs {
+                use_onchain_deallocation: false,
+            }),
             "DeactivateMulticastGroup",
         );
 
@@ -1047,6 +1080,41 @@ mod tests {
             }),
             "SetMinVersion",
         );
-        // TODO Test Resource Instructions
+        test_instruction(
+            DoubleZeroInstruction::AllocateResource(ResourceAllocateArgs {
+                resource_type: ResourceType::DeviceTunnelBlock,
+                requested: None,
+            }),
+            "AllocateResource",
+        );
+        test_instruction(
+            DoubleZeroInstruction::CreateResource(ResourceCreateArgs {
+                resource_type: ResourceType::DeviceTunnelBlock,
+            }),
+            "CreateResource",
+        );
+        test_instruction(
+            DoubleZeroInstruction::DeallocateResource(ResourceDeallocateArgs {
+                resource_type: ResourceType::DeviceTunnelBlock,
+                value: IdOrIp::Id(1),
+            }),
+            "DeallocateResource",
+        );
+        test_instruction(
+            DoubleZeroInstruction::CloseResource(ResourceExtensionCloseAccountArgs {}),
+            "CloseResource",
+        );
+        test_instruction(
+            DoubleZeroInstruction::SetDeviceHealth(DeviceSetHealthArgs {
+                health: DeviceHealth::Pending,
+            }),
+            "SetDeviceHealth",
+        );
+        test_instruction(
+            DoubleZeroInstruction::SetLinkHealth(LinkSetHealthArgs {
+                health: LinkHealth::Pending,
+            }),
+            "SetLinkHealth",
+        );
     }
 }

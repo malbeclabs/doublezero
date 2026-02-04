@@ -8,8 +8,13 @@ use doublezero_serviceability::{
     pda::get_resource_extension_pda,
     resource::{IdOrIp, ResourceType},
     state::{
-        accountdata::AccountData, device::Device, interface::InterfaceType, link::Link,
-        multicastgroup::MulticastGroup, resource_extension::ResourceExtensionOwned, user::User,
+        accountdata::AccountData,
+        device::Device,
+        interface::{InterfaceType, LoopbackType},
+        link::Link,
+        multicastgroup::MulticastGroup,
+        resource_extension::ResourceExtensionOwned,
+        user::User,
     },
 };
 use solana_sdk::pubkey::Pubkey;
@@ -544,11 +549,14 @@ fn verify_device_tunnel_block(
 
     let mut in_use: HashMap<IdOrIp, (Pubkey, String)> = HashMap::new();
 
-    // Check device loopback interfaces
+    // Check device loopback interfaces (only vpnv4/ipv4 loopback types)
     for (device_pk, device) in devices {
         for interface in &device.interfaces {
             let iface = interface.into_current_version();
-            if iface.interface_type == InterfaceType::Loopback {
+            if iface.interface_type == InterfaceType::Loopback
+                && (iface.loopback_type == LoopbackType::Vpnv4
+                    || iface.loopback_type == LoopbackType::Ipv4)
+            {
                 let ip = iface.ip_net.ip();
                 if !ip.is_unspecified() && iface.ip_net.prefix() > 0 {
                     // Iterate over all IPs in the network
@@ -610,8 +618,12 @@ fn verify_segment_routing_ids(
     for (device_pk, device) in devices {
         for interface in &device.interfaces {
             let iface = interface.into_current_version();
-            // node_segment_idx == 0 means not allocated
-            if iface.node_segment_idx != 0 {
+            // Only check vpnv4/ipv4 loopbacks, and node_segment_idx == 0 means not allocated
+            if iface.interface_type == InterfaceType::Loopback
+                && (iface.loopback_type == LoopbackType::Vpnv4
+                    || iface.loopback_type == LoopbackType::Ipv4)
+                && iface.node_segment_idx != 0
+            {
                 let id_or_ip = IdOrIp::Id(iface.node_segment_idx);
                 in_use.insert(
                     id_or_ip,

@@ -103,6 +103,9 @@ nfpms:
     contents:
       - src: client/doublezerod/cmd/doublezerod/doublezerod.mainnet-beta.service
         dst: /usr/lib/systemd/system/doublezerod.service
+      - src: client/doublezero/config/config.mainnet-beta.yml
+        dst: /etc/doublezero/cli/config.yml
+        type: config
     deb:
       predepends:
         - adduser

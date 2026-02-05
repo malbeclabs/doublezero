@@ -33,9 +33,17 @@ fn get_cfg_filename() -> &'static Option<PathBuf> {
 pub struct ClientConfig {
     pub json_rpc_url: String,
     pub websocket_url: Option<String>,
+    #[serde(default = "default_keypair_path")]
     pub keypair_path: PathBuf,
     pub program_id: Option<String>,
+    #[serde(default)]
     pub address_labels: HashMap<String, String>,
+}
+
+fn default_keypair_path() -> PathBuf {
+    let mut keypair_path = dirs_next::home_dir().unwrap_or_default();
+    keypair_path.extend([".config", "doublezero", "id.json"]);
+    keypair_path
 }
 
 impl Default for ClientConfig {
@@ -46,27 +54,35 @@ impl Default for ClientConfig {
                 .unwrap()
                 .ledger_public_rpc_url,
             websocket_url: None,
-            keypair_path: {
-                let mut keypair_path = dirs_next::home_dir().unwrap_or_default();
-                keypair_path.extend([".config", "doublezero", "id.json"]);
-                keypair_path
-            },
+            keypair_path: default_keypair_path(),
             program_id: None,
             address_labels: HashMap::new(),
         }
     }
 }
 
+const SYSTEM_CONFIG_PATH: &str = "/etc/doublezero/cli/config.yml";
+
+fn resolve_config(user_path: &Path, system_path: &Path) -> eyre::Result<(PathBuf, ClientConfig)> {
+    match fs::read_to_string(user_path) {
+        Ok(config_content) => {
+            let config: ClientConfig = serde_yaml::from_str(&config_content)?;
+            Ok((user_path.to_path_buf(), config))
+        }
+        Err(_) => match fs::read_to_string(system_path) {
+            Ok(config_content) => {
+                let config: ClientConfig = serde_yaml::from_str(&config_content)?;
+                Ok((system_path.to_path_buf(), config))
+            }
+            Err(_) => Ok((user_path.to_path_buf(), ClientConfig::default())),
+        },
+    }
+}
+
 pub fn read_doublezero_config() -> eyre::Result<(PathBuf, ClientConfig)> {
     match get_cfg_filename() {
         None => eyre::bail!("Unable to get_cfg_filename"),
-        Some(filename) => match fs::read_to_string(filename) {
-            Err(_) => Ok((filename.clone(), ClientConfig::default())),
-            Ok(config_content) => {
-                let config: ClientConfig = serde_yaml::from_str(&config_content)?;
-                Ok((filename.clone(), config))
-            }
-        },
+        Some(filename) => resolve_config(filename, Path::new(SYSTEM_CONFIG_PATH)),
     }
 }
 
@@ -312,5 +328,72 @@ mod tests {
 
         let second = create_new_pubkey_user(true, Some(outfile_path.clone())).unwrap();
         assert_ne!(first.pubkey(), second.pubkey());
+    }
+
+    #[test]
+    fn test_resolve_config_no_files_returns_default() {
+        let tmp = TempDir::new().unwrap();
+        let user_path = tmp.path().join("user/config.yml");
+        let system_path = tmp.path().join("system/config.yml");
+
+        let (path, config) = resolve_config(&user_path, &system_path).unwrap();
+
+        assert_eq!(path, user_path);
+        assert_eq!(config.json_rpc_url, ClientConfig::default().json_rpc_url,);
+    }
+
+    #[test]
+    fn test_resolve_config_system_only_overrides_default() {
+        let tmp = TempDir::new().unwrap();
+        let user_path = tmp.path().join("user/config.yml");
+        let system_path = tmp.path().join("system/config.yml");
+
+        fs::create_dir_all(system_path.parent().unwrap()).unwrap();
+        fs::write(&system_path, "json_rpc_url: https://system.example.com\n").unwrap();
+
+        let (path, config) = resolve_config(&user_path, &system_path).unwrap();
+
+        assert_eq!(path, system_path);
+        assert_eq!(config.json_rpc_url, "https://system.example.com");
+    }
+
+    #[test]
+    fn test_resolve_config_user_overrides_system() {
+        let tmp = TempDir::new().unwrap();
+        let user_path = tmp.path().join("user/config.yml");
+        let system_path = tmp.path().join("system/config.yml");
+
+        fs::create_dir_all(user_path.parent().unwrap()).unwrap();
+        fs::write(&user_path, "json_rpc_url: https://user.example.com\n").unwrap();
+
+        fs::create_dir_all(system_path.parent().unwrap()).unwrap();
+        fs::write(&system_path, "json_rpc_url: https://system.example.com\n").unwrap();
+
+        let (path, config) = resolve_config(&user_path, &system_path).unwrap();
+
+        assert_eq!(path, user_path);
+        assert_eq!(config.json_rpc_url, "https://user.example.com");
+    }
+
+    #[test]
+    fn test_resolve_config_system_config_omits_optional_fields() {
+        let tmp = TempDir::new().unwrap();
+        let user_path = tmp.path().join("user/config.yml");
+        let system_path = tmp.path().join("system/config.yml");
+
+        fs::create_dir_all(system_path.parent().unwrap()).unwrap();
+        fs::write(
+            &system_path,
+            "json_rpc_url: https://system.example.com\nprogram_id: abc123\n",
+        )
+        .unwrap();
+
+        let (path, config) = resolve_config(&user_path, &system_path).unwrap();
+
+        assert_eq!(path, system_path);
+        assert_eq!(config.json_rpc_url, "https://system.example.com");
+        assert_eq!(config.program_id.as_deref(), Some("abc123"));
+        assert_eq!(config.keypair_path, default_keypair_path());
+        assert!(config.address_labels.is_empty());
     }
 }

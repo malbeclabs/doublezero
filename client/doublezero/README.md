@@ -83,6 +83,19 @@ Options:
 ```
 
 
+## Configuration
+
+The CLI loads its configuration from the first file found in this order:
+
+1. `$DOUBLEZERO_CONFIG_FILE` — env var override, used if set
+2. `~/.config/doublezero/cli/config.yml` — per-user config
+3. `/etc/doublezero/cli/config.yml` — system-wide config (shipped by the mainnet-beta package)
+4. Built-in testnet defaults
+
+When you run `doublezero config set ...`, settings are written to the per-user path (`~/.config/doublezero/cli/config.yml`), which then takes priority over the system config on subsequent reads.
+
+The system config only needs the environment-specific fields (`json_rpc_url`, `websocket_url`, `program_id`). Fields like `keypair_path` and `address_labels` are optional and use sensible defaults when omitted.
+
 # Basic use case
 
 In the following example, two Locations and Exchanges will be created. 

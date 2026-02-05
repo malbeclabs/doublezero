@@ -18,7 +18,7 @@ wheels = [
 
 [[package]]
 name = "borsh-incremental"
-version = "0.0.1"
+version = "0.0.3"
 source = { editable = "../../borsh-incremental/python" }
 
 [package.metadata]
@@ -68,7 +68,7 @@ wheels = [
 
 [[package]]
 name = "doublezero-serviceability"
-version = "0.0.2"
+version = "0.0.3"
 source = { editable = "." }
 dependencies = [
     { name = "borsh-incremental" },

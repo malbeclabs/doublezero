@@ -258,6 +258,10 @@ export function multicastGroupStatusString(v: number): string {
 const ACCESS_PASS_TYPE_TAG_NAMES: Record<number, string> = {
   0: "prepaid",
   1: "solana_validator",
+  2: "solana_rpc",
+  3: "solana_multicast_publisher",
+  4: "solana_multicast_subscriber",
+  5: "others",
 };
 export function accessPassTypeTagString(v: number): string {
   return ACCESS_PASS_TYPE_TAG_NAMES[v] ?? "unknown";

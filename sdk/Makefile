@@ -26,13 +26,13 @@ test-python:
 .PHONY: test-typescript
 test-typescript:
 	bun install
-	bun tsc --noEmit --project borsh-incremental/typescript/tsconfig.json
+	bunx tsc --noEmit --project borsh-incremental/typescript/tsconfig.json
 	bun test --cwd borsh-incremental/typescript
-	bun tsc --noEmit --project revdist/typescript/tsconfig.json
+	bunx tsc --noEmit --project revdist/typescript/tsconfig.json
 	bun test --cwd revdist/typescript
-	bun tsc --noEmit --project serviceability/typescript/tsconfig.json
+	bunx tsc --noEmit --project serviceability/typescript/tsconfig.json
 	bun test --cwd serviceability/typescript
-	bun tsc --noEmit --project telemetry/typescript/tsconfig.json
+	bunx tsc --noEmit --project telemetry/typescript/tsconfig.json
 	bun test --cwd telemetry/typescript
 
 # -----------------------------------------------------------------------------

@@ -1,6 +1,79 @@
 use crate::doublezerocommand::CliCommand;
 use doublezero_sdk::{commands::programconfig::get::GetProgramConfigCommand, ProgramVersion};
+use serde::{Deserialize, Serialize};
 use std::io::Write;
+
+/// Version check status for JSON-compatible output
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum VersionStatus {
+    /// Version is current or newer than the program version
+    Current,
+    /// Version is outdated but still compatible - upgrade recommended
+    Outdated {
+        current_version: String,
+        latest_version: String,
+        message: String,
+    },
+    /// Version is incompatible and must be upgraded
+    Incompatible {
+        current_version: String,
+        min_required_version: String,
+        message: String,
+    },
+}
+
+impl VersionStatus {
+    /// Returns true if the version is incompatible and the client should not proceed
+    pub fn is_incompatible(&self) -> bool {
+        matches!(self, VersionStatus::Incompatible { .. })
+    }
+
+    /// Returns a warning message if outdated, or an error message if incompatible
+    pub fn message(&self) -> Option<&str> {
+        match self {
+            VersionStatus::Current => None,
+            VersionStatus::Outdated { message, .. } => Some(message),
+            VersionStatus::Incompatible { message, .. } => Some(message),
+        }
+    }
+}
+
+/// Check the client version and return structured status information.
+/// This is useful for JSON output where we want to include version warnings in the response.
+pub fn get_version_status<C: CliCommand + ?Sized>(
+    client: &C,
+    client_version: ProgramVersion,
+) -> VersionStatus {
+    // Check the program configuration version
+    if let Ok((_, pconfig)) = client.get_program_config(GetProgramConfigCommand) {
+        // Compare the program version with the client version
+        // If the program version is incompatible, return incompatible status
+        if client_version < pconfig.min_compatible_version {
+            return VersionStatus::Incompatible {
+                current_version: client_version.to_string(),
+                min_required_version: pconfig.min_compatible_version.to_string(),
+                message: format!(
+                    "A new version of the client is available: {} → {}\nYour client version is no longer up to date. Please update it before continuing to use the client.",
+                    client_version, pconfig.min_compatible_version
+                ),
+            };
+        }
+        // Warn the user if their client version is older than the program version
+        if client_version < pconfig.version {
+            return VersionStatus::Outdated {
+                current_version: client_version.to_string(),
+                latest_version: pconfig.version.to_string(),
+                message: format!(
+                    "A new version of the client is available: {} → {}\nWe recommend updating to the latest version for the best experience.",
+                    client_version, pconfig.version
+                ),
+            };
+        }
+    }
+
+    VersionStatus::Current
+}
 
 pub fn check_version<C: CliCommand, W: Write>(
     client: &C,
@@ -32,6 +105,71 @@ mod tests {
     use solana_sdk::pubkey::Pubkey;
 
     use super::*;
+
+    fn setup_mock_client(
+        contract_version: ProgramVersion,
+        min_compatible_version: ProgramVersion,
+    ) -> MockCliCommand {
+        let mut client = MockCliCommand::new();
+        client
+            .expect_get_program_config()
+            .with(predicate::eq(GetProgramConfigCommand))
+            .returning(move |_| {
+                let program_config = ProgramConfig {
+                    account_type: AccountType::ProgramConfig,
+                    bump_seed: 1,
+                    version: contract_version.clone(),
+                    min_compatible_version: min_compatible_version.clone(),
+                };
+                Ok((Pubkey::new_unique(), program_config))
+            });
+        client
+    }
+
+    #[test]
+    fn test_get_version_status_current() {
+        let client = setup_mock_client(ProgramVersion::new(1, 0, 0), ProgramVersion::new(0, 9, 0));
+        let status = get_version_status(&client, ProgramVersion::new(1, 0, 0));
+        assert_eq!(status, VersionStatus::Current);
+    }
+
+    #[test]
+    fn test_get_version_status_outdated() {
+        let client = setup_mock_client(ProgramVersion::new(1, 5, 10), ProgramVersion::new(1, 1, 0));
+        let status = get_version_status(&client, ProgramVersion::new(1, 2, 0));
+        match &status {
+            VersionStatus::Outdated {
+                current_version,
+                latest_version,
+                ..
+            } => {
+                assert_eq!(current_version, "1.2.0");
+                assert_eq!(latest_version, "1.5.10");
+            }
+            _ => panic!("Expected Outdated status"),
+        }
+        assert!(!status.is_incompatible());
+        assert!(status.message().is_some());
+    }
+
+    #[test]
+    fn test_get_version_status_incompatible() {
+        let client = setup_mock_client(ProgramVersion::new(1, 5, 10), ProgramVersion::new(1, 1, 0));
+        let status = get_version_status(&client, ProgramVersion::new(1, 0, 0));
+        match &status {
+            VersionStatus::Incompatible {
+                current_version,
+                min_required_version,
+                ..
+            } => {
+                assert_eq!(current_version, "1.0.0");
+                assert_eq!(min_required_version, "1.1.0");
+            }
+            _ => panic!("Expected Incompatible status"),
+        }
+        assert!(status.is_incompatible());
+        assert!(status.message().is_some());
+    }
 
     pub fn test_check_version(
         out: &mut Vec<u8>,

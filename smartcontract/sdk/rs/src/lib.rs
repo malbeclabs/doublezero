@@ -1,6 +1,6 @@
 pub use crate::config::{
-    create_new_pubkey_user, get_doublezero_pubkey, read_doublezero_config, write_doublezero_config,
-    ClientConfig,
+    create_new_pubkey_user, default_program_id, get_doublezero_pubkey, read_doublezero_config,
+    write_doublezero_config, ClientConfig,
 };
 pub use doublezero_serviceability::{
     addresses::*,

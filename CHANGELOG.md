@@ -23,6 +23,7 @@ All notable changes to this project will be documented in this file.
 
 - CLI
   - Remove log noise on resolve route
+  - Add filtering options and desired_status & metrics_publisher_pk field to device and link list commands
   - `doublezero resource verify` command added to verify onchain resources
 - Onchain programs
   - Removed device and user allowlist functionality, updating the global state, initialization flow, tests, and processors accordingly, and cleaning up unused account checks.

@@ -85,16 +85,15 @@ Options:
 
 ## Configuration
 
-The CLI loads its configuration from the first file found in this order:
+The CLI loads configuration from these sources in order:
 
-1. `$DOUBLEZERO_CONFIG_FILE` — env var override, used if set
+1. `$DOUBLEZERO_CONFIG_FILE` — env var to override the config file path
 2. `~/.config/doublezero/cli/config.yml` — per-user config
-3. `/etc/doublezero/cli/config.yml` — system-wide config (shipped by the mainnet-beta package)
-4. Built-in testnet defaults
+3. Compiled-in defaults (testnet or mainnet-beta depending on package)
 
-When you run `doublezero config set ...`, settings are written to the per-user path (`~/.config/doublezero/cli/config.yml`), which then takes priority over the system config on subsequent reads.
+When you run `doublezero config set ...`, settings are written to `~/.config/doublezero/cli/config.yml`.
 
-The system config only needs the environment-specific fields (`json_rpc_url`, `websocket_url`, `program_id`). Fields like `keypair_path` and `address_labels` are optional and use sensible defaults when omitted.
+The `doublezero` package from the `doublezero-testnet` repo defaults to testnet. The `doublezero` package from the `doublezero` (mainnet-beta) repo defaults to mainnet-beta. Both can be overridden via the config file.
 
 # Basic use case
 

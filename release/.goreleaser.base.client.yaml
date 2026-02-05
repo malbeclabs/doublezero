@@ -20,7 +20,7 @@ builds:
       - linux
     goarch:
       - amd64
-  - id: doublezero-cli
+  - id: doublezero-cli                  # default env = testnet
     builder: rust
     tool: cargo
     binary: doublezero
@@ -30,6 +30,20 @@ builds:
     flags:
       - --package=doublezero
       - --release
+    env:
+      - RUSTFLAGS=-C linker=x86_64-linux-gnu-gcc
+      - BUILD_VERSION={{.Version}}
+  - id: doublezero-cli-mainnet-beta       # default env = mainnet-beta
+    builder: rust
+    tool: cargo
+    binary: doublezero
+    targets:
+      - x86_64-unknown-linux-gnu
+    command: build
+    flags:
+      - --package=doublezero
+      - --release
+      - --features=default-mainnet-beta
     env:
       - RUSTFLAGS=-C linker=x86_64-linux-gnu-gcc
       - BUILD_VERSION={{.Version}}
@@ -85,7 +99,7 @@ nfpms:
   - id: doublezero-mainnet-beta
     package_name: doublezero
     file_name_template: "{{ .PackageName }}-mainnet-beta_{{ .Version }}_{{ .Arch }}"
-    ids: [doublezerod, doublezero-cli]
+    ids: [doublezerod, doublezero-cli-mainnet-beta]
     vendor: doublezero
     homepage: doublezero.xyz
     maintainer: steve <steve@malbeclabs.com>
@@ -103,9 +117,6 @@ nfpms:
     contents:
       - src: client/doublezerod/cmd/doublezerod/doublezerod.mainnet-beta.service
         dst: /usr/lib/systemd/system/doublezerod.service
-      - src: client/doublezero/config/config.mainnet-beta.yml
-        dst: /etc/doublezero/cli/config.yml
-        type: config
     deb:
       predepends:
         - adduser

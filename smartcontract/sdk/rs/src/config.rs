@@ -1,6 +1,7 @@
+use doublezero_config::Environment;
 use serde::{Deserialize, Serialize};
 use solana_client::client_error::reqwest::Url;
-use solana_sdk::signature::Keypair;
+use solana_sdk::{pubkey::Pubkey, signature::Keypair};
 use std::{
     collections::HashMap,
     default::Default,
@@ -9,6 +10,19 @@ use std::{
     path::{Path, PathBuf},
     sync::OnceLock,
 };
+
+#[cfg(feature = "default-mainnet-beta")]
+const DEFAULT_ENVIRONMENT: Environment = Environment::MainnetBeta;
+#[cfg(not(feature = "default-mainnet-beta"))]
+const DEFAULT_ENVIRONMENT: Environment = Environment::Testnet;
+
+/// Returns the default program ID based on the compiled-in environment.
+pub fn default_program_id() -> Pubkey {
+    DEFAULT_ENVIRONMENT
+        .config()
+        .unwrap()
+        .serviceability_program_id
+}
 
 static CONFIG_FILE: OnceLock<Option<PathBuf>> = OnceLock::new();
 
@@ -49,10 +63,7 @@ fn default_keypair_path() -> PathBuf {
 impl Default for ClientConfig {
     fn default() -> Self {
         ClientConfig {
-            json_rpc_url: doublezero_config::Environment::Testnet
-                .config()
-                .unwrap()
-                .ledger_public_rpc_url,
+            json_rpc_url: DEFAULT_ENVIRONMENT.config().unwrap().ledger_public_rpc_url,
             websocket_url: None,
             keypair_path: default_keypair_path(),
             program_id: None,
@@ -61,28 +72,16 @@ impl Default for ClientConfig {
     }
 }
 
-const SYSTEM_CONFIG_PATH: &str = "/etc/doublezero/cli/config.yml";
-
-fn resolve_config(user_path: &Path, system_path: &Path) -> eyre::Result<(PathBuf, ClientConfig)> {
-    match fs::read_to_string(user_path) {
-        Ok(config_content) => {
-            let config: ClientConfig = serde_yaml::from_str(&config_content)?;
-            Ok((user_path.to_path_buf(), config))
-        }
-        Err(_) => match fs::read_to_string(system_path) {
-            Ok(config_content) => {
-                let config: ClientConfig = serde_yaml::from_str(&config_content)?;
-                Ok((system_path.to_path_buf(), config))
-            }
-            Err(_) => Ok((user_path.to_path_buf(), ClientConfig::default())),
-        },
-    }
-}
-
 pub fn read_doublezero_config() -> eyre::Result<(PathBuf, ClientConfig)> {
     match get_cfg_filename() {
         None => eyre::bail!("Unable to get_cfg_filename"),
-        Some(filename) => resolve_config(filename, Path::new(SYSTEM_CONFIG_PATH)),
+        Some(filename) => match fs::read_to_string(filename) {
+            Err(_) => Ok((filename.clone(), ClientConfig::default())),
+            Ok(config_content) => {
+                let config: ClientConfig = serde_yaml::from_str(&config_content)?;
+                Ok((filename.clone(), config))
+            }
+        },
     }
 }
 
@@ -105,12 +104,7 @@ pub fn write_doublezero_config(config: &ClientConfig) -> eyre::Result<()> {
 
 pub fn convert_url_moniker(url: String) -> String {
     match url.as_str() {
-        "doublezero" => {
-            doublezero_config::Environment::Testnet
-                .config()
-                .unwrap()
-                .ledger_public_rpc_url
-        }
+        "doublezero" => DEFAULT_ENVIRONMENT.config().unwrap().ledger_public_rpc_url,
         "localhost" => crate::consts::LOCALHOST_URL.to_string(),
         "devnet" => crate::consts::DEVNET_URL.to_string(),
         "testnet" => crate::consts::TESTNET_URL.to_string(),
@@ -122,7 +116,7 @@ pub fn convert_url_moniker(url: String) -> String {
 pub fn convert_ws_moniker(url: String) -> String {
     match url.as_str() {
         "doublezero" => {
-            doublezero_config::Environment::Testnet
+            DEFAULT_ENVIRONMENT
                 .config()
                 .unwrap()
                 .ledger_public_ws_rpc_url
@@ -144,14 +138,8 @@ pub fn convert_program_moniker(pubkey: String) -> String {
 }
 
 pub fn convert_url_to_ws(url: &str) -> eyre::Result<String> {
-    if url
-        == doublezero_config::Environment::Testnet
-            .config()?
-            .ledger_public_rpc_url
-    {
-        return Ok(doublezero_config::Environment::Testnet
-            .config()?
-            .ledger_public_ws_rpc_url);
+    if url == DEFAULT_ENVIRONMENT.config()?.ledger_public_rpc_url {
+        return Ok(DEFAULT_ENVIRONMENT.config()?.ledger_public_ws_rpc_url);
     }
 
     let mut url = Url::parse(url)?;
@@ -328,72 +316,5 @@ mod tests {
 
         let second = create_new_pubkey_user(true, Some(outfile_path.clone())).unwrap();
         assert_ne!(first.pubkey(), second.pubkey());
-    }
-
-    #[test]
-    fn test_resolve_config_no_files_returns_default() {
-        let tmp = TempDir::new().unwrap();
-        let user_path = tmp.path().join("user/config.yml");
-        let system_path = tmp.path().join("system/config.yml");
-
-        let (path, config) = resolve_config(&user_path, &system_path).unwrap();
-
-        assert_eq!(path, user_path);
-        assert_eq!(config.json_rpc_url, ClientConfig::default().json_rpc_url,);
-    }
-
-    #[test]
-    fn test_resolve_config_system_only_overrides_default() {
-        let tmp = TempDir::new().unwrap();
-        let user_path = tmp.path().join("user/config.yml");
-        let system_path = tmp.path().join("system/config.yml");
-
-        fs::create_dir_all(system_path.parent().unwrap()).unwrap();
-        fs::write(&system_path, "json_rpc_url: https://system.example.com\n").unwrap();
-
-        let (path, config) = resolve_config(&user_path, &system_path).unwrap();
-
-        assert_eq!(path, system_path);
-        assert_eq!(config.json_rpc_url, "https://system.example.com");
-    }
-
-    #[test]
-    fn test_resolve_config_user_overrides_system() {
-        let tmp = TempDir::new().unwrap();
-        let user_path = tmp.path().join("user/config.yml");
-        let system_path = tmp.path().join("system/config.yml");
-
-        fs::create_dir_all(user_path.parent().unwrap()).unwrap();
-        fs::write(&user_path, "json_rpc_url: https://user.example.com\n").unwrap();
-
-        fs::create_dir_all(system_path.parent().unwrap()).unwrap();
-        fs::write(&system_path, "json_rpc_url: https://system.example.com\n").unwrap();
-
-        let (path, config) = resolve_config(&user_path, &system_path).unwrap();
-
-        assert_eq!(path, user_path);
-        assert_eq!(config.json_rpc_url, "https://user.example.com");
-    }
-
-    #[test]
-    fn test_resolve_config_system_config_omits_optional_fields() {
-        let tmp = TempDir::new().unwrap();
-        let user_path = tmp.path().join("user/config.yml");
-        let system_path = tmp.path().join("system/config.yml");
-
-        fs::create_dir_all(system_path.parent().unwrap()).unwrap();
-        fs::write(
-            &system_path,
-            "json_rpc_url: https://system.example.com\nprogram_id: abc123\n",
-        )
-        .unwrap();
-
-        let (path, config) = resolve_config(&user_path, &system_path).unwrap();
-
-        assert_eq!(path, system_path);
-        assert_eq!(config.json_rpc_url, "https://system.example.com");
-        assert_eq!(config.program_id.as_deref(), Some("abc123"));
-        assert_eq!(config.keypair_path, default_keypair_path());
-        assert!(config.address_labels.is_empty());
     }
 }

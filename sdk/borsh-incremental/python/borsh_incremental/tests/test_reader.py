@@ -677,3 +677,67 @@ class TestOffsetAndRemaining:
         assert r.remaining == 0
         with pytest.raises(ValueError):
             r.read_u8()
+
+
+# ===========================================================================
+# 14. DefensiveReader returns defaults on truncated/missing data
+# ===========================================================================
+
+from borsh_incremental import DefensiveReader
+
+
+class TestDefensiveReaderReturnsDefaults:
+    """DefensiveReader should return zero/empty defaults when data is missing."""
+
+    def test_empty_buffer_returns_defaults(self):
+        r = DefensiveReader(b"")
+        assert r.read_u8() == 0
+        assert r.read_u16() == 0
+        assert r.read_u32() == 0
+        assert r.read_u64() == 0
+        assert r.read_u128() == 0
+        assert r.read_f64() == 0.0
+        assert r.read_bool() is False
+        assert r.read_string() == ""
+        assert r.read_pubkey_raw() == b"\x00" * 32
+        assert r.read_ipv4() == b"\x00" * 4
+        assert r.read_network_v4() == b"\x00" * 5
+        assert r.read_pubkey_raw_vec() == []
+        assert r.read_network_v4_vec() == []
+        assert r.read_bytes(10) == b"\x00" * 10
+
+    def test_partial_data_returns_defaults_for_missing(self):
+        # Buffer has only 2 bytes, should return defaults for larger types
+        r = DefensiveReader(bytes([0x42, 0x43]))
+        assert r.read_u8() == 0x42  # succeeds
+        assert r.read_u8() == 0x43  # succeeds
+        assert r.read_u8() == 0     # default - no more data
+        assert r.read_u32() == 0    # default - no more data
+
+    def test_simulates_struct_with_new_trailing_field(self):
+        # Simulate reading an "old" account that doesn't have a new trailing field.
+        # Old struct: u32 + u64 = 12 bytes
+        # New struct: u32 + u64 + u32 (new field) = 16 bytes
+        old_data = _pack_u32(100) + struct.pack("<Q", 200)  # 12 bytes
+        r = DefensiveReader(old_data)
+
+        # Read the "old" fields successfully
+        assert r.read_u32() == 100
+        assert r.read_u64() == 200
+
+        # The "new" trailing field should return default (0) without error
+        assert r.read_u32() == 0
+
+    def test_does_not_throw_on_truncated_vec(self):
+        # Empty buffer - vec read should return empty list, not throw
+        r = DefensiveReader(b"")
+        assert r.read_pubkey_raw_vec() == []
+        assert r.read_network_v4_vec() == []
+
+    def test_offset_and_remaining(self):
+        r = DefensiveReader(bytes([1, 2, 3, 4]))
+        assert r.offset == 0
+        assert r.remaining == 4
+        r.read_u8()
+        assert r.offset == 1
+        assert r.remaining == 3

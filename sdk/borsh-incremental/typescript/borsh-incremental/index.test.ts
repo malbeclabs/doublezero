@@ -526,3 +526,80 @@ describe("IncrementalReader", () => {
     });
   });
 });
+
+// ===========================================================================
+// DefensiveReader returns defaults on truncated/missing data
+// ===========================================================================
+
+import { DefensiveReader } from "./index.js";
+
+describe("DefensiveReader", () => {
+  describe("returns defaults on empty buffer", () => {
+    test("all primitive types return zero/empty defaults", () => {
+      const r = new DefensiveReader(new Uint8Array(0));
+      expect(r.readU8()).toBe(0);
+      expect(r.readU16()).toBe(0);
+      expect(r.readU32()).toBe(0);
+      expect(r.readU64()).toBe(0n);
+      expect(r.readU128()).toBe(0n);
+      expect(r.readF64()).toBe(0);
+      expect(r.readBool()).toBe(false);
+      expect(r.readString()).toBe("");
+      expect(r.readPubkeyRaw()).toEqual(new Uint8Array(32));
+      expect(r.readIPv4()).toEqual(new Uint8Array(4));
+      expect(r.readNetworkV4()).toEqual(new Uint8Array(5));
+      expect(r.readPubkeyRawVec()).toEqual([]);
+      expect(r.readNetworkV4Vec()).toEqual([]);
+      expect(r.readBytes(10)).toEqual(new Uint8Array(10));
+    });
+  });
+
+  describe("partial data returns defaults for missing", () => {
+    test("reads available data then returns defaults", () => {
+      const r = new DefensiveReader(new Uint8Array([0x42, 0x43]));
+      expect(r.readU8()).toBe(0x42); // succeeds
+      expect(r.readU8()).toBe(0x43); // succeeds
+      expect(r.readU8()).toBe(0); // default - no more data
+      expect(r.readU32()).toBe(0); // default - no more data
+    });
+  });
+
+  describe("simulates struct with new trailing field", () => {
+    test("old data deserializes with new trailing field defaulting to zero", () => {
+      // Simulate reading an "old" account that doesn't have a new trailing field.
+      // Old struct: u32 + u64 = 12 bytes
+      // New struct: u32 + u64 + u32 (new field) = 16 bytes
+      const oldData = new Uint8Array(12);
+      new DataView(oldData.buffer).setUint32(0, 100, true);
+      new DataView(oldData.buffer).setBigUint64(4, 200n, true);
+
+      const r = new DefensiveReader(oldData);
+
+      // Read the "old" fields successfully
+      expect(r.readU32()).toBe(100);
+      expect(r.readU64()).toBe(200n);
+
+      // The "new" trailing field should return default (0) without error
+      expect(r.readU32()).toBe(0);
+    });
+  });
+
+  describe("does not throw on truncated vec", () => {
+    test("empty buffer returns empty arrays", () => {
+      const r = new DefensiveReader(new Uint8Array(0));
+      expect(r.readPubkeyRawVec()).toEqual([]);
+      expect(r.readNetworkV4Vec()).toEqual([]);
+    });
+  });
+
+  describe("offset and remaining", () => {
+    test("tracks position correctly", () => {
+      const r = new DefensiveReader(new Uint8Array([1, 2, 3, 4]));
+      expect(r.offset).toBe(0);
+      expect(r.remaining).toBe(4);
+      r.readU8();
+      expect(r.offset).toBe(1);
+      expect(r.remaining).toBe(3);
+    });
+  });
+});

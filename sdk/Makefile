@@ -125,6 +125,10 @@ examples-typescript: example-serviceability-typescript example-telemetry-typescr
 # -----------------------------------------------------------------------------
 # Version management
 # -----------------------------------------------------------------------------
+.PHONY: clean
+clean:
+	rm -rf */typescript/dist */python/dist
+
 .PHONY: bump-version
 bump-version:
 ifndef version

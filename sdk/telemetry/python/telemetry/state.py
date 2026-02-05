@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from borsh_incremental import IncrementalReader
+from borsh_incremental import DefensiveReader
 from solders.pubkey import Pubkey  # type: ignore[import-untyped]
 
 
@@ -23,7 +23,7 @@ MAX_INTERNET_LATENCY_SAMPLES_PER_ACCOUNT = 3_000
 DEVICE_LATENCY_HEADER_SIZE = 1 + 8 + 32 * 6 + 8 + 8 + 4 + 128
 
 
-def _read_pubkey(r: IncrementalReader) -> Pubkey:
+def _read_pubkey(r: DefensiveReader) -> Pubkey:
     return Pubkey.from_bytes(r.read_pubkey_raw())
 
 
@@ -49,7 +49,7 @@ class DeviceLatencySamples:
                 f"data too short for device latency header: {len(data)} < {DEVICE_LATENCY_HEADER_SIZE}"
             )
 
-        r = IncrementalReader(data)
+        r = DefensiveReader(data)
 
         account_type = r.read_u8()
         epoch = r.read_u64()
@@ -106,7 +106,7 @@ class InternetLatencySamples:
         if len(data) < 10:
             raise ValueError("data too short")
 
-        r = IncrementalReader(data)
+        r = DefensiveReader(data)
 
         account_type = r.read_u8()
         epoch = r.read_u64()

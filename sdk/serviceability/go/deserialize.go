@@ -225,8 +225,13 @@ func DeserializeAccessPass(reader *ByteReader, ap *AccessPass) {
 	ap.BumpSeed = reader.ReadU8()
 	// AccessPassType is a Borsh enum: 1-byte discriminant + optional data
 	ap.AccessPassTypeTag = AccessPassTypeTag(reader.ReadU8())
-	if ap.AccessPassTypeTag == AccessPassTypeSolanaValidator {
-		ap.ValidatorPubKey = reader.ReadPubkey()
+	// Variants 1-4 have an associated pubkey
+	if ap.AccessPassTypeTag >= 1 && ap.AccessPassTypeTag <= 4 {
+		ap.AssociatedPubkey = reader.ReadPubkey()
+	} else if ap.AccessPassTypeTag == AccessPassTypeOthers {
+		// Variant 5 (Others) has two strings
+		ap.OthersTypeName = reader.ReadString()
+		ap.OthersKey = reader.ReadString()
 	}
 	ap.ClientIp = reader.ReadIPv4()
 	ap.UserPayer = reader.ReadPubkey()

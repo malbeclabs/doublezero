@@ -331,7 +331,7 @@ describe("AccessPassValidator fixture", () => {
       Owner: ap.owner,
       BumpSeed: ap.bumpSeed,
       AccessPassType: ap.accessPassType,
-      AccessPassTypeValidatorPubkey: ap.validatorPubKey,
+      AccessPassTypeValidatorPubkey: ap.associatedPubkey,
       UserPayer: ap.userPayer,
       LastAccessEpoch: ap.lastAccessEpoch,
       ConnectionCount: ap.connectionCount,
@@ -343,8 +343,8 @@ describe("AccessPassValidator fixture", () => {
     expect(ap.accountType).toBe(11);
     expect(ap.bumpSeed).toBe(243);
     expect(ap.accessPassType).toBe(1);
-    expect(ap.validatorPubKey).not.toBeNull();
-    expect(ap.validatorPubKey!.toBase58()).toBe(
+    expect(ap.associatedPubkey).not.toBeNull();
+    expect(ap.associatedPubkey!.toBase58()).toBe(
       "BuP3jEYfnTCfB4UqQk9L37k2vaXsNuVsbWxrYbGDmL6s",
     );
     expect(formatIPv4(ap.clientIp)).toBe("10.0.0.50");

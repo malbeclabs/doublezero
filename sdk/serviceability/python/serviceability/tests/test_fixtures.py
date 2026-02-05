@@ -304,7 +304,7 @@ class TestFixtureAccessPassValidator:
                 "Owner": ap.owner,
                 "BumpSeed": ap.bump_seed,
                 "AccessPassType": ap.access_pass_type_tag,
-                "AccessPassTypeValidatorPubkey": ap.validator_pub_key,
+                "AccessPassTypeValidatorPubkey": ap.associated_pubkey,
                 "ClientIp": ap.client_ip,
                 "UserPayer": ap.user_payer,
                 "LastAccessEpoch": ap.last_access_epoch,
@@ -316,7 +316,7 @@ class TestFixtureAccessPassValidator:
         assert ap.account_type == 11
         assert ap.bump_seed == 243
         assert ap.access_pass_type_tag == 1
-        assert ap.validator_pub_key == Pubkey.from_string(
+        assert ap.associated_pubkey == Pubkey.from_string(
             "BuP3jEYfnTCfB4UqQk9L37k2vaXsNuVsbWxrYbGDmL6s"
         )
         import ipaddress

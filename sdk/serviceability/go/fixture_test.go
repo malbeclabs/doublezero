@@ -318,7 +318,7 @@ func TestFixtureAccessPassValidator(t *testing.T) {
 		"Owner":                         solana.PublicKey(ap.Owner),
 		"BumpSeed":                      ap.BumpSeed,
 		"AccessPassType":                uint8(ap.AccessPassTypeTag),
-		"AccessPassTypeValidatorPubkey": solana.PublicKey(ap.ValidatorPubKey),
+		"AccessPassTypeValidatorPubkey": solana.PublicKey(ap.AssociatedPubkey),
 		"ClientIp":                      ap.ClientIp,
 		"UserPayer":                     solana.PublicKey(ap.UserPayer),
 		"LastAccessEpoch":               ap.LastAccessEpoch,

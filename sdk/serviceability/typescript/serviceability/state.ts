@@ -1,22 +1,18 @@
 /** Account state types and Borsh deserialization for the serviceability program. */
 
 import { PublicKey } from "@solana/web3.js";
-import { IncrementalReader } from "borsh-incremental";
+import { DefensiveReader } from "borsh-incremental";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function readPubkey(r: IncrementalReader): PublicKey {
+function readPubkey(r: DefensiveReader): PublicKey {
   return new PublicKey(r.readPubkeyRaw());
 }
 
-function readPubkeyVec(r: IncrementalReader): PublicKey[] {
+function readPubkeyVec(r: DefensiveReader): PublicKey[] {
   return r.readPubkeyRawVec().map((b) => new PublicKey(b));
-}
-
-function tryReadPubkeyVec(r: IncrementalReader): PublicKey[] {
-  return r.tryReadPubkeyRawVec([]).map((b) => new PublicKey(b));
 }
 
 // ---------------------------------------------------------------------------
@@ -295,7 +291,7 @@ export interface GlobalState {
 }
 
 export function deserializeGlobalState(data: Uint8Array): GlobalState {
-  const r = new IncrementalReader(data);
+  const r = new DefensiveReader(data);
   const accountType = r.readU8();
   const bumpSeed = r.readU8();
   const accountIndex = r.readU128();
@@ -307,7 +303,7 @@ export function deserializeGlobalState(data: Uint8Array): GlobalState {
   const contributorAirdropLamports = r.readU64();
   const userAirdropLamports = r.readU64();
   const healthOraclePk = readPubkey(r);
-  const qaAllowlist = tryReadPubkeyVec(r);
+  const qaAllowlist = readPubkeyVec(r);
   return {
     accountType,
     bumpSeed,
@@ -339,7 +335,7 @@ export interface GlobalConfig {
 }
 
 export function deserializeGlobalConfig(data: Uint8Array): GlobalConfig {
-  const r = new IncrementalReader(data);
+  const r = new DefensiveReader(data);
   return {
     accountType: r.readU8(),
     owner: readPubkey(r),
@@ -373,7 +369,7 @@ export interface Location {
 }
 
 export function deserializeLocation(data: Uint8Array): Location {
-  const r = new IncrementalReader(data);
+  const r = new DefensiveReader(data);
   return {
     accountType: r.readU8(),
     owner: readPubkey(r),
@@ -411,7 +407,7 @@ export interface Exchange {
 }
 
 export function deserializeExchange(data: Uint8Array): Exchange {
-  const r = new IncrementalReader(data);
+  const r = new DefensiveReader(data);
   const accountType = r.readU8();
   const owner = readPubkey(r);
   const index = r.readU128();
@@ -467,7 +463,7 @@ export interface DeviceInterface {
 
 const CURRENT_INTERFACE_VERSION = 2;
 
-function deserializeInterface(r: IncrementalReader): DeviceInterface {
+function deserializeInterface(r: DefensiveReader): DeviceInterface {
   const iface: DeviceInterface = {
     version: 0,
     status: 0,
@@ -550,7 +546,7 @@ export interface Device {
 }
 
 export function deserializeDevice(data: Uint8Array): Device {
-  const r = new IncrementalReader(data);
+  const r = new DefensiveReader(data);
   const accountType = r.readU8();
   const owner = readPubkey(r);
   const index = r.readU128();
@@ -631,7 +627,7 @@ export interface Link {
 }
 
 export function deserializeLink(data: Uint8Array): Link {
-  const r = new IncrementalReader(data);
+  const r = new DefensiveReader(data);
   return {
     accountType: r.readU8(),
     owner: readPubkey(r),
@@ -681,7 +677,7 @@ export interface User {
 }
 
 export function deserializeUser(data: Uint8Array): User {
-  const r = new IncrementalReader(data);
+  const r = new DefensiveReader(data);
   return {
     accountType: r.readU8(),
     owner: readPubkey(r),
@@ -721,7 +717,7 @@ export interface MulticastGroup {
 }
 
 export function deserializeMulticastGroup(data: Uint8Array): MulticastGroup {
-  const r = new IncrementalReader(data);
+  const r = new DefensiveReader(data);
   return {
     accountType: r.readU8(),
     owner: readPubkey(r),
@@ -754,7 +750,7 @@ export interface ProgramConfig {
   minCompatVersion: ProgramVersion;
 }
 
-function deserializeProgramVersion(r: IncrementalReader): ProgramVersion {
+function deserializeProgramVersion(r: DefensiveReader): ProgramVersion {
   return {
     major: r.readU32(),
     minor: r.readU32(),
@@ -763,7 +759,7 @@ function deserializeProgramVersion(r: IncrementalReader): ProgramVersion {
 }
 
 export function deserializeProgramConfig(data: Uint8Array): ProgramConfig {
-  const r = new IncrementalReader(data);
+  const r = new DefensiveReader(data);
   return {
     accountType: r.readU8(),
     bumpSeed: r.readU8(),
@@ -788,7 +784,7 @@ export interface Contributor {
 }
 
 export function deserializeContributor(data: Uint8Array): Contributor {
-  const r = new IncrementalReader(data);
+  const r = new DefensiveReader(data);
   return {
     accountType: r.readU8(),
     owner: readPubkey(r),
@@ -805,12 +801,22 @@ export function deserializeContributor(data: Uint8Array): Contributor {
 // AccessPass
 // ---------------------------------------------------------------------------
 
+// AccessPassType discriminants
+export const ACCESS_PASS_TYPE_PREPAID = 0;
+export const ACCESS_PASS_TYPE_SOLANA_VALIDATOR = 1;
+export const ACCESS_PASS_TYPE_SOLANA_RPC = 2;
+export const ACCESS_PASS_TYPE_SOLANA_MULTICAST_PUBLISHER = 3;
+export const ACCESS_PASS_TYPE_SOLANA_MULTICAST_SUBSCRIBER = 4;
+export const ACCESS_PASS_TYPE_OTHERS = 5;
+
 export interface AccessPass {
   accountType: number;
   owner: PublicKey;
   bumpSeed: number;
   accessPassType: number;
-  validatorPubKey: PublicKey | null;
+  associatedPubkey: PublicKey | null; // for SolanaValidator, SolanaRPC, SolanaMulticast*
+  othersTypeName: string; // for Others variant
+  othersKey: string; // for Others variant
   clientIp: Uint8Array;
   userPayer: PublicKey;
   lastAccessEpoch: bigint;
@@ -822,15 +828,22 @@ export interface AccessPass {
 }
 
 export function deserializeAccessPass(data: Uint8Array): AccessPass {
-  const r = new IncrementalReader(data);
+  const r = new DefensiveReader(data);
   const accountType = r.readU8();
   const owner = readPubkey(r);
   const bumpSeed = r.readU8();
   const accessPassType = r.readU8();
-  let validatorPubKey: PublicKey | null = null;
-  if (accessPassType === 1) {
-    // SolanaValidator
-    validatorPubKey = readPubkey(r);
+  let associatedPubkey: PublicKey | null = null;
+  let othersTypeName = "";
+  let othersKey = "";
+  // Variants 1-4 have an associated pubkey
+  if (accessPassType >= 1 && accessPassType <= 4) {
+    associatedPubkey = readPubkey(r);
+  }
+  // Variant 5 (Others) has two strings
+  else if (accessPassType === 5) {
+    othersTypeName = r.readString();
+    othersKey = r.readString();
   }
   const clientIp = r.readIPv4();
   const userPayer = readPubkey(r);
@@ -845,7 +858,9 @@ export function deserializeAccessPass(data: Uint8Array): AccessPass {
     owner,
     bumpSeed,
     accessPassType,
-    validatorPubKey,
+    associatedPubkey,
+    othersTypeName,
+    othersKey,
     clientIp,
     userPayer,
     lastAccessEpoch,

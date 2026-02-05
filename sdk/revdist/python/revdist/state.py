@@ -10,7 +10,7 @@ from __future__ import annotations
 import struct
 from dataclasses import dataclass
 
-from borsh_incremental import IncrementalReader
+from borsh_incremental import DefensiveReader
 
 from revdist.reserved import Reserved
 from solders.pubkey import Pubkey  # type: ignore[import-untyped]
@@ -415,7 +415,7 @@ class ComputedSolanaValidatorDebts:
 
     @classmethod
     def from_bytes(cls, data: bytes) -> ComputedSolanaValidatorDebts:
-        r = IncrementalReader(data)
+        r = DefensiveReader(data)
         blockhash = r.read_bytes(32)
         first_epoch = r.read_u64()
         last_epoch = r.read_u64()
@@ -458,7 +458,7 @@ class ShapleyOutputStorage:
 
     @classmethod
     def from_bytes(cls, data: bytes) -> ShapleyOutputStorage:
-        r = IncrementalReader(data)
+        r = DefensiveReader(data)
         epoch = r.read_u64()
         count = r.read_u32()
         rewards = []

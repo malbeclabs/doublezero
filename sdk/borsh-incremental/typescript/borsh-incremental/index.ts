@@ -198,3 +198,85 @@ export class IncrementalReader {
     return this.readNetworkV4Vec();
   }
 }
+
+/**
+ * Wrapper around IncrementalReader that uses tryRead for all operations.
+ *
+ * All read methods return zero/empty defaults on insufficient data, matching
+ * Go's ByteReader behavior. This makes deserialization resilient to schema
+ * changes where new fields are added to the end of structs.
+ */
+export class DefensiveReader {
+  private r: IncrementalReader;
+
+  constructor(data: Uint8Array) {
+    this.r = new IncrementalReader(data);
+  }
+
+  get offset(): number {
+    return this.r.offset;
+  }
+
+  get remaining(): number {
+    return this.r.remaining;
+  }
+
+  readU8(): number {
+    return this.r.tryReadU8(0);
+  }
+
+  readBool(): boolean {
+    return this.r.tryReadBool(false);
+  }
+
+  readU16(): number {
+    return this.r.tryReadU16(0);
+  }
+
+  readU32(): number {
+    return this.r.tryReadU32(0);
+  }
+
+  readU64(): bigint {
+    return this.r.tryReadU64(0n);
+  }
+
+  readU128(): bigint {
+    return this.r.tryReadU128(0n);
+  }
+
+  readF64(): number {
+    return this.r.tryReadF64(0);
+  }
+
+  readPubkeyRaw(): Uint8Array {
+    return this.r.tryReadPubkeyRaw(new Uint8Array(32));
+  }
+
+  readIPv4(): Uint8Array {
+    return this.r.tryReadIPv4(new Uint8Array(4));
+  }
+
+  readNetworkV4(): Uint8Array {
+    return this.r.tryReadNetworkV4(new Uint8Array(5));
+  }
+
+  readString(): string {
+    return this.r.tryReadString("");
+  }
+
+  readPubkeyRawVec(): Uint8Array[] {
+    return this.r.tryReadPubkeyRawVec([]);
+  }
+
+  readNetworkV4Vec(): Uint8Array[] {
+    return this.r.tryReadNetworkV4Vec([]);
+  }
+
+  readBytes(n: number): Uint8Array {
+    if (this.r.remaining < n) {
+      return new Uint8Array(n);
+    }
+    return this.r.readBytes(n);
+  }
+}

@@ -1,7 +1,7 @@
 /** Account state types and deserialization for the telemetry program. */
 
 import { PublicKey } from "@solana/web3.js";
-import { IncrementalReader } from "borsh-incremental";
+import { DefensiveReader } from "borsh-incremental";
 
 const DEVICE_LATENCY_HEADER_SIZE = 1 + 8 + 32 * 6 + 8 + 8 + 4 + 128;
 const MAX_DEVICE_LATENCY_SAMPLES = 35_000;
@@ -35,7 +35,7 @@ export interface InternetLatencySamples {
   samples: number[];
 }
 
-function readPubkey(r: IncrementalReader): PublicKey {
+function readPubkey(r: DefensiveReader): PublicKey {
   return new PublicKey(r.readPubkeyRaw());
 }
 
@@ -48,7 +48,7 @@ export function deserializeDeviceLatencySamples(
     );
   }
 
-  const r = new IncrementalReader(data);
+  const r = new DefensiveReader(data);
 
   const accountType = r.readU8();
   const epoch = r.readU64();
@@ -94,7 +94,7 @@ export function deserializeInternetLatencySamples(
     throw new Error("data too short");
   }
 
-  const r = new IncrementalReader(data);
+  const r = new DefensiveReader(data);
 
   const accountType = r.readU8();
   const epoch = r.readU64();

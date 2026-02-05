@@ -1,3 +1,3 @@
-from borsh_incremental.reader import IncrementalReader
+from borsh_incremental.reader import DefensiveReader, IncrementalReader
 
-__all__ = ["IncrementalReader"]
+__all__ = ["DefensiveReader", "IncrementalReader"]

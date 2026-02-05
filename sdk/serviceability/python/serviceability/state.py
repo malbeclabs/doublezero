@@ -1,8 +1,8 @@
 """On-chain account data structures for the serviceability program.
 
 Binary layout uses Borsh serialization with a 1-byte AccountType discriminator
-as the first byte. Deserialization uses cursor-based IncrementalReader from
-borsh_incremental.
+as the first byte. Deserialization uses cursor-based DefensiveReader from
+borsh_incremental which returns defaults on missing data.
 """
 
 from __future__ import annotations
@@ -10,21 +10,16 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import IntEnum
 
-from borsh_incremental import IncrementalReader
+from borsh_incremental import DefensiveReader
 from solders.pubkey import Pubkey  # type: ignore[import-untyped]
 
 
-def _read_pubkey(r: IncrementalReader) -> Pubkey:
+def _read_pubkey(r: DefensiveReader) -> Pubkey:
     return Pubkey.from_bytes(r.read_pubkey_raw())
 
 
-def _read_pubkey_vec(r: IncrementalReader) -> list[Pubkey]:
+def _read_pubkey_vec(r: DefensiveReader) -> list[Pubkey]:
     raw = r.read_pubkey_raw_vec()
-    return [Pubkey.from_bytes(b) for b in raw]
-
-
-def _try_read_pubkey_vec(r: IncrementalReader) -> list[Pubkey]:
-    raw = r.try_read_pubkey_raw_vec([])
     return [Pubkey.from_bytes(b) for b in raw]
 
 
@@ -361,9 +356,20 @@ class MulticastGroupStatus(IntEnum):
 class AccessPassTypeTag(IntEnum):
     PREPAID = 0
     SOLANA_VALIDATOR = 1
+    SOLANA_RPC = 2
+    SOLANA_MULTICAST_PUBLISHER = 3
+    SOLANA_MULTICAST_SUBSCRIBER = 4
+    OTHERS = 5
 
     def __str__(self) -> str:
-        _names = {0: "prepaid", 1: "solana_validator"}
+        _names = {
+            0: "prepaid",
+            1: "solana_validator",
+            2: "solana_rpc",
+            3: "solana_multicast_publisher",
+            4: "solana_multicast_subscriber",
+            5: "others",
+        }
         return _names.get(self.value, "unknown")
 
 
@@ -451,7 +457,7 @@ class GlobalState:
 
     @classmethod
     def from_bytes(cls, data: bytes) -> GlobalState:
-        r = IncrementalReader(data)
+        r = DefensiveReader(data)
         gs = cls()
         gs.account_type = r.read_u8()
         gs.bump_seed = r.read_u8()
@@ -464,7 +470,7 @@ class GlobalState:
         gs.contributor_airdrop_lamports = r.read_u64()
         gs.user_airdrop_lamports = r.read_u64()
         gs.health_oracle_pk = _read_pubkey(r)
-        gs.qa_allowlist = _try_read_pubkey_vec(r)
+        gs.qa_allowlist = _read_pubkey_vec(r)
         return gs
 
 
@@ -482,7 +488,7 @@ class GlobalConfig:
 
     @classmethod
     def from_bytes(cls, data: bytes) -> GlobalConfig:
-        r = IncrementalReader(data)
+        r = DefensiveReader(data)
         gc = cls()
         gc.account_type = r.read_u8()
         gc.owner = _read_pubkey(r)
@@ -513,7 +519,7 @@ class Location:
 
     @classmethod
     def from_bytes(cls, data: bytes) -> Location:
-        r = IncrementalReader(data)
+        r = DefensiveReader(data)
         loc = cls()
         loc.account_type = r.read_u8()
         loc.owner = _read_pubkey(r)
@@ -548,7 +554,7 @@ class Exchange:
 
     @classmethod
     def from_bytes(cls, data: bytes) -> Exchange:
-        r = IncrementalReader(data)
+        r = DefensiveReader(data)
         ex = cls()
         ex.account_type = r.read_u8()
         ex.owner = _read_pubkey(r)
@@ -592,7 +598,7 @@ class Device:
 
     @classmethod
     def from_bytes(cls, data: bytes) -> Device:
-        r = IncrementalReader(data)
+        r = DefensiveReader(data)
         dev = cls()
         dev.account_type = r.read_u8()
         dev.owner = _read_pubkey(r)
@@ -644,7 +650,7 @@ class Link:
 
     @classmethod
     def from_bytes(cls, data: bytes) -> Link:
-        r = IncrementalReader(data)
+        r = DefensiveReader(data)
         lk = cls()
         lk.account_type = r.read_u8()
         lk.owner = _read_pubkey(r)
@@ -691,7 +697,7 @@ class User:
 
     @classmethod
     def from_bytes(cls, data: bytes) -> User:
-        r = IncrementalReader(data)
+        r = DefensiveReader(data)
         u = cls()
         u.account_type = r.read_u8()
         u.owner = _read_pubkey(r)
@@ -728,7 +734,7 @@ class MulticastGroup:
 
     @classmethod
     def from_bytes(cls, data: bytes) -> MulticastGroup:
-        r = IncrementalReader(data)
+        r = DefensiveReader(data)
         mg = cls()
         mg.account_type = r.read_u8()
         mg.owner = _read_pubkey(r)
@@ -760,7 +766,7 @@ class ProgramConfig:
 
     @classmethod
     def from_bytes(cls, data: bytes) -> ProgramConfig:
-        r = IncrementalReader(data)
+        r = DefensiveReader(data)
         pc = cls()
         pc.account_type = r.read_u8()
         pc.bump_seed = r.read_u8()
@@ -782,7 +788,7 @@ class Contributor:
 
     @classmethod
     def from_bytes(cls, data: bytes) -> Contributor:
-        r = IncrementalReader(data)
+        r = DefensiveReader(data)
         c = cls()
         c.account_type = r.read_u8()
         c.owner = _read_pubkey(r)
@@ -801,7 +807,9 @@ class AccessPass:
     owner: Pubkey = Pubkey.default()
     bump_seed: int = 0
     access_pass_type_tag: AccessPassTypeTag = AccessPassTypeTag.PREPAID
-    validator_pub_key: Pubkey | None = None
+    associated_pubkey: Pubkey | None = None  # for SolanaValidator, SolanaRPC, SolanaMulticast*
+    others_type_name: str = ""  # for Others variant
+    others_key: str = ""  # for Others variant
     client_ip: bytes = b"\x00" * 4
     user_payer: Pubkey = Pubkey.default()
     last_access_epoch: int = 0
@@ -813,14 +821,23 @@ class AccessPass:
 
     @classmethod
     def from_bytes(cls, data: bytes) -> AccessPass:
-        r = IncrementalReader(data)
+        r = DefensiveReader(data)
         ap = cls()
         ap.account_type = r.read_u8()
         ap.owner = _read_pubkey(r)
         ap.bump_seed = r.read_u8()
-        ap.access_pass_type_tag = AccessPassTypeTag(r.read_u8())
-        if ap.access_pass_type_tag == AccessPassTypeTag.SOLANA_VALIDATOR:
-            ap.validator_pub_key = _read_pubkey(r)
+        tag = r.read_u8()
+        try:
+            ap.access_pass_type_tag = AccessPassTypeTag(tag)
+        except ValueError:
+            ap.access_pass_type_tag = AccessPassTypeTag.PREPAID
+        # Variants 1-4 have an associated pubkey
+        if tag in (1, 2, 3, 4):
+            ap.associated_pubkey = _read_pubkey(r)
+        # Variant 5 (Others) has two strings
+        elif tag == 5:
+            ap.others_type_name = r.read_string()
+            ap.others_key = r.read_string()
         ap.client_ip = r.read_ipv4()
         ap.user_payer = _read_pubkey(r)
         ap.last_access_epoch = r.read_u64()

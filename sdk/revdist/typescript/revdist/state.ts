@@ -7,7 +7,7 @@
  */
 
 import { PublicKey } from "@solana/web3.js";
-import { IncrementalReader } from "borsh-incremental";
+import { DefensiveReader } from "borsh-incremental";
 import { DISCRIMINATOR_SIZE, validateDiscriminator } from "./discriminator.js";
 
 function readPubkey(dv: DataView, offset: number): PublicKey {
@@ -470,7 +470,7 @@ export interface ComputedSolanaValidatorDebts {
 export function deserializeComputedSolanaValidatorDebts(
   data: Uint8Array,
 ): ComputedSolanaValidatorDebts {
-  const r = new IncrementalReader(data);
+  const r = new DefensiveReader(data);
   const blockhash = r.readBytes(32);
   const firstSolanaEpoch = r.readU64();
   const lastSolanaEpoch = r.readU64();
@@ -499,7 +499,7 @@ export interface ShapleyOutputStorage {
 export function deserializeShapleyOutputStorage(
   data: Uint8Array,
 ): ShapleyOutputStorage {
-  const r = new IncrementalReader(data);
+  const r = new DefensiveReader(data);
   const epoch = r.readU64();
   const count = r.readU32();
   const rewards: RewardShare[] = [];

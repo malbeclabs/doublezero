@@ -176,3 +176,68 @@ class IncrementalReader:
         if self.remaining < 4:
             return default if default is not None else []
         return self.read_network_v4_vec()
+
+
+class DefensiveReader:
+    """Wrapper around IncrementalReader that uses try_read for all operations.
+
+    All read methods return zero/empty defaults on insufficient data, matching
+    Go's ByteReader behavior. This makes deserialization resilient to schema
+    changes where new fields are added to the end of structs.
+    """
+
+    def __init__(self, data: bytes) -> None:
+        self._r = IncrementalReader(data)
+
+    @property
+    def offset(self) -> int:
+        return self._r.offset
+
+    @property
+    def remaining(self) -> int:
+        return self._r.remaining
+
+    def read_u8(self) -> int:
+        return self._r.try_read_u8(0)
+
+    def read_bool(self) -> bool:
+        return self._r.try_read_bool(False)
+
+    def read_u16(self) -> int:
+        return self._r.try_read_u16(0)
+
+    def read_u32(self) -> int:
+        return self._r.try_read_u32(0)
+
+    def read_u64(self) -> int:
+        return self._r.try_read_u64(0)
+
+    def read_u128(self) -> int:
+        return self._r.try_read_u128(0)
+
+    def read_f64(self) -> float:
+        return self._r.try_read_f64(0.0)
+
+    def read_pubkey_raw(self) -> bytes:
+        return self._r.try_read_pubkey_raw(b"\x00" * 32)
+
+    def read_ipv4(self) -> bytes:
+        return self._r.try_read_ipv4(b"\x00" * 4)
+
+    def read_network_v4(self) -> bytes:
+        return self._r.try_read_network_v4(b"\x00" * 5)
+
+    def read_string(self) -> str:
+        return self._r.try_read_string("")
+
+    def read_pubkey_raw_vec(self) -> list[bytes]:
+        return self._r.try_read_pubkey_raw_vec([])
+
+    def read_network_v4_vec(self) -> list[bytes]:
+        return self._r.try_read_network_v4_vec([])
+
+    def read_bytes(self, n: int) -> bytes:
+        """Read n bytes, returning zero bytes if insufficient data."""
+        if self._r.remaining < n:
+            return b"\x00" * n
+        return self._r.read_bytes(n)

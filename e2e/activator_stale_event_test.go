@@ -471,14 +471,21 @@ func TestE2E_Activator_ConcurrentAccessPassCycling(t *testing.T) {
 	log.Info("==> Phase 1 complete: All users activated")
 
 	// =========================================================================
-	// Phase 2: Concurrent access pass expire/renew cycles
+	// Phase 2: Rapid fire expire/renew cycles to trigger stale events
+	//
+	// We fire expire, wait just long enough for the activator to start
+	// processing the suspension (but not finish), then fire renew. This creates
+	// overlapping websocket events: the activator receives User(Updating) events
+	// from the suspension while the renewal is already changing the access pass
+	// back. By the time the activator tries to activate a user, the status may
+	// have already changed — exactly the race condition seen on testnet.
 	// =========================================================================
 	for cycle := range numCycles {
-		log.Info("==> Cycle: Expiring all access passes concurrently", "cycle", cycle+1)
+		log.Info("==> Cycle: Firing expire + renew back-to-back for all clients", "cycle", cycle+1)
 
 		// Expire all access passes concurrently.
 		var wg sync.WaitGroup
-		errCh := make(chan error, numClients)
+		errCh := make(chan error, numClients*2)
 		for i, ci := range clients {
 			wg.Add(1)
 			go func() {
@@ -492,36 +499,12 @@ func TestE2E_Activator_ConcurrentAccessPassCycling(t *testing.T) {
 			}()
 		}
 		wg.Wait()
-		close(errCh)
-		for err := range errCh {
-			require.NoError(t, err)
-		}
 
-		// Wait for all users to reach OutOfCredits.
-		log.Info("==> Cycle: Waiting for all users to reach OutOfCredits", "cycle", cycle+1)
-		require.Eventually(t, func() bool {
-			data, err := serviceabilityClient.GetProgramData(ctx)
-			if err != nil {
-				return false
-			}
-			oocCount := 0
-			for _, user := range data.Users {
-				pubkey := base58.Encode(user.PubKey[:])
-				for _, ci := range clients {
-					if ci.userPubkey == pubkey && user.Status == serviceability.UserStatusOutOfCredits {
-						oocCount++
-						break
-					}
-				}
-			}
-			return oocCount >= numClients
-		}, 120*time.Second, 2*time.Second, "not all users reached OutOfCredits in cycle %d", cycle+1)
-
-		log.Info("==> Cycle: Renewing all access passes concurrently", "cycle", cycle+1)
-
-		// Renew all access passes concurrently.
-		wg = sync.WaitGroup{}
-		errCh = make(chan error, numClients)
+		// Wait just long enough for the activator to pick up the expire events and
+		// start processing suspensions, but not long enough for it to finish. This
+		// creates the overlap: the activator is mid-suspension when the renewal
+		// events arrive, generating stale User(Updating) events.
+		time.Sleep(3 * time.Second)
 		for i, ci := range clients {
 			wg.Add(1)
 			go func() {
@@ -599,9 +582,40 @@ func TestE2E_Activator_ConcurrentAccessPassCycling(t *testing.T) {
 	}
 
 	// =========================================================================
-	// Cleanup: Delete all users
+	// Cleanup: Ensure users are Activated before deleting
+	//
+	// After the rapid expire/renew cycles, the activator may still be processing
+	// stale suspension events. Re-set access passes and wait for all users to
+	// stabilize in Activated before deleting (delete requires active status).
 	// =========================================================================
-	log.Info("==> Cleaning up: deleting all users")
+	log.Info("==> Cleaning up: re-setting access passes to stabilize users")
+	for _, ci := range clients {
+		_, err := dn.Manager.Exec(ctx, []string{"bash", "-c",
+			"doublezero access-pass set --accesspass-type prepaid --client-ip " + ci.client.CYOANetworkIP + " --user-payer " + ci.client.Pubkey + " --epochs max",
+		})
+		require.NoError(t, err)
+	}
+
+	log.Info("==> Waiting for all users to stabilize in Activated state before delete")
+	require.Eventually(t, func() bool {
+		data, err := serviceabilityClient.GetProgramData(ctx)
+		if err != nil {
+			return false
+		}
+		activatedCount := 0
+		for _, user := range data.Users {
+			pubkey := base58.Encode(user.PubKey[:])
+			for _, ci := range clients {
+				if ci.userPubkey == pubkey && user.Status == serviceability.UserStatusActivated {
+					activatedCount++
+					break
+				}
+			}
+		}
+		return activatedCount >= numClients
+	}, 120*time.Second, 2*time.Second, "not all users returned to Activated before cleanup")
+
+	log.Info("==> Deleting all users")
 	for _, ci := range clients {
 		_, err := ci.client.Exec(ctx, []string{"bash", "-c", "doublezero user delete --pubkey " + ci.userPubkey})
 		require.NoError(t, err)

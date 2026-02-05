@@ -121,3 +121,27 @@ examples-python: example-serviceability-python example-telemetry-python example-
 
 .PHONY: examples-typescript
 examples-typescript: example-serviceability-typescript example-telemetry-typescript example-revdist-typescript
+
+# -----------------------------------------------------------------------------
+# Version management
+# -----------------------------------------------------------------------------
+.PHONY: bump-version
+bump-version:
+ifndef version
+	$(error version is required. Usage: make bump-version version=0.0.4)
+endif
+	@echo "Bumping all SDK packages to version $(version)..."
+	@for pkg in borsh-incremental serviceability revdist telemetry; do \
+		sed -i '' 's/^version = ".*"/version = "$(version)"/' $$pkg/python/pyproject.toml; \
+		sed -i '' 's/"version": ".*"/"version": "$(version)"/' $$pkg/typescript/package.json; \
+	done
+	@echo "Done. New versions:"
+	@$(MAKE) --no-print-directory show-versions
+
+.PHONY: show-versions
+show-versions:
+	@for pkg in borsh-incremental serviceability revdist telemetry; do \
+		py_ver=$$(grep '^version = ' $$pkg/python/pyproject.toml | sed 's/version = "//;s/"//'); \
+		ts_ver=$$(grep '"version":' $$pkg/typescript/package.json | head -1 | sed 's/.*"version": "//;s/".*//' | tr -d ' '); \
+		echo "$$pkg: Python=$$py_ver TypeScript=$$ts_ver"; \
+	done

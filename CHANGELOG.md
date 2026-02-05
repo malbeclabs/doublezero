@@ -28,6 +28,7 @@ All notable changes to this project will be documented in this file.
   - Add sol-balance watcher to track SOL balances for configured accounts and export Prometheus metrics for alerting
 - E2E tests
   - Add backward compatibility test that validates older CLI versions against the current onchain program by cloning live state from testnet and mainnet-beta
+  - Add daily devnet QA test for device provisioning lifecycle (RFC12) — deletes/recreates device and links, restarts daemons with new pubkey via Ansible
 
 ## [v0.8.6](https://github.com/malbeclabs/doublezero/compare/client/v0.8.5...client/v0.8.6) – 2026-02-04
 

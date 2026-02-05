@@ -10,6 +10,10 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Onchain programs
+  - Serviceability: add reference count validation in DeleteMulticastGroup to prevent deletion when active publishers or subscribers exist
+
+
 ## [v0.8.6](https://github.com/malbeclabs/doublezero/compare/client/v0.8.5...client/v0.8.6) – 2026-02-04
 
 ### Breaking

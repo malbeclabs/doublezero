@@ -424,7 +424,7 @@ pub async fn pay_all_solana_validator_debt(
     }
 
     let dz_epoch_range = Vec::from_iter(
-        GENESIS_DZ_EPOCH_MAINNET_BETA..(config.last_completed_epoch().unwrap().value()),
+        GENESIS_DZ_EPOCH_MAINNET_BETA..=(config.last_completed_epoch().unwrap().value()),
     );
 
     let tasks: Vec<DebtCollectionResults> = stream::iter(dz_epoch_range)

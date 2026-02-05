@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- use inclusive range for completed DZ epochs ([#2815](https://github.com/malbeclabs/doublezero/issues/2815))
 - remove dz_ledger as argument ([#255](https://github.com/doublezerofoundation/doublezero-offchain/pull/255))
 - Make “Total Debt Collection” Slack summary a global (unfiltered) total while keeping the per-epoch “Debt Collected” table filtered ([#252](https://github.com/doublezerofoundation/doublezero-offchain/pull/252))
 - use vote key from past ([#250](https://github.com/doublezerofoundation/doublezero-offchain/pull/250))

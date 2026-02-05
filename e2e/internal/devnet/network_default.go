@@ -2,6 +2,7 @@ package devnet
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"log/slog"
 
@@ -60,11 +61,10 @@ func (n *DefaultNetwork) CreateIfNotExists(ctx context.Context) (bool, error) {
 func (n *DefaultNetwork) Create(ctx context.Context) error {
 	n.log.Info("==> Creating default network", "labels", n.dn.labels)
 
-	// Get an available subnet for the default network.
-	subnetCIDR, err := n.dn.subnetAllocator.FindAvailableSubnet(ctx, n.dn.Spec.DeployID)
-	if err != nil {
-		return fmt.Errorf("failed to get available subnet: %w", err)
-	}
+	// Generate a subnet from 10.0.0.0/8 range based on deploy ID.
+	// This uses a different range than the CYOA network (9.128.0.0/9) to avoid
+	// conflicts in tests that detect interfaces by IP range.
+	subnetCIDR := n.generateSubnetCIDR(n.dn.Spec.DeployID)
 	n.log.Info("--> Default network subnet selected", "subnet", subnetCIDR)
 
 	// Create a docker network.
@@ -76,10 +76,15 @@ func (n *DefaultNetwork) Create(ctx context.Context) error {
 			Driver:     "bridge",
 			Attachable: true,
 			Labels:     n.dn.labels,
+			IPAM: &dockernetwork.IPAM{
+				Config: []dockernetwork.IPAMConfig{
+					{Subnet: subnetCIDR},
+				},
+			},
 		},
 	}
 	//nolint:staticcheck // SA1019
-	_, err = testcontainers.GenericNetwork(ctx, req)
+	_, err := testcontainers.GenericNetwork(ctx, req)
 	if err != nil {
 		return fmt.Errorf("failed to create network: %w", err)
 	}
@@ -102,4 +107,12 @@ func (n *DefaultNetwork) getSubnetCIDR(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("network %s has no IPAM config", networkName)
 	}
 	return inspect.IPAM.Config[0].Subnet, nil
+}
+
+// generateSubnetCIDR generates a /24 subnet from the 10.0.0.0/8 range based on the deploy ID.
+// This ensures each test gets a unique subnet while using a different range than the CYOA network.
+func (n *DefaultNetwork) generateSubnetCIDR(deployID string) string {
+	h := sha256.Sum256([]byte(deployID))
+	// Use first two bytes of hash for second and third octets (10.X.Y.0/24)
+	return fmt.Sprintf("10.%d.%d.0/24", h[0], h[1])
 }

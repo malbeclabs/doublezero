@@ -1,6 +1,6 @@
 [project]
 name = "doublezero-serviceability"
-version = "0.0.2"
+version = "0.0.3"
 description = "DoubleZero Serviceability SDK"
 requires-python = ">=3.10"
 dependencies = [

@@ -1,6 +1,6 @@
 {
   "name": "@doublezero/revenue-distribution",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "type": "module",
   "main": "revdist/index.ts",
   "types": "revdist/index.ts",

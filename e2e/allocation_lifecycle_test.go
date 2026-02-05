@@ -6,7 +6,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -254,7 +253,6 @@ func TestE2E_User_AllocationLifecycle(t *testing.T) {
 // for multicast group resources. It verifies that when a multicast group is created and deleted:
 // - multicast_ip is allocated from and returned to MulticastGroupBlock
 func TestE2E_MulticastGroup_AllocationLifecycle(t *testing.T) {
-
 	t.Parallel()
 
 	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
@@ -580,17 +578,20 @@ func TestE2E_MultipleLinks_AllocationLifecycle(t *testing.T) {
 }
 
 // TestE2E_Multicast_ReactivationPreservesAllocations is a regression test for Bug #2798.
-// It verifies that when a Multicast user subscribes as a publisher and gets re-activated:
+// It verifies that when a Multicast publisher adds a second multicast group and gets re-activated:
 // - tunnel_net and tunnel_id remain unchanged (no leak)
-// - dz_ip gets allocated from DzPrefixBlock (since publishers list is now non-empty)
+// - dz_ip remains unchanged (already allocated from DzPrefixBlock)
 // - Resource bitmap allocation counts stay stable (no leaks)
 //
 // Bug scenario:
-// 1. User with Multicast type is activated → allocates tunnel_net, tunnel_id; dz_ip = client_ip
-// 2. User subscribes as publisher to multicast group → sets status to Updating
+// 1. User with Multicast type is activated as publisher → allocates tunnel_net, tunnel_id, dz_ip
+// 2. User adds publisher subscription to second multicast group → sets status to Updating
 // 3. Activator re-activates user → BUG: would allocate NEW resources instead of keeping existing
 //
-// The fix preserves existing tunnel_net/tunnel_id and only allocates dz_ip when needed.
+// The fix preserves existing tunnel_net/tunnel_id/dz_ip allocations.
+//
+// Note: A user can only be a subscriber OR a publisher, not both. This test uses
+// publisher → add second publisher group to trigger re-activation.
 func TestE2E_Multicast_ReactivationPreservesAllocations(t *testing.T) {
 	t.Parallel()
 
@@ -658,16 +659,17 @@ func TestE2E_Multicast_ReactivationPreservesAllocations(t *testing.T) {
 		return false
 	}, 120*time.Second, 2*time.Second, "device was not activated within timeout")
 
-	// Create multicast group
-	log.Info("==> Creating multicast group")
+	// Create two multicast groups (needed to trigger re-activation by adding second group)
+	log.Info("==> Creating multicast groups")
 	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", `
 		set -euo pipefail
 		doublezero multicast group create --code test-mc01 --max-bandwidth 10Gbps --owner me
+		doublezero multicast group create --code test-mc02 --max-bandwidth 10Gbps --owner me
 	`})
 	require.NoError(t, err)
 
-	// Wait for multicast group to be activated
-	log.Info("==> Waiting for multicast group activation")
+	// Wait for both multicast groups to be activated
+	log.Info("==> Waiting for multicast groups activation")
 	require.Eventually(t, func() bool {
 		client, err := dn.Ledger.GetServiceabilityClient()
 		if err != nil {
@@ -677,13 +679,18 @@ func TestE2E_Multicast_ReactivationPreservesAllocations(t *testing.T) {
 		if err != nil {
 			return false
 		}
+		mc01Activated := false
+		mc02Activated := false
 		for _, mc := range data.MulticastGroups {
 			if mc.Code == "test-mc01" && mc.Status == serviceability.MulticastGroupStatusActivated {
-				return true
+				mc01Activated = true
+			}
+			if mc.Code == "test-mc02" && mc.Status == serviceability.MulticastGroupStatusActivated {
+				mc02Activated = true
 			}
 		}
-		return false
-	}, 90*time.Second, 2*time.Second, "multicast group was not activated within timeout")
+		return mc01Activated && mc02Activated
+	}, 90*time.Second, 2*time.Second, "multicast groups were not activated within timeout")
 
 	// Create allocation verifier
 	serviceabilityClient, err := dn.Ledger.GetServiceabilityClient()
@@ -706,13 +713,11 @@ func TestE2E_Multicast_ReactivationPreservesAllocations(t *testing.T) {
 	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey})
 	require.NoError(t, err)
 
-	// Add client to multicast group allowlists (both subscriber and publisher)
-	// - subscriber allowlist: needed for initial connection as subscriber
-	// - publisher allowlist: needed for later subscription as publisher
-	log.Info("==> Adding client to multicast group subscriber and publisher allowlists")
+	// Add client to publisher allowlists for both multicast groups
+	log.Info("==> Adding client to multicast group publisher allowlists")
 	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", `
-		doublezero multicast group allowlist subscriber add --code test-mc01 --user-payer ` + client.Pubkey + ` --client-ip ` + client.CYOANetworkIP + `
 		doublezero multicast group allowlist publisher add --code test-mc01 --user-payer ` + client.Pubkey + ` --client-ip ` + client.CYOANetworkIP + `
+		doublezero multicast group allowlist publisher add --code test-mc02 --user-payer ` + client.Pubkey + ` --client-ip ` + client.CYOANetworkIP + `
 	`})
 	require.NoError(t, err)
 
@@ -722,11 +727,11 @@ func TestE2E_Multicast_ReactivationPreservesAllocations(t *testing.T) {
 	require.NoError(t, err, "failed to capture pre-allocation snapshot")
 
 	// =========================================================================
-	// Phase 1: Initial activation as Multicast user (no publishers yet)
+	// Phase 1: Initial activation as Multicast publisher
 	// =========================================================================
-	log.Info("==> Phase 1: Connecting as multicast subscriber (no publishers yet)")
-	_, err = client.Exec(ctx, []string{"bash", "-c", "doublezero connect multicast subscriber test-mc01 --client-ip " + client.CYOANetworkIP})
-	require.NoError(t, err, "failed to connect as multicast subscriber")
+	log.Info("==> Phase 1: Connecting as multicast publisher to first group")
+	_, err = client.Exec(ctx, []string{"bash", "-c", "doublezero connect multicast publisher test-mc01 --client-ip " + client.CYOANetworkIP})
+	require.NoError(t, err, "failed to connect as multicast publisher")
 
 	// Wait for user to be activated
 	log.Info("==> Waiting for initial user activation")
@@ -737,7 +742,7 @@ func TestE2E_Multicast_ReactivationPreservesAllocations(t *testing.T) {
 			return false
 		}
 		for _, user := range data.Users {
-			if user.Status == serviceability.UserStatusActivated && len(user.Subscribers) > 0 {
+			if user.Status == serviceability.UserStatusActivated && len(user.Publishers) > 0 {
 				activatedUser = &user
 				return true
 			}
@@ -755,10 +760,11 @@ func TestE2E_Multicast_ReactivationPreservesAllocations(t *testing.T) {
 		"tunnel_id", originalTunnelId,
 		"tunnel_net", originalTunnelNet,
 		"dz_ip", originalDzIp,
-		"client_ip", clientIP)
+		"client_ip", clientIP,
+		"publishers", len(activatedUser.Publishers))
 
-	// Verify dz_ip equals client_ip (no publishers yet, so no allocation from DzPrefixBlock)
-	require.Equal(t, clientIP, originalDzIp, "dz_ip should equal client_ip when no publishers")
+	// Verify dz_ip is allocated from DzPrefixBlock (publishers have dz_ip != client_ip)
+	require.NotEqual(t, clientIP, originalDzIp, "dz_ip should be allocated from DzPrefixBlock for publishers")
 
 	// Capture snapshot AFTER initial activation
 	afterInitialAlloc, err := verifier.CaptureSnapshot(ctx)
@@ -775,20 +781,20 @@ func TestE2E_Multicast_ReactivationPreservesAllocations(t *testing.T) {
 		"DzPrefixBlock_allocated", dzPrefixBefore)
 
 	// =========================================================================
-	// Phase 2: Subscribe as publisher → triggers Updating status
+	// Phase 2: Add publisher to second multicast group → triggers Updating status
 	// =========================================================================
-	log.Info("==> Phase 2: Subscribing as publisher to trigger re-activation")
+	log.Info("==> Phase 2: Adding publisher to second multicast group to trigger re-activation")
 
-	// Subscribe as publisher using the CLI (adds to publishers list, triggers re-activation)
-	_, err = client.Exec(ctx, []string{"bash", "-c", "doublezero connect multicast publisher test-mc01 --client-ip " + client.CYOANetworkIP})
-	require.NoError(t, err, "failed to subscribe as publisher")
+	// Add publisher to second group using the CLI (adds to publishers list, triggers re-activation)
+	_, err = client.Exec(ctx, []string{"bash", "-c", "doublezero connect multicast publisher test-mc02 --client-ip " + client.CYOANetworkIP})
+	require.NoError(t, err, "failed to add publisher to second group")
 
 	// =========================================================================
-	// Phase 3: Wait for re-activation with publishers
+	// Phase 3: Wait for re-activation with two publishers
 	// Note: The Updating status is transient and may complete very quickly,
-	// so we wait directly for Activated status with publishers > 0
+	// so we wait directly for Activated status with publishers == 2
 	// =========================================================================
-	log.Info("==> Phase 3: Waiting for re-activation with publishers")
+	log.Info("==> Phase 3: Waiting for re-activation with two publishers")
 	var reactivatedUser *serviceability.User
 	require.Eventually(t, func() bool {
 		data, err := serviceabilityClient.GetProgramData(ctx)
@@ -796,7 +802,7 @@ func TestE2E_Multicast_ReactivationPreservesAllocations(t *testing.T) {
 			return false
 		}
 		for _, user := range data.Users {
-			if len(user.Publishers) > 0 && user.Status == serviceability.UserStatusActivated {
+			if len(user.Publishers) == 2 && user.Status == serviceability.UserStatusActivated {
 				reactivatedUser = &user
 				return true
 			}
@@ -830,17 +836,10 @@ func TestE2E_Multicast_ReactivationPreservesAllocations(t *testing.T) {
 		"tunnel_id should be preserved after re-activation (was: %d, now: %d)",
 		originalTunnelId, reactivatedTunnelId)
 
-	// dz_ip should now be allocated from DzPrefixBlock (since publishers is non-empty)
-	require.NotEqual(t, clientIP, reactivatedDzIp,
-		"dz_ip should be allocated from DzPrefixBlock after publisher subscription (was: %s, now: %s)",
-		clientIP, reactivatedDzIp)
-
-	// Verify dz_ip is from device's dz_prefix range
-	dzPrefixBase := strings.Split(device.DZPrefix, "/")[0]   // e.g., "9.179.159.8" from "9.179.159.8/29"
-	dzPrefixParts := strings.Split(dzPrefixBase, ".")[:3]    // e.g., ["9", "179", "159"]
-	expectedPrefix := strings.Join(dzPrefixParts, ".") + "." // e.g., "9.179.159."
-	require.True(t, strings.HasPrefix(reactivatedDzIp, expectedPrefix),
-		"dz_ip should be from device's dz_prefix (%s), got: %s", device.DZPrefix, reactivatedDzIp)
+	// CRITICAL: dz_ip must be unchanged (already allocated from DzPrefixBlock)
+	require.Equal(t, originalDzIp, reactivatedDzIp,
+		"dz_ip should be preserved after re-activation (was: %s, now: %s)",
+		originalDzIp, reactivatedDzIp)
 
 	// Capture snapshot AFTER re-activation
 	afterReactivation, err := verifier.CaptureSnapshot(ctx)
@@ -866,9 +865,9 @@ func TestE2E_Multicast_ReactivationPreservesAllocations(t *testing.T) {
 		"TunnelIds allocation count should be unchanged (was: %d, now: %d) - potential leak!",
 		tunnelIdsBefore.Allocated, tunnelIdsAfter.Allocated)
 
-	// DzPrefixBlock should increase by 1 (new dz_ip allocation)
-	require.Equal(t, dzPrefixBefore+1, dzPrefixAfter,
-		"DzPrefixBlock should have 1 more allocation for dz_ip (was: %d, now: %d)",
+	// DzPrefixBlock should be unchanged (dz_ip was already allocated in Phase 1)
+	require.Equal(t, dzPrefixBefore, dzPrefixAfter,
+		"DzPrefixBlock should be unchanged after re-activation (was: %d, now: %d) - potential leak!",
 		dzPrefixBefore, dzPrefixAfter)
 
 	// =========================================================================

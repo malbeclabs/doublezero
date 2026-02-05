@@ -1,5 +1,5 @@
 {
-  "name": "@doublezero/borsh-incremental",
+  "name": "borsh-incremental",
   "version": "0.0.1",
   "type": "module",
   "main": "dist/borsh-incremental/index.js",

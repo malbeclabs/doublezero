@@ -1,7 +1,7 @@
 /** Account state types and Borsh deserialization for the serviceability program. */
 
 import { PublicKey } from "@solana/web3.js";
-import { IncrementalReader } from "@doublezero/borsh-incremental";
+import { IncrementalReader } from "borsh-incremental";
 
 // ---------------------------------------------------------------------------
 // Helpers

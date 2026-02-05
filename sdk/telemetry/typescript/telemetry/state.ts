@@ -1,7 +1,7 @@
 /** Account state types and deserialization for the telemetry program. */
 
 import { PublicKey } from "@solana/web3.js";
-import { IncrementalReader } from "@doublezero/borsh-incremental";
+import { IncrementalReader } from "borsh-incremental";
 
 const DEVICE_LATENCY_HEADER_SIZE = 1 + 8 + 32 * 6 + 8 + 8 + 4 + 128;
 const MAX_DEVICE_LATENCY_SAMPLES = 35_000;

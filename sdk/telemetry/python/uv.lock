@@ -17,6 +17,16 @@ wheels = [
 ]
 
 [[package]]
+name = "borsh-incremental"
+version = "0.0.1"
+source = { editable = "../../borsh-incremental/python" }
+
+[package.metadata]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=9.0.2" }]
+
+[[package]]
 name = "certifi"
 version = "2026.1.4"
 source = { registry = "https://pypi.org/simple" }
@@ -57,21 +67,11 @@ wheels = [
 ]
 
 [[package]]
-name = "doublezero-borsh-incremental"
-version = "0.0.1"
-source = { editable = "../../borsh-incremental/python" }
-
-[package.metadata]
-
-[package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=9.0.2" }]
-
-[[package]]
 name = "doublezero-telemetry"
 version = "0.0.1"
 source = { editable = "." }
 dependencies = [
-    { name = "doublezero-borsh-incremental" },
+    { name = "borsh-incremental" },
     { name = "httpx" },
     { name = "solana" },
     { name = "solders" },
@@ -84,7 +84,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "doublezero-borsh-incremental", editable = "../../borsh-incremental/python" },
+    { name = "borsh-incremental", editable = "../../borsh-incremental/python" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "solana", specifier = ">=0.35" },
     { name = "solders", specifier = ">=0.21" },

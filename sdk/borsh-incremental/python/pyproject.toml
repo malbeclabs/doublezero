@@ -1,5 +1,5 @@
 [project]
-name = "doublezero-borsh-incremental"
+name = "borsh-incremental"
 version = "0.0.1"
 description = "Borsh incremental deserialization with backward-compatible trailing fields"
 requires-python = ">=3.10"

@@ -7,7 +7,7 @@
  */
 
 import { PublicKey } from "@solana/web3.js";
-import { IncrementalReader } from "@doublezero/borsh-incremental";
+import { IncrementalReader } from "borsh-incremental";
 import { DISCRIMINATOR_SIZE, validateDiscriminator } from "./discriminator.js";
 
 function readPubkey(dv: DataView, offset: number): PublicKey {

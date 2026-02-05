@@ -11,7 +11,7 @@
     "types": ["bun"],
     "baseUrl": ".",
     "paths": {
-      "@doublezero/borsh-incremental": ["../../borsh-incremental/typescript/borsh-incremental/index.ts"]
+      "borsh-incremental": ["../../borsh-incremental/typescript/borsh-incremental/index.ts"]
     }
   },
   "include": ["telemetry/**/*.ts"]

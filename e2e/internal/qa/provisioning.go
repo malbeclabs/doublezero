@@ -12,10 +12,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/config"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 	"github.com/mr-tron/base58"
 )
 
@@ -43,6 +44,12 @@ type DeviceInfo struct {
 	Health          string
 	DeviceType      string
 	DesiredStatus   string
+	Interfaces      []InterfaceInfo
+}
+
+type InterfaceInfo struct {
+	Name         string
+	LoopbackType string
 }
 
 type DeviceConfig struct {
@@ -55,6 +62,7 @@ type DeviceConfig struct {
 	MgmtVrf         string
 	MaxUsers        int
 	DeviceType      string
+	Interfaces      []InterfaceInfo
 }
 
 type LinkInfo struct {
@@ -126,13 +134,21 @@ func (p *ProvisioningTest) GetDeviceByCode(ctx context.Context, code string) (*D
 	}
 
 	for _, device := range data.Devices {
-		if device.Code == code {
+		if device.Code == code && device.Status != serviceability.DeviceStatusDeleting {
 			// Convert DZ prefixes to strings
 			var prefixes []string
 			for _, prefix := range device.DzPrefixes {
 				ip := net.IP(prefix[:4])
 				maskLen := prefix[4]
 				prefixes = append(prefixes, fmt.Sprintf("%s/%d", ip.String(), maskLen))
+			}
+
+			var ifaces []InterfaceInfo
+			for _, iface := range device.Interfaces {
+				ifaces = append(ifaces, InterfaceInfo{
+					Name:         iface.Name,
+					LoopbackType: iface.LoopbackType.String(),
+				})
 			}
 
 			return &DeviceInfo{
@@ -150,6 +166,7 @@ func (p *ProvisioningTest) GetDeviceByCode(ctx context.Context, code string) (*D
 				Health:          device.DeviceHealth.String(),
 				DeviceType:      device.DeviceType.String(),
 				DesiredStatus:   device.DeviceDesiredStatus.String(),
+				Interfaces:      ifaces,
 			}, nil
 		}
 	}
@@ -157,7 +174,6 @@ func (p *ProvisioningTest) GetDeviceByCode(ctx context.Context, code string) (*D
 	return nil, fmt.Errorf("device %q not found", code)
 }
 
-// CaptureDeviceConfig captures the device configuration for recreation.
 func (p *ProvisioningTest) CaptureDeviceConfig(ctx context.Context, device *DeviceInfo) (*DeviceConfig, error) {
 	return &DeviceConfig{
 		Code:            device.Code,
@@ -169,10 +185,10 @@ func (p *ProvisioningTest) CaptureDeviceConfig(ctx context.Context, device *Devi
 		MgmtVrf:         device.MgmtVrf,
 		MaxUsers:        device.MaxUsers,
 		DeviceType:      device.DeviceType,
+		Interfaces:      device.Interfaces,
 	}, nil
 }
 
-// GetLinksForDevice retrieves all links connected to a device.
 func (p *ProvisioningTest) GetLinksForDevice(ctx context.Context, deviceCode string) ([]*LinkInfo, error) {
 	data, err := getProgramDataWithRetry(ctx, p.serviceability)
 	if err != nil {
@@ -223,14 +239,51 @@ func (p *ProvisioningTest) GetLinksForDevice(ctx context.Context, deviceCode str
 	return links, nil
 }
 
-// DeleteDevice deletes a device from the ledger.
+func (p *ProvisioningTest) DeleteInterface(ctx context.Context, deviceCode, ifaceName string) error {
+	_, err := p.runCLI(ctx, "device", "interface", "delete", deviceCode, ifaceName)
+	return err
+}
+
+// WaitForRefCountZero polls the device until its reference_count reaches zero.
+// This is needed because link deletion is two-phase: the CLI sets status to Deleting,
+// and the activator later calls CloseAccount which decrements the reference count.
+func (p *ProvisioningTest) WaitForRefCountZero(ctx context.Context, deviceCode string) error {
+	for {
+		data, err := getProgramDataWithRetry(ctx, p.serviceability)
+		if err != nil {
+			return fmt.Errorf("failed to get program data: %w", err)
+		}
+
+		for _, device := range data.Devices {
+			if device.Code == deviceCode {
+				if device.ReferenceCount == 0 {
+					return nil
+				}
+				p.log.Info("Waiting for reference count to reach zero",
+					"device", deviceCode, "reference_count", device.ReferenceCount)
+				break
+			}
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(5 * time.Second):
+		}
+	}
+}
+
 func (p *ProvisioningTest) DeleteDevice(ctx context.Context, pubkey string) error {
 	_, err := p.runCLI(ctx, "device", "delete", "--pubkey", pubkey)
 	return err
 }
 
-// CreateDevice creates a device on the ledger and returns the new pubkey.
 func (p *ProvisioningTest) CreateDevice(ctx context.Context, cfg *DeviceConfig) (string, error) {
+	mgmtVrf := cfg.MgmtVrf
+	if mgmtVrf == "" {
+		mgmtVrf = "default"
+	}
+
 	args := []string{
 		"device", "create",
 		"--code", cfg.Code,
@@ -239,7 +292,8 @@ func (p *ProvisioningTest) CreateDevice(ctx context.Context, cfg *DeviceConfig) 
 		"--exchange", cfg.ExchangeCode,
 		"--public-ip", cfg.PublicIP,
 		"--dz-prefixes", strings.Join(cfg.DzPrefixes, ","),
-		"--mgmt-vrf", cfg.MgmtVrf,
+		"--mgmt-vrf", mgmtVrf,
+		"-w", // wait for confirmation
 	}
 
 	if cfg.DeviceType != "" {
@@ -251,16 +305,31 @@ func (p *ProvisioningTest) CreateDevice(ctx context.Context, cfg *DeviceConfig) 
 		return "", err
 	}
 
-	// Get the new device to retrieve its pubkey
-	device, err := p.GetDeviceByCode(ctx, cfg.Code)
+	// Get the new device pubkey via CLI (Go SDK may return stale data)
+	pubkey, err := p.getDevicePubkeyCLI(ctx, cfg.Code)
 	if err != nil {
 		return "", fmt.Errorf("device created but failed to retrieve pubkey: %w, output: %s", err, string(output))
 	}
 
-	return device.Pubkey, nil
+	return pubkey, nil
 }
 
-// UpdateDevice updates a device's max-users and desired-status.
+// getDevicePubkeyCLI retrieves the device pubkey via the CLI rather than the Go SDK,
+// because the Go SDK may return stale data after a delete+recreate cycle.
+func (p *ProvisioningTest) getDevicePubkeyCLI(ctx context.Context, code string) (string, error) {
+	output, err := p.runCLI(ctx, "device", "get", "--code", code)
+	if err != nil {
+		return "", err
+	}
+	for _, line := range strings.Split(string(output), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "account:") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "account:")), nil
+		}
+	}
+	return "", fmt.Errorf("could not parse account pubkey from device get output: %s", string(output))
+}
+
 func (p *ProvisioningTest) UpdateDevice(ctx context.Context, pubkey string, maxUsers int, desiredStatus string) error {
 	args := []string{
 		"device", "update",
@@ -273,7 +342,6 @@ func (p *ProvisioningTest) UpdateDevice(ctx context.Context, pubkey string, maxU
 	return err
 }
 
-// CreateInterface creates a device interface.
 func (p *ProvisioningTest) CreateInterface(ctx context.Context, deviceCode, ifaceName, loopbackType string) error {
 	args := []string{
 		"device", "interface", "create",
@@ -289,13 +357,11 @@ func (p *ProvisioningTest) CreateInterface(ctx context.Context, deviceCode, ifac
 	return err
 }
 
-// DeleteLink deletes a link from the ledger.
 func (p *ProvisioningTest) DeleteLink(ctx context.Context, pubkey string) error {
 	_, err := p.runCLI(ctx, "link", "delete", "--pubkey", pubkey)
 	return err
 }
 
-// CreateLink creates a link on the ledger.
 func (p *ProvisioningTest) CreateLink(ctx context.Context, link *LinkInfo) error {
 	linkType := strings.ToLower(link.LinkType)
 	if linkType == "" {

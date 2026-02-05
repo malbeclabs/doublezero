@@ -155,14 +155,16 @@ func (d DeviceStatus) MarshalJSON() ([]byte, error) {
 type DeviceHealth uint8
 
 const (
-	DeviceHealthPending DeviceHealth = iota
-	DeviceHealthReadyForLinks
-	DeviceHealthReadyForUsers
-	DeviceHealthImpaired
+	DeviceHealthUnknown       DeviceHealth = iota
+	DeviceHealthPending                    // 1
+	DeviceHealthReadyForLinks              // 2
+	DeviceHealthReadyForUsers              // 3
+	DeviceHealthImpaired                   // 4
 )
 
 func (d DeviceHealth) String() string {
 	return [...]string{
+		"unknown",
 		"pending",
 		"ready_for_links",
 		"ready_for_users",

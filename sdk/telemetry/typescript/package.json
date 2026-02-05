@@ -1,6 +1,6 @@
 {
   "name": "@doublezero/telemetry",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "type": "module",
   "main": "dist/telemetry/index.js",
   "types": "dist/telemetry/index.d.ts",

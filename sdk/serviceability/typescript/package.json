@@ -1,6 +1,6 @@
 {
   "name": "@doublezero/serviceability",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "type": "module",
   "main": "dist/serviceability/index.js",
   "types": "dist/serviceability/index.d.ts",

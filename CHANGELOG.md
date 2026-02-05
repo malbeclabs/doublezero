@@ -10,6 +10,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- CLI
+  - Fix `multicastgroup update` command to properly parse human-readable bandwidth values (e.g., "1Gbps", "100Mbps") in `--max-bandwidth` flag
+
 ## [v0.8.6](https://github.com/malbeclabs/doublezero/compare/client/v0.8.5...client/v0.8.6) – 2026-02-04
 
 ### Breaking

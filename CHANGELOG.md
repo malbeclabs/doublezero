@@ -10,6 +10,16 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- CLI
+  - Add filtering options and desired_status & metrics_publisher_pk field to device and link list commands
+  - Added activation check for existing users before subscribing to new groups (#2782)
+- SDK
+  - Add read-only Go SDK (`revdist`) for the revenue distribution Solana program, with typed deserialization of all onchain accounts and Rust-generated fixture tests for cross-language compatibility
+  - Add `revdist-cli` tool for inspecting onchain revenue distribution state
+  - Add Python and TypeScript SDKs for serviceability, telemetry, and revdist programs with typed deserialization, RPC clients, PDA derivation, enum string types, and cross-language fixture tests
+  - Add shared `borsh-incremental` library (Go, Python, TypeScript) for cursor-based Borsh deserialization with backward-compatible trailing field defaults
+  - Add npm and PyPI publish workflows for serviceability and telemetry SDKs
+
 ## [v0.8.6](https://github.com/malbeclabs/doublezero/compare/client/v0.8.5...client/v0.8.6) – 2026-02-04
 
 ### Breaking
@@ -20,8 +30,8 @@ All notable changes to this project will be documented in this file.
 
 - CLI
   - Remove log noise on resolve route
-  - Add filtering options and desired_status & metrics_publisher_pk field to device and link list commands
   - `doublezero resource verify` command added to verify onchain resources
+  - Enhance delete multicast group command to cascade into deleting AP entry (#2754)
 - Onchain programs
   - Removed device and user allowlist functionality, updating the global state, initialization flow, tests, and processors accordingly, and cleaning up unused account checks.
   - Serviceability: require DeactivateMulticastGroup to only close multicast group accounts when both `publisher_count` and `subscriber_count` are zero, preventing deletion of groups that still have active publishers or subscribers.
@@ -30,15 +40,6 @@ All notable changes to this project will be documented in this file.
   - Enhance access pass functionality with new Solana-specific types
 - Telemetry
   - Fix goroutine leak in TWAMP sender — `cleanUpReceived` goroutines now exit on `Close()` instead of living until process shutdown
-- CLI
-  - Enhance delete multicast group command to cascade into deleting AP entry (#2754)
-  - Added activation check for existing users before subscribing to new groups (#2782)
-- SDK
-  - Add read-only Go SDK (`revdist`) for the revenue distribution Solana program, with typed deserialization of all onchain accounts and Rust-generated fixture tests for cross-language compatibility
-  - Add `revdist-cli` tool for inspecting onchain revenue distribution state
-  - Add Python and TypeScript SDKs for serviceability, telemetry, and revdist programs with typed deserialization, RPC clients, PDA derivation, enum string types, and cross-language fixture tests
-  - Add shared `borsh-incremental` library (Go, Python, TypeScript) for cursor-based Borsh deserialization with backward-compatible trailing field defaults
-  - Add npm and PyPI publish workflows for serviceability and telemetry SDKs
 - Client
   - Cache network interface index/name lookups in liveness UDP service to fix high CPU usage caused by per-packet RTM_GETLINK netlink dumps
   - Add observability to BGP handleUpdate: log withdrawal/NLRI counts per batch and track processing duration via `doublezero_bgp_handle_update_duration_seconds` histogram

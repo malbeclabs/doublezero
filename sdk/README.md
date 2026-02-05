@@ -7,6 +7,82 @@ Read-only SDKs for deserializing DoubleZero onchain program accounts in Go, Pyth
 - **revdist** -- Revenue distribution program (epochs, claim tickets, etc.)
 - **borsh-incremental** -- Shared Borsh deserialization library used by all three SDKs, implemented in each language
 
+## Running Examples
+
+Each SDK includes example CLIs that demonstrate fetching and displaying onchain data. All examples support `--env mainnet-beta|testnet|devnet|localnet`.
+
+### Quick Start (via Makefile)
+
+```bash
+cd sdk
+
+# Run serviceability example (Go)
+make example-serviceability-go
+
+# Run revdist example (Go)
+make example-revdist-go
+
+# Override environment (default: mainnet-beta)
+make example-serviceability-go sdk_env=testnet
+
+# Run telemetry example with epoch
+make example-telemetry-go sdk_env=mainnet-beta sdk_epoch=12345
+
+# Run all examples for a language
+make examples-go
+make examples-python
+make examples-typescript
+```
+
+Available targets:
+- `example-serviceability-go`, `example-serviceability-python`, `example-serviceability-typescript`
+- `example-telemetry-go`, `example-telemetry-python`, `example-telemetry-typescript`
+- `example-revdist-go`, `example-revdist-python`, `example-revdist-typescript`
+
+### Direct Commands
+
+### Serviceability (devices, links, users, locations, exchanges)
+
+```bash
+# Go
+go run ./sdk/serviceability/go/examples/fetch --env mainnet-beta
+
+# Python
+cd sdk/serviceability/python && python examples/fetch.py --env mainnet-beta
+
+# TypeScript
+cd sdk/serviceability/typescript && bun run examples/fetch.ts --env mainnet-beta
+```
+
+### Telemetry (device latency samples)
+
+The telemetry examples fetch latency samples for device pairs. Go and Python examples automatically discover devices/links via the serviceability SDK.
+
+```bash
+# Go (auto-discovers devices/links from serviceability)
+go run ./sdk/telemetry/go/examples/fetch --env mainnet-beta --epoch 12345
+
+# Python (auto-discovers devices/links from serviceability)
+cd sdk/telemetry/python && python examples/fetch.py --env mainnet-beta --epoch 12345
+
+# TypeScript (requires explicit pubkeys)
+cd sdk/telemetry/typescript && bun run examples/fetch.ts --env mainnet-beta \
+  --origin <device-pubkey> --target <device-pubkey> --link <link-pubkey> --epoch 12345
+```
+
+### Revenue Distribution (epochs, validator deposits, contributor rewards)
+
+```bash
+# Go
+go run ./sdk/revdist/go/examples/fetch --env mainnet-beta
+
+# Python
+cd sdk/revdist/python && python examples/fetch.py --env mainnet-beta
+
+# TypeScript
+cd sdk/revdist/typescript && bun run examples/fetch.ts --env mainnet-beta
+```
+
 ## Running Tests
 
 ```
@@ -75,11 +151,22 @@ sdk/
 ├── borsh-incremental/     # Shared deserialization library (Go, Python, TypeScript)
 ├── serviceability/        # Serviceability program SDK
 │   ├── go/
+│   │   └── examples/fetch/main.go
 │   ├── python/
+│   │   └── examples/fetch.py
 │   ├── typescript/
+│   │   └── examples/fetch.ts
 │   └── testdata/fixtures/ # Rust-generated binary + JSON fixtures
 ├── telemetry/             # Telemetry program SDK
+│   ├── go/examples/
+│   ├── python/examples/
+│   ├── typescript/examples/
+│   └── testdata/fixtures/
 └── revdist/               # Revenue distribution program SDK
+    ├── go/examples/
+    ├── python/examples/
+    ├── typescript/examples/
+    └── testdata/fixtures/
 ```
 
-Each SDK follows the same layout with `go/`, `python/`, `typescript/` subdirectories and a shared `testdata/fixtures/` directory containing the Rust-generated test data.
+Each SDK follows the same layout with `go/`, `python/`, `typescript/` subdirectories containing example CLIs, and a shared `testdata/fixtures/` directory containing the Rust-generated test data.

@@ -83,3 +83,55 @@ class Client:
     @classmethod
     def localnet(cls) -> Client:
         return cls.from_env("localnet")
+
+    def get_program_data(self) -> ProgramData:
+        """Fetch all program accounts and deserialize them by type."""
+        from solana.rpc.types import MemcmpOpts  # type: ignore[import-untyped]
+        from serviceability.state import AccountTypeEnum
+
+        resp = self._solana_rpc.get_program_accounts(
+            self._program_id,
+            encoding="base64",
+        )
+
+        pd = ProgramData()
+        for acct in resp.value:
+            data = bytes(acct.account.data)
+            if len(data) == 0:
+                continue
+
+            account_type = data[0]
+            pubkey = acct.pubkey
+
+            if account_type == AccountTypeEnum.GLOBAL_STATE:
+                pd.global_state = GlobalState.from_bytes(data)
+            elif account_type == AccountTypeEnum.GLOBAL_CONFIG:
+                pd.global_config = GlobalConfig.from_bytes(data)
+            elif account_type == AccountTypeEnum.LOCATION:
+                loc = Location.from_bytes(data)
+                pd.locations.append(loc)
+            elif account_type == AccountTypeEnum.EXCHANGE:
+                ex = Exchange.from_bytes(data)
+                pd.exchanges.append(ex)
+            elif account_type == AccountTypeEnum.DEVICE:
+                dev = Device.from_bytes(data)
+                pd.devices.append(dev)
+            elif account_type == AccountTypeEnum.LINK:
+                lk = Link.from_bytes(data)
+                pd.links.append(lk)
+            elif account_type == AccountTypeEnum.USER:
+                user = User.from_bytes(data)
+                pd.users.append(user)
+            elif account_type == AccountTypeEnum.MULTICAST_GROUP:
+                mg = MulticastGroup.from_bytes(data)
+                pd.multicast_groups.append(mg)
+            elif account_type == AccountTypeEnum.PROGRAM_CONFIG:
+                pd.program_config = ProgramConfig.from_bytes(data)
+            elif account_type == AccountTypeEnum.CONTRIBUTOR:
+                contrib = Contributor.from_bytes(data)
+                pd.contributors.append(contrib)
+            elif account_type == AccountTypeEnum.ACCESS_PASS:
+                ap = AccessPass.from_bytes(data)
+                pd.access_passes.append(ap)
+
+        return pd

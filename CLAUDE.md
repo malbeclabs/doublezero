@@ -1,5 +1,9 @@
 # Claude Code Instructions
 
+## Style & Terminology
+
+- Use "onchain" (one word, no hyphen) instead of "on-chain"
+
 ## Git Commits
 
 - Do not add "Co-Authored-By" lines to commit messages
@@ -19,7 +23,7 @@
 
 - `make rust-fmt` — format all Rust code (uses nightly rustfmt with `imports_granularity=Crate`)
 - `make rust-lint` — run `rust-fmt-check` + clippy on the workspace
-- `make rust-build` — build the workspace and on-chain programs
+- `make rust-build` — build the workspace and onchain programs
 - `make rust-test` — run Rust tests
 
 Always run `make rust-fmt` before committing Rust changes.

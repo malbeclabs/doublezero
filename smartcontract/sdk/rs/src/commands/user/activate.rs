@@ -7,8 +7,8 @@ use crate::{
 };
 use doublezero_program_common::types::NetworkV4;
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_resource_extension_pda,
-    processors::user::activate::UserActivateArgs, resource::ResourceType,
+    error::DoubleZeroError, instructions::DoubleZeroInstruction, pda::get_resource_extension_pda,
+    processors::user::activate::UserActivateArgs, resource::ResourceType, state::user::UserStatus,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 use std::net::Ipv4Addr;
@@ -35,6 +35,11 @@ impl ActivateUserCommand {
         }
         .execute(client)
         .map_err(|_err| eyre::eyre!("User not found"))?;
+
+        // Pre-flight check: only attempt activation if user is in a valid status
+        if user.status != UserStatus::Pending && user.status != UserStatus::Updating {
+            return Err(DoubleZeroError::InvalidStatus.into());
+        }
 
         let (accesspass_pk, _) = GetAccessPassCommand {
             client_ip: Ipv4Addr::UNSPECIFIED,
@@ -115,6 +120,7 @@ mod tests {
     };
     use doublezero_program_common::types::NetworkV4;
     use doublezero_serviceability::{
+        error::DoubleZeroError,
         instructions::DoubleZeroInstruction,
         pda::{get_accesspass_pda, get_globalstate_pda, get_resource_extension_pda},
         processors::user::activate::UserActivateArgs,
@@ -336,5 +342,99 @@ mod tests {
         .execute(&client);
 
         assert!(res.is_ok());
+    }
+
+    #[test]
+    fn test_commands_user_activate_preflight_rejects_already_activated() {
+        let mut client = create_test_client();
+
+        let user_pubkey = Pubkey::new_unique();
+        let device_pk = Pubkey::new_unique();
+
+        let user = User {
+            account_type: AccountType::User,
+            owner: client.get_payer(),
+            bump_seed: 0,
+            index: 1,
+            tenant_pk: Pubkey::default(),
+            user_type: UserType::IBRLWithAllocatedIP,
+            device_pk,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: Ipv4Addr::new(192, 168, 1, 10),
+            dz_ip: Ipv4Addr::new(10, 0, 0, 1),
+            tunnel_id: 100,
+            tunnel_net: "169.254.0.0/31".parse().unwrap(),
+            status: UserStatus::Activated,
+            publishers: vec![],
+            subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
+        };
+
+        // Mock User fetch — returns user in Activated status
+        client
+            .expect_get()
+            .with(predicate::eq(user_pubkey))
+            .returning(move |_| Ok(AccountData::User(user.clone())));
+
+        let res = ActivateUserCommand {
+            user_pubkey,
+            tunnel_id: 100,
+            tunnel_net: "169.254.0.0/31".parse().unwrap(),
+            dz_ip: Ipv4Addr::new(10, 0, 0, 1),
+            use_onchain_allocation: false,
+        }
+        .execute(&client);
+
+        assert!(res.is_err());
+        let err = res.unwrap_err();
+        let dz_err = err.downcast_ref::<DoubleZeroError>().unwrap();
+        assert_eq!(*dz_err, DoubleZeroError::InvalidStatus);
+    }
+
+    #[test]
+    fn test_commands_user_activate_preflight_rejects_out_of_credits() {
+        let mut client = create_test_client();
+
+        let user_pubkey = Pubkey::new_unique();
+        let device_pk = Pubkey::new_unique();
+
+        let user = User {
+            account_type: AccountType::User,
+            owner: client.get_payer(),
+            bump_seed: 0,
+            index: 1,
+            tenant_pk: Pubkey::default(),
+            user_type: UserType::Multicast,
+            device_pk,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: Ipv4Addr::new(192, 168, 1, 10),
+            dz_ip: Ipv4Addr::new(10, 0, 0, 1),
+            tunnel_id: 100,
+            tunnel_net: "169.254.0.0/31".parse().unwrap(),
+            status: UserStatus::OutOfCredits,
+            publishers: vec![],
+            subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
+        };
+
+        // Mock User fetch — returns user in OutOfCredits status
+        client
+            .expect_get()
+            .with(predicate::eq(user_pubkey))
+            .returning(move |_| Ok(AccountData::User(user.clone())));
+
+        let res = ActivateUserCommand {
+            user_pubkey,
+            tunnel_id: 100,
+            tunnel_net: "169.254.0.0/31".parse().unwrap(),
+            dz_ip: Ipv4Addr::new(10, 0, 0, 1),
+            use_onchain_allocation: false,
+        }
+        .execute(&client);
+
+        assert!(res.is_err());
+        let err = res.unwrap_err();
+        let dz_err = err.downcast_ref::<DoubleZeroError>().unwrap();
+        assert_eq!(*dz_err, DoubleZeroError::InvalidStatus);
     }
 }

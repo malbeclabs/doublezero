@@ -705,6 +705,7 @@ const (
 	UserStatusPendingBan
 	UserStatusBanned
 	UserStatusUpdating
+	UserStatusOutOfCredits
 )
 
 func (u UserStatus) String() string {
@@ -717,6 +718,7 @@ func (u UserStatus) String() string {
 		"pending_ban",
 		"banned",
 		"updating",
+		"out_of_credits",
 	}[u]
 }
 

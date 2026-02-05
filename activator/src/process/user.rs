@@ -365,10 +365,21 @@ pub fn process_user_event(
 }
 
 fn log_error_ignore_invalid_status(log_msg: &mut String, e: eyre::ErrReport) {
-    // Ignore DoubleZeroError::InvalidStatus errors since this only happens when the user is already activated
+    // InvalidStatus means the on-chain user status has already changed (e.g. to Activated
+    // or OutOfCredits) before the activator processed the stale websocket/snapshot event.
+    // This is expected during races and is safe to skip.
     if let Some(dz_err) = e.downcast_ref::<DoubleZeroError>() {
         if matches!(dz_err, DoubleZeroError::InvalidStatus) {
-            // Do nothing
+            write!(
+                log_msg,
+                " Skipped (InvalidStatus: user status already changed)"
+            )
+            .unwrap();
+            metrics::counter!(
+                "doublezero_activator_activate_skipped",
+                "reason" => "invalid_status",
+            )
+            .increment(1);
         } else {
             write!(log_msg, "Error: {e}").unwrap();
         }

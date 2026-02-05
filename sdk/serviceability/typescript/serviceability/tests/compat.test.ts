@@ -160,3 +160,39 @@ describe("compat: GlobalState", () => {
     // healthOraclePk may be zero on mainnet
   });
 });
+
+/**
+ * Test fetching and deserializing all program accounts.
+ *
+ * This is the most comprehensive compat test - it fetches every account
+ * owned by the program and deserializes them all, including AccessPass
+ * accounts which may have various enum variants and trailing fields.
+ */
+describe("compat: getProgramData", () => {
+  test("deserialize all accounts", async () => {
+    try {
+      skipUnlessCompat();
+    } catch {
+      return;
+    }
+
+    const { Client } = await import("../client.js");
+    const client = Client.mainnetBeta();
+    const pd = await client.getProgramData();
+
+    expect(pd.globalState).not.toBeNull();
+    expect(pd.globalConfig).not.toBeNull();
+    expect(pd.programConfig).not.toBeNull();
+    expect(pd.locations.length).toBeGreaterThan(0);
+    expect(pd.exchanges.length).toBeGreaterThan(0);
+    expect(pd.devices.length).toBeGreaterThan(0);
+    expect(pd.links.length).toBeGreaterThan(0);
+    expect(pd.contributors.length).toBeGreaterThan(0);
+
+    console.log(
+      `ProgramData: ${pd.locations.length} locations, ${pd.exchanges.length} exchanges, ` +
+        `${pd.devices.length} devices, ${pd.links.length} links, ${pd.users.length} users, ` +
+        `${pd.contributors.length} contributors, ${pd.accessPasses.length} access passes`,
+    );
+  });
+});

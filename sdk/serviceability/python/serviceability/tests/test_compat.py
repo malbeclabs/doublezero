@@ -143,3 +143,36 @@ class TestCompatGlobalState:
         assert gs.activator_authority_pk != Pubkey.default(), "ActivatorAuthorityPK is zero"
         assert gs.sentinel_authority_pk != Pubkey.default(), "SentinelAuthorityPK is zero"
         # health_oracle_pk may be zero on mainnet
+
+
+class TestCompatGetProgramData:
+    """Test fetching and deserializing all program accounts.
+
+    This is the most comprehensive compat test - it fetches every account
+    owned by the program and deserializes them all, including AccessPass
+    accounts which may have various enum variants and trailing fields.
+    """
+
+    def test_deserialize_all_accounts(self) -> None:
+        skip_unless_compat()
+
+        from serviceability.client import Client
+
+        client = Client.mainnet_beta()
+        pd = client.get_program_data()
+
+        assert pd.global_state is not None, "GlobalState is None"
+        assert pd.global_config is not None, "GlobalConfig is None"
+        assert pd.program_config is not None, "ProgramConfig is None"
+        assert len(pd.locations) > 0, "no locations found on mainnet"
+        assert len(pd.exchanges) > 0, "no exchanges found on mainnet"
+        assert len(pd.devices) > 0, "no devices found on mainnet"
+        assert len(pd.links) > 0, "no links found on mainnet"
+        assert len(pd.contributors) > 0, "no contributors found on mainnet"
+
+        # Log summary for debugging.
+        print(
+            f"\nProgramData: {len(pd.locations)} locations, {len(pd.exchanges)} exchanges, "
+            f"{len(pd.devices)} devices, {len(pd.links)} links, {len(pd.users)} users, "
+            f"{len(pd.contributors)} contributors, {len(pd.access_passes)} access passes"
+        )

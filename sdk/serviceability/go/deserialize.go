@@ -242,3 +242,50 @@ func DeserializeAccessPass(reader *ByteReader, ap *AccessPass) {
 	ap.MGroupSubAllowlist = reader.ReadPubkeySlice()
 	ap.Flags = reader.ReadU8()
 }
+
+// ResourceExtension binary layout (from Rust):
+// Header (84 bytes for IP allocator, 83 bytes for ID allocator):
+//
+//	[0]       account_type (u8) = 12
+//	[1-32]    owner (pubkey)
+//	[33]      bump_seed (u8)
+//	[34-65]   associated_with (pubkey)
+//	[66]      allocator_type (u8): 0=IP, 1=ID
+//	          For IP allocator (5 + 8 = 13 bytes):
+//	            [67-71]   base_net (NetworkV4: 4 bytes IP + 1 byte prefix)
+//	            [72-79]   first_free_index (u64)
+//	          For ID allocator (2 + 2 + 8 = 12 bytes):
+//	            [67-68]   range_start (u16)
+//	            [69-70]   range_end (u16)
+//	            [71-78]   first_free_index (u64)
+//	[...] storage (Vec<u8>): 4-byte length prefix followed by bitmap data
+func DeserializeResourceExtension(reader *ByteReader, ext *ResourceExtension) {
+	ext.AccountType = AccountType(reader.ReadU8())
+	ext.Owner = reader.ReadPubkey()
+	ext.BumpSeed = reader.ReadU8()
+	ext.AssociatedWith = reader.ReadPubkey()
+
+	allocatorType := AllocatorType(reader.ReadU8())
+	ext.Allocator.Type = allocatorType
+
+	switch allocatorType {
+	case AllocatorTypeIp:
+		ext.Allocator.IpAllocator = &IpAllocator{
+			BaseNet:        reader.ReadNetworkV4(),
+			FirstFreeIndex: reader.ReadU64(),
+		}
+	case AllocatorTypeId:
+		ext.Allocator.IdAllocator = &IdAllocator{
+			RangeStart:     reader.ReadU16(),
+			RangeEnd:       reader.ReadU16(),
+			FirstFreeIndex: reader.ReadU64(),
+		}
+	default:
+		log.Println("DeserializeResourceExtension: Unknown allocator type", allocatorType)
+		return
+	}
+
+	// Read storage bitmap (Vec<u8>: 4-byte length prefix + data)
+	storageLen := reader.ReadU32()
+	ext.Storage = reader.ReadBytes(int(storageLen))
+}

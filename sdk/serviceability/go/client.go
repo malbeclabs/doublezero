@@ -15,17 +15,24 @@ type RPCClient interface {
 
 // ProgramData aggregates all deserialized serviceability accounts.
 type ProgramData struct {
-	GlobalState     *GlobalState
-	GlobalConfig    *GlobalConfig
-	Locations       []Location
-	Exchanges       []Exchange
-	Contributors    []Contributor
-	Devices         []Device
-	Links           []Link
-	Users           []User
-	MulticastGroups []MulticastGroup
-	ProgramConfig   *ProgramConfig
-	AccessPasses    []AccessPass
+	GlobalState        *GlobalState
+	GlobalConfig       *GlobalConfig
+	Locations          []Location
+	Exchanges          []Exchange
+	Contributors       []Contributor
+	Devices            []Device
+	Links              []Link
+	Users              []User
+	MulticastGroups    []MulticastGroup
+	ProgramConfig      *ProgramConfig
+	AccessPasses       []AccessPass
+	ResourceExtensions []ResourceExtension
+}
+
+// ProgramDataProvider is an interface for types that can provide program data.
+type ProgramDataProvider interface {
+	GetProgramData(ctx context.Context) (*ProgramData, error)
+	ProgramID() solana.PublicKey
 }
 
 // Client provides read-only access to serviceability program accounts.
@@ -82,14 +89,15 @@ func (c *Client) GetProgramData(ctx context.Context) (*ProgramData, error) {
 	}
 
 	pd := &ProgramData{
-		Locations:       []Location{},
-		Exchanges:       []Exchange{},
-		Contributors:    []Contributor{},
-		Devices:         []Device{},
-		Links:           []Link{},
-		Users:           []User{},
-		MulticastGroups: []MulticastGroup{},
-		AccessPasses:    []AccessPass{},
+		Locations:          []Location{},
+		Exchanges:          []Exchange{},
+		Contributors:       []Contributor{},
+		Devices:            []Device{},
+		Links:              []Link{},
+		Users:              []User{},
+		MulticastGroups:    []MulticastGroup{},
+		AccessPasses:       []AccessPass{},
+		ResourceExtensions: []ResourceExtension{},
 	}
 
 	for _, element := range out {
@@ -154,6 +162,11 @@ func (c *Client) GetProgramData(ctx context.Context) (*ProgramData, error) {
 			DeserializeAccessPass(reader, &ap)
 			ap.PubKey = element.Pubkey
 			pd.AccessPasses = append(pd.AccessPasses, ap)
+		case ResourceExtensionType:
+			var ext ResourceExtension
+			DeserializeResourceExtension(reader, &ext)
+			ext.PubKey = element.Pubkey
+			pd.ResourceExtensions = append(pd.ResourceExtensions, ext)
 		}
 	}
 

@@ -1,0 +1,51 @@
+{
+  "name": "GlobalConfig",
+  "account_type": 2,
+  "fields": [
+    {
+      "name": "AccountType",
+      "value": "2",
+      "typ": "u8"
+    },
+    {
+      "name": "Owner",
+      "value": "25TXLvcMJNvRY4vb95G9Kpvf9A3LJCdWLswD47xvXsaX",
+      "typ": "pubkey"
+    },
+    {
+      "name": "BumpSeed",
+      "value": "253",
+      "typ": "u8"
+    },
+    {
+      "name": "LocalAsn",
+      "value": "65000",
+      "typ": "u32"
+    },
+    {
+      "name": "RemoteAsn",
+      "value": "65001",
+      "typ": "u32"
+    },
+    {
+      "name": "DeviceTunnelBlock",
+      "value": "10.100.0.0/16",
+      "typ": "networkv4"
+    },
+    {
+      "name": "UserTunnelBlock",
+      "value": "10.200.0.0/16",
+      "typ": "networkv4"
+    },
+    {
+      "name": "MulticastGroupBlock",
+      "value": "239.0.0.0/8",
+      "typ": "networkv4"
+    },
+    {
+      "name": "NextBgpCommunity",
+      "value": "10042",
+      "typ": "u16"
+    }
+  ]
+}

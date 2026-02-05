@@ -1,0 +1,46 @@
+{
+  "name": "ProgramConfig",
+  "account_type": 9,
+  "fields": [
+    {
+      "name": "AccountType",
+      "value": "9",
+      "typ": "u8"
+    },
+    {
+      "name": "BumpSeed",
+      "value": "246",
+      "typ": "u8"
+    },
+    {
+      "name": "VersionMajor",
+      "value": "1",
+      "typ": "u32"
+    },
+    {
+      "name": "VersionMinor",
+      "value": "2",
+      "typ": "u32"
+    },
+    {
+      "name": "VersionPatch",
+      "value": "3",
+      "typ": "u32"
+    },
+    {
+      "name": "MinCompatibleVersionMajor",
+      "value": "1",
+      "typ": "u32"
+    },
+    {
+      "name": "MinCompatibleVersionMinor",
+      "value": "0",
+      "typ": "u32"
+    },
+    {
+      "name": "MinCompatibleVersionPatch",
+      "value": "0",
+      "typ": "u32"
+    }
+  ]
+}

@@ -3,8 +3,11 @@
 package e2e_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -283,4 +286,341 @@ func TestE2E_Activator_AccessPassExpiryRenewalCycle(t *testing.T) {
 	log.Info("==> Phase 6 complete: User deleted")
 
 	log.Info("==> Test completed successfully - activator survived access pass expiry/renewal cycle")
+}
+
+// TestE2E_Activator_ConcurrentAccessPassCycling verifies the activator handles
+// the InvalidStatus race condition when multiple users undergo rapid concurrent
+// status transitions. This reproduces the testnet bug where:
+//
+//  1. Multiple users are connected (Activated)
+//  2. Access passes expire concurrently → all go OutOfCredits
+//  3. Access passes are renewed concurrently → all go back through Pending/Updating → Activated
+//  4. The activator receives overlapping websocket events from these concurrent transitions
+//  5. Stale events cause ActivateUser to be called on users whose status has already changed
+//  6. The pre-flight check and error handler must handle this gracefully
+//
+// The test asserts:
+//   - Activator container stays running (no crash)
+//   - All users reach correct final state
+//   - Activator logs contain "Skipped (InvalidStatus" if the race was triggered
+func TestE2E_Activator_ConcurrentAccessPassCycling(t *testing.T) {
+	t.Parallel()
+
+	const numClients = 3
+	const numCycles = 3
+
+	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
+	log := logger.With("test", t.Name(), "deployID", deployID)
+
+	log.Info("==> Starting test devnet for concurrent access pass cycling",
+		"numClients", numClients, "numCycles", numCycles)
+
+	currentDir, err := os.Getwd()
+	require.NoError(t, err)
+	serviceabilityProgramKeypairPath := filepath.Join(currentDir, "data", "serviceability-program-keypair.json")
+
+	dn, err := devnet.New(devnet.DevnetSpec{
+		DeployID:  deployID,
+		DeployDir: t.TempDir(),
+
+		CYOANetwork: devnet.CYOANetworkSpec{
+			CIDRPrefix: subnetCIDRPrefix,
+		},
+		Manager: devnet.ManagerSpec{
+			ServiceabilityProgramKeypairPath: serviceabilityProgramKeypairPath,
+		},
+		Activator: devnet.ActivatorSpec{
+			OnchainAllocation: true,
+		},
+	}, log, dockerClient, subnetAllocator)
+	require.NoError(t, err)
+
+	ctx := t.Context()
+
+	err = dn.Start(ctx, nil)
+	require.NoError(t, err)
+
+	// =========================================================================
+	// Setup: Add device, multicast group
+	// =========================================================================
+	log.Info("==> Adding device")
+	device, err := dn.AddDevice(ctx, devnet.DeviceSpec{
+		Code:                         "test-dz01",
+		Location:                     "lax",
+		Exchange:                     "xlax",
+		CYOANetworkIPHostID:          8,
+		CYOANetworkAllocatablePrefix: 29,
+	})
+	require.NoError(t, err)
+
+	log.Info("==> Waiting for device activation")
+	serviceabilityClient, err := dn.Ledger.GetServiceabilityClient()
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		data, err := serviceabilityClient.GetProgramData(ctx)
+		if err != nil {
+			return false
+		}
+		for _, d := range data.Devices {
+			if d.Code == "test-dz01" && d.Status == serviceability.DeviceStatusActivated {
+				return true
+			}
+		}
+		return false
+	}, 120*time.Second, 2*time.Second, "device was not activated within timeout")
+
+	log.Info("==> Creating multicast group")
+	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", `
+		set -euo pipefail
+		doublezero multicast group create --code test-mc01 --max-bandwidth 10Gbps --owner me
+	`})
+	require.NoError(t, err)
+
+	log.Info("==> Waiting for multicast group activation")
+	require.Eventually(t, func() bool {
+		data, err := serviceabilityClient.GetProgramData(ctx)
+		if err != nil {
+			return false
+		}
+		for _, mc := range data.MulticastGroups {
+			if mc.Code == "test-mc01" && mc.Status == serviceability.MulticastGroupStatusActivated {
+				return true
+			}
+		}
+		return false
+	}, 90*time.Second, 2*time.Second, "multicast group was not activated within timeout")
+
+	// =========================================================================
+	// Setup: Add multiple clients, set access passes, add to allowlists
+	// =========================================================================
+	type clientInfo struct {
+		client     *devnet.Client
+		userPubkey string
+	}
+	clients := make([]clientInfo, numClients)
+
+	for i := range numClients {
+		hostID := uint32(100 + i)
+		log.Info("==> Adding client", "index", i, "hostID", hostID)
+		c, err := dn.AddClient(ctx, devnet.ClientSpec{
+			CYOANetworkIPHostID: hostID,
+		})
+		require.NoError(t, err)
+		clients[i].client = c
+	}
+
+	// Wait for all clients to discover the device via latency probing.
+	for i, ci := range clients {
+		log.Info("==> Waiting for client to discover device", "index", i)
+		err := ci.client.WaitForLatencyResults(ctx, device.ID, 90*time.Second)
+		require.NoError(t, err)
+	}
+
+	// Set access passes and add to allowlists for all clients.
+	for i, ci := range clients {
+		log.Info("==> Setting access pass and allowlists", "index", i)
+		_, err := dn.Manager.Exec(ctx, []string{"bash", "-c",
+			"doublezero access-pass set --accesspass-type prepaid --client-ip " + ci.client.CYOANetworkIP + " --user-payer " + ci.client.Pubkey,
+		})
+		require.NoError(t, err)
+
+		_, err = dn.Manager.Exec(ctx, []string{"bash", "-c",
+			"doublezero multicast group allowlist subscriber add --code test-mc01 --user-payer " + ci.client.Pubkey + " --client-ip " + ci.client.CYOANetworkIP,
+		})
+		require.NoError(t, err)
+	}
+
+	// =========================================================================
+	// Phase 1: Connect all clients as multicast subscribers → all Activated
+	// =========================================================================
+	log.Info("==> Phase 1: Connecting all clients as multicast subscribers")
+	for i, ci := range clients {
+		_, err := ci.client.Exec(ctx, []string{"bash", "-c",
+			"doublezero connect multicast subscriber test-mc01 --client-ip " + ci.client.CYOANetworkIP,
+		})
+		require.NoError(t, err, "failed to connect client %d as multicast subscriber", i)
+	}
+
+	// Wait for all users to reach Activated status and capture their pubkeys.
+	log.Info("==> Waiting for all users to be activated")
+	require.Eventually(t, func() bool {
+		data, err := serviceabilityClient.GetProgramData(ctx)
+		if err != nil {
+			return false
+		}
+		activatedCount := 0
+		for _, user := range data.Users {
+			if user.Status == serviceability.UserStatusActivated && len(user.Subscribers) > 0 {
+				pubkey := base58.Encode(user.PubKey[:])
+				// Match user to client by checking all clients.
+				for j := range clients {
+					if clients[j].userPubkey == "" || clients[j].userPubkey == pubkey {
+						clients[j].userPubkey = pubkey
+						activatedCount++
+						break
+					}
+				}
+			}
+		}
+		return activatedCount >= numClients
+	}, 120*time.Second, 2*time.Second, "not all users were activated within timeout")
+
+	for i, ci := range clients {
+		log.Info("==> User activated", "index", i, "userPubkey", ci.userPubkey)
+	}
+	log.Info("==> Phase 1 complete: All users activated")
+
+	// =========================================================================
+	// Phase 2: Concurrent access pass expire/renew cycles
+	// =========================================================================
+	for cycle := range numCycles {
+		log.Info("==> Cycle: Expiring all access passes concurrently", "cycle", cycle+1)
+
+		// Expire all access passes concurrently.
+		var wg sync.WaitGroup
+		errCh := make(chan error, numClients)
+		for i, ci := range clients {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				_, err := dn.Manager.Exec(ctx, []string{"bash", "-c",
+					"doublezero access-pass set --accesspass-type prepaid --client-ip " + ci.client.CYOANetworkIP + " --user-payer " + ci.client.Pubkey + " --epochs 0",
+				})
+				if err != nil {
+					errCh <- fmt.Errorf("failed to expire access pass for client %d: %w", i, err)
+				}
+			}()
+		}
+		wg.Wait()
+		close(errCh)
+		for err := range errCh {
+			require.NoError(t, err)
+		}
+
+		// Wait for all users to reach OutOfCredits.
+		log.Info("==> Cycle: Waiting for all users to reach OutOfCredits", "cycle", cycle+1)
+		require.Eventually(t, func() bool {
+			data, err := serviceabilityClient.GetProgramData(ctx)
+			if err != nil {
+				return false
+			}
+			oocCount := 0
+			for _, user := range data.Users {
+				pubkey := base58.Encode(user.PubKey[:])
+				for _, ci := range clients {
+					if ci.userPubkey == pubkey && user.Status == serviceability.UserStatusOutOfCredits {
+						oocCount++
+						break
+					}
+				}
+			}
+			return oocCount >= numClients
+		}, 120*time.Second, 2*time.Second, "not all users reached OutOfCredits in cycle %d", cycle+1)
+
+		log.Info("==> Cycle: Renewing all access passes concurrently", "cycle", cycle+1)
+
+		// Renew all access passes concurrently.
+		wg = sync.WaitGroup{}
+		errCh = make(chan error, numClients)
+		for i, ci := range clients {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				_, err := dn.Manager.Exec(ctx, []string{"bash", "-c",
+					"doublezero access-pass set --accesspass-type prepaid --client-ip " + ci.client.CYOANetworkIP + " --user-payer " + ci.client.Pubkey + " --epochs max",
+				})
+				if err != nil {
+					errCh <- fmt.Errorf("failed to renew access pass for client %d: %w", i, err)
+				}
+			}()
+		}
+		wg.Wait()
+		close(errCh)
+		for err := range errCh {
+			require.NoError(t, err)
+		}
+
+		// Wait for all users to return to Activated.
+		log.Info("==> Cycle: Waiting for all users to return to Activated", "cycle", cycle+1)
+		require.Eventually(t, func() bool {
+			data, err := serviceabilityClient.GetProgramData(ctx)
+			if err != nil {
+				return false
+			}
+			activatedCount := 0
+			for _, user := range data.Users {
+				pubkey := base58.Encode(user.PubKey[:])
+				for _, ci := range clients {
+					if ci.userPubkey == pubkey && user.Status == serviceability.UserStatusActivated {
+						activatedCount++
+						break
+					}
+				}
+			}
+			return activatedCount >= numClients
+		}, 120*time.Second, 2*time.Second, "not all users returned to Activated in cycle %d", cycle+1)
+
+		log.Info("==> Cycle complete", "cycle", cycle+1)
+	}
+
+	// =========================================================================
+	// Verification: Activator survived and handled stale events
+	// =========================================================================
+	log.Info("==> Verifying activator is still running")
+	activatorState, err := dn.Activator.GetContainerState(ctx)
+	require.NoError(t, err, "failed to check activator status")
+	require.True(t, activatorState.Running, "activator container is not running - it likely crashed")
+
+	// Check activator logs for evidence that the race was triggered and handled.
+	logs, err := dn.Activator.GetLogs(ctx)
+	require.NoError(t, err, "failed to get activator logs")
+
+	if strings.Contains(logs, "Skipped (InvalidStatus") {
+		log.Info("==> Race condition was triggered and handled gracefully (InvalidStatus skip found in logs)")
+	} else {
+		log.Info("==> Race condition was not triggered in this run (no InvalidStatus skip in logs) - this is timing-dependent")
+	}
+
+	// Verify all users are in a valid final state.
+	log.Info("==> Verifying all users are in Activated state")
+	data, err := serviceabilityClient.GetProgramData(ctx)
+	require.NoError(t, err)
+	for _, ci := range clients {
+		found := false
+		for _, user := range data.Users {
+			if base58.Encode(user.PubKey[:]) == ci.userPubkey {
+				require.Equal(t, serviceability.UserStatusActivated, user.Status,
+					"user %s should be Activated but is %s", ci.userPubkey, user.Status)
+				found = true
+				break
+			}
+		}
+		require.True(t, found, "user %s not found on-chain", ci.userPubkey)
+	}
+
+	// =========================================================================
+	// Cleanup: Delete all users
+	// =========================================================================
+	log.Info("==> Cleaning up: deleting all users")
+	for _, ci := range clients {
+		_, err := ci.client.Exec(ctx, []string{"bash", "-c", "doublezero user delete --pubkey " + ci.userPubkey})
+		require.NoError(t, err)
+	}
+
+	require.Eventually(t, func() bool {
+		data, err := serviceabilityClient.GetProgramData(ctx)
+		if err != nil {
+			return false
+		}
+		for _, ci := range clients {
+			for _, user := range data.Users {
+				if base58.Encode(user.PubKey[:]) == ci.userPubkey {
+					return false
+				}
+			}
+		}
+		return true
+	}, 60*time.Second, 2*time.Second, "not all users were deleted within timeout")
+
+	log.Info("==> Test completed successfully - activator survived concurrent access pass cycling")
 }

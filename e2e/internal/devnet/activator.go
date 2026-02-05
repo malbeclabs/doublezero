@@ -1,6 +1,7 @@
 package devnet
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log/slog"
@@ -8,6 +9,7 @@ import (
 
 	dockercontainer "github.com/docker/docker/api/types/container"
 	dockerfilters "github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
 	"github.com/testcontainers/testcontainers-go"
 )
@@ -177,4 +179,20 @@ func (a *Activator) GetContainerState(ctx context.Context) (*dockercontainer.Sta
 		return nil, fmt.Errorf("failed to inspect activator container: %w", err)
 	}
 	return container.State, nil
+}
+
+// GetLogs returns the combined stdout and stderr logs from the activator container.
+func (a *Activator) GetLogs(ctx context.Context) (string, error) {
+	logsReader, err := a.dn.dockerClient.ContainerLogs(ctx, a.dockerContainerName(), dockercontainer.LogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to get activator container logs: %w", err)
+	}
+	defer logsReader.Close()
+
+	var stdout, stderr bytes.Buffer
+	_, _ = stdcopy.StdCopy(&stdout, &stderr, logsReader)
+	return stdout.String() + stderr.String(), nil
 }

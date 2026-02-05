@@ -16,6 +16,7 @@ import (
 	dockercontainer "github.com/docker/docker/api/types/container"
 	dockerfilters "github.com/docker/docker/api/types/filters"
 	dockervolume "github.com/docker/docker/api/types/volume"
+	"github.com/docker/go-connections/nat"
 	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
@@ -23,7 +24,7 @@ import (
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
+	tcwait "github.com/testcontainers/testcontainers-go/wait"
 )
 
 const (
@@ -173,9 +174,24 @@ func (l *Ledger) Start(ctx context.Context) error {
 			"RPC_PORT": fmt.Sprintf("%d", internalLedgerRPCPort),
 			"WS_PORT":  fmt.Sprintf("%d", internalLedgerRPCWSPort),
 		},
-		WaitingFor: wait.ForAll(
-			wait.ForExec([]string{"solana", "cluster-version"}).WithExitCodeMatcher(func(code int) bool { return code == 0 }),
-		).WithDeadline(60 * time.Second),
+		// Use HTTP health check instead of exec-based check. The exec strategy uses
+		// Docker's container exec API which can timeout under load when many containers
+		// start simultaneously (causing "container exec inspect: context deadline exceeded").
+		// HTTP checks are more resilient as they don't require Docker API round-trips.
+		WaitingFor: tcwait.ForHTTP("/").
+			WithPort(nat.Port(fmt.Sprintf("%d/tcp", internalLedgerRPCPort))).
+			WithMethod(http.MethodPost).
+			WithHeaders(map[string]string{"Content-Type": "application/json"}).
+			WithBody(strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"getHealth"}`)).
+			WithResponseMatcher(func(body io.Reader) bool {
+				content, err := io.ReadAll(body)
+				if err != nil {
+					return false
+				}
+				return strings.Contains(string(content), `"result":"ok"`)
+			}).
+			WithStartupTimeout(90 * time.Second).
+			WithPollInterval(500 * time.Millisecond),
 		Networks: []string{l.dn.DefaultNetwork.Name},
 		NetworkAliases: map[string][]string{
 			l.dn.DefaultNetwork.Name: {"ledger"},

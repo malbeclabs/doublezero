@@ -19,6 +19,7 @@ All notable changes to this project will be documented in this file.
   - Add Python and TypeScript SDKs for serviceability, telemetry, and revdist programs with typed deserialization, RPC clients, PDA derivation, enum string types, and cross-language fixture tests
   - Add shared `borsh-incremental` library (Go, Python, TypeScript) for cursor-based Borsh deserialization with backward-compatible trailing field defaults
   - Add npm and PyPI publish workflows for serviceability and telemetry SDKs
+  - DeleteUserCommand updated to wait for activator to process multicast user unsubscribe before deleting the user
 
 ## [v0.8.6](https://github.com/malbeclabs/doublezero/compare/client/v0.8.5...client/v0.8.6) – 2026-02-04
 

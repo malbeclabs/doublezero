@@ -802,12 +802,12 @@ type ProgramConfig struct {
 type AccessPassTypeTag uint8
 
 const (
-	AccessPassTypePrepaid                 AccessPassTypeTag = 0
-	AccessPassTypeSolanaValidator         AccessPassTypeTag = 1
-	AccessPassTypeSolanaRPC               AccessPassTypeTag = 2
-	AccessPassTypeSolanaMulticastPub      AccessPassTypeTag = 3
-	AccessPassTypeSolanaMulticastSub      AccessPassTypeTag = 4
-	AccessPassTypeOthers                  AccessPassTypeTag = 5
+	AccessPassTypePrepaid            AccessPassTypeTag = 0
+	AccessPassTypeSolanaValidator    AccessPassTypeTag = 1
+	AccessPassTypeSolanaRPC          AccessPassTypeTag = 2
+	AccessPassTypeSolanaMulticastPub AccessPassTypeTag = 3
+	AccessPassTypeSolanaMulticastSub AccessPassTypeTag = 4
+	AccessPassTypeOthers             AccessPassTypeTag = 5
 )
 
 type AccessPassStatus uint8

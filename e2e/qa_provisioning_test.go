@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,14 +15,18 @@ import (
 // TestQA_DeviceProvisioning exercises the full device provisioning lifecycle
 // as defined in rfcs/rfc12-network-provisioning.md:
 //  1. Verify device is healthy (validates previous day's provisioning)
-//  2. Delete device and links from ledger
-//  3. Recreate device and links (gets new pubkey)
+//  2. Delete interfaces, links, and device from ledger
+//  3. Recreate device, interfaces, and links (gets new pubkey)
 //  4. Restart agents with new pubkey via Ansible
 //  5. Next day's run verifies device became healthy again
 //
 // Device state machine: Pending → DeviceProvisioning → LinkProvisioning → Activated
 // Device health: Unknown → Pending → ReadyForLinks → ReadyForUsers
 func TestQA_DeviceProvisioning(t *testing.T) {
+	if envArg != "devnet" {
+		t.Skip("skipping, only run on devnet for now")
+	}
+
 	if testing.Short() {
 		t.Skip("skipping provisioning test in short mode")
 	}
@@ -48,19 +53,17 @@ func TestQA_DeviceProvisioning(t *testing.T) {
 	prov, err := qa.NewProvisioningTest(ctx, log, networkConfig, envArg, bmHost)
 	require.NoError(t, err, "failed to create provisioning test")
 
-	// Verify device is currently healthy (validates previous provisioning)
 	t.Log("==> Verifying device is healthy (validates previous provisioning)")
 	device, err := prov.GetDeviceByCode(ctx, deviceCode)
 	require.NoError(t, err, "failed to get device %s", deviceCode)
-	require.Equal(t, "ready-for-users", normalizeHealthStatus(device.Health),
+	require.Equal(t, "ready-for-users", normalizeEnum(device.Health),
 		"device health should be ready-for-users, got %s", device.Health)
-	require.Equal(t, "activated", normalizeStatus(device.Status),
+	require.Equal(t, "activated", normalizeEnum(device.Status),
 		"device status should be activated, got %s", device.Status)
 
 	oldPubkey := device.Pubkey
 	t.Logf("Current device pubkey: %s", oldPubkey)
 
-	// Capture device and link configuration before deletion
 	t.Log("==> Capturing device and link configuration")
 	deviceConfig, err := prov.CaptureDeviceConfig(ctx, device)
 	require.NoError(t, err, "failed to capture device config")
@@ -73,7 +76,6 @@ func TestQA_DeviceProvisioning(t *testing.T) {
 			link.Code, link.SideACode, link.SideAIfaceName, link.SideZCode, link.SideZIfaceName)
 	}
 
-	// Delete links connected to device
 	t.Log("==> Deleting links connected to device")
 	for _, link := range links {
 		t.Logf("Deleting link %s (pubkey: %s)", link.Code, link.Pubkey)
@@ -81,48 +83,51 @@ func TestQA_DeviceProvisioning(t *testing.T) {
 		require.NoError(t, err, "failed to delete link %s", link.Code)
 	}
 
-	// Delete device
+	t.Logf("==> Deleting %d interfaces on device", len(deviceConfig.Interfaces))
+	for _, iface := range deviceConfig.Interfaces {
+		t.Logf("Deleting interface %s", iface.Name)
+		err := prov.DeleteInterface(ctx, deviceCode, iface.Name)
+		require.NoError(t, err, "failed to delete interface %s", iface.Name)
+	}
+
+	// Wait for activator to close link accounts
+	t.Log("==> Waiting for device reference count to reach zero")
+	err = prov.WaitForRefCountZero(ctx, deviceCode)
+	require.NoError(t, err, "timed out waiting for reference count to reach zero")
+
 	t.Logf("==> Deleting device %s (pubkey: %s)", deviceCode, oldPubkey)
 	err = prov.DeleteDevice(ctx, oldPubkey)
 	require.NoError(t, err, "failed to delete device")
 
-	// Recreate device
 	t.Log("==> Recreating device")
 	newPubkey, err := prov.CreateDevice(ctx, deviceConfig)
 	require.NoError(t, err, "failed to create device")
 	require.NotEqual(t, oldPubkey, newPubkey, "new pubkey should be different from old pubkey")
 	t.Logf("New device pubkey: %s", newPubkey)
 
-	// Create interfaces (Loopback255 for vpnv4, Loopback256 for ipv4)
-	t.Log("==> Creating interfaces")
-	err = prov.CreateInterface(ctx, deviceCode, "Loopback255", "vpnv4")
-	require.NoError(t, err, "failed to create Loopback255 interface")
-	err = prov.CreateInterface(ctx, deviceCode, "Loopback256", "ipv4")
-	require.NoError(t, err, "failed to create Loopback256 interface")
+	// Recreate interfaces from captured config
+	t.Logf("==> Creating %d interfaces", len(deviceConfig.Interfaces))
+	for _, iface := range deviceConfig.Interfaces {
+		loopbackType := iface.LoopbackType
+		if loopbackType == "none" {
+			loopbackType = ""
+		}
+		t.Logf("Creating interface %s (loopback-type: %s)", iface.Name, iface.LoopbackType)
+		err = prov.CreateInterface(ctx, deviceCode, iface.Name, loopbackType)
+		require.NoError(t, err, "failed to create interface %s", iface.Name)
+	}
 
-	// Recreate links
 	t.Log("==> Recreating links")
 	for _, link := range links {
 		t.Logf("Creating link %s: %s/%s <-> %s/%s",
 			link.Code, link.SideACode, link.SideAIfaceName, link.SideZCode, link.SideZIfaceName)
 
-		// Need to recreate the interface on the device side before creating the link
-		if link.SideACode == deviceCode {
-			err := prov.CreateInterface(ctx, deviceCode, link.SideAIfaceName, "")
-			require.NoError(t, err, "failed to create interface %s on device", link.SideAIfaceName)
-		}
-		if link.SideZCode == deviceCode {
-			err := prov.CreateInterface(ctx, deviceCode, link.SideZIfaceName, "")
-			require.NoError(t, err, "failed to create interface %s on device", link.SideZIfaceName)
-		}
-
 		err := prov.CreateLink(ctx, link)
 		require.NoError(t, err, "failed to create link %s", link.Code)
 	}
 
-	// Update device max-users and desired-status
 	t.Log("==> Setting device max-users and desired-status")
-	err = prov.UpdateDevice(ctx, newPubkey, deviceConfig.MaxUsers, "activated")
+	err = prov.UpdateDevice(ctx, deviceCode, deviceConfig.MaxUsers, "activated")
 	require.NoError(t, err, "failed to update device")
 
 	// Restart agents with new pubkey via Ansible
@@ -144,38 +149,22 @@ func TestQA_DeviceProvisioning(t *testing.T) {
 	t.Log("Next run will verify device reached ready-for-users state")
 }
 
-func normalizeStatus(status string) string {
-	// Handle both enum names and display values
-	switch status {
-	case "Activated", "activated":
-		return "activated"
-	case "Pending", "pending":
-		return "pending"
-	case "DeviceProvisioning", "device-provisioning":
-		return "device-provisioning"
-	case "LinkProvisioning", "link-provisioning":
-		return "link-provisioning"
-	case "Drained", "drained":
-		return "drained"
-	default:
-		return status
+// normalizeEnum lowercases and replaces underscores with dashes to produce a
+// canonical kebab-case form regardless of whether the API returns PascalCase,
+// snake_case, or kebab-case.
+func normalizeEnum(s string) string {
+	var b strings.Builder
+	for i, r := range s {
+		if r == '_' {
+			b.WriteByte('-')
+		} else if r >= 'A' && r <= 'Z' {
+			if i > 0 {
+				b.WriteByte('-')
+			}
+			b.WriteRune(r + ('a' - 'A'))
+		} else {
+			b.WriteRune(r)
+		}
 	}
-}
-
-func normalizeHealthStatus(health string) string {
-	// Handle both enum names and display values
-	switch health {
-	case "ReadyForUsers", "ready-for-users":
-		return "ready-for-users"
-	case "ReadyForLinks", "ready-for-links":
-		return "ready-for-links"
-	case "Pending", "pending":
-		return "pending"
-	case "Unknown", "unknown":
-		return "unknown"
-	case "Impaired", "impaired":
-		return "impaired"
-	default:
-		return health
-	}
+	return b.String()
 }

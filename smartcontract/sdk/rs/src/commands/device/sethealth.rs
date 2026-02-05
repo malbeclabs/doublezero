@@ -118,6 +118,7 @@ mod tests {
                     status: None,
                     desired_status: None,
                     resource_count: 2,
+                    reference_count: None,
                 })),
                 predicate::always(),
             )
@@ -138,6 +139,7 @@ mod tests {
             users_count: None,
             status: None,
             desired_status: None,
+            reference_count: None,
         };
 
         let update_invalid = UpdateDeviceCommand {

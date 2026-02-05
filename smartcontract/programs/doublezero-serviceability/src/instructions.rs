@@ -664,6 +664,7 @@ mod tests {
                 users_count: None,
                 status: None,
                 desired_status: None,
+                reference_count: None,
                 resource_count: 0,
             }),
             "UpdateDevice",

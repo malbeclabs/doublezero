@@ -175,7 +175,7 @@ func (l *Ledger) Start(ctx context.Context) error {
 		},
 		WaitingFor: wait.ForAll(
 			wait.ForExec([]string{"solana", "cluster-version"}).WithExitCodeMatcher(func(code int) bool { return code == 0 }),
-		).WithDeadline(60 * time.Second),
+		).WithDeadline(120 * time.Second),
 		Networks: []string{l.dn.DefaultNetwork.Name},
 		NetworkAliases: map[string][]string{
 			l.dn.DefaultNetwork.Name: {"ledger"},

@@ -66,8 +66,8 @@ type DevnetSpec struct {
 	DeviceHealthOracle DeviceHealthOracleSpec
 	InfluxDB           InfluxDBSpec
 	Prometheus         PrometheusSpec
-	Devices map[string]DeviceSpec
-	Clients map[string]ClientSpec
+	Devices            map[string]DeviceSpec
+	Clients            map[string]ClientSpec
 
 	// SkipProgramDeploy skips deploying programs and initializing the smart contract.
 	// Use this when the ledger already has cloned program state from a remote cluster.

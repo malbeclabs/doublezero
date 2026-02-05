@@ -1732,6 +1732,7 @@ name = "doublezero_sdk"
 version = "0.8.6"
 dependencies = [
  "async-trait",
+ "backon",
  "base64 0.22.1",
  "bincode 2.0.1",
  "bytemuck",

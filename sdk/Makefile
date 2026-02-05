@@ -149,3 +149,27 @@ show-versions:
 		ts_ver=$$(grep '"version":' $$pkg/typescript/package.json | head -1 | sed 's/.*"version": "//;s/".*//' | tr -d ' '); \
 		echo "$$pkg: Python=$$py_ver TypeScript=$$ts_ver"; \
 	done
+
+# -----------------------------------------------------------------------------
+# Publishing
+# -----------------------------------------------------------------------------
+.PHONY: publish
+publish: publish-python publish-typescript
+
+.PHONY: publish-python
+publish-python:
+	@echo "Publishing Python packages to PyPI..."
+	cd borsh-incremental/python && rm -rf dist && uv build && uv publish
+	cd serviceability/python && rm -rf dist && uv build && uv publish
+	cd revdist/python && rm -rf dist && uv build && uv publish
+	cd telemetry/python && rm -rf dist && uv build && uv publish
+	@echo "Done publishing Python packages."
+
+.PHONY: publish-typescript
+publish-typescript:
+	@echo "Publishing TypeScript packages to npm..."
+	cd borsh-incremental/typescript && rm -rf dist && bunx tsc && npm publish --access public
+	cd serviceability/typescript && rm -rf dist && bunx tsc && npm publish --access public
+	cd revdist/typescript && rm -rf dist && bunx tsc && npm publish --access public
+	cd telemetry/typescript && rm -rf dist && bunx tsc && npm publish --access public
+	@echo "Done publishing TypeScript packages."

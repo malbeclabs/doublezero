@@ -1,0 +1,10 @@
+{
+  "name": "@doublezero/sdk",
+  "private": true,
+  "workspaces": [
+    "borsh-incremental/typescript",
+    "revdist/typescript",
+    "serviceability/typescript",
+    "telemetry/typescript"
+  ]
+}

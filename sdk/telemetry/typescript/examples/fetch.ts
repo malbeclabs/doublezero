@@ -2,39 +2,25 @@
 /**
  * Example CLI that fetches and displays telemetry data.
  *
- * For a full example with device discovery, use the serviceability SDK
- * to fetch devices and links, then use their public keys here.
- *
- * Usage:
- *   bun run examples/fetch.ts --env testnet --origin <pubkey> --target <pubkey> --link <pubkey> --epoch 12345
- *
- * Or run the serviceability example first to discover devices and links.
+ * Uses the serviceability SDK to discover devices and links,
+ * then fetches telemetry samples for each link.
  */
 
 import { PublicKey } from "@solana/web3.js";
-import { Client } from "../telemetry/client.js";
+import { Client as ServiceabilityClient } from "@doublezero/serviceability";
+import { Client as TelemetryClient } from "../telemetry/client.js";
+import { LEDGER_RPC_URLS } from "../telemetry/config.js";
+import { newConnection } from "../telemetry/rpc.js";
 
 async function main() {
   const args = process.argv.slice(2);
   let env = "mainnet-beta";
-  let originPK: string | null = null;
-  let targetPK: string | null = null;
-  let linkPK: string | null = null;
-  let epoch: number | null = null;
+  let epoch = 0;
 
   for (let i = 0; i < args.length; i++) {
     switch (args[i]) {
       case "--env":
         env = args[++i];
-        break;
-      case "--origin":
-        originPK = args[++i];
-        break;
-      case "--target":
-        targetPK = args[++i];
-        break;
-      case "--link":
-        linkPK = args[++i];
         break;
       case "--epoch":
         epoch = parseInt(args[++i], 10);
@@ -48,61 +34,103 @@ async function main() {
     process.exit(1);
   }
 
-  if (!originPK || !targetPK || !linkPK || epoch === null) {
-    console.log("Usage: fetch.ts --env <env> --origin <pubkey> --target <pubkey> --link <pubkey> --epoch <num>");
-    console.log();
-    console.log("This example requires specific device and link public keys.");
-    console.log("Run the serviceability SDK example first to discover available devices and links.");
-    console.log();
-    console.log("Example (with placeholder values - replace with real pubkeys):");
-    console.log("  bun run examples/fetch.ts --env testnet \\");
-    console.log("    --origin 11111111111111111111111111111111 \\");
-    console.log("    --target 22222222222222222222222222222222 \\");
-    console.log("    --link 33333333333333333333333333333333 \\");
-    console.log("    --epoch 12345");
-    process.exit(0);
-  }
-
   console.log(`Fetching telemetry data from ${env}...\n`);
 
-  const client = Client.forEnv(env);
+  // First, get serviceability data to discover devices and links
+  const svcClient = ServiceabilityClient.forEnv(env);
+  const svcData = await svcClient.getProgramData();
 
-  try {
-    const samples = await client.getDeviceLatencySamples(
-      new PublicKey(originPK),
-      new PublicKey(targetPK),
-      new PublicKey(linkPK),
-      epoch,
+  console.log("=== Network Overview ===");
+  console.log(`Devices: ${svcData.devices.length}`);
+  console.log(`Links:   ${svcData.links.length}`);
+  console.log();
+
+  if (svcData.links.length === 0) {
+    console.log("No links found - no telemetry data to fetch.");
+    return;
+  }
+
+  // Create telemetry client
+  const telClient = TelemetryClient.forEnv(env);
+
+  // Determine which epoch to use
+  let targetEpoch = epoch;
+  if (targetEpoch === 0) {
+    // Get current epoch from DZ Ledger RPC
+    const conn = newConnection(LEDGER_RPC_URLS[env]);
+    const epochInfo = await conn.getEpochInfo();
+    targetEpoch = epochInfo.epoch;
+  }
+
+  console.log(`=== Device Latency Samples (epoch ${targetEpoch}) ===`);
+
+  let samplesFound = 0;
+  for (const link of svcData.links) {
+    const sideAPK = link.sideAPubKey;
+    const sideZPK = link.sideZPubKey;
+    const linkPK = link.owner; // Using owner as link pubkey proxy
+
+    // Find device codes
+    let sideACode = "unknown";
+    let sideZCode = "unknown";
+    for (const dev of svcData.devices) {
+      if (dev.owner.equals(sideAPK)) {
+        sideACode = dev.code;
+      }
+      if (dev.owner.equals(sideZPK)) {
+        sideZCode = dev.code;
+      }
+    }
+
+    // Try both directions
+    const directions: [PublicKey, PublicKey, string, string][] = [
+      [sideAPK, sideZPK, sideACode, sideZCode],
+      [sideZPK, sideAPK, sideZCode, sideACode],
+    ];
+
+    for (const [originPK, targetPK, oCode, tCode] of directions) {
+      try {
+        const samples = await telClient.getDeviceLatencySamples(
+          originPK,
+          targetPK,
+          linkPK,
+          targetEpoch,
+        );
+
+        samplesFound++;
+        const sampleCount = samples.samples.length;
+
+        if (sampleCount === 0) {
+          console.log(
+            `  ${oCode} -> ${tCode} (${link.code}): initialized, no samples yet`,
+          );
+          continue;
+        }
+
+        // Calculate stats
+        const total = samples.samples.reduce((a, b) => a + b, 0);
+        const minVal = Math.min(...samples.samples);
+        const maxVal = Math.max(...samples.samples);
+        const avgUs = total / sampleCount;
+        const avgMs = avgUs / 1000;
+        const minMs = minVal / 1000;
+        const maxMs = maxVal / 1000;
+
+        console.log(
+          `  ${oCode} -> ${tCode} (${link.code}): ${sampleCount} samples, ` +
+            `avg ${avgMs.toFixed(2)}ms, min ${minMs.toFixed(2)}ms, max ${maxMs.toFixed(2)}ms`,
+        );
+      } catch {
+        // Account likely doesn't exist for this epoch
+        continue;
+      }
+    }
+  }
+
+  if (samplesFound === 0) {
+    console.log(
+      `  No samples found for epoch ${targetEpoch}. Try a different epoch with --epoch flag.`,
     );
-
-    console.log("=== Device Latency Samples ===");
-    console.log(`Epoch: ${samples.epoch}`);
-    console.log(`Origin Device: ${new PublicKey(samples.originDevicePK).toBase58()}`);
-    console.log(`Target Device: ${new PublicKey(samples.targetDevicePK).toBase58()}`);
-    console.log(`Link: ${new PublicKey(samples.linkPK).toBase58()}`);
-    console.log(`Sampling Interval: ${samples.samplingIntervalMicroseconds}us`);
-    console.log(`Sample Count: ${samples.samples.length}`);
-
-    if (samples.samples.length > 0) {
-      const total = samples.samples.reduce((a, b) => a + b, 0);
-      const min = Math.min(...samples.samples);
-      const max = Math.max(...samples.samples);
-      const avg = total / samples.samples.length;
-
-      console.log();
-      console.log("Statistics:");
-      console.log(`  Average: ${(avg / 1000).toFixed(2)}ms`);
-      console.log(`  Min: ${(min / 1000).toFixed(2)}ms`);
-      console.log(`  Max: ${(max / 1000).toFixed(2)}ms`);
-    }
-
-  } catch (err) {
-    if ((err as Error).message === "Account not found") {
-      console.log("No samples found for the specified parameters.");
-      console.log("The account may not exist for this epoch or device pair.");
-    } else {
-      throw err;
-    }
   }
 
   console.log();

@@ -2,8 +2,12 @@
   "name": "@doublezero/revenue-distribution",
   "version": "0.0.2",
   "type": "module",
-  "main": "dist/revdist/index.js",
-  "types": "dist/revdist/index.d.ts",
+  "main": "revdist/index.ts",
+  "types": "revdist/index.ts",
+  "publishConfig": {
+    "main": "dist/revdist/index.js",
+    "types": "dist/revdist/index.d.ts"
+  },
   "files": [
     "dist"
   ],
@@ -13,7 +17,8 @@
   },
   "dependencies": {
     "@solana/web3.js": "^1.98",
-    "borsh-incremental": "^0.0.1"
+    "borsh-incremental": "workspace:*",
+    "bs58": "^6.0"
   },
   "devDependencies": {
     "@types/bun": "latest",

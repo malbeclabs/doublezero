@@ -67,11 +67,34 @@ wheels = [
 ]
 
 [[package]]
+name = "doublezero-serviceability"
+version = "0.0.2"
+source = { editable = "../../serviceability/python" }
+dependencies = [
+    { name = "borsh-incremental" },
+    { name = "httpx" },
+    { name = "solana" },
+    { name = "solders" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "borsh-incremental", editable = "../../borsh-incremental/python" },
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "solana", specifier = ">=0.35" },
+    { name = "solders", specifier = ">=0.21" },
+]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=9.0.2" }]
+
+[[package]]
 name = "doublezero-telemetry"
 version = "0.0.2"
 source = { editable = "." }
 dependencies = [
     { name = "borsh-incremental" },
+    { name = "doublezero-serviceability" },
     { name = "httpx" },
     { name = "solana" },
     { name = "solders" },
@@ -85,6 +108,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "borsh-incremental", editable = "../../borsh-incremental/python" },
+    { name = "doublezero-serviceability", editable = "../../serviceability/python" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "solana", specifier = ">=0.35" },
     { name = "solders", specifier = ">=0.21" },

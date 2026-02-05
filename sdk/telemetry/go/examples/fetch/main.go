@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
+	"github.com/gagliardetto/solana-go/rpc"
 	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 	telemetry "github.com/malbeclabs/doublezero/sdk/telemetry/go"
 )
@@ -59,9 +60,14 @@ func main() {
 	// Determine which epoch to try
 	targetEpoch := *epoch
 	if targetEpoch == 0 {
-		// Try to guess a recent epoch (current slot / slots per epoch)
-		// For simplicity, we'll try a few recent epochs
-		targetEpoch = uint64(time.Now().Unix() / 432000) // rough approximation
+		// Get current epoch from DZ Ledger RPC
+		ledgerRPC := rpc.New(telemetry.LedgerRPCURLs[*env])
+		epochInfo, err := ledgerRPC.GetEpochInfo(ctx, rpc.CommitmentFinalized)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error getting epoch info: %v\n", err)
+			os.Exit(1)
+		}
+		targetEpoch = epochInfo.Epoch
 	}
 
 	fmt.Printf("=== Device Latency Samples (epoch %d) ===\n", targetEpoch)

@@ -2,13 +2,13 @@
 """Example CLI that fetches and displays telemetry data."""
 
 import argparse
-import sys
-import time
 
 from solders.pubkey import Pubkey  # type: ignore[import-untyped]
 
 from serviceability.client import Client as ServiceabilityClient
 from telemetry.client import Client as TelemetryClient
+from telemetry.config import LEDGER_RPC_URLS
+from telemetry.rpc import new_rpc_client
 
 
 def main() -> None:
@@ -23,7 +23,7 @@ def main() -> None:
         "--epoch",
         type=int,
         default=0,
-        help="Epoch to fetch samples for (0 = try recent epochs)",
+        help="Epoch to fetch samples for (0 = current epoch)",
     )
     args = parser.parse_args()
 
@@ -53,11 +53,13 @@ def main() -> None:
     # Create telemetry client
     tel_client = TelemetryClient.from_env(args.env)
 
-    # Determine which epoch to try
+    # Determine which epoch to use
     target_epoch = args.epoch
     if target_epoch == 0:
-        # Rough approximation based on current time
-        target_epoch = int(time.time() / 432000)
+        # Get current epoch from RPC
+        rpc = new_rpc_client(LEDGER_RPC_URLS[args.env])
+        epoch_info = rpc.get_epoch_info()
+        target_epoch = epoch_info.value.epoch
 
     print(f"=== Device Latency Samples (epoch {target_epoch}) ===")
 

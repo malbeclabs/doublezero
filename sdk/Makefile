@@ -25,10 +25,15 @@ test-python:
 
 .PHONY: test-typescript
 test-typescript:
-	cd borsh-incremental/typescript && bun install && bun tsc --noEmit && bun test
-	cd revdist/typescript && bun install && bun tsc --noEmit && bun test
-	cd serviceability/typescript && bun install && bun tsc --noEmit && bun test
-	cd telemetry/typescript && bun install && bun tsc --noEmit && bun test
+	bun install
+	bun tsc --noEmit --project borsh-incremental/typescript/tsconfig.json
+	bun test --cwd borsh-incremental/typescript
+	bun tsc --noEmit --project revdist/typescript/tsconfig.json
+	bun test --cwd revdist/typescript
+	bun tsc --noEmit --project serviceability/typescript/tsconfig.json
+	bun test --cwd serviceability/typescript
+	bun tsc --noEmit --project telemetry/typescript/tsconfig.json
+	bun test --cwd telemetry/typescript
 
 # -----------------------------------------------------------------------------
 # Compat test targets (require network access)
@@ -48,7 +53,8 @@ compat-test-python-revdist:
 
 .PHONY: compat-test-typescript-revdist
 compat-test-typescript-revdist:
-	cd revdist/typescript && bun install && REVDIST_COMPAT_TEST=1 bun test --grep compat
+	bun install
+	REVDIST_COMPAT_TEST=1 bun test --cwd revdist/typescript --grep compat
 
 .PHONY: compat-test-python-serviceability
 compat-test-python-serviceability:
@@ -56,7 +62,8 @@ compat-test-python-serviceability:
 
 .PHONY: compat-test-typescript-serviceability
 compat-test-typescript-serviceability:
-	cd serviceability/typescript && bun install && SERVICEABILITY_COMPAT_TEST=1 bun test --grep compat
+	bun install
+	SERVICEABILITY_COMPAT_TEST=1 bun test --cwd serviceability/typescript --grep compat
 
 # -----------------------------------------------------------------------------
 # Serviceability examples
@@ -71,7 +78,7 @@ example-serviceability-python:
 
 .PHONY: example-serviceability-typescript
 example-serviceability-typescript:
-	cd serviceability/typescript && bun run examples/fetch.ts --env $(sdk_env)
+	bun run serviceability/typescript/examples/fetch.ts --env $(sdk_env)
 
 # -----------------------------------------------------------------------------
 # Telemetry examples
@@ -86,7 +93,7 @@ example-telemetry-python:
 
 .PHONY: example-telemetry-typescript
 example-telemetry-typescript:
-	cd telemetry/typescript && bun run examples/fetch.ts --env $(sdk_env)
+	bun run telemetry/typescript/examples/fetch.ts --env $(sdk_env)
 
 # -----------------------------------------------------------------------------
 # Revdist examples
@@ -101,7 +108,7 @@ example-revdist-python:
 
 .PHONY: example-revdist-typescript
 example-revdist-typescript:
-	cd revdist/typescript && bun run examples/fetch.ts --env $(sdk_env) --epoch $(sdk_epoch)
+	bun run revdist/typescript/examples/fetch.ts --env $(sdk_env) --epoch $(sdk_epoch)
 
 # -----------------------------------------------------------------------------
 # Run all examples for a specific language

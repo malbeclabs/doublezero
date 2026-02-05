@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(make rust-lint:*)",
-      "Bash(make rust-test:*)"
-    ]
-  }
-}

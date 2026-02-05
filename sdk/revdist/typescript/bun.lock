@@ -6,6 +6,7 @@
       "name": "doublezero-revenue-distribution",
       "dependencies": {
         "@solana/web3.js": "^1.98",
+        "borsh-incremental": "^0.0.1",
       },
       "devDependencies": {
         "@types/bun": "latest",
@@ -51,6 +52,8 @@
     "bn.js": ["bn.js@5.2.2", "", {}, "sha512-v2YAxEmKaBLahNwE1mjp4WON6huMNeuDvagFZW+ASCuA/ku0bXR9hSMw0XpiqMoA3+rmnyck/tPRSFQkoC9Cuw=="],
 
     "borsh": ["borsh@0.7.0", "", { "dependencies": { "bn.js": "^5.2.0", "bs58": "^4.0.0", "text-encoding-utf-8": "^1.0.2" } }, "sha512-CLCsZGIBCFnPtkNnieW/a8wmreDmfUtjU2m9yHrzPXIlNbqVs0AQrSatSG6vdNYUqdc83tkQi2eHfF98ubzQLA=="],
+
+    "borsh-incremental": ["borsh-incremental@0.0.1", "", {}, "sha512-VcnI1oLYcnpWJxEnz1Pr1sa4NxkVw27BAWtUPYKQVsvWRlv5yBt97eMe9QAntN9oXLbIVq+z/+2JMPjIYVI2MQ=="],
 
     "bs58": ["bs58@4.0.1", "", { "dependencies": { "base-x": "^3.0.2" } }, "sha512-Ok3Wdf5vOIlBrgCvTq96gBkJw+JUEzdBgyaza5HLtPm7yTHkjRy8+JzNyHF7BHa0bNWOQIp3m5YF0nnFcOIKLw=="],
 

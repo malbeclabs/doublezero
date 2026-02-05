@@ -12,7 +12,8 @@
     "prepublishOnly": "tsc"
   },
   "dependencies": {
-    "@solana/web3.js": "^1.98"
+    "@solana/web3.js": "^1.98",
+    "borsh-incremental": "^0.0.1"
   },
   "devDependencies": {
     "@types/bun": "latest",

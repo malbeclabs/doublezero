@@ -40,6 +40,9 @@ doublezero-program-common.workspace = true
 doublezero_sdk.workspace = true
 doublezero-serviceability = { workspace = true, features = ["serde"] }
 
+[features]
+default-mainnet-beta = ["doublezero_sdk/default-mainnet-beta"]
+
 [dev-dependencies]
 serial_test.workspace = true
 temp-env.workspace = true

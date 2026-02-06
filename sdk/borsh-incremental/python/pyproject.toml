@@ -1,0 +1,21 @@
+[project]
+name = "borsh-incremental"
+version = "0.0.3"
+description = "Borsh incremental deserialization with backward-compatible trailing fields"
+requires-python = ">=3.10"
+dependencies = []
+
+[tool.pytest.ini_options]
+testpaths = ["borsh_incremental/tests"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["borsh_incremental"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]

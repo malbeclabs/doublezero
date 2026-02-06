@@ -306,19 +306,6 @@ func checkIBRLPostConnect(t *testing.T, dn *TestDevnet, device *devnet.Device, c
 			t.Fail()
 		}
 
-		if !t.Run("only_one_tunnel_allowed", func(t *testing.T) {
-			dn.CreateMulticastGroupOnchain(t, client, "mg01")
-
-			// Set access pass for the client.
-			_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey})
-			require.NoError(t, err)
-
-			_, err = client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast publisher mg01 --client-ip " + client.CYOANetworkIP})
-			require.Error(t, err, "User with different type already exists. Only one tunnel currently supported")
-		}) {
-			t.Fail()
-		}
-
 		dn.log.Info("--> IBRL post-connect requirements checked")
 	})
 }

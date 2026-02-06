@@ -35,6 +35,7 @@ pub struct UpdateDeviceCommand {
     pub users_count: Option<u16>,
     pub status: Option<DeviceStatus>,
     pub desired_status: Option<DeviceDesiredStatus>,
+    pub reference_count: Option<u32>,
 }
 
 impl UpdateDeviceCommand {
@@ -89,6 +90,7 @@ impl UpdateDeviceCommand {
                 status: self.status,
                 desired_status: self.desired_status,
                 resource_count,
+                reference_count: self.reference_count,
             }),
             [
                 vec![
@@ -193,6 +195,7 @@ mod tests {
                     status: None,
                     desired_status: None,
                     resource_count: 2,
+                    reference_count: None,
                 })),
                 predicate::always(),
             )
@@ -213,6 +216,7 @@ mod tests {
             users_count: None,
             status: None,
             desired_status: None,
+            reference_count: None,
         };
 
         let update_invalid = UpdateDeviceCommand {

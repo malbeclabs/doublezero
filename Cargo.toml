@@ -10,9 +10,14 @@ members = [
     "smartcontract/programs/doublezero-serviceability",
     "smartcontract/programs/doublezero-telemetry",
     "smartcontract/programs/common",
+    "e2e/docker/ledger/fork-accounts",
 ]
 default-members = []
-exclude = []
+exclude = [
+    "sdk/revdist/testdata/fixtures/generate-fixtures",
+    "sdk/serviceability/testdata/fixtures/generate-fixtures",
+    "sdk/telemetry/testdata/fixtures/generate-fixtures",
+]
 resolver = "2"
 
 [workspace.package]

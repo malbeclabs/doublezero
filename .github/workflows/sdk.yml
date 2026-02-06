@@ -1,0 +1,61 @@
+name: sdk
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  sdk-version-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify Python and TypeScript versions match
+        run: |
+          check_versions() {
+            local sdk=$1
+            local py_ver=$(python3 -c "import tomllib; print(tomllib.load(open('sdk/$sdk/python/pyproject.toml','rb'))['project']['version'])")
+            local ts_ver=$(node -p "require('./sdk/$sdk/typescript/package.json').version")
+            if [ "$py_ver" != "$ts_ver" ]; then
+              echo "❌ $sdk: Python=$py_ver TypeScript=$ts_ver"
+              return 1
+            fi
+            echo "✓ $sdk: $py_ver"
+          }
+
+          failed=0
+          for sdk in borsh-incremental serviceability telemetry revdist; do
+            check_versions "$sdk" || failed=1
+          done
+
+          if [ $failed -eq 1 ]; then
+            echo ""
+            echo "Version mismatch detected. Python and TypeScript versions must match."
+            exit 1
+          fi
+
+  sdk-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: astral-sh/setup-uv@v6
+      - uses: oven-sh/setup-bun@v2
+      - run: make sdk-test
+
+  sdk-compat-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: astral-sh/setup-uv@v6
+      - uses: oven-sh/setup-bun@v2
+      - run: make sdk-compat-test
+        env:
+          REVDIST_COMPAT_TEST: "1"

@@ -1,0 +1,66 @@
+{
+  "name": "Location",
+  "account_type": 3,
+  "fields": [
+    {
+      "name": "AccountType",
+      "value": "3",
+      "typ": "u8"
+    },
+    {
+      "name": "Owner",
+      "value": "39v3grDhbkqr58rBH9XHeerKHK5fbQG1gksR7Evr4kA3",
+      "typ": "pubkey"
+    },
+    {
+      "name": "Index",
+      "value": "4",
+      "typ": "u128"
+    },
+    {
+      "name": "BumpSeed",
+      "value": "252",
+      "typ": "u8"
+    },
+    {
+      "name": "Lat",
+      "value": "52.3676",
+      "typ": "f64"
+    },
+    {
+      "name": "Lng",
+      "value": "4.9041",
+      "typ": "f64"
+    },
+    {
+      "name": "LocId",
+      "value": "4818",
+      "typ": "u32"
+    },
+    {
+      "name": "Status",
+      "value": "1",
+      "typ": "u8"
+    },
+    {
+      "name": "Code",
+      "value": "ams",
+      "typ": "string"
+    },
+    {
+      "name": "Name",
+      "value": "Amsterdam",
+      "typ": "string"
+    },
+    {
+      "name": "Country",
+      "value": "NL",
+      "typ": "string"
+    },
+    {
+      "name": "ReferenceCount",
+      "value": "3",
+      "typ": "u32"
+    }
+  ]
+}

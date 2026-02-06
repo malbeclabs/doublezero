@@ -147,6 +147,8 @@ pub enum DoubleZeroError {
     DeviceHasInterfaces, // variant 70
     #[error("MulticastGroup can only be deleted if it has no active publishers or subscribers")]
     MulticastGroupNotEmpty, // variant 71
+    #[error("Access Pass is in use (non-zero connection_count)")]
+    AccessPassInUse, // variant 72
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -224,6 +226,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::CyoaRequiresPhysical => ProgramError::Custom(69),
             DoubleZeroError::DeviceHasInterfaces => ProgramError::Custom(70),
             DoubleZeroError::MulticastGroupNotEmpty => ProgramError::Custom(71),
+            DoubleZeroError::AccessPassInUse => ProgramError::Custom(72),
         }
     }
 }
@@ -302,6 +305,7 @@ impl From<u32> for DoubleZeroError {
             69 => DoubleZeroError::CyoaRequiresPhysical,
             70 => DoubleZeroError::DeviceHasInterfaces,
             71 => DoubleZeroError::MulticastGroupNotEmpty,
+            72 => DoubleZeroError::AccessPassInUse,
             _ => DoubleZeroError::Custom(e),
         }
     }

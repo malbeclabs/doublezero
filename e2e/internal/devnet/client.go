@@ -3,6 +3,7 @@ package devnet
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net"
@@ -352,6 +353,13 @@ const (
 
 type ClientUserType string
 
+const (
+	ClientUserTypeIBRL              ClientUserType = "IBRL"
+	ClientUserTypeIBRLWithAllocated ClientUserType = "IBRLWithAllocatedIP"
+	ClientUserTypeEdgeFiltering     ClientUserType = "EdgeFiltering"
+	ClientUserTypeMulticast         ClientUserType = "Multicast"
+)
+
 type ClientStatusResponse struct {
 	TunnelName       string         `json:"tunnel_name"`
 	TunnelSrc        net.IP         `json:"tunnel_src"`
@@ -359,6 +367,34 @@ type ClientStatusResponse struct {
 	DoubleZeroIP     net.IP         `json:"doublezero_ip"`
 	DoubleZeroStatus ClientSession  `json:"doublezero_status"`
 	UserType         ClientUserType `json:"user_type"`
+}
+
+// CLIStatusResponse represents the full response from `doublezero status --json`,
+// which includes additional fields like current_device and metro that are computed
+// by the CLI based on on-chain data.
+type CLIStatusResponse struct {
+	Response            ClientStatusResponse `json:"response"`
+	CurrentDevice       string               `json:"current_device"`
+	LowestLatencyDevice string               `json:"lowest_latency_device"`
+	Metro               string               `json:"metro"`
+	Network             string               `json:"network"`
+}
+
+// GetCLIStatus retrieves the full status output from `doublezero status --json`,
+// which includes current_device, metro, and other fields computed by the CLI.
+// This is useful for verifying that the CLI correctly associates tunnels with devices.
+func (c *Client) GetCLIStatus(ctx context.Context) ([]CLIStatusResponse, error) {
+	output, err := c.Exec(ctx, []string{"doublezero", "status", "--json"})
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute doublezero status --json: %w", err)
+	}
+
+	var resp []CLIStatusResponse
+	if err := json.Unmarshal(output, &resp); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal CLI status response: %w, output: %s", err, string(output))
+	}
+
+	return resp, nil
 }
 
 func (c *Client) GetTunnelStatus(ctx context.Context) ([]ClientStatusResponse, error) {
@@ -372,6 +408,44 @@ func (c *Client) GetTunnelStatus(ctx context.Context) ([]ClientStatusResponse, e
 
 func (c *Client) WaitForTunnelUp(ctx context.Context, timeout time.Duration) error {
 	return c.WaitForTunnelStatus(ctx, ClientSessionStatusUp, timeout)
+}
+
+// WaitForNTunnelsUp waits for N tunnels to be in the "up" state.
+func (c *Client) WaitForNTunnelsUp(ctx context.Context, n int, timeout time.Duration) error {
+	c.log.Info("==> Waiting for N tunnels to be up", "n", n, "timeout", timeout)
+
+	attempts := 0
+	start := time.Now()
+	err := poll.Until(ctx, func() (bool, error) {
+		resp, err := c.GetTunnelStatus(ctx)
+		if err != nil {
+			return false, fmt.Errorf("failed to get client status: %w", err)
+		}
+
+		upCount := 0
+		for _, s := range resp {
+			if s.DoubleZeroStatus.SessionStatus == ClientSessionStatusUp {
+				upCount++
+			}
+		}
+
+		if upCount >= n {
+			c.log.Info("✅ Got expected number of tunnels up", "n", n, "upCount", upCount, "duration", time.Since(start))
+			return true, nil
+		}
+
+		if attempts == 1 || attempts%5 == 0 {
+			c.log.Debug("--> Waiting for N tunnels up", "n", n, "upCount", upCount, "response", resp, "attempts", attempts)
+		}
+		attempts++
+
+		return false, nil
+	}, timeout, 1*time.Second)
+	if err != nil {
+		return fmt.Errorf("failed to wait for %d tunnels to be up: %w", n, err)
+	}
+
+	return nil
 }
 
 func (c *Client) WaitForTunnelDisconnected(ctx context.Context, timeout time.Duration) error {

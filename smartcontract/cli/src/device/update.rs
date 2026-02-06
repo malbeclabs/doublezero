@@ -57,6 +57,9 @@ pub struct UpdateDeviceCliCommand {
     /// Desired status for the device (optional)
     #[arg(long)]
     pub desired_status: Option<DeviceDesiredStatus>,
+    /// Reference count for the device (optional, foundation only)
+    #[arg(long)]
+    pub reference_count: Option<u32>,
     /// Wait for the device to be activated
     #[arg(short, long, default_value_t = false)]
     pub wait: bool,
@@ -170,6 +173,7 @@ impl UpdateDeviceCliCommand {
             users_count: self.users_count,
             status: self.status,
             desired_status: self.desired_status,
+            reference_count: self.reference_count,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -329,6 +333,7 @@ mod tests {
                 users_count: Some(0),
                 status: None,
                 desired_status: None,
+                reference_count: None,
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -349,6 +354,7 @@ mod tests {
             users_count: Some(0),
             status: None,
             desired_status: None,
+            reference_count: None,
             wait: false,
         }
         .execute(&client, &mut output);
@@ -449,6 +455,7 @@ mod tests {
             users_count: Some(0),
             status: None,
             desired_status: None,
+            reference_count: None,
             wait: false,
         }
         .execute(&client, &mut output);
@@ -548,6 +555,7 @@ mod tests {
             users_count: None,
             status: None,
             desired_status: None,
+            reference_count: None,
             wait: false,
         }
         .execute(&client, &mut output);

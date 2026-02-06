@@ -1,0 +1,56 @@
+{
+  "name": "ResourceExtensionIp",
+  "account_type": 12,
+  "fields": [
+    {
+      "name": "AccountType",
+      "value": "12",
+      "typ": "u8"
+    },
+    {
+      "name": "Owner",
+      "value": "DvVH86KCbY45Rp64ft8itv6tgsUzZQZ57YDVeSa5PTwD",
+      "typ": "pubkey"
+    },
+    {
+      "name": "BumpSeed",
+      "value": "241",
+      "typ": "u8"
+    },
+    {
+      "name": "AssociatedWith",
+      "value": "DzPgmb3HVNYnqWD3BPQAnqr7wt3mGMeyhQXP9dt57GbZ",
+      "typ": "pubkey"
+    },
+    {
+      "name": "AllocatorType",
+      "value": "0",
+      "typ": "u8"
+    },
+    {
+      "name": "BaseNet",
+      "value": "10.100.0.0/24",
+      "typ": "networkv4"
+    },
+    {
+      "name": "FirstFreeIndex",
+      "value": "4",
+      "typ": "u64"
+    },
+    {
+      "name": "TotalCapacity",
+      "value": "256",
+      "typ": "u64"
+    },
+    {
+      "name": "AllocatedCount",
+      "value": "4",
+      "typ": "u64"
+    },
+    {
+      "name": "AvailableCount",
+      "value": "252",
+      "typ": "u64"
+    }
+  ]
+}

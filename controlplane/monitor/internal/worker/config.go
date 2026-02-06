@@ -32,6 +32,10 @@ type InfluxWriter interface {
 	Flush()
 }
 
+type SolBalanceRPCClient interface {
+	GetBalance(ctx context.Context, pubkey solana.PublicKey, commitment solanarpc.CommitmentType) (*solanarpc.GetBalanceResult, error)
+}
+
 type Config struct {
 	Logger                     *slog.Logger
 	LedgerRPCClient            LedgerRPCClient
@@ -45,6 +49,10 @@ type Config struct {
 	TwoZOracleInterval         time.Duration
 	InfluxWriter               InfluxWriter
 	Env                        string
+	SolBalanceRPCClient        SolBalanceRPCClient
+	SolBalanceAccounts         map[string]solana.PublicKey
+	SolBalanceThreshold        float64
+	SolBalanceInterval         time.Duration
 }
 
 func (c *Config) Validate() error {

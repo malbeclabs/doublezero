@@ -1,0 +1,66 @@
+{
+  "name": "AccessPass",
+  "account_type": 11,
+  "fields": [
+    {
+      "name": "AccountType",
+      "value": "11",
+      "typ": "u8"
+    },
+    {
+      "name": "Owner",
+      "value": "Ah7i6KV9hQHopcKJFfMHvSKvGQMzfofZ5uQsV5gJnrCf",
+      "typ": "pubkey"
+    },
+    {
+      "name": "BumpSeed",
+      "value": "244",
+      "typ": "u8"
+    },
+    {
+      "name": "AccessPassType",
+      "value": "0",
+      "typ": "u8"
+    },
+    {
+      "name": "ClientIp",
+      "value": "198.51.100.20",
+      "typ": "ipv4"
+    },
+    {
+      "name": "UserPayer",
+      "value": "Am27jpDEbEnXEJSGmAcjpN59XQvmNkmTfmikzGzJWes1",
+      "typ": "pubkey"
+    },
+    {
+      "name": "LastAccessEpoch",
+      "value": "18446744073709551615",
+      "typ": "u64"
+    },
+    {
+      "name": "ConnectionCount",
+      "value": "3",
+      "typ": "u16"
+    },
+    {
+      "name": "Status",
+      "value": "1",
+      "typ": "u8"
+    },
+    {
+      "name": "MgroupPubAllowlistLen",
+      "value": "0",
+      "typ": "u32"
+    },
+    {
+      "name": "MgroupSubAllowlistLen",
+      "value": "0",
+      "typ": "u32"
+    },
+    {
+      "name": "Flags",
+      "value": "1",
+      "typ": "u8"
+    }
+  ]
+}

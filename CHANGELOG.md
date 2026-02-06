@@ -13,6 +13,24 @@ All notable changes to this project will be documented in this file.
 - Onchain programs
   - Serviceability: add reference count validation in DeleteMulticastGroup to prevent deletion when active publishers or subscribers exist
 
+- CLI
+  - Add filtering options and desired_status & metrics_publisher_pk field to device and link list commands
+  - Added activation check for existing users before subscribing to new groups (#2782)
+- SDK
+  - Add read-only Go SDK (`revdist`) for the revenue distribution Solana program, with typed deserialization of all onchain accounts and Rust-generated fixture tests for cross-language compatibility
+  - Add `revdist-cli` tool for inspecting onchain revenue distribution state
+  - Add Python and TypeScript SDKs for serviceability, telemetry, and revdist programs with typed deserialization, RPC clients, PDA derivation, enum string types, and cross-language fixture tests
+  - Add shared `borsh-incremental` library (Go, Python, TypeScript) for cursor-based Borsh deserialization with backward-compatible trailing field defaults
+  - Add npm and PyPI publish workflows for serviceability and telemetry SDKs
+  - DeleteUserCommand updated to wait for activator to process multicast user unsubscribe before deleting the user
+- Device controller
+  - Record successful GetConfig gRPC calls to ClickHouse for device telemetry tracking
+- Onchain programs
+  - Enforce that `CloseAccessPass` only closes AccessPass accounts when `connection_count == 0`, preventing closure while active connections are present.
+- Monitor
+  - Add sol-balance watcher to track SOL balances for configured accounts and export Prometheus metrics for alerting
+- E2E tests
+  - Add backward compatibility test that validates older CLI versions against the current onchain program by cloning live state from testnet and mainnet-beta
 
 ## [v0.8.6](https://github.com/malbeclabs/doublezero/compare/client/v0.8.5...client/v0.8.6) – 2026-02-04
 
@@ -21,10 +39,10 @@ All notable changes to this project will be documented in this file.
 - None for this release
 
 ### Changes
-
 - CLI
   - Remove log noise on resolve route
   - `doublezero resource verify` command added to verify onchain resources
+  - Enhance delete multicast group command to cascade into deleting AP entry (#2754)
 - Onchain programs
   - Removed device and user allowlist functionality, updating the global state, initialization flow, tests, and processors accordingly, and cleaning up unused account checks.
   - Serviceability: require DeactivateMulticastGroup to only close multicast group accounts when both `publisher_count` and `subscriber_count` are zero, preventing deletion of groups that still have active publishers or subscribers.
@@ -33,8 +51,6 @@ All notable changes to this project will be documented in this file.
   - Enhance access pass functionality with new Solana-specific types
 - Telemetry
   - Fix goroutine leak in TWAMP sender — `cleanUpReceived` goroutines now exit on `Close()` instead of living until process shutdown
-- CLI
-  - Enhance delete multicast group command to cascade into deleting AP entry (#2754)
 - Client
   - Cache network interface index/name lookups in liveness UDP service to fix high CPU usage caused by per-packet RTM_GETLINK netlink dumps
   - Add observability to BGP handleUpdate: log withdrawal/NLRI counts per batch and track processing duration via `doublezero_bgp_handle_update_duration_seconds` histogram
@@ -55,7 +71,6 @@ All notable changes to this project will be documented in this file.
 - Client
   - Fix race in bgp status handling on peer deletion
 
-
 ## [v0.8.4](https://github.com/malbeclabs/doublezero/compare/client/v0.8.3...client/v0.8.4) – 2026-01-28
 
 ### Breaking
@@ -71,6 +86,7 @@ All notable changes to this project will be documented in this file.
   - Support publishing and subscribing to multiple multicast groups simultaneously
 - CLI
   - Support publishing and subscribing a user to multiple multicast groups via `--group` flag
+  - Remove single tunnel constraint 
 - SDK
   - Go SDK can now perform batch writes to device.health and link.health as per rfc12
 - Activator

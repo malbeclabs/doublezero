@@ -87,8 +87,6 @@ func TestE2E_IBRL_AllocatedAddr_Multicast_Publisher_Coexistence(t *testing.T) {
 // 5. Disconnect
 func TestE2E_SingleClient_IBRL_Multicast_PubSub_Swap(t *testing.T) {
 	t.Parallel()
-<<<<<<< HEAD
-=======
 
 	dn, device, mcastDevice, client := setupSingleClientTestDevnet(t)
 	log := logger.With("test", t.Name())
@@ -395,7 +393,6 @@ func setupSingleClientTestDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device, 
 func setupCoexistenceTestDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device, *devnet.Client, *devnet.Client) {
 	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
 	log := logger.With("test", t.Name(), "deployID", deployID)
->>>>>>> 42711d2f (DNM: feat(cli): remove multiple tunnel restriction (#2725))
 
 	dn, device, mcastDevice, client := setupSingleClientTestDevnet(t)
 	log := newTestLoggerForTest(t)
@@ -744,11 +741,10 @@ func runSingleClientIBRLThenMulticastTest(t *testing.T, log *slog.Logger, dn *de
 		"ibrlDeviceID", ibrlDevice.ID,
 		"ibrlDeviceIP", ibrlDevice.CYOANetworkIP)
 	waitForAgentConfigWithClient(t, log, dn, actualMcastDevice, client)
-	log.Debug("--> Agent config pushed to multicast device")
+	log.Info("--> Agent config pushed to multicast device")
 
 	// Give time for agent to apply the configuration
-	log.Debug("==> Waiting for agent to apply configuration")
-	time.Sleep(10 * time.Second)
+	log.Info("==> Waiting for agent to apply configuration")
 
 	// Wait for BOTH tunnels (IBRL and Multicast) to be up on the client
 	log.Debug("==> Waiting for both tunnels (IBRL and Multicast) to be up")
@@ -1019,7 +1015,6 @@ func runIBRLWithMulticastSubscriberTest(t *testing.T, log *slog.Logger, dn *devn
 	log.Debug("==> Waiting for agent config to include multicast subscriber")
 	waitForAgentConfigWithClient(t, log, dn, device, mcastClient)
 
-<<<<<<< HEAD
 	// Wait for agent config to be applied and verifications to pass
 	log.Debug("==> Waiting for agent config to be applied to device")
 	require.Eventually(t, func() bool {
@@ -1028,15 +1023,7 @@ func runIBRLWithMulticastSubscriberTest(t *testing.T, log *slog.Logger, dn *devn
 	}, 60*time.Second, 2*time.Second, "agent config not applied within timeout")
 
 	log.Debug("--> Agent config applied, running final verification")
-=======
-	// Give extra time for agent config to be applied to device before verification
-	log.Info("==> Waiting for agent config to be applied to device")
-	require.Eventually(t, func() bool {
-		return checkIBRLClientReady(t, log, device, ibrlClient, useAllocatedAddr) &&
-			checkMulticastSubscriberPIMAdjacency(t, log, device)
-	}, 60*time.Second, 2*time.Second, "agent config not applied within timeout")
 
->>>>>>> 42711d2f (DNM: feat(cli): remove multiple tunnel restriction (#2725))
 	verifyIBRLClient(t, log, device, ibrlClient, useAllocatedAddr)
 	verifyMulticastSubscriberPIMAdjacency(t, log, device)
 
@@ -1236,7 +1223,6 @@ func verifyIBRLClientBGPEstablished(t *testing.T, log *slog.Logger, device *devn
 	t.Fatalf("BGP session not established within timeout")
 }
 
-<<<<<<< HEAD
 // checkIBRLClientReady checks if the IBRL client is ready (non-fatal version for polling).
 func checkIBRLClientReady(t *testing.T, log *slog.Logger, device *devnet.Device, client *devnet.Client, allocatedAddr bool) bool {
 	// Check doublezero0 interface exists
@@ -1287,15 +1273,6 @@ func checkMulticastSubscriberPIMAdjacency(t *testing.T, log *slog.Logger, device
 func verifyMulticastSubscriberPIMAdjacency(t *testing.T, log *slog.Logger, device *devnet.Device) {
 	log.Debug("==> Verifying multicast subscriber PIM adjacency")
 
-=======
-// verifyMulticastSubscriberPIMAdjacency verifies PIM adjacency is formed on the device for subscriber.
-// This function looks for any PIM neighbor on a Tunnel interface in the 169.254.0.x range.
-// In coexistence tests with multiple clients, the multicast client may not get 169.254.0.1
-// (e.g., if IBRL client connected first and got 169.254.0.1, multicast client gets 169.254.0.3).
-func verifyMulticastSubscriberPIMAdjacency(t *testing.T, log *slog.Logger, device *devnet.Device) {
-	log.Info("==> Verifying multicast subscriber PIM adjacency")
-
->>>>>>> 42711d2f (DNM: feat(cli): remove multiple tunnel restriction (#2725))
 	deadline := time.Now().Add(60 * time.Second)
 	for time.Now().Before(deadline) {
 		pim, err := devnet.DeviceExecAristaCliJSON[*arista.ShowPIMNeighbors](t.Context(), device, arista.ShowPIMNeighborsCmd())
@@ -1308,11 +1285,7 @@ func verifyMulticastSubscriberPIMAdjacency(t *testing.T, log *slog.Logger, devic
 				for addr, neighbor := range intf.Neighbors {
 					if strings.HasPrefix(addr, "169.254.0.") {
 						if len(intfName) >= 6 && intfName[:6] == "Tunnel" {
-<<<<<<< HEAD
-							log.Debug("--> PIM adjacency verified", "interface", intfName, "address", addr, "neighbor", neighbor)
-=======
 							log.Info("--> PIM adjacency verified", "interface", intfName, "address", addr, "neighbor", neighbor)
->>>>>>> 42711d2f (DNM: feat(cli): remove multiple tunnel restriction (#2725))
 							return
 						}
 					}
@@ -1331,16 +1304,8 @@ func verifyMulticastSubscriberPIMAdjacency(t *testing.T, log *slog.Logger, devic
 // For single-client scenarios where the same user has both IBRL and multicast, both tunnels
 // use sequential addresses in the 169.254.0.x range (e.g., IBRL on .0/.1, multicast on .2/.3).
 func verifyConcurrentMulticastPIMAdjacency(t *testing.T, log *slog.Logger, device *devnet.Device) {
-<<<<<<< HEAD
 	tunnelOut, _ := devnet.DeviceExecAristaCliJSON[any](t.Context(), device, "show interfaces Tunnel1-100")
 	log.Debug("Device tunnel interfaces", "output", tunnelOut)
-=======
-	// log.Info("==> Verifying concurrent multicast PIM adjacency", "deviceCode", device.Code)
-
-	// Diagnostic: Check device tunnel interfaces
-	tunnelOut, _ := devnet.DeviceExecAristaCliJSON[any](t.Context(), device, "show interfaces Tunnel1-100")
-	log.Info("Device tunnel interfaces", "output", tunnelOut)
->>>>>>> 42711d2f (DNM: feat(cli): remove multiple tunnel restriction (#2725))
 
 	deadline := time.Now().Add(60 * time.Second)
 	for time.Now().Before(deadline) {
@@ -1354,11 +1319,7 @@ func verifyConcurrentMulticastPIMAdjacency(t *testing.T, log *slog.Logger, devic
 				for addr := range intf.Neighbors {
 					if strings.HasPrefix(addr, "169.254.") {
 						if len(intfName) >= 6 && intfName[:6] == "Tunnel" {
-<<<<<<< HEAD
-							log.Debug("--> Concurrent mcast PIM adjacency verified", "interface", intfName, "address", addr)
-=======
 							log.Info("--> Concurrent mcast PIM adjacency verified", "interface", intfName, "address", addr)
->>>>>>> 42711d2f (DNM: feat(cli): remove multiple tunnel restriction (#2725))
 							return
 						}
 					}
@@ -1374,11 +1335,7 @@ func verifyConcurrentMulticastPIMAdjacency(t *testing.T, log *slog.Logger, devic
 
 // verifyConcurrentMulticastPublisherMrouteState verifies mroute state for concurrent IBRL+multicast publisher.
 func verifyConcurrentMulticastPublisherMrouteState(t *testing.T, log *slog.Logger, device *devnet.Device, client *devnet.Client) {
-<<<<<<< HEAD
-	log.Debug("==> Verifying concurrent multicast publisher mroute state")
-=======
 	log.Info("==> Verifying concurrent multicast publisher mroute state")
->>>>>>> 42711d2f (DNM: feat(cli): remove multiple tunnel restriction (#2725))
 
 	// Get the actual allocated IP from the client's tunnel status
 	// This is more reliable than calculating it, especially when the client
@@ -1396,28 +1353,6 @@ func verifyConcurrentMulticastPublisherMrouteState(t *testing.T, log *slog.Logge
 		}
 	}
 	require.NotEmpty(t, expectedAllocatedIP, "could not find multicast tunnel's DoubleZeroIP")
-<<<<<<< HEAD
-	log.Debug("==> Using client's actual allocated IP", "expectedAllocatedIP", expectedAllocatedIP)
-
-	// Diagnostic: Check tunnel and route state
-	log.Debug("==> Diagnostic: Checking tunnel interfaces")
-	tunnelOut, _ := client.Exec(t.Context(), []string{"bash", "-c", "ip -j link show type gre 2>/dev/null || ip link show type gre"}, docker.NoPrintOnError())
-	log.Debug("Tunnel interfaces", "output", string(tunnelOut))
-
-	log.Debug("==> Diagnostic: Checking routes to multicast group")
-	routeOut, _ := client.Exec(t.Context(), []string{"bash", "-c", "ip route get 233.84.178.0 2>&1"}, docker.NoPrintOnError())
-	log.Debug("Route to multicast group", "output", string(routeOut))
-
-	log.Debug("==> Diagnostic: Checking addresses on doublezero1")
-	addrOut, _ := client.Exec(t.Context(), []string{"bash", "-c", "ip addr show dev doublezero1 2>&1"}, docker.NoPrintOnError())
-	log.Debug("Addresses on doublezero1", "output", string(addrOut))
-
-	// Trigger S,G creation with ping to multicast group using the allocated DZ IP as source
-	// The -I flag with an IP address forces that IP as the source address
-	log.Debug("==> Triggering S,G creation with ping to multicast group", "sourceIP", expectedAllocatedIP, "interface", "doublezero1")
-	pingOut, pingErr := client.Exec(t.Context(), []string{"bash", "-c", "ping -c 3 -w 5 -I " + expectedAllocatedIP + " 233.84.178.0"}, docker.NoPrintOnError())
-	log.Debug("Ping result", "output", string(pingOut), "error", pingErr)
-=======
 	log.Info("==> Using client's actual allocated IP", "expectedAllocatedIP", expectedAllocatedIP)
 
 	// Diagnostic: Check tunnel and route state
@@ -1438,7 +1373,6 @@ func verifyConcurrentMulticastPublisherMrouteState(t *testing.T, log *slog.Logge
 	log.Info("==> Triggering S,G creation with ping to multicast group", "sourceIP", expectedAllocatedIP, "interface", "doublezero1")
 	pingOut, pingErr := client.Exec(t.Context(), []string{"bash", "-c", "ping -c 3 -w 5 -I " + expectedAllocatedIP + " 233.84.178.0"}, docker.NoPrintOnError())
 	log.Info("Ping result", "output", string(pingOut), "error", pingErr)
->>>>>>> 42711d2f (DNM: feat(cli): remove multiple tunnel restriction (#2725))
 
 	// Verify mroute state on device - poll for 60 seconds (longer for concurrent case)
 	mGroup := "233.84.178.0"
@@ -1460,11 +1394,7 @@ func verifyConcurrentMulticastPublisherMrouteState(t *testing.T, log *slog.Logge
 
 		_, ok = groups.GroupSources[expectedAllocatedIP]
 		if ok {
-<<<<<<< HEAD
-			log.Debug("--> Concurrent mcast mroute state verified", "group", mGroup, "source", expectedAllocatedIP)
-=======
 			log.Info("--> Concurrent mcast mroute state verified", "group", mGroup, "source", expectedAllocatedIP)
->>>>>>> 42711d2f (DNM: feat(cli): remove multiple tunnel restriction (#2725))
 			return
 		}
 
@@ -1479,8 +1409,6 @@ func verifyConcurrentMulticastPublisherMrouteState(t *testing.T, log *slog.Logge
 func verifyMulticastPublisherMrouteState(t *testing.T, log *slog.Logger, device *devnet.Device, client *devnet.Client) {
 	log.Debug("==> Verifying multicast publisher mroute state")
 
-<<<<<<< HEAD
-=======
 	// 	// Calculate expected allocated IP from device's dz_prefix
 	// 	dzPrefixIP, dzPrefixNet, err := netutil.ParseCIDR(device.DZPrefix)
 	// 	require.NoError(t, err)
@@ -1488,7 +1416,6 @@ func verifyMulticastPublisherMrouteState(t *testing.T, log *slog.Logger, device 
 	// 	allocatableBits := 32 - ones
 	// 	// First IP is reserved for device tunnel endpoint (Loopback100 interface)
 	// 	expectedAllocatedIP, err := nextAllocatableIP(dzPrefixIP, allocatableBits, map[string]bool{dzPrefixIP: true})
->>>>>>> 42711d2f (DNM: feat(cli): remove multiple tunnel restriction (#2725))
 	// Get the actual allocated IP from the client's tunnel status
 	// This is more reliable than calculating it, especially when multiple clients
 	// have allocated IPs from the same prefix
@@ -1505,11 +1432,7 @@ func verifyMulticastPublisherMrouteState(t *testing.T, log *slog.Logger, device 
 		}
 	}
 	require.NotEmpty(t, expectedAllocatedIP, "could not find multicast tunnel's DoubleZeroIP")
-<<<<<<< HEAD
-	log.Debug("==> Using client's actual allocated IP", "expectedAllocatedIP", expectedAllocatedIP)
-=======
 	log.Info("==> Using client's actual allocated IP", "expectedAllocatedIP", expectedAllocatedIP)
->>>>>>> 42711d2f (DNM: feat(cli): remove multiple tunnel restriction (#2725))
 
 	// Trigger S,G creation with ping to multicast group
 	log.Debug("==> Triggering S,G creation with ping to multicast group")
@@ -1567,11 +1490,7 @@ func waitForAgentConfigWithClient(t *testing.T, log *slog.Logger, dn *devnet.Dev
 
 		// Check if the config contains the client IP (indicating the tunnel is configured)
 		if strings.Contains(config.Config, client.CYOANetworkIP) {
-<<<<<<< HEAD
-			log.Debug("--> Agent config includes client", "clientIP", client.CYOANetworkIP, "deviceCode", device.Spec.Code)
-=======
 			log.Info("--> Agent config includes client", "clientIP", client.CYOANetworkIP, "deviceCode", device.Spec.Code)
->>>>>>> 42711d2f (DNM: feat(cli): remove multiple tunnel restriction (#2725))
 			return true
 		}
 
@@ -1582,11 +1501,7 @@ func waitForAgentConfigWithClient(t *testing.T, log *slog.Logger, dn *devnet.Dev
 			snippet = config.Config[:500] + "..."
 		}
 		if snippet != lastConfigSnippet {
-<<<<<<< HEAD
-			log.Debug("Agent config does not yet include client",
-=======
 			log.Info("Agent config does not yet include client",
->>>>>>> 42711d2f (DNM: feat(cli): remove multiple tunnel restriction (#2725))
 				"clientIP", client.CYOANetworkIP,
 				"deviceCode", device.Spec.Code,
 				"deviceID", device.ID,

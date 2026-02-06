@@ -147,6 +147,7 @@ mod tests {
             publishers: vec![],
             subscribers: vec![mgroup_pubkey],
             validator_pubkey: Pubkey::default(),
+            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
         };
 
         // User with Updating status (returned by first retry call)

@@ -417,3 +417,232 @@ impl ServiceController for ServiceControllerImpl {
         Ok(response)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Test that validates the JSON output format for LatencyRecord.
+    /// This test catches breaking changes to the JSON API contract.
+    #[test]
+    fn test_latency_record_json_output_format() {
+        let latency = LatencyRecord {
+            device_pk: "DevicePubkey123".to_string(),
+            device_code: "device1".to_string(),
+            device_ip: "5.6.7.8".to_string(),
+            min_latency_ns: 1000000,
+            max_latency_ns: 5000000,
+            avg_latency_ns: 3000000,
+            reachable: true,
+        };
+
+        let json_output = serde_json::to_value(&latency).expect("Failed to serialize");
+
+        // Validate all fields are present
+        assert!(
+            json_output.get("device_pk").is_some(),
+            "Missing 'device_pk' field"
+        );
+        assert!(
+            json_output.get("device_code").is_some(),
+            "Missing 'device_code' field"
+        );
+        assert!(
+            json_output.get("device_ip").is_some(),
+            "Missing 'device_ip' field"
+        );
+        assert!(
+            json_output.get("min_latency_ns").is_some(),
+            "Missing 'min_latency_ns' field"
+        );
+        assert!(
+            json_output.get("max_latency_ns").is_some(),
+            "Missing 'max_latency_ns' field"
+        );
+        assert!(
+            json_output.get("avg_latency_ns").is_some(),
+            "Missing 'avg_latency_ns' field"
+        );
+        assert!(
+            json_output.get("reachable").is_some(),
+            "Missing 'reachable' field"
+        );
+
+        // Validate field values
+        assert_eq!(json_output.get("device_pk").unwrap(), "DevicePubkey123");
+        assert_eq!(json_output.get("device_code").unwrap(), "device1");
+        assert_eq!(json_output.get("device_ip").unwrap(), "5.6.7.8");
+        assert_eq!(json_output.get("min_latency_ns").unwrap(), 1000000);
+        assert_eq!(json_output.get("max_latency_ns").unwrap(), 5000000);
+        assert_eq!(json_output.get("avg_latency_ns").unwrap(), 3000000);
+        assert_eq!(json_output.get("reachable").unwrap(), true);
+    }
+
+    /// Test that validates the JSON output format for RouteRecord.
+    /// This test catches breaking changes to the JSON API contract.
+    #[test]
+    fn test_route_record_json_output_format() {
+        let route = RouteRecord {
+            network: "10.0.0.0/24".to_string(),
+            local_ip: "10.1.2.3".to_string(),
+            peer_ip: "10.1.2.4".to_string(),
+            kernel_state: "active".to_string(),
+            liveness_last_updated: Some("2024-01-15T12:00:00Z".to_string()),
+            liveness_state: Some("up".to_string()),
+            liveness_state_reason: Some("healthy".to_string()),
+            peer_client_version: Some("0.8.6".to_string()),
+        };
+
+        let json_output = serde_json::to_value(&route).expect("Failed to serialize");
+
+        // Validate all fields are present
+        assert!(
+            json_output.get("network").is_some(),
+            "Missing 'network' field"
+        );
+        assert!(
+            json_output.get("local_ip").is_some(),
+            "Missing 'local_ip' field"
+        );
+        assert!(
+            json_output.get("peer_ip").is_some(),
+            "Missing 'peer_ip' field"
+        );
+        assert!(
+            json_output.get("kernel_state").is_some(),
+            "Missing 'kernel_state' field"
+        );
+        assert!(
+            json_output.get("liveness_last_updated").is_some(),
+            "Missing 'liveness_last_updated' field"
+        );
+        assert!(
+            json_output.get("liveness_state").is_some(),
+            "Missing 'liveness_state' field"
+        );
+        assert!(
+            json_output.get("liveness_state_reason").is_some(),
+            "Missing 'liveness_state_reason' field"
+        );
+        assert!(
+            json_output.get("peer_client_version").is_some(),
+            "Missing 'peer_client_version' field"
+        );
+
+        // Validate field values
+        assert_eq!(json_output.get("network").unwrap(), "10.0.0.0/24");
+        assert_eq!(json_output.get("local_ip").unwrap(), "10.1.2.3");
+        assert_eq!(json_output.get("peer_ip").unwrap(), "10.1.2.4");
+        assert_eq!(json_output.get("kernel_state").unwrap(), "active");
+        assert_eq!(
+            json_output.get("liveness_last_updated").unwrap(),
+            "2024-01-15T12:00:00Z"
+        );
+        assert_eq!(json_output.get("liveness_state").unwrap(), "up");
+        assert_eq!(json_output.get("liveness_state_reason").unwrap(), "healthy");
+        assert_eq!(json_output.get("peer_client_version").unwrap(), "0.8.6");
+    }
+
+    /// Test RouteRecord JSON output with null optional fields
+    #[test]
+    fn test_route_record_json_output_format_with_nulls() {
+        let route = RouteRecord {
+            network: "10.0.0.0/24".to_string(),
+            local_ip: "10.1.2.3".to_string(),
+            peer_ip: "10.1.2.4".to_string(),
+            kernel_state: "active".to_string(),
+            liveness_last_updated: None,
+            liveness_state: None,
+            liveness_state_reason: None,
+            peer_client_version: None,
+        };
+
+        let json_output = serde_json::to_value(&route).expect("Failed to serialize");
+
+        // Validate optional fields are null
+        assert!(
+            json_output.get("liveness_last_updated").unwrap().is_null(),
+            "liveness_last_updated should be null"
+        );
+        assert!(
+            json_output.get("liveness_state").unwrap().is_null(),
+            "liveness_state should be null"
+        );
+        assert!(
+            json_output.get("liveness_state_reason").unwrap().is_null(),
+            "liveness_state_reason should be null"
+        );
+        assert!(
+            json_output.get("peer_client_version").unwrap().is_null(),
+            "peer_client_version should be null"
+        );
+
+        // Required fields should still be present
+        assert_eq!(json_output.get("network").unwrap(), "10.0.0.0/24");
+        assert_eq!(json_output.get("local_ip").unwrap(), "10.1.2.3");
+    }
+
+    /// Test StatusResponse JSON output format
+    #[test]
+    fn test_status_response_json_output_format() {
+        let status = StatusResponse {
+            doublezero_status: DoubleZeroStatus {
+                session_status: "BGP Session Up".to_string(),
+                last_session_update: Some(1625247600),
+            },
+            tunnel_name: Some("doublezero1".to_string()),
+            tunnel_src: Some("10.0.0.1".to_string()),
+            tunnel_dst: Some("5.6.7.8".to_string()),
+            doublezero_ip: Some("10.1.2.3".to_string()),
+            user_type: Some("IBRL".to_string()),
+        };
+
+        let json_output = serde_json::to_value(&status).expect("Failed to serialize");
+
+        // Validate all fields are present
+        assert!(
+            json_output.get("doublezero_status").is_some(),
+            "Missing 'doublezero_status' field"
+        );
+        assert!(
+            json_output.get("tunnel_name").is_some(),
+            "Missing 'tunnel_name' field"
+        );
+        assert!(
+            json_output.get("tunnel_src").is_some(),
+            "Missing 'tunnel_src' field"
+        );
+        assert!(
+            json_output.get("tunnel_dst").is_some(),
+            "Missing 'tunnel_dst' field"
+        );
+        assert!(
+            json_output.get("doublezero_ip").is_some(),
+            "Missing 'doublezero_ip' field"
+        );
+        assert!(
+            json_output.get("user_type").is_some(),
+            "Missing 'user_type' field"
+        );
+
+        // Validate nested doublezero_status fields
+        let dz_status = json_output.get("doublezero_status").unwrap();
+        assert!(
+            dz_status.get("session_status").is_some(),
+            "Missing 'session_status' field"
+        );
+        assert!(
+            dz_status.get("last_session_update").is_some(),
+            "Missing 'last_session_update' field"
+        );
+
+        // Validate field values
+        assert_eq!(json_output.get("tunnel_name").unwrap(), "doublezero1");
+        assert_eq!(json_output.get("tunnel_src").unwrap(), "10.0.0.1");
+        assert_eq!(json_output.get("tunnel_dst").unwrap(), "5.6.7.8");
+        assert_eq!(json_output.get("doublezero_ip").unwrap(), "10.1.2.3");
+        assert_eq!(json_output.get("user_type").unwrap(), "IBRL");
+        assert_eq!(dz_status.get("session_status").unwrap(), "BGP Session Up");
+        assert_eq!(dz_status.get("last_session_update").unwrap(), 1625247600);
+    }
+}

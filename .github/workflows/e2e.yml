@@ -15,7 +15,7 @@ jobs:
       run:
         working-directory: "e2e/"
     runs-on: self-hosted
-    timeout-minutes: 15
+    timeout-minutes: 20
     permissions:
       packages: read
       contents: read

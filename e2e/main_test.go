@@ -541,3 +541,74 @@ func newTestLogger(verbose bool) *slog.Logger {
 	}))
 	return logger
 }
+
+// GetDeviceLinkInterfaceIPs fetches link data from the ledger and returns a map of
+// interface name -> IP address for the specified device. This is used to get the
+// dynamically allocated link IPs for fixtures.
+func (dn *TestDevnet) GetDeviceLinkInterfaceIPs(t *testing.T, deviceCode string) (map[string]string, error) {
+	client, err := dn.Ledger.GetServiceabilityClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get serviceability client: %w", err)
+	}
+
+	data, err := client.GetProgramData(t.Context())
+	if err != nil {
+		return nil, fmt.Errorf("failed to get program data: %w", err)
+	}
+
+	// Find the device by code to get its pubkey
+	var devicePubkey [32]byte
+	var deviceFound bool
+	for _, dev := range data.Devices {
+		if dev.Code == deviceCode {
+			devicePubkey = dev.PubKey
+			deviceFound = true
+			break
+		}
+	}
+	if !deviceFound {
+		return nil, fmt.Errorf("device %s not found in program data", deviceCode)
+	}
+
+	result := make(map[string]string)
+
+	for _, link := range data.Links {
+		// Check if this link involves our device
+		var ifaceName string
+		var isSideA bool
+
+		if link.SideAPubKey == devicePubkey {
+			ifaceName = link.SideAIfaceName
+			isSideA = true
+		} else if link.SideZPubKey == devicePubkey {
+			ifaceName = link.SideZIfaceName
+			isSideA = false
+		} else {
+			continue // Link doesn't involve this device
+		}
+
+		// Extract IP from TunnelNet [5]uint8 (4 bytes IP + 1 byte prefix)
+		// For a /31, Side A gets the first IP (even), Side Z gets the second IP (odd)
+		baseIP := net.IP(link.TunnelNet[:4]).To4()
+		if baseIP == nil {
+			continue
+		}
+
+		var ip net.IP
+		if isSideA {
+			// Side A gets the base IP (first of the /31)
+			ip = baseIP
+		} else {
+			// Side Z gets base IP + 1 (second of the /31)
+			ipInt := binary.BigEndian.Uint32(baseIP)
+			ipBytes := make(net.IP, 4)
+			binary.BigEndian.PutUint32(ipBytes, ipInt+1)
+			ip = ipBytes
+		}
+
+		prefixLen := link.TunnelNet[4]
+		result[ifaceName] = fmt.Sprintf("%s/%d", ip.String(), prefixLen)
+	}
+
+	return result, nil
+}

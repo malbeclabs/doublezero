@@ -30,8 +30,8 @@ impl fmt::Debug for MulticastGroupCreateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "code: {}, max_bandwidth: {}",
-            self.code, self.max_bandwidth
+            "code: {}, max_bandwidth: {}, owner: {}",
+            self.code, self.max_bandwidth, self.owner
         )
     }
 }

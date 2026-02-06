@@ -1,0 +1,61 @@
+{
+  "name": "MulticastGroup",
+  "account_type": 8,
+  "fields": [
+    {
+      "name": "AccountType",
+      "value": "8",
+      "typ": "u8"
+    },
+    {
+      "name": "Owner",
+      "value": "8YCfQUGT6eSxkUU7yWq1GnUbz6HL5QQYQ9YTNqkTj73d",
+      "typ": "pubkey"
+    },
+    {
+      "name": "Index",
+      "value": "30",
+      "typ": "u128"
+    },
+    {
+      "name": "BumpSeed",
+      "value": "247",
+      "typ": "u8"
+    },
+    {
+      "name": "TenantPk",
+      "value": "8c753xzXzUwgAAb6V26TAiDqF6r6nMWSz1rLt34TSuhy",
+      "typ": "pubkey"
+    },
+    {
+      "name": "MulticastIp",
+      "value": "239.1.1.1",
+      "typ": "ipv4"
+    },
+    {
+      "name": "MaxBandwidth",
+      "value": "1000000000",
+      "typ": "u64"
+    },
+    {
+      "name": "Status",
+      "value": "1",
+      "typ": "u8"
+    },
+    {
+      "name": "Code",
+      "value": "demo",
+      "typ": "string"
+    },
+    {
+      "name": "PublisherCount",
+      "value": "2",
+      "typ": "u32"
+    },
+    {
+      "name": "SubscriberCount",
+      "value": "10",
+      "typ": "u32"
+    }
+  ]
+}

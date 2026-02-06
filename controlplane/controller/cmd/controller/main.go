@@ -222,6 +222,28 @@ func (c *ControllerCommand) Run() error {
 
 	options = append(options, controller.WithDeviceLocalASN(deviceLocalASN))
 
+	if chAddr := os.Getenv("CLICKHOUSE_ADDR"); chAddr != "" {
+		chDB := os.Getenv("CLICKHOUSE_DB")
+		if chDB == "" {
+			chDB = "default"
+		}
+		chUser := os.Getenv("CLICKHOUSE_USER")
+		if chUser == "" {
+			chUser = "default"
+		}
+		chPass := os.Getenv("CLICKHOUSE_PASS")
+		chTLSDisabled := os.Getenv("CLICKHOUSE_TLS_DISABLED") == "true"
+		cw, err := controller.NewClickhouseWriter(log, chAddr, chDB, chUser, chPass, chTLSDisabled)
+		if err != nil {
+			log.Error("error creating clickhouse writer", "error", err)
+			os.Exit(1)
+		}
+		options = append(options, controller.WithClickhouse(cw))
+		log.Info("clickhouse enabled", "addr", chAddr, "db", chDB, "user", chUser)
+	} else {
+		log.Info("clickhouse disabled (CLICKHOUSE_ADDR not set)")
+	}
+
 	if c.noHardware {
 		options = append(options, controller.WithNoHardware())
 	}

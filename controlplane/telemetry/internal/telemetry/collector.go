@@ -133,7 +133,9 @@ func (c *Collector) Run(ctx context.Context) error {
 	}()
 
 	// Start the sender cleanup loop in the background.
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		t := time.NewTicker(1 * time.Minute)
 		defer t.Stop()
 		for {

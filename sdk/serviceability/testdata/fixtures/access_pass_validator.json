@@ -1,0 +1,81 @@
+{
+  "name": "AccessPassValidator",
+  "account_type": 11,
+  "fields": [
+    {
+      "name": "AccountType",
+      "value": "11",
+      "typ": "u8"
+    },
+    {
+      "name": "Owner",
+      "value": "BmaESF6VznDEMgEtPjcSFGFaQZQKy1J4RnM5YCeEKinB",
+      "typ": "pubkey"
+    },
+    {
+      "name": "BumpSeed",
+      "value": "243",
+      "typ": "u8"
+    },
+    {
+      "name": "AccessPassType",
+      "value": "1",
+      "typ": "u8"
+    },
+    {
+      "name": "AccessPassTypeValidatorPubkey",
+      "value": "BuP3jEYfnTCfB4UqQk9L37k2vaXsNuVsbWxrYbGDmL6s",
+      "typ": "pubkey"
+    },
+    {
+      "name": "ClientIp",
+      "value": "10.0.0.50",
+      "typ": "ipv4"
+    },
+    {
+      "name": "UserPayer",
+      "value": "BqUe5jpatchwmNMruEst9BzofZy6fxPy1eey3PxE3XSX",
+      "typ": "pubkey"
+    },
+    {
+      "name": "LastAccessEpoch",
+      "value": "1000",
+      "typ": "u64"
+    },
+    {
+      "name": "ConnectionCount",
+      "value": "1",
+      "typ": "u16"
+    },
+    {
+      "name": "Status",
+      "value": "1",
+      "typ": "u8"
+    },
+    {
+      "name": "MgroupPubAllowlistLen",
+      "value": "1",
+      "typ": "u32"
+    },
+    {
+      "name": "MgroupPubAllowlist0",
+      "value": "ByHTNjGkgHhNakbovFQmw3VGBb6e5rbnBPGk3naDV8mD",
+      "typ": "pubkey"
+    },
+    {
+      "name": "MgroupSubAllowlistLen",
+      "value": "1",
+      "typ": "u32"
+    },
+    {
+      "name": "MgroupSubAllowlist0",
+      "value": "C3Bs2Dzqa8C5zSinRkgDpyEVSbfQnohgmFadYytDCwRZ",
+      "typ": "pubkey"
+    },
+    {
+      "name": "Flags",
+      "value": "3",
+      "typ": "u8"
+    }
+  ]
+}

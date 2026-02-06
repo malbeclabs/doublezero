@@ -68,7 +68,7 @@ func TestE2E_DeviceMaxusersRollover(t *testing.T) {
 		Location: "lax",
 		Exchange: "xlax",
 		// .8/29 has network address .8, allocatable up to .14, and broadcast .15
-		CYOANetworkIPHostID:          9,
+		CYOANetworkIPHostID:          16,
 		CYOANetworkAllocatablePrefix: 29,
 		LoopbackInterfaces: map[string]string{
 			"Loopback255": "vpnv4",

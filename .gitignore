@@ -11,16 +11,22 @@ test-ledger/
 **/bin/*
 smartcontract/cli/config/*
 controlplane/funder/cmd/funder/funder
+revdist-cli
 
 .idea
 .private
 .vscode/*
 .vscode
 .zed
+.claude/plans/
 .tmp
 .env
 
 dist/
+node_modules/
+__pycache__/
+.pytest_cache/
+.venv/
 
 # Local devnet deployment artifacts.
 dev/.deploy/

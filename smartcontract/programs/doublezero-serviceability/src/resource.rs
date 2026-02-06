@@ -15,8 +15,22 @@ pub enum ResourceType {
     SegmentRoutingIds,
 }
 
+impl fmt::Display for ResourceType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ResourceType::DeviceTunnelBlock => write!(f, "DeviceTunnelBlock"),
+            ResourceType::UserTunnelBlock => write!(f, "UserTunnelBlock"),
+            ResourceType::MulticastGroupBlock => write!(f, "MulticastGroupBlock"),
+            ResourceType::DzPrefixBlock(pk, idx) => write!(f, "DzPrefixBlock({}, {})", pk, idx),
+            ResourceType::TunnelIds(pk, idx) => write!(f, "TunnelIds({}, {})", pk, idx),
+            ResourceType::LinkIds => write!(f, "LinkIds"),
+            ResourceType::SegmentRoutingIds => write!(f, "SegmentRoutingIds"),
+        }
+    }
+}
+
 #[repr(u8)]
-#[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[borsh(use_discriminant = true)]
 pub enum IdOrIp {

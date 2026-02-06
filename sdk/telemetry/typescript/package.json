@@ -1,0 +1,27 @@
+{
+  "name": "@doublezero/telemetry",
+  "version": "0.0.3",
+  "type": "module",
+  "main": "telemetry/index.ts",
+  "types": "telemetry/index.ts",
+  "publishConfig": {
+    "main": "dist/telemetry/index.js",
+    "types": "dist/telemetry/index.d.ts"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "tsc"
+  },
+  "dependencies": {
+    "@doublezero/serviceability": "workspace:*",
+    "@solana/web3.js": "^1.98",
+    "borsh-incremental": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5"
+  }
+}

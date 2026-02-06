@@ -1,0 +1,22 @@
+{
+  "LocationStatus": {"0": "pending", "1": "activated", "2": "suspended", "99": "unknown"},
+  "ExchangeStatus": {"0": "pending", "1": "activated", "2": "suspended", "99": "unknown"},
+  "DeviceDeviceType": {"0": "hybrid", "1": "transit", "2": "edge", "99": "unknown"},
+  "DeviceStatus": {"0": "pending", "1": "activated", "2": "deleting", "3": "rejected", "4": "drained", "5": "device-provisioning", "6": "link-provisioning", "99": "unknown"},
+  "DeviceHealth": {"0": "unknown", "1": "pending", "2": "ready_for_links", "3": "ready_for_users", "4": "impaired", "99": "unknown"},
+  "DeviceDesiredStatus": {"0": "pending", "1": "activated", "6": "drained", "99": "unknown"},
+  "InterfaceStatus": {"0": "invalid", "1": "unmanaged", "2": "pending", "3": "activated", "4": "deleting", "5": "rejecting", "6": "unlinked", "99": "unknown"},
+  "InterfaceType": {"0": "invalid", "1": "loopback", "2": "physical", "99": "unknown"},
+  "LoopbackType": {"0": "none", "1": "vpnv4", "2": "ipv4", "3": "pim_rp_addr", "4": "reserved", "99": "unknown"},
+  "LinkLinkType": {"1": "WAN", "127": "DZX", "99": ""},
+  "LinkStatus": {"0": "pending", "1": "activated", "2": "deleting", "3": "rejected", "4": "requested", "5": "hard-drained", "6": "soft-drained", "7": "provisioning", "99": "unknown"},
+  "LinkHealth": {"0": "unknown", "1": "pending", "2": "ready_for_service", "3": "impaired", "99": "unknown"},
+  "LinkDesiredStatus": {"0": "pending", "1": "activated", "2": "hard-drained", "3": "soft-drained", "99": "unknown"},
+  "ContributorStatus": {"0": "none", "1": "activated", "2": "suspended", "3": "deleting", "99": "unknown"},
+  "UserUserType": {"0": "ibrl", "1": "ibrl_with_allocated_ip", "2": "edge_filtering", "3": "multicast", "99": "unknown"},
+  "CyoaType": {"0": "none", "1": "gre_over_dia", "2": "gre_over_fabric", "3": "gre_over_private_peering", "4": "gre_over_public_peering", "5": "gre_over_cable", "99": "unknown"},
+  "UserStatus": {"0": "pending", "1": "activated", "3": "deleting", "4": "rejected", "5": "pending_ban", "6": "banned", "7": "updating", "8": "out_of_credits", "99": "unknown"},
+  "MulticastGroupStatus": {"0": "pending", "1": "activated", "2": "suspended", "3": "deleting", "4": "rejected", "99": "unknown"},
+  "AccessPassTypeTag": {"0": "prepaid", "1": "solana_validator", "2": "solana_rpc", "3": "solana_multicast_publisher", "4": "solana_multicast_subscriber", "5": "others", "99": "unknown"},
+  "AccessPassStatus": {"0": "requested", "1": "connected", "2": "disconnected", "3": "expired", "99": "unknown"}
+}

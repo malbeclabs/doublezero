@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/malbeclabs/doublezero/e2e/internal/allocation"
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
@@ -133,6 +134,29 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 		return true
 	}, 60*time.Second, 2*time.Second, "interfaces were not unlinked within timeout")
 
+	// Create allocation verifier and capture snapshot BEFORE link creation
+	client, err := dn.Ledger.GetServiceabilityClient()
+	require.NoError(t, err)
+	verifier := allocation.NewVerifier(client)
+
+	log.Info("==> Capturing ResourceExtension state before link creation")
+	beforeAlloc, err := verifier.CaptureSnapshot(ctx)
+	require.NoError(t, err, "failed to capture pre-allocation snapshot")
+
+	// Log initial state for debugging
+	if beforeAlloc.DeviceTunnelBlock != nil {
+		log.Info("DeviceTunnelBlock before allocation",
+			"allocated", beforeAlloc.DeviceTunnelBlock.Allocated,
+			"available", beforeAlloc.DeviceTunnelBlock.Available,
+			"total", beforeAlloc.DeviceTunnelBlock.Total)
+	}
+	if beforeAlloc.LinkIds != nil {
+		log.Info("LinkIds before allocation",
+			"allocated", beforeAlloc.LinkIds.Allocated,
+			"available", beforeAlloc.LinkIds.Available,
+			"total", beforeAlloc.LinkIds.Total)
+	}
+
 	// Create a link between the two devices with desired-status activated
 	// The activator should pick this up and activate it with on-chain allocation
 	log.Info("==> Creating link with on-chain allocation")
@@ -191,6 +215,28 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 	require.NotEmpty(t, activatedLink.TunnelNet, "tunnel_net should be allocated (non-empty)")
 	require.NotEqual(t, [5]uint8{0, 0, 0, 0, 0}, activatedLink.TunnelNet, "tunnel_net should not be default/zero")
 
+	// Capture snapshot AFTER allocation to verify resources were consumed
+	log.Info("==> Capturing ResourceExtension state after link activation")
+	afterAlloc, err := verifier.CaptureSnapshot(ctx)
+	require.NoError(t, err, "failed to capture post-allocation snapshot")
+
+	// Verify resources were allocated from the pools
+	// Link allocates: tunnel_net (2 IPs from /31) from DeviceTunnelBlock, tunnel_id (1) from LinkIds
+	if beforeAlloc.DeviceTunnelBlock != nil && afterAlloc.DeviceTunnelBlock != nil {
+		err = verifier.AssertAllocated(beforeAlloc, afterAlloc, "DeviceTunnelBlock", 2)
+		require.NoError(t, err, "DeviceTunnelBlock allocation verification failed")
+		log.Info("DeviceTunnelBlock after allocation",
+			"allocated", afterAlloc.DeviceTunnelBlock.Allocated,
+			"available", afterAlloc.DeviceTunnelBlock.Available)
+	}
+	if beforeAlloc.LinkIds != nil && afterAlloc.LinkIds != nil {
+		err = verifier.AssertAllocated(beforeAlloc, afterAlloc, "LinkIds", 1)
+		require.NoError(t, err, "LinkIds allocation verification failed")
+		log.Info("LinkIds after allocation",
+			"allocated", afterAlloc.LinkIds.Allocated,
+			"available", afterAlloc.LinkIds.Available)
+	}
+
 	// Verify link details via CLI
 	log.Info("==> Verifying link details via CLI")
 	output, err = dn.Manager.Exec(ctx, []string{"bash", "-c", "doublezero link get --code test-dz01:test-dz02"})
@@ -241,6 +287,9 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 	}, 60*time.Second, 2*time.Second, "link did not transition to Deleting within timeout")
 
 	// Wait for link to be closed (removed from program data)
+	// Note: We don't capture a snapshot here because the link may close very quickly,
+	// causing a race where we capture the snapshot after deallocation already happened.
+	// Instead, we use afterAlloc (captured after link creation) as the baseline.
 	log.Info("==> Waiting for link to be closed by activator")
 	require.Eventually(t, func() bool {
 		client, err := dn.Ledger.GetServiceabilityClient()
@@ -259,6 +308,33 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 		}
 		return true
 	}, 60*time.Second, 2*time.Second, "link was not closed within timeout")
+
+	// Capture snapshot AFTER link is closed to verify deallocation
+	log.Info("==> Capturing ResourceExtension state after link closure")
+	afterDealloc, err := verifier.CaptureSnapshot(ctx)
+	require.NoError(t, err, "failed to capture post-deallocation snapshot")
+
+	// Verify resources were deallocated back to the pools
+	// Use afterAlloc as baseline since beforeDealloc may miss the window due to fast link closure
+	if afterAlloc.DeviceTunnelBlock != nil && afterDealloc.DeviceTunnelBlock != nil {
+		err = verifier.AssertDeallocated(afterAlloc, afterDealloc, "DeviceTunnelBlock", 2)
+		require.NoError(t, err, "tunnel_net not properly deallocated from DeviceTunnelBlock")
+		log.Info("DeviceTunnelBlock after deallocation",
+			"allocated", afterDealloc.DeviceTunnelBlock.Allocated,
+			"available", afterDealloc.DeviceTunnelBlock.Available)
+	}
+	if afterAlloc.LinkIds != nil && afterDealloc.LinkIds != nil {
+		err = verifier.AssertDeallocated(afterAlloc, afterDealloc, "LinkIds", 1)
+		require.NoError(t, err, "tunnel_id not properly deallocated from LinkIds")
+		log.Info("LinkIds after deallocation",
+			"allocated", afterDealloc.LinkIds.Allocated,
+			"available", afterDealloc.LinkIds.Available)
+	}
+
+	// Verify resources returned to pre-allocation state
+	log.Info("==> Verifying resources returned to pre-allocation state")
+	err = verifier.AssertResourcesReturned(beforeAlloc, afterDealloc)
+	require.NoError(t, err, "resources were not properly returned to pre-allocation state")
 
 	// Verify interfaces are back to Unlinked status after link closure
 	log.Info("==> Verifying interfaces returned to Unlinked status")

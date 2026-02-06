@@ -97,7 +97,8 @@ use doublezero_sdk::{
     GlobalConfig, GlobalState, Link, Location, MulticastGroup, ResourceExtensionOwned, User,
 };
 use doublezero_serviceability::state::{
-    accesspass::AccessPass, contributor::Contributor, programconfig::ProgramConfig,
+    accesspass::AccessPass, accountdata::AccountData, contributor::Contributor,
+    programconfig::ProgramConfig,
 };
 use mockall::automock;
 use solana_client::rpc_config::RpcProgramAccountsConfig;
@@ -120,6 +121,7 @@ pub trait CliCommand {
     fn get_epoch(&self) -> eyre::Result<u64>;
     fn get_logs(&self, pubkey: &Pubkey) -> eyre::Result<Vec<String>>;
     fn get_account(&self, pubkey: Pubkey) -> eyre::Result<Account>;
+    fn get_all(&self) -> eyre::Result<HashMap<Box<Pubkey>, Box<AccountData>>>;
     fn get_program_accounts(
         &self,
         program_id: &Pubkey,
@@ -330,6 +332,9 @@ impl CliCommand for CliCommandImpl<'_> {
     }
     fn get_account(&self, pubkey: Pubkey) -> eyre::Result<Account> {
         self.client.get_account(pubkey)
+    }
+    fn get_all(&self) -> eyre::Result<HashMap<Box<Pubkey>, Box<AccountData>>> {
+        self.client.get_all()
     }
     fn get_program_accounts(
         &self,

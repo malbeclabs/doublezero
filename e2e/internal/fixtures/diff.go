@@ -53,6 +53,11 @@ func mapFromTable(output []byte, ignoreKeys []string) []map[string]string {
 	return sliceOfMaps
 }
 
+// ParseCLITable parses a pipe-delimited CLI table into a slice of maps keyed by column header.
+func ParseCLITable(output []byte) []map[string]string {
+	return mapFromTable(output, nil)
+}
+
 // canonicalKey builds a deterministic string representation of the map.
 func canonicalKey(m map[string]string, excludeKeys []string) string {
 	keys := make([]string, 0, len(m))

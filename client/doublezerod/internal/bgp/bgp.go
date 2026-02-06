@@ -112,6 +112,7 @@ type BgpServer struct {
 	server            *corebgp.Server
 	peerStatusChan    chan SessionEvent
 	peerStatus        map[string]Session
+	peerPlugins       map[string]*Plugin // track plugins to mark as deleted on DeletePeer
 	peerStatusLock    sync.Mutex
 	routeReaderWriter RouteReaderWriter
 	livenessManager   liveness.Manager
@@ -127,6 +128,7 @@ func NewBgpServer(routerID net.IP, rrw RouteReaderWriter, lm liveness.Manager) (
 		server:            srv,
 		peerStatusChan:    make(chan SessionEvent),
 		peerStatus:        make(map[string]Session),
+		peerPlugins:       make(map[string]*Plugin),
 		peerStatusLock:    sync.Mutex{},
 		routeReaderWriter: rrw,
 		livenessManager:   lm,
@@ -173,21 +175,39 @@ func (b *BgpServer) AddPeer(p *PeerConfig, advertised []NLRI) error {
 	if err != nil && errors.Is(err, corebgp.ErrPeerAlreadyExists) {
 		return ErrBgpPeerExists
 	}
+
+	// Store plugin reference so we can mark it as deleted later
+	b.peerStatusLock.Lock()
+	b.peerPlugins[p.RemoteAddress.String()] = plugin
+	b.peerStatusLock.Unlock()
+
 	return err
 }
 
 func (b *BgpServer) DeletePeer(ip net.IP) error {
 	if ip == nil {
-		return fmt.Errorf("no peeer ip provided")
+		return fmt.Errorf("no peer ip provided")
 	}
 	addr, ok := netip.AddrFromSlice(ip)
 	if !ok {
 		return fmt.Errorf("malformed peer address")
 	}
+
+	// Mark plugin as deleted before calling corebgp's DeletePeer.
+	// This prevents OnClose from starting a new timeout for a peer that won't reconnect.
+	b.peerStatusLock.Lock()
+	if plugin, ok := b.peerPlugins[ip.String()]; ok {
+		plugin.MarkDeleted()
+		delete(b.peerPlugins, ip.String())
+	}
+	delete(b.peerStatus, ip.String())
+	b.peerStatusLock.Unlock()
+
 	err := b.server.DeletePeer(addr)
 	if errors.Is(err, corebgp.ErrPeerNotExist) {
 		return ErrBgpPeerNotExists
 	}
+
 	return err
 }
 

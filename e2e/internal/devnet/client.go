@@ -1,7 +1,9 @@
 package devnet
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net"
@@ -12,6 +14,7 @@ import (
 	dockercontainer "github.com/docker/docker/api/types/container"
 	dockerfilters "github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/network"
+	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
 	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
 	"github.com/malbeclabs/doublezero/e2e/internal/poll"
@@ -242,19 +245,22 @@ func (c *Client) Start(ctx context.Context) error {
 	}
 
 	// Fund the client account via airdrop.
-	// Retry a couple times to avoid the observed intermittent failures, even on the first airdrop request.
+	// Retry a few times to avoid rate limit failures when running tests in parallel.
+	// We explicitly pass the RPC URL via -u flag to avoid a race condition where the solana CLI
+	// config may not be set up yet by the entrypoint script, which would cause it to default to mainnet.
 	funded := false
 	var output []byte
-	for range 3 {
-		c.log.Info("--> Funding client account", "clientPubkey", c.Pubkey)
-		output, err = c.Exec(ctx, []string{"solana", "airdrop", "10", c.Pubkey}, docker.NoPrintOnError())
+	for attempt := range 5 {
+		c.log.Info("--> Funding client account", "clientPubkey", c.Pubkey, "attempt", attempt+1)
+		output, err = c.Exec(ctx, []string{"solana", "airdrop", "-u", c.dn.Ledger.InternalRPCURL, "10", c.Pubkey}, docker.NoPrintOnError())
 		if err != nil {
-			if strings.Contains(string(output), "rate limit") {
-				c.log.Info("--> Solana airdrop request failed with rate limit message, retrying")
-				time.Sleep(1 * time.Second)
+			outputStr := string(output)
+			if strings.Contains(outputStr, "429") || strings.Contains(outputStr, "Too Many Requests") || strings.Contains(outputStr, "rate limit") {
+				c.log.Info("--> Solana airdrop request rate limited, retrying", "attempt", attempt+1)
+				time.Sleep(2 * time.Second)
 				continue
 			}
-			fmt.Println(string(output))
+			fmt.Println(outputStr)
 			return fmt.Errorf("failed to fund client account: %w", err)
 		}
 		funded = true
@@ -262,7 +268,7 @@ func (c *Client) Start(ctx context.Context) error {
 	}
 	if !funded {
 		fmt.Println(string(output))
-		return fmt.Errorf("failed to fund client account after 3 attempts")
+		return fmt.Errorf("failed to fund client account after 5 attempts")
 	}
 
 	c.log.Info("--> Client started", "container", c.ContainerID, "pubkey", c.Pubkey, "cyoaIP", clientCYOAIP)
@@ -363,6 +369,34 @@ type ClientStatusResponse struct {
 	UserType         ClientUserType `json:"user_type"`
 }
 
+// CLIStatusResponse represents the full response from `doublezero status --json`,
+// which includes additional fields like current_device and metro that are computed
+// by the CLI based on on-chain data.
+type CLIStatusResponse struct {
+	Response            ClientStatusResponse `json:"response"`
+	CurrentDevice       string               `json:"current_device"`
+	LowestLatencyDevice string               `json:"lowest_latency_device"`
+	Metro               string               `json:"metro"`
+	Network             string               `json:"network"`
+}
+
+// GetCLIStatus retrieves the full status output from `doublezero status --json`,
+// which includes current_device, metro, and other fields computed by the CLI.
+// This is useful for verifying that the CLI correctly associates tunnels with devices.
+func (c *Client) GetCLIStatus(ctx context.Context) ([]CLIStatusResponse, error) {
+	output, err := c.Exec(ctx, []string{"doublezero", "status", "--json"})
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute doublezero status --json: %w", err)
+	}
+
+	var resp []CLIStatusResponse
+	if err := json.Unmarshal(output, &resp); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal CLI status response: %w, output: %s", err, string(output))
+	}
+
+	return resp, nil
+}
+
 func (c *Client) GetTunnelStatus(ctx context.Context) ([]ClientStatusResponse, error) {
 	resp, err := docker.ExecReturnObject[[]ClientStatusResponse](ctx, c.dn.dockerClient, c.ContainerID, []string{"curl", "-s", "--unix-socket", "/var/run/doublezerod/doublezerod.sock", "http://doublezero/status"})
 	if err != nil {
@@ -444,10 +478,99 @@ func (c *Client) WaitForTunnelStatus(ctx context.Context, wantStatus ClientSessi
 		return false, nil
 	}, timeout, 1*time.Second)
 	if err != nil {
+		c.dumpDiagnostics()
 		return fmt.Errorf("failed to wait for client tunnel status %s: %w", wantStatus, err)
 	}
 
 	return nil
+}
+
+// dumpDiagnostics prints client-side and device-side diagnostic information to help debug
+// tunnel status failures. It uses a fresh context since the test context may have expired.
+// Output is buffered and written in a single fmt.Fprint call so that parallel tests don't
+// interleave each other's diagnostics.
+func (c *Client) dumpDiagnostics() {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	var buf bytes.Buffer
+	fmt.Fprintf(&buf, "\n=== DIAGNOSTIC DUMP (deploy=%s client=%s) ===\n", c.dn.Spec.DeployID, c.Pubkey)
+
+	// Client-side diagnostics.
+	clientCommands := []struct {
+		label   string
+		command []string
+	}{
+		{"doublezero status", []string{"curl", "-s", "--unix-socket", "/var/run/doublezerod/doublezerod.sock", "http://doublezero/status"}},
+		{"ip addr show", []string{"ip", "addr", "show"}},
+		{"ip route show", []string{"ip", "route", "show"}},
+	}
+	for _, cmd := range clientCommands {
+		output, err := c.Exec(ctx, cmd.command, docker.NoPrintOnError())
+		if err != nil {
+			fmt.Fprintf(&buf, "\n--- Client: %s (ERROR: %v)\n", cmd.label, err)
+		} else {
+			fmt.Fprintf(&buf, "\n--- Client: %s\n%s", cmd.label, string(output))
+		}
+	}
+
+	// Dump doublezerod container logs (stdout/stderr).
+	logsReader, err := c.dn.dockerClient.ContainerLogs(ctx, c.ContainerID, dockercontainer.LogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+		Tail:       "100",
+	})
+	if err != nil {
+		fmt.Fprintf(&buf, "\n--- Client: doublezerod container logs (ERROR: %v)\n", err)
+	} else {
+		var stdout, stderr bytes.Buffer
+		_, _ = stdcopy.StdCopy(&stdout, &stderr, logsReader)
+		logsReader.Close()
+		fmt.Fprintf(&buf, "\n--- Client: doublezerod container logs (stdout)\n%s", stdout.String())
+		if stderr.Len() > 0 {
+			fmt.Fprintf(&buf, "\n--- Client: doublezerod container logs (stderr)\n%s", stderr.String())
+		}
+	}
+
+	// Device-side diagnostics.
+	for code, device := range c.dn.Devices {
+		deviceCommands := []struct {
+			label   string
+			command []string
+		}{
+			{"show running-config section Tunnel", []string{"Cli", "-p", "15", "-c", "show running-config section Tunnel"}},
+			{"show ip bgp summary", []string{"Cli", "-c", "show ip bgp summary"}},
+			{"show ip bgp summary vrf vrf1", []string{"Cli", "-c", "show ip bgp summary vrf vrf1"}},
+			{"doublezero-agent log (last 100 lines)", []string{"tail", "-100", "/var/log/agents-latest/doublezero-agent"}},
+			{"disk space /var/tmp", []string{"df", "-h", "/var/tmp"}},
+		}
+		for _, cmd := range deviceCommands {
+			output, err := device.Exec(ctx, cmd.command)
+			if err != nil {
+				fmt.Fprintf(&buf, "\n--- Device %s: %s (ERROR: %v)\n", code, cmd.label, err)
+			} else {
+				fmt.Fprintf(&buf, "\n--- Device %s: %s\n%s", code, cmd.label, string(output))
+			}
+		}
+	}
+
+	// Controller-side diagnostics: query the config the controller would send to each device.
+	for code, device := range c.dn.Devices {
+		output, err := docker.Exec(ctx, c.dn.dockerClient, c.dn.Controller.ContainerID, []string{
+			"doublezero-controller", "agent",
+			"-device-pubkey", device.ID,
+			"-controller-addr", "localhost",
+			"-controller-port", "7000",
+		})
+		if err != nil {
+			fmt.Fprintf(&buf, "\n--- Controller config for device %s (ERROR: %v)\n", code, err)
+		} else {
+			fmt.Fprintf(&buf, "\n--- Controller config for device %s\n%s", code, string(output))
+		}
+	}
+
+	fmt.Fprintf(&buf, "\n=== DIAGNOSTIC DUMP END ===\n")
+	fmt.Fprint(os.Stderr, buf.String())
 }
 
 func (c *Client) WaitForLatencyResults(ctx context.Context, wantDevicePK string, timeout time.Duration) error {

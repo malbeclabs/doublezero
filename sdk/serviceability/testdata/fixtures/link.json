@@ -1,0 +1,111 @@
+{
+  "name": "Link",
+  "account_type": 6,
+  "fields": [
+    {
+      "name": "AccountType",
+      "value": "6",
+      "typ": "u8"
+    },
+    {
+      "name": "Owner",
+      "value": "6PHcid3kVtc7gLcwhNJid8dHhnCfV19XiPg3GbpcfMtb",
+      "typ": "pubkey"
+    },
+    {
+      "name": "Index",
+      "value": "99",
+      "typ": "u128"
+    },
+    {
+      "name": "BumpSeed",
+      "value": "249",
+      "typ": "u8"
+    },
+    {
+      "name": "SideAPk",
+      "value": "6TC2N7mqPj6q62jvCsaAX4NWxnmSBxFSJFyvmo8cPAYw",
+      "typ": "pubkey"
+    },
+    {
+      "name": "SideZPk",
+      "value": "6X6S1cVvHZbYVirtiNqcQz7kDoLCtuMLt8HpGzSc6yDH",
+      "typ": "pubkey"
+    },
+    {
+      "name": "LinkType",
+      "value": "1",
+      "typ": "u8"
+    },
+    {
+      "name": "Bandwidth",
+      "value": "10000000000",
+      "typ": "u64"
+    },
+    {
+      "name": "Mtu",
+      "value": "9000",
+      "typ": "u32"
+    },
+    {
+      "name": "DelayNs",
+      "value": "5000000",
+      "typ": "u64"
+    },
+    {
+      "name": "JitterNs",
+      "value": "100000",
+      "typ": "u64"
+    },
+    {
+      "name": "TunnelId",
+      "value": "500",
+      "typ": "u16"
+    },
+    {
+      "name": "TunnelNet",
+      "value": "169.254.1.0/30",
+      "typ": "networkv4"
+    },
+    {
+      "name": "Status",
+      "value": "1",
+      "typ": "u8"
+    },
+    {
+      "name": "Code",
+      "value": "ams-fra",
+      "typ": "string"
+    },
+    {
+      "name": "ContributorPk",
+      "value": "6azqf7E1BQ6FuQysDt74JuryUotybrTFTzbhnBkbpmsd",
+      "typ": "pubkey"
+    },
+    {
+      "name": "SideAIfaceName",
+      "value": "Ethernet2",
+      "typ": "string"
+    },
+    {
+      "name": "SideZIfaceName",
+      "value": "Ethernet2",
+      "typ": "string"
+    },
+    {
+      "name": "DelayOverrideNs",
+      "value": "0",
+      "typ": "u64"
+    },
+    {
+      "name": "LinkHealth",
+      "value": "2",
+      "typ": "u8"
+    },
+    {
+      "name": "DesiredStatus",
+      "value": "1",
+      "typ": "u8"
+    }
+  ]
+}

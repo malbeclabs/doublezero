@@ -1,0 +1,17 @@
+{
+  "name": "SolanaValidatorDeposit",
+  "struct_size": 96,
+  "discriminator_hex": "14e90cc59bf9cbaa",
+  "fields": [
+    {
+      "name": "NodeID",
+      "value": "3px89oUYY7nzA43vNCBkbvJbsQjNeuH5XRxJ9C2oGnmV",
+      "typ": "pubkey"
+    },
+    {
+      "name": "WrittenOffSOLDebt",
+      "value": "999999",
+      "typ": "u64"
+    }
+  ]
+}

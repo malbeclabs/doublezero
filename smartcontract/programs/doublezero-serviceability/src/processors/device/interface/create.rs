@@ -43,8 +43,19 @@ impl fmt::Debug for DeviceInterfaceCreateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "name: {}, loopback_type: {}, vlan_id: {}, user_tunnel_endpoint: {}",
-            self.name, self.loopback_type, self.vlan_id, self.user_tunnel_endpoint
+            "name: {}, loopback_type: {}, vlan_id: {}, ip_net: {:?}, user_tunnel_endpoint: {}, \
+interface_cyoa: {:?}, interface_dia: {:?}, bandwidth: {}, cir: {}, mtu: {}, routing_mode: {:?}",
+            self.name,
+            self.loopback_type,
+            self.vlan_id,
+            self.ip_net,
+            self.user_tunnel_endpoint,
+            self.interface_cyoa,
+            self.interface_dia,
+            self.bandwidth,
+            self.cir,
+            self.mtu,
+            self.routing_mode,
         )
     }
 }

@@ -1,0 +1,26 @@
+{
+  "name": "@doublezero/serviceability",
+  "version": "0.0.3",
+  "type": "module",
+  "main": "serviceability/index.ts",
+  "types": "serviceability/index.ts",
+  "publishConfig": {
+    "main": "dist/serviceability/index.js",
+    "types": "dist/serviceability/index.d.ts"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "tsc"
+  },
+  "dependencies": {
+    "@solana/web3.js": "^1.98",
+    "borsh-incremental": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5"
+  }
+}

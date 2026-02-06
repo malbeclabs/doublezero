@@ -1,0 +1,46 @@
+{
+  "name": "Contributor",
+  "account_type": 10,
+  "fields": [
+    {
+      "name": "AccountType",
+      "value": "10",
+      "typ": "u8"
+    },
+    {
+      "name": "Owner",
+      "value": "9cfBkPsoQ2NPHYPi7b69bcQG8FKfNc33k2UfRxiPFyd9",
+      "typ": "pubkey"
+    },
+    {
+      "name": "Index",
+      "value": "550",
+      "typ": "u128"
+    },
+    {
+      "name": "BumpSeed",
+      "value": "245",
+      "typ": "u8"
+    },
+    {
+      "name": "Status",
+      "value": "1",
+      "typ": "u8"
+    },
+    {
+      "name": "Code",
+      "value": "co01",
+      "typ": "string"
+    },
+    {
+      "name": "ReferenceCount",
+      "value": "7",
+      "typ": "u32"
+    },
+    {
+      "name": "OpsManagerPk",
+      "value": "9gZbPtbtHrs6hEWgd6MbVY9VPFtS5Z8xKtnYwA2NynHV",
+      "typ": "pubkey"
+    }
+  ]
+}

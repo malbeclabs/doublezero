@@ -1,19 +1,44 @@
 # Claude Code Instructions
 
+## Style & Terminology
+
+- Use "onchain" (one word, no hyphen) instead of "on-chain"
+
 ## Git Commits
 
 - Do not add "Co-Authored-By" lines to commit messages
 - Use the format `component: short description` (e.g., `lake/indexer: fix flaky staging test`, `telemetry: use CLICKHOUSE_PASS env var`)
 - Keep the description lowercase (except proper nouns) and concise
 
+## Pull Requests
+
+- Use the `/pr-text` skill to generate PR descriptions, then use `gh pr create`
+- Do not include "Generated with Claude Code" or similar footers
+- PR title format: `component: short description` (same as commit messages)
+- Summary bullets should be concise, ordered by importance/significance
+- Focus on "what" and "why", not implementation details
+- Include a "Testing Verification" section
+- Don't mention table-stakes items like "compiles cleanly" in testing verification
+
+## Terminology
+
+- Use "onchain" (one word, no hyphen), never "on-chain"
+
 ## Rust Development
 
 - `make rust-fmt` — format all Rust code (uses nightly rustfmt with `imports_granularity=Crate`)
 - `make rust-lint` — run `rust-fmt-check` + clippy on the workspace
-- `make rust-build` — build the workspace and on-chain programs
+- `make rust-build` — build the workspace and onchain programs
 - `make rust-test` — run Rust tests
 
 Always run `make rust-fmt` before committing Rust changes.
+
+## TypeScript SDK Development
+
+- Use `bun` as the package manager and runtime for TypeScript SDKs
+- Build with `bun tsc` (not `npx tsc`)
+- Type-check with `bun tsc --noEmit`
+- Install dependencies with `bun install`
 
 ## Local Devnet / E2E Environment
 

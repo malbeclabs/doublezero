@@ -307,8 +307,6 @@ impl ProvisioningCliCommand {
         exclude_ips: &[Ipv4Addr],
     ) -> eyre::Result<(Pubkey, Device)> {
         spinner.set_message("Searching for the nearest device...");
-        // filter out existing devices for users with existing tunnels
-        // put some arbitrary cap on latency for second devices
         let device_pk = match self.device.as_ref() {
             Some(device) => match device.parse::<Pubkey>() {
                 Ok(pubkey) => pubkey,
@@ -396,11 +394,7 @@ impl ProvisioningCliCommand {
             None => {
                 spinner.println("    Creating user account...");
 
-                let exclude_ips: Vec<Ipv4Addr> = users
-                    .iter()
-                    .filter(|(_, u)| u.client_ip == *client_ip && u.has_tunnel_endpoint())
-                    .map(|(_, u)| u.tunnel_endpoint)
-                    .collect();
+                let exclude_ips: Vec<Ipv4Addr> = exclude_ips(&users, client_ip);
 
                 let (device_pk, device) = self
                     .find_or_create_device(client, controller, &devices, spinner, &exclude_ips)
@@ -490,13 +484,7 @@ impl ProvisioningCliCommand {
                     ibrl_user_pk
                 ));
 
-                // Select a separate device from the IBRL user to allow independent tunnels
-                // Exclude the IBRL user's tunnel endpoint to ensure we get a different device
-                let exclude_ips: Vec<Ipv4Addr> = users
-                    .iter()
-                    .filter(|(_, u)| u.client_ip == *client_ip && u.has_tunnel_endpoint())
-                    .map(|(_, u)| u.tunnel_endpoint)
-                    .collect();
+                let exclude_ips: Vec<Ipv4Addr> = exclude_ips(&users, client_ip);
 
                 let (device_pk, device) = self
                     .find_or_create_device(client, controller, &devices, spinner, &exclude_ips)
@@ -571,6 +559,11 @@ impl ProvisioningCliCommand {
                     _ => {}
                 }
 
+                // Ensure user is activated before subscribing to new groups
+                if user.status != UserStatus::Activated {
+                    self.poll_for_user_activated(client, user_pk, spinner)?;
+                }
+
                 let existing_groups = match multicast_mode {
                     MulticastMode::Publisher => &user.publishers,
                     MulticastMode::Subscriber => &user.subscribers,
@@ -610,11 +603,7 @@ impl ProvisioningCliCommand {
             (None, None) => {
                 spinner.println(format!("    Creating an account for the IP: {client_ip}"));
 
-                let exclude_ips: Vec<Ipv4Addr> = users
-                    .iter()
-                    .filter(|(_, u)| u.client_ip == *client_ip && u.has_tunnel_endpoint())
-                    .map(|(_, u)| u.tunnel_endpoint)
-                    .collect();
+                let exclude_ips: Vec<Ipv4Addr> = exclude_ips(&users, client_ip);
 
                 let (device_pk, device) = self
                     .find_or_create_device(client, controller, &devices, spinner, &exclude_ips)
@@ -865,6 +854,14 @@ async fn resolve_tunnel_src<T: ServiceController>(
     }
 }
 
+fn exclude_ips(users: &HashMap<Pubkey, User>, client_ip: &Ipv4Addr) -> Vec<Ipv4Addr> {
+    users
+        .iter()
+        .filter(|(_, u)| u.client_ip == *client_ip && u.has_tunnel_endpoint())
+        .map(|(_, u)| u.tunnel_endpoint)
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1089,7 +1086,7 @@ mod tests {
                 status: DeviceStatus::Activated,
                 metrics_publisher_pk: Pubkey::default(),
                 code: format!("device{device_number}"),
-                dz_prefixes: "10.0.0.0/24".parse().unwrap(),
+                dz_prefixes: format!("10.{}.0.0/24", device_number).parse().unwrap(),
                 mgmt_vrf: "default".to_string(),
                 interfaces: vec![],
                 max_users: 255,
@@ -1292,7 +1289,13 @@ mod tests {
                 tunnel_dst: device_ip.to_string(),
                 tunnel_net: "10.1.1.0/31".to_string(),
                 doublezero_ip: client_ip.to_string(),
-                doublezero_prefixes: vec!["10.0.0.0/24".to_string()],
+                doublezero_prefixes: self
+                    .devices
+                    .lock()
+                    .unwrap()
+                    .values()
+                    .map(|d| d.dz_prefixes.to_string())
+                    .collect(),
                 bgp_local_asn: Some(self.global_cfg.local_asn),
                 bgp_remote_asn: Some(self.global_cfg.remote_asn),
                 user_type: user_type.to_string(),
@@ -1347,6 +1350,8 @@ mod tests {
         let mut fixture = TestFixture::new();
 
         let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        // Add a second device for concurrent tunnels (IBRL + Multicast must go to different devices)
+        let (device2_pk, device2) = fixture.add_device(DeviceType::Hybrid, 110, true);
         let user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
         let user_pk = Pubkey::new_unique();
         fixture.expect_create_user(user_pk, &user);
@@ -1377,9 +1382,9 @@ mod tests {
 
         println!("Test that adding a multicast tunnel with an existing IBRL creates a separate Multicast user");
         let (mcast_group_pk, mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
-
         // When IBRL user exists, a separate Multicast user should be created (not subscription on IBRL)
         let mcast_user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
+
         fixture.expect_create_subscribe_user(
             Pubkey::new_unique(),
             &mcast_user,
@@ -1416,6 +1421,8 @@ mod tests {
         let mut fixture = TestFixture::new();
 
         let (device1_pk, device1) = fixture.add_device(DeviceType::Edge, 100, true);
+        // Add a second device for concurrent tunnels (IBRL + Multicast must go to different devices)
+        let (device2_pk, device2) = fixture.add_device(DeviceType::Edge, 110, true);
         let user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
         let user_pk = Pubkey::new_unique();
         fixture.expect_create_user(user_pk, &user);
@@ -1449,6 +1456,7 @@ mod tests {
 
         // When IBRL user exists, a separate Multicast user should be created (not subscription on IBRL)
         let mcast_user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
+
         fixture.expect_create_subscribe_user(
             Pubkey::new_unique(),
             &mcast_user,
@@ -1931,6 +1939,8 @@ mod tests {
         let (mcast_group_pk, mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
         (_, _) = fixture.add_multicast_group("test-group2", "239.0.0.2");
         let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        // Add a second device for concurrent tunnels (Multicast + IBRL must go to different devices)
+        let (device2_pk, device2) = fixture.add_device(DeviceType::Hybrid, 110, true);
         let user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
         fixture.expect_create_subscribe_user(
             Pubkey::new_unique(),
@@ -1996,6 +2006,8 @@ mod tests {
         let (mcast_group_pk, mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
         (_, _) = fixture.add_multicast_group("test-group2", "239.0.0.2");
         let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        // Add a second device for concurrent tunnels (Multicast + IBRL must go to different devices)
+        let (device2_pk, device2) = fixture.add_device(DeviceType::Hybrid, 110, true);
         let user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
         fixture.expect_create_subscribe_user(
             Pubkey::new_unique(),
@@ -2012,7 +2024,9 @@ mod tests {
             Some(vec![mcast_group.multicast_ip.to_string()]),
         );
 
-        let latency_record = fixture.latencies.lock().unwrap()[0].clone();
+        // Save device1's latency for delayed availability test
+        let latency_record_device1 = fixture.latencies.lock().unwrap()[0].clone();
+        let latency_record_device2 = fixture.latencies.lock().unwrap()[1].clone();
         fixture.latencies.lock().unwrap().clear();
         let latencies = Arc::clone(&fixture.latencies);
 
@@ -2029,7 +2043,9 @@ mod tests {
         let coro1 = command.execute_with_service_controller(&fixture.client, &fixture.controller);
         let coro2 = tokio::task::spawn(async move {
             tokio::time::sleep(Duration::from_secs(2)).await;
-            latencies.lock().unwrap().push(latency_record);
+            let mut latencies = latencies.lock().unwrap();
+            latencies.push(latency_record_device1);
+            latencies.push(latency_record_device2);
         });
 
         let (result1, _) = tokio::join!(coro1, coro2);

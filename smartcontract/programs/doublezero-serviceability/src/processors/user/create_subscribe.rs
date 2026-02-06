@@ -173,9 +173,9 @@ pub fn process_create_subscribe_user(
     }
 
     // Read validator_pubkey from AccesPass
-    let validator_pubkey = match accesspass.accesspass_type {
-        AccessPassType::SolanaValidator(pk) => pk,
-        AccessPassType::Prepaid => Pubkey::default(),
+    let validator_pubkey = match &accesspass.accesspass_type {
+        AccessPassType::SolanaValidator(pk) => *pk,
+        _ => Pubkey::default(),
     };
 
     let mut mgroup: MulticastGroup = MulticastGroup::try_from(mgroup_account)?;

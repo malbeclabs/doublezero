@@ -11,6 +11,8 @@ use doublezero_sdk::commands::{
     user::list::ListUserCommand,
 };
 use serde::{Deserialize, Serialize};
+use std::net::Ipv4Addr;
+use std::str::FromStr;
 use tabled::Tabled;
 
 #[derive(Args, Debug)]
@@ -66,34 +68,53 @@ impl StatusCliCommand {
                 .find(|(_, u)| Some(u.dz_ip.to_string()) == response.doublezero_ip)
                 .map(|(_, u)| u);
             if let Some(user) = user {
-                current_device = Some(&user.device_pk);
+                current_device = Some(user.device_pk);
                 if let Some(dev) = devices.get(&user.device_pk) {
                     metro = exchanges.get(&dev.exchange_pk).map(|e| e.name.clone());
                 }
-            }
-            let lowest_latency_device =
-                match best_latency(controller, &devices, true, None, current_device, &[]).await {
-                    Ok(best) => {
-                        let is_current = user
-                            .map(|u| best.device_pk == u.device_pk.to_string())
-                            .unwrap_or(false);
-                        if self.json
-                            || response.doublezero_status.session_status != "BGP Session Up"
-                        {
-                            best.device_code
-                        } else if is_current || current_device.is_none() {
-                            format!("✅ {}", best.device_code)
-                        } else {
-                            format!("⚠️ {}", best.device_code)
-                        }
+            } else if let Some(ref tunnel_dst) = response.tunnel_dst {
+                // Fallback: match by tunnel_dst (device public IP) for users without dz_ip
+                // This is needed for multicast subscribers who don't have a doublezero_ip
+                if let Ok(tunnel_ip) = Ipv4Addr::from_str(tunnel_dst) {
+                    if let Some((device_pk, dev)) =
+                        devices.iter().find(|(_, d)| d.public_ip == tunnel_ip)
+                    {
+                        current_device = Some(*device_pk);
+                        metro = exchanges.get(&dev.exchange_pk).map(|e| e.name.clone());
                     }
-                    Err(_) => "N/A".to_string(),
-                };
+                }
+            }
+            let lowest_latency_device = match best_latency(
+                controller,
+                &devices,
+                true,
+                None,
+                current_device.as_ref(),
+                &[],
+            )
+            .await
+            {
+                Ok(best) => {
+                    let is_current = current_device
+                        .map(|d| best.device_pk == d.to_string())
+                        .unwrap_or(false);
+                    if self.json || response.doublezero_status.session_status != "BGP Session Up" {
+                        best.device_code
+                    } else if is_current {
+                        format!("✅ {}", best.device_code)
+                    } else if current_device.is_some() {
+                        format!("⚠️ {}", best.device_code)
+                    } else {
+                        best.device_code
+                    }
+                }
+                Err(_) => "N/A".to_string(),
+            };
 
             responses.push(AppendedStatusResponse {
                 response: response.clone(),
                 current_device: current_device
-                    .and_then(|d| devices.get(d))
+                    .and_then(|d| devices.get(&d))
                     .map(|d| d.code.clone())
                     .unwrap_or_else(|| "N/A".to_string()),
                 lowest_latency_device,

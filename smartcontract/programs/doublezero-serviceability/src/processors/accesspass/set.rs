@@ -113,7 +113,7 @@ pub fn process_set_access_pass(
     if let AccessPassType::SolanaValidator(node_id) = value.accesspass_type {
         if node_id == Pubkey::default() {
             msg!("Solana validator access pass type requires a validator pubkey");
-            return Err(DoubleZeroError::InvalidSolanaValidatorPubkey.into());
+            return Err(DoubleZeroError::InvalidSolanaPubkey.into());
         }
     }
 
@@ -138,7 +138,7 @@ pub fn process_set_access_pass(
         let accesspass = AccessPass {
             account_type: AccountType::AccessPass,
             bump_seed,
-            accesspass_type: value.accesspass_type,
+            accesspass_type: value.accesspass_type.clone(),
             client_ip: value.client_ip,
             user_payer: *user_payer.key,
             last_access_epoch: value.last_access_epoch,
@@ -181,7 +181,7 @@ pub fn process_set_access_pass(
             AccessPass {
                 account_type: AccountType::AccessPass,
                 bump_seed,
-                accesspass_type: value.accesspass_type,
+                accesspass_type: value.accesspass_type.clone(),
                 client_ip: value.client_ip,
                 flags,
                 user_payer: *user_payer.key,
@@ -195,7 +195,7 @@ pub fn process_set_access_pass(
         };
 
         // Update fields
-        accesspass.accesspass_type = value.accesspass_type;
+        accesspass.accesspass_type = value.accesspass_type.clone();
         accesspass.last_access_epoch = value.last_access_epoch;
         accesspass.flags = flags;
 

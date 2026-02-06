@@ -19,27 +19,62 @@ fi
 
 # Check if any meaningful files are staged (excluding the changelog itself)
 has_changes=false
-changelog_updated=false
+changelog_staged=false
 
 for file in $STAGED_FILES; do
     if [[ "$file" == "CHANGELOG.md" ]]; then
-        changelog_updated=true
+        changelog_staged=true
     else
         has_changes=true
     fi
 done
 
-# If there are changes but changelog wasn't updated, fail
-if [ "$has_changes" = true ] && [ "$changelog_updated" = false ]; then
-    echo ""
-    echo "❌ CHANGELOG.md not updated"
-    echo ""
-    echo "Please update CHANGELOG.md with your changes."
-    echo ""
-    echo "To skip this check (use sparingly):"
-    echo "   git commit --no-verify"
-    echo ""
-    exit 1
+# If changelog is staged in this commit, we're good
+if [ "$changelog_staged" = true ]; then
+    exit 0
 fi
 
-exit 0
+# If no meaningful changes, we're good
+if [ "$has_changes" = false ]; then
+    exit 0
+fi
+
+# Check if changelog was updated anywhere in this branch compared to main/master
+# Try to find the base branch (main or master)
+base_branch=""
+if git rev-parse --verify origin/main >/dev/null 2>&1; then
+    base_branch="origin/main"
+elif git rev-parse --verify main >/dev/null 2>&1; then
+    base_branch="main"
+elif git rev-parse --verify origin/master >/dev/null 2>&1; then
+    base_branch="origin/master"
+elif git rev-parse --verify master >/dev/null 2>&1; then
+    base_branch="master"
+fi
+
+if [ -n "$base_branch" ]; then
+    # Find the merge base between current branch and base branch
+    merge_base=$(git merge-base HEAD "$base_branch" 2>/dev/null || echo "")
+
+    if [ -n "$merge_base" ]; then
+        # Check if CHANGELOG.md was modified in any commit since the merge base
+        # Also include currently staged changes
+        changelog_in_branch=$(git diff --name-only "$merge_base" HEAD -- CHANGELOG.md 2>/dev/null || echo "")
+
+        if [ -n "$changelog_in_branch" ]; then
+            # Changelog was already updated in this branch
+            exit 0
+        fi
+    fi
+fi
+
+# If we get here, changelog hasn't been updated in this branch
+echo ""
+echo "❌ CHANGELOG.md not updated"
+echo ""
+echo "Please update CHANGELOG.md with your changes."
+echo ""
+echo "To skip this check (use sparingly):"
+echo "   git commit --no-verify"
+echo ""
+exit 1

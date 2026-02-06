@@ -1,0 +1,66 @@
+{
+  "name": "device_latency_samples",
+  "account_type": 3,
+  "fields": [
+    {
+      "name": "AccountType",
+      "value": "3",
+      "typ": "u8"
+    },
+    {
+      "name": "Epoch",
+      "value": "19800",
+      "typ": "u64"
+    },
+    {
+      "name": "OriginDeviceAgentPK",
+      "value": "4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM",
+      "typ": "pubkey"
+    },
+    {
+      "name": "OriginDevicePK",
+      "value": "8opHzTAnfzRpPEx21XtnrVTX28YQuCpAjcn1PczScKh",
+      "typ": "pubkey"
+    },
+    {
+      "name": "TargetDevicePK",
+      "value": "CiDwVBFgWV9E5MvXWoLgnEgn2hK7rJikbvfWavzAQz3",
+      "typ": "pubkey"
+    },
+    {
+      "name": "OriginDeviceLocationPK",
+      "value": "GcdayuLaLyrdmUu324nahyv33G5poQdLUEZ1nEytDeP",
+      "typ": "pubkey"
+    },
+    {
+      "name": "TargetDeviceLocationPK",
+      "value": "LX3EUdRUBUa3TbsYXLEUdj9J3prXkWXvLYSWyYyc2Jj",
+      "typ": "pubkey"
+    },
+    {
+      "name": "LinkPK",
+      "value": "QRSsyMWN1yHT9ir42bgNZUNZ4PdEhcSWCrL2AryKpy5",
+      "typ": "pubkey"
+    },
+    {
+      "name": "SamplingIntervalMicroseconds",
+      "value": "5000000",
+      "typ": "u64"
+    },
+    {
+      "name": "StartTimestampMicroseconds",
+      "value": "1700000000000000",
+      "typ": "u64"
+    },
+    {
+      "name": "NextSampleIndex",
+      "value": "5",
+      "typ": "u32"
+    },
+    {
+      "name": "SamplesCount",
+      "value": "5",
+      "typ": "u32"
+    }
+  ]
+}

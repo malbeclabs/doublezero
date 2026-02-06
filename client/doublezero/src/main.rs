@@ -269,6 +269,7 @@ async fn main() -> eyre::Result<()> {
             cli::resource::ResourceCommands::Deallocate(args) => args.execute(&client, &mut handle),
             cli::resource::ResourceCommands::Get(args) => args.execute(&client, &mut handle),
             cli::resource::ResourceCommands::Close(args) => args.execute(&client, &mut handle),
+            cli::resource::ResourceCommands::Verify(args) => args.execute(&client, &mut handle),
         },
 
         Command::Export(args) => args.execute(&client, &mut handle),

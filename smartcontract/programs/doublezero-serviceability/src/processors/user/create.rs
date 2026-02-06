@@ -160,9 +160,9 @@ pub fn process_create_user(
     accesspass.status = AccessPassStatus::Connected;
 
     // Read validator_pubkey from AccessPass
-    let validator_pubkey = match accesspass.accesspass_type {
-        AccessPassType::SolanaValidator(pk) => pk,
-        AccessPassType::Prepaid => Pubkey::default(),
+    let validator_pubkey = match &accesspass.accesspass_type {
+        AccessPassType::SolanaValidator(pk) => *pk,
+        _ => Pubkey::default(),
     };
 
     let mut device = Device::try_from(device_account)?;

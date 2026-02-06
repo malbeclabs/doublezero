@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"maps"
 
 	dockerfilters "github.com/docker/docker/api/types/filters"
 	dockernetwork "github.com/docker/docker/api/types/network"
+	"github.com/testcontainers/testcontainers-go"
 )
 
 type MiscNetwork struct {
@@ -62,13 +64,21 @@ func (n *MiscNetwork) CreateIfNotExists(ctx context.Context) (bool, error) {
 }
 
 func (n *MiscNetwork) Create(ctx context.Context) error {
-	n.log.Info("==> Creating misc network", "labels", n.dn.labels)
+	// Merge testcontainers labels with devnet labels so that Ryuk can clean up the network.
+	labels := map[string]string{
+		"org.testcontainers":           "true",
+		"org.testcontainers.lang":      "go",
+		"org.testcontainers.sessionId": testcontainers.SessionID(),
+	}
+	maps.Copy(labels, n.dn.labels)
+
+	n.log.Info("==> Creating misc network", "labels", labels)
 
 	// Create a docker network using Docker API directly to set MTU.
 	_, err := n.dn.dockerClient.NetworkCreate(ctx, n.Name, dockernetwork.CreateOptions{
 		Driver:     "bridge",
 		Attachable: false,
-		Labels:     n.dn.labels,
+		Labels:     labels,
 		Options: map[string]string{
 			"com.docker.network.driver.mtu": "2048",
 		},

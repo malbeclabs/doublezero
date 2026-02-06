@@ -8,6 +8,8 @@ includes:
 cloudsmiths:
   - organization: malbeclabs
     repository: doublezero-testnet
+    ids:
+      - doublezero
     distributions:
       deb: "any-distro/any-version"
       rpm: "any-distro/any-version"

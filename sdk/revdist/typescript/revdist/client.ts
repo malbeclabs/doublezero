@@ -1,0 +1,202 @@
+/** Read-only client for revenue distribution program accounts. */
+
+import { Connection, PublicKey } from "@solana/web3.js";
+// @ts-ignore - no type declarations available
+import bs58 from "bs58";
+import { PROGRAM_ID, SOLANA_RPC_URLS, LEDGER_RPC_URLS } from "./config.js";
+import { newConnection } from "./rpc.js";
+import {
+  DISCRIMINATOR_PROGRAM_CONFIG,
+  DISCRIMINATOR_DISTRIBUTION,
+  DISCRIMINATOR_JOURNAL,
+  DISCRIMINATOR_SOLANA_VALIDATOR_DEPOSIT,
+  DISCRIMINATOR_CONTRIBUTOR_REWARDS,
+} from "./discriminator.js";
+import {
+  deserializeProgramConfig,
+  deserializeDistribution,
+  deserializeJournal,
+  deserializeSolanaValidatorDeposit,
+  deserializeContributorRewards,
+  deserializeComputedSolanaValidatorDebts,
+  deserializeShapleyOutputStorage,
+} from "./state.js";
+import type {
+  ProgramConfig,
+  Distribution,
+  Journal,
+  SolanaValidatorDeposit,
+  ContributorRewards,
+  ComputedSolanaValidatorDebts,
+  ShapleyOutputStorage,
+} from "./state.js";
+import {
+  RECORD_HEADER_SIZE,
+  deriveConfigPda,
+  deriveDistributionPda,
+  deriveJournalPda,
+  deriveValidatorDepositPda,
+  deriveContributorRewardsPda,
+  deriveValidatorDebtRecordKey,
+  deriveRewardShareRecordKey,
+} from "./pda.js";
+
+export class Client {
+  private readonly solanaConnection: Connection;
+  private readonly ledgerConnection: Connection;
+  private readonly programId: PublicKey;
+
+  constructor(
+    solanaConnection: Connection,
+    ledgerConnection: Connection,
+    programId: PublicKey,
+  ) {
+    this.solanaConnection = solanaConnection;
+    this.ledgerConnection = ledgerConnection;
+    this.programId = programId;
+  }
+
+  /** Create a client configured for the given environment. */
+  static forEnv(env: string): Client {
+    return new Client(
+      newConnection(SOLANA_RPC_URLS[env]),
+      newConnection(LEDGER_RPC_URLS[env]),
+      new PublicKey(PROGRAM_ID),
+    );
+  }
+
+  static mainnetBeta(): Client {
+    return Client.forEnv("mainnet-beta");
+  }
+
+  static testnet(): Client {
+    return Client.forEnv("testnet");
+  }
+
+  static devnet(): Client {
+    return Client.forEnv("devnet");
+  }
+
+  static localnet(): Client {
+    return Client.forEnv("localnet");
+  }
+
+  // -- Solana RPC (on-chain accounts) --
+
+  async fetchConfig(): Promise<ProgramConfig> {
+    const [addr] = deriveConfigPda(this.programId);
+    const data = await this.fetchSolanaAccountData(addr);
+    return deserializeProgramConfig(data, DISCRIMINATOR_PROGRAM_CONFIG);
+  }
+
+  async fetchDistribution(epoch: bigint): Promise<Distribution> {
+    const [addr] = deriveDistributionPda(this.programId, epoch);
+    const data = await this.fetchSolanaAccountData(addr);
+    return deserializeDistribution(data, DISCRIMINATOR_DISTRIBUTION);
+  }
+
+  async fetchJournal(): Promise<Journal> {
+    const [addr] = deriveJournalPda(this.programId);
+    const data = await this.fetchSolanaAccountData(addr);
+    return deserializeJournal(data, DISCRIMINATOR_JOURNAL);
+  }
+
+  async fetchValidatorDeposit(
+    nodeId: PublicKey,
+  ): Promise<SolanaValidatorDeposit> {
+    const [addr] = deriveValidatorDepositPda(this.programId, nodeId);
+    const data = await this.fetchSolanaAccountData(addr);
+    return deserializeSolanaValidatorDeposit(
+      data,
+      DISCRIMINATOR_SOLANA_VALIDATOR_DEPOSIT,
+    );
+  }
+
+  async fetchContributorRewards(
+    serviceKey: PublicKey,
+  ): Promise<ContributorRewards> {
+    const [addr] = deriveContributorRewardsPda(this.programId, serviceKey);
+    const data = await this.fetchSolanaAccountData(addr);
+    return deserializeContributorRewards(
+      data,
+      DISCRIMINATOR_CONTRIBUTOR_REWARDS,
+    );
+  }
+
+  async fetchAllValidatorDeposits(): Promise<SolanaValidatorDeposit[]> {
+    return this.fetchAllByDiscriminator(
+      DISCRIMINATOR_SOLANA_VALIDATOR_DEPOSIT,
+      deserializeSolanaValidatorDeposit,
+    );
+  }
+
+  async fetchAllContributorRewards(): Promise<ContributorRewards[]> {
+    return this.fetchAllByDiscriminator(
+      DISCRIMINATOR_CONTRIBUTOR_REWARDS,
+      deserializeContributorRewards,
+    );
+  }
+
+  // -- DZ Ledger RPC (ledger records) --
+
+  async fetchValidatorDebts(
+    epoch: bigint,
+  ): Promise<ComputedSolanaValidatorDebts> {
+    const config = await this.fetchConfig();
+    const addr = await deriveValidatorDebtRecordKey(
+      config.debtAccountantKey,
+      epoch,
+    );
+    const data = await this.fetchLedgerRecordData(addr);
+    return deserializeComputedSolanaValidatorDebts(
+      data.subarray(RECORD_HEADER_SIZE),
+    );
+  }
+
+  async fetchRewardShares(epoch: bigint): Promise<ShapleyOutputStorage> {
+    const config = await this.fetchConfig();
+    const addr = await deriveRewardShareRecordKey(
+      config.rewardsAccountantKey,
+      epoch,
+    );
+    const data = await this.fetchLedgerRecordData(addr);
+    return deserializeShapleyOutputStorage(
+      data.subarray(RECORD_HEADER_SIZE),
+    );
+  }
+
+  // -- Internal helpers --
+
+  private async fetchSolanaAccountData(addr: PublicKey): Promise<Buffer> {
+    const info = await this.solanaConnection.getAccountInfo(addr);
+    if (info === null) {
+      throw new Error(`account not found: ${addr.toBase58()}`);
+    }
+    return info.data;
+  }
+
+  private async fetchAllByDiscriminator<T>(
+    disc: Uint8Array,
+    deserialize: (data: Uint8Array, disc: Uint8Array) => T,
+  ): Promise<T[]> {
+    const accounts = await this.solanaConnection.getProgramAccounts(
+      this.programId,
+      {
+        filters: [
+          { memcmp: { offset: 0, bytes: bs58.encode(Buffer.from(disc)) } },
+        ],
+      },
+    );
+    return accounts.map(({ account }) =>
+      deserialize(account.data, disc),
+    );
+  }
+
+  private async fetchLedgerRecordData(addr: PublicKey): Promise<Buffer> {
+    const info = await this.ledgerConnection.getAccountInfo(addr);
+    if (info === null) {
+      throw new Error(`ledger record not found: ${addr.toBase58()}`);
+    }
+    return info.data;
+  }
+}

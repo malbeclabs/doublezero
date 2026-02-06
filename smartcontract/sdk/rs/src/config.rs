@@ -1,6 +1,7 @@
+use doublezero_config::Environment;
 use serde::{Deserialize, Serialize};
 use solana_client::client_error::reqwest::Url;
-use solana_sdk::signature::Keypair;
+use solana_sdk::{pubkey::Pubkey, signature::Keypair};
 use std::{
     collections::HashMap,
     default::Default,
@@ -9,6 +10,19 @@ use std::{
     path::{Path, PathBuf},
     sync::OnceLock,
 };
+
+#[cfg(feature = "default-mainnet-beta")]
+const DEFAULT_ENVIRONMENT: Environment = Environment::MainnetBeta;
+#[cfg(not(feature = "default-mainnet-beta"))]
+const DEFAULT_ENVIRONMENT: Environment = Environment::Testnet;
+
+/// Returns the default program ID based on the compiled-in environment.
+pub fn default_program_id() -> Pubkey {
+    DEFAULT_ENVIRONMENT
+        .config()
+        .unwrap()
+        .serviceability_program_id
+}
 
 static CONFIG_FILE: OnceLock<Option<PathBuf>> = OnceLock::new();
 
@@ -33,24 +47,25 @@ fn get_cfg_filename() -> &'static Option<PathBuf> {
 pub struct ClientConfig {
     pub json_rpc_url: String,
     pub websocket_url: Option<String>,
+    #[serde(default = "default_keypair_path")]
     pub keypair_path: PathBuf,
     pub program_id: Option<String>,
+    #[serde(default)]
     pub address_labels: HashMap<String, String>,
+}
+
+fn default_keypair_path() -> PathBuf {
+    let mut keypair_path = dirs_next::home_dir().unwrap_or_default();
+    keypair_path.extend([".config", "doublezero", "id.json"]);
+    keypair_path
 }
 
 impl Default for ClientConfig {
     fn default() -> Self {
         ClientConfig {
-            json_rpc_url: doublezero_config::Environment::Testnet
-                .config()
-                .unwrap()
-                .ledger_public_rpc_url,
+            json_rpc_url: DEFAULT_ENVIRONMENT.config().unwrap().ledger_public_rpc_url,
             websocket_url: None,
-            keypair_path: {
-                let mut keypair_path = dirs_next::home_dir().unwrap_or_default();
-                keypair_path.extend([".config", "doublezero", "id.json"]);
-                keypair_path
-            },
+            keypair_path: default_keypair_path(),
             program_id: None,
             address_labels: HashMap::new(),
         }
@@ -89,12 +104,7 @@ pub fn write_doublezero_config(config: &ClientConfig) -> eyre::Result<()> {
 
 pub fn convert_url_moniker(url: String) -> String {
     match url.as_str() {
-        "doublezero" => {
-            doublezero_config::Environment::Testnet
-                .config()
-                .unwrap()
-                .ledger_public_rpc_url
-        }
+        "doublezero" => DEFAULT_ENVIRONMENT.config().unwrap().ledger_public_rpc_url,
         "localhost" => crate::consts::LOCALHOST_URL.to_string(),
         "devnet" => crate::consts::DEVNET_URL.to_string(),
         "testnet" => crate::consts::TESTNET_URL.to_string(),
@@ -106,7 +116,7 @@ pub fn convert_url_moniker(url: String) -> String {
 pub fn convert_ws_moniker(url: String) -> String {
     match url.as_str() {
         "doublezero" => {
-            doublezero_config::Environment::Testnet
+            DEFAULT_ENVIRONMENT
                 .config()
                 .unwrap()
                 .ledger_public_ws_rpc_url
@@ -128,14 +138,8 @@ pub fn convert_program_moniker(pubkey: String) -> String {
 }
 
 pub fn convert_url_to_ws(url: &str) -> eyre::Result<String> {
-    if url
-        == doublezero_config::Environment::Testnet
-            .config()?
-            .ledger_public_rpc_url
-    {
-        return Ok(doublezero_config::Environment::Testnet
-            .config()?
-            .ledger_public_ws_rpc_url);
+    if url == DEFAULT_ENVIRONMENT.config()?.ledger_public_rpc_url {
+        return Ok(DEFAULT_ENVIRONMENT.config()?.ledger_public_ws_rpc_url);
     }
 
     let mut url = Url::parse(url)?;

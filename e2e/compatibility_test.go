@@ -19,6 +19,47 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// =============================================================================
+// KNOWN INCOMPATIBILITIES - Review and remove as versions are deprecated
+// =============================================================================
+//
+// This map lists CLI commands that are known to be incompatible with the current
+// onchain program for versions older than the specified version. These failures
+// are expected and will be reported as "KNOWN_FAIL" instead of "FAIL".
+//
+// Format: "step_name" -> "minimum_compatible_version"
+//
+// When adding entries:
+//   - Document WHY the incompatibility exists
+//   - Set the version to the first CLI version that IS compatible
+//   - Remove entries when min_compatible_version is bumped past them
+//
+var knownIncompatibilities = map[string]string{
+	// multicast_group_create: The MulticastGroupCreateArgs Borsh struct changed in v0.8.1.
+	// The index and bump_seed fields were removed. Older CLIs send the old format which
+	// causes Borsh deserialization failure in the current program.
+	"write/multicast_group_create": "0.8.1",
+}
+
+// isKnownIncompatible checks if a step failure is expected for the given CLI version.
+// Returns true if the step has a known incompatibility and the version is older than
+// the minimum compatible version for that step.
+func isKnownIncompatible(stepName, cliVersion string) bool {
+	minCompatVersion, exists := knownIncompatibilities[stepName]
+	if !exists {
+		return false
+	}
+	cliVer, ok := devnet.ParseSemver(cliVersion)
+	if !ok {
+		return false
+	}
+	minVer, ok := devnet.ParseSemver(minCompatVersion)
+	if !ok {
+		return false
+	}
+	return devnet.CompareProgramVersions(cliVer, minVer) < 0
+}
+
 // TestE2E_BackwardCompatibility tests that older CLI versions can still interact
 // with the upgraded onchain program. This validates that Borsh-serialized instructions
 // from older CLIs are correctly deserialized by the current program binary.
@@ -44,7 +85,7 @@ import (
 // compatStepResult tracks the result of a single step for a single version.
 type compatStepResult struct {
 	name   string
-	status string // "PASS", "FAIL", "SKIP"
+	status string // "PASS", "FAIL", "SKIP", "KNOWN_FAIL"
 	err    string // error message if failed
 }
 
@@ -76,25 +117,33 @@ func (r *compatEnvResults) formatMatrix() string {
 		if len(results) == 0 {
 			continue
 		}
-		var passed, failed, skipped int
+		var passed, failed, knownFail, skipped int
 		for _, res := range results {
 			switch res.status {
 			case "PASS":
 				passed++
 			case "FAIL":
 				failed++
+			case "KNOWN_FAIL":
+				knownFail++
 			case "SKIP":
 				skipped++
 			}
 		}
 		if failed == 0 {
 			buf.WriteString(fmt.Sprintf("v%-10s  ALL PASSED (%d passed", version, passed))
+			if knownFail > 0 {
+				buf.WriteString(fmt.Sprintf(", %d known incompatible", knownFail))
+			}
 			if skipped > 0 {
 				buf.WriteString(fmt.Sprintf(", %d skipped", skipped))
 			}
 			buf.WriteString(")\n")
 		} else {
 			buf.WriteString(fmt.Sprintf("v%-10s  %d passed, %d FAILED", version, passed, failed))
+			if knownFail > 0 {
+				buf.WriteString(fmt.Sprintf(", %d known incompatible", knownFail))
+			}
 			if skipped > 0 {
 				buf.WriteString(fmt.Sprintf(", %d skipped", skipped))
 			}
@@ -431,13 +480,19 @@ func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *
 					rc := rc
 					t.Run(rc.name, func(t *testing.T) {
 						t.Parallel()
+						stepKey := "read/" + rc.name
 						log.Info("==> Running manager read command", "command", rc.cmd)
 						output, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", rc.cmd})
 						if assert.NoError(t, err, "command %q failed: %s", rc.cmd, string(output)) {
-							recordResult(version, "read/"+rc.name, "PASS", "")
+							recordResult(version, stepKey, "PASS", "")
 							log.Info("--> Command succeeded", "command", rc.cmd)
 						} else {
-							recordResult(version, "read/"+rc.name, "FAIL", string(output))
+							if isKnownIncompatible(stepKey, version) {
+								recordResult(version, stepKey, "KNOWN_FAIL", string(output))
+								log.Info("--> Command failed (known incompatibility)", "command", rc.cmd)
+							} else {
+								recordResult(version, stepKey, "FAIL", string(output))
+							}
 						}
 					})
 				}
@@ -601,13 +656,19 @@ func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *
 						}
 						log.Info("==> Running manager write command", "command", ws.cmd)
 						output, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", ws.cmd})
+						stepKey := "write/" + ws.name
 						if assert.NoError(t, err, "command %q failed: %s", ws.cmd, string(output)) {
-							recordResult(version, "write/"+ws.name, "PASS", "")
+							recordResult(version, stepKey, "PASS", "")
 							log.Info("--> Command succeeded", "command", ws.cmd)
 						} else {
-							recordResult(version, "write/"+ws.name, "FAIL", string(output))
-							if !ws.noCascade {
-								writeFailed = true
+							if isKnownIncompatible(stepKey, version) {
+								recordResult(version, stepKey, "KNOWN_FAIL", string(output))
+								log.Info("--> Command failed (known incompatibility)", "command", ws.cmd)
+							} else {
+								recordResult(version, stepKey, "FAIL", string(output))
+								if !ws.noCascade {
+									writeFailed = true
+								}
 							}
 						}
 					})

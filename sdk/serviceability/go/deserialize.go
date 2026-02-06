@@ -242,3 +242,63 @@ func DeserializeAccessPass(reader *ByteReader, ap *AccessPass) {
 	ap.MGroupSubAllowlist = reader.ReadPubkeySlice()
 	ap.Flags = reader.ReadU8()
 }
+
+// resourceExtensionBitmapOffset is the fixed offset where the bitmap starts.
+// The header is padded to 88 bytes for alignment.
+const resourceExtensionBitmapOffset = 88
+
+// ResourceExtension binary layout (from Rust):
+// Header (padded to 88 bytes for alignment):
+//
+//	[0]       account_type (u8) = 12
+//	[1-32]    owner (pubkey)
+//	[33]      bump_seed (u8)
+//	[34-65]   associated_with (pubkey)
+//	[66]      allocator_type (u8): 0=IP, 1=ID
+//	          For IP allocator (5 + 8 = 13 bytes):
+//	            [67-71]   base_net (NetworkV4: 4 bytes IP + 1 byte prefix)
+//	            [72-79]   first_free_index (u64)
+//	          For ID allocator (2 + 2 + 8 = 12 bytes):
+//	            [67-68]   range_start (u16)
+//	            [69-70]   range_end (u16)
+//	            [71-78]   first_free_index (u64)
+//	[80-87]   padding (alignment to 88 bytes)
+//	[88...]   storage bitmap (remaining bytes)
+func DeserializeResourceExtension(reader *ByteReader, ext *ResourceExtension) {
+	ext.AccountType = AccountType(reader.ReadU8())
+	ext.Owner = reader.ReadPubkey()
+	ext.BumpSeed = reader.ReadU8()
+	ext.AssociatedWith = reader.ReadPubkey()
+
+	allocatorType := AllocatorType(reader.ReadU8())
+	ext.Allocator.Type = allocatorType
+
+	switch allocatorType {
+	case AllocatorTypeIp:
+		ext.Allocator.IpAllocator = &IpAllocator{
+			BaseNet:        reader.ReadNetworkV4(),
+			FirstFreeIndex: reader.ReadU64(),
+		}
+	case AllocatorTypeId:
+		ext.Allocator.IdAllocator = &IdAllocator{
+			RangeStart:     reader.ReadU16(),
+			RangeEnd:       reader.ReadU16(),
+			FirstFreeIndex: reader.ReadU64(),
+		}
+	default:
+		log.Println("DeserializeResourceExtension: Unknown allocator type", allocatorType)
+		return
+	}
+
+	// Skip to bitmap offset (header is padded to 88 bytes for alignment)
+	currentOffset := reader.GetOffset()
+	if currentOffset < resourceExtensionBitmapOffset {
+		reader.Skip(resourceExtensionBitmapOffset - currentOffset)
+	}
+
+	// Read remaining bytes as storage bitmap
+	remaining := int(reader.Remaining())
+	if remaining > 0 {
+		ext.Storage = reader.ReadBytes(remaining)
+	}
+}

@@ -84,7 +84,8 @@ RUN --mount=type=cache,target=/cargo \
     RUSTFLAGS="-C link-arg=-fuse-ld=mold" cargo build --workspace --release --exclude doublezero-serviceability --exclude doublezero-telemetry && \
     cp /target/release/doublezero ${BIN_DIR}/ && \
     cp /target/release/doublezero-activator ${BIN_DIR}/ && \
-    cp /target/release/doublezero-admin ${BIN_DIR}/
+    cp /target/release/doublezero-admin ${BIN_DIR}/ && \
+    cp /target/release/fork-accounts ${BIN_DIR}/
 
 # Force COPY in later stages to always copy the binaries, even if they appear to be the same.
 ARG CACHE_BUSTER=1

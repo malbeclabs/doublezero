@@ -27,7 +27,7 @@ env:
 
 jobs:
   setup:
-    runs-on: doublezero-k8s-ci
+    runs-on: self-hosted
     permissions:
       packages: write
       contents: read

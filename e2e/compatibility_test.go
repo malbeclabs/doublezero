@@ -502,16 +502,17 @@ func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *
 						stepKey := "read/" + rc.name
 						log.Info("==> Running manager read command", "command", rc.cmd)
 						output, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", rc.cmd})
-						if assert.NoError(t, err, "command %q failed: %s", rc.cmd, string(output)) {
+						if err == nil {
 							recordResult(version, stepKey, "PASS", "")
 							log.Info("--> Command succeeded", "command", rc.cmd)
+						} else if isKnownIncompatible(stepKey, version) {
+							// Known incompatibility - record but don't fail the test
+							recordResult(version, stepKey, "KNOWN_FAIL", string(output))
+							log.Info("--> Command failed (known incompatibility)", "command", rc.cmd)
 						} else {
-							if isKnownIncompatible(stepKey, version) {
-								recordResult(version, stepKey, "KNOWN_FAIL", string(output))
-								log.Info("--> Command failed (known incompatibility)", "command", rc.cmd)
-							} else {
-								recordResult(version, stepKey, "FAIL", string(output))
-							}
+							// Unexpected failure - fail the test
+							assert.NoError(t, err, "command %q failed: %s", rc.cmd, string(output))
+							recordResult(version, stepKey, "FAIL", string(output))
 						}
 					})
 				}
@@ -676,18 +677,19 @@ func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *
 						log.Info("==> Running manager write command", "command", ws.cmd)
 						output, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", ws.cmd})
 						stepKey := "write/" + ws.name
-						if assert.NoError(t, err, "command %q failed: %s", ws.cmd, string(output)) {
+						if err == nil {
 							recordResult(version, stepKey, "PASS", "")
 							log.Info("--> Command succeeded", "command", ws.cmd)
+						} else if isKnownIncompatible(stepKey, version) {
+							// Known incompatibility - record but don't fail the test
+							recordResult(version, stepKey, "KNOWN_FAIL", string(output))
+							log.Info("--> Command failed (known incompatibility)", "command", ws.cmd)
 						} else {
-							if isKnownIncompatible(stepKey, version) {
-								recordResult(version, stepKey, "KNOWN_FAIL", string(output))
-								log.Info("--> Command failed (known incompatibility)", "command", ws.cmd)
-							} else {
-								recordResult(version, stepKey, "FAIL", string(output))
-								if !ws.noCascade {
-									writeFailed = true
-								}
+							// Unexpected failure - fail the test
+							assert.NoError(t, err, "command %q failed: %s", ws.cmd, string(output))
+							recordResult(version, stepKey, "FAIL", string(output))
+							if !ws.noCascade {
+								writeFailed = true
 							}
 						}
 					})

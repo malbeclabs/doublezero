@@ -88,7 +88,6 @@ impl StatusCliCommand {
                 if let Some(dev) = devices.get(&user.device_pk) {
                     metro = exchanges.get(&dev.exchange_pk).map(|e| e.name.clone());
                 }
-<<<<<<< HEAD
             } else if let Some(ref tunnel_dst) = response.tunnel_dst {
                 // Fallback: match by tunnel_dst (device public IP) for users without dz_ip
                 // This is needed for multicast subscribers who don't have a doublezero_ip
@@ -98,7 +97,6 @@ impl StatusCliCommand {
                     {
                         current_device = Some(*device_pk);
                         metro = exchanges.get(&dev.exchange_pk).map(|e| e.name.clone());
-=======
             }
             let lowest_latency_device =
                 match best_latency(controller, &devices, true, None, current_device, &[]).await {
@@ -115,7 +113,6 @@ impl StatusCliCommand {
                         } else {
                             format!("⚠️ {}", best.device_code)
                         }
->>>>>>> 42711d2f (DNM: feat(cli): remove multiple tunnel restriction (#2725))
                     }
                 }
             }

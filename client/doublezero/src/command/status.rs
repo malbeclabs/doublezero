@@ -11,8 +11,7 @@ use doublezero_sdk::commands::{
     user::list::ListUserCommand,
 };
 use serde::{Deserialize, Serialize};
-use std::net::Ipv4Addr;
-use std::str::FromStr;
+use std::{net::Ipv4Addr, str::FromStr};
 use tabled::Tabled;
 
 #[derive(Args, Debug)]

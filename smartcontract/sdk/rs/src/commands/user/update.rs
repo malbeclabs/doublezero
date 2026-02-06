@@ -17,6 +17,8 @@ pub struct UpdateUserCommand {
     pub tunnel_id: Option<u16>,
     pub tunnel_net: Option<NetworkV4>,
     pub validator_pubkey: Option<Pubkey>,
+    pub clear_publishers: Option<bool>,
+    pub clear_subscribers: Option<bool>,
 }
 
 impl UpdateUserCommand {
@@ -33,6 +35,8 @@ impl UpdateUserCommand {
                 tunnel_id: self.tunnel_id,
                 tunnel_net: self.tunnel_net,
                 validator_pubkey: self.validator_pubkey,
+                clear_publishers: self.clear_publishers,
+                clear_subscribers: self.clear_subscribers,
             }),
             vec![
                 AccountMeta::new(self.pubkey, false),

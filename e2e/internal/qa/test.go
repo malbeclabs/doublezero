@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
+	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/config"
 	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
@@ -72,6 +73,59 @@ func (t *Test) RandomClient() *Client {
 func (t *Test) RandomMulticastGroupCode() string {
 	suffix := t.rand.Intn(1000000)
 	return fmt.Sprintf("qa-test-group-%06d", suffix)
+}
+
+// CleanupStaleMulticastState cleans up stale qa-test-group-* multicast groups
+// and associated users left over from previous interrupted test runs.
+// It disconnects all test clients first (with waitForDeletion) so the activator
+// can delete onchain users while the groups still exist, then deletes the groups.
+func (t *Test) CleanupStaleMulticastState(ctx context.Context) error {
+	data, err := getProgramDataWithRetry(ctx, t.serviceability)
+	if err != nil {
+		return fmt.Errorf("failed to get program data: %w", err)
+	}
+
+	// Check if there are any stale qa-test-group-* groups.
+	hasStaleGroups := false
+	for _, group := range data.MulticastGroups {
+		if strings.HasPrefix(group.Code, "qa-test-group-") {
+			hasStaleGroups = true
+			break
+		}
+	}
+	if !hasStaleGroups {
+		return nil
+	}
+
+	// Disconnect all test clients first and wait for onchain user deletion.
+	// This must happen before deleting groups, otherwise orphaned users that
+	// reference deleted groups may become impossible to clean up.
+	for _, client := range t.clients {
+		t.log.Info("Disconnecting client before stale group cleanup", "host", client.Host)
+		if err := client.DisconnectUser(ctx, true, true); err != nil {
+			t.log.Warn("Failed to disconnect client during cleanup", "host", client.Host, "error", err)
+		}
+	}
+
+	// Get any client to perform the delete operations.
+	var deleteClient *Client
+	for _, c := range t.clients {
+		deleteClient = c
+		break
+	}
+
+	// Now delete the stale groups.
+	for _, group := range data.MulticastGroups {
+		if !strings.HasPrefix(group.Code, "qa-test-group-") {
+			continue
+		}
+		pk := solana.PublicKeyFromBytes(group.PubKey[:])
+		t.log.Info("Cleaning up stale multicast group", "code", group.Code, "pubkey", pk)
+		if err := deleteClient.DeleteMulticastGroup(ctx, pk); err != nil {
+			t.log.Warn("Failed to cleanup stale multicast group", "code", group.Code, "error", err)
+		}
+	}
+	return nil
 }
 
 func (t *Test) Devices() map[string]*Device {

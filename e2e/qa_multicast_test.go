@@ -40,6 +40,11 @@ func TestQA_MulticastConnectivity(t *testing.T) {
 	require.NoError(t, err, "failed to create test")
 	clients := test.Clients()
 
+	// Cleanup stale multicast state from previous interrupted test runs.
+	if err := test.CleanupStaleMulticastState(ctx); err != nil {
+		log.Warn("Failed to cleanup stale multicast state", "error", err)
+	}
+
 	// Generate multicast group code or use the given one.
 	providedGroups := parseMulticastGroups()
 	var groupCode string
@@ -138,9 +143,10 @@ func TestQA_MulticastConnectivity(t *testing.T) {
 		require.NoError(t, err, "failed to join multicast group %s", group.Code)
 	}
 
-	// Send multicast data from publisher to the multicast group.
-	err = publisher.MulticastSend(ctx, group, 60*time.Second)
-	require.NoError(t, err, "failed to send multicast data to group %s", group.Code)
+	// Send multicast data from publisher to the multicast group in background.
+	go func() {
+		_ = publisher.MulticastSend(ctx, group, 120*time.Second)
+	}()
 
 	// Get multicast report from each subscriber.
 	for _, subscriber := range subscribers {

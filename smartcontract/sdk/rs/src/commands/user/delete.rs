@@ -31,6 +31,10 @@ impl DeleteUserCommand {
             .map_err(|e| eyre::eyre!(e))?;
 
         for mgroup_pk in user.publishers.iter().chain(user.subscribers.iter()) {
+            // Skip unsubscribe if the group no longer exists (already cleaned up).
+            if client.get(*mgroup_pk).is_err() {
+                continue;
+            }
             SubscribeMulticastGroupCommand {
                 group_pk: *mgroup_pk,
                 user_pk: self.pubkey,

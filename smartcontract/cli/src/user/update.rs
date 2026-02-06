@@ -26,6 +26,12 @@ pub struct UpdateUserCliCommand {
     /// New Validator Pubkey
     #[arg(long, value_parser = validate_pubkey)]
     pub validator_pubkey: Option<String>,
+    /// Clear all publisher references
+    #[arg(long, default_value_t = false)]
+    pub clear_publishers: bool,
+    /// Clear all subscriber references
+    #[arg(long, default_value_t = false)]
+    pub clear_subscribers: bool,
 }
 
 impl UpdateUserCliCommand {
@@ -45,6 +51,8 @@ impl UpdateUserCliCommand {
                 .validator_pubkey
                 .map(|s| Pubkey::from_str(&s))
                 .transpose()?,
+            clear_publishers: if self.clear_publishers { Some(true) } else { None },
+            clear_subscribers: if self.clear_subscribers { Some(true) } else { None },
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -124,6 +132,8 @@ mod tests {
                 tunnel_id: Some(1),
                 tunnel_net: Some("10.2.2.3/24".parse().unwrap()),
                 validator_pubkey: None,
+                clear_publishers: None,
+                clear_subscribers: None,
             }))
             .returning(move |_| Ok(signature));
 
@@ -135,6 +145,8 @@ mod tests {
             tunnel_id: Some(1),
             tunnel_net: Some("10.2.2.3/24".parse().unwrap()),
             validator_pubkey: None,
+            clear_publishers: false,
+            clear_subscribers: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

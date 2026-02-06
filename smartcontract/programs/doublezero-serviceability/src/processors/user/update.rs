@@ -25,6 +25,8 @@ pub struct UserUpdateArgs {
     pub tunnel_id: Option<u16>,
     pub tunnel_net: Option<NetworkV4>,
     pub validator_pubkey: Option<Pubkey>,
+    pub clear_publishers: Option<bool>,
+    pub clear_subscribers: Option<bool>,
 }
 
 impl fmt::Debug for UserUpdateArgs {
@@ -98,6 +100,12 @@ pub fn process_update_user(
     }
     if let Some(value) = value.validator_pubkey {
         user.validator_pubkey = value;
+    }
+    if value.clear_publishers == Some(true) {
+        user.publishers.clear();
+    }
+    if value.clear_subscribers == Some(true) {
+        user.subscribers.clear();
     }
 
     try_acc_write(&user, user_account, payer_account, accounts)?;

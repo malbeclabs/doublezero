@@ -743,6 +743,7 @@ mod tests {
                 tunnel_id: Some(1),
                 tunnel_net: Some("1.2.3.4/1".parse().unwrap()),
                 validator_pubkey: Some(Pubkey::new_unique()),
+                ..Default::default()
             }),
             "UpdateUser",
         );

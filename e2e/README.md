@@ -28,6 +28,15 @@ DZ_COMPAT_MAX_NUM_VERSIONS=2 go test -tags e2e -run TestE2E_BackwardCompatibilit
 TESTCONTAINERS_RYUK_DISABLED=true go test -tags e2e -run TestE2E_BackwardCompatibility -v -count=1 ./e2e/...
 ```
 
+### Known Incompatibilities
+
+Some CLI commands have known incompatibilities with newer program versions due to Borsh struct changes. These are documented in `knownIncompatibilities` at the top of `compatibility_test.go`. Known incompatible commands report `KNOWN_FAIL` instead of `FAIL` and don't cause the test to fail.
+
+Current known incompatibilities:
+- `write/multicast_group_create` - incompatible before v0.8.1 (Borsh struct changed: `index` and `bump_seed` fields were removed)
+
+When adding new incompatibilities, document the reason and set the minimum compatible version. Remove entries when `min_compatible_version` is bumped past them.
+
 ### Example Output
 
 <details>
@@ -81,9 +90,9 @@ write/device_delete_2                    PASS        PASS        PASS
 
 === mainnet-beta: Compatibility Matrix (Summary) ===
 
-v0.7.1       34 passed, 1 FAILED
-v0.7.2       34 passed, 1 FAILED
-v0.8.0       34 passed, 1 FAILED
+v0.7.1       ALL PASSED (34 passed, 1 known incompatible)
+v0.7.2       ALL PASSED (34 passed, 1 known incompatible)
+v0.8.0       ALL PASSED (34 passed, 1 known incompatible)
 v0.8.1       ALL PASSED (35 passed)
 
 === mainnet-beta: Compatibility Matrix (Detail) ===
@@ -106,7 +115,7 @@ write/device_interface_create_2          PASS        PASS        PASS        PAS
 write/device_interface_set_unlinked      PASS        PASS        PASS        PASS
 write/device_interface_set_unlinked_2    PASS        PASS        PASS        PASS
 write/link_create_wan                    PASS        PASS        PASS        PASS
-write/multicast_group_create             FAIL        FAIL        FAIL        PASS
+write/multicast_group_create             KNOWN_FAIL  KNOWN_FAIL  KNOWN_FAIL  PASS
 write/location_update                    PASS        PASS        PASS        PASS
 write/exchange_update                    PASS        PASS        PASS        PASS
 write/contributor_update                 PASS        PASS        PASS        PASS

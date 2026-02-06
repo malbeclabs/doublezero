@@ -98,7 +98,7 @@ jobs:
             if [ $i -gt 0 ]; then
               matrix="${matrix},"
             fi
-            matrix="${matrix}{\"shard\":${i},\"run\":\"^(${shards[$i]})$\"}"
+            matrix="${matrix}{\"shard\":$((i + 1)),\"run\":\"^(${shards[$i]})$\"}"
           done
           matrix="${matrix}]"
 
@@ -106,6 +106,7 @@ jobs:
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
   e2e:
+    name: e2e (shard ${{ matrix.shard }})
     needs: setup
     strategy:
       fail-fast: false

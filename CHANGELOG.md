@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.
 ### Changes
 
 - CLI
+  - Fix `multicastgroup update` command to properly parse human-readable bandwidth values (e.g., "1Gbps", "100Mbps") in `--max-bandwidth` flag
   - Add filtering options and desired_status & metrics_publisher_pk field to device and link list commands
   - Added activation check for existing users before subscribing to new groups (#2782)
 - SDK

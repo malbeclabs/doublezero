@@ -433,10 +433,6 @@ func runSingleClientIBRLThenMulticastTest(t *testing.T, log *slog.Logger, dn *de
 	waitForAgentConfigWithClient(t, log, dn, actualMcastDevice, client)
 	log.Info("--> Agent config pushed to multicast device")
 
-	// Give time for agent to apply the configuration
-	log.Info("==> Waiting for agent to apply configuration")
-	time.Sleep(10 * time.Second)
-
 	// Wait for BOTH tunnels (IBRL and Multicast) to be up on the client
 	log.Info("==> Waiting for both tunnels (IBRL and Multicast) to be up")
 	err = client.WaitForNTunnelsUp(t.Context(), 2, 90*time.Second)

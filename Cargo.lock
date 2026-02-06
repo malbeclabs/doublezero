@@ -2076,7 +2076,7 @@ checksum = "00b0228411908ca8685dba7fc2cdd70ec9990a6e753e89b6ac91a84c40fbaf4b"
 
 [[package]]
 name = "fork-accounts"
-version = "0.8.4"
+version = "0.8.6"
 dependencies = [
  "base64 0.22.1",
  "borsh 1.5.7",

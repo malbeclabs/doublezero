@@ -470,7 +470,16 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 			continue
 		}
 		tunnel.UnderlayDstIP = net.IP(user.ClientIp[:])
-		tunnel.UnderlaySrcIP = cache.Devices[devicePubKey].PublicIP
+
+		// Use user's tunnel_endpoint if set, otherwise fall back to device PublicIP.
+		// This allows multiple tunnels from the same client IP to terminate on the same device
+		// using different tunnel endpoint IPs (avoiding GRE key conflicts).
+		tunnelEndpoint := net.IP(user.TunnelEndpoint[:])
+		if tunnelEndpoint.IsUnspecified() {
+			tunnel.UnderlaySrcIP = cache.Devices[devicePubKey].PublicIP
+		} else {
+			tunnel.UnderlaySrcIP = tunnelEndpoint
+		}
 
 		// OverlaySrcIP is the device/link side of the tunnel.
 		var overlaySrc [4]byte
@@ -612,7 +621,6 @@ func (c *Controller) Run(ctx context.Context) error {
 	case err := <-errChan:
 		return err
 	}
-
 }
 
 // GetConfig renders the latest device configuration based on cached device data

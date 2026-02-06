@@ -1,4 +1,4 @@
-name: end-to-end
+name: e2e
 on:
   push:
     branches: [ main ]
@@ -9,18 +9,30 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+env:
+  SHARD_COUNT: "4"
+  # Use registry-qualified image names so we can push/pull between jobs
+  DZ_IMAGE_REPO: ghcr.io/malbeclabs/dz-e2e
+  DZ_IMAGE_TAG: ${{ github.sha }}
+  # Individual image refs for the e2e tests
+  DZ_BASE_IMAGE: ghcr.io/malbeclabs/dz-e2e/base:${{ github.sha }}
+  DZ_LEDGER_IMAGE: ghcr.io/malbeclabs/dz-e2e/ledger:${{ github.sha }}
+  DZ_CONTROLLER_IMAGE: ghcr.io/malbeclabs/dz-e2e/controller:${{ github.sha }}
+  DZ_ACTIVATOR_IMAGE: ghcr.io/malbeclabs/dz-e2e/activator:${{ github.sha }}
+  DZ_MANAGER_IMAGE: ghcr.io/malbeclabs/dz-e2e/manager:${{ github.sha }}
+  DZ_FUNDER_IMAGE: ghcr.io/malbeclabs/dz-e2e/funder:${{ github.sha }}
+  DZ_DEVICE_IMAGE: ghcr.io/malbeclabs/dz-e2e/device:${{ github.sha }}
+  DZ_CLIENT_IMAGE: ghcr.io/malbeclabs/dz-e2e/client:${{ github.sha }}
+  DZ_DEVICE_HEALTH_ORACLE_IMAGE: ghcr.io/malbeclabs/dz-e2e/device-health-oracle:${{ github.sha }}
+
 jobs:
-  e2e:
-    defaults:
-      run:
-        working-directory: "e2e/"
+  setup:
     runs-on: self-hosted
-    timeout-minutes: 15
     permissions:
-      packages: read
+      packages: write
       contents: read
-    env:
-      BUILDKIT_PROGRESS: plain
+    outputs:
+      matrix: ${{ steps.shard.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -33,10 +45,105 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: build
-        run: make build
+      - name: Install make
+        run: sudo apt-get update && sudo apt-get install -y make
+      - name: Build images
+        working-directory: e2e/
+        run: go run ./cmd/dzctl/main.go build
+      - name: Push images to registry
+        run: |
+          docker push ${{ env.DZ_IMAGE_REPO }}/base:${{ env.DZ_IMAGE_TAG }}
+          docker push ${{ env.DZ_IMAGE_REPO }}/ledger:${{ env.DZ_IMAGE_TAG }}
+          docker push ${{ env.DZ_IMAGE_REPO }}/controller:${{ env.DZ_IMAGE_TAG }}
+          docker push ${{ env.DZ_IMAGE_REPO }}/activator:${{ env.DZ_IMAGE_TAG }}
+          docker push ${{ env.DZ_IMAGE_REPO }}/manager:${{ env.DZ_IMAGE_TAG }}
+          docker push ${{ env.DZ_IMAGE_REPO }}/funder:${{ env.DZ_IMAGE_TAG }}
+          docker push ${{ env.DZ_IMAGE_REPO }}/device:${{ env.DZ_IMAGE_TAG }}
+          docker push ${{ env.DZ_IMAGE_REPO }}/client:${{ env.DZ_IMAGE_TAG }}
+          docker push ${{ env.DZ_IMAGE_REPO }}/device-health-oracle:${{ env.DZ_IMAGE_TAG }}
+      - name: Discover tests and distribute across shards
+        id: shard
+        working-directory: e2e/
+        run: |
+          # Find files with exactly the e2e build tag (excludes compound tags like "e2e && stress")
+          tests=$(grep -rl '^//go:build e2e$' *_test.go \
+            | xargs grep -h '^func TestE2E_' \
+            | sed 's/func \(TestE2E_[a-zA-Z0-9_]*\).*/\1/' \
+            | sort)
+
+          count=$(echo "$tests" | wc -l)
+          echo "Discovered $count tests"
+          echo "$tests"
+
+          # Distribute round-robin across shards
+          declare -a shards
+          for ((i=0; i<SHARD_COUNT; i++)); do
+            shards[$i]=""
+          done
+
+          i=0
+          while IFS= read -r test; do
+            idx=$((i % SHARD_COUNT))
+            if [ -n "${shards[$idx]}" ]; then
+              shards[$idx]="${shards[$idx]}|${test}"
+            else
+              shards[$idx]="$test"
+            fi
+            i=$((i + 1))
+          done <<< "$tests"
+
+          # Build JSON matrix array
+          matrix="["
+          for ((i=0; i<SHARD_COUNT; i++)); do
+            if [ $i -gt 0 ]; then
+              matrix="${matrix},"
+            fi
+            matrix="${matrix}{\"shard\":$((i + 1)),\"run\":\"^(${shards[$i]})$\"}"
+          done
+          matrix="${matrix}]"
+
+          echo "Matrix: $matrix"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  e2e:
+    name: e2e (shard ${{ matrix.shard }})
+    needs: setup
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.setup.outputs.matrix) }}
+    defaults:
+      run:
+        working-directory: "e2e/"
+    runs-on: doublezero-k8s-ci
+    timeout-minutes: 15
+    permissions:
+      packages: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Login to docker
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Pull pre-built images
+        run: |
+          docker pull ${{ env.DZ_IMAGE_REPO }}/base:${{ env.DZ_IMAGE_TAG }}
+          docker pull ${{ env.DZ_IMAGE_REPO }}/ledger:${{ env.DZ_IMAGE_TAG }}
+          docker pull ${{ env.DZ_IMAGE_REPO }}/controller:${{ env.DZ_IMAGE_TAG }}
+          docker pull ${{ env.DZ_IMAGE_REPO }}/activator:${{ env.DZ_IMAGE_TAG }}
+          docker pull ${{ env.DZ_IMAGE_REPO }}/manager:${{ env.DZ_IMAGE_TAG }}
+          docker pull ${{ env.DZ_IMAGE_REPO }}/funder:${{ env.DZ_IMAGE_TAG }}
+          docker pull ${{ env.DZ_IMAGE_REPO }}/device:${{ env.DZ_IMAGE_TAG }}
+          docker pull ${{ env.DZ_IMAGE_REPO }}/client:${{ env.DZ_IMAGE_TAG }}
+          docker pull ${{ env.DZ_IMAGE_REPO }}/device-health-oracle:${{ env.DZ_IMAGE_TAG }}
       - name: test
-        # Limit parallelism to avoid overwhelming Docker when multiple tests
-        # start ledger containers simultaneously (each uses ~2GB memory).
-        # The HTTP wait strategy helps, but Docker API can still bottleneck.
-        run: make test verbose parallel=12
+        env:
+          DZ_E2E_NO_BUILD: "1"
+        run: go test -tags=e2e -timeout=20m -parallel=12 -run '${{ matrix.run }}' -v

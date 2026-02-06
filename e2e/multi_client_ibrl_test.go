@@ -24,7 +24,7 @@ const (
 	routeLivenessPort = 44880
 )
 
-func TestE2E_MultiClient(t *testing.T) {
+func TestE2E_MultiClientIBRL(t *testing.T) {
 	t.Parallel()
 
 	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
@@ -193,18 +193,7 @@ func TestE2E_MultiClient(t *testing.T) {
 	log.Info("--> Clients added to user Access Pass")
 
 	// Run IBRL workflow test.
-	if !t.Run("ibrl", func(t *testing.T) {
-		runMultiClientIBRLWorkflowTest(t, log, dn, client1, client2, client3, client4, deviceCode1, deviceCode2)
-	}) {
-		t.Fail()
-	}
-
-	// Run IBRL with allocated IP workflow test.
-	if !t.Run("ibrl_with_allocated_ip", func(t *testing.T) {
-		runMultiClientIBRLWithAllocatedIPWorkflowTest(t, log, dn, client1, client2, deviceCode1, deviceCode2)
-	}) {
-		t.Fail()
-	}
+	runMultiClientIBRLWorkflowTest(t, log, dn, client1, client2, client3, client4, deviceCode1, deviceCode2)
 }
 
 func runMultiClientIBRLWorkflowTest(t *testing.T, log *slog.Logger, dn *devnet.Devnet, client1 *devnet.Client, client2 *devnet.Client, client3 *devnet.Client, client4 *devnet.Client, deviceCode1 string, deviceCode2 string) {
@@ -634,129 +623,6 @@ func runMultiClientIBRLWorkflowTest(t *testing.T, log *slog.Logger, dn *devnet.D
 	require.Len(t, status, 1, status)
 	require.Nil(t, status[0].DoubleZeroIP, status)
 	status, err = client4.GetTunnelStatus(t.Context())
-	require.NoError(t, err)
-	require.Len(t, status, 1, status)
-	require.Nil(t, status[0].DoubleZeroIP, status)
-	require.Equal(t, devnet.ClientSessionStatusDisconnected, status[0].DoubleZeroStatus.SessionStatus)
-	log.Info("--> Confirmed clients are disconnected and do not have a DZ IP allocated")
-}
-
-func runMultiClientIBRLWithAllocatedIPWorkflowTest(t *testing.T, log *slog.Logger, dn *devnet.Devnet, client1 *devnet.Client, client2 *devnet.Client, deviceCode1 string, deviceCode2 string) {
-	// Check that the clients are disconnected and do not have a DZ IP allocated.
-	log.Info("==> Checking that the clients are disconnected and do not have a DZ IP allocated")
-	status, err := client1.GetTunnelStatus(t.Context())
-	require.NoError(t, err)
-	require.Len(t, status, 1, status)
-	require.Nil(t, status[0].DoubleZeroIP, status)
-	require.Equal(t, devnet.ClientSessionStatusDisconnected, status[0].DoubleZeroStatus.SessionStatus)
-	status, err = client2.GetTunnelStatus(t.Context())
-	require.NoError(t, err)
-	require.Len(t, status, 1, status)
-	require.Nil(t, status[0].DoubleZeroIP, status)
-	require.Equal(t, devnet.ClientSessionStatusDisconnected, status[0].DoubleZeroStatus.SessionStatus)
-	log.Info("--> Confirmed clients are disconnected and do not have a DZ IP allocated")
-
-	// Connect client1 in IBRL mode to device1 (xlax exchange) with allocated IP.
-	log.Info("==> Connecting client1 in IBRL mode with allocated IP to device1")
-	_, err = client1.Exec(t.Context(), []string{"doublezero", "connect", "ibrl", "--client-ip", client1.CYOANetworkIP, "--allocate-addr", "--device", deviceCode1})
-	require.NoError(t, err)
-	err = client1.WaitForTunnelUp(t.Context(), 90*time.Second)
-	require.NoError(t, err)
-	log.Info("--> Client1 connected in IBRL mode with allocated IP to device1")
-
-	// Connect client2 in IBRL mode to device2 (xewr exchange) with allocated IP.
-	log.Info("==> Connecting client2 in IBRL mode with allocated IP to device2")
-	_, err = client2.Exec(t.Context(), []string{"doublezero", "connect", "ibrl", "--client-ip", client2.CYOANetworkIP, "--allocate-addr", "--device", deviceCode2})
-	require.NoError(t, err)
-	err = client2.WaitForTunnelUp(t.Context(), 90*time.Second)
-	require.NoError(t, err)
-	log.Info("--> Client2 connected in IBRL mode with allocated IP to device2")
-
-	// Check that the clients have a DZ IP equal to their client IP when not configured to use an allocated IP.
-	log.Info("==> Checking that the clients have a DZ IP different from their client IP when configured to use an allocated IP")
-	status, err = client1.GetTunnelStatus(t.Context())
-	require.Len(t, status, 1, status)
-	client1DZIP := status[0].DoubleZeroIP.String()
-	require.NoError(t, err)
-	require.NotEqual(t, client1.CYOANetworkIP, client1DZIP)
-	status, err = client2.GetTunnelStatus(t.Context())
-	require.Len(t, status, 1, status)
-	client2DZIP := status[0].DoubleZeroIP.String()
-	require.NoError(t, err)
-	require.NotEqual(t, client2.CYOANetworkIP, client2DZIP)
-	log.Info("--> Clients have a DZ IP different from their client IP when configured to use an allocated IP")
-
-	// Wait for cross-exchange routes to propagate via iBGP between devices.
-	log.Info("==> Waiting for cross-exchange routes to propagate via iBGP")
-	require.Eventually(t, func() bool {
-		output, err := dn.Devices[deviceCode1].Exec(t.Context(), []string{"bash", "-c", fmt.Sprintf("Cli -c \"show ip route vrf vrf1 %s/32\"", client2DZIP)})
-		if err != nil {
-			return false
-		}
-		return strings.Contains(string(output), client2DZIP)
-	}, 90*time.Second, 1*time.Second, "device1 should have route to client2 via iBGP")
-	require.Eventually(t, func() bool {
-		output, err := dn.Devices[deviceCode2].Exec(t.Context(), []string{"bash", "-c", fmt.Sprintf("Cli -c \"show ip route vrf vrf1 %s/32\"", client1DZIP)})
-		if err != nil {
-			return false
-		}
-		return strings.Contains(string(output), client1DZIP)
-	}, 90*time.Second, 1*time.Second, "device2 should have route to client1 via iBGP")
-	log.Info("--> Cross-exchange routes have propagated via iBGP")
-
-	// Check that the clients have routes to each other.
-	log.Info("==> Checking that the clients have routes to each other")
-	require.Eventually(t, func() bool {
-		output, err := client1.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
-		if err != nil {
-			return false
-		}
-		return strings.Contains(string(output), client2DZIP)
-	}, 60*time.Second, 1*time.Second, "client1 should have route to client2")
-	require.Eventually(t, func() bool {
-		output, err := client2.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
-		if err != nil {
-			return false
-		}
-		return strings.Contains(string(output), client1DZIP)
-	}, 60*time.Second, 1*time.Second, "client2 should have route to client1")
-	log.Info("--> Clients have routes to each other")
-
-	// Disconnect client1.
-	log.Info("==> Disconnecting client1 from IBRL with allocated IP")
-	_, err = client1.Exec(t.Context(), []string{"doublezero", "disconnect", "--client-ip", client1.CYOANetworkIP})
-	require.NoError(t, err)
-	log.Info("--> Client1 disconnected from IBRL with allocated IP")
-
-	// Disconnect client2.
-	log.Info("==> Disconnecting client2 from IBRL with allocated IP")
-	_, err = client2.Exec(t.Context(), []string{"doublezero", "disconnect", "--client-ip", client2.CYOANetworkIP})
-	require.NoError(t, err)
-	log.Info("--> Client2 disconnected from IBRL with allocated IP")
-
-	// Wait for users to be deleted onchain.
-	log.Info("==> Waiting for users to be deleted onchain")
-	serviceabilityClient, err := dn.Ledger.GetServiceabilityClient()
-	require.NoError(t, err)
-	require.Eventually(t, func() bool {
-		data, err := serviceabilityClient.GetProgramData(t.Context())
-		require.NoError(t, err)
-		return len(data.Users) == 0
-	}, 30*time.Second, 1*time.Second)
-	log.Info("--> Users deleted onchain")
-
-	// Check that the clients are eventually disconnected and do not have a DZ IP allocated.
-	log.Info("==> Checking that the clients are eventually disconnected and do not have a DZ IP allocated")
-	err = client1.WaitForTunnelDisconnected(t.Context(), 60*time.Second)
-	require.NoError(t, err)
-	err = client2.WaitForTunnelDisconnected(t.Context(), 60*time.Second)
-	require.NoError(t, err)
-	status, err = client1.GetTunnelStatus(t.Context())
-	require.NoError(t, err)
-	require.Len(t, status, 1, status)
-	require.Nil(t, status[0].DoubleZeroIP, status)
-	require.Equal(t, devnet.ClientSessionStatusDisconnected, status[0].DoubleZeroStatus.SessionStatus)
-	status, err = client2.GetTunnelStatus(t.Context())
 	require.NoError(t, err)
 	require.Len(t, status, 1, status)
 	require.Nil(t, status[0].DoubleZeroIP, status)

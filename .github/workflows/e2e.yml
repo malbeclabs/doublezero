@@ -15,10 +15,28 @@ env:
 jobs:
   setup:
     runs-on: doublezero-k8s-ci
+    permissions:
+      packages: write
+      contents: read
     outputs:
       matrix: ${{ steps.shard.outputs.matrix }}
+    env:
+      DOCKER_CACHE_REGISTRY: ghcr.io/malbeclabs/dz-e2e-cache
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Login to docker
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and cache images
+        working-directory: e2e/
+        run: make build
       - name: Discover tests and distribute across shards
         id: shard
         working-directory: e2e/
@@ -75,10 +93,11 @@ jobs:
     runs-on: doublezero-k8s-ci
     timeout-minutes: 15
     permissions:
-      packages: read
+      packages: write
       contents: read
     env:
       BUILDKIT_PROGRESS: plain
+      DOCKER_CACHE_REGISTRY: ghcr.io/malbeclabs/dz-e2e-cache
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5

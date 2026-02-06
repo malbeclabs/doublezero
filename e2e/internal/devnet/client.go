@@ -380,6 +380,13 @@ type CLIStatusResponse struct {
 	Network             string               `json:"network"`
 }
 
+// cliStatusJSONResponse is the top-level JSON response from `doublezero status --json`,
+// which wraps the statuses array with version information.
+type cliStatusJSONResponse struct {
+	Version  json.RawMessage     `json:"version"`
+	Statuses []CLIStatusResponse `json:"statuses"`
+}
+
 // GetCLIStatus retrieves the full status output from `doublezero status --json`,
 // which includes current_device, metro, and other fields computed by the CLI.
 // This is useful for verifying that the CLI correctly associates tunnels with devices.
@@ -389,12 +396,12 @@ func (c *Client) GetCLIStatus(ctx context.Context) ([]CLIStatusResponse, error) 
 		return nil, fmt.Errorf("failed to execute doublezero status --json: %w", err)
 	}
 
-	var resp []CLIStatusResponse
-	if err := json.Unmarshal(output, &resp); err != nil {
+	var wrapper cliStatusJSONResponse
+	if err := json.Unmarshal(output, &wrapper); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal CLI status response: %w, output: %s", err, string(output))
 	}
 
-	return resp, nil
+	return wrapper.Statuses, nil
 }
 
 func (c *Client) GetTunnelStatus(ctx context.Context) ([]ClientStatusResponse, error) {

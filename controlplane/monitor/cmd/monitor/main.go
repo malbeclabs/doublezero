@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -24,8 +25,10 @@ import (
 )
 
 const (
-	defaultInterval           = 1 * time.Minute
-	defaultTwoZOracleInterval = 5 * time.Second
+	defaultInterval            = 1 * time.Minute
+	defaultTwoZOracleInterval  = 5 * time.Second
+	defaultSolBalanceInterval  = 30 * time.Second
+	defaultSolBalanceThreshold = 0.1
 )
 
 var (
@@ -40,6 +43,9 @@ var (
 	metricsAddr                = flag.String("metrics-addr", ":8080", "Address to listen on for prometheus metrics")
 	slackWebhookURL            = flag.String("slack-webhook-url", "", "The Slack webhook URL to send alerts")
 	twoZOracleInterval         = flag.Duration("twoz-oracle-interval", defaultTwoZOracleInterval, "interval to execute twoz oracle watcher ticks")
+	solBalanceAccounts         = flag.String("sol-balance-accounts", "", "comma-separated label:pubkey pairs (e.g., debt_accountant:ABC123,rewards_accountant:XYZ789)")
+	solBalanceThreshold        = flag.Float64("sol-balance-threshold", defaultSolBalanceThreshold, "SOL balance threshold for warning logs")
+	solBalanceInterval         = flag.Duration("sol-balance-interval", defaultSolBalanceInterval, "interval to check SOL balances")
 
 	// Set by LDFLAGS
 	version = "dev"
@@ -179,6 +185,30 @@ func main() {
 		defer influxClient.Close()
 	}
 
+	// Parse SOL balance accounts.
+	var solBalanceAccountsMap map[string]solana.PublicKey
+	if *solBalanceAccounts != "" {
+		solBalanceAccountsMap = make(map[string]solana.PublicKey)
+		pairs := strings.Split(*solBalanceAccounts, ",")
+		for _, pair := range pairs {
+			parts := strings.SplitN(pair, ":", 2)
+			if len(parts) != 2 {
+				log.Error("Invalid sol-balance-accounts format", "pair", pair)
+				flag.Usage()
+				os.Exit(1)
+			}
+			label := strings.TrimSpace(parts[0])
+			pubkeyStr := strings.TrimSpace(parts[1])
+			pubkey, err := solana.PublicKeyFromBase58(pubkeyStr)
+			if err != nil {
+				log.Error("Failed to parse sol-balance-accounts pubkey", "label", label, "pubkey", pubkeyStr, "error", err)
+				flag.Usage()
+				os.Exit(1)
+			}
+			solBalanceAccountsMap[label] = pubkey
+		}
+	}
+
 	// Initialize worker.
 	worker, err := worker.New(&worker.Config{
 		Logger:                     log,
@@ -193,6 +223,10 @@ func main() {
 		TwoZOracleInterval:         *twoZOracleInterval,
 		InfluxWriter:               influxWriter,
 		Env:                        *env,
+		SolBalanceRPCClient:        rpcClient,
+		SolBalanceAccounts:         solBalanceAccountsMap,
+		SolBalanceThreshold:        *solBalanceThreshold,
+		SolBalanceInterval:         *solBalanceInterval,
 	})
 	if err != nil {
 		log.Error("Failed to create worker", "error", err)

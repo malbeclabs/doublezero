@@ -1,7 +1,7 @@
 use crate::{
     error::DoubleZeroError,
     serializer::try_acc_close,
-    state::{accounttype::AccountType, globalstate::GlobalState},
+    state::{accesspass::AccessPass, accounttype::AccountType, globalstate::GlobalState},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -82,7 +82,17 @@ pub fn process_close_access_pass(
             msg!("AccountType is not AccessPass, cannot close");
             return Err(DoubleZeroError::InvalidAccountType.into());
         }
-        msg!("AccountType is AccessPass, proceeding to close");
+        let accesspass = AccessPass::try_from(accesspass_account)?;
+
+        if accesspass.connection_count != 0 {
+            msg!(
+                "AccessPass has {} active connections, cannot close",
+                accesspass.connection_count
+            );
+            return Err(DoubleZeroError::AccessPassInUse.into());
+        }
+
+        msg!("AccountType is AccessPass and there are no active connections, proceeding to close");
     } else {
         msg!("Failed to borrow account data, cannot close");
     }

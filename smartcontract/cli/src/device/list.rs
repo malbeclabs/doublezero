@@ -88,6 +88,8 @@ pub struct DeviceDisplay {
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     #[tabled(skip)]
     pub metrics_publisher_pk: Pubkey,
+    #[tabled(skip)]
+    pub reference_count: u32,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
 }
@@ -212,6 +214,7 @@ impl ListDeviceCliCommand {
                     mgmt_vrf: device.mgmt_vrf.clone(),
                     users: device.users_count,
                     max_users: device.max_users,
+                    reference_count: device.reference_count,
                     health: device.device_health,
                     desired_status: device.desired_status,
                     metrics_publisher_pk: device.metrics_publisher_pk,
@@ -386,7 +389,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"code\":\"device1_code\",\"bump_seed\":2,\"location_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"contributor_code\":\"contributor1_code\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"exchange_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA\",\"exchange_code\":\"exchange1_code\",\"exchange_name\":\"exchange1_name\",\"device_type\":\"Hybrid\",\"public_ip\":\"1.2.3.4\",\"dz_prefixes\":\"1.2.3.4/32\",\"users\":0,\"max_users\":255,\"status\":\"Activated\",\"health\":\"ReadyForUsers\",\"desired_status\":\"Activated\",\"mgmt_vrf\":\"default\",\"metrics_publisher_pk\":\"11111111111111111111111111111111\",\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"code\":\"device1_code\",\"bump_seed\":2,\"location_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"contributor_code\":\"contributor1_code\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"exchange_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA\",\"exchange_code\":\"exchange1_code\",\"exchange_name\":\"exchange1_name\",\"device_type\":\"Hybrid\",\"public_ip\":\"1.2.3.4\",\"dz_prefixes\":\"1.2.3.4/32\",\"users\":0,\"max_users\":255,\"status\":\"Activated\",\"health\":\"ReadyForUsers\",\"desired_status\":\"Activated\",\"mgmt_vrf\":\"default\",\"metrics_publisher_pk\":\"11111111111111111111111111111111\",\"reference_count\":0,\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"}]\n");
     }
 
     #[test]

@@ -50,9 +50,9 @@ func TestE2E_SDK_Serviceability(t *testing.T) {
 		data, err := client.GetProgramData(ctx)
 		require.NoError(t, err, "error loading accounts into context")
 
-		config := data.Config
+		config := data.GlobalConfig
 
-		newAsn := config.Remote_asn + 100
+		newAsn := config.RemoteASN + 100
 
 		_, err = dn.Manager.Exec(ctx, []string{"doublezero", "global-config", "set", "--remote-asn", strconv.Itoa(int(newAsn))})
 		require.NoError(t, err, "error setting global config value")
@@ -61,15 +61,12 @@ func TestE2E_SDK_Serviceability(t *testing.T) {
 			data, err := client.GetProgramData(ctx)
 			require.NoError(t, err, "error while reloading onchain state to verify update")
 
-			got := data.Config
-			want := config
-			want.Remote_asn = newAsn
-
-			if want == got {
+			got := data.GlobalConfig.RemoteASN
+			if got == newAsn {
 				return true
 			}
 
-			log.Debug("--> Waiting for global config update", "want", want, "got", got)
+			log.Debug("--> Waiting for global config update", "want", newAsn, "got", got)
 			return false
 		}, 30*time.Second, 3*time.Second)
 	})

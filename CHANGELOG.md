@@ -22,6 +22,12 @@ All notable changes to this project will be documented in this file.
   - DeleteUserCommand updated to wait for activator to process multicast user unsubscribe before deleting the user
 - Device controller
   - Record successful GetConfig gRPC calls to ClickHouse for device telemetry tracking
+- Onchain programs
+  - Enforce that `CloseAccessPass` only closes AccessPass accounts when `connection_count == 0`, preventing closure while active connections are present.
+- Monitor
+  - Add sol-balance watcher to track SOL balances for configured accounts and export Prometheus metrics for alerting
+- E2E tests
+  - Add backward compatibility test that validates older CLI versions against the current onchain program by cloning live state from testnet and mainnet-beta
 
 ## [v0.8.6](https://github.com/malbeclabs/doublezero/compare/client/v0.8.5...client/v0.8.6) – 2026-02-04
 
@@ -30,7 +36,6 @@ All notable changes to this project will be documented in this file.
 - None for this release
 
 ### Changes
-
 - CLI
   - Remove log noise on resolve route
   - `doublezero resource verify` command added to verify onchain resources
@@ -49,6 +54,7 @@ All notable changes to this project will be documented in this file.
 - E2E tests
   - The QA alldevices test now skips devices that are not calling the controller
   - e2e: Expand RFC11 end-to-end testing ([#2801](https://github.com/malbeclabs/doublezero/pull/2801))
+  - e2e(RFC11): add dz prefix rollover allocation test ([#2820](https://github.com/malbeclabs/doublezero/pull/2820))
 
 ## [v0.8.5](https://github.com/malbeclabs/doublezero/compare/client/v0.8.4...client/v0.8.5) – 2026-02-02
 
@@ -77,7 +83,6 @@ All notable changes to this project will be documented in this file.
   - Support simultaneous unicast and multicast tunnels in doublezerod
   - Support publishing and subscribing to multiple multicast groups simultaneously
 - CLI
-  - add `version` field to json output so no longer breaks the json output if the version is out of date
   - Support publishing and subscribing a user to multiple multicast groups via `--group` flag
   - Remove single tunnel constraint 
 - SDK

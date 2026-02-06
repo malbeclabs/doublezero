@@ -11,17 +11,18 @@ import (
 type AccountType uint8
 
 const (
-	GlobalStateType    AccountType = 1
-	GlobalConfigType   AccountType = 2
-	LocationType       AccountType = 3
-	ExchangeType       AccountType = 4
-	DeviceType         AccountType = 5
-	LinkType           AccountType = 6
-	UserType           AccountType = 7
-	MulticastGroupType AccountType = 8
-	ProgramConfigType  AccountType = 9
-	ContributorType    AccountType = 10
-	AccessPassType     AccountType = 11
+	GlobalStateType       AccountType = 1
+	GlobalConfigType      AccountType = 2
+	LocationType          AccountType = 3
+	ExchangeType          AccountType = 4
+	DeviceType            AccountType = 5
+	LinkType              AccountType = 6
+	UserType              AccountType = 7
+	MulticastGroupType    AccountType = 8
+	ProgramConfigType     AccountType = 9
+	ContributorType       AccountType = 10
+	AccessPassType        AccountType = 11
+	ResourceExtensionType AccountType = 12
 )
 
 type LocationStatus uint8
@@ -860,4 +861,140 @@ func networkV4ToString(n [5]uint8) string {
 		return fmt.Sprintf("%s/%d", ip.String(), prefixLen)
 	}
 	return ""
+}
+
+// AllocatorType represents the type of allocator in a ResourceExtension
+type AllocatorType uint8
+
+const (
+	AllocatorTypeIp AllocatorType = 0
+	AllocatorTypeId AllocatorType = 1
+)
+
+func (a AllocatorType) String() string {
+	switch a {
+	case AllocatorTypeIp:
+		return "ip"
+	case AllocatorTypeId:
+		return "id"
+	default:
+		return "unknown"
+	}
+}
+
+// IpAllocator manages IP address allocation from a CIDR block
+type IpAllocator struct {
+	BaseNet        [5]byte // NetworkV4: 4 bytes IP + 1 byte prefix length
+	FirstFreeIndex uint64  // usize in Rust (8 bytes on 64-bit)
+}
+
+// IdAllocator manages ID allocation from a numeric range
+type IdAllocator struct {
+	RangeStart     uint16 // Start of the range (inclusive)
+	RangeEnd       uint16 // End of the range (exclusive)
+	FirstFreeIndex uint64 // usize in Rust (8 bytes on 64-bit)
+}
+
+// Allocator represents either an IP or ID allocator
+type Allocator struct {
+	Type        AllocatorType
+	IpAllocator *IpAllocator
+	IdAllocator *IdAllocator
+}
+
+// ResourceExtension represents an on-chain resource pool (IP block or ID range)
+type ResourceExtension struct {
+	AccountType    AccountType
+	Owner          [32]byte
+	BumpSeed       uint8
+	AssociatedWith [32]byte // Device pubkey for device-specific pools, or zero for global pools
+	Allocator      Allocator
+	Storage        []byte // Bitmap of allocated resources
+	PubKey         [32]byte
+}
+
+// TotalCapacity returns the total number of resources in the pool
+func (r *ResourceExtension) TotalCapacity() int {
+	switch r.Allocator.Type {
+	case AllocatorTypeIp:
+		if r.Allocator.IpAllocator == nil {
+			return 0
+		}
+		prefixLen := r.Allocator.IpAllocator.BaseNet[4]
+		if prefixLen > 32 {
+			return 0
+		}
+		return 1 << (32 - prefixLen)
+	case AllocatorTypeId:
+		if r.Allocator.IdAllocator == nil {
+			return 0
+		}
+		return int(r.Allocator.IdAllocator.RangeEnd - r.Allocator.IdAllocator.RangeStart)
+	default:
+		return 0
+	}
+}
+
+// AllocatedCount returns the number of currently allocated resources
+func (r *ResourceExtension) AllocatedCount() int {
+	count := 0
+	for _, b := range r.Storage {
+		// Count set bits in each byte
+		for b != 0 {
+			count += int(b & 1)
+			b >>= 1
+		}
+	}
+	return count
+}
+
+// AvailableCount returns the number of available (unallocated) resources
+func (r *ResourceExtension) AvailableCount() int {
+	return r.TotalCapacity() - r.AllocatedCount()
+}
+
+// BaseNetString returns the base network as a CIDR string for IP allocators
+func (r *ResourceExtension) BaseNetString() string {
+	if r.Allocator.Type != AllocatorTypeIp || r.Allocator.IpAllocator == nil {
+		return ""
+	}
+	return networkV4ToString(r.Allocator.IpAllocator.BaseNet)
+}
+
+// RangeString returns the ID range as a string for ID allocators
+func (r *ResourceExtension) RangeString() string {
+	if r.Allocator.Type != AllocatorTypeId || r.Allocator.IdAllocator == nil {
+		return ""
+	}
+	return fmt.Sprintf("[%d, %d)", r.Allocator.IdAllocator.RangeStart, r.Allocator.IdAllocator.RangeEnd)
+}
+
+func (r ResourceExtension) MarshalJSON() ([]byte, error) {
+	type ResourceExtensionAlias ResourceExtension
+
+	jsonExt := &struct {
+		ResourceExtensionAlias
+		Owner          string `json:"Owner"`
+		AssociatedWith string `json:"AssociatedWith"`
+		PubKey         string `json:"PubKey"`
+		AllocatorType  string `json:"AllocatorType"`
+		BaseNet        string `json:"BaseNet,omitempty"`
+		Range          string `json:"Range,omitempty"`
+		TotalCapacity  int    `json:"TotalCapacity"`
+		AllocatedCount int    `json:"AllocatedCount"`
+		AvailableCount int    `json:"AvailableCount"`
+	}{
+		ResourceExtensionAlias: ResourceExtensionAlias(r),
+		Owner:                  base58.Encode(r.Owner[:]),
+		AssociatedWith:         base58.Encode(r.AssociatedWith[:]),
+		PubKey:                 base58.Encode(r.PubKey[:]),
+		AllocatorType:          r.Allocator.Type.String(),
+		BaseNet:                r.BaseNetString(),
+		Range:                  r.RangeString(),
+		TotalCapacity:          r.TotalCapacity(),
+		AllocatedCount:         r.AllocatedCount(),
+		AvailableCount:         r.AvailableCount(),
+	}
+
+	return json.Marshal(jsonExt)
 }

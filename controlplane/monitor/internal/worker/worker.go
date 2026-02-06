@@ -8,6 +8,7 @@ import (
 	devicetelemetry "github.com/malbeclabs/doublezero/controlplane/monitor/internal/device-telemetry"
 	internettelemetry "github.com/malbeclabs/doublezero/controlplane/monitor/internal/internet-telemetry"
 	"github.com/malbeclabs/doublezero/controlplane/monitor/internal/serviceability"
+	solbalance "github.com/malbeclabs/doublezero/controlplane/monitor/internal/sol-balance"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -87,6 +88,20 @@ func New(cfg *Config) (*Worker, error) {
 			return nil, err
 		}
 		watchers = append(watchers, twoZOracleWatcher)
+	}
+
+	if len(cfg.SolBalanceAccounts) > 0 {
+		solBalanceWatcher, err := solbalance.NewSolBalanceWatcher(&solbalance.Config{
+			Logger:    cfg.Logger,
+			Interval:  cfg.SolBalanceInterval,
+			RPCClient: cfg.SolBalanceRPCClient,
+			Accounts:  cfg.SolBalanceAccounts,
+			Threshold: cfg.SolBalanceThreshold,
+		})
+		if err != nil {
+			return nil, err
+		}
+		watchers = append(watchers, solBalanceWatcher)
 	}
 
 	return &Worker{

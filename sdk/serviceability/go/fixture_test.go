@@ -344,6 +344,70 @@ func TestFixtureAccessPassValidator(t *testing.T) {
 		solana.PublicKey(ap.MGroupSubAllowlist[0]))
 }
 
+func TestFixtureResourceExtensionId(t *testing.T) {
+	data, meta := loadFixture(t, "resource_extension_id")
+	reader := NewByteReader(data)
+	var ext ResourceExtension
+	DeserializeResourceExtension(reader, &ext)
+
+	assertFields(t, meta.Fields, map[string]any{
+		"AccountType":    uint8(ext.AccountType),
+		"Owner":          solana.PublicKey(ext.Owner),
+		"BumpSeed":       ext.BumpSeed,
+		"AssociatedWith": solana.PublicKey(ext.AssociatedWith),
+		"AllocatorType":  uint8(ext.Allocator.Type),
+	})
+
+	// Verify this is an ID allocator
+	if ext.Allocator.Type != AllocatorTypeId {
+		t.Fatalf("AllocatorType: want %d (Id), got %d", AllocatorTypeId, ext.Allocator.Type)
+	}
+	if ext.Allocator.IdAllocator == nil {
+		t.Fatal("IdAllocator should not be nil")
+	}
+
+	assertFields(t, meta.Fields, map[string]any{
+		"RangeStart": ext.Allocator.IdAllocator.RangeStart,
+		"RangeEnd":   ext.Allocator.IdAllocator.RangeEnd,
+	})
+
+	// Verify capacity and allocation counting from bitmap
+	assertEq(t, "TotalCapacity", 64, ext.TotalCapacity())
+	assertEq(t, "AllocatedCount", 5, ext.AllocatedCount())
+	assertEq(t, "AvailableCount", 59, ext.AvailableCount())
+}
+
+func TestFixtureResourceExtensionIp(t *testing.T) {
+	data, meta := loadFixture(t, "resource_extension_ip")
+	reader := NewByteReader(data)
+	var ext ResourceExtension
+	DeserializeResourceExtension(reader, &ext)
+
+	assertFields(t, meta.Fields, map[string]any{
+		"AccountType":    uint8(ext.AccountType),
+		"Owner":          solana.PublicKey(ext.Owner),
+		"BumpSeed":       ext.BumpSeed,
+		"AssociatedWith": solana.PublicKey(ext.AssociatedWith),
+		"AllocatorType":  uint8(ext.Allocator.Type),
+	})
+
+	// Verify this is an IP allocator
+	if ext.Allocator.Type != AllocatorTypeIp {
+		t.Fatalf("AllocatorType: want %d (Ip), got %d", AllocatorTypeIp, ext.Allocator.Type)
+	}
+	if ext.Allocator.IpAllocator == nil {
+		t.Fatal("IpAllocator should not be nil")
+	}
+
+	// Verify BaseNet
+	assertEq(t, "BaseNet", "10.100.0.0/24", ext.BaseNetString())
+
+	// Verify capacity and allocation counting from bitmap
+	assertEq(t, "TotalCapacity", 256, ext.TotalCapacity())
+	assertEq(t, "AllocatedCount", 4, ext.AllocatedCount())
+	assertEq(t, "AvailableCount", 252, ext.AvailableCount())
+}
+
 func assertFields(t *testing.T, expected []fieldValue, got map[string]any) {
 	t.Helper()
 	for _, f := range expected {

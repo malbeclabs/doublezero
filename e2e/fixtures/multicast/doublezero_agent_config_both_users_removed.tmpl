@@ -60,7 +60,7 @@ system control-plane
 interface Ethernet2
    mtu 2048
    no switchport
-   ip address 172.16.0.17/31
+   ip address {{.Ethernet2IP}}
    pim ipv4 sparse-mode
    isis enable 1
    isis circuit-type level-2
@@ -73,7 +73,7 @@ interface Ethernet2
 interface Ethernet4
    mtu 2048
    no switchport
-   ip address 172.16.0.28/31
+   ip address {{.Ethernet4IP}}
    pim ipv4 sparse-mode
    isis enable 1
    isis circuit-type level-2
@@ -86,7 +86,7 @@ interface Ethernet4
 interface Ethernet5
    mtu 2048
    no switchport
-   ip address 172.16.0.30/31
+   ip address {{.Ethernet5IP}}
    pim ipv4 sparse-mode
    isis enable 1
    isis circuit-type level-2
@@ -99,7 +99,7 @@ interface Ethernet5
 interface Ethernet6
    mtu 2048
    no switchport
-   ip address 172.16.0.32/31
+   ip address {{.Ethernet6IP}}
    pim ipv4 sparse-mode
    isis enable 1
    isis circuit-type level-2
@@ -120,7 +120,7 @@ interface Loopback256
 !
 interface Vlan4001
    mtu 2048
-   ip address 172.16.0.18/31
+   ip address {{.Vlan4001IP}}
    pim ipv4 sparse-mode
    isis enable 1
    isis circuit-type level-2

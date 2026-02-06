@@ -34,6 +34,7 @@ pub struct DeviceUpdateArgs {
     pub status: Option<DeviceStatus>,
     pub desired_status: Option<DeviceDesiredStatus>,
     pub resource_count: usize,
+    pub reference_count: Option<u32>,
 }
 
 impl fmt::Debug for DeviceUpdateArgs {
@@ -72,6 +73,9 @@ impl fmt::Debug for DeviceUpdateArgs {
             write!(f, "desired_status: {:?}, ", self.desired_status)?;
         }
         write!(f, "resource_count: {:?}, ", self.resource_count)?;
+        if self.reference_count.is_some() {
+            write!(f, "reference_count: {:?}, ", self.reference_count)?;
+        }
         Ok(())
     }
 }
@@ -184,6 +188,9 @@ pub fn process_update_device(
         }
         if let Some(users_count) = value.users_count {
             device.users_count = users_count;
+        }
+        if let Some(reference_count) = value.reference_count {
+            device.reference_count = reference_count;
         }
     }
 

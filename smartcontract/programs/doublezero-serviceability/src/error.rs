@@ -145,8 +145,10 @@ pub enum DoubleZeroError {
     CyoaRequiresPhysical, // variant 69
     #[error("Device can only be removed if it has no interfaces")]
     DeviceHasInterfaces, // variant 70
+    #[error("Access Pass is in use (non-zero connection_count)")]
+    AccessPassInUse, // variant 71
     #[error("Invalid Tunnel Endpoint")]
-    InvalidTunnelEndpoint, // variant 71
+    InvalidTunnelEndpoint, // variant 72
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -223,7 +225,8 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::ImmutableField => ProgramError::Custom(68),
             DoubleZeroError::CyoaRequiresPhysical => ProgramError::Custom(69),
             DoubleZeroError::DeviceHasInterfaces => ProgramError::Custom(70),
-            DoubleZeroError::InvalidTunnelEndpoint => ProgramError::Custom(71),
+            DoubleZeroError::AccessPassInUse => ProgramError::Custom(71),
+            DoubleZeroError::InvalidTunnelEndpoint => ProgramError::Custom(72),
         }
     }
 }
@@ -301,7 +304,8 @@ impl From<u32> for DoubleZeroError {
             68 => DoubleZeroError::ImmutableField,
             69 => DoubleZeroError::CyoaRequiresPhysical,
             70 => DoubleZeroError::DeviceHasInterfaces,
-            71 => DoubleZeroError::InvalidTunnelEndpoint,
+            71 => DoubleZeroError::AccessPassInUse,
+            72 => DoubleZeroError::InvalidTunnelEndpoint,
             _ => DoubleZeroError::Custom(e),
         }
     }

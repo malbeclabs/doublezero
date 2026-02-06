@@ -1,0 +1,61 @@
+{
+  "name": "ResourceExtensionId",
+  "account_type": 12,
+  "fields": [
+    {
+      "name": "AccountType",
+      "value": "12",
+      "typ": "u8"
+    },
+    {
+      "name": "Owner",
+      "value": "Cr2knAhrJA8etkAUXosaa6BEYiSfGCvZmfHHbKc9rbMh",
+      "typ": "pubkey"
+    },
+    {
+      "name": "BumpSeed",
+      "value": "242",
+      "typ": "u8"
+    },
+    {
+      "name": "AssociatedWith",
+      "value": "CuwARfRwBzdNJSHT3K92U1vToj1RyA2UMXbB6Wv9aQ23",
+      "typ": "pubkey"
+    },
+    {
+      "name": "AllocatorType",
+      "value": "1",
+      "typ": "u8"
+    },
+    {
+      "name": "RangeStart",
+      "value": "0",
+      "typ": "u16"
+    },
+    {
+      "name": "RangeEnd",
+      "value": "64",
+      "typ": "u16"
+    },
+    {
+      "name": "FirstFreeIndex",
+      "value": "5",
+      "typ": "u64"
+    },
+    {
+      "name": "TotalCapacity",
+      "value": "64",
+      "typ": "u64"
+    },
+    {
+      "name": "AllocatedCount",
+      "value": "5",
+      "typ": "u64"
+    },
+    {
+      "name": "AvailableCount",
+      "value": "59",
+      "typ": "u64"
+    }
+  ]
+}

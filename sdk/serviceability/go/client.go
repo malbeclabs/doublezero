@@ -36,11 +36,6 @@ type ProgramDataProvider interface {
 	ProgramID() solana.PublicKey
 }
 
-// ProgramDataProvider is implemented by any type that can fetch program data.
-type ProgramDataProvider interface {
-	GetProgramData(ctx context.Context) (*ProgramData, error)
-}
-
 // Client provides read-only access to serviceability program accounts.
 type Client struct {
 	rpc       RPCClient

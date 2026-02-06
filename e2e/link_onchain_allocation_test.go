@@ -44,7 +44,7 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 			ServiceabilityProgramKeypairPath: serviceabilityProgramKeypairPath,
 		},
 		Activator: devnet.ActivatorSpec{
-			OnchainAllocation: true, // Enable on-chain resource allocation
+			OnchainAllocation: devnet.BoolPtr(true), // Enable on-chain resource allocation
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)

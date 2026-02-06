@@ -41,6 +41,23 @@ var knownIncompatibilities = map[string]string{
 	"write/multicast_group_create": "0.8.1",
 }
 
+// =============================================================================
+// PER-ENVIRONMENT CONFIG - Features that vary by environment
+// =============================================================================
+//
+// Some features are only enabled on certain environments. This config controls
+// environment-specific behavior for the compatibility test.
+
+type compatEnvConfig struct {
+	OnchainAllocation bool // Whether to use onchain resource allocation
+}
+
+var compatEnvConfigs = map[string]compatEnvConfig{
+	"devnet":      {OnchainAllocation: true},
+	"testnet":     {OnchainAllocation: true},
+	"mainnet-beta": {OnchainAllocation: false}, // Not yet enabled on mainnet
+}
+
 // isKnownIncompatible checks if a step failure is expected for the given CLI version.
 // Returns true if the step has a known incompatibility and the version is older than
 // the minimum compatible version for that step.
@@ -287,9 +304,11 @@ func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *
 			ServiceabilityProgramKeypairPath: serviceabilityProgramKeypairPath,
 			ServiceabilityProgramID:          programID,
 		},
-		// Use legacy allocation (not onchain) because the cloned state
-		// doesn't have ResourceExtension PDAs for newly created test entities.
-		Activator: devnet.ActivatorSpec{},
+		// Use per-environment config for onchain allocation. Mainnet doesn't have
+		// onchain allocation enabled yet, so we use legacy allocation there.
+		Activator: devnet.ActivatorSpec{
+			OnchainAllocation: devnet.BoolPtr(compatEnvConfigs[cloneEnv].OnchainAllocation),
+		},
 		SkipProgramDeploy: true,
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)

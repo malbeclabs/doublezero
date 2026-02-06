@@ -14,7 +14,12 @@ import (
 
 type ActivatorSpec struct {
 	ContainerImage    string
-	OnchainAllocation bool // When true, activator uses on-chain resource allocation
+	OnchainAllocation *bool // nil = default (enabled), false = explicitly disabled
+}
+
+// BoolPtr returns a pointer to the given bool value.
+func BoolPtr(b bool) *bool {
+	return &b
 }
 
 func (s *ActivatorSpec) Validate() error {
@@ -112,9 +117,9 @@ func (a *Activator) Start(ctx context.Context) error {
 		"DZ_LEDGER_WS":                 a.dn.Ledger.InternalRPCWSURL,
 		"DZ_SERVICEABILITY_PROGRAM_ID": a.dn.Manager.ServiceabilityProgramID,
 	}
-	if a.dn.Spec.Activator.OnchainAllocation {
-		env["DZ_ONCHAIN_ALLOCATION"] = "true"
-	} else {
+	// Only set DZ_ONCHAIN_ALLOCATION=false when explicitly disabled.
+	// Otherwise let the entrypoint default to enabled (matching main's behavior).
+	if a.dn.Spec.Activator.OnchainAllocation != nil && !*a.dn.Spec.Activator.OnchainAllocation {
 		env["DZ_ONCHAIN_ALLOCATION"] = "false"
 	}
 

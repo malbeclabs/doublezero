@@ -47,7 +47,7 @@ func TestE2E_User_AllocationLifecycle(t *testing.T) {
 			ServiceabilityProgramKeypairPath: serviceabilityProgramKeypairPath,
 		},
 		Activator: devnet.ActivatorSpec{
-			OnchainAllocation: true,
+			OnchainAllocation: devnet.BoolPtr(true),
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
@@ -276,7 +276,7 @@ func TestE2E_MulticastGroup_AllocationLifecycle(t *testing.T) {
 			ServiceabilityProgramKeypairPath: serviceabilityProgramKeypairPath,
 		},
 		Activator: devnet.ActivatorSpec{
-			OnchainAllocation: true,
+			OnchainAllocation: devnet.BoolPtr(true),
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
@@ -419,7 +419,7 @@ func TestE2E_MultipleLinks_AllocationLifecycle(t *testing.T) {
 			ServiceabilityProgramKeypairPath: serviceabilityProgramKeypairPath,
 		},
 		Activator: devnet.ActivatorSpec{
-			OnchainAllocation: true,
+			OnchainAllocation: devnet.BoolPtr(true),
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
@@ -616,7 +616,7 @@ func TestE2E_Multicast_ReactivationPreservesAllocations(t *testing.T) {
 			ServiceabilityProgramKeypairPath: serviceabilityProgramKeypairPath,
 		},
 		Activator: devnet.ActivatorSpec{
-			OnchainAllocation: true,
+			OnchainAllocation: devnet.BoolPtr(true),
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
@@ -949,7 +949,7 @@ func TestE2E_LoopbackInterface_AllocationLifecycle(t *testing.T) {
 			ServiceabilityProgramKeypairPath: serviceabilityProgramKeypairPath,
 		},
 		Activator: devnet.ActivatorSpec{
-			OnchainAllocation: true,
+			OnchainAllocation: devnet.BoolPtr(true),
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)

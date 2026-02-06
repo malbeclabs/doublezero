@@ -101,7 +101,19 @@ func ShowIPMrouteCmd() string {
 //             "169.254.0.3": {
 //               "address": "169.254.0.3",
 //               "intf": "Tunnel501",
-//               ...
+//               "creationTime": 1748812548.569936,
+//               "lastRefreshTime": 1748812548.5713866,
+//               "holdTime": 105,
+//               "mode": {
+//                 "mode": "Sparse",
+//                 "borderRouter": false
+//               },
+//               "bfdState": "disabled",
+//               "transport": "datagram",
+//               "detail": false,
+//               "secondaryAddress": [],
+//               "maintenanceReceived": null,
+//               "maintenanceSent": null
 //             }
 //           }
 //         }
@@ -110,17 +122,17 @@ func ShowIPMrouteCmd() string {
 //   }
 // }
 
-// ShowPIMNeighbors represents the top-level VRF-wrapped structure for PIM neighbor output.
+// ShowPIMNeighbors represents the top-level structure containing PIM neighbor details organized by VRF and interface.
 type ShowPIMNeighbors struct {
 	VRFs map[string]PIMNeighborVRF `json:"vrfs"`
 }
 
-// PIMNeighborVRF contains interfaces within a VRF.
+// PIMNeighborVRF holds the interfaces within a VRF that have PIM neighbors.
 type PIMNeighborVRF struct {
 	Interfaces map[string]PIMNeighborInterface `json:"interfaces"`
 }
 
-// PIMNeighborInterface contains neighbors on an interface.
+// PIMNeighborInterface holds the PIM neighbors on a specific interface.
 type PIMNeighborInterface struct {
 	Neighbors map[string]PIMNeighborDetail `json:"neighbors"`
 }

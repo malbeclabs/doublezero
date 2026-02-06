@@ -45,6 +45,9 @@ doublezero-config.workspace = true
 doublezero-serviceability.workspace = true
 doublezero-program-common.workspace = true
 
+[features]
+default-mainnet-beta = ["doublezero_sdk/default-mainnet-beta", "doublezero_cli/default-mainnet-beta"]
+
 [dev-dependencies]
 assert_cmd.workspace = true
 ctor.workspace = true

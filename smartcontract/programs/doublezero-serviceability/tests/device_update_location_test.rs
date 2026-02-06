@@ -362,6 +362,7 @@ async fn device_update_location_test() {
             status: None,
             desired_status: None,
             resource_count: 0,
+            reference_count: None,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -404,6 +405,7 @@ async fn device_update_location_test() {
             status: None,
             desired_status: None,
             resource_count: 0,
+            reference_count: None,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),

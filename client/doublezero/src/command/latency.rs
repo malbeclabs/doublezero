@@ -22,6 +22,7 @@ impl LatencyCliCommand {
 
         let devices = client.list_device(ListDeviceCommand)?;
         let latencies = retrieve_latencies(&controller, &devices, false, None).await?;
+
         util::show_output(latencies, self.json)?;
 
         Ok(())

@@ -4,11 +4,16 @@ use doublezero_serviceability::{
     processors::accesspass::{
         check_status::CheckStatusAccessPassArgs, close::CloseAccessPassArgs, set::SetAccessPassArgs,
     },
-    state::accesspass::AccessPassType,
+    state::{
+        accesspass::{AccessPass, AccessPassStatus, AccessPassType},
+        accounttype::AccountType,
+    },
 };
+use solana_program::rent::Rent;
 use solana_program_test::*;
 use solana_sdk::{
-    instruction::AccountMeta, pubkey::Pubkey, signature::Keypair, signer::Signer, system_program,
+    account::Account as SolanaAccount, instruction::AccountMeta, pubkey::Pubkey,
+    signature::Keypair, signer::Signer, system_program,
 };
 use std::net::Ipv4Addr;
 
@@ -263,6 +268,96 @@ async fn test_accesspass() {
     /***********************************************************************************************************************************/
 
     println!("🟢  End test_accesspass");
+}
+
+#[tokio::test]
+async fn test_close_accesspass_rejects_nonzero_connection_count() {
+    // Set up a dedicated ProgramTest so we can pre-seed an AccessPass account
+    let program_id = Pubkey::new_unique();
+
+    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+
+    let client_ip = Ipv4Addr::new(101, 0, 0, 1);
+    let user_payer = Pubkey::new_unique();
+    let (accesspass_pubkey, bump_seed) = get_accesspass_pda(&program_id, &client_ip, &user_payer);
+
+    // Build an AccessPass with connection_count > 0
+    let seeded_accesspass = AccessPass {
+        account_type: AccountType::AccessPass,
+        owner: program_id,
+        bump_seed,
+        accesspass_type: AccessPassType::Prepaid,
+        client_ip,
+        user_payer,
+        last_access_epoch: 0,
+        connection_count: 1,
+        status: AccessPassStatus::Connected,
+        mgroup_pub_allowlist: vec![],
+        mgroup_sub_allowlist: vec![],
+        flags: 0,
+    };
+
+    let accesspass_data = borsh::to_vec(&seeded_accesspass).unwrap();
+    let rent = Rent::default();
+    let lamports = rent.minimum_balance(accesspass_data.len());
+
+    let mut program_test = ProgramTest::new(
+        "doublezero_serviceability",
+        program_id,
+        processor!(doublezero_serviceability::entrypoint::process_instruction),
+    );
+
+    // Pre-seed the AccessPass account owned by the program
+    program_test.add_account(
+        accesspass_pubkey,
+        SolanaAccount {
+            lamports,
+            data: accesspass_data,
+            owner: program_id,
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+
+    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+
+    // Initialize global state so that payer is in the foundation_allowlist
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::InitGlobalState(),
+        vec![
+            AccountMeta::new(program_config_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Attempt to close the seeded AccessPass; this should fail because connection_count != 0
+    let res = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CloseAccessPass(CloseAccessPassArgs {}),
+        vec![
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    assert!(
+        res.is_err(),
+        "CloseAccessPass should fail when connection_count > 0"
+    );
+
+    // The AccessPass account should still exist after the failed close attempt
+    let account_after = banks_client.get_account(accesspass_pubkey).await.unwrap();
+    assert!(account_after.is_some());
 }
 
 #[tokio::test]

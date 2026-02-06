@@ -83,6 +83,18 @@ Options:
 ```
 
 
+## Configuration
+
+The CLI loads configuration from these sources in order:
+
+1. `$DOUBLEZERO_CONFIG_FILE` — env var to override the config file path
+2. `~/.config/doublezero/cli/config.yml` — per-user config
+3. Compiled-in defaults (testnet or mainnet-beta depending on package)
+
+When you run `doublezero config set ...`, settings are written to `~/.config/doublezero/cli/config.yml`.
+
+The `doublezero` package from the `doublezero-testnet` repo defaults to testnet. The `doublezero` package from the `doublezero` (mainnet-beta) repo defaults to mainnet-beta. Both can be overridden via the config file.
+
 # Basic use case
 
 In the following example, two Locations and Exchanges will be created. 

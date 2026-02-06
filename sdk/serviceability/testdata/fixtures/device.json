@@ -1,0 +1,231 @@
+{
+  "name": "Device",
+  "account_type": 5,
+  "fields": [
+    {
+      "name": "AccountType",
+      "value": "5",
+      "typ": "u8"
+    },
+    {
+      "name": "Owner",
+      "value": "5Jq6NhSQCWgh9GhMZJ3aJJhdZdALBoX2NWjqDUrh8VK5",
+      "typ": "pubkey"
+    },
+    {
+      "name": "Index",
+      "value": "7",
+      "typ": "u128"
+    },
+    {
+      "name": "BumpSeed",
+      "value": "250",
+      "typ": "u8"
+    },
+    {
+      "name": "LocationPk",
+      "value": "5NjW2CAV6MBQYxpL4oK2CESrpdj6tkcvxP3iigAgrHyR",
+      "typ": "pubkey"
+    },
+    {
+      "name": "ExchangePk",
+      "value": "5SdufgtZzBg7xewJaJaU6AC65eHsbhiqYFMcDsUga6dm",
+      "typ": "pubkey"
+    },
+    {
+      "name": "DeviceType",
+      "value": "2",
+      "typ": "u8"
+    },
+    {
+      "name": "PublicIp",
+      "value": "203.0.113.1",
+      "typ": "ipv4"
+    },
+    {
+      "name": "Status",
+      "value": "1",
+      "typ": "u8"
+    },
+    {
+      "name": "Code",
+      "value": "dz1",
+      "typ": "string"
+    },
+    {
+      "name": "DzPrefixesLen",
+      "value": "1",
+      "typ": "u32"
+    },
+    {
+      "name": "DzPrefixes0",
+      "value": "10.10.0.0/24",
+      "typ": "networkv4"
+    },
+    {
+      "name": "MetricsPublisherPk",
+      "value": "5WYKKBcet2AqNM4H5oquz5wKLereJepk87fVj4ngHuJ7",
+      "typ": "pubkey"
+    },
+    {
+      "name": "ContributorPk",
+      "value": "5aSixgLjmrfYn3BFbK7Mt1gYbfRR1bvehyyPEG6g1hxT",
+      "typ": "pubkey"
+    },
+    {
+      "name": "MgmtVrf",
+      "value": "mgmt",
+      "typ": "string"
+    },
+    {
+      "name": "InterfacesLen",
+      "value": "2",
+      "typ": "u32"
+    },
+    {
+      "name": "Interface0Version",
+      "value": "0",
+      "typ": "u8"
+    },
+    {
+      "name": "Interface0Status",
+      "value": "3",
+      "typ": "u8"
+    },
+    {
+      "name": "Interface0Name",
+      "value": "Loopback0",
+      "typ": "string"
+    },
+    {
+      "name": "Interface0InterfaceType",
+      "value": "1",
+      "typ": "u8"
+    },
+    {
+      "name": "Interface0LoopbackType",
+      "value": "1",
+      "typ": "u8"
+    },
+    {
+      "name": "Interface0VlanId",
+      "value": "0",
+      "typ": "u16"
+    },
+    {
+      "name": "Interface0IpNet",
+      "value": "10.0.0.1/32",
+      "typ": "networkv4"
+    },
+    {
+      "name": "Interface0NodeSegmentIdx",
+      "value": "100",
+      "typ": "u16"
+    },
+    {
+      "name": "Interface0UserTunnelEndpoint",
+      "value": "false",
+      "typ": "bool"
+    },
+    {
+      "name": "Interface1Version",
+      "value": "1",
+      "typ": "u8"
+    },
+    {
+      "name": "Interface1Status",
+      "value": "3",
+      "typ": "u8"
+    },
+    {
+      "name": "Interface1Name",
+      "value": "Ethernet1",
+      "typ": "string"
+    },
+    {
+      "name": "Interface1InterfaceType",
+      "value": "2",
+      "typ": "u8"
+    },
+    {
+      "name": "Interface1InterfaceCYOA",
+      "value": "1",
+      "typ": "u8"
+    },
+    {
+      "name": "Interface1InterfaceDIA",
+      "value": "1",
+      "typ": "u8"
+    },
+    {
+      "name": "Interface1LoopbackType",
+      "value": "0",
+      "typ": "u8"
+    },
+    {
+      "name": "Interface1Bandwidth",
+      "value": "10000000000",
+      "typ": "u64"
+    },
+    {
+      "name": "Interface1Cir",
+      "value": "5000000000",
+      "typ": "u64"
+    },
+    {
+      "name": "Interface1Mtu",
+      "value": "9000",
+      "typ": "u16"
+    },
+    {
+      "name": "Interface1RoutingMode",
+      "value": "1",
+      "typ": "u8"
+    },
+    {
+      "name": "Interface1VlanId",
+      "value": "100",
+      "typ": "u16"
+    },
+    {
+      "name": "Interface1IpNet",
+      "value": "172.16.0.1/30",
+      "typ": "networkv4"
+    },
+    {
+      "name": "Interface1NodeSegmentIdx",
+      "value": "200",
+      "typ": "u16"
+    },
+    {
+      "name": "Interface1UserTunnelEndpoint",
+      "value": "true",
+      "typ": "bool"
+    },
+    {
+      "name": "ReferenceCount",
+      "value": "12",
+      "typ": "u32"
+    },
+    {
+      "name": "UsersCount",
+      "value": "5",
+      "typ": "u16"
+    },
+    {
+      "name": "MaxUsers",
+      "value": "100",
+      "typ": "u16"
+    },
+    {
+      "name": "DeviceHealth",
+      "value": "3",
+      "typ": "u8"
+    },
+    {
+      "name": "DesiredStatus",
+      "value": "1",
+      "typ": "u8"
+    }
+  ]
+}

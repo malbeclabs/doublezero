@@ -218,7 +218,7 @@ impl fmt::Display for User {
             &self.dz_ip,
             self.tunnel_id,
             &self.tunnel_net,
-            self.status
+            self.status,
         )
     }
 }
@@ -305,12 +305,49 @@ impl Validate for User {
 }
 
 impl User {
+    // ============================================================
+    // Capability helper methods
+    // These derive user capabilities from actual state rather than
+    // relying on UserType categorization. This enables users to have
+    // multiple tunnel types concurrently (unicast + multicast).
+    // ============================================================
+
+    pub fn has_unicast_tunnel(&self) -> bool {
+        self.tunnel_id != 0
+    }
+
+    pub fn has_allocated_dz_ip(&self) -> bool {
+        self.dz_ip != Ipv4Addr::UNSPECIFIED && self.dz_ip != self.client_ip
+    }
+
+    pub fn is_publisher(&self) -> bool {
+        !self.publishers.is_empty()
+    }
+
+    pub fn is_subscriber(&self) -> bool {
+        !self.subscribers.is_empty()
+    }
+
+    pub fn is_multicast_participant(&self) -> bool {
+        self.is_publisher() || self.is_subscriber()
+    }
+
+    pub fn needs_allocated_dz_ip(&self) -> bool {
+        match self.user_type {
+            UserType::IBRLWithAllocatedIP | UserType::EdgeFiltering => true,
+            UserType::IBRL => false,
+            UserType::Multicast => self.is_publisher(),
+        }
+    }
+
+    pub fn needs_multicast(&self) -> bool {
+        self.is_subscriber()
+    }
+
     pub fn get_multicast_groups(&self) -> Vec<Pubkey> {
         let mut groups: Vec<Pubkey> = vec![];
 
-        // Add publishers first
         groups.extend(self.publishers.iter().cloned());
-
         // Add subscribers that aren't already in the list
         for sub in &self.subscribers {
             if !groups.contains(sub) {
@@ -575,5 +612,206 @@ mod tests {
         let err = val.validate();
         assert!(err.is_err());
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidTunnelId);
+    }
+
+    // ============================================================
+    // Capability helper method tests
+    // ============================================================
+
+    /// Creates a test user with default values for capability helper tests
+    fn create_test_user() -> User {
+        User {
+            account_type: AccountType::User,
+            owner: Pubkey::new_unique(),
+            index: 1,
+            bump_seed: 1,
+            tenant_pk: Pubkey::default(),
+            user_type: UserType::IBRL,
+            device_pk: Pubkey::new_unique(),
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: [192, 168, 1, 1].into(),
+            dz_ip: [192, 168, 1, 1].into(),
+            tunnel_id: 0,
+            tunnel_net: NetworkV4::default(),
+            status: UserStatus::Pending,
+            publishers: vec![],
+            subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
+        }
+    }
+
+    #[test]
+    fn test_has_unicast_tunnel() {
+        let mut user = create_test_user();
+        user.tunnel_id = 0;
+        assert!(!user.has_unicast_tunnel());
+
+        user.tunnel_id = 100;
+        assert!(user.has_unicast_tunnel());
+    }
+
+    #[test]
+    fn test_has_allocated_dz_ip() {
+        let mut user = create_test_user();
+        user.client_ip = [192, 168, 1, 1].into();
+        user.dz_ip = Ipv4Addr::UNSPECIFIED;
+        // UNSPECIFIED dz_ip means no allocation
+        assert!(!user.has_allocated_dz_ip());
+
+        // Same as client_ip means no allocation
+        user.dz_ip = [192, 168, 1, 1].into();
+        assert!(!user.has_allocated_dz_ip());
+
+        // Different from client_ip means allocated
+        user.dz_ip = [10, 0, 0, 1].into();
+        assert!(user.has_allocated_dz_ip());
+    }
+
+    #[test]
+    fn test_is_publisher() {
+        let mut user = create_test_user();
+        user.publishers = vec![];
+        assert!(!user.is_publisher());
+
+        user.publishers.push(Pubkey::new_unique());
+        assert!(user.is_publisher());
+    }
+
+    #[test]
+    fn test_is_subscriber() {
+        let mut user = create_test_user();
+        user.subscribers = vec![];
+        assert!(!user.is_subscriber());
+
+        user.subscribers.push(Pubkey::new_unique());
+        assert!(user.is_subscriber());
+    }
+
+    #[test]
+    fn test_needs_allocated_dz_ip() {
+        let mut user = create_test_user();
+
+        // IBRL type does not need allocated IP
+        user.user_type = UserType::IBRL;
+        assert!(!user.needs_allocated_dz_ip());
+
+        // IBRLWithAllocatedIP needs allocated IP
+        user.user_type = UserType::IBRLWithAllocatedIP;
+        assert!(user.needs_allocated_dz_ip());
+
+        // EdgeFiltering needs allocated IP
+        user.user_type = UserType::EdgeFiltering;
+        assert!(user.needs_allocated_dz_ip());
+
+        // Multicast without publishers does not need allocated IP
+        user.user_type = UserType::Multicast;
+        user.publishers = vec![];
+        assert!(!user.needs_allocated_dz_ip());
+
+        // Multicast with publishers needs allocated IP
+        user.publishers.push(Pubkey::new_unique());
+        assert!(user.needs_allocated_dz_ip());
+    }
+
+    #[test]
+    fn test_needs_multicast() {
+        let mut user = create_test_user();
+
+        // User without subscribers does not need multicast
+        user.subscribers = vec![];
+        assert!(!user.needs_multicast());
+
+        // User with subscribers needs multicast
+        user.subscribers.push(Pubkey::new_unique());
+        assert!(user.needs_multicast());
+
+        // This applies regardless of user type
+        user.user_type = UserType::IBRL;
+        assert!(user.needs_multicast());
+
+        user.user_type = UserType::IBRLWithAllocatedIP;
+        assert!(user.needs_multicast());
+
+        user.user_type = UserType::Multicast;
+        assert!(user.needs_multicast());
+
+        user.user_type = UserType::EdgeFiltering;
+        assert!(user.needs_multicast());
+    }
+
+    #[test]
+    fn test_is_multicast_participant() {
+        let mut user = create_test_user();
+        user.publishers = vec![];
+        user.subscribers = vec![];
+
+        // No multicast group membership
+        assert!(!user.is_multicast_participant());
+
+        // User as publisher to one group (only allowed config)
+        let mcast_group = Pubkey::new_unique();
+        user.publishers.push(mcast_group);
+        assert!(user.is_multicast_participant());
+
+        // Reset and test as subscriber to one group (only allowed config)
+        user.publishers = vec![];
+        user.subscribers.push(mcast_group);
+        assert!(user.is_multicast_participant());
+    }
+
+    #[test]
+    fn test_needs_multicast_publishers_do_not_trigger() {
+        // Verify that publishers alone do NOT trigger needs_multicast()
+        // This is intentional: needs_multicast() only checks subscribers because
+        // publishers send traffic TO multicast groups but don't need to receive
+        // multicast traffic themselves (unless they're also subscribers)
+        let mut user = create_test_user();
+        user.publishers = vec![Pubkey::new_unique()];
+        user.subscribers = vec![];
+
+        // Publisher without subscribers does NOT need multicast
+        assert!(!user.needs_multicast());
+
+        // This applies regardless of user type
+        user.user_type = UserType::Multicast;
+        assert!(!user.needs_multicast());
+
+        user.user_type = UserType::IBRL;
+        assert!(!user.needs_multicast());
+
+        // But if they're also a subscriber, they DO need multicast
+        user.subscribers.push(Pubkey::new_unique());
+        assert!(user.needs_multicast());
+    }
+
+    #[test]
+    fn test_has_allocated_dz_ip_edge_cases() {
+        let mut user = create_test_user();
+
+        // Edge case 1: dz_ip is explicitly UNSPECIFIED (0.0.0.0)
+        user.client_ip = Ipv4Addr::new(1, 2, 3, 4);
+        user.dz_ip = Ipv4Addr::UNSPECIFIED;
+        assert!(!user.has_allocated_dz_ip());
+
+        // Edge case 2: both client_ip and dz_ip are UNSPECIFIED
+        user.client_ip = Ipv4Addr::UNSPECIFIED;
+        user.dz_ip = Ipv4Addr::UNSPECIFIED;
+        assert!(!user.has_allocated_dz_ip());
+
+        // Edge case 3: client_ip is UNSPECIFIED but dz_ip is set
+        // This is an unusual state but should return true (dz_ip != client_ip)
+        user.client_ip = Ipv4Addr::UNSPECIFIED;
+        user.dz_ip = Ipv4Addr::new(10, 0, 0, 1);
+        assert!(user.has_allocated_dz_ip());
+
+        // Edge case 4: both are the same non-UNSPECIFIED IP (no allocation)
+        user.client_ip = Ipv4Addr::new(8, 8, 8, 8);
+        user.dz_ip = Ipv4Addr::new(8, 8, 8, 8);
+        assert!(!user.has_allocated_dz_ip());
+
+        // Edge case 5: different IPs, both non-UNSPECIFIED (allocated)
+        user.client_ip = Ipv4Addr::new(8, 8, 8, 8);
+        user.dz_ip = Ipv4Addr::new(10, 0, 0, 1);
+        assert!(user.has_allocated_dz_ip());
     }
 }

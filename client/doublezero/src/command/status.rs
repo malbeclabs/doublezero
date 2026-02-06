@@ -11,6 +11,8 @@ use doublezero_sdk::commands::{
     user::list::ListUserCommand,
 };
 use serde::{Deserialize, Serialize};
+use solana_sdk::pubkey::Pubkey;
+use std::{net::Ipv4Addr, str::FromStr};
 use tabled::Tabled;
 
 #[derive(Args, Debug)]
@@ -59,41 +61,76 @@ impl StatusCliCommand {
         let status_responses = controller.status().await?;
         let mut responses = Vec::with_capacity(status_responses.len());
         for response in &status_responses {
-            let mut current_device = None;
+            let mut current_device: Option<Pubkey> = None;
             let mut metro = None;
             let user = users
                 .iter()
-                .find(|(_, u)| Some(u.dz_ip.to_string()) == response.doublezero_ip)
+                .find(|(_, u)| {
+                    let user_type_matches = response
+                        .user_type
+                        .as_ref()
+                        .map(|t| u.user_type.to_string() == *t)
+                        .unwrap_or(false);
+                    if !user_type_matches {
+                        return false;
+                    }
+                    // Match by dz_ip if doublezero_ip is present
+                    if let Some(ref dz_ip) = response.doublezero_ip {
+                        if !dz_ip.is_empty() {
+                            return u.dz_ip.to_string() == *dz_ip;
+                        }
+                    }
+                    false
+                })
                 .map(|(_, u)| u);
             if let Some(user) = user {
-                current_device = Some(&user.device_pk);
+                current_device = Some(user.device_pk);
                 if let Some(dev) = devices.get(&user.device_pk) {
                     metro = exchanges.get(&dev.exchange_pk).map(|e| e.name.clone());
                 }
-            }
-            let lowest_latency_device =
-                match best_latency(controller, &devices, true, None, current_device).await {
-                    Ok(best) => {
-                        let is_current = user
-                            .map(|u| best.device_pk == u.device_pk.to_string())
-                            .unwrap_or(false);
-                        if self.json
-                            || response.doublezero_status.session_status != "BGP Session Up"
-                        {
-                            best.device_code
-                        } else if is_current || current_device.is_none() {
-                            format!("✅ {}", best.device_code)
-                        } else {
-                            format!("⚠️ {}", best.device_code)
-                        }
+            } else if let Some(ref tunnel_dst) = response.tunnel_dst {
+                // Fallback: match by tunnel_dst (device public IP) for users without dz_ip
+                // This is needed for multicast subscribers who don't have a doublezero_ip
+                if let Ok(tunnel_ip) = Ipv4Addr::from_str(tunnel_dst) {
+                    if let Some((device_pk, dev)) =
+                        devices.iter().find(|(_, d)| d.public_ip == tunnel_ip)
+                    {
+                        current_device = Some(*device_pk);
+                        metro = exchanges.get(&dev.exchange_pk).map(|e| e.name.clone());
                     }
-                    Err(_) => "N/A".to_string(),
-                };
+                }
+            }
+            let lowest_latency_device = match best_latency(
+                controller,
+                &devices,
+                true,
+                None,
+                current_device.as_ref(),
+                &[],
+            )
+            .await
+            {
+                Ok(best) => {
+                    let is_current = current_device
+                        .map(|d| best.device_pk == d.to_string())
+                        .unwrap_or(false);
+                    if self.json || response.doublezero_status.session_status != "BGP Session Up" {
+                        best.device_code
+                    } else if is_current {
+                        format!("✅ {}", best.device_code)
+                    } else if current_device.is_some() {
+                        format!("⚠️ {}", best.device_code)
+                    } else {
+                        best.device_code
+                    }
+                }
+                Err(_) => "N/A".to_string(),
+            };
 
             responses.push(AppendedStatusResponse {
                 response: response.clone(),
                 current_device: current_device
-                    .and_then(|d| devices.get(d))
+                    .and_then(|d| devices.get(&d))
                     .map(|d| d.code.clone())
                     .unwrap_or_else(|| "N/A".to_string()),
                 lowest_latency_device,
@@ -106,6 +143,7 @@ impl StatusCliCommand {
     }
 }
 
+// NOTE: if the client is out of date, there is an error because the client warning will cause the json to be malformed. This was resolved in this PR (https://github.com/malbeclabs/doublezero/pull/2807) but the global monitor and maybe other things will break so these tests capture the expected format. The json response should be fixed sooner than later.
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -247,9 +285,9 @@ mod tests {
                 device_pk: device1_pk.to_string(),
                 device_code: "device1".to_string(),
                 device_ip: "5.6.7.8".to_string(),
-                min_latency_ns: 5000000,
-                max_latency_ns: 5000000,
-                avg_latency_ns: 5000000,
+                min_latency_ns: 10000000,
+                max_latency_ns: 10000000,
+                avg_latency_ns: 10000000,
                 reachable: true,
             },
             LatencyRecord {
@@ -634,5 +672,293 @@ mod tests {
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].current_device, "device1".to_string());
         assert_eq!(result[0].metro, "metro".to_string());
+    }
+
+    /// Test that multicast subscribers (which have no dz_ip) can still be matched
+    /// to their device via tunnel_dst (device public IP) fallback
+    #[tokio::test]
+    async fn test_status_command_multicast_subscriber_matches_by_tunnel_dst() {
+        let mut mock_command = MockCliCommand::new();
+        let mut mock_controller = MockServiceController::new();
+
+        let mut devices = std::collections::HashMap::<Pubkey, Device>::new();
+        let users = std::collections::HashMap::<Pubkey, User>::new(); // No users - subscriber has no dz_ip
+        let mut exchanges = std::collections::HashMap::<Pubkey, Exchange>::new();
+
+        // Multicast subscriber: has tunnel_dst but no doublezero_ip
+        let status_responses = vec![StatusResponse {
+            doublezero_status: DoubleZeroStatus {
+                session_status: "BGP Session Up".to_string(),
+                last_session_update: Some(1625247600),
+            },
+            tunnel_name: Some("doublezero1".to_string()),
+            tunnel_src: Some("10.10.10.10".to_string()),
+            tunnel_dst: Some("5.6.7.8".to_string()), // Device public IP
+            doublezero_ip: None,                     // Subscribers don't have dz_ip
+            user_type: Some("Multicast".to_string()),
+        }];
+
+        let exchange_pk = Pubkey::new_unique();
+        exchanges.insert(
+            exchange_pk,
+            Exchange {
+                account_type: AccountType::Exchange,
+                owner: Pubkey::default(),
+                index: 0,
+                bump_seed: 0,
+                lat: 0.0,
+                lng: 0.0,
+                bgp_community: 0,
+                unused: 0,
+                status: ExchangeStatus::Activated,
+                code: "met".to_string(),
+                name: "metro".to_string(),
+                reference_count: 0,
+                device1_pk: Pubkey::default(),
+                device2_pk: Pubkey::default(),
+            },
+        );
+
+        let device1_pk = Pubkey::new_unique();
+        devices.insert(
+            device1_pk,
+            Device {
+                account_type: AccountType::Device,
+                owner: Pubkey::default(),
+                index: 0,
+                bump_seed: 0,
+                location_pk: Pubkey::default(),
+                exchange_pk,
+                device_type: DeviceType::Hybrid,
+                public_ip: "5.6.7.8".parse().unwrap(), // Matches tunnel_dst
+                status: DeviceStatus::Activated,
+                code: "device1".to_string(),
+                dz_prefixes: NetworkV4List::default(),
+                metrics_publisher_pk: Pubkey::default(),
+                contributor_pk: Pubkey::default(),
+                mgmt_vrf: "default".to_string(),
+                interfaces: vec![],
+                reference_count: 0,
+                users_count: 64,
+                max_users: 128,
+                device_health: DeviceHealth::ReadyForUsers,
+                desired_status: DeviceDesiredStatus::Activated,
+            },
+        );
+
+        let latencies = vec![LatencyRecord {
+            device_pk: device1_pk.to_string(),
+            device_code: "device1".to_string(),
+            device_ip: "5.6.7.8".to_string(),
+            min_latency_ns: 5000000,
+            max_latency_ns: 5000000,
+            avg_latency_ns: 5000000,
+            reachable: true,
+        }];
+
+        mock_controller
+            .expect_status()
+            .returning(move || Ok(status_responses.clone()));
+        mock_controller
+            .expect_latency()
+            .returning(move || Ok(latencies.clone()));
+        mock_command
+            .expect_get_environment()
+            .return_const(doublezero_config::Environment::Testnet);
+        mock_command
+            .expect_list_device()
+            .with(eq(ListDeviceCommand))
+            .returning({
+                let devices = devices.clone();
+                move |_| Ok(devices.clone())
+            });
+        mock_command
+            .expect_list_user()
+            .with(eq(ListUserCommand))
+            .returning({
+                let users = users.clone();
+                move |_| Ok(users.clone())
+            });
+        mock_command
+            .expect_list_exchange()
+            .with(eq(ListExchangeCommand))
+            .returning({
+                let exchanges = exchanges.clone();
+                move |_| Ok(exchanges.clone())
+            });
+
+        let result = StatusCliCommand { json: true }
+            .command_impl(&mock_command, &mock_controller)
+            .await;
+
+        assert!(result.is_ok());
+        let result = result.unwrap();
+        assert_eq!(result.len(), 1);
+        // Should match device by tunnel_dst even though there's no dz_ip
+        assert_eq!(result[0].current_device, "device1".to_string());
+        assert_eq!(result[0].metro, "metro".to_string());
+        // Should show checkmark since current_device matches lowest_latency_device
+        assert_eq!(result[0].lowest_latency_device, "device1".to_string());
+    }
+
+    /// Test that validates the JSON output format for the status command.
+    /// This test catches breaking changes to the JSON API contract.
+    /// The JSON output is an array of AppendedStatusResponse objects.
+    #[test]
+    fn test_status_json_output_format() {
+        use crate::servicecontroller::DoubleZeroStatus;
+
+        // Create a sample StatusResponse
+        let status_response = StatusResponse {
+            doublezero_status: DoubleZeroStatus {
+                session_status: "BGP Session Up".to_string(),
+                last_session_update: Some(1625247600),
+            },
+            tunnel_name: Some("doublezero1".to_string()),
+            tunnel_src: Some("10.0.0.1".to_string()),
+            tunnel_dst: Some("5.6.7.8".to_string()),
+            doublezero_ip: Some("10.1.2.3".to_string()),
+            user_type: Some("IBRL".to_string()),
+        };
+
+        // Create AppendedStatusResponse
+        let appended_response = AppendedStatusResponse {
+            response: status_response,
+            current_device: "device1".to_string(),
+            lowest_latency_device: "device1".to_string(),
+            metro: "amsterdam".to_string(),
+            network: "Testnet".to_string(),
+        };
+
+        // JSON output is an array of status responses
+        let json_response = vec![appended_response];
+
+        // Serialize to JSON
+        let json_output = serde_json::to_value(&json_response).expect("Failed to serialize");
+
+        // Validate top-level structure is an array
+        assert!(json_output.is_array(), "Response should be an array");
+        assert_eq!(json_output.as_array().unwrap().len(), 1);
+
+        // Validate status entry fields
+        let status = &json_output.as_array().unwrap()[0];
+        assert!(status.get("response").is_some(), "Missing 'response' field");
+        assert!(
+            status.get("current_device").is_some(),
+            "Missing 'current_device' field"
+        );
+        assert!(
+            status.get("lowest_latency_device").is_some(),
+            "Missing 'lowest_latency_device' field"
+        );
+        assert!(status.get("metro").is_some(), "Missing 'metro' field");
+        assert!(status.get("network").is_some(), "Missing 'network' field");
+
+        // Validate response nested fields
+        let response = status.get("response").unwrap();
+        assert!(
+            response.get("doublezero_status").is_some(),
+            "Missing 'doublezero_status' field"
+        );
+        assert!(
+            response.get("tunnel_name").is_some(),
+            "Missing 'tunnel_name' field"
+        );
+        assert!(
+            response.get("tunnel_src").is_some(),
+            "Missing 'tunnel_src' field"
+        );
+        assert!(
+            response.get("tunnel_dst").is_some(),
+            "Missing 'tunnel_dst' field"
+        );
+        assert!(
+            response.get("doublezero_ip").is_some(),
+            "Missing 'doublezero_ip' field"
+        );
+        assert!(
+            response.get("user_type").is_some(),
+            "Missing 'user_type' field"
+        );
+
+        // Validate doublezero_status nested fields
+        let dz_status = response.get("doublezero_status").unwrap();
+        assert!(
+            dz_status.get("session_status").is_some(),
+            "Missing 'session_status' field"
+        );
+        assert!(
+            dz_status.get("last_session_update").is_some(),
+            "Missing 'last_session_update' field"
+        );
+
+        // Validate field values
+        assert_eq!(status.get("current_device").unwrap(), "device1");
+        assert_eq!(status.get("lowest_latency_device").unwrap(), "device1");
+        assert_eq!(status.get("metro").unwrap(), "amsterdam");
+        assert_eq!(status.get("network").unwrap(), "Testnet");
+        assert_eq!(response.get("tunnel_name").unwrap(), "doublezero1");
+        assert_eq!(response.get("tunnel_src").unwrap(), "10.0.0.1");
+        assert_eq!(response.get("tunnel_dst").unwrap(), "5.6.7.8");
+        assert_eq!(response.get("doublezero_ip").unwrap(), "10.1.2.3");
+        assert_eq!(response.get("user_type").unwrap(), "IBRL");
+        assert_eq!(dz_status.get("session_status").unwrap(), "BGP Session Up");
+        assert_eq!(dz_status.get("last_session_update").unwrap(), 1625247600);
+    }
+
+    /// Test JSON output format with null/missing optional fields
+    #[test]
+    fn test_status_json_output_format_with_nulls() {
+        use crate::servicecontroller::DoubleZeroStatus;
+
+        // Create a StatusResponse with None values (e.g., multicast subscriber without dz_ip)
+        let status_response = StatusResponse {
+            doublezero_status: DoubleZeroStatus {
+                session_status: "PIM Adjacency Up".to_string(),
+                last_session_update: None,
+            },
+            tunnel_name: Some("doublezero1".to_string()),
+            tunnel_src: Some("10.0.0.1".to_string()),
+            tunnel_dst: Some("5.6.7.8".to_string()),
+            doublezero_ip: None, // Multicast subscribers don't have dz_ip
+            user_type: Some("Multicast".to_string()),
+        };
+
+        let appended_response = AppendedStatusResponse {
+            response: status_response,
+            current_device: "device1".to_string(),
+            lowest_latency_device: "device1".to_string(),
+            metro: "amsterdam".to_string(),
+            network: "Testnet".to_string(),
+        };
+
+        // JSON output is an array of status responses
+        let json_response = vec![appended_response];
+
+        let json_output = serde_json::to_value(&json_response).expect("Failed to serialize");
+
+        // Validate that null fields are properly serialized
+        let status = &json_output.as_array().unwrap()[0];
+        let response = status.get("response").unwrap();
+
+        // doublezero_ip should be null
+        assert!(
+            response.get("doublezero_ip").is_some(),
+            "doublezero_ip field should exist"
+        );
+        assert!(
+            response.get("doublezero_ip").unwrap().is_null(),
+            "doublezero_ip should be null"
+        );
+
+        // last_session_update should be null
+        let dz_status = response.get("doublezero_status").unwrap();
+        assert!(
+            dz_status.get("last_session_update").unwrap().is_null(),
+            "last_session_update should be null"
+        );
+
+        // user_type should still be present
+        assert_eq!(response.get("user_type").unwrap(), "Multicast");
     }
 }

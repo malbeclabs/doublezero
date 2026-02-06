@@ -886,7 +886,7 @@ func newFakeUDPConn(sw *fakeUDPSwitch, ip string, port int, ifname string) *fake
 		sw:     sw,
 		local:  &net.UDPAddr{IP: net.ParseIP(ip), Port: port},
 		ifname: ifname,
-		in:     make(chan fakeUDPPacket, 1024),
+		in:     make(chan fakeUDPPacket, 8192),
 	}
 	sw.register(c)
 	return c

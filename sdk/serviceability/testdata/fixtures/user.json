@@ -1,0 +1,96 @@
+{
+  "name": "User",
+  "account_type": 7,
+  "fields": [
+    {
+      "name": "AccountType",
+      "value": "7",
+      "typ": "u8"
+    },
+    {
+      "name": "Owner",
+      "value": "7Tk94Yf6oGXYDQYXqSZrwxYwqwEznCn34GcFKinYCEU7",
+      "typ": "pubkey"
+    },
+    {
+      "name": "Index",
+      "value": "200",
+      "typ": "u128"
+    },
+    {
+      "name": "BumpSeed",
+      "value": "248",
+      "typ": "u8"
+    },
+    {
+      "name": "UserType",
+      "value": "3",
+      "typ": "u8"
+    },
+    {
+      "name": "TenantPk",
+      "value": "7XeYi3PBh72Fd6fWLwqJqtJB6womV9swe8v8pv6Xv38T",
+      "typ": "pubkey"
+    },
+    {
+      "name": "DevicePk",
+      "value": "7bYxMY7GawWy2nnUrT6kjp3QMxNYC6yrE1E2L7QXdqno",
+      "typ": "pubkey"
+    },
+    {
+      "name": "CyoaType",
+      "value": "2",
+      "typ": "u8"
+    },
+    {
+      "name": "ClientIp",
+      "value": "198.51.100.10",
+      "typ": "ipv4"
+    },
+    {
+      "name": "DzIp",
+      "value": "10.200.0.1",
+      "typ": "ipv4"
+    },
+    {
+      "name": "TunnelId",
+      "value": "100",
+      "typ": "u16"
+    },
+    {
+      "name": "TunnelNet",
+      "value": "169.254.100.0/30",
+      "typ": "networkv4"
+    },
+    {
+      "name": "Status",
+      "value": "1",
+      "typ": "u8"
+    },
+    {
+      "name": "PublishersLen",
+      "value": "1",
+      "typ": "u32"
+    },
+    {
+      "name": "Publishers0",
+      "value": "7fTN12qMUn1gSUuTMxNCdjndcxwJu45kosXuqJiXMeT9",
+      "typ": "pubkey"
+    },
+    {
+      "name": "SubscribersLen",
+      "value": "1",
+      "typ": "u32"
+    },
+    {
+      "name": "Subscribers0",
+      "value": "7jMmeXZSNcWPrB2RsTdeXfXrsyW5c1BfPjqoLW2X5T7V",
+      "typ": "pubkey"
+    },
+    {
+      "name": "ValidatorPubkey",
+      "value": "7oGBJ2HXGT17Fs9QNxu6RbH68z4rJxHZyc9gqhLWoFmq",
+      "typ": "pubkey"
+    }
+  ]
+}

@@ -69,6 +69,7 @@ type Controller struct {
 	tlsConfig      *tls.Config
 	environment    string
 	deviceLocalASN uint32
+	clickhouse     *ClickhouseWriter
 }
 
 type Option func(*Controller)
@@ -148,6 +149,12 @@ func WithEnvironment(env string) Option {
 func WithDeviceLocalASN(asn uint32) Option {
 	return func(c *Controller) {
 		c.deviceLocalASN = asn
+	}
+}
+
+func WithClickhouse(cw *ClickhouseWriter) Option {
+	return func(c *Controller) {
+		c.clickhouse = cw
 	}
 }
 
@@ -526,6 +533,13 @@ func (c *Controller) Run(ctx context.Context) error {
 		http.ListenAndServe("127.0.0.1:2112", mux) //nolint
 	}()
 
+	if c.clickhouse != nil {
+		if err := c.clickhouse.CreateTable(ctx); err != nil {
+			return fmt.Errorf("error creating clickhouse table: %w", err)
+		}
+		go c.clickhouse.Run(ctx)
+	}
+
 	// start on-chain fetcher
 	go func() {
 		c.log.Info("starting fetch of on-chain data", "program-id", c.serviceability.ProgramID())
@@ -697,6 +711,12 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 	resp := &pb.ConfigResponse{Config: config}
 	getConfigMsgSize.Observe(float64(proto.Size(resp)))
 	getConfigDuration.Observe(float64(time.Since(reqStart).Seconds()))
+	if c.clickhouse != nil {
+		c.clickhouse.Record(getConfigEvent{
+			Timestamp:    reqStart,
+			DevicePubkey: req.GetPubkey(),
+		})
+	}
 	return resp, nil
 }
 

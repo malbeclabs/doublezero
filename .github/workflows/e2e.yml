@@ -36,4 +36,7 @@ jobs:
       - name: build
         run: make build
       - name: test
-        run: make test verbose
+        # Limit parallelism to avoid overwhelming Docker when multiple tests
+        # start ledger containers simultaneously (each uses ~2GB memory).
+        # The HTTP wait strategy helps, but Docker API can still bottleneck.
+        run: make test verbose parallel=12

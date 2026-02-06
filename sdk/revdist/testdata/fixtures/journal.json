@@ -1,0 +1,37 @@
+{
+  "name": "Journal",
+  "struct_size": 64,
+  "discriminator_hex": "f97c5314a23e4309",
+  "fields": [
+    {
+      "name": "BumpSeed",
+      "value": "255",
+      "typ": "u8"
+    },
+    {
+      "name": "TotalSOLBalance",
+      "value": "5000000000",
+      "typ": "u64"
+    },
+    {
+      "name": "Total2ZBalance",
+      "value": "10000000",
+      "typ": "u64"
+    },
+    {
+      "name": "Swap2ZDestinationBalance",
+      "value": "3000000",
+      "typ": "u64"
+    },
+    {
+      "name": "SwappedSOLAmount",
+      "value": "2500000000",
+      "typ": "u64"
+    },
+    {
+      "name": "NextDZEpochToSweepTokens",
+      "value": "50",
+      "typ": "u64"
+    }
+  ]
+}

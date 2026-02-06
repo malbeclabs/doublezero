@@ -20,7 +20,7 @@ builds:
       - linux
     goarch:
       - amd64
-  - id: doublezero-cli
+  - id: doublezero-cli                  # default env = testnet
     builder: rust
     tool: cargo
     binary: doublezero
@@ -30,6 +30,20 @@ builds:
     flags:
       - --package=doublezero
       - --release
+    env:
+      - RUSTFLAGS=-C linker=x86_64-linux-gnu-gcc
+      - BUILD_VERSION={{.Version}}
+  - id: doublezero-cli-mainnet-beta       # default env = mainnet-beta
+    builder: rust
+    tool: cargo
+    binary: doublezero
+    targets:
+      - x86_64-unknown-linux-gnu
+    command: build
+    flags:
+      - --package=doublezero
+      - --release
+      - --features=default-mainnet-beta
     env:
       - RUSTFLAGS=-C linker=x86_64-linux-gnu-gcc
       - BUILD_VERSION={{.Version}}
@@ -67,6 +81,41 @@ nfpms:
       - doublezero-solana
     contents:
       - src: client/doublezerod/cmd/doublezerod/doublezerod.service
+        dst: /usr/lib/systemd/system/doublezerod.service
+    deb:
+      predepends:
+        - adduser
+    overrides:
+      deb:
+          scripts:
+            postinstall: client/packaging/scripts/doublezerod/deb/postinstall.sh
+            preremove: client/packaging/scripts/doublezerod/deb/preremove.sh
+            postremove: client/packaging/scripts/doublezerod/deb/postremove.sh
+      rpm:
+          scripts:
+            postinstall: client/packaging/scripts/doublezerod/rpm/postinstall.sh
+            preremove: client/packaging/scripts/doublezerod/rpm/preremove.sh
+            postremove: client/packaging/scripts/doublezerod/rpm/postremove.sh
+  - id: doublezero-mainnet-beta
+    package_name: doublezero
+    file_name_template: "{{ .PackageName }}-mainnet-beta_{{ .Version }}_{{ .Arch }}"
+    ids: [doublezerod, doublezero-cli-mainnet-beta]
+    vendor: doublezero
+    homepage: doublezero.xyz
+    maintainer: steve <steve@malbeclabs.com>
+    description: |-
+      DoubleZero client and cli
+    license: Apache 2.0
+    formats:
+      - deb
+      - rpm
+    bindir: /usr/bin
+    release: 1
+    section: default
+    dependencies:
+      - doublezero-solana
+    contents:
+      - src: client/doublezerod/cmd/doublezerod/doublezerod.mainnet-beta.service
         dst: /usr/lib/systemd/system/doublezerod.service
     deb:
       predepends:

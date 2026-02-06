@@ -6,27 +6,10 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
-	"strings"
 )
 
 func Build(ctx context.Context, log *slog.Logger, imageName string, dockerfilePath string, contextDir string, verbose bool, args ...string) error {
 	cmd := exec.CommandContext(ctx, "docker", "build", "-t", imageName, "-f", dockerfilePath)
-
-	// Add registry cache if DOCKER_CACHE_REGISTRY is set (e.g., "ghcr.io/malbeclabs/dz-cache")
-	if cacheRegistry := os.Getenv("DOCKER_CACHE_REGISTRY"); cacheRegistry != "" {
-		// Extract image name without registry/tag (e.g., "dz-local/base:dev" -> "base")
-		baseName := imageName
-		if idx := strings.LastIndex(baseName, "/"); idx != -1 {
-			baseName = baseName[idx+1:]
-		}
-		if idx := strings.Index(baseName, ":"); idx != -1 {
-			baseName = baseName[:idx]
-		}
-		cacheRef := cacheRegistry + "/" + baseName + ":cache"
-		cmd.Args = append(cmd.Args, "--cache-from", "type=registry,ref="+cacheRef)
-		cmd.Args = append(cmd.Args, "--cache-to", "type=registry,ref="+cacheRef+",mode=max")
-	}
-
 	cmd.Args = append(cmd.Args, args...)
 	cmd.Args = append(cmd.Args, ".")
 	cmd.Dir = contextDir

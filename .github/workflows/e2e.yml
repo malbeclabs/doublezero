@@ -33,8 +33,6 @@ jobs:
       contents: read
     outputs:
       matrix: ${{ steps.shard.outputs.matrix }}
-    env:
-      DOCKER_CACHE_REGISTRY: ghcr.io/malbeclabs/dz-e2e-cache
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5

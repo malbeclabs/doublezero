@@ -49,7 +49,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y make
       - name: Build images
         working-directory: e2e/
-        run: go run ./cmd/dzctl/main.go build --verbose
+        run: go run ./cmd/dzctl/main.go build
       - name: Push images to registry
         run: |
           docker push ${{ env.DZ_IMAGE_REPO }}/base:${{ env.DZ_IMAGE_TAG }}

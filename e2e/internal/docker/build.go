@@ -13,7 +13,6 @@ func Build(ctx context.Context, log *slog.Logger, imageName string, dockerfilePa
 	cmd.Args = append(cmd.Args, args...)
 	cmd.Args = append(cmd.Args, ".")
 	cmd.Dir = contextDir
-	cmd.Env = append(os.Environ(), "DOCKER_BUILDKIT=1")
 
 	if verbose {
 		log.Debug("--> Executing command", "cmd", cmd.Args)

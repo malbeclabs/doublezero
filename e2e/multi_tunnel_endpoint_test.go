@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/malbeclabs/doublezero/e2e/internal/arista"
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
 	"github.com/stretchr/testify/require"
@@ -313,16 +312,16 @@ func verifyMultipleBGPSessionsOnDevice(t *testing.T, log *slog.Logger, device *d
 
 	// Retry a few times as BGP sessions may take time to establish
 	for attempt := 0; attempt < 10; attempt++ {
-		output, err := arista.ExecCli(ctx, device.ID, "show ip bgp summary vrf vrf1")
+		outputBytes, err := device.Exec(ctx, []string{"Cli", "-c", "show ip bgp summary vrf vrf1"})
 		if err != nil {
 			log.Info("==> BGP summary query failed, retrying", "attempt", attempt, "error", err)
 			time.Sleep(5 * time.Second)
 			continue
 		}
-		lastOutput = output
+		lastOutput = string(outputBytes)
 
 		// Count established sessions (lines with "Estab" state)
-		lines := strings.Split(output, "\n")
+		lines := strings.Split(lastOutput, "\n")
 		establishedCount = 0
 		for _, line := range lines {
 			if strings.Contains(line, "Estab") {

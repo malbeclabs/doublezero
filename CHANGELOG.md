@@ -77,7 +77,6 @@ All notable changes to this project will be documented in this file.
   - Support simultaneous unicast and multicast tunnels in doublezerod
   - Support publishing and subscribing to multiple multicast groups simultaneously
 - CLI
-  - add `version` field to json output so no longer breaks the json output if the version is out of date
   - Support publishing and subscribing a user to multiple multicast groups via `--group` flag
   - Remove single tunnel constraint 
 - SDK

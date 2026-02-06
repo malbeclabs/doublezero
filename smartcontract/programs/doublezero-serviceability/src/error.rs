@@ -145,8 +145,10 @@ pub enum DoubleZeroError {
     CyoaRequiresPhysical, // variant 69
     #[error("Device can only be removed if it has no interfaces")]
     DeviceHasInterfaces, // variant 70
+    #[error("MulticastGroup can only be deleted if it has no active publishers or subscribers")]
+    MulticastGroupNotEmpty, // variant 71
     #[error("Access Pass is in use (non-zero connection_count)")]
-    AccessPassInUse, // variant 71
+    AccessPassInUse, // variant 72
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -223,7 +225,8 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::ImmutableField => ProgramError::Custom(68),
             DoubleZeroError::CyoaRequiresPhysical => ProgramError::Custom(69),
             DoubleZeroError::DeviceHasInterfaces => ProgramError::Custom(70),
-            DoubleZeroError::AccessPassInUse => ProgramError::Custom(71),
+            DoubleZeroError::MulticastGroupNotEmpty => ProgramError::Custom(71),
+            DoubleZeroError::AccessPassInUse => ProgramError::Custom(72),
         }
     }
 }
@@ -301,7 +304,8 @@ impl From<u32> for DoubleZeroError {
             68 => DoubleZeroError::ImmutableField,
             69 => DoubleZeroError::CyoaRequiresPhysical,
             70 => DoubleZeroError::DeviceHasInterfaces,
-            71 => DoubleZeroError::AccessPassInUse,
+            71 => DoubleZeroError::MulticastGroupNotEmpty,
+            72 => DoubleZeroError::AccessPassInUse,
             _ => DoubleZeroError::Custom(e),
         }
     }
@@ -399,6 +403,7 @@ mod tests {
             ImmutableField,
             CyoaRequiresPhysical,
             DeviceHasInterfaces,
+            MulticastGroupNotEmpty,
         ];
         for err in variants {
             let pe: ProgramError = err.clone().into();

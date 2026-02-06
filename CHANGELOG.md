@@ -10,6 +10,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Onchain programs
+  - Serviceability: add reference count validation in DeleteMulticastGroup to prevent deletion when active publishers or subscribers exist
+
 - CLI
   - Add filtering options and desired_status & metrics_publisher_pk field to device and link list commands
   - Added activation check for existing users before subscribing to new groups (#2782)

@@ -11,6 +11,19 @@ concurrency:
 
 env:
   SHARD_COUNT: "4"
+  # Use registry-qualified image names so we can push/pull between jobs
+  DZ_IMAGE_REPO: ghcr.io/malbeclabs/dz-e2e
+  DZ_IMAGE_TAG: ${{ github.sha }}
+  # Individual image refs for the e2e tests
+  DZ_BASE_IMAGE: ghcr.io/malbeclabs/dz-e2e/base:${{ github.sha }}
+  DZ_LEDGER_IMAGE: ghcr.io/malbeclabs/dz-e2e/ledger:${{ github.sha }}
+  DZ_CONTROLLER_IMAGE: ghcr.io/malbeclabs/dz-e2e/controller:${{ github.sha }}
+  DZ_ACTIVATOR_IMAGE: ghcr.io/malbeclabs/dz-e2e/activator:${{ github.sha }}
+  DZ_MANAGER_IMAGE: ghcr.io/malbeclabs/dz-e2e/manager:${{ github.sha }}
+  DZ_FUNDER_IMAGE: ghcr.io/malbeclabs/dz-e2e/funder:${{ github.sha }}
+  DZ_DEVICE_IMAGE: ghcr.io/malbeclabs/dz-e2e/device:${{ github.sha }}
+  DZ_CLIENT_IMAGE: ghcr.io/malbeclabs/dz-e2e/client:${{ github.sha }}
+  DZ_DEVICE_HEALTH_ORACLE_IMAGE: ghcr.io/malbeclabs/dz-e2e/device-health-oracle:${{ github.sha }}
 
 jobs:
   setup:
@@ -36,9 +49,20 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Install make
         run: sudo apt-get update && sudo apt-get install -y make
-      - name: Build and cache images
+      - name: Build images
         working-directory: e2e/
         run: go run ./cmd/dzctl/main.go build --verbose
+      - name: Push images to registry
+        run: |
+          docker push ${{ env.DZ_IMAGE_REPO }}/base:${{ env.DZ_IMAGE_TAG }}
+          docker push ${{ env.DZ_IMAGE_REPO }}/ledger:${{ env.DZ_IMAGE_TAG }}
+          docker push ${{ env.DZ_IMAGE_REPO }}/controller:${{ env.DZ_IMAGE_TAG }}
+          docker push ${{ env.DZ_IMAGE_REPO }}/activator:${{ env.DZ_IMAGE_TAG }}
+          docker push ${{ env.DZ_IMAGE_REPO }}/manager:${{ env.DZ_IMAGE_TAG }}
+          docker push ${{ env.DZ_IMAGE_REPO }}/funder:${{ env.DZ_IMAGE_TAG }}
+          docker push ${{ env.DZ_IMAGE_REPO }}/device:${{ env.DZ_IMAGE_TAG }}
+          docker push ${{ env.DZ_IMAGE_REPO }}/client:${{ env.DZ_IMAGE_TAG }}
+          docker push ${{ env.DZ_IMAGE_REPO }}/device-health-oracle:${{ env.DZ_IMAGE_TAG }}
       - name: Discover tests and distribute across shards
         id: shard
         working-directory: e2e/
@@ -95,11 +119,8 @@ jobs:
     runs-on: doublezero-k8s-ci
     timeout-minutes: 15
     permissions:
-      packages: write
+      packages: read
       contents: read
-    env:
-      BUILDKIT_PROGRESS: plain
-      DOCKER_CACHE_REGISTRY: ghcr.io/malbeclabs/dz-e2e-cache
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -112,16 +133,18 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Install make
-        run: sudo apt-get update && sudo apt-get install -y make
-      - name: build
-        run: go run ./cmd/dzctl/main.go build --verbose
+      - name: Pull pre-built images
+        run: |
+          docker pull ${{ env.DZ_IMAGE_REPO }}/base:${{ env.DZ_IMAGE_TAG }}
+          docker pull ${{ env.DZ_IMAGE_REPO }}/ledger:${{ env.DZ_IMAGE_TAG }}
+          docker pull ${{ env.DZ_IMAGE_REPO }}/controller:${{ env.DZ_IMAGE_TAG }}
+          docker pull ${{ env.DZ_IMAGE_REPO }}/activator:${{ env.DZ_IMAGE_TAG }}
+          docker pull ${{ env.DZ_IMAGE_REPO }}/manager:${{ env.DZ_IMAGE_TAG }}
+          docker pull ${{ env.DZ_IMAGE_REPO }}/funder:${{ env.DZ_IMAGE_TAG }}
+          docker pull ${{ env.DZ_IMAGE_REPO }}/device:${{ env.DZ_IMAGE_TAG }}
+          docker pull ${{ env.DZ_IMAGE_REPO }}/client:${{ env.DZ_IMAGE_TAG }}
+          docker pull ${{ env.DZ_IMAGE_REPO }}/device-health-oracle:${{ env.DZ_IMAGE_TAG }}
       - name: test
-        # Limit parallelism to avoid overwhelming Docker when multiple tests
-        # start ledger containers simultaneously (each uses ~2GB memory).
-        # The HTTP wait strategy helps, but Docker API can still bottleneck.
-        # Uses direct go test instead of make to avoid regex escaping issues
-        # with $, |, () through Make's variable expansion.
         env:
           DZ_E2E_NO_BUILD: "1"
         run: go test -tags=e2e -timeout=20m -parallel=12 -run '${{ matrix.run }}' -v

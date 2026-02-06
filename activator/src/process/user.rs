@@ -1,6 +1,9 @@
 use crate::{
-    activator_metrics::record_device_ip_metrics, idallocator::IDAllocator,
-    ipblockallocator::IPBlockAllocator, processor::DeviceMap, states::devicestate::DeviceState,
+    activator_metrics::record_device_ip_metrics,
+    idallocator::IDAllocator,
+    ipblockallocator::IPBlockAllocator,
+    processor::{DeviceMap, DeviceMapStateless},
+    states::devicestate::{DeviceState, DeviceStateStateless},
 };
 use doublezero_program_common::types::NetworkV4;
 use doublezero_sdk::{
@@ -28,12 +31,11 @@ pub fn process_user_event(
     pubkey: &Pubkey,
     devices: &mut DeviceMap,
     user_tunnel_ips: &mut IPBlockAllocator,
-    publisher_dz_ips: &mut Option<IPBlockAllocator>,
+    publisher_dz_ips: &mut IPBlockAllocator,
     link_ids: &mut IDAllocator,
     user: &User,
     locations: &HashMap<Pubkey, Location>,
     exchanges: &HashMap<Pubkey, Exchange>,
-    use_onchain_allocation: bool,
 ) {
     match user.status {
         // Create User
@@ -110,73 +112,43 @@ pub fn process_user_event(
 
             let need_dz_ip = user.needs_allocated_dz_ip();
 
-            // Determine allocation strategy for dz_ip:
-            // - Multicast publishers: use publisher_dz_ips pool if available, otherwise onchain
-            // - Other types: respect use_onchain_allocation flag
             let is_publisher = user.user_type == UserType::Multicast && !user.publishers.is_empty();
-            let use_onchain_dz_ip = if is_publisher {
-                use_onchain_allocation || publisher_dz_ips.is_none()
-            } else {
-                use_onchain_allocation
-            };
 
-            let dz_ip = if need_dz_ip && !use_onchain_dz_ip {
+            let dz_ip = if need_dz_ip {
                 // Offchain allocation
                 if is_publisher {
                     // Publishers: allocate from global publisher pool
-                    if let Some(ref mut publisher_ips) = publisher_dz_ips {
-                        match publisher_ips.next_available_block(1, 1).map(|net| net.ip()) {
-                            Some(ip) => ip,
-                            None => {
-                                let res = reject_user(
-                                    client,
-                                    pubkey,
-                                    "Error: No available publisher dz_ip to allocate",
-                                );
+                    match publisher_dz_ips
+                        .next_available_block(1, 1)
+                        .map(|net| net.ip())
+                    {
+                        Some(ip) => ip,
+                        None => {
+                            let res = reject_user(
+                                client,
+                                pubkey,
+                                "Error: No available publisher dz_ip to allocate",
+                            );
 
-                                match res {
-                                    Ok(signature) => {
-                                        write!(
-                                            &mut log_msg,
-                                            " Reject(No available publisher dz_ip) Rejected {signature}"
-                                        )
-                                        .unwrap();
-                                    }
-                                    Err(e) => {
-                                        write!(
-                                            &mut log_msg,
-                                            " Reject(No available publisher dz_ip) Error: {e}"
-                                        )
-                                        .unwrap();
-                                    }
+                            match res {
+                                Ok(signature) => {
+                                    write!(
+                                        &mut log_msg,
+                                        " Reject(No available publisher dz_ip) Rejected {signature}"
+                                    )
+                                    .unwrap();
                                 }
-                                info!("{log_msg}");
-                                return;
+                                Err(e) => {
+                                    write!(
+                                        &mut log_msg,
+                                        " Reject(No available publisher dz_ip) Error: {e}"
+                                    )
+                                    .unwrap();
+                                }
                             }
+                            info!("{log_msg}");
+                            return;
                         }
-                    } else {
-                        // Should never happen due to use_onchain_dz_ip check above
-                        let res =
-                            reject_user(client, pubkey, "Error: Publisher dz_ip pool unavailable");
-
-                        match res {
-                            Ok(signature) => {
-                                write!(
-                                    &mut log_msg,
-                                    " Reject(Publisher dz_ip pool unavailable) Rejected {signature}"
-                                )
-                                .unwrap();
-                            }
-                            Err(e) => {
-                                write!(
-                                    &mut log_msg,
-                                    " Reject(Publisher dz_ip pool unavailable) Error: {e}"
-                                )
-                                .unwrap();
-                            }
-                        }
-                        info!("{log_msg}");
-                        return;
                     }
                 } else {
                     // IBRL/EdgeFiltering: allocate from device state
@@ -210,46 +182,25 @@ pub fn process_user_event(
                         }
                     }
                 }
-            } else if need_dz_ip {
-                // Onchain allocation: pass UNSPECIFIED so smart contract allocates
-                Ipv4Addr::UNSPECIFIED
             } else {
                 user.client_ip
             };
 
             write!(&mut log_msg, " tunnel_id: {} dz_ip: {} ", tunnel_id, &dz_ip).unwrap();
 
-            // Activate the user
-            // Force onchain allocation for multicast publishers if no local publisher pool
-            let use_onchain_for_activation =
-                use_onchain_allocation || (is_publisher && publisher_dz_ips.is_none());
-
             let res = ActivateUserCommand {
                 user_pubkey: *pubkey,
-                tunnel_id: if use_onchain_for_activation {
-                    0
-                } else {
-                    tunnel_id
-                },
-                tunnel_net: if use_onchain_for_activation {
-                    NetworkV4::default()
-                } else {
-                    tunnel_net.into()
-                },
+                tunnel_id,
+                tunnel_net: tunnel_net.into(),
                 dz_ip,
-                use_onchain_allocation: use_onchain_for_activation,
+                use_onchain_allocation: false,
                 tunnel_endpoint,
             }
             .execute(client);
 
             match res {
                 Ok(signature) => {
-                    let suffix = if use_onchain_allocation {
-                        " (on-chain)"
-                    } else {
-                        ""
-                    };
-                    write!(&mut log_msg, " Activated{suffix}   {signature}").unwrap();
+                    write!(&mut log_msg, " Activated   {signature}").unwrap();
                     metrics::counter!(
                         "doublezero_activator_state_transition",
                         "state_transition" => "user-pending-to-activated",
@@ -292,71 +243,41 @@ pub fn process_user_event(
             let need_dz_ip = user.needs_allocated_dz_ip();
 
             let is_publisher = user.user_type == UserType::Multicast && !user.publishers.is_empty();
-            let use_onchain_dz_ip = if is_publisher {
-                use_onchain_allocation || publisher_dz_ips.is_none()
-            } else {
-                use_onchain_allocation
-            };
 
             let dz_ip = if need_dz_ip && user.dz_ip == user.client_ip {
-                if use_onchain_dz_ip {
-                    // Onchain allocation: pass UNSPECIFIED so smart contract allocates
-                    Ipv4Addr::UNSPECIFIED
-                } else if is_publisher {
+                if is_publisher {
                     // Publishers: allocate from global publisher pool
-                    if let Some(ref mut publisher_ips) = publisher_dz_ips {
-                        match publisher_ips.next_available_block(1, 1).map(|net| net.ip()) {
-                            Some(ip) => ip,
-                            None => {
-                                let res = reject_user(
-                                    client,
-                                    pubkey,
-                                    "Error: No available publisher dz_ip to allocate",
-                                );
+                    match publisher_dz_ips
+                        .next_available_block(1, 1)
+                        .map(|net| net.ip())
+                    {
+                        Some(ip) => ip,
+                        None => {
+                            let res = reject_user(
+                                client,
+                                pubkey,
+                                "Error: No available publisher dz_ip to allocate",
+                            );
 
-                                match res {
-                                    Ok(signature) => {
-                                        write!(
-                                            &mut log_msg,
-                                            " Reject(No available publisher dz_ip) Rejected {signature}"
-                                        )
-                                        .unwrap();
-                                    }
-                                    Err(e) => {
-                                        write!(
-                                            &mut log_msg,
-                                            " Reject(No available publisher dz_ip) Error: {e}"
-                                        )
-                                        .unwrap();
-                                    }
+                            match res {
+                                Ok(signature) => {
+                                    write!(
+                                        &mut log_msg,
+                                        " Reject(No available publisher dz_ip) Rejected {signature}"
+                                    )
+                                    .unwrap();
                                 }
-                                info!("{log_msg}");
-                                return;
+                                Err(e) => {
+                                    write!(
+                                        &mut log_msg,
+                                        " Reject(No available publisher dz_ip) Error: {e}"
+                                    )
+                                    .unwrap();
+                                }
                             }
+                            info!("{log_msg}");
+                            return;
                         }
-                    } else {
-                        // Should never happen due to use_onchain_dz_ip check above
-                        let res =
-                            reject_user(client, pubkey, "Error: Publisher dz_ip pool unavailable");
-
-                        match res {
-                            Ok(signature) => {
-                                write!(
-                                    &mut log_msg,
-                                    " Reject(Publisher dz_ip pool unavailable) Rejected {signature}"
-                                )
-                                .unwrap();
-                            }
-                            Err(e) => {
-                                write!(
-                                    &mut log_msg,
-                                    " Reject(Publisher dz_ip pool unavailable) Error: {e}"
-                                )
-                                .unwrap();
-                            }
-                        }
-                        info!("{log_msg}");
-                        return;
                     }
                 } else {
                     // Non-publisher: allocate from device state
@@ -406,27 +327,18 @@ pub fn process_user_event(
                     None => return,
                 };
 
-            // Activate the user
-            let use_onchain_for_activation =
-                use_onchain_allocation || (is_publisher && publisher_dz_ips.is_none());
-
             let res = ActivateUserCommand {
                 user_pubkey: *pubkey,
                 tunnel_id: user.tunnel_id,
                 tunnel_net: user.tunnel_net,
                 dz_ip,
-                use_onchain_allocation: use_onchain_for_activation,
+                use_onchain_allocation: false,
                 tunnel_endpoint,
             }
             .execute(client);
             match res {
                 Ok(signature) => {
-                    let suffix = if use_onchain_allocation {
-                        " (on-chain)"
-                    } else {
-                        ""
-                    };
-                    write!(&mut log_msg, "Reactivated{suffix}   {signature}").unwrap();
+                    write!(&mut log_msg, "Reactivated   {signature}").unwrap();
                     // Register the tunnel endpoint as in use for this client
                     device_state.register_tunnel_endpoint(user.client_ip, tunnel_endpoint);
                     metrics::counter!(
@@ -467,26 +379,20 @@ pub fn process_user_event(
                 if user.status == UserStatus::Deleting {
                     let res = CloseAccountUserCommand {
                         pubkey: *pubkey,
-                        use_onchain_deallocation: use_onchain_allocation,
+                        use_onchain_deallocation: false,
                     }
                     .execute(client);
 
                     match res {
                         Ok(signature) => {
-                            if use_onchain_allocation {
-                                write!(&mut log_msg, " Deactivated (onchain) {signature}").unwrap();
-                                // Onchain deallocation: smart contract handles releasing resources
-                            } else {
-                                write!(&mut log_msg, " Deactivated {signature}").unwrap();
-                                // Off-chain: activator tracks local allocations
-                                if user.has_unicast_tunnel() {
-                                    link_ids.unassign(user.tunnel_id);
-                                    user_tunnel_ips.unassign_block(user.tunnel_net.into());
-                                }
-                                deallocate_publisher_dz_ip(user, publisher_dz_ips);
-                                if user.dz_ip != Ipv4Addr::UNSPECIFIED {
-                                    device_state.release(user.dz_ip, user.tunnel_id).unwrap();
-                                }
+                            write!(&mut log_msg, " Deactivated {signature}").unwrap();
+                            if user.has_unicast_tunnel() {
+                                link_ids.unassign(user.tunnel_id);
+                                user_tunnel_ips.unassign_block(user.tunnel_net.into());
+                            }
+                            deallocate_publisher_dz_ip(user, publisher_dz_ips);
+                            if user.dz_ip != Ipv4Addr::UNSPECIFIED {
+                                device_state.release(user.dz_ip, user.tunnel_id).unwrap();
                             }
                             // Release the tunnel endpoint (activator-local state, always needed)
                             if user.has_tunnel_endpoint() {
@@ -510,13 +416,11 @@ pub fn process_user_event(
                         Ok(signature) => {
                             write!(&mut log_msg, " Banned {signature}").unwrap();
 
-                            if !use_onchain_allocation {
-                                if user.has_unicast_tunnel() {
-                                    link_ids.unassign(user.tunnel_id);
-                                    user_tunnel_ips.unassign_block(user.tunnel_net.into());
-                                }
-                                deallocate_publisher_dz_ip(user, publisher_dz_ips);
+                            if user.has_unicast_tunnel() {
+                                link_ids.unassign(user.tunnel_id);
+                                user_tunnel_ips.unassign_block(user.tunnel_net.into());
                             }
+                            deallocate_publisher_dz_ip(user, publisher_dz_ips);
                             if user.dz_ip != Ipv4Addr::UNSPECIFIED {
                                 device_state.release(user.dz_ip, user.tunnel_id).unwrap();
                             }
@@ -586,19 +490,17 @@ fn resolve_tunnel_endpoint(
     }
 }
 
-fn deallocate_publisher_dz_ip(user: &User, publisher_dz_ips: &mut Option<IPBlockAllocator>) {
+fn deallocate_publisher_dz_ip(user: &User, publisher_dz_ips: &mut IPBlockAllocator) {
     if user.user_type == UserType::Multicast
         && user.dz_ip != Ipv4Addr::UNSPECIFIED
         && user.dz_ip != user.client_ip
     {
-        if let Some(ref mut publisher_ips) = publisher_dz_ips {
-            if let Ok(dz_ip_net) = NetworkV4::new(user.dz_ip, 32) {
-                publisher_ips.unassign_block(dz_ip_net.into());
-                info!(
-                    "Deallocated publisher dz_ip {} from global pool",
-                    user.dz_ip
-                );
-            }
+        if let Ok(dz_ip_net) = NetworkV4::new(user.dz_ip, 32) {
+            publisher_dz_ips.unassign_block(dz_ip_net.into());
+            info!(
+                "Deallocated publisher dz_ip {} from global pool",
+                user.dz_ip
+            );
         }
     }
 }
@@ -621,6 +523,224 @@ fn log_reject(
         }
     }
     info!("{log_msg}");
+}
+
+/// Stateless variant of process_user_event for onchain allocation mode.
+/// Does not use any local allocators - all allocation is handled by the smart contract.
+pub fn process_user_event_stateless(
+    client: &dyn DoubleZeroClient,
+    pubkey: &Pubkey,
+    devices: &mut DeviceMapStateless,
+    user: &User,
+) {
+    match user.status {
+        UserStatus::Pending => {
+            let mut log_msg = String::new();
+            write!(
+                &mut log_msg,
+                "Event:User(Pending) {} ({}) ",
+                pubkey, user.client_ip
+            )
+            .unwrap();
+
+            let device_state =
+                match get_or_insert_device_state_stateless(client, pubkey, devices, user) {
+                    Some(ds) => ds,
+                    None => {
+                        // Reject user since we couldn't get their user block
+                        let res = reject_user(client, pubkey, "Error: Device not found");
+                        match res {
+                            Ok(signature) => {
+                                write!(
+                                    &mut log_msg,
+                                    " Reject(Device not found) Rejected {signature}"
+                                )
+                                .unwrap();
+                            }
+                            Err(e) => {
+                                write!(&mut log_msg, " Reject(Device not found) Error: {e}")
+                                    .unwrap();
+                            }
+                        }
+                        info!("{log_msg}");
+                        return;
+                    }
+                };
+
+            write!(&mut log_msg, " for: {}", device_state.device.code).unwrap();
+
+            // Activate the user with zeros - onchain will allocate
+            let res = ActivateUserCommand {
+                user_pubkey: *pubkey,
+                tunnel_id: 0,
+                tunnel_net: NetworkV4::default(),
+                dz_ip: Ipv4Addr::UNSPECIFIED,
+                use_onchain_allocation: true,
+                tunnel_endpoint: user.tunnel_endpoint,
+            }
+            .execute(client);
+
+            match res {
+                Ok(signature) => {
+                    write!(&mut log_msg, " Activated (onchain) {signature}").unwrap();
+                    metrics::counter!(
+                        "doublezero_activator_state_transition",
+                        "state_transition" => "user-pending-to-activated",
+                        "user-pubkey" => pubkey.to_string(),
+                    )
+                    .increment(1);
+                }
+                Err(e) => {
+                    log_error_ignore_invalid_status(&mut log_msg, e);
+                }
+            }
+
+            info!("{log_msg}");
+        }
+        UserStatus::Updating => {
+            let mut log_msg = String::new();
+
+            write!(
+                &mut log_msg,
+                "Event:User(Updating) {} ({}) ",
+                pubkey, user.client_ip
+            )
+            .unwrap();
+
+            let device_state =
+                match get_or_insert_device_state_stateless(client, pubkey, devices, user) {
+                    Some(ds) => ds,
+                    None => return,
+                };
+
+            write!(
+                &mut log_msg,
+                " Activating User: {}, for: {}",
+                &user.client_ip, device_state.device.code
+            )
+            .unwrap();
+
+            // Activate the user - use existing tunnel values from the account
+            let res = ActivateUserCommand {
+                user_pubkey: *pubkey,
+                tunnel_id: user.tunnel_id,
+                tunnel_net: user.tunnel_net,
+                dz_ip: user.dz_ip,
+                use_onchain_allocation: true,
+                tunnel_endpoint: user.tunnel_endpoint,
+            }
+            .execute(client);
+
+            match res {
+                Ok(signature) => {
+                    write!(&mut log_msg, "Reactivated (onchain) {signature}").unwrap();
+                    metrics::counter!(
+                        "doublezero_activator_state_transition",
+                        "state_transition" => "user-updating-to-activated",
+                        "user-pubkey" => pubkey.to_string(),
+                    )
+                    .increment(1);
+                }
+                Err(e) => {
+                    log_error_ignore_invalid_status(&mut log_msg, e);
+                }
+            }
+
+            info!("{log_msg}");
+        }
+        UserStatus::Deleting | UserStatus::PendingBan => {
+            let mut log_msg = String::new();
+
+            write!(
+                &mut log_msg,
+                "Event:User(Deleting) {} ({}) ",
+                pubkey, user.client_ip
+            )
+            .unwrap();
+
+            if let Some(device_state) = devices.get_mut(&user.device_pk) {
+                write!(
+                    &mut log_msg,
+                    "for {} tunnel_net: {} tunnel_id: {} dz_ip: {}",
+                    device_state.device.code, &user.tunnel_net, user.tunnel_id, &user.dz_ip
+                )
+                .unwrap();
+
+                if user.status == UserStatus::Deleting {
+                    let res = CloseAccountUserCommand {
+                        pubkey: *pubkey,
+                        use_onchain_deallocation: true,
+                    }
+                    .execute(client);
+
+                    match res {
+                        Ok(signature) => {
+                            write!(&mut log_msg, " Deactivated (onchain) {signature}").unwrap();
+                            // No local deallocation needed - onchain handles it
+
+                            metrics::counter!(
+                                "doublezero_activator_state_transition",
+                                "state_transition" => "user-deleting-to-deactivated",
+                                "user-pubkey" => pubkey.to_string(),
+                            )
+                            .increment(1);
+                        }
+                        Err(e) => warn!("Error: {e}"),
+                    }
+                } else if user.status == UserStatus::PendingBan {
+                    let res = BanUserCommand { pubkey: *pubkey }.execute(client);
+
+                    match res {
+                        Ok(signature) => {
+                            write!(&mut log_msg, " Banned (onchain) {signature}").unwrap();
+                            // No local deallocation needed - onchain handles it
+
+                            metrics::counter!(
+                                "doublezero_activator_state_transition",
+                                "state_transition" => "user-pending-ban-to-banned",
+                                "user-pubkey" => pubkey.to_string(),
+                            )
+                            .increment(1);
+                        }
+                        Err(e) => {
+                            write!(&mut log_msg, "Error {e}").unwrap();
+                        }
+                    }
+                }
+            }
+
+            info!("{log_msg}");
+        }
+        _ => {}
+    }
+}
+
+fn get_or_insert_device_state_stateless<'a>(
+    client: &dyn DoubleZeroClient,
+    _pubkey: &Pubkey,
+    devices: &'a mut DeviceMapStateless,
+    user: &User,
+) -> Option<&'a mut DeviceStateStateless> {
+    match devices.entry(user.device_pk) {
+        Entry::Occupied(entry) => Some(entry.into_mut()),
+        Entry::Vacant(entry) => {
+            let res = GetDeviceCommand {
+                pubkey_or_code: user.device_pk.to_string(),
+            }
+            .execute(client);
+
+            match res {
+                Ok((_, device)) => {
+                    info!(
+                        "Add Device: {} public_ip: {} dz_prefixes: {} ",
+                        device.code, &device.public_ip, &device.dz_prefixes,
+                    );
+                    Some(entry.insert(DeviceStateStateless::new(&device)))
+                }
+                Err(_) => None,
+            }
+        }
+    }
 }
 
 fn log_error_ignore_invalid_status(log_msg: &mut String, e: eyre::ErrReport) {
@@ -717,6 +837,7 @@ mod tests {
         metrics::with_local_recorder(&recorder, || {
             let mut seq = Sequence::new();
             let mut user_tunnel_ips = IPBlockAllocator::new("10.0.0.0/16".parse().unwrap());
+            let mut publisher_dz_ips = IPBlockAllocator::new("148.51.120.0/21".parse().unwrap());
             let mut link_ids = IDAllocator::new(100, vec![100, 101, 102]);
             let mut client = create_test_client();
 
@@ -843,12 +964,11 @@ mod tests {
                 &user_pubkey,
                 &mut devices,
                 &mut user_tunnel_ips,
-                &mut None, // publisher_dz_ips
+                &mut publisher_dz_ips,
                 &mut link_ids,
                 &user,
                 &locations,
                 &exchanges,
-                false, // use_onchain_allocation
             );
 
             assert!(!user_tunnel_ips.assigned_ips.is_empty());
@@ -1043,8 +1163,7 @@ mod tests {
             let locations = HashMap::<Pubkey, Location>::new();
             let exchanges = HashMap::<Pubkey, Exchange>::new();
 
-            let mut publisher_dz_ips =
-                Some(IPBlockAllocator::new("148.51.120.0/21".parse().unwrap()));
+            let mut publisher_dz_ips = IPBlockAllocator::new("148.51.120.0/21".parse().unwrap());
 
             process_user_event(
                 &client,
@@ -1056,7 +1175,6 @@ mod tests {
                 &user,
                 &locations,
                 &exchanges,
-                false, // use_onchain_allocation
             );
 
             assert!(!user_tunnel_ips.assigned_ips.is_empty());
@@ -1102,6 +1220,7 @@ mod tests {
         metrics::with_local_recorder(&recorder, || {
             let mut seq = Sequence::new();
             let mut user_tunnel_ips = IPBlockAllocator::new("10.0.0.0/32".parse().unwrap());
+            let mut publisher_dz_ips = IPBlockAllocator::new("148.51.120.0/21".parse().unwrap());
             let mut link_ids = IDAllocator::new(100, vec![100, 101, 102]);
             let mut client = create_test_client();
 
@@ -1157,12 +1276,11 @@ mod tests {
                 &user_pubkey,
                 &mut devices,
                 &mut user_tunnel_ips,
-                &mut None, // publisher_dz_ips
+                &mut publisher_dz_ips,
                 &mut link_ids,
                 &user,
                 &locations,
                 &exchanges,
-                false, // use_onchain_allocation
             );
 
             let mut snapshot = crate::test_helpers::MetricsSnapshot::new(snapshotter.snapshot());
@@ -1187,6 +1305,7 @@ mod tests {
         metrics::with_local_recorder(&recorder, || {
             let mut seq = Sequence::new();
             let mut user_tunnel_ips = IPBlockAllocator::new("10.0.0.0/32".parse().unwrap());
+            let mut publisher_dz_ips = IPBlockAllocator::new("148.51.120.0/21".parse().unwrap());
             let mut link_ids = IDAllocator::new(100, vec![100, 101, 102]);
             let mut client = create_test_client();
 
@@ -1271,12 +1390,11 @@ mod tests {
                 &user_pubkey,
                 &mut devices,
                 &mut user_tunnel_ips,
-                &mut None, // publisher_dz_ips
+                &mut publisher_dz_ips,
                 &mut link_ids,
                 &user,
                 &locations,
                 &exchanges,
-                false, // use_onchain_allocation
             );
 
             let mut snapshot = crate::test_helpers::MetricsSnapshot::new(snapshotter.snapshot());
@@ -1301,6 +1419,7 @@ mod tests {
         metrics::with_local_recorder(&recorder, || {
             let mut seq = Sequence::new();
             let mut user_tunnel_ips = IPBlockAllocator::new("10.0.0.0/32".parse().unwrap());
+            let mut publisher_dz_ips = IPBlockAllocator::new("148.51.120.0/21".parse().unwrap());
             let mut link_ids = IDAllocator::new(100, vec![100, 101, 102]);
             let mut client = create_test_client();
 
@@ -1382,12 +1501,11 @@ mod tests {
                 &user_pubkey,
                 &mut devices,
                 &mut user_tunnel_ips,
-                &mut None, // publisher_dz_ips
+                &mut publisher_dz_ips,
                 &mut link_ids,
                 &user,
                 &locations,
                 &exchanges,
-                false, // use_onchain_allocation
             );
 
             let mut snapshot = crate::test_helpers::MetricsSnapshot::new(snapshotter.snapshot());
@@ -1420,6 +1538,7 @@ mod tests {
             let mut seq = Sequence::new();
             let mut devices = HashMap::new();
             let mut user_tunnel_ips = IPBlockAllocator::new("10.0.0.0/16".parse().unwrap());
+            let mut publisher_dz_ips = IPBlockAllocator::new("148.51.120.0/21".parse().unwrap());
             let mut link_ids = IDAllocator::new(100, vec![100, 101, 102]);
             let mut client = create_test_client();
 
@@ -1494,12 +1613,11 @@ mod tests {
                 &user_pubkey,
                 &mut devices,
                 &mut user_tunnel_ips,
-                &mut None, // publisher_dz_ips
+                &mut publisher_dz_ips,
                 &mut link_ids,
                 &user,
                 &locations,
                 &exchanges,
-                false, // use_onchain_allocation
             );
 
             assert!(!link_ids.assigned.contains(&102));
@@ -1587,17 +1705,15 @@ mod tests {
     /// causing publisher IPs to leak on every connect/disconnect cycle.
     #[test]
     fn test_publisher_dz_ip_deallocated_on_delete() {
-        let mut publisher_dz_ips = Some(IPBlockAllocator::new("148.51.120.0/21".parse().unwrap()));
+        let mut publisher_dz_ips = IPBlockAllocator::new("148.51.120.0/21".parse().unwrap());
 
         // Allocate a publisher IP (simulates what happens during Pending → Activated)
         let allocated_ip = publisher_dz_ips
-            .as_mut()
-            .unwrap()
             .next_available_block(1, 1)
             .map(|net| net.ip())
             .unwrap();
         assert_eq!(allocated_ip, Ipv4Addr::new(148, 51, 120, 1));
-        assert!(publisher_dz_ips.as_ref().unwrap().assigned_ips[1]);
+        assert!(publisher_dz_ips.assigned_ips[1]);
 
         // Simulate the user at deletion time: Multicast type, dz_ip set,
         // but publishers is empty (smartcontract requires this before Deleting).
@@ -1625,14 +1741,12 @@ mod tests {
         deallocate_publisher_dz_ip(&deleting_user, &mut publisher_dz_ips);
 
         assert!(
-            !publisher_dz_ips.as_ref().unwrap().assigned_ips[1],
+            !publisher_dz_ips.assigned_ips[1],
             "publisher dz_ip should be deallocated after user deletion"
         );
 
         // Re-allocate — should get the same IP back since it was freed
         let reallocated_ip = publisher_dz_ips
-            .as_mut()
-            .unwrap()
             .next_available_block(1, 1)
             .map(|net| net.ip())
             .unwrap();
@@ -1646,12 +1760,10 @@ mod tests {
     /// and for users whose dz_ip matches client_ip (subscribers).
     #[test]
     fn test_publisher_dz_ip_deallocation_skipped_for_non_publishers() {
-        let mut publisher_dz_ips = Some(IPBlockAllocator::new("148.51.120.0/21".parse().unwrap()));
+        let mut publisher_dz_ips = IPBlockAllocator::new("148.51.120.0/21".parse().unwrap());
 
         // Allocate an IP so we can verify it's NOT freed
         let allocated_ip = publisher_dz_ips
-            .as_mut()
-            .unwrap()
             .next_available_block(1, 1)
             .map(|net| net.ip())
             .unwrap();
@@ -1679,7 +1791,7 @@ mod tests {
 
         deallocate_publisher_dz_ip(&ibrl_user, &mut publisher_dz_ips);
         assert!(
-            publisher_dz_ips.as_ref().unwrap().assigned_ips[1],
+            publisher_dz_ips.assigned_ips[1],
             "non-Multicast user should not free publisher IPs"
         );
 
@@ -1693,7 +1805,7 @@ mod tests {
 
         deallocate_publisher_dz_ip(&subscriber_user, &mut publisher_dz_ips);
         assert!(
-            publisher_dz_ips.as_ref().unwrap().assigned_ips[1],
+            publisher_dz_ips.assigned_ips[1],
             "Multicast subscriber (dz_ip == client_ip) should not free publisher IPs"
         );
     }
@@ -1756,6 +1868,7 @@ mod tests {
         metrics::with_local_recorder(&recorder, || {
             let mut seq = Sequence::new();
             let mut user_tunnel_ips = IPBlockAllocator::new("10.0.0.0/16".parse().unwrap());
+            let mut publisher_dz_ips = IPBlockAllocator::new("148.51.120.0/21".parse().unwrap());
             let mut link_ids = IDAllocator::new(100, vec![100, 101, 102]);
             let mut client = create_test_client();
 
@@ -1860,12 +1973,11 @@ mod tests {
                 &user_pubkey,
                 &mut devices,
                 &mut user_tunnel_ips,
-                &mut None,
+                &mut publisher_dz_ips,
                 &mut link_ids,
                 &user,
                 &locations,
                 &exchanges,
-                false,
             );
 
             let device_pk_str = user.device_pk.to_string();
@@ -1908,6 +2020,7 @@ mod tests {
         metrics::with_local_recorder(&recorder, || {
             let mut seq = Sequence::new();
             let mut user_tunnel_ips = IPBlockAllocator::new("10.0.0.0/16".parse().unwrap());
+            let mut publisher_dz_ips = IPBlockAllocator::new("148.51.120.0/21".parse().unwrap());
             let mut link_ids = IDAllocator::new(100, vec![100, 101, 102]);
             let mut client = create_test_client();
 
@@ -1964,12 +2077,11 @@ mod tests {
                 &user_pubkey,
                 &mut devices,
                 &mut user_tunnel_ips,
-                &mut None,
+                &mut publisher_dz_ips,
                 &mut link_ids,
                 &user,
                 &locations,
                 &exchanges,
-                false,
             );
 
             let mut snapshot = crate::test_helpers::MetricsSnapshot::new(snapshotter.snapshot());
@@ -1998,6 +2110,7 @@ mod tests {
         metrics::with_local_recorder(&recorder, || {
             let mut seq = Sequence::new();
             let mut user_tunnel_ips = IPBlockAllocator::new("10.0.0.0/16".parse().unwrap());
+            let mut publisher_dz_ips = IPBlockAllocator::new("148.51.120.0/21".parse().unwrap());
             let mut link_ids = IDAllocator::new(100, vec![100, 101, 102]);
             let mut client = create_test_client();
 
@@ -2101,12 +2214,11 @@ mod tests {
                 &user_pubkey,
                 &mut devices,
                 &mut user_tunnel_ips,
-                &mut None,
+                &mut publisher_dz_ips,
                 &mut link_ids,
                 &user,
                 &locations,
                 &exchanges,
-                false,
             );
 
             let device_pk_str = user.device_pk.to_string();
@@ -2149,6 +2261,7 @@ mod tests {
         metrics::with_local_recorder(&recorder, || {
             let mut seq = Sequence::new();
             let mut user_tunnel_ips = IPBlockAllocator::new("10.0.0.0/16".parse().unwrap());
+            let mut publisher_dz_ips = IPBlockAllocator::new("148.51.120.0/21".parse().unwrap());
             let mut link_ids = IDAllocator::new(100, vec![100, 101, 102]);
             let mut client = create_test_client();
 
@@ -2249,9 +2362,6 @@ mod tests {
             let locations = HashMap::<Pubkey, Location>::new();
             let exchanges = HashMap::<Pubkey, Exchange>::new();
 
-            let mut publisher_dz_ips =
-                Some(IPBlockAllocator::new("148.51.120.0/21".parse().unwrap()));
-
             process_user_event(
                 &client,
                 &user_pubkey,
@@ -2262,7 +2372,6 @@ mod tests {
                 &user,
                 &locations,
                 &exchanges,
-                false,
             );
 
             let device_pk_str = user.device_pk.to_string();
@@ -2305,6 +2414,7 @@ mod tests {
         metrics::with_local_recorder(&recorder, || {
             let mut seq = Sequence::new();
             let mut user_tunnel_ips = IPBlockAllocator::new("10.0.0.0/16".parse().unwrap());
+            let mut publisher_dz_ips = IPBlockAllocator::new("148.51.120.0/21".parse().unwrap());
             let mut link_ids = IDAllocator::new(100, vec![100, 101, 102]);
             let mut client = create_test_client();
 
@@ -2360,12 +2470,11 @@ mod tests {
                 &user_pubkey,
                 &mut devices,
                 &mut user_tunnel_ips,
-                &mut None,
+                &mut publisher_dz_ips,
                 &mut link_ids,
                 &user,
                 &locations,
                 &exchanges,
-                false,
             );
 
             let mut snapshot = crate::test_helpers::MetricsSnapshot::new(snapshotter.snapshot());
@@ -2374,6 +2483,378 @@ mod tests {
                     "doublezero_activator_state_transition",
                     vec![
                         ("state_transition", "user-pending-to-rejected"),
+                        ("user-pubkey", user_pubkey.to_string().as_str()),
+                    ],
+                    1,
+                )
+                .verify();
+        });
+    }
+
+    // Tests for process_user_event_stateless
+
+    #[test]
+    fn test_process_user_event_stateless_pending_to_activated() {
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
+
+        metrics::with_local_recorder(&recorder, || {
+            let mut seq = Sequence::new();
+            let mut client = create_test_client();
+
+            let device_pubkey = Pubkey::new_unique();
+            let device = Device {
+                account_type: AccountType::Device,
+                owner: Pubkey::new_unique(),
+                index: 0,
+                reference_count: 0,
+                bump_seed: get_device_bump_seed(&client),
+                contributor_pk: Pubkey::new_unique(),
+                location_pk: Pubkey::new_unique(),
+                exchange_pk: Pubkey::new_unique(),
+                device_type: DeviceType::Hybrid,
+                public_ip: [192, 168, 1, 2].into(),
+                status: DeviceStatus::Activated,
+                metrics_publisher_pk: Pubkey::default(),
+                code: "TestDevice".to_string(),
+                dz_prefixes: "10.0.0.1/24".parse().unwrap(),
+                mgmt_vrf: "default".to_string(),
+                interfaces: vec![],
+                max_users: 255,
+                users_count: 0,
+                device_health:
+                    doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+                desired_status:
+                    doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+                unicast_users_count: 0,
+                multicast_users_count: 0,
+                max_unicast_users: 0,
+                max_multicast_users: 0,
+            };
+
+            let user_pubkey = Pubkey::new_unique();
+            let user = User {
+                account_type: AccountType::User,
+                owner: Pubkey::new_unique(),
+                index: 0,
+                bump_seed: get_user_bump_seed(&client),
+                user_type: UserType::IBRLWithAllocatedIP,
+                tenant_pk: Pubkey::new_unique(),
+                device_pk: device_pubkey,
+                cyoa_type: UserCYOA::GREOverDIA,
+                client_ip: [192, 168, 1, 1].into(),
+                dz_ip: Ipv4Addr::UNSPECIFIED,
+                tunnel_id: 0,
+                tunnel_net: NetworkV4::default(),
+                status: UserStatus::Pending,
+                publishers: vec![],
+                subscribers: vec![],
+                validator_pubkey: Pubkey::default(),
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            };
+
+            let (accesspass_pk_unspecified, _) = get_accesspass_pda(
+                &client.get_program_id(),
+                &Ipv4Addr::UNSPECIFIED,
+                &user.owner,
+            );
+            let (accesspass_pk, _) =
+                get_accesspass_pda(&client.get_program_id(), &user.client_ip, &user.owner);
+            let accesspass = AccessPass {
+                account_type: AccountType::AccessPass,
+                owner: user.owner,
+                bump_seed: 255,
+                accesspass_type: AccessPassType::Prepaid,
+                client_ip: user.client_ip,
+                user_payer: user.owner,
+                last_access_epoch: 1234,
+                connection_count: 0,
+                status: AccessPassStatus::Requested,
+                mgroup_pub_allowlist: vec![],
+                mgroup_sub_allowlist: vec![],
+                flags: 0,
+                tenant_allowlist: vec![Default::default()],
+            };
+
+            // SDK's ActivateUserCommand fetches the user
+            let user_cloned = user.clone();
+            client
+                .expect_get()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(predicate::eq(user_pubkey))
+                .returning(move |_| Ok(AccountData::User(user_cloned.clone())));
+
+            // SDK's ActivateUserCommand fetches accesspass by UNSPECIFIED IP
+            client
+                .expect_get()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(predicate::eq(accesspass_pk_unspecified))
+                .returning(move |_| Err(eyre::eyre!("AccessPass not found")));
+
+            // SDK's ActivateUserCommand fetches accesspass by client_ip
+            client
+                .expect_get()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(predicate::eq(accesspass_pk))
+                .returning(move |_| Ok(AccountData::AccessPass(accesspass.clone())));
+
+            // SDK's ActivateUserCommand fetches device (for dz_prefixes count)
+            let device_clone = device.clone();
+            client
+                .expect_get()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(predicate::eq(device_pubkey))
+                .returning(move |_| Ok(AccountData::Device(device_clone.clone())));
+
+            // Stateless mode: tunnel_id=0, tunnel_net=default, dz_ip=UNSPECIFIED
+            client
+                .expect_execute_transaction()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(
+                    predicate::eq(DoubleZeroInstruction::ActivateUser(UserActivateArgs {
+                        tunnel_id: 0,
+                        tunnel_net: NetworkV4::default(),
+                        dz_ip: Ipv4Addr::UNSPECIFIED,
+                        dz_prefix_count: 1, // onchain allocation path
+                        tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+                    })),
+                    predicate::always(),
+                )
+                .returning(|_, _| Ok(Signature::new_unique()));
+
+            let mut devices = std::collections::HashMap::new();
+            devices.insert(
+                device_pubkey,
+                crate::states::devicestate::DeviceStateStateless::new(&device),
+            );
+
+            super::process_user_event_stateless(&client, &user_pubkey, &mut devices, &user);
+
+            let mut snapshot = crate::test_helpers::MetricsSnapshot::new(snapshotter.snapshot());
+            snapshot
+                .expect_counter(
+                    "doublezero_activator_state_transition",
+                    vec![
+                        ("state_transition", "user-pending-to-activated"),
+                        ("user-pubkey", user_pubkey.to_string().as_str()),
+                    ],
+                    1,
+                )
+                .verify();
+        });
+    }
+
+    #[test]
+    fn test_process_user_event_stateless_deleting() {
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
+
+        metrics::with_local_recorder(&recorder, || {
+            let mut seq = Sequence::new();
+            let mut client = create_test_client();
+
+            let device_pubkey = Pubkey::new_unique();
+            let device = Device {
+                account_type: AccountType::Device,
+                owner: Pubkey::new_unique(),
+                index: 0,
+                reference_count: 0,
+                bump_seed: get_device_bump_seed(&client),
+                contributor_pk: Pubkey::new_unique(),
+                location_pk: Pubkey::new_unique(),
+                exchange_pk: Pubkey::new_unique(),
+                device_type: DeviceType::Hybrid,
+                public_ip: [192, 168, 1, 2].into(),
+                status: DeviceStatus::Activated,
+                metrics_publisher_pk: Pubkey::default(),
+                code: "TestDevice".to_string(),
+                dz_prefixes: "10.0.0.1/24".parse().unwrap(),
+                mgmt_vrf: "default".to_string(),
+                interfaces: vec![],
+                max_users: 255,
+                users_count: 0,
+                device_health:
+                    doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+                desired_status:
+                    doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+                unicast_users_count: 0,
+                multicast_users_count: 0,
+                max_unicast_users: 0,
+                max_multicast_users: 0,
+            };
+
+            let user_pubkey = Pubkey::new_unique();
+            let user = User {
+                account_type: AccountType::User,
+                owner: Pubkey::new_unique(),
+                index: 0,
+                bump_seed: get_user_bump_seed(&client),
+                user_type: UserType::IBRLWithAllocatedIP,
+                tenant_pk: Pubkey::new_unique(),
+                device_pk: device_pubkey,
+                cyoa_type: UserCYOA::GREOverDIA,
+                client_ip: [192, 168, 1, 1].into(),
+                dz_ip: [10, 0, 0, 1].into(),
+                tunnel_id: 500,
+                tunnel_net: "10.0.0.0/31".parse().unwrap(),
+                status: UserStatus::Deleting,
+                publishers: vec![],
+                subscribers: vec![],
+                validator_pubkey: Pubkey::default(),
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            };
+
+            // SDK's CloseAccountUserCommand fetches the user
+            let user2 = user.clone();
+            client
+                .expect_get()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(predicate::eq(user_pubkey))
+                .returning(move |_| Ok(AccountData::User(user2.clone())));
+
+            // SDK's CloseAccountUserCommand fetches device (for dz_prefixes count)
+            let device_clone = device.clone();
+            client
+                .expect_get()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(predicate::eq(device_pubkey))
+                .returning(move |_| Ok(AccountData::Device(device_clone.clone())));
+
+            // Stateless mode: use_onchain_deallocation=true
+            client
+                .expect_execute_transaction()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(
+                    predicate::eq(DoubleZeroInstruction::CloseAccountUser(
+                        UserCloseAccountArgs {
+                            dz_prefix_count: 1, // onchain deallocation
+                            multicast_publisher_count: 0,
+                        },
+                    )),
+                    predicate::always(),
+                )
+                .returning(|_, _| Ok(Signature::new_unique()));
+
+            let mut devices = std::collections::HashMap::new();
+            devices.insert(
+                device_pubkey,
+                crate::states::devicestate::DeviceStateStateless::new(&device),
+            );
+
+            super::process_user_event_stateless(&client, &user_pubkey, &mut devices, &user);
+
+            let mut snapshot = crate::test_helpers::MetricsSnapshot::new(snapshotter.snapshot());
+            snapshot
+                .expect_counter(
+                    "doublezero_activator_state_transition",
+                    vec![
+                        ("state_transition", "user-deleting-to-deactivated"),
+                        ("user-pubkey", user_pubkey.to_string().as_str()),
+                    ],
+                    1,
+                )
+                .verify();
+        });
+    }
+
+    #[test]
+    fn test_process_user_event_stateless_pending_ban() {
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
+
+        metrics::with_local_recorder(&recorder, || {
+            let mut seq = Sequence::new();
+            let mut client = create_test_client();
+
+            let device_pubkey = Pubkey::new_unique();
+            let device = Device {
+                account_type: AccountType::Device,
+                owner: Pubkey::new_unique(),
+                index: 0,
+                reference_count: 0,
+                bump_seed: get_device_bump_seed(&client),
+                contributor_pk: Pubkey::new_unique(),
+                location_pk: Pubkey::new_unique(),
+                exchange_pk: Pubkey::new_unique(),
+                device_type: DeviceType::Hybrid,
+                public_ip: [192, 168, 1, 2].into(),
+                status: DeviceStatus::Activated,
+                metrics_publisher_pk: Pubkey::default(),
+                code: "TestDevice".to_string(),
+                dz_prefixes: "10.0.0.1/24".parse().unwrap(),
+                mgmt_vrf: "default".to_string(),
+                interfaces: vec![],
+                max_users: 255,
+                users_count: 0,
+                device_health:
+                    doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+                desired_status:
+                    doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+                unicast_users_count: 0,
+                multicast_users_count: 0,
+                max_unicast_users: 0,
+                max_multicast_users: 0,
+            };
+
+            let user_pubkey = Pubkey::new_unique();
+            let user = User {
+                account_type: AccountType::User,
+                owner: Pubkey::new_unique(),
+                index: 0,
+                bump_seed: get_user_bump_seed(&client),
+                user_type: UserType::IBRLWithAllocatedIP,
+                tenant_pk: Pubkey::new_unique(),
+                device_pk: device_pubkey,
+                cyoa_type: UserCYOA::GREOverDIA,
+                client_ip: [192, 168, 1, 1].into(),
+                dz_ip: [10, 0, 0, 1].into(),
+                tunnel_id: 500,
+                tunnel_net: "10.0.0.0/31".parse().unwrap(),
+                status: UserStatus::PendingBan,
+                publishers: vec![],
+                subscribers: vec![],
+                validator_pubkey: Pubkey::default(),
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            };
+
+            let user2 = user.clone();
+            client
+                .expect_get()
+                .with(predicate::eq(user_pubkey))
+                .returning(move |_| Ok(AccountData::User(user2.clone())));
+
+            client
+                .expect_execute_transaction()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(
+                    predicate::eq(DoubleZeroInstruction::BanUser(UserBanArgs {})),
+                    predicate::always(),
+                )
+                .returning(|_, _| Ok(Signature::new_unique()));
+
+            let mut devices = std::collections::HashMap::new();
+            devices.insert(
+                device_pubkey,
+                crate::states::devicestate::DeviceStateStateless::new(&device),
+            );
+
+            super::process_user_event_stateless(&client, &user_pubkey, &mut devices, &user);
+
+            let mut snapshot = crate::test_helpers::MetricsSnapshot::new(snapshotter.snapshot());
+            snapshot
+                .expect_counter(
+                    "doublezero_activator_state_transition",
+                    vec![
+                        ("state_transition", "user-pending-ban-to-banned"),
                         ("user-pubkey", user_pubkey.to_string().as_str()),
                     ],
                     1,

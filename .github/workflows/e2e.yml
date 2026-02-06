@@ -10,11 +10,11 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SHARD_COUNT: "2"
+  SHARD_COUNT: "4"
 
 jobs:
   setup:
-    runs-on: self-hosted
+    runs-on: doublezero-k8s-ci
     outputs:
       matrix: ${{ steps.shard.outputs.matrix }}
     steps:
@@ -72,7 +72,7 @@ jobs:
     defaults:
       run:
         working-directory: "e2e/"
-    runs-on: self-hosted
+    runs-on: doublezero-k8s-ci
     timeout-minutes: 15
     permissions:
       packages: read
@@ -91,6 +91,8 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install make
+        run: sudo apt-get update && sudo apt-get install -y make
       - name: build
         run: make build
       - name: test

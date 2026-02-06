@@ -34,6 +34,8 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install make
+        run: sudo apt-get update && sudo apt-get install -y make
       - name: Build and cache images
         working-directory: e2e/
         run: make build

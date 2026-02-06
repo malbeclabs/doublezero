@@ -11,12 +11,142 @@ use doublezero_sdk::{
 use log::{error, info};
 use solana_sdk::pubkey::Pubkey;
 
+/// Stateless interface manager for onchain allocation mode.
+/// Does not use local allocators - all allocation is handled by the smart contract.
+pub struct InterfaceMgrStateless<'a> {
+    client: &'a dyn DoubleZeroClient,
+}
+
+impl<'a> InterfaceMgrStateless<'a> {
+    pub fn new(client: &'a dyn DoubleZeroClient) -> Self {
+        Self { client }
+    }
+
+    /// Process all interfaces for a device based on their current state
+    pub fn process_device_interfaces(&self, device_pubkey: &Pubkey, device: &Device) {
+        for interface in device.interfaces.iter() {
+            let iface = interface.into_current_version();
+            self.process_interface(device_pubkey, device, iface);
+        }
+    }
+
+    /// Process a single interface based on its state and type
+    fn process_interface(
+        &self,
+        device_pubkey: &Pubkey,
+        device: &Device,
+        iface: CurrentInterfaceVersion,
+    ) {
+        match (iface.status, iface.interface_type) {
+            (InterfaceStatus::Pending, InterfaceType::Loopback) => {
+                info!("Event:Interface(Pending) {device_pubkey} {device:?} loopback {iface:?}");
+                self.handle_pending_loopback(device_pubkey, device, &iface);
+            }
+            (InterfaceStatus::Pending, InterfaceType::Physical) => {
+                info!("Event:Interface(Pending) {device_pubkey} {device:?} physical {iface:?}");
+                self.unlink(device_pubkey, &device.code, &iface.name);
+            }
+            (InterfaceStatus::Pending, _) => {
+                error!(
+                    "Unsupported interface type {:?} for device {} interface {}",
+                    iface.interface_type, device.code, iface.name
+                );
+            }
+            (InterfaceStatus::Deleting, _) => {
+                info!("Event:Interface(Deleting) {device_pubkey} {device:?} {iface:?}");
+                self.handle_deleting_interface(device_pubkey, &device.code, &iface);
+            }
+            _ => {} // Nothing to do
+        }
+    }
+
+    /// Handle a loopback interface pending activation (stateless mode)
+    fn handle_pending_loopback(
+        &self,
+        device_pubkey: &Pubkey,
+        device: &Device,
+        iface: &CurrentInterfaceVersion,
+    ) {
+        self.activate(
+            device_pubkey,
+            &device.code,
+            &iface.name,
+            &NetworkV4::default(),
+            0,
+        );
+    }
+
+    /// Handle interface deletion (stateless mode - no local deallocation)
+    fn handle_deleting_interface(
+        &self,
+        device_pubkey: &Pubkey,
+        device_code: &str,
+        iface: &CurrentInterfaceVersion,
+    ) {
+        // No local deallocation needed - onchain handles it
+        self.remove(device_pubkey, device_code, &iface.name);
+    }
+
+    fn activate(
+        &self,
+        pubkey: &Pubkey,
+        context: &str,
+        name: &str,
+        ip_net: &NetworkV4,
+        node_segment_idx: u16,
+    ) {
+        let cmd = ActivateDeviceInterfaceCommand {
+            pubkey: *pubkey,
+            name: name.to_string(),
+            ip_net: *ip_net,
+            node_segment_idx,
+            use_onchain_allocation: true,
+        };
+
+        if let Err(e) = cmd.execute(self.client) {
+            error!("Failed to activate interface {name} on {context}: {e}");
+        }
+    }
+
+    fn unlink(&self, pubkey: &Pubkey, context: &str, name: &str) {
+        let cmd = UnlinkDeviceInterfaceCommand {
+            pubkey: *pubkey,
+            name: name.to_string(),
+        };
+
+        match cmd.execute(self.client) {
+            Ok(signature) => {
+                info!("Unlinked interface {name} on {context}: {signature}");
+            }
+            Err(e) => {
+                error!("Failed to unlink interface {name} on {context}: {e}");
+            }
+        }
+    }
+
+    fn remove(&self, pubkey: &Pubkey, context: &str, name: &str) {
+        let cmd = RemoveDeviceInterfaceCommand {
+            pubkey: *pubkey,
+            name: name.to_string(),
+            use_onchain_allocation: true,
+        };
+
+        match cmd.execute(self.client) {
+            Ok(signature) => {
+                info!("Removed interface {name} on {context}: {signature}");
+            }
+            Err(e) => {
+                error!("Failed to remove interface {name} on {context}: {e}");
+            }
+        }
+    }
+}
+
 pub struct InterfaceMgr<'a> {
     client: &'a dyn DoubleZeroClient,
     // Optional because it's not required for process_link_event
     segment_routing_ids: Option<&'a mut IDAllocator>,
     link_ips: &'a mut IPBlockAllocator,
-    use_onchain_allocation: bool,
 }
 
 impl<'a> InterfaceMgr<'a> {
@@ -24,13 +154,11 @@ impl<'a> InterfaceMgr<'a> {
         client: &'a dyn DoubleZeroClient,
         segment_routing_ids: Option<&'a mut IDAllocator>,
         link_ips: &'a mut IPBlockAllocator,
-        use_onchain_allocation: bool,
     ) -> Self {
         Self {
             client,
             segment_routing_ids,
             link_ips,
-            use_onchain_allocation,
         }
     }
 
@@ -170,7 +298,7 @@ impl<'a> InterfaceMgr<'a> {
             name: name.to_string(),
             ip_net: *ip_net,
             node_segment_idx,
-            use_onchain_allocation: self.use_onchain_allocation,
+            use_onchain_allocation: false,
         };
 
         if let Err(e) = cmd.execute(self.client) {
@@ -214,7 +342,7 @@ impl<'a> InterfaceMgr<'a> {
         let cmd = RemoveDeviceInterfaceCommand {
             pubkey: *pubkey,
             name: name.to_string(),
-            use_onchain_allocation: self.use_onchain_allocation,
+            use_onchain_allocation: false,
         };
 
         match cmd.execute(self.client) {

@@ -13,6 +13,7 @@ pub enum ResourceType {
     TunnelIds(Pubkey, usize),
     LinkIds,
     SegmentRoutingIds,
+    VrfIds,
 }
 
 impl fmt::Display for ResourceType {
@@ -25,6 +26,7 @@ impl fmt::Display for ResourceType {
             ResourceType::TunnelIds(pk, idx) => write!(f, "TunnelIds({}, {})", pk, idx),
             ResourceType::LinkIds => write!(f, "LinkIds"),
             ResourceType::SegmentRoutingIds => write!(f, "SegmentRoutingIds"),
+            ResourceType::VrfIds => write!(f, "VrfIds"),
         }
     }
 }

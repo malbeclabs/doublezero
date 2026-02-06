@@ -60,6 +60,7 @@ pub fn get_resource_extension_range(
         }
         ResourceType::LinkIds => ResourceExtensionRange::IdRange(0, 65535),
         ResourceType::SegmentRoutingIds => ResourceExtensionRange::IdRange(1, 65535),
+        ResourceType::VrfIds => ResourceExtensionRange::IdRange(1, 1024),
     }
 }
 

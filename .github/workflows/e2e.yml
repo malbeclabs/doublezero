@@ -38,7 +38,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y make
       - name: Build and cache images
         working-directory: e2e/
-        run: make build
+        run: make build verbose=true
       - name: Discover tests and distribute across shards
         id: shard
         working-directory: e2e/
@@ -115,7 +115,7 @@ jobs:
       - name: Install make
         run: sudo apt-get update && sudo apt-get install -y make
       - name: build
-        run: make build
+        run: make build verbose=true
       - name: test
         # Limit parallelism to avoid overwhelming Docker when multiple tests
         # start ledger containers simultaneously (each uses ~2GB memory).

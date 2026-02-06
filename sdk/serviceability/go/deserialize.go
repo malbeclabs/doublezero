@@ -243,8 +243,12 @@ func DeserializeAccessPass(reader *ByteReader, ap *AccessPass) {
 	ap.Flags = reader.ReadU8()
 }
 
+// resourceExtensionBitmapOffset is the fixed offset where the bitmap starts.
+// The header is padded to 88 bytes for alignment.
+const resourceExtensionBitmapOffset = 88
+
 // ResourceExtension binary layout (from Rust):
-// Header (84 bytes for IP allocator, 83 bytes for ID allocator):
+// Header (padded to 88 bytes for alignment):
 //
 //	[0]       account_type (u8) = 12
 //	[1-32]    owner (pubkey)
@@ -258,7 +262,8 @@ func DeserializeAccessPass(reader *ByteReader, ap *AccessPass) {
 //	            [67-68]   range_start (u16)
 //	            [69-70]   range_end (u16)
 //	            [71-78]   first_free_index (u64)
-//	[...] storage (Vec<u8>): 4-byte length prefix followed by bitmap data
+//	[80-87]   padding (alignment to 88 bytes)
+//	[88...]   storage bitmap (remaining bytes)
 func DeserializeResourceExtension(reader *ByteReader, ext *ResourceExtension) {
 	ext.AccountType = AccountType(reader.ReadU8())
 	ext.Owner = reader.ReadPubkey()
@@ -285,7 +290,15 @@ func DeserializeResourceExtension(reader *ByteReader, ext *ResourceExtension) {
 		return
 	}
 
-	// Read storage bitmap (Vec<u8>: 4-byte length prefix + data)
-	storageLen := reader.ReadU32()
-	ext.Storage = reader.ReadBytes(int(storageLen))
+	// Skip to bitmap offset (header is padded to 88 bytes for alignment)
+	currentOffset := reader.GetOffset()
+	if currentOffset < resourceExtensionBitmapOffset {
+		reader.Skip(resourceExtensionBitmapOffset - currentOffset)
+	}
+
+	// Read remaining bytes as storage bitmap
+	remaining := int(reader.Remaining())
+	if remaining > 0 {
+		ext.Storage = reader.ReadBytes(remaining)
+	}
 }

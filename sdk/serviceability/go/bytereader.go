@@ -19,6 +19,7 @@ func NewByteReader(data []byte) *ByteReader {
 
 func (br *ByteReader) GetOffset() int    { return br.r.Offset() }
 func (br *ByteReader) Remaining() uint32 { return uint32(br.r.Remaining()) }
+func (br *ByteReader) Skip(n int)        { br.ReadBytes(n) }
 
 func (br *ByteReader) ReadU8() uint8          { return br.r.TryReadU8(0) }
 func (br *ByteReader) ReadBool() bool         { return br.r.TryReadBool(false) }

@@ -961,6 +961,7 @@ async fn test_multicast_subscribe_reactivation_preserves_allocations() {
             tunnel_net: "0.0.0.0/0".parse().unwrap(),
             dz_ip: [0, 0, 0, 0].into(),
             dz_prefix_count: 1,
+            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -1156,6 +1157,7 @@ async fn test_multicast_subscribe_reactivation_preserves_allocations() {
             tunnel_net: "0.0.0.0/0".parse().unwrap(),
             dz_ip: [0, 0, 0, 0].into(),
             dz_prefix_count: 1,
+            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),

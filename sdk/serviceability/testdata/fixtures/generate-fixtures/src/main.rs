@@ -13,6 +13,8 @@ use std::fs;
 use std::net::Ipv4Addr;
 use std::path::Path;
 
+use doublezero_serviceability::id_allocator::IdAllocator;
+use doublezero_serviceability::ip_allocator::IpAllocator;
 use doublezero_serviceability::programversion::ProgramVersion;
 use doublezero_serviceability::state::{
     accesspass::{AccessPass, AccessPassStatus, AccessPassType},
@@ -83,6 +85,8 @@ fn main() {
     generate_contributor(&fixtures_dir);
     generate_access_pass(&fixtures_dir);
     generate_access_pass_validator(&fixtures_dir);
+    generate_resource_extension_id(&fixtures_dir);
+    generate_resource_extension_ip(&fixtures_dir);
 
     println!("
 all fixtures generated in {}", fixtures_dir.display());
@@ -700,4 +704,143 @@ fn generate_access_pass_validator(dir: &Path) {
     };
 
     write_fixture(dir, "access_pass_validator", &data, &meta);
+}
+
+/// ResourceExtension uses a fixed binary layout with bitmap at offset 88,
+/// so we manually construct the bytes rather than using borsh::to_vec.
+const RESOURCE_EXTENSION_BITMAP_OFFSET: usize = 88;
+
+fn generate_resource_extension_id(dir: &Path) {
+    let owner = pubkey_from_byte(0xB0);
+    let associated_with = pubkey_from_byte(0xB1);
+    let range_start: u16 = 0;
+    let range_end: u16 = 64;
+    let first_free_index: u64 = 5; // Simulates 5 allocations made
+
+    // Calculate bitmap size: (64 - 0) / 8 = 8 bytes, rounded up to multiple of 8 = 8 bytes
+    let bitmap_size = IdAllocator::bitmap_required_size((range_start, range_end));
+    let total_size = RESOURCE_EXTENSION_BITMAP_OFFSET + bitmap_size;
+    let mut data = vec![0u8; total_size];
+
+    // Manually serialize the header
+    let mut offset = 0;
+
+    // [0] account_type = 12 (ResourceExtension)
+    data[offset] = 12;
+    offset += 1;
+
+    // [1-32] owner pubkey
+    data[offset..offset + 32].copy_from_slice(&owner.to_bytes());
+    offset += 32;
+
+    // [33] bump_seed
+    data[offset] = 242;
+    offset += 1;
+
+    // [34-65] associated_with pubkey
+    data[offset..offset + 32].copy_from_slice(&associated_with.to_bytes());
+    offset += 32;
+
+    // Serialize the Allocator enum: discriminant + IdAllocator
+    // discriminant = 1 (Id)
+    data[offset] = 1;
+    offset += 1;
+
+    // IdAllocator: range (u16, u16) + first_free_index (u64)
+    data[offset..offset + 2].copy_from_slice(&range_start.to_le_bytes());
+    offset += 2;
+    data[offset..offset + 2].copy_from_slice(&range_end.to_le_bytes());
+    offset += 2;
+    data[offset..offset + 8].copy_from_slice(&first_free_index.to_le_bytes());
+    // offset += 8; // Not needed, padding follows
+
+    // Bitmap at offset 88: set bits 0-4 as allocated (0x1F = 0b00011111)
+    data[RESOURCE_EXTENSION_BITMAP_OFFSET] = 0x1F;
+
+    let meta = FixtureMeta {
+        name: "ResourceExtensionId".into(),
+        account_type: 12,
+        fields: vec![
+            FieldValue { name: "AccountType".into(), value: "12".into(), typ: "u8".into() },
+            FieldValue { name: "Owner".into(), value: pubkey_bs58(&owner), typ: "pubkey".into() },
+            FieldValue { name: "BumpSeed".into(), value: "242".into(), typ: "u8".into() },
+            FieldValue { name: "AssociatedWith".into(), value: pubkey_bs58(&associated_with), typ: "pubkey".into() },
+            FieldValue { name: "AllocatorType".into(), value: "1".into(), typ: "u8".into() },
+            FieldValue { name: "RangeStart".into(), value: "0".into(), typ: "u16".into() },
+            FieldValue { name: "RangeEnd".into(), value: "64".into(), typ: "u16".into() },
+            FieldValue { name: "FirstFreeIndex".into(), value: "5".into(), typ: "u64".into() },
+            FieldValue { name: "TotalCapacity".into(), value: "64".into(), typ: "u64".into() },
+            FieldValue { name: "AllocatedCount".into(), value: "5".into(), typ: "u64".into() },
+            FieldValue { name: "AvailableCount".into(), value: "59".into(), typ: "u64".into() },
+        ],
+    };
+
+    write_fixture(dir, "resource_extension_id", &data, &meta);
+}
+
+fn generate_resource_extension_ip(dir: &Path) {
+    let owner = pubkey_from_byte(0xC0);
+    let associated_with = pubkey_from_byte(0xC1);
+    let base_net: std::net::Ipv4Addr = "10.100.0.0".parse().unwrap();
+    let prefix: u8 = 24; // /24 = 256 addresses
+    let first_free_index: u64 = 4; // Simulates 4 allocations made
+
+    // Calculate bitmap size for /24: 256 addresses / 8 = 32 bytes, rounded to multiple of 8 = 32 bytes
+    let bitmap_size = IpAllocator::bitmap_required_size(prefix);
+    let total_size = RESOURCE_EXTENSION_BITMAP_OFFSET + bitmap_size;
+    let mut data = vec![0u8; total_size];
+
+    // Manually serialize the header
+    let mut offset = 0;
+
+    // [0] account_type = 12 (ResourceExtension)
+    data[offset] = 12;
+    offset += 1;
+
+    // [1-32] owner pubkey
+    data[offset..offset + 32].copy_from_slice(&owner.to_bytes());
+    offset += 32;
+
+    // [33] bump_seed
+    data[offset] = 241;
+    offset += 1;
+
+    // [34-65] associated_with pubkey
+    data[offset..offset + 32].copy_from_slice(&associated_with.to_bytes());
+    offset += 32;
+
+    // Serialize the Allocator enum: discriminant + IpAllocator
+    // discriminant = 0 (Ip)
+    data[offset] = 0;
+    offset += 1;
+
+    // IpAllocator: base_net (4 bytes IP + 1 byte prefix) + first_free_index (u64)
+    data[offset..offset + 4].copy_from_slice(&base_net.octets());
+    offset += 4;
+    data[offset] = prefix;
+    offset += 1;
+    data[offset..offset + 8].copy_from_slice(&first_free_index.to_le_bytes());
+    // offset += 8; // Not needed, padding follows
+
+    // Bitmap at offset 88: set bits 0-3 as allocated (0x0F = 0b00001111)
+    data[RESOURCE_EXTENSION_BITMAP_OFFSET] = 0x0F;
+
+    let meta = FixtureMeta {
+        name: "ResourceExtensionIp".into(),
+        account_type: 12,
+        fields: vec![
+            FieldValue { name: "AccountType".into(), value: "12".into(), typ: "u8".into() },
+            FieldValue { name: "Owner".into(), value: pubkey_bs58(&owner), typ: "pubkey".into() },
+            FieldValue { name: "BumpSeed".into(), value: "241".into(), typ: "u8".into() },
+            FieldValue { name: "AssociatedWith".into(), value: pubkey_bs58(&associated_with), typ: "pubkey".into() },
+            FieldValue { name: "AllocatorType".into(), value: "0".into(), typ: "u8".into() },
+            FieldValue { name: "BaseNet".into(), value: "10.100.0.0/24".into(), typ: "networkv4".into() },
+            FieldValue { name: "FirstFreeIndex".into(), value: "4".into(), typ: "u64".into() },
+            FieldValue { name: "TotalCapacity".into(), value: "256".into(), typ: "u64".into() },
+            FieldValue { name: "AllocatedCount".into(), value: "4".into(), typ: "u64".into() },
+            FieldValue { name: "AvailableCount".into(), value: "252".into(), typ: "u64".into() },
+        ],
+    };
+
+    write_fixture(dir, "resource_extension_ip", &data, &meta);
 }

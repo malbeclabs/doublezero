@@ -54,6 +54,7 @@ All notable changes to this project will be documented in this file.
 - E2E tests
   - The QA alldevices test now skips devices that are not calling the controller
   - e2e: Expand RFC11 end-to-end testing ([#2801](https://github.com/malbeclabs/doublezero/pull/2801))
+  - e2e(RFC11): add dz prefix rollover allocation test ([#2820](https://github.com/malbeclabs/doublezero/pull/2820))
 
 ## [v0.8.5](https://github.com/malbeclabs/doublezero/compare/client/v0.8.4...client/v0.8.5) – 2026-02-02
 

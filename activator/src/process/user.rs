@@ -99,8 +99,9 @@ pub fn process_user_event(
 
             let tunnel_id = device_state.get_next_tunnel_id();
 
-            // Use device public_ip as tunnel_endpoint
-            let tunnel_endpoint = device_state.device.public_ip;
+            // Get an available tunnel endpoint for this client_ip
+            // This allows multiple tunnels from the same client to use different endpoints
+            let tunnel_endpoint = device_state.get_available_tunnel_endpoint(user.client_ip);
 
             let need_dz_ip = user.needs_allocated_dz_ip();
 
@@ -166,6 +167,8 @@ pub fn process_user_event(
                         "user-pubkey" => pubkey.to_string(),
                     )
                     .increment(1);
+                    // Register the tunnel endpoint as in use for this client
+                    device_state.register_tunnel_endpoint(user.client_ip, tunnel_endpoint);
                     record_device_ip_metrics(&user.device_pk, device_state, locations, exchanges);
                 }
                 Err(e) => {
@@ -234,11 +237,11 @@ pub fn process_user_event(
             )
             .unwrap();
 
-            // Use device public_ip as tunnel_endpoint (preserve existing if set)
+            // Use existing tunnel_endpoint if set, otherwise get an available one
             let tunnel_endpoint = if user.has_tunnel_endpoint() {
                 user.tunnel_endpoint
             } else {
-                device_state.device.public_ip
+                device_state.get_available_tunnel_endpoint(user.client_ip)
             };
 
             // Activate the user
@@ -317,6 +320,13 @@ pub fn process_user_event(
                                 if user.dz_ip != Ipv4Addr::UNSPECIFIED {
                                     device_state.release(user.dz_ip, user.tunnel_id).unwrap();
                                 }
+                                // Release the tunnel endpoint
+                                if user.has_tunnel_endpoint() {
+                                    device_state.release_tunnel_endpoint(
+                                        user.client_ip,
+                                        user.tunnel_endpoint,
+                                    );
+                                }
 
                                 metrics::counter!(
                                     "doublezero_activator_state_transition",
@@ -343,6 +353,11 @@ pub fn process_user_event(
                             }
                             if user.dz_ip != Ipv4Addr::UNSPECIFIED {
                                 device_state.release(user.dz_ip, user.tunnel_id).unwrap();
+                            }
+                            // Release the tunnel endpoint
+                            if user.has_tunnel_endpoint() {
+                                device_state
+                                    .release_tunnel_endpoint(user.client_ip, user.tunnel_endpoint);
                             }
 
                             metrics::counter!(

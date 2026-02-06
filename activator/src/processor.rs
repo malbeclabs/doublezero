@@ -122,6 +122,10 @@ impl<T: DoubleZeroClient> Processor<T> {
                             )
                         })?;
                     user_tunnel_ips.assign_block(user.tunnel_net.into());
+                    // Register tunnel endpoint if set
+                    if user.has_tunnel_endpoint() {
+                        device_state.register_tunnel_endpoint(user.client_ip, user.tunnel_endpoint);
+                    }
                 }
                 Ok::<(), eyre::Error>(())
             })?;

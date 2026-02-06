@@ -1,80 +1,8 @@
 use crate::doublezerocommand::CliCommand;
 use doublezero_sdk::{commands::programconfig::get::GetProgramConfigCommand, ProgramVersion};
-use serde::{Deserialize, Serialize};
 use std::io::Write;
 
-/// Version check status for JSON-compatible output
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(tag = "status", rename_all = "snake_case")]
-pub enum VersionStatus {
-    /// Version is current or newer than the program version
-    Current,
-    /// Version is outdated but still compatible - upgrade recommended
-    Outdated {
-        current_version: String,
-        latest_version: String,
-        message: String,
-    },
-    /// Version is incompatible and must be upgraded
-    Incompatible {
-        current_version: String,
-        min_required_version: String,
-        message: String,
-    },
-}
-
-impl VersionStatus {
-    /// Returns true if the version is incompatible and the client should not proceed
-    pub fn is_incompatible(&self) -> bool {
-        matches!(self, VersionStatus::Incompatible { .. })
-    }
-
-    /// Returns a warning message if outdated, or an error message if incompatible
-    pub fn message(&self) -> Option<&str> {
-        match self {
-            VersionStatus::Current => None,
-            VersionStatus::Outdated { message, .. } => Some(message),
-            VersionStatus::Incompatible { message, .. } => Some(message),
-        }
-    }
-}
-
-/// Check the client version and return structured status information.
-/// This is useful for JSON output where we want to include version warnings in the response.
-pub fn get_version_status<C: CliCommand + ?Sized>(
-    client: &C,
-    client_version: ProgramVersion,
-) -> VersionStatus {
-    // Check the program configuration version
-    if let Ok((_, pconfig)) = client.get_program_config(GetProgramConfigCommand) {
-        // Compare the program version with the client version
-        // If the program version is incompatible, return incompatible status
-        if client_version < pconfig.min_compatible_version {
-            return VersionStatus::Incompatible {
-                current_version: client_version.to_string(),
-                min_required_version: pconfig.min_compatible_version.to_string(),
-                message: format!(
-                    "A new version of the client is available: {} → {}\nYour client version is no longer up to date. Please update it before continuing to use the client.",
-                    client_version, pconfig.min_compatible_version
-                ),
-            };
-        }
-        // Warn the user if their client version is older than the program version
-        if client_version < pconfig.version {
-            return VersionStatus::Outdated {
-                current_version: client_version.to_string(),
-                latest_version: pconfig.version.to_string(),
-                message: format!(
-                    "A new version of the client is available: {} → {}\nWe recommend updating to the latest version for the best experience.",
-                    client_version, pconfig.version
-                ),
-            };
-        }
-    }
-
-    VersionStatus::Current
-}
-
+// NOTE: if the client is out of date, there is an error because the client warning will cause the json to be malformed. This was resolved in this PR (https://github.com/malbeclabs/doublezero/pull/2807) but the global monitor and maybe other things will break so these tests capture the expected format. The json response should be fixed sooner than later.
 pub fn check_version<C: CliCommand, W: Write>(
     client: &C,
     out: &mut W,
@@ -106,72 +34,7 @@ mod tests {
 
     use super::*;
 
-    fn setup_mock_client(
-        contract_version: ProgramVersion,
-        min_compatible_version: ProgramVersion,
-    ) -> MockCliCommand {
-        let mut client = MockCliCommand::new();
-        client
-            .expect_get_program_config()
-            .with(predicate::eq(GetProgramConfigCommand))
-            .returning(move |_| {
-                let program_config = ProgramConfig {
-                    account_type: AccountType::ProgramConfig,
-                    bump_seed: 1,
-                    version: contract_version.clone(),
-                    min_compatible_version: min_compatible_version.clone(),
-                };
-                Ok((Pubkey::new_unique(), program_config))
-            });
-        client
-    }
-
-    #[test]
-    fn test_get_version_status_current() {
-        let client = setup_mock_client(ProgramVersion::new(1, 0, 0), ProgramVersion::new(0, 9, 0));
-        let status = get_version_status(&client, ProgramVersion::new(1, 0, 0));
-        assert_eq!(status, VersionStatus::Current);
-    }
-
-    #[test]
-    fn test_get_version_status_outdated() {
-        let client = setup_mock_client(ProgramVersion::new(1, 5, 10), ProgramVersion::new(1, 1, 0));
-        let status = get_version_status(&client, ProgramVersion::new(1, 2, 0));
-        match &status {
-            VersionStatus::Outdated {
-                current_version,
-                latest_version,
-                ..
-            } => {
-                assert_eq!(current_version, "1.2.0");
-                assert_eq!(latest_version, "1.5.10");
-            }
-            _ => panic!("Expected Outdated status"),
-        }
-        assert!(!status.is_incompatible());
-        assert!(status.message().is_some());
-    }
-
-    #[test]
-    fn test_get_version_status_incompatible() {
-        let client = setup_mock_client(ProgramVersion::new(1, 5, 10), ProgramVersion::new(1, 1, 0));
-        let status = get_version_status(&client, ProgramVersion::new(1, 0, 0));
-        match &status {
-            VersionStatus::Incompatible {
-                current_version,
-                min_required_version,
-                ..
-            } => {
-                assert_eq!(current_version, "1.0.0");
-                assert_eq!(min_required_version, "1.1.0");
-            }
-            _ => panic!("Expected Incompatible status"),
-        }
-        assert!(status.is_incompatible());
-        assert!(status.message().is_some());
-    }
-
-    pub fn test_check_version(
+    fn test_check_version_helper(
         out: &mut Vec<u8>,
         contract_version: ProgramVersion,
         min_compatible_version: ProgramVersion,
@@ -195,10 +58,11 @@ mod tests {
         check_version(&client, out, client_version)
     }
 
+    /// Test: Client version equals program version - no output, no error
     #[test]
     fn test_check_version_ok() {
         let mut output = Vec::new();
-        let res = test_check_version(
+        let res = test_check_version_helper(
             &mut output,
             ProgramVersion::new(1, 0, 0),
             ProgramVersion::new(0, 9, 0),
@@ -209,10 +73,11 @@ mod tests {
         assert_eq!(output_str, "");
     }
 
+    /// Test: Client version is newer than program version - no output, no error
     #[test]
-    fn test_check_version_minor_ok() {
+    fn test_check_version_client_newer_minor() {
         let mut output = Vec::new();
-        let res = test_check_version(
+        let res = test_check_version_helper(
             &mut output,
             ProgramVersion::new(1, 1, 0),
             ProgramVersion::new(1, 0, 0),
@@ -223,10 +88,11 @@ mod tests {
         assert_eq!(output_str, "");
     }
 
+    /// Test: Client version is newer major than program version - no output, no error
     #[test]
-    fn test_check_version_major_ok() {
+    fn test_check_version_client_newer_major() {
         let mut output = Vec::new();
-        let res = test_check_version(
+        let res = test_check_version_helper(
             &mut output,
             ProgramVersion::new(1, 0, 0),
             ProgramVersion::new(0, 9, 0),
@@ -237,10 +103,11 @@ mod tests {
         assert_eq!(output_str, "");
     }
 
+    /// Test: Client version is older but still compatible - warning message, no error
     #[test]
-    fn test_check_version_build_warning() {
+    fn test_check_version_outdated_but_compatible() {
         let mut output = Vec::new();
-        let res = test_check_version(
+        let res = test_check_version_helper(
             &mut output,
             ProgramVersion::new(1, 5, 10),
             ProgramVersion::new(1, 1, 0),
@@ -251,10 +118,11 @@ mod tests {
         assert_eq!(output_str, "A new version of the client is available: 1.2.0 → 1.5.10\nWe recommend updating to the latest version for the best experience.\n");
     }
 
+    /// Test: Client version is below minimum compatible version - error returned
     #[test]
-    fn test_check_version_build_error() {
+    fn test_check_version_incompatible() {
         let mut output = Vec::new();
-        let res = test_check_version(
+        let res = test_check_version_helper(
             &mut output,
             ProgramVersion::new(1, 5, 10),
             ProgramVersion::new(1, 1, 0),
@@ -267,5 +135,55 @@ mod tests {
         );
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(output_str, "");
+    }
+
+    /// Test: Client version exactly at minimum compatible version - no error
+    #[test]
+    fn test_check_version_at_minimum_compatible() {
+        let mut output = Vec::new();
+        let res = test_check_version_helper(
+            &mut output,
+            ProgramVersion::new(1, 5, 0), // program version
+            ProgramVersion::new(1, 2, 0), // min compatible
+            ProgramVersion::new(1, 2, 0), // client version (exactly at min)
+        );
+        assert!(res.is_ok());
+        // Should show upgrade recommendation since client < program version
+        let output_str = String::from_utf8(output).unwrap();
+        assert!(output_str.contains("A new version of the client is available"));
+    }
+
+    /// Test: Program config unavailable - gracefully succeeds (no-op)
+    #[test]
+    fn test_check_version_config_unavailable() {
+        let mut client = MockCliCommand::new();
+        client
+            .expect_get_program_config()
+            .with(predicate::eq(GetProgramConfigCommand))
+            .returning(|_| Err(eyre::eyre!("RPC error")));
+
+        let mut output = Vec::new();
+        let res = check_version(&client, &mut output, ProgramVersion::new(1, 0, 0));
+
+        // Should succeed even if config is unavailable
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        assert_eq!(output_str, "");
+    }
+
+    /// Test: Patch version difference - client older patch, still compatible
+    #[test]
+    fn test_check_version_patch_difference() {
+        let mut output = Vec::new();
+        let res = test_check_version_helper(
+            &mut output,
+            ProgramVersion::new(1, 2, 5), // program version
+            ProgramVersion::new(1, 2, 0), // min compatible
+            ProgramVersion::new(1, 2, 3), // client version (older patch)
+        );
+        assert!(res.is_ok());
+        // Should show upgrade recommendation since client < program version
+        let output_str = String::from_utf8(output).unwrap();
+        assert!(output_str.contains("1.2.3 → 1.2.5"));
     }
 }

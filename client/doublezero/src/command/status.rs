@@ -5,17 +5,10 @@ use crate::{
     servicecontroller::{ServiceController, ServiceControllerImpl, StatusResponse},
 };
 use clap::Args;
-use doublezero_cli::{
-    checkversion::{get_version_status, VersionStatus},
-    doublezerocommand::CliCommand,
-    helpers::print_error,
-};
-use doublezero_sdk::{
-    commands::{
-        device::list::ListDeviceCommand, exchange::list::ListExchangeCommand,
-        user::list::ListUserCommand,
-    },
-    ProgramVersion,
+use doublezero_cli::{doublezerocommand::CliCommand, helpers::print_error};
+use doublezero_sdk::commands::{
+    device::list::ListDeviceCommand, exchange::list::ListExchangeCommand,
+    user::list::ListUserCommand,
 };
 use serde::{Deserialize, Serialize};
 use solana_sdk::pubkey::Pubkey;
@@ -43,52 +36,14 @@ struct AppendedStatusResponse {
     network: String,
 }
 
-/// JSON response wrapper that includes version status information
-#[derive(Debug, Serialize, Deserialize)]
-struct StatusJsonResponse {
-    version: VersionStatus,
-    statuses: Vec<AppendedStatusResponse>,
-}
-
 impl StatusCliCommand {
     pub async fn execute(&self, client: &dyn CliCommand) -> eyre::Result<()> {
         let controller = ServiceControllerImpl::new(None);
         check_doublezero(&controller, client, None).await?;
-
-        // Get version status for JSON output
-        let version_status = get_version_status(client, ProgramVersion::current());
-
         match self.command_impl(client, &controller).await {
-            Ok(responses) => {
-                if self.json {
-                    // For JSON output, include version status in the response
-                    let json_response = StatusJsonResponse {
-                        version: version_status,
-                        statuses: responses,
-                    };
-                    let output = serde_json::to_string_pretty(&json_response)?;
-                    println!("{output}");
-                } else {
-                    // For table output, print version warning to stderr if needed
-                    if let Some(msg) = version_status.message() {
-                        eprintln!("{msg}");
-                    }
-                    util::show_output(responses, false)?;
-                }
-            }
+            Ok(responses) => util::show_output(responses, self.json)?,
             Err(e) => {
-                if self.json {
-                    // For JSON output, include error in a structured format
-                    let error_response = serde_json::json!({
-                        "version": version_status,
-                        "error": e.to_string(),
-                        "statuses": []
-                    });
-                    let output = serde_json::to_string_pretty(&error_response)?;
-                    println!("{output}");
-                } else {
-                    print_error(e);
-                }
+                print_error(e);
             }
         }
         Ok(())
@@ -188,6 +143,7 @@ impl StatusCliCommand {
     }
 }
 
+// NOTE: if the client is out of date, there is an error because the client warning will cause the json to be malformed. This was resolved in this PR (https://github.com/malbeclabs/doublezero/pull/2807) but the global monitor and maybe other things will break so these tests capture the expected format. The json response should be fixed sooner than later.
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -843,5 +799,166 @@ mod tests {
         assert_eq!(result[0].metro, "metro".to_string());
         // Should show checkmark since current_device matches lowest_latency_device
         assert_eq!(result[0].lowest_latency_device, "device1".to_string());
+    }
+
+    /// Test that validates the JSON output format for the status command.
+    /// This test catches breaking changes to the JSON API contract.
+    /// The JSON output is an array of AppendedStatusResponse objects.
+    #[test]
+    fn test_status_json_output_format() {
+        use crate::servicecontroller::DoubleZeroStatus;
+
+        // Create a sample StatusResponse
+        let status_response = StatusResponse {
+            doublezero_status: DoubleZeroStatus {
+                session_status: "BGP Session Up".to_string(),
+                last_session_update: Some(1625247600),
+            },
+            tunnel_name: Some("doublezero1".to_string()),
+            tunnel_src: Some("10.0.0.1".to_string()),
+            tunnel_dst: Some("5.6.7.8".to_string()),
+            doublezero_ip: Some("10.1.2.3".to_string()),
+            user_type: Some("IBRL".to_string()),
+        };
+
+        // Create AppendedStatusResponse
+        let appended_response = AppendedStatusResponse {
+            response: status_response,
+            current_device: "device1".to_string(),
+            lowest_latency_device: "device1".to_string(),
+            metro: "amsterdam".to_string(),
+            network: "Testnet".to_string(),
+        };
+
+        // JSON output is an array of status responses
+        let json_response = vec![appended_response];
+
+        // Serialize to JSON
+        let json_output = serde_json::to_value(&json_response).expect("Failed to serialize");
+
+        // Validate top-level structure is an array
+        assert!(json_output.is_array(), "Response should be an array");
+        assert_eq!(json_output.as_array().unwrap().len(), 1);
+
+        // Validate status entry fields
+        let status = &json_output.as_array().unwrap()[0];
+        assert!(status.get("response").is_some(), "Missing 'response' field");
+        assert!(
+            status.get("current_device").is_some(),
+            "Missing 'current_device' field"
+        );
+        assert!(
+            status.get("lowest_latency_device").is_some(),
+            "Missing 'lowest_latency_device' field"
+        );
+        assert!(status.get("metro").is_some(), "Missing 'metro' field");
+        assert!(status.get("network").is_some(), "Missing 'network' field");
+
+        // Validate response nested fields
+        let response = status.get("response").unwrap();
+        assert!(
+            response.get("doublezero_status").is_some(),
+            "Missing 'doublezero_status' field"
+        );
+        assert!(
+            response.get("tunnel_name").is_some(),
+            "Missing 'tunnel_name' field"
+        );
+        assert!(
+            response.get("tunnel_src").is_some(),
+            "Missing 'tunnel_src' field"
+        );
+        assert!(
+            response.get("tunnel_dst").is_some(),
+            "Missing 'tunnel_dst' field"
+        );
+        assert!(
+            response.get("doublezero_ip").is_some(),
+            "Missing 'doublezero_ip' field"
+        );
+        assert!(
+            response.get("user_type").is_some(),
+            "Missing 'user_type' field"
+        );
+
+        // Validate doublezero_status nested fields
+        let dz_status = response.get("doublezero_status").unwrap();
+        assert!(
+            dz_status.get("session_status").is_some(),
+            "Missing 'session_status' field"
+        );
+        assert!(
+            dz_status.get("last_session_update").is_some(),
+            "Missing 'last_session_update' field"
+        );
+
+        // Validate field values
+        assert_eq!(status.get("current_device").unwrap(), "device1");
+        assert_eq!(status.get("lowest_latency_device").unwrap(), "device1");
+        assert_eq!(status.get("metro").unwrap(), "amsterdam");
+        assert_eq!(status.get("network").unwrap(), "Testnet");
+        assert_eq!(response.get("tunnel_name").unwrap(), "doublezero1");
+        assert_eq!(response.get("tunnel_src").unwrap(), "10.0.0.1");
+        assert_eq!(response.get("tunnel_dst").unwrap(), "5.6.7.8");
+        assert_eq!(response.get("doublezero_ip").unwrap(), "10.1.2.3");
+        assert_eq!(response.get("user_type").unwrap(), "IBRL");
+        assert_eq!(dz_status.get("session_status").unwrap(), "BGP Session Up");
+        assert_eq!(dz_status.get("last_session_update").unwrap(), 1625247600);
+    }
+
+    /// Test JSON output format with null/missing optional fields
+    #[test]
+    fn test_status_json_output_format_with_nulls() {
+        use crate::servicecontroller::DoubleZeroStatus;
+
+        // Create a StatusResponse with None values (e.g., multicast subscriber without dz_ip)
+        let status_response = StatusResponse {
+            doublezero_status: DoubleZeroStatus {
+                session_status: "PIM Adjacency Up".to_string(),
+                last_session_update: None,
+            },
+            tunnel_name: Some("doublezero1".to_string()),
+            tunnel_src: Some("10.0.0.1".to_string()),
+            tunnel_dst: Some("5.6.7.8".to_string()),
+            doublezero_ip: None, // Multicast subscribers don't have dz_ip
+            user_type: Some("Multicast".to_string()),
+        };
+
+        let appended_response = AppendedStatusResponse {
+            response: status_response,
+            current_device: "device1".to_string(),
+            lowest_latency_device: "device1".to_string(),
+            metro: "amsterdam".to_string(),
+            network: "Testnet".to_string(),
+        };
+
+        // JSON output is an array of status responses
+        let json_response = vec![appended_response];
+
+        let json_output = serde_json::to_value(&json_response).expect("Failed to serialize");
+
+        // Validate that null fields are properly serialized
+        let status = &json_output.as_array().unwrap()[0];
+        let response = status.get("response").unwrap();
+
+        // doublezero_ip should be null
+        assert!(
+            response.get("doublezero_ip").is_some(),
+            "doublezero_ip field should exist"
+        );
+        assert!(
+            response.get("doublezero_ip").unwrap().is_null(),
+            "doublezero_ip should be null"
+        );
+
+        // last_session_update should be null
+        let dz_status = response.get("doublezero_status").unwrap();
+        assert!(
+            dz_status.get("last_session_update").unwrap().is_null(),
+            "last_session_update should be null"
+        );
+
+        // user_type should still be present
+        assert_eq!(response.get("user_type").unwrap(), "Multicast");
     }
 }

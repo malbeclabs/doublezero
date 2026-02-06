@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,6 +26,10 @@ type ClickhouseWriter struct {
 }
 
 func NewClickhouseWriter(log *slog.Logger, addr, db, user, pass string, disableTLS bool) (*ClickhouseWriter, error) {
+	// Strip URL scheme if present - clickhouse-go expects host:port only
+	addr = strings.TrimPrefix(addr, "https://")
+	addr = strings.TrimPrefix(addr, "http://")
+
 	chOpts := &clickhouse.Options{
 		Addr: []string{addr},
 		Auth: clickhouse.Auth{

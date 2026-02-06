@@ -9,8 +9,66 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+env:
+  SHARD_COUNT: "2"
+
 jobs:
+  setup:
+    runs-on: self-hosted
+    outputs:
+      matrix: ${{ steps.shard.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Discover tests and distribute across shards
+        id: shard
+        working-directory: e2e/
+        run: |
+          # Find files with exactly the e2e build tag (excludes compound tags like "e2e && stress")
+          tests=$(grep -rl '^//go:build e2e$' *_test.go \
+            | xargs grep -h '^func TestE2E_' \
+            | sed 's/func \(TestE2E_[a-zA-Z0-9_]*\).*/\1/' \
+            | sort)
+
+          count=$(echo "$tests" | wc -l)
+          echo "Discovered $count tests"
+          echo "$tests"
+
+          # Distribute round-robin across shards
+          declare -a shards
+          for ((i=0; i<SHARD_COUNT; i++)); do
+            shards[$i]=""
+          done
+
+          i=0
+          while IFS= read -r test; do
+            idx=$((i % SHARD_COUNT))
+            if [ -n "${shards[$idx]}" ]; then
+              shards[$idx]="${shards[$idx]}|${test}"
+            else
+              shards[$idx]="$test"
+            fi
+            i=$((i + 1))
+          done <<< "$tests"
+
+          # Build JSON matrix array
+          matrix="["
+          for ((i=0; i<SHARD_COUNT; i++)); do
+            if [ $i -gt 0 ]; then
+              matrix="${matrix},"
+            fi
+            matrix="${matrix}{\"shard\":${i},\"run\":\"^(${shards[$i]})$\"}"
+          done
+          matrix="${matrix}]"
+
+          echo "Matrix: $matrix"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
   e2e:
+    needs: setup
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.setup.outputs.matrix) }}
     defaults:
       run:
         working-directory: "e2e/"
@@ -39,4 +97,6 @@ jobs:
         # Limit parallelism to avoid overwhelming Docker when multiple tests
         # start ledger containers simultaneously (each uses ~2GB memory).
         # The HTTP wait strategy helps, but Docker API can still bottleneck.
-        run: make test verbose parallel=12
+        # Uses direct go test instead of make to avoid regex escaping issues
+        # with $, |, () through Make's variable expansion.
+        run: go test -tags=e2e -timeout=20m -parallel=12 -run '${{ matrix.run }}' -v

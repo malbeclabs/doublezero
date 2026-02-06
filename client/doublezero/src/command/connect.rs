@@ -1172,6 +1172,15 @@ mod tests {
             device_pk: Pubkey,
             client_ip: &str,
         ) -> User {
+            // Look up device's public_ip to set as tunnel_endpoint
+            let tunnel_endpoint = self
+                .devices
+                .lock()
+                .unwrap()
+                .get(&device_pk)
+                .map(|d| d.public_ip)
+                .unwrap_or(Ipv4Addr::UNSPECIFIED);
+
             User {
                 account_type: AccountType::User,
                 owner: Pubkey::new_unique(),
@@ -1189,7 +1198,7 @@ mod tests {
                 publishers: vec![],
                 subscribers: vec![],
                 validator_pubkey: Pubkey::new_unique(),
-                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+                tunnel_endpoint,
             }
         }
 
@@ -1508,7 +1517,7 @@ mod tests {
         fixture.expected_provisioning_request(
             UserType::Multicast,
             user.client_ip.to_string().as_str(),
-            device1.public_ip.to_string().as_str(),
+            device2.public_ip.to_string().as_str(),
             Some(vec![mcast_group.multicast_ip.to_string()]),
             Some(vec![]),
         );
@@ -2013,14 +2022,15 @@ mod tests {
             .await;
         assert!(result.is_ok());
 
-        // Test that adding an IBRL tunnel with an existing multicast succeeds
-        let ibrl_user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
+        // Test that adding an IBRL tunnel with an existing multicast succeeds on a DIFFERENT device
+        // (concurrent tunnels from same client IP must go to different devices)
+        let ibrl_user = fixture.create_user(UserType::IBRL, device2_pk, "1.2.3.4");
         fixture.expect_create_user(Pubkey::new_unique(), &ibrl_user);
 
         fixture.expected_provisioning_request(
             UserType::IBRL,
             ibrl_user.client_ip.to_string().as_str(),
-            device1.public_ip.to_string().as_str(),
+            device2.public_ip.to_string().as_str(),
             None,
             None,
         );
@@ -2094,13 +2104,15 @@ mod tests {
         assert!(result1.is_ok());
 
         println!("Test that adding an IBRL tunnel with an existing multicast succeeds");
-        let ibrl_user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
+        // IBRL user should go to a DIFFERENT device than the existing Multicast user
+        // (concurrent tunnels from same client IP must go to different devices)
+        let ibrl_user = fixture.create_user(UserType::IBRL, device2_pk, "1.2.3.4");
         fixture.expect_create_user(Pubkey::new_unique(), &ibrl_user);
 
         fixture.expected_provisioning_request(
             UserType::IBRL,
             ibrl_user.client_ip.to_string().as_str(),
-            device1.public_ip.to_string().as_str(),
+            device2.public_ip.to_string().as_str(),
             None,
             None,
         );
@@ -2381,13 +2393,16 @@ mod tests {
         let mut fixture = TestFixture::new();
 
         let (mcast_group_pk, mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
-        let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        let (device1_pk, _device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        // Add a second device for concurrent tunnels (IBRL + Multicast must go to different devices)
+        let (device2_pk, device2) = fixture.add_device(DeviceType::Hybrid, 110, true);
 
         let ibrl_user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
         let _ibrl_user_pk = fixture.add_user(&ibrl_user);
 
-        // Expect create_subscribe_user to be called to create a NEW Multicast user (not subscribe_multicastgroup)
-        let mcast_user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
+        // Expect create_subscribe_user to be called to create a NEW Multicast user on a DIFFERENT device
+        // (concurrent tunnels from same client IP must go to different devices)
+        let mcast_user = fixture.create_user(UserType::Multicast, device2_pk, "1.2.3.4");
         fixture.expect_create_subscribe_user(
             Pubkey::new_unique(),
             &mcast_user,
@@ -2399,7 +2414,7 @@ mod tests {
         fixture.expected_provisioning_request(
             UserType::Multicast,
             mcast_user.client_ip.to_string().as_str(),
-            device1.public_ip.to_string().as_str(),
+            device2.public_ip.to_string().as_str(),
             Some(vec![]),
             Some(vec![mcast_group.multicast_ip.to_string()]),
         );
@@ -2436,15 +2451,17 @@ mod tests {
 
         let (mcast_group_pk, _mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
         let (device1_pk, _device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        // Add a second device for concurrent tunnels (IBRL + Multicast must go to different devices)
+        let (device2_pk, _device2) = fixture.add_device(DeviceType::Hybrid, 110, true);
 
         // Create a pure Multicast user and add it to the fixture (simulating existing user)
         let mut mcast_user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
         mcast_user.subscribers.push(mcast_group_pk);
         let mcast_user_pk = fixture.add_user(&mcast_user);
 
-        // Create an IBRL user for the same IP
-        // This should create a separate user account (different UserType = different PDA)
-        let ibrl_user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
+        // Create an IBRL user for the same IP on a DIFFERENT device
+        // (concurrent tunnels from same client IP must go to different devices)
+        let ibrl_user = fixture.create_user(UserType::IBRL, device2_pk, "1.2.3.4");
         fixture.expect_create_user(Pubkey::new_unique(), &ibrl_user);
 
         // Allow any provisioning call

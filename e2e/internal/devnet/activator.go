@@ -114,6 +114,8 @@ func (a *Activator) Start(ctx context.Context) error {
 	}
 	if a.dn.Spec.Activator.OnchainAllocation {
 		env["DZ_ONCHAIN_ALLOCATION"] = "true"
+	} else {
+		env["DZ_ONCHAIN_ALLOCATION"] = "false"
 	}
 
 	req := testcontainers.ContainerRequest{

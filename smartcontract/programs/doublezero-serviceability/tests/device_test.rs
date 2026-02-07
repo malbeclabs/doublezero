@@ -417,6 +417,8 @@ async fn test_device() {
             desired_status: Some(DeviceDesiredStatus::Activated),
             resource_count: 2,
             reference_count: None,
+            max_unicast_users: None,
+            max_multicast_users: None,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -677,6 +679,8 @@ async fn test_device_update_metrics_publisher_by_foundation_allowlist_account() 
             desired_status: None,
             resource_count: 0,
             reference_count: None,
+            max_unicast_users: None,
+            max_multicast_users: None,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),

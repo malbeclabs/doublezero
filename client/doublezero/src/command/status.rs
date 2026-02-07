@@ -225,6 +225,10 @@ mod tests {
                     doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
                 desired_status:
                     doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+                unicast_users_count: 0,
+                multicast_users_count: 0,
+                max_unicast_users: 0,
+                max_multicast_users: 0,
             },
         );
 
@@ -254,6 +258,10 @@ mod tests {
                     doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
                 desired_status:
                     doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+                unicast_users_count: 0,
+                multicast_users_count: 0,
+                max_unicast_users: 0,
+                max_multicast_users: 0,
             },
         );
 
@@ -423,6 +431,10 @@ mod tests {
                     doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
                 desired_status:
                     doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+                unicast_users_count: 0,
+                multicast_users_count: 0,
+                max_unicast_users: 0,
+                max_multicast_users: 0,
             },
         );
 
@@ -452,6 +464,10 @@ mod tests {
                     doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
                 desired_status:
                     doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+                unicast_users_count: 0,
+                multicast_users_count: 0,
+                max_unicast_users: 0,
+                max_multicast_users: 0,
             },
         );
 
@@ -596,6 +612,10 @@ mod tests {
                 max_users: 128,
                 desired_status: DeviceDesiredStatus::Activated,
                 device_health: DeviceHealth::ReadyForUsers,
+                unicast_users_count: 0,
+                multicast_users_count: 0,
+                max_unicast_users: 0,
+                max_multicast_users: 0,
             },
         );
 
@@ -743,6 +763,10 @@ mod tests {
                 max_users: 128,
                 device_health: DeviceHealth::ReadyForUsers,
                 desired_status: DeviceDesiredStatus::Activated,
+                unicast_users_count: 0,
+                multicast_users_count: 0,
+                max_unicast_users: 0,
+                max_multicast_users: 0,
             },
         );
 

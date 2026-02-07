@@ -403,6 +403,11 @@ impl ProvisioningCliCommand {
                 spinner.println(format!("    Device selected: {} ", device.code));
                 spinner.inc(1);
 
+                // Check per-type user limit before attempting to create
+                if let Some(err_msg) = device.check_user_type_capacity(user_type) {
+                    return Err(eyre::eyre!(err_msg));
+                }
+
                 if user_type == UserType::IBRLWithAllocatedIP {
                     tunnel_src = resolve_tunnel_src(controller, &device).await?;
                 }
@@ -496,6 +501,11 @@ impl ProvisioningCliCommand {
                     "    The Device has been selected: {} ",
                     device.code
                 ));
+
+                // Check per-type user limit before attempting to create
+                if let Some(err_msg) = device.check_user_type_capacity(UserType::Multicast) {
+                    return Err(eyre::eyre!(err_msg));
+                }
 
                 // Create user with first group
                 let first_group_pk = mcast_group_pks
@@ -617,6 +627,11 @@ impl ProvisioningCliCommand {
                     device.code
                 ));
                 spinner.inc(1);
+
+                // Check per-type user limit before attempting to create
+                if let Some(err_msg) = device.check_user_type_capacity(UserType::Multicast) {
+                    return Err(eyre::eyre!(err_msg));
+                }
 
                 // Create user with first group
                 let first_group_pk = mcast_group_pks
@@ -1103,6 +1118,10 @@ mod tests {
                     doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
                 desired_status:
                     doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+                unicast_users_count: 0,
+                multicast_users_count: 0,
+                max_unicast_users: 0,
+                max_multicast_users: 0,
             };
             devices.insert(pk, device.clone());
             (pk, device)

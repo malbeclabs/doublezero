@@ -137,6 +137,10 @@ func DeserializeDevice(reader *ByteReader, dev *Device) {
 	dev.MaxUsers = reader.ReadU16()
 	dev.DeviceHealth = DeviceHealth(reader.ReadU8())
 	dev.DeviceDesiredStatus = DeviceDesiredStatus(reader.ReadU8())
+	dev.UnicastUsersCount = reader.ReadU16()
+	dev.MulticastUsersCount = reader.ReadU16()
+	dev.MaxUnicastUsers = reader.ReadU16()
+	dev.MaxMulticastUsers = reader.ReadU16()
 }
 
 func DeserializeLink(reader *ByteReader, link *Link) {

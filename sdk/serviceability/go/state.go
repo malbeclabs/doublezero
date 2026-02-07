@@ -407,6 +407,10 @@ type Device struct {
 	MaxUsers               uint16
 	DeviceHealth           DeviceHealth
 	DeviceDesiredStatus    DeviceDesiredStatus
+	UnicastUsersCount      uint16
+	MulticastUsersCount    uint16
+	MaxUnicastUsers        uint16
+	MaxMulticastUsers      uint16
 	PubKey                 [32]byte
 }
 

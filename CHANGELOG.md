@@ -68,7 +68,7 @@ All notable changes to this project will be documented in this file.
   - Serviceability: fix multicast group closeaccount to use InvalidStatus error and remove redundant publisher/subscriber count check
   - Serviceability: add tenant_allowlist field to AccessPass to restrict which tenants can use specific access passes (backward compatible with existing accounts)
   - Serviceability: bypass validation for link delete ([#2934](https://github.com/malbeclabs/doublezero/pull/2934))
-  - Serviceability: add per-device unicast and multicast user limits with separate counters and configurable max values ([RFC-13](rfcs/rfc13-per-device-unicast-multicast-user-limits.md))
+  - Serviceability: add per-device unicast and multicast user limits with separate counters and configurable max values ([RFC-14](rfcs/rfc14-per-device-unicast-multicast-user-limits.md))
 - SDK
   - Add metro_routing and route_liveness fields to CreateTenantCommand and UpdateTenantCommand
   - Add CreateTenant, UpdateTenant (vrf_id only), DeleteTenant, GetTenant, and ListTenant commands with support for code or pubkey lookup

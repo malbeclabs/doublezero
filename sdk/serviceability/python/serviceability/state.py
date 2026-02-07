@@ -40,6 +40,7 @@ class AccountTypeEnum(IntEnum):
     PROGRAM_CONFIG = 9
     CONTRIBUTOR = 10
     ACCESS_PASS = 11
+    TENANT = 13
 
 
 # ---------------------------------------------------------------------------
@@ -799,6 +800,30 @@ class Contributor:
         c.reference_count = r.read_u32()
         c.ops_manager_pk = _read_pubkey(r)
         return c
+
+
+@dataclass
+class Tenant:
+    account_type: int = 0
+    owner: Pubkey = Pubkey.default()
+    bump_seed: int = 0
+    code: str = ""
+    vrf_id: int = 0
+    reference_count: int = 0
+    administrators: list[Pubkey] = field(default_factory=list)
+
+    @classmethod
+    def from_bytes(cls, data: bytes) -> Tenant:
+        r = DefensiveReader(data)
+        t = cls()
+        t.account_type = r.read_u8()
+        t.owner = _read_pubkey(r)
+        t.bump_seed = r.read_u8()
+        t.code = r.read_string()
+        t.vrf_id = r.read_u16()
+        t.reference_count = r.read_u32()
+        t.administrators = _read_pubkey_vec(r)
+        return t
 
 
 @dataclass

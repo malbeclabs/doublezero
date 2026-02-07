@@ -400,6 +400,7 @@ async fn test_old_user() {
             tunnel_id: Some(501),
             tunnel_net: Some("169.254.0.2/25".parse().unwrap()),
             validator_pubkey: None,
+            tenant_pk: None,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -433,6 +434,7 @@ async fn test_old_user() {
             tunnel_id: Some(505),
             tunnel_net: Some("169.254.0.2/25".parse().unwrap()),
             validator_pubkey: None,
+            tenant_pk: None,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),

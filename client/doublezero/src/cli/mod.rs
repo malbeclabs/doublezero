@@ -10,4 +10,5 @@ pub mod location;
 pub mod multicast;
 pub mod multicastgroup;
 pub mod resource;
+pub mod tenant;
 pub mod user;

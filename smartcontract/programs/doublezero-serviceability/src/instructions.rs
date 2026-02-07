@@ -69,6 +69,11 @@ use crate::processors::{
         allocate::ResourceAllocateArgs, closeaccount::ResourceExtensionCloseAccountArgs,
         create::ResourceCreateArgs, deallocate::ResourceDeallocateArgs,
     },
+    tenant::{
+        add_administrator::TenantAddAdministratorArgs, create::TenantCreateArgs,
+        delete::TenantDeleteArgs, remove_administrator::TenantRemoveAdministratorArgs,
+        update::TenantUpdateArgs,
+    },
     user::{
         activate::UserActivateArgs, ban::UserBanArgs, check_access_pass::CheckUserAccessPassArgs,
         closeaccount::UserCloseAccountArgs, create::UserCreateArgs,
@@ -188,6 +193,12 @@ pub enum DoubleZeroInstruction {
 
     AddQaAllowlist(AddQaAllowlistArgs),       // variant 86
     RemoveQaAllowlist(RemoveQaAllowlistArgs), // variant 87
+
+    CreateTenant(TenantCreateArgs),                     // variant 88
+    UpdateTenant(TenantUpdateArgs),                     // variant 89
+    DeleteTenant(TenantDeleteArgs),                     // variant 90
+    TenantAddAdministrator(TenantAddAdministratorArgs), // variant 91
+    TenantRemoveAdministrator(TenantRemoveAdministratorArgs), // variant 92
 }
 
 impl DoubleZeroInstruction {
@@ -305,6 +316,12 @@ impl DoubleZeroInstruction {
             86 => Ok(Self::AddQaAllowlist(AddQaAllowlistArgs::try_from(rest).unwrap())),
             87 => Ok(Self::RemoveQaAllowlist(RemoveQaAllowlistArgs::try_from(rest).unwrap())),
 
+            88 => Ok(Self::CreateTenant(TenantCreateArgs::try_from(rest).unwrap())),
+            89 => Ok(Self::UpdateTenant(TenantUpdateArgs::try_from(rest).unwrap())),
+            90 => Ok(Self::DeleteTenant(TenantDeleteArgs::try_from(rest).unwrap())),
+            91 => Ok(Self::TenantAddAdministrator(TenantAddAdministratorArgs::try_from(rest).unwrap())),
+            92 => Ok(Self::TenantRemoveAdministrator(TenantRemoveAdministratorArgs::try_from(rest).unwrap())),
+
             _ => Err(ProgramError::InvalidInstructionData),
         }
     }
@@ -418,6 +435,12 @@ impl DoubleZeroInstruction {
 
             Self::AddQaAllowlist(_) => "AddQaAllowlist".to_string(), // variant 86
             Self::RemoveQaAllowlist(_) => "RemoveQaAllowlist".to_string(), // variant 87
+
+            Self::CreateTenant(_) => "CreateTenant".to_string(), // variant 88
+            Self::UpdateTenant(_) => "UpdateTenant".to_string(), // variant 89
+            Self::DeleteTenant(_) => "DeleteTenant".to_string(), // variant 90
+            Self::TenantAddAdministrator(_) => "TenantAddAdministrator".to_string(), // variant 91
+            Self::TenantRemoveAdministrator(_) => "TenantRemoveAdministrator".to_string(), // variant 92
         }
     }
 
@@ -524,6 +547,12 @@ impl DoubleZeroInstruction {
 
             Self::AddQaAllowlist(args) => format!("{args:?}"), // variant 86
             Self::RemoveQaAllowlist(args) => format!("{args:?}"), // variant 87
+
+            Self::CreateTenant(args) => format!("{args:?}"), // variant 88
+            Self::UpdateTenant(args) => format!("{args:?}"), // variant 89
+            Self::DeleteTenant(args) => format!("{args:?}"), // variant 90
+            Self::TenantAddAdministrator(args) => format!("{args:?}"), // variant 91
+            Self::TenantRemoveAdministrator(args) => format!("{args:?}"), // variant 92
         }
     }
 }
@@ -743,6 +772,7 @@ mod tests {
                 tunnel_id: Some(1),
                 tunnel_net: Some("1.2.3.4/1".parse().unwrap()),
                 validator_pubkey: Some(Pubkey::new_unique()),
+                tenant_pk: Some(Pubkey::new_unique()),
             }),
             "UpdateUser",
         );

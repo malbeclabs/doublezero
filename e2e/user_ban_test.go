@@ -4,6 +4,7 @@ package e2e_test
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"log/slog"
 	"net"
@@ -13,9 +14,11 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
-	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
+	"github.com/malbeclabs/doublezero/sdk/serviceability/go"
 	"github.com/mr-tron/base58"
 	"github.com/stretchr/testify/require"
 )
@@ -52,49 +55,66 @@ func TestE2E_UserBan(t *testing.T) {
 	_, err = linkNetwork.CreateIfNotExists(t.Context())
 	require.NoError(t, err)
 
-	// Add la2-dz01 device in xlax exchange.
+	// Add both devices in parallel (ME1 optimization).
 	deviceCode1 := "la2-dz01"
-	device1, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
-		Code:     deviceCode1,
-		Location: "lax",
-		Exchange: "xlax",
-		// .8/29 has network address .8, allocatable up to .14, and broadcast .15
-		CYOANetworkIPHostID:          8,
-		CYOANetworkAllocatablePrefix: 29,
-		AdditionalNetworks:           []string{linkNetwork.Name},
-		Interfaces: map[string]string{
-			"Ethernet2": "physical",
-		},
-		LoopbackInterfaces: map[string]string{
-			"Loopback255": "vpnv4",
-			"Loopback256": "ipv4",
-		},
-	})
-	require.NoError(t, err)
-	devicePK1 := device1.ID
-	log.Info("--> Device1 added", "deviceCode", deviceCode1, "devicePK", devicePK1)
-
-	// Add ny5-dz01 device in xewr exchange.
 	deviceCode2 := "ny5-dz01"
-	device2, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
-		Code:     deviceCode2,
-		Location: "ewr",
-		Exchange: "xewr",
-		// .16/29 has network address .16, allocatable up to .22, and broadcast .23
-		CYOANetworkIPHostID:          16,
-		CYOANetworkAllocatablePrefix: 29,
-		AdditionalNetworks:           []string{linkNetwork.Name},
-		Interfaces: map[string]string{
-			"Ethernet2": "physical",
-		},
-		LoopbackInterfaces: map[string]string{
-			"Loopback255": "vpnv4",
-			"Loopback256": "ipv4",
-		},
+	var devicePK1, devicePK2 string
+
+	g := new(errgroup.Group)
+	g.Go(func() error {
+		// Add la2-dz01 device in xlax exchange.
+		device1, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
+			Code:     deviceCode1,
+			Location: "lax",
+			Exchange: "xlax",
+			// .8/29 has network address .8, allocatable up to .14, and broadcast .15
+			CYOANetworkIPHostID:          8,
+			CYOANetworkAllocatablePrefix: 29,
+			AdditionalNetworks:           []string{linkNetwork.Name},
+			Interfaces: map[string]string{
+				"Ethernet2": "physical",
+			},
+			LoopbackInterfaces: map[string]string{
+				"Loopback255": "vpnv4",
+				"Loopback256": "ipv4",
+			},
+		})
+		if err != nil {
+			return fmt.Errorf("add device1 (%s): %w", deviceCode1, err)
+		}
+		devicePK1 = device1.ID
+		log.Info("--> Device1 added", "deviceCode", deviceCode1, "devicePK", devicePK1)
+		return nil
 	})
-	require.NoError(t, err)
-	devicePK2 := device2.ID
-	log.Info("--> Device2 added", "deviceCode", deviceCode2, "devicePK", devicePK2)
+
+	g.Go(func() error {
+		// Add ny5-dz01 device in xewr exchange.
+		device2, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
+			Code:     deviceCode2,
+			Location: "ewr",
+			Exchange: "xewr",
+			// .16/29 has network address .16, allocatable up to .22, and broadcast .23
+			CYOANetworkIPHostID:          16,
+			CYOANetworkAllocatablePrefix: 29,
+			AdditionalNetworks:           []string{linkNetwork.Name},
+			Interfaces: map[string]string{
+				"Ethernet2": "physical",
+			},
+			LoopbackInterfaces: map[string]string{
+				"Loopback255": "vpnv4",
+				"Loopback256": "ipv4",
+			},
+		})
+		if err != nil {
+			return fmt.Errorf("add device2 (%s): %w", deviceCode2, err)
+		}
+		devicePK2 = device2.ID
+		log.Info("--> Device2 added", "deviceCode", deviceCode2, "devicePK", devicePK2)
+		return nil
+	})
+
+	// Wait for both devices to be added.
+	require.NoError(t, g.Wait())
 
 	// Wait for devices to exist onchain.
 	log.Info("==> Waiting for devices to exist onchain")
@@ -102,7 +122,10 @@ func TestE2E_UserBan(t *testing.T) {
 	require.NoError(t, err)
 	require.Eventually(t, func() bool {
 		data, err := serviceabilityClient.GetProgramData(t.Context())
-		require.NoError(t, err)
+		if err != nil {
+			log.Error("failed to get program data", "error", err)
+			return false
+		}
 		return len(data.Devices) == 2
 	}, 30*time.Second, 1*time.Second)
 	log.Info("--> Devices exist onchain", "deviceCode1", deviceCode1, "devicePK1", devicePK1, "deviceCode2", deviceCode2, "devicePK2", devicePK2)
@@ -137,14 +160,19 @@ func TestE2E_UserBan(t *testing.T) {
 	require.NoError(t, err)
 	log.Info("--> Client3 added", "client3Pubkey", client3.Pubkey, "client3IP", client3.CYOANetworkIP)
 
-	// Wait for client latency results.
-	log.Info("==> Waiting for client latency results")
-	err = client1.WaitForLatencyResults(t.Context(), devicePK1, 90*time.Second)
-	require.NoError(t, err)
-	err = client2.WaitForLatencyResults(t.Context(), devicePK2, 90*time.Second)
-	require.NoError(t, err)
-	err = client3.WaitForLatencyResults(t.Context(), devicePK1, 90*time.Second)
-	require.NoError(t, err)
+	// Wait for client latency results in parallel (QW1 optimization).
+	log.Info("==> Waiting for client latency results (parallel)")
+	g = new(errgroup.Group)
+	g.Go(func() error {
+		return client1.WaitForLatencyResults(t.Context(), devicePK1, 90*time.Second)
+	})
+	g.Go(func() error {
+		return client2.WaitForLatencyResults(t.Context(), devicePK2, 90*time.Second)
+	})
+	g.Go(func() error {
+		return client3.WaitForLatencyResults(t.Context(), devicePK1, 90*time.Second)
+	})
+	require.NoError(t, g.Wait())
 	log.Info("--> Finished waiting for client latency results")
 
 	// Add clients to user Access Pass so they can open user connections.
@@ -188,48 +216,72 @@ func runUserBanIBRLWorkflowTest(t *testing.T, log *slog.Logger, client1 *devnet.
 	require.Equal(t, devnet.ClientSessionStatusDisconnected, status[0].DoubleZeroStatus.SessionStatus)
 	log.Info("--> Confirmed clients are disconnected and do not have a DZ IP allocated")
 
-	// Connect client1 in IBRL mode to device1 (xlax exchange).
-	log.Info("==> Connecting client1 in IBRL mode to device1")
-	_, err = client1.Exec(t.Context(), []string{"doublezero", "connect", "ibrl", "--client-ip", client1.CYOANetworkIP, "--device", deviceCode1})
-	require.NoError(t, err)
-	err = client1.WaitForTunnelUp(t.Context(), 90*time.Second)
-	require.NoError(t, err)
-	log.Info("--> Client1 connected in IBRL mode to device1")
+	// Connect all three clients in IBRL mode in parallel (QW3 optimization).
+	log.Info("==> Connecting all clients in IBRL mode (parallel)")
+	g := new(errgroup.Group)
+	g.Go(func() error {
+		// Connect client1 in IBRL mode to device1 (xlax exchange).
+		_, err := client1.Exec(t.Context(), []string{"doublezero", "connect", "ibrl", "--client-ip", client1.CYOANetworkIP, "--device", deviceCode1})
+		if err != nil {
+			return fmt.Errorf("connect client1: %w", err)
+		}
+		if err := client1.WaitForTunnelUp(t.Context(), 90*time.Second); err != nil {
+			return fmt.Errorf("wait for client1 tunnel up: %w", err)
+		}
+		log.Info("--> Client1 connected in IBRL mode to device1")
+		return nil
+	})
+	g.Go(func() error {
+		// Connect client2 in IBRL mode to device2 (xewr exchange).
+		_, err := client2.Exec(t.Context(), []string{"doublezero", "connect", "ibrl", "--client-ip", client2.CYOANetworkIP, "--device", deviceCode2})
+		if err != nil {
+			return fmt.Errorf("connect client2: %w", err)
+		}
+		if err := client2.WaitForTunnelUp(t.Context(), 90*time.Second); err != nil {
+			return fmt.Errorf("wait for client2 tunnel up: %w", err)
+		}
+		log.Info("--> Client2 connected in IBRL mode to device2")
+		return nil
+	})
+	g.Go(func() error {
+		// Connect client3 in IBRL mode to device1 (xlax exchange, same as client1).
+		_, err := client3.Exec(t.Context(), []string{"doublezero", "connect", "ibrl", "--client-ip", client3.CYOANetworkIP, "--device", deviceCode1})
+		if err != nil {
+			return fmt.Errorf("connect client3: %w", err)
+		}
+		if err := client3.WaitForTunnelUp(t.Context(), 90*time.Second); err != nil {
+			return fmt.Errorf("wait for client3 tunnel up: %w", err)
+		}
+		log.Info("--> Client3 connected in IBRL mode to device1")
+		return nil
+	})
+	require.NoError(t, g.Wait())
+	log.Info("--> All clients connected in IBRL mode")
 
-	// Connect client2 in IBRL mode to device2 (xewr exchange).
-	log.Info("==> Connecting client2 in IBRL mode to device2")
-	_, err = client2.Exec(t.Context(), []string{"doublezero", "connect", "ibrl", "--client-ip", client2.CYOANetworkIP, "--device", deviceCode2})
-	require.NoError(t, err)
-	err = client2.WaitForTunnelUp(t.Context(), 90*time.Second)
-	require.NoError(t, err)
-	log.Info("--> Client2 connected in IBRL mode to device2")
-
-	// Connect client3 in IBRL mode to device1 (xlax exchange, same as client1).
-	log.Info("==> Connecting client3 in IBRL mode to device1")
-	_, err = client3.Exec(t.Context(), []string{"doublezero", "connect", "ibrl", "--client-ip", client3.CYOANetworkIP, "--device", deviceCode1})
-	require.NoError(t, err)
-	err = client3.WaitForTunnelUp(t.Context(), 90*time.Second)
-	require.NoError(t, err)
-	log.Info("--> Client3 connected in IBRL mode to device1")
-
-	// Wait for cross-exchange routes to propagate via iBGP between devices.
+	// Wait for cross-exchange routes to propagate via iBGP between devices (QW4 optimization: parallel).
 	// Device1 (xlax) should have client2's route (from device2 via iBGP),
 	// and device2 (xewr) should have client1's route (from device1 via iBGP).
-	log.Info("==> Waiting for cross-exchange routes to propagate via iBGP")
-	require.Eventually(t, func() bool {
-		output, err := dn.Devices[deviceCode1].Exec(t.Context(), []string{"bash", "-c", fmt.Sprintf("Cli -c \"show ip route vrf vrf1 %s/32\"", client2.CYOANetworkIP)})
-		if err != nil {
-			return false
-		}
-		return strings.Contains(string(output), client2.CYOANetworkIP)
-	}, 90*time.Second, 1*time.Second, "device1 should have route to client2 via iBGP")
-	require.Eventually(t, func() bool {
-		output, err := dn.Devices[deviceCode2].Exec(t.Context(), []string{"bash", "-c", fmt.Sprintf("Cli -c \"show ip route vrf vrf1 %s/32\"", client1.CYOANetworkIP)})
-		if err != nil {
-			return false
-		}
-		return strings.Contains(string(output), client1.CYOANetworkIP)
-	}, 90*time.Second, 1*time.Second, "device2 should have route to client1 via iBGP")
+	log.Info("==> Waiting for cross-exchange routes to propagate via iBGP (parallel)")
+	g = new(errgroup.Group)
+	g.Go(func() error {
+		return waitForCondition(t.Context(), 90*time.Second, 1*time.Second, func() (bool, error) {
+			output, err := dn.Devices[deviceCode1].Exec(t.Context(), []string{"bash", "-c", fmt.Sprintf("Cli -c \"show ip route vrf vrf1 %s/32\"", client2.CYOANetworkIP)})
+			if err != nil {
+				return false, nil
+			}
+			return strings.Contains(string(output), client2.CYOANetworkIP), nil
+		}, "device1 should have route to client2 via iBGP")
+	})
+	g.Go(func() error {
+		return waitForCondition(t.Context(), 90*time.Second, 1*time.Second, func() (bool, error) {
+			output, err := dn.Devices[deviceCode2].Exec(t.Context(), []string{"bash", "-c", fmt.Sprintf("Cli -c \"show ip route vrf vrf1 %s/32\"", client1.CYOANetworkIP)})
+			if err != nil {
+				return false, nil
+			}
+			return strings.Contains(string(output), client1.CYOANetworkIP), nil
+		}, "device2 should have route to client1 via iBGP")
+	})
+	require.NoError(t, g.Wait())
 	log.Info("--> Cross-exchange routes have propagated via iBGP")
 
 	// Check that the clients have a DZ IP equal to their client IP when not configured to use an allocated IP.
@@ -251,41 +303,53 @@ func runUserBanIBRLWorkflowTest(t *testing.T, log *slog.Logger, client1 *devnet.
 	require.Equal(t, client3.CYOANetworkIP, client3DZIP)
 	log.Info("--> Clients have a DZ IP as public IP when not configured to use an allocated IP")
 
-	// Check that client1 and client3 do not have routes to each other (same exchange - xlax).
-	log.Info("==> Checking that client1 and client3 do not have routes to each other (intra-exchange routing policy)")
-	require.Eventually(t, func() bool {
-		output, err := client1.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
-		if err != nil {
-			return false
-		}
-		return !strings.Contains(string(output), client3.CYOANetworkIP)
-	}, 30*time.Second, 1*time.Second, "client1 should not have route to client3 (both in xlax exchange)")
-	require.Eventually(t, func() bool {
-		output, err := client3.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
-		if err != nil {
-			return false
-		}
-		return !strings.Contains(string(output), client1.CYOANetworkIP)
-	}, 30*time.Second, 1*time.Second, "client3 should not have route to client1 (both in xlax exchange)")
+	// Check that client1 and client3 do not have routes to each other (same exchange - xlax) (QW5 optimization: parallel).
+	log.Info("==> Checking that client1 and client3 do not have routes to each other (intra-exchange routing policy, parallel)")
+	g = new(errgroup.Group)
+	g.Go(func() error {
+		return waitForCondition(t.Context(), 30*time.Second, 1*time.Second, func() (bool, error) {
+			output, err := client1.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
+			if err != nil {
+				return false, nil
+			}
+			return !strings.Contains(string(output), client3.CYOANetworkIP), nil
+		}, "client1 should not have route to client3 (both in xlax exchange)")
+	})
+	g.Go(func() error {
+		return waitForCondition(t.Context(), 30*time.Second, 1*time.Second, func() (bool, error) {
+			output, err := client3.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
+			if err != nil {
+				return false, nil
+			}
+			return !strings.Contains(string(output), client1.CYOANetworkIP), nil
+		}, "client3 should not have route to client1 (both in xlax exchange)")
+	})
+	require.NoError(t, g.Wait())
 	log.Info("--> Confirmed client1 and client3 do not have routes to each other (intra-exchange routing policy working)")
 
-	// Check that client1 and client2 have routes to each other (cross-exchange).
+	// Check that client1 and client2 have routes to each other (cross-exchange) (QW5 optimization: parallel).
 	// The iBGP propagation is already confirmed above, so these should converge quickly.
-	log.Info("==> Checking that client1 and client2 have routes to each other (cross-exchange)")
-	require.Eventually(t, func() bool {
-		output, err := client1.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
-		if err != nil {
-			return false
-		}
-		return strings.Contains(string(output), client2.CYOANetworkIP)
-	}, 60*time.Second, 1*time.Second, "client1 should have route to client2 (different exchanges)")
-	require.Eventually(t, func() bool {
-		output, err := client2.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
-		if err != nil {
-			return false
-		}
-		return strings.Contains(string(output), client1.CYOANetworkIP)
-	}, 60*time.Second, 1*time.Second, "client2 should have route to client1 (different exchanges)")
+	log.Info("==> Checking that client1 and client2 have routes to each other (cross-exchange, parallel)")
+	g = new(errgroup.Group)
+	g.Go(func() error {
+		return waitForCondition(t.Context(), 60*time.Second, 1*time.Second, func() (bool, error) {
+			output, err := client1.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
+			if err != nil {
+				return false, nil
+			}
+			return strings.Contains(string(output), client2.CYOANetworkIP), nil
+		}, "client1 should have route to client2 (different exchanges)")
+	})
+	g.Go(func() error {
+		return waitForCondition(t.Context(), 60*time.Second, 1*time.Second, func() (bool, error) {
+			output, err := client2.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
+			if err != nil {
+				return false, nil
+			}
+			return strings.Contains(string(output), client1.CYOANetworkIP), nil
+		}, "client2 should have route to client1 (different exchanges)")
+	})
+	require.NoError(t, g.Wait())
 	log.Info("--> Confirmed client1 and client2 have routes to each other (cross-exchange)")
 
 	// Ban client1.
@@ -304,7 +368,7 @@ func runUserBanIBRLWorkflowTest(t *testing.T, log *slog.Logger, client1 *devnet.
 			return false
 		}
 		return !strings.Contains(string(output), client2DZIP)
-	}, 120*time.Second, 5*time.Second, "timeout waiting for client1's route to client2 to be withdrawn after banning")
+	}, 120*time.Second, 2*time.Second, "timeout waiting for client1's route to client2 to be withdrawn after banning")
 	log.Info("--> Client1 does not have route to client2 after being banned")
 
 	// Unban by deleting the user account.
@@ -345,47 +409,73 @@ func runUserBanIBRLWorkflowTest(t *testing.T, log *slog.Logger, client1 *devnet.
 			return false
 		}
 		return strings.Contains(string(output), client2DZIP)
-	}, 120*time.Second, 5*time.Second, "timeout waiting for client1 to receive route to client2 after unbanning")
+	}, 120*time.Second, 2*time.Second, "timeout waiting for client1 to receive route to client2 after unbanning")
 	log.Info("--> Client1 has route to client2 after unbanning")
 
-	// Disconnect client1.
-	log.Info("==> Disconnecting client1 from IBRL")
-	_, err = client1.Exec(t.Context(), []string{"doublezero", "disconnect", "--client-ip", client1.CYOANetworkIP})
-	require.NoError(t, err)
-	log.Info("--> Client1 disconnected from IBRL")
-
-	// Disconnect client2.
-	log.Info("==> Disconnecting client2 from IBRL")
-	_, err = client2.Exec(t.Context(), []string{"doublezero", "disconnect", "--client-ip", client2.CYOANetworkIP})
-	require.NoError(t, err)
-	log.Info("--> Client2 disconnected from IBRL")
-
-	// Disconnect client3.
-	log.Info("==> Disconnecting client3 from IBRL")
-	_, err = client3.Exec(t.Context(), []string{"doublezero", "disconnect", "--client-ip", client3.CYOANetworkIP})
-	require.NoError(t, err)
-	log.Info("--> Client3 disconnected from IBRL")
-
-	// Check that the clients are eventually disconnected and do not have a DZ IP allocated.
-	log.Info("==> Checking that the clients are eventually disconnected and do not have a DZ IP allocated")
-	err = client1.WaitForTunnelDisconnected(t.Context(), 60*time.Second)
-	require.NoError(t, err)
-	err = client2.WaitForTunnelDisconnected(t.Context(), 60*time.Second)
-	require.NoError(t, err)
-	err = client3.WaitForTunnelDisconnected(t.Context(), 60*time.Second)
-	require.NoError(t, err)
-	status, err = client1.GetTunnelStatus(t.Context())
-	require.NoError(t, err)
-	require.Len(t, status, 1, status)
-	require.Nil(t, status[0].DoubleZeroIP, status)
-	status, err = client2.GetTunnelStatus(t.Context())
-	require.NoError(t, err)
-	require.Len(t, status, 1, status)
-	require.Nil(t, status[0].DoubleZeroIP, status)
-	status, err = client3.GetTunnelStatus(t.Context())
-	require.NoError(t, err)
-	require.Len(t, status, 1, status)
-	require.Nil(t, status[0].DoubleZeroIP, status)
+	// Disconnect all clients and wait for disconnection in parallel (QW6 optimization).
+	log.Info("==> Disconnecting all clients from IBRL and waiting for disconnection (parallel)")
+	g = new(errgroup.Group)
+	g.Go(func() error {
+		if _, err := client1.Exec(t.Context(), []string{"doublezero", "disconnect", "--client-ip", client1.CYOANetworkIP}); err != nil {
+			return fmt.Errorf("disconnect client1: %w", err)
+		}
+		log.Info("--> Client1 disconnected from IBRL")
+		if err := client1.WaitForTunnelDisconnected(t.Context(), 60*time.Second); err != nil {
+			return fmt.Errorf("wait for client1 tunnel disconnected: %w", err)
+		}
+		status, err := client1.GetTunnelStatus(t.Context())
+		if err != nil {
+			return fmt.Errorf("get client1 tunnel status: %w", err)
+		}
+		if len(status) != 1 {
+			return fmt.Errorf("expected 1 tunnel status for client1, got %d: %v", len(status), status)
+		}
+		if status[0].DoubleZeroIP != nil {
+			return fmt.Errorf("expected nil DoubleZeroIP for client1, got %v", status[0].DoubleZeroIP)
+		}
+		return nil
+	})
+	g.Go(func() error {
+		if _, err := client2.Exec(t.Context(), []string{"doublezero", "disconnect", "--client-ip", client2.CYOANetworkIP}); err != nil {
+			return fmt.Errorf("disconnect client2: %w", err)
+		}
+		log.Info("--> Client2 disconnected from IBRL")
+		if err := client2.WaitForTunnelDisconnected(t.Context(), 60*time.Second); err != nil {
+			return fmt.Errorf("wait for client2 tunnel disconnected: %w", err)
+		}
+		status, err := client2.GetTunnelStatus(t.Context())
+		if err != nil {
+			return fmt.Errorf("get client2 tunnel status: %w", err)
+		}
+		if len(status) != 1 {
+			return fmt.Errorf("expected 1 tunnel status for client2, got %d: %v", len(status), status)
+		}
+		if status[0].DoubleZeroIP != nil {
+			return fmt.Errorf("expected nil DoubleZeroIP for client2, got %v", status[0].DoubleZeroIP)
+		}
+		return nil
+	})
+	g.Go(func() error {
+		if _, err := client3.Exec(t.Context(), []string{"doublezero", "disconnect", "--client-ip", client3.CYOANetworkIP}); err != nil {
+			return fmt.Errorf("disconnect client3: %w", err)
+		}
+		log.Info("--> Client3 disconnected from IBRL")
+		if err := client3.WaitForTunnelDisconnected(t.Context(), 60*time.Second); err != nil {
+			return fmt.Errorf("wait for client3 tunnel disconnected: %w", err)
+		}
+		status, err := client3.GetTunnelStatus(t.Context())
+		if err != nil {
+			return fmt.Errorf("get client3 tunnel status: %w", err)
+		}
+		if len(status) != 1 {
+			return fmt.Errorf("expected 1 tunnel status for client3, got %d: %v", len(status), status)
+		}
+		if status[0].DoubleZeroIP != nil {
+			return fmt.Errorf("expected nil DoubleZeroIP for client3, got %v", status[0].DoubleZeroIP)
+		}
+		return nil
+	})
+	require.NoError(t, g.Wait())
 	log.Info("--> Confirmed clients are disconnected and do not have a DZ IP allocated")
 }
 
@@ -418,7 +508,10 @@ func waitForUserBanned(t *testing.T, log *slog.Logger, dn *devnet.Devnet, user_p
 	require.NoError(t, err)
 	require.Eventually(t, func() bool {
 		data, err := serviceabilityClient.GetProgramData(t.Context())
-		require.NoError(t, err)
+		if err != nil {
+			log.Error("failed to get program data while waiting for user ban", "error", err)
+			return false
+		}
 		for _, user := range data.Users {
 			if bytes.Equal(user.PubKey[:], userPkBytes) {
 				log.Info("Checking user status", slog.Any("user.Status", user.Status), slog.Any("expected_banned_value", serviceability.UserStatusBanned))
@@ -427,7 +520,7 @@ func waitForUserBanned(t *testing.T, log *slog.Logger, dn *devnet.Devnet, user_p
 		}
 		log.Error("User not found in program data", "user_pk", user_pk, "users", data.Users)
 		return false
-	}, timeout, 5*time.Second, "timeout waiting for user banned")
+	}, timeout, 2*time.Second, "timeout waiting for user banned")
 }
 
 func waitForUserDeleted(t *testing.T, log *slog.Logger, dn *devnet.Devnet, user_pk string, timeout time.Duration) {
@@ -438,12 +531,41 @@ func waitForUserDeleted(t *testing.T, log *slog.Logger, dn *devnet.Devnet, user_
 	require.NoError(t, err)
 	require.Eventually(t, func() bool {
 		data, err := serviceabilityClient.GetProgramData(t.Context())
-		require.NoError(t, err)
+		if err != nil {
+			log.Error("failed to get program data while waiting for user delete", "error", err)
+			return false
+		}
 		for _, user := range data.Users {
 			if bytes.Equal(user.PubKey[:], userPkBytes) {
 				return false
 			}
 		}
 		return true
-	}, timeout, 5*time.Second, "timeout waiting for user deleted")
+	}, timeout, 2*time.Second, "timeout waiting for user deleted")
+}
+
+// waitForCondition polls a condition function at the given interval until it returns true
+// or the timeout is reached. It returns an error if the timeout expires or if the condition
+// returns a non-nil error. This is a goroutine-safe alternative to require.Eventually.
+func waitForCondition(ctx context.Context, timeout time.Duration, interval time.Duration, condition func() (bool, error), msg string) error {
+	deadline := time.Now().Add(timeout)
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		ok, err := condition()
+		if err != nil {
+			return fmt.Errorf("%s: %w", msg, err)
+		}
+		if ok {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("%s: context cancelled: %w", msg, ctx.Err())
+		case <-ticker.C:
+			if time.Now().After(deadline) {
+				return fmt.Errorf("%s: timed out after %s", msg, timeout)
+			}
+		}
+	}
 }

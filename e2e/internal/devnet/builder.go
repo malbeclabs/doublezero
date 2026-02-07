@@ -25,8 +25,7 @@ func BuildContainerImages(ctx context.Context, log *slog.Logger, workspaceDir st
 	dockerfilesDir := filepath.Join(workspaceDir, dockerfilesDirRelativeToWorkspace)
 
 	// Build base image first
-	cacheBusterBuildArg := fmt.Sprintf("CACHE_BUSTER=%d", time.Now().Unix())
-	extraArgs := []string{"--build-arg", cacheBusterBuildArg, "--platform", "linux/amd64"}
+	extraArgs := []string{"--platform", "linux/amd64"}
 	err := docker.Build(ctx, log, os.Getenv("DZ_BASE_IMAGE"), filepath.Join(dockerfilesDir, "base.dockerfile"), workspaceDir, verbose, extraArgs...)
 	if err != nil {
 		return fmt.Errorf("failed to build base image: %w", err)

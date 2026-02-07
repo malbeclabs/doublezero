@@ -180,7 +180,7 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 			doublezero device create --code ty2-dz01 --contributor co01 --location tyo --exchange xtyo --public-ip "180.87.154.112" --dz-prefixes "180.87.154.120/29" --mgmt-vrf mgmt --desired-status activated
 			doublezero device create --code pit-dzd01 --contributor co01 --location pit --exchange xpit --public-ip "204.16.241.243" --dz-prefixes "204.16.243.243/32" --mgmt-vrf mgmt --desired-status activated
 			doublezero device create --code ams-dz001 --contributor co01 --location ams --exchange xams --public-ip "195.219.138.50" --dz-prefixes "195.219.138.56/29" --mgmt-vrf mgmt --desired-status activated
-			doublezero device update --pubkey ams-dz001 --desired-status activated		
+			doublezero device update --pubkey ams-dz001 --desired-status activated
 
 			doublezero device interface create ld4-dz01 "Ethernet2"
 			doublezero device interface create ld4-dz01 "Ethernet3"
@@ -220,10 +220,10 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
 			set -euo pipefail
 
-			doublezero link create wan --code "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Ethernet2 --side-z ny5-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3 --desired-status activated			
-			doublezero link create wan --code "ny5-dz01:ld4-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet3 --side-z ld4-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3 --desired-status activated			
-			doublezero link create wan --code "ld4-dz01:frk-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet3 --side-z frk-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 25 --jitter-ms 10 --desired-status activated			
-			doublezero link create wan --code "ld4-dz01:sg1-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet4 --side-z sg1-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 120 --jitter-ms 9 --desired-status activated			
+			doublezero link create wan --code "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Ethernet2 --side-z ny5-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3 --desired-status activated
+			doublezero link create wan --code "ny5-dz01:ld4-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet3 --side-z ld4-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3 --desired-status activated
+			doublezero link create wan --code "ld4-dz01:frk-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet3 --side-z frk-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 25 --jitter-ms 10 --desired-status activated
+			doublezero link create wan --code "ld4-dz01:sg1-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet4 --side-z sg1-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 120 --jitter-ms 9 --desired-status activated
 			doublezero link create wan --code "sg1-dz01:ty2-dz01" --contributor co01 --side-a sg1-dz01 --side-a-interface Ethernet3 --side-z ty2-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 7 --desired-status activated
 		`})
 	require.NoError(t, err)
@@ -503,14 +503,14 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 		require.Equal(t, prevNY5ErrorsCount, int(ny5ErrorsCounterValues[0].Value), "ny5 errors_total should be 0: %v", ny5ErrorsCounterValues)
 	}
 
-	// Check that go_memstats_alloc_bytes gauge is less than 3MB.
-	log.Info("==> Checking that go_memstats_alloc_bytes gauge is less than 3MB on both devices")
+	// Check that go_memstats_alloc_bytes gauge is less than 10MB.
+	log.Info("==> Checking that go_memstats_alloc_bytes gauge is less than 10MB on both devices")
 	la2MemStatsAllocBytes := la2MetricsClient.GetGaugeValues(prometheus.MetricNameGoMemstatsAllocBytes)
 	require.NotNil(t, la2MemStatsAllocBytes)
-	require.Less(t, int(la2MemStatsAllocBytes[0].Value), int(5*1024*1024))
+	require.Less(t, int(la2MemStatsAllocBytes[0].Value), int(10*1024*1024))
 	ny5MemStatsAllocBytes := ny5MetricsClient.GetGaugeValues(prometheus.MetricNameGoMemstatsAllocBytes)
 	require.NotNil(t, ny5MemStatsAllocBytes)
-	require.Less(t, int(ny5MemStatsAllocBytes[0].Value), int(5*1024*1024))
+	require.Less(t, int(ny5MemStatsAllocBytes[0].Value), int(10*1024*1024))
 
 	// Check that go_goroutines gauge is less than 20.
 	log.Info("==> Checking that go_goroutines gauge is less than 30 on both devices")

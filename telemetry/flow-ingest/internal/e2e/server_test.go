@@ -230,16 +230,18 @@ func TestTelemetry_FlowIngest_E2E_NPackets_NRecords(t *testing.T) {
 func startRedpanda(t *testing.T, parent context.Context) []string {
 	t.Helper()
 
-	startCtx, cancel := context.WithTimeout(parent, 2*time.Minute)
+	startCtx, cancel := context.WithTimeout(parent, 3*time.Minute)
 	defer cancel()
 
+	const maxAttempts = 5
 	var lastErr error
-	for attempt := 1; attempt <= 3; attempt++ {
-		rp, err := redpanda.Run(startCtx, "docker.redpanda.com/redpandadata/redpanda:v24.2.6")
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		rp, err := redpanda.Run(startCtx, "redpandadata/redpanda:v24.2.6")
 		if err != nil {
 			lastErr = err
-			if isRetryableContainerStartErr(err) && attempt < 3 {
-				time.Sleep(time.Duration(attempt) * 750 * time.Millisecond)
+			if isRetryableContainerStartErr(err) && attempt < maxAttempts {
+				t.Logf("redpanda container start attempt %d failed: %v", attempt, err)
+				time.Sleep(time.Duration(attempt) * time.Second)
 				continue
 			}
 			require.NoError(t, err)
@@ -250,9 +252,10 @@ func startRedpanda(t *testing.T, parent context.Context) []string {
 		broker, err := rp.KafkaSeedBroker(startCtx)
 		if err != nil {
 			lastErr = err
-			if isRetryableContainerStartErr(err) && attempt < 3 {
+			if isRetryableContainerStartErr(err) && attempt < maxAttempts {
+				t.Logf("redpanda broker fetch attempt %d failed: %v", attempt, err)
 				_ = rp.Terminate(context.Background())
-				time.Sleep(time.Duration(attempt) * 750 * time.Millisecond)
+				time.Sleep(time.Duration(attempt) * time.Second)
 				continue
 			}
 			require.NoError(t, err)
@@ -261,7 +264,7 @@ func startRedpanda(t *testing.T, parent context.Context) []string {
 		return []string{broker}
 	}
 
-	t.Fatalf("failed to start redpanda after retries: %v", lastErr)
+	t.Fatalf("failed to start redpanda after %d attempts: %v", maxAttempts, lastErr)
 	return nil
 }
 
@@ -274,8 +277,10 @@ func isRetryableContainerStartErr(err error) bool {
 		strings.Contains(s, "mapped port") ||
 		strings.Contains(s, "timeout") ||
 		strings.Contains(s, "context deadline exceeded") ||
+		strings.Contains(s, "TLS handshake") ||
+		strings.Contains(s, "connection refused") ||
 		strings.Contains(s, "/containers/") && strings.Contains(s, "json") ||
-		strings.Contains(s, "Get \"http://%2Fvar%2Frun%2Fdocker.sock")
+		strings.Contains(s, "Get \"http")
 }
 
 func newKafkaClient(t *testing.T, ctx context.Context, brokers []string) *kafka.Client {

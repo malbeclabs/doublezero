@@ -23,6 +23,7 @@ const (
 	ContributorType
 	AccessPassType
 	ResourceExtensionType // 12
+	TenantType            // 13
 )
 
 type LocationStatus uint8
@@ -645,6 +646,41 @@ func (c Contributor) MarshalJSON() ([]byte, error) {
 	jsonContributor.Status = c.Status.String()
 
 	return json.Marshal(jsonContributor)
+}
+
+type Tenant struct {
+	AccountType     AccountType
+	Owner           [32]uint8 `influx:"tag,owner,pubkey"`
+	BumpSeed        uint8     `influx:"-"`
+	Code            string    `influx:"tag,code"`
+	VrfId           uint16    `influx:"field,vrf_id"`
+	ReferenceCount  uint32    `influx:"field,reference_count"`
+	Administrators  [][32]byte
+	PubKey          [32]byte `influx:"tag,pubkey,pubkey"`
+}
+
+func (t Tenant) MarshalJSON() ([]byte, error) {
+	type TenantAlias Tenant
+
+	adminStrings := make([]string, len(t.Administrators))
+	for i, admin := range t.Administrators {
+		adminStrings[i] = base58.Encode(admin[:])
+	}
+
+	jsonTenant := &struct {
+		TenantAlias
+		Owner          string   `json:"Owner"`
+		PubKey         string   `json:"PubKey"`
+		Administrators []string `json:"Administrators"`
+	}{
+		TenantAlias:    TenantAlias(t),
+		Administrators: adminStrings,
+	}
+
+	jsonTenant.Owner = base58.Encode(t.Owner[:])
+	jsonTenant.PubKey = base58.Encode(t.PubKey[:])
+
+	return json.Marshal(jsonTenant)
 }
 
 type UserUserType uint8

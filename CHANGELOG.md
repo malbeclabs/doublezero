@@ -11,9 +11,17 @@ All notable changes to this project will be documented in this file.
 ### Changes
 
 - Onchain programs
+  - Serviceability: add Tenant account type with immutable code-based PDA derivation, VRF ID, administrator management, and reference counting for safe deletion
+  - Serviceability: add TenantAddAdministrator and TenantRemoveAdministrator instructions for foundation-managed administrator lists
+  - Serviceability: extend UserUpdate instruction to support tenant_pk field updates with automatic reference count management on old and new tenants (backward compatible with old format)
+  - Serviceability: extend UserCloseAccount instruction to decrement tenant reference count when closing user with assigned tenant
   - Serviceability: add reference count validation in DeleteMulticastGroup to prevent deletion when active publishers or subscribers exist
-
+- SDK
+  - Add CreateTenant, UpdateTenant (vrf_id only), DeleteTenant, GetTenant, and ListTenant commands with support for code or pubkey lookup
+  - Add AddAdministratorTenant and RemoveAdministratorTenant commands for tenant administrator management
+  - UpdateUserCommand extended with tenant_pk field and automatic tenant account resolution for reference counting
 - CLI
+  - Add tenant subcommands (create, update, delete, get, list, add-administrator, remove-administrator) to doublezero and doublezero-admin CLIs
   - Add filtering options and desired_status & metrics_publisher_pk field to device and link list commands
   - Added activation check for existing users before subscribing to new groups (#2782)
 - SDK

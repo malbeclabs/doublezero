@@ -1,6 +1,7 @@
 use solana_program::program_error::ProgramError;
 use thiserror::Error;
 
+#[cfg_attr(test, derive(strum_macros::EnumIter))]
 #[derive(Debug, Error, PartialEq, Clone)]
 pub enum DoubleZeroError {
     #[error("Custom program error: {0:#x}")]
@@ -327,85 +328,13 @@ pub trait Validate {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use strum::IntoEnumIterator;
 
     #[test]
     fn test_error_enum_conversions() {
-        use DoubleZeroError::*;
-        let variants = vec![
-            Custom(123),
-            InvalidOwnerPubkey,
-            InvalidExchangePubkey,
-            InvalidDevicePubkey,
-            InvalidLocationPubkey,
-            InvalidDeviceAPubkey,
-            InvalidDeviceZPubkey,
-            InvalidStatus,
-            NotAllowed,
-            InvalidAccountType,
-            InvalidContributorPubkey,
-            InvalidInterfaceVersion,
-            InvalidInterfaceName,
-            ReferenceCountNotZero,
-            InvalidContributor,
-            InvalidInterfaceZForExternal,
-            InvalidIndex,
-            DeviceAlreadySet,
-            DeviceNotSet,
-            InvalidAccountCode,
-            MaxUsersExceeded,
-            InvalidLastAccessEpoch,
-            Unauthorized,
-            InvalidSolanaPubkey,
-            InterfaceNotFound,
-            AccessPassUnauthorized,
-            InvalidClientIp,
-            InvalidDzIp,
-            InvalidTunnelNet,
-            InvalidTunnelId,
-            InvalidTunnelIp,
-            InvalidBandwidth,
-            InvalidDelay,
-            InvalidJitter,
-            CodeTooLong,
-            NoDzPrefixes,
-            InvalidLocation,
-            InvalidExchange,
-            InvalidDzPrefix,
-            NameTooLong,
-            InvalidLatitude,
-            InvalidLongitude,
-            InvalidLocId,
-            InvalidCountryCode,
-            InvalidLocalAsn,
-            InvalidRemoteAsn,
-            InvalidMtu,
-            InvalidInterfaceIp,
-            InvalidInterfaceIpNet,
-            InvalidVlanId,
-            InvalidMaxBandwidth,
-            InvalidMulticastIp,
-            InvalidAccountOwner,
-            AccessPassNotFound,
-            UserAccountNotFound,
-            InvalidBgpCommunity,
-            InterfaceAlreadyExists,
-            InvalidInterfaceType,
-            InvalidLoopbackType,
-            InvalidMinCompatibleVersion,
-            InvalidActualLocation,
-            InvalidUserPubkey,
-            InvalidPublicIp,
-            AllocationFailed,
-            SerializationFailure,
-            InvalidArgument,
-            InvalidFoundationAllowlist,
-            Deprecated,
-            ImmutableField,
-            CyoaRequiresPhysical,
-            DeviceHasInterfaces,
-            MulticastGroupNotEmpty,
-        ];
-        for err in variants {
+        // Using EnumIter ensures all variants are tested - if a new variant is added
+        // to the enum, this test will automatically include it.
+        for err in DoubleZeroError::iter() {
             let pe: ProgramError = err.clone().into();
             let err2: DoubleZeroError = pe.into();
             assert_eq!(err, err2, "Error conversion failed for {err:?}");

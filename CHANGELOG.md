@@ -35,6 +35,7 @@ All notable changes to this project will be documented in this file.
   - Record successful GetConfig gRPC calls to ClickHouse for device telemetry tracking
 - Onchain programs
   - Enforce that `CloseAccessPass` only closes AccessPass accounts when `connection_count == 0`, preventing closure while active connections are present.
+  - Move multicast group allowlists from unbounded vecs in AccessPass to dedicated `MGroupAllowlistEntry` PDAs, with self-migration on subscribe
 - Monitor
   - Add sol-balance watcher to track SOL balances for configured accounts and export Prometheus metrics for alerting
 - E2E tests

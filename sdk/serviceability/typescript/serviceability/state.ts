@@ -30,6 +30,7 @@ export const ACCOUNT_TYPE_MULTICAST_GROUP = 8;
 export const ACCOUNT_TYPE_PROGRAM_CONFIG = 9;
 export const ACCOUNT_TYPE_CONTRIBUTOR = 10;
 export const ACCOUNT_TYPE_ACCESS_PASS = 11;
+export const ACCOUNT_TYPE_TENANT = 13;
 
 // ---------------------------------------------------------------------------
 // Enum string mappings
@@ -798,6 +799,33 @@ export function deserializeContributor(data: Uint8Array): Contributor {
     code: r.readString(),
     referenceCount: r.readU32(),
     opsManagerPk: readPubkey(r),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Tenant
+// ---------------------------------------------------------------------------
+
+export interface Tenant {
+  accountType: number;
+  owner: PublicKey;
+  bumpSeed: number;
+  code: string;
+  vrfId: number;
+  referenceCount: number;
+  administrators: PublicKey[];
+}
+
+export function deserializeTenant(data: Uint8Array): Tenant {
+  const r = new DefensiveReader(data);
+  return {
+    accountType: r.readU8(),
+    owner: readPubkey(r),
+    bumpSeed: r.readU8(),
+    code: r.readString(),
+    vrfId: r.readU16(),
+    referenceCount: r.readU32(),
+    administrators: readPubkeyVec(r),
   };
 }
 

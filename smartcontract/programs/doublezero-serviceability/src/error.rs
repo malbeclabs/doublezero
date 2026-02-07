@@ -149,6 +149,16 @@ pub enum DoubleZeroError {
     MulticastGroupNotEmpty, // variant 71
     #[error("Access Pass is in use (non-zero connection_count)")]
     AccessPassInUse, // variant 72
+    #[error("You are trying to assign a Pubkey that does not correspond to a Tenant")]
+    InvalidTenantPubkey, // variant 73
+    #[error("Invalid VRF ID")]
+    InvalidVrfId, // variant 74
+    #[error("VRF ID too long")]
+    VrfIdTooLong, // variant 75
+    #[error("Administrator already exists")]
+    AdministratorAlreadyExists, // variant 76
+    #[error("Administrator not found")]
+    AdministratorNotFound, // variant 77
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -227,6 +237,11 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::DeviceHasInterfaces => ProgramError::Custom(70),
             DoubleZeroError::MulticastGroupNotEmpty => ProgramError::Custom(71),
             DoubleZeroError::AccessPassInUse => ProgramError::Custom(72),
+            DoubleZeroError::InvalidTenantPubkey => ProgramError::Custom(73),
+            DoubleZeroError::InvalidVrfId => ProgramError::Custom(74),
+            DoubleZeroError::VrfIdTooLong => ProgramError::Custom(75),
+            DoubleZeroError::AdministratorAlreadyExists => ProgramError::Custom(76),
+            DoubleZeroError::AdministratorNotFound => ProgramError::Custom(77),
         }
     }
 }
@@ -306,6 +321,11 @@ impl From<u32> for DoubleZeroError {
             70 => DoubleZeroError::DeviceHasInterfaces,
             71 => DoubleZeroError::MulticastGroupNotEmpty,
             72 => DoubleZeroError::AccessPassInUse,
+            73 => DoubleZeroError::InvalidTenantPubkey,
+            74 => DoubleZeroError::InvalidVrfId,
+            75 => DoubleZeroError::VrfIdTooLong,
+            76 => DoubleZeroError::AdministratorAlreadyExists,
+            77 => DoubleZeroError::AdministratorNotFound,
             _ => DoubleZeroError::Custom(e),
         }
     }
@@ -404,6 +424,12 @@ mod tests {
             CyoaRequiresPhysical,
             DeviceHasInterfaces,
             MulticastGroupNotEmpty,
+            AccessPassInUse,
+            InvalidTenantPubkey,
+            InvalidVrfId,
+            VrfIdTooLong,
+            AdministratorAlreadyExists,
+            AdministratorNotFound,
         ];
         for err in variants {
             let pe: ProgramError = err.clone().into();

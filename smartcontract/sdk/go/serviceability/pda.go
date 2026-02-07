@@ -10,6 +10,7 @@ const (
 	SeedUserTunnelBlock     = "usertunnelblock"
 	SeedDeviceTunnelBlock   = "devicetunnelblock"
 	SeedMulticastGroupBlock = "multicastgroupblock"
+	SeedTenant              = "tenant"
 )
 
 // GetLinkIdsPDA derives the PDA for the global LinkIds resource extension
@@ -53,6 +54,16 @@ func GetMulticastGroupBlockPDA(programID solana.PublicKey) (solana.PublicKey, ui
 	seeds := [][]byte{
 		[]byte(SeedPrefix),
 		[]byte(SeedMulticastGroupBlock),
+	}
+	return solana.FindProgramAddress(seeds, programID)
+}
+
+// GetTenantPDA derives the PDA for a tenant account based on its code
+func GetTenantPDA(programID solana.PublicKey, code string) (solana.PublicKey, uint8, error) {
+	seeds := [][]byte{
+		[]byte(SeedPrefix),
+		[]byte(SeedTenant),
+		[]byte(code),
 	}
 	return solana.FindProgramAddress(seeds, programID)
 }

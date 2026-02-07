@@ -1,0 +1,86 @@
+use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
+use doublezero_program_common::validate_account_code;
+use doublezero_serviceability::{
+    instructions::DoubleZeroInstruction, pda::get_tenant_pda,
+    processors::tenant::create::TenantCreateArgs,
+};
+use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct CreateTenantCommand {
+    pub code: String,
+    pub vrf_id: u16,
+    pub owner: Pubkey,
+}
+
+impl CreateTenantCommand {
+    pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<(Signature, Pubkey)> {
+        let code =
+            validate_account_code(&self.code).map_err(|err| eyre::eyre!("invalid code: {err}"))?;
+
+        let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
+            .execute(client)
+            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
+
+        let (pda_pubkey, _) = get_tenant_pda(&client.get_program_id(), &code);
+        client
+            .execute_transaction(
+                DoubleZeroInstruction::CreateTenant(TenantCreateArgs {
+                    code,
+                    vrf_id: self.vrf_id,
+                }),
+                vec![
+                    AccountMeta::new(pda_pubkey, false),
+                    AccountMeta::new(self.owner, false),
+                    AccountMeta::new(globalstate_pubkey, false),
+                ],
+            )
+            .map(|sig| (sig, pda_pubkey))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{commands::tenant::create::CreateTenantCommand, tests::utils::create_test_client};
+    use doublezero_serviceability::{
+        instructions::DoubleZeroInstruction, processors::tenant::create::TenantCreateArgs,
+    };
+    use mockall::predicate;
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
+
+    #[test]
+    fn test_commands_tenant_create_command() {
+        let mut client = create_test_client();
+
+        let owner = Pubkey::new_unique();
+
+        client
+            .expect_execute_transaction()
+            .with(
+                predicate::eq(DoubleZeroInstruction::CreateTenant(TenantCreateArgs {
+                    code: "test".to_string(),
+                    vrf_id: 100,
+                })),
+                predicate::always(),
+            )
+            .returning(|_, _| Ok(Signature::new_unique()));
+
+        let res = CreateTenantCommand {
+            code: "test/invalid".to_string(),
+            vrf_id: 100,
+            owner: Pubkey::default(),
+        }
+        .execute(&client);
+
+        assert!(res.is_err());
+
+        let res = CreateTenantCommand {
+            code: "test".to_string(),
+            vrf_id: 100,
+            owner,
+        }
+        .execute(&client);
+
+        assert!(res.is_ok());
+    }
+}

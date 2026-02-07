@@ -57,6 +57,17 @@ func DeserializeContributor(reader *ByteReader, contributor *Contributor) {
 	contributor.PubKey = reader.ReadPubkey()
 }
 
+func DeserializeTenant(reader *ByteReader, tenant *Tenant) {
+	tenant.AccountType = AccountType(reader.ReadU8())
+	tenant.Owner = reader.ReadPubkey()
+	tenant.BumpSeed = reader.ReadU8()
+	tenant.Code = reader.ReadString()
+	tenant.VrfId = reader.ReadU16()
+	tenant.ReferenceCount = reader.ReadU32()
+	tenant.Administrators = reader.ReadPubkeySlice()
+	// Note: tenant.PubKey is set separately in client.go after deserialization
+}
+
 func DeserializeInterface(reader *ByteReader, iface *Interface) {
 	iface.Version = reader.ReadU8()
 

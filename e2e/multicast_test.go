@@ -51,10 +51,10 @@ func TestE2E_Multicast(t *testing.T) {
 		log:    log,
 	}
 
-	log.Info("==> Starting devnet")
+	log.Debug("==> Starting devnet")
 	err = dn.Start(t.Context(), nil)
 	require.NoError(t, err)
-	log.Info("--> Devnet started")
+	log.Debug("--> Devnet started")
 
 	// Create a dummy device first to maintain same ordering of devices as before.
 	err = dn.CreateDeviceOnchain(t.Context(), "la2-dz01", "lax", "xlax", "207.45.216.134", []string{"207.45.216.136/30", "200.12.12.12/29"}, "mgmt")
@@ -72,7 +72,7 @@ func TestE2E_Multicast(t *testing.T) {
 	require.NoError(t, err)
 
 	// Add other devices and links onchain.
-	log.Info("==> Creating other devices and links onchain")
+	log.Debug("==> Creating other devices and links onchain")
 	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
 		set -euo pipefail
 
@@ -235,7 +235,7 @@ func TestE2E_Multicast(t *testing.T) {
 // createMulticastGroupForBothClients creates a multicast group and adds both publisher and
 // subscriber clients to the allowlists.
 func createMulticastGroupForBothClients(t *testing.T, dn *TestDevnet, publisherClient, subscriberClient *devnet.Client, groupCode string) {
-	dn.log.Info("==> Creating multicast group onchain", "group", groupCode)
+	dn.log.Debug("==> Creating multicast group onchain", "group", groupCode)
 
 	_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
 		set -e
@@ -326,7 +326,7 @@ func checkMulticastBothUsersRemovedAgentConfig(t *testing.T, dn *TestDevnet, dev
 // mode should be "publisher" or "subscriber".
 func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *TestDevnet, device *devnet.Device, client *devnet.Client) {
 	t.Run("check_post_connect_"+mode, func(t *testing.T) {
-		log.Info("==> Checking multicast post-connect requirements", "mode", mode)
+		log.Debug("==> Checking multicast post-connect requirements", "mode", mode)
 
 		var expectedAllocatedClientIP string
 		if mode == "publisher" {
@@ -529,7 +529,7 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 
 					for ifName, iface := range defaultVRF.Interfaces {
 						if ifName == subTunnelName && len(iface.Neighbors) > 0 {
-							log.Info("PIM neighbor found on subscriber tunnel", "interface", ifName)
+							log.Debug("PIM neighbor found on subscriber tunnel", "interface", ifName)
 							return true
 						}
 					}
@@ -580,7 +580,7 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 			}
 		}
 
-		log.Info("--> Multicast post-connect requirements checked", "mode", mode)
+		log.Debug("--> Multicast post-connect requirements checked", "mode", mode)
 	})
 }
 
@@ -588,7 +588,7 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 // mode should be "publisher" or "subscriber".
 func checkMulticastPostDisconnect(t *testing.T, log *slog.Logger, mode string, dn *TestDevnet, device *devnet.Device, client *devnet.Client) {
 	t.Run("check_post_disconnect_"+mode, func(t *testing.T) {
-		log.Info("==> Checking multicast post-disconnect requirements", "mode", mode)
+		log.Debug("==> Checking multicast post-disconnect requirements", "mode", mode)
 
 		tests := []struct {
 			name        string
@@ -707,6 +707,6 @@ func checkMulticastPostDisconnect(t *testing.T, log *slog.Logger, mode string, d
 			t.Fail()
 		}
 
-		log.Info("--> Multicast post-disconnect requirements checked", "mode", mode)
+		log.Debug("--> Multicast post-disconnect requirements checked", "mode", mode)
 	})
 }

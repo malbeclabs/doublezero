@@ -50,7 +50,7 @@ func (dn *Devnet) InitSmartContractIfNotInitialized(ctx context.Context) (bool, 
 	}
 
 	if initialized {
-		dn.log.Info("--> Smart contract already initialized")
+		dn.log.Debug("--> Smart contract already initialized")
 		return true, nil
 	}
 
@@ -62,7 +62,7 @@ func (dn *Devnet) InitSmartContractIfNotInitialized(ctx context.Context) (bool, 
 // Perform the global state initialization via `doublezero init`, and then populate global config,
 // location, and exchange information onchain.
 func (dn *Devnet) InitSmartContract(ctx context.Context) error {
-	dn.log.Info("==> Initializing smart contract")
+	dn.log.Debug("==> Initializing smart contract")
 
 	_, err := dn.Manager.Exec(ctx, []string{"bash", "-c", `
 		set -euo pipefail
@@ -142,7 +142,7 @@ func (dn *Devnet) InitSmartContract(ctx context.Context) error {
 		return fmt.Errorf("failed to wait for global config to be populated: %w", err)
 	}
 
-	dn.log.Info("--> Smart contract initialized")
+	dn.log.Debug("--> Smart contract initialized")
 
 	return nil
 }

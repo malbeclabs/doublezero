@@ -96,7 +96,7 @@ func (t *Test) ValidDevices(minCapacity int, skipCapacityCheck bool) []*Device {
 			// Check if device has capacity for at least minCapacity users
 			availableSlots := device.MaxUsers - device.UsersCount
 			if availableSlots < minCapacity {
-				t.log.Info("Skipping device with insufficient capacity", "device", device.Code, "users", device.UsersCount, "maxUsers", device.MaxUsers)
+				t.log.Debug("Skipping device with insufficient capacity", "device", device.Code, "users", device.UsersCount, "maxUsers", device.MaxUsers)
 				continue
 			}
 		}

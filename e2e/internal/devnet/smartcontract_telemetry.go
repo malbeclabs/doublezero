@@ -18,11 +18,11 @@ func (dn *Devnet) DeployTelemetryProgramIfNotDeployed(ctx context.Context) (bool
 	}
 
 	if isDeployed {
-		log.Info("--> Telemetry program is already deployed")
+		log.Debug("--> Telemetry program is already deployed")
 		return false, nil
 	}
 
-	log.Info("--> Telemetry program is not deployed, deploying")
+	log.Debug("--> Telemetry program is not deployed, deploying")
 	err = dn.DeployTelemetryProgram(ctx)
 	if err != nil {
 		return false, fmt.Errorf("failed to deploy telemetry program: %w", err)
@@ -32,7 +32,7 @@ func (dn *Devnet) DeployTelemetryProgramIfNotDeployed(ctx context.Context) (bool
 }
 
 func (dn *Devnet) DeployTelemetryProgram(ctx context.Context) error {
-	dn.log.Info("==> Deploying telemetry program", "programID", dn.Manager.TelemetryProgramID)
+	dn.log.Debug("==> Deploying telemetry program", "programID", dn.Manager.TelemetryProgramID)
 
 	start := time.Now()
 
@@ -57,7 +57,7 @@ func (dn *Devnet) DeployTelemetryProgram(ctx context.Context) error {
 		return fmt.Errorf("failed to deploy telemetry program: %w", err)
 	}
 
-	dn.log.Info("--> Telemetry program deployed", "duration", time.Since(start), "programID", dn.Manager.TelemetryProgramID)
+	dn.log.Debug("--> Telemetry program deployed", "duration", time.Since(start), "programID", dn.Manager.TelemetryProgramID)
 	return nil
 }
 

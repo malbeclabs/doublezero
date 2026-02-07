@@ -104,7 +104,7 @@ func TestE2E_Funder(t *testing.T) {
 	laDeviceMetricsPublisherWallet := solana.NewWallet()
 	laDevicePK, err := dn.GetOrCreateDeviceOnchain(ctx, "la2-dz01", "lax", "xlax", laDeviceMetricsPublisherWallet.PublicKey().String(), "207.45.216.134", []string{"207.45.216.136/30"}, "default")
 	require.NoError(t, err)
-	log.Info("--> LA device created", "pubkey", laDevicePK, "metricsPublisher", laDeviceMetricsPublisherWallet.PublicKey())
+	log.Debug("--> LA device created", "pubkey", laDevicePK, "metricsPublisher", laDeviceMetricsPublisherWallet.PublicKey())
 
 	// Check that the balance starts at 0.
 	require.Equal(t, 0.0, getBalance(t, rpcClient, laDeviceMetricsPublisherWallet.PublicKey()))
@@ -116,7 +116,7 @@ func TestE2E_Funder(t *testing.T) {
 	nyDeviceMetricsPublisherWallet := solana.NewWallet()
 	nyDevicePK, err := dn.GetOrCreateDeviceOnchain(ctx, "ny-dz01", "ewr", "xewr", nyDeviceMetricsPublisherWallet.PublicKey().String(), "207.45.217.134", []string{"207.45.217.136/30"}, "default")
 	require.NoError(t, err)
-	log.Info("--> NY device created", "pubkey", nyDevicePK, "metricsPublisher", nyDeviceMetricsPublisherWallet.PublicKey())
+	log.Debug("--> NY device created", "pubkey", nyDevicePK, "metricsPublisher", nyDeviceMetricsPublisherWallet.PublicKey())
 
 	// Check that the balance is now 0 SOL.
 	require.Equal(t, 0.0, getBalance(t, rpcClient, nyDeviceMetricsPublisherWallet.PublicKey()))

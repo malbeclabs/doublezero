@@ -80,7 +80,7 @@ func (p *Prometheus) StartIfNotRunning(ctx context.Context) (bool, error) {
 		}
 
 		if container.State.Running {
-			p.log.Info("--> Prometheus already running", "container", shortContainerID(container.ID))
+			p.log.Debug("--> Prometheus already running", "container", shortContainerID(container.ID))
 
 			err = p.setState(ctx, container.ID)
 			if err != nil {
@@ -107,7 +107,7 @@ func (p *Prometheus) StartIfNotRunning(ctx context.Context) (bool, error) {
 }
 
 func (p *Prometheus) Start(ctx context.Context) error {
-	p.log.Info("==> Starting prometheus", "image", p.dn.Spec.Prometheus.ContainerImage)
+	p.log.Debug("==> Starting prometheus", "image", p.dn.Spec.Prometheus.ContainerImage)
 
 	req := testcontainers.ContainerRequest{
 		Image: p.dn.Spec.Prometheus.ContainerImage,
@@ -148,7 +148,7 @@ func (p *Prometheus) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to set prometheus state: %w", err)
 	}
 
-	p.log.Info("--> Prometheus started", "container", p.ContainerID, "url", p.InternalURL)
+	p.log.Debug("--> Prometheus started", "container", p.ContainerID, "url", p.InternalURL)
 	return nil
 }
 

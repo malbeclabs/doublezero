@@ -52,7 +52,7 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 	oracleAgentPK := solana.NewWallet().PrivateKey
 
 	// Wait for exchanges to be created onchain.
-	log.Info("==> Waiting for exchanges to be created onchain")
+	log.Debug("==> Waiting for exchanges to be created onchain")
 	serviceabilityClient, err := dn.Ledger.GetServiceabilityClient()
 	require.NoError(t, err)
 	require.Eventually(t, func() bool {
@@ -96,11 +96,11 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 		ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(30*time.Second))
 		defer cancel()
 		start := time.Now()
-		log.Info("==> Attempting to get internet latency samples before initialized (should fail)")
+		log.Debug("==> Attempting to get internet latency samples before initialized (should fail)")
 		internetLatencySamples, err := telemetryClient.GetInternetLatencySamples(ctx, dataProvider1Name, laxExchangePK, laxExchangePK, oracleAgentPK.PublicKey(), epoch)
 		require.ErrorIs(t, err, telemetry.ErrAccountNotFound)
 		require.Nil(t, internetLatencySamples)
-		log.Info("==> Got expected account not found error when getting internet latency samples PDA", "error", err, "duration", time.Since(start))
+		log.Debug("==> Got expected account not found error when getting internet latency samples PDA", "error", err, "duration", time.Since(start))
 	})
 
 	// Check that we get a not found error when trying to write samples before initialized.
@@ -108,7 +108,7 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 		ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(30*time.Second))
 		defer cancel()
 		start := time.Now()
-		log.Info("==> Attempting to write internet latency samples before initialized (should fail)")
+		log.Debug("==> Attempting to write internet latency samples before initialized (should fail)")
 		_, res, err := telemetryClient.WriteInternetLatencySamples(ctx, telemetry.WriteInternetLatencySamplesInstructionConfig{
 			OriginExchangePK:           laxExchangePK,
 			TargetExchangePK:           amsExchangePK,
@@ -119,7 +119,7 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 		})
 		require.ErrorIs(t, err, telemetry.ErrAccountNotFound)
 		require.Nil(t, res)
-		log.Info("==> Got expected account not found error when writing internet latency samples", "error", err, "duration", time.Since(start))
+		log.Debug("==> Got expected account not found error when writing internet latency samples", "error", err, "duration", time.Since(start))
 	})
 
 	// Initialize internet latency samples account.
@@ -127,7 +127,7 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 		ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(30*time.Second))
 		defer cancel()
 		start := time.Now()
-		log.Info("==> Initializing internet latency samples")
+		log.Debug("==> Initializing internet latency samples")
 		sig, res, err := telemetryClient.InitializeInternetLatencySamples(ctx, telemetry.InitializeInternetLatencySamplesInstructionConfig{
 			OriginExchangePK:             laxExchangePK,
 			TargetExchangePK:             amsExchangePK,
@@ -140,7 +140,7 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 			log.Debug("solana log message", "msg", msg)
 		}
 		require.Nil(t, res.Meta.Err, "transaction failed: %+v", res.Meta.Err)
-		log.Info("==> Initialized internet latency samples", "sig", sig, "tx", res, "duration", time.Since(start))
+		log.Debug("==> Initialized internet latency samples", "sig", sig, "tx", res, "duration", time.Since(start))
 	})
 
 	// Get internet latency samples from PDA and verify that it's initialized and has no samples.
@@ -148,10 +148,10 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 		ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(30*time.Second))
 		defer cancel()
 		start := time.Now()
-		log.Info("==> Getting internet latency samples from PDA")
+		log.Debug("==> Getting internet latency samples from PDA")
 		account, err := telemetryClient.GetInternetLatencySamples(ctx, dataProvider1Name, laxExchangePK, amsExchangePK, oracleAgentPK.PublicKey(), epoch)
 		require.NoError(t, err)
-		log.Info("==> Got internet latency samples from PDA", "internetLatencySamples", account, "duration", time.Since(start))
+		log.Debug("==> Got internet latency samples from PDA", "internetLatencySamples", account, "duration", time.Since(start))
 		require.Equal(t, telemetry.AccountTypeInternetLatencySamples, account.AccountType)
 		require.Equal(t, dataProvider1Name, account.DataProviderName)
 		require.Equal(t, epoch, account.Epoch)
@@ -177,7 +177,7 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 		ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(30*time.Second))
 		defer cancel()
 		start := time.Now()
-		log.Info("==> Writing internet latency samples")
+		log.Debug("==> Writing internet latency samples")
 		sig, res, err := telemetryClient.WriteInternetLatencySamples(ctx, telemetry.WriteInternetLatencySamplesInstructionConfig{
 			OriginExchangePK:           laxExchangePK,
 			TargetExchangePK:           amsExchangePK,
@@ -191,7 +191,7 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 			log.Debug("solana log message", "msg", msg)
 		}
 		require.Nil(t, res.Meta.Err, "transaction failed: %+v", res.Meta.Err)
-		log.Info("==> Wrote internet latency samples", "sig", sig, "tx", res, "duration", time.Since(start))
+		log.Debug("==> Wrote internet latency samples", "sig", sig, "tx", res, "duration", time.Since(start))
 	})
 
 	// Get internet latency samples from PDA and verify that it's updated.
@@ -199,10 +199,10 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 		ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(30*time.Second))
 		defer cancel()
 		start := time.Now()
-		log.Info("==> Getting internet latency samples from PDA")
+		log.Debug("==> Getting internet latency samples from PDA")
 		account, err := telemetryClient.GetInternetLatencySamples(ctx, dataProvider1Name, laxExchangePK, amsExchangePK, oracleAgentPK.PublicKey(), epoch)
 		require.NoError(t, err)
-		log.Info("==> Got internet latency samples from PDA", "internetLatencySamples", account, "duration", time.Since(start))
+		log.Debug("==> Got internet latency samples from PDA", "internetLatencySamples", account, "duration", time.Since(start))
 		require.Equal(t, telemetry.AccountTypeInternetLatencySamples, account.AccountType)
 		require.Equal(t, epoch, account.Epoch)
 		require.Equal(t, oracleAgentPK.PublicKey(), account.OracleAgentPK)
@@ -218,7 +218,7 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 	t.Run("try to initialize internet latency samples again", func(t *testing.T) {
 		ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(30*time.Second))
 		defer cancel()
-		log.Info("==> Attempting to initialize internet latency samples again (should fail)")
+		log.Debug("==> Attempting to initialize internet latency samples again (should fail)")
 		_, res, err := telemetryClient.InitializeInternetLatencySamples(ctx, telemetry.InitializeInternetLatencySamplesInstructionConfig{
 			OriginExchangePK:             laxExchangePK,
 			TargetExchangePK:             amsExchangePK,
@@ -248,7 +248,7 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 		ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(30*time.Second))
 		defer cancel()
 		start := time.Now()
-		log.Info("==> Writing more internet latency samples")
+		log.Debug("==> Writing more internet latency samples")
 		sig, res, err := telemetryClient.WriteInternetLatencySamples(ctx, telemetry.WriteInternetLatencySamplesInstructionConfig{
 			OriginExchangePK:           laxExchangePK,
 			TargetExchangePK:           amsExchangePK,
@@ -262,7 +262,7 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 			log.Debug("solana log message", "msg", msg)
 		}
 		require.Nil(t, res.Meta.Err, "transaction failed: %+v", res.Meta.Err)
-		log.Info("==> Wrote more internet latency samples", "sig", sig, "tx", res, "duration", time.Since(start))
+		log.Debug("==> Wrote more internet latency samples", "sig", sig, "tx", res, "duration", time.Since(start))
 	})
 
 	// Get internet latency samples from PDA and verify that it's updated.
@@ -270,10 +270,10 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 		ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(30*time.Second))
 		defer cancel()
 		start := time.Now()
-		log.Info("==> Getting internet latency samples from PDA")
+		log.Debug("==> Getting internet latency samples from PDA")
 		internetLatencySamples, err := telemetryClient.GetInternetLatencySamples(ctx, dataProvider1Name, laxExchangePK, amsExchangePK, oracleAgentPK.PublicKey(), epoch)
 		require.NoError(t, err)
-		log.Info("==> Got internet latency samples from PDA", "internetLatencySamples", internetLatencySamples, "duration", time.Since(start))
+		log.Debug("==> Got internet latency samples from PDA", "internetLatencySamples", internetLatencySamples, "duration", time.Since(start))
 		require.Equal(t, telemetry.AccountTypeInternetLatencySamples, internetLatencySamples.AccountType)
 		require.Equal(t, epoch, internetLatencySamples.Epoch)
 		require.Equal(t, oracleAgentPK.PublicKey(), internetLatencySamples.OracleAgentPK)
@@ -290,7 +290,7 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 		ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(30*time.Second))
 		defer cancel()
 		start := time.Now()
-		log.Info("==> Writing largest possible batch of samples per transaction")
+		log.Debug("==> Writing largest possible batch of samples per transaction")
 		sig, res, err := telemetryClient.WriteInternetLatencySamples(ctx, telemetry.WriteInternetLatencySamplesInstructionConfig{
 			OriginExchangePK:           laxExchangePK,
 			TargetExchangePK:           amsExchangePK,
@@ -304,13 +304,13 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 			log.Debug("solana log message", "msg", msg)
 		}
 		require.Nil(t, res.Meta.Err, "transaction failed: %+v", res.Meta.Err)
-		log.Info("==> Wrote largest possible batch of samples per transaction", "sig", sig, "tx", res, "duration", time.Since(start))
+		log.Debug("==> Wrote largest possible batch of samples per transaction", "sig", sig, "tx", res, "duration", time.Since(start))
 	})
 
 	t.Run("write largest possible batch of samples per transaction +1 (should fail)", func(t *testing.T) {
 		ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(30*time.Second))
 		defer cancel()
-		log.Info("==> Writing largest possible batch of samples per transaction +1 (should fail)")
+		log.Debug("==> Writing largest possible batch of samples per transaction +1 (should fail)")
 		_, _, err := telemetryClient.WriteInternetLatencySamples(ctx, telemetry.WriteInternetLatencySamplesInstructionConfig{
 			OriginExchangePK:           laxExchangePK,
 			TargetExchangePK:           amsExchangePK,

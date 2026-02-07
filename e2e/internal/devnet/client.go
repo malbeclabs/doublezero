@@ -121,7 +121,7 @@ func (c *Client) StartIfNotRunning(ctx context.Context) (bool, error) {
 
 		// Check if the container is running.
 		if container.State.Running {
-			c.log.Info("--> Client already running", "container", shortContainerID(container.ID))
+			c.log.Debug("--> Client already running", "container", shortContainerID(container.ID))
 
 			// Set the component's state.
 			err = c.setState(ctx, container.ID)
@@ -151,7 +151,7 @@ func (c *Client) StartIfNotRunning(ctx context.Context) (bool, error) {
 }
 
 func (c *Client) Start(ctx context.Context) error {
-	c.log.Info("==> Starting client", "image", c.Spec.ContainerImage, "cyoaNetworkIPHostID", c.Spec.CYOANetworkIPHostID)
+	c.log.Debug("==> Starting client", "image", c.Spec.ContainerImage, "cyoaNetworkIPHostID", c.Spec.CYOANetworkIPHostID)
 
 	cyoaIP, err := netutil.DeriveIPFromCIDR(c.dn.CYOANetwork.SubnetCIDR, uint32(c.Spec.CYOANetworkIPHostID))
 	if err != nil {
@@ -251,12 +251,12 @@ func (c *Client) Start(ctx context.Context) error {
 	funded := false
 	var output []byte
 	for attempt := range 5 {
-		c.log.Info("--> Funding client account", "clientPubkey", c.Pubkey, "attempt", attempt+1)
+		c.log.Debug("--> Funding client account", "clientPubkey", c.Pubkey, "attempt", attempt+1)
 		output, err = c.Exec(ctx, []string{"solana", "airdrop", "-u", c.dn.Ledger.InternalRPCURL, "10", c.Pubkey}, docker.NoPrintOnError())
 		if err != nil {
 			outputStr := string(output)
 			if strings.Contains(outputStr, "429") || strings.Contains(outputStr, "Too Many Requests") || strings.Contains(outputStr, "rate limit") {
-				c.log.Info("--> Solana airdrop request rate limited, retrying", "attempt", attempt+1)
+				c.log.Debug("--> Solana airdrop request rate limited, retrying", "attempt", attempt+1)
 				time.Sleep(2 * time.Second)
 				continue
 			}
@@ -271,7 +271,7 @@ func (c *Client) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to fund client account after 5 attempts")
 	}
 
-	c.log.Info("--> Client started", "container", c.ContainerID, "pubkey", c.Pubkey, "cyoaIP", clientCYOAIP)
+	c.log.Debug("--> Client started", "container", c.ContainerID, "pubkey", c.Pubkey, "cyoaIP", clientCYOAIP)
 	return nil
 }
 
@@ -412,7 +412,7 @@ func (c *Client) WaitForTunnelUp(ctx context.Context, timeout time.Duration) err
 
 // WaitForNTunnelsUp waits for N tunnels to be in the "up" state.
 func (c *Client) WaitForNTunnelsUp(ctx context.Context, n int, timeout time.Duration) error {
-	c.log.Info("==> Waiting for N tunnels to be up", "n", n, "timeout", timeout)
+	c.log.Debug("==> Waiting for N tunnels to be up", "n", n, "timeout", timeout)
 
 	attempts := 0
 	start := time.Now()
@@ -430,7 +430,7 @@ func (c *Client) WaitForNTunnelsUp(ctx context.Context, n int, timeout time.Dura
 		}
 
 		if upCount >= n {
-			c.log.Info("✅ Got expected number of tunnels up", "n", n, "upCount", upCount, "duration", time.Since(start))
+			c.log.Debug("✅ Got expected number of tunnels up", "n", n, "upCount", upCount, "duration", time.Since(start))
 			return true, nil
 		}
 
@@ -453,7 +453,7 @@ func (c *Client) WaitForTunnelDisconnected(ctx context.Context, timeout time.Dur
 }
 
 func (c *Client) WaitForTunnelStatus(ctx context.Context, wantStatus ClientSessionStatus, timeout time.Duration) error {
-	c.log.Info("==> Waiting for client tunnel status", "wantStatus", wantStatus, "timeout", timeout)
+	c.log.Debug("==> Waiting for client tunnel status", "wantStatus", wantStatus, "timeout", timeout)
 
 	attempts := 0
 	start := time.Now()
@@ -465,7 +465,7 @@ func (c *Client) WaitForTunnelStatus(ctx context.Context, wantStatus ClientSessi
 
 		for _, s := range resp {
 			if s.DoubleZeroStatus.SessionStatus == wantStatus {
-				c.log.Info("✅ Got expected client tunnel status", "wantStatus", wantStatus, "duration", time.Since(start))
+				c.log.Debug("✅ Got expected client tunnel status", "wantStatus", wantStatus, "duration", time.Since(start))
 				return true, nil
 			}
 		}
@@ -574,7 +574,7 @@ func (c *Client) dumpDiagnostics() {
 }
 
 func (c *Client) WaitForLatencyResults(ctx context.Context, wantDevicePK string, timeout time.Duration) error {
-	c.log.Info("==> Waiting for latency results (timeout " + timeout.String() + ")")
+	c.log.Debug("==> Waiting for latency results (timeout " + timeout.String() + ")")
 
 	attempts := 0
 	start := time.Now()
@@ -587,7 +587,7 @@ func (c *Client) WaitForLatencyResults(ctx context.Context, wantDevicePK string,
 		if len(results) > 0 {
 			for _, result := range results {
 				if result["device_pk"] == wantDevicePK && result["reachable"] == true {
-					c.log.Info("✅ Got expected latency results", "wantDevicePK", wantDevicePK, "duration", time.Since(start))
+					c.log.Debug("✅ Got expected latency results", "wantDevicePK", wantDevicePK, "duration", time.Since(start))
 					return true, nil
 				}
 			}

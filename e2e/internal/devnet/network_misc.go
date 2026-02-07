@@ -46,7 +46,7 @@ func (n *MiscNetwork) CreateIfNotExists(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("failed to check if misc network exists: %w", err)
 	}
 	if exists {
-		n.log.Info("--> Misc network already exists", "network", n.Name)
+		n.log.Debug("--> Misc network already exists", "network", n.Name)
 		return true, nil
 	}
 	err = n.Create(ctx)
@@ -55,7 +55,7 @@ func (n *MiscNetwork) CreateIfNotExists(ctx context.Context) (bool, error) {
 		// between our Exists() check and Create() call.
 		exists, existsErr := n.Exists(ctx)
 		if existsErr == nil && exists {
-			n.log.Info("--> Misc network already exists", "network", n.Name)
+			n.log.Debug("--> Misc network already exists", "network", n.Name)
 			return true, nil
 		}
 		return false, err
@@ -72,7 +72,7 @@ func (n *MiscNetwork) Create(ctx context.Context) error {
 	}
 	maps.Copy(labels, n.dn.labels)
 
-	n.log.Info("==> Creating misc network", "labels", labels)
+	n.log.Debug("==> Creating misc network", "labels", labels)
 
 	// Create a docker network using Docker API directly to set MTU.
 	_, err := n.dn.dockerClient.NetworkCreate(ctx, n.Name, dockernetwork.CreateOptions{
@@ -86,6 +86,6 @@ func (n *MiscNetwork) Create(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to create network: %w", err)
 	}
-	n.log.Info("--> Network created", "network", n.Name)
+	n.log.Debug("--> Network created", "network", n.Name)
 	return nil
 }

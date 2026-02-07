@@ -8,7 +8,7 @@ use crate::{
         SEED_DZ_PREFIX_BLOCK, SEED_EXCHANGE, SEED_GLOBALSTATE, SEED_LINK, SEED_LINK_IDS,
         SEED_LOCATION, SEED_MULTICASTGROUP_BLOCK, SEED_MULTICAST_GROUP, SEED_PREFIX,
         SEED_PROGRAM_CONFIG, SEED_SEGMENT_ROUTING_IDS, SEED_TUNNEL_IDS, SEED_USER,
-        SEED_USER_TUNNEL_BLOCK,
+        SEED_USER_TUNNEL_BLOCK, SEED_VRF_IDS,
     },
     state::user::UserType,
 };
@@ -144,6 +144,11 @@ pub fn get_resource_extension_pda(
             let (pda, bump_seed) =
                 Pubkey::find_program_address(&[SEED_PREFIX, SEED_SEGMENT_ROUTING_IDS], program_id);
             (pda, bump_seed, SEED_SEGMENT_ROUTING_IDS)
+        }
+        crate::resource::ResourceType::VrfIds => {
+            let (pda, bump_seed) =
+                Pubkey::find_program_address(&[SEED_PREFIX, SEED_VRF_IDS], program_id);
+            (pda, bump_seed, SEED_VRF_IDS)
         }
     }
 }

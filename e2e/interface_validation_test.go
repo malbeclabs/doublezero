@@ -32,7 +32,7 @@ func TestE2E_InterfaceValidation(t *testing.T) {
 	// Test 1: CYOA on loopback should be rejected
 	if !t.Run("cyoa_on_loopback_rejected", func(t *testing.T) {
 		testInterfaceName := "Loopback101"
-		dn.log.Info("==> Attempting to create Loopback interface with CYOA (should fail)", "device", testDeviceCode)
+		dn.log.Debug("==> Attempting to create Loopback interface with CYOA (should fail)", "device", testDeviceCode)
 
 		output, err := dn.Manager.Exec(t.Context(), []string{
 			"doublezero", "device", "interface", "create",
@@ -47,7 +47,7 @@ func TestE2E_InterfaceValidation(t *testing.T) {
 				strings.Contains(string(output), "0x45"), // error code 69 in hex
 			"expected CyoaRequiresPhysical error, got: %s", string(output))
 
-		dn.log.Info("--> Correctly rejected loopback with CYOA")
+		dn.log.Debug("--> Correctly rejected loopback with CYOA")
 	}) {
 		t.FailNow()
 	}
@@ -55,7 +55,7 @@ func TestE2E_InterfaceValidation(t *testing.T) {
 	// Test 2: CYOA on physical interface should be allowed
 	if !t.Run("cyoa_on_physical_allowed", func(t *testing.T) {
 		testInterfaceName := "Ethernet10"
-		dn.log.Info("==> Creating physical interface with CYOA", "device", testDeviceCode)
+		dn.log.Debug("==> Creating physical interface with CYOA", "device", testDeviceCode)
 
 		_, err := dn.Manager.Exec(t.Context(), []string{
 			"doublezero", "device", "interface", "create",
@@ -69,7 +69,7 @@ func TestE2E_InterfaceValidation(t *testing.T) {
 		require.NoError(t, err, "interface was not found")
 		require.Equal(t, serviceability.InterfaceCYOAGREOverDIA, iface.InterfaceCYOA, "interface CYOA mismatch")
 
-		dn.log.Info("--> Physical interface with CYOA created and verified")
+		dn.log.Debug("--> Physical interface with CYOA created and verified")
 	}) {
 		t.FailNow()
 	}
@@ -79,7 +79,7 @@ func TestE2E_InterfaceValidation(t *testing.T) {
 		testInterfaceName := "Loopback102"
 		publicIP := "203.0.113.10/32" // TEST-NET-3 public IP
 
-		dn.log.Info("==> Creating Loopback interface with public IP and user_tunnel_endpoint=true", "device", testDeviceCode, "ip", publicIP)
+		dn.log.Debug("==> Creating Loopback interface with public IP and user_tunnel_endpoint=true", "device", testDeviceCode, "ip", publicIP)
 
 		_, err := dn.Manager.Exec(t.Context(), []string{
 			"doublezero", "device", "interface", "create",
@@ -99,7 +99,7 @@ func TestE2E_InterfaceValidation(t *testing.T) {
 		require.True(t, iface.UserTunnelEndpoint, "user_tunnel_endpoint should be true")
 		require.NotEqual(t, [5]uint8{}, iface.IpNet, "interface IP should be set")
 
-		dn.log.Info("--> Loopback with public IP and user_tunnel_endpoint created and verified")
+		dn.log.Debug("--> Loopback with public IP and user_tunnel_endpoint created and verified")
 	}) {
 		t.FailNow()
 	}
@@ -109,7 +109,7 @@ func TestE2E_InterfaceValidation(t *testing.T) {
 		testInterfaceName := "Loopback103"
 		publicIP := "203.0.113.20/32" // TEST-NET-3 public IP
 
-		dn.log.Info("==> Attempting to create Loopback with public IP but without user_tunnel_endpoint (should fail)", "device", testDeviceCode, "ip", publicIP)
+		dn.log.Debug("==> Attempting to create Loopback with public IP but without user_tunnel_endpoint (should fail)", "device", testDeviceCode, "ip", publicIP)
 
 		output, err := dn.Manager.Exec(t.Context(), []string{
 			"doublezero", "device", "interface", "create",
@@ -125,7 +125,7 @@ func TestE2E_InterfaceValidation(t *testing.T) {
 				strings.Contains(string(output), "0x2f"), // error code 47 in hex
 			"expected InvalidInterfaceIp error, got: %s", string(output))
 
-		dn.log.Info("--> Correctly rejected loopback with public IP without user_tunnel_endpoint")
+		dn.log.Debug("--> Correctly rejected loopback with public IP without user_tunnel_endpoint")
 	}) {
 		t.FailNow()
 	}
@@ -135,7 +135,7 @@ func TestE2E_InterfaceValidation(t *testing.T) {
 		testInterfaceName := "Loopback104"
 
 		// First create a valid loopback interface
-		dn.log.Info("==> Creating Loopback interface for update test", "device", testDeviceCode)
+		dn.log.Debug("==> Creating Loopback interface for update test", "device", testDeviceCode)
 
 		_, err := dn.Manager.Exec(t.Context(), []string{
 			"doublezero", "device", "interface", "create",
@@ -148,7 +148,7 @@ func TestE2E_InterfaceValidation(t *testing.T) {
 		require.NoError(t, err, "interface was not found")
 
 		// Attempt to update the loopback interface to add CYOA - this should fail
-		dn.log.Info("==> Attempting to update Loopback interface to add CYOA (should fail)", "device", testDeviceCode)
+		dn.log.Debug("==> Attempting to update Loopback interface to add CYOA (should fail)", "device", testDeviceCode)
 
 		output, err := dn.Manager.Exec(t.Context(), []string{
 			"doublezero", "device", "interface", "update",
@@ -163,7 +163,7 @@ func TestE2E_InterfaceValidation(t *testing.T) {
 				strings.Contains(string(output), "0x45"), // error code 69 in hex
 			"expected CyoaRequiresPhysical error, got: %s", string(output))
 
-		dn.log.Info("--> Correctly rejected update to add CYOA on loopback")
+		dn.log.Debug("--> Correctly rejected update to add CYOA on loopback")
 	}) {
 		t.FailNow()
 	}
@@ -174,7 +174,7 @@ func TestE2E_InterfaceValidation(t *testing.T) {
 		publicIP := "203.0.113.30/32" // TEST-NET-3 public IP
 
 		// First create a loopback interface with user_tunnel_endpoint but no IP
-		dn.log.Info("==> Creating Loopback interface with user_tunnel_endpoint for update test", "device", testDeviceCode)
+		dn.log.Debug("==> Creating Loopback interface with user_tunnel_endpoint for update test", "device", testDeviceCode)
 
 		_, err := dn.Manager.Exec(t.Context(), []string{
 			"doublezero", "device", "interface", "create",
@@ -188,7 +188,7 @@ func TestE2E_InterfaceValidation(t *testing.T) {
 		require.NoError(t, err, "interface was not found")
 
 		// Update the loopback interface to add a public IP - should succeed
-		dn.log.Info("==> Updating Loopback interface to add public IP", "device", testDeviceCode, "ip", publicIP)
+		dn.log.Debug("==> Updating Loopback interface to add public IP", "device", testDeviceCode, "ip", publicIP)
 
 		_, err = dn.Manager.Exec(t.Context(), []string{
 			"doublezero", "device", "interface", "update",
@@ -205,7 +205,7 @@ func TestE2E_InterfaceValidation(t *testing.T) {
 		require.NoError(t, err, "failed to get interface")
 		require.NotEqual(t, [5]uint8{}, iface.IpNet, "interface IP should be set")
 
-		dn.log.Info("--> Loopback updated with public IP successfully")
+		dn.log.Debug("--> Loopback updated with public IP successfully")
 	}) {
 		t.FailNow()
 	}
@@ -216,7 +216,7 @@ func TestE2E_InterfaceValidation(t *testing.T) {
 		publicIP := "203.0.113.40/32" // TEST-NET-3 public IP
 
 		// Step 1: Create interface with public IP and user_tunnel_endpoint
-		dn.log.Info("==> Creating Loopback interface for lifecycle test", "device", testDeviceCode)
+		dn.log.Debug("==> Creating Loopback interface for lifecycle test", "device", testDeviceCode)
 
 		_, err := dn.Manager.Exec(t.Context(), []string{
 			"doublezero", "device", "interface", "create",
@@ -231,7 +231,7 @@ func TestE2E_InterfaceValidation(t *testing.T) {
 		require.NoError(t, err, "interface was not activated")
 
 		// Step 3: Update interface (change loopback type AND mtu to test multiple fields)
-		dn.log.Info("==> Updating interface loopback type and mtu")
+		dn.log.Debug("==> Updating interface loopback type and mtu")
 
 		updateOutput, err := dn.Manager.Exec(t.Context(), []string{
 			"doublezero", "device", "interface", "update",
@@ -239,7 +239,7 @@ func TestE2E_InterfaceValidation(t *testing.T) {
 			"--loopback-type", "ipv4",
 			"--mtu", "9000",
 		})
-		dn.log.Info("==> Update command output", "output", string(updateOutput))
+		dn.log.Debug("==> Update command output", "output", string(updateOutput))
 		require.NoError(t, err, "failed to update loopback interface")
 
 		// Poll until the Go SDK sees the updated values
@@ -248,16 +248,16 @@ func TestE2E_InterfaceValidation(t *testing.T) {
 			// If polling times out, get the final state for debugging
 			finalIface, _ := waitForDeviceInterface(t.Context(), dn.Devnet, testDeviceCode, testInterfaceName, 5*time.Second)
 			if finalIface != nil {
-				dn.log.Info("==> Final interface state after timeout", "loopback_type", finalIface.LoopbackType, "mtu", finalIface.Mtu, "version", finalIface.Version, "name", finalIface.Name)
+				dn.log.Debug("==> Final interface state after timeout", "loopback_type", finalIface.LoopbackType, "mtu", finalIface.Mtu, "version", finalIface.Version, "name", finalIface.Name)
 			}
 			require.NoError(t, err, "timed out waiting for interface update to propagate to Go SDK")
 		}
-		dn.log.Info("==> Retrieved interface via SDK", "loopback_type", iface.LoopbackType, "mtu", iface.Mtu, "version", iface.Version, "name", iface.Name)
+		dn.log.Debug("==> Retrieved interface via SDK", "loopback_type", iface.LoopbackType, "mtu", iface.Mtu, "version", iface.Version, "name", iface.Name)
 		require.Equal(t, uint16(9000), iface.Mtu, "mtu mismatch - update not reflected in SDK")
 		require.Equal(t, serviceability.LoopbackTypeIpv4, iface.LoopbackType, "loopback type mismatch")
 
 		// Step 5: Delete interface
-		dn.log.Info("==> Deleting interface")
+		dn.log.Debug("==> Deleting interface")
 
 		err = dn.DeleteDeviceLoopbackInterface(t.Context(), testDeviceCode, testInterfaceName)
 		require.NoError(t, err, "failed to delete loopback interface")
@@ -266,7 +266,7 @@ func TestE2E_InterfaceValidation(t *testing.T) {
 		err = waitForDeviceInterfaceRemoved(t.Context(), dn.Devnet, testDeviceCode, testInterfaceName, 60*time.Second)
 		require.NoError(t, err, "interface was not removed")
 
-		dn.log.Info("--> Full lifecycle test completed successfully")
+		dn.log.Debug("--> Full lifecycle test completed successfully")
 	})
 }
 

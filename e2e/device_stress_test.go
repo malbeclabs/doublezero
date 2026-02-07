@@ -44,7 +44,7 @@ func TestE2E_DeviceStress(t *testing.T) {
 	}
 
 	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
-	log := logger.With("test", t.Name(), "deployID", deployID)
+	log := newTestLoggerForTest(t)
 
 	currentDir, err := os.Getwd()
 	require.NoError(t, err)
@@ -62,7 +62,7 @@ func TestE2E_DeviceStress(t *testing.T) {
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
 
-	log.Info("==> Starting devnet")
+	log.Debug("==> Starting devnet")
 	err = dn.Start(t.Context(), nil)
 	require.NoError(t, err)
 
@@ -73,7 +73,7 @@ func TestE2E_DeviceStress(t *testing.T) {
 	device := setupDevice(t, dn, log)
 
 	// Wait for device to exist onchain and be activated
-	log.Info("==> Waiting for device to exist onchain")
+	log.Debug("==> Waiting for device to exist onchain")
 	serviceabilityClient, err := dn.Ledger.GetServiceabilityClient()
 	require.NoError(t, err)
 	require.Eventually(t, func() bool {
@@ -93,10 +93,10 @@ func TestE2E_DeviceStress(t *testing.T) {
 		}
 		return false
 	}, 60*time.Second, 2*time.Second)
-	log.Info("--> Device exists and is activated onchain", "deviceCode", device.Spec.Code)
+	log.Debug("--> Device exists and is activated onchain", "deviceCode", device.Spec.Code)
 
 	// Add second device in different exchange to allow client-to-client communication
-	log.Info("==> Adding second device")
+	log.Debug("==> Adding second device")
 	device2Spec := devnet.DeviceSpec{
 		ContainerImage:      os.Getenv("DZ_DEVICE_IMAGE"),
 		Code:                "dz2-" + random.ShortID(),
@@ -112,7 +112,7 @@ func TestE2E_DeviceStress(t *testing.T) {
 	device2, err := dn.AddDevice(t.Context(), device2Spec)
 	require.NoError(t, err)
 
-	log.Info("--> Device2 setup complete", "deviceID", device2.ID)
+	log.Debug("--> Device2 setup complete", "deviceID", device2.ID)
 
 	// Wait for both devices to be activated
 	require.Eventually(t, func() bool {
@@ -131,7 +131,7 @@ func TestE2E_DeviceStress(t *testing.T) {
 		}
 		return activatedCount == 2
 	}, 60*time.Second, 2*time.Second)
-	log.Info("--> Both devices are activated onchain")
+	log.Debug("--> Both devices are activated onchain")
 
 	// Give it a moment for controller to pick up the change
 	time.Sleep(5 * time.Second)
@@ -142,10 +142,10 @@ func TestE2E_DeviceStress(t *testing.T) {
 	devices := []*devnet.Device{device, device2}
 
 	for i := 0; i < config.NumClients; i++ {
-		log.Info(fmt.Sprintf("\n=== Processing client %d/%d ===", i+1, config.NumClients))
+		log.Debug(fmt.Sprintf("\n=== Processing client %d/%d ===", i+1, config.NumClients))
 
 		// Create client
-		log.Info(fmt.Sprintf("Creating client %d", i+1))
+		log.Debug(fmt.Sprintf("Creating client %d", i+1))
 		keypairPath := fmt.Sprintf("/tmp/device-stress-client-%d.json", i)
 
 		// Generate keypair file
@@ -175,27 +175,27 @@ func TestE2E_DeviceStress(t *testing.T) {
 		// Set access pass
 		cmd := fmt.Sprintf("doublezero access-pass set --accesspass-type prepaid --client-ip %s --user-payer %s --last-access-epoch 99999",
 			client.CYOANetworkIP, client.Pubkey)
-		log.Info(fmt.Sprintf("Setting access pass for client %d with command '%s'", i+1, cmd))
+		log.Debug(fmt.Sprintf("Setting access pass for client %d with command '%s'", i+1, cmd))
 		cmdOutput, err2 := dn.Manager.Exec(t.Context(), []string{
 			"bash", "-c",
 			cmd,
 		})
-		log.Info("Set access pass output", "output", string(cmdOutput))
+		log.Debug("Set access pass output", "output", string(cmdOutput))
 		require.NoError(t, err2)
 
 		// Alternate clients between devices to enable cross-exchange communication
 		selectedDevice := devices[i%2]
-		log.Info(fmt.Sprintf("Client %d will connect to device %s (exchange: %s)", i+1, selectedDevice.Spec.Code, selectedDevice.Spec.Exchange))
+		log.Debug(fmt.Sprintf("Client %d will connect to device %s (exchange: %s)", i+1, selectedDevice.Spec.Code, selectedDevice.Spec.Exchange))
 		connectClientWithRetry(t, i, client, selectedDevice, log)
 
 		cm.connectedAt = time.Now()
-		log.Info(fmt.Sprintf("✅ Client %d connected successfully to device %s", i+1, selectedDevice.Spec.Code))
+		log.Debug(fmt.Sprintf("✅ Client %d connected successfully to device %s", i+1, selectedDevice.Spec.Code))
 
 		err = client.WaitForTunnelUp(t.Context(), 60*time.Second)
 		require.NoError(t, err)
 
 		// Ping test
-		log.Info(fmt.Sprintf("Testing connectivity from client %d to other clients with fping", i+1))
+		log.Debug(fmt.Sprintf("Testing connectivity from client %d to other clients with fping", i+1))
 		if i >= 2 {
 			cmdOutput, err = client.Exec(t.Context(), []string{
 				"bash", "-c", "ip --json r list dev doublezero0 proto bgp  | jq -r '.[].dst' | xargs fping -I doublezero0 2>&1",
@@ -209,7 +209,7 @@ func TestE2E_DeviceStress(t *testing.T) {
 }
 
 func connectClientWithRetry(t *testing.T, i int, client *devnet.Client, device *devnet.Device, log *slog.Logger) {
-	log.Info(fmt.Sprintf("Connecting client %d to device %s", i+1, device.Spec.Code))
+	log.Debug(fmt.Sprintf("Connecting client %d to device %s", i+1, device.Spec.Code))
 
 	var output []byte
 	var err error
@@ -265,7 +265,7 @@ func connectClientWithRetry(t *testing.T, i int, client *devnet.Client, device *
 
 // fundManagerAccount funds the manager account with enough SOL for all clients
 func fundManagerAccount(t *testing.T, dn *devnet.Devnet, numClients int, log *slog.Logger) {
-	log.Info("==> Funding manager account", "numClients", numClients)
+	log.Debug("==> Funding manager account", "numClients", numClients)
 	requiredSOL := numClients + 50 // Extra buffer
 
 	_, err := dn.Manager.Exec(t.Context(), []string{
@@ -278,12 +278,12 @@ func fundManagerAccount(t *testing.T, dn *devnet.Devnet, numClients int, log *sl
 		_, err = dn.Manager.Exec(t.Context(), []string{"solana", "airdrop", "100"})
 		require.NoError(t, err)
 	}
-	log.Info("--> Manager account funded")
+	log.Debug("--> Manager account funded")
 }
 
 // setupDevice creates and configures a device for the test
 func setupDevice(t *testing.T, dn *devnet.Devnet, log *slog.Logger) *devnet.Device {
-	log.Info("==> Setting up device")
+	log.Debug("==> Setting up device")
 
 	deviceSpec := devnet.DeviceSpec{
 		ContainerImage:      os.Getenv("DZ_DEVICE_IMAGE"),
@@ -300,6 +300,6 @@ func setupDevice(t *testing.T, dn *devnet.Devnet, log *slog.Logger) *devnet.Devi
 	device, err := dn.AddDevice(t.Context(), deviceSpec)
 	require.NoError(t, err)
 
-	log.Info("--> Device setup complete", "deviceID", device.ID)
+	log.Debug("--> Device setup complete", "deviceID", device.ID)
 	return device
 }

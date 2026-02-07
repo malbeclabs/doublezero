@@ -127,9 +127,9 @@ func (q *QAAgent) Start(ctx context.Context) error {
 
 	select {
 	case <-ctx.Done():
-		q.log.Info("Stopping QA Agent gRPC server...")
+		q.log.Debug("Stopping QA Agent gRPC server...")
 		agent.Stop()
-		q.log.Info("Stopping multicast listener...")
+		q.log.Debug("Stopping multicast listener...")
 		q.mcastListener.Stop()
 		return <-errChan
 	case err := <-errChan:
@@ -143,7 +143,7 @@ func (q *QAAgent) Start(ctx context.Context) error {
 // Ping implements the Ping RPC, executes a set of ICMP pings, and reports the results to the caller.
 // This requires CAP_NET_RAW capability to run successfully due to the use of raw sockets.
 func (q *QAAgent) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingResult, error) {
-	q.log.Info("Received Ping request for target IP", "target_ip", req.GetTargetIp())
+	q.log.Debug("Received Ping request for target IP", "target_ip", req.GetTargetIp())
 	pinger, err := probing.NewPinger(req.GetTargetIp())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create pinger: %v", err)
@@ -168,7 +168,7 @@ func (q *QAAgent) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingResult
 		return nil, fmt.Errorf("ping failed: %v", err)
 	}
 	stats := pinger.Statistics()
-	q.log.Info("Ping statistics", "target_ip", req.GetTargetIp(), "packets_sent", stats.PacketsSent, "packets_received", stats.PacketsRecv)
+	q.log.Debug("Ping statistics", "target_ip", req.GetTargetIp(), "packets_sent", stats.PacketsSent, "packets_received", stats.PacketsRecv)
 	if stats.PacketsRecv < stats.PacketsSent {
 		packetsLost := stats.PacketsSent - stats.PacketsRecv
 		q.log.Warn("Packet loss detected", "target_ip", req.GetTargetIp(), "packets_sent", stats.PacketsSent, "packets_received", stats.PacketsRecv, "packets_lost", packetsLost)
@@ -179,7 +179,7 @@ func (q *QAAgent) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingResult
 
 // Traceroute implements the Traceroute RPC, which traces the route to the target IP, and returns the results.
 func (q *QAAgent) Traceroute(ctx context.Context, req *pb.TracerouteRequest) (*pb.TracerouteResult, error) {
-	q.log.Info("Received Traceroute request", "target_ip", req.TargetIp, "source_ip", req.SourceIp, "source_iface", req.SourceIface, "timeout", req.Timeout, "count", req.Count)
+	q.log.Debug("Received Traceroute request", "target_ip", req.TargetIp, "source_ip", req.SourceIp, "source_iface", req.SourceIface, "timeout", req.Timeout, "count", req.Count)
 	if !hasMTRBinary() {
 		return nil, fmt.Errorf("mtr binary not found")
 	}
@@ -223,7 +223,7 @@ func (q *QAAgent) Traceroute(ctx context.Context, req *pb.TracerouteRequest) (*p
 
 // TracerouteRaw implements the TracerouteRaw RPC, which traces the route to the target IP, and returns the raw output.
 func (q *QAAgent) TracerouteRaw(ctx context.Context, req *pb.TracerouteRequest) (*pb.Result, error) {
-	q.log.Info("Received TracerouteRaw request", "target_ip", req.TargetIp, "source_ip", req.SourceIp, "source_iface", req.SourceIface, "timeout", req.Timeout, "count", req.Count)
+	q.log.Debug("Received TracerouteRaw request", "target_ip", req.TargetIp, "source_ip", req.SourceIp, "source_iface", req.SourceIface, "timeout", req.Timeout, "count", req.Count)
 	if !hasMTRBinary() {
 		return nil, fmt.Errorf("mtr binary not found")
 	}
@@ -256,7 +256,7 @@ func (q *QAAgent) MulticastJoin(ctx context.Context, req *pb.MulticastJoinReques
 		if ip == nil {
 			return nil, fmt.Errorf("invalid group IP: %s", group.GetGroup())
 		}
-		q.log.Info("Joining multicast group", "group", ip.String(), "port", group.GetPort(), "interface", group.GetIface())
+		q.log.Debug("Joining multicast group", "group", ip.String(), "port", group.GetPort(), "interface", group.GetIface())
 		err := q.mcastListener.JoinGroup(context.Background(), ip, fmt.Sprintf("%d", group.GetPort()), group.GetIface())
 		if err != nil {
 			return nil, err
@@ -267,7 +267,7 @@ func (q *QAAgent) MulticastJoin(ctx context.Context, req *pb.MulticastJoinReques
 
 // MulticastLeave implements the MulticastLeave RPC and stops listening to all multicast groups.
 func (q *QAAgent) MulticastLeave(ctx context.Context, in *emptypb.Empty) (*emptypb.Empty, error) {
-	q.log.Info("Leaving all multicast groups.")
+	q.log.Debug("Leaving all multicast groups.")
 	q.mcastListener.Stop()
 	return &emptypb.Empty{}, nil
 }
@@ -276,7 +276,7 @@ func (q *QAAgent) MulticastLeave(ctx context.Context, in *emptypb.Empty) (*empty
 // using IBRL mode. This call will block until the tunnel is up according to the DoubleZero status
 // output or return an error if the tunnel is not up within 20 seconds.
 func (q *QAAgent) ConnectUnicast(ctx context.Context, req *pb.ConnectUnicastRequest) (*pb.Result, error) {
-	q.log.Info("Received ConnectUnicast request", "client_ip", req.GetClientIp(), "device_code", req.GetDeviceCode(), "mode", req.GetMode())
+	q.log.Debug("Received ConnectUnicast request", "client_ip", req.GetClientIp(), "device_code", req.GetDeviceCode(), "mode", req.GetMode())
 	start := time.Now()
 	clientIP := req.GetClientIp()
 	deviceCode := req.GetDeviceCode()
@@ -298,13 +298,13 @@ func (q *QAAgent) ConnectUnicast(ctx context.Context, req *pb.ConnectUnicastRequ
 	}
 	duration := time.Since(start)
 	UserConnectDuration.WithLabelValues("unicast").Observe(duration.Seconds())
-	q.log.Info("Successfully connected IBRL mode tunnel", "duration", duration.String())
+	q.log.Debug("Successfully connected IBRL mode tunnel", "duration", duration.String())
 	return res, nil
 }
 
 // Disconnect implements the Disconnect RPC, which removes the current tunnel from DoubleZero.
 func (q *QAAgent) Disconnect(ctx context.Context, req *emptypb.Empty) (*pb.Result, error) {
-	q.log.Info("Received Disconnect request")
+	q.log.Debug("Received Disconnect request")
 	start := time.Now()
 	cmd := exec.Command("doublezero", "disconnect")
 	output, err := cmd.CombinedOutput()
@@ -326,7 +326,7 @@ func (q *QAAgent) Disconnect(ctx context.Context, req *emptypb.Empty) (*pb.Resul
 	} else {
 		res.Success = true
 		res.ReturnCode = 0
-		q.log.Info("Successfully disconnected", "duration", duration.String())
+		q.log.Debug("Successfully disconnected", "duration", duration.String())
 		UserDisconnectDuration.Observe(duration.Seconds())
 	}
 
@@ -364,7 +364,7 @@ type LatencyResponse struct {
 // GetStatus implements the GetStatus RPC, which retrieves the current status of the configured DoubleZero
 // tunnel. This is equivalent to the `doublezero status` command.
 func (q *QAAgent) GetStatus(ctx context.Context, req *emptypb.Empty) (*pb.StatusResponse, error) {
-	q.log.Info("Received GetStatus request")
+	q.log.Debug("Received GetStatus request")
 	status, err := q.fetchStatus(ctx)
 	if err != nil {
 		return nil, err
@@ -390,7 +390,7 @@ func (q *QAAgent) GetStatus(ctx context.Context, req *emptypb.Empty) (*pb.Status
 // GetLatency implements the GetLatency RPC, which retrieves latency information for all DoubleZero devices.
 // This is equivalent to the `doublezero latency` command.
 func (q *QAAgent) GetLatency(ctx context.Context, req *emptypb.Empty) (*pb.LatencyResponse, error) {
-	q.log.Info("Received GetLatency request")
+	q.log.Debug("Received GetLatency request")
 	latencies, err := q.fetchLatency(ctx)
 	if err != nil {
 		return nil, err
@@ -417,7 +417,7 @@ func (q *QAAgent) GetLatency(ctx context.Context, req *emptypb.Empty) (*pb.Laten
 
 // GetRoutes implements the GetRoutes RPC, which retrieves the installed routes in the kernel routing table.
 func (q *QAAgent) GetRoutes(ctx context.Context, req *emptypb.Empty) (*pb.GetRoutesResponse, error) {
-	q.log.Info("Received GetRoutes request")
+	q.log.Debug("Received GetRoutes request")
 	rts, err := q.netlinker.RouteByProtocol(unix.RTPROT_BGP)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get routes: %w", err)
@@ -440,7 +440,7 @@ func (q *QAAgent) CreateMulticastGroup(ctx context.Context, req *pb.CreateMultic
 	if req.GetMaxBandwidth() == "" {
 		return nil, fmt.Errorf("bandwidth is required")
 	}
-	q.log.Info("Received CreateMulticastGroup request", "code", req.GetCode(), "bandwidth", req.GetMaxBandwidth())
+	q.log.Debug("Received CreateMulticastGroup request", "code", req.GetCode(), "bandwidth", req.GetMaxBandwidth())
 	cmd := exec.Command("doublezero", "multicast", "group", "create", "--code", req.GetCode(), "--max-bandwidth", req.GetMaxBandwidth(), "--owner", "me")
 	result, err := runCmd(cmd)
 	if err != nil {
@@ -456,7 +456,7 @@ func (q *QAAgent) DeleteMulticastGroup(ctx context.Context, req *pb.DeleteMultic
 	if req.GetPubkey() == "" {
 		return nil, fmt.Errorf("pubkey is required")
 	}
-	q.log.Info("Received DeleteMulticastGroup request", "pubkey", req.GetPubkey())
+	q.log.Debug("Received DeleteMulticastGroup request", "pubkey", req.GetPubkey())
 	cmd := exec.Command("doublezero", "multicast", "group", "delete", "--pubkey", req.GetPubkey())
 	result, err := runCmd(cmd)
 	if err != nil {
@@ -484,7 +484,7 @@ func (q *QAAgent) ConnectMulticast(ctx context.Context, req *pb.ConnectMulticast
 	if req.GetMode() == pb.ConnectMulticastRequest_SUBSCRIBER {
 		mode = "subscriber"
 	}
-	q.log.Info("Received ConnectMulticast request", "codes", req.GetCodes(), "mode", mode)
+	q.log.Debug("Received ConnectMulticast request", "codes", req.GetCodes(), "mode", mode)
 	args := []string{"connect", "multicast", mode}
 	args = append(args, req.GetCodes()...)
 	cmd := exec.Command("doublezero", args...)
@@ -495,7 +495,7 @@ func (q *QAAgent) ConnectMulticast(ctx context.Context, req *pb.ConnectMulticast
 	}
 	duration := time.Since(start)
 	UserConnectDuration.WithLabelValues("multicast").Observe(duration.Seconds())
-	q.log.Info("Successfully connected multicast tunnel", "duration", duration.String())
+	q.log.Debug("Successfully connected multicast tunnel", "duration", duration.String())
 	return result, nil
 }
 
@@ -524,7 +524,7 @@ func (q *QAAgent) MulticastAllowListAdd(ctx context.Context, req *pb.MulticastAl
 		return nil, fmt.Errorf("failed to get public IPv4 address: %w", err)
 	}
 
-	q.log.Info("Received MulticastAllowListAdd request", "pubkey", req.GetPubkey(), "client-ip", ipStr, "code", req.GetCode(), "mode", mode)
+	q.log.Debug("Received MulticastAllowListAdd request", "pubkey", req.GetPubkey(), "client-ip", ipStr, "code", req.GetCode(), "mode", mode)
 	cmd := exec.Command("doublezero", "multicast", "group", "allowlist", mode, "add", "--user-payer", req.GetPubkey(), "--client-ip", ipStr, "--code", req.GetCode())
 	result, err := runCmd(cmd)
 	if err != nil {
@@ -547,7 +547,7 @@ func (q *QAAgent) MulticastSend(ctx context.Context, req *pb.MulticastSendReques
 		return &emptypb.Empty{}, fmt.Errorf("duration is required")
 	}
 
-	q.log.Info("Received MulticastSend request", "group", req.GetGroup(), "port", req.GetPort(), "duration", req.GetDuration())
+	q.log.Debug("Received MulticastSend request", "group", req.GetGroup(), "port", req.GetPort(), "duration", req.GetDuration())
 
 	addr := fmt.Sprintf("%s:%d", req.GetGroup(), req.GetPort())
 	udpAddr, err := net.ResolveUDPAddr("udp", addr)
@@ -589,7 +589,7 @@ loop:
 		}
 	}
 
-	q.log.Info("Finished sending multicast packets", "group", req.GetGroup(), "packets_sent", packetsSent)
+	q.log.Debug("Finished sending multicast packets", "group", req.GetGroup(), "packets_sent", packetsSent)
 
 	return &emptypb.Empty{}, nil
 }
@@ -601,7 +601,7 @@ func (q *QAAgent) MulticastReport(ctx context.Context, req *pb.MulticastReportRe
 		return nil, fmt.Errorf("at least one group is required")
 	}
 
-	q.log.Info("Received MulticastReport request", "groups", req.GetGroups())
+	q.log.Debug("Received MulticastReport request", "groups", req.GetGroups())
 	reports := make(map[string]*pb.MulticastReport)
 
 	for _, group := range req.GetGroups() {
@@ -614,7 +614,7 @@ func (q *QAAgent) MulticastReport(ctx context.Context, req *pb.MulticastReportRe
 			PacketCount: packets,
 		}
 	}
-	q.log.Info("Multicast report generated", "reports", reports)
+	q.log.Debug("Multicast report generated", "reports", reports)
 	return &pb.MulticastReportResult{Reports: reports}, nil
 }
 
@@ -691,7 +691,7 @@ func runCmd(cmd *exec.Cmd) (*pb.Result, error) {
 }
 
 func (q *QAAgent) GetPublicIP(ctx context.Context, req *emptypb.Empty) (*pb.GetPublicIPResponse, error) {
-	q.log.Info("Received GetPublicIP request")
+	q.log.Debug("Received GetPublicIP request")
 	dest := net.ParseIP("1.1.1.1")
 	rts, err := q.netlinker.RouteGet(dest)
 	if err != nil {

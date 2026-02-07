@@ -60,7 +60,7 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 	// Filter out transit devices - they don't participate in unicast connectivity tests
 	devices = slices.DeleteFunc(devices, func(d *qa.Device) bool {
 		if d.DeviceType == serviceability.DeviceDeviceTypeTransit {
-			log.Info("Skipping transit device", "device", d.Code)
+			log.Debug("Skipping transit device", "device", d.Code)
 			return true
 		}
 		return false
@@ -72,17 +72,17 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 		if err != nil {
 			log.Warn("Failed to query Grafana for active devices, proceeding with all devices", "error", err)
 		} else {
-			log.Info("Filtering devices by controller activity", "activeDeviceCount", len(activeDevices))
+			log.Debug("Filtering devices by controller activity", "activeDeviceCount", len(activeDevices))
 			devices = slices.DeleteFunc(devices, func(d *qa.Device) bool {
 				if !activeDevices[d.Code] {
-					log.Info("Skipping device not calling controller", "device", d.Code)
+					log.Debug("Skipping device not calling controller", "device", d.Code)
 					return true
 				}
 				return false
 			})
 		}
 	} else {
-		log.Info("No Grafana config found, including all devices regardless of controller activity")
+		log.Debug("No Grafana config found, including all devices regardless of controller activity")
 	}
 
 	// If devices flag is provided, filter devices to only include those in the list.
@@ -97,7 +97,7 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 		})
 	}
 
-	log.Info("Collect `doublezero latency` for each client")
+	log.Debug("Collect `doublezero latency` for each client")
 	clientLatencies := make(qa.ClientLatencies)
 	for _, client := range clients {
 		latencies, err := client.GetLatency(ctx)
@@ -111,11 +111,11 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 		}
 	}
 
-	log.Info("Create a list of devices for each client.")
-	log.Info(fmt.Sprintf("    (If there are multiple clients with <%dms latency for that device, assign the device to the client with the fewest devices", qa.LatencyThresholdMs))
-	log.Info("    Otherwise, associate each device with the client with the lowest latency)")
+	log.Debug("Create a list of devices for each client.")
+	log.Debug(fmt.Sprintf("    (If there are multiple clients with <%dms latency for that device, assign the device to the client with the fewest devices", qa.LatencyThresholdMs))
+	log.Debug("    Otherwise, associate each device with the client with the lowest latency)")
 
-	log.Info("Assign devices to clients based on latency")
+	log.Debug("Assign devices to clients based on latency")
 	batchData := qa.AssignDevicesToClients(devices, clients, clientLatencies, allocateAddrHostsSet, test.ShuffleDevices)
 
 	batchCount := len(batchData)
@@ -123,10 +123,10 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 		t.Skip("No devices assigned to any client")
 	}
 
-	log.Info("Client device assignments:")
+	log.Debug("Client device assignments:")
 	printTestReportTable(log, batchData, clientLatencies, false)
 
-	log.Info("Planning to test",
+	log.Debug("Planning to test",
 		"deviceCount", len(devices),
 		"clientCount", len(clients),
 		"totalBatches", batchCount,
@@ -178,7 +178,7 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 		printTestReportTable(log, qa.BatchData{batchNum: batch}, clientLatencies, true)
 	}
 
-	log.Info("Test results:")
+	log.Debug("Test results:")
 	printTestReportTable(log, batchData, clientLatencies, true)
 
 	var totalSent, totalReceived uint32
@@ -204,7 +204,7 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 			}
 		}
 	}
-	log.Info("Test summary", "packetsReceived", totalReceived, "packetsSent", totalSent, "batchesWithLoss", batchesWithLoss, "totalBatches", batchCount)
+	log.Debug("Test summary", "packetsReceived", totalReceived, "packetsSent", totalSent, "batchesWithLoss", batchesWithLoss, "totalBatches", batchCount)
 
 	results := make([]qa.DeviceTestResult, 0, len(deviceResults))
 	for _, result := range deviceResults {
@@ -290,7 +290,7 @@ func printTestReportTable(log *slog.Logger, batchData qa.BatchData, clientLatenc
 		sb.WriteString("\n")
 	}
 
-	log.Info(sb.String())
+	log.Debug(sb.String())
 }
 
 func connectClientsAndWaitForRoutes(

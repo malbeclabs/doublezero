@@ -52,7 +52,7 @@ func (c *Client) ConnectUserUnicast(ctx context.Context, deviceCode string, wait
 		return fmt.Errorf("failed to ensure disconnected on host %s: %w", c.Host, err)
 	}
 
-	c.log.Info("Connecting unicast user", "host", c.Host, "device", deviceCode, "allocateAddr", c.AllocateAddr)
+	c.log.Debug("Connecting unicast user", "host", c.Host, "device", deviceCode, "allocateAddr", c.AllocateAddr)
 	ctx, cancel := context.WithTimeout(ctx, connectUnicastTimeout)
 	defer cancel()
 	mode := pb.ConnectUnicastRequest_IBRL
@@ -69,7 +69,7 @@ func (c *Client) ConnectUserUnicast(ctx context.Context, deviceCode string, wait
 	if !resp.GetSuccess() {
 		return fmt.Errorf("connection failed on host %s: %s", c.Host, resp.GetOutput())
 	}
-	c.log.Info("Unicast user connected", "host", c.Host, "device", deviceCode)
+	c.log.Debug("Unicast user connected", "host", c.Host, "device", deviceCode)
 
 	if waitForStatus {
 		err := c.WaitForStatusUp(ctx)
@@ -112,9 +112,9 @@ func (c *Client) TestUnicastConnectivity(t *testing.T, ctx context.Context, targ
 	var iface string
 	if clientDevice.ExchangeCode != otherClientDevice.ExchangeCode {
 		iface = unicastInterfaceName
-		c.log.Info("Pinging", "source", sourceIP, "target", targetIP, "iface", iface, "sourceExchange", clientDevice.ExchangeCode, "targetExchange", otherClientDevice.ExchangeCode)
+		c.log.Debug("Pinging", "source", sourceIP, "target", targetIP, "iface", iface, "sourceExchange", clientDevice.ExchangeCode, "targetExchange", otherClientDevice.ExchangeCode)
 	} else {
-		c.log.Info("Pinging (intra-exchange routing)", "source", sourceIP, "target", targetIP, "exchange", clientDevice.ExchangeCode)
+		c.log.Debug("Pinging (intra-exchange routing)", "source", sourceIP, "target", targetIP, "exchange", clientDevice.ExchangeCode)
 	}
 
 	var lastResp *pb.PingResult
@@ -144,7 +144,7 @@ func (c *Client) TestUnicastConnectivity(t *testing.T, ctx context.Context, targ
 			if err != nil {
 				return nil, fmt.Errorf("failed to traceroute: %w", err)
 			}
-			c.log.Info("Packet loss detected, dumping traceroute output for visibility",
+			c.log.Debug("Packet loss detected, dumping traceroute output for visibility",
 				"sourceHost", c.Host,
 				"targetHost", targetClient.Host,
 				"iface", iface,
@@ -157,7 +157,7 @@ func (c *Client) TestUnicastConnectivity(t *testing.T, ctx context.Context, targ
 
 		// Return success if we have any packets received.
 		if resp.PacketsSent > 0 && resp.PacketsReceived > 0 {
-			c.log.Info("Successfully pinged",
+			c.log.Debug("Successfully pinged",
 				"sourceHost", c.Host,
 				"targetHost", targetClient.Host,
 				"iface", iface,

@@ -13,7 +13,10 @@ RUN mkdir -p /opt/solana/bin && \
     mv /root/.local/share/solana/install/active_release/bin/* /opt/solana/bin/
 ENV PATH="/opt/solana/bin:${PATH}"
 
-# Force COPY in later stages to always copy the binaries, even if they appear to be the same.
+# CACHE_BUSTER should be passed as a build arg with a changing value (e.g. timestamp)
+# to force Docker to re-run build commands, allowing cargo/go to do proper incremental
+# compilation. Without this, switching branches can result in stale cached artifacts.
+# It also forces COPY in later stages to always copy the binaries.
 ARG CACHE_BUSTER=1
 RUN echo "$CACHE_BUSTER" > /opt/solana/bin/.cache-buster && \
     find /opt/solana/bin -type f -exec touch {} +
@@ -100,6 +103,12 @@ RUN echo "$CACHE_BUSTER" > ${BIN_DIR}/.cache-buster && \
 # -----------------------------------------------------------------------------
 FROM builder-base AS builder-rust-sbf
 
+# Solana version for cache isolation. Cache mounts are keyed by SOLANA_VERSION so that
+# when the Solana SDK version changes, we get a fresh cache instead of using potentially
+# corrupted or incompatible cached platform-tools. This must match SOLANA_VERSION in the
+# solana stage above.
+ARG SOLANA_VERSION=2.3.13
+
 # Set cargo environment variables for build caching
 ENV CARGO_HOME=/cargo-sbf
 ENV CARGO_TARGET_DIR=/target-sbf
@@ -109,15 +118,15 @@ WORKDIR /doublezero
 COPY . .
 
 # Pre-fetch and cache rust dependencies
-RUN --mount=type=cache,target=/cargo-sbf \
-    --mount=type=cache,target=/target-sbf \
-    --mount=type=cache,target=/root/.cache/solana \
+RUN --mount=type=cache,id=sbf-cargo-${SOLANA_VERSION},target=/cargo-sbf \
+    --mount=type=cache,id=sbf-target-${SOLANA_VERSION},target=/target-sbf \
+    --mount=type=cache,id=sbf-solana-${SOLANA_VERSION},target=/root/.cache/solana \
     cd smartcontract/programs/doublezero-serviceability && \
     cargo fetch
 
-RUN --mount=type=cache,target=/cargo-sbf \
-    --mount=type=cache,target=/target-sbf \
-    --mount=type=cache,target=/root/.cache/solana \
+RUN --mount=type=cache,id=sbf-cargo-${SOLANA_VERSION},target=/cargo-sbf \
+    --mount=type=cache,id=sbf-target-${SOLANA_VERSION},target=/target-sbf \
+    --mount=type=cache,id=sbf-solana-${SOLANA_VERSION},target=/root/.cache/solana \
     cd smartcontract/programs/doublezero-telemetry && \
     cargo fetch
 
@@ -127,16 +136,16 @@ RUN mkdir -p ${BIN_DIR}
 
 # Build the Solana programs with build-sbf (rust)
 # Note that we don't use mold here.
-RUN --mount=type=cache,target=/cargo-sbf \
-    --mount=type=cache,target=/target-sbf \
-    --mount=type=cache,target=/root/.cache/solana \
+RUN --mount=type=cache,id=sbf-cargo-${SOLANA_VERSION},target=/cargo-sbf \
+    --mount=type=cache,id=sbf-target-${SOLANA_VERSION},target=/target-sbf \
+    --mount=type=cache,id=sbf-solana-${SOLANA_VERSION},target=/root/.cache/solana \
     cd smartcontract/programs/doublezero-serviceability && \
     cargo build-sbf && \
     cp /target-sbf/deploy/doublezero_serviceability.so ${BIN_DIR}/doublezero_serviceability.so
 
-RUN --mount=type=cache,target=/cargo-sbf \
-    --mount=type=cache,target=/target-sbf \
-    --mount=type=cache,target=/root/.cache/solana \
+RUN --mount=type=cache,id=sbf-cargo-${SOLANA_VERSION},target=/cargo-sbf \
+    --mount=type=cache,id=sbf-target-${SOLANA_VERSION},target=/target-sbf \
+    --mount=type=cache,id=sbf-solana-${SOLANA_VERSION},target=/root/.cache/solana \
     cd smartcontract/programs/doublezero-telemetry && \
     cargo build-sbf --features localnet && \
     cp /target-sbf/deploy/doublezero_telemetry.so ${BIN_DIR}/doublezero_telemetry.so

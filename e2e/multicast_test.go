@@ -27,7 +27,7 @@ func TestE2E_Multicast(t *testing.T) {
 	t.Parallel()
 
 	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
-	log := logger.With("test", t.Name(), "deployID", deployID)
+	log := newTestLoggerForTest(t)
 
 	currentDir, err := os.Getwd()
 	require.NoError(t, err)
@@ -51,10 +51,10 @@ func TestE2E_Multicast(t *testing.T) {
 		log:    log,
 	}
 
-	log.Info("==> Starting devnet")
+	log.Debug("==> Starting devnet")
 	err = dn.Start(t.Context(), nil)
 	require.NoError(t, err)
-	log.Info("--> Devnet started")
+	log.Debug("--> Devnet started")
 
 	// Create a dummy device first to maintain same ordering of devices as before.
 	err = dn.CreateDeviceOnchain(t.Context(), "la2-dz01", "lax", "xlax", "207.45.216.134", []string{"207.45.216.136/30", "200.12.12.12/29"}, "mgmt")
@@ -72,11 +72,10 @@ func TestE2E_Multicast(t *testing.T) {
 	require.NoError(t, err)
 
 	// Add other devices and links onchain.
-	log.Info("==> Creating other devices and links onchain")
+	log.Debug("==> Creating other devices and links onchain")
 	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
 		set -euo pipefail
 
-		echo "==> Populate device information onchain"
 		doublezero device create --code ld4-dz01 --contributor co01 --location lhr --exchange xlhr --public-ip "195.219.120.72" --dz-prefixes "195.219.120.80/29" --mgmt-vrf mgmt --desired-status activated
 		doublezero device create --code frk-dz01 --contributor co01 --location fra --exchange xfra --public-ip "195.219.220.88" --dz-prefixes "195.219.220.96/29" --mgmt-vrf mgmt --desired-status activated
 		doublezero device create --code sg1-dz01 --contributor co01 --location sin --exchange xsin --public-ip "180.87.102.104" --dz-prefixes "180.87.102.112/29" --mgmt-vrf mgmt --desired-status activated
@@ -84,10 +83,6 @@ func TestE2E_Multicast(t *testing.T) {
 		doublezero device create --code pit-dzd01 --contributor co01 --location pit --exchange xpit --public-ip "204.16.241.243" --dz-prefixes "204.16.243.243/32" --mgmt-vrf mgmt --desired-status activated
 		doublezero device create --code ams-dz001 --contributor co01 --location ams --exchange xams --public-ip "195.219.138.50" --dz-prefixes "195.219.138.56/29" --mgmt-vrf mgmt --desired-status activated
 
-		echo "--> Device information onchain:"
-		doublezero device list
-
-		echo "==> Populate device interface information onchain"
 		doublezero device interface create ny5-dz01 "Ethernet2" -w
 		doublezero device interface create ny5-dz01 "Vlan4001" -w
 		doublezero device interface create ny5-dz01 "Ethernet4" -w
@@ -137,7 +132,6 @@ func TestE2E_Multicast(t *testing.T) {
 		doublezero device update --pubkey pit-dzd01 --max-users 128
 		doublezero device update --pubkey ams-dz001 --max-users 128
 
-		echo "==> Populate link information onchain"
 		doublezero link create wan --code "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Ethernet2 --side-z ny5-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3 --desired-status activated -w
 		doublezero link create wan --code "ny5-dz01:ld4-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Vlan4001 --side-z ld4-dz01 --side-z-interface Vlan4001 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3 --desired-status activated -w
 		doublezero link create wan --code "ld4-dz01:frk-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet3 --side-z frk-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 25 --jitter-ms 10 --desired-status activated -w
@@ -149,17 +143,9 @@ func TestE2E_Multicast(t *testing.T) {
 		doublezero link create wan --code "ny5-dz01_e5:la2-dz01_e5" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet5 --side-z la2-dz01 --side-z-interface Ethernet5 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3 --desired-status activated -w
 		doublezero link create wan --code "ny5-dz01_e6:la2-dz01_e6" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet6 --side-z la2-dz01 --side-z-interface Ethernet6 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 8 --jitter-ms 3 --desired-status activated -w
 
-		echo "===> Set delay override for ny5-dz01:la2-dz01 link"
 		doublezero link update --pubkey "ny5-dz01:la2-dz01" --delay-override-ms 500
-
-		echo "===> Set link status=soft-drained for ny5-dz01_e5:la2-dz01_e5 link"
 		doublezero link update --pubkey "ny5-dz01_e5:la2-dz01_e5" --status=soft-drained
-
-		echo "===> Set link status=hard-drained for ny5-dz01_e6:la2-dz01_e6 link"
 		doublezero link update --pubkey "ny5-dz01_e6:la2-dz01_e6" --status=hard-drained
-
-		echo "--> Tunnel information onchain:"
-		doublezero link list
 	`})
 	require.NoError(t, err)
 
@@ -178,7 +164,6 @@ func TestE2E_Multicast(t *testing.T) {
 	// Set up latency routes and wait for results for both clients.
 	for _, client := range []*devnet.Client{publisherClient, subscriberClient} {
 		_, err = client.Exec(t.Context(), []string{"bash", "-c", `
-			echo "==> Adding null routes to test latency selection to ny5-dz01."
 			ip rule add priority 1 from ` + client.CYOANetworkIP + `/` + strconv.Itoa(dn.Spec.CYOANetwork.CIDRPrefix) + ` to all table main
 			ip route add 207.45.216.134/32 dev lo proto static scope host
 			ip route add 195.219.120.72/32 dev lo proto static scope host
@@ -250,25 +235,14 @@ func TestE2E_Multicast(t *testing.T) {
 // createMulticastGroupForBothClients creates a multicast group and adds both publisher and
 // subscriber clients to the allowlists.
 func createMulticastGroupForBothClients(t *testing.T, dn *TestDevnet, publisherClient, subscriberClient *devnet.Client, groupCode string) {
-	dn.log.Info("==> Creating multicast group onchain", "group", groupCode)
+	dn.log.Debug("==> Creating multicast group onchain", "group", groupCode)
 
 	_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
 		set -e
-
-		echo "==> Populate multicast group information onchain"
 		doublezero multicast group create --code ` + groupCode + ` --max-bandwidth 10Gbps --owner me -w
-
-		echo "--> Multicast group information onchain:"
-		doublezero multicast group list
-
-		echo "==> Add manager to multicast group allowlist"
 		doublezero multicast group allowlist publisher add --code ` + groupCode + ` --user-payer me --client-ip ` + publisherClient.CYOANetworkIP + `
 		doublezero multicast group allowlist subscriber add --code ` + groupCode + ` --user-payer me --client-ip ` + subscriberClient.CYOANetworkIP + `
-
-		echo "==> Add publisher client pubkey to multicast group allowlist"
 		doublezero multicast group allowlist publisher add --code ` + groupCode + ` --user-payer ` + publisherClient.Pubkey + ` --client-ip ` + publisherClient.CYOANetworkIP + `
-
-		echo "==> Add subscriber client pubkey to multicast group allowlist"
 		doublezero multicast group allowlist subscriber add --code ` + groupCode + ` --user-payer ` + subscriberClient.Pubkey + ` --client-ip ` + subscriberClient.CYOANetworkIP + `
 	`})
 	require.NoError(t, err)
@@ -352,7 +326,7 @@ func checkMulticastBothUsersRemovedAgentConfig(t *testing.T, dn *TestDevnet, dev
 // mode should be "publisher" or "subscriber".
 func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *TestDevnet, device *devnet.Device, client *devnet.Client) {
 	t.Run("check_post_connect_"+mode, func(t *testing.T) {
-		log.Info("==> Checking multicast post-connect requirements", "mode", mode)
+		log.Debug("==> Checking multicast post-connect requirements", "mode", mode)
 
 		var expectedAllocatedClientIP string
 		if mode == "publisher" {
@@ -555,7 +529,7 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 
 					for ifName, iface := range defaultVRF.Interfaces {
 						if ifName == subTunnelName && len(iface.Neighbors) > 0 {
-							log.Info("PIM neighbor found on subscriber tunnel", "interface", ifName)
+							log.Debug("PIM neighbor found on subscriber tunnel", "interface", ifName)
 							return true
 						}
 					}
@@ -606,7 +580,7 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 			}
 		}
 
-		log.Info("--> Multicast post-connect requirements checked", "mode", mode)
+		log.Debug("--> Multicast post-connect requirements checked", "mode", mode)
 	})
 }
 
@@ -614,7 +588,7 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 // mode should be "publisher" or "subscriber".
 func checkMulticastPostDisconnect(t *testing.T, log *slog.Logger, mode string, dn *TestDevnet, device *devnet.Device, client *devnet.Client) {
 	t.Run("check_post_disconnect_"+mode, func(t *testing.T) {
-		log.Info("==> Checking multicast post-disconnect requirements", "mode", mode)
+		log.Debug("==> Checking multicast post-disconnect requirements", "mode", mode)
 
 		tests := []struct {
 			name        string
@@ -733,6 +707,6 @@ func checkMulticastPostDisconnect(t *testing.T, log *slog.Logger, mode string, d
 			t.Fail()
 		}
 
-		log.Info("--> Multicast post-disconnect requirements checked", "mode", mode)
+		log.Debug("--> Multicast post-disconnect requirements checked", "mode", mode)
 	})
 }

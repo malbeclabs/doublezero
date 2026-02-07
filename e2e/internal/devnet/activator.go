@@ -79,7 +79,7 @@ func (a *Activator) StartIfNotRunning(ctx context.Context) (bool, error) {
 
 		// Check if the container is running.
 		if container.State.Running {
-			a.log.Info("--> Activator already running", "container", shortContainerID(container.ID))
+			a.log.Debug("--> Activator already running", "container", shortContainerID(container.ID))
 
 			// Set the component's state.
 			err = a.setState(container.ID)
@@ -110,7 +110,7 @@ func (a *Activator) StartIfNotRunning(ctx context.Context) (bool, error) {
 
 // Start creates and starts the activator container and attaches it to the default network.
 func (a *Activator) Start(ctx context.Context) error {
-	a.log.Info("==> Starting activator", "image", a.dn.Spec.Activator.ContainerImage)
+	a.log.Debug("==> Starting activator", "image", a.dn.Spec.Activator.ContainerImage)
 
 	env := map[string]string{
 		"DZ_LEDGER_URL":                a.dn.Ledger.InternalRPCURL,
@@ -168,7 +168,7 @@ func (a *Activator) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to set activator state: %w", err)
 	}
 
-	a.log.Info("--> Activator started", "container", a.ContainerID)
+	a.log.Debug("--> Activator started", "container", a.ContainerID)
 	return nil
 }
 

@@ -132,7 +132,7 @@ func (m *Manager) StartIfNotRunning(ctx context.Context) (bool, error) {
 
 		// Check if the container is running.
 		if container.State.Running {
-			m.log.Info("--> Manager already running", "container", shortContainerID(container.ID))
+			m.log.Debug("--> Manager already running", "container", shortContainerID(container.ID))
 
 			// Set the component's state.
 			err = m.setState(ctx, container.ID)
@@ -144,7 +144,7 @@ func (m *Manager) StartIfNotRunning(ctx context.Context) (bool, error) {
 		}
 
 		// Otherwise, start the container.
-		m.log.Info("--> Starting manager", "container", container.ID, "serviceabilityProgramID", m.ServiceabilityProgramID, "telemetryProgramID", m.TelemetryProgramID)
+		m.log.Debug("--> Starting manager", "container", container.ID, "serviceabilityProgramID", m.ServiceabilityProgramID, "telemetryProgramID", m.TelemetryProgramID)
 		err = m.dn.dockerClient.ContainerStart(ctx, container.ID, dockercontainer.StartOptions{})
 		if err != nil {
 			return false, fmt.Errorf("failed to start manager: %w", err)
@@ -164,7 +164,7 @@ func (m *Manager) StartIfNotRunning(ctx context.Context) (bool, error) {
 
 // Start creates and starts the manager container and attaches it to the default network.
 func (m *Manager) Start(ctx context.Context) error {
-	m.log.Info("==> Starting manager", "image", m.dn.Spec.Manager.ContainerImage)
+	m.log.Debug("==> Starting manager", "image", m.dn.Spec.Manager.ContainerImage)
 
 	req := testcontainers.ContainerRequest{
 		Image: m.dn.Spec.Manager.ContainerImage,
@@ -225,7 +225,7 @@ func (m *Manager) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to set manager state: %w", err)
 	}
 
-	m.log.Info("--> Manager started", "container", m.ContainerID, "pubkey", m.Pubkey)
+	m.log.Debug("--> Manager started", "container", m.ContainerID, "pubkey", m.Pubkey)
 	return nil
 }
 

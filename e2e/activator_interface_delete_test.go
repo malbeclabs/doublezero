@@ -36,7 +36,7 @@ func TestE2E_ActivatorInterfaceDeleteOutOfPoolIP(t *testing.T) {
 	// Step 1: Create a Loopback interface with an IP outside the tunnel pool
 	// This bypasses the activator's IP allocation - the IP is set directly at creation
 	if !t.Run("create_loopback_with_out_of_pool_ip", func(t *testing.T) {
-		dn.log.Info("==> Creating Loopback100 interface with out-of-pool IP", "device", testDeviceCode, "ip", outOfPoolIP)
+		dn.log.Debug("==> Creating Loopback100 interface with out-of-pool IP", "device", testDeviceCode, "ip", outOfPoolIP)
 
 		_, err := dn.Manager.Exec(t.Context(), []string{
 			"doublezero", "device", "interface", "create",
@@ -46,7 +46,7 @@ func TestE2E_ActivatorInterfaceDeleteOutOfPoolIP(t *testing.T) {
 		})
 		require.NoError(t, err, "failed to create loopback interface with out-of-pool IP")
 
-		dn.log.Info("--> Interface created with out-of-pool IP")
+		dn.log.Debug("--> Interface created with out-of-pool IP")
 	}) {
 		t.Fail()
 		return
@@ -54,12 +54,12 @@ func TestE2E_ActivatorInterfaceDeleteOutOfPoolIP(t *testing.T) {
 
 	// Step 2: Wait for the interface to be activated
 	if !t.Run("wait_for_interface_activation", func(t *testing.T) {
-		dn.log.Info("==> Waiting for interface to be activated")
+		dn.log.Debug("==> Waiting for interface to be activated")
 
 		err := waitForDeviceInterfaceActivated(t.Context(), dn.Devnet, testDeviceCode, testInterfaceName, 60*time.Second)
 		require.NoError(t, err, "interface was not activated within timeout")
 
-		dn.log.Info("--> Interface activated")
+		dn.log.Debug("--> Interface activated")
 	}) {
 		t.Fail()
 		return
@@ -67,7 +67,7 @@ func TestE2E_ActivatorInterfaceDeleteOutOfPoolIP(t *testing.T) {
 
 	// Step 3: Delete the interface - this triggers the bug scenario
 	if !t.Run("delete_interface_with_out_of_pool_ip", func(t *testing.T) {
-		dn.log.Info("==> Deleting interface with out-of-pool IP")
+		dn.log.Debug("==> Deleting interface with out-of-pool IP")
 
 		err := dn.DeleteDeviceLoopbackInterface(t.Context(), testDeviceCode, testInterfaceName)
 		require.NoError(t, err, "failed to delete loopback interface")
@@ -81,13 +81,13 @@ func TestE2E_ActivatorInterfaceDeleteOutOfPoolIP(t *testing.T) {
 
 	// Step 4: Verify that the activator is still running (didn't crash from the panic)
 	if !t.Run("verify_activator_running", func(t *testing.T) {
-		dn.log.Info("==> Verifying activator container is still running")
+		dn.log.Debug("==> Verifying activator container is still running")
 
 		running, err := isActivatorRunning(t.Context(), dn.Devnet)
 		require.NoError(t, err, "failed to check activator status")
 		require.True(t, running, "activator container is not running - it likely crashed")
 
-		dn.log.Info("--> Activator is still running")
+		dn.log.Debug("--> Activator is still running")
 	}) {
 		t.Fail()
 		return
@@ -95,12 +95,12 @@ func TestE2E_ActivatorInterfaceDeleteOutOfPoolIP(t *testing.T) {
 
 	// Step 5: Verify the interface is eventually removed from chain
 	if !t.Run("verify_interface_removed", func(t *testing.T) {
-		dn.log.Info("==> Verifying interface is removed from chain")
+		dn.log.Debug("==> Verifying interface is removed from chain")
 
 		err := waitForDeviceInterfaceRemoved(t.Context(), dn.Devnet, testDeviceCode, testInterfaceName, 60*time.Second)
 		require.NoError(t, err, "interface was not removed from chain within timeout")
 
-		dn.log.Info("--> Interface successfully removed from chain")
+		dn.log.Debug("--> Interface successfully removed from chain")
 	}) {
 		t.Fail()
 	}

@@ -71,6 +71,16 @@ pub fn process_delete_multicastgroup(
     if multicastgroup.status != MulticastGroupStatus::Activated {
         return Err(DoubleZeroError::InvalidStatus.into());
     }
+
+    if multicastgroup.publisher_count != 0 || multicastgroup.subscriber_count != 0 {
+        #[cfg(test)]
+        msg!(
+            "MulticastGroup has active publishers or subscribers: {:?}",
+            multicastgroup
+        );
+        return Err(DoubleZeroError::MulticastGroupNotEmpty.into());
+    }
+
     multicastgroup.status = MulticastGroupStatus::Deleting;
 
     try_acc_write(

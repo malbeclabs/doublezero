@@ -93,7 +93,7 @@ func NewClient(ctx context.Context, log *slog.Logger, hostname string, port int,
 		return nil, fmt.Errorf("invalid public IP on host %s: %v", hostname, resp.PublicIp)
 	}
 
-	log.Info("Initializing client", "host", hostname, "publicIP", publicIP.To4().String())
+	log.Debug("Initializing client", "host", hostname, "publicIP", publicIP.To4().String())
 
 	serviceabilityClient := serviceability.New(rpc.New(networkConfig.LedgerPublicRPCURL), networkConfig.ServiceabilityProgramID)
 
@@ -135,7 +135,7 @@ func (c *Client) DisconnectUser(ctx context.Context, waitForStatus bool, waitFor
 		return fmt.Errorf("failed to get user status on host %s: %w", c.Host, err)
 	}
 	if status.SessionStatus != UserStatusDisconnected {
-		c.log.Info("Disconnecting user", "host", c.Host)
+		c.log.Debug("Disconnecting user", "host", c.Host)
 	}
 
 	// Always try disconnecting, even if it looks like the user is already disconnected.
@@ -287,7 +287,7 @@ func (c *Client) WaitForStatusDisconnected(ctx context.Context) error {
 }
 
 func (c *Client) WaitForRoutes(ctx context.Context, expectedIPs []net.IP) error {
-	c.log.Info("Waiting for routes to be installed", "host", c.Host, "expectedIPs", expectedIPs)
+	c.log.Debug("Waiting for routes to be installed", "host", c.Host, "expectedIPs", expectedIPs)
 	err := poll.Until(ctx, func() (bool, error) {
 		installedRoutes, err := c.GetInstalledRoutes(ctx)
 		if err != nil {

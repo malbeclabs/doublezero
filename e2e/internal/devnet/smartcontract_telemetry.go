@@ -18,11 +18,11 @@ func (dn *Devnet) DeployTelemetryProgramIfNotDeployed(ctx context.Context) (bool
 	}
 
 	if isDeployed {
-		log.Info("--> Telemetry program is already deployed")
+		log.Debug("--> Telemetry program is already deployed")
 		return false, nil
 	}
 
-	log.Info("--> Telemetry program is not deployed, deploying")
+	log.Debug("--> Telemetry program is not deployed, deploying")
 	err = dn.DeployTelemetryProgram(ctx)
 	if err != nil {
 		return false, fmt.Errorf("failed to deploy telemetry program: %w", err)
@@ -32,7 +32,7 @@ func (dn *Devnet) DeployTelemetryProgramIfNotDeployed(ctx context.Context) (bool
 }
 
 func (dn *Devnet) DeployTelemetryProgram(ctx context.Context) error {
-	dn.log.Info("==> Deploying telemetry program", "programID", dn.Manager.TelemetryProgramID)
+	dn.log.Debug("==> Deploying telemetry program", "programID", dn.Manager.TelemetryProgramID)
 
 	start := time.Now()
 
@@ -40,33 +40,24 @@ func (dn *Devnet) DeployTelemetryProgram(ctx context.Context) error {
 		set -euo pipefail
 
 		# Fund the manager account with some SOL if the balance is 0.
-		echo "==> Checking manager account balance"
-		solana balance
 		if solana balance | grep -q "^0 SOL$"; then
-			echo "==> Manager account balance is 0 SOL, funding with 100 SOL"
 			solana airdrop 100 $(solana-keygen pubkey)
 		fi
-		echo
 
 		# Deploy the telemetry program.
-		echo "==> Deploying telemetry program"
 		solana program deploy --program-id ${DZ_TELEMETRY_PROGRAM_KEYPAIR_PATH} ${DZ_TELEMETRY_PROGRAM_PATH}
 
 		# Wait 1 slot to make sure the program is deployed and avoid race condition of follow-on instructions.
-		echo "==> Waiting for telemetry program to be ready"
 		slot_before=$(solana slot)
-		echo "==> Slot before: $slot_before"
 		until [ "$(solana slot)" -gt "$slot_before" ]; do
-			echo "==> Waiting for telemetry program to be ready (slot: $(solana slot))"
 			sleep 0.2
 		done
-		echo "==> Slot after: $(solana slot)"
 	`})
 	if err != nil {
 		return fmt.Errorf("failed to deploy telemetry program: %w", err)
 	}
 
-	dn.log.Info("--> Telemetry program deployed", "duration", time.Since(start), "programID", dn.Manager.TelemetryProgramID)
+	dn.log.Debug("--> Telemetry program deployed", "duration", time.Since(start), "programID", dn.Manager.TelemetryProgramID)
 	return nil
 }
 

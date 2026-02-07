@@ -61,6 +61,7 @@ pub fn process_set_globalconfig(
     let multicastgroup_block_account = next_account_info(accounts_iter)?;
     let link_ids_account = next_account_info(accounts_iter)?;
     let segment_routing_ids_account = next_account_info(accounts_iter)?;
+    let vrf_ids_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
@@ -197,6 +198,16 @@ pub fn process_set_globalconfig(
             payer_account,
             accounts,
             ResourceType::SegmentRoutingIds,
+        )?;
+
+        create_resource(
+            program_id,
+            vrf_ids_account,
+            None,
+            pda_account,
+            payer_account,
+            accounts,
+            ResourceType::VrfIds,
         )?;
     } else {
         let old_data = GlobalConfig::try_from(pda_account)?;

@@ -18,6 +18,7 @@ pub enum ResourceType {
     TunnelIds,
     LinkIds,
     SegmentRoutingIds,
+    VrfIds,
 }
 
 pub fn resource_type_from(
@@ -41,6 +42,7 @@ pub fn resource_type_from(
         }
         ResourceType::LinkIds => SdkResourceType::LinkIds,
         ResourceType::SegmentRoutingIds => SdkResourceType::SegmentRoutingIds,
+        ResourceType::VrfIds => SdkResourceType::VrfIds,
     }
 }
 

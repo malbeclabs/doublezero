@@ -24,7 +24,7 @@ func TestE2E_IBRL_Multicast_Coexistence(t *testing.T) {
 	t.Parallel()
 
 	dn, device, ibrlClient, mcastClient := setupCoexistenceTestDevnet(t)
-	log := logger.With("test", t.Name())
+	log := newTestLoggerForTest(t)
 
 	if !t.Run("ibrl_with_multicast_subscriber", func(t *testing.T) {
 		runIBRLWithMulticastSubscriberTest(t, log, dn, device, ibrlClient, mcastClient, false)
@@ -39,7 +39,7 @@ func TestE2E_IBRL_Multicast_Publisher_Coexistence(t *testing.T) {
 	t.Parallel()
 
 	dn, device, ibrlClient, mcastClient := setupCoexistenceTestDevnet(t)
-	log := logger.With("test", t.Name())
+	log := newTestLoggerForTest(t)
 
 	if !t.Run("ibrl_with_multicast_publisher", func(t *testing.T) {
 		runIBRLWithMulticastPublisherTest(t, log, dn, device, ibrlClient, mcastClient, false)
@@ -54,7 +54,7 @@ func TestE2E_IBRL_AllocatedAddr_Multicast_Coexistence(t *testing.T) {
 	t.Parallel()
 
 	dn, device, ibrlClient, mcastClient := setupCoexistenceTestDevnet(t)
-	log := logger.With("test", t.Name())
+	log := newTestLoggerForTest(t)
 
 	if !t.Run("ibrl_allocated_addr_with_multicast_subscriber", func(t *testing.T) {
 		runIBRLWithMulticastSubscriberTest(t, log, dn, device, ibrlClient, mcastClient, true)
@@ -69,7 +69,7 @@ func TestE2E_IBRL_AllocatedAddr_Multicast_Publisher_Coexistence(t *testing.T) {
 	t.Parallel()
 
 	dn, device, ibrlClient, mcastClient := setupCoexistenceTestDevnet(t)
-	log := logger.With("test", t.Name())
+	log := newTestLoggerForTest(t)
 
 	if !t.Run("ibrl_allocated_addr_with_multicast_publisher", func(t *testing.T) {
 		runIBRLWithMulticastPublisherTest(t, log, dn, device, ibrlClient, mcastClient, true)
@@ -85,7 +85,7 @@ func TestE2E_SingleClient_IBRL_Then_Multicast(t *testing.T) {
 	t.Parallel()
 
 	dn, device, mcastDevice, client := setupSingleClientTestDevnet(t)
-	log := logger.With("test", t.Name())
+	log := newTestLoggerForTest(t)
 
 	if !t.Run("single_client_ibrl_then_multicast_subscriber", func(t *testing.T) {
 		runSingleClientIBRLThenMulticastTest(t, log, dn, device, mcastDevice, client, false, false)
@@ -100,7 +100,7 @@ func TestE2E_SingleClient_IBRL_AllocatedAddr_Then_Multicast(t *testing.T) {
 	t.Parallel()
 
 	dn, device, mcastDevice, client := setupSingleClientTestDevnet(t)
-	log := logger.With("test", t.Name())
+	log := newTestLoggerForTest(t)
 
 	if !t.Run("single_client_ibrl_allocated_then_multicast_subscriber", func(t *testing.T) {
 		runSingleClientIBRLThenMulticastTest(t, log, dn, device, mcastDevice, client, true, false)
@@ -115,7 +115,7 @@ func TestE2E_SingleClient_IBRL_Then_Multicast_Publisher(t *testing.T) {
 	t.Parallel()
 
 	dn, device, mcastDevice, client := setupSingleClientTestDevnet(t)
-	log := logger.With("test", t.Name())
+	log := newTestLoggerForTest(t)
 
 	if !t.Run("single_client_ibrl_then_multicast_publisher", func(t *testing.T) {
 		runSingleClientIBRLThenMulticastTest(t, log, dn, device, mcastDevice, client, false, true)
@@ -134,7 +134,7 @@ func TestE2E_Multicast_PublisherXorSubscriber(t *testing.T) {
 	t.Parallel()
 
 	_, _, ibrlClient, mcastClient := setupCoexistenceTestDevnet(t)
-	log := logger.With("test", t.Name())
+	log := newTestLoggerForTest(t)
 
 	// Use ibrlClient for "subscriber then publisher" test
 	// Use mcastClient for "publisher then subscriber" test
@@ -144,29 +144,29 @@ func TestE2E_Multicast_PublisherXorSubscriber(t *testing.T) {
 		log := log.With("subtest", "subscriber_cannot_add_publisher")
 
 		// First, connect as a multicast subscriber
-		log.Info("==> Connecting as multicast subscriber first")
+		log.Debug("==> Connecting as multicast subscriber first")
 		subCmd := "doublezero connect multicast subscriber mg01 --client-ip " + client.CYOANetworkIP + " 2>&1"
 		subOutput, err := client.Exec(t.Context(), []string{"bash", "-c", subCmd})
-		log.Info("==> Subscriber connect output", "output", string(subOutput))
+		log.Debug("==> Subscriber connect output", "output", string(subOutput))
 		require.NoError(t, err, "should be able to connect as subscriber")
 
 		// Wait for tunnel to come up
 		err = client.WaitForTunnelUp(t.Context(), 90*time.Second)
 		require.NoError(t, err, "subscriber tunnel should come up")
-		log.Info("--> Subscriber tunnel is up")
+		log.Debug("--> Subscriber tunnel is up")
 
 		// Now try to also connect as a publisher - this should fail
-		log.Info("==> Attempting to also connect as multicast publisher (should fail)")
+		log.Debug("==> Attempting to also connect as multicast publisher (should fail)")
 		pubCmd := "doublezero connect multicast publisher mg01 --client-ip " + client.CYOANetworkIP + " 2>&1"
 		pubOutput, err := client.Exec(t.Context(), []string{"bash", "-c", pubCmd})
-		log.Info("==> Publisher connect output", "output", string(pubOutput))
+		log.Debug("==> Publisher connect output", "output", string(pubOutput))
 
 		// The command should fail with an error indicating cannot be both
 		require.Error(t, err, "should not be able to connect as both publisher and subscriber")
 		require.Contains(t, string(pubOutput), "cannot be both a publisher and subscriber",
 			"error message should indicate the constraint violation")
 
-		log.Info("--> Correctly rejected attempt to be both publisher and subscriber")
+		log.Debug("--> Correctly rejected attempt to be both publisher and subscriber")
 
 		// Verify we still have exactly one tunnel (the subscriber)
 		tunnelStatus, err := client.GetTunnelStatus(t.Context())
@@ -175,7 +175,7 @@ func TestE2E_Multicast_PublisherXorSubscriber(t *testing.T) {
 		require.Equal(t, devnet.ClientUserTypeMulticast, tunnelStatus[0].UserType,
 			"tunnel should still be multicast type")
 
-		log.Info("--> Verified: subscriber cannot add publisher subscription")
+		log.Debug("--> Verified: subscriber cannot add publisher subscription")
 	})
 
 	t.Run("publisher_cannot_add_subscriber", func(t *testing.T) {
@@ -183,29 +183,29 @@ func TestE2E_Multicast_PublisherXorSubscriber(t *testing.T) {
 		log := log.With("subtest", "publisher_cannot_add_subscriber")
 
 		// First, connect as a multicast publisher
-		log.Info("==> Connecting as multicast publisher first")
+		log.Debug("==> Connecting as multicast publisher first")
 		pubCmd := "doublezero connect multicast publisher mg01 --client-ip " + client.CYOANetworkIP + " 2>&1"
 		pubOutput, err := client.Exec(t.Context(), []string{"bash", "-c", pubCmd})
-		log.Info("==> Publisher connect output", "output", string(pubOutput))
+		log.Debug("==> Publisher connect output", "output", string(pubOutput))
 		require.NoError(t, err, "should be able to connect as publisher")
 
 		// Wait for tunnel to come up
 		err = client.WaitForTunnelUp(t.Context(), 90*time.Second)
 		require.NoError(t, err, "publisher tunnel should come up")
-		log.Info("--> Publisher tunnel is up")
+		log.Debug("--> Publisher tunnel is up")
 
 		// Now try to also connect as a subscriber - this should fail
-		log.Info("==> Attempting to also connect as multicast subscriber (should fail)")
+		log.Debug("==> Attempting to also connect as multicast subscriber (should fail)")
 		subCmd := "doublezero connect multicast subscriber mg01 --client-ip " + client.CYOANetworkIP + " 2>&1"
 		subOutput, err := client.Exec(t.Context(), []string{"bash", "-c", subCmd})
-		log.Info("==> Subscriber connect output", "output", string(subOutput))
+		log.Debug("==> Subscriber connect output", "output", string(subOutput))
 
 		// The command should fail with an error indicating cannot be both
 		require.Error(t, err, "should not be able to connect as both publisher and subscriber")
 		require.Contains(t, string(subOutput), "cannot be both a publisher and subscriber",
 			"error message should indicate the constraint violation")
 
-		log.Info("--> Correctly rejected attempt to be both publisher and subscriber")
+		log.Debug("--> Correctly rejected attempt to be both publisher and subscriber")
 
 		// Verify we still have exactly one tunnel (the publisher)
 		tunnelStatus, err := client.GetTunnelStatus(t.Context())
@@ -214,19 +214,19 @@ func TestE2E_Multicast_PublisherXorSubscriber(t *testing.T) {
 		require.Equal(t, devnet.ClientUserTypeMulticast, tunnelStatus[0].UserType,
 			"tunnel should still be multicast type")
 
-		log.Info("--> Verified: publisher cannot add subscriber subscription")
+		log.Debug("--> Verified: publisher cannot add subscriber subscription")
 	})
 
-	log.Info("--> Test completed: user can only be publisher XOR subscriber, not both")
+	log.Debug("--> Test completed: user can only be publisher XOR subscriber, not both")
 }
 
 // setupSingleClientTestDevnet sets up a devnet with a single client for testing
 // concurrent IBRL+multicast on the same user account.
 func setupSingleClientTestDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device, *devnet.Device, *devnet.Client) {
 	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
-	log := logger.With("test", t.Name(), "deployID", deployID)
+	log := newTestLoggerForTest(t)
 
-	log.Info("==> Setting up single client test devnet")
+	log.Debug("==> Setting up single client test devnet")
 
 	currentDir, err := os.Getwd()
 	require.NoError(t, err)
@@ -245,13 +245,13 @@ func setupSingleClientTestDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device, 
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
 
-	log.Info("==> Starting devnet")
+	log.Debug("==> Starting devnet")
 	err = dn.Start(t.Context(), nil)
 	require.NoError(t, err)
-	log.Info("--> Devnet started")
+	log.Debug("--> Devnet started")
 
 	// Add the main device for IBRL testing
-	log.Info("==> Adding device ny5-dz01")
+	log.Debug("==> Adding device ny5-dz01")
 	device, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
 		Code:                         "ny5-dz01",
 		Location:                     "ewr",
@@ -260,10 +260,10 @@ func setupSingleClientTestDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device, 
 		CYOANetworkAllocatablePrefix: 29,
 	})
 	require.NoError(t, err)
-	log.Info("--> Device added", "deviceID", device.ID)
+	log.Debug("--> Device added", "deviceID", device.ID)
 
 	// Add second device for multicast (separate device required for concurrent tunnels)
-	log.Info("==> Adding device pit-dz01")
+	log.Debug("==> Adding device pit-dz01")
 	mcastDevice, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
 		Code:                         "pit-dz01",
 		Location:                     "pit",
@@ -272,10 +272,10 @@ func setupSingleClientTestDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device, 
 		CYOANetworkAllocatablePrefix: 29,
 	})
 	require.NoError(t, err)
-	log.Info("--> Multicast device added", "deviceID", mcastDevice.ID)
+	log.Debug("--> Multicast device added", "deviceID", mcastDevice.ID)
 
 	// Add additional devices for iBGP/MSDP peering
-	log.Info("==> Creating additional devices onchain")
+	log.Debug("==> Creating additional devices onchain")
 	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
 		set -euo pipefail
 
@@ -293,15 +293,15 @@ func setupSingleClientTestDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device, 
 	require.NoError(t, err)
 
 	// Add single client that will be used for both IBRL and multicast
-	log.Info("==> Adding client for dual-mode testing")
+	log.Debug("==> Adding client for dual-mode testing")
 	client, err := dn.AddClient(t.Context(), devnet.ClientSpec{
 		CYOANetworkIPHostID: 100,
 	})
 	require.NoError(t, err)
-	log.Info("--> Client added", "clientIP", client.CYOANetworkIP, "pubkey", client.Pubkey)
+	log.Debug("--> Client added", "clientIP", client.CYOANetworkIP, "pubkey", client.Pubkey)
 
 	// Create multicast group and add client to allowlists
-	log.Info("==> Creating multicast group onchain")
+	log.Debug("==> Creating multicast group onchain")
 	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
 		set -euo pipefail
 
@@ -323,14 +323,14 @@ func setupSingleClientTestDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device, 
 	require.NoError(t, err)
 
 	// Wait for latency results from both devices
-	log.Info("==> Waiting for latency results")
+	log.Debug("==> Waiting for latency results")
 	err = client.WaitForLatencyResults(t.Context(), device.ID, 75*time.Second)
 	require.NoError(t, err)
 	err = client.WaitForLatencyResults(t.Context(), mcastDevice.ID, 75*time.Second)
 	require.NoError(t, err)
-	log.Info("--> Latency results received from both devices")
+	log.Debug("--> Latency results received from both devices")
 
-	log.Info("--> Single client test devnet setup complete")
+	log.Debug("--> Single client test devnet setup complete")
 
 	return dn, device, mcastDevice, client
 }
@@ -351,15 +351,15 @@ func runSingleClientIBRLThenMulticastTest(t *testing.T, log *slog.Logger, dn *de
 	log = log.With("mode", mode, "multicast_type", mcastType)
 
 	// === CONNECT PHASE 1: IBRL ===
-	log.Info("==> CONNECT PHASE 1: IBRL")
+	log.Debug("==> CONNECT PHASE 1: IBRL")
 
 	// Set access pass for the client
-	log.Info("==> Setting access pass")
+	log.Debug("==> Setting access pass")
 	_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey})
 	require.NoError(t, err)
 
 	// Connect IBRL client (latency-based device selection)
-	log.Info("==> Connecting client with IBRL", "useAllocatedAddr", useAllocatedAddr)
+	log.Debug("==> Connecting client with IBRL", "useAllocatedAddr", useAllocatedAddr)
 	ibrlCmd := "doublezero connect ibrl --client-ip " + client.CYOANetworkIP
 	if useAllocatedAddr {
 		ibrlCmd += " --allocate-addr"
@@ -368,17 +368,17 @@ func runSingleClientIBRLThenMulticastTest(t *testing.T, log *slog.Logger, dn *de
 	require.NoError(t, err)
 
 	// Wait for IBRL tunnel to come up
-	log.Info("==> Waiting for IBRL tunnel to come up")
+	log.Debug("==> Waiting for IBRL tunnel to come up")
 	err = client.WaitForTunnelUp(t.Context(), 90*time.Second)
 	require.NoError(t, err, "IBRL tunnel failed to come up")
-	log.Info("--> IBRL tunnel is up")
+	log.Debug("--> IBRL tunnel is up")
 
 	// Determine which device the IBRL tunnel connected to (may differ from expected due to latency selection)
 	tunnelStatus, err := client.GetTunnelStatus(t.Context())
 	require.NoError(t, err)
 	require.Len(t, tunnelStatus, 1, "expected exactly one tunnel")
 	ibrlTunnelDst := tunnelStatus[0].TunnelDst.String()
-	log.Info("==> IBRL tunnel destination", "tunnelDst", ibrlTunnelDst)
+	log.Debug("==> IBRL tunnel destination", "tunnelDst", ibrlTunnelDst)
 
 	// Determine actual IBRL and multicast devices based on tunnel destination
 	var ibrlDevice, actualMcastDevice *devnet.Device
@@ -392,38 +392,38 @@ func runSingleClientIBRLThenMulticastTest(t *testing.T, log *slog.Logger, dn *de
 		t.Fatalf("IBRL tunnel destination %s doesn't match any device (device=%s, mcastDevice=%s)",
 			ibrlTunnelDst, device.CYOANetworkIP, mcastDevice.CYOANetworkIP)
 	}
-	log.Info("==> Device assignment", "ibrlDevice", ibrlDevice.Spec.Code, "mcastDevice", actualMcastDevice.Spec.Code)
+	log.Debug("==> Device assignment", "ibrlDevice", ibrlDevice.Spec.Code, "mcastDevice", actualMcastDevice.Spec.Code)
 
 	// Verify IBRL is working on the actual device
-	log.Info("==> Verifying IBRL client")
+	log.Debug("==> Verifying IBRL client")
 	verifyIBRLClient(t, log, ibrlDevice, client, useAllocatedAddr)
-	log.Info("--> IBRL client verified")
+	log.Debug("--> IBRL client verified")
 
 	// === CONNECT PHASE 2: Add Multicast (creates separate Multicast user) ===
-	log.Info("==> CONNECT PHASE 2: Adding multicast (will create separate Multicast user)")
+	log.Debug("==> CONNECT PHASE 2: Adding multicast (will create separate Multicast user)")
 
 	// Connect multicast (creates a NEW Multicast user, separate from IBRL user)
 	var mcastCmd string
 	if asPublisher {
-		log.Info("==> Adding multicast publisher subscription")
+		log.Debug("==> Adding multicast publisher subscription")
 		mcastCmd = "doublezero connect multicast publisher mg01 --client-ip " + client.CYOANetworkIP + " 2>&1"
 	} else {
-		log.Info("==> Adding multicast subscriber subscription")
+		log.Debug("==> Adding multicast subscriber subscription")
 		mcastCmd = "doublezero connect multicast subscriber mg01 --client-ip " + client.CYOANetworkIP + " 2>&1"
 	}
 	mcastOutput, err := client.Exec(t.Context(), []string{"bash", "-c", mcastCmd})
-	log.Info("==> Multicast connect command output", "output", string(mcastOutput))
+	log.Debug("==> Multicast connect command output", "output", string(mcastOutput))
 	require.NoError(t, err)
 
 	// List users to see if the Multicast user was created
 	listUsersCmd := "doublezero user list --client-ip " + client.CYOANetworkIP + " 2>&1"
 	listOutput, _ := client.Exec(t.Context(), []string{"bash", "-c", listUsersCmd})
-	log.Info("==> Users after multicast connect", "output", string(listOutput))
+	log.Debug("==> Users after multicast connect", "output", string(listOutput))
 
 	// Wait for agent config to be pushed to the multicast device BEFORE waiting for tunnel
 	// This is critical because the device needs to have the tunnel configured before the
 	// client's BGP session can be established
-	log.Info("==> Waiting for agent config to be pushed to multicast device",
+	log.Debug("==> Waiting for agent config to be pushed to multicast device",
 		"device", actualMcastDevice.Spec.Code,
 		"deviceID", actualMcastDevice.ID,
 		"deviceIP", actualMcastDevice.CYOANetworkIP,
@@ -431,25 +431,25 @@ func runSingleClientIBRLThenMulticastTest(t *testing.T, log *slog.Logger, dn *de
 		"ibrlDeviceID", ibrlDevice.ID,
 		"ibrlDeviceIP", ibrlDevice.CYOANetworkIP)
 	waitForAgentConfigWithClient(t, log, dn, actualMcastDevice, client)
-	log.Info("--> Agent config pushed to multicast device")
+	log.Debug("--> Agent config pushed to multicast device")
 
 	// Give time for agent to apply the configuration
-	log.Info("==> Waiting for agent to apply configuration")
+	log.Debug("==> Waiting for agent to apply configuration")
 	time.Sleep(10 * time.Second)
 
 	// Wait for BOTH tunnels (IBRL and Multicast) to be up on the client
-	log.Info("==> Waiting for both tunnels (IBRL and Multicast) to be up")
+	log.Debug("==> Waiting for both tunnels (IBRL and Multicast) to be up")
 	err = client.WaitForNTunnelsUp(t.Context(), 2, 90*time.Second)
 	require.NoError(t, err, "Both tunnels (IBRL and Multicast) should be up")
-	log.Info("--> Both tunnels are up")
+	log.Debug("--> Both tunnels are up")
 
 	// Log tunnel status for debugging
 	tunnelStatus, err = client.GetTunnelStatus(t.Context())
 	require.NoError(t, err)
-	log.Info("==> Tunnel status after multicast connect", "tunnels", tunnelStatus)
+	log.Debug("==> Tunnel status after multicast connect", "tunnels", tunnelStatus)
 
 	// Verify CLI status shows correct device/metro for all tunnels
-	log.Info("==> Verifying CLI status shows correct device/metro for all tunnels")
+	log.Debug("==> Verifying CLI status shows correct device/metro for all tunnels")
 	cliStatus, err := client.GetCLIStatus(t.Context())
 	require.NoError(t, err)
 	require.Len(t, cliStatus, 2, "expected two tunnels in CLI status")
@@ -471,15 +471,15 @@ func runSingleClientIBRLThenMulticastTest(t *testing.T, log *slog.Logger, dn *de
 			t.Fatalf("unexpected user type in CLI status: %s", status.Response.UserType)
 		}
 	}
-	log.Info("--> CLI status verified: all tunnels have device/metro info")
+	log.Debug("--> CLI status verified: all tunnels have device/metro info")
 
 	// === VERIFICATION PHASE ===
-	log.Info("==> VERIFICATION PHASE: Both tunnels should work")
+	log.Debug("==> VERIFICATION PHASE: Both tunnels should work")
 
 	// Verify IBRL still works on its device
-	log.Info("==> Verifying IBRL still works after adding multicast", "ibrlDevice", ibrlDevice.Spec.Code)
+	log.Debug("==> Verifying IBRL still works after adding multicast", "ibrlDevice", ibrlDevice.Spec.Code)
 	verifyIBRLClientBGPEstablished(t, log, ibrlDevice)
-	log.Info("--> IBRL BGP still established")
+	log.Debug("--> IBRL BGP still established")
 
 	// Verify multicast is working on the other device
 	// Note: Agent config was already pushed and applied before waiting for tunnels above
@@ -490,45 +490,45 @@ func runSingleClientIBRLThenMulticastTest(t *testing.T, log *slog.Logger, dn *de
 	} else {
 		// Subscribers need PIM adjacency to receive multicast traffic
 		verifyConcurrentMulticastPIMAdjacency(t, log, actualMcastDevice)
-		log.Info("--> PIM adjacency established on multicast device")
+		log.Debug("--> PIM adjacency established on multicast device")
 	}
 
-	log.Info("--> Both IBRL and multicast verified as working on same client (separate tunnels)")
+	log.Debug("--> Both IBRL and multicast verified as working on same client (separate tunnels)")
 
 	// === DISCONNECT PHASE ===
-	log.Info("==> DISCONNECT PHASE")
+	log.Debug("==> DISCONNECT PHASE")
 
 	// Disconnect multicast first
-	log.Info("==> Disconnecting multicast")
+	log.Debug("==> Disconnecting multicast")
 	_, disconnectMcastErr := client.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect multicast --client-ip " + client.CYOANetworkIP})
 	if disconnectMcastErr != nil {
-		log.Info("--> Warning: Multicast disconnect failed (ledger may be unavailable)", "error", disconnectMcastErr)
+		log.Debug("--> Warning: Multicast disconnect failed (ledger may be unavailable)", "error", disconnectMcastErr)
 	}
 
 	// Verify IBRL still works after multicast disconnect
-	log.Info("==> Verifying IBRL still works after multicast disconnect")
+	log.Debug("==> Verifying IBRL still works after multicast disconnect")
 	verifyIBRLClientBGPEstablished(t, log, ibrlDevice)
-	log.Info("--> IBRL still working after multicast disconnect")
+	log.Debug("--> IBRL still working after multicast disconnect")
 
 	// Disconnect IBRL
-	log.Info("==> Disconnecting IBRL")
+	log.Debug("==> Disconnecting IBRL")
 	_, disconnectErr := client.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect --client-ip " + client.CYOANetworkIP})
 	if disconnectErr != nil {
-		log.Info("--> Warning: IBRL disconnect failed (ledger may be unavailable)", "error", disconnectErr)
+		log.Debug("--> Warning: IBRL disconnect failed (ledger may be unavailable)", "error", disconnectErr)
 	} else {
 		// Only verify tunnel removal if disconnect succeeded
-		log.Info("==> Verifying tunnel removed")
+		log.Debug("==> Verifying tunnel removed")
 		verifyTunnelRemoved(t, client, "doublezero0")
 	}
 
-	log.Info("--> Single client IBRL+multicast test completed successfully")
+	log.Debug("--> Single client IBRL+multicast test completed successfully")
 }
 
 func setupCoexistenceTestDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device, *devnet.Client, *devnet.Client) {
 	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
-	log := logger.With("test", t.Name(), "deployID", deployID)
+	log := newTestLoggerForTest(t)
 
-	log.Info("==> Setting up coexistence test devnet")
+	log.Debug("==> Setting up coexistence test devnet")
 
 	currentDir, err := os.Getwd()
 	require.NoError(t, err)
@@ -547,13 +547,13 @@ func setupCoexistenceTestDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device, *
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
 
-	log.Info("==> Starting devnet")
+	log.Debug("==> Starting devnet")
 	err = dn.Start(t.Context(), nil)
 	require.NoError(t, err)
-	log.Info("--> Devnet started")
+	log.Debug("--> Devnet started")
 
 	// Add the main device for testing
-	log.Info("==> Adding device ny5-dz01")
+	log.Debug("==> Adding device ny5-dz01")
 	device, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
 		Code:     "ny5-dz01",
 		Location: "ewr",
@@ -563,57 +563,44 @@ func setupCoexistenceTestDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device, *
 		CYOANetworkAllocatablePrefix: 29,
 	})
 	require.NoError(t, err)
-	log.Info("--> Device added", "deviceID", device.ID)
+	log.Debug("--> Device added", "deviceID", device.ID)
 
 	// Add additional devices for iBGP/MSDP peering
-	log.Info("==> Creating additional devices onchain")
+	log.Debug("==> Creating additional devices onchain")
 	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
 		set -euo pipefail
-
-		echo "==> Populate device information onchain"
 		doublezero device create --code pit-dzd01 --contributor co01 --location pit --exchange xpit --public-ip "204.16.241.243" --dz-prefixes "204.16.243.243/32" --mgmt-vrf mgmt --desired-status activated
-
-		echo "==> Populate device interface information onchain"
 		doublezero device interface create ny5-dz01 "Ethernet2" -w
 		doublezero device interface create ny5-dz01 "Loopback255" --loopback-type vpnv4 -w
 		doublezero device interface create ny5-dz01 "Loopback256" --loopback-type ipv4 -w
 		doublezero device interface create pit-dzd01 "Ethernet2" -w
 		doublezero device interface create pit-dzd01 "Loopback255" --loopback-type vpnv4 -w
 		doublezero device interface create pit-dzd01 "Loopback256" --loopback-type ipv4 -w
-
 		doublezero device update --pubkey pit-dzd01 --max-users 128
-
-		echo "--> Device information onchain:"
-		doublezero device list
 	`})
 	require.NoError(t, err)
 
 	// Add IBRL client
-	log.Info("==> Adding IBRL client")
+	log.Debug("==> Adding IBRL client")
 	ibrlClient, err := dn.AddClient(t.Context(), devnet.ClientSpec{
 		CYOANetworkIPHostID: 100,
 	})
 	require.NoError(t, err)
-	log.Info("--> IBRL client added", "clientIP", ibrlClient.CYOANetworkIP, "pubkey", ibrlClient.Pubkey)
+	log.Debug("--> IBRL client added", "clientIP", ibrlClient.CYOANetworkIP, "pubkey", ibrlClient.Pubkey)
 
 	// Add multicast client (used for both publisher and subscriber tests)
-	log.Info("==> Adding multicast client")
+	log.Debug("==> Adding multicast client")
 	mcastClient, err := dn.AddClient(t.Context(), devnet.ClientSpec{
 		CYOANetworkIPHostID: 110,
 	})
 	require.NoError(t, err)
-	log.Info("--> Multicast client added", "clientIP", mcastClient.CYOANetworkIP, "pubkey", mcastClient.Pubkey)
+	log.Debug("--> Multicast client added", "clientIP", mcastClient.CYOANetworkIP, "pubkey", mcastClient.Pubkey)
 
 	// Create multicast group and add client to allowlists
-	log.Info("==> Creating multicast group onchain")
+	log.Debug("==> Creating multicast group onchain")
 	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
 		set -euo pipefail
-
-		echo "==> Create multicast group"
 		doublezero multicast group create --code mg01 --max-bandwidth 10Gbps --owner me -w
-
-		echo "--> Multicast group created:"
-		doublezero multicast group list
 	`})
 	require.NoError(t, err)
 
@@ -632,21 +619,21 @@ func setupCoexistenceTestDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device, *
 	require.NoError(t, err)
 
 	// Set access passes for both clients
-	log.Info("==> Setting access passes for both clients")
+	log.Debug("==> Setting access passes for both clients")
 	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + ibrlClient.CYOANetworkIP + " --user-payer " + ibrlClient.Pubkey})
 	require.NoError(t, err)
 	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + mcastClient.CYOANetworkIP + " --user-payer " + mcastClient.Pubkey})
 	require.NoError(t, err)
 
 	// Wait for latency results for all clients
-	log.Info("==> Waiting for latency results")
+	log.Debug("==> Waiting for latency results")
 	err = ibrlClient.WaitForLatencyResults(t.Context(), device.ID, 75*time.Second)
 	require.NoError(t, err)
 	err = mcastClient.WaitForLatencyResults(t.Context(), device.ID, 75*time.Second)
 	require.NoError(t, err)
-	log.Info("--> Latency results received for all clients")
+	log.Debug("--> Latency results received for all clients")
 
-	log.Info("--> Coexistence test devnet setup complete")
+	log.Debug("--> Coexistence test devnet setup complete")
 
 	return dn, device, ibrlClient, mcastClient
 }
@@ -662,17 +649,17 @@ func runIBRLWithMulticastSubscriberTest(t *testing.T, log *slog.Logger, dn *devn
 	log = log.With("mode", mode, "multicast_type", "subscriber")
 
 	// === CONNECT PHASE ===
-	log.Info("==> CONNECT PHASE")
+	log.Debug("==> CONNECT PHASE")
 
 	// Set access passes for all clients
-	log.Info("==> Setting access passes")
+	log.Debug("==> Setting access passes")
 	_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + ibrlClient.CYOANetworkIP + " --user-payer " + ibrlClient.Pubkey})
 	require.NoError(t, err)
 	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + mcastClient.CYOANetworkIP + " --user-payer " + mcastClient.Pubkey})
 	require.NoError(t, err)
 
 	// Connect IBRL client
-	log.Info("==> Connecting IBRL client", "useAllocatedAddr", useAllocatedAddr)
+	log.Debug("==> Connecting IBRL client", "useAllocatedAddr", useAllocatedAddr)
 	ibrlCmd := "doublezero connect ibrl --client-ip " + ibrlClient.CYOANetworkIP
 	if useAllocatedAddr {
 		ibrlCmd += " --allocate-addr"
@@ -681,20 +668,20 @@ func runIBRLWithMulticastSubscriberTest(t *testing.T, log *slog.Logger, dn *devn
 	require.NoError(t, err)
 
 	// Connect multicast subscriber
-	log.Info("==> Connecting multicast subscriber")
+	log.Debug("==> Connecting multicast subscriber")
 	_, err = mcastClient.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast subscriber mg01 --client-ip " + mcastClient.CYOANetworkIP})
 	require.NoError(t, err)
 
 	// Wait for tunnels to come up
-	log.Info("==> Waiting for tunnels to come up")
+	log.Debug("==> Waiting for tunnels to come up")
 	err = ibrlClient.WaitForTunnelUp(t.Context(), 90*time.Second)
 	require.NoError(t, err, "IBRL tunnel failed to come up")
 	err = mcastClient.WaitForTunnelUp(t.Context(), 90*time.Second)
 	require.NoError(t, err, "Multicast subscriber tunnel failed to come up")
-	log.Info("--> All tunnels are up")
+	log.Debug("--> All tunnels are up")
 
 	// Verify CLI status shows correct device/metro for both clients
-	log.Info("==> Verifying CLI status shows correct device/metro for both clients")
+	log.Debug("==> Verifying CLI status shows correct device/metro for both clients")
 	ibrlCLIStatus, err := ibrlClient.GetCLIStatus(t.Context())
 	require.NoError(t, err)
 	require.Len(t, ibrlCLIStatus, 1, "expected one tunnel for IBRL client")
@@ -711,55 +698,55 @@ func runIBRLWithMulticastSubscriberTest(t *testing.T, log *slog.Logger, dn *devn
 		"Multicast subscriber tunnel should have a current_device, got N/A")
 	require.NotEqual(t, "N/A", mcastCLIStatus[0].Metro,
 		"Multicast subscriber tunnel should have a metro, got N/A")
-	log.Info("--> CLI status verified: all tunnels have device/metro info")
+	log.Debug("--> CLI status verified: all tunnels have device/metro info")
 
 	// === COEXISTENCE VERIFICATION ===
-	log.Info("==> COEXISTENCE VERIFICATION PHASE")
+	log.Debug("==> COEXISTENCE VERIFICATION PHASE")
 
-	log.Info("==> Waiting for agent config to include multicast subscriber")
+	log.Debug("==> Waiting for agent config to include multicast subscriber")
 	waitForAgentConfigWithClient(t, log, dn, device, mcastClient)
 
 	// Wait for agent config to be applied and verifications to pass
-	log.Info("==> Waiting for agent config to be applied to device")
+	log.Debug("==> Waiting for agent config to be applied to device")
 	require.Eventually(t, func() bool {
 		return checkIBRLClientReady(t, log, device, ibrlClient, useAllocatedAddr) &&
 			checkMulticastSubscriberPIMAdjacency(t, log, device)
 	}, 60*time.Second, 2*time.Second, "agent config not applied within timeout")
 
-	log.Info("--> Agent config applied, running final verification")
+	log.Debug("--> Agent config applied, running final verification")
 	verifyIBRLClient(t, log, device, ibrlClient, useAllocatedAddr)
 	verifyMulticastSubscriberPIMAdjacency(t, log, device)
 
-	log.Info("--> Both services verified as working simultaneously")
+	log.Debug("--> Both services verified as working simultaneously")
 
 	// Disconnect multicast subscriber - don't fail if ledger is unavailable
-	log.Info("==> Disconnecting multicast subscriber to test independence")
+	log.Debug("==> Disconnecting multicast subscriber to test independence")
 	_, disconnectMcastErr := mcastClient.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect multicast --client-ip " + mcastClient.CYOANetworkIP})
 	if disconnectMcastErr != nil {
-		log.Info("--> Warning: Multicast disconnect failed (ledger may be unavailable)", "error", disconnectMcastErr)
+		log.Debug("--> Warning: Multicast disconnect failed (ledger may be unavailable)", "error", disconnectMcastErr)
 		return
 	}
 
 	// Verify IBRL client still works
-	log.Info("==> Verifying IBRL client still works after multicast disconnect")
+	log.Debug("==> Verifying IBRL client still works after multicast disconnect")
 	verifyIBRLClientBGPEstablished(t, log, device)
-	log.Info("--> IBRL client still working")
+	log.Debug("--> IBRL client still working")
 
 	// === FULL DISCONNECT PHASE ===
-	log.Info("==> FULL DISCONNECT PHASE")
+	log.Debug("==> FULL DISCONNECT PHASE")
 
 	// Disconnect IBRL client - don't fail test if ledger is unavailable (infrastructure flakiness)
 	_, disconnectErr := ibrlClient.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect --client-ip " + ibrlClient.CYOANetworkIP})
 	if disconnectErr != nil {
-		log.Info("--> Warning: IBRL disconnect failed (ledger may be unavailable)", "error", disconnectErr)
+		log.Debug("--> Warning: IBRL disconnect failed (ledger may be unavailable)", "error", disconnectErr)
 	} else {
 		// Only verify tunnel removal if disconnect succeeded
-		log.Info("==> Verifying tunnels removed")
+		log.Debug("==> Verifying tunnels removed")
 		verifyTunnelRemoved(t, ibrlClient, "doublezero0")
 		verifyTunnelRemoved(t, mcastClient, "doublezero1")
 	}
 
-	log.Info("--> Test completed successfully")
+	log.Debug("--> Test completed successfully")
 }
 
 // runIBRLWithMulticastPublisherTest tests IBRL and multicast publisher coexistence.
@@ -773,17 +760,17 @@ func runIBRLWithMulticastPublisherTest(t *testing.T, log *slog.Logger, dn *devne
 	log = log.With("mode", mode, "multicast_type", "publisher")
 
 	// === CONNECT PHASE ===
-	log.Info("==> CONNECT PHASE")
+	log.Debug("==> CONNECT PHASE")
 
 	// Set access passes for all clients
-	log.Info("==> Setting access passes")
+	log.Debug("==> Setting access passes")
 	_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + ibrlClient.CYOANetworkIP + " --user-payer " + ibrlClient.Pubkey})
 	require.NoError(t, err)
 	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + mcastClient.CYOANetworkIP + " --user-payer " + mcastClient.Pubkey})
 	require.NoError(t, err)
 
 	// Connect IBRL client
-	log.Info("==> Connecting IBRL client", "useAllocatedAddr", useAllocatedAddr)
+	log.Debug("==> Connecting IBRL client", "useAllocatedAddr", useAllocatedAddr)
 	ibrlCmd := "doublezero connect ibrl --client-ip " + ibrlClient.CYOANetworkIP
 	if useAllocatedAddr {
 		ibrlCmd += " --allocate-addr"
@@ -792,20 +779,20 @@ func runIBRLWithMulticastPublisherTest(t *testing.T, log *slog.Logger, dn *devne
 	require.NoError(t, err)
 
 	// Connect multicast publisher
-	log.Info("==> Connecting multicast publisher")
+	log.Debug("==> Connecting multicast publisher")
 	_, err = mcastClient.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast publisher mg01 --client-ip " + mcastClient.CYOANetworkIP})
 	require.NoError(t, err)
 
 	// Wait for tunnels to come up
-	log.Info("==> Waiting for tunnels to come up")
+	log.Debug("==> Waiting for tunnels to come up")
 	err = ibrlClient.WaitForTunnelUp(t.Context(), 90*time.Second)
 	require.NoError(t, err, "IBRL tunnel failed to come up")
 	err = mcastClient.WaitForTunnelUp(t.Context(), 90*time.Second)
 	require.NoError(t, err, "Multicast publisher tunnel failed to come up")
-	log.Info("--> All tunnels are up")
+	log.Debug("--> All tunnels are up")
 
 	// Verify CLI status shows correct device/metro for both clients
-	log.Info("==> Verifying CLI status shows correct device/metro for both clients")
+	log.Debug("==> Verifying CLI status shows correct device/metro for both clients")
 	ibrlCLIStatus, err := ibrlClient.GetCLIStatus(t.Context())
 	require.NoError(t, err)
 	require.Len(t, ibrlCLIStatus, 1, "expected one tunnel for IBRL client")
@@ -822,54 +809,54 @@ func runIBRLWithMulticastPublisherTest(t *testing.T, log *slog.Logger, dn *devne
 		"Multicast publisher tunnel should have a current_device, got N/A")
 	require.NotEqual(t, "N/A", mcastCLIStatus[0].Metro,
 		"Multicast publisher tunnel should have a metro, got N/A")
-	log.Info("--> CLI status verified: all tunnels have device/metro info")
+	log.Debug("--> CLI status verified: all tunnels have device/metro info")
 
 	// === COEXISTENCE VERIFICATION ===
-	log.Info("==> COEXISTENCE VERIFICATION PHASE")
+	log.Debug("==> COEXISTENCE VERIFICATION PHASE")
 
 	// Wait for agent config to be pushed to device (required for mroutes to work)
-	log.Info("==> Waiting for agent config to include multicast publisher")
+	log.Debug("==> Waiting for agent config to include multicast publisher")
 	waitForAgentConfigWithClient(t, log, dn, device, mcastClient)
 
 	verifyIBRLClient(t, log, device, ibrlClient, useAllocatedAddr)
 	verifyMulticastPublisherMrouteState(t, log, device, mcastClient)
 
-	log.Info("--> Both services verified as working simultaneously")
+	log.Debug("--> Both services verified as working simultaneously")
 
 	// Disconnect multicast publisher - don't fail if ledger is unavailable
-	log.Info("==> Disconnecting multicast publisher to test independence")
+	log.Debug("==> Disconnecting multicast publisher to test independence")
 	_, disconnectMcastErr := mcastClient.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect multicast --client-ip " + mcastClient.CYOANetworkIP})
 	if disconnectMcastErr != nil {
-		log.Info("--> Warning: Multicast disconnect failed (ledger may be unavailable)", "error", disconnectMcastErr)
+		log.Debug("--> Warning: Multicast disconnect failed (ledger may be unavailable)", "error", disconnectMcastErr)
 		return
 	}
 
 	// Verify IBRL client still works
-	log.Info("==> Verifying IBRL client still works after multicast disconnect")
+	log.Debug("==> Verifying IBRL client still works after multicast disconnect")
 	verifyIBRLClientBGPEstablished(t, log, device)
-	log.Info("--> IBRL client still working")
+	log.Debug("--> IBRL client still working")
 
 	// === FULL DISCONNECT PHASE ===
-	log.Info("==> FULL DISCONNECT PHASE")
+	log.Debug("==> FULL DISCONNECT PHASE")
 
 	// Disconnect IBRL client - don't fail test if ledger is unavailable (infrastructure flakiness)
 	_, disconnectErr := ibrlClient.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect --client-ip " + ibrlClient.CYOANetworkIP})
 	if disconnectErr != nil {
-		log.Info("--> Warning: IBRL disconnect failed (ledger may be unavailable)", "error", disconnectErr)
-		log.Info("--> Skipping tunnel removal verification due to disconnect failure")
+		log.Debug("--> Warning: IBRL disconnect failed (ledger may be unavailable)", "error", disconnectErr)
+		log.Debug("--> Skipping tunnel removal verification due to disconnect failure")
 	} else {
 		// Only verify tunnel removal if disconnect succeeded
-		log.Info("==> Verifying tunnels removed")
+		log.Debug("==> Verifying tunnels removed")
 		verifyTunnelRemoved(t, ibrlClient, "doublezero0")
 		verifyTunnelRemoved(t, mcastClient, "doublezero1")
 	}
 
-	log.Info("--> Test completed successfully")
+	log.Debug("--> Test completed successfully")
 }
 
 // verifyIBRLClient verifies the IBRL client is working correctly.
 func verifyIBRLClient(t *testing.T, log *slog.Logger, device *devnet.Device, client *devnet.Client, allocatedAddr bool) {
-	log.Info("==> Verifying IBRL client")
+	log.Debug("==> Verifying IBRL client")
 
 	// Check doublezero0 interface exists
 	links, err := client.ExecReturnJSONList(t.Context(), []string{"bash", "-c", "ip -j link show dev doublezero0"})
@@ -900,10 +887,10 @@ func verifyIBRLClient(t *testing.T, log *slog.Logger, device *devnet.Device, cli
 		require.Len(t, status, 1)
 		dzIP := status[0].DoubleZeroIP.String()
 		require.NotEqual(t, client.CYOANetworkIP, dzIP, "allocated IP should differ from public IP")
-		log.Info("--> Verified allocated IP differs from public IP", "publicIP", client.CYOANetworkIP, "dzIP", dzIP)
+		log.Debug("--> Verified allocated IP differs from public IP", "publicIP", client.CYOANetworkIP, "dzIP", dzIP)
 	}
 
-	log.Info("--> IBRL client verified")
+	log.Debug("--> IBRL client verified")
 }
 
 // verifyIBRLClientBGPEstablished verifies BGP session is established on the device.
@@ -918,7 +905,7 @@ func verifyIBRLClientBGPEstablished(t *testing.T, log *slog.Logger, device *devn
 
 		peer, ok := neighbors.VRFs["vrf1"].Peers[expectedLinkLocalAddr]
 		if ok && peer.PeerState == "Established" {
-			log.Info("--> BGP session Established", "peer", expectedLinkLocalAddr)
+			log.Debug("--> BGP session Established", "peer", expectedLinkLocalAddr)
 			return
 		}
 		time.Sleep(1 * time.Second)
@@ -974,7 +961,7 @@ func checkMulticastSubscriberPIMAdjacency(t *testing.T, log *slog.Logger, device
 // In coexistence tests with multiple clients, the multicast client may not get 169.254.0.1
 // (e.g., if IBRL client connected first and got 169.254.0.1, multicast client gets 169.254.0.3).
 func verifyMulticastSubscriberPIMAdjacency(t *testing.T, log *slog.Logger, device *devnet.Device) {
-	log.Info("==> Verifying multicast subscriber PIM adjacency")
+	log.Debug("==> Verifying multicast subscriber PIM adjacency")
 
 	deadline := time.Now().Add(60 * time.Second)
 	for time.Now().Before(deadline) {
@@ -988,7 +975,7 @@ func verifyMulticastSubscriberPIMAdjacency(t *testing.T, log *slog.Logger, devic
 				for addr, neighbor := range intf.Neighbors {
 					if strings.HasPrefix(addr, "169.254.0.") {
 						if len(intfName) >= 6 && intfName[:6] == "Tunnel" {
-							log.Info("--> PIM adjacency verified", "interface", intfName, "address", addr, "neighbor", neighbor)
+							log.Debug("--> PIM adjacency verified", "interface", intfName, "address", addr, "neighbor", neighbor)
 							return
 						}
 					}
@@ -1008,7 +995,7 @@ func verifyMulticastSubscriberPIMAdjacency(t *testing.T, log *slog.Logger, devic
 // use sequential addresses in the 169.254.0.x range (e.g., IBRL on .0/.1, multicast on .2/.3).
 func verifyConcurrentMulticastPIMAdjacency(t *testing.T, log *slog.Logger, device *devnet.Device) {
 	tunnelOut, _ := devnet.DeviceExecAristaCliJSON[any](t.Context(), device, "show interfaces Tunnel1-100")
-	log.Info("Device tunnel interfaces", "output", tunnelOut)
+	log.Debug("Device tunnel interfaces", "output", tunnelOut)
 
 	deadline := time.Now().Add(60 * time.Second)
 	for time.Now().Before(deadline) {
@@ -1022,7 +1009,7 @@ func verifyConcurrentMulticastPIMAdjacency(t *testing.T, log *slog.Logger, devic
 				for addr := range intf.Neighbors {
 					if strings.HasPrefix(addr, "169.254.") {
 						if len(intfName) >= 6 && intfName[:6] == "Tunnel" {
-							log.Info("--> Concurrent mcast PIM adjacency verified", "interface", intfName, "address", addr)
+							log.Debug("--> Concurrent mcast PIM adjacency verified", "interface", intfName, "address", addr)
 							return
 						}
 					}
@@ -1038,7 +1025,7 @@ func verifyConcurrentMulticastPIMAdjacency(t *testing.T, log *slog.Logger, devic
 
 // verifyConcurrentMulticastPublisherMrouteState verifies mroute state for concurrent IBRL+multicast publisher.
 func verifyConcurrentMulticastPublisherMrouteState(t *testing.T, log *slog.Logger, device *devnet.Device, client *devnet.Client) {
-	log.Info("==> Verifying concurrent multicast publisher mroute state")
+	log.Debug("==> Verifying concurrent multicast publisher mroute state")
 
 	// Get the actual allocated IP from the client's tunnel status
 	// This is more reliable than calculating it, especially when the client
@@ -1056,26 +1043,26 @@ func verifyConcurrentMulticastPublisherMrouteState(t *testing.T, log *slog.Logge
 		}
 	}
 	require.NotEmpty(t, expectedAllocatedIP, "could not find multicast tunnel's DoubleZeroIP")
-	log.Info("==> Using client's actual allocated IP", "expectedAllocatedIP", expectedAllocatedIP)
+	log.Debug("==> Using client's actual allocated IP", "expectedAllocatedIP", expectedAllocatedIP)
 
 	// Diagnostic: Check tunnel and route state
-	log.Info("==> Diagnostic: Checking tunnel interfaces")
+	log.Debug("==> Diagnostic: Checking tunnel interfaces")
 	tunnelOut, _ := client.Exec(t.Context(), []string{"bash", "-c", "ip -j link show type gre 2>/dev/null || ip link show type gre"}, docker.NoPrintOnError())
-	log.Info("Tunnel interfaces", "output", string(tunnelOut))
+	log.Debug("Tunnel interfaces", "output", string(tunnelOut))
 
-	log.Info("==> Diagnostic: Checking routes to multicast group")
+	log.Debug("==> Diagnostic: Checking routes to multicast group")
 	routeOut, _ := client.Exec(t.Context(), []string{"bash", "-c", "ip route get 233.84.178.0 2>&1"}, docker.NoPrintOnError())
-	log.Info("Route to multicast group", "output", string(routeOut))
+	log.Debug("Route to multicast group", "output", string(routeOut))
 
-	log.Info("==> Diagnostic: Checking addresses on doublezero1")
+	log.Debug("==> Diagnostic: Checking addresses on doublezero1")
 	addrOut, _ := client.Exec(t.Context(), []string{"bash", "-c", "ip addr show dev doublezero1 2>&1"}, docker.NoPrintOnError())
-	log.Info("Addresses on doublezero1", "output", string(addrOut))
+	log.Debug("Addresses on doublezero1", "output", string(addrOut))
 
 	// Trigger S,G creation with ping to multicast group using the allocated DZ IP as source
 	// The -I flag with an IP address forces that IP as the source address
-	log.Info("==> Triggering S,G creation with ping to multicast group", "sourceIP", expectedAllocatedIP, "interface", "doublezero1")
+	log.Debug("==> Triggering S,G creation with ping to multicast group", "sourceIP", expectedAllocatedIP, "interface", "doublezero1")
 	pingOut, pingErr := client.Exec(t.Context(), []string{"bash", "-c", "ping -c 3 -w 5 -I " + expectedAllocatedIP + " 233.84.178.0"}, docker.NoPrintOnError())
-	log.Info("Ping result", "output", string(pingOut), "error", pingErr)
+	log.Debug("Ping result", "output", string(pingOut), "error", pingErr)
 
 	// Verify mroute state on device - poll for 60 seconds (longer for concurrent case)
 	mGroup := "233.84.178.0"
@@ -1097,7 +1084,7 @@ func verifyConcurrentMulticastPublisherMrouteState(t *testing.T, log *slog.Logge
 
 		_, ok = groups.GroupSources[expectedAllocatedIP]
 		if ok {
-			log.Info("--> Concurrent mcast mroute state verified", "group", mGroup, "source", expectedAllocatedIP)
+			log.Debug("--> Concurrent mcast mroute state verified", "group", mGroup, "source", expectedAllocatedIP)
 			return
 		}
 
@@ -1110,7 +1097,7 @@ func verifyConcurrentMulticastPublisherMrouteState(t *testing.T, log *slog.Logge
 
 // verifyMulticastPublisherMrouteState verifies mroute state is created on the device for publisher.
 func verifyMulticastPublisherMrouteState(t *testing.T, log *slog.Logger, device *devnet.Device, client *devnet.Client) {
-	log.Info("==> Verifying multicast publisher mroute state")
+	log.Debug("==> Verifying multicast publisher mroute state")
 
 	// Get the actual allocated IP from the client's tunnel status
 	// This is more reliable than calculating it, especially when multiple clients
@@ -1128,10 +1115,10 @@ func verifyMulticastPublisherMrouteState(t *testing.T, log *slog.Logger, device 
 		}
 	}
 	require.NotEmpty(t, expectedAllocatedIP, "could not find multicast tunnel's DoubleZeroIP")
-	log.Info("==> Using client's actual allocated IP", "expectedAllocatedIP", expectedAllocatedIP)
+	log.Debug("==> Using client's actual allocated IP", "expectedAllocatedIP", expectedAllocatedIP)
 
 	// Trigger S,G creation with ping to multicast group
-	log.Info("==> Triggering S,G creation with ping to multicast group")
+	log.Debug("==> Triggering S,G creation with ping to multicast group")
 	_, _ = client.Exec(t.Context(), []string{"bash", "-c", "ping -c 1 -w 1 233.84.178.0"}, docker.NoPrintOnError())
 
 	// Verify mroute state on device - poll for 30 seconds
@@ -1154,7 +1141,7 @@ func verifyMulticastPublisherMrouteState(t *testing.T, log *slog.Logger, device 
 
 		_, ok = groups.GroupSources[expectedAllocatedIP]
 		if ok {
-			log.Info("--> Mroute state verified", "group", mGroup, "source", expectedAllocatedIP)
+			log.Debug("--> Mroute state verified", "group", mGroup, "source", expectedAllocatedIP)
 			return
 		}
 
@@ -1186,7 +1173,7 @@ func waitForAgentConfigWithClient(t *testing.T, log *slog.Logger, dn *devnet.Dev
 
 		// Check if the config contains the client IP (indicating the tunnel is configured)
 		if strings.Contains(config.Config, client.CYOANetworkIP) {
-			log.Info("--> Agent config includes client", "clientIP", client.CYOANetworkIP, "deviceCode", device.Spec.Code)
+			log.Debug("--> Agent config includes client", "clientIP", client.CYOANetworkIP, "deviceCode", device.Spec.Code)
 			return true
 		}
 
@@ -1197,7 +1184,7 @@ func waitForAgentConfigWithClient(t *testing.T, log *slog.Logger, dn *devnet.Dev
 			snippet = config.Config[:500] + "..."
 		}
 		if snippet != lastConfigSnippet {
-			log.Info("Agent config does not yet include client",
+			log.Debug("Agent config does not yet include client",
 				"clientIP", client.CYOANetworkIP,
 				"deviceCode", device.Spec.Code,
 				"deviceID", device.ID,

@@ -133,7 +133,7 @@ func (l *Ledger) StartIfNotRunning(ctx context.Context) (bool, error) {
 
 		// Check if the container is running.
 		if container.State.Running {
-			l.log.Info("--> Ledger already running", "container", shortContainerID(container.ID))
+			l.log.Debug("--> Ledger already running", "container", shortContainerID(container.ID))
 
 			// Set the component's state.
 			err = l.setState(ctx, container.ID)
@@ -170,7 +170,7 @@ func (l *Ledger) StartIfNotRunning(ctx context.Context) (bool, error) {
 
 // Start creates and starts the ledger container and attaches it to the default network.
 func (l *Ledger) Start(ctx context.Context) error {
-	l.log.Info("==> Starting ledger", "image", l.dn.Spec.Ledger.ContainerImage)
+	l.log.Debug("==> Starting ledger", "image", l.dn.Spec.Ledger.ContainerImage)
 
 	volumeName := l.dn.Spec.DeployID + "-ledger"
 
@@ -281,7 +281,7 @@ func (l *Ledger) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to wait for ledger to be healthy: %w", err)
 	}
 
-	l.log.Info("--> Ledger started", "container", l.ContainerID, "internalRPCURL", l.InternalRPCURL, "internalRPCWSURL", l.InternalRPCWSURL)
+	l.log.Debug("--> Ledger started", "container", l.ContainerID, "internalRPCURL", l.InternalRPCURL, "internalRPCWSURL", l.InternalRPCWSURL)
 	return nil
 }
 

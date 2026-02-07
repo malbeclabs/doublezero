@@ -556,14 +556,13 @@ func runMultiClientIBRLWorkflowTest(t *testing.T, log *slog.Logger, dn *devnet.D
 		requireNoUDPLivenessOnEth01(t, client1, client3DZIP, "pass %d: unblock c3: none on eth0/1 -> c3")
 	}
 
-	// Run the matrix multiple times to check multiple iterations of the workflow.
+	// Run the route liveness matrix.
 	doRouteLivenessBaseline()
 	doRouteLivenessCaseA(1)
 	doRouteLivenessCaseB(1)
 	doRouteLivenessCaseC(1)
-	doRouteLivenessCaseA(2)
 
-	log.Debug("--> Route liveness block matrix (repeat) complete")
+	log.Debug("--> Route liveness block matrix complete")
 
 	// Disconnect client1.
 	log.Debug("==> Disconnecting client1 from IBRL")

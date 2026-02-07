@@ -6,8 +6,9 @@ use crate::{
     seeds::{
         SEED_ACCESS_PASS, SEED_CONFIG, SEED_CONTRIBUTOR, SEED_DEVICE, SEED_DEVICE_TUNNEL_BLOCK,
         SEED_DZ_PREFIX_BLOCK, SEED_EXCHANGE, SEED_GLOBALSTATE, SEED_LINK, SEED_LINK_IDS,
-        SEED_LOCATION, SEED_MULTICASTGROUP_BLOCK, SEED_MULTICAST_GROUP, SEED_PREFIX,
-        SEED_PROGRAM_CONFIG, SEED_SEGMENT_ROUTING_IDS, SEED_TENANT, SEED_TUNNEL_IDS, SEED_USER,
+        SEED_LOCATION, SEED_MGROUP_ALLOWLIST, SEED_MULTICASTGROUP_BLOCK, SEED_MULTICAST_GROUP,
+        SEED_PREFIX, SEED_PROGRAM_CONFIG, SEED_SEGMENT_ROUTING_IDS, SEED_TENANT, SEED_TUNNEL_IDS,
+        SEED_USER,
         SEED_USER_TUNNEL_BLOCK, SEED_VRF_IDS,
     },
     state::user::UserType,
@@ -90,6 +91,24 @@ pub fn get_accesspass_pda(
             SEED_ACCESS_PASS,
             &client_ip.octets(),
             &user_payer.to_bytes(),
+        ],
+        program_id,
+    )
+}
+
+pub fn get_mgroup_allowlist_entry_pda(
+    program_id: &Pubkey,
+    accesspass_key: &Pubkey,
+    mgroup_key: &Pubkey,
+    allowlist_type: u8,
+) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[
+            SEED_PREFIX,
+            SEED_MGROUP_ALLOWLIST,
+            &accesspass_key.to_bytes(),
+            &mgroup_key.to_bytes(),
+            &[allowlist_type],
         ],
         program_id,
     )

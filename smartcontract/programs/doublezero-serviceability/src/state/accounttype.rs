@@ -22,6 +22,7 @@ pub enum AccountType {
     AccessPass = 11,
     ResourceExtension = 12,
     Tenant = 13,
+    MGroupAllowlistEntry = 14,
 }
 
 pub trait AccountTypeInfo {
@@ -48,6 +49,7 @@ impl From<u8> for AccountType {
             11 => AccountType::AccessPass,
             12 => AccountType::ResourceExtension,
             13 => AccountType::Tenant,
+            14 => AccountType::MGroupAllowlistEntry,
             _ => AccountType::None,
         }
     }
@@ -70,6 +72,7 @@ impl fmt::Display for AccountType {
             AccountType::AccessPass => write!(f, "accesspass"),
             AccountType::ResourceExtension => write!(f, "resourceextension"),
             AccountType::Tenant => write!(f, "tenant"),
+            AccountType::MGroupAllowlistEntry => write!(f, "mgroupallowlistentry"),
         }
     }
 }

@@ -13,7 +13,8 @@ use doublezero_serviceability::{
         },
     },
     state::{
-        accesspass::AccessPassType, accounttype::AccountType, multicastgroup::MulticastGroupStatus,
+        accesspass::AccessPassType, accounttype::AccountType,
+        mgroup_allowlist_entry::MGroupAllowlistType, multicastgroup::MulticastGroupStatus,
     },
 };
 use solana_program_test::*;
@@ -148,6 +149,13 @@ async fn test_multicast_publisher_allowlist() {
     /*****************************************************************************************************************************************************/
     println!("🟢 5. Add Allowlist ...");
 
+    let (mgroup_al_entry_pk, _) = get_mgroup_allowlist_entry_pda(
+        &program_id,
+        &accesspass_pubkey,
+        &multicastgroup_pubkey,
+        MGroupAllowlistType::Publisher as u8,
+    );
+
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -160,21 +168,19 @@ async fn test_multicast_publisher_allowlist() {
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(mgroup_al_entry_pk, false),
         ],
         &payer,
     )
     .await;
 
-    let accesspass = get_account_data(&mut banks_client, accesspass_pubkey)
+    let al_entry = get_account_data(&mut banks_client, mgroup_al_entry_pk)
         .await
-        .expect("Unable to get Account")
-        .get_accesspass()
+        .expect("Unable to get MGroupAllowlistEntry")
+        .get_mgroup_allowlist_entry()
         .unwrap();
-
-    assert_eq!(accesspass.account_type, AccountType::AccessPass);
-    assert!(accesspass
-        .mgroup_pub_allowlist
-        .contains(&multicastgroup_pubkey));
+    assert_eq!(al_entry.account_type, AccountType::MGroupAllowlistEntry);
+    assert_eq!(al_entry.allowlist_type, MGroupAllowlistType::Publisher);
 
     println!("✅");
     /*****************************************************************************************************************************************************/
@@ -196,19 +202,19 @@ async fn test_multicast_publisher_allowlist() {
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(mgroup_al_entry_pk, false),
         ],
         &payer,
     )
     .await;
 
-    let accesspass = get_account_data(&mut banks_client, accesspass_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_accesspass()
-        .unwrap();
-
-    assert_eq!(accesspass.account_type, AccountType::AccessPass);
-    assert_eq!(accesspass.mgroup_pub_allowlist.len(), 0);
+    // PDA should be closed after removal
+    assert!(
+        get_account_data(&mut banks_client, mgroup_al_entry_pk)
+            .await
+            .is_none(),
+        "MGroupAllowlistEntry PDA should be closed after removal"
+    );
 
     println!("✅");
     /*****************************************************************************************************************************************************/

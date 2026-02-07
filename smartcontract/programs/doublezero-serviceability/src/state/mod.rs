@@ -9,6 +9,7 @@ pub mod globalstate;
 pub mod interface;
 pub mod link;
 pub mod location;
+pub mod mgroup_allowlist_entry;
 pub mod multicastgroup;
 pub mod programconfig;
 pub mod resource_extension;

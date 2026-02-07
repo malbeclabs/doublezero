@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
-
 	"time"
 
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
@@ -63,25 +63,50 @@ func setupClickhouseContainer(ctx context.Context) error {
 }
 
 func setupRedpandaContainer(ctx context.Context) error {
-	redpandaCtr, err = redpanda.Run(ctx,
-		"docker.redpanda.com/redpandadata/redpanda:v23.3.3",
-		redpanda.WithEnableSASL(),
-		redpanda.WithAutoCreateTopics(),
-		redpanda.WithEnableKafkaAuthorization(),
-		redpanda.WithEnableWasmTransform(),
-		redpanda.WithBootstrapConfig("data_transforms_per_core_memory_reservation", 33554432),
-		redpanda.WithBootstrapConfig("data_transforms_per_function_memory_limit", 16777216),
-		redpanda.WithNewServiceAccount(rpUser, rpPassword),
-		redpanda.WithSuperusers(rpUser),
-		redpanda.WithEnableSchemaRegistryHTTPBasicAuth(),
-	)
-	if err != nil {
-		return fmt.Errorf("error creating redpanda container: %v", err)
+	const maxAttempts = 5
+	var lastErr error
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		redpandaCtr, err = redpanda.Run(ctx,
+			"redpandadata/redpanda:v24.2.6",
+			redpanda.WithEnableSASL(),
+			redpanda.WithAutoCreateTopics(),
+			redpanda.WithEnableKafkaAuthorization(),
+			redpanda.WithEnableWasmTransform(),
+			redpanda.WithBootstrapConfig("data_transforms_per_core_memory_reservation", 33554432),
+			redpanda.WithBootstrapConfig("data_transforms_per_function_memory_limit", 16777216),
+			redpanda.WithNewServiceAccount(rpUser, rpPassword),
+			redpanda.WithSuperusers(rpUser),
+			redpanda.WithEnableSchemaRegistryHTTPBasicAuth(),
+		)
+		if err != nil {
+			lastErr = err
+			if isRetryableContainerStartErr(err) && attempt < maxAttempts {
+				logger.Warn("redpanda container start attempt failed, retrying", "attempt", attempt, "error", err)
+				time.Sleep(time.Duration(attempt) * time.Second)
+				continue
+			}
+			return fmt.Errorf("error creating redpanda container: %v", err)
+		}
+
+		rpBroker, err = redpandaCtr.KafkaSeedBroker(context.Background())
+		if err != nil {
+			lastErr = err
+			if isRetryableContainerStartErr(err) && attempt < maxAttempts {
+				logger.Warn("redpanda broker fetch attempt failed, retrying", "attempt", attempt, "error", err)
+				_ = redpandaCtr.Terminate(context.Background())
+				time.Sleep(time.Duration(attempt) * time.Second)
+				continue
+			}
+			return fmt.Errorf("unable to get redpanda seed broker: %v", err)
+		}
+
+		// Success - break out of retry loop
+		break
 	}
 
-	rpBroker, err = redpandaCtr.KafkaSeedBroker(context.Background())
-	if err != nil {
-		return fmt.Errorf("unable to get redpanda seed broker: %v", err)
+	if redpandaCtr == nil {
+		return fmt.Errorf("failed to start redpanda after %d attempts: %v", maxAttempts, lastErr)
 	}
 
 	rpOpts := []kgo.Opt{}
@@ -114,6 +139,21 @@ func setupRedpandaContainer(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func isRetryableContainerStartErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := err.Error()
+	return strings.Contains(s, "wait until ready") ||
+		strings.Contains(s, "mapped port") ||
+		strings.Contains(s, "timeout") ||
+		strings.Contains(s, "context deadline exceeded") ||
+		strings.Contains(s, "TLS handshake") ||
+		strings.Contains(s, "connection refused") ||
+		strings.Contains(s, "/containers/") && strings.Contains(s, "json") ||
+		strings.Contains(s, "Get \"http")
 }
 
 // TestFlowEnrichement does the following:

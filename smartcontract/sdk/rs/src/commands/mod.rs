@@ -11,4 +11,5 @@ pub mod migrate;
 pub mod multicastgroup;
 pub mod programconfig;
 pub mod resource;
+pub mod tenant;
 pub mod user;

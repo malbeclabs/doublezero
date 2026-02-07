@@ -2,7 +2,8 @@ use super::multicast::MulticastCliCommand;
 use crate::cli::{
     accesspass::AccessPassCliCommand, config::ConfigCliCommand, contributor::ContributorCliCommand,
     device::DeviceCliCommand, exchange::ExchangeCliCommand, globalconfig::GlobalConfigCliCommand,
-    link::LinkCliCommand, location::LocationCliCommand, user::UserCliCommand,
+    link::LinkCliCommand, location::LocationCliCommand, tenant::TenantCliCommand,
+    user::UserCliCommand,
 };
 use clap::{Args, Subcommand};
 use clap_complete::Shell;
@@ -43,6 +44,9 @@ pub enum Command {
     /// Manage contributors
     #[command()]
     Contributor(ContributorCliCommand),
+    /// Manage tenants
+    #[command()]
+    Tenant(TenantCliCommand),
     /// Manage devices
     #[command()]
     Device(DeviceCliCommand),

@@ -10,6 +10,7 @@ pub const SEED_LINK: &[u8] = b"link";
 pub const SEED_USER: &[u8] = b"user";
 pub const SEED_MULTICAST_GROUP: &[u8] = b"multicast";
 pub const SEED_CONTRIBUTOR: &[u8] = b"contributor";
+pub const SEED_TENANT: &[u8] = b"tenant";
 pub const SEED_DEVICE_TUNNEL_BLOCK: &[u8] = b"devicetunnelblock";
 pub const SEED_USER_TUNNEL_BLOCK: &[u8] = b"usertunnelblock";
 pub const SEED_MULTICASTGROUP_BLOCK: &[u8] = b"multicastgroupblock";

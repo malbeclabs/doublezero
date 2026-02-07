@@ -80,6 +80,10 @@ mod tests {
             users_count: 0,
             device_health: DeviceHealth::ReadyForUsers,
             desired_status: DeviceDesiredStatus::Activated,
+            unicast_users_count: 0,
+            multicast_users_count: 0,
+            max_unicast_users: 0,
+            max_multicast_users: 0,
         };
 
         let contributor_pk = device.contributor_pk;

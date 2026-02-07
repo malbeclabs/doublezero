@@ -11,7 +11,12 @@ pub struct IdAllocator {
 
 impl IdAllocator {
     pub fn bitmap_required_size(range: (u16, u16)) -> usize {
-        (range.1 - range.0).div_ceil(8) as usize
+        // Calculate bits needed, then round up to nearest multiple of 8 bytes (64 bits)
+        // to ensure compatibility with bytemuck::cast_slice_mut::<u8, u64>
+        let bits_needed = (range.1 - range.0) as usize;
+        let bytes_needed = bits_needed.div_ceil(8);
+        // Round up to multiple of 8 bytes for u64 alignment
+        bytes_needed.next_multiple_of(8)
     }
 
     pub fn new(range: (u16, u16)) -> Result<Self, String> {
@@ -179,6 +184,18 @@ mod tests {
     fn test_allocation_range_check() {
         let res = IdAllocator::new((510, 500));
         assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_bitmap_required_size_multiple_of_8() {
+        // All returned sizes must be multiples of 8 for bytemuck::cast_slice_mut::<u8, u64>
+        assert_eq!(IdAllocator::bitmap_required_size((0, 1)), 8);
+        assert_eq!(IdAllocator::bitmap_required_size((0, 8)), 8);
+        assert_eq!(IdAllocator::bitmap_required_size((0, 64)), 8);
+        assert_eq!(IdAllocator::bitmap_required_size((0, 65)), 16);
+        assert_eq!(IdAllocator::bitmap_required_size((0, 80)), 16);
+        assert_eq!(IdAllocator::bitmap_required_size((0, 128)), 16);
+        assert_eq!(IdAllocator::bitmap_required_size((500, 628)), 16);
     }
 
     #[test]

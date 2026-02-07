@@ -22,6 +22,65 @@ use solana_program::{
     pubkey::Pubkey,
 };
 use std::{fmt, net::Ipv4Addr};
+
+/// Check if an access pass is allowed for a multicast group (PDA-first with Vec fallback + self-migration).
+/// Returns true if the Vec was modified and the access pass needs to be written back.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn check_and_migrate_allowlist<'a>(
+    program_id: &Pubkey,
+    accesspass_account: &AccountInfo<'a>,
+    mgroup_account: &AccountInfo<'a>,
+    al_entry_account: &AccountInfo<'a>,
+    payer_account: &AccountInfo<'a>,
+    system_program: &AccountInfo<'a>,
+    allowlist_type: MGroupAllowlistType,
+    allowlist_vec: &mut Vec<Pubkey>,
+) -> Result<bool, solana_program::program_error::ProgramError> {
+    let (expected_pda, bump) = get_mgroup_allowlist_entry_pda(
+        program_id,
+        accesspass_account.key,
+        mgroup_account.key,
+        allowlist_type as u8,
+    );
+    if is_valid_mgroup_allowlist_entry(al_entry_account, &expected_pda, program_id) {
+        // PDA exists -> allowed (fast path)
+        Ok(false)
+    } else if allowlist_vec.contains(mgroup_account.key) {
+        // Found in Vec -> self-migrate: create PDA + swap_remove from Vec
+        assert_eq!(
+            al_entry_account.key, &expected_pda,
+            "Invalid MGroupAllowlistEntry PDA for {:?}",
+            allowlist_type
+        );
+        let al_entry = MGroupAllowlistEntry {
+            account_type: AccountType::MGroupAllowlistEntry,
+            bump_seed: bump,
+            allowlist_type,
+        };
+        try_acc_create(
+            &al_entry,
+            al_entry_account,
+            payer_account,
+            system_program,
+            program_id,
+            &[
+                SEED_PREFIX,
+                SEED_MGROUP_ALLOWLIST,
+                &accesspass_account.key.to_bytes(),
+                &mgroup_account.key.to_bytes(),
+                &[allowlist_type as u8],
+                &[bump],
+            ],
+        )?;
+        if let Some(pos) = allowlist_vec.iter().position(|k| k == mgroup_account.key) {
+            allowlist_vec.swap_remove(pos);
+        }
+        Ok(true)
+    } else {
+        Err(DoubleZeroError::NotAllowed.into())
+    }
+}
+
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone)]
 pub struct MulticastGroupSubscribeArgs {
     #[incremental(default = Ipv4Addr::UNSPECIFIED)]
@@ -126,100 +185,34 @@ pub fn process_subscribe_multicastgroup(
     // Check if the user is in the allowlist (PDA-first with Vec fallback + self-migration)
     let mut accesspass_modified = false;
     if value.publisher {
-        let (expected_pda, bump) = get_mgroup_allowlist_entry_pda(
+        accesspass_modified |= check_and_migrate_allowlist(
             program_id,
-            accesspass_account.key,
-            mgroup_account.key,
-            MGroupAllowlistType::Publisher as u8,
-        );
-        if is_valid_mgroup_allowlist_entry(mgroup_pub_al_entry, &expected_pda, program_id) {
-            // PDA exists -> allowed (fast path)
-        } else if accesspass.mgroup_pub_allowlist.contains(mgroup_account.key) {
-            // Found in Vec -> self-migrate: create PDA + swap_remove from Vec
-            assert_eq!(
-                mgroup_pub_al_entry.key, &expected_pda,
-                "Invalid MGroupAllowlistEntry PDA for publisher"
-            );
-            let al_entry = MGroupAllowlistEntry {
-                account_type: AccountType::MGroupAllowlistEntry,
-                bump_seed: bump,
-                allowlist_type: MGroupAllowlistType::Publisher,
-            };
-            try_acc_create(
-                &al_entry,
-                mgroup_pub_al_entry,
-                payer_account,
-                system_program,
-                program_id,
-                &[
-                    SEED_PREFIX,
-                    SEED_MGROUP_ALLOWLIST,
-                    &accesspass_account.key.to_bytes(),
-                    &mgroup_account.key.to_bytes(),
-                    &[MGroupAllowlistType::Publisher as u8],
-                    &[bump],
-                ],
-            )?;
-            if let Some(pos) = accesspass
-                .mgroup_pub_allowlist
-                .iter()
-                .position(|k| k == mgroup_account.key)
-            {
-                accesspass.mgroup_pub_allowlist.swap_remove(pos);
-                accesspass_modified = true;
-            }
-        } else {
+            accesspass_account,
+            mgroup_account,
+            mgroup_pub_al_entry,
+            payer_account,
+            system_program,
+            MGroupAllowlistType::Publisher,
+            &mut accesspass.mgroup_pub_allowlist,
+        )
+        .inspect_err(|_| {
             msg!("{:?}", accesspass);
-            return Err(DoubleZeroError::NotAllowed.into());
-        }
+        })?;
     }
     if value.subscriber {
-        let (expected_pda, bump) = get_mgroup_allowlist_entry_pda(
+        accesspass_modified |= check_and_migrate_allowlist(
             program_id,
-            accesspass_account.key,
-            mgroup_account.key,
-            MGroupAllowlistType::Subscriber as u8,
-        );
-        if is_valid_mgroup_allowlist_entry(mgroup_sub_al_entry, &expected_pda, program_id) {
-            // PDA exists -> allowed (fast path)
-        } else if accesspass.mgroup_sub_allowlist.contains(mgroup_account.key) {
-            // Found in Vec -> self-migrate: create PDA + swap_remove from Vec
-            assert_eq!(
-                mgroup_sub_al_entry.key, &expected_pda,
-                "Invalid MGroupAllowlistEntry PDA for subscriber"
-            );
-            let al_entry = MGroupAllowlistEntry {
-                account_type: AccountType::MGroupAllowlistEntry,
-                bump_seed: bump,
-                allowlist_type: MGroupAllowlistType::Subscriber,
-            };
-            try_acc_create(
-                &al_entry,
-                mgroup_sub_al_entry,
-                payer_account,
-                system_program,
-                program_id,
-                &[
-                    SEED_PREFIX,
-                    SEED_MGROUP_ALLOWLIST,
-                    &accesspass_account.key.to_bytes(),
-                    &mgroup_account.key.to_bytes(),
-                    &[MGroupAllowlistType::Subscriber as u8],
-                    &[bump],
-                ],
-            )?;
-            if let Some(pos) = accesspass
-                .mgroup_sub_allowlist
-                .iter()
-                .position(|k| k == mgroup_account.key)
-            {
-                accesspass.mgroup_sub_allowlist.swap_remove(pos);
-                accesspass_modified = true;
-            }
-        } else {
+            accesspass_account,
+            mgroup_account,
+            mgroup_sub_al_entry,
+            payer_account,
+            system_program,
+            MGroupAllowlistType::Subscriber,
+            &mut accesspass.mgroup_sub_allowlist,
+        )
+        .inspect_err(|_| {
             msg!("{:?}", accesspass);
-            return Err(DoubleZeroError::NotAllowed.into());
-        }
+        })?;
     }
 
     // Write back the accesspass if we migrated entries from Vec to PDA

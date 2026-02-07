@@ -84,7 +84,6 @@ pub fn process_add_multicastgroup_pub_allowlist(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    // Create AccessPass if it doesn't exist (with empty allowlist vecs)
     if accesspass_account.data_is_empty() {
         let (expected_pda_account, bump_seed) =
             get_accesspass_pda(program_id, &value.client_ip, &value.user_payer);
@@ -128,7 +127,6 @@ pub fn process_add_multicastgroup_pub_allowlist(
         );
     }
 
-    // Create the MGroupAllowlistEntry PDA (skip if already exists)
     if mgroup_al_entry_account.data_is_empty() {
         let (expected_pda, bump_seed) = get_mgroup_allowlist_entry_pda(
             program_id,

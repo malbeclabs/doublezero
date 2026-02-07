@@ -24,7 +24,7 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 	t.Parallel()
 
 	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
-	log := newTestLoggerForTest(t).With("test", t.Name())
+	log := newTestLoggerForTest(t)
 
 	log.Debug("==> Starting test devnet with on-chain allocation enabled")
 

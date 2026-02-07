@@ -27,7 +27,7 @@ func TestE2E_User_AllocationLifecycle(t *testing.T) {
 	t.Parallel()
 
 	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
-	log := newTestLoggerForTest(t).With("test", t.Name())
+	log := newTestLoggerForTest(t)
 
 	log.Debug("==> Starting test devnet with on-chain allocation enabled")
 
@@ -256,7 +256,7 @@ func TestE2E_MulticastGroup_AllocationLifecycle(t *testing.T) {
 	t.Parallel()
 
 	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
-	log := newTestLoggerForTest(t).With("test", t.Name())
+	log := newTestLoggerForTest(t)
 
 	log.Debug("==> Starting test devnet with on-chain allocation enabled")
 
@@ -399,7 +399,7 @@ func TestE2E_MultipleLinks_AllocationLifecycle(t *testing.T) {
 	t.Parallel()
 
 	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
-	log := newTestLoggerForTest(t).With("test", t.Name())
+	log := newTestLoggerForTest(t)
 
 	log.Debug("==> Starting test devnet with on-chain allocation enabled")
 
@@ -596,7 +596,7 @@ func TestE2E_Multicast_ReactivationPreservesAllocations(t *testing.T) {
 	t.Parallel()
 
 	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
-	log := newTestLoggerForTest(t).With("test", t.Name())
+	log := newTestLoggerForTest(t)
 
 	log.Debug("==> Starting test devnet with on-chain allocation enabled")
 
@@ -929,7 +929,7 @@ func TestE2E_LoopbackInterface_AllocationLifecycle(t *testing.T) {
 	t.Parallel()
 
 	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
-	log := newTestLoggerForTest(t).With("test", t.Name())
+	log := newTestLoggerForTest(t)
 
 	log.Debug("==> Starting test devnet with on-chain allocation enabled")
 

@@ -24,7 +24,7 @@ func TestE2E_IBRL_Multicast_Coexistence(t *testing.T) {
 	t.Parallel()
 
 	dn, device, ibrlClient, mcastClient := setupCoexistenceTestDevnet(t)
-	log := newTestLoggerForTest(t).With("test", t.Name())
+	log := newTestLoggerForTest(t)
 
 	if !t.Run("ibrl_with_multicast_subscriber", func(t *testing.T) {
 		runIBRLWithMulticastSubscriberTest(t, log, dn, device, ibrlClient, mcastClient, false)
@@ -39,7 +39,7 @@ func TestE2E_IBRL_Multicast_Publisher_Coexistence(t *testing.T) {
 	t.Parallel()
 
 	dn, device, ibrlClient, mcastClient := setupCoexistenceTestDevnet(t)
-	log := newTestLoggerForTest(t).With("test", t.Name())
+	log := newTestLoggerForTest(t)
 
 	if !t.Run("ibrl_with_multicast_publisher", func(t *testing.T) {
 		runIBRLWithMulticastPublisherTest(t, log, dn, device, ibrlClient, mcastClient, false)
@@ -54,7 +54,7 @@ func TestE2E_IBRL_AllocatedAddr_Multicast_Coexistence(t *testing.T) {
 	t.Parallel()
 
 	dn, device, ibrlClient, mcastClient := setupCoexistenceTestDevnet(t)
-	log := newTestLoggerForTest(t).With("test", t.Name())
+	log := newTestLoggerForTest(t)
 
 	if !t.Run("ibrl_allocated_addr_with_multicast_subscriber", func(t *testing.T) {
 		runIBRLWithMulticastSubscriberTest(t, log, dn, device, ibrlClient, mcastClient, true)
@@ -69,7 +69,7 @@ func TestE2E_IBRL_AllocatedAddr_Multicast_Publisher_Coexistence(t *testing.T) {
 	t.Parallel()
 
 	dn, device, ibrlClient, mcastClient := setupCoexistenceTestDevnet(t)
-	log := newTestLoggerForTest(t).With("test", t.Name())
+	log := newTestLoggerForTest(t)
 
 	if !t.Run("ibrl_allocated_addr_with_multicast_publisher", func(t *testing.T) {
 		runIBRLWithMulticastPublisherTest(t, log, dn, device, ibrlClient, mcastClient, true)
@@ -85,7 +85,7 @@ func TestE2E_SingleClient_IBRL_Then_Multicast(t *testing.T) {
 	t.Parallel()
 
 	dn, device, mcastDevice, client := setupSingleClientTestDevnet(t)
-	log := newTestLoggerForTest(t).With("test", t.Name())
+	log := newTestLoggerForTest(t)
 
 	if !t.Run("single_client_ibrl_then_multicast_subscriber", func(t *testing.T) {
 		runSingleClientIBRLThenMulticastTest(t, log, dn, device, mcastDevice, client, false, false)
@@ -100,7 +100,7 @@ func TestE2E_SingleClient_IBRL_AllocatedAddr_Then_Multicast(t *testing.T) {
 	t.Parallel()
 
 	dn, device, mcastDevice, client := setupSingleClientTestDevnet(t)
-	log := newTestLoggerForTest(t).With("test", t.Name())
+	log := newTestLoggerForTest(t)
 
 	if !t.Run("single_client_ibrl_allocated_then_multicast_subscriber", func(t *testing.T) {
 		runSingleClientIBRLThenMulticastTest(t, log, dn, device, mcastDevice, client, true, false)
@@ -115,7 +115,7 @@ func TestE2E_SingleClient_IBRL_Then_Multicast_Publisher(t *testing.T) {
 	t.Parallel()
 
 	dn, device, mcastDevice, client := setupSingleClientTestDevnet(t)
-	log := newTestLoggerForTest(t).With("test", t.Name())
+	log := newTestLoggerForTest(t)
 
 	if !t.Run("single_client_ibrl_then_multicast_publisher", func(t *testing.T) {
 		runSingleClientIBRLThenMulticastTest(t, log, dn, device, mcastDevice, client, false, true)
@@ -134,7 +134,7 @@ func TestE2E_Multicast_PublisherXorSubscriber(t *testing.T) {
 	t.Parallel()
 
 	_, _, ibrlClient, mcastClient := setupCoexistenceTestDevnet(t)
-	log := newTestLoggerForTest(t).With("test", t.Name())
+	log := newTestLoggerForTest(t)
 
 	// Use ibrlClient for "subscriber then publisher" test
 	// Use mcastClient for "publisher then subscriber" test
@@ -224,7 +224,7 @@ func TestE2E_Multicast_PublisherXorSubscriber(t *testing.T) {
 // concurrent IBRL+multicast on the same user account.
 func setupSingleClientTestDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device, *devnet.Device, *devnet.Client) {
 	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
-	log := newTestLoggerForTest(t).With("test", t.Name())
+	log := newTestLoggerForTest(t)
 
 	log.Debug("==> Setting up single client test devnet")
 
@@ -526,7 +526,7 @@ func runSingleClientIBRLThenMulticastTest(t *testing.T, log *slog.Logger, dn *de
 
 func setupCoexistenceTestDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device, *devnet.Client, *devnet.Client) {
 	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
-	log := newTestLoggerForTest(t).With("test", t.Name())
+	log := newTestLoggerForTest(t)
 
 	log.Debug("==> Setting up coexistence test devnet")
 

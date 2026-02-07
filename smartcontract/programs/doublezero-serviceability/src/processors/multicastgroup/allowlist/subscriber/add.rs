@@ -1,12 +1,13 @@
 use crate::{
     error::DoubleZeroError,
-    pda::get_accesspass_pda,
-    seeds::{SEED_ACCESS_PASS, SEED_PREFIX},
-    serializer::{try_acc_create, try_acc_write},
+    pda::{get_accesspass_pda, get_mgroup_allowlist_entry_pda},
+    seeds::{SEED_ACCESS_PASS, SEED_MGROUP_ALLOWLIST, SEED_PREFIX},
+    serializer::try_acc_create,
     state::{
         accesspass::{AccessPass, AccessPassStatus, AccessPassType},
         accounttype::AccountType,
         globalstate::GlobalState,
+        mgroup_allowlist_entry::{MGroupAllowlistEntry, MGroupAllowlistType},
         multicastgroup::MulticastGroup,
     },
 };
@@ -50,6 +51,7 @@ pub fn process_add_multicastgroup_sub_allowlist(
     let mgroup_account = next_account_info(accounts_iter)?;
     let accesspass_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
+    let mgroup_al_entry_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
@@ -83,6 +85,7 @@ pub fn process_add_multicastgroup_sub_allowlist(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
+    // Create AccessPass if it doesn't exist (with empty allowlist vecs)
     if accesspass_account.data_is_empty() {
         let (expected_pda_account, bump_seed) =
             get_accesspass_pda(program_id, &value.client_ip, &value.user_payer);
@@ -101,7 +104,7 @@ pub fn process_add_multicastgroup_sub_allowlist(
             status: AccessPassStatus::Requested,
             owner: *payer_account.key,
             mgroup_pub_allowlist: vec![],
-            mgroup_sub_allowlist: vec![*mgroup_account.key],
+            mgroup_sub_allowlist: vec![],
             flags: 0,
         };
 
@@ -124,22 +127,42 @@ pub fn process_add_multicastgroup_sub_allowlist(
             accesspass_account.owner, program_id,
             "Invalid Accesspass Account Owner"
         );
+    }
 
-        let mut accesspass = AccessPass::try_from(accesspass_account)?;
-        assert!(
-            accesspass.client_ip == value.client_ip,
-            "AccessPass client_ip does not match"
+    // Create the MGroupAllowlistEntry PDA (skip if already exists)
+    if mgroup_al_entry_account.data_is_empty() {
+        let (expected_pda, bump_seed) = get_mgroup_allowlist_entry_pda(
+            program_id,
+            accesspass_account.key,
+            mgroup_account.key,
+            MGroupAllowlistType::Subscriber as u8,
         );
-        assert!(
-            accesspass.user_payer == value.user_payer,
-            "AccessPass user_payer does not match"
+        assert_eq!(
+            mgroup_al_entry_account.key, &expected_pda,
+            "Invalid MGroupAllowlistEntry PDA"
         );
 
-        if !accesspass.mgroup_sub_allowlist.contains(mgroup_account.key) {
-            accesspass.mgroup_sub_allowlist.push(*mgroup_account.key);
-        }
+        let al_entry = MGroupAllowlistEntry {
+            account_type: AccountType::MGroupAllowlistEntry,
+            bump_seed,
+            allowlist_type: MGroupAllowlistType::Subscriber,
+        };
 
-        try_acc_write(&accesspass, accesspass_account, payer_account, accounts)?;
+        try_acc_create(
+            &al_entry,
+            mgroup_al_entry_account,
+            payer_account,
+            system_program,
+            program_id,
+            &[
+                SEED_PREFIX,
+                SEED_MGROUP_ALLOWLIST,
+                &accesspass_account.key.to_bytes(),
+                &mgroup_account.key.to_bytes(),
+                &[MGroupAllowlistType::Subscriber as u8],
+                &[bump_seed],
+            ],
+        )?;
     }
 
     #[cfg(test)]

@@ -3,7 +3,8 @@ use crate::{
     state::{
         accesspass::AccessPass, accounttype::AccountType, contributor::Contributor, device::Device,
         exchange::Exchange, globalconfig::GlobalConfig, globalstate::GlobalState, link::Link,
-        location::Location, multicastgroup::MulticastGroup, programconfig::ProgramConfig,
+        location::Location, mgroup_allowlist_entry::MGroupAllowlistEntry,
+        multicastgroup::MulticastGroup, programconfig::ProgramConfig,
         resource_extension::ResourceExtensionOwned, user::User,
     },
 };
@@ -26,6 +27,7 @@ pub enum AccountData {
     Contributor(Contributor),
     AccessPass(AccessPass),
     ResourceExtension(ResourceExtensionOwned),
+    MGroupAllowlistEntry(MGroupAllowlistEntry),
 }
 
 impl AccountData {
@@ -44,6 +46,7 @@ impl AccountData {
             AccountData::Contributor(_) => "Contributor",
             AccountData::AccessPass(_) => "AccessPass",
             AccountData::ResourceExtension(_) => "ResourceExtension",
+            AccountData::MGroupAllowlistEntry(_) => "MGroupAllowlistEntry",
         }
     }
 
@@ -62,6 +65,7 @@ impl AccountData {
             AccountData::Contributor(contributor) => contributor.to_string(),
             AccountData::AccessPass(access_pass) => access_pass.to_string(),
             AccountData::ResourceExtension(resource_extension) => resource_extension.to_string(),
+            AccountData::MGroupAllowlistEntry(entry) => entry.to_string(),
         }
     }
 
@@ -160,6 +164,14 @@ impl AccountData {
             Err(DoubleZeroError::InvalidAccountType)
         }
     }
+
+    pub fn get_mgroup_allowlist_entry(&self) -> Result<MGroupAllowlistEntry, DoubleZeroError> {
+        if let AccountData::MGroupAllowlistEntry(entry) = self {
+            Ok(entry.clone())
+        } else {
+            Err(DoubleZeroError::InvalidAccountType)
+        }
+    }
 }
 
 impl TryFrom<&[u8]> for AccountData {
@@ -196,6 +208,9 @@ impl TryFrom<&[u8]> for AccountData {
             )?)),
             AccountType::ResourceExtension => Ok(AccountData::ResourceExtension(
                 ResourceExtensionOwned::try_from(bytes)?,
+            )),
+            AccountType::MGroupAllowlistEntry => Ok(AccountData::MGroupAllowlistEntry(
+                MGroupAllowlistEntry::try_from(bytes as &[u8])?,
             )),
         }
     }

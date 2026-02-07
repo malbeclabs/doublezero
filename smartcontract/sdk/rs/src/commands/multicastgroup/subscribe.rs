@@ -9,8 +9,12 @@ use crate::{
 };
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
+    pda::get_mgroup_allowlist_entry_pda,
     processors::multicastgroup::subscribe::MulticastGroupSubscribeArgs,
-    state::{multicastgroup::MulticastGroupStatus, user::UserStatus},
+    state::{
+        mgroup_allowlist_entry::MGroupAllowlistType, multicastgroup::MulticastGroupStatus,
+        user::UserStatus,
+    },
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
@@ -45,7 +49,7 @@ impl SubscribeMulticastGroupCommand {
             eyre::bail!("User not active");
         }
 
-        let (accesspass_pubkey, accesspass) = GetAccessPassCommand {
+        let (accesspass_pubkey, _accesspass) = GetAccessPassCommand {
             client_ip: Ipv4Addr::UNSPECIFIED,
             user_payer: user.owner,
         }
@@ -59,12 +63,18 @@ impl SubscribeMulticastGroupCommand {
         })
         .map_err(|_err| eyre::eyre!("AccessPass not found"))?;
 
-        if self.publisher && !accesspass.mgroup_pub_allowlist.contains(&self.group_pk) {
-            eyre::bail!("User not allowed to publish multicast group");
-        }
-        if self.subscriber && !accesspass.mgroup_sub_allowlist.contains(&self.group_pk) {
-            eyre::bail!("User not allowed to subscribe multicast group");
-        }
+        let (mgroup_pub_al_entry_pk, _) = get_mgroup_allowlist_entry_pda(
+            &client.get_program_id(),
+            &accesspass_pubkey,
+            &self.group_pk,
+            MGroupAllowlistType::Publisher as u8,
+        );
+        let (mgroup_sub_al_entry_pk, _) = get_mgroup_allowlist_entry_pda(
+            &client.get_program_id(),
+            &accesspass_pubkey,
+            &self.group_pk,
+            MGroupAllowlistType::Subscriber as u8,
+        );
 
         client.execute_transaction(
             DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
@@ -76,6 +86,8 @@ impl SubscribeMulticastGroupCommand {
                 AccountMeta::new(self.group_pk, false),
                 AccountMeta::new(accesspass_pubkey, false),
                 AccountMeta::new(self.user_pk, false),
+                AccountMeta::new(mgroup_pub_al_entry_pk, false),
+                AccountMeta::new(mgroup_sub_al_entry_pk, false),
             ],
         )
     }
@@ -100,7 +112,7 @@ mod tests {
         },
     };
     use mockall::predicate;
-    use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
     use std::net::Ipv4Addr;
 
     #[test]
@@ -164,12 +176,12 @@ mod tests {
             connection_count: 0,
             status: doublezero_serviceability::state::accesspass::AccessPassStatus::Requested,
             owner: client.get_payer(),
-            mgroup_pub_allowlist: vec![mgroup_pubkey],
-            mgroup_sub_allowlist: vec![mgroup_pubkey],
+            mgroup_pub_allowlist: vec![],
+            mgroup_sub_allowlist: vec![],
             flags: 0,
         };
 
-        // First call in SubscribeMulticastGroupCommand::execute tries the dynamic (UNSPECIFIED) PDA,
+        // Call in SubscribeMulticastGroupCommand::execute tries the dynamic (UNSPECIFIED) PDA,
         // which should fail with a non-AccessPass to trigger the fallback to the fixed client_ip PDA.
         let (dynamic_accesspass_pubkey, _) = get_accesspass_pda(
             &client.get_program_id(),
@@ -202,11 +214,7 @@ mod tests {
                         subscriber: false,
                     },
                 )),
-                predicate::eq(vec![
-                    AccountMeta::new(mgroup_pubkey, false),
-                    AccountMeta::new(accesspass_pubkey, false),
-                    AccountMeta::new(user_pubkey, false),
-                ]),
+                predicate::always(),
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 

@@ -14,8 +14,9 @@ use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
     pda::{
         get_accesspass_pda, get_contributor_pda, get_device_pda, get_exchange_pda,
-        get_globalconfig_pda, get_globalstate_pda, get_location_pda, get_multicastgroup_pda,
-        get_program_config_pda, get_resource_extension_pda, get_user_pda,
+        get_globalconfig_pda, get_globalstate_pda, get_location_pda,
+        get_mgroup_allowlist_entry_pda, get_multicastgroup_pda, get_program_config_pda,
+        get_resource_extension_pda, get_user_pda,
     },
     processors::{
         accesspass::set::SetAccessPassArgs,
@@ -40,6 +41,7 @@ use doublezero_serviceability::{
     state::{
         accesspass::AccessPassType,
         device::DeviceType,
+        mgroup_allowlist_entry::MGroupAllowlistType,
         user::{UserCYOA, UserStatus, UserType},
     },
 };
@@ -1070,7 +1072,14 @@ async fn test_multicast_subscribe_reactivation_preserves_allocations() {
     // =========================================================================
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
 
-    // AddMulticastGroupPubAllowlist (5 accounts: mgroup, accesspass, globalstate, payer, system_program)
+    let (mgroup_pub_al_entry_pk, _) = get_mgroup_allowlist_entry_pda(
+        &program_id,
+        &accesspass_pubkey,
+        &multicastgroup_pubkey,
+        MGroupAllowlistType::Publisher as u8,
+    );
+
+    // AddMulticastGroupPubAllowlist (6 accounts: mgroup, accesspass, globalstate, mgroup_al_entry, payer, system_program)
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -1083,6 +1092,7 @@ async fn test_multicast_subscribe_reactivation_preserves_allocations() {
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(mgroup_pub_al_entry_pk, false),
         ],
         &payer,
     )
@@ -1093,7 +1103,14 @@ async fn test_multicast_subscribe_reactivation_preserves_allocations() {
     // =========================================================================
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
 
-    // SubscribeMulticastGroup (5 accounts: mgroup, accesspass, user, payer, system_program)
+    let (mgroup_sub_al_entry_pk, _) = get_mgroup_allowlist_entry_pda(
+        &program_id,
+        &accesspass_pubkey,
+        &multicastgroup_pubkey,
+        MGroupAllowlistType::Subscriber as u8,
+    );
+
+    // SubscribeMulticastGroup (7 accounts: mgroup, accesspass, user, mgroup_pub_al_entry, mgroup_sub_al_entry, payer, system_program)
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -1107,6 +1124,8 @@ async fn test_multicast_subscribe_reactivation_preserves_allocations() {
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(mgroup_pub_al_entry_pk, false),
+            AccountMeta::new(mgroup_sub_al_entry_pk, false),
         ],
         &payer,
     )

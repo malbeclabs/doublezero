@@ -1,6 +1,7 @@
 use crate::{
     error::DoubleZeroError,
     pda::{get_accesspass_pda, get_user_old_pda, get_user_pda},
+    processors::multicastgroup::subscribe::check_and_migrate_allowlist,
     seeds::{SEED_PREFIX, SEED_USER},
     serializer::{try_acc_create, try_acc_write},
     state::{
@@ -8,6 +9,7 @@ use crate::{
         accounttype::AccountType,
         device::{Device, DeviceStatus},
         globalstate::GlobalState,
+        mgroup_allowlist_entry::MGroupAllowlistType,
         multicastgroup::{MulticastGroup, MulticastGroupStatus},
         user::*,
     },
@@ -65,6 +67,8 @@ pub fn process_create_subscribe_user(
     let mgroup_account = next_account_info(accounts_iter)?;
     let accesspass_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
+    let mgroup_pub_al_entry = next_account_info(accounts_iter)?;
+    let mgroup_sub_al_entry = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
@@ -181,14 +185,36 @@ pub fn process_create_subscribe_user(
     let mut mgroup: MulticastGroup = MulticastGroup::try_from(mgroup_account)?;
     assert_eq!(mgroup.status, MulticastGroupStatus::Activated);
 
-    // Check if the user is in the allowlist
-    if value.publisher && !accesspass.mgroup_pub_allowlist.contains(mgroup_account.key) {
-        msg!("{} -> {:?}", accesspass_account.key, accesspass);
-        return Err(DoubleZeroError::NotAllowed.into());
+    // Check if the user is in the allowlist (PDA-first with Vec fallback + self-migration)
+    if value.publisher {
+        check_and_migrate_allowlist(
+            program_id,
+            accesspass_account,
+            mgroup_account,
+            mgroup_pub_al_entry,
+            payer_account,
+            system_program,
+            MGroupAllowlistType::Publisher,
+            &mut accesspass.mgroup_pub_allowlist,
+        )
+        .inspect_err(|_| {
+            msg!("{} -> {:?}", accesspass_account.key, accesspass);
+        })?;
     }
-    if value.subscriber && !accesspass.mgroup_sub_allowlist.contains(mgroup_account.key) {
-        msg!("{} -> {:?}", accesspass_account.key, accesspass);
-        return Err(DoubleZeroError::NotAllowed.into());
+    if value.subscriber {
+        check_and_migrate_allowlist(
+            program_id,
+            accesspass_account,
+            mgroup_account,
+            mgroup_sub_al_entry,
+            payer_account,
+            system_program,
+            MGroupAllowlistType::Subscriber,
+            &mut accesspass.mgroup_sub_allowlist,
+        )
+        .inspect_err(|_| {
+            msg!("{} -> {:?}", accesspass_account.key, accesspass);
+        })?;
     }
 
     let mut device = Device::try_from(device_account)?;

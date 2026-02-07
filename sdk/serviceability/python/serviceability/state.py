@@ -40,6 +40,8 @@ class AccountTypeEnum(IntEnum):
     PROGRAM_CONFIG = 9
     CONTRIBUTOR = 10
     ACCESS_PASS = 11
+    RESOURCE_EXTENSION = 12
+    MGROUP_ALLOWLIST_ENTRY = 13
 
 
 # ---------------------------------------------------------------------------

@@ -1,7 +1,11 @@
 use crate::{
     error::DoubleZeroError,
-    serializer::try_acc_write,
-    state::{accesspass::AccessPass, globalstate::GlobalState, multicastgroup::MulticastGroup},
+    pda::get_mgroup_allowlist_entry_pda,
+    serializer::try_acc_close,
+    state::{
+        globalstate::GlobalState, mgroup_allowlist_entry::MGroupAllowlistType,
+        multicastgroup::MulticastGroup,
+    },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -36,18 +40,19 @@ impl fmt::Debug for RemoveMulticastGroupPubAllowlistArgs {
 pub fn process_remove_multicast_pub_allowlist(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    value: &RemoveMulticastGroupPubAllowlistArgs,
+    _value: &RemoveMulticastGroupPubAllowlistArgs,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
     let mgroup_account = next_account_info(accounts_iter)?;
     let accesspass_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
+    let mgroup_al_entry_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
-    msg!("process_remove_multicast_pub_allowlist({:?})", value);
+    msg!("process_remove_multicast_pub_allowlist({:?})", _value);
 
     // Check if the payer is a signer
     assert!(payer_account.is_signer, "Payer must be a signer");
@@ -83,21 +88,25 @@ pub fn process_remove_multicast_pub_allowlist(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    let mut accesspass = AccessPass::try_from(accesspass_account)?;
-    assert!(
-        accesspass.client_ip == value.client_ip,
-        "AccessPass client_ip does not match"
-    );
-    assert!(
-        accesspass.user_payer == value.user_payer,
-        "AccessPass user_payer does not match"
-    );
+    // Close the MGroupAllowlistEntry PDA
+    if !mgroup_al_entry_account.data_is_empty() {
+        let (expected_pda, _) = get_mgroup_allowlist_entry_pda(
+            program_id,
+            accesspass_account.key,
+            mgroup_account.key,
+            MGroupAllowlistType::Publisher as u8,
+        );
+        assert_eq!(
+            mgroup_al_entry_account.key, &expected_pda,
+            "Invalid MGroupAllowlistEntry PDA"
+        );
+        assert_eq!(
+            mgroup_al_entry_account.owner, program_id,
+            "Invalid MGroupAllowlistEntry Account Owner"
+        );
 
-    accesspass
-        .mgroup_pub_allowlist
-        .retain(|x| x != mgroup_account.key);
-
-    try_acc_write(&accesspass, accesspass_account, payer_account, accounts)?;
+        try_acc_close(mgroup_al_entry_account, payer_account)?;
+    }
 
     #[cfg(test)]
     msg!("Updated: {:?}", mgroup);

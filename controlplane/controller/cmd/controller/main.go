@@ -235,11 +235,11 @@ func (c *ControllerCommand) Run() error {
 		chTLSDisabled := os.Getenv("CLICKHOUSE_TLS_DISABLED") == "true"
 		cw, err := controller.NewClickhouseWriter(log, chAddr, chDB, chUser, chPass, chTLSDisabled)
 		if err != nil {
-			log.Error("error creating clickhouse writer", "error", err)
-			os.Exit(1)
+			log.Warn("clickhouse connection failed, continuing without clickhouse", "addr", chAddr, "error", err)
+		} else {
+			options = append(options, controller.WithClickhouse(cw))
+			log.Info("clickhouse enabled", "addr", chAddr, "db", chDB, "user", chUser, "tls", !chTLSDisabled)
 		}
-		options = append(options, controller.WithClickhouse(cw))
-		log.Info("clickhouse enabled", "addr", chAddr, "db", chDB, "user", chUser, "tls", !chTLSDisabled)
 	} else {
 		log.Info("clickhouse disabled (CLICKHOUSE_ADDR not set)")
 	}

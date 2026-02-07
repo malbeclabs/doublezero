@@ -396,6 +396,10 @@ type Device struct {
 	MaxUsers               uint16              `influx:"field,max_users"`
 	DeviceHealth           DeviceHealth        `influx:"field,device_health"`
 	DeviceDesiredStatus    DeviceDesiredStatus `influx:"tag,device_desired_status"`
+	UnicastUsersCount      uint16              `influx:"field,unicast_users_count"`
+	MulticastUsersCount    uint16              `influx:"field,multicast_users_count"`
+	MaxUnicastUsers        uint16              `influx:"field,max_unicast_users"`
+	MaxMulticastUsers      uint16              `influx:"field,max_multicast_users"`
 	PubKey                 [32]byte            `influx:"tag,pubkey,pubkey"`
 }
 

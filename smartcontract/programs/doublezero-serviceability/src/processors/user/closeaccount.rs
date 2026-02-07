@@ -351,6 +351,15 @@ pub fn process_closeaccount_user(
 
     device.reference_count = device.reference_count.saturating_sub(1);
     device.users_count = device.users_count.saturating_sub(1);
+    // Decrement per-type counter based on user type
+    match user.user_type {
+        UserType::Multicast => {
+            device.multicast_users_count = device.multicast_users_count.saturating_sub(1);
+        }
+        _ => {
+            device.unicast_users_count = device.unicast_users_count.saturating_sub(1);
+        }
+    }
 
     try_acc_write(&device, device_account, payer_account, accounts)?;
     try_acc_close(user_account, owner_account)?;

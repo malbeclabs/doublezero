@@ -40,6 +40,7 @@ impl CloseAccountDeviceCommand {
             ));
         }
 
+        // Close TunnelIds and DzPrefixBlock resources
         let mut resource_accounts = vec![];
         let mut owner_accounts = vec![];
         for idx in 0..device.dz_prefixes.len() + 1 {

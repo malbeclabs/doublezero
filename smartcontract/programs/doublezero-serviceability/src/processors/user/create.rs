@@ -241,8 +241,47 @@ pub fn process_create_user(
         return Err(DoubleZeroError::MaxUsersExceeded.into());
     }
 
+    // Check per-type limits (when max > 0, the limit is enforced)
+    match value.user_type {
+        UserType::Multicast => {
+            if device.max_multicast_users > 0
+                && device.multicast_users_count >= device.max_multicast_users
+                && !is_qa
+            {
+                msg!(
+                    "Max multicast users exceeded: count={}, max={}",
+                    device.multicast_users_count,
+                    device.max_multicast_users
+                );
+                return Err(DoubleZeroError::MaxMulticastUsersExceeded.into());
+            }
+        }
+        _ => {
+            if device.max_unicast_users > 0
+                && device.unicast_users_count >= device.max_unicast_users
+                && !is_qa
+            {
+                msg!(
+                    "Max unicast users exceeded: count={}, max={}",
+                    device.unicast_users_count,
+                    device.max_unicast_users
+                );
+                return Err(DoubleZeroError::MaxUnicastUsersExceeded.into());
+            }
+        }
+    }
+
     device.reference_count += 1;
     device.users_count += 1;
+    // Increment per-type counter
+    match value.user_type {
+        UserType::Multicast => {
+            device.multicast_users_count += 1;
+        }
+        _ => {
+            device.unicast_users_count += 1;
+        }
+    }
 
     // Handle tenant reference counting and get tenant_pk
     let tenant_pk = if let Some(tenant_account) = tenant_account {

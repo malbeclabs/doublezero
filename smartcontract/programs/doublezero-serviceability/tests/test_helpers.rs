@@ -229,6 +229,35 @@ pub async fn try_execute_transaction(
     Ok(())
 }
 
+/// Execute a transaction and expect it to fail. Returns the error result.
+#[allow(dead_code)]
+pub async fn execute_transaction_expect_failure(
+    banks_client: &mut BanksClient,
+    _recent_blockhash: solana_program::hash::Hash,
+    program_id: Pubkey,
+    instruction: DoubleZeroInstruction,
+    accounts: Vec<AccountMeta>,
+    payer: &Keypair,
+) -> Result<(), BanksClientError> {
+    print!("➡️  Transaction (expecting failure) {instruction:?} ");
+
+    let recent_blockhash = banks_client
+        .get_latest_blockhash()
+        .await
+        .expect("Failed to get latest blockhash");
+    let mut transaction = create_transaction(program_id, &instruction, &accounts, payer);
+    transaction.try_sign(&[&payer], recent_blockhash).unwrap();
+    let result = banks_client.process_transaction(transaction).await;
+
+    if result.is_err() {
+        println!("❌ (expected)");
+    } else {
+        println!("✅ (unexpected success)");
+    }
+
+    result
+}
+
 pub fn create_transaction(
     program_id: Pubkey,
     instruction: &DoubleZeroInstruction,

@@ -36,6 +36,8 @@ pub struct UpdateDeviceCommand {
     pub status: Option<DeviceStatus>,
     pub desired_status: Option<DeviceDesiredStatus>,
     pub reference_count: Option<u32>,
+    pub max_unicast_users: Option<u16>,
+    pub max_multicast_users: Option<u16>,
 }
 
 impl UpdateDeviceCommand {
@@ -91,6 +93,8 @@ impl UpdateDeviceCommand {
                 desired_status: self.desired_status,
                 resource_count,
                 reference_count: self.reference_count,
+                max_unicast_users: self.max_unicast_users,
+                max_multicast_users: self.max_multicast_users,
             }),
             [
                 vec![
@@ -156,6 +160,10 @@ mod tests {
             users_count: 0,
             device_health: DeviceHealth::ReadyForUsers,
             desired_status: DeviceDesiredStatus::Activated,
+            unicast_users_count: 0,
+            multicast_users_count: 0,
+            max_unicast_users: 0,
+            max_multicast_users: 0,
         };
 
         client
@@ -197,6 +205,8 @@ mod tests {
                     desired_status: None,
                     resource_count: 2,
                     reference_count: None,
+                    max_unicast_users: None,
+                    max_multicast_users: None,
                 })),
                 predicate::always(),
             )
@@ -218,6 +228,8 @@ mod tests {
             status: None,
             desired_status: None,
             reference_count: None,
+            max_unicast_users: None,
+            max_multicast_users: None,
         };
 
         let update_invalid = UpdateDeviceCommand {

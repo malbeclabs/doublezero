@@ -239,7 +239,7 @@ func (c *ControllerCommand) Run() error {
 			os.Exit(1)
 		}
 		options = append(options, controller.WithClickhouse(cw))
-		log.Info("clickhouse enabled", "addr", chAddr, "db", chDB, "user", chUser)
+		log.Info("clickhouse enabled", "addr", chAddr, "db", chDB, "user", chUser, "tls", !chTLSDisabled)
 	} else {
 		log.Info("clickhouse disabled (CLICKHOUSE_ADDR not set)")
 	}

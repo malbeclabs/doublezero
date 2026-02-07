@@ -16,43 +16,43 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestE2E_MultiTunnelEndpoint_SameDevice tests that a single client can have
-// multiple tunnels (IBRL + Multicast) to the SAME device when that device has
-// multiple UserTunnelEndpoint interfaces configured.
+// TestE2E_MultiTunnel_FallbackToSecondDevice tests that when a client already has
+// a tunnel to a device, creating a second tunnel (different type) will use a different
+// device since the first device's tunnel endpoint is already in use.
 //
-// This is a key feature that allows multiple GRE tunnels from the same client IP
-// to the same device by using different tunnel endpoint IPs on the device side.
-func TestE2E_MultiTunnelEndpoint_SameDevice(t *testing.T) {
+// This verifies the client CLI's device selection logic correctly excludes devices
+// where all tunnel endpoints are exhausted and falls back to the next best device.
+func TestE2E_MultiTunnel_FallbackToSecondDevice(t *testing.T) {
 	t.Parallel()
 
-	dn, device, client := setupMultiTunnelEndpointDevnet(t)
+	dn, device1, device2, client := setupMultiTunnelDevnet(t)
 	log := logger.With("test", t.Name())
 
-	t.Run("ibrl_and_multicast_same_device", func(t *testing.T) {
-		runMultiTunnelSameDeviceTest(t, log, dn, device, client, false)
+	t.Run("ibrl_then_multicast_different_devices", func(t *testing.T) {
+		runMultiTunnelFallbackTest(t, log, dn, device1, device2, client, false)
 	})
 }
 
-// TestE2E_MultiTunnelEndpoint_SameDevice_AllocatedAddr tests the same scenario
-// but with IBRL using allocated address mode.
-func TestE2E_MultiTunnelEndpoint_SameDevice_AllocatedAddr(t *testing.T) {
+// TestE2E_MultiTunnel_FallbackToSecondDevice_AllocatedAddr tests the same fallback
+// behavior but with IBRL using allocated address mode.
+func TestE2E_MultiTunnel_FallbackToSecondDevice_AllocatedAddr(t *testing.T) {
 	t.Parallel()
 
-	dn, device, client := setupMultiTunnelEndpointDevnet(t)
+	dn, device1, device2, client := setupMultiTunnelDevnet(t)
 	log := logger.With("test", t.Name())
 
-	t.Run("ibrl_allocated_and_multicast_same_device", func(t *testing.T) {
-		runMultiTunnelSameDeviceTest(t, log, dn, device, client, true)
+	t.Run("ibrl_allocated_then_multicast_different_devices", func(t *testing.T) {
+		runMultiTunnelFallbackTest(t, log, dn, device1, device2, client, true)
 	})
 }
 
-// setupMultiTunnelEndpointDevnet sets up a devnet with a single device that has
-// multiple UserTunnelEndpoint interfaces, allowing multiple tunnels from the same client.
-func setupMultiTunnelEndpointDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device, *devnet.Client) {
+// setupMultiTunnelDevnet sets up a devnet with two devices and a single client.
+// This allows testing the fallback behavior when the first device's endpoint is used.
+func setupMultiTunnelDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device, *devnet.Device, *devnet.Client) {
 	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
 	log := logger.With("test", t.Name(), "deployID", deployID)
 
-	log.Info("==> Setting up multi-tunnel endpoint test devnet")
+	log.Info("==> Setting up multi-tunnel test devnet with two devices")
 
 	currentDir, err := os.Getwd()
 	require.NoError(t, err)
@@ -76,9 +76,9 @@ func setupMultiTunnelEndpointDevnet(t *testing.T) (*devnet.Devnet, *devnet.Devic
 	require.NoError(t, err)
 	log.Info("--> Devnet started")
 
-	// Add the device
+	// Add first device
 	log.Info("==> Adding device ny5-dz01")
-	device, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
+	device1, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
 		Code:                         "ny5-dz01",
 		Location:                     "ewr",
 		Exchange:                     "xewr",
@@ -86,29 +86,36 @@ func setupMultiTunnelEndpointDevnet(t *testing.T) (*devnet.Devnet, *devnet.Devic
 		CYOANetworkAllocatablePrefix: 29,
 	})
 	require.NoError(t, err)
-	log.Info("--> Device added", "deviceID", device.ID, "deviceIP", device.CYOANetworkIP)
+	log.Info("--> Device 1 added", "deviceID", device1.ID, "deviceIP", device1.CYOANetworkIP)
 
-	// Create device interfaces including multiple UserTunnelEndpoint interfaces
-	// This is the key setup - we need at least 2 tunnel endpoints for multiple tunnels
-	log.Info("==> Creating device interfaces with multiple UserTunnelEndpoint interfaces")
+	// Add second device for fallback
+	log.Info("==> Adding device pit-dz01")
+	device2, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
+		Code:                         "pit-dz01",
+		Location:                     "pit",
+		Exchange:                     "xpit",
+		CYOANetworkIPHostID:          16,
+		CYOANetworkAllocatablePrefix: 29,
+	})
+	require.NoError(t, err)
+	log.Info("--> Device 2 added", "deviceID", device2.ID, "deviceIP", device2.CYOANetworkIP)
+
+	// Create device interfaces
+	log.Info("==> Creating device interfaces")
 	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
 		set -euo pipefail
 
-		echo "==> Create standard device interfaces"
+		echo "==> Create device interfaces for ny5-dz01"
 		doublezero device interface create ny5-dz01 "Ethernet2" -w
 		doublezero device interface create ny5-dz01 "Loopback255" --loopback-type vpnv4 -w
 		doublezero device interface create ny5-dz01 "Loopback256" --loopback-type ipv4 -w
 
-		echo "==> Create additional UserTunnelEndpoint interface (Loopback100)"
-		# This creates a second tunnel endpoint on the device
-		# The first endpoint is the device's public_ip, this is the second
-		doublezero device interface create ny5-dz01 "Loopback100" \
-			--ip-net "203.0.113.10/32" \
-			--user-tunnel-endpoint true \
-			-w
+		echo "==> Create device interfaces for pit-dz01"
+		doublezero device interface create pit-dz01 "Ethernet2" -w
+		doublezero device interface create pit-dz01 "Loopback255" --loopback-type vpnv4 -w
+		doublezero device interface create pit-dz01 "Loopback256" --loopback-type ipv4 -w
 
-		echo "--> Device interfaces created:"
-		doublezero device interface list ny5-dz01
+		echo "--> Device interfaces created"
 	`})
 	require.NoError(t, err)
 
@@ -142,30 +149,33 @@ func setupMultiTunnelEndpointDevnet(t *testing.T) (*devnet.Devnet, *devnet.Devic
 	`})
 	require.NoError(t, err)
 
-	// Wait for latency results
-	log.Info("==> Waiting for latency results")
-	err = client.WaitForLatencyResults(t.Context(), device.ID, 75*time.Second)
+	// Wait for latency results from both devices
+	log.Info("==> Waiting for latency results from both devices")
+	err = client.WaitForLatencyResults(t.Context(), device1.ID, 75*time.Second)
 	require.NoError(t, err)
-	log.Info("--> Latency results received")
+	err = client.WaitForLatencyResults(t.Context(), device2.ID, 75*time.Second)
+	require.NoError(t, err)
+	log.Info("--> Latency results received from both devices")
 
-	log.Info("--> Multi-tunnel endpoint test devnet setup complete")
+	log.Info("--> Multi-tunnel test devnet setup complete")
 
-	return dn, device, client
+	return dn, device1, device2, client
 }
 
-// runMultiTunnelSameDeviceTest tests that a single client can establish multiple tunnels
-// to the same device using different tunnel endpoints.
-func runMultiTunnelSameDeviceTest(t *testing.T, log *slog.Logger, dn *devnet.Devnet,
-	device *devnet.Device, client *devnet.Client, useAllocatedAddr bool,
+// runMultiTunnelFallbackTest tests that when creating a second tunnel type,
+// the client CLI correctly falls back to a different device since the first
+// device's tunnel endpoint is already in use.
+func runMultiTunnelFallbackTest(t *testing.T, log *slog.Logger, dn *devnet.Devnet,
+	device1 *devnet.Device, device2 *devnet.Device, client *devnet.Client, useAllocatedAddr bool,
 ) {
 	mode := "standard"
 	if useAllocatedAddr {
 		mode = "allocated_addr"
 	}
-	log = log.With("mode", mode, "device", device.Spec.Code)
+	log = log.With("mode", mode)
 
-	// === PHASE 1: Connect IBRL to the specific device ===
-	log.Info("==> PHASE 1: Connecting IBRL to device", "device", device.Spec.Code)
+	// === PHASE 1: Connect IBRL to device1 ===
+	log.Info("==> PHASE 1: Connecting IBRL to device1", "device", device1.Spec.Code)
 
 	// Set access pass for the client
 	log.Info("==> Setting access pass")
@@ -175,10 +185,10 @@ func runMultiTunnelSameDeviceTest(t *testing.T, log *slog.Logger, dn *devnet.Dev
 	})
 	require.NoError(t, err)
 
-	// Connect IBRL client to the specific device using --device flag
-	log.Info("==> Connecting client with IBRL to specific device", "device", device.Spec.Code)
+	// Connect IBRL client to device1 using --device flag
+	log.Info("==> Connecting client with IBRL to device1", "device", device1.Spec.Code)
 	ibrlCmd := fmt.Sprintf("doublezero connect ibrl --client-ip %s --device %s",
-		client.CYOANetworkIP, device.Spec.Code)
+		client.CYOANetworkIP, device1.Spec.Code)
 	if useAllocatedAddr {
 		ibrlCmd += " --allocate-addr"
 	}
@@ -191,81 +201,84 @@ func runMultiTunnelSameDeviceTest(t *testing.T, log *slog.Logger, dn *devnet.Dev
 	require.NoError(t, err, "IBRL tunnel failed to come up")
 	log.Info("--> IBRL tunnel is up")
 
-	// Verify IBRL tunnel destination
+	// Verify IBRL tunnel destination is device1
 	tunnelStatus, err := client.GetTunnelStatus(t.Context())
 	require.NoError(t, err)
 	require.Len(t, tunnelStatus, 1, "expected exactly one tunnel after IBRL connect")
-	ibrlTunnelEndpoint := tunnelStatus[0].TunnelDst.String()
-	log.Info("==> IBRL tunnel established", "tunnelDst", ibrlTunnelEndpoint)
+	ibrlTunnelDst := tunnelStatus[0].TunnelDst.String()
+	require.Equal(t, device1.CYOANetworkIP, ibrlTunnelDst,
+		"IBRL tunnel should be connected to device1")
+	log.Info("==> IBRL tunnel established to device1", "tunnelDst", ibrlTunnelDst)
 
-	// Verify BGP is established on the device
-	log.Info("==> Verifying IBRL BGP session on device")
-	verifyIBRLClientBGPEstablished(t, log, device)
-	log.Info("--> IBRL BGP session verified")
+	// Verify BGP is established on device1
+	log.Info("==> Verifying IBRL BGP session on device1")
+	verifyIBRLClientBGPEstablished(t, log, device1)
+	log.Info("--> IBRL BGP session verified on device1")
 
-	// === PHASE 2: Connect Multicast to the SAME device ===
-	log.Info("==> PHASE 2: Connecting Multicast subscriber to SAME device", "device", device.Spec.Code)
+	// === PHASE 2: Connect Multicast (should go to device2 since device1's endpoint is used) ===
+	log.Info("==> PHASE 2: Connecting Multicast (should fall back to device2)")
 
-	// Connect multicast to the same device using --device flag
-	mcastCmd := fmt.Sprintf("doublezero connect multicast subscriber mg01 --client-ip %s --device %s 2>&1",
-		client.CYOANetworkIP, device.Spec.Code)
+	// Connect multicast without specifying device - it should automatically pick device2
+	// because device1's tunnel endpoint is already in use by the IBRL tunnel
+	mcastCmd := fmt.Sprintf("doublezero connect multicast subscriber mg01 --client-ip %s 2>&1",
+		client.CYOANetworkIP)
 	mcastOutput, err := client.Exec(t.Context(), []string{"bash", "-c", mcastCmd})
 	log.Info("==> Multicast connect output", "output", string(mcastOutput))
 	require.NoError(t, err)
 
-	// Wait for agent config to be pushed to device
-	log.Info("==> Waiting for agent config to be pushed to device")
-	waitForAgentConfigWithClient(t, log, dn, device, client)
-	log.Info("--> Agent config pushed")
+	// Wait for agent config to be pushed to device2
+	log.Info("==> Waiting for agent config to be pushed to device2")
+	waitForAgentConfigWithClient(t, log, dn, device2, client)
+	log.Info("--> Agent config pushed to device2")
 
 	// Wait for BOTH tunnels to be up
 	log.Info("==> Waiting for both tunnels (IBRL and Multicast) to be up")
 	err = client.WaitForNTunnelsUp(t.Context(), 2, 90*time.Second)
-	require.NoError(t, err, "Both tunnels should be up on the same device")
+	require.NoError(t, err, "Both tunnels should be up")
 	log.Info("--> Both tunnels are up")
 
-	// Get tunnel status and verify they're using different endpoints
+	// Verify tunnel destinations
 	tunnelStatus, err = client.GetTunnelStatus(t.Context())
 	require.NoError(t, err)
 	require.Len(t, tunnelStatus, 2, "expected exactly two tunnels")
 
-	tunnel1Dst := tunnelStatus[0].TunnelDst.String()
-	tunnel2Dst := tunnelStatus[1].TunnelDst.String()
-	log.Info("==> Tunnel endpoints",
-		"tunnel1_dst", tunnel1Dst,
-		"tunnel2_dst", tunnel2Dst)
+	// Find which tunnel goes where
+	var ibrlTunnel, mcastTunnel *devnet.ClientStatusResponse
+	for i := range tunnelStatus {
+		switch tunnelStatus[i].UserType {
+		case devnet.ClientUserTypeIBRL, devnet.ClientUserTypeIBRLWithAllocated:
+			ibrlTunnel = &tunnelStatus[i]
+		case devnet.ClientUserTypeMulticast:
+			mcastTunnel = &tunnelStatus[i]
+		}
+	}
+	require.NotNil(t, ibrlTunnel, "should have IBRL tunnel")
+	require.NotNil(t, mcastTunnel, "should have Multicast tunnel")
 
-	// CRITICAL VERIFICATION: The two tunnels should use DIFFERENT endpoints on the same device
-	require.NotEqual(t, tunnel1Dst, tunnel2Dst,
-		"Two tunnels to the same device should use different tunnel endpoints")
-	log.Info("--> Verified: tunnels use different endpoints on the same device")
+	log.Info("==> Tunnel destinations",
+		"ibrl_dst", ibrlTunnel.TunnelDst.String(),
+		"mcast_dst", mcastTunnel.TunnelDst.String())
 
-	// Verify both tunnels are to the same device (both endpoints should belong to our device)
-	// One should be the device's CYOA IP, another should be the UserTunnelEndpoint (203.0.113.10)
-	deviceEndpoints := []string{device.CYOANetworkIP, "203.0.113.10"}
-	require.Contains(t, deviceEndpoints, tunnel1Dst,
-		"First tunnel should terminate at one of the device's endpoints")
-	require.Contains(t, deviceEndpoints, tunnel2Dst,
-		"Second tunnel should terminate at one of the device's endpoints")
-	log.Info("--> Verified: both tunnels terminate at the same device")
+	// CRITICAL VERIFICATION: The tunnels should be on DIFFERENT devices
+	// because device1's endpoint is already in use by IBRL
+	require.Equal(t, device1.CYOANetworkIP, ibrlTunnel.TunnelDst.String(),
+		"IBRL tunnel should still be on device1")
+	require.Equal(t, device2.CYOANetworkIP, mcastTunnel.TunnelDst.String(),
+		"Multicast tunnel should fall back to device2")
+	log.Info("--> Verified: tunnels are on different devices (fallback worked)")
 
-	// Verify both BGP sessions are established on the device
-	log.Info("==> Verifying both BGP sessions on device")
-	verifyMultipleBGPSessionsOnDevice(t, log, device, 2)
-	log.Info("--> Both BGP sessions verified on device")
-
-	// === PHASE 3: Verify both tunnels work independently ===
+	// === PHASE 3: Verify both tunnels work ===
 	log.Info("==> PHASE 3: Verifying both tunnels work")
 
-	// Verify IBRL still works
-	log.Info("==> Verifying IBRL tunnel still works")
-	verifyIBRLClientBGPEstablished(t, log, device)
-	log.Info("--> IBRL tunnel working")
+	// Verify IBRL BGP on device1
+	log.Info("==> Verifying IBRL BGP on device1")
+	verifyIBRLClientBGPEstablished(t, log, device1)
+	log.Info("--> IBRL BGP verified on device1")
 
-	// Verify multicast PIM adjacency
-	log.Info("==> Verifying multicast PIM adjacency")
-	verifyMulticastSubscriberPIMAdjacency(t, log, device)
-	log.Info("--> Multicast PIM adjacency verified")
+	// Verify multicast PIM adjacency on device2
+	log.Info("==> Verifying multicast PIM adjacency on device2")
+	verifyMulticastSubscriberPIMAdjacency(t, log, device2)
+	log.Info("--> Multicast PIM adjacency verified on device2")
 
 	// === PHASE 4: Disconnect and verify ===
 	log.Info("==> PHASE 4: Disconnecting")
@@ -285,7 +298,7 @@ func runMultiTunnelSameDeviceTest(t *testing.T, log *slog.Logger, dn *devnet.Dev
 
 	// Verify IBRL still works after multicast disconnect
 	log.Info("==> Verifying IBRL still works after multicast disconnect")
-	verifyIBRLClientBGPEstablished(t, log, device)
+	verifyIBRLClientBGPEstablished(t, log, device1)
 	log.Info("--> IBRL still working after multicast disconnect")
 
 	// Disconnect IBRL
@@ -298,13 +311,13 @@ func runMultiTunnelSameDeviceTest(t *testing.T, log *slog.Logger, dn *devnet.Dev
 		log.Info("--> Warning: IBRL disconnect returned error", "error", err)
 	}
 
-	log.Info("--> Multi-tunnel same-device test completed successfully")
+	log.Info("--> Multi-tunnel fallback test completed successfully")
 }
 
-// verifyMultipleBGPSessionsOnDevice checks that the device has the expected number
-// of BGP sessions established in vrf1.
-func verifyMultipleBGPSessionsOnDevice(t *testing.T, log *slog.Logger, device *devnet.Device, expectedCount int) {
-	log.Info("==> Checking BGP sessions on device", "device", device.Spec.Code, "expected", expectedCount)
+// verifyBGPSessionsOnDevice checks that the device has at least one BGP session
+// established in vrf1.
+func verifyBGPSessionsOnDevice(t *testing.T, log *slog.Logger, device *devnet.Device) {
+	log.Info("==> Checking BGP sessions on device", "device", device.Spec.Code)
 
 	ctx := t.Context()
 	var lastOutput string
@@ -329,19 +342,15 @@ func verifyMultipleBGPSessionsOnDevice(t *testing.T, log *slog.Logger, device *d
 			}
 		}
 
-		if establishedCount >= expectedCount {
-			log.Info("--> Found expected BGP sessions",
-				"established", establishedCount, "expected", expectedCount)
+		if establishedCount >= 1 {
+			log.Info("--> Found BGP session(s)", "established", establishedCount)
 			return
 		}
 
-		log.Info("==> Waiting for BGP sessions",
-			"attempt", attempt,
-			"established", establishedCount,
-			"expected", expectedCount)
+		log.Info("==> Waiting for BGP sessions", "attempt", attempt, "established", establishedCount)
 		time.Sleep(5 * time.Second)
 	}
 
-	t.Fatalf("Expected %d BGP sessions but found %d. Last output:\n%s",
-		expectedCount, establishedCount, lastOutput)
+	t.Fatalf("Expected at least 1 BGP session but found %d. Last output:\n%s",
+		establishedCount, lastOutput)
 }

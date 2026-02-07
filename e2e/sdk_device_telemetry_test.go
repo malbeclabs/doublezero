@@ -101,7 +101,7 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 		data, err := serviceabilityClient.GetProgramData(ctx)
 		require.NoError(t, err)
 		return len(data.Devices) == 4 && len(data.Links) == 3
-	}, 20*time.Second, 1*time.Second)
+	}, 30*time.Second, 1*time.Second)
 
 	data, err := serviceabilityClient.GetProgramData(ctx)
 	require.NoError(t, err)

@@ -134,15 +134,33 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Pull pre-built images
         run: |
-          docker pull ${{ env.DZ_IMAGE_REPO }}/base:${{ env.DZ_IMAGE_TAG }}
-          docker pull ${{ env.DZ_IMAGE_REPO }}/ledger:${{ env.DZ_IMAGE_TAG }}
-          docker pull ${{ env.DZ_IMAGE_REPO }}/controller:${{ env.DZ_IMAGE_TAG }}
-          docker pull ${{ env.DZ_IMAGE_REPO }}/activator:${{ env.DZ_IMAGE_TAG }}
-          docker pull ${{ env.DZ_IMAGE_REPO }}/manager:${{ env.DZ_IMAGE_TAG }}
-          docker pull ${{ env.DZ_IMAGE_REPO }}/funder:${{ env.DZ_IMAGE_TAG }}
-          docker pull ${{ env.DZ_IMAGE_REPO }}/device:${{ env.DZ_IMAGE_TAG }}
-          docker pull ${{ env.DZ_IMAGE_REPO }}/client:${{ env.DZ_IMAGE_TAG }}
-          docker pull ${{ env.DZ_IMAGE_REPO }}/device-health-oracle:${{ env.DZ_IMAGE_TAG }}
+          pull_with_retry() {
+            local image=$1
+            local max_attempts=3
+            local attempt=1
+            while [ $attempt -le $max_attempts ]; do
+              echo "Pulling $image (attempt $attempt/$max_attempts)"
+              if docker pull "$image"; then
+                return 0
+              fi
+              echo "Pull failed, retrying in 5 seconds..."
+              sleep 5
+              attempt=$((attempt + 1))
+            done
+            echo "Failed to pull $image after $max_attempts attempts"
+            return 1
+          }
+          pull_with_retry ${{ env.DZ_IMAGE_REPO }}/base:${{ env.DZ_IMAGE_TAG }}
+          pull_with_retry ${{ env.DZ_IMAGE_REPO }}/ledger:${{ env.DZ_IMAGE_TAG }}
+          pull_with_retry ${{ env.DZ_IMAGE_REPO }}/controller:${{ env.DZ_IMAGE_TAG }}
+          pull_with_retry ${{ env.DZ_IMAGE_REPO }}/activator:${{ env.DZ_IMAGE_TAG }}
+          pull_with_retry ${{ env.DZ_IMAGE_REPO }}/manager:${{ env.DZ_IMAGE_TAG }}
+          pull_with_retry ${{ env.DZ_IMAGE_REPO }}/funder:${{ env.DZ_IMAGE_TAG }}
+          pull_with_retry ${{ env.DZ_IMAGE_REPO }}/device:${{ env.DZ_IMAGE_TAG }}
+          pull_with_retry ${{ env.DZ_IMAGE_REPO }}/client:${{ env.DZ_IMAGE_TAG }}
+          pull_with_retry ${{ env.DZ_IMAGE_REPO }}/device-health-oracle:${{ env.DZ_IMAGE_TAG }}
+          pull_with_retry prom/prometheus:v2.54.1
+          pull_with_retry influxdb:1.8
       - name: test
         env:
           DZ_E2E_NO_BUILD: "1"

@@ -572,9 +572,13 @@ func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *
 				linkCode := "lk" + suffix
 				dzxLinkCode := "dx" + suffix
 				multicastCode := "mc" + suffix
-				// Client IP must be within the device's dz_prefixes (45.133.<10+vi>.0/30).
-				// For a /30, valid host IPs are .1 and .2.
-				userClientIP := fmt.Sprintf("45.133.%d.1", 10+vi)
+				// Client IPs must be within each device's dz_prefixes.
+				// device1: 45.133.<10+vi>.0/30 → valid host IPs are .1 and .2
+				// device2: 45.133.<10+vi>.128/30 → valid host IPs are .129 and .130
+				// user1 is multicast user on device2 (will be banned, can't delete → device2 stuck)
+				// user2 is non-multicast user on device1 (normal delete → device1 can be cleaned up)
+				userClientIP := fmt.Sprintf("45.133.%d.129", 10+vi)  // device2: multicast user (banned, can't delete)
+				user2ClientIP := fmt.Sprintf("45.133.%d.1", 10+vi)   // device1: non-multicast user (normal delete)
 
 				// dumpDiagnostics logs the current onchain state for debugging failed steps.
 				dumpDiagnostics := func(stepName string) {
@@ -722,13 +726,20 @@ func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *
 					// AccessPass must exist before user creation.
 					{name: "accesspass_set", cmd: cli + " access-pass set --accesspass-type prepaid --client-ip " + userClientIP +
 						" --user-payer me", noCascade: true},
-					{name: "user_create", cmd: cli + " user create --device " + deviceCode + " --client-ip " + userClientIP, noCascade: true},
+					{name: "user_create", cmd: cli + " user create --device " + deviceCode2 + " --client-ip " + userClientIP, noCascade: true},
 					// Wait for user to be activated (status changes from pending).
 					{name: "user_wait_activated", cmd: `for i in $(seq 1 60); do doublezero user list 2>/dev/null | grep '` + userClientIP + `' | grep -q activated && exit 0; sleep 1; done; echo "user not activated after 60s"; exit 1`, noCascade: true},
 					// Update the user's tunnel ID.
 					{name: "user_update", cmd: cli + " user update --pubkey " +
 						fmt.Sprintf("$(doublezero user list 2>/dev/null | grep '%s' | awk '{print $1}')", userClientIP) +
 						" --tunnel-id 999", noCascade: true},
+
+					// Create a second user (non-multicast) for testing request-ban.
+					// This user won't be subscribed to multicast, so it can be deleted after ban.
+					{name: "accesspass_set_2", cmd: cli + " access-pass set --accesspass-type prepaid --client-ip " + user2ClientIP +
+						" --user-payer me", noCascade: true},
+					{name: "user_create_2", cmd: cli + " user create --device " + deviceCode + " --client-ip " + user2ClientIP, noCascade: true},
+					{name: "user_wait_activated_2", cmd: `for i in $(seq 1 60); do doublezero user list 2>/dev/null | grep '` + user2ClientIP + ` ' | grep -q activated && exit 0; sleep 1; done; echo "user2 not activated after 60s"; exit 1`, noCascade: true},
 
 					// --- Phase 10: Multicast group operations ---
 					// Test multicast group update and allowlist operations.
@@ -798,16 +809,30 @@ func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *
 					//   - An interface must be in "activated" or "unlinked" status to be deleted
 					//   - Devices must be deleted before contributor/location/exchange
 
-					// Request user ban (requires foundation allowlist, sets status to PendingBan).
-					// Note: This changes user status which may cause user_delete to fail with
-					// "User not active" because SDK tries to unsubscribe first. Marked noCascade.
+					// Test user2 (non-multicast) request-ban and delete workflow.
+					// User2 is not subscribed to any multicast groups, so delete works after ban.
+					{name: "user_request_ban_2", cmd: cli + " user request-ban --pubkey " +
+						fmt.Sprintf("$(doublezero user list 2>/dev/null | grep '%s ' | awk '{print $1}')", user2ClientIP), noCascade: true},
+					{name: "user_delete_2", cmd: cli + " user delete --pubkey " +
+						fmt.Sprintf("$(doublezero user list 2>/dev/null | grep '%s ' | awk '{print $1}')", user2ClientIP)},
+					// Wait for user2 to be fully removed from device1's user count.
+					{name: "user_wait_removed_2", cmd: `for i in $(seq 1 30); do ` +
+						`count=$(doublezero user list 2>/dev/null | grep '` + user2ClientIP + ` ' | wc -l); ` +
+						`[ "$count" -eq 0 ] && exit 0; sleep 1; done; ` +
+						`echo "user2 not removed after 30s"; exit 1`},
+					{name: "accesspass_close_2", cmd: cli + " access-pass close --pubkey " +
+						fmt.Sprintf("$(doublezero access-pass list 2>/dev/null | grep '%s ' | awk '{print $1}')", user2ClientIP)},
+
+					// Test user1 (multicast) request-ban workflow - demonstrates undeletable state.
+					// When a subscribed user is banned, SDK's delete fails because unsubscribe
+					// requires Activated status but user is now PendingBan.
 					{name: "user_request_ban", cmd: cli + " user request-ban --pubkey " +
 						fmt.Sprintf("$(doublezero user list 2>/dev/null | grep '%s' | awk '{print $1}')", userClientIP), noCascade: true},
-
-					// Delete user and close accesspass.
-					// Note: May fail if user_request_ban succeeded (user status = PendingBan).
-					{name: "user_delete", cmd: cli + " user delete --pubkey " +
+					// Attempt to delete banned multicast user - expected to fail with "User not active"
+					// because SDK tries to unsubscribe from multicast groups first.
+					{name: "user_delete_banned_multicast", cmd: cli + " user delete --pubkey " +
 						fmt.Sprintf("$(doublezero user list 2>/dev/null | grep '%s' | awk '{print $1}')", userClientIP), noCascade: true},
+					// Close accesspass for user1 (may fail if user still exists).
 					{name: "accesspass_close", cmd: cli + " access-pass close --pubkey " +
 						fmt.Sprintf("$(doublezero access-pass list 2>/dev/null | grep '%s' | awk '{print $1}')", userClientIP), noCascade: true},
 
@@ -847,14 +872,15 @@ func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *
 					{name: "iface_wait_removed", cmd: `for i in $(seq 1 30); do count=$(doublezero device interface list ` + deviceCode + ` 2>/dev/null | tail -n +2 | wc -l); [ "$count" -eq 0 ] && exit 0; sleep 1; done; echo "interfaces not removed after 30s"; exit 1`},
 					{name: "iface_wait_removed_2", cmd: `for i in $(seq 1 30); do count=$(doublezero device interface list ` + deviceCode2 + ` 2>/dev/null | tail -n +2 | wc -l); [ "$count" -eq 0 ] && exit 0; sleep 1; done; echo "interfaces not removed after 30s"; exit 1`},
 
-					// Delete devices.
-					// Note: May fail if user still exists (reference count > 0).
-					{name: "device_delete", cmd: cli + " device delete --pubkey " + lookupPubkeyByCode("device list", deviceCode), noCascade: true},
+					// Delete devices first to release exchange references (devices→exchange).
+					// device1 can be deleted (user2 was deleted).
+					// device2 can't be deleted (user1 is banned and can't be deleted).
+					{name: "device_delete", cmd: cli + " device delete --pubkey " + lookupPubkeyByCode("device list", deviceCode)},
 					{name: "device_delete_2", cmd: cli + " device delete --pubkey " + lookupPubkeyByCode("device list", deviceCode2), noCascade: true},
 
-					// Delete exchange, contributor, and location (after all devices removed).
-					// Exchange must be deleted first to clear set-device references to contributor.
-					// Note: May fail if devices still exist (reference count > 0).
+					// Delete exchange, contributor, and location.
+					// Exchange can only be deleted after both devices are deleted (set-device references).
+					// Since device2 can't be deleted (user1 stuck), exchange_delete will fail.
 					{name: "exchange_delete", cmd: cli + " exchange delete --pubkey " + exchangeCode, noCascade: true},
 					{name: "contributor_delete", cmd: cli + " contributor delete --pubkey " + lookupPubkeyByCode("contributor list", contributorCode), noCascade: true},
 					{name: "location_delete", cmd: cli + " location delete --pubkey " + locationCode, noCascade: true},

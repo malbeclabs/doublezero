@@ -33,7 +33,6 @@ import (
 //   - Document WHY the incompatibility exists
 //   - Set the version to the first CLI version that IS compatible
 //   - Remove entries when min_compatible_version is bumped past them
-//
 var knownIncompatibilities = map[string]string{
 	// multicast_group_create: The MulticastGroupCreateArgs Borsh struct changed in v0.8.1.
 	// The index and bump_seed fields were removed. Older CLIs send the old format which
@@ -53,8 +52,8 @@ type compatEnvConfig struct {
 }
 
 var compatEnvConfigs = map[string]compatEnvConfig{
-	"devnet":      {OnchainAllocation: true},
-	"testnet":     {OnchainAllocation: true},
+	"devnet":       {OnchainAllocation: true},
+	"testnet":      {OnchainAllocation: true},
 	"mainnet-beta": {OnchainAllocation: false}, // Not yet enabled on mainnet
 }
 
@@ -99,6 +98,7 @@ func isKnownIncompatible(stepName, cliVersion string) bool {
 //   - DZ_COMPAT_CLONE_ENV: comma-separated environments to test (default: "testnet,mainnet-beta")
 //   - DZ_COMPAT_MIN_VERSION: override ProgramConfig.MinCompatVersion (e.g., "0.8.1")
 //   - DZ_COMPAT_MAX_NUM_VERSIONS: limit number of versions to test (0 = all, e.g., "2")
+//
 // compatStepResult tracks the result of a single step for a single version.
 type compatStepResult struct {
 	name   string
@@ -109,7 +109,7 @@ type compatStepResult struct {
 // compatEnvResults holds the compatibility matrix results for a single environment.
 type compatEnvResults struct {
 	env      string
-	versions []string                  // ordered list of versions tested
+	versions []string                      // ordered list of versions tested
 	matrix   map[string][]compatStepResult // version -> results
 	mu       sync.Mutex
 }
@@ -277,7 +277,7 @@ func TestE2E_BackwardCompatibility(t *testing.T) {
 
 func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *compatEnvResults) {
 	deployID := "dz-e2e-BackwardCompat-" + cloneEnv + "-" + random.ShortID()
-	log := logger.With("test", t.Name(), "deployID", deployID)
+	log := newTestLoggerForTest(t)
 
 	currentDir, err := os.Getwd()
 	require.NoError(t, err)
@@ -287,7 +287,7 @@ func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *
 	require.True(t, ok, "unknown environment %q (valid: mainnet-beta, testnet, devnet)", cloneEnv)
 	rpcURL, ok := serviceability.LedgerRPCURLs[cloneEnv]
 	require.True(t, ok, "no RPC URL for environment %q", cloneEnv)
-	log.Info("==> Cloning state from environment", "env", cloneEnv, "programID", programID)
+	log.Debug("==> Cloning state from environment", "env", cloneEnv, "programID", programID)
 
 	// Create the devnet. The manager keypair is auto-generated in New().
 	dn, err := devnet.New(devnet.DevnetSpec{
@@ -326,7 +326,7 @@ func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *
 	dn.Spec.Ledger.UpgradeAuthority = managerPubkey
 	dn.Spec.Ledger.PatchGlobalStateAuthority = managerPubkey
 
-	log.Info("==> Starting devnet with cloned state and upgraded program",
+	log.Debug("==> Starting devnet with cloned state and upgraded program",
 		"programID", programID,
 		"upgradeAuthority", managerPubkey,
 	)
@@ -358,7 +358,7 @@ func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *
 
 	// Initialize the smart contract. This creates ProgramConfig, GlobalState, and other
 	// PDA accounts that the upgraded program needs but may not exist on the cloned cluster yet.
-	log.Info("==> Initializing smart contract")
+	log.Debug("==> Initializing smart contract")
 	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero init"})
 	require.NoError(t, err)
 
@@ -367,10 +367,10 @@ func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *
 	require.NoError(t, err)
 	_, err = dn.Activator.StartIfNotRunning(t.Context())
 	require.NoError(t, err)
-	log.Info("--> Devnet started")
+	log.Debug("--> Devnet started")
 
 	// Read ProgramConfig to get min_compatible_version and current version.
-	log.Info("==> Reading ProgramConfig from ledger")
+	log.Debug("==> Reading ProgramConfig from ledger")
 
 	// The serviceability client needs to use the cloned program ID (not the local one)
 	// since we deployed to the cloned program address.
@@ -392,13 +392,13 @@ func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *
 		minVersion = pv
 	}
 
-	log.Info("--> ProgramConfig",
+	log.Debug("--> ProgramConfig",
 		"version", devnet.FormatProgramVersion(currentVersion),
 		"minCompatVersion", devnet.FormatProgramVersion(minVersion),
 	)
 
 	// Set up Cloudsmith repo in the manager container (needed for version enumeration and installs).
-	log.Info("==> Setting up Cloudsmith repo in manager container")
+	log.Debug("==> Setting up Cloudsmith repo in manager container")
 	managerExec := func(ctx context.Context, command []string) ([]byte, error) {
 		return dn.Manager.Exec(ctx, command)
 	}
@@ -440,7 +440,7 @@ func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *
 		}
 	}
 
-	log.Info("--> Compatible versions to test", "versions", compatVersions)
+	log.Debug("--> Compatible versions to test", "versions", compatVersions)
 
 	if len(compatVersions) == 0 {
 		t.Skip("no compatible versions found between min_compatible_version and current version")
@@ -451,7 +451,7 @@ func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *
 
 	// Install all old versions in the manager container.
 	for _, version := range compatVersions {
-		log.Info("==> Installing CLI version in manager", "version", version)
+		log.Debug("==> Installing CLI version in manager", "version", version)
 		err = devnet.InstallCLIVersion(t.Context(), managerExec, version)
 		require.NoError(t, err)
 	}
@@ -500,15 +500,15 @@ func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *
 					t.Run(rc.name, func(t *testing.T) {
 						t.Parallel()
 						stepKey := "read/" + rc.name
-						log.Info("==> Running manager read command", "command", rc.cmd)
+						log.Debug("==> Running manager read command", "command", rc.cmd)
 						output, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", rc.cmd})
 						if err == nil {
 							recordResult(version, stepKey, "PASS", "")
-							log.Info("--> Command succeeded", "command", rc.cmd)
+							log.Debug("--> Command succeeded", "command", rc.cmd)
 						} else if isKnownIncompatible(stepKey, version) {
 							// Known incompatibility - record but don't fail the test
 							recordResult(version, stepKey, "KNOWN_FAIL", string(output))
-							log.Info("--> Command failed (known incompatibility)", "command", rc.cmd)
+							log.Debug("--> Command failed (known incompatibility)", "command", rc.cmd)
 						} else {
 							// Unexpected failure - fail the test
 							assert.NoError(t, err, "command %q failed: %s", rc.cmd, string(output))
@@ -674,16 +674,16 @@ func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *
 							recordResult(version, "write/"+ws.name, "SKIP", "previous step failed")
 							t.Skip("skipped: previous write step failed")
 						}
-						log.Info("==> Running manager write command", "command", ws.cmd)
+						log.Debug("==> Running manager write command", "command", ws.cmd)
 						output, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", ws.cmd})
 						stepKey := "write/" + ws.name
 						if err == nil {
 							recordResult(version, stepKey, "PASS", "")
-							log.Info("--> Command succeeded", "command", ws.cmd)
+							log.Debug("--> Command succeeded", "command", ws.cmd)
 						} else if isKnownIncompatible(stepKey, version) {
 							// Known incompatibility - record but don't fail the test
 							recordResult(version, stepKey, "KNOWN_FAIL", string(output))
-							log.Info("--> Command failed (known incompatibility)", "command", ws.cmd)
+							log.Debug("--> Command failed (known incompatibility)", "command", ws.cmd)
 						} else {
 							// Unexpected failure - fail the test
 							assert.NoError(t, err, "command %q failed: %s", ws.cmd, string(output))

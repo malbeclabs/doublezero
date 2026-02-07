@@ -73,7 +73,7 @@ func TestE2E_IBRL_WithAllocatedIP(t *testing.T) {
 }
 
 func createMultipleIBRLUsersOnSameDeviceWithAllocatedIPs(t *testing.T, dn *TestDevnet, client *devnet.Client) {
-	dn.log.Info("==> Creating multiple IBRL users on a single device with allocated IP addresses")
+	dn.log.Debug("==> Creating multiple IBRL users on a single device with allocated IP addresses")
 
 	// Set access pass for the client.
 	_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip 1.2.3.4 --user-payer " + client.Pubkey})
@@ -100,7 +100,7 @@ func createMultipleIBRLUsersOnSameDeviceWithAllocatedIPs(t *testing.T, dn *TestD
 	`})
 	require.NoError(t, err)
 
-	dn.log.Info("--> Multiple IBRL users on a single device with allocated IP addresses created")
+	dn.log.Debug("--> Multiple IBRL users on a single device with allocated IP addresses created")
 }
 
 // checkIBRLWithAllocatedIPPostConnect checks requirements after connecting a user tunnel with an allocated IP.
@@ -109,7 +109,7 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 	// non-parallel test to ensure methods that follow this one wait for the inner tests to
 	// complete.
 	t.Run("check_post_connect", func(t *testing.T) {
-		dn.log.Info("==> Checking IBRL with allocated IP post-connect requirements")
+		dn.log.Debug("==> Checking IBRL with allocated IP post-connect requirements")
 
 		// Parse the dz_prefix to get the base IP and prefix length
 		// User IPs are allocated from the dz_prefix, not the public IP
@@ -122,7 +122,7 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 		expectedAllocatedClientIP, err := nextAllocatableIP(dzPrefixIP, allocatableBits, map[string]bool{dzPrefixIP: true})
 		require.NoError(t, err)
 
-		dn.log.Info("--> Expected allocated client IP", "expectedAllocatedClientIP", expectedAllocatedClientIP, "deviceCYOAIP", device.CYOANetworkIP, "dzPrefix", device.DZPrefix)
+		dn.log.Debug("--> Expected allocated client IP", "expectedAllocatedClientIP", expectedAllocatedClientIP, "deviceCYOAIP", device.CYOANetworkIP, "dzPrefix", device.DZPrefix)
 
 		if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
 			config, err := fixtures.Render("fixtures/ibrl_with_allocated_addr/doublezero_agent_config_user_added.tmpl", map[string]any{
@@ -297,7 +297,7 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 			t.Fail()
 		}
 
-		dn.log.Info("--> IBRL with allocated IP post-connect requirements checked")
+		dn.log.Debug("--> IBRL with allocated IP post-connect requirements checked")
 	})
 }
 
@@ -307,7 +307,7 @@ func checkIBRLWithAllocatedIPPostDisconnect(t *testing.T, dn *TestDevnet, device
 	// non-parallel test to ensure methods that follow this one wait for the inner tests to
 	// complete.
 	t.Run("check_post_disconnect", func(t *testing.T) {
-		dn.log.Info("==> Checking IBRL with allocated IP post-disconnect requirements")
+		dn.log.Debug("==> Checking IBRL with allocated IP post-disconnect requirements")
 
 		if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
 			config, err := fixtures.Render("fixtures/ibrl_with_allocated_addr/doublezero_agent_config_user_removed.tmpl", map[string]any{
@@ -409,6 +409,6 @@ func checkIBRLWithAllocatedIPPostDisconnect(t *testing.T, dn *TestDevnet, device
 			t.Fail()
 		}
 
-		dn.log.Info("--> IBRL with allocated IP post-disconnect requirements checked")
+		dn.log.Debug("--> IBRL with allocated IP post-disconnect requirements checked")
 	})
 }

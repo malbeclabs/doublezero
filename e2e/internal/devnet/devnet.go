@@ -208,9 +208,9 @@ func New(spec DevnetSpec, log *slog.Logger, dockerClient *client.Client, subnetA
 		}
 		spec.Manager.ManagerKeypairPath = managerKeypairPath
 		if generated {
-			log.Info("--> Generated manager keypair", "path", managerKeypairPath)
+			log.Debug("--> Generated manager keypair", "path", managerKeypairPath)
 		} else {
-			log.Info("--> Using existing manager keypair", "path", managerKeypairPath)
+			log.Debug("--> Using existing manager keypair", "path", managerKeypairPath)
 		}
 	}
 
@@ -229,9 +229,9 @@ func New(spec DevnetSpec, log *slog.Logger, dockerClient *client.Client, subnetA
 		}
 		spec.Manager.ServiceabilityProgramKeypairPath = serviceabilityProgramKeypairPath
 		if generated {
-			log.Info("--> Generated serviceability program keypair", "path", serviceabilityProgramKeypairPath)
+			log.Debug("--> Generated serviceability program keypair", "path", serviceabilityProgramKeypairPath)
 		} else {
-			log.Info("--> Using existing serviceability program keypair", "path", serviceabilityProgramKeypairPath)
+			log.Debug("--> Using existing serviceability program keypair", "path", serviceabilityProgramKeypairPath)
 		}
 	}
 
@@ -245,9 +245,9 @@ func New(spec DevnetSpec, log *slog.Logger, dockerClient *client.Client, subnetA
 		}
 		spec.Manager.TelemetryProgramKeypairPath = telemetryProgramKeypairPath
 		if generated {
-			log.Info("--> Generated telemetry program keypair", "path", telemetryProgramKeypairPath)
+			log.Debug("--> Generated telemetry program keypair", "path", telemetryProgramKeypairPath)
 		} else {
-			log.Info("--> Using existing telemetry program keypair", "path", telemetryProgramKeypairPath)
+			log.Debug("--> Using existing telemetry program keypair", "path", telemetryProgramKeypairPath)
 		}
 
 	}
@@ -494,9 +494,9 @@ func (d *Devnet) AddDevice(ctx context.Context, spec DeviceSpec) (*Device, error
 		}
 		spec.Telemetry.KeypairPath = telemetryKeypairPath
 		if generated {
-			d.log.Info("--> Generated telemetry keypair", "path", telemetryKeypairPath)
+			d.log.Debug("--> Generated telemetry keypair", "path", telemetryKeypairPath)
 		} else {
-			d.log.Info("--> Using existing telemetry keypair", "path", telemetryKeypairPath)
+			d.log.Debug("--> Using existing telemetry keypair", "path", telemetryKeypairPath)
 		}
 	}
 
@@ -887,7 +887,7 @@ func generateKeypairIfNotExists(keypairPath string) (bool, error) {
 }
 
 func (d *Devnet) CreateDeviceLoopbackInterface(ctx context.Context, deviceCode string, interfaceName string, loopbackType string) error {
-	d.log.Info("==> Creating loopback interface for device", "code", deviceCode)
+	d.log.Debug("==> Creating loopback interface for device", "code", deviceCode)
 	d.onchainWriteMutex.Lock()
 	defer d.onchainWriteMutex.Unlock()
 
@@ -900,7 +900,7 @@ func (d *Devnet) CreateDeviceLoopbackInterface(ctx context.Context, deviceCode s
 }
 
 func (d *Devnet) DeleteDeviceLoopbackInterface(ctx context.Context, deviceCode string, interfaceName string) error {
-	d.log.Info("==> Deleting loopback interface for device", "code", deviceCode)
+	d.log.Debug("==> Deleting loopback interface for device", "code", deviceCode)
 	d.onchainWriteMutex.Lock()
 	defer d.onchainWriteMutex.Unlock()
 

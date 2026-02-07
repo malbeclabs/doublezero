@@ -23,7 +23,7 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 	t.Parallel()
 
 	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
-	log := logger.With("test", t.Name(), "deployID", deployID)
+	log := newTestLoggerForTest(t)
 
 	// Use the hardcoded serviceability program keypair for this test, since the telemetry program
 	// is built with it as an expectation, and the initialize instruction will fail if the owner
@@ -53,7 +53,7 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 	la2DeviceAgentPrivateKey := solana.NewWallet().PrivateKey
 	ny5DeviceAgentPrivateKey := solana.NewWallet().PrivateKey
 
-	log.Info("==> Creating other devices and links onchain")
+	log.Debug("==> Creating other devices and links onchain")
 	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", `
 		set -euo pipefail
 
@@ -96,7 +96,7 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 	serviceabilityClient, err := dn.Ledger.GetServiceabilityClient()
 	require.NoError(t, err)
 
-	log.Info("==> Waiting for devices and links to be created onchain")
+	log.Debug("==> Waiting for devices and links to be created onchain")
 	require.Eventually(t, func() bool {
 		data, err := serviceabilityClient.GetProgramData(ctx)
 		require.NoError(t, err)
@@ -143,11 +143,11 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 		ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(30*time.Second))
 		defer cancel()
 		start := time.Now()
-		log.Info("==> Attempting to get device latency samples before initialized (should fail)")
+		log.Debug("==> Attempting to get device latency samples before initialized (should fail)")
 		deviceLatencySamples, err := la2AgentTelemetryClient.GetDeviceLatencySamples(ctx, la2DevicePK, ny5DevicePK, la2ToNy5LinkPK, epoch)
 		require.ErrorIs(t, err, telemetry.ErrAccountNotFound)
 		require.Nil(t, deviceLatencySamples)
-		log.Info("==> Got expected account not found error when getting device latency samples PDA", "error", err, "duration", time.Since(start))
+		log.Debug("==> Got expected account not found error when getting device latency samples PDA", "error", err, "duration", time.Since(start))
 	})
 
 	// Check that we get a not found error when trying to write samples before initialized.
@@ -155,7 +155,7 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 		ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(30*time.Second))
 		defer cancel()
 		start := time.Now()
-		log.Info("==> Attempting to write device latency samples before initialized (should fail)")
+		log.Debug("==> Attempting to write device latency samples before initialized (should fail)")
 		_, res, err := la2AgentTelemetryClient.WriteDeviceLatencySamples(ctx, telemetry.WriteDeviceLatencySamplesInstructionConfig{
 			AgentPK:                    la2DeviceAgentPrivateKey.PublicKey(),
 			OriginDevicePK:             la2DevicePK,
@@ -167,7 +167,7 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 		})
 		require.ErrorIs(t, err, telemetry.ErrAccountNotFound)
 		require.Nil(t, res)
-		log.Info("==> Got expected account not found error when writing device latency samples", "error", err, "duration", time.Since(start))
+		log.Debug("==> Got expected account not found error when writing device latency samples", "error", err, "duration", time.Since(start))
 	})
 
 	// Initialize device latency samples account.
@@ -175,7 +175,7 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 		ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(30*time.Second))
 		defer cancel()
 		start := time.Now()
-		log.Info("==> Initializing device latency samples")
+		log.Debug("==> Initializing device latency samples")
 		sig, res, err := la2AgentTelemetryClient.InitializeDeviceLatencySamples(ctx, telemetry.InitializeDeviceLatencySamplesInstructionConfig{
 			AgentPK:                      la2DeviceAgentPrivateKey.PublicKey(),
 			OriginDevicePK:               la2DevicePK,
@@ -189,7 +189,7 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 			log.Debug("solana log message", "msg", msg)
 		}
 		require.Nil(t, res.Meta.Err, "transaction failed: %+v", res.Meta.Err)
-		log.Info("==> Initialized device latency samples", "sig", sig, "tx", res, "duration", time.Since(start))
+		log.Debug("==> Initialized device latency samples", "sig", sig, "tx", res, "duration", time.Since(start))
 	})
 
 	// Get device latency samples from PDA and verify that it's initialized and has no samples.
@@ -197,10 +197,10 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 		ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(30*time.Second))
 		defer cancel()
 		start := time.Now()
-		log.Info("==> Getting device latency samples from PDA")
+		log.Debug("==> Getting device latency samples from PDA")
 		deviceLatencySamples, err := la2AgentTelemetryClient.GetDeviceLatencySamples(ctx, la2DevicePK, ny5DevicePK, la2ToNy5LinkPK, epoch)
 		require.NoError(t, err)
-		log.Info("==> Got device latency samples from PDA", "deviceLatencySamples", deviceLatencySamples, "duration", time.Since(start))
+		log.Debug("==> Got device latency samples from PDA", "deviceLatencySamples", deviceLatencySamples, "duration", time.Since(start))
 		require.Equal(t, telemetry.AccountTypeDeviceLatencySamples, deviceLatencySamples.AccountType)
 		require.Equal(t, epoch, deviceLatencySamples.Epoch)
 		require.Equal(t, la2DeviceAgentPrivateKey.PublicKey(), deviceLatencySamples.OriginDeviceAgentPK)
@@ -225,7 +225,7 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 		ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(30*time.Second))
 		defer cancel()
 		start := time.Now()
-		log.Info("==> Writing device latency samples")
+		log.Debug("==> Writing device latency samples")
 		sig, res, err := la2AgentTelemetryClient.WriteDeviceLatencySamples(ctx, telemetry.WriteDeviceLatencySamplesInstructionConfig{
 			AgentPK:                    la2DeviceAgentPrivateKey.PublicKey(),
 			OriginDevicePK:             la2DevicePK,
@@ -240,7 +240,7 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 			log.Debug("solana log message", "msg", msg)
 		}
 		require.Nil(t, res.Meta.Err, "transaction failed: %+v", res.Meta.Err)
-		log.Info("==> Wrote device latency samples", "sig", sig, "tx", res, "duration", time.Since(start))
+		log.Debug("==> Wrote device latency samples", "sig", sig, "tx", res, "duration", time.Since(start))
 	})
 
 	// Get device latency samples from PDA and verify that it's updated.
@@ -248,10 +248,10 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 		ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(30*time.Second))
 		defer cancel()
 		start := time.Now()
-		log.Info("==> Getting device latency samples from PDA")
+		log.Debug("==> Getting device latency samples from PDA")
 		deviceLatencySamples, err := la2AgentTelemetryClient.GetDeviceLatencySamples(ctx, la2DevicePK, ny5DevicePK, la2ToNy5LinkPK, epoch)
 		require.NoError(t, err)
-		log.Info("==> Got device latency samples from PDA", "deviceLatencySamples", deviceLatencySamples, "duration", time.Since(start))
+		log.Debug("==> Got device latency samples from PDA", "deviceLatencySamples", deviceLatencySamples, "duration", time.Since(start))
 		require.Equal(t, telemetry.AccountTypeDeviceLatencySamples, deviceLatencySamples.AccountType)
 		require.Equal(t, epoch, deviceLatencySamples.Epoch)
 		require.Equal(t, la2DeviceAgentPrivateKey.PublicKey(), deviceLatencySamples.OriginDeviceAgentPK)
@@ -268,7 +268,7 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 	t.Run("try to initialize device latency samples again", func(t *testing.T) {
 		ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(30*time.Second))
 		defer cancel()
-		log.Info("==> Attempting to initialize device latency samples again (should fail)")
+		log.Debug("==> Attempting to initialize device latency samples again (should fail)")
 		_, res, err := la2AgentTelemetryClient.InitializeDeviceLatencySamples(ctx, telemetry.InitializeDeviceLatencySamplesInstructionConfig{
 			AgentPK:                      la2DeviceAgentPrivateKey.PublicKey(),
 			OriginDevicePK:               la2DevicePK,
@@ -299,7 +299,7 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 		ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(30*time.Second))
 		defer cancel()
 		start := time.Now()
-		log.Info("==> Writing more device latency samples")
+		log.Debug("==> Writing more device latency samples")
 		sig, res, err := la2AgentTelemetryClient.WriteDeviceLatencySamples(ctx, telemetry.WriteDeviceLatencySamplesInstructionConfig{
 			AgentPK:                    la2DeviceAgentPrivateKey.PublicKey(),
 			OriginDevicePK:             la2DevicePK,
@@ -314,7 +314,7 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 			log.Debug("solana log message", "msg", msg)
 		}
 		require.Nil(t, res.Meta.Err, "transaction failed: %+v", res.Meta.Err)
-		log.Info("==> Wrote more device latency samples", "sig", sig, "tx", res, "duration", time.Since(start))
+		log.Debug("==> Wrote more device latency samples", "sig", sig, "tx", res, "duration", time.Since(start))
 	})
 
 	// Get device latency samples from PDA and verify that it's updated.
@@ -322,10 +322,10 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 		ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(30*time.Second))
 		defer cancel()
 		start := time.Now()
-		log.Info("==> Getting device latency samples from PDA")
+		log.Debug("==> Getting device latency samples from PDA")
 		deviceLatencySamples, err := la2AgentTelemetryClient.GetDeviceLatencySamples(ctx, la2DevicePK, ny5DevicePK, la2ToNy5LinkPK, epoch)
 		require.NoError(t, err)
-		log.Info("==> Got device latency samples from PDA", "deviceLatencySamples", deviceLatencySamples, "duration", time.Since(start))
+		log.Debug("==> Got device latency samples from PDA", "deviceLatencySamples", deviceLatencySamples, "duration", time.Since(start))
 		require.Equal(t, telemetry.AccountTypeDeviceLatencySamples, deviceLatencySamples.AccountType)
 		require.Equal(t, epoch, deviceLatencySamples.Epoch)
 		require.Equal(t, la2DeviceAgentPrivateKey.PublicKey(), deviceLatencySamples.OriginDeviceAgentPK)
@@ -343,7 +343,7 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 		ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(30*time.Second))
 		defer cancel()
 		start := time.Now()
-		log.Info("==> Writing largest possible batch of samples per transaction")
+		log.Debug("==> Writing largest possible batch of samples per transaction")
 		sig, res, err := la2AgentTelemetryClient.WriteDeviceLatencySamples(ctx, telemetry.WriteDeviceLatencySamplesInstructionConfig{
 			AgentPK:                    la2DeviceAgentPrivateKey.PublicKey(),
 			OriginDevicePK:             la2DevicePK,
@@ -358,13 +358,13 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 			log.Debug("solana log message", "msg", msg)
 		}
 		require.Nil(t, res.Meta.Err, "transaction failed: %+v", res.Meta.Err)
-		log.Info("==> Wrote largest possible batch of samples per transaction", "sig", sig, "tx", res, "duration", time.Since(start))
+		log.Debug("==> Wrote largest possible batch of samples per transaction", "sig", sig, "tx", res, "duration", time.Since(start))
 	})
 
 	t.Run("write largest possible batch of samples per transaction +1 (should fail)", func(t *testing.T) {
 		ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(30*time.Second))
 		defer cancel()
-		log.Info("==> Writing largest possible batch of samples per transaction +1 (should fail)")
+		log.Debug("==> Writing largest possible batch of samples per transaction +1 (should fail)")
 		_, _, err := la2AgentTelemetryClient.WriteDeviceLatencySamples(ctx, telemetry.WriteDeviceLatencySamplesInstructionConfig{
 			AgentPK:                    la2DeviceAgentPrivateKey.PublicKey(),
 			OriginDevicePK:             la2DevicePK,

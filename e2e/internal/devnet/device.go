@@ -220,7 +220,7 @@ func (d *Device) StartIfNotRunning(ctx context.Context) (bool, error) {
 
 		// Check if the container is running.
 		if container.State.Running {
-			d.log.Info("--> Device already running", "container", shortContainerID(container.ID))
+			d.log.Debug("--> Device already running", "container", shortContainerID(container.ID))
 
 			// Set the component's state.
 			err = d.setState(ctx, container.ID)
@@ -261,7 +261,7 @@ func (d *Device) StartIfNotRunning(ctx context.Context) (bool, error) {
 // network attached, then attach the CYOA network to the container.
 func (d *Device) Start(ctx context.Context) error {
 	spec := d.Spec
-	d.log.Info("==> Starting device", "image", spec.ContainerImage, "code", spec.Code, "cyoaNetworkIPHostID", spec.CYOANetworkIPHostID)
+	d.log.Debug("==> Starting device", "image", spec.ContainerImage, "code", spec.Code, "cyoaNetworkIPHostID", spec.CYOANetworkIPHostID)
 
 	ip, err := netutil.DeriveIPFromCIDR(d.dn.CYOANetwork.SubnetCIDR, uint32(spec.CYOANetworkIPHostID))
 	if err != nil {
@@ -319,10 +319,10 @@ func (d *Device) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to create device %s onchain: %w", spec.Code, err)
 	}
-	d.log.Info("--> Created device onchain", "code", spec.Code, "cyoaNetworkIP", cyoaNetworkIP, "dzPrefix", dzPrefix, "devicePK", devicePK)
+	d.log.Debug("--> Created device onchain", "code", spec.Code, "cyoaNetworkIP", cyoaNetworkIP, "dzPrefix", dzPrefix, "devicePK", devicePK)
 
 	// MaxUserTunnelSlots is now a constant from config package
-	d.log.Info("--> Using MaxUserTunnelSlots constant", "maxUsers", controllerconfig.MaxUserTunnelSlots)
+	d.log.Debug("--> Using MaxUserTunnelSlots constant", "maxUsers", controllerconfig.MaxUserTunnelSlots)
 
 	// Create interfaces onchain.
 	for name, ifaceType := range spec.Interfaces {
@@ -331,7 +331,7 @@ func (d *Device) Start(ctx context.Context) error {
 		}, docker.NoPrintOnError())
 		if err != nil {
 			if strings.Contains(string(out), "already exists") {
-				d.log.Info("--> Interface already exists onchain", "code", spec.Code, "name", name, "ifaceType", ifaceType)
+				d.log.Debug("--> Interface already exists onchain", "code", spec.Code, "name", name, "ifaceType", ifaceType)
 				continue
 			}
 			fmt.Println(string(out))
@@ -364,7 +364,7 @@ func (d *Device) Start(ctx context.Context) error {
 			return fmt.Errorf("failed to wait for interface %s to exist onchain: %w", name, err)
 		}
 
-		d.log.Info("--> Created interface onchain", "code", spec.Code, "name", name, "ifaceType", ifaceType)
+		d.log.Debug("--> Created interface onchain", "code", spec.Code, "name", name, "ifaceType", ifaceType)
 	}
 
 	// Create loopback interfaces onchain.
@@ -372,7 +372,7 @@ func (d *Device) Start(ctx context.Context) error {
 		out, err := d.dn.Manager.Exec(ctx, []string{"doublezero", "device", "interface", "create", spec.Code, name, "--loopback-type", loopbackType}, docker.NoPrintOnError())
 		if err != nil {
 			if strings.Contains(string(out), "already exists") {
-				d.log.Info("--> Loopback interface already exists onchain", "code", spec.Code, "name", name, "loopbackType", loopbackType)
+				d.log.Debug("--> Loopback interface already exists onchain", "code", spec.Code, "name", name, "loopbackType", loopbackType)
 				continue
 			}
 			fmt.Println(string(out))
@@ -405,7 +405,7 @@ func (d *Device) Start(ctx context.Context) error {
 			return fmt.Errorf("failed to wait for loopback interface %s to exist onchain: %w", name, err)
 		}
 
-		d.log.Info("--> Created loopback interface onchain", "code", spec.Code, "name", name, "loopbackType", loopbackType)
+		d.log.Debug("--> Created loopback interface onchain", "code", spec.Code, "name", name, "loopbackType", loopbackType)
 	}
 
 	controllerAddr := net.JoinHostPort(d.dn.Controller.DefaultNetworkIP, fmt.Sprintf("%d", internalControllerPort))
@@ -551,7 +551,7 @@ func (d *Device) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to execute template: %w", err)
 	}
 	containerConfigPath := "/etc/doublezero/agent/startup-config"
-	d.log.Info("==> Writing device config", "path", containerConfigPath)
+	d.log.Debug("==> Writing device config", "path", containerConfigPath)
 	err = container.CopyToContainer(ctx, configContents.Bytes(), containerConfigPath, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to write device config file: %w", err)
@@ -577,17 +577,17 @@ func (d *Device) Start(ctx context.Context) error {
 	}
 
 	// Wait for the device container to have status healthy.
-	d.log.Info("--> Waiting for device container to be healthy", "container", shortContainerID(containerID), "name", container.Name)
+	d.log.Debug("--> Waiting for device container to be healthy", "container", shortContainerID(containerID), "name", container.Name)
 	start := time.Now()
 	err = d.dn.waitContainerHealthy(ctx, containerID, 300*time.Second, 2*time.Second)
 	if err != nil {
 		return fmt.Errorf("failed to wait for device container to be healthy: %w", err)
 	}
-	d.log.Info("--> Device container is healthy", "container", shortContainerID(containerID), "cyoaNetworkIP", cyoaNetworkIP, "defaultNetworkIP", defaultNetworkIP, "name", container.Name, "duration", time.Since(start))
+	d.log.Debug("--> Device container is healthy", "container", shortContainerID(containerID), "cyoaNetworkIP", cyoaNetworkIP, "defaultNetworkIP", defaultNetworkIP, "name", container.Name, "duration", time.Since(start))
 
 	// Configure InfluxDB telemetry via EOS `monitor telemetry influx` command.
 	if d.dn.InfluxDB != nil && d.dn.InfluxDB.InternalURL != "" {
-		d.log.Info("--> Configuring InfluxDB telemetry", "url", d.dn.InfluxDB.InternalURL)
+		d.log.Debug("--> Configuring InfluxDB telemetry", "url", d.dn.InfluxDB.InternalURL)
 
 		// Configure EOS monitor telemetry influx destination.
 		// Note: Not using vrf management - the default VRF should have connectivity
@@ -610,7 +610,7 @@ write memory
 		if err != nil {
 			return fmt.Errorf("failed to configure InfluxDB telemetry: %w", err)
 		}
-		d.log.Info("--> InfluxDB telemetry configured")
+		d.log.Debug("--> InfluxDB telemetry configured")
 	}
 
 	// Set the component's state.
@@ -619,7 +619,7 @@ write memory
 		return fmt.Errorf("failed to set device state: %w", err)
 	}
 
-	d.log.Info("--> Device started", "container", d.ContainerID, "cyoaNetworkIP", cyoaNetworkIP, "defaultNetworkIP", defaultNetworkIP, "devicePK", devicePK)
+	d.log.Debug("--> Device started", "container", d.ContainerID, "cyoaNetworkIP", cyoaNetworkIP, "defaultNetworkIP", defaultNetworkIP, "devicePK", devicePK)
 	return nil
 }
 
@@ -686,7 +686,7 @@ func (d *Device) setState(ctx context.Context, containerID string) error {
 	d.CYOANetworkIP = ip
 
 	// MaxUserTunnelSlots is now a constant from config package
-	d.log.Info("--> Using MaxUserTunnelSlots constant", "maxUsers", controllerconfig.MaxUserTunnelSlots)
+	d.log.Debug("--> Using MaxUserTunnelSlots constant", "maxUsers", controllerconfig.MaxUserTunnelSlots)
 
 	return nil
 }

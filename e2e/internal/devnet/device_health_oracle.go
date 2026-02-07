@@ -74,7 +74,7 @@ func (d *DeviceHealthOracle) StartIfNotRunning(ctx context.Context) (bool, error
 		}
 
 		if container.State.Running {
-			d.log.Info("--> DeviceHealthOracle already running", "container", shortContainerID(container.ID))
+			d.log.Debug("--> DeviceHealthOracle already running", "container", shortContainerID(container.ID))
 
 			err = d.setState(container.ID)
 			if err != nil {
@@ -101,7 +101,7 @@ func (d *DeviceHealthOracle) StartIfNotRunning(ctx context.Context) (bool, error
 }
 
 func (d *DeviceHealthOracle) Start(ctx context.Context) error {
-	d.log.Info("==> Starting device-health-oracle", "image", d.dn.Spec.DeviceHealthOracle.ContainerImage)
+	d.log.Debug("==> Starting device-health-oracle", "image", d.dn.Spec.DeviceHealthOracle.ContainerImage)
 
 	env := map[string]string{
 		"DZ_LEDGER_URL":                d.dn.Ledger.InternalRPCURL,
@@ -144,7 +144,7 @@ func (d *DeviceHealthOracle) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to set device-health-oracle state: %w", err)
 	}
 
-	d.log.Info("--> DeviceHealthOracle started", "container", d.ContainerID)
+	d.log.Debug("--> DeviceHealthOracle started", "container", d.ContainerID)
 	return nil
 }
 

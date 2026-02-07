@@ -167,6 +167,11 @@ func TestE2E_Funder(t *testing.T) {
 	log.Debug("--> Draining funder account balance", "account", funderPK)
 	drainFunds(t, rpcClient, funderPrivateKey, drainWallet.PublicKey(), 0.01)
 
+	// Also drain a recipient so the funder will try to fund it and fail.
+	// Without this, the funder has no work to do and won't report the error.
+	log.Debug("--> Draining LA device balance to trigger funder attempt", "account", laDeviceMetricsPublisherWallet.PublicKey())
+	drainFunds(t, rpcClient, laDeviceMetricsPublisherWallet.PrivateKey, drainWallet.PublicKey(), 0.001)
+
 	// Check that the errors metric for "funder_account_balance_below_minimum" eventually increases,
 	// which occurs when the funder account balance is drained to below the minimum.
 	require.Eventually(t, func() bool {

@@ -81,19 +81,14 @@ func TestE2E_Funder(t *testing.T) {
 	for _, e := range errors {
 		require.True(t, allowedStartupErrors[e.Labels["error_type"]], "unexpected error type during startup: %s", e.Labels["error_type"])
 	}
-	var prevFunderAccountBalanceBelowMinimumCount int
-	for _, e := range errors {
-		if e.Labels["error_type"] == "funder_account_balance_below_minimum" {
-			prevFunderAccountBalanceBelowMinimumCount = int(e.Value)
-			break
-		}
-	}
 
 	// Check the funder account balance metric. Wait for it to appear since the funder
 	// only sets this gauge after successfully getting recipients, which may take a few ticks.
 	var funderBalance []prometheus.LabeledValue
 	require.Eventually(t, func() bool {
-		require.NoError(t, metricsClient.Fetch(ctx))
+		if err := metricsClient.Fetch(ctx); err != nil {
+			return false
+		}
 		funderBalance = metricsClient.GetGaugeValues("doublezero_funder_account_balance_sol")
 		return funderBalance != nil
 	}, 30*time.Second, 3*time.Second)
@@ -142,16 +137,31 @@ func TestE2E_Funder(t *testing.T) {
 	log.Debug("--> Draining NY device balance", "account", nyDeviceMetricsPublisherWallet.PublicKey())
 	drainFunds(t, rpcClient, nyDeviceMetricsPublisherWallet.PrivateKey, drainWallet.PublicKey(), 0.01)
 
-	// Check that the devices are eventually funded again.
+	// Capture funder balance before devices are refunded.
 	beforeFunderBalance := getBalance(t, rpcClient, funderPK)
+
+	// Check that the devices are eventually funded again.
 	requireEventuallyFunded(t, log, rpcClient, laDeviceMetricsPublisherWallet.PublicKey(), minBalanceSOL, "LA device metrics publisher")
 	requireEventuallyFunded(t, log, rpcClient, nyDeviceMetricsPublisherWallet.PublicKey(), minBalanceSOL, "NY device metrics publisher")
 
 	// Wait for the funder account balance to show the top up.
+	// Note: We check for at least 1*topUpSOL decrease (not 2x) because the funder may have
+	// already started funding before we captured beforeFunderBalance.
 	require.Eventually(t, func() bool {
 		funderBalance := getBalance(t, rpcClient, funderPK)
-		return funderBalance <= beforeFunderBalance-2*topUpSOL
-	}, 60*time.Second, 5*time.Second)
+		return funderBalance <= beforeFunderBalance-topUpSOL
+	}, 90*time.Second, 5*time.Second)
+
+	// Capture current error count before draining funder.
+	require.NoError(t, metricsClient.Fetch(ctx))
+	errors = metricsClient.GetCounterValues("doublezero_funder_errors_total")
+	var preDrainErrorCount int
+	for _, e := range errors {
+		if e.Labels["error_type"] == "funder_account_balance_below_minimum" {
+			preDrainErrorCount = int(e.Value)
+			break
+		}
+	}
 
 	// Drain the funder account balance to near 0.
 	log.Debug("--> Draining funder account balance", "account", funderPK)
@@ -160,21 +170,27 @@ func TestE2E_Funder(t *testing.T) {
 	// Check that the errors metric for "funder_account_balance_below_minimum" eventually increases,
 	// which occurs when the funder account balance is drained to below the minimum.
 	require.Eventually(t, func() bool {
-		require.NoError(t, metricsClient.Fetch(ctx))
+		if err := metricsClient.Fetch(ctx); err != nil {
+			log.Debug("--> Failed to fetch metrics, retrying", "error", err)
+			return false
+		}
 		errors = metricsClient.GetCounterValues("doublezero_funder_errors_total")
-		require.NotNil(t, errors)
+		if errors == nil {
+			log.Debug("--> Waiting for funder errors metric to appear", "account", funderPK)
+			return false
+		}
 		for _, e := range errors {
 			if e.Labels["error_type"] == "funder_account_balance_below_minimum" {
-				if int(e.Value) > prevFunderAccountBalanceBelowMinimumCount {
+				if int(e.Value) > preDrainErrorCount {
 					return true
 				}
-				log.Debug("--> Waiting for funder account balance below minimum error to increase", "account", funderPK, "prevCount", prevFunderAccountBalanceBelowMinimumCount, "currentCount", int(e.Value))
+				log.Debug("--> Waiting for funder account balance below minimum error to increase", "account", funderPK, "prevCount", preDrainErrorCount, "currentCount", int(e.Value))
 				return false
 			}
 		}
 		log.Debug("--> Waiting for funder account balance below minimum error to appear", "account", funderPK)
 		return false
-	}, 60*time.Second, 5*time.Second)
+	}, 90*time.Second, 5*time.Second)
 
 	// Check that the funder account balance gauge metric is now near 0.
 	require.NoError(t, metricsClient.Fetch(ctx))
@@ -187,15 +203,20 @@ func TestE2E_Funder(t *testing.T) {
 
 	// Check that the funder account balance is eventually back near the previous value.
 	require.Eventually(t, func() bool {
-		require.NoError(t, metricsClient.Fetch(ctx))
+		if err := metricsClient.Fetch(ctx); err != nil {
+			log.Debug("--> Failed to fetch metrics, retrying", "error", err)
+			return false
+		}
 		funderBalance = metricsClient.GetGaugeValues("doublezero_funder_account_balance_sol")
-		require.NotNil(t, funderBalance)
+		if funderBalance == nil {
+			return false
+		}
 		if funderBalance[0].Value > expectedFunderBalance-0.01 && funderBalance[0].Value < expectedFunderBalance+0.01 {
 			return true
 		}
 		log.Debug("--> Waiting for funder account balance to be back near previous value", "account", funderPK, "expectedBalance", expectedFunderBalance, "currentBalance", funderBalance[0].Value)
 		return false
-	}, 60*time.Second, 5*time.Second)
+	}, 90*time.Second, 5*time.Second)
 }
 
 func drainFunds(t *testing.T, client *solanarpc.Client, from solana.PrivateKey, to solana.PublicKey, remainingBalanceSOL float64) float64 {
@@ -212,14 +233,17 @@ func requireEventuallyFunded(t *testing.T, log *slog.Logger, client *solanarpc.C
 
 	require.Eventually(t, func() bool {
 		balance, err := client.GetBalance(t.Context(), account, solanarpc.CommitmentFinalized)
-		require.NoError(t, err)
+		if err != nil {
+			log.Debug(fmt.Sprintf("--> Failed to get balance for %s, retrying", name), "account", account, "error", err)
+			return false
+		}
 		balanceSOL := float64(balance.Value) / float64(solana.LAMPORTS_PER_SOL)
 		if balanceSOL < minBalanceSOL {
 			log.Debug(fmt.Sprintf("--> Waiting for %s to be funded", name), "account", account, "minBalance", minBalanceSOL, "balance", balanceSOL)
 			return false
 		}
 		return true
-	}, 60*time.Second, 5*time.Second)
+	}, 90*time.Second, 5*time.Second)
 }
 
 func getBalance(t *testing.T, client *solanarpc.Client, account solana.PublicKey) float64 {

@@ -1,6 +1,9 @@
 use crate::{
-    activator_metrics::record_device_ip_metrics, idallocator::IDAllocator,
-    ipblockallocator::IPBlockAllocator, processor::DeviceMap, states::devicestate::DeviceState,
+    activator_metrics::record_device_ip_metrics,
+    idallocator::IDAllocator,
+    ipblockallocator::IPBlockAllocator,
+    processor::{DeviceMap, DeviceMapStateless},
+    states::devicestate::{DeviceState, DeviceStateStateless},
 };
 use doublezero_program_common::types::NetworkV4;
 use doublezero_sdk::{
@@ -32,7 +35,6 @@ pub fn process_user_event(
     user: &User,
     locations: &HashMap<Pubkey, Location>,
     exchanges: &HashMap<Pubkey, Exchange>,
-    use_onchain_allocation: bool,
 ) {
     match user.status {
         // Create User
@@ -141,25 +143,16 @@ pub fn process_user_event(
             // Activate the user
             let res = ActivateUserCommand {
                 user_pubkey: *pubkey,
-                tunnel_id: if use_onchain_allocation { 0 } else { tunnel_id },
-                tunnel_net: if use_onchain_allocation {
-                    NetworkV4::default()
-                } else {
-                    tunnel_net.into()
-                },
+                tunnel_id,
+                tunnel_net: tunnel_net.into(),
                 dz_ip,
-                use_onchain_allocation,
+                use_onchain_allocation: false,
             }
             .execute(client);
 
             match res {
                 Ok(signature) => {
-                    let suffix = if use_onchain_allocation {
-                        " (on-chain)"
-                    } else {
-                        ""
-                    };
-                    write!(&mut log_msg, " Activated{suffix}   {signature}").unwrap();
+                    write!(&mut log_msg, " Activated   {signature}").unwrap();
                     metrics::counter!(
                         "doublezero_activator_state_transition",
                         "state_transition" => "user-pending-to-activated",
@@ -244,17 +237,12 @@ pub fn process_user_event(
                 tunnel_id: user.tunnel_id,
                 tunnel_net: user.tunnel_net,
                 dz_ip,
-                use_onchain_allocation,
+                use_onchain_allocation: false,
             }
             .execute(client);
             match res {
                 Ok(signature) => {
-                    let suffix = if use_onchain_allocation {
-                        " (on-chain)"
-                    } else {
-                        ""
-                    };
-                    write!(&mut log_msg, "Reactivated{suffix}   {signature}").unwrap();
+                    write!(&mut log_msg, "Reactivated   {signature}").unwrap();
                     metrics::counter!(
                         "doublezero_activator_state_transition",
                         "state_transition" => "user-updating-to-activated",
@@ -293,25 +281,19 @@ pub fn process_user_event(
                 if user.status == UserStatus::Deleting {
                     let res = CloseAccountUserCommand {
                         pubkey: *pubkey,
-                        use_onchain_deallocation: use_onchain_allocation,
+                        use_onchain_deallocation: false,
                     }
                     .execute(client);
 
                     match res {
                         Ok(signature) => {
-                            if use_onchain_allocation {
-                                write!(&mut log_msg, " Deactivated (on-chain) {signature}")
-                                    .unwrap();
-                                // On-chain deallocation: smart contract handles releasing resources
-                            } else {
-                                write!(&mut log_msg, " Deactivated {signature}").unwrap();
-                                // Off-chain: activator tracks local allocations
-                                if user.tunnel_id != 0 {
-                                    link_ids.unassign(user.tunnel_id);
-                                }
-                                if user.tunnel_net != NetworkV4::default() {
-                                    user_tunnel_ips.unassign_block(user.tunnel_net.into());
-                                }
+                            write!(&mut log_msg, " Deactivated {signature}").unwrap();
+                            // Off-chain: activator tracks local allocations
+                            if user.tunnel_id != 0 {
+                                link_ids.unassign(user.tunnel_id);
+                            }
+                            if user.tunnel_net != NetworkV4::default() {
+                                user_tunnel_ips.unassign_block(user.tunnel_net.into());
                             }
                             if user.dz_ip != Ipv4Addr::UNSPECIFIED {
                                 device_state.release(user.dz_ip, user.tunnel_id).unwrap();
@@ -362,6 +344,275 @@ pub fn process_user_event(
         }
         _ => {}
     }
+}
+
+/// Stateless variant of process_user_event for onchain allocation mode.
+/// Does not use any local allocators - all allocation is handled by the smart contract.
+pub fn process_user_event_stateless(
+    client: &dyn DoubleZeroClient,
+    pubkey: &Pubkey,
+    devices: &mut DeviceMapStateless,
+    user: &User,
+    locations: &HashMap<Pubkey, Location>,
+    exchanges: &HashMap<Pubkey, Exchange>,
+) {
+    match user.status {
+        UserStatus::Pending => {
+            let mut log_msg = String::new();
+            write!(
+                &mut log_msg,
+                "Event:User(Pending) {} ({}) ",
+                pubkey, user.client_ip
+            )
+            .unwrap();
+
+            let device_state =
+                match get_or_insert_device_state_stateless(client, pubkey, devices, user) {
+                    Some(ds) => ds,
+                    None => {
+                        // In onchain mode, we don't reject - the transaction will fail if resources unavailable
+                        write!(&mut log_msg, " Error: Device not found, skipping").unwrap();
+                        info!("{log_msg}");
+                        return;
+                    }
+                };
+
+            write!(&mut log_msg, " for: {}", device_state.device.code).unwrap();
+
+            // Determine if user needs a dz_ip
+            let need_dz_ip = match user.user_type {
+                UserType::IBRLWithAllocatedIP | UserType::EdgeFiltering => true,
+                UserType::IBRL => false,
+                UserType::Multicast => !user.publishers.is_empty(),
+            };
+
+            // For stateless mode, pass UNSPECIFIED or client_ip based on need
+            let dz_ip = if need_dz_ip {
+                Ipv4Addr::UNSPECIFIED
+            } else {
+                user.client_ip
+            };
+
+            write!(&mut log_msg, " tunnel_id: 0 dz_ip: {} (onchain) ", &dz_ip).unwrap();
+
+            // Activate the user with zeros - onchain will allocate
+            let res = ActivateUserCommand {
+                user_pubkey: *pubkey,
+                tunnel_id: 0,
+                tunnel_net: NetworkV4::default(),
+                dz_ip,
+                use_onchain_allocation: true,
+            }
+            .execute(client);
+
+            match res {
+                Ok(signature) => {
+                    write!(&mut log_msg, " Activated (onchain) {signature}").unwrap();
+                    metrics::counter!(
+                        "doublezero_activator_state_transition",
+                        "state_transition" => "user-pending-to-activated",
+                        "user-pubkey" => pubkey.to_string(),
+                    )
+                    .increment(1);
+                    record_device_ip_metrics_stateless(
+                        &user.device_pk,
+                        device_state,
+                        locations,
+                        exchanges,
+                    );
+                }
+                Err(e) => {
+                    log_error_ignore_invalid_status(&mut log_msg, e);
+                }
+            }
+
+            info!("{log_msg}");
+        }
+        UserStatus::Updating => {
+            let mut log_msg = String::new();
+
+            write!(
+                &mut log_msg,
+                "Event:User(Updating) {} ({}) ",
+                pubkey, user.client_ip
+            )
+            .unwrap();
+
+            let device_state =
+                match get_or_insert_device_state_stateless(client, pubkey, devices, user) {
+                    Some(ds) => ds,
+                    None => return,
+                };
+
+            write!(
+                &mut log_msg,
+                " Activating User: {}, for: {}",
+                &user.client_ip, device_state.device.code
+            )
+            .unwrap();
+
+            let need_dz_ip = match user.user_type {
+                UserType::IBRLWithAllocatedIP | UserType::EdgeFiltering => true,
+                UserType::IBRL => false,
+                UserType::Multicast => !user.publishers.is_empty(),
+            };
+
+            // For Updating, if user already has a dz_ip, reuse it; otherwise pass UNSPECIFIED for onchain allocation
+            let dz_ip = if need_dz_ip && user.dz_ip == user.client_ip {
+                Ipv4Addr::UNSPECIFIED
+            } else {
+                user.dz_ip
+            };
+
+            write!(
+                &mut log_msg,
+                " tunnel_net: {} tunnel_id: {} dz_ip: {} ",
+                &user.tunnel_net, user.tunnel_id, &dz_ip
+            )
+            .unwrap();
+
+            // Activate the user - use existing tunnel values from the account
+            let res = ActivateUserCommand {
+                user_pubkey: *pubkey,
+                tunnel_id: user.tunnel_id,
+                tunnel_net: user.tunnel_net,
+                dz_ip,
+                use_onchain_allocation: true,
+            }
+            .execute(client);
+
+            match res {
+                Ok(signature) => {
+                    write!(&mut log_msg, "Reactivated (onchain) {signature}").unwrap();
+                    metrics::counter!(
+                        "doublezero_activator_state_transition",
+                        "state_transition" => "user-updating-to-activated",
+                        "user-pubkey" => pubkey.to_string(),
+                    )
+                    .increment(1);
+                    record_device_ip_metrics_stateless(
+                        &user.device_pk,
+                        device_state,
+                        locations,
+                        exchanges,
+                    );
+                }
+                Err(e) => {
+                    log_error_ignore_invalid_status(&mut log_msg, e);
+                }
+            }
+
+            info!("{log_msg}");
+        }
+        UserStatus::Deleting | UserStatus::PendingBan => {
+            let mut log_msg = String::new();
+
+            write!(
+                &mut log_msg,
+                "Event:User(Deleting) {} ({}) ",
+                pubkey, user.client_ip
+            )
+            .unwrap();
+
+            if let Some(device_state) = devices.get_mut(&user.device_pk) {
+                write!(
+                    &mut log_msg,
+                    "for {} tunnel_net: {} tunnel_id: {} dz_ip: {}",
+                    device_state.device.code, &user.tunnel_net, user.tunnel_id, &user.dz_ip
+                )
+                .unwrap();
+
+                if user.status == UserStatus::Deleting {
+                    let res = CloseAccountUserCommand {
+                        pubkey: *pubkey,
+                        use_onchain_deallocation: true,
+                    }
+                    .execute(client);
+
+                    match res {
+                        Ok(signature) => {
+                            write!(&mut log_msg, " Deactivated (onchain) {signature}").unwrap();
+                            // No local deallocation needed - onchain handles it
+
+                            metrics::counter!(
+                                "doublezero_activator_state_transition",
+                                "state_transition" => "user-deleting-to-deactivated",
+                                "user-pubkey" => pubkey.to_string(),
+                            )
+                            .increment(1);
+                        }
+                        Err(e) => warn!("Error: {e}"),
+                    }
+                } else if user.status == UserStatus::PendingBan {
+                    let res = BanUserCommand { pubkey: *pubkey }.execute(client);
+
+                    match res {
+                        Ok(signature) => {
+                            write!(&mut log_msg, " Banned (onchain) {signature}").unwrap();
+                            // No local deallocation needed - onchain handles it
+
+                            metrics::counter!(
+                                "doublezero_activator_state_transition",
+                                "state_transition" => "user-pending-ban-to-banned",
+                                "user-pubkey" => pubkey.to_string(),
+                            )
+                            .increment(1);
+                        }
+                        Err(e) => {
+                            write!(&mut log_msg, "Error {e}").unwrap();
+                        }
+                    }
+                }
+                record_device_ip_metrics_stateless(
+                    &user.device_pk,
+                    device_state,
+                    locations,
+                    exchanges,
+                );
+            }
+
+            info!("{log_msg}");
+        }
+        _ => {}
+    }
+}
+
+fn get_or_insert_device_state_stateless<'a>(
+    client: &dyn DoubleZeroClient,
+    _pubkey: &Pubkey,
+    devices: &'a mut DeviceMapStateless,
+    user: &User,
+) -> Option<&'a mut DeviceStateStateless> {
+    match devices.entry(user.device_pk) {
+        Entry::Occupied(entry) => Some(entry.into_mut()),
+        Entry::Vacant(entry) => {
+            let res = GetDeviceCommand {
+                pubkey_or_code: user.device_pk.to_string(),
+            }
+            .execute(client);
+
+            match res {
+                Ok((_, device)) => {
+                    info!(
+                        "Add Device: {} public_ip: {} dz_prefixes: {} ",
+                        device.code, &device.public_ip, &device.dz_prefixes,
+                    );
+                    Some(entry.insert(DeviceStateStateless::new(&device)))
+                }
+                Err(_) => None,
+            }
+        }
+    }
+}
+
+fn record_device_ip_metrics_stateless(
+    _device_pk: &Pubkey,
+    _device_state: &DeviceStateStateless,
+    _locations: &HashMap<Pubkey, Location>,
+    _exchanges: &HashMap<Pubkey, Exchange>,
+) {
+    // In stateless mode, we don't track IP allocation locally, so no metrics to record
+    // The blockchain is the source of truth for allocation metrics
 }
 
 fn log_error_ignore_invalid_status(log_msg: &mut String, e: eyre::ErrReport) {
@@ -579,7 +830,6 @@ mod tests {
                 &user,
                 &locations,
                 &exchanges,
-                false, // use_onchain_allocation
             );
 
             assert!(!user_tunnel_ips.assigned_ips.is_empty());
@@ -775,7 +1025,6 @@ mod tests {
                 &user,
                 &locations,
                 &exchanges,
-                false, // use_onchain_allocation
             );
 
             assert!(!user_tunnel_ips.assigned_ips.is_empty());
@@ -879,7 +1128,6 @@ mod tests {
                 &user,
                 &locations,
                 &exchanges,
-                false, // use_onchain_allocation
             );
 
             let mut snapshot = crate::test_helpers::MetricsSnapshot::new(snapshotter.snapshot());
@@ -987,7 +1235,6 @@ mod tests {
                 &user,
                 &locations,
                 &exchanges,
-                false, // use_onchain_allocation
             );
 
             let mut snapshot = crate::test_helpers::MetricsSnapshot::new(snapshotter.snapshot());
@@ -1092,7 +1339,6 @@ mod tests {
                 &user,
                 &locations,
                 &exchanges,
-                false, // use_onchain_allocation
             );
 
             let mut snapshot = crate::test_helpers::MetricsSnapshot::new(snapshotter.snapshot());
@@ -1198,7 +1444,6 @@ mod tests {
                 &user,
                 &locations,
                 &exchanges,
-                false, // use_onchain_allocation
             );
 
             assert!(!link_ids.assigned.contains(&102));
@@ -1275,5 +1520,389 @@ mod tests {
             },
             "user-pending-ban-to-banned",
         );
+    }
+
+    // Tests for process_user_event_stateless
+
+    #[test]
+    fn test_process_user_event_stateless_pending_to_activated() {
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
+
+        metrics::with_local_recorder(&recorder, || {
+            let mut seq = Sequence::new();
+            let mut client = create_test_client();
+
+            let device_pubkey = Pubkey::new_unique();
+            let device = Device {
+                account_type: AccountType::Device,
+                owner: Pubkey::new_unique(),
+                index: 0,
+                reference_count: 0,
+                bump_seed: get_device_bump_seed(&client),
+                contributor_pk: Pubkey::new_unique(),
+                location_pk: Pubkey::new_unique(),
+                exchange_pk: Pubkey::new_unique(),
+                device_type: DeviceType::Hybrid,
+                public_ip: [192, 168, 1, 2].into(),
+                status: DeviceStatus::Activated,
+                metrics_publisher_pk: Pubkey::default(),
+                code: "TestDevice".to_string(),
+                dz_prefixes: "10.0.0.1/24".parse().unwrap(),
+                mgmt_vrf: "default".to_string(),
+                interfaces: vec![],
+                max_users: 255,
+                users_count: 0,
+                device_health:
+                    doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+                desired_status:
+                    doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+            };
+
+            let user_pubkey = Pubkey::new_unique();
+            let user = User {
+                account_type: AccountType::User,
+                owner: Pubkey::new_unique(),
+                index: 0,
+                bump_seed: get_user_bump_seed(&client),
+                user_type: UserType::IBRLWithAllocatedIP,
+                tenant_pk: Pubkey::new_unique(),
+                device_pk: device_pubkey,
+                cyoa_type: UserCYOA::GREOverDIA,
+                client_ip: [192, 168, 1, 1].into(),
+                dz_ip: Ipv4Addr::UNSPECIFIED,
+                tunnel_id: 0,
+                tunnel_net: NetworkV4::default(),
+                status: UserStatus::Pending,
+                publishers: vec![],
+                subscribers: vec![],
+                validator_pubkey: Pubkey::default(),
+            };
+
+            let (accesspass_pk_unspecified, _) = get_accesspass_pda(
+                &client.get_program_id(),
+                &Ipv4Addr::UNSPECIFIED,
+                &user.owner,
+            );
+            let (accesspass_pk, _) =
+                get_accesspass_pda(&client.get_program_id(), &user.client_ip, &user.owner);
+            let accesspass = AccessPass {
+                account_type: AccountType::AccessPass,
+                owner: user.owner,
+                bump_seed: 255,
+                accesspass_type: AccessPassType::Prepaid,
+                client_ip: user.client_ip,
+                user_payer: user.owner,
+                last_access_epoch: 1234,
+                connection_count: 0,
+                status: AccessPassStatus::Requested,
+                mgroup_pub_allowlist: vec![],
+                mgroup_sub_allowlist: vec![],
+                flags: 0,
+            };
+
+            // SDK's ActivateUserCommand fetches the user
+            let user_cloned = user.clone();
+            client
+                .expect_get()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(predicate::eq(user_pubkey))
+                .returning(move |_| Ok(AccountData::User(user_cloned.clone())));
+
+            // SDK's ActivateUserCommand fetches accesspass by UNSPECIFIED IP
+            client
+                .expect_get()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(predicate::eq(accesspass_pk_unspecified))
+                .returning(move |_| Err(eyre::eyre!("AccessPass not found")));
+
+            // SDK's ActivateUserCommand fetches accesspass by client_ip
+            client
+                .expect_get()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(predicate::eq(accesspass_pk))
+                .returning(move |_| Ok(AccountData::AccessPass(accesspass.clone())));
+
+            // SDK's ActivateUserCommand fetches device (for dz_prefixes count)
+            let device_clone = device.clone();
+            client
+                .expect_get()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(predicate::eq(device_pubkey))
+                .returning(move |_| Ok(AccountData::Device(device_clone.clone())));
+
+            // Stateless mode: tunnel_id=0, tunnel_net=default, dz_ip=UNSPECIFIED
+            client
+                .expect_execute_transaction()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(
+                    predicate::eq(DoubleZeroInstruction::ActivateUser(UserActivateArgs {
+                        tunnel_id: 0,
+                        tunnel_net: NetworkV4::default(),
+                        dz_ip: Ipv4Addr::UNSPECIFIED,
+                        dz_prefix_count: 1, // onchain allocation path
+                    })),
+                    predicate::always(),
+                )
+                .returning(|_, _| Ok(Signature::new_unique()));
+
+            let mut devices = std::collections::HashMap::new();
+            devices.insert(
+                device_pubkey,
+                crate::states::devicestate::DeviceStateStateless::new(&device),
+            );
+
+            let locations = HashMap::<Pubkey, Location>::new();
+            let exchanges = HashMap::<Pubkey, Exchange>::new();
+
+            super::process_user_event_stateless(
+                &client,
+                &user_pubkey,
+                &mut devices,
+                &user,
+                &locations,
+                &exchanges,
+            );
+
+            let mut snapshot = crate::test_helpers::MetricsSnapshot::new(snapshotter.snapshot());
+            snapshot
+                .expect_counter(
+                    "doublezero_activator_state_transition",
+                    vec![
+                        ("state_transition", "user-pending-to-activated"),
+                        ("user-pubkey", user_pubkey.to_string().as_str()),
+                    ],
+                    1,
+                )
+                .verify();
+        });
+    }
+
+    #[test]
+    fn test_process_user_event_stateless_deleting() {
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
+
+        metrics::with_local_recorder(&recorder, || {
+            let mut seq = Sequence::new();
+            let mut client = create_test_client();
+
+            let device_pubkey = Pubkey::new_unique();
+            let device = Device {
+                account_type: AccountType::Device,
+                owner: Pubkey::new_unique(),
+                index: 0,
+                reference_count: 0,
+                bump_seed: get_device_bump_seed(&client),
+                contributor_pk: Pubkey::new_unique(),
+                location_pk: Pubkey::new_unique(),
+                exchange_pk: Pubkey::new_unique(),
+                device_type: DeviceType::Hybrid,
+                public_ip: [192, 168, 1, 2].into(),
+                status: DeviceStatus::Activated,
+                metrics_publisher_pk: Pubkey::default(),
+                code: "TestDevice".to_string(),
+                dz_prefixes: "10.0.0.1/24".parse().unwrap(),
+                mgmt_vrf: "default".to_string(),
+                interfaces: vec![],
+                max_users: 255,
+                users_count: 0,
+                device_health:
+                    doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+                desired_status:
+                    doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+            };
+
+            let user_pubkey = Pubkey::new_unique();
+            let user = User {
+                account_type: AccountType::User,
+                owner: Pubkey::new_unique(),
+                index: 0,
+                bump_seed: get_user_bump_seed(&client),
+                user_type: UserType::IBRLWithAllocatedIP,
+                tenant_pk: Pubkey::new_unique(),
+                device_pk: device_pubkey,
+                cyoa_type: UserCYOA::GREOverDIA,
+                client_ip: [192, 168, 1, 1].into(),
+                dz_ip: [10, 0, 0, 1].into(),
+                tunnel_id: 500,
+                tunnel_net: "10.0.0.0/31".parse().unwrap(),
+                status: UserStatus::Deleting,
+                publishers: vec![],
+                subscribers: vec![],
+                validator_pubkey: Pubkey::default(),
+            };
+
+            // SDK's CloseAccountUserCommand fetches the user
+            let user2 = user.clone();
+            client
+                .expect_get()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(predicate::eq(user_pubkey))
+                .returning(move |_| Ok(AccountData::User(user2.clone())));
+
+            // SDK's CloseAccountUserCommand fetches device (for dz_prefixes count)
+            let device_clone = device.clone();
+            client
+                .expect_get()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(predicate::eq(device_pubkey))
+                .returning(move |_| Ok(AccountData::Device(device_clone.clone())));
+
+            // Stateless mode: use_onchain_deallocation=true
+            client
+                .expect_execute_transaction()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(
+                    predicate::eq(DoubleZeroInstruction::CloseAccountUser(
+                        UserCloseAccountArgs {
+                            dz_prefix_count: 1, // onchain deallocation
+                        },
+                    )),
+                    predicate::always(),
+                )
+                .returning(|_, _| Ok(Signature::new_unique()));
+
+            let mut devices = std::collections::HashMap::new();
+            devices.insert(
+                device_pubkey,
+                crate::states::devicestate::DeviceStateStateless::new(&device),
+            );
+
+            let locations = HashMap::<Pubkey, Location>::new();
+            let exchanges = HashMap::<Pubkey, Exchange>::new();
+
+            super::process_user_event_stateless(
+                &client,
+                &user_pubkey,
+                &mut devices,
+                &user,
+                &locations,
+                &exchanges,
+            );
+
+            let mut snapshot = crate::test_helpers::MetricsSnapshot::new(snapshotter.snapshot());
+            snapshot
+                .expect_counter(
+                    "doublezero_activator_state_transition",
+                    vec![
+                        ("state_transition", "user-deleting-to-deactivated"),
+                        ("user-pubkey", user_pubkey.to_string().as_str()),
+                    ],
+                    1,
+                )
+                .verify();
+        });
+    }
+
+    #[test]
+    fn test_process_user_event_stateless_pending_ban() {
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
+
+        metrics::with_local_recorder(&recorder, || {
+            let mut seq = Sequence::new();
+            let mut client = create_test_client();
+
+            let device_pubkey = Pubkey::new_unique();
+            let device = Device {
+                account_type: AccountType::Device,
+                owner: Pubkey::new_unique(),
+                index: 0,
+                reference_count: 0,
+                bump_seed: get_device_bump_seed(&client),
+                contributor_pk: Pubkey::new_unique(),
+                location_pk: Pubkey::new_unique(),
+                exchange_pk: Pubkey::new_unique(),
+                device_type: DeviceType::Hybrid,
+                public_ip: [192, 168, 1, 2].into(),
+                status: DeviceStatus::Activated,
+                metrics_publisher_pk: Pubkey::default(),
+                code: "TestDevice".to_string(),
+                dz_prefixes: "10.0.0.1/24".parse().unwrap(),
+                mgmt_vrf: "default".to_string(),
+                interfaces: vec![],
+                max_users: 255,
+                users_count: 0,
+                device_health:
+                    doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+                desired_status:
+                    doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+            };
+
+            let user_pubkey = Pubkey::new_unique();
+            let user = User {
+                account_type: AccountType::User,
+                owner: Pubkey::new_unique(),
+                index: 0,
+                bump_seed: get_user_bump_seed(&client),
+                user_type: UserType::IBRLWithAllocatedIP,
+                tenant_pk: Pubkey::new_unique(),
+                device_pk: device_pubkey,
+                cyoa_type: UserCYOA::GREOverDIA,
+                client_ip: [192, 168, 1, 1].into(),
+                dz_ip: [10, 0, 0, 1].into(),
+                tunnel_id: 500,
+                tunnel_net: "10.0.0.0/31".parse().unwrap(),
+                status: UserStatus::PendingBan,
+                publishers: vec![],
+                subscribers: vec![],
+                validator_pubkey: Pubkey::default(),
+            };
+
+            let user2 = user.clone();
+            client
+                .expect_get()
+                .with(predicate::eq(user_pubkey))
+                .returning(move |_| Ok(AccountData::User(user2.clone())));
+
+            client
+                .expect_execute_transaction()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(
+                    predicate::eq(DoubleZeroInstruction::BanUser(UserBanArgs {})),
+                    predicate::always(),
+                )
+                .returning(|_, _| Ok(Signature::new_unique()));
+
+            let mut devices = std::collections::HashMap::new();
+            devices.insert(
+                device_pubkey,
+                crate::states::devicestate::DeviceStateStateless::new(&device),
+            );
+
+            let locations = HashMap::<Pubkey, Location>::new();
+            let exchanges = HashMap::<Pubkey, Exchange>::new();
+
+            super::process_user_event_stateless(
+                &client,
+                &user_pubkey,
+                &mut devices,
+                &user,
+                &locations,
+                &exchanges,
+            );
+
+            let mut snapshot = crate::test_helpers::MetricsSnapshot::new(snapshotter.snapshot());
+            snapshot
+                .expect_counter(
+                    "doublezero_activator_state_transition",
+                    vec![
+                        ("state_transition", "user-pending-ban-to-banned"),
+                        ("user-pubkey", user_pubkey.to_string().as_str()),
+                    ],
+                    1,
+                )
+                .verify();
+        });
     }
 }

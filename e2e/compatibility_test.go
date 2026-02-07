@@ -29,6 +29,10 @@ import (
 //
 // Format: "step_name" -> "minimum_compatible_version"
 //
+// Example: "write/foo_create": "0.9.0" means:
+//   - CLI v0.8.x and older → KNOWN_FAIL (expected to fail, test passes)
+//   - CLI v0.9.0 and newer → FAIL if broken (unexpected, test fails)
+//
 // When adding entries:
 //   - Document WHY the incompatibility exists
 //   - Set the version to the first CLI version that IS compatible
@@ -76,9 +80,11 @@ func isKnownIncompatible(stepName, cliVersion string) bool {
 	return devnet.CompareProgramVersions(cliVer, minVer) < 0
 }
 
-// TestE2E_BackwardCompatibility tests that older CLI versions can still interact
-// with the upgraded onchain program. This validates that Borsh-serialized instructions
-// from older CLIs are correctly deserialized by the current program binary.
+// TestE2E_BackwardCompatibility tests CLI compatibility with the upgraded onchain program.
+//
+// For each CLI version from min_compatible_version through current:
+//   - Old versions: Tests backward compatibility - old Borsh instruction formats still work
+//   - Current version: Tests that CLI and program from this branch work together
 //
 // Architecture:
 //   - Ledger: solana-test-validator with cloned accounts + upgraded program .so
@@ -120,6 +126,14 @@ func (r *compatEnvResults) record(version, name, status, errMsg string) {
 	r.matrix[version] = append(r.matrix[version], compatStepResult{name, status, errMsg})
 }
 
+// formatVersionLabel returns the display label for a version (e.g., "v0.8.1" or "current").
+func formatVersionLabel(version string) string {
+	if version == devnet.CurrentVersionLabel {
+		return version
+	}
+	return "v" + version
+}
+
 // formatMatrix renders the summary and detail matrices for this environment.
 func (r *compatEnvResults) formatMatrix() string {
 	r.mu.Lock()
@@ -147,8 +161,9 @@ func (r *compatEnvResults) formatMatrix() string {
 				skipped++
 			}
 		}
+		label := formatVersionLabel(version)
 		if failed == 0 {
-			buf.WriteString(fmt.Sprintf("v%-10s  ALL PASSED (%d passed", version, passed))
+			buf.WriteString(fmt.Sprintf("%-11s  ALL PASSED (%d passed", label, passed))
 			if knownFail > 0 {
 				buf.WriteString(fmt.Sprintf(", %d known incompatible", knownFail))
 			}
@@ -157,7 +172,7 @@ func (r *compatEnvResults) formatMatrix() string {
 			}
 			buf.WriteString(")\n")
 		} else {
-			buf.WriteString(fmt.Sprintf("v%-10s  %d passed, %d FAILED", version, passed, failed))
+			buf.WriteString(fmt.Sprintf("%-11s  %d passed, %d FAILED", label, passed, failed))
 			if knownFail > 0 {
 				buf.WriteString(fmt.Sprintf(", %d known incompatible", knownFail))
 			}
@@ -192,7 +207,7 @@ func (r *compatEnvResults) formatMatrix() string {
 	// Header row.
 	buf.WriteString(fmt.Sprintf("%-*s", maxNameLen+2, ""))
 	for _, version := range r.versions {
-		buf.WriteString(fmt.Sprintf("  v%-8s", version))
+		buf.WriteString(fmt.Sprintf("  %-9s", formatVersionLabel(version)))
 	}
 	buf.WriteString("\n")
 
@@ -449,8 +464,13 @@ func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *
 	// Store the version list in the shared results so the parent can render the matrix.
 	envResults.versions = compatVersions
 
-	// Install all old versions in the manager container.
+	// Install released versions from Cloudsmith. Skip "current" since it's the branch
+	// build already in the container as the default `doublezero` binary.
 	for _, version := range compatVersions {
+		if version == devnet.CurrentVersionLabel {
+			log.Debug("==> Skipping install for current (already in container as doublezero)")
+			continue
+		}
 		log.Debug("==> Installing CLI version in manager", "version", version)
 		err = devnet.InstallCLIVersion(t.Context(), managerExec, version)
 		require.NoError(t, err)
@@ -461,8 +481,17 @@ func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *
 	// Test each compatible version.
 	for vi, version := range compatVersions {
 		vi, version := vi, version
-		t.Run("v"+version, func(t *testing.T) {
+		testName := "v" + version
+		if version == devnet.CurrentVersionLabel {
+			testName = version // no "v" prefix for "current"
+		}
+		t.Run(testName, func(t *testing.T) {
+			// Use the unversioned binary for "current" (branch build already in container),
+			// versioned binary for released versions (installed from Cloudsmith).
 			cli := fmt.Sprintf("doublezero-%s", version)
+			if version == devnet.CurrentVersionLabel {
+				cli = "doublezero"
+			}
 			log := log.With("version", version, "cli", cli)
 
 			// lookupFirstPubkey returns a bash subshell that extracts the first

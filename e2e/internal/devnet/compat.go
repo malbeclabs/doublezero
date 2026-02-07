@@ -60,9 +60,12 @@ func InstallCLIVersion(ctx context.Context, execFn func(ctx context.Context, com
 	return nil
 }
 
+// CurrentVersionLabel is the label used for the current branch's CLI in the compatibility matrix.
+const CurrentVersionLabel = "current"
+
 // EnumerateCompatibleVersions returns a sorted list of semver version strings for all
-// versions between min (inclusive) and current (exclusive).
-// Each entry must be in the format "v<major>.<minor>.<patch>".
+// versions between min (inclusive) and current (inclusive), plus "current" for the branch build.
+// Each entry must be in the format "v<major>.<minor>.<patch>" except for the final "current" entry.
 func EnumerateCompatibleVersions(versionTags []string, min, current serviceability.ProgramVersion) []string {
 	var versions []string
 	for _, tag := range versionTags {
@@ -75,7 +78,8 @@ func EnumerateCompatibleVersions(versionTags []string, min, current serviceabili
 		if !ok {
 			continue
 		}
-		if CompareProgramVersions(pv, min) >= 0 && CompareProgramVersions(pv, current) < 0 {
+		// Include all released versions from min through current (inclusive).
+		if CompareProgramVersions(pv, min) >= 0 && CompareProgramVersions(pv, current) <= 0 {
 			versions = append(versions, ver)
 		}
 	}
@@ -84,6 +88,8 @@ func EnumerateCompatibleVersions(versionTags []string, min, current serviceabili
 		vj, _ := ParseSemver(versions[j])
 		return CompareProgramVersions(vi, vj) < 0
 	})
+	// Always append "current" at the end for the branch build (may not be in Cloudsmith yet).
+	versions = append(versions, CurrentVersionLabel)
 	return versions
 }
 

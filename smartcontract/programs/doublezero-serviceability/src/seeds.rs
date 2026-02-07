@@ -17,3 +17,4 @@ pub const SEED_DZ_PREFIX_BLOCK: &[u8] = b"dzprefixblock";
 pub const SEED_TUNNEL_IDS: &[u8] = b"tunnelids";
 pub const SEED_LINK_IDS: &[u8] = b"linkids";
 pub const SEED_SEGMENT_ROUTING_IDS: &[u8] = b"segmentroutingids";
+pub const SEED_VRF_IDS: &[u8] = b"vrfids";

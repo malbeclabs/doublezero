@@ -52,6 +52,7 @@ async fn test_exchange() {
     let (link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
     let (segment_routing_ids_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+    let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
 
     execute_transaction(
         &mut banks_client,
@@ -73,6 +74,7 @@ async fn test_exchange() {
             AccountMeta::new(multicastgroup_block_pda, false),
             AccountMeta::new(link_ids_pda, false),
             AccountMeta::new(segment_routing_ids_pda, false),
+            AccountMeta::new(vrf_ids_pda, false),
         ],
         &payer,
     )
@@ -277,6 +279,7 @@ async fn test_exchange_owner_and_foundation_can_update_status() {
     let (link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
     let (segment_routing_ids_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+    let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -297,6 +300,7 @@ async fn test_exchange_owner_and_foundation_can_update_status() {
             AccountMeta::new(multicastgroup_block_pda, false),
             AccountMeta::new(link_ids_pda, false),
             AccountMeta::new(segment_routing_ids_pda, false),
+            AccountMeta::new(vrf_ids_pda, false),
         ],
         &payer,
     )
@@ -412,6 +416,7 @@ async fn test_exchange_bgp_community_autoassignment() {
     let (link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
     let (segment_routing_ids_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+    let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
 
     println!("Initializing global state...");
     execute_transaction(
@@ -448,6 +453,7 @@ async fn test_exchange_bgp_community_autoassignment() {
             AccountMeta::new(multicastgroup_block_pda, false),
             AccountMeta::new(link_ids_pda, false),
             AccountMeta::new(segment_routing_ids_pda, false),
+            AccountMeta::new(vrf_ids_pda, false),
         ],
         &payer,
     )
@@ -602,6 +608,7 @@ async fn test_exchange_bgp_community_autoassignment() {
             AccountMeta::new(multicastgroup_block_pda, false),
             AccountMeta::new(link_ids_pda, false),
             AccountMeta::new(segment_routing_ids_pda, false),
+            AccountMeta::new(vrf_ids_pda, false),
         ],
         &payer,
     )
@@ -710,6 +717,7 @@ async fn test_suspend_exchange_from_suspended_fails() {
     let (link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
     let (segment_routing_ids_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+    let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
 
     // Initialize global state
     execute_transaction(
@@ -746,6 +754,7 @@ async fn test_suspend_exchange_from_suspended_fails() {
             AccountMeta::new(multicastgroup_block_pda, false),
             AccountMeta::new(link_ids_pda, false),
             AccountMeta::new(segment_routing_ids_pda, false),
+            AccountMeta::new(vrf_ids_pda, false),
         ],
         &payer,
     )

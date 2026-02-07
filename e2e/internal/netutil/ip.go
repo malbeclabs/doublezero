@@ -40,3 +40,16 @@ func ParseCIDR(cidr string) (string, *net.IPNet, error) {
 	}
 	return ip.String(), network, nil
 }
+
+// IPInRange checks if an IP is within a CIDR block.
+func IPInRange(ipStr, cidr string) bool {
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return false
+	}
+	_, network, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return false
+	}
+	return network.Contains(ip)
+}

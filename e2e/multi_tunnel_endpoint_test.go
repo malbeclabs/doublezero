@@ -287,7 +287,7 @@ func runMultiTunnelFallbackTest(t *testing.T, log *slog.Logger, dn *devnet.Devne
 	log.Info("==> Disconnecting multicast")
 	_, err = client.Exec(t.Context(), []string{
 		"bash", "-c",
-		"doublezero disconnect multicast subscriber mg01 --client-ip " + client.CYOANetworkIP,
+		"doublezero disconnect multicast --client-ip " + client.CYOANetworkIP,
 	})
 	if err != nil {
 		log.Info("--> Warning: multicast disconnect returned error", "error", err)

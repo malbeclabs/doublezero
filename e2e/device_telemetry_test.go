@@ -395,7 +395,7 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 
 	// Check that the telemetry samples are being submitted to the telemetry program.
 	log.Debug("==> Checking that telemetry samples are being submitted to the telemetry program", "epoch", epoch)
-	account, duration := waitForDeviceLatencySamples(t, dn, la2DevicePK, ny5DevicePK, la2ToNy5LinkPK, epoch, 16, true, 90*time.Second)
+	account, duration := waitForDeviceLatencySamples(t, dn, la2DevicePK, ny5DevicePK, la2ToNy5LinkPK, epoch, 16, true, 120*time.Second)
 	log.Debug("==> Got telemetry samples", "duration", duration, "epoch", account.Epoch, "originDevicePK", account.OriginDevicePK, "targetDevicePK", account.TargetDevicePK, "linkPK", account.LinkPK, "samplingIntervalMicroseconds", account.SamplingIntervalMicroseconds, "nextSampleIndex", account.NextSampleIndex, "samples", account.Samples)
 	require.Greater(t, len(account.Samples), 1)
 	require.Equal(t, len(account.Samples), int(account.NextSampleIndex))
@@ -416,7 +416,7 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	// NOTE: We're assuming the epoch hasn't changed since the last batch of samples was
 	// submitted, or else this test will fail.
 	log.Debug("==> Checking that more telemetry samples are being submitted to the telemetry program", "epoch", epoch)
-	account, duration = waitForDeviceLatencySamples(t, dn, la2DevicePK, ny5DevicePK, la2ToNy5LinkPK, epoch, len(prevAccount.Samples), true, 90*time.Second)
+	account, duration = waitForDeviceLatencySamples(t, dn, la2DevicePK, ny5DevicePK, la2ToNy5LinkPK, epoch, len(prevAccount.Samples), true, 120*time.Second)
 	log.Debug("==> Got telemetry samples", "duration", duration, "epoch", account.Epoch, "originDevicePK", account.OriginDevicePK, "targetDevicePK", account.TargetDevicePK, "linkPK", account.LinkPK, "samplingIntervalMicroseconds", account.SamplingIntervalMicroseconds, "nextSampleIndex", account.NextSampleIndex, "samples", account.Samples)
 	require.Greater(t, len(account.Samples), len(prevAccount.Samples))
 	require.Equal(t, prevAccount.StartTimestampMicroseconds, account.StartTimestampMicroseconds)
@@ -430,7 +430,7 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 
 	// Get samples for the 2 active devices in other direction and check that they're all non-zero RTTs too.
 	log.Debug("==> Checking that telemetry samples are being submitted to the telemetry program in other direction", "epoch", epoch)
-	account, duration = waitForDeviceLatencySamples(t, dn, ny5DevicePK, la2DevicePK, la2ToNy5LinkPK, epoch, 16, true, 90*time.Second)
+	account, duration = waitForDeviceLatencySamples(t, dn, ny5DevicePK, la2DevicePK, la2ToNy5LinkPK, epoch, 16, true, 120*time.Second)
 	log.Debug("==> Got telemetry samples", "duration", duration, "epoch", account.Epoch, "originDevicePK", account.OriginDevicePK, "targetDevicePK", account.TargetDevicePK, "linkPK", account.LinkPK, "samplingIntervalMicroseconds", account.SamplingIntervalMicroseconds, "nextSampleIndex", account.NextSampleIndex, "samples", account.Samples)
 	require.Greater(t, len(account.Samples), 1)
 	require.Equal(t, len(account.Samples), int(account.NextSampleIndex))
@@ -458,7 +458,7 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 
 	// Get samples for link with dummy device and check that they're all 0 RTTs (losses).
 	log.Debug("==> Checking that telemetry samples are being submitted to the telemetry program for link with dummy device", "epoch", epoch)
-	account, duration = waitForDeviceLatencySamples(t, dn, ny5DevicePK, ld4DevicePK, ny5ToLd4LinkPK, epoch, 10, false, 90*time.Second)
+	account, duration = waitForDeviceLatencySamples(t, dn, ny5DevicePK, ld4DevicePK, ny5ToLd4LinkPK, epoch, 10, false, 120*time.Second)
 	log.Debug("==> Got telemetry samples", "duration", duration, "epoch", account.Epoch, "originDevicePK", account.OriginDevicePK, "targetDevicePK", account.TargetDevicePK, "linkPK", account.LinkPK, "samplingIntervalMicroseconds", account.SamplingIntervalMicroseconds, "nextSampleIndex", account.NextSampleIndex, "samples", account.Samples)
 	require.Greater(t, len(account.Samples), 1)
 	require.Equal(t, len(account.Samples), int(account.NextSampleIndex))

@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo check:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(cargo build:*)",
+      "Bash(make rust-build:*)",
+      "Bash(go build:*)",
+      "Bash(go test:*)",
+      "Bash(npx tsc:*)"
+    ]
+  }
+}

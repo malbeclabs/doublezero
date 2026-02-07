@@ -1,7 +1,9 @@
 use crate::DoubleZeroClient;
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_globalstate_pda,
+    instructions::DoubleZeroInstruction,
+    pda::{get_globalstate_pda, get_resource_extension_pda},
     processors::tenant::delete::TenantDeleteArgs,
+    resource::ResourceType,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
@@ -13,12 +15,15 @@ pub struct DeleteTenantCommand {
 impl DeleteTenantCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
         let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
+        let (vrf_ids_pda, _, _) =
+            get_resource_extension_pda(&client.get_program_id(), ResourceType::VrfIds);
 
         client.execute_transaction(
             DoubleZeroInstruction::DeleteTenant(TenantDeleteArgs {}),
             vec![
                 AccountMeta::new(self.tenant_pubkey, false),
                 AccountMeta::new_readonly(globalstate_pubkey, false),
+                AccountMeta::new(vrf_ids_pda, false),
             ],
         )
     }

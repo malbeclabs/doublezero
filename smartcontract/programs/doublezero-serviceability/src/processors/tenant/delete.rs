@@ -1,7 +1,11 @@
 use crate::{
     error::DoubleZeroError,
+    pda::get_resource_extension_pda,
+    resource::{IdOrIp, ResourceType},
     serializer::try_acc_close,
-    state::{globalstate::GlobalState, tenant::Tenant},
+    state::{
+        globalstate::GlobalState, resource_extension::ResourceExtensionBorrowed, tenant::Tenant,
+    },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -33,6 +37,7 @@ pub fn process_delete_tenant(
 
     let tenant_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
+    let vrf_ids_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let _system_program = next_account_info(accounts_iter)?;
 
@@ -54,6 +59,26 @@ pub fn process_delete_tenant(
     // Check if the account is writable
     assert!(tenant_account.is_writable, "Tenant Account is not writable");
 
+    // Validate VRF IDs resource extension account
+    assert_eq!(
+        vrf_ids_account.owner, program_id,
+        "Invalid ResourceExtension Account Owner for VrfIds"
+    );
+    assert!(
+        vrf_ids_account.is_writable,
+        "ResourceExtension Account for VrfIds is not writable"
+    );
+    assert!(
+        !vrf_ids_account.data_is_empty(),
+        "ResourceExtension Account for VrfIds is empty"
+    );
+
+    let (expected_vrf_ids_pda, _, _) = get_resource_extension_pda(program_id, ResourceType::VrfIds);
+    assert_eq!(
+        vrf_ids_account.key, &expected_vrf_ids_pda,
+        "Invalid ResourceExtension PDA for VrfIds"
+    );
+
     // Parse the global state account & check if the payer is in the allowlist
     let globalstate = GlobalState::try_from(globalstate_account)?;
 
@@ -67,6 +92,13 @@ pub fn process_delete_tenant(
     // Check if the tenant has any references
     if tenant.reference_count != 0 {
         return Err(DoubleZeroError::ReferenceCountNotZero.into());
+    }
+
+    // Deallocate VRF ID back to the ResourceExtension
+    {
+        let mut buffer = vrf_ids_account.data.borrow_mut();
+        let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
+        resource.deallocate(&IdOrIp::Id(tenant.vrf_id));
     }
 
     // Close the tenant account

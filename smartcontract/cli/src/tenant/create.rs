@@ -13,12 +13,9 @@ pub struct CreateTenantCliCommand {
     /// Unique tenant code
     #[arg(long, value_parser = validate_code)]
     pub code: String,
-    /// VRF ID (u16)
-    #[arg(long)]
-    pub vrf_id: u16,
     /// Owner of the tenant
     #[arg(long, value_parser = validate_pubkey_or_code, default_value = "me")]
-    pub owner: String,
+    pub administrator: String,
 }
 
 impl CreateTenantCliCommand {
@@ -34,18 +31,17 @@ impl CreateTenantCliCommand {
             ));
         }
         // Create tenant
-        let owner = {
-            if self.owner.eq_ignore_ascii_case("me") {
+        let administrator = {
+            if self.administrator.eq_ignore_ascii_case("me") {
                 client.get_payer()
             } else {
-                Pubkey::from_str(&self.owner)?
+                Pubkey::from_str(&self.administrator)?
             }
         };
 
         let (signature, _pubkey) = client.create_tenant(CreateTenantCommand {
             code: self.code.clone(),
-            vrf_id: self.vrf_id,
-            owner,
+            administrator,
         })?;
 
         writeln!(out, "Signature: {signature}")?;

@@ -149,6 +149,8 @@ pub enum DoubleZeroError {
     MulticastGroupNotEmpty, // variant 71
     #[error("Access Pass is in use (non-zero connection_count)")]
     AccessPassInUse, // variant 72
+    #[error("Invalid Tunnel Endpoint")]
+    InvalidTunnelEndpoint, // variant 73
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -227,6 +229,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::DeviceHasInterfaces => ProgramError::Custom(70),
             DoubleZeroError::MulticastGroupNotEmpty => ProgramError::Custom(71),
             DoubleZeroError::AccessPassInUse => ProgramError::Custom(72),
+            DoubleZeroError::InvalidTunnelEndpoint => ProgramError::Custom(73),
         }
     }
 }
@@ -306,6 +309,7 @@ impl From<u32> for DoubleZeroError {
             70 => DoubleZeroError::DeviceHasInterfaces,
             71 => DoubleZeroError::MulticastGroupNotEmpty,
             72 => DoubleZeroError::AccessPassInUse,
+            73 => DoubleZeroError::InvalidTunnelEndpoint,
             _ => DoubleZeroError::Custom(e),
         }
     }
@@ -404,6 +408,8 @@ mod tests {
             CyoaRequiresPhysical,
             DeviceHasInterfaces,
             MulticastGroupNotEmpty,
+            AccessPassInUse,
+            InvalidTunnelEndpoint,
         ];
         for err in variants {
             let pe: ProgramError = err.clone().into();

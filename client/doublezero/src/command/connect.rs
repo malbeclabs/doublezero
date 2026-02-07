@@ -394,7 +394,7 @@ impl ProvisioningCliCommand {
             None => {
                 spinner.println("    Creating user account...");
 
-                let exclude_ips: Vec<Ipv4Addr> = exclude_ips(&users, client_ip, &devices);
+                let exclude_ips: Vec<Ipv4Addr> = exclude_ips(&users, client_ip);
 
                 let (device_pk, device) = self
                     .find_or_create_device(client, controller, &devices, spinner, &exclude_ips)
@@ -484,9 +484,7 @@ impl ProvisioningCliCommand {
                     ibrl_user_pk
                 ));
 
-                // Select a separate device from the IBRL user to allow independent tunnels
-                // Exclude the IBRL user's tunnel endpoint to ensure we get a different device
-                let exclude_ips: Vec<Ipv4Addr> = exclude_ips(&users, client_ip, &devices);
+                let exclude_ips: Vec<Ipv4Addr> = exclude_ips(&users, client_ip);
 
                 let (device_pk, device) = self
                     .find_or_create_device(client, controller, &devices, spinner, &exclude_ips)
@@ -566,7 +564,6 @@ impl ProvisioningCliCommand {
                     self.poll_for_user_activated(client, user_pk, spinner)?;
                 }
 
-                // Subscribe to any groups not already subscribed
                 let existing_groups = match multicast_mode {
                     MulticastMode::Publisher => &user.publishers,
                     MulticastMode::Subscriber => &user.subscribers,
@@ -606,7 +603,7 @@ impl ProvisioningCliCommand {
             (None, None) => {
                 spinner.println(format!("    Creating an account for the IP: {client_ip}"));
 
-                let exclude_ips: Vec<Ipv4Addr> = exclude_ips(&users, client_ip, &devices);
+                let exclude_ips: Vec<Ipv4Addr> = exclude_ips(&users, client_ip);
 
                 let (device_pk, device) = self
                     .find_or_create_device(client, controller, &devices, spinner, &exclude_ips)
@@ -857,16 +854,11 @@ async fn resolve_tunnel_src<T: ServiceController>(
     }
 }
 
-fn exclude_ips(
-    users: &HashMap<Pubkey, User>,
-    client_ip: &Ipv4Addr,
-    devices: &HashMap<Pubkey, Device>,
-) -> Vec<Ipv4Addr> {
+fn exclude_ips(users: &HashMap<Pubkey, User>, client_ip: &Ipv4Addr) -> Vec<Ipv4Addr> {
     users
         .iter()
-        .filter(|(_, u)| u.client_ip == *client_ip && u.has_unicast_tunnel())
-        .filter_map(|(_, u)| devices.get(&u.device_pk))
-        .map(|d| d.public_ip)
+        .filter(|(_, u)| u.client_ip == *client_ip && u.has_tunnel_endpoint())
+        .map(|(_, u)| u.tunnel_endpoint)
         .collect()
 }
 
@@ -1138,6 +1130,15 @@ mod tests {
             device_pk: Pubkey,
             client_ip: &str,
         ) -> User {
+            // Look up device's public_ip to set as tunnel_endpoint
+            let tunnel_endpoint = self
+                .devices
+                .lock()
+                .unwrap()
+                .get(&device_pk)
+                .map(|d| d.public_ip)
+                .unwrap_or(Ipv4Addr::UNSPECIFIED);
+
             User {
                 account_type: AccountType::User,
                 owner: Pubkey::new_unique(),
@@ -1155,6 +1156,7 @@ mod tests {
                 publishers: vec![],
                 subscribers: vec![],
                 validator_pubkey: Pubkey::new_unique(),
+                tunnel_endpoint,
             }
         }
 
@@ -1389,7 +1391,6 @@ mod tests {
 
         println!("Test that adding a multicast tunnel with an existing IBRL creates a separate Multicast user");
         let (mcast_group_pk, mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
-
         // When IBRL user exists, a separate Multicast user should be created on a DIFFERENT device
         // (concurrent tunnels from same client IP must go to different devices to avoid GRE key conflicts)
         let mcast_user = fixture.create_user(UserType::Multicast, device2_pk, "1.2.3.4");
@@ -1465,6 +1466,7 @@ mod tests {
         // When IBRL user exists, a separate Multicast user should be created on a DIFFERENT device
         // (concurrent tunnels from same client IP must go to different devices to avoid GRE key conflicts)
         let mcast_user = fixture.create_user(UserType::Multicast, device2_pk, "1.2.3.4");
+
         fixture.expect_create_subscribe_user(
             Pubkey::new_unique(),
             &mcast_user,
@@ -1980,8 +1982,8 @@ mod tests {
             .await;
         assert!(result.is_ok());
 
-        // Test that adding an IBRL tunnel with an existing multicast succeeds
-        // (concurrent tunnels from same client IP must go to different devices to avoid GRE key conflicts)
+        // Test that adding an IBRL tunnel with an existing multicast succeeds on a DIFFERENT device
+        // (concurrent tunnels from same client IP must go to different devices)
         let ibrl_user = fixture.create_user(UserType::IBRL, device2_pk, "1.2.3.4");
         fixture.expect_create_user(Pubkey::new_unique(), &ibrl_user);
 
@@ -2062,7 +2064,8 @@ mod tests {
         assert!(result1.is_ok());
 
         println!("Test that adding an IBRL tunnel with an existing multicast succeeds");
-        // (concurrent tunnels from same client IP must go to different devices to avoid GRE key conflicts)
+        // IBRL user should go to a DIFFERENT device than the existing Multicast user
+        // (concurrent tunnels from same client IP must go to different devices)
         let ibrl_user = fixture.create_user(UserType::IBRL, device2_pk, "1.2.3.4");
         fixture.expect_create_user(Pubkey::new_unique(), &ibrl_user);
 
@@ -2358,7 +2361,7 @@ mod tests {
         let _ibrl_user_pk = fixture.add_user(&ibrl_user);
 
         // Expect create_subscribe_user to be called to create a NEW Multicast user on a DIFFERENT device
-        // (concurrent tunnels from same client IP must go to different devices to avoid GRE key conflicts)
+        // (concurrent tunnels from same client IP must go to different devices)
         let mcast_user = fixture.create_user(UserType::Multicast, device2_pk, "1.2.3.4");
         fixture.expect_create_subscribe_user(
             Pubkey::new_unique(),
@@ -2408,7 +2411,7 @@ mod tests {
 
         let (mcast_group_pk, _mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
         let (device1_pk, _device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
-        // Add a second device for concurrent tunnels (Multicast + IBRL must go to different devices)
+        // Add a second device for concurrent tunnels (IBRL + Multicast must go to different devices)
         let (device2_pk, _device2) = fixture.add_device(DeviceType::Hybrid, 110, true);
 
         // Create a pure Multicast user and add it to the fixture (simulating existing user)
@@ -2417,7 +2420,7 @@ mod tests {
         let mcast_user_pk = fixture.add_user(&mcast_user);
 
         // Create an IBRL user for the same IP on a DIFFERENT device
-        // (concurrent tunnels from same client IP must go to different devices to avoid GRE key conflicts)
+        // (concurrent tunnels from same client IP must go to different devices)
         let ibrl_user = fixture.create_user(UserType::IBRL, device2_pk, "1.2.3.4");
         fixture.expect_create_user(Pubkey::new_unique(), &ibrl_user);
 

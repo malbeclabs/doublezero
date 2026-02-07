@@ -410,6 +410,7 @@ async fn setup_fixture() -> TestFixture {
             tunnel_net: "169.254.0.0/31".parse().unwrap(),
             dz_ip: user_ip,
             dz_prefix_count: 0,
+            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -543,6 +544,7 @@ async fn test_subscribe_second_publisher_does_not_set_updating() {
             tunnel_net: "169.254.0.0/31".parse().unwrap(),
             dz_ip: [200, 0, 0, 1].into(),
             dz_prefix_count: 0,
+            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -745,6 +747,7 @@ async fn test_unsubscribe_last_publisher_sets_updating() {
             tunnel_net: "169.254.0.0/31".parse().unwrap(),
             dz_ip: [200, 0, 0, 1].into(),
             dz_prefix_count: 0,
+            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -871,6 +874,7 @@ async fn test_duplicate_publisher_subscribe_is_noop() {
             tunnel_net: "169.254.0.0/31".parse().unwrap(),
             dz_ip: [200, 0, 0, 1].into(),
             dz_prefix_count: 0,
+            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),

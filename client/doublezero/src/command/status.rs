@@ -11,7 +11,6 @@ use doublezero_sdk::commands::{
     user::list::ListUserCommand,
 };
 use serde::{Deserialize, Serialize};
-use solana_sdk::pubkey::Pubkey;
 use std::{net::Ipv4Addr, str::FromStr};
 use tabled::Tabled;
 
@@ -61,27 +60,11 @@ impl StatusCliCommand {
         let status_responses = controller.status().await?;
         let mut responses = Vec::with_capacity(status_responses.len());
         for response in &status_responses {
-            let mut current_device: Option<Pubkey> = None;
+            let mut current_device = None;
             let mut metro = None;
             let user = users
                 .iter()
-                .find(|(_, u)| {
-                    let user_type_matches = response
-                        .user_type
-                        .as_ref()
-                        .map(|t| u.user_type.to_string() == *t)
-                        .unwrap_or(false);
-                    if !user_type_matches {
-                        return false;
-                    }
-                    // Match by dz_ip if doublezero_ip is present
-                    if let Some(ref dz_ip) = response.doublezero_ip {
-                        if !dz_ip.is_empty() {
-                            return u.dz_ip.to_string() == *dz_ip;
-                        }
-                    }
-                    false
-                })
+                .find(|(_, u)| Some(u.dz_ip.to_string()) == response.doublezero_ip)
                 .map(|(_, u)| u);
             if let Some(user) = user {
                 current_device = Some(user.device_pk);
@@ -157,6 +140,7 @@ mod tests {
     use doublezero_serviceability::state::device::{DeviceDesiredStatus, DeviceHealth};
     use mockall::predicate::*;
     use solana_sdk::pubkey::Pubkey;
+    use std::net::Ipv4Addr;
 
     #[tokio::test]
     async fn test_status_command_tunnel_up() {
@@ -277,6 +261,7 @@ mod tests {
                 publishers: vec![],
                 subscribers: vec![],
                 validator_pubkey: Pubkey::default(),
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             },
         );
 
@@ -619,6 +604,7 @@ mod tests {
                 publishers: vec![],
                 subscribers: vec![],
                 validator_pubkey: Pubkey::default(),
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             },
         );
 

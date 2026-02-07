@@ -514,7 +514,8 @@ func requireEventuallyRoute(t *testing.T, from *devnet.Client, ip string, want b
 
 func requireUDPLivenessOnDZ0(t *testing.T, c *devnet.Client, host string, msg string) {
 	t.Helper()
-	n, err := udpLivenessCaptureCount(t, c, "doublezero0", host, 90*time.Second, 1)
+	// Liveness probes are sent every 300ms, so 5s gives ~16 opportunities to capture one
+	n, err := udpLivenessCaptureCount(t, c, "doublezero0", host, 5*time.Second, 1)
 	require.NoError(t, err)
 	require.True(t, n > 0, msg)
 }

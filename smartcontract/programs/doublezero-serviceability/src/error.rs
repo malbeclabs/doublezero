@@ -339,5 +339,15 @@ mod tests {
             let err2: DoubleZeroError = pe.into();
             assert_eq!(err, err2, "Error conversion failed for {err:?}");
         }
+
+        // EnumIter generates Custom(0) by default, so we explicitly test values
+        // outside the known variant range (currently 0-72) to ensure the conversion
+        // logic handles arbitrary custom codes correctly.
+        for code in [100u32, 1000, u32::MAX] {
+            let err = DoubleZeroError::Custom(code);
+            let pe: ProgramError = err.clone().into();
+            let err2: DoubleZeroError = pe.into();
+            assert_eq!(err, err2, "Error conversion failed for Custom({code})");
+        }
     }
 }

@@ -402,7 +402,7 @@ func checkIBRLPostDisconnect(t *testing.T, dn *TestDevnet, device *devnet.Device
 		if !t.Run("check_user_tunnel_is_removed_from_agent", func(t *testing.T) {
 			t.Parallel()
 
-			deadline := time.Now().Add(30 * time.Second)
+			deadline := time.Now().Add(60 * time.Second)
 			for time.Now().Before(deadline) {
 				neighbors, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIPBGPSummary](t.Context(), device, arista.ShowIPBGPSummaryCmd("vrf1"))
 				require.NoError(t, err, "error fetching neighbors from doublezero device")

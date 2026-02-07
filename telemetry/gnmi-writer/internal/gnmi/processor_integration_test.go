@@ -91,7 +91,7 @@ func newTestHarness(t *testing.T) *testHarness {
 	var lastErr error
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		h.redpandaCtr, err = redpanda.Run(ctx,
-			"redpandadata/redpanda:v24.2.6",
+			"docker.redpanda.com/redpandadata/redpanda:v24.2.6",
 			redpanda.WithEnableSASL(),
 			redpanda.WithAutoCreateTopics(),
 			redpanda.WithEnableKafkaAuthorization(),

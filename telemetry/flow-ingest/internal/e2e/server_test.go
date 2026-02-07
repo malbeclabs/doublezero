@@ -236,7 +236,7 @@ func startRedpanda(t *testing.T, parent context.Context) []string {
 	const maxAttempts = 5
 	var lastErr error
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		rp, err := redpanda.Run(startCtx, "redpandadata/redpanda:v24.2.6")
+		rp, err := redpanda.Run(startCtx, "docker.redpanda.com/redpandadata/redpanda:v24.2.6")
 		if err != nil {
 			lastErr = err
 			if isRetryableContainerStartErr(err) && attempt < maxAttempts {

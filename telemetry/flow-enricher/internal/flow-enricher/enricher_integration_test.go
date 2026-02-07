@@ -68,7 +68,7 @@ func setupRedpandaContainer(ctx context.Context) error {
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		redpandaCtr, err = redpanda.Run(ctx,
-			"redpandadata/redpanda:v24.2.6",
+			"docker.redpanda.com/redpandadata/redpanda:v24.2.6",
 			redpanda.WithEnableSASL(),
 			redpanda.WithAutoCreateTopics(),
 			redpanda.WithEnableKafkaAuthorization(),

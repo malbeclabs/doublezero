@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	influxDBImage        = "influxdb:1.8"
+	influxDBImage        = "public.ecr.aws/influxdb/influxdb:1.8"
 	influxDBInternalPort = 8086
 	influxDBDatabase     = "doublezero_devnet"
 )

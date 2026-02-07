@@ -649,14 +649,14 @@ func (c Contributor) MarshalJSON() ([]byte, error) {
 }
 
 type Tenant struct {
-	AccountType     AccountType
-	Owner           [32]uint8 `influx:"tag,owner,pubkey"`
-	BumpSeed        uint8     `influx:"-"`
-	Code            string    `influx:"tag,code"`
-	VrfId           uint16    `influx:"field,vrf_id"`
-	ReferenceCount  uint32    `influx:"field,reference_count"`
-	Administrators  [][32]byte
-	PubKey          [32]byte `influx:"tag,pubkey,pubkey"`
+	AccountType    AccountType
+	Owner          [32]uint8 `influx:"tag,owner,pubkey"`
+	BumpSeed       uint8     `influx:"-"`
+	Code           string    `influx:"tag,code"`
+	VrfId          uint16    `influx:"field,vrf_id"`
+	ReferenceCount uint32    `influx:"field,reference_count"`
+	Administrators [][32]byte
+	PubKey         [32]byte `influx:"tag,pubkey,pubkey"`
 }
 
 func (t Tenant) MarshalJSON() ([]byte, error) {

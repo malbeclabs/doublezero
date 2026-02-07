@@ -226,6 +226,26 @@
       "name": "DesiredStatus",
       "value": "1",
       "typ": "u8"
+    },
+    {
+      "name": "UnicastUsersCount",
+      "value": "3",
+      "typ": "u16"
+    },
+    {
+      "name": "MulticastUsersCount",
+      "value": "2",
+      "typ": "u16"
+    },
+    {
+      "name": "MaxUnicastUsers",
+      "value": "80",
+      "typ": "u16"
+    },
+    {
+      "name": "MaxMulticastUsers",
+      "value": "20",
+      "typ": "u16"
     }
   ]
 }

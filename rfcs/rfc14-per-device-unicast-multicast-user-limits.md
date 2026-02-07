@@ -1,4 +1,4 @@
-# RFC-13: Per-Device Unicast and Multicast User Limits
+# RFC-14: Per-Device Unicast and Multicast User Limits
 
 ## Summary
 
@@ -50,7 +50,7 @@ New error codes:
 - `MaxUnicastUsersExceeded` (73)
 - `MaxMulticastUsersExceeded` (74)
 
-The doublezerod client also checks limits before submitting a transaction, providing immediate feedback. The onchain program remains the source of truth.
+The CLI checks limits before submitting a transaction, providing immediate feedback. The onchain program remains the source of truth.
 
 ### CLI
 
@@ -75,10 +75,10 @@ doublezero device update --pubkey <device> --max-unicast-users 100 --max-multica
 
 | Component | Changes |
 |-----------|---------|
-| **Onchain program** | `user/create.rs`: limit checking + counter increment; `user/closeaccount.rs`: counter decrement; `device/update.rs`: set limits |
+| **Onchain program** | `user/create.rs`, `user/create_subscribe.rs`: limit checking + counter increment; `user/closeaccount.rs`: counter decrement; `device/update.rs`: set limits |
 | **Device state** | New fields with Borsh deserialization defaults |
 | **CLI** | Display new fields in `device get/list`; new flags for `device update` |
-| **Client (doublezerod)** | Pre-flight capacity check before user creation |
+| **SDKs** | New Device fields in Go, Python, TypeScript SDKs |
 
 ### Unchanged Components
 
@@ -86,6 +86,7 @@ doublezero device update --pubkey <device> --max-unicast-users 100 --max-multica
 |-----------|--------|
 | **Controller** | Limits are enforced onchain; controller doesn't partition tunnel IDs |
 | **Activator** | No changes needed for limit enforcement |
+| **doublezerod** | Limits enforced onchain; old clients continue to work |
 | **Tunnel ID pool** | All user types share the single pool (500-627) |
 
 ## Rollout

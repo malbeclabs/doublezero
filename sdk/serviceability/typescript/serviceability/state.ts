@@ -547,6 +547,10 @@ export interface Device {
   maxUsers: number;
   deviceHealth: number;
   deviceDesiredStatus: number;
+  unicastUsersCount: number;
+  multicastUsersCount: number;
+  maxUnicastUsers: number;
+  maxMulticastUsers: number;
 }
 
 export function deserializeDevice(data: Uint8Array): Device {
@@ -577,6 +581,10 @@ export function deserializeDevice(data: Uint8Array): Device {
   const maxUsers = r.readU16();
   const deviceHealth = r.readU8();
   const deviceDesiredStatus = r.readU8();
+  const unicastUsersCount = r.readU16();
+  const multicastUsersCount = r.readU16();
+  const maxUnicastUsers = r.readU16();
+  const maxMulticastUsers = r.readU16();
 
   return {
     accountType,
@@ -599,6 +607,10 @@ export function deserializeDevice(data: Uint8Array): Device {
     maxUsers,
     deviceHealth,
     deviceDesiredStatus,
+    unicastUsersCount,
+    multicastUsersCount,
+    maxUnicastUsers,
+    maxMulticastUsers,
   };
 }
 

@@ -12,7 +12,7 @@ All notable changes to this project will be documented in this file.
 
 - Onchain programs
   - Serviceability: add reference count validation in DeleteMulticastGroup to prevent deletion when active publishers or subscribers exist
-  - Serviceability: add per-device unicast and multicast user limits with separate counters and configurable max values ([RFC-13](rfcs/rfc13-per-device-unicast-multicast-user-limits.md))
+  - Serviceability: add per-device unicast and multicast user limits with separate counters and configurable max values ([RFC-14](rfcs/rfc14-per-device-unicast-multicast-user-limits.md))
 
 - CLI
   - Add `--max-unicast-users` and `--max-multicast-users` flags to `device update` command

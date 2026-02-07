@@ -159,6 +159,7 @@ jobs:
           pull_with_retry ${{ env.DZ_IMAGE_REPO }}/device:${{ env.DZ_IMAGE_TAG }}
           pull_with_retry ${{ env.DZ_IMAGE_REPO }}/client:${{ env.DZ_IMAGE_TAG }}
           pull_with_retry ${{ env.DZ_IMAGE_REPO }}/device-health-oracle:${{ env.DZ_IMAGE_TAG }}
+          pull_with_retry prom/prometheus:v2.54.1
       - name: test
         env:
           DZ_E2E_NO_BUILD: "1"

@@ -125,7 +125,7 @@ pub fn process_setdevice_exchange(
         } else {
             return Err(DoubleZeroError::InvalidIndex.into());
         }
-        device.reference_count -= 1;
+        device.reference_count = device.reference_count.saturating_sub(1);
     }
 
     try_acc_write(&device, device_account, payer_account, accounts)?;

@@ -2,7 +2,7 @@
 
 ## Summary
 
-**Status: `Draft`**
+**Status: `Approved`**
 
 When the RFC has been implemented, a user will be able to have simultaneous tunnels. This will be a single unicast and a single multicast-capable tunnel. The previous work that has been done to enable multicast using PIM (protocol independent multicast) and RP (rendezvous point) will now be extended to enable multiple tunnel support.
 

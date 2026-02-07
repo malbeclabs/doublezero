@@ -14,6 +14,7 @@ import (
 	"github.com/gagliardetto/solana-go/programs/system"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
+	"github.com/malbeclabs/doublezero/e2e/internal/prometheus"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
 	"github.com/stretchr/testify/require"
 )
@@ -88,10 +89,14 @@ func TestE2E_Funder(t *testing.T) {
 		}
 	}
 
-	// Check the funder account balance metric.
-	require.NoError(t, metricsClient.Fetch(ctx))
-	funderBalance := metricsClient.GetGaugeValues("doublezero_funder_account_balance_sol")
-	require.NotNil(t, funderBalance)
+	// Check the funder account balance metric. Wait for it to appear since the funder
+	// only sets this gauge after successfully getting recipients, which may take a few ticks.
+	var funderBalance []prometheus.LabeledValue
+	require.Eventually(t, func() bool {
+		require.NoError(t, metricsClient.Fetch(ctx))
+		funderBalance = metricsClient.GetGaugeValues("doublezero_funder_account_balance_sol")
+		return funderBalance != nil
+	}, 30*time.Second, 3*time.Second)
 	// The funder account is the manager account, which we fund with 100 SOL during devnet setup.
 	require.Greater(t, funderBalance[0].Value, 50.0)
 	prevFunderBalance := funderBalance[0].Value

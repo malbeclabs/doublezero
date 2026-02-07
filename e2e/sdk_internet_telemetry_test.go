@@ -21,7 +21,7 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 	t.Parallel()
 
 	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
-	log := newTestLoggerForTest(t).With("test", t.Name(), "deployID", deployID)
+	log := newTestLoggerForTest(t).With("test", t.Name())
 
 	// Use the hardcoded serviceability program keypair for this test, since the telemetry program
 	// is built with it as an expectation, and the initialize instruction will fail if the owner

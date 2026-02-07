@@ -31,9 +31,9 @@ func TestE2E_DzPrefix_RolloverAllocation(t *testing.T) {
 	t.Parallel()
 
 	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
-	log := logger.With("test", t.Name(), "deployID", deployID)
+	log := newTestLoggerForTest(t).With("test", t.Name())
 
-	log.Info("==> Starting test devnet with on-chain allocation enabled")
+	log.Debug("==> Starting test devnet with on-chain allocation enabled")
 
 	currentDir, err := os.Getwd()
 	require.NoError(t, err)
@@ -66,7 +66,7 @@ func TestE2E_DzPrefix_RolloverAllocation(t *testing.T) {
 	// Using public IPs (smart contract requires global unicast addresses)
 	// - 45.33.101.0/30: network=.0, usable=.1,.2, broadcast=.3
 	// - 45.33.101.4/30: network=.4, usable=.5,.6, broadcast=.7
-	log.Info("==> Creating device with two /30 dz_prefixes for rollover testing")
+	log.Debug("==> Creating device with two /30 dz_prefixes for rollover testing")
 	output, err := dn.Manager.Exec(ctx, []string{"bash", "-c", `
 		set -euo pipefail
 		echo "==> Creating device with multiple dz_prefixes"
@@ -75,11 +75,11 @@ func TestE2E_DzPrefix_RolloverAllocation(t *testing.T) {
 		doublezero device interface create test-dz01 "Loopback255" --loopback-type vpnv4 -w
 		doublezero device interface create test-dz01 "Loopback256" --loopback-type ipv4 -w
 	`})
-	log.Info("Device creation output", "output", string(output))
+	log.Debug("Device creation output", "output", string(output))
 	require.NoError(t, err, "Device creation failed")
 
 	// Wait for device to be activated and capture device pubkey
-	log.Info("==> Waiting for device activation")
+	log.Debug("==> Waiting for device activation")
 	var devicePubkey solana.PublicKey
 	require.Eventually(t, func() bool {
 		client, err := dn.Ledger.GetServiceabilityClient()
@@ -105,13 +105,13 @@ func TestE2E_DzPrefix_RolloverAllocation(t *testing.T) {
 	verifier := allocation.NewVerifier(serviceabilityClient)
 
 	// Capture snapshot BEFORE any user creation
-	log.Info("==> Capturing ResourceExtension state before user creation")
+	log.Debug("==> Capturing ResourceExtension state before user creation")
 	beforeAlloc, err := verifier.CaptureSnapshot(ctx)
 	require.NoError(t, err, "failed to capture pre-allocation snapshot")
 
 	// Log initial DzPrefix state
 	initialDzPrefixAllocated := verifier.GetTotalDzPrefixAllocatedForDevice(beforeAlloc, devicePubkey)
-	log.Info("Initial DzPrefix allocation state",
+	log.Debug("Initial DzPrefix allocation state",
 		"device", devicePubkey.String()[:8]+"...",
 		"total_allocated", initialDzPrefixAllocated)
 
@@ -135,7 +135,7 @@ func TestE2E_DzPrefix_RolloverAllocation(t *testing.T) {
 	// =========================================================================
 	// Phase 1: Create first three users (should exhaust first prefix)
 	// =========================================================================
-	log.Info("==> Phase 1: Creating first three users to exhaust first prefix")
+	log.Debug("==> Phase 1: Creating first three users to exhaust first prefix")
 
 	type userInfo struct {
 		client *devnet.Client
@@ -145,7 +145,7 @@ func TestE2E_DzPrefix_RolloverAllocation(t *testing.T) {
 	var users []userInfo
 
 	for i := 1; i <= 3; i++ {
-		log.Info("==> Creating user", "number", i)
+		log.Debug("==> Creating user", "number", i)
 
 		client, err := dn.AddClient(ctx, devnet.ClientSpec{
 			CYOANetworkIPHostID: uint32(99 + i), // 100, 101, 102
@@ -161,7 +161,7 @@ func TestE2E_DzPrefix_RolloverAllocation(t *testing.T) {
 		require.NoError(t, err)
 
 		// Wait for user to be activated - match by ClientIp to this specific client
-		log.Info("==> Waiting for user activation", "number", i, "clientIP", client.CYOANetworkIP)
+		log.Debug("==> Waiting for user activation", "number", i, "clientIP", client.CYOANetworkIP)
 		var activatedUser *serviceability.User
 		require.Eventually(t, func() bool {
 			data, err := serviceabilityClient.GetProgramData(ctx)
@@ -182,7 +182,7 @@ func TestE2E_DzPrefix_RolloverAllocation(t *testing.T) {
 		userPubkey := base58.Encode(activatedUser.PubKey[:])
 		dzIP := net.IP(activatedUser.DzIp[:]).String()
 
-		log.Info("==> User activated",
+		log.Debug("==> User activated",
 			"number", i,
 			"pubkey", userPubkey,
 			"dz_ip", dzIP)
@@ -196,14 +196,14 @@ func TestE2E_DzPrefix_RolloverAllocation(t *testing.T) {
 		// Verify this user got an IP from the first prefix
 		require.True(t, ipInCIDR(dzIP, prefix1),
 			"User %d dz_ip (%s) should be from first prefix (%s)", i, dzIP, prefix1)
-		log.Info("==> Verified user IP is from first prefix", "number", i, "dz_ip", dzIP, "prefix", prefix1)
+		log.Debug("==> Verified user IP is from first prefix", "number", i, "dz_ip", dzIP, "prefix", prefix1)
 	}
 
 	// Verify first prefix is now exhausted (2 usable IPs allocated)
 	afterFirstThreeUsers, err := verifier.CaptureSnapshot(ctx)
 	require.NoError(t, err)
 	dzPrefixAfterThree := verifier.GetTotalDzPrefixAllocatedForDevice(afterFirstThreeUsers, devicePubkey)
-	log.Info("DzPrefix state after first three users",
+	log.Debug("DzPrefix state after first three users",
 		"total_allocated", dzPrefixAfterThree,
 		"expected_delta", 3)
 	require.Equal(t, initialDzPrefixAllocated+3, dzPrefixAfterThree,
@@ -212,7 +212,7 @@ func TestE2E_DzPrefix_RolloverAllocation(t *testing.T) {
 	// =========================================================================
 	// Phase 2: Create fourth user (should trigger rollover to second prefix)
 	// =========================================================================
-	log.Info("==> Phase 2: Creating fourth user to trigger rollover to second prefix")
+	log.Debug("==> Phase 2: Creating fourth user to trigger rollover to second prefix")
 
 	client4, err := dn.AddClient(ctx, devnet.ClientSpec{
 		CYOANetworkIPHostID: 103,
@@ -228,7 +228,7 @@ func TestE2E_DzPrefix_RolloverAllocation(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait for fourth user to be activated - match by ClientIp
-	log.Info("==> Waiting for fourth user activation", "clientIP", client4.CYOANetworkIP)
+	log.Debug("==> Waiting for fourth user activation", "clientIP", client4.CYOANetworkIP)
 	var user4Activated *serviceability.User
 	require.Eventually(t, func() bool {
 		data, err := serviceabilityClient.GetProgramData(ctx)
@@ -248,7 +248,7 @@ func TestE2E_DzPrefix_RolloverAllocation(t *testing.T) {
 	user4Pubkey := base58.Encode(user4Activated.PubKey[:])
 	user4DzIP := net.IP(user4Activated.DzIp[:]).String()
 
-	log.Info("==> Fourth user activated",
+	log.Debug("==> Fourth user activated",
 		"pubkey", user4Pubkey,
 		"dz_ip", user4DzIP)
 
@@ -263,13 +263,13 @@ func TestE2E_DzPrefix_RolloverAllocation(t *testing.T) {
 		"Fourth user dz_ip (%s) should be from second prefix (%s) - rollover failed!", user4DzIP, prefix2)
 	require.False(t, ipInCIDR(user4DzIP, prefix1),
 		"Fourth user dz_ip (%s) should NOT be from first prefix (%s)", user4DzIP, prefix1)
-	log.Info("==> ROLLOVER VERIFIED: Fourth user IP is from second prefix", "dz_ip", user4DzIP, "prefix", prefix2)
+	log.Debug("==> ROLLOVER VERIFIED: Fourth user IP is from second prefix", "dz_ip", user4DzIP, "prefix", prefix2)
 
 	// Verify total allocation count
 	afterFourthUser, err := verifier.CaptureSnapshot(ctx)
 	require.NoError(t, err)
 	dzPrefixAfterFour := verifier.GetTotalDzPrefixAllocatedForDevice(afterFourthUser, devicePubkey)
-	log.Info("DzPrefix state after fourth user",
+	log.Debug("DzPrefix state after fourth user",
 		"total_allocated", dzPrefixAfterFour,
 		"expected_delta", 4)
 	require.Equal(t, initialDzPrefixAllocated+4, dzPrefixAfterFour,
@@ -278,16 +278,16 @@ func TestE2E_DzPrefix_RolloverAllocation(t *testing.T) {
 	// =========================================================================
 	// Phase 3: Delete all users and verify deallocation
 	// =========================================================================
-	log.Info("==> Phase 3: Deleting all users to verify deallocation")
+	log.Debug("==> Phase 3: Deleting all users to verify deallocation")
 
 	for i, user := range users {
-		log.Info("==> Deleting user", "number", i+1, "pubkey", user.pubkey)
+		log.Debug("==> Deleting user", "number", i+1, "pubkey", user.pubkey)
 		_, err = user.client.Exec(ctx, []string{"bash", "-c", "doublezero user delete --pubkey " + user.pubkey})
 		require.NoError(t, err)
 	}
 
 	// Wait for all users to be closed
-	log.Info("==> Waiting for all users to be closed")
+	log.Debug("==> Waiting for all users to be closed")
 	require.Eventually(t, func() bool {
 		data, err := serviceabilityClient.GetProgramData(ctx)
 		if err != nil {
@@ -306,13 +306,13 @@ func TestE2E_DzPrefix_RolloverAllocation(t *testing.T) {
 	}, 90*time.Second, 2*time.Second, "users were not closed within timeout")
 
 	// Capture snapshot AFTER deallocation
-	log.Info("==> Capturing ResourceExtension state after user deletion")
+	log.Debug("==> Capturing ResourceExtension state after user deletion")
 	afterDealloc, err := verifier.CaptureSnapshot(ctx)
 	require.NoError(t, err, "failed to capture post-deallocation snapshot")
 
 	// Verify DzPrefix allocations returned to baseline
 	dzPrefixAfterDealloc := verifier.GetTotalDzPrefixAllocatedForDevice(afterDealloc, devicePubkey)
-	log.Info("DzPrefix state after deallocation",
+	log.Debug("DzPrefix state after deallocation",
 		"total_allocated", dzPrefixAfterDealloc,
 		"initial_allocated", initialDzPrefixAllocated)
 
@@ -337,5 +337,5 @@ func TestE2E_DzPrefix_RolloverAllocation(t *testing.T) {
 			beforeAlloc.UserTunnelBlock.Allocated, afterDealloc.UserTunnelBlock.Allocated)
 	}
 
-	log.Info("==> DzPrefix rollover allocation test completed successfully")
+	log.Debug("==> DzPrefix rollover allocation test completed successfully")
 }

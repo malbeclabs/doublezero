@@ -123,7 +123,7 @@ type TestDevnet struct {
 
 func NewSingleDeviceSingleClientTestDevnet(t *testing.T) (*TestDevnet, *devnet.Device, *devnet.Client) {
 	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
-	log := newTestLoggerForTest(t).With("test", t.Name(), "deployID", deployID)
+	log := newTestLoggerForTest(t).With("test", t.Name())
 
 	log.Debug("==> Starting test devnet with single device and client")
 

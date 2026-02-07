@@ -277,7 +277,7 @@ func TestE2E_BackwardCompatibility(t *testing.T) {
 
 func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *compatEnvResults) {
 	deployID := "dz-e2e-BackwardCompat-" + cloneEnv + "-" + random.ShortID()
-	log := newTestLoggerForTest(t).With("test", t.Name(), "deployID", deployID)
+	log := newTestLoggerForTest(t).With("test", t.Name())
 
 	currentDir, err := os.Getwd()
 	require.NoError(t, err)

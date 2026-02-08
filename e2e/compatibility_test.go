@@ -471,21 +471,26 @@ func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *
 	// Store the version list in the shared results so the parent can render the matrix.
 	envResults.versions = compatVersions
 
-	// Install released versions from Cloudsmith. Skip "current" since it's the branch
-	// build already in the container as the default `doublezero` binary.
+	// Install all released versions from Cloudsmith in a single batch. This avoids
+	// repeated docker exec overhead and repeated apt reinstalls of the current version.
+	var installVersions []string
 	for _, version := range compatVersions {
-		if version == devnet.CurrentVersionLabel {
-			log.Debug("==> Skipping install for current (already in container as doublezero)")
-			continue
+		if version != devnet.CurrentVersionLabel {
+			installVersions = append(installVersions, version)
 		}
-		log.Debug("==> Installing CLI version in manager", "version", version)
-		err = devnet.InstallCLIVersion(t.Context(), managerExec, version)
+	}
+	if len(installVersions) > 0 {
+		log.Debug("==> Batch installing CLI versions in manager", "versions", installVersions)
+		err = devnet.InstallCLIVersions(t.Context(), managerExec, installVersions)
 		require.NoError(t, err)
 	}
 
 	recordResult := envResults.record
 
-	// Test each compatible version.
+	// Test each compatible version in parallel. Each version creates entities with
+	// version-specific codes and IPs (e.g., ct081, 45.133.10.x) so they don't conflict.
+	// The solana-test-validator processes transactions sequentially, so concurrent writes
+	// to different accounts are safe.
 	for vi, version := range compatVersions {
 		vi, version := vi, version
 		testName := "v" + version
@@ -493,6 +498,7 @@ func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *
 			testName = version // no "v" prefix for "current"
 		}
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			// Use the unversioned binary for "current" (branch build already in container),
 			// versioned binary for released versions (installed from Cloudsmith).
 			cli := fmt.Sprintf("doublezero-%s", version)
@@ -783,12 +789,15 @@ func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *
 					// These entities were cloned from the remote cluster. We update them using the
 					// old CLI to verify that updates to pre-existing onchain accounts work.
 					// We use the current CLI's table output to discover entity pubkeys.
-					{name: "cloned_location_update", cmd: cli + " location update --pubkey " + lookupFirstPubkey("location list") + " --name ClonedLocUpdated"},
-					{name: "cloned_exchange_update", cmd: cli + " exchange update --pubkey " + lookupFirstPubkey("exchange list") + " --name ClonedExUpdated"},
+					// Names are version-specific to avoid Solana write-lock conflicts when
+					// versions run in parallel (all versions update the same cloned account).
+					{name: "cloned_location_update", cmd: cli + " location update --pubkey " + lookupFirstPubkey("location list") + " --name ClonedLocUpd" + suffix},
+					{name: "cloned_exchange_update", cmd: cli + " exchange update --pubkey " + lookupFirstPubkey("exchange list") + " --name ClonedExUpd" + suffix},
 
 					// --- Phase 13: Global config operations ---
-					// Test global config modification.
-					{name: "global_config_set", cmd: cli + " global-config set --remote-asn 65001", noCascade: true},
+					// Test global config modification. ASN is version-specific to avoid
+					// write-lock conflicts when versions run in parallel.
+					{name: "global_config_set", cmd: cli + fmt.Sprintf(" global-config set --remote-asn %d", 65001+vi), noCascade: true},
 					// Note: global-config set-version requires foundation allowlist membership
 					// and additional account keys that aren't easily set up in this test.
 

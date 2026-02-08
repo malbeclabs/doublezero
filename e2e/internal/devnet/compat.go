@@ -60,6 +60,34 @@ func InstallCLIVersion(ctx context.Context, execFn func(ctx context.Context, com
 	return nil
 }
 
+// InstallCLIVersions installs multiple CLI versions in a single exec call. This is faster
+// than calling InstallCLIVersion in a loop because it avoids repeated docker exec overhead
+// and only reinstalls the current version once at the end.
+func InstallCLIVersions(ctx context.Context, execFn func(ctx context.Context, command []string) ([]byte, error), versions []string) error {
+	if len(versions) == 0 {
+		return nil
+	}
+
+	// Build a bash script that installs each version and copies to versioned names,
+	// then reinstalls the current version once at the end.
+	var script strings.Builder
+	script.WriteString("set -euo pipefail\n")
+	for _, version := range versions {
+		script.WriteString(fmt.Sprintf(
+			"apt-get install -y --allow-downgrades doublezero=%s-1 && "+
+				"cp /usr/bin/doublezero /usr/local/bin/doublezero-%s && "+
+				"cp /usr/bin/doublezerod /usr/local/bin/doublezerod-%s 2>/dev/null || true\n",
+			version, version, version))
+	}
+	script.WriteString("apt-get install -y --allow-downgrades doublezero 2>/dev/null || true\n")
+
+	_, err := execFn(ctx, []string{"bash", "-c", script.String()})
+	if err != nil {
+		return fmt.Errorf("failed to batch install CLI versions %v: %w", versions, err)
+	}
+	return nil
+}
+
 // CurrentVersionLabel is the label used for the current branch's CLI in the compatibility matrix.
 const CurrentVersionLabel = "current"
 

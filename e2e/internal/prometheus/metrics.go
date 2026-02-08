@@ -36,7 +36,8 @@ func NewMetricsClient(url string) *MetricsClient {
 func (m *MetricsClient) WaitForReady(ctx context.Context, timeout time.Duration) error {
 	return poll.Until(ctx, func() (bool, error) {
 		err := m.Fetch(ctx)
-		return err == nil, err
+		// Don't propagate transient errors - just keep polling
+		return err == nil, nil
 	}, timeout, 500*time.Millisecond)
 }
 

@@ -43,12 +43,28 @@ var knownIncompatibilities = map[string]string{
 	// causes Borsh deserialization failure in the current program.
 	"write/multicast_group_create": "0.8.1",
 
+	// All multicast operations that depend on multicast_group_create. When the group
+	// can't be created (< 0.8.1), these all fail with "MulticastGroup not found".
+	"write/multicast_group_update":              "0.8.1",
+	"write/multicast_group_pub_allowlist_add":    "0.8.1",
+	"write/multicast_group_pub_allowlist_remove": "0.8.1",
+	"write/multicast_group_sub_allowlist_add":    "0.8.1",
+	"write/user_subscribe":                      "0.8.1",
+	"write/multicast_group_sub_allowlist_remove": "0.8.1",
+	"write/multicast_group_get":                 "0.8.1",
+	"write/multicast_group_delete":              "0.8.1",
+
 	// set-health commands: Added in v0.8.6 as part of Network Provisioning.
 	// Older CLIs don't have these subcommands.
 	"write/device_set_health":   "0.8.6",
 	"write/device_set_health_2": "0.8.6",
 	"write/link_set_health":     "0.8.6",
 	"write/link_set_health_dzx": "0.8.6",
+
+	// global_config_set: The SetGlobalConfig instruction added new required accounts
+	// that released CLIs (through v0.8.6) don't include, causing "insufficient account
+	// keys for instruction". Fixed in unreleased code.
+	"write/global_config_set": "0.8.7",
 }
 
 // =============================================================================

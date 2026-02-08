@@ -53,6 +53,7 @@ All notable changes to this project will be documented in this file.
   - Serviceability: fix multicast group closeaccount to use InvalidStatus error and remove redundant publisher/subscriber count check
   - Serviceability: add tenant_allowlist field to AccessPass to restrict which tenants can use specific access passes (backward compatible with existing accounts)
   - Serviceability: bypass validation for link delete ([#2934](https://github.com/malbeclabs/doublezero/pull/2934))
+  - Serviceability: restrict Delete instructions (Location, Exchange, Contributor, Device, Link, User, MulticastGroup) to accounts in Activated or Suspended status, returning InvalidStatus otherwise
 - SDK
   - Add metro_routing and route_liveness fields to CreateTenantCommand and UpdateTenantCommand
   - Add CreateTenant, UpdateTenant (vrf_id only), DeleteTenant, GetTenant, and ListTenant commands with support for code or pubkey lookup

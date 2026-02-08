@@ -710,9 +710,10 @@ func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *
 						" --status unlinked"},
 
 					// --- Phase 7: Create DZX link ---
-					// DZX links connect devices within the DZ network (as opposed to WAN links
-					// which connect to external networks). DZX links are created in "requested"
-					// status and must be accepted by the side-z contributor before activation.
+					// DZX links are cross-contributor peering links (as opposed to WAN links
+					// which connect two devices owned by the same contributor). DZX links are
+					// created in "requested" status and must be accepted by the side-z
+					// contributor before activation.
 					{name: "link_create_dzx", cmd: cli + " link create dzx" +
 						" --code " + dzxLinkCode +
 						" --contributor " + contributorCode +
@@ -828,8 +829,6 @@ func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *
 
 					// Delete user1 (multicast) first, before banning user2.
 					// User1 is subscribed to multicast - delete unsubscribes automatically.
-					// Note: If we banned user1 first, delete would fail because SDK's unsubscribe
-					// requires Activated status. See plans/sdk-user-delete-banned-multicast-issue.md.
 					{name: "user_delete", cmd: cli + " user delete --pubkey " +
 						fmt.Sprintf("$(doublezero user list 2>/dev/null | grep '%s' | awk '{print $1}')", userClientIP)},
 					// Wait for user1 to be fully removed from device2.

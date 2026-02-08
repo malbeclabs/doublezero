@@ -42,6 +42,13 @@ var knownIncompatibilities = map[string]string{
 	// The index and bump_seed fields were removed. Older CLIs send the old format which
 	// causes Borsh deserialization failure in the current program.
 	"write/multicast_group_create": "0.8.1",
+
+	// set-health commands: Added in v0.8.6 as part of Network Provisioning.
+	// Older CLIs don't have these subcommands.
+	"write/device_set_health":   "0.8.6",
+	"write/device_set_health_2": "0.8.6",
+	"write/link_set_health":     "0.8.6",
+	"write/link_set_health_dzx": "0.8.6",
 }
 
 // =============================================================================
@@ -581,8 +588,9 @@ func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *
 				user2ClientIP := fmt.Sprintf("45.133.%d.1", 10+vi)   // device1: non-multicast user (normal delete)
 
 				// dumpDiagnostics logs the current onchain state for debugging failed steps.
+				// Uses fmt.Println to preserve newlines in output (structured logging escapes them).
 				dumpDiagnostics := func(stepName string) {
-					log.Info("=== DIAGNOSTICS for failed step: " + stepName + " ===")
+					fmt.Println("=== DIAGNOSTICS for failed step:", stepName, "===")
 					diagCmds := []struct {
 						label string
 						cmd   string
@@ -597,9 +605,9 @@ func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *
 					}
 					for _, dc := range diagCmds {
 						out, _ := dn.Manager.Exec(t.Context(), []string{"bash", "-c", dc.cmd})
-						log.Info("  "+dc.label+":", "output", string(out))
+						fmt.Printf("  %s:\n%s\n", dc.label, string(out))
 					}
-					log.Info("=== END DIAGNOSTICS ===")
+					fmt.Println("=== END DIAGNOSTICS ===")
 				}
 
 				type writeStep struct {

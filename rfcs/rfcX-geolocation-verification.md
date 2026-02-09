@@ -46,7 +46,7 @@ struct LocationOffset {
     pubkey: [u8; 32],             // Signer's public key (DZD or Probe)
     lat: f64,                     // Reference point latitude (WGS84)
     lon: f64,                     // Reference point longitude (WGS84)
-    loc_offset_ns: u64,           // Measured RTT in nanoseconds
+    rtt_ns: u64,                  // Measured RTT in nanoseconds
     num_references: u8,           // Number of previous offsets in chain
     references: Vec<Offset>,      // Previous offsets (empty for DZD→Probe)
 }
@@ -76,20 +76,20 @@ Maximum acceptable RTT between client and reference point for geo-verification. 
 
 ## Alternatives Considered
 
+### Satus Quo: Centralized Location Service (Rejected)
+**Pros:** Simple implementation, flexible, Already exists
+**Cons:** Single point of failure, requires trust, no cryptographic proof
+**Decision:** Rejected by potential clients
+
 ### Direct DZD↔Client Measurement (Rejected)
 **Pros:** Simpler, lower latency, lower cost
-**Cons:** Exposes DZD management IPs to all clients (security risk), requires client agent installation, mixes control/user plane traffic
+**Cons:** Control plane traffic in DZDs would not scale to moderate numbers of clients.
 **Decision:** Rejected. Avoided to prevent resource consumption on the resource-constrained DZD.
 
 ### GPS-Based Verification (Rejected)
 **Pros:** More precise, well-established
-**Cons:** Not available on servers, easily spoofed, privacy concerns, no audit trail, platform-dependent
-**Decision:** Rejected. Latency-based approximation works on all device types.
-
-### Centralized Location Service (Rejected)
-**Pros:** Simple implementation, flexible
-**Cons:** Single point of failure, requires trust, no cryptographic proof, may not satisfy auditors
-**Decision:** Rejected. Violates DoubleZero's decentralized principles.
+**Cons:** Not available in typical data centers.
+**Decision:** Rejected.
 
 ### Probe-Based Triangulation (SELECTED)
 **Pros:** Leverages existing infrastructure, no client modifications, cryptographic proof, onchain auditability, scalable, privacy-preserving

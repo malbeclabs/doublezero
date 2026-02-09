@@ -100,43 +100,22 @@ Maximum acceptable RTT between client and reference point for geo-verification. 
 
 ### Architecture Overview
 
-```mermaid
-graph TB
-    subgraph "Onchain"
-        ProbeAccount[Probe Account]
-        ProbeLatencySamples[ProbeLatencySamples PDA]
-    end
-
-    subgraph "DZD"
-        TelemetryAgent[Telemetry Agent]
-        ProbeDiscovery[Probe Discovery]
-        ProbePinger[Probe Pinger]
-        OffsetGenerator[Offset Generator]
-    end
-
-    subgraph "Probe Server"
-        UDPListener[UDP Listener :8923]
-        OffsetCache[Offset Cache]
-        ClientHandler[Client Handler]
-    end
-
-    subgraph "Client"
-        ClientApp[Client Application]
-        GeoVerifier[Geo Verifier]
-    end
-
-    ProbeAccount --> ProbeDiscovery
-    ProbeDiscovery --> ProbePinger
-    ProbePinger -->|1. TWAMP probe| UDPListener
-    UDPListener -->|2. TWAMP response| ProbePinger
-    ProbePinger --> OffsetGenerator
-    OffsetGenerator -->|3. UDP: Offset| UDPListener
-    OffsetGenerator -->|4. Onchain: samples| ProbeLatencySamples
-    UDPListener --> OffsetCache
-    ClientApp -->|5. UDP: request| ClientHandler
-    ClientHandler -->|6. TWAMP probe| ClientApp
-    ClientHandler -->|7. UDP: composite Offset| ClientApp
-    ClientApp --> GeoVerifier
+```
+  ┌──────────┐                  ┌───────────┐                  ┌───────────┐
+  │          │<─────Reply───────│           │<─────Reply───────│           │
+  │   DZD    │──────TWAMP──────>│   Probe   │──────TWAMP──────>│  Client   │
+  │          │──Signed Offset──>│           │──Signed Offset──>│           │
+  └──────────┘                  └───────────┘  w/ references   └───────────┘
+      ^ │                          ^  │                             │
+Child │ │ Measured                 │  │                      Report │
+IP    │ │ Offset       Client IPs  │  │                      Offset │
+      │ V                          │  │                             v
+  ┌───────────┐                    │  │                        ┌───────────┐
+  │           │────────────────────┘  │                        │           │
+  │    DZ     │───────────────────────┘                        │  Client   │
+  │  Ledger   │<──────Submit Client IPs to be Measured─────────│  Oracle   │
+  │           │<─────────────Confirm Against Ledger────────────│           │
+  └───────────┘                                                └───────────┘
 ```
 
 **Data Flow:**

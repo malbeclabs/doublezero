@@ -213,6 +213,23 @@ impl ProvisioningCliCommand {
         client_ip: Ipv4Addr,
         spinner: &ProgressBar,
     ) -> eyre::Result<()> {
+        // Check if the daemon already has a multicast service running. The daemon
+        // does not support updating an existing service — both publisher and subscriber
+        // roles must be specified in a single connect command.
+        if let Ok(statuses) = controller.status().await {
+            if statuses.iter().any(|s| {
+                s.user_type
+                    .as_ref()
+                    .is_some_and(|t| t.eq_ignore_ascii_case("multicast"))
+            }) {
+                eyre::bail!(
+                    "A multicast service is already running. Disconnect first with \
+                     `doublezero disconnect multicast`, then reconnect with all desired \
+                     groups in a single command (e.g. --pub-groups and --sub-groups)."
+                );
+            }
+        }
+
         let mcast_groups = client.list_multicastgroup(ListMulticastGroupCommand)?;
 
         // Resolve pub group codes to pubkeys
@@ -1137,6 +1154,11 @@ mod tests {
                 .controller
                 .expect_service_controller_can_open()
                 .return_const(true);
+
+            fixture
+                .controller
+                .expect_status()
+                .returning_st(|| Ok(vec![]));
 
             let latencies = fixture.latencies.clone();
             fixture

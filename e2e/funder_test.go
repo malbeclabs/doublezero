@@ -137,6 +137,12 @@ func TestE2E_Funder(t *testing.T) {
 	require.NotNil(t, funderBalance)
 	require.Less(t, funderBalance[0].Value, prevFunderBalance)
 
+	// Capture funder balance before draining devices, to avoid a race where the
+	// funder detects the drained accounts and re-funds them before we capture this
+	// snapshot. At this point both devices are above minBalance so no top-ups are
+	// pending.
+	beforeFunderBalance := getBalance(t, rpcClient, funderPK)
+
 	// Drain current balance from the devices onchain.
 	drainWallet := solana.NewWallet()
 	log.Debug("--> Draining LA device balance", "account", laDeviceMetricsPublisherWallet.PublicKey())
@@ -145,7 +151,6 @@ func TestE2E_Funder(t *testing.T) {
 	drainFunds(t, rpcClient, nyDeviceMetricsPublisherWallet.PrivateKey, drainWallet.PublicKey(), 0.01)
 
 	// Check that the devices are eventually funded again.
-	beforeFunderBalance := getBalance(t, rpcClient, funderPK)
 	requireEventuallyFunded(t, log, rpcClient, laDeviceMetricsPublisherWallet.PublicKey(), minBalanceSOL, "LA device metrics publisher")
 	requireEventuallyFunded(t, log, rpcClient, nyDeviceMetricsPublisherWallet.PublicKey(), minBalanceSOL, "NY device metrics publisher")
 

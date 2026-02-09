@@ -556,8 +556,8 @@ async fn test_closeaccount_user_with_deallocation() {
 
     assert_eq!(user_tunnel_resource_before.iter_allocated().len(), 2);
     assert_eq!(tunnel_ids_resource_before.iter_allocated().len(), 1);
-    // DzPrefixBlock has reserved first IP + user allocation = 2
-    assert_eq!(dz_prefix_resource_before.iter_allocated().len(), 2);
+    // DzPrefixBlock has reserved first two IPs + user allocation = 3
+    assert_eq!(dz_prefix_resource_before.iter_allocated().len(), 3);
 
     // Get user owner for CloseAccount
     let user = get_account_data(&mut banks_client, user_pubkey)
@@ -633,11 +633,11 @@ async fn test_closeaccount_user_with_deallocation() {
         tunnel_ids_resource_after.iter_allocated().is_empty(),
         "TunnelIds should have no allocations after deallocation"
     );
-    // DzPrefixBlock still has reserved first IP after user deallocation
+    // DzPrefixBlock still has reserved first two IPs after user deallocation
     assert_eq!(
         dz_prefix_resource_after.iter_allocated().len(),
-        1,
-        "DzPrefixBlock should have only reserved first IP after user deallocation"
+        2,
+        "DzPrefixBlock should have only reserved first two IPs after user deallocation"
     );
 
     println!("[PASS] test_closeaccount_user_with_deallocation");
@@ -764,14 +764,14 @@ async fn test_activate_user_ibrl_uses_client_ip() {
         "IBRL should use client_ip as dz_ip"
     );
 
-    // DzPrefixBlock should only have the reserved first IP (IBRL doesn't allocate from it)
+    // DzPrefixBlock should only have the reserved first two IPs (IBRL doesn't allocate from it)
     let dz_prefix_resource = get_resource_extension_data(&mut banks_client, dz_prefix_block_pubkey)
         .await
         .expect("DzPrefixBlock should exist");
     assert_eq!(
         dz_prefix_resource.iter_allocated().len(),
-        1,
-        "DzPrefixBlock should have only reserved first IP for IBRL UserType"
+        2,
+        "DzPrefixBlock should have only reserved first two IPs for IBRL UserType"
     );
 
     println!("[PASS] test_activate_user_ibrl_uses_client_ip");
@@ -836,14 +836,14 @@ async fn test_activate_user_ibrl_with_allocated_ip() {
     assert_eq!(dz_ip_octets[1], 1);
     assert_eq!(dz_ip_octets[2], 0);
 
-    // DzPrefixBlock should have reserved first IP + user allocation
+    // DzPrefixBlock should have reserved first two IPs + user allocation
     let dz_prefix_resource = get_resource_extension_data(&mut banks_client, dz_prefix_block_pubkey)
         .await
         .expect("DzPrefixBlock should exist");
     assert_eq!(
         dz_prefix_resource.iter_allocated().len(),
-        2,
-        "DzPrefixBlock should have reserved first IP + user allocation for IBRLWithAllocatedIP"
+        3,
+        "DzPrefixBlock should have reserved first two IPs + user allocation for IBRLWithAllocatedIP"
     );
 
     println!("[PASS] test_activate_user_ibrl_with_allocated_ip");
@@ -902,14 +902,14 @@ async fn test_activate_user_edge_filtering() {
         "EdgeFiltering should allocate dz_ip"
     );
 
-    // DzPrefixBlock should have reserved first IP + user allocation
+    // DzPrefixBlock should have reserved first two IPs + user allocation
     let dz_prefix_resource = get_resource_extension_data(&mut banks_client, dz_prefix_block_pubkey)
         .await
         .expect("DzPrefixBlock should exist");
     assert_eq!(
         dz_prefix_resource.iter_allocated().len(),
-        2,
-        "DzPrefixBlock should have reserved first IP + user allocation for EdgeFiltering"
+        3,
+        "DzPrefixBlock should have reserved first two IPs + user allocation for EdgeFiltering"
     );
 
     println!("[PASS] test_activate_user_edge_filtering");
@@ -1338,14 +1338,14 @@ async fn test_activate_user_already_activated_fails() {
 
     assert!(result.is_err(), "Double activation should fail");
 
-    // Verify resources were NOT double-allocated (reserved first IP + user = 2)
+    // Verify resources were NOT double-allocated (reserved first two IPs + user = 3)
     let dz_prefix_resource = get_resource_extension_data(&mut banks_client, dz_prefix_block_pubkey)
         .await
         .expect("DzPrefixBlock should exist");
     assert_eq!(
         dz_prefix_resource.iter_allocated().len(),
-        2,
-        "DzPrefixBlock should still have only reserved first IP + user allocation"
+        3,
+        "DzPrefixBlock should still have only reserved first two IPs + user allocation"
     );
 
     println!("[PASS] test_activate_user_already_activated_fails");

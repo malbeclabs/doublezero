@@ -43,7 +43,7 @@ impl DeviceState {
 
     pub fn get_next_dz_ip(&mut self) -> Option<Ipv4Addr> {
         for allocator in self.dz_ips.iter_mut() {
-            match allocator.next_available_block(1, 1) {
+            match allocator.next_available_block(2, 1) {
                 Some(dz_ip) => {
                     return Some(dz_ip.ip());
                 }

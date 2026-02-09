@@ -154,13 +154,15 @@ pub fn create_resource(
         &resource_range,
     )?;
 
-    // Reserve first IP for DzPrefixBlock (device tunnel endpoint).
-    // Contributors configure the first IP of their dz_prefix on their Loopback100
-    // interface for user tunnels, so we reserve index 0 to prevent user allocation conflicts.
+    // Reserve first two IPs for DzPrefixBlock (device tunnel endpoints).
+    // Contributors configure these IPs on loopback interfaces as user tunnel endpoints:
+    // - Index 0: First tunnel endpoint (e.g. Loopback100, unicast)
+    // - Index 1: Second tunnel endpoint (e.g. multicast)
     if let ResourceType::DzPrefixBlock(_, _) = resource_type {
         let mut buffer = resource_account.data.borrow_mut();
         let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
-        resource.allocate(1)?; // Allocates index 0
+        resource.allocate(1)?; // Index 0
+        resource.allocate(1)?; // Index 1
     }
 
     Ok(())

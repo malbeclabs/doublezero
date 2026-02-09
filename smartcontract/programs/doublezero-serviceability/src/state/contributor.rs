@@ -83,7 +83,14 @@ pub struct Contributor {
     pub status: ContributorStatus, // 1
     pub code: String,              // 4 + len
     pub reference_count: u32,      // 4
-    pub ops_manager_pk: Pubkey,    // 32
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
+            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
+        )
+    )]
+    pub ops_manager_pk: Pubkey, // 32
 }
 
 impl fmt::Display for Contributor {

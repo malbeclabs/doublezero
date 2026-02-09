@@ -108,27 +108,32 @@ Maximum acceptable RTT between client and reference point for geo-verification. 
   └──────────┘                  └───────────┘  w/ references   └───────────┘
       ^ │                          ^  │                             │
 Child │ │ Measured                 │  │                      Report │
-IP    │ │ Offset       Client IPs  │  │                      Offset │
-      │ V                          │  │                             v
+IP    │ │ Offset        Client IPs │  │ Measured             Offset │
+      │ V             & DZD Pubkey │  │ Offset                      v
   ┌───────────┐                    │  │                        ┌───────────┐
   │           │────────────────────┘  │                        │           │
-  │    DZ     │───────────────────────┘                        │  Client   │
+  │    DZ     │<──────────────────────┘                        │  Client   │
   │  Ledger   │<──────Submit Client IPs to be Measured─────────│  Oracle   │
   │           │<─────────────Confirm Against Ledger────────────│           │
   └───────────┘                                                └───────────┘
 ```
 
-**Data Flow:**
+**Data Flows:**
+_Ongoing:_
+- **Probe Discovery (60s interval):** DZD queries onchain Probe accounts to discover child probes
+- **Client Discovery (30s interval):** Client sends UDP packet to Probe requesting verification
 
-1. **Probe Discovery (10s interval):** DZD queries onchain Probe accounts to discover mated probes
-2. **DZD→Probe Measurement (5s interval):** DZD sends TWAMP probe, measures RTT
-3. **Offset Generation:** DZD creates Offset with lat/lon, latency, timestamp, signs with Ed25519
-4. **Dual Posting:** DZD submits samples to `ProbeLatencySamples` PDA onchain AND sends Offset to Probe via UDP
-5. **Probe Caching:** Probe verifies DZD signature, caches Offset in memory
-6. **Client Request:** Client sends UDP packet to Probe requesting verification
-7. **Probe→Client Measurement:** Probe measures RTT to client using TWAMP
-8. **Composite Offset:** Probe creates new Offset with DZD Offset as reference, signs it
-9. **Client Verification:** Client verifies signature chain, validates latency within threshold
+_Async:_
+- Client Oracle submits Client IPs that should have locations verified.
+
+_Measurment Flow_
+1. **DZD→Probe Measurement (10s interval):** DZD sends TWAMP probe, measures RTT
+2. **Offset Generation:** DZD creates Offset with lat/lon, latency, timestamp, signs with Ed25519
+3. **Dual Posting:** DZD submits samples to `ProbeLatencySamples` PDA onchain AND sends Offset to Probe via UDP
+4. **Probe Caching:** Probe verifies DZD signature, caches Offset
+5. **Probe→Client Measurement:** Probe measures RTT to client using TWAMP
+6. **Composite Offset:** Probe creates new Offset with DZD Offset as reference, signs it
+8. **Client Verification:** Client verifies signature chain, uses `lat/lon` + `rtt_ns` to determine location 
 
 ### Data Structures
 

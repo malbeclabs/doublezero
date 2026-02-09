@@ -578,20 +578,18 @@ func TestE2E_MultipleLinks_AllocationLifecycle(t *testing.T) {
 }
 
 // TestE2E_Multicast_ReactivationPreservesAllocations is a regression test for Bug #2798.
-// It verifies that when a Multicast publisher adds a second multicast group and gets re-activated:
+// It verifies that when a Multicast publisher disconnects and reconnects with additional
+// groups, getting re-activated:
 // - tunnel_net and tunnel_id remain unchanged (no leak)
 // - dz_ip remains unchanged (already allocated from DzPrefixBlock)
 // - Resource bitmap allocation counts stay stable (no leaks)
 //
 // Bug scenario:
 // 1. User with Multicast type is activated as publisher → allocates tunnel_net, tunnel_id, dz_ip
-// 2. User adds publisher subscription to second multicast group → sets status to Updating
+// 2. User disconnects and reconnects with two pub groups → sets status to Updating
 // 3. Activator re-activates user → BUG: would allocate NEW resources instead of keeping existing
 //
 // The fix preserves existing tunnel_net/tunnel_id/dz_ip allocations.
-//
-// Note: A user can only be a subscriber OR a publisher, not both. This test uses
-// publisher → add second publisher group to trigger re-activation.
 func TestE2E_Multicast_ReactivationPreservesAllocations(t *testing.T) {
 	t.Parallel()
 
@@ -781,13 +779,17 @@ func TestE2E_Multicast_ReactivationPreservesAllocations(t *testing.T) {
 		"DzPrefixBlock_allocated", dzPrefixBefore)
 
 	// =========================================================================
-	// Phase 2: Add publisher to second multicast group → triggers Updating status
+	// Phase 2: Disconnect and reconnect with both groups → triggers re-activation
 	// =========================================================================
-	log.Debug("==> Phase 2: Adding publisher to second multicast group to trigger re-activation")
+	log.Debug("==> Phase 2: Disconnecting and reconnecting with both multicast groups to trigger re-activation")
 
-	// Add publisher to second group using the CLI (adds to publishers list, triggers re-activation)
-	_, err = client.Exec(ctx, []string{"bash", "-c", "doublezero connect multicast publisher test-mc02 --client-ip " + client.CYOANetworkIP})
-	require.NoError(t, err, "failed to add publisher to second group")
+	// Disconnect existing multicast service first (required — daemon doesn't support updating in-place)
+	_, err = client.Exec(ctx, []string{"bash", "-c", "doublezero disconnect multicast"})
+	require.NoError(t, err, "failed to disconnect multicast")
+
+	// Reconnect with both pub groups in a single command
+	_, err = client.Exec(ctx, []string{"bash", "-c", "doublezero connect multicast --pub-groups test-mc01 test-mc02 --client-ip " + client.CYOANetworkIP})
+	require.NoError(t, err, "failed to reconnect with both pub groups")
 
 	// =========================================================================
 	// Phase 3: Wait for re-activation with two publishers

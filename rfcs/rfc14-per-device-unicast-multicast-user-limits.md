@@ -2,13 +2,13 @@
 
 ## Summary
 
-**Status: Draft**
+**Status: Approved**
 
 This RFC adds separate per-device limits for unicast and multicast users, allowing operators to control each user type independently rather than relying on a combined `max_users` limit.
 
 ## Motivation
 
-Multicast traffic can have significantly higher bandwidth utilization than unicast due to amplification—a single multicast stream is replicated to many subscribers. The existing `max_users` limit applies to all user types combined, giving operators no way to manage this difference. Separate limits allow operators to cap multicast users based on bandwidth capacity while allowing more unicast users on the same device.
+Multicast traffic can have significantly higher bandwidth utilization than unicast due to amplification--a single multicast stream is replicated to many subscribers. The existing `max_users` limit applies to all user types combined, giving operators no way to manage this difference. Separate limits allow operators to cap multicast users based on bandwidth capacity while allowing more unicast users on the same device.
 
 ## Alternatives Considered
 

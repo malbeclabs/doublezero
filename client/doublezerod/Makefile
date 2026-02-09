@@ -31,5 +31,5 @@ FUZZTIME ?= 10s
 fuzz:
 	@for f in $$(go test ./internal/liveness -list=Fuzz | grep '^Fuzz'); do \
 		echo "==> Fuzzing $$f"; \
-		go test ./internal/liveness -run=^$$ -fuzz=$$f -fuzztime=$(FUZZTIME) || exit 1; \
+		go test ./internal/liveness -run=^$$ -fuzz=$$f -fuzztime=$(FUZZTIME) -timeout=60s || exit 1; \
 	done

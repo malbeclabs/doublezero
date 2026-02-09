@@ -60,7 +60,7 @@ pub fn process_update_payment_status(
     }
 
     // Validate payment status range
-    if value.payment_status > 3 {
+    if value.payment_status > 1 {
         msg!("Invalid payment status: {}", value.payment_status);
         return Err(DoubleZeroError::InvalidPaymentStatus.into());
     }
@@ -69,7 +69,7 @@ pub fn process_update_payment_status(
     let mut tenant = Tenant::try_from(tenant_account)?;
 
     // Update the payment status
-    tenant.payment_status = value.payment_status;
+    tenant.payment_status = value.payment_status.into();
 
     try_acc_write(&tenant, tenant_account, payer_account, accounts)?;
 

@@ -6,6 +6,35 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
 use std::fmt;
 
+#[repr(u8)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Default)]
+#[borsh(use_discriminant = true)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum TenantPaymentStatus {
+    #[default]
+    Delinquent = 0,
+    Paid = 1,
+}
+
+impl From<u8> for TenantPaymentStatus {
+    fn from(value: u8) -> Self {
+        match value {
+            0 => TenantPaymentStatus::Delinquent,
+            1 => TenantPaymentStatus::Paid,
+            _ => panic!("Unknown TenantPaymentStatus: {value}"),
+        }
+    }
+}
+
+impl fmt::Display for TenantPaymentStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TenantPaymentStatus::Delinquent => write!(f, "Delinquent"),
+            TenantPaymentStatus::Paid => write!(f, "Paid"),
+        }
+    }
+}
+
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Tenant {
@@ -30,7 +59,7 @@ pub struct Tenant {
         )
     )]
     pub administrators: Vec<Pubkey>, // 4 + (32 * len)
-    pub payment_status: u8,        // 1 byte — 0=Unknown, 1=Paid, 2=Delinquent, 3=Suspended
+    pub payment_status: TenantPaymentStatus, // 1
     #[cfg_attr(
         feature = "serde",
         serde(
@@ -95,17 +124,12 @@ impl Validate for Tenant {
             msg!("Invalid account type: {}", self.account_type);
             return Err(DoubleZeroError::InvalidAccountType);
         }
+
         // Code must be less than or equal to 32 bytes
         if self.code.len() > 32 {
             msg!("Invalid code length: {}", self.code.len());
             return Err(DoubleZeroError::CodeTooLong);
         }
-        // Payment status must be in range 0-3
-        if self.payment_status > 3 {
-            msg!("Invalid payment status: {}", self.payment_status);
-            return Err(DoubleZeroError::InvalidPaymentStatus);
-        }
-
         Ok(())
     }
 }
@@ -125,7 +149,7 @@ mod tests {
         assert_eq!(val.vrf_id, 0);
         assert_eq!(val.reference_count, 0);
         assert_eq!(val.administrators, Vec::<Pubkey>::new());
-        assert_eq!(val.payment_status, 0);
+        assert_eq!(val.payment_status, TenantPaymentStatus::Delinquent);
         assert_eq!(val.token_account, Pubkey::default());
     }
 
@@ -139,7 +163,7 @@ mod tests {
             code: "test".to_string(),
             vrf_id: 100,
             administrators: vec![Pubkey::default()],
-            payment_status: 1,
+            payment_status: TenantPaymentStatus::Paid,
             token_account: Pubkey::default(),
         };
 
@@ -178,7 +202,7 @@ mod tests {
             code: "test".to_string(),
             vrf_id: 100,
             administrators: vec![],
-            payment_status: 0,
+            payment_status: TenantPaymentStatus::Delinquent,
             token_account: Pubkey::default(),
         };
         let err = val.validate();
@@ -196,7 +220,7 @@ mod tests {
             code: "a".repeat(33), // More than 32
             vrf_id: 100,
             administrators: vec![],
-            payment_status: 0,
+            payment_status: TenantPaymentStatus::Delinquent,
             token_account: Pubkey::default(),
         };
         let err = val.validate();

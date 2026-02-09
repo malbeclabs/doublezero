@@ -142,7 +142,7 @@ pub fn process_create_tenant(
         code: code.clone(),
         vrf_id,
         administrators: vec![value.administrator],
-        payment_status: 0,
+        payment_status: TenantPaymentStatus::default(),
         token_account: value.token_account.unwrap_or_default(),
     };
 

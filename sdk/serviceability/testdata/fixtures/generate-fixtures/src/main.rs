@@ -32,7 +32,7 @@ use doublezero_serviceability::state::{
     location::{Location, LocationStatus},
     multicastgroup::{MulticastGroup, MulticastGroupStatus},
     programconfig::ProgramConfig,
-    tenant::Tenant,
+    tenant::{Tenant, TenantPaymentStatus},
     user::{User, UserCYOA, UserStatus, UserType},
 };
 use serde::Serialize;
@@ -721,7 +721,7 @@ fn generate_tenant(dir: &Path) {
         vrf_id: 500,
         reference_count: 2,
         administrators: vec![admin_pk],
-        payment_status: 1,
+        payment_status: TenantPaymentStatus::Paid,
         token_account,
     };
 

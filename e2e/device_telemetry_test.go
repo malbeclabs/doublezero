@@ -23,6 +23,7 @@ import (
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
 	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
 	telemetrysdk "github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -526,9 +527,14 @@ func waitForDeviceLatencySamples(t *testing.T, dn *devnet.Devnet, originDevicePK
 	client, err := dn.Ledger.GetTelemetryClient(nil)
 	require.NoError(t, err)
 
+	var lastErr error
+	var lastAccount *telemetrysdk.DeviceLatencySamples
+
 	start := time.Now()
-	require.Eventually(t, func() bool {
+	if !assert.Eventually(t, func() bool {
 		account, err := client.GetDeviceLatencySamples(t.Context(), originDevicePK, targetDevicePK, linkPK, epoch)
+		lastErr = err
+		lastAccount = account
 		if err != nil && !errors.Is(err, telemetrysdk.ErrAccountNotFound) {
 			t.Fatalf("failed to get device latency samples: %v", err)
 		}
@@ -544,7 +550,10 @@ func waitForDeviceLatencySamples(t *testing.T, dn *devnet.Devnet, originDevicePK
 			return false
 		}
 		return true
-	}, timeout, 3*time.Second)
+	}, timeout, 3*time.Second) {
+		t.Fatalf("waitForDeviceLatencySamples timed out after %s: origin=%s target=%s link=%s epoch=%d waitForMinSamples=%d waitForNonZeroSample=%v lastErr=%v lastAccount=%+v",
+			timeout, originDevicePK, targetDevicePK, linkPK, epoch, waitForMinSamples, waitForNonZeroSample, lastErr, lastAccount)
+	}
 
 	account, err := client.GetDeviceLatencySamples(t.Context(), originDevicePK, targetDevicePK, linkPK, epoch)
 	require.NoError(t, err)

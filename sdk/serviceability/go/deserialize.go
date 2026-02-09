@@ -27,6 +27,7 @@ func DeserializeGlobalConfig(reader *ByteReader, cfg *GlobalConfig) {
 	cfg.UserTunnelBlock = reader.ReadNetworkV4()
 	cfg.MulticastGroupBlock = reader.ReadNetworkV4()
 	cfg.NextBGPCommunity = reader.ReadU16()
+	cfg.MulticastPublisherBlock = reader.ReadNetworkV4()
 }
 
 func DeserializeLocation(reader *ByteReader, loc *Location) {

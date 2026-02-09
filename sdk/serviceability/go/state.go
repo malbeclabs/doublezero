@@ -348,8 +348,9 @@ type GlobalConfig struct {
 	DeviceTunnelBlock   [5]uint8
 	UserTunnelBlock     [5]uint8
 	MulticastGroupBlock [5]uint8
-	NextBGPCommunity    uint16
-	PubKey              [32]byte
+	NextBGPCommunity        uint16
+	MulticastPublisherBlock [5]uint8
+	PubKey                  [32]byte
 }
 
 type Location struct {

@@ -337,6 +337,7 @@ export interface GlobalConfig {
   userTunnelBlock: Uint8Array;
   multicastGroupBlock: Uint8Array;
   nextBgpCommunity: number;
+  multicastPublisherBlock: Uint8Array;
 }
 
 export function deserializeGlobalConfig(data: Uint8Array): GlobalConfig {
@@ -351,6 +352,7 @@ export function deserializeGlobalConfig(data: Uint8Array): GlobalConfig {
     userTunnelBlock: r.readNetworkV4(),
     multicastGroupBlock: r.readNetworkV4(),
     nextBgpCommunity: r.readU16(),
+    multicastPublisherBlock: r.readNetworkV4(),
   };
 }
 

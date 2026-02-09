@@ -486,6 +486,7 @@ class GlobalConfig:
     user_tunnel_block: bytes = b"\x00" * 5
     multicast_group_block: bytes = b"\x00" * 5
     next_bgp_community: int = 0
+    multicast_publisher_block: bytes = b"\x00" * 5
 
     @classmethod
     def from_bytes(cls, data: bytes) -> GlobalConfig:
@@ -500,6 +501,7 @@ class GlobalConfig:
         gc.user_tunnel_block = r.read_network_v4()
         gc.multicast_group_block = r.read_network_v4()
         gc.next_bgp_community = r.read_u16()
+        gc.multicast_publisher_block = r.read_network_v4()
         return gc
 
 

@@ -251,7 +251,12 @@ func (l *Ledger) Start(ctx context.Context) error {
 			NanoCPUs: defaultContainerNanoCPUs,
 			Memory:   ledgerContainerMemory,
 		},
-		Labels: l.dn.labels,
+		// Ensure host.docker.internal resolves inside the container on Linux.
+		// Docker Desktop (Mac/Windows) provides this automatically, but native
+		// Linux Docker does not. This is needed when CloneFromURL points at a
+		// host-exposed port (e.g., cloning from another devnet's ledger).
+		ExtraHosts: []string{"host.docker.internal:host-gateway"},
+		Labels:     l.dn.labels,
 		Mounts: []testcontainers.ContainerMount{
 			{
 				Source:   testcontainers.GenericVolumeMountSource{Name: volumeName},

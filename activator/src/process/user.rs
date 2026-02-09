@@ -630,7 +630,7 @@ mod tests {
     fn test_process_user_event_pending_to_activated_ibrl_with_allocated_ip() {
         do_test_process_user_event_pending_to_activated(
             UserType::IBRLWithAllocatedIP,
-            Some([10, 0, 0, 1].into()),
+            Some([10, 0, 0, 2].into()),
             1,
         );
     }
@@ -639,7 +639,7 @@ mod tests {
     fn test_process_user_event_pending_to_activated_edge_filtering() {
         do_test_process_user_event_pending_to_activated(
             UserType::EdgeFiltering,
-            Some([10, 0, 0, 1].into()),
+            Some([10, 0, 0, 2].into()),
             1,
         );
     }
@@ -753,7 +753,7 @@ mod tests {
                     predicate::eq(DoubleZeroInstruction::ActivateUser(UserActivateArgs {
                         tunnel_id: 500,
                         tunnel_net: "10.0.0.1/29".parse().unwrap(),
-                        dz_ip: [10, 0, 0, 1].into(),
+                        dz_ip: [10, 0, 0, 2].into(),
                         dz_prefix_count: 0, // legacy path
                     })),
                     predicate::always(),

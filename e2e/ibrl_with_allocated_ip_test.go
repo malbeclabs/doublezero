@@ -118,8 +118,10 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 		ones, _ := dzPrefixNet.Mask.Size()
 		allocatableBits := 32 - ones // number of host bits
 
-		// First IP is reserved for device tunnel endpoint (Loopback100 interface)
-		expectedAllocatedClientIP, err := nextAllocatableIP(dzPrefixIP, allocatableBits, map[string]bool{dzPrefixIP: true})
+		// First two IPs are reserved for device tunnel endpoints
+		dzPrefixIPSecond, err := nextAllocatableIP(dzPrefixIP, allocatableBits, map[string]bool{dzPrefixIP: true})
+		require.NoError(t, err)
+		expectedAllocatedClientIP, err := nextAllocatableIP(dzPrefixIP, allocatableBits, map[string]bool{dzPrefixIP: true, dzPrefixIPSecond: true})
 		require.NoError(t, err)
 
 		dn.log.Debug("--> Expected allocated client IP", "expectedAllocatedClientIP", expectedAllocatedClientIP, "deviceCYOAIP", device.CYOANetworkIP, "dzPrefix", device.DZPrefix)

@@ -24,9 +24,9 @@ import (
 // - When the first prefix is exhausted, subsequent users get IPs from the next available prefix
 // - All allocations are properly deallocated when users are deleted
 //
-// Test uses two /30 prefixes (3 usable IPs each, .0 is pre-reserved):
-// - Prefix 1: 45.33.101.0/30 → usable IPs: .1, .2, .3 (network .0 reserved)
-// - Prefix 2: 45.33.101.4/30 → usable IPs: .5, .6, .7 (network .4 reserved)
+// Test uses two /30 prefixes (2 usable IPs each, .0 and .1 are pre-reserved for device tunnel endpoints):
+// - Prefix 1: 45.33.101.0/30 → usable IPs: .2, .3 (.0 and .1 reserved)
+// - Prefix 2: 45.33.101.4/30 → usable IPs: .6, .7 (.4 and .5 reserved)
 func TestE2E_DzPrefix_RolloverAllocation(t *testing.T) {
 	t.Parallel()
 
@@ -62,10 +62,10 @@ func TestE2E_DzPrefix_RolloverAllocation(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create device with two /30 prefixes for rollover testing
-	// /30 prefix has 4 IPs total: network addr, 2 usable, broadcast
+	// /30 prefix has 4 IPs total, with first 2 reserved for device tunnel endpoints
 	// Using public IPs (smart contract requires global unicast addresses)
-	// - 45.33.101.0/30: network=.0, usable=.1,.2, broadcast=.3
-	// - 45.33.101.4/30: network=.4, usable=.5,.6, broadcast=.7
+	// - 45.33.101.0/30: reserved=.0,.1, usable=.2,.3
+	// - 45.33.101.4/30: reserved=.4,.5, usable=.6,.7
 	log.Debug("==> Creating device with two /30 dz_prefixes for rollover testing")
 	output, err := dn.Manager.Exec(ctx, []string{"bash", "-c", `
 		set -euo pipefail
@@ -129,13 +129,13 @@ func TestE2E_DzPrefix_RolloverAllocation(t *testing.T) {
 	}
 
 	// Define the two prefixes
-	prefix1 := "45.33.101.0/30" // Usable: .1, .2
-	prefix2 := "45.33.101.4/30" // Usable: .5, .6
+	prefix1 := "45.33.101.0/30" // Usable: .2, .3
+	prefix2 := "45.33.101.4/30" // Usable: .6, .7
 
 	// =========================================================================
-	// Phase 1: Create first three users (should exhaust first prefix)
+	// Phase 1: Create first two users (should exhaust first prefix)
 	// =========================================================================
-	log.Debug("==> Phase 1: Creating first three users to exhaust first prefix")
+	log.Debug("==> Phase 1: Creating first two users to exhaust first prefix")
 
 	type userInfo struct {
 		client *devnet.Client
@@ -144,11 +144,11 @@ func TestE2E_DzPrefix_RolloverAllocation(t *testing.T) {
 	}
 	var users []userInfo
 
-	for i := 1; i <= 3; i++ {
+	for i := 1; i <= 2; i++ {
 		log.Debug("==> Creating user", "number", i)
 
 		client, err := dn.AddClient(ctx, devnet.ClientSpec{
-			CYOANetworkIPHostID: uint32(99 + i), // 100, 101, 102
+			CYOANetworkIPHostID: uint32(99 + i), // 100, 101
 		})
 		require.NoError(t, err)
 
@@ -200,36 +200,36 @@ func TestE2E_DzPrefix_RolloverAllocation(t *testing.T) {
 	}
 
 	// Verify first prefix is now exhausted (2 usable IPs allocated)
-	afterFirstThreeUsers, err := verifier.CaptureSnapshot(ctx)
+	afterFirstTwoUsers, err := verifier.CaptureSnapshot(ctx)
 	require.NoError(t, err)
-	dzPrefixAfterThree := verifier.GetTotalDzPrefixAllocatedForDevice(afterFirstThreeUsers, devicePubkey)
-	log.Debug("DzPrefix state after first three users",
-		"total_allocated", dzPrefixAfterThree,
-		"expected_delta", 3)
-	require.Equal(t, initialDzPrefixAllocated+3, dzPrefixAfterThree,
-		"Expected 3 IPs allocated from DzPrefixBlocks after creating 3 users")
+	dzPrefixAfterTwo := verifier.GetTotalDzPrefixAllocatedForDevice(afterFirstTwoUsers, devicePubkey)
+	log.Debug("DzPrefix state after first two users",
+		"total_allocated", dzPrefixAfterTwo,
+		"expected_delta", 2)
+	require.Equal(t, initialDzPrefixAllocated+2, dzPrefixAfterTwo,
+		"Expected 2 IPs allocated from DzPrefixBlocks after creating 2 users")
 
 	// =========================================================================
-	// Phase 2: Create fourth user (should trigger rollover to second prefix)
+	// Phase 2: Create third user (should trigger rollover to second prefix)
 	// =========================================================================
-	log.Debug("==> Phase 2: Creating fourth user to trigger rollover to second prefix")
+	log.Debug("==> Phase 2: Creating third user to trigger rollover to second prefix")
 
-	client4, err := dn.AddClient(ctx, devnet.ClientSpec{
-		CYOANetworkIPHostID: 103,
+	client3, err := dn.AddClient(ctx, devnet.ClientSpec{
+		CYOANetworkIPHostID: 102,
 	})
 	require.NoError(t, err)
 
 	// Set access pass
-	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + client4.CYOANetworkIP + " --user-payer " + client4.Pubkey})
+	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + client3.CYOANetworkIP + " --user-payer " + client3.Pubkey})
 	require.NoError(t, err)
 
 	// Create user with allocated IP
-	_, err = client4.Exec(ctx, []string{"bash", "-c", "doublezero user create --device test-dz01 --client-ip " + client4.CYOANetworkIP + " --allocate-addr"})
+	_, err = client3.Exec(ctx, []string{"bash", "-c", "doublezero user create --device test-dz01 --client-ip " + client3.CYOANetworkIP + " --allocate-addr"})
 	require.NoError(t, err)
 
-	// Wait for fourth user to be activated - match by ClientIp
-	log.Debug("==> Waiting for fourth user activation", "clientIP", client4.CYOANetworkIP)
-	var user4Activated *serviceability.User
+	// Wait for third user to be activated - match by ClientIp
+	log.Debug("==> Waiting for third user activation", "clientIP", client3.CYOANetworkIP)
+	var user3Activated *serviceability.User
 	require.Eventually(t, func() bool {
 		data, err := serviceabilityClient.GetProgramData(ctx)
 		if err != nil {
@@ -237,43 +237,43 @@ func TestE2E_DzPrefix_RolloverAllocation(t *testing.T) {
 		}
 		for _, user := range data.Users {
 			userClientIP := net.IP(user.ClientIp[:]).String()
-			if userClientIP == client4.CYOANetworkIP && user.Status == serviceability.UserStatusActivated {
-				user4Activated = &user
+			if userClientIP == client3.CYOANetworkIP && user.Status == serviceability.UserStatusActivated {
+				user3Activated = &user
 				return true
 			}
 		}
 		return false
-	}, 90*time.Second, 2*time.Second, "fourth user was not activated within timeout")
+	}, 90*time.Second, 2*time.Second, "third user was not activated within timeout")
 
-	user4Pubkey := base58.Encode(user4Activated.PubKey[:])
-	user4DzIP := net.IP(user4Activated.DzIp[:]).String()
+	user3Pubkey := base58.Encode(user3Activated.PubKey[:])
+	user3DzIP := net.IP(user3Activated.DzIp[:]).String()
 
-	log.Debug("==> Fourth user activated",
-		"pubkey", user4Pubkey,
-		"dz_ip", user4DzIP)
+	log.Debug("==> Third user activated",
+		"pubkey", user3Pubkey,
+		"dz_ip", user3DzIP)
 
 	users = append(users, userInfo{
-		client: client4,
-		pubkey: user4Pubkey,
-		dzIP:   user4DzIP,
+		client: client3,
+		pubkey: user3Pubkey,
+		dzIP:   user3DzIP,
 	})
 
-	// CRITICAL: Verify fourth user got an IP from the SECOND prefix (rollover)
-	require.True(t, ipInCIDR(user4DzIP, prefix2),
-		"Fourth user dz_ip (%s) should be from second prefix (%s) - rollover failed!", user4DzIP, prefix2)
-	require.False(t, ipInCIDR(user4DzIP, prefix1),
-		"Fourth user dz_ip (%s) should NOT be from first prefix (%s)", user4DzIP, prefix1)
-	log.Debug("==> ROLLOVER VERIFIED: Fourth user IP is from second prefix", "dz_ip", user4DzIP, "prefix", prefix2)
+	// CRITICAL: Verify third user got an IP from the SECOND prefix (rollover)
+	require.True(t, ipInCIDR(user3DzIP, prefix2),
+		"Third user dz_ip (%s) should be from second prefix (%s) - rollover failed!", user3DzIP, prefix2)
+	require.False(t, ipInCIDR(user3DzIP, prefix1),
+		"Third user dz_ip (%s) should NOT be from first prefix (%s)", user3DzIP, prefix1)
+	log.Debug("==> ROLLOVER VERIFIED: Third user IP is from second prefix", "dz_ip", user3DzIP, "prefix", prefix2)
 
 	// Verify total allocation count
-	afterFourthUser, err := verifier.CaptureSnapshot(ctx)
+	afterThirdUser, err := verifier.CaptureSnapshot(ctx)
 	require.NoError(t, err)
-	dzPrefixAfterFour := verifier.GetTotalDzPrefixAllocatedForDevice(afterFourthUser, devicePubkey)
-	log.Debug("DzPrefix state after fourth user",
-		"total_allocated", dzPrefixAfterFour,
-		"expected_delta", 4)
-	require.Equal(t, initialDzPrefixAllocated+4, dzPrefixAfterFour,
-		"Expected 4 IPs allocated from DzPrefixBlocks after creating 4 users")
+	dzPrefixAfterThree := verifier.GetTotalDzPrefixAllocatedForDevice(afterThirdUser, devicePubkey)
+	log.Debug("DzPrefix state after third user",
+		"total_allocated", dzPrefixAfterThree,
+		"expected_delta", 3)
+	require.Equal(t, initialDzPrefixAllocated+3, dzPrefixAfterThree,
+		"Expected 3 IPs allocated from DzPrefixBlocks after creating 3 users")
 
 	// =========================================================================
 	// Phase 3: Delete all users and verify deallocation

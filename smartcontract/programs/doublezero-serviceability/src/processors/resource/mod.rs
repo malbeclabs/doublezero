@@ -158,11 +158,12 @@ pub fn create_resource(
     // Contributors configure these IPs on loopback interfaces as user tunnel endpoints:
     // - Index 0: First tunnel endpoint (e.g. Loopback100, unicast)
     // - Index 1: Second tunnel endpoint (e.g. multicast)
+    // For small prefixes (e.g. /32) that only have 1 IP, the second reservation is skipped.
     if let ResourceType::DzPrefixBlock(_, _) = resource_type {
         let mut buffer = resource_account.data.borrow_mut();
         let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
         resource.allocate(1)?; // Index 0
-        resource.allocate(1)?; // Index 1
+        let _ = resource.allocate(1); // Index 1 (best-effort for small prefixes)
     }
 
     Ok(())

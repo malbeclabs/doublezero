@@ -12,6 +12,9 @@ All notable changes to this project will be documented in this file.
 
 - Onchain programs
   - Serviceability: add reference count validation in DeleteMulticastGroup to prevent deletion when active publishers or subscribers exist
+  - Serviceability: reserve first two IPs in DZ prefix blocks for device tunnel endpoints, preventing user allocation of the second device tunnel endpoint address
+- Activator
+  - Reserve second IP in DZ prefix block for device tunnel endpoint (offchain allocator)
 
 - CLI
   - Add filtering options and desired_status & metrics_publisher_pk field to device and link list commands

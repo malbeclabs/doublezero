@@ -80,7 +80,7 @@ mod tests {
         assert_eq!(assigned, 0);
         assert_eq!(total, 512);
 
-        for expected in 0..510 {
+        for expected in 0..508 {
             let _ = device.get_next_dz_ip();
             let (assigned, total) = ip_count(&device);
             assert_eq!(assigned, expected + 1);

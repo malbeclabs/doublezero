@@ -257,8 +257,10 @@ func checkMulticastBothUsersAgentConfig(t *testing.T, dn *TestDevnet, device *de
 		ones, _ := dzPrefixNet.Mask.Size()
 		allocatableBits := 32 - ones
 
-		// With onchain allocation, the first IP is reserved for the device tunnel endpoint.
-		expectedAllocatedPublisherIP, err := nextAllocatableIP(dzPrefixIP, allocatableBits, map[string]bool{dzPrefixIP: true})
+		// With onchain allocation, the first two IPs are reserved for device tunnel endpoints.
+		dzPrefixIPSecond, err := nextAllocatableIP(dzPrefixIP, allocatableBits, map[string]bool{dzPrefixIP: true})
+		require.NoError(t, err)
+		expectedAllocatedPublisherIP, err := nextAllocatableIP(dzPrefixIP, allocatableBits, map[string]bool{dzPrefixIP: true, dzPrefixIPSecond: true})
 		require.NoError(t, err)
 
 		// Publisher gets the first tunnel slot, subscriber gets the second.
@@ -335,8 +337,10 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 			ones, _ := dzPrefixNet.Mask.Size()
 			allocatableBits := 32 - ones
 
-			// With onchain allocation, the first IP is reserved for the device tunnel endpoint.
-			expectedAllocatedClientIP, err = nextAllocatableIP(dzPrefixIP, allocatableBits, map[string]bool{dzPrefixIP: true})
+			// With onchain allocation, the first two IPs are reserved for device tunnel endpoints.
+			dzPrefixIPSecond, err := nextAllocatableIP(dzPrefixIP, allocatableBits, map[string]bool{dzPrefixIP: true})
+			require.NoError(t, err)
+			expectedAllocatedClientIP, err = nextAllocatableIP(dzPrefixIP, allocatableBits, map[string]bool{dzPrefixIP: true, dzPrefixIPSecond: true})
 			require.NoError(t, err)
 		}
 

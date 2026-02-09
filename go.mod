@@ -61,6 +61,7 @@ require (
 	github.com/vishvananda/netns v0.0.5
 	golang.org/x/mod v0.31.0
 	golang.org/x/net v0.49.0
+	golang.org/x/sync v0.19.0
 	golang.org/x/sys v0.40.0
 	google.golang.org/grpc v1.77.0
 	google.golang.org/protobuf v1.36.11
@@ -189,7 +190,6 @@ require (
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba // indirect
 	golang.org/x/crypto v0.47.0 // indirect
 	golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b // indirect
-	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/telemetry v0.0.0-20251203150158-8fff8a5912fc // indirect
 	golang.org/x/term v0.39.0 // indirect
 	golang.org/x/text v0.33.0 // indirect

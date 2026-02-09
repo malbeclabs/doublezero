@@ -52,6 +52,8 @@ type stateCache struct {
 	Config          serviceability.Config
 	Devices         map[string]*Device
 	MulticastGroups map[string]serviceability.MulticastGroup
+	Tenants         map[string]serviceability.Tenant
+	UnicastVrfs     []uint16
 	Vpnv4BgpPeers   []BgpPeer
 	Ipv4BgpPeers    []BgpPeer
 }
@@ -403,6 +405,20 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 		cache.MulticastGroups[base58.Encode(group.PubKey[:])] = group
 	}
 
+	// Build cache of tenants keyed by base58-encoded pubkey and collect all VRF IDs.
+	cache.Tenants = make(map[string]serviceability.Tenant)
+	vrfSet := map[uint16]struct{}{1: {}} // always include VRF 1 as default
+	for _, tenant := range data.Tenants {
+		cache.Tenants[base58.Encode(tenant.PubKey[:])] = tenant
+		vrfSet[tenant.VrfId] = struct{}{}
+	}
+	vrfs := make([]uint16, 0, len(vrfSet))
+	for v := range vrfSet {
+		vrfs = append(vrfs, v)
+	}
+	sort.Slice(vrfs, func(i, j int) bool { return vrfs[i] < vrfs[j] })
+	cache.UnicastVrfs = vrfs
+
 	// create user tunnels and add to the appropriate device
 	for _, user := range users {
 		if user.Status != serviceability.UserStatusActivated {
@@ -471,6 +487,14 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 		tunnel.DzIp = net.IP(user.DzIp[:])
 		tunnel.PubKey = userPubKey
 		tunnel.Allocated = true
+
+		if user.UserType != serviceability.UserTypeMulticast {
+			// Set the VRF ID from the user's tenant. Default to 1 if no tenant is defined.
+			tunnel.VrfId = 1
+			if tenant, ok := cache.Tenants[base58.Encode(user.TenantPubKey[:])]; ok {
+				tunnel.VrfId = tenant.VrfId
+			}
+		}
 
 		if user.UserType == serviceability.UserTypeMulticast {
 			tunnel.IsMulticast = true
@@ -699,6 +723,7 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 		NoHardware:               c.noHardware,
 		TelemetryTWAMPListenPort: telemetryconfig.TWAMPListenPort,
 		LocalASN:                 localASN,
+		UnicastVrfs:              c.cache.UnicastVrfs,
 		Strings:                  StringsHelper{},
 	}
 

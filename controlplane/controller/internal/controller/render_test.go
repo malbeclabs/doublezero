@@ -27,6 +27,7 @@ func TestRenderConfig(t *testing.T) {
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
 				LocalASN:                 65342,
+				UnicastVrfs:              []uint16{1},
 				Device: &Device{
 					PublicIP:              net.IP{7, 7, 7, 7},
 					Vpn4vLoopbackIP:       net.IP{14, 14, 14, 14},
@@ -44,6 +45,7 @@ func TestRenderConfig(t *testing.T) {
 							OverlayDstIP:  net.IP{169, 254, 0, 1},
 							DzIp:          net.IP{100, 0, 0, 0},
 							Allocated:     true,
+							VrfId:         1,
 						},
 						{
 							Id:            501,
@@ -53,6 +55,7 @@ func TestRenderConfig(t *testing.T) {
 							OverlayDstIP:  net.IP{169, 254, 0, 3},
 							DzIp:          net.IP{100, 0, 0, 1},
 							Allocated:     true,
+							VrfId:         1,
 						},
 						{
 							Id:            502,
@@ -62,6 +65,7 @@ func TestRenderConfig(t *testing.T) {
 							OverlayDstIP:  net.IP{169, 254, 0, 5},
 							DzIp:          net.IP{100, 0, 0, 2},
 							Allocated:     true,
+							VrfId:         1,
 						},
 					},
 				},
@@ -77,6 +81,7 @@ func TestRenderConfig(t *testing.T) {
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
 				LocalASN:                 21682,
+				UnicastVrfs:              []uint16{1},
 				Device: &Device{
 					Interfaces:            []Interface{},
 					PublicIP:              net.IP{7, 7, 7, 7},
@@ -94,6 +99,7 @@ func TestRenderConfig(t *testing.T) {
 							OverlayDstIP:  net.IP{169, 254, 0, 1},
 							DzIp:          net.IP{100, 0, 0, 0},
 							Allocated:     true,
+							VrfId:         1,
 						},
 						{
 							Id:            501,
@@ -103,6 +109,7 @@ func TestRenderConfig(t *testing.T) {
 							OverlayDstIP:  net.IP{169, 254, 0, 3},
 							DzIp:          net.IP{100, 0, 0, 1},
 							Allocated:     true,
+							VrfId:         1,
 						},
 						{
 							Id:            502,
@@ -112,6 +119,7 @@ func TestRenderConfig(t *testing.T) {
 							OverlayDstIP:  net.IP{169, 254, 0, 5},
 							DzIp:          net.IP{100, 0, 0, 2},
 							Allocated:     true,
+							VrfId:         1,
 						},
 					},
 				},
@@ -129,6 +137,7 @@ func TestRenderConfig(t *testing.T) {
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
 				LocalASN:                 65342,
+				UnicastVrfs:              []uint16{1},
 				Device: &Device{
 					Interfaces:            []Interface{},
 					PublicIP:              net.IP{7, 7, 7, 7},
@@ -212,6 +221,7 @@ func TestRenderConfig(t *testing.T) {
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
 				LocalASN:                 65342,
+				UnicastVrfs:              []uint16{1},
 				Device: &Device{
 					Interfaces:            []Interface{},
 					PublicIP:              net.IP{7, 7, 7, 7},
@@ -248,6 +258,7 @@ func TestRenderConfig(t *testing.T) {
 							OverlayDstIP:  net.IP{169, 254, 0, 3},
 							DzIp:          net.IP{100, 0, 0, 1},
 							Allocated:     true,
+							VrfId:         1,
 						},
 						{
 							Id:            502,
@@ -307,6 +318,7 @@ func TestRenderConfig(t *testing.T) {
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
 				LocalASN:                 65342,
+				UnicastVrfs:              []uint16{1},
 				Device: &Device{
 					Interfaces:            []Interface{},
 					PublicIP:              net.IP{7, 7, 7, 7},
@@ -343,6 +355,7 @@ func TestRenderConfig(t *testing.T) {
 							OverlayDstIP:  net.IP{169, 254, 0, 3},
 							DzIp:          net.IP{100, 0, 0, 1},
 							Allocated:     true,
+							VrfId:         1,
 						},
 						{
 							Id:            502,
@@ -401,6 +414,7 @@ func TestRenderConfig(t *testing.T) {
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
 				LocalASN:                 65342,
+				UnicastVrfs:              []uint16{1},
 				Device: &Device{
 					PublicIP:              net.IP{7, 7, 7, 7},
 					Vpn4vLoopbackIP:       net.IP{14, 14, 14, 14},
@@ -502,6 +516,7 @@ func TestRenderConfig(t *testing.T) {
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
 				LocalASN:                 65342,
+				UnicastVrfs:              []uint16{1},
 				Device: &Device{
 					PublicIP:        net.IP{7, 7, 7, 7},
 					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
@@ -556,6 +571,7 @@ func TestRenderConfig(t *testing.T) {
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
 				LocalASN:                 65342,
+				UnicastVrfs:              []uint16{1},
 				Device: &Device{
 					PublicIP:        net.IP{7, 7, 7, 7},
 					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},

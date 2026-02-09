@@ -92,6 +92,7 @@ func TestGetConfig(t *testing.T) {
 				Config: serviceability.Config{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
+				UnicastVrfs: []uint16{1},
 				Devices: map[string]*Device{
 					"abc123": {
 						Interfaces:   []Interface{},
@@ -106,6 +107,7 @@ func TestGetConfig(t *testing.T) {
 								OverlayDstIP:  net.IP{169, 254, 0, 1},
 								DzIp:          net.IP{100, 0, 0, 0},
 								Allocated:     true,
+								VrfId:         1,
 							},
 							{
 								Id:            501,
@@ -115,6 +117,7 @@ func TestGetConfig(t *testing.T) {
 								OverlayDstIP:  net.IP{169, 254, 0, 3},
 								DzIp:          net.IP{100, 0, 0, 1},
 								Allocated:     true,
+								VrfId:         1,
 							},
 							{
 								Id:            502,
@@ -124,6 +127,7 @@ func TestGetConfig(t *testing.T) {
 								OverlayDstIP:  net.IP{169, 254, 0, 5},
 								DzIp:          net.IP{100, 0, 0, 2},
 								Allocated:     true,
+								VrfId:         1,
 							},
 						},
 						PublicIP:              net.IP{7, 7, 7, 7},
@@ -144,6 +148,7 @@ func TestGetConfig(t *testing.T) {
 				Config: serviceability.Config{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
+				UnicastVrfs: []uint16{1},
 				Devices: map[string]*Device{
 					"abc123": {
 						Interfaces:   []Interface{},
@@ -229,6 +234,7 @@ func TestGetConfig(t *testing.T) {
 				Config: serviceability.Config{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
+				UnicastVrfs: []uint16{1},
 				Devices: map[string]*Device{
 					"abc123": {
 						ExchangeCode: "tst",
@@ -261,6 +267,7 @@ func TestGetConfig(t *testing.T) {
 								OverlayDstIP:  net.IP{169, 254, 0, 3},
 								DzIp:          net.IP{100, 0, 0, 1},
 								Allocated:     true,
+								VrfId:         1,
 							},
 							{
 								Id:            502,
@@ -325,6 +332,7 @@ func TestGetConfig(t *testing.T) {
 				Config: serviceability.Config{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
+				UnicastVrfs: []uint16{1},
 				Devices: map[string]*Device{
 					"abc123": {
 						ExchangeCode: "tst",
@@ -357,6 +365,7 @@ func TestGetConfig(t *testing.T) {
 								OverlayDstIP:  net.IP{169, 254, 0, 3},
 								DzIp:          net.IP{100, 0, 0, 1},
 								Allocated:     true,
+								VrfId:         1,
 							},
 							{
 								Id:            502,
@@ -420,6 +429,7 @@ func TestGetConfig(t *testing.T) {
 				Config: serviceability.Config{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
+				UnicastVrfs: []uint16{1},
 				Vpnv4BgpPeers: []BgpPeer{
 					{
 						PeerIP:   net.IP{15, 15, 15, 15},
@@ -481,6 +491,7 @@ func TestGetConfig(t *testing.T) {
 				Config: serviceability.Config{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
+				UnicastVrfs: []uint16{1},
 				Vpnv4BgpPeers: []BgpPeer{
 					{
 						PeerIP:   net.IP{15, 15, 15, 15},
@@ -598,6 +609,7 @@ func TestGetConfigWithPathologies(t *testing.T) {
 				Config: serviceability.Config{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
+				UnicastVrfs: []uint16{1},
 				Devices: map[string]*Device{
 					"abc123": {
 						PubKey:   "abc123",
@@ -872,6 +884,8 @@ func TestStateCache(t *testing.T) {
 						MulticastIp: [4]uint8{239, 0, 0, 1},
 					},
 				},
+				Tenants:     map[string]serviceability.Tenant{},
+				UnicastVrfs: []uint16{1},
 				Vpnv4BgpPeers: []BgpPeer{
 					{
 						PeerIP:   net.IP{14, 14, 14, 14},
@@ -904,6 +918,7 @@ func TestStateCache(t *testing.T) {
 								DzIp:          net.IP{100, 100, 100, 100},
 								PubKey:        "11111111111111111111111111111111",
 								Allocated:     true,
+								VrfId:         1,
 							},
 							{
 								Id:            501,
@@ -1017,6 +1032,8 @@ func TestStateCache(t *testing.T) {
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
 				MulticastGroups: map[string]serviceability.MulticastGroup{},
+				Tenants:         map[string]serviceability.Tenant{},
+				UnicastVrfs:     []uint16{1},
 				Vpnv4BgpPeers:   nil, // No BGP peers since device has pathologies
 				Devices: map[string]*Device{
 					"4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM": {
@@ -1043,6 +1060,7 @@ func TestStateCache(t *testing.T) {
 								DzIp:          net.IP{100, 100, 100, 100},
 								PubKey:        "11111111111111111111111111111111",
 								Allocated:     true,
+								VrfId:         1,
 							},
 						}, generateEmptyTunnelSlots(config.StartUserTunnelNum+1, config.MaxUserTunnelSlots-1)...),
 						TunnelSlots: config.MaxUserTunnelSlots,
@@ -1109,6 +1127,8 @@ func TestStateCache(t *testing.T) {
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
 				MulticastGroups: map[string]serviceability.MulticastGroup{},
+				Tenants:         map[string]serviceability.Tenant{},
+				UnicastVrfs:     []uint16{1},
 				Devices: map[string]*Device{
 					"4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM": {
 						PubKey:   "4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM",
@@ -1151,6 +1171,7 @@ func TestStateCache(t *testing.T) {
 								DzIp:          net.IP{100, 100, 100, 100},
 								PubKey:        "11111111111111111111111111111111",
 								Allocated:     true,
+								VrfId:         1,
 							},
 						}, generateEmptyTunnelSlots(config.StartUserTunnelNum+1, config.MaxUserTunnelSlots-1)...),
 						TunnelSlots: config.MaxUserTunnelSlots,

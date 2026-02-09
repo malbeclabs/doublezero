@@ -184,7 +184,7 @@ type Device struct {
 	DevicePathologies     []string
 	BgpCommunity          uint16
 	ExchangeCode          string
-	Status                serviceability.DeviceStatus
+	Status serviceability.DeviceStatus
 	// Additional fields for metric labels
 	Code            string
 	ContributorCode string
@@ -230,6 +230,7 @@ type Tunnel struct {
 	PubKey                string
 	Allocated             bool
 	IsMulticast           bool
+	VrfId                 uint16
 	MulticastBoundaryList []net.IP
 	MulticastSubscribers  []net.IP
 	MulticastPublishers   []net.IP
@@ -255,5 +256,6 @@ type templateData struct {
 	NoHardware               bool
 	TelemetryTWAMPListenPort int
 	LocalASN                 uint32
+	UnicastVrfs              []uint16
 	Strings                  StringsHelper
 }

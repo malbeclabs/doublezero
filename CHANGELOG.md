@@ -44,6 +44,7 @@ All notable changes to this project will be documented in this file.
 - CLI
   - Add --metro-route and --route-aliveness flags to tenant create and update commands
   - Add tenant subcommands (create, update, delete, get, list, add-administrator, remove-administrator) to doublezero and doublezero-admin CLIs
+  - Support simultaneous publisher and subscriber multicast via `--pub-groups` and `--sub-groups` flags
   - Add filtering options and desired_status & metrics_publisher_pk field to device and link list commands
   - Added activation check for existing users before subscribing to new groups (#2782)
   - access-pass set: add --tenant argument to specify tenant code for access pass restriction (converts to tenant PDA onchain)
@@ -64,6 +65,8 @@ All notable changes to this project will be documented in this file.
   - Enforce that `CloseAccessPass` only closes AccessPass accounts when `connection_count == 0`, preventing closure while active connections are present.
 - Monitor
   - Add sol-balance watcher to track SOL balances for configured accounts and export Prometheus metrics for alerting
+- Client
+  - Support simultaneous publisher and subscriber multicast in the daemon
 - E2E tests
   - e2e: add multi-tenancy VRF isolation test ([#2891](https://github.com/malbeclabs/doublezero/pull/2891))
   - Add backward compatibility test that validates older CLI versions against the current onchain program by cloning live state from testnet and mainnet-beta

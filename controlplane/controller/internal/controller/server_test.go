@@ -705,6 +705,7 @@ func TestStateCache(t *testing.T) {
 		Links           []serviceability.Link
 		MulticastGroups []serviceability.MulticastGroup
 		Exchanges       []serviceability.Exchange
+		Tenants         []serviceability.Tenant
 		StateCache      stateCache
 	}{
 		{
@@ -1179,6 +1180,196 @@ func TestStateCache(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "tenant_vrf_assignment",
+			Config: serviceability.Config{
+				MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
+			},
+			Exchanges: []serviceability.Exchange{
+				{
+					PubKey:       [32]uint8{2},
+					Code:         "tst",
+					BgpCommunity: 10050,
+				},
+			},
+			Tenants: []serviceability.Tenant{
+				{
+					PubKey: [32]byte{10},
+					VrfId:  1,
+				},
+				{
+					PubKey: [32]byte{20},
+					VrfId:  2,
+				},
+			},
+			Users: []serviceability.User{
+				{
+					AccountType:  serviceability.AccountType(0),
+					Owner:        [32]uint8{},
+					UserType:     serviceability.UserUserType(serviceability.UserTypeIBRL),
+					TenantPubKey: [32]uint8{10},
+					DevicePubKey: [32]uint8{1},
+					CyoaType:     serviceability.CyoaTypeGREOverDIA,
+					ClientIp:     [4]uint8{1, 1, 1, 1},
+					DzIp:         [4]uint8{100, 100, 100, 100},
+					TunnelId:     uint16(500),
+					TunnelNet:    [5]uint8{10, 1, 1, 0, 31},
+					Status:       serviceability.UserStatusActivated,
+				},
+				{
+					AccountType:  serviceability.AccountType(0),
+					Owner:        [32]uint8{},
+					UserType:     serviceability.UserUserType(serviceability.UserTypeIBRL),
+					TenantPubKey: [32]uint8{20},
+					DevicePubKey: [32]uint8{1},
+					CyoaType:     serviceability.CyoaTypeGREOverDIA,
+					ClientIp:     [4]uint8{2, 2, 2, 2},
+					DzIp:         [4]uint8{100, 100, 100, 101},
+					TunnelId:     uint16(501),
+					TunnelNet:    [5]uint8{10, 1, 1, 2, 31},
+					Status:       serviceability.UserStatusActivated,
+				},
+				{
+					AccountType:  serviceability.AccountType(0),
+					Owner:        [32]uint8{},
+					UserType:     serviceability.UserUserType(serviceability.UserTypeIBRL),
+					TenantPubKey: [32]uint8{99},
+					DevicePubKey: [32]uint8{1},
+					CyoaType:     serviceability.CyoaTypeGREOverDIA,
+					ClientIp:     [4]uint8{3, 3, 3, 3},
+					DzIp:         [4]uint8{100, 100, 100, 102},
+					TunnelId:     uint16(502),
+					TunnelNet:    [5]uint8{10, 1, 1, 4, 31},
+					Status:       serviceability.UserStatusActivated,
+				},
+			},
+			Devices: []serviceability.Device{
+				{
+					AccountType:    serviceability.AccountType(0),
+					Owner:          [32]uint8{},
+					LocationPubKey: [32]uint8{},
+					ExchangePubKey: [32]uint8{2},
+					DeviceType:     0,
+					PublicIp:       [4]uint8{2, 2, 2, 2},
+					Status:         serviceability.DeviceStatusActivated,
+					Code:           "abc01",
+					PubKey:         [32]byte{1},
+					Interfaces: []serviceability.Interface{
+						{
+							Name:           "Loopback255",
+							InterfaceType:  serviceability.InterfaceTypeLoopback,
+							LoopbackType:   serviceability.LoopbackTypeVpnv4,
+							IpNet:          [5]uint8{14, 14, 14, 14, 32},
+							NodeSegmentIdx: 101,
+						},
+						{
+							Name:          "Loopback256",
+							InterfaceType: serviceability.InterfaceTypeLoopback,
+							LoopbackType:  serviceability.LoopbackTypeIpv4,
+							IpNet:         [5]uint8{12, 12, 12, 12, 32},
+						},
+					},
+				},
+			},
+			StateCache: stateCache{
+				Config: serviceability.Config{
+					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
+				},
+				MulticastGroups: map[string]serviceability.MulticastGroup{},
+				Tenants: map[string]serviceability.Tenant{
+					"g35TxFqwMx95vCk63fTxGTHb6ei4W24qg5t2x6xD3cT": {
+						PubKey: [32]byte{10},
+						VrfId:  1,
+					},
+					"2M59vuWgsiuHAqQVB6KvuXuaBCJR8138gMAm4uCuR6Du": {
+						PubKey: [32]byte{20},
+						VrfId:  2,
+					},
+				},
+				UnicastVrfs: []uint16{1, 2},
+				Vpnv4BgpPeers: []BgpPeer{
+					{
+						PeerIP:   net.IP{14, 14, 14, 14},
+						PeerName: "abc01",
+					},
+				},
+				Ipv4BgpPeers: []BgpPeer{
+					{
+						PeerIP:   net.IP{12, 12, 12, 12},
+						PeerName: "abc01",
+					},
+				},
+				Devices: map[string]*Device{
+					"4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM": {
+						PubKey:            "4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM",
+						PublicIP:          net.IP{2, 2, 2, 2},
+						Vpn4vLoopbackIP:   net.IP{14, 14, 14, 14},
+						IsisNet:           "49.0000.0e0e.0e0e.0000.00",
+						Ipv4LoopbackIP:    net.IP{12, 12, 12, 12},
+						DevicePathologies: []string{},
+						ExchangeCode:      "tst",
+						BgpCommunity:      10050,
+						Tunnels: append([]*Tunnel{
+							{
+								Id:            500,
+								UnderlaySrcIP: net.IP{2, 2, 2, 2},
+								UnderlayDstIP: net.IP{1, 1, 1, 1},
+								OverlaySrcIP:  net.IP{10, 1, 1, 0},
+								OverlayDstIP:  net.IP{10, 1, 1, 1},
+								DzIp:          net.IP{100, 100, 100, 100},
+								PubKey:        "11111111111111111111111111111111",
+								Allocated:     true,
+								VrfId:         1,
+							},
+							{
+								Id:            501,
+								UnderlaySrcIP: net.IP{2, 2, 2, 2},
+								UnderlayDstIP: net.IP{2, 2, 2, 2},
+								OverlaySrcIP:  net.IP{10, 1, 1, 2},
+								OverlayDstIP:  net.IP{10, 1, 1, 3},
+								DzIp:          net.IP{100, 100, 100, 101},
+								PubKey:        "11111111111111111111111111111111",
+								Allocated:     true,
+								VrfId:         2,
+							},
+							{
+								Id:            502,
+								UnderlaySrcIP: net.IP{2, 2, 2, 2},
+								UnderlayDstIP: net.IP{3, 3, 3, 3},
+								OverlaySrcIP:  net.IP{10, 1, 1, 4},
+								OverlayDstIP:  net.IP{10, 1, 1, 5},
+								DzIp:          net.IP{100, 100, 100, 102},
+								PubKey:        "11111111111111111111111111111111",
+								Allocated:     true,
+								VrfId:         1,
+							},
+						}, generateEmptyTunnelSlots(config.StartUserTunnelNum+3, config.MaxUserTunnelSlots-3)...),
+						TunnelSlots: config.MaxUserTunnelSlots,
+						Interfaces: []Interface{
+							{
+								InterfaceType:  InterfaceTypeLoopback,
+								LoopbackType:   LoopbackTypeVpnv4,
+								Ip:             netip.MustParsePrefix("14.14.14.14/32"),
+								Name:           "Loopback255",
+								NodeSegmentIdx: 101,
+							},
+							{
+								InterfaceType: InterfaceTypeLoopback,
+								LoopbackType:  LoopbackTypeIpv4,
+								Ip:            netip.MustParsePrefix("12.12.12.12/32"),
+								Name:          "Loopback256",
+							},
+						},
+						Vpn4vLoopbackIntfName: "Loopback255",
+						Ipv4LoopbackIntfName:  "Loopback256",
+						Status:                serviceability.DeviceStatusActivated,
+						Code:                  "abc01",
+						ContributorCode:       "unknown",
+						LocationCode:          "unknown",
+					},
+				},
+			},
+		},
 	}
 
 	for _, test := range tests {
@@ -1197,6 +1388,7 @@ func TestStateCache(t *testing.T) {
 						Links:           test.Links,
 						MulticastGroups: test.MulticastGroups,
 						Exchanges:       test.Exchanges,
+						Tenants:         test.Tenants,
 					}, nil
 				},
 				ProgramIDFunc: func() solana.PublicKey {
@@ -1271,6 +1463,7 @@ func TestEndToEnd(t *testing.T) {
 		Links           []serviceability.Link
 		MulticastGroups []serviceability.MulticastGroup
 		Exchanges       []serviceability.Exchange
+		Tenants         []serviceability.Tenant
 		AgentRequest    *pb.ConfigRequest
 		DevicePubKey    string
 		Want            string
@@ -1585,6 +1778,96 @@ func TestEndToEnd(t *testing.T) {
 			},
 			Want: "fixtures/e2e.last.user.tmpl",
 		},
+		{
+			Name: "tenant_vrf_end_to_end",
+			Config: serviceability.Config{
+				MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
+			},
+			MulticastGroups: []serviceability.MulticastGroup{
+				{
+					PubKey:      [32]uint8{1},
+					MulticastIp: [4]uint8{239, 0, 0, 1},
+				},
+			},
+			Exchanges: []serviceability.Exchange{
+				{
+					PubKey:       [32]uint8{2},
+					Code:         "tst",
+					BgpCommunity: 10050,
+				},
+			},
+			Tenants: []serviceability.Tenant{
+				{
+					PubKey: [32]byte{10},
+					VrfId:  1,
+				},
+				{
+					PubKey: [32]byte{20},
+					VrfId:  2,
+				},
+			},
+			Users: []serviceability.User{
+				{
+					AccountType:  serviceability.AccountType(0),
+					Owner:        [32]uint8{},
+					UserType:     serviceability.UserUserType(serviceability.UserTypeIBRL),
+					TenantPubKey: [32]uint8{10},
+					DevicePubKey: [32]uint8{1},
+					CyoaType:     serviceability.CyoaTypeGREOverDIA,
+					ClientIp:     [4]uint8{1, 1, 1, 1},
+					DzIp:         [4]uint8{100, 100, 100, 100},
+					TunnelId:     uint16(500),
+					TunnelNet:    [5]uint8{169, 254, 0, 0, 31},
+					Status:       serviceability.UserStatusActivated,
+				},
+				{
+					AccountType:  serviceability.AccountType(0),
+					Owner:        [32]uint8{},
+					UserType:     serviceability.UserUserType(serviceability.UserTypeIBRL),
+					TenantPubKey: [32]uint8{20},
+					DevicePubKey: [32]uint8{1},
+					CyoaType:     serviceability.CyoaTypeGREOverDIA,
+					ClientIp:     [4]uint8{2, 2, 2, 2},
+					DzIp:         [4]uint8{100, 100, 100, 101},
+					TunnelId:     uint16(501),
+					TunnelNet:    [5]uint8{169, 254, 0, 2, 31},
+					Status:       serviceability.UserStatusActivated,
+				},
+			},
+			Devices: []serviceability.Device{
+				{
+					AccountType:    serviceability.AccountType(0),
+					Owner:          [32]uint8{},
+					LocationPubKey: [32]uint8{},
+					ExchangePubKey: [32]uint8{2},
+					DeviceType:     0,
+					PublicIp:       [4]uint8{2, 2, 2, 2},
+					Interfaces: []serviceability.Interface{
+						{
+							InterfaceType:  serviceability.InterfaceTypeLoopback,
+							LoopbackType:   serviceability.LoopbackTypeVpnv4,
+							IpNet:          [5]uint8{14, 14, 14, 14, 32},
+							Name:           "Loopback255",
+							NodeSegmentIdx: 101,
+						},
+						{
+							InterfaceType: serviceability.InterfaceTypeLoopback,
+							LoopbackType:  serviceability.LoopbackTypeIpv4,
+							IpNet:         [5]uint8{12, 12, 12, 12, 32},
+							Name:          "Loopback256",
+						},
+					},
+					Status: serviceability.DeviceStatusActivated,
+					Code:   "abc01",
+					PubKey: [32]byte{1},
+				},
+			},
+			AgentRequest: &pb.ConfigRequest{
+				Pubkey:   "4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM",
+				BgpPeers: []string{},
+			},
+			Want: "fixtures/e2e.multi.vrf.tmpl",
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.Name, func(t *testing.T) {
@@ -1598,6 +1881,7 @@ func TestEndToEnd(t *testing.T) {
 						Links:           test.Links,
 						MulticastGroups: test.MulticastGroups,
 						Exchanges:       test.Exchanges,
+						Tenants:         test.Tenants,
 					}, nil
 				},
 				ProgramIDFunc: func() solana.PublicKey {

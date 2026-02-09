@@ -619,6 +619,50 @@ func TestRenderConfig(t *testing.T) {
 			},
 			Want: "fixtures/base.config.drained.txt",
 		},
+		{
+			Name:        "render_multi_vrf_tunnels_successfully",
+			Description: "render config for unicast tunnels across multiple VRFs",
+			Data: templateData{
+				Strings:                  StringsHelper{},
+				MulticastGroupBlock:      "239.0.0.0/24",
+				TelemetryTWAMPListenPort: 862,
+				LocalASN:                 65342,
+				UnicastVrfs:              []uint16{1, 2},
+				Device: &Device{
+					PublicIP:              net.IP{7, 7, 7, 7},
+					Vpn4vLoopbackIP:       net.IP{14, 14, 14, 14},
+					Vpn4vLoopbackIntfName: "Loopback255",
+					Interfaces:            []Interface{},
+					IsisNet:               "49.0000.0e0e.0e0e.0000.00",
+					ExchangeCode:          "tst",
+					BgpCommunity:          10050,
+					Tunnels: []*Tunnel{
+						{
+							Id:            500,
+							UnderlaySrcIP: net.IP{1, 1, 1, 1},
+							UnderlayDstIP: net.IP{2, 2, 2, 2},
+							OverlaySrcIP:  net.IP{169, 254, 0, 0},
+							OverlayDstIP:  net.IP{169, 254, 0, 1},
+							DzIp:          net.IP{100, 0, 0, 0},
+							Allocated:     true,
+							VrfId:         1,
+						},
+						{
+							Id:            501,
+							UnderlaySrcIP: net.IP{3, 3, 3, 3},
+							UnderlayDstIP: net.IP{4, 4, 4, 4},
+							OverlaySrcIP:  net.IP{169, 254, 0, 2},
+							OverlayDstIP:  net.IP{169, 254, 0, 3},
+							DzIp:          net.IP{100, 0, 0, 1},
+							Allocated:     true,
+							VrfId:         2,
+						},
+					},
+				},
+				UnknownBgpPeers: nil,
+			},
+			Want: "fixtures/multi.vrf.tunnel.tmpl",
+		},
 	}
 
 	for _, test := range tests {

@@ -72,7 +72,7 @@ use crate::processors::{
     tenant::{
         add_administrator::TenantAddAdministratorArgs, create::TenantCreateArgs,
         delete::TenantDeleteArgs, remove_administrator::TenantRemoveAdministratorArgs,
-        update::TenantUpdateArgs,
+        update::TenantUpdateArgs, update_payment_status::UpdatePaymentStatusArgs,
     },
     user::{
         activate::UserActivateArgs, ban::UserBanArgs, check_access_pass::CheckUserAccessPassArgs,
@@ -199,6 +199,7 @@ pub enum DoubleZeroInstruction {
     DeleteTenant(TenantDeleteArgs),                     // variant 90
     TenantAddAdministrator(TenantAddAdministratorArgs), // variant 91
     TenantRemoveAdministrator(TenantRemoveAdministratorArgs), // variant 92
+    UpdatePaymentStatus(UpdatePaymentStatusArgs),       // variant 93
 }
 
 impl DoubleZeroInstruction {
@@ -321,6 +322,7 @@ impl DoubleZeroInstruction {
             90 => Ok(Self::DeleteTenant(TenantDeleteArgs::try_from(rest).unwrap())),
             91 => Ok(Self::TenantAddAdministrator(TenantAddAdministratorArgs::try_from(rest).unwrap())),
             92 => Ok(Self::TenantRemoveAdministrator(TenantRemoveAdministratorArgs::try_from(rest).unwrap())),
+            93 => Ok(Self::UpdatePaymentStatus(UpdatePaymentStatusArgs::try_from(rest).unwrap())),
 
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -441,6 +443,7 @@ impl DoubleZeroInstruction {
             Self::DeleteTenant(_) => "DeleteTenant".to_string(), // variant 90
             Self::TenantAddAdministrator(_) => "TenantAddAdministrator".to_string(), // variant 91
             Self::TenantRemoveAdministrator(_) => "TenantRemoveAdministrator".to_string(), // variant 92
+            Self::UpdatePaymentStatus(_) => "UpdatePaymentStatus".to_string(), // variant 93
         }
     }
 
@@ -553,6 +556,7 @@ impl DoubleZeroInstruction {
             Self::DeleteTenant(args) => format!("{args:?}"), // variant 90
             Self::TenantAddAdministrator(args) => format!("{args:?}"), // variant 91
             Self::TenantRemoveAdministrator(args) => format!("{args:?}"), // variant 92
+            Self::UpdatePaymentStatus(args) => format!("{args:?}"), // variant 93
         }
     }
 }
@@ -1146,6 +1150,27 @@ mod tests {
                 health: LinkHealth::Pending,
             }),
             "SetLinkHealth",
+        );
+        test_instruction(
+            DoubleZeroInstruction::CreateTenant(TenantCreateArgs {
+                code: "test".to_string(),
+                administrator: Pubkey::new_unique(),
+                token_account: None,
+            }),
+            "CreateTenant",
+        );
+        test_instruction(
+            DoubleZeroInstruction::UpdateTenant(TenantUpdateArgs {
+                vrf_id: Some(200),
+                token_account: Some(Pubkey::new_unique()),
+            }),
+            "UpdateTenant",
+        );
+        test_instruction(
+            DoubleZeroInstruction::UpdatePaymentStatus(UpdatePaymentStatusArgs {
+                payment_status: 1,
+            }),
+            "UpdatePaymentStatus",
         );
     }
 }

@@ -30,14 +30,23 @@ pub struct Tenant {
         )
     )]
     pub administrators: Vec<Pubkey>, // 4 + (32 * len)
+    pub payment_status: u8,        // 1 byte — 0=Unknown, 1=Paid, 2=Delinquent, 3=Suspended
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
+            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
+        )
+    )]
+    pub token_account: Pubkey, // 32 bytes — Solana 2Z token account to monitor
 }
 
 impl fmt::Display for Tenant {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, bump_seed: {}, code: {}, vrf_id: {}, administrators: {:?}",
-            self.account_type, self.owner, self.bump_seed, self.code, self.vrf_id, self.administrators
+            "account_type: {}, owner: {}, bump_seed: {}, code: {}, vrf_id: {}, administrators: {:?}, payment_status: {}, token_account: {}",
+            self.account_type, self.owner, self.bump_seed, self.code, self.vrf_id, self.administrators, self.payment_status, self.token_account
         )
     }
 }
@@ -54,6 +63,8 @@ impl TryFrom<&[u8]> for Tenant {
             vrf_id: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             reference_count: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             administrators: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            payment_status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            token_account: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::Tenant {
@@ -89,6 +100,11 @@ impl Validate for Tenant {
             msg!("Invalid code length: {}", self.code.len());
             return Err(DoubleZeroError::CodeTooLong);
         }
+        // Payment status must be in range 0-3
+        if self.payment_status > 3 {
+            msg!("Invalid payment status: {}", self.payment_status);
+            return Err(DoubleZeroError::InvalidPaymentStatus);
+        }
 
         Ok(())
     }
@@ -109,6 +125,8 @@ mod tests {
         assert_eq!(val.vrf_id, 0);
         assert_eq!(val.reference_count, 0);
         assert_eq!(val.administrators, Vec::<Pubkey>::new());
+        assert_eq!(val.payment_status, 0);
+        assert_eq!(val.token_account, Pubkey::default());
     }
 
     #[test]
@@ -121,6 +139,8 @@ mod tests {
             code: "test".to_string(),
             vrf_id: 100,
             administrators: vec![Pubkey::default()],
+            payment_status: 1,
+            token_account: Pubkey::default(),
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -139,6 +159,8 @@ mod tests {
         assert_eq!(val.bump_seed, val2.bump_seed);
         assert_eq!(val.account_type, val2.account_type);
         assert_eq!(val.administrators, val2.administrators);
+        assert_eq!(val.payment_status, val2.payment_status);
+        assert_eq!(val.token_account, val2.token_account);
         assert_eq!(
             data.len(),
             borsh::object_length(&val).unwrap(),
@@ -156,6 +178,8 @@ mod tests {
             code: "test".to_string(),
             vrf_id: 100,
             administrators: vec![],
+            payment_status: 0,
+            token_account: Pubkey::default(),
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -172,6 +196,8 @@ mod tests {
             code: "a".repeat(33), // More than 32
             vrf_id: 100,
             administrators: vec![],
+            payment_status: 0,
+            token_account: Pubkey::default(),
         };
         let err = val.validate();
         assert!(err.is_err());

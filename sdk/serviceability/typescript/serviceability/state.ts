@@ -814,6 +814,8 @@ export interface Tenant {
   vrfId: number;
   referenceCount: number;
   administrators: PublicKey[];
+  paymentStatus: number;
+  tokenAccount: PublicKey;
 }
 
 export function deserializeTenant(data: Uint8Array): Tenant {
@@ -826,6 +828,8 @@ export function deserializeTenant(data: Uint8Array): Tenant {
     vrfId: r.readU16(),
     referenceCount: r.readU32(),
     administrators: readPubkeyVec(r),
+    paymentStatus: r.readU8(),
+    tokenAccount: readPubkey(r),
   };
 }
 

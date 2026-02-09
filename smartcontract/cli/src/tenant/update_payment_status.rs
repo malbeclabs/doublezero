@@ -4,24 +4,22 @@ use crate::{
     validators::validate_pubkey_or_code,
 };
 use clap::Args;
-use doublezero_sdk::commands::tenant::{get::GetTenantCommand, update::UpdateTenantCommand};
-use solana_sdk::pubkey::Pubkey;
-use std::{io::Write, str::FromStr};
+use doublezero_sdk::commands::tenant::{
+    get::GetTenantCommand, update_payment_status::UpdatePaymentStatusCommand,
+};
+use std::io::Write;
 
 #[derive(Args, Debug)]
-pub struct UpdateTenantCliCommand {
+pub struct UpdatePaymentStatusCliCommand {
     /// Tenant pubkey or code
     #[arg(long, value_parser = validate_pubkey_or_code)]
     pub pubkey: String,
-    /// Updated VRF ID
+    /// Payment status (0=Unknown, 1=Paid, 2=Delinquent, 3=Suspended)
     #[arg(long)]
-    pub vrf_id: Option<u16>,
-    /// Solana 2Z token account to monitor for billing
-    #[arg(long)]
-    pub token_account: Option<String>,
+    pub payment_status: u8,
 }
 
-impl UpdateTenantCliCommand {
+impl UpdatePaymentStatusCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
@@ -30,15 +28,9 @@ impl UpdateTenantCliCommand {
             pubkey_or_code: self.pubkey,
         })?;
 
-        let token_account = self
-            .token_account
-            .map(|s| Pubkey::from_str(&s))
-            .transpose()?;
-
-        let signature = client.update_tenant(UpdateTenantCommand {
+        let signature = client.update_payment_status_tenant(UpdatePaymentStatusCommand {
             tenant_pubkey,
-            vrf_id: self.vrf_id,
-            token_account,
+            payment_status: self.payment_status,
         })?;
 
         writeln!(out, "Signature: {signature}")?;

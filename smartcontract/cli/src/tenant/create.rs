@@ -13,9 +13,12 @@ pub struct CreateTenantCliCommand {
     /// Unique tenant code
     #[arg(long, value_parser = validate_code)]
     pub code: String,
-    /// Owner of the tenant
+    /// Administrator of the tenant
     #[arg(long, value_parser = validate_pubkey_or_code, default_value = "me")]
     pub administrator: String,
+    /// Solana 2Z token account to monitor for billing
+    #[arg(long)]
+    pub token_account: Option<String>,
 }
 
 impl CreateTenantCliCommand {
@@ -39,9 +42,15 @@ impl CreateTenantCliCommand {
             }
         };
 
+        let token_account = self
+            .token_account
+            .map(|s| Pubkey::from_str(&s))
+            .transpose()?;
+
         let (signature, _pubkey) = client.create_tenant(CreateTenantCommand {
             code: self.code.clone(),
             administrator,
+            token_account,
         })?;
 
         writeln!(out, "Signature: {signature}")?;

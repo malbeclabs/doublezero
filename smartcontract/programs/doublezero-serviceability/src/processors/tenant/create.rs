@@ -31,11 +31,16 @@ use solana_program::msg;
 pub struct TenantCreateArgs {
     pub code: String,
     pub administrator: Pubkey,
+    pub token_account: Option<Pubkey>,
 }
 
 impl fmt::Debug for TenantCreateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "code: {}", self.code)
+        write!(
+            f,
+            "code: {}, token_account: {:?}",
+            self.code, self.token_account
+        )
     }
 }
 
@@ -137,6 +142,8 @@ pub fn process_create_tenant(
         code: code.clone(),
         vrf_id,
         administrators: vec![value.administrator],
+        payment_status: 0,
+        token_account: value.token_account.unwrap_or_default(),
     };
 
     let deposit = Rent::get()

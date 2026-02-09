@@ -1,9 +1,13 @@
 use crate::{
     error::DoubleZeroError,
     pda::*,
+    resource::ResourceType,
     seeds::{SEED_PREFIX, SEED_TENANT},
     serializer::try_acc_create,
-    state::{accounttype::AccountType, globalstate::GlobalState, tenant::*},
+    state::{
+        accounttype::AccountType, globalstate::GlobalState,
+        resource_extension::ResourceExtensionBorrowed, tenant::*,
+    },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -26,12 +30,11 @@ use solana_program::msg;
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
 pub struct TenantCreateArgs {
     pub code: String,
-    pub vrf_id: u16,
 }
 
 impl fmt::Debug for TenantCreateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "code: {}, vrf_id: {}", self.code, self.vrf_id)
+        write!(f, "code: {}", self.code)
     }
 }
 
@@ -45,6 +48,7 @@ pub fn process_create_tenant(
     let tenant_account = next_account_info(accounts_iter)?;
     let owner_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
+    let vrf_ids_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
@@ -70,6 +74,27 @@ pub fn process_create_tenant(
     );
     // Check if the account is writable
     assert!(tenant_account.is_writable, "PDA Account is not writable");
+
+    // Validate VRF IDs resource extension account
+    assert_eq!(
+        vrf_ids_account.owner, program_id,
+        "Invalid ResourceExtension Account Owner for VrfIds"
+    );
+    assert!(
+        vrf_ids_account.is_writable,
+        "ResourceExtension Account for VrfIds is not writable"
+    );
+    assert!(
+        !vrf_ids_account.data_is_empty(),
+        "ResourceExtension Account for VrfIds is empty"
+    );
+
+    let (expected_vrf_ids_pda, _, _) = get_resource_extension_pda(program_id, ResourceType::VrfIds);
+    assert_eq!(
+        vrf_ids_account.key, &expected_vrf_ids_pda,
+        "Invalid ResourceExtension PDA for VrfIds"
+    );
+
     assert_eq!(
         *system_program.unsigned_key(),
         solana_program::system_program::id(),
@@ -94,13 +119,23 @@ pub fn process_create_tenant(
         return Err(ProgramError::AccountAlreadyInitialized);
     }
 
+    // Allocate VRF ID from the ResourceExtension
+    let vrf_id = {
+        let mut buffer = vrf_ids_account.data.borrow_mut();
+        let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
+        resource
+            .allocate(1)?
+            .as_id()
+            .ok_or(DoubleZeroError::InvalidArgument)?
+    };
+
     let tenant = Tenant {
         account_type: AccountType::Tenant,
         owner: *owner_account.key,
         reference_count: 0,
         bump_seed,
         code: code.clone(),
-        vrf_id: value.vrf_id,
+        vrf_id,
         administrators: vec![],
     };
 

@@ -6,6 +6,7 @@ use doublezero_serviceability::{
         delete::TenantDeleteArgs, remove_administrator::TenantRemoveAdministratorArgs,
         update::TenantUpdateArgs,
     },
+    resource::ResourceType,
     state::{accounttype::AccountType, tenant::*},
 };
 use solana_program_test::*;
@@ -16,32 +17,17 @@ use test_helpers::*;
 
 #[tokio::test]
 async fn test_tenant() {
-    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
     /***********************************************************************************************************************************/
     println!("🟢  Start test_tenant");
 
-    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
-    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+    let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
 
-    println!("🟢 1. Global Initialization...");
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::InitGlobalState(),
-        vec![
-            AccountMeta::new(program_config_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    /***********************************************************************************************************************************/
-    println!("🟢 2. Testing Tenant creation...");
-    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    assert_eq!(globalstate_account.account_index, 0);
+    println!("🟢 1. Testing Tenant creation...");
 
     let tenant_code = "test-tenant";
     let (tenant_pubkey, _) = get_tenant_pda(&program_id, tenant_code);
@@ -54,12 +40,12 @@ async fn test_tenant() {
         program_id,
         DoubleZeroInstruction::CreateTenant(TenantCreateArgs {
             code: "test-tenant".to_string(),
-            vrf_id: 100,
         }),
         vec![
             AccountMeta::new(tenant_pubkey, false),
             AccountMeta::new(owner, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(vrf_ids_pda, false),
         ],
         &payer,
     )
@@ -72,15 +58,17 @@ async fn test_tenant() {
         .unwrap();
     assert_eq!(tenant.account_type, AccountType::Tenant);
     assert_eq!(tenant.code, "test-tenant".to_string());
-    assert_eq!(tenant.vrf_id, 100);
+    assert!(tenant.vrf_id > 0, "VRF ID should be allocated from pool");
     assert_eq!(tenant.owner, owner);
     assert_eq!(tenant.reference_count, 0);
     assert_eq!(tenant.administrators.len(), 0);
 
-    println!("✅ Tenant created successfully");
+    let first_vrf_id = tenant.vrf_id;
+
+    println!("✅ Tenant created successfully (vrf_id={})", first_vrf_id);
 
     /***********************************************************************************************************************************/
-    println!("🟢 3. Testing Tenant update (vrf_id only)...");
+    println!("🟢 2. Testing Tenant update (vrf_id only)...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -107,7 +95,7 @@ async fn test_tenant() {
     println!("✅ Tenant updated successfully");
 
     /***********************************************************************************************************************************/
-    println!("🟢 4. Testing add administrator...");
+    println!("🟢 3. Testing add administrator...");
     let admin1 = Pubkey::new_unique();
 
     execute_transaction(
@@ -136,7 +124,7 @@ async fn test_tenant() {
     println!("✅ Administrator added successfully");
 
     /***********************************************************************************************************************************/
-    println!("🟢 5. Testing add second administrator...");
+    println!("🟢 4. Testing add second administrator...");
     let admin2 = Pubkey::new_unique();
 
     execute_transaction(
@@ -166,7 +154,7 @@ async fn test_tenant() {
     println!("✅ Second administrator added successfully");
 
     /***********************************************************************************************************************************/
-    println!("🟢 6. Testing remove administrator...");
+    println!("🟢 5. Testing remove administrator...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -194,7 +182,7 @@ async fn test_tenant() {
     println!("✅ Administrator removed successfully");
 
     /***********************************************************************************************************************************/
-    println!("🟢 7. Testing tenant deletion with reference_count = 0...");
+    println!("🟢 6. Testing tenant deletion with reference_count = 0...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -203,6 +191,7 @@ async fn test_tenant() {
         vec![
             AccountMeta::new(tenant_pubkey, false),
             AccountMeta::new_readonly(globalstate_pubkey, false),
+            AccountMeta::new(vrf_ids_pda, false),
         ],
         &payer,
     )
@@ -217,29 +206,16 @@ async fn test_tenant() {
 
 #[tokio::test]
 async fn test_tenant_delete_with_nonzero_reference_count_fails() {
-    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
     println!("🟢  Start test_tenant_delete_with_nonzero_reference_count_fails");
 
-    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
-    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
-
-    // Initialize global state
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::InitGlobalState(),
-        vec![
-            AccountMeta::new(program_config_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
+    let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
 
     // Create a tenant
-    let _globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let tenant_code_refcount = "test-tenant-refcount";
     let (tenant_pubkey, _) = get_tenant_pda(&program_id, tenant_code_refcount);
 
@@ -251,12 +227,12 @@ async fn test_tenant_delete_with_nonzero_reference_count_fails() {
         program_id,
         DoubleZeroInstruction::CreateTenant(TenantCreateArgs {
             code: tenant_code_refcount.to_string(),
-            vrf_id: 300,
         }),
         vec![
             AccountMeta::new(tenant_pubkey, false),
             AccountMeta::new(owner, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(vrf_ids_pda, false),
         ],
         &payer,
     )
@@ -301,29 +277,16 @@ async fn test_tenant_delete_with_nonzero_reference_count_fails() {
 
 #[tokio::test]
 async fn test_tenant_add_duplicate_administrator_fails() {
-    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
     println!("🟢  Start test_tenant_add_duplicate_administrator_fails");
 
-    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
-    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
-
-    // Initialize global state
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::InitGlobalState(),
-        vec![
-            AccountMeta::new(program_config_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
+    let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
 
     // Create a tenant
-    let _globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let tenant_code_duplicate = "duplicate-admin-test";
     let (tenant_pubkey, _) = get_tenant_pda(&program_id, tenant_code_duplicate);
 
@@ -335,12 +298,12 @@ async fn test_tenant_add_duplicate_administrator_fails() {
         program_id,
         DoubleZeroInstruction::CreateTenant(TenantCreateArgs {
             code: tenant_code_duplicate.to_string(),
-            vrf_id: 400,
         }),
         vec![
             AccountMeta::new(tenant_pubkey, false),
             AccountMeta::new(owner, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(vrf_ids_pda, false),
         ],
         &payer,
     )
@@ -401,29 +364,16 @@ async fn test_tenant_add_duplicate_administrator_fails() {
 
 #[tokio::test]
 async fn test_tenant_remove_nonexistent_administrator_fails() {
-    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
     println!("🟢  Start test_tenant_remove_nonexistent_administrator_fails");
 
-    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
-    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
-
-    // Initialize global state
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::InitGlobalState(),
-        vec![
-            AccountMeta::new(program_config_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
+    let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
 
     // Create a tenant
-    let _globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let tenant_code_nonexistent = "nonexistent-admin-test";
     let (tenant_pubkey, _) = get_tenant_pda(&program_id, tenant_code_nonexistent);
 
@@ -435,12 +385,12 @@ async fn test_tenant_remove_nonexistent_administrator_fails() {
         program_id,
         DoubleZeroInstruction::CreateTenant(TenantCreateArgs {
             code: tenant_code_nonexistent.to_string(),
-            vrf_id: 500,
         }),
         vec![
             AccountMeta::new(tenant_pubkey, false),
             AccountMeta::new(owner, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(vrf_ids_pda, false),
         ],
         &payer,
     )

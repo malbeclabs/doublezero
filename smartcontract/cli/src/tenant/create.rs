@@ -13,9 +13,6 @@ pub struct CreateTenantCliCommand {
     /// Unique tenant code
     #[arg(long, value_parser = validate_code)]
     pub code: String,
-    /// VRF ID (u16)
-    #[arg(long)]
-    pub vrf_id: u16,
     /// Owner of the tenant
     #[arg(long, value_parser = validate_pubkey_or_code, default_value = "me")]
     pub owner: String,
@@ -44,7 +41,6 @@ impl CreateTenantCliCommand {
 
         let (signature, _pubkey) = client.create_tenant(CreateTenantCommand {
             code: self.code.clone(),
-            vrf_id: self.vrf_id,
             owner,
         })?;
 

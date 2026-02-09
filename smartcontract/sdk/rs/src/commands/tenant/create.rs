@@ -1,15 +1,16 @@
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 use doublezero_program_common::validate_account_code;
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_tenant_pda,
+    instructions::DoubleZeroInstruction,
+    pda::{get_resource_extension_pda, get_tenant_pda},
     processors::tenant::create::TenantCreateArgs,
+    resource::ResourceType,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct CreateTenantCommand {
     pub code: String,
-    pub vrf_id: u16,
     pub owner: Pubkey,
 }
 
@@ -23,16 +24,16 @@ impl CreateTenantCommand {
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
         let (pda_pubkey, _) = get_tenant_pda(&client.get_program_id(), &code);
+        let (vrf_ids_pda, _, _) =
+            get_resource_extension_pda(&client.get_program_id(), ResourceType::VrfIds);
         client
             .execute_transaction(
-                DoubleZeroInstruction::CreateTenant(TenantCreateArgs {
-                    code,
-                    vrf_id: self.vrf_id,
-                }),
+                DoubleZeroInstruction::CreateTenant(TenantCreateArgs { code }),
                 vec![
                     AccountMeta::new(pda_pubkey, false),
                     AccountMeta::new(self.owner, false),
                     AccountMeta::new(globalstate_pubkey, false),
+                    AccountMeta::new(vrf_ids_pda, false),
                 ],
             )
             .map(|sig| (sig, pda_pubkey))
@@ -59,7 +60,6 @@ mod tests {
             .with(
                 predicate::eq(DoubleZeroInstruction::CreateTenant(TenantCreateArgs {
                     code: "test".to_string(),
-                    vrf_id: 100,
                 })),
                 predicate::always(),
             )
@@ -67,7 +67,6 @@ mod tests {
 
         let res = CreateTenantCommand {
             code: "test/invalid".to_string(),
-            vrf_id: 100,
             owner: Pubkey::default(),
         }
         .execute(&client);
@@ -76,7 +75,6 @@ mod tests {
 
         let res = CreateTenantCommand {
             code: "test".to_string(),
-            vrf_id: 100,
             owner,
         }
         .execute(&client);

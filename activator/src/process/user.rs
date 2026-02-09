@@ -6,13 +6,12 @@ use doublezero_program_common::types::NetworkV4;
 use doublezero_sdk::{
     commands::{
         device::get::GetDeviceCommand,
-        resource::{allocate::AllocateResourceCommand, deallocate::DeallocateResourceCommand},
         user::{
             activate::ActivateUserCommand, ban::BanUserCommand,
             closeaccount::CloseAccountUserCommand, reject::RejectUserCommand,
         },
     },
-    DoubleZeroClient, Exchange, IdOrIp, Location, ResourceType, User, UserStatus, UserType,
+    DoubleZeroClient, Exchange, Location, User, UserStatus, UserType,
 };
 use doublezero_serviceability::error::DoubleZeroError;
 use log::{info, warn};
@@ -127,26 +126,7 @@ pub fn process_user_event(
                     // Publishers: allocate from global publisher pool
                     if let Some(ref mut publisher_ips) = publisher_dz_ips {
                         match publisher_ips.next_available_block(1, 1).map(|net| net.ip()) {
-                            Some(ip) => {
-                                // Sync off-chain allocation to on-chain bitmap
-                                // This ensures on-chain allocator knows about off-chain allocations
-                                if let Ok(ip_net) = NetworkV4::new(ip, 32) {
-                                    let sync_result = AllocateResourceCommand {
-                                        resource_type: ResourceType::MulticastPublisherBlock,
-                                        requested: Some(IdOrIp::Ip(ip_net)),
-                                    }
-                                    .execute(client);
-
-                                    if let Err(e) = sync_result {
-                                        warn!(
-                                            "Failed to sync off-chain publisher IP {} to on-chain: {}",
-                                            ip, e
-                                        );
-                                        // Continue anyway - off-chain allocation is still valid
-                                    }
-                                }
-                                ip
-                            }
+                            Some(ip) => ip,
                             None => {
                                 let res = reject_user(
                                     client,
@@ -326,23 +306,7 @@ pub fn process_user_event(
                     // Publishers: allocate from global publisher pool
                     if let Some(ref mut publisher_ips) = publisher_dz_ips {
                         match publisher_ips.next_available_block(1, 1).map(|net| net.ip()) {
-                            Some(ip) => {
-                                if let Ok(ip_net) = NetworkV4::new(ip, 32) {
-                                    let sync_result = AllocateResourceCommand {
-                                        resource_type: ResourceType::MulticastPublisherBlock,
-                                        requested: Some(IdOrIp::Ip(ip_net)),
-                                    }
-                                    .execute(client);
-
-                                    if let Err(e) = sync_result {
-                                        warn!(
-                                            "Failed to sync off-chain publisher IP {} to on-chain: {}",
-                                            ip, e
-                                        );
-                                    }
-                                }
-                                ip
-                            }
+                            Some(ip) => ip,
                             None => {
                                 let res = reject_user(
                                     client,
@@ -519,7 +483,7 @@ pub fn process_user_event(
                                     link_ids.unassign(user.tunnel_id);
                                     user_tunnel_ips.unassign_block(user.tunnel_net.into());
                                 }
-                                deallocate_publisher_dz_ip(client, user, publisher_dz_ips);
+                                deallocate_publisher_dz_ip(user, publisher_dz_ips);
                                 if user.dz_ip != Ipv4Addr::UNSPECIFIED {
                                     device_state.release(user.dz_ip, user.tunnel_id).unwrap();
                                 }
@@ -546,13 +510,13 @@ pub fn process_user_event(
                         Ok(signature) => {
                             write!(&mut log_msg, " Banned {signature}").unwrap();
 
-                            if user.has_unicast_tunnel() {
-                                link_ids.unassign(user.tunnel_id);
+                            if !use_onchain_allocation {
+                                if user.has_unicast_tunnel() {
+                                    link_ids.unassign(user.tunnel_id);
+                                    user_tunnel_ips.unassign_block(user.tunnel_net.into());
+                                }
+                                deallocate_publisher_dz_ip(user, publisher_dz_ips);
                             }
-                            if user.tunnel_net != NetworkV4::default() {
-                                user_tunnel_ips.unassign_block(user.tunnel_net.into());
-                            }
-                            deallocate_publisher_dz_ip(client, user, publisher_dz_ips);
                             if user.dz_ip != Ipv4Addr::UNSPECIFIED {
                                 device_state.release(user.dz_ip, user.tunnel_id).unwrap();
                             }
@@ -622,11 +586,7 @@ fn resolve_tunnel_endpoint(
     }
 }
 
-fn deallocate_publisher_dz_ip(
-    client: &dyn DoubleZeroClient,
-    user: &User,
-    publisher_dz_ips: &mut Option<IPBlockAllocator>,
-) {
+fn deallocate_publisher_dz_ip(user: &User, publisher_dz_ips: &mut Option<IPBlockAllocator>) {
     if user.user_type == UserType::Multicast
         && !user.publishers.is_empty()
         && user.dz_ip != Ipv4Addr::UNSPECIFIED
@@ -639,20 +599,6 @@ fn deallocate_publisher_dz_ip(
                     "Deallocated publisher dz_ip {} from global pool",
                     user.dz_ip
                 );
-
-                // Sync deallocation to on-chain bitmap
-                let sync_result = DeallocateResourceCommand {
-                    resource_type: ResourceType::MulticastPublisherBlock,
-                    value: IdOrIp::Ip(dz_ip_net),
-                }
-                .execute(client);
-
-                if let Err(e) = sync_result {
-                    warn!(
-                        "Failed to sync off-chain publisher IP {} deallocation to on-chain: {}",
-                        user.dz_ip, e
-                    );
-                }
             }
         }
     }
@@ -752,14 +698,10 @@ mod tests {
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
         pda::get_accesspass_pda,
-        processors::{
-            resource::allocate::ResourceAllocateArgs,
-            user::{
-                activate::UserActivateArgs, ban::UserBanArgs, closeaccount::UserCloseAccountArgs,
-                reject::UserRejectArgs,
-            },
+        processors::user::{
+            activate::UserActivateArgs, ban::UserBanArgs, closeaccount::UserCloseAccountArgs,
+            reject::UserRejectArgs,
         },
-        resource::{IdOrIp, ResourceType},
         state::accesspass::{AccessPass, AccessPassStatus, AccessPassType},
     };
     use metrics_util::debugging::DebuggingRecorder;
@@ -1048,23 +990,6 @@ mod tests {
                 tenant_allowlist: vec![Default::default()],
                 flags: 0,
             };
-
-            // Mock the sync call (AllocateResourceCommand) for publisher dz_ip —
-            // this happens first, during dz_ip allocation, before ActivateUserCommand
-            client
-                .expect_execute_transaction()
-                .times(1)
-                .in_sequence(&mut seq)
-                .with(
-                    predicate::eq(DoubleZeroInstruction::AllocateResource(
-                        ResourceAllocateArgs {
-                            resource_type: ResourceType::MulticastPublisherBlock,
-                            requested: Some(IdOrIp::Ip("147.51.126.1/32".parse().unwrap())),
-                        },
-                    )),
-                    predicate::always(),
-                )
-                .returning(|_, _| Ok(Signature::new_unique()));
 
             // ActivateUserCommand internally fetches user and access pass
             let user_cloned = user.clone();
@@ -2135,23 +2060,6 @@ mod tests {
                 tenant_allowlist: vec![Default::default()],
                 flags: 0,
             };
-
-            // Mock the sync call (AllocateResourceCommand) for publisher dz_ip —
-            // this happens first, during dz_ip allocation, before ActivateUserCommand
-            client
-                .expect_execute_transaction()
-                .times(1)
-                .in_sequence(&mut seq)
-                .with(
-                    predicate::eq(DoubleZeroInstruction::AllocateResource(
-                        ResourceAllocateArgs {
-                            resource_type: ResourceType::MulticastPublisherBlock,
-                            requested: Some(IdOrIp::Ip("147.51.126.1/32".parse().unwrap())),
-                        },
-                    )),
-                    predicate::always(),
-                )
-                .returning(|_, _| Ok(Signature::new_unique()));
 
             // ActivateUserCommand internally fetches user and access pass
             let user_cloned = user.clone();

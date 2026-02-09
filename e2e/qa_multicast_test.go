@@ -187,7 +187,7 @@ func TestQA_MulticastConnectivity(t *testing.T) {
 
 // TestQA_MulticastMultiGroup tests multi-group multicast scenarios in three phases:
 //   - Phase 1 (selective fan-out): publisher sends to groups A+B, subA on A only, subB on B only
-//   - Phase 2 (dynamic subscription): subA adds group B without losing identity, receives from both
+//   - Phase 2 (dynamic subscription): subA reconnects with groups A+B, verify identity preserved, receives from both
 //   - Phase 3 (simultaneous pub+sub): subA reconnects as both publisher and subscriber on group A
 func TestQA_MulticastMultiGroup(t *testing.T) {
 	if envArg != "devnet" && envArg != "testnet" {
@@ -649,7 +649,7 @@ func TestQA_MulticastPublisherMultipleGroups(t *testing.T) {
 	log.Info("Received multicast packets", "subscriber", subscriberB.Host, "group", groupB.Code, "packetCount", reportB.PacketCount)
 
 	// --- Phase 2: Dynamic subscription ---
-	// SubA adds group B to existing subscription — verify identity preserved and receives from both.
+	// SubA disconnects and reconnects with both groups A+B — verify identity preserved and receives from both.
 	log.Debug("Phase 2: dynamic subscription")
 
 	statusBefore, err := subscriberA.GetUserStatus(ctx)

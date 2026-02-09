@@ -161,6 +161,8 @@ func newTestHarness(t *testing.T) *testHarness {
 }
 
 // publishPrototext loads a prototext file and publishes it as binary protobuf to Redpanda.
+// It overrides the notification timestamp with the current time so that rows are not
+// silently dropped by ClickHouse TTL (which expires data older than 30 days).
 func (h *testHarness) publishPrototext(filename string) {
 	h.t.Helper()
 
@@ -170,6 +172,10 @@ func (h *testHarness) publishPrototext(filename string) {
 	var resp gpb.SubscribeResponse
 	err = prototext.Unmarshal(data, &resp)
 	require.NoError(h.t, err, "error unmarshaling prototext")
+
+	if n := resp.GetUpdate(); n != nil {
+		n.Timestamp = time.Now().UnixNano()
+	}
 
 	binary, err := proto.Marshal(&resp)
 	require.NoError(h.t, err, "error marshaling protobuf")

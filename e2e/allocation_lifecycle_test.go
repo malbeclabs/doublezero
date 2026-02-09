@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -784,8 +785,18 @@ func TestE2E_Multicast_ReactivationPreservesAllocations(t *testing.T) {
 	log.Debug("==> Phase 2: Disconnecting and reconnecting with both multicast groups to trigger re-activation")
 
 	// Disconnect existing multicast service first (required — daemon doesn't support updating in-place)
-	_, err = client.Exec(ctx, []string{"bash", "-c", "doublezero disconnect multicast"})
+	_, err = client.Exec(ctx, []string{"bash", "-c", "doublezero disconnect multicast --client-ip " + client.CYOANetworkIP})
 	require.NoError(t, err, "failed to disconnect multicast")
+
+	// Wait for daemon to fully tear down the multicast service before reconnecting
+	log.Debug("==> Waiting for daemon to tear down multicast service")
+	require.Eventually(t, func() bool {
+		output, statusErr := client.Exec(ctx, []string{"bash", "-c", "doublezero status --json 2>/dev/null || echo '[]'"})
+		if statusErr != nil {
+			return false
+		}
+		return !strings.Contains(string(output), "Multicast")
+	}, 30*time.Second, 2*time.Second, "daemon did not tear down multicast service within timeout")
 
 	// Reconnect with both pub groups in a single command
 	_, err = client.Exec(ctx, []string{"bash", "-c", "doublezero connect multicast --pub-groups test-mc01 test-mc02 --client-ip " + client.CYOANetworkIP})

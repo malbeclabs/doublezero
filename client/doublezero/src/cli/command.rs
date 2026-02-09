@@ -4,7 +4,7 @@ use crate::{
         accesspass::AccessPassCliCommand, config::ConfigCliCommand,
         contributor::ContributorCliCommand, device::DeviceCliCommand, exchange::ExchangeCliCommand,
         globalconfig::GlobalConfigCliCommand, link::LinkCliCommand, location::LocationCliCommand,
-        resource::ResourceCliCommand, user::UserCliCommand,
+        resource::ResourceCliCommand, tenant::TenantCliCommand, user::UserCliCommand,
     },
     command::{
         connect::ProvisioningCliCommand, disconnect::DecommissioningCliCommand,
@@ -67,6 +67,9 @@ pub enum Command {
     /// Manage contributors
     #[command()]
     Contributor(ContributorCliCommand),
+    /// Manage tenants
+    #[command()]
+    Tenant(TenantCliCommand),
     /// Manage devices
     #[command()]
     Device(DeviceCliCommand),

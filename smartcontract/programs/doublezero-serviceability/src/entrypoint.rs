@@ -84,6 +84,12 @@ use crate::{
             closeaccount::process_closeaccount_resource_extension, create::process_create_resource,
             deallocate::process_deallocate_resource,
         },
+        tenant::{
+            add_administrator::process_add_administrator_tenant, create::process_create_tenant,
+            delete::process_delete_tenant,
+            remove_administrator::process_remove_administrator_tenant,
+            update::process_update_tenant,
+        },
         user::{
             activate::process_activate_user, ban::process_ban_user,
             check_access_pass::process_check_access_pass_user,
@@ -363,6 +369,21 @@ pub fn process_instruction(
         }
         DoubleZeroInstruction::RemoveQaAllowlist(value) => {
             process_remove_qa_allowlist_globalconfig(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::CreateTenant(value) => {
+            process_create_tenant(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::UpdateTenant(value) => {
+            process_update_tenant(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::DeleteTenant(value) => {
+            process_delete_tenant(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::TenantAddAdministrator(value) => {
+            process_add_administrator_tenant(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::TenantRemoveAdministrator(value) => {
+            process_remove_administrator_tenant(program_id, accounts, &value)?
         }
     };
     Ok(())

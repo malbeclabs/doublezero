@@ -25,6 +25,7 @@ pub mod poll_for_activation;
 pub mod requirements;
 pub mod resource;
 pub mod subscribe;
+pub mod tenant;
 pub mod tests;
 pub mod user;
 pub mod util;

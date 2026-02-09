@@ -170,6 +170,19 @@ async fn main() -> eyre::Result<()> {
                 args.execute(&client, &mut handle)
             }
         },
+        Command::Tenant(command) => match command.command {
+            cli::tenant::TenantCommands::Create(args) => args.execute(&client, &mut handle),
+            cli::tenant::TenantCommands::Update(args) => args.execute(&client, &mut handle),
+            cli::tenant::TenantCommands::List(args) => args.execute(&client, &mut handle),
+            cli::tenant::TenantCommands::Get(args) => args.execute(&client, &mut handle),
+            cli::tenant::TenantCommands::Delete(args) => args.execute(&client, &mut handle),
+            cli::tenant::TenantCommands::AddAdministrator(args) => {
+                args.execute(&client, &mut handle)
+            }
+            cli::tenant::TenantCommands::RemoveAdministrator(args) => {
+                args.execute(&client, &mut handle)
+            }
+        },
         Command::Device(command) => match command.command {
             DeviceCommands::Create(args) => args.execute(&client, &mut handle),
             DeviceCommands::Update(args) => args.execute(&client, &mut handle),

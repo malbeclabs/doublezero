@@ -466,27 +466,43 @@ func (q *QAAgent) DeleteMulticastGroup(ctx context.Context, req *pb.DeleteMultic
 	return result, nil
 }
 
-// ConnectMulticast implements the ConnectMulticast RPC, which connects to a multicast group
-// as either a publisher or subscriber. This call will block until the tunnel is up according to
+// ConnectMulticast implements the ConnectMulticast RPC, which connects to multicast groups
+// as a publisher and/or subscriber. This call will block until the tunnel is up according to
 // the DoubleZero status output or return an error if the tunnel is not up within 60 seconds.
+//
+// Supports both legacy (mode + codes) and new (pub_codes + sub_codes) request formats.
 func (q *QAAgent) ConnectMulticast(ctx context.Context, req *pb.ConnectMulticastRequest) (*pb.Result, error) {
 	start := time.Now()
-	if len(req.GetCodes()) == 0 {
-		return nil, fmt.Errorf("at least one code is required")
+
+	pubCodes := req.GetPubCodes()
+	subCodes := req.GetSubCodes()
+
+	// Legacy support: convert mode + codes to pub_codes/sub_codes
+	if len(pubCodes) == 0 && len(subCodes) == 0 {
+		if len(req.GetCodes()) == 0 {
+			return nil, fmt.Errorf("at least one code is required")
+		}
+		if req.GetMode() == pb.ConnectMulticastRequest_UNSPECIFIED {
+			return nil, fmt.Errorf("mode is required when using legacy codes field")
+		}
+		switch req.GetMode() {
+		case pb.ConnectMulticastRequest_PUBLISHER:
+			pubCodes = req.GetCodes()
+		case pb.ConnectMulticastRequest_SUBSCRIBER:
+			subCodes = req.GetCodes()
+		}
 	}
-	if req.GetMode() == pb.ConnectMulticastRequest_UNSPECIFIED {
-		return nil, fmt.Errorf("mode is required")
+
+	q.log.Debug("Received ConnectMulticast request", "pub_codes", pubCodes, "sub_codes", subCodes)
+	args := []string{"connect", "multicast"}
+	if len(pubCodes) > 0 {
+		args = append(args, "--pub-groups")
+		args = append(args, pubCodes...)
 	}
-	mode := ""
-	if req.GetMode() == pb.ConnectMulticastRequest_PUBLISHER {
-		mode = "publisher"
+	if len(subCodes) > 0 {
+		args = append(args, "--sub-groups")
+		args = append(args, subCodes...)
 	}
-	if req.GetMode() == pb.ConnectMulticastRequest_SUBSCRIBER {
-		mode = "subscriber"
-	}
-	q.log.Debug("Received ConnectMulticast request", "codes", req.GetCodes(), "mode", mode)
-	args := []string{"connect", "multicast", mode}
-	args = append(args, req.GetCodes()...)
 	cmd := exec.Command("doublezero", args...)
 	result, err := runCmd(cmd)
 	if err != nil {

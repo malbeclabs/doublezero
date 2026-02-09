@@ -77,6 +77,30 @@ func (c *Client) ConnectUserMulticast(ctx context.Context, multicastGroupCodes [
 	return nil
 }
 
+func (c *Client) ConnectUserMulticast_PubAndSub_Wait(ctx context.Context, pubCodes []string, subCodes []string) error {
+	err := c.DisconnectUser(ctx, true, true)
+	if err != nil {
+		return fmt.Errorf("failed to ensure disconnected on host %s: %w", c.Host, err)
+	}
+
+	c.log.Debug("Connecting multicast pub+sub", "host", c.Host, "pubCodes", pubCodes, "subCodes", subCodes)
+	ctx, cancel := context.WithTimeout(ctx, connectMulticastTimeout)
+	defer cancel()
+	resp, err := c.grpcClient.ConnectMulticast(ctx, &pb.ConnectMulticastRequest{
+		PubCodes: pubCodes,
+		SubCodes: subCodes,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to connect on host %s: %w", c.Host, err)
+	}
+	if !resp.GetSuccess() {
+		return fmt.Errorf("connection failed on host %s: %s", c.Host, resp.GetOutput())
+	}
+	c.log.Debug("Multicast pub+sub connected", "host", c.Host, "pubCodes", pubCodes, "subCodes", subCodes)
+
+	return nil
+}
+
 func (c *Client) GetMulticastGroup(ctx context.Context, code string) (*MulticastGroup, error) {
 	data, err := getProgramDataWithRetry(ctx, c.serviceability)
 	if err != nil {

@@ -54,8 +54,13 @@ message ConnectMulticastRequest {
     SUBSCRIBER = 2;
   }
 
+  // Legacy fields (kept for backward compatibility)
   MulticastMode mode = 1;
   repeated string codes = 2;
+
+  // New fields for simultaneous pub+sub
+  repeated string pub_codes = 3;
+  repeated string sub_codes = 4;
 }
 
 message MulticastAllowListAddRequest {

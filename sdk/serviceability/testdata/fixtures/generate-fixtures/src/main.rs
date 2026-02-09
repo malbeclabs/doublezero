@@ -32,6 +32,7 @@ use doublezero_serviceability::state::{
     location::{Location, LocationStatus},
     multicastgroup::{MulticastGroup, MulticastGroupStatus},
     programconfig::ProgramConfig,
+    tenant::{Tenant, TenantPaymentStatus},
     user::{User, UserCYOA, UserStatus, UserType},
 };
 use serde::Serialize;
@@ -85,6 +86,7 @@ fn main() {
     generate_contributor(&fixtures_dir);
     generate_access_pass(&fixtures_dir);
     generate_access_pass_validator(&fixtures_dir);
+    generate_tenant(&fixtures_dir);
     generate_resource_extension_id(&fixtures_dir);
     generate_resource_extension_ip(&fixtures_dir);
 
@@ -704,6 +706,45 @@ fn generate_access_pass_validator(dir: &Path) {
     };
 
     write_fixture(dir, "access_pass_validator", &data, &meta);
+}
+
+fn generate_tenant(dir: &Path) {
+    let owner = pubkey_from_byte(0xD0);
+    let admin_pk = pubkey_from_byte(0xD1);
+    let token_account = pubkey_from_byte(0xD2);
+
+    let val = Tenant {
+        account_type: AccountType::Tenant,
+        owner,
+        bump_seed: 240,
+        code: "acme".into(),
+        vrf_id: 500,
+        reference_count: 2,
+        administrators: vec![admin_pk],
+        payment_status: TenantPaymentStatus::Paid,
+        token_account,
+    };
+
+    let data = borsh::to_vec(&val).unwrap();
+
+    let meta = FixtureMeta {
+        name: "Tenant".into(),
+        account_type: 13,
+        fields: vec![
+            FieldValue { name: "AccountType".into(), value: "13".into(), typ: "u8".into() },
+            FieldValue { name: "Owner".into(), value: pubkey_bs58(&owner), typ: "pubkey".into() },
+            FieldValue { name: "BumpSeed".into(), value: "240".into(), typ: "u8".into() },
+            FieldValue { name: "Code".into(), value: "acme".into(), typ: "string".into() },
+            FieldValue { name: "VrfId".into(), value: "500".into(), typ: "u16".into() },
+            FieldValue { name: "ReferenceCount".into(), value: "2".into(), typ: "u32".into() },
+            FieldValue { name: "AdministratorsLen".into(), value: "1".into(), typ: "u32".into() },
+            FieldValue { name: "Administrators0".into(), value: pubkey_bs58(&admin_pk), typ: "pubkey".into() },
+            FieldValue { name: "PaymentStatus".into(), value: "1".into(), typ: "u8".into() },
+            FieldValue { name: "TokenAccount".into(), value: pubkey_bs58(&token_account), typ: "pubkey".into() },
+        ],
+    };
+
+    write_fixture(dir, "tenant", &data, &meta);
 }
 
 /// ResourceExtension uses a fixed binary layout with bitmap at offset 88,

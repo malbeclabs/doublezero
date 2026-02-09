@@ -8,33 +8,19 @@ use borsh_incremental::BorshDeserializeIncremental;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
+    msg,
     pubkey::Pubkey,
 };
-use std::fmt;
 
-#[cfg(test)]
-use solana_program::msg;
-
-#[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
-pub struct TenantUpdateArgs {
-    pub vrf_id: Option<u16>,
-    pub token_account: Option<Pubkey>,
+#[derive(BorshSerialize, BorshDeserializeIncremental, Debug, PartialEq, Clone, Default)]
+pub struct UpdatePaymentStatusArgs {
+    pub payment_status: u8,
 }
 
-impl fmt::Debug for TenantUpdateArgs {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "vrf_id: {:?}, token_account: {:?}",
-            self.vrf_id, self.token_account
-        )
-    }
-}
-
-pub fn process_update_tenant(
+pub fn process_update_payment_status(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    value: &TenantUpdateArgs,
+    value: &UpdatePaymentStatusArgs,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
@@ -42,9 +28,6 @@ pub fn process_update_tenant(
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let _system_program = next_account_info(accounts_iter)?;
-
-    #[cfg(test)]
-    msg!("process_update_tenant({:?})", value);
 
     // Check if the payer is a signer
     assert!(payer_account.is_signer, "Payer must be a signer");
@@ -61,24 +44,32 @@ pub fn process_update_tenant(
     // Check if the account is writable
     assert!(tenant_account.is_writable, "Tenant Account is not writable");
 
-    // Parse the global state account & check if the payer is in the allowlist
+    // Parse the global state account & check if the payer is sentinel or foundation
     let globalstate = GlobalState::try_from(globalstate_account)?;
 
-    if !globalstate.foundation_allowlist.contains(payer_account.key) {
+    if globalstate.sentinel_authority_pk != *payer_account.key
+        && !globalstate.foundation_allowlist.contains(payer_account.key)
+    {
+        msg!(
+            "sentinel_authority_pk: {} payer: {} foundation_allowlist: {:?}",
+            globalstate.sentinel_authority_pk,
+            payer_account.key,
+            globalstate.foundation_allowlist
+        );
         return Err(DoubleZeroError::NotAllowed.into());
+    }
+
+    // Validate payment status range
+    if value.payment_status > 1 {
+        msg!("Invalid payment status: {}", value.payment_status);
+        return Err(DoubleZeroError::InvalidPaymentStatus.into());
     }
 
     // Parse the tenant account
     let mut tenant = Tenant::try_from(tenant_account)?;
 
-    // Update the fields if provided
-    // Note: code and owner cannot be updated (code is used for PDA derivation, owner is immutable)
-    if let Some(vrf_id) = value.vrf_id {
-        tenant.vrf_id = vrf_id;
-    }
-    if let Some(token_account) = value.token_account {
-        tenant.token_account = token_account;
-    }
+    // Update the payment status
+    tenant.payment_status = value.payment_status.into();
 
     try_acc_write(&tenant, tenant_account, payer_account, accounts)?;
 

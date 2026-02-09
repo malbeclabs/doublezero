@@ -88,7 +88,7 @@ use crate::{
             add_administrator::process_add_administrator_tenant, create::process_create_tenant,
             delete::process_delete_tenant,
             remove_administrator::process_remove_administrator_tenant,
-            update::process_update_tenant,
+            update::process_update_tenant, update_payment_status::process_update_payment_status,
         },
         user::{
             activate::process_activate_user, ban::process_ban_user,
@@ -384,6 +384,9 @@ pub fn process_instruction(
         }
         DoubleZeroInstruction::TenantRemoveAdministrator(value) => {
             process_remove_administrator_tenant(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::UpdatePaymentStatus(value) => {
+            process_update_payment_status(program_id, accounts, &value)?
         }
     };
     Ok(())

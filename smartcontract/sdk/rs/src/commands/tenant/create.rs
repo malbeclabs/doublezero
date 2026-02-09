@@ -12,6 +12,7 @@ use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature}
 pub struct CreateTenantCommand {
     pub code: String,
     pub administrator: Pubkey,
+    pub token_account: Option<Pubkey>,
 }
 
 impl CreateTenantCommand {
@@ -31,6 +32,7 @@ impl CreateTenantCommand {
                 DoubleZeroInstruction::CreateTenant(TenantCreateArgs {
                     code,
                     administrator: self.administrator,
+                    token_account: self.token_account,
                 }),
                 vec![
                     AccountMeta::new(pda_pubkey, false),
@@ -63,6 +65,7 @@ mod tests {
                 predicate::eq(DoubleZeroInstruction::CreateTenant(TenantCreateArgs {
                     code: "test".to_string(),
                     administrator,
+                    token_account: None,
                 })),
                 predicate::always(),
             )
@@ -71,6 +74,7 @@ mod tests {
         let res = CreateTenantCommand {
             code: "test/invalid".to_string(),
             administrator: Pubkey::default(),
+            token_account: None,
         }
         .execute(&client);
 
@@ -79,6 +83,7 @@ mod tests {
         let res = CreateTenantCommand {
             code: "test".to_string(),
             administrator,
+            token_account: None,
         }
         .execute(&client);
 

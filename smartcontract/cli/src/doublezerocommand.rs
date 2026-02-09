@@ -90,6 +90,7 @@ use doublezero_sdk::{
             add_administrator::AddAdministratorTenantCommand, create::CreateTenantCommand,
             delete::DeleteTenantCommand, get::GetTenantCommand, list::ListTenantCommand,
             remove_administrator::RemoveAdministratorTenantCommand, update::UpdateTenantCommand,
+            update_payment_status::UpdatePaymentStatusCommand,
         },
         user::{
             create::CreateUserCommand, create_subscribe::CreateSubscribeUserCommand,
@@ -182,6 +183,10 @@ pub trait CliCommand {
     fn remove_administrator_tenant(
         &self,
         cmd: RemoveAdministratorTenantCommand,
+    ) -> eyre::Result<Signature>;
+    fn update_payment_status_tenant(
+        &self,
+        cmd: UpdatePaymentStatusCommand,
     ) -> eyre::Result<Signature>;
 
     fn create_device(&self, cmd: CreateDeviceCommand) -> eyre::Result<(Signature, Pubkey)>;
@@ -476,6 +481,12 @@ impl CliCommand for CliCommandImpl<'_> {
     fn remove_administrator_tenant(
         &self,
         cmd: RemoveAdministratorTenantCommand,
+    ) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn update_payment_status_tenant(
+        &self,
+        cmd: UpdatePaymentStatusCommand,
     ) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }

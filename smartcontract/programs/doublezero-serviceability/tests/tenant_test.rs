@@ -41,6 +41,7 @@ async fn test_tenant() {
         DoubleZeroInstruction::CreateTenant(TenantCreateArgs {
             code: "test-tenant".to_string(),
             administrator,
+            token_account: None,
         }),
         vec![
             AccountMeta::new(tenant_pubkey, false),
@@ -71,7 +72,10 @@ async fn test_tenant() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::UpdateTenant(TenantUpdateArgs { vrf_id: Some(200) }),
+        DoubleZeroInstruction::UpdateTenant(TenantUpdateArgs {
+            vrf_id: Some(200),
+            token_account: None,
+        }),
         vec![
             AccountMeta::new(tenant_pubkey, false),
             AccountMeta::new_readonly(globalstate_pubkey, false),
@@ -225,6 +229,7 @@ async fn test_tenant_delete_with_nonzero_reference_count_fails() {
         DoubleZeroInstruction::CreateTenant(TenantCreateArgs {
             code: tenant_code_refcount.to_string(),
             administrator,
+            token_account: None,
         }),
         vec![
             AccountMeta::new(tenant_pubkey, false),
@@ -296,6 +301,7 @@ async fn test_tenant_add_duplicate_administrator_fails() {
         DoubleZeroInstruction::CreateTenant(TenantCreateArgs {
             code: tenant_code_duplicate.to_string(),
             administrator,
+            token_account: None,
         }),
         vec![
             AccountMeta::new(tenant_pubkey, false),
@@ -383,6 +389,7 @@ async fn test_tenant_remove_nonexistent_administrator_fails() {
         DoubleZeroInstruction::CreateTenant(TenantCreateArgs {
             code: tenant_code_nonexistent.to_string(),
             administrator,
+            token_account: None,
         }),
         vec![
             AccountMeta::new(tenant_pubkey, false),

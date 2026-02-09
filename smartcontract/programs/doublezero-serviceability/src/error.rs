@@ -160,6 +160,8 @@ pub enum DoubleZeroError {
     AdministratorAlreadyExists, // variant 76
     #[error("Administrator not found")]
     AdministratorNotFound, // variant 77
+    #[error("Invalid Payment Status")]
+    InvalidPaymentStatus, // variant 78
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -243,6 +245,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::VrfIdTooLong => ProgramError::Custom(75),
             DoubleZeroError::AdministratorAlreadyExists => ProgramError::Custom(76),
             DoubleZeroError::AdministratorNotFound => ProgramError::Custom(77),
+            DoubleZeroError::InvalidPaymentStatus => ProgramError::Custom(78),
         }
     }
 }
@@ -327,6 +330,7 @@ impl From<u32> for DoubleZeroError {
             75 => DoubleZeroError::VrfIdTooLong,
             76 => DoubleZeroError::AdministratorAlreadyExists,
             77 => DoubleZeroError::AdministratorNotFound,
+            78 => DoubleZeroError::InvalidPaymentStatus,
             _ => DoubleZeroError::Custom(e),
         }
     }

@@ -294,6 +294,7 @@ async fn setup_user_onchain_allocation_test(
             client_ip: client_ip.into(),
             last_access_epoch: 9999,
             allow_multiple_ip: false,
+            tenant: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),

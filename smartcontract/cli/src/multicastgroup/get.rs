@@ -311,6 +311,7 @@ mod tests {
                     mgroup_pub_allowlist: vec![mgroup_pubkey],
                     mgroup_sub_allowlist: vec![mgroup_pubkey],
                     owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1"),
+                    tenant_allowlist: vec![],
                     status: AccessPassStatus::Requested,
                     flags: 0,
                 },

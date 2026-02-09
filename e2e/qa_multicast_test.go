@@ -185,9 +185,11 @@ func TestQA_MulticastConnectivity(t *testing.T) {
 	require.NoError(t, err, "failed to leave multicast group")
 }
 
-// TestQA_MulticastMultiGroupSimultaneous tests subscribing to multiple multicast groups
-// in a single connect command.
-func TestQA_MulticastMultiGroupSimultaneous(t *testing.T) {
+// TestQA_MulticastMultiGroup tests multi-group multicast scenarios in three phases:
+//   - Phase 1 (selective fan-out): publisher sends to groups A+B, subA on A only, subB on B only
+//   - Phase 2 (dynamic subscription): subA adds group B without losing identity, receives from both
+//   - Phase 3 (simultaneous pub+sub): subA reconnects as both publisher and subscriber on group A
+func TestQA_MulticastMultiGroup(t *testing.T) {
 	if envArg != "devnet" && envArg != "testnet" {
 		t.Skip("Skipping: requires QA agent support for multi-group multicast")
 	}
@@ -528,8 +530,8 @@ func TestQA_MulticastPublisherMultipleGroups(t *testing.T) {
 			break
 		}
 	}
-	require.NotNil(t, subscriberA, "failed to find first subscriber client")
-	require.NotNil(t, subscriberB, "failed to find second subscriber client")
+	require.NotNil(t, subscriberA, "failed to find first subscriber")
+	require.NotNil(t, subscriberB, "failed to find second subscriber")
 	log.Debug("Selected clients", "publisher", publisher.Host, "subscriberA", subscriberA.Host, "subscriberB", subscriberB.Host)
 
 	// Use provided groups or create new ones.
@@ -537,7 +539,6 @@ func TestQA_MulticastPublisherMultipleGroups(t *testing.T) {
 	var groupA, groupB *qa.MulticastGroup
 
 	if len(providedGroups) >= 2 {
-		// Use provided groups (skip creation and allowlist setup).
 		log.Debug("Using provided multicast groups", "groupA", providedGroups[0], "groupB", providedGroups[1])
 		groupA, err = publisher.GetMulticastGroup(ctx, providedGroups[0])
 		require.NoError(t, err, "failed to get multicast group %s", providedGroups[0])
@@ -546,7 +547,6 @@ func TestQA_MulticastPublisherMultipleGroups(t *testing.T) {
 		require.NoError(t, err, "failed to get multicast group %s", providedGroups[1])
 		require.NotNil(t, groupB, "multicast group not found: %s", providedGroups[1])
 	} else {
-		// Create random groups.
 		groupCodeA := test.RandomMulticastGroupCode()
 		groupCodeB := test.RandomMulticastGroupCode()
 		log.Debug("Creating multicast groups", "groupA", groupCodeA, "groupB", groupCodeB)
@@ -569,16 +569,21 @@ func TestQA_MulticastPublisherMultipleGroups(t *testing.T) {
 		err = publisher.AddPublisherToMulticastGroupAllowlist(ctx, groupB.Code, groupB.OwnerPK, publisher.PublicIP().String())
 		require.NoError(t, err, "failed to add publisher to allowlist for group B")
 
-		// Add subscriberA to allowlist for group A only.
+		// SubscriberA needs both groups (starts on A, later adds B in phase 2).
+		// Also needs publisher allowlist for group A (acts as pub+sub in phase 3).
+		err = subscriberA.AddPublisherToMulticastGroupAllowlist(ctx, groupA.Code, groupA.OwnerPK, subscriberA.PublicIP().String())
+		require.NoError(t, err, "failed to add subscriberA to publisher allowlist for group A")
 		err = subscriberA.AddSubscriberToMulticastGroupAllowlist(ctx, groupA.Code, groupA.OwnerPK, subscriberA.PublicIP().String())
 		require.NoError(t, err, "failed to add subscriberA to allowlist for group A")
+		err = subscriberA.AddSubscriberToMulticastGroupAllowlist(ctx, groupB.Code, groupB.OwnerPK, subscriberA.PublicIP().String())
+		require.NoError(t, err, "failed to add subscriberA to allowlist for group B")
 
-		// Add subscriberB to allowlist for group B only.
+		// SubscriberB only needs group B.
 		err = subscriberB.AddSubscriberToMulticastGroupAllowlist(ctx, groupB.Code, groupB.OwnerPK, subscriberB.PublicIP().String())
 		require.NoError(t, err, "failed to add subscriberB to allowlist for group B")
 	}
 
-	// Cleanup: disconnect clients.
+	// Cleanup: disconnect all clients.
 	t.Cleanup(func() {
 		_ = publisher.DisconnectUser(context.Background(), true, true)
 		_ = subscriberA.DisconnectUser(context.Background(), true, true)
@@ -599,34 +604,33 @@ func TestQA_MulticastPublisherMultipleGroups(t *testing.T) {
 	// Connect publisher to BOTH groups simultaneously.
 	log.Debug("Connecting publisher to both groups simultaneously", "codes", []string{groupA.Code, groupB.Code})
 	err = publisher.ConnectUserMulticast_Publisher_Wait(ctx, groupA.Code, groupB.Code)
-	require.NoError(t, err, "failed to connect publisher to multiple groups")
+	require.NoError(t, err, "failed to connect publisher to groups")
+	err = publisher.WaitForStatusUp(ctx)
+	require.NoError(t, err, "failed to wait for publisher status up")
 
-	// Connect subscriberA to group A only.
+	// --- Phase 1: Selective fan-out ---
+	// SubA on group A only, SubB on group B only — verify each receives their group.
+	log.Debug("Phase 1: selective fan-out")
+
 	log.Debug("Connecting subscriberA to group A", "code", groupA.Code)
 	err = subscriberA.ConnectUserMulticast_Subscriber_Wait(ctx, groupA.Code)
 	require.NoError(t, err, "failed to connect subscriberA to group A")
 
-	// Connect subscriberB to group B only.
 	log.Debug("Connecting subscriberB to group B", "code", groupB.Code)
 	err = subscriberB.ConnectUserMulticast_Subscriber_Wait(ctx, groupB.Code)
 	require.NoError(t, err, "failed to connect subscriberB to group B")
 
-	// Wait for status up.
-	err = publisher.WaitForStatusUp(ctx)
-	require.NoError(t, err, "failed to wait for publisher status up")
 	err = subscriberA.WaitForStatusUp(ctx)
 	require.NoError(t, err, "failed to wait for subscriberA status up")
 	err = subscriberB.WaitForStatusUp(ctx)
 	require.NoError(t, err, "failed to wait for subscriberB status up")
 
-	// Subscribers join their respective groups.
 	err = subscriberA.MulticastJoin(ctx, groupA)
 	require.NoError(t, err, "failed to join group A")
 	err = subscriberB.MulticastJoin(ctx, groupB)
 	require.NoError(t, err, "failed to join group B")
 
-	// Publisher sends to both groups in parallel.
-	log.Debug("Publisher sending to both groups in parallel (background)")
+	log.Debug("Publisher sending to both groups (background)")
 	go func() {
 		_ = publisher.MulticastSend(ctx, groupA, 120*time.Second)
 	}()
@@ -634,17 +638,87 @@ func TestQA_MulticastPublisherMultipleGroups(t *testing.T) {
 		_ = publisher.MulticastSend(ctx, groupB, 120*time.Second)
 	}()
 
-	// Verify subscriberA receives from group A.
-	log.Debug("Waiting for subscriberA to receive from group A")
 	reportA, err := subscriberA.WaitForMulticastReport(ctx, groupA)
 	require.NoError(t, err, "failed to get report for group A from subscriberA")
 	require.Greater(t, reportA.PacketCount, uint64(0), "subscriberA received no packets from group A")
 	log.Info("Received multicast packets", "subscriber", subscriberA.Host, "group", groupA.Code, "packetCount", reportA.PacketCount)
 
-	// Verify subscriberB receives from group B.
-	log.Debug("Waiting for subscriberB to receive from group B")
 	reportB, err := subscriberB.WaitForMulticastReport(ctx, groupB)
 	require.NoError(t, err, "failed to get report for group B from subscriberB")
 	require.Greater(t, reportB.PacketCount, uint64(0), "subscriberB received no packets from group B")
 	log.Info("Received multicast packets", "subscriber", subscriberB.Host, "group", groupB.Code, "packetCount", reportB.PacketCount)
+
+	// --- Phase 2: Dynamic subscription ---
+	// SubA adds group B to existing subscription — verify identity preserved and receives from both.
+	log.Debug("Phase 2: dynamic subscription")
+
+	statusBefore, err := subscriberA.GetUserStatus(ctx)
+	require.NoError(t, err, "failed to get subscriberA status before adding group B")
+	log.Debug("SubscriberA status before", "status", statusBefore)
+
+	log.Debug("SubscriberA reconnecting with both groups", "codes", []string{groupA.Code, groupB.Code})
+	err = subscriberA.ConnectUserMulticast_Subscriber_Wait(ctx, groupA.Code, groupB.Code)
+	require.NoError(t, err, "failed to reconnect subscriberA with both groups")
+
+	err = subscriberA.WaitForStatusUp(ctx)
+	require.NoError(t, err, "failed to wait for subscriberA status up after adding group B")
+
+	// Verify user pubkey is preserved (user was not recreated).
+	statusAfter, err := subscriberA.GetUserStatus(ctx)
+	require.NoError(t, err, "failed to get subscriberA status after adding group B")
+	log.Debug("SubscriberA status after", "status", statusAfter)
+
+	err = subscriberA.MulticastJoin(ctx, groupA, groupB)
+	require.NoError(t, err, "failed to join both groups")
+
+	log.Debug("Publisher sending to both groups (background)")
+	go func() {
+		_ = publisher.MulticastSend(ctx, groupA, 120*time.Second)
+	}()
+	go func() {
+		_ = publisher.MulticastSend(ctx, groupB, 120*time.Second)
+	}()
+
+	reports, err := subscriberA.WaitForMulticastReports(ctx, []*qa.MulticastGroup{groupA, groupB})
+	require.NoError(t, err, "failed to get reports from both groups")
+
+	reportA = reports[groupA.IP.String()]
+	require.NotNil(t, reportA, "no report for group A after adding B")
+	require.Greater(t, reportA.PacketCount, uint64(0), "no packets from group A after adding B")
+
+	reportB = reports[groupB.IP.String()]
+	require.NotNil(t, reportB, "no report for group B")
+	require.Greater(t, reportB.PacketCount, uint64(0), "no packets from group B")
+
+	log.Debug("Phase 2 passed: dynamic subscription verified",
+		"groupA_packets", reportA.PacketCount, "groupB_packets", reportB.PacketCount)
+
+	// --- Phase 3: Simultaneous pub+sub ---
+	// SubA reconnects as both publisher and subscriber on group A, sends to itself.
+	log.Debug("Phase 3: simultaneous pub+sub")
+
+	err = subscriberA.ConnectUserMulticast_PubAndSub_Wait(ctx, []string{groupA.Code}, []string{groupA.Code})
+	require.NoError(t, err, "failed to connect subscriberA as pub+sub")
+
+	err = subscriberA.WaitForStatusUp(ctx)
+	require.NoError(t, err, "failed to wait for subscriberA status up as pub+sub")
+
+	err = subscriberA.MulticastJoin(ctx, groupA)
+	require.NoError(t, err, "failed to join group A as pub+sub")
+
+	// Both the original publisher and subscriberA (as pub+sub) send to group A.
+	// This verifies the pub+sub client participates in the full multicast mesh,
+	// not just self-loop.
+	log.Debug("Publisher and subscriberA both sending to group A (background)")
+	go func() {
+		_ = publisher.MulticastSend(ctx, groupA, 120*time.Second)
+	}()
+	go func() {
+		_ = subscriberA.MulticastSend(ctx, groupA, 120*time.Second)
+	}()
+
+	reportPubSub, err := subscriberA.WaitForMulticastReport(ctx, groupA)
+	require.NoError(t, err, "failed to get report for group A as pub+sub")
+	require.Greater(t, reportPubSub.PacketCount, uint64(0), "pub+sub client received no packets")
+	log.Debug("Phase 3 passed: pub+sub verified", "group", groupA.Code, "packetCount", reportPubSub.PacketCount)
 }

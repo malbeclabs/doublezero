@@ -184,7 +184,7 @@ type Device struct {
 	DevicePathologies     []string
 	BgpCommunity          uint16
 	ExchangeCode          string
-	Status serviceability.DeviceStatus
+	Status                serviceability.DeviceStatus
 	// Additional fields for metric labels
 	Code            string
 	ContributorCode string

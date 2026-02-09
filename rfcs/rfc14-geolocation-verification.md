@@ -41,7 +41,7 @@ A server that acts as an intermediary for latency measurements. dzProbes:
 A signed data structure representing the latency relationship between two entities (DZD↔Probe or Probe↔Client):
 
 ```rust
-struct Offset {
+struct LocationOffset {
     signature: [u8; 64],          // Ed25519 signature
     pubkey: [u8; 32],             // Signer's public key (DZD or Probe)
     lat: f64,                     // Reference point latitude (WGS84)
@@ -65,7 +65,7 @@ A Probe assigned to a specific DZD for periodic latency measurement, defined onc
 
 **Child Criteria:**
 - Probe must be within latency threshold of DZD (e.g., <1ms RTT, 62 miles)
-- Typically 1 DZD parent per Probe child for POC
+- Each doublezero Exchange will have at least 1 Probe. For the POC we only need a single Probe in testnet.
 - Foundation authority controls children assignments
 
 ### Latency Budget
@@ -79,7 +79,7 @@ Maximum acceptable RTT between client and reference point for geo-verification. 
 ### Direct DZD↔Client Measurement (Rejected)
 **Pros:** Simpler, lower latency, lower cost
 **Cons:** Exposes DZD management IPs to all clients (security risk), requires client agent installation, mixes control/user plane traffic
-**Decision:** Rejected. Probe intermediary provides necessary isolation.
+**Decision:** Rejected. Avoided to prevent resource consumption on the resource-constrained DZD.
 
 ### GPS-Based Verification (Rejected)
 **Pros:** More precise, well-established

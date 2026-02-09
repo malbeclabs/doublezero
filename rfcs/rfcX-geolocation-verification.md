@@ -1,4 +1,4 @@
-# Geo-Location Verification via Latency-Based Triangulation
+# Geo-Location Verification
 
 ## Summary
 
@@ -10,7 +10,7 @@ The system uses a three-tier measurement chain: DoubleZero Devices (DZDs) with p
 
 ## Motivation
 
-Users are intereted using DZDs as reference points to determine approximate location for clients for things such as ensuring GDPR compliance. This leverages the verifiable network of DZDs and contributors and is a reasonable way to monetize the network.
+Users are interested using DZDs as reference points to determine approximate location for clients for things such as ensuring GDPR compliance. This leverages the verifiable network of DZDs and contributors and is a reasonable way to monetize the network.
 
 Problems with current IP location services:
 - IP geolocation databases are unreliable (30-50% accuracy for city-level)
@@ -79,17 +79,17 @@ Maximum acceptable RTT between client and reference point for geo-verification. 
 ### Satus Quo: Centralized Location Service (Rejected)
 **Pros:** Simple implementation, flexible, Already exists
 **Cons:** Single point of failure, requires trust, no cryptographic proof
-**Decision:** Rejected by potential clients
+**Decision:** Rejected by potential users
 
 ### Direct DZD↔Client Measurement (Rejected)
 **Pros:** Simpler, lower latency, lower cost
 **Cons:** Control plane traffic in DZDs would not scale to moderate numbers of clients.
-**Decision:** Rejected. Avoided to prevent resource consumption on the resource-constrained DZD.
+**Decision:** Rejected in order to prevent resource consumption on the resource-constrained DZD.
 
 ### GPS-Based Verification (Rejected)
 **Pros:** More precise, well-established
 **Cons:** Not available in typical data centers.
-**Decision:** Rejected.
+**Decision:** Rejected due to high infrastructure build cost.
 
 ### Probe-Based Triangulation (SELECTED)
 **Pros:** Leverages existing infrastructure, no client modifications, cryptographic proof, onchain auditability, scalable, privacy-preserving

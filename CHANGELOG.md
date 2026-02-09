@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.
 ### Changes
 
 - Onchain programs
+  - fix(smartcontract): correctly ser/deser ops_manager_pk ([#2887](https://github.com/malbeclabs/doublezero/pull/2887))
   - Serviceability: add Tenant account type with immutable code-based PDA derivation, VRF ID, administrator management, and reference counting for safe deletion
   - Serviceability: add TenantAddAdministrator and TenantRemoveAdministrator instructions for foundation-managed administrator lists
   - Serviceability: extend UserUpdate instruction to support tenant_pk field updates with automatic reference count management on old and new tenants (backward compatible with old format)
@@ -47,6 +48,7 @@ All notable changes to this project will be documented in this file.
 - None for this release
 
 ### Changes
+
 - CLI
   - Remove log noise on resolve route
   - `doublezero resource verify` command added to verify onchain resources
@@ -95,7 +97,7 @@ All notable changes to this project will be documented in this file.
   - Support publishing and subscribing to multiple multicast groups simultaneously
 - CLI
   - Support publishing and subscribing a user to multiple multicast groups via `--group` flag
-  - Remove single tunnel constraint 
+  - Remove single tunnel constraint
 - SDK
   - Go SDK can now perform batch writes to device.health and link.health as per rfc12
 - Activator

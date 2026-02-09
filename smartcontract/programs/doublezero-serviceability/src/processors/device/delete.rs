@@ -82,7 +82,13 @@ pub fn process_delete_device(
 
     let mut device: Device = Device::try_from(device_account)?;
 
-    if device.status != DeviceStatus::Activated {
+    if !matches!(
+        device.status,
+        DeviceStatus::Activated
+            | DeviceStatus::DeviceProvisioning
+            | DeviceStatus::LinkProvisioning
+            | DeviceStatus::Drained
+    ) {
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 

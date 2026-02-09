@@ -93,7 +93,7 @@ Maximum acceptable RTT between client and reference point for geo-verification. 
 
 ### Probe-Based Triangulation (SELECTED)
 **Pros:** Leverages existing infrastructure, no client modifications, cryptographic proof, onchain auditability, scalable, privacy-preserving
-**Cons:** Infrastructure cost (~$50/month per probe), less precise than GPS, additional latency
+**Cons:** Infrastructure cost (need probe servers), less precise than GPS, additional latency
 **Decision:** Selected. Best balance of security, verifiability, and operational simplicity.
 
 ## Detailed Design
@@ -137,48 +137,40 @@ _Measurment Flow_
 
 ### Data Structures
 
-#### Probe Account (Onchain)
+#### Probe Account (Onchain in Servicability)
 
 ```rust
 pub struct Probe {
-    pub account_type: AccountType,           // AccountType::Probe
-    pub owner: Pubkey,                       // DZ Foundation
+    pub account_type: AccountType,           // New AccountType::Probe
+    pub owner: Pubkey,                       // Resource Provider
     pub index: u128,                         // Unique index for PDA
     pub bump_seed: u8,
-    pub location_pk: Pubkey,                 // Reference to Location account
-    pub lat: f64,                            // Cached from Location
-    pub lon: f64,                            // Cached from Location
+    pub exchange_pk: Pubkey,                 // Reference to Exchange account
     pub public_ip: Ipv4Addr,                 // Where probe listens
-    pub port: u16,                           // Default: 8923
     pub status: ProbeStatus,                 // Pending/Activated/Suspended/Deleting
     pub code: String,                        // e.g., "ams-probe-01"
-    pub mated_devices: Vec<Pubkey>,          // DZDs to measure
-    pub latency_threshold_ns: u64,           // Max RTT for mating
+    pub parent_devices: Vec<Pubkey>,         // DZDs to measure this probe
     pub metrics_publisher_pk: Pubkey,        // For telemetry submissions
     pub reference_count: u32,
-    pub _unused: [u8; 64],
 }
 ```
 
 **PDA Seeds:** `["doublezero", "probe", index.to_le_bytes()]`
 
-#### ProbeLatencySamples Account (Onchain)
+#### ProbeLatencySamples Account (Onchain in Telemetry)
 
 Mirrors `DeviceLatencySamples` structure from RFC4:
 
 ```rust
 pub struct ProbeLatencySamplesHeader {
-    pub account_type: AccountType,
+    pub account_type: AccountType,           // New AccountType::ProbeLatencySamples
     pub epoch: u64,
     pub origin_device_agent_pk: Pubkey,      // DZD agent
     pub origin_device_pk: Pubkey,            // DZD
     pub target_probe_pk: Pubkey,             // Probe
-    pub origin_device_location_pk: Pubkey,
-    pub target_probe_location_pk: Pubkey,
     pub sampling_interval_microseconds: u64, // e.g., 5_000_000 = 5s
     pub start_timestamp_microseconds: u64,
     pub next_sample_index: u32,
-    pub _unused: [u8; 128],
 }
 
 pub struct ProbeLatencySamples {

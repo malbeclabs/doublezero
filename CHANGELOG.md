@@ -33,6 +33,7 @@ All notable changes to this project will be documented in this file.
   - DeleteUserCommand updated to wait for activator to process multicast user unsubscribe before deleting the user
 - Device controller
   - Record successful GetConfig gRPC calls to ClickHouse for device telemetry tracking
+  - Multi-tenancy vrf support added
 - Onchain programs
   - Enforce that `CloseAccessPass` only closes AccessPass accounts when `connection_count == 0`, preventing closure while active connections are present.
 - Monitor

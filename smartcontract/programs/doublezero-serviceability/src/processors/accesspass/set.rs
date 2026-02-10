@@ -264,6 +264,7 @@ mod tests {
             publishers: vec![Pubkey::new_unique()],
             subscribers: vec![],
             validator_pubkey: Pubkey::new_unique(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         };
 
         // User with 1 subscriber only (publisher use case)
@@ -284,6 +285,7 @@ mod tests {
             publishers: vec![],
             subscribers: vec![Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         };
 
         // User with both 1 publisher and 1 subscriber (future simultaneous pub/sub)
@@ -304,6 +306,7 @@ mod tests {
             publishers: vec![Pubkey::new_unique()],
             subscribers: vec![Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         };
 
         let size_with_publisher = borsh::object_length(&user_with_publisher).unwrap();
@@ -311,25 +314,25 @@ mod tests {
         let size_with_both = borsh::object_length(&user_with_both).unwrap();
 
         // Verify our understanding of the sizes
-        // Base User size (empty vecs) = 172 bytes
+        // Base User size (empty vecs) = 176 bytes
         // Each Pubkey in publishers/subscribers adds 32 bytes
         assert_eq!(
-            size_with_publisher, 204,
-            "User with 1 publisher should be 204 bytes"
+            size_with_publisher, 208,
+            "User with 1 publisher should be 208 bytes"
         );
         assert_eq!(
-            size_with_subscriber, 204,
-            "User with 1 subscriber should be 204 bytes"
+            size_with_subscriber, 208,
+            "User with 1 subscriber should be 208 bytes"
         );
         assert_eq!(
-            size_with_both, 236,
-            "User with 1 publisher + 1 subscriber should be 236 bytes"
+            size_with_both, 240,
+            "User with 1 publisher + 1 subscriber should be 240 bytes"
         );
 
-        // The constant should be sized for 3 accounts with both pub+sub (236 * 3 = 708)
+        // The constant should be sized for 3 accounts with both pub+sub (240 * 3 = 720)
         assert_eq!(
             AIRDROP_USER_RENT_LAMPORTS_BYTES,
-            236 * 3,
+            240 * 3,
             "AIRDROP_USER_RENT_LAMPORTS_BYTES should be sized for 3 User accounts with pub+sub"
         );
 

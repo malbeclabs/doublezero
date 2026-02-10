@@ -97,22 +97,6 @@ impl StatusCliCommand {
                     {
                         current_device = Some(*device_pk);
                         metro = exchanges.get(&dev.exchange_pk).map(|e| e.name.clone());
-            }
-            let lowest_latency_device =
-                match best_latency(controller, &devices, true, None, current_device, &[]).await {
-                    Ok(best) => {
-                        let is_current = user
-                            .map(|u| best.device_pk == u.device_pk.to_string())
-                            .unwrap_or(false);
-                        if self.json
-                            || response.doublezero_status.session_status != "BGP Session Up"
-                        {
-                            best.device_code
-                        } else if is_current || current_device.is_none() {
-                            format!("✅ {}", best.device_code)
-                        } else {
-                            format!("⚠️ {}", best.device_code)
-                        }
                     }
                 }
             }

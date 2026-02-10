@@ -1253,6 +1253,8 @@ func TestStateCache(t *testing.T) {
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
 				MulticastGroups: map[string]serviceability.MulticastGroup{},
+				Tenants:         map[string]serviceability.Tenant{},
+				UnicastVrfs:     []uint16{1},
 				Vpnv4BgpPeers: []BgpPeer{
 					{
 						PeerIP:   net.IP{10, 10, 10, 1},
@@ -1305,6 +1307,7 @@ func TestStateCache(t *testing.T) {
 								DzIp:          net.IP{100, 100, 100, 100},
 								PubKey:        "11111111111111111111111111111111",
 								Allocated:     true,
+								VrfId:         1,
 							},
 							{
 								Id:            501,
@@ -1315,6 +1318,7 @@ func TestStateCache(t *testing.T) {
 								DzIp:          net.IP{100, 100, 100, 101},
 								PubKey:        "11111111111111111111111111111111",
 								Allocated:     true,
+								VrfId:         1,
 							},
 						}, generateEmptyTunnelSlots(config.StartUserTunnelNum+2, config.MaxUserTunnelSlots-2)...),
 						TunnelSlots: config.MaxUserTunnelSlots,

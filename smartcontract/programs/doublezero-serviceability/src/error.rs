@@ -146,7 +146,6 @@ pub enum DoubleZeroError {
     CyoaRequiresPhysical, // variant 69
     #[error("Device can only be removed if it has no interfaces")]
     DeviceHasInterfaces, // variant 70
-<<<<<<< HEAD
     #[error("MulticastGroup can only be deleted if it has no active publishers or subscribers")]
     MulticastGroupNotEmpty, // variant 71
     #[error("Access Pass is in use (non-zero connection_count)")]
@@ -163,10 +162,8 @@ pub enum DoubleZeroError {
     AdministratorNotFound, // variant 77
     #[error("Invalid Payment Status")]
     InvalidPaymentStatus, // variant 78
-=======
     #[error("Invalid Tunnel Endpoint")]
-    InvalidTunnelEndpoint, // variant 71
->>>>>>> 42711d2f (DNM: feat(cli): remove multiple tunnel restriction (#2725))
+    InvalidTunnelEndpoint, // variant 79
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -363,88 +360,9 @@ mod tests {
 
     #[test]
     fn test_error_enum_conversions() {
-<<<<<<< HEAD
         // Using EnumIter ensures all variants are tested - if a new variant is added
         // to the enum, this test will automatically include it.
         for err in DoubleZeroError::iter() {
-=======
-        use DoubleZeroError::*;
-        let variants = vec![
-            Custom(123),
-            InvalidOwnerPubkey,
-            InvalidExchangePubkey,
-            InvalidDevicePubkey,
-            InvalidLocationPubkey,
-            InvalidDeviceAPubkey,
-            InvalidDeviceZPubkey,
-            InvalidStatus,
-            NotAllowed,
-            InvalidAccountType,
-            InvalidContributorPubkey,
-            InvalidInterfaceVersion,
-            InvalidInterfaceName,
-            ReferenceCountNotZero,
-            InvalidContributor,
-            InvalidInterfaceZForExternal,
-            InvalidIndex,
-            DeviceAlreadySet,
-            DeviceNotSet,
-            InvalidAccountCode,
-            MaxUsersExceeded,
-            InvalidLastAccessEpoch,
-            Unauthorized,
-            InvalidSolanaValidatorPubkey,
-            InterfaceNotFound,
-            AccessPassUnauthorized,
-            InvalidClientIp,
-            InvalidDzIp,
-            InvalidTunnelNet,
-            InvalidTunnelId,
-            InvalidTunnelIp,
-            InvalidBandwidth,
-            InvalidDelay,
-            InvalidJitter,
-            CodeTooLong,
-            NoDzPrefixes,
-            InvalidLocation,
-            InvalidExchange,
-            InvalidDzPrefix,
-            NameTooLong,
-            InvalidLatitude,
-            InvalidLongitude,
-            InvalidLocId,
-            InvalidCountryCode,
-            InvalidLocalAsn,
-            InvalidRemoteAsn,
-            InvalidMtu,
-            InvalidInterfaceIp,
-            InvalidInterfaceIpNet,
-            InvalidVlanId,
-            InvalidMaxBandwidth,
-            InvalidMulticastIp,
-            InvalidAccountOwner,
-            AccessPassNotFound,
-            UserAccountNotFound,
-            InvalidBgpCommunity,
-            InterfaceAlreadyExists,
-            InvalidInterfaceType,
-            InvalidLoopbackType,
-            InvalidMinCompatibleVersion,
-            InvalidActualLocation,
-            InvalidUserPubkey,
-            InvalidPublicIp,
-            AllocationFailed,
-            SerializationFailure,
-            InvalidArgument,
-            InvalidFoundationAllowlist,
-            Deprecated,
-            ImmutableField,
-            CyoaRequiresPhysical,
-            DeviceHasInterfaces,
-            InvalidTunnelEndpoint,
-        ];
-        for err in variants {
->>>>>>> 42711d2f (DNM: feat(cli): remove multiple tunnel restriction (#2725))
             let pe: ProgramError = err.clone().into();
             let err2: DoubleZeroError = pe.into();
             assert_eq!(err, err2, "Error conversion failed for {err:?}");

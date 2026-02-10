@@ -269,13 +269,10 @@ pub fn process_activate_user(
             // First activation for user that doesn't need dz_ip: use client_ip
             user.dz_ip = user.client_ip;
         }
-<<<<<<< HEAD
         // Otherwise keep existing dz_ip (already allocated or client_ip)
-=======
 
         // Set tunnel_endpoint from args (device's public_ip, passed by activator)
         user.tunnel_endpoint = value.tunnel_endpoint;
->>>>>>> 42711d2f (DNM: feat(cli): remove multiple tunnel restriction (#2725))
     } else {
         // Legacy behavior: use provided args
         user.tunnel_id = value.tunnel_id;

@@ -18,6 +18,7 @@ All notable changes to this project will be documented in this file.
   - Serviceability: extend UserUpdate instruction to support tenant_pk field updates with automatic reference count management on old and new tenants (backward compatible with old format)
   - Serviceability: extend UserCloseAccount instruction to decrement tenant reference count when closing user with assigned tenant
   - Serviceability: add reference count validation in DeleteMulticastGroup to prevent deletion when active publishers or subscribers exist
+  - Serviceability: fix multicast group closeaccount to use InvalidStatus error and remove redundant publisher/subscriber count check
 - SDK
   - Add CreateTenant, UpdateTenant (vrf_id only), DeleteTenant, GetTenant, and ListTenant commands with support for code or pubkey lookup
   - Add AddAdministratorTenant and RemoveAdministratorTenant commands for tenant administrator management

@@ -77,6 +77,8 @@ All notable changes to this project will be documented in this file.
   - Add sol-balance watcher to track SOL balances for configured accounts and export Prometheus metrics for alerting
 - Client
   - Support simultaneous publisher and subscriber multicast in the daemon
+- Telemetry
+  - Add consecutive-loss-based sender eviction to the telemetry collector so broken TWAMP senders are recreated quickly instead of persisting until TTL expiry (`--max-consecutive-sender-losses`, default 30)
 - E2E tests
   - e2e: add multi-tenancy VRF isolation test ([#2891](https://github.com/malbeclabs/doublezero/pull/2891))
   - Add backward compatibility test that validates older CLI versions against the current onchain program by cloning live state from testnet and mainnet-beta

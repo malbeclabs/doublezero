@@ -217,7 +217,20 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move |_| Ok(AccountData::User(user_clone1.clone())));
 
-        // Call 2: MulticastGroup fetch in SubscribeMulticastGroupCommand
+        // Call 2: ListMulticastGroupCommand - gets all multicast groups
+        let mgroup_for_list = mgroup.clone();
+        client
+            .expect_gets()
+            .with(predicate::eq(AccountType::MulticastGroup))
+            .times(1)
+            .in_sequence(&mut seq)
+            .returning(move |_| {
+                let mut map = std::collections::HashMap::new();
+                map.insert(mgroup_pubkey, AccountData::MulticastGroup(mgroup_for_list.clone()));
+                Ok(map)
+            });
+
+        // Call 3: MulticastGroup fetch in SubscribeMulticastGroupCommand
         let mgroup_clone = mgroup.clone();
         client
             .expect_get()
@@ -226,7 +239,7 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move |_| Ok(AccountData::MulticastGroup(mgroup_clone.clone())));
 
-        // Call 3: User fetch inside SubscribeMulticastGroupCommand - needs Activated
+        // Call 4: User fetch inside SubscribeMulticastGroupCommand - needs Activated
         let user_clone2 = user_activated_with_sub.clone();
         client
             .expect_get()
@@ -235,7 +248,7 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move |_| Ok(AccountData::User(user_clone2.clone())));
 
-        // Call 4: AccessPass fetch in SubscribeMulticastGroupCommand
+        // Call 5: AccessPass fetch in SubscribeMulticastGroupCommand
         let accesspass_clone1 = accesspass.clone();
         client
             .expect_get()
@@ -265,7 +278,7 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(|_, _| Ok(Signature::new_unique()));
 
-        // Call 5: First retry GetUserCommand - returns Updating (triggers retry)
+        // Call 6: First retry GetUserCommand - returns Updating (triggers retry)
         let user_updating_clone = user_updating.clone();
         client
             .expect_get()
@@ -274,7 +287,7 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move |_| Ok(AccountData::User(user_updating_clone.clone())));
 
-        // Call 6: Second retry GetUserCommand - returns Activated (success)
+        // Call 7: Second retry GetUserCommand - returns Activated (success)
         let user_final_clone = user_activated_final.clone();
         client
             .expect_get()
@@ -283,7 +296,7 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move |_| Ok(AccountData::User(user_final_clone.clone())));
 
-        // Call 7: AccessPass fetch for DeleteUserCommand
+        // Call 8: AccessPass fetch for DeleteUserCommand
         let accesspass_clone2 = accesspass.clone();
         client
             .expect_get()

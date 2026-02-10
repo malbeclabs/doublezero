@@ -40,15 +40,17 @@ A server that acts as an intermediary for latency measurements. dzProbes:
 ### Offset
 A signed data structure representing the latency relationship between two entities (DZD↔Probe or Probe↔Target) and is sent to the Probe or Target. This is sent via UDP to the next link in the chain (From DZD->Probe and From Probe->Target)
 
-```rust
-struct LocationOffset {
-    signature: [u8; 64],          // Ed25519 signature
-    pubkey: [u8; 32],             // Signer's public key (DZD or Probe)
-    lat: f64,                     // Reference point latitude (WGS84)
-    lon: f64,                     // Reference point longitude (WGS84)
-    rtt_ns: u64,                  // Measured RTT in nanoseconds
-    num_references: u8,           // Number of reference offsets in chain
-    references: Vec<Offset>,      // Reference offsets (empty for DZD→Probe)
+```go
+type LocationOffset struct {
+    Signature       [64]byte  // Ed25519 signature
+    Pubkey          [32]byte  // Signer's public key (DZD or Probe)
+    MeasurementSlot uint64    // Current DoubleZero Slot 
+    Lat             float64   // Reference point latitude (WGS84)
+    Lon             float64   // Reference point longitude (WGS84)
+    MeasuredRttNs   uint64    // Measured RTT in nanoseconds, minimum
+    RttNs           uint64    // RTT to target in ns, from lat/lon
+    NumReferences   uint8     // Number of reference offsets in chain
+    References      []Offset  // Reference offsets (empty for DZD→Probe)
 }
 ```
 
@@ -61,12 +63,12 @@ struct LocationOffset {
 The RTT to a target from the lat/lon in the Offset struct.
 
 ### Child Probe
-A Probe assigned to a specific DZD for periodic latency measurement, defined onchain. DZDs only measure and send Offsets to their mated Probes.
+A dzProbe assigned to a specific DZD for periodic latency measurement, defined onchain. DZDs only measure and send `LocationOffset` datagrams to their child dzProbes.
 
 **Child Criteria:**
 - Probe must be within latency threshold of DZD (e.g., <1ms RTT, 62 miles)
 - Each doublezero Exchange will have at least 1 Probe. For the POC we only need a single Probe in testnet.
-- Foundation authority controls children assignments
+- Foundation authority controls children assignments. This allows balancing loads on DZDs
 
 ## Alternatives Considered
 
@@ -175,8 +177,8 @@ pub enum TelemetryInstruction {
         latency_threshold_ns: Option<u64>,
     },
 
-    AddMatedDevice { device_pk: Pubkey },
-    RemoveMatedDevice { device_pk: Pubkey },
+    AddParentDevice { device_pk: Pubkey },
+    RemoveParentDevice { device_pk: Pubkey },
 }
 ```
 
@@ -199,7 +201,7 @@ type Config struct {
 ```
 
 **Modules:**
-- `probe_discovery.go`: Discovers mated probes from onchain (~200 lines)
+- `probe_discovery.go`: Discovers child probes from onchain (~200 lines)
 - `probe_pinger.go`: TWAMP measurements to probes (~300 lines)
 - `offset_generator.go`: Creates signed Offsets (~150 lines)
 - `probe_publisher.go`: Submits samples onchain and UDP (~200 lines)
@@ -287,6 +289,8 @@ max_offset_age_seconds: 300
    - dzProbe account
    - 4 new instructions (InitializeProbe/UpdateProbe/AddParent/RemoveParent)
 2. Telemetry agent extensions:
+   - Command Line Argument for "Additional Child Probes"
+     - Allows testing without onchain work
    - Child dzProbe discovery from onchain
    - Extend TWAMP measurement to dzProbes
    - Generate Offset structure and sign
@@ -294,7 +298,10 @@ max_offset_age_seconds: 300
 3. dzProbe server (`doublezero-probe-agent`):
    - TWAMP Reflector
    - UDP listener for DZD Offsets
+   - Command Line Argument for "Additional Parents" and "Additional Targets"
+     - Allows testing without onchain work
    - Offset caching and verification
+   - Parent DZD Discovery from onchain
    - GeolocationUser and GelocationTarget discovery from onchain
    - Measure IP RTT to targets (Via TWAMP/ICMP)
    - Composite Offset generation

@@ -103,7 +103,7 @@ Maximum acceptable RTT between client and reference point for geo-verification. 
 ```
   ┌──────────┐                  ┌───────────┐                  ┌───────────┐
   │          │<─────Reply───────│           │<─────Reply───────│           │
-  │   DZD    │──────TWAMP──────>│   Probe   │──────TWAMP──────>│  Client   │
+  │   DZD    │──────TWAMP──────>│   Probe   │──────Probe──────>│  Target   │
   │          │──Signed Offset──>│           │──Signed Offset──>│           │
   └──────────┘                  └───────────┘  w/ references   └───────────┘
       ^ │                          ^  │                             │
@@ -181,7 +181,79 @@ pub struct ProbeLatencySamples {
 
 **PDA Seeds:** `["doublezero", "probe_latency_samples", origin_device_pk, target_probe_pk, epoch]`
 
+#### GeolocationUser Account (Onchain in Serviceability)
+
+Represents a user who wants to geolocate target IP addresses using the DoubleZero network:
+
+```rust
+pub struct GeolocationUser {
+    pub account_type: AccountType,           // New AccountType::GeolocationUser
+    pub owner: Pubkey,                       // User who created this account
+    pub index: u128,                         // Unique index for PDA
+    pub bump_seed: u8,
+    pub code: String,                        // User-chosen identifier (e.g., "my-super-fun-code")
+    pub exchange_pk: Pubkey,                 // Exchange that will perform measurements
+    pub target_ips: Vec<Ipv4Addr>,          // IP addresses to geolocate
+    pub status: GeolocationUserStatus,       // Pending/Activated/Deleting
+    pub reference_count: u32,
+}
+```
+
+**PDA Seeds:** `["doublezero", "geolocation_user", code.as_bytes()]`
+
+**Purpose:** Probes read GeolocationUser accounts to discover which target IPs need geolocation measurements. The exchange_pk determines which exchange's probes will perform the measurements.
+
+#### GeolocationSamples Account (Onchain in Telemetry)
+
+Stores RTT measurements from Probes to target client IPs. Mirrors the structure of ProbeLatencySamples:
+
+```rust
+pub struct GeolocationSamplesHeader {
+    pub account_type: AccountType,           // New AccountType::GeolocationSamples
+    pub epoch: u64,
+    pub probe_pk: Pubkey,                    // Probe performing measurements
+    pub target_ip: Ipv4Addr,                 // IP being geolocated
+    pub geolocation_user_pk: Pubkey,         // Reference to GeolocationUser account
+    pub sampling_interval_microseconds: u64, // e.g., 5_000_000 = 5s
+    pub start_timestamp_microseconds: u64,
+    pub next_sample_index: u32,
+}
+
+pub struct GeolocationSamples {
+    pub header: GeolocationSamplesHeader,
+    pub samples: Vec<u32>,                   // RTT in microseconds, max 35k samples
+}
+```
+
+**PDA Seeds:** `["doublezero", "geolocation_samples", probe_pk, target_ip.octets(), epoch.to_le_bytes()]`
+
+**Purpose:** Stores the actual Probe→Target IP latency measurements that can be queried via the CLI to determine approximate geolocation.
+
 ### Smart Contract Changes
+
+#### New Instructions (Serviceability Program)
+
+```rust
+pub enum ServiceabilityInstruction {
+    // Existing instructions...
+
+    InitializeGeolocationUser {
+        index: u128,
+        code: String,
+        exchange_pk: Pubkey,
+    },
+
+    AddTargetIp {
+        target_ip: Ipv4Addr,
+    },
+
+    RemoveTargetIp {
+        target_ip: Ipv4Addr,
+    },
+
+    DeleteGeolocationUser,
+}
+```
 
 #### New Instructions (Telemetry Program)
 
@@ -214,6 +286,16 @@ pub enum TelemetryInstruction {
     },
 
     WriteProbeLatencySamples {
+        start_timestamp_microseconds: u64,
+        samples: Vec<u32>,
+    },
+
+    InitializeGeolocationSamples {
+        epoch: u64,
+        sampling_interval_microseconds: u64,
+    },
+
+    WriteGeolocationSamples {
         start_timestamp_microseconds: u64,
         samples: Vec<u32>,
     },
@@ -296,6 +378,72 @@ if offset.total_latency_ns() <= budget.max_ns {
 }
 ```
 
+#### CLI Tool: doublezero-geolocation
+
+**File:** `client/doublezero-geolocation/` (new binary)
+
+**Purpose:** Command-line tool for creating geolocation users, managing target IPs, and querying measurement data from the ledger.
+
+**Commands:**
+
+```bash
+# Create a geolocation user with a unique code
+doublezero-geolocation user create --code my-super-fun-code
+
+# Add a target IP to be geolocated by a specific exchange
+doublezero-geolocation add-target my-super-fun-code xams 203.0.113.42
+
+# Remove a target IP
+doublezero-geolocation remove-target my-super-fun-code xams 203.0.113.42
+
+# Get all geolocation measurements for a specific epoch
+doublezero-geolocation get 12345
+
+# Get measurements for a specific target IP in an epoch
+doublezero-geolocation get 12345 203.0.113.42
+
+# List all geolocation users
+doublezero-geolocation user list
+
+# Delete a geolocation user
+doublezero-geolocation user delete --code my-super-fun-code
+```
+
+**Example Workflow:**
+
+```bash
+# 1. Create a geolocation user account
+$ doublezero-geolocation user create --code gdpr-compliance
+
+# 2. Add target IPs to geolocate (using Amsterdam exchange)
+$ doublezero-geolocation add-target gdpr-compliance xams 203.0.113.10
+$ doublezero-geolocation add-target gdpr-compliance xams 198.51.100.25
+
+# 3. Wait for probes to collect measurements (happens automatically)
+
+# 4. Query measurements for current epoch
+$ doublezero-geolocation get 12350
+
+# Output shows RTT measurements from probe to each target IP
+# Target: 203.0.113.10, Probe: ams-probe-01, Samples: 45
+# Avg RTT: 12.5ms, P50: 12.3ms, P95: 14.2ms, P99: 15.8ms
+#
+# Target: 198.51.100.25, Probe: ams-probe-01, Samples: 45
+# Avg RTT: 28.7ms, P50: 28.1ms, P95: 31.4ms, P99: 33.2ms
+
+# 5. Query specific target IP
+$ doublezero-geolocation get 12350 203.0.113.10
+# Shows detailed samples for just that IP
+```
+
+**Data Flow:**
+
+1. User creates `GeolocationUser` account via CLI with chosen code and exchange
+2. User adds target IPs via `add-target` (associates IPs with exchange)
+3. Probes in the specified exchange query `GeolocationUser` accounts onchain
+4. Probes measure RTT to target IPs and write to `GeolocationSamples` accounts
+5. User queries `GeolocationSamples` accounts by epoch and/or target IP via CLI
+
 ## Security Considerations
 
 ### Threat Model
@@ -321,23 +469,33 @@ if offset.total_latency_ns() <= budget.max_ns {
 
 **Goal:** Single probe deployment for testing
 
-1. Telemetry program changes:
+1. Serviceability program changes:
+   - GeolocationUser account
+   - 4 new instructions (InitializeGeolocationUser/AddTargetIp/RemoveTargetIp/DeleteGeolocationUser)
+2. Telemetry program changes:
    - Probe and ProbeLatencySamples accounts
-   - 6 new instructions (Initialize/Update/AddMated/RemoveMated/InitSamples/WriteSamples)
-2. Telemetry agent extensions:
+   - GeolocationSamples account
+   - 8 new instructions (InitializeProbe/UpdateProbe/AddMated/RemoveMated/InitProbeLatencySamples/WriteProbeLatencySamples/InitGeolocationSamples/WriteGeolocationSamples)
+3. Telemetry agent extensions:
    - Probe discovery from onchain
    - TWAMP measurement to probes
    - Offset generation and signing
    - Dual posting (onchain + UDP)
-3. Probe server:
+4. Probe server:
    - UDP listener for DZD Offsets and client requests
    - Offset caching and verification
-   - Client RTT measurement
+   - GeolocationUser discovery from onchain
+   - Target IP RTT measurement
    - Composite Offset generation
-4. Client SDK:
+   - GeolocationSamples submission onchain
+5. Client SDK:
    - Offset struct with signature verification
    - Simple UDP client
-5. Deployment:
+6. CLI tool (doublezero-geolocation):
+   - User management commands
+   - Target IP management commands
+   - Measurement query commands
+7. Deployment:
    - 1 probe in Amsterdam (colocated with DZD)
    - Mated to 1-2 DZDs for testing
 
@@ -355,12 +513,18 @@ if offset.total_latency_ns() <= budget.max_ns {
 4. Monitoring:
    - Grafana dashboards for probe health
    - Alerting for offline probes, signature failures
+   - GeolocationSamples data ingestion to analytics system
 5. Documentation:
    - Client integration guide
    - Probe operator handbook
+   - CLI usage documentation
 6. Foundation operations:
    - Probe management CLI (`doublezero probe list/create/update`)
    - Automated key rotation
+7. CLI enhancements:
+   - Support for querying multiple epochs
+   - Statistical analysis of measurements (avg, percentiles)
+   - Export to CSV/JSON formats
 
 ## Implementation Phases
 
@@ -495,6 +659,8 @@ if offset.total_latency_ns() <= budget.max_ns {
 2. What's the optimal cache size for Offset storage? (Testing will determine, starting with 10k entries)
 3. Should probe metrics be posted onchain? (Yes for auditability; separate from client verification path)
 4. How to handle probe key rotation? (Manual for POC, automated in MVP)
+5. In the architecture diagram, the Probe has a line to the Target that says "Probe". Should this be TWAMP (requires configuration on the target), or ICMP, or a TCP syn/syn-ack on a port known to listen publicly? Or support all three options? For POC we can start with ICMP.
+6. How should we handle the latency between the probe and device changing over time? Should we always use the most recent measurement? Should we use the average since the last Signed Offset was sent? The avg/min/max of the previous epoch? 
 
 ## References
 

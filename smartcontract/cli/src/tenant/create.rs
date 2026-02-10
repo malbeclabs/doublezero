@@ -20,7 +20,7 @@ pub struct CreateTenantCliCommand {
     #[arg(long)]
     pub token_account: Option<String>,
     /// Enable metro routing for this tenant
-    #[arg(long, default_value = "true")]
+    #[arg(long, default_value = "false")]
     pub metro_route: bool,
     /// Enable route aliveness checks for this tenant
     #[arg(long, default_value = "false")]

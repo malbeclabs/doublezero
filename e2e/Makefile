@@ -62,5 +62,4 @@ buildx-solana-push: .setup-multiplatform
 
 .PHONY: proto
 proto:
-	docker pull namely/protoc-all
-	docker run -v $(PWD)/proto/qa:/defs namely/protoc-all --go-source-relative -f agent.proto -l go
+	docker run --rm -v $(PWD)/proto/qa:/workspace -w /workspace ghcr.io/jetexe/gobuf:1.61.0 generate

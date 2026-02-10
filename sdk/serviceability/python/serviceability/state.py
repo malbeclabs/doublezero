@@ -222,23 +222,23 @@ class LinkLinkType(IntEnum):
 class LinkStatus(IntEnum):
     PENDING = 0
     ACTIVATED = 1
-    DELETING = 2
-    REJECTED = 3
-    REQUESTED = 4
-    HARD_DRAINED = 5
-    SOFT_DRAINED = 6
-    PROVISIONING = 7
+    DELETING = 3
+    REJECTED = 4
+    REQUESTED = 5
+    HARD_DRAINED = 6
+    SOFT_DRAINED = 7
+    PROVISIONING = 8
 
     def __str__(self) -> str:
         _names = {
             0: "pending",
             1: "activated",
-            2: "deleting",
-            3: "rejected",
-            4: "requested",
-            5: "hard-drained",
-            6: "soft-drained",
-            7: "provisioning",
+            3: "deleting",
+            4: "rejected",
+            5: "requested",
+            6: "hard-drained",
+            7: "soft-drained",
+            8: "provisioning",
         }
         return _names.get(self.value, "unknown")
 

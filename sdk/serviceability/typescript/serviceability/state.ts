@@ -168,12 +168,12 @@ export function linkLinkTypeString(v: number): string {
 const LINK_STATUS_NAMES: Record<number, string> = {
   0: "pending",
   1: "activated",
-  2: "deleting",
-  3: "rejected",
-  4: "requested",
-  5: "hard-drained",
-  6: "soft-drained",
-  7: "provisioning",
+  3: "deleting",
+  4: "rejected",
+  5: "requested",
+  6: "hard-drained",
+  7: "soft-drained",
+  8: "provisioning",
 };
 export function linkStatusString(v: number): string {
   return LINK_STATUS_NAMES[v] ?? "unknown";

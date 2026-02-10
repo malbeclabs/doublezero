@@ -475,12 +475,12 @@ type LinkStatus uint8
 const (
 	LinkStatusPending      LinkStatus = 0
 	LinkStatusActivated    LinkStatus = 1
-	LinkStatusDeleting     LinkStatus = 2
-	LinkStatusRejected     LinkStatus = 3
-	LinkStatusRequested    LinkStatus = 4
-	LinkStatusHardDrained  LinkStatus = 5
-	LinkStatusSoftDrained  LinkStatus = 6
-	LinkStatusProvisioning LinkStatus = 7
+	LinkStatusDeleting     LinkStatus = 3
+	LinkStatusRejected     LinkStatus = 4
+	LinkStatusRequested    LinkStatus = 5
+	LinkStatusHardDrained  LinkStatus = 6
+	LinkStatusSoftDrained  LinkStatus = 7
+	LinkStatusProvisioning LinkStatus = 8
 )
 
 func (l LinkStatus) String() string {

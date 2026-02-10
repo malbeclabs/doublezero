@@ -829,25 +829,30 @@ func runWriteWorkflows(
 		return !ws.noCascade
 	}
 
-	// writePhase groups steps that can run concurrently. Phases run sequentially;
-	// if any non-noCascade step fails in a phase, all remaining phases are skipped.
+	// writePhase groups steps into a phase. Phases run sequentially; if any
+	// non-noCascade step fails in a phase, all remaining phases are skipped.
+	// When parallel is true, steps within the phase run concurrently.
+	// When parallel is false, steps run sequentially (required for entity
+	// creates that use counter-based PDA derivation — parallel creates read
+	// the same counter and compute conflicting PDAs).
 	type writePhase struct {
-		name  string
-		steps []writeStep
+		name     string
+		steps    []writeStep
+		parallel bool
 	}
 
 	phases := []writePhase{
 		// === CREATE PATH ===
 
-		// Foundation entities are independent of each other.
-		{name: "create_foundation", steps: []writeStep{
+		// Foundation creates use counter-based PDA derivation — must be sequential.
+		{name: "create_foundation", parallel: false, steps: []writeStep{
 			{name: "contributor_create", cmd: cli + " contributor create --code " + contributorCode + " --owner me"},
 			{name: "location_create", cmd: cli + " location create --code " + locationCode + " --name TestLoc --country US --lat 40.7 --lng -74.0"},
 			{name: "exchange_create", cmd: cli + " exchange create --code " + exchangeCode + " --name TestExchange --lat 40.7 --lng -74.0"},
 		}},
 
-		// Both devices depend on foundation entities but are independent of each other.
-		{name: "create_devices", steps: []writeStep{
+		// Device creates use counter-based PDA derivation — must be sequential.
+		{name: "create_devices", parallel: false, steps: []writeStep{
 			{name: "device_create", cmd: cli + " device create --code " + deviceCode +
 				" --contributor " + contributorCode +
 				" --location " + locationCode +
@@ -864,9 +869,8 @@ func runWriteWorkflows(
 				" --mgmt-vrf default"},
 		}},
 
-		// Device setup: max_users, health, exchange assignment, and all 4 interface
-		// creates are independent once both devices exist.
-		{name: "setup_devices", steps: []writeStep{
+		// Device updates are independent and don't use counter-based PDAs.
+		{name: "setup_devices", parallel: true, steps: []writeStep{
 			{name: "device_set_max_users", cmd: cli + " device update --pubkey " + lookupPubkeyByCode("device list", deviceCode) +
 				" --max-users 10"},
 			{name: "device_set_max_users_2", cmd: cli + " device update --pubkey " + lookupPubkeyByCode("device list", deviceCode2) +
@@ -877,6 +881,10 @@ func runWriteWorkflows(
 				" --health ready-for-users", noCascade: true},
 			{name: "exchange_set_device", cmd: cli + " exchange set-device --pubkey " + exchangeCode +
 				" --device1 " + deviceCode + " --device2 " + deviceCode2, noCascade: true},
+		}},
+
+		// Interface creates use counter-based PDA derivation — must be sequential.
+		{name: "create_interfaces", parallel: false, steps: []writeStep{
 			{name: "device_interface_create", cmd: cli + " device interface create " + deviceCode + " " + ifaceName},
 			{name: "device_interface_create_2", cmd: cli + " device interface create " + deviceCode2 + " " + ifaceName},
 			{name: "device_interface_create_3", cmd: cli + " device interface create " + deviceCode + " " + ifaceName2},
@@ -884,7 +892,7 @@ func runWriteWorkflows(
 		}},
 
 		// Transition all 4 interfaces to "unlinked" (required before link creation).
-		{name: "activate_interfaces", steps: []writeStep{
+		{name: "activate_interfaces", parallel: true, steps: []writeStep{
 			{name: "device_interface_set_unlinked", cmd: cli + " device interface update " + deviceCode + " " + ifaceName +
 				" --status unlinked"},
 			{name: "device_interface_set_unlinked_2", cmd: cli + " device interface update " + deviceCode2 + " " + ifaceName +
@@ -895,8 +903,8 @@ func runWriteWorkflows(
 				" --status unlinked"},
 		}},
 
-		// Create links, multicast group, and access passes — all independent.
-		{name: "create_links_and_entities", steps: []writeStep{
+		// Link/multicast/accesspass creates use counter-based PDA derivation — must be sequential.
+		{name: "create_links_and_entities", parallel: false, steps: []writeStep{
 			{name: "link_create_wan", cmd: cli + " link create wan" +
 				" --code " + linkCode +
 				" --contributor " + contributorCode +
@@ -917,8 +925,8 @@ func runWriteWorkflows(
 				" --user-payer me", noCascade: true},
 		}},
 
-		// Accept DZX link + create both users in parallel.
-		{name: "accept_and_create_users", steps: []writeStep{
+		// Accept DZX link + create users. User creates use counter-based PDAs — must be sequential.
+		{name: "accept_and_create_users", parallel: false, steps: []writeStep{
 			{name: "link_accept_dzx", cmd: cli + " link accept --code " + dzxLinkCode +
 				" --side-z-interface " + ifaceName2},
 			{name: "user_create", cmd: cli + " user create --device " + deviceCode2 + " --client-ip " + userClientIP, noCascade: true},
@@ -926,7 +934,7 @@ func runWriteWorkflows(
 		}},
 
 		// Wait for users to activate + link config — all independent waits.
-		{name: "wait_and_configure", steps: []writeStep{
+		{name: "wait_and_configure", parallel: true, steps: []writeStep{
 			{name: "link_update", cmd: cli + " link update --pubkey " + lookupPubkeyByCode("link list", dzxLinkCode) +
 				` --bandwidth "20 Gbps"`},
 			{name: "link_set_health", cmd: cli + " link set-health --pubkey " + linkCode +
@@ -940,7 +948,7 @@ func runWriteWorkflows(
 		}},
 
 		// User update + multicast allowlist operations (need user activated).
-		{name: "user_and_multicast_ops", steps: []writeStep{
+		{name: "user_and_multicast_ops", parallel: true, steps: []writeStep{
 			{name: "user_update", cmd: cli + " user update --pubkey " +
 				fmt.Sprintf("$(doublezero user list 2>/dev/null | grep '%s' | awk '{print $1}')", userClientIP) +
 				" --tunnel-id 999", noCascade: true},
@@ -949,20 +957,20 @@ func runWriteWorkflows(
 		}},
 
 		// Sequential multicast chain: each step depends on the previous.
-		{name: "multicast_pub_remove", steps: []writeStep{
+		{name: "multicast_pub_remove", parallel: false, steps: []writeStep{
 			{name: "multicast_group_pub_allowlist_remove", cmd: cli + " multicast group allowlist publisher remove --code " + multicastCode +
 				" --client-ip " + userClientIP + " --user-payer me", noCascade: true},
 		}},
-		{name: "multicast_sub_add", steps: []writeStep{
+		{name: "multicast_sub_add", parallel: false, steps: []writeStep{
 			{name: "multicast_group_sub_allowlist_add", cmd: cli + " multicast group allowlist subscriber add --code " + multicastCode +
 				" --client-ip " + userClientIP + " --user-payer me", noCascade: true},
 		}},
-		{name: "multicast_subscribe", steps: []writeStep{
+		{name: "multicast_subscribe", parallel: false, steps: []writeStep{
 			{name: "user_subscribe", cmd: cli + " user subscribe --user " +
 				fmt.Sprintf("$(doublezero user list 2>/dev/null | grep '%s' | awk '{print $1}')", userClientIP) +
 				" --group " + multicastCode + " --subscriber", noCascade: true},
 		}},
-		{name: "multicast_sub_remove", steps: []writeStep{
+		{name: "multicast_sub_remove", parallel: false, steps: []writeStep{
 			{name: "multicast_group_sub_allowlist_remove", cmd: cli + " multicast group allowlist subscriber remove --code " + multicastCode +
 				" --client-ip " + userClientIP + " --user-payer me", noCascade: true},
 		}},
@@ -970,7 +978,7 @@ func runWriteWorkflows(
 		// === UPDATE + VERIFY ===
 
 		// All update and get commands are independent reads/writes on existing entities.
-		{name: "updates_and_verify", steps: []writeStep{
+		{name: "updates_and_verify", parallel: true, steps: []writeStep{
 			{name: "location_update", cmd: cli + " location update --pubkey " + locationCode + " --name TestLocUpdated"},
 			{name: "exchange_update", cmd: cli + " exchange update --pubkey " + exchangeCode + " --name TestExchangeUpdated"},
 			{name: "contributor_update", cmd: cli + " contributor update --pubkey " + lookupPubkeyByCode("contributor list", contributorCode) + " --owner " + managerPubkey},
@@ -1000,7 +1008,7 @@ func runWriteWorkflows(
 		//   - DZX link: wait activated → delete
 
 		// Start all 4 delete streams: user1 delete, user2 ban, WAN link wait, DZX link wait.
-		{name: "delete_start", steps: []writeStep{
+		{name: "delete_start", parallel: true, steps: []writeStep{
 			{name: "user_delete", cmd: cli + " user delete --pubkey " +
 				fmt.Sprintf("$(doublezero user list 2>/dev/null | grep '%s' | awk '{print $1}')", userClientIP)},
 			{name: "user_request_ban_2", cmd: cli + " user request-ban --pubkey " +
@@ -1010,7 +1018,7 @@ func runWriteWorkflows(
 		}},
 
 		// Continue all 4 streams: user1 wait, user2 delete, both link deletes.
-		{name: "delete_continue", steps: []writeStep{
+		{name: "delete_continue", parallel: true, steps: []writeStep{
 			{name: "user_wait_removed", cmd: `for i in $(seq 1 30); do ` +
 				`count=$(doublezero user list 2>/dev/null | grep '` + userClientIP + `' | wc -l); ` +
 				`[ "$count" -eq 0 ] && exit 0; sleep 1; done; ` +
@@ -1022,7 +1030,7 @@ func runWriteWorkflows(
 		}},
 
 		// Finish user streams + multicast delete + start interface wait.
-		{name: "delete_users_done", steps: []writeStep{
+		{name: "delete_users_done", parallel: true, steps: []writeStep{
 			{name: "accesspass_close", cmd: cli + " access-pass close --pubkey " +
 				fmt.Sprintf("$(doublezero access-pass list 2>/dev/null | grep '%s' | awk '{print $1}')", userClientIP)},
 			{name: "user_wait_removed_2", cmd: `for i in $(seq 1 30); do ` +
@@ -1037,7 +1045,7 @@ func runWriteWorkflows(
 		}},
 
 		// Close accesspass2 + delete all interfaces.
-		{name: "delete_interfaces", steps: []writeStep{
+		{name: "delete_interfaces", parallel: true, steps: []writeStep{
 			{name: "accesspass_close_2", cmd: cli + " access-pass close --pubkey " +
 				fmt.Sprintf("$(doublezero access-pass list 2>/dev/null | grep '%s ' | awk '{print $1}')", user2ClientIP)},
 			{name: "device_interface_delete", cmd: cli + " device interface delete " + deviceCode + " " + ifaceName},
@@ -1047,20 +1055,20 @@ func runWriteWorkflows(
 		}},
 
 		// Wait for interfaces to be removed + clear exchange device refs.
-		{name: "wait_interfaces_removed", steps: []writeStep{
+		{name: "wait_interfaces_removed", parallel: true, steps: []writeStep{
 			{name: "iface_wait_removed", cmd: `for i in $(seq 1 30); do count=$(doublezero device interface list ` + deviceCode + ` 2>/dev/null | tail -n +2 | wc -l); [ "$count" -eq 0 ] && exit 0; sleep 1; done; echo "interfaces not removed after 30s"; exit 1`},
 			{name: "iface_wait_removed_2", cmd: `for i in $(seq 1 30); do count=$(doublezero device interface list ` + deviceCode2 + ` 2>/dev/null | tail -n +2 | wc -l); [ "$count" -eq 0 ] && exit 0; sleep 1; done; echo "interfaces not removed after 30s"; exit 1`},
 			{name: "exchange_clear_devices", cmd: cli + " exchange set-device --pubkey " + exchangeCode, noCascade: true},
 		}},
 
 		// Delete both devices in parallel.
-		{name: "delete_devices", steps: []writeStep{
+		{name: "delete_devices", parallel: true, steps: []writeStep{
 			{name: "device_delete", cmd: cli + " device delete --pubkey " + lookupPubkeyByCode("device list", deviceCode)},
 			{name: "device_delete_2", cmd: cli + " device delete --pubkey " + lookupPubkeyByCode("device list", deviceCode2)},
 		}},
 
 		// Wait for both devices to be removed.
-		{name: "wait_devices_removed", steps: []writeStep{
+		{name: "wait_devices_removed", parallel: true, steps: []writeStep{
 			{name: "device_wait_removed", cmd: `for i in $(seq 1 30); do ` +
 				`count=$(doublezero device list 2>/dev/null | grep '` + deviceCode + ` ' | wc -l); ` +
 				`[ "$count" -eq 0 ] && exit 0; sleep 1; done; ` +
@@ -1072,14 +1080,16 @@ func runWriteWorkflows(
 		}},
 
 		// Delete infrastructure entities — all independent.
-		{name: "delete_infrastructure", steps: []writeStep{
+		{name: "delete_infrastructure", parallel: true, steps: []writeStep{
 			{name: "exchange_delete", cmd: cli + " exchange delete --pubkey " + exchangeCode},
 			{name: "contributor_delete", cmd: cli + " contributor delete --pubkey " + lookupPubkeyByCode("contributor list", contributorCode)},
 			{name: "location_delete", cmd: cli + " location delete --pubkey " + locationCode},
 		}},
 	}
 
-	// Run phases sequentially; steps within each phase run concurrently.
+	// Run phases sequentially. Steps within a phase run concurrently when
+	// phase.parallel is true, or sequentially when false (needed for entity
+	// creates that use counter-based PDA derivation).
 	var phaseFailed atomic.Bool
 	for _, phase := range phases {
 		phase := phase
@@ -1091,23 +1101,33 @@ func runWriteWorkflows(
 				t.Skip("skipped: previous phase failed")
 				return
 			}
-			var cascadeInPhase atomic.Bool
-			for _, ws := range phase.steps {
-				ws := ws
-				t.Run(ws.name, func(t *testing.T) {
-					t.Parallel()
-					if execStep(t, ws) {
-						cascadeInPhase.Store(true)
+
+			if phase.parallel {
+				var cascadeInPhase atomic.Bool
+				for _, ws := range phase.steps {
+					ws := ws
+					t.Run(ws.name, func(t *testing.T) {
+						t.Parallel()
+						if execStep(t, ws) {
+							cascadeInPhase.Store(true)
+						}
+					})
+				}
+				t.Cleanup(func() {
+					if cascadeInPhase.Load() {
+						phaseFailed.Store(true)
 					}
 				})
-			}
-			// t.Run returns after all parallel subtests complete.
-			// Check for cascade failure in t.Cleanup so it runs after parallel subtests.
-			t.Cleanup(func() {
-				if cascadeInPhase.Load() {
-					phaseFailed.Store(true)
+			} else {
+				for _, ws := range phase.steps {
+					ws := ws
+					t.Run(ws.name, func(t *testing.T) {
+						if execStep(t, ws) {
+							phaseFailed.Store(true)
+						}
+					})
 				}
-			})
+			}
 		})
 	}
 }

@@ -49,6 +49,10 @@ type Config struct {
 	// SubmitterMaxConcurrency is the maximum number of concurrent submissions.
 	SubmitterMaxConcurrency int
 
+	// MaxConsecutiveSenderLosses is the number of consecutive probe losses
+	// before a sender is evicted from the cache and recreated.
+	MaxConsecutiveSenderLosses int
+
 	// InitialChildGeoProbes is the startup probe list from CLI; runtime updates happen via channel.
 	InitialChildGeoProbes []geoprobe.ProbeAddress
 
@@ -97,6 +101,9 @@ func (c *Config) Validate() error {
 	}
 	if c.SubmitterMaxConcurrency <= 0 {
 		return errors.New("submitter max concurrency must be greater than 0")
+	}
+	if c.MaxConsecutiveSenderLosses <= 0 {
+		c.MaxConsecutiveSenderLosses = 30
 	}
 
 	if len(c.InitialChildGeoProbes) > 0 {

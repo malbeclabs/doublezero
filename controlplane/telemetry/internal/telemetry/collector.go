@@ -69,13 +69,14 @@ func New(log *slog.Logger, cfg Config) (*Collector, error) {
 	}
 
 	c.pinger = NewPinger(log, &PingerConfig{
-		LocalDevicePK:   cfg.LocalDevicePK,
-		Interval:        cfg.ProbeInterval,
-		ProbeTimeout:    cfg.TWAMPSenderTimeout,
-		Peers:           cfg.PeerDiscovery,
-		Buffer:          buffer,
-		GetSender:       c.getOrCreateSender,
-		GetCurrentEpoch: cfg.GetCurrentEpochFunc,
+		LocalDevicePK:     cfg.LocalDevicePK,
+		Interval:          cfg.ProbeInterval,
+		ProbeTimeout:      cfg.TWAMPSenderTimeout,
+		Peers:             cfg.PeerDiscovery,
+		Buffer:            buffer,
+		GetSender:         c.getOrCreateSender,
+		GetCurrentEpoch:   cfg.GetCurrentEpochFunc,
+		RecordProbeResult: c.recordProbeResult,
 	})
 
 	// Initialize geoprobe coordinator if child probes are configured
@@ -230,9 +231,10 @@ func (c *Collector) Close() error {
 }
 
 type senderEntry struct {
-	sender    twamplight.Sender
-	lastUsed  time.Time
-	createdAt time.Time
+	sender            twamplight.Sender
+	lastUsed          time.Time
+	createdAt         time.Time
+	consecutiveLosses int
 }
 
 func (c *Collector) getOrCreateSender(ctx context.Context, peer *Peer) twamplight.Sender {
@@ -286,5 +288,29 @@ func (c *Collector) cleanupIdleSenders(maxIdle time.Duration) {
 			_ = entry.sender.Close()
 			delete(c.senders, key)
 		}
+	}
+}
+
+func (c *Collector) recordProbeResult(peer *Peer, success bool) {
+	key := peer.String()
+
+	c.sendersMu.Lock()
+	defer c.sendersMu.Unlock()
+
+	entry, ok := c.senders[key]
+	if !ok {
+		return
+	}
+
+	if success {
+		entry.consecutiveLosses = 0
+		return
+	}
+
+	entry.consecutiveLosses++
+	if entry.consecutiveLosses >= c.cfg.MaxConsecutiveSenderLosses {
+		c.log.Warn("Evicting sender after consecutive losses", "peer", key, "losses", entry.consecutiveLosses)
+		_ = entry.sender.Close()
+		delete(c.senders, key)
 	}
 }

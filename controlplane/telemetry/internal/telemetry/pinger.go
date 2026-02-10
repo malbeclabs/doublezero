@@ -14,13 +14,14 @@ import (
 )
 
 type PingerConfig struct {
-	LocalDevicePK   solana.PublicKey
-	Interval        time.Duration
-	ProbeTimeout    time.Duration
-	Peers           PeerDiscovery
-	Buffer          buffer.PartitionedBuffer[PartitionKey, Sample]
-	GetSender       func(ctx context.Context, peer *Peer) twamplight.Sender
-	GetCurrentEpoch func(ctx context.Context) (uint64, error)
+	LocalDevicePK     solana.PublicKey
+	Interval          time.Duration
+	ProbeTimeout      time.Duration
+	Peers             PeerDiscovery
+	Buffer            buffer.PartitionedBuffer[PartitionKey, Sample]
+	GetSender         func(ctx context.Context, peer *Peer) twamplight.Sender
+	GetCurrentEpoch   func(ctx context.Context) (uint64, error)
+	RecordProbeResult func(peer *Peer, success bool)
 }
 
 // Pinger is responsible for periodically probing remote peers using TWAMP.
@@ -123,6 +124,9 @@ func (p *Pinger) Tick(ctx context.Context) {
 					RTT:       0,
 					Loss:      true,
 				})
+				if p.cfg.RecordProbeResult != nil {
+					p.cfg.RecordProbeResult(peer, false)
+				}
 				return
 			}
 
@@ -131,6 +135,9 @@ func (p *Pinger) Tick(ctx context.Context) {
 				RTT:       rtt,
 				Loss:      false,
 			})
+			if p.cfg.RecordProbeResult != nil {
+				p.cfg.RecordProbeResult(peer, true)
+			}
 		}(peer)
 	}
 	wg.Wait()

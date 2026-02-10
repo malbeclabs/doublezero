@@ -35,18 +35,19 @@ import (
 )
 
 const (
-	defaultProbeInterval           = 10 * time.Second
-	defaultSubmissionInterval      = 60 * time.Second
-	defaultTWAMPListenPort         = telemetryconfig.TWAMPListenPort
-	defaultTWAMPReflectorTimeout   = 1 * time.Second
-	defaultPeersRefreshInterval    = 10 * time.Second
-	defaultTWAMPSenderTimeout      = 1 * time.Second
-	defaultSenderTTL               = 5 * time.Minute
-	defaultLedgerRPCURL            = ""
-	defaultProgramId               = ""
-	defaultLocalDevicePubkey       = ""
-	defaultSubmitterMaxConcurrency = 10
-	defaultStateCollectInterval    = 60 * time.Second
+	defaultProbeInterval               = 10 * time.Second
+	defaultSubmissionInterval          = 60 * time.Second
+	defaultTWAMPListenPort             = telemetryconfig.TWAMPListenPort
+	defaultTWAMPReflectorTimeout       = 1 * time.Second
+	defaultPeersRefreshInterval        = 10 * time.Second
+	defaultTWAMPSenderTimeout          = 1 * time.Second
+	defaultSenderTTL                   = 5 * time.Minute
+	defaultMaxConsecutiveSenderLosses  = 30
+	defaultLedgerRPCURL                = ""
+	defaultProgramId                   = ""
+	defaultLocalDevicePubkey           = ""
+	defaultSubmitterMaxConcurrency     = 10
+	defaultStateCollectInterval        = 60 * time.Second
 
 	waitForNamespaceTimeout             = 30 * time.Second
 	defaultStateIngestHTTPClientTimeout = 10 * time.Second
@@ -66,7 +67,8 @@ var (
 	twampReflectorTimeout   = flag.Duration("twamp-reflector-timeout", defaultTWAMPReflectorTimeout, "The timeout for the twamp reflector.")
 	peersRefreshInterval    = flag.Duration("peers-refresh-interval", defaultPeersRefreshInterval, "The interval to refresh the peer discovery.")
 	senderTTL               = flag.Duration("sender-ttl", defaultSenderTTL, "The time to live for a sender instance until it's recreated.")
-	submitterMaxConcurrency = flag.Int("submitter-max-concurrency", defaultSubmitterMaxConcurrency, "The maximum number of concurrent submissions.")
+	submitterMaxConcurrency     = flag.Int("submitter-max-concurrency", defaultSubmitterMaxConcurrency, "The maximum number of concurrent submissions.")
+	maxConsecutiveSenderLosses  = flag.Int("max-consecutive-sender-losses", defaultMaxConsecutiveSenderLosses, "The number of consecutive probe losses before a sender is evicted and recreated.")
 	managementNamespace     = flag.String("management-namespace", "", "The name of the management namespace to use for communication over the internet. If not provided, the default namespace will be used. (default: '')")
 	bgpNamespace            = flag.String("bgp-namespace", "ns-vrf1", "The name of the ns-vrf1 namespace to use for BGP state collection. (default: 'ns-vrf1')")
 	stateCollectEnable      = flag.Bool("state-collect-enable", false, "Enable state collection (unstable)")
@@ -315,9 +317,10 @@ func main() {
 			}
 			return epochInfo.Epoch, nil
 		},
-		SenderTTL:               *senderTTL,
-		SubmitterMaxConcurrency: *submitterMaxConcurrency,
-		InitialChildGeoProbes:   childProbes,
+		SenderTTL:                  *senderTTL,
+		SubmitterMaxConcurrency:    *submitterMaxConcurrency,
+		InitialChildGeoProbes:      childProbes,
+		MaxConsecutiveSenderLosses: *maxConsecutiveSenderLosses,
 	})
 	if err != nil {
 		log.Error("failed to create telemetry collector", "error", err)

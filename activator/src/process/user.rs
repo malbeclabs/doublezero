@@ -101,57 +101,11 @@ pub fn process_user_event(
 
             // Determine tunnel endpoint: if the client demanded a specific one, validate it;
             // otherwise fall back to first-available (backwards compat with 0.0.0.0).
-            let tunnel_endpoint = if user.has_tunnel_endpoint() {
-                if device_state.is_valid_tunnel_endpoint(user.tunnel_endpoint) {
-                    user.tunnel_endpoint
-                } else {
-                    let res =
-                        reject_user(client, pubkey, "Error: Invalid tunnel endpoint requested");
-
-                    match res {
-                        Ok(signature) => {
-                            write!(
-                                &mut log_msg,
-                                " Reject(Invalid tunnel endpoint) Rejected {signature}"
-                            )
-                            .unwrap();
-                        }
-                        Err(e) => {
-                            write!(&mut log_msg, " Reject(Invalid tunnel endpoint) Error: {e}")
-                                .unwrap();
-                        }
-                    }
-                    info!("{log_msg}");
-                    return;
-                }
-            } else {
-                match device_state.get_available_tunnel_endpoint(user.client_ip) {
+            let tunnel_endpoint =
+                match resolve_tunnel_endpoint(client, pubkey, device_state, user, &mut log_msg) {
                     Some(ep) => ep,
-                    None => {
-                        let res =
-                            reject_user(client, pubkey, "Error: No available tunnel endpoint");
-
-                        match res {
-                            Ok(signature) => {
-                                write!(
-                                    &mut log_msg,
-                                    " Reject(No available tunnel endpoint) Rejected {signature}"
-                                )
-                                .unwrap();
-                            }
-                            Err(e) => {
-                                write!(
-                                    &mut log_msg,
-                                    " Reject(No available tunnel endpoint) Error: {e}"
-                                )
-                                .unwrap();
-                            }
-                        }
-                        info!("{log_msg}");
-                        return;
-                    }
-                }
-            };
+                    None => return,
+                };
 
             let need_dz_ip = user.needs_allocated_dz_ip();
 
@@ -289,57 +243,11 @@ pub fn process_user_event(
 
             // Determine tunnel endpoint: if the client demanded a specific one, validate it;
             // otherwise fall back to first-available (backwards compat with 0.0.0.0).
-            let tunnel_endpoint = if user.has_tunnel_endpoint() {
-                if device_state.is_valid_tunnel_endpoint(user.tunnel_endpoint) {
-                    user.tunnel_endpoint
-                } else {
-                    let res =
-                        reject_user(client, pubkey, "Error: Invalid tunnel endpoint requested");
-
-                    match res {
-                        Ok(signature) => {
-                            write!(
-                                &mut log_msg,
-                                " Reject(Invalid tunnel endpoint) Rejected {signature}"
-                            )
-                            .unwrap();
-                        }
-                        Err(e) => {
-                            write!(&mut log_msg, " Reject(Invalid tunnel endpoint) Error: {e}")
-                                .unwrap();
-                        }
-                    }
-                    info!("{log_msg}");
-                    return;
-                }
-            } else {
-                match device_state.get_available_tunnel_endpoint(user.client_ip) {
+            let tunnel_endpoint =
+                match resolve_tunnel_endpoint(client, pubkey, device_state, user, &mut log_msg) {
                     Some(ep) => ep,
-                    None => {
-                        let res =
-                            reject_user(client, pubkey, "Error: No available tunnel endpoint");
-
-                        match res {
-                            Ok(signature) => {
-                                write!(
-                                    &mut log_msg,
-                                    " Reject(No available tunnel endpoint) Rejected {signature}"
-                                )
-                                .unwrap();
-                            }
-                            Err(e) => {
-                                write!(
-                                    &mut log_msg,
-                                    " Reject(No available tunnel endpoint) Error: {e}"
-                                )
-                                .unwrap();
-                            }
-                        }
-                        info!("{log_msg}");
-                        return;
-                    }
-                }
-            };
+                    None => return,
+                };
 
             // Activate the user
             let res = ActivateUserCommand {
@@ -475,6 +383,65 @@ pub fn process_user_event(
         }
         _ => {}
     }
+}
+
+/// Resolve the tunnel endpoint for a user, rejecting if invalid or unavailable.
+/// Returns `Some(endpoint)` on success, or `None` if the user was rejected.
+fn resolve_tunnel_endpoint(
+    client: &dyn DoubleZeroClient,
+    pubkey: &Pubkey,
+    device_state: &DeviceState,
+    user: &User,
+    log_msg: &mut String,
+) -> Option<Ipv4Addr> {
+    if user.has_tunnel_endpoint() {
+        if device_state.is_valid_tunnel_endpoint(user.tunnel_endpoint) {
+            Some(user.tunnel_endpoint)
+        } else {
+            log_reject(
+                client,
+                pubkey,
+                "Error: Invalid tunnel endpoint requested",
+                "Invalid tunnel endpoint",
+                log_msg,
+            );
+            None
+        }
+    } else {
+        match device_state.get_available_tunnel_endpoint(user.client_ip) {
+            Some(ep) => Some(ep),
+            None => {
+                log_reject(
+                    client,
+                    pubkey,
+                    "Error: No available tunnel endpoint",
+                    "No available tunnel endpoint",
+                    log_msg,
+                );
+                None
+            }
+        }
+    }
+}
+
+/// Reject a user and write the outcome to log_msg.
+fn log_reject(
+    client: &dyn DoubleZeroClient,
+    pubkey: &Pubkey,
+    reason: &str,
+    label: &str,
+    log_msg: &mut String,
+) {
+    let res = reject_user(client, pubkey, reason);
+    match res {
+        Ok(signature) => {
+            write!(log_msg, " Reject({label}) Rejected {signature}").unwrap();
+        }
+        Err(e) => {
+            write!(log_msg, " Reject({label}) Error: {e}").unwrap();
+        }
+    }
+    info!("{log_msg}");
 }
 
 fn log_error_ignore_invalid_status(log_msg: &mut String, e: eyre::ErrReport) {

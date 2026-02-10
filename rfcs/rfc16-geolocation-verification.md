@@ -10,7 +10,7 @@ The system uses a three-tier measurement chain: DoubleZero Devices (DZDs) with p
 
 ## Motivation
 
-Users are interested using DZDs as reference points to determine approximate location for targets for things such as ensuring GDPR compliance. This leverages the verifiable network of DZDs and contributors and is a reasonable way to monetize the network.
+Users are interested in using DZDs as reference points to determine approximate location for targets for things such as ensuring GDPR compliance. This leverages the verifiable network of DZDs and contributors and is a reasonable way to monetize the network.
 
 Problems with current IP location services:
 - IP geolocation databases are unreliable (30-50% accuracy for city-level)
@@ -72,7 +72,7 @@ A geoProbe assigned to a specific DZD for periodic latency measurement, defined 
 
 ## Alternatives Considered
 
-### Satus Quo: Centralized Location Service (Rejected)
+### Status Quo: Centralized Location Service (Rejected)
 **Pros:** Simple implementation, flexible, Already exists
 **Cons:** Single point of failure, requires trust, no cryptographic proof
 **Decision:** Rejected by potential users
@@ -117,12 +117,12 @@ IP    │ │ Offset        Target IPs │  │ Measured             Offset │
 **Data Flows:**
 _Ongoing:_
 - **Probe Discovery (60s interval):** DZD queries onchain Probe accounts to discover child probes
-- **Target Discovery (30s interval):** Probe querries onchain to disover its targets
+- **Target Discovery (30s interval):** Probe queries onchain to discover its targets
 
 _Async:_
 - Client Oracle submits Target IPs that should have locations verified.
 
-_Measurment Flow_
+_Measurement Flow_
 1. **DZD→Probe Measurement (10s interval):** DZD sends TWAMP probe, measures RTT
 2. **Offset Generation:** DZD creates Offset with lat/lng, latency, timestamp, signs with Ed25519
 3. **Dual Posting:** DZD submits samples to `ProbeLatencySamples` PDA onchain AND sends Offset to Probe via UDP
@@ -133,7 +133,7 @@ _Measurment Flow_
 
 ### Data Structures
 
-#### Probe Account (Onchain in Servicability)
+#### Probe Account (Onchain in Serviceability)
 
 ```rust
 pub struct Probe {
@@ -209,7 +209,7 @@ type Config struct {
 
 #### geoProbe Server
 
-New service deployed alongside DZDs in exchanges on seperate bare metal servers.
+New service deployed alongside DZDs in exchanges on separate bare metal servers.
 
 **File:** 
 `controlplane/telemetry/cmd/geo-probe-agent/` (new directory) contains:
@@ -324,7 +324,7 @@ max_offset_age_seconds: 300
     - Child geoProbe discovery from onchain
 3. geoProbe server (`doublezero-probe-agent`):
     - Parent DZD Discovery from onchain
-    - GeolocationUser and GelocationTarget discovery from onchain
+    - GeolocationUser and GeolocationTarget discovery from onchain
 4. CLI tool (doublezero-geolocation):
    - User management commands
    - Target management commands
@@ -340,7 +340,7 @@ max_offset_age_seconds: 300
 **Goal:** Production-ready system
 
 1. All POC components (above)
-2. Deploy Servicability upgrades
+2. Deploy Serviceability upgrades
 2. Probe infrastructure:
    - Deploy ~1 probe per DoubleZero exchange
    - Automated probe provisioning
@@ -411,7 +411,7 @@ Discuss effects on:
 | **Target IP Spoofing**  | Not addressed in POC/MVP; discussed in future work                |
 | **Replay Attacks**      | Ongoing Probes are added to the ledger.                           |
 | **Signature Forgery**   | Ed25519 signatures; DZD keys secured in telemetry agent           |
-| **Probe Compromise**    | Target can use mulitple probes; onchain audit trail               |
+| **Probe Compromise**    | Target can use multiple probes; onchain audit trail               |
 | **DDoS by Probes**      | Rate limiting (10-60s probes)                                     |
 | **DDoS on Probes**      | Rate limiting, firewall rules                                     |
 | **Target False Claims** | Targets cannot forge Offsets; signature verification required     |

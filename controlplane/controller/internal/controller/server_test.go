@@ -1375,7 +1375,7 @@ func TestStateCache(t *testing.T) {
 		},
 		{
 			Name: "tenant_vrf_assignment",
-			Config: serviceability.Config{
+			GlobalConfig: serviceability.GlobalConfig{
 				MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 			},
 			Exchanges: []serviceability.Exchange{
@@ -1465,7 +1465,7 @@ func TestStateCache(t *testing.T) {
 				},
 			},
 			StateCache: stateCache{
-				Config: serviceability.Config{
+				GlobalConfig: serviceability.GlobalConfig{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
 				MulticastGroups: map[string]serviceability.MulticastGroup{},
@@ -2102,7 +2102,7 @@ func TestEndToEnd(t *testing.T) {
 		},
 		{
 			Name: "tenant_vrf_end_to_end",
-			Config: serviceability.Config{
+			GlobalConfig: serviceability.GlobalConfig{
 				MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 			},
 			MulticastGroups: []serviceability.MulticastGroup{

@@ -28,6 +28,85 @@ DZ_COMPAT_MAX_NUM_VERSIONS=2 go test -tags e2e -run TestE2E_BackwardCompatibilit
 TESTCONTAINERS_RYUK_DISABLED=true go test -tags e2e -run TestE2E_BackwardCompatibility -v -count=1 ./e2e/...
 ```
 
+### Write Workflow Parallelization
+
+Each version subtest runs a write workflow of ~60 CLI commands organized into phases.
+Steps within a phase run concurrently; phases run sequentially. If any cascading step
+fails in a phase, all remaining phases are skipped.
+
+```
+=== CREATE PATH ===
+
+create_foundation:    contributor_create ─┐
+                      location_create ────┤ (parallel)
+                      exchange_create ────┘
+                              │
+create_devices:       device_create ──────┐
+                      device_create_2 ────┘ (parallel)
+                              │
+setup_devices:        set_max_users ──────┐
+                      set_max_users_2 ────┤
+                      set_health ─────────┤
+                      set_health_2 ───────┤ (parallel)
+                      exchange_set_device ┤
+                      iface_create x4 ────┘
+                              │
+activate_interfaces:  set_unlinked x4 ────── (parallel)
+                              │
+create_links:         link_create_wan ────┐
+                      link_create_dzx ────┤
+                      multicast_create ───┤ (parallel)
+                      accesspass_set ─────┤
+                      accesspass_set_2 ───┘
+                              │
+accept_and_users:     link_accept_dzx ────┐
+                      user_create ────────┤ (parallel)
+                      user_create_2 ──────┘
+                              │
+wait_and_configure:   link_update ────────┐
+                      link_set_health x2 ─┤
+                      user_wait_act ──────┤ (parallel)
+                      user_wait_act_2 ────┤
+                      multicast_update ───┘
+                              │
+              multicast chain (sequential)
+                              │
+updates_and_verify:   all updates + gets ── (parallel)
+
+=== DELETE PATH ===
+
+delete_start:         user_delete ────────┐
+                      user_request_ban_2 ─┤
+                      link_wait_act ──────┤ (parallel)
+                      link_wait_act_dzx ──┘
+                              │
+delete_continue:      user_wait_removed ──┐
+                      user_delete_2 ──────┤
+                      link_delete ────────┤ (parallel)
+                      link_delete_dzx ────┘
+                              │
+delete_users_done:    accesspass_close ────┐
+                      user_wait_rm_2 ─────┤
+                      multicast_delete ───┤ (parallel)
+                      iface_wait x4 ──────┘
+                              │
+delete_interfaces:    accesspass_close_2 ─┐
+                      iface_delete x4 ────┘ (parallel)
+                              │
+wait_ifaces_removed:  iface_wait_rm x2 ──┐
+                      exchange_clear ─────┘ (parallel)
+                              │
+delete_devices:       device_delete ──────┐
+                      device_delete_2 ────┘ (parallel)
+                              │
+wait_devices_removed: device_wait_rm ─────┐
+                      device_wait_rm_2 ───┘ (parallel)
+                              │
+delete_infra:         exchange_delete ────┐
+                      contributor_delete ─┤ (parallel)
+                      location_delete ────┘
+```
+
 ### Known Incompatibilities
 
 Some CLI commands have known incompatibilities with newer program versions due to Borsh struct changes. These are documented in `knownIncompatibilities` at the top of `compatibility_test.go`. Known incompatible commands report `KNOWN_FAIL` instead of `FAIL` and don't cause the test to fail.

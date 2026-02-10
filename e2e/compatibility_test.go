@@ -322,14 +322,14 @@ func containerAccessibleHost() string {
 }
 
 // getMaxConcurrency returns the maximum number of parallel version stacks to run.
-// Controlled by DZ_COMPAT_MAX_CONCURRENCY env var (default: 3).
+// Controlled by DZ_COMPAT_MAX_CONCURRENCY env var (default: 6).
 func getMaxConcurrency() int {
 	if s := os.Getenv("DZ_COMPAT_MAX_CONCURRENCY"); s != "" {
 		if n, err := strconv.Atoi(s); err == nil && n > 0 {
 			return n
 		}
 	}
-	return 3
+	return 6
 }
 
 // createAndStartDiscoveryDevnet creates a minimal devnet that clones state from a
@@ -686,11 +686,16 @@ func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *
 				return fmt.Sprintf("$(doublezero %s 2>/dev/null | grep '%s ' | awk '{print $1}')", listCmd, code)
 			}
 
-			// --- Read workflows ---
-			runReadWorkflows(t, dn, cli, version, recordResult, vLog)
-
-			// --- Write workflows ---
-			runWriteWorkflows(t, dn, cli, version, vi, managerPubkey, lookupFirstPubkey, lookupPubkeyByCode, recordResult, vLog)
+			// Read and write workflows run in parallel since reads only
+			// touch cloned state and don't conflict with writes.
+			t.Run("manager_read", func(t *testing.T) {
+				t.Parallel()
+				runReadWorkflows(t, dn, cli, version, recordResult, vLog)
+			})
+			t.Run("manager_write", func(t *testing.T) {
+				t.Parallel()
+				runWriteWorkflows(t, dn, cli, version, vi, managerPubkey, lookupFirstPubkey, lookupPubkeyByCode, recordResult, vLog)
+			})
 		})
 	}
 }
@@ -704,42 +709,40 @@ func runReadWorkflows(
 	recordResult func(version, name, status, errMsg string),
 	log *slog.Logger,
 ) {
-	t.Run("manager_read", func(t *testing.T) {
-		readCommands := []struct {
-			name string
-			cmd  string
-		}{
-			{name: "device_list", cmd: cli + " device list"},
-			{name: "link_list", cmd: cli + " link list"},
-			{name: "user_list", cmd: cli + " user list"},
-			{name: "multicast_group_list", cmd: cli + " multicast group list"},
-			{name: "global_config_get", cmd: cli + " global-config get"},
-			{name: "location_list", cmd: cli + " location list"},
-			{name: "exchange_list", cmd: cli + " exchange list"},
-			{name: "contributor_list", cmd: cli + " contributor list"},
-			{name: "accesspass_list", cmd: cli + " access-pass list"},
-		}
+	readCommands := []struct {
+		name string
+		cmd  string
+	}{
+		{name: "device_list", cmd: cli + " device list"},
+		{name: "link_list", cmd: cli + " link list"},
+		{name: "user_list", cmd: cli + " user list"},
+		{name: "multicast_group_list", cmd: cli + " multicast group list"},
+		{name: "global_config_get", cmd: cli + " global-config get"},
+		{name: "location_list", cmd: cli + " location list"},
+		{name: "exchange_list", cmd: cli + " exchange list"},
+		{name: "contributor_list", cmd: cli + " contributor list"},
+		{name: "accesspass_list", cmd: cli + " access-pass list"},
+	}
 
-		for _, rc := range readCommands {
-			rc := rc
-			t.Run(rc.name, func(t *testing.T) {
-				t.Parallel()
-				stepKey := "read/" + rc.name
-				log.Debug("==> Running manager read command", "command", rc.cmd)
-				output, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", rc.cmd})
-				if err == nil {
-					recordResult(version, stepKey, "PASS", "")
-					log.Debug("--> Command succeeded", "command", rc.cmd)
-				} else if isKnownIncompatible(stepKey, version) {
-					recordResult(version, stepKey, "KNOWN_FAIL", string(output))
-					log.Debug("--> Command failed (known incompatibility)", "command", rc.cmd)
-				} else {
-					assert.NoError(t, err, "command %q failed: %s", rc.cmd, string(output))
-					recordResult(version, stepKey, "FAIL", string(output))
-				}
-			})
-		}
-	})
+	for _, rc := range readCommands {
+		rc := rc
+		t.Run(rc.name, func(t *testing.T) {
+			t.Parallel()
+			stepKey := "read/" + rc.name
+			log.Debug("==> Running manager read command", "command", rc.cmd)
+			output, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", rc.cmd})
+			if err == nil {
+				recordResult(version, stepKey, "PASS", "")
+				log.Debug("--> Command succeeded", "command", rc.cmd)
+			} else if isKnownIncompatible(stepKey, version) {
+				recordResult(version, stepKey, "KNOWN_FAIL", string(output))
+				log.Debug("--> Command failed (known incompatibility)", "command", rc.cmd)
+			} else {
+				assert.NoError(t, err, "command %q failed: %s", rc.cmd, string(output))
+				recordResult(version, stepKey, "FAIL", string(output))
+			}
+		})
+	}
 }
 
 // runWriteWorkflows tests the full entity lifecycle: create, update, verify, delete.
@@ -754,374 +757,372 @@ func runWriteWorkflows(
 	recordResult func(version, name, status, errMsg string),
 	log *slog.Logger,
 ) {
-	t.Run("manager_write", func(t *testing.T) {
-		suffix := strings.ReplaceAll(version, ".", "")
-		contributorCode := "ct" + suffix
-		locationCode := "lc" + suffix
-		exchangeCode := "ex" + suffix
-		deviceCode := "dv" + suffix
-		deviceCode2 := "d2" + suffix
-		ifaceName := "Ethernet1"
-		ifaceName2 := "Ethernet2" // For DZX link
-		linkCode := "lk" + suffix
-		dzxLinkCode := "dx" + suffix
-		multicastCode := "mc" + suffix
-		// Client IPs must be within each device's dz_prefixes.
-		// device1: 45.133.<10+vi>.0/30 → valid host IPs are .1 and .2
-		// device2: 45.133.<10+vi>.128/30 → valid host IPs are .129 and .130
-		// user1 is multicast user on device2 (will be banned, can't delete → device2 stuck)
-		// user2 is non-multicast user on device1 (normal delete → device1 can be cleaned up)
-		userClientIP := fmt.Sprintf("45.133.%d.129", 10+vi)  // device2: multicast user (banned, can't delete)
-		user2ClientIP := fmt.Sprintf("45.133.%d.1", 10+vi)   // device1: non-multicast user (normal delete)
+	suffix := strings.ReplaceAll(version, ".", "")
+	contributorCode := "ct" + suffix
+	locationCode := "lc" + suffix
+	exchangeCode := "ex" + suffix
+	deviceCode := "dv" + suffix
+	deviceCode2 := "d2" + suffix
+	ifaceName := "Ethernet1"
+	ifaceName2 := "Ethernet2" // For DZX link
+	linkCode := "lk" + suffix
+	dzxLinkCode := "dx" + suffix
+	multicastCode := "mc" + suffix
+	// Client IPs must be within each device's dz_prefixes.
+	// device1: 45.133.<10+vi>.0/30 → valid host IPs are .1 and .2
+	// device2: 45.133.<10+vi>.128/30 → valid host IPs are .129 and .130
+	// user1 is multicast user on device2 (will be banned, can't delete → device2 stuck)
+	// user2 is non-multicast user on device1 (normal delete → device1 can be cleaned up)
+	userClientIP := fmt.Sprintf("45.133.%d.129", 10+vi)  // device2: multicast user (banned, can't delete)
+	user2ClientIP := fmt.Sprintf("45.133.%d.1", 10+vi)   // device1: non-multicast user (normal delete)
 
-		// dumpDiagnostics logs the current onchain state for debugging failed steps.
-		// Uses fmt.Println to preserve newlines in output (structured logging escapes them).
-		dumpDiagnostics := func(stepName string) {
-			fmt.Println("=== DIAGNOSTICS for failed step:", stepName, "===")
-			diagCmds := []struct {
-				label string
-				cmd   string
-			}{
-				{"link list", "doublezero link list 2>&1 | head -20"},
-				{"device list", "doublezero device list 2>&1 | head -20"},
-				{"user list", "doublezero user list 2>&1 | head -20"},
-				{"device " + deviceCode + " interfaces", "doublezero device interface list " + deviceCode + " 2>&1"},
-				{"device " + deviceCode2 + " interfaces", "doublezero device interface list " + deviceCode2 + " 2>&1"},
-				{"access-pass list", "doublezero access-pass list 2>&1 | head -20"},
-				{"multicast group list", "doublezero multicast group list 2>&1 | head -20"},
+	// dumpDiagnostics logs the current onchain state for debugging failed steps.
+	// Uses fmt.Println to preserve newlines in output (structured logging escapes them).
+	dumpDiagnostics := func(stepName string) {
+		fmt.Println("=== DIAGNOSTICS for failed step:", stepName, "===")
+		diagCmds := []struct {
+			label string
+			cmd   string
+		}{
+			{"link list", "doublezero link list 2>&1 | head -20"},
+			{"device list", "doublezero device list 2>&1 | head -20"},
+			{"user list", "doublezero user list 2>&1 | head -20"},
+			{"device " + deviceCode + " interfaces", "doublezero device interface list " + deviceCode + " 2>&1"},
+			{"device " + deviceCode2 + " interfaces", "doublezero device interface list " + deviceCode2 + " 2>&1"},
+			{"access-pass list", "doublezero access-pass list 2>&1 | head -20"},
+			{"multicast group list", "doublezero multicast group list 2>&1 | head -20"},
+		}
+		for _, dc := range diagCmds {
+			out, _ := dn.Manager.Exec(t.Context(), []string{"bash", "-c", dc.cmd})
+			fmt.Printf("  %s:\n%s\n", dc.label, string(out))
+		}
+		fmt.Println("=== END DIAGNOSTICS ===")
+	}
+
+	type writeStep struct {
+		name      string
+		cmd       string
+		noCascade bool // if true, failure doesn't skip subsequent steps
+	}
+	writeSteps := []writeStep{
+		// --- Phase 1: Create foundational entities ---
+		// These are prerequisites for devices. The onchain program creates PDA
+		// accounts for each entity, keyed by their code.
+		{name: "contributor_create", cmd: cli + " contributor create --code " + contributorCode + " --owner me"},
+		{name: "location_create", cmd: cli + " location create --code " + locationCode + " --name TestLoc --country US --lat 40.7 --lng -74.0"},
+		{name: "exchange_create", cmd: cli + " exchange create --code " + exchangeCode + " --name TestExchange --lat 40.7 --lng -74.0"},
+
+		// --- Phase 2: Create devices ---
+		// Devices are created in "pending" status. The activator processes them
+		// and transitions to "device-provisioning". We don't use -w (wait for
+		// activation) since we don't need full activation for the test.
+		{name: "device_create", cmd: cli + " device create --code " + deviceCode +
+			" --contributor " + contributorCode +
+			" --location " + locationCode +
+			" --exchange " + exchangeCode +
+			fmt.Sprintf(" --public-ip 45.133.1.%d", 10+vi) +
+			fmt.Sprintf(" --dz-prefixes 45.133.%d.0/30", 10+vi) +
+			" --mgmt-vrf default"},
+		{name: "device_create_2", cmd: cli + " device create --code " + deviceCode2 +
+			" --contributor " + contributorCode +
+			" --location " + locationCode +
+			" --exchange " + exchangeCode +
+			fmt.Sprintf(" --public-ip 45.133.1.%d", 110+vi) +
+			fmt.Sprintf(" --dz-prefixes 45.133.%d.128/30", 10+vi) +
+			" --mgmt-vrf default"},
+
+		// Set max_users on devices so users can be created on them.
+		{name: "device_set_max_users", cmd: cli + " device update --pubkey " + lookupPubkeyByCode("device list", deviceCode) +
+			" --max-users 10"},
+		{name: "device_set_max_users_2", cmd: cli + " device update --pubkey " + lookupPubkeyByCode("device list", deviceCode2) +
+			" --max-users 10"},
+
+		// Set device health status (tests device set-health command).
+		{name: "device_set_health", cmd: cli + " device set-health --pubkey " + deviceCode +
+			" --health ready-for-users", noCascade: true},
+		{name: "device_set_health_2", cmd: cli + " device set-health --pubkey " + deviceCode2 +
+			" --health ready-for-users", noCascade: true},
+
+		// Set exchange devices (assigns primary devices to the exchange).
+		{name: "exchange_set_device", cmd: cli + " exchange set-device --pubkey " + exchangeCode +
+			" --device1 " + deviceCode + " --device2 " + deviceCode2, noCascade: true},
+
+		// --- Phase 3: Create device interfaces for WAN link ---
+		// Interfaces are created in "pending" status. The onchain program requires
+		// interfaces to be in "unlinked" status before a link can reference them,
+		// so we manually transition them after creation.
+		// Note: bandwidth and MTU are properties of the link, not the interface.
+		{name: "device_interface_create", cmd: cli + " device interface create " + deviceCode + " " + ifaceName},
+		{name: "device_interface_create_2", cmd: cli + " device interface create " + deviceCode2 + " " + ifaceName},
+
+		// Transition interfaces from "pending" → "unlinked". This is the status
+		// the activator would normally set after verifying the physical interface
+		// exists on the device. We do it manually since we don't have real hardware.
+		{name: "device_interface_set_unlinked", cmd: cli + " device interface update " + deviceCode + " " + ifaceName +
+			" --status unlinked"},
+		{name: "device_interface_set_unlinked_2", cmd: cli + " device interface update " + deviceCode2 + " " + ifaceName +
+			" --status unlinked"},
+
+		// --- Phase 4: Create WAN link ---
+		// The link create instruction references both devices and interfaces. The
+		// onchain program validates that both interfaces are in "unlinked" status.
+		// Note: --jitter-ms minimum is 0.01 in v0.8.1 (later versions accept 0).
+		// Note: bandwidth must be a human-readable string like "10 Gbps".
+		{name: "link_create_wan", cmd: cli + " link create wan" +
+			" --code " + linkCode +
+			" --contributor " + contributorCode +
+			" --side-a " + deviceCode + " --side-a-interface " + ifaceName +
+			" --side-z " + deviceCode2 + " --side-z-interface " + ifaceName +
+			` --bandwidth "10 Gbps" --mtu 9000 --delay-ms 1 --jitter-ms 0.01`},
+
+		// --- Phase 5: Multicast group ---
+		// Multicast group create may fail for CLI < 0.8.1 because the
+		// MulticastGroupCreateArgs Borsh struct changed in v0.8.1: the index and
+		// bump_seed fields were removed. Older CLIs send the old format which
+		// causes Borsh deserialization failure in the current program.
+		{name: "multicast_group_create", cmd: cli + " multicast group create --code " + multicastCode +
+			" --max-bandwidth 100 --owner me", noCascade: true},
+
+		// --- Phase 6: Create device interfaces for DZX link ---
+		// Create a second set of interfaces on both devices for the DZX link.
+		{name: "device_interface_create_3", cmd: cli + " device interface create " + deviceCode + " " + ifaceName2},
+		{name: "device_interface_create_4", cmd: cli + " device interface create " + deviceCode2 + " " + ifaceName2},
+		{name: "device_interface_set_unlinked_3", cmd: cli + " device interface update " + deviceCode + " " + ifaceName2 +
+			" --status unlinked"},
+		{name: "device_interface_set_unlinked_4", cmd: cli + " device interface update " + deviceCode2 + " " + ifaceName2 +
+			" --status unlinked"},
+
+		// --- Phase 7: Create DZX link ---
+		// DZX links are cross-contributor peering links (as opposed to WAN links
+		// which connect two devices owned by the same contributor). DZX links are
+		// created in "requested" status and must be accepted by the side-z
+		// contributor before activation.
+		{name: "link_create_dzx", cmd: cli + " link create dzx" +
+			" --code " + dzxLinkCode +
+			" --contributor " + contributorCode +
+			" --side-a " + deviceCode + " --side-a-interface " + ifaceName2 +
+			" --side-z " + deviceCode2 +
+			` --bandwidth "10 Gbps" --mtu 9000 --delay-ms 1 --jitter-ms 0.01`},
+		// Accept the DZX link on the side-z device. This transitions the link from
+		// "requested" to "pending", allowing the activator to process it.
+		{name: "link_accept_dzx", cmd: cli + " link accept --code " + dzxLinkCode +
+			" --side-z-interface " + ifaceName2},
+
+		// --- Phase 8: Link update and health ---
+		// Test that link update instructions work.
+		{name: "link_update", cmd: cli + " link update --pubkey " + lookupPubkeyByCode("link list", dzxLinkCode) +
+			` --bandwidth "20 Gbps"`},
+		// Set link health status (tests link set-health command).
+		{name: "link_set_health", cmd: cli + " link set-health --pubkey " + linkCode +
+			" --health ready-for-service", noCascade: true},
+		{name: "link_set_health_dzx", cmd: cli + " link set-health --pubkey " + dzxLinkCode +
+			" --health ready-for-service", noCascade: true},
+
+		// --- Phase 9: User lifecycle ---
+		// Test the full user lifecycle: access-pass set → user create → wait for
+		// activation → user update → user delete → access-pass close.
+		// AccessPass must exist before user creation.
+		{name: "accesspass_set", cmd: cli + " access-pass set --accesspass-type prepaid --client-ip " + userClientIP +
+			" --user-payer me", noCascade: true},
+		{name: "user_create", cmd: cli + " user create --device " + deviceCode2 + " --client-ip " + userClientIP, noCascade: true},
+		// Wait for user to be activated (status changes from pending).
+		{name: "user_wait_activated", cmd: `for i in $(seq 1 60); do doublezero user list 2>/dev/null | grep '` + userClientIP + `' | grep -q activated && exit 0; sleep 1; done; echo "user not activated after 60s"; exit 1`, noCascade: true},
+		// Update the user's tunnel ID.
+		{name: "user_update", cmd: cli + " user update --pubkey " +
+			fmt.Sprintf("$(doublezero user list 2>/dev/null | grep '%s' | awk '{print $1}')", userClientIP) +
+			" --tunnel-id 999", noCascade: true},
+
+		// Create a second user (non-multicast) for testing request-ban.
+		// This user won't be subscribed to multicast, so it can be deleted after ban.
+		{name: "accesspass_set_2", cmd: cli + " access-pass set --accesspass-type prepaid --client-ip " + user2ClientIP +
+			" --user-payer me", noCascade: true},
+		{name: "user_create_2", cmd: cli + " user create --device " + deviceCode + " --client-ip " + user2ClientIP, noCascade: true},
+		{name: "user_wait_activated_2", cmd: `for i in $(seq 1 60); do doublezero user list 2>/dev/null | grep '` + user2ClientIP + ` ' | grep -q activated && exit 0; sleep 1; done; echo "user2 not activated after 60s"; exit 1`, noCascade: true},
+
+		// --- Phase 10: Multicast group operations ---
+		// Test multicast group update and allowlist operations.
+		{name: "multicast_group_update", cmd: cli + " multicast group update --pubkey " + multicastCode +
+			" --max-bandwidth 200", noCascade: true},
+		// Allowlist operations may not exist in older CLIs.
+		{name: "multicast_group_pub_allowlist_add", cmd: cli + " multicast group allowlist publisher add --code " + multicastCode +
+			" --client-ip " + userClientIP + " --user-payer me", noCascade: true},
+		{name: "multicast_group_pub_allowlist_remove", cmd: cli + " multicast group allowlist publisher remove --code " + multicastCode +
+			" --client-ip " + userClientIP + " --user-payer me", noCascade: true},
+		{name: "multicast_group_sub_allowlist_add", cmd: cli + " multicast group allowlist subscriber add --code " + multicastCode +
+			" --client-ip " + userClientIP + " --user-payer me", noCascade: true},
+		// Subscribe user to multicast group (must be on allowlist first).
+		{name: "user_subscribe", cmd: cli + " user subscribe --user " +
+			fmt.Sprintf("$(doublezero user list 2>/dev/null | grep '%s' | awk '{print $1}')", userClientIP) +
+			" --group " + multicastCode + " --subscriber", noCascade: true},
+		{name: "multicast_group_sub_allowlist_remove", cmd: cli + " multicast group allowlist subscriber remove --code " + multicastCode +
+			" --client-ip " + userClientIP + " --user-payer me", noCascade: true},
+
+		// --- Phase 11: Update operations on newly created entities ---
+		// Test that update instructions from the old CLI are compatible.
+		// Location and exchange updates accept codes as --pubkey in all versions.
+		{name: "location_update", cmd: cli + " location update --pubkey " + locationCode + " --name TestLocUpdated"},
+		{name: "exchange_update", cmd: cli + " exchange update --pubkey " + exchangeCode + " --name TestExchangeUpdated"},
+		// Contributor update requires a real base58 pubkey for both --pubkey and
+		// --owner in older CLIs (v0.8.1 accepts "me" for create but not update).
+		{name: "contributor_update", cmd: cli + " contributor update --pubkey " + lookupPubkeyByCode("contributor list", contributorCode) + " --owner " + managerPubkey},
+		// Device update requires --pubkey in older CLIs (current CLI can use --code alone).
+		{name: "device_update", cmd: cli + " device update --pubkey " + lookupPubkeyByCode("device list", deviceCode) + " --code " + deviceCode +
+			fmt.Sprintf(" --public-ip 45.133.2.%d", 10+vi)},
+
+		// --- Phase 12: Update operations on existing cloned entities ---
+		// These entities were cloned from the remote cluster. We update them using the
+		// old CLI to verify that updates to pre-existing onchain accounts work.
+		// We use the current CLI's table output to discover entity pubkeys.
+		{name: "cloned_location_update", cmd: cli + " location update --pubkey " + lookupFirstPubkey("location list") + " --name ClonedLocUpdated"},
+		{name: "cloned_exchange_update", cmd: cli + " exchange update --pubkey " + lookupFirstPubkey("exchange list") + " --name ClonedExUpdated"},
+
+		// --- Phase 13: Global config operations ---
+		// Test global config modification.
+		{name: "global_config_set", cmd: cli + " global-config set --remote-asn 65001", noCascade: true},
+		// Note: global-config set-version requires foundation allowlist membership
+		// and additional account keys that aren't easily set up in this test.
+
+		// --- Phase 14: Verify state and get commands ---
+		// Confirm that entities created/updated by the old CLI are visible.
+		{name: "device_list_verify", cmd: cli + " device list"},
+		{name: "link_list_verify", cmd: cli + " link list"},
+		// Test get commands using the entities we just created.
+		{name: "contributor_get", cmd: cli + " contributor get --code " + contributorCode, noCascade: true},
+		{name: "device_get", cmd: cli + " device get --code " + deviceCode, noCascade: true},
+		{name: "exchange_get", cmd: cli + " exchange get --code " + exchangeCode, noCascade: true},
+		{name: "link_get", cmd: cli + " link get --code " + linkCode, noCascade: true},
+		{name: "location_get", cmd: cli + " location get --code " + locationCode, noCascade: true},
+		{name: "multicast_group_get", cmd: cli + " multicast group get --code " + multicastCode, noCascade: true},
+		{name: "user_get", cmd: cli + " user get --pubkey " +
+			fmt.Sprintf("$(doublezero user list 2>/dev/null | grep '%s' | awk '{print $1}')", userClientIP), noCascade: true},
+		// Test link latency command.
+		{name: "link_latency", cmd: cli + " link latency", noCascade: true},
+
+		// --- Phase 15: Delete operations ---
+		// Test delete instructions in reverse dependency order.
+		// The onchain program enforces referential integrity:
+		//   - Users must be deleted before accesspasses can be closed
+		//   - A link must be deleted before its interfaces can be modified
+		//   - Interfaces must be deleted before their device can be deleted
+		//   - An interface must be in "activated" or "unlinked" status to be deleted
+		//   - Devices must be deleted before contributor/location/exchange
+
+		// Delete user1 (multicast) first, before banning user2.
+		// User1 is subscribed to multicast - delete unsubscribes automatically.
+		{name: "user_delete", cmd: cli + " user delete --pubkey " +
+			fmt.Sprintf("$(doublezero user list 2>/dev/null | grep '%s' | awk '{print $1}')", userClientIP)},
+		// Wait for user1 to be fully removed from device2.
+		{name: "user_wait_removed", cmd: `for i in $(seq 1 30); do ` +
+			`count=$(doublezero user list 2>/dev/null | grep '` + userClientIP + `' | wc -l); ` +
+			`[ "$count" -eq 0 ] && exit 0; sleep 1; done; ` +
+			`echo "user1 not removed after 30s"; exit 1`},
+		{name: "accesspass_close", cmd: cli + " access-pass close --pubkey " +
+			fmt.Sprintf("$(doublezero access-pass list 2>/dev/null | grep '%s' | awk '{print $1}')", userClientIP)},
+
+		// Test user2 (non-multicast) request-ban and delete workflow.
+		// User2 is not subscribed to any multicast groups, so delete works after ban.
+		{name: "user_request_ban_2", cmd: cli + " user request-ban --pubkey " +
+			fmt.Sprintf("$(doublezero user list 2>/dev/null | grep '%s ' | awk '{print $1}')", user2ClientIP), noCascade: true},
+		{name: "user_delete_2", cmd: cli + " user delete --pubkey " +
+			fmt.Sprintf("$(doublezero user list 2>/dev/null | grep '%s ' | awk '{print $1}')", user2ClientIP)},
+		// Wait for user2 to be fully removed from device1's user count.
+		{name: "user_wait_removed_2", cmd: `for i in $(seq 1 30); do ` +
+			`count=$(doublezero user list 2>/dev/null | grep '` + user2ClientIP + ` ' | wc -l); ` +
+			`[ "$count" -eq 0 ] && exit 0; sleep 1; done; ` +
+			`echo "user2 not removed after 30s"; exit 1`},
+		{name: "accesspass_close_2", cmd: cli + " access-pass close --pubkey " +
+			fmt.Sprintf("$(doublezero access-pass list 2>/dev/null | grep '%s ' | awk '{print $1}')", user2ClientIP)},
+
+		// Delete multicast group after users are removed.
+		{name: "multicast_group_delete", cmd: cli + " multicast group delete --pubkey " + multicastCode, noCascade: true},
+
+		// Wait for the activator to assign a tunnel_net to the WAN link.
+		// After activation the status becomes "provisioning" (not "activated").
+		// We check that tunnel_net is no longer the default 0.0.0.0/0.
+		{name: "link_wait_activated", cmd: `for i in $(seq 1 60); do doublezero link list 2>/dev/null | grep '` + linkCode + `' | grep -qv '0.0.0.0/0' && exit 0; sleep 1; done; echo "link not activated after 60s"; exit 1`},
+
+		// Link delete requires a real base58 pubkey (not a code) in older CLIs.
+		{name: "link_delete", cmd: cli + " link delete --pubkey " + lookupPubkeyByCode("link list", linkCode)},
+
+		// Wait for the DZX link to be activated (tunnel_net assigned).
+		{name: "link_wait_activated_dzx", cmd: `for i in $(seq 1 60); do doublezero link list 2>/dev/null | grep '` + dzxLinkCode + `' | grep -qv '0.0.0.0/0' && exit 0; sleep 1; done; echo "dzx link not activated after 60s"; exit 1`},
+		{name: "link_delete_dzx", cmd: cli + " link delete --pubkey " + lookupPubkeyByCode("link list", dzxLinkCode)},
+
+		// Wait for the activator to process the link deletion and transition
+		// the interfaces back to "unlinked" status (CloseAccountLink decrements
+		// device.reference_count and restores interfaces to unlinked).
+		{name: "iface_wait_unlinked", cmd: `for i in $(seq 1 30); do doublezero device interface list ` + deviceCode + ` 2>/dev/null | grep '` + ifaceName + `' | grep -q unlinked && exit 0; sleep 1; done; echo "interface not unlinked after 30s"; exit 1`},
+		{name: "iface_wait_unlinked_2", cmd: `for i in $(seq 1 30); do doublezero device interface list ` + deviceCode2 + ` 2>/dev/null | grep '` + ifaceName + `' | grep -q unlinked && exit 0; sleep 1; done; echo "interface not unlinked after 30s"; exit 1`},
+		{name: "iface_wait_unlinked_3", cmd: `for i in $(seq 1 30); do doublezero device interface list ` + deviceCode + ` 2>/dev/null | grep '` + ifaceName2 + `' | grep -q unlinked && exit 0; sleep 1; done; echo "interface not unlinked after 30s"; exit 1`},
+		{name: "iface_wait_unlinked_4", cmd: `for i in $(seq 1 30); do doublezero device interface list ` + deviceCode2 + ` 2>/dev/null | grep '` + ifaceName2 + `' | grep -q unlinked && exit 0; sleep 1; done; echo "interface not unlinked after 30s"; exit 1`},
+
+		// Delete all interfaces (Ethernet1 and Ethernet2 on both devices).
+		{name: "device_interface_delete", cmd: cli + " device interface delete " + deviceCode + " " + ifaceName},
+		{name: "device_interface_delete_2", cmd: cli + " device interface delete " + deviceCode2 + " " + ifaceName},
+		{name: "device_interface_delete_3", cmd: cli + " device interface delete " + deviceCode + " " + ifaceName2},
+		{name: "device_interface_delete_4", cmd: cli + " device interface delete " + deviceCode2 + " " + ifaceName2},
+
+		// Wait for the activator to process the interface deletions and
+		// remove them from the device's interfaces array. The CLI delete
+		// only marks them as "Deleting"; the activator calls
+		// RemoveDeviceInterface to actually remove the entries.
+		{name: "iface_wait_removed", cmd: `for i in $(seq 1 30); do count=$(doublezero device interface list ` + deviceCode + ` 2>/dev/null | tail -n +2 | wc -l); [ "$count" -eq 0 ] && exit 0; sleep 1; done; echo "interfaces not removed after 30s"; exit 1`},
+		{name: "iface_wait_removed_2", cmd: `for i in $(seq 1 30); do count=$(doublezero device interface list ` + deviceCode2 + ` 2>/dev/null | tail -n +2 | wc -l); [ "$count" -eq 0 ] && exit 0; sleep 1; done; echo "interfaces not removed after 30s"; exit 1`},
+
+		// Clear exchange set-device references before deleting devices.
+		// This decrements reference_count on both devices by removing the
+		// exchange's device1_pk and device2_pk pointers.
+		{name: "exchange_clear_devices", cmd: cli + " exchange set-device --pubkey " + exchangeCode, noCascade: true},
+
+		// Delete both devices. Both users were deleted, so reference_count is 0.
+		{name: "device_delete", cmd: cli + " device delete --pubkey " + lookupPubkeyByCode("device list", deviceCode)},
+		{name: "device_delete_2", cmd: cli + " device delete --pubkey " + lookupPubkeyByCode("device list", deviceCode2)},
+
+		// Wait for devices to be fully removed before deleting exchange.
+		// Device deletion may take time to process and release the exchange reference.
+		{name: "device_wait_removed", cmd: `for i in $(seq 1 30); do ` +
+			`count=$(doublezero device list 2>/dev/null | grep '` + deviceCode + ` ' | wc -l); ` +
+			`[ "$count" -eq 0 ] && exit 0; sleep 1; done; ` +
+			`echo "device not removed after 30s"; exit 1`},
+		{name: "device_wait_removed_2", cmd: `for i in $(seq 1 30); do ` +
+			`count=$(doublezero device list 2>/dev/null | grep '` + deviceCode2 + ` ' | wc -l); ` +
+			`[ "$count" -eq 0 ] && exit 0; sleep 1; done; ` +
+			`echo "device2 not removed after 30s"; exit 1`},
+
+		// Delete exchange, contributor, and location.
+		{name: "exchange_delete", cmd: cli + " exchange delete --pubkey " + exchangeCode},
+		{name: "contributor_delete", cmd: cli + " contributor delete --pubkey " + lookupPubkeyByCode("contributor list", contributorCode)},
+		{name: "location_delete", cmd: cli + " location delete --pubkey " + locationCode},
+	}
+
+	writeFailed := false
+	for _, ws := range writeSteps {
+		ws := ws
+		t.Run(ws.name, func(t *testing.T) {
+			if writeFailed {
+				recordResult(version, "write/"+ws.name, "SKIP", "previous step failed")
+				t.Skip("skipped: previous write step failed")
 			}
-			for _, dc := range diagCmds {
-				out, _ := dn.Manager.Exec(t.Context(), []string{"bash", "-c", dc.cmd})
-				fmt.Printf("  %s:\n%s\n", dc.label, string(out))
+			log.Debug("==> Running manager write command", "command", ws.cmd)
+			output, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", ws.cmd})
+			stepKey := "write/" + ws.name
+			if err == nil {
+				recordResult(version, stepKey, "PASS", "")
+				log.Debug("--> Command succeeded", "command", ws.cmd)
+			} else if isKnownIncompatible(stepKey, version) {
+				// Known incompatibility - record but don't fail the test
+				recordResult(version, stepKey, "KNOWN_FAIL", string(output))
+				log.Debug("--> Command failed (known incompatibility)", "command", ws.cmd)
+			} else {
+				// Unexpected failure - dump diagnostics and fail the test
+				log.Error("Command failed", "step", ws.name, "command", ws.cmd, "output", string(output))
+				dumpDiagnostics(ws.name)
+				assert.NoError(t, err, "command %q failed: %s", ws.cmd, string(output))
+				recordResult(version, stepKey, "FAIL", string(output))
+				if !ws.noCascade {
+					writeFailed = true
+				}
 			}
-			fmt.Println("=== END DIAGNOSTICS ===")
-		}
-
-		type writeStep struct {
-			name      string
-			cmd       string
-			noCascade bool // if true, failure doesn't skip subsequent steps
-		}
-		writeSteps := []writeStep{
-			// --- Phase 1: Create foundational entities ---
-			// These are prerequisites for devices. The onchain program creates PDA
-			// accounts for each entity, keyed by their code.
-			{name: "contributor_create", cmd: cli + " contributor create --code " + contributorCode + " --owner me"},
-			{name: "location_create", cmd: cli + " location create --code " + locationCode + " --name TestLoc --country US --lat 40.7 --lng -74.0"},
-			{name: "exchange_create", cmd: cli + " exchange create --code " + exchangeCode + " --name TestExchange --lat 40.7 --lng -74.0"},
-
-			// --- Phase 2: Create devices ---
-			// Devices are created in "pending" status. The activator processes them
-			// and transitions to "device-provisioning". We don't use -w (wait for
-			// activation) since we don't need full activation for the test.
-			{name: "device_create", cmd: cli + " device create --code " + deviceCode +
-				" --contributor " + contributorCode +
-				" --location " + locationCode +
-				" --exchange " + exchangeCode +
-				fmt.Sprintf(" --public-ip 45.133.1.%d", 10+vi) +
-				fmt.Sprintf(" --dz-prefixes 45.133.%d.0/30", 10+vi) +
-				" --mgmt-vrf default"},
-			{name: "device_create_2", cmd: cli + " device create --code " + deviceCode2 +
-				" --contributor " + contributorCode +
-				" --location " + locationCode +
-				" --exchange " + exchangeCode +
-				fmt.Sprintf(" --public-ip 45.133.1.%d", 110+vi) +
-				fmt.Sprintf(" --dz-prefixes 45.133.%d.128/30", 10+vi) +
-				" --mgmt-vrf default"},
-
-			// Set max_users on devices so users can be created on them.
-			{name: "device_set_max_users", cmd: cli + " device update --pubkey " + lookupPubkeyByCode("device list", deviceCode) +
-				" --max-users 10"},
-			{name: "device_set_max_users_2", cmd: cli + " device update --pubkey " + lookupPubkeyByCode("device list", deviceCode2) +
-				" --max-users 10"},
-
-			// Set device health status (tests device set-health command).
-			{name: "device_set_health", cmd: cli + " device set-health --pubkey " + deviceCode +
-				" --health ready-for-users", noCascade: true},
-			{name: "device_set_health_2", cmd: cli + " device set-health --pubkey " + deviceCode2 +
-				" --health ready-for-users", noCascade: true},
-
-			// Set exchange devices (assigns primary devices to the exchange).
-			{name: "exchange_set_device", cmd: cli + " exchange set-device --pubkey " + exchangeCode +
-				" --device1 " + deviceCode + " --device2 " + deviceCode2, noCascade: true},
-
-			// --- Phase 3: Create device interfaces for WAN link ---
-			// Interfaces are created in "pending" status. The onchain program requires
-			// interfaces to be in "unlinked" status before a link can reference them,
-			// so we manually transition them after creation.
-			// Note: bandwidth and MTU are properties of the link, not the interface.
-			{name: "device_interface_create", cmd: cli + " device interface create " + deviceCode + " " + ifaceName},
-			{name: "device_interface_create_2", cmd: cli + " device interface create " + deviceCode2 + " " + ifaceName},
-
-			// Transition interfaces from "pending" → "unlinked". This is the status
-			// the activator would normally set after verifying the physical interface
-			// exists on the device. We do it manually since we don't have real hardware.
-			{name: "device_interface_set_unlinked", cmd: cli + " device interface update " + deviceCode + " " + ifaceName +
-				" --status unlinked"},
-			{name: "device_interface_set_unlinked_2", cmd: cli + " device interface update " + deviceCode2 + " " + ifaceName +
-				" --status unlinked"},
-
-			// --- Phase 4: Create WAN link ---
-			// The link create instruction references both devices and interfaces. The
-			// onchain program validates that both interfaces are in "unlinked" status.
-			// Note: --jitter-ms minimum is 0.01 in v0.8.1 (later versions accept 0).
-			// Note: bandwidth must be a human-readable string like "10 Gbps".
-			{name: "link_create_wan", cmd: cli + " link create wan" +
-				" --code " + linkCode +
-				" --contributor " + contributorCode +
-				" --side-a " + deviceCode + " --side-a-interface " + ifaceName +
-				" --side-z " + deviceCode2 + " --side-z-interface " + ifaceName +
-				` --bandwidth "10 Gbps" --mtu 9000 --delay-ms 1 --jitter-ms 0.01`},
-
-			// --- Phase 5: Multicast group ---
-			// Multicast group create may fail for CLI < 0.8.1 because the
-			// MulticastGroupCreateArgs Borsh struct changed in v0.8.1: the index and
-			// bump_seed fields were removed. Older CLIs send the old format which
-			// causes Borsh deserialization failure in the current program.
-			{name: "multicast_group_create", cmd: cli + " multicast group create --code " + multicastCode +
-				" --max-bandwidth 100 --owner me", noCascade: true},
-
-			// --- Phase 6: Create device interfaces for DZX link ---
-			// Create a second set of interfaces on both devices for the DZX link.
-			{name: "device_interface_create_3", cmd: cli + " device interface create " + deviceCode + " " + ifaceName2},
-			{name: "device_interface_create_4", cmd: cli + " device interface create " + deviceCode2 + " " + ifaceName2},
-			{name: "device_interface_set_unlinked_3", cmd: cli + " device interface update " + deviceCode + " " + ifaceName2 +
-				" --status unlinked"},
-			{name: "device_interface_set_unlinked_4", cmd: cli + " device interface update " + deviceCode2 + " " + ifaceName2 +
-				" --status unlinked"},
-
-			// --- Phase 7: Create DZX link ---
-			// DZX links are cross-contributor peering links (as opposed to WAN links
-			// which connect two devices owned by the same contributor). DZX links are
-			// created in "requested" status and must be accepted by the side-z
-			// contributor before activation.
-			{name: "link_create_dzx", cmd: cli + " link create dzx" +
-				" --code " + dzxLinkCode +
-				" --contributor " + contributorCode +
-				" --side-a " + deviceCode + " --side-a-interface " + ifaceName2 +
-				" --side-z " + deviceCode2 +
-				` --bandwidth "10 Gbps" --mtu 9000 --delay-ms 1 --jitter-ms 0.01`},
-			// Accept the DZX link on the side-z device. This transitions the link from
-			// "requested" to "pending", allowing the activator to process it.
-			{name: "link_accept_dzx", cmd: cli + " link accept --code " + dzxLinkCode +
-				" --side-z-interface " + ifaceName2},
-
-			// --- Phase 8: Link update and health ---
-			// Test that link update instructions work.
-			{name: "link_update", cmd: cli + " link update --pubkey " + lookupPubkeyByCode("link list", dzxLinkCode) +
-				` --bandwidth "20 Gbps"`},
-			// Set link health status (tests link set-health command).
-			{name: "link_set_health", cmd: cli + " link set-health --pubkey " + linkCode +
-				" --health ready-for-service", noCascade: true},
-			{name: "link_set_health_dzx", cmd: cli + " link set-health --pubkey " + dzxLinkCode +
-				" --health ready-for-service", noCascade: true},
-
-			// --- Phase 9: User lifecycle ---
-			// Test the full user lifecycle: access-pass set → user create → wait for
-			// activation → user update → user delete → access-pass close.
-			// AccessPass must exist before user creation.
-			{name: "accesspass_set", cmd: cli + " access-pass set --accesspass-type prepaid --client-ip " + userClientIP +
-				" --user-payer me", noCascade: true},
-			{name: "user_create", cmd: cli + " user create --device " + deviceCode2 + " --client-ip " + userClientIP, noCascade: true},
-			// Wait for user to be activated (status changes from pending).
-			{name: "user_wait_activated", cmd: `for i in $(seq 1 60); do doublezero user list 2>/dev/null | grep '` + userClientIP + `' | grep -q activated && exit 0; sleep 1; done; echo "user not activated after 60s"; exit 1`, noCascade: true},
-			// Update the user's tunnel ID.
-			{name: "user_update", cmd: cli + " user update --pubkey " +
-				fmt.Sprintf("$(doublezero user list 2>/dev/null | grep '%s' | awk '{print $1}')", userClientIP) +
-				" --tunnel-id 999", noCascade: true},
-
-			// Create a second user (non-multicast) for testing request-ban.
-			// This user won't be subscribed to multicast, so it can be deleted after ban.
-			{name: "accesspass_set_2", cmd: cli + " access-pass set --accesspass-type prepaid --client-ip " + user2ClientIP +
-				" --user-payer me", noCascade: true},
-			{name: "user_create_2", cmd: cli + " user create --device " + deviceCode + " --client-ip " + user2ClientIP, noCascade: true},
-			{name: "user_wait_activated_2", cmd: `for i in $(seq 1 60); do doublezero user list 2>/dev/null | grep '` + user2ClientIP + ` ' | grep -q activated && exit 0; sleep 1; done; echo "user2 not activated after 60s"; exit 1`, noCascade: true},
-
-			// --- Phase 10: Multicast group operations ---
-			// Test multicast group update and allowlist operations.
-			{name: "multicast_group_update", cmd: cli + " multicast group update --pubkey " + multicastCode +
-				" --max-bandwidth 200", noCascade: true},
-			// Allowlist operations may not exist in older CLIs.
-			{name: "multicast_group_pub_allowlist_add", cmd: cli + " multicast group allowlist publisher add --code " + multicastCode +
-				" --client-ip " + userClientIP + " --user-payer me", noCascade: true},
-			{name: "multicast_group_pub_allowlist_remove", cmd: cli + " multicast group allowlist publisher remove --code " + multicastCode +
-				" --client-ip " + userClientIP + " --user-payer me", noCascade: true},
-			{name: "multicast_group_sub_allowlist_add", cmd: cli + " multicast group allowlist subscriber add --code " + multicastCode +
-				" --client-ip " + userClientIP + " --user-payer me", noCascade: true},
-			// Subscribe user to multicast group (must be on allowlist first).
-			{name: "user_subscribe", cmd: cli + " user subscribe --user " +
-				fmt.Sprintf("$(doublezero user list 2>/dev/null | grep '%s' | awk '{print $1}')", userClientIP) +
-				" --group " + multicastCode + " --subscriber", noCascade: true},
-			{name: "multicast_group_sub_allowlist_remove", cmd: cli + " multicast group allowlist subscriber remove --code " + multicastCode +
-				" --client-ip " + userClientIP + " --user-payer me", noCascade: true},
-
-			// --- Phase 11: Update operations on newly created entities ---
-			// Test that update instructions from the old CLI are compatible.
-			// Location and exchange updates accept codes as --pubkey in all versions.
-			{name: "location_update", cmd: cli + " location update --pubkey " + locationCode + " --name TestLocUpdated"},
-			{name: "exchange_update", cmd: cli + " exchange update --pubkey " + exchangeCode + " --name TestExchangeUpdated"},
-			// Contributor update requires a real base58 pubkey for both --pubkey and
-			// --owner in older CLIs (v0.8.1 accepts "me" for create but not update).
-			{name: "contributor_update", cmd: cli + " contributor update --pubkey " + lookupPubkeyByCode("contributor list", contributorCode) + " --owner " + managerPubkey},
-			// Device update requires --pubkey in older CLIs (current CLI can use --code alone).
-			{name: "device_update", cmd: cli + " device update --pubkey " + lookupPubkeyByCode("device list", deviceCode) + " --code " + deviceCode +
-				fmt.Sprintf(" --public-ip 45.133.2.%d", 10+vi)},
-
-			// --- Phase 12: Update operations on existing cloned entities ---
-			// These entities were cloned from the remote cluster. We update them using the
-			// old CLI to verify that updates to pre-existing onchain accounts work.
-			// We use the current CLI's table output to discover entity pubkeys.
-			{name: "cloned_location_update", cmd: cli + " location update --pubkey " + lookupFirstPubkey("location list") + " --name ClonedLocUpdated"},
-			{name: "cloned_exchange_update", cmd: cli + " exchange update --pubkey " + lookupFirstPubkey("exchange list") + " --name ClonedExUpdated"},
-
-			// --- Phase 13: Global config operations ---
-			// Test global config modification.
-			{name: "global_config_set", cmd: cli + " global-config set --remote-asn 65001", noCascade: true},
-			// Note: global-config set-version requires foundation allowlist membership
-			// and additional account keys that aren't easily set up in this test.
-
-			// --- Phase 14: Verify state and get commands ---
-			// Confirm that entities created/updated by the old CLI are visible.
-			{name: "device_list_verify", cmd: cli + " device list"},
-			{name: "link_list_verify", cmd: cli + " link list"},
-			// Test get commands using the entities we just created.
-			{name: "contributor_get", cmd: cli + " contributor get --code " + contributorCode, noCascade: true},
-			{name: "device_get", cmd: cli + " device get --code " + deviceCode, noCascade: true},
-			{name: "exchange_get", cmd: cli + " exchange get --code " + exchangeCode, noCascade: true},
-			{name: "link_get", cmd: cli + " link get --code " + linkCode, noCascade: true},
-			{name: "location_get", cmd: cli + " location get --code " + locationCode, noCascade: true},
-			{name: "multicast_group_get", cmd: cli + " multicast group get --code " + multicastCode, noCascade: true},
-			{name: "user_get", cmd: cli + " user get --pubkey " +
-				fmt.Sprintf("$(doublezero user list 2>/dev/null | grep '%s' | awk '{print $1}')", userClientIP), noCascade: true},
-			// Test link latency command.
-			{name: "link_latency", cmd: cli + " link latency", noCascade: true},
-
-			// --- Phase 15: Delete operations ---
-			// Test delete instructions in reverse dependency order.
-			// The onchain program enforces referential integrity:
-			//   - Users must be deleted before accesspasses can be closed
-			//   - A link must be deleted before its interfaces can be modified
-			//   - Interfaces must be deleted before their device can be deleted
-			//   - An interface must be in "activated" or "unlinked" status to be deleted
-			//   - Devices must be deleted before contributor/location/exchange
-
-			// Delete user1 (multicast) first, before banning user2.
-			// User1 is subscribed to multicast - delete unsubscribes automatically.
-			{name: "user_delete", cmd: cli + " user delete --pubkey " +
-				fmt.Sprintf("$(doublezero user list 2>/dev/null | grep '%s' | awk '{print $1}')", userClientIP)},
-			// Wait for user1 to be fully removed from device2.
-			{name: "user_wait_removed", cmd: `for i in $(seq 1 30); do ` +
-				`count=$(doublezero user list 2>/dev/null | grep '` + userClientIP + `' | wc -l); ` +
-				`[ "$count" -eq 0 ] && exit 0; sleep 1; done; ` +
-				`echo "user1 not removed after 30s"; exit 1`},
-			{name: "accesspass_close", cmd: cli + " access-pass close --pubkey " +
-				fmt.Sprintf("$(doublezero access-pass list 2>/dev/null | grep '%s' | awk '{print $1}')", userClientIP)},
-
-			// Test user2 (non-multicast) request-ban and delete workflow.
-			// User2 is not subscribed to any multicast groups, so delete works after ban.
-			{name: "user_request_ban_2", cmd: cli + " user request-ban --pubkey " +
-				fmt.Sprintf("$(doublezero user list 2>/dev/null | grep '%s ' | awk '{print $1}')", user2ClientIP), noCascade: true},
-			{name: "user_delete_2", cmd: cli + " user delete --pubkey " +
-				fmt.Sprintf("$(doublezero user list 2>/dev/null | grep '%s ' | awk '{print $1}')", user2ClientIP)},
-			// Wait for user2 to be fully removed from device1's user count.
-			{name: "user_wait_removed_2", cmd: `for i in $(seq 1 30); do ` +
-				`count=$(doublezero user list 2>/dev/null | grep '` + user2ClientIP + ` ' | wc -l); ` +
-				`[ "$count" -eq 0 ] && exit 0; sleep 1; done; ` +
-				`echo "user2 not removed after 30s"; exit 1`},
-			{name: "accesspass_close_2", cmd: cli + " access-pass close --pubkey " +
-				fmt.Sprintf("$(doublezero access-pass list 2>/dev/null | grep '%s ' | awk '{print $1}')", user2ClientIP)},
-
-			// Delete multicast group after users are removed.
-			{name: "multicast_group_delete", cmd: cli + " multicast group delete --pubkey " + multicastCode, noCascade: true},
-
-			// Wait for the activator to assign a tunnel_net to the WAN link.
-			// After activation the status becomes "provisioning" (not "activated").
-			// We check that tunnel_net is no longer the default 0.0.0.0/0.
-			{name: "link_wait_activated", cmd: `for i in $(seq 1 60); do doublezero link list 2>/dev/null | grep '` + linkCode + `' | grep -qv '0.0.0.0/0' && exit 0; sleep 1; done; echo "link not activated after 60s"; exit 1`},
-
-			// Link delete requires a real base58 pubkey (not a code) in older CLIs.
-			{name: "link_delete", cmd: cli + " link delete --pubkey " + lookupPubkeyByCode("link list", linkCode)},
-
-			// Wait for the DZX link to be activated (tunnel_net assigned).
-			{name: "link_wait_activated_dzx", cmd: `for i in $(seq 1 60); do doublezero link list 2>/dev/null | grep '` + dzxLinkCode + `' | grep -qv '0.0.0.0/0' && exit 0; sleep 1; done; echo "dzx link not activated after 60s"; exit 1`},
-			{name: "link_delete_dzx", cmd: cli + " link delete --pubkey " + lookupPubkeyByCode("link list", dzxLinkCode)},
-
-			// Wait for the activator to process the link deletion and transition
-			// the interfaces back to "unlinked" status (CloseAccountLink decrements
-			// device.reference_count and restores interfaces to unlinked).
-			{name: "iface_wait_unlinked", cmd: `for i in $(seq 1 30); do doublezero device interface list ` + deviceCode + ` 2>/dev/null | grep '` + ifaceName + `' | grep -q unlinked && exit 0; sleep 1; done; echo "interface not unlinked after 30s"; exit 1`},
-			{name: "iface_wait_unlinked_2", cmd: `for i in $(seq 1 30); do doublezero device interface list ` + deviceCode2 + ` 2>/dev/null | grep '` + ifaceName + `' | grep -q unlinked && exit 0; sleep 1; done; echo "interface not unlinked after 30s"; exit 1`},
-			{name: "iface_wait_unlinked_3", cmd: `for i in $(seq 1 30); do doublezero device interface list ` + deviceCode + ` 2>/dev/null | grep '` + ifaceName2 + `' | grep -q unlinked && exit 0; sleep 1; done; echo "interface not unlinked after 30s"; exit 1`},
-			{name: "iface_wait_unlinked_4", cmd: `for i in $(seq 1 30); do doublezero device interface list ` + deviceCode2 + ` 2>/dev/null | grep '` + ifaceName2 + `' | grep -q unlinked && exit 0; sleep 1; done; echo "interface not unlinked after 30s"; exit 1`},
-
-			// Delete all interfaces (Ethernet1 and Ethernet2 on both devices).
-			{name: "device_interface_delete", cmd: cli + " device interface delete " + deviceCode + " " + ifaceName},
-			{name: "device_interface_delete_2", cmd: cli + " device interface delete " + deviceCode2 + " " + ifaceName},
-			{name: "device_interface_delete_3", cmd: cli + " device interface delete " + deviceCode + " " + ifaceName2},
-			{name: "device_interface_delete_4", cmd: cli + " device interface delete " + deviceCode2 + " " + ifaceName2},
-
-			// Wait for the activator to process the interface deletions and
-			// remove them from the device's interfaces array. The CLI delete
-			// only marks them as "Deleting"; the activator calls
-			// RemoveDeviceInterface to actually remove the entries.
-			{name: "iface_wait_removed", cmd: `for i in $(seq 1 30); do count=$(doublezero device interface list ` + deviceCode + ` 2>/dev/null | tail -n +2 | wc -l); [ "$count" -eq 0 ] && exit 0; sleep 1; done; echo "interfaces not removed after 30s"; exit 1`},
-			{name: "iface_wait_removed_2", cmd: `for i in $(seq 1 30); do count=$(doublezero device interface list ` + deviceCode2 + ` 2>/dev/null | tail -n +2 | wc -l); [ "$count" -eq 0 ] && exit 0; sleep 1; done; echo "interfaces not removed after 30s"; exit 1`},
-
-			// Clear exchange set-device references before deleting devices.
-			// This decrements reference_count on both devices by removing the
-			// exchange's device1_pk and device2_pk pointers.
-			{name: "exchange_clear_devices", cmd: cli + " exchange set-device --pubkey " + exchangeCode, noCascade: true},
-
-			// Delete both devices. Both users were deleted, so reference_count is 0.
-			{name: "device_delete", cmd: cli + " device delete --pubkey " + lookupPubkeyByCode("device list", deviceCode)},
-			{name: "device_delete_2", cmd: cli + " device delete --pubkey " + lookupPubkeyByCode("device list", deviceCode2)},
-
-			// Wait for devices to be fully removed before deleting exchange.
-			// Device deletion may take time to process and release the exchange reference.
-			{name: "device_wait_removed", cmd: `for i in $(seq 1 30); do ` +
-				`count=$(doublezero device list 2>/dev/null | grep '` + deviceCode + ` ' | wc -l); ` +
-				`[ "$count" -eq 0 ] && exit 0; sleep 1; done; ` +
-				`echo "device not removed after 30s"; exit 1`},
-			{name: "device_wait_removed_2", cmd: `for i in $(seq 1 30); do ` +
-				`count=$(doublezero device list 2>/dev/null | grep '` + deviceCode2 + ` ' | wc -l); ` +
-				`[ "$count" -eq 0 ] && exit 0; sleep 1; done; ` +
-				`echo "device2 not removed after 30s"; exit 1`},
-
-			// Delete exchange, contributor, and location.
-			{name: "exchange_delete", cmd: cli + " exchange delete --pubkey " + exchangeCode},
-			{name: "contributor_delete", cmd: cli + " contributor delete --pubkey " + lookupPubkeyByCode("contributor list", contributorCode)},
-			{name: "location_delete", cmd: cli + " location delete --pubkey " + locationCode},
-		}
-
-		writeFailed := false
-		for _, ws := range writeSteps {
-			ws := ws
-			t.Run(ws.name, func(t *testing.T) {
-				if writeFailed {
-					recordResult(version, "write/"+ws.name, "SKIP", "previous step failed")
-					t.Skip("skipped: previous write step failed")
-				}
-				log.Debug("==> Running manager write command", "command", ws.cmd)
-				output, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", ws.cmd})
-				stepKey := "write/" + ws.name
-				if err == nil {
-					recordResult(version, stepKey, "PASS", "")
-					log.Debug("--> Command succeeded", "command", ws.cmd)
-				} else if isKnownIncompatible(stepKey, version) {
-					// Known incompatibility - record but don't fail the test
-					recordResult(version, stepKey, "KNOWN_FAIL", string(output))
-					log.Debug("--> Command failed (known incompatibility)", "command", ws.cmd)
-				} else {
-					// Unexpected failure - dump diagnostics and fail the test
-					log.Error("Command failed", "step", ws.name, "command", ws.cmd, "output", string(output))
-					dumpDiagnostics(ws.name)
-					assert.NoError(t, err, "command %q failed: %s", ws.cmd, string(output))
-					recordResult(version, stepKey, "FAIL", string(output))
-					if !ws.noCascade {
-						writeFailed = true
-					}
-				}
-			})
-		}
-	})
+		})
+	}
 }

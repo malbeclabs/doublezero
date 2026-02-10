@@ -415,7 +415,6 @@ mod tests {
             mgroup_sub_allowlist: vec![mgroup_pubkey],
             tenant_allowlist: vec![],
             flags: 0,
-            tenant_allowlist: vec![],
         };
 
         let mut seq = Sequence::new();

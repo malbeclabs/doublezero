@@ -444,27 +444,7 @@ $ doublezero-geolocation get 12350 203.0.113.10
 4. Probes measure RTT to target IPs and write to `GeolocationSamples` accounts
 5. User queries `GeolocationSamples` accounts by epoch and/or target IP via CLI
 
-## Impact
-
-## Security Considerations
-
-### Threat Model
-
-|       Threat            |             Mitigation                                            |
-|-------------------------|-------------------------------------------------------------------|
-| **Client IP Spoofing**  | Not addressed in POC/MVP; discussed in future work                |
-| **Replay Attacks**      | Ongoing Probes are added to the ledger.                           |
-| **Signature Forgery**   | Ed25519 signatures; DZD keys secured in telemetry agent           |
-| **Probe Compromise**    | Client can use mulitple probes; onchain audit trail               |
-| **DDoS by Probes**      | Rate limiting (10-60s probes)                                     |
-| **DDoS on Probes**      | Rate limiting, firewall rules                                     |
-| **Client False Claims** | Clients cannot forge Offsets; signature verification required     |
-
-### Privacy Considerations
-
-**Location Precision:** Offsets reveal approximate distance only, not exact coordinates
-
-## POC Requirements
+### POC Requirements
 
 **Goal:** Single probe deployment for testing
 
@@ -503,7 +483,7 @@ $ doublezero-geolocation get 12350 203.0.113.10
    - 1 probe in testnet in Frankfurt (use `fra-tn-bm1` as probe?)
 
 
-## MVP Requirements
+### MVP Requirements
 
 **Goal:** Production-ready system
 
@@ -516,45 +496,34 @@ $ doublezero-geolocation get 12350 203.0.113.10
    - Alerting for offline probes, signature failures
    - GeolocationSamples data ingestion to analytics system
 
-## Implementation Phases
+### Testing Strategy
 
-### Phase 1: POC (Austin Offsite)
-
-### Phase 2: MVP (Following Week)
-
-**Week 5-6: Multi-Probe & Infrastructure**
-- Multi-probe verification logic
-- Terraform for probe deployment
-- Deploy probes to 5-10 exchanges
-
-## Testing Strategy
-
-### Unit Tests
+#### Unit Tests
 - Offset signature generation/verification
 - ProbeDiscovery onchain parsing
 - TWAMP measurement accuracy
 - PDA derivation correctness
 
-### Integration Tests
+#### Integration Tests
 - Telemetry agent → Probe UDP communication
 - Onchain sample submission and retrieval
 - Client SDK → Probe verification flow
 - Multi-probe consensus logic
 
-### E2E Tests (devnet/testnet)
+#### E2E Tests (devnet/testnet)
 - Full DZD → Probe → Client chain
 - Signature verification across components
 - Probe child/un-child operations
 
-### Performance Tests
+#### Performance Tests
 - Probe server throughput (clients/second)
 
-## Operational Considerations
+### Operational Considerations
 
-### Probe Deployment
+#### Probe Deployment
 Initially DZ or Malbec will deploy probes. Eventually this should become the domain of Resource Providers
 
-### Monitoring
+#### Monitoring
 
 **Metrics:**
 - dzProbe availability (uptime %)
@@ -568,10 +537,33 @@ Initially DZ or Malbec will deploy probes. Eventually this should become the dom
 - Signature verification failure rate >1%
 - RTT to parent DZD exceeds threshold
 
-### Key Management
-
+#### Key Management
 **DZD Keys:** Existing `metrics_publisher_pk` used for Offset signing (no new key infrastructure)
 **dzProbe Keys:** Generated during provisioning, stored in `/etc/probe/keypair.json`, backed up to Foundation secure storage
+
+## Impact
+_TODO: add this_
+*Consequences of adopting this RFC.*
+Discuss effects on:
+
+* Existing codebase (modules touched, refactors required)
+* Operational complexity (deployment, monitoring, costs)
+* Performance (throughput, latency, resource usage)
+* User experience or documentation
+  Quantify impacts where possible; note any expected ROI.
+
+## Security Considerations
+
+|       Threat            |             Mitigation                                            |
+|-------------------------|-------------------------------------------------------------------|
+| **Client IP Spoofing**  | Not addressed in POC/MVP; discussed in future work                |
+| **Replay Attacks**      | Ongoing Probes are added to the ledger.                           |
+| **Signature Forgery**   | Ed25519 signatures; DZD keys secured in telemetry agent           |
+| **Probe Compromise**    | Client can use mulitple probes; onchain audit trail               |
+| **DDoS by Probes**      | Rate limiting (10-60s probes)                                     |
+| **DDoS on Probes**      | Rate limiting, firewall rules                                     |
+| **Client False Claims** | Clients cannot forge Offsets; signature verification required     |
+
 
 ## Future Work
 

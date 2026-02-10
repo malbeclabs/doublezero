@@ -329,7 +329,6 @@ impl From<u32> for DoubleZeroError {
             68 => DoubleZeroError::ImmutableField,
             69 => DoubleZeroError::CyoaRequiresPhysical,
             70 => DoubleZeroError::DeviceHasInterfaces,
-<<<<<<< HEAD
             71 => DoubleZeroError::MulticastGroupNotEmpty,
             72 => DoubleZeroError::AccessPassInUse,
             73 => DoubleZeroError::InvalidTenantPubkey,
@@ -338,9 +337,7 @@ impl From<u32> for DoubleZeroError {
             76 => DoubleZeroError::AdministratorAlreadyExists,
             77 => DoubleZeroError::AdministratorNotFound,
             78 => DoubleZeroError::InvalidPaymentStatus,
-=======
-            71 => DoubleZeroError::InvalidTunnelEndpoint,
->>>>>>> 42711d2f (DNM: feat(cli): remove multiple tunnel restriction (#2725))
+            79 => DoubleZeroError::InvalidTunnelEndpoint,
             _ => DoubleZeroError::Custom(e),
         }
     }

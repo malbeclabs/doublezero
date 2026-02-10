@@ -419,11 +419,7 @@ func (c *Client) WaitForTunnelUp(ctx context.Context, timeout time.Duration) err
 
 // WaitForNTunnelsUp waits for N tunnels to be in the "up" state.
 func (c *Client) WaitForNTunnelsUp(ctx context.Context, n int, timeout time.Duration) error {
-<<<<<<< HEAD
-	c.log.Debug("==> Waiting for N tunnels to be up", "n", n, "timeout", timeout)
-=======
 	c.log.Info("==> Waiting for N tunnels to be up", "n", n, "timeout", timeout)
->>>>>>> 42711d2f (DNM: feat(cli): remove multiple tunnel restriction (#2725))
 
 	attempts := 0
 	start := time.Now()
@@ -441,11 +437,7 @@ func (c *Client) WaitForNTunnelsUp(ctx context.Context, n int, timeout time.Dura
 		}
 
 		if upCount >= n {
-<<<<<<< HEAD
 			c.log.Debug("✅ Got expected number of tunnels up", "n", n, "upCount", upCount, "duration", time.Since(start))
-=======
-			c.log.Info("✅ Got expected number of tunnels up", "n", n, "upCount", upCount, "duration", time.Since(start))
->>>>>>> 42711d2f (DNM: feat(cli): remove multiple tunnel restriction (#2725))
 			return true, nil
 		}
 

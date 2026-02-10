@@ -33,7 +33,7 @@ var (
 	cacheUpdateInterval         = flag.Int("cache-update-interval", 30, "latency cache update interval in seconds")
 	enableVerboseLogging        = flag.Bool("v", false, "enables verbose logging")
 	enableLatencyMetrics        = flag.Bool("enable-latency-metrics", false, "enables latency metrics")
-	latencyProbeTunnelEndpoints = flag.Bool("latency-probe-tunnel-endpoints", false, "also probe UserTunnelEndpoint interfaces in addition to PublicIp")
+	latencyProbeTunnelEndpoints = flag.Bool("latency-probe-tunnel-endpoints", true, "also probe UserTunnelEndpoint interfaces in addition to PublicIp")
 	metricsEnable               = flag.Bool("metrics-enable", false, "Enable prometheus metrics")
 	metricsAddr                 = flag.String("metrics-addr", "localhost:0", "Address to listen on for prometheus metrics")
 	routeConfigPath             = flag.String("route-config", "/var/lib/doublezerod/route-config.json", "path to route config file (unstable)")

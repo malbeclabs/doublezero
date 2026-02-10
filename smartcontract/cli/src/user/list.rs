@@ -60,14 +60,14 @@ pub struct ListUserCliCommand {
     #[arg(
         short = 't',
         long,
-        conflicts_with = "no_tenant",
+        conflicts_with = "all_tenants",
         value_delimiter = ',',
         value_name = "TENANT_CODE_OR_PUBKEY,..."
     )]
     pub tenant: Option<Vec<String>>,
     /// Ignore the default tenant from config
     #[arg(long, conflicts_with = "tenant")]
-    pub no_tenant: bool,
+    pub all_tenants: bool,
     /// Output as pretty JSON.
     #[arg(long, default_value_t = false)]
     pub json: bool,
@@ -267,7 +267,7 @@ impl ListUserCliCommand {
             });
         }
 
-        let tenant = if self.no_tenant {
+        let tenant = if self.all_tenants {
             None
         } else {
             self.tenant.or_else(|| {
@@ -697,7 +697,7 @@ mod tests {
             status: None,
             multicast_group: None,
             tenant: None,
-            no_tenant: false,
+            all_tenants: false,
             json: false,
             json_compact: false,
         }
@@ -722,7 +722,7 @@ mod tests {
             status: None,
             multicast_group: None,
             tenant: None,
-            no_tenant: false,
+            all_tenants: false,
             json: false,
             json_compact: true,
         }
@@ -819,7 +819,7 @@ mod tests {
             status: None,
             multicast_group: None,
             tenant: None,
-            no_tenant: false,
+            all_tenants: false,
             json: false,
             json_compact: false,
         }
@@ -917,7 +917,7 @@ mod tests {
             status: None,
             multicast_group: None,
             tenant: None,
-            no_tenant: false,
+            all_tenants: false,
             json: false,
             json_compact: false,
         }
@@ -1015,7 +1015,7 @@ mod tests {
             status: None,
             multicast_group: None,
             tenant: None,
-            no_tenant: false,
+            all_tenants: false,
             json: false,
             json_compact: false,
         }
@@ -1113,7 +1113,7 @@ mod tests {
             status: None,
             multicast_group: None,
             tenant: None,
-            no_tenant: false,
+            all_tenants: false,
             json: false,
             json_compact: false,
         }
@@ -1211,7 +1211,7 @@ mod tests {
             status: Some(vec!["activated".to_string()]),
             multicast_group: None,
             tenant: None,
-            no_tenant: false,
+            all_tenants: false,
             json: false,
             json_compact: false,
         }
@@ -1326,7 +1326,7 @@ mod tests {
             status: None,
             multicast_group: Some(vec!["m_code".to_string()]),
             tenant: None,
-            no_tenant: false,
+            all_tenants: false,
             json: false,
             json_compact: false,
         }
@@ -1456,7 +1456,7 @@ mod tests {
             status: None,
             multicast_group: None,
             tenant: Some(vec!["tenant1".to_string()]),
-            no_tenant: false,
+            all_tenants: false,
             json: false,
             json_compact: false,
         }
@@ -1484,7 +1484,7 @@ mod tests {
             status: None,
             multicast_group: None,
             tenant: Some(vec![tenant2_pubkey.to_string()]),
-            no_tenant: false,
+            all_tenants: false,
             json: false,
             json_compact: false,
         }
@@ -1497,7 +1497,7 @@ mod tests {
     }
 
     #[test]
-    fn test_cli_user_list_no_tenant() {
+    fn test_cli_user_list_all_tenants() {
         let mut client = create_test_client();
 
         let tenant1_pubkey = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
@@ -1613,7 +1613,7 @@ mod tests {
             status: None,
             multicast_group: None,
             tenant: None,
-            no_tenant: true,
+            all_tenants: true,
             json: false,
             json_compact: false,
         }

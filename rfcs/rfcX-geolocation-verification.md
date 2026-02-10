@@ -38,7 +38,7 @@ A server that acts as an intermediary for latency measurements. geoProbes:
 - Are registered onchain in the Telemetry Program
 
 ### Offset
-A signed data structure representing the latency relationship between two entities (DZD↔Probe or Probe↔Target) and is sent to the Probe or Target. This is sent via UDP to the next link in the chain (From DZD->Probe and From Probe->Target)
+A signed data structure representing the latency relationship between two entities (DZD↔Probe or Probe↔Target) and is sent to the Probe or Target. This is sent via UDP to the next link in the chain (From DZD->Probe and From Probe->Target). RttNs is the sum of the reference rtt plus measured rtt, and lat/lng are copied from the reference.
 
 ```go
 type LocationOffset struct {
@@ -46,9 +46,9 @@ type LocationOffset struct {
     Pubkey          [32]byte  // Signer's public key (DZD or Probe)
     MeasurementSlot uint64    // Current DoubleZero Slot 
     Lat             float64   // Reference point latitude (WGS84)
-    Lon             float64   // Reference point longitude (WGS84)
+    Lng             float64   // Reference point longitude (WGS84)
     MeasuredRttNs   uint64    // Measured RTT in nanoseconds, minimum
-    RttNs           uint64    // RTT to target in ns, from lat/lon
+    RttNs           uint64    // RTT to target in ns, from lat/lng
     NumReferences   uint8     // Number of reference offsets in chain
     References      []Offset  // Reference offsets (empty for DZD→Probe)
 }
@@ -60,7 +60,7 @@ type LocationOffset struct {
 > 💡 An enterprising user could use the existing link telemetry to confirm locations of DZDs relative to other DZDs. This is not covered by this RFC.
 
 ### Location Offset
-The RTT to a target from the lat/lon in the Offset struct.
+The RTT to a target from the lat/lng in the Offset struct.
 
 ### Child Probe
 A geoProbe assigned to a specific DZD for periodic latency measurement, defined onchain. DZDs only measure and send `LocationOffset` datagrams to their child geoProbes.
@@ -124,12 +124,12 @@ _Async:_
 
 _Measurment Flow_
 1. **DZD→Probe Measurement (10s interval):** DZD sends TWAMP probe, measures RTT
-2. **Offset Generation:** DZD creates Offset with lat/lon, latency, timestamp, signs with Ed25519
+2. **Offset Generation:** DZD creates Offset with lat/lng, latency, timestamp, signs with Ed25519
 3. **Dual Posting:** DZD submits samples to `ProbeLatencySamples` PDA onchain AND sends Offset to Probe via UDP
 4. **Probe Caching:** Probe verifies DZD signature, caches Offset
 5. **Probe→Target Measurement:** Probe measures RTT to target using TWAMP
 6. **Composite Offset:** Probe creates new Offset with DZD Offset as reference, signs it
-8. **Target Verification:** Target verifies signature chain, uses `lat/lon` + `rtt_ns` to determine location 
+8. **Target Verification:** Target verifies signature chain, uses `lat/lng` + `rtt_ns` to determine location 
 
 ### Data Structures
 
@@ -236,7 +236,7 @@ cache_size: 10000
 
 **Purpose:** Lightweight test tool for POC to receive and log signed LocationOffset messages from probes. Demonstrates end-to-end flow of geolocation verification.
 
-**File:** `controlplane/geolocation-target-listener/` (new directory)
+**File:** `controlplane/telemetry/cmd/geoprobe-target/` (new directory)
 
 **Language:** Go (consistent with existing controlplane telemetry code)
 
@@ -277,10 +277,10 @@ max_offset_age_seconds: 300
 **Usage:**
 ```bash
 # Run target listener on default ports
-./geolocation-target-listener --config config.yaml
+./geoprobe-target --config config.yaml
 
 # Run with custom ports
-./geolocation-target-listener --udp-port 9000 --twamp-port 863
+./geoprobe-target --udp-port 9000 --twamp-port 863
 ```
 
 ### POC Requirements
@@ -299,7 +299,7 @@ max_offset_age_seconds: 300
     - Command Line Argument for "Additional Parents" and "Additional Targets"
         - Allows testing without onchain work
     - Offset caching and verification
-    - Measure IP RTT to targets (Via TWAMP/ICMP)
+    - Measure IP RTT to targets Via TWAMP
     - Composite Offset generation
     - Post Composite offset via UDP to Target
     - Includes local logging with `-verbose` flag.

@@ -184,7 +184,7 @@ pub fn process_create_link(
         // TODO: This line show be change when the health oracle is implemented
         // link_health: LinkHealth::Pending,
         link_health: LinkHealth::ReadyForService, // Force the link to be ready for service until the health oracle is implemented,
-        desired_status: value.desired_status.unwrap_or(LinkDesiredStatus::Pending),
+        desired_status: value.desired_status.unwrap_or(LinkDesiredStatus::Activated), // Default to Activated if not provided for backward compatibility with older SDKs
     };
 
     link.check_status_transition();

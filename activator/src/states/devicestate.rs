@@ -68,7 +68,15 @@ impl DeviceState {
     /// Get an available tunnel endpoint for the given client_ip.
     /// Returns a UserTunnelEndpoint interface IP that is not already in use by this client,
     /// or falls back to the device's public_ip if no dedicated endpoints are available.
-    pub fn get_available_tunnel_endpoint(&self, client_ip: Ipv4Addr) -> Ipv4Addr {
+    /// Returns `None` when all endpoints (including public_ip) are already in use by this client.
+    pub fn get_available_tunnel_endpoint(&self, client_ip: Ipv4Addr) -> Option<Ipv4Addr> {
+        // Get endpoints already in use by this client_ip
+        let in_use = self
+            .tunnel_endpoints_in_use
+            .get(&client_ip)
+            .cloned()
+            .unwrap_or_default();
+
         // Get all UserTunnelEndpoint interfaces from the device
         let tunnel_endpoints: Vec<Ipv4Addr> = self
             .device
@@ -84,28 +92,26 @@ impl DeviceState {
             })
             .collect();
 
-        // If no UserTunnelEndpoint interfaces configured, use device public_ip
+        // If no UserTunnelEndpoint interfaces configured, use device public_ip if available
         if tunnel_endpoints.is_empty() {
-            return self.device.public_ip;
+            if in_use.contains(&self.device.public_ip) {
+                return None;
+            }
+            return Some(self.device.public_ip);
         }
-
-        // Get endpoints already in use by this client_ip
-        let in_use = self
-            .tunnel_endpoints_in_use
-            .get(&client_ip)
-            .cloned()
-            .unwrap_or_default();
 
         // Find an endpoint not in use by this client
         for endpoint in &tunnel_endpoints {
             if !in_use.contains(endpoint) {
-                return *endpoint;
+                return Some(*endpoint);
             }
         }
 
-        // All endpoints in use, fall back to device public_ip
-        // (This shouldn't happen if device has enough endpoints configured)
-        self.device.public_ip
+        // All dedicated endpoints in use, fall back to device public_ip if available
+        if in_use.contains(&self.device.public_ip) {
+            return None;
+        }
+        Some(self.device.public_ip)
     }
 
     /// Register a tunnel endpoint as in use for a client_ip.
@@ -278,7 +284,22 @@ mod tests {
         let endpoint = state.get_available_tunnel_endpoint(client_ip);
 
         // Should fall back to device public_ip
-        assert_eq!(endpoint, Ipv4Addr::new(1, 1, 1, 1));
+        assert_eq!(endpoint, Some(Ipv4Addr::new(1, 1, 1, 1)));
+    }
+
+    #[test]
+    fn test_get_available_tunnel_endpoint_no_endpoints_configured_public_ip_in_use() {
+        let device = create_test_device_without_tunnel_endpoints();
+        let mut state = DeviceState::new(&device);
+
+        let client_ip = Ipv4Addr::new(2, 2, 2, 2);
+        // Register public_ip as in use
+        state.register_tunnel_endpoint(client_ip, device.public_ip);
+
+        let endpoint = state.get_available_tunnel_endpoint(client_ip);
+
+        // public_ip already in use, should return None
+        assert_eq!(endpoint, None);
     }
 
     #[test]
@@ -293,7 +314,7 @@ mod tests {
         let endpoint = state.get_available_tunnel_endpoint(client_ip);
 
         // Should return first available endpoint
-        assert_eq!(endpoint, Ipv4Addr::new(5, 5, 5, 5));
+        assert_eq!(endpoint, Some(Ipv4Addr::new(5, 5, 5, 5)));
     }
 
     #[test]
@@ -308,12 +329,12 @@ mod tests {
 
         // First tunnel uses first endpoint
         let first_endpoint = state.get_available_tunnel_endpoint(client_ip);
-        assert_eq!(first_endpoint, Ipv4Addr::new(5, 5, 5, 5));
-        state.register_tunnel_endpoint(client_ip, first_endpoint);
+        assert_eq!(first_endpoint, Some(Ipv4Addr::new(5, 5, 5, 5)));
+        state.register_tunnel_endpoint(client_ip, first_endpoint.unwrap());
 
         // Second tunnel from same client should use second endpoint
         let second_endpoint = state.get_available_tunnel_endpoint(client_ip);
-        assert_eq!(second_endpoint, Ipv4Addr::new(6, 6, 6, 6));
+        assert_eq!(second_endpoint, Some(Ipv4Addr::new(6, 6, 6, 6)));
     }
 
     #[test]
@@ -329,12 +350,12 @@ mod tests {
 
         // First client uses first endpoint
         let endpoint1 = state.get_available_tunnel_endpoint(client1);
-        assert_eq!(endpoint1, Ipv4Addr::new(5, 5, 5, 5));
-        state.register_tunnel_endpoint(client1, endpoint1);
+        assert_eq!(endpoint1, Some(Ipv4Addr::new(5, 5, 5, 5)));
+        state.register_tunnel_endpoint(client1, endpoint1.unwrap());
 
         // Different client can also use first endpoint (no conflict)
         let endpoint2 = state.get_available_tunnel_endpoint(client2);
-        assert_eq!(endpoint2, Ipv4Addr::new(5, 5, 5, 5));
+        assert_eq!(endpoint2, Some(Ipv4Addr::new(5, 5, 5, 5)));
     }
 
     #[test]
@@ -345,12 +366,32 @@ mod tests {
         let client_ip = Ipv4Addr::new(2, 2, 2, 2);
 
         // Use the only endpoint
-        let first_endpoint = state.get_available_tunnel_endpoint(client_ip);
+        let first_endpoint = state.get_available_tunnel_endpoint(client_ip).unwrap();
         state.register_tunnel_endpoint(client_ip, first_endpoint);
 
         // Should fall back to device public_ip
         let second_endpoint = state.get_available_tunnel_endpoint(client_ip);
-        assert_eq!(second_endpoint, Ipv4Addr::new(1, 1, 1, 1));
+        assert_eq!(second_endpoint, Some(Ipv4Addr::new(1, 1, 1, 1)));
+    }
+
+    #[test]
+    fn test_get_available_tunnel_endpoint_fully_exhausted() {
+        let device = create_test_device_with_tunnel_endpoints(vec![Ipv4Addr::new(5, 5, 5, 5)]);
+        let mut state = DeviceState::new(&device);
+
+        let client_ip = Ipv4Addr::new(2, 2, 2, 2);
+
+        // Use the only dedicated endpoint
+        let first_endpoint = state.get_available_tunnel_endpoint(client_ip).unwrap();
+        state.register_tunnel_endpoint(client_ip, first_endpoint);
+
+        // Use the public_ip fallback
+        let second_endpoint = state.get_available_tunnel_endpoint(client_ip).unwrap();
+        state.register_tunnel_endpoint(client_ip, second_endpoint);
+
+        // Everything exhausted, should return None
+        let third_endpoint = state.get_available_tunnel_endpoint(client_ip);
+        assert_eq!(third_endpoint, None);
     }
 
     #[test]
@@ -367,7 +408,7 @@ mod tests {
 
         // Should be available again
         let available = state.get_available_tunnel_endpoint(client_ip);
-        assert_eq!(available, endpoint);
+        assert_eq!(available, Some(endpoint));
     }
 
     #[test]
@@ -391,6 +432,6 @@ mod tests {
 
         // First endpoint should be available again
         let available = state.get_available_tunnel_endpoint(client_ip);
-        assert_eq!(available, endpoint1);
+        assert_eq!(available, Some(endpoint1));
     }
 }

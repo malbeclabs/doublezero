@@ -499,7 +499,7 @@ mod tests {
     ///   3. Update this test's expected offset calculation
     ///
     /// DO NOT simply move `tunnel_endpoint` - that would break backwards compatibility
-    /// with existing on-chain data.
+    /// with existing onchain data.
     #[test]
     fn test_tunnel_endpoint_must_be_last_borsh_field() {
         // Use a distinctive tunnel_endpoint value we can easily find in the byte stream

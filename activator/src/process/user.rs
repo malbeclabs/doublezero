@@ -125,7 +125,32 @@ pub fn process_user_event(
                     return;
                 }
             } else {
-                device_state.get_available_tunnel_endpoint(user.client_ip)
+                match device_state.get_available_tunnel_endpoint(user.client_ip) {
+                    Some(ep) => ep,
+                    None => {
+                        let res =
+                            reject_user(client, pubkey, "Error: No available tunnel endpoint");
+
+                        match res {
+                            Ok(signature) => {
+                                write!(
+                                    &mut log_msg,
+                                    " Reject(No available tunnel endpoint) Rejected {signature}"
+                                )
+                                .unwrap();
+                            }
+                            Err(e) => {
+                                write!(
+                                    &mut log_msg,
+                                    " Reject(No available tunnel endpoint) Error: {e}"
+                                )
+                                .unwrap();
+                            }
+                        }
+                        info!("{log_msg}");
+                        return;
+                    }
+                }
             };
 
             let need_dz_ip = user.needs_allocated_dz_ip();
@@ -288,7 +313,32 @@ pub fn process_user_event(
                     return;
                 }
             } else {
-                device_state.get_available_tunnel_endpoint(user.client_ip)
+                match device_state.get_available_tunnel_endpoint(user.client_ip) {
+                    Some(ep) => ep,
+                    None => {
+                        let res =
+                            reject_user(client, pubkey, "Error: No available tunnel endpoint");
+
+                        match res {
+                            Ok(signature) => {
+                                write!(
+                                    &mut log_msg,
+                                    " Reject(No available tunnel endpoint) Rejected {signature}"
+                                )
+                                .unwrap();
+                            }
+                            Err(e) => {
+                                write!(
+                                    &mut log_msg,
+                                    " Reject(No available tunnel endpoint) Error: {e}"
+                                )
+                                .unwrap();
+                            }
+                        }
+                        info!("{log_msg}");
+                        return;
+                    }
+                }
             };
 
             // Activate the user
@@ -356,9 +406,8 @@ pub fn process_user_event(
                     match res {
                         Ok(signature) => {
                             if use_onchain_allocation {
-                                write!(&mut log_msg, " Deactivated (on-chain) {signature}")
-                                    .unwrap();
-                                // On-chain deallocation: smart contract handles releasing resources
+                                write!(&mut log_msg, " Deactivated (onchain) {signature}").unwrap();
+                                // Onchain deallocation: smart contract handles releasing resources
                             } else {
                                 write!(&mut log_msg, " Deactivated {signature}").unwrap();
                                 // Off-chain: activator tracks local allocations
@@ -369,21 +418,19 @@ pub fn process_user_event(
                                 if user.dz_ip != Ipv4Addr::UNSPECIFIED {
                                     device_state.release(user.dz_ip, user.tunnel_id).unwrap();
                                 }
-                                // Release the tunnel endpoint
-                                if user.has_tunnel_endpoint() {
-                                    device_state.release_tunnel_endpoint(
-                                        user.client_ip,
-                                        user.tunnel_endpoint,
-                                    );
-                                }
-
-                                metrics::counter!(
-                                    "doublezero_activator_state_transition",
-                                    "state_transition" => "user-deleting-to-deactivated",
-                                    "user-pubkey" => pubkey.to_string(),
-                                )
-                                .increment(1);
                             }
+                            // Release the tunnel endpoint (activator-local state, always needed)
+                            if user.has_tunnel_endpoint() {
+                                device_state
+                                    .release_tunnel_endpoint(user.client_ip, user.tunnel_endpoint);
+                            }
+
+                            metrics::counter!(
+                                "doublezero_activator_state_transition",
+                                "state_transition" => "user-deleting-to-deactivated",
+                                "user-pubkey" => pubkey.to_string(),
+                            )
+                            .increment(1);
                         }
                         Err(e) => warn!("Error: {e}"),
                     }

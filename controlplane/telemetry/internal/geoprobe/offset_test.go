@@ -1,0 +1,317 @@
+package geoprobe
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
+func TestLocationOffset_MarshalUnmarshal(t *testing.T) {
+	t.Parallel()
+
+	// Create a test offset with Amsterdam coordinates (from RFC16)
+	offset := &LocationOffset{
+		Signature:       [64]byte{1, 2, 3, 4, 5},
+		Pubkey:          [32]byte{10, 11, 12, 13, 14},
+		MeasurementSlot: 123456789,
+		Lat:             52.3676, // Amsterdam
+		Lng:             4.9041,
+		MeasuredRttNs:   800000,   // 0.8ms
+		RttNs:           12500000, // 12.5ms
+		NumReferences:   0,
+		References:      nil,
+	}
+
+	// Marshal to bytes
+	data, err := offset.Marshal()
+	require.NoError(t, err)
+	require.NotEmpty(t, data)
+
+	// Unmarshal back
+	decoded := &LocationOffset{}
+	err = decoded.Unmarshal(data)
+	require.NoError(t, err)
+
+	// Verify all fields match
+	require.Equal(t, offset.Signature, decoded.Signature)
+	require.Equal(t, offset.Pubkey, decoded.Pubkey)
+	require.Equal(t, offset.MeasurementSlot, decoded.MeasurementSlot)
+	require.Equal(t, offset.Lat, decoded.Lat)
+	require.Equal(t, offset.Lng, decoded.Lng)
+	require.Equal(t, offset.MeasuredRttNs, decoded.MeasuredRttNs)
+	require.Equal(t, offset.RttNs, decoded.RttNs)
+	require.Equal(t, offset.NumReferences, decoded.NumReferences)
+	require.Len(t, decoded.References, 0)
+}
+
+func TestLocationOffset_WithReferences(t *testing.T) {
+	t.Parallel()
+
+	// Create a DZD offset (no references)
+	dzdOffset := &LocationOffset{
+		Signature:       [64]byte{1, 2, 3},
+		Pubkey:          [32]byte{10, 11, 12},
+		MeasurementSlot: 100,
+		Lat:             50.1109, // Frankfurt
+		Lng:             8.6821,
+		MeasuredRttNs:   800000,
+		RttNs:           800000,
+		NumReferences:   0,
+		References:      nil,
+	}
+
+	// Create a Probe offset that references the DZD offset
+	probeOffset := &LocationOffset{
+		Signature:       [64]byte{4, 5, 6},
+		Pubkey:          [32]byte{20, 21, 22},
+		MeasurementSlot: 101,
+		Lat:             50.1109, // Copied from DZD
+		Lng:             8.6821,
+		MeasuredRttNs:   12500000, // 12.5ms probe-to-target
+		RttNs:           13300000, // 800000 + 12500000
+		NumReferences:   1,
+		References:      []LocationOffset{*dzdOffset},
+	}
+
+	// Marshal the probe offset (should include reference)
+	data, err := probeOffset.Marshal()
+	require.NoError(t, err)
+	require.NotEmpty(t, data)
+
+	// Unmarshal back
+	decoded := &LocationOffset{}
+	err = decoded.Unmarshal(data)
+	require.NoError(t, err)
+
+	// Verify top-level fields
+	require.Equal(t, probeOffset.Signature, decoded.Signature)
+	require.Equal(t, probeOffset.Pubkey, decoded.Pubkey)
+	require.Equal(t, probeOffset.MeasurementSlot, decoded.MeasurementSlot)
+	require.Equal(t, probeOffset.Lat, decoded.Lat)
+	require.Equal(t, probeOffset.Lng, decoded.Lng)
+	require.Equal(t, probeOffset.MeasuredRttNs, decoded.MeasuredRttNs)
+	require.Equal(t, probeOffset.RttNs, decoded.RttNs)
+	require.Equal(t, probeOffset.NumReferences, decoded.NumReferences)
+
+	// Verify reference chain
+	require.Len(t, decoded.References, 1)
+	require.Equal(t, dzdOffset.Signature, decoded.References[0].Signature)
+	require.Equal(t, dzdOffset.Pubkey, decoded.References[0].Pubkey)
+	require.Equal(t, dzdOffset.MeasurementSlot, decoded.References[0].MeasurementSlot)
+	require.Equal(t, dzdOffset.Lat, decoded.References[0].Lat)
+	require.Equal(t, dzdOffset.Lng, decoded.References[0].Lng)
+	require.Equal(t, dzdOffset.NumReferences, decoded.References[0].NumReferences)
+}
+
+func TestLocationOffset_MultiLevelReferences(t *testing.T) {
+	t.Parallel()
+
+	// Create a 3-level chain: DZD -> Probe1 -> Probe2
+	dzdOffset := &LocationOffset{
+		Signature:       [64]byte{1},
+		Pubkey:          [32]byte{1},
+		MeasurementSlot: 100,
+		Lat:             52.3676,
+		Lng:             4.9041,
+		MeasuredRttNs:   500000,
+		RttNs:           500000,
+		NumReferences:   0,
+		References:      nil,
+	}
+
+	probe1Offset := &LocationOffset{
+		Signature:       [64]byte{2},
+		Pubkey:          [32]byte{2},
+		MeasurementSlot: 101,
+		Lat:             52.3676,
+		Lng:             4.9041,
+		MeasuredRttNs:   1000000,
+		RttNs:           1500000, // 500000 + 1000000
+		NumReferences:   1,
+		References:      []LocationOffset{*dzdOffset},
+	}
+
+	probe2Offset := &LocationOffset{
+		Signature:       [64]byte{3},
+		Pubkey:          [32]byte{3},
+		MeasurementSlot: 102,
+		Lat:             52.3676,
+		Lng:             4.9041,
+		MeasuredRttNs:   2000000,
+		RttNs:           3500000, // 1500000 + 2000000
+		NumReferences:   1,
+		References:      []LocationOffset{*probe1Offset},
+	}
+
+	// Marshal the deepest offset
+	data, err := probe2Offset.Marshal()
+	require.NoError(t, err)
+
+	// Unmarshal back
+	decoded := &LocationOffset{}
+	err = decoded.Unmarshal(data)
+	require.NoError(t, err)
+
+	// Verify the chain
+	require.Equal(t, uint8(1), decoded.NumReferences)
+	require.Len(t, decoded.References, 1)
+
+	// Check probe1 reference
+	probe1 := decoded.References[0]
+	require.Equal(t, probe1Offset.Pubkey, probe1.Pubkey)
+	require.Equal(t, uint8(1), probe1.NumReferences)
+	require.Len(t, probe1.References, 1)
+
+	// Check DZD reference
+	dzd := probe1.References[0]
+	require.Equal(t, dzdOffset.Pubkey, dzd.Pubkey)
+	require.Equal(t, uint8(0), dzd.NumReferences)
+	require.Len(t, dzd.References, 0)
+}
+
+func TestLocationOffset_EmptyReferences(t *testing.T) {
+	t.Parallel()
+
+	// DZD-generated offset with no references
+	offset := &LocationOffset{
+		Signature:       [64]byte{},
+		Pubkey:          [32]byte{},
+		MeasurementSlot: 1,
+		Lat:             0.0,
+		Lng:             0.0,
+		MeasuredRttNs:   1000,
+		RttNs:           1000,
+		NumReferences:   0,
+		References:      nil,
+	}
+
+	// Marshal
+	data, err := offset.Marshal()
+	require.NoError(t, err)
+
+	// Unmarshal
+	decoded := &LocationOffset{}
+	err = decoded.Unmarshal(data)
+	require.NoError(t, err)
+
+	require.Equal(t, uint8(0), decoded.NumReferences)
+	require.Empty(t, decoded.References)
+}
+
+func TestLocationOffset_GetSigningBytes(t *testing.T) {
+	t.Parallel()
+
+	offset := &LocationOffset{
+		Signature:       [64]byte{99, 99, 99}, // Should be excluded from signing bytes
+		Pubkey:          [32]byte{1, 2, 3},
+		MeasurementSlot: 42,
+		Lat:             10.5,
+		Lng:             20.5,
+		MeasuredRttNs:   1000,
+		RttNs:           2000,
+		NumReferences:   0,
+		References:      nil,
+	}
+
+	// Get signing bytes
+	signingBytes, err := offset.GetSigningBytes()
+	require.NoError(t, err)
+	require.NotEmpty(t, signingBytes)
+
+	// Signing bytes should not include the signature field
+	// Marshal includes signature, GetSigningBytes does not
+	fullBytes, err := offset.Marshal()
+	require.NoError(t, err)
+
+	// Signing bytes should be 64 bytes shorter (signature is 64 bytes)
+	require.Equal(t, len(fullBytes)-64, len(signingBytes))
+}
+
+func TestLocationOffset_GetSigningBytes_WithReferences(t *testing.T) {
+	t.Parallel()
+
+	dzdOffset := &LocationOffset{
+		Signature:       [64]byte{1},
+		Pubkey:          [32]byte{1},
+		MeasurementSlot: 100,
+		Lat:             1.0,
+		Lng:             2.0,
+		MeasuredRttNs:   1000,
+		RttNs:           1000,
+		NumReferences:   0,
+		References:      nil,
+	}
+
+	probeOffset := &LocationOffset{
+		Signature:       [64]byte{2},
+		Pubkey:          [32]byte{2},
+		MeasurementSlot: 101,
+		Lat:             1.0,
+		Lng:             2.0,
+		MeasuredRttNs:   2000,
+		RttNs:           3000,
+		NumReferences:   1,
+		References:      []LocationOffset{*dzdOffset},
+	}
+
+	// Get signing bytes for probe offset (should include reference's full marshaled form)
+	signingBytes, err := probeOffset.GetSigningBytes()
+	require.NoError(t, err)
+	require.NotEmpty(t, signingBytes)
+
+	// The signing bytes should include the entire serialized reference
+	dzdBytes, err := dzdOffset.Marshal()
+	require.NoError(t, err)
+
+	// Signing bytes should be at least as large as the reference
+	require.Greater(t, len(signingBytes), len(dzdBytes))
+}
+
+func TestLocationOffset_UnmarshalError_TruncatedData(t *testing.T) {
+	t.Parallel()
+
+	offset := &LocationOffset{
+		Signature:       [64]byte{1, 2, 3},
+		Pubkey:          [32]byte{4, 5, 6},
+		MeasurementSlot: 123,
+		Lat:             1.0,
+		Lng:             2.0,
+		MeasuredRttNs:   1000,
+		RttNs:           2000,
+		NumReferences:   0,
+		References:      nil,
+	}
+
+	data, err := offset.Marshal()
+	require.NoError(t, err)
+
+	// Try to unmarshal truncated data
+	truncated := data[:len(data)/2]
+	decoded := &LocationOffset{}
+	err = decoded.Unmarshal(truncated)
+	require.Error(t, err)
+}
+
+func TestLocationOffset_Size(t *testing.T) {
+	t.Parallel()
+
+	// Minimal offset
+	offset := &LocationOffset{
+		Signature:       [64]byte{},
+		Pubkey:          [32]byte{},
+		MeasurementSlot: 0,
+		Lat:             0.0,
+		Lng:             0.0,
+		MeasuredRttNs:   0,
+		RttNs:           0,
+		NumReferences:   0,
+		References:      nil,
+	}
+
+	size, err := offset.size()
+	require.NoError(t, err)
+	require.Greater(t, size, 0)
+
+	// Size should be: 64 (sig) + 32 (pubkey) + 8 (slot) + 8 (lat) + 8 (lng) + 8 (measured) + 8 (rtt) + 1 (numref) = 137 bytes
+	require.Equal(t, 137, size)
+}

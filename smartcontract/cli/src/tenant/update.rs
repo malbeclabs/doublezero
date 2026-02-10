@@ -19,6 +19,12 @@ pub struct UpdateTenantCliCommand {
     /// Solana 2Z token account to monitor for billing
     #[arg(long)]
     pub token_account: Option<String>,
+    /// Enable/disable metro routing
+    #[arg(long)]
+    pub metro_route: Option<bool>,
+    /// Enable/disable route aliveness checks
+    #[arg(long)]
+    pub route_aliveness: Option<bool>,
 }
 
 impl UpdateTenantCliCommand {
@@ -39,6 +45,8 @@ impl UpdateTenantCliCommand {
             tenant_pubkey,
             vrf_id: self.vrf_id,
             token_account,
+            metro_route: self.metro_route,
+            route_aliveness: self.route_aliveness,
         })?;
 
         writeln!(out, "Signature: {signature}")?;

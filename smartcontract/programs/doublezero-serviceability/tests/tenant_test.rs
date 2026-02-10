@@ -42,6 +42,8 @@ async fn test_tenant() {
             code: "test-tenant".to_string(),
             administrator,
             token_account: None,
+            metro_route: true,
+            route_aliveness: false,
         }),
         vec![
             AccountMeta::new(tenant_pubkey, false),
@@ -59,15 +61,17 @@ async fn test_tenant() {
         .unwrap();
     assert_eq!(tenant.account_type, AccountType::Tenant);
     assert_eq!(tenant.code, "test-tenant".to_string());
-    assert_eq!(tenant.vrf_id, 100);
+    assert!(tenant.vrf_id > 0); // VRF ID is allocated from resource pool
     assert_eq!(tenant.reference_count, 0);
     assert_eq!(tenant.administrators.len(), 1);
     assert_eq!(tenant.administrators[0], administrator);
+    assert_eq!(tenant.metro_route, true);
+    assert_eq!(tenant.route_aliveness, false);
 
     println!("✅ Tenant created successfully");
 
     /***********************************************************************************************************************************/
-    println!("🟢 2. Testing Tenant update (vrf_id only)...");
+    println!("🟢 2. Testing Tenant update (vrf_id and routing options)...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -75,6 +79,8 @@ async fn test_tenant() {
         DoubleZeroInstruction::UpdateTenant(TenantUpdateArgs {
             vrf_id: Some(200),
             token_account: None,
+            metro_route: Some(false),
+            route_aliveness: Some(true),
         }),
         vec![
             AccountMeta::new(tenant_pubkey, false),
@@ -92,6 +98,10 @@ async fn test_tenant() {
     assert_eq!(tenant.account_type, AccountType::Tenant);
     assert_eq!(tenant.code, "test-tenant".to_string()); // Code unchanged (immutable)
     assert_eq!(tenant.vrf_id, 200); // VRF ID updated
+    assert_eq!(tenant.metro_route, false); // Metro route updated
+    assert_eq!(tenant.route_aliveness, true); // Route aliveness updated
+
+    let initial_vrf_id = tenant.vrf_id; // Save for later comparison
 
     println!("✅ Tenant updated successfully");
 
@@ -119,8 +129,9 @@ async fn test_tenant() {
         .expect("Unable to get Account")
         .get_tenant()
         .unwrap();
-    assert_eq!(tenant.administrators.len(), 1);
-    assert_eq!(tenant.administrators[0], admin1);
+    assert_eq!(tenant.administrators.len(), 2); // Initial administrator + admin1
+    assert!(tenant.administrators.contains(&administrator));
+    assert!(tenant.administrators.contains(&admin1));
 
     println!("✅ Administrator added successfully");
 
@@ -148,7 +159,8 @@ async fn test_tenant() {
         .expect("Unable to get Account")
         .get_tenant()
         .unwrap();
-    assert_eq!(tenant.administrators.len(), 2);
+    assert_eq!(tenant.administrators.len(), 3); // Initial administrator + admin1 + admin2
+    assert!(tenant.administrators.contains(&administrator));
     assert!(tenant.administrators.contains(&admin1));
     assert!(tenant.administrators.contains(&admin2));
 
@@ -176,8 +188,9 @@ async fn test_tenant() {
         .expect("Unable to get Account")
         .get_tenant()
         .unwrap();
-    assert_eq!(tenant.administrators.len(), 1);
-    assert_eq!(tenant.administrators[0], admin2);
+    assert_eq!(tenant.administrators.len(), 2); // Initial administrator + admin2 (admin1 removed)
+    assert!(tenant.administrators.contains(&administrator));
+    assert_eq!(tenant.administrators.contains(&admin2), true);
     assert!(!tenant.administrators.contains(&admin1));
 
     println!("✅ Administrator removed successfully");
@@ -230,6 +243,8 @@ async fn test_tenant_delete_with_nonzero_reference_count_fails() {
             code: tenant_code_refcount.to_string(),
             administrator,
             token_account: None,
+            metro_route: true,
+            route_aliveness: false,
         }),
         vec![
             AccountMeta::new(tenant_pubkey, false),
@@ -302,6 +317,8 @@ async fn test_tenant_add_duplicate_administrator_fails() {
             code: tenant_code_duplicate.to_string(),
             administrator,
             token_account: None,
+            metro_route: true,
+            route_aliveness: false,
         }),
         vec![
             AccountMeta::new(tenant_pubkey, false),
@@ -335,7 +352,7 @@ async fn test_tenant_add_duplicate_administrator_fails() {
         .expect("Unable to get Tenant")
         .get_tenant()
         .unwrap();
-    assert_eq!(tenant.administrators.len(), 1);
+    assert_eq!(tenant.administrators.len(), 2); // Initial administrator + admin
 
     // Try to add the same administrator again (should fail)
     let result = try_execute_transaction(
@@ -390,6 +407,8 @@ async fn test_tenant_remove_nonexistent_administrator_fails() {
             code: tenant_code_nonexistent.to_string(),
             administrator,
             token_account: None,
+            metro_route: true,
+            route_aliveness: false,
         }),
         vec![
             AccountMeta::new(tenant_pubkey, false),

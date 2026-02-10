@@ -164,13 +164,13 @@ func TestE2E_MultiTenantVRF(t *testing.T) {
 
 	// Set access passes for all 4 clients.
 	log.Debug("==> Setting access passes")
-	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + clientA1.CYOANetworkIP + " --user-payer " + clientA1.Pubkey})
+	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --tenant tenant-alpha --client-ip " + clientA1.CYOANetworkIP + " --user-payer " + clientA1.Pubkey})
 	require.NoError(t, err)
-	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + clientA2.CYOANetworkIP + " --user-payer " + clientA2.Pubkey})
+	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --tenant tenant-alpha --client-ip " + clientA2.CYOANetworkIP + " --user-payer " + clientA2.Pubkey})
 	require.NoError(t, err)
-	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + clientB1.CYOANetworkIP + " --user-payer " + clientB1.Pubkey})
+	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --tenant tenant-bravo --client-ip " + clientB1.CYOANetworkIP + " --user-payer " + clientB1.Pubkey})
 	require.NoError(t, err)
-	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + clientB2.CYOANetworkIP + " --user-payer " + clientB2.Pubkey})
+	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --tenant tenant-bravo --client-ip " + clientB2.CYOANetworkIP + " --user-payer " + clientB2.Pubkey})
 	require.NoError(t, err)
 	log.Debug("--> Access passes set")
 

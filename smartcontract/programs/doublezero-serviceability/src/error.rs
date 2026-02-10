@@ -162,6 +162,8 @@ pub enum DoubleZeroError {
     AdministratorNotFound, // variant 77
     #[error("Invalid Payment Status")]
     InvalidPaymentStatus, // variant 78
+    #[error("Tenant not in access-pass tenant_allowlist")]
+    TenantNotInAccessPassAllowlist, // variant 79
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -246,6 +248,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::AdministratorAlreadyExists => ProgramError::Custom(76),
             DoubleZeroError::AdministratorNotFound => ProgramError::Custom(77),
             DoubleZeroError::InvalidPaymentStatus => ProgramError::Custom(78),
+            DoubleZeroError::TenantNotInAccessPassAllowlist => ProgramError::Custom(79),
         }
     }
 }
@@ -331,6 +334,7 @@ impl From<u32> for DoubleZeroError {
             76 => DoubleZeroError::AdministratorAlreadyExists,
             77 => DoubleZeroError::AdministratorNotFound,
             78 => DoubleZeroError::InvalidPaymentStatus,
+            79 => DoubleZeroError::TenantNotInAccessPassAllowlist,
             _ => DoubleZeroError::Custom(e),
         }
     }

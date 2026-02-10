@@ -29,8 +29,8 @@ This RFC leverages DoubleZero's existing TWAMP telemetry infrastructure to creat
 
 ## New Terminology
 
-### dzProbe
-A server that acts as an intermediary for latency measurements. dzProbes:
+### geoProbe
+A server that acts as an intermediary for latency measurements. geoProbes:
 - Are bare metal servers. Ideally located within 1ms of a DZD
 - Run a UDP listener (default port 8923) accepting signed Offset messages from DZDs
 - Pull configuration from the DZ Ledger and measure latency to target devices specified there
@@ -63,7 +63,7 @@ type LocationOffset struct {
 The RTT to a target from the lat/lon in the Offset struct.
 
 ### Child Probe
-A dzProbe assigned to a specific DZD for periodic latency measurement, defined onchain. DZDs only measure and send `LocationOffset` datagrams to their child dzProbes.
+A geoProbe assigned to a specific DZD for periodic latency measurement, defined onchain. DZDs only measure and send `LocationOffset` datagrams to their child geoProbes.
 
 **Child Criteria:**
 - Probe must be within latency threshold of DZD (e.g., <1ms RTT, 62 miles)
@@ -201,16 +201,20 @@ type Config struct {
 ```
 
 **Modules:**
-- `probe_discovery.go`: Discovers child probes from onchain (~200 lines)
-- `probe_pinger.go`: TWAMP measurements to probes (~300 lines)
-- `offset_generator.go`: Creates signed Offsets (~150 lines)
-- `probe_publisher.go`: Submits samples onchain and UDP (~200 lines)
+`controlplane/telemetry/internal/geoprobe` (new directory) contains:
+- `discovery.go`: Discovers child probes from onchain
+- `pinger.go`: TWAMP measurements to probes
+- `offset_generator.go`: Creates signed Offsets
+- `publisher.go`: Sends Offset over UDP
 
-#### Probe Server
+#### geoProbe Server
 
-New service deployed alongside DZDs in exchanges.
+New service deployed alongside DZDs in exchanges on seperate bare metal servers.
 
-**File:** `probe-server/` (new directory)
+**File:** 
+`controlplane/telemetry/cmd/geo-probe-agent/` (new directory) contains:
+`main.go` describing the new `doublezero-geoprobe-agent`
+Reuses the new modules for the telemetry agent in `controlplane/telemetry/internal/geoprobe`
 
 **Components:**
 - **UDP Listener:** Accepts DZD Offsets
@@ -281,50 +285,62 @@ max_offset_age_seconds: 300
 
 ### POC Requirements
 
-**Goal:** Single dzProbe deployment for testing
-
-1. Serviceability program changes:
-   - GeolocationUser account
-   - 4 new instructions (InitializeGeolocationUser/AddTargetIp/RemoveTargetIp/DeleteGeolocationUser)
-   - dzProbe account
-   - 4 new instructions (InitializeProbe/UpdateProbe/AddParent/RemoveParent)
-2. Telemetry agent extensions:
+#### Phase 1:
+**Goal:** Single geoProbe deployment for testing
+1. Telemetry agent extensions:
    - Command Line Argument for "Additional Child Probes"
-     - Allows testing without onchain work
-   - Child dzProbe discovery from onchain
-   - Extend TWAMP measurement to dzProbes
+        - Allows testing without onchain work
+   - Extend TWAMP measurement to geoProbes
    - Generate Offset structure and sign
    - Post Offset Structure via UDP to Probe
-3. dzProbe server (`doublezero-probe-agent`):
-   - TWAMP Reflector
-   - UDP listener for DZD Offsets
-   - Command Line Argument for "Additional Parents" and "Additional Targets"
-     - Allows testing without onchain work
-   - Offset caching and verification
-   - Parent DZD Discovery from onchain
-   - GeolocationUser and GelocationTarget discovery from onchain
-   - Measure IP RTT to targets (Via TWAMP/ICMP)
-   - Composite Offset generation
-   - Post Composite offset via UDP to Target
-4. Example Target Software TWAMP Reflector + UDP Listener:
-   - TWAMP Reflector
-   - Receives Signed UDP Datagrams
-   - Logs data
-5. CLI tool (doublezero-geolocation):
+2. geoProbe server (`doublezero-probe-agent`):
+    - TWAMP Reflector
+    - UDP listener for DZD Offsets
+    - Command Line Argument for "Additional Parents" and "Additional Targets"
+        - Allows testing without onchain work
+    - Offset caching and verification
+    - Measure IP RTT to targets (Via TWAMP/ICMP)
+    - Composite Offset generation
+    - Post Composite offset via UDP to Target
+    - Includes local logging with `-verbose` flag.
+3. Example Target Software TWAMP Reflector + UDP Listener:
+    - TWAMP Reflector
+    - Receives Signed UDP Datagrams
+    - Logs data
+4. Deployment:
+    - E2E test in Dockernet using command line flags
+    - Manual Deployment of Snapshot Telemetry Agent `fra-dz001` in Testnet
+    - Manual Deployment of Snapshot geoProbe Agent to `fra-tn-bm1` in Testnet
+    - Target Deployment of Snapshot Example Target to `fra-tn-qa01` in Testnet
+
+#### Phase 2:
+**Goal:** Pull configuration from onchain data.
+1. Serviceability program changes:
+    - GeolocationUser account
+    - 4 new instructions (InitializeGeolocationUser/AddTargetIp/RemoveTargetIp/DeleteGeolocationUser)
+    - geoProbe account
+    - 4 new instructions (InitializeProbe/UpdateProbe/AddParent/RemoveParent)
+2. Telemetry agent extensions:
+    - Child geoProbe discovery from onchain
+3. geoProbe server (`doublezero-probe-agent`):
+    - Parent DZD Discovery from onchain
+    - GeolocationUser and GelocationTarget discovery from onchain
+4. CLI tool (doublezero-geolocation):
    - User management commands
    - Target management commands
    - Only needs to see exchanges, locations, devices, and probes
    - Set up payer account
    - Probe Management Commands `doublezero probe list/create/update`
 6. Deployment:
-   - DockerNet or DevNet
-   - 1 probe in testnet in Frankfurt (use `fra-tn-bm1` as probe?)
+   - Updated E2E tests to use onchain configuration data.
+   - Test in DockerNet and DevNet
 
 ### MVP Requirements
 
 **Goal:** Production-ready system
 
 1. All POC components (above)
+2. Deploy Servicability upgrades
 2. Probe infrastructure:
    - Deploy ~1 probe per DoubleZero exchange
    - Automated probe provisioning
@@ -362,20 +378,20 @@ Initially DZ or Malbec will deploy probes. Eventually this should become the dom
 #### Monitoring
 
 **Metrics:**
-- dzProbe availability (uptime %)
+- geoProbe availability (uptime %)
 - DZD→Probe latency
-- Per dzProbe # of targets
+- Per geoProbe # of targets
 - Signature verification failures
 - Offset cache hit rate
 
 **Alerts:**
-- dzProbe offline >5 minutes
+- geoProbe offline >5 minutes
 - Signature verification failure rate >1%
 - RTT to parent DZD exceeds threshold
 
 #### Key Management
 **DZD Keys:** Existing `metrics_publisher_pk` used for Offset signing (no new key infrastructure)
-**dzProbe Keys:** Generated during provisioning, stored in `/etc/probe/keypair.json`, backed up to Foundation secure storage
+**geoProbe Keys:** Generated during provisioning, stored in `/etc/probe/keypair.json`, backed up to Foundation secure storage
 
 ## Impact
 _TODO: add this_
@@ -408,7 +424,7 @@ Discuss effects on:
 
 ### Geographic Multi-Probe Triangulation
 **Problem:** Single probe gives distance, not precise location
-- User sets up 3 probe targets with the same IP but different source dzProbes. DZ could provide an SDK performs trilateration from multiple distance measurements
+- User sets up 3 probe targets with the same IP but different source geoProbes. DZ could provide an SDK performs trilateration from multiple distance measurements
 
 ### Store Measurements to DZ Ledger
 

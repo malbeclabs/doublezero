@@ -60,10 +60,14 @@ pub struct ListUserCliCommand {
     #[arg(
         short = 't',
         long,
+        conflicts_with = "no_tenant",
         value_delimiter = ',',
         value_name = "TENANT_CODE_OR_PUBKEY,..."
     )]
     pub tenant: Option<Vec<String>>,
+    /// Ignore the default tenant from config
+    #[arg(long, conflicts_with = "tenant")]
+    pub no_tenant: bool,
     /// Output as pretty JSON.
     #[arg(long, default_value_t = false)]
     pub json: bool,
@@ -263,12 +267,16 @@ impl ListUserCliCommand {
             });
         }
 
-        let tenant = self.tenant.or_else(|| {
-            read_doublezero_config()
-                .ok()
-                .and_then(|(_, cfg)| cfg.tenant)
-                .map(|t| vec![t])
-        });
+        let tenant = if self.no_tenant {
+            None
+        } else {
+            self.tenant.or_else(|| {
+                read_doublezero_config()
+                    .ok()
+                    .and_then(|(_, cfg)| cfg.tenant)
+                    .map(|t| vec![t])
+            })
+        };
 
         if let Some(ref tenant_vec) = tenant {
             users.retain(|(_, user, _)| {
@@ -689,6 +697,7 @@ mod tests {
             status: None,
             multicast_group: None,
             tenant: None,
+            no_tenant: false,
             json: false,
             json_compact: false,
         }
@@ -713,6 +722,7 @@ mod tests {
             status: None,
             multicast_group: None,
             tenant: None,
+            no_tenant: false,
             json: false,
             json_compact: true,
         }
@@ -809,6 +819,7 @@ mod tests {
             status: None,
             multicast_group: None,
             tenant: None,
+            no_tenant: false,
             json: false,
             json_compact: false,
         }
@@ -906,6 +917,7 @@ mod tests {
             status: None,
             multicast_group: None,
             tenant: None,
+            no_tenant: false,
             json: false,
             json_compact: false,
         }
@@ -1003,6 +1015,7 @@ mod tests {
             status: None,
             multicast_group: None,
             tenant: None,
+            no_tenant: false,
             json: false,
             json_compact: false,
         }
@@ -1100,6 +1113,7 @@ mod tests {
             status: None,
             multicast_group: None,
             tenant: None,
+            no_tenant: false,
             json: false,
             json_compact: false,
         }
@@ -1197,6 +1211,7 @@ mod tests {
             status: Some(vec!["activated".to_string()]),
             multicast_group: None,
             tenant: None,
+            no_tenant: false,
             json: false,
             json_compact: false,
         }
@@ -1311,6 +1326,7 @@ mod tests {
             status: None,
             multicast_group: Some(vec!["m_code".to_string()]),
             tenant: None,
+            no_tenant: false,
             json: false,
             json_compact: false,
         }
@@ -1440,6 +1456,7 @@ mod tests {
             status: None,
             multicast_group: None,
             tenant: Some(vec!["tenant1".to_string()]),
+            no_tenant: false,
             json: false,
             json_compact: false,
         }
@@ -1467,6 +1484,7 @@ mod tests {
             status: None,
             multicast_group: None,
             tenant: Some(vec![tenant2_pubkey.to_string()]),
+            no_tenant: false,
             json: false,
             json_compact: false,
         }
@@ -1476,5 +1494,134 @@ mod tests {
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("tenant2"));
         assert!(!output_str.contains("tenant1"));
+    }
+
+    #[test]
+    fn test_cli_user_list_no_tenant() {
+        let mut client = create_test_client();
+
+        let tenant1_pubkey = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
+        let tenant2_pubkey = Pubkey::from_str_const("DDddB7bhR9azxLAUEH7ZVtW168wRdreiDKhi4McDfKZt");
+
+        let tenant1 = Tenant {
+            account_type: AccountType::Tenant,
+            owner: Pubkey::default(),
+            bump_seed: 1,
+            code: "tenant1".to_string(),
+            vrf_id: 1,
+            reference_count: 0,
+            administrators: vec![],
+            payment_status: TenantPaymentStatus::Paid,
+            token_account: Pubkey::default(),
+        };
+
+        let tenant2 = Tenant {
+            account_type: AccountType::Tenant,
+            owner: Pubkey::default(),
+            bump_seed: 2,
+            code: "tenant2".to_string(),
+            vrf_id: 2,
+            reference_count: 0,
+            administrators: vec![],
+            payment_status: TenantPaymentStatus::Paid,
+            token_account: Pubkey::default(),
+        };
+
+        let user1_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");
+        let user2_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUx");
+
+        let device1_pubkey = Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9");
+
+        let user1 = User {
+            account_type: AccountType::User,
+            index: 1,
+            bump_seed: 2,
+            owner: user1_pubkey,
+            user_type: IBRL,
+            tenant_pk: tenant1_pubkey,
+            device_pk: device1_pubkey,
+            cyoa_type: GREOverDIA,
+            client_ip: [1, 2, 3, 4].into(),
+            dz_ip: [2, 3, 4, 5].into(),
+            tunnel_id: 500,
+            tunnel_net: "1.2.3.5/32".parse().unwrap(),
+            status: Activated,
+            publishers: vec![],
+            subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
+        };
+
+        let user2 = User {
+            account_type: AccountType::User,
+            index: 2,
+            bump_seed: 3,
+            owner: user2_pubkey,
+            user_type: UserType::Multicast,
+            tenant_pk: tenant2_pubkey,
+            device_pk: device1_pubkey,
+            cyoa_type: GREOverDIA,
+            client_ip: [1, 2, 3, 5].into(),
+            dz_ip: [2, 3, 4, 6].into(),
+            tunnel_id: 501,
+            tunnel_net: "1.2.3.6/32".parse().unwrap(),
+            status: Activated,
+            publishers: vec![],
+            subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
+        };
+
+        client.expect_list_user().returning(move |_| {
+            let mut users = std::collections::HashMap::new();
+            users.insert(user1_pubkey, user1.clone());
+            users.insert(user2_pubkey, user2.clone());
+            Ok(users)
+        });
+
+        client
+            .expect_list_device()
+            .returning(|_| Ok(std::collections::HashMap::new()));
+        client
+            .expect_list_location()
+            .returning(|_| Ok(std::collections::HashMap::new()));
+        client
+            .expect_list_multicastgroup()
+            .returning(|_| Ok(std::collections::HashMap::new()));
+        client
+            .expect_list_accesspass()
+            .returning(|_| Ok(std::collections::HashMap::new()));
+        client.expect_list_tenant().returning(move |_| {
+            let mut tenants = std::collections::HashMap::new();
+            tenants.insert(tenant1_pubkey, tenant1.clone());
+            tenants.insert(tenant2_pubkey, tenant2.clone());
+            Ok(tenants)
+        });
+
+        // --no-tenant should show users from all tenants
+        let mut output = Vec::new();
+        let res = ListUserCliCommand {
+            prepaid: false,
+            solana_validator: false,
+            solana_identity: None,
+            device: None,
+            location: None,
+            owner: None,
+            client_ip: None,
+            user_type: None,
+            cyoa_type: None,
+            dz_ip: None,
+            tunnel_id: None,
+            status: None,
+            multicast_group: None,
+            tenant: None,
+            no_tenant: true,
+            json: false,
+            json_compact: false,
+        }
+        .execute(&client, &mut output);
+
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        assert!(output_str.contains("tenant1"));
+        assert!(output_str.contains("tenant2"));
     }
 }

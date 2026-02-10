@@ -10,7 +10,7 @@ use std::{io::Write, path::PathBuf};
 #[derive(Args, Debug)]
 #[clap(group(
     ArgGroup::new("mandatory")
-        .args(&["env", "url", "ws", "keypair", "program_id"])
+        .args(&["env", "url", "ws", "keypair", "program_id", "tenant", "no_tenant"])
         .required(true)
         .multiple(true)
 ))]
@@ -30,6 +30,12 @@ pub struct SetConfigCliCommand {
     /// Pubkey of the smart contract (devnet, testnet)
     #[arg(long)]
     pub program_id: Option<String>,
+    /// Default tenant code or pubkey
+    #[arg(long, conflicts_with = "no_tenant")]
+    pub tenant: Option<String>,
+    /// Clear the default tenant
+    #[arg(long, conflicts_with = "tenant")]
+    pub no_tenant: bool,
 }
 
 impl SetConfigCliCommand {
@@ -57,6 +63,8 @@ impl SetConfigCliCommand {
             && ledger_ws.is_none()
             && self.keypair.is_none()
             && program_id.is_none()
+            && self.tenant.is_none()
+            && !self.no_tenant
         {
             writeln!(out, "No arguments provided")?;
             return Ok(());
@@ -77,12 +85,17 @@ impl SetConfigCliCommand {
         if let Some(program_id) = program_id {
             config.program_id = Some(convert_program_moniker(program_id));
         }
+        if self.no_tenant {
+            config.tenant = None;
+        } else if self.tenant.is_some() {
+            config.tenant = self.tenant;
+        }
 
         write_doublezero_config(&config)?;
 
         writeln!(
             out,
-            "Config File: {}\nRPC URL: {}\nWebSocket URL: {}\nKeypair Path: {}\nProgram ID: {}\n",
+            "Config File: {}\nRPC URL: {}\nWebSocket URL: {}\nKeypair Path: {}\nProgram ID: {}\nTenant: {}\n",
             filename.display(),
             config.json_rpc_url,
             config.websocket_url.unwrap_or(format!(
@@ -93,7 +106,8 @@ impl SetConfigCliCommand {
             config.program_id.unwrap_or(format!(
                 "{} (computed)",
                 doublezero_sdk::default_program_id()
-            ))
+            )),
+            config.tenant.unwrap_or("(not set)".to_string())
         )?;
 
         Ok(())
@@ -129,6 +143,8 @@ mod tests {
                 ws: None,
                 keypair: None,
                 program_id: None,
+                tenant: None,
+                no_tenant: false,
             }
             .execute(&client, &mut output)
             .unwrap();
@@ -160,6 +176,8 @@ mod tests {
                 ws: None,
                 keypair: None,
                 program_id: None,
+                tenant: None,
+                no_tenant: false,
             }
             .execute(&client, &mut output)
             .unwrap();
@@ -186,6 +204,8 @@ mod tests {
                 ws: None,
                 keypair: None,
                 program_id: None,
+                tenant: None,
+                no_tenant: false,
             }
             .execute(&client, &mut output)
             .unwrap();
@@ -218,6 +238,8 @@ mod tests {
                 ws: None,
                 keypair: None,
                 program_id: None,
+                tenant: None,
+                no_tenant: false,
             }
             .execute(&client, &mut output)
             .unwrap();
@@ -250,6 +272,8 @@ mod tests {
                 ws: None,
                 keypair: None,
                 program_id: Some("1234567890".to_string()),
+                tenant: None,
+                no_tenant: false,
             }
             .execute(&client, &mut output)
             .unwrap();
@@ -276,12 +300,79 @@ mod tests {
             websocket_url: Some(devnet_config.ledger_public_ws_rpc_url.clone()),
             keypair_path: keypair_path.clone(),
             program_id: Some(devnet_config.serviceability_program_id.to_string()),
+            tenant: None,
             address_labels: Default::default(),
         };
 
         mutator(&mut cfg);
 
         (tmp, config_path, cfg)
+    }
+
+    #[test]
+    #[serial]
+    fn test_cli_config_set_tenant() {
+        let (_tmp, config_path, cfg) = new_test_config(|_cfg| {});
+
+        temp_env::with_var(CONFIG_ENV_VAR, Some(&config_path.to_str().unwrap()), || {
+            write_doublezero_config(&cfg).unwrap();
+            create_new_pubkey_user(false, Some(cfg.keypair_path.clone())).unwrap();
+
+            let client = create_test_client();
+
+            let mut output = Vec::new();
+            SetConfigCliCommand {
+                env: None,
+                url: None,
+                ws: None,
+                keypair: None,
+                program_id: None,
+                tenant: Some("my-tenant".to_string()),
+                no_tenant: false,
+            }
+            .execute(&client, &mut output)
+            .unwrap();
+            let output_str = String::from_utf8(output).unwrap();
+            assert!(output_str.contains("Tenant: my-tenant"));
+
+            // Verify it was persisted
+            let (_, saved_config) = read_doublezero_config().unwrap();
+            assert_eq!(saved_config.tenant, Some("my-tenant".to_string()));
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_cli_config_set_no_tenant() {
+        let (_tmp, config_path, cfg) = new_test_config(|cfg| {
+            cfg.tenant = Some("existing-tenant".to_string());
+        });
+
+        temp_env::with_var(CONFIG_ENV_VAR, Some(&config_path.to_str().unwrap()), || {
+            write_doublezero_config(&cfg).unwrap();
+            create_new_pubkey_user(false, Some(cfg.keypair_path.clone())).unwrap();
+
+            let client = create_test_client();
+
+            let mut output = Vec::new();
+            SetConfigCliCommand {
+                env: None,
+                url: None,
+                ws: None,
+                keypair: None,
+                program_id: None,
+                tenant: None,
+                no_tenant: true,
+            }
+            .execute(&client, &mut output)
+            .unwrap();
+            let output_str = String::from_utf8(output).unwrap();
+            assert!(output_str.contains("Tenant: (not set)"));
+
+            // Verify it was persisted
+            let (_, saved_config) = read_doublezero_config().unwrap();
+            assert_eq!(saved_config.tenant, None);
+        });
     }
 
     fn validate_config_output(output_str: &str, expected_rpc_url: &str, expected_program_id: &str) {

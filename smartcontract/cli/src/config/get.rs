@@ -12,7 +12,7 @@ impl GetConfigCliCommand {
 
         writeln!(
             out,
-            "Config File: {}\nRPC URL: {}\nWebSocket URL: {}\nKeypair Path: {}\nProgram ID: {}\n",
+            "Config File: {}\nRPC URL: {}\nWebSocket URL: {}\nKeypair Path: {}\nProgram ID: {}\nTenant: {}\n",
             filename.display(),
             config.json_rpc_url,
             config.websocket_url.unwrap_or(format!(
@@ -23,7 +23,8 @@ impl GetConfigCliCommand {
             config.program_id.unwrap_or(format!(
                 "{} (computed)",
                 doublezero_sdk::default_program_id()
-            ))
+            )),
+            config.tenant.unwrap_or("(not set)".to_string())
         )?;
 
         Ok(())

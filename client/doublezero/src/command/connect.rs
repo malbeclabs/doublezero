@@ -435,6 +435,12 @@ impl ProvisioningCliCommand {
                     tunnel_src = resolve_tunnel_src(controller, &device).await?;
                 }
 
+                let tenant = tenant.or_else(|| {
+                    doublezero_sdk::read_doublezero_config()
+                        .ok()
+                        .and_then(|(_, cfg)| cfg.tenant)
+                });
+
                 let tenant_pk = match tenant {
                     Some(tenant_str) => match parse_pubkey(&tenant_str) {
                         Some(pk) => Some(pk),

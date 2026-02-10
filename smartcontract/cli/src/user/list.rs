@@ -7,7 +7,7 @@ use doublezero_sdk::{
         location::list::ListLocationCommand, multicastgroup::list::ListMulticastGroupCommand,
         tenant::list::ListTenantCommand, user::list::ListUserCommand,
     },
-    MulticastGroup, User, UserCYOA, UserStatus, UserType,
+    read_doublezero_config, MulticastGroup, User, UserCYOA, UserStatus, UserType,
 };
 use doublezero_serviceability::pda::get_accesspass_pda;
 use serde::Serialize;
@@ -263,7 +263,14 @@ impl ListUserCliCommand {
             });
         }
 
-        if let Some(ref tenant_vec) = self.tenant {
+        let tenant = self.tenant.or_else(|| {
+            read_doublezero_config()
+                .ok()
+                .and_then(|(_, cfg)| cfg.tenant)
+                .map(|t| vec![t])
+        });
+
+        if let Some(ref tenant_vec) = tenant {
             users.retain(|(_, user, _)| {
                 tenant_vec.iter().any(|tenant_filter| {
                     // Check if matches by pubkey

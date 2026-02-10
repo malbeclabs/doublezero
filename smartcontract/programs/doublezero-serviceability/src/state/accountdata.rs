@@ -3,7 +3,8 @@ use crate::{
     state::{
         accesspass::AccessPass, accounttype::AccountType, contributor::Contributor, device::Device,
         exchange::Exchange, globalconfig::GlobalConfig, globalstate::GlobalState, link::Link,
-        location::Location, multicastgroup::MulticastGroup, programconfig::ProgramConfig,
+        location::Location, mgroup_allowlist_entry::MGroupAllowlistEntry,
+        multicastgroup::MulticastGroup, programconfig::ProgramConfig,
         resource_extension::ResourceExtensionOwned, tenant::Tenant, user::User,
     },
 };
@@ -27,6 +28,7 @@ pub enum AccountData {
     AccessPass(AccessPass),
     ResourceExtension(ResourceExtensionOwned),
     Tenant(Tenant),
+    MGroupAllowlistEntry(MGroupAllowlistEntry),
 }
 
 impl AccountData {
@@ -46,6 +48,7 @@ impl AccountData {
             AccountData::AccessPass(_) => "AccessPass",
             AccountData::ResourceExtension(_) => "ResourceExtension",
             AccountData::Tenant(_) => "Tenant",
+            AccountData::MGroupAllowlistEntry(_) => "MGroupAllowlistEntry",
         }
     }
 
@@ -65,6 +68,7 @@ impl AccountData {
             AccountData::AccessPass(access_pass) => access_pass.to_string(),
             AccountData::ResourceExtension(resource_extension) => resource_extension.to_string(),
             AccountData::Tenant(tenant) => tenant.to_string(),
+            AccountData::MGroupAllowlistEntry(entry) => entry.to_string(),
         }
     }
 
@@ -171,6 +175,14 @@ impl AccountData {
             Err(DoubleZeroError::InvalidAccountType)
         }
     }
+
+    pub fn get_mgroup_allowlist_entry(&self) -> Result<MGroupAllowlistEntry, DoubleZeroError> {
+        if let AccountData::MGroupAllowlistEntry(entry) = self {
+            Ok(entry.clone())
+        } else {
+            Err(DoubleZeroError::InvalidAccountType)
+        }
+    }
 }
 
 impl TryFrom<&[u8]> for AccountData {
@@ -209,6 +221,9 @@ impl TryFrom<&[u8]> for AccountData {
                 ResourceExtensionOwned::try_from(bytes)?,
             )),
             AccountType::Tenant => Ok(AccountData::Tenant(Tenant::try_from(bytes as &[u8])?)),
+            AccountType::MGroupAllowlistEntry => Ok(AccountData::MGroupAllowlistEntry(
+                MGroupAllowlistEntry::try_from(bytes as &[u8])?,
+            )),
         }
     }
 }

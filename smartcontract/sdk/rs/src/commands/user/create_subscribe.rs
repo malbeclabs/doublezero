@@ -1,8 +1,9 @@
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
-    pda::get_user_pda,
+    pda::{get_mgroup_allowlist_entry_pda, get_user_pda},
     processors::user::create_subscribe::UserCreateSubscribeArgs,
     state::{
+        mgroup_allowlist_entry::MGroupAllowlistType,
         multicastgroup::MulticastGroupStatus,
         user::{UserCYOA, UserType},
     },
@@ -62,6 +63,20 @@ impl CreateSubscribeUserCommand {
 
         let (pda_pubkey, _) =
             get_user_pda(&client.get_program_id(), &self.client_ip, self.user_type);
+
+        let (mgroup_pub_al_entry_pk, _) = get_mgroup_allowlist_entry_pda(
+            &client.get_program_id(),
+            &accesspass_pk,
+            &self.mgroup_pk,
+            MGroupAllowlistType::Publisher as u8,
+        );
+        let (mgroup_sub_al_entry_pk, _) = get_mgroup_allowlist_entry_pda(
+            &client.get_program_id(),
+            &accesspass_pk,
+            &self.mgroup_pk,
+            MGroupAllowlistType::Subscriber as u8,
+        );
+
         client
             .execute_transaction(
                 DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
@@ -77,6 +92,8 @@ impl CreateSubscribeUserCommand {
                     AccountMeta::new(self.mgroup_pk, false),
                     AccountMeta::new(accesspass_pk, false),
                     AccountMeta::new(globalstate_pubkey, false),
+                    AccountMeta::new(mgroup_pub_al_entry_pk, false),
+                    AccountMeta::new(mgroup_sub_al_entry_pk, false),
                 ],
             )
             .map(|sig| (sig, pda_pubkey))

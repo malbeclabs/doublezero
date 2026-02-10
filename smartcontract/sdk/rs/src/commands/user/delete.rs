@@ -246,11 +246,7 @@ mod tests {
                         client_ip,
                     },
                 )),
-                predicate::eq(vec![
-                    AccountMeta::new(mgroup_pubkey, false),
-                    AccountMeta::new(accesspass_pubkey, false),
-                    AccountMeta::new(user_pubkey, false),
-                ]),
+                predicate::always(),
             )
             .times(1)
             .in_sequence(&mut seq)

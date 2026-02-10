@@ -1,8 +1,9 @@
 use crate::{commands::multicastgroup::get::GetMulticastGroupCommand, DoubleZeroClient};
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
-    pda::{get_accesspass_pda, get_globalstate_pda},
+    pda::{get_accesspass_pda, get_globalstate_pda, get_mgroup_allowlist_entry_pda},
     processors::multicastgroup::allowlist::publisher::add::AddMulticastGroupPubAllowlistArgs,
+    state::mgroup_allowlist_entry::MGroupAllowlistType,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 use std::net::Ipv4Addr;
@@ -26,6 +27,13 @@ impl AddMulticastGroupPubAllowlistCommand {
 
         let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
 
+        let (mgroup_al_entry_pk, _) = get_mgroup_allowlist_entry_pda(
+            &client.get_program_id(),
+            &accesspass_pk,
+            &mgroup_pubkey,
+            MGroupAllowlistType::Publisher as u8,
+        );
+
         client.execute_transaction(
             DoubleZeroInstruction::AddMulticastGroupPubAllowlist(
                 AddMulticastGroupPubAllowlistArgs {
@@ -37,6 +45,7 @@ impl AddMulticastGroupPubAllowlistCommand {
                 AccountMeta::new(mgroup_pubkey, false),
                 AccountMeta::new(accesspass_pk, false),
                 AccountMeta::new(globalstate_pubkey, false),
+                AccountMeta::new(mgroup_al_entry_pk, false),
             ],
         )
     }

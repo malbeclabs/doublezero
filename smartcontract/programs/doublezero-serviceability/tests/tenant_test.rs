@@ -65,8 +65,8 @@ async fn test_tenant() {
     assert_eq!(tenant.reference_count, 0);
     assert_eq!(tenant.administrators.len(), 1);
     assert_eq!(tenant.administrators[0], administrator);
-    assert_eq!(tenant.metro_route, true);
-    assert_eq!(tenant.route_aliveness, false);
+    assert!(tenant.metro_route);
+    assert!(!tenant.route_aliveness);
 
     println!("✅ Tenant created successfully");
 
@@ -98,10 +98,10 @@ async fn test_tenant() {
     assert_eq!(tenant.account_type, AccountType::Tenant);
     assert_eq!(tenant.code, "test-tenant".to_string()); // Code unchanged (immutable)
     assert_eq!(tenant.vrf_id, 200); // VRF ID updated
-    assert_eq!(tenant.metro_route, false); // Metro route updated
-    assert_eq!(tenant.route_aliveness, true); // Route aliveness updated
+    assert!(!tenant.metro_route); // Metro route updated
+    assert!(tenant.route_aliveness); // Route aliveness updated
 
-    let initial_vrf_id = tenant.vrf_id; // Save for later comparison
+    let _initial_vrf_id = tenant.vrf_id; // Save for later comparison
 
     println!("✅ Tenant updated successfully");
 
@@ -190,7 +190,7 @@ async fn test_tenant() {
         .unwrap();
     assert_eq!(tenant.administrators.len(), 2); // Initial administrator + admin2 (admin1 removed)
     assert!(tenant.administrators.contains(&administrator));
-    assert_eq!(tenant.administrators.contains(&admin2), true);
+    assert!(tenant.administrators.contains(&admin2));
     assert!(!tenant.administrators.contains(&admin1));
 
     println!("✅ Administrator removed successfully");

@@ -1,7 +1,8 @@
 use crate::{doublezerocommand::CliCommand, validators::validate_pubkey};
 use clap::Args;
 use doublezero_sdk::commands::{
-    accesspass::get::GetAccessPassCommand, multicastgroup::list::ListMulticastGroupCommand,
+    accesspass::get::GetAccessPassCommand, device::list::ListDeviceCommand,
+    multicastgroup::list::ListMulticastGroupCommand, tenant::list::ListTenantCommand,
     user::get::GetUserCommand,
 };
 use solana_sdk::pubkey::Pubkey;
@@ -24,11 +25,14 @@ impl GetUserCliCommand {
             user_payer: user.owner,
         })?;
         let multicast_groups = client.list_multicastgroup(ListMulticastGroupCommand {})?;
+        let tenants = client.list_tenant(ListTenantCommand {})?;
+        let devices = client.list_device(ListDeviceCommand {})?;
 
         writeln!(
             out,
             "account: {}\r\n\
         user_type: {}\r\n\
+        tenant: {}\r\n\
         device: {}\r\n\
         cyoa_type: {}\r\n\
         client_ip: {}\r\n\
@@ -41,7 +45,12 @@ impl GetUserCliCommand {
         owner: {}",
             pubkey,
             user.user_type,
-            user.device_pk,
+            tenants
+                .get(&user.tenant_pk)
+                .map_or(user.tenant_pk.to_string(), |t| t.code.clone()),
+            devices
+                .get(&user.device_pk)
+                .map_or(user.device_pk.to_string(), |d| d.code.clone()),
             user.cyoa_type,
             &user.client_ip,
             &user.tunnel_net,
@@ -78,13 +87,20 @@ mod tests {
     use doublezero_sdk::{
         commands::{
             accesspass,
+            device::list::ListDeviceCommand,
+            multicastgroup::list::ListMulticastGroupCommand,
+            tenant::list::ListTenantCommand,
             user::{delete::DeleteUserCommand, get::GetUserCommand},
         },
-        AccountType, MulticastGroup, User, UserCYOA, UserStatus, UserType,
+        AccountType, Device, MulticastGroup, User, UserCYOA, UserStatus, UserType,
     };
     use doublezero_serviceability::{
         pda::{get_accesspass_pda, get_user_old_pda},
-        state::accesspass::{AccessPass, AccessPassStatus, AccessPassType},
+        state::{
+            accesspass::{AccessPass, AccessPassStatus, AccessPassType},
+            device::{DeviceDesiredStatus, DeviceHealth, DeviceStatus, DeviceType},
+            tenant::{Tenant, TenantPaymentStatus},
+        },
     };
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
@@ -100,6 +116,43 @@ mod tests {
             139, 130, 217, 227, 214, 9, 242, 141, 223, 94, 29, 184, 110, 62, 32, 87, 137, 63, 139,
             100, 221, 20, 137, 4, 5,
         ]);
+
+        let tenant_pubkey = Pubkey::new_unique();
+        let tenant = Tenant {
+            account_type: AccountType::Tenant,
+            owner: client.get_payer(),
+            bump_seed: 0,
+            code: "test-tenant".to_string(),
+            vrf_id: 100,
+            reference_count: 0,
+            administrators: vec![],
+            token_account: Pubkey::default(),
+            payment_status: TenantPaymentStatus::Paid,
+        };
+
+        let device_pubkey = Pubkey::new_unique();
+        let device = Device {
+            account_type: AccountType::Device,
+            owner: client.get_payer(),
+            index: 1,
+            bump_seed: 0,
+            location_pk: Pubkey::default(),
+            exchange_pk: Pubkey::default(),
+            device_type: DeviceType::Hybrid,
+            public_ip: "192.168.1.1".parse().unwrap(),
+            status: DeviceStatus::Activated,
+            code: "test-device".to_string(),
+            dz_prefixes: vec![].into(),
+            metrics_publisher_pk: Pubkey::default(),
+            contributor_pk: Pubkey::default(),
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![],
+            reference_count: 0,
+            users_count: 0,
+            max_users: 1000,
+            device_health: DeviceHealth::ReadyForUsers,
+            desired_status: DeviceDesiredStatus::Activated,
+        };
 
         let mgroup_pubkey = Pubkey::new_unique();
         let mgroup = MulticastGroup {
@@ -121,9 +174,9 @@ mod tests {
             index: 1,
             bump_seed: 255,
             user_type: UserType::IBRL,
-            tenant_pk: Pubkey::default(),
+            tenant_pk: tenant_pubkey,
             cyoa_type: UserCYOA::GREOverDIA,
-            device_pk: Pubkey::default(),
+            device_pk: device_pubkey,
             client_ip: [10, 0, 0, 1].into(),
             dz_ip: [10, 0, 0, 2].into(),
             tunnel_id: 0,
@@ -156,12 +209,26 @@ mod tests {
 
         client
             .expect_list_multicastgroup()
-            .with(predicate::eq(
-                doublezero_sdk::commands::multicastgroup::list::ListMulticastGroupCommand {},
-            ))
+            .with(predicate::eq(ListMulticastGroupCommand {}))
             .returning(move |_| {
                 let mut map = std::collections::HashMap::new();
                 map.insert(mgroup_pubkey, mgroup.clone());
+                Ok(map)
+            });
+        client
+            .expect_list_tenant()
+            .with(predicate::eq(ListTenantCommand {}))
+            .returning(move |_| {
+                let mut map = std::collections::HashMap::new();
+                map.insert(tenant_pubkey, tenant.clone());
+                Ok(map)
+            });
+        client
+            .expect_list_device()
+            .with(predicate::eq(ListDeviceCommand {}))
+            .returning(move |_| {
+                let mut map = std::collections::HashMap::new();
+                map.insert(device_pubkey, device.clone());
                 Ok(map)
             });
         client
@@ -191,6 +258,6 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by code");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: CwpwPjV6LsVxHQ1Ye5bizyrXSa9j2Gk5C6y3WyMyYaA1\r\nuser_type: IBRL\r\ndevice: 11111111111111111111111111111111\r\ncyoa_type: GREOverDIA\r\nclient_ip: 10.0.0.1\r\ntunnel_net: 10.2.3.4/24\r\ndz_ip: 10.0.0.2\r\naccesspass: Prepaid: (expires epoch 10)\r\npublishers: \r\nsubscribers: test\r\nstatus: activated\r\nowner: CwpwPjV6LsVxHQ1Ye5bizyrXSa9j2Gk5C6y3WyMyYaA1\n");
+        assert_eq!(output_str, "account: CwpwPjV6LsVxHQ1Ye5bizyrXSa9j2Gk5C6y3WyMyYaA1\r\nuser_type: IBRL\r\ntenant: test-tenant\r\ndevice: test-device\r\ncyoa_type: GREOverDIA\r\nclient_ip: 10.0.0.1\r\ntunnel_net: 10.2.3.4/24\r\ndz_ip: 10.0.0.2\r\naccesspass: Prepaid: (expires epoch 10)\r\npublishers: \r\nsubscribers: test\r\nstatus: activated\r\nowner: CwpwPjV6LsVxHQ1Ye5bizyrXSa9j2Gk5C6y3WyMyYaA1\n");
     }
 }

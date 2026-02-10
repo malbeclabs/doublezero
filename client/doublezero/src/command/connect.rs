@@ -11,7 +11,7 @@ use backon::{BlockingRetryable, ExponentialBuilder};
 use clap::{Args, Subcommand, ValueEnum};
 use doublezero_cli::{
     doublezerocommand::CliCommand,
-    helpers::init_command,
+    helpers::{init_command, parse_pubkey},
     requirements::{check_accesspass, check_requirements, CHECK_BALANCE, CHECK_ID_JSON},
 };
 use doublezero_program_common::types::NetworkV4;
@@ -22,6 +22,7 @@ use doublezero_sdk::{
         multicastgroup::{
             list::ListMulticastGroupCommand, subscribe::SubscribeMulticastGroupCommand,
         },
+        tenant::get::GetTenantCommand,
         user::{
             create::CreateUserCommand, create_subscribe::CreateSubscribeUserCommand,
             get::GetUserCommand, list::ListUserCommand,
@@ -45,6 +46,8 @@ pub enum MulticastMode {
 pub enum DzMode {
     /// Provision a user in IBRL mode
     IBRL {
+        /// provide tenant code or pubkey
+        tenant: Option<String>,
         /// Allocate a new address for the user
         #[arg(short, long, default_value_t = false)]
         allocate_addr: bool,
@@ -121,21 +124,29 @@ impl ProvisioningCliCommand {
         spinner.println(format!("🔍  Provisioning User for IP: {client_ip_str}"));
 
         match self.parse_dz_mode() {
-            (UserType::IBRL, _, _) => {
-                self.execute_ibrl(client, controller, UserType::IBRL, client_ip, &spinner)
-                    .await
+            (UserType::IBRL, _, _, tenant) => {
+                self.execute_ibrl(
+                    client,
+                    controller,
+                    UserType::IBRL,
+                    client_ip,
+                    tenant,
+                    &spinner,
+                )
+                .await
             }
-            (UserType::IBRLWithAllocatedIP, _, _) => {
+            (UserType::IBRLWithAllocatedIP, _, _, tenant) => {
                 self.execute_ibrl(
                     client,
                     controller,
                     UserType::IBRLWithAllocatedIP,
                     client_ip,
+                    tenant,
                     &spinner,
                 )
                 .await
             }
-            (UserType::Multicast, Some(multicast_mode), Some(multicast_groups)) => {
+            (UserType::Multicast, Some(multicast_mode), Some(multicast_groups), None) => {
                 self.execute_multicast(
                     client,
                     controller,
@@ -161,11 +172,12 @@ impl ProvisioningCliCommand {
         controller: &T,
         user_type: UserType,
         client_ip: Ipv4Addr,
+        tenant: Option<String>,
         spinner: &ProgressBar,
     ) -> eyre::Result<()> {
         // Look for user
         let (user_pubkey, user, tunnel_src) = self
-            .find_or_create_user(client, controller, &client_ip, spinner, user_type)
+            .find_or_create_user(client, controller, &client_ip, spinner, user_type, tenant)
             .await?;
 
         // Check user status
@@ -282,19 +294,34 @@ impl ProvisioningCliCommand {
         Ok(())
     }
 
-    fn parse_dz_mode(&self) -> (UserType, Option<&MulticastMode>, Option<&Vec<String>>) {
+    fn parse_dz_mode(
+        &self,
+    ) -> (
+        UserType,
+        Option<&MulticastMode>,
+        Option<&Vec<String>>,
+        Option<String>,
+    ) {
         match &self.dz_mode {
-            DzMode::IBRL { allocate_addr } => {
+            DzMode::IBRL {
+                tenant,
+                allocate_addr,
+            } => {
                 if *allocate_addr {
-                    (UserType::IBRLWithAllocatedIP, None, None)
+                    (UserType::IBRLWithAllocatedIP, None, None, tenant.clone())
                 } else {
-                    (UserType::IBRL, None, None)
+                    (UserType::IBRL, None, None, tenant.clone())
                 }
             } //DzMode::EdgeFiltering => UserType::EdgeFiltering,
             DzMode::Multicast {
                 mode,
                 multicast_groups,
-            } => (UserType::Multicast, Some(mode), Some(multicast_groups)),
+            } => (
+                UserType::Multicast,
+                Some(mode),
+                Some(multicast_groups),
+                None,
+            ),
         }
     }
 
@@ -383,6 +410,7 @@ impl ProvisioningCliCommand {
         client_ip: &Ipv4Addr,
         spinner: &ProgressBar,
         user_type: UserType,
+        tenant: Option<String>,
     ) -> eyre::Result<(Pubkey, User, Ipv4Addr)> {
         spinner.set_message("Searching for user account...");
         spinner.inc(1);
@@ -439,12 +467,34 @@ impl ProvisioningCliCommand {
                     tunnel_src = resolve_tunnel_src(controller, &device).await?;
                 }
 
+                let tenant = tenant.or_else(|| {
+                    doublezero_sdk::read_doublezero_config()
+                        .ok()
+                        .and_then(|(_, cfg)| cfg.tenant)
+                });
+
+                let tenant_pk = match tenant {
+                    Some(tenant_str) => match parse_pubkey(&tenant_str) {
+                        Some(pk) => Some(pk),
+                        None => {
+                            let (pubkey, _) = client
+                                .get_tenant(GetTenantCommand {
+                                    pubkey_or_code: tenant_str.clone(),
+                                })
+                                .map_err(|_| eyre::eyre!("Tenant not found"))?;
+                            Some(pubkey)
+                        }
+                    },
+                    None => None,
+                };
+
                 let res = client.create_user(CreateUserCommand {
                     user_type,
                     device_pk,
                     cyoa_type: UserCYOA::GREOverDIA,
                     client_ip: *client_ip,
                     tunnel_endpoint,
+                    tenant_pk,
                 });
 
                 match res {
@@ -939,6 +989,7 @@ mod tests {
             device::{Device, DeviceStatus, DeviceType},
             globalconfig::GlobalConfig,
             multicastgroup::{MulticastGroup, MulticastGroupStatus},
+            tenant::{Tenant, TenantPaymentStatus},
         },
     };
     use mockall::predicate;
@@ -971,10 +1022,29 @@ mod tests {
         pub users: Arc<Mutex<HashMap<Pubkey, User>>>,
         pub latencies: Arc<Mutex<Vec<LatencyRecord>>>,
         pub mcast_groups: Arc<Mutex<HashMap<Pubkey, MulticastGroup>>>,
+        pub tenants: Arc<Mutex<HashMap<Pubkey, Tenant>>>,
+        pub default_tenant_pk: Pubkey,
     }
 
     impl TestFixture {
         pub fn new() -> Self {
+            // Create a default tenant
+            let default_tenant_pk = Pubkey::new_unique();
+            let default_tenant = Tenant {
+                account_type: AccountType::Tenant,
+                owner: Pubkey::new_unique(),
+                bump_seed: 1,
+                code: "test-tenant".to_string(),
+                vrf_id: 100,
+                reference_count: 0,
+                administrators: vec![],
+                payment_status: TenantPaymentStatus::Paid,
+                token_account: Pubkey::default(),
+            };
+
+            let mut tenants = HashMap::new();
+            tenants.insert(default_tenant_pk, default_tenant);
+
             let mut fixture = Self {
                 global_cfg: GlobalConfig {
                     account_type: AccountType::GlobalConfig,
@@ -993,6 +1063,8 @@ mod tests {
                 users: Arc::new(Mutex::new(HashMap::new())),
                 latencies: Arc::new(Mutex::new(vec![])),
                 mcast_groups: Arc::new(Mutex::new(HashMap::new())),
+                tenants: Arc::new(Mutex::new(tenants)),
+                default_tenant_pk,
             };
 
             fixture
@@ -1107,6 +1179,24 @@ mod tests {
                 }
             });
 
+            let tenants = fixture.tenants.clone();
+            fixture.client.expect_get_tenant().returning_st(move |cmd| {
+                let tenants = tenants.lock().unwrap();
+                match parse_pubkey(&cmd.pubkey_or_code) {
+                    Some(pk) => match tenants.get(&pk) {
+                        Some(tenant) => Ok((pk, tenant.clone())),
+                        None => Err(eyre::eyre!("Invalid Account Type")),
+                    },
+                    None => {
+                        let tenant = tenants.iter().find(|(_, v)| v.code == cmd.pubkey_or_code);
+                        match tenant {
+                            Some((pk, tenant)) => Ok((*pk, tenant.clone())),
+                            None => Err(eyre::eyre!("Tenant not found")),
+                        }
+                    }
+                }
+            });
+
             fixture
         }
 
@@ -1181,6 +1271,24 @@ mod tests {
             (pk, group)
         }
 
+        pub fn add_tenant(&mut self, code: &str) -> (Pubkey, Tenant) {
+            let mut tenants = self.tenants.lock().unwrap();
+            let pk = Pubkey::new_unique();
+            let tenant = Tenant {
+                account_type: AccountType::Tenant,
+                owner: Pubkey::new_unique(),
+                bump_seed: 1,
+                code: code.to_string(),
+                vrf_id: 100,
+                reference_count: 0,
+                administrators: vec![],
+                payment_status: TenantPaymentStatus::Paid,
+                token_account: Pubkey::default(),
+            };
+            tenants.insert(pk, tenant.clone());
+            (pk, tenant)
+        }
+
         pub fn create_user(
             &mut self,
             user_type: UserType,
@@ -1229,12 +1337,22 @@ mod tests {
         }
 
         pub fn expect_create_user(&mut self, pk: Pubkey, user: &User) {
+            self.expect_create_user_with_tenant(pk, user, Some(self.default_tenant_pk));
+        }
+
+        pub fn expect_create_user_with_tenant(
+            &mut self,
+            pk: Pubkey,
+            user: &User,
+            tenant_pk: Option<Pubkey>,
+        ) {
             let expected_create_user_command = CreateUserCommand {
                 user_type: user.user_type,
                 device_pk: user.device_pk,
                 cyoa_type: UserCYOA::GREOverDIA,
                 client_ip: user.client_ip,
                 tunnel_endpoint: user.tunnel_endpoint,
+                tenant_pk,
             };
 
             let users = self.users.clone();
@@ -1417,12 +1535,15 @@ mod tests {
     async fn test_connect_command_ibrl_hybrid() {
         let mut fixture = TestFixture::new();
 
+        // Create a tenant for this test
+        let (tenant_pk, tenant) = fixture.add_tenant("my-tenant");
+
         let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
         // Add a second device for concurrent tunnels (IBRL + Multicast must go to different devices)
         let (device2_pk, device2) = fixture.add_device(DeviceType::Hybrid, 110, true);
         let user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
         let user_pk = Pubkey::new_unique();
-        fixture.expect_create_user(user_pk, &user);
+        fixture.expect_create_user_with_tenant(user_pk, &user, Some(tenant_pk));
         fixture.expected_provisioning_request(
             UserType::IBRL,
             user.client_ip.to_string().as_str(),
@@ -1436,6 +1557,7 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
+                tenant: Some(tenant.code.clone()),
                 allocate_addr: false,
             },
             client_ip: Some(user.client_ip.to_string()),
@@ -1489,12 +1611,15 @@ mod tests {
     async fn test_connect_command_ibrl_edge() {
         let mut fixture = TestFixture::new();
 
+        // Create a tenant for this test
+        let (tenant_pk, tenant) = fixture.add_tenant("edge-tenant");
+
         let (device1_pk, device1) = fixture.add_device(DeviceType::Edge, 100, true);
         // Add a second device for concurrent tunnels (IBRL + Multicast must go to different devices)
         let (device2_pk, device2) = fixture.add_device(DeviceType::Edge, 110, true);
         let user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
         let user_pk = Pubkey::new_unique();
-        fixture.expect_create_user(user_pk, &user);
+        fixture.expect_create_user_with_tenant(user_pk, &user, Some(tenant_pk));
         fixture.expected_provisioning_request(
             UserType::IBRL,
             user.client_ip.to_string().as_str(),
@@ -1508,6 +1633,7 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
+                tenant: Some(tenant.code.clone()),
                 allocate_addr: false,
             },
             client_ip: Some(user.client_ip.to_string()),
@@ -1569,6 +1695,7 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
+                tenant: Some("test-tenant".to_string()),
                 allocate_addr: false,
             },
             client_ip: Some(user.client_ip.to_string()),
@@ -1587,9 +1714,12 @@ mod tests {
     async fn test_connect_command_ibrl_allocate_hybrid() {
         let mut fixture = TestFixture::new();
 
+        // Create a tenant for this test
+        let (tenant_pk, tenant) = fixture.add_tenant("allocate-tenant");
+
         let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
         let user = fixture.create_user(UserType::IBRLWithAllocatedIP, device1_pk, "1.2.3.4");
-        fixture.expect_create_user(Pubkey::new_unique(), &user);
+        fixture.expect_create_user_with_tenant(Pubkey::new_unique(), &user, Some(tenant_pk));
 
         let resolved_src = Ipv4Addr::new(192, 168, 1, 100);
         fixture.expect_resolve_route(device1.public_ip, resolved_src);
@@ -1608,6 +1738,7 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
+                tenant: Some(tenant.code.clone()),
                 allocate_addr: true,
             },
             client_ip: Some(user.client_ip.to_string()),
@@ -1625,9 +1756,12 @@ mod tests {
     async fn test_connect_command_ibrl_allocate_edge() {
         let mut fixture = TestFixture::new();
 
+        // Create a tenant for this test
+        let (tenant_pk, tenant) = fixture.add_tenant("edge-allocate-tenant");
+
         let (device1_pk, device1) = fixture.add_device(DeviceType::Edge, 100, true);
         let user = fixture.create_user(UserType::IBRLWithAllocatedIP, device1_pk, "1.2.3.4");
-        fixture.expect_create_user(Pubkey::new_unique(), &user);
+        fixture.expect_create_user_with_tenant(Pubkey::new_unique(), &user, Some(tenant_pk));
 
         let resolved_src = Ipv4Addr::new(192, 168, 1, 101);
         fixture.expect_resolve_route(device1.public_ip, resolved_src);
@@ -1646,6 +1780,7 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
+                tenant: Some(tenant.code.clone()),
                 allocate_addr: true,
             },
             client_ip: Some(user.client_ip.to_string()),
@@ -1671,6 +1806,7 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
+                tenant: Some("test-tenant".to_string()),
                 allocate_addr: true,
             },
             client_ip: Some(user.client_ip.to_string()),
@@ -1696,6 +1832,7 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
+                tenant: Some("test-tenant".to_string()),
                 allocate_addr: false,
             },
             client_ip: Some(user.client_ip.to_string()),
@@ -2056,6 +2193,7 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
+                tenant: Some("test-tenant".to_string()),
                 allocate_addr: false,
             },
             client_ip: Some(ibrl_user.client_ip.to_string()),
@@ -2138,6 +2276,7 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
+                tenant: Some("test-tenant".to_string()),
                 allocate_addr: false,
             },
             client_ip: Some(ibrl_user.client_ip.to_string()),
@@ -2171,6 +2310,7 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
+                tenant: Some("test-tenant".to_string()),
                 allocate_addr: false,
             },
             client_ip: Some("1.2.3.4".to_string()),
@@ -2215,6 +2355,7 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
+                tenant: Some("test-tenant".to_string()),
                 allocate_addr: false,
             },
             client_ip: Some("1.2.3.4".to_string()),
@@ -2245,6 +2386,7 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
+                tenant: Some("test-tenant".to_string()),
                 allocate_addr: false,
             },
             client_ip: Some("1.2.3.4".to_string()),
@@ -2277,6 +2419,7 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
+                tenant: Some("test-tenant".to_string()),
                 allocate_addr: true,
             },
             client_ip: Some("1.2.3.4".to_string()),
@@ -2309,6 +2452,7 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
+                tenant: Some("test-tenant".to_string()),
                 allocate_addr: true,
             },
             client_ip: Some("1.2.3.4".to_string()),
@@ -2354,6 +2498,7 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
+                tenant: Some("test-tenant".to_string()),
                 allocate_addr: true,
             },
             client_ip: Some(user.client_ip.to_string()),
@@ -2383,6 +2528,7 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
+                tenant: Some("test-tenant".to_string()),
                 allocate_addr: true,
             },
             client_ip: Some(user.client_ip.to_string()),
@@ -2496,6 +2642,7 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
+                tenant: Some("test-tenant".to_string()),
                 allocate_addr: false,
             },
             client_ip: Some(ibrl_user.client_ip.to_string()),

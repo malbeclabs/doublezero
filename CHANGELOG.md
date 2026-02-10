@@ -18,6 +18,7 @@ All notable changes to this project will be documented in this file.
   - Serviceability: extend UserUpdate instruction to support tenant_pk field updates with automatic reference count management on old and new tenants (backward compatible with old format)
   - Serviceability: extend UserCloseAccount instruction to decrement tenant reference count when closing user with assigned tenant
   - Serviceability: add reference count validation in DeleteMulticastGroup to prevent deletion when active publishers or subscribers exist
+  - Serviceability: fix multicast group closeaccount to use InvalidStatus error and remove redundant publisher/subscriber count check
   - Serviceability: add tenant_allowlist field to AccessPass to restrict which tenants can use specific access passes (backward compatible with existing accounts)
 - SDK
   - Add CreateTenant, UpdateTenant (vrf_id only), DeleteTenant, GetTenant, and ListTenant commands with support for code or pubkey lookup
@@ -31,6 +32,7 @@ All notable changes to this project will be documented in this file.
   - Added activation check for existing users before subscribing to new groups (#2782)
   - access-pass set: add --tenant argument to specify tenant code for access pass restriction (converts to tenant PDA onchain)
   - tenant list: improve output formatting with table support and JSON serialization options (--json, --json-compact)
+  - default tenant support added to config
 - SDK
   - Add read-only Go SDK (`revdist`) for the revenue distribution Solana program, with typed deserialization of all onchain accounts and Rust-generated fixture tests for cross-language compatibility
   - Add `revdist-cli` tool for inspecting onchain revenue distribution state
@@ -46,6 +48,7 @@ All notable changes to this project will be documented in this file.
 - Monitor
   - Add sol-balance watcher to track SOL balances for configured accounts and export Prometheus metrics for alerting
 - E2E tests
+  - e2e: add multi-tenancy VRF isolation test ([#2891](https://github.com/malbeclabs/doublezero/pull/2891))
   - Add backward compatibility test that validates older CLI versions against the current onchain program by cloning live state from testnet and mainnet-beta
 
 ## [v0.8.6](https://github.com/malbeclabs/doublezero/compare/client/v0.8.5...client/v0.8.6) – 2026-02-04

@@ -8,6 +8,7 @@ use crate::{
         accounttype::AccountType,
         device::{Device, DeviceStatus},
         globalstate::GlobalState,
+        tenant::Tenant,
         user::*,
     },
 };
@@ -63,6 +64,14 @@ pub fn process_create_user(
     let device_account = next_account_info(accounts_iter)?;
     let accesspass_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
+
+    // Parse optional tenant account (after globalstate_account)
+    let tenant_account = if accounts.len() >= 7 {
+        Some(next_account_info(accounts_iter)?)
+    } else {
+        None
+    };
+
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
@@ -70,6 +79,28 @@ pub fn process_create_user(
 
     // Check if the payer is a signer
     assert!(payer_account.is_signer, "Payer must be a signer");
+
+    // Validate tenant account if provided
+    if let Some(tenant_account) = tenant_account {
+        // Must not be empty (already initialized)
+        if tenant_account.data_is_empty() {
+            return Err(DoubleZeroError::InvalidTenantPubkey.into());
+        }
+
+        // Must be owned by program
+        assert_eq!(
+            tenant_account.owner, program_id,
+            "Invalid Tenant Account Owner"
+        );
+
+        // Must be writable
+        assert!(tenant_account.is_writable, "Tenant Account is not writable");
+
+        // Verify account type is Tenant
+        if tenant_account.data.borrow()[0] != AccountType::Tenant as u8 {
+            return Err(DoubleZeroError::InvalidAccountType.into());
+        }
+    }
 
     if !user_account.data_is_empty() {
         return Err(ProgramError::AccountAlreadyInitialized);
@@ -146,6 +177,24 @@ pub fn process_create_user(
         return Err(DoubleZeroError::Unauthorized.into());
     }
 
+    // Enforce tenant_allowlist: if access-pass has a non-default tenant in its
+    // allowlist, the user's tenant must be in that list.
+    if accesspass
+        .tenant_allowlist
+        .iter()
+        .any(|pk| *pk != Pubkey::default())
+    {
+        let user_tenant_pk = tenant_account.map(|a| *a.key).unwrap_or(Pubkey::default());
+        if !accesspass.tenant_allowlist.contains(&user_tenant_pk) {
+            msg!(
+                "Tenant {} not in access-pass tenant_allowlist {:?}",
+                user_tenant_pk,
+                accesspass.tenant_allowlist
+            );
+            return Err(DoubleZeroError::TenantNotInAccessPassAllowlist.into());
+        }
+    }
+
     // Check Initial epoch
     let clock = Clock::get()?;
     let current_epoch = clock.epoch;
@@ -188,6 +237,22 @@ pub fn process_create_user(
     device.reference_count += 1;
     device.users_count += 1;
 
+    // Handle tenant reference counting and get tenant_pk
+    let tenant_pk = if let Some(tenant_account) = tenant_account {
+        let mut tenant = Tenant::try_from(tenant_account)?;
+
+        tenant.reference_count = tenant
+            .reference_count
+            .checked_add(1)
+            .ok_or(DoubleZeroError::InvalidIndex)?;
+
+        try_acc_write(&tenant, tenant_account, payer_account, accounts)?;
+
+        *tenant_account.key
+    } else {
+        Pubkey::default()
+    };
+
     let user: User = User {
         account_type: AccountType::User,
         owner: *payer_account.key,
@@ -201,7 +266,7 @@ pub fn process_create_user(
         } else {
             0
         },
-        tenant_pk: Pubkey::default(),
+        tenant_pk,
         user_type: value.user_type,
         device_pk: *device_account.key,
         cyoa_type: value.cyoa_type,

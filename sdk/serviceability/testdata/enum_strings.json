@@ -9,7 +9,7 @@
   "InterfaceType": {"0": "invalid", "1": "loopback", "2": "physical", "99": "unknown"},
   "LoopbackType": {"0": "none", "1": "vpnv4", "2": "ipv4", "3": "pim_rp_addr", "4": "reserved", "99": "unknown"},
   "LinkLinkType": {"1": "WAN", "127": "DZX", "99": ""},
-  "LinkStatus": {"0": "pending", "1": "activated", "2": "deleting", "3": "rejected", "4": "requested", "5": "hard-drained", "6": "soft-drained", "7": "provisioning", "99": "unknown"},
+  "LinkStatus": {"0": "pending", "1": "activated", "3": "deleting", "4": "rejected", "5": "requested", "6": "hard-drained", "7": "soft-drained", "8": "provisioning", "99": "unknown"},
   "LinkHealth": {"0": "unknown", "1": "pending", "2": "ready_for_service", "3": "impaired", "99": "unknown"},
   "LinkDesiredStatus": {"0": "pending", "1": "activated", "2": "hard-drained", "3": "soft-drained", "99": "unknown"},
   "ContributorStatus": {"0": "none", "1": "activated", "2": "suspended", "3": "deleting", "99": "unknown"},

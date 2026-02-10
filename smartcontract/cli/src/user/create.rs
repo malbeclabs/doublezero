@@ -7,7 +7,10 @@ use crate::{
 };
 use clap::Args;
 use doublezero_sdk::{
-    commands::{device::get::GetDeviceCommand, user::create::CreateUserCommand},
+    commands::{
+        device::get::GetDeviceCommand, tenant::get::GetTenantCommand,
+        user::create::CreateUserCommand,
+    },
     UserCYOA, UserType,
 };
 use std::{io::Write, net::Ipv4Addr};
@@ -23,6 +26,9 @@ pub struct CreateUserCliCommand {
     /// Allocate a new address for the user
     #[arg(short, long, default_value_t = false)]
     pub allocate_addr: bool,
+    /// Tenant Pubkey or code (optional)
+    #[arg(long, value_parser = validate_pubkey_or_code)]
+    pub tenant: Option<String>,
     /// Wait for the user to be activated
     #[arg(short, long, default_value_t = false)]
     pub wait: bool,
@@ -45,6 +51,21 @@ impl CreateUserCliCommand {
             }
         };
 
+        let tenant_pk = match self.tenant {
+            None => None,
+            Some(tenant_str) => match parse_pubkey(&tenant_str) {
+                Some(pk) => Some(pk),
+                None => {
+                    let (pubkey, _) = client
+                        .get_tenant(GetTenantCommand {
+                            pubkey_or_code: tenant_str.clone(),
+                        })
+                        .map_err(|_| eyre::eyre!("Tenant not found"))?;
+                    Some(pubkey)
+                }
+            },
+        };
+
         let (signature, pubkey) = client.create_user(CreateUserCommand {
             user_type: if self.allocate_addr {
                 UserType::IBRLWithAllocatedIP
@@ -55,6 +76,7 @@ impl CreateUserCliCommand {
             cyoa_type: UserCYOA::GREOverDIA,
             client_ip: self.client_ip,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tenant_pk,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -140,6 +162,7 @@ mod tests {
                 device_pk: device_pubkey,
                 cyoa_type: UserCYOA::GREOverDIA,
                 client_ip: [100, 0, 0, 1].into(),
+                tenant_pk: None,
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             }))
             .times(1)
@@ -151,6 +174,7 @@ mod tests {
             device: "device1".to_string(),
             client_ip: [100, 0, 0, 1].into(),
             allocate_addr: false,
+            tenant: None,
             wait: false,
         }
         .execute(&client, &mut output);

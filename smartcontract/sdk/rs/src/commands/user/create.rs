@@ -18,6 +18,7 @@ pub struct CreateUserCommand {
     pub cyoa_type: UserCYOA,
     pub client_ip: Ipv4Addr,
     pub tunnel_endpoint: Ipv4Addr,
+    pub tenant_pk: Option<Pubkey>,
 }
 
 impl CreateUserCommand {
@@ -43,6 +44,21 @@ impl CreateUserCommand {
 
         let (pda_pubkey, _) =
             get_user_pda(&client.get_program_id(), &self.client_ip, self.user_type);
+
+        let mut accounts = vec![
+            AccountMeta::new(pda_pubkey, false),
+            AccountMeta::new(self.device_pk, false),
+            AccountMeta::new(accesspass_pk, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ];
+
+        // Add tenant account if provided and not default
+        if let Some(tenant_pk) = self.tenant_pk {
+            if tenant_pk != Pubkey::default() {
+                accounts.push(AccountMeta::new(tenant_pk, false));
+            }
+        }
+
         client
             .execute_transaction(
                 DoubleZeroInstruction::CreateUser(UserCreateArgs {
@@ -51,12 +67,7 @@ impl CreateUserCommand {
                     client_ip: self.client_ip,
                     tunnel_endpoint: self.tunnel_endpoint,
                 }),
-                vec![
-                    AccountMeta::new(pda_pubkey, false),
-                    AccountMeta::new(self.device_pk, false),
-                    AccountMeta::new(accesspass_pk, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ],
+                accounts,
             )
             .map(|sig| (sig, pda_pubkey))
     }

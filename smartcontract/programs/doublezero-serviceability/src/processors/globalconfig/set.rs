@@ -241,10 +241,31 @@ pub fn process_set_globalconfig(
         if old_data.multicastgroup_block != data.multicastgroup_block {
             return Err(DoubleZeroError::ImmutableField.into());
         }
-        if old_data.multicast_publisher_block != data.multicast_publisher_block {
+        // Allow multicast_publisher_block to transition from default to a real value
+        // (migration from pre-publisher GlobalConfig)
+        if old_data.multicast_publisher_block != data.multicast_publisher_block
+            && old_data.multicast_publisher_block != NetworkV4::default()
+        {
             return Err(DoubleZeroError::ImmutableField.into());
         }
         try_acc_write(&data, pda_account, payer_account, accounts)?;
+
+        // Create MulticastPublisherBlock PDA if it doesn't exist yet (migration support).
+        // Only create when the value is not the default (0.0.0.0/0) to avoid allocating
+        // a bitmap for the entire IPv4 address space.
+        if multicast_publisher_block_account.data_is_empty()
+            && data.multicast_publisher_block != NetworkV4::default()
+        {
+            create_resource(
+                program_id,
+                multicast_publisher_block_account,
+                None,
+                pda_account,
+                payer_account,
+                accounts,
+                ResourceType::MulticastPublisherBlock,
+            )?;
+        }
     }
 
     #[cfg(test)]

@@ -172,26 +172,30 @@ pub fn process_activate_user(
             "Invalid ResourceExtension PDA for UserTunnelBlock"
         );
 
-        // Validate multicast_publisher_block_ext (MulticastPublisherBlock)
-        assert_eq!(
-            multicast_publisher_block_ext.owner, program_id,
-            "Invalid ResourceExtension Account Owner for MulticastPublisherBlock"
-        );
-        assert!(
-            multicast_publisher_block_ext.is_writable,
-            "ResourceExtension Account for MulticastPublisherBlock is not writable"
-        );
-        assert!(
-            !multicast_publisher_block_ext.data_is_empty(),
-            "ResourceExtension Account for MulticastPublisherBlock is empty"
-        );
+        // Only validate MulticastPublisherBlock for multicast publishers
+        // (non-publishers don't use this account, so it may not be initialized yet)
+        let is_publisher = user.user_type == UserType::Multicast && !user.publishers.is_empty();
+        if is_publisher {
+            assert_eq!(
+                multicast_publisher_block_ext.owner, program_id,
+                "Invalid ResourceExtension Account Owner for MulticastPublisherBlock"
+            );
+            assert!(
+                multicast_publisher_block_ext.is_writable,
+                "ResourceExtension Account for MulticastPublisherBlock is not writable"
+            );
+            assert!(
+                !multicast_publisher_block_ext.data_is_empty(),
+                "ResourceExtension Account for MulticastPublisherBlock is empty"
+            );
 
-        let (expected_multicast_publisher_pda, _, _) =
-            get_resource_extension_pda(program_id, ResourceType::MulticastPublisherBlock);
-        assert_eq!(
-            multicast_publisher_block_ext.key, &expected_multicast_publisher_pda,
-            "Invalid ResourceExtension PDA for MulticastPublisherBlock"
-        );
+            let (expected_multicast_publisher_pda, _, _) =
+                get_resource_extension_pda(program_id, ResourceType::MulticastPublisherBlock);
+            assert_eq!(
+                multicast_publisher_block_ext.key, &expected_multicast_publisher_pda,
+                "Invalid ResourceExtension PDA for MulticastPublisherBlock"
+            );
+        }
 
         // Validate device_tunnel_ids_ext (TunnelIds)
         assert_eq!(

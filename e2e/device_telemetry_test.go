@@ -69,6 +69,38 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	err = dn.Start(t.Context(), nil)
 	require.NoError(t, err)
 
+	// Dump telemetry agent diagnostics on failure to help debug flaky probe issues.
+	t.Cleanup(func() {
+		if !t.Failed() {
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		var buf strings.Builder
+		fmt.Fprintf(&buf, "\n=== TELEMETRY DIAGNOSTIC DUMP (deploy=%s) ===\n", deployID)
+		for code, device := range dn.Devices {
+			for _, cmd := range []struct {
+				label   string
+				command []string
+			}{
+				{"doublezero-telemetry log (last 200 lines)", []string{"tail", "-200", "/var/log/agents-latest/doublezero-telemetry"}},
+				{"Launcher log (last 50 lines)", []string{"bash", "-c", "tail -50 /var/log/agents/Launcher-*"}},
+				{"ip addr show (tunnel interfaces)", []string{"bash", "-c", "ip addr show | grep -A2 'Tunnel\\|tun'"}},
+				{"interface list", []string{"Cli", "-c", "show interfaces status"}},
+			} {
+				output, err := device.Exec(ctx, cmd.command)
+				if err != nil {
+					fmt.Fprintf(&buf, "\n--- Device %s: %s (ERROR: %v)\n", code, cmd.label, err)
+				} else {
+					fmt.Fprintf(&buf, "\n--- Device %s: %s\n%s", code, cmd.label, string(output))
+				}
+			}
+		}
+		fmt.Fprintf(&buf, "\n=== TELEMETRY DIAGNOSTIC DUMP END ===\n")
+		fmt.Fprint(os.Stderr, buf.String())
+	})
+
 	linkNetwork := devnet.NewMiscNetwork(dn, log, "la2-dz01:ny5-dz01")
 	_, err = linkNetwork.CreateIfNotExists(t.Context())
 	require.NoError(t, err)

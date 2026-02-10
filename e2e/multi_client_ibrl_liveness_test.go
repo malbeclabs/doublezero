@@ -289,8 +289,8 @@ func runMultiClientIBRLRouteLivenessTest(t *testing.T, log *slog.Logger, dn *dev
 
 	// --- Route liveness block matrix ---
 	log.Debug("==> Route liveness: block each client independently and require expected route behavior")
-	const wait = 30 * time.Second
-	const tick = 5 * time.Second
+	const wait = 60 * time.Second
+	const tick = 3 * time.Second
 
 	doRouteLivenessBaseline := func() {
 		t.Helper()

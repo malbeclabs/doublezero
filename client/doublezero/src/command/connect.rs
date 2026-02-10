@@ -998,6 +998,7 @@ mod tests {
                 status: AccessPassStatus::Requested,
                 mgroup_pub_allowlist: vec![],
                 mgroup_sub_allowlist: vec![],
+                tenant_allowlist: vec![],
                 flags: 0,
             };
             fixture

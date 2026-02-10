@@ -976,6 +976,7 @@ async fn test_delete_device_fails_with_reference_count_not_zero() {
             client_ip: user_ip,
             last_access_epoch: 9999,
             allow_multiple_ip: false,
+            tenant: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),

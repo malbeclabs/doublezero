@@ -250,6 +250,7 @@ mod tests {
             user_payer: publisher_payer,
             mgroup_pub_allowlist: vec![mgroup_pubkey], // Has the group as publisher
             mgroup_sub_allowlist: vec![],
+            tenant_allowlist: vec![],
             owner: Pubkey::new_unique(),
             connection_count: 0,
             status: AccessPassStatus::Requested,
@@ -268,6 +269,7 @@ mod tests {
             user_payer: subscriber_payer,
             mgroup_pub_allowlist: vec![],
             mgroup_sub_allowlist: vec![mgroup_pubkey], // Has the group as subscriber
+            tenant_allowlist: vec![],
             owner: Pubkey::new_unique(),
             connection_count: 0,
             status: AccessPassStatus::Requested,
@@ -284,6 +286,7 @@ mod tests {
             user_payer: Pubkey::new_unique(),
             mgroup_pub_allowlist: vec![],
             mgroup_sub_allowlist: vec![],
+            tenant_allowlist: vec![],
             owner: Pubkey::new_unique(),
             connection_count: 0,
             status: AccessPassStatus::Requested,

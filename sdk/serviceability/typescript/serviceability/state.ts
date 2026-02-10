@@ -861,6 +861,7 @@ export interface AccessPass {
   mGroupPubAllowlist: PublicKey[];
   mGroupSubAllowlist: PublicKey[];
   flags: number;
+  tenantAllowlist: PublicKey[];
 }
 
 export function deserializeAccessPass(data: Uint8Array): AccessPass {
@@ -889,6 +890,7 @@ export function deserializeAccessPass(data: Uint8Array): AccessPass {
   const mGroupPubAllowlist = readPubkeyVec(r);
   const mGroupSubAllowlist = readPubkeyVec(r);
   const flags = r.readU8();
+  const tenantAllowlist = readPubkeyVec(r);
   return {
     accountType,
     owner,
@@ -905,5 +907,6 @@ export function deserializeAccessPass(data: Uint8Array): AccessPass {
     mGroupPubAllowlist,
     mGroupSubAllowlist,
     flags,
+    tenantAllowlist,
   };
 }

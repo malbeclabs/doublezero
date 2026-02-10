@@ -9,10 +9,9 @@ const (
 	// MaxUDPPacketSize is the maximum size of a UDP packet we'll accept.
 	// This is sized to accommodate LocationOffset messages with reference chains.
 	// A typical offset is ~240 bytes; 5-level chain = ~1200 bytes (within MTU).
-	MaxUDPPacketSize = 2048
+	MaxUDPPacketSize = 1232
 )
 
-// SendOffset serializes and sends a LocationOffset over UDP to the specified address.
 func SendOffset(conn *net.UDPConn, addr *net.UDPAddr, offset *LocationOffset) error {
 	if conn == nil {
 		return fmt.Errorf("connection is nil")
@@ -24,18 +23,15 @@ func SendOffset(conn *net.UDPConn, addr *net.UDPAddr, offset *LocationOffset) er
 		return fmt.Errorf("offset is nil")
 	}
 
-	// Serialize the offset
 	data, err := offset.Marshal()
 	if err != nil {
 		return fmt.Errorf("failed to marshal offset: %w", err)
 	}
 
-	// Check size constraints
 	if len(data) > MaxUDPPacketSize {
 		return fmt.Errorf("serialized offset size %d exceeds maximum %d", len(data), MaxUDPPacketSize)
 	}
 
-	// Send the datagram
 	n, err := conn.WriteToUDP(data, addr)
 	if err != nil {
 		return fmt.Errorf("failed to send UDP datagram: %w", err)
@@ -48,23 +44,18 @@ func SendOffset(conn *net.UDPConn, addr *net.UDPAddr, offset *LocationOffset) er
 	return nil
 }
 
-// ReceiveOffset receives a LocationOffset datagram from UDP and deserializes it.
-// Returns the offset, the sender's address, and any error.
 func ReceiveOffset(conn *net.UDPConn) (*LocationOffset, *net.UDPAddr, error) {
 	if conn == nil {
 		return nil, nil, fmt.Errorf("connection is nil")
 	}
 
-	// Allocate buffer for incoming datagram
 	buf := make([]byte, MaxUDPPacketSize)
 
-	// Read from UDP
 	n, addr, err := conn.ReadFromUDP(buf)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to read UDP datagram: %w", err)
 	}
 
-	// Deserialize the offset
 	offset := &LocationOffset{}
 	if err := offset.Unmarshal(buf[:n]); err != nil {
 		return nil, addr, fmt.Errorf("failed to unmarshal offset from %s: %w", addr, err)
@@ -93,12 +84,11 @@ func NewUDPListener(port int) (*net.UDPConn, error) {
 	return conn, nil
 }
 
-// NewUDPConn creates a UDP connection for sending datagrams.
-// This creates an unbound connection that can send to any address.
+// NewUDPConn creates an unbound UDP connection that can send to any address.
 func NewUDPConn() (*net.UDPConn, error) {
 	addr := &net.UDPAddr{
 		IP:   net.IPv4zero,
-		Port: 0, // Let OS pick an ephemeral port
+		Port: 0, // OS picks an ephemeral port
 	}
 
 	conn, err := net.ListenUDP("udp4", addr)

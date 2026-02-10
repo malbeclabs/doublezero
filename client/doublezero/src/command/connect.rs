@@ -47,7 +47,7 @@ pub enum DzMode {
     /// Provision a user in IBRL mode
     IBRL {
         /// provide tenant code or pubkey
-        tenant: String,
+        tenant: Option<String>,
         /// Allocate a new address for the user
         #[arg(short, long, default_value_t = false)]
         allocate_addr: bool,
@@ -172,7 +172,7 @@ impl ProvisioningCliCommand {
         controller: &T,
         user_type: UserType,
         client_ip: Ipv4Addr,
-        tenant: Option<&String>,
+        tenant: Option<String>,
         spinner: &ProgressBar,
     ) -> eyre::Result<()> {
         // Look for user
@@ -300,7 +300,7 @@ impl ProvisioningCliCommand {
         UserType,
         Option<&MulticastMode>,
         Option<&Vec<String>>,
-        Option<&String>,
+        Option<String>,
     ) {
         match &self.dz_mode {
             DzMode::IBRL {
@@ -308,9 +308,9 @@ impl ProvisioningCliCommand {
                 allocate_addr,
             } => {
                 if *allocate_addr {
-                    (UserType::IBRLWithAllocatedIP, None, None, Some(tenant))
+                    (UserType::IBRLWithAllocatedIP, None, None, tenant.clone())
                 } else {
-                    (UserType::IBRL, None, None, Some(tenant))
+                    (UserType::IBRL, None, None, tenant.clone())
                 }
             } //DzMode::EdgeFiltering => UserType::EdgeFiltering,
             DzMode::Multicast {
@@ -378,7 +378,7 @@ impl ProvisioningCliCommand {
         client_ip: &Ipv4Addr,
         spinner: &ProgressBar,
         user_type: UserType,
-        tenant: Option<&String>,
+        tenant: Option<String>,
     ) -> eyre::Result<(Pubkey, User, Ipv4Addr)> {
         spinner.set_message("Searching for user account...");
         spinner.inc(1);
@@ -436,7 +436,7 @@ impl ProvisioningCliCommand {
                 }
 
                 let tenant_pk = match tenant {
-                    Some(tenant_str) => match parse_pubkey(tenant_str) {
+                    Some(tenant_str) => match parse_pubkey(&tenant_str) {
                         Some(pk) => Some(pk),
                         None => {
                             let (pubkey, _) = client
@@ -1491,7 +1491,7 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
-                tenant: tenant.code.clone(),
+                tenant: Some(tenant.code.clone()),
                 allocate_addr: false,
             },
             client_ip: Some(user.client_ip.to_string()),
@@ -1567,7 +1567,7 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
-                tenant: tenant.code.clone(),
+                tenant: Some(tenant.code.clone()),
                 allocate_addr: false,
             },
             client_ip: Some(user.client_ip.to_string()),
@@ -1629,7 +1629,7 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
-                tenant: "test-tenant".to_string(),
+                tenant: Some("test-tenant".to_string()),
                 allocate_addr: false,
             },
             client_ip: Some(user.client_ip.to_string()),
@@ -1672,7 +1672,7 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
-                tenant: tenant.code.clone(),
+                tenant: Some(tenant.code.clone()),
                 allocate_addr: true,
             },
             client_ip: Some(user.client_ip.to_string()),
@@ -1714,7 +1714,7 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
-                tenant: tenant.code.clone(),
+                tenant: Some(tenant.code.clone()),
                 allocate_addr: true,
             },
             client_ip: Some(user.client_ip.to_string()),
@@ -1740,7 +1740,7 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
-                tenant: "test-tenant".to_string(),
+                tenant: Some("test-tenant".to_string()),
                 allocate_addr: true,
             },
             client_ip: Some(user.client_ip.to_string()),
@@ -1766,7 +1766,7 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
-                tenant: "test-tenant".to_string(),
+                tenant: Some("test-tenant".to_string()),
                 allocate_addr: false,
             },
             client_ip: Some(user.client_ip.to_string()),
@@ -2127,7 +2127,7 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
-                tenant: "test-tenant".to_string(),
+                tenant: Some("test-tenant".to_string()),
                 allocate_addr: false,
             },
             client_ip: Some(ibrl_user.client_ip.to_string()),
@@ -2209,7 +2209,7 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
-                tenant: "test-tenant".to_string(),
+                tenant: Some("test-tenant".to_string()),
                 allocate_addr: false,
             },
             client_ip: Some(ibrl_user.client_ip.to_string()),
@@ -2243,7 +2243,7 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
-                tenant: "test-tenant".to_string(),
+                tenant: Some("test-tenant".to_string()),
                 allocate_addr: false,
             },
             client_ip: Some("1.2.3.4".to_string()),
@@ -2288,7 +2288,7 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
-                tenant: "test-tenant".to_string(),
+                tenant: Some("test-tenant".to_string()),
                 allocate_addr: false,
             },
             client_ip: Some("1.2.3.4".to_string()),
@@ -2319,7 +2319,7 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
-                tenant: "test-tenant".to_string(),
+                tenant: Some("test-tenant".to_string()),
                 allocate_addr: false,
             },
             client_ip: Some("1.2.3.4".to_string()),
@@ -2352,7 +2352,7 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
-                tenant: "test-tenant".to_string(),
+                tenant: Some("test-tenant".to_string()),
                 allocate_addr: true,
             },
             client_ip: Some("1.2.3.4".to_string()),
@@ -2385,7 +2385,7 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
-                tenant: "test-tenant".to_string(),
+                tenant: Some("test-tenant".to_string()),
                 allocate_addr: true,
             },
             client_ip: Some("1.2.3.4".to_string()),
@@ -2431,7 +2431,7 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
-                tenant: "test-tenant".to_string(),
+                tenant: Some("test-tenant".to_string()),
                 allocate_addr: true,
             },
             client_ip: Some(user.client_ip.to_string()),
@@ -2461,7 +2461,7 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
-                tenant: "test-tenant".to_string(),
+                tenant: Some("test-tenant".to_string()),
                 allocate_addr: true,
             },
             client_ip: Some(user.client_ip.to_string()),
@@ -2575,7 +2575,7 @@ mod tests {
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
-                tenant: "test-tenant".to_string(),
+                tenant: Some("test-tenant".to_string()),
                 allocate_addr: false,
             },
             client_ip: Some(ibrl_user.client_ip.to_string()),

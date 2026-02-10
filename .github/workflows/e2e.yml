@@ -75,7 +75,12 @@ jobs:
           echo "Discovered $count tests"
           echo "$tests"
 
-          # Distribute round-robin across shards
+          # BackwardCompatibility spawns many parallel subtests internally,
+          # so it gets its own dedicated shard to avoid starving other tests.
+          dedicated="TestE2E_BackwardCompatibility"
+          remaining=$(echo "$tests" | grep -v "^${dedicated}$")
+
+          # Distribute remaining tests round-robin across shards
           declare -a shards
           for ((i=0; i<SHARD_COUNT; i++)); do
             shards[$i]=""
@@ -90,15 +95,12 @@ jobs:
               shards[$idx]="$test"
             fi
             i=$((i + 1))
-          done <<< "$tests"
+          done <<< "$remaining"
 
-          # Build JSON matrix array
-          matrix="["
+          # Build JSON matrix: dedicated shard first, then round-robin shards
+          matrix="[{\"shard\":1,\"run\":\"^(${dedicated})$\"}"
           for ((i=0; i<SHARD_COUNT; i++)); do
-            if [ $i -gt 0 ]; then
-              matrix="${matrix},"
-            fi
-            matrix="${matrix}{\"shard\":$((i + 1)),\"run\":\"^(${shards[$i]})$\"}"
+            matrix="${matrix},{\"shard\":$((i + 2)),\"run\":\"^(${shards[$i]})$\"}"
           done
           matrix="${matrix}]"
 

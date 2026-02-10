@@ -43,6 +43,7 @@ All notable changes to this project will be documented in this file.
 - Device controller
   - Record successful GetConfig gRPC calls to ClickHouse for device telemetry tracking
   - Multi-tenancy vrf support added
+  - Skip isis and pim config for CYOA/DIA tagged interfaces
 - Onchain programs
   - Enforce that `CloseAccessPass` only closes AccessPass accounts when `connection_count == 0`, preventing closure while active connections are present.
 - Monitor

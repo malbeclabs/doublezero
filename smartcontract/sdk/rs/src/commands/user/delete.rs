@@ -2,8 +2,12 @@ use std::{net::Ipv4Addr, time::Duration};
 
 use crate::{
     commands::{
-        accesspass::get::GetAccessPassCommand, globalstate::get::GetGlobalStateCommand,
-        multicastgroup::subscribe::SubscribeMulticastGroupCommand, user::get::GetUserCommand,
+        accesspass::get::GetAccessPassCommand,
+        globalstate::get::GetGlobalStateCommand,
+        multicastgroup::{
+            list::ListMulticastGroupCommand, subscribe::SubscribeMulticastGroupCommand,
+        },
+        user::get::GetUserCommand,
     },
     DoubleZeroClient, UserStatus,
 };
@@ -30,15 +34,19 @@ impl DeleteUserCommand {
             .get_user()
             .map_err(|e| eyre::eyre!(e))?;
 
+        let multicastgroups = ListMulticastGroupCommand {}.execute(client)?;
+
         for mgroup_pk in user.publishers.iter().chain(user.subscribers.iter()) {
-            SubscribeMulticastGroupCommand {
-                group_pk: *mgroup_pk,
-                user_pk: self.pubkey,
-                client_ip: user.client_ip,
-                publisher: false,
-                subscriber: false,
+            if multicastgroups.contains_key(mgroup_pk) {
+                SubscribeMulticastGroupCommand {
+                    group_pk: *mgroup_pk,
+                    user_pk: self.pubkey,
+                    client_ip: user.client_ip,
+                    publisher: false,
+                    subscriber: false,
+                }
+                .execute(client)?;
             }
-            .execute(client)?;
         }
 
         if !user.publishers.is_empty() || !user.subscribers.is_empty() {

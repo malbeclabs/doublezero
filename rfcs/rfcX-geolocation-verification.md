@@ -109,8 +109,8 @@ Maximum acceptable RTT between client and reference point for geo-verification. 
       ^ │                          ^  │                             │
 Child │ │ Measured                 │  │                      Report │
 IP    │ │ Offset        Client IPs │  │ Measured             Offset │
-      │ V             & DZD Pubkey │  │ Offset                      v
-  ┌───────────┐                    │  │                        ┌───────────┐
+      │ V (future)    & DZD Pubkey │  │ Offset                      v
+  ┌───────────┐                    │  │ (future)               ┌───────────┐
   │           │────────────────────┘  │                        │           │
   │    DZ     │<──────────────────────┘                        │  Client   │
   │  Ledger   │<──────Submit Client IPs to be Measured─────────│  Oracle   │

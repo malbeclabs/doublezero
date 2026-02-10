@@ -195,20 +195,20 @@ func runMultiTenantVRFWorkflowTest(
 	}
 	log.Debug("--> Confirmed clients are disconnected")
 
-	// Phase 4: Connect clients with tenant flag.
+	// Phase 4: Connect clients with tenant (positional arg to `ibrl` subcommand).
 	// tenant-alpha: clientA1 → device1, clientA2 → device2
 	log.Debug("==> Connecting tenant-alpha clients")
-	_, err := clientA1.Exec(t.Context(), []string{"doublezero", "connect", "ibrl", "--client-ip", clientA1.CYOANetworkIP, "--device", deviceCode1, "--tenant", "tenant-alpha"})
+	_, err := clientA1.Exec(t.Context(), []string{"doublezero", "connect", "ibrl", "tenant-alpha", "--client-ip", clientA1.CYOANetworkIP, "--device", deviceCode1})
 	require.NoError(t, err)
-	_, err = clientA2.Exec(t.Context(), []string{"doublezero", "connect", "ibrl", "--client-ip", clientA2.CYOANetworkIP, "--device", deviceCode2, "--tenant", "tenant-alpha"})
+	_, err = clientA2.Exec(t.Context(), []string{"doublezero", "connect", "ibrl", "tenant-alpha", "--client-ip", clientA2.CYOANetworkIP, "--device", deviceCode2})
 	require.NoError(t, err)
 	log.Debug("--> tenant-alpha clients connected")
 
 	// tenant-bravo: clientB1 → device1, clientB2 → device2
 	log.Debug("==> Connecting tenant-bravo clients")
-	_, err = clientB1.Exec(t.Context(), []string{"doublezero", "connect", "ibrl", "--client-ip", clientB1.CYOANetworkIP, "--device", deviceCode1, "--tenant", "tenant-bravo"})
+	_, err = clientB1.Exec(t.Context(), []string{"doublezero", "connect", "ibrl", "tenant-bravo", "--client-ip", clientB1.CYOANetworkIP, "--device", deviceCode1})
 	require.NoError(t, err)
-	_, err = clientB2.Exec(t.Context(), []string{"doublezero", "connect", "ibrl", "--client-ip", clientB2.CYOANetworkIP, "--device", deviceCode2, "--tenant", "tenant-bravo"})
+	_, err = clientB2.Exec(t.Context(), []string{"doublezero", "connect", "ibrl", "tenant-bravo", "--client-ip", clientB2.CYOANetworkIP, "--device", deviceCode2})
 	require.NoError(t, err)
 	log.Debug("--> tenant-bravo clients connected")
 

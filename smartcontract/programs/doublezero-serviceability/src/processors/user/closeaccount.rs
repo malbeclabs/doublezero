@@ -40,6 +40,9 @@ pub fn process_closeaccount_user(
     accounts: &[AccountInfo],
     value: &UserCloseAccountArgs,
 ) -> ProgramResult {
+    #[cfg(test)]
+    msg!("process_closeaccount_user({:?})", value);
+
     let accounts_iter = &mut accounts.iter();
 
     let user_account = next_account_info(accounts_iter)?;
@@ -91,9 +94,6 @@ pub fn process_closeaccount_user(
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
-    #[cfg(test)]
-    msg!("process_delete_user({:?})", value);
-
     // Check if the payer is a signer
     assert!(payer_account.is_signer, "Payer must be a signer");
 
@@ -136,11 +136,6 @@ pub fn process_closeaccount_user(
     if user.status != UserStatus::Deleting {
         msg!("{:?}", user);
         return Err(solana_program::program_error::ProgramError::Custom(1));
-    }
-
-    if !user.publishers.is_empty() || !user.subscribers.is_empty() {
-        msg!("{:?}", user);
-        return Err(DoubleZeroError::ReferenceCountNotZero.into());
     }
 
     // Deallocate resources from ResourceExtension if accounts provided
@@ -457,7 +452,7 @@ mod tests {
         let err = result.err().unwrap();
         match err {
             ProgramError::Custom(code) => {
-                assert_eq!(code, 13);
+                assert_eq!(code, 36);
             }
             _ => panic!("Unexpected error type: {:?}", err),
         };

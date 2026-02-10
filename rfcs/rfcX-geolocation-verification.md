@@ -4,13 +4,13 @@
 
 **Status: `Draft`**
 
-This RFC introduces a geo-location verification system that validates the physical location of client devices using latency-based measurements through intermediate Probe servers. The system builds on DoubleZero's existing TWAMP telemetry infrastructure (RFC4) to provide cryptographically signed, onchain proof of approximate device location.
+This RFC introduces a geo-location verification system that validates the physical location of target devices using latency-based measurements through intermediate Probe servers. The system builds on DoubleZero's existing TWAMP telemetry infrastructure (RFC4) to provide cryptographically signed, onchain proof of approximate device location.
 
-The system uses a three-tier measurement chain: DoubleZero Devices (DZDs) with precisely known locations measure latency to Probe servers, which measure latency to client devices. Each measurement is cryptographically signed and includes references to previous measurements, creating an auditable trail. Location is expressed as "z milliseconds away from latitude x, longitude y," enabling verification that devices are within specified geographic boundaries.
+The system uses a three-tier measurement chain: DoubleZero Devices (DZDs) with precisely known locations measure latency to Probe servers, which measure latency to target devices. Each measurement is cryptographically signed and includes references to previous measurements, creating an auditable trail. Location is expressed as "z milliseconds away from latitude x, longitude y," enabling verification that devices are within specified geographic boundaries.
 
 ## Motivation
 
-Users are interested using DZDs as reference points to determine approximate location for clients for things such as ensuring GDPR compliance. This leverages the verifiable network of DZDs and contributors and is a reasonable way to monetize the network.
+Users are interested using DZDs as reference points to determine approximate location for targets for things such as ensuring GDPR compliance. This leverages the verifiable network of DZDs and contributors and is a reasonable way to monetize the network.
 
 Problems with current IP location services:
 - IP geolocation databases are unreliable (30-50% accuracy for city-level)
@@ -21,7 +21,7 @@ Problems with current IP location services:
 Customers need a trustless, verifiable system that:
 - Provides cryptographic proof stored onchain
 - Leverages existing infrastructure (DZDs with known locations)
-- Scales to large numbers of clients
+- Scales to large numbers of targets
 
 ### Solution Approach
 
@@ -33,12 +33,12 @@ This RFC leverages DoubleZero's existing TWAMP telemetry infrastructure to creat
 A server that acts as an intermediary for latency measurements. dzProbes:
 - Are bare metal servers. Ideally located within 1ms of a DZD
 - Run a UDP listener (default port 8923) accepting signed Offset messages from DZDs
-- Pull configuration from the DZ Ledger and measure latency to client devices specified there
+- Pull configuration from the DZ Ledger and measure latency to target devices specified there
 - Generate composite Offset messages including references to DZD measurements attesting to the probe's location
 - Are registered onchain in the Telemetry Program
 
 ### Offset
-A signed data structure representing the latency relationship between two entities (DZD↔Probe or Probe↔Client) and is sent to the Probe or client.
+A signed data structure representing the latency relationship between two entities (DZD↔Probe or Probe↔Target) and is sent to the Probe or Target. This is sent via UDP to the next link in the chain (From DZD->Probe and From Probe->Target)
 
 ```rust
 struct LocationOffset {
@@ -53,12 +53,12 @@ struct LocationOffset {
 ```
 
 **DZD-generated Offsets** contain no references (DZDs are roots of trust). <br> 
-**Probe-generated Offsets** include references to DZD Offsets, enabling clients to verify the entire measurement chain.
+**Probe-generated Offsets** include references to DZD Offsets, enabling targets to verify the entire measurement chain.
 
 > 💡 An enterprising user could use the existing link telemetry to confirm locations of DZDs relative to other DZDs. This is not covered by this RFC.
 
 ### Location Offset
-The RTT to a client from the lat/lon in the Offset struct.
+The RTT to a target from the lat/lon in the Offset struct.
 
 ### Child Probe
 A Probe assigned to a specific DZD for periodic latency measurement, defined onchain. DZDs only measure and send Offsets to their mated Probes.
@@ -68,12 +68,6 @@ A Probe assigned to a specific DZD for periodic latency measurement, defined onc
 - Each doublezero Exchange will have at least 1 Probe. For the POC we only need a single Probe in testnet.
 - Foundation authority controls children assignments
 
-### Latency Budget
-Maximum acceptable RTT between client and reference point for geo-verification. Determines geographic radius. Examples:
-- **50ms:** ~3,000km radius ("within EU")
-- **100ms:** ~6,000km radius ("within North America")
-- **10ms:** ~600km radius (city/metro area)
-
 ## Alternatives Considered
 
 ### Satus Quo: Centralized Location Service (Rejected)
@@ -81,9 +75,9 @@ Maximum acceptable RTT between client and reference point for geo-verification. 
 **Cons:** Single point of failure, requires trust, no cryptographic proof
 **Decision:** Rejected by potential users
 
-### Direct DZD↔Client Measurement (Rejected)
+### Direct DZD↔Target Measurement (Rejected)
 **Pros:** Simpler, lower latency, lower cost
-**Cons:** Control plane traffic in DZDs would not scale to moderate numbers of clients.
+**Cons:** Control plane traffic in DZDs would not scale to moderate numbers of targets.
 **Decision:** Rejected in order to prevent resource consumption on the resource-constrained DZD.
 
 ### GPS-Based Verification (Rejected)
@@ -92,7 +86,7 @@ Maximum acceptable RTT between client and reference point for geo-verification. 
 **Decision:** Rejected due to high infrastructure build cost.
 
 ### Probe-Based Triangulation (SELECTED)
-**Pros:** Leverages existing infrastructure, no client modifications, cryptographic proof, onchain auditability, scalable, privacy-preserving
+**Pros:** Leverages existing infrastructure, cryptographic proof, onchain auditability, scalable, privacy-preserving
 **Cons:** Infrastructure cost (need probe servers), less precise than GPS, additional latency
 **Decision:** Selected. Best balance of security, verifiability, and operational simplicity.
 
@@ -108,12 +102,12 @@ Maximum acceptable RTT between client and reference point for geo-verification. 
   └──────────┘                  └───────────┘  w/ references   └───────────┘
       ^ │                          ^  │                             │
 Child │ │ Measured                 │  │                      Report │
-IP    │ │ Offset        Client IPs │  │ Measured             Offset │
+IP    │ │ Offset        Target IPs │  │ Measured             Offset │
       │ V (future)    & DZD Pubkey │  │ Offset                      v
   ┌───────────┐                    │  │ (future)               ┌───────────┐
   │           │────────────────────┘  │                        │           │
   │    DZ     │<──────────────────────┘                        │  Client   │
-  │  Ledger   │<──────Submit Client IPs to be Measured─────────│  Oracle   │
+  │  Ledger   │<──────Submit Target IPs to be Measured─────────│  Oracle   │
   │           │<─────────────Confirm Against Ledger────────────│           │
   └───────────┘                                                └───────────┘
 ```
@@ -121,19 +115,19 @@ IP    │ │ Offset        Client IPs │  │ Measured             Offset │
 **Data Flows:**
 _Ongoing:_
 - **Probe Discovery (60s interval):** DZD queries onchain Probe accounts to discover child probes
-- **Client Discovery (30s interval):** Client sends UDP packet to Probe requesting verification
+- **Target Discovery (30s interval):** Probe querries onchain to disover its targets
 
 _Async:_
-- Client Oracle submits Client IPs that should have locations verified.
+- Client Oracle submits Target IPs that should have locations verified.
 
 _Measurment Flow_
 1. **DZD→Probe Measurement (10s interval):** DZD sends TWAMP probe, measures RTT
 2. **Offset Generation:** DZD creates Offset with lat/lon, latency, timestamp, signs with Ed25519
 3. **Dual Posting:** DZD submits samples to `ProbeLatencySamples` PDA onchain AND sends Offset to Probe via UDP
 4. **Probe Caching:** Probe verifies DZD signature, caches Offset
-5. **Probe→Client Measurement:** Probe measures RTT to client using TWAMP
+5. **Probe→Target Measurement:** Probe measures RTT to target using TWAMP
 6. **Composite Offset:** Probe creates new Offset with DZD Offset as reference, signs it
-8. **Client Verification:** Client verifies signature chain, uses `lat/lon` + `rtt_ns` to determine location 
+8. **Target Verification:** Target verifies signature chain, uses `lat/lon` + `rtt_ns` to determine location 
 
 ### Data Structures
 
@@ -333,9 +327,9 @@ New service deployed alongside DZDs in exchanges.
 **File:** `probe-server/` (new directory)
 
 **Components:**
-- **UDP Listener:** Accepts DZD Offsets and client requests
+- **UDP Listener:** Accepts DZD Offsets
 - **Offset Cache:** Stores recent DZD Offsets (keyed by DZD pubkey)
-- **Client Handler:** Measures RTT to clients, generates composite Offsets
+- **Target Handler:** Measures RTT to targets, generates composite Offsets
 - **Signature Verifier:** Validates Ed25519 signatures
 
 **Language:** Rust (for performance and consistency with other infrastructure)
@@ -348,13 +342,13 @@ max_offset_age_seconds: 60
 cache_size: 10000
 ```
 
-#### Client SDK
+#### Target SDK
 
 **File:** `sdk/rs/src/geolocation/` (new module)
 
 **Components:**
 - `offset.rs`: Offset struct with signature verification
-- `client.rs`: UDP client for requesting Offsets
+- `target.rs`: UDP client for receiving offets
 - `verifier.rs`: Chain verification and latency validation
 
 **Example Usage:**
@@ -446,36 +440,34 @@ $ doublezero-geolocation get 12350 203.0.113.10
 
 ### POC Requirements
 
-**Goal:** Single probe deployment for testing
+**Goal:** Single dzProbe deployment for testing
 
 1. Serviceability program changes:
    - GeolocationUser account
    - 4 new instructions (InitializeGeolocationUser/AddTargetIp/RemoveTargetIp/DeleteGeolocationUser)
 2. Telemetry program changes:
-   - Probe and ProbeLatencySamples accounts
-   - GeolocationSamples account
-   - 8 new instructions (InitializeProbe/UpdateProbe/AddMated/RemoveMated/InitProbeLatencySamples/WriteProbeLatencySamples/InitGeolocationSamples/WriteGeolocationSamples)
+   - dzProbe account
+   - 4 new instructions (InitializeProbe/UpdateProbe/AddParent/RemoveParent)
 3. Telemetry agent extensions:
-   - Probe discovery from onchain
-   - TWAMP measurement to dzProbes
-   - Offset generation and signing
-   - Dual posting (onchain + UDP)
+   - Child dzProbe discovery from onchain
+   - Extend TWAMP measurement to dzProbes
+   - Generate Offset structure and sign
+   - Posting Offset Structure via UDP to Probe
 3. Probe server (`doublezero-probe-agent`):
    - TWAMP Reflector
    - UDP listener for DZD Offsets
    - Offset caching and verification
    - GeolocationUser discovery from onchain
-   - Target IP RTT measurement
+   - Target IP RTT measurement (Via TWAMP/ICMP)
    - Composite Offset generation
-   - GeolocationSamples submission onchain
    - Post Composite offset to Target
-4. Client TWAMP Reflector + UDP Listener:
+4. Example Target Software TWAMP Reflector + UDP Listener:
    - TWAMP Reflector
    - Receives Signed UDP Datagrams
 5. CLI tool (doublezero-geolocation):
    - User management commands
    - Target IP management commands
-   - Measurement query commands
+   - Measurement query commands `doublezero probe reference list`: see current reference measurement
    - Set up payer account
    - Probe Management Commands `doublezero probe list/create/update`
 6. Deployment:
@@ -511,12 +503,12 @@ $ doublezero-geolocation get 12350 203.0.113.10
 - Multi-probe consensus logic
 
 #### E2E Tests (devnet/testnet)
-- Full DZD → Probe → Client chain
+- Full DZD → Probe → Target chain
 - Signature verification across components
 - Probe child/un-child operations
 
 #### Performance Tests
-- Probe server throughput (clients/second)
+- Probe server throughput (targets/second)
 
 ### Operational Considerations
 
@@ -556,13 +548,13 @@ Discuss effects on:
 
 |       Threat            |             Mitigation                                            |
 |-------------------------|-------------------------------------------------------------------|
-| **Client IP Spoofing**  | Not addressed in POC/MVP; discussed in future work                |
+| **Target IP Spoofing**  | Not addressed in POC/MVP; discussed in future work                |
 | **Replay Attacks**      | Ongoing Probes are added to the ledger.                           |
 | **Signature Forgery**   | Ed25519 signatures; DZD keys secured in telemetry agent           |
-| **Probe Compromise**    | Client can use mulitple probes; onchain audit trail               |
+| **Probe Compromise**    | Target can use mulitple probes; onchain audit trail               |
 | **DDoS by Probes**      | Rate limiting (10-60s probes)                                     |
 | **DDoS on Probes**      | Rate limiting, firewall rules                                     |
-| **Client False Claims** | Clients cannot forge Offsets; signature verification required     |
+| **Target False Claims** | Targets cannot forge Offsets; signature verification required     |
 
 
 ## Future Work
@@ -572,7 +564,7 @@ Discuss effects on:
 
 ### Geographic Multi-Probe Triangulation
 **Problem:** Single probe gives distance, not precise location
-- Client sets up 3 probe targets with the same IP but different source dzProbes. DZ could provide an SDK performs trilateration from multiple distance measurements
+- User sets up 3 probe targets with the same IP but different source dzProbes. DZ could provide an SDK performs trilateration from multiple distance measurements
 
 ## Backward Compatibility
 
@@ -584,7 +576,7 @@ Discuss effects on:
 
 1. Should probes support IPv6? (Initially IPv4 only for simplicity)
 2. What's the optimal cache size for Offset storage? (Testing will determine, starting with 10k entries)
-3. Should probe metrics be posted onchain? (Yes for auditability; separate from client verification path)
+3. Should probe metrics be posted onchain? (Yes for auditability; separate from target verification path)
 4. How to handle probe key rotation? (Manual for POC, automated in MVP)
 5. In the architecture diagram, the Probe has a line to the Target that says "Probe". Should this be TWAMP (requires configuration on the target), or ICMP, or a TCP syn/syn-ack on a port known to listen publicly? Or support all three options? For POC we can start with ICMP.
 6. How should we handle the latency between the probe and device changing over time? Should we always use the most recent measurement? Should we use the average since the last Signed Offset was sent? The avg/min/max of the previous epoch? 

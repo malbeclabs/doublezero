@@ -496,11 +496,11 @@ func (q *QAAgent) ConnectMulticast(ctx context.Context, req *pb.ConnectMulticast
 	q.log.Debug("Received ConnectMulticast request", "pub_codes", pubCodes, "sub_codes", subCodes)
 	args := []string{"connect", "multicast"}
 	if len(pubCodes) > 0 {
-		args = append(args, "--pub-groups")
+		args = append(args, "--publish")
 		args = append(args, pubCodes...)
 	}
 	if len(subCodes) > 0 {
-		args = append(args, "--sub-groups")
+		args = append(args, "--subscribe")
 		args = append(args, subCodes...)
 	}
 	cmd := exec.Command("doublezero", args...)

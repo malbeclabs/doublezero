@@ -307,7 +307,7 @@ func TestE2E_SingleClient_IBRL_Then_Multicast_Publisher(t *testing.T) {
 
 // TestE2E_Multicast_PublisherAndSubscriber verifies that a single client can be
 // both a multicast publisher and subscriber simultaneously using the
-// --pub-groups and --sub-groups flags.
+// --publish and --subscribe flags.
 func TestE2E_Multicast_PublisherAndSubscriber(t *testing.T) {
 	t.Parallel()
 
@@ -316,7 +316,7 @@ func TestE2E_Multicast_PublisherAndSubscriber(t *testing.T) {
 
 	// Connect as both publisher and subscriber using new flags
 	log.Debug("==> Connecting as both publisher and subscriber")
-	cmd := "doublezero connect multicast --pub-groups mg01 --sub-groups mg01 --client-ip " + client.CYOANetworkIP + " 2>&1"
+	cmd := "doublezero connect multicast --publish mg01 --subscribe mg01 --client-ip " + client.CYOANetworkIP + " 2>&1"
 	output, err := client.Exec(t.Context(), []string{"bash", "-c", cmd})
 	log.Debug("==> Connect output", "output", string(output))
 	require.NoError(t, err, "should be able to connect as both publisher and subscriber")

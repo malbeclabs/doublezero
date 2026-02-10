@@ -64,11 +64,11 @@ pub enum DzMode {
         multicast_groups: Vec<String>,
 
         /// Multicast groups to publish to
-        #[arg(long, num_args = 1..)]
+        #[arg(long = "publish", num_args = 1..)]
         pub_groups: Vec<String>,
 
         /// Multicast groups to subscribe to
-        #[arg(long, num_args = 1..)]
+        #[arg(long = "subscribe", num_args = 1..)]
         sub_groups: Vec<String>,
     },
 }
@@ -225,7 +225,7 @@ impl ProvisioningCliCommand {
                 eyre::bail!(
                     "A multicast service is already running. Disconnect first with \
                      `doublezero disconnect multicast`, then reconnect with all desired \
-                     groups in a single command (e.g. --pub-groups and --sub-groups)."
+                     groups in a single command (e.g. --publish and --subscribe)."
                 );
             }
         }
@@ -331,7 +331,10 @@ impl ProvisioningCliCommand {
                 allocate_addr,
             } => {
                 if *allocate_addr {
-                    Ok(ParsedDzMode::Ibrl(UserType::IBRLWithAllocatedIP, tenant.clone()))
+                    Ok(ParsedDzMode::Ibrl(
+                        UserType::IBRLWithAllocatedIP,
+                        tenant.clone(),
+                    ))
                 } else {
                     Ok(ParsedDzMode::Ibrl(UserType::IBRL, tenant.clone()))
                 }

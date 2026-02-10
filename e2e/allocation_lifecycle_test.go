@@ -799,7 +799,7 @@ func TestE2E_Multicast_ReactivationPreservesAllocations(t *testing.T) {
 	}, 30*time.Second, 2*time.Second, "daemon did not tear down multicast service within timeout")
 
 	// Reconnect with both pub groups in a single command
-	_, err = client.Exec(ctx, []string{"bash", "-c", "doublezero connect multicast --pub-groups test-mc01 test-mc02 --client-ip " + client.CYOANetworkIP})
+	_, err = client.Exec(ctx, []string{"bash", "-c", "doublezero connect multicast --publish test-mc01 test-mc02 --client-ip " + client.CYOANetworkIP})
 	require.NoError(t, err, "failed to reconnect with both pub groups")
 
 	// =========================================================================

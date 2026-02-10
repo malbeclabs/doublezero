@@ -44,7 +44,7 @@ All notable changes to this project will be documented in this file.
 - CLI
   - Add --metro-route and --route-aliveness flags to tenant create and update commands
   - Add tenant subcommands (create, update, delete, get, list, add-administrator, remove-administrator) to doublezero and doublezero-admin CLIs
-  - Support simultaneous publisher and subscriber multicast via `--pub-groups` and `--sub-groups` flags
+  - Support simultaneous publisher and subscriber multicast via `--publish` and `--subscribe` flags
   - Add filtering options and desired_status & metrics_publisher_pk field to device and link list commands
   - Added activation check for existing users before subscribing to new groups (#2782)
   - access-pass set: add --tenant argument to specify tenant code for access pass restriction (converts to tenant PDA onchain)

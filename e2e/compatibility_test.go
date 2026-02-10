@@ -242,17 +242,82 @@ func (r *compatEnvResults) formatMatrix() string {
 		}
 	}
 
+	// Track footnotes for failures.
+	var footnotes []struct {
+		num     int
+		version string
+		step    string
+		err     string
+	}
+	footnoteNum := 0
+
 	for _, name := range stepNames {
 		buf.WriteString(fmt.Sprintf("%-*s", maxNameLen+2, name))
 		for _, version := range r.versions {
 			res, ok := lookup[version][name]
 			if !ok {
 				buf.WriteString(fmt.Sprintf("  %-10s", "-"))
+			} else if res.status == "FAIL" && res.err != "" {
+				footnoteNum++
+				buf.WriteString(fmt.Sprintf("  %-10s", fmt.Sprintf("FAIL [%d]", footnoteNum)))
+				footnotes = append(footnotes, struct {
+					num     int
+					version string
+					step    string
+					err     string
+				}{footnoteNum, version, name, res.err})
 			} else {
 				buf.WriteString(fmt.Sprintf("  %-10s", res.status))
 			}
 		}
 		buf.WriteString("\n")
+	}
+
+	// Print footnotes for failures.
+	if len(footnotes) > 0 {
+		buf.WriteString("\n")
+		for _, fn := range footnotes {
+			// Truncate error to first line and max 200 chars for readability.
+			errMsg := fn.err
+			if idx := strings.IndexByte(errMsg, '\n'); idx != -1 {
+				errMsg = errMsg[:idx]
+			}
+			if len(errMsg) > 200 {
+				errMsg = errMsg[:200] + "..."
+			}
+			buf.WriteString(fmt.Sprintf("  [%d] %s\n", fn.num, errMsg))
+		}
+	}
+
+	// Print focused failures section.
+	var failures []struct {
+		version string
+		step    string
+		err     string
+	}
+	for _, version := range r.versions {
+		for _, res := range r.matrix[version] {
+			if res.status == "FAIL" {
+				failures = append(failures, struct {
+					version string
+					step    string
+					err     string
+				}{version, res.name, res.err})
+			}
+		}
+	}
+	if len(failures) > 0 {
+		buf.WriteString(fmt.Sprintf("\n=== %s: Failures ===\n\n", r.env))
+		for _, f := range failures {
+			errMsg := f.err
+			if idx := strings.IndexByte(errMsg, '\n'); idx != -1 {
+				errMsg = errMsg[:idx]
+			}
+			if len(errMsg) > 200 {
+				errMsg = errMsg[:200] + "..."
+			}
+			buf.WriteString(fmt.Sprintf("  %-11s  %-40s  %s\n", formatVersionLabel(f.version), f.step, errMsg))
+		}
 	}
 
 	return buf.String()
@@ -695,7 +760,7 @@ func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *
 			})
 			t.Run("manager_write", func(t *testing.T) {
 				t.Parallel()
-				runWriteWorkflows(t, dn, cli, version, vi, managerPubkey, lookupFirstPubkey, lookupPubkeyByCode, recordResult, vLog)
+				runWriteWorkflows(t, dn, cli, version, vi, cloneEnv, managerPubkey, lookupFirstPubkey, lookupPubkeyByCode, recordResult, vLog)
 			})
 		})
 	}
@@ -752,6 +817,7 @@ func runWriteWorkflows(
 	dn *devnet.Devnet,
 	cli, version string,
 	vi int,
+	cloneEnv string,
 	managerPubkey string,
 	lookupFirstPubkey func(string) string,
 	lookupPubkeyByCode func(string, string) string,
@@ -780,7 +846,7 @@ func runWriteWorkflows(
 	// dumpDiagnostics logs the current onchain state for debugging failed steps.
 	// Uses fmt.Println to preserve newlines in output (structured logging escapes them).
 	dumpDiagnostics := func(stepName string) {
-		fmt.Println("=== DIAGNOSTICS for failed step:", stepName, "===")
+		fmt.Printf("=== DIAGNOSTICS [%s %s] failed step: %s ===\n", cloneEnv, formatVersionLabel(version), stepName)
 		diagCmds := []struct {
 			label string
 			cmd   string
@@ -793,11 +859,48 @@ func runWriteWorkflows(
 			{"access-pass list", "doublezero access-pass list 2>&1 | head -20"},
 			{"multicast group list", "doublezero multicast group list 2>&1 | head -20"},
 		}
+		// Add entity-specific get commands based on the failed step name.
+		if strings.Contains(stepName, "multicast") || strings.Contains(stepName, "subscribe") {
+			diagCmds = append(diagCmds, struct {
+				label string
+				cmd   string
+			}{"multicast group get " + multicastCode, "doublezero multicast group get --code " + multicastCode + " 2>&1"})
+		}
+		if strings.Contains(stepName, "link") {
+			diagCmds = append(diagCmds, struct {
+				label string
+				cmd   string
+			}{"link get " + linkCode, "doublezero link get --code " + linkCode + " 2>&1"},
+				struct {
+					label string
+					cmd   string
+				}{"link get " + dzxLinkCode, "doublezero link get --code " + dzxLinkCode + " 2>&1"})
+		}
+		if strings.Contains(stepName, "device") {
+			diagCmds = append(diagCmds, struct {
+				label string
+				cmd   string
+			}{"device get " + deviceCode, "doublezero device get --code " + deviceCode + " 2>&1"},
+				struct {
+					label string
+					cmd   string
+				}{"device get " + deviceCode2, "doublezero device get --code " + deviceCode2 + " 2>&1"})
+		}
+		if strings.Contains(stepName, "user") {
+			diagCmds = append(diagCmds, struct {
+				label string
+				cmd   string
+			}{"user get " + userClientIP, fmt.Sprintf("doublezero user get --pubkey $(doublezero user list 2>/dev/null | grep '%s' | awk '{print $1}') 2>&1", userClientIP)},
+				struct {
+					label string
+					cmd   string
+				}{"user get " + user2ClientIP, fmt.Sprintf("doublezero user get --pubkey $(doublezero user list 2>/dev/null | grep '%s ' | awk '{print $1}') 2>&1", user2ClientIP)})
+		}
 		for _, dc := range diagCmds {
 			out, _ := dn.Manager.Exec(t.Context(), []string{"bash", "-c", dc.cmd})
 			fmt.Printf("  %s:\n%s\n", dc.label, string(out))
 		}
-		fmt.Println("=== END DIAGNOSTICS ===")
+		fmt.Printf("=== END DIAGNOSTICS [%s %s] ===\n", cloneEnv, formatVersionLabel(version))
 	}
 
 	type writeStep struct {

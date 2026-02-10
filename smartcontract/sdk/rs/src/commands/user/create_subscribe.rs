@@ -62,6 +62,7 @@ impl CreateSubscribeUserCommand {
 
         let (pda_pubkey, _) =
             get_user_pda(&client.get_program_id(), &self.client_ip, self.user_type);
+
         client
             .execute_transaction(
                 DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {

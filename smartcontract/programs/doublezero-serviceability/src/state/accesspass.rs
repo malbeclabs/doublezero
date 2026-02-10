@@ -215,6 +215,7 @@ pub struct AccessPass {
     pub mgroup_pub_allowlist: Vec<Pubkey>, // Vec<32> - List of multicast groups this AccessPass can publish to
     pub mgroup_sub_allowlist: Vec<Pubkey>, // Vec<32> - List of multicast groups this AccessPass can subscribe to
     pub flags: u8,                         // 1
+    pub tenant_allowlist: Vec<Pubkey>, // Vec<32> - List of tenants this AccessPass can connect to
 }
 
 impl fmt::Display for AccessPass {
@@ -264,6 +265,7 @@ impl TryFrom<&[u8]> for AccessPass {
             mgroup_pub_allowlist: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
             mgroup_sub_allowlist: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
             flags: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            tenant_allowlist: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::AccessPass {
@@ -369,6 +371,7 @@ mod tests {
             status: AccessPassStatus::Connected,
             mgroup_pub_allowlist: vec![],
             mgroup_sub_allowlist: vec![],
+            tenant_allowlist: vec![],
             flags: 0,
         };
 
@@ -412,6 +415,7 @@ mod tests {
             status: AccessPassStatus::Connected,
             mgroup_pub_allowlist: vec![],
             mgroup_sub_allowlist: vec![],
+            tenant_allowlist: vec![],
             flags: 0,
         };
 
@@ -466,6 +470,7 @@ mod tests {
             mgroup_pub_allowlist: vec![],
             mgroup_sub_allowlist: vec![],
             flags: 0,
+            tenant_allowlist: vec![],
         };
 
         let mut data = borsh::to_vec(&val).unwrap();
@@ -503,6 +508,7 @@ mod tests {
             status: AccessPassStatus::Connected,
             mgroup_pub_allowlist: vec![],
             mgroup_sub_allowlist: vec![],
+            tenant_allowlist: vec![],
             flags: 0,
         };
         let err = val.validate();
@@ -524,6 +530,7 @@ mod tests {
             status: AccessPassStatus::Connected,
             mgroup_pub_allowlist: vec![],
             mgroup_sub_allowlist: vec![],
+            tenant_allowlist: vec![],
             flags: 0,
         };
         let err = val.validate();

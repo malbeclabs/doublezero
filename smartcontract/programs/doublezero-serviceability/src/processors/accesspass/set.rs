@@ -36,6 +36,7 @@ pub struct SetAccessPassArgs {
     pub client_ip: Ipv4Addr, // 4
     pub last_access_epoch: u64,          // 8
     pub allow_multiple_ip: bool,         // 1
+    pub tenant: Pubkey,                  // 32
 }
 
 impl fmt::Debug for SetAccessPassArgs {
@@ -147,6 +148,7 @@ pub fn process_set_access_pass(
             owner: *payer_account.key,
             mgroup_pub_allowlist: vec![],
             mgroup_sub_allowlist: vec![],
+            tenant_allowlist: vec![value.tenant],
             flags,
         };
 
@@ -191,12 +193,14 @@ pub fn process_set_access_pass(
                 owner: *payer_account.key,
                 mgroup_pub_allowlist: vec![],
                 mgroup_sub_allowlist: vec![],
+                tenant_allowlist: vec![value.tenant],
             }
         };
 
         // Update fields
         accesspass.accesspass_type = value.accesspass_type.clone();
         accesspass.last_access_epoch = value.last_access_epoch;
+        accesspass.tenant_allowlist = vec![value.tenant];
         accesspass.flags = flags;
 
         // Write back updated Access Pass

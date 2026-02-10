@@ -102,6 +102,7 @@ pub fn process_add_multicastgroup_sub_allowlist(
             owner: *payer_account.key,
             mgroup_pub_allowlist: vec![],
             mgroup_sub_allowlist: vec![*mgroup_account.key],
+            tenant_allowlist: vec![],
             flags: 0,
         };
 

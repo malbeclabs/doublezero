@@ -179,6 +179,7 @@ mod tests {
             owner: client.get_payer(),
             mgroup_pub_allowlist: vec![],
             mgroup_sub_allowlist: vec![],
+            tenant_allowlist: vec![],
             flags: 0,
         };
 
@@ -268,6 +269,7 @@ mod tests {
             owner: client.get_payer(),
             mgroup_pub_allowlist: vec![],
             mgroup_sub_allowlist: vec![],
+            tenant_allowlist: vec![],
             flags: 0,
         };
 

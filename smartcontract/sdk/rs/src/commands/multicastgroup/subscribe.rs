@@ -166,6 +166,7 @@ mod tests {
             owner: client.get_payer(),
             mgroup_pub_allowlist: vec![mgroup_pubkey],
             mgroup_sub_allowlist: vec![mgroup_pubkey],
+            tenant_allowlist: vec![],
             flags: 0,
         };
 

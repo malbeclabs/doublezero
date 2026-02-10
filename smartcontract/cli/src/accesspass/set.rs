@@ -4,7 +4,10 @@ use crate::{
 };
 use clap::{Args, ValueEnum};
 use doublezero_sdk::commands::accesspass::set::SetAccessPassCommand;
-use doublezero_serviceability::{pda::get_accesspass_pda, state::accesspass::AccessPassType};
+use doublezero_serviceability::{
+    pda::{get_accesspass_pda, get_tenant_pda},
+    state::accesspass::AccessPassType,
+};
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, net::Ipv4Addr, str::FromStr};
 
@@ -50,6 +53,9 @@ pub struct SetAccessPassCliCommand {
     /// Specifies the key for other access pass types. Required if accesspass_type is others.
     #[arg(long, required_if_eq("accesspass_type", "others"))]
     pub others_key: Option<String>,
+    /// Tenant code allowed for this access pass
+    #[arg(long = "tenant")]
+    pub tenant: Option<String>,
 }
 
 impl SetAccessPassCliCommand {
@@ -110,6 +116,16 @@ impl SetAccessPassCliCommand {
             },
         };
 
+        // Convert tenant code to PDA if provided
+        let tenant = if let Some(code) = &self.tenant {
+            if code.len() > 32 {
+                eyre::bail!("Tenant code '{}' exceeds 32 bytes", code);
+            }
+            get_tenant_pda(&client.get_program_id(), code).0
+        } else {
+            Pubkey::default()
+        };
+
         let (accesspass_pubkey, _) = get_accesspass_pda(
             &client.get_program_id(),
             &self.client_ip.unwrap_or(Ipv4Addr::UNSPECIFIED),
@@ -123,6 +139,7 @@ impl SetAccessPassCliCommand {
             user_payer,
             last_access_epoch,
             allow_multiple_ip: self.allow_multiple_ip,
+            tenant,
         })?;
         writeln!(out, "Signature: {signature}")?;
 
@@ -173,6 +190,7 @@ mod tests {
                 user_payer: payer,
                 last_access_epoch: u64::MAX,
                 allow_multiple_ip: false,
+                tenant: Pubkey::default(),
             }))
             .returning(move |_| Ok(signature));
 
@@ -186,6 +204,7 @@ mod tests {
             allow_multiple_ip: false,
             others_name: None,
             others_key: None,
+            tenant: None,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());
@@ -219,6 +238,7 @@ mod tests {
             allow_multiple_ip: false,
             others_name: None,
             others_key: None,
+            tenant: None,
         }
         .execute(&client, &mut output);
         assert!(res.is_err());
@@ -259,6 +279,7 @@ mod tests {
                 user_payer: payer,
                 last_access_epoch: 11,
                 allow_multiple_ip: false,
+                tenant: Pubkey::default(),
             }))
             .returning(move |_| Ok(signature));
 
@@ -272,6 +293,7 @@ mod tests {
             allow_multiple_ip: false,
             others_name: None,
             others_key: None,
+            tenant: None,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());
@@ -305,6 +327,7 @@ mod tests {
             allow_multiple_ip: false,
             others_name: None,
             others_key: None,
+            tenant: None,
         }
         .execute(&client, &mut output);
         assert!(res.is_err());
@@ -345,6 +368,7 @@ mod tests {
                 user_payer: payer,
                 last_access_epoch: 11,
                 allow_multiple_ip: false,
+                tenant: Pubkey::default(),
             }))
             .returning(move |_| Ok(signature));
 
@@ -358,6 +382,7 @@ mod tests {
             allow_multiple_ip: false,
             others_name: None,
             others_key: None,
+            tenant: None,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());
@@ -391,6 +416,7 @@ mod tests {
             allow_multiple_ip: false,
             others_name: None,
             others_key: None,
+            tenant: None,
         }
         .execute(&client, &mut output);
         assert!(res.is_err());
@@ -431,6 +457,7 @@ mod tests {
                 user_payer: payer,
                 last_access_epoch: 11,
                 allow_multiple_ip: false,
+                tenant: Pubkey::default(),
             }))
             .returning(move |_| Ok(signature));
 
@@ -444,6 +471,7 @@ mod tests {
             allow_multiple_ip: false,
             others_name: None,
             others_key: None,
+            tenant: None,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());
@@ -477,6 +505,7 @@ mod tests {
             allow_multiple_ip: false,
             others_name: None,
             others_key: None,
+            tenant: None,
         }
         .execute(&client, &mut output);
         assert!(res.is_err());
@@ -517,6 +546,7 @@ mod tests {
                 user_payer: payer,
                 last_access_epoch: 11,
                 allow_multiple_ip: false,
+                tenant: Pubkey::default(),
             }))
             .returning(move |_| Ok(signature));
 
@@ -530,6 +560,7 @@ mod tests {
             allow_multiple_ip: false,
             others_name: None,
             others_key: None,
+            tenant: None,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());
@@ -563,6 +594,7 @@ mod tests {
             allow_multiple_ip: false,
             others_name: None,
             others_key: None,
+            tenant: None,
         }
         .execute(&client, &mut output);
         assert!(res.is_err());
@@ -595,6 +627,7 @@ mod tests {
             allow_multiple_ip: false,
             others_name: Some("custom-name".to_string()),
             others_key: None,
+            tenant: None,
         }
         .execute(&client, &mut output);
         assert!(res.is_err());
@@ -636,6 +669,7 @@ mod tests {
                 user_payer: payer,
                 last_access_epoch: 11,
                 allow_multiple_ip: false,
+                tenant: Pubkey::default(),
             }))
             .returning(move |_| Ok(signature));
 
@@ -649,6 +683,7 @@ mod tests {
             allow_multiple_ip: false,
             others_name: Some("custom-name".to_string()),
             others_key: Some("custom-key".to_string()),
+            tenant: None,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

@@ -18,14 +18,19 @@ All notable changes to this project will be documented in this file.
   - Serviceability: extend UserUpdate instruction to support tenant_pk field updates with automatic reference count management on old and new tenants (backward compatible with old format)
   - Serviceability: extend UserCloseAccount instruction to decrement tenant reference count when closing user with assigned tenant
   - Serviceability: add reference count validation in DeleteMulticastGroup to prevent deletion when active publishers or subscribers exist
+  - Serviceability: add tenant_allowlist field to AccessPass to restrict which tenants can use specific access passes (backward compatible with existing accounts)
 - SDK
   - Add CreateTenant, UpdateTenant (vrf_id only), DeleteTenant, GetTenant, and ListTenant commands with support for code or pubkey lookup
   - Add AddAdministratorTenant and RemoveAdministratorTenant commands for tenant administrator management
   - UpdateUserCommand extended with tenant_pk field and automatic tenant account resolution for reference counting
+  - SetAccessPassCommand extended with tenant field to specify allowed tenant for access pass
+  - TypeScript SDK updated with tenantAllowlist field in AccessPass interface and deserialization
 - CLI
   - Add tenant subcommands (create, update, delete, get, list, add-administrator, remove-administrator) to doublezero and doublezero-admin CLIs
   - Add filtering options and desired_status & metrics_publisher_pk field to device and link list commands
   - Added activation check for existing users before subscribing to new groups (#2782)
+  - access-pass set: add --tenant argument to specify tenant code for access pass restriction (converts to tenant PDA onchain)
+  - tenant list: improve output formatting with table support and JSON serialization options (--json, --json-compact)
 - SDK
   - Add read-only Go SDK (`revdist`) for the revenue distribution Solana program, with typed deserialization of all onchain accounts and Rust-generated fixture tests for cross-language compatibility
   - Add `revdist-cli` tool for inspecting onchain revenue distribution state

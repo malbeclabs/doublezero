@@ -1,44 +1,59 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
+use doublezero_program_common::serializer;
 use doublezero_sdk::commands::tenant::list::ListTenantCommand;
+use serde::Serialize;
+use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
+use tabled::{settings::Style, Table, Tabled};
 
 #[derive(Args, Debug)]
 pub struct ListTenantCliCommand {
-    /// Output as JSON
-    #[arg(long)]
+    /// Output as pretty JSON
+    #[arg(long, default_value_t = false)]
     pub json: bool,
     /// Output as compact JSON
-    #[arg(long)]
+    #[arg(long, default_value_t = false)]
     pub json_compact: bool,
+}
+
+#[derive(Tabled, Serialize)]
+pub struct TenantDisplay {
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
+    pub account: Pubkey,
+    pub code: String,
+    pub vrf_id: u16,
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
+    pub owner: Pubkey,
 }
 
 impl ListTenantCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         let tenants = client.list_tenant(ListTenantCommand {})?;
 
-        if self.json {
-            writeln!(out, "{}", serde_json::to_string_pretty(&tenants)?)?;
-        } else if self.json_compact {
-            writeln!(out, "{}", serde_json::to_string(&tenants)?)?;
-        } else {
-            // Sort by owner
-            let mut tenants: Vec<_> = tenants.iter().collect();
-            tenants.sort_by_key(|(_, tenant)| tenant.owner);
+        let mut tenant_displays: Vec<TenantDisplay> = tenants
+            .into_iter()
+            .map(|(pubkey, tenant)| TenantDisplay {
+                account: pubkey,
+                code: tenant.code,
+                vrf_id: tenant.vrf_id,
+                owner: tenant.owner,
+            })
+            .collect();
 
-            writeln!(
-                out,
-                "{:<45} {:<33} {:<8} {:<45}",
-                "account", "code", "vrf_id", "owner"
-            )?;
-            for (pubkey, tenant) in tenants {
-                writeln!(
-                    out,
-                    "{:<45} {:<33} {:<8} {:<45}",
-                    pubkey, tenant.code, tenant.vrf_id, tenant.owner
-                )?;
-            }
-        }
+        tenant_displays.sort_by(|a, b| a.code.cmp(&b.code));
+
+        let res = if self.json {
+            serde_json::to_string_pretty(&tenant_displays)?
+        } else if self.json_compact {
+            serde_json::to_string(&tenant_displays)?
+        } else {
+            Table::new(tenant_displays)
+                .with(Style::psql().remove_horizontals())
+                .to_string()
+        };
+
+        writeln!(out, "{res}")?;
 
         Ok(())
     }

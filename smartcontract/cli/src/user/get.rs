@@ -148,6 +148,7 @@ mod tests {
             status: AccessPassStatus::Connected,
             mgroup_pub_allowlist: vec![],
             mgroup_sub_allowlist: vec![],
+            tenant_allowlist: vec![],
             owner: client.get_payer(),
             flags: 0,
         };

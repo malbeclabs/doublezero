@@ -40,6 +40,13 @@ func TestQA_MulticastConnectivity(t *testing.T) {
 	require.NoError(t, err, "failed to create test")
 	clients := test.Clients()
 
+	// Cleanup stale test groups from previous runs.
+	deleted, err := clients[0].CleanupStaleTestGroups(ctx)
+	require.NoError(t, err, "failed to cleanup stale test groups")
+	if deleted > 0 {
+		log.Info("Cleaned up stale test groups", "count", deleted)
+	}
+
 	// Generate multicast group code or use the given one.
 	providedGroups := parseMulticastGroups()
 	var groupCode string
@@ -116,6 +123,17 @@ func TestQA_MulticastConnectivity(t *testing.T) {
 		wg.Wait()
 	})
 
+	// Dump diagnostics on failure.
+	t.Cleanup(func() {
+		if !t.Failed() {
+			return
+		}
+		publisher.DumpDiagnostics([]*qa.MulticastGroup{group})
+		for _, sub := range subscribers {
+			sub.DumpDiagnostics([]*qa.MulticastGroup{group})
+		}
+	})
+
 	// Connect publisher to multicast group.
 	err = publisher.ConnectUserMulticast_Publisher_Wait(ctx, group.Code)
 	require.NoError(t, err, "failed to connect publisher to multicast group")
@@ -177,6 +195,13 @@ func TestQA_MulticastMultiGroupSimultaneous(t *testing.T) {
 	require.NoError(t, err, "failed to create test")
 	clients := test.Clients()
 	require.GreaterOrEqual(t, len(clients), 2, "need at least 2 clients for this test")
+
+	// Cleanup stale test groups from previous runs.
+	deleted, err := clients[0].CleanupStaleTestGroups(ctx)
+	require.NoError(t, err, "failed to cleanup stale test groups")
+	if deleted > 0 {
+		log.Info("Cleaned up stale test groups", "count", deleted)
+	}
 
 	// Select publisher and subscriber.
 	publisher := test.RandomClient()
@@ -242,6 +267,15 @@ func TestQA_MulticastMultiGroupSimultaneous(t *testing.T) {
 		_ = subscriber.DisconnectUser(context.Background(), true, true)
 	})
 
+	// Dump diagnostics on failure.
+	t.Cleanup(func() {
+		if !t.Failed() {
+			return
+		}
+		publisher.DumpDiagnostics(groups)
+		subscriber.DumpDiagnostics(groups)
+	})
+
 	// Connect publisher to all groups simultaneously.
 	log.Debug("Connecting publisher to all groups simultaneously", "codes", groupCodes)
 	err = publisher.ConnectUserMulticast_Publisher_Wait(ctx, groupCodes...)
@@ -299,6 +333,13 @@ func TestQA_MulticastAddGroupToExistingUser(t *testing.T) {
 	require.NoError(t, err, "failed to create test")
 	clients := test.Clients()
 	require.GreaterOrEqual(t, len(clients), 2, "need at least 2 clients for this test")
+
+	// Cleanup stale test groups from previous runs.
+	deleted, err := clients[0].CleanupStaleTestGroups(ctx)
+	require.NoError(t, err, "failed to cleanup stale test groups")
+	if deleted > 0 {
+		log.Info("Cleaned up stale test groups", "count", deleted)
+	}
 
 	// Select publisher and subscriber.
 	publisher := test.RandomClient()
@@ -360,6 +401,16 @@ func TestQA_MulticastAddGroupToExistingUser(t *testing.T) {
 	t.Cleanup(func() {
 		_ = publisher.DisconnectUser(context.Background(), true, true)
 		_ = subscriber.DisconnectUser(context.Background(), true, true)
+	})
+
+	// Dump diagnostics on failure.
+	t.Cleanup(func() {
+		if !t.Failed() {
+			return
+		}
+		gs := []*qa.MulticastGroup{groupA, groupB}
+		publisher.DumpDiagnostics(gs)
+		subscriber.DumpDiagnostics(gs)
 	})
 
 	// Step 1: Connect publisher to both groups (publisher needs all groups from start).
@@ -453,6 +504,13 @@ func TestQA_MulticastPublisherMultipleGroups(t *testing.T) {
 	clients := test.Clients()
 	require.GreaterOrEqual(t, len(clients), 3, "need at least 3 clients for this test (1 publisher + 2 subscribers)")
 
+	// Cleanup stale test groups from previous runs.
+	deleted, err := clients[0].CleanupStaleTestGroups(ctx)
+	require.NoError(t, err, "failed to cleanup stale test groups")
+	if deleted > 0 {
+		log.Info("Cleaned up stale test groups", "count", deleted)
+	}
+
 	// Select publisher and two different subscribers.
 	publisher := test.RandomClient()
 	var subscriberA, subscriberB *qa.Client
@@ -522,6 +580,17 @@ func TestQA_MulticastPublisherMultipleGroups(t *testing.T) {
 		_ = publisher.DisconnectUser(context.Background(), true, true)
 		_ = subscriberA.DisconnectUser(context.Background(), true, true)
 		_ = subscriberB.DisconnectUser(context.Background(), true, true)
+	})
+
+	// Dump diagnostics on failure.
+	t.Cleanup(func() {
+		if !t.Failed() {
+			return
+		}
+		gs := []*qa.MulticastGroup{groupA, groupB}
+		publisher.DumpDiagnostics(gs)
+		subscriberA.DumpDiagnostics(gs)
+		subscriberB.DumpDiagnostics(gs)
 	})
 
 	// Connect publisher to BOTH groups simultaneously.

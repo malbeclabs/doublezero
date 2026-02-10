@@ -50,6 +50,7 @@ All notable changes to this project will be documented in this file.
 - E2E tests
   - e2e: add multi-tenancy VRF isolation test ([#2891](https://github.com/malbeclabs/doublezero/pull/2891))
   - Add backward compatibility test that validates older CLI versions against the current onchain program by cloning live state from testnet and mainnet-beta
+  - QA multicast tests: add diagnostic dumps on failure (status, routes, latency, multicast reports, onchain user/device state), cleanup stale test groups at test start, and fix disconnect blocking on stuck daemon status
 
 ## [v0.8.6](https://github.com/malbeclabs/doublezero/compare/client/v0.8.5...client/v0.8.6) – 2026-02-04
 

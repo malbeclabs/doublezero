@@ -226,7 +226,10 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move |_| {
                 let mut map = std::collections::HashMap::new();
-                map.insert(mgroup_pubkey, AccountData::MulticastGroup(mgroup_for_list.clone()));
+                map.insert(
+                    mgroup_pubkey,
+                    AccountData::MulticastGroup(mgroup_for_list.clone()),
+                );
                 Ok(map)
             });
 

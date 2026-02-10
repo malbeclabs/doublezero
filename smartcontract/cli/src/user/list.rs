@@ -1,11 +1,11 @@
-use crate::doublezerocommand::CliCommand;
+use crate::{doublezerocommand::CliCommand, helpers::parse_pubkey};
 use clap::Args;
 use doublezero_program_common::{serializer, types::NetworkV4};
 use doublezero_sdk::{
     commands::{
         accesspass::list::ListAccessPassCommand, device::list::ListDeviceCommand,
         location::list::ListLocationCommand, multicastgroup::list::ListMulticastGroupCommand,
-        user::list::ListUserCommand,
+        tenant::list::ListTenantCommand, user::list::ListUserCommand,
     },
     MulticastGroup, User, UserCYOA, UserStatus, UserType,
 };
@@ -56,6 +56,14 @@ pub struct ListUserCliCommand {
     /// Filter by multicast group (as publisher or subscriber)
     #[arg(long, value_delimiter = ',', value_name = "MULTICAST_GROUP,...")]
     pub multicast_group: Option<Vec<String>>,
+    /// Filter by tenant (pubkey or code)
+    #[arg(
+        short = 't',
+        long,
+        value_delimiter = ',',
+        value_name = "TENANT_CODE_OR_PUBKEY,..."
+    )]
+    pub tenant: Option<Vec<String>>,
     /// Output as pretty JSON.
     #[arg(long, default_value_t = false)]
     pub json: bool,
@@ -68,6 +76,7 @@ pub struct ListUserCliCommand {
 pub struct UserDisplay {
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub account: Pubkey,
+    pub tenant: String,
     pub user_type: UserType,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     #[tabled(skip)]
@@ -103,6 +112,7 @@ impl ListUserCliCommand {
         let locations = client.list_location(ListLocationCommand)?;
         let mgroups = client.list_multicastgroup(ListMulticastGroupCommand)?;
         let accesspasses = client.list_accesspass(ListAccessPassCommand {})?;
+        let tenants = client.list_tenant(ListTenantCommand {})?;
         let binding = client.list_user(ListUserCommand)?;
 
         let mut users = binding
@@ -253,6 +263,22 @@ impl ListUserCliCommand {
             });
         }
 
+        if let Some(ref tenant_vec) = self.tenant {
+            users.retain(|(_, user, _)| {
+                tenant_vec.iter().any(|tenant_filter| {
+                    // Check if matches by pubkey
+                    if let Some(pk) = parse_pubkey(tenant_filter) {
+                        return user.tenant_pk == pk;
+                    }
+                    // Check if matches by tenant code
+                    if let Some(tenant) = tenants.get(&user.tenant_pk) {
+                        return tenant.code.eq_ignore_ascii_case(tenant_filter);
+                    }
+                    false
+                })
+            });
+        }
+
         let mut users_displays: Vec<UserDisplay> = users
             .into_iter()
             .map(|(pubkey, user, accesspass)| {
@@ -281,8 +307,13 @@ impl ListUserCliCommand {
                     None => "".to_string(),
                 };
 
+                let tenant_name = tenants
+                    .get(&user.tenant_pk)
+                    .map_or_else(|| user.tenant_pk.to_string(), |t| t.code.clone());
+
                 UserDisplay {
                     account: *pubkey,
+                    tenant: tenant_name,
                     user_type: user.user_type,
                     device_pk: user.device_pk,
                     multicast: format_multicast_group_names(&user, &mgroups),
@@ -367,11 +398,14 @@ mod tests {
     };
     use doublezero_sdk::{
         AccountType, Device, DeviceStatus, DeviceType, Exchange, ExchangeStatus, Location,
-        LocationStatus, MulticastGroup, MulticastGroupStatus, User, UserType,
+        LocationStatus, MulticastGroup, MulticastGroupStatus, Tenant, User, UserType,
     };
     use doublezero_serviceability::{
         pda::get_accesspass_pda,
-        state::accesspass::{AccessPass, AccessPassStatus, AccessPassType},
+        state::{
+            accesspass::{AccessPass, AccessPassStatus, AccessPassType},
+            tenant::TenantPaymentStatus,
+        },
     };
     use solana_sdk::pubkey::Pubkey;
 
@@ -626,6 +660,10 @@ mod tests {
             Ok(accesspasses)
         });
 
+        client
+            .expect_list_tenant()
+            .returning(|_| Ok(std::collections::HashMap::new()));
+
         /*****************************************************************************************************/
 
         let mut output = Vec::new();
@@ -643,13 +681,14 @@ mod tests {
             tunnel_id: None,
             status: None,
             multicast_group: None,
+            tenant: None,
             json: false,
             json_compact: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | user_type | groups   | device       | location       | cyoa_type  | client_ip | dz_ip   | accesspass                  | tunnel_id | tunnel_net | status    | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | Multicast | S:m_code | device1_code | location1_name | GREOverDIA | 1.2.3.4   | 2.3.4.5 | Prepaid: (expires epoch 10) | 500       | 1.2.3.5/32 | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
+        assert_eq!(output_str, " account                                   | tenant                           | user_type | groups   | device       | location       | cyoa_type  | client_ip | dz_ip   | accesspass                  | tunnel_id | tunnel_net | status    | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | 11111111111111111111111111111111 | Multicast | S:m_code | device1_code | location1_name | GREOverDIA | 1.2.3.4   | 2.3.4.5 | Prepaid: (expires epoch 10) | 500       | 1.2.3.5/32 | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
 
         let mut output = Vec::new();
         let res = ListUserCliCommand {
@@ -666,6 +705,7 @@ mod tests {
             tunnel_id: None,
             status: None,
             multicast_group: None,
+            tenant: None,
             json: false,
             json_compact: true,
         }
@@ -673,7 +713,7 @@ mod tests {
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"user_type\":\"Multicast\",\"device_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"multicast\":\"S:m_code\",\"publishers\":\"\",\"subscribers\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo8\",\"device_name\":\"device1_code\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"cyoa_type\":\"GREOverDIA\",\"client_ip\":\"1.2.3.4\",\"dz_ip\":\"2.3.4.5\",\"accesspass\":\"Prepaid: (expires epoch 10)\",\"tunnel_id\":500,\"tunnel_net\":\"1.2.3.5/32\",\"status\":\"Activated\",\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"tenant\":\"11111111111111111111111111111111\",\"user_type\":\"Multicast\",\"device_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"multicast\":\"S:m_code\",\"publishers\":\"\",\"subscribers\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo8\",\"device_name\":\"device1_code\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"cyoa_type\":\"GREOverDIA\",\"client_ip\":\"1.2.3.4\",\"dz_ip\":\"2.3.4.5\",\"accesspass\":\"Prepaid: (expires epoch 10)\",\"tunnel_id\":500,\"tunnel_net\":\"1.2.3.5/32\",\"status\":\"Activated\",\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n");
     }
 
     #[test]
@@ -742,6 +782,9 @@ mod tests {
         client
             .expect_list_accesspass()
             .returning(|_| Ok(std::collections::HashMap::new()));
+        client
+            .expect_list_tenant()
+            .returning(|_| Ok(std::collections::HashMap::new()));
 
         let mut output = Vec::new();
         let res = ListUserCliCommand {
@@ -758,6 +801,7 @@ mod tests {
             tunnel_id: None,
             status: None,
             multicast_group: None,
+            tenant: None,
             json: false,
             json_compact: false,
         }
@@ -835,6 +879,9 @@ mod tests {
         client
             .expect_list_accesspass()
             .returning(|_| Ok(std::collections::HashMap::new()));
+        client
+            .expect_list_tenant()
+            .returning(|_| Ok(std::collections::HashMap::new()));
 
         let mut output = Vec::new();
         let res = ListUserCliCommand {
@@ -851,6 +898,7 @@ mod tests {
             tunnel_id: None,
             status: None,
             multicast_group: None,
+            tenant: None,
             json: false,
             json_compact: false,
         }
@@ -928,6 +976,9 @@ mod tests {
         client
             .expect_list_accesspass()
             .returning(|_| Ok(std::collections::HashMap::new()));
+        client
+            .expect_list_tenant()
+            .returning(|_| Ok(std::collections::HashMap::new()));
 
         let mut output = Vec::new();
         let res = ListUserCliCommand {
@@ -944,6 +995,7 @@ mod tests {
             tunnel_id: None,
             status: None,
             multicast_group: None,
+            tenant: None,
             json: false,
             json_compact: false,
         }
@@ -1021,6 +1073,9 @@ mod tests {
         client
             .expect_list_accesspass()
             .returning(|_| Ok(std::collections::HashMap::new()));
+        client
+            .expect_list_tenant()
+            .returning(|_| Ok(std::collections::HashMap::new()));
 
         let mut output = Vec::new();
         let res = ListUserCliCommand {
@@ -1037,6 +1092,7 @@ mod tests {
             tunnel_id: Some(vec![500]),
             status: None,
             multicast_group: None,
+            tenant: None,
             json: false,
             json_compact: false,
         }
@@ -1114,6 +1170,9 @@ mod tests {
         client
             .expect_list_accesspass()
             .returning(|_| Ok(std::collections::HashMap::new()));
+        client
+            .expect_list_tenant()
+            .returning(|_| Ok(std::collections::HashMap::new()));
 
         let mut output = Vec::new();
         let res = ListUserCliCommand {
@@ -1130,6 +1189,7 @@ mod tests {
             tunnel_id: None,
             status: Some(vec!["activated".to_string()]),
             multicast_group: None,
+            tenant: None,
             json: false,
             json_compact: false,
         }
@@ -1224,6 +1284,9 @@ mod tests {
         client
             .expect_list_accesspass()
             .returning(|_| Ok(std::collections::HashMap::new()));
+        client
+            .expect_list_tenant()
+            .returning(|_| Ok(std::collections::HashMap::new()));
 
         let mut output = Vec::new();
         let res = ListUserCliCommand {
@@ -1240,6 +1303,7 @@ mod tests {
             tunnel_id: None,
             status: None,
             multicast_group: Some(vec!["m_code".to_string()]),
+            tenant: None,
             json: false,
             json_compact: false,
         }
@@ -1250,5 +1314,160 @@ mod tests {
         assert!(output_str.contains("m_code"));
         assert!(output_str.contains("Multicast"));
         assert!(!output_str.contains("IBRL"));
+    }
+
+    #[test]
+    fn test_cli_user_list_filter_by_tenant_code() {
+        let mut client = create_test_client();
+
+        let tenant1_pubkey = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
+        let tenant2_pubkey = Pubkey::from_str_const("DDddB7bhR9azxLAUEH7ZVtW168wRdreiDKhi4McDfKZt");
+
+        let tenant1 = Tenant {
+            account_type: AccountType::Tenant,
+            owner: Pubkey::default(),
+            bump_seed: 1,
+            code: "tenant1".to_string(),
+            vrf_id: 1,
+            reference_count: 0,
+            administrators: vec![],
+            payment_status: TenantPaymentStatus::Paid,
+            token_account: Pubkey::default(),
+        };
+
+        let tenant2 = Tenant {
+            account_type: AccountType::Tenant,
+            owner: Pubkey::default(),
+            bump_seed: 2,
+            code: "tenant2".to_string(),
+            vrf_id: 2,
+            reference_count: 0,
+            administrators: vec![],
+            payment_status: TenantPaymentStatus::Paid,
+            token_account: Pubkey::default(),
+        };
+
+        let user1_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");
+        let user2_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUx");
+
+        let device1_pubkey = Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9");
+
+        let user1 = User {
+            account_type: AccountType::User,
+            index: 1,
+            bump_seed: 2,
+            owner: user1_pubkey,
+            user_type: IBRL,
+            tenant_pk: tenant1_pubkey,
+            device_pk: device1_pubkey,
+            cyoa_type: GREOverDIA,
+            client_ip: [1, 2, 3, 4].into(),
+            dz_ip: [2, 3, 4, 5].into(),
+            tunnel_id: 500,
+            tunnel_net: "1.2.3.5/32".parse().unwrap(),
+            status: Activated,
+            publishers: vec![],
+            subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
+        };
+
+        let user2 = User {
+            account_type: AccountType::User,
+            index: 2,
+            bump_seed: 3,
+            owner: user2_pubkey,
+            user_type: UserType::Multicast,
+            tenant_pk: tenant2_pubkey,
+            device_pk: device1_pubkey,
+            cyoa_type: GREOverDIA,
+            client_ip: [1, 2, 3, 5].into(),
+            dz_ip: [2, 3, 4, 6].into(),
+            tunnel_id: 501,
+            tunnel_net: "1.2.3.6/32".parse().unwrap(),
+            status: Activated,
+            publishers: vec![],
+            subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
+        };
+
+        client.expect_list_user().returning(move |_| {
+            let mut users = std::collections::HashMap::new();
+            users.insert(user1_pubkey, user1.clone());
+            users.insert(user2_pubkey, user2.clone());
+            Ok(users)
+        });
+
+        client
+            .expect_list_device()
+            .returning(|_| Ok(std::collections::HashMap::new()));
+        client
+            .expect_list_location()
+            .returning(|_| Ok(std::collections::HashMap::new()));
+        client
+            .expect_list_multicastgroup()
+            .returning(|_| Ok(std::collections::HashMap::new()));
+        client
+            .expect_list_accesspass()
+            .returning(|_| Ok(std::collections::HashMap::new()));
+        client.expect_list_tenant().returning(move |_| {
+            let mut tenants = std::collections::HashMap::new();
+            tenants.insert(tenant1_pubkey, tenant1.clone());
+            tenants.insert(tenant2_pubkey, tenant2.clone());
+            Ok(tenants)
+        });
+
+        // Filter by tenant code
+        let mut output = Vec::new();
+        let res = ListUserCliCommand {
+            prepaid: false,
+            solana_validator: false,
+            solana_identity: None,
+            device: None,
+            location: None,
+            owner: None,
+            client_ip: None,
+            user_type: None,
+            cyoa_type: None,
+            dz_ip: None,
+            tunnel_id: None,
+            status: None,
+            multicast_group: None,
+            tenant: Some(vec!["tenant1".to_string()]),
+            json: false,
+            json_compact: false,
+        }
+        .execute(&client, &mut output);
+
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        assert!(output_str.contains("tenant1"));
+        assert!(!output_str.contains("tenant2"));
+
+        // Filter by tenant pubkey
+        let mut output = Vec::new();
+        let res = ListUserCliCommand {
+            prepaid: false,
+            solana_validator: false,
+            solana_identity: None,
+            device: None,
+            location: None,
+            owner: None,
+            client_ip: None,
+            user_type: None,
+            cyoa_type: None,
+            dz_ip: None,
+            tunnel_id: None,
+            status: None,
+            multicast_group: None,
+            tenant: Some(vec![tenant2_pubkey.to_string()]),
+            json: false,
+            json_compact: false,
+        }
+        .execute(&client, &mut output);
+
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        assert!(output_str.contains("tenant2"));
+        assert!(!output_str.contains("tenant1"));
     }
 }

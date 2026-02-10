@@ -125,7 +125,7 @@ func isKnownIncompatible(stepName, cliVersion string) bool {
 //   - DZ_COMPAT_CLONE_ENV: comma-separated environments to test (default: "testnet,mainnet-beta")
 //   - DZ_COMPAT_MIN_VERSION: override ProgramConfig.MinCompatVersion (e.g., "0.8.1")
 //   - DZ_COMPAT_MAX_NUM_VERSIONS: limit number of versions to test (0 = all, e.g., "2")
-//   - DZ_COMPAT_MAX_CONCURRENCY: max parallel version stacks (default: 3)
+//   - DZ_COMPAT_MAX_CONCURRENCY: max parallel version stacks (default: 12)
 //
 // compatStepResult tracks the result of a single step for a single version.
 type compatStepResult struct {
@@ -388,14 +388,14 @@ func containerAccessibleHost() string {
 }
 
 // getMaxConcurrency returns the maximum number of parallel version stacks to run.
-// Controlled by DZ_COMPAT_MAX_CONCURRENCY env var (default: 6).
+// Controlled by DZ_COMPAT_MAX_CONCURRENCY env var (default: 12, matching CI -parallel).
 func getMaxConcurrency() int {
 	if s := os.Getenv("DZ_COMPAT_MAX_CONCURRENCY"); s != "" {
 		if n, err := strconv.Atoi(s); err == nil && n > 0 {
 			return n
 		}
 	}
-	return 6
+	return 12
 }
 
 // createAndStartDiscoveryDevnet creates a minimal devnet that clones state from a

@@ -757,6 +757,7 @@ mod tests {
                 user_type: UserType::IBRL,
                 cyoa_type: UserCYOA::GREOverDIA,
                 client_ip: [1, 2, 3, 4].into(),
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             }),
             "CreateUser",
         );
@@ -973,6 +974,7 @@ mod tests {
                 client_ip: [1, 2, 3, 4].into(),
                 publisher: false,
                 subscriber: true,
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             }),
             "CreateSubscribeUser",
         );

@@ -317,8 +317,9 @@ func runMultiTunnelFallbackTest(t *testing.T, log *slog.Logger, dn *devnet.Devne
 // TestE2E_MultiTunnel_SimultaneousToSingleDevice tests that a client can establish
 // two simultaneous tunnels (IBRL + multicast) to the SAME device using different
 // tunnel endpoints. The device has a user-tunnel-endpoint loopback interface with a
-// separate IP, so activator assigns the UTE IP for the first tunnel and falls back
-// to the device's public IP for the second tunnel.
+// separate IP. The client selects the best endpoint based on latency for the first
+// tunnel, and the second tunnel gets the remaining endpoint (since the first is
+// excluded). The two tunnels end up on different endpoint IPs on the same device.
 func TestE2E_MultiTunnel_SimultaneousToSingleDevice(t *testing.T) {
 	t.Parallel()
 
@@ -508,7 +509,7 @@ func runSimultaneousTunnelTest(t *testing.T, log *slog.Logger, dn *devnet.Devnet
 	require.NoError(t, err)
 
 	// Connect IBRL. With only one device, the CLI auto-selects it.
-	// The activator assigns the device's public IP for the first tunnel.
+	// The client picks the best tunnel endpoint based on latency probing.
 	log.Info("==> Connecting client with IBRL")
 	ibrlCmd := fmt.Sprintf("doublezero connect ibrl --client-ip %s", client.CYOANetworkIP)
 	_, err = client.Exec(t.Context(), []string{"bash", "-c", ibrlCmd})
@@ -520,16 +521,17 @@ func runSimultaneousTunnelTest(t *testing.T, log *slog.Logger, dn *devnet.Devnet
 	require.NoError(t, err, "IBRL tunnel failed to come up")
 	log.Info("--> IBRL tunnel is up")
 
-	// Verify IBRL tunnel destination is the UTE loopback IP. The activator assigns
-	// UTE endpoints first, so the first tunnel gets the UTE loopback IP.
+	// Verify IBRL tunnel destination is one of the device's endpoints (public IP or
+	// UTE loopback). The client selects based on latency, so we don't assume which
+	// endpoint is chosen first.
 	tunnelStatus, err := client.GetTunnelStatus(t.Context())
 	require.NoError(t, err)
 	require.Len(t, tunnelStatus, 1, "expected exactly one tunnel after IBRL connect")
 	ibrlTunnelDst := tunnelStatus[0].TunnelDst.String()
 	uteIP := device.UserTunnelEndpointIPs["Loopback100"]
-	require.Equal(t, uteIP, ibrlTunnelDst,
-		"IBRL tunnel should use UTE loopback IP (first tunnel, activator assigns UTE first)")
-	log.Info("==> IBRL tunnel established via UTE loopback IP", "tunnelDst", ibrlTunnelDst)
+	require.True(t, ibrlTunnelDst == uteIP || ibrlTunnelDst == device.CYOANetworkIP,
+		"IBRL tunnel should use either the UTE loopback IP or device public IP, got %s", ibrlTunnelDst)
+	log.Info("==> IBRL tunnel established", "tunnelDst", ibrlTunnelDst)
 
 	// Verify BGP is established on device.
 	log.Info("==> Verifying IBRL BGP session on device")
@@ -539,8 +541,8 @@ func runSimultaneousTunnelTest(t *testing.T, log *slog.Logger, dn *devnet.Devnet
 	// === PHASE 2: Connect Multicast (second tunnel, same device) ===
 	log.Info("==> PHASE 2: Connecting Multicast (same device, different endpoint)")
 
-	// Connect multicast subscriber. Activator should see the UTE IP is already
-	// used by this client and fall back to the device's public IP for the second tunnel.
+	// Connect multicast subscriber. The client's exclude_ips list contains the
+	// first tunnel's endpoint, so it selects the remaining endpoint on this device.
 	mcastCmd := fmt.Sprintf("doublezero connect multicast subscriber mg01 --client-ip %s 2>&1",
 		client.CYOANetworkIP)
 	mcastOutput, err := client.Exec(t.Context(), []string{"bash", "-c", mcastCmd})
@@ -581,12 +583,16 @@ func runSimultaneousTunnelTest(t *testing.T, log *slog.Logger, dn *devnet.Devnet
 		"mcast_dst", mcastTunnel.TunnelDst.String())
 
 	// CRITICAL VERIFICATION: Both tunnels on the SAME device but DIFFERENT endpoint IPs.
-	// The activator assigns UTE endpoints first, so the first tunnel (IBRL) gets the UTE
-	// loopback IP. The second tunnel (multicast) falls back to the device's public IP.
-	require.Equal(t, uteIP, ibrlTunnel.TunnelDst.String(),
-		"IBRL tunnel should use UTE loopback IP (first tunnel, activator assigns UTE first)")
-	require.Equal(t, device.CYOANetworkIP, mcastTunnel.TunnelDst.String(),
-		"Multicast tunnel should use device public IP (second tunnel, UTE already taken)")
+	// The client selects endpoints based on latency, so we don't assume which tunnel
+	// gets which endpoint. We just verify they use different IPs and both are valid
+	// device endpoints (one is the UTE loopback, the other is the device's public IP).
+	endpoints := []string{ibrlTunnel.TunnelDst.String(), mcastTunnel.TunnelDst.String()}
+	require.Contains(t, endpoints, uteIP,
+		"one tunnel should use the UTE loopback IP")
+	require.Contains(t, endpoints, device.CYOANetworkIP,
+		"one tunnel should use the device public IP")
+	require.NotEqual(t, ibrlTunnel.TunnelDst.String(), mcastTunnel.TunnelDst.String(),
+		"the two tunnels must use different endpoint IPs")
 	log.Info("--> Verified: both tunnels on same device with different endpoint IPs")
 
 	// === PHASE 3: Verify both tunnels work ===

@@ -17,6 +17,7 @@ use doublezero_serviceability::{
 use globalconfig::set::SetGlobalConfigArgs;
 use solana_program_test::*;
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signer::Signer};
+use std::net::Ipv4Addr;
 
 mod test_helpers;
 use test_helpers::*;
@@ -328,6 +329,7 @@ async fn test_user_migration() {
             client_ip: user_ip,
             user_type: UserType::IBRL,
             cyoa_type: UserCYOA::GREOverDIA,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(user_old_pubkey, false),

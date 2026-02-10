@@ -20,6 +20,7 @@ use doublezero_serviceability::{
 use globalconfig::set::SetGlobalConfigArgs;
 use solana_program_test::*;
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signer::Signer};
+use std::net::Ipv4Addr;
 use user::closeaccount::UserCloseAccountArgs;
 
 mod test_helpers;
@@ -332,6 +333,7 @@ async fn test_user() {
             client_ip: user_ip,
             user_type: UserType::IBRL,
             cyoa_type: UserCYOA::GREOverDIA,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -744,6 +746,7 @@ async fn test_user_ban_requires_pendingban() {
             client_ip: user_ip,
             user_type: UserType::IBRL,
             cyoa_type: UserCYOA::GREOverDIA,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),

@@ -35,14 +35,16 @@ pub struct UserCreateSubscribeArgs {
     pub client_ip: std::net::Ipv4Addr,
     pub publisher: bool,
     pub subscriber: bool,
+    #[incremental(default = Ipv4Addr::UNSPECIFIED)]
+    pub tunnel_endpoint: std::net::Ipv4Addr,
 }
 
 impl fmt::Debug for UserCreateSubscribeArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "user_type: {}, cyoa_type: {}, client_ip: {}",
-            self.user_type, self.cyoa_type, &self.client_ip,
+            "user_type: {}, cyoa_type: {}, client_ip: {}, tunnel_endpoint: {}",
+            self.user_type, self.cyoa_type, &self.client_ip, &self.tunnel_endpoint,
         )
     }
 }
@@ -243,7 +245,7 @@ pub fn process_create_subscribe_user(
             false => vec![],
         },
         validator_pubkey,
-        tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+        tunnel_endpoint: value.tunnel_endpoint,
     };
 
     // Update multicastgroup counts

@@ -27,6 +27,44 @@ fn device_has_available_endpoint(device: &Device, exclude_ips: &[Ipv4Addr]) -> b
     endpoints.iter().any(|ep| !exclude_ips.contains(ep))
 }
 
+/// Select the best tunnel endpoint for the given device based on latency data.
+/// Returns the lowest-latency endpoint IP not in `exclude_ips`.
+/// Falls back to Ipv4Addr::UNSPECIFIED if no per-endpoint data is available.
+pub fn select_tunnel_endpoint(
+    latencies: &[LatencyRecord],
+    device_pk: &str,
+    device_public_ip: Ipv4Addr,
+    exclude_ips: &[Ipv4Addr],
+) -> Ipv4Addr {
+    // Filter latencies to records matching this device_pk, sorted by avg latency (ascending)
+    let mut device_latencies: Vec<&LatencyRecord> = latencies
+        .iter()
+        .filter(|l| l.device_pk == device_pk)
+        .collect();
+    device_latencies.sort_by(|a, b| {
+        a.avg_latency_ns
+            .partial_cmp(&b.avg_latency_ns)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    // Pick the first endpoint not in exclude_ips
+    for latency in &device_latencies {
+        if let Ok(ip) = latency.device_ip.parse::<Ipv4Addr>() {
+            if !exclude_ips.contains(&ip) {
+                return ip;
+            }
+        }
+    }
+
+    // Fallback: if the device's public_ip is not excluded, use it
+    if !exclude_ips.contains(&device_public_ip) && device_public_ip != Ipv4Addr::UNSPECIFIED {
+        return device_public_ip;
+    }
+
+    // No suitable endpoint found; let the activator pick one
+    Ipv4Addr::UNSPECIFIED
+}
+
 pub async fn retrieve_latencies<T: ServiceController>(
     controller: &T,
     devices: &HashMap<Pubkey, Device>,
@@ -712,5 +750,145 @@ mod tests {
 
         // Both excluded - no available endpoints
         assert!(!device_has_available_endpoint(&device, &[ip, tunnel]));
+    }
+
+    #[test]
+    fn test_select_tunnel_endpoint_picks_lowest_latency() {
+        let pk = Pubkey::new_unique();
+        let pk_str = pk.to_string();
+        let latencies = vec![
+            LatencyRecord {
+                device_pk: pk_str.clone(),
+                device_code: "device1".to_string(),
+                device_ip: "10.0.0.1".to_string(),
+                min_latency_ns: 20000000,
+                max_latency_ns: 20000000,
+                avg_latency_ns: 20000000,
+                reachable: true,
+            },
+            LatencyRecord {
+                device_pk: pk_str.clone(),
+                device_code: "device1".to_string(),
+                device_ip: "10.0.0.2".to_string(),
+                min_latency_ns: 5000000,
+                max_latency_ns: 5000000,
+                avg_latency_ns: 5000000,
+                reachable: true,
+            },
+        ];
+
+        let result = select_tunnel_endpoint(&latencies, &pk_str, Ipv4Addr::new(10, 0, 0, 1), &[]);
+        assert_eq!(result, Ipv4Addr::new(10, 0, 0, 2));
+    }
+
+    #[test]
+    fn test_select_tunnel_endpoint_skips_excluded() {
+        let pk = Pubkey::new_unique();
+        let pk_str = pk.to_string();
+        let latencies = vec![
+            LatencyRecord {
+                device_pk: pk_str.clone(),
+                device_code: "device1".to_string(),
+                device_ip: "10.0.0.1".to_string(),
+                min_latency_ns: 5000000,
+                max_latency_ns: 5000000,
+                avg_latency_ns: 5000000,
+                reachable: true,
+            },
+            LatencyRecord {
+                device_pk: pk_str.clone(),
+                device_code: "device1".to_string(),
+                device_ip: "10.0.0.2".to_string(),
+                min_latency_ns: 10000000,
+                max_latency_ns: 10000000,
+                avg_latency_ns: 10000000,
+                reachable: true,
+            },
+        ];
+
+        // Exclude the best endpoint, should fall back to the second
+        let result = select_tunnel_endpoint(
+            &latencies,
+            &pk_str,
+            Ipv4Addr::new(10, 0, 0, 1),
+            &[Ipv4Addr::new(10, 0, 0, 1)],
+        );
+        assert_eq!(result, Ipv4Addr::new(10, 0, 0, 2));
+    }
+
+    #[test]
+    fn test_select_tunnel_endpoint_all_excluded_falls_back_to_public_ip() {
+        let pk = Pubkey::new_unique();
+        let pk_str = pk.to_string();
+        let latencies = vec![LatencyRecord {
+            device_pk: pk_str.clone(),
+            device_code: "device1".to_string(),
+            device_ip: "10.0.0.1".to_string(),
+            min_latency_ns: 5000000,
+            max_latency_ns: 5000000,
+            avg_latency_ns: 5000000,
+            reachable: true,
+        }];
+
+        // Exclude the only latency endpoint, but public_ip is different and available
+        let result = select_tunnel_endpoint(
+            &latencies,
+            &pk_str,
+            Ipv4Addr::new(10, 0, 0, 99),
+            &[Ipv4Addr::new(10, 0, 0, 1)],
+        );
+        assert_eq!(result, Ipv4Addr::new(10, 0, 0, 99));
+    }
+
+    #[test]
+    fn test_select_tunnel_endpoint_all_excluded_returns_unspecified() {
+        let pk = Pubkey::new_unique();
+        let pk_str = pk.to_string();
+        let latencies = vec![LatencyRecord {
+            device_pk: pk_str.clone(),
+            device_code: "device1".to_string(),
+            device_ip: "10.0.0.1".to_string(),
+            min_latency_ns: 5000000,
+            max_latency_ns: 5000000,
+            avg_latency_ns: 5000000,
+            reachable: true,
+        }];
+
+        // Exclude all endpoints including public_ip
+        let result = select_tunnel_endpoint(
+            &latencies,
+            &pk_str,
+            Ipv4Addr::new(10, 0, 0, 1),
+            &[Ipv4Addr::new(10, 0, 0, 1)],
+        );
+        assert_eq!(result, Ipv4Addr::UNSPECIFIED);
+    }
+
+    #[test]
+    fn test_select_tunnel_endpoint_no_matching_device() {
+        let pk = Pubkey::new_unique();
+        let other_pk = Pubkey::new_unique();
+        let latencies = vec![LatencyRecord {
+            device_pk: other_pk.to_string(),
+            device_code: "device2".to_string(),
+            device_ip: "10.0.0.2".to_string(),
+            min_latency_ns: 5000000,
+            max_latency_ns: 5000000,
+            avg_latency_ns: 5000000,
+            reachable: true,
+        }];
+
+        // No latency records for this device, should fall back to public_ip
+        let result =
+            select_tunnel_endpoint(&latencies, &pk.to_string(), Ipv4Addr::new(10, 0, 0, 1), &[]);
+        assert_eq!(result, Ipv4Addr::new(10, 0, 0, 1));
+    }
+
+    #[test]
+    fn test_select_tunnel_endpoint_empty_latencies() {
+        let pk = Pubkey::new_unique();
+        let result = select_tunnel_endpoint(&[], &pk.to_string(), Ipv4Addr::new(10, 0, 0, 1), &[]);
+        // No latency data, fall back to public IP
+        assert_eq!(result, Ipv4Addr::new(10, 0, 0, 1));
     }
 }

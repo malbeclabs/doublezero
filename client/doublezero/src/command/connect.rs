@@ -1,6 +1,6 @@
 use super::helpers::look_for_ip;
 use crate::{
-    dzd_latency::best_latency,
+    dzd_latency::{best_latency, retrieve_latencies, select_tunnel_endpoint},
     requirements::check_doublezero,
     routes::resolve_route,
     servicecontroller::{
@@ -305,28 +305,58 @@ impl ProvisioningCliCommand {
         devices: &HashMap<Pubkey, Device>,
         spinner: &ProgressBar,
         exclude_ips: &[Ipv4Addr],
-    ) -> eyre::Result<(Pubkey, Device)> {
+    ) -> eyre::Result<(Pubkey, Device, Ipv4Addr)> {
         spinner.set_message("Searching for the nearest device...");
         // filter out existing devices for users with existing tunnels
         // put some arbitrary cap on latency for second devices
-        let device_pk = match self.device.as_ref() {
-            Some(device) => match device.parse::<Pubkey>() {
-                Ok(pubkey) => pubkey,
-                Err(_) => {
-                    let (pubkey, _) = devices
-                        .iter()
-                        .find(|(_, d)| d.code == *device)
-                        .ok_or(eyre::eyre!("Device not found"))?;
-                    *pubkey
-                }
-            },
+        let (device_pk, tunnel_endpoint) = match self.device.as_ref() {
+            Some(device) => {
+                let pk = match device.parse::<Pubkey>() {
+                    Ok(pubkey) => pubkey,
+                    Err(_) => {
+                        let (pubkey, _) = devices
+                            .iter()
+                            .find(|(_, d)| d.code == *device)
+                            .ok_or(eyre::eyre!("Device not found"))?;
+                        *pubkey
+                    }
+                };
+                // For explicit device selection, use latency data to pick the best endpoint
+                let latencies =
+                    retrieve_latencies(controller, devices, false, Some(spinner)).await?;
+                let dev = devices.get(&pk);
+                let device_public_ip = dev.map(|d| d.public_ip).unwrap_or(Ipv4Addr::UNSPECIFIED);
+                let endpoint = select_tunnel_endpoint(
+                    &latencies,
+                    &pk.to_string(),
+                    device_public_ip,
+                    exclude_ips,
+                );
+                (pk, endpoint)
+            }
             None => {
                 let latency =
                     best_latency(controller, devices, true, Some(spinner), None, exclude_ips)
                         .await?;
                 spinner.set_message("Reading device account...");
-                Pubkey::from_str(&latency.device_pk)
-                    .map_err(|_| eyre::eyre!("Unable to parse pubkey"))?
+                let pk = Pubkey::from_str(&latency.device_pk)
+                    .map_err(|_| eyre::eyre!("Unable to parse pubkey"))?;
+                // Use select_tunnel_endpoint to pick the best available endpoint for this
+                // device, respecting exclude_ips. best_latency picks the device but the
+                // returned record's device_ip might be an excluded endpoint.
+                let latencies =
+                    retrieve_latencies(controller, devices, false, Some(spinner)).await?;
+                let device_public_ip = devices
+                    .get(&pk)
+                    .map(|d| d.public_ip)
+                    .unwrap_or(Ipv4Addr::UNSPECIFIED);
+                let endpoint = select_tunnel_endpoint(
+                    &latencies,
+                    &pk.to_string(),
+                    device_public_ip,
+                    exclude_ips,
+                );
+                (pk, endpoint)
             }
         };
 
@@ -343,7 +373,7 @@ impl ProvisioningCliCommand {
             ));
         }
 
-        Ok((device_pk, device))
+        Ok((device_pk, device, tunnel_endpoint))
     }
 
     async fn find_or_create_user<T: ServiceController>(
@@ -398,7 +428,7 @@ impl ProvisioningCliCommand {
 
                 let exclude_ips: Vec<Ipv4Addr> = exclude_ips(&users, client_ip, &devices);
 
-                let (device_pk, device) = self
+                let (device_pk, device, tunnel_endpoint) = self
                     .find_or_create_device(client, controller, &devices, spinner, &exclude_ips)
                     .await?;
 
@@ -414,6 +444,7 @@ impl ProvisioningCliCommand {
                     device_pk,
                     cyoa_type: UserCYOA::GREOverDIA,
                     client_ip: *client_ip,
+                    tunnel_endpoint,
                 });
 
                 match res {
@@ -490,7 +521,7 @@ impl ProvisioningCliCommand {
                 // Exclude the IBRL user's tunnel endpoint to ensure we get a different device
                 let exclude_ips: Vec<Ipv4Addr> = exclude_ips(&users, client_ip, &devices);
 
-                let (device_pk, device) = self
+                let (device_pk, device, tunnel_endpoint) = self
                     .find_or_create_device(client, controller, &devices, spinner, &exclude_ips)
                     .await?;
 
@@ -512,6 +543,7 @@ impl ProvisioningCliCommand {
                     mgroup_pk: *first_group_pk,
                     publisher,
                     subscriber,
+                    tunnel_endpoint,
                 });
 
                 let user_pk = match res {
@@ -545,7 +577,6 @@ impl ProvisioningCliCommand {
 
                 user_pk
             }
-            // Both IBRL and Multicast users exist - add subscription to existing Multicast user
             // Both IBRL and Multicast users exist - add subscription to existing Multicast user
             (Some(_), Some((user_pk, user))) | (None, Some((user_pk, user))) => {
                 // A user can only be a publisher OR a subscriber, not both
@@ -610,7 +641,7 @@ impl ProvisioningCliCommand {
 
                 let exclude_ips: Vec<Ipv4Addr> = exclude_ips(&users, client_ip, &devices);
 
-                let (device_pk, device) = self
+                let (device_pk, device, tunnel_endpoint) = self
                     .find_or_create_device(client, controller, &devices, spinner, &exclude_ips)
                     .await?;
 
@@ -633,6 +664,7 @@ impl ProvisioningCliCommand {
                     mgroup_pk: *first_group_pk,
                     publisher,
                     subscriber,
+                    tunnel_endpoint,
                 });
 
                 let user_pk = match res {
@@ -872,8 +904,17 @@ fn exclude_ips(
     users
         .iter()
         .filter(|(_, u)| u.client_ip == *client_ip && u.has_unicast_tunnel())
-        .filter_map(|(_, u)| devices.get(&u.device_pk))
-        .map(|d| d.public_ip)
+        .map(|(_, u)| {
+            if u.has_tunnel_endpoint() {
+                u.tunnel_endpoint
+            } else {
+                devices
+                    .get(&u.device_pk)
+                    .map(|d| d.public_ip)
+                    .unwrap_or(Ipv4Addr::UNSPECIFIED)
+            }
+        })
+        .filter(|ip| *ip != Ipv4Addr::UNSPECIFIED)
         .collect()
 }
 
@@ -1193,6 +1234,7 @@ mod tests {
                 device_pk: user.device_pk,
                 cyoa_type: UserCYOA::GREOverDIA,
                 client_ip: user.client_ip,
+                tunnel_endpoint: user.tunnel_endpoint,
             };
 
             let users = self.users.clone();
@@ -1224,6 +1266,7 @@ mod tests {
                 mgroup_pk: mcast_group_pk,
                 publisher,
                 subscriber,
+                tunnel_endpoint: user.tunnel_endpoint,
             };
 
             let users = self.users.clone();

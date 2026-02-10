@@ -31,6 +31,7 @@ use doublezero_serviceability::{
 };
 use solana_program_test::*;
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signer};
+use std::net::Ipv4Addr;
 
 mod test_helpers;
 use test_helpers::*;
@@ -785,6 +786,7 @@ async fn test_doublezero_program() {
         user_type: UserType::IBRL,
         cyoa_type: UserCYOA::GREOverDIA,
         client_ip: user_ip,
+        tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
     };
 
     println!("Testing User1 initialization...");

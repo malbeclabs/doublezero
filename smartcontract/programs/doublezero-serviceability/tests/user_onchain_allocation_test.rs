@@ -45,6 +45,7 @@ use doublezero_serviceability::{
 };
 use solana_program_test::*;
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signer};
+use std::net::Ipv4Addr;
 
 mod test_helpers;
 use test_helpers::*;
@@ -316,6 +317,7 @@ async fn setup_user_onchain_allocation_test(
             client_ip: client_ip.into(),
             user_type,
             cyoa_type: UserCYOA::GREOverDIA,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),

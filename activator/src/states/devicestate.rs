@@ -126,6 +126,22 @@ impl DeviceState {
         }
     }
 
+    /// Check whether the given IP is a valid tunnel endpoint for this device.
+    /// Returns true if the IP matches the device's public_ip, or if it matches
+    /// any interface that has `user_tunnel_endpoint == true` and a valid `ip_net`.
+    pub fn is_valid_tunnel_endpoint(&self, ip: Ipv4Addr) -> bool {
+        if ip == self.device.public_ip {
+            return true;
+        }
+
+        self.device.interfaces.iter().any(|iface| {
+            let iface = iface.into_current_version();
+            iface.user_tunnel_endpoint
+                && iface.ip_net != Default::default()
+                && iface.ip_net.ip() == ip
+        })
+    }
+
     pub fn register(&mut self, dz_ip: Ipv4Addr, tunnel_id: u16) -> eyre::Result<()> {
         for allocator in self.dz_ips.iter_mut() {
             if allocator.contains(dz_ip) {
@@ -192,6 +208,65 @@ mod tests {
             interfaces: vec![],
             ..Default::default()
         }
+    }
+
+    fn create_test_device_with_non_ute_interface(ip: Ipv4Addr) -> Device {
+        let interfaces = vec![CurrentInterfaceVersion {
+            status: InterfaceStatus::Activated,
+            name: "Loopback200".to_string(),
+            interface_type: InterfaceType::Loopback,
+            loopback_type: LoopbackType::None,
+            vlan_id: 0,
+            ip_net: format!("{}/32", ip).parse().unwrap(),
+            node_segment_idx: 0,
+            user_tunnel_endpoint: false,
+            ..Default::default()
+        }
+        .to_interface()];
+
+        Device {
+            public_ip: Ipv4Addr::new(1, 1, 1, 1),
+            dz_prefixes: "10.0.0.0/24".parse().unwrap(),
+            interfaces,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn test_is_valid_tunnel_endpoint_matches_public_ip() {
+        let device = create_test_device_without_tunnel_endpoints();
+        let state = DeviceState::new(&device);
+
+        assert!(state.is_valid_tunnel_endpoint(Ipv4Addr::new(1, 1, 1, 1)));
+    }
+
+    #[test]
+    fn test_is_valid_tunnel_endpoint_matches_ute_interface() {
+        let device = create_test_device_with_tunnel_endpoints(vec![
+            Ipv4Addr::new(5, 5, 5, 5),
+            Ipv4Addr::new(6, 6, 6, 6),
+        ]);
+        let state = DeviceState::new(&device);
+
+        assert!(state.is_valid_tunnel_endpoint(Ipv4Addr::new(5, 5, 5, 5)));
+        assert!(state.is_valid_tunnel_endpoint(Ipv4Addr::new(6, 6, 6, 6)));
+    }
+
+    #[test]
+    fn test_is_valid_tunnel_endpoint_no_match() {
+        let device = create_test_device_with_tunnel_endpoints(vec![Ipv4Addr::new(5, 5, 5, 5)]);
+        let state = DeviceState::new(&device);
+
+        assert!(!state.is_valid_tunnel_endpoint(Ipv4Addr::new(9, 9, 9, 9)));
+    }
+
+    #[test]
+    fn test_is_valid_tunnel_endpoint_non_ute_interface() {
+        let device = create_test_device_with_non_ute_interface(Ipv4Addr::new(7, 7, 7, 7));
+        let state = DeviceState::new(&device);
+
+        // The IP exists on an interface but user_tunnel_endpoint is false
+        assert!(!state.is_valid_tunnel_endpoint(Ipv4Addr::new(7, 7, 7, 7)));
     }
 
     #[test]

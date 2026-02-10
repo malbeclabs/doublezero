@@ -31,6 +31,7 @@ use solana_sdk::{
     signer::Signer,
     transaction::TransactionError,
 };
+use std::net::Ipv4Addr;
 
 mod test_helpers;
 use test_helpers::*;
@@ -996,6 +997,7 @@ async fn test_delete_device_fails_with_reference_count_not_zero() {
             client_ip: user_ip,
             user_type: UserType::IBRL,
             cyoa_type: UserCYOA::GREOverDIA,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),

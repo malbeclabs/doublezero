@@ -393,6 +393,7 @@ async fn setup_fixture() -> TestFixture {
             client_ip: user_ip,
             user_type: UserType::Multicast,
             cyoa_type: UserCYOA::GREOverDIA,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),

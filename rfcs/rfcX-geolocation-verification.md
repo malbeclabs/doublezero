@@ -38,7 +38,7 @@ A server that acts as an intermediary for latency measurements. dzProbes:
 - Are registered onchain in the Telemetry Program
 
 ### Offset
-A signed data structure representing the latency relationship between two entities (DZD↔Probe or Probe↔Client):
+A signed data structure representing the latency relationship between two entities (DZD↔Probe or Probe↔Client) and is sent to the Probe or client.
 
 ```rust
 struct LocationOffset {
@@ -47,8 +47,8 @@ struct LocationOffset {
     lat: f64,                     // Reference point latitude (WGS84)
     lon: f64,                     // Reference point longitude (WGS84)
     rtt_ns: u64,                  // Measured RTT in nanoseconds
-    num_references: u8,           // Number of previous offsets in chain
-    references: Vec<Offset>,      // Previous offsets (empty for DZD→Probe)
+    num_references: u8,           // Number of reference offsets in chain
+    references: Vec<Offset>,      // Reference offsets (empty for DZD→Probe)
 }
 ```
 
@@ -444,26 +444,25 @@ $ doublezero-geolocation get 12350 203.0.113.10
 4. Probes measure RTT to target IPs and write to `GeolocationSamples` accounts
 5. User queries `GeolocationSamples` accounts by epoch and/or target IP via CLI
 
+## Impact
+
 ## Security Considerations
 
 ### Threat Model
 
-| Threat | Mitigation |
-|--------|-----------|
-| **IP Spoofing** | Not addressed in POC/MVP; discussed in future work |
-| **Replay Attacks** | Timestamps; receivers reject offsets >60s old |
-| **Signature Forgery** | Ed25519 signatures; DZD keys secured in telemetry agent |
-| **Man-in-the-Middle** | UDP is connectionless; future: DTLS for encryption |
-| **Probe Compromise** | Multiple probe verification in MVP; onchain audit trail |
-| **DDoS on Probes** | Rate limiting, firewall rules, cloudflare proxying |
-| **Client False Claims** | Clients cannot forge Offsets; signature verification required |
+|       Threat            |             Mitigation                                            |
+|-------------------------|-------------------------------------------------------------------|
+| **Client IP Spoofing**  | Not addressed in POC/MVP; discussed in future work                |
+| **Replay Attacks**      | Ongoing Probes are added to the ledger.                           |
+| **Signature Forgery**   | Ed25519 signatures; DZD keys secured in telemetry agent           |
+| **Probe Compromise**    | Client can use mulitple probes; onchain audit trail               |
+| **DDoS by Probes**      | Rate limiting (10-60s probes)                                     |
+| **DDoS on Probes**      | Rate limiting, firewall rules                                     |
+| **Client False Claims** | Clients cannot forge Offsets; signature verification required     |
 
 ### Privacy Considerations
 
-- **Location Precision:** Offsets reveal approximate distance only (kilometers), not exact coordinates
-- **No IP Logging:** Probes don't persist client IPs
-- **Optional Verification:** Clients control when to request location proofs
-- **Onchain Privacy:** ProbeLatencySamples don't include client data
+**Location Precision:** Offsets reveal approximate distance only, not exact coordinates
 
 ## POC Requirements
 
@@ -478,89 +477,55 @@ $ doublezero-geolocation get 12350 203.0.113.10
    - 8 new instructions (InitializeProbe/UpdateProbe/AddMated/RemoveMated/InitProbeLatencySamples/WriteProbeLatencySamples/InitGeolocationSamples/WriteGeolocationSamples)
 3. Telemetry agent extensions:
    - Probe discovery from onchain
-   - TWAMP measurement to probes
+   - TWAMP measurement to dzProbes
    - Offset generation and signing
    - Dual posting (onchain + UDP)
-4. Probe server:
-   - UDP listener for DZD Offsets and client requests
+3. Probe server (`doublezero-probe-agent`):
+   - TWAMP Reflector
+   - UDP listener for DZD Offsets
    - Offset caching and verification
    - GeolocationUser discovery from onchain
    - Target IP RTT measurement
    - Composite Offset generation
    - GeolocationSamples submission onchain
-5. Client SDK:
-   - Offset struct with signature verification
-   - Simple UDP client
-6. CLI tool (doublezero-geolocation):
+   - Post Composite offset to Target
+4. Client TWAMP Reflector + UDP Listener:
+   - TWAMP Reflector
+   - Receives Signed UDP Datagrams
+5. CLI tool (doublezero-geolocation):
    - User management commands
    - Target IP management commands
    - Measurement query commands
-7. Deployment:
-   - 1 probe in Amsterdam (colocated with DZD)
-   - Mated to 1-2 DZDs for testing
+   - Set up payer account
+   - Probe Management Commands `doublezero probe list/create/update`
+6. Deployment:
+   - DockerNet or DevNet
+   - 1 probe in testnet in Frankfurt (use `fra-tn-bm1` as probe?)
+
 
 ## MVP Requirements
 
-**Goal:** Production-ready system with multi-probe verification
+**Goal:** Production-ready system
 
 1. All POC components (above)
-2. Multi-probe verification:
-   - Clients query 2-3 probes
-   - Verification requires consensus (e.g., 2 of 3 agree)
-3. Probe infrastructure:
-   - Deploy 1 probe per DoubleZero exchange
-   - Automated probe provisioning via Terraform
+2. Probe infrastructure:
+   - Deploy ~1 probe per DoubleZero exchange
+   - Automated probe provisioning
 4. Monitoring:
-   - Grafana dashboards for probe health
+   - Lake pages for probe health
    - Alerting for offline probes, signature failures
    - GeolocationSamples data ingestion to analytics system
-5. Documentation:
-   - Client integration guide
-   - Probe operator handbook
-   - CLI usage documentation
-6. Foundation operations:
-   - Probe management CLI (`doublezero probe list/create/update`)
-   - Automated key rotation
-7. CLI enhancements:
-   - Support for querying multiple epochs
-   - Statistical analysis of measurements (avg, percentiles)
-   - Export to CSV/JSON formats
 
 ## Implementation Phases
 
-### Phase 1: POC (4 weeks)
+### Phase 1: POC (Austin Offsite)
 
-**Week 1-2: Onchain & Telemetry Agent**
-- Smart contract: Probe account, instructions (~1,000 lines)
-- Telemetry agent: probe discovery, pinger, offset generator (~800 lines)
-- Testing: devnet deployment, unit tests
-
-**Week 3: Probe Server**
-- UDP listener, offset cache, client handler (~1,200 lines)
-- Docker image, deployment scripts
-- Testing: integration tests with telemetry agent
-
-**Week 4: Client SDK & Integration**
-- Client SDK: offset verification, UDP client (~500 lines)
-- Example application demonstrating verification
-- Testing: end-to-end POC validation
-
-### Phase 2: MVP (6 weeks)
+### Phase 2: MVP (Following Week)
 
 **Week 5-6: Multi-Probe & Infrastructure**
 - Multi-probe verification logic
 - Terraform for probe deployment
 - Deploy probes to 5-10 exchanges
-
-**Week 7-8: Monitoring & Operations**
-- Grafana dashboards
-- Probe management CLI
-- Automated provisioning
-
-**Week 9-10: Documentation & Launch**
-- Integration guides
-- Security audit
-- Testnet rollout, mainnet-beta deployment
 
 ## Testing Strategy
 
@@ -579,73 +544,43 @@ $ doublezero-geolocation get 12350 203.0.113.10
 ### E2E Tests (devnet/testnet)
 - Full DZD → Probe → Client chain
 - Signature verification across components
-- Latency budget enforcement
 - Probe child/un-child operations
 
 ### Performance Tests
 - Probe server throughput (clients/second)
-- Offset cache performance (10k+ entries)
-- Telemetry agent overhead (<1% CPU)
 
 ## Operational Considerations
 
 ### Probe Deployment
-
-**Requirements:**
-- Bare metal or VPS in DoubleZero exchange datacenter
-- 2 CPU cores, 4GB RAM, 50GB disk
-- Public IPv4 address
-- Port 8923 UDP open
-- <20ms RTT to mated DZDs
-
-**Cost:** ~$50/month per probe (bare metal hosting in exchange)
+Initially DZ or Malbec will deploy probes. Eventually this should become the domain of Resource Providers
 
 ### Monitoring
 
 **Metrics:**
-- Probe availability (uptime %)
-- DZD→Probe latency (p50, p95, p99)
-- Client request rate
+- dzProbe availability (uptime %)
+- DZD→Probe latency
+- Per dzProbe # of targets
 - Signature verification failures
 - Offset cache hit rate
 
 **Alerts:**
-- Probe offline >5 minutes
+- dzProbe offline >5 minutes
 - Signature verification failure rate >1%
-- RTT to mated DZD exceeds threshold
+- RTT to parent DZD exceeds threshold
 
 ### Key Management
 
 **DZD Keys:** Existing `metrics_publisher_pk` used for Offset signing (no new key infrastructure)
-**Probe Keys:** Generated during provisioning, stored in `/etc/probe/keypair.json`, backed up to Foundation secure storage
+**dzProbe Keys:** Generated during provisioning, stored in `/etc/probe/keypair.json`, backed up to Foundation secure storage
 
 ## Future Work
 
 ### IP Spoofing Mitigation
-
 **Problem:** Malicious probe could be close to DZD but forward requests to distant actual probe
 
-**Approach (Phase 3):**
-- Require probes to have onchain Device account (same as DZDs)
-- DZDs ping probe's public IP and verify it responds
-- Add "reachability verification" to childing process
-
 ### Geographic Multi-Probe Triangulation
-
 **Problem:** Single probe gives distance, not precise location
-
-**Approach (Phase 4):**
-- Client queries 3+ geographically dispersed probes
-- SDK performs trilateration from multiple distance measurements
-- Narrows location to intersection of circles
-
-### DTLS Encryption
-
-**Problem:** UDP communication is plaintext
-
-**Approach (Phase 5):**
-- Add DTLS wrapper for Probe↔Client communication
-- Protects against eavesdropping (though Offsets are public onchain)
+- Client sets up 3 probe targets with the same IP but different source dzProbes. DZ could provide an SDK performs trilateration from multiple distance measurements
 
 ## Backward Compatibility
 
@@ -662,9 +597,3 @@ $ doublezero-geolocation get 12350 203.0.113.10
 5. In the architecture diagram, the Probe has a line to the Target that says "Probe". Should this be TWAMP (requires configuration on the target), or ICMP, or a TCP syn/syn-ack on a port known to listen publicly? Or support all three options? For POC we can start with ICMP.
 6. How should we handle the latency between the probe and device changing over time? Should we always use the most recent measurement? Should we use the average since the last Signed Offset was sent? The avg/min/max of the previous epoch? 
 
-## References
-
-- RFC4: Telemetry for Contributor Rewards
-- TWAMP Light: RFC 5357
-- Ed25519: RFC 8032
-- Speed of light in fiber: ~124,000 miles/second (124 miles/ms)

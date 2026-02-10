@@ -8,7 +8,6 @@ use std::{
     env, fs,
     io::Write,
     path::{Path, PathBuf},
-    sync::OnceLock,
 };
 
 #[cfg(feature = "default-mainnet-beta")]
@@ -24,23 +23,21 @@ pub fn default_program_id() -> Pubkey {
         .serviceability_program_id
 }
 
-static CONFIG_FILE: OnceLock<Option<PathBuf>> = OnceLock::new();
-
 /// The default path to the CLI configuration file.
 ///
 /// > `~/.config/doublezero/cli/config.yml`
 ///
 /// It will only be `None` if it is unable to identify the user's home
 /// directory, which should not happen under typical OS environments.
-fn get_cfg_filename() -> &'static Option<PathBuf> {
-    CONFIG_FILE.get_or_init(|| match env::var_os("DOUBLEZERO_CONFIG_FILE") {
+fn get_cfg_filename() -> Option<PathBuf> {
+    match env::var_os("DOUBLEZERO_CONFIG_FILE") {
         Some(path) => Some(PathBuf::from(path)),
         None => directories_next::UserDirs::new().map(|dirs| {
             let mut buf = dirs.home_dir().to_path_buf();
             buf.extend([".config", "doublezero", "cli", "config.yml"]);
             buf
         }),
-    })
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -50,6 +47,8 @@ pub struct ClientConfig {
     #[serde(default = "default_keypair_path")]
     pub keypair_path: PathBuf,
     pub program_id: Option<String>,
+    #[serde(default)]
+    pub tenant: Option<String>,
     #[serde(default)]
     pub address_labels: HashMap<String, String>,
 }
@@ -67,6 +66,7 @@ impl Default for ClientConfig {
             websocket_url: None,
             keypair_path: default_keypair_path(),
             program_id: None,
+            tenant: None,
             address_labels: HashMap::new(),
         }
     }
@@ -75,11 +75,11 @@ impl Default for ClientConfig {
 pub fn read_doublezero_config() -> eyre::Result<(PathBuf, ClientConfig)> {
     match get_cfg_filename() {
         None => eyre::bail!("Unable to get_cfg_filename"),
-        Some(filename) => match fs::read_to_string(filename) {
-            Err(_) => Ok((filename.clone(), ClientConfig::default())),
+        Some(filename) => match fs::read_to_string(&filename) {
+            Err(_) => Ok((filename, ClientConfig::default())),
             Ok(config_content) => {
                 let config: ClientConfig = serde_yaml::from_str(&config_content)?;
-                Ok((filename.clone(), config))
+                Ok((filename, config))
             }
         },
     }
@@ -89,14 +89,12 @@ pub fn write_doublezero_config(config: &ClientConfig) -> eyre::Result<()> {
     match get_cfg_filename() {
         None => eyre::bail!("Unable to get_cfg_filename"),
         Some(filename) => {
-            let path = Path::new(filename);
-
-            if let Some(parent) = path.parent() {
+            if let Some(parent) = filename.parent() {
                 fs::create_dir_all(parent)?
             }
 
             let yaml_content = serde_yaml::to_string(config)?;
-            fs::write(filename, yaml_content)?;
+            fs::write(&filename, yaml_content)?;
             Ok(())
         }
     }
@@ -223,6 +221,7 @@ mod tests {
             websocket_url: None,
             keypair_path: keypair_path.clone(),
             program_id: None,
+            tenant: None,
             address_labels: Default::default(),
         };
 
@@ -252,6 +251,7 @@ mod tests {
             websocket_url: None,
             keypair_path: keypair_path.clone(),
             program_id: None,
+            tenant: None,
             address_labels: Default::default(),
         };
 
@@ -277,6 +277,7 @@ mod tests {
             websocket_url: None,
             keypair_path: keypair_path.clone(),
             program_id: None,
+            tenant: None,
             address_labels: Default::default(),
         };
 

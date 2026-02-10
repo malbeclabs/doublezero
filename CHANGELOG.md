@@ -32,6 +32,7 @@ All notable changes to this project will be documented in this file.
   - Added activation check for existing users before subscribing to new groups (#2782)
   - access-pass set: add --tenant argument to specify tenant code for access pass restriction (converts to tenant PDA onchain)
   - tenant list: improve output formatting with table support and JSON serialization options (--json, --json-compact)
+  - default tenant support added to config
 - SDK
   - Add read-only Go SDK (`revdist`) for the revenue distribution Solana program, with typed deserialization of all onchain accounts and Rust-generated fixture tests for cross-language compatibility
   - Add `revdist-cli` tool for inspecting onchain revenue distribution state

@@ -51,6 +51,7 @@ var knownIncompatibilities = map[string]string{
 
 	// All multicast operations that depend on multicast_group_create. When the group
 	// can't be created (< 0.8.1), these all fail with "MulticastGroup not found".
+	"write/multicast_group_wait_activated":       "0.8.1",
 	"write/multicast_group_update":              "0.8.1",
 	"write/multicast_group_pub_allowlist_add":    "0.8.1",
 	"write/multicast_group_pub_allowlist_remove": "0.8.1",
@@ -1068,6 +1069,7 @@ func runWriteWorkflows(
 				" --health ready-for-service", noCascade: true},
 			{name: "user_wait_activated", cmd: `for i in $(seq 1 60); do doublezero user list 2>/dev/null | grep '` + userClientIP + `' | grep -q activated && exit 0; sleep 1; done; echo "user not activated after 60s"; exit 1`, noCascade: true},
 			{name: "user_wait_activated_2", cmd: `for i in $(seq 1 60); do doublezero user list 2>/dev/null | grep '` + user2ClientIP + ` ' | grep -q activated && exit 0; sleep 1; done; echo "user2 not activated after 60s"; exit 1`, noCascade: true},
+			{name: "multicast_group_wait_activated", cmd: `for i in $(seq 1 60); do doublezero multicast group list 2>/dev/null | grep '` + multicastCode + `' | grep -q activated && exit 0; sleep 1; done; echo "multicast group not activated after 60s"; exit 1`, noCascade: true},
 			{name: "multicast_group_update", cmd: cli + " multicast group update --pubkey " + multicastCode +
 				" --max-bandwidth 200", noCascade: true},
 		}},

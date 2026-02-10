@@ -779,8 +779,13 @@ impl ProvisioningCliCommand {
 
         spinner.inc(1);
 
-        // Tunnel provisioning
-        let tunnel_dst = device.public_ip.to_string();
+        // Tunnel provisioning: use the activator-assigned tunnel endpoint if set,
+        // otherwise fall back to the device's public IP.
+        let tunnel_dst = if user.has_tunnel_endpoint() {
+            user.tunnel_endpoint.to_string()
+        } else {
+            device.public_ip.to_string()
+        };
         let tunnel_net = user.tunnel_net.to_string();
         let doublezero_ip = &user.dz_ip;
         let doublezero_prefixes: Vec<String> =

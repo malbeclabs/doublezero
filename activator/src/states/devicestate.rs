@@ -32,7 +32,6 @@ impl DeviceState {
 
     pub fn update(&mut self, device: &Device) {
         if self.device.dz_prefixes != device.dz_prefixes {
-            self.device = device.clone();
             self.dz_ips = device
                 .dz_prefixes
                 .iter()
@@ -41,9 +40,12 @@ impl DeviceState {
 
             info!(
                 "Update Device: {} public_ip: {} dz_prefixes: {} ",
-                self.device.code, &self.device.public_ip, &self.device.dz_prefixes,
+                device.code, &device.public_ip, &device.dz_prefixes,
             );
         }
+        // Always refresh the device data so interfaces (e.g. UTE loopbacks
+        // added after initial load) are visible to get_available_tunnel_endpoint.
+        self.device = device.clone();
     }
 
     pub fn get_next_dz_ip(&mut self) -> Option<Ipv4Addr> {

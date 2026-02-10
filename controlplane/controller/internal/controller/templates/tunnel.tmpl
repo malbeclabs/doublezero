@@ -98,7 +98,7 @@ interface {{ .Name }}
    {{- if .Ip.IsValid }}
    ip address {{ .Ip.Addr }}/{{ .Ip.Bits }}
    {{- end }}
-   {{- if and .IsPhysical .Ip.IsValid (not .IsSubInterfaceParent) }}
+   {{- if and .IsPhysical .Ip.IsValid (not .IsSubInterfaceParent) (not .IsCyoa) (not .IsDia) }}
    pim ipv4 sparse-mode
    {{- end }}
    {{- if and .IsVpnv4Loopback .NodeSegmentIdx}}
@@ -107,7 +107,7 @@ interface {{ .Name }}
    {{- if and .Ip.IsValid .IsLoopback }}
    isis enable 1
    {{- end }}
-   {{- if and .Ip.IsValid .IsPhysical .Metric .IsLink (not .IsSubInterfaceParent) }}
+   {{- if and .Ip.IsValid .IsPhysical .Metric .IsLink (not .IsSubInterfaceParent) (not .IsCyoa) (not .IsDia) }}
    isis enable 1
    isis circuit-type level-2
    isis hello-interval 1

@@ -153,6 +153,16 @@ interface Switch1/1/4
    isis hello padding
    isis network point-to-point
 !
+interface Switch1/1/5
+   mtu 2048
+   no switchport
+   ip address 172.16.0.14/31
+!
+interface Switch1/1/6
+   mtu 2048
+   no switchport
+   ip address 172.16.0.16/31
+!
 interface Loopback1000
    description RP Address
    ip address 10.0.0.0/32

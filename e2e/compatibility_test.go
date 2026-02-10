@@ -3,6 +3,7 @@
 package e2e_test
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log/slog"
@@ -14,6 +15,8 @@ import (
 	"sync/atomic"
 	"testing"
 
+	dockercontainer "github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
 	"github.com/malbeclabs/doublezero/e2e/internal/solana"
@@ -899,6 +902,25 @@ func runWriteWorkflows(
 		for _, dc := range diagCmds {
 			out, _ := dn.Manager.Exec(t.Context(), []string{"bash", "-c", dc.cmd})
 			fmt.Printf("  %s:\n%s\n", dc.label, string(out))
+		}
+		// Dump activator container logs (last 50 lines).
+		if dn.Activator.ContainerID != "" {
+			logsReader, err := dockerClient.ContainerLogs(t.Context(), dn.Activator.ContainerID, dockercontainer.LogsOptions{
+				ShowStdout: true,
+				ShowStderr: true,
+				Tail:       "50",
+			})
+			if err != nil {
+				fmt.Printf("  activator logs: ERROR: %v\n", err)
+			} else {
+				var stdout, stderr bytes.Buffer
+				_, _ = stdcopy.StdCopy(&stdout, &stderr, logsReader)
+				logsReader.Close()
+				fmt.Printf("  activator logs (stdout):\n%s\n", stdout.String())
+				if stderr.Len() > 0 {
+					fmt.Printf("  activator logs (stderr):\n%s\n", stderr.String())
+				}
+			}
 		}
 		fmt.Printf("=== END DIAGNOSTICS [%s %s] ===\n", cloneEnv, formatVersionLabel(version))
 	}

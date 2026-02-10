@@ -226,7 +226,7 @@ max_offset_age_seconds: 60
 cache_size: 10000
 ```
 
-#### Target Listener (Test Tool)
+#### Example Target Software TWAMP Reflector + UDP Listener (Test Tool)
 
 **Purpose:** Lightweight test tool for POC to receive and log signed LocationOffset messages from probes. Demonstrates end-to-end flow of geolocation verification.
 
@@ -236,14 +236,15 @@ cache_size: 10000
 
 **Components:**
 - **TWAMP Reflector:** Responds to probe RTT measurements
-- **UDP Listener:** Receives signed LocationOffset messages on port 8924
+- **UDP Listener:** Receives signed LocationOffset messages on port 8923
 - **Signature Verification:** Validates Ed25519 signatures from probes
 - **Chain Verification:** Validates DZD→Probe reference signatures
 - **Logging:** Outputs offset contents, RTT measurements, location interpretation, and signature/chain details
+- **SDK:** Built on a new GeoLocation Go SDK (see smartcontract/sdk/go for examples)
 
 **Configuration:**
 ```yaml
-listen_addr: "0.0.0.0:8924"
+listen_addr: "0.0.0.0:8923"
 twamp_listen_addr: "0.0.0.0:862"
 log_format: "json"  # or "text"
 verify_signatures: true
@@ -276,36 +277,6 @@ max_offset_age_seconds: 300
 ./geolocation-target-listener --udp-port 9000 --twamp-port 863
 ```
 
-#### Target SDK
-
-**File:** `sdk/rs/src/geolocation/` (new module)
-
-**Components:**
-- `offset.rs`: Offset struct with signature verification
-- `target.rs`: UDP client for receiving offets
-- `verifier.rs`: Chain verification and latency validation
-
-**Example Usage:**
-
-```rust
-use doublezero_sdk::geolocation::{GeoVerifier, LatencyBudget};
-
-let verifier = GeoVerifier::new();
-let probe_addr = "probe.ams.doublezero.network:8923";
-
-// Request location proof
-let offset = verifier.request_offset(probe_addr)?;
-
-// Verify signature chain
-offset.verify_chain()?;
-
-// Check latency budget
-let budget = LatencyBudget::eu_compliance(); // 50ms
-if offset.total_latency_ns() <= budget.max_ns {
-    println!("Client is within EU");
-}
-```
-
 ### POC Requirements
 
 **Goal:** Single dzProbe deployment for testing
@@ -313,35 +284,34 @@ if offset.total_latency_ns() <= budget.max_ns {
 1. Serviceability program changes:
    - GeolocationUser account
    - 4 new instructions (InitializeGeolocationUser/AddTargetIp/RemoveTargetIp/DeleteGeolocationUser)
-2. Telemetry program changes:
    - dzProbe account
    - 4 new instructions (InitializeProbe/UpdateProbe/AddParent/RemoveParent)
-3. Telemetry agent extensions:
+2. Telemetry agent extensions:
    - Child dzProbe discovery from onchain
    - Extend TWAMP measurement to dzProbes
    - Generate Offset structure and sign
-   - Posting Offset Structure via UDP to Probe
-3. Probe server (`doublezero-probe-agent`):
+   - Post Offset Structure via UDP to Probe
+3. dzProbe server (`doublezero-probe-agent`):
    - TWAMP Reflector
    - UDP listener for DZD Offsets
    - Offset caching and verification
-   - GeolocationUser discovery from onchain
-   - Target IP RTT measurement (Via TWAMP/ICMP)
+   - GeolocationUser and GelocationTarget discovery from onchain
+   - Measure IP RTT to targets (Via TWAMP/ICMP)
    - Composite Offset generation
-   - Post Composite offset to Target
+   - Post Composite offset via UDP to Target
 4. Example Target Software TWAMP Reflector + UDP Listener:
    - TWAMP Reflector
    - Receives Signed UDP Datagrams
+   - Logs data
 5. CLI tool (doublezero-geolocation):
    - User management commands
-   - Target IP management commands
-   - Measurement query commands `doublezero probe reference list`: see current reference measurement
+   - Target management commands
+   - Only needs to see exchanges, locations, devices, and probes
    - Set up payer account
    - Probe Management Commands `doublezero probe list/create/update`
 6. Deployment:
    - DockerNet or DevNet
    - 1 probe in testnet in Frankfurt (use `fra-tn-bm1` as probe?)
-
 
 ### MVP Requirements
 

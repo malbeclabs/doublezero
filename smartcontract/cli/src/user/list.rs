@@ -699,7 +699,7 @@ mod tests {
             status: None,
             multicast_group: None,
             tenant: None,
-            all_tenants: false,
+            all_tenants: true,
             json: false,
             json_compact: false,
         }
@@ -724,7 +724,7 @@ mod tests {
             status: None,
             multicast_group: None,
             tenant: None,
-            all_tenants: false,
+            all_tenants: true,
             json: false,
             json_compact: true,
         }
@@ -821,7 +821,7 @@ mod tests {
             status: None,
             multicast_group: None,
             tenant: None,
-            all_tenants: false,
+            all_tenants: true,
             json: false,
             json_compact: false,
         }
@@ -919,7 +919,7 @@ mod tests {
             status: None,
             multicast_group: None,
             tenant: None,
-            all_tenants: false,
+            all_tenants: true,
             json: false,
             json_compact: false,
         }
@@ -1017,7 +1017,7 @@ mod tests {
             status: None,
             multicast_group: None,
             tenant: None,
-            all_tenants: false,
+            all_tenants: true,
             json: false,
             json_compact: false,
         }
@@ -1115,7 +1115,7 @@ mod tests {
             status: None,
             multicast_group: None,
             tenant: None,
-            all_tenants: false,
+            all_tenants: true,
             json: false,
             json_compact: false,
         }
@@ -1213,7 +1213,7 @@ mod tests {
             status: Some(vec!["activated".to_string()]),
             multicast_group: None,
             tenant: None,
-            all_tenants: false,
+            all_tenants: true,
             json: false,
             json_compact: false,
         }
@@ -1328,7 +1328,7 @@ mod tests {
             status: None,
             multicast_group: Some(vec!["m_code".to_string()]),
             tenant: None,
-            all_tenants: false,
+            all_tenants: true,
             json: false,
             json_compact: false,
         }

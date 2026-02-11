@@ -121,7 +121,7 @@ async fn test_tenant() {
             vrf_id: None,
             token_account: None,
             metro_route: None,
-            route_aliveness: None,
+            route_liveness: None,
             billing: Some(billing_config),
         }),
         vec![

@@ -414,6 +414,10 @@ impl TryFrom<&AccountInfo<'_>> for Link {
 
 impl Validate for Link {
     fn validate(&self) -> Result<(), DoubleZeroError> {
+        if self.status == LinkStatus::Deleting {
+            return Ok(());
+        }
+
         // Account type must be Link
         if self.account_type != AccountType::Link {
             return Err(DoubleZeroError::InvalidAccountType);
@@ -931,5 +935,33 @@ mod tests {
         let err_high = val_high.validate();
         assert!(err_high.is_err());
         assert_eq!(err_high.unwrap_err(), DoubleZeroError::InvalidDelay);
+    }
+
+    #[test]
+    fn test_delete_invalid_link() {
+        let bad_link = Link {
+            account_type: AccountType::Link,
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            contributor_pk: Pubkey::new_unique(),
+            side_a_pk: Pubkey::new_unique(),
+            side_z_pk: Pubkey::new_unique(),
+            link_type: LinkLinkType::WAN,
+            bandwidth: 10_000_000_000,
+            mtu: 1566,
+            delay_ns: 1_000_000,
+            jitter_ns: 1_000_000,
+            delay_override_ns: 10_000, // Less than minimum
+            tunnel_id: 1,
+            tunnel_net: "0.0.0.0/0".parse().unwrap(),
+            code: "test-123".to_string(),
+            status: LinkStatus::Deleting,
+            side_a_iface_name: "eth0".to_string(),
+            side_z_iface_name: "eth1".to_string(),
+            link_health: LinkHealth::ReadyForService,
+            desired_status: LinkDesiredStatus::Activated,
+        };
+        assert!(bad_link.validate().is_ok());
     }
 }

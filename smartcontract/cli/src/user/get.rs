@@ -129,7 +129,7 @@ mod tests {
             token_account: Pubkey::default(),
             payment_status: TenantPaymentStatus::Paid,
             metro_route: false,
-            route_aliveness: false,
+            route_liveness: false,
         };
 
         let device_pubkey = Pubkey::new_unique();

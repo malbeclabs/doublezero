@@ -1359,7 +1359,7 @@ mod tests {
             payment_status: TenantPaymentStatus::Paid,
             token_account: Pubkey::default(),
             metro_route: false,
-            route_aliveness: false,
+            route_liveness: false,
         };
 
         let tenant2 = Tenant {
@@ -1373,7 +1373,7 @@ mod tests {
             payment_status: TenantPaymentStatus::Paid,
             token_account: Pubkey::default(),
             metro_route: false,
-            route_aliveness: false,
+            route_liveness: false,
         };
 
         let user1_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");
@@ -1520,7 +1520,7 @@ mod tests {
             payment_status: TenantPaymentStatus::Paid,
             token_account: Pubkey::default(),
             metro_route: false,
-            route_aliveness: false,
+            route_liveness: false,
         };
 
         let tenant2 = Tenant {
@@ -1534,7 +1534,7 @@ mod tests {
             payment_status: TenantPaymentStatus::Paid,
             token_account: Pubkey::default(),
             metro_route: false,
-            route_aliveness: false,
+            route_liveness: false,
         };
 
         let user1_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");

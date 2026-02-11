@@ -20,15 +20,15 @@ pub struct TenantUpdateArgs {
     pub vrf_id: Option<u16>,
     pub token_account: Option<Pubkey>,
     pub metro_route: Option<bool>,
-    pub route_aliveness: Option<bool>,
+    pub route_liveness: Option<bool>,
 }
 
 impl fmt::Debug for TenantUpdateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "vrf_id: {:?}, token_account: {:?}, metro_route: {:?}, route_aliveness: {:?}",
-            self.vrf_id, self.token_account, self.metro_route, self.route_aliveness
+            "vrf_id: {:?}, token_account: {:?}, metro_route: {:?}, route_liveness: {:?}",
+            self.vrf_id, self.token_account, self.metro_route, self.route_liveness
         )
     }
 }
@@ -84,8 +84,8 @@ pub fn process_update_tenant(
     if let Some(metro_route) = value.metro_route {
         tenant.metro_route = metro_route;
     }
-    if let Some(route_aliveness) = value.route_aliveness {
-        tenant.route_aliveness = route_aliveness;
+    if let Some(route_liveness) = value.route_liveness {
+        tenant.route_liveness = route_liveness;
     }
     try_acc_write(&tenant, tenant_account, payer_account, accounts)?;
 

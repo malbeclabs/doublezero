@@ -314,7 +314,7 @@ async fn test_accesspass_with_tenant() {
             administrator: administrator_acme,
             token_account: None,
             metro_route: true,
-            route_aliveness: false,
+            route_liveness: false,
         }),
         vec![
             AccountMeta::new(tenant_acme, false),
@@ -338,7 +338,7 @@ async fn test_accesspass_with_tenant() {
             administrator: administrator_corp,
             token_account: None,
             metro_route: false,
-            route_aliveness: true,
+            route_liveness: true,
         }),
         vec![
             AccountMeta::new(tenant_corp, false),
@@ -362,7 +362,7 @@ async fn test_accesspass_with_tenant() {
             administrator: administrator_validator,
             token_account: None,
             metro_route: true,
-            route_aliveness: true,
+            route_liveness: true,
         }),
         vec![
             AccountMeta::new(tenant_validator, false),
@@ -972,7 +972,7 @@ async fn setup_device_and_tenants() -> (BanksClient, Keypair, Pubkey, Pubkey, Pu
             administrator: Pubkey::new_unique(),
             token_account: None,
             metro_route: true,
-            route_aliveness: false,
+            route_liveness: false,
         }),
         vec![
             AccountMeta::new(tenant_a, false),
@@ -993,7 +993,7 @@ async fn setup_device_and_tenants() -> (BanksClient, Keypair, Pubkey, Pubkey, Pu
             administrator: Pubkey::new_unique(),
             token_account: None,
             metro_route: false,
-            route_aliveness: true,
+            route_liveness: true,
         }),
         vec![
             AccountMeta::new(tenant_b, false),

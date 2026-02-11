@@ -11,7 +11,7 @@ pub struct UpdateTenantCommand {
     pub vrf_id: Option<u16>,
     pub token_account: Option<Pubkey>,
     pub metro_route: Option<bool>,
-    pub route_aliveness: Option<bool>,
+    pub route_liveness: Option<bool>,
 }
 
 impl UpdateTenantCommand {
@@ -23,7 +23,7 @@ impl UpdateTenantCommand {
                 vrf_id: self.vrf_id,
                 token_account: self.token_account,
                 metro_route: self.metro_route,
-                route_aliveness: self.route_aliveness,
+                route_liveness: self.route_liveness,
             }),
             vec![
                 AccountMeta::new(self.tenant_pubkey, false),

@@ -43,7 +43,7 @@ async fn test_tenant() {
             administrator,
             token_account: None,
             metro_route: true,
-            route_aliveness: false,
+            route_liveness: false,
         }),
         vec![
             AccountMeta::new(tenant_pubkey, false),
@@ -66,7 +66,7 @@ async fn test_tenant() {
     assert_eq!(tenant.administrators.len(), 1);
     assert_eq!(tenant.administrators[0], administrator);
     assert!(tenant.metro_route);
-    assert!(!tenant.route_aliveness);
+    assert!(!tenant.route_liveness);
 
     println!("✅ Tenant created successfully");
 
@@ -80,7 +80,7 @@ async fn test_tenant() {
             vrf_id: Some(200),
             token_account: None,
             metro_route: Some(false),
-            route_aliveness: Some(true),
+            route_liveness: Some(true),
         }),
         vec![
             AccountMeta::new(tenant_pubkey, false),
@@ -99,7 +99,7 @@ async fn test_tenant() {
     assert_eq!(tenant.code, "test-tenant".to_string()); // Code unchanged (immutable)
     assert_eq!(tenant.vrf_id, 200); // VRF ID updated
     assert!(!tenant.metro_route); // Metro route updated
-    assert!(tenant.route_aliveness); // Route aliveness updated
+    assert!(tenant.route_liveness); // Route aliveness updated
 
     let _initial_vrf_id = tenant.vrf_id; // Save for later comparison
 
@@ -244,7 +244,7 @@ async fn test_tenant_delete_with_nonzero_reference_count_fails() {
             administrator,
             token_account: None,
             metro_route: true,
-            route_aliveness: false,
+            route_liveness: false,
         }),
         vec![
             AccountMeta::new(tenant_pubkey, false),
@@ -318,7 +318,7 @@ async fn test_tenant_add_duplicate_administrator_fails() {
             administrator,
             token_account: None,
             metro_route: true,
-            route_aliveness: false,
+            route_liveness: false,
         }),
         vec![
             AccountMeta::new(tenant_pubkey, false),
@@ -408,7 +408,7 @@ async fn test_tenant_remove_nonexistent_administrator_fails() {
             administrator,
             token_account: None,
             metro_route: true,
-            route_aliveness: false,
+            route_liveness: false,
         }),
         vec![
             AccountMeta::new(tenant_pubkey, false),

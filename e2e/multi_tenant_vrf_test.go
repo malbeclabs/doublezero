@@ -419,6 +419,180 @@ func runMultiTenantVRFWorkflowTest(
 	log.Debug("--> Confirmed all clients are disconnected and DZ IPs released")
 }
 
+func TestE2E_TenantDeletionLifecycle(t *testing.T) {
+	t.Parallel()
+
+	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
+	log := newTestLoggerForTest(t)
+
+	currentDir, err := os.Getwd()
+	require.NoError(t, err)
+	serviceabilityProgramKeypairPath := filepath.Join(currentDir, "data", "serviceability-program-keypair.json")
+
+	dn, err := devnet.New(devnet.DevnetSpec{
+		DeployID:  deployID,
+		DeployDir: t.TempDir(),
+
+		CYOANetwork: devnet.CYOANetworkSpec{
+			CIDRPrefix: subnetCIDRPrefix,
+		},
+		Manager: devnet.ManagerSpec{
+			ServiceabilityProgramKeypairPath: serviceabilityProgramKeypairPath,
+		},
+	}, log, dockerClient, subnetAllocator)
+	require.NoError(t, err)
+
+	log.Debug("==> Starting devnet")
+	err = dn.Start(t.Context(), nil)
+	require.NoError(t, err)
+	log.Debug("--> Devnet started")
+
+	// Add a single device.
+	deviceCode := "la2-dz01"
+	device, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
+		Code:                         deviceCode,
+		Location:                     "lax",
+		Exchange:                     "xlax",
+		CYOANetworkIPHostID:          8,
+		CYOANetworkAllocatablePrefix: 29,
+		LoopbackInterfaces:           map[string]string{"Loopback255": "vpnv4", "Loopback256": "ipv4"},
+	})
+	require.NoError(t, err)
+	devicePK := device.ID
+	log.Debug("--> Device added", "deviceCode", deviceCode, "devicePK", devicePK)
+
+	// Wait for device to exist onchain.
+	log.Debug("==> Waiting for device to exist onchain")
+	serviceabilityClient, err := dn.Ledger.GetServiceabilityClient()
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		data, err := serviceabilityClient.GetProgramData(t.Context())
+		require.NoError(t, err)
+		return len(data.Devices) == 1
+	}, 30*time.Second, 1*time.Second)
+	log.Debug("--> Device exists onchain")
+
+	// Create tenant.
+	// we need to create the first tenant, which we will call default, and then test with a second tenant. This is because
+	// the controller always renders vrf1 (first tenant) and so in order to check the controller config rendering for the
+	// delete, it has to be done for a 2nd tenant.
+	log.Debug("==> Creating default tenant", "code", "default")
+	_, err = dn.Manager.Exec(t.Context(), []string{"doublezero", "tenant", "create", "--code", "default"})
+	require.NoError(t, err)
+	log.Debug("--> Tenant default created")
+
+	tenantCode := "tenant-delete-test"
+	log.Debug("==> Creating tenant", "code", tenantCode)
+	_, err = dn.Manager.Exec(t.Context(), []string{"doublezero", "tenant", "create", "--code", tenantCode})
+	require.NoError(t, err)
+	log.Debug("--> Tenant created")
+
+	// Discover VRF ID.
+	vrfID := getTenantVrfID(t, dn, tenantCode)
+	require.NotZero(t, vrfID)
+	log.Debug("--> Tenant VRF ID discovered", "vrfID", vrfID)
+
+	// Add a client.
+	client, err := dn.AddClient(t.Context(), devnet.ClientSpec{CYOANetworkIPHostID: 100})
+	require.NoError(t, err)
+	log.Debug("--> Client added", "pubkey", client.Pubkey, "ip", client.CYOANetworkIP)
+
+	// Wait for client latency results.
+	log.Debug("==> Waiting for client latency results")
+	err = client.WaitForLatencyResults(t.Context(), devicePK, 90*time.Second)
+	require.NoError(t, err)
+	log.Debug("--> Client latency results received")
+
+	// Set access pass with tenant.
+	log.Debug("==> Setting access pass")
+	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --tenant " + tenantCode + " --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey})
+	require.NoError(t, err)
+	log.Debug("--> Access pass set")
+
+	// Connect client with tenant.
+	log.Debug("==> Connecting client")
+	_, err = client.Exec(t.Context(), []string{"doublezero", "connect", "ibrl", tenantCode, "--client-ip", client.CYOANetworkIP, "--device", deviceCode})
+	require.NoError(t, err)
+	err = client.WaitForTunnelUp(t.Context(), 90*time.Second)
+	require.NoError(t, err)
+	log.Debug("--> Client connected")
+
+	// Verify VRF config is present in controller.
+	log.Debug("==> Verifying VRF config present in controller")
+	require.Eventually(t, func() bool {
+		got, err := dn.Controller.GetAgentConfig(t.Context(), devicePK)
+		if err != nil {
+			return false
+		}
+		return strings.Contains(got.Config, fmt.Sprintf("vrf instance vrf%d", vrfID)) &&
+			strings.Contains(got.Config, fmt.Sprintf("rd 65342:%d", vrfID)) &&
+			strings.Contains(got.Config, fmt.Sprintf("route-target import vpn-ipv4 65342:%d", vrfID))
+	}, 30*time.Second, 2*time.Second, "controller config should contain VRF instance for tenant")
+	log.Debug("--> VRF config present in controller")
+
+	// Try to delete tenant while user exists — should fail.
+	log.Debug("==> Attempting to delete tenant with active user (should fail)")
+	output, err := dn.Manager.Exec(t.Context(), []string{"doublezero", "tenant", "delete", "--pubkey", tenantCode}, docker.NoPrintOnError())
+	require.Error(t, err)
+	require.Contains(t, string(output), "reference_count", "expected reference_count error, got: %s", string(output))
+	log.Debug("--> Tenant delete correctly rejected")
+
+	// Disconnect client.
+	log.Debug("==> Disconnecting client")
+	_, err = client.Exec(t.Context(), []string{"doublezero", "disconnect", "--client-ip", client.CYOANetworkIP})
+	require.NoError(t, err)
+	log.Debug("--> Client disconnected")
+
+	// Wait for user to be deleted onchain.
+	log.Debug("==> Waiting for user to be deleted onchain")
+	require.Eventually(t, func() bool {
+		data, err := serviceabilityClient.GetProgramData(t.Context())
+		if err != nil {
+			return false
+		}
+		return len(data.Users) == 0
+	}, 60*time.Second, 2*time.Second)
+	log.Debug("--> User deleted onchain")
+
+	// Delete tenant — should succeed now.
+	log.Debug("==> Deleting tenant")
+	_, err = dn.Manager.Exec(t.Context(), []string{"doublezero", "tenant", "delete", "--pubkey", tenantCode})
+	require.NoError(t, err)
+	log.Debug("--> Tenant deleted")
+
+	// Wait for user to be deleted onchain.
+	log.Debug("==> Waiting for tenant to be deleted onchain")
+	require.Eventually(t, func() bool {
+		data, err := serviceabilityClient.GetProgramData(t.Context())
+		if err != nil {
+			return false
+		}
+		return len(data.Tenants) == 1
+	}, 60*time.Second, 2*time.Second)
+	log.Debug("--> Tenant deleted onchain")
+
+	// Verify VRF config is removed from controller.
+	log.Debug("==> Verifying VRF config removed from controller")
+	require.Eventually(t, func() bool {
+		got, err := dn.Controller.GetAgentConfig(t.Context(), devicePK)
+		if err != nil {
+			return false
+		}
+		return !strings.Contains(got.Config, fmt.Sprintf("vrf instance vrf%d", vrfID))
+	}, 30*time.Second, 2*time.Second, "controller config should no longer contain VRF instance after tenant deletion")
+	log.Debug("--> VRF config removed from controller")
+
+	// Verify client tunnel is disconnected.
+	log.Debug("==> Verifying client is disconnected")
+	err = client.WaitForTunnelDisconnected(t.Context(), 60*time.Second)
+	require.NoError(t, err)
+	status, err := client.GetTunnelStatus(t.Context())
+	require.NoError(t, err)
+	require.Len(t, status, 1)
+	require.Nil(t, status[0].DoubleZeroIP)
+	log.Debug("--> Client disconnected and DZ IP released")
+}
+
 // getTenantVrfID fetches the VRF ID for a tenant by parsing the output of
 // `doublezero tenant get --code <code>`.
 func getTenantVrfID(t *testing.T, dn *devnet.Devnet, tenantCode string) uint16 {

@@ -5,6 +5,7 @@ use crate::{
 };
 use clap::Args;
 use doublezero_sdk::commands::tenant::{get::GetTenantCommand, update::UpdateTenantCommand};
+use doublezero_serviceability::state::tenant::{FlatPerEpochConfig, TenantBillingConfig};
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, str::FromStr};
 
@@ -25,6 +26,9 @@ pub struct UpdateTenantCliCommand {
     /// Enable/disable route aliveness checks
     #[arg(long)]
     pub route_liveness: Option<bool>,
+    /// Flat billing rate per epoch (in lamports)
+    #[arg(long)]
+    pub billing_rate: Option<u64>,
 }
 
 impl UpdateTenantCliCommand {
@@ -32,7 +36,7 @@ impl UpdateTenantCliCommand {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let (tenant_pubkey, _tenant) = client.get_tenant(GetTenantCommand {
+        let (tenant_pubkey, tenant) = client.get_tenant(GetTenantCommand {
             pubkey_or_code: self.pubkey,
         })?;
 
@@ -41,13 +45,22 @@ impl UpdateTenantCliCommand {
             .map(|s| Pubkey::from_str(&s))
             .transpose()?;
 
+        let billing = self.billing_rate.map(|rate| {
+            // NOTE: we use existing dz_epoch for idempotency
+            let TenantBillingConfig::FlatPerEpoch(existing) = tenant.billing;
+            TenantBillingConfig::FlatPerEpoch(FlatPerEpochConfig {
+                rate,
+                last_deduction_dz_epoch: existing.last_deduction_dz_epoch,
+            })
+        });
+
         let signature = client.update_tenant(UpdateTenantCommand {
             tenant_pubkey,
             vrf_id: self.vrf_id,
             token_account,
             metro_route: self.metro_route,
             route_liveness: self.route_liveness,
-            billing: None,
+            billing,
         })?;
 
         writeln!(out, "Signature: {signature}")?;

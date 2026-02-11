@@ -32,14 +32,21 @@ pub struct UserActivateArgs {
     /// When 0, legacy behavior is used (values from args). When > 0, on-chain allocation is used.
     #[incremental(default = 0)]
     pub dz_prefix_count: u8,
+    /// Tunnel endpoint IP (device-side GRE endpoint). 0.0.0.0 means use device.public_ip for backwards compatibility.
+    #[incremental(default = Ipv4Addr::UNSPECIFIED)]
+    pub tunnel_endpoint: Ipv4Addr,
 }
 
 impl fmt::Debug for UserActivateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "tunnel_id: {}, tunnel_net: {}, dz_ip: {}, dz_prefix_count: {}",
-            self.tunnel_id, &self.tunnel_net, &self.dz_ip, self.dz_prefix_count,
+            "tunnel_id: {}, tunnel_net: {}, dz_ip: {}, dz_prefix_count: {}, tunnel_endpoint: {}",
+            self.tunnel_id,
+            &self.tunnel_net,
+            &self.dz_ip,
+            self.dz_prefix_count,
+            &self.tunnel_endpoint,
         )
     }
 }
@@ -263,11 +270,15 @@ pub fn process_activate_user(
             user.dz_ip = user.client_ip;
         }
         // Otherwise keep existing dz_ip (already allocated or client_ip)
+
+        // Set tunnel_endpoint from args (device's public_ip, passed by activator)
+        user.tunnel_endpoint = value.tunnel_endpoint;
     } else {
         // Legacy behavior: use provided args
         user.tunnel_id = value.tunnel_id;
         user.tunnel_net = value.tunnel_net;
         user.dz_ip = value.dz_ip;
+        user.tunnel_endpoint = value.tunnel_endpoint;
     }
 
     user.try_activate(&mut accesspass)?;

@@ -574,6 +574,7 @@ mod tests {
         },
     };
     use solana_program::pubkey::Pubkey;
+    use std::net::Ipv4Addr;
 
     use super::*;
 
@@ -756,6 +757,7 @@ mod tests {
                 user_type: UserType::IBRL,
                 cyoa_type: UserCYOA::GREOverDIA,
                 client_ip: [1, 2, 3, 4].into(),
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             }),
             "CreateUser",
         );
@@ -765,6 +767,7 @@ mod tests {
                 tunnel_net: "1.2.3.4/1".parse().unwrap(),
                 dz_ip: [1, 2, 3, 4].into(),
                 dz_prefix_count: 0,
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             }),
             "ActivateUser",
         );
@@ -971,6 +974,7 @@ mod tests {
                 client_ip: [1, 2, 3, 4].into(),
                 publisher: false,
                 subscriber: true,
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             }),
             "CreateSubscribeUser",
         );

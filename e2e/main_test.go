@@ -38,6 +38,12 @@ const (
 	// Subnet CIDR prefix.
 	// Provides the full last octet range for devices and clients (2-254) for testing.
 	subnetCIDRPrefix = 24
+
+	// subnetAllocatorMask is the prefix length used for Docker network IPAM.
+	// Using /23 covers both the device CYOA IPs and UTE loopback IPs (which
+	// live in the next /24) within a single Docker network, avoiding the need
+	// for iptables hacks to allow cross-subnet bridged traffic.
+	subnetAllocatorMask = 23
 )
 
 var (
@@ -91,7 +97,7 @@ func TestMain(m *testing.M) {
 	}
 
 	// Initialize a subnet allocator.
-	subnetAllocator = docker.NewSubnetAllocator("9.128.0.0/9", subnetCIDRPrefix, dockerClient)
+	subnetAllocator = docker.NewSubnetAllocator("9.128.0.0/9", subnetAllocatorMask, dockerClient)
 
 	// Build the container images unless the "no build" environment variable is set.
 	if os.Getenv("DZ_E2E_NO_BUILD") == "" {

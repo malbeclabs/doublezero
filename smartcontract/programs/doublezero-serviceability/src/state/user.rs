@@ -201,13 +201,15 @@ pub struct User {
         )
     )]
     pub validator_pubkey: Pubkey, // 32
+    /// Tunnel endpoint IP (device-side GRE endpoint). 0.0.0.0 means use device.public_ip for backwards compatibility.
+    pub tunnel_endpoint: Ipv4Addr, // 4
 }
 
 impl fmt::Display for User {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, index: {}, user_type: {}, device_pk: {}, cyoa_type: {}, client_ip: {}, dz_ip: {}, tunnel_id: {}, tunnel_net: {}, status: {}",
+            "account_type: {}, owner: {}, index: {}, user_type: {}, device_pk: {}, cyoa_type: {}, client_ip: {}, dz_ip: {}, tunnel_id: {}, tunnel_net: {}, status: {}, tunnel_endpoint: {}",
             self.account_type,
             self.owner,
             self.index,
@@ -219,6 +221,7 @@ impl fmt::Display for User {
             self.tunnel_id,
             &self.tunnel_net,
             self.status,
+            &self.tunnel_endpoint
         )
     }
 }
@@ -244,6 +247,9 @@ impl TryFrom<&[u8]> for User {
             publishers: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
             subscribers: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
             validator_pubkey: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            // Tunnel endpoint - defaults to 0.0.0.0 for backwards compatibility (use device.public_ip)
+            tunnel_endpoint: BorshDeserialize::deserialize(&mut data)
+                .unwrap_or([0, 0, 0, 0].into()),
         };
 
         if out.account_type != AccountType::User {
@@ -299,6 +305,12 @@ impl Validate for User {
             msg!("tunnel_id: {}", self.tunnel_id);
             return Err(DoubleZeroError::InvalidTunnelId);
         }
+        // tunnel_endpoint must be global unicast if set (non-zero)
+        // Validation against device interfaces is done at the instruction level
+        if self.tunnel_endpoint != Ipv4Addr::UNSPECIFIED && !is_global(self.tunnel_endpoint) {
+            msg!("tunnel_endpoint: {}", self.tunnel_endpoint);
+            return Err(DoubleZeroError::InvalidTunnelEndpoint);
+        }
 
         Ok(())
     }
@@ -314,6 +326,10 @@ impl User {
 
     pub fn has_unicast_tunnel(&self) -> bool {
         self.tunnel_id != 0
+    }
+
+    pub fn has_tunnel_endpoint(&self) -> bool {
+        self.tunnel_endpoint != Ipv4Addr::UNSPECIFIED
     }
 
     pub fn has_allocated_dz_ip(&self) -> bool {
@@ -436,6 +452,7 @@ mod tests {
             publishers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -482,6 +499,7 @@ mod tests {
             publishers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         };
 
         let err = val.validate();
@@ -508,6 +526,7 @@ mod tests {
             publishers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -533,6 +552,7 @@ mod tests {
             publishers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -558,6 +578,7 @@ mod tests {
             publishers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -583,6 +604,7 @@ mod tests {
             publishers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -608,10 +630,70 @@ mod tests {
             publishers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         };
         let err = val.validate();
         assert!(err.is_err());
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidTunnelId);
+    }
+
+    #[test]
+    fn test_state_user_validate_error_invalid_tunnel_endpoint() {
+        // Test with private IP (should fail validation)
+        let val = User {
+            account_type: AccountType::User,
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            tenant_pk: Pubkey::default(),
+            user_type: UserType::IBRL,
+            device_pk: Pubkey::new_unique(),
+            cyoa_type: UserCYOA::GREOverDIA,
+            dz_ip: [3, 2, 4, 2].into(),
+            client_ip: [1, 2, 3, 4].into(),
+            tunnel_id: 500,
+            tunnel_net: "169.254.0.0/31".parse().unwrap(),
+            status: UserStatus::Activated,
+            publishers: vec![],
+            subscribers: vec![],
+            validator_pubkey: Pubkey::new_unique(),
+            tunnel_endpoint: Ipv4Addr::new(192, 168, 1, 1), // Private IP - invalid
+        };
+        let err = val.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidTunnelEndpoint);
+
+        // Test with loopback IP (should fail validation)
+        let val_loopback = User {
+            tunnel_endpoint: Ipv4Addr::new(127, 0, 0, 1), // Loopback - invalid
+            ..val.clone()
+        };
+        let err = val_loopback.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidTunnelEndpoint);
+
+        // Test with link-local IP (should fail validation)
+        let val_link_local = User {
+            tunnel_endpoint: Ipv4Addr::new(169, 254, 1, 1), // Link-local - invalid
+            ..val.clone()
+        };
+        let err = val_link_local.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidTunnelEndpoint);
+
+        // Test with UNSPECIFIED (0.0.0.0) - should pass (backwards compat)
+        let val_unspecified = User {
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            ..val.clone()
+        };
+        assert!(val_unspecified.validate().is_ok());
+
+        // Test with global IP - should pass
+        let val_global = User {
+            tunnel_endpoint: Ipv4Addr::new(8, 8, 8, 8), // Global IP - valid
+            ..val
+        };
+        assert!(val_global.validate().is_ok());
     }
 
     // ============================================================
@@ -637,6 +719,7 @@ mod tests {
             publishers: vec![],
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         }
     }
 
@@ -648,6 +731,16 @@ mod tests {
 
         user.tunnel_id = 100;
         assert!(user.has_unicast_tunnel());
+    }
+
+    #[test]
+    fn test_has_tunnel_endpoint() {
+        let mut user = create_test_user();
+        user.tunnel_endpoint = Ipv4Addr::UNSPECIFIED;
+        assert!(!user.has_tunnel_endpoint());
+
+        user.tunnel_endpoint = Ipv4Addr::new(10, 0, 0, 1);
+        assert!(user.has_tunnel_endpoint());
     }
 
     #[test]

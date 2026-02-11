@@ -20,6 +20,12 @@ const (
 	// Provides the full last octet range for devices and clients (2-254) for testing.
 	subnetCIDRPrefix = 24
 
+	// subnetAllocatorMask is the prefix length used for Docker network IPAM.
+	// Using /23 covers both the device CYOA IPs and UTE loopback IPs (which
+	// live in the next /24) within a single Docker network, avoiding the need
+	// for iptables hacks to allow cross-subnet bridged traffic.
+	subnetAllocatorMask = 23
+
 	defaultDeployID  = "dz-local"
 	defaultDeployDir = "dev/.deploy"
 )
@@ -43,7 +49,7 @@ func NewLocalDevnet(log *slog.Logger, deployID string) (*LocalDevnet, error) {
 	}
 
 	// Initialize a subnet allocator.
-	subnetAllocator := docker.NewSubnetAllocator("9.128.0.0/9", subnetCIDRPrefix, dockerClient)
+	subnetAllocator := docker.NewSubnetAllocator("9.128.0.0/9", subnetAllocatorMask, dockerClient)
 
 	// Disable the default testcontainers behavior of automatically removing containers on exit.
 	err = os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")

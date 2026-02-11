@@ -33,14 +33,16 @@ pub struct UserCreateArgs {
     pub cyoa_type: UserCYOA,
     #[incremental(default = Ipv4Addr::UNSPECIFIED)]
     pub client_ip: std::net::Ipv4Addr,
+    #[incremental(default = Ipv4Addr::UNSPECIFIED)]
+    pub tunnel_endpoint: std::net::Ipv4Addr,
 }
 
 impl fmt::Debug for UserCreateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "user_type: {}, cyoa_type: {}, client_ip: {}",
-            self.user_type, self.cyoa_type, &self.client_ip,
+            "user_type: {}, cyoa_type: {}, client_ip: {}, tunnel_endpoint: {}",
+            self.user_type, self.cyoa_type, &self.client_ip, &self.tunnel_endpoint,
         )
     }
 }
@@ -283,6 +285,7 @@ pub fn process_create_user(
         publishers: vec![],
         subscribers: vec![],
         validator_pubkey,
+        tunnel_endpoint: value.tunnel_endpoint,
     };
 
     if pda_ver == PDAVersion::V1 {

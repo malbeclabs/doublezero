@@ -134,6 +134,7 @@ mod tests {
             publishers: vec![],
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         };
 
         // Mock User fetch
@@ -192,6 +193,7 @@ mod tests {
             publishers: vec![],
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         };
 
         // Compute ResourceExtension PDAs
@@ -277,6 +279,7 @@ mod tests {
             publishers: vec![],
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
+            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
         };
 
         client
@@ -336,6 +339,7 @@ mod tests {
             publishers: vec![],
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
+            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
         };
 
         let (global_resource_ext, _, _) =

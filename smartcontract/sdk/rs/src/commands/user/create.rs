@@ -17,6 +17,7 @@ pub struct CreateUserCommand {
     pub device_pk: Pubkey,
     pub cyoa_type: UserCYOA,
     pub client_ip: Ipv4Addr,
+    pub tunnel_endpoint: Ipv4Addr,
     pub tenant_pk: Option<Pubkey>,
 }
 
@@ -64,6 +65,7 @@ impl CreateUserCommand {
                     user_type: self.user_type,
                     cyoa_type: self.cyoa_type,
                     client_ip: self.client_ip,
+                    tunnel_endpoint: self.tunnel_endpoint,
                 }),
                 accounts,
             )

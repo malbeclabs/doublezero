@@ -189,6 +189,7 @@ mod tests {
             publishers: vec![],
             subscribers: vec![mgroup_pubkey],
             validator_pubkey: Pubkey::default(),
+            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
         };
 
         let (accesspass_pubkey, _) =

@@ -20,6 +20,7 @@ use doublezero_serviceability::{
 use globalconfig::set::SetGlobalConfigArgs;
 use solana_program_test::*;
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signer::Signer};
+use std::net::Ipv4Addr;
 use user::closeaccount::UserCloseAccountArgs;
 
 mod test_helpers;
@@ -332,6 +333,7 @@ async fn test_old_user() {
             client_ip: user_ip,
             user_type: UserType::IBRL,
             cyoa_type: UserCYOA::GREOverDIA,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -366,6 +368,7 @@ async fn test_old_user() {
             tunnel_net: "169.254.0.0/25".parse().unwrap(),
             dz_ip: [200, 0, 0, 1].into(),
             dz_prefix_count: 0, // legacy path - no ResourceExtension accounts
+            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),

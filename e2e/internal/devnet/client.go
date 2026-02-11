@@ -44,6 +44,10 @@ type ClientSpec struct {
 	// RouteLivenessDebug is a flag to enable or disable debug logging for route liveness.
 	RouteLivenessDebug bool
 
+	// LatencyProbeTunnelEndpoints enables probing UserTunnelEndpoint interfaces
+	// in addition to device PublicIp during latency measurements.
+	LatencyProbeTunnelEndpoints bool
+
 	// CYOANetworkIPHostID is the offset into the host portion of the subnet (must be < 2^(32 - prefixLen)).
 	CYOANetworkIPHostID uint32
 }
@@ -189,6 +193,9 @@ func (c *Client) Start(ctx context.Context) error {
 	}
 	if c.Spec.RouteLivenessDebug {
 		extraArgs = append(extraArgs, "-route-liveness-debug")
+	}
+	if c.Spec.LatencyProbeTunnelEndpoints {
+		extraArgs = append(extraArgs, "-latency-probe-tunnel-endpoints")
 	}
 
 	// Start the client container.
@@ -602,6 +609,26 @@ func (c *Client) WaitForLatencyResults(ctx context.Context, wantDevicePK string,
 	}, timeout, 1*time.Second)
 	if err != nil {
 		return fmt.Errorf("failed to wait for latency results: %w", err)
+	}
+
+	return nil
+}
+
+// WaitForPing waits until the given IP is reachable via ICMP ping from the client container.
+func (c *Client) WaitForPing(ctx context.Context, ip string, timeout time.Duration) error {
+	c.log.Debug("==> Waiting for ping to succeed", "ip", ip, "timeout", timeout)
+
+	start := time.Now()
+	err := poll.Until(ctx, func() (bool, error) {
+		_, err := c.Exec(ctx, []string{"ping", "-c", "1", "-W", "1", ip})
+		if err == nil {
+			c.log.Debug("✅ Ping succeeded", "ip", ip, "duration", time.Since(start))
+			return true, nil
+		}
+		return false, nil
+	}, timeout, 2*time.Second)
+	if err != nil {
+		return fmt.Errorf("failed to ping %s within %s: %w", ip, timeout, err)
 	}
 
 	return nil

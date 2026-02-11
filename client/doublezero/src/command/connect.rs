@@ -1,6 +1,6 @@
 use super::helpers::look_for_ip;
 use crate::{
-    dzd_latency::best_latency,
+    dzd_latency::{best_latency, retrieve_latencies, select_tunnel_endpoint},
     requirements::check_doublezero,
     routes::resolve_route,
     servicecontroller::{
@@ -332,26 +332,58 @@ impl ProvisioningCliCommand {
         devices: &HashMap<Pubkey, Device>,
         spinner: &ProgressBar,
         exclude_ips: &[Ipv4Addr],
-    ) -> eyre::Result<(Pubkey, Device)> {
+    ) -> eyre::Result<(Pubkey, Device, Ipv4Addr)> {
         spinner.set_message("Searching for the nearest device...");
-        let device_pk = match self.device.as_ref() {
-            Some(device) => match device.parse::<Pubkey>() {
-                Ok(pubkey) => pubkey,
-                Err(_) => {
-                    let (pubkey, _) = devices
-                        .iter()
-                        .find(|(_, d)| d.code == *device)
-                        .ok_or(eyre::eyre!("Device not found"))?;
-                    *pubkey
-                }
-            },
+        // filter out existing devices for users with existing tunnels
+        // put some arbitrary cap on latency for second devices
+        let (device_pk, tunnel_endpoint) = match self.device.as_ref() {
+            Some(device) => {
+                let pk = match device.parse::<Pubkey>() {
+                    Ok(pubkey) => pubkey,
+                    Err(_) => {
+                        let (pubkey, _) = devices
+                            .iter()
+                            .find(|(_, d)| d.code == *device)
+                            .ok_or(eyre::eyre!("Device not found"))?;
+                        *pubkey
+                    }
+                };
+                // For explicit device selection, use latency data to pick the best endpoint
+                let latencies =
+                    retrieve_latencies(controller, devices, false, Some(spinner)).await?;
+                let dev = devices.get(&pk);
+                let device_public_ip = dev.map(|d| d.public_ip).unwrap_or(Ipv4Addr::UNSPECIFIED);
+                let endpoint = select_tunnel_endpoint(
+                    &latencies,
+                    &pk.to_string(),
+                    device_public_ip,
+                    exclude_ips,
+                );
+                (pk, endpoint)
+            }
             None => {
                 let latency =
                     best_latency(controller, devices, true, Some(spinner), None, exclude_ips)
                         .await?;
                 spinner.set_message("Reading device account...");
-                Pubkey::from_str(&latency.device_pk)
-                    .map_err(|_| eyre::eyre!("Unable to parse pubkey"))?
+                let pk = Pubkey::from_str(&latency.device_pk)
+                    .map_err(|_| eyre::eyre!("Unable to parse pubkey"))?;
+                // Use select_tunnel_endpoint to pick the best available endpoint for this
+                // device, respecting exclude_ips. best_latency picks the device but the
+                // returned record's device_ip might be an excluded endpoint.
+                let latencies =
+                    retrieve_latencies(controller, devices, false, Some(spinner)).await?;
+                let device_public_ip = devices
+                    .get(&pk)
+                    .map(|d| d.public_ip)
+                    .unwrap_or(Ipv4Addr::UNSPECIFIED);
+                let endpoint = select_tunnel_endpoint(
+                    &latencies,
+                    &pk.to_string(),
+                    device_public_ip,
+                    exclude_ips,
+                );
+                (pk, endpoint)
             }
         };
 
@@ -368,7 +400,7 @@ impl ProvisioningCliCommand {
             ));
         }
 
-        Ok((device_pk, device))
+        Ok((device_pk, device, tunnel_endpoint))
     }
 
     async fn find_or_create_user<T: ServiceController>(
@@ -424,7 +456,7 @@ impl ProvisioningCliCommand {
 
                 let exclude_ips: Vec<Ipv4Addr> = exclude_ips(&users, client_ip, &devices);
 
-                let (device_pk, device) = self
+                let (device_pk, device, tunnel_endpoint) = self
                     .find_or_create_device(client, controller, &devices, spinner, &exclude_ips)
                     .await?;
 
@@ -461,6 +493,7 @@ impl ProvisioningCliCommand {
                     device_pk,
                     cyoa_type: UserCYOA::GREOverDIA,
                     client_ip: *client_ip,
+                    tunnel_endpoint,
                     tenant_pk,
                 });
 
@@ -538,7 +571,7 @@ impl ProvisioningCliCommand {
                 // Exclude the IBRL user's tunnel endpoint to ensure we get a different device
                 let exclude_ips: Vec<Ipv4Addr> = exclude_ips(&users, client_ip, &devices);
 
-                let (device_pk, device) = self
+                let (device_pk, device, tunnel_endpoint) = self
                     .find_or_create_device(client, controller, &devices, spinner, &exclude_ips)
                     .await?;
 
@@ -560,6 +593,7 @@ impl ProvisioningCliCommand {
                     mgroup_pk: *first_group_pk,
                     publisher,
                     subscriber,
+                    tunnel_endpoint,
                 });
 
                 let user_pk = match res {
@@ -616,7 +650,6 @@ impl ProvisioningCliCommand {
                     self.poll_for_user_activated(client, user_pk, spinner)?;
                 }
 
-                // Subscribe to any groups not already subscribed
                 let existing_groups = match multicast_mode {
                     MulticastMode::Publisher => &user.publishers,
                     MulticastMode::Subscriber => &user.subscribers,
@@ -658,7 +691,7 @@ impl ProvisioningCliCommand {
 
                 let exclude_ips: Vec<Ipv4Addr> = exclude_ips(&users, client_ip, &devices);
 
-                let (device_pk, device) = self
+                let (device_pk, device, tunnel_endpoint) = self
                     .find_or_create_device(client, controller, &devices, spinner, &exclude_ips)
                     .await?;
 
@@ -681,6 +714,7 @@ impl ProvisioningCliCommand {
                     mgroup_pk: *first_group_pk,
                     publisher,
                     subscriber,
+                    tunnel_endpoint,
                 });
 
                 let user_pk = match res {
@@ -796,8 +830,13 @@ impl ProvisioningCliCommand {
 
         spinner.inc(1);
 
-        // Tunnel provisioning
-        let tunnel_dst = device.public_ip.to_string();
+        // Tunnel provisioning: use the activator-assigned tunnel endpoint if set,
+        // otherwise fall back to the device's public IP.
+        let tunnel_dst = if user.has_tunnel_endpoint() {
+            user.tunnel_endpoint.to_string()
+        } else {
+            device.public_ip.to_string()
+        };
         let tunnel_net = user.tunnel_net.to_string();
         let doublezero_ip = &user.dz_ip;
         let doublezero_prefixes: Vec<String> =
@@ -915,8 +954,17 @@ fn exclude_ips(
     users
         .iter()
         .filter(|(_, u)| u.client_ip == *client_ip && u.has_unicast_tunnel())
-        .filter_map(|(_, u)| devices.get(&u.device_pk))
-        .map(|d| d.public_ip)
+        .map(|(_, u)| {
+            if u.has_tunnel_endpoint() {
+                u.tunnel_endpoint
+            } else {
+                devices
+                    .get(&u.device_pk)
+                    .map(|d| d.public_ip)
+                    .unwrap_or(Ipv4Addr::UNSPECIFIED)
+            }
+        })
+        .filter(|ip| *ip != Ipv4Addr::UNSPECIFIED)
         .collect()
 }
 
@@ -1253,6 +1301,15 @@ mod tests {
             device_pk: Pubkey,
             client_ip: &str,
         ) -> User {
+            // Look up device's public_ip to set as tunnel_endpoint
+            let tunnel_endpoint = self
+                .devices
+                .lock()
+                .unwrap()
+                .get(&device_pk)
+                .map(|d| d.public_ip)
+                .unwrap_or(Ipv4Addr::UNSPECIFIED);
+
             User {
                 account_type: AccountType::User,
                 owner: Pubkey::new_unique(),
@@ -1270,6 +1327,7 @@ mod tests {
                 publishers: vec![],
                 subscribers: vec![],
                 validator_pubkey: Pubkey::new_unique(),
+                tunnel_endpoint,
             }
         }
 
@@ -1299,6 +1357,7 @@ mod tests {
                 device_pk: user.device_pk,
                 cyoa_type: UserCYOA::GREOverDIA,
                 client_ip: user.client_ip,
+                tunnel_endpoint: user.tunnel_endpoint,
                 tenant_pk,
             };
 
@@ -1331,6 +1390,7 @@ mod tests {
                 mgroup_pk: mcast_group_pk,
                 publisher,
                 subscriber,
+                tunnel_endpoint: user.tunnel_endpoint,
             };
 
             let users = self.users.clone();
@@ -1519,8 +1579,8 @@ mod tests {
         println!("Test that adding a multicast tunnel with an existing IBRL creates a separate Multicast user");
         let (mcast_group_pk, mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
 
-        // When IBRL user exists, a separate Multicast user should be created on a DIFFERENT device
-        // (concurrent tunnels from same client IP must go to different devices to avoid GRE key conflicts)
+        // When IBRL user exists, a separate Multicast user should be created on a different device
+        // (exclude_ips prevents reusing the same device as the IBRL tunnel)
         let mcast_user = fixture.create_user(UserType::Multicast, device2_pk, "1.2.3.4");
         fixture.expect_create_subscribe_user(
             Pubkey::new_unique(),
@@ -1595,8 +1655,8 @@ mod tests {
         println!("Test that adding a multicast tunnel with an existing IBRL creates a separate Multicast user");
         let (mcast_group_pk, mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
 
-        // When IBRL user exists, a separate Multicast user should be created on a DIFFERENT device
-        // (concurrent tunnels from same client IP must go to different devices to avoid GRE key conflicts)
+        // When IBRL user exists, a separate Multicast user should be created on a different device
+        // (exclude_ips prevents reusing the same device as the IBRL tunnel)
         let mcast_user = fixture.create_user(UserType::Multicast, device2_pk, "1.2.3.4");
         fixture.expect_create_subscribe_user(
             Pubkey::new_unique(),
@@ -2124,8 +2184,8 @@ mod tests {
             .await;
         assert!(result.is_ok());
 
-        // Test that adding an IBRL tunnel with an existing multicast succeeds
-        // (concurrent tunnels from same client IP must go to different devices to avoid GRE key conflicts)
+        // Test that adding an IBRL tunnel with an existing multicast succeeds on a DIFFERENT device
+        // (concurrent tunnels from same client IP must go to different devices)
         let ibrl_user = fixture.create_user(UserType::IBRL, device2_pk, "1.2.3.4");
         fixture.expect_create_user(Pubkey::new_unique(), &ibrl_user);
 
@@ -2207,7 +2267,8 @@ mod tests {
         assert!(result1.is_ok());
 
         println!("Test that adding an IBRL tunnel with an existing multicast succeeds");
-        // (concurrent tunnels from same client IP must go to different devices to avoid GRE key conflicts)
+        // IBRL user should go to a DIFFERENT device than the existing Multicast user
+        // (concurrent tunnels from same client IP must go to different devices)
         let ibrl_user = fixture.create_user(UserType::IBRL, device2_pk, "1.2.3.4");
         fixture.expect_create_user(Pubkey::new_unique(), &ibrl_user);
 
@@ -2511,7 +2572,7 @@ mod tests {
         let _ibrl_user_pk = fixture.add_user(&ibrl_user);
 
         // Expect create_subscribe_user to be called to create a NEW Multicast user on a DIFFERENT device
-        // (concurrent tunnels from same client IP must go to different devices to avoid GRE key conflicts)
+        // (concurrent tunnels from same client IP must go to different devices)
         let mcast_user = fixture.create_user(UserType::Multicast, device2_pk, "1.2.3.4");
         fixture.expect_create_subscribe_user(
             Pubkey::new_unique(),
@@ -2561,7 +2622,7 @@ mod tests {
 
         let (mcast_group_pk, _mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
         let (device1_pk, _device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
-        // Add a second device for concurrent tunnels (Multicast + IBRL must go to different devices)
+        // Add a second device for concurrent tunnels (IBRL + Multicast must go to different devices)
         let (device2_pk, _device2) = fixture.add_device(DeviceType::Hybrid, 110, true);
 
         // Create a pure Multicast user and add it to the fixture (simulating existing user)
@@ -2570,7 +2631,7 @@ mod tests {
         let mcast_user_pk = fixture.add_user(&mcast_user);
 
         // Create an IBRL user for the same IP on a DIFFERENT device
-        // (concurrent tunnels from same client IP must go to different devices to avoid GRE key conflicts)
+        // (concurrent tunnels from same client IP must go to different devices)
         let ibrl_user = fixture.create_user(UserType::IBRL, device2_pk, "1.2.3.4");
         fixture.expect_create_user(Pubkey::new_unique(), &ibrl_user);
 

@@ -75,6 +75,7 @@ impl CreateUserCliCommand {
             device_pk,
             cyoa_type: UserCYOA::GREOverDIA,
             client_ip: self.client_ip,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             tenant_pk,
         })?;
         writeln!(out, "Signature: {signature}",)?;
@@ -101,6 +102,7 @@ mod tests {
     use doublezero_serviceability::pda::get_user_old_pda;
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
+    use std::net::Ipv4Addr;
 
     use crate::{tests::utils::create_test_client, user::create::CreateUserCliCommand};
 
@@ -161,6 +163,7 @@ mod tests {
                 cyoa_type: UserCYOA::GREOverDIA,
                 client_ip: [100, 0, 0, 1].into(),
                 tenant_pk: None,
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             }))
             .times(1)
             .returning(move |_| Ok((signature, pda_pubkey)));

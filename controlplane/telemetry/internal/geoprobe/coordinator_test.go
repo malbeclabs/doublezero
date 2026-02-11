@@ -8,8 +8,6 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
-	solanarpc "github.com/gagliardetto/solana-go/rpc"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -20,7 +18,7 @@ func newTestCoordinatorConfig() *CoordinatorConfig {
 	devicePK := solana.NewWallet().PublicKey()
 
 	mockServiceability := newMockServiceabilityClient()
-	mockServiceability.devicePK = devicePK
+	mockServiceability.setDevicePK(devicePK)
 
 	return &CoordinatorConfig{
 		Logger:               logger,
@@ -34,68 +32,6 @@ func newTestCoordinatorConfig() *CoordinatorConfig {
 		RPCClient:            newMockRPCClient(),
 		ManagementNamespace:  "",
 	}
-}
-
-type mockServiceabilityClient struct {
-	devicePK   solana.PublicKey
-	locationPK solana.PublicKey
-}
-
-func newMockServiceabilityClient() *mockServiceabilityClient {
-	return &mockServiceabilityClient{}
-}
-
-func (m *mockServiceabilityClient) GetProgramData(ctx context.Context) (*serviceability.ProgramData, error) {
-	devicePK := m.devicePK
-	if devicePK.IsZero() {
-		devicePK = solana.NewWallet().PublicKey()
-	}
-
-	locationPK := m.locationPK
-	if locationPK.IsZero() {
-		locationPK = solana.NewWallet().PublicKey()
-	}
-
-	var locationPKBytes [32]byte
-	copy(locationPKBytes[:], locationPK.Bytes())
-
-	location := serviceability.Location{
-		PubKey: locationPKBytes,
-		Lat:    37.7749,
-		Lng:    -122.4194,
-		Code:   "test-location",
-	}
-
-	var devicePKBytes [32]byte
-	copy(devicePKBytes[:], devicePK.Bytes())
-
-	var locationPKBytesForDevice [32]uint8
-	copy(locationPKBytesForDevice[:], locationPK.Bytes())
-
-	device := serviceability.Device{
-		PubKey:         devicePKBytes,
-		LocationPubKey: locationPKBytesForDevice,
-		Code:           "test-device",
-	}
-
-	return &serviceability.ProgramData{
-		Locations: []serviceability.Location{location},
-		Devices:   []serviceability.Device{device},
-	}, nil
-}
-
-type mockRPCClient struct {
-	slot uint64
-}
-
-func newMockRPCClient() *mockRPCClient {
-	return &mockRPCClient{
-		slot: 12345,
-	}
-}
-
-func (m *mockRPCClient) GetSlot(ctx context.Context, commitment solanarpc.CommitmentType) (uint64, error) {
-	return m.slot, nil
 }
 
 func TestNewCoordinator(t *testing.T) {

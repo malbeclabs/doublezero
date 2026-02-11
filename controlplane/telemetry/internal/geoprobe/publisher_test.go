@@ -13,69 +13,10 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
-	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-type mockServiceabilityClient struct {
-	mu          sync.Mutex
-	programData *serviceability.ProgramData
-	err         error
-}
-
-func (m *mockServiceabilityClient) GetProgramData(ctx context.Context) (*serviceability.ProgramData, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.err != nil {
-		return nil, m.err
-	}
-	return m.programData, nil
-}
-
-func (m *mockServiceabilityClient) ProgramID() solana.PublicKey {
-	return solana.MustPublicKeyFromBase58("11111111111111111111111111111111")
-}
-
-func (m *mockServiceabilityClient) setError(err error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.err = err
-}
-
-func (m *mockServiceabilityClient) setProgramData(data *serviceability.ProgramData) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.programData = data
-}
-
-type mockRPCClient struct {
-	mu   sync.Mutex
-	slot uint64
-	err  error
-}
-
-func (m *mockRPCClient) GetSlot(ctx context.Context, commitment solanarpc.CommitmentType) (uint64, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.err != nil {
-		return 0, m.err
-	}
-	return m.slot, nil
-}
-
-func (m *mockRPCClient) setSlot(slot uint64) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.slot = slot
-}
-
-func (m *mockRPCClient) setError(err error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.err = err
-}
 
 func createTestProgramData(devicePK, locationPK solana.PublicKey, lat, lng float64) *serviceability.ProgramData {
 	var devicePKBytes, locationPKBytes [32]byte
@@ -836,7 +777,7 @@ func TestPublisher_AddProbe_Idempotent(t *testing.T) {
 	pub, err := NewPublisher(cfg)
 	require.NoError(t, err)
 
-	addr := ProbeAddress{Host: "probe1.example.com", Port: 10000}
+	addr := ProbeAddress{Host: "127.0.0.1", Port: 10000}
 
 	err = pub.AddProbe(context.Background(), addr)
 	require.NoError(t, err)
@@ -870,7 +811,7 @@ func TestPublisher_RemoveProbe_Idempotent(t *testing.T) {
 	pub, err := NewPublisher(cfg)
 	require.NoError(t, err)
 
-	addr := ProbeAddress{Host: "probe2.example.com", Port: 10000}
+	addr := ProbeAddress{Host: "127.0.0.1", Port: 10001}
 
 	err = pub.AddProbe(context.Background(), addr)
 	require.NoError(t, err)

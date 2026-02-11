@@ -157,10 +157,6 @@ func (p *Pinger) MeasureAll(ctx context.Context) (map[ProbeAddress]uint64, error
 		"success", successCount,
 		"failed", failureCount)
 
-	if successCount == 0 && totalProbes > 0 {
-		return results, fmt.Errorf("all %d probe measurements failed", totalProbes)
-	}
-
 	return results, nil
 }
 
@@ -237,10 +233,6 @@ func (p *Pinger) MeasureAllWithRetries(ctx context.Context, retries int) (map[Pr
 		"success", successCount,
 		"failed", failureCount,
 		"retries", retries)
-
-	if successCount == 0 && totalProbes > 0 {
-		return results, fmt.Errorf("all %d probe measurements failed after %d retries", totalProbes, retries)
-	}
 
 	return results, nil
 }

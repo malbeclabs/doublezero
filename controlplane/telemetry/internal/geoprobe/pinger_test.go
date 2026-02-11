@@ -361,12 +361,13 @@ func TestPinger_MeasureAll_ConcurrencyLimit(t *testing.T) {
 		ProbeTimeout:        200 * time.Millisecond,
 		Interval:            1 * time.Second,
 		ManagementNamespace: "",
+		StaggerDelay:        10 * time.Millisecond,
 	}
 
 	pinger := NewPinger(cfg)
 	ctx := context.Background()
 
-	numProbes := MaxConcurrentProbes + 50
+	numProbes := 2000
 	for i := 0; i < numProbes; i++ {
 		addr := ProbeAddress{
 			Host: "127.0.0.1",
@@ -377,14 +378,14 @@ func TestPinger_MeasureAll_ConcurrencyLimit(t *testing.T) {
 	}
 
 	startTime := time.Now()
-	_, err := pinger.MeasureAll(ctx)
+	results, err := pinger.MeasureAll(ctx)
 	duration := time.Since(startTime)
 
 	require.NoError(t, err)
 
-	t.Logf("Measured %d probes in %v", numProbes, duration)
+	t.Logf("Measured %d probes in %v, got %d results", numProbes, duration, len(results))
 
-	assert.Less(t, duration, 10*time.Second, "measurement should complete in reasonable time with concurrency limit")
+	assert.Less(t, duration, 60*time.Second, "measurement should complete in reasonable time with worker pool")
 }
 
 func TestPinger_MeasureAll_AllFailed(t *testing.T) {
@@ -415,4 +416,123 @@ func TestPinger_MeasureAll_AllFailed(t *testing.T) {
 	results, err := pinger.MeasureAll(ctx)
 	require.NoError(t, err)
 	assert.Empty(t, results, "MeasureAll should return empty results when all probes fail")
+}
+
+func TestPinger_MeasureAll_LargeScale(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	cfg := &PingerConfig{
+		Logger:              logger,
+		ProbeTimeout:        200 * time.Millisecond,
+		Interval:            1 * time.Second,
+		ManagementNamespace: "",
+		StaggerDelay:        1 * time.Millisecond,
+	}
+
+	pinger := NewPinger(cfg)
+	ctx := context.Background()
+
+	numProbes := 5000
+	t.Logf("Testing with %d probes (validates worker pool batching)", numProbes)
+
+	for i := 0; i < numProbes; i++ {
+		addr := ProbeAddress{
+			Host: "127.0.0.1",
+			Port: uint16(20000 + i),
+		}
+		err := pinger.AddProbe(ctx, addr)
+		require.NoError(t, err)
+	}
+
+	startTime := time.Now()
+	results, err := pinger.MeasureAll(ctx)
+	duration := time.Since(startTime)
+
+	require.NoError(t, err)
+	t.Logf("Completed %d probes in %v, got %d results", numProbes, duration, len(results))
+	assert.Less(t, duration, 2*time.Minute, "should complete large batch in reasonable time")
+}
+
+func TestPinger_MeasureAll_Staggering(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	staggerDelay := 50 * time.Millisecond
+	cfg := &PingerConfig{
+		Logger:              logger,
+		ProbeTimeout:        100 * time.Millisecond,
+		Interval:            1 * time.Second,
+		ManagementNamespace: "",
+		StaggerDelay:        staggerDelay,
+	}
+
+	pinger := NewPinger(cfg)
+	ctx := context.Background()
+
+	numProbes := 10
+	for i := 0; i < numProbes; i++ {
+		addr := ProbeAddress{
+			Host: "127.0.0.1",
+			Port: uint16(25000 + i),
+		}
+		err := pinger.AddProbe(ctx, addr)
+		require.NoError(t, err)
+	}
+
+	startTime := time.Now()
+	_, err := pinger.MeasureAll(ctx)
+	duration := time.Since(startTime)
+
+	require.NoError(t, err)
+
+	expectedMinDuration := staggerDelay * time.Duration(numProbes-1)
+	t.Logf("Duration: %v, Expected min: %v", duration, expectedMinDuration)
+
+	assert.GreaterOrEqual(t, duration, expectedMinDuration,
+		"probes should be staggered with delays between them")
+}
+
+func TestPinger_MeasureAll_ContextCancellation(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	cfg := &PingerConfig{
+		Logger:              logger,
+		ProbeTimeout:        200 * time.Millisecond,
+		Interval:            1 * time.Second,
+		ManagementNamespace: "",
+		StaggerDelay:        100 * time.Millisecond,
+	}
+
+	pinger := NewPinger(cfg)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	numProbes := 100
+	for i := 0; i < numProbes; i++ {
+		addr := ProbeAddress{
+			Host: "127.0.0.1",
+			Port: uint16(30000 + i),
+		}
+		err := pinger.AddProbe(ctx, addr)
+		require.NoError(t, err)
+	}
+
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		cancel()
+	}()
+
+	startTime := time.Now()
+	results, err := pinger.MeasureAll(ctx)
+	duration := time.Since(startTime)
+
+	require.NoError(t, err)
+	t.Logf("Context cancelled after %v, got %d partial results out of %d probes",
+		duration, len(results), numProbes)
+
+	assert.Less(t, duration, 2*time.Second,
+		"should stop promptly after context cancellation")
+	assert.Less(t, len(results), numProbes,
+		"should return partial results when context is cancelled")
 }

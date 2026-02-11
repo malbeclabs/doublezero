@@ -317,7 +317,7 @@ func main() {
 		},
 		SenderTTL:               *senderTTL,
 		SubmitterMaxConcurrency: *submitterMaxConcurrency,
-		InitialChildProbes:      childProbes,
+		InitialChildGeoProbes:   childProbes,
 	})
 	if err != nil {
 		log.Error("failed to create telemetry collector", "error", err)

@@ -79,11 +79,11 @@ func New(log *slog.Logger, cfg Config) (*Collector, error) {
 	})
 
 	// Initialize geoprobe coordinator if child probes are configured
-	if len(cfg.InitialChildProbes) > 0 {
+	if len(cfg.InitialChildGeoProbes) > 0 {
 		probeUpdateCh := make(chan []geoprobe.ProbeAddress, 1)
 		c.geoprobeCoordinator, err = geoprobe.NewCoordinator(&geoprobe.CoordinatorConfig{
 			Logger:               log,
-			InitialProbes:        cfg.InitialChildProbes,
+			InitialProbes:        cfg.InitialChildGeoProbes,
 			ProbeUpdateCh:        probeUpdateCh,
 			Interval:             cfg.ProbeInterval,
 			ProbeTimeout:         cfg.TWAMPSenderTimeout,
@@ -95,7 +95,7 @@ func New(log *slog.Logger, cfg Config) (*Collector, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to create geoprobe coordinator: %w", err)
 		}
-		log.Info("Initialized geoprobe coordinator", "probeCount", len(cfg.InitialChildProbes))
+		log.Info("Initialized geoprobe coordinator", "probeCount", len(cfg.InitialChildGeoProbes))
 	}
 
 	return c, nil

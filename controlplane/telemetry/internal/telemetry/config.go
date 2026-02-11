@@ -49,7 +49,7 @@ type Config struct {
 	// SubmitterMaxConcurrency is the maximum number of concurrent submissions.
 	SubmitterMaxConcurrency int
 
-	// InitialChildProbes is the startup probe list from CLI; runtime updates happen via channel.
+	// InitialChildGeoProbes is the startup probe list from CLI; runtime updates happen via channel.
 	InitialChildGeoProbes []geoprobe.ProbeAddress
 
 	// ServiceabilityProgramClient is the client to the serviceability program (for fetching Device/Location).

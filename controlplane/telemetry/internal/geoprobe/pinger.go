@@ -12,7 +12,9 @@ import (
 )
 
 const (
-	MaxConcurrentProbes = 100
+	MaxWorkers          = 32
+	ProbesPerWorker     = 512
+	DefaultStaggerDelay = 100 * time.Millisecond
 )
 
 type PingerConfig struct {
@@ -20,6 +22,7 @@ type PingerConfig struct {
 	ProbeTimeout        time.Duration
 	Interval            time.Duration
 	ManagementNamespace string
+	StaggerDelay        time.Duration
 }
 
 type Pinger struct {
@@ -104,6 +107,47 @@ func (p *Pinger) RemoveProbe(addr ProbeAddress) error {
 	return nil
 }
 
+func (p *Pinger) probeWorker(
+	ctx context.Context,
+	batch []*senderEntry,
+	staggerDelay time.Duration,
+	results map[ProbeAddress]uint64,
+	resultsMu *sync.Mutex,
+	wg *sync.WaitGroup,
+) {
+	defer wg.Done()
+
+	for i, entry := range batch {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		probeCtx, cancel := context.WithTimeout(ctx, p.cfg.ProbeTimeout)
+		rtt, err := entry.sender.Probe(probeCtx)
+		cancel()
+
+		if err == nil {
+			resultsMu.Lock()
+			results[entry.addr] = uint64(rtt.Nanoseconds())
+			resultsMu.Unlock()
+
+			p.log.Debug("Probe succeeded", "probe", entry.addr.String(), "rtt", rtt)
+		} else {
+			p.log.Debug("Probe failed", "probe", entry.addr.String(), "error", err)
+		}
+
+		if i < len(batch)-1 {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(staggerDelay):
+			}
+		}
+	}
+}
+
 func (p *Pinger) MeasureAll(ctx context.Context) (map[ProbeAddress]uint64, error) {
 	p.sendersMu.Lock()
 	sendersCopy := make([]*senderEntry, 0, len(p.senders))
@@ -121,31 +165,27 @@ func (p *Pinger) MeasureAll(ctx context.Context) (map[ProbeAddress]uint64, error
 	resultsMu := sync.Mutex{}
 	var wg sync.WaitGroup
 
-	sem := make(chan struct{}, MaxConcurrentProbes)
+	numWorkers := min(MaxWorkers, (len(sendersCopy)+ProbesPerWorker-1)/ProbesPerWorker)
+	if numWorkers == 0 {
+		numWorkers = 1
+	}
+	batchSize := (len(sendersCopy) + numWorkers - 1) / numWorkers
 
-	for _, entry := range sendersCopy {
+	staggerDelay := p.cfg.StaggerDelay
+	if staggerDelay == 0 {
+		staggerDelay = DefaultStaggerDelay
+	}
+
+	for i := 0; i < numWorkers; i++ {
+		start := i * batchSize
+		end := min(start+batchSize, len(sendersCopy))
+		if start >= len(sendersCopy) {
+			break
+		}
+
+		batch := sendersCopy[start:end]
 		wg.Add(1)
-		go func(e *senderEntry) {
-			defer wg.Done()
-
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
-			probeCtx, cancel := context.WithTimeout(ctx, p.cfg.ProbeTimeout)
-			defer cancel()
-
-			rtt, err := e.sender.Probe(probeCtx)
-			if err != nil {
-				p.log.Debug("Probe failed", "probe", e.addr.String(), "error", err)
-				return
-			}
-
-			resultsMu.Lock()
-			results[e.addr] = uint64(rtt.Nanoseconds())
-			resultsMu.Unlock()
-
-			p.log.Debug("Probe succeeded", "probe", e.addr.String(), "rtt", rtt)
-		}(entry)
+		go p.probeWorker(ctx, batch, staggerDelay, results, &resultsMu, &wg)
 	}
 
 	wg.Wait()

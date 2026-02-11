@@ -37,7 +37,7 @@ impl GetExchangeCliCommand {
         };
 
         writeln!(out,
-            "account: {},\r\ncode: {}\r\nname: {}\r\ndevice1: {}\r\ndevice2: {}\r\nlat: {}\r\nlng: {}\r\nbgp_community: {}\r\nstatus: {}\r\nowner: {}",
+            "account: {},\r\ncode: {}\r\nname: {}\r\ndevice1: {}\r\ndevice2: {}\r\nlat: {}\r\nlng: {}\r\nbgp_community: {}\r\nreference_count: {}\r\nstatus: {}\r\nowner: {}",
             pubkey,
             exchange.code,
             exchange.name,
@@ -46,6 +46,7 @@ impl GetExchangeCliCommand {
             exchange.lat,
             exchange.lng,
             exchange.bgp_community,
+            exchange.reference_count,
             exchange.status,
             exchange.owner
         )?;
@@ -167,7 +168,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB,\r\ncode: test\r\nname: Test Exchange\r\ndevice1: TestDevice\r\ndevice2: (none)\r\nlat: 12.34\r\nlng: 56.78\r\nbgp_community: 1\r\nstatus: activated\r\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n");
+        assert_eq!(output_str, "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB,\r\ncode: test\r\nname: Test Exchange\r\ndevice1: TestDevice\r\ndevice2: (none)\r\nlat: 12.34\r\nlng: 56.78\r\nbgp_community: 1\r\nreference_count: 0\r\nstatus: activated\r\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n");
 
         // Expected success
         let mut output = Vec::new();
@@ -177,6 +178,6 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB,\r\ncode: test\r\nname: Test Exchange\r\ndevice1: TestDevice\r\ndevice2: (none)\r\nlat: 12.34\r\nlng: 56.78\r\nbgp_community: 1\r\nstatus: activated\r\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n");
+        assert_eq!(output_str, "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB,\r\ncode: test\r\nname: Test Exchange\r\ndevice1: TestDevice\r\ndevice2: (none)\r\nlat: 12.34\r\nlng: 56.78\r\nbgp_community: 1\r\nreference_count: 0\r\nstatus: activated\r\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n");
     }
 }

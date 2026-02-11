@@ -55,6 +55,22 @@ jobs:
             mix-${{ env.cache-name }}-
             ${{ runner.os }}-mix-
 
+      - name: Install deps
+        working-directory: scheduler
+        run: mix deps.get
+
+      - name: Compile (warnings as errors)
+        working-directory: scheduler
+        run: mix compile --warnings-as-errors
+
+      - name: Credo
+        working-directory: scheduler
+        run: mix credo --strict
+
+      - name: Tests
+        working-directory: scheduler
+        run: mix test --cover
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:

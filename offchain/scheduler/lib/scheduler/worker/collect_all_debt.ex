@@ -25,7 +25,7 @@ defmodule Scheduler.Worker.CollectAllDebt do
   end
 
   def handle_continue(:collect_all_debt, state) do
-    case Scheduler.DoubleZero.collect_all_debt(solana_rpc()) do
+    case nif_module().collect_all_debt(solana_rpc()) do
       {} ->
         Logger.info("Successfully collected debts for all epochs")
 
@@ -38,5 +38,9 @@ defmodule Scheduler.Worker.CollectAllDebt do
 
   defp solana_rpc do
     Application.get_env(:scheduler, :solana_rpc)
+  end
+
+  defp nif_module do
+    Application.get_env(:scheduler, :nif_module, Scheduler.DoubleZero)
   end
 end

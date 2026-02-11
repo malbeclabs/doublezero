@@ -17,7 +17,7 @@ defmodule Scheduler.Worker.CalculateDistribution do
 
 
   def handle_continue(:calculate_distribution, %{count: 2} = state) do
-    case Scheduler.DoubleZero.calculate_distribution(
+    case nif_module().calculate_distribution(
            solana_rpc(),
            true
          ) do
@@ -25,14 +25,15 @@ defmodule Scheduler.Worker.CalculateDistribution do
         Logger.error("calculate_distribution: received error: #{inspect(error)}")
         {:stop, :shutdown, state}
 
-      _ ->
-        Logger.info("Proceeding to finalize debt")
+      {:ok, dz_epoch} ->
+        Logger.info("Proceeding to finalize debt for dz epoch #{dz_epoch}")
+        state = Map.put(state, :dz_epoch, dz_epoch)
         {:noreply, state, {:continue, :finalize_distribution}}
     end
   end
 
   def handle_continue(:calculate_distribution, state) do
-    case Scheduler.DoubleZero.calculate_distribution(
+    case nif_module().calculate_distribution(
            solana_rpc(),
            false
          ) do
@@ -40,7 +41,7 @@ defmodule Scheduler.Worker.CalculateDistribution do
         Logger.error("calculate_distribution: received error: #{inspect(error)}")
         {:stop, :shutdown, state}
 
-      _ ->
+      {:ok, _dz_epoch} ->
         state = %{state | count: state.count + 1}
         Logger.info("Completed calculation for debt ##{state.count}")
         {:noreply, state, {:continue, :calculate_distribution}}
@@ -50,7 +51,7 @@ defmodule Scheduler.Worker.CalculateDistribution do
   def handle_continue(:finalize_distribution, state) do
     Logger.info("Finalizing debt for dz epoch #{state.dz_epoch}")
 
-    case Scheduler.DoubleZero.finalize_distribution(state.dz_epoch, solana_rpc()) do
+    case nif_module().finalize_distribution(state.dz_epoch, solana_rpc()) do
       {:error, error} ->
         Logger.error("calculate_distribution: received error: #{inspect(error)}")
 
@@ -70,5 +71,9 @@ defmodule Scheduler.Worker.CalculateDistribution do
 
   defp solana_rpc do
     Application.get_env(:scheduler, :solana_rpc)
+  end
+
+  defp nif_module do
+    Application.get_env(:scheduler, :nif_module, Scheduler.DoubleZero)
   end
 end

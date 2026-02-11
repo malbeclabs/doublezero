@@ -359,7 +359,8 @@ async fn try_fetch_and_write_accounts(
         // Override mint authority.
 
         let mint_path = format!("{TMP_ACCOUNTS_PATH}/{token_2z_mint_key}.json");
-        let mint_json = fs::read_to_string(&mint_path)?;
+        let mint_json = fs::read_to_string(&mint_path)
+            .with_context(|| format!("Failed to read mint account file: {mint_path}"))?;
         let mut mint_wrapper = serde_json::from_str::<WrittenAccount>(&mint_json)?;
         let mut mint_data = BASE64.decode(&mint_wrapper.account.data.0)?;
 
@@ -438,7 +439,8 @@ where
     T: PrecomputedDiscriminator + bytemuck::Pod,
 {
     let path = format!("{accounts_dir}/{account_key}.json");
-    let json = fs::read_to_string(&path)?;
+    let json = fs::read_to_string(&path)
+        .with_context(|| format!("Failed to read account file: {path}"))?;
     let wrapper = serde_json::from_str::<WrittenAccount>(&json)?;
     let data = BASE64.decode(&wrapper.account.data.0)?;
 
@@ -488,7 +490,8 @@ where
     T: PrecomputedDiscriminator + borsh::BorshDeserialize,
 {
     let path = format!("{accounts_dir}/{account_key}.json");
-    let json = fs::read_to_string(&path)?;
+    let json = fs::read_to_string(&path)
+        .with_context(|| format!("Failed to read account file: {path}"))?;
     let wrapper = serde_json::from_str::<WrittenAccount>(&json)?;
     let data = BASE64.decode(&wrapper.account.data.0)?;
 

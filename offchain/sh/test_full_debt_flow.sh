@@ -19,8 +19,14 @@
 #   SKIP_FINALIZE - Set to "1" to skip finalization step
 #   SKIP_COLLECT - Set to "1" to skip debt collection step
 #   SKIP_FORK_START - Set to "1" to skip starting the fork (use existing)
+#   VERBOSE - Set to "1" for verbose debugging output
 
 set -eu
+
+# Verbose mode
+if [ "${VERBOSE:-0}" = "1" ]; then
+    set -x
+fi
 
 # Constants
 TEST_DEBT_ACCOUNTANT_KEY=acLisxTpNkoctPZoqssyo58pcdnHzJyRFhod7Wxkz5a
@@ -28,7 +34,9 @@ VALIDATOR_DEBT_CLI=target/debug/doublezero-solana-validator-debt
 ADMIN_CLI=target/debug/doublezero-revenue-distribution-admin
 SOLANA_CLI=target/debug/doublezero-solana
 SOLANA_FORK_CLI=target/debug/doublezero-solana-fork
-TRANSACTION_CONFIRMATION_WAIT=5
+FORK_STARTUP_WAIT=${FORK_STARTUP_WAIT:-120}
+FORK_STARTUP_INTERVAL=${FORK_STARTUP_INTERVAL:-2}
+TRANSACTION_CONFIRMATION_WAIT=${TRANSACTION_CONFIRMATION_WAIT:-10}
 
 # PID of the fork process (for cleanup)
 FORK_PID=""
@@ -92,7 +100,7 @@ start_solana_fork() {
     fi
 
     # Start the fork in the background
-    $SOLANA_FORK_CLI --reset &
+    $SOLANA_FORK_CLI --reset --god-mode &
     FORK_PID=$!
 
     log_info "Solana fork started with PID: $FORK_PID"
@@ -101,15 +109,16 @@ start_solana_fork() {
 # Wait for Solana fork to start
 wait_for_solana() {
     log_info "Waiting for Solana fork to start..."
-    for i in {1..60}; do
+    local max_attempts=$((FORK_STARTUP_WAIT / FORK_STARTUP_INTERVAL))
+    for i in $(seq 1 "$max_attempts"); do
         if solana cluster-version -u l > /dev/null 2>&1; then
             log_success "Solana fork is ready."
             return 0
         fi
-        sleep 2
+        sleep "$FORK_STARTUP_INTERVAL"
     done
 
-    log_error "Solana fork did not start within 120 seconds"
+    log_error "Solana fork did not start within $FORK_STARTUP_WAIT seconds"
     exit 1
 }
 
@@ -362,6 +371,11 @@ main() {
 
     # Wait for it to be ready
     wait_for_solana
+
+    # Fund the test wallet on the fork
+    log_info "Airdropping SOL to test wallet..."
+    solana airdrop 100 -ul
+
     sanity_check
 
     # Get current epoch
@@ -382,7 +396,7 @@ main() {
     # If we just initialized, we might need to wait
     if [ "${SKIP_INITIALIZE:-0}" != "1" ]; then
         log_info "Waiting $TRANSACTION_CONFIRMATION_WAIT seconds for transaction to confirm..."
-        sleep TRANSACTION_CONFIRMATION_WAIT
+        sleep "$TRANSACTION_CONFIRMATION_WAIT"
     fi
 
     step_calculate

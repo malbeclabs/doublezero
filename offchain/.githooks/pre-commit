@@ -1,6 +1,9 @@
 #!/bin/bash
 
-# Pre-commit hook to ensure CHANGELOG.md is updated when files in a crate/directory change
+# Pre-commit hook:
+#   1. Checks CHANGELOG.md is updated when files in a crate/directory change
+#   2. Runs Rust checks (fmt, clippy) when Rust files change
+#   3. Runs Elixir checks (compile warnings, format, credo, tests) when Elixir files change
 #
 # To install this hook, run from the repo root:
 #   git config core.hooksPath .githooks
@@ -17,6 +20,104 @@ if [ -z "$STAGED_FILES" ]; then
     exit 0
 fi
 
+# ─── Rust checks ────────────────────────────────────────────────────────────────
+HAS_RUST_CHANGES=false
+for file in $STAGED_FILES; do
+    if [[ "$file" == *.rs ]] || [[ "$file" == "Cargo.toml" ]] || [[ "$file" == "Cargo.lock" ]]; then
+        HAS_RUST_CHANGES=true
+        break
+    fi
+done
+
+if [ "$HAS_RUST_CHANGES" = true ]; then
+    echo "🦀 Rust changes detected — running checks..."
+
+    echo "  → just fmt-check"
+    if ! just fmt-check 2>&1; then
+        echo ""
+        echo "❌ Rust formatting check failed. Run 'just fmt' to fix."
+        exit 1
+    fi
+
+    echo "  → just clippy"
+    if ! just clippy 2>&1; then
+        echo ""
+        echo "❌ Clippy found warnings/errors."
+        exit 1
+    fi
+
+    echo "✅ Rust checks passed."
+    echo ""
+fi
+
+# ─── Elixir checks ─────────────────────────────────────────────────────────────
+HAS_ELIXIR_CHANGES=false
+for file in $STAGED_FILES; do
+    if [[ "$file" == scheduler/*.ex ]] || [[ "$file" == scheduler/*.exs ]] || [[ "$file" == scheduler/mix.exs ]] || [[ "$file" == scheduler/mix.lock ]]; then
+        HAS_ELIXIR_CHANGES=true
+        break
+    fi
+done
+
+if [ "$HAS_ELIXIR_CHANGES" = true ]; then
+    echo "💧 Elixir changes detected — running checks..."
+
+    echo "  → just elixir-compile"
+    if ! just elixir-compile 2>&1; then
+        echo ""
+        echo "❌ Elixir compilation has warnings. Fix them before committing."
+        exit 1
+    fi
+
+    echo "  → just elixir-fmt-check"
+    if ! just elixir-fmt-check 2>&1; then
+        echo ""
+        echo "❌ Elixir formatting check failed. Run 'just elixir-fmt' to fix."
+        exit 1
+    fi
+
+    echo "  → just elixir-credo"
+    if ! just elixir-credo 2>&1; then
+        echo ""
+        echo "❌ Credo found issues."
+        exit 1
+    fi
+
+    echo "  → just elixir-test"
+    if ! just elixir-test 2>&1; then
+        echo ""
+        echo "❌ Elixir tests failed."
+        exit 1
+    fi
+
+    echo "✅ Elixir checks passed."
+    echo ""
+fi
+
+# Determine the base branch to compare against
+# Try main first, then master, then fall back to HEAD~1
+if git rev-parse --verify origin/main >/dev/null 2>&1; then
+    BASE_BRANCH="origin/main"
+elif git rev-parse --verify main >/dev/null 2>&1; then
+    BASE_BRANCH="main"
+elif git rev-parse --verify origin/master >/dev/null 2>&1; then
+    BASE_BRANCH="origin/master"
+elif git rev-parse --verify master >/dev/null 2>&1; then
+    BASE_BRANCH="master"
+else
+    BASE_BRANCH="HEAD~1"
+fi
+
+# Get the merge base (common ancestor) between current branch and base
+MERGE_BASE=$(git merge-base HEAD "$BASE_BRANCH" 2>/dev/null || echo "")
+
+# Get list of files changed in the branch (from merge base to HEAD, plus staged changes)
+if [ -n "$MERGE_BASE" ]; then
+    BRANCH_FILES=$(git diff --name-only "$MERGE_BASE" HEAD 2>/dev/null || echo "")
+else
+    BRANCH_FILES=""
+fi
+
 # Find all directories that have a CHANGELOG.md
 CHANGELOG_DIRS=$(find . -name "CHANGELOG.md" -type f | sed 's|/CHANGELOG.md$||' | sed 's|^\./||' | sort -u)
 
@@ -26,21 +127,31 @@ MISSING_CHANGELOGS=()
 for changelog_dir in $CHANGELOG_DIRS; do
     # Check if any staged file is in this directory (but not the changelog itself)
     has_changes=false
-    changelog_updated=false
-    
+    changelog_updated_staged=false
+    changelog_updated_branch=false
+
+    # Check staged files
     for file in $STAGED_FILES; do
         # Check if file is in this changelog directory
         if [[ "$file" == "$changelog_dir/"* ]]; then
             if [[ "$file" == "$changelog_dir/CHANGELOG.md" ]]; then
-                changelog_updated=true
+                changelog_updated_staged=true
             else
                 has_changes=true
             fi
         fi
     done
-    
-    # If there are changes but changelog wasn't updated, add to missing list
-    if [ "$has_changes" = true ] && [ "$changelog_updated" = false ]; then
+
+    # Check if changelog was updated elsewhere in the branch
+    for file in $BRANCH_FILES; do
+        if [[ "$file" == "$changelog_dir/CHANGELOG.md" ]]; then
+            changelog_updated_branch=true
+            break
+        fi
+    done
+
+    # If there are changes but changelog wasn't updated (in staged or branch), add to missing list
+    if [ "$has_changes" = true ] && [ "$changelog_updated_staged" = false ] && [ "$changelog_updated_branch" = false ]; then
         MISSING_CHANGELOGS+=("$changelog_dir")
     fi
 done

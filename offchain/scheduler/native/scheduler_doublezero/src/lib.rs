@@ -135,8 +135,11 @@ pub fn collect_all_debt(solana_rpc_url: String) -> Result<(), NifError> {
 }
 
 #[rustler::nif(schedule = "DirtyIo")]
-pub fn calculate_distribution(solana_rpc_url: String, post_to_slack: bool) -> Result<(), NifError> {
-    Runtime::new()
+pub fn calculate_distribution(
+    solana_rpc_url: String,
+    post_to_slack: bool,
+) -> Result<u64, NifError> {
+    let dz_epoch = Runtime::new()
         .map_err(display_to_nif_error)?
         .block_on(async {
             let wallet = try_initialize_wallet(
@@ -171,11 +174,11 @@ pub fn calculate_distribution(solana_rpc_url: String, post_to_slack: bool) -> Re
                 .await?;
             }
 
-            Ok::<(), anyhow::Error>(())
+            Ok::<u64, anyhow::Error>(write_summary.dz_epoch)
         })
         .map_err(display_to_nif_error)?;
 
-    Ok(())
+    Ok(dz_epoch)
 }
 
 #[rustler::nif(schedule = "DirtyIo")]

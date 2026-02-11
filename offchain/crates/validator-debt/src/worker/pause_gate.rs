@@ -35,7 +35,13 @@ pub fn is_config_paused(config: &ProgramConfig) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Mutex;
+
     use super::*;
+
+    /// Mutex to serialize tests that depend on the static WAS_PAUSED state.
+    /// This prevents test flakiness from parallel execution.
+    static TEST_MUTEX: Mutex<()> = Mutex::new(());
 
     fn reset_pause_state() {
         WAS_PAUSED.store(false, Ordering::SeqCst);
@@ -43,6 +49,7 @@ mod tests {
 
     #[test]
     fn test_pause_transition_first_detection_triggers_warn_path() {
+        let _guard = TEST_MUTEX.lock().unwrap();
         reset_pause_state();
 
         let mut config = ProgramConfig::default();
@@ -55,6 +62,7 @@ mod tests {
 
     #[test]
     fn test_pause_repeated_detection_does_not_retrigger() {
+        let _guard = TEST_MUTEX.lock().unwrap();
         reset_pause_state();
 
         let mut config = ProgramConfig::default();
@@ -71,6 +79,7 @@ mod tests {
 
     #[test]
     fn test_resume_transition_flips_state() {
+        let _guard = TEST_MUTEX.lock().unwrap();
         reset_pause_state();
 
         let mut paused_config = ProgramConfig::default();

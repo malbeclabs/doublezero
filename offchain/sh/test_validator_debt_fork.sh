@@ -19,6 +19,10 @@ if ! solana cluster-version -u l > /dev/null 2>&1; then
     exit 1
 fi
 
+### Fund the test wallet on the fork.
+echo "Airdropping SOL to test wallet..."
+solana airdrop 100 -ul
+
 ### Set up environment.
 
 ADMIN_CLI_BIN=target/debug/doublezero-revenue-distribution-admin

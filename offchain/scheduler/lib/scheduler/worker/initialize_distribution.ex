@@ -16,7 +16,7 @@ defmodule Scheduler.Worker.InitializeDistribution do
   end
 
   def handle_continue(:initialize_distribution, state) do
-    case Scheduler.DoubleZero.initialize_distribution(solana_rpc()) do
+    case nif_module().initialize_distribution(solana_rpc()) do
       {:error, error} ->
         Logger.error("initialize_distribution: received error: #{inspect(error)}")
         {:stop, :shutdown, state}
@@ -34,5 +34,9 @@ defmodule Scheduler.Worker.InitializeDistribution do
 
   defp solana_rpc do
     Application.get_env(:scheduler, :solana_rpc)
+  end
+
+  defp nif_module do
+    Application.get_env(:scheduler, :nif_module, Scheduler.DoubleZero)
   end
 end

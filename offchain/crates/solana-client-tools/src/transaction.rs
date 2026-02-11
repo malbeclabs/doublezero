@@ -65,8 +65,7 @@ pub fn try_batch_instructions_with_common_signers(
             signers,
             address_lookup_table_accounts,
             Default::default(),
-        )
-        .unwrap();
+        )?;
 
         if bincode::serialize(&transaction).unwrap().len() > transaction_size_limit {
             let instruction = last_batch.pop().unwrap();

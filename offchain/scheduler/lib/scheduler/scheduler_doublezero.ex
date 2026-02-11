@@ -1,5 +1,12 @@
 defmodule Scheduler.DoubleZero do
-  @moduledoc false
+  @moduledoc """
+  NIF module for DoubleZero Rust functions.
+
+  This module loads native Rust code via Rustler and implements
+  the `Scheduler.DoubleZeroNIF` behaviour for testability.
+  """
+  @behaviour Scheduler.DoubleZeroNIF
+
   use Rustler,
     otp_app: :scheduler,
     crate: "scheduler_doublezero",

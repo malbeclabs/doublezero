@@ -512,7 +512,7 @@ impl Transaction {
     }
 }
 
-fn parse_program_logs(
+pub fn parse_program_logs(
     amount: u64,
     node_id: Pubkey,
     program_logs: Option<String>,

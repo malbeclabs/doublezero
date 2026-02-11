@@ -4,7 +4,7 @@ use doublezero_serviceability::{
     processors::tenant::{
         add_administrator::TenantAddAdministratorArgs, create::TenantCreateArgs,
         delete::TenantDeleteArgs, remove_administrator::TenantRemoveAdministratorArgs,
-        update::TenantUpdateArgs,
+        update::TenantUpdateArgs, update_payment_status::UpdatePaymentStatusArgs,
     },
     resource::ResourceType,
     state::{accounttype::AccountType, tenant::*},
@@ -81,6 +81,7 @@ async fn test_tenant() {
             token_account: None,
             metro_route: Some(false),
             route_liveness: Some(true),
+            billing: None,
         }),
         vec![
             AccountMeta::new(tenant_pubkey, false),
@@ -99,11 +100,116 @@ async fn test_tenant() {
     assert_eq!(tenant.code, "test-tenant".to_string()); // Code unchanged (immutable)
     assert_eq!(tenant.vrf_id, 200); // VRF ID updated
     assert!(!tenant.metro_route); // Metro route updated
-    assert!(tenant.route_liveness); // Route aliveness updated
+    assert!(tenant.route_liveness); // Route liveness updated
+    assert_eq!(tenant.billing, TenantBillingConfig::default()); // Billing unchanged
 
     let _initial_vrf_id = tenant.vrf_id; // Save for later comparison
 
     println!("✅ Tenant updated successfully");
+
+    /***********************************************************************************************************************************/
+    println!("🟢 2b. Testing Tenant update (billing config)...");
+    let billing_config = TenantBillingConfig::FlatPerEpoch(FlatPerEpochConfig {
+        rate: 1_000_000,
+        last_deduction_dz_epoch: 0,
+    });
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateTenant(TenantUpdateArgs {
+            vrf_id: None,
+            token_account: None,
+            metro_route: None,
+            route_aliveness: None,
+            billing: Some(billing_config),
+        }),
+        vec![
+            AccountMeta::new(tenant_pubkey, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let tenant = get_account_data(&mut banks_client, tenant_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_tenant()
+        .unwrap();
+    assert_eq!(tenant.billing, billing_config); // Billing updated
+    assert_eq!(tenant.vrf_id, 200); // Other fields unchanged
+
+    println!("✅ Tenant billing config updated successfully");
+
+    /***********************************************************************************************************************************/
+    println!("🟢 2c. Testing UpdatePaymentStatus with last_deduction_dz_epoch...");
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdatePaymentStatus(UpdatePaymentStatusArgs {
+            payment_status: 1, // Paid
+            last_deduction_dz_epoch: Some(5),
+        }),
+        vec![
+            AccountMeta::new(tenant_pubkey, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let tenant = get_account_data(&mut banks_client, tenant_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_tenant()
+        .unwrap();
+    assert_eq!(tenant.payment_status, TenantPaymentStatus::Paid);
+    assert_eq!(
+        tenant.billing,
+        TenantBillingConfig::FlatPerEpoch(FlatPerEpochConfig {
+            rate: 1_000_000,
+            last_deduction_dz_epoch: 5,
+        })
+    );
+
+    println!("✅ Payment status and deduction epoch updated successfully");
+
+    /***********************************************************************************************************************************/
+    println!("🟢 2d. Testing UpdatePaymentStatus without last_deduction_dz_epoch...");
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdatePaymentStatus(UpdatePaymentStatusArgs {
+            payment_status: 0, // Delinquent
+            last_deduction_dz_epoch: None,
+        }),
+        vec![
+            AccountMeta::new(tenant_pubkey, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let tenant = get_account_data(&mut banks_client, tenant_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_tenant()
+        .unwrap();
+    assert_eq!(tenant.payment_status, TenantPaymentStatus::Delinquent);
+    // last_deduction_dz_epoch should be unchanged (still 5)
+    assert_eq!(
+        tenant.billing,
+        TenantBillingConfig::FlatPerEpoch(FlatPerEpochConfig {
+            rate: 1_000_000,
+            last_deduction_dz_epoch: 5,
+        })
+    );
+
+    println!("✅ Payment status updated without changing deduction epoch");
 
     /***********************************************************************************************************************************/
     println!("🟢 3. Testing add administrator...");

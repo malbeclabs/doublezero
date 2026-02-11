@@ -423,7 +423,7 @@ mod tests {
         pda::get_accesspass_pda,
         state::{
             accesspass::{AccessPass, AccessPassStatus, AccessPassType},
-            tenant::TenantPaymentStatus,
+            tenant::{TenantBillingConfig, TenantPaymentStatus},
         },
     };
     use solana_sdk::pubkey::Pubkey;
@@ -1364,6 +1364,7 @@ mod tests {
             token_account: Pubkey::default(),
             metro_route: false,
             route_liveness: false,
+            billing: TenantBillingConfig::default(),
         };
 
         let tenant2 = Tenant {
@@ -1378,6 +1379,7 @@ mod tests {
             token_account: Pubkey::default(),
             metro_route: false,
             route_liveness: false,
+            billing: TenantBillingConfig::default(),
         };
 
         let user1_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");
@@ -1525,6 +1527,7 @@ mod tests {
             token_account: Pubkey::default(),
             metro_route: false,
             route_liveness: false,
+            billing: TenantBillingConfig::default(),
         };
 
         let tenant2 = Tenant {
@@ -1539,6 +1542,7 @@ mod tests {
             token_account: Pubkey::default(),
             metro_route: false,
             route_liveness: false,
+            billing: TenantBillingConfig::default(),
         };
 
         let user1_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");

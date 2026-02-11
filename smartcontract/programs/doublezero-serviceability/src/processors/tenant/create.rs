@@ -147,6 +147,7 @@ pub fn process_create_tenant(
         token_account: value.token_account.unwrap_or_default(),
         metro_route: value.metro_route,
         route_liveness: value.route_liveness,
+        billing: TenantBillingConfig::default(),
     };
 
     let deposit = Rent::get()

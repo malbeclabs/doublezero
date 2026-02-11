@@ -47,6 +47,7 @@ impl UpdateTenantCliCommand {
             token_account,
             metro_route: self.metro_route,
             route_liveness: self.route_liveness,
+            billing: None,
         })?;
 
         writeln!(out, "Signature: {signature}")?;

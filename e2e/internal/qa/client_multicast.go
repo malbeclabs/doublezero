@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/gagliardetto/solana-go"
@@ -50,7 +51,10 @@ func (c *Client) ConnectUserMulticast_Subscriber_NoWait(ctx context.Context, mul
 }
 
 func (c *Client) ConnectUserMulticast(ctx context.Context, multicastGroupCodes []string, mode pb.ConnectMulticastRequest_MulticastMode, waitForStatus bool) error {
-	err := c.DisconnectUser(ctx, true, true)
+	// Don't wait for daemon status — the daemon may be stuck in "BGP Session Failed" if a
+	// previous disconnect failed to clean up the tunnel state. Waiting for onchain deletion
+	// is sufficient; the next connect will overwrite the daemon's stale tunnel state.
+	err := c.DisconnectUser(ctx, false, true)
 	if err != nil {
 		return fmt.Errorf("failed to ensure disconnected on host %s: %w", c.Host, err)
 	}
@@ -273,4 +277,29 @@ func (c *Client) AddToMulticastGroupAllowlist(ctx context.Context, code string, 
 	}
 	c.log.Debug("Added to multicast group allowlist", "host", c.Host, "code", code, "pubkey", pubkey, "clientIP", clientIP)
 	return nil
+}
+
+// CleanupStaleTestGroups deletes all multicast groups matching the qa-test-group-* pattern.
+// This cleans up leftovers from previous test runs. Individual deletion failures are logged
+// but do not stop the cleanup. Returns the number of groups deleted.
+func (c *Client) CleanupStaleTestGroups(ctx context.Context) (int, error) {
+	data, err := getProgramDataWithRetry(ctx, c.serviceability)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get program data: %w", err)
+	}
+
+	deleted := 0
+	for _, group := range data.MulticastGroups {
+		if !strings.HasPrefix(group.Code, "qa-test-group-") {
+			continue
+		}
+		pk := solana.PublicKeyFromBytes(group.PubKey[:])
+		c.log.Debug("Deleting stale test group", "code", group.Code, "pubkey", pk)
+		if err := c.DeleteMulticastGroup(ctx, pk); err != nil {
+			c.log.Info("Failed to delete stale test group", "code", group.Code, "error", err)
+			continue
+		}
+		deleted++
+	}
+	return deleted, nil
 }

@@ -99,7 +99,7 @@ async fn test_tenant() {
     assert_eq!(tenant.account_type, AccountType::Tenant);
     assert_eq!(tenant.code, "test-tenant".to_string()); // Code unchanged (immutable)
     assert_eq!(tenant.vrf_id, 200); // VRF ID updated
-    assert!(!tenant.metro_routing); // Metro route updated
+    assert!(!tenant.metro_routing); // Metro routing updated
     assert!(tenant.route_liveness); // Route liveness updated
     assert_eq!(tenant.billing, TenantBillingConfig::default()); // Billing unchanged
 

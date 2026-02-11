@@ -487,7 +487,6 @@ impl Link {
     ///
     #[allow(unreachable_code)]
     pub fn check_status_transition(&mut self) {
-
         // waiting for health oracle to implement this logic
         return;
 

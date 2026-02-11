@@ -2,7 +2,7 @@
 
 ## Summary
 
-**Status: Draft**
+**Status: Implemented**
 
 Allow a client to be both a multicast publisher and subscriber simultaneously.
 

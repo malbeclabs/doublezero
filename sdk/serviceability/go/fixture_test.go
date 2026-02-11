@@ -288,6 +288,26 @@ func TestFixtureProgramConfig(t *testing.T) {
 	})
 }
 
+func TestFixtureTenant(t *testing.T) {
+	data, meta := loadFixture(t, "tenant")
+	reader := NewByteReader(data)
+	var tenant Tenant
+	DeserializeTenant(reader, &tenant)
+
+	assertFields(t, meta.Fields, map[string]any{
+		"AccountType":    uint8(tenant.AccountType),
+		"Owner":          solana.PublicKey(tenant.Owner),
+		"BumpSeed":       tenant.BumpSeed,
+		"Code":           tenant.Code,
+		"VrfId":          tenant.VrfId,
+		"ReferenceCount": tenant.ReferenceCount,
+		"PaymentStatus":  uint8(tenant.PaymentStatus),
+		"TokenAccount":   solana.PublicKey(tenant.TokenAccount),
+		"MetroRoute":     tenant.MetroRoute,
+		"RouteAliveness": tenant.RouteAliveness,
+	})
+}
+
 func TestFixtureAccessPass(t *testing.T) {
 	data, meta := loadFixture(t, "access_pass")
 	reader := NewByteReader(data)

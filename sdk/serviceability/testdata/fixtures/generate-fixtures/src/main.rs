@@ -633,6 +633,7 @@ fn generate_access_pass(dir: &Path) {
         mgroup_pub_allowlist: vec![],
         mgroup_sub_allowlist: vec![],
         flags: 0x01,
+        tenant_allowlist: vec![],
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -679,6 +680,7 @@ fn generate_access_pass_validator(dir: &Path) {
         mgroup_pub_allowlist: vec![mgroup_pub],
         mgroup_sub_allowlist: vec![mgroup_sub],
         flags: 0x03,
+        tenant_allowlist: vec![],
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -723,6 +725,8 @@ fn generate_tenant(dir: &Path) {
         administrators: vec![admin_pk],
         payment_status: TenantPaymentStatus::Paid,
         token_account,
+        metro_route: true,
+        route_aliveness: false,
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -741,6 +745,8 @@ fn generate_tenant(dir: &Path) {
             FieldValue { name: "Administrators0".into(), value: pubkey_bs58(&admin_pk), typ: "pubkey".into() },
             FieldValue { name: "PaymentStatus".into(), value: "1".into(), typ: "u8".into() },
             FieldValue { name: "TokenAccount".into(), value: pubkey_bs58(&token_account), typ: "pubkey".into() },
+            FieldValue { name: "MetroRoute".into(), value: "true".into(), typ: "bool".into() },
+            FieldValue { name: "RouteAliveness".into(), value: "false".into(), typ: "bool".into() },
         ],
     };
 

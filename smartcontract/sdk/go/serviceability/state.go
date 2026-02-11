@@ -648,6 +648,24 @@ func (c Contributor) MarshalJSON() ([]byte, error) {
 	return json.Marshal(jsonContributor)
 }
 
+type TenantPaymentStatus uint8
+
+const (
+	TenantPaymentStatusDelinquent TenantPaymentStatus = iota
+	TenantPaymentStatusPaid
+)
+
+func (s TenantPaymentStatus) String() string {
+	return [...]string{
+		"delinquent",
+		"paid",
+	}[s]
+}
+
+func (s TenantPaymentStatus) MarshalJSON() ([]byte, error) {
+	return json.Marshal(s.String())
+}
+
 type Tenant struct {
 	AccountType    AccountType
 	Owner          [32]uint8 `influx:"tag,owner,pubkey"`
@@ -656,7 +674,11 @@ type Tenant struct {
 	VrfId          uint16    `influx:"field,vrf_id"`
 	ReferenceCount uint32    `influx:"field,reference_count"`
 	Administrators [][32]byte
-	PubKey         [32]byte `influx:"tag,pubkey,pubkey"`
+	PaymentStatus  TenantPaymentStatus `influx:"tag,payment_status"`
+	TokenAccount   [32]byte            `influx:"tag,token_account,pubkey"`
+	MetroRoute     bool                `influx:"field,metro_route"`
+	RouteAliveness bool                `influx:"field,route_aliveness"`
+	PubKey         [32]byte            `influx:"tag,pubkey,pubkey"`
 }
 
 func (t Tenant) MarshalJSON() ([]byte, error) {
@@ -672,6 +694,8 @@ func (t Tenant) MarshalJSON() ([]byte, error) {
 		Owner          string   `json:"Owner"`
 		PubKey         string   `json:"PubKey"`
 		Administrators []string `json:"Administrators"`
+		PaymentStatus  string   `json:"PaymentStatus"`
+		TokenAccount   string   `json:"TokenAccount"`
 	}{
 		TenantAlias:    TenantAlias(t),
 		Administrators: adminStrings,
@@ -679,6 +703,8 @@ func (t Tenant) MarshalJSON() ([]byte, error) {
 
 	jsonTenant.Owner = base58.Encode(t.Owner[:])
 	jsonTenant.PubKey = base58.Encode(t.PubKey[:])
+	jsonTenant.PaymentStatus = t.PaymentStatus.String()
+	jsonTenant.TokenAccount = base58.Encode(t.TokenAccount[:])
 
 	return json.Marshal(jsonTenant)
 }

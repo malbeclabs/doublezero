@@ -65,6 +65,10 @@ func DeserializeTenant(reader *ByteReader, tenant *Tenant) {
 	tenant.VrfId = reader.ReadU16()
 	tenant.ReferenceCount = reader.ReadU32()
 	tenant.Administrators = reader.ReadPubkeySlice()
+	tenant.PaymentStatus = TenantPaymentStatus(reader.ReadU8())
+	tenant.TokenAccount = reader.ReadPubkey()
+	tenant.MetroRoute = (reader.ReadU8() != 0)
+	tenant.RouteAliveness = (reader.ReadU8() != 0)
 	// Note: tenant.PubKey is set separately in client.go after deserialization
 }
 

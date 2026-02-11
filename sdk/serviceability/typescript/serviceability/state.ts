@@ -816,6 +816,16 @@ export interface Tenant {
   administrators: PublicKey[];
   paymentStatus: number;
   tokenAccount: PublicKey;
+  metroRoute: boolean;
+  routeAliveness: boolean;
+}
+
+const TENANT_PAYMENT_STATUS_NAMES: Record<number, string> = {
+  0: "delinquent",
+  1: "paid",
+};
+export function tenantPaymentStatusString(v: number): string {
+  return TENANT_PAYMENT_STATUS_NAMES[v] ?? "unknown";
 }
 
 export function deserializeTenant(data: Uint8Array): Tenant {
@@ -830,6 +840,8 @@ export function deserializeTenant(data: Uint8Array): Tenant {
     administrators: readPubkeyVec(r),
     paymentStatus: r.readU8(),
     tokenAccount: readPubkey(r),
+    metroRoute: r.readU8() !== 0,
+    routeAliveness: r.readU8() !== 0,
   };
 }
 

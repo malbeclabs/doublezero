@@ -302,3 +302,18 @@ func DeserializeResourceExtension(reader *ByteReader, ext *ResourceExtension) {
 		ext.Storage = reader.ReadBytes(remaining)
 	}
 }
+
+func DeserializeTenant(reader *ByteReader, tenant *Tenant) {
+	tenant.AccountType = AccountType(reader.ReadU8())
+	tenant.Owner = reader.ReadPubkey()
+	tenant.BumpSeed = reader.ReadU8()
+	tenant.Code = reader.ReadString()
+	tenant.VrfId = reader.ReadU16()
+	tenant.ReferenceCount = reader.ReadU32()
+	tenant.Administrators = reader.ReadPubkeySlice()
+	tenant.PaymentStatus = TenantPaymentStatus(reader.ReadU8())
+	tenant.TokenAccount = reader.ReadPubkey()
+	tenant.MetroRoute = (reader.ReadU8() != 0)
+	tenant.RouteAliveness = (reader.ReadU8() != 0)
+	// Note: tenant.PubKey is set separately in client.go after deserialization
+}

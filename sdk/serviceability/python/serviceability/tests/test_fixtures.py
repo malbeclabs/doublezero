@@ -16,6 +16,7 @@ from serviceability.state import (
     Location,
     MulticastGroup,
     ProgramConfig,
+    Tenant,
     User,
 )
 
@@ -269,6 +270,27 @@ class TestFixtureProgramConfig:
                 "VersionMajor": pc.version.major,
                 "VersionMinor": pc.version.minor,
                 "VersionPatch": pc.version.patch,
+            },
+        )
+
+
+class TestFixtureTenant:
+    def test_deserialize(self):
+        data, meta = _load_fixture("tenant")
+        t = Tenant.from_bytes(data)
+        _assert_fields(
+            meta["fields"],
+            {
+                "AccountType": t.account_type,
+                "Owner": t.owner,
+                "BumpSeed": t.bump_seed,
+                "Code": t.code,
+                "VrfId": t.vrf_id,
+                "ReferenceCount": t.reference_count,
+                "PaymentStatus": t.payment_status,
+                "TokenAccount": t.token_account,
+                "MetroRoute": t.metro_route,
+                "RouteAliveness": t.route_aliveness,
             },
         )
 

@@ -361,6 +361,38 @@ func TestCustomJSONMarshal(t *testing.T) {
 			}`,
 			expectErr: false,
 		},
+		{
+			name: "tenant struct with valid data",
+			input: &serviceability.Tenant{
+				AccountType:    serviceability.TenantType,
+				Owner:          dummyPubKey,
+				BumpSeed:       1,
+				Code:           "test-tenant",
+				VrfId:          100,
+				ReferenceCount: 5,
+				Administrators: [][32]byte{dummyPubKey},
+				PaymentStatus:  serviceability.TenantPaymentStatusPaid,
+				TokenAccount:   dummyPubKey,
+				MetroRoute:     true,
+				RouteAliveness: false,
+				PubKey:         dummyPubKey,
+			},
+			expected: `{
+				"AccountType": 13,
+				"Owner": "` + dummyPubKeyB58 + `",
+				"BumpSeed": 1,
+				"Code": "test-tenant",
+				"VrfId": 100,
+				"ReferenceCount": 5,
+				"Administrators": ["` + dummyPubKeyB58 + `"],
+				"PaymentStatus": "paid",
+				"TokenAccount": "` + dummyPubKeyB58 + `",
+				"MetroRoute": true,
+				"RouteAliveness": false,
+				"PubKey": "` + dummyPubKeyB58 + `"
+			}`,
+			expectErr: false,
+		},
 	}
 
 	for _, tc := range testCases {

@@ -23,7 +23,7 @@ pub struct TenantDisplay {
     pub account: Pubkey,
     pub code: String,
     pub vrf_id: u16,
-    pub metro_route: bool,
+    pub metro_routing: bool,
     pub route_liveness: bool,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
@@ -39,7 +39,7 @@ impl ListTenantCliCommand {
                 account: pubkey,
                 code: tenant.code,
                 vrf_id: tenant.vrf_id,
-                metro_route: tenant.metro_route,
+                metro_routing: tenant.metro_routing,
                 route_liveness: tenant.route_liveness,
                 owner: tenant.owner,
             })
@@ -60,5 +60,68 @@ impl ListTenantCliCommand {
         writeln!(out, "{res}")?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{tenant::list::ListTenantCliCommand, tests::utils::create_test_client};
+    use doublezero_sdk::AccountType;
+    use doublezero_serviceability::state::tenant::{
+        Tenant, TenantBillingConfig, TenantPaymentStatus,
+    };
+    use solana_sdk::pubkey::Pubkey;
+    use std::collections::HashMap;
+
+    #[test]
+    fn test_cli_tenant_list() {
+        let mut client = create_test_client();
+
+        let tenant1_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");
+        let tenant1 = Tenant {
+            account_type: AccountType::Tenant,
+            owner: tenant1_pubkey,
+            bump_seed: 0,
+            code: "tenant-a".to_string(),
+            vrf_id: 100,
+            reference_count: 0,
+            administrators: vec![],
+            token_account: Pubkey::default(),
+            payment_status: TenantPaymentStatus::Paid,
+            metro_routing: true,
+            route_liveness: false,
+            billing: TenantBillingConfig::default(),
+        };
+
+        client
+            .expect_list_tenant()
+            .returning(move |_| Ok(HashMap::from([(tenant1_pubkey, tenant1.clone())])));
+
+        /*****************************************************************************************************/
+        let mut output = Vec::new();
+        let res = ListTenantCliCommand {
+            json: false,
+            json_compact: false,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        assert_eq!(
+            output_str,
+            " account                                   | code     | vrf_id | metro_routing | route_liveness | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | tenant-a | 100    | true          | false          | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n"
+        );
+
+        let mut output = Vec::new();
+        let res = ListTenantCliCommand {
+            json: false,
+            json_compact: true,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        assert_eq!(
+            output_str,
+            "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"code\":\"tenant-a\",\"vrf_id\":100,\"metro_routing\":true,\"route_liveness\":false,\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n"
+        );
     }
 }

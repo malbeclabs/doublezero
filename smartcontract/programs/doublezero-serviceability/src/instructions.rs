@@ -1161,7 +1161,7 @@ mod tests {
                 code: "test".to_string(),
                 administrator: Pubkey::new_unique(),
                 token_account: None,
-                metro_route: true,
+                metro_routing: true,
                 route_liveness: false,
             }),
             "CreateTenant",
@@ -1170,7 +1170,7 @@ mod tests {
             DoubleZeroInstruction::UpdateTenant(TenantUpdateArgs {
                 vrf_id: Some(200),
                 token_account: Some(Pubkey::new_unique()),
-                metro_route: Some(true),
+                metro_routing: Some(true),
                 route_liveness: Some(false),
                 billing: None,
             }),

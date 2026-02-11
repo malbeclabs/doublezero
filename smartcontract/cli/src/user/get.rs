@@ -128,7 +128,7 @@ mod tests {
             administrators: vec![],
             token_account: Pubkey::default(),
             payment_status: TenantPaymentStatus::Paid,
-            metro_route: false,
+            metro_routing: false,
             route_liveness: false,
             billing: TenantBillingConfig::default(),
         };

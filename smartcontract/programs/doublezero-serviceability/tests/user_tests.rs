@@ -995,7 +995,7 @@ async fn test_user_create_tenant_allowlist_validation() {
             code: tenant_a_code.to_string(),
             administrator: Pubkey::new_unique(),
             token_account: None,
-            metro_route: true,
+            metro_routing: true,
             route_liveness: false,
         }),
         vec![
@@ -1019,7 +1019,7 @@ async fn test_user_create_tenant_allowlist_validation() {
             code: tenant_b_code.to_string(),
             administrator: Pubkey::new_unique(),
             token_account: None,
-            metro_route: true,
+            metro_routing: true,
             route_liveness: false,
         }),
         vec![

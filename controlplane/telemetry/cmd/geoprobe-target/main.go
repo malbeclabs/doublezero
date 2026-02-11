@@ -25,7 +25,6 @@ const (
 	defaultRateLimit         = 10
 	maxReferenceDepth        = 5
 	speedOfLightMilesPerMs   = 124.0
-	speedOfLightKmPerMs      = speedOfLightMilesPerMs * 1.60934
 	nanosecondsPerMs         = 1000000.0
 	rateLimitCleanupInterval = 5 * time.Minute
 	rateLimitEntryTTL        = 10 * time.Minute
@@ -36,7 +35,7 @@ var (
 	udpPort         = flag.Uint("udp-port", defaultUDPPort, "Port to listen for LocationOffset UDP datagrams")
 	logFormat       = flag.String("log-format", "text", "Log format: text or json")
 	verifySignature = flag.Bool("verify-signatures", true, "Verify Ed25519 signatures on received offsets")
-	rateLimit       = flag.Uint("rate-limit", defaultRateLimit, "Maximum packets per second per source IP")
+	rateLimit       = flag.Uint("rate-limit", defaultRateLimit, "Maximum packets per second per source IP (0 disables rate limiting)")
 	showVersion     = flag.Bool("version", false, "Print version and exit")
 
 	version = "dev"
@@ -79,7 +78,9 @@ func main() {
 	errCh := make(chan error, 2)
 
 	limiter := newRateLimiter(*rateLimit)
-	go limiter.cleanup(ctx)
+	if *rateLimit > 0 {
+		go limiter.cleanup(ctx)
+	}
 
 	go runTWAMPReflector(ctx, log, *twampPort, errCh)
 	go runUDPListener(ctx, log, *udpPort, *verifySignature, limiter, errCh)
@@ -131,6 +132,9 @@ func newRateLimiter(maxTokens uint) *rateLimiter {
 }
 
 func (rl *rateLimiter) allow(ip string) bool {
+	if rl.maxTokens == 0 {
+		return true
+	}
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
@@ -415,7 +419,7 @@ func formatTextOutput(output OffsetOutput) string {
 }
 
 func calculateMaxDistance(rttNs uint64) float64 {
-	rttMs := float64(rttNs) / nanosecondsPerMs
+	rttMs := float64(rttNs) / (2 * nanosecondsPerMs)
 	return rttMs * speedOfLightMilesPerMs
 }
 

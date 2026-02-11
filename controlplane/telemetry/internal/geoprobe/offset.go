@@ -22,7 +22,8 @@ const (
 // Based on RFC16: Geolocation Verification
 type LocationOffset struct {
 	Signature       [64]byte         // Ed25519 signature over the serialized bytes (excluding this field)
-	Pubkey          [32]byte         // Signer's public key (DZD or Probe)
+	AuthorityPubkey [32]byte         // Signer's public key (metrics publisher key or probe signing key)
+	SenderPubkey    [32]byte         // Device public key (DZD or Probe)
 	MeasurementSlot uint64           // Current DoubleZero Slot when measurement was taken
 	MeasuredRttNs   uint64           // Measured RTT in nanoseconds (minimum observed)
 	Lat             float64          // Reference point latitude in WGS84 (decimal degrees)
@@ -41,8 +42,11 @@ func (o *LocationOffset) Marshal() ([]byte, error) {
 	if err := enc.Encode(o.Signature); err != nil {
 		return nil, fmt.Errorf("failed to encode signature: %w", err)
 	}
-	if err := enc.Encode(o.Pubkey); err != nil {
-		return nil, fmt.Errorf("failed to encode pubkey: %w", err)
+	if err := enc.Encode(o.AuthorityPubkey); err != nil {
+		return nil, fmt.Errorf("failed to encode authority pubkey: %w", err)
+	}
+	if err := enc.Encode(o.SenderPubkey); err != nil {
+		return nil, fmt.Errorf("failed to encode sender pubkey: %w", err)
 	}
 	if err := enc.Encode(o.MeasurementSlot); err != nil {
 		return nil, fmt.Errorf("failed to encode measurement slot: %w", err)
@@ -104,8 +108,11 @@ func (o *LocationOffset) unmarshalHelper(data []byte, dec *bin.Decoder, depth in
 	if err := dec.Decode(&o.Signature); err != nil {
 		return fmt.Errorf("failed to decode signature: %w", err)
 	}
-	if err := dec.Decode(&o.Pubkey); err != nil {
-		return fmt.Errorf("failed to decode pubkey: %w", err)
+	if err := dec.Decode(&o.AuthorityPubkey); err != nil {
+		return fmt.Errorf("failed to decode authority pubkey: %w", err)
+	}
+	if err := dec.Decode(&o.SenderPubkey); err != nil {
+		return fmt.Errorf("failed to decode sender pubkey: %w", err)
 	}
 	if err := dec.Decode(&o.MeasurementSlot); err != nil {
 		return fmt.Errorf("failed to decode measurement slot: %w", err)
@@ -142,8 +149,11 @@ func (o *LocationOffset) GetSigningBytes() ([]byte, error) {
 	w := &bytesWriter{buf: buf}
 	enc := bin.NewBorshEncoder(w)
 
-	if err := enc.Encode(o.Pubkey); err != nil {
-		return nil, fmt.Errorf("failed to encode pubkey: %w", err)
+	if err := enc.Encode(o.AuthorityPubkey); err != nil {
+		return nil, fmt.Errorf("failed to encode authority pubkey: %w", err)
+	}
+	if err := enc.Encode(o.SenderPubkey); err != nil {
+		return nil, fmt.Errorf("failed to encode sender pubkey: %w", err)
 	}
 	if err := enc.Encode(o.MeasurementSlot); err != nil {
 		return nil, fmt.Errorf("failed to encode measurement slot: %w", err)

@@ -69,10 +69,15 @@ func NewPublisher(cfg *PublisherConfig) (*Publisher, error) {
 		return nil, fmt.Errorf("rpc client is required")
 	}
 
+	signer, err := NewOffsetSigner(cfg.Keypair, cfg.LocalDevicePK)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create offset signer: %w", err)
+	}
+
 	return &Publisher{
 		log:    cfg.Logger,
 		cfg:    cfg,
-		signer: NewOffsetSigner(cfg.Keypair),
+		signer: signer,
 		conns:  make(map[string]*probeConn),
 	}, nil
 }

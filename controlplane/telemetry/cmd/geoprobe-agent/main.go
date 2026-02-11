@@ -36,6 +36,7 @@ var (
 	env                = flag.String("env", "", "The network environment to use (devnet, testnet, mainnet-beta).")
 	ledgerRPCURL       = flag.String("ledger-rpc-url", "", "The url of the ledger RPC. If env is provided, this flag is ignored.")
 	keypairPath        = flag.String("keypair", "", "The path to the probe's Ed25519 keypair file.")
+	geoProbePubkeyStr  = flag.String("geoprobe-pubkey", "", "The geoprobe device's public key (base58). Identifies this specific probe in offsets.")
 	additionalParents  = flag.String("additional-parents", "", "Comma-separated list of trusted parent DZD pubkeys (base58).")
 	additionalTargets  = flag.String("additional-targets", "", "Comma-separated list of target addresses (host:port) to measure and send composite offsets.")
 	twampListenPort    = flag.Uint("twamp-listen-port", defaultTWAMPListenPort, "Port for TWAMP reflector.")
@@ -94,7 +95,7 @@ func parseParentDZDs(s string) ([]parentDZD, error) {
 	return parents, nil
 }
 
-// offsetCache stores recent DZD offsets keyed by DZD pubkey.
+// offsetCache stores recent DZD offsets keyed by sender (device) pubkey.
 type offsetCache struct {
 	mu      sync.RWMutex
 	entries map[[32]byte]*cachedOffset
@@ -116,16 +117,16 @@ func newOffsetCache(maxAge time.Duration) *offsetCache {
 func (c *offsetCache) Put(offset *geoprobe.LocationOffset) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.entries[offset.Pubkey] = &cachedOffset{
+	c.entries[offset.SenderPubkey] = &cachedOffset{
 		offset:     *offset,
 		receivedAt: time.Now(),
 	}
 }
 
-func (c *offsetCache) Get(pubkey [32]byte) *geoprobe.LocationOffset {
+func (c *offsetCache) Get(senderPubkey [32]byte) *geoprobe.LocationOffset {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	entry, ok := c.entries[pubkey]
+	entry, ok := c.entries[senderPubkey]
 	if !ok {
 		return nil
 	}
@@ -191,6 +192,11 @@ func main() {
 		flag.Usage()
 		os.Exit(1)
 	}
+	if *geoProbePubkeyStr == "" {
+		log.Error("Missing required flag", "flag", "geoprobe-pubkey")
+		flag.Usage()
+		os.Exit(1)
+	}
 
 	// We need an RPC URL for slot fetching.
 	if *env == "" && *ledgerRPCURL == "" {
@@ -217,6 +223,13 @@ func main() {
 	keypair, err := solana.PrivateKeyFromSolanaKeygenFile(*keypairPath)
 	if err != nil {
 		log.Error("Failed to load keypair", "error", err)
+		os.Exit(1)
+	}
+
+	// Parse geoprobe device pubkey.
+	geoProbePubkey, err := solana.PublicKeyFromBase58(*geoProbePubkeyStr)
+	if err != nil {
+		log.Error("Failed to parse geoprobe-pubkey", "error", err)
 		os.Exit(1)
 	}
 
@@ -252,7 +265,8 @@ func main() {
 		"maxOffsetAge", *maxOffsetAge,
 		"twampListenPort", *twampListenPort,
 		"udpListenPort", *udpListenPort,
-		"pubkey", keypair.PublicKey(),
+		"authority_pubkey", keypair.PublicKey(),
+		"geoprobe_pubkey", geoProbePubkey,
 	)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -292,7 +306,11 @@ func main() {
 	}
 
 	// Set up signer and RPC client.
-	signer := geoprobe.NewOffsetSigner(keypair)
+	signer, err := geoprobe.NewOffsetSigner(keypair, geoProbePubkey)
+	if err != nil {
+		log.Error("Failed to create offset signer", "error", err)
+		os.Exit(1)
+	}
 	rpcClient := solanarpc.New(*ledgerRPCURL)
 
 	// Slot cache for reducing RPC load.
@@ -425,25 +443,27 @@ func runOffsetListener(
 			continue
 		}
 
-		// Verify the offset comes from a trusted parent.
-		if !trustedPubkeys[offset.Pubkey] {
-			pubkey := solana.PublicKeyFromBytes(offset.Pubkey[:])
-			log.Debug("Rejecting offset from untrusted pubkey", "pubkey", pubkey, "addr", addr)
+		// Verify the offset comes from a trusted parent (check authority pubkey).
+		if !trustedPubkeys[offset.AuthorityPubkey] {
+			authorityPK := solana.PublicKeyFromBytes(offset.AuthorityPubkey[:])
+			log.Debug("Rejecting offset from untrusted authority", "authority_pubkey", authorityPK, "addr", addr)
 			continue
 		}
 
 		// Verify signature chain (top-level and all references).
 		if err := geoprobe.VerifyOffsetChain(offset); err != nil {
-			pubkey := solana.PublicKeyFromBytes(offset.Pubkey[:])
-			log.Warn("Offset signature verification failed", "pubkey", pubkey, "addr", addr, "error", err)
+			authorityPK := solana.PublicKeyFromBytes(offset.AuthorityPubkey[:])
+			log.Warn("Offset signature verification failed", "authority_pubkey", authorityPK, "addr", addr, "error", err)
 			continue
 		}
 
 		cache.Put(offset)
 
-		pubkey := solana.PublicKeyFromBytes(offset.Pubkey[:])
+		authorityPK := solana.PublicKeyFromBytes(offset.AuthorityPubkey[:])
+		senderPK := solana.PublicKeyFromBytes(offset.SenderPubkey[:])
 		log.Debug("Cached DZD offset",
-			"pubkey", pubkey,
+			"authority_pubkey", authorityPK,
+			"sender_pubkey", senderPK,
 			"addr", addr,
 			"rtt_ns", offset.RttNs,
 			"measured_rtt_ns", offset.MeasuredRttNs,
@@ -558,7 +578,8 @@ func runMeasurementCycle(
 			"total_rtt_ns", compositeOffset.RttNs,
 			"lat", compositeOffset.Lat,
 			"lng", compositeOffset.Lng,
-			"ref_pubkey", solana.PublicKeyFromBytes(dzdOffset.Pubkey[:]))
+			"ref_authority_pubkey", solana.PublicKeyFromBytes(dzdOffset.AuthorityPubkey[:]),
+			"ref_sender_pubkey", solana.PublicKeyFromBytes(dzdOffset.SenderPubkey[:]))
 	}
 
 	log.Info("Completed measurement cycle",

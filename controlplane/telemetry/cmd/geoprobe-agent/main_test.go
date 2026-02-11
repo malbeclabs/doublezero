@@ -9,9 +9,9 @@ import (
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/geoprobe"
 )
 
-func makeTestOffset(pubkey [32]byte, rttNs uint64) *geoprobe.LocationOffset {
+func makeTestOffset(senderPubkey [32]byte, rttNs uint64) *geoprobe.LocationOffset {
 	return &geoprobe.LocationOffset{
-		Pubkey:          pubkey,
+		SenderPubkey:    senderPubkey,
 		MeasurementSlot: 12345,
 		MeasuredRttNs:   rttNs,
 		Lat:             52.3676,
@@ -97,8 +97,8 @@ func TestOffsetCache_GetBest(t *testing.T) {
 	if best.RttNs != 1000 {
 		t.Errorf("expected best RttNs=1000, got %d", best.RttNs)
 	}
-	if best.Pubkey != [32]byte{2} {
-		t.Errorf("expected pubkey {2}, got %v", best.Pubkey)
+	if best.SenderPubkey != [32]byte{2} {
+		t.Errorf("expected sender pubkey {2}, got %v", best.SenderPubkey)
 	}
 }
 

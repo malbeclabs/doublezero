@@ -312,18 +312,18 @@ func handleOffset(log *slog.Logger, offset *geoprobe.LocationOffset, addr *net.U
 }
 
 type OffsetOutput struct {
-	Timestamp         string             `json:"timestamp"`
-	SourceAddr        string             `json:"source_addr"`
-	ProbePubkey       string             `json:"probe_pubkey"`
-	ReferencePoint    CoordinateOutput   `json:"reference_point"`
-	RttMs             float64            `json:"rtt_ms"`
-	MeasuredRttMs     float64            `json:"measured_rtt_ms"`
-	MaxDistanceMiles  float64            `json:"max_distance_miles"`
-	MaxDistanceKm     float64            `json:"max_distance_km"`
-	MeasurementSlot   uint64             `json:"measurement_slot"`
-	SignatureValid    bool               `json:"signature_valid"`
-	SignatureError    string             `json:"signature_error,omitempty"`
-	DZDReferenceChain []ReferenceOutput  `json:"dzd_reference_chain"`
+	Timestamp         string            `json:"timestamp"`
+	SourceAddr        string            `json:"source_addr"`
+	ProbePubkey       string            `json:"probe_pubkey"`
+	ReferencePoint    CoordinateOutput  `json:"reference_point"`
+	RttMs             float64           `json:"rtt_ms"`
+	MeasuredRttMs     float64           `json:"measured_rtt_ms"`
+	MaxDistanceMiles  float64           `json:"max_distance_miles"`
+	MaxDistanceKm     float64           `json:"max_distance_km"`
+	MeasurementSlot   uint64            `json:"measurement_slot"`
+	SignatureValid    bool              `json:"signature_valid"`
+	SignatureError    string            `json:"signature_error,omitempty"`
+	DZDReferenceChain []ReferenceOutput `json:"dzd_reference_chain"`
 }
 
 type CoordinateOutput struct {
@@ -333,10 +333,10 @@ type CoordinateOutput struct {
 }
 
 type ReferenceOutput struct {
-	Pubkey         string           `json:"pubkey"`
-	Location       CoordinateOutput `json:"location"`
-	RttMs          float64          `json:"rtt_ms"`
-	MeasuredRttMs  float64          `json:"measured_rtt_ms"`
+	Pubkey        string           `json:"pubkey"`
+	Location      CoordinateOutput `json:"location"`
+	RttMs         float64          `json:"rtt_ms"`
+	MeasuredRttMs float64          `json:"measured_rtt_ms"`
 }
 
 func formatLocationOffset(offset *geoprobe.LocationOffset, addr *net.UDPAddr, signatureValid bool, verifyError error) OffsetOutput {
@@ -346,12 +346,12 @@ func formatLocationOffset(offset *geoprobe.LocationOffset, addr *net.UDPAddr, si
 	maxDistanceKm := maxDistanceMiles * 1.60934
 
 	output := OffsetOutput{
-		Timestamp:      time.Now().UTC().Format("2006-01-02 15:04:05 MST"),
-		SourceAddr:     addr.String(),
-		ProbePubkey:    formatPubkey(offset.Pubkey[:]),
-		ReferencePoint: formatCoordinate(offset.Lat, offset.Lng),
-		RttMs:          rttMs,
-		MeasuredRttMs:  measuredRttMs,
+		Timestamp:        time.Now().UTC().Format("2006-01-02 15:04:05 MST"),
+		SourceAddr:       addr.String(),
+		ProbePubkey:      formatPubkey(offset.Pubkey[:]),
+		ReferencePoint:   formatCoordinate(offset.Lat, offset.Lng),
+		RttMs:            rttMs,
+		MeasuredRttMs:    measuredRttMs,
 		MaxDistanceMiles: maxDistanceMiles,
 		MaxDistanceKm:    maxDistanceKm,
 		MeasurementSlot:  offset.MeasurementSlot,

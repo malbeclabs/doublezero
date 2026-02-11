@@ -295,19 +295,19 @@ func TestFixtureTenant(t *testing.T) {
 	DeserializeTenant(reader, &tenant)
 
 	assertFields(t, meta.Fields, map[string]any{
-		"AccountType":    uint8(tenant.AccountType),
-		"Owner":          solana.PublicKey(tenant.Owner),
-		"BumpSeed":       tenant.BumpSeed,
-		"Code":           tenant.Code,
-		"VrfId":          tenant.VrfId,
-		"ReferenceCount": tenant.ReferenceCount,
-		"PaymentStatus":  uint8(tenant.PaymentStatus),
-		"TokenAccount":   solana.PublicKey(tenant.TokenAccount),
-		"MetroRouting":                 tenant.MetroRouting,
-		"RouteLiveness":                tenant.RouteLiveness,
-		"BillingDiscriminant":          tenant.BillingDiscriminant,
-		"BillingRate":                  tenant.BillingRate,
-		"BillingLastDeductionDzEpoch":  tenant.BillingLastDeductionDzEpoch,
+		"AccountType":                 uint8(tenant.AccountType),
+		"Owner":                       solana.PublicKey(tenant.Owner),
+		"BumpSeed":                    tenant.BumpSeed,
+		"Code":                        tenant.Code,
+		"VrfId":                       tenant.VrfId,
+		"ReferenceCount":              tenant.ReferenceCount,
+		"PaymentStatus":               uint8(tenant.PaymentStatus),
+		"TokenAccount":                solana.PublicKey(tenant.TokenAccount),
+		"MetroRouting":                tenant.MetroRouting,
+		"RouteLiveness":               tenant.RouteLiveness,
+		"BillingDiscriminant":         tenant.BillingDiscriminant,
+		"BillingRate":                 tenant.BillingRate,
+		"BillingLastDeductionDzEpoch": tenant.BillingLastDeductionDzEpoch,
 	})
 }
 

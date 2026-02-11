@@ -93,7 +93,7 @@ mod tests {
     };
     use doublezero_serviceability::state::{
         accesspass::{AccessPass, AccessPassStatus, AccessPassType},
-        tenant::{Tenant, TenantPaymentStatus},
+        tenant::{Tenant, TenantBillingConfig, TenantPaymentStatus},
     };
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
@@ -120,6 +120,7 @@ mod tests {
             payment_status: TenantPaymentStatus::Paid,
             metro_route: false,
             route_liveness: false,
+            billing: TenantBillingConfig::default(),
         };
 
         let mgroup_pubkey = Pubkey::new_unique();

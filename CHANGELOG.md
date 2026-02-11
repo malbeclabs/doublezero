@@ -22,6 +22,7 @@ All notable changes to this project will be documented in this file.
   - extend device telemetry agent to measure RTT to child geoProbes via TWAMP, generate signed LocationOffset structures, and deliver them via UDP as per rfcs/rfc16-geolocation-verification.md
   - geoprobe-target: example target listener for geolocation verification with TWAMP reflector, UDP offset receiver, signature chain verification, distance calculation logging, and DoS protections (5-reference depth limit and per-source-IP rate limiting) (#2901)
 - Onchain programs
+  - feat(serviceability): add TenantBillingConfig and epoch tracking to UpdatePaymentStatus ([#2922](https://github.com/malbeclabs/doublezero/pull/2922))
   - feat(smartcontract): add payment_status, token_account fields and UpdatePaymentStatus instruction ([#2880](https://github.com/malbeclabs/doublezero/pull/2880))
   - fix(smartcontract): correctly ser/deser ops_manager_pk ([#2887](https://github.com/malbeclabs/doublezero/pull/2887))
   - Serviceability: add metro_route and route_liveness boolean fields to Tenant for routing configuration

@@ -43,6 +43,7 @@ async fn test_tenant() {
             administrator,
             token_account: None,
             metro_routing: true,
+            metro_routing: true,
             route_liveness: false,
         }),
         vec![
@@ -66,6 +67,7 @@ async fn test_tenant() {
     assert_eq!(tenant.administrators.len(), 1);
     assert_eq!(tenant.administrators[0], administrator);
     assert!(tenant.metro_routing);
+    assert!(tenant.metro_routing);
     assert!(!tenant.route_liveness);
 
     println!("✅ Tenant created successfully");
@@ -79,6 +81,7 @@ async fn test_tenant() {
         DoubleZeroInstruction::UpdateTenant(TenantUpdateArgs {
             vrf_id: Some(200),
             token_account: None,
+            metro_routing: Some(false),
             metro_routing: Some(false),
             route_liveness: Some(true),
             billing: None,
@@ -99,7 +102,7 @@ async fn test_tenant() {
     assert_eq!(tenant.account_type, AccountType::Tenant);
     assert_eq!(tenant.code, "test-tenant".to_string()); // Code unchanged (immutable)
     assert_eq!(tenant.vrf_id, 200); // VRF ID updated
-    assert!(!tenant.metro_routing); // Metro route updated
+    assert!(!tenant.metro_routing); // Metro routing updated
     assert!(tenant.route_liveness); // Route liveness updated
     assert_eq!(tenant.billing, TenantBillingConfig::default()); // Billing unchanged
 

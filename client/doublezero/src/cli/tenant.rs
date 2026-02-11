@@ -27,7 +27,7 @@ pub enum TenantCommands {
     /// Delete a tenant
     #[clap()]
     Delete(DeleteTenantCliCommand),
-    /// manage tenant administrators
+    /// Manage tenant administrators
     #[clap()]
     Administrator(AdministratorCliCommand),
 }

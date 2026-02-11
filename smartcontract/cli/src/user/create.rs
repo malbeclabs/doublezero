@@ -8,11 +8,12 @@ use crate::{
 use clap::Args;
 use doublezero_sdk::{
     commands::{
-        device::get::GetDeviceCommand, tenant::get::GetTenantCommand,
-        user::create::CreateUserCommand,
+        accesspass::get::GetAccessPassCommand, device::get::GetDeviceCommand,
+        tenant::get::GetTenantCommand, user::create::CreateUserCommand,
     },
     UserCYOA, UserType,
 };
+use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, net::Ipv4Addr};
 
 #[derive(Args, Debug)]
@@ -51,7 +52,30 @@ impl CreateUserCliCommand {
             }
         };
 
-        let tenant_pk = match self.tenant {
+        let accesspass = client
+            .get_accesspass(GetAccessPassCommand {
+                client_ip: self.client_ip,
+                user_payer: client.get_payer(),
+            })?
+            .map(|(_, ap)| ap)
+            .ok_or_else(|| {
+                eyre::eyre!(
+                    "No valid AccessPass found for IP: {} user_payer: {}",
+                    self.client_ip,
+                    client.get_payer()
+                )
+            })?;
+
+        // Determine tenant: 1) from CLI argument, 2) from config file, 3) from access pass allowlist
+        let tenant = self.tenant.or_else(|| {
+            accesspass
+                .tenant_allowlist
+                .first()
+                .filter(|pk| **pk != Pubkey::default())
+                .map(|pk| pk.to_string())
+        });
+
+        let tenant_pk = match tenant {
             None => None,
             Some(tenant_str) => match parse_pubkey(&tenant_str) {
                 Some(pk) => Some(pk),
@@ -96,10 +120,16 @@ mod tests {
         requirements::{CHECK_BALANCE, CHECK_ID_JSON},
     };
     use doublezero_sdk::{
-        commands::{device::get::GetDeviceCommand, user::create::CreateUserCommand},
+        commands::{
+            accesspass::get::GetAccessPassCommand, device::get::GetDeviceCommand,
+            user::create::CreateUserCommand,
+        },
         AccountType, Device, DeviceStatus, DeviceType, UserCYOA, UserType,
     };
-    use doublezero_serviceability::pda::get_user_old_pda;
+    use doublezero_serviceability::{
+        pda::{get_accesspass_pda, get_user_old_pda},
+        state::accesspass::{AccessPass, AccessPassStatus, AccessPassType},
+    };
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
     use std::net::Ipv4Addr;
@@ -158,6 +188,33 @@ mod tests {
                 pubkey_or_code: "device1".to_string(),
             }))
             .returning(move |_| Ok((device_pubkey, device.clone())));
+
+        let client_ip: Ipv4Addr = [100, 0, 0, 1].into();
+        let user_payer = client.get_payer();
+        let (accesspass_pubkey, _) =
+            get_accesspass_pda(&client.get_program_id(), &client_ip, &user_payer);
+        let accesspass = AccessPass {
+            account_type: AccountType::AccessPass,
+            bump_seed: 255,
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip,
+            user_payer,
+            last_access_epoch: 10,
+            connection_count: 0,
+            status: AccessPassStatus::Connected,
+            mgroup_pub_allowlist: vec![],
+            mgroup_sub_allowlist: vec![],
+            tenant_allowlist: vec![],
+            owner: client.get_payer(),
+            flags: 0,
+        };
+        client
+            .expect_get_accesspass()
+            .with(predicate::eq(GetAccessPassCommand {
+                client_ip,
+                user_payer,
+            }))
+            .returning(move |_| Ok(Some((accesspass_pubkey, accesspass.clone()))));
 
         client
             .expect_create_user()

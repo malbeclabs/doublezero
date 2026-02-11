@@ -51,15 +51,17 @@ impl CreateSubscribeUserCommand {
             client_ip: self.client_ip,
             user_payer: client.get_payer(),
         }
-        .execute(client)
-        .or_else(|_| {
+        .execute(client)?
+        .or_else(|| {
             GetAccessPassCommand {
                 client_ip: Ipv4Addr::UNSPECIFIED,
                 user_payer: client.get_payer(),
             }
             .execute(client)
+            .ok()
+            .flatten()
         })
-        .map_err(|_| eyre::eyre!("You have no Access Pass"))?;
+        .ok_or_else(|| eyre::eyre!("You have no Access Pass"))?;
 
         let (pda_pubkey, _) =
             get_user_pda(&client.get_program_id(), &self.client_ip, self.user_type);

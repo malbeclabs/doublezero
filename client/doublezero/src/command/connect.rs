@@ -17,6 +17,7 @@ use doublezero_cli::{
 use doublezero_program_common::types::NetworkV4;
 use doublezero_sdk::{
     commands::{
+        accesspass::get::GetAccessPassCommand,
         device::{get::GetDeviceCommand, list::ListDeviceCommand},
         globalconfig::get::GetGlobalConfigCommand,
         multicastgroup::{
@@ -526,11 +527,34 @@ impl ProvisioningCliCommand {
                     tunnel_src = resolve_tunnel_src(controller, &device).await?;
                 }
 
-                let tenant = tenant.or_else(|| {
-                    doublezero_sdk::read_doublezero_config()
-                        .ok()
-                        .and_then(|(_, cfg)| cfg.tenant)
-                });
+                let accesspass = client
+                    .get_accesspass(GetAccessPassCommand {
+                        client_ip: *client_ip,
+                        user_payer: client.get_payer(),
+                    })?
+                    .map(|(_, ap)| ap)
+                    .ok_or_else(|| {
+                        eyre::eyre!(
+                            "No valid AccessPass found for IP: {} user_payer: {}",
+                            client_ip,
+                            client.get_payer()
+                        )
+                    })?;
+
+                // Determine tenant: 1) from CLI argument, 2) from config file, 3) from access pass allowlist
+                let tenant = tenant
+                    .or_else(|| {
+                        doublezero_sdk::read_doublezero_config()
+                            .ok()
+                            .and_then(|(_, cfg)| cfg.tenant)
+                    })
+                    .or_else(|| {
+                        accesspass
+                            .tenant_allowlist
+                            .first()
+                            .filter(|pk| **pk != Pubkey::default())
+                            .map(|pk| pk.to_string())
+                    });
 
                 let tenant_pk = match tenant {
                     Some(tenant_str) => match parse_pubkey(&tenant_str) {
@@ -1220,7 +1244,7 @@ mod tests {
                     client_ip: Ipv4Addr::new(1, 2, 3, 4),
                     user_payer: payer,
                 }))
-                .returning_st(move |_| Ok((accesspass_pk, accesspass.clone())));
+                .returning_st(move |_| Ok(Some((accesspass_pk, accesspass.clone()))));
 
             let users = fixture.users.clone();
             fixture

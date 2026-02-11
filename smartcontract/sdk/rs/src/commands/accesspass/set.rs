@@ -6,7 +6,10 @@ use doublezero_serviceability::{
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
-use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
+use crate::{
+    commands::{accesspass::get::GetAccessPassCommand, globalstate::get::GetGlobalStateCommand},
+    DoubleZeroClient,
+};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct SetAccessPassCommand {
@@ -38,19 +41,35 @@ impl SetAccessPassCommand {
         let (pda_pubkey, _) =
             get_accesspass_pda(&client.get_program_id(), &self.client_ip, &self.user_payer);
 
+        let accesspass = GetAccessPassCommand {
+            client_ip: self.client_ip,
+            user_payer: self.user_payer,
+        }
+        .execute(client)?;
+
+        let mut accounts = vec![
+            AccountMeta::new(pda_pubkey, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+            AccountMeta::new(self.user_payer, false),
+        ];
+
+        if self.tenant != Pubkey::default() {
+            let tenant_allowlist_first = accesspass
+                .as_ref()
+                .and_then(|(_, ap)| ap.tenant_allowlist.first().copied())
+                .unwrap_or_default();
+            accounts.push(AccountMeta::new(tenant_allowlist_first, false));
+            accounts.push(AccountMeta::new(self.tenant, false));
+        }
+
         client.execute_transaction(
             DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
                 accesspass_type: self.accesspass_type.clone(),
                 client_ip: self.client_ip,
                 last_access_epoch: self.last_access_epoch,
                 allow_multiple_ip: self.allow_multiple_ip,
-                tenant: self.tenant,
             }),
-            vec![
-                AccountMeta::new(pda_pubkey, false),
-                AccountMeta::new_readonly(globalstate_pubkey, false),
-                AccountMeta::new(self.user_payer, false),
-            ],
+            accounts,
         )
     }
 }
@@ -65,7 +84,11 @@ mod tests {
         instructions::DoubleZeroInstruction,
         pda::{get_accesspass_pda, get_globalstate_pda},
         processors::accesspass::set::SetAccessPassArgs,
-        state::accesspass::AccessPassType,
+        state::{
+            accesspass::{AccessPass, AccessPassStatus, AccessPassType},
+            accountdata::AccountData,
+            accounttype::AccountType,
+        },
     };
     use mockall::predicate;
     use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
@@ -80,6 +103,26 @@ mod tests {
         let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
         let (pda_pubkey, _) = get_accesspass_pda(&client.get_program_id(), &client_ip, &payer);
 
+        let accesspass = AccessPass {
+            account_type: AccountType::AccessPass,
+            bump_seed: 0,
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip,
+            user_payer: payer,
+            last_access_epoch: 0,
+            connection_count: 0,
+            status: AccessPassStatus::Connected,
+            owner: client.get_payer(),
+            mgroup_pub_allowlist: vec![],
+            mgroup_sub_allowlist: vec![],
+            tenant_allowlist: vec![],
+            flags: 0,
+        };
+        client
+            .expect_get()
+            .with(predicate::eq(pda_pubkey))
+            .returning(move |_| Ok(AccountData::AccessPass(accesspass.clone())));
+
         client
             .expect_execute_transaction()
             .with(
@@ -88,7 +131,6 @@ mod tests {
                     client_ip,
                     last_access_epoch: 0,
                     allow_multiple_ip: false,
-                    tenant: Pubkey::default(),
                 })),
                 predicate::eq(vec![
                     AccountMeta::new(pda_pubkey, false),

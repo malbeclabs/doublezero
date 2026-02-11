@@ -14,16 +14,16 @@ export OPENSSL_NO_VENDOR=1
 
 # Build the program
 echo "Build the program"
-cargo build-sbf --manifest-path ../programs/doublezero-serviceability/Cargo.toml -- -Znext-lockfile-bump
+cargo build-sbf --manifest-path ../programs/doublezero-serviceability/Cargo.toml -- -Znext-lockfile-bump --target-dir ../../target/
 cp ../../target/deploy/doublezero_serviceability.so ./target/doublezero_serviceability.so
 
 #Build the activator
 echo "Build the activator"
-cargo build --manifest-path ../../activator/Cargo.toml ; cp ../../target/debug/doublezero-activator ./target/
+cargo build --manifest-path ../../activator/Cargo.toml  --target-dir ../../target/ ; cp ../../target/debug/doublezero-activator ./target/
 
 #Build the activator
 echo "Build the client"
-cargo build --manifest-path ../../client/doublezero/Cargo.toml; cp ../../target/debug/doublezero ./target/
+cargo build --manifest-path ../../client/doublezero/Cargo.toml --target-dir ../../target/ ; cp ../../target/debug/doublezero ./target/
 
 # Configure to connect to localnet
 solana config set --url http://127.0.0.1:8899
@@ -193,7 +193,7 @@ echo "Create AccessPass with tenant restrictions"
 ./target/doublezero access-pass set --accesspass-type prepaid --user-payer me --client-ip 100.100.100.100 --tenant test-tenant
 ./target/doublezero access-pass set --accesspass-type prepaid --user-payer me --client-ip 200.200.200.200 --tenant test-tenant
 
-echo "Create AccessPass without tenant (backward compatibility test)"
+echo "Create AccessPass without tenant"
 ./target/doublezero access-pass set --accesspass-type prepaid --user-payer me --client-ip 10.10.10.10
 
 echo "Listing all access passes"
@@ -214,10 +214,10 @@ echo "Updating access pass to change tenant"
 
 # create a user
 echo "Creating users"
-./target/doublezero user create --device ld4-dz01 --client-ip 177.54.159.95 -w
-./target/doublezero user create --device ld4-dz01 --client-ip 147.28.171.51 -w
-./target/doublezero user create --device ld4-dz01 --client-ip 100.100.100.100 -w
-./target/doublezero user create --device ld4-dz01 --client-ip 200.200.200.200 -w
+./target/doublezero user create --device ld4-dz01 --client-ip 177.54.159.95 --tenant corp -w
+./target/doublezero user create --device ld4-dz01 --client-ip 147.28.171.51 --tenant corp -w
+./target/doublezero user create --device ld4-dz01 --client-ip 100.100.100.100 --tenant test-tenant -w
+./target/doublezero user create --device ld4-dz01 --client-ip 200.200.200.200 --tenant test-tenant -w
 
 echo "Creating multicast groups"
 ./target/doublezero multicast group create --code mg01 --max-bandwidth 1Gbps --owner me -w

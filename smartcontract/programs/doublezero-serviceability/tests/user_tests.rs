@@ -1072,6 +1072,7 @@ async fn test_user_create_tenant_allowlist_validation() {
             client_ip: user_ip_1,
             user_type: UserType::IBRL,
             cyoa_type: UserCYOA::GREOverDIA,
+            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(user_1_pubkey, false),
@@ -1135,6 +1136,7 @@ async fn test_user_create_tenant_allowlist_validation() {
             client_ip: user_ip_2,
             user_type: UserType::IBRL,
             cyoa_type: UserCYOA::GREOverDIA,
+            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(user_2_pubkey, false),

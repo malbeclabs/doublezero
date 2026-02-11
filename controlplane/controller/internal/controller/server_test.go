@@ -108,6 +108,7 @@ func TestGetConfig(t *testing.T) {
 								DzIp:          net.IP{100, 0, 0, 0},
 								Allocated:     true,
 								VrfId:         1,
+								MetroRouting:  true,
 							},
 							{
 								Id:            501,
@@ -118,6 +119,7 @@ func TestGetConfig(t *testing.T) {
 								DzIp:          net.IP{100, 0, 0, 1},
 								Allocated:     true,
 								VrfId:         1,
+								MetroRouting:  true,
 							},
 							{
 								Id:            502,
@@ -128,6 +130,7 @@ func TestGetConfig(t *testing.T) {
 								DzIp:          net.IP{100, 0, 0, 2},
 								Allocated:     true,
 								VrfId:         1,
+								MetroRouting:  true,
 							},
 						},
 						PublicIP:              net.IP{7, 7, 7, 7},
@@ -268,6 +271,7 @@ func TestGetConfig(t *testing.T) {
 								DzIp:          net.IP{100, 0, 0, 1},
 								Allocated:     true,
 								VrfId:         1,
+								MetroRouting:  true,
 							},
 							{
 								Id:            502,
@@ -366,6 +370,7 @@ func TestGetConfig(t *testing.T) {
 								DzIp:          net.IP{100, 0, 0, 1},
 								Allocated:     true,
 								VrfId:         1,
+								MetroRouting:  true,
 							},
 							{
 								Id:            502,
@@ -920,6 +925,7 @@ func TestStateCache(t *testing.T) {
 								PubKey:        "11111111111111111111111111111111",
 								Allocated:     true,
 								VrfId:         1,
+								MetroRouting:  true,
 							},
 							{
 								Id:            501,
@@ -1062,6 +1068,7 @@ func TestStateCache(t *testing.T) {
 								PubKey:        "11111111111111111111111111111111",
 								Allocated:     true,
 								VrfId:         1,
+								MetroRouting:  true,
 							},
 						}, generateEmptyTunnelSlots(config.StartUserTunnelNum+1, config.MaxUserTunnelSlots-1)...),
 						TunnelSlots: config.MaxUserTunnelSlots,
@@ -1173,6 +1180,7 @@ func TestStateCache(t *testing.T) {
 								PubKey:        "11111111111111111111111111111111",
 								Allocated:     true,
 								VrfId:         1,
+								MetroRouting:  true,
 							},
 						}, generateEmptyTunnelSlots(config.StartUserTunnelNum+1, config.MaxUserTunnelSlots-1)...),
 						TunnelSlots: config.MaxUserTunnelSlots,
@@ -1308,6 +1316,7 @@ func TestStateCache(t *testing.T) {
 								PubKey:        "11111111111111111111111111111111",
 								Allocated:     true,
 								VrfId:         1,
+								MetroRouting:  true,
 							},
 							{
 								Id:            501,
@@ -1319,6 +1328,7 @@ func TestStateCache(t *testing.T) {
 								PubKey:        "11111111111111111111111111111111",
 								Allocated:     true,
 								VrfId:         1,
+								MetroRouting:  true,
 							},
 						}, generateEmptyTunnelSlots(config.StartUserTunnelNum+2, config.MaxUserTunnelSlots-2)...),
 						TunnelSlots: config.MaxUserTunnelSlots,
@@ -1488,6 +1498,7 @@ func TestStateCache(t *testing.T) {
 								PubKey:        "11111111111111111111111111111111",
 								Allocated:     true,
 								VrfId:         1,
+								MetroRouting:  true,
 							},
 						}, generateEmptyTunnelSlots(config.StartUserTunnelNum+3, config.MaxUserTunnelSlots-3)...),
 						TunnelSlots: config.MaxUserTunnelSlots,
@@ -1944,12 +1955,14 @@ func TestEndToEnd(t *testing.T) {
 			},
 			Tenants: []serviceability.Tenant{
 				{
-					PubKey: [32]byte{10},
-					VrfId:  1,
+					PubKey:       [32]byte{10},
+					VrfId:        1,
+					MetroRouting: true,
 				},
 				{
-					PubKey: [32]byte{20},
-					VrfId:  2,
+					PubKey:       [32]byte{20},
+					VrfId:        2,
+					MetroRouting: true,
 				},
 			},
 			Users: []serviceability.User{

@@ -498,10 +498,12 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 		tunnel.Allocated = true
 
 		if user.UserType != serviceability.UserTypeMulticast {
-			// Set the VRF ID from the user's tenant. Default to 1 if no tenant is defined.
+			// Set the VRF ID and metro routing from the user's tenant. Default to VRF 1 with metro routing enabled.
 			tunnel.VrfId = 1
+			tunnel.MetroRouting = true
 			if tenant, ok := cache.Tenants[base58.Encode(user.TenantPubKey[:])]; ok {
 				tunnel.VrfId = tenant.VrfId
+				tunnel.MetroRouting = tenant.MetroRouting
 			}
 		}
 

@@ -16,6 +16,8 @@ All notable changes to this project will be documented in this file.
   - Added multi-tenancy deletion test coverage
 - Telemetry
   - Add `doublezero-geoprobe-agent`, intermediary probe server for RFC16
+- Controller
+  - Adds support for per-tenant metro routing policy
 
 ## [v0.8.7](https://github.com/malbeclabs/doublezero/compare/client/v0.8.6...client/v0.8.7) – 2026-02-10
 

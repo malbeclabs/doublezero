@@ -339,7 +339,12 @@ impl Device {
     ///
     /// Where `_` means any value is valid for that field.
     ///
+    #[allow(unreachable_code)]
     pub fn check_status_transition(&mut self) {
+
+        // waiting for health oracle to implement this logic
+        return;
+
         match (self.status, self.desired_status, self.device_health) {
             // Activation transition
             (DeviceStatus::DeviceProvisioning, _, DeviceHealth::ReadyForLinks) => {

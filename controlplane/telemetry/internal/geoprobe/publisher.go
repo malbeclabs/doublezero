@@ -20,12 +20,12 @@ const (
 )
 
 type PublisherConfig struct {
-	Logger                  *slog.Logger
-	Keypair                 solana.PrivateKey
-	LocalDevicePK           solana.PublicKey
-	ServiceabilityClient    ServiceabilityClientInterface
-	RPCClient               RPCClientInterface
-	ManagementNamespace     string
+	Logger               *slog.Logger
+	Keypair              solana.PrivateKey
+	LocalDevicePK        solana.PublicKey
+	ServiceabilityClient ServiceabilityClientInterface
+	RPCClient            RPCClientInterface
+	ManagementNamespace  string
 }
 
 type Publisher struct {
@@ -48,7 +48,7 @@ type Publisher struct {
 }
 
 type probeConn struct {
-	conn        *net.UDPConn
+	conn         *net.UDPConn
 	resolvedAddr *net.UDPAddr
 }
 
@@ -87,6 +87,10 @@ func (p *Publisher) AddProbe(ctx context.Context, addr ProbeAddress) error {
 		return nil
 	}
 
+	if err := addr.Validate(); err != nil {
+		return fmt.Errorf("invalid probe address %s: %w", key, err)
+	}
+
 	var conn *net.UDPConn
 	var err error
 
@@ -104,14 +108,10 @@ func (p *Publisher) AddProbe(ctx context.Context, addr ProbeAddress) error {
 		return fmt.Errorf("failed to create UDP connection for probe %s: %w", key, err)
 	}
 
-	resolvedAddr, err := resolveUDPAddrWithTimeout(ctx, addr.String(), 5*time.Second)
-	if err != nil {
-		conn.Close()
-		return fmt.Errorf("failed to resolve probe address %s: %w", key, err)
-	}
+	resolvedAddr := &net.UDPAddr{IP: net.ParseIP(addr.Host), Port: int(addr.Port)}
 
 	p.conns[key] = &probeConn{
-		conn:        conn,
+		conn:         conn,
 		resolvedAddr: resolvedAddr,
 	}
 

@@ -50,7 +50,7 @@ type Config struct {
 	SubmitterMaxConcurrency int
 
 	// InitialChildProbes is the startup probe list from CLI; runtime updates happen via channel.
-	InitialChildProbes []geoprobe.ProbeAddress
+	InitialChildGeoProbes []geoprobe.ProbeAddress
 
 	// ServiceabilityProgramClient is the client to the serviceability program (for fetching Device/Location).
 	ServiceabilityProgramClient *serviceability.Client
@@ -99,7 +99,7 @@ func (c *Config) Validate() error {
 		return errors.New("submitter max concurrency must be greater than 0")
 	}
 
-	if len(c.InitialChildProbes) > 0 {
+	if len(c.InitialChildGeoProbes) > 0 {
 		if c.ServiceabilityProgramClient == nil {
 			return errors.New("serviceability client is required when geoprobe is enabled")
 		}

@@ -22,16 +22,16 @@ type RPCClientInterface interface {
 }
 
 type CoordinatorConfig struct {
-	Logger                 *slog.Logger
-	InitialProbes          []ProbeAddress
-	ProbeUpdateCh          chan []ProbeAddress
-	Interval               time.Duration
-	ProbeTimeout           time.Duration
-	Keypair                solana.PrivateKey
-	LocalDevicePK          solana.PublicKey
-	ServiceabilityClient   ServiceabilityClientInterface
-	RPCClient              RPCClientInterface
-	ManagementNamespace    string
+	Logger               *slog.Logger
+	InitialProbes        []ProbeAddress
+	ProbeUpdateCh        chan []ProbeAddress
+	Interval             time.Duration
+	ProbeTimeout         time.Duration
+	Keypair              solana.PrivateKey
+	LocalDevicePK        solana.PublicKey
+	ServiceabilityClient ServiceabilityClientInterface
+	RPCClient            RPCClientInterface
+	ManagementNamespace  string
 }
 
 type Coordinator struct {

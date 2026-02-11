@@ -53,10 +53,11 @@ func (p *Pinger) AddProbe(ctx context.Context, addr ProbeAddress) error {
 		return nil
 	}
 
-	resolvedAddr, err := resolveUDPAddrWithTimeout(ctx, addr.String(), 5*time.Second)
-	if err != nil {
-		return fmt.Errorf("failed to resolve probe address %s: %w", addr.String(), err)
+	if err := addr.Validate(); err != nil {
+		return fmt.Errorf("invalid probe address %s: %w", key, err)
 	}
+
+	resolvedAddr := &net.UDPAddr{IP: net.ParseIP(addr.Host), Port: int(addr.Port)}
 
 	sourceAddr := &net.UDPAddr{
 		IP:   net.IPv4zero,
@@ -156,83 +157,6 @@ func (p *Pinger) MeasureAll(ctx context.Context) (map[ProbeAddress]uint64, error
 		"total", totalProbes,
 		"success", successCount,
 		"failed", failureCount)
-
-	return results, nil
-}
-
-func (p *Pinger) MeasureAllWithRetries(ctx context.Context, retries int) (map[ProbeAddress]uint64, error) {
-	p.sendersMu.Lock()
-	sendersCopy := make([]*senderEntry, 0, len(p.senders))
-	for _, entry := range p.senders {
-		sendersCopy = append(sendersCopy, entry)
-	}
-	p.sendersMu.Unlock()
-
-	if len(sendersCopy) == 0 {
-		return make(map[ProbeAddress]uint64), nil
-	}
-
-	totalProbes := len(sendersCopy)
-	results := make(map[ProbeAddress]uint64)
-	resultsMu := sync.Mutex{}
-	var wg sync.WaitGroup
-
-	sem := make(chan struct{}, MaxConcurrentProbes)
-
-	for _, entry := range sendersCopy {
-		wg.Add(1)
-		go func(e *senderEntry) {
-			defer wg.Done()
-
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
-			var minRTT time.Duration
-			successCount := 0
-
-			for attempt := 0; attempt < retries; attempt++ {
-				select {
-				case <-ctx.Done():
-					return
-				default:
-				}
-
-				probeCtx, cancel := context.WithTimeout(ctx, p.cfg.ProbeTimeout)
-				rtt, err := e.sender.Probe(probeCtx)
-				cancel()
-
-				if err != nil {
-					p.log.Debug("Probe attempt failed", "probe", e.addr.String(), "attempt", attempt+1, "error", err)
-					continue
-				}
-
-				successCount++
-				if minRTT == 0 || rtt < minRTT {
-					minRTT = rtt
-				}
-			}
-
-			if successCount > 0 {
-				resultsMu.Lock()
-				results[e.addr] = uint64(minRTT.Nanoseconds())
-				resultsMu.Unlock()
-				p.log.Debug("Probe completed", "probe", e.addr.String(), "min_rtt", minRTT, "success_count", successCount, "total_attempts", retries)
-			} else {
-				p.log.Debug("All probe attempts failed", "probe", e.addr.String(), "attempts", retries)
-			}
-		}(entry)
-	}
-
-	wg.Wait()
-
-	successCount := len(results)
-	failureCount := totalProbes - successCount
-
-	p.log.Debug("Probe measurement with retries completed",
-		"total", totalProbes,
-		"success", successCount,
-		"failed", failureCount,
-		"retries", retries)
 
 	return results, nil
 }

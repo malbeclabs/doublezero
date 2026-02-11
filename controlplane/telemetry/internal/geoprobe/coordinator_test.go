@@ -67,105 +67,39 @@ func TestNewCoordinator_WithInitialProbes(t *testing.T) {
 	assert.Len(t, coordinator.probes, 2)
 }
 
-func TestNewCoordinator_NilConfig(t *testing.T) {
+func TestNewCoordinator_ValidationErrors(t *testing.T) {
 	t.Parallel()
 
-	coordinator, err := NewCoordinator(nil)
+	tests := []struct {
+		name    string
+		modify  func(*CoordinatorConfig)
+		wantErr string
+	}{
+		{"nil config", func(_ *CoordinatorConfig) {}, "config is required"},
+		{"nil logger", func(c *CoordinatorConfig) { c.Logger = nil }, "logger is required"},
+		{"zero interval", func(c *CoordinatorConfig) { c.Interval = 0 }, "interval must be greater than 0"},
+		{"zero probe timeout", func(c *CoordinatorConfig) { c.ProbeTimeout = 0 }, "probe timeout must be greater than 0"},
+		{"nil keypair", func(c *CoordinatorConfig) { c.Keypair = nil }, "keypair is required"},
+		{"zero device pk", func(c *CoordinatorConfig) { c.LocalDevicePK = solana.PublicKey{} }, "local device pubkey is required"},
+		{"nil serviceability", func(c *CoordinatorConfig) { c.ServiceabilityClient = nil }, "serviceability client is required"},
+		{"nil rpc client", func(c *CoordinatorConfig) { c.RPCClient = nil }, "rpc client is required"},
+	}
 
-	assert.Error(t, err)
-	assert.Nil(t, coordinator)
-	assert.Contains(t, err.Error(), "config is required")
-}
-
-func TestNewCoordinator_NilLogger(t *testing.T) {
-	t.Parallel()
-
-	cfg := newTestCoordinatorConfig()
-	cfg.Logger = nil
-
-	coordinator, err := NewCoordinator(cfg)
-
-	assert.Error(t, err)
-	assert.Nil(t, coordinator)
-	assert.Contains(t, err.Error(), "logger is required")
-}
-
-func TestNewCoordinator_ZeroInterval(t *testing.T) {
-	t.Parallel()
-
-	cfg := newTestCoordinatorConfig()
-	cfg.Interval = 0
-
-	coordinator, err := NewCoordinator(cfg)
-
-	assert.Error(t, err)
-	assert.Nil(t, coordinator)
-	assert.Contains(t, err.Error(), "interval must be greater than 0")
-}
-
-func TestNewCoordinator_ZeroProbeTimeout(t *testing.T) {
-	t.Parallel()
-
-	cfg := newTestCoordinatorConfig()
-	cfg.ProbeTimeout = 0
-
-	coordinator, err := NewCoordinator(cfg)
-
-	assert.Error(t, err)
-	assert.Nil(t, coordinator)
-	assert.Contains(t, err.Error(), "probe timeout must be greater than 0")
-}
-
-func TestNewCoordinator_NilKeypair(t *testing.T) {
-	t.Parallel()
-
-	cfg := newTestCoordinatorConfig()
-	cfg.Keypair = nil
-
-	coordinator, err := NewCoordinator(cfg)
-
-	assert.Error(t, err)
-	assert.Nil(t, coordinator)
-	assert.Contains(t, err.Error(), "keypair is required")
-}
-
-func TestNewCoordinator_ZeroLocalDevicePK(t *testing.T) {
-	t.Parallel()
-
-	cfg := newTestCoordinatorConfig()
-	cfg.LocalDevicePK = solana.PublicKey{}
-
-	coordinator, err := NewCoordinator(cfg)
-
-	assert.Error(t, err)
-	assert.Nil(t, coordinator)
-	assert.Contains(t, err.Error(), "local device pubkey is required")
-}
-
-func TestNewCoordinator_NilServiceabilityClient(t *testing.T) {
-	t.Parallel()
-
-	cfg := newTestCoordinatorConfig()
-	cfg.ServiceabilityClient = nil
-
-	coordinator, err := NewCoordinator(cfg)
-
-	assert.Error(t, err)
-	assert.Nil(t, coordinator)
-	assert.Contains(t, err.Error(), "serviceability client is required")
-}
-
-func TestNewCoordinator_NilRPCClient(t *testing.T) {
-	t.Parallel()
-
-	cfg := newTestCoordinatorConfig()
-	cfg.RPCClient = nil
-
-	coordinator, err := NewCoordinator(cfg)
-
-	assert.Error(t, err)
-	assert.Nil(t, coordinator)
-	assert.Contains(t, err.Error(), "rpc client is required")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var cfg *CoordinatorConfig
+			if tt.name == "nil config" {
+				cfg = nil
+			} else {
+				cfg = newTestCoordinatorConfig()
+				tt.modify(cfg)
+			}
+			coordinator, err := NewCoordinator(cfg)
+			assert.Error(t, err)
+			assert.Nil(t, coordinator)
+			assert.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
 }
 
 func TestCoordinator_HandleProbeUpdate_Add(t *testing.T) {

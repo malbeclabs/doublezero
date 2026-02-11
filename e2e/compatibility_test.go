@@ -52,14 +52,14 @@ var knownIncompatibilities = map[string]string{
 	// All multicast operations that depend on multicast_group_create. When the group
 	// can't be created (< 0.8.1), these all fail with "MulticastGroup not found".
 	"write/multicast_group_wait_activated":       "0.8.1",
-	"write/multicast_group_update":              "0.8.1",
+	"write/multicast_group_update":               "0.8.1",
 	"write/multicast_group_pub_allowlist_add":    "0.8.1",
 	"write/multicast_group_pub_allowlist_remove": "0.8.1",
 	"write/multicast_group_sub_allowlist_add":    "0.8.1",
-	"write/user_subscribe":                      "0.8.1",
+	"write/user_subscribe":                       "0.8.1",
 	"write/multicast_group_sub_allowlist_remove": "0.8.1",
-	"write/multicast_group_get":                 "0.8.1",
-	"write/multicast_group_delete":              "0.8.1",
+	"write/multicast_group_get":                  "0.8.1",
+	"write/multicast_group_delete":               "0.8.1",
 
 	// set-health commands: Added in v0.8.6 as part of Network Provisioning.
 	// Older CLIs don't have these subcommands.
@@ -844,8 +844,8 @@ func runWriteWorkflows(
 	// device2: 45.133.<10+vi>.128/30 → valid host IPs are .129 and .130
 	// user1 is multicast user on device2 (will be banned, can't delete → device2 stuck)
 	// user2 is non-multicast user on device1 (normal delete → device1 can be cleaned up)
-	userClientIP := fmt.Sprintf("45.133.%d.129", 10+vi)  // device2: multicast user (banned, can't delete)
-	user2ClientIP := fmt.Sprintf("45.133.%d.1", 10+vi)   // device1: non-multicast user (normal delete)
+	userClientIP := fmt.Sprintf("45.133.%d.129", 10+vi) // device2: multicast user (banned, can't delete)
+	user2ClientIP := fmt.Sprintf("45.133.%d.1", 10+vi)  // device1: non-multicast user (normal delete)
 
 	// dumpDiagnostics logs the current onchain state for debugging failed steps.
 	// Uses fmt.Println to preserve newlines in output (structured logging escapes them).

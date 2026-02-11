@@ -57,10 +57,10 @@ func TestConfig_Validate_GeoprobeFields(t *testing.T) {
 		{
 			name: "valid config without geoprobe",
 			config: Config{
-				Reflector:             &mockReflector{},
-				PeerDiscovery:         &mockPeerDiscovery{},
+				Reflector:              &mockReflector{},
+				PeerDiscovery:          &mockPeerDiscovery{},
 				TelemetryProgramClient: &mockTelemetryProgramClient{},
-				Keypair:               keypair,
+				Keypair:                keypair,
 			},
 			expectError: "",
 		},

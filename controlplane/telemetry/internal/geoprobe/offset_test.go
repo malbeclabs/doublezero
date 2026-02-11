@@ -103,72 +103,6 @@ func TestLocationOffset_WithReferences(t *testing.T) {
 	require.Equal(t, dzdOffset.NumReferences, decoded.References[0].NumReferences)
 }
 
-func TestLocationOffset_MultiLevelReferences(t *testing.T) {
-	t.Parallel()
-
-	// Create a 3-level chain: DZD -> Probe1 -> Probe2
-	dzdOffset := &LocationOffset{
-		Signature:       [64]byte{1},
-		Pubkey:          [32]byte{1},
-		MeasurementSlot: 100,
-		MeasuredRttNs:   500000,
-		Lat:             52.3676,
-		Lng:             4.9041,
-		RttNs:           500000,
-		NumReferences:   0,
-		References:      nil,
-	}
-
-	probe1Offset := &LocationOffset{
-		Signature:       [64]byte{2},
-		Pubkey:          [32]byte{2},
-		MeasurementSlot: 101,
-		MeasuredRttNs:   1000000,
-		Lat:             52.3676,
-		Lng:             4.9041,
-		RttNs:           1500000, // 500000 + 1000000
-		NumReferences:   1,
-		References:      []LocationOffset{*dzdOffset},
-	}
-
-	probe2Offset := &LocationOffset{
-		Signature:       [64]byte{3},
-		Pubkey:          [32]byte{3},
-		MeasurementSlot: 102,
-		MeasuredRttNs:   2000000,
-		Lat:             52.3676,
-		Lng:             4.9041,
-		RttNs:           3500000, // 1500000 + 2000000
-		NumReferences:   1,
-		References:      []LocationOffset{*probe1Offset},
-	}
-
-	// Marshal the deepest offset
-	data, err := probe2Offset.Marshal()
-	require.NoError(t, err)
-
-	// Unmarshal back
-	decoded := &LocationOffset{}
-	err = decoded.Unmarshal(data)
-	require.NoError(t, err)
-
-	// Verify the chain
-	require.Equal(t, uint8(1), decoded.NumReferences)
-	require.Len(t, decoded.References, 1)
-
-	// Check probe1 reference
-	probe1 := decoded.References[0]
-	require.Equal(t, probe1Offset.Pubkey, probe1.Pubkey)
-	require.Equal(t, uint8(1), probe1.NumReferences)
-	require.Len(t, probe1.References, 1)
-
-	// Check DZD reference
-	dzd := probe1.References[0]
-	require.Equal(t, dzdOffset.Pubkey, dzd.Pubkey)
-	require.Equal(t, uint8(0), dzd.NumReferences)
-	require.Len(t, dzd.References, 0)
-}
-
 func TestLocationOffset_EmptyReferences(t *testing.T) {
 	t.Parallel()
 
@@ -319,7 +253,7 @@ func TestLocationOffset_Size(t *testing.T) {
 func TestLocationOffset_ReferenceDepthLimit(t *testing.T) {
 	t.Parallel()
 
-	// Create a chain that exceeds MaxReferenceDepth (5)
+	// Create a chain that exceeds MaxReferenceDepth (2)
 	current := &LocationOffset{
 		Signature:       [64]byte{0},
 		Pubkey:          [32]byte{0},
@@ -332,8 +266,8 @@ func TestLocationOffset_ReferenceDepthLimit(t *testing.T) {
 		References:      nil,
 	}
 
-	// Build a chain of depth 6 (exceeding limit of 5)
-	for i := 1; i <= 6; i++ {
+	// Build a chain of depth 3 (exceeding limit of 2)
+	for i := 1; i <= 3; i++ {
 		parent := &LocationOffset{
 			Signature:       [64]byte{byte(i)},
 			Pubkey:          [32]byte{byte(i)},
@@ -363,12 +297,12 @@ func TestLocationOffset_ReferenceDepthLimit(t *testing.T) {
 func TestLocationOffset_TotalReferencesLimit(t *testing.T) {
 	t.Parallel()
 
-	// Create a wide tree structure that exceeds MaxTotalReferences (20)
-	// Build a 3-level tree: root with 10 children, each child has 2 children = 1 + 10 + 20 = 31 total refs
+	// Create a wide tree structure that exceeds MaxTotalReferences (5)
+	// Root with 3 children, each child has 1 child = 3 + 3 = 6 total refs
 
-	// Level 2 (leaf nodes)
-	leafOffsets := make([]LocationOffset, 20)
-	for i := 0; i < 20; i++ {
+	// Leaf nodes
+	leafOffsets := make([]LocationOffset, 3)
+	for i := 0; i < 3; i++ {
 		leafOffsets[i] = LocationOffset{
 			Signature:       [64]byte{byte(i)},
 			Pubkey:          [32]byte{byte(i)},
@@ -382,9 +316,9 @@ func TestLocationOffset_TotalReferencesLimit(t *testing.T) {
 		}
 	}
 
-	// Level 1 (middle nodes, each referencing 2 leaf nodes)
-	midOffsets := make([]LocationOffset, 10)
-	for i := 0; i < 10; i++ {
+	// Middle nodes, each referencing 1 leaf
+	midOffsets := make([]LocationOffset, 3)
+	for i := 0; i < 3; i++ {
 		midOffsets[i] = LocationOffset{
 			Signature:       [64]byte{byte(100 + i)},
 			Pubkey:          [32]byte{byte(100 + i)},
@@ -393,12 +327,12 @@ func TestLocationOffset_TotalReferencesLimit(t *testing.T) {
 			Lat:             1.0,
 			Lng:             2.0,
 			RttNs:           300,
-			NumReferences:   2,
-			References:      []LocationOffset{leafOffsets[i*2], leafOffsets[i*2+1]},
+			NumReferences:   1,
+			References:      []LocationOffset{leafOffsets[i]},
 		}
 	}
 
-	// Level 0 (root node referencing all 10 middle nodes)
+	// Root node referencing all 3 middle nodes (total refs = 3 + 3 = 6, exceeds limit of 5)
 	rootOffset := &LocationOffset{
 		Signature:       [64]byte{200},
 		Pubkey:          [32]byte{200},
@@ -407,11 +341,11 @@ func TestLocationOffset_TotalReferencesLimit(t *testing.T) {
 		Lat:             1.0,
 		Lng:             2.0,
 		RttNs:           600,
-		NumReferences:   10,
+		NumReferences:   3,
 		References:      midOffsets,
 	}
 
-	// Marshal the root (includes all 30 references)
+	// Marshal the root
 	data, err := rootOffset.Marshal()
 	require.NoError(t, err)
 
@@ -426,7 +360,7 @@ func TestLocationOffset_TotalReferencesLimit(t *testing.T) {
 func TestLocationOffset_ValidReferenceLimits(t *testing.T) {
 	t.Parallel()
 
-	// Create a chain at exactly the depth limit (5)
+	// Create a chain at exactly the depth limit (2)
 	current := &LocationOffset{
 		Signature:       [64]byte{0},
 		Pubkey:          [32]byte{0},
@@ -439,8 +373,8 @@ func TestLocationOffset_ValidReferenceLimits(t *testing.T) {
 		References:      nil,
 	}
 
-	// Build a chain of depth 5 (at the limit)
-	for i := 1; i <= 5; i++ {
+	// Build a chain of depth 2 (at the limit)
+	for i := 1; i <= 2; i++ {
 		parent := &LocationOffset{
 			Signature:       [64]byte{byte(i)},
 			Pubkey:          [32]byte{byte(i)},
@@ -470,7 +404,7 @@ func TestLocationOffset_ValidReferenceLimits(t *testing.T) {
 		depth++
 		ptr = &ptr.References[0]
 	}
-	require.Equal(t, 5, depth)
+	require.Equal(t, 2, depth)
 }
 
 func TestLocationOffset_CountTotalReferences(t *testing.T) {

@@ -1,7 +1,6 @@
 package geoprobe
 
 import (
-	"bytes"
 	"fmt"
 
 	"github.com/gagliardetto/solana-go"
@@ -77,15 +76,4 @@ func VerifyOffsetChain(offset *LocationOffset) error {
 
 func (s *OffsetSigner) GetPublicKey() solana.PublicKey {
 	return s.keypair.PublicKey()
-}
-
-// TamperOffset modifies an offset's data without updating the signature.
-// This is used for testing signature verification failure paths.
-// DO NOT USE IN PRODUCTION CODE.
-func TamperOffset(offset *LocationOffset) {
-	offset.MeasuredRttNs = offset.MeasuredRttNs + 1
-}
-
-func OffsetSignaturesEqual(a, b *LocationOffset) bool {
-	return bytes.Equal(a.Signature[:], b.Signature[:])
 }

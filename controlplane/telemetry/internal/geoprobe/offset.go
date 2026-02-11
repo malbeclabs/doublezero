@@ -8,8 +8,8 @@ import (
 )
 
 const (
-	MaxReferenceDepth    = 5
-	MaxTotalReferences   = 20
+	MaxReferenceDepth  = 2
+	MaxTotalReferences = 5
 )
 
 // LocationOffset represents a signed data structure that describes the latency

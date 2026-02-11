@@ -1,6 +1,7 @@
 package geoprobe
 
 import (
+	"bytes"
 	"context"
 	"sync"
 
@@ -132,4 +133,13 @@ func (m *mockRPCClient) setError(err error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.err = err
+}
+
+// tamperOffset modifies an offset's data without updating the signature.
+func tamperOffset(offset *LocationOffset) {
+	offset.MeasuredRttNs = offset.MeasuredRttNs + 1
+}
+
+func offsetSignaturesEqual(a, b *LocationOffset) bool {
+	return bytes.Equal(a.Signature[:], b.Signature[:])
 }

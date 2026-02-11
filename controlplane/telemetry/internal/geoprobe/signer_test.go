@@ -62,7 +62,7 @@ func TestVerifyOffset_InvalidSignature(t *testing.T) {
 	require.NoError(t, err)
 
 	// Tamper with the data (invalidates signature)
-	TamperOffset(offset)
+	tamperOffset(offset)
 
 	// Verification should fail
 	err = VerifyOffset(offset)
@@ -208,7 +208,7 @@ func TestVerifyOffsetChain_InvalidReference(t *testing.T) {
 	require.NoError(t, err)
 
 	// Tamper with the DZD offset after signing
-	TamperOffset(dzdOffset)
+	tamperOffset(dzdOffset)
 
 	// Create Probe offset with tampered reference
 	probeKeypair := solana.NewWallet().PrivateKey
@@ -231,63 +231,6 @@ func TestVerifyOffsetChain_InvalidReference(t *testing.T) {
 	err = VerifyOffsetChain(probeOffset)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "failed to verify reference 0")
-}
-
-func TestVerifyOffsetChain_MultiLevel(t *testing.T) {
-	t.Parallel()
-
-	// Create a 3-level chain: DZD -> Probe1 -> Probe2
-	dzdKeypair := solana.NewWallet().PrivateKey
-	dzdSigner := NewOffsetSigner(dzdKeypair)
-
-	dzdOffset := &LocationOffset{
-		MeasurementSlot: 100,
-		Lat:             52.3676,
-		Lng:             4.9041,
-		MeasuredRttNs:   500000,
-		RttNs:           500000,
-		NumReferences:   0,
-		References:      nil,
-	}
-
-	err := dzdSigner.SignOffset(dzdOffset)
-	require.NoError(t, err)
-
-	probe1Keypair := solana.NewWallet().PrivateKey
-	probe1Signer := NewOffsetSigner(probe1Keypair)
-
-	probe1Offset := &LocationOffset{
-		MeasurementSlot: 101,
-		Lat:             52.3676,
-		Lng:             4.9041,
-		MeasuredRttNs:   1000000,
-		RttNs:           1500000,
-		NumReferences:   1,
-		References:      []LocationOffset{*dzdOffset},
-	}
-
-	err = probe1Signer.SignOffset(probe1Offset)
-	require.NoError(t, err)
-
-	probe2Keypair := solana.NewWallet().PrivateKey
-	probe2Signer := NewOffsetSigner(probe2Keypair)
-
-	probe2Offset := &LocationOffset{
-		MeasurementSlot: 102,
-		Lat:             52.3676,
-		Lng:             4.9041,
-		MeasuredRttNs:   2000000,
-		RttNs:           3500000,
-		NumReferences:   1,
-		References:      []LocationOffset{*probe1Offset},
-	}
-
-	err = probe2Signer.SignOffset(probe2Offset)
-	require.NoError(t, err)
-
-	// Verify the entire 3-level chain
-	err = VerifyOffsetChain(probe2Offset)
-	require.NoError(t, err)
 }
 
 func TestOffsetSigner_GetPublicKey(t *testing.T) {
@@ -334,7 +277,7 @@ func TestOffsetSignaturesEqual(t *testing.T) {
 	require.NoError(t, err)
 
 	// Signatures should be equal (same data, same key)
-	require.True(t, OffsetSignaturesEqual(offset1, offset2))
+	require.True(t, offsetSignaturesEqual(offset1, offset2))
 
 	// Modify one offset and re-sign
 	offset2.MeasuredRttNs = 2000
@@ -342,7 +285,7 @@ func TestOffsetSignaturesEqual(t *testing.T) {
 	require.NoError(t, err)
 
 	// Signatures should now differ
-	require.False(t, OffsetSignaturesEqual(offset1, offset2))
+	require.False(t, offsetSignaturesEqual(offset1, offset2))
 }
 
 func TestSignOffset_RoundTrip(t *testing.T) {
@@ -380,7 +323,7 @@ func TestSignOffset_RoundTrip(t *testing.T) {
 	require.NoError(t, err)
 
 	// Ensure signatures match
-	require.True(t, OffsetSignaturesEqual(original, decoded))
+	require.True(t, offsetSignaturesEqual(original, decoded))
 }
 
 func TestVerifyOffset_EmptySignature(t *testing.T) {

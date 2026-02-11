@@ -19,7 +19,7 @@ All notable changes to this project will be documented in this file.
 ### Changes
 
 - Telemetry
-  - geoprobe: add LocationOffset type with Ed25519 signing/verification and UDP transport for geolocation verification measurements (#2898)
+  - extend device telemetry agent to measure RTT to child geoProbes via TWAMP, generate signed LocationOffset structures, and deliver them via UDP as per rfcs/rfc16-geolocation-verification.md
 - Onchain programs
   - feat(smartcontract): add payment_status, token_account fields and UpdatePaymentStatus instruction ([#2880](https://github.com/malbeclabs/doublezero/pull/2880))
   - fix(smartcontract): correctly ser/deser ops_manager_pk ([#2887](https://github.com/malbeclabs/doublezero/pull/2887))

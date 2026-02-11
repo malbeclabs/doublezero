@@ -10,6 +10,14 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+## [v0.8.7](https://github.com/malbeclabs/doublezero/compare/client/v0.8.6...client/v0.8.7) – 2026-02-10
+
+### Breaking
+
+- None for this release
+
+### Changes
+
 - Telemetry
   - geoprobe: add LocationOffset type with Ed25519 signing/verification and UDP transport for geolocation verification measurements (#2898)
 - Onchain programs

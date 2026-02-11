@@ -415,11 +415,16 @@ mod tests {
         },
     };
     use doublezero_sdk::{
-        AccountType, Device, DeviceStatus, DeviceType, Exchange, ExchangeStatus, Location, LocationStatus, MulticastGroup, MulticastGroupStatus, Tenant, User, UserCYOA, UserStatus, UserType
+        AccountType, Device, DeviceStatus, DeviceType, Exchange, ExchangeStatus, Location,
+        LocationStatus, MulticastGroup, MulticastGroupStatus, Tenant, User, UserCYOA, UserStatus,
+        UserType,
     };
     use doublezero_serviceability::{
         pda::get_accesspass_pda,
-        state::{accesspass::{AccessPass, AccessPassStatus, AccessPassType}, tenant::TenantPaymentStatus},
+        state::{
+            accesspass::{AccessPass, AccessPassStatus, AccessPassType},
+            tenant::TenantPaymentStatus,
+        },
     };
     use solana_sdk::pubkey::Pubkey;
 

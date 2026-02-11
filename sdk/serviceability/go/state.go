@@ -23,6 +23,7 @@ const (
 	ContributorType       AccountType = 10
 	AccessPassType        AccountType = 11
 	ResourceExtensionType AccountType = 12
+	TenantType            AccountType = 13
 )
 
 type LocationStatus uint8
@@ -997,4 +998,68 @@ func (r ResourceExtension) MarshalJSON() ([]byte, error) {
 	}
 
 	return json.Marshal(jsonExt)
+}
+
+type TenantPaymentStatus uint8
+
+const (
+	TenantPaymentStatusDelinquent TenantPaymentStatus = iota
+	TenantPaymentStatusPaid
+)
+
+func (s TenantPaymentStatus) String() string {
+	return [...]string{
+		"delinquent",
+		"paid",
+	}[s]
+}
+
+func (s TenantPaymentStatus) MarshalJSON() ([]byte, error) {
+	return json.Marshal(s.String())
+}
+
+type Tenant struct {
+	AccountType                 AccountType
+	Owner                       [32]uint8 `influx:"tag,owner,pubkey"`
+	BumpSeed                    uint8     `influx:"-"`
+	Code                        string    `influx:"tag,code"`
+	VrfId                       uint16    `influx:"field,vrf_id"`
+	ReferenceCount              uint32    `influx:"field,reference_count"`
+	Administrators              [][32]byte
+	PaymentStatus               TenantPaymentStatus `influx:"tag,payment_status"`
+	TokenAccount                [32]byte            `influx:"tag,token_account,pubkey"`
+	MetroRouting                bool                `influx:"field,metro_routing"`
+	RouteLiveness               bool                `influx:"field,route_liveness"`
+	BillingDiscriminant         uint8               `influx:"-"`
+	BillingRate                 uint64              `influx:"field,billing_rate"`
+	BillingLastDeductionDzEpoch uint64              `influx:"field,billing_last_deduction_dz_epoch"`
+	PubKey                      [32]byte            `influx:"tag,pubkey,pubkey"`
+}
+
+func (t Tenant) MarshalJSON() ([]byte, error) {
+	type TenantAlias Tenant
+
+	adminStrings := make([]string, len(t.Administrators))
+	for i, admin := range t.Administrators {
+		adminStrings[i] = base58.Encode(admin[:])
+	}
+
+	jsonTenant := &struct {
+		TenantAlias
+		Owner          string   `json:"Owner"`
+		PubKey         string   `json:"PubKey"`
+		Administrators []string `json:"Administrators"`
+		PaymentStatus  string   `json:"PaymentStatus"`
+		TokenAccount   string   `json:"TokenAccount"`
+	}{
+		TenantAlias:    TenantAlias(t),
+		Administrators: adminStrings,
+	}
+
+	jsonTenant.Owner = base58.Encode(t.Owner[:])
+	jsonTenant.PubKey = base58.Encode(t.PubKey[:])
+	jsonTenant.PaymentStatus = t.PaymentStatus.String()
+	jsonTenant.TokenAccount = base58.Encode(t.TokenAccount[:])
+
+	return json.Marshal(jsonTenant)
 }

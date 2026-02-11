@@ -18,5 +18,6 @@
   "UserStatus": {"0": "pending", "1": "activated", "3": "deleting", "4": "rejected", "5": "pending_ban", "6": "banned", "7": "updating", "8": "out_of_credits", "99": "unknown"},
   "MulticastGroupStatus": {"0": "pending", "1": "activated", "2": "suspended", "3": "deleting", "4": "rejected", "99": "unknown"},
   "AccessPassTypeTag": {"0": "prepaid", "1": "solana_validator", "2": "solana_rpc", "3": "solana_multicast_publisher", "4": "solana_multicast_subscriber", "5": "others", "99": "unknown"},
-  "AccessPassStatus": {"0": "requested", "1": "connected", "2": "disconnected", "3": "expired", "99": "unknown"}
+  "AccessPassStatus": {"0": "requested", "1": "connected", "2": "disconnected", "3": "expired", "99": "unknown"},
+  "TenantPaymentStatus": {"0": "delinquent", "1": "paid"}
 }

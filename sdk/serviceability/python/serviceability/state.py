@@ -802,6 +802,15 @@ class Contributor:
         return c
 
 
+class TenantPaymentStatus(IntEnum):
+    DELINQUENT = 0
+    PAID = 1
+
+    def __str__(self) -> str:
+        _names = {0: "delinquent", 1: "paid"}
+        return _names.get(self.value, "unknown")
+
+
 @dataclass
 class Tenant:
     account_type: int = 0
@@ -811,6 +820,13 @@ class Tenant:
     vrf_id: int = 0
     reference_count: int = 0
     administrators: list[Pubkey] = field(default_factory=list)
+    payment_status: int = 0
+    token_account: Pubkey = Pubkey.default()
+    metro_routing: bool = False
+    route_liveness: bool = False
+    billing_discriminant: int = 0
+    billing_rate: int = 0
+    billing_last_deduction_dz_epoch: int = 0
 
     @classmethod
     def from_bytes(cls, data: bytes) -> Tenant:
@@ -823,6 +839,13 @@ class Tenant:
         t.vrf_id = r.read_u16()
         t.reference_count = r.read_u32()
         t.administrators = _read_pubkey_vec(r)
+        t.payment_status = r.read_u8()
+        t.token_account = _read_pubkey(r)
+        t.metro_routing = r.read_u8() != 0
+        t.route_liveness = r.read_u8() != 0
+        t.billing_discriminant = r.read_u8()
+        t.billing_rate = r.read_u64()
+        t.billing_last_deduction_dz_epoch = r.read_u64()
         return t
 
 

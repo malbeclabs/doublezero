@@ -18,6 +18,7 @@ import {
   deserializeProgramConfig,
   deserializeContributor,
   deserializeAccessPass,
+  deserializeTenant,
 } from "../state.js";
 
 const FIXTURES_DIR = join(
@@ -300,6 +301,28 @@ describe("Contributor fixture", () => {
       Status: c.status,
       ReferenceCount: c.referenceCount,
       OpsManagerPk: c.opsManagerPk,
+    });
+  });
+});
+
+describe("Tenant fixture", () => {
+  test("deserialize", () => {
+    const [data, meta] = loadFixture("tenant");
+    const t = deserializeTenant(data);
+    assertFields(meta.fields, {
+      AccountType: t.accountType,
+      Owner: t.owner,
+      BumpSeed: t.bumpSeed,
+      Code: t.code,
+      VrfId: t.vrfId,
+      ReferenceCount: t.referenceCount,
+      PaymentStatus: t.paymentStatus,
+      TokenAccount: t.tokenAccount,
+      MetroRouting: t.metroRouting,
+      RouteLiveness: t.routeLiveness,
+      BillingDiscriminant: t.billingDiscriminant,
+      BillingRate: t.billingRate,
+      BillingLastDeductionDzEpoch: t.billingLastDeductionDzEpoch,
     });
   });
 });

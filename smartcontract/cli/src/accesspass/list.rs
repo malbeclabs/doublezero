@@ -3,6 +3,7 @@ use clap::Args;
 use doublezero_program_common::serializer;
 use doublezero_sdk::commands::{
     accesspass::list::ListAccessPassCommand, multicastgroup::list::ListMulticastGroupCommand,
+    tenant::list::ListTenantCommand,
 };
 use doublezero_serviceability::state::accesspass::{AccessPassStatus, AccessPassType};
 use serde::Serialize;
@@ -27,7 +28,9 @@ pub struct ListAccessPassCliCommand {
     /// User payer public key
     #[arg(long)]
     pub user_payer: Option<Pubkey>,
-
+    /// Tenant code
+    #[arg(long)]
+    pub tenant: Option<String>,
     /// Output as pretty JSON
     #[arg(long, default_value_t = false)]
     pub json: bool,
@@ -44,6 +47,7 @@ pub struct AccessPassDisplay {
     pub client_ip: Ipv4Addr,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub user_payer: Pubkey,
+    pub tenant: String,
     pub multicast: String,
     pub last_access_epoch: String,
     pub remaining_epoch: String,
@@ -59,6 +63,7 @@ impl ListAccessPassCliCommand {
         let epoch = client.get_epoch()?;
 
         let mgroups = client.list_multicastgroup(ListMulticastGroupCommand {})?;
+        let tenants = client.list_tenant(ListTenantCommand {})?;
 
         let binding = client.list_accesspass(ListAccessPassCommand)?;
         let mut access_passes = binding.iter().collect::<Vec<_>>();
@@ -91,6 +96,25 @@ impl ListAccessPassCliCommand {
         if let Some(user_payer) = self.user_payer {
             access_passes.retain(|(_, access_pass)| access_pass.user_payer == user_payer);
         }
+        // Filter access passes by tenant code
+        if let Some(tenant_code) = self.tenant {
+            let search_tenant_pk = tenants
+                .iter()
+                .find_map(|(pk, tenant)| {
+                    if tenant.code == tenant_code {
+                        Some(*pk)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or_default();
+            access_passes.retain(|(_, access_pass)| {
+                access_pass
+                    .tenant_allowlist
+                    .iter()
+                    .any(|tenant_pk| tenant_pk == &search_tenant_pk)
+            });
+        }
 
         let mut access_pass_displays: Vec<AccessPassDisplay> = access_passes
             .into_iter()
@@ -99,6 +123,17 @@ impl ListAccessPassCliCommand {
                 accesspass_type: access_pass.accesspass_type.to_string(),
                 client_ip: access_pass.client_ip,
                 user_payer: access_pass.user_payer,
+                tenant: {
+                    let mut list = vec![];
+                    for tenant_pk in &access_pass.tenant_allowlist {
+                        if let Some(t) = tenants.get(tenant_pk) {
+                            list.push(t.code.clone());
+                        } else {
+                            list.push(tenant_pk.to_string());
+                        }
+                    }
+                    list.join(", ")
+                },
                 multicast: {
                     let mut list = vec![];
                     for mg_pub in &access_pass.mgroup_pub_allowlist {
@@ -244,6 +279,9 @@ mod tests {
             mgroups.insert(mgroup_pubkey, mgroup.clone());
             Ok(mgroups)
         });
+        client
+            .expect_list_tenant()
+            .returning(|_| Ok(std::collections::HashMap::new()));
         client.expect_list_accesspass().returning(move |_| {
             let mut access_passes = HashMap::new();
             access_passes.insert(access1_pubkey, access1.clone());
@@ -257,6 +295,7 @@ mod tests {
             prepaid: false,
             client_ip: None,
             user_payer: None,
+            tenant: None,
             solana_validator: false,
             solana_identity: None,
             json: false,
@@ -265,13 +304,14 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | accesspass_type                                             | client_ip | user_payer                                | multicast | last_access_epoch | remaining_epoch | flags   | connections | status    | owner                                     \n 1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM  | solana_validator: 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | 0.0.0.0   | 1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM  | S:test    | 123               | 113             | dynamic | 0           | connected | 1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM  \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | prepaid                                                     | 1.2.3.4   | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | P:test    | 123               | 113             |         | 0           | connected | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 | prepaid                                                     | 2.3.4.5   | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 | P:test    | 123               | 113             |         | 0           | connected | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 \n");
+        assert_eq!(output_str, " account                                   | accesspass_type                                             | client_ip | user_payer                                | tenant | multicast | last_access_epoch | remaining_epoch | flags   | connections | status    | owner                                     \n 1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM  | solana_validator: 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | 0.0.0.0   | 1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM  |        | S:test    | 123               | 113             | dynamic | 0           | connected | 1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM  \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | prepaid                                                     | 1.2.3.4   | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB |        | P:test    | 123               | 113             |         | 0           | connected | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 | prepaid                                                     | 2.3.4.5   | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 |        | P:test    | 123               | 113             |         | 0           | connected | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 \n");
 
         let mut output = Vec::new();
         let res = ListAccessPassCliCommand {
             prepaid: false,
             solana_validator: false,
             solana_identity: None,
+            tenant: None,
             json: false,
             json_compact: true,
             client_ip: None,
@@ -280,7 +320,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM\",\"accesspass_type\":\"solana_validator: 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"client_ip\":\"0.0.0.0\",\"user_payer\":\"1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM\",\"multicast\":\"S:test\",\"last_access_epoch\":\"123\",\"remaining_epoch\":\"113\",\"flags\":\"dynamic\",\"connections\":0,\"status\":\"Connected\",\"owner\":\"1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM\"},{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"accesspass_type\":\"prepaid\",\"client_ip\":\"1.2.3.4\",\"user_payer\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"multicast\":\"P:test\",\"last_access_epoch\":\"123\",\"remaining_epoch\":\"113\",\"flags\":\"\",\"connections\":0,\"status\":\"Connected\",\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"},{\"account\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"accesspass_type\":\"prepaid\",\"client_ip\":\"2.3.4.5\",\"user_payer\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"multicast\":\"P:test\",\"last_access_epoch\":\"123\",\"remaining_epoch\":\"113\",\"flags\":\"\",\"connections\":0,\"status\":\"Connected\",\"owner\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM\",\"accesspass_type\":\"solana_validator: 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"client_ip\":\"0.0.0.0\",\"user_payer\":\"1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM\",\"tenant\":\"\",\"multicast\":\"S:test\",\"last_access_epoch\":\"123\",\"remaining_epoch\":\"113\",\"flags\":\"dynamic\",\"connections\":0,\"status\":\"Connected\",\"owner\":\"1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM\"},{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"accesspass_type\":\"prepaid\",\"client_ip\":\"1.2.3.4\",\"user_payer\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"tenant\":\"\",\"multicast\":\"P:test\",\"last_access_epoch\":\"123\",\"remaining_epoch\":\"113\",\"flags\":\"\",\"connections\":0,\"status\":\"Connected\",\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"},{\"account\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"accesspass_type\":\"prepaid\",\"client_ip\":\"2.3.4.5\",\"user_payer\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"tenant\":\"\",\"multicast\":\"P:test\",\"last_access_epoch\":\"123\",\"remaining_epoch\":\"113\",\"flags\":\"\",\"connections\":0,\"status\":\"Connected\",\"owner\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\"}]\n");
 
         // Test filtering by client IP
         let mut output = Vec::new();
@@ -291,7 +331,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | accesspass_type | client_ip | user_payer                                | multicast | last_access_epoch | remaining_epoch | flags | connections | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | prepaid         | 1.2.3.4   | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | P:test    | 123               | 113             |       | 0           | connected | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
+        assert_eq!(output_str, " account                                   | accesspass_type | client_ip | user_payer                                | tenant | multicast | last_access_epoch | remaining_epoch | flags | connections | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | prepaid         | 1.2.3.4   | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB |        | P:test    | 123               | 113             |       | 0           | connected | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
 
         // Test filtering by user payer
         let mut output = Vec::new();
@@ -304,6 +344,6 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | accesspass_type | client_ip | user_payer                                | multicast | last_access_epoch | remaining_epoch | flags | connections | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | prepaid         | 1.2.3.4   | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | P:test    | 123               | 113             |       | 0           | connected | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
+        assert_eq!(output_str, " account                                   | accesspass_type | client_ip | user_payer                                | tenant | multicast | last_access_epoch | remaining_epoch | flags | connections | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | prepaid         | 1.2.3.4   | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB |        | P:test    | 123               | 113             |       | 0           | connected | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
     }
 }

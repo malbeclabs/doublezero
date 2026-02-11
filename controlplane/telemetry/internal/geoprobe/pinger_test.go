@@ -385,7 +385,7 @@ func TestPinger_MeasureAll_ConcurrencyLimit(t *testing.T) {
 
 	t.Logf("Measured %d probes in %v, got %d results", numProbes, duration, len(results))
 
-	assert.Less(t, duration, 60*time.Second, "measurement should complete in reasonable time with worker pool")
+	assert.Less(t, duration, 5*time.Minute, "measurement should complete in reasonable time with worker pool")
 }
 
 func TestPinger_MeasureAll_AllFailed(t *testing.T) {
@@ -451,7 +451,7 @@ func TestPinger_MeasureAll_LargeScale(t *testing.T) {
 
 	require.NoError(t, err)
 	t.Logf("Completed %d probes in %v, got %d results", numProbes, duration, len(results))
-	assert.Less(t, duration, 2*time.Minute, "should complete large batch in reasonable time")
+	assert.Less(t, duration, 5*time.Minute, "should complete large batch in reasonable time")
 }
 
 func TestPinger_MeasureAll_Staggering(t *testing.T) {

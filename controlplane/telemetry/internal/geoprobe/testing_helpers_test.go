@@ -94,12 +94,6 @@ func (m *mockServiceabilityClient) setDevicePK(pk solana.PublicKey) {
 	m.devicePK = pk
 }
 
-func (m *mockServiceabilityClient) setLocationPK(pk solana.PublicKey) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.locationPK = pk
-}
-
 type mockRPCClient struct {
 	mu   sync.Mutex
 	slot uint64

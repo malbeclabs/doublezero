@@ -253,6 +253,7 @@ func TestPublisher_GetLatLng_FallbackOnError(t *testing.T) {
 	lat, lng, err := pub.getLatLng(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, 52.3676, lat)
+	assert.Equal(t, 4.9041, lng)
 
 	mockServiceability.setError(errors.New("network error"))
 

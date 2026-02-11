@@ -2,7 +2,9 @@ package telemetry
 
 import (
 	"context"
+	"net"
 	"testing"
+	"time"
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/rpc"
@@ -10,36 +12,59 @@ import (
 
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/geoprobe"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	telemetryprog "github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 )
 
 type mockReflector struct{}
 
-func (m *mockReflector) Start(ctx context.Context) error {
+func (m *mockReflector) Run(ctx context.Context) error {
 	return nil
 }
 
-func (m *mockReflector) Stop() error {
+func (m *mockReflector) Close() error {
 	return nil
+}
+
+func (m *mockReflector) LocalAddr() *net.UDPAddr {
+	return &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0}
 }
 
 type mockPeerDiscovery struct{}
 
-func (m *mockPeerDiscovery) Start(ctx context.Context) error {
+func (m *mockPeerDiscovery) Run(ctx context.Context) error {
 	return nil
 }
 
-func (m *mockPeerDiscovery) Stop() error {
+func (m *mockPeerDiscovery) GetPeers() []*Peer {
 	return nil
 }
 
 type mockTelemetryProgramClient struct{}
 
-func (m *mockTelemetryProgramClient) Start(ctx context.Context) error {
-	return nil
+func (m *mockTelemetryProgramClient) InitializeDeviceLatencySamples(ctx context.Context, config telemetryprog.InitializeDeviceLatencySamplesInstructionConfig) (solana.Signature, *rpc.GetTransactionResult, error) {
+	return solana.Signature{}, nil, nil
 }
 
-func (m *mockTelemetryProgramClient) Stop() error {
-	return nil
+func (m *mockTelemetryProgramClient) WriteDeviceLatencySamples(ctx context.Context, config telemetryprog.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *rpc.GetTransactionResult, error) {
+	return solana.Signature{}, nil, nil
+}
+
+func validBaseConfig(keypair solana.PrivateKey) Config {
+	return Config{
+		TWAMPReflector:          &mockReflector{},
+		PeerDiscovery:           &mockPeerDiscovery{},
+		TelemetryProgramClient:  &mockTelemetryProgramClient{},
+		LocalDevicePK:           solana.NewWallet().PublicKey(),
+		ProbeInterval:           10 * time.Second,
+		SubmissionInterval:      30 * time.Second,
+		TWAMPSenderTimeout:      5 * time.Second,
+		SenderTTL:               60 * time.Second,
+		SubmitterMaxConcurrency: 4,
+		GetCurrentEpochFunc: func(ctx context.Context) (uint64, error) {
+			return 1, nil
+		},
+		Keypair: keypair,
+	}
 }
 
 func TestConfig_Validate_GeoprobeFields(t *testing.T) {
@@ -51,65 +76,46 @@ func TestConfig_Validate_GeoprobeFields(t *testing.T) {
 
 	testCases := []struct {
 		name        string
-		config      Config
+		modify      func(*Config)
 		expectError string
 	}{
 		{
-			name: "valid config without geoprobe",
-			config: Config{
-				Reflector:              &mockReflector{},
-				PeerDiscovery:          &mockPeerDiscovery{},
-				TelemetryProgramClient: &mockTelemetryProgramClient{},
-				Keypair:                keypair,
-			},
+			name:        "valid config without geoprobe",
+			modify:      func(c *Config) {},
 			expectError: "",
 		},
 		{
 			name: "valid config with geoprobe",
-			config: Config{
-				Reflector:                   &mockReflector{},
-				PeerDiscovery:               &mockPeerDiscovery{},
-				TelemetryProgramClient:      &mockTelemetryProgramClient{},
-				Keypair:                     keypair,
-				InitialChildGeoProbes:       []geoprobe.Address{{Host: "192.0.2.1", Port: 8080}},
-				ServiceabilityProgramClient: serviceabilityClient,
-				RPCClient:                   rpcClient,
+			modify: func(c *Config) {
+				c.InitialChildGeoProbes = []geoprobe.ProbeAddress{{Host: "192.0.2.1", Port: 8080}}
+				c.ServiceabilityProgramClient = serviceabilityClient
+				c.RPCClient = rpcClient
 			},
 			expectError: "",
 		},
 		{
 			name: "geoprobe enabled but missing serviceability client",
-			config: Config{
-				Reflector:              &mockReflector{},
-				PeerDiscovery:          &mockPeerDiscovery{},
-				TelemetryProgramClient: &mockTelemetryProgramClient{},
-				Keypair:                keypair,
-				InitialChildGeoProbes:  []geoprobe.Address{{Host: "192.0.2.1", Port: 8080}},
-				RPCClient:              rpcClient,
+			modify: func(c *Config) {
+				c.InitialChildGeoProbes = []geoprobe.ProbeAddress{{Host: "192.0.2.1", Port: 8080}}
+				c.RPCClient = rpcClient
 			},
 			expectError: "serviceability client is required when geoprobe is enabled",
 		},
 		{
 			name: "geoprobe enabled but missing rpc client",
-			config: Config{
-				Reflector:                   &mockReflector{},
-				PeerDiscovery:               &mockPeerDiscovery{},
-				TelemetryProgramClient:      &mockTelemetryProgramClient{},
-				Keypair:                     keypair,
-				InitialChildGeoProbes:       []geoprobe.Address{{Host: "192.0.2.1", Port: 8080}},
-				ServiceabilityProgramClient: serviceabilityClient,
+			modify: func(c *Config) {
+				c.InitialChildGeoProbes = []geoprobe.ProbeAddress{{Host: "192.0.2.1", Port: 8080}}
+				c.ServiceabilityProgramClient = serviceabilityClient
 			},
 			expectError: "rpc client is required when geoprobe is enabled",
 		},
 		{
 			name: "geoprobe enabled but missing keypair",
-			config: Config{
-				Reflector:                   &mockReflector{},
-				PeerDiscovery:               &mockPeerDiscovery{},
-				TelemetryProgramClient:      &mockTelemetryProgramClient{},
-				InitialChildGeoProbes:       []geoprobe.Address{{Host: "192.0.2.1", Port: 8080}},
-				ServiceabilityProgramClient: serviceabilityClient,
-				RPCClient:                   rpcClient,
+			modify: func(c *Config) {
+				c.InitialChildGeoProbes = []geoprobe.ProbeAddress{{Host: "192.0.2.1", Port: 8080}}
+				c.ServiceabilityProgramClient = serviceabilityClient
+				c.RPCClient = rpcClient
+				c.Keypair = nil
 			},
 			expectError: "keypair is required when geoprobe is enabled",
 		},
@@ -117,7 +123,9 @@ func TestConfig_Validate_GeoprobeFields(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := tc.config.Validate()
+			cfg := validBaseConfig(keypair)
+			tc.modify(&cfg)
+			err := cfg.Validate()
 			if tc.expectError == "" {
 				require.NoError(t, err)
 			} else {

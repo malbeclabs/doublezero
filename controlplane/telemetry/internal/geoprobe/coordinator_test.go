@@ -375,11 +375,12 @@ func TestCoordinator_Run_MultipleProbeUpdates(t *testing.T) {
 
 	cfg := newTestCoordinatorConfig()
 	cfg.ProbeUpdateCh = make(chan []ProbeAddress, 10)
+	cfg.Interval = 10 * time.Second // avoid measurement cycles interfering with update processing
 	coordinator, err := NewCoordinator(cfg)
 	require.NoError(t, err)
 	require.NotNil(t, coordinator)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
 
 	go func() {

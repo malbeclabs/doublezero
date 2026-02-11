@@ -1,37 +1,16 @@
 use chrono::DateTime;
 use doublezero_config::Environment;
 use eyre::eyre;
-use http::StatusCode;
 use http_body_util::{BodyExt, Empty, Full};
 use hyper::{body::Bytes, Method, Request};
 use hyper_util::{client::legacy::Client, rt::TokioExecutor};
 use hyperlocal::{UnixConnector, Uri};
 use mockall::automock;
 use serde::{Deserialize, Serialize};
-use std::{fmt, fs::File, net::Ipv4Addr, path::Path};
+use std::{fmt, fs::File, path::Path};
 use tabled::{derive::display, Tabled};
 
 const NANOS_TO_MS: f32 = 1000000.0;
-
-#[derive(Serialize, Debug, PartialEq)]
-pub struct ProvisioningRequest {
-    pub tunnel_src: String,
-    pub tunnel_dst: String,
-    pub tunnel_net: String,
-    pub doublezero_ip: String,
-    pub doublezero_prefixes: Vec<String>,
-    pub bgp_local_asn: Option<u32>,
-    pub bgp_remote_asn: Option<u32>,
-    pub user_type: String,
-    pub mcast_pub_groups: Option<Vec<String>>,
-    pub mcast_sub_groups: Option<Vec<String>>,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct ProvisioningResponse {
-    pub status: String,
-    pub description: Option<String>,
-}
 
 #[derive(Clone, Tabled, Deserialize, Serialize, Debug)]
 pub struct LatencyRecord {
@@ -68,17 +47,6 @@ impl fmt::Display for LatencyRecord {
             self.reachable
         )
     }
-}
-
-#[derive(Serialize, Debug)]
-pub struct RemoveTunnelCliCommand {
-    pub user_type: String,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct RemoveResponse {
-    pub status: String,
-    pub description: Option<String>,
 }
 
 #[derive(Tabled, Serialize, Deserialize, Debug, Clone)]
@@ -139,27 +107,6 @@ impl fmt::Display for RouteRecord {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct ResolveRouteRequest {
-    pub dst: Ipv4Addr,
-}
-impl fmt::Display for ResolveRouteRequest {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "dst: {}", self.dst)
-    }
-}
-
-#[derive(Deserialize, Debug)]
-pub struct ResolveRouteResponse {
-    pub src: Option<Ipv4Addr>,
-}
-
-impl fmt::Display for ResolveRouteResponse {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "src: {:?}", self.src)
-    }
-}
-
 fn maybe_i64_to_dt_str(maybe_i64_dt: &Option<i64>) -> String {
     maybe_i64_dt.as_ref().map_or_else(
         || "no session data".to_string(),
@@ -184,11 +131,8 @@ pub trait ServiceController {
     async fn get_config(&self) -> eyre::Result<GetConfigResponse>;
     async fn get_env(&self) -> eyre::Result<Environment>;
     async fn latency(&self) -> eyre::Result<Vec<LatencyRecord>>;
-    async fn provisioning(&self, args: ProvisioningRequest) -> eyre::Result<ProvisioningResponse>;
-    async fn remove(&self, args: RemoveTunnelCliCommand) -> eyre::Result<RemoveResponse>;
     async fn status(&self) -> eyre::Result<Vec<StatusResponse>>;
     async fn routes(&self) -> eyre::Result<Vec<RouteRecord>>;
-    async fn resolve_route(&self, args: ResolveRouteRequest) -> eyre::Result<ResolveRouteResponse>;
 }
 
 pub struct ServiceControllerImpl {
@@ -286,58 +230,6 @@ impl ServiceController for ServiceControllerImpl {
         }
     }
 
-    async fn provisioning(&self, args: ProvisioningRequest) -> eyre::Result<ProvisioningResponse> {
-        let client = Client::builder(TokioExecutor::new()).build(UnixConnector);
-        let body_bytes =
-            serde_json::to_vec(&args).map_err(|e| eyre!("Unable to serialize request: {e}"))?;
-
-        let req = Request::builder()
-            .method(Method::POST)
-            .uri(Uri::new(&self.socket_path, "/provision"))
-            .body(Full::new(Bytes::from(body_bytes)))?;
-
-        let res = client.request(req).await?;
-        let data = res
-            .into_body()
-            .collect()
-            .await
-            .map_err(|e| eyre!("Unable to read response body: {e}"))?
-            .to_bytes();
-
-        let response = serde_json::from_slice::<ProvisioningResponse>(&data)?;
-        if response.status == "error" {
-            Err(eyre!(response.description.unwrap_or_default()))
-        } else {
-            Ok(response)
-        }
-    }
-
-    async fn remove(&self, args: RemoveTunnelCliCommand) -> eyre::Result<RemoveResponse> {
-        let client = Client::builder(TokioExecutor::new()).build(UnixConnector);
-        let body_bytes =
-            serde_json::to_vec(&args).map_err(|e| eyre!("Unable to serialize request: {e}"))?;
-
-        let req = Request::builder()
-            .method(Method::POST)
-            .uri(Uri::new(&self.socket_path, "/remove"))
-            .body(Full::new(Bytes::from(body_bytes)))?;
-
-        let res = client.request(req).await?;
-        let data = res
-            .into_body()
-            .collect()
-            .await
-            .map_err(|e| eyre!("Unable to read response body: {e}"))?
-            .to_bytes();
-
-        let response = serde_json::from_slice::<RemoveResponse>(&data)?;
-        if response.status == "error" {
-            Err(eyre!(response.description.unwrap_or_default()))
-        } else {
-            Ok(response)
-        }
-    }
-
     async fn status(&self) -> eyre::Result<Vec<StatusResponse>> {
         let client = Client::builder(TokioExecutor::new()).build(UnixConnector);
 
@@ -394,26 +286,6 @@ impl ServiceController for ServiceControllerImpl {
         let res = client.request(req).await?;
         let data = res.into_body().collect().await?.to_bytes();
         let response = serde_json::from_slice::<Vec<RouteRecord>>(&data)?;
-        Ok(response)
-    }
-
-    async fn resolve_route(&self, args: ResolveRouteRequest) -> eyre::Result<ResolveRouteResponse> {
-        let client = Client::builder(TokioExecutor::new()).build(UnixConnector);
-        let body_bytes =
-            serde_json::to_vec(&args).map_err(|e| eyre!("Unable to serialize request: {e}"))?;
-        let req = Request::builder()
-            .method(Method::POST)
-            .uri(Uri::new(&self.socket_path, "/resolve-route"))
-            .body(Full::new(Bytes::from(body_bytes)))?;
-        let res = client.request(req).await?;
-
-        // If route not found (404) or API error, return src=None instead of error
-        if res.status() == StatusCode::NOT_FOUND || !res.status().is_success() {
-            return Ok(ResolveRouteResponse { src: None });
-        }
-
-        let data = res.into_body().collect().await?.to_bytes();
-        let response = serde_json::from_slice::<ResolveRouteResponse>(&data)?;
         Ok(response)
     }
 }

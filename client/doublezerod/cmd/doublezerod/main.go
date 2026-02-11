@@ -37,6 +37,8 @@ var (
 	metricsEnable               = flag.Bool("metrics-enable", false, "Enable prometheus metrics")
 	metricsAddr                 = flag.String("metrics-addr", "localhost:0", "Address to listen on for prometheus metrics")
 	routeConfigPath             = flag.String("route-config", "/var/lib/doublezerod/route-config.json", "path to route config file (unstable)")
+	clientIP                    = flag.String("client-ip", "", "client IP address for onchain reconciliation")
+	reconcilerPollInterval      = flag.Int("reconciler-poll-interval", 10, "reconciler poll interval in seconds")
 
 	// Route liveness configuration flags.
 	routeLivenessTxMin       = flag.Duration("route-liveness-tx-min", defaultRouteLivenessTxMin, "route liveness tx min")
@@ -181,7 +183,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := runtime.Run(ctx, *sockFile, *routeConfigPath, *enableLatencyProbing, *enableLatencyMetrics, *latencyProbeTunnelEndpoints, networkConfig, *probeInterval, *cacheUpdateInterval, lmc); err != nil {
+	if err := runtime.Run(ctx, *sockFile, *routeConfigPath, *enableLatencyProbing, *enableLatencyMetrics, *latencyProbeTunnelEndpoints, networkConfig, *probeInterval, *cacheUpdateInterval, lmc, *clientIP, *reconcilerPollInterval); err != nil {
 		slog.Error("runtime error", "error", err)
 		os.Exit(1)
 	}

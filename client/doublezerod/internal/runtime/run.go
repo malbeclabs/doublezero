@@ -17,6 +17,7 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/manager"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/multicast"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/pim"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/reconciler"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	"github.com/malbeclabs/doublezero/config"
 	"golang.org/x/sys/unix"
@@ -26,7 +27,7 @@ const (
 	updateInstalledRoutesGaugeInterval = 10 * time.Second
 )
 
-func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLatencyProbing, enableLatencyMetrics, latencyProbeTunnelEndpoints bool, networkConfig *config.NetworkConfig, probeInterval, cacheUpdateInterval int, lmc *liveness.ManagerConfig) error {
+func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLatencyProbing, enableLatencyMetrics, latencyProbeTunnelEndpoints bool, networkConfig *config.NetworkConfig, probeInterval, cacheUpdateInterval int, lmc *liveness.ManagerConfig, clientIP string, reconcilerPollInterval int) error {
 	nlr := routing.Netlink{}
 	var crw bgp.RouteReaderWriter
 	var cr *routing.ConfiguredRoutes
@@ -80,6 +81,28 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 		err := nlm.Serve(ctx)
 		errCh <- err
 	}()
+
+	if clientIP != "" {
+		ip := net.ParseIP(clientIP)
+		if ip == nil {
+			return fmt.Errorf("invalid client-ip: %s", clientIP)
+		}
+		pollInterval := time.Duration(reconcilerPollInterval) * time.Second
+		rec, err := reconciler.NewReconciler(
+			ip.To4(),
+			nlm,
+			networkConfig.ServiceabilityProgramID.String(),
+			networkConfig.LedgerPublicRPCURL,
+			reconciler.WithPollInterval(pollInterval),
+		)
+		if err != nil {
+			return fmt.Errorf("error creating reconciler: %v", err)
+		}
+		go func() {
+			err := rec.Start(ctx)
+			errCh <- err
+		}()
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /provision", nlm.ServeProvision)

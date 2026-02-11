@@ -239,6 +239,27 @@ func (n *NetlinkManager) Recover() error {
 	return nil
 }
 
+// HasUnicastService returns true if a unicast service is currently provisioned.
+func (n *NetlinkManager) HasUnicastService() bool { return n.UnicastService != nil }
+
+// HasMulticastService returns true if a multicast service is currently provisioned.
+func (n *NetlinkManager) HasMulticastService() bool { return n.MulticastService != nil }
+
+// ResolveTunnelSrc performs a kernel route lookup to determine the source IP
+// that would be used to reach the given destination.
+func (n *NetlinkManager) ResolveTunnelSrc(dst net.IP) (net.IP, error) {
+	routes, err := n.netlink.RouteGet(dst)
+	if err != nil {
+		return nil, fmt.Errorf("route lookup failed: %w", err)
+	}
+	for _, route := range routes {
+		if route.Dst != nil && route.Dst.IP.Equal(dst) {
+			return route.Src, nil
+		}
+	}
+	return nil, fmt.Errorf("no route found to %s", dst)
+}
+
 // TODO: this contains some workarounds that will be removed when multicast
 // is fully implemented. For now, we only return the status of the unicast
 // service.

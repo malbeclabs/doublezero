@@ -5,14 +5,15 @@ use clap::{Args, ValueEnum};
 use indicatif::ProgressBar;
 use solana_sdk::pubkey::Pubkey;
 
-use crate::requirements::check_doublezero;
+use crate::{
+    requirements::check_doublezero,
+    servicecontroller::{ServiceController, ServiceControllerImpl},
+};
 use doublezero_cli::{
     doublezerocommand::CliCommand,
     helpers::init_command,
     requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON},
 };
-
-use crate::servicecontroller::{RemoveTunnelCliCommand, ServiceController, ServiceControllerImpl};
 
 use doublezero_sdk::{
     commands::user::{delete::DeleteUserCommand, get::GetUserCommand, list::ListUserCommand},
@@ -91,20 +92,80 @@ impl DecommissioningCliCommand {
                 }
             }
 
-            spinner.inc(1);
-            let _ = controller
-                .remove(RemoveTunnelCliCommand {
-                    user_type: user.user_type.to_string(),
-                })
-                .await;
-
             self.poll_for_user_closed(client, pubkey, &spinner)?;
+        }
+
+        // Wait for daemon to deprovision the tunnel(s)
+        let user_type_str = match self.dz_mode {
+            Some(DzMode::IBRL) => Some("IBRL"),
+            Some(DzMode::Multicast) => Some("Multicast"),
+            None => None,
+        };
+        if let Some(ut) = user_type_str {
+            match self
+                .poll_for_daemon_deprovisioned(&controller, ut, &spinner)
+                .await
+            {
+                Ok(()) => {
+                    spinner.println(format!("    Daemon confirmed {ut} tunnel removed"));
+                }
+                Err(e) => {
+                    spinner.println(format!(
+                        "    Daemon deprovisioning in progress (will complete automatically): {e}"
+                    ));
+                }
+            }
         }
 
         spinner.println("✅  Deprovisioning Complete");
         spinner.finish_and_clear();
 
         Ok(())
+    }
+
+    async fn poll_for_daemon_deprovisioned<T: ServiceController>(
+        &self,
+        controller: &T,
+        user_type_str: &str,
+        spinner: &ProgressBar,
+    ) -> eyre::Result<()> {
+        let max_attempts = 12;
+        let delay = Duration::from_secs(5);
+
+        for attempt in 0..max_attempts {
+            if attempt > 0 {
+                spinner.set_message(format!(
+                    "Waiting for daemon to remove tunnel (attempt {}/{})",
+                    attempt + 1,
+                    max_attempts
+                ));
+                tokio::time::sleep(delay).await;
+            }
+
+            match controller.status().await {
+                Ok(statuses) => {
+                    // For IBRL mode, check both IBRL and IBRLWithAllocatedIP
+                    let has_matching = statuses.iter().any(|s| {
+                        s.user_type.as_ref().is_some_and(|ut| {
+                            if user_type_str == "IBRL" {
+                                ut == "IBRL" || ut == "IBRLWithAllocatedIP"
+                            } else {
+                                ut == user_type_str
+                            }
+                        })
+                    });
+                    if !has_matching {
+                        return Ok(());
+                    }
+                }
+                Err(_) => {
+                    // Daemon might not be reachable, that's OK for disconnect
+                    return Ok(());
+                }
+            }
+        }
+
+        eyre::bail!("timed out waiting for daemon to remove tunnel")
     }
 
     fn poll_for_user_closed(

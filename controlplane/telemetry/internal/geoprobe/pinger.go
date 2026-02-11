@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	telemetryconfig "github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/config"
 	twamplight "github.com/malbeclabs/doublezero/tools/twamp/pkg/light"
 )
 
@@ -46,7 +47,7 @@ func NewPinger(cfg *PingerConfig) *Pinger {
 }
 
 func (p *Pinger) AddProbe(ctx context.Context, addr ProbeAddress) error {
-	addr.Port = 862
+	addr.Port = telemetryconfig.TWAMPListenPort
 	p.sendersMu.Lock()
 	defer p.sendersMu.Unlock()
 

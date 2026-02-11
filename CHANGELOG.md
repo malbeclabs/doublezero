@@ -20,6 +20,16 @@ All notable changes to this project will be documented in this file.
 
 - Telemetry
   - geoprobe: add LocationOffset type with Ed25519 signing/verification and UDP transport for geolocation verification measurements (#2898)
+  - telemetry: extend agent to measure RTT to child geoProbes via TWAMP, generate signed LocationOffset structures, and deliver them via UDP (#2899)
+  - geoprobe: add concurrency limiting (100 concurrent operations) to Pinger.MeasureAll/MeasureAllWithRetries and Publisher.Publish to prevent unbounded goroutine spawning
+  - geoprobe: add reference chain validation with MaxReferenceDepth=5 and MaxTotalReferences=20 to prevent DoS via deeply nested reference chains
+  - geoprobe: make AddProbe and RemoveProbe operations idempotent (AddProbe skips if exists, RemoveProbe skips if not found)
+  - geoprobe: add comprehensive IP address validation to reject private, loopback, link-local, and reserved IP ranges in ProbeAddress.ValidatePublic
+  - geoprobe: add timeout-based DNS resolution with 5-second timeout to prevent indefinite blocking on unresponsive DNS servers
+  - geoprobe: add config validation requiring ServiceabilityClient, RPCClient, and Keypair when geoprobe is enabled
+  - geoprobe: implement proper mock clients (ServiceabilityClientInterface, RPCClientInterface) for testability
+  - geoprobe: add comprehensive test coverage including concurrency stress tests with 200+ probes
+  - geoprobe: add security considerations documentation covering signing, verification, trust model, and deployment recommendations
 - Onchain programs
   - feat(smartcontract): add payment_status, token_account fields and UpdatePaymentStatus instruction ([#2880](https://github.com/malbeclabs/doublezero/pull/2880))
   - fix(smartcontract): correctly ser/deser ops_manager_pk ([#2887](https://github.com/malbeclabs/doublezero/pull/2887))

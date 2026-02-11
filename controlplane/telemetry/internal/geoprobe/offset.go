@@ -7,6 +7,11 @@ import (
 	bin "github.com/gagliardetto/binary"
 )
 
+const (
+	MaxReferenceDepth    = 5
+	MaxTotalReferences   = 20
+)
+
 // LocationOffset represents a signed data structure that describes the latency
 // relationship between two entities (DZD↔Probe or Probe↔Target).
 //
@@ -72,11 +77,25 @@ func (o *LocationOffset) Marshal() ([]byte, error) {
 }
 
 func (o *LocationOffset) Unmarshal(data []byte) error {
-	return o.unmarshalHelper(data, nil)
+	if err := o.unmarshalHelper(data, nil, 0); err != nil {
+		return err
+	}
+
+	totalRefs := o.countTotalReferences()
+	if totalRefs > MaxTotalReferences {
+		return fmt.Errorf("total reference count %d exceeds maximum of %d", totalRefs, MaxTotalReferences)
+	}
+
+	return nil
 }
 
 // unmarshalHelper uses a shared decoder for recursive unmarshaling of reference chains.
-func (o *LocationOffset) unmarshalHelper(data []byte, dec *bin.Decoder) error {
+// depth tracks the current nesting level to prevent stack exhaustion.
+func (o *LocationOffset) unmarshalHelper(data []byte, dec *bin.Decoder, depth int) error {
+	if depth > MaxReferenceDepth {
+		return fmt.Errorf("reference chain depth %d exceeds maximum of %d", depth, MaxReferenceDepth)
+	}
+
 	ownDec := dec == nil
 	if ownDec {
 		dec = bin.NewBorshDecoder(data)
@@ -109,7 +128,7 @@ func (o *LocationOffset) unmarshalHelper(data []byte, dec *bin.Decoder) error {
 
 	o.References = make([]LocationOffset, o.NumReferences)
 	for i := uint8(0); i < o.NumReferences; i++ {
-		if err := o.References[i].unmarshalHelper(nil, dec); err != nil {
+		if err := o.References[i].unmarshalHelper(nil, dec, depth+1); err != nil {
 			return fmt.Errorf("failed to decode reference %d: %w", i, err)
 		}
 	}
@@ -164,6 +183,15 @@ func (o *LocationOffset) size() (int, error) {
 		return 0, err
 	}
 	return len(data), nil
+}
+
+// countTotalReferences recursively counts all references in the chain.
+func (o *LocationOffset) countTotalReferences() int {
+	count := len(o.References)
+	for i := range o.References {
+		count += o.References[i].countTotalReferences()
+	}
+	return count
 }
 
 type bytesWriter struct {

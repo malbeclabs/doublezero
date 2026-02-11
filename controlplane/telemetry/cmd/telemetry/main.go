@@ -17,6 +17,7 @@ import (
 	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/controlplane/agent/pkg/arista"
 	aristapb "github.com/malbeclabs/doublezero/controlplane/proto/arista/gen/pb-go/arista/EosSdkRpc"
+	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/geoprobe"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/gnmitunnel"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/metrics"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/netns"
@@ -80,6 +81,9 @@ var (
 	// gNMI tunnel flags
 	gnmiTunnelEnable     = flag.Bool("gnmi-tunnel-enable", false, "Enable gNMI tunnel client for remote access.")
 	gnmiTunnelServerAddr = flag.String("gnmi-tunnel-server-addr", "", "Address of the gNMI tunnel server (defaults to env config, e.g., gnmic-devnet.doublezero.xyz:443).")
+
+	// geoprobe flags
+	additionalChildProbes = flag.String("additional-child-probes", "", "Comma-separated list of child geoProbe addresses (host:port) to measure RTT and send location offsets.")
 
 	// Set by LDFLAGS
 	version = "dev"
@@ -176,6 +180,16 @@ func main() {
 	if err != nil {
 		log.Error("Failed to load metrics publisher keypair", "error", err)
 		os.Exit(1)
+	}
+
+	// Parse additional child probes if provided.
+	childProbes, err := geoprobe.ParseProbeAddresses(*additionalChildProbes)
+	if err != nil {
+		log.Error("Failed to parse additional-child-probes", "error", err)
+		os.Exit(1)
+	}
+	if len(childProbes) > 0 {
+		log.Info("Configured child probes for geolocation measurement", "count", len(childProbes), "probes", childProbes)
 	}
 
 	log.Info("Starting telemetry collector",
@@ -283,14 +297,17 @@ func main() {
 
 	// Initialize collector.
 	collector, err := telemetry.New(log, telemetry.Config{
-		LocalDevicePK:          localDevicePK,
-		MetricsPublisherPK:     keypair.PublicKey(),
-		ProbeInterval:          *probeInterval,
-		SubmissionInterval:     *submissionInterval,
-		TWAMPSenderTimeout:     *twampSenderTimeout,
-		TWAMPReflector:         reflector,
-		PeerDiscovery:          peerDiscovery,
-		TelemetryProgramClient: sdktelemetry.New(log, rpcClient, &keypair, telemetryProgramID),
+		LocalDevicePK:               localDevicePK,
+		MetricsPublisherPK:          keypair.PublicKey(),
+		ProbeInterval:               *probeInterval,
+		SubmissionInterval:          *submissionInterval,
+		TWAMPSenderTimeout:          *twampSenderTimeout,
+		TWAMPReflector:              reflector,
+		PeerDiscovery:               peerDiscovery,
+		TelemetryProgramClient:      sdktelemetry.New(log, rpcClient, &keypair, telemetryProgramID),
+		ServiceabilityProgramClient: serviceability.New(rpcClient, serviceabilityProgramID),
+		RPCClient:                   rpcClient,
+		Keypair:                     keypair,
 		GetCurrentEpochFunc: func(ctx context.Context) (uint64, error) {
 			epochInfo, err := rpcClient.GetEpochInfo(ctx, solanarpc.CommitmentFinalized)
 			if err != nil {
@@ -300,6 +317,7 @@ func main() {
 		},
 		SenderTTL:               *senderTTL,
 		SubmitterMaxConcurrency: *submitterMaxConcurrency,
+		InitialChildProbes:      childProbes,
 	})
 	if err != nil {
 		log.Error("failed to create telemetry collector", "error", err)

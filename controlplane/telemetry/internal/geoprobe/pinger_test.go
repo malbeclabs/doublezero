@@ -1,0 +1,614 @@
+package geoprobe
+
+import (
+	"context"
+	"log/slog"
+	"os"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestNewPinger(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	cfg := &PingerConfig{
+		Logger:              logger,
+		ProbeTimeout:        100 * time.Millisecond,
+		Interval:            1 * time.Second,
+		ManagementNamespace: "",
+	}
+
+	pinger := NewPinger(cfg)
+
+	require.NotNil(t, pinger)
+	assert.NotNil(t, pinger.log)
+	assert.NotNil(t, pinger.cfg)
+	assert.NotNil(t, pinger.senders)
+	assert.Empty(t, pinger.senders)
+}
+
+func TestPinger_AddProbe(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	cfg := &PingerConfig{
+		Logger:              logger,
+		ProbeTimeout:        100 * time.Millisecond,
+		Interval:            1 * time.Second,
+		ManagementNamespace: "",
+	}
+
+	pinger := NewPinger(cfg)
+	ctx := context.Background()
+
+	addr := ProbeAddress{
+		Host: "127.0.0.1",
+		Port: 12345,
+	}
+
+	err := pinger.AddProbe(ctx, addr)
+	require.NoError(t, err)
+
+	pinger.sendersMu.Lock()
+	_, exists := pinger.senders[addr.String()]
+	pinger.sendersMu.Unlock()
+
+	assert.True(t, exists, "probe should exist after AddProbe")
+}
+
+func TestPinger_AddProbe_Duplicate(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	cfg := &PingerConfig{
+		Logger:              logger,
+		ProbeTimeout:        100 * time.Millisecond,
+		Interval:            1 * time.Second,
+		ManagementNamespace: "",
+	}
+
+	pinger := NewPinger(cfg)
+	ctx := context.Background()
+
+	addr := ProbeAddress{
+		Host: "127.0.0.1",
+		Port: 12346,
+	}
+
+	err := pinger.AddProbe(ctx, addr)
+	require.NoError(t, err)
+
+	pinger.sendersMu.Lock()
+	firstSender := pinger.senders[addr.String()].sender
+	pinger.sendersMu.Unlock()
+
+	err = pinger.AddProbe(ctx, addr)
+	require.NoError(t, err)
+
+	pinger.sendersMu.Lock()
+	secondSender := pinger.senders[addr.String()].sender
+	count := len(pinger.senders)
+	pinger.sendersMu.Unlock()
+
+	assert.Equal(t, 1, count, "should only have one sender after duplicate AddProbe")
+	assert.Equal(t, firstSender, secondSender, "should reuse existing sender on duplicate")
+}
+
+func TestPinger_AddProbe_InvalidHost(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	cfg := &PingerConfig{
+		Logger:              logger,
+		ProbeTimeout:        100 * time.Millisecond,
+		Interval:            1 * time.Second,
+		ManagementNamespace: "",
+	}
+
+	pinger := NewPinger(cfg)
+	ctx := context.Background()
+
+	addr := ProbeAddress{
+		Host: "invalid..hostname..test",
+		Port: 12347,
+	}
+
+	err := pinger.AddProbe(ctx, addr)
+	assert.Error(t, err, "should fail with invalid hostname")
+
+	pinger.sendersMu.Lock()
+	count := len(pinger.senders)
+	pinger.sendersMu.Unlock()
+
+	assert.Equal(t, 0, count, "should not add sender on resolution failure")
+}
+
+func TestPinger_RemoveProbe(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	cfg := &PingerConfig{
+		Logger:              logger,
+		ProbeTimeout:        100 * time.Millisecond,
+		Interval:            1 * time.Second,
+		ManagementNamespace: "",
+	}
+
+	pinger := NewPinger(cfg)
+	ctx := context.Background()
+
+	addr := ProbeAddress{
+		Host: "127.0.0.1",
+		Port: 12348,
+	}
+
+	err := pinger.AddProbe(ctx, addr)
+	require.NoError(t, err)
+
+	err = pinger.RemoveProbe(addr)
+	require.NoError(t, err)
+
+	pinger.sendersMu.Lock()
+	_, exists := pinger.senders[addr.String()]
+	pinger.sendersMu.Unlock()
+
+	assert.False(t, exists, "probe should not exist after RemoveProbe")
+}
+
+func TestPinger_RemoveProbe_NotFound(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	cfg := &PingerConfig{
+		Logger:              logger,
+		ProbeTimeout:        100 * time.Millisecond,
+		Interval:            1 * time.Second,
+		ManagementNamespace: "",
+	}
+
+	pinger := NewPinger(cfg)
+
+	addr := ProbeAddress{
+		Host: "192.0.2.1",
+		Port: 99999,
+	}
+
+	err := pinger.RemoveProbe(addr)
+	assert.NoError(t, err, "RemoveProbe on non-existent probe should not error")
+}
+
+func TestPinger_MeasureAll_Empty(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	cfg := &PingerConfig{
+		Logger:              logger,
+		ProbeTimeout:        100 * time.Millisecond,
+		Interval:            1 * time.Second,
+		ManagementNamespace: "",
+	}
+
+	pinger := NewPinger(cfg)
+	ctx := context.Background()
+
+	results, err := pinger.MeasureAll(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, results, "MeasureAll with no probes should return empty map")
+}
+
+func TestPinger_MeasureAll_WithContext(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	cfg := &PingerConfig{
+		Logger:              logger,
+		ProbeTimeout:        10 * time.Second,
+		Interval:            1 * time.Second,
+		ManagementNamespace: "",
+	}
+
+	pinger := NewPinger(cfg)
+
+	addr := ProbeAddress{
+		Host: "127.0.0.1",
+		Port: 12349,
+	}
+	err := pinger.AddProbe(context.Background(), addr)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	results, err := pinger.MeasureAll(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, results, "MeasureAll with cancelled context should return empty results")
+}
+
+func TestPinger_MeasureAllWithRetries_ReturnsMinimum(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	cfg := &PingerConfig{
+		Logger:              logger,
+		ProbeTimeout:        100 * time.Millisecond,
+		Interval:            1 * time.Second,
+		ManagementNamespace: "",
+	}
+
+	pinger := NewPinger(cfg)
+	ctx := context.Background()
+
+	addr := ProbeAddress{
+		Host: "127.0.0.1",
+		Port: 12350,
+	}
+	err := pinger.AddProbe(ctx, addr)
+	require.NoError(t, err)
+
+	results, err := pinger.MeasureAllWithRetries(ctx, 3)
+	require.NoError(t, err)
+
+	assert.LessOrEqual(t, len(results), 1, "should have at most one result")
+}
+
+func TestPinger_MeasureAllWithRetries_Empty(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	cfg := &PingerConfig{
+		Logger:              logger,
+		ProbeTimeout:        100 * time.Millisecond,
+		Interval:            1 * time.Second,
+		ManagementNamespace: "",
+	}
+
+	pinger := NewPinger(cfg)
+	ctx := context.Background()
+
+	results, err := pinger.MeasureAllWithRetries(ctx, 3)
+	require.NoError(t, err)
+	assert.Empty(t, results, "MeasureAllWithRetries with no probes should return empty map")
+}
+
+func TestPinger_MeasureAllWithRetries_ContextCancellation(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	cfg := &PingerConfig{
+		Logger:              logger,
+		ProbeTimeout:        10 * time.Second,
+		Interval:            1 * time.Second,
+		ManagementNamespace: "",
+	}
+
+	pinger := NewPinger(cfg)
+
+	addr := ProbeAddress{
+		Host: "127.0.0.1",
+		Port: 12351,
+	}
+	err := pinger.AddProbe(context.Background(), addr)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	results, err := pinger.MeasureAllWithRetries(ctx, 10)
+	require.NoError(t, err)
+	assert.Empty(t, results, "MeasureAllWithRetries should respect context cancellation")
+}
+
+func TestPinger_Close(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	cfg := &PingerConfig{
+		Logger:              logger,
+		ProbeTimeout:        100 * time.Millisecond,
+		Interval:            1 * time.Second,
+		ManagementNamespace: "",
+	}
+
+	pinger := NewPinger(cfg)
+	ctx := context.Background()
+
+	addr1 := ProbeAddress{Host: "127.0.0.1", Port: 12352}
+	addr2 := ProbeAddress{Host: "127.0.0.1", Port: 12353}
+
+	err := pinger.AddProbe(ctx, addr1)
+	require.NoError(t, err)
+	err = pinger.AddProbe(ctx, addr2)
+	require.NoError(t, err)
+
+	err = pinger.Close()
+	assert.NoError(t, err)
+
+	pinger.sendersMu.Lock()
+	count := len(pinger.senders)
+	pinger.sendersMu.Unlock()
+
+	assert.Equal(t, 0, count, "all senders should be removed after Close")
+}
+
+func TestPinger_Concurrent(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	cfg := &PingerConfig{
+		Logger:              logger,
+		ProbeTimeout:        100 * time.Millisecond,
+		Interval:            1 * time.Second,
+		ManagementNamespace: "",
+	}
+
+	pinger := NewPinger(cfg)
+	ctx := context.Background()
+
+	var wg sync.WaitGroup
+	numGoroutines := 10
+
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+
+			addr := ProbeAddress{
+				Host: "127.0.0.1",
+				Port: uint16(13000 + id),
+			}
+
+			err := pinger.AddProbe(ctx, addr)
+			assert.NoError(t, err)
+
+			_, err = pinger.MeasureAll(ctx)
+			assert.NoError(t, err)
+
+			err = pinger.RemoveProbe(addr)
+			assert.NoError(t, err)
+		}(i)
+	}
+
+	wg.Wait()
+
+	pinger.sendersMu.Lock()
+	count := len(pinger.senders)
+	pinger.sendersMu.Unlock()
+
+	assert.Equal(t, 0, count, "all probes should be removed after concurrent operations")
+}
+
+func TestPinger_AddRemoveSequential(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	cfg := &PingerConfig{
+		Logger:              logger,
+		ProbeTimeout:        100 * time.Millisecond,
+		Interval:            1 * time.Second,
+		ManagementNamespace: "",
+	}
+
+	pinger := NewPinger(cfg)
+	ctx := context.Background()
+
+	addr := ProbeAddress{
+		Host: "127.0.0.1",
+		Port: 12354,
+	}
+
+	err := pinger.AddProbe(ctx, addr)
+	require.NoError(t, err)
+
+	pinger.sendersMu.Lock()
+	count1 := len(pinger.senders)
+	pinger.sendersMu.Unlock()
+	assert.Equal(t, 1, count1)
+
+	err = pinger.RemoveProbe(addr)
+	require.NoError(t, err)
+
+	pinger.sendersMu.Lock()
+	count2 := len(pinger.senders)
+	pinger.sendersMu.Unlock()
+	assert.Equal(t, 0, count2)
+
+	err = pinger.AddProbe(ctx, addr)
+	require.NoError(t, err)
+
+	pinger.sendersMu.Lock()
+	count3 := len(pinger.senders)
+	pinger.sendersMu.Unlock()
+	assert.Equal(t, 1, count3)
+}
+
+func TestPinger_MeasureAll_ConcurrencyLimit(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	cfg := &PingerConfig{
+		Logger:              logger,
+		ProbeTimeout:        200 * time.Millisecond,
+		Interval:            1 * time.Second,
+		ManagementNamespace: "",
+	}
+
+	pinger := NewPinger(cfg)
+	ctx := context.Background()
+
+	numProbes := MaxConcurrentProbes + 50
+	for i := 0; i < numProbes; i++ {
+		addr := ProbeAddress{
+			Host: "127.0.0.1",
+			Port: uint16(15000 + i),
+		}
+		err := pinger.AddProbe(ctx, addr)
+		require.NoError(t, err)
+	}
+
+	startTime := time.Now()
+	_, err := pinger.MeasureAll(ctx)
+	duration := time.Since(startTime)
+
+	require.NoError(t, err)
+
+	t.Logf("Measured %d probes in %v", numProbes, duration)
+
+	assert.Less(t, duration, 10*time.Second, "measurement should complete in reasonable time with concurrency limit")
+}
+
+func TestPinger_MeasureAllWithRetries_ConcurrencyLimit(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	cfg := &PingerConfig{
+		Logger:              logger,
+		ProbeTimeout:        200 * time.Millisecond,
+		Interval:            1 * time.Second,
+		ManagementNamespace: "",
+	}
+
+	pinger := NewPinger(cfg)
+	ctx := context.Background()
+
+	numProbes := MaxConcurrentProbes + 50
+	for i := 0; i < numProbes; i++ {
+		addr := ProbeAddress{
+			Host: "127.0.0.1",
+			Port: uint16(16000 + i),
+		}
+		err := pinger.AddProbe(ctx, addr)
+		require.NoError(t, err)
+	}
+
+	startTime := time.Now()
+	_, err := pinger.MeasureAllWithRetries(ctx, 2)
+	duration := time.Since(startTime)
+
+	require.NoError(t, err)
+
+	t.Logf("Measured %d probes with retries in %v", numProbes, duration)
+
+	assert.Less(t, duration, 20*time.Second, "measurement with retries should complete in reasonable time with concurrency limit")
+}
+
+func TestPinger_MeasureAll_AllFailed(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	cfg := &PingerConfig{
+		Logger:              logger,
+		ProbeTimeout:        100 * time.Millisecond,
+		Interval:            1 * time.Second,
+		ManagementNamespace: "",
+	}
+
+	pinger := NewPinger(cfg)
+	ctx := context.Background()
+
+	addr1 := ProbeAddress{Host: "192.0.2.254", Port: 12345}
+	addr2 := ProbeAddress{Host: "192.0.2.253", Port: 12346}
+	addr3 := ProbeAddress{Host: "192.0.2.252", Port: 12347}
+
+	err := pinger.AddProbe(ctx, addr1)
+	require.NoError(t, err)
+	err = pinger.AddProbe(ctx, addr2)
+	require.NoError(t, err)
+	err = pinger.AddProbe(ctx, addr3)
+	require.NoError(t, err)
+
+	results, err := pinger.MeasureAll(ctx)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "all")
+	assert.Contains(t, err.Error(), "failed")
+	assert.Empty(t, results)
+}
+
+func TestPinger_AddProbe_WithHostname(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	cfg := &PingerConfig{
+		Logger:              logger,
+		ProbeTimeout:        100 * time.Millisecond,
+		Interval:            1 * time.Second,
+		ManagementNamespace: "",
+	}
+
+	pinger := NewPinger(cfg)
+	ctx := context.Background()
+
+	addr := ProbeAddress{
+		Host: "localhost",
+		Port: 12345,
+	}
+
+	err := pinger.AddProbe(ctx, addr)
+	require.NoError(t, err)
+
+	pinger.sendersMu.Lock()
+	_, exists := pinger.senders[addr.String()]
+	pinger.sendersMu.Unlock()
+
+	assert.True(t, exists, "probe with hostname should resolve and be added")
+}
+
+func TestPinger_AddProbe_TimeoutContext(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	cfg := &PingerConfig{
+		Logger:              logger,
+		ProbeTimeout:        100 * time.Millisecond,
+		Interval:            1 * time.Second,
+		ManagementNamespace: "",
+	}
+
+	pinger := NewPinger(cfg)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
+	defer cancel()
+
+	time.Sleep(2 * time.Millisecond)
+
+	addr := ProbeAddress{
+		Host: "example.com",
+		Port: 12345,
+	}
+
+	err := pinger.AddProbe(ctx, addr)
+	assert.Error(t, err, "should fail with cancelled context")
+}
+
+func TestPinger_MeasureAllWithRetries_AllFailed(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	cfg := &PingerConfig{
+		Logger:              logger,
+		ProbeTimeout:        100 * time.Millisecond,
+		Interval:            1 * time.Second,
+		ManagementNamespace: "",
+	}
+
+	pinger := NewPinger(cfg)
+	ctx := context.Background()
+
+	addr1 := ProbeAddress{Host: "192.0.2.254", Port: 12348}
+	addr2 := ProbeAddress{Host: "192.0.2.253", Port: 12349}
+
+	err := pinger.AddProbe(ctx, addr1)
+	require.NoError(t, err)
+	err = pinger.AddProbe(ctx, addr2)
+	require.NoError(t, err)
+
+	results, err := pinger.MeasureAllWithRetries(ctx, 2)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "all")
+	assert.Contains(t, err.Error(), "failed")
+	assert.Empty(t, results)
+}

@@ -315,3 +315,200 @@ func TestLocationOffset_Size(t *testing.T) {
 	// Size should be: 64 (sig) + 32 (pubkey) + 8 (slot) + 8 (lat) + 8 (lng) + 8 (measured) + 8 (rtt) + 1 (numref) = 137 bytes
 	require.Equal(t, 137, size)
 }
+
+func TestLocationOffset_ReferenceDepthLimit(t *testing.T) {
+	t.Parallel()
+
+	// Create a chain that exceeds MaxReferenceDepth (5)
+	current := &LocationOffset{
+		Signature:       [64]byte{0},
+		Pubkey:          [32]byte{0},
+		MeasurementSlot: 0,
+		MeasuredRttNs:   100,
+		Lat:             1.0,
+		Lng:             2.0,
+		RttNs:           100,
+		NumReferences:   0,
+		References:      nil,
+	}
+
+	// Build a chain of depth 6 (exceeding limit of 5)
+	for i := 1; i <= 6; i++ {
+		parent := &LocationOffset{
+			Signature:       [64]byte{byte(i)},
+			Pubkey:          [32]byte{byte(i)},
+			MeasurementSlot: uint64(i),
+			MeasuredRttNs:   uint64((i + 1) * 100),
+			Lat:             1.0,
+			Lng:             2.0,
+			RttNs:           uint64((i + 1) * 100),
+			NumReferences:   1,
+			References:      []LocationOffset{*current},
+		}
+		current = parent
+	}
+
+	// Marshal the deep chain
+	data, err := current.Marshal()
+	require.NoError(t, err)
+
+	// Attempt to unmarshal should fail due to depth limit
+	decoded := &LocationOffset{}
+	err = decoded.Unmarshal(data)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "reference chain depth")
+	require.Contains(t, err.Error(), "exceeds maximum")
+}
+
+func TestLocationOffset_TotalReferencesLimit(t *testing.T) {
+	t.Parallel()
+
+	// Create a wide tree structure that exceeds MaxTotalReferences (20)
+	// Build a 3-level tree: root with 10 children, each child has 2 children = 1 + 10 + 20 = 31 total refs
+
+	// Level 2 (leaf nodes)
+	leafOffsets := make([]LocationOffset, 20)
+	for i := 0; i < 20; i++ {
+		leafOffsets[i] = LocationOffset{
+			Signature:       [64]byte{byte(i)},
+			Pubkey:          [32]byte{byte(i)},
+			MeasurementSlot: uint64(i),
+			MeasuredRttNs:   100,
+			Lat:             1.0,
+			Lng:             2.0,
+			RttNs:           100,
+			NumReferences:   0,
+			References:      nil,
+		}
+	}
+
+	// Level 1 (middle nodes, each referencing 2 leaf nodes)
+	midOffsets := make([]LocationOffset, 10)
+	for i := 0; i < 10; i++ {
+		midOffsets[i] = LocationOffset{
+			Signature:       [64]byte{byte(100 + i)},
+			Pubkey:          [32]byte{byte(100 + i)},
+			MeasurementSlot: uint64(100 + i),
+			MeasuredRttNs:   200,
+			Lat:             1.0,
+			Lng:             2.0,
+			RttNs:           300,
+			NumReferences:   2,
+			References:      []LocationOffset{leafOffsets[i*2], leafOffsets[i*2+1]},
+		}
+	}
+
+	// Level 0 (root node referencing all 10 middle nodes)
+	rootOffset := &LocationOffset{
+		Signature:       [64]byte{200},
+		Pubkey:          [32]byte{200},
+		MeasurementSlot: 200,
+		MeasuredRttNs:   300,
+		Lat:             1.0,
+		Lng:             2.0,
+		RttNs:           600,
+		NumReferences:   10,
+		References:      midOffsets,
+	}
+
+	// Marshal the root (includes all 30 references)
+	data, err := rootOffset.Marshal()
+	require.NoError(t, err)
+
+	// Attempt to unmarshal should fail due to total reference count limit
+	decoded := &LocationOffset{}
+	err = decoded.Unmarshal(data)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "total reference count")
+	require.Contains(t, err.Error(), "exceeds maximum")
+}
+
+func TestLocationOffset_ValidReferenceLimits(t *testing.T) {
+	t.Parallel()
+
+	// Create a chain at exactly the depth limit (5)
+	current := &LocationOffset{
+		Signature:       [64]byte{0},
+		Pubkey:          [32]byte{0},
+		MeasurementSlot: 0,
+		MeasuredRttNs:   100,
+		Lat:             1.0,
+		Lng:             2.0,
+		RttNs:           100,
+		NumReferences:   0,
+		References:      nil,
+	}
+
+	// Build a chain of depth 5 (at the limit)
+	for i := 1; i <= 5; i++ {
+		parent := &LocationOffset{
+			Signature:       [64]byte{byte(i)},
+			Pubkey:          [32]byte{byte(i)},
+			MeasurementSlot: uint64(i),
+			MeasuredRttNs:   uint64((i + 1) * 100),
+			Lat:             1.0,
+			Lng:             2.0,
+			RttNs:           uint64((i + 1) * 100),
+			NumReferences:   1,
+			References:      []LocationOffset{*current},
+		}
+		current = parent
+	}
+
+	// Marshal and unmarshal should succeed
+	data, err := current.Marshal()
+	require.NoError(t, err)
+
+	decoded := &LocationOffset{}
+	err = decoded.Unmarshal(data)
+	require.NoError(t, err)
+
+	// Verify the chain depth
+	depth := 0
+	ptr := decoded
+	for ptr.NumReferences > 0 {
+		depth++
+		ptr = &ptr.References[0]
+	}
+	require.Equal(t, 5, depth)
+}
+
+func TestLocationOffset_CountTotalReferences(t *testing.T) {
+	t.Parallel()
+
+	// Create a simple chain
+	leaf := &LocationOffset{
+		NumReferences: 0,
+		References:    nil,
+	}
+
+	mid := &LocationOffset{
+		NumReferences: 1,
+		References:    []LocationOffset{*leaf},
+	}
+
+	root := &LocationOffset{
+		NumReferences: 1,
+		References:    []LocationOffset{*mid},
+	}
+
+	// Count should be 1 (mid) + 1 (leaf from mid) = 2
+	require.Equal(t, 2, root.countTotalReferences())
+
+	// Create a wide tree
+	children := make([]LocationOffset, 3)
+	for i := 0; i < 3; i++ {
+		children[i] = LocationOffset{
+			NumReferences: 0,
+			References:    nil,
+		}
+	}
+
+	parent := &LocationOffset{
+		NumReferences: 3,
+		References:    children,
+	}
+
+	// Count should be 3 (direct children)
+	require.Equal(t, 3, parent.countTotalReferences())
+}

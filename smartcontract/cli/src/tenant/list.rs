@@ -62,3 +62,63 @@ impl ListTenantCliCommand {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{tenant::list::ListTenantCliCommand, tests::utils::create_test_client};
+    use doublezero_sdk::AccountType;
+    use doublezero_serviceability::state::tenant::{Tenant, TenantPaymentStatus};
+    use solana_sdk::pubkey::Pubkey;
+    use std::collections::HashMap;
+
+    #[test]
+    fn test_cli_tenant_list() {
+        let mut client = create_test_client();
+
+        let tenant1_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");
+        let tenant1 = Tenant {
+            account_type: AccountType::Tenant,
+            owner: tenant1_pubkey,
+            bump_seed: 0,
+            code: "tenant-a".to_string(),
+            vrf_id: 100,
+            reference_count: 0,
+            administrators: vec![],
+            token_account: Pubkey::default(),
+            payment_status: TenantPaymentStatus::Paid,
+            metro_route: true,
+            route_aliveness: false,
+        };
+
+        client
+            .expect_list_tenant()
+            .returning(move |_| Ok(HashMap::from([(tenant1_pubkey, tenant1.clone())])));
+
+        /*****************************************************************************************************/
+        let mut output = Vec::new();
+        let res = ListTenantCliCommand {
+            json: false,
+            json_compact: false,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        assert_eq!(
+            output_str,
+            " account                                   | code     | vrf_id | metro_route | route_aliveness | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | tenant-a | 100    | true        | false           | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n"
+        );
+
+        let mut output = Vec::new();
+        let res = ListTenantCliCommand {
+            json: false,
+            json_compact: true,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        assert_eq!(
+            output_str,
+            "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"code\":\"tenant-a\",\"vrf_id\":100,\"metro_route\":true,\"route_aliveness\":false,\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n"
+        );
+    }
+}

@@ -31,3 +31,49 @@ impl GetAirdropCliCommand {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        globalconfig::airdrop::get::GetAirdropCliCommand, tests::utils::create_test_client,
+    };
+    use doublezero_sdk::{AccountType, GetGlobalStateCommand, GlobalState};
+    use mockall::predicate;
+    use solana_sdk::pubkey::Pubkey;
+
+    #[test]
+    fn test_cli_globalconfig_airdrop_get() {
+        let mut client = create_test_client();
+
+        let gstate_pubkey = Pubkey::new_unique();
+        let globalstate = GlobalState {
+            account_type: AccountType::GlobalState,
+            bump_seed: 0,
+            account_index: 0,
+            foundation_allowlist: vec![],
+            _device_allowlist: vec![],
+            _user_allowlist: vec![],
+            activator_authority_pk: Pubkey::default(),
+            sentinel_authority_pk: Pubkey::default(),
+            contributor_airdrop_lamports: 1_000_000_000,
+            user_airdrop_lamports: 40_000,
+            health_oracle_pk: Pubkey::default(),
+            qa_allowlist: vec![],
+        };
+
+        client
+            .expect_get_globalstate()
+            .with(predicate::eq(GetGlobalStateCommand))
+            .returning(move |_| Ok((gstate_pubkey, globalstate.clone())));
+
+        /*****************************************************************************************************/
+        let mut output = Vec::new();
+        let res = GetAirdropCliCommand.execute(&client, &mut output);
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        assert_eq!(
+            output_str,
+            " contributor_airdrop_lamports | user_airdrop_lamports \n 1000000000                   | 40000                 \n"
+        );
+    }
+}

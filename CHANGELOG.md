@@ -74,6 +74,7 @@ All notable changes to this project will be documented in this file.
   - Deprecated the user suspend status, as it is no longer used.
   - Serviceability: enforce that CloseAccountUser instructions verify the target user has no multicast publishers or subscribers (both `publishers` and `subscribers` are empty) before closing, and add regression coverage for this behavior.
   - Enhance access pass functionality with new Solana-specific types
+  - fix default desired status
 - Telemetry
   - Fix goroutine leak in TWAMP sender — `cleanUpReceived` goroutines now exit on `Close()` instead of living until process shutdown
 - Client

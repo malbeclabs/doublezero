@@ -81,7 +81,7 @@ func (p *Publisher) AddProbe(ctx context.Context, addr ProbeAddress) error {
 	p.connsMu.Lock()
 	defer p.connsMu.Unlock()
 
-	key := addr.String()
+	key := addr.Host
 	if _, exists := p.conns[key]; exists {
 		p.log.Debug("probe already exists, skipping", "address", key)
 		return nil
@@ -123,7 +123,7 @@ func (p *Publisher) RemoveProbe(addr ProbeAddress) error {
 	p.connsMu.Lock()
 	defer p.connsMu.Unlock()
 
-	key := addr.String()
+	key := addr.Host
 	pc, exists := p.conns[key]
 	if !exists {
 		p.log.Debug("probe not found, skipping removal", "address", key)
@@ -171,7 +171,7 @@ func (p *Publisher) Publish(ctx context.Context, rttData map[ProbeAddress]uint64
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			key := addr.String()
+			key := addr.Host
 			pc, exists := p.conns[key]
 			if !exists {
 				p.log.Warn("skipping probe not in connection pool", "address", key)

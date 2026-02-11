@@ -279,6 +279,7 @@ func isRetryableContainerStartErr(err error) bool {
 		strings.Contains(s, "context deadline exceeded") ||
 		strings.Contains(s, "TLS handshake") ||
 		strings.Contains(s, "connection refused") ||
+		strings.Contains(s, "container exited") ||
 		strings.Contains(s, "/containers/") && strings.Contains(s, "json") ||
 		strings.Contains(s, "Get \"http")
 }

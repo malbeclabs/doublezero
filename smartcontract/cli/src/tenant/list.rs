@@ -108,7 +108,7 @@ mod tests {
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
             output_str,
-            " account                                   | code     | vrf_id | metro_routing | route_liveness | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | tenant-a | 100    | true        | false           | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n"
+            " account                                   | code     | vrf_id | metro_routing | route_liveness | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | tenant-a | 100    | true          | false          | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n"
         );
 
         let mut output = Vec::new();

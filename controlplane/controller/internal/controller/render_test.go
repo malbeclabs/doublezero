@@ -509,7 +509,7 @@ func TestRenderConfig(t *testing.T) {
 							Metric:        20000,
 							IsLink:        true,
 							LinkStatus:    serviceability.LinkStatusActivated,
-							IsCyoa:        true,
+							IsCYOA:        true,
 						},
 						{
 							Name:          "Switch1/1/6",
@@ -518,7 +518,7 @@ func TestRenderConfig(t *testing.T) {
 							Metric:        25000,
 							IsLink:        true,
 							LinkStatus:    serviceability.LinkStatusActivated,
-							IsDia:         true,
+							IsDIA:         true,
 						},
 					},
 				},

@@ -13,7 +13,7 @@ import (
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
-type ServiceabilityClientInterface interface {
+type ServiceabilityClient interface {
 	GetProgramData(ctx context.Context) (*serviceability.ProgramData, error)
 }
 
@@ -29,7 +29,7 @@ type CoordinatorConfig struct {
 	ProbeTimeout         time.Duration
 	Keypair              solana.PrivateKey
 	LocalDevicePK        solana.PublicKey
-	ServiceabilityClient ServiceabilityClientInterface
+	ServiceabilityClient ServiceabilityClient
 	RPCClient            RPCClientInterface
 	ManagementNamespace  string
 }
@@ -101,6 +101,7 @@ func NewCoordinator(cfg *CoordinatorConfig) (*Coordinator, error) {
 	for _, addr := range cfg.InitialProbes {
 		c.probes[addr.String()] = addr
 		if err := c.pinger.AddProbe(ctx, addr); err != nil {
+			delete(c.probes, addr.String())
 			c.log.Warn("Failed to add initial probe to pinger", "addr", addr, "error", err)
 			continue
 		}
@@ -171,10 +172,15 @@ func (c *Coordinator) handleProbeUpdate(ctx context.Context, newProbes []ProbeAd
 		if _, exists := c.probes[key]; !exists {
 			c.probes[key] = addr
 			if err := c.pinger.AddProbe(ctx, addr); err != nil {
+				delete(c.probes, key)
 				c.log.Warn("Failed to add probe to pinger", "addr", addr, "error", err)
 				continue
 			}
 			if err := c.publisher.AddProbe(ctx, addr); err != nil {
+				delete(c.probes, key)
+				if removeErr := c.pinger.RemoveProbe(addr); removeErr != nil {
+					c.log.Warn("Failed to remove probe from pinger during cleanup", "addr", addr, "error", removeErr)
+				}
 				c.log.Warn("Failed to add probe to publisher", "addr", addr, "error", err)
 				continue
 			}

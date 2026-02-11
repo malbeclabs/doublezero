@@ -23,7 +23,7 @@ type PublisherConfig struct {
 	Logger               *slog.Logger
 	Keypair              solana.PrivateKey
 	LocalDevicePK        solana.PublicKey
-	ServiceabilityClient ServiceabilityClientInterface
+	ServiceabilityClient ServiceabilityClient
 	RPCClient            RPCClientInterface
 	ManagementNamespace  string
 }
@@ -161,7 +161,7 @@ func (p *Publisher) Publish(ctx context.Context, rttData map[ProbeAddress]uint64
 	var errorsMu sync.Mutex
 	var wg sync.WaitGroup
 
-	sem := make(chan struct{}, MaxWorkers*4)
+	sem := make(chan struct{}, MaxWorkers)
 
 	for addr, rttNs := range rttData {
 		wg.Add(1)

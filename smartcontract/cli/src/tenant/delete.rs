@@ -49,7 +49,9 @@ mod tests {
         commands::tenant::{delete::DeleteTenantCommand, get::GetTenantCommand},
         AccountType,
     };
-    use doublezero_serviceability::state::tenant::{Tenant, TenantPaymentStatus};
+    use doublezero_serviceability::state::tenant::{
+        Tenant, TenantBillingConfig, TenantPaymentStatus,
+    };
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
@@ -75,8 +77,9 @@ mod tests {
             administrators: vec![],
             token_account: Pubkey::default(),
             payment_status: TenantPaymentStatus::Paid,
-            metro_route: false,
-            route_aliveness: false,
+            metro_routing: false,
+            route_liveness: false,
+            billing: TenantBillingConfig::default(),
         };
 
         client
@@ -125,8 +128,9 @@ mod tests {
             administrators: vec![],
             token_account: Pubkey::default(),
             payment_status: TenantPaymentStatus::Paid,
-            metro_route: false,
-            route_aliveness: false,
+            metro_routing: false,
+            route_liveness: false,
+            billing: TenantBillingConfig::default(),
         };
 
         client

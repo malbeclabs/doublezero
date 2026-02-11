@@ -19,7 +19,7 @@ impl GetTenantCliCommand {
         writeln!(out, "account: {pubkey}")?;
         writeln!(out, "code: {}", tenant.code)?;
         writeln!(out, "vrf_id: {}", tenant.vrf_id)?;
-        writeln!(out, "metro_route: {}", tenant.metro_route)?;
+        writeln!(out, "metro_routing: {}", tenant.metro_routing)?;
         writeln!(out, "route_liveness: {}", tenant.route_liveness)?;
         writeln!(out, "reference_count: {}", tenant.reference_count)?;
         writeln!(out, "owner: {}", tenant.owner)?;
@@ -32,7 +32,9 @@ impl GetTenantCliCommand {
 mod tests {
     use crate::{tenant::get::GetTenantCliCommand, tests::utils::create_test_client};
     use doublezero_sdk::{commands::tenant::get::GetTenantCommand, AccountType};
-    use doublezero_serviceability::state::tenant::{Tenant, TenantPaymentStatus};
+    use doublezero_serviceability::state::tenant::{
+        Tenant, TenantBillingConfig, TenantPaymentStatus,
+    };
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
 
@@ -51,8 +53,9 @@ mod tests {
             administrators: vec![],
             token_account: Pubkey::default(),
             payment_status: TenantPaymentStatus::Paid,
-            metro_route: true,
-            route_aliveness: false,
+            metro_routing: true,
+            route_liveness: false,
+            billing: TenantBillingConfig::default(),
         };
 
         let tenant_cloned = tenant.clone();
@@ -92,7 +95,7 @@ mod tests {
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
             output_str,
-            "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\ncode: test-tenant\nvrf_id: 100\nmetro_route: true\nroute_aliveness: false\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n"
+            "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\ncode: test-tenant\nvrf_id: 100\nmetro_routing: true\nroute_liveness: false\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n"
         );
 
         // Expected success by code

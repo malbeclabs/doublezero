@@ -53,7 +53,9 @@ mod tests {
         },
         AccountType,
     };
-    use doublezero_serviceability::state::tenant::{Tenant, TenantPaymentStatus};
+    use doublezero_serviceability::state::tenant::{
+        Tenant, TenantBillingConfig, TenantPaymentStatus,
+    };
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
@@ -79,8 +81,9 @@ mod tests {
             administrators: vec![],
             token_account: Pubkey::default(),
             payment_status: TenantPaymentStatus::Delinquent,
-            metro_route: false,
-            route_aliveness: false,
+            metro_routing: false,
+            route_liveness: false,
+            billing: TenantBillingConfig::default(),
         };
 
         client
@@ -98,6 +101,7 @@ mod tests {
             .with(predicate::eq(UpdatePaymentStatusCommand {
                 tenant_pubkey,
                 payment_status: 1,
+                last_deduction_dz_epoch: None,
             }))
             .returning(move |_| Ok(signature));
 

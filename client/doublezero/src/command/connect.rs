@@ -992,7 +992,7 @@ mod tests {
                 administrators: vec![],
                 payment_status: TenantPaymentStatus::Paid,
                 token_account: Pubkey::default(),
-                metro_route: false,
+                metro_routing: false,
                 route_liveness: false,
                 billing: TenantBillingConfig::default(),
             };
@@ -1239,7 +1239,7 @@ mod tests {
                 administrators: vec![],
                 payment_status: TenantPaymentStatus::Paid,
                 token_account: Pubkey::default(),
-                metro_route: false,
+                metro_routing: false,
                 route_liveness: false,
                 billing: TenantBillingConfig::default(),
             };

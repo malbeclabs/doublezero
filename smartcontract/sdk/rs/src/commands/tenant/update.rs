@@ -10,7 +10,7 @@ pub struct UpdateTenantCommand {
     pub tenant_pubkey: Pubkey,
     pub vrf_id: Option<u16>,
     pub token_account: Option<Pubkey>,
-    pub metro_route: Option<bool>,
+    pub metro_routing: Option<bool>,
     pub route_liveness: Option<bool>,
     pub billing: Option<TenantBillingConfig>,
 }
@@ -23,7 +23,7 @@ impl UpdateTenantCommand {
             DoubleZeroInstruction::UpdateTenant(TenantUpdateArgs {
                 vrf_id: self.vrf_id,
                 token_account: self.token_account,
-                metro_route: self.metro_route,
+                metro_routing: self.metro_routing,
                 route_liveness: self.route_liveness,
                 billing: self.billing,
             }),

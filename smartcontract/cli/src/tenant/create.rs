@@ -21,7 +21,7 @@ pub struct CreateTenantCliCommand {
     pub token_account: Option<String>,
     /// Enable metro routing for this tenant
     #[arg(long, default_value = "false")]
-    pub metro_route: bool,
+    pub metro_routing: bool,
     /// Enable route aliveness checks for this tenant
     #[arg(long, default_value = "false")]
     pub route_liveness: bool,
@@ -57,7 +57,7 @@ impl CreateTenantCliCommand {
             code: self.code.clone(),
             administrator,
             token_account,
-            metro_route: self.metro_route,
+            metro_routing: self.metro_routing,
             route_liveness: self.route_liveness,
         })?;
 
@@ -78,7 +78,9 @@ mod tests {
         commands::tenant::{create::CreateTenantCommand, list::ListTenantCommand},
         AccountType,
     };
-    use doublezero_serviceability::state::tenant::{Tenant, TenantPaymentStatus};
+    use doublezero_serviceability::state::tenant::{
+        Tenant, TenantBillingConfig, TenantPaymentStatus,
+    };
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
@@ -104,8 +106,9 @@ mod tests {
             administrators: vec![],
             token_account: Pubkey::default(),
             payment_status: TenantPaymentStatus::Paid,
-            metro_route: false,
-            route_aliveness: false,
+            metro_routing: false,
+            route_liveness: false,
+            billing: TenantBillingConfig::default(),
         };
 
         client
@@ -127,8 +130,8 @@ mod tests {
                 code: "new-tenant".to_string(),
                 administrator: payer,
                 token_account: None,
-                metro_route: false,
-                route_aliveness: false,
+                metro_routing: false,
+                route_liveness: false,
             }))
             .times(1)
             .returning(move |_| Ok((signature, tenant_pubkey)));
@@ -140,8 +143,8 @@ mod tests {
             code: "existing".to_string(),
             administrator: "me".to_string(),
             token_account: None,
-            metro_route: false,
-            route_aliveness: false,
+            metro_routing: false,
+            route_liveness: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_err());
@@ -152,8 +155,8 @@ mod tests {
             code: "new-tenant".to_string(),
             administrator: "me".to_string(),
             token_account: None,
-            metro_route: false,
-            route_aliveness: false,
+            metro_routing: false,
+            route_liveness: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

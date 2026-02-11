@@ -107,7 +107,7 @@ pub struct Tenant {
         )
     )]
     pub token_account: Pubkey, // 32 bytes — Solana 2Z token account to monitor
-    pub metro_route: bool, // 1 byte - enables tenant to be routed through metro for VRF requests
+    pub metro_routing: bool, // 1 byte - enables tenant to be routed through metro for VRF requests
     pub route_liveness: bool, // 1 byte - enables tenant to be check for aliveness before routing
     pub billing: TenantBillingConfig, // 17 bytes (1 discriminant + 8 rate + 8 last_deduction_dz_epoch)
 }
@@ -116,8 +116,8 @@ impl fmt::Display for Tenant {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, bump_seed: {}, code: {}, vrf_id: {}, administrators: {:?}, payment_status: {}, token_account: {}, metro_route: {}, route_liveness: {}, billing: {}",
-            self.account_type, self.owner, self.bump_seed, self.code, self.vrf_id, self.administrators, self.payment_status, self.token_account, self.metro_route, self.route_liveness, self.billing
+            "account_type: {}, owner: {}, bump_seed: {}, code: {}, vrf_id: {}, administrators: {:?}, payment_status: {}, token_account: {}, metro_routing: {}, route_liveness: {}, billing: {}",
+            self.account_type, self.owner, self.bump_seed, self.code, self.vrf_id, self.administrators, self.payment_status, self.token_account, self.metro_routing, self.route_liveness, self.billing
         )
     }
 }
@@ -136,7 +136,7 @@ impl TryFrom<&[u8]> for Tenant {
             administrators: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             payment_status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             token_account: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            metro_route: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            metro_routing: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             route_liveness: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             billing: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
@@ -210,7 +210,7 @@ mod tests {
             administrators: vec![Pubkey::default()],
             payment_status: TenantPaymentStatus::Paid,
             token_account: Pubkey::default(),
-            metro_route: true,
+            metro_routing: true,
             route_liveness: false,
             billing: TenantBillingConfig::default(),
         };
@@ -252,7 +252,7 @@ mod tests {
             administrators: vec![],
             payment_status: TenantPaymentStatus::Delinquent,
             token_account: Pubkey::default(),
-            metro_route: true,
+            metro_routing: true,
             route_liveness: false,
             billing: TenantBillingConfig::default(),
         };
@@ -273,7 +273,7 @@ mod tests {
             administrators: vec![],
             payment_status: TenantPaymentStatus::Delinquent,
             token_account: Pubkey::default(),
-            metro_route: true,
+            metro_routing: true,
             route_liveness: false,
             billing: TenantBillingConfig::default(),
         };

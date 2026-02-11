@@ -42,7 +42,7 @@ async fn test_tenant() {
             code: "test-tenant".to_string(),
             administrator,
             token_account: None,
-            metro_route: true,
+            metro_routing: true,
             route_liveness: false,
         }),
         vec![
@@ -65,7 +65,7 @@ async fn test_tenant() {
     assert_eq!(tenant.reference_count, 0);
     assert_eq!(tenant.administrators.len(), 1);
     assert_eq!(tenant.administrators[0], administrator);
-    assert!(tenant.metro_route);
+    assert!(tenant.metro_routing);
     assert!(!tenant.route_liveness);
 
     println!("✅ Tenant created successfully");
@@ -79,7 +79,7 @@ async fn test_tenant() {
         DoubleZeroInstruction::UpdateTenant(TenantUpdateArgs {
             vrf_id: Some(200),
             token_account: None,
-            metro_route: Some(false),
+            metro_routing: Some(false),
             route_liveness: Some(true),
             billing: None,
         }),
@@ -99,7 +99,7 @@ async fn test_tenant() {
     assert_eq!(tenant.account_type, AccountType::Tenant);
     assert_eq!(tenant.code, "test-tenant".to_string()); // Code unchanged (immutable)
     assert_eq!(tenant.vrf_id, 200); // VRF ID updated
-    assert!(!tenant.metro_route); // Metro route updated
+    assert!(!tenant.metro_routing); // Metro route updated
     assert!(tenant.route_liveness); // Route liveness updated
     assert_eq!(tenant.billing, TenantBillingConfig::default()); // Billing unchanged
 
@@ -120,7 +120,7 @@ async fn test_tenant() {
         DoubleZeroInstruction::UpdateTenant(TenantUpdateArgs {
             vrf_id: None,
             token_account: None,
-            metro_route: None,
+            metro_routing: None,
             route_liveness: None,
             billing: Some(billing_config),
         }),
@@ -349,7 +349,7 @@ async fn test_tenant_delete_with_nonzero_reference_count_fails() {
             code: tenant_code_refcount.to_string(),
             administrator,
             token_account: None,
-            metro_route: true,
+            metro_routing: true,
             route_liveness: false,
         }),
         vec![
@@ -423,7 +423,7 @@ async fn test_tenant_add_duplicate_administrator_fails() {
             code: tenant_code_duplicate.to_string(),
             administrator,
             token_account: None,
-            metro_route: true,
+            metro_routing: true,
             route_liveness: false,
         }),
         vec![
@@ -513,7 +513,7 @@ async fn test_tenant_remove_nonexistent_administrator_fails() {
             code: tenant_code_nonexistent.to_string(),
             administrator,
             token_account: None,
-            metro_route: true,
+            metro_routing: true,
             route_liveness: false,
         }),
         vec![

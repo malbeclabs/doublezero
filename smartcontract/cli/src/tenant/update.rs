@@ -22,7 +22,7 @@ pub struct UpdateTenantCliCommand {
     pub token_account: Option<String>,
     /// Enable/disable metro routing
     #[arg(long)]
-    pub metro_route: Option<bool>,
+    pub metro_routing: Option<bool>,
     /// Enable/disable route aliveness checks
     #[arg(long)]
     pub route_liveness: Option<bool>,
@@ -58,7 +58,7 @@ impl UpdateTenantCliCommand {
             tenant_pubkey,
             vrf_id: self.vrf_id,
             token_account,
-            metro_route: self.metro_route,
+            metro_routing: self.metro_routing,
             route_liveness: self.route_liveness,
             billing,
         })?;
@@ -80,7 +80,9 @@ mod tests {
         commands::tenant::{get::GetTenantCommand, update::UpdateTenantCommand},
         AccountType,
     };
-    use doublezero_serviceability::state::tenant::{Tenant, TenantPaymentStatus};
+    use doublezero_serviceability::state::tenant::{
+        Tenant, TenantBillingConfig, TenantPaymentStatus,
+    };
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
@@ -106,8 +108,9 @@ mod tests {
             administrators: vec![],
             token_account: Pubkey::default(),
             payment_status: TenantPaymentStatus::Paid,
-            metro_route: false,
-            route_aliveness: false,
+            metro_routing: false,
+            route_liveness: false,
+            billing: TenantBillingConfig::default(),
         };
 
         client
@@ -126,8 +129,9 @@ mod tests {
                 tenant_pubkey,
                 vrf_id: Some(200),
                 token_account: None,
-                metro_route: Some(true),
-                route_aliveness: None,
+                metro_routing: Some(true),
+                route_liveness: None,
+                billing: None,
             }))
             .returning(move |_| Ok(signature));
 
@@ -137,8 +141,9 @@ mod tests {
             pubkey: tenant_pubkey.to_string(),
             vrf_id: Some(200),
             token_account: None,
-            metro_route: Some(true),
-            route_aliveness: None,
+            metro_routing: Some(true),
+            route_liveness: None,
+            billing_rate: None,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

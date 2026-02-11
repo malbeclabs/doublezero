@@ -94,6 +94,7 @@ var tenantPayload = `
 00050000000100000000000000000000000000000000000000
 0000000000000000000000000000000001aaaaaaaaaaaaaaaa
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0100
+000000000000000000000000000000000000
 `
 
 var programconfigPayload = `
@@ -441,8 +442,8 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 							0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa,
 							0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa,
 						},
-						MetroRoute:     true,
-						RouteAliveness: false,
+						MetroRouting:   true,
+						RouteLiveness:  false,
 						PubKey:         pubkeys[7],
 					},
 				},

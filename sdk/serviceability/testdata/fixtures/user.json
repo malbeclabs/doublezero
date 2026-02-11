@@ -91,6 +91,11 @@
       "name": "ValidatorPubkey",
       "value": "7oGBJ2HXGT17Fs9QNxu6RbH68z4rJxHZyc9gqhLWoFmq",
       "typ": "pubkey"
+    },
+    {
+      "name": "TunnelEndpoint",
+      "value": "0.0.0.0",
+      "typ": "ipv4"
     }
   ]
 }

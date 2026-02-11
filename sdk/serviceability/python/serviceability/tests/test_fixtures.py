@@ -289,8 +289,11 @@ class TestFixtureTenant:
                 "ReferenceCount": t.reference_count,
                 "PaymentStatus": t.payment_status,
                 "TokenAccount": t.token_account,
-                "MetroRoute": t.metro_route,
-                "RouteAliveness": t.route_aliveness,
+                "MetroRouting": t.metro_routing,
+                "RouteLiveness": t.route_liveness,
+                "BillingDiscriminant": t.billing_discriminant,
+                "BillingRate": t.billing_rate,
+                "BillingLastDeductionDzEpoch": t.billing_last_deduction_dz_epoch,
             },
         )
 

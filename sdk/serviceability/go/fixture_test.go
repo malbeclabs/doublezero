@@ -303,8 +303,11 @@ func TestFixtureTenant(t *testing.T) {
 		"ReferenceCount": tenant.ReferenceCount,
 		"PaymentStatus":  uint8(tenant.PaymentStatus),
 		"TokenAccount":   solana.PublicKey(tenant.TokenAccount),
-		"MetroRoute":     tenant.MetroRoute,
-		"RouteAliveness": tenant.RouteAliveness,
+		"MetroRouting":                 tenant.MetroRouting,
+		"RouteLiveness":                tenant.RouteLiveness,
+		"BillingDiscriminant":          tenant.BillingDiscriminant,
+		"BillingRate":                  tenant.BillingRate,
+		"BillingLastDeductionDzEpoch":  tenant.BillingLastDeductionDzEpoch,
 	})
 }
 

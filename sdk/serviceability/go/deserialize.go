@@ -313,7 +313,10 @@ func DeserializeTenant(reader *ByteReader, tenant *Tenant) {
 	tenant.Administrators = reader.ReadPubkeySlice()
 	tenant.PaymentStatus = TenantPaymentStatus(reader.ReadU8())
 	tenant.TokenAccount = reader.ReadPubkey()
-	tenant.MetroRoute = (reader.ReadU8() != 0)
-	tenant.RouteAliveness = (reader.ReadU8() != 0)
+	tenant.MetroRouting = (reader.ReadU8() != 0)
+	tenant.RouteLiveness = (reader.ReadU8() != 0)
+	tenant.BillingDiscriminant = reader.ReadU8()
+	tenant.BillingRate = reader.ReadU64()
+	tenant.BillingLastDeductionDzEpoch = reader.ReadU64()
 	// Note: tenant.PubKey is set separately in client.go after deserialization
 }

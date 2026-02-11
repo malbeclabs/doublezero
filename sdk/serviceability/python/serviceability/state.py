@@ -822,8 +822,11 @@ class Tenant:
     administrators: list[Pubkey] = field(default_factory=list)
     payment_status: int = 0
     token_account: Pubkey = Pubkey.default()
-    metro_route: bool = False
-    route_aliveness: bool = False
+    metro_routing: bool = False
+    route_liveness: bool = False
+    billing_discriminant: int = 0
+    billing_rate: int = 0
+    billing_last_deduction_dz_epoch: int = 0
 
     @classmethod
     def from_bytes(cls, data: bytes) -> Tenant:
@@ -838,8 +841,11 @@ class Tenant:
         t.administrators = _read_pubkey_vec(r)
         t.payment_status = r.read_u8()
         t.token_account = _read_pubkey(r)
-        t.metro_route = r.read_u8() != 0
-        t.route_aliveness = r.read_u8() != 0
+        t.metro_routing = r.read_u8() != 0
+        t.route_liveness = r.read_u8() != 0
+        t.billing_discriminant = r.read_u8()
+        t.billing_rate = r.read_u64()
+        t.billing_last_deduction_dz_epoch = r.read_u64()
         return t
 
 

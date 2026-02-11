@@ -53,14 +53,29 @@
       "typ": "pubkey"
     },
     {
-      "name": "MetroRoute",
+      "name": "MetroRouting",
       "value": "true",
       "typ": "bool"
     },
     {
-      "name": "RouteAliveness",
+      "name": "RouteLiveness",
       "value": "false",
       "typ": "bool"
+    },
+    {
+      "name": "BillingDiscriminant",
+      "value": "0",
+      "typ": "u8"
+    },
+    {
+      "name": "BillingRate",
+      "value": "0",
+      "typ": "u64"
+    },
+    {
+      "name": "BillingLastDeductionDzEpoch",
+      "value": "0",
+      "typ": "u64"
     }
   ]
 }

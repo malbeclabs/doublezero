@@ -32,7 +32,7 @@ use doublezero_serviceability::state::{
     location::{Location, LocationStatus},
     multicastgroup::{MulticastGroup, MulticastGroupStatus},
     programconfig::ProgramConfig,
-    tenant::{Tenant, TenantPaymentStatus},
+    tenant::{Tenant, TenantBillingConfig, TenantPaymentStatus},
     user::{User, UserCYOA, UserStatus, UserType},
 };
 use serde::Serialize;
@@ -472,6 +472,7 @@ fn generate_user(dir: &Path) {
         publishers: vec![publisher_pk],
         subscribers: vec![subscriber_pk],
         validator_pubkey,
+        tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -498,6 +499,7 @@ fn generate_user(dir: &Path) {
             FieldValue { name: "SubscribersLen".into(), value: "1".into(), typ: "u32".into() },
             FieldValue { name: "Subscribers0".into(), value: pubkey_bs58(&subscriber_pk), typ: "pubkey".into() },
             FieldValue { name: "ValidatorPubkey".into(), value: pubkey_bs58(&validator_pubkey), typ: "pubkey".into() },
+            FieldValue { name: "TunnelEndpoint".into(), value: "0.0.0.0".into(), typ: "ipv4".into() },
         ],
     };
 
@@ -725,8 +727,9 @@ fn generate_tenant(dir: &Path) {
         administrators: vec![admin_pk],
         payment_status: TenantPaymentStatus::Paid,
         token_account,
-        metro_route: true,
-        route_aliveness: false,
+        metro_routing: true,
+        route_liveness: false,
+        billing: TenantBillingConfig::default(),
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -745,8 +748,11 @@ fn generate_tenant(dir: &Path) {
             FieldValue { name: "Administrators0".into(), value: pubkey_bs58(&admin_pk), typ: "pubkey".into() },
             FieldValue { name: "PaymentStatus".into(), value: "1".into(), typ: "u8".into() },
             FieldValue { name: "TokenAccount".into(), value: pubkey_bs58(&token_account), typ: "pubkey".into() },
-            FieldValue { name: "MetroRoute".into(), value: "true".into(), typ: "bool".into() },
-            FieldValue { name: "RouteAliveness".into(), value: "false".into(), typ: "bool".into() },
+            FieldValue { name: "MetroRouting".into(), value: "true".into(), typ: "bool".into() },
+            FieldValue { name: "RouteLiveness".into(), value: "false".into(), typ: "bool".into() },
+            FieldValue { name: "BillingDiscriminant".into(), value: "0".into(), typ: "u8".into() },
+            FieldValue { name: "BillingRate".into(), value: "0".into(), typ: "u64".into() },
+            FieldValue { name: "BillingLastDeductionDzEpoch".into(), value: "0".into(), typ: "u64".into() },
         ],
     };
 

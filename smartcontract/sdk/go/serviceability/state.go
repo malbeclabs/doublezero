@@ -676,9 +676,12 @@ type Tenant struct {
 	Administrators [][32]byte
 	PaymentStatus  TenantPaymentStatus `influx:"tag,payment_status"`
 	TokenAccount   [32]byte            `influx:"tag,token_account,pubkey"`
-	MetroRoute     bool                `influx:"field,metro_route"`
-	RouteAliveness bool                `influx:"field,route_aliveness"`
-	PubKey         [32]byte            `influx:"tag,pubkey,pubkey"`
+	MetroRouting           bool                `influx:"field,metro_routing"`
+	RouteLiveness          bool                `influx:"field,route_liveness"`
+	BillingDiscriminant    uint8               `influx:"-"`
+	BillingRate            uint64              `influx:"field,billing_rate"`
+	BillingLastDeductionDzEpoch uint64         `influx:"field,billing_last_deduction_dz_epoch"`
+	PubKey                 [32]byte            `influx:"tag,pubkey,pubkey"`
 }
 
 func (t Tenant) MarshalJSON() ([]byte, error) {

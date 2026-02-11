@@ -318,8 +318,11 @@ describe("Tenant fixture", () => {
       ReferenceCount: t.referenceCount,
       PaymentStatus: t.paymentStatus,
       TokenAccount: t.tokenAccount,
-      MetroRoute: t.metroRoute,
-      RouteAliveness: t.routeAliveness,
+      MetroRouting: t.metroRouting,
+      RouteLiveness: t.routeLiveness,
+      BillingDiscriminant: t.billingDiscriminant,
+      BillingRate: t.billingRate,
+      BillingLastDeductionDzEpoch: t.billingLastDeductionDzEpoch,
     });
   });
 });

@@ -419,7 +419,7 @@ func (c *Client) WaitForTunnelUp(ctx context.Context, timeout time.Duration) err
 
 // WaitForNTunnelsUp waits for N tunnels to be in the "up" state.
 func (c *Client) WaitForNTunnelsUp(ctx context.Context, n int, timeout time.Duration) error {
-	c.log.Info("==> Waiting for N tunnels to be up", "n", n, "timeout", timeout)
+	c.log.Debug("==> Waiting for N tunnels to be up", "n", n, "timeout", timeout)
 
 	attempts := 0
 	start := time.Now()
@@ -616,13 +616,13 @@ func (c *Client) WaitForLatencyResults(ctx context.Context, wantDevicePK string,
 
 // WaitForPing waits until the given IP is reachable via ICMP ping from the client container.
 func (c *Client) WaitForPing(ctx context.Context, ip string, timeout time.Duration) error {
-	c.log.Info("==> Waiting for ping to succeed", "ip", ip, "timeout", timeout)
+	c.log.Debug("==> Waiting for ping to succeed", "ip", ip, "timeout", timeout)
 
 	start := time.Now()
 	err := poll.Until(ctx, func() (bool, error) {
 		_, err := c.Exec(ctx, []string{"ping", "-c", "1", "-W", "1", ip})
 		if err == nil {
-			c.log.Info("✅ Ping succeeded", "ip", ip, "duration", time.Since(start))
+			c.log.Debug("✅ Ping succeeded", "ip", ip, "duration", time.Since(start))
 			return true, nil
 		}
 		return false, nil

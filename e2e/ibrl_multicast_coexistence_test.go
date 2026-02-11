@@ -1280,13 +1280,6 @@ func verifyConcurrentMulticastPublisherMrouteState(t *testing.T, log *slog.Logge
 func verifyMulticastPublisherMrouteState(t *testing.T, log *slog.Logger, device *devnet.Device, client *devnet.Client) {
 	log.Debug("==> Verifying multicast publisher mroute state")
 
-	// 	// Calculate expected allocated IP from device's dz_prefix
-	// 	dzPrefixIP, dzPrefixNet, err := netutil.ParseCIDR(device.DZPrefix)
-	// 	require.NoError(t, err)
-	// 	ones, _ := dzPrefixNet.Mask.Size()
-	// 	allocatableBits := 32 - ones
-	// 	// First IP is reserved for device tunnel endpoint (Loopback100 interface)
-	// 	expectedAllocatedIP, err := nextAllocatableIP(dzPrefixIP, allocatableBits, map[string]bool{dzPrefixIP: true})
 	// Get the actual allocated IP from the client's tunnel status
 	// This is more reliable than calculating it, especially when multiple clients
 	// have allocated IPs from the same prefix

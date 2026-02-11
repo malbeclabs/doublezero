@@ -128,6 +128,8 @@ mod tests {
             administrators: vec![],
             token_account: Pubkey::default(),
             payment_status: TenantPaymentStatus::Paid,
+            metro_route: false,
+            route_aliveness: false,
         };
 
         let device_pubkey = Pubkey::new_unique();

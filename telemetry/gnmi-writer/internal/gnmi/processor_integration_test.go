@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -85,20 +86,47 @@ func newTestHarness(t *testing.T) *testHarness {
 	h.chConn, err = h.clickhouseCtr.ConnectionHost(ctx)
 	require.NoError(t, err, "error getting clickhouse connection")
 
-	// Setup Redpanda
-	h.redpandaCtr, err = redpanda.Run(ctx,
-		"docker.redpanda.com/redpandadata/redpanda:v24.2.6",
-		redpanda.WithEnableSASL(),
-		redpanda.WithAutoCreateTopics(),
-		redpanda.WithEnableKafkaAuthorization(),
-		redpanda.WithNewServiceAccount(rpUser, rpPassword),
-		redpanda.WithSuperusers(rpUser),
-	)
-	require.NoError(t, err, "error setting up redpanda container")
-	testcontainers.CleanupContainer(t, h.redpandaCtr)
+	// Setup Redpanda with retry logic for flaky container registry
+	const maxAttempts = 5
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		h.redpandaCtr, err = redpanda.Run(ctx,
+			"docker.redpanda.com/redpandadata/redpanda:v24.2.6",
+			redpanda.WithEnableSASL(),
+			redpanda.WithAutoCreateTopics(),
+			redpanda.WithEnableKafkaAuthorization(),
+			redpanda.WithNewServiceAccount(rpUser, rpPassword),
+			redpanda.WithSuperusers(rpUser),
+		)
+		if err != nil {
+			lastErr = err
+			if isRetryableContainerStartErr(err) && attempt < maxAttempts {
+				t.Logf("redpanda container start attempt %d failed: %v", attempt, err)
+				time.Sleep(time.Duration(attempt) * time.Second)
+				continue
+			}
+			require.NoError(t, err, "error setting up redpanda container")
+		}
 
-	h.rpBroker, err = h.redpandaCtr.KafkaSeedBroker(ctx)
-	require.NoError(t, err, "error getting redpanda seed broker")
+		h.rpBroker, err = h.redpandaCtr.KafkaSeedBroker(ctx)
+		if err != nil {
+			lastErr = err
+			if isRetryableContainerStartErr(err) && attempt < maxAttempts {
+				t.Logf("redpanda broker fetch attempt %d failed: %v", attempt, err)
+				_ = h.redpandaCtr.Terminate(context.Background())
+				time.Sleep(time.Duration(attempt) * time.Second)
+				continue
+			}
+			require.NoError(t, err, "error getting redpanda seed broker")
+		}
+
+		// Success
+		break
+	}
+	if h.redpandaCtr == nil {
+		t.Fatalf("failed to start redpanda after %d attempts: %v", maxAttempts, lastErr)
+	}
+	testcontainers.CleanupContainer(t, h.redpandaCtr)
 
 	// Create Kafka client
 	h.rpClient, err = kgo.NewClient(
@@ -133,6 +161,8 @@ func newTestHarness(t *testing.T) *testHarness {
 }
 
 // publishPrototext loads a prototext file and publishes it as binary protobuf to Redpanda.
+// It overrides the notification timestamp with the current time so that rows are not
+// silently dropped by ClickHouse TTL (which expires data older than 30 days).
 func (h *testHarness) publishPrototext(filename string) {
 	h.t.Helper()
 
@@ -142,6 +172,10 @@ func (h *testHarness) publishPrototext(filename string) {
 	var resp gpb.SubscribeResponse
 	err = prototext.Unmarshal(data, &resp)
 	require.NoError(h.t, err, "error unmarshaling prototext")
+
+	if n := resp.GetUpdate(); n != nil {
+		n.Timestamp = time.Now().UnixNano()
+	}
 
 	binary, err := proto.Marshal(&resp)
 	require.NoError(h.t, err, "error marshaling protobuf")
@@ -669,4 +703,19 @@ func verifyTransceiverThresholds(t *testing.T, h *testHarness) {
 		require.False(t, seen[key], "duplicate row for %s", key)
 		seen[key] = true
 	}
+}
+
+func isRetryableContainerStartErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := err.Error()
+	return strings.Contains(s, "wait until ready") ||
+		strings.Contains(s, "mapped port") ||
+		strings.Contains(s, "timeout") ||
+		strings.Contains(s, "context deadline exceeded") ||
+		strings.Contains(s, "TLS handshake") ||
+		strings.Contains(s, "connection refused") ||
+		strings.Contains(s, "/containers/") && strings.Contains(s, "json") ||
+		strings.Contains(s, "Get \"http")
 }

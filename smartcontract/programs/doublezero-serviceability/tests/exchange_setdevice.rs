@@ -54,6 +54,7 @@ async fn exchange_setdevice() {
     let (link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
     let (segment_routing_ids_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+    let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -74,6 +75,7 @@ async fn exchange_setdevice() {
             AccountMeta::new(multicastgroup_block_pda, false),
             AccountMeta::new(link_ids_pda, false),
             AccountMeta::new(segment_routing_ids_pda, false),
+            AccountMeta::new(vrf_ids_pda, false),
         ],
         &payer,
     )

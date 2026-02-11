@@ -64,7 +64,7 @@ func TestE2E_IBRL(t *testing.T) {
 }
 
 func checkIbgpMsdpPeerRemoved(t *testing.T, dn *TestDevnet, device *devnet.Device) {
-	dn.log.Info("==> Checking that iBGP/MSDP peers have been removed after peer's Loopback255 interface was removed")
+	dn.log.Debug("==> Checking that iBGP/MSDP peers have been removed after peer's Loopback255 interface was removed")
 
 	if !t.Run("wait_for_agent_config_after_peer_removal", func(t *testing.T) {
 		// We need a new fixture that shows the config after pit-dzd01's Loopback255 is removed
@@ -81,11 +81,11 @@ func checkIbgpMsdpPeerRemoved(t *testing.T, dn *TestDevnet, device *devnet.Devic
 		t.Fail()
 	}
 
-	dn.log.Info("--> IBRL iBGP/MSDP peer removal requirements checked")
+	dn.log.Debug("--> IBRL iBGP/MSDP peer removal requirements checked")
 }
 
 func checkDeviceDrain(t *testing.T, dn *TestDevnet, device *devnet.Device) {
-	dn.log.Info("==> Checking that device is drained")
+	dn.log.Debug("==> Checking that device is drained")
 
 	if !t.Run("set_device_status_to_drained", func(t *testing.T) {
 		_, err := dn.Manager.Exec(t.Context(), []string{"doublezero", "device", "update", "--pubkey", device.Spec.Code, "--desired-status", "drained"})
@@ -108,11 +108,11 @@ func checkDeviceDrain(t *testing.T, dn *TestDevnet, device *devnet.Device) {
 		t.Fail()
 	}
 
-	dn.log.Info("--> Device drain requirements checked")
+	dn.log.Debug("--> Device drain requirements checked")
 }
 
 func checkDeviceUndrain(t *testing.T, dn *TestDevnet, device *devnet.Device) {
-	dn.log.Info("==> Checking that device is undrained (returned to activated)")
+	dn.log.Debug("==> Checking that device is undrained (returned to activated)")
 
 	if !t.Run("set_device_status_to_activated", func(t *testing.T) {
 		_, err := dn.Manager.Exec(t.Context(), []string{"doublezero", "device", "update", "--pubkey", device.Spec.Code, "--desired-status", "activated"})
@@ -137,7 +137,7 @@ func checkDeviceUndrain(t *testing.T, dn *TestDevnet, device *devnet.Device) {
 		t.Fail()
 	}
 
-	dn.log.Info("--> Device undrain requirements checked")
+	dn.log.Debug("--> Device undrain requirements checked")
 }
 
 // checkIBRLPostConnect checks requirements after connecting a user tunnel.
@@ -146,7 +146,7 @@ func checkIBRLPostConnect(t *testing.T, dn *TestDevnet, device *devnet.Device, c
 	// non-parallel test to ensure methods that follow this one wait for the inner tests to
 	// complete.
 	t.Run("check_post_connect", func(t *testing.T) {
-		dn.log.Info("==> Checking IBRL post-connect requirements")
+		dn.log.Debug("==> Checking IBRL post-connect requirements")
 
 		if !t.Run("wait_for_agent_config_from_controller_post_connect", func(t *testing.T) {
 			config, err := fixtures.Render("fixtures/ibrl/doublezero_agent_config_user_added.tmpl", map[string]any{
@@ -270,7 +270,7 @@ func checkIBRLPostConnect(t *testing.T, dn *TestDevnet, device *devnet.Device, c
 					break
 				}
 
-				dn.log.Info("no route to 8.8.8.8 found, retrying...", "routes", routes)
+				dn.log.Debug("no route to 8.8.8.8 found, retrying...", "routes", routes)
 
 				time.Sleep(1 * time.Second)
 			}
@@ -306,7 +306,7 @@ func checkIBRLPostConnect(t *testing.T, dn *TestDevnet, device *devnet.Device, c
 			t.Fail()
 		}
 
-		dn.log.Info("--> IBRL post-connect requirements checked")
+		dn.log.Debug("--> IBRL post-connect requirements checked")
 	})
 }
 
@@ -316,7 +316,7 @@ func checkIBRLPostDisconnect(t *testing.T, dn *TestDevnet, device *devnet.Device
 	// non-parallel test to ensure methods that follow this one wait for the inner tests to
 	// complete.
 	t.Run("check_post_disconnect", func(t *testing.T) {
-		dn.log.Info("==> Checking IBRL post-disconnect requirements")
+		dn.log.Debug("==> Checking IBRL post-disconnect requirements")
 
 		if !t.Run("wait_for_agent_config_from_controller_post_disconnect", func(t *testing.T) {
 			config, err := fixtures.Render("fixtures/ibrl/doublezero_agent_config_user_removed.tmpl", map[string]any{
@@ -402,7 +402,7 @@ func checkIBRLPostDisconnect(t *testing.T, dn *TestDevnet, device *devnet.Device
 		if !t.Run("check_user_tunnel_is_removed_from_agent", func(t *testing.T) {
 			t.Parallel()
 
-			deadline := time.Now().Add(30 * time.Second)
+			deadline := time.Now().Add(60 * time.Second)
 			for time.Now().Before(deadline) {
 				neighbors, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIPBGPSummary](t.Context(), device, arista.ShowIPBGPSummaryCmd("vrf1"))
 				require.NoError(t, err, "error fetching neighbors from doublezero device")
@@ -418,6 +418,6 @@ func checkIBRLPostDisconnect(t *testing.T, dn *TestDevnet, device *devnet.Device
 			t.Fail()
 		}
 
-		dn.log.Info("--> IBRL post-disconnect requirements checked")
+		dn.log.Debug("--> IBRL post-disconnect requirements checked")
 	})
 }

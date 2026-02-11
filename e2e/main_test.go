@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -40,24 +41,42 @@ const (
 )
 
 var (
+	verbose         bool
+	debug           bool
 	logger          *slog.Logger
 	subnetAllocator *docker.SubnetAllocator
 	dockerClient    *client.Client
 )
 
+// testWriter wraps testing.T to implement io.Writer for slog output.
+// This ensures logs only appear on test failure (standard go test behavior).
+type testWriter struct {
+	t  *testing.T
+	mu sync.Mutex
+}
+
+func (w *testWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.t.Logf("%s", p)
+	return len(p), nil
+}
+
 // TestMain is the entry point for the test suite. It runs before all tests and is used to
 // initialize the logger and subnet allocator.
 func TestMain(m *testing.M) {
 	flag.Parse()
-	verbose := false
 	if vFlag := flag.Lookup("test.v"); vFlag != nil && vFlag.Value.String() == "true" {
 		verbose = true
 	}
+	if os.Getenv("DZ_E2E_DEBUG") != "" {
+		debug = true
+	}
 
 	// Initialize a logger.
-	logger = newTestLogger(verbose)
-	if verbose {
-		logger.Debug("==> Running with verbose logging")
+	logger = newTestLogger(verbose, debug)
+	if debug {
+		logger.Debug("==> Running with debug logging")
 	}
 
 	// Set the default logger for testcontainers.
@@ -86,7 +105,7 @@ func TestMain(m *testing.M) {
 			logger.Error("failed to load env file", "error", err)
 			os.Exit(1)
 		}
-		err = devnet.BuildContainerImages(context.Background(), logger, workspaceDir, verbose)
+		err = devnet.BuildContainerImages(context.Background(), logger, workspaceDir, debug)
 		if err != nil {
 			logger.Error("failed to build container images", "error", err)
 			os.Exit(1)
@@ -104,9 +123,9 @@ type TestDevnet struct {
 
 func NewSingleDeviceSingleClientTestDevnet(t *testing.T) (*TestDevnet, *devnet.Device, *devnet.Client) {
 	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
-	log := logger.With("test", t.Name(), "deployID", deployID)
+	log := newTestLoggerForTest(t)
 
-	log.Info("==> Starting test devnet with single device and client")
+	log.Debug("==> Starting test devnet with single device and client")
 
 	// Use a hardcoded serviceability program keypair for these tests, since device and account
 	// pubkeys onchain are derived in the smartcontract and will change if the serviceability
@@ -161,11 +180,10 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 	require.NoError(t, err)
 
 	// Add the other devices and links onchain.
-	dn.log.Info("==> Creating other devices and links onchain")
+	dn.log.Debug("==> Creating other devices and links onchain")
 	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", `
 		set -euo pipefail
 
-		echo "==> Populate device information onchain"
 		doublezero device create --code ld4-dz01 --contributor co01 --location lhr --exchange xlhr --public-ip "195.219.120.72" --dz-prefixes "195.219.120.80/29" --mgmt-vrf mgmt --desired-status activated
 		doublezero device create --code frk-dz01 --contributor co01 --location fra --exchange xfra --public-ip "195.219.220.88" --dz-prefixes "195.219.220.96/29" --mgmt-vrf mgmt --desired-status activated
 		doublezero device create --code sg1-dz01 --contributor co01 --location sin --exchange xsin --public-ip "180.87.102.104" --dz-prefixes "180.87.102.112/29" --mgmt-vrf mgmt --desired-status activated
@@ -173,10 +191,6 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 		doublezero device create --code pit-dzd01 --contributor co01 --location pit --exchange xpit --public-ip "204.16.241.243" --dz-prefixes "204.16.243.243/32" --mgmt-vrf mgmt --desired-status activated
 		doublezero device create --code ams-dz001 --contributor co01 --location ams --exchange xams --public-ip "195.219.138.50" --dz-prefixes "195.219.138.56/29" --mgmt-vrf mgmt --desired-status activated
 
-		echo "--> Device information onchain:"
-		doublezero device list
-
-		echo "==> Populate device interface information onchain"
 		# TODO: When the controller supports dzd metadata, this will have to be updated to reflect actual interfaces
 		doublezero device interface create ny5-dz01 "Ethernet2" -w
 		doublezero device interface create ny5-dz01 "Vlan4001" -w
@@ -227,8 +241,6 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 		doublezero device update --pubkey pit-dzd01 --max-users 128
 		doublezero device update --pubkey ams-dz001 --max-users 128
 
-
-		echo "==> Populate link information onchain"
 		doublezero link create wan --code "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Ethernet2 --side-z ny5-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3 --desired-status activated -w
 		doublezero link create wan --code "ny5-dz01:ld4-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Vlan4001 --side-z ld4-dz01 --side-z-interface Vlan4001 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3 --desired-status activated -w
 		doublezero link create wan --code "ld4-dz01:frk-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet3 --side-z frk-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 25 --jitter-ms 10 --desired-status activated -w
@@ -245,17 +257,9 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 		# For testing link.status=hard-drained:
 		doublezero link create wan --code "ny5-dz01_e6:la2-dz01_e6" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet6 --side-z la2-dz01 --side-z-interface Ethernet6 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 8 --jitter-ms 3 --desired-status activated -w
 
-		echo "===> Set delay override for ny5-dz01:la2-dz01 link"
 		doublezero link update --pubkey "ny5-dz01:la2-dz01" --delay-override-ms 500
-
-		echo "===> Set link status=soft-drained for ny5-dz01_e5:la2-dz01_e5 link"
 		doublezero link update --pubkey "ny5-dz01_e5:la2-dz01_e5" --status=soft-drained
-
-		echo "===> Set link status=hard-drained for ny5-dz01_e6:la2-dz01_e6 link"
 		doublezero link update --pubkey "ny5-dz01_e6:la2-dz01_e6" --status=hard-drained
-
-		echo "--> Tunnel information onchain:"
-		doublezero link list
 	`})
 	require.NoError(t, err)
 
@@ -271,7 +275,6 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 
 	// Add null routes to test latency selection to ny5-dz01.
 	_, err = client.Exec(ctx, []string{"bash", "-c", `
-		echo "==> Adding null routes to test latency selection to ny5-dz01."
 		ip rule add priority 1 from ` + client.CYOANetworkIP + `/` + strconv.Itoa(dn.Spec.CYOANetwork.CIDRPrefix) + ` to all table main
 		ip route add 207.45.216.134/32 dev lo proto static scope host
 		ip route add 195.219.120.72/32 dev lo proto static scope host
@@ -289,7 +292,7 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 
 	// Verify device has published telemetry to InfluxDB.
 	if dn.InfluxDB != nil && dn.InfluxDB.InternalURL != "" {
-		dn.log.Info("==> Verifying device telemetry in InfluxDB", "device", device.Spec.Code, "pubkey", device.ID)
+		dn.log.Debug("==> Verifying device telemetry in InfluxDB", "device", device.Spec.Code, "pubkey", device.ID)
 		require.Eventually(t, func() bool {
 			hasData, err := dn.InfluxDB.HasDeviceData(ctx, device.ID)
 			if err != nil {
@@ -298,12 +301,12 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 			}
 			return hasData
 		}, 60*time.Second, 3*time.Second, "device %s did not publish telemetry to InfluxDB", device.Spec.Code)
-		dn.log.Info("--> Device telemetry verified in InfluxDB")
+		dn.log.Debug("--> Device telemetry verified in InfluxDB")
 	}
 
 	// Verify device has getconfig metrics in Prometheus.
 	if dn.Prometheus != nil && dn.Prometheus.InternalURL != "" {
-		dn.log.Info("==> Verifying device metrics in Prometheus", "device", device.Spec.Code, "pubkey", device.ID)
+		dn.log.Debug("==> Verifying device metrics in Prometheus", "device", device.Spec.Code, "pubkey", device.ID)
 		require.Eventually(t, func() bool {
 			hasMetrics, err := dn.Prometheus.HasDeviceMetrics(ctx, device.ID)
 			if err != nil {
@@ -312,19 +315,19 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 			}
 			return hasMetrics
 		}, 60*time.Second, 5*time.Second, "device %s did not have getconfig metrics in Prometheus", device.Spec.Code)
-		dn.log.Info("--> Device metrics verified in Prometheus")
+		dn.log.Debug("--> Device metrics verified in Prometheus")
 	}
 
 	return device, client
 }
 
 func (dn *TestDevnet) DisconnectUserTunnel(t *testing.T, client *devnet.Client) {
-	dn.log.Info("==> Disconnecting user tunnel")
+	dn.log.Debug("==> Disconnecting user tunnel")
 
 	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect --client-ip " + client.CYOANetworkIP})
 	require.NoError(t, err)
 
-	dn.log.Info("--> User tunnel disconnected")
+	dn.log.Debug("--> User tunnel disconnected")
 }
 
 func (dn *TestDevnet) GetDevicePubkeyOnchain(t *testing.T, deviceCode string) string {
@@ -341,22 +344,13 @@ func (dn *TestDevnet) GetDevicePubkeyOnchain(t *testing.T, deviceCode string) st
 }
 
 func (dn *TestDevnet) CreateMulticastGroupOnchain(t *testing.T, client *devnet.Client, multicastGroupCode string) {
-	dn.log.Info("==> Creating multicast group onchain")
+	dn.log.Debug("==> Creating multicast group onchain")
 
 	_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
 		set -e
-
-		echo "==> Populate multicast group information onchain"
 		doublezero multicast group create --code ` + multicastGroupCode + ` --max-bandwidth 10Gbps --owner me -w
-
-		echo "--> Multicast group information onchain:"
-		doublezero multicast group list
-
-		echo "==> Add me to multicast group allowlist"
 		doublezero multicast group allowlist publisher add --code ` + multicastGroupCode + ` --user-payer me --client-ip ` + client.CYOANetworkIP + `
 		doublezero multicast group allowlist subscriber add --code ` + multicastGroupCode + ` --user-payer me --client-ip ` + client.CYOANetworkIP + `
-
-		echo "==> Add client pubkey to multicast group allowlist"
 		doublezero multicast group allowlist publisher add --code ` + multicastGroupCode + ` --user-payer ` + client.Pubkey + ` --client-ip ` + client.CYOANetworkIP + `
 		doublezero multicast group allowlist subscriber add --code ` + multicastGroupCode + ` --user-payer ` + client.Pubkey + ` --client-ip ` + client.CYOANetworkIP + `
 	`})
@@ -403,7 +397,7 @@ func (dn *TestDevnet) WaitForUserActivation(t *testing.T) error {
 }
 
 func (dn *TestDevnet) ConnectIBRLUserTunnel(t *testing.T, client *devnet.Client) {
-	dn.log.Info("==> Connecting IBRL user tunnel")
+	dn.log.Debug("==> Connecting IBRL user tunnel")
 
 	// Set access pass for the client.
 	_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey})
@@ -412,12 +406,12 @@ func (dn *TestDevnet) ConnectIBRLUserTunnel(t *testing.T, client *devnet.Client)
 	_, err = client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect ibrl --client-ip " + client.CYOANetworkIP})
 	require.NoError(t, err)
 
-	dn.log.Info("--> IBRL user tunnel connected")
+	dn.log.Debug("--> IBRL user tunnel connected")
 }
 
 // ConnectUserTunnelWithAllocatedIP connects a user tunnel with an allocated IP.
 func (dn *TestDevnet) ConnectUserTunnelWithAllocatedIP(t *testing.T, client *devnet.Client) {
-	dn.log.Info("==> Connecting user tunnel with allocated IP")
+	dn.log.Debug("==> Connecting user tunnel with allocated IP")
 
 	// Set access pass for the client.
 	_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey})
@@ -426,11 +420,11 @@ func (dn *TestDevnet) ConnectUserTunnelWithAllocatedIP(t *testing.T, client *dev
 	_, err = client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect ibrl --client-ip " + client.CYOANetworkIP + " --allocate-addr"})
 	require.NoError(t, err)
 
-	dn.log.Info("--> User tunnel with allocated IP connected")
+	dn.log.Debug("--> User tunnel with allocated IP connected")
 }
 
 func (dn *TestDevnet) ConnectMulticastPublisher(t *testing.T, client *devnet.Client, multicastGroupCodes ...string) {
-	dn.log.Info("==> Connecting multicast publisher", "clientIP", client.CYOANetworkIP, "groups", multicastGroupCodes)
+	dn.log.Debug("==> Connecting multicast publisher", "clientIP", client.CYOANetworkIP, "groups", multicastGroupCodes)
 
 	// Set access pass for the client.
 	_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey})
@@ -440,22 +434,22 @@ func (dn *TestDevnet) ConnectMulticastPublisher(t *testing.T, client *devnet.Cli
 	_, err = client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast publisher " + groupArgs + " --client-ip " + client.CYOANetworkIP})
 	require.NoError(t, err, "failed to connect multicast publisher")
 
-	dn.log.Info("--> Multicast publisher connected")
+	dn.log.Debug("--> Multicast publisher connected")
 }
 
 func (dn *TestDevnet) ConnectMulticastPublisherSkipAccessPass(t *testing.T, client *devnet.Client, multicastGroupCodes ...string) {
-	dn.log.Info("==> Connecting multicast publisher", "clientIP", client.CYOANetworkIP, "groups", multicastGroupCodes)
+	dn.log.Debug("==> Connecting multicast publisher", "clientIP", client.CYOANetworkIP, "groups", multicastGroupCodes)
 
 	groupArgs := strings.Join(multicastGroupCodes, " ")
 	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast publisher " + groupArgs + " --client-ip " + client.CYOANetworkIP})
 	require.NoError(t, err, "failed to connect multicast publisher")
 
-	dn.log.Info("--> Multicast publisher connected")
+	dn.log.Debug("--> Multicast publisher connected")
 }
 
 // DisconnectMulticastPublisher disconnects a multicast publisher from a multicast group.
 func (dn *TestDevnet) DisconnectMulticastPublisher(t *testing.T, client *devnet.Client) {
-	dn.log.Info("==> Disconnecting multicast publisher", "clientIP", client.CYOANetworkIP)
+	dn.log.Debug("==> Disconnecting multicast publisher", "clientIP", client.CYOANetworkIP)
 
 	// Set access pass for the client.
 	_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey})
@@ -464,11 +458,11 @@ func (dn *TestDevnet) DisconnectMulticastPublisher(t *testing.T, client *devnet.
 	_, err = client.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect multicast --client-ip " + client.CYOANetworkIP})
 	require.NoError(t, err, "failed to disconnect multicast publisher")
 
-	dn.log.Info("--> Multicast publisher disconnected")
+	dn.log.Debug("--> Multicast publisher disconnected")
 }
 
 func (dn *TestDevnet) ConnectMulticastSubscriber(t *testing.T, client *devnet.Client, multicastGroupCodes ...string) {
-	dn.log.Info("==> Connecting multicast subscriber", "clientIP", client.CYOANetworkIP, "groups", multicastGroupCodes)
+	dn.log.Debug("==> Connecting multicast subscriber", "clientIP", client.CYOANetworkIP, "groups", multicastGroupCodes)
 
 	// Set access pass for the client.
 	_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey})
@@ -478,21 +472,21 @@ func (dn *TestDevnet) ConnectMulticastSubscriber(t *testing.T, client *devnet.Cl
 	_, err = client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast subscriber " + groupArgs + " --client-ip " + client.CYOANetworkIP})
 	require.NoError(t, err)
 
-	dn.log.Info("--> Multicast subscriber connected")
+	dn.log.Debug("--> Multicast subscriber connected")
 }
 
 func (dn *TestDevnet) ConnectMulticastSubscriberSkipAccessPass(t *testing.T, client *devnet.Client, multicastGroupCodes ...string) {
-	dn.log.Info("==> Connecting multicast subscriber", "clientIP", client.CYOANetworkIP, "groups", multicastGroupCodes)
+	dn.log.Debug("==> Connecting multicast subscriber", "clientIP", client.CYOANetworkIP, "groups", multicastGroupCodes)
 
 	groupArgs := strings.Join(multicastGroupCodes, " ")
 	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast subscriber " + groupArgs + " --client-ip " + client.CYOANetworkIP})
 	require.NoError(t, err)
 
-	dn.log.Info("--> Multicast subscriber connected")
+	dn.log.Debug("--> Multicast subscriber connected")
 }
 
 func (dn *TestDevnet) DisconnectMulticastSubscriber(t *testing.T, client *devnet.Client) {
-	dn.log.Info("==> Disconnecting multicast subscriber", "clientIP", client.CYOANetworkIP)
+	dn.log.Debug("==> Disconnecting multicast subscriber", "clientIP", client.CYOANetworkIP)
 
 	// Set access pass for the client.
 	_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey})
@@ -501,7 +495,7 @@ func (dn *TestDevnet) DisconnectMulticastSubscriber(t *testing.T, client *devnet
 	_, err = client.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect multicast --client-ip " + client.CYOANetworkIP})
 	require.NoError(t, err)
 
-	dn.log.Info("--> Multicast subscriber disconnected")
+	dn.log.Debug("--> Multicast subscriber disconnected")
 }
 
 // nextAllocatableIP returns the next available IPv4 address within a subnet,
@@ -529,11 +523,14 @@ func nextAllocatableIP(ip string, allocatablePrefix int, allocated map[string]bo
 	return "", errors.New("no allocatable IPs remaining")
 }
 
-func newTestLogger(verbose bool) *slog.Logger {
+// newTestLogger creates a logger for TestMain setup (before any tests run).
+// This writes to stdout since there's no *testing.T available yet.
+// With debug=true, shows DEBUG level logs; otherwise shows INFO level.
+func newTestLogger(verbose, debug bool) *slog.Logger {
 	logWriter := os.Stdout
-	logLevel := slog.LevelDebug
-	if !verbose {
-		logLevel = slog.LevelInfo
+	logLevel := slog.LevelInfo
+	if debug {
+		logLevel = slog.LevelDebug
 	}
 	logger := slog.New(tint.NewHandler(logWriter, &tint.Options{
 		Level:      logLevel,
@@ -611,4 +608,19 @@ func (dn *TestDevnet) GetDeviceLinkInterfaceIPs(t *testing.T, deviceCode string)
 	}
 
 	return result, nil
+}
+
+// newTestLoggerForTest creates a logger for individual test runs.
+// Logs are written to t.Log() so they only appear on test failure (unless -v is passed).
+// With DZ_E2E_DEBUG=1, shows DEBUG level logs; otherwise shows INFO level.
+func newTestLoggerForTest(t *testing.T) *slog.Logger {
+	w := &testWriter{t: t}
+	logLevel := slog.LevelInfo
+	if debug {
+		logLevel = slog.LevelDebug
+	}
+	return slog.New(tint.NewHandler(w, &tint.Options{
+		Level:      logLevel,
+		TimeFormat: time.DateTime,
+	}))
 }

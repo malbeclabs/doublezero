@@ -62,21 +62,21 @@ func (n *CYOANetwork) CreateIfNotExists(ctx context.Context) (bool, error) {
 		n.Name = n.dockerNetworkName()
 		n.SubnetCIDR = subnetCIDR
 
-		n.log.Info("--> CYOA network already exists", "network", n.Name)
+		n.log.Debug("--> CYOA network already exists", "network", n.Name)
 		return true, nil
 	}
 	return false, n.Create(ctx)
 }
 
 func (n *CYOANetwork) Create(ctx context.Context) error {
-	n.log.Info("==> Creating CYOA network", "labels", n.dn.labels)
+	n.log.Debug("==> Creating CYOA network", "labels", n.dn.labels)
 
 	// Get an available subnet for the CYOA network.
 	subnetCIDR, err := n.dn.subnetAllocator.FindAvailableSubnet(ctx, n.dn.Spec.DeployID)
 	if err != nil {
 		return fmt.Errorf("failed to get available subnet: %w", err)
 	}
-	n.log.Info("--> Network subnet selected", "subnet", subnetCIDR)
+	n.log.Debug("--> Network subnet selected", "subnet", subnetCIDR)
 
 	// Create the docker network.
 	// NOTE: We use the deprecated GenericNetworkRequest because the newer network.New doesn't
@@ -106,7 +106,7 @@ func (n *CYOANetwork) Create(ctx context.Context) error {
 	n.Name = networkName
 	n.SubnetCIDR = subnetCIDR
 
-	n.log.Info("--> CYOA network created", "network", n.Name, "subnet", n.SubnetCIDR)
+	n.log.Debug("--> CYOA network created", "network", n.Name, "subnet", n.SubnetCIDR)
 
 	return nil
 }

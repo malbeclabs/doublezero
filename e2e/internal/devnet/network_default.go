@@ -52,20 +52,20 @@ func (n *DefaultNetwork) CreateIfNotExists(ctx context.Context) (bool, error) {
 		n.Name = n.dockerNetworkName()
 		n.SubnetCIDR = subnetCIDR
 
-		n.log.Info("--> Default network already exists", "network", n.Name)
+		n.log.Debug("--> Default network already exists", "network", n.Name)
 		return true, nil
 	}
 	return false, n.Create(ctx)
 }
 
 func (n *DefaultNetwork) Create(ctx context.Context) error {
-	n.log.Info("==> Creating default network", "labels", n.dn.labels)
+	n.log.Debug("==> Creating default network", "labels", n.dn.labels)
 
 	// Generate a subnet from 10.0.0.0/8 range based on deploy ID.
 	// This uses a different range than the CYOA network (9.128.0.0/9) to avoid
 	// conflicts in tests that detect interfaces by IP range.
 	subnetCIDR := n.generateSubnetCIDR(n.dn.Spec.DeployID)
-	n.log.Info("--> Default network subnet selected", "subnet", subnetCIDR)
+	n.log.Debug("--> Default network subnet selected", "subnet", subnetCIDR)
 
 	// Create a docker network.
 	//nolint:staticcheck // SA1019
@@ -92,7 +92,7 @@ func (n *DefaultNetwork) Create(ctx context.Context) error {
 	n.Name = networkName
 	n.SubnetCIDR = subnetCIDR
 
-	n.log.Info("--> Network created", "network", n.Name, "subnet", n.SubnetCIDR)
+	n.log.Debug("--> Network created", "network", n.Name, "subnet", n.SubnetCIDR)
 
 	return nil
 }

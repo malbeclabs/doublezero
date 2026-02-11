@@ -5,7 +5,7 @@ use crate::{
     serializer::{try_acc_close, try_acc_write},
     state::{
         device::Device, globalstate::GlobalState, resource_extension::ResourceExtensionBorrowed,
-        user::*,
+        tenant::Tenant, user::*,
     },
 };
 use borsh::BorshSerialize;
@@ -40,6 +40,9 @@ pub fn process_closeaccount_user(
     accounts: &[AccountInfo],
     value: &UserCloseAccountArgs,
 ) -> ProgramResult {
+    #[cfg(test)]
+    msg!("process_closeaccount_user({:?})", value);
+
     let accounts_iter = &mut accounts.iter();
 
     let user_account = next_account_info(accounts_iter)?;
@@ -71,11 +74,25 @@ pub fn process_closeaccount_user(
         None
     };
 
+    // Check if tenant account is provided (if user has tenant assigned)
+    // We need to peek at the user to know if tenant is assigned, but we'll validate later
+    // For now, we'll check account count to determine if tenant account is provided
+    // Account layouts:
+    // WITHOUT tenant: [user, owner, device, globalstate, [optional resource extensions], payer, system]
+    // WITH tenant: [user, owner, device, globalstate, [optional resource extensions], tenant, payer, system]
+
+    // We'll read the user first to check if it has a tenant
+    let user_peek = User::try_from(user_account)?;
+    let has_tenant = user_peek.tenant_pk != Pubkey::default();
+
+    let tenant_account = if has_tenant {
+        Some(next_account_info(accounts_iter)?)
+    } else {
+        None
+    };
+
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
-
-    #[cfg(test)]
-    msg!("process_delete_user({:?})", value);
 
     // Check if the payer is a signer
     assert!(payer_account.is_signer, "Payer must be a signer");
@@ -119,11 +136,6 @@ pub fn process_closeaccount_user(
     if user.status != UserStatus::Deleting {
         msg!("{:?}", user);
         return Err(solana_program::program_error::ProgramError::Custom(1));
-    }
-
-    if !user.publishers.is_empty() || !user.subscribers.is_empty() {
-        msg!("{:?}", user);
-        return Err(DoubleZeroError::ReferenceCountNotZero.into());
     }
 
     // Deallocate resources from ResourceExtension if accounts provided
@@ -247,6 +259,31 @@ pub fn process_closeaccount_user(
                 }
             }
         }
+    }
+
+    // Decrement tenant reference count if user has tenant assigned
+    if let Some(tenant_acc) = tenant_account {
+        // Validate tenant account
+        assert_eq!(
+            tenant_acc.key, &user.tenant_pk,
+            "Tenant account doesn't match user's tenant"
+        );
+        assert_eq!(tenant_acc.owner, program_id, "Invalid Tenant Account Owner");
+        assert!(tenant_acc.is_writable, "Tenant Account is not writable");
+
+        let mut tenant = Tenant::try_from(tenant_acc)?;
+        tenant.reference_count = tenant
+            .reference_count
+            .checked_sub(1)
+            .ok_or(DoubleZeroError::InvalidIndex)?;
+
+        try_acc_write(&tenant, tenant_acc, payer_account, accounts)?;
+
+        #[cfg(test)]
+        msg!(
+            "Decremented tenant reference_count: {}",
+            tenant.reference_count
+        );
     }
 
     let mut device = Device::try_from(device_account)?;
@@ -415,7 +452,7 @@ mod tests {
         let err = result.err().unwrap();
         match err {
             ProgramError::Custom(code) => {
-                assert_eq!(code, 13);
+                assert_eq!(code, 36);
             }
             _ => panic!("Unexpected error type: {:?}", err),
         };

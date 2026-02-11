@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,9 +25,17 @@ type ClickhouseWriter struct {
 	events []getConfigEvent
 }
 
-func NewClickhouseWriter(log *slog.Logger, addr, db, user, pass string, disableTLS bool) (*ClickhouseWriter, error) {
-	chOpts := &clickhouse.Options{
-		Addr: []string{addr},
+// buildClickhouseOptions constructs clickhouse.Options for the HTTP protocol.
+// When disableTLS is false (default), TLS is enabled (HTTPS).
+// When disableTLS is true, TLS is not set (plain HTTP, for local dev only).
+func buildClickhouseOptions(addr, db, user, pass string, disableTLS bool) *clickhouse.Options {
+	// Strip URL scheme if present - clickhouse-go expects host:port only
+	addr = strings.TrimPrefix(addr, "https://")
+	addr = strings.TrimPrefix(addr, "http://")
+
+	opts := &clickhouse.Options{
+		Protocol: clickhouse.HTTP,
+		Addr:     []string{addr},
 		Auth: clickhouse.Auth{
 			Database: db,
 			Username: user,
@@ -34,8 +43,13 @@ func NewClickhouseWriter(log *slog.Logger, addr, db, user, pass string, disableT
 		},
 	}
 	if !disableTLS {
-		chOpts.TLS = &tls.Config{}
+		opts.TLS = &tls.Config{}
 	}
+	return opts
+}
+
+func NewClickhouseWriter(log *slog.Logger, addr, db, user, pass string, disableTLS bool) (*ClickhouseWriter, error) {
+	chOpts := buildClickhouseOptions(addr, db, user, pass, disableTLS)
 	conn, err := clickhouse.Open(chOpts)
 	if err != nil {
 		return nil, fmt.Errorf("error opening clickhouse connection: %w", err)

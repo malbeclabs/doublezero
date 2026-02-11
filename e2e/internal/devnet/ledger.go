@@ -133,7 +133,7 @@ func (l *Ledger) StartIfNotRunning(ctx context.Context) (bool, error) {
 
 		// Check if the container is running.
 		if container.State.Running {
-			l.log.Info("--> Ledger already running", "container", shortContainerID(container.ID))
+			l.log.Debug("--> Ledger already running", "container", shortContainerID(container.ID))
 
 			// Set the component's state.
 			err = l.setState(ctx, container.ID)
@@ -170,7 +170,7 @@ func (l *Ledger) StartIfNotRunning(ctx context.Context) (bool, error) {
 
 // Start creates and starts the ledger container and attaches it to the default network.
 func (l *Ledger) Start(ctx context.Context) error {
-	l.log.Info("==> Starting ledger", "image", l.dn.Spec.Ledger.ContainerImage)
+	l.log.Debug("==> Starting ledger", "image", l.dn.Spec.Ledger.ContainerImage)
 
 	volumeName := l.dn.Spec.DeployID + "-ledger"
 
@@ -251,7 +251,12 @@ func (l *Ledger) Start(ctx context.Context) error {
 			NanoCPUs: defaultContainerNanoCPUs,
 			Memory:   ledgerContainerMemory,
 		},
-		Labels: l.dn.labels,
+		// Ensure host.docker.internal resolves inside the container on Linux.
+		// Docker Desktop (Mac/Windows) provides this automatically, but native
+		// Linux Docker does not. This is needed when CloneFromURL points at a
+		// host-exposed port (e.g., cloning from another devnet's ledger).
+		ExtraHosts: []string{"host.docker.internal:host-gateway"},
+		Labels:     l.dn.labels,
 		Mounts: []testcontainers.ContainerMount{
 			{
 				Source:   testcontainers.GenericVolumeMountSource{Name: volumeName},
@@ -281,7 +286,7 @@ func (l *Ledger) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to wait for ledger to be healthy: %w", err)
 	}
 
-	l.log.Info("--> Ledger started", "container", l.ContainerID, "internalRPCURL", l.InternalRPCURL, "internalRPCWSURL", l.InternalRPCWSURL)
+	l.log.Debug("--> Ledger started", "container", l.ContainerID, "internalRPCURL", l.InternalRPCURL, "internalRPCWSURL", l.InternalRPCWSURL)
 	return nil
 }
 

@@ -40,15 +40,22 @@ func TestQA_MulticastConnectivity(t *testing.T) {
 	require.NoError(t, err, "failed to create test")
 	clients := test.Clients()
 
+	// Cleanup stale test groups from previous runs.
+	deleted, err := clients[0].CleanupStaleTestGroups(ctx)
+	require.NoError(t, err, "failed to cleanup stale test groups")
+	if deleted > 0 {
+		log.Info("Cleaned up stale test groups", "count", deleted)
+	}
+
 	// Generate multicast group code or use the given one.
 	providedGroups := parseMulticastGroups()
 	var groupCode string
 	if len(providedGroups) > 0 {
 		groupCode = providedGroups[0]
-		log.Info("Using provided multicast group", "code", groupCode)
+		log.Debug("Using provided multicast group", "code", groupCode)
 	} else {
 		groupCode = test.RandomMulticastGroupCode()
-		log.Info("No multicast group code specified, using generated code", "code", groupCode)
+		log.Debug("No multicast group code specified, using generated code", "code", groupCode)
 	}
 
 	// Find publisher client.
@@ -59,7 +66,7 @@ func TestQA_MulticastConnectivity(t *testing.T) {
 	} else {
 		publisher = test.RandomClient()
 	}
-	log.Info("Determined publisher", "host", publisher.Host)
+	log.Debug("Determined publisher", "host", publisher.Host)
 
 	// Build list of subscribers.
 	subscribers := qa.MapFilter(clients, func(client *qa.Client) (*qa.Client, bool) {
@@ -68,7 +75,7 @@ func TestQA_MulticastConnectivity(t *testing.T) {
 		}
 		return client, true
 	})
-	log.Info("Determined subscribers", "count", len(subscribers), "hosts", strings.Join(qa.Map(subscribers, func(c *qa.Client) string { return c.Host }), ", "))
+	log.Debug("Determined subscribers", "count", len(subscribers), "hosts", strings.Join(qa.Map(subscribers, func(c *qa.Client) string { return c.Host }), ", "))
 
 	var group *qa.MulticastGroup
 	if len(providedGroups) == 0 {
@@ -116,6 +123,17 @@ func TestQA_MulticastConnectivity(t *testing.T) {
 		wg.Wait()
 	})
 
+	// Dump diagnostics on failure.
+	t.Cleanup(func() {
+		if !t.Failed() {
+			return
+		}
+		publisher.DumpDiagnostics([]*qa.MulticastGroup{group})
+		for _, sub := range subscribers {
+			sub.DumpDiagnostics([]*qa.MulticastGroup{group})
+		}
+	})
+
 	// Connect publisher to multicast group.
 	err = publisher.ConnectUserMulticast_Publisher_Wait(ctx, group.Code)
 	require.NoError(t, err, "failed to connect publisher to multicast group")
@@ -156,7 +174,7 @@ func TestQA_MulticastConnectivity(t *testing.T) {
 			report, err := subscriber.WaitForMulticastReport(subCtx, group)
 			require.NoError(t, err, "failed to get multicast report for group %s", group.Code)
 			require.NotNil(t, report, "multicast report not found for group %s", group.Code)
-			log.Info("Got multicast report", "subscriber", subscriber.Host, "group", group.Code, "report", report)
+			log.Debug("Got multicast report", "subscriber", subscriber.Host, "group", group.Code, "report", report)
 		})
 	}
 
@@ -178,6 +196,13 @@ func TestQA_MulticastMultiGroupSimultaneous(t *testing.T) {
 	clients := test.Clients()
 	require.GreaterOrEqual(t, len(clients), 2, "need at least 2 clients for this test")
 
+	// Cleanup stale test groups from previous runs.
+	deleted, err := clients[0].CleanupStaleTestGroups(ctx)
+	require.NoError(t, err, "failed to cleanup stale test groups")
+	if deleted > 0 {
+		log.Info("Cleaned up stale test groups", "count", deleted)
+	}
+
 	// Select publisher and subscriber.
 	publisher := test.RandomClient()
 	var subscriber *qa.Client
@@ -188,7 +213,7 @@ func TestQA_MulticastMultiGroupSimultaneous(t *testing.T) {
 		}
 	}
 	require.NotNil(t, subscriber, "failed to find subscriber client")
-	log.Info("Selected clients", "publisher", publisher.Host, "subscriber", subscriber.Host)
+	log.Debug("Selected clients", "publisher", publisher.Host, "subscriber", subscriber.Host)
 
 	// Use provided groups or create new ones.
 	providedGroups := parseMulticastGroups()
@@ -198,7 +223,7 @@ func TestQA_MulticastMultiGroupSimultaneous(t *testing.T) {
 	if len(providedGroups) >= 2 {
 		// Use provided groups (skip creation and allowlist setup).
 		groupCodes = providedGroups
-		log.Info("Using provided multicast groups", "codes", groupCodes)
+		log.Debug("Using provided multicast groups", "codes", groupCodes)
 		groups = make([]*qa.MulticastGroup, len(groupCodes))
 		for i, code := range groupCodes {
 			group, err := publisher.GetMulticastGroup(ctx, code)
@@ -213,7 +238,7 @@ func TestQA_MulticastMultiGroupSimultaneous(t *testing.T) {
 			test.RandomMulticastGroupCode(),
 			test.RandomMulticastGroupCode(),
 		}
-		log.Info("Creating multicast groups", "codes", groupCodes)
+		log.Debug("Creating multicast groups", "codes", groupCodes)
 		groups = make([]*qa.MulticastGroup, len(groupCodes))
 		for i, code := range groupCodes {
 			group, err := publisher.CreateMulticastGroup(ctx, code, "10Gbps")
@@ -242,13 +267,22 @@ func TestQA_MulticastMultiGroupSimultaneous(t *testing.T) {
 		_ = subscriber.DisconnectUser(context.Background(), true, true)
 	})
 
+	// Dump diagnostics on failure.
+	t.Cleanup(func() {
+		if !t.Failed() {
+			return
+		}
+		publisher.DumpDiagnostics(groups)
+		subscriber.DumpDiagnostics(groups)
+	})
+
 	// Connect publisher to all groups simultaneously.
-	log.Info("Connecting publisher to all groups simultaneously", "codes", groupCodes)
+	log.Debug("Connecting publisher to all groups simultaneously", "codes", groupCodes)
 	err = publisher.ConnectUserMulticast_Publisher_Wait(ctx, groupCodes...)
 	require.NoError(t, err, "failed to connect publisher to multiple groups")
 
 	// Connect subscriber to all groups simultaneously.
-	log.Info("Connecting subscriber to all groups simultaneously", "codes", groupCodes)
+	log.Debug("Connecting subscriber to all groups simultaneously", "codes", groupCodes)
 	err = subscriber.ConnectUserMulticast_Subscriber_Wait(ctx, groupCodes...)
 	require.NoError(t, err, "failed to connect subscriber to multiple groups")
 
@@ -265,7 +299,7 @@ func TestQA_MulticastMultiGroupSimultaneous(t *testing.T) {
 	// Publisher sends to all groups in parallel in background.
 	// We use a longer duration to ensure packets keep flowing while we poll for reports.
 	// This avoids guessing how long PIM takes to establish routing.
-	log.Info("Publisher sending to all groups in parallel (background)", "codes", groupCodes)
+	log.Debug("Publisher sending to all groups in parallel (background)", "codes", groupCodes)
 	for _, group := range groups {
 		go func(g *qa.MulticastGroup) {
 			_ = publisher.MulticastSend(ctx, g, 120*time.Second)
@@ -274,17 +308,17 @@ func TestQA_MulticastMultiGroupSimultaneous(t *testing.T) {
 
 	// Poll for reports while sending continues in background.
 	// As soon as we receive at least 1 packet from each group, we know it works.
-	log.Info("Waiting for multicast reports (while sending continues)")
+	log.Debug("Waiting for multicast reports (while sending continues)")
 	reports, err := subscriber.WaitForMulticastReports(ctx, groups)
 	require.NoError(t, err, "failed to get multicast reports")
 	for _, group := range groups {
 		report := reports[group.IP.String()]
 		require.NotNil(t, report, "no report for group %s", group.Code)
 		require.Greater(t, report.PacketCount, uint64(0), "no packets received for group %s", group.Code)
-		log.Info("Verified packets received", "group", group.Code, "packetCount", report.PacketCount)
+		log.Debug("Verified packets received", "group", group.Code, "packetCount", report.PacketCount)
 	}
 
-	log.Info("Test passed: subscriber received traffic from all 3 groups")
+	log.Debug("Test passed: subscriber received traffic from all 3 groups")
 }
 
 // TestQA_MulticastAddGroupToExistingUser tests adding a new multicast group subscription
@@ -300,6 +334,13 @@ func TestQA_MulticastAddGroupToExistingUser(t *testing.T) {
 	clients := test.Clients()
 	require.GreaterOrEqual(t, len(clients), 2, "need at least 2 clients for this test")
 
+	// Cleanup stale test groups from previous runs.
+	deleted, err := clients[0].CleanupStaleTestGroups(ctx)
+	require.NoError(t, err, "failed to cleanup stale test groups")
+	if deleted > 0 {
+		log.Info("Cleaned up stale test groups", "count", deleted)
+	}
+
 	// Select publisher and subscriber.
 	publisher := test.RandomClient()
 	var subscriber *qa.Client
@@ -310,7 +351,7 @@ func TestQA_MulticastAddGroupToExistingUser(t *testing.T) {
 		}
 	}
 	require.NotNil(t, subscriber, "failed to find subscriber client")
-	log.Info("Selected clients", "publisher", publisher.Host, "subscriber", subscriber.Host)
+	log.Debug("Selected clients", "publisher", publisher.Host, "subscriber", subscriber.Host)
 
 	// Use provided groups or create new ones.
 	providedGroups := parseMulticastGroups()
@@ -318,7 +359,7 @@ func TestQA_MulticastAddGroupToExistingUser(t *testing.T) {
 
 	if len(providedGroups) >= 2 {
 		// Use provided groups (skip creation and allowlist setup).
-		log.Info("Using provided multicast groups", "groupA", providedGroups[0], "groupB", providedGroups[1])
+		log.Debug("Using provided multicast groups", "groupA", providedGroups[0], "groupB", providedGroups[1])
 		groupA, err = publisher.GetMulticastGroup(ctx, providedGroups[0])
 		require.NoError(t, err, "failed to get multicast group %s", providedGroups[0])
 		require.NotNil(t, groupA, "multicast group not found: %s", providedGroups[0])
@@ -329,7 +370,7 @@ func TestQA_MulticastAddGroupToExistingUser(t *testing.T) {
 		// Create random groups.
 		groupCodeA := test.RandomMulticastGroupCode()
 		groupCodeB := test.RandomMulticastGroupCode()
-		log.Info("Creating multicast groups", "groupA", groupCodeA, "groupB", groupCodeB)
+		log.Debug("Creating multicast groups", "groupA", groupCodeA, "groupB", groupCodeB)
 
 		groupA, err = publisher.CreateMulticastGroup(ctx, groupCodeA, "10Gbps")
 		require.NoError(t, err, "failed to create multicast group A")
@@ -362,13 +403,23 @@ func TestQA_MulticastAddGroupToExistingUser(t *testing.T) {
 		_ = subscriber.DisconnectUser(context.Background(), true, true)
 	})
 
+	// Dump diagnostics on failure.
+	t.Cleanup(func() {
+		if !t.Failed() {
+			return
+		}
+		gs := []*qa.MulticastGroup{groupA, groupB}
+		publisher.DumpDiagnostics(gs)
+		subscriber.DumpDiagnostics(gs)
+	})
+
 	// Step 1: Connect publisher to both groups (publisher needs all groups from start).
-	log.Info("Connecting publisher to both groups")
+	log.Debug("Connecting publisher to both groups")
 	err = publisher.ConnectUserMulticast_Publisher_Wait(ctx, groupA.Code, groupB.Code)
 	require.NoError(t, err, "failed to connect publisher to groups")
 
 	// Step 2: Connect subscriber to group A only.
-	log.Info("Connecting subscriber to group A only", "code", groupA.Code)
+	log.Debug("Connecting subscriber to group A only", "code", groupA.Code)
 	err = subscriber.ConnectUserMulticast_Subscriber_Wait(ctx, groupA.Code)
 	require.NoError(t, err, "failed to connect subscriber to group A")
 
@@ -379,13 +430,13 @@ func TestQA_MulticastAddGroupToExistingUser(t *testing.T) {
 	// Get subscriber's user pubkey before adding group B.
 	statusBefore, err := subscriber.GetUserStatus(ctx)
 	require.NoError(t, err, "failed to get subscriber status before adding group B")
-	log.Info("Subscriber status before adding group B", "status", statusBefore)
+	log.Debug("Subscriber status before adding group B", "status", statusBefore)
 
 	// Step 3: Subscriber joins and verifies traffic from group A.
 	err = subscriber.MulticastJoin(ctx, groupA)
 	require.NoError(t, err, "failed to join group A")
 
-	log.Info("Publisher sending to group A (background)")
+	log.Debug("Publisher sending to group A (background)")
 	go func() {
 		_ = publisher.MulticastSend(ctx, groupA, 120*time.Second)
 	}()
@@ -393,12 +444,12 @@ func TestQA_MulticastAddGroupToExistingUser(t *testing.T) {
 	reportA, err := subscriber.WaitForMulticastReport(ctx, groupA)
 	require.NoError(t, err, "failed to get report for group A")
 	require.Greater(t, reportA.PacketCount, uint64(0), "no packets received for group A")
-	log.Info("Verified packets received from group A", "packetCount", reportA.PacketCount)
+	log.Debug("Verified packets received from group A", "packetCount", reportA.PacketCount)
 
 	// Step 4: Add group B to existing subscriber (without disconnecting).
 	// Note: ConnectUserMulticast calls DisconnectUser internally, but the CLI behavior
 	// should preserve the user account and just add the new subscription.
-	log.Info("Adding group B to existing subscriber", "codes", []string{groupA.Code, groupB.Code})
+	log.Debug("Adding group B to existing subscriber", "codes", []string{groupA.Code, groupB.Code})
 	err = subscriber.ConnectUserMulticast_Subscriber_Wait(ctx, groupA.Code, groupB.Code)
 	require.NoError(t, err, "failed to add group B to subscriber")
 
@@ -409,14 +460,14 @@ func TestQA_MulticastAddGroupToExistingUser(t *testing.T) {
 	// Verify user pubkey is the same (user was not recreated).
 	statusAfter, err := subscriber.GetUserStatus(ctx)
 	require.NoError(t, err, "failed to get subscriber status after adding group B")
-	log.Info("Subscriber status after adding group B", "status", statusAfter)
+	log.Debug("Subscriber status after adding group B", "status", statusAfter)
 
 	// Step 5: Join both groups and verify traffic from both.
 	err = subscriber.MulticastJoin(ctx, groupA, groupB)
 	require.NoError(t, err, "failed to join both groups")
 
 	// Send to both groups in background.
-	log.Info("Publisher sending to both groups (background)")
+	log.Debug("Publisher sending to both groups (background)")
 	go func() {
 		_ = publisher.MulticastSend(ctx, groupA, 120*time.Second)
 	}()
@@ -436,7 +487,7 @@ func TestQA_MulticastAddGroupToExistingUser(t *testing.T) {
 	require.NotNil(t, reportB, "no report for group B")
 	require.Greater(t, reportB.PacketCount, uint64(0), "no packets from group B")
 
-	log.Info("Test passed: successfully added group B to existing user and received traffic from both groups",
+	log.Debug("Test passed: successfully added group B to existing user and received traffic from both groups",
 		"groupA_packets", reportA.PacketCount, "groupB_packets", reportB.PacketCount)
 }
 
@@ -452,6 +503,13 @@ func TestQA_MulticastPublisherMultipleGroups(t *testing.T) {
 	require.NoError(t, err, "failed to create test")
 	clients := test.Clients()
 	require.GreaterOrEqual(t, len(clients), 3, "need at least 3 clients for this test (1 publisher + 2 subscribers)")
+
+	// Cleanup stale test groups from previous runs.
+	deleted, err := clients[0].CleanupStaleTestGroups(ctx)
+	require.NoError(t, err, "failed to cleanup stale test groups")
+	if deleted > 0 {
+		log.Info("Cleaned up stale test groups", "count", deleted)
+	}
 
 	// Select publisher and two different subscribers.
 	publisher := test.RandomClient()
@@ -469,7 +527,7 @@ func TestQA_MulticastPublisherMultipleGroups(t *testing.T) {
 	}
 	require.NotNil(t, subscriberA, "failed to find first subscriber client")
 	require.NotNil(t, subscriberB, "failed to find second subscriber client")
-	log.Info("Selected clients", "publisher", publisher.Host, "subscriberA", subscriberA.Host, "subscriberB", subscriberB.Host)
+	log.Debug("Selected clients", "publisher", publisher.Host, "subscriberA", subscriberA.Host, "subscriberB", subscriberB.Host)
 
 	// Use provided groups or create new ones.
 	providedGroups := parseMulticastGroups()
@@ -477,7 +535,7 @@ func TestQA_MulticastPublisherMultipleGroups(t *testing.T) {
 
 	if len(providedGroups) >= 2 {
 		// Use provided groups (skip creation and allowlist setup).
-		log.Info("Using provided multicast groups", "groupA", providedGroups[0], "groupB", providedGroups[1])
+		log.Debug("Using provided multicast groups", "groupA", providedGroups[0], "groupB", providedGroups[1])
 		groupA, err = publisher.GetMulticastGroup(ctx, providedGroups[0])
 		require.NoError(t, err, "failed to get multicast group %s", providedGroups[0])
 		require.NotNil(t, groupA, "multicast group not found: %s", providedGroups[0])
@@ -488,7 +546,7 @@ func TestQA_MulticastPublisherMultipleGroups(t *testing.T) {
 		// Create random groups.
 		groupCodeA := test.RandomMulticastGroupCode()
 		groupCodeB := test.RandomMulticastGroupCode()
-		log.Info("Creating multicast groups", "groupA", groupCodeA, "groupB", groupCodeB)
+		log.Debug("Creating multicast groups", "groupA", groupCodeA, "groupB", groupCodeB)
 
 		groupA, err = publisher.CreateMulticastGroup(ctx, groupCodeA, "10Gbps")
 		require.NoError(t, err, "failed to create multicast group A")
@@ -524,18 +582,29 @@ func TestQA_MulticastPublisherMultipleGroups(t *testing.T) {
 		_ = subscriberB.DisconnectUser(context.Background(), true, true)
 	})
 
+	// Dump diagnostics on failure.
+	t.Cleanup(func() {
+		if !t.Failed() {
+			return
+		}
+		gs := []*qa.MulticastGroup{groupA, groupB}
+		publisher.DumpDiagnostics(gs)
+		subscriberA.DumpDiagnostics(gs)
+		subscriberB.DumpDiagnostics(gs)
+	})
+
 	// Connect publisher to BOTH groups simultaneously.
-	log.Info("Connecting publisher to both groups simultaneously", "codes", []string{groupA.Code, groupB.Code})
+	log.Debug("Connecting publisher to both groups simultaneously", "codes", []string{groupA.Code, groupB.Code})
 	err = publisher.ConnectUserMulticast_Publisher_Wait(ctx, groupA.Code, groupB.Code)
 	require.NoError(t, err, "failed to connect publisher to multiple groups")
 
 	// Connect subscriberA to group A only.
-	log.Info("Connecting subscriberA to group A", "code", groupA.Code)
+	log.Debug("Connecting subscriberA to group A", "code", groupA.Code)
 	err = subscriberA.ConnectUserMulticast_Subscriber_Wait(ctx, groupA.Code)
 	require.NoError(t, err, "failed to connect subscriberA to group A")
 
 	// Connect subscriberB to group B only.
-	log.Info("Connecting subscriberB to group B", "code", groupB.Code)
+	log.Debug("Connecting subscriberB to group B", "code", groupB.Code)
 	err = subscriberB.ConnectUserMulticast_Subscriber_Wait(ctx, groupB.Code)
 	require.NoError(t, err, "failed to connect subscriberB to group B")
 
@@ -554,7 +623,7 @@ func TestQA_MulticastPublisherMultipleGroups(t *testing.T) {
 	require.NoError(t, err, "failed to join group B")
 
 	// Publisher sends to both groups in parallel.
-	log.Info("Publisher sending to both groups in parallel (background)")
+	log.Debug("Publisher sending to both groups in parallel (background)")
 	go func() {
 		_ = publisher.MulticastSend(ctx, groupA, 120*time.Second)
 	}()
@@ -563,19 +632,19 @@ func TestQA_MulticastPublisherMultipleGroups(t *testing.T) {
 	}()
 
 	// Verify subscriberA receives from group A.
-	log.Info("Waiting for subscriberA to receive from group A")
+	log.Debug("Waiting for subscriberA to receive from group A")
 	reportA, err := subscriberA.WaitForMulticastReport(ctx, groupA)
 	require.NoError(t, err, "failed to get report for group A from subscriberA")
 	require.Greater(t, reportA.PacketCount, uint64(0), "subscriberA received no packets from group A")
-	log.Info("SubscriberA verified", "group", groupA.Code, "packetCount", reportA.PacketCount)
+	log.Debug("SubscriberA verified", "group", groupA.Code, "packetCount", reportA.PacketCount)
 
 	// Verify subscriberB receives from group B.
-	log.Info("Waiting for subscriberB to receive from group B")
+	log.Debug("Waiting for subscriberB to receive from group B")
 	reportB, err := subscriberB.WaitForMulticastReport(ctx, groupB)
 	require.NoError(t, err, "failed to get report for group B from subscriberB")
 	require.Greater(t, reportB.PacketCount, uint64(0), "subscriberB received no packets from group B")
-	log.Info("SubscriberB verified", "group", groupB.Code, "packetCount", reportB.PacketCount)
+	log.Debug("SubscriberB verified", "group", groupB.Code, "packetCount", reportB.PacketCount)
 
-	log.Info("Test passed: publisher successfully sent to multiple groups with different subscribers",
+	log.Debug("Test passed: publisher successfully sent to multiple groups with different subscribers",
 		"groupA_packets", reportA.PacketCount, "groupB_packets", reportB.PacketCount)
 }

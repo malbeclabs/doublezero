@@ -21,7 +21,7 @@ exclude = [
 resolver = "2"
 
 [workspace.package]
-version = "0.8.6"
+version = "0.8.7"
 authors = ["Malbec Labs <dev@malbeclabs.com>"]
 readme = "README.md"
 edition = "2021"
@@ -87,6 +87,8 @@ tabled = "0"
 temp-env = "0"
 tempfile = "3"
 thiserror = "2"
+strum = "0.26"
+strum_macros = "0.26"
 tokio = { version = "1", default-features = false, features = [
     "rt-multi-thread",
     "signal",

@@ -59,6 +59,7 @@ async fn test_old_user() {
     let (link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
     let (segment_routing_ids_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+    let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
 
     execute_transaction(
         &mut banks_client,
@@ -80,6 +81,7 @@ async fn test_old_user() {
             AccountMeta::new(multicastgroup_block_pda, false),
             AccountMeta::new(link_ids_pda, false),
             AccountMeta::new(segment_routing_ids_pda, false),
+            AccountMeta::new(vrf_ids_pda, false),
         ],
         &payer,
     )
@@ -295,6 +297,7 @@ async fn test_old_user() {
             client_ip: user_ip,
             last_access_epoch: 9999,
             allow_multiple_ip: false,
+            tenant: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -398,6 +401,7 @@ async fn test_old_user() {
             tunnel_id: Some(501),
             tunnel_net: Some("169.254.0.2/25".parse().unwrap()),
             validator_pubkey: None,
+            tenant_pk: None,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -431,6 +435,7 @@ async fn test_old_user() {
             tunnel_id: Some(505),
             tunnel_net: Some("169.254.0.2/25".parse().unwrap()),
             validator_pubkey: None,
+            tenant_pk: None,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),

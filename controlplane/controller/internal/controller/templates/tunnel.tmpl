@@ -26,9 +26,13 @@ router pim sparse-mode
    ipv4
       rp address 10.0.0.0 {{ .MulticastGroupBlock }} override
 !
-vrf instance vrf1
+{{- range .UnicastVrfs }}
+vrf instance vrf{{ . }}
+{{- end }}
 ip routing
-ip routing vrf vrf1
+{{- range .UnicastVrfs }}
+ip routing vrf vrf{{ . }}
+{{- end }}
 !
 {{- if .Device.MgmtVrf }}
 ntp server vrf {{ .Device.MgmtVrf }} 0.pool.ntp.org
@@ -94,7 +98,7 @@ interface {{ .Name }}
    {{- if .Ip.IsValid }}
    ip address {{ .Ip.Addr }}/{{ .Ip.Bits }}
    {{- end }}
-   {{- if and .IsPhysical .Ip.IsValid (not .IsSubInterfaceParent) }}
+   {{- if and .IsPhysical .Ip.IsValid (not .IsSubInterfaceParent) (not .IsCYOA) (not .IsDIA) }}
    pim ipv4 sparse-mode
    {{- end }}
    {{- if and .IsVpnv4Loopback .NodeSegmentIdx}}
@@ -103,7 +107,7 @@ interface {{ .Name }}
    {{- if and .Ip.IsValid .IsLoopback }}
    isis enable 1
    {{- end }}
-   {{- if and .Ip.IsValid .IsPhysical .Metric .IsLink (not .IsSubInterfaceParent) }}
+   {{- if and .Ip.IsValid .IsPhysical .Metric .IsLink (not .IsSubInterfaceParent) (not .IsCYOA) (not .IsDIA) }}
    isis enable 1
    isis circuit-type level-2
    isis hello-interval 1
@@ -155,7 +159,7 @@ interface Tunnel{{ .Id }}
    {{- if not $.NoHardware }}
    ip access-group SEC-USER-{{ .Id }}-IN in
    {{- end }}
-   vrf vrf1
+   vrf vrf{{ .VrfId }}
    {{- end }}
    mtu 9216
    ip address {{ .OverlaySrcIP }}/31
@@ -240,14 +244,14 @@ router bgp 65342
       no neighbor {{ . }}
       {{- end }}
    !
-   vrf vrf1
-      rd 65342:1
-      route-target import vpn-ipv4 65342:1
-      route-target export vpn-ipv4 65342:1
-      router-id {{ .Device.PublicIP }}
-      {{- range .Device.Tunnels }}
-      {{- if eq true .Allocated }}
-      {{- if not .IsMulticast }}
+{{- range $vrfId := .UnicastVrfs }}
+   vrf vrf{{ $vrfId }}
+      rd 65342:{{ $vrfId }}
+      route-target import vpn-ipv4 65342:{{ $vrfId }}
+      route-target export vpn-ipv4 65342:{{ $vrfId }}
+      router-id {{ $.Device.PublicIP }}
+      {{- range $.Device.Tunnels }}
+      {{- if and .Allocated (not .IsMulticast) (eq .VrfId $vrfId) }}
       no neighbor {{ .OverlayDstIP }}
       neighbor {{ .OverlayDstIP }} remote-as 65000
       neighbor {{ .OverlayDstIP }} local-as {{ $.LocalASN }} no-prepend replace-as
@@ -262,10 +266,10 @@ router bgp 65342
       {{- end }}
       {{- end }}
       {{- end }}
-      {{- end }}
-      {{- range .UnknownBgpPeers }}
+      {{- range $.UnknownBgpPeers }}
       no neighbor {{ . }}
       {{- end }}
+{{- end }}
 !
 router isis 1
    net {{ .Device.IsisNet }}

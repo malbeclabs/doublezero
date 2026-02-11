@@ -24,7 +24,10 @@ func BuildContainerImages(ctx context.Context, log *slog.Logger, workspaceDir st
 
 	dockerfilesDir := filepath.Join(workspaceDir, dockerfilesDirRelativeToWorkspace)
 
-	// Build base image first
+	// Build base image first.
+	// CACHE_BUSTER forces Docker to re-run build commands so that cargo/go can do
+	// proper incremental compilation. Without this, switching branches can result
+	// in stale cached artifacts being used.
 	cacheBusterBuildArg := fmt.Sprintf("CACHE_BUSTER=%d", time.Now().Unix())
 	extraArgs := []string{"--build-arg", cacheBusterBuildArg, "--platform", "linux/amd64"}
 	err := docker.Build(ctx, log, os.Getenv("DZ_BASE_IMAGE"), filepath.Join(dockerfilesDir, "base.dockerfile"), workspaceDir, verbose, extraArgs...)

@@ -24,9 +24,9 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 	t.Parallel()
 
 	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
-	log := logger.With("test", t.Name(), "deployID", deployID)
+	log := newTestLoggerForTest(t)
 
-	log.Info("==> Starting test devnet with on-chain allocation enabled")
+	log.Debug("==> Starting test devnet with on-chain allocation enabled")
 
 	currentDir, err := os.Getwd()
 	require.NoError(t, err)
@@ -56,33 +56,30 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 
 	// Create two devices for the link endpoints
 	// Note: Must use globally routable IPs - smart contract rejects private, documentation, and other reserved IPs
-	log.Info("==> Creating devices for link test")
+	log.Debug("==> Creating devices for link test")
 	output, err := dn.Manager.Exec(ctx, []string{"bash", "-c", `
 		set -euo pipefail
-		echo "==> Creating device test-dz01"
 		doublezero device create --code test-dz01 --contributor co01 --location lax --exchange xlax --public-ip "45.33.100.1" --dz-prefixes "45.33.100.8/29" --mgmt-vrf mgmt --desired-status activated 2>&1
-		echo "==> Creating device test-dz02"
 		doublezero device create --code test-dz02 --contributor co01 --location ewr --exchange xewr --public-ip "45.33.100.2" --dz-prefixes "45.33.100.16/29" --mgmt-vrf mgmt --desired-status activated 2>&1
-		echo "==> Updating devices with max-users"
 		doublezero device update --pubkey test-dz01 --max-users 128 2>&1
 		doublezero device update --pubkey test-dz02 --max-users 128 2>&1
 	`})
-	log.Info("Device creation output", "output", string(output))
+	log.Debug("Device creation output", "output", string(output))
 	require.NoError(t, err, "Device creation failed with output: %s", string(output))
 
 	// Create interfaces on the devices
-	log.Info("==> Creating device interfaces")
+	log.Debug("==> Creating device interfaces")
 	output, err = dn.Manager.Exec(ctx, []string{"bash", "-c", `
 		set -euo pipefail
 		doublezero device interface create test-dz01 "Ethernet1" 2>&1
 		doublezero device interface create test-dz02 "Ethernet1" 2>&1
 	`})
-	log.Info("Interface creation output", "output", string(output))
+	log.Debug("Interface creation output", "output", string(output))
 	require.NoError(t, err)
 
 	// Wait for the activator to unlink the interfaces (physical interfaces start as Pending,
 	// activator transitions them to Unlinked so they can be used for links)
-	log.Info("==> Waiting for interfaces to be unlinked by activator")
+	log.Debug("==> Waiting for interfaces to be unlinked by activator")
 	require.Eventually(t, func() bool {
 		client, err := dn.Ledger.GetServiceabilityClient()
 		if err != nil {
@@ -139,19 +136,19 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 	require.NoError(t, err)
 	verifier := allocation.NewVerifier(client)
 
-	log.Info("==> Capturing ResourceExtension state before link creation")
+	log.Debug("==> Capturing ResourceExtension state before link creation")
 	beforeAlloc, err := verifier.CaptureSnapshot(ctx)
 	require.NoError(t, err, "failed to capture pre-allocation snapshot")
 
 	// Log initial state for debugging
 	if beforeAlloc.DeviceTunnelBlock != nil {
-		log.Info("DeviceTunnelBlock before allocation",
+		log.Debug("DeviceTunnelBlock before allocation",
 			"allocated", beforeAlloc.DeviceTunnelBlock.Allocated,
 			"available", beforeAlloc.DeviceTunnelBlock.Available,
 			"total", beforeAlloc.DeviceTunnelBlock.Total)
 	}
 	if beforeAlloc.LinkIds != nil {
-		log.Info("LinkIds before allocation",
+		log.Debug("LinkIds before allocation",
 			"allocated", beforeAlloc.LinkIds.Allocated,
 			"available", beforeAlloc.LinkIds.Available,
 			"total", beforeAlloc.LinkIds.Total)
@@ -159,7 +156,7 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 
 	// Create a link between the two devices with desired-status activated
 	// The activator should pick this up and activate it with on-chain allocation
-	log.Info("==> Creating link with on-chain allocation")
+	log.Debug("==> Creating link with on-chain allocation")
 	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", `
 		set -euo pipefail
 		doublezero link create wan \
@@ -179,7 +176,7 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait for the link to be activated
-	log.Info("==> Waiting for link activation")
+	log.Debug("==> Waiting for link activation")
 	var activatedLink *serviceability.Link
 	require.Eventually(t, func() bool {
 		client, err := dn.Ledger.GetServiceabilityClient()
@@ -211,12 +208,12 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 	// Verify the link has allocated resources from on-chain
 	// Note: tunnel_id=0 is valid (first allocation from LinkIds range 0-65535)
 	// We verify tunnel_net is not default, which confirms on-chain allocation worked
-	log.Info("==> Verifying link has allocated resources", "tunnel_id", activatedLink.TunnelId, "tunnel_net", activatedLink.TunnelNet)
+	log.Debug("==> Verifying link has allocated resources", "tunnel_id", activatedLink.TunnelId, "tunnel_net", activatedLink.TunnelNet)
 	require.NotEmpty(t, activatedLink.TunnelNet, "tunnel_net should be allocated (non-empty)")
 	require.NotEqual(t, [5]uint8{0, 0, 0, 0, 0}, activatedLink.TunnelNet, "tunnel_net should not be default/zero")
 
 	// Capture snapshot AFTER allocation to verify resources were consumed
-	log.Info("==> Capturing ResourceExtension state after link activation")
+	log.Debug("==> Capturing ResourceExtension state after link activation")
 	afterAlloc, err := verifier.CaptureSnapshot(ctx)
 	require.NoError(t, err, "failed to capture post-allocation snapshot")
 
@@ -225,20 +222,20 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 	if beforeAlloc.DeviceTunnelBlock != nil && afterAlloc.DeviceTunnelBlock != nil {
 		err = verifier.AssertAllocated(beforeAlloc, afterAlloc, "DeviceTunnelBlock", 2)
 		require.NoError(t, err, "DeviceTunnelBlock allocation verification failed")
-		log.Info("DeviceTunnelBlock after allocation",
+		log.Debug("DeviceTunnelBlock after allocation",
 			"allocated", afterAlloc.DeviceTunnelBlock.Allocated,
 			"available", afterAlloc.DeviceTunnelBlock.Available)
 	}
 	if beforeAlloc.LinkIds != nil && afterAlloc.LinkIds != nil {
 		err = verifier.AssertAllocated(beforeAlloc, afterAlloc, "LinkIds", 1)
 		require.NoError(t, err, "LinkIds allocation verification failed")
-		log.Info("LinkIds after allocation",
+		log.Debug("LinkIds after allocation",
 			"allocated", afterAlloc.LinkIds.Allocated,
 			"available", afterAlloc.LinkIds.Available)
 	}
 
 	// Verify link details via CLI
-	log.Info("==> Verifying link details via CLI")
+	log.Debug("==> Verifying link details via CLI")
 	output, err = dn.Manager.Exec(ctx, []string{"bash", "-c", "doublezero link get --code test-dz01:test-dz02"})
 	require.NoError(t, err)
 	outputStr := string(output)
@@ -248,12 +245,12 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 	// The closeaccount handler should deallocate tunnel_id and tunnel_net back to ResourceExtension
 
 	// Log allocated resources before deletion (for debugging/audit purposes)
-	log.Info("==> Allocated resources before deletion", "tunnel_id", activatedLink.TunnelId, "tunnel_net", activatedLink.TunnelNet)
+	log.Debug("==> Allocated resources before deletion", "tunnel_id", activatedLink.TunnelId, "tunnel_net", activatedLink.TunnelNet)
 
 	// Delete link to trigger transition to Deleting status
 	// Must use actual pubkey (base58 encoded), not the code
 	linkPubkey := base58.Encode(activatedLink.PubKey[:])
-	log.Info("==> Deleting link to trigger deallocation", "pubkey", linkPubkey)
+	log.Debug("==> Deleting link to trigger deallocation", "pubkey", linkPubkey)
 	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", fmt.Sprintf(`
 		set -euo pipefail
 		doublezero link delete --pubkey "%s"
@@ -262,7 +259,7 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 
 	// Wait for link to transition to Deleting status
 	// Note: Go SDK uses LinkStatusDeleting (value 3) which corresponds to Rust's Deleting status
-	log.Info("==> Waiting for link to transition to Deleting")
+	log.Debug("==> Waiting for link to transition to Deleting")
 	require.Eventually(t, func() bool {
 		client, err := dn.Ledger.GetServiceabilityClient()
 		if err != nil {
@@ -290,7 +287,7 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 	// Note: We don't capture a snapshot here because the link may close very quickly,
 	// causing a race where we capture the snapshot after deallocation already happened.
 	// Instead, we use afterAlloc (captured after link creation) as the baseline.
-	log.Info("==> Waiting for link to be closed by activator")
+	log.Debug("==> Waiting for link to be closed by activator")
 	require.Eventually(t, func() bool {
 		client, err := dn.Ledger.GetServiceabilityClient()
 		if err != nil {
@@ -310,7 +307,7 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 	}, 60*time.Second, 2*time.Second, "link was not closed within timeout")
 
 	// Capture snapshot AFTER link is closed to verify deallocation
-	log.Info("==> Capturing ResourceExtension state after link closure")
+	log.Debug("==> Capturing ResourceExtension state after link closure")
 	afterDealloc, err := verifier.CaptureSnapshot(ctx)
 	require.NoError(t, err, "failed to capture post-deallocation snapshot")
 
@@ -319,25 +316,25 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 	if afterAlloc.DeviceTunnelBlock != nil && afterDealloc.DeviceTunnelBlock != nil {
 		err = verifier.AssertDeallocated(afterAlloc, afterDealloc, "DeviceTunnelBlock", 2)
 		require.NoError(t, err, "tunnel_net not properly deallocated from DeviceTunnelBlock")
-		log.Info("DeviceTunnelBlock after deallocation",
+		log.Debug("DeviceTunnelBlock after deallocation",
 			"allocated", afterDealloc.DeviceTunnelBlock.Allocated,
 			"available", afterDealloc.DeviceTunnelBlock.Available)
 	}
 	if afterAlloc.LinkIds != nil && afterDealloc.LinkIds != nil {
 		err = verifier.AssertDeallocated(afterAlloc, afterDealloc, "LinkIds", 1)
 		require.NoError(t, err, "tunnel_id not properly deallocated from LinkIds")
-		log.Info("LinkIds after deallocation",
+		log.Debug("LinkIds after deallocation",
 			"allocated", afterDealloc.LinkIds.Allocated,
 			"available", afterDealloc.LinkIds.Available)
 	}
 
 	// Verify resources returned to pre-allocation state
-	log.Info("==> Verifying resources returned to pre-allocation state")
+	log.Debug("==> Verifying resources returned to pre-allocation state")
 	err = verifier.AssertResourcesReturned(beforeAlloc, afterDealloc)
 	require.NoError(t, err, "resources were not properly returned to pre-allocation state")
 
 	// Verify interfaces are back to Unlinked status after link closure
-	log.Info("==> Verifying interfaces returned to Unlinked status")
+	log.Debug("==> Verifying interfaces returned to Unlinked status")
 	require.Eventually(t, func() bool {
 		client, err := dn.Ledger.GetServiceabilityClient()
 		if err != nil {
@@ -375,5 +372,5 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 		return true
 	}, 30*time.Second, 2*time.Second, "interfaces did not return to Unlinked status")
 
-	log.Info("==> Link on-chain allocation and deallocation test completed successfully")
+	log.Debug("==> Link on-chain allocation and deallocation test completed successfully")
 }

@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	influxDBImage        = "influxdb:1.8"
+	influxDBImage        = "public.ecr.aws/influxdb/influxdb:1.8"
 	influxDBInternalPort = 8086
 	influxDBDatabase     = "doublezero_devnet"
 )
@@ -79,7 +79,7 @@ func (i *InfluxDB) StartIfNotRunning(ctx context.Context) (bool, error) {
 		}
 
 		if container.State.Running {
-			i.log.Info("--> InfluxDB already running", "container", shortContainerID(container.ID))
+			i.log.Debug("--> InfluxDB already running", "container", shortContainerID(container.ID))
 
 			err = i.setState(ctx, container.ID)
 			if err != nil {
@@ -106,7 +106,7 @@ func (i *InfluxDB) StartIfNotRunning(ctx context.Context) (bool, error) {
 }
 
 func (i *InfluxDB) Start(ctx context.Context) error {
-	i.log.Info("==> Starting influxdb", "image", i.dn.Spec.InfluxDB.ContainerImage)
+	i.log.Debug("==> Starting influxdb", "image", i.dn.Spec.InfluxDB.ContainerImage)
 
 	req := testcontainers.ContainerRequest{
 		Image: i.dn.Spec.InfluxDB.ContainerImage,
@@ -150,7 +150,7 @@ func (i *InfluxDB) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to set influxdb state: %w", err)
 	}
 
-	i.log.Info("--> InfluxDB started", "container", i.ContainerID, "url", i.InternalURL)
+	i.log.Debug("--> InfluxDB started", "container", i.ContainerID, "url", i.InternalURL)
 	return nil
 }
 

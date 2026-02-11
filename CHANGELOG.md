@@ -10,10 +10,43 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+## [v0.8.7](https://github.com/malbeclabs/doublezero/compare/client/v0.8.6...client/v0.8.7) – 2026-02-10
+
+### Breaking
+
+- None for this release
+
+### Changes
+
+- Telemetry
+  - geoprobe: add LocationOffset type with Ed25519 signing/verification and UDP transport for geolocation verification measurements (#2898)
+- Onchain programs
+  - feat(smartcontract): add payment_status, token_account fields and UpdatePaymentStatus instruction ([#2880](https://github.com/malbeclabs/doublezero/pull/2880))
+  - fix(smartcontract): correctly ser/deser ops_manager_pk ([#2887](https://github.com/malbeclabs/doublezero/pull/2887))
+  - Serviceability: add metro_route and route_aliveness boolean fields to Tenant for routing configuration
+  - Serviceability: add Tenant account type with immutable code-based PDA derivation, VRF ID, administrator management, and reference counting for safe deletion
+  - Serviceability: add TenantAddAdministrator and TenantRemoveAdministrator instructions for foundation-managed administrator lists
+  - Serviceability: extend UserUpdate instruction to support tenant_pk field updates with automatic reference count management on old and new tenants (backward compatible with old format)
+  - Serviceability: extend UserCloseAccount instruction to decrement tenant reference count when closing user with assigned tenant
+  - Serviceability: add reference count validation in DeleteMulticastGroup to prevent deletion when active publishers or subscribers exist
+  - Serviceability: fix multicast group closeaccount to use InvalidStatus error and remove redundant publisher/subscriber count check
+  - Serviceability: add tenant_allowlist field to AccessPass to restrict which tenants can use specific access passes (backward compatible with existing accounts)
+- SDK
+  - Add metro_route and route_aliveness fields to CreateTenantCommand and UpdateTenantCommand
+  - Add CreateTenant, UpdateTenant (vrf_id only), DeleteTenant, GetTenant, and ListTenant commands with support for code or pubkey lookup
+  - Add AddAdministratorTenant and RemoveAdministratorTenant commands for tenant administrator management
+  - UpdateUserCommand extended with tenant_pk field and automatic tenant account resolution for reference counting
+  - SetAccessPassCommand extended with tenant field to specify allowed tenant for access pass
+  - TypeScript SDK updated with tenantAllowlist field in AccessPass interface and deserialization
 - CLI
   - Fix `multicastgroup update` command to properly parse human-readable bandwidth values (e.g., "1Gbps", "100Mbps") in `--max-bandwidth` flag
+  - Add --metro-route and --route-aliveness flags to tenant create and update commands
+  - Add tenant subcommands (create, update, delete, get, list, add-administrator, remove-administrator) to doublezero and doublezero-admin CLIs
   - Add filtering options and desired_status & metrics_publisher_pk field to device and link list commands
   - Added activation check for existing users before subscribing to new groups (#2782)
+  - access-pass set: add --tenant argument to specify tenant code for access pass restriction (converts to tenant PDA onchain)
+  - tenant list: improve output formatting with table support and JSON serialization options (--json, --json-compact)
+  - default tenant support added to config
 - SDK
   - Add read-only Go SDK (`revdist`) for the revenue distribution Solana program, with typed deserialization of all onchain accounts and Rust-generated fixture tests for cross-language compatibility
   - Add `revdist-cli` tool for inspecting onchain revenue distribution state
@@ -23,12 +56,16 @@ All notable changes to this project will be documented in this file.
   - DeleteUserCommand updated to wait for activator to process multicast user unsubscribe before deleting the user
 - Device controller
   - Record successful GetConfig gRPC calls to ClickHouse for device telemetry tracking
+  - Multi-tenancy vrf support added
+  - Skip isis and pim config for CYOA/DIA tagged interfaces
 - Onchain programs
   - Enforce that `CloseAccessPass` only closes AccessPass accounts when `connection_count == 0`, preventing closure while active connections are present.
 - Monitor
   - Add sol-balance watcher to track SOL balances for configured accounts and export Prometheus metrics for alerting
 - E2E tests
+  - e2e: add multi-tenancy VRF isolation test ([#2891](https://github.com/malbeclabs/doublezero/pull/2891))
   - Add backward compatibility test that validates older CLI versions against the current onchain program by cloning live state from testnet and mainnet-beta
+  - QA multicast tests: add diagnostic dumps on failure (status, routes, latency, multicast reports, onchain user/device state), cleanup stale test groups at test start, and fix disconnect blocking on stuck daemon status
 
 ## [v0.8.6](https://github.com/malbeclabs/doublezero/compare/client/v0.8.5...client/v0.8.6) – 2026-02-04
 
@@ -37,6 +74,7 @@ All notable changes to this project will be documented in this file.
 - None for this release
 
 ### Changes
+
 - CLI
   - Remove log noise on resolve route
   - `doublezero resource verify` command added to verify onchain resources
@@ -47,6 +85,7 @@ All notable changes to this project will be documented in this file.
   - Deprecated the user suspend status, as it is no longer used.
   - Serviceability: enforce that CloseAccountUser instructions verify the target user has no multicast publishers or subscribers (both `publishers` and `subscribers` are empty) before closing, and add regression coverage for this behavior.
   - Enhance access pass functionality with new Solana-specific types
+  - fix default desired status
 - Telemetry
   - Fix goroutine leak in TWAMP sender — `cleanUpReceived` goroutines now exit on `Close()` instead of living until process shutdown
 - Client
@@ -55,6 +94,7 @@ All notable changes to this project will be documented in this file.
 - E2E tests
   - The QA alldevices test now skips devices that are not calling the controller
   - e2e: Expand RFC11 end-to-end testing ([#2801](https://github.com/malbeclabs/doublezero/pull/2801))
+  - e2e(RFC11): add dz prefix rollover allocation test ([#2820](https://github.com/malbeclabs/doublezero/pull/2820))
 
 ## [v0.8.5](https://github.com/malbeclabs/doublezero/compare/client/v0.8.4...client/v0.8.5) – 2026-02-02
 
@@ -84,7 +124,7 @@ All notable changes to this project will be documented in this file.
   - Support publishing and subscribing to multiple multicast groups simultaneously
 - CLI
   - Support publishing and subscribing a user to multiple multicast groups via `--group` flag
-  - Remove single tunnel constraint 
+  - Remove single tunnel constraint
 - SDK
   - Go SDK can now perform batch writes to device.health and link.health as per rfc12
 - Activator

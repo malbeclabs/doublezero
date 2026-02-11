@@ -160,7 +160,9 @@ pub fn process_create_device(
         // TODO: This line show be change when the health oracle is implemented
         // device_health: DeviceHealth::Pending,
         device_health: DeviceHealth::ReadyForUsers, // Force the device to be ready for users until the health oracle is implemented
-        desired_status: value.desired_status.unwrap_or(DeviceDesiredStatus::Pending),
+        desired_status: value
+            .desired_status
+            .unwrap_or(DeviceDesiredStatus::Activated),
     };
 
     device.check_status_transition();

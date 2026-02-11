@@ -60,6 +60,23 @@ RUST_LOG=debug ./target/doublezero-activator --program-id 7CTniUa88iJKUHTrCkB4Tj
 echo "Add allowlist"
 ./target/doublezero global-config allowlist add --pubkey 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX
 
+### Initialize tenants
+echo "Creating tenants"
+./target/doublezero tenant create --code acme --administrator me
+./target/doublezero tenant create --code corp --administrator me
+./target/doublezero tenant create --code test-tenant --administrator me
+
+echo "Listing all tenants"
+./target/doublezero tenant list
+
+echo "Getting tenant details"
+./target/doublezero tenant get --code acme
+./target/doublezero tenant get --code corp
+
+echo "Updating tenant VRF ID"
+./target/doublezero tenant update --pubkey acme --vrf-id 100
+./target/doublezero tenant update --pubkey corp --vrf-id 200
+
 ### Initialize locations
 echo "Creating locations"
 ./target/doublezero location create --code lax --name "XXXXXXX" --country US --lat 34.049641274076464 --lng -118.25939642499903
@@ -105,24 +122,24 @@ echo "Creating devices"
 
 ### Initialize device interfaces
 echo "Creating device interfaces"
-./target/doublezero device interface create la2-dz01 "Switch1/1/1" -w
-./target/doublezero device interface create la2-dz01 "Switch1/1/2" -w
-./target/doublezero device interface create la2-dz01 "Switch1/1/3" -w
-./target/doublezero device interface create ny5-dz01 "Switch1/1/1" -w
-./target/doublezero device interface create ny5-dz01 "Switch1/1/2" -w
-./target/doublezero device interface create ld4-dz01 "Switch1/1/1" -w
-./target/doublezero device interface create ld4-dz01 "Switch1/1/2" -w
-./target/doublezero device interface create ld4-dz01 "Switch1/1/3" -w
-./target/doublezero device interface create frk-dz01 "Switch1/1/1" -w
-./target/doublezero device interface create frk-dz01 "Switch1/1/2" -w
-./target/doublezero device interface create sg1-dz01 "Switch1/1/1" -w
-./target/doublezero device interface create sg1-dz01 "Switch1/1/2" -w
-./target/doublezero device interface create ty2-dz01 "Switch1/1/1" -w
-./target/doublezero device interface create ty2-dz01 "Switch1/1/2" -w
-./target/doublezero device interface create pit-dz01 "Switch1/1/1" -w
-./target/doublezero device interface create pit-dz01 "Switch1/1/2" -w
-./target/doublezero device interface create ams-dz01 "Switch1/1/1" -w
-./target/doublezero device interface create ams-dz01 "Switch1/1/2" -w
+./target/doublezero device interface create la2-dz01 "Switch1/1/1" --ip-net "10.0.1.1/30" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create la2-dz01 "Switch1/1/2" --ip-net "10.0.1.5/30" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create la2-dz01 "Switch1/1/3" --ip-net "10.0.1.9/30" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create ny5-dz01 "Switch1/1/1" --ip-net "10.0.2.1/30" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create ny5-dz01 "Switch1/1/2" --ip-net "10.0.2.5/30" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create ld4-dz01 "Switch1/1/1" --ip-net "10.0.3.1/30" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create ld4-dz01 "Switch1/1/2" --ip-net "10.0.3.5/30" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create ld4-dz01 "Switch1/1/3" --ip-net "10.0.3.9/30" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create frk-dz01 "Switch1/1/1" --ip-net "10.0.4.1/30" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create frk-dz01 "Switch1/1/2" --ip-net "10.0.4.5/30" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create sg1-dz01 "Switch1/1/1" --ip-net "10.0.5.1/30" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create sg1-dz01 "Switch1/1/2" --ip-net "10.0.5.5/30" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create ty2-dz01 "Switch1/1/1" --ip-net "10.0.6.1/30" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create ty2-dz01 "Switch1/1/2" --ip-net "10.0.6.5/30" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create pit-dz01 "Switch1/1/1" --ip-net "10.0.7.1/30" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create pit-dz01 "Switch1/1/2" --ip-net "10.0.7.5/30" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create ams-dz01 "Switch1/1/1" --ip-net "10.0.8.1/30" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
+./target/doublezero device interface create ams-dz01 "Switch1/1/2" --ip-net "10.0.8.5/30" --bandwidth "10 Gbps" --cir "10 Gbps" --mtu 1500 --routing-mode static -w
 
 ### Initialize links
 echo "Creating internal links"
@@ -144,7 +161,7 @@ echo "Creating devices"
 
 ### Initialize device interfaces
 echo "Creating device interfaces"
-./target/doublezero device interface create la2-dz02 "Switch1/1/1" -w
+./target/doublezero device interface create la2-dz02 "Switch1/1/1" --ip-net "10.0.9.1/30" --bandwidth 1000 --cir 0 --mtu 1500 --routing-mode static -w
 
 ### Initialize links
 echo "Creating external links"
@@ -167,14 +184,33 @@ echo "Update devices to set max users"
 ./target/doublezero device update --pubkey ams-dz01 --max-users 128
 
 # create access pass
-echo "Create AccessPass for all IPs"
-./target/doublezero access-pass set --accesspass-type prepaid --user-payer me --client-ip 100.0.0.5
-./target/doublezero access-pass set --accesspass-type prepaid --user-payer me --client-ip 100.0.0.6
+echo "Create AccessPass with tenant restrictions"
+./target/doublezero access-pass set --accesspass-type prepaid --user-payer me --client-ip 100.0.0.5 --tenant acme
+./target/doublezero access-pass set --accesspass-type prepaid --user-payer me --client-ip 100.0.0.6 --tenant acme
 
-./target/doublezero access-pass set --accesspass-type prepaid --user-payer me --client-ip 177.54.159.95
-./target/doublezero access-pass set --accesspass-type prepaid --user-payer me --client-ip 147.28.171.51
-./target/doublezero access-pass set --accesspass-type prepaid --user-payer me --client-ip 100.100.100.100
-./target/doublezero access-pass set --accesspass-type prepaid --user-payer me --client-ip 200.200.200.200
+./target/doublezero access-pass set --accesspass-type prepaid --user-payer me --client-ip 177.54.159.95 --tenant corp
+./target/doublezero access-pass set --accesspass-type prepaid --user-payer me --client-ip 147.28.171.51 --tenant corp
+./target/doublezero access-pass set --accesspass-type prepaid --user-payer me --client-ip 100.100.100.100 --tenant test-tenant
+./target/doublezero access-pass set --accesspass-type prepaid --user-payer me --client-ip 200.200.200.200 --tenant test-tenant
+
+echo "Create AccessPass without tenant (backward compatibility test)"
+./target/doublezero access-pass set --accesspass-type prepaid --user-payer me --client-ip 10.10.10.10
+
+echo "Listing all access passes"
+./target/doublezero access-pass list
+
+echo "Listing prepaid access passes only"
+./target/doublezero access-pass list --prepaid
+
+echo "Filtering access passes by user payer"
+./target/doublezero access-pass list
+
+echo "Filtering access passes by client IP"
+./target/doublezero access-pass list --client-ip 100.0.0.5
+
+# Test updating an access pass with different tenant
+echo "Updating access pass to change tenant"
+./target/doublezero access-pass set --accesspass-type prepaid --user-payer me --client-ip 100.0.0.5 --tenant corp
 
 # create a user
 echo "Creating users"

@@ -225,7 +225,7 @@ pub fn process_create_subscribe_user(
         } else {
             0
         },
-        tenant_pk: Pubkey::default(),
+        tenant_pk: Pubkey::default(), // No tenant support for multicast group users
         user_type: value.user_type,
         device_pk: *device_account.key,
         cyoa_type: value.cyoa_type,

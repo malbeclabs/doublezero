@@ -86,6 +86,12 @@ use doublezero_sdk::{
             create::CreateResourceCommand, deallocate::DeallocateResourceCommand,
             get::GetResourceCommand,
         },
+        tenant::{
+            add_administrator::AddAdministratorTenantCommand, create::CreateTenantCommand,
+            delete::DeleteTenantCommand, get::GetTenantCommand, list::ListTenantCommand,
+            remove_administrator::RemoveAdministratorTenantCommand, update::UpdateTenantCommand,
+            update_payment_status::UpdatePaymentStatusCommand,
+        },
         user::{
             create::CreateUserCommand, create_subscribe::CreateSubscribeUserCommand,
             delete::DeleteUserCommand, get::GetUserCommand, list::ListUserCommand,
@@ -98,7 +104,7 @@ use doublezero_sdk::{
 };
 use doublezero_serviceability::state::{
     accesspass::AccessPass, accountdata::AccountData, contributor::Contributor,
-    programconfig::ProgramConfig,
+    programconfig::ProgramConfig, tenant::Tenant,
 };
 use mockall::automock;
 use solana_client::rpc_config::RpcProgramAccountsConfig;
@@ -164,6 +170,24 @@ pub trait CliCommand {
     ) -> eyre::Result<HashMap<Pubkey, Contributor>>;
     fn update_contributor(&self, cmd: UpdateContributorCommand) -> eyre::Result<Signature>;
     fn delete_contributor(&self, cmd: DeleteContributorCommand) -> eyre::Result<Signature>;
+
+    fn create_tenant(&self, cmd: CreateTenantCommand) -> eyre::Result<(Signature, Pubkey)>;
+    fn get_tenant(&self, cmd: GetTenantCommand) -> eyre::Result<(Pubkey, Tenant)>;
+    fn list_tenant(&self, cmd: ListTenantCommand) -> eyre::Result<HashMap<Pubkey, Tenant>>;
+    fn update_tenant(&self, cmd: UpdateTenantCommand) -> eyre::Result<Signature>;
+    fn delete_tenant(&self, cmd: DeleteTenantCommand) -> eyre::Result<Signature>;
+    fn add_administrator_tenant(
+        &self,
+        cmd: AddAdministratorTenantCommand,
+    ) -> eyre::Result<Signature>;
+    fn remove_administrator_tenant(
+        &self,
+        cmd: RemoveAdministratorTenantCommand,
+    ) -> eyre::Result<Signature>;
+    fn update_payment_status_tenant(
+        &self,
+        cmd: UpdatePaymentStatusCommand,
+    ) -> eyre::Result<Signature>;
 
     fn create_device(&self, cmd: CreateDeviceCommand) -> eyre::Result<(Signature, Pubkey)>;
     fn get_device(&self, cmd: GetDeviceCommand) -> eyre::Result<(Pubkey, Device)>;
@@ -430,6 +454,40 @@ impl CliCommand for CliCommandImpl<'_> {
         cmd.execute(self.client)
     }
     fn delete_contributor(&self, cmd: DeleteContributorCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+
+    fn create_tenant(&self, cmd: CreateTenantCommand) -> eyre::Result<(Signature, Pubkey)> {
+        cmd.execute(self.client)
+    }
+    fn get_tenant(&self, cmd: GetTenantCommand) -> eyre::Result<(Pubkey, Tenant)> {
+        cmd.execute(self.client)
+    }
+    fn list_tenant(&self, cmd: ListTenantCommand) -> eyre::Result<HashMap<Pubkey, Tenant>> {
+        cmd.execute(self.client)
+    }
+    fn update_tenant(&self, cmd: UpdateTenantCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn delete_tenant(&self, cmd: DeleteTenantCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn add_administrator_tenant(
+        &self,
+        cmd: AddAdministratorTenantCommand,
+    ) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn remove_administrator_tenant(
+        &self,
+        cmd: RemoveAdministratorTenantCommand,
+    ) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn update_payment_status_tenant(
+        &self,
+        cmd: UpdatePaymentStatusCommand,
+    ) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
 

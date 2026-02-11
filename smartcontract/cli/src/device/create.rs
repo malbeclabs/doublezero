@@ -50,7 +50,7 @@ pub struct CreateDeviceCliCommand {
     #[arg(long, default_value = "default")]
     pub mgmt_vrf: String,
     /// Desired status for the device (optional)
-    #[arg(long)]
+    #[arg(long, hide = true)]
     pub desired_status: Option<DeviceDesiredStatus>,
     /// Wait for the device to be activated
     #[arg(short, long, default_value_t = false)]

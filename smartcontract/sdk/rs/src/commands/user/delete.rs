@@ -366,6 +366,7 @@ mod tests {
             publishers: vec![mgroup_pubkey],
             subscribers: vec![mgroup_pubkey],
             validator_pubkey: Pubkey::default(),
+            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
         };
 
         let user_updating = User {

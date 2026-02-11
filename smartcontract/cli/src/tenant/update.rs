@@ -24,7 +24,7 @@ pub struct UpdateTenantCliCommand {
     pub metro_route: Option<bool>,
     /// Enable/disable route aliveness checks
     #[arg(long)]
-    pub route_aliveness: Option<bool>,
+    pub route_liveness: Option<bool>,
 }
 
 impl UpdateTenantCliCommand {
@@ -46,7 +46,7 @@ impl UpdateTenantCliCommand {
             vrf_id: self.vrf_id,
             token_account,
             metro_route: self.metro_route,
-            route_aliveness: self.route_aliveness,
+            route_liveness: self.route_liveness,
         })?;
 
         writeln!(out, "Signature: {signature}")?;

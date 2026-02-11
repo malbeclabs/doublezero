@@ -14,7 +14,7 @@ pub struct CreateTenantCommand {
     pub administrator: Pubkey,
     pub token_account: Option<Pubkey>,
     pub metro_route: bool,
-    pub route_aliveness: bool,
+    pub route_liveness: bool,
 }
 
 impl CreateTenantCommand {
@@ -36,7 +36,7 @@ impl CreateTenantCommand {
                     administrator: self.administrator,
                     token_account: self.token_account,
                     metro_route: self.metro_route,
-                    route_aliveness: self.route_aliveness,
+                    route_liveness: self.route_liveness,
                 }),
                 vec![
                     AccountMeta::new(pda_pubkey, false),
@@ -71,7 +71,7 @@ mod tests {
                     administrator,
                     token_account: None,
                     metro_route: true,
-                    route_aliveness: false,
+                    route_liveness: false,
                 })),
                 predicate::always(),
             )
@@ -82,7 +82,7 @@ mod tests {
             administrator: Pubkey::default(),
             token_account: None,
             metro_route: true,
-            route_aliveness: false,
+            route_liveness: false,
         }
         .execute(&client);
 
@@ -93,7 +93,7 @@ mod tests {
             administrator,
             token_account: None,
             metro_route: true,
-            route_aliveness: false,
+            route_liveness: false,
         }
         .execute(&client);
 

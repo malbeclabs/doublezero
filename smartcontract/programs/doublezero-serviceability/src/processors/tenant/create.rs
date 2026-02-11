@@ -33,14 +33,14 @@ pub struct TenantCreateArgs {
     pub administrator: Pubkey,
     pub token_account: Option<Pubkey>,
     pub metro_route: bool,
-    pub route_aliveness: bool,
+    pub route_liveness: bool,
 }
 impl fmt::Debug for TenantCreateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "code: {}, token_account: {:?}, metro_route: {}, route_aliveness: {}",
-            self.code, self.token_account, self.metro_route, self.route_aliveness
+            "code: {}, token_account: {:?}, metro_route: {}, route_liveness: {}",
+            self.code, self.token_account, self.metro_route, self.route_liveness
         )
     }
 }
@@ -146,7 +146,7 @@ pub fn process_create_tenant(
         payment_status: TenantPaymentStatus::default(),
         token_account: value.token_account.unwrap_or_default(),
         metro_route: value.metro_route,
-        route_aliveness: value.route_aliveness,
+        route_liveness: value.route_liveness,
     };
 
     let deposit = Rent::get()

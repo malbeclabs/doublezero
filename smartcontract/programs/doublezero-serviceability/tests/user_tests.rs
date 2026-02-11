@@ -991,7 +991,7 @@ async fn test_user_create_tenant_allowlist_validation() {
             administrator: Pubkey::new_unique(),
             token_account: None,
             metro_route: true,
-            route_aliveness: false,
+            route_liveness: false,
         }),
         vec![
             AccountMeta::new(tenant_a_pubkey, false),
@@ -1015,7 +1015,7 @@ async fn test_user_create_tenant_allowlist_validation() {
             administrator: Pubkey::new_unique(),
             token_account: None,
             metro_route: true,
-            route_aliveness: false,
+            route_liveness: false,
         }),
         vec![
             AccountMeta::new(tenant_b_pubkey, false),

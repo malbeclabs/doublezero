@@ -20,7 +20,7 @@ impl GetTenantCliCommand {
         writeln!(out, "code: {}", tenant.code)?;
         writeln!(out, "vrf_id: {}", tenant.vrf_id)?;
         writeln!(out, "metro_route: {}", tenant.metro_route)?;
-        writeln!(out, "route_aliveness: {}", tenant.route_aliveness)?;
+        writeln!(out, "route_liveness: {}", tenant.route_liveness)?;
         writeln!(out, "owner: {}", tenant.owner)?;
 
         Ok(())

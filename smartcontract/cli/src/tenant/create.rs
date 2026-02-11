@@ -24,7 +24,7 @@ pub struct CreateTenantCliCommand {
     pub metro_route: bool,
     /// Enable route aliveness checks for this tenant
     #[arg(long, default_value = "false")]
-    pub route_aliveness: bool,
+    pub route_liveness: bool,
 }
 
 impl CreateTenantCliCommand {
@@ -58,7 +58,7 @@ impl CreateTenantCliCommand {
             administrator,
             token_account,
             metro_route: self.metro_route,
-            route_aliveness: self.route_aliveness,
+            route_liveness: self.route_liveness,
         })?;
 
         writeln!(out, "Signature: {signature}")?;

@@ -993,7 +993,7 @@ mod tests {
                 payment_status: TenantPaymentStatus::Paid,
                 token_account: Pubkey::default(),
                 metro_route: false,
-                route_aliveness: false,
+                route_liveness: false,
             };
 
             let mut tenants = HashMap::new();
@@ -1239,7 +1239,7 @@ mod tests {
                 payment_status: TenantPaymentStatus::Paid,
                 token_account: Pubkey::default(),
                 metro_route: false,
-                route_aliveness: false,
+                route_liveness: false,
             };
             tenants.insert(pk, tenant.clone());
             (pk, tenant)

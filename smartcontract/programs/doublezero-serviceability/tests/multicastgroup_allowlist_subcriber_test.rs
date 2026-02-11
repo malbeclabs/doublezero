@@ -17,7 +17,7 @@ use doublezero_serviceability::{
     },
 };
 use solana_program_test::*;
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signer::Signer};
+use solana_sdk::{instruction::AccountMeta, signer::Signer};
 
 mod test_helpers;
 use test_helpers::*;
@@ -135,7 +135,6 @@ async fn test_multicast_subscriber_allowlist() {
             client_ip,
             last_access_epoch: 100,
             allow_multiple_ip: false,
-            tenant: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),

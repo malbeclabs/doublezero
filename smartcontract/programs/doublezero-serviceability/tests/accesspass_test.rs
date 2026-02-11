@@ -75,7 +75,6 @@ async fn test_accesspass() {
             client_ip,
             last_access_epoch: 10,
             allow_multiple_ip: false,
-            tenant: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -108,7 +107,6 @@ async fn test_accesspass() {
             client_ip,
             last_access_epoch: u64::MAX,
             allow_multiple_ip: false,
-            tenant: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -165,7 +163,6 @@ async fn test_accesspass() {
             client_ip,
             last_access_epoch: 101,
             allow_multiple_ip: false,
-            tenant: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -199,7 +196,6 @@ async fn test_accesspass() {
             client_ip,
             last_access_epoch: 0,
             allow_multiple_ip: false,
-            tenant: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -394,12 +390,13 @@ async fn test_accesspass_with_tenant() {
             client_ip: client_ip_1,
             last_access_epoch: 10,
             allow_multiple_ip: false,
-            tenant: tenant_acme,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey_1, false),
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(user_payer_1, false),
+            AccountMeta::new(Pubkey::default(), false),
+            AccountMeta::new(tenant_acme, false),
         ],
         &payer,
     )
@@ -433,12 +430,13 @@ async fn test_accesspass_with_tenant() {
             client_ip: client_ip_2,
             last_access_epoch: 20,
             allow_multiple_ip: false,
-            tenant: tenant_corp,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey_2, false),
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(user_payer_2, false),
+            AccountMeta::new(Pubkey::default(), false),
+            AccountMeta::new(tenant_corp, false),
         ],
         &payer,
     )
@@ -472,7 +470,6 @@ async fn test_accesspass_with_tenant() {
             client_ip: client_ip_3,
             last_access_epoch: 30,
             allow_multiple_ip: false,
-            tenant: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(accesspass_pubkey_3, false),
@@ -508,12 +505,13 @@ async fn test_accesspass_with_tenant() {
             client_ip: client_ip_1,
             last_access_epoch: 15,
             allow_multiple_ip: false,
-            tenant: tenant_corp,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey_1, false),
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(user_payer_1, false),
+            AccountMeta::new(Pubkey::default(), false),
+            AccountMeta::new(tenant_corp, false),
         ],
         &payer,
     )
@@ -542,7 +540,6 @@ async fn test_accesspass_with_tenant() {
             client_ip: client_ip_1,
             last_access_epoch: 25,
             allow_multiple_ip: false,
-            tenant: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(accesspass_pubkey_1, false),
@@ -585,12 +582,13 @@ async fn test_accesspass_with_tenant() {
             client_ip: client_ip_4,
             last_access_epoch: u64::MAX,
             allow_multiple_ip: false,
-            tenant: tenant_validator,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey_4, false),
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(user_payer_4, false),
+            AccountMeta::new(Pubkey::default(), false),
+            AccountMeta::new(tenant_validator, false),
         ],
         &payer,
     )
@@ -780,7 +778,6 @@ async fn test_tx_lamports_to_pda_before_creation() {
             client_ip,
             last_access_epoch: 10,
             allow_multiple_ip: false,
-            tenant: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -811,7 +808,6 @@ async fn test_tx_lamports_to_pda_before_creation() {
             client_ip,
             last_access_epoch: 10,
             allow_multiple_ip: false,
-            tenant: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -1036,12 +1032,13 @@ async fn test_user_create_with_matching_tenant_in_allowlist() {
             client_ip: user_ip,
             last_access_epoch: 9999,
             allow_multiple_ip: false,
-            tenant: tenant_a,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(payer.pubkey(), false),
+            AccountMeta::new(Pubkey::default(), false),
+            AccountMeta::new(tenant_a, false),
         ],
         &payer,
     )
@@ -1105,12 +1102,13 @@ async fn test_user_create_with_wrong_tenant_in_allowlist() {
             client_ip: user_ip,
             last_access_epoch: 9999,
             allow_multiple_ip: false,
-            tenant: tenant_a,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(payer.pubkey(), false),
+            AccountMeta::new(Pubkey::default(), false),
+            AccountMeta::new(tenant_a, false),
         ],
         &payer,
     )
@@ -1165,7 +1163,6 @@ async fn test_user_create_with_default_tenant_allowlist_allows_any() {
             client_ip: user_ip,
             last_access_epoch: 9999,
             allow_multiple_ip: false,
-            tenant: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),

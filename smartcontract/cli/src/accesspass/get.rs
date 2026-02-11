@@ -21,10 +21,12 @@ impl GetAccessPassCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         let epoch = client.get_epoch()?;
 
-        let (pubkey, accesspass) = client.get_accesspass(GetAccessPassCommand {
-            client_ip: self.client_ip,
-            user_payer: self.user_payer,
-        })?;
+        let (pubkey, accesspass) = client
+            .get_accesspass(GetAccessPassCommand {
+                client_ip: self.client_ip,
+                user_payer: self.user_payer,
+            })?
+            .ok_or_else(|| eyre::eyre!("Access Pass not found"))?;
 
         let mgroups = client.list_multicastgroup(ListMulticastGroupCommand {})?;
         let tenants = client.list_tenant(ListTenantCommand {})?;
@@ -162,7 +164,7 @@ mod tests {
                 client_ip,
                 user_payer,
             }))
-            .returning(move |_| Ok((accesspass_pubkey, accesspass_clone.clone())));
+            .returning(move |_| Ok(Some((accesspass_pubkey, accesspass_clone.clone()))));
         client
             .expect_list_multicastgroup()
             .with(predicate::eq(ListMulticastGroupCommand {}))

@@ -29,7 +29,6 @@ pub struct DeviceInterfaceCreateArgs {
     pub name: String,
     pub loopback_type: LoopbackType,
     pub vlan_id: u16,
-    pub ip_net: Option<NetworkV4>,
     pub user_tunnel_endpoint: bool,
     pub interface_cyoa: InterfaceCYOA,
     pub interface_dia: InterfaceDIA,
@@ -37,6 +36,7 @@ pub struct DeviceInterfaceCreateArgs {
     pub cir: u64,
     pub mtu: u16,
     pub routing_mode: RoutingMode,
+    pub ip_net: Option<NetworkV4>,
 }
 
 impl fmt::Debug for DeviceInterfaceCreateArgs {

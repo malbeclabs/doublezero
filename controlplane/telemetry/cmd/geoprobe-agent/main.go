@@ -415,7 +415,7 @@ func runOffsetListener(
 		offset, addr, err := geoprobe.ReceiveOffset(conn)
 		if err != nil {
 			var netErr net.Error
-		if errors.As(err, &netErr) && netErr.Timeout() {
+			if errors.As(err, &netErr) && netErr.Timeout() {
 				continue
 			}
 			if ctx.Err() != nil {

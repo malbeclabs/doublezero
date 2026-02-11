@@ -432,7 +432,7 @@ func TestPublisher_AddProbe(t *testing.T) {
 		require.NoError(t, err)
 
 		pub.connsMu.Lock()
-		_, exists := pub.conns[addr.String()]
+		_, exists := pub.conns[addr.Host]
 		pub.connsMu.Unlock()
 		assert.True(t, exists)
 	})
@@ -474,7 +474,7 @@ func TestPublisher_RemoveProbe(t *testing.T) {
 		require.NoError(t, err)
 
 		pub.connsMu.Lock()
-		_, exists := pub.conns[addr.String()]
+		_, exists := pub.conns[addr.Host]
 		pub.connsMu.Unlock()
 		assert.False(t, exists)
 	})

@@ -233,7 +233,7 @@ func runUDPListener(ctx context.Context, log *slog.Logger, port uint, verifySign
 		offset, addr, err := geoprobe.ReceiveOffset(conn)
 		if err != nil {
 			var netErr net.Error
-		if errors.As(err, &netErr) && netErr.Timeout() {
+			if errors.As(err, &netErr) && netErr.Timeout() {
 				if err := conn.SetReadDeadline(time.Now().Add(1 * time.Second)); err != nil {
 					errCh <- fmt.Errorf("failed to set read deadline: %w", err)
 					return

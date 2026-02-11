@@ -31,6 +31,7 @@ impl UpdatePaymentStatusCliCommand {
         let signature = client.update_payment_status_tenant(UpdatePaymentStatusCommand {
             tenant_pubkey,
             payment_status: self.payment_status,
+            last_deduction_dz_epoch: None,
         })?;
 
         writeln!(out, "Signature: {signature}")?;

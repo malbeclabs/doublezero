@@ -1168,12 +1168,14 @@ mod tests {
                 token_account: Some(Pubkey::new_unique()),
                 metro_route: Some(true),
                 route_liveness: Some(false),
+                billing: None,
             }),
             "UpdateTenant",
         );
         test_instruction(
             DoubleZeroInstruction::UpdatePaymentStatus(UpdatePaymentStatusArgs {
                 payment_status: 1,
+                last_deduction_dz_epoch: None,
             }),
             "UpdatePaymentStatus",
         );

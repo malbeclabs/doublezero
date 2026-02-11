@@ -1,7 +1,7 @@
 use crate::DoubleZeroClient;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction, pda::get_globalstate_pda,
-    processors::tenant::update::TenantUpdateArgs,
+    processors::tenant::update::TenantUpdateArgs, state::tenant::TenantBillingConfig,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
@@ -12,6 +12,7 @@ pub struct UpdateTenantCommand {
     pub token_account: Option<Pubkey>,
     pub metro_route: Option<bool>,
     pub route_liveness: Option<bool>,
+    pub billing: Option<TenantBillingConfig>,
 }
 
 impl UpdateTenantCommand {
@@ -24,6 +25,7 @@ impl UpdateTenantCommand {
                 token_account: self.token_account,
                 metro_route: self.metro_route,
                 route_liveness: self.route_liveness,
+                billing: self.billing,
             }),
             vec![
                 AccountMeta::new(self.tenant_pubkey, false),

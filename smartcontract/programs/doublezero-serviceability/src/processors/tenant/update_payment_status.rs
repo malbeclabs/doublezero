@@ -1,7 +1,10 @@
 use crate::{
     error::DoubleZeroError,
     serializer::try_acc_write,
-    state::{globalstate::GlobalState, tenant::Tenant},
+    state::{
+        globalstate::GlobalState,
+        tenant::{Tenant, TenantBillingConfig},
+    },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -15,6 +18,7 @@ use solana_program::{
 #[derive(BorshSerialize, BorshDeserializeIncremental, Debug, PartialEq, Clone, Default)]
 pub struct UpdatePaymentStatusArgs {
     pub payment_status: u8,
+    pub last_deduction_dz_epoch: Option<u64>,
 }
 
 pub fn process_update_payment_status(
@@ -70,6 +74,12 @@ pub fn process_update_payment_status(
 
     // Update the payment status
     tenant.payment_status = value.payment_status.into();
+
+    // Update last_deduction_dz_epoch if provided (used by billing sentinel after deduction)
+    if let Some(epoch) = value.last_deduction_dz_epoch {
+        let TenantBillingConfig::FlatPerEpoch(ref mut config) = tenant.billing;
+        config.last_deduction_dz_epoch = epoch;
+    }
 
     try_acc_write(&tenant, tenant_account, payer_account, accounts)?;
 

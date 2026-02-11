@@ -1,7 +1,10 @@
 use crate::{
     error::DoubleZeroError,
     serializer::try_acc_write,
-    state::{globalstate::GlobalState, tenant::Tenant},
+    state::{
+        globalstate::GlobalState,
+        tenant::{Tenant, TenantBillingConfig},
+    },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -21,14 +24,15 @@ pub struct TenantUpdateArgs {
     pub token_account: Option<Pubkey>,
     pub metro_route: Option<bool>,
     pub route_liveness: Option<bool>,
+    pub billing: Option<TenantBillingConfig>,
 }
 
 impl fmt::Debug for TenantUpdateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "vrf_id: {:?}, token_account: {:?}, metro_route: {:?}, route_liveness: {:?}",
-            self.vrf_id, self.token_account, self.metro_route, self.route_liveness
+            "vrf_id: {:?}, token_account: {:?}, metro_route: {:?}, route_liveness: {:?}, billing: {:?}",
+            self.vrf_id, self.token_account, self.metro_route, self.route_liveness, self.billing
         )
     }
 }
@@ -86,6 +90,9 @@ pub fn process_update_tenant(
     }
     if let Some(route_liveness) = value.route_liveness {
         tenant.route_liveness = route_liveness;
+    }
+    if let Some(billing) = value.billing {
+        tenant.billing = billing;
     }
     try_acc_write(&tenant, tenant_account, payer_account, accounts)?;
 

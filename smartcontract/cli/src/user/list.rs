@@ -1356,6 +1356,8 @@ mod tests {
             administrators: vec![],
             payment_status: TenantPaymentStatus::Paid,
             token_account: Pubkey::default(),
+            metro_route: false,
+            route_aliveness: false,
         };
 
         let tenant2 = Tenant {
@@ -1368,6 +1370,8 @@ mod tests {
             administrators: vec![],
             payment_status: TenantPaymentStatus::Paid,
             token_account: Pubkey::default(),
+            metro_route: false,
+            route_aliveness: false,
         };
 
         let user1_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");
@@ -1513,6 +1517,8 @@ mod tests {
             administrators: vec![],
             payment_status: TenantPaymentStatus::Paid,
             token_account: Pubkey::default(),
+            metro_route: false,
+            route_aliveness: false,
         };
 
         let tenant2 = Tenant {
@@ -1525,6 +1531,8 @@ mod tests {
             administrators: vec![],
             payment_status: TenantPaymentStatus::Paid,
             token_account: Pubkey::default(),
+            metro_route: false,
+            route_aliveness: false,
         };
 
         let user1_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");

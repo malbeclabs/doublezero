@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
 - Onchain programs
   - feat(smartcontract): add payment_status, token_account fields and UpdatePaymentStatus instruction ([#2880](https://github.com/malbeclabs/doublezero/pull/2880))
   - fix(smartcontract): correctly ser/deser ops_manager_pk ([#2887](https://github.com/malbeclabs/doublezero/pull/2887))
+  - Serviceability: add metro_route and route_aliveness boolean fields to Tenant for routing configuration
   - Serviceability: add Tenant account type with immutable code-based PDA derivation, VRF ID, administrator management, and reference counting for safe deletion
   - Serviceability: add TenantAddAdministrator and TenantRemoveAdministrator instructions for foundation-managed administrator lists
   - Serviceability: extend UserUpdate instruction to support tenant_pk field updates with automatic reference count management on old and new tenants (backward compatible with old format)
@@ -23,12 +24,14 @@ All notable changes to this project will be documented in this file.
   - Serviceability: fix multicast group closeaccount to use InvalidStatus error and remove redundant publisher/subscriber count check
   - Serviceability: add tenant_allowlist field to AccessPass to restrict which tenants can use specific access passes (backward compatible with existing accounts)
 - SDK
+  - Add metro_route and route_aliveness fields to CreateTenantCommand and UpdateTenantCommand
   - Add CreateTenant, UpdateTenant (vrf_id only), DeleteTenant, GetTenant, and ListTenant commands with support for code or pubkey lookup
   - Add AddAdministratorTenant and RemoveAdministratorTenant commands for tenant administrator management
   - UpdateUserCommand extended with tenant_pk field and automatic tenant account resolution for reference counting
   - SetAccessPassCommand extended with tenant field to specify allowed tenant for access pass
   - TypeScript SDK updated with tenantAllowlist field in AccessPass interface and deserialization
 - CLI
+  - Add --metro-route and --route-aliveness flags to tenant create and update commands
   - Add tenant subcommands (create, update, delete, get, list, add-administrator, remove-administrator) to doublezero and doublezero-admin CLIs
   - Add filtering options and desired_status & metrics_publisher_pk field to device and link list commands
   - Added activation check for existing users before subscribing to new groups (#2782)

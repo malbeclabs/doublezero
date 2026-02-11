@@ -992,6 +992,8 @@ mod tests {
                 administrators: vec![],
                 payment_status: TenantPaymentStatus::Paid,
                 token_account: Pubkey::default(),
+                metro_route: false,
+                route_aliveness: false,
             };
 
             let mut tenants = HashMap::new();
@@ -1236,6 +1238,8 @@ mod tests {
                 administrators: vec![],
                 payment_status: TenantPaymentStatus::Paid,
                 token_account: Pubkey::default(),
+                metro_route: false,
+                route_aliveness: false,
             };
             tenants.insert(pk, tenant.clone());
             (pk, tenant)

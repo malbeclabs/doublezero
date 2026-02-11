@@ -23,6 +23,8 @@ pub struct TenantDisplay {
     pub account: Pubkey,
     pub code: String,
     pub vrf_id: u16,
+    pub metro_route: bool,
+    pub route_aliveness: bool,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
 }
@@ -37,6 +39,8 @@ impl ListTenantCliCommand {
                 account: pubkey,
                 code: tenant.code,
                 vrf_id: tenant.vrf_id,
+                metro_route: tenant.metro_route,
+                route_aliveness: tenant.route_aliveness,
                 owner: tenant.owner,
             })
             .collect();

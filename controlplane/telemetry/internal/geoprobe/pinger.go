@@ -46,6 +46,7 @@ func NewPinger(cfg *PingerConfig) *Pinger {
 }
 
 func (p *Pinger) AddProbe(ctx context.Context, addr ProbeAddress) error {
+	addr.Port = 862
 	p.sendersMu.Lock()
 	defer p.sendersMu.Unlock()
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -35,7 +36,7 @@ var (
 	env                = flag.String("env", "", "The network environment to use (devnet, testnet, mainnet-beta).")
 	ledgerRPCURL       = flag.String("ledger-rpc-url", "", "The url of the ledger RPC. If env is provided, this flag is ignored.")
 	keypairPath        = flag.String("keypair", "", "The path to the probe's Ed25519 keypair file.")
-	additionalParents  = flag.String("additional-parents", "", "Comma-separated list of DZD pubkey@host:port for accepting offsets.")
+	additionalParents  = flag.String("additional-parents", "", "Comma-separated list of trusted parent DZD pubkeys (base58).")
 	additionalTargets  = flag.String("additional-targets", "", "Comma-separated list of target addresses (host:port) to measure and send composite offsets.")
 	twampListenPort    = flag.Uint("twamp-listen-port", defaultTWAMPListenPort, "Port for TWAMP reflector.")
 	udpListenPort      = flag.Uint("udp-listen-port", defaultUDPListenPort, "Port for receiving DZD offset datagrams.")
@@ -52,12 +53,11 @@ var (
 
 // parentDZD represents a trusted parent DZD that sends offsets to this probe.
 type parentDZD struct {
-	pubkey  [32]byte
-	address geoprobe.ProbeAddress
+	pubkey [32]byte
 }
 
 // parseParentDZDs parses the --additional-parents flag value.
-// Format: "pubkey@host:port,pubkey@host:port"
+// Format: "pubkey,pubkey"
 func parseParentDZDs(s string) ([]parentDZD, error) {
 	if s == "" {
 		return nil, nil
@@ -73,25 +73,9 @@ func parseParentDZDs(s string) ([]parentDZD, error) {
 			continue
 		}
 
-		atIdx := strings.Index(part, "@")
-		if atIdx < 0 {
-			return nil, fmt.Errorf("invalid parent format %q: expected pubkey@host:port", part)
-		}
-
-		pubkeyStr := part[:atIdx]
-		addrStr := part[atIdx+1:]
-
-		pk, err := solana.PublicKeyFromBase58(pubkeyStr)
+		pk, err := solana.PublicKeyFromBase58(part)
 		if err != nil {
-			return nil, fmt.Errorf("invalid pubkey in %q: %w", part, err)
-		}
-
-		addrs, err := geoprobe.ParseProbeAddresses(addrStr)
-		if err != nil {
-			return nil, fmt.Errorf("invalid address in %q: %w", part, err)
-		}
-		if len(addrs) != 1 {
-			return nil, fmt.Errorf("expected exactly one address in %q", part)
+			return nil, fmt.Errorf("invalid pubkey %q: %w", part, err)
 		}
 
 		var pubkeyBytes [32]byte
@@ -103,8 +87,7 @@ func parseParentDZDs(s string) ([]parentDZD, error) {
 		seen[pubkeyBytes] = true
 
 		parents = append(parents, parentDZD{
-			pubkey:  pubkeyBytes,
-			address: addrs[0],
+			pubkey: pubkeyBytes,
 		})
 	}
 
@@ -431,7 +414,8 @@ func runOffsetListener(
 
 		offset, addr, err := geoprobe.ReceiveOffset(conn)
 		if err != nil {
-			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			var netErr net.Error
+		if errors.As(err, &netErr) && netErr.Timeout() {
 				continue
 			}
 			if ctx.Err() != nil {

@@ -207,7 +207,7 @@ func TestParseParentDZDs_Valid(t *testing.T) {
 	kp1 := solana.NewWallet()
 	kp2 := solana.NewWallet()
 
-	input := kp1.PublicKey().String() + "@10.0.0.1:8923," + kp2.PublicKey().String() + "@10.0.0.2:8923"
+	input := kp1.PublicKey().String() + "," + kp2.PublicKey().String()
 
 	parents, err := parseParentDZDs(input)
 	if err != nil {
@@ -217,31 +217,29 @@ func TestParseParentDZDs_Valid(t *testing.T) {
 		t.Fatalf("expected 2 parents, got %d", len(parents))
 	}
 
-	if parents[0].address.Host != "10.0.0.1" || parents[0].address.Port != 8923 {
-		t.Errorf("unexpected first parent address: %+v", parents[0].address)
-	}
-	if parents[1].address.Host != "10.0.0.2" || parents[1].address.Port != 8923 {
-		t.Errorf("unexpected second parent address: %+v", parents[1].address)
-	}
-
-	// Verify pubkeys match.
-	var expectedPK1 [32]byte
+	var expectedPK1, expectedPK2 [32]byte
 	pk1 := kp1.PublicKey()
 	copy(expectedPK1[:], pk1[:])
+	pk2 := kp2.PublicKey()
+	copy(expectedPK2[:], pk2[:])
+
 	if parents[0].pubkey != expectedPK1 {
 		t.Errorf("unexpected first parent pubkey")
 	}
+	if parents[1].pubkey != expectedPK2 {
+		t.Errorf("unexpected second parent pubkey")
+	}
 }
 
-func TestParseParentDZDs_MissingAt(t *testing.T) {
-	_, err := parseParentDZDs("invalid-no-at-sign")
+func TestParseParentDZDs_InvalidPubkeyFormat(t *testing.T) {
+	_, err := parseParentDZDs("not-a-valid-base58-pubkey")
 	if err == nil {
-		t.Fatal("expected error for missing @ sign")
+		t.Fatal("expected error for invalid pubkey")
 	}
 }
 
 func TestParseParentDZDs_InvalidPubkey(t *testing.T) {
-	_, err := parseParentDZDs("not-a-pubkey@10.0.0.1:8923")
+	_, err := parseParentDZDs("not-a-pubkey")
 	if err == nil {
 		t.Fatal("expected error for invalid pubkey")
 	}
@@ -249,7 +247,7 @@ func TestParseParentDZDs_InvalidPubkey(t *testing.T) {
 
 func TestParseParentDZDs_Dedup(t *testing.T) {
 	kp := solana.NewWallet()
-	input := kp.PublicKey().String() + "@10.0.0.1:8923," + kp.PublicKey().String() + "@10.0.0.1:8923"
+	input := kp.PublicKey().String() + "," + kp.PublicKey().String()
 
 	parents, err := parseParentDZDs(input)
 	if err != nil {

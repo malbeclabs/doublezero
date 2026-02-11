@@ -322,9 +322,13 @@ impl ListUserCliCommand {
                     None => "".to_string(),
                 };
 
-                let tenant_name = tenants
-                    .get(&user.tenant_pk)
-                    .map_or_else(|| user.tenant_pk.to_string(), |t| t.code.clone());
+                let tenant_name = if user.tenant_pk == Pubkey::default() {
+                    "".to_string()
+                } else {
+                    tenants
+                        .get(&user.tenant_pk)
+                        .map_or_else(|| user.tenant_pk.to_string(), |t| t.code.clone())
+                };
 
                 UserDisplay {
                     account: *pubkey,
@@ -407,20 +411,16 @@ mod tests {
         doublezerocommand::CliCommand,
         tests::utils::create_test_client,
         user::list::{
-            ListUserCliCommand, UserCYOA, UserCYOA::GREOverDIA, UserStatus, UserStatus::Activated,
-            UserType::IBRL,
+            ListUserCliCommand, UserCYOA::GREOverDIA, UserStatus::Activated, UserType::IBRL,
         },
     };
     use doublezero_sdk::{
         AccountType, Device, DeviceStatus, DeviceType, Exchange, ExchangeStatus, Location,
-        LocationStatus, MulticastGroup, MulticastGroupStatus, Tenant, User, UserType,
+        LocationStatus, MulticastGroup, MulticastGroupStatus, User, UserType,
     };
     use doublezero_serviceability::{
         pda::get_accesspass_pda,
-        state::{
-            accesspass::{AccessPass, AccessPassStatus, AccessPassType},
-            tenant::TenantPaymentStatus,
-        },
+        state::accesspass::{AccessPass, AccessPassStatus, AccessPassType},
     };
     use solana_sdk::pubkey::Pubkey;
 
